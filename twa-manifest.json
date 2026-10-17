@@ -1,0 +1,73 @@
+{
+  "packageId": "com.headstrong.app",
+  "host": "headstrong.app",
+  "name": "HeadStrong",
+  "launcherName": "HeadStrong",
+  "display": "standalone",
+  "themeColor": "#060709",
+  "themeColorDark": "#060709",
+  "navigationColor": "#060709",
+  "navigationColorDark": "#060709",
+  "navigationDividerColor": "#141720",
+  "navigationDividerColorDark": "#141720",
+  "backgroundColor": "#060709",
+  "enableNotifications": true,
+  "startUrl": "/",
+  "iconUrl": "https://headstrong.app/pwa-512x512.png",
+  "maskableIconUrl": "https://headstrong.app/maskable-icon-512x512.png",
+  "monochromeIconUrl": "https://headstrong.app/headstrong-icon.svg",
+  "splashScreenFadeOutDuration": 300,
+  "signingKey": {
+    "path": "./android.keystore",
+    "alias": "headstrong-release-key"
+  },
+  "appVersionName": "1.0.0",
+  "appVersionCode": 1,
+  "shortcuts": [
+    {
+      "name": "Start Workout",
+      "shortName": "Workout",
+      "url": "/?tab=train",
+      "chosenIconUrl": "https://headstrong.app/pwa-192x192.png"
+    },
+    {
+      "name": "Sync Pixel Watch",
+      "shortName": "Watch Sync",
+      "url": "/?tab=program&action=watch-sync",
+      "chosenIconUrl": "https://headstrong.app/pwa-192x192.png"
+    },
+    {
+      "name": "Log Bodyweight",
+      "shortName": "Log Weight",
+      "url": "/?tab=analytics&action=log-weight",
+      "chosenIconUrl": "https://headstrong.app/pwa-192x192.png"
+    }
+  ],
+  "generatorApp": "bubblewrap-cli",
+  "webManifestUrl": "https://headstrong.app/manifest.webmanifest",
+  "fallbackType": "customtabs",
+  "features": {
+    "playBilling": {
+      "enabled": false
+    },
+    "locationDelegation": {
+      "enabled": false
+    }
+  },
+  "alphaDependencies": {
+    "enabled": false
+  },
+  "enableSiteSettingsShortcut": true,
+  "isChromeOSOnly": false,
+  "isMetaQuest": false,
+  "fullScopeUrl": "https://headstrong.app/",
+  "minSdkVersion": 24,
+  "targetSdkVersion": 35,
+  "orientation": "portrait",
+  "fingerprints": [
+    {
+      "name": "Google Play App Signing Key",
+      "value": "14:6D:E9:83:C5:73:06:50:D8:EE:B9:95:2F:34:FC:64:16:A0:83:42:E6:1D:BE:A8:8A:04:96:B2:3F:CF:44:E5"
+    }
+  ]
+}

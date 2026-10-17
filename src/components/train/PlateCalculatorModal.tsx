@@ -1,0 +1,196 @@
+import React, { useState } from 'react';
+import { X, Disc, Sliders } from 'lucide-react';
+import { triggerHaptic } from '../../utils/haptics';
+
+interface PlateCalculatorModalProps {
+  initialWeightKg: number;
+  onClose: () => void;
+}
+
+export const PlateCalculatorModal: React.FC<PlateCalculatorModalProps> = ({
+  initialWeightKg,
+  onClose,
+}) => {
+  const [targetWeight, setTargetWeight] = useState(initialWeightKg);
+  const [barWeight, setBarWeight] = useState<20 | 15>(20);
+  const [availablePlates, setAvailablePlates] = useState<number[]>([25, 20, 15, 10, 5, 2.5, 1.25]);
+
+  // Color mapping for standard Olympic bumper / competition plates
+  const plateColors: Record<number, { bg: string; border: string; text: string; height: string }> = {
+    25: { bg: 'bg-rose-600', border: 'border-rose-400', text: 'text-white', height: 'h-24' },
+    20: { bg: 'bg-blue-600', border: 'border-blue-400', text: 'text-white', height: 'h-24' },
+    15: { bg: 'bg-amber-500', border: 'border-amber-300', text: 'text-black', height: 'h-20' },
+    10: { bg: 'bg-emerald-600', border: 'border-emerald-400', text: 'text-white', height: 'h-18' },
+    5: { bg: 'bg-slate-200', border: 'border-slate-400', text: 'text-black', height: 'h-14' },
+    2.5: { bg: 'bg-slate-800', border: 'border-slate-600', text: 'text-white', height: 'h-12' },
+    1.25: { bg: 'bg-slate-600', border: 'border-slate-400', text: 'text-white', height: 'h-10' },
+  };
+
+  // Calculate plates per side (Greedy algorithm)
+  const calculatePlatesPerSide = (totalKg: number, barKg: number, platePool: number[]) => {
+    if (totalKg <= barKg) return { platesPerSide: [], remainderKg: 0 };
+
+    let weightNeededPerSide = (totalKg - barKg) / 2;
+    const sortedPool = [...platePool].sort((a, b) => b - a);
+    const result: number[] = [];
+
+    for (const plate of sortedPool) {
+      while (weightNeededPerSide >= plate) {
+        result.push(plate);
+        weightNeededPerSide = Math.round((weightNeededPerSide - plate) * 100) / 100;
+      }
+    }
+
+    return { platesPerSide: result, remainderKg: weightNeededPerSide * 2 };
+  };
+
+  const { platesPerSide, remainderKg } = calculatePlatesPerSide(targetWeight, barWeight, availablePlates);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md">
+      <div className="w-full max-w-sm rounded-3xl surface-glass border border-white/[0.12] p-5 shadow-2xl space-y-4">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-2">
+            <Disc className="w-5 h-5 text-brand-primary" />
+            <h3 className="font-extrabold text-base text-white tracking-tight">
+              Barbell Plate Calculator
+            </h3>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              triggerHaptic('light');
+              onClose();
+            }}
+            className="p-1 rounded-full text-slate-400 hover:text-white hover:bg-white/[0.08]"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Target Weight & Bar Weight Selector */}
+        <div className="space-y-3">
+          <div className="flex items-center justify-between p-3 rounded-2xl bg-black/40 border border-white/[0.06]">
+            <div>
+              <span className="text-xs uppercase font-bold text-slate-400 tracking-wider block">
+                Total Bar Load
+              </span>
+              <div className="flex items-baseline space-x-1.5 mt-0.5">
+                <input
+                  type="number"
+                  step="0.5"
+                  value={targetWeight}
+                  onChange={(e) => setTargetWeight(parseFloat(e.target.value) || barWeight)}
+                  className="w-24 bg-transparent font-mono font-black text-2xl text-white focus:outline-none"
+                />
+                <span className="text-xs font-bold text-slate-400">kg</span>
+              </div>
+            </div>
+
+            {/* Barbell Toggle (20kg vs 15kg) */}
+            <div className="flex bg-surface-elevated p-0.5 rounded-xl border border-white/[0.06]">
+              {([20, 15] as const).map((b) => (
+                <button
+                  key={b}
+                  type="button"
+                  onClick={() => {
+                    triggerHaptic('light');
+                    setBarWeight(b);
+                  }}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-mono font-bold transition-all ${
+                    barWeight === b
+                      ? 'bg-brand-primary text-black shadow-sm'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  {b}kg Bar
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Visual Barbell Collar & Plates */}
+        <div className="p-4 rounded-2xl bg-black/50 border border-white/[0.06] flex flex-col items-center justify-center min-h-[140px]">
+          <span className="text-xs uppercase font-bold tracking-wider text-slate-400 mb-2">
+            Plates Per Side ({((targetWeight - barWeight) / 2).toFixed(2)} kg each side)
+          </span>
+
+          {platesPerSide.length === 0 ? (
+            <span className="text-xs font-mono text-slate-400 py-6">Empty Barbell ({barWeight} kg)</span>
+          ) : (
+            <div className="flex items-center space-x-1 py-2 overflow-x-auto max-w-full">
+              {/* Barbell Sleeve */}
+              <div className="w-5 h-8 bg-slate-700 rounded-l-md border-r-2 border-slate-900 shrink-0" />
+
+              {/* Plates Loaded onto sleeve */}
+              {platesPerSide.map((weight, idx) => {
+                const conf = plateColors[weight] || {
+                  bg: 'bg-slate-700',
+                  border: 'border-slate-500',
+                  text: 'text-white',
+                  height: 'h-16',
+                };
+                return (
+                  <div
+                    key={`${weight}-${idx}`}
+                    className={`w-7 ${conf.height} ${conf.bg} border ${conf.border} rounded-sm flex items-center justify-center shadow-lg transition-transform`}
+                  >
+                    <span className={`text-xs font-mono font-bold rotate-90 ${conf.text}`}>
+                      {weight}
+                    </span>
+                  </div>
+                );
+              })}
+
+              {/* Barbell Collar Clamp */}
+              <div className="w-2.5 h-6 bg-amber-400 rounded-sm shrink-0 border border-amber-300" />
+            </div>
+          )}
+
+          {remainderKg > 0 && (
+            <span className="text-xs font-mono text-amber-400 mt-2">
+              Note: Remainder of {remainderKg}kg cannot be matched with selected plates.
+            </span>
+          )}
+        </div>
+
+        {/* Plate Counts Summary Grid */}
+        <div className="space-y-1.5">
+          <span className="text-xs uppercase font-bold tracking-wider text-slate-400">
+            Plate Checklist Per Side:
+          </span>
+
+          <div className="grid grid-cols-4 gap-1.5 text-xs font-mono">
+            {availablePlates.map((plate) => {
+              const count = platesPerSide.filter((p) => p === plate).length;
+              if (count === 0) return null;
+              return (
+                <div
+                  key={plate}
+                  className="p-2 rounded-xl bg-surface-elevated border border-white/[0.06] text-center"
+                >
+                  <span className="text-slate-400 text-xs block">{plate} kg</span>
+                  <span className="font-black text-brand-primary text-sm">× {count}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Done Button */}
+        <button
+          type="button"
+          onClick={() => {
+            triggerHaptic('light');
+            onClose();
+          }}
+          className="w-full py-2.5 rounded-2xl bg-surface-elevated hover:bg-surface-hover border border-white/[0.08] text-xs font-bold text-white transition-all active:scale-98"
+        >
+          Close Calculator
+        </button>
+      </div>
+    </div>
+  );
+};

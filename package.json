@@ -1,0 +1,32 @@
+{
+  "name": "headstrong",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "generate:assets": "node scripts/generatePlayStoreAssets.mjs",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "test:engine": "tsc src/engine/__tests__/verifyEngine.ts --rootDir src --outDir .dist-test --module commonjs --target es2020 --moduleResolution node --skipLibCheck && echo '{\"type\":\"commonjs\"}' > .dist-test/package.json && node .dist-test/engine/__tests__/verifyEngine.js && rm -rf .dist-test",
+    "verify:playstore": "node scripts/verifyPlayStoreReady.mjs",
+    "verify:all": "npm run generate:assets && npm run test:engine && npm run build && npm run verify:playstore"
+  },
+  "dependencies": {
+    "lucide-react": "^1.16.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "recharts": "^2.13.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.3",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.15",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.11",
+    "vite-plugin-pwa": "^0.20.5"
+  }
+}

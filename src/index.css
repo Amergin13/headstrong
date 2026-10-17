@@ -1,0 +1,120 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+
+  body {
+    background-color: #060709;
+    color: #F8FAFC;
+    font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'SF Pro Display', Inter, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+    -webkit-user-select: none;
+    letter-spacing: -0.01em;
+  }
+
+  input, textarea {
+    user-select: text;
+    -webkit-user-select: text;
+  }
+}
+
+/* Surface Horology & Specular Lighting */
+.surface-glass {
+  background: linear-gradient(180deg, rgba(20, 24, 34, 0.7) 0%, rgba(13, 15, 21, 0.85) 100%);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 8px 32px -4px rgba(0, 0, 0, 0.5);
+}
+
+.surface-elevated {
+  background: #141720;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+/* Tabular figures for weights, reps, and telemetry */
+.tabular-numbers {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' on, 'cv05' on, 'cv08' on;
+}
+
+/* Ambient Radial Glows */
+.ambient-glow-emerald {
+  position: relative;
+}
+.ambient-glow-emerald::before {
+  content: '';
+  position: absolute;
+  top: -20px;
+  right: -20px;
+  width: 140px;
+  height: 140px;
+  background: radial-gradient(circle, rgba(0, 245, 155, 0.12) 0%, rgba(0, 245, 155, 0) 70%);
+  pointer-events: none;
+  border-radius: 50%;
+}
+
+.ambient-glow-amber {
+  position: relative;
+}
+.ambient-glow-amber::before {
+  content: '';
+  position: absolute;
+  top: -20px;
+  right: -20px;
+  width: 140px;
+  height: 140px;
+  background: radial-gradient(circle, rgba(245, 158, 11, 0.14) 0%, rgba(245, 158, 11, 0) 70%);
+  pointer-events: none;
+  border-radius: 50%;
+}
+
+/* Numeric input styling */
+input[type='number']::-webkit-inner-spin-button,
+input[type='number']::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type='number'] {
+  -moz-appearance: textfield;
+}
+
+.pb-safe {
+  padding-bottom: max(18px, env(safe-area-inset-bottom));
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* WCAG AA Keyboard Focus Ring */
+button:focus-visible,
+input:focus-visible,
+select:focus-visible {
+  outline: 2px solid #00F59B;
+  outline-offset: 2px;
+}
+
+/* EAA & WCAG AA Reduced Motion Support */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
