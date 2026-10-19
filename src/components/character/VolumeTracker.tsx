@@ -65,7 +65,7 @@ export const VolumeTracker: React.FC<VolumeTrackerProps> = ({ weeklyVolume }) =>
   }).length;
 
   return (
-    <div className="biometric-card p-4.5 border border-white/[0.08] space-y-3.5">
+    <div className="biometric-card p-5 sm:p-6 space-y-4">
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
@@ -73,7 +73,7 @@ export const VolumeTracker: React.FC<VolumeTrackerProps> = ({ weeklyVolume }) =>
             <h3 className="font-extrabold text-base text-white tracking-tight">
               Weekly Sets by Muscle
             </h3>
-            <span className="text-xs font-mono font-bold px-2.5 py-0.5 rounded-full bg-brand-primary/15 text-brand-primary border border-brand-primary/30">
+            <span className="text-xs font-mono font-bold px-3 py-1 rounded-full bg-brand-primary/15 text-brand-primary">
               {optimalCount}/{muscleKeys.length} on target
             </span>
           </div>
@@ -89,7 +89,7 @@ export const VolumeTracker: React.FC<VolumeTrackerProps> = ({ weeklyVolume }) =>
             setShowScienceModal(true);
           }}
           aria-label="Learn how weekly set targets work"
-          className="px-2.5 py-1.5 rounded-xl biometric-pill hover:bg-white/[0.12] text-slate-200 hover:text-white transition-all flex items-center space-x-1.5 text-xs font-semibold"
+          className="px-3 py-1.5 rounded-xl bg-white/[0.08] hover:bg-white/[0.12] text-slate-200 hover:text-white transition-all flex items-center space-x-1.5 text-xs font-semibold"
         >
           <BookOpen className="w-3.5 h-3.5 text-brand-primary stroke-[2]" />
           <span>How it works</span>
@@ -107,7 +107,7 @@ export const VolumeTracker: React.FC<VolumeTrackerProps> = ({ weeklyVolume }) =>
               className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
                 activeFilter === cat
                   ? 'bg-brand-primary text-black font-extrabold shadow-sm'
-                  : 'biometric-pill text-slate-300 hover:text-white hover:bg-white/[0.08]'
+                  : 'bg-[#151A24] text-slate-300 hover:text-white hover:bg-white/[0.08]'
               }`}
             >
               {cat}
@@ -117,7 +117,7 @@ export const VolumeTracker: React.FC<VolumeTrackerProps> = ({ weeklyVolume }) =>
       </div>
 
       {/* Muscle Volume Cards */}
-      <div className="space-y-2.5 pt-1">
+      <div className="space-y-3 pt-1">
         {filteredKeys.map((key) => {
           const sets = weeklyVolume[key] || 0;
           const evaluation = evaluateVolumeStatus(key, sets);
@@ -137,10 +137,10 @@ export const VolumeTracker: React.FC<VolumeTrackerProps> = ({ weeklyVolume }) =>
           return (
             <div
               key={key}
-              className={`p-3.5 rounded-2xl border transition-all duration-200 ${
+              className={`p-4 rounded-2xl transition-all duration-200 ${
                 isExpanded
-                  ? 'bg-[#151921] border-brand-primary/40 shadow-lg'
-                  : 'bg-[#0D1015] hover:bg-[#11141B] border-white/[0.06]'
+                  ? 'bg-[#151921] shadow-lg'
+                  : 'bg-[#0B0E14] hover:bg-[#11141B]'
               }`}
             >
               {/* Row Header */}
@@ -182,9 +182,9 @@ export const VolumeTracker: React.FC<VolumeTrackerProps> = ({ weeklyVolume }) =>
                 </div>
 
                 {/* Progress Bar with Target Zone */}
-                <div className="relative w-full bg-white/[0.04] h-2.5 rounded-full overflow-hidden border border-white/[0.06]">
+                <div className="relative w-full bg-[#141824] h-2.5 rounded-full overflow-hidden">
                   <div
-                    className="absolute top-0 bottom-0 bg-brand-primary/15 border-x border-brand-primary/30 z-0"
+                    className="absolute top-0 bottom-0 bg-brand-primary/20 z-0"
                     style={{
                       left: `${mavLeftPercent}%`,
                       width: `${mavWidthPercent}%`,
@@ -225,9 +225,9 @@ export const VolumeTracker: React.FC<VolumeTrackerProps> = ({ weeklyVolume }) =>
 
               {/* Expandable Plain-English Explanation */}
               {isExpanded && (
-                <div className="mt-3 pt-3 border-t border-white/[0.06] space-y-2.5 text-xs">
+                <div className="mt-3 pt-3 space-y-2.5 text-xs">
                   <div className="grid grid-cols-2 gap-2">
-                    <div className="p-2.5 rounded-xl bg-black/40 border border-white/[0.04]">
+                    <div className="p-3 rounded-xl bg-[#090C12]">
                       <span className="text-slate-400 block text-xs">
                         Recovery Speed
                       </span>
@@ -236,7 +236,7 @@ export const VolumeTracker: React.FC<VolumeTrackerProps> = ({ weeklyVolume }) =>
                       </span>
                     </div>
 
-                    <div className="p-2.5 rounded-xl bg-black/40 border border-white/[0.04]">
+                    <div className="p-3 rounded-xl bg-[#090C12]">
                       <span className="text-slate-400 block text-xs">
                         Best Frequency
                       </span>
@@ -246,7 +246,7 @@ export const VolumeTracker: React.FC<VolumeTrackerProps> = ({ weeklyVolume }) =>
                     </div>
                   </div>
 
-                  <div className="p-3 rounded-xl bg-black/30 border border-white/[0.04] space-y-1">
+                  <div className="p-3.5 rounded-xl bg-[#090C12] space-y-1">
                     <span className="text-xs text-brand-primary font-semibold block">
                       Why this target?
                     </span>
@@ -270,9 +270,9 @@ export const VolumeTracker: React.FC<VolumeTrackerProps> = ({ weeklyVolume }) =>
 
       {/* Plain-English Guide Modal */}
       {showScienceModal && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-end sm:items-center justify-center p-4">
-          <div className="w-full max-w-md bg-surface-card border border-white/[0.1] rounded-3xl p-5 space-y-4 max-h-[85vh] overflow-y-auto no-scrollbar">
-            <div className="flex items-center justify-between border-b border-white/[0.08] pb-3">
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-end sm:items-center justify-center p-4">
+          <div className="w-full max-w-md bg-[#0E1219] rounded-3xl p-5 sm:p-6 space-y-5 max-h-[85vh] overflow-y-auto no-scrollbar shadow-2xl">
+            <div className="flex items-center justify-between border-b border-white/[0.04] pb-3">
               <div>
                 <h3 className="font-bold text-white text-base tracking-tight">
                   Why Set Targets Vary by Muscle
@@ -284,14 +284,15 @@ export const VolumeTracker: React.FC<VolumeTrackerProps> = ({ weeklyVolume }) =>
               <button
                 type="button"
                 onClick={() => setShowScienceModal(false)}
-                className="w-8 h-8 rounded-full bg-white/[0.08] hover:bg-white/[0.15] text-slate-300 hover:text-white flex items-center justify-center text-sm font-bold"
+                aria-label="Close guide modal"
+                className="w-9 h-9 rounded-full bg-white/[0.06] hover:bg-white/[0.12] text-slate-300 hover:text-white flex items-center justify-center text-sm font-bold"
               >
                 ✕
               </button>
             </div>
 
             <div className="space-y-3 text-xs text-slate-300 leading-relaxed">
-              <div className="p-3.5 rounded-2xl bg-black/40 border border-white/[0.06] space-y-1">
+              <div className="p-4 rounded-2xl bg-[#090C12] space-y-1">
                 <span className="font-bold text-white text-sm block">
                   1. Fast-Recovering Muscles (16–26 sets/wk)
                 </span>
@@ -300,7 +301,7 @@ export const VolumeTracker: React.FC<VolumeTrackerProps> = ({ weeklyVolume }) =>
                 </p>
               </div>
 
-              <div className="p-3.5 rounded-2xl bg-black/40 border border-white/[0.06] space-y-1">
+              <div className="p-4 rounded-2xl bg-[#090C12] space-y-1">
                 <span className="font-bold text-white text-sm block">
                   2. Deep-Stretch Muscles (10–18 sets/wk)
                 </span>
@@ -309,7 +310,7 @@ export const VolumeTracker: React.FC<VolumeTrackerProps> = ({ weeklyVolume }) =>
                 </p>
               </div>
 
-              <div className="p-3.5 rounded-2xl bg-black/40 border border-white/[0.06] space-y-1">
+              <div className="p-4 rounded-2xl bg-[#090C12] space-y-1">
                 <span className="font-bold text-white text-sm block">
                   3. Muscles Worked During Presses
                 </span>
@@ -322,7 +323,7 @@ export const VolumeTracker: React.FC<VolumeTrackerProps> = ({ weeklyVolume }) =>
             <button
               type="button"
               onClick={() => setShowScienceModal(false)}
-              className="w-full py-3 rounded-2xl bg-brand-primary text-black font-bold text-sm shadow-md"
+              className="w-full py-3 min-h-[44px] rounded-2xl bg-brand-primary text-black font-bold text-sm shadow-md"
             >
               Got It
             </button>

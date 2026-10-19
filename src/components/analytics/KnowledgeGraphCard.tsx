@@ -67,7 +67,7 @@ export const KnowledgeGraphCard: React.FC<KnowledgeGraphCardProps> = ({
   };
 
   return (
-    <div className="biometric-card p-4.5 border border-white/[0.08] space-y-3.5">
+    <div className="biometric-card p-5 sm:p-6 space-y-4">
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
@@ -84,8 +84,8 @@ export const KnowledgeGraphCard: React.FC<KnowledgeGraphCardProps> = ({
       </div>
 
       {/* Top Summary Strip */}
-      <div className="grid grid-cols-3 gap-2">
-        <div className="p-3 rounded-2xl bg-surface-elevated border border-white/[0.06] text-center">
+      <div className="grid grid-cols-3 gap-2.5">
+        <div className="p-3 rounded-2xl bg-[#141824] text-center">
           <div className="text-xs text-slate-400 font-bold uppercase tracking-wider">
             Full-Stretch Sets
           </div>
@@ -95,7 +95,7 @@ export const KnowledgeGraphCard: React.FC<KnowledgeGraphCardProps> = ({
           <div className="text-xs text-slate-400 font-medium">of weekly sets</div>
         </div>
 
-        <div className="p-3 rounded-2xl bg-surface-elevated border border-white/[0.06] text-center">
+        <div className="p-3 rounded-2xl bg-[#141824] text-center">
           <div className="text-xs text-slate-400 font-bold uppercase tracking-wider">
             Lower Back Load
           </div>
@@ -109,7 +109,7 @@ export const KnowledgeGraphCard: React.FC<KnowledgeGraphCardProps> = ({
           <div className="text-xs text-slate-400 font-medium">heavy lifts</div>
         </div>
 
-        <div className="p-3 rounded-2xl bg-surface-elevated border border-white/[0.06] text-center">
+        <div className="p-3 rounded-2xl bg-[#141824] text-center">
           <div className="text-xs text-slate-400 font-bold uppercase tracking-wider">
             Recovery Score
           </div>
@@ -121,7 +121,7 @@ export const KnowledgeGraphCard: React.FC<KnowledgeGraphCardProps> = ({
       </div>
 
       {/* View Mode Switcher */}
-      <div className="grid grid-cols-3 gap-1 bg-surface-card p-1 rounded-2xl border border-white/[0.08]">
+      <div className="grid grid-cols-3 gap-1 bg-[#090C12] p-1.5 rounded-2xl">
         {(
           [
             { id: 'overview', label: 'Recovery' },
@@ -151,7 +151,7 @@ export const KnowledgeGraphCard: React.FC<KnowledgeGraphCardProps> = ({
       {viewMode === 'overview' && (
         <div className="space-y-3">
           {/* Interactive Body & Recovery Map */}
-          <div className="relative rounded-2xl bg-black/70 border border-white/[0.07] overflow-hidden p-2.5">
+          <div className="relative rounded-2xl bg-[#090C12] overflow-hidden p-3">
             <div className="flex items-center justify-between px-1.5 pt-0.5 text-xs text-slate-400">
               <span>Tap any circle to view details</span>
               <span className="font-mono text-brand-primary font-semibold">
@@ -276,7 +276,7 @@ export const KnowledgeGraphCard: React.FC<KnowledgeGraphCardProps> = ({
             </svg>
 
             {/* Selected Area Detail Box */}
-            <div className="p-3 rounded-xl bg-surface-elevated/90 border border-white/[0.08] space-y-2">
+            <div className="p-4 rounded-2xl bg-[#141824] space-y-2">
               <div className="flex items-center justify-between">
                 <span className="text-sm font-bold text-white">
                   {selectedNode.label}
@@ -288,11 +288,11 @@ export const KnowledgeGraphCard: React.FC<KnowledgeGraphCardProps> = ({
               <p className="text-xs text-slate-300 leading-snug">
                 {selectedNode.detailText}
               </p>
-              <div className="grid grid-cols-3 gap-1.5 pt-1">
+              <div className="grid grid-cols-3 gap-2 pt-1">
                 {Object.entries(selectedNode.metrics).map(([k, v]) => (
                   <div
                     key={k}
-                    className="p-2 rounded-lg bg-black/50 border border-white/[0.05] text-center"
+                    className="p-2.5 rounded-xl bg-[#090C12] text-center"
                   >
                     <div className="text-xs text-slate-400 truncate">{k}</div>
                     <div className="text-xs font-mono font-bold text-white mt-0.5">{v}</div>
@@ -311,14 +311,14 @@ export const KnowledgeGraphCard: React.FC<KnowledgeGraphCardProps> = ({
             {pkg.insights.map((ins) => (
               <div
                 key={ins.id}
-                className="p-3.5 rounded-2xl bg-black/45 border border-white/[0.07] space-y-1.5"
+                className="p-4 rounded-2xl bg-[#090C12] space-y-2"
               >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-1.5">
                     <Sparkles className="w-4 h-4 text-brand-primary shrink-0 stroke-[2]" />
                     <span className="text-sm font-bold text-white">{ins.title}</span>
                   </div>
-                  <span className="text-xs font-mono font-bold px-2 py-0.5 rounded-full bg-brand-primary/10 text-brand-primary border border-brand-primary/20">
+                  <span className="text-xs font-mono font-bold px-2.5 py-0.5 rounded-full bg-brand-primary/15 text-brand-primary">
                     {ins.impactMetric}
                   </span>
                 </div>
@@ -337,7 +337,7 @@ export const KnowledgeGraphCard: React.FC<KnowledgeGraphCardProps> = ({
 
       {/* TAB 2: JOINT HEALTH */}
       {viewMode === 'joints' && (
-        <div className="space-y-2.5">
+        <div className="space-y-3">
           <p className="text-xs text-slate-400 px-1">
             Monitors weekly stress on your joints and lower back so you can switch to joint-friendly equipment before soreness builds up.
           </p>
@@ -349,24 +349,24 @@ export const KnowledgeGraphCard: React.FC<KnowledgeGraphCardProps> = ({
             return (
               <div
                 key={j.joint}
-                className="p-3.5 rounded-2xl bg-black/45 border border-white/[0.07] space-y-2"
+                className="p-4 rounded-2xl bg-[#090C12] space-y-2.5"
               >
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-bold text-white">{j.joint}</span>
                   <span
-                    className={`text-xs font-mono font-bold px-2.5 py-0.5 rounded-full border ${
+                    className={`text-xs font-mono font-bold px-3 py-1 rounded-full ${
                       isHigh
-                        ? 'bg-rose-500/15 text-rose-300 border-rose-500/30'
+                        ? 'bg-rose-500/15 text-rose-300'
                         : isMod
-                        ? 'bg-amber-500/15 text-amber-300 border-amber-500/30'
-                        : 'bg-brand-primary/15 text-brand-primary border-brand-primary/30'
+                        ? 'bg-amber-500/15 text-amber-300'
+                        : 'bg-brand-primary/15 text-brand-primary'
                     }`}
                   >
                     {j.status}
                   </span>
                 </div>
 
-                <div className="w-full bg-black/60 h-2 rounded-full overflow-hidden border border-white/[0.05]">
+                <div className="w-full bg-[#141824] h-2 rounded-full overflow-hidden">
                   <div
                     className={`h-full rounded-full transition-all ${
                       isHigh
@@ -407,12 +407,12 @@ export const KnowledgeGraphCard: React.FC<KnowledgeGraphCardProps> = ({
               value={scienceSearch}
               onChange={(e) => setScienceSearch(e.target.value)}
               placeholder="Search principles, formulas, citations..."
-              className="w-full min-h-[44px] pl-10 pr-3.5 py-2 rounded-xl bg-black/50 border border-white/[0.08] text-xs text-white placeholder-slate-500 focus:outline-none focus:border-brand-primary/60 transition-colors"
+              className="w-full min-h-[44px] pl-10 pr-3.5 py-2 rounded-xl bg-[#0B0E14] text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-brand-primary transition-colors"
             />
           </div>
 
           {/* Principle Cards */}
-          <div className="space-y-2.5 max-h-[380px] overflow-y-auto no-scrollbar pr-0.5">
+          <div className="space-y-3 max-h-[380px] overflow-y-auto no-scrollbar pr-0.5">
             {(pkg.scientificKnowledgeBase || EXERCISE_SCIENCE_KNOWLEDGE_BASE)
               .filter((p) => {
                 if (!scienceSearch.trim()) return true;
@@ -427,19 +427,19 @@ export const KnowledgeGraphCard: React.FC<KnowledgeGraphCardProps> = ({
               .map((p) => (
                 <div
                   key={p.id}
-                  className="p-3.5 rounded-2xl bg-black/45 border border-white/[0.07] space-y-2 hover:border-white/[0.15] transition-all"
+                  className="p-4 rounded-2xl bg-[#090C12] space-y-2 transition-all"
                 >
                   <div className="flex items-start justify-between gap-2">
                     <span className="text-sm font-bold text-white tracking-tight leading-snug">
                       {p.title}
                     </span>
-                    <span className="shrink-0 text-xs font-mono font-semibold px-2 py-0.5 rounded-full bg-white/[0.06] text-slate-300 border border-white/[0.08]">
+                    <span className="shrink-0 text-xs font-mono font-semibold px-2.5 py-0.5 rounded-full bg-white/[0.08] text-slate-300">
                       {p.topic}
                     </span>
                   </div>
 
                   {p.formula && (
-                    <div className="p-2.5 rounded-xl bg-black/70 border border-brand-primary/20 text-brand-primary font-mono text-xs flex items-center gap-2 overflow-x-auto no-scrollbar">
+                    <div className="p-3 rounded-xl bg-[#141824] text-brand-primary font-mono text-xs flex items-center gap-2 overflow-x-auto no-scrollbar">
                       <Calculator className="w-3.5 h-3.5 stroke-[2] shrink-0 text-brand-primary" />
                       <span>{p.formula}</span>
                     </div>
@@ -449,7 +449,7 @@ export const KnowledgeGraphCard: React.FC<KnowledgeGraphCardProps> = ({
                     {p.scientificRationale}
                   </p>
 
-                  <div className="pt-1.5 border-t border-white/[0.04] space-y-1">
+                  <div className="pt-2 space-y-1">
                     <div className="text-xs text-slate-400">
                       <strong className="text-slate-300">How HeadStrong applies this: </strong>
                       {p.practicalApplication}

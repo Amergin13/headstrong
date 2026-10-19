@@ -67,15 +67,7 @@ export const ReadinessBanner: React.FC<ReadinessBannerProps> = ({
       : 'Hit your prescribed target weights and reps with 1–2 reps left in reserve.');
 
   return (
-    <div
-      className={`biometric-card p-4 transition-all duration-300 border ${
-        isPrimed
-          ? 'border-brand-primary/30'
-          : isAmber
-          ? 'border-amber-500/30'
-          : 'border-white/[0.07]'
-      }`}
-    >
+    <div className="biometric-card p-5 transition-all duration-300 space-y-3">
       {/* Interactive Bar: Header & Summary */}
       <button
         type="button"
@@ -86,15 +78,15 @@ export const ReadinessBanner: React.FC<ReadinessBannerProps> = ({
         aria-expanded={expanded}
         className="w-full flex items-center justify-between text-left group min-h-[44px]"
       >
-        <div className="flex items-center space-x-3 min-w-0">
+        <div className="flex items-center space-x-3.5 min-w-0">
           {/* Mini Biometric Recovery Badge */}
           <div
-            className={`w-9 h-9 rounded-2xl flex items-center justify-center shrink-0 border ${
+            className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 ${
               isPrimed
-                ? 'bg-brand-primary/15 border-brand-primary/35 text-brand-primary'
+                ? 'bg-brand-primary/15 text-brand-primary'
                 : isAmber
-                ? 'bg-amber-500/15 border-amber-500/35 text-amber-400'
-                : 'bg-brand-strain/15 border-brand-strain/35 text-brand-strain'
+                ? 'bg-amber-500/15 text-amber-400'
+                : 'bg-brand-strain/15 text-brand-strain'
             }`}
           >
             {isPrimed ? (
@@ -134,17 +126,17 @@ export const ReadinessBanner: React.FC<ReadinessBannerProps> = ({
 
         <div className="flex items-center space-x-2 shrink-0 ml-2">
           <span
-            className={`px-2.5 py-1 rounded-full text-xs font-bold font-mono border ${
+            className={`px-2.5 py-1 rounded-full text-xs font-bold font-mono ${
               isPrimed
-                ? 'bg-brand-primary/10 text-brand-primary border-brand-primary/30'
+                ? 'bg-brand-primary/15 text-brand-primary'
                 : isAmber
-                ? 'bg-amber-500/10 text-amber-400 border-amber-500/30'
-                : 'bg-white/5 text-slate-300 border-white/10'
+                ? 'bg-amber-500/15 text-amber-400'
+                : 'bg-white/[0.06] text-slate-300'
             }`}
           >
             {recoveryPercent}%
           </span>
-          <div className="w-7 h-7 rounded-full bg-white/[0.04] flex items-center justify-center border border-white/[0.08] group-hover:border-white/20 transition-colors">
+          <div className="w-8 h-8 rounded-full bg-white/[0.06] flex items-center justify-center group-hover:bg-white/[0.1] transition-colors">
             {expanded ? (
               <ChevronUp className="w-4 h-4 text-slate-300 stroke-[2]" />
             ) : (
@@ -156,9 +148,9 @@ export const ReadinessBanner: React.FC<ReadinessBannerProps> = ({
 
       {/* Expandable Biometric Deep-Dive with Integrated Primed Context */}
       {expanded && (
-        <div className="pt-4 mt-4 border-t border-white/[0.08] space-y-4">
+        <div className="pt-4 mt-4 border-t border-white/[0.04] space-y-4">
           {/* Hero Recovery Ring & Primed Physiological Guidance */}
-          <div className="flex flex-col sm:flex-row items-center sm:items-start justify-between gap-4 p-4 rounded-2xl bg-surface-elevated/70 border border-white/[0.06]">
+          <div className="flex flex-col sm:flex-row items-center sm:items-start justify-between gap-4 p-4 sm:p-5 rounded-2xl bg-[#090C12]">
             <div className="shrink-0 flex items-center justify-center">
               <BiometricCircularGauge
                 value={recoveryPercent}
@@ -173,12 +165,12 @@ export const ReadinessBanner: React.FC<ReadinessBannerProps> = ({
             <div className="flex-1 space-y-2.5 text-center sm:text-left min-w-0">
               <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2">
                 <span
-                  className={`inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-xs font-extrabold border ${
+                  className={`inline-flex items-center space-x-1.5 px-3 py-1 rounded-full text-xs font-extrabold ${
                     isPrimed
-                      ? 'bg-brand-primary/15 text-brand-primary border-brand-primary/35'
+                      ? 'bg-brand-primary/15 text-brand-primary'
                       : isAmber
-                      ? 'bg-amber-500/15 text-amber-400 border-amber-500/35'
-                      : 'bg-brand-strain/15 text-brand-strain border-brand-strain/35'
+                      ? 'bg-amber-500/15 text-amber-400'
+                      : 'bg-brand-strain/15 text-brand-strain'
                   }`}
                 >
                   <Zap className="w-3.5 h-3.5 stroke-[2]" />
@@ -186,7 +178,7 @@ export const ReadinessBanner: React.FC<ReadinessBannerProps> = ({
                 </span>
 
                 {tensorHardware && (
-                  <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full bg-white/[0.06] text-slate-300 border border-white/[0.08] text-xs font-semibold">
+                  <span className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-full bg-white/[0.06] text-slate-300 text-xs font-semibold">
                     <ShieldCheck className="w-3 h-3 text-brand-primary stroke-[2]" />
                     <span>Auto-Regulated</span>
                   </span>
@@ -197,7 +189,7 @@ export const ReadinessBanner: React.FC<ReadinessBannerProps> = ({
                 {summary}
               </p>
 
-              <div className="p-3 rounded-xl bg-black/40 border border-white/[0.06] text-xs text-slate-300 font-medium space-y-1">
+              <div className="p-3.5 rounded-2xl bg-black/40 text-xs text-slate-300 font-medium space-y-1">
                 <div className="flex items-center space-x-1.5 text-brand-primary font-bold">
                   <span>💡 Tactical Overload Cue:</span>
                 </div>
@@ -210,7 +202,7 @@ export const ReadinessBanner: React.FC<ReadinessBannerProps> = ({
 
           {/* 3 Horological Telemetry Tiles */}
           <div className="grid grid-cols-3 gap-2.5 text-left">
-            <div className="p-3 rounded-2xl bg-surface-elevated border border-white/[0.06] space-y-1">
+            <div className="p-3.5 rounded-2xl bg-[#141824] space-y-1.5">
               <span className="text-xs font-bold tracking-wider text-slate-400 uppercase block">
                 Heart Recovery
               </span>
@@ -228,7 +220,7 @@ export const ReadinessBanner: React.FC<ReadinessBannerProps> = ({
               </span>
             </div>
 
-            <div className="p-3 rounded-2xl bg-surface-elevated border border-white/[0.06] space-y-1">
+            <div className="p-3.5 rounded-2xl bg-[#141824] space-y-1.5">
               <span className="text-xs font-bold tracking-wider text-slate-400 uppercase block">
                 Resting HR
               </span>
@@ -246,7 +238,7 @@ export const ReadinessBanner: React.FC<ReadinessBannerProps> = ({
               </span>
             </div>
 
-            <div className="p-3 rounded-2xl bg-surface-elevated border border-white/[0.06] space-y-1">
+            <div className="p-3.5 rounded-2xl bg-[#141824] space-y-1.5">
               <span className="text-xs font-bold tracking-wider text-slate-400 uppercase block">
                 Sleep
               </span>
@@ -260,14 +252,14 @@ export const ReadinessBanner: React.FC<ReadinessBannerProps> = ({
           </div>
 
           {/* Recovery Mode Switcher */}
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 pt-2 border-t border-white/[0.06]">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 pt-2.5 border-t border-white/[0.04]">
             <span className="text-xs text-slate-400 font-semibold tracking-wide">
               Adjust today&apos;s intensity:
             </span>
             <div
               role="group"
               aria-label="Adjust today's recovery mode"
-              className="flex bg-black/60 p-1 rounded-2xl border border-white/[0.08] w-full sm:w-auto"
+              className="flex bg-black/60 p-1.5 rounded-2xl w-full sm:w-auto"
             >
               {(['Primed', 'Normal', 'Amber Shield'] as ReadinessState[]).map((st) => {
                 const isSelected = readiness.state === st;

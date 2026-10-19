@@ -86,7 +86,7 @@ export const SevenPillarRadar: React.FC<SevenPillarRadarProps> = ({
   const overallBadgeText = overallTierName === 'Elite' ? 'Elite' : `${overallTierName} ${subDivisionLabel}`;
 
   return (
-    <div className="rounded-3xl surface-glass p-4 border border-white/[0.08] space-y-3">
+    <div className="rounded-3xl surface-glass p-5 sm:p-6 space-y-4">
       <div className="flex items-center justify-between">
         <div>
           <h3 className="font-bold text-sm text-white tracking-tight">
@@ -96,7 +96,7 @@ export const SevenPillarRadar: React.FC<SevenPillarRadarProps> = ({
             How your main lifts and cardio compare
           </p>
         </div>
-        <span className="text-xs font-mono font-bold text-brand-primary px-2.5 py-1 rounded-full bg-brand-primary/10 border border-brand-primary/20">
+        <span className="text-xs font-mono font-bold text-brand-primary px-3 py-1 rounded-full bg-brand-primary/15">
           {overallBadgeText}
         </span>
       </div>
@@ -130,7 +130,7 @@ export const SevenPillarRadar: React.FC<SevenPillarRadarProps> = ({
                 if (active && payload && payload.length) {
                   const data = payload[0].payload;
                   return (
-                    <div className="p-2.5 rounded-2xl bg-[#0C0E14] border border-white/[0.12] shadow-2xl text-xs space-y-0.5">
+                    <div className="p-3 rounded-2xl bg-[#0C0E14] shadow-2xl text-xs space-y-0.5">
                       <div className="font-bold text-white">{data.fullName}</div>
                       <div className="text-brand-primary font-mono font-bold">
                         Score: {data.score}/100
@@ -149,7 +149,7 @@ export const SevenPillarRadar: React.FC<SevenPillarRadarProps> = ({
       </div>
 
       {/* Cardio & Heart Health Summary Row */}
-      <div className="p-3 rounded-2xl bg-black/40 border border-white/[0.05] flex items-center justify-between text-xs">
+      <div className="p-3.5 rounded-2xl bg-[#090C12] flex items-center justify-between text-xs">
         <div className="flex items-center space-x-2">
           <Heart className="w-4 h-4 text-brand-primary stroke-[2]" />
           <span className="font-semibold text-white">Cardio &amp; Recovery</span>

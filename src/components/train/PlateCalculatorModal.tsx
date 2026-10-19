@@ -48,7 +48,7 @@ export const PlateCalculatorModal: React.FC<PlateCalculatorModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md">
-      <div className="w-full max-w-sm rounded-3xl surface-glass border border-white/[0.12] p-5 shadow-2xl space-y-4">
+      <div className="w-full max-w-sm rounded-3xl bg-[#0E1219] p-5 sm:p-6 shadow-2xl space-y-5">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-2">
@@ -72,7 +72,7 @@ export const PlateCalculatorModal: React.FC<PlateCalculatorModalProps> = ({
 
         {/* Target Weight & Bar Weight Selector */}
         <div className="space-y-3">
-          <div className="flex items-center justify-between p-3 rounded-2xl bg-black/40 border border-white/[0.06]">
+          <div className="flex items-center justify-between p-3.5 rounded-2xl bg-[#090C12]">
             <div>
               <span className="text-xs uppercase font-bold text-slate-400 tracking-wider block">
                 Total Bar Load
@@ -90,7 +90,7 @@ export const PlateCalculatorModal: React.FC<PlateCalculatorModalProps> = ({
             </div>
 
             {/* Barbell Toggle (20kg vs 15kg) */}
-            <div className="flex bg-surface-elevated p-0.5 rounded-xl border border-white/[0.06]">
+            <div className="flex bg-[#141824] p-1 rounded-xl">
               {([20, 15] as const).map((b) => (
                 <button
                   key={b}
@@ -113,7 +113,7 @@ export const PlateCalculatorModal: React.FC<PlateCalculatorModalProps> = ({
         </div>
 
         {/* Visual Barbell Collar & Plates */}
-        <div className="p-4 rounded-2xl bg-black/50 border border-white/[0.06] flex flex-col items-center justify-center min-h-[140px]">
+        <div className="p-4 rounded-2xl bg-[#090C12] flex flex-col items-center justify-center min-h-[140px]">
           <span className="text-xs uppercase font-bold tracking-wider text-slate-400 mb-2">
             Plates Per Side ({((targetWeight - barWeight) / 2).toFixed(2)} kg each side)
           </span>
@@ -170,7 +170,7 @@ export const PlateCalculatorModal: React.FC<PlateCalculatorModalProps> = ({
               return (
                 <div
                   key={plate}
-                  className="p-2 rounded-xl bg-surface-elevated border border-white/[0.06] text-center"
+                  className="p-2.5 rounded-xl bg-[#141824] text-center"
                 >
                   <span className="text-slate-400 text-xs block">{plate} kg</span>
                   <span className="font-black text-brand-primary text-sm">× {count}</span>
@@ -187,7 +187,7 @@ export const PlateCalculatorModal: React.FC<PlateCalculatorModalProps> = ({
             triggerHaptic('light');
             onClose();
           }}
-          className="w-full py-2.5 rounded-2xl bg-surface-elevated hover:bg-surface-hover border border-white/[0.08] text-xs font-bold text-white transition-all active:scale-98"
+          className="w-full py-3 rounded-2xl bg-[#141824] hover:bg-[#1C2233] text-xs font-bold text-white transition-all active:scale-98 min-h-[44px]"
         >
           Close Calculator
         </button>

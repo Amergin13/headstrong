@@ -207,11 +207,11 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
       aria-labelledby="ai-coach-title"
       className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200"
     >
-      <div className="w-full max-w-md h-[92vh] max-h-[820px] rounded-3xl bg-surface-card border border-white/[0.1] shadow-2xl flex flex-col overflow-hidden">
+      <div className="w-full max-w-md h-[92vh] max-h-[820px] rounded-3xl bg-[#0E1219] shadow-2xl flex flex-col overflow-hidden">
         {/* Header */}
-        <div className="p-4 border-b border-white/[0.08] bg-surface-elevated/70 flex items-center justify-between">
-          <div className="flex items-center space-x-2.5">
-            <div className="w-9 h-9 rounded-xl bg-brand-primary/15 border border-brand-primary/30 flex items-center justify-center text-brand-primary">
+        <div className="p-4 sm:p-5 bg-[#141824] flex items-center justify-between">
+          <div className="flex items-center space-x-3">
+            <div className="w-10 h-10 rounded-2xl bg-brand-primary/15 flex items-center justify-center text-brand-primary">
               <Cpu className="w-5 h-5 stroke-[2]" />
             </div>
             <div>
@@ -234,14 +234,14 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
               onClose();
             }}
             aria-label="Close AI Coach modal"
-            className="w-11 h-11 rounded-xl bg-white/[0.06] hover:bg-white/[0.12] flex items-center justify-center text-slate-300 hover:text-white transition-colors"
+            className="w-11 h-11 rounded-xl bg-white/[0.08] hover:bg-white/[0.14] flex items-center justify-center text-slate-300 hover:text-white transition-colors"
           >
             <X className="w-5 h-5 stroke-[2]" />
           </button>
         </div>
 
         {/* Quick Suggestion Chips Carousel */}
-        <div className="px-3.5 py-2.5 bg-black/30 border-b border-white/[0.04] overflow-x-auto no-scrollbar flex items-center gap-2">
+        <div className="px-4 py-3 bg-[#090C12] overflow-x-auto no-scrollbar flex items-center gap-2">
           {quickPrompts.map((q) => {
             const Icon = q.icon;
             return (
@@ -250,7 +250,7 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
                 type="button"
                 onClick={() => handleSendMessage(q.text)}
                 disabled={isProcessing}
-                className="shrink-0 min-h-[36px] px-3 py-1.5 rounded-full bg-surface-elevated hover:bg-white/[0.12] border border-white/[0.08] text-xs font-medium text-slate-200 hover:text-white flex items-center gap-1.5 transition-all disabled:opacity-50"
+                className="shrink-0 min-h-[38px] px-3.5 py-1.5 rounded-full bg-[#141824] hover:bg-[#1C2233] text-xs font-medium text-slate-200 hover:text-white flex items-center gap-1.5 transition-all disabled:opacity-50"
               >
                 <Icon className="w-3.5 h-3.5 text-brand-primary stroke-[2]" />
                 <span>{q.label}</span>
@@ -270,17 +270,17 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
                 className={`flex flex-col ${isUser ? 'items-end' : 'items-start'}`}
               >
                 <div
-                  className={`max-w-[88%] rounded-2xl p-3.5 text-xs leading-relaxed ${
+                  className={`max-w-[88%] rounded-2xl p-4 text-xs leading-relaxed ${
                     isUser
                       ? 'bg-brand-primary text-black font-medium rounded-br-sm shadow-md'
-                      : 'bg-surface-elevated text-slate-200 border border-white/[0.08] rounded-bl-sm space-y-2.5'
+                      : 'bg-[#141824] text-slate-200 rounded-bl-sm space-y-2.5'
                   }`}
                 >
                   <p className="whitespace-pre-wrap">{msg.text}</p>
 
                   {/* Assistant Action Badge if an action was taken */}
                   {!isUser && msg.actionApplied && (
-                    <div className="mt-2 p-3 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 space-y-2">
+                    <div className="mt-2 p-3.5 rounded-2xl bg-emerald-500/15 text-emerald-300 space-y-2">
                       <div className="flex items-start gap-2">
                         <CheckCircle2 className="w-4 h-4 text-emerald-400 stroke-[2] shrink-0 mt-0.5" />
                         <div>
@@ -307,7 +307,7 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
                               onViewAllEquipment();
                             }
                           }}
-                          className="w-full mt-1 px-3 py-2.5 rounded-xl bg-emerald-500/25 hover:bg-emerald-500/35 border border-emerald-500/40 text-white text-xs font-bold min-h-[44px] flex items-center justify-center gap-1.5 transition-all active:scale-[0.98]"
+                          className="w-full mt-1 px-3 py-2.5 rounded-xl bg-emerald-500/25 hover:bg-emerald-500/35 text-white text-xs font-bold min-h-[44px] flex items-center justify-center gap-1.5 transition-all active:scale-[0.98]"
                         >
                           <Dumbbell className="w-3.5 h-3.5 text-emerald-300 stroke-[2]" />
                           <span>View All Equipment</span>
@@ -319,7 +319,7 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
 
                   {/* Scientific Principles & Academic Citations */}
                   {!isUser && msg.scientificPrinciplesCited && msg.scientificPrinciplesCited.length > 0 && (
-                    <div className="pt-2 border-t border-white/[0.08] space-y-1.5">
+                    <div className="pt-2 space-y-1.5">
                       <span className="text-xs font-semibold text-brand-primary flex items-center gap-1">
                         <FlaskConical className="w-3 h-3 text-brand-primary stroke-[2]" />
                         Scientific Rationale
@@ -328,7 +328,7 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
                         {msg.scientificPrinciplesCited.map((sp) => (
                           <div
                             key={sp.id}
-                            className="p-2 rounded-xl bg-black/40 border border-brand-primary/20 text-xs space-y-1"
+                            className="p-3 rounded-xl bg-[#090C12] text-xs space-y-1"
                           >
                             <div className="font-bold text-white flex items-center justify-between">
                               <span>{sp.title}</span>
@@ -367,10 +367,10 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
 
           {isProcessing && (
             <div className="flex items-start">
-              <div className="max-w-[85%] rounded-2xl p-3.5 bg-surface-elevated text-slate-300 border border-white/[0.08] rounded-bl-sm flex items-center space-x-2.5">
+              <div className="max-w-[85%] rounded-2xl p-4 bg-[#141824] text-slate-300 rounded-bl-sm flex items-center space-x-2.5">
                 <div className="w-2 h-2 rounded-full bg-brand-primary animate-ping" />
                 <span className="text-xs font-medium text-slate-300">
-                  Synthesizing on {hardware.isPixelDevice ? hardware.chipModel : 'device'}...
+                  Thinking...
                 </span>
               </div>
             </div>
@@ -380,7 +380,7 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
         </div>
 
         {/* Input Bar */}
-        <div className="p-3.5 border-t border-white/[0.08] bg-surface-elevated/70">
+        <div className="p-4 bg-[#141824]">
           <form
             onSubmit={(e) => {
               e.preventDefault();
@@ -394,7 +394,7 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
               onChange={(e) => setInputMessage(e.target.value)}
               placeholder="Ask anything or modify your plan..."
               disabled={isProcessing}
-              className="flex-1 min-h-[44px] px-3.5 py-2 rounded-xl bg-surface-bg border border-white/[0.1] text-xs text-white placeholder-slate-500 focus:outline-none focus:border-brand-primary/60 transition-colors"
+              className="flex-1 min-h-[44px] px-4 py-2.5 rounded-xl bg-[#090C12] text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-brand-primary transition-colors"
             />
 
             <button

@@ -38,13 +38,13 @@ export const GoalPhaseSwitcher: React.FC<GoalPhaseSwitcherProps> = ({
   };
 
   return (
-    <div className="rounded-3xl surface-glass p-4 border border-white/[0.08] space-y-3">
+    <div className="rounded-3xl surface-glass p-5 sm:p-6 space-y-4">
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-bold text-white">
           Training Goal
         </h3>
         {currentPhase === 'Cut / Recomp' && (
-          <span className="flex items-center space-x-1 text-xs font-semibold text-brand-primary bg-brand-primary/10 border border-brand-primary/20 px-2.5 py-0.5 rounded-full">
+          <span className="flex items-center space-x-1 text-xs font-semibold text-brand-primary bg-brand-primary/15 px-3 py-1 rounded-full">
             <Shield className="w-3.5 h-3.5 stroke-[2]" />
             <span>Streak &amp; XP Protected</span>
           </span>
@@ -52,7 +52,7 @@ export const GoalPhaseSwitcher: React.FC<GoalPhaseSwitcherProps> = ({
       </div>
 
       {/* Segmented Control */}
-      <div className="grid grid-cols-3 bg-black/40 p-1 rounded-2xl border border-white/[0.06]">
+      <div className="grid grid-cols-3 bg-[#090C12] p-1.5 rounded-2xl">
         {phases.map((p) => {
           const isSelected = currentPhase === p.id;
           return (

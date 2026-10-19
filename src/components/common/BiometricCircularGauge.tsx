@@ -25,32 +25,32 @@ const VARIANT_CONFIG: Record<
   recovery: {
     stroke: '#00F59B',
     textClass: 'text-brand-primary',
-    badgeBg: 'bg-brand-primary/10 text-brand-primary border-brand-primary/30',
+    badgeBg: 'bg-brand-primary/15 text-brand-primary',
   },
   emerald: {
     stroke: '#10B981',
     textClass: 'text-emerald-400',
-    badgeBg: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30',
+    badgeBg: 'bg-emerald-500/15 text-emerald-400',
   },
   strain: {
     stroke: '#00B4D8',
     textClass: 'text-brand-strain',
-    badgeBg: 'bg-brand-strain/10 text-brand-strain border-brand-strain/30',
+    badgeBg: 'bg-brand-strain/15 text-brand-strain',
   },
   sleep: {
     stroke: '#00E5FF',
     textClass: 'text-cyan-400',
-    badgeBg: 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30',
+    badgeBg: 'bg-cyan-500/15 text-cyan-400',
   },
   amber: {
     stroke: '#FFB800',
     textClass: 'text-amber-400',
-    badgeBg: 'bg-amber-500/10 text-amber-400 border-amber-500/30',
+    badgeBg: 'bg-amber-500/15 text-amber-400',
   },
   purple: {
     stroke: '#A855F7',
     textClass: 'text-purple-400',
-    badgeBg: 'bg-purple-500/10 text-purple-400 border-purple-500/30',
+    badgeBg: 'bg-purple-500/15 text-purple-400',
   },
 };
 

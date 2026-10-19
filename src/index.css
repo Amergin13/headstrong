@@ -27,36 +27,35 @@
 
 /* Surface Horology & Specular Lighting */
 .surface-glass {
-  background: linear-gradient(180deg, rgba(20, 24, 34, 0.7) 0%, rgba(13, 15, 21, 0.85) 100%);
+  background: linear-gradient(180deg, rgba(20, 24, 34, 0.85) 0%, rgba(13, 16, 22, 0.95) 100%);
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 8px 32px -4px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 12px 36px -4px rgba(0, 0, 0, 0.6);
+  border-radius: 1.5rem;
 }
 
 .surface-elevated {
-  background: #141720;
-  border: 1px solid rgba(255, 255, 255, 0.09);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
-}
-
-/* Telemetry Design System (Whoop 4.0 / Apple Fitness Precision Aesthetics) */
-.biometric-card {
-  background: #0E1116;
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.5);
+  background: #141824;
+  box-shadow: 0 4px 16px -2px rgba(0, 0, 0, 0.4);
   border-radius: 1rem;
 }
 
+/* Telemetry Design System (Whoop 4.0 / Biometric Luxury Aesthetics - Zero Harsh Strokes) */
+.biometric-card {
+  background: #0E1219;
+  box-shadow: 0 8px 32px -4px rgba(0, 0, 0, 0.55);
+  border-radius: 1.5rem;
+}
+
 .biometric-card-subtle {
-  background: #151921;
-  border: 1px solid rgba(255, 255, 255, 0.05);
-  border-radius: 0.875rem;
+  background: #131722;
+  box-shadow: 0 4px 16px -2px rgba(0, 0, 0, 0.35);
+  border-radius: 1.25rem;
 }
 
 .biometric-pill {
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 0.875rem;
 }
 
 .biometric-track-hatched,

@@ -28,7 +28,7 @@ export const NavigationBar: React.FC<NavigationBarProps> = ({
   return (
     <nav
       aria-label="Primary Bottom Navigation"
-      className="fixed bottom-0 left-0 right-0 z-40 bg-[#060709]/95 backdrop-blur-2xl border-t border-white/[0.07] px-2 pt-1 pb-safe shadow-[0_-4px_24px_rgba(0,0,0,0.7)]"
+      className="fixed bottom-0 left-0 right-0 z-40 bg-[#060709]/95 backdrop-blur-2xl border-t border-white/[0.04] px-2 pt-1 pb-safe shadow-[0_-4px_24px_rgba(0,0,0,0.7)]"
     >
       <div className="max-w-md mx-auto grid grid-cols-5 h-14">
         {tabs.map((tab) => {

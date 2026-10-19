@@ -72,11 +72,11 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
   };
 
   const content = (
-    <div className="rounded-3xl surface-glass border border-white/[0.08] p-4 space-y-3.5">
+    <div className="rounded-3xl bg-[#0E1219] p-5 sm:p-6 space-y-4 shadow-xl">
       <div className="flex items-center justify-between">
-        <div className="flex items-center space-x-2.5">
-          <div className="w-9 h-9 rounded-xl bg-brand-primary/15 border border-brand-primary/30 flex items-center justify-center text-brand-primary">
-            <Watch className="w-4 h-4 stroke-[2]" />
+        <div className="flex items-center space-x-3">
+          <div className="w-10 h-10 rounded-2xl bg-brand-primary/15 flex items-center justify-center text-brand-primary">
+            <Watch className="w-5 h-5 stroke-[2]" />
           </div>
           <div>
             <h3 className="font-bold text-base text-white tracking-tight">
@@ -92,7 +92,8 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 rounded-full text-slate-400 hover:text-white hover:bg-white/[0.08]"
+            aria-label="Close watch sync modal"
+            className="w-9 h-9 rounded-full flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/[0.08]"
           >
             <X className="w-4 h-4 stroke-[2]" />
           </button>
@@ -100,7 +101,7 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
       </div>
 
       {/* Device Status */}
-      <div className="p-3 rounded-2xl bg-black/40 border border-white/[0.06] text-xs space-y-1.5">
+      <div className="p-4 rounded-2xl bg-[#090C12] text-xs space-y-2">
         <div className="flex justify-between items-center">
           <span className="text-slate-400">Status</span>
           <span className="flex items-center space-x-1.5 text-brand-primary font-semibold">
@@ -121,7 +122,7 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
       </div>
 
       {/* Recovery Intelligence Card */}
-      <div className="p-3 rounded-2xl bg-black/40 border border-white/[0.06] text-xs space-y-1.5">
+      <div className="p-4 rounded-2xl bg-[#090C12] text-xs space-y-2">
         <div className="flex justify-between items-center">
           <span className="text-slate-400 flex items-center gap-1.5 font-medium">
             <Cpu className="w-3.5 h-3.5 text-brand-primary stroke-[2]" />
@@ -139,7 +140,7 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
 
       {/* Live Sync Progress Bar */}
       {syncProgress && (
-        <div className="p-3 rounded-2xl bg-black/50 border border-brand-primary/30 text-xs space-y-1.5">
+        <div className="p-4 rounded-2xl bg-[#090C12] text-xs space-y-2">
           <div className="flex justify-between items-center">
             <span className="text-brand-primary font-medium">{syncProgress.message}</span>
             <span className="font-mono font-bold text-brand-primary">{syncProgress.percent}%</span>
@@ -163,7 +164,7 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
             type="button"
             disabled={isSyncing}
             onClick={() => handleStartDemoSync('Primed')}
-            className="py-2.5 px-2 rounded-2xl bg-black/40 hover:bg-surface-elevated border border-white/[0.06] text-xs font-bold text-brand-primary flex flex-col items-center justify-center transition-all disabled:opacity-50"
+            className="py-3 px-2 rounded-2xl bg-[#141824] hover:bg-[#1C2233] text-xs font-bold text-brand-primary flex flex-col items-center justify-center transition-all disabled:opacity-50 min-h-[44px]"
           >
             <Zap className="w-4 h-4 mb-1 stroke-[2]" />
             <span>Primed (+15%)</span>
@@ -173,7 +174,7 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
             type="button"
             disabled={isSyncing}
             onClick={() => handleStartDemoSync('Normal')}
-            className="py-2.5 px-2 rounded-2xl bg-black/40 hover:bg-surface-elevated border border-white/[0.06] text-xs font-bold text-white flex flex-col items-center justify-center transition-all disabled:opacity-50"
+            className="py-3 px-2 rounded-2xl bg-[#141824] hover:bg-[#1C2233] text-xs font-bold text-white flex flex-col items-center justify-center transition-all disabled:opacity-50 min-h-[44px]"
           >
             <Activity className="w-4 h-4 mb-1 stroke-[2]" />
             <span>Normal</span>
@@ -183,7 +184,7 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
             type="button"
             disabled={isSyncing}
             onClick={() => handleStartDemoSync('Amber Shield')}
-            className="py-2.5 px-2 rounded-2xl bg-black/40 hover:bg-surface-elevated border border-white/[0.06] text-xs font-bold text-amber-400 flex flex-col items-center justify-center transition-all disabled:opacity-50"
+            className="py-3 px-2 rounded-2xl bg-[#141824] hover:bg-[#1C2233] text-xs font-bold text-amber-400 flex flex-col items-center justify-center transition-all disabled:opacity-50 min-h-[44px]"
           >
             <ShieldAlert className="w-4 h-4 mb-1 stroke-[2]" />
             <span>Recovery Mode</span>
@@ -192,7 +193,7 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
       </div>
 
       {/* Expandable Fitbit Account Link */}
-      <div className="pt-2 border-t border-white/[0.06]">
+      <div className="pt-2 border-t border-white/[0.04]">
         <button
           type="button"
           onClick={() => setShowAdvancedOAuth(!showAdvancedOAuth)}
@@ -216,12 +217,12 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
                 onChange={(e) => setClientId(e.target.value)}
                 placeholder="Fitbit App ID"
                 aria-label="Fitbit App ID"
-                className="flex-1 py-2 px-3 rounded-xl bg-surface-bg border border-white/[0.08] text-white font-mono text-xs focus:outline-none focus:border-brand-primary"
+                className="flex-1 py-2.5 px-3 rounded-xl bg-[#090C12] text-white font-mono text-xs focus:ring-1 focus:ring-brand-primary focus:outline-none"
               />
               <button
                 type="button"
                 onClick={handleGenerateOauth}
-                className="px-3 py-2 rounded-xl bg-surface-elevated hover:bg-surface-hover text-white text-xs font-semibold border border-white/[0.08] flex items-center space-x-1"
+                className="px-3.5 py-2.5 rounded-xl bg-[#141824] hover:bg-[#1C2233] text-white text-xs font-semibold flex items-center space-x-1"
               >
                 <span>Connect</span>
                 <ExternalLink className="w-3.5 h-3.5 stroke-[2]" />
@@ -229,7 +230,7 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
             </div>
 
             {oauthUrl && (
-              <div className="p-2.5 rounded-xl bg-surface-bg border border-white/[0.06] text-xs break-all text-slate-300">
+              <div className="p-3 rounded-xl bg-[#090C12] text-xs break-all text-slate-300">
                 <span className="text-brand-primary font-semibold block mb-0.5">
                   Fitbit Sign-In Link:
                 </span>

@@ -73,11 +73,11 @@ export const XPLeaderboardCard: React.FC<XPLeaderboardCardProps> = ({
   }
 
   return (
-    <div className="rounded-3xl surface-glass border border-white/[0.08] p-4 space-y-4 shadow-xl">
+    <div className="rounded-3xl surface-glass p-5 sm:p-6 space-y-5 shadow-xl">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center space-x-2.5">
-          <div className="w-10 h-10 rounded-2xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400">
+          <div className="w-10 h-10 rounded-2xl bg-amber-500/15 flex items-center justify-center text-amber-400">
             <Trophy className="w-5 h-5 stroke-[2]" />
           </div>
           <div>
@@ -85,7 +85,7 @@ export const XPLeaderboardCard: React.FC<XPLeaderboardCardProps> = ({
               <h3 className="font-bold text-base text-white tracking-tight">
                 Community XP Leaderboard
               </h3>
-              <span className="px-2 py-0.5 rounded-full bg-white/[0.06] border border-white/[0.1] text-xs font-semibold text-slate-300">
+              <span className="px-2.5 py-0.5 rounded-full bg-white/[0.08] text-xs font-semibold text-slate-300">
                 {summary.totalAthletes} Athletes
               </span>
             </div>
@@ -98,7 +98,7 @@ export const XPLeaderboardCard: React.FC<XPLeaderboardCardProps> = ({
 
       {!isOptedIn ? (
         /* Opt-In State */
-        <div className="p-4 rounded-2xl bg-dark-900/70 border border-white/[0.06] space-y-3.5">
+        <div className="p-4 rounded-2xl bg-[#090C12] space-y-3.5">
           <div className="space-y-1.5">
             <span className="text-xs font-bold uppercase tracking-wider text-brand-primary flex items-center gap-1.5">
               <Users className="w-4 h-4 stroke-[2]" />
@@ -109,7 +109,7 @@ export const XPLeaderboardCard: React.FC<XPLeaderboardCardProps> = ({
             </p>
           </div>
 
-          <div className="p-3 rounded-xl bg-surface-bg border border-white/[0.04] space-y-1">
+          <div className="p-3.5 rounded-xl bg-[#0E1219] space-y-1">
             <div className="flex items-center space-x-1.5 text-emerald-400">
               <ShieldCheck className="w-4 h-4 stroke-[2]" />
               <span className="text-xs font-bold">100% Privacy-Preserved</span>
@@ -130,7 +130,7 @@ export const XPLeaderboardCard: React.FC<XPLeaderboardCardProps> = ({
               value={customName}
               onChange={(e) => setCustomName(e.target.value)}
               placeholder="e.g. Alex Vance, HeavyLifter"
-              className="w-full bg-dark-950 border border-white/[0.1] rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-brand-primary"
+              className="w-full bg-[#0B0E14] rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-brand-primary"
             />
           </div>
 
@@ -147,7 +147,7 @@ export const XPLeaderboardCard: React.FC<XPLeaderboardCardProps> = ({
         /* Opted-In Active Leaderboard */
         <div className="space-y-3.5">
           {/* User Status Banner */}
-          <div className="p-3.5 rounded-2xl bg-gradient-to-r from-brand-primary/[0.12] to-amber-500/[0.08] border border-brand-primary/25 space-y-2">
+          <div className="p-4 rounded-2xl bg-[#141824] space-y-2">
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-2">
                 <span className="text-xs font-bold text-slate-300">Your Standing:</span>
@@ -163,7 +163,7 @@ export const XPLeaderboardCard: React.FC<XPLeaderboardCardProps> = ({
               </span>
             </div>
 
-            <div className="grid grid-cols-2 gap-2 pt-1 border-t border-white/[0.06] text-xs">
+            <div className="grid grid-cols-2 gap-2 pt-2 text-xs">
               <div className="text-slate-300">
                 {summary.xpToNextRank > 0 ? (
                   <span className="flex items-center gap-1">
@@ -193,7 +193,7 @@ export const XPLeaderboardCard: React.FC<XPLeaderboardCardProps> = ({
           <div
             role="group"
             aria-label="Filter leaderboard"
-            className="grid grid-cols-3 gap-1 bg-black/50 p-1 rounded-2xl border border-white/[0.08]"
+            className="grid grid-cols-3 gap-1 bg-[#090C12] p-1.5 rounded-2xl"
           >
             {(
               [
@@ -230,10 +230,10 @@ export const XPLeaderboardCard: React.FC<XPLeaderboardCardProps> = ({
               return (
                 <div
                   key={athlete.athleteId}
-                  className={`p-2.5 rounded-2xl border transition-all flex items-center justify-between ${
+                  className={`p-3 rounded-2xl transition-all flex items-center justify-between ${
                     isUser
-                      ? 'bg-brand-primary/[0.15] border-brand-primary/40 shadow-sm'
-                      : 'bg-dark-900/50 border-white/[0.05] hover:bg-white/[0.04]'
+                      ? 'bg-brand-primary/[0.15] shadow-sm'
+                      : 'bg-[#0B0E14] hover:bg-[#11141B]'
                   }`}
                 >
                   <div className="flex items-center space-x-2.5 min-w-0">
@@ -283,14 +283,14 @@ export const XPLeaderboardCard: React.FC<XPLeaderboardCardProps> = ({
           </div>
 
           {/* Display Name Edit & Opt-Out Footer */}
-          <div className="pt-2 border-t border-white/[0.06] flex items-center justify-between text-xs text-slate-400">
+          <div className="pt-2 flex items-center justify-between text-xs text-slate-400">
             {isEditingName ? (
               <div className="flex items-center space-x-1.5 w-full">
                 <input
                   type="text"
                   value={customName}
                   onChange={(e) => setCustomName(e.target.value)}
-                  className="flex-1 bg-dark-950 border border-white/[0.1] rounded-lg px-2 py-1 text-xs text-white focus:outline-none focus:border-brand-primary"
+                  className="flex-1 bg-[#0B0E14] rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-brand-primary"
                 />
                 <button
                   type="button"

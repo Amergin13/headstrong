@@ -69,7 +69,7 @@ export const SplitEditor: React.FC<SplitEditorProps> = ({
   });
 
   return (
-    <div className="biometric-card p-4.5 border border-white/[0.08] space-y-3.5">
+    <div className="biometric-card p-5 sm:p-6 space-y-4">
       <div className="flex items-center justify-between">
         <div>
           <h3 className="font-extrabold text-base text-white tracking-tight">
@@ -83,7 +83,7 @@ export const SplitEditor: React.FC<SplitEditorProps> = ({
         <button
           type="button"
           onClick={onOpenCreateExercise}
-          className="px-3 py-1.5 rounded-xl biometric-pill hover:bg-white/[0.12] text-xs font-bold text-white transition-all flex items-center space-x-1"
+          className="px-3 py-1.5 rounded-xl bg-white/[0.08] hover:bg-white/[0.14] text-xs font-bold text-white transition-all flex items-center space-x-1 min-h-[44px]"
         >
           <Plus className="w-3.5 h-3.5 stroke-[2]" />
           <span>Add Exercise</span>
@@ -92,7 +92,7 @@ export const SplitEditor: React.FC<SplitEditorProps> = ({
 
       {/* Segmented Control */}
       <div
-        className={`grid gap-1 bg-[#08090C] p-1 rounded-2xl border border-white/[0.08] ${
+        className={`grid gap-1 bg-[#090C12] p-1.5 rounded-2xl ${
           days.length === 2 ? 'grid-cols-2' : days.length === 3 ? 'grid-cols-3' : 'grid-cols-4'
         }`}
       >
@@ -126,7 +126,7 @@ export const SplitEditor: React.FC<SplitEditorProps> = ({
             triggerHaptic('medium');
             onLaunchSplitDay(activeDay);
           }}
-          className="w-full py-2.5 rounded-xl bg-brand-primary/15 hover:bg-brand-primary/25 border border-brand-primary/35 text-brand-primary font-extrabold text-xs flex items-center justify-center space-x-1.5 transition-all min-h-[44px]"
+          className="w-full py-2.5 rounded-xl bg-brand-primary/15 hover:bg-brand-primary/25 text-brand-primary font-extrabold text-xs flex items-center justify-center space-x-1.5 transition-all min-h-[44px]"
         >
           <Play className="w-3.5 h-3.5 fill-brand-primary stroke-[2]" />
           <span>Start {activeDay} Workout</span>
@@ -134,7 +134,7 @@ export const SplitEditor: React.FC<SplitEditorProps> = ({
       )}
 
       {/* Exercise Items */}
-      <div className="space-y-1.5">
+      <div className="space-y-2">
         {filteredExercises.map((ex) => {
           const meta = getExerciseBiomechanicalMeta(ex);
           const equipLabel =
@@ -151,7 +151,7 @@ export const SplitEditor: React.FC<SplitEditorProps> = ({
           return (
             <div
               key={ex.id}
-              className="p-3 rounded-2xl bg-black/40 border border-white/[0.05] flex items-center justify-between text-xs"
+              className="p-3.5 rounded-2xl bg-[#090C12] flex items-center justify-between text-xs"
             >
               <div>
                 <div className="font-bold text-sm text-white">
@@ -162,7 +162,7 @@ export const SplitEditor: React.FC<SplitEditorProps> = ({
                 </div>
               </div>
 
-              <span className="text-xs font-mono text-slate-300 px-2.5 py-1 rounded-lg bg-white/[0.05] border border-white/[0.06]">
+              <span className="text-xs font-mono text-slate-300 px-2.5 py-1 rounded-lg bg-white/[0.08]">
                 {meta.isIsolation ? '3–4 Sets' : '3 Sets'}
               </span>
             </div>

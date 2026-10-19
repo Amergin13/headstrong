@@ -21,9 +21,9 @@ export const XPNotification: React.FC<XPNotificationProps> = ({
 
   return (
     <div className="fixed top-14 left-4 right-4 z-50 max-w-sm mx-auto pointer-events-none transition-all duration-300">
-      <div className="p-3 rounded-2xl bg-surface-card/95 backdrop-blur-2xl border border-white/[0.12] shadow-2xl flex items-center justify-between">
+      <div className="p-3.5 rounded-2xl bg-[#0E1219]/95 backdrop-blur-2xl shadow-2xl flex items-center justify-between">
         <div className="flex items-center space-x-3">
-          <div className="w-8 h-8 rounded-xl bg-brand-primary/15 border border-brand-primary/30 flex items-center justify-center text-brand-primary">
+          <div className="w-8 h-8 rounded-xl bg-brand-primary/15 flex items-center justify-center text-brand-primary">
             <Zap className="w-4 h-4 fill-brand-primary" />
           </div>
           <div>

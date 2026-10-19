@@ -64,7 +64,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
         <div
           role="group"
           aria-label="Progress category"
-          className="grid grid-cols-2 gap-1 bg-surface-card p-1 rounded-2xl border border-white/[0.08]"
+          className="grid grid-cols-2 gap-1 bg-[#090C12] p-1.5 rounded-2xl"
         >
           <button
             type="button"

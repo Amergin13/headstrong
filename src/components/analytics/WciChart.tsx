@@ -47,7 +47,7 @@ export const WciChart: React.FC<WciChartProps> = ({
   const wciImprovementPct = firstWci > 0 ? Math.round(((latestWci - firstWci) / firstWci) * 100) : 0;
 
   return (
-    <div className="rounded-3xl surface-glass border border-white/[0.08] p-4 space-y-3">
+    <div className="rounded-3xl surface-glass p-5 sm:p-6 space-y-4">
       <div className="flex items-center justify-between">
         <div>
           <h3 className="font-bold text-base text-white tracking-tight">
@@ -72,7 +72,7 @@ export const WciChart: React.FC<WciChartProps> = ({
 
       {/* Stamina Area Chart */}
       {chartData.length === 0 ? (
-        <div className="w-full h-40 rounded-2xl bg-black/40 border border-white/[0.05] flex flex-col items-center justify-center p-4 text-center space-y-1.5">
+        <div className="w-full h-40 rounded-2xl bg-[#090C12] flex flex-col items-center justify-center p-4 text-center space-y-1.5">
           <p className="text-xs font-semibold text-white">No completed workouts yet</p>
           <p className="text-xs text-slate-400 max-w-xs">
             As you log sessions, your workout stamina score will track your tonnage density and cardiovascular recovery.
@@ -103,7 +103,7 @@ export const WciChart: React.FC<WciChartProps> = ({
                   if (active && payload && payload.length) {
                     const data = payload[0].payload;
                     return (
-                      <div className="p-2.5 rounded-xl bg-surface-bg border border-white/[0.12] shadow-2xl text-xs space-y-1">
+                      <div className="p-3 rounded-xl bg-[#0C0E14] shadow-2xl text-xs space-y-1">
                         <div className="font-bold text-white">{data.name} ({data.fullDate})</div>
                         <div className="text-brand-primary font-mono font-bold">
                           Stamina Score: {data.wci} pts

@@ -24,10 +24,10 @@ export const WorkoutSummaryModal: React.FC<WorkoutSummaryModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md">
-      <div className="w-full max-w-sm rounded-3xl surface-glass border border-white/[0.12] p-5 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-200">
+      <div className="w-full max-w-sm rounded-3xl surface-glass p-5 sm:p-6 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-200">
         {/* Trophy Header */}
         <div className="text-center space-y-2 pt-2">
-          <div className="w-14 h-14 rounded-3xl bg-brand-primary/15 border border-brand-primary/30 mx-auto flex items-center justify-center text-brand-primary shadow-lg shadow-brand-primary/20">
+          <div className="w-14 h-14 rounded-3xl bg-brand-primary/15 mx-auto flex items-center justify-center text-brand-primary shadow-lg shadow-brand-primary/20">
             <Trophy className="w-7 h-7 stroke-[2.5]" />
           </div>
           <div>
@@ -42,7 +42,7 @@ export const WorkoutSummaryModal: React.FC<WorkoutSummaryModalProps> = ({
 
         {/* Core Stats Grid */}
         <div className="grid grid-cols-2 gap-2.5 text-xs">
-          <div className="p-3 rounded-2xl bg-black/40 border border-white/[0.06] text-center">
+          <div className="p-3.5 rounded-2xl bg-[#090C12] text-center">
             <span className="text-xs font-semibold text-slate-400 block">
               Total Weight Lifted
             </span>
@@ -52,7 +52,7 @@ export const WorkoutSummaryModal: React.FC<WorkoutSummaryModalProps> = ({
             <span className="text-xs text-slate-400">kg</span>
           </div>
 
-          <div className="p-3 rounded-2xl bg-black/40 border border-white/[0.06] text-center">
+          <div className="p-3.5 rounded-2xl bg-[#090C12] text-center">
             <span className="text-xs font-semibold text-slate-400 block">
               Sets Completed
             </span>
@@ -64,7 +64,7 @@ export const WorkoutSummaryModal: React.FC<WorkoutSummaryModalProps> = ({
         </div>
 
         {/* Heart Rate & Duration Strip */}
-        <div className="p-3 rounded-2xl bg-surface-elevated border border-white/[0.06] text-xs space-y-1.5">
+        <div className="p-3.5 rounded-2xl bg-[#141824] text-xs space-y-1.5">
           <div className="flex justify-between text-slate-300">
             <span>Average Heart Rate</span>
             <span className="font-mono text-white font-bold">
@@ -78,7 +78,7 @@ export const WorkoutSummaryModal: React.FC<WorkoutSummaryModalProps> = ({
         </div>
 
         {/* Gamified XP Earned */}
-        <div className="p-3 rounded-2xl bg-brand-primary/10 border border-brand-primary/30 flex items-center justify-between">
+        <div className="p-3.5 rounded-2xl bg-brand-primary/15 flex items-center justify-between">
           <div className="flex items-center space-x-2.5">
             <Zap className="w-5 h-5 text-brand-primary stroke-[2]" />
             <div>

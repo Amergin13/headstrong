@@ -32,10 +32,10 @@ export const TensorAICoachCard: React.FC<TensorAICoachCardProps> = ({
 
   return (
     <>
-      <div className="biometric-card p-4 border border-white/[0.07] space-y-3 transition-all hover:border-brand-primary/30">
+      <div className="biometric-card p-5 space-y-3.5 transition-all">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-2.5">
-            <div className="w-8 h-8 rounded-xl bg-brand-strain/15 border border-brand-strain/35 flex items-center justify-center text-brand-strain">
+            <div className="w-8 h-8 rounded-xl bg-brand-strain/15 flex items-center justify-center text-brand-strain">
               <Cpu className="w-4 h-4 stroke-[2]" />
             </div>
             <span className="text-xs font-extrabold text-white tracking-tight">
@@ -44,7 +44,7 @@ export const TensorAICoachCard: React.FC<TensorAICoachCardProps> = ({
           </div>
 
           <div className="flex items-center space-x-1.5">
-            <span className="px-2.5 py-0.5 rounded-full text-xs font-bold flex items-center gap-1 border bg-brand-primary/15 border-brand-primary/35 text-brand-primary">
+            <span className="px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1 bg-brand-primary/15 text-brand-primary">
               <Zap className="w-3 h-3 stroke-[2]" />
               Personalized
             </span>
@@ -60,7 +60,7 @@ export const TensorAICoachCard: React.FC<TensorAICoachCardProps> = ({
           </p>
         </div>
 
-        <div className="flex items-center justify-between pt-2 border-t border-white/[0.06]">
+        <div className="flex items-center justify-between pt-2.5">
           <span className="text-xs text-slate-400 font-medium flex items-center gap-1">
             <ShieldCheck className="w-3.5 h-3.5 text-brand-primary stroke-[2]" />
             Recovery Calibrated
@@ -69,7 +69,7 @@ export const TensorAICoachCard: React.FC<TensorAICoachCardProps> = ({
           <button
             type="button"
             onClick={onOpenChat ? () => { triggerHaptic('light'); onOpenChat(); } : handleOpen}
-            className="min-h-[44px] px-3.5 py-1.5 rounded-xl biometric-pill hover:bg-white/[0.12] text-xs font-bold text-slate-200 hover:text-white flex items-center gap-1.5 transition-all"
+            className="min-h-[44px] px-3.5 py-1.5 rounded-xl bg-white/[0.06] hover:bg-white/[0.12] text-xs font-bold text-slate-200 hover:text-white flex items-center gap-1.5 transition-all"
           >
             <MessageSquare className="w-3.5 h-3.5 text-brand-strain stroke-[2]" />
             <span>Chat with AI Coach</span>

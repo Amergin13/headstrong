@@ -62,10 +62,10 @@ export const RestTimerModal: React.FC<RestTimerModalProps> = ({
   return (
     <aside aria-label="Rest timer" className="fixed bottom-20 left-3 right-3 z-50 max-w-md mx-auto">
       <div
-        className={`px-4 py-3 rounded-3xl bg-[#0C0E14]/95 backdrop-blur-2xl border transition-all duration-300 shadow-2xl ${
+        className={`px-5 py-3.5 rounded-3xl bg-[#0E1219]/95 backdrop-blur-2xl transition-all duration-300 shadow-2xl ${
           isRecovered
-            ? 'border-brand-primary/40 shadow-brand-primary/10'
-            : 'border-white/[0.1]'
+            ? 'shadow-brand-primary/15'
+            : ''
         }`}
       >
         <div className="flex items-center justify-between">
@@ -110,7 +110,7 @@ export const RestTimerModal: React.FC<RestTimerModalProps> = ({
           {/* Quick Actions */}
           <div className="flex items-center space-x-2">
             {isRecovered ? (
-              <span className="px-3 py-1.5 rounded-full bg-brand-primary/15 border border-brand-primary/30 text-brand-primary text-xs font-bold flex items-center space-x-1 animate-pulse">
+              <span className="px-3 py-1.5 rounded-full bg-brand-primary/15 text-brand-primary text-xs font-bold flex items-center space-x-1 animate-pulse">
                 <CheckCircle2 className="w-3.5 h-3.5 stroke-[2.5]" />
                 <span>Ready</span>
               </span>

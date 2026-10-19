@@ -178,7 +178,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
       aria-labelledby="onboarding-modal-title"
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md"
     >
-      <div className="w-full max-w-lg rounded-3xl surface-glass border border-white/[0.12] p-5 shadow-2xl max-h-[92vh] overflow-y-auto space-y-4">
+      <div className="w-full max-w-lg rounded-3xl bg-[#0E1219] p-5 sm:p-6 shadow-2xl max-h-[92vh] overflow-y-auto space-y-5">
         {/* Top Header: Step Indicator & Actions */}
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-2">
@@ -214,7 +214,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                 onClose();
               }}
               aria-label="Close setup"
-              className="p-1.5 rounded-full text-slate-400 hover:text-white hover:bg-white/[0.08] transition-colors"
+              className="w-9 h-9 rounded-full flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/[0.08] transition-colors"
             >
               <X className="w-4 h-4 stroke-[2]" />
             </button>
@@ -254,10 +254,10 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
               </p>
             </div>
 
-            <div className="space-y-2.5">
+            <div className="space-y-3">
               {/* Feature 1: Asynchronous Hypertrophy Queue */}
-              <div className="p-3.5 rounded-2xl bg-surface-elevated border border-white/[0.08] flex items-start space-x-3">
-                <div className="w-8 h-8 rounded-xl bg-indigo-500/15 border border-indigo-500/30 flex items-center justify-center text-indigo-400 shrink-0 mt-0.5">
+              <div className="p-4 rounded-2xl bg-[#141824] flex items-start space-x-3">
+                <div className="w-8 h-8 rounded-xl bg-indigo-500/15 flex items-center justify-center text-indigo-400 shrink-0 mt-0.5">
                   <Clock className="w-4 h-4 stroke-[2]" />
                 </div>
                 <div className="space-y-1">
@@ -271,8 +271,8 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
               </div>
 
               {/* Feature 2: Double Progression Engine */}
-              <div className="p-3.5 rounded-2xl bg-surface-elevated border border-white/[0.08] flex items-start space-x-3">
-                <div className="w-8 h-8 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shrink-0 mt-0.5">
+              <div className="p-4 rounded-2xl bg-[#141824] flex items-start space-x-3">
+                <div className="w-8 h-8 rounded-xl bg-emerald-500/15 flex items-center justify-center text-emerald-400 shrink-0 mt-0.5">
                   <TrendingUp className="w-4 h-4 stroke-[2]" />
                 </div>
                 <div className="space-y-1">
@@ -286,8 +286,8 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
               </div>
 
               {/* Feature 3: Adaptive Locations & Gear */}
-              <div className="p-3.5 rounded-2xl bg-surface-elevated border border-white/[0.08] flex items-start space-x-3">
-                <div className="w-8 h-8 rounded-xl bg-cyan-500/15 border border-cyan-500/30 flex items-center justify-center text-cyan-400 shrink-0 mt-0.5">
+              <div className="p-4 rounded-2xl bg-[#141824] flex items-start space-x-3">
+                <div className="w-8 h-8 rounded-xl bg-cyan-500/15 flex items-center justify-center text-cyan-400 shrink-0 mt-0.5">
                   <Layers className="w-4 h-4 stroke-[2]" />
                 </div>
                 <div className="space-y-1">
@@ -320,7 +320,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
               </p>
             </div>
 
-            <div className="space-y-2.5">
+            <div className="space-y-3">
               {PROGRAM_OPTIONS.map((opt) => {
                 const isSelected = selectedProgram === opt.id;
                 return (
@@ -332,10 +332,10 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                       triggerHaptic('light');
                       setSelectedProgram(opt.id);
                     }}
-                    className={`w-full p-3.5 rounded-2xl border text-left transition-all space-y-2 ${
+                    className={`w-full p-4 rounded-2xl text-left transition-all space-y-2.5 ${
                       isSelected
-                        ? 'bg-brand-primary/15 border-brand-primary text-white shadow-lg shadow-brand-primary/10'
-                        : 'bg-surface-elevated border-white/[0.08] text-slate-200 hover:border-white/20'
+                        ? 'bg-brand-primary/15 text-white shadow-lg shadow-brand-primary/10'
+                        : 'bg-[#141824] text-slate-200 hover:bg-[#1C2233]'
                     }`}
                   >
                     <div className="flex items-start justify-between">
@@ -343,7 +343,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                         <div className="flex items-center space-x-2">
                           <span className="font-bold text-sm text-white">{opt.title}</span>
                           {opt.recommended && (
-                            <span className="px-2 py-0.5 rounded-md bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-xs font-bold">
+                            <span className="px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 text-xs font-bold">
                               Recommended
                             </span>
                           )}
@@ -356,7 +356,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                         className={`w-5 h-5 rounded-full flex items-center justify-center text-xs shrink-0 mt-0.5 ${
                           isSelected
                             ? 'bg-brand-primary text-black font-bold'
-                            : 'border border-white/20'
+                            : 'bg-white/[0.08]'
                         }`}
                       >
                         {isSelected && <Check className="w-3.5 h-3.5 stroke-[2.5]" />}
@@ -365,7 +365,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
 
                     <p className="text-xs text-slate-300 leading-relaxed">{opt.detail}</p>
 
-                    <div className="pt-2 border-t border-white/[0.06] flex items-center justify-between text-xs">
+                    <div className="pt-2 border-t border-white/[0.04] flex items-center justify-between text-xs">
                       <span className="text-slate-400">Rotation:</span>
                       <span className="text-slate-200 font-medium">{opt.rotation}</span>
                     </div>
@@ -398,7 +398,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
               </p>
             </div>
 
-            <div className="space-y-2.5">
+            <div className="space-y-3">
               {GOAL_OPTIONS.map((opt) => {
                 const isSelected = selectedGoal === opt.phase;
                 return (
@@ -410,16 +410,16 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                       triggerHaptic('light');
                       setSelectedGoal(opt.phase);
                     }}
-                    className={`w-full p-3.5 rounded-2xl border text-left transition-all space-y-1.5 ${
+                    className={`w-full p-4 rounded-2xl text-left transition-all space-y-2 ${
                       isSelected
-                        ? 'bg-brand-primary/15 border-brand-primary text-white'
-                        : 'bg-surface-elevated border-white/[0.08] text-slate-200 hover:border-white/20'
+                        ? 'bg-brand-primary/15 text-white'
+                        : 'bg-[#141824] text-slate-200 hover:bg-[#1C2233]'
                     }`}
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex items-center space-x-2">
                         <span className="font-bold text-sm text-white">{opt.title}</span>
-                        <span className="px-2 py-0.5 rounded-md bg-white/[0.06] text-slate-300 text-xs">
+                        <span className="px-2.5 py-0.5 rounded-md bg-white/[0.06] text-slate-300 text-xs font-semibold">
                           {opt.badge}
                         </span>
                       </div>
@@ -427,14 +427,14 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                         className={`w-5 h-5 rounded-full flex items-center justify-center text-xs ${
                           isSelected
                             ? 'bg-brand-primary text-black font-bold'
-                            : 'border border-white/20'
+                            : 'bg-white/[0.08]'
                         }`}
                       >
                         {isSelected && <Check className="w-3.5 h-3.5 stroke-[2.5]" />}
                       </span>
                     </div>
                     <p className="text-xs text-slate-300">{opt.subtitle}</p>
-                    <div className="pt-1.5 border-t border-white/[0.06] text-xs text-brand-primary font-medium">
+                    <div className="pt-1.5 border-t border-white/[0.04] text-xs text-brand-primary font-medium">
                       Session rule: {opt.sessionRule}
                     </div>
                   </button>
@@ -496,10 +496,10 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                       type="button"
                       aria-pressed={enabled}
                       onClick={() => toggleAvailableLocation(id)}
-                      className={`p-2.5 rounded-2xl border text-left transition-all ${
+                      className={`p-3 rounded-2xl text-left transition-all ${
                         enabled
-                          ? 'bg-brand-primary/15 border-brand-primary text-white'
-                          : 'bg-black/40 border-white/[0.08] text-slate-400'
+                          ? 'bg-brand-primary/15 text-white'
+                          : 'bg-[#090C12] text-slate-400'
                       }`}
                     >
                       <div className="flex items-center justify-between mb-1">
@@ -525,7 +525,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                 </span>
               </div>
 
-              <div className="space-y-1.5">
+              <div className="space-y-2">
                 {HOME_EQUIPMENT_OPTIONS.map((eq) => {
                   const checked = homeEquipment.includes(eq.id);
                   return (
@@ -534,10 +534,10 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                       type="button"
                       aria-pressed={checked}
                       onClick={() => toggleHomeEquipment(eq.id)}
-                      className={`w-full p-2.5 rounded-2xl border text-left transition-all flex items-center justify-between ${
+                      className={`w-full p-3 rounded-2xl text-left transition-all flex items-center justify-between ${
                         checked
-                          ? 'bg-surface-elevated border-brand-primary/60 text-white'
-                          : 'bg-black/40 border-white/[0.06] text-slate-400'
+                          ? 'bg-[#141824] text-white'
+                          : 'bg-[#090C12] text-slate-400'
                       }`}
                     >
                       <div className="pr-2">
@@ -548,7 +548,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                         className={`w-5 h-5 rounded-lg flex items-center justify-center shrink-0 ${
                           checked
                             ? 'bg-brand-primary text-black'
-                            : 'border border-white/20 bg-black/40'
+                            : 'bg-white/[0.08]'
                         }`}
                       >
                         {checked && <Check className="w-3.5 h-3.5 stroke-[2.5]" />}
@@ -564,7 +564,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
               <span className="text-xs font-bold uppercase tracking-wider text-slate-400 block">
                 3. Where Are You Training Today?
               </span>
-              <div className="grid grid-cols-3 gap-1.5">
+              <div className="grid grid-cols-3 gap-2">
                 {(
                   [
                     { id: 'gym', label: 'Gym Today' },
@@ -582,10 +582,10 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                         triggerHaptic('light');
                         setActiveLocation(loc.id);
                       }}
-                      className={`py-2 px-2.5 rounded-xl text-xs font-bold border transition-all ${
+                      className={`py-2.5 px-3 rounded-xl text-xs font-bold transition-all ${
                         isCurrent
-                          ? 'bg-brand-primary text-black border-brand-primary'
-                          : 'bg-black/40 text-slate-300 border-white/[0.08]'
+                          ? 'bg-brand-primary text-black'
+                          : 'bg-[#090C12] text-slate-300'
                       }`}
                     >
                       {loc.label}
@@ -600,7 +600,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
         {/* ==================================================================== */}
         {/* BOTTOM NAVIGATION ACTIONS                                           */}
         {/* ==================================================================== */}
-        <div className="flex items-center justify-between pt-2 border-t border-white/[0.08]">
+        <div className="flex items-center justify-between pt-3 border-t border-white/[0.04]">
           {step > 1 ? (
             <button
               type="button"
@@ -612,7 +612,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                   setStep((prev) => (prev === 4 ? 3 : prev === 3 ? 2 : 1));
                 }
               }}
-              className="px-3.5 py-2.5 rounded-2xl bg-white/[0.06] hover:bg-white/[0.12] text-xs font-semibold text-slate-200 flex items-center space-x-1"
+              className="px-4 py-2.5 min-h-[44px] rounded-2xl bg-[#141824] hover:bg-[#1C2233] text-xs font-semibold text-slate-200 flex items-center space-x-1"
             >
               <ChevronLeft className="w-4 h-4 stroke-[2]" />
               <span>{initialStep === 4 && step === 4 ? 'Close' : 'Back'}</span>
@@ -628,7 +628,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                 triggerHaptic('light');
                 setStep((prev) => (prev === 1 ? 2 : prev === 2 ? 3 : 4));
               }}
-              className="px-5 py-2.5 rounded-2xl bg-brand-primary text-black text-xs font-bold flex items-center space-x-1.5 shadow-md shadow-brand-primary/20"
+              className="px-5 py-2.5 min-h-[44px] rounded-2xl bg-brand-primary text-black text-xs font-bold flex items-center space-x-1.5 shadow-md shadow-brand-primary/20"
             >
               <span>{step === 1 ? 'Choose My Program' : 'Next'}</span>
               <ChevronRight className="w-4 h-4 stroke-[2.5]" />
@@ -637,7 +637,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
             <button
               type="button"
               onClick={handleFinish}
-              className="px-5 py-2.5 rounded-2xl bg-brand-primary text-black text-xs font-bold flex items-center space-x-1.5 shadow-md shadow-brand-primary/20"
+              className="px-5 py-2.5 min-h-[44px] rounded-2xl bg-brand-primary text-black text-xs font-bold flex items-center space-x-1.5 shadow-md shadow-brand-primary/20"
             >
               <Check className="w-4 h-4 stroke-[2.5]" />
               <span>{initialStep === 4 ? 'Save Equipment' : 'Start Day 1 Workout'}</span>

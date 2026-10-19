@@ -211,7 +211,7 @@ export const E1rmVsWeightChart: React.FC<E1rmVsWeightChartProps> = ({
         );
 
   return (
-    <div className="rounded-3xl surface-glass border border-white/[0.08] p-4 space-y-3.5">
+    <div className="rounded-3xl surface-glass p-5 sm:p-6 space-y-4">
       <div className="flex items-start justify-between">
         <div>
           <h3 className="font-bold text-base text-white tracking-tight">
@@ -225,7 +225,7 @@ export const E1rmVsWeightChart: React.FC<E1rmVsWeightChartProps> = ({
         <button
           type="button"
           onClick={onOpenWeightModal}
-          className="px-3 py-1.5 rounded-full bg-white/[0.08] hover:bg-white/[0.14] text-xs font-semibold text-white border border-white/[0.12] flex items-center space-x-1 transition-colors shrink-0"
+          className="px-3 py-1.5 rounded-full bg-white/[0.08] hover:bg-white/[0.14] text-xs font-semibold text-white flex items-center space-x-1 transition-colors shrink-0"
         >
           <Plus className="w-3.5 h-3.5 stroke-[2]" />
           <span>Log Weight</span>
@@ -241,10 +241,10 @@ export const E1rmVsWeightChart: React.FC<E1rmVsWeightChartProps> = ({
               key={grp.pillar}
               type="button"
               onClick={() => setSelectedPillar(grp.pillar)}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 border ${
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 ${
                 isSelected
-                  ? 'bg-brand-primary text-black border-brand-primary shadow-sm'
-                  : 'bg-black/40 text-slate-300 border-white/[0.06] hover:text-white'
+                  ? 'bg-brand-primary text-black shadow-sm'
+                  : 'bg-[#090C12] text-slate-300 hover:text-white'
               }`}
             >
               {grp.label}
@@ -255,7 +255,7 @@ export const E1rmVsWeightChart: React.FC<E1rmVsWeightChartProps> = ({
 
       {/* Dual Axis Chart */}
       {chartPoints.length === 0 ? (
-        <div className="w-full h-44 rounded-2xl bg-black/40 border border-white/[0.05] flex flex-col items-center justify-center p-4 text-center space-y-1.5">
+        <div className="w-full h-44 rounded-2xl bg-[#090C12] flex flex-col items-center justify-center p-4 text-center space-y-1.5">
           <p className="text-xs font-semibold text-white">No workout history logged yet</p>
           <p className="text-xs text-slate-400 max-w-xs">
             Complete your first session or log your bodyweight to chart your strength-to-weight trends.
@@ -289,7 +289,7 @@ export const E1rmVsWeightChart: React.FC<E1rmVsWeightChartProps> = ({
                 if (active && payload && payload.length) {
                   const pt = payload[0]?.payload;
                   return (
-                    <div className="p-3 rounded-2xl bg-[#090B10]/95 border border-white/[0.14] shadow-2xl text-xs space-y-1.5 max-w-[230px]">
+                    <div className="p-3 rounded-2xl bg-[#090B10]/95 shadow-2xl text-xs space-y-1.5 max-w-[230px]">
                       <div className="font-bold text-white flex items-center justify-between">
                         <span>{label}</span>
                         <span className="text-xs font-mono text-brand-primary">
@@ -297,7 +297,7 @@ export const E1rmVsWeightChart: React.FC<E1rmVsWeightChartProps> = ({
                         </span>
                       </div>
                       {pt?.implementName && (
-                        <div className="text-xs text-slate-200 bg-white/[0.06] border border-white/[0.08] rounded-lg px-2 py-1">
+                        <div className="text-xs text-slate-200 bg-white/[0.06] rounded-lg px-2 py-1">
                           <div className="font-bold text-white">{pt.implementName}</div>
                           <div className="font-mono text-xs text-slate-300">
                             {pt.rawSetSummary}
@@ -358,7 +358,7 @@ export const E1rmVsWeightChart: React.FC<E1rmVsWeightChartProps> = ({
       )}
 
       {/* Matched Weights Across Equipment */}
-      <div className="p-3 rounded-2xl bg-black/40 border border-white/[0.06] space-y-2">
+      <div className="p-4 rounded-2xl bg-[#090C12] space-y-2.5">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-1.5">
             <ArrowRightLeft className="w-3.5 h-3.5 text-brand-primary stroke-[2]" />
@@ -372,7 +372,7 @@ export const E1rmVsWeightChart: React.FC<E1rmVsWeightChartProps> = ({
         </div>
 
         <div className="grid grid-cols-3 gap-2 text-center">
-          <div className="p-2.5 rounded-xl bg-white/[0.03] border border-white/[0.05]">
+          <div className="p-3 rounded-xl bg-[#141824]">
             <div className="text-xs text-slate-400 font-semibold">
               Barbell
             </div>
@@ -382,7 +382,7 @@ export const E1rmVsWeightChart: React.FC<E1rmVsWeightChartProps> = ({
             <div className="text-xs text-slate-400">× 10 reps</div>
           </div>
 
-          <div className="p-2.5 rounded-xl bg-white/[0.03] border border-white/[0.05]">
+          <div className="p-3 rounded-xl bg-[#141824]">
             <div className="text-xs text-slate-400 font-semibold">
               Dumbbells
             </div>
@@ -392,7 +392,7 @@ export const E1rmVsWeightChart: React.FC<E1rmVsWeightChartProps> = ({
             <div className="text-xs text-slate-400">{eqDumbbell10RM} kg total</div>
           </div>
 
-          <div className="p-2.5 rounded-xl bg-white/[0.03] border border-white/[0.05]">
+          <div className="p-3 rounded-xl bg-[#141824]">
             <div className="text-xs text-slate-400 font-semibold">
               {selectedPillar === 'Hinge' ? 'Romanian DL' : 'Bodyweight'}
             </div>

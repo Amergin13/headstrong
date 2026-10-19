@@ -118,11 +118,11 @@ export const ExerciseSwapModal: React.FC<ExerciseSwapModalProps> = ({
       aria-labelledby="change-exercise-title"
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md"
     >
-      <div className="w-full max-w-sm rounded-3xl surface-glass border border-white/[0.12] p-5 shadow-2xl max-h-[85vh] overflow-y-auto space-y-4">
+      <div className="w-full max-w-sm rounded-3xl surface-glass p-5 sm:p-6 shadow-2xl max-h-[85vh] overflow-y-auto space-y-4">
         {/* Header */}
         <div className="flex items-start justify-between">
           <div className="flex items-center space-x-2.5">
-            <div className="w-9 h-9 rounded-2xl bg-brand-primary/15 border border-brand-primary/30 flex items-center justify-center text-brand-primary shrink-0">
+            <div className="w-9 h-9 rounded-2xl bg-brand-primary/15 flex items-center justify-center text-brand-primary shrink-0">
               <ArrowRightLeft className="w-4 h-4 stroke-[2]" />
             </div>
             <div>
@@ -149,7 +149,7 @@ export const ExerciseSwapModal: React.FC<ExerciseSwapModalProps> = ({
         </div>
 
         {/* Currently Selected Exercise */}
-        <div className="p-3.5 rounded-2xl bg-black/40 border border-white/[0.06] space-y-1">
+        <div className="p-3.5 rounded-2xl bg-[#090C12] space-y-1">
           <div className="flex items-center justify-between">
             <span className="text-xs font-medium text-slate-400">
               Replacing
@@ -174,7 +174,7 @@ export const ExerciseSwapModal: React.FC<ExerciseSwapModalProps> = ({
         <div
           role="group"
           aria-label="Filter replacement exercises by environment"
-          className="grid grid-cols-3 gap-1 bg-[#08090C] p-1 rounded-2xl border border-white/[0.08]"
+          className="grid grid-cols-3 gap-1 bg-[#090C12] p-1.5 rounded-2xl"
         >
           {(
             [
@@ -222,7 +222,7 @@ export const ExerciseSwapModal: React.FC<ExerciseSwapModalProps> = ({
           </div>
 
           {alternatives.length === 0 ? (
-            <div className="p-4 rounded-2xl bg-surface-elevated/70 border border-white/[0.06] text-center space-y-1">
+            <div className="p-4 rounded-2xl bg-[#141824] text-center space-y-1">
               <p className="text-xs font-bold text-white">
                 No {selectedLocation === 'travel' ? 'bodyweight' : selectedLocation === 'home' ? 'home' : 'gym'} exercises found
               </p>
@@ -246,7 +246,7 @@ export const ExerciseSwapModal: React.FC<ExerciseSwapModalProps> = ({
                   key={alt.id}
                   type="button"
                   onClick={() => handleSelectAlternative(alt)}
-                  className="w-full p-3.5 rounded-2xl bg-surface-elevated hover:bg-surface-hover border border-white/[0.08] hover:border-brand-primary/40 text-left transition-all space-y-1.5 min-h-[44px]"
+                  className="w-full p-4 rounded-2xl bg-[#141824] hover:bg-[#1C2233] text-left transition-all space-y-2 min-h-[44px]"
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
@@ -276,7 +276,7 @@ export const ExerciseSwapModal: React.FC<ExerciseSwapModalProps> = ({
                   </div>
 
                   {alt.whyItWorks && (
-                    <p className="text-xs text-slate-300 leading-relaxed pt-1 border-t border-white/[0.06]">
+                    <p className="text-xs text-slate-300 leading-relaxed pt-1">
                       {alt.whyItWorks}
                     </p>
                   )}

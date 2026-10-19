@@ -105,21 +105,21 @@ export const SetRow: React.FC<SetRowProps> = ({
   const renderSetBadge = () => {
     if (currentSetType === 'warmup') {
       return (
-        <span className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-amber-500/15 text-amber-300 border border-amber-500/30 font-mono font-bold text-xs">
+        <span className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-amber-500/20 text-amber-300 font-mono font-bold text-xs">
           W
         </span>
       );
     }
     if (currentSetType === 'drop') {
       return (
-        <span className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-white/[0.1] text-white border border-white/[0.2] font-mono font-bold text-xs">
+        <span className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-white/[0.12] text-white font-mono font-bold text-xs">
           D
         </span>
       );
     }
     if (currentSetType === 'myo') {
       return (
-        <span className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-brand-primary/15 text-brand-primary border border-brand-primary/30 font-mono font-bold text-xs">
+        <span className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-brand-primary/20 text-brand-primary font-mono font-bold text-xs">
           +
         </span>
       );
@@ -145,12 +145,12 @@ export const SetRow: React.FC<SetRowProps> = ({
 
   return (
     <div
-      className={`grid grid-cols-12 gap-1.5 items-center py-2 px-2.5 rounded-2xl transition-all duration-200 ${
+      className={`grid grid-cols-12 gap-2 items-center py-2.5 px-3 rounded-2xl transition-all duration-200 ${
         set.completed
-          ? 'bg-brand-primary/10 border border-brand-primary/30 text-white'
+          ? 'bg-brand-primary/[0.12] text-white'
           : currentSetType === 'warmup'
-          ? 'bg-white/[0.02] border border-white/[0.06]'
-          : 'bg-surface-elevated/80 border border-white/[0.07] hover:border-white/15'
+          ? 'bg-white/[0.03]'
+          : 'bg-[#151924] hover:bg-[#181E2C]'
       }`}
     >
       {/* 1. Set Number / Type Badge (col-span-1) */}
@@ -180,12 +180,12 @@ export const SetRow: React.FC<SetRowProps> = ({
       </div>
 
       {/* 3. Weight Input (KG) with Steppers (col-span-4) */}
-      <div className="col-span-4 flex items-center bg-black/60 rounded-xl border border-white/[0.08] p-0.5">
+      <div className="col-span-4 flex items-center bg-[#0B0E14] rounded-xl p-0.5">
         <button
           type="button"
           onClick={() => handleStepWeight(-weightStep)}
           aria-label={`Decrease weight by ${weightStep} kg`}
-          className="w-6 h-7 flex items-center justify-center text-slate-400 hover:text-white active:scale-90 transition-transform"
+          className="w-7 h-8 flex items-center justify-center text-slate-400 hover:text-white active:scale-90 transition-transform"
         >
           <Minus className="w-3.5 h-3.5 stroke-[2]" />
         </button>
@@ -206,19 +206,19 @@ export const SetRow: React.FC<SetRowProps> = ({
           type="button"
           onClick={() => handleStepWeight(weightStep)}
           aria-label={`Increase weight by ${weightStep} kg`}
-          className="w-6 h-7 flex items-center justify-center text-slate-400 hover:text-white active:scale-90 transition-transform"
+          className="w-7 h-8 flex items-center justify-center text-slate-400 hover:text-white active:scale-90 transition-transform"
         >
           <Plus className="w-3.5 h-3.5 stroke-[2]" />
         </button>
       </div>
 
       {/* 4. Reps Input with Steppers (col-span-3) */}
-      <div className="col-span-3 flex items-center bg-black/60 rounded-xl border border-white/[0.08] p-0.5">
+      <div className="col-span-3 flex items-center bg-[#0B0E14] rounded-xl p-0.5">
         <button
           type="button"
           onClick={() => handleStepReps(-1)}
           aria-label="Decrease reps by 1"
-          className="w-6 h-7 flex items-center justify-center text-slate-400 hover:text-white active:scale-90 transition-transform"
+          className="w-7 h-8 flex items-center justify-center text-slate-400 hover:text-white active:scale-90 transition-transform"
         >
           <Minus className="w-3.5 h-3.5 stroke-[2]" />
         </button>
@@ -238,7 +238,7 @@ export const SetRow: React.FC<SetRowProps> = ({
           type="button"
           onClick={() => handleStepReps(1)}
           aria-label="Increase reps by 1"
-          className="w-6 h-7 flex items-center justify-center text-slate-400 hover:text-white active:scale-90 transition-transform"
+          className="w-7 h-8 flex items-center justify-center text-slate-400 hover:text-white active:scale-90 transition-transform"
         >
           <Plus className="w-3.5 h-3.5 stroke-[2]" />
         </button>
@@ -253,8 +253,8 @@ export const SetRow: React.FC<SetRowProps> = ({
           title={`${currentRir} reps left before failure (tap to change)`}
           className={`w-7 h-7 rounded-lg text-xs font-mono font-bold transition-all flex items-center justify-center ${
             currentRir === 0
-              ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm'
-              : 'bg-white/[0.05] hover:bg-white/[0.1] text-slate-200 border border-white/[0.08]'
+              ? 'bg-amber-500/20 text-amber-300 shadow-sm'
+              : 'bg-[#0B0E14] hover:bg-white/[0.08] text-slate-200'
           }`}
         >
           {currentRir}
@@ -271,7 +271,7 @@ export const SetRow: React.FC<SetRowProps> = ({
           className={`w-8 h-8 rounded-xl flex items-center justify-center transition-all duration-200 active:scale-90 ${
             set.completed
               ? 'bg-brand-primary text-black font-extrabold shadow-sm'
-              : 'bg-black/60 hover:bg-white/[0.08] text-slate-400 hover:text-white border border-white/[0.12]'
+              : 'bg-[#0B0E14] hover:bg-white/[0.08] text-slate-400 hover:text-white'
           }`}
         >
           <Check className="w-4 h-4 stroke-[2.5]" />

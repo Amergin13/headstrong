@@ -56,10 +56,10 @@ export const CharacterTab: React.FC<CharacterTabProps> = ({
   return (
     <div className="space-y-3.5 pb-28">
       {/* 1. Athlete Scorecard & Strength Benchmarks */}
-      <div className="biometric-card p-4 space-y-3.5 border border-white/[0.07]">
+      <div className="biometric-card p-5 sm:p-6 space-y-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3">
-            <div className="w-11 h-11 rounded-2xl bg-white/[0.06] border border-white/[0.08] flex items-center justify-center font-extrabold text-white text-base">
+            <div className="w-11 h-11 rounded-2xl bg-white/[0.08] flex items-center justify-center font-extrabold text-white text-base">
               {profile.name.charAt(0)}
             </div>
             <div>
@@ -67,7 +67,7 @@ export const CharacterTab: React.FC<CharacterTabProps> = ({
                 <h2 className="text-base font-extrabold text-white tracking-tight">
                   {profile.name}
                 </h2>
-                <span className="text-xs font-mono px-2 py-0.5 rounded-full bg-white/[0.08] text-brand-primary font-bold border border-white/10">
+                <span className="text-xs font-mono px-2 py-0.5 rounded-full bg-brand-primary/15 text-brand-primary font-bold">
                   Lv.{profile.level}
                 </span>
               </div>
@@ -77,14 +77,14 @@ export const CharacterTab: React.FC<CharacterTabProps> = ({
             </div>
           </div>
 
-          <span className="text-xs font-bold px-3 py-1.5 rounded-full bg-white/[0.06] text-slate-200 border border-white/[0.08]">
+          <span className="text-xs font-bold px-3 py-1.5 rounded-full bg-white/[0.08] text-slate-200">
             Goal: {friendlyGoal}
           </span>
         </div>
 
         {/* Key Strength Benchmarks (2-Column Grid) */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-3 border-t border-white/[0.06]">
-          <div className="p-3.5 rounded-2xl bg-surface-elevated border border-white/[0.06] space-y-1">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+          <div className="p-4 rounded-2xl bg-[#141824] space-y-1">
             <span className="text-xs font-bold uppercase tracking-wider text-slate-400 block">
               Strength-to-Weight Score
             </span>
@@ -99,7 +99,7 @@ export const CharacterTab: React.FC<CharacterTabProps> = ({
             </span>
           </div>
 
-          <div className="p-3.5 rounded-2xl bg-surface-elevated border border-white/[0.06] space-y-1">
+          <div className="p-4 rounded-2xl bg-[#141824] space-y-1">
             <span className="text-xs font-bold uppercase tracking-wider text-slate-400 block">
               Combined Big 3 Max
             </span>
@@ -111,7 +111,7 @@ export const CharacterTab: React.FC<CharacterTabProps> = ({
                 kg ({Math.round((powerliftingTotalE1rm / bodyweightEmaKg) * 10) / 10}x BW)
               </span>
             </div>
-            <div className="pt-2 border-t border-white/[0.06] flex items-center justify-between text-xs text-slate-400 font-medium">
+            <div className="pt-2 flex items-center justify-between text-xs text-slate-400 font-medium">
               <span>Squat: <strong className="text-white font-mono">{squat}</strong></span>
               <span>•</span>
               <span>Bench: <strong className="text-white font-mono">{bench}</strong></span>
@@ -126,7 +126,7 @@ export const CharacterTab: React.FC<CharacterTabProps> = ({
       <div
         role="group"
         aria-label="Athlete view"
-        className="grid grid-cols-3 gap-1 bg-[#08090C] p-1 rounded-2xl border border-white/[0.08]"
+        className="grid grid-cols-3 gap-1 bg-[#090C12] p-1.5 rounded-2xl"
       >
         <button
           type="button"
@@ -179,7 +179,7 @@ export const CharacterTab: React.FC<CharacterTabProps> = ({
         /* Primary Focal Point: Weekly Sets by Muscle Tracker */
         <VolumeTracker weeklyVolume={weeklyVolume} />
       ) : subView === 'balance' ? (
-        <div className="space-y-3.5">
+        <div className="space-y-4">
           {/* Strength & Fitness Balance Radar */}
           <SevenPillarRadar
             pillarBestE1rm={pillarBestE1rm}
@@ -189,12 +189,12 @@ export const CharacterTab: React.FC<CharacterTabProps> = ({
           />
 
           {/* Active Bonuses */}
-          <div className="rounded-3xl surface-glass p-4 border border-white/[0.08] space-y-2.5">
+          <div className="rounded-3xl surface-glass p-5 sm:p-6 space-y-3">
             <h3 className="text-sm font-bold text-white">
               Active Bonuses
             </h3>
-            <div className="grid grid-cols-2 gap-2.5 text-xs">
-              <div className="p-3 rounded-2xl bg-black/40 border border-white/[0.05] space-y-1">
+            <div className="grid grid-cols-2 gap-3 text-xs">
+              <div className="p-4 rounded-2xl bg-[#090C12] space-y-1">
                 <div className="flex items-center space-x-1.5 font-bold text-amber-400">
                   <Flame className="w-4 h-4 stroke-[2]" />
                   <span>{profile.streakDays}-Day Streak Safe</span>
@@ -204,7 +204,7 @@ export const CharacterTab: React.FC<CharacterTabProps> = ({
                 </p>
               </div>
 
-              <div className="p-3 rounded-2xl bg-black/40 border border-white/[0.05] space-y-1">
+              <div className="p-4 rounded-2xl bg-[#090C12] space-y-1">
                 <div className="flex items-center space-x-1.5 font-bold text-brand-primary">
                   <Zap className="w-4 h-4 stroke-[2]" />
                   <span>1.25x Active Bonus</span>

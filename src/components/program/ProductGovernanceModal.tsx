@@ -62,7 +62,7 @@ const RATING_BADGE: Record<
   },
   none: {
     label: '✕ None',
-    className: 'bg-white/[0.05] text-slate-400 border-white/[0.08]',
+    className: 'bg-white/[0.06] text-slate-400',
   },
 };
 
@@ -98,11 +98,11 @@ export const ProductGovernanceModal: React.FC<ProductGovernanceModalProps> = ({
       aria-labelledby="governance-modal-title"
       className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-md"
     >
-      <div className="w-full max-w-2xl rounded-3xl surface-glass border border-white/[0.12] p-5 shadow-2xl max-h-[90vh] overflow-y-auto space-y-4">
+      <div className="w-full max-w-2xl rounded-3xl bg-[#0E1219] p-5 sm:p-6 shadow-2xl max-h-[90vh] overflow-y-auto space-y-5">
         {/* Header */}
         <div className="flex items-start justify-between gap-3">
-          <div className="flex items-center space-x-2.5">
-            <div className="w-9 h-9 rounded-2xl bg-brand-primary/15 border border-brand-primary/30 flex items-center justify-center text-brand-primary shrink-0">
+          <div className="flex items-center space-x-3">
+            <div className="w-10 h-10 rounded-2xl bg-brand-primary/15 flex items-center justify-center text-brand-primary shrink-0">
               <ShieldCheck className="w-5 h-5 stroke-[2]" />
             </div>
             <div>
@@ -125,15 +125,15 @@ export const ProductGovernanceModal: React.FC<ProductGovernanceModalProps> = ({
               onClose();
             }}
             aria-label="Close governance matrix"
-            className="p-1.5 rounded-full text-slate-400 hover:text-white hover:bg-white/[0.08] transition-colors"
+            className="w-9 h-9 rounded-full flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/[0.08] transition-colors"
           >
             <X className="w-4 h-4 stroke-[2]" />
           </button>
         </div>
 
         {/* Summary KPI Strip */}
-        <div className="grid grid-cols-3 gap-2">
-          <div className="p-3 rounded-2xl bg-brand-primary/10 border border-brand-primary/25">
+        <div className="grid grid-cols-3 gap-2.5">
+          <div className="p-3.5 rounded-2xl bg-[#141824]">
             <div className="flex items-center space-x-1.5 text-brand-primary text-xs font-bold">
               <Lock className="w-3.5 h-3.5 stroke-[2]" />
               <span>Locked</span>
@@ -146,7 +146,7 @@ export const ProductGovernanceModal: React.FC<ProductGovernanceModalProps> = ({
             </div>
           </div>
 
-          <div className="p-3 rounded-2xl bg-cyan-500/10 border border-cyan-400/25">
+          <div className="p-3.5 rounded-2xl bg-[#141824]">
             <div className="flex items-center space-x-1.5 text-cyan-300 text-xs font-bold">
               <RefreshCw className="w-3.5 h-3.5 stroke-[2]" />
               <span>Progressing</span>
@@ -159,7 +159,7 @@ export const ProductGovernanceModal: React.FC<ProductGovernanceModalProps> = ({
             </div>
           </div>
 
-          <div className="p-3 rounded-2xl bg-amber-500/10 border border-amber-400/25">
+          <div className="p-3.5 rounded-2xl bg-[#141824]">
             <div className="flex items-center space-x-1.5 text-amber-300 text-xs font-bold">
               <AlertTriangle className="w-3.5 h-3.5 stroke-[2]" />
               <span>Under Review</span>
@@ -174,7 +174,7 @@ export const ProductGovernanceModal: React.FC<ProductGovernanceModalProps> = ({
         </div>
 
         {/* View Switcher Tabs */}
-        <div className="grid grid-cols-2 gap-2 p-1 rounded-2xl bg-black/50 border border-white/[0.08]">
+        <div className="grid grid-cols-2 gap-2 p-1.5 rounded-2xl bg-[#090C12]">
           <button
             type="button"
             onClick={() => {
@@ -211,7 +211,7 @@ export const ProductGovernanceModal: React.FC<ProductGovernanceModalProps> = ({
         {/* VIEW 1: COMPETITOR COMPARISON MATRIX */}
         {activeView === 'matrix' && (
           <div className="space-y-3">
-            <div className="p-3 rounded-2xl bg-black/40 border border-white/[0.06] text-xs text-slate-300 leading-relaxed">
+            <div className="p-4 rounded-2xl bg-[#090C12] text-xs text-slate-300 leading-relaxed">
               Benchmarks <strong className="text-white">HeadStrong</strong> against{' '}
               <strong className="text-white">RP Hypertrophy</strong>,{' '}
               <strong className="text-white">Fitbod</strong>,{' '}
@@ -227,7 +227,7 @@ export const ProductGovernanceModal: React.FC<ProductGovernanceModalProps> = ({
                 return (
                   <div
                     key={row.id}
-                    className="p-3.5 rounded-2xl bg-surface-elevated border border-white/[0.08] space-y-2.5"
+                    className="p-4 sm:p-5 rounded-2xl bg-[#141824] space-y-3"
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div>
@@ -251,7 +251,7 @@ export const ProductGovernanceModal: React.FC<ProductGovernanceModalProps> = ({
                     </div>
 
                     {/* Competitor Comparison Grid */}
-                    <div className="grid grid-cols-1 sm:grid-cols-5 gap-2 pt-2 border-t border-white/[0.06] text-xs">
+                    <div className="grid grid-cols-1 sm:grid-cols-5 gap-2 pt-2 border-t border-white/[0.04] text-xs">
                       {(
                         [
                           { key: 'headstrong', name: 'HeadStrong', data: row.headstrong, highlight: true },
@@ -265,10 +265,10 @@ export const ProductGovernanceModal: React.FC<ProductGovernanceModalProps> = ({
                         return (
                           <div
                             key={comp.key}
-                            className={`p-2.5 rounded-xl border space-y-1 ${
+                            className={`p-3 rounded-xl space-y-1 ${
                               comp.highlight
-                                ? 'bg-brand-primary/[0.08] border-brand-primary/30'
-                                : 'bg-black/40 border-white/[0.06]'
+                                ? 'bg-brand-primary/[0.08]'
+                                : 'bg-[#090C12]'
                             }`}
                           >
                             <div className="flex items-center justify-between gap-1">
@@ -276,7 +276,7 @@ export const ProductGovernanceModal: React.FC<ProductGovernanceModalProps> = ({
                                 {comp.name}
                               </span>
                               <span
-                                className={`px-1.5 py-0.5 rounded text-xs font-semibold border ${badge.className}`}
+                                className={`px-1.5 py-0.5 rounded text-xs font-semibold ${badge.className}`}
                               >
                                 {badge.label}
                               </span>
@@ -299,7 +299,7 @@ export const ProductGovernanceModal: React.FC<ProductGovernanceModalProps> = ({
         {activeView === 'ledger' && (
           <div className="space-y-3">
             {/* Filter Pills */}
-            <div className="grid grid-cols-4 gap-1.5">
+            <div className="grid grid-cols-4 gap-1.5 p-1 rounded-2xl bg-[#090C12]">
               {(
                 [
                   { id: 'all', label: 'All Changes' },
@@ -317,10 +317,10 @@ export const ProductGovernanceModal: React.FC<ProductGovernanceModalProps> = ({
                       triggerHaptic('light');
                       setStatusFilter(tab.id);
                     }}
-                    className={`py-1.5 px-2 rounded-xl text-xs font-bold border transition-all ${
+                    className={`py-2 px-2 rounded-xl text-xs font-bold transition-all ${
                       active
-                        ? 'bg-brand-primary text-black border-brand-primary'
-                        : 'bg-black/40 text-slate-300 border-white/[0.08] hover:text-white'
+                        ? 'bg-brand-primary text-black'
+                        : 'text-slate-300 hover:text-white'
                     }`}
                   >
                     {tab.label}
@@ -337,7 +337,7 @@ export const ProductGovernanceModal: React.FC<ProductGovernanceModalProps> = ({
                 return (
                   <div
                     key={item.id}
-                    className="p-4 rounded-2xl bg-surface-elevated border border-white/[0.08] space-y-3"
+                    className="p-4 sm:p-5 rounded-2xl bg-[#141824] space-y-3"
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div>
@@ -350,7 +350,7 @@ export const ProductGovernanceModal: React.FC<ProductGovernanceModalProps> = ({
                       </div>
 
                       <span
-                        className={`px-2.5 py-1 rounded-full text-xs font-bold border flex items-center space-x-1 shrink-0 ${statusInfo.badgeClass}`}
+                        className={`px-2.5 py-1 rounded-full text-xs font-bold flex items-center space-x-1 shrink-0 ${statusInfo.badgeClass}`}
                       >
                         <StatusIcon className="w-3 h-3 stroke-[2]" />
                         <span>{statusInfo.label}</span>
@@ -358,7 +358,7 @@ export const ProductGovernanceModal: React.FC<ProductGovernanceModalProps> = ({
                     </div>
 
                     <div className="space-y-2 text-xs">
-                      <div className="p-2.5 rounded-xl bg-black/40 border border-white/[0.06]">
+                      <div className="p-3 rounded-xl bg-[#090C12]">
                         <span className="font-bold text-white block">
                           Rationale (Why this change was made):
                         </span>
@@ -368,7 +368,7 @@ export const ProductGovernanceModal: React.FC<ProductGovernanceModalProps> = ({
                       </div>
 
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                        <div className="p-2.5 rounded-xl bg-brand-primary/[0.06] border border-brand-primary/20">
+                        <div className="p-3 rounded-xl bg-brand-primary/[0.08]">
                           <span className="font-bold text-brand-primary block">
                             ✓ What Worked Well:
                           </span>
@@ -377,7 +377,7 @@ export const ProductGovernanceModal: React.FC<ProductGovernanceModalProps> = ({
                           </p>
                         </div>
 
-                        <div className="p-2.5 rounded-xl bg-amber-500/[0.06] border border-amber-500/20">
+                        <div className="p-3 rounded-xl bg-amber-500/[0.1]">
                           <span className="font-bold text-amber-300 block">
                             ⚠ Critique &amp; Governance Watch:
                           </span>
@@ -387,7 +387,7 @@ export const ProductGovernanceModal: React.FC<ProductGovernanceModalProps> = ({
                         </div>
                       </div>
 
-                      <div className="p-2.5 rounded-xl bg-black/60 border border-white/[0.08] flex items-start space-x-2">
+                      <div className="p-3 rounded-xl bg-[#090C12] flex items-start space-x-2">
                         <CheckCircle2 className="w-4 h-4 text-brand-primary shrink-0 mt-0.5 stroke-[2]" />
                         <div>
                           <span className="font-bold text-white">
@@ -399,7 +399,7 @@ export const ProductGovernanceModal: React.FC<ProductGovernanceModalProps> = ({
                     </div>
 
                     {/* Interactive Governance Status Controls */}
-                    <div className="pt-2 border-t border-white/[0.06] flex flex-wrap items-center justify-between gap-2">
+                    <div className="pt-2 border-t border-white/[0.04] flex flex-wrap items-center justify-between gap-2">
                       <span className="text-xs text-slate-400 font-mono">
                         Files: {item.files.join(', ')}
                       </span>
@@ -419,10 +419,10 @@ export const ProductGovernanceModal: React.FC<ProductGovernanceModalProps> = ({
                               key={st.id}
                               type="button"
                               onClick={() => handleSetItemStatus(item.id, st.id)}
-                              className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition-all ${
+                              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
                                 isCurrent
-                                  ? 'bg-brand-primary text-black border-brand-primary'
-                                  : 'bg-black/40 text-slate-300 border-white/[0.08] hover:text-white'
+                                  ? 'bg-brand-primary text-black'
+                                  : 'bg-[#090C12] text-slate-300 hover:text-white'
                               }`}
                             >
                               {st.label}

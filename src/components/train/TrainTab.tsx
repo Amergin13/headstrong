@@ -519,16 +519,16 @@ export const TrainTab: React.FC<TrainTabProps> = ({
   );
 
   return (
-    <div className="space-y-3.5 pb-28">
+    <div className="space-y-4 sm:space-y-5 pb-28">
       {/* 1. UNIFIED HERO CARD: Opinionated Asynchronous Hypertrophy Queue & Session Goals */}
-      <div className="biometric-card p-4.5 space-y-3.5 border border-white/[0.08]">
+      <div className="biometric-card p-5 sm:p-6 space-y-4">
         {/* A. Compact Context Header + Rest / History Toggle */}
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center flex-wrap gap-1.5">
-            <span className="px-2.5 py-0.5 rounded-full bg-brand-strain/15 text-brand-strain border border-brand-strain/30 text-xs font-bold uppercase tracking-wider">
+            <span className="px-3 py-1 rounded-full bg-brand-strain/15 text-brand-strain text-xs font-bold uppercase tracking-wider">
               Up Next
             </span>
-            <span className="px-2.5 py-0.5 rounded-full bg-white/[0.06] text-slate-200 border border-white/[0.08] text-xs font-semibold">
+            <span className="px-3 py-1 rounded-full bg-white/[0.06] text-slate-200 text-xs font-semibold">
               Week {mesoWeek} of 6 • {phaseMeta.name}
             </span>
           </div>
@@ -540,7 +540,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
               setShowScheduleOptions(!showScheduleOptions);
             }}
             aria-expanded={showScheduleOptions}
-            className="px-2.5 py-1.5 rounded-xl biometric-pill hover:bg-white/[0.12] text-xs font-semibold text-slate-200 hover:text-white flex items-center space-x-1 shrink-0 transition-colors"
+            className="px-3 py-1.5 rounded-xl bg-white/[0.06] hover:bg-white/[0.12] text-xs font-semibold text-slate-200 hover:text-white flex items-center space-x-1 shrink-0 transition-colors"
           >
             <span>Rest / History</span>
             {showScheduleOptions ? (
@@ -552,12 +552,12 @@ export const TrainTab: React.FC<TrainTabProps> = ({
         </div>
 
         {/* B. Primary Focal Point: Single Opinionated Workout Recommendation & Recovery Window */}
-        <div className="space-y-2 p-3.5 rounded-2xl bg-surface-elevated/70 border border-white/[0.06]">
-          <h1 className="font-extrabold text-xl text-white tracking-tight">
+        <div className="space-y-2.5 p-4 sm:p-4.5 rounded-2xl bg-[#141824]">
+          <h1 className="font-extrabold text-xl sm:text-2xl text-white tracking-tight">
             {activeWorkout.name}
           </h1>
           <div className="flex items-center flex-wrap gap-2">
-            <span className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full bg-brand-primary/15 text-brand-primary border border-brand-primary/30 text-xs font-bold">
+            <span className="inline-flex items-center space-x-1 px-3 py-1 rounded-full bg-brand-primary/15 text-brand-primary text-xs font-bold">
               <span>✓ {queueRec.recoveryBadge}</span>
             </span>
             <span className="text-xs text-slate-300 font-medium">
@@ -573,7 +573,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
         <div
           role="group"
           aria-label="Select training location and equipment"
-          className="grid grid-cols-3 gap-1 bg-[#08090C] p-1 rounded-2xl border border-white/[0.08]"
+          className="grid grid-cols-3 gap-1.5 bg-[#090C12] p-1.5 rounded-2xl"
         >
           {(
             [
@@ -608,7 +608,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
 
         {/* Expandable Panel: Log a Rest Day or Inspect Recent Completed Sessions */}
         {showScheduleOptions && (
-          <div className="p-3.5 rounded-2xl bg-black/60 border border-white/[0.1] space-y-3">
+          <div className="p-4 rounded-2xl bg-black/50 space-y-3">
             <div className="flex items-center justify-between gap-2">
               <div>
                 <span className="text-xs font-bold text-white block">
@@ -633,7 +633,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
             </div>
 
             {recentCompletedWorkouts.length > 0 && (
-              <div className="pt-2.5 border-t border-white/[0.08] space-y-1.5">
+              <div className="pt-2.5 border-t border-white/[0.04] space-y-1.5">
                 <span className="text-xs font-semibold text-slate-400 flex items-center space-x-1">
                   <History className="w-3.5 h-3.5 stroke-[2]" />
                   <span>Recent Completed Sessions (tap to inspect):</span>
@@ -644,7 +644,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
                       key={w.id}
                       type="button"
                       onClick={() => setPreviewPastWorkout(w)}
-                      className="px-2.5 py-1.5 rounded-xl bg-surface-elevated hover:bg-surface-hover border border-white/[0.08] text-xs text-slate-200 shrink-0 font-medium"
+                      className="px-3 py-1.5 rounded-xl bg-[#090C12] hover:bg-[#141824] text-xs text-slate-200 shrink-0 font-medium transition-colors"
                     >
                       {w.date.substring(5)} • {w.splitDay} ✓
                     </button>
@@ -655,7 +655,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
 
             {/* On-Device AI Coach Powered by Google Tensor (Diagnostics & Settings) */}
             {tensorHardware && tensorInsight && (
-              <div className="pt-2.5 border-t border-white/[0.08]">
+              <div className="pt-3 border-t border-white/[0.04]">
                 <TensorAICoachCard
                   insight={tensorInsight}
                   hardware={tensorHardware}
@@ -679,9 +679,9 @@ export const TrainTab: React.FC<TrainTabProps> = ({
         )}
 
         {/* D. "What do I need to do to make progress?" Action Checklist */}
-        <div className="p-3.5 rounded-2xl bg-[#08090C]/80 border border-white/[0.08] space-y-2.5">
+        <div className="p-4 sm:p-5 rounded-2xl bg-[#090C12] space-y-3">
           <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-1.5">
+            <div className="flex items-center space-x-2">
               <TrendingUp className="w-4 h-4 text-brand-primary stroke-[2]" />
               <h2 className="text-xs font-bold uppercase tracking-wider text-white">
                 How to Make Progress This Session
@@ -697,7 +697,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
               <strong>Light Recovery Day:</strong> Your body needs extra recovery today. Hold your weights steady, stop 2–3 reps shy of failure, and complete your sets to keep your streak alive.
             </p>
           ) : (
-            <ul className="space-y-1.5 text-xs text-slate-200">
+            <ul className="space-y-2 text-xs text-slate-200">
               {weightJumpItems.slice(0, 2).map(({ ex, prescription }) => {
                 const formattedW = formatImplementWeightLabel(
                   prescription.nextWeightKg,
@@ -706,7 +706,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
                 );
                 const targetReps = prescription.nextTargetReps[0] ?? ex.minReps;
                 return (
-                  <li key={ex.id} className="flex items-start space-x-2">
+                  <li key={ex.id} className="flex items-start space-x-2.5">
                     <span className="w-1.5 h-1.5 rounded-full bg-brand-primary mt-1.5 shrink-0" />
                     <span>
                       <strong className="text-brand-primary">Add Weight:</strong> Lift{' '}
@@ -730,7 +730,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
                   prescription.isPureBodyweight ||
                   (ex.equipment === 'bodyweight' && !ex.isWeightedCalisthenic);
                 return (
-                  <li key={ex.id} className="flex items-start space-x-2">
+                  <li key={ex.id} className="flex items-start space-x-2.5">
                     <span className="w-1.5 h-1.5 rounded-full bg-brand-strain mt-1.5 shrink-0" />
                     <span>
                       <strong className="text-brand-strain">
@@ -750,7 +750,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
               })}
 
               {weightJumpItems.length === 0 && repJumpItems.length === 0 && (
-                <li className="flex items-start space-x-2">
+                <li className="flex items-start space-x-2.5">
                   <span className="w-1.5 h-1.5 rounded-full bg-brand-primary mt-1.5 shrink-0" />
                   <span>
                     Hit the target weight and reps listed on each exercise card below with 1–2 reps left in the tank.
@@ -761,7 +761,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
           )}
 
           {/* Live Session Progress Bar & Finish Button */}
-          <div className="pt-2 border-t border-white/[0.06] flex items-center justify-between gap-3">
+          <div className="pt-2.5 border-t border-white/[0.04] flex items-center justify-between gap-3">
             <div className="flex-1 space-y-1.5">
               <div
                 role="progressbar"
@@ -769,7 +769,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
                 aria-valuemin={0}
                 aria-valuemax={100}
                 aria-label="Workout set completion progress"
-                className="w-full h-2.5 rounded-full bg-white/[0.06] overflow-hidden border border-white/5"
+                className="w-full h-2.5 rounded-full bg-white/[0.06] overflow-hidden"
               >
                 <div
                   className="h-full bg-brand-primary rounded-full transition-all duration-300 ease-out"
@@ -826,14 +826,14 @@ export const TrainTab: React.FC<TrainTabProps> = ({
 
       {/* Undo Set Deletion Guardrail Banner */}
       {deletedSetBackup && (
-        <div className="px-3.5 py-2.5 rounded-2xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-between text-xs">
+        <div className="px-4 py-3 rounded-2xl bg-amber-500/15 flex items-center justify-between text-xs">
           <span className="text-slate-200">
             Removed set from <strong className="text-white">{deletedSetBackup.exerciseName}</strong>
           </span>
           <button
             type="button"
             onClick={handleUndoDeleteSet}
-            className="px-2.5 py-1 rounded-lg bg-amber-400 text-black font-bold flex items-center space-x-1 hover:bg-amber-300 transition-colors"
+            className="px-3 py-1.5 rounded-xl bg-amber-400 text-black font-bold flex items-center space-x-1 hover:bg-amber-300 transition-colors"
           >
             <RotateCcw className="w-3 h-3 stroke-[2]" />
             <span>Undo</span>
@@ -842,7 +842,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
       )}
 
       {/* 3. Exercise Cards with Clear Step Numbers & "Target vs. Last Time" */}
-      <div className="space-y-3.5">
+      <div className="space-y-4 sm:space-y-5">
         {exercisePrescriptions.map(({ ex, prescription }, index) => {
           const def = exMap.get(ex.exerciseId);
           const meta = def
@@ -917,7 +917,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
           triggerHaptic('light');
           setShowAddExerciseModal(true);
         }}
-        className="w-full py-3 rounded-3xl border border-dashed border-white/[0.15] hover:border-brand-primary/50 bg-white/[0.02] hover:bg-brand-primary/[0.05] text-xs font-bold text-slate-300 hover:text-brand-primary flex items-center justify-center space-x-2 transition-all"
+        className="w-full py-3.5 rounded-2xl bg-[#0E1219] hover:bg-[#141824] text-xs font-bold text-slate-300 hover:text-brand-primary flex items-center justify-center space-x-2 transition-all min-h-[44px]"
       >
         <Plus className="w-4 h-4 stroke-[2]" />
         <span>Add Exercise to Today&apos;s Session</span>
@@ -925,9 +925,9 @@ export const TrainTab: React.FC<TrainTabProps> = ({
 
       {/* Add Exercise Picker Modal */}
       {showAddExerciseModal && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/80 backdrop-blur-md">
-          <div className="w-full max-w-md rounded-3xl surface-glass border border-white/[0.12] p-5 shadow-2xl space-y-3 max-h-[80vh] flex flex-col">
-            <div className="flex items-center justify-between border-b border-white/[0.08] pb-3">
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/85 backdrop-blur-md">
+          <div className="w-full max-w-md rounded-3xl bg-[#0E1219] p-5 sm:p-6 shadow-2xl space-y-4 max-h-[80vh] flex flex-col">
+            <div className="flex items-center justify-between border-b border-white/[0.04] pb-3">
               <div>
                 <h3 className="font-bold text-base text-white">
                   Add Exercise
@@ -939,13 +939,14 @@ export const TrainTab: React.FC<TrainTabProps> = ({
               <button
                 type="button"
                 onClick={() => setShowAddExerciseModal(false)}
-                className="w-8 h-8 rounded-full bg-white/[0.08] text-slate-400 hover:text-white flex items-center justify-center text-xs font-bold"
+                aria-label="Close add exercise modal"
+                className="w-9 h-9 rounded-full bg-white/[0.06] hover:bg-white/[0.12] text-slate-400 hover:text-white flex items-center justify-center text-xs font-bold transition-colors"
               >
                 ✕
               </button>
             </div>
 
-            <div className="space-y-1.5 overflow-y-auto no-scrollbar pr-1">
+            <div className="space-y-2 overflow-y-auto no-scrollbar pr-1">
               {exerciseCatalog.map((def) => {
                 const equipLabel =
                   def.equipment === 'barbell'
@@ -960,7 +961,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
                     key={def.id}
                     type="button"
                     onClick={() => handleAddExerciseToSession(def)}
-                    className="w-full p-3 rounded-2xl bg-black/50 hover:bg-surface-elevated border border-white/[0.06] flex items-center justify-between text-left transition-all"
+                    className="w-full p-3.5 rounded-2xl bg-[#090C12] hover:bg-[#141824] flex items-center justify-between text-left transition-all"
                   >
                     <div>
                       <div className="font-bold text-sm text-white">
@@ -1012,7 +1013,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
       {/* Past Workout Preview Modal */}
       {previewPastWorkout && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md">
-          <div className="w-full max-w-sm rounded-3xl surface-glass border border-white/[0.12] p-5 shadow-2xl space-y-3">
+          <div className="w-full max-w-sm rounded-3xl bg-[#0E1219] p-5 sm:p-6 shadow-2xl space-y-4">
             <div className="flex justify-between items-center">
               <h3 className="font-bold text-base text-white">
                 Completed Workout ({previewPastWorkout.date})
@@ -1035,7 +1036,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
               {previewPastWorkout.exercises.map((ex) => (
                 <div
                   key={ex.id}
-                  className="p-2.5 rounded-xl bg-black/40 border border-white/[0.06] text-xs"
+                  className="p-3 rounded-xl bg-[#090C12] text-xs"
                 >
                   <div className="font-bold text-white">{ex.name}</div>
                   <div className="text-xs text-slate-400 font-mono mt-1">

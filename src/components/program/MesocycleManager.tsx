@@ -76,7 +76,7 @@ export const MesocycleManager: React.FC<MesocycleManagerProps> = ({
   };
 
   return (
-    <div className="biometric-card p-4.5 border border-white/[0.08] space-y-3.5">
+    <div className="biometric-card p-5 sm:p-6 space-y-4">
       <div className="flex items-center justify-between">
         <div>
           <h3 className="font-extrabold text-base text-white tracking-tight">
@@ -87,13 +87,13 @@ export const MesocycleManager: React.FC<MesocycleManagerProps> = ({
           </p>
         </div>
 
-        <span className="text-xs font-mono font-bold text-brand-primary px-2.5 py-1 rounded-full bg-brand-primary/10 border border-brand-primary/30">
+        <span className="text-xs font-mono font-bold text-brand-primary px-3 py-1 rounded-full bg-brand-primary/15">
           Week {currentWeek} of {totalWeeks}
         </span>
       </div>
 
       {/* Week Timeline Pills */}
-      <div className="grid grid-cols-6 gap-1.5 bg-[#08090C] p-1.5 rounded-2xl border border-white/[0.08]">
+      <div className="grid grid-cols-6 gap-1.5 bg-[#090C12] p-1.5 rounded-2xl">
         {mesocycleWeeks.map((m) => {
           const isSelected = currentWeek === m.week;
           const isDeload = m.week === 6;
@@ -122,7 +122,7 @@ export const MesocycleManager: React.FC<MesocycleManagerProps> = ({
       </div>
 
       {/* Current Stage Card */}
-      <div className="p-3.5 rounded-2xl bg-[#0D1015] border border-white/[0.08] text-xs space-y-2">
+      <div className="p-4 rounded-2xl bg-[#090C12] text-xs space-y-2">
         <div className="flex items-center justify-between">
           <span className="font-bold text-white text-sm">
             {currentStage.title}
@@ -136,7 +136,7 @@ export const MesocycleManager: React.FC<MesocycleManagerProps> = ({
         </p>
 
         {scheduledWeekLocations?.[currentWeek] === 'travel' && (
-          <div className="mt-2 pt-2 border-t border-white/[0.06] flex items-center gap-1.5 text-cyan-300 font-medium">
+          <div className="mt-2 pt-2 flex items-center gap-1.5 text-cyan-300 font-medium">
             <Plane className="w-3.5 h-3.5 text-cyan-400 stroke-[2]" />
             <span>Scheduled Travel Week (Calibrated Bodyweight Hypertrophy)</span>
           </div>
