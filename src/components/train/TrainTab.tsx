@@ -364,7 +364,9 @@ export const TrainTab: React.FC<TrainTabProps> = ({
   const handleConfirmSwap = (newDef: ExerciseDefinition, convertedWeightKg: number) => {
     if (!swappingExercise) return;
     const meta = getExerciseBiomechanicalMeta(newDef);
-    const isPureBw = newDef.equipment === 'bodyweight' && !newDef.isWeightedCalisthenic;
+    const isPureBw =
+      (newDef.equipment === 'bodyweight' && !newDef.isWeightedCalisthenic) ||
+      activeWorkout.location === 'travel';
     const effectiveTargetWeight = isPureBw ? 0 : convertedWeightKg;
 
     // Compute canonical E1RM from the exercise being swapped
@@ -414,9 +416,9 @@ export const TrainTab: React.FC<TrainTabProps> = ({
         ...ex,
         exerciseId: newDef.id,
         name: newDef.name,
-        equipment: newDef.equipment,
+        equipment: isPureBw ? 'bodyweight' : newDef.equipment,
         isRdl: newDef.isRdl,
-        isWeightedCalisthenic: newDef.isWeightedCalisthenic,
+        isWeightedCalisthenic: isPureBw ? false : newDef.isWeightedCalisthenic,
         isIsolation: meta.isIsolation,
         resistanceProfile: meta.resistanceProfile,
         sfrScore: meta.sfrScore,

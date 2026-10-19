@@ -564,6 +564,45 @@ assert(
   `Barbell Bench Press maps to true Horizontal Chest Press alternatives across Gym, Home (DB/TRX), and Travel (Push-Up)`
 );
 
+// Verify that filtering for Travel strictly excludes Barbell Bench Press and loaded gym gear
+const travelBenchAlternatives = getVectorImplementOptions(benchDef, seeded.exercises, 'travel', []);
+const travelBenchAltIds = travelBenchAlternatives.map((e) => e.id);
+assert(
+  !travelBenchAltIds.includes('ex-bench-press') &&
+    !travelBenchAltIds.includes('ex-db-bench-press') &&
+    !travelBenchAltIds.includes('ex-flat-db-press') &&
+    !travelBenchAltIds.includes('ex-cable-chest-press'),
+  `When workout is set to Travel, Barbell Bench Press, Dumbbell Bench Press, and Cable Chest Press are NEVER included as exercise swap alternatives (got: ${travelBenchAltIds.join(', ')})`
+);
+assert(
+  travelBenchAltIds.includes('ex-deficit-pushup') &&
+    travelBenchAltIds.includes('ex-pushup') &&
+    travelBenchAltIds.includes('ex-wide-pushup'),
+  `Travel exercise swaps provide multiple distinct pure-bodyweight alternatives (got: ${travelBenchAltIds.join(', ')})`
+);
+
+const travelPushSession = adaptWorkoutSessionToLocation(
+  pushW3,
+  'travel',
+  [],
+  seeded.exercises,
+  seeded.workouts,
+  'Normal'
+);
+assert(
+  travelPushSession.location === 'travel' &&
+    travelPushSession.exercises.every(
+      (ex) => ex.equipment === 'bodyweight' && !ex.name.toLowerCase().includes('barbell')
+    ),
+  `Travel location adaptation converts all Push Day exercises to pure bodyweight movements without any barbell or gym exercises (${travelPushSession.exercises.map((e) => e.name).join(' | ')})`
+);
+const pushChestExs = travelPushSession.exercises.filter((e) => e.pillar === 'Horizontal Push');
+const pushChestIds = new Set(pushChestExs.map((e) => e.exerciseId));
+assert(
+  pushChestExs.length >= 2 && pushChestIds.size === pushChestExs.length,
+  `Travel Push Day converts multiple chest exercises to distinct, non-duplicate bodyweight push-up variations (got: ${pushChestExs.map((e) => e.name).join(' | ')})`
+);
+
 const homePushSession = adaptWorkoutSessionToLocation(
   pushW3,
   'home',

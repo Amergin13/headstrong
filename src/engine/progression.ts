@@ -198,6 +198,10 @@ export function getVectorImplementOptions(
     canPerformExerciseInLocation(def, locationFilter, homeEquipment)
   );
 
+  if (locationFilter === 'travel' || locationFilter === 'home') {
+    return locationMatches;
+  }
+
   return locationMatches.length > 0 ? locationMatches : familyMatches;
 }
 

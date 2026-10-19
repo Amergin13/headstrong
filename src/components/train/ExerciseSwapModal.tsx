@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   ExerciseDefinition,
   ExerciseSession,
@@ -53,6 +53,8 @@ export const ExerciseSwapModal: React.FC<ExerciseSwapModalProps> = ({
   onConfirmSwap,
   onClose,
 }) => {
+  const [selectedLocation, setSelectedLocation] = useState<TrainingLocation>(activeLocation);
+
   const currentWeight =
     currentExercise.sets.find((s) => !s.isWarmup && s.setType !== 'warmup')?.targetWeightKg ??
     currentExercise.sets[0]?.targetWeightKg ??
@@ -63,18 +65,25 @@ export const ExerciseSwapModal: React.FC<ExerciseSwapModalProps> = ({
   const familyLabel = getMovementFamilyLabel(currentDef || currentExercise);
 
   // Strictly match exercises in the exact same Biomechanical Movement Family (never mix compounds with core/isolations)
-  // Sort options that match the user's current training location to the top
+  // Strictly filter by selected training environment so gym barbell/cables NEVER appear in Travel
   const alternatives = exerciseCatalog
-    .filter(
-      (ex) => getMovementVectorId(ex) === targetVectorId && ex.id !== currentExercise.exerciseId
-    )
+    .filter((ex) => {
+      if (ex.id === currentExercise.exerciseId) return false;
+      if (getMovementVectorId(ex) !== targetVectorId) return false;
+      return canPerformExerciseInLocation(ex, selectedLocation, homeEquipment);
+    })
     .sort((a, b) => {
-      const aFits = canPerformExerciseInLocation(a, activeLocation, homeEquipment) ? 1 : 0;
-      const bFits = canPerformExerciseInLocation(b, activeLocation, homeEquipment) ? 1 : 0;
-      return bFits - aFits;
+      const aPureBw = (!a.requiredHomeEquipment || a.requiredHomeEquipment.length === 0) ? 1 : 0;
+      const bPureBw = (!b.requiredHomeEquipment || b.requiredHomeEquipment.length === 0) ? 1 : 0;
+      return bPureBw - aPureBw;
     });
 
   const computeConvertedWeight = (targetDef: ExerciseDefinition): number => {
+    const isPureBw =
+      selectedLocation === 'travel' ||
+      (targetDef.equipment === 'bodyweight' && !targetDef.isWeightedCalisthenic);
+    if (isPureBw) return 0;
+
     return translateWeightBetweenImplements(
       currentWeight,
       {
@@ -161,6 +170,46 @@ export const ExerciseSwapModal: React.FC<ExerciseSwapModalProps> = ({
           </div>
         </div>
 
+        {/* Environment Filter Tabs: Strict Equipment Guardrail */}
+        <div
+          role="group"
+          aria-label="Filter replacement exercises by environment"
+          className="grid grid-cols-3 gap-1 bg-[#08090C] p-1 rounded-2xl border border-white/[0.08]"
+        >
+          {(
+            [
+              { id: 'travel', label: 'Travel' },
+              { id: 'home', label: 'At Home' },
+              { id: 'gym', label: 'Full Gym' },
+            ] as const
+          ).map((loc) => {
+            const isSelected = selectedLocation === loc.id;
+            return (
+              <button
+                key={loc.id}
+                type="button"
+                aria-pressed={isSelected}
+                onClick={() => {
+                  triggerHaptic('light');
+                  setSelectedLocation(loc.id);
+                }}
+                className={`py-2 px-1 text-center rounded-xl text-xs font-bold transition-all min-h-[44px] flex items-center justify-center space-x-1 ${
+                  isSelected
+                    ? 'bg-brand-primary text-black font-extrabold shadow-sm'
+                    : 'text-slate-300 hover:text-white hover:bg-white/[0.06]'
+                }`}
+              >
+                <span>{loc.label}</span>
+                {loc.id === activeLocation && (
+                  <span className="text-xs font-normal opacity-80">
+                    (Active)
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+
         {/* Matched Alternatives */}
         <div className="space-y-2">
           <div className="flex items-center justify-between px-0.5">
@@ -172,58 +221,69 @@ export const ExerciseSwapModal: React.FC<ExerciseSwapModalProps> = ({
             </span>
           </div>
 
-          {alternatives.map((alt) => {
-            const convertedKg = computeConvertedWeight(alt);
-            const equipLabel =
-              alt.requiredHomeEquipment && alt.requiredHomeEquipment.length > 0
-                ? alt.requiredHomeEquipment.map((t) => HOME_TAG_LABELS[t] || t).join(' + ')
-                : EQUIPMENT_LABELS[alt.equipment] || alt.equipment;
-            const fitsCurrentLoc = canPerformExerciseInLocation(
-              alt,
-              activeLocation,
-              homeEquipment
-            );
+          {alternatives.length === 0 ? (
+            <div className="p-4 rounded-2xl bg-surface-elevated/70 border border-white/[0.06] text-center space-y-1">
+              <p className="text-xs font-bold text-white">
+                No {selectedLocation === 'travel' ? 'travel' : selectedLocation === 'home' ? 'home' : 'gym'} exercises found
+              </p>
+              <p className="text-xs text-slate-400">
+                Switch environment tabs above to view loaded alternatives with target weight carry-over.
+              </p>
+            </div>
+          ) : (
+            alternatives.map((alt) => {
+              const convertedKg = computeConvertedWeight(alt);
+              const equipLabel =
+                alt.requiredHomeEquipment && alt.requiredHomeEquipment.length > 0
+                  ? alt.requiredHomeEquipment.map((t) => HOME_TAG_LABELS[t] || t).join(' + ')
+                  : EQUIPMENT_LABELS[alt.equipment] || alt.equipment;
+              const isPureBw =
+                selectedLocation === 'travel' ||
+                (alt.equipment === 'bodyweight' && !alt.isWeightedCalisthenic);
 
-            return (
-              <button
-                key={alt.id}
-                type="button"
-                onClick={() => handleSelectAlternative(alt)}
-                className="w-full p-3.5 rounded-2xl bg-surface-elevated hover:bg-surface-hover border border-white/[0.08] hover:border-brand-primary/40 text-left transition-all space-y-1.5"
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <div className="font-bold text-white text-sm">
-                      {alt.name}
+              return (
+                <button
+                  key={alt.id}
+                  type="button"
+                  onClick={() => handleSelectAlternative(alt)}
+                  className="w-full p-3.5 rounded-2xl bg-surface-elevated hover:bg-surface-hover border border-white/[0.08] hover:border-brand-primary/40 text-left transition-all space-y-1.5 min-h-[44px]"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="font-bold text-white text-sm">
+                        {alt.name}
+                      </div>
+                      <div className="text-xs text-slate-400 mt-0.5">
+                        {equipLabel} • {alt.defaultRepRange[0]}–{alt.defaultRepRange[1]} reps
+                        {selectedLocation === 'travel' ? ' • Zero Equipment' : ''}
+                      </div>
                     </div>
-                    <div className="text-xs text-slate-400 mt-0.5">
-                      {equipLabel} • {alt.defaultRepRange[0]}–{alt.defaultRepRange[1]} reps
-                      {fitsCurrentLoc && activeLocation !== 'gym' ? ' • Fits your setup' : ''}
+
+                    <div className="text-right shrink-0">
+                      <span className="font-mono font-bold text-brand-primary text-sm block">
+                        {isPureBw
+                          ? 'Bodyweight'
+                          : formatImplementWeightLabel(
+                              convertedKg,
+                              alt.equipment,
+                              alt.isWeightedCalisthenic
+                            )}
+                      </span>
+                      <span className="text-xs text-slate-400">
+                        {isPureBw ? '0 kg load' : 'Matched target'}
+                      </span>
                     </div>
                   </div>
 
-                  <div className="text-right shrink-0">
-                    <span className="font-mono font-bold text-brand-primary text-sm block">
-                      {formatImplementWeightLabel(
-                        convertedKg,
-                        alt.equipment,
-                        alt.isWeightedCalisthenic
-                      )}
-                    </span>
-                    <span className="text-xs text-slate-400">
-                      Matched target
-                    </span>
-                  </div>
-                </div>
-
-                {alt.whyItWorks && (
-                  <p className="text-xs text-slate-300 leading-relaxed pt-1 border-t border-white/[0.06]">
-                    {alt.whyItWorks}
-                  </p>
-                )}
-              </button>
-            );
-          })}
+                  {alt.whyItWorks && (
+                    <p className="text-xs text-slate-300 leading-relaxed pt-1 border-t border-white/[0.06]">
+                      {alt.whyItWorks}
+                    </p>
+                  )}
+                </button>
+              );
+            })
+          )}
         </div>
       </div>
     </div>

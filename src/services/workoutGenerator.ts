@@ -487,7 +487,21 @@ export function adaptWorkoutSessionToLocation(
         const bPureBw = (!b.requiredHomeEquipment || b.requiredHomeEquipment.length === 0) ? 1 : 0;
         return bPureBw - aPureBw;
       });
-      targetDef = sortedTravel.find((d) => !usedIds.has(d.id)) || sortedTravel[0] || currentDef;
+      targetDef = sortedTravel.find((d) => !usedIds.has(d.id)) || sortedTravel[0];
+      if (!targetDef) {
+        // Fallback within pillar if no exact vector match for travel
+        const pillarTravelCandidates = exerciseCatalog.filter(
+          (d) => d.pillar === ex.pillar && canPerformExerciseInLocation(d, 'travel', homeEquipment)
+        );
+        targetDef = pillarTravelCandidates.find((d) => !usedIds.has(d.id)) || pillarTravelCandidates[0];
+      }
+      if (!targetDef) {
+        // Absolute fallback: any valid travel exercise in catalog
+        const anyTravelCandidates = exerciseCatalog.filter((d) =>
+          canPerformExerciseInLocation(d, 'travel', homeEquipment)
+        );
+        targetDef = anyTravelCandidates.find((d) => !usedIds.has(d.id)) || anyTravelCandidates[0];
+      }
     }
 
     if (!targetDef) {
