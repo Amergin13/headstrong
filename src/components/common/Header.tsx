@@ -64,7 +64,7 @@ export const Header: React.FC<HeaderProps> = ({
             <span className="font-mono">{profile.streakDays}d</span>
           </div>
 
-          {/* On-Device AI Coach Entry Point */}
+          {/* AI Coach Entry Point */}
           {onOpenAICoach && (
             <button
               type="button"
@@ -72,9 +72,9 @@ export const Header: React.FC<HeaderProps> = ({
                 triggerHaptic('light');
                 onOpenAICoach();
               }}
-              aria-label="Open On-Device AI Coach"
+              aria-label="Open AI Coach"
               className="flex items-center space-x-1.5 px-2.5 py-1 rounded-full text-xs font-bold border border-brand-strain/30 bg-brand-strain/10 text-brand-strain hover:bg-brand-strain/20 transition-all active:scale-95 min-h-[44px]"
-              title="On-Device AI Coach"
+              title="AI Coach"
             >
               <Cpu className="w-3.5 h-3.5 stroke-[2]" />
               <span>AI</span>

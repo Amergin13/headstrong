@@ -432,20 +432,21 @@ assert(
 const chatModalSrc = fs.readFileSync(path.resolve(process.cwd(), 'src/components/assistant/AICoachChatModal.tsx'), 'utf-8');
 assert(
   chatModalSrc.includes('AICoachChatModal') &&
-    chatModalSrc.includes('On-Device AI Coach') &&
-    chatModalSrc.includes('Knowledge Graph Grounding') &&
+    chatModalSrc.includes('View All Equipment') &&
+    !chatModalSrc.includes('Knowledge Graph Grounding') &&
+    !chatModalSrc.includes('Local Engine') &&
     chatModalSrc.includes('min-h-[44px]') &&
     !chatModalSrc.includes('text-[10px]') &&
     !chatModalSrc.includes('text-[9px]') &&
     !chatModalSrc.includes('text-[8px]'),
-  'AICoachChatModal.tsx enforces >=44px touch targets, Knowledge Graph citations, and strict >=12px typography floor'
+  'AICoachChatModal.tsx enforces >=44px touch targets, zero technical jargon, View All Equipment CTA, and strict >=12px typography floor'
 );
 
 const headerSrc = fs.readFileSync(path.resolve(process.cwd(), 'src/components/common/Header.tsx'), 'utf-8');
 assert(
   headerSrc.includes('onOpenAICoach') &&
-    headerSrc.includes('title="On-Device AI Coach"'),
-  'Header.tsx provides canonical 1-tap entry point to the On-Device AI Coach'
+    headerSrc.includes('title="AI Coach"'),
+  'Header.tsx provides canonical 1-tap entry point to the AI Coach'
 );
 
 const tensorCardSrc = fs.readFileSync(path.resolve(process.cwd(), 'src/components/train/TensorAICoachCard.tsx'), 'utf-8');

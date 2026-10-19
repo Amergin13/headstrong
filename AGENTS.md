@@ -143,6 +143,7 @@ When HeadStrong runs on Google Pixel phones (Pixel 6, 7, 8, 9, Fold), it automat
    - **Tensor Biomechanical Neural Matcher:** Evaluates exercise substitution compatibility, joint torque, and stimulus-to-fatigue ratios.
    - **Privacy Invariant:** 100% on-device processing. Zero user biometric or health data ever leaves the phone.
    - **Latency Invariant:** On-device inference executes in $\le 15\text{ms}$.
+   - **User Interface Invariant (Zero Technical Concept Leaks):** Local execution and acceleration must remain completely invisible to the user. The UI must never display "Knowledge Graph Grounding", "On-Device Local Engine", hardware chip names, or millisecond latency telemetry. All actions taken by the AI (such as registering equipment) must surface clear user outcomes with direct action buttons (e.g. "View All Equipment").
 
 ---
 
@@ -252,9 +253,11 @@ Every UI component, layout, copy change, and new flow MUST be designed and evalu
    - **Visual Assets:** Visual assets enhance content to bring joy, positive surprise, or satisfaction when stakes are low.
 
 ### 5.2 Content Design Heuristics (6 Principles)
-1. **Clarity (Be Clear Instead of Clever):**
+1. **Clarity (Be Clear Instead of Clever & Zero Technical Concepts in UI):**
    - Give customers all the information they need to make good decisions quickly and with confidence.
-   - Use plain, simple language without complex words, jargon, slang, metaphors, or cultural references. **NEVER expose internal UX, engineering, or academic method names** (`OOUX`, `PKG`, `Canonical Vector`, `SFR`, `MAV/MEV/MRV`) in user-facing UI.
+   - **MANDATORY RULE — NEVER MENTION TECHNICAL CONCEPTS IN THE UI:** The user does not need to know about knowledge graphs, on-device local engines, inference latency, hardware chips (TPU/NPU), canonical vectors, or other engineering details. Machine learning, on-device computation, and knowledge graph grounding must operate completely invisibly in the background. The user interface must speak exclusively to athlete goals, workout progression, and physical recovery.
+   - **Actionable User Outcomes Instead of Technical Badges:** When an action occurs (such as adding new equipment like a pull-up bar via the AI Coach or settings), never display technical citation chips (e.g. "Knowledge Graph Grounding") or latency stamps ("5ms • Local Engine"). Instead, provide an immediate, clear Call-to-Action (CTA) button in the "Plan Updated" banner (e.g. `"View All Equipment"`) so the athlete can directly review and manage their equipment setup in 1 tap.
+   - Use plain, simple language without complex words, jargon, slang, metaphors, or cultural references. NEVER expose internal UX, engineering, or academic method names (`OOUX`, `PKG`, `Knowledge Graph Grounding`, `On-Device Local Engine`, `Canonical Vector`, `SFR`, `MAV/MEV/MRV`) in user-facing UI.
    - Refer to new features or concepts without introducing confusing new names.
    - Write headings so the meaning of each screen can be quickly understood just by scanning.
    - Make the primary call-to-action compelling for the immediate task and show it on the first screen.

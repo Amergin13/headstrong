@@ -26,6 +26,7 @@ import { triggerHaptic } from '../../utils/haptics';
 
 export interface OnboardingModalProps {
   profile: UserProfile;
+  initialStep?: 1 | 2 | 3 | 4;
   onCompleteOnboarding: (updated: {
     goalPhase: GoalPhase;
     programType: ProgramSplitType;
@@ -109,11 +110,12 @@ const HOME_EQUIPMENT_OPTIONS: {
 
 export const OnboardingModal: React.FC<OnboardingModalProps> = ({
   profile,
+  initialStep = 1,
   onCompleteOnboarding,
   onClose,
   onExploreDemo,
 }) => {
-  const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
+  const [step, setStep] = useState<1 | 2 | 3 | 4>(initialStep);
   const [selectedProgram, setSelectedProgram] = useState<ProgramSplitType>(
     profile.programType || 'ppl_upper'
   );
@@ -604,12 +606,16 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
               type="button"
               onClick={() => {
                 triggerHaptic('light');
-                setStep((prev) => (prev === 4 ? 3 : prev === 3 ? 2 : 1));
+                if (initialStep === 4 && step === 4) {
+                  onClose();
+                } else {
+                  setStep((prev) => (prev === 4 ? 3 : prev === 3 ? 2 : 1));
+                }
               }}
               className="px-3.5 py-2.5 rounded-2xl bg-white/[0.06] hover:bg-white/[0.12] text-xs font-semibold text-slate-200 flex items-center space-x-1"
             >
               <ChevronLeft className="w-4 h-4 stroke-[2]" />
-              <span>Back</span>
+              <span>{initialStep === 4 && step === 4 ? 'Close' : 'Back'}</span>
             </button>
           ) : (
             <div />
@@ -634,7 +640,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
               className="px-5 py-2.5 rounded-2xl bg-brand-primary text-black text-xs font-bold flex items-center space-x-1.5 shadow-md shadow-brand-primary/20"
             >
               <Check className="w-4 h-4 stroke-[2.5]" />
-              <span>Start Day 1 Workout</span>
+              <span>{initialStep === 4 ? 'Save Equipment' : 'Start Day 1 Workout'}</span>
             </button>
           )}
         </div>

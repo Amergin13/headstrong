@@ -188,12 +188,7 @@ export const ReadinessBanner: React.FC<ReadinessBannerProps> = ({
                 {tensorHardware && (
                   <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full bg-white/[0.06] text-slate-300 border border-white/[0.08] text-xs font-semibold">
                     <ShieldCheck className="w-3 h-3 text-brand-primary stroke-[2]" />
-                    <span>
-                      {tensorHardware.isPixelDevice
-                        ? `${tensorHardware.chipModel.replace('Google ', '')} TPU`
-                        : 'On-Device Engine'}
-                      {tensorHardware.inferenceLatencyMs > 0 && ` • ${tensorHardware.inferenceLatencyMs}ms`}
-                    </span>
+                    <span>Auto-Regulated</span>
                   </span>
                 )}
               </div>

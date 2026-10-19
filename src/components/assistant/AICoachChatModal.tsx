@@ -38,6 +38,7 @@ interface AICoachChatModalProps {
   weeklyVolume?: Record<string, number>;
   onClose: () => void;
   onApplyAction: (updatedProfile?: Partial<UserProfile>, updatedWorkout?: WorkoutSession) => void;
+  onViewAllEquipment?: () => void;
 }
 
 export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
@@ -51,6 +52,7 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
   weeklyVolume,
   onClose,
   onApplyAction,
+  onViewAllEquipment,
 }) => {
   const [hardware, setHardware] = useState<TensorHardwareProfile>({
     isPixelDevice: false,
@@ -78,11 +80,11 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
     });
 
     // Initial contextual welcome message
-    const welcomeText = `Hey! I'm your On-Device AI Coach, running 100% locally on your phone. You're currently on Week ${
+    const welcomeText = `Hey! I'm your AI Coach. You're currently on Week ${
       profile.mesocycleWeek || 3
     } training ${activeWorkout.splitDay} Day (${activeWorkout.name}) in ${
       activeWorkout.location === 'travel'
-        ? 'Travel mode'
+        ? 'Bodyweight mode'
         : activeWorkout.location === 'home'
         ? 'At Home'
         : 'Gym'
@@ -215,24 +217,12 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
             <div>
               <div className="flex items-center space-x-2">
                 <h3 id="ai-coach-title" className="font-bold text-sm text-white tracking-tight">
-                  On-Device AI Coach
+                  AI Coach
                 </h3>
-                <span
-                  className={`px-2 py-0.5 rounded-full text-xs font-semibold flex items-center gap-1 ${
-                    hardware.isPixelDevice
-                      ? 'bg-emerald-500/15 border border-emerald-500/30 text-emerald-400'
-                      : 'bg-white/[0.06] border border-white/[0.1] text-slate-300'
-                  }`}
-                >
-                  <Zap className="w-3 h-3 stroke-[2]" />
-                  {hardware.isPixelDevice
-                    ? `${hardware.chipModel.replace('Google ', '')} TPU`
-                    : 'Local Engine'}
-                </span>
               </div>
               <p className="text-xs text-slate-400 flex items-center gap-1.5 mt-0.5">
                 <ShieldCheck className="w-3.5 h-3.5 text-emerald-400 stroke-[2]" />
-                <span>Zero Cloud APIs • 100% Private &amp; Local</span>
+                <span>Private &amp; Personalized</span>
               </p>
             </div>
           </div>
@@ -290,37 +280,40 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
 
                   {/* Assistant Action Badge if an action was taken */}
                   {!isUser && msg.actionApplied && (
-                    <div className="mt-2 p-2.5 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 flex items-start gap-2">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-400 stroke-[2] shrink-0 mt-0.5" />
-                      <div>
-                        <div className="font-bold text-xs text-white">
-                          Plan Updated
-                        </div>
-                        <div className="text-xs text-emerald-300 font-medium mt-0.5">
-                          {msg.actionApplied.summary}
+                    <div className="mt-2 p-3 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 space-y-2">
+                      <div className="flex items-start gap-2">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-400 stroke-[2] shrink-0 mt-0.5" />
+                        <div>
+                          <div className="font-bold text-xs text-white">
+                            Plan Updated
+                          </div>
+                          <div className="text-xs text-emerald-300 font-medium mt-0.5">
+                            {msg.actionApplied.summary}
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  )}
 
-                  {/* Knowledge Graph Citations */}
-                  {!isUser && msg.knowledgeGraphCitations && msg.knowledgeGraphCitations.length > 0 && (
-                    <div className="pt-2 border-t border-white/[0.08] space-y-1.5">
-                      <span className="text-xs font-semibold text-slate-400 flex items-center gap-1">
-                        <Sparkles className="w-3 h-3 text-brand-primary stroke-[2]" />
-                        Knowledge Graph Grounding
-                      </span>
-                      <div className="flex flex-wrap gap-1.5">
-                        {msg.knowledgeGraphCitations.map((c, i) => (
-                          <span
-                            key={i}
-                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-white/[0.06] border border-white/[0.08] text-xs text-slate-300 font-mono"
-                          >
-                            <span className="text-slate-400 font-sans">{c.label}:</span>
-                            <span className="font-bold text-white">{c.value}</span>
-                          </span>
-                        ))}
-                      </div>
+                      {/* Actionable CTA when equipment is added or updated */}
+                      {(msg.actionApplied.type === 'UPDATE_EQUIPMENT' ||
+                        msg.actionApplied.summary?.toLowerCase().includes('equipment') ||
+                        msg.actionApplied.summary?.toLowerCase().includes('bar') ||
+                        msg.actionApplied.summary?.toLowerCase().includes('pullup') ||
+                        msg.actionApplied.summary?.toLowerCase().includes('pull_up')) && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            triggerHaptic('light');
+                            if (onViewAllEquipment) {
+                              onViewAllEquipment();
+                            }
+                          }}
+                          className="w-full mt-1 px-3 py-2.5 rounded-xl bg-emerald-500/25 hover:bg-emerald-500/35 border border-emerald-500/40 text-white text-xs font-bold min-h-[44px] flex items-center justify-center gap-1.5 transition-all active:scale-[0.98]"
+                        >
+                          <Dumbbell className="w-3.5 h-3.5 text-emerald-300 stroke-[2]" />
+                          <span>View All Equipment</span>
+                          <ChevronRight className="w-3.5 h-3.5 text-emerald-200 stroke-[2]" />
+                        </button>
+                      )}
                     </div>
                   )}
 
@@ -329,7 +322,7 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
                     <div className="pt-2 border-t border-white/[0.08] space-y-1.5">
                       <span className="text-xs font-semibold text-brand-primary flex items-center gap-1">
                         <FlaskConical className="w-3 h-3 text-brand-primary stroke-[2]" />
-                        Peer-Reviewed Science Grounding
+                        Scientific Rationale
                       </span>
                       <div className="space-y-1">
                         {msg.scientificPrinciplesCited.map((sp) => (
@@ -355,16 +348,10 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
                     </div>
                   )}
 
-                  {/* Telemetry Footer for Assistant message */}
+                  {/* Message Timestamp */}
                   {!isUser && (
                     <div className="flex items-center justify-between text-xs text-slate-400 pt-1">
                       <span>{msg.timestamp}</span>
-                      {msg.latencyMs !== undefined && (
-                        <span className="font-mono text-xs text-slate-400 flex items-center gap-1">
-                          <Zap className="w-2.5 h-2.5 text-emerald-400 stroke-[2]" />
-                          {msg.latencyMs}ms • {msg.backend || 'Local'}
-                        </span>
-                      )}
                     </div>
                   )}
                 </div>

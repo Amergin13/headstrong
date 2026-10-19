@@ -246,7 +246,7 @@ export const EXERCISE_SCIENCE_KNOWLEDGE_BASE: ScientificPrinciple[] = [
       'Tension applied at long muscle lengths causes passive tension in titin filaments, triggering longitudinal sarcomere addition (sarcomerogenesis in series) and elevated muscle protein synthesis compared to contracted-position loading.',
     academicCitation: 'Pedrosa et al. (2022); Wolf et al. (2023)',
     practicalApplication:
-      'Knowledge Graph tracks your Lengthened Stimulus Ratio (% of sets loaded at long lengths) and the AI Coach provides tactical stretch tempo cues.',
+      'Tracks your Lengthened Stimulus Ratio (% of sets loaded at long lengths) and provides tactical stretch tempo cues.',
     keywords: ['stretch', 'lengthened', 'eccentric', 'tempo', 'sarcomerogenesis', 'titin', 'long muscle length', 'stretch-mediated', 'stretch hypertrophy'],
   },
   {
@@ -288,13 +288,13 @@ export const EXERCISE_SCIENCE_KNOWLEDGE_BASE: ScientificPrinciple[] = [
   {
     id: 'sp-tensor-ai',
     topic: 'Hardware Acceleration & On-Device AI',
-    title: 'Google Pixel Tensor Hardware Acceleration & Zero-Cost Local Inference',
+    title: 'Hardware Acceleration & Zero-Cost Local Inference',
     formula: 'Tensor G1-G4 TPU (Gemini Nano AICore) / NPU (WebNN) / GPU (WebGPU) / WASM SIMD Fallback',
     scientificRationale:
       'Processing health, biometric, and training data locally on device protects athlete confidentiality, functions without network coverage in gym basements, eliminates cloud API fees, and delivers < 15ms inference latency.',
     academicCitation: 'Google Tensor Architecture Whitepaper; W3C WebNN / WebGPU Specifications',
     practicalApplication:
-      'Accelerates the On-Device AI Coach and Knowledge Graph queries directly through your Pixel phone’s Tensor processor with 100% on-device privacy.',
+      'Accelerates your AI Coach directly on your device with 100% privacy and zero subscription fees.',
     keywords: ['tensor', 'pixel', 'tpu', 'gemini nano', 'on-device', 'local ai', 'latency', 'privacy', 'aicore', 'google pixel ai'],
   },
 ];

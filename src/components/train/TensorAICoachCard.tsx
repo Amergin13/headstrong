@@ -39,20 +39,14 @@ export const TensorAICoachCard: React.FC<TensorAICoachCardProps> = ({
               <Cpu className="w-4 h-4 stroke-[2]" />
             </div>
             <span className="text-xs font-extrabold text-white tracking-tight">
-              On-Device AI Coach
+              AI Coach
             </span>
           </div>
 
           <div className="flex items-center space-x-1.5">
-            <span
-              className={`px-2.5 py-0.5 rounded-full text-xs font-bold flex items-center gap-1 border ${
-                hardware.isPixelDevice
-                  ? 'bg-brand-primary/15 border-brand-primary/35 text-brand-primary'
-                  : 'bg-white/[0.06] border-white/[0.1] text-slate-300'
-              }`}
-            >
+            <span className="px-2.5 py-0.5 rounded-full text-xs font-bold flex items-center gap-1 border bg-brand-primary/15 border-brand-primary/35 text-brand-primary">
               <Zap className="w-3 h-3 stroke-[2]" />
-              {hardware.isPixelDevice ? `${hardware.chipModel.replace('Google ', '')} TPU` : 'On-Device Engine'}
+              Personalized
             </span>
           </div>
         </div>
@@ -69,7 +63,7 @@ export const TensorAICoachCard: React.FC<TensorAICoachCardProps> = ({
         <div className="flex items-center justify-between pt-2 border-t border-white/[0.06]">
           <span className="text-xs text-slate-400 font-medium flex items-center gap-1">
             <ShieldCheck className="w-3.5 h-3.5 text-brand-primary stroke-[2]" />
-            {hardware.inferenceLatencyMs}ms • 100% On-Device
+            Recovery Calibrated
           </span>
 
           <button

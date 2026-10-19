@@ -76,6 +76,7 @@ export const App: React.FC = () => {
   const [watchModalOpen, setWatchModalOpen] = useState(false);
   const [aiCoachOpen, setAiCoachOpen] = useState(false);
   const [onboardingOpen, setOnboardingOpen] = useState(!profile.onboardingCompleted);
+  const [onboardingInitialStep, setOnboardingInitialStep] = useState<1 | 2 | 3 | 4>(1);
   const [deferredInstallPrompt, setDeferredInstallPrompt] = useState<any>(null);
   const [xpNotification, setXpNotification] = useState<{
     amount: number;
@@ -722,12 +723,15 @@ export const App: React.FC = () => {
             onExportData={handleExportData}
             onImportData={handleImportData}
             onDeleteAllData={handleDeleteAllData}
-            onOpenOnboarding={() => setOnboardingOpen(true)}
+            onOpenOnboarding={() => {
+              setOnboardingInitialStep(4);
+              setOnboardingOpen(true);
+            }}
           />
         )}
       </main>
 
-      {/* On-Device AI Assistant Conversational Chat Modal */}
+      {/* AI Assistant Conversational Chat Modal */}
       {aiCoachOpen && (
         <AICoachChatModal
           profile={profile}
@@ -740,6 +744,11 @@ export const App: React.FC = () => {
           weeklyVolume={weeklyVolume}
           onClose={() => setAiCoachOpen(false)}
           onApplyAction={handleApplyAssistantAction}
+          onViewAllEquipment={() => {
+            setAiCoachOpen(false);
+            setOnboardingInitialStep(4);
+            setOnboardingOpen(true);
+          }}
         />
       )}
 
@@ -747,8 +756,12 @@ export const App: React.FC = () => {
       {onboardingOpen && (
         <OnboardingModal
           profile={profile}
+          initialStep={onboardingInitialStep}
           onCompleteOnboarding={handleCompleteOnboarding}
-          onClose={() => setOnboardingOpen(false)}
+          onClose={() => {
+            setOnboardingOpen(false);
+            setOnboardingInitialStep(1);
+          }}
           onExploreDemo={() => {
             const reset = resetAllToSeedData();
             setProfile(reset.profile);
