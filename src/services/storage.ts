@@ -31,6 +31,7 @@ export function loadProfile(): UserProfile {
       return {
         ...INITIAL_USER_PROFILE,
         ...parsed,
+        programType: parsed.programType || 'ppl_upper',
         activeLocation: parsed.activeLocation || 'gym',
         availableLocations: parsed.availableLocations || ['gym', 'home', 'travel'],
         homeEquipment: parsed.homeEquipment || ['bench', 'dumbbells', 'trx', 'pullup_bar'],
@@ -39,7 +40,10 @@ export function loadProfile(): UserProfile {
   } catch (e) {
     console.error('Failed to load profile:', e);
   }
-  return INITIAL_USER_PROFILE;
+  return {
+    ...INITIAL_USER_PROFILE,
+    onboardingCompleted: false,
+  };
 }
 
 export function saveProfile(profile: UserProfile): void {

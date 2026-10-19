@@ -193,12 +193,15 @@ export interface PillarScore {
   subDivision?: SubDivision;
 }
 
+export type ProgramSplitType = 'ppl_upper' | 'ppl' | 'upper_lower' | 'full_body';
+
 export interface UserProfile {
   name: string;
   gender: Gender;
   age: number;
   heightCm: number;
   goalPhase: GoalPhase;
+  programType?: ProgramSplitType;
   mesocycleWeek?: number; // 1 to 6
   level: number;
   currentXp: number;

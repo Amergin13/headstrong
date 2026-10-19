@@ -2,6 +2,7 @@ import {
   ExerciseDefinition,
   ExerciseSession,
   HomeEquipmentTag,
+  ProgramSplitType,
   ReadinessState,
   TrainingLocation,
   WorkoutSession,
@@ -172,6 +173,69 @@ export function getNextSplitDay(current: string): SplitDayType {
   if (idx === -1) return 'Push';
   return order[(idx + 1) % order.length];
 }
+
+export function getFirstSplitDayForProgram(programType?: ProgramSplitType): SplitDayType {
+  switch (programType) {
+    case 'upper_lower':
+      return 'Upper';
+    case 'ppl':
+    case 'ppl_upper':
+    case 'full_body':
+    default:
+      return 'Push';
+  }
+}
+
+export interface ProgramSplitOption {
+  id: ProgramSplitType;
+  title: string;
+  badge: string;
+  recommended?: boolean;
+  frequency: string;
+  rotation: string;
+  detail: string;
+  firstSession: string;
+}
+
+export const PROGRAM_OPTIONS: ProgramSplitOption[] = [
+  {
+    id: 'ppl_upper',
+    title: 'Push / Pull / Legs + Upper (4-Day)',
+    badge: 'Recommended for Hypertrophy',
+    recommended: true,
+    frequency: '4 sessions per rotation • ~2x/week per muscle',
+    rotation: 'Push (Chest/Shoulders) → Pull (Back/Biceps) → Legs → Upper Body',
+    detail: 'The gold standard for muscle growth. Combines focused movement planes with an Upper session for maximum hypertrophy without burnout.',
+    firstSession: 'Push Day (Chest, Shoulders & Triceps)',
+  },
+  {
+    id: 'ppl',
+    title: 'Push / Pull / Legs (3-Day Classic)',
+    badge: 'Classic Bodybuilding',
+    frequency: '3 sessions per rotation • Dedicated planes',
+    rotation: 'Push (Chest/Shoulders/Triceps) → Pull (Back/Biceps) → Legs (Quads/Hamstrings/Calves)',
+    detail: 'Dedicated focus per movement plane with maximum joint and nervous system recovery between sessions.',
+    firstSession: 'Push Day (Chest, Shoulders & Triceps)',
+  },
+  {
+    id: 'upper_lower',
+    title: 'Upper / Lower (4-Day Power & Mass)',
+    badge: 'Strength & Hypertrophy',
+    frequency: '4 sessions per rotation • Heavy compound stimulus',
+    rotation: 'Upper Body A → Lower Body A → Upper Body B → Lower Body B',
+    detail: 'Time-efficient compound split alternating upper body pressing and pulling with heavy squats and hinges.',
+    firstSession: 'Upper Body (Chest, Back & Shoulders)',
+  },
+  {
+    id: 'full_body',
+    title: 'Full Body (3-Day High Frequency)',
+    badge: 'Time Efficient',
+    frequency: '3 sessions per rotation • Whole-body stimulus',
+    rotation: 'Full Body A → Full Body B → Full Body C',
+    detail: 'Stimulates major muscle groups 3 times per week with high recovery windows between sessions. Ideal for busy lifters.',
+    firstSession: 'Push / Compound Day',
+  },
+];
 
 export interface HypertrophyQueueRecommendation {
   activeSplit: SplitDayType;

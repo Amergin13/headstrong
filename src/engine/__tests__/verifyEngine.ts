@@ -569,7 +569,11 @@ import {
   loadGovernanceItems,
   saveGovernanceItems,
 } from '../governance';
-import { getHypertrophyQueueRecommendation } from '../../services/workoutGenerator';
+import {
+  getFirstSplitDayForProgram,
+  getHypertrophyQueueRecommendation,
+  PROGRAM_OPTIONS,
+} from '../../services/workoutGenerator';
 
 console.log('\n[14. Product Governance Model & Competitor Comparison Matrix]');
 assert(
@@ -701,7 +705,90 @@ assert(
   `Zero sub-12px micro-text classes (text-[8px..11px]) across all ${auditedFiles.length} core UI components`
 );
 
-console.log('\nALL 16 ENGINE, GOVERNANCE, DESIGN HEURISTICS & SINGLE-ENTRY-POINT SUITES PASSED SUCCESSFULLY! 🎯');
+// 17. Onboarding Experience, First-Time-To-Value & 19 Design Heuristics Governance
+console.log('\n[17. Onboarding Experience, First-Time-To-Value & 19 Design Heuristics Audit]');
+
+assert(
+  PROGRAM_OPTIONS.length === 4 &&
+    PROGRAM_OPTIONS.some((p) => p.id === 'ppl_upper' && p.recommended) &&
+    PROGRAM_OPTIONS.some((p) => p.id === 'ppl') &&
+    PROGRAM_OPTIONS.some((p) => p.id === 'upper_lower') &&
+    PROGRAM_OPTIONS.some((p) => p.id === 'full_body'),
+  `Onboarding offers all 4 evidence-based training split options with PPL+Upper marked Recommended for Hypertrophy`
+);
+
+assert(
+  getFirstSplitDayForProgram('ppl_upper') === 'Push' &&
+    getFirstSplitDayForProgram('ppl') === 'Push' &&
+    getFirstSplitDayForProgram('upper_lower') === 'Upper' &&
+    getFirstSplitDayForProgram('full_body') === 'Push',
+  `getFirstSplitDayForProgram accurately determines starter day across all splits (Upper for upper_lower, Push for PPL/PPL+Upper)`
+);
+
+const upperLowerDay1 = generateSmartWorkoutSession(
+  getFirstSplitDayForProgram('upper_lower'),
+  [],
+  seeded.exercises,
+  'Primed',
+  1,
+  'gym',
+  ['bench', 'dumbbells', 'trx', 'pullup_bar']
+);
+assert(
+  upperLowerDay1.splitDay === 'Upper' && upperLowerDay1.exercises.length > 0,
+  `Day 1 workout for Upper/Lower program dynamically generates a valid Upper body session (${upperLowerDay1.exercises.length} exercises)`
+);
+
+const onboardingModalSrc = fs.readFileSync(
+  path.resolve(process.cwd(), 'src/components/onboarding/OnboardingModal.tsx'),
+  'utf-8'
+);
+
+assert(
+  onboardingModalSrc.includes('Welcome to HeadStrong') &&
+    onboardingModalSrc.includes('Asynchronous Hypertrophy Queue') &&
+    onboardingModalSrc.includes('Guaranteed Overload') &&
+    onboardingModalSrc.includes('Adapts Across Any Gear') &&
+    onboardingModalSrc.includes('Choose your training split') &&
+    onboardingModalSrc.includes('What is your main goal right now?') &&
+    onboardingModalSrc.includes('Where do you train') &&
+    onboardingModalSrc.includes('what gear do you have') &&
+    onboardingModalSrc.includes('Start Day 1 Workout'),
+  `Onboarding introduces the app, explains the 3 core principles, prompts split selection, sets goals and gear, and delivers instant Day 1 value`
+);
+
+const appSrc = fs.readFileSync(
+  path.resolve(process.cwd(), 'src/App.tsx'),
+  'utf-8'
+);
+assert(
+  appSrc.includes('useState(!profile.onboardingCompleted)'),
+  `New users without completed onboarding are automatically greeted by OnboardingModal on first app launch`
+);
+
+const forbiddenJargon = [
+  'OOUX',
+  'Personal Knowledge Graph',
+  'Canonical Vector',
+  'SFR',
+  'MAV/MEV/MRV',
+];
+const foundForbidden = forbiddenJargon.filter((term) =>
+  onboardingModalSrc.includes(term)
+);
+assert(
+  foundForbidden.length === 0,
+  `Onboarding strictly adheres to Content Design Heuristic #1 (Clarity: zero internal UX or academic jargon, found: ${foundForbidden.join(', ') || 'none'})`
+);
+
+assert(
+  INITIAL_GOVERNANCE_ITEMS.some((i) => i.id === 'gov-onboarding-first-time-to-value' && i.status === 'locked') &&
+    INITIAL_GOVERNANCE_ITEMS.some((i) => i.id === 'gov-19-design-heuristics-framework' && i.status === 'locked'),
+  `Both gov-onboarding-first-time-to-value and gov-19-design-heuristics-framework are locked in the governance ledger`
+);
+
+console.log('\nALL 17 ENGINE, GOVERNANCE, DESIGN HEURISTICS & ONBOARDING SUITES PASSED SUCCESSFULLY! 🎯');
+
 
 
 

@@ -69,32 +69,125 @@ This document is the authoritative **Product Governance Ledger** for **HeadStron
 
 ---
 
-## 3. Codified 19-Point Product Design Heuristics Framework
+---
 
-Every screen and feature in **HeadStrong** is designed and evaluated against these 19 non-negotiable heuristics:
+## 3. Authoritative 19-Point Product Design Heuristics Framework
 
-### 3.1 Visual Design (6 Principles)
-1. **Simplicity:** Strip away non-essential elements—never show unlabeled progress bars or competing multi-tab workout switchers on the primary workout canvas.
-2. **Hierarchy:** Guide attention through size, color, and placement—1 primary focal point per screen (`Up Next` Session & Action Checklist).
-3. **Consistency:** Uniform dark-glass cards, 3-tier typography (`12px` minimum floor), and `1.5px–2px` stroke icons.
-4. **Negative Space:** Generous padding (`p-4`, `gap-3.5`) so Exercise #1 sits immediately accessible above the fold.
-5. **Emotional Resonance:** Semantic athletic palette (`#10B981` Primed Emerald, `#22D3EE` Vector Cyan, `#F59E0B` Recovery Shield Amber).
-6. **Context & Relevance:** Surface only what matters for the active session and current equipment profile.
+Every screen, modal, copy string, and feature in **HeadStrong** is continuously designed and audited against these 19 non-negotiable heuristics from the product design standards:
 
-### 3.2 Content Design (6 Principles)
-7. **Clarity & Conciseness:** Plain, direct consumer English so users immediately know what to train next and what weight/reps to hit.
-8. **Scannability:** Concise bullet checklists and `font-mono tabular-nums` for all weights, reps, and recovery windows.
-9. **User-Centric Language:** Zero internal UX or academic jargon (never expose `OOUX`, `PKG`, `Canonical Vector`, or `SFR`).
-10. **Consistent Tone & Voice:** Authoritative, encouraging coach grounded in exercise physiology.
-11. **Contextual Help:** Deliver microcopy (e.g., `60h` chest recovery window, skipped-day reassurance, why an exercise swap works) right where decisions happen.
-12. **Opinionated:** Tell the user what session is **Up Next** based on their Asynchronous Hypertrophy Queue and muscle recovery window—never dump a menu of competing workouts.
+### 3.1 Visual Design Heuristics (6 Principles)
+1. **Hierarchy:**
+   - **Layout:** Focus each screen on **one element or primary section as the focal point** while clearly de-emphasizing secondary controls. Never show competing session tabs (`1. Push`, `2. Pull`, `3. Legs`, `4. Upper`) as primary navigation inside an active workout.
+   - **Type:** Use correct typography styles emphasizing the most significant text. Strict `text-xs` (`12px`) minimum floor — never sub-12px micro-text.
+   - **Color:** Use semantic color tokens (`brand-primary`, emerald, amber, neutral slate) to differentiate elements, primary/secondary actions, and statuses.
+   - **Visual Assets:** Use icons only to focus users on the most important content with uniform optical stroke weight (`stroke-[2]`).
+2. **Alignment:**
+   - **Layout:** Use a strict responsive grid and balanced relationships between all elements.
+   - **Type:** Align text accurately and consistently.
+   - **Color:** Ensure balanced color tokens across surfaces.
+   - **Visual Assets:** All icons, pictograms, and illustrations use the same optical stroke weight (`stroke-[2]`).
+3. **Consistency:**
+   - **Layout:** Predictable and repeatable layout grid and placement across all screens.
+   - **Type:** Typography styles used consistently for all content (headlines, subtitles, labels).
+   - **Color:** Consistent color tokens for differentiation across the experience.
+   - **Visual Assets:** Consistently scale and place icons in relation to the content they represent.
+4. **Contrast:**
+   - **Layout:** Dynamic layout leading users to complete tasks with clarity and visual interest.
+   - **Type:** Typography styles create clear emphasis to guide users to the most important actions.
+   - **Color:** Clearly differentiate active/actionable versus inactive/passive elements.
+   - **Visual Assets:** Icons create clear distinction that helps users understand content.
+5. **Simplicity:**
+   - **Layout:** Preserve negative space to create an open, clean experience instead of clutter or mess.
+   - **Type:** Consistently use type in **no more than 2–3 styles, weights, and sizes per card**.
+   - **Color:** Use color consistently and only when needed to emphasize action, status, or reporting.
+   - **Visual Assets:** Use icons only to enhance information or create necessary connections with other content.
+6. **Delight:**
+   - **Layout:** Organization makes the experience easy and intuitive to understand and use.
+   - **Type:** Typography brings joy, satisfaction, or a sense of completion.
+   - **Color:** Joyful and motivating color interactions (e.g., emerald checkmarks on completed sets).
+   - **Visual Assets:** Visual assets enhance content to bring joy and positive surprise when stakes are low.
 
-### 3.3 Interaction Design (7 Principles)
-13. **Intuitiveness:** Single-tap gym-floor ergonomics aligned with lifter mental models.
-14. **Responsiveness & Feedback:** Immediate visual and haptic feedback on set completion, PRs, and gear switches.
-15. **Forgiveness & Error Prevention:** Undo banner for set deletion, zero calendar penalty when skipping a day, and strict 13-family swap guardrails.
-16. **Efficiency:** Auto-propagate working weight/reps to subsequent sets and tuck secondary controls into a single drawer.
-17. **Accessibility:** Enforce `>=44px` touch targets, semantic ARIA roles, and WCAG AA contrast.
-18. **Adaptability:** Adapt seamlessly to skipped days (Asynchronous Hypertrophy Queue) and changing locations (`Full Gym`, `At Home`, `Travel`).
-19. **Progressive Disclosure:** Show only the **Up Next** session recommendation and progress checklist by default; reveal equipment/split overrides inside `Adjust Gear / Split`.
+### 3.2 Content Design Heuristics (6 Principles)
+1. **Clarity (Be Clear Instead of Clever):**
+   - Give customers all information needed to make good decisions quickly and with confidence.
+   - Use plain, simple language without complex words, jargon, slang, metaphors, or cultural references. **NEVER expose internal UX, engineering, or academic method names** (`OOUX`, `PKG`, `Canonical Vector`, `SFR`, `MAV/MEV/MRV`) in user-facing UI.
+   - Headings must be quickly understood just by scanning.
+   - Primary call-to-action must be compelling for the immediate task and shown on the first screen.
+   - Content and help resources available with progressive disclosure.
+2. **Consistency:**
+   - Terms align across the entire product (`Workout`, `Program`, `Progress`, `Athlete`).
+   - Shared, standardized vocabulary for all product features and concepts.
+   - Consistent voice across all product surfaces and settings.
+3. **Structure:**
+   - Thoughtful information architecture makes the complex clear.
+   - Prioritize the most important content at the top of all screens and the beginning of sentences: immediately answer *(1) What am I training next?* and *(2) What do I need to do to make progress?*
+   - Support non-happy-path realities (skipping a day, training at home with dumbbells/TRX/pull-up bar, or travelling with bodyweight).
+   - Navigation, tabs, panels, and headings tell a meaningful story with a clear sequence.
+   - Clearly label next steps, help resources, and ways to cancel or exit.
+4. **Product Voice (Clear, Helpful, Human, Kind):**
+   - **Clear:** Content helps customers complete their tasks quickly and well.
+   - **Helpful:** Gives the right level of information at the right time.
+   - **Human:** Customer-focused, warm, natural, and conversational without being loud or overbearing.
+   - **Kind:** Makes all customers feel welcome, respected, and appreciated.
+5. **Product Tones:**
+   - **Friendly:** Onboarding, welcome messages, sign up, and conversational support.
+   - **Direct:** Standardized create, edit, and management flows, tooltips, forms, settings, and error messages.
+   - **Motivating:** Coaching, set completion feedback, PR celebrations, and sharing progress milestones.
+   - **Opinionated:** Recommending the single best next workout or program split rather than forcing the user to pick from a confusing list.
+   - **Urgent:** Highlighting joint strain alerts, critical notifications, and auto-regulation recovery buffers.
+6. **Accessibility & Inclusivity:**
+   - **Perceivable:** Text alternatives for all non-text content.
+   - **Operable:** All interactive content controllable via touch, keyboard, and assistive technologies.
+   - **Understandable:** Secondary-school reading clarity.
+   - **Robust:** Compatible with screen readers in the intended order with identical meaning.
+   - **Inclusive:** Welcoming for all audiences, culturally unbiased, and fully WCAG AA compliant.
+
+### 3.3 Interaction Design Heuristics (7 Principles)
+1. **Predictable & Efficient:**
+   - Simple structure with a clear conceptual model and no unnecessary levels.
+   - Relevant navigation options in the moment; clear wayfinding.
+   - High confidence in outcomes when a user makes a selection.
+   - Users quickly find what they need to make progress in 1 tap.
+   - Smart defaults streamline user actions.
+   - Purposeful motion instead of purely decorative animations.
+2. **Communicative:**
+   - Immediate visual and haptic feedback for every user interaction.
+   - Unambiguous feedback from interface elements.
+   - Communicates progress for multi-step tasks (e.g. `Step 1 of 4` progress bars).
+   - Visually referential state changes (saved, unsaved, offline).
+   - Clear empty states, focus states, and disabled states.
+3. **Performant:**
+   - Fast load times and zero-latency local-first interactions.
+   - Interface reacts promptly without calculation lag.
+4. **Guided:**
+   - Guardrails proactively prevent mistakes (e.g. 1-tap Undo for set deletion, automatic weight conversion when switching equipment).
+   - Obvious where to click first on every screen.
+   - Clear error identification and fast inline resolution without leaving the flow of work.
+5. **Approachable, Accessible & Inclusive:**
+   - Users get started effortlessly without needing external instructions.
+   - Progressive disclosure keeps secondary controls tucked behind clean drawers so newcomers are never overwhelmed.
+   - Minimum `>=44px` touch targets, high contrast, and full WCAG AA compliance.
+6. **Cohesive:**
+   - Free of conflicts in design patterns and behaviors across user journeys.
+   - Components, buttons, links, and toggles behave identically in similar contexts across all tabs.
+   - Exactly 1 canonical entry point per user job (1 method for switching equipment, 1 for changing an exercise).
+7. **Delightful:**
+   - **Behavioral Joy:** First-time-to-value: immediately upon completing onboarding, the user sees their tailored workout ready to log.
+   - **Natural Joy:** Content and recommendations feel specifically created for the athlete and their recovery state.
+   - **Visceral Joy:** Aesthetic athletic interface with purposeful dark-mode contrast.
+   - **Moment of Joy:** Celebrates PR breakthroughs and workout completions appropriately without patronizing.
+   - **Reflective Joy:** A clean moment of accomplishment and streak milestone after completing a workout.
+
+---
+
+## 4. Onboarding & First-Time-to-Value Governance Specification (`gov-onboarding-first-time-to-value`)
+
+1. **Automatic First-Launch Trigger:** Any new user without `profile.onboardingCompleted = true` is immediately greeted by the Onboarding experience on launch.
+2. **Under 60-Second Completion:** The wizard uses smart defaults and a 4-step progressive flow:
+   - **Step 1 (Welcome & How It Works):** Explains Asynchronous Hypertrophy Queue, Double Progression, and Adaptive Locations with a friendly tone and a `Skip to Demo` escape hatch.
+   - **Step 2 (Program Split Selection):** Lets the lifter select their training split (`Push / Pull / Legs + Upper`, `Push / Pull / Legs`, `Upper / Lower`, or `Full Body`) with clear frequency and starter session labels.
+   - **Step 3 (Main Goal):** Calibrates volume landmarks for `Lean Bulk`, `Cut / Recomp` (Retention Shield), or `Maingain`.
+   - **Step 4 (Locations & Equipment):** Configures places (`Full Gym`, `At Home`, `Travel`) and specific home gear (`Bench`, `Dumbbells`, `TRX`, `Pull-Up Bar`, `Bands`).
+3. **Instant First-Time-to-Value Delivery:** Upon tapping *"Start Day 1 Workout"*, the app immediately generates Day 1 for that chosen split, switches to the Workout tab, and displays Exercise #1 ready to train in 1 tap.
+
 

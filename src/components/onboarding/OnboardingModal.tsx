@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import {
   GoalPhase,
   HomeEquipmentTag,
+  ProgramSplitType,
   TrainingLocation,
   UserProfile,
 } from '../../engine/types';
@@ -15,41 +16,60 @@ import {
   Target,
   TrendingUp,
   X,
+  Clock,
+  Sparkles,
+  Layers,
+  Shield,
+  Zap,
 } from 'lucide-react';
 import { triggerHaptic } from '../../utils/haptics';
 
-interface OnboardingModalProps {
+export interface OnboardingModalProps {
   profile: UserProfile;
   onCompleteOnboarding: (updated: {
     goalPhase: GoalPhase;
+    programType: ProgramSplitType;
     activeLocation: TrainingLocation;
     availableLocations: TrainingLocation[];
     homeEquipment: HomeEquipmentTag[];
   }) => void;
   onClose: () => void;
+  onExploreDemo?: () => void;
 }
+
+import {
+  PROGRAM_OPTIONS,
+  ProgramSplitOption,
+} from '../../services/workoutGenerator';
+
+export { PROGRAM_OPTIONS };
+export type { ProgramSplitOption };
 
 const GOAL_OPTIONS: {
   phase: GoalPhase;
   title: string;
+  badge: string;
   subtitle: string;
   sessionRule: string;
 }[] = [
   {
     phase: 'Lean Bulk',
     title: 'Build Muscle & Strength',
+    badge: 'Optimal Hypertrophy',
     subtitle: 'Maximize muscle growth and add weight or reps every week.',
     sessionRule: 'Beat last session by +1 rep, then add weight when you hit the top of your rep range.',
   },
   {
     phase: 'Cut / Recomp',
     title: 'Lose Fat & Keep Muscle',
-    subtitle: 'Hold onto all your strength while leaning out.',
+    badge: 'Retention Shield Active',
+    subtitle: 'Hold onto all your strength while leaning out in a calorie deficit.',
     sessionRule: 'Match your target weights at slightly lower weekly sets so you recover well in a calorie deficit.',
   },
   {
     phase: 'Maingain',
     title: 'Stay Lean & Build Stamina',
+    badge: 'Work Capacity Focus',
     subtitle: 'Build strength and work capacity at your current bodyweight.',
     sessionRule: 'Progress reps steadily while keeping rest periods crisp and cardiovascular fitness high.',
   },
@@ -91,9 +111,15 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
   profile,
   onCompleteOnboarding,
   onClose,
+  onExploreDemo,
 }) => {
-  const [step, setStep] = useState<1 | 2 | 3>(1);
-  const [selectedGoal, setSelectedGoal] = useState<GoalPhase>(profile.goalPhase || 'Lean Bulk');
+  const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
+  const [selectedProgram, setSelectedProgram] = useState<ProgramSplitType>(
+    profile.programType || 'ppl_upper'
+  );
+  const [selectedGoal, setSelectedGoal] = useState<GoalPhase>(
+    profile.goalPhase || 'Lean Bulk'
+  );
   const [activeLocation, setActiveLocation] = useState<TrainingLocation>(
     profile.activeLocation || 'gym'
   );
@@ -126,11 +152,21 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
     triggerHaptic('success');
     onCompleteOnboarding({
       goalPhase: selectedGoal,
+      programType: selectedProgram,
       activeLocation,
       availableLocations,
       homeEquipment,
     });
     onClose();
+  };
+
+  const handleDemoClick = () => {
+    triggerHaptic('light');
+    if (onExploreDemo) {
+      onExploreDemo();
+    } else {
+      handleFinish();
+    }
   };
 
   return (
@@ -140,39 +176,52 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
       aria-labelledby="onboarding-modal-title"
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md"
     >
-      <div className="w-full max-w-md rounded-3xl surface-glass border border-white/[0.12] p-5 shadow-2xl max-h-[90vh] overflow-y-auto space-y-4">
-        {/* Top Bar: Step Indicator & Close */}
+      <div className="w-full max-w-lg rounded-3xl surface-glass border border-white/[0.12] p-5 shadow-2xl max-h-[92vh] overflow-y-auto space-y-4">
+        {/* Top Header: Step Indicator & Actions */}
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-2">
             <span className="text-xs font-bold uppercase tracking-wider text-brand-primary">
-              Step {step} of 3
+              Step {step} of 4
             </span>
             <span className="text-xs text-slate-400">•</span>
             <span className="text-xs font-medium text-slate-300">
               {step === 1
-                ? 'Your Main Goal'
+                ? 'Welcome & How It Works'
                 : step === 2
-                ? 'Locations & Equipment'
-                : 'Your Session Gameplan'}
+                ? 'Choose Training Split'
+                : step === 3
+                ? 'Your Primary Goal'
+                : 'Locations & Equipment'}
             </span>
           </div>
 
-          <button
-            type="button"
-            onClick={() => {
-              triggerHaptic('light');
-              onClose();
-            }}
-            aria-label="Close setup"
-            className="p-1.5 rounded-full text-slate-400 hover:text-white hover:bg-white/[0.08] transition-colors"
-          >
-            <X className="w-4 h-4 stroke-[2]" />
-          </button>
+          <div className="flex items-center space-x-2">
+            {step === 1 && (
+              <button
+                type="button"
+                onClick={handleDemoClick}
+                className="text-xs font-semibold text-slate-400 hover:text-white px-2 py-1 rounded-lg transition-colors"
+              >
+                Skip to Demo
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => {
+                triggerHaptic('light');
+                onClose();
+              }}
+              aria-label="Close setup"
+              className="p-1.5 rounded-full text-slate-400 hover:text-white hover:bg-white/[0.08] transition-colors"
+            >
+              <X className="w-4 h-4 stroke-[2]" />
+            </button>
+          </div>
         </div>
 
-        {/* 3-Step Progress Bar */}
-        <div className="grid grid-cols-3 gap-1.5">
-          {[1, 2, 3].map((s) => (
+        {/* 4-Step Visual Progress Bar */}
+        <div className="grid grid-cols-4 gap-1.5">
+          {[1, 2, 3, 4].map((s) => (
             <div
               key={s}
               className={`h-1.5 rounded-full transition-all ${
@@ -182,8 +231,158 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
           ))}
         </div>
 
-        {/* STEP 1: MAIN GOAL */}
+        {/* ==================================================================== */}
+        {/* STEP 1: WELCOME & HOW HEADSTRONG WORKS                               */}
+        {/* ==================================================================== */}
         {step === 1 && (
+          <div className="space-y-4">
+            <div>
+              <div className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-full bg-brand-primary/15 border border-brand-primary/30 text-brand-primary text-xs font-bold mb-2">
+                <Sparkles className="w-3.5 h-3.5 stroke-[2]" />
+                <span>Evidence-Based Hypertrophy</span>
+              </div>
+              <h2
+                id="onboarding-modal-title"
+                className="font-bold text-xl text-white tracking-tight"
+              >
+                Welcome to HeadStrong
+              </h2>
+              <p className="text-xs text-slate-300 mt-1 leading-relaxed">
+                HeadStrong eliminates the guesswork from muscle building. Here is how we guarantee your progress:
+              </p>
+            </div>
+
+            <div className="space-y-2.5">
+              {/* Feature 1: Asynchronous Hypertrophy Queue */}
+              <div className="p-3.5 rounded-2xl bg-surface-elevated border border-white/[0.08] flex items-start space-x-3">
+                <div className="w-8 h-8 rounded-xl bg-indigo-500/15 border border-indigo-500/30 flex items-center justify-center text-indigo-400 shrink-0 mt-0.5">
+                  <Clock className="w-4 h-4 stroke-[2]" />
+                </div>
+                <div className="space-y-1">
+                  <div className="font-bold text-xs text-white">
+                    1. Asynchronous Hypertrophy Queue
+                  </div>
+                  <p className="text-xs text-slate-300 leading-relaxed">
+                    Train when your muscles recover (24h–72h), not on rigid calendar days. If life happens and you skip a day, your next workout simply waits with full recovery and zero penalty.
+                  </p>
+                </div>
+              </div>
+
+              {/* Feature 2: Double Progression Engine */}
+              <div className="p-3.5 rounded-2xl bg-surface-elevated border border-white/[0.08] flex items-start space-x-3">
+                <div className="w-8 h-8 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shrink-0 mt-0.5">
+                  <TrendingUp className="w-4 h-4 stroke-[2]" />
+                </div>
+                <div className="space-y-1">
+                  <div className="font-bold text-xs text-white">
+                    2. Guaranteed Overload (We Do the Math)
+                  </div>
+                  <p className="text-xs text-slate-300 leading-relaxed">
+                    Every session tells you the exact weight and rep target to beat your last workout. When you hit the top of your rep range, we automatically increase the load.
+                  </p>
+                </div>
+              </div>
+
+              {/* Feature 3: Adaptive Locations & Gear */}
+              <div className="p-3.5 rounded-2xl bg-surface-elevated border border-white/[0.08] flex items-start space-x-3">
+                <div className="w-8 h-8 rounded-xl bg-cyan-500/15 border border-cyan-500/30 flex items-center justify-center text-cyan-400 shrink-0 mt-0.5">
+                  <Layers className="w-4 h-4 stroke-[2]" />
+                </div>
+                <div className="space-y-1">
+                  <div className="font-bold text-xs text-white">
+                    3. Adapts Across Any Gear (Gym, Home, Travel)
+                  </div>
+                  <p className="text-xs text-slate-300 leading-relaxed">
+                    Can&apos;t make the gym? Switch to Home or Travel in 1 tap. Exercises adapt with true biomechanical alternatives while your strength progress carries over seamlessly.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ==================================================================== */}
+        {/* STEP 2: CHOOSE TRAINING SPLIT / PROGRAM TYPE                         */}
+        {/* ==================================================================== */}
+        {step === 2 && (
+          <div className="space-y-3.5">
+            <div>
+              <h2
+                id="onboarding-modal-title"
+                className="font-bold text-lg text-white tracking-tight"
+              >
+                Choose your training split
+              </h2>
+              <p className="text-xs text-slate-300 mt-1 leading-relaxed">
+                Select how you want your workouts grouped. You can switch this anytime in the Program tab.
+              </p>
+            </div>
+
+            <div className="space-y-2.5">
+              {PROGRAM_OPTIONS.map((opt) => {
+                const isSelected = selectedProgram === opt.id;
+                return (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    aria-pressed={isSelected}
+                    onClick={() => {
+                      triggerHaptic('light');
+                      setSelectedProgram(opt.id);
+                    }}
+                    className={`w-full p-3.5 rounded-2xl border text-left transition-all space-y-2 ${
+                      isSelected
+                        ? 'bg-brand-primary/15 border-brand-primary text-white shadow-lg shadow-brand-primary/10'
+                        : 'bg-surface-elevated border-white/[0.08] text-slate-200 hover:border-white/20'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between">
+                      <div className="space-y-1">
+                        <div className="flex items-center space-x-2">
+                          <span className="font-bold text-sm text-white">{opt.title}</span>
+                          {opt.recommended && (
+                            <span className="px-2 py-0.5 rounded-md bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-xs font-bold">
+                              Recommended
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-xs text-slate-400 font-medium">
+                          {opt.frequency}
+                        </div>
+                      </div>
+                      <span
+                        className={`w-5 h-5 rounded-full flex items-center justify-center text-xs shrink-0 mt-0.5 ${
+                          isSelected
+                            ? 'bg-brand-primary text-black font-bold'
+                            : 'border border-white/20'
+                        }`}
+                      >
+                        {isSelected && <Check className="w-3.5 h-3.5 stroke-[2.5]" />}
+                      </span>
+                    </div>
+
+                    <p className="text-xs text-slate-300 leading-relaxed">{opt.detail}</p>
+
+                    <div className="pt-2 border-t border-white/[0.06] flex items-center justify-between text-xs">
+                      <span className="text-slate-400">Rotation:</span>
+                      <span className="text-slate-200 font-medium">{opt.rotation}</span>
+                    </div>
+
+                    <div className="text-xs text-brand-primary font-semibold flex items-center space-x-1.5">
+                      <span>Starter workout:</span>
+                      <span className="text-white font-bold">{opt.firstSession}</span>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* ==================================================================== */}
+        {/* STEP 3: MAIN GOAL & PHASE                                            */}
+        {/* ==================================================================== */}
+        {step === 3 && (
           <div className="space-y-3.5">
             <div>
               <h2
@@ -193,7 +392,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                 What is your main goal right now?
               </h2>
               <p className="text-xs text-slate-300 mt-1 leading-relaxed">
-                HeadStrong tells you exactly what weight and reps to hit from session to session based on your goal.
+                HeadStrong calibrates your volume landmarks, rep targets, and recovery targets to match your training phase.
               </p>
             </div>
 
@@ -216,7 +415,12 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                     }`}
                   >
                     <div className="flex items-center justify-between">
-                      <span className="font-bold text-sm text-white">{opt.title}</span>
+                      <div className="flex items-center space-x-2">
+                        <span className="font-bold text-sm text-white">{opt.title}</span>
+                        <span className="px-2 py-0.5 rounded-md bg-white/[0.06] text-slate-300 text-xs">
+                          {opt.badge}
+                        </span>
+                      </div>
                       <span
                         className={`w-5 h-5 rounded-full flex items-center justify-center text-xs ${
                           isSelected
@@ -229,7 +433,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                     </div>
                     <p className="text-xs text-slate-300">{opt.subtitle}</p>
                     <div className="pt-1.5 border-t border-white/[0.06] text-xs text-brand-primary font-medium">
-                      Session target: {opt.sessionRule}
+                      Session rule: {opt.sessionRule}
                     </div>
                   </button>
                 );
@@ -238,8 +442,10 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
           </div>
         )}
 
-        {/* STEP 2: TRAINING LOCATIONS & HOME EQUIPMENT */}
-        {step === 2 && (
+        {/* ==================================================================== */}
+        {/* STEP 4: LOCATIONS & HOME EQUIPMENT SETUP                             */}
+        {/* ==================================================================== */}
+        {step === 4 && (
           <div className="space-y-4">
             <div>
               <h2
@@ -249,7 +455,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                 Where do you train &amp; what gear do you have?
               </h2>
               <p className="text-xs text-slate-300 mt-1 leading-relaxed">
-                Can&apos;t make the gym or travelling? Switch locations in 1 tap—your exercises adapt to your gear and your strength progress carries over.
+                Can&apos;t make the gym or travelling? Switch locations in 1 tap on the Workout tab—exercises automatically adapt to your gear.
               </p>
             </div>
 
@@ -389,77 +595,16 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
           </div>
         )}
 
-        {/* STEP 3: SESSION-TO-SESSION GAMEPLAN PREVIEW */}
-        {step === 3 && (
-          <div className="space-y-4">
-            <div>
-              <h2
-                id="onboarding-modal-title"
-                className="font-bold text-lg text-white tracking-tight"
-              >
-                Your Session-to-Session Gameplan
-              </h2>
-              <p className="text-xs text-slate-300 mt-1 leading-relaxed">
-                Every time you open the app, you will immediately see what you are training today and the exact weight or rep targets needed to progress.
-              </p>
-            </div>
-
-            <div className="p-3.5 rounded-2xl bg-black/50 border border-white/[0.08] space-y-3">
-              <div className="flex items-start space-x-2.5">
-                <div className="w-7 h-7 rounded-xl bg-brand-primary/15 border border-brand-primary/30 flex items-center justify-center text-brand-primary shrink-0 mt-0.5">
-                  <TrendingUp className="w-4 h-4 stroke-[2]" />
-                </div>
-                <div>
-                  <div className="font-bold text-xs text-white">
-                    Clear Targets Every Session
-                  </div>
-                  <p className="text-xs text-slate-300 mt-0.5 leading-relaxed">
-                    Your workout card lists the exact weight and rep target to beat last session (e.g., add +1 rep, or add +2.5kg once you hit the top of your rep range).
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-start space-x-2.5 pt-2.5 border-t border-white/[0.06]">
-                <div className="w-7 h-7 rounded-xl bg-cyan-500/15 border border-cyan-500/30 flex items-center justify-center text-cyan-300 shrink-0 mt-0.5">
-                  <Target className="w-4 h-4 stroke-[2]" />
-                </div>
-                <div>
-                  <div className="font-bold text-xs text-white">
-                    Real Movement Alternatives Across Locations
-                  </div>
-                  <p className="text-xs text-slate-300 mt-0.5 leading-relaxed">
-                    Exercises are matched by real movement biomechanics—so a Chest Press only swaps with true Chest Press variations:
-                  </p>
-                  <ul className="mt-2 space-y-1 text-xs text-slate-200">
-                    <li>
-                      • <strong className="text-white">Full Gym:</strong> Barbell Bench Press, Cable Row, Back Squat
-                    </li>
-                    <li>
-                      • <strong className="text-white">At Home:</strong>{' '}
-                      {homeEquipment.includes('dumbbells') && homeEquipment.includes('bench')
-                        ? 'Flat/Incline Dumbbell Press, Chest-Supported DB Row, Bulgarian Split Squat'
-                        : homeEquipment.includes('trx')
-                        ? 'TRX Suspended Chest Press, TRX Inverted Row, TRX Single-Leg Squat'
-                        : 'Matched Home Variations'}
-                    </li>
-                    <li>
-                      • <strong className="text-white">Travel:</strong> Feet-Elevated Deficit Push-Up, Inverted Row, Slow-Tempo Split Squat
-                    </li>
-                  </ul>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Bottom Navigation Buttons */}
+        {/* ==================================================================== */}
+        {/* BOTTOM NAVIGATION ACTIONS                                           */}
+        {/* ==================================================================== */}
         <div className="flex items-center justify-between pt-2 border-t border-white/[0.08]">
           {step > 1 ? (
             <button
               type="button"
               onClick={() => {
                 triggerHaptic('light');
-                setStep((prev) => (prev === 3 ? 2 : 1));
+                setStep((prev) => (prev === 4 ? 3 : prev === 3 ? 2 : 1));
               }}
               className="px-3.5 py-2.5 rounded-2xl bg-white/[0.06] hover:bg-white/[0.12] text-xs font-semibold text-slate-200 flex items-center space-x-1"
             >
@@ -470,16 +615,16 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
             <div />
           )}
 
-          {step < 3 ? (
+          {step < 4 ? (
             <button
               type="button"
               onClick={() => {
                 triggerHaptic('light');
-                setStep((prev) => (prev === 1 ? 2 : 3));
+                setStep((prev) => (prev === 1 ? 2 : prev === 2 ? 3 : 4));
               }}
               className="px-5 py-2.5 rounded-2xl bg-brand-primary text-black text-xs font-bold flex items-center space-x-1.5 shadow-md shadow-brand-primary/20"
             >
-              <span>Next</span>
+              <span>{step === 1 ? 'Choose My Program' : 'Next'}</span>
               <ChevronRight className="w-4 h-4 stroke-[2.5]" />
             </button>
           ) : (
@@ -489,7 +634,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
               className="px-5 py-2.5 rounded-2xl bg-brand-primary text-black text-xs font-bold flex items-center space-x-1.5 shadow-md shadow-brand-primary/20"
             >
               <Check className="w-4 h-4 stroke-[2.5]" />
-              <span>Save Setup &amp; Update Workout</span>
+              <span>Start Day 1 Workout</span>
             </button>
           )}
         </div>

@@ -3,6 +3,7 @@ import {
   BiometricLog,
   GoalPhase,
   HomeEquipmentTag,
+  ProgramSplitType,
   ReadinessState,
   TrainingLocation,
   UserProfile,
@@ -32,6 +33,7 @@ import {
 import {
   adaptWorkoutSessionToLocation,
   generateSmartWorkoutSession,
+  getFirstSplitDayForProgram,
   getNextSplitDay,
   SplitDayType,
 } from './services/workoutGenerator';
@@ -61,7 +63,7 @@ export const App: React.FC = () => {
   // Modals & Floating Overlays
   const [restTimerOpen, setRestTimerOpen] = useState(false);
   const [watchModalOpen, setWatchModalOpen] = useState(false);
-  const [onboardingOpen, setOnboardingOpen] = useState(false);
+  const [onboardingOpen, setOnboardingOpen] = useState(!profile.onboardingCompleted);
   const [deferredInstallPrompt, setDeferredInstallPrompt] = useState<any>(null);
   const [xpNotification, setXpNotification] = useState<{
     amount: number;
@@ -253,6 +255,7 @@ export const App: React.FC = () => {
   // Handler: Complete Onboarding / Goals & Equipment Setup
   const handleCompleteOnboarding = (setup: {
     goalPhase: GoalPhase;
+    programType: ProgramSplitType;
     activeLocation: TrainingLocation;
     availableLocations: TrainingLocation[];
     homeEquipment: HomeEquipmentTag[];
@@ -260,27 +263,38 @@ export const App: React.FC = () => {
     setProfile((prev) => ({
       ...prev,
       goalPhase: setup.goalPhase,
+      programType: setup.programType,
       activeLocation: setup.activeLocation,
       availableLocations: setup.availableLocations,
       homeEquipment: setup.homeEquipment,
       onboardingCompleted: true,
     }));
 
-    const adapted = adaptWorkoutSessionToLocation(
-      activeWorkout,
-      setup.activeLocation,
-      setup.homeEquipment,
-      exercises,
+    // Quickest path to value: Generate Day 1 workout for the chosen split and take user to Workout tab
+    const starterSplit = getFirstSplitDayForProgram(setup.programType);
+    const day1Session = generateSmartWorkoutSession(
+      starterSplit,
       workouts,
+      exercises,
       readiness.state,
-      bodyweightEmaKg
+      1,
+      setup.activeLocation,
+      setup.homeEquipment
     );
-    setActiveWorkout(adapted);
+    setActiveWorkout(day1Session);
+    setActiveTab('train');
+
+    const locLabel =
+      setup.activeLocation === 'gym'
+        ? 'Full Gym'
+        : setup.activeLocation === 'home'
+        ? 'At Home'
+        : 'Travel';
 
     addXp(
-      50,
-      'Goals & equipment profile saved! Today’s workout is calibrated to your setup.',
-      'Setup Saved'
+      100,
+      `Welcome to HeadStrong! Loaded Day 1 (${starterSplit}) calibrated to your ${locLabel} setup.`,
+      'Ready to Lift'
     );
   };
 
@@ -567,6 +581,11 @@ export const App: React.FC = () => {
           profile={profile}
           onCompleteOnboarding={handleCompleteOnboarding}
           onClose={() => setOnboardingOpen(false)}
+          onExploreDemo={() => {
+            setProfile((prev) => ({ ...prev, onboardingCompleted: true }));
+            setOnboardingOpen(false);
+            addXp(25, 'Loaded demo data! Explore workouts, programs, and progress.', 'Demo Mode');
+          }}
         />
       )}
 

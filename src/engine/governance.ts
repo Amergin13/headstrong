@@ -215,6 +215,47 @@ export const INITIAL_GOVERNANCE_ITEMS: GovernanceChangeItem[] = [
       'Amber Shield state (Z <= -0.8 or sleep < 6h) must hold weight static, shift target RIR to 2–3, and protect workout streaks.',
     files: ['src/engine/readiness.ts', 'src/components/train/ReadinessBanner.tsx'],
   },
+  {
+    id: 'gov-onboarding-first-time-to-value',
+    title: '4-Step Onboarding & Immediate First-Time-To-Value Delivery',
+    category: 'UX & Information Architecture',
+    status: 'locked',
+    versionIntroduced: 'v1.6',
+    rationale:
+      'New users must be introduced to the app, understand how it works (Asynchronous Hypertrophy Queue & Double Progression), pick their program split, and configure their equipment before immediately landing on their Day 1 session.',
+    whatWorkedWell:
+      'Combines a 4-step wizard with smart defaults so users can complete onboarding in under 60 seconds and immediately see Day 1 loaded with target weights ready to train in 1 tap.',
+    critiqueAndRisks:
+      'Earlier iterations hid onboarding behind the Character tab and never introduced the app value proposition or allowed program split selection on first launch.',
+    lockedInvariant:
+      'New users without onboardingCompleted must see OnboardingModal on launch; completing onboarding must set programType, generate Day 1 workout, and navigate directly to the Workout tab.',
+    files: [
+      'src/components/onboarding/OnboardingModal.tsx',
+      'src/App.tsx',
+      'src/services/storage.ts',
+    ],
+  },
+  {
+    id: 'gov-19-design-heuristics-framework',
+    title: 'Authoritative 19-Point Design Heuristics Governance Gate',
+    category: 'UX & Information Architecture',
+    status: 'locked',
+    versionIntroduced: 'v1.6',
+    rationale:
+      'Codifies all 19 heuristics (6 Visual, 6 Content, 7 Interaction) from the product design standards into continuous CI and architectural reviews.',
+    whatWorkedWell:
+      'Enforces strict 12px font floor, zero forbidden jargon (OOUX, PKG, Canonical Vector, SFR, MEV/MRV), single-entry-point cohesion, and responsive touch targets >=44px.',
+    critiqueAndRisks:
+      'Prevent future feature additions or agent modifications from re-introducing duplicate buttons, micro-text, or calendar-bound day tabs.',
+    lockedInvariant:
+      'All UI code must pass Suite 16 and Suite 17 assertions: 12px font minimum floor, zero forbidden jargon, 1 equipment switcher, 1 exercise changer, and 19-point heuristics adherence.',
+    files: [
+      'PRODUCT_GOVERNANCE.md',
+      'AGENTS.md',
+      'src/engine/governance.ts',
+      'src/engine/__tests__/verifyEngine.ts',
+    ],
+  },
 ];
 
 export interface DesignHeuristicRule {

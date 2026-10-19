@@ -878,6 +878,7 @@ export const INITIAL_USER_PROFILE: UserProfile = {
   age: 28,
   heightCm: 178,
   goalPhase: 'Lean Bulk',
+  programType: 'ppl_upper',
   mesocycleWeek: 3,
   level: 14,
   currentXp: 4850,
