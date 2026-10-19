@@ -15,6 +15,12 @@ import { prescribeDoubleProgression } from '../progression';
 import { calculateWci, calculateHrrPercentage } from '../wci';
 import { calculateEngineVitalityScore, generate7PillarRadarData } from '../vitality';
 import { BiometricLog, ExerciseSession } from '../types';
+import {
+  detectPixelTensorHardware,
+  generateTensorCoachingInsight,
+  evaluateTensorBiomechanicalMatch,
+  setTensorSimulationOverride,
+} from '../tensorAI';
 
 function assert(condition: boolean, msg: string) {
   if (!condition) {
@@ -650,7 +656,7 @@ assert(
 
 // 16. Single Canonical Entry Point Per Job & Zero Sub-12px Micro-Text Audit
 declare const require: (mod: string) => any;
-declare const process: { cwd: () => string };
+declare const process: { cwd: () => string; exit?: (code?: number) => void };
 const fs = require('fs');
 const path = require('path');
 
@@ -904,7 +910,143 @@ assert(
   'Queue recommendation for Lean Bulk emphasizes caloric surplus and progressive volume overload'
 );
 
-console.log('\nALL 18 ENGINE, GOVERNANCE, DESIGN HEURISTICS & EXERCISE SCIENCE SUITES PASSED SUCCESSFULLY! 🎯');
+// ============================================================================
+// 19. Google Pixel Tensor Hardware Acceleration & On-Device AI Subsystem
+// ============================================================================
+console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Subsystem]');
+
+(async () => {
+  // A. Detect Pixel 9 Pro with Tensor G4 TPU
+  const pixel9 = await detectPixelTensorHardware('Mozilla/5.0 (Linux; Android 15; Pixel 9 Pro Build/AD1A) AppleWebKit/537.36');
+  assert(
+    pixel9.isPixelDevice === true &&
+      pixel9.chipModel === 'Google Tensor G4' &&
+      pixel9.backend === 'Tensor TPU (Gemini Nano)' &&
+      pixel9.isHardwareAccelerated === true &&
+      pixel9.isOnDevicePrivate === true &&
+      pixel9.inferenceLatencyMs <= 15,
+    `Pixel 9 Pro successfully identified with Google Tensor G4 TPU (${pixel9.inferenceLatencyMs}ms, Private: ${pixel9.isOnDevicePrivate})`
+  );
+
+  // B. Detect Pixel 8 with Tensor G3
+  const pixel8 = await detectPixelTensorHardware('Mozilla/5.0 (Linux; Android 14; Pixel 8 Build/UD1A) AppleWebKit/537.36');
+  assert(
+    pixel8.isPixelDevice === true &&
+      pixel8.chipModel === 'Google Tensor G3' &&
+      pixel8.backend === 'Tensor TPU (Gemini Nano)',
+    `Pixel 8 successfully identified with Google Tensor G3 TPU`
+  );
+
+  // C. Detect Pixel 7 with Tensor G2
+  const pixel7 = await detectPixelTensorHardware('Mozilla/5.0 (Linux; Android 13; Pixel 7 Build/TD1A) AppleWebKit/537.36');
+  assert(
+    pixel7.isPixelDevice === true &&
+      pixel7.chipModel === 'Google Tensor G2' &&
+      pixel7.backend === 'Tensor NPU (WebNN)',
+    `Pixel 7 successfully identified with Google Tensor G2 NPU`
+  );
+
+  // D. Detect Pixel 6 with Tensor G1
+  const pixel6 = await detectPixelTensorHardware('Mozilla/5.0 (Linux; Android 12; Pixel 6 Build/SD1A) AppleWebKit/537.36');
+  assert(
+    pixel6.isPixelDevice === true &&
+      pixel6.chipModel === 'Google Tensor G1' &&
+      pixel6.backend === 'Tensor GPU (WebGPU Compute)',
+    `Pixel 6 successfully identified with Google Tensor G1 GPU`
+  );
+
+  // E. WebGL ARM Mali GPU detection fallback for Tensor
+  const maliG720 = await detectPixelTensorHardware(undefined, undefined, 'ANGLE (ARM, Mali-G720, OpenGL ES 3.2)');
+  assert(
+    maliG720.isPixelDevice === true && maliG720.chipModel === 'Google Tensor G4',
+    `ARM Mali-G720 WebGL GPU string maps to Google Tensor G4`
+  );
+
+  const maliG715 = await detectPixelTensorHardware(undefined, undefined, 'ANGLE (ARM, Mali-G715, OpenGL ES 3.2)');
+  assert(
+    maliG715.isPixelDevice === true && maliG715.chipModel === 'Google Tensor G3',
+    `ARM Mali-G715 WebGL GPU string maps to Google Tensor G3`
+  );
+
+  // F. Non-Pixel graceful fallback (desktop / iOS)
+  const desktopProfile = await detectPixelTensorHardware('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36');
+  assert(
+    desktopProfile.isPixelDevice === false &&
+      desktopProfile.chipModel === 'Generic / Standard' &&
+      desktopProfile.backend === 'WASM SIMD Neural Engine' &&
+      desktopProfile.isOnDevicePrivate === true,
+    `Non-Pixel environment gracefully falls back to WASM SIMD local engine (Private: ${desktopProfile.isOnDevicePrivate})`
+  );
+
+  // G. On-Device AI Coaching Insight Generation on Tensor
+  const mockSession = pushW3;
+  const tensorInputPrimed = {
+    workoutSession: mockSession,
+    readinessState: 'Primed' as const,
+    readinessZScore: 1.2,
+    hrvRmssd: 68,
+    restingHr: 52,
+    sleepHours: 8.2,
+    goalPhase: 'Lean Bulk' as const,
+    mesocycleWeek: 3,
+    location: 'gym' as const,
+  };
+
+  const primedInsight = await generateTensorCoachingInsight(tensorInputPrimed, pixel9);
+  assert(
+    primedInsight.predictedFatigueRate === 'Low' &&
+      primedInsight.headline.includes('Neural Drive') &&
+      primedInsight.latencyMs <= 15 &&
+      primedInsight.hardwareTag.includes('Google Tensor G4 TPU'),
+    `Tensor G4 generates low-fatigue primed insight in ${primedInsight.latencyMs}ms with hardware tag "${primedInsight.hardwareTag}"`
+  );
+
+  const tensorInputAmber = {
+    workoutSession: mockSession,
+    readinessState: 'Amber Shield' as const,
+    readinessZScore: -1.4,
+    hrvRmssd: 34,
+    restingHr: 66,
+    sleepHours: 5.2,
+    goalPhase: 'Cut / Recomp' as const,
+    mesocycleWeek: 4,
+    location: 'gym' as const,
+  };
+
+  const amberInsight = await generateTensorCoachingInsight(tensorInputAmber, pixel9);
+  assert(
+    amberInsight.predictedFatigueRate === 'Elevated' &&
+      amberInsight.headline.includes('Recovery Shield Active') &&
+      amberInsight.summary.includes('Caloric deficit') &&
+      amberInsight.tacticalCue.includes('2–3 reps in reserve'),
+    `Tensor G4 correctly auto-regulates Amber Shield + Cut with Recovery Shield cues`
+  );
+
+  // H. Biomechanical Neural Matcher
+  const matchResult = evaluateTensorBiomechanicalMatch('ex-bench-press', 'ex-db-bench-press', 0.4, pixel9);
+  assert(
+    matchResult.compatibilityScore >= 80 &&
+      matchResult.rationale.includes('Tensor Google Tensor G4 Biomechanical Matcher') &&
+      matchResult.hypertrophyStimulusRating === 'Optimal',
+    `Tensor Biomechanical Matcher scores DB Bench Press at ${matchResult.compatibilityScore}% with optimal stimulus`
+  );
+
+  // I. Simulation Override Mode
+  setTensorSimulationOverride(true, 'Google Tensor G4');
+  const simulated = await detectPixelTensorHardware('Generic User Agent');
+  assert(
+    simulated.isPixelDevice === true && simulated.chipModel === 'Google Tensor G4',
+    `Simulation override activates Tensor G4 profile on generic User Agent for testing`
+  );
+  setTensorSimulationOverride(false);
+
+  console.log('\nALL 19 ENGINE, GOVERNANCE, DESIGN HEURISTICS & GOOGLE PIXEL TENSOR AI SUITES PASSED SUCCESSFULLY! 🎯');
+})().catch((err) => {
+  console.error('Suite 19 Failed:', err);
+  if (typeof process !== 'undefined' && process.exit) {
+    process.exit(1);
+  }
+});
 
 
 

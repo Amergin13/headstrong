@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   BiometricLog,
   ExerciseDefinition,
@@ -16,6 +16,16 @@ import { ExerciseCard } from './ExerciseCard';
 import { ExerciseSwapModal } from './ExerciseSwapModal';
 import { PlateCalculatorModal } from './PlateCalculatorModal';
 import { WorkoutSummaryModal } from './WorkoutSummaryModal';
+import { TensorAICoachCard } from './TensorAICoachCard';
+import {
+  TensorCoachingInsight,
+  TensorCoachingInput,
+  TensorHardwareProfile,
+} from '../../engine/tensorAI';
+import {
+  getTensorHardwareProfile,
+  getTensorCoachingInsight,
+} from '../../services/tensorAIService';
 import { prescribeDoubleProgression } from '../../engine/progression';
 import { calculateSubTierQuest } from '../../engine/strengthStandards';
 import {
@@ -95,6 +105,47 @@ export const TrainTab: React.FC<TrainTabProps> = ({
     exerciseName: string;
     set: WorkoutSet;
   } | null>(null);
+
+  const [tensorHardware, setTensorHardware] = useState<TensorHardwareProfile | null>(null);
+  const [tensorInsight, setTensorInsight] = useState<TensorCoachingInsight | null>(null);
+
+  const loadTensorAI = useCallback(async () => {
+    try {
+      const hw = await getTensorHardwareProfile();
+      setTensorHardware(hw);
+      const input: TensorCoachingInput = {
+        workoutSession: activeWorkout,
+        readinessState: readiness.state,
+        readinessZScore: readiness.score,
+        hrvRmssd: latestBiometrics.hrvRmssd,
+        restingHr: latestBiometrics.restingHr,
+        sleepHours: latestBiometrics.sleepHours,
+        goalPhase: profile.goalPhase,
+        mesocycleWeek: profile.mesocycleWeek || 3,
+        location: activeWorkout.location || profile.activeLocation || 'gym',
+      };
+      const ins = await getTensorCoachingInsight(input);
+      setTensorInsight(ins);
+    } catch {
+      // Graceful fallback
+    }
+  }, [
+    activeWorkout.id,
+    activeWorkout.name,
+    activeWorkout.location,
+    readiness.state,
+    readiness.score,
+    latestBiometrics.hrvRmssd,
+    latestBiometrics.restingHr,
+    latestBiometrics.sleepHours,
+    profile.goalPhase,
+    profile.mesocycleWeek,
+    profile.activeLocation,
+  ]);
+
+  useEffect(() => {
+    loadTensorAI();
+  }, [loadTensorAI]);
 
   const exMap = new Map(exerciseCatalog.map((e) => [e.id, e]));
 
@@ -670,6 +721,26 @@ export const TrainTab: React.FC<TrainTabProps> = ({
         latestBiometrics={latestBiometrics}
         onSelectState={onSelectReadinessState}
       />
+
+      {/* On-Device AI Coach Powered by Google Tensor */}
+      {tensorHardware && tensorInsight && (
+        <TensorAICoachCard
+          insight={tensorInsight}
+          hardware={tensorHardware}
+          contextInput={{
+            workoutSession: activeWorkout,
+            readinessState: readiness.state,
+            readinessZScore: readiness.score,
+            hrvRmssd: latestBiometrics.hrvRmssd,
+            restingHr: latestBiometrics.restingHr,
+            sleepHours: latestBiometrics.sleepHours,
+            goalPhase: profile.goalPhase,
+            mesocycleWeek: profile.mesocycleWeek || 3,
+            location: activeWorkout.location || profile.activeLocation || 'gym',
+          }}
+          onRefreshHardware={loadTensorAI}
+        />
+      )}
 
       {/* Undo Set Deletion Guardrail Banner */}
       {deletedSetBackup && (

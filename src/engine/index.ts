@@ -9,3 +9,4 @@ export * from './wci';
 export * from './vitality';
 export * from './hypertrophyVolume';
 export * from './knowledgeGraph';
+export * from './tensorAI';

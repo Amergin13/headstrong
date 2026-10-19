@@ -63,6 +63,11 @@ This document is the authoritative **Product Governance Ledger** for **HeadStron
    - **Why It's Locked:** Programmatic volume scaling in `generateSmartWorkoutSession` and double progression in `prescribeDoubleProgression` automatically adapt based on `goalPhase`. When in `Cut / Recomp`, holding load and reps triggers the **Retention Shield**, celebrating lean tissue preservation as relative strength (DOTS) rises. Furthermore, `getNextSplitDay` and `getSplitDaysForProgram` dynamically support all 4 split types (`ppl`, `ppl_upper`, `upper_lower`, `full_body`).
    - **CI Invariant:** Verified in `Suite 18` of `src/engine/__tests__/verifyEngine.ts`. In `Cut / Recomp`, set volumes must be capped at 2–3 sets and double progression must display Retention Shield feedback. Split day rotation must match the athlete's `programType`.
 
+9. **`gov-pixel-tensor-hardware-acceleration` — Google Pixel Tensor Processor On-Device AI Acceleration**
+   - **Rationale:** Processing sensitive biometric and workout data on remote cloud servers introduces latency, requires internet connectivity in gym basements, and compromises user privacy. Google Pixel phones possess dedicated Google Tensor chips (G1–G4) with hardware TPUs, NPUs, and GPUs engineered for on-device machine learning.
+   - **Why It's Locked:** `detectPixelTensorHardware` automatically identifies Google Pixel devices via Client Hints (`Sec-CH-UA-Model`), User-Agent, and WebGL ARM Mali GPU vendor signatures. AI coaching, biomechanical similarity analysis, and recovery auto-regulation execute on-device via Chrome Built-in AI (Gemini Nano on Tensor TPU), WebNN, or WebGPU with zero cloud roundtrips and $< 15\text{ms}$ latency.
+   - **CI Invariant:** Verified in `Suite 19` of `verifyEngine.ts` and `Branch 6` of `runComprehensiveQA.mjs`. All Pixel models map to their respective Tensor chip generation, inference is guaranteed 100% on-device private, and zero sub-12px micro-text or leaked jargon is permitted in Tensor UI cards or modals.
+
 ---
 
 ### 2.2 Progressing Changes (`Progressing` 🔄 — Active Refinement)

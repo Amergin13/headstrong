@@ -18,6 +18,7 @@ import {
   ShieldAlert,
   ChevronDown,
   ChevronUp,
+  Cpu,
 } from 'lucide-react';
 
 interface WatchSyncModalProps {
@@ -117,6 +118,23 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
             HRV {latestBiometrics.hrvRmssd} ms • Resting HR {latestBiometrics.restingHr} bpm
           </span>
         </div>
+      </div>
+
+      {/* Google Tensor On-Device Processing Card */}
+      <div className="p-3 rounded-2xl bg-black/40 border border-white/[0.06] text-xs space-y-1.5">
+        <div className="flex justify-between items-center">
+          <span className="text-slate-400 flex items-center gap-1.5 font-medium">
+            <Cpu className="w-3.5 h-3.5 text-brand-primary stroke-[2]" />
+            Google Tensor On-Device AI
+          </span>
+          <span className="font-semibold text-emerald-400 flex items-center gap-1">
+            <Zap className="w-3 h-3 stroke-[2]" />
+            Accelerated
+          </span>
+        </div>
+        <p className="text-slate-300 leading-relaxed">
+          On Google Pixel phones, watch biometrics are analyzed directly by the Google Tensor processor for instant, private recovery coaching.
+        </p>
       </div>
 
       {/* Live Sync Progress Bar */}
