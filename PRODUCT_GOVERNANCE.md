@@ -53,6 +53,11 @@ This document is the authoritative **Product Governance Ledger** for **HeadStron
    - **Rationale (Eliminating Design Debt & Duplicated Entry Points):** Previous iterations introduced duplicated entry points across the app: `ExerciseCard.tsx` had both a `Switch Equipment` button AND an inline `Equipment: [Barbell] [Dumbbell] [Dumbbell]...` horizontal carousel (which mapped alternative exercises to duplicate equipment labels); `TrainTab.tsx` had an `Adjust Gear / Split` drawer that duplicated the `Program` tab's split switcher and onboarding button; `ProgramTab.tsx` had two onboarding buttons (`Goals & Gear Setup` + `Edit Gear`) and a duplicate `Google Pixel Watch` accordion; `Header.tsx` had a duplicate `Reset Demo Data` icon.
    - **Why It's Locked:** Enforces **1 method for switching session equipment** (`Full Gym | At Home | Travel` segmented bar on the Workout card) and **1 method for changing an exercise** (`Change Exercise` button on `ExerciseCard.tsx` opening `ExerciseSwapModal.tsx`), with all duplicate entry points and sub-12px micro-text (`text-[9px]`, `text-[10px]`, `text-[11px]`) permanently removed.
 
+7. **`gov-ia-master-template-and-prs` — Information Architecture Master Template & Product Requirements Spec**
+   - **Rationale:** Customer needs dictate zero-guesswork progression and cross-environment continuity. The Interaction Design Master Template (`INTERACTION_DESIGN_MASTER_TEMPLATE.md`) and Product Requirements Spec (`PRODUCT_REQUIREMENTS_SPEC.md`) codify the exact page layouts, focal points, and section hierarchies.
+   - **Why It's Locked:** Prevents future sessions from regressing or reorganizing completed and agreed structures. All 4 main tabs (`Workout`, `Program`, `Progress`, `Athlete`) and all critical modals follow locked templates.
+   - **CI Invariant:** All pages, section hierarchies, and canonical entry points must adhere to `INTERACTION_DESIGN_MASTER_TEMPLATE.md`. No session may re-introduce calendar-bound day tabs, duplicate controls, or micro-text.
+
 ---
 
 ### 2.2 Progressing Changes (`Progressing` 🔄 — Active Refinement)

@@ -323,4 +323,41 @@ New users must be guided along the **quickest path to value** in under 60 second
 5. **First-Time-to-Value Delivery:**
    - Instantly generates the calibrated Day 1 workout and directs the athlete straight to the Workout tab with Exercise #1, target weight, and reps ready to train in 1 tap.
 
+---
+
+## 8. Authoritative Information Architecture & Interaction Design Master Template (Locked Invariant)
+
+All future sessions, developers, and AI agents must strictly adhere to the structure defined in `PRODUCT_REQUIREMENTS_SPEC.md` and `INTERACTION_DESIGN_MASTER_TEMPLATE.md`. **Do not iterate on, rearrange, or redesign what has been agreed as complete and final.**
+
+### 8.1 4-Page Information Architecture & Canonical Focal Points
+1. **Workout Tab (`TrainTab.tsx`):**
+   - *Focal Point:* Unified Hero Card (`[Up Next]` Asynchronous Queue, Week X of 6, Science Rationale, 1-Tap Location Switcher `Full Gym | At Home | Travel`).
+   - *Progression Checklist:* "How to Make Progress This Session" (top breakthroughs, live progress bar, tonnage).
+   - *Recovery Status:* Collapsible `ReadinessBanner.tsx` (Primed / Baseline / Amber Shield).
+   - *Exercise Cards:* Step number, `[Plates]`, single `[Change Exercise]` button, Target Box, 12-column set table, Quest accordion, `[+ Warmup] [+ Add Set] [- Remove]` footer.
+   - *Add Exercise:* Single dashed CTA button at bottom.
+2. **Program Tab (`ProgramTab.tsx`):**
+   - *Focal Point:* Training Locations & Equipment Summary Card with single `[Edit Equipment]` trigger.
+   - *Goal Phase Switcher:* Build Muscle, Lose Fat, Stay Lean.
+   - *6-Week Mesocycle:* Week 1 to 6 periodization with 1-tap Deload trigger.
+   - *Split Editor:* Routine preview, `[+ Custom Exercise]`, and `[Start This Workout]` triggers.
+   - *Profile & Data Drawers:* Collapsible accordions for Athlete Profile, Data Backup (export/restore/erase), and Product Governance Matrix.
+3. **Progress Tab (`AnalyticsTab.tsx`):**
+   - *Focal Point:* 2-Way Segmented Switcher (`Strength & Stamina` vs. `Recovery, Joints & Steps`).
+   - *View A (Strength & Stamina):* E1RM vs Bodyweight Chart (with `[Log Today's Weight]`) + Work Capacity Index (WCI) Chart.
+   - *View B (Recovery, Joints & Steps):* Joint Health & Recovery Insights Knowledge Graph + Daily Steps & Active Minutes Tracker.
+4. **Athlete Tab (`CharacterTab.tsx`):**
+   - *Focal Point:* Athlete Scorecard (Avatar, Level, 7-day EMA weight, DOTS score, Big 3 total).
+   - *Sub-View Switcher:* `Weekly Muscle Sets` vs. `Strength Balance & Bonuses`.
+   - *Sub-View A:* Israetel/Schoenfeld Hypertrophy Volume Landmarks horizontal bar gauges across 12 muscles.
+   - *Sub-View B:* 7-Pillar Strength Balance Radar + Active Bonuses (Streak Safe & 1.25x Active Bonus).
+
+### 8.2 Non-Negotiable Guardrails
+- **1 Canonical Entry Point Per Job:** Never add duplicate switchers, carousels, or headers.
+- **Strict 12px Minimum Text Floor:** Never use `text-[8px..11px]`.
+- **>=44px Touch Targets:** Every button and trigger must satisfy mobile ergonomics.
+- **Zero Internal Jargon:** Never expose `OOUX`, `Personal Knowledge Graph`, `Canonical Vector`, `SFR`, or `MEV/MRV` acronyms to users.
+- **Asynchronous Queue Invariant:** Never re-introduce calendar-bound day tabs (`1. Push`, `2. Pull`, `3. Legs`, `4. Upper`) or missed-day penalties.
+
+
 

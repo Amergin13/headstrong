@@ -256,6 +256,31 @@ export const INITIAL_GOVERNANCE_ITEMS: GovernanceChangeItem[] = [
       'src/engine/__tests__/verifyEngine.ts',
     ],
   },
+  {
+    id: 'gov-ia-master-template-and-prs',
+    title: 'Information Architecture Master Template & Product Requirements Spec',
+    category: 'UX & Information Architecture',
+    status: 'locked',
+    versionIntroduced: 'v1.7',
+    rationale:
+      'Customer needs dictate zero-guesswork progression and cross-environment continuity. The Interaction Design Master Template (INTERACTION_DESIGN_MASTER_TEMPLATE.md) and Product Requirements Spec (PRODUCT_REQUIREMENTS_SPEC.md) codify the exact page layouts, focal points, and section hierarchies.',
+    whatWorkedWell:
+      'Provides an immutable structural contract for the 4 primary tabs (Workout, Program, Progress, Athlete) and all modal flows. Prevents regressions, duplicate controls, or calendar-bound day tabs.',
+    critiqueAndRisks:
+      'Sessions must not iterate on, rearrange, or redesign what has been agreed as complete and final.',
+    lockedInvariant:
+      'The 4 main tabs and their exact section hierarchies, 1-tap entry points, and 2-way view switchers are locked and final; all code must adhere to INTERACTION_DESIGN_MASTER_TEMPLATE.md.',
+    files: [
+      'PRODUCT_REQUIREMENTS_SPEC.md',
+      'INTERACTION_DESIGN_MASTER_TEMPLATE.md',
+      'AGENTS.md',
+      'PRODUCT_GOVERNANCE.md',
+      'src/components/train/TrainTab.tsx',
+      'src/components/program/ProgramTab.tsx',
+      'src/components/analytics/AnalyticsTab.tsx',
+      'src/components/character/CharacterTab.tsx',
+    ],
+  },
 ];
 
 export interface DesignHeuristicRule {

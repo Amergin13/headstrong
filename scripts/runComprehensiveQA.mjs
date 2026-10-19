@@ -235,8 +235,36 @@ assert(
 const agentsSrc = fs.readFileSync(path.resolve(process.cwd(), 'AGENTS.md'), 'utf-8');
 assert(
   agentsSrc.includes('5. Codified Product Design Heuristics Framework') &&
-    agentsSrc.includes('7. Onboarding & First-Time-to-Value Specification'),
-  'AGENTS.md contains codified 19 design heuristics and onboarding specification for continuous AI guidance across sessions'
+    agentsSrc.includes('7. Onboarding & First-Time-to-Value Specification') &&
+    agentsSrc.includes('8. Authoritative Information Architecture & Interaction Design Master Template'),
+  'AGENTS.md contains codified 19 design heuristics, onboarding specification, and locked IA Master Template for continuous AI guidance across sessions'
+);
+
+const prsExists = fs.existsSync(path.resolve(process.cwd(), 'PRODUCT_REQUIREMENTS_SPEC.md'));
+assert(prsExists, 'PRODUCT_REQUIREMENTS_SPEC.md exists as canonical customer needs specification');
+const prsSrc = fs.readFileSync(path.resolve(process.cwd(), 'PRODUCT_REQUIREMENTS_SPEC.md'), 'utf-8');
+assert(
+  prsSrc.includes('Jobs-to-be-Done (JTBD)') &&
+    prsSrc.includes('FR-TRAIN-01') &&
+    prsSrc.includes('Non-Functional Requirements & Governance Constraints'),
+  'PRODUCT_REQUIREMENTS_SPEC.md contains complete customer problem space, JTBD, and functional matrices'
+);
+
+const masterTemplateExists = fs.existsSync(path.resolve(process.cwd(), 'INTERACTION_DESIGN_MASTER_TEMPLATE.md'));
+assert(masterTemplateExists, 'INTERACTION_DESIGN_MASTER_TEMPLATE.md exists as authoritative IA master template');
+const masterTemplateSrc = fs.readFileSync(path.resolve(process.cwd(), 'INTERACTION_DESIGN_MASTER_TEMPLATE.md'), 'utf-8');
+assert(
+  masterTemplateSrc.includes('Page 1: Workout Tab') &&
+    masterTemplateSrc.includes('Page 2: Program Tab') &&
+    masterTemplateSrc.includes('Page 3: Progress Tab') &&
+    masterTemplateSrc.includes('Page 4: Athlete Tab') &&
+    masterTemplateSrc.includes('Anti-Patterns & Strictly Forbidden Iterations'),
+  'INTERACTION_DESIGN_MASTER_TEMPLATE.md defines exact section-by-section IA for all 4 pages and forbidden iterations'
+);
+
+assert(
+  governanceSrc.includes('gov-ia-master-template-and-prs'),
+  'Product Governance Ledger locks gov-ia-master-template-and-prs as an immutable structural invariant'
 );
 
 console.log(`\n\x1b[32m\x1b[1m======================================================================\x1b[0m`);
