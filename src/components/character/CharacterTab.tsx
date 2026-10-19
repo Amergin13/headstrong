@@ -39,10 +39,11 @@ export const CharacterTab: React.FC<CharacterTabProps> = ({
 }) => {
   const [subView, setSubView] = useState<AthleteSubView>('volume');
 
-  const squat = pillarBestE1rm.Squat || 135;
-  const bench = pillarBestE1rm['Horizontal Push'] || 112.5;
-  const deadlift = pillarBestE1rm.Hinge || 165;
-  const powerliftingTotalE1rm = squat + bench + deadlift;
+  const squat = pillarBestE1rm.Squat || Math.round(bodyweightEmaKg * 0.75 * 10) / 10;
+  const bench =
+    pillarBestE1rm['Horizontal Push'] || Math.round(bodyweightEmaKg * 0.6 * 10) / 10;
+  const deadlift = pillarBestE1rm.Hinge || Math.round(bodyweightEmaKg * 0.95 * 10) / 10;
+  const powerliftingTotalE1rm = Math.round((squat + bench + deadlift) * 10) / 10;
 
   const dotsScore = calculateDotsScore(
     powerliftingTotalE1rm,

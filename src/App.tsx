@@ -16,6 +16,7 @@ import {
 import { calculateDailyReadiness } from './engine/readiness';
 import { getLatestBodyweightEma } from './engine/ema';
 import {
+  calculateProgramMilestoneXp,
   calculateWorkoutCompletionXp,
   evaluateExerciseProgressXp,
   evaluateStrengthStandardAdvanceXp,
@@ -405,12 +406,39 @@ export const App: React.FC = () => {
       }
     }
 
+    // Check if completing this workout completes a Program Milestone (training week or 6-week mesocycle)
+    const sessionsPerWeekMap: Record<ProgramSplitType, number> = {
+      ppl_upper: 4,
+      ppl: 3,
+      upper_lower: 4,
+      full_body: 3,
+    };
+    const sessionsPerWeek = sessionsPerWeekMap[profile.programType || 'ppl_upper'] || 4;
+    const isWeekMilestone = nextWorkouts.length > 0 && nextWorkouts.length % sessionsPerWeek === 0;
+
+    let milestoneAward: ReturnType<typeof calculateProgramMilestoneXp> | null = null;
+    let nextMesocycleWeek = profile.mesocycleWeek || 1;
+
+    if (isWeekMilestone) {
+      const completedWeek = profile.mesocycleWeek || 1;
+      const programLabels: Record<ProgramSplitType, string> = {
+        ppl_upper: 'PPL + Upper',
+        ppl: 'PPL Classic',
+        upper_lower: 'Upper / Lower',
+        full_body: 'Full Body',
+      };
+      const progName = programLabels[profile.programType || 'ppl_upper'] || 'Hypertrophy Split';
+      milestoneAward = calculateProgramMilestoneXp(completedWeek, progName);
+      nextMesocycleWeek = completedWeek >= 6 ? 1 : completedWeek + 1;
+    }
+
     setWorkouts(nextWorkouts);
 
     setProfile((prev) => ({
       ...prev,
       streakDays: prev.lastWorkoutDate === todayStr ? prev.streakDays : prev.streakDays + 1,
       lastWorkoutDate: todayStr,
+      mesocycleWeek: nextMesocycleWeek,
     }));
 
     const nextSplit = getNextSplitDay(activeWorkout.splitDay, profile.programType);
@@ -419,7 +447,7 @@ export const App: React.FC = () => {
       nextWorkouts,
       exercises,
       readiness.state,
-      profile.mesocycleWeek || 1,
+      nextMesocycleWeek,
       profile.activeLocation || 'gym',
       profile.homeEquipment || ['bench', 'dumbbells', 'trx', 'pullup_bar'],
       profile.goalPhase
@@ -442,6 +470,17 @@ export const App: React.FC = () => {
           strengthAdvanceAward!.bonusTag
         );
       }, 1500);
+    }
+
+    // If completing the week/mesocycle, award program milestone XP
+    if (milestoneAward) {
+      setTimeout(() => {
+        addXp(
+          milestoneAward!.amount,
+          milestoneAward!.description,
+          milestoneAward!.bonusTag
+        );
+      }, 3000);
     }
   };
 

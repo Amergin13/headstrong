@@ -356,8 +356,10 @@ assert(
 
 assert(
   appSrc.includes('evaluateExerciseProgressXp') &&
-    appSrc.includes('calculateWorkoutCompletionXp'),
-  'App.tsx awards XP strictly upon workout completion, progressive overload breakthroughs, and strength standard gains'
+    appSrc.includes('calculateWorkoutCompletionXp') &&
+    appSrc.includes('calculateProgramMilestoneXp') &&
+    appSrc.includes('evaluateStrengthStandardAdvanceXp'),
+  'App.tsx awards XP strictly upon workout completion, progressive overload breakthroughs, program milestones, and strength standard gains'
 );
 
 // 7.4 Verify Opt-In Community Leaderboard
