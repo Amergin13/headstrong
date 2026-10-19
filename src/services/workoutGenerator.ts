@@ -7,6 +7,7 @@ import {
   TrainingLocation,
   WorkoutSession,
   WorkoutSet,
+  GoalPhase,
 } from '../engine/types';
 import {
   canPerformExerciseInLocation,
@@ -167,11 +168,57 @@ const SPLIT_TEMPLATES: Record<
   },
 };
 
-export function getNextSplitDay(current: string): SplitDayType {
-  const order: SplitDayType[] = ['Push', 'Pull', 'Legs', 'Upper'];
+export function getNextSplitDay(
+  current: string,
+  programType: ProgramSplitType = 'ppl_upper'
+): SplitDayType {
+  let order: SplitDayType[] = ['Push', 'Pull', 'Legs', 'Upper'];
+
+  if (programType === 'ppl') {
+    order = ['Push', 'Pull', 'Legs'];
+  } else if (programType === 'upper_lower') {
+    order = ['Upper', 'Legs'];
+  } else if (programType === 'full_body') {
+    order = ['Push', 'Pull', 'Legs'];
+  } else {
+    order = ['Push', 'Pull', 'Legs', 'Upper'];
+  }
+
   const idx = order.indexOf(current as SplitDayType);
-  if (idx === -1) return 'Push';
+  if (idx === -1) return order[0];
   return order[(idx + 1) % order.length];
+}
+
+export function getSplitDaysForProgram(
+  programType: ProgramSplitType = 'ppl_upper'
+): { id: SplitDayType; label: string; desc: string }[] {
+  switch (programType) {
+    case 'ppl':
+      return [
+        { id: 'Push', label: 'Push', desc: 'Chest, Shoulders & Triceps' },
+        { id: 'Pull', label: 'Pull', desc: 'Back, Rear Delts & Biceps' },
+        { id: 'Legs', label: 'Legs', desc: 'Quads, Hamstrings & Calves' },
+      ];
+    case 'upper_lower':
+      return [
+        { id: 'Upper', label: 'Upper', desc: 'Chest, Back & Shoulders' },
+        { id: 'Legs', label: 'Lower', desc: 'Quads, Hamstrings & Calves' },
+      ];
+    case 'full_body':
+      return [
+        { id: 'Push', label: 'Full Body A', desc: 'Squat & Chest Dominant' },
+        { id: 'Pull', label: 'Full Body B', desc: 'Hinge & Back Dominant' },
+        { id: 'Legs', label: 'Full Body C', desc: 'Unilateral & Posterior Chain' },
+      ];
+    case 'ppl_upper':
+    default:
+      return [
+        { id: 'Push', label: 'Push', desc: 'Chest, Shoulders & Triceps' },
+        { id: 'Pull', label: 'Pull', desc: 'Back, Rear Delts & Biceps' },
+        { id: 'Legs', label: 'Legs', desc: 'Quads, Hamstrings & Calves' },
+        { id: 'Upper', label: 'Upper', desc: 'Chest, Back & Arms' },
+      ];
+  }
 }
 
 export function getFirstSplitDayForProgram(programType?: ProgramSplitType): SplitDayType {
@@ -281,12 +328,14 @@ const SPLIT_RECOVERY_META: Record<
 export function getHypertrophyQueueRecommendation(
   activeSplitInput: string,
   historicalWorkouts: WorkoutSession[],
-  referenceDateStr?: string
+  referenceDateStr?: string,
+  programType: ProgramSplitType = 'ppl_upper',
+  goalPhase: GoalPhase = 'Lean Bulk'
 ): HypertrophyQueueRecommendation {
   const activeSplit: SplitDayType = (
     ['Push', 'Pull', 'Legs', 'Upper'].includes(activeSplitInput)
       ? activeSplitInput
-      : 'Push'
+      : getFirstSplitDayForProgram(programType)
   ) as SplitDayType;
 
   const completed = [...historicalWorkouts]
@@ -295,9 +344,9 @@ export function getHypertrophyQueueRecommendation(
 
   const lastOverall = completed[0];
   const recommendedSplit: SplitDayType = lastOverall
-    ? getNextSplitDay(lastOverall.splitDay)
-    : 'Push';
-  const nextInQueue = getNextSplitDay(activeSplit);
+    ? getNextSplitDay(lastOverall.splitDay, programType)
+    : getFirstSplitDayForProgram(programType);
+  const nextInQueue = getNextSplitDay(activeSplit, programType);
 
   const meta = SPLIT_RECOVERY_META[activeSplit] || SPLIT_RECOVERY_META.Push;
   const refDate = referenceDateStr
@@ -335,10 +384,21 @@ export function getHypertrophyQueueRecommendation(
       : `${recoveryPercentage}% Muscle Recovery (${hoursSinceLastTargetStimulus}h / ${meta.recoveryWindowHours}h)`;
 
   let scienceRationale: string;
-  if (isSkippedDayAdapted) {
-    scienceRationale = `Not tied to a calendar: after ${daysSinceLastWorkoutOverall} rest days since your last workout (${lastOverall?.splitDay || 'Upper'}), your ${meta.targetMuscles.toLowerCase()} are 100% recharged for maximum muscle growth.`;
+  const targetLabel = meta.targetMuscles.toLowerCase();
+  const lastSessionName = lastOverall?.splitDay || 'previous';
+
+  if (goalPhase === 'Cut / Recomp') {
+    scienceRationale = isSkippedDayAdapted
+      ? `Retention Shield: Not tied to a calendar: after ${daysSinceLastWorkoutOverall} rest days since ${lastSessionName}, your ${targetLabel} are fully glycogen-replenished. In a caloric deficit, holding working weights at 1–2 RIR preserves 100% of your muscle mass.`
+      : `Retention Shield: Up next after ${lastSessionName}. Your ${targetLabel} have rested ${hoursSinceLastTargetStimulus}h+ (${meta.recoveryWindowHours}h optimal window). In a caloric deficit, focus on high mechanical tension to protect muscle while burning fat.`;
+  } else if (goalPhase === 'Maingain') {
+    scienceRationale = isSkippedDayAdapted
+      ? `Recomposition Focus: Not tied to a calendar: after ${daysSinceLastWorkoutOverall} rest days, your ${targetLabel} are ready to train. Focus on clean technique, density, and steady Work Capacity Index (WCI) progression.`
+      : `Recomposition Focus: Up next after ${lastSessionName}. Your ${targetLabel} have had ${hoursSinceLastTargetStimulus}h+ of recovery (${meta.recoveryWindowHours}h target). Ready for steady progressive overload.`;
   } else {
-    scienceRationale = `Up next after your ${lastOverall?.splitDay || 'Upper'} session. Your ${meta.targetMuscles.toLowerCase()} have had ${hoursSinceLastTargetStimulus}h+ of rest (${meta.recoveryWindowHours}h optimal window) and are ready to progress.`;
+    scienceRationale = isSkippedDayAdapted
+      ? `Hypertrophy Wave: Not tied to a calendar: after ${daysSinceLastWorkoutOverall} rest days since ${lastSessionName}, your ${targetLabel} are 100% recharged. Full caloric surplus fuels progressive overload across your working sets.`
+      : `Hypertrophy Wave: Up next after ${lastSessionName}. Your ${targetLabel} have had ${hoursSinceLastTargetStimulus}h+ of rest (${meta.recoveryWindowHours}h optimal window). Full caloric surplus fuels progressive overload and muscle growth.`;
   }
 
   return {
@@ -541,7 +601,8 @@ export function generateSmartWorkoutSession(
   readinessState: ReadinessState = 'Normal',
   mesocycleWeek: number = 3,
   location: TrainingLocation = 'gym',
-  homeEquipment: HomeEquipmentTag[] = ['bench', 'dumbbells', 'trx', 'pullup_bar']
+  homeEquipment: HomeEquipmentTag[] = ['bench', 'dumbbells', 'trx', 'pullup_bar'],
+  goalPhase: GoalPhase = 'Lean Bulk'
 ): WorkoutSession {
   const template = SPLIT_TEMPLATES[splitDay] || SPLIT_TEMPLATES.Push;
   const exMap = new Map(exerciseCatalog.map((e) => [e.id, e]));
@@ -596,17 +657,27 @@ export function generateSmartWorkoutSession(
           sfrScore: 8.0,
         };
 
-    // Calibrate set count for this mesocycle week
-    const targetSetCount =
-      mesocycleWeek === 6
-        ? 2
-        : Math.max(
-            2,
-            Math.min(
-              item.highVolumeResponder ? 5 : 4,
-              item.baseSets + (item.highVolumeResponder && mesocycleWeek >= 3 ? Math.max(0, setDelta) : Math.min(1, Math.max(0, setDelta)))
-            )
-          );
+    // Calibrate set count for this mesocycle week & goal phase
+    // In Cut / Recomp, caloric deficit limits systemic recovery; volume is scaled to ~85% (Helms et al., 2014)
+    let targetSetCount: number;
+    if (mesocycleWeek === 6) {
+      targetSetCount = 2; // Planned Deload at Maintenance Volume
+    } else if (goalPhase === 'Cut / Recomp') {
+      // Retention Shield: 2-3 working sets per exercise to maintain high mechanical tension without catabolic fatigue
+      targetSetCount = item.highVolumeResponder && mesocycleWeek >= 3 ? 3 : 2;
+    } else if (goalPhase === 'Maingain') {
+      // Consistent MAV sweet spot
+      targetSetCount = item.highVolumeResponder ? 4 : 3;
+    } else {
+      // Lean Bulk: Progressive volume wave from MEV (W1: 2-3 sets) -> MAV (W2-4: 3-4 sets) -> Peak MRV (W5: 4-5 sets)
+      targetSetCount = Math.max(
+        2,
+        Math.min(
+          item.highVolumeResponder ? 5 : 4,
+          item.baseSets + (item.highVolumeResponder && mesocycleWeek >= 3 ? Math.max(0, setDelta) : Math.min(1, Math.max(0, setDelta)))
+        )
+      );
+    }
 
     // Seed dummy session to query historical Double Progression
     const seedSets: WorkoutSet[] = Array.from({ length: targetSetCount }, (_, sIdx) => ({
@@ -634,14 +705,19 @@ export function generateSmartWorkoutSession(
       sfrScore: meta.sfrScore,
       minReps,
       maxReps,
-      notes: item.notes,
+      notes:
+        goalPhase === 'Cut / Recomp'
+          ? `${item.notes} • Retention Shield: Hold high tension at 1–2 RIR to signal muscle preservation.`
+          : item.notes,
       sets: seedSets,
     };
 
     const prescription = prescribeDoubleProgression(
       seedSession,
       readinessState,
-      historicalWorkouts
+      historicalWorkouts,
+      81.5,
+      goalPhase
     );
 
     // Deload week reduces working weight by ~10% on compounds to unload joints

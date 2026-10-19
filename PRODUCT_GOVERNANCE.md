@@ -58,6 +58,11 @@ This document is the authoritative **Product Governance Ledger** for **HeadStron
    - **Why It's Locked:** Prevents future sessions from regressing or reorganizing completed and agreed structures. All 4 main tabs (`Workout`, `Program`, `Progress`, `Athlete`) and all critical modals follow locked templates.
    - **CI Invariant:** All pages, section hierarchies, and canonical entry points must adhere to `INTERACTION_DESIGN_MASTER_TEMPLATE.md`. No session may re-introduce calendar-bound day tabs, duplicate controls, or micro-text.
 
+8. **`gov-authoritative-hypertrophy-and-retention-science` — Authoritative Exercise Science for Hypertrophy, Muscle Retention & Split Rotations**
+   - **Rationale:** Caloric deficits impair systemic recovery capacity and accelerate catabolic muscle loss. Hypertrophy blocks require progressive volume accretion (MEV $\to$ MAV $\to$ MRV), while fat loss phases require maintaining heavy mechanical tension (1–2 RIR) with volume scaled to ~80–85% (capped at 2–3 sets) to prevent overtraining.
+   - **Why It's Locked:** Programmatic volume scaling in `generateSmartWorkoutSession` and double progression in `prescribeDoubleProgression` automatically adapt based on `goalPhase`. When in `Cut / Recomp`, holding load and reps triggers the **Retention Shield**, celebrating lean tissue preservation as relative strength (DOTS) rises. Furthermore, `getNextSplitDay` and `getSplitDaysForProgram` dynamically support all 4 split types (`ppl`, `ppl_upper`, `upper_lower`, `full_body`).
+   - **CI Invariant:** Verified in `Suite 18` of `src/engine/__tests__/verifyEngine.ts`. In `Cut / Recomp`, set volumes must be capped at 2–3 sets and double progression must display Retention Shield feedback. Split day rotation must match the athlete's `programType`.
+
 ---
 
 ### 2.2 Progressing Changes (`Progressing` 🔄 — Active Refinement)

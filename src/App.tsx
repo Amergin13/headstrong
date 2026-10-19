@@ -211,7 +211,8 @@ export const App: React.FC = () => {
       readiness.state,
       profile.mesocycleWeek || 3,
       profile.activeLocation || 'gym',
-      profile.homeEquipment || ['bench', 'dumbbells', 'trx', 'pullup_bar']
+      profile.homeEquipment || ['bench', 'dumbbells', 'trx', 'pullup_bar'],
+      profile.goalPhase
     );
     setActiveWorkout(smartSession);
     if (navigateToTrain) {
@@ -279,7 +280,8 @@ export const App: React.FC = () => {
       readiness.state,
       1,
       setup.activeLocation,
-      setup.homeEquipment
+      setup.homeEquipment,
+      setup.goalPhase
     );
     setActiveWorkout(day1Session);
     setActiveTab('train');
@@ -309,7 +311,8 @@ export const App: React.FC = () => {
       readiness.state,
       week,
       profile.activeLocation || 'gym',
-      profile.homeEquipment || ['bench', 'dumbbells', 'trx', 'pullup_bar']
+      profile.homeEquipment || ['bench', 'dumbbells', 'trx', 'pullup_bar'],
+      profile.goalPhase
     );
     setActiveWorkout(recalibrated);
     addXp(
@@ -356,7 +359,7 @@ export const App: React.FC = () => {
       lastWorkoutDate: todayStr,
     }));
 
-    const nextSplit = getNextSplitDay(activeWorkout.splitDay);
+    const nextSplit = getNextSplitDay(activeWorkout.splitDay, profile.programType);
     const nextSmartSession = generateSmartWorkoutSession(
       nextSplit,
       nextWorkouts,
@@ -364,7 +367,8 @@ export const App: React.FC = () => {
       readiness.state,
       profile.mesocycleWeek || 3,
       profile.activeLocation || 'gym',
-      profile.homeEquipment || ['bench', 'dumbbells', 'trx', 'pullup_bar']
+      profile.homeEquipment || ['bench', 'dumbbells', 'trx', 'pullup_bar'],
+      profile.goalPhase
     );
     setActiveWorkout(nextSmartSession);
 
@@ -562,8 +566,33 @@ export const App: React.FC = () => {
             canInstallPwa={Boolean(deferredInstallPrompt)}
             onTriggerInstallPwa={handleTriggerInstallPwa}
             onUpdateProfile={(up) => setProfile((p) => ({ ...p, ...up }))}
-            onUpdateGoalPhase={(phase: GoalPhase) => setProfile((p) => ({ ...p, goalPhase: phase }))}
             onSelectMesocycleWeek={handleSelectMesocycleWeek}
+            onUpdateGoalPhase={(phase: GoalPhase) => {
+              setProfile((p) => ({ ...p, goalPhase: phase }));
+              const currentSplit = (activeWorkout.splitDay as SplitDayType) || 'Push';
+              const recalibrated = generateSmartWorkoutSession(
+                currentSplit,
+                workouts,
+                exercises,
+                readiness.state,
+                profile.mesocycleWeek || 3,
+                profile.activeLocation || 'gym',
+                profile.homeEquipment || ['bench', 'dumbbells', 'trx', 'pullup_bar'],
+                phase
+              );
+              setActiveWorkout(recalibrated);
+              addXp(
+                25,
+                `Goal switched to ${
+                  phase === 'Cut / Recomp'
+                    ? 'Lose Fat (Retention Shield Active)'
+                    : phase === 'Lean Bulk'
+                    ? 'Build Muscle (Hypertrophy Wave)'
+                    : 'Stay Lean (Recomp)'
+                }. Workouts calibrated!`,
+                'Goal Phase'
+              );
+            }}
             onLaunchSplitDay={(sp) => handleSwitchSplitDay(sp, true)}
             onAddCustomExercise={(newEx) => setExercises((prev) => [...prev, newEx])}
             onResetData={handleResetData}

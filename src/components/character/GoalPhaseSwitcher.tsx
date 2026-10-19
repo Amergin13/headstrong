@@ -16,17 +16,17 @@ export const GoalPhaseSwitcher: React.FC<GoalPhaseSwitcherProps> = ({
     {
       id: 'Lean Bulk',
       label: 'Build Muscle',
-      desc: 'Focus on adding muscle and strength. Earn +25 bonus XP when you hit your weekly set targets.',
+      desc: 'Caloric surplus fuels a progressive volume wave from base volume up to peak growth across the 6-week block.',
     },
     {
       id: 'Cut / Recomp',
       label: 'Lose Fat',
-      desc: 'Keep your strength while losing weight. No XP penalty for holding weights steady as your bodyweight drops.',
+      desc: 'Caloric deficit activates Retention Shield. Volume is scaled to ~85% to match reduced recovery, while heavy mechanical tension signals your body to retain 100% of your muscle while burning fat.',
     },
     {
       id: 'Maingain',
       label: 'Stay Lean',
-      desc: 'Build strength and stamina at your current weight. Earn bonus XP for faster heart rate recovery between sets.',
+      desc: 'Caloric balance. Optimizes muscle density, stamina (Work Capacity Index), and post-set heart rate recovery without adding fat.',
     },
   ];
 

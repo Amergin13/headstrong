@@ -176,10 +176,11 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
         onTriggerDeload={() => onSelectMesocycleWeek(6)}
       />
 
-      {/* 4. 4-Day Workout Split & Exercises */}
+      {/* 4. Workout Split & Exercises */}
       <SplitEditor
         exerciseCatalog={exerciseCatalog}
         activeSplitDay={activeSplitDay}
+        programType={profile.programType}
         onOpenCreateExercise={() => setShowCreateExercise(true)}
         onLaunchSplitDay={onLaunchSplitDay}
       />

@@ -1,13 +1,14 @@
-import React, { useState } from 'react';
-import { ExerciseDefinition } from '../../engine/types';
+import React, { useState, useEffect } from 'react';
+import { ExerciseDefinition, ProgramSplitType } from '../../engine/types';
 import { getExerciseBiomechanicalMeta } from '../../engine/knowledgeGraph';
-import { SplitDayType } from '../../services/workoutGenerator';
+import { SplitDayType, getSplitDaysForProgram } from '../../services/workoutGenerator';
 import { Plus, Play } from 'lucide-react';
 import { triggerHaptic } from '../../utils/haptics';
 
 interface SplitEditorProps {
   exerciseCatalog: ExerciseDefinition[];
   activeSplitDay?: string;
+  programType?: ProgramSplitType;
   onOpenCreateExercise: () => void;
   onLaunchSplitDay?: (split: SplitDayType) => void;
 }
@@ -15,19 +16,20 @@ interface SplitEditorProps {
 export const SplitEditor: React.FC<SplitEditorProps> = ({
   exerciseCatalog,
   activeSplitDay = 'Push',
+  programType = 'ppl_upper',
   onOpenCreateExercise,
   onLaunchSplitDay,
 }) => {
+  const days = getSplitDaysForProgram(programType);
   const [activeDay, setActiveDay] = useState<SplitDayType>(
-    (activeSplitDay as SplitDayType) || 'Push'
+    days.some((d) => d.id === activeSplitDay) ? (activeSplitDay as SplitDayType) : days[0].id
   );
 
-  const days: { id: SplitDayType; label: string }[] = [
-    { id: 'Push', label: 'Push' },
-    { id: 'Pull', label: 'Pull' },
-    { id: 'Legs', label: 'Legs' },
-    { id: 'Upper', label: 'Upper' },
-  ];
+  useEffect(() => {
+    if (!days.some((d) => d.id === activeDay)) {
+      setActiveDay(days[0].id);
+    }
+  }, [programType]);
 
   const filteredExercises = exerciseCatalog.filter((ex) => {
     if (activeDay === 'Push') {
@@ -89,7 +91,11 @@ export const SplitEditor: React.FC<SplitEditorProps> = ({
       </div>
 
       {/* Segmented Control */}
-      <div className="grid grid-cols-4 bg-black/50 p-1 rounded-xl border border-white/[0.06]">
+      <div
+        className={`grid gap-1 bg-black/50 p-1 rounded-xl border border-white/[0.06] ${
+          days.length === 2 ? 'grid-cols-2' : days.length === 3 ? 'grid-cols-3' : 'grid-cols-4'
+        }`}
+      >
         {days.map((d) => {
           const isSelected = activeDay === d.id;
           return (

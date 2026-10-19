@@ -362,7 +362,8 @@ export const TrainTab: React.FC<TrainTabProps> = ({
       ex,
       readiness.state,
       workouts,
-      bodyweightEmaKg
+      bodyweightEmaKg,
+      profile.goalPhase
     );
     return { ex, prescription };
   });
@@ -395,7 +396,9 @@ export const TrainTab: React.FC<TrainTabProps> = ({
   const queueRec = getHypertrophyQueueRecommendation(
     activeWorkout.splitDay,
     workouts,
-    activeWorkout.date
+    activeWorkout.date,
+    profile.programType,
+    profile.goalPhase
   );
 
   return (

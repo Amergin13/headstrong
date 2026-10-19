@@ -6,6 +6,7 @@ import {
   ReadinessState,
   TrainingLocation,
   WorkoutSession,
+  GoalPhase,
 } from './types';
 import {
   calculateE1RM,
@@ -284,7 +285,8 @@ export function prescribeDoubleProgression(
   session: ExerciseSession,
   readinessState: ReadinessState = 'Normal',
   historicalWorkouts?: WorkoutSession[],
-  bodyweightEmaKg: number = 81.5
+  bodyweightEmaKg: number = 81.5,
+  goalPhase: GoalPhase = 'Lean Bulk'
 ): ProgressionPrescription {
   let sourceSession = session;
   let lastSessionDate: string | undefined;
@@ -456,12 +458,16 @@ export function prescribeDoubleProgression(
     const isDumbbell = session.equipment === 'dumbbell';
     const increment = isDumbbell ? 2.0 : 2.5;
     const nextWeight = Math.round((currentWeight + increment) * 10) / 10;
+    const reasonText =
+      goalPhase === 'Cut / Recomp'
+        ? `${transferPrefix}Retention Shield Breakthrough: You hit ${sourceMaxReps} reps on all sets! Even in a caloric deficit, your strength increased—moving weight up by +${increment} kg and resetting target to ${minReps} reps.`
+        : `${transferPrefix}You hit ${sourceMaxReps} reps on all sets last time! Moving weight up by +${increment} kg and resetting target to ${minReps} reps.`;
 
     return {
       exerciseId: session.exerciseId,
       nextWeightKg: nextWeight,
       nextTargetReps: session.sets.map(() => minReps),
-      reason: `${transferPrefix}You hit ${sourceMaxReps} reps on all sets last time! Moving weight up by +${increment} kg and resetting target to ${minReps} reps.`,
+      reason: reasonText,
       weightChanged: true,
       repsChanged: true,
       isAmberShieldBuffer: false,
@@ -488,11 +494,16 @@ export function prescribeDoubleProgression(
       return baseReps;
     });
 
+    const inRangeReason =
+      goalPhase === 'Cut / Recomp'
+        ? `${transferPrefix}Retention Shield: Strong sets last session. Keeping weight at ${currentWeight} kg and aiming for +1 rep today. Holding your load steady in a caloric deficit preserves 100% of your muscle mass.`
+        : `${transferPrefix}Strong sets last session${lastSessionDate ? ` (${lastSessionDate})` : ''}. Keeping weight at ${currentWeight} kg and aiming for +1 rep on your first two sets.`;
+
     return {
       exerciseId: session.exerciseId,
       nextWeightKg: currentWeight,
       nextTargetReps: nextReps,
-      reason: `${transferPrefix}Strong sets last session${lastSessionDate ? ` (${lastSessionDate})` : ''}. Keeping weight at ${currentWeight} kg and aiming for +1 rep on your first two sets.`,
+      reason: inRangeReason,
       weightChanged: false,
       repsChanged: true,
       isAmberShieldBuffer: false,
@@ -504,11 +515,16 @@ export function prescribeDoubleProgression(
   }
 
   // Sub-par performance or high fatigue (0 RIR or below min reps): hold everything
+  const holdReason =
+    goalPhase === 'Cut / Recomp'
+      ? `${transferPrefix}Retention Shield Active: Holding weight at ${currentWeight} kg in a caloric deficit preserves lean muscle and drives relative strength (DOTS) gains as body fat drops.`
+      : `${transferPrefix}Keeping weight at ${currentWeight} kg today so you can build clean, consistent reps.`;
+
   return {
     exerciseId: session.exerciseId,
     nextWeightKg: currentWeight,
     nextTargetReps: session.sets.map((s, idx) => sets[idx]?.actualReps || s.targetReps || minReps),
-    reason: `${transferPrefix}Keeping weight at ${currentWeight} kg today so you can build clean, consistent reps.`,
+    reason: holdReason,
     weightChanged: false,
     repsChanged: false,
     isAmberShieldBuffer: false,

@@ -572,6 +572,7 @@ import {
 import {
   getFirstSplitDayForProgram,
   getHypertrophyQueueRecommendation,
+  getSplitDaysForProgram,
   PROGRAM_OPTIONS,
 } from '../../services/workoutGenerator';
 
@@ -787,7 +788,123 @@ assert(
   `Both gov-onboarding-first-time-to-value and gov-19-design-heuristics-framework are locked in the governance ledger`
 );
 
-console.log('\nALL 17 ENGINE, GOVERNANCE, DESIGN HEURISTICS & ONBOARDING SUITES PASSED SUCCESSFULLY! 🎯');
+// 18. Authoritative Exercise Science for Hypertrophy, Muscle Retention & Program Types
+console.log('\n[18. Authoritative Exercise Science for Hypertrophy, Muscle Retention & Program Types]');
+
+// A. Program Split Rotation Science
+assert(
+  getNextSplitDay('Upper', 'ppl_upper') === 'Push' &&
+    getNextSplitDay('Legs', 'ppl_upper') === 'Upper' &&
+    getNextSplitDay('Push', 'ppl_upper') === 'Pull',
+  '4-Day PPL+Upper split rotates Push -> Pull -> Legs -> Upper with ~2x/week frequency'
+);
+
+assert(
+  getNextSplitDay('Legs', 'ppl') === 'Push' &&
+    getNextSplitDay('Push', 'ppl') === 'Pull' &&
+    getNextSplitDay('Pull', 'ppl') === 'Legs',
+  '3-Day Classic PPL split rotates Push -> Pull -> Legs -> Push with complete dedicated recovery'
+);
+
+assert(
+  getNextSplitDay('Upper', 'upper_lower') === 'Legs' &&
+    getNextSplitDay('Legs', 'upper_lower') === 'Upper',
+  '4-Day Upper/Lower split alternates Upper and Lower/Legs to minimize axial fatigue overlap'
+);
+
+assert(
+  getNextSplitDay('Legs', 'full_body') === 'Push' &&
+    getNextSplitDay('Push', 'full_body') === 'Pull',
+  '3-Day Full Body split cycles through full-body sessions for high frequency stimulation'
+);
+
+// B. getSplitDaysForProgram Verification
+const pplDays = getSplitDaysForProgram('ppl');
+assert(pplDays.length === 3 && pplDays.map((d) => d.id).join(',') === 'Push,Pull,Legs', 'PPL exposes exactly 3 dedicated split days');
+
+const ulDays = getSplitDaysForProgram('upper_lower');
+assert(ulDays.length === 2 && ulDays.map((d) => d.id).join(',') === 'Upper,Legs', 'Upper/Lower exposes Upper and Lower split days');
+
+const pplUpperDays = getSplitDaysForProgram('ppl_upper');
+assert(pplUpperDays.length === 4 && pplUpperDays.map((d) => d.id).join(',') === 'Push,Pull,Legs,Upper', 'PPL+Upper exposes all 4 hypertrophy days');
+
+// C. Caloric Deficit Muscle Retention Science (Helms et al., 2014; Murphy & Koehler, 2022)
+// In Lean Bulk: volume wave scales to 4-5 sets on high responders during peak weeks
+const leanBulkW5 = generateSmartWorkoutSession(
+  'Push',
+  [],
+  seeded.exercises,
+  'Normal',
+  5,
+  'gym',
+  ['bench', 'dumbbells', 'trx', 'pullup_bar'],
+  'Lean Bulk'
+);
+const bulkLateralRaiseSets = leanBulkW5.exercises.find((e) => e.exerciseId === 'ex-db-lateral-raise')?.sets.length;
+assert(
+  bulkLateralRaiseSets === 5,
+  `Lean Bulk Week 5 scales high-volume responders to near-MRV (5 sets) to maximize progressive overload (got ${bulkLateralRaiseSets})`
+);
+
+// In Cut / Recomp: volume is scaled to ~85% (capped at 2-3 sets) to prevent catabolic overreaching in deficit
+const cutW5 = generateSmartWorkoutSession(
+  'Push',
+  [],
+  seeded.exercises,
+  'Normal',
+  5,
+  'gym',
+  ['bench', 'dumbbells', 'trx', 'pullup_bar'],
+  'Cut / Recomp'
+);
+const cutLateralRaiseSets = cutW5.exercises.find((e) => e.exerciseId === 'ex-db-lateral-raise')?.sets.length;
+const cutBenchSets = cutW5.exercises.find((e) => e.exerciseId === 'ex-bench-press')?.sets.length;
+assert(
+  cutLateralRaiseSets === 3 && cutBenchSets === 2,
+  `Cut / Recomp caps volume to ~85% (3 sets isolation, 2 sets compound) to protect systemic recovery in a caloric deficit`
+);
+
+// D. Double Progression Retention Shield Feedback
+const mockCuttingEx: ExerciseSession = {
+  ...seeded.exercises[0],
+  exerciseId: 'ex-bench-press',
+  name: 'Barbell Bench Press',
+  pillar: 'Horizontal Push',
+  equipment: 'barbell',
+  minReps: 8,
+  maxReps: 12,
+  sets: [
+    { id: 's1', setNumber: 1, targetWeightKg: 85, actualWeightKg: 85, targetReps: 10, actualReps: 10, targetRir: 2, actualRir: 2, completed: true, setType: 'working' },
+    { id: 's2', setNumber: 2, targetWeightKg: 85, actualWeightKg: 85, targetReps: 10, actualReps: 10, targetRir: 2, actualRir: 2, completed: true, setType: 'working' },
+  ],
+};
+
+const cutPrescription = prescribeDoubleProgression(
+  mockCuttingEx,
+  'Normal',
+  [],
+  80,
+  'Cut / Recomp'
+);
+assert(
+  cutPrescription.reason.includes('Retention Shield'),
+  `Double Progression in Cut / Recomp explicitly invokes Retention Shield to celebrate muscle preservation in a deficit`
+);
+
+// E. Asynchronous Queue Science Rationale by Goal Phase
+const queueRecCut = getHypertrophyQueueRecommendation('Push', [], undefined, 'ppl_upper', 'Cut / Recomp');
+assert(
+  queueRecCut.scienceRationale.includes('Retention Shield') && queueRecCut.scienceRationale.includes('caloric deficit'),
+  'Queue recommendation for Cut / Recomp emphasizes caloric deficit recovery windows and mechanical tension'
+);
+
+const queueRecBulk = getHypertrophyQueueRecommendation('Push', [], undefined, 'ppl_upper', 'Lean Bulk');
+assert(
+  queueRecBulk.scienceRationale.includes('Hypertrophy Wave') && queueRecBulk.scienceRationale.includes('surplus'),
+  'Queue recommendation for Lean Bulk emphasizes caloric surplus and progressive volume overload'
+);
+
+console.log('\nALL 18 ENGINE, GOVERNANCE, DESIGN HEURISTICS & EXERCISE SCIENCE SUITES PASSED SUCCESSFULLY! 🎯');
 
 
 

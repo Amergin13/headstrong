@@ -181,6 +181,20 @@ Volume scales progressively across a 6-week training block to maximize progressi
 - **Week 5 (Peak Strain):** Near MRV @ 0–1 RIR (Functional overreaching).
 - **Week 6 (Planned Deload):** Maintenance Volume (MV) @ 3–4 RIR (Dissipate systemic fatigue & reset CNS sensitivity).
 
+### 4.4 Caloric Deficit Muscle Retention & Volume Scaling (Helms et al., 2014; Murphy & Koehler, 2022)
+- **Physiological Reality:** In a caloric deficit, muscle protein synthesis (MPS) is reduced, glycogen stores deplete faster, and systemic recovery capacity decreases by 15–20%.
+- **Retention vs. Accretion Stimulus:** Preserving lean tissue during a cut does NOT require high volume (MRV), which causes excess cortisol elevation, muscle protein breakdown, and joint strain. Instead, it requires **high mechanical tension** (heavy loads, 1–2 RIR) to signal the body that muscle mass is vital for survival.
+- **Volume Scaling Invariant:** Volume is capped at ~85% of standard training volume (2–3 working sets per exercise instead of 4–5).
+- **Retention Shield in Double Progression:** When holding load and reps in `Cut / Recomp`, HeadStrong displays explicit **Retention Shield** feedback celebrating lean tissue preservation. As body mass drops, holding absolute strength increases relative strength and official DOTS score.
+
+### 4.5 Multi-Program Split Rotations & Asynchronous Queue Invariants
+HeadStrong calibrates 4 evidence-based program structures, each adhering to the Asynchronous Hypertrophy Queue:
+1. **Push / Pull / Legs + Upper (`ppl_upper` - 4-Day):** Optimal balance of hypertrophy frequency and volume. Day rotation: `Push` → `Pull` → `Legs` → `Upper`.
+2. **Push / Pull / Legs (`ppl` - 3-Day Classic):** High-efficiency classic split. Day rotation: `Push` → `Pull` → `Legs`.
+3. **Upper / Lower (`upper_lower` - 4-Day Power & Mass):** Heavy compound focus. Day rotation: `Upper` → `Legs`.
+4. **Full Body (`full_body` - 3-Day High Frequency):** High systemic stimulus distributed across the week. Day rotation: `Push` → `Pull` → `Legs` movement emphasis.
+- **Asynchronous Queue Invariant:** `getNextSplitDay` dynamically advances to the next valid session based on `profile.programType`. If a lifter skips a day, the next queued session simply waits with full glycogen and CNS recovery.
+
 ---
 
 ## 5. Codified Product Design Heuristics Framework (Mandatory Governance Gate)
