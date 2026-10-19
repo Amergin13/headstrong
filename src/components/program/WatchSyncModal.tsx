@@ -222,7 +222,7 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
               <button
                 type="button"
                 onClick={handleGenerateOauth}
-                className="px-3.5 py-2.5 rounded-xl bg-[#141824] hover:bg-[#1C2233] text-white text-xs font-semibold flex items-center space-x-1"
+                className="px-3.5 py-2.5 min-h-[44px] rounded-xl bg-white/[0.08] hover:bg-white/[0.14] text-white text-xs font-semibold flex items-center space-x-1.5 transition-colors"
               >
                 <span>Connect</span>
                 <ExternalLink className="w-3.5 h-3.5 stroke-[2]" />

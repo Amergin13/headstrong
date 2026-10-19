@@ -55,10 +55,10 @@ const VARIANT_CONFIG: Record<
 };
 
 const SIZE_CONFIG = {
-  sm: { dim: 90, stroke: 7, valueText: 'text-lg', labelText: 'text-xs' },
-  md: { dim: 130, stroke: 9, valueText: 'text-2xl', labelText: 'text-xs' },
-  lg: { dim: 164, stroke: 11, valueText: 'text-3xl', labelText: 'text-xs' },
-  xl: { dim: 196, stroke: 13, valueText: 'text-4xl', labelText: 'text-xs' },
+  sm: { dim: 96, stroke: 8, valueText: 'text-xl', labelText: 'text-xs' },
+  md: { dim: 128, stroke: 10, valueText: 'text-xl', labelText: 'text-xs' },
+  lg: { dim: 164, stroke: 12, valueText: 'text-xl', labelText: 'text-xs' },
+  xl: { dim: 196, stroke: 14, valueText: 'text-xl', labelText: 'text-xs' },
 };
 
 export const BiometricCircularGauge: React.FC<BiometricCircularGaugeProps> = ({

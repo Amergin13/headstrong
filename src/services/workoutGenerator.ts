@@ -21,6 +21,11 @@ import {
   translateWeightBetweenImplements,
 } from '../engine/e1rm';
 import { getExerciseBiomechanicalMeta } from '../engine/knowledgeGraph';
+import {
+  calculateWarmupPrescription,
+  generateWarmupSets,
+  isFirstCompoundForPillar,
+} from '../engine/warmup';
 
 export type SplitDayType = 'Push' | 'Pull' | 'Legs' | 'Upper';
 
@@ -523,11 +528,16 @@ export function adaptWorkoutSessionToLocation(
           isWeightedCalisthenic: false,
           movementFamily: movementVector,
           movementFamilyLabel: familyLabel,
-          sets: ex.sets.map((s) => ({
-            ...s,
-            targetWeightKg: 0,
-            actualWeightKg: s.completed ? s.actualWeightKg : 0,
-          })),
+          sets: ex.sets
+            .filter((s) => !s.isWarmup && s.setType !== 'warmup')
+            .map((s, sIdx) => ({
+              ...s,
+              setNumber: sIdx + 1,
+              targetWeightKg: 0,
+              actualWeightKg: s.completed ? s.actualWeightKg : 0,
+              isWarmup: false,
+              setType: 'working',
+            })),
         };
       }
       return {
@@ -579,15 +589,7 @@ export function adaptWorkoutSessionToLocation(
       minReps: targetDef.defaultRepRange[0],
       maxReps: targetDef.defaultRepRange[1],
       notes: targetDef.whyItWorks || ex.notes,
-      sets: ex.sets.map((s) => ({
-        ...s,
-        targetWeightKg:
-          isPureBw
-            ? 0
-            : s.isWarmup || s.setType === 'warmup'
-            ? Math.max(0, Math.round((translatedWeight * 0.6) / 2) * 2)
-            : translatedWeight,
-      })),
+      sets: ex.sets,
     };
 
     const prescription = prescribeDoubleProgression(
@@ -631,28 +633,60 @@ export function adaptWorkoutSessionToLocation(
       );
     }
 
-    let workingIdx = 0;
-    const calibratedSets: WorkoutSet[] = candidateSession.sets.map((s) => {
-      if (s.isWarmup || s.setType === 'warmup') {
-        const wWeight = isPureBw ? 0 : Math.max(0, Math.round((prescription.nextWeightKg * 0.6) / 2) * 2);
+    let calibratedSets: WorkoutSet[];
+    const workingSetsOnly = candidateSession.sets.filter(
+      (s) => !s.isWarmup && s.setType !== 'warmup'
+    );
+
+    if (isPureBw) {
+      // Pure bodyweight movements start directly with working sets (0 warmup sets)
+      calibratedSets = workingSetsOnly.map((s, workingIdx) => {
+        const nextReps = bwPrescription
+          ? bwPrescription.targetReps
+          : (prescription.nextTargetReps[workingIdx] ?? targetDef.defaultRepRange[0]);
         return {
           ...s,
-          targetWeightKg: wWeight,
-          actualWeightKg: s.completed ? s.actualWeightKg : wWeight,
+          setNumber: workingIdx + 1,
+          targetWeightKg: 0,
+          actualWeightKg: s.completed ? s.actualWeightKg : 0,
+          targetReps: nextReps,
+          actualReps: s.completed ? s.actualReps : nextReps,
+          isWarmup: false,
+          setType: 'working',
         };
+      });
+    } else {
+      // Loaded implements: generate appropriate warmup sets
+      const isFirstCompound = isFirstCompoundForPillar(
+        candidateSession,
+        idx,
+        session.exercises
+      );
+      let warmupSets: WorkoutSet[] = [];
+      if (!meta.isIsolation) {
+        const warmupPrescription = calculateWarmupPrescription(
+          candidateSession,
+          prescription.nextWeightKg,
+          isFirstCompound
+        );
+        warmupSets = generateWarmupSets(candidateSession.exerciseId, warmupPrescription);
       }
-      const nextReps = isPureBw && bwPrescription
-        ? bwPrescription.targetReps
-        : (prescription.nextTargetReps[workingIdx] ?? targetDef.defaultRepRange[0]);
-      workingIdx++;
-      return {
-        ...s,
-        targetWeightKg: isPureBw ? 0 : prescription.nextWeightKg,
-        actualWeightKg: s.completed ? s.actualWeightKg : (isPureBw ? 0 : prescription.nextWeightKg),
-        targetReps: nextReps,
-        actualReps: s.completed ? s.actualReps : nextReps,
-      };
-    });
+
+      calibratedSets = [
+        ...warmupSets,
+        ...workingSetsOnly.map((s, workingIdx) => {
+          const nextReps = prescription.nextTargetReps[workingIdx] ?? targetDef.defaultRepRange[0];
+          return {
+            ...s,
+            setNumber: workingIdx + 1,
+            targetWeightKg: prescription.nextWeightKg,
+            actualWeightKg: s.completed ? s.actualWeightKg : prescription.nextWeightKg,
+            targetReps: nextReps,
+            actualReps: s.completed ? s.actualReps : nextReps,
+          };
+        }),
+      ];
+    }
 
     const calibratedNotes = isPureBw && bwPrescription
       ? `${bwPrescription.explanation}${bwPrescription.tempoCue ? ` (${bwPrescription.tempoCue})` : ''}`
@@ -691,7 +725,8 @@ export function generateSmartWorkoutSession(
   homeEquipment: HomeEquipmentTag[] = ['bench', 'dumbbells', 'trx', 'pullup_bar'],
   goalPhase: GoalPhase = 'Lean Bulk',
   bodyweightEmaKg: number = 81.5,
-  scheduledWeekLocations?: Record<number, TrainingLocation>
+  scheduledWeekLocations?: Record<number, TrainingLocation>,
+  includeWarmups: boolean = true
 ): WorkoutSession {
   const template = SPLIT_TEMPLATES[splitDay] || SPLIT_TEMPLATES.Push;
   const exMap = new Map(exerciseCatalog.map((e) => [e.id, e]));
@@ -818,13 +853,41 @@ export function generateSmartWorkoutSession(
     const calibratedSets: WorkoutSet[] = seedSets.map((s, idx) => ({
       ...s,
       targetWeightKg: prescribedWeight,
+      actualWeightKg: prescribedWeight,
       targetReps: prescription.nextTargetReps[idx] ?? minReps,
+      actualReps: prescription.nextTargetReps[idx] ?? minReps,
       targetRir: idx === targetSetCount - 1 ? finalSetRir : baseRir,
     }));
 
+    let warmupSets: WorkoutSet[] = [];
+    if (includeWarmups && mesocycleWeek !== 6 && !seedSession.isIsolation) {
+      const isFirstCompound = isFirstCompoundForPillar(
+        seedSession,
+        exIdx,
+        template.exercises.map((t) => {
+          const d = exMap.get(t.exerciseId);
+          return {
+            pillar: d?.pillar || 'Horizontal Push',
+            isIsolation: d ? getExerciseBiomechanicalMeta(d).isIsolation : false,
+            equipment: d?.equipment,
+            isWeightedCalisthenic: d?.isWeightedCalisthenic,
+            name: d?.name,
+            exerciseId: t.exerciseId,
+          };
+        })
+      );
+
+      const warmupPrescription = calculateWarmupPrescription(
+        seedSession,
+        prescribedWeight,
+        isFirstCompound
+      );
+      warmupSets = generateWarmupSets(seedSession.exerciseId, warmupPrescription);
+    }
+
     return {
       ...seedSession,
-      sets: calibratedSets,
+      sets: [...warmupSets, ...calibratedSets],
     };
   });
 

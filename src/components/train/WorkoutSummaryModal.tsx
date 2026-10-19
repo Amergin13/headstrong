@@ -96,7 +96,7 @@ export const WorkoutSummaryModal: React.FC<WorkoutSummaryModalProps> = ({
         <button
           type="button"
           onClick={handleDone}
-          className="w-full py-3 rounded-2xl bg-brand-primary text-black font-bold text-sm hover:opacity-90 transition-all flex items-center justify-center space-x-2 shadow-lg shadow-brand-primary/20 active:scale-98"
+          className="w-full py-3 min-h-[44px] rounded-2xl bg-white hover:bg-slate-100 text-slate-950 font-bold text-sm transition-all flex items-center justify-center space-x-2 shadow-lg shadow-white/5 active:scale-95"
         >
           <span>Done</span>
           <ArrowRight className="w-4 h-4 stroke-[2]" />

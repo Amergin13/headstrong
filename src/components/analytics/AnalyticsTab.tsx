@@ -75,8 +75,8 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
             }}
             className={`py-2 rounded-xl text-xs font-bold transition-all min-h-[44px] flex items-center justify-center ${
               activeView === 'strength'
-                ? 'bg-brand-primary text-black shadow-sm'
-                : 'text-slate-300 hover:text-white'
+                ? 'bg-white/[0.14] text-white font-bold shadow-sm'
+                : 'text-slate-400 hover:text-slate-200'
             }`}
           >
             Strength &amp; Stamina
@@ -90,8 +90,8 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
             }}
             className={`py-2 rounded-xl text-xs font-bold transition-all min-h-[44px] flex items-center justify-center ${
               activeView === 'recovery'
-                ? 'bg-brand-primary text-black shadow-sm'
-                : 'text-slate-300 hover:text-white'
+                ? 'bg-white/[0.14] text-white font-bold shadow-sm'
+                : 'text-slate-400 hover:text-slate-200'
             }`}
           >
             Recovery, Joints &amp; Steps

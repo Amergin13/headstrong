@@ -89,7 +89,7 @@ export const VolumeTracker: React.FC<VolumeTrackerProps> = ({ weeklyVolume }) =>
             setShowScienceModal(true);
           }}
           aria-label="Learn how weekly set targets work"
-          className="px-3 py-1.5 rounded-xl bg-white/[0.08] hover:bg-white/[0.12] text-slate-200 hover:text-white transition-all flex items-center space-x-1.5 text-xs font-semibold"
+          className="px-3.5 py-2 rounded-xl bg-white/[0.08] hover:bg-white/[0.14] text-slate-200 hover:text-white transition-all flex items-center space-x-1.5 text-xs font-semibold min-h-[44px]"
         >
           <BookOpen className="w-3.5 h-3.5 text-brand-primary stroke-[2]" />
           <span>How it works</span>
@@ -104,10 +104,10 @@ export const VolumeTracker: React.FC<VolumeTrackerProps> = ({ weeklyVolume }) =>
               key={cat}
               type="button"
               onClick={() => handleFilterClick(cat)}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all min-h-[36px] flex items-center justify-center ${
                 activeFilter === cat
-                  ? 'bg-brand-primary text-black font-extrabold shadow-sm'
-                  : 'bg-[#151A24] text-slate-300 hover:text-white hover:bg-white/[0.08]'
+                  ? 'bg-white text-slate-950 font-bold shadow-sm'
+                  : 'bg-[#151A24] text-slate-400 hover:text-white hover:bg-white/[0.08]'
               }`}
             >
               {cat}
@@ -323,7 +323,7 @@ export const VolumeTracker: React.FC<VolumeTrackerProps> = ({ weeklyVolume }) =>
             <button
               type="button"
               onClick={() => setShowScienceModal(false)}
-              className="w-full py-3 min-h-[44px] rounded-2xl bg-brand-primary text-black font-bold text-sm shadow-md"
+              className="w-full py-3 min-h-[44px] rounded-2xl bg-white hover:bg-slate-100 text-slate-950 font-bold text-sm shadow-md active:scale-95"
             >
               Got It
             </button>

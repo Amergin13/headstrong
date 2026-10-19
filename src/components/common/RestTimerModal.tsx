@@ -87,7 +87,7 @@ export const RestTimerModal: React.FC<RestTimerModalProps> = ({
             </button>
 
             <div>
-              <div className="text-2xl font-mono font-extrabold tracking-tight text-white tabular-numbers leading-none">
+              <div className="text-xl font-mono font-extrabold tracking-tight text-white tabular-numbers leading-none">
                 {formatTime(secondsRemaining)}
               </div>
               <div className="text-xs text-slate-400 mt-1 flex items-center space-x-1.5">

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   BiometricLog,
   ExerciseDefinition,
@@ -16,7 +16,6 @@ import { ExerciseCard } from './ExerciseCard';
 import { ExerciseSwapModal } from './ExerciseSwapModal';
 import { PlateCalculatorModal } from './PlateCalculatorModal';
 import { WorkoutSummaryModal } from './WorkoutSummaryModal';
-import { TensorAICoachCard } from './TensorAICoachCard';
 import {
   TensorCoachingInsight,
   TensorCoachingInput,
@@ -26,7 +25,10 @@ import {
   getTensorHardwareProfile,
   getTensorCoachingInsight,
 } from '../../services/tensorAIService';
-import { prescribeDoubleProgression } from '../../engine/progression';
+import {
+  prescribeDoubleProgression,
+  getSessionProgressNarrative,
+} from '../../engine/progression';
 import { calculateSubTierQuest } from '../../engine/strengthStandards';
 import {
   calculateE1RM,
@@ -35,12 +37,18 @@ import {
 } from '../../engine/e1rm';
 import { getExerciseBiomechanicalMeta } from '../../engine/knowledgeGraph';
 import {
+  calculateWarmupPrescription,
+  ensureWarmupSetsOnExercise,
+  generateWarmupSets,
+  isFirstCompoundForPillar,
+} from '../../engine/warmup';
+import {
   getHypertrophyQueueRecommendation,
 } from '../../services/workoutGenerator';
 import {
   CheckCircle2,
+  Check,
   Plus,
-  RotateCcw,
   ChevronDown,
   ChevronUp,
   TrendingUp,
@@ -69,6 +77,7 @@ interface TrainTabProps {
   onShiftWorkout: () => void;
   onSwitchLocation?: (location: TrainingLocation) => void;
   onOpenAICoach?: () => void;
+  onOpenWatchSync?: () => void;
 }
 
 const MESO_WEEK_PHASE_NAMES: Record<number, { name: string; rule: string }> = {
@@ -101,18 +110,14 @@ export const TrainTab: React.FC<TrainTabProps> = ({
   onShiftWorkout,
   onSwitchLocation,
   onOpenAICoach,
+  onOpenWatchSync,
 }) => {
   const [swappingExercise, setSwappingExercise] = useState<ExerciseSession | null>(null);
   const [plateCalcWeight, setPlateCalcWeight] = useState<number | null>(null);
   const [showSummaryModal, setShowSummaryModal] = useState(false);
   const [previewPastWorkout, setPreviewPastWorkout] = useState<WorkoutSession | null>(null);
   const [showAddExerciseModal, setShowAddExerciseModal] = useState(false);
-  const [showScheduleOptions, setShowScheduleOptions] = useState(false);
-  const [deletedSetBackup, setDeletedSetBackup] = useState<{
-    exerciseId: string;
-    exerciseName: string;
-    set: WorkoutSet;
-  } | null>(null);
+  const [showLocationDropdown, setShowLocationDropdown] = useState(false);
 
   const [tensorHardware, setTensorHardware] = useState<TensorHardwareProfile | null>(null);
   const [tensorInsight, setTensorInsight] = useState<TensorCoachingInsight | null>(null);
@@ -198,20 +203,30 @@ export const TrainTab: React.FC<TrainTabProps> = ({
   const handleAddSet = (exerciseId: string, isWarmup = false) => {
     const nextExercises = activeWorkout.exercises.map((ex) => {
       if (ex.id !== exerciseId) return ex;
-      const lastSet = ex.sets[ex.sets.length - 1];
-      const baseWeight = lastSet?.actualWeightKg ?? lastSet?.targetWeightKg ?? 20;
-      const warmupWeight = Math.max(10, Math.round((baseWeight * 0.6) / 2.5) * 2.5);
+      const workingSets = ex.sets.filter((s) => !s.isWarmup && s.setType !== 'warmup');
+      const firstWorkingSet = workingSets[0] ?? ex.sets[0];
+      const baseWeight = firstWorkingSet?.actualWeightKg ?? firstWorkingSet?.targetWeightKg ?? 20;
 
       if (isWarmup) {
+        const isDumbbell = ex.equipment === 'dumbbell';
+        const isPureBw = ex.equipment === 'bodyweight' && !ex.isWeightedCalisthenic;
+        const prescription = calculateWarmupPrescription(ex, baseWeight, false);
+        const suggested = prescription.sets[0];
+        const warmupWeight = isPureBw
+          ? 0
+          : suggested?.weightKg ?? Math.max(isDumbbell ? 8 : 20, Math.round((baseWeight * 0.6) / 2.5) * 2.5);
+        const warmupReps = suggested?.reps ?? 6;
+        const warmupRir = suggested?.rir ?? 3;
+
         const warmupSet: WorkoutSet = {
           id: `set-warmup-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
           setNumber: 1,
           targetWeightKg: warmupWeight,
           actualWeightKg: warmupWeight,
-          targetReps: 8,
-          actualReps: 8,
-          targetRir: 3,
-          actualRir: 3,
+          targetReps: warmupReps,
+          actualReps: warmupReps,
+          targetRir: warmupRir,
+          actualRir: warmupRir,
           completed: false,
           isWarmup: true,
           setType: 'warmup',
@@ -226,12 +241,18 @@ export const TrainTab: React.FC<TrainTabProps> = ({
         };
       }
 
+      const lastWorkingSet = workingSets[workingSets.length - 1] ?? ex.sets[ex.sets.length - 1];
+      const newWeight = lastWorkingSet?.actualWeightKg ?? lastWorkingSet?.targetWeightKg ?? baseWeight;
+      const newReps = lastWorkingSet?.actualReps ?? lastWorkingSet?.targetReps ?? ex.minReps;
       const newSet: WorkoutSet = {
         id: `set-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
         setNumber: ex.sets.length + 1,
-        targetWeightKg: baseWeight,
-        targetReps: lastSet?.actualReps ?? lastSet?.targetReps ?? ex.minReps,
+        targetWeightKg: newWeight,
+        actualWeightKg: newWeight,
+        targetReps: newReps,
+        actualReps: newReps,
         targetRir: 2,
+        actualRir: 2,
         completed: false,
         setType: 'working',
       };
@@ -244,16 +265,6 @@ export const TrainTab: React.FC<TrainTabProps> = ({
   };
 
   const handleDeleteSet = (exerciseId: string, setId: string) => {
-    const targetEx = activeWorkout.exercises.find((e) => e.id === exerciseId);
-    const removedSet = targetEx?.sets.find((s) => s.id === setId);
-    if (targetEx && removedSet) {
-      setDeletedSetBackup({
-        exerciseId,
-        exerciseName: targetEx.name,
-        set: removedSet,
-      });
-    }
-
     const nextExercises = activeWorkout.exercises.map((ex) => {
       if (ex.id !== exerciseId) return ex;
       const filtered = ex.sets.filter((s) => s.id !== setId);
@@ -264,24 +275,6 @@ export const TrainTab: React.FC<TrainTabProps> = ({
       };
     });
     onUpdateWorkout({ ...activeWorkout, exercises: nextExercises });
-  };
-
-  const handleUndoDeleteSet = () => {
-    if (!deletedSetBackup) return;
-    triggerHaptic('light');
-    const nextExercises = activeWorkout.exercises.map((ex) => {
-      if (ex.id !== deletedSetBackup.exerciseId) return ex;
-      const restored = [...ex.sets, deletedSetBackup.set].map((s, idx) => ({
-        ...s,
-        setNumber: idx + 1,
-      }));
-      return {
-        ...ex,
-        sets: restored,
-      };
-    });
-    onUpdateWorkout({ ...activeWorkout, exercises: nextExercises });
-    setDeletedSetBackup(null);
   };
 
   const handleAddExerciseToSession = (def: ExerciseDefinition) => {
@@ -345,14 +338,25 @@ export const TrainTab: React.FC<TrainTabProps> = ({
       bodyweightEmaKg,
       profile.goalPhase
     );
-    const hydratedEx: ExerciseSession = {
+    const nextWeight = isPureBw ? 0 : prescription.nextWeightKg;
+    const baseHydratedEx: ExerciseSession = {
       ...seedEx,
       sets: seedEx.sets.map((s, idx) => ({
         ...s,
-        targetWeightKg: isPureBw ? 0 : prescription.nextWeightKg,
+        targetWeightKg: nextWeight,
+        actualWeightKg: nextWeight,
         targetReps: prescription.nextTargetReps[idx] ?? def.defaultRepRange[0],
+        actualReps: prescription.nextTargetReps[idx] ?? def.defaultRepRange[0],
       })),
     };
+
+    const isFirstCompound = isFirstCompoundForPillar(
+      baseHydratedEx,
+      activeWorkout.exercises.length,
+      [...activeWorkout.exercises, baseHydratedEx]
+    );
+
+    const hydratedEx = ensureWarmupSetsOnExercise(baseHydratedEx, isFirstCompound);
 
     onUpdateWorkout({
       ...activeWorkout,
@@ -410,8 +414,51 @@ export const TrainTab: React.FC<TrainTabProps> = ({
       }
     }
 
-    const nextExercises = activeWorkout.exercises.map((ex) => {
+    const nextExercises = activeWorkout.exercises.map((ex, exIdx) => {
       if (ex.id !== swappingExercise.id) return ex;
+
+      const workingSetsOnly = ex.sets.filter((s) => !s.isWarmup && s.setType !== 'warmup');
+      const calibratedWorkingSets: WorkoutSet[] = workingSetsOnly.map((s, sIdx) => ({
+        ...s,
+        setNumber: sIdx + 1,
+        targetWeightKg: effectiveTargetWeight,
+        actualWeightKg: effectiveTargetWeight,
+        targetReps: defaultTargetReps,
+        actualReps: defaultTargetReps,
+        isWarmup: false,
+        setType: 'working' as const,
+      }));
+
+      let calibratedSets: WorkoutSet[] = calibratedWorkingSets;
+      if (!isPureBw && !meta.isIsolation) {
+        const isFirstCompound = isFirstCompoundForPillar(
+          {
+            pillar: newDef.pillar,
+            isIsolation: meta.isIsolation,
+            equipment: newDef.equipment,
+            isWeightedCalisthenic: newDef.isWeightedCalisthenic,
+            name: newDef.name,
+            exerciseId: newDef.id,
+          },
+          exIdx,
+          activeWorkout.exercises
+        );
+        const warmupPrescription = calculateWarmupPrescription(
+          {
+            pillar: newDef.pillar,
+            equipment: newDef.equipment,
+            isIsolation: meta.isIsolation,
+            isWeightedCalisthenic: newDef.isWeightedCalisthenic,
+            name: newDef.name,
+            exerciseId: newDef.id,
+          },
+          effectiveTargetWeight,
+          isFirstCompound
+        );
+        const warmupSets = generateWarmupSets(newDef.id, warmupPrescription);
+        calibratedSets = [...warmupSets, ...calibratedWorkingSets];
+      }
+
       return {
         ...ex,
         exerciseId: newDef.id,
@@ -425,21 +472,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
         minReps: newDef.defaultRepRange[0],
         maxReps: newDef.defaultRepRange[1],
         notes: customNotes,
-        sets: ex.sets.map((s) => ({
-          ...s,
-          targetWeightKg: isPureBw
-            ? 0
-            : s.isWarmup || s.setType === 'warmup'
-            ? Math.max(8, Math.round((effectiveTargetWeight * 0.6) / 2) * 2)
-            : effectiveTargetWeight,
-          actualWeightKg: isPureBw
-            ? 0
-            : s.isWarmup || s.setType === 'warmup'
-            ? Math.max(8, Math.round((effectiveTargetWeight * 0.6) / 2) * 2)
-            : effectiveTargetWeight,
-          targetReps: defaultTargetReps,
-          actualReps: defaultTargetReps,
-        })),
+        sets: calibratedSets,
       };
     });
 
@@ -479,20 +512,15 @@ export const TrainTab: React.FC<TrainTabProps> = ({
     return { ex, prescription };
   });
 
-  const weightJumpItems = exercisePrescriptions.filter(
-    (item) =>
-      item.prescription.weightChanged &&
-      readiness.state !== 'Amber Shield' &&
-      !item.prescription.isPureBodyweight &&
-      item.ex.equipment !== 'bodyweight' &&
-      activeWorkout.location !== 'travel' &&
-      item.prescription.nextWeightKg > 0
-  );
-  const repJumpItems = exercisePrescriptions.filter(
-    (item) =>
-      item.prescription.repsChanged &&
-      !item.prescription.weightChanged &&
-      readiness.state !== 'Amber Shield'
+  const mesoWeek = profile.mesocycleWeek || 3;
+  const sessionNarrative = useMemo(
+    () =>
+      getSessionProgressNarrative(
+        mesoWeek,
+        profile.goalPhase || 'Lean Bulk',
+        readiness.state
+      ),
+    [mesoWeek, profile.goalPhase, readiness.state]
   );
 
   const handleFinishWorkoutClick = () => {
@@ -505,7 +533,6 @@ export const TrainTab: React.FC<TrainTabProps> = ({
     onFinishWorkout();
   };
 
-  const mesoWeek = profile.mesocycleWeek || 3;
   const phaseMeta = MESO_WEEK_PHASE_NAMES[mesoWeek] || MESO_WEEK_PHASE_NAMES[3];
   const friendlyGoal = GOAL_FRIENDLY_NAME[profile.goalPhase] || profile.goalPhase;
   const recentCompletedWorkouts = workouts.filter((w) => w.completed).slice(0, 4);
@@ -518,328 +545,175 @@ export const TrainTab: React.FC<TrainTabProps> = ({
     profile.goalPhase
   );
 
+  const LOCATION_CONFIG: Array<{ id: TrainingLocation; label: string; detail: string }> = [
+    { id: 'gym', label: 'Full Gym', detail: 'Barbell, dumbbells & machines' },
+    { id: 'home', label: 'At Home', detail: 'Dumbbells, pull-up bar & bands' },
+    { id: 'travel', label: 'Travel', detail: 'Bodyweight only' },
+  ];
+  const activeLocationOption =
+    LOCATION_CONFIG.find((l) => l.id === currentLoc) || LOCATION_CONFIG[0];
+
+  const hasWatchData = Boolean(
+    profile.fitbitConnected &&
+      latestBiometrics &&
+      (latestBiometrics.hrvRmssd !== undefined || latestBiometrics.restingHr !== undefined)
+  );
+
   return (
     <div className="space-y-4 sm:space-y-5 pb-28">
-      {/* 1. UNIFIED HERO CARD: Opinionated Asynchronous Hypertrophy Queue & Session Goals */}
+      {/* UNIFIED HERO CARD: Opinionated Asynchronous Hypertrophy Queue & Session Goals */}
       <div className="biometric-card p-5 sm:p-6 space-y-4">
-        {/* A. Compact Context Header + Rest / History Toggle */}
+        {/* A. Compact Context Header + Location Dropdown Toggle */}
         <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center flex-wrap gap-1.5">
-            <span className="px-3 py-1 rounded-full bg-brand-strain/15 text-brand-strain text-xs font-bold uppercase tracking-wider">
-              Up Next
-            </span>
-            <span className="px-3 py-1 rounded-full bg-white/[0.06] text-slate-200 text-xs font-semibold">
-              Week {mesoWeek} of 6 • {phaseMeta.name}
-            </span>
-          </div>
+          <span className="px-3 py-1 rounded-full bg-white/[0.06] text-slate-200 text-xs font-semibold">
+            Week {mesoWeek} of 6 • {phaseMeta.name}
+          </span>
 
-          <button
-            type="button"
-            onClick={() => {
-              triggerHaptic('light');
-              setShowScheduleOptions(!showScheduleOptions);
-            }}
-            aria-expanded={showScheduleOptions}
-            className="px-3 py-1.5 rounded-xl bg-white/[0.06] hover:bg-white/[0.12] text-xs font-semibold text-slate-200 hover:text-white flex items-center space-x-1 shrink-0 transition-colors"
-          >
-            <span>Rest / History</span>
-            {showScheduleOptions ? (
-              <ChevronUp className="w-3.5 h-3.5 stroke-[2]" />
-            ) : (
-              <ChevronDown className="w-3.5 h-3.5 stroke-[2]" />
+          {/* Location Switcher Dropdown (defaults to onboarding setting) */}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => {
+                triggerHaptic('light');
+                setShowLocationDropdown(!showLocationDropdown);
+              }}
+              aria-expanded={showLocationDropdown}
+              aria-haspopup="listbox"
+              aria-label="Switch training location"
+              className="px-3 py-1.5 rounded-xl bg-white/[0.06] hover:bg-white/[0.12] text-xs font-semibold text-slate-200 hover:text-white flex items-center space-x-1.5 shrink-0 transition-colors min-h-[36px]"
+            >
+              <span>{activeLocationOption.label}</span>
+              {showLocationDropdown ? (
+                <ChevronUp className="w-3.5 h-3.5 stroke-[2] text-slate-400" />
+              ) : (
+                <ChevronDown className="w-3.5 h-3.5 stroke-[2] text-slate-400" />
+              )}
+            </button>
+
+            {showLocationDropdown && (
+              <>
+                <div
+                  className="fixed inset-0 z-20"
+                  onClick={() => setShowLocationDropdown(false)}
+                />
+                <div
+                  role="listbox"
+                  aria-label="Training location options"
+                  className="absolute right-0 top-full mt-2 z-30 w-56 rounded-2xl bg-[#0E1219] border border-white/[0.08] shadow-2xl p-1.5 space-y-1"
+                >
+                  <div className="px-3 py-1.5 text-xs font-bold text-slate-400 uppercase tracking-wider">
+                    Location
+                  </div>
+                  {LOCATION_CONFIG.map((loc) => {
+                    const isSelected = currentLoc === loc.id;
+                    return (
+                      <button
+                        key={loc.id}
+                        type="button"
+                        role="option"
+                        aria-selected={isSelected}
+                        onClick={() => {
+                          if (onSwitchLocation && loc.id !== currentLoc) {
+                            triggerHaptic('medium');
+                            onSwitchLocation(loc.id);
+                          }
+                          setShowLocationDropdown(false);
+                        }}
+                        className={`w-full text-left px-3 py-2 rounded-xl min-h-[44px] flex items-center justify-between transition-colors ${
+                          isSelected
+                            ? 'bg-white/[0.12] text-white font-bold'
+                            : 'text-slate-300 hover:bg-white/[0.06] hover:text-white'
+                        }`}
+                      >
+                        <div>
+                          <span className="text-xs font-bold block">{loc.label}</span>
+                          <span className="text-xs text-slate-400 font-medium">{loc.detail}</span>
+                        </div>
+                        {isSelected && (
+                          <Check className="w-4 h-4 text-brand-primary stroke-[2.5] shrink-0 ml-2" />
+                        )}
+                      </button>
+                    );
+                  })}
+
+                  <div className="pt-1.5 border-t border-white/[0.06] space-y-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        triggerHaptic('medium');
+                        onShiftWorkout();
+                        setShowLocationDropdown(false);
+                      }}
+                      className="w-full text-left px-3 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white hover:bg-white/[0.06] flex items-center space-x-2 transition-colors min-h-[44px]"
+                    >
+                      <Calendar className="w-3.5 h-3.5 stroke-[2]" />
+                      <span>Log Rest Day</span>
+                    </button>
+
+                    {recentCompletedWorkouts.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPreviewPastWorkout(recentCompletedWorkouts[0]);
+                          setShowLocationDropdown(false);
+                        }}
+                        className="w-full text-left px-3 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white hover:bg-white/[0.06] flex items-center space-x-2 transition-colors min-h-[44px]"
+                      >
+                        <History className="w-3.5 h-3.5 stroke-[2]" />
+                        <span>Inspect Last Workout</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </>
             )}
-          </button>
+          </div>
         </div>
 
-        {/* B. Primary Focal Point: Single Opinionated Workout Recommendation & Recovery Window */}
-        <div className="space-y-2.5 p-4 sm:p-4.5 rounded-2xl bg-[#141824]">
-          <h1 className="font-extrabold text-xl sm:text-2xl text-white tracking-tight">
+        {/* B. Primary Focal Point: Clean Opinionated Workout Identity & Scope */}
+        <div className="space-y-1">
+          <h1 className="font-extrabold text-xl text-white tracking-tight">
             {activeWorkout.name}
           </h1>
-          <div className="flex items-center flex-wrap gap-2">
-            <span className="inline-flex items-center space-x-1 px-3 py-1 rounded-full bg-brand-primary/15 text-brand-primary text-xs font-bold">
-              <span>✓ {queueRec.recoveryBadge}</span>
-            </span>
-            <span className="text-xs text-slate-300 font-medium">
-              {activeWorkout.exercises.length} exercises • {totalSets} sets • {friendlyGoal}
-            </span>
+          <div className="flex items-center space-x-2 text-xs text-slate-400 font-medium">
+            <span>{activeWorkout.exercises.length} exercises</span>
+            <span>•</span>
+            <span>{totalSets} sets</span>
           </div>
-          <p className="text-xs text-slate-300 leading-relaxed font-medium">
-            {queueRec.scienceRationale}
-          </p>
         </div>
 
-        {/* C. Single Canonical Equipment Location Switcher (Full Gym | At Home | Bodyweight / Travel) */}
-        <div
-          role="group"
-          aria-label="Select training location and equipment"
-          className="grid grid-cols-3 gap-1.5 bg-[#090C12] p-1.5 rounded-2xl"
+        {/* C. Blended Recovery & How to Make Progress This Session Area */}
+        <ReadinessBanner
+          readiness={readiness}
+          latestBiometrics={latestBiometrics}
+          isConnected={hasWatchData}
+          onOpenWatchSync={onOpenWatchSync}
+          onSelectState={onSelectReadinessState}
+          tensorInsight={tensorInsight}
+          tensorHardware={tensorHardware}
+          mesoWeek={mesoWeek}
+          goalPhase={profile.goalPhase}
+          onOpenChat={onOpenAICoach}
         >
-          {(
-            [
-              { id: 'gym', label: 'Full Gym' },
-              { id: 'home', label: 'At Home' },
-              { id: 'travel', label: 'Bodyweight' },
-            ] as const
-          ).map((loc) => {
-            const isSelected = currentLoc === loc.id;
-            return (
-              <button
-                key={loc.id}
-                type="button"
-                aria-pressed={isSelected}
-                onClick={() => {
-                  if (onSwitchLocation && loc.id !== currentLoc) {
-                    triggerHaptic('medium');
-                    onSwitchLocation(loc.id);
-                  }
-                }}
-                className={`py-2 px-2 rounded-xl text-xs font-bold transition-all min-h-[44px] flex items-center justify-center ${
-                  isSelected
-                    ? 'bg-brand-primary text-black font-extrabold shadow-sm'
-                    : 'text-slate-300 hover:text-white'
-                }`}
-              >
-                {loc.label}
-              </button>
-            );
-          })}
-        </div>
-
-        {/* Expandable Panel: Log a Rest Day or Inspect Recent Completed Sessions */}
-        {showScheduleOptions && (
-          <div className="p-4 rounded-2xl bg-black/50 space-y-3">
-            <div className="flex items-center justify-between gap-2">
-              <div>
-                <span className="text-xs font-bold text-white block">
-                  Skipping today? Zero calendar penalty
-                </span>
-                <span className="text-xs text-slate-400">
-                  Holds {activeWorkout.splitDay} Day at the front of your queue and protects your streak
-                </span>
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  triggerHaptic('medium');
-                  onShiftWorkout();
-                  setShowScheduleOptions(false);
-                }}
-                className="px-3 py-2 rounded-xl bg-brand-primary text-black text-xs font-bold shrink-0 flex items-center space-x-1.5"
-              >
-                <Calendar className="w-3.5 h-3.5 stroke-[2]" />
-                <span>Log Rest Day</span>
-              </button>
-            </div>
-
-            {recentCompletedWorkouts.length > 0 && (
-              <div className="pt-2.5 border-t border-white/[0.04] space-y-1.5">
-                <span className="text-xs font-semibold text-slate-400 flex items-center space-x-1">
-                  <History className="w-3.5 h-3.5 stroke-[2]" />
-                  <span>Recent Completed Sessions (tap to inspect):</span>
-                </span>
-                <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
-                  {recentCompletedWorkouts.map((w) => (
-                    <button
-                      key={w.id}
-                      type="button"
-                      onClick={() => setPreviewPastWorkout(w)}
-                      className="px-3 py-1.5 rounded-xl bg-[#090C12] hover:bg-[#141824] text-xs text-slate-200 shrink-0 font-medium transition-colors"
-                    >
-                      {w.date.substring(5)} • {w.splitDay} ✓
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* On-Device AI Coach Powered by Google Tensor (Diagnostics & Settings) */}
-            {tensorHardware && tensorInsight && (
-              <div className="pt-3 border-t border-white/[0.04]">
-                <TensorAICoachCard
-                  insight={tensorInsight}
-                  hardware={tensorHardware}
-                  contextInput={{
-                    workoutSession: activeWorkout,
-                    readinessState: readiness.state,
-                    readinessZScore: readiness.score,
-                    hrvRmssd: latestBiometrics.hrvRmssd,
-                    restingHr: latestBiometrics.restingHr,
-                    sleepHours: latestBiometrics.sleepHours,
-                    goalPhase: profile.goalPhase,
-                    mesocycleWeek: profile.mesocycleWeek || 3,
-                    location: activeWorkout.location || profile.activeLocation || 'gym',
-                  }}
-                  onRefreshHardware={loadTensorAI}
-                  onOpenChat={onOpenAICoach}
-                />
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* D. "What do I need to do to make progress?" Action Checklist */}
-        <div className="p-4 sm:p-5 rounded-2xl bg-[#090C12] space-y-3">
-          <div className="flex items-center justify-between">
+          <div className="space-y-1.5">
             <div className="flex items-center space-x-2">
               <TrendingUp className="w-4 h-4 text-brand-primary stroke-[2]" />
               <h2 className="text-xs font-bold uppercase tracking-wider text-white">
                 How to Make Progress This Session
               </h2>
             </div>
-            <span className="text-xs font-mono font-bold text-brand-primary">
-              {completedSets}/{totalSets} sets done
-            </span>
-          </div>
 
-          {readiness.state === 'Amber Shield' ? (
-            <p className="text-xs text-amber-300 leading-relaxed font-medium">
-              <strong>Light Recovery Day:</strong> Your body needs extra recovery today. Hold your weights steady, stop 2–3 reps shy of failure, and complete your sets to keep your streak alive.
+            <p className="text-xs text-slate-300 leading-relaxed font-normal">
+              <strong className="text-white font-semibold">
+                {sessionNarrative.stageHeadline}:{' '}
+              </strong>
+              {sessionNarrative.narrativeText}
             </p>
-          ) : (
-            <ul className="space-y-2 text-xs text-slate-200">
-              {weightJumpItems.slice(0, 2).map(({ ex, prescription }) => {
-                const formattedW = formatImplementWeightLabel(
-                  prescription.nextWeightKg,
-                  ex.equipment,
-                  ex.isWeightedCalisthenic
-                );
-                const targetReps = prescription.nextTargetReps[0] ?? ex.minReps;
-                return (
-                  <li key={ex.id} className="flex items-start space-x-2.5">
-                    <span className="w-1.5 h-1.5 rounded-full bg-brand-primary mt-1.5 shrink-0" />
-                    <span>
-                      <strong className="text-brand-primary">Add Weight:</strong> Lift{' '}
-                      <strong className="text-white font-mono font-bold">
-                        {formattedW} × {targetReps} reps
-                      </strong>{' '}
-                      on <strong className="text-white">{ex.name}</strong> (you hit {ex.maxReps} reps last time)
-                    </span>
-                  </li>
-                );
-              })}
-
-              {repJumpItems.slice(0, 2).map(({ ex, prescription }) => {
-                const formattedW = formatImplementWeightLabel(
-                  prescription.nextWeightKg,
-                  ex.equipment,
-                  ex.isWeightedCalisthenic
-                );
-                const targetReps = prescription.nextTargetReps[0] ?? ex.minReps;
-                const isBw =
-                  prescription.isPureBodyweight ||
-                  (ex.equipment === 'bodyweight' && !ex.isWeightedCalisthenic);
-                return (
-                  <li key={ex.id} className="flex items-start space-x-2.5">
-                    <span className="w-1.5 h-1.5 rounded-full bg-brand-strain mt-1.5 shrink-0" />
-                    <span>
-                      <strong className="text-brand-strain">
-                        {isBw ? 'Target Reps (Bodyweight):' : 'Add +1 Rep:'}
-                      </strong>{' '}
-                      Hit{' '}
-                      <strong className="text-white font-mono font-bold">
-                        {isBw ? `BW × ${targetReps} reps` : `${formattedW} × ${targetReps} reps`}
-                      </strong>{' '}
-                      on <strong className="text-white">{ex.name}</strong>
-                      {isBw && prescription.calibratedTempoCue
-                        ? ` (${prescription.calibratedTempoCue})`
-                        : ' to beat last session'}
-                    </span>
-                  </li>
-                );
-              })}
-
-              {weightJumpItems.length === 0 && repJumpItems.length === 0 && (
-                <li className="flex items-start space-x-2.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-brand-primary mt-1.5 shrink-0" />
-                  <span>
-                    Hit the target weight and reps listed on each exercise card below with 1–2 reps left in the tank.
-                  </span>
-                </li>
-              )}
-            </ul>
-          )}
-
-          {/* Live Session Progress Bar & Finish Button */}
-          <div className="pt-2.5 border-t border-white/[0.04] flex items-center justify-between gap-3">
-            <div className="flex-1 space-y-1.5">
-              <div
-                role="progressbar"
-                aria-valuenow={totalSets > 0 ? Math.round((completedSets / totalSets) * 100) : 0}
-                aria-valuemin={0}
-                aria-valuemax={100}
-                aria-label="Workout set completion progress"
-                className="w-full h-2.5 rounded-full bg-white/[0.06] overflow-hidden"
-              >
-                <div
-                  className="h-full bg-brand-primary rounded-full transition-all duration-300 ease-out"
-                  style={{
-                    width: `${
-                      totalSets > 0
-                        ? Math.min(100, Math.round((completedSets / totalSets) * 100))
-                        : 0
-                    }%`,
-                  }}
-                />
-              </div>
-              <div className="flex items-center justify-between text-xs text-slate-400">
-                <span>
-                  {completedSets === 0
-                    ? 'Tap ✓ on Set 1 below to start logging'
-                    : `${completedSets} of ${totalSets} sets logged`}
-                </span>
-                {liveTonnageKg > 0 && (
-                  <span className="font-mono text-slate-200 font-bold">
-                    {liveTonnageKg.toLocaleString()} kg lifted
-                  </span>
-                )}
-              </div>
-            </div>
-
-            <button
-              type="button"
-              onClick={handleFinishWorkoutClick}
-              disabled={completedSets === 0}
-              className={`px-4 py-2.5 rounded-2xl text-xs font-extrabold transition-all active:scale-95 flex items-center space-x-1.5 shrink-0 min-h-[44px] ${
-                completedSets > 0
-                  ? 'bg-brand-primary text-black font-extrabold shadow-md hover:opacity-95'
-                  : 'bg-white/[0.06] text-slate-400 cursor-not-allowed'
-              }`}
-            >
-              <CheckCircle2 className="w-4 h-4 stroke-[2]" />
-              <span>Finish Workout</span>
-            </button>
           </div>
-        </div>
+        </ReadinessBanner>
       </div>
 
-      {/* 2. Sleek Collapsible Recovery Overview with Primed Context */}
-      <ReadinessBanner
-        readiness={readiness}
-        latestBiometrics={latestBiometrics}
-        onSelectState={onSelectReadinessState}
-        tensorInsight={tensorInsight}
-        tensorHardware={tensorHardware}
-        mesoWeek={mesoWeek}
-        onOpenChat={onOpenAICoach}
-      />
 
-      {/* Undo Set Deletion Guardrail Banner */}
-      {deletedSetBackup && (
-        <div className="px-4 py-3 rounded-2xl bg-amber-500/15 flex items-center justify-between text-xs">
-          <span className="text-slate-200">
-            Removed set from <strong className="text-white">{deletedSetBackup.exerciseName}</strong>
-          </span>
-          <button
-            type="button"
-            onClick={handleUndoDeleteSet}
-            className="px-3 py-1.5 rounded-xl bg-amber-400 text-black font-bold flex items-center space-x-1 hover:bg-amber-300 transition-colors"
-          >
-            <RotateCcw className="w-3 h-3 stroke-[2]" />
-            <span>Undo</span>
-          </button>
-        </div>
-      )}
 
       {/* 3. Exercise Cards with Clear Step Numbers & "Target vs. Last Time" */}
       <div className="space-y-4 sm:space-y-5">
@@ -921,6 +795,23 @@ export const TrainTab: React.FC<TrainTabProps> = ({
       >
         <Plus className="w-4 h-4 stroke-[2]" />
         <span>Add Exercise to Today&apos;s Session</span>
+      </button>
+
+      {/* Finish Workout Primary Action */}
+      <button
+        type="button"
+        onClick={handleFinishWorkoutClick}
+        disabled={completedSets === 0}
+        className={`w-full py-4 rounded-2xl text-xs font-bold transition-all active:scale-95 flex items-center justify-center space-x-2 min-h-[48px] ${
+          completedSets > 0
+            ? 'bg-white hover:bg-slate-100 text-slate-950 font-bold shadow-lg shadow-white/5 cursor-pointer'
+            : 'bg-white/[0.06] text-slate-400 cursor-not-allowed'
+        }`}
+      >
+        <CheckCircle2 className={`w-4 h-4 stroke-[2.2] ${completedSets > 0 ? 'text-emerald-600' : 'text-slate-500'}`} />
+        <span>
+          Finish Workout{completedSets > 0 ? ` (${completedSets} of ${totalSets} sets logged${liveTonnageKg > 0 ? ` • ${liveTonnageKg.toLocaleString()} kg` : ''})` : ''}
+        </span>
       </button>
 
       {/* Add Exercise Picker Modal */}

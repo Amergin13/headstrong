@@ -313,9 +313,9 @@ assert(
 
 const trainTabWithTensor = fs.readFileSync(path.resolve(process.cwd(), 'src/components/train/TrainTab.tsx'), 'utf-8');
 assert(
-  trainTabWithTensor.includes('TensorAICoachCard') &&
+  trainTabWithTensor.includes('tensorInsight') &&
     trainTabWithTensor.includes('getTensorHardwareProfile'),
-  'TrainTab seamlessly integrates On-Device Tensor AI Coach card into active workout flow'
+  'TrainTab seamlessly integrates On-Device Tensor AI Coach insights into active workout flow'
 );
 
 // ============================================================================
@@ -442,11 +442,18 @@ assert(
   'AICoachChatModal.tsx enforces >=44px touch targets, zero technical jargon, View All Equipment CTA, and strict >=12px typography floor'
 );
 
+const navBarSrc = fs.readFileSync(path.resolve(process.cwd(), 'src/components/common/NavigationBar.tsx'), 'utf-8');
+assert(
+  navBarSrc.includes('AI Coach') &&
+    navBarSrc.includes('onOpenAICoach'),
+  'NavigationBar.tsx provides canonical entry point to the AI Coach in the footer'
+);
+
 const headerSrc = fs.readFileSync(path.resolve(process.cwd(), 'src/components/common/Header.tsx'), 'utf-8');
 assert(
-  headerSrc.includes('onOpenAICoach') &&
-    headerSrc.includes('title="AI Coach"'),
-  'Header.tsx provides canonical 1-tap entry point to the AI Coach'
+  !headerSrc.includes('title="AI Coach"') &&
+    !headerSrc.includes('title="Google Pixel Watch Sync"'),
+  'Header.tsx has cleanly removed the AI and Watch icons for a decluttered app bar'
 );
 
 const tensorCardSrc = fs.readFileSync(path.resolve(process.cwd(), 'src/components/train/TensorAICoachCard.tsx'), 'utf-8');

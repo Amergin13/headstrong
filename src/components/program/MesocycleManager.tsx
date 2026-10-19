@@ -108,8 +108,8 @@ export const MesocycleManager: React.FC<MesocycleManagerProps> = ({
                 isSelected
                   ? isDeload
                     ? 'bg-amber-400 text-black font-extrabold shadow-sm'
-                    : 'bg-brand-primary text-black font-extrabold shadow-sm'
-                  : 'text-slate-300 hover:text-white hover:bg-white/[0.06]'
+                    : 'bg-white text-slate-950 font-extrabold shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-white/[0.04]'
               }`}
             >
               <span className="text-xs font-extrabold">W{m.week}</span>

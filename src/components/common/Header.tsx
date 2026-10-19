@@ -1,20 +1,16 @@
 import React from 'react';
 import { UserProfile, ReadinessState } from '../../engine/types';
-import { Flame, Watch, Cpu } from 'lucide-react';
-import { triggerHaptic } from '../../utils/haptics';
+import { Flame } from 'lucide-react';
 
 interface HeaderProps {
   profile: UserProfile;
-  readinessState: ReadinessState;
-  onOpenWatchSync: () => void;
+  readinessState?: ReadinessState;
+  onOpenWatchSync?: () => void;
   onOpenAICoach?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
   profile,
-  readinessState,
-  onOpenWatchSync,
-  onOpenAICoach,
 }) => {
   const currentLevelXp = profile.currentXp % 500;
   const xpPercent = Math.min(100, Math.round((currentLevelXp / 500) * 100));
@@ -23,13 +19,8 @@ export const Header: React.FC<HeaderProps> = ({
     <header className="sticky top-0 z-30 bg-[#08090C]/90 backdrop-blur-2xl border-b border-white/[0.04] px-4 py-2.5 shadow-sm">
       <div className="max-w-md mx-auto flex items-center justify-between">
         {/* Brand & Level Progress */}
-        <div className="flex items-center space-x-3">
-          <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-[#1C2331] to-[#0E1116] flex items-center justify-center font-extrabold text-white text-xs tracking-wider shadow-sm">
-            HS
-          </div>
-
-          <div>
-            <div className="flex items-center space-x-2">
+        <div>
+          <div className="flex items-center space-x-2">
               <span className="font-extrabold text-sm tracking-tight text-white">
                 HEADSTRONG
               </span>
@@ -51,7 +42,6 @@ export const Header: React.FC<HeaderProps> = ({
               </span>
             </div>
           </div>
-        </div>
 
         {/* Right Status Actions */}
         <div className="flex items-center space-x-2">
@@ -63,53 +53,6 @@ export const Header: React.FC<HeaderProps> = ({
             <Flame className="w-3.5 h-3.5 fill-amber-400 stroke-[2]" />
             <span className="font-mono">{profile.streakDays}d</span>
           </div>
-
-          {/* AI Coach Entry Point */}
-          {onOpenAICoach && (
-            <button
-              type="button"
-              onClick={() => {
-                triggerHaptic('light');
-                onOpenAICoach();
-              }}
-              aria-label="Open AI Coach"
-              className="flex items-center space-x-1.5 px-3 py-1 rounded-full text-xs font-bold bg-brand-strain/15 text-brand-strain hover:bg-brand-strain/25 transition-all active:scale-95 min-h-[44px]"
-              title="AI Coach"
-            >
-              <Cpu className="w-3.5 h-3.5 stroke-[2]" />
-              <span>AI</span>
-            </button>
-          )}
-
-          {/* Single Canonical Watch Sync Entry Point */}
-          <button
-            type="button"
-            onClick={() => {
-              triggerHaptic('light');
-              onOpenWatchSync();
-            }}
-            aria-label="Open Google Pixel Watch Recovery and Sync"
-            className={`flex items-center space-x-1.5 px-3 py-1 rounded-full text-xs font-bold transition-all active:scale-95 min-h-[44px] ${
-              readinessState === 'Primed'
-                ? 'bg-brand-primary/[0.15] text-brand-primary'
-                : readinessState === 'Amber Shield'
-                ? 'bg-amber-500/[0.15] text-amber-400'
-                : 'bg-[#151A24] text-slate-200 hover:text-white'
-            }`}
-            title="Google Pixel Watch Sync"
-          >
-            <Watch className="w-3.5 h-3.5 stroke-[2]" />
-            <span>Watch</span>
-            <span
-              className={`w-1.5 h-1.5 rounded-full ${
-                readinessState === 'Primed'
-                  ? 'bg-brand-primary animate-pulse'
-                  : readinessState === 'Amber Shield'
-                  ? 'bg-amber-400 animate-pulse'
-                  : 'bg-brand-strain'
-              }`}
-            />
-          </button>
         </div>
       </div>
     </header>

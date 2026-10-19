@@ -195,8 +195,8 @@ export const ExerciseSwapModal: React.FC<ExerciseSwapModalProps> = ({
                 }}
                 className={`py-2 px-1 text-center rounded-xl text-xs font-bold transition-all min-h-[44px] flex items-center justify-center space-x-1 ${
                   isSelected
-                    ? 'bg-brand-primary text-black font-extrabold shadow-sm'
-                    : 'text-slate-300 hover:text-white hover:bg-white/[0.06]'
+                    ? 'bg-white/[0.14] text-white font-bold shadow-sm'
+                    : 'text-slate-400 hover:text-white hover:bg-white/[0.04]'
                 }`}
               >
                 <span>{loc.label}</span>

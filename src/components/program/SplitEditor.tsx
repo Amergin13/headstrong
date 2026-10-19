@@ -108,8 +108,8 @@ export const SplitEditor: React.FC<SplitEditorProps> = ({
               }}
               className={`py-2 rounded-xl text-xs font-bold transition-all min-h-[44px] flex items-center justify-center ${
                 isSelected
-                  ? 'bg-brand-primary text-black font-extrabold shadow-sm'
-                  : 'text-slate-300 hover:text-white'
+                  ? 'bg-white/[0.14] text-white font-bold shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200'
               }`}
             >
               {d.label}
@@ -126,9 +126,9 @@ export const SplitEditor: React.FC<SplitEditorProps> = ({
             triggerHaptic('medium');
             onLaunchSplitDay(activeDay);
           }}
-          className="w-full py-2.5 rounded-xl bg-brand-primary/15 hover:bg-brand-primary/25 text-brand-primary font-extrabold text-xs flex items-center justify-center space-x-1.5 transition-all min-h-[44px]"
+          className="w-full py-2.5 rounded-xl bg-white hover:bg-slate-100 text-slate-950 font-bold text-xs flex items-center justify-center space-x-1.5 transition-all min-h-[44px] shadow-sm active:scale-95"
         >
-          <Play className="w-3.5 h-3.5 fill-brand-primary stroke-[2]" />
+          <Play className="w-3.5 h-3.5 fill-slate-950 stroke-[2]" />
           <span>Start {activeDay} Workout</span>
         </button>
       )}

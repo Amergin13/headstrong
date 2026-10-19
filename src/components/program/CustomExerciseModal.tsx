@@ -204,13 +204,13 @@ export const CustomExerciseModal: React.FC<CustomExerciseModalProps> = ({
             <button
               type="button"
               onClick={onClose}
-              className="py-3 min-h-[44px] rounded-xl bg-[#141824] text-slate-300 font-semibold text-xs hover:bg-[#1C2233]"
+              className="py-3 min-h-[44px] rounded-xl bg-white/[0.08] hover:bg-white/[0.14] text-white font-semibold text-xs transition-colors"
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="py-3 min-h-[44px] rounded-xl bg-brand-primary text-black font-bold text-xs hover:opacity-90 flex items-center justify-center space-x-1.5"
+              className="py-3 min-h-[44px] rounded-xl bg-white hover:bg-slate-100 text-slate-950 font-bold text-xs flex items-center justify-center space-x-1.5 shadow-sm active:scale-95"
             >
               <Check className="w-4 h-4 stroke-[2]" />
               <span>Save Exercise</span>

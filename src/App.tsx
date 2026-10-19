@@ -665,6 +665,7 @@ export const App: React.FC = () => {
             onShiftWorkout={handleShiftWorkout}
             onSwitchLocation={handleSwitchTrainingLocation}
             onOpenAICoach={() => setAiCoachOpen(true)}
+            onOpenWatchSync={() => setWatchModalOpen(true)}
           />
         )}
 

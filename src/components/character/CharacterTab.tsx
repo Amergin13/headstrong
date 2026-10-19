@@ -89,7 +89,7 @@ export const CharacterTab: React.FC<CharacterTabProps> = ({
               Strength-to-Weight Score
             </span>
             <div className="flex items-baseline space-x-2 mt-1">
-              <span className="text-2xl sm:text-3xl font-extrabold font-mono text-white tabular-numbers tracking-tight">
+              <span className="text-xl font-extrabold font-mono text-white tabular-numbers tracking-tight">
                 {dotsScore}
               </span>
               <span className="text-xs font-bold text-slate-400">pts</span>
@@ -104,7 +104,7 @@ export const CharacterTab: React.FC<CharacterTabProps> = ({
               Combined Big 3 Max
             </span>
             <div className="flex items-baseline space-x-2 mt-1">
-              <span className="text-2xl sm:text-3xl font-extrabold font-mono text-brand-primary tabular-numbers tracking-tight">
+              <span className="text-xl font-extrabold font-mono text-brand-primary tabular-numbers tracking-tight">
                 {powerliftingTotalE1rm}
               </span>
               <span className="text-xs font-bold text-slate-300">
@@ -137,8 +137,8 @@ export const CharacterTab: React.FC<CharacterTabProps> = ({
           }}
           className={`py-2 px-1 rounded-xl text-xs font-bold transition-all text-center min-h-[44px] flex items-center justify-center ${
             subView === 'volume'
-              ? 'bg-brand-primary text-black shadow-sm'
-              : 'text-slate-300 hover:text-white'
+              ? 'bg-white/[0.14] text-white font-bold shadow-sm'
+              : 'text-slate-400 hover:text-slate-200'
           }`}
         >
           Weekly Sets
@@ -152,8 +152,8 @@ export const CharacterTab: React.FC<CharacterTabProps> = ({
           }}
           className={`py-2 px-1 rounded-xl text-xs font-bold transition-all text-center min-h-[44px] flex items-center justify-center ${
             subView === 'balance'
-              ? 'bg-brand-primary text-black shadow-sm'
-              : 'text-slate-300 hover:text-white'
+              ? 'bg-white/[0.14] text-white font-bold shadow-sm'
+              : 'text-slate-400 hover:text-slate-200'
           }`}
         >
           Strength Radar
@@ -167,8 +167,8 @@ export const CharacterTab: React.FC<CharacterTabProps> = ({
           }}
           className={`py-2 px-1 rounded-xl text-xs font-bold transition-all text-center min-h-[44px] flex items-center justify-center ${
             subView === 'leaderboard'
-              ? 'bg-brand-primary text-black shadow-sm'
-              : 'text-slate-300 hover:text-white'
+              ? 'bg-white/[0.14] text-white font-bold shadow-sm'
+              : 'text-slate-400 hover:text-slate-200'
           }`}
         >
           XP Leaderboard

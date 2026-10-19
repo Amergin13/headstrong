@@ -137,7 +137,7 @@ export const XPLeaderboardCard: React.FC<XPLeaderboardCardProps> = ({
           <button
             type="button"
             onClick={handleJoinLeaderboard}
-            className="w-full min-h-[44px] py-2.5 px-4 rounded-xl bg-brand-primary hover:bg-brand-primary/90 text-dark-950 font-bold text-xs flex items-center justify-center space-x-2 transition-all shadow-md active:scale-[0.98]"
+            className="w-full min-h-[44px] py-2.5 px-4 rounded-2xl bg-white hover:bg-slate-100 text-slate-950 font-bold text-xs flex items-center justify-center space-x-2 transition-all shadow-md shadow-white/5 active:scale-[0.98]"
           >
             <UserCheck className="w-4 h-4 stroke-[2]" />
             <span>Join Community Leaderboard</span>
@@ -151,7 +151,7 @@ export const XPLeaderboardCard: React.FC<XPLeaderboardCardProps> = ({
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-2">
                 <span className="text-xs font-bold text-slate-300">Your Standing:</span>
-                <span className="text-xs font-mono font-extrabold px-2 py-0.5 rounded-lg bg-brand-primary text-dark-950">
+                <span className="text-xs font-mono font-extrabold px-2.5 py-0.5 rounded-full bg-brand-primary/15 text-brand-primary">
                   Rank #{summary.userRank}
                 </span>
                 <span className="text-xs font-semibold px-2 py-0.5 rounded-lg bg-white/[0.08] text-white">
@@ -212,8 +212,8 @@ export const XPLeaderboardCard: React.FC<XPLeaderboardCardProps> = ({
                 }}
                 className={`py-1.5 px-2 rounded-xl text-xs font-bold transition-all ${
                   filter === t.id
-                    ? 'bg-brand-primary text-black shadow-sm'
-                    : 'text-slate-300 hover:text-white'
+                    ? 'bg-white/[0.14] text-white font-bold shadow-sm'
+                    : 'text-slate-400 hover:text-slate-200'
                 }`}
               >
                 {t.label}
@@ -295,7 +295,7 @@ export const XPLeaderboardCard: React.FC<XPLeaderboardCardProps> = ({
                 <button
                   type="button"
                   onClick={handleSaveDisplayName}
-                  className="px-2.5 py-1 bg-brand-primary text-black font-bold rounded-lg text-xs"
+                  className="px-3 py-1.5 bg-white text-slate-950 hover:bg-slate-100 font-bold rounded-lg text-xs transition-colors shadow-sm"
                 >
                   Save
                 </button>

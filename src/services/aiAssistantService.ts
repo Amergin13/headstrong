@@ -15,6 +15,8 @@ import {
 import {
   AthleteKnowledgeGraph,
   buildAthleteKnowledgeGraph,
+  HEADSTRONG_DESIGN_SYSTEM,
+  queryDesignSystemComponents,
   queryExerciseScienceKnowledgeBase,
 } from '../engine/knowledgeGraph';
 import { getTensorHardwareProfile } from './tensorAIService';
@@ -391,6 +393,25 @@ export async function processAssistantMessage(
   // 7. INTENT: KNOWLEDGE GRAPH QUERIES (Joints, Science, Recovery, Muscles)
   // ============================================================================
   else {
+    const isDesignQuery =
+      lowerMsg.includes('design system') ||
+      lowerMsg.includes('shift nudge') ||
+      lowerMsg.includes('nested radius') ||
+      lowerMsg.includes('radius') ||
+      lowerMsg.includes('spatial') ||
+      lowerMsg.includes('grid') ||
+      lowerMsg.includes('squint') ||
+      lowerMsg.includes('typography') ||
+      lowerMsg.includes('button') ||
+      lowerMsg.includes('cta') ||
+      lowerMsg.includes('component') ||
+      lowerMsg.includes('anatomy') ||
+      lowerMsg.includes('tailwind tokens') ||
+      lowerMsg.includes('touch target') ||
+      lowerMsg.includes('primary cta');
+
+    const dsMatches = isDesignQuery ? queryDesignSystemComponents(lowerMsg) : [];
+
     // A. Joint Strain & Health Query
     const jointQuery = kg.joints.find((j) => {
       const lowerJ = j.joint.toLowerCase();
@@ -420,7 +441,24 @@ export async function processAssistantMessage(
       });
     }
 
-    // B. Grounded Exercise Science Knowledge Base Query (Exact Formulas & Physiological Rationale)
+    // B. Grounded Design System Component Query (Anatomy, Logic Invariants, Tailwind Tokens)
+    else if (isDesignQuery && dsMatches.length > 0) {
+      const comp = dsMatches[0];
+      answerText = `Component Specification: ${comp.name} (${comp.category})\n\nRationale:\n${comp.rationale}\n\nComponent Anatomy:\n- Typography: ${comp.anatomy.typography}\n- Container: ${comp.anatomy.container}\n- Touch Target: ${comp.anatomy.touchTarget}\n- Colors & States: ${comp.anatomy.colors}\n\nKey Invariant Rules:\n${comp.logic.rules.map((r) => `• ${r}`).join('\n')}\n\nTailwind Tokens:\n${comp.tailwindTokens}`;
+
+      citations.push({
+        label: comp.name,
+        metric: 'Component ID',
+        value: comp.id,
+      });
+      citations.push({
+        label: 'Touch Target',
+        metric: 'Accessibility',
+        value: comp.anatomy.touchTarget,
+      });
+    }
+
+    // C. Grounded Exercise Science Knowledge Base Query (Exact Formulas & Physiological Rationale)
     else {
       const scientificPrinciple = queryExerciseScienceKnowledgeBase(lowerMsg);
 

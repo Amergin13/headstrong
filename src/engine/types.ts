@@ -266,3 +266,35 @@ export interface AssistantChatMessage {
   isTensorAccelerated?: boolean;
 }
 
+export type DesignSystemComponentCategory =
+  | 'typography'
+  | 'button'
+  | 'card'
+  | 'input'
+  | 'pill'
+  | 'modal'
+  | 'badge'
+  | 'toggle'
+  | 'layout';
+
+export interface DesignSystemComponent {
+  id: string;
+  name: string;
+  category: DesignSystemComponentCategory;
+  anatomy: {
+    container: string;
+    typography: string;
+    colors: string;
+    states: Record<string, string>;
+    touchTarget: string;
+    iconSpec?: string;
+  };
+  logic: {
+    rules: string[];
+    variants: Record<string, string>;
+    accessibility: string;
+  };
+  tailwindTokens: string;
+  rationale: string;
+}
+

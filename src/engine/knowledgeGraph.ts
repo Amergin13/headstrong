@@ -1,5 +1,7 @@
 import {
   BiometricLog,
+  DesignSystemComponent,
+  DesignSystemComponentCategory,
   ExerciseDefinition,
   JointType,
   ResistanceProfile,
@@ -7,7 +9,7 @@ import {
   UserProfile,
   WorkoutSession,
 } from './types';
-export type { ScientificPrinciple };
+export type { ScientificPrinciple, DesignSystemComponent, DesignSystemComponentCategory };
 import { HYPERTROPHY_VOLUME_LANDMARKS, evaluateVolumeStatus } from './hypertrophyVolume';
 import { calculateE1RM } from './e1rm';
 
@@ -70,6 +72,7 @@ export interface AthleteKnowledgeGraph {
   muscleProfiles: MuscleAdaptationProfile[];
   insights: CausalInsight[];
   scientificKnowledgeBase: ScientificPrinciple[];
+  designSystem: DesignSystemComponent[];
   systemicAxialLoadScore: number; // 0 - 100
   lengthenedStimulusRatio: number; // 0 - 100%
   recoveryEfficiencyScore: number; // 0 - 100
@@ -297,7 +300,451 @@ export const EXERCISE_SCIENCE_KNOWLEDGE_BASE: ScientificPrinciple[] = [
       'Accelerates your AI Coach directly on your device with 100% privacy and zero subscription fees.',
     keywords: ['tensor', 'pixel', 'tpu', 'gemini nano', 'on-device', 'local ai', 'latency', 'privacy', 'aicore', 'google pixel ai'],
   },
+  {
+    id: 'sp-design-system-4-tier-typography',
+    topic: 'Design System & Visual Hierarchy',
+    title: '4-Tier Strict Typography Scale',
+    formula: 'Typography Tiers = { Tier 1: text-xs (12px), Tier 2: text-sm (14px), Tier 3: text-base (16px), Tier 4: text-xl (20px) }',
+    scientificRationale:
+      'Mobile-first cognitive load research proves that limiting typographic hierarchy to strictly at most 4 distinct sizes minimizes eye saccade fatigue and visual friction during heavy compound physical exertion. Enforces a strict 12px (text-xs) minimum floor.',
+    academicCitation: 'Nielsen Norman Group Mobile Readability (2022); HeadStrong Interaction Design Governance',
+    practicalApplication:
+      'Eliminates erratic font jumps across workouts, cards, and modals, ensuring that headers, metrics, and labels maintain clear, predictable visual weight.',
+    keywords: ['typography', 'font size', 'text size', '4-tier', 'text-xs', 'text-sm', 'text-base', 'text-xl', 'hierarchy', 'typography scale'],
+  },
+  {
+    id: 'sp-design-system-semantic-colors',
+    topic: 'Design System & Color Semantics',
+    title: 'Semantic Color Reservation & CTA Hierarchy',
+    formula: 'Primary CTA = Luminous White (bg-white); Recovery Telemetry = Emerald (#00F59B); Caution = Amber (#FFB800)',
+    scientificRationale:
+      'Over-saturation of neon green on interactive buttons dilutes user focus and exhausts ocular stamina. Reserving solid luminous white for primary action buttons and green strictly for completed set checkmarks, primed recovery scores, and progress bars establishes immediate cognitive affordance.',
+    academicCitation: 'ISO 9241-110 Dialogue Principles; Whoop 4.0 Telemetry Design Architecture',
+    practicalApplication:
+      'Ensures critical buttons like Finish Workout and modal saves stand out with high contrast against the obsidian background without conflicting with health telemetry.',
+    keywords: ['color system', 'button color', 'primary cta', 'green button', 'white button', 'semantic color', 'amber shield', 'whoop aesthetics', 'contrast'],
+  },
+  {
+    id: 'sp-design-system-touch-targets',
+    topic: 'Mobile Ergonomics & Accessibility',
+    title: 'Mandatory 44px Touch Target & Invariant Floors',
+    formula: 'Minimum Target Dimensions = 44px × 44px (min-h-[44px])',
+    scientificRationale:
+      'Sweaty and fatigued athletes experiencing post-exercise tremors exhibit significantly impaired fine motor control. Interactive targets below 44px produce high mis-tap error rates and user frustration.',
+    academicCitation: 'WCAG 2.1 Success Criterion 2.5.5 (Target Size); Apple Human Interface Guidelines',
+    practicalApplication:
+      'Guarantees all interactive elements (buttons, segmented pills, modal headers, stepper inputs) have at least 44px vertical touch targets for effortless in-gym logging.',
+    keywords: ['touch target', '44px', 'accessibility', 'wcag', 'min-h-[44px]', 'ergonomics', 'mobile target', 'tap target'],
+  },
 ];
+
+/**
+ * Codified HeadStrong Component Design System:
+ * Authoritative registry of component logic, anatomy, variants, and Tailwind tokens stored in the Knowledge Graph.
+ */
+export const HEADSTRONG_DESIGN_SYSTEM: DesignSystemComponent[] = [
+  {
+    id: 'ds-typography-scale',
+    name: '4-Tier Strict Typography Scale',
+    category: 'typography',
+    anatomy: {
+      container: 'w-full space-y-1',
+      typography: 'Tier 1: text-xs (12px), Tier 2: text-sm (14px), Tier 3: text-base (16px), Tier 4: text-xl (20px)',
+      colors: 'text-white (primary), text-slate-200 (secondary), text-slate-400 (metadata), text-brand-primary (accent)',
+      states: {
+        default: 'font-sans antialiased tracking-tight',
+        mono: 'font-mono tabular-numbers',
+      },
+      touchTarget: 'N/A (Typography Scale)',
+    },
+    logic: {
+      rules: [
+        'Maximum 4 distinct typography sizes allowed across the entire application: text-xs (12px), text-sm (14px), text-base (16px), and text-xl (20px).',
+        'Strict 12px (text-xs) minimum floor enforced across all surfaces; sub-12px micro-text is strictly prohibited.',
+        'Numeric values, telemetry, and loads must use font-mono tabular-numbers.',
+        'Single focal point per card with no more than 2-3 typography weights/styles per card.',
+      ],
+      variants: {
+        'caption-metadata': 'text-xs font-medium or font-semibold for labels, badges, time stamps, secondary descriptions',
+        'body-standard': 'text-sm font-medium or font-semibold for body copy, list titles, button labels',
+        'subheading-card': 'text-base font-bold or font-extrabold for modal titles, card headers, section titles',
+        'hero-metric': 'text-xl font-extrabold or font-mono for page titles, hero numbers, circular gauge readouts',
+      },
+      accessibility: 'Passes WCAG 1.4.4 text scaling & WCAG 1.4.3 contrast ratio (>= 4.5:1 on obsidian #060709)',
+    },
+    tailwindTokens: 'text-xs | text-sm | text-base | text-xl',
+    rationale: 'Human eye saccadic scanning on mobile requires ruthless hierarchy. Restricting the app to exactly 4 sizes eliminates visual cacophony while preserving clear focal distinctions.',
+  },
+  {
+    id: 'ds-btn-primary',
+    name: 'Primary CTA Button (Luminous Solid White)',
+    category: 'button',
+    anatomy: {
+      container: 'w-full or px-4 py-2.5 rounded-2xl min-h-[44px] flex items-center justify-center space-x-2 transition-all shadow-md active:scale-[0.98]',
+      typography: 'text-xs font-bold sm:text-sm',
+      colors: 'bg-white hover:bg-slate-100 text-slate-950 shadow-white/5',
+      states: {
+        default: 'bg-white text-slate-950 font-bold shadow-md shadow-white/5',
+        hover: 'hover:bg-slate-100',
+        active: 'active:scale-[0.98]',
+        disabled: 'bg-white/[0.06] text-slate-500 cursor-not-allowed shadow-none',
+        focus: 'focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2',
+      },
+      touchTarget: 'Min 44px vertical height (min-h-[44px]) with full touch target pad',
+      iconSpec: 'w-4 h-4 stroke-[2.2] text-emerald-600 (for completion) or text-slate-950',
+    },
+    logic: {
+      rules: [
+        'Exactly ONE primary CTA button per view, modal, or action card.',
+        'Must use solid luminous white background for universal dark mode contrast and clarity.',
+        'Never use neon green as button background fill; reserve green for semantic telemetry.',
+        'Must maintain min-h-[44px] touch target floor.',
+      ],
+      variants: {
+        finishWorkout: 'bg-white text-slate-950 with emerald checkmark icon',
+        modalConfirm: 'w-full bg-white text-slate-950 font-bold',
+      },
+      accessibility: 'Passes WCAG 2.5.5 Touch Target (>= 44x44px) and WCAG 1.4.3 Contrast (19.8:1 white-on-black contrast ratio)',
+    },
+    tailwindTokens: 'bg-white hover:bg-slate-100 text-slate-950 font-bold shadow-md shadow-white/5 rounded-2xl min-h-[44px]',
+    rationale: 'Solid white buttons on deep obsidian dark themes deliver instant cognitive affordance without the visual fatigue or sensory overload of saturated neon buttons.',
+  },
+  {
+    id: 'ds-btn-secondary',
+    name: 'Secondary Dark Glass Action Button',
+    category: 'button',
+    anatomy: {
+      container: 'px-3.5 py-2.5 rounded-xl min-h-[44px] flex items-center justify-center space-x-1.5 transition-colors active:scale-[0.98]',
+      typography: 'text-xs font-semibold',
+      colors: 'bg-white/[0.08] hover:bg-white/[0.14] text-white',
+      states: {
+        default: 'bg-white/[0.08] text-white',
+        hover: 'hover:bg-white/[0.14]',
+        active: 'active:scale-[0.98]',
+        disabled: 'bg-white/[0.04] text-slate-600 cursor-not-allowed',
+      },
+      touchTarget: 'Min 44px vertical height (min-h-[44px])',
+      iconSpec: 'w-3.5 h-3.5 stroke-[2] text-slate-300',
+    },
+    logic: {
+      rules: [
+        'Used for secondary, auxiliary, or cancel actions alongside a primary CTA.',
+        'Must use elevated dark glass (white at 8% opacity) rather than opaque dark blues or grays.',
+        'Never compete visually with the primary solid white CTA.',
+      ],
+      variants: {
+        cancel: 'bg-white/[0.08] text-white',
+        inlineAuxiliary: 'bg-white/[0.06] hover:bg-white/[0.12] text-slate-200',
+      },
+      accessibility: 'Passes WCAG 2.5.5 touch target with >= 4.5:1 text-to-background contrast',
+    },
+    tailwindTokens: 'bg-white/[0.08] hover:bg-white/[0.14] text-white font-semibold rounded-xl min-h-[44px]',
+    rationale: 'Elevated dark glass preserves the obsidian depth of the interface without creating opaque borders or visually jarring gray boxes.',
+  },
+  {
+    id: 'ds-btn-segmented',
+    name: 'Segmented Control / Mode Switcher',
+    category: 'pill',
+    anatomy: {
+      container: 'grid or flex gap-1.5 bg-[#090C12] p-1.5 rounded-2xl',
+      typography: 'text-xs font-bold',
+      colors: 'Active: bg-white/[0.14] text-white shadow-sm | Inactive: text-slate-400 hover:text-slate-200',
+      states: {
+        active: 'bg-white/[0.14] text-white font-bold shadow-sm',
+        inactive: 'text-slate-400 hover:text-slate-200 font-medium',
+      },
+      touchTarget: 'Min 44px height (min-h-[44px]) per segment',
+    },
+    logic: {
+      rules: [
+        'Used for mutually exclusive mode selections (e.g. Full Gym | At Home | Bodyweight, split days).',
+        'A segmented control is NOT a primary CTA and must never use solid neon green as its active state.',
+        'Active state uses quiet neutral elevation (14% white overlay) with drop shadow.',
+      ],
+      variants: {
+        equipmentSwitcher: '3-way grid: Full Gym | At Home | Bodyweight',
+        splitSelector: 'Multi-day horizontal scroll or flex grid',
+        timeframeFilter: '1W | 1M | 3M | All',
+      },
+      accessibility: 'ARIA role="group" or role="tablist" with aria-pressed or aria-selected',
+    },
+    tailwindTokens: 'bg-white/[0.14] text-white font-bold shadow-sm rounded-xl min-h-[44px]',
+    rationale: 'Prevents cognitive noise by keeping mode selection calm, allowing the actual workout content below to hold primary visual interest.',
+  },
+  {
+    id: 'ds-set-toggle',
+    name: 'Set Completion & Progression Checkmark',
+    category: 'toggle',
+    anatomy: {
+      container: 'w-8 h-8 rounded-xl flex items-center justify-center transition-all duration-200 active:scale-90',
+      typography: 'N/A (Icon)',
+      colors: 'Completed: bg-brand-primary text-black font-extrabold | Incomplete: bg-[#0B0E14] hover:bg-white/[0.08] text-slate-400',
+      states: {
+        incomplete: 'bg-[#0B0E14] hover:bg-white/[0.08] text-slate-400',
+        completed: 'bg-brand-primary text-black font-extrabold shadow-sm',
+        warmup: 'bg-amber-500/20 text-amber-300 font-mono font-bold',
+      },
+      touchTarget: 'Parent flex column provides >= 44px touch target alignment',
+      iconSpec: 'Check icon w-4 h-4 stroke-[2.5]',
+    },
+    logic: {
+      rules: [
+        'Green is strictly reserved for the completed set checkmark, celebrating progressive overload.',
+        'Warmup sets display distinctive amber "W" badge to avoid user confusion with working sets.',
+        'Completing a set triggers haptic feedback and real-time tonnage/XP updates.',
+      ],
+      variants: {
+        workingSet: 'Checkmark toggle with green completion state',
+        warmupSet: 'Amber W indicator with pre-filled ramping loads',
+      },
+      accessibility: 'aria-label="Complete set N" / aria-pressed="true|false"',
+    },
+    tailwindTokens: 'bg-brand-primary text-black font-extrabold shadow-sm rounded-xl w-8 h-8',
+    rationale: 'Delivers a visceral dopamine feedback loop upon completing a grueling working set without cluttering the rest of the UI with neon accents.',
+  },
+  {
+    id: 'ds-card-biometric',
+    name: 'Biometric Luxury Card (Whoop 4.0 Aesthetics)',
+    category: 'card',
+    anatomy: {
+      container: 'p-5 sm:p-6 rounded-3xl bg-[#0E1219] shadow-[0_8px_32px_-4px_rgba(0,0,0,0.55)] space-y-4',
+      typography: 'Headers: text-base font-extrabold text-white tracking-tight; Body: text-xs text-slate-300',
+      colors: 'Background: #0E1219, Drop Shadow: rgba(0,0,0,0.55)',
+      states: {
+        default: 'Zero border strokes; soft specular gradient lighting',
+      },
+      touchTarget: 'N/A (Card Surface)',
+    },
+    logic: {
+      rules: [
+        'No perimeter strokes or harsh borders; contrast and depth must be established through specular color fields and soft drop-shadows.',
+        'Must maintain generous internal padding (p-5 sm:p-6).',
+        'Top focal point of every card must clearly answer: What is this and what is my next action?',
+      ],
+      variants: {
+        heroCard: 'p-5 sm:p-6 space-y-4 bg-[#0E1219]',
+        compactSubCard: 'p-4 rounded-2xl bg-[#141824]',
+      },
+      accessibility: 'Clean reading flow; passes WCAG AA contrast against #060709 base canvas',
+    },
+    tailwindTokens: 'biometric-card p-5 sm:p-6 rounded-3xl bg-[#0E1219] space-y-4',
+    rationale: 'Eliminates the cheap wireframe feeling of bordered cards, establishing a premium tactile aesthetic inspired by Whoop 4.0 and Apple Watch interfaces.',
+  },
+  {
+    id: 'ds-badge-status',
+    name: 'Semantic Status Badge / Indicator',
+    category: 'badge',
+    anatomy: {
+      container: 'inline-flex items-center space-x-1 px-3 py-1 rounded-full text-xs font-bold',
+      typography: 'text-xs font-bold font-mono or font-sans',
+      colors: 'Primed: bg-brand-primary/15 text-brand-primary | Caution: bg-amber-500/15 text-amber-300 | High Strain: bg-rose-500/15 text-rose-300 | Strain/Engine: bg-brand-strain/15 text-brand-strain | Info: bg-white/[0.08] text-slate-300',
+      states: {
+        default: 'Soft tinted background with high-contrast text',
+      },
+      touchTarget: 'N/A (Read-only badge) or min-h-[44px] when interactive',
+    },
+    logic: {
+      rules: [
+        'Color semantics are strictly immutable: Green = Primed/Recovery, Amber = Amber Shield/Caution, Rose = Joint Strain Alert, Cyan = Strain/Cardio, Slate = Neutral Info.',
+        'Never mix semantic colors arbitrarily.',
+      ],
+      variants: {
+        primed: 'bg-brand-primary/15 text-brand-primary',
+        amberShield: 'bg-amber-500/15 text-amber-300',
+        jointStrain: 'bg-rose-500/15 text-rose-300',
+        strainMetric: 'bg-brand-strain/15 text-brand-strain',
+        neutralInfo: 'bg-white/[0.08] text-slate-300',
+      },
+      accessibility: 'High text-to-badge contrast ratio (>= 5:1)',
+    },
+    tailwindTokens: 'px-3 py-1 rounded-full text-xs font-bold bg-brand-primary/15 text-brand-primary',
+    rationale: 'Allows athletes to scan physiological state and telemetry instantly without reading paragraphs of prose.',
+  },
+  {
+    id: 'ds-input-numeric',
+    name: 'Numeric Load & Reps Stepper Input',
+    category: 'input',
+    anatomy: {
+      container: 'flex items-center bg-[#0B0E14] rounded-xl p-0.5 min-h-[44px]',
+      typography: 'text-sm font-mono font-extrabold tabular-numbers text-center',
+      colors: 'bg-transparent text-white focus:outline-none focus:ring-1 focus:ring-brand-primary',
+      states: {
+        default: 'text-white font-mono',
+        completed: 'text-brand-primary font-mono',
+        focus: 'focus:ring-1 focus:ring-brand-primary',
+      },
+      touchTarget: 'Stepper buttons w-7 h-8 (enclosed in min-h-[44px] row)',
+      iconSpec: 'Minus/Plus icons w-3.5 h-3.5 stroke-[2]',
+    },
+    logic: {
+      rules: [
+        'Always selects all text on focus for effortless 1-tap overwrite on mobile keyboards.',
+        'Pre-fills with target load and target reps from progression engine or previous session.',
+        'Supports quick stepper taps for micro-adjustments (+/- 1 rep or +/- 2.5kg).',
+      ],
+      variants: {
+        weightInput: 'Displays kg with plate calculator quick-trigger',
+        repsInput: 'Displays reps with increment/decrement steppers',
+      },
+      accessibility: 'Accessible aria-label specifying exercise, set number, and metric',
+    },
+    tailwindTokens: 'bg-[#0B0E14] rounded-xl text-center font-mono text-sm font-extrabold tabular-numbers min-h-[44px]',
+    rationale: 'Gym fingers are sweaty and fatigued; inputs must be forgiving, pre-filled, and operable via steppers or keypad.',
+  },
+  {
+    id: 'ds-modal-dialog',
+    name: 'Modal Sheet & Dialog',
+    category: 'modal',
+    anatomy: {
+      container: 'fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/85 backdrop-blur-md',
+      typography: 'Title: text-base font-extrabold text-white tracking-tight; Subtitle: text-xs text-slate-400',
+      colors: 'Modal Box: bg-[#0E1219] border border-white/[0.04] shadow-2xl',
+      states: {
+        default: 'Sliding up from bottom on mobile, centered on tablet/desktop',
+      },
+      touchTarget: 'Close button min-h-[44px] min-w-[44px]',
+    },
+    logic: {
+      rules: [
+        'Modal header must feature a clear dismiss button (✕) with min-h-[44px] touch target.',
+        'Backdrop must use heavy blur (backdrop-blur-md) to isolate the interaction context.',
+        'Action button group must place primary CTA first, with secondary cancel action below or beside.',
+      ],
+      variants: {
+        actionSheet: 'Bottom-sheet style on mobile with sticky confirmation button',
+        fullModal: 'Centered dialog for deep configurations like governance or split editor',
+      },
+      accessibility: 'Traps focus, supports Escape key dismiss, aria-modal="true" role="dialog"',
+    },
+    tailwindTokens: 'bg-[#0E1219] p-5 sm:p-6 rounded-3xl shadow-2xl space-y-4 max-w-md w-full',
+    rationale: 'Keeps focused secondary flows (e.g. logging bodyweight, swapping exercises) contextual and prevents accidental dismissal.',
+  },
+  {
+    id: 'ds-nested-radius',
+    name: 'Shift Nudge Concentric Radius Invariant',
+    category: 'layout',
+    anatomy: {
+      container: 'Outer container with padding enclosing inner nested container',
+      typography: 'N/A (Geometric Rule)',
+      colors: 'Outer: #0E1219 (Card) | Inner: #141824 (Sub-card) or #090C12 (Well)',
+      states: {
+        default: 'Concentric corners where negative space between curves remains mathematically constant',
+      },
+      touchTarget: 'Preserves inner touch target boundaries without corner clipping',
+    },
+    logic: {
+      rules: [
+        'Shift Nudge Nested Radius Formula: Inner Radius = Outer Radius - Padding.',
+        'Prevents the "nested radius pinch" where an inner container uses the same corner radius as the parent container.',
+        'Outer rounded-3xl (26px) with p-5 (20px padding) requires inner rounded-sm/md (6-8px).',
+        'Outer rounded-2xl (20px) with p-1.5 (6px padding) requires inner rounded-xl (14px).',
+      ],
+      variants: {
+        cardToSubCard: 'rounded-3xl (26px) outer with p-5/p-6 -> rounded-lg/xl (8-12px) inner sub-panels',
+        groupToPill: 'rounded-2xl (20px) outer group with p-1.5 (6px) -> rounded-xl (14px) inner segmented buttons',
+      },
+      accessibility: 'Optical harmony reduces cognitive fatigue and visual jarring during intense gym workouts',
+    },
+    tailwindTokens: 'Outer: rounded-3xl p-5 | Inner: rounded-xl or rounded-lg',
+    rationale: 'Matt D. Smith (Shift Nudge) signature principle: When border radii are concentric, negative space flows naturally and looks designed rather than thrown together.',
+  },
+  {
+    id: 'ds-spatial-grid',
+    name: 'Shift Nudge 8pt Spatial Scale & Proximity Hierarchy',
+    category: 'layout',
+    anatomy: {
+      container: 'Multi-tiered vertical rhythm utilizing base-8 grid with base-4 micro-increments',
+      typography: 'N/A (Spatial Scale)',
+      colors: 'Negative space (transparent obsidian margins)',
+      states: {
+        default: 'Predictable rhythmic rhythm across cards, sections, and active workouts',
+      },
+      touchTarget: 'Ensures min 8px spacing between distinct interactive touch targets',
+    },
+    logic: {
+      rules: [
+        'All layout margins, internal paddings, and component gaps adhere to base-8 increments (4px, 8px, 12px, 16px, 20px, 24px, 32px).',
+        'Law of Proximity: Intra-element spacing (4–8px) must be strictly less than card internal padding (16–24px), which must be less than section separation (24–32px).',
+        'Negative space is an active design element acting as the primary separator before resorting to lines or borders.',
+      ],
+      variants: {
+        microGap: 'gap-1 (4px) or gap-1.5 (6px) for tightly grouped controls and icons',
+        elementGap: 'gap-2 (8px) or gap-3 (12px) for related form fields and metric columns',
+        cardPadding: 'p-5 (20px) or p-6 (24px) for luxury biometric surfaces',
+        sectionMargin: 'space-y-4 (16px) to space-y-6 (24px) for distinct view blocks',
+      },
+      accessibility: 'WCAG 2.5.8 compliant: maintains generous separation between adjacent tap targets',
+    },
+    tailwindTokens: 'p-5 sm:p-6 space-y-4 gap-2',
+    rationale: 'Systematic spatial increments eliminate guesswork and create an instinctive, calming visual rhythm on mobile displays.',
+  },
+  {
+    id: 'ds-squint-hierarchy',
+    name: 'Shift Nudge Squint Test & Focal Point Authority',
+    category: 'layout',
+    anatomy: {
+      container: 'Full viewport layout structure and visual weight distribution',
+      typography: 'Primary: text-base to text-xl font-bold; Secondary: text-xs text-slate-400',
+      colors: 'Dominant white CTA (#FFFFFF) and emerald checkmarks (#00F59B) against obsidian (#060709)',
+      states: {
+        squintPass: 'When blurred, the primary action and active exercise card are unmistakably obvious in < 200ms',
+      },
+      touchTarget: 'Primary focal element commands prominent touch envelope (>= 44px)',
+    },
+    logic: {
+      rules: [
+        'The Squint Test Rule: An interface is not a democracy; elements cannot compete with equal visual weight.',
+        'Exactly ONE primary focal point per screen or modal dialog.',
+        'Active exercise card holds highest visual weight in the training view; segmented mode controls remain quiet neutrals.',
+        'Primary action uses solid luminous white (20:1 contrast ratio) so it cuts through ocular fatigue in bright gym lighting.',
+      ],
+      variants: {
+        trainingView: 'Focal 1: Current Exercise Card -> Focal 2: Solid Checkmark -> Focal 3: Finish Workout CTA',
+        analyticsView: 'Focal 1: 7-Day EMA Weight Hero -> Focal 2: Strength vs Bodyweight Chart',
+      },
+      accessibility: 'Guarantees immediate cognitive orientation for visually impaired or physically exhausted lifters',
+    },
+    tailwindTokens: 'Primary CTA: bg-white text-slate-950 font-bold | Active Card: bg-[#0E1219] shadow-2xl',
+    rationale: 'Athletes in the middle of a heavy compound set experience tunnel vision; visual hierarchy must be ruthless so orientation requires zero effort.',
+  },
+];
+
+/**
+ * Searches and queries the Knowledge Graph's Design System components.
+ */
+export function queryDesignSystemComponents(query?: string): DesignSystemComponent[] {
+  if (!query || !query.trim()) return HEADSTRONG_DESIGN_SYSTEM;
+  const q = query.toLowerCase().trim();
+  const stopWords = new Set(['what', 'is', 'the', 'a', 'an', 'and', 'in', 'on', 'of', 'for', 'to', 'how', 'does', 'do', 'are', 'headstrong', 'app']);
+  const tokens = q
+    .replace(/[^a-z0-9\s-]/g, ' ')
+    .split(/\s+/)
+    .filter((t) => t.length > 1 && !stopWords.has(t));
+
+  const scored = HEADSTRONG_DESIGN_SYSTEM.map((c) => {
+    const textBlob = `${c.id} ${c.name} ${c.category} ${c.rationale} ${c.logic.rules.join(' ')} ${c.tailwindTokens}`.toLowerCase();
+    let score = 0;
+    if (textBlob.includes(q)) score += 50;
+    if (c.id.toLowerCase().includes(q)) score += 30;
+    if (c.name.toLowerCase().includes(q)) score += 20;
+    for (const tok of tokens) {
+      if (c.id.toLowerCase().includes(tok)) score += 10;
+      if (c.name.toLowerCase().includes(tok)) score += 8;
+      if (c.category.toLowerCase() === tok) score += 6;
+      if (textBlob.includes(tok)) score += 3;
+    }
+    return { component: c, score };
+  })
+    .filter((item) => item.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .map((item) => item.component);
+
+  return scored;
+}
+
+export function getDesignSystemComponentById(id: string): DesignSystemComponent | undefined {
+  return HEADSTRONG_DESIGN_SYSTEM.find((c) => c.id === id);
+}
 
 /**
  * Searches and queries the Knowledge Graph's authoritative Exercise Science knowledge base.
@@ -995,6 +1442,7 @@ export function buildAthleteKnowledgeGraph(
     muscleProfiles,
     insights,
     scientificKnowledgeBase: EXERCISE_SCIENCE_KNOWLEDGE_BASE,
+    designSystem: HEADSTRONG_DESIGN_SYSTEM,
     systemicAxialLoadScore,
     lengthenedStimulusRatio,
     recoveryEfficiencyScore,

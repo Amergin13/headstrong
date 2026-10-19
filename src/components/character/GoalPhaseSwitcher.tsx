@@ -60,10 +60,10 @@ export const GoalPhaseSwitcher: React.FC<GoalPhaseSwitcherProps> = ({
               key={p.id}
               type="button"
               onClick={() => handleSelect(p.id)}
-              className={`py-2 rounded-xl text-xs font-bold transition-all duration-150 ${
+              className={`py-2 rounded-xl text-xs font-bold transition-all duration-150 min-h-[44px] flex items-center justify-center ${
                 isSelected
-                  ? 'bg-brand-primary text-black shadow-sm'
-                  : 'text-slate-300 hover:text-white'
+                  ? 'bg-white/[0.14] text-white font-bold shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200'
               }`}
             >
               {p.label}

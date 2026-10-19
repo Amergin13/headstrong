@@ -83,7 +83,7 @@ export const PlateCalculatorModal: React.FC<PlateCalculatorModalProps> = ({
                   step="0.5"
                   value={targetWeight}
                   onChange={(e) => setTargetWeight(parseFloat(e.target.value) || barWeight)}
-                  className="w-24 bg-transparent font-mono font-black text-2xl text-white focus:outline-none"
+                  className="w-24 bg-transparent font-mono font-black text-xl text-white focus:outline-none"
                 />
                 <span className="text-xs font-bold text-slate-400">kg</span>
               </div>
@@ -101,7 +101,7 @@ export const PlateCalculatorModal: React.FC<PlateCalculatorModalProps> = ({
                   }}
                   className={`px-2.5 py-1 rounded-lg text-xs font-mono font-bold transition-all ${
                     barWeight === b
-                      ? 'bg-brand-primary text-black shadow-sm'
+                      ? 'bg-white text-slate-950 shadow-sm'
                       : 'text-slate-400 hover:text-white'
                   }`}
                 >

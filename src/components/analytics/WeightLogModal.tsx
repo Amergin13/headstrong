@@ -53,7 +53,7 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
                 autoFocus
                 value={weightInput}
                 onChange={(e) => setWeightInput(e.target.value)}
-                className="w-full py-3.5 px-4 rounded-2xl bg-[#090C12] text-white font-mono text-2xl font-bold focus:ring-1 focus:ring-brand-primary focus:outline-none text-center"
+                className="w-full py-3.5 px-4 rounded-2xl bg-[#090C12] text-white font-mono text-xl font-bold focus:ring-1 focus:ring-brand-primary focus:outline-none text-center"
               />
               <span className="absolute right-4 top-4 text-slate-400 font-bold text-sm">kg</span>
             </div>
@@ -78,13 +78,13 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
             <button
               type="button"
               onClick={onClose}
-              className="py-3 min-h-[44px] rounded-xl bg-[#141824] text-slate-300 font-semibold text-xs hover:bg-[#1C2233]"
+              className="py-3 min-h-[44px] rounded-xl bg-white/[0.08] hover:bg-white/[0.14] text-white font-semibold text-xs transition-colors"
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="py-3 min-h-[44px] rounded-xl bg-brand-primary text-black font-bold text-xs hover:opacity-90 flex items-center justify-center space-x-1.5"
+              className="py-3 min-h-[44px] rounded-xl bg-white hover:bg-slate-100 text-slate-950 font-bold text-xs flex items-center justify-center space-x-1.5 shadow-sm active:scale-95"
             >
               <Check className="w-4 h-4 stroke-[2]" />
               <span>Save Weight</span>

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import {
   ExerciseDefinition,
   ExerciseSession,
@@ -12,13 +12,11 @@ import { SetRow } from './SetRow';
 import {
   Plus,
   Minus,
-  Target,
-  ChevronDown,
-  ChevronUp,
   ArrowRightLeft,
   Disc,
   TrendingUp,
   CheckCircle2,
+  Check,
 } from 'lucide-react';
 import { triggerHaptic } from '../../utils/haptics';
 
@@ -46,15 +44,6 @@ const PILLAR_FRIENDLY_LABELS: Record<string, string> = {
   Hinge: 'Hamstrings & Lower Back',
 };
 
-const EQUIPMENT_SHORT_LABELS: Record<string, string> = {
-  barbell: 'Barbell',
-  dumbbell: 'Dumbbells',
-  cable: 'Cable',
-  machine: 'Machine',
-  bodyweight: 'Bodyweight',
-  weighted_bodyweight: 'Weighted Bodyweight',
-};
-
 export const ExerciseCard: React.FC<ExerciseCardProps> = ({
   exerciseIndex,
   totalExercises,
@@ -69,8 +58,6 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
   onOpenSwap,
   onOpenPlateCalc,
 }) => {
-  const [showQuestInfo, setShowQuestInfo] = useState(false);
-
   const handleAddSetWithHaptic = (isWarmup = false) => {
     triggerHaptic('light');
     onAddSet(isWarmup);
@@ -97,30 +84,26 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
   );
 
   const firstTargetReps = prescription.nextTargetReps?.[0] ?? exercise.minReps;
-  const lastSessionTopSet = prescription.previousSetsSummary?.[0]?.replace(/\s*@\d+R$/, '');
+  const isAtMaxReps = firstTargetReps >= exercise.maxReps;
+  const targetRepsDisplay =
+    prescription.repsChanged && isAtMaxReps
+      ? `${firstTargetReps}+ reps`
+      : `${firstTargetReps} reps`;
 
   const friendlyMuscle = PILLAR_FRIENDLY_LABELS[exercise.pillar] || exercise.pillar;
-  const equipLabel = EQUIPMENT_SHORT_LABELS[exercise.equipment] || exercise.equipment;
   const completedCount = exercise.sets.filter((s) => s.completed).length;
   const allSetsDone = completedCount === exercise.sets.length && exercise.sets.length > 0;
+  const warmupCount = exercise.sets.filter((s) => s.isWarmup || s.setType === 'warmup').length;
 
-  const isPureBw =
-    prescription.isPureBodyweight ||
-    (exercise.equipment === 'bodyweight' && !exercise.isWeightedCalisthenic);
-
-  // Determine the clear progression badge text
+  // Only display a progression badge when there is an exceptional event (load increase, amber shield, or top of range)
   const progressBadge =
     readinessState === 'Amber Shield'
-      ? 'Hold Steady Today'
-      : isPureBw
-      ? prescription.repsChanged
-        ? '+1–2 Rep Goal (Bodyweight)'
-        : `Target: ${firstTargetReps} Reps (Bodyweight)`
+      ? 'Hold Steady'
       : prescription.weightChanged
-      ? `+${exercise.equipment === 'dumbbell' ? '2.0' : '2.5'} kg Weight Increase`
-      : prescription.repsChanged
-      ? '+1 Rep Goal Today'
-      : `Target: ${exercise.minReps}–${exercise.maxReps} Reps`;
+      ? `+${exercise.equipment === 'dumbbell' ? '2.0' : '2.5'} kg Load`
+      : isAtMaxReps
+      ? 'Top of Range'
+      : null;
 
   return (
     <section
@@ -129,17 +112,17 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
         allSetsDone ? 'bg-[#0E1513]' : 'bg-[#0E1219]'
       }`}
     >
-      {/* 1. Card Header: Step Number, Muscle & Equipment Metadata, Exercise Name & Single Swap Action */}
-      <div className="space-y-2">
+      {/* 1. Card Header: Step Index, Target Muscle, Exercise Name, Status & Single Swap Action */}
+      <div className="space-y-1.5">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center space-x-2 min-w-0">
             {exerciseIndex !== undefined && totalExercises !== undefined && (
-              <span className="text-xs font-mono font-bold px-2.5 py-1 rounded-lg bg-white/[0.08] text-white shrink-0">
+              <span className="text-xs font-mono font-bold px-2 py-0.5 rounded-lg bg-white/[0.08] text-white shrink-0">
                 {exerciseIndex}/{totalExercises}
               </span>
             )}
-            <span className="text-xs font-semibold text-slate-300 truncate">
-              {friendlyMuscle} • {equipLabel} • {completedCount}/{exercise.sets.length} sets
+            <span className="text-xs font-semibold text-slate-300">
+              {friendlyMuscle}
             </span>
           </div>
 
@@ -176,156 +159,143 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
           </div>
         </div>
 
-        <div className="flex items-center justify-between">
-          <h3 className="font-extrabold text-lg text-white tracking-tight">
+        <div className="flex items-center justify-between gap-2">
+          <h3 className="font-extrabold text-base text-white tracking-tight">
             {exercise.name}
           </h3>
-          {allSetsDone && (
-            <span className="text-xs font-bold text-brand-primary flex items-center space-x-1">
-              <CheckCircle2 className="w-4 h-4 stroke-[2]" />
-              <span>Done</span>
-            </span>
-          )}
+          <span className="text-xs font-mono text-slate-400 shrink-0">
+            {allSetsDone ? (
+              <span className="text-xs font-bold text-brand-primary flex items-center space-x-1">
+                <CheckCircle2 className="w-4 h-4 stroke-[2]" />
+                <span>Done</span>
+              </span>
+            ) : (
+              `${completedCount}/${exercise.sets.length} sets`
+            )}
+          </span>
         </div>
       </div>
 
-      {/* 2. "What Do I Need To Do To Make Progress?" Callout Box */}
+      {/* 2. Streamlined Target Progression Micro-Cue */}
       <div
-        className={`p-4 rounded-2xl space-y-2 transition-colors ${
+        className={`px-3.5 py-2.5 rounded-xl flex items-center justify-between gap-2 transition-colors ${
           readinessState === 'Amber Shield'
-            ? 'bg-amber-500/10'
-            : 'bg-brand-primary/[0.08]'
+            ? 'bg-amber-500/10 text-amber-300'
+            : 'bg-white/[0.04] text-slate-300'
         }`}
       >
-        <div className="flex items-center justify-between flex-wrap gap-1.5">
-          <div className="flex items-center space-x-2">
-            <TrendingUp
-              className={`w-4 h-4 shrink-0 stroke-[2] ${
-                readinessState === 'Amber Shield' ? 'text-amber-400' : 'text-brand-primary'
-              }`}
-            />
-            <span className="text-xs font-bold text-white">
-              Target:{' '}
-              <span className="font-mono text-sm">
-                {formattedTargetWeight} × {firstTargetReps} reps
-              </span>
-            </span>
-          </div>
+        <div className="flex items-center space-x-2 min-w-0">
+          <TrendingUp
+            className={`w-3.5 h-3.5 shrink-0 stroke-[2] ${
+              readinessState === 'Amber Shield' ? 'text-amber-400' : 'text-brand-primary'
+            }`}
+          />
+          <span className="text-xs font-semibold text-slate-300 truncate">
+            Target:{' '}
+            <strong className="text-white font-mono font-bold">
+              {formattedTargetWeight} × {targetRepsDisplay}
+            </strong>
+          </span>
+        </div>
 
+        {progressBadge && (
           <span
-            className={`text-xs font-bold px-3 py-1 rounded-full ${
+            className={`text-xs font-bold px-2 py-0.5 rounded-full shrink-0 ${
               readinessState === 'Amber Shield'
                 ? 'bg-amber-500/20 text-amber-300'
-                : 'bg-brand-primary/20 text-brand-primary'
+                : prescription.weightChanged
+                ? 'bg-brand-primary/20 text-brand-primary'
+                : 'bg-white/[0.08] text-slate-300'
             }`}
           >
             {progressBadge}
           </span>
-        </div>
-
-        <div className="flex items-center justify-between text-xs text-slate-300">
-          <span>{prescription.reason}</span>
-          {lastSessionTopSet && (
-            <span className="font-mono text-slate-400 shrink-0 ml-2">
-              Last: {lastSessionTopSet}
-            </span>
-          )}
-        </div>
+        )}
       </div>
 
       {/* 3. Aligned 12-Column Set Logging Table */}
       <div className="space-y-1.5">
-        <div className="grid grid-cols-12 gap-1.5 px-2.5 text-xs font-bold uppercase tracking-wider text-slate-400 text-center">
+        <div className="grid grid-cols-12 gap-2 px-3 text-xs font-bold uppercase tracking-wider text-slate-400 text-center items-center">
           <div className="col-span-1">Set</div>
-          <div className="col-span-2">Last</div>
+          <div className="col-span-2">Prev</div>
           <div className="col-span-4">Weight (kg)</div>
           <div className="col-span-3">Reps</div>
-          <div className="col-span-1" title="Reps left before failure">
-            Left
+          <div className="col-span-1 flex justify-center" title="Reps in reserve (RIR)">
+            RIR
           </div>
-          <div className="col-span-1">Done</div>
+          <div className="col-span-1 flex justify-center" title="Complete set">
+            <Check className="w-3.5 h-3.5 stroke-[2.5]" />
+          </div>
         </div>
 
-        {exercise.sets.map((s, idx) => {
-          const ghost =
-            prescription.previousSetsSummary?.[idx] ??
-            prescription.previousSetsSummary?.[prescription.previousSetsSummary.length - 1];
+        {(() => {
+          let warmupIndex = 0;
+          let workingIndex = 0;
+          return exercise.sets.map((s) => {
+            const isWarm = s.isWarmup || s.setType === 'warmup';
+            let displayBadge: string;
+            let displayLabel: string;
+            if (isWarm) {
+              warmupIndex++;
+              displayBadge = warmupCount > 1 ? `W${warmupIndex}` : 'W';
+              displayLabel = `Warmup Set ${warmupIndex}`;
+            } else if (s.setType === 'drop') {
+              displayBadge = 'D';
+              displayLabel = 'Drop Set';
+            } else if (s.setType === 'myo') {
+              displayBadge = '+';
+              displayLabel = 'Bonus Rest-Pause Set';
+            } else {
+              workingIndex++;
+              displayBadge = `${workingIndex}`;
+              displayLabel = `Working Set ${workingIndex}`;
+            }
 
-          return (
-            <SetRow
-              key={s.id}
-              set={s}
-              prevGhost={ghost}
-              isDumbbell={exercise.equipment === 'dumbbell'}
-              onUpdate={(updated) => onUpdateSet(s.id, updated)}
-              onComplete={() => onCompleteSet(s.id)}
-            />
-          );
-        })}
+            const ghostIdx = isWarm ? undefined : workingIndex - 1;
+            const ghost =
+              ghostIdx !== undefined
+                ? (prescription.previousSetsSummary?.[ghostIdx] ??
+                   prescription.previousSetsSummary?.[prescription.previousSetsSummary.length - 1])
+                : undefined;
+
+            return (
+              <SetRow
+                key={s.id}
+                set={s}
+                displayBadge={displayBadge}
+                displayLabel={displayLabel}
+                prevGhost={ghost}
+                isDumbbell={exercise.equipment === 'dumbbell'}
+                onUpdate={(updated) => onUpdateSet(s.id, updated)}
+                onComplete={() => onCompleteSet(s.id)}
+              />
+            );
+          });
+        })()}
       </div>
 
-      {/* 4. Secondary Milestone & Form Tip (De-emphasized Accordion) */}
-      <div className="px-4 py-3 rounded-2xl bg-black/40">
-        <button
-          type="button"
-          onClick={() => setShowQuestInfo(!showQuestInfo)}
-          aria-expanded={showQuestInfo}
-          className="w-full flex items-center justify-between text-left"
-        >
-          <div className="flex items-center space-x-2 min-w-0">
-            <Target className="w-3.5 h-3.5 text-slate-400 shrink-0 stroke-[2]" />
-            <span className="text-xs text-slate-300 truncate">
-              Next milestone: <strong className="text-white font-medium">{quest.displayText}</strong>
-            </span>
-          </div>
-
-          {showQuestInfo ? (
-            <ChevronUp className="w-4 h-4 text-slate-400 shrink-0 ml-2 stroke-[2]" />
-          ) : (
-            <ChevronDown className="w-4 h-4 text-slate-400 shrink-0 ml-2 stroke-[2]" />
-          )}
-        </button>
-
-        {showQuestInfo && (
-          <div className="mt-2.5 pt-2.5 border-t border-white/[0.04] space-y-1 text-xs text-slate-400">
-            {exercise.notes && (
-              <p className="text-slate-300">
-                <strong className="text-white">Form tip:</strong> {exercise.notes}
-              </p>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* 5. Balanced Set Management Footer */}
-      <div className="grid grid-cols-3 gap-2.5 pt-1">
-        <button
-          type="button"
-          onClick={() => handleAddSetWithHaptic(true)}
-          className="py-3 rounded-xl bg-white/[0.05] hover:bg-white/[0.1] text-xs font-bold text-slate-300 hover:text-white flex items-center justify-center space-x-1.5 transition-all active:scale-95 min-h-[44px]"
-        >
-          <Plus className="w-3.5 h-3.5 stroke-[2]" />
-          <span>Warmup</span>
-        </button>
-
+      {/* 4. Progressive Set Management (Discreet Secondary Action) */}
+      <div className="flex items-center justify-between pt-1 px-1 text-xs">
         <button
           type="button"
           onClick={() => handleAddSetWithHaptic(false)}
-          className="py-3 rounded-xl bg-white/[0.08] hover:bg-white/[0.14] text-xs font-bold text-white flex items-center justify-center space-x-1.5 transition-all active:scale-95 min-h-[44px]"
+          className="text-slate-500 hover:text-slate-300 flex items-center space-x-1.5 py-1.5 px-2 rounded-lg transition-colors min-h-[36px]"
         >
           <Plus className="w-3.5 h-3.5 stroke-[2]" />
-          <span>Add Set</span>
+          <span>Add set</span>
         </button>
 
-        <button
-          type="button"
-          onClick={handleRemoveLastSet}
-          disabled={exercise.sets.length <= 1}
-          className="py-3 rounded-xl bg-white/[0.03] hover:bg-rose-500/10 text-xs font-bold text-slate-400 hover:text-rose-300 disabled:opacity-30 disabled:pointer-events-none flex items-center justify-center space-x-1.5 transition-all active:scale-95 min-h-[44px]"
-        >
-          <Minus className="w-3.5 h-3.5 stroke-[2]" />
-          <span>Remove</span>
-        </button>
+        {exercise.sets.length > 1 && (
+          <button
+            type="button"
+            onClick={handleRemoveLastSet}
+            aria-label={`Remove set ${exercise.sets.length} from ${exercise.name}`}
+            className="text-slate-600 hover:text-rose-400 flex items-center space-x-1 py-1.5 px-2 rounded-lg transition-colors min-h-[36px]"
+          >
+            <Minus className="w-3.5 h-3.5 stroke-[2]" />
+            <span>Remove set</span>
+          </button>
+        )}
       </div>
     </section>
   );

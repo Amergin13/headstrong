@@ -150,13 +150,13 @@ export const TensorCoachModal: React.FC<TensorCoachModalProps> = ({
               type="button"
               onClick={() => handleAsk(customQuestion)}
               disabled={isLoading || !customQuestion.trim()}
-              className="min-w-[44px] min-h-[44px] px-3.5 py-2.5 bg-brand-primary hover:bg-brand-primary/90 disabled:opacity-50 text-black font-bold rounded-xl text-xs flex items-center justify-center transition-all"
+              className="min-w-[44px] min-h-[44px] px-3.5 py-2.5 bg-white hover:bg-slate-100 disabled:opacity-40 text-slate-950 font-bold rounded-xl text-xs flex items-center justify-center transition-all shadow-sm"
               aria-label="Submit Question"
             >
               {isLoading ? (
-                <div className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin" />
+                <div className="w-4 h-4 border-2 border-slate-950 border-t-transparent rounded-full animate-spin" />
               ) : (
-                <Send className="w-4 h-4 stroke-[2]" />
+                <Send className="w-4 h-4 stroke-[2.2]" />
               )}
             </button>
           </div>
@@ -182,7 +182,7 @@ export const TensorCoachModal: React.FC<TensorCoachModalProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="px-5 py-2.5 min-h-[44px] bg-[#141824] hover:bg-[#1C2233] text-white font-semibold rounded-xl text-xs transition-colors"
+            className="px-5 py-2.5 min-h-[44px] bg-white hover:bg-slate-100 text-slate-950 font-bold rounded-xl text-xs transition-all shadow-sm"
           >
             Done
           </button>

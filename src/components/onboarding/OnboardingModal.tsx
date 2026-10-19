@@ -311,7 +311,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
             <div>
               <h2
                 id="onboarding-modal-title"
-                className="font-bold text-lg text-white tracking-tight"
+                className="font-bold text-xl text-white tracking-tight"
               >
                 Choose your training split
               </h2>
@@ -389,7 +389,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
             <div>
               <h2
                 id="onboarding-modal-title"
-                className="font-bold text-lg text-white tracking-tight"
+                className="font-bold text-xl text-white tracking-tight"
               >
                 What is your main goal right now?
               </h2>
@@ -452,7 +452,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
             <div>
               <h2
                 id="onboarding-modal-title"
-                className="font-bold text-lg text-white tracking-tight"
+                className="font-bold text-xl text-white tracking-tight"
               >
                 Where do you train &amp; what gear do you have?
               </h2>
@@ -584,8 +584,8 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                       }}
                       className={`py-2.5 px-3 rounded-xl text-xs font-bold transition-all ${
                         isCurrent
-                          ? 'bg-brand-primary text-black'
-                          : 'bg-[#090C12] text-slate-300'
+                          ? 'bg-white/[0.14] text-white shadow-sm'
+                          : 'bg-[#090C12] text-slate-400 hover:text-slate-200'
                       }`}
                     >
                       {loc.label}
@@ -628,7 +628,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                 triggerHaptic('light');
                 setStep((prev) => (prev === 1 ? 2 : prev === 2 ? 3 : 4));
               }}
-              className="px-5 py-2.5 min-h-[44px] rounded-2xl bg-brand-primary text-black text-xs font-bold flex items-center space-x-1.5 shadow-md shadow-brand-primary/20"
+              className="px-5 py-2.5 min-h-[44px] rounded-2xl bg-white hover:bg-slate-100 text-slate-950 text-xs font-bold flex items-center space-x-1.5 shadow-md shadow-white/5 active:scale-95"
             >
               <span>{step === 1 ? 'Choose My Program' : 'Next'}</span>
               <ChevronRight className="w-4 h-4 stroke-[2.5]" />
@@ -637,7 +637,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
             <button
               type="button"
               onClick={handleFinish}
-              className="px-5 py-2.5 min-h-[44px] rounded-2xl bg-brand-primary text-black text-xs font-bold flex items-center space-x-1.5 shadow-md shadow-brand-primary/20"
+              className="px-5 py-2.5 min-h-[44px] rounded-2xl bg-white hover:bg-slate-100 text-slate-950 text-xs font-bold flex items-center space-x-1.5 shadow-md shadow-white/5 active:scale-95"
             >
               <Check className="w-4 h-4 stroke-[2.5]" />
               <span>{initialStep === 4 ? 'Save Equipment' : 'Start Day 1 Workout'}</span>

@@ -62,7 +62,7 @@ export const ActivityTracker: React.FC<ActivityTrackerProps> = ({ biometrics }) 
           <span className="text-xs text-slate-400 font-bold uppercase tracking-wider block">
             Steps Today
           </span>
-          <div className="text-2xl font-extrabold font-mono text-white tracking-tight">
+          <div className="text-xl font-extrabold font-mono text-white tracking-tight">
             {currentSteps.toLocaleString()}
           </div>
           <div className="text-xs text-slate-400 font-medium">
@@ -80,7 +80,7 @@ export const ActivityTracker: React.FC<ActivityTrackerProps> = ({ biometrics }) 
           <span className="text-xs text-slate-400 font-bold uppercase tracking-wider block">
             Active Minutes
           </span>
-          <div className="text-2xl font-extrabold font-mono text-white tracking-tight">
+          <div className="text-xl font-extrabold font-mono text-white tracking-tight">
             {currentAzm} <span className="text-xs text-slate-400 font-normal">min</span>
           </div>
           <div className="text-xs text-slate-400 font-medium">

@@ -225,7 +225,7 @@ export const E1rmVsWeightChart: React.FC<E1rmVsWeightChartProps> = ({
         <button
           type="button"
           onClick={onOpenWeightModal}
-          className="px-3 py-1.5 rounded-full bg-white/[0.08] hover:bg-white/[0.14] text-xs font-semibold text-white flex items-center space-x-1 transition-colors shrink-0"
+          className="px-3.5 py-2 rounded-full bg-white/[0.08] hover:bg-white/[0.14] text-xs font-semibold text-white flex items-center space-x-1 transition-colors shrink-0 min-h-[44px]"
         >
           <Plus className="w-3.5 h-3.5 stroke-[2]" />
           <span>Log Weight</span>
@@ -241,10 +241,10 @@ export const E1rmVsWeightChart: React.FC<E1rmVsWeightChartProps> = ({
               key={grp.pillar}
               type="button"
               onClick={() => setSelectedPillar(grp.pillar)}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 ${
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 min-h-[36px] flex items-center justify-center ${
                 isSelected
-                  ? 'bg-brand-primary text-black shadow-sm'
-                  : 'bg-[#090C12] text-slate-300 hover:text-white'
+                  ? 'bg-white text-slate-950 font-bold shadow-sm'
+                  : 'bg-[#090C12] text-slate-400 hover:text-white'
               }`}
             >
               {grp.label}

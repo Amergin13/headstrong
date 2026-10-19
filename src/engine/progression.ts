@@ -323,10 +323,13 @@ export function prescribeDoubleProgression(
   const sourceMaxReps = sourceSession.maxReps || maxReps;
   const sourceMinReps = sourceSession.minReps || minReps;
 
+  const firstWorkingInSession =
+    session.sets.find((s) => !s.isWarmup && s.setType !== 'warmup') ?? session.sets[0];
+
   const rawSourceWeight =
     sets[0]?.actualWeightKg ??
     sets[0]?.targetWeightKg ??
-    session.sets[0]?.targetWeightKg ??
+    firstWorkingInSession?.targetWeightKg ??
     20;
 
   const isPureBodyweight =
@@ -621,3 +624,96 @@ export function prescribeDoubleProgression(
     calibratedTempoCue: isPureBodyweight ? 'Controlled 3s eccentric tempo' : undefined,
   };
 }
+
+/**
+ * Synthesizes the current program stage (mesocycle week 1-6), athlete goal (e.g. hypertrophy),
+ * and autonomic recovery into a concise, everyday natural language description of how to make
+ * progress this session. Replaces fragmented per-exercise repetition with clear macro guidance.
+ */
+export function getSessionProgressNarrative(
+  mesoWeek: number,
+  goalPhase: GoalPhase = 'Lean Bulk',
+  readinessState: ReadinessState = 'Normal'
+): { stageHeadline: string; narrativeText: string } {
+  const week = Math.min(6, Math.max(1, mesoWeek));
+
+  if (readinessState === 'Amber Shield') {
+    return {
+      stageHeadline: `Week ${week} of 6 • Active Recovery Focus`,
+      narrativeText:
+        'Your body needs extra recovery today. Keep your working weights steady and leave 2–3 reps in the tank to protect your muscle gains and keep your streak alive without burnout.',
+    };
+  }
+
+  if (goalPhase === 'Lean Bulk') {
+    switch (week) {
+      case 1:
+        return {
+          stageHeadline: 'Week 1 of 6 • Base Accumulation',
+          narrativeText:
+            'Start your training block with clean, controlled reps. Leaving 2 reps in reserve on your working sets builds the foundation to maximize muscle growth over the next 5 weeks.',
+        };
+      case 2:
+        return {
+          stageHeadline: 'Week 2 of 6 • Progressive Momentum',
+          narrativeText:
+            'Your muscles have adapted to the baseline movements. Aim to match or add 1 clean rep on your working sets—this progressive mechanical tension is the primary signal that triggers new muscle growth.',
+        };
+      case 3:
+        return {
+          stageHeadline: 'Week 3 of 6 • Muscle Growth Core',
+          narrativeText:
+            "You're in the hypertrophy sweet spot. Push your working sets with high mechanical tension, leaving 1–2 reps in the tank on your heaviest compounds to maximize muscle fiber recruitment.",
+        };
+      case 4:
+        return {
+          stageHeadline: 'Week 4 of 6 • Peak Stimulus',
+          narrativeText:
+            "Training volume reaches its peak this week. Focus on matching or beating last session's reps on each exercise to spur deep muscular adaptation before fatigue sets in.",
+        };
+      case 5:
+        return {
+          stageHeadline: 'Week 5 of 6 • Maximum Overload',
+          narrativeText:
+            'Final hard push of the block. Give this session everything you have, pushing working sets to 0–1 reps in reserve to fully fatigue target fibers before next week’s planned deload.',
+        };
+      case 6:
+      default:
+        return {
+          stageHeadline: 'Week 6 of 6 • Deload & Muscle Repair',
+          narrativeText:
+            'Active recovery week. Halving your volume dissipates accumulated fatigue and repairs joint tissue, allowing your body to cement newly built muscle and return stronger next block.',
+        };
+    }
+  }
+
+  if (goalPhase === 'Cut / Recomp') {
+    if (week === 6) {
+      return {
+        stageHeadline: 'Week 6 of 6 • Deload & Refresh',
+        narrativeText:
+          'Lighter sets today dissipate systemic fatigue while in a deficit, keeping your metabolism primed and protecting your lean mass.',
+      };
+    }
+    return {
+      stageHeadline: `Week ${week} of 6 • Muscle Retention Phase`,
+      narrativeText:
+        'You are training in a caloric deficit. Heavy mechanical tension signals your body that muscle is vital for survival—holding your working weights steady today protects 100% of your lean mass while you burn fat.',
+    };
+  }
+
+  // Maingain (Strength & Density)
+  if (week === 6) {
+    return {
+      stageHeadline: 'Week 6 of 6 • Deload & Rebuild',
+      narrativeText:
+        'Lighter sets flush localized muscle fatigue, restore connective tissues, and prime your nervous system for heavy strength output next block.',
+    };
+  }
+  return {
+    stageHeadline: `Week ${week} of 6 • Strength & Density`,
+    narrativeText:
+      'Focus on crisp execution and movement speed. Hitting your target reps with 1–2 reps in reserve builds dense muscle and athletic work capacity while staying lean.',
+  };
+}
+

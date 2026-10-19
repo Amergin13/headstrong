@@ -1,12 +1,14 @@
 import React from 'react';
 import { SetType, WorkoutSet } from '../../engine/types';
-import { Check, Plus, Minus } from 'lucide-react';
+import { Check } from 'lucide-react';
 import { triggerHaptic } from '../../utils/haptics';
 
 interface SetRowProps {
   set: WorkoutSet;
   prevGhost?: string;
   isDumbbell?: boolean;
+  displayBadge?: string;
+  displayLabel?: string;
   onUpdate: (updated: Partial<WorkoutSet>) => void;
   onComplete: () => void;
 }
@@ -15,6 +17,7 @@ export const SetRow: React.FC<SetRowProps> = ({
   set,
   prevGhost,
   isDumbbell = false,
+  displayBadge,
   onUpdate,
   onComplete,
 }) => {
@@ -44,29 +47,6 @@ export const SetRow: React.FC<SetRowProps> = ({
     if (nextCompleted) {
       onComplete();
     }
-  };
-
-  // 1-Tap Set Type Cycler: Working (#) -> Warmup (W) -> Drop (D) -> Extra (M)
-  const handleCycleSetType = () => {
-    triggerHaptic('light');
-    const order: SetType[] = ['working', 'warmup', 'drop', 'myo'];
-    const nextType = order[(order.indexOf(currentSetType) + 1) % order.length];
-    onUpdate({
-      setType: nextType,
-      isWarmup: nextType === 'warmup',
-    });
-  };
-
-  const handleStepWeight = (delta: number) => {
-    triggerHaptic('light');
-    const nextW = Math.max(0, Math.round((currentWeight + delta) * 10) / 10);
-    onUpdate({ actualWeightKg: nextW });
-  };
-
-  const handleStepReps = (delta: number) => {
-    triggerHaptic('light');
-    const nextR = Math.max(1, currentReps + delta);
-    onUpdate({ actualReps: nextR });
   };
 
   // 1-Tap Effort (Reps Left) cycler: 2 -> 1 -> 0 -> 3 -> 2
@@ -105,47 +85,49 @@ export const SetRow: React.FC<SetRowProps> = ({
   const renderSetBadge = () => {
     if (currentSetType === 'warmup') {
       return (
-        <span className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-amber-500/20 text-amber-300 font-mono font-bold text-xs">
-          W
+        <span
+          className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-amber-500/15 text-amber-300 font-mono font-bold text-xs"
+          title="Warmup Set"
+        >
+          {displayBadge || 'W'}
         </span>
       );
     }
     if (currentSetType === 'drop') {
       return (
-        <span className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-white/[0.12] text-white font-mono font-bold text-xs">
-          D
+        <span
+          className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-white/[0.1] text-white font-mono font-bold text-xs"
+          title="Drop Set"
+        >
+          {displayBadge || 'D'}
         </span>
       );
     }
     if (currentSetType === 'myo') {
       return (
-        <span className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-brand-primary/20 text-brand-primary font-mono font-bold text-xs">
-          +
+        <span
+          className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-brand-primary/20 text-brand-primary font-mono font-bold text-xs"
+          title="Bonus Set"
+        >
+          {displayBadge || '+'}
         </span>
       );
     }
     return (
-      <span className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-white/[0.06] hover:bg-white/[0.12] text-slate-200 font-mono font-bold text-xs">
-        {set.setNumber}
+      <span className="inline-flex items-center justify-center w-7 h-7 rounded-lg text-slate-400 font-mono font-bold text-xs">
+        {displayBadge || set.setNumber}
       </span>
     );
   };
 
-  const setTypeLabel =
-    currentSetType === 'warmup'
-      ? 'Warmup Set'
-      : currentSetType === 'drop'
-      ? 'Drop Set'
-      : currentSetType === 'myo'
-      ? 'Bonus Rest-Pause Set'
-      : `Working Set ${set.setNumber}`;
-
-  // Clean display for previous set (strip @2R suffix so it fits cleanly and reads naturally)
-  const cleanPrevDisplay = prevGhost ? prevGhost.replace(/\s*@\d+R$/, '') : '—';
+  // Clean display for previous set (strip @2R suffix and ≈ prefix so it fits cleanly and reads naturally)
+  const cleanPrevDisplay = prevGhost
+    ? prevGhost.replace(/^≈/, '').replace(/\s*@\d+R$/, '').trim()
+    : '—';
 
   return (
     <div
-      className={`grid grid-cols-12 gap-2 items-center py-2.5 px-3 rounded-2xl transition-all duration-200 ${
+      className={`grid grid-cols-12 gap-2 items-center py-2 px-3 rounded-2xl transition-all duration-200 ${
         set.completed
           ? 'bg-brand-primary/[0.12] text-white'
           : currentSetType === 'warmup'
@@ -153,17 +135,9 @@ export const SetRow: React.FC<SetRowProps> = ({
           : 'bg-[#151924] hover:bg-[#181E2C]'
       }`}
     >
-      {/* 1. Set Number / Type Badge (col-span-1) */}
+      {/* 1. Set Number / Type Badge (col-span-1, Static Stable Indicator) */}
       <div className="col-span-1 flex justify-center">
-        <button
-          type="button"
-          onClick={handleCycleSetType}
-          aria-label={`${setTypeLabel}. Tap to change set type`}
-          title="Tap to switch between Working (#), Warmup (W), or Drop Set (D)"
-          className="transition-transform active:scale-90"
-        >
-          {renderSetBadge()}
-        </button>
+        {renderSetBadge()}
       </div>
 
       {/* 2. Previous Session Reference (col-span-2) */}
@@ -172,24 +146,15 @@ export const SetRow: React.FC<SetRowProps> = ({
           type="button"
           onClick={handleCopyPrevious}
           disabled={!prevGhost || prevGhost === '—'}
-          className="text-xs font-mono text-slate-400 hover:text-white truncate max-w-full px-0.5"
-          title={prevGhost ? `Last time: ${prevGhost} (tap to copy)` : 'First time logging this exercise'}
+          className="text-xs font-mono text-slate-400 hover:text-white truncate max-w-full px-0.5 transition-colors disabled:pointer-events-none"
+          title={prevGhost ? `Last time: ${cleanPrevDisplay} (tap to copy)` : 'First time logging this exercise'}
         >
           {cleanPrevDisplay}
         </button>
       </div>
 
-      {/* 3. Weight Input (KG) with Steppers (col-span-4) */}
-      <div className="col-span-4 flex items-center bg-[#0B0E14] rounded-xl p-0.5">
-        <button
-          type="button"
-          onClick={() => handleStepWeight(-weightStep)}
-          aria-label={`Decrease weight by ${weightStep} kg`}
-          className="w-7 h-8 flex items-center justify-center text-slate-400 hover:text-white active:scale-90 transition-transform"
-        >
-          <Minus className="w-3.5 h-3.5 stroke-[2]" />
-        </button>
-
+      {/* 3. Weight Input (KG) (col-span-4) */}
+      <div className="col-span-4 flex justify-center">
         <input
           type="number"
           step={weightStep}
@@ -197,51 +162,24 @@ export const SetRow: React.FC<SetRowProps> = ({
           aria-label={`Set ${set.setNumber} weight in kilograms`}
           onFocus={(e) => e.target.select()}
           onChange={(e) => onUpdate({ actualWeightKg: parseFloat(e.target.value) || 0 })}
-          className={`flex-1 min-w-0 bg-transparent text-center font-mono text-sm font-extrabold tabular-numbers ${
+          className={`w-full py-2 px-1 bg-[#0B0E14] rounded-xl text-center font-mono text-sm font-extrabold tabular-numbers transition-colors ${
             set.completed ? 'text-brand-primary' : 'text-white'
-          } focus:outline-none`}
+          } focus:outline-none focus:ring-1 focus:ring-brand-primary/50`}
         />
-
-        <button
-          type="button"
-          onClick={() => handleStepWeight(weightStep)}
-          aria-label={`Increase weight by ${weightStep} kg`}
-          className="w-7 h-8 flex items-center justify-center text-slate-400 hover:text-white active:scale-90 transition-transform"
-        >
-          <Plus className="w-3.5 h-3.5 stroke-[2]" />
-        </button>
       </div>
 
-      {/* 4. Reps Input with Steppers (col-span-3) */}
-      <div className="col-span-3 flex items-center bg-[#0B0E14] rounded-xl p-0.5">
-        <button
-          type="button"
-          onClick={() => handleStepReps(-1)}
-          aria-label="Decrease reps by 1"
-          className="w-7 h-8 flex items-center justify-center text-slate-400 hover:text-white active:scale-90 transition-transform"
-        >
-          <Minus className="w-3.5 h-3.5 stroke-[2]" />
-        </button>
-
+      {/* 4. Reps Input (col-span-3) */}
+      <div className="col-span-3 flex justify-center">
         <input
           type="number"
           value={currentReps}
           aria-label={`Set ${set.setNumber} repetitions`}
           onFocus={(e) => e.target.select()}
           onChange={(e) => onUpdate({ actualReps: parseInt(e.target.value, 10) || 0 })}
-          className={`flex-1 min-w-0 bg-transparent text-center font-mono text-sm font-extrabold tabular-numbers ${
+          className={`w-full py-2 px-1 bg-[#0B0E14] rounded-xl text-center font-mono text-sm font-extrabold tabular-numbers transition-colors ${
             set.completed ? 'text-brand-primary' : 'text-white'
-          } focus:outline-none`}
+          } focus:outline-none focus:ring-1 focus:ring-brand-primary/50`}
         />
-
-        <button
-          type="button"
-          onClick={() => handleStepReps(1)}
-          aria-label="Increase reps by 1"
-          className="w-7 h-8 flex items-center justify-center text-slate-400 hover:text-white active:scale-90 transition-transform"
-        >
-          <Plus className="w-3.5 h-3.5 stroke-[2]" />
-        </button>
       </div>
 
       {/* 5. Effort / Reps Left Pill (col-span-1) */}

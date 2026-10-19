@@ -20,7 +20,7 @@ export const NavigationBar: React.FC<NavigationBarProps> = ({
   const tabs = [
     { id: 'train', label: 'Workout', icon: Dumbbell },
     { id: 'program', label: 'Program', icon: CalendarDays },
-    { id: 'chat', label: 'Chat', icon: MessageSquare },
+    { id: 'chat', label: 'AI Coach', icon: MessageSquare },
     { id: 'analytics', label: 'Progress', icon: TrendingUp },
     { id: 'character', label: 'Athlete', icon: Shield },
   ] as const;

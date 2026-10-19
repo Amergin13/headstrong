@@ -127,7 +127,7 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
                 triggerHaptic('light');
                 onOpenOnboarding();
               }}
-              className="px-3 py-1.5 rounded-xl bg-brand-primary text-black text-xs font-bold shrink-0"
+              className="px-3.5 py-1.5 rounded-xl bg-white/[0.08] hover:bg-white/[0.14] text-white text-xs font-semibold shrink-0 transition-colors"
             >
               Edit Equipment
             </button>
@@ -248,8 +248,8 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
                         onClick={() => onUpdateProfile({ gender: g })}
                         className={`px-3 py-1 rounded-lg text-xs font-semibold capitalize transition-all ${
                           isSelected
-                            ? 'bg-brand-primary text-black font-bold shadow-sm'
-                            : 'text-slate-300 hover:text-white'
+                            ? 'bg-white/[0.14] text-white font-bold shadow-sm'
+                            : 'text-slate-400 hover:text-slate-200'
                         }`}
                       >
                         {g}
@@ -335,7 +335,7 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
                     triggerHaptic('medium');
                     onTriggerInstallPwa();
                   }}
-                  className="w-full py-2.5 rounded-2xl bg-brand-primary text-black font-bold text-xs flex items-center justify-center space-x-2 shadow-md shadow-brand-primary/20"
+                  className="w-full py-2.5 rounded-2xl bg-white hover:bg-slate-100 text-slate-950 font-bold text-xs flex items-center justify-center space-x-2 shadow-md shadow-white/5 active:scale-95"
                 >
                   <Smartphone className="w-4 h-4 stroke-[2]" />
                   <span>Install App to Home Screen</span>
@@ -502,7 +502,7 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
               triggerHaptic('light');
               setShowGovernanceModal(true);
             }}
-            className="px-3.5 py-2 rounded-xl bg-brand-primary text-black text-xs font-bold shrink-0"
+            className="px-3.5 py-2 rounded-xl bg-white/[0.08] hover:bg-white/[0.14] text-white text-xs font-semibold shrink-0 transition-colors"
           >
             Open Matrix
           </button>

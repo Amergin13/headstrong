@@ -82,79 +82,61 @@ Every screen, card, modal, and control in HeadStrong is governed by three non-ne
 
 ```
 ┌───────────────────────────────────────────────────────────────────────────┐
-│ 1. UNIFIED HERO CARD                                                      │
-│    [UP NEXT] [Week 3 of 6 • Main Growth Phase]           [Rest / History ▾]│
-│    Push Day (Chest, Shoulders & Triceps)                                  │
-│    [✓ Chest & Synergists 100% Recovered]  6 exercises • 18 sets • Build   │
-│    "48h-72h recovery complete. Pectorals ready for mechanical tension."   │
-│    [   Full Gym   |     At Home     |      Travel     ]                   │
+│ 1. UNIFIED HERO CARD (Primary Focal Point)                                │
+│    [Week 1 of 6 • Smooth Start]                        [ Full Gym ▾ ]     │
+│    Push 1 • Hypertrophy Core                                              │
+│    5 exercises • 21 sets                                                  │
 │    ┌─────────────────────────────────────────────────────────────────┐    │
-│    │ 📈 HOW TO MAKE PROGRESS THIS SESSION               0/18 sets done│   │
-│    │ • Add Weight: Lift 82.5 kg × 10 reps on Bench Press             │    │
-│    │ • Add +1 Rep: Hit 16 kg × 12 reps on Incline DB Flye            │    │
-│    │ [━━━━━━━━━━━━━━━━░░░░░░░░░░░░░░░░] 0%      [✓ Finish Workout]    │   │
+│    │ [ (92%) ]  Week 1 Accumulation: Peak parasympathetic recovery   │    │
+│    │ RECOVERY   detected. Full capacity to drive progressive overload.│    │
+│    │ ─────────────────────────────────────────────────────────────── │    │
+│    │ 📈 HOW TO MAKE PROGRESS THIS SESSION                            │    │
+│    │ Week 1 of 6 • Base Building                                     │    │
+│    │ Start your block with clean, controlled reps leaving 2 reps in  │    │
+│    │ reserve. Prioritise form and set your baseline for muscle growth│    │
 │    └─────────────────────────────────────────────────────────────────┘    │
 ├───────────────────────────────────────────────────────────────────────────┤
-│ 2. COLLAPSIBLE RECOVERY STATUS BANNER (Primed / Normal / Amber Shield)    │
-├───────────────────────────────────────────────────────────────────────────┤
-│ 3. EXERCISE CARD STACK                                                    │
+│ 2. EXERCISE CARD STACK                                                    │
 │    ┌─────────────────────────────────────────────────────────────────┐    │
-│    │ 1/6  Chest • Barbell • 0/3 sets        [Plates] [Change Exercise]│   │
-│    │ Barbell Bench Press                                             │    │
+│    │ 1/6 • Chest                             [Plates] [Change Exercise]│   │
+│    │ Barbell Bench Press                              0/3 sets       │    │
 │    │ ┌─────────────────────────────────────────────────────────────┐ │    │
-│    │ │ 📈 Target: 82.5 kg × 10 reps        [+2.5 kg Weight Increase]│ │   │
-│    │ │ All sets hit 10 reps last session. Load increased by 2.5kg. │ │    │
+│    │ │ 📈 Target: 82.5 kg × 10 reps                 [+2.5 kg Load] │ │    │
 │    │ └─────────────────────────────────────────────────────────────┘ │    │
-│    │ Set  Last        Weight (kg)    Reps      Left     Done         │    │
-│    │ 1    80×10 @2R   [  82.5  ]     [ 10 ]    [ 2 ]    [  ✓  ]      │    │
-│    │ 2    80×10 @2R   [  82.5  ]     [ 10 ]    [ 2 ]    [  ✓  ]      │    │
-│    │ 3    80×10 @1R   [  82.5  ]     [ 10 ]    [ 1 ]    [  ✓  ]      │    │
-│    │ > Next milestone: Novice III (87.5 kg)                          │    │
-│    │ [ + Warmup ]           [ + Add Set ]           [ - Remove ]     │    │
+│    │ Set  Prev        Weight (kg)    Reps      RIR      ✓            │    │
+│    │ 1    80×10       [  82.5  ]     [ 10 ]    [ 2 ]    [  ✓  ]      │    │
+│    │ 2    80×10       [  82.5  ]     [ 10 ]    [ 2 ]    [  ✓  ]      │    │
+│    │ 3    80×10       [  82.5  ]     [ 10 ]    [ 1 ]    [  ✓  ]      │    │
+│    │ + Add set                                          - Remove set │    │
 │    └─────────────────────────────────────────────────────────────────┘    │
 ├───────────────────────────────────────────────────────────────────────────┤
-│ 4. ADD EXERCISE BUTTON (+ Add Exercise to Today's Session)                │
+│ 3. ADD EXERCISE BUTTON (+ Add Exercise to Today's Session)                │
+│ 4. FINISH WORKOUT CTA  (✓ Finish Workout)                                 │
 └───────────────────────────────────────────────────────────────────────────┘
 ```
 
 ### Section-by-Section Anatomy & Layout Order:
 1. **Section 1.1: Unified Hero Card (Focal Point)**
-   - *Meta Row:* `[Up Next]` badge in brand primary + `[Week X of 6 • Phase Name]` badge.
-   - *Rest / History Toggle:* Top-right button opening the non-penalty rest day drawer.
-   - *Workout Identity:* Title (`activeWorkout.name`, e.g., "Push Day"), recovery badge (`[✓ Recovery Status]`), volume summary (exercises, sets, goal phase).
-   - *Science Rationale:* 1–2 plain English sentences explaining why this muscle group is queued.
-2. **Section 1.2: Single Canonical Equipment Location Switcher**
-   - 3-segment pill control: `[ Full Gym | At Home | Travel ]`.
-   - 1-tap transforms the active session to matched equipment while preserving E1RM.
-3. **Section 1.3: Expandable Schedule / Rest Day Drawer (Progressive Disclosure)**
-   - Hidden by default behind `[Rest / History ▾]`.
-   - Explains: *"Skipping today? Zero calendar penalty."*
-   - Contains single CTA: `[Log Rest Day]` (advances date, holds queue, protects streak).
-   - Lists recent completed sessions for 1-tap inspection preview.
-4. **Section 1.4: "How to Make Progress This Session" Action Checklist**
-   - Direct answers to *"what do I lift to make progress today?"*
-   - Shows top 1–2 weight breakthrough items and top 1–2 rep breakthrough items.
-   - Under Amber Shield: Explains Light Recovery Day rules (hold load, stop 2–3 reps short of failure).
-   - Live Session Progress Bar: Displays animated percentage, completed sets count, and tonnage lifted.
-   - Finish Workout Button: Disabled at 0 sets, highlights in brand-primary upon logging set 1.
-5. **Section 1.5: Collapsible Biometric Recovery Banner (`ReadinessBanner.tsx`)**
-   - Summarizes daily recovery state (Primed / Baseline / Amber Shield) and wearable telemetry.
-   - Accordion collapses to a sleek 1-line summary to prevent vertical clutter.
-6. **Section 1.6: Undo Set Deletion Safety Guardrail Banner**
-   - Renders conditionally only when a set is deleted, offering 1-tap `[Undo]` restoration.
-7. **Section 1.7: Exercise Card Stack (`ExerciseCard.tsx`)**
-   - *Step Number & Metadata:* `1/6`, muscle group, equipment, set progress.
+   - *Meta Row:* Context badge (`[Week X of 6 • Phase Name]`) + Location Dropdown (`[Full Gym ▾]`).
+   - *Workout Identity:* Title (`activeWorkout.name`, e.g., "Push 1 • Hypertrophy Core") and volume summary (exercises, sets).
+   - *Blended Recovery & Progression Area (`ReadinessBanner.tsx`):*
+     - Row 1 (Recovery): Circular biometric dial (e.g. `92% RECOVERY`) and contextual recovery narrative, or clean empty state if no watch.
+     - Row 2 (Progression): Short written description in natural, everyday language connecting the 6-week program stage to the athlete's primary goal (e.g. hypertrophy), replacing redundant bulleted exercise lists.
+2. **Section 1.2: Exercise Card Stack (`ExerciseCard.tsx`)**
+   - *Step Number & Metadata:* `1/6 • Chest` on the top row, `0/3 sets` on the exercise title row.
    - *Action Buttons:* `[Plates]` (barbell only) and `[Change Exercise]` (single entry point).
    - *Exercise Title & Done State:* Clean heading with emerald checkmark upon completion.
-   - *Target Progress Box:* Displays target weight $\times$ reps, progress badge, and reason.
+   - *Target Progression Micro-Cue:* Sleek, single-line micro-target displaying target weight $\times$ reps and concise progress badge for genuine milestones (e.g. `[+2.5 kg Load]`, `[Top of Range]`, `[Hold Steady]`), eliminating nested card clutter and redundant algorithmic text.
    - *12-Column Set Table (`SetRow.tsx`):*
-     - Headers: `Set | Last | Weight (kg) | Reps | Left (RIR) | Done`.
-     - Inputs: Numerical stepper/inputs with ghost targets from last session.
+     - Headers: `Set | Prev | Weight (kg) | Reps | RIR | ✓`.
+     - Inputs: Clean, spacious numerical inputs pre-filled with calibrated targets (no micro +/- clutter).
+     - Set Badge: Stable, non-interactive index label (`1`, `2`, `3`) or auto-generated warmup/drop badge (`W`, `D`). No mystery-meat cycling on tap.
      - Checkmark: Green fill with haptic pulse upon set completion.
-   - *Milestone & Form Tip Accordion:* Displays next strength tier quest and form cues.
-   - *Set Management Footer:* 3 balanced buttons: `[+ Warmup]`, `[+ Add Set]`, `[- Remove]`.
-8. **Section 1.8: Add Exercise Trigger**
-   - Dashed border button at bottom of stack to append custom movements to today's session.
+   - *Progressive Set Management:* Discreet, low-contrast text actions (`+ Add set` and progressive `— Remove set` when sets > 1) that recede completely into the card to prevent plan tampering and accidental deletions.
+3. **Section 1.3: Add Exercise Trigger**
+   - Clean button at bottom of stack to append custom movements to today's session.
+4. **Section 1.4: Finish Workout Primary Action**
+   - Clean, full-width CTA button placed at the bottom of the session flow. Enabled upon logging set 1. Displays completed sets count and total tonnage lifted.
 
 ---
 

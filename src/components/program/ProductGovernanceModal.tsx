@@ -138,7 +138,7 @@ export const ProductGovernanceModal: React.FC<ProductGovernanceModalProps> = ({
               <Lock className="w-3.5 h-3.5 stroke-[2]" />
               <span>Locked</span>
             </div>
-            <div className="font-mono font-bold text-lg text-white mt-0.5">
+            <div className="font-mono font-bold text-base text-white mt-0.5">
               {lockedCount}
             </div>
             <div className="text-xs text-slate-300">
@@ -151,7 +151,7 @@ export const ProductGovernanceModal: React.FC<ProductGovernanceModalProps> = ({
               <RefreshCw className="w-3.5 h-3.5 stroke-[2]" />
               <span>Progressing</span>
             </div>
-            <div className="font-mono font-bold text-lg text-white mt-0.5">
+            <div className="font-mono font-bold text-base text-white mt-0.5">
               {progressingCount}
             </div>
             <div className="text-xs text-slate-300">
@@ -164,7 +164,7 @@ export const ProductGovernanceModal: React.FC<ProductGovernanceModalProps> = ({
               <AlertTriangle className="w-3.5 h-3.5 stroke-[2]" />
               <span>Under Review</span>
             </div>
-            <div className="font-mono font-bold text-lg text-white mt-0.5">
+            <div className="font-mono font-bold text-base text-white mt-0.5">
               {reviewCount}
             </div>
             <div className="text-xs text-slate-300">
@@ -181,10 +181,10 @@ export const ProductGovernanceModal: React.FC<ProductGovernanceModalProps> = ({
               triggerHaptic('light');
               setActiveView('matrix');
             }}
-            className={`py-2 px-3 rounded-xl text-xs font-bold flex items-center justify-center space-x-1.5 transition-all ${
+            className={`py-2 px-3 rounded-xl text-xs font-bold flex items-center justify-center space-x-1.5 transition-all min-h-[44px] ${
               activeView === 'matrix'
-                ? 'bg-brand-primary text-black shadow-sm'
-                : 'text-slate-300 hover:text-white'
+                ? 'bg-white/[0.14] text-white font-bold shadow-sm'
+                : 'text-slate-400 hover:text-slate-200'
             }`}
           >
             <Table className="w-3.5 h-3.5 stroke-[2]" />
@@ -197,10 +197,10 @@ export const ProductGovernanceModal: React.FC<ProductGovernanceModalProps> = ({
               triggerHaptic('light');
               setActiveView('ledger');
             }}
-            className={`py-2 px-3 rounded-xl text-xs font-bold flex items-center justify-center space-x-1.5 transition-all ${
+            className={`py-2 px-3 rounded-xl text-xs font-bold flex items-center justify-center space-x-1.5 transition-all min-h-[44px] ${
               activeView === 'ledger'
-                ? 'bg-brand-primary text-black shadow-sm'
-                : 'text-slate-300 hover:text-white'
+                ? 'bg-white/[0.14] text-white font-bold shadow-sm'
+                : 'text-slate-400 hover:text-slate-200'
             }`}
           >
             <FileCode className="w-3.5 h-3.5 stroke-[2]" />
@@ -319,8 +319,8 @@ export const ProductGovernanceModal: React.FC<ProductGovernanceModalProps> = ({
                     }}
                     className={`py-2 px-2 rounded-xl text-xs font-bold transition-all ${
                       active
-                        ? 'bg-brand-primary text-black'
-                        : 'text-slate-300 hover:text-white'
+                        ? 'bg-white/[0.14] text-white font-bold shadow-sm'
+                        : 'text-slate-400 hover:text-slate-200'
                     }`}
                   >
                     {tab.label}
@@ -421,8 +421,8 @@ export const ProductGovernanceModal: React.FC<ProductGovernanceModalProps> = ({
                               onClick={() => handleSetItemStatus(item.id, st.id)}
                               className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
                                 isCurrent
-                                  ? 'bg-brand-primary text-black'
-                                  : 'bg-[#090C12] text-slate-300 hover:text-white'
+                                  ? 'bg-white text-slate-950 font-bold shadow-sm'
+                                  : 'bg-[#090C12] text-slate-400 hover:text-white'
                               }`}
                             >
                               {st.label}

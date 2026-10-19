@@ -30,9 +30,20 @@ import {
   EXERCISE_SCIENCE_KNOWLEDGE_BASE,
   queryExerciseScienceKnowledgeBase,
   searchExerciseScienceKnowledgeBase,
+  HEADSTRONG_DESIGN_SYSTEM,
+  queryDesignSystemComponents,
+  getDesignSystemComponentById,
 } from '../knowledgeGraph';
 import { SEED_EXERCISES } from '../../services/seedData';
 import { processAssistantMessage } from '../../services/aiAssistantService';
+import {
+  calculateWarmupPrescription,
+  generateWarmupSets,
+  isCompoundMovement,
+  isIsolationMovement,
+  isFirstCompoundForPillar,
+  ensureWarmupSetsOnExercise,
+} from '../warmup';
 
 function assert(condition: boolean, msg: string) {
   if (!condition) {
@@ -930,10 +941,11 @@ const cutW5 = generateSmartWorkoutSession(
   'Cut / Recomp'
 );
 const cutLateralRaiseSets = cutW5.exercises.find((e) => e.exerciseId === 'ex-db-lateral-raise')?.sets.length;
-const cutBenchSets = cutW5.exercises.find((e) => e.exerciseId === 'ex-bench-press')?.sets.length;
+const cutBenchWorkingSets = cutW5.exercises.find((e) => e.exerciseId === 'ex-bench-press')?.sets.filter((s) => !s.isWarmup && s.setType !== 'warmup').length;
+const cutBenchWarmupSets = cutW5.exercises.find((e) => e.exerciseId === 'ex-bench-press')?.sets.filter((s) => s.isWarmup || s.setType === 'warmup').length;
 assert(
-  cutLateralRaiseSets === 3 && cutBenchSets === 2,
-  `Cut / Recomp caps volume to ~85% (3 sets isolation, 2 sets compound) to protect systemic recovery in a caloric deficit`
+  cutLateralRaiseSets === 3 && cutBenchWorkingSets === 2 && cutBenchWarmupSets === 2,
+  `Cut / Recomp caps working volume to ~85% (3 sets isolation, 2 sets compound) with pre-filled warmups`
 );
 
 // D. Double Progression Retention Shield Feedback
@@ -1663,7 +1675,306 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
     `AI Assistant delivers Retention Shield deficit rationale citing Helms et al.`
   );
 
-  console.log('\nALL 23 ENGINE, GOVERNANCE, DESIGN HEURISTICS & GOOGLE PIXEL TENSOR AI SUITES PASSED SUCCESSFULLY! 🎯');
+  // 24. Evidence-Based Warmup Sets Protocol with Pre-filled Loads & Reps
+  console.log('\n[24. Evidence-Based Warmup Sets Protocol with Pre-filled Loads & Reps]');
+
+  // A. Primary Compound Movement Warmup Prescription (2-stage ramping: 50% & 72%)
+  const primaryBenchWarmup = calculateWarmupPrescription(
+    { pillar: 'Horizontal Push', equipment: 'barbell', name: 'Barbell Bench Press', exerciseId: 'ex-bench-press' },
+    100,
+    true
+  );
+  assert(
+    primaryBenchWarmup.count === 2 &&
+      primaryBenchWarmup.sets[0].weightKg === 50 &&
+      primaryBenchWarmup.sets[0].reps === 8 &&
+      primaryBenchWarmup.sets[1].weightKg === 72.5 &&
+      primaryBenchWarmup.sets[1].reps === 4,
+    `Primary compound barbell lift (100kg) generates 2 ramping warmup sets: 50kg x 8 (50%) and 72.5kg x 4 (72%)`
+  );
+
+  // B. Secondary Compound Movement Warmup Prescription (1-stage acclimation: 60%)
+  const secondaryInclineWarmup = calculateWarmupPrescription(
+    { pillar: 'Horizontal Push', equipment: 'dumbbell', name: 'Incline Dumbbell Press', exerciseId: 'ex-incline-db-press' },
+    34,
+    false
+  );
+  assert(
+    secondaryInclineWarmup.count === 1 &&
+      secondaryInclineWarmup.sets[0].weightKg === 20 &&
+      secondaryInclineWarmup.sets[0].reps === 5,
+    `Secondary compound dumbbell lift (34kg) generates 1 acclimation set at 20kg x 5 (60% rounded to 2kg DB jump)`
+  );
+
+  // C. Weighted Calisthenics Warmup Prescription (+0kg Bodyweight Prep)
+  const weightedPullUpWarmup = calculateWarmupPrescription(
+    { pillar: 'Vertical Pull', equipment: 'bodyweight', isWeightedCalisthenic: true, name: 'Weighted Pull-Up', exerciseId: 'ex-weighted-pullup' },
+    25,
+    true
+  );
+  assert(
+    weightedPullUpWarmup.count === 1 &&
+      weightedPullUpWarmup.sets[0].weightKg === 0 &&
+      weightedPullUpWarmup.sets[0].reps === 5,
+    `Weighted calisthenic lift (+25kg) prescribes 1 bodyweight-only (+0kg x 5) prep set before external load`
+  );
+
+  // D. Isolation Movements Exclusion (0 warmup sets)
+  const lateralRaiseWarmup = calculateWarmupPrescription(
+    { pillar: 'Horizontal Push', equipment: 'dumbbell', isIsolation: true, name: 'Dumbbell Lateral Raise', exerciseId: 'ex-db-lateral-raise' },
+    14,
+    false
+  );
+  assert(
+    lateralRaiseWarmup.count === 0 && lateralRaiseWarmup.sets.length === 0,
+    `Isolation movement (Lateral Raise) generates 0 warmup sets as muscles are already warm from compound pressing`
+  );
+
+  // E. Pure Bodyweight Travel Movements Exclusion (0 warmup sets)
+  const travelPushupWarmup = calculateWarmupPrescription(
+    { pillar: 'Horizontal Push', equipment: 'bodyweight', isWeightedCalisthenic: false, name: 'Push-Up', exerciseId: 'ex-pushup' },
+    0,
+    true
+  );
+  assert(
+    travelPushupWarmup.count === 0 && travelPushupWarmup.sets.length === 0,
+    `Pure bodyweight travel exercise generates 0 warmup sets, starting directly with working sets`
+  );
+
+  // F. generateWarmupSets pre-fills actualWeightKg and actualReps
+  const generatedWarmupSets = generateWarmupSets('ex-bench-press', primaryBenchWarmup);
+  assert(
+    generatedWarmupSets.length === 2 &&
+      generatedWarmupSets[0].targetWeightKg === 50 &&
+      generatedWarmupSets[0].actualWeightKg === 50 &&
+      generatedWarmupSets[0].targetReps === 8 &&
+      generatedWarmupSets[0].actualReps === 8 &&
+      generatedWarmupSets[0].isWarmup === true &&
+      generatedWarmupSets[0].setType === 'warmup',
+    `generateWarmupSets produces pre-filled actualWeightKg and actualReps with setType='warmup'`
+  );
+
+  // G. Dynamic Smart Workout Generation includes warmups on compounds
+  const testPushWorkout = generateSmartWorkoutSession(
+    'Push',
+    [],
+    SEED_EXERCISES,
+    'Normal',
+    3,
+    'gym'
+  );
+  const benchInPush = testPushWorkout.exercises.find((e) => e.exerciseId === 'ex-bench-press');
+  const benchWarmups = benchInPush?.sets.filter((s) => s.isWarmup || s.setType === 'warmup');
+  const benchWorking = benchInPush?.sets.filter((s) => !s.isWarmup && s.setType !== 'warmup');
+  assert(
+    Boolean(benchWarmups && benchWarmups.length === 2 && benchWorking && benchWorking.length >= 3),
+    `Smart Workout Generator automatically adds 2 pre-filled warmup sets to Barbell Bench Press`
+  );
+  assert(
+    (benchWarmups?.[0]?.actualWeightKg ?? 0) > 0 && benchWarmups?.[0]?.actualReps === 8,
+    `Warmup set 1 has pre-filled load (${benchWarmups?.[0]?.actualWeightKg}kg) and 8 reps`
+  );
+  assert(
+    (benchWarmups?.[1]?.actualWeightKg ?? 0) > (benchWarmups?.[0]?.actualWeightKg ?? 0) && benchWarmups?.[1]?.actualReps === 4,
+    `Warmup set 2 has pre-filled load (${benchWarmups?.[1]?.actualWeightKg}kg) and 4 reps`
+  );
+
+  const lateralInPush = testPushWorkout.exercises.find((e) => e.exerciseId === 'ex-db-lateral-raise');
+  const lateralWarmups = lateralInPush?.sets.filter((s) => s.isWarmup || s.setType === 'warmup');
+  assert(
+    Boolean(lateralWarmups && lateralWarmups.length === 0),
+    `Smart Workout Generator preserves 0 warmup sets on isolation movements (Lateral Raise)`
+  );
+
+  // H. Progression Weight Protection: warmup sets do not pollute progression working weight
+  const mockSessionWithWarmups: ExerciseSession = {
+    ...benchInPush!,
+    sets: [
+      { id: 'w1', setNumber: 1, targetWeightKg: 45, actualWeightKg: 45, targetReps: 8, actualReps: 8, targetRir: 4, completed: true, isWarmup: true, setType: 'warmup' },
+      { id: 'w2', setNumber: 2, targetWeightKg: 65, actualWeightKg: 65, targetReps: 4, actualReps: 4, targetRir: 3, completed: true, isWarmup: true, setType: 'warmup' },
+      { id: 's1', setNumber: 3, targetWeightKg: 90, actualWeightKg: 90, targetReps: 12, actualReps: 12, targetRir: 2, actualRir: 2, completed: true, setType: 'working' },
+      { id: 's2', setNumber: 4, targetWeightKg: 90, actualWeightKg: 90, targetReps: 12, actualReps: 12, targetRir: 2, actualRir: 2, completed: true, setType: 'working' },
+      { id: 's3', setNumber: 5, targetWeightKg: 90, actualWeightKg: 90, targetReps: 12, actualReps: 12, targetRir: 2, actualRir: 2, completed: true, setType: 'working' },
+    ],
+  };
+  const mockWorkoutWithWarmups: WorkoutSession = {
+    ...testPushWorkout,
+    completed: true,
+    exercises: [mockSessionWithWarmups],
+  };
+  const nextPrescription = prescribeDoubleProgression(
+    mockSessionWithWarmups,
+    'Normal',
+    [mockWorkoutWithWarmups],
+    80,
+    'Lean Bulk'
+  );
+  assert(
+    nextPrescription.nextWeightKg === 92.5,
+    `Double progression anchors to working sets (90kg -> 92.5kg) instead of warmup set load (got ${nextPrescription.nextWeightKg}kg)`
+  );
+
+  console.log('\n--- SUITE 25: CODIFIED DESIGN SYSTEM & STRICT 4-TIER TYPOGRAPHY INVARIANTS ---');
+
+  // A. Design System Registry Completeness & Structure
+  assert(
+    HEADSTRONG_DESIGN_SYSTEM.length >= 8,
+    `Knowledge Graph contains authoritative design system components (got ${HEADSTRONG_DESIGN_SYSTEM.length} components)`
+  );
+
+  for (const comp of HEADSTRONG_DESIGN_SYSTEM) {
+    assert(
+      Boolean(comp.id && comp.name && comp.category && comp.anatomy && comp.logic && comp.tailwindTokens && comp.rationale),
+      `Component ${comp.id} contains valid anatomy, logic invariants, tailwind tokens, and rationale`
+    );
+    assert(
+      Boolean(comp.anatomy.container && comp.anatomy.typography && comp.anatomy.colors && comp.anatomy.touchTarget),
+      `Component ${comp.id} contains full anatomy breakdown (container, typography, colors, touchTarget)`
+    );
+    assert(
+      comp.logic.rules.length >= 2,
+      `Component ${comp.id} defines at least 2 invariant rules for developers and AI agents`
+    );
+  }
+
+  // B. 4-Tier Typography Scale Invariant Verification
+  const typoComp = getDesignSystemComponentById('ds-typography-scale');
+  assert(
+    typoComp !== undefined &&
+      typoComp.category === 'typography' &&
+      typoComp.anatomy.typography.includes('text-xs') &&
+      typoComp.anatomy.typography.includes('text-sm') &&
+      typoComp.anatomy.typography.includes('text-base') &&
+      typoComp.anatomy.typography.includes('text-xl'),
+    `Design system strictly codifies the 4-tier typography scale (text-xs, text-sm, text-base, text-xl)`
+  );
+  assert(
+    Boolean(typoComp?.logic.rules.some((r) => r.includes('Maximum 4 distinct typography') || r.includes('4 distinct typography sizes'))),
+    `Typography component rules enforce strict maximum of 4 font sizes across app`
+  );
+  assert(
+    Boolean(typoComp?.logic.rules.some((r) => r.includes('12px') || r.includes('text-xs') && r.includes('floor'))),
+    `Typography component rules enforce strict 12px minimum floor`
+  );
+
+  // C. Primary CTA & Semantic Color Reservation Invariants
+  const primaryBtnComp = getDesignSystemComponentById('ds-btn-primary');
+  assert(
+    primaryBtnComp !== undefined &&
+      primaryBtnComp.tailwindTokens.includes('bg-white') &&
+      primaryBtnComp.tailwindTokens.includes('text-slate-950') &&
+      primaryBtnComp.tailwindTokens.includes('min-h-[44px]'),
+    `Primary CTA button is codified as luminous solid white with min-h-[44px] touch target`
+  );
+  assert(
+    Boolean(primaryBtnComp?.logic.rules.some((r) => r.includes('Never use neon green as button background'))),
+    `Primary CTA explicitly forbids using green as a button background fill`
+  );
+
+  const setToggleComp = getDesignSystemComponentById('ds-set-toggle');
+  assert(
+    setToggleComp !== undefined &&
+      setToggleComp.tailwindTokens.includes('bg-brand-primary') &&
+      Boolean(setToggleComp?.logic.rules.some((r) => r.includes('Green is strictly reserved'))),
+    `Set completion checkmark is codified with semantic emerald green reserved for progressive overload celebration`
+  );
+
+  // D. Search and Lookup Helper Functions
+  const buttonComps = queryDesignSystemComponents('button');
+  assert(
+    buttonComps.length >= 2,
+    `queryDesignSystemComponents('button') returns button specifications (got ${buttonComps.length})`
+  );
+
+  const cardComp = queryDesignSystemComponents('biometric card');
+  assert(
+    cardComp.length >= 1 && cardComp[0].id === 'ds-card-biometric',
+    `queryDesignSystemComponents('biometric card') returns ds-card-biometric`
+  );
+
+  // E. AthleteKnowledgeGraph Integration
+  const testPkg = buildAthleteKnowledgeGraph(
+    [pushW3],
+    mockBiometrics,
+    SEED_EXERCISES,
+    testProfile,
+    { 'Chest': 14, 'Side Delts': 18 }
+  );
+  assert(
+    Array.isArray(testPkg.designSystem) && testPkg.designSystem.length === HEADSTRONG_DESIGN_SYSTEM.length,
+    `AthleteKnowledgeGraph exposes complete designSystem array in the Knowledge Graph (got ${testPkg.designSystem.length} components)`
+  );
+
+  // F. On-Device AI Assistant Design System Grounding
+  const aiDesignAnswer = await processAssistantMessage({
+    userMessage: 'What is the primary CTA button specification and touch target in HeadStrong?',
+    profile: testProfile,
+    activeWorkout: pushW3,
+    workouts: [pushW3],
+    biometrics: mockBiometrics,
+    exerciseCatalog: SEED_EXERCISES,
+    bodyweightEmaKg: 80,
+    readinessState: 'Primed',
+  });
+  assert(
+    aiDesignAnswer.message.text.includes('Primary CTA Button') &&
+      aiDesignAnswer.message.text.includes('44px') &&
+      aiDesignAnswer.message.text.includes('bg-white'),
+    `AI Assistant answers button design query citing solid white bg-white and 44px touch target`
+  );
+
+  const aiTypoAnswer = await processAssistantMessage({
+    userMessage: 'What typography sizes does HeadStrong use in its design system?',
+    profile: testProfile,
+    activeWorkout: pushW3,
+    workouts: [pushW3],
+    biometrics: mockBiometrics,
+    exerciseCatalog: SEED_EXERCISES,
+    bodyweightEmaKg: 80,
+    readinessState: 'Primed',
+  });
+  assert(
+    aiTypoAnswer.message.text.includes('4-Tier') &&
+      aiTypoAnswer.message.text.includes('text-xs') &&
+      aiTypoAnswer.message.text.includes('text-xl'),
+    `AI Assistant answers typography query citing 4-tier scale and exact tokens`
+  );
+
+  // G. Shift Nudge Nested Radius & 8pt Spatial Grid Codification
+  const nestedRadiusComp = getDesignSystemComponentById('ds-nested-radius');
+  assert(
+    nestedRadiusComp !== undefined &&
+      nestedRadiusComp.category === 'layout' &&
+      Boolean(nestedRadiusComp?.logic.rules.some((r) => r.includes('Inner Radius = Outer Radius - Padding'))),
+    `Design system codifies Shift Nudge concentric nested radius formula (Inner Radius = Outer Radius - Padding)`
+  );
+
+  const spatialGridComp = getDesignSystemComponentById('ds-spatial-grid');
+  assert(
+    spatialGridComp !== undefined &&
+      spatialGridComp.category === 'layout' &&
+      Boolean(spatialGridComp?.logic.rules.some((r) => r.includes('base-8'))),
+    `Design system codifies Shift Nudge 8pt spatial grid and proximity hierarchy`
+  );
+
+  const aiShiftNudgeAnswer = await processAssistantMessage({
+    userMessage: 'How does the Shift Nudge nested radius rule work in our design system?',
+    profile: testProfile,
+    activeWorkout: pushW3,
+    workouts: [pushW3],
+    biometrics: mockBiometrics,
+    exerciseCatalog: SEED_EXERCISES,
+    bodyweightEmaKg: 80,
+    readinessState: 'Primed',
+  });
+  assert(
+    aiShiftNudgeAnswer.message.text.includes('Shift Nudge') &&
+      aiShiftNudgeAnswer.message.text.includes('Nested Radius') &&
+      aiShiftNudgeAnswer.message.text.includes('Inner Radius = Outer Radius - Padding'),
+    `AI Assistant answers Shift Nudge query grounded in Knowledge Graph design system specifications`
+  );
+
+  console.log('\nALL 25 ENGINE, GOVERNANCE, DESIGN HEURISTICS, TYPOGRAPHY & GOOGLE PIXEL TENSOR AI SUITES PASSED SUCCESSFULLY! 🎯');
 })().catch((err) => {
   console.error('Test Suite Failed:', err);
   if (typeof process !== 'undefined' && process.exit) {

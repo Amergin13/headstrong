@@ -250,7 +250,7 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
                 type="button"
                 onClick={() => handleSendMessage(q.text)}
                 disabled={isProcessing}
-                className="shrink-0 min-h-[38px] px-3.5 py-1.5 rounded-full bg-[#141824] hover:bg-[#1C2233] text-xs font-medium text-slate-200 hover:text-white flex items-center gap-1.5 transition-all disabled:opacity-50"
+                className="shrink-0 min-h-[44px] px-4 py-2 rounded-full bg-white/[0.08] hover:bg-white/[0.14] text-xs font-semibold text-slate-200 hover:text-white flex items-center gap-1.5 transition-all disabled:opacity-50"
               >
                 <Icon className="w-3.5 h-3.5 text-brand-primary stroke-[2]" />
                 <span>{q.label}</span>
@@ -272,7 +272,7 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
                 <div
                   className={`max-w-[88%] rounded-2xl p-4 text-xs leading-relaxed ${
                     isUser
-                      ? 'bg-brand-primary text-black font-medium rounded-br-sm shadow-md'
+                      ? 'bg-white/[0.14] text-white font-medium rounded-br-sm shadow-md'
                       : 'bg-[#141824] text-slate-200 rounded-bl-sm space-y-2.5'
                   }`}
                 >
@@ -401,9 +401,9 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
               type="submit"
               disabled={!inputMessage.trim() || isProcessing}
               aria-label="Send message"
-              className="min-h-[44px] min-w-[44px] w-11 h-11 rounded-xl bg-brand-primary hover:bg-brand-primary/90 disabled:opacity-40 text-black flex items-center justify-center transition-all active:scale-95 shrink-0"
+              className="min-h-[44px] min-w-[44px] w-11 h-11 rounded-xl bg-white hover:bg-slate-100 disabled:opacity-30 text-slate-950 flex items-center justify-center transition-all active:scale-95 shrink-0 shadow-sm"
             >
-              <Send className="w-4 h-4 stroke-[2]" />
+              <Send className="w-4 h-4 stroke-[2.2]" />
             </button>
           </form>
         </div>
