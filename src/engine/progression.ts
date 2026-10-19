@@ -10,6 +10,7 @@ import {
 } from './types';
 import {
   calculateE1RM,
+  calculateHypertrophyBodyweightReps,
   translateWeightBetweenImplements,
 } from './e1rm';
 
@@ -258,7 +259,8 @@ export function formatPreviousSetGhost(
   if (weightKg === undefined || reps === undefined) return '—';
   const prefix = isTranslated ? '≈' : '';
   const rirSuffix = rir !== undefined ? ` @${rir}R` : '';
-  return `${prefix}${weightKg}×${reps}${rirSuffix}`;
+  const weightStr = weightKg === 0 ? 'BW' : `${weightKg}`;
+  return `${prefix}${weightStr}×${reps}${rirSuffix}`;
 }
 
 /**
@@ -323,19 +325,29 @@ export function prescribeDoubleProgression(
     session.sets[0]?.targetWeightKg ??
     20;
 
+  const isPureBodyweight =
+    (session.equipment === 'bodyweight' && !session.isWeightedCalisthenic) ||
+    (rawSourceWeight === 0 && session.equipment === 'bodyweight');
+
   // Translate weight into today's implement if the last session was on a different exercise/equipment!
-  const currentWeight = isCrossImplement
+  const currentWeight = isPureBodyweight
+    ? 0
+    : isCrossImplement
     ? translateWeightBetweenImplements(
         rawSourceWeight,
         {
           equipment: sourceSession.equipment,
           isRdl: sourceSession.isRdl,
           isWeightedCalisthenic: sourceSession.isWeightedCalisthenic,
+          exerciseId: sourceSession.exerciseId,
+          pillar: sourceSession.pillar,
         },
         {
           equipment: session.equipment,
           isRdl: session.isRdl,
           isWeightedCalisthenic: session.isWeightedCalisthenic,
+          exerciseId: session.exerciseId,
+          pillar: session.pillar,
         },
         bodyweightEmaKg
       )
@@ -354,25 +366,33 @@ export function prescribeDoubleProgression(
       sourceSession.equipment,
       sourceSession.isRdl,
       sourceSession.isWeightedCalisthenic,
-      bodyweightEmaKg
+      bodyweightEmaKg,
+      sourceSession.exerciseId,
+      sourceSession.pillar
     );
     if (e1rm > canonicalE1rmKg) canonicalE1rmKg = e1rm;
   }
 
   const previousSetsSummary = sets.map((s) => {
     const rawW = s.actualWeightKg ?? s.targetWeightKg;
-    const displayW = isCrossImplement
+    const displayW = isPureBodyweight
+      ? 0
+      : isCrossImplement
       ? translateWeightBetweenImplements(
           rawW,
           {
             equipment: sourceSession.equipment,
             isRdl: sourceSession.isRdl,
             isWeightedCalisthenic: sourceSession.isWeightedCalisthenic,
+            exerciseId: sourceSession.exerciseId,
+            pillar: sourceSession.pillar,
           },
           {
             equipment: session.equipment,
             isRdl: session.isRdl,
             isWeightedCalisthenic: session.isWeightedCalisthenic,
+            exerciseId: session.exerciseId,
+            pillar: session.pillar,
           },
           bodyweightEmaKg
         )
@@ -393,11 +413,15 @@ export function prescribeDoubleProgression(
 
   // Amber Shield override:
   if (readinessState === 'Amber Shield') {
+    const amberReason = isPureBodyweight
+      ? `${transferPrefix}Recovery mode is active. Stop 2–3 reps short of failure on bodyweight sets so your joints and muscles can recover.`
+      : `${transferPrefix}Recovery mode is active. Weight stays at ${currentWeight} kg with 2–3 reps left in reserve so your joints and muscles can recover.`;
+
     return {
       exerciseId: session.exerciseId,
-      nextWeightKg: currentWeight,
+      nextWeightKg: isPureBodyweight ? 0 : currentWeight,
       nextTargetReps: session.sets.map((s, idx) => sets[idx]?.actualReps || s.targetReps || minReps),
-      reason: `${transferPrefix}Recovery mode is active. Weight stays at ${currentWeight} kg with 2–3 reps left in reserve so your joints and muscles can recover.`,
+      reason: amberReason,
       weightChanged: false,
       repsChanged: false,
       isAmberShieldBuffer: true,
@@ -405,11 +429,39 @@ export function prescribeDoubleProgression(
       previousSetsSummary,
       transferredFromExerciseName,
       canonicalE1rmKg,
+      isPureBodyweight,
+      calibratedTempoCue: isPureBodyweight ? 'Controlled 3s eccentric tempo' : undefined,
     };
   }
 
-  // If no sets completed anywhere, return current defaults
+  // If no sets completed anywhere, return current defaults or calibrated bodyweight hypertrophy reps
   if (sets.length === 0) {
+    if (isPureBodyweight) {
+      const bwPrescription = calculateHypertrophyBodyweightReps(
+        canonicalE1rmKg,
+        bodyweightEmaKg,
+        session.exerciseId,
+        session.pillar,
+        minReps,
+        maxReps
+      );
+      return {
+        exerciseId: session.exerciseId,
+        nextWeightKg: 0,
+        nextTargetReps: session.sets.map(() => bwPrescription.targetReps),
+        reason: `${transferPrefix}${bwPrescription.explanation}`,
+        weightChanged: false,
+        repsChanged: bwPrescription.targetReps !== minReps,
+        isAmberShieldBuffer: false,
+        lastSessionDate,
+        previousSetsSummary: [],
+        transferredFromExerciseName,
+        canonicalE1rmKg,
+        isPureBodyweight: true,
+        calibratedTempoCue: bwPrescription.tempoCue,
+      };
+    }
+
     return {
       exerciseId: session.exerciseId,
       nextWeightKg: currentWeight,
@@ -422,6 +474,7 @@ export function prescribeDoubleProgression(
       previousSetsSummary: [],
       transferredFromExerciseName,
       canonicalE1rmKg,
+      isPureBodyweight: false,
     };
   }
 
@@ -433,9 +486,6 @@ export function prescribeDoubleProgression(
   });
 
   if (allHitTopWithGoodRir) {
-    const isPureBodyweight =
-      (session.equipment === 'bodyweight' && !session.isWeightedCalisthenic) || currentWeight === 0;
-
     if (isPureBodyweight) {
       const nextReps = session.sets.map((s, idx) =>
         Math.min(30, (sets[idx]?.actualReps || sourceMaxReps) + 2)
@@ -444,7 +494,7 @@ export function prescribeDoubleProgression(
         exerciseId: session.exerciseId,
         nextWeightKg: 0,
         nextTargetReps: nextReps,
-        reason: `${transferPrefix}You hit ${sourceMaxReps} reps on all bodyweight sets! Increasing target by +2 reps (or pause 2 seconds in the stretch) to continue progressive overload.`,
+        reason: `${transferPrefix}You hit ${sourceMaxReps} reps on all bodyweight sets! Increasing target by +2 reps (or pause 2 seconds in the stretch) to continue progressive overload without external weights.`,
         weightChanged: false,
         repsChanged: true,
         isAmberShieldBuffer: false,
@@ -452,6 +502,8 @@ export function prescribeDoubleProgression(
         previousSetsSummary,
         transferredFromExerciseName,
         canonicalE1rmKg,
+        isPureBodyweight: true,
+        calibratedTempoCue: '2s paused stretch in the bottom',
       };
     }
 
@@ -475,6 +527,7 @@ export function prescribeDoubleProgression(
       previousSetsSummary,
       transferredFromExerciseName,
       canonicalE1rmKg,
+      isPureBodyweight: false,
     };
   }
 
@@ -486,6 +539,32 @@ export function prescribeDoubleProgression(
   });
 
   if (goodQualitySets.length > 0) {
+    if (isPureBodyweight) {
+      const nextReps = session.sets.map((s, idx) => {
+        const baseReps = Math.min(30, Math.max(minReps, sets[idx]?.actualReps ?? s.targetReps ?? minReps));
+        if (idx < 2) {
+          return Math.min(30, baseReps + 1);
+        }
+        return baseReps;
+      });
+
+      return {
+        exerciseId: session.exerciseId,
+        nextWeightKg: 0,
+        nextTargetReps: nextReps,
+        reason: `${transferPrefix}Strong bodyweight sets last session${lastSessionDate ? ` (${lastSessionDate})` : ''}. Aiming for +1 rep on your first two sets to continue progressive overload without weights.`,
+        weightChanged: false,
+        repsChanged: true,
+        isAmberShieldBuffer: false,
+        lastSessionDate,
+        previousSetsSummary,
+        transferredFromExerciseName,
+        canonicalE1rmKg,
+        isPureBodyweight: true,
+        calibratedTempoCue: 'Controlled 3s eccentric tempo',
+      };
+    }
+
     const nextReps = session.sets.map((s, idx) => {
       const baseReps = Math.min(maxReps, Math.max(minReps, sets[idx]?.actualReps ?? s.targetReps ?? minReps));
       if (idx < 2) {
@@ -511,18 +590,20 @@ export function prescribeDoubleProgression(
       previousSetsSummary,
       transferredFromExerciseName,
       canonicalE1rmKg,
+      isPureBodyweight: false,
     };
   }
 
   // Sub-par performance or high fatigue (0 RIR or below min reps): hold everything
-  const holdReason =
-    goalPhase === 'Cut / Recomp'
-      ? `${transferPrefix}Retention Shield Active: Holding weight at ${currentWeight} kg in a caloric deficit preserves lean muscle and drives relative strength (DOTS) gains as body fat drops.`
-      : `${transferPrefix}Keeping weight at ${currentWeight} kg today so you can build clean, consistent reps.`;
+  const holdReason = isPureBodyweight
+    ? `${transferPrefix}Hold reps steady today and focus on clean form and full stretch through every rep.`
+    : goalPhase === 'Cut / Recomp'
+    ? `${transferPrefix}Retention Shield Active: Holding weight at ${currentWeight} kg in a caloric deficit preserves lean muscle and drives relative strength (DOTS) gains as body fat drops.`
+    : `${transferPrefix}Keeping weight at ${currentWeight} kg today so you can build clean, consistent reps.`;
 
   return {
     exerciseId: session.exerciseId,
-    nextWeightKg: currentWeight,
+    nextWeightKg: isPureBodyweight ? 0 : currentWeight,
     nextTargetReps: session.sets.map((s, idx) => sets[idx]?.actualReps || s.targetReps || minReps),
     reason: holdReason,
     weightChanged: false,
@@ -532,5 +613,7 @@ export function prescribeDoubleProgression(
     previousSetsSummary,
     transferredFromExerciseName,
     canonicalE1rmKg,
+    isPureBodyweight,
+    calibratedTempoCue: isPureBodyweight ? 'Controlled 3s eccentric tempo' : undefined,
   };
 }

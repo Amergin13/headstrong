@@ -68,13 +68,28 @@ for (const fam of requiredFamilies) {
   );
 }
 
-// 1.3 Verify pure bodyweight 0kg progression logic
+// 1.3 Verify pure bodyweight 0kg progression logic & load fractions
 const progressionSrc = fs.readFileSync(path.resolve(process.cwd(), 'src/engine/progression.ts'), 'utf-8');
 assert(
   progressionSrc.includes('isPureBodyweight') &&
     progressionSrc.includes('nextWeightKg: 0') &&
     progressionSrc.includes('Increasing target by +2 reps'),
   'Double Progression correctly progresses 0kg bodyweight exercises via reps and pauses without prescribing +2.5kg load'
+);
+
+const e1rmSrc = fs.readFileSync(path.resolve(process.cwd(), 'src/engine/e1rm.ts'), 'utf-8');
+assert(
+  e1rmSrc.includes('BODYWEIGHT_LOAD_RATIOS') &&
+    e1rmSrc.includes('calculateHypertrophyBodyweightReps') &&
+    e1rmSrc.includes("targetEquipment === 'bodyweight' && !targetIsWeightedCalisthenic") &&
+    e1rmSrc.includes('return 0;'),
+  'e1rm engine defines biomechanical bodyweight load fractions and strictly returns 0kg external load for pure bodyweight travel exercises'
+);
+
+assert(
+  !seedDataSrc.includes("id: 'ex-deficit-pushup',\n    name: 'Deficit Push-Up',\n    pillar: 'Horizontal Push',\n    equipment: 'bodyweight',\n    isWeightedCalisthenic: true") &&
+    !seedDataSrc.includes("id: 'ex-bw-split-squat',\n    name: 'Bulgarian Split Squat',\n    pillar: 'Squat',\n    equipment: 'bodyweight',\n    isWeightedCalisthenic: true"),
+  'seedData.ts ensures pure bodyweight exercises are not erroneously flagged as weighted calisthenics'
 );
 
 // ============================================================================

@@ -183,6 +183,8 @@ export interface ProgressionPrescription {
   previousSetsSummary?: string[]; // e.g. ["90×10 @2R", "90×10 @2R", "90×9 @1R"]
   transferredFromExerciseName?: string; // Populated when progress carried over from a substitute implement
   canonicalE1rmKg?: number; // Unified Pillar E1RM preserving continuity across equipment
+  isPureBodyweight?: boolean; // Flags zero external load bodyweight movements
+  calibratedTempoCue?: string; // Biomechanical tempo cue for hypertrophy progression
 }
 
 export interface PillarScore {

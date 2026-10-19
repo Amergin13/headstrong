@@ -82,6 +82,15 @@ export const SetRow: React.FC<SetRowProps> = ({
   const handleCopyPrevious = () => {
     if (!prevGhost || prevGhost === '—') return;
     const cleaned = prevGhost.replace(/^≈/, '');
+    const bwMatch = cleaned.match(/^BW×(\d+)/i);
+    if (bwMatch) {
+      triggerHaptic('light');
+      const parsedR = parseInt(bwMatch[1], 10);
+      if (!isNaN(parsedR)) {
+        onUpdate({ actualWeightKg: 0, actualReps: parsedR });
+      }
+      return;
+    }
     const match = cleaned.match(/^([\d.]+)×(\d+)/);
     if (match) {
       triggerHaptic('light');

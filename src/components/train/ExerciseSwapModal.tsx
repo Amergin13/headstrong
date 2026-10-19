@@ -81,11 +81,15 @@ export const ExerciseSwapModal: React.FC<ExerciseSwapModalProps> = ({
         equipment: currentExercise.equipment,
         isRdl: currentExercise.isRdl,
         isWeightedCalisthenic: currentExercise.isWeightedCalisthenic,
+        exerciseId: currentExercise.exerciseId,
+        pillar: currentExercise.pillar,
       },
       {
         equipment: targetDef.equipment,
         isRdl: targetDef.isRdl,
         isWeightedCalisthenic: targetDef.isWeightedCalisthenic,
+        exerciseId: targetDef.id,
+        pillar: targetDef.pillar,
       },
       bodyweightEmaKg
     );

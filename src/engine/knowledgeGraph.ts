@@ -143,7 +143,9 @@ export function getExerciseBiomechanicalMeta(ex: ExerciseDefinition): {
 
   // Axial / Spinal CNS load per set (0.0 to 1.0)
   let axialLoadIndex = ex.axialLoadIndex ?? 0.2;
-  if (id.includes('deadlift') && !id.includes('rdl')) axialLoadIndex = 0.95;
+  if (ex.equipment === 'bodyweight' && !ex.isWeightedCalisthenic) {
+    axialLoadIndex = isIsolation ? 0.04 : 0.10;
+  } else if (id.includes('deadlift') && !id.includes('rdl')) axialLoadIndex = 0.95;
   else if (id.includes('squat')) axialLoadIndex = 0.85;
   else if (id.includes('rdl')) axialLoadIndex = 0.75;
   else if (id.includes('barbell-row')) axialLoadIndex = 0.65;
@@ -153,7 +155,9 @@ export function getExerciseBiomechanicalMeta(ex: ExerciseDefinition): {
 
   // Stimulus-to-Fatigue Ratio (1.0 - 10.0)
   let sfrScore = ex.sfrScore ?? 8.0;
-  if (id.includes('cable') || id.includes('incline') || id.includes('calf') || id.includes('leg-curl')) {
+  if (ex.equipment === 'bodyweight' && !ex.isWeightedCalisthenic) {
+    sfrScore = 9.0;
+  } else if (id.includes('cable') || id.includes('incline') || id.includes('calf') || id.includes('leg-curl')) {
     sfrScore = 9.2;
   } else if (id.includes('deadlift') && !id.includes('rdl')) {
     sfrScore = 6.2;
@@ -504,6 +508,25 @@ export function buildAthleteKnowledgeGraph(
       actionableStep: `Push for weight increases on well-rested days and keep weights steady when your sleep dips.`,
     },
   ];
+
+  const hasTravelOrBw =
+    recentWorkouts.some(
+      (w) => w.location === 'travel' || w.exercises.some((e) => e.equipment === 'bodyweight')
+    ) || profile.activeLocation === 'travel';
+
+  if (hasTravelOrBw) {
+    insights.push({
+      id: 'pkg-insight-travel-bw',
+      category: 'Hypertrophy',
+      title: 'Bodyweight Mechanical Tension Progression',
+      confidence: 94,
+      impactMetric: 'Effective Tension',
+      narrative:
+        'When training without gym weights, muscle hypertrophy is driven by higher rep targets (up to 30 reps at 1–2 RIR) and 3-second lowering tempos that maximize mechanical tension at long muscle lengths.',
+      actionableStep:
+        'Focus on full range of motion with a 2-second paused stretch at the bottom of each bodyweight rep.',
+    });
+  }
 
   // 6. Construct Graph Nodes & Edges for Interactive Visualization
   const nodes: KgNode[] = [

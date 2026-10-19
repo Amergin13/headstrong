@@ -104,10 +104,18 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
   const completedCount = exercise.sets.filter((s) => s.completed).length;
   const allSetsDone = completedCount === exercise.sets.length && exercise.sets.length > 0;
 
+  const isPureBw =
+    prescription.isPureBodyweight ||
+    (exercise.equipment === 'bodyweight' && !exercise.isWeightedCalisthenic);
+
   // Determine the clear progression badge text
   const progressBadge =
     readinessState === 'Amber Shield'
       ? 'Hold Steady Today'
+      : isPureBw
+      ? prescription.repsChanged
+        ? '+1–2 Rep Goal (Bodyweight)'
+        : `Target: ${firstTargetReps} Reps (Bodyweight)`
       : prescription.weightChanged
       ? `+${exercise.equipment === 'dumbbell' ? '2.0' : '2.5'} kg Weight Increase`
       : prescription.repsChanged

@@ -15,7 +15,11 @@ import {
   getMovementVectorId,
   prescribeDoubleProgression,
 } from '../engine/progression';
-import { translateWeightBetweenImplements } from '../engine/e1rm';
+import {
+  calculateE1RM,
+  calculateHypertrophyBodyweightReps,
+  translateWeightBetweenImplements,
+} from '../engine/e1rm';
 import { getExerciseBiomechanicalMeta } from '../engine/knowledgeGraph';
 
 export type SplitDayType = 'Push' | 'Pull' | 'Legs' | 'Upper';
@@ -492,8 +496,26 @@ export function adaptWorkoutSessionToLocation(
 
     usedIds.add(targetDef.id);
 
-    // If exercise didn't change, keep existing sets
+    const isPureBw =
+      (targetDef.equipment === 'bodyweight' && !targetDef.isWeightedCalisthenic) ||
+      location === 'travel';
+
+    // If exercise didn't change, ensure sets match travel bodyweight constraints
     if (targetDef.id === ex.exerciseId) {
+      if (isPureBw) {
+        return {
+          ...ex,
+          equipment: 'bodyweight',
+          isWeightedCalisthenic: false,
+          movementFamily: movementVector,
+          movementFamilyLabel: familyLabel,
+          sets: ex.sets.map((s) => ({
+            ...s,
+            targetWeightKg: 0,
+            actualWeightKg: s.completed ? s.actualWeightKg : 0,
+          })),
+        };
+      }
       return {
         ...ex,
         movementFamily: movementVector,
@@ -506,29 +528,35 @@ export function adaptWorkoutSessionToLocation(
       ex.sets.find((s) => !s.isWarmup && s.setType !== 'warmup') ?? ex.sets[0];
     const sourceWeight = firstWorkingSet?.actualWeightKg ?? firstWorkingSet?.targetWeightKg ?? 40;
 
-    const translatedWeight = translateWeightBetweenImplements(
-      sourceWeight,
-      {
-        equipment: ex.equipment,
-        isRdl: ex.isRdl,
-        isWeightedCalisthenic: ex.isWeightedCalisthenic,
-      },
-      {
-        equipment: targetDef.equipment,
-        isRdl: targetDef.isRdl,
-        isWeightedCalisthenic: targetDef.isWeightedCalisthenic,
-      },
-      bodyweightEmaKg
-    );
+    const translatedWeight = isPureBw
+      ? 0
+      : translateWeightBetweenImplements(
+          sourceWeight,
+          {
+            equipment: ex.equipment,
+            isRdl: ex.isRdl,
+            isWeightedCalisthenic: ex.isWeightedCalisthenic,
+            exerciseId: ex.exerciseId,
+            pillar: ex.pillar,
+          },
+          {
+            equipment: targetDef.equipment,
+            isRdl: targetDef.isRdl,
+            isWeightedCalisthenic: targetDef.isWeightedCalisthenic,
+            exerciseId: targetDef.id,
+            pillar: targetDef.pillar,
+          },
+          bodyweightEmaKg
+        );
 
     const candidateSession: ExerciseSession = {
       ...ex,
       exerciseId: targetDef.id,
       name: targetDef.name,
       pillar: targetDef.pillar,
-      equipment: targetDef.equipment,
+      equipment: isPureBw ? 'bodyweight' : targetDef.equipment,
       isRdl: targetDef.isRdl,
-      isWeightedCalisthenic: targetDef.isWeightedCalisthenic,
+      isWeightedCalisthenic: isPureBw ? false : targetDef.isWeightedCalisthenic,
       isIsolation: meta.isIsolation,
       movementFamily: movementVector,
       movementFamilyLabel: familyLabel,
@@ -540,7 +568,9 @@ export function adaptWorkoutSessionToLocation(
       sets: ex.sets.map((s) => ({
         ...s,
         targetWeightKg:
-          s.isWarmup || s.setType === 'warmup'
+          isPureBw
+            ? 0
+            : s.isWarmup || s.setType === 'warmup'
             ? Math.max(0, Math.round((translatedWeight * 0.6) / 2) * 2)
             : translatedWeight,
       })),
@@ -553,29 +583,72 @@ export function adaptWorkoutSessionToLocation(
       bodyweightEmaKg
     );
 
+    // Compute source E1RM from ex's working sets to carry over scheduled mechanical tension
+    let sourceE1rm = 0;
+    for (const s of ex.sets) {
+      if (s.isWarmup || s.setType === 'warmup') continue;
+      const w = s.actualWeightKg ?? s.targetWeightKg;
+      const r = s.actualReps ?? s.targetReps;
+      const rir = s.actualRir ?? s.targetRir ?? 2;
+      const e1rm = calculateE1RM(
+        w,
+        r,
+        rir,
+        ex.equipment,
+        ex.isRdl,
+        ex.isWeightedCalisthenic,
+        bodyweightEmaKg,
+        ex.exerciseId,
+        ex.pillar
+      );
+      if (e1rm > sourceE1rm) sourceE1rm = e1rm;
+    }
+    const effectiveE1rm = Math.max(sourceE1rm, prescription.canonicalE1rmKg || 0);
+
+    let bwPrescription: ReturnType<typeof calculateHypertrophyBodyweightReps> | undefined;
+    if (isPureBw) {
+      bwPrescription = calculateHypertrophyBodyweightReps(
+        effectiveE1rm,
+        bodyweightEmaKg,
+        targetDef.id,
+        targetDef.pillar,
+        targetDef.defaultRepRange[0],
+        targetDef.defaultRepRange[1]
+      );
+    }
+
     let workingIdx = 0;
     const calibratedSets: WorkoutSet[] = candidateSession.sets.map((s) => {
       if (s.isWarmup || s.setType === 'warmup') {
-        const wWeight = Math.max(0, Math.round((prescription.nextWeightKg * 0.6) / 2) * 2);
+        const wWeight = isPureBw ? 0 : Math.max(0, Math.round((prescription.nextWeightKg * 0.6) / 2) * 2);
         return {
           ...s,
           targetWeightKg: wWeight,
           actualWeightKg: s.completed ? s.actualWeightKg : wWeight,
         };
       }
-      const nextReps = prescription.nextTargetReps[workingIdx] ?? targetDef.defaultRepRange[0];
+      const nextReps = isPureBw && bwPrescription
+        ? bwPrescription.targetReps
+        : (prescription.nextTargetReps[workingIdx] ?? targetDef.defaultRepRange[0]);
       workingIdx++;
       return {
         ...s,
-        targetWeightKg: prescription.nextWeightKg,
-        actualWeightKg: s.completed ? s.actualWeightKg : prescription.nextWeightKg,
+        targetWeightKg: isPureBw ? 0 : prescription.nextWeightKg,
+        actualWeightKg: s.completed ? s.actualWeightKg : (isPureBw ? 0 : prescription.nextWeightKg),
         targetReps: nextReps,
         actualReps: s.completed ? s.actualReps : nextReps,
       };
     });
 
+    const calibratedNotes = isPureBw && bwPrescription
+      ? `${bwPrescription.explanation}${bwPrescription.tempoCue ? ` (${bwPrescription.tempoCue})` : ''}`
+      : isPureBw && prescription.reason
+      ? prescription.reason
+      : candidateSession.notes;
+
     return {
       ...candidateSession,
+      notes: calibratedNotes,
       sets: calibratedSets,
     };
   });
@@ -602,7 +675,8 @@ export function generateSmartWorkoutSession(
   mesocycleWeek: number = 3,
   location: TrainingLocation = 'gym',
   homeEquipment: HomeEquipmentTag[] = ['bench', 'dumbbells', 'trx', 'pullup_bar'],
-  goalPhase: GoalPhase = 'Lean Bulk'
+  goalPhase: GoalPhase = 'Lean Bulk',
+  bodyweightEmaKg: number = 81.5
 ): WorkoutSession {
   const template = SPLIT_TEMPLATES[splitDay] || SPLIT_TEMPLATES.Push;
   const exMap = new Map(exerciseCatalog.map((e) => [e.id, e]));
@@ -759,7 +833,8 @@ export function generateSmartWorkoutSession(
       homeEquipment,
       exerciseCatalog,
       historicalWorkouts,
-      readinessState
+      readinessState,
+      bodyweightEmaKg
     );
   }
 

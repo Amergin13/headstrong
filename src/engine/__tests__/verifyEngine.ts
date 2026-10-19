@@ -3,6 +3,10 @@ import {
   calculateEffectiveLoad,
   calculateRepsNeededForTargetE1RM,
   calculateWeightNeededForTargetE1RM,
+  getBodyweightLoadRatio,
+  calculateHypertrophyBodyweightReps,
+  translateWeightBetweenImplements,
+  formatImplementWeightLabel,
 } from '../e1rm';
 import { calculateNextEma, calculateEmaSeries } from '../ema';
 import { calculateDotsScore } from '../dots';
@@ -14,13 +18,15 @@ import { calculateDailyReadiness } from '../readiness';
 import { prescribeDoubleProgression } from '../progression';
 import { calculateWci, calculateHrrPercentage } from '../wci';
 import { calculateEngineVitalityScore, generate7PillarRadarData } from '../vitality';
-import { BiometricLog, ExerciseSession } from '../types';
+import { BiometricLog, ExerciseSession, WorkoutSession } from '../types';
 import {
   detectPixelTensorHardware,
   generateTensorCoachingInsight,
   evaluateTensorBiomechanicalMatch,
   setTensorSimulationOverride,
 } from '../tensorAI';
+import { SEED_EXERCISES } from '../../services/seedData';
+import { getExerciseBiomechanicalMeta } from '../knowledgeGraph';
 
 function assert(condition: boolean, msg: string) {
   if (!condition) {
@@ -294,10 +300,7 @@ const isoQuest = calculateSubTierQuest(
   'male',
   { isIsolation: true, maxReps: 20, sfrScore: 9.2, resistanceProfile: 'lengthened' }
 );
-import {
-  translateWeightBetweenImplements,
-  formatImplementWeightLabel,
-} from '../e1rm';
+
 
 // 11. OOUX Cross-Implement Equivalence & Unified Movement Vector Progression
 console.log('\n[11. OOUX Cross-Implement Equivalence & Unified Vector Progression]');
@@ -1218,7 +1221,146 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
     `Leaderboard contains 6 official competitive divisions and 10+ community athletes`
   );
 
-  console.log('\nALL 20 ENGINE, GOVERNANCE, DESIGN HEURISTICS & GOOGLE PIXEL TENSOR AI SUITES PASSED SUCCESSFULLY! 🎯');
+  // ============================================================================
+  // 21. Location Adaptation, Pure Bodyweight Load Fractions & Hypertrophy Rep Cues
+  // ============================================================================
+  console.log('\n[21. Location Adaptation, Bodyweight Load Fractions & Hypertrophy Rep Cues]');
+
+  // A. Biomechanical Load Fractions
+  assert(
+    getBodyweightLoadRatio('ex-deficit-pushup') === 0.74,
+    'Deficit pushup correctly uses 74% bodyweight load fraction'
+  );
+  assert(
+    getBodyweightLoadRatio('ex-bw-split-squat') === 0.85,
+    'Bulgarian split squat correctly uses 85% bodyweight load fraction'
+  );
+  assert(
+    getBodyweightLoadRatio('ex-single-leg-rdl') === 0.80,
+    'Single-leg RDL correctly uses 80% bodyweight load fraction'
+  );
+
+  // B. Translation from 90kg Bench Press to Travel Deficit Pushup
+  // Bench 90kg -> Effective load 90kg.
+  // Converting to bodyweight deficit pushup at 80kg bodyweight:
+  const convertedPushupWeight = translateWeightBetweenImplements(
+    90,
+    { equipment: 'barbell', pillar: 'Horizontal Push', exerciseId: 'ex-bench-press' },
+    { equipment: 'bodyweight', pillar: 'Horizontal Push', exerciseId: 'ex-deficit-pushup' },
+    80
+  );
+  assert(
+    convertedPushupWeight === 0,
+    `Switching from 90kg barbell bench to travel deficit pushup yields exactly 0 kg external load (got ${convertedPushupWeight} kg, never +5kg)`
+  );
+
+  // C. Calibrated Hypertrophy Rep Engine for Bodyweight Movements
+  // An athlete benching 90kg x 10 @ 2 RIR has E1RM = 126kg.
+  // At 80kg BW, deficit pushup effective load is 80 * 0.74 = 59.2kg.
+  // Target reps = 30 * (126 / 59.2 - 1) - 2 = 30 * (1.128) - 2 = 31.8 -> capped at 25-30 with tempo cue
+  const bwRepPrescription = calculateHypertrophyBodyweightReps(
+    126,
+    80,
+    'ex-deficit-pushup',
+    'Horizontal Push',
+    8,
+    15
+  );
+  assert(
+    bwRepPrescription.targetReps >= 20 && bwRepPrescription.targetReps <= 30,
+    `Calibrated hypertrophy reps for deficit pushup are within 20–30 reps (got ${bwRepPrescription.targetReps})`
+  );
+  assert(
+    bwRepPrescription.tempoCue !== undefined && bwRepPrescription.tempoCue.includes('eccentric'),
+    `Prescribes lengthened-position tempo cue when reps approach ceiling (got "${bwRepPrescription.tempoCue}")`
+  );
+
+  // D. Workout Session Location Adaptation to Travel
+  const gymSession: WorkoutSession = {
+    id: 'test-session-1',
+    date: '2026-10-19',
+    name: 'Day 1: Chest & Shoulders',
+    splitDay: 'Push',
+    completed: false,
+    readinessState: 'Normal',
+    readinessZScore: 0.2,
+    xpEarned: 0,
+    location: 'gym',
+    exercises: [
+      {
+        id: 's-ex-1',
+        exerciseId: 'ex-bench-press',
+        name: 'Barbell Bench Press',
+        pillar: 'Horizontal Push',
+        equipment: 'barbell',
+        minReps: 8,
+        maxReps: 12,
+        sets: [
+          { id: 'set-1', setNumber: 1, targetWeightKg: 90, targetReps: 10, targetRir: 2, completed: false, setType: 'working' },
+          { id: 'set-2', setNumber: 2, targetWeightKg: 90, targetReps: 10, targetRir: 2, completed: false, setType: 'working' },
+          { id: 'set-3', setNumber: 3, targetWeightKg: 90, targetReps: 10, targetRir: 1, completed: false, setType: 'working' },
+        ],
+      },
+    ],
+  };
+
+  const travelAdapted = adaptWorkoutSessionToLocation(gymSession, 'travel', [], SEED_EXERCISES, [], 'Normal', 80);
+  assert(
+    travelAdapted.location === 'travel',
+    'WorkoutSession location adapted to travel'
+  );
+  const travelEx = travelAdapted.exercises[0];
+  assert(
+    travelEx.equipment === 'bodyweight',
+    `Substituted gym bench press for travel bodyweight exercise (${travelEx.name})`
+  );
+  assert(
+    travelEx.sets.every((s) => s.targetWeightKg === 0 && (s.actualWeightKg === undefined || s.actualWeightKg === 0)),
+    'All sets in travel bodyweight exercise have strictly 0 kg target load (no phantom +5kg)'
+  );
+  assert(
+    travelEx.sets[0].targetReps >= 15,
+    `Travel exercise sets have calibrated hypertrophy reps >= 15 (got ${travelEx.sets[0].targetReps} reps)`
+  );
+  assert(
+    formatImplementWeightLabel(travelEx.sets[0].targetWeightKg, travelEx.equipment, travelEx.isWeightedCalisthenic) === 'Bodyweight',
+    'formatImplementWeightLabel for 0kg bodyweight returns "Bodyweight"'
+  );
+
+  // E. Double Progression for Pure Bodyweight
+  const bwProgression = prescribeDoubleProgression(
+    travelEx,
+    'Normal',
+    [],
+    80,
+    'Lean Bulk'
+  );
+  assert(
+    bwProgression.isPureBodyweight === true,
+    'prescribeDoubleProgression flags isPureBodyweight: true'
+  );
+  assert(
+    bwProgression.nextWeightKg === 0,
+    'prescribeDoubleProgression nextWeightKg is strictly 0 kg'
+  );
+  assert(
+    bwProgression.weightChanged === false,
+    'prescribeDoubleProgression weightChanged is false (never prompts Add Weight)'
+  );
+
+  // F. Knowledge Graph Biomechanical Meta for Bodyweight
+  const deficitPushupDef = SEED_EXERCISES.find((e) => e.id === 'ex-deficit-pushup')!;
+  const bwMeta = getExerciseBiomechanicalMeta(deficitPushupDef);
+  assert(
+    bwMeta.axialLoadIndex <= 0.15,
+    `Bodyweight deficit pushup has low spinal axial load index (${bwMeta.axialLoadIndex} <= 0.15)`
+  );
+  assert(
+    bwMeta.sfrScore >= 8.5,
+    `Bodyweight deficit pushup has high stimulus-to-fatigue ratio (${bwMeta.sfrScore} >= 8.5)`
+  );
+
+  console.log('\nALL 21 ENGINE, GOVERNANCE, DESIGN HEURISTICS & GOOGLE PIXEL TENSOR AI SUITES PASSED SUCCESSFULLY! 🎯');
 })().catch((err) => {
   console.error('Test Suite Failed:', err);
   if (typeof process !== 'undefined' && process.exit) {

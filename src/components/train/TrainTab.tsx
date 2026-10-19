@@ -30,6 +30,7 @@ import { prescribeDoubleProgression } from '../../engine/progression';
 import { calculateSubTierQuest } from '../../engine/strengthStandards';
 import {
   calculateE1RM,
+  calculateHypertrophyBodyweightReps,
   formatImplementWeightLabel,
 } from '../../engine/e1rm';
 import { getExerciseBiomechanicalMeta } from '../../engine/knowledgeGraph';
@@ -284,6 +285,9 @@ export const TrainTab: React.FC<TrainTabProps> = ({
   const handleAddExerciseToSession = (def: ExerciseDefinition) => {
     triggerHaptic('medium');
     const meta = getExerciseBiomechanicalMeta(def);
+    const isPureBw = def.equipment === 'bodyweight' && !def.isWeightedCalisthenic;
+    const defaultSeedWeight = isPureBw ? 0 : def.equipment === 'dumbbell' ? 16 : 40;
+
     const seedEx: ExerciseSession = {
       id: `active-ex-${Date.now()}`,
       exerciseId: def.id,
@@ -305,7 +309,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
         {
           id: `s-${Date.now()}-1`,
           setNumber: 1,
-          targetWeightKg: def.equipment === 'dumbbell' ? 16 : 40,
+          targetWeightKg: defaultSeedWeight,
           targetReps: def.defaultRepRange[0],
           targetRir: 2,
           completed: false,
@@ -314,7 +318,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
         {
           id: `s-${Date.now()}-2`,
           setNumber: 2,
-          targetWeightKg: def.equipment === 'dumbbell' ? 16 : 40,
+          targetWeightKg: defaultSeedWeight,
           targetReps: def.defaultRepRange[0],
           targetRir: 2,
           completed: false,
@@ -323,7 +327,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
         {
           id: `s-${Date.now()}-3`,
           setNumber: 3,
-          targetWeightKg: def.equipment === 'dumbbell' ? 16 : 40,
+          targetWeightKg: defaultSeedWeight,
           targetReps: def.defaultRepRange[0],
           targetRir: 1,
           completed: false,
@@ -336,13 +340,14 @@ export const TrainTab: React.FC<TrainTabProps> = ({
       seedEx,
       readiness.state,
       workouts,
-      bodyweightEmaKg
+      bodyweightEmaKg,
+      profile.goalPhase
     );
     const hydratedEx: ExerciseSession = {
       ...seedEx,
       sets: seedEx.sets.map((s, idx) => ({
         ...s,
-        targetWeightKg: prescription.nextWeightKg,
+        targetWeightKg: isPureBw ? 0 : prescription.nextWeightKg,
         targetReps: prescription.nextTargetReps[idx] ?? def.defaultRepRange[0],
       })),
     };
@@ -357,6 +362,49 @@ export const TrainTab: React.FC<TrainTabProps> = ({
   const handleConfirmSwap = (newDef: ExerciseDefinition, convertedWeightKg: number) => {
     if (!swappingExercise) return;
     const meta = getExerciseBiomechanicalMeta(newDef);
+    const isPureBw = newDef.equipment === 'bodyweight' && !newDef.isWeightedCalisthenic;
+    const effectiveTargetWeight = isPureBw ? 0 : convertedWeightKg;
+
+    // Compute canonical E1RM from the exercise being swapped
+    let sourceE1rm = 0;
+    for (const s of swappingExercise.sets) {
+      const w = s.actualWeightKg ?? s.targetWeightKg;
+      const r = s.actualReps ?? s.targetReps;
+      const rir = s.actualRir ?? s.targetRir ?? 2;
+      const e1rm = calculateE1RM(
+        w,
+        r,
+        rir,
+        swappingExercise.equipment,
+        swappingExercise.isRdl,
+        swappingExercise.isWeightedCalisthenic,
+        bodyweightEmaKg,
+        swappingExercise.exerciseId,
+        swappingExercise.pillar
+      );
+      if (e1rm > sourceE1rm) sourceE1rm = e1rm;
+    }
+
+    let defaultTargetReps = newDef.defaultRepRange[0];
+    let customNotes =
+      meta.resistanceProfile === 'lengthened'
+        ? 'Focus on a controlled stretch at the bottom of each rep.'
+        : 'Keep a steady, controlled pace on every rep.';
+
+    if (isPureBw) {
+      const bwPrescription = calculateHypertrophyBodyweightReps(
+        sourceE1rm,
+        bodyweightEmaKg,
+        newDef.id,
+        newDef.pillar,
+        newDef.defaultRepRange[0],
+        newDef.defaultRepRange[1]
+      );
+      defaultTargetReps = bwPrescription.targetReps;
+      if (bwPrescription.tempoCue) {
+        customNotes = `${bwPrescription.tempoCue}. Focus on full muscle stretch.`;
+      }
+    }
 
     const nextExercises = activeWorkout.exercises.map((ex) => {
       if (ex.id !== swappingExercise.id) return ex;
@@ -372,18 +420,21 @@ export const TrainTab: React.FC<TrainTabProps> = ({
         sfrScore: meta.sfrScore,
         minReps: newDef.defaultRepRange[0],
         maxReps: newDef.defaultRepRange[1],
+        notes: customNotes,
         sets: ex.sets.map((s) => ({
           ...s,
-          targetWeightKg:
-            s.isWarmup || s.setType === 'warmup'
-              ? Math.max(8, Math.round((convertedWeightKg * 0.6) / 2) * 2)
-              : convertedWeightKg,
-          actualWeightKg:
-            s.isWarmup || s.setType === 'warmup'
-              ? Math.max(8, Math.round((convertedWeightKg * 0.6) / 2) * 2)
-              : convertedWeightKg,
-          targetReps: newDef.defaultRepRange[0],
-          actualReps: newDef.defaultRepRange[0],
+          targetWeightKg: isPureBw
+            ? 0
+            : s.isWarmup || s.setType === 'warmup'
+            ? Math.max(8, Math.round((effectiveTargetWeight * 0.6) / 2) * 2)
+            : effectiveTargetWeight,
+          actualWeightKg: isPureBw
+            ? 0
+            : s.isWarmup || s.setType === 'warmup'
+            ? Math.max(8, Math.round((effectiveTargetWeight * 0.6) / 2) * 2)
+            : effectiveTargetWeight,
+          targetReps: defaultTargetReps,
+          actualReps: defaultTargetReps,
         })),
       };
     });
@@ -425,7 +476,13 @@ export const TrainTab: React.FC<TrainTabProps> = ({
   });
 
   const weightJumpItems = exercisePrescriptions.filter(
-    (item) => item.prescription.weightChanged && readiness.state !== 'Amber Shield'
+    (item) =>
+      item.prescription.weightChanged &&
+      readiness.state !== 'Amber Shield' &&
+      !item.prescription.isPureBodyweight &&
+      item.ex.equipment !== 'bodyweight' &&
+      activeWorkout.location !== 'travel' &&
+      item.prescription.nextWeightKg > 0
   );
   const repJumpItems = exercisePrescriptions.filter(
     (item) =>
@@ -642,15 +699,24 @@ export const TrainTab: React.FC<TrainTabProps> = ({
                   ex.isWeightedCalisthenic
                 );
                 const targetReps = prescription.nextTargetReps[0] ?? ex.minReps;
+                const isBw =
+                  prescription.isPureBodyweight ||
+                  (ex.equipment === 'bodyweight' && !ex.isWeightedCalisthenic);
                 return (
                   <li key={ex.id} className="flex items-start space-x-2">
                     <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 mt-1.5 shrink-0" />
                     <span>
-                      <strong className="text-cyan-300">Add +1 Rep:</strong> Hit{' '}
-                      <strong className="text-white font-mono">
-                        {formattedW} × {targetReps} reps
+                      <strong className="text-cyan-300">
+                        {isBw ? 'Target Reps (Bodyweight):' : 'Add +1 Rep:'}
                       </strong>{' '}
-                      on <strong className="text-white">{ex.name}</strong> to beat last session
+                      Hit{' '}
+                      <strong className="text-white font-mono">
+                        {isBw ? `BW × ${targetReps} reps` : `${formattedW} × ${targetReps} reps`}
+                      </strong>{' '}
+                      on <strong className="text-white">{ex.name}</strong>
+                      {isBw && prescription.calibratedTempoCue
+                        ? ` (${prescription.calibratedTempoCue})`
+                        : ' to beat last session'}
                     </span>
                   </li>
                 );

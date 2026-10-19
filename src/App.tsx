@@ -265,7 +265,8 @@ export const App: React.FC = () => {
       profile.mesocycleWeek || 1,
       profile.activeLocation || 'gym',
       profile.homeEquipment || ['bench', 'dumbbells', 'trx', 'pullup_bar'],
-      profile.goalPhase
+      profile.goalPhase,
+      bodyweightEmaKg
     );
     setActiveWorkout(smartSession);
     if (navigateToTrain) {
@@ -320,7 +321,8 @@ export const App: React.FC = () => {
       1,
       setup.activeLocation,
       setup.homeEquipment,
-      setup.goalPhase
+      setup.goalPhase,
+      bodyweightEmaKg
     );
     setActiveWorkout(day1Session);
     setActiveTab('train');
@@ -338,7 +340,8 @@ export const App: React.FC = () => {
       week,
       profile.activeLocation || 'gym',
       profile.homeEquipment || ['bench', 'dumbbells', 'trx', 'pullup_bar'],
-      profile.goalPhase
+      profile.goalPhase,
+      bodyweightEmaKg
     );
     setActiveWorkout(recalibrated);
   };
@@ -450,7 +453,8 @@ export const App: React.FC = () => {
       nextMesocycleWeek,
       profile.activeLocation || 'gym',
       profile.homeEquipment || ['bench', 'dumbbells', 'trx', 'pullup_bar'],
-      profile.goalPhase
+      profile.goalPhase,
+      bodyweightEmaKg
     );
     setActiveWorkout(nextSmartSession);
 
@@ -684,7 +688,8 @@ export const App: React.FC = () => {
                 profile.mesocycleWeek || 1,
                 profile.activeLocation || 'gym',
                 profile.homeEquipment || ['bench', 'dumbbells', 'trx', 'pullup_bar'],
-                phase
+                phase,
+                bodyweightEmaKg
               );
               setActiveWorkout(recalibrated);
             }}
