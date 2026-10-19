@@ -754,8 +754,8 @@ assert(
     !trainTabSrc.includes('Adjust Gear / Split') &&
     trainTabSrc.includes('Full Gym') &&
     trainTabSrc.includes('At Home') &&
-    trainTabSrc.includes('Travel'),
-  `TrainTab has 1 single canonical Equipment Location bar (Full Gym | At Home | Travel) with no duplicate inline gear/split drawers`
+    (trainTabSrc.includes('Bodyweight') || trainTabSrc.includes('Travel')),
+  `TrainTab has 1 single canonical Equipment Location bar (Full Gym | At Home | Bodyweight) with no duplicate inline gear/split drawers`
 );
 
 const auditedFiles = [

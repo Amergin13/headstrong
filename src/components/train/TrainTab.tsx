@@ -569,7 +569,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
           </p>
         </div>
 
-        {/* C. Single Canonical Equipment Location Switcher (Full Gym | At Home | Travel) */}
+        {/* C. Single Canonical Equipment Location Switcher (Full Gym | At Home | Bodyweight / Travel) */}
         <div
           role="group"
           aria-label="Select training location and equipment"
@@ -579,7 +579,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
             [
               { id: 'gym', label: 'Full Gym' },
               { id: 'home', label: 'At Home' },
-              { id: 'travel', label: 'Travel' },
+              { id: 'travel', label: 'Bodyweight' },
             ] as const
           ).map((loc) => {
             const isSelected = currentLoc === loc.id;

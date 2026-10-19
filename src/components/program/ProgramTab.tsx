@@ -148,9 +148,9 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
             </div>
           </div>
           <div className="p-2.5 rounded-2xl bg-black/40 border border-white/[0.06]">
-            <div className="font-bold text-white">Travel</div>
+            <div className="font-bold text-white">Bodyweight</div>
             <div className="text-xs text-slate-400 mt-0.5">
-              Bodyweight Variations
+              Zero-Equipment Variations
             </div>
           </div>
         </div>

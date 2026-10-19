@@ -194,11 +194,11 @@ export async function processAssistantMessage(
 
     actionTaken = {
       type: 'SCHEDULE_LOCATION_WEEK',
-      summary: `Scheduled Week ${targetWeek} for Travel (Bodyweight Hypertrophy)`,
+      summary: `Scheduled Week ${targetWeek} for Bodyweight (0 kg External Load)`,
       details: { week: targetWeek, location: 'travel' },
     };
 
-    answerText = `Planned! I have scheduled Week ${targetWeek} of your mesocycle for Travel. When you reach Week ${targetWeek}, all workout sessions will automatically calibrate to pure bodyweight exercises (like Feet-Elevated Deficit Push-Ups, Bulgarian Split Squats, and Inverted Rows). Target reps are matched to your strength level with 3-second eccentric tempo cues, requiring zero gym weights.`;
+    answerText = `Planned! I have scheduled Week ${targetWeek} of your mesocycle for Bodyweight training. When you reach Week ${targetWeek}, all workout sessions will automatically calibrate to pure bodyweight exercises (like Feet-Elevated Deficit Push-Ups, Bulgarian Split Squats, and Inverted Rows). Target reps are matched to your strength level with 3-second eccentric tempo cues, requiring zero gym weights.`;
 
     // If athlete is already in that week, adapt current workout too
     if ((profile.mesocycleWeek || 1) === targetWeek && activeWorkout.location !== 'travel') {
@@ -218,16 +218,16 @@ export async function processAssistantMessage(
     citations.push({
       label: `Week ${targetWeek} Plan`,
       metric: 'Location Override',
-      value: 'Travel (0 kg external load)',
+      value: 'Bodyweight (0 kg external load)',
     });
   }
 
   // ============================================================================
-  // 3. INTENT: SWITCH CURRENT WORKOUT LOCATION (e.g. "switch today to travel", "train at home")
+  // 3. INTENT: SWITCH CURRENT WORKOUT LOCATION (e.g. "switch today to bodyweight", "train at home")
   // ============================================================================
   else if (
-    /\b(switch|change|set|turn)\b.*\b(travel|home|gym)\b/i.test(lowerMsg) ||
-    /\b(train\s*at\s*home|in\s*a\s*hotel|no\s*weights?\s*today)\b/i.test(lowerMsg)
+    /\b(switch|change|set|turn)\b.*\b(travel|bodyweight|home|gym)\b/i.test(lowerMsg) ||
+    /\b(train\s*at\s*home|in\s*a\s*hotel|no\s*weights?\s*today|bodyweight\s*today)\b/i.test(lowerMsg)
   ) {
     let targetLoc: TrainingLocation = 'travel';
     if (/\b(home|house)\b/i.test(lowerMsg)) targetLoc = 'home';
@@ -247,12 +247,12 @@ export async function processAssistantMessage(
     updatedProfile = { activeLocation: targetLoc };
     actionTaken = {
       type: 'SWITCH_LOCATION',
-      summary: `Switched today's session to ${targetLoc === 'travel' ? 'Travel' : targetLoc === 'home' ? 'At Home' : 'Full Gym'}`,
+      summary: `Switched today's session to ${targetLoc === 'travel' ? 'Bodyweight' : targetLoc === 'home' ? 'At Home' : 'Full Gym'}`,
       details: { location: targetLoc },
     };
 
     if (targetLoc === 'travel') {
-      answerText = `Switched today's session to Travel mode. All exercises have been converted to pure bodyweight movements with 0 kg external load and calibrated reps matching your strength level.`;
+      answerText = `Switched today's session to Bodyweight mode. All exercises have been converted to pure bodyweight movements with 0 kg external load and calibrated reps matching your strength level.`;
     } else if (targetLoc === 'home') {
       answerText = `Switched today's session to At Home mode. Workouts are calibrated around your home equipment setup (${(profile.homeEquipment || []).map((t) => EQUIPMENT_NAMES[t] || t).join(', ')}).`;
     } else {

@@ -156,9 +156,9 @@ const trainTabSrc = fs.readFileSync(path.resolve(process.cwd(), 'src/components/
 assert(
   trainTabSrc.includes('Full Gym') &&
     trainTabSrc.includes('At Home') &&
-    trainTabSrc.includes('Travel') &&
+    (trainTabSrc.includes('Bodyweight') || trainTabSrc.includes('Travel')) &&
     !trainTabSrc.includes('Adjust Gear / Split'),
-  'TrainTab enforces exactly 1 canonical Equipment Location bar (Full Gym | At Home | Travel)'
+  'TrainTab enforces exactly 1 canonical Equipment Location bar (Full Gym | At Home | Bodyweight)'
 );
 
 // ============================================================================

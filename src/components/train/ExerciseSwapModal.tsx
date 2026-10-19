@@ -178,7 +178,7 @@ export const ExerciseSwapModal: React.FC<ExerciseSwapModalProps> = ({
         >
           {(
             [
-              { id: 'travel', label: 'Travel' },
+              { id: 'travel', label: 'Bodyweight' },
               { id: 'home', label: 'At Home' },
               { id: 'gym', label: 'Full Gym' },
             ] as const
@@ -224,7 +224,7 @@ export const ExerciseSwapModal: React.FC<ExerciseSwapModalProps> = ({
           {alternatives.length === 0 ? (
             <div className="p-4 rounded-2xl bg-surface-elevated/70 border border-white/[0.06] text-center space-y-1">
               <p className="text-xs font-bold text-white">
-                No {selectedLocation === 'travel' ? 'travel' : selectedLocation === 'home' ? 'home' : 'gym'} exercises found
+                No {selectedLocation === 'travel' ? 'bodyweight' : selectedLocation === 'home' ? 'home' : 'gym'} exercises found
               </p>
               <p className="text-xs text-slate-400">
                 Switch environment tabs above to view loaded alternatives with target weight carry-over.

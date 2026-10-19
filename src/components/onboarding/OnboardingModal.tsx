@@ -290,10 +290,10 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                 </div>
                 <div className="space-y-1">
                   <div className="font-bold text-xs text-white">
-                    3. Adapts Across Any Gear (Gym, Home, Travel)
+                    3. Adapts Across Any Gear (Gym, Home, Bodyweight)
                   </div>
                   <p className="text-xs text-slate-300 leading-relaxed">
-                    Can&apos;t make the gym? Switch to Home or Travel in 1 tap. Exercises adapt with true biomechanical alternatives while your strength progress carries over seamlessly.
+                    Can&apos;t make the gym? Switch to Home or Bodyweight in 1 tap. Exercises adapt with true biomechanical alternatives while your strength progress carries over seamlessly.
                   </p>
                 </div>
               </div>
@@ -481,8 +481,8 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                     },
                     {
                       id: 'travel' as TrainingLocation,
-                      label: 'Travel',
-                      sub: 'Bodyweight',
+                      label: 'Bodyweight',
+                      sub: 'Zero Equipment',
                       Icon: Plane,
                     },
                   ]
@@ -567,7 +567,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                   [
                     { id: 'gym', label: 'Gym Today' },
                     { id: 'home', label: 'Home Today' },
-                    { id: 'travel', label: 'Travel Today' },
+                    { id: 'travel', label: 'Bodyweight' },
                   ] as const
                 ).map((loc) => {
                   const isCurrent = activeLocation === loc.id;
