@@ -69,13 +69,13 @@ export const SplitEditor: React.FC<SplitEditorProps> = ({
   });
 
   return (
-    <div className="rounded-3xl surface-glass border border-white/[0.08] p-4 space-y-3">
+    <div className="biometric-card p-4.5 border border-white/[0.08] space-y-3.5">
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="font-bold text-base text-white tracking-tight">
+          <h3 className="font-extrabold text-base text-white tracking-tight">
             Workout Splits &amp; Exercises
           </h3>
-          <p className="text-xs text-slate-400 mt-0.5">
+          <p className="text-xs text-slate-400 font-medium mt-0.5">
             Browse exercises by workout day or add your own
           </p>
         </div>
@@ -83,7 +83,7 @@ export const SplitEditor: React.FC<SplitEditorProps> = ({
         <button
           type="button"
           onClick={onOpenCreateExercise}
-          className="px-3 py-1.5 rounded-full bg-white/[0.08] hover:bg-white/[0.12] text-xs font-semibold text-white border border-white/[0.1] flex items-center space-x-1 transition-colors"
+          className="px-3 py-1.5 rounded-xl biometric-pill hover:bg-white/[0.12] text-xs font-bold text-white transition-all flex items-center space-x-1"
         >
           <Plus className="w-3.5 h-3.5 stroke-[2]" />
           <span>Add Exercise</span>
@@ -92,7 +92,7 @@ export const SplitEditor: React.FC<SplitEditorProps> = ({
 
       {/* Segmented Control */}
       <div
-        className={`grid gap-1 bg-black/50 p-1 rounded-xl border border-white/[0.06] ${
+        className={`grid gap-1 bg-[#08090C] p-1 rounded-2xl border border-white/[0.08] ${
           days.length === 2 ? 'grid-cols-2' : days.length === 3 ? 'grid-cols-3' : 'grid-cols-4'
         }`}
       >
@@ -106,9 +106,9 @@ export const SplitEditor: React.FC<SplitEditorProps> = ({
                 triggerHaptic('light');
                 setActiveDay(d.id);
               }}
-              className={`py-1.5 rounded-lg text-xs font-bold transition-all ${
+              className={`py-2 rounded-xl text-xs font-bold transition-all ${
                 isSelected
-                  ? 'bg-brand-primary text-black shadow-sm'
+                  ? 'bg-brand-recovery text-black shadow-md glow-recovery'
                   : 'text-slate-300 hover:text-white'
               }`}
             >
@@ -126,9 +126,9 @@ export const SplitEditor: React.FC<SplitEditorProps> = ({
             triggerHaptic('medium');
             onLaunchSplitDay(activeDay);
           }}
-          className="w-full py-2.5 rounded-xl bg-brand-primary/15 hover:bg-brand-primary/25 border border-brand-primary/30 text-brand-primary font-bold text-xs flex items-center justify-center space-x-1.5 transition-all"
+          className="w-full py-2.5 rounded-xl bg-brand-recovery/15 hover:bg-brand-recovery/25 border border-brand-recovery/35 text-brand-recovery font-extrabold text-xs flex items-center justify-center space-x-1.5 transition-all glow-recovery"
         >
-          <Play className="w-3.5 h-3.5 fill-brand-primary stroke-[2]" />
+          <Play className="w-3.5 h-3.5 fill-brand-recovery stroke-[2]" />
           <span>Start {activeDay} Workout</span>
         </button>
       )}

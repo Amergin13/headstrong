@@ -48,6 +48,7 @@ import {
   History,
 } from 'lucide-react';
 import { triggerHaptic } from '../../utils/haptics';
+import { BiometricCircularGauge } from '../common/BiometricCircularGauge';
 
 interface TrainTabProps {
   activeWorkout: WorkoutSession;
@@ -519,14 +520,14 @@ export const TrainTab: React.FC<TrainTabProps> = ({
   return (
     <div className="space-y-3.5 pb-28">
       {/* 1. UNIFIED HERO CARD: Opinionated Asynchronous Hypertrophy Queue & Session Goals */}
-      <div className="rounded-3xl surface-glass border border-white/[0.1] p-4 space-y-3">
+      <div className="biometric-card p-4.5 space-y-3.5 border border-white/[0.08]">
         {/* A. Compact Context Header + Rest / History Toggle */}
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center flex-wrap gap-1.5">
-            <span className="px-2 py-0.5 rounded-lg bg-brand-primary/15 text-brand-primary border border-brand-primary/30 text-xs font-bold uppercase tracking-wider">
+            <span className="px-2.5 py-0.5 rounded-full bg-brand-strain/15 text-brand-strain border border-brand-strain/30 text-xs font-bold uppercase tracking-wider">
               Up Next
             </span>
-            <span className="px-2 py-0.5 rounded-lg bg-white/[0.06] text-slate-200 border border-white/[0.08] text-xs font-semibold">
+            <span className="px-2.5 py-0.5 rounded-full bg-white/[0.06] text-slate-200 border border-white/[0.08] text-xs font-semibold">
               Week {mesoWeek} of 6 • {phaseMeta.name}
             </span>
           </div>
@@ -538,7 +539,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
               setShowScheduleOptions(!showScheduleOptions);
             }}
             aria-expanded={showScheduleOptions}
-            className="px-2.5 py-1.5 rounded-xl bg-white/[0.06] hover:bg-white/[0.12] border border-white/[0.08] text-xs font-semibold text-slate-200 hover:text-white flex items-center space-x-1 shrink-0 transition-colors"
+            className="px-2.5 py-1.5 rounded-xl biometric-pill hover:bg-white/[0.12] text-xs font-semibold text-slate-200 hover:text-white flex items-center space-x-1 shrink-0 transition-colors"
           >
             <span>Rest / History</span>
             {showScheduleOptions ? (
@@ -549,29 +550,42 @@ export const TrainTab: React.FC<TrainTabProps> = ({
           </button>
         </div>
 
-        {/* B. Primary Focal Point: Single Opinionated Workout Recommendation & Recovery Window */}
-        <div className="space-y-1.5">
-          <h1 className="font-bold text-lg text-white tracking-tight">
-            {activeWorkout.name}
-          </h1>
-          <div className="flex items-center flex-wrap gap-2">
-            <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-lg bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 text-xs font-semibold">
-              <span>✓ {queueRec.recoveryBadge}</span>
-            </span>
-            <span className="text-xs text-slate-300">
-              {activeWorkout.exercises.length} exercises • {totalSets} sets • {friendlyGoal}
-            </span>
+        {/* B. Primary Focal Point: Single Opinionated Workout Recommendation & Recovery Window with Circular Gauge */}
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-3 rounded-2xl bg-[#08090C]/80 border border-white/[0.06]">
+          <div className="space-y-1.5 flex-1 min-w-0 text-center sm:text-left">
+            <h1 className="font-extrabold text-xl text-white tracking-tight">
+              {activeWorkout.name}
+            </h1>
+            <div className="flex items-center justify-center sm:justify-start flex-wrap gap-2">
+              <span className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full bg-brand-recovery/15 text-brand-recovery border border-brand-recovery/30 text-xs font-bold">
+                <span>✓ {queueRec.recoveryBadge}</span>
+              </span>
+              <span className="text-xs text-slate-300 font-medium">
+                {activeWorkout.exercises.length} exercises • {totalSets} sets • {friendlyGoal}
+              </span>
+            </div>
+            <p className="text-xs text-slate-300 leading-relaxed font-medium">
+              {queueRec.scienceRationale}
+            </p>
           </div>
-          <p className="text-xs text-slate-300 leading-relaxed">
-            {queueRec.scienceRationale}
-          </p>
+
+          <div className="shrink-0 flex items-center justify-center">
+            <BiometricCircularGauge
+              value={completedSets}
+              max={totalSets || 1}
+              label="SETS DONE"
+              unit={`/${totalSets}`}
+              variant="strain"
+              size="sm"
+            />
+          </div>
         </div>
 
         {/* C. Single Canonical Equipment Location Switcher (Full Gym | At Home | Travel) */}
         <div
           role="group"
           aria-label="Select training location and equipment"
-          className="grid grid-cols-3 gap-1 bg-black/50 p-1 rounded-2xl border border-white/[0.08]"
+          className="grid grid-cols-3 gap-1 bg-[#08090C] p-1 rounded-2xl border border-white/[0.08]"
         >
           {(
             [
@@ -592,9 +606,9 @@ export const TrainTab: React.FC<TrainTabProps> = ({
                     onSwitchLocation(loc.id);
                   }
                 }}
-                className={`py-1.5 px-2 rounded-xl text-xs font-bold transition-all ${
+                className={`py-2 px-2 rounded-xl text-xs font-bold transition-all ${
                   isSelected
-                    ? 'bg-brand-primary text-black shadow-sm'
+                    ? 'bg-brand-recovery text-black shadow-md glow-recovery'
                     : 'text-slate-300 hover:text-white'
                 }`}
               >
@@ -654,21 +668,21 @@ export const TrainTab: React.FC<TrainTabProps> = ({
         )}
 
         {/* D. "What do I need to do to make progress?" Action Checklist */}
-        <div className="p-3.5 rounded-2xl bg-black/45 border border-white/[0.08] space-y-2.5">
+        <div className="p-3.5 rounded-2xl bg-[#08090C]/80 border border-white/[0.08] space-y-2.5">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-1.5">
-              <TrendingUp className="w-4 h-4 text-brand-primary stroke-[2]" />
+              <TrendingUp className="w-4 h-4 text-brand-recovery stroke-[2]" />
               <h2 className="text-xs font-bold uppercase tracking-wider text-white">
                 How to Make Progress This Session
               </h2>
             </div>
-            <span className="text-xs font-mono font-bold text-brand-primary">
+            <span className="text-xs font-mono font-bold text-brand-recovery">
               {completedSets}/{totalSets} sets done
             </span>
           </div>
 
           {readiness.state === 'Amber Shield' ? (
-            <p className="text-xs text-amber-300 leading-relaxed">
+            <p className="text-xs text-amber-300 leading-relaxed font-medium">
               <strong>Light Recovery Day:</strong> Your body needs extra recovery today. Hold your weights steady, stop 2–3 reps shy of failure, and complete your sets to keep your streak alive.
             </p>
           ) : (
@@ -682,10 +696,10 @@ export const TrainTab: React.FC<TrainTabProps> = ({
                 const targetReps = prescription.nextTargetReps[0] ?? ex.minReps;
                 return (
                   <li key={ex.id} className="flex items-start space-x-2">
-                    <span className="w-1.5 h-1.5 rounded-full bg-brand-primary mt-1.5 shrink-0" />
+                    <span className="w-1.5 h-1.5 rounded-full bg-brand-recovery mt-1.5 shrink-0" />
                     <span>
-                      <strong className="text-brand-primary">Add Weight:</strong> Lift{' '}
-                      <strong className="text-white font-mono">
+                      <strong className="text-brand-recovery">Add Weight:</strong> Lift{' '}
+                      <strong className="text-white font-mono font-bold">
                         {formattedW} × {targetReps} reps
                       </strong>{' '}
                       on <strong className="text-white">{ex.name}</strong> (you hit {ex.maxReps} reps last time)
@@ -706,13 +720,13 @@ export const TrainTab: React.FC<TrainTabProps> = ({
                   (ex.equipment === 'bodyweight' && !ex.isWeightedCalisthenic);
                 return (
                   <li key={ex.id} className="flex items-start space-x-2">
-                    <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 mt-1.5 shrink-0" />
+                    <span className="w-1.5 h-1.5 rounded-full bg-brand-strain mt-1.5 shrink-0" />
                     <span>
-                      <strong className="text-cyan-300">
+                      <strong className="text-brand-strain">
                         {isBw ? 'Target Reps (Bodyweight):' : 'Add +1 Rep:'}
                       </strong>{' '}
                       Hit{' '}
-                      <strong className="text-white font-mono">
+                      <strong className="text-white font-mono font-bold">
                         {isBw ? `BW × ${targetReps} reps` : `${formattedW} × ${targetReps} reps`}
                       </strong>{' '}
                       on <strong className="text-white">{ex.name}</strong>
@@ -726,7 +740,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
 
               {weightJumpItems.length === 0 && repJumpItems.length === 0 && (
                 <li className="flex items-start space-x-2">
-                  <span className="w-1.5 h-1.5 rounded-full bg-brand-primary mt-1.5 shrink-0" />
+                  <span className="w-1.5 h-1.5 rounded-full bg-brand-recovery mt-1.5 shrink-0" />
                   <span>
                     Hit the target weight and reps listed on each exercise card below with 1–2 reps left in the tank.
                   </span>
@@ -744,10 +758,10 @@ export const TrainTab: React.FC<TrainTabProps> = ({
                 aria-valuemin={0}
                 aria-valuemax={100}
                 aria-label="Workout set completion progress"
-                className="w-full h-2 rounded-full bg-white/[0.08] overflow-hidden"
+                className="w-full h-2.5 rounded-full biometric-track-hatched overflow-hidden border border-white/5"
               >
                 <div
-                  className="h-full bg-brand-primary rounded-full transition-all duration-300 ease-out"
+                  className="h-full bg-brand-recovery rounded-full shadow-[0_0_10px_rgba(0,245,155,0.4)] transition-all duration-300 ease-out"
                   style={{
                     width: `${
                       totalSets > 0
@@ -764,7 +778,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
                     : `${completedSets} of ${totalSets} sets logged`}
                 </span>
                 {liveTonnageKg > 0 && (
-                  <span className="font-mono text-slate-300 font-semibold">
+                  <span className="font-mono text-slate-200 font-bold">
                     {liveTonnageKg.toLocaleString()} kg lifted
                   </span>
                 )}
@@ -775,9 +789,9 @@ export const TrainTab: React.FC<TrainTabProps> = ({
               type="button"
               onClick={handleFinishWorkoutClick}
               disabled={completedSets === 0}
-              className={`px-4 py-2.5 rounded-2xl text-xs font-bold transition-all active:scale-95 flex items-center space-x-1.5 shrink-0 ${
+              className={`px-4 py-2.5 rounded-2xl text-xs font-extrabold transition-all active:scale-95 flex items-center space-x-1.5 shrink-0 ${
                 completedSets > 0
-                  ? 'bg-brand-primary text-black shadow-md shadow-brand-primary/20 hover:opacity-90'
+                  ? 'bg-brand-recovery text-black shadow-lg shadow-brand-recovery/25 hover:opacity-95 glow-recovery'
                   : 'bg-white/[0.06] text-slate-400 cursor-not-allowed'
               }`}
             >

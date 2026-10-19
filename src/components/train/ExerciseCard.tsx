@@ -125,9 +125,9 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
   return (
     <section
       aria-label={exercise.name}
-      className={`rounded-3xl surface-glass p-4 border transition-all space-y-3.5 ${
+      className={`biometric-card p-4.5 border transition-all duration-300 space-y-3.5 ${
         allSetsDone
-          ? 'border-brand-primary/35 bg-brand-primary/[0.03]'
+          ? 'border-brand-recovery/40 shadow-[0_8px_30px_rgba(0,245,155,0.08)]'
           : 'border-white/[0.08]'
       }`}
     >
@@ -136,7 +136,7 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center space-x-2 min-w-0">
             {exerciseIndex !== undefined && totalExercises !== undefined && (
-              <span className="text-xs font-mono font-bold px-2 py-0.5 rounded-md bg-white/[0.08] text-white shrink-0">
+              <span className="text-xs font-mono font-bold px-2 py-0.5 rounded-lg bg-white/[0.08] text-white shrink-0 border border-white/10">
                 {exerciseIndex}/{totalExercises}
               </span>
             )}
@@ -154,7 +154,7 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
                   onOpenPlateCalc(currentWeight);
                 }}
                 aria-label={`Open plate calculator for ${currentWeight} kg`}
-                className="px-2.5 py-1.5 rounded-xl bg-white/[0.06] hover:bg-white/[0.12] text-slate-300 hover:text-white border border-white/[0.08] text-xs font-semibold flex items-center space-x-1 transition-colors"
+                className="px-2.5 py-1.5 rounded-xl biometric-pill hover:bg-white/[0.12] text-slate-300 hover:text-white text-xs font-semibold flex items-center space-x-1 transition-all"
               >
                 <Disc className="w-3.5 h-3.5 stroke-[2]" />
                 <span>Plates</span>
@@ -169,7 +169,7 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
                   onOpenSwap();
                 }}
                 aria-label={`Change exercise from ${exercise.name}`}
-                className="px-2.5 py-1.5 rounded-xl bg-white/[0.06] hover:bg-white/[0.12] text-slate-200 hover:text-white border border-white/[0.08] text-xs font-semibold flex items-center space-x-1 transition-colors"
+                className="px-2.5 py-1.5 rounded-xl biometric-pill hover:bg-white/[0.12] text-slate-200 hover:text-white text-xs font-semibold flex items-center space-x-1 transition-all"
               >
                 <ArrowRightLeft className="w-3.5 h-3.5 stroke-[2]" />
                 <span>Change Exercise</span>
@@ -179,11 +179,11 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
         </div>
 
         <div className="flex items-center justify-between">
-          <h3 className="font-bold text-base text-white tracking-tight">
+          <h3 className="font-extrabold text-base text-white tracking-tight">
             {exercise.name}
           </h3>
           {allSetsDone && (
-            <span className="text-xs font-bold text-brand-primary flex items-center space-x-1">
+            <span className="text-xs font-bold text-brand-recovery flex items-center space-x-1 glow-recovery">
               <CheckCircle2 className="w-4 h-4 stroke-[2]" />
               <span>Done</span>
             </span>
@@ -193,17 +193,17 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
 
       {/* 2. "What Do I Need To Do To Make Progress?" Callout Box */}
       <div
-        className={`p-3 rounded-2xl border space-y-1.5 ${
+        className={`p-3 rounded-2xl border space-y-1.5 transition-colors ${
           readinessState === 'Amber Shield'
             ? 'bg-amber-500/10 border-amber-500/25'
-            : 'bg-brand-primary/[0.08] border-brand-primary/25'
+            : 'bg-brand-recovery/[0.08] border-brand-recovery/25'
         }`}
       >
         <div className="flex items-center justify-between flex-wrap gap-1">
           <div className="flex items-center space-x-1.5">
             <TrendingUp
               className={`w-4 h-4 shrink-0 stroke-[2] ${
-                readinessState === 'Amber Shield' ? 'text-amber-400' : 'text-brand-primary'
+                readinessState === 'Amber Shield' ? 'text-amber-400' : 'text-brand-recovery'
               }`}
             />
             <span className="text-xs font-bold text-white">
@@ -215,10 +215,10 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
           </div>
 
           <span
-            className={`text-xs font-bold px-2 py-0.5 rounded-full ${
+            className={`text-xs font-bold px-2.5 py-0.5 rounded-full border ${
               readinessState === 'Amber Shield'
-                ? 'bg-amber-500/20 text-amber-300'
-                : 'bg-brand-primary/20 text-brand-primary'
+                ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                : 'bg-brand-recovery/20 text-brand-recovery border-brand-recovery/40'
             }`}
           >
             {progressBadge}
@@ -237,7 +237,7 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
 
       {/* 3. Aligned 12-Column Set Logging Table */}
       <div className="space-y-1.5">
-        <div className="grid grid-cols-12 gap-1.5 px-2.5 text-xs font-medium text-slate-400 text-center">
+        <div className="grid grid-cols-12 gap-1.5 px-2.5 text-xs font-bold uppercase tracking-wider text-slate-400 text-center">
           <div className="col-span-1">Set</div>
           <div className="col-span-2">Last</div>
           <div className="col-span-4">Weight (kg)</div>
@@ -267,7 +267,7 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
       </div>
 
       {/* 4. Secondary Milestone & Form Tip (De-emphasized Accordion) */}
-      <div className="px-3 py-2 rounded-2xl bg-black/30 border border-white/[0.05]">
+      <div className="px-3.5 py-2.5 rounded-2xl bg-[#08090C]/80 border border-white/[0.06]">
         <button
           type="button"
           onClick={() => setShowQuestInfo(!showQuestInfo)}
@@ -304,7 +304,7 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
         <button
           type="button"
           onClick={() => handleAddSetWithHaptic(true)}
-          className="py-2 rounded-xl border border-white/[0.08] bg-white/[0.03] hover:bg-white/[0.07] text-xs font-medium text-slate-300 hover:text-white flex items-center justify-center space-x-1 transition-colors active:scale-95"
+          className="py-2.5 rounded-xl biometric-pill hover:bg-white/[0.1] text-xs font-bold text-slate-300 hover:text-white flex items-center justify-center space-x-1.5 transition-all active:scale-95"
         >
           <Plus className="w-3.5 h-3.5 stroke-[2]" />
           <span>Warmup</span>
@@ -313,7 +313,7 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
         <button
           type="button"
           onClick={() => handleAddSetWithHaptic(false)}
-          className="py-2 rounded-xl border border-white/[0.08] bg-white/[0.03] hover:bg-white/[0.07] text-xs font-medium text-slate-200 hover:text-white flex items-center justify-center space-x-1 transition-colors active:scale-95"
+          className="py-2.5 rounded-xl biometric-pill hover:bg-white/[0.1] text-xs font-bold text-slate-200 hover:text-white flex items-center justify-center space-x-1.5 transition-all active:scale-95"
         >
           <Plus className="w-3.5 h-3.5 stroke-[2]" />
           <span>Add Set</span>
@@ -323,7 +323,7 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
           type="button"
           onClick={handleRemoveLastSet}
           disabled={exercise.sets.length <= 1}
-          className="py-2 rounded-xl border border-white/[0.08] bg-white/[0.03] hover:bg-rose-500/10 text-xs font-medium text-slate-400 hover:text-rose-300 disabled:opacity-40 disabled:pointer-events-none flex items-center justify-center space-x-1 transition-colors active:scale-95"
+          className="py-2.5 rounded-xl biometric-pill hover:bg-rose-500/10 text-xs font-bold text-slate-400 hover:text-rose-300 disabled:opacity-40 disabled:pointer-events-none flex items-center justify-center space-x-1.5 transition-all active:scale-95"
         >
           <Minus className="w-3.5 h-3.5 stroke-[2]" />
           <span>Remove</span>

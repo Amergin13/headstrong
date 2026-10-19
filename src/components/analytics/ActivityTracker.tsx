@@ -33,19 +33,19 @@ export const ActivityTracker: React.FC<ActivityTrackerProps> = ({ biometrics }) 
   }));
 
   return (
-    <div className="rounded-3xl surface-glass border border-white/[0.08] p-4 space-y-3">
+    <div className="biometric-card p-4.5 border border-white/[0.08] space-y-3.5">
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="font-bold text-base text-white tracking-tight">
+          <h3 className="font-extrabold text-base text-white tracking-tight">
             Daily Steps &amp; Active Minutes
           </h3>
-          <p className="text-xs text-slate-400 mt-0.5">
+          <p className="text-xs text-slate-400 font-medium mt-0.5">
             Synced from your watch
           </p>
         </div>
 
         {hasMetMomentum ? (
-          <div className="px-2.5 py-1 rounded-full bg-brand-primary/15 border border-brand-primary/30 text-brand-primary text-xs font-bold flex items-center space-x-1">
+          <div className="px-3 py-1 rounded-full bg-brand-recovery/15 border border-brand-recovery/35 text-brand-recovery text-xs font-extrabold flex items-center space-x-1 glow-recovery">
             <Zap className="w-3.5 h-3.5 stroke-[2]" />
             <span>1.25x XP Bonus</span>
           </div>
@@ -58,37 +58,37 @@ export const ActivityTracker: React.FC<ActivityTrackerProps> = ({ biometrics }) 
 
       {/* Dual Activity Tiles */}
       <div className="grid grid-cols-2 gap-2.5">
-        <div className="p-3 rounded-2xl bg-black/40 border border-white/[0.05]">
-          <span className="text-xs text-slate-400 font-semibold block">
+        <div className="p-3.5 rounded-2xl bg-[#0D1015] border border-white/[0.06] space-y-1">
+          <span className="text-xs text-slate-400 font-bold uppercase tracking-wider block">
             Steps Today
           </span>
-          <div className="text-xl font-bold font-mono text-white mt-0.5">
+          <div className="text-2xl font-extrabold font-mono text-white tracking-tight">
             {currentSteps.toLocaleString()}
           </div>
-          <div className="text-xs text-slate-400 mt-0.5">
+          <div className="text-xs text-slate-400 font-medium">
             Goal: {STEP_GOAL.toLocaleString()} ({Math.round((currentSteps / STEP_GOAL) * 100)}%)
           </div>
-          <div className="w-full bg-white/[0.06] h-1.5 rounded-full overflow-hidden mt-2">
+          <div className="w-full biometric-track-hatched h-2.5 rounded-full overflow-hidden border border-white/5 mt-2">
             <div
-              className="bg-cyan-400 h-full rounded-full"
+              className="bg-brand-strain h-full rounded-full shadow-[0_0_10px_rgba(0,178,255,0.4)] transition-all duration-700 ease-out"
               style={{ width: `${Math.min(100, (currentSteps / STEP_GOAL) * 100)}%` }}
             />
           </div>
         </div>
 
-        <div className="p-3 rounded-2xl bg-black/40 border border-white/[0.05]">
-          <span className="text-xs text-slate-400 font-semibold block">
+        <div className="p-3.5 rounded-2xl bg-[#0D1015] border border-white/[0.06] space-y-1">
+          <span className="text-xs text-slate-400 font-bold uppercase tracking-wider block">
             Active Minutes
           </span>
-          <div className="text-xl font-bold font-mono text-white mt-0.5">
+          <div className="text-2xl font-extrabold font-mono text-white tracking-tight">
             {currentAzm} <span className="text-xs text-slate-400 font-normal">min</span>
           </div>
-          <div className="text-xs text-slate-400 mt-0.5">
+          <div className="text-xs text-slate-400 font-medium">
             Goal: {AZM_GOAL} min ({Math.round((currentAzm / AZM_GOAL) * 100)}%)
           </div>
-          <div className="w-full bg-white/[0.06] h-1.5 rounded-full overflow-hidden mt-2">
+          <div className="w-full biometric-track-hatched h-2.5 rounded-full overflow-hidden border border-white/5 mt-2">
             <div
-              className="bg-brand-primary h-full rounded-full"
+              className="bg-brand-recovery h-full rounded-full shadow-[0_0_10px_rgba(0,245,155,0.4)] transition-all duration-700 ease-out"
               style={{ width: `${Math.min(100, (currentAzm / AZM_GOAL) * 100)}%` }}
             />
           </div>
@@ -100,8 +100,8 @@ export const ActivityTracker: React.FC<ActivityTrackerProps> = ({ biometrics }) 
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={chartData} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
             <CartesianGrid stroke="#1E222D" strokeDasharray="2 2" vertical={false} />
-            <XAxis dataKey="date" tick={{ fill: '#64748B', fontSize: 10 }} stroke="#262A36" />
-            <YAxis tick={{ fill: '#64748B', fontSize: 10 }} stroke="#262A36" />
+            <XAxis dataKey="date" tick={{ fill: '#64748B', fontSize: 12 }} stroke="#262A36" />
+            <YAxis tick={{ fill: '#64748B', fontSize: 12 }} stroke="#262A36" />
             <Tooltip
               content={({ active, payload }) => {
                 if (active && payload && payload.length) {

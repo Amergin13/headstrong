@@ -76,24 +76,24 @@ export const MesocycleManager: React.FC<MesocycleManagerProps> = ({
   };
 
   return (
-    <div className="rounded-3xl surface-glass p-4 border border-white/[0.08] space-y-3.5">
+    <div className="biometric-card p-4.5 border border-white/[0.08] space-y-3.5">
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="font-bold text-base text-white tracking-tight">
+          <h3 className="font-extrabold text-base text-white tracking-tight">
             6-Week Training Plan
           </h3>
-          <p className="text-xs text-slate-400 mt-0.5">
+          <p className="text-xs text-slate-400 font-medium mt-0.5">
             Automatically adjusts your sets and effort each week
           </p>
         </div>
 
-        <span className="text-xs font-mono font-bold text-brand-primary px-2.5 py-1 rounded-full bg-brand-primary/10 border border-brand-primary/20">
+        <span className="text-xs font-mono font-bold text-brand-recovery px-2.5 py-1 rounded-full bg-brand-recovery/10 border border-brand-recovery/30">
           Week {currentWeek} of {totalWeeks}
         </span>
       </div>
 
       {/* Week Timeline Pills */}
-      <div className="grid grid-cols-6 gap-1.5 bg-black/40 p-1.5 rounded-2xl border border-white/[0.06]">
+      <div className="grid grid-cols-6 gap-1.5 bg-[#08090C] p-1.5 rounded-2xl border border-white/[0.08]">
         {mesocycleWeeks.map((m) => {
           const isSelected = currentWeek === m.week;
           const isDeload = m.week === 6;
@@ -107,14 +107,14 @@ export const MesocycleManager: React.FC<MesocycleManagerProps> = ({
               className={`py-2 px-1 rounded-xl flex flex-col items-center justify-center transition-all ${
                 isSelected
                   ? isDeload
-                    ? 'bg-amber-500 text-black font-bold shadow-sm'
-                    : 'bg-brand-primary text-black font-bold shadow-sm'
-                  : 'text-slate-300 hover:text-white hover:bg-surface-elevated'
+                    ? 'bg-amber-400 text-black font-extrabold shadow-md glow-amber'
+                    : 'bg-brand-recovery text-black font-extrabold shadow-md glow-recovery'
+                  : 'text-slate-300 hover:text-white hover:bg-white/[0.06]'
               }`}
             >
-              <span className="text-xs font-bold">W{m.week}</span>
+              <span className="text-xs font-extrabold">W{m.week}</span>
               {isScheduledTravel && (
-                <Plane className={`w-2.5 h-2.5 mt-0.5 stroke-[2] ${isSelected ? 'text-black' : 'text-cyan-400'}`} />
+                <Plane className={`w-3 h-3 mt-0.5 stroke-[2] ${isSelected ? 'text-black' : 'text-cyan-400'}`} />
               )}
             </button>
           );
@@ -122,16 +122,16 @@ export const MesocycleManager: React.FC<MesocycleManagerProps> = ({
       </div>
 
       {/* Current Stage Card */}
-      <div className="p-3.5 rounded-2xl bg-surface-elevated border border-white/[0.06] text-xs space-y-1.5">
+      <div className="p-3.5 rounded-2xl bg-[#0D1015] border border-white/[0.08] text-xs space-y-2">
         <div className="flex items-center justify-between">
           <span className="font-bold text-white text-sm">
             {currentStage.title}
           </span>
-          <span className="text-xs font-mono font-semibold text-brand-primary">
+          <span className="text-xs font-mono font-bold text-brand-recovery">
             {currentStage.volume}
           </span>
         </div>
-        <p className="text-xs text-slate-300 leading-relaxed">
+        <p className="text-xs text-slate-300 leading-relaxed font-medium">
           {currentStage.desc}
         </p>
 

@@ -67,17 +67,17 @@ export const KnowledgeGraphCard: React.FC<KnowledgeGraphCardProps> = ({
   };
 
   return (
-    <div className="rounded-3xl surface-glass p-4 border border-white/[0.08] space-y-3.5">
+    <div className="biometric-card p-4.5 border border-white/[0.08] space-y-3.5">
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
           <div className="flex items-center space-x-2">
-            <HeartPulse className="w-4 h-4 text-brand-primary stroke-[2]" />
-            <h3 className="font-bold text-base text-white tracking-tight">
+            <HeartPulse className="w-4 h-4 text-brand-recovery stroke-[2] glow-recovery" />
+            <h3 className="font-extrabold text-base text-white tracking-tight">
               Recovery &amp; Body Insights
             </h3>
           </div>
-          <p className="text-xs text-slate-400 mt-0.5">
+          <p className="text-xs text-slate-400 font-medium mt-0.5">
             How your sleep, joints, and weekly workouts work together
           </p>
         </div>
@@ -85,43 +85,43 @@ export const KnowledgeGraphCard: React.FC<KnowledgeGraphCardProps> = ({
 
       {/* Top Summary Strip */}
       <div className="grid grid-cols-3 gap-2">
-        <div className="p-2.5 rounded-2xl bg-black/50 border border-white/[0.06] text-center">
-          <div className="text-xs text-slate-400 font-semibold">
+        <div className="p-3 rounded-2xl bg-[#0D1015] border border-white/[0.06] text-center">
+          <div className="text-xs text-slate-400 font-bold uppercase tracking-wider">
             Full-Stretch Sets
           </div>
-          <div className="text-sm font-mono font-bold text-brand-primary mt-0.5">
+          <div className="text-sm font-mono font-extrabold text-brand-recovery mt-0.5">
             {pkg.lengthenedStimulusRatio}%
           </div>
-          <div className="text-xs text-slate-400">of weekly sets</div>
+          <div className="text-xs text-slate-400 font-medium">of weekly sets</div>
         </div>
 
-        <div className="p-2.5 rounded-2xl bg-black/50 border border-white/[0.06] text-center">
-          <div className="text-xs text-slate-400 font-semibold">
+        <div className="p-3 rounded-2xl bg-[#0D1015] border border-white/[0.06] text-center">
+          <div className="text-xs text-slate-400 font-bold uppercase tracking-wider">
             Lower Back Load
           </div>
           <div
-            className={`text-sm font-mono font-bold mt-0.5 ${
+            className={`text-sm font-mono font-extrabold mt-0.5 ${
               pkg.systemicAxialLoadScore > 75 ? 'text-amber-400' : 'text-white'
             }`}
           >
             {pkg.systemicAxialLoadScore}%
           </div>
-          <div className="text-xs text-slate-400">heavy lifts</div>
+          <div className="text-xs text-slate-400 font-medium">heavy lifts</div>
         </div>
 
-        <div className="p-2.5 rounded-2xl bg-black/50 border border-white/[0.06] text-center">
-          <div className="text-xs text-slate-400 font-semibold">
+        <div className="p-3 rounded-2xl bg-[#0D1015] border border-white/[0.06] text-center">
+          <div className="text-xs text-slate-400 font-bold uppercase tracking-wider">
             Recovery Score
           </div>
-          <div className="text-sm font-mono font-bold text-brand-primary mt-0.5">
+          <div className="text-sm font-mono font-extrabold text-brand-recovery mt-0.5">
             {pkg.recoveryEfficiencyScore}/100
           </div>
-          <div className="text-xs text-slate-400">readiness</div>
+          <div className="text-xs text-slate-400 font-medium">readiness</div>
         </div>
       </div>
 
       {/* View Mode Switcher */}
-      <div className="grid grid-cols-3 gap-1 bg-black/50 p-1 rounded-2xl border border-white/[0.06]">
+      <div className="grid grid-cols-3 gap-1 bg-[#08090C] p-1 rounded-2xl border border-white/[0.08]">
         {(
           [
             { id: 'overview', label: 'Recovery' },
@@ -138,7 +138,7 @@ export const KnowledgeGraphCard: React.FC<KnowledgeGraphCardProps> = ({
             }}
             className={`py-2 rounded-xl text-xs font-bold transition-all ${
               viewMode === tab.id
-                ? 'bg-brand-primary text-black shadow-sm'
+                ? 'bg-brand-recovery text-black shadow-md glow-recovery'
                 : 'text-slate-300 hover:text-white'
             }`}
           >
