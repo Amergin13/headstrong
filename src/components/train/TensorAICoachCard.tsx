@@ -32,10 +32,10 @@ export const TensorAICoachCard: React.FC<TensorAICoachCardProps> = ({
 
   return (
     <>
-      <div className="biometric-card p-4 border border-white/[0.08] space-y-3 transition-all hover:border-brand-recovery/30">
+      <div className="biometric-card p-4 border border-white/[0.07] space-y-3 transition-all hover:border-brand-primary/30">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-2.5">
-            <div className="w-8 h-8 rounded-xl bg-brand-strain/15 border border-brand-strain/35 flex items-center justify-center text-brand-strain glow-strain">
+            <div className="w-8 h-8 rounded-xl bg-brand-strain/15 border border-brand-strain/35 flex items-center justify-center text-brand-strain">
               <Cpu className="w-4 h-4 stroke-[2]" />
             </div>
             <span className="text-xs font-extrabold text-white tracking-tight">
@@ -47,7 +47,7 @@ export const TensorAICoachCard: React.FC<TensorAICoachCardProps> = ({
             <span
               className={`px-2.5 py-0.5 rounded-full text-xs font-bold flex items-center gap-1 border ${
                 hardware.isPixelDevice
-                  ? 'bg-brand-recovery/15 border-brand-recovery/35 text-brand-recovery glow-recovery'
+                  ? 'bg-brand-primary/15 border-brand-primary/35 text-brand-primary'
                   : 'bg-white/[0.06] border-white/[0.1] text-slate-300'
               }`}
             >
@@ -68,7 +68,7 @@ export const TensorAICoachCard: React.FC<TensorAICoachCardProps> = ({
 
         <div className="flex items-center justify-between pt-2 border-t border-white/[0.06]">
           <span className="text-xs text-slate-400 font-medium flex items-center gap-1">
-            <ShieldCheck className="w-3.5 h-3.5 text-brand-recovery stroke-[2]" />
+            <ShieldCheck className="w-3.5 h-3.5 text-brand-primary stroke-[2]" />
             {hardware.inferenceLatencyMs}ms • 100% On-Device
           </span>
 

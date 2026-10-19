@@ -147,10 +147,10 @@ export const SetRow: React.FC<SetRowProps> = ({
     <div
       className={`grid grid-cols-12 gap-1.5 items-center py-2 px-2.5 rounded-2xl transition-all duration-200 ${
         set.completed
-          ? 'bg-brand-recovery/10 border border-brand-recovery/35 text-white shadow-[0_0_15px_rgba(0,245,155,0.06)]'
+          ? 'bg-brand-primary/10 border border-brand-primary/30 text-white'
           : currentSetType === 'warmup'
           ? 'bg-white/[0.02] border border-white/[0.06]'
-          : 'bg-[#0D1015] border border-white/[0.08] hover:border-white/15'
+          : 'bg-surface-elevated/80 border border-white/[0.07] hover:border-white/15'
       }`}
     >
       {/* 1. Set Number / Type Badge (col-span-1) */}
@@ -180,7 +180,7 @@ export const SetRow: React.FC<SetRowProps> = ({
       </div>
 
       {/* 3. Weight Input (KG) with Steppers (col-span-4) */}
-      <div className="col-span-4 flex items-center bg-[#08090C] rounded-xl border border-white/[0.08] p-0.5">
+      <div className="col-span-4 flex items-center bg-black/60 rounded-xl border border-white/[0.08] p-0.5">
         <button
           type="button"
           onClick={() => handleStepWeight(-weightStep)}
@@ -198,7 +198,7 @@ export const SetRow: React.FC<SetRowProps> = ({
           onFocus={(e) => e.target.select()}
           onChange={(e) => onUpdate({ actualWeightKg: parseFloat(e.target.value) || 0 })}
           className={`flex-1 min-w-0 bg-transparent text-center font-mono text-sm font-extrabold tabular-numbers ${
-            set.completed ? 'text-brand-recovery' : 'text-white'
+            set.completed ? 'text-brand-primary' : 'text-white'
           } focus:outline-none`}
         />
 
@@ -213,7 +213,7 @@ export const SetRow: React.FC<SetRowProps> = ({
       </div>
 
       {/* 4. Reps Input with Steppers (col-span-3) */}
-      <div className="col-span-3 flex items-center bg-[#08090C] rounded-xl border border-white/[0.08] p-0.5">
+      <div className="col-span-3 flex items-center bg-black/60 rounded-xl border border-white/[0.08] p-0.5">
         <button
           type="button"
           onClick={() => handleStepReps(-1)}
@@ -230,7 +230,7 @@ export const SetRow: React.FC<SetRowProps> = ({
           onFocus={(e) => e.target.select()}
           onChange={(e) => onUpdate({ actualReps: parseInt(e.target.value, 10) || 0 })}
           className={`flex-1 min-w-0 bg-transparent text-center font-mono text-sm font-extrabold tabular-numbers ${
-            set.completed ? 'text-brand-recovery' : 'text-white'
+            set.completed ? 'text-brand-primary' : 'text-white'
           } focus:outline-none`}
         />
 
@@ -270,8 +270,8 @@ export const SetRow: React.FC<SetRowProps> = ({
           aria-pressed={set.completed}
           className={`w-8 h-8 rounded-xl flex items-center justify-center transition-all duration-200 active:scale-90 ${
             set.completed
-              ? 'bg-brand-recovery text-black shadow-lg shadow-brand-recovery/25 glow-recovery'
-              : 'bg-[#08090C] hover:bg-white/[0.08] text-slate-400 hover:text-white border border-white/[0.12]'
+              ? 'bg-brand-primary text-black font-extrabold shadow-sm'
+              : 'bg-black/60 hover:bg-white/[0.08] text-slate-400 hover:text-white border border-white/[0.12]'
           }`}
         >
           <Check className="w-4 h-4 stroke-[2.5]" />

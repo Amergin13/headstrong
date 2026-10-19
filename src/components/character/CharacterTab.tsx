@@ -11,7 +11,6 @@ import { XPLeaderboardCard } from './XPLeaderboardCard';
 import { calculateDotsScore } from '../../engine/dots';
 import { Flame, Zap } from 'lucide-react';
 import { triggerHaptic } from '../../utils/haptics';
-import { BiometricParticleOrb } from '../common/BiometricParticleOrb';
 
 interface CharacterTabProps {
   profile: UserProfile;
@@ -56,11 +55,11 @@ export const CharacterTab: React.FC<CharacterTabProps> = ({
 
   return (
     <div className="space-y-3.5 pb-28">
-      {/* 1. Athlete Scorecard & Strength Benchmarks with Luminous Particle Bio-Orb */}
-      <div className="biometric-card p-4.5 space-y-4 border border-white/[0.08]">
+      {/* 1. Athlete Scorecard & Strength Benchmarks */}
+      <div className="biometric-card p-4 space-y-3.5 border border-white/[0.07]">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3">
-            <div className="w-11 h-11 rounded-2xl bg-brand-recovery/15 border border-brand-recovery/35 flex items-center justify-center font-extrabold text-brand-recovery text-base shadow-[0_0_12px_rgba(0,245,155,0.2)]">
+            <div className="w-11 h-11 rounded-2xl bg-white/[0.06] border border-white/[0.08] flex items-center justify-center font-extrabold text-white text-base">
               {profile.name.charAt(0)}
             </div>
             <div>
@@ -68,7 +67,7 @@ export const CharacterTab: React.FC<CharacterTabProps> = ({
                 <h2 className="text-base font-extrabold text-white tracking-tight">
                   {profile.name}
                 </h2>
-                <span className="text-xs font-mono px-2 py-0.5 rounded-full bg-white/[0.08] text-brand-recovery font-bold border border-white/10">
+                <span className="text-xs font-mono px-2 py-0.5 rounded-full bg-white/[0.08] text-brand-primary font-bold border border-white/10">
                   Lv.{profile.level}
                 </span>
               </div>
@@ -78,30 +77,34 @@ export const CharacterTab: React.FC<CharacterTabProps> = ({
             </div>
           </div>
 
-          <span className="text-xs font-bold px-3 py-1.5 rounded-full bg-brand-recovery/10 text-brand-recovery border border-brand-recovery/30">
+          <span className="text-xs font-bold px-3 py-1.5 rounded-full bg-white/[0.06] text-slate-200 border border-white/[0.08]">
             Goal: {friendlyGoal}
           </span>
         </div>
 
-        {/* Hero Bio-Orb & Combined Max Grid */}
-        <div className="flex flex-col sm:flex-row items-center justify-around gap-4 p-3.5 rounded-2xl bg-[#08090C]/80 border border-white/[0.06]">
-          {/* Luminous Bio-Orb */}
-          <BiometricParticleOrb
-            value={dotsScore}
-            label="DOTS SCORE"
-            badge="RELATIVE STRENGTH"
-            sublabel={`Adjusted for ${bodyweightEmaKg} kg BW`}
-            variant="emerald"
-            size="md"
-          />
+        {/* Key Strength Benchmarks (2-Column Grid) */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-3 border-t border-white/[0.06]">
+          <div className="p-3.5 rounded-2xl bg-surface-elevated border border-white/[0.06] space-y-1">
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-400 block">
+              Strength-to-Weight Score
+            </span>
+            <div className="flex items-baseline space-x-2 mt-1">
+              <span className="text-2xl sm:text-3xl font-extrabold font-mono text-white tabular-numbers tracking-tight">
+                {dotsScore}
+              </span>
+              <span className="text-xs font-bold text-slate-400">pts</span>
+            </div>
+            <span className="text-xs text-slate-400 font-medium block mt-0.5">
+              Adjusted for {bodyweightEmaKg} kg bodyweight
+            </span>
+          </div>
 
-          {/* Big 3 Max Card */}
-          <div className="flex-1 w-full sm:w-auto p-3.5 rounded-2xl bg-[#11141B] border border-white/[0.08] space-y-2">
+          <div className="p-3.5 rounded-2xl bg-surface-elevated border border-white/[0.06] space-y-1">
             <span className="text-xs font-bold uppercase tracking-wider text-slate-400 block">
               Combined Big 3 Max
             </span>
-            <div className="flex items-baseline space-x-2">
-              <span className="text-3xl font-extrabold font-mono text-brand-recovery tabular-numbers tracking-tight">
+            <div className="flex items-baseline space-x-2 mt-1">
+              <span className="text-2xl sm:text-3xl font-extrabold font-mono text-brand-primary tabular-numbers tracking-tight">
                 {powerliftingTotalE1rm}
               </span>
               <span className="text-xs font-bold text-slate-300">
@@ -132,9 +135,9 @@ export const CharacterTab: React.FC<CharacterTabProps> = ({
             triggerHaptic('light');
             setSubView('volume');
           }}
-          className={`py-2 px-1 rounded-xl text-xs font-bold transition-all text-center ${
+          className={`py-2 px-1 rounded-xl text-xs font-bold transition-all text-center min-h-[44px] flex items-center justify-center ${
             subView === 'volume'
-              ? 'bg-brand-recovery text-black shadow-md glow-recovery'
+              ? 'bg-brand-primary text-black shadow-sm'
               : 'text-slate-300 hover:text-white'
           }`}
         >
@@ -147,9 +150,9 @@ export const CharacterTab: React.FC<CharacterTabProps> = ({
             triggerHaptic('light');
             setSubView('balance');
           }}
-          className={`py-2 px-1 rounded-xl text-xs font-bold transition-all text-center ${
+          className={`py-2 px-1 rounded-xl text-xs font-bold transition-all text-center min-h-[44px] flex items-center justify-center ${
             subView === 'balance'
-              ? 'bg-brand-recovery text-black shadow-md glow-recovery'
+              ? 'bg-brand-primary text-black shadow-sm'
               : 'text-slate-300 hover:text-white'
           }`}
         >
@@ -162,9 +165,9 @@ export const CharacterTab: React.FC<CharacterTabProps> = ({
             triggerHaptic('light');
             setSubView('leaderboard');
           }}
-          className={`py-2 px-1 rounded-xl text-xs font-bold transition-all text-center ${
+          className={`py-2 px-1 rounded-xl text-xs font-bold transition-all text-center min-h-[44px] flex items-center justify-center ${
             subView === 'leaderboard'
-              ? 'bg-brand-recovery text-black shadow-md glow-recovery'
+              ? 'bg-brand-primary text-black shadow-sm'
               : 'text-slate-300 hover:text-white'
           }`}
         >

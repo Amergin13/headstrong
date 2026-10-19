@@ -87,7 +87,7 @@ export const MesocycleManager: React.FC<MesocycleManagerProps> = ({
           </p>
         </div>
 
-        <span className="text-xs font-mono font-bold text-brand-recovery px-2.5 py-1 rounded-full bg-brand-recovery/10 border border-brand-recovery/30">
+        <span className="text-xs font-mono font-bold text-brand-primary px-2.5 py-1 rounded-full bg-brand-primary/10 border border-brand-primary/30">
           Week {currentWeek} of {totalWeeks}
         </span>
       </div>
@@ -107,8 +107,8 @@ export const MesocycleManager: React.FC<MesocycleManagerProps> = ({
               className={`py-2 px-1 rounded-xl flex flex-col items-center justify-center transition-all ${
                 isSelected
                   ? isDeload
-                    ? 'bg-amber-400 text-black font-extrabold shadow-md glow-amber'
-                    : 'bg-brand-recovery text-black font-extrabold shadow-md glow-recovery'
+                    ? 'bg-amber-400 text-black font-extrabold shadow-sm'
+                    : 'bg-brand-primary text-black font-extrabold shadow-sm'
                   : 'text-slate-300 hover:text-white hover:bg-white/[0.06]'
               }`}
             >
@@ -127,7 +127,7 @@ export const MesocycleManager: React.FC<MesocycleManagerProps> = ({
           <span className="font-bold text-white text-sm">
             {currentStage.title}
           </span>
-          <span className="text-xs font-mono font-bold text-brand-recovery">
+          <span className="text-xs font-mono font-bold text-brand-primary">
             {currentStage.volume}
           </span>
         </div>

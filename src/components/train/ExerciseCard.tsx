@@ -127,8 +127,8 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
       aria-label={exercise.name}
       className={`biometric-card p-4.5 border transition-all duration-300 space-y-3.5 ${
         allSetsDone
-          ? 'border-brand-recovery/40 shadow-[0_8px_30px_rgba(0,245,155,0.08)]'
-          : 'border-white/[0.08]'
+          ? 'border-brand-primary/40'
+          : 'border-white/[0.07]'
       }`}
     >
       {/* 1. Card Header: Step Number, Muscle & Equipment Metadata, Exercise Name & Single Swap Action */}
@@ -154,7 +154,7 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
                   onOpenPlateCalc(currentWeight);
                 }}
                 aria-label={`Open plate calculator for ${currentWeight} kg`}
-                className="px-2.5 py-1.5 rounded-xl biometric-pill hover:bg-white/[0.12] text-slate-300 hover:text-white text-xs font-semibold flex items-center space-x-1 transition-all"
+                className="px-2.5 py-1.5 rounded-xl biometric-pill hover:bg-white/[0.12] text-slate-300 hover:text-white text-xs font-semibold flex items-center space-x-1 transition-all min-h-[44px]"
               >
                 <Disc className="w-3.5 h-3.5 stroke-[2]" />
                 <span>Plates</span>
@@ -169,7 +169,7 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
                   onOpenSwap();
                 }}
                 aria-label={`Change exercise from ${exercise.name}`}
-                className="px-2.5 py-1.5 rounded-xl biometric-pill hover:bg-white/[0.12] text-slate-200 hover:text-white text-xs font-semibold flex items-center space-x-1 transition-all"
+                className="px-2.5 py-1.5 rounded-xl biometric-pill hover:bg-white/[0.12] text-slate-200 hover:text-white text-xs font-semibold flex items-center space-x-1 transition-all min-h-[44px]"
               >
                 <ArrowRightLeft className="w-3.5 h-3.5 stroke-[2]" />
                 <span>Change Exercise</span>
@@ -183,7 +183,7 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
             {exercise.name}
           </h3>
           {allSetsDone && (
-            <span className="text-xs font-bold text-brand-recovery flex items-center space-x-1 glow-recovery">
+            <span className="text-xs font-bold text-brand-primary flex items-center space-x-1">
               <CheckCircle2 className="w-4 h-4 stroke-[2]" />
               <span>Done</span>
             </span>
@@ -196,14 +196,14 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
         className={`p-3 rounded-2xl border space-y-1.5 transition-colors ${
           readinessState === 'Amber Shield'
             ? 'bg-amber-500/10 border-amber-500/25'
-            : 'bg-brand-recovery/[0.08] border-brand-recovery/25'
+            : 'bg-brand-primary/[0.08] border-brand-primary/25'
         }`}
       >
         <div className="flex items-center justify-between flex-wrap gap-1">
           <div className="flex items-center space-x-1.5">
             <TrendingUp
               className={`w-4 h-4 shrink-0 stroke-[2] ${
-                readinessState === 'Amber Shield' ? 'text-amber-400' : 'text-brand-recovery'
+                readinessState === 'Amber Shield' ? 'text-amber-400' : 'text-brand-primary'
               }`}
             />
             <span className="text-xs font-bold text-white">
@@ -218,7 +218,7 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
             className={`text-xs font-bold px-2.5 py-0.5 rounded-full border ${
               readinessState === 'Amber Shield'
                 ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
-                : 'bg-brand-recovery/20 text-brand-recovery border-brand-recovery/40'
+                : 'bg-brand-primary/20 text-brand-primary border-brand-primary/40'
             }`}
           >
             {progressBadge}

@@ -18,44 +18,37 @@ const VARIANT_CONFIG: Record<
   BiometricGaugeVariant,
   {
     stroke: string;
-    glowClass: string;
     textClass: string;
     badgeBg: string;
   }
 > = {
   recovery: {
     stroke: '#00F59B',
-    glowClass: 'glow-recovery',
-    textClass: 'text-brand-recovery',
-    badgeBg: 'bg-brand-recovery/10 text-brand-recovery border-brand-recovery/30',
+    textClass: 'text-brand-primary',
+    badgeBg: 'bg-brand-primary/10 text-brand-primary border-brand-primary/30',
   },
   emerald: {
     stroke: '#10B981',
-    glowClass: 'glow-recovery',
     textClass: 'text-emerald-400',
     badgeBg: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30',
   },
   strain: {
-    stroke: '#00B2FF',
-    glowClass: 'glow-strain',
+    stroke: '#00B4D8',
     textClass: 'text-brand-strain',
     badgeBg: 'bg-brand-strain/10 text-brand-strain border-brand-strain/30',
   },
   sleep: {
     stroke: '#00E5FF',
-    glowClass: 'glow-strain',
     textClass: 'text-cyan-400',
     badgeBg: 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30',
   },
   amber: {
     stroke: '#FFB800',
-    glowClass: 'glow-amber',
     textClass: 'text-amber-400',
     badgeBg: 'bg-amber-500/10 text-amber-400 border-amber-500/30',
   },
   purple: {
     stroke: '#A855F7',
-    glowClass: '',
     textClass: 'text-purple-400',
     badgeBg: 'bg-purple-500/10 text-purple-400 border-purple-500/30',
   },
@@ -123,8 +116,7 @@ export const BiometricCircularGauge: React.FC<BiometricCircularGaugeProps> = ({
             strokeWidth={strokeWidth}
             strokeDasharray={circumference}
             strokeDashoffset={strokeDashoffset}
-            strokeLinecap="round"
-            className={`transition-all duration-700 ease-out ${cfg.glowClass}`}
+            className="transition-all duration-700 ease-out"
           />
         </svg>
 

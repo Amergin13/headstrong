@@ -70,10 +70,10 @@ export const ReadinessBanner: React.FC<ReadinessBannerProps> = ({
     <div
       className={`biometric-card p-4 transition-all duration-300 border ${
         isPrimed
-          ? 'border-brand-recovery/30 shadow-[0_8px_30px_rgba(0,245,155,0.08)]'
+          ? 'border-brand-primary/30'
           : isAmber
-          ? 'border-brand-amber/35 shadow-[0_8px_30px_rgba(255,184,0,0.08)]'
-          : 'border-white/[0.08]'
+          ? 'border-amber-500/30'
+          : 'border-white/[0.07]'
       }`}
     >
       {/* Interactive Bar: Header & Summary */}
@@ -91,7 +91,7 @@ export const ReadinessBanner: React.FC<ReadinessBannerProps> = ({
           <div
             className={`w-9 h-9 rounded-2xl flex items-center justify-center shrink-0 border ${
               isPrimed
-                ? 'bg-brand-recovery/15 border-brand-recovery/35 text-brand-recovery glow-recovery'
+                ? 'bg-brand-primary/15 border-brand-primary/35 text-brand-primary'
                 : isAmber
                 ? 'bg-amber-500/15 border-amber-500/35 text-amber-400'
                 : 'bg-brand-strain/15 border-brand-strain/35 text-brand-strain'
@@ -112,7 +112,7 @@ export const ReadinessBanner: React.FC<ReadinessBannerProps> = ({
               <span
                 className={`text-xs font-extrabold ${
                   isPrimed
-                    ? 'text-brand-recovery'
+                    ? 'text-brand-primary'
                     : isAmber
                     ? 'text-amber-400'
                     : 'text-white'
@@ -136,7 +136,7 @@ export const ReadinessBanner: React.FC<ReadinessBannerProps> = ({
           <span
             className={`px-2.5 py-1 rounded-full text-xs font-bold font-mono border ${
               isPrimed
-                ? 'bg-brand-recovery/10 text-brand-recovery border-brand-recovery/30 glow-recovery'
+                ? 'bg-brand-primary/10 text-brand-primary border-brand-primary/30'
                 : isAmber
                 ? 'bg-amber-500/10 text-amber-400 border-amber-500/30'
                 : 'bg-white/5 text-slate-300 border-white/10'
@@ -158,7 +158,7 @@ export const ReadinessBanner: React.FC<ReadinessBannerProps> = ({
       {expanded && (
         <div className="pt-4 mt-4 border-t border-white/[0.08] space-y-4">
           {/* Hero Recovery Ring & Primed Physiological Guidance */}
-          <div className="flex flex-col sm:flex-row items-center sm:items-start justify-between gap-4 p-4 rounded-2xl bg-[#08090C]/80 border border-white/[0.06]">
+          <div className="flex flex-col sm:flex-row items-center sm:items-start justify-between gap-4 p-4 rounded-2xl bg-surface-elevated/70 border border-white/[0.06]">
             <div className="shrink-0 flex items-center justify-center">
               <BiometricCircularGauge
                 value={recoveryPercent}
@@ -175,7 +175,7 @@ export const ReadinessBanner: React.FC<ReadinessBannerProps> = ({
                 <span
                   className={`inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-xs font-extrabold border ${
                     isPrimed
-                      ? 'bg-brand-recovery/15 text-brand-recovery border-brand-recovery/35 glow-recovery'
+                      ? 'bg-brand-primary/15 text-brand-primary border-brand-primary/35'
                       : isAmber
                       ? 'bg-amber-500/15 text-amber-400 border-amber-500/35'
                       : 'bg-brand-strain/15 text-brand-strain border-brand-strain/35'
@@ -187,7 +187,7 @@ export const ReadinessBanner: React.FC<ReadinessBannerProps> = ({
 
                 {tensorHardware && (
                   <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full bg-white/[0.06] text-slate-300 border border-white/[0.08] text-xs font-semibold">
-                    <ShieldCheck className="w-3 h-3 text-brand-recovery stroke-[2]" />
+                    <ShieldCheck className="w-3 h-3 text-brand-primary stroke-[2]" />
                     <span>
                       {tensorHardware.isPixelDevice
                         ? `${tensorHardware.chipModel.replace('Google ', '')} TPU`
@@ -202,8 +202,8 @@ export const ReadinessBanner: React.FC<ReadinessBannerProps> = ({
                 {summary}
               </p>
 
-              <div className="p-3 rounded-xl bg-black/50 border border-white/[0.06] text-xs text-slate-300 font-medium space-y-1">
-                <div className="flex items-center space-x-1.5 text-brand-recovery font-bold">
+              <div className="p-3 rounded-xl bg-black/40 border border-white/[0.06] text-xs text-slate-300 font-medium space-y-1">
+                <div className="flex items-center space-x-1.5 text-brand-primary font-bold">
                   <span>💡 Tactical Overload Cue:</span>
                 </div>
                 <p className="text-slate-200 leading-relaxed">
@@ -215,7 +215,7 @@ export const ReadinessBanner: React.FC<ReadinessBannerProps> = ({
 
           {/* 3 Horological Telemetry Tiles */}
           <div className="grid grid-cols-3 gap-2.5 text-left">
-            <div className="p-3 rounded-2xl bg-[#11141B] border border-white/[0.08] space-y-1">
+            <div className="p-3 rounded-2xl bg-surface-elevated border border-white/[0.06] space-y-1">
               <span className="text-xs font-bold tracking-wider text-slate-400 uppercase block">
                 Heart Recovery
               </span>
@@ -224,7 +224,7 @@ export const ReadinessBanner: React.FC<ReadinessBannerProps> = ({
               </div>
               <span
                 className={`text-xs font-semibold block ${
-                  readiness.hrvChangePercent >= 0 ? 'text-brand-recovery' : 'text-amber-400'
+                  readiness.hrvChangePercent >= 0 ? 'text-brand-primary' : 'text-amber-400'
                 }`}
               >
                 {readiness.hrvChangePercent >= 0
@@ -233,7 +233,7 @@ export const ReadinessBanner: React.FC<ReadinessBannerProps> = ({
               </span>
             </div>
 
-            <div className="p-3 rounded-2xl bg-[#11141B] border border-white/[0.08] space-y-1">
+            <div className="p-3 rounded-2xl bg-surface-elevated border border-white/[0.06] space-y-1">
               <span className="text-xs font-bold tracking-wider text-slate-400 uppercase block">
                 Resting HR
               </span>
@@ -242,7 +242,7 @@ export const ReadinessBanner: React.FC<ReadinessBannerProps> = ({
               </div>
               <span
                 className={`text-xs font-semibold block ${
-                  readiness.rhrDeltaBpm <= 0 ? 'text-brand-recovery' : 'text-amber-400'
+                  readiness.rhrDeltaBpm <= 0 ? 'text-brand-primary' : 'text-amber-400'
                 }`}
               >
                 {readiness.rhrDeltaBpm <= 0
@@ -251,7 +251,7 @@ export const ReadinessBanner: React.FC<ReadinessBannerProps> = ({
               </span>
             </div>
 
-            <div className="p-3 rounded-2xl bg-[#11141B] border border-white/[0.08] space-y-1">
+            <div className="p-3 rounded-2xl bg-surface-elevated border border-white/[0.06] space-y-1">
               <span className="text-xs font-bold tracking-wider text-slate-400 uppercase block">
                 Sleep
               </span>
@@ -291,10 +291,10 @@ export const ReadinessBanner: React.FC<ReadinessBannerProps> = ({
                     className={`flex-1 sm:flex-initial px-3.5 py-2.5 min-h-[44px] flex items-center justify-center rounded-xl text-xs font-bold transition-all ${
                       isSelected
                         ? st === 'Primed'
-                          ? 'bg-brand-recovery text-black shadow-md glow-recovery'
+                          ? 'bg-brand-primary text-black shadow-sm'
                           : st === 'Amber Shield'
-                          ? 'bg-amber-400 text-black shadow-md'
-                          : 'bg-white text-black shadow-md'
+                          ? 'bg-amber-400 text-black shadow-sm'
+                          : 'bg-white text-black shadow-sm'
                         : 'text-slate-300 hover:text-white'
                     }`}
                   >

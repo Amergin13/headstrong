@@ -45,7 +45,7 @@ export const ActivityTracker: React.FC<ActivityTrackerProps> = ({ biometrics }) 
         </div>
 
         {hasMetMomentum ? (
-          <div className="px-3 py-1 rounded-full bg-brand-recovery/15 border border-brand-recovery/35 text-brand-recovery text-xs font-extrabold flex items-center space-x-1 glow-recovery">
+          <div className="px-3 py-1 rounded-full bg-brand-primary/15 border border-brand-primary/35 text-brand-primary text-xs font-extrabold flex items-center space-x-1">
             <Zap className="w-3.5 h-3.5 stroke-[2]" />
             <span>1.25x XP Bonus</span>
           </div>
@@ -58,7 +58,7 @@ export const ActivityTracker: React.FC<ActivityTrackerProps> = ({ biometrics }) 
 
       {/* Dual Activity Tiles */}
       <div className="grid grid-cols-2 gap-2.5">
-        <div className="p-3.5 rounded-2xl bg-[#0D1015] border border-white/[0.06] space-y-1">
+        <div className="p-3.5 rounded-2xl bg-surface-elevated border border-white/[0.06] space-y-1">
           <span className="text-xs text-slate-400 font-bold uppercase tracking-wider block">
             Steps Today
           </span>
@@ -68,15 +68,15 @@ export const ActivityTracker: React.FC<ActivityTrackerProps> = ({ biometrics }) 
           <div className="text-xs text-slate-400 font-medium">
             Goal: {STEP_GOAL.toLocaleString()} ({Math.round((currentSteps / STEP_GOAL) * 100)}%)
           </div>
-          <div className="w-full biometric-track-hatched h-2.5 rounded-full overflow-hidden border border-white/5 mt-2">
+          <div className="w-full bg-white/[0.06] h-2.5 rounded-full overflow-hidden border border-white/5 mt-2">
             <div
-              className="bg-brand-strain h-full rounded-full shadow-[0_0_10px_rgba(0,178,255,0.4)] transition-all duration-700 ease-out"
+              className="bg-brand-strain h-full rounded-full transition-all duration-700 ease-out"
               style={{ width: `${Math.min(100, (currentSteps / STEP_GOAL) * 100)}%` }}
             />
           </div>
         </div>
 
-        <div className="p-3.5 rounded-2xl bg-[#0D1015] border border-white/[0.06] space-y-1">
+        <div className="p-3.5 rounded-2xl bg-surface-elevated border border-white/[0.06] space-y-1">
           <span className="text-xs text-slate-400 font-bold uppercase tracking-wider block">
             Active Minutes
           </span>
@@ -86,9 +86,9 @@ export const ActivityTracker: React.FC<ActivityTrackerProps> = ({ biometrics }) 
           <div className="text-xs text-slate-400 font-medium">
             Goal: {AZM_GOAL} min ({Math.round((currentAzm / AZM_GOAL) * 100)}%)
           </div>
-          <div className="w-full biometric-track-hatched h-2.5 rounded-full overflow-hidden border border-white/5 mt-2">
+          <div className="w-full bg-white/[0.06] h-2.5 rounded-full overflow-hidden border border-white/5 mt-2">
             <div
-              className="bg-brand-recovery h-full rounded-full shadow-[0_0_10px_rgba(0,245,155,0.4)] transition-all duration-700 ease-out"
+              className="bg-brand-primary h-full rounded-full transition-all duration-700 ease-out"
               style={{ width: `${Math.min(100, (currentAzm / AZM_GOAL) * 100)}%` }}
             />
           </div>

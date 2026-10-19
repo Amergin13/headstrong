@@ -73,7 +73,7 @@ export const VolumeTracker: React.FC<VolumeTrackerProps> = ({ weeklyVolume }) =>
             <h3 className="font-extrabold text-base text-white tracking-tight">
               Weekly Sets by Muscle
             </h3>
-            <span className="text-xs font-mono font-bold px-2.5 py-0.5 rounded-full bg-brand-recovery/15 text-brand-recovery border border-brand-recovery/30">
+            <span className="text-xs font-mono font-bold px-2.5 py-0.5 rounded-full bg-brand-primary/15 text-brand-primary border border-brand-primary/30">
               {optimalCount}/{muscleKeys.length} on target
             </span>
           </div>
@@ -91,7 +91,7 @@ export const VolumeTracker: React.FC<VolumeTrackerProps> = ({ weeklyVolume }) =>
           aria-label="Learn how weekly set targets work"
           className="px-2.5 py-1.5 rounded-xl biometric-pill hover:bg-white/[0.12] text-slate-200 hover:text-white transition-all flex items-center space-x-1.5 text-xs font-semibold"
         >
-          <BookOpen className="w-3.5 h-3.5 text-brand-recovery stroke-[2]" />
+          <BookOpen className="w-3.5 h-3.5 text-brand-primary stroke-[2]" />
           <span>How it works</span>
         </button>
       </div>
@@ -106,7 +106,7 @@ export const VolumeTracker: React.FC<VolumeTrackerProps> = ({ weeklyVolume }) =>
               onClick={() => handleFilterClick(cat)}
               className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
                 activeFilter === cat
-                  ? 'bg-brand-recovery text-black shadow-md glow-recovery'
+                  ? 'bg-brand-primary text-black font-extrabold shadow-sm'
                   : 'biometric-pill text-slate-300 hover:text-white hover:bg-white/[0.08]'
               }`}
             >
@@ -139,7 +139,7 @@ export const VolumeTracker: React.FC<VolumeTrackerProps> = ({ weeklyVolume }) =>
               key={key}
               className={`p-3.5 rounded-2xl border transition-all duration-200 ${
                 isExpanded
-                  ? 'bg-[#151921] border-brand-recovery/40 shadow-lg'
+                  ? 'bg-[#151921] border-brand-primary/40 shadow-lg'
                   : 'bg-[#0D1015] hover:bg-[#11141B] border-white/[0.06]'
               }`}
             >
@@ -158,7 +158,7 @@ export const VolumeTracker: React.FC<VolumeTrackerProps> = ({ weeklyVolume }) =>
                       <span
                         className={`font-bold text-sm ${
                           isOptimal
-                            ? 'text-brand-recovery'
+                            ? 'text-brand-primary'
                             : isAboveMrv
                             ? 'text-rose-400'
                             : isNearMrv
@@ -181,10 +181,10 @@ export const VolumeTracker: React.FC<VolumeTrackerProps> = ({ weeklyVolume }) =>
                   </div>
                 </div>
 
-                {/* Progress Bar with Target Zone & Diagonal Hatched Channel */}
-                <div className="relative w-full biometric-track-hatched h-3 rounded-full overflow-hidden border border-white/5">
+                {/* Progress Bar with Target Zone */}
+                <div className="relative w-full bg-white/[0.04] h-2.5 rounded-full overflow-hidden border border-white/[0.06]">
                   <div
-                    className="absolute top-0 bottom-0 bg-brand-recovery/20 border-x border-brand-recovery/40 z-0"
+                    className="absolute top-0 bottom-0 bg-brand-primary/15 border-x border-brand-primary/30 z-0"
                     style={{
                       left: `${mavLeftPercent}%`,
                       width: `${mavWidthPercent}%`,
@@ -193,15 +193,15 @@ export const VolumeTracker: React.FC<VolumeTrackerProps> = ({ weeklyVolume }) =>
                   />
 
                   <div
-                    className={`h-full rounded-full transition-all duration-700 ease-out relative z-10 ${
+                    className={`h-full rounded-full transition-all duration-500 ease-out relative z-10 ${
                       isOptimal
-                        ? 'bg-brand-recovery shadow-[0_0_12px_rgba(0,245,155,0.4)]'
+                        ? 'bg-brand-primary'
                         : isAboveMrv
-                        ? 'bg-rose-500 shadow-[0_0_12px_rgba(244,63,94,0.4)]'
+                        ? 'bg-rose-500'
                         : isNearMrv
-                        ? 'bg-amber-400 shadow-[0_0_12px_rgba(251,191,36,0.4)]'
+                        ? 'bg-amber-400'
                         : isEffective
-                        ? 'bg-brand-strain shadow-[0_0_12px_rgba(0,178,255,0.4)]'
+                        ? 'bg-cyan-400'
                         : 'bg-slate-500'
                     }`}
                     style={{ width: `${actualFillPercent}%` }}
@@ -215,7 +215,7 @@ export const VolumeTracker: React.FC<VolumeTrackerProps> = ({ weeklyVolume }) =>
                   </span>
 
                   <span className={`font-semibold flex items-center space-x-1 ${evaluation.statusColor}`}>
-                    {isOptimal && <CheckCircle2 className="w-3.5 h-3.5 text-brand-recovery stroke-[2]" />}
+                    {isOptimal && <CheckCircle2 className="w-3.5 h-3.5 text-brand-primary stroke-[2]" />}
                     {isAboveMrv && <AlertTriangle className="w-3.5 h-3.5 text-rose-400 stroke-[2]" />}
                     {isNearMrv && <Flame className="w-3.5 h-3.5 text-amber-400 stroke-[2]" />}
                     <span>{evaluation.statusLabel}</span>

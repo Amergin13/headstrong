@@ -33,16 +33,16 @@ export const Header: React.FC<HeaderProps> = ({
               <span className="font-extrabold text-sm tracking-tight text-white">
                 HEADSTRONG
               </span>
-              <span className="text-xs font-mono px-1.5 py-0.5 rounded-md bg-white/[0.06] text-brand-recovery font-bold border border-white/[0.08]">
+              <span className="text-xs font-mono px-1.5 py-0.5 rounded-md bg-white/[0.06] text-brand-primary font-bold border border-white/[0.08]">
                 Lv.{profile.level}
               </span>
             </div>
 
             {/* Subtle XP progress bar */}
             <div className="flex items-center space-x-2 mt-0.5">
-              <div className="w-20 h-1.5 bg-[#181E27] rounded-full overflow-hidden">
+              <div className="w-20 h-1.5 bg-white/[0.06] rounded-full overflow-hidden">
                 <div
-                  className="h-full bg-brand-recovery rounded-full shadow-[0_0_8px_rgba(0,245,155,0.4)] transition-all duration-300"
+                  className="h-full bg-brand-primary rounded-full transition-all duration-300"
                   style={{ width: `${xpPercent}%` }}
                 />
               </div>
@@ -73,7 +73,7 @@ export const Header: React.FC<HeaderProps> = ({
                 onOpenAICoach();
               }}
               aria-label="Open On-Device AI Coach"
-              className="flex items-center space-x-1.5 px-2.5 py-1 rounded-full text-xs font-bold border border-brand-strain/30 bg-brand-strain/10 text-brand-strain hover:bg-brand-strain/20 transition-all active:scale-95"
+              className="flex items-center space-x-1.5 px-2.5 py-1 rounded-full text-xs font-bold border border-brand-strain/30 bg-brand-strain/10 text-brand-strain hover:bg-brand-strain/20 transition-all active:scale-95 min-h-[44px]"
               title="On-Device AI Coach"
             >
               <Cpu className="w-3.5 h-3.5 stroke-[2]" />
@@ -89,11 +89,11 @@ export const Header: React.FC<HeaderProps> = ({
               onOpenWatchSync();
             }}
             aria-label="Open Google Pixel Watch Recovery and Sync"
-            className={`flex items-center space-x-1.5 px-2.5 py-1 rounded-full text-xs font-bold border transition-all active:scale-95 ${
+            className={`flex items-center space-x-1.5 px-2.5 py-1 rounded-full text-xs font-bold border transition-all active:scale-95 min-h-[44px] ${
               readinessState === 'Primed'
-                ? 'bg-brand-recovery/[0.1] border-brand-recovery/35 text-brand-recovery glow-recovery'
+                ? 'bg-brand-primary/[0.1] border-brand-primary/35 text-brand-primary'
                 : readinessState === 'Amber Shield'
-                ? 'bg-amber-500/[0.1] border-amber-500/35 text-amber-400 glow-amber'
+                ? 'bg-amber-500/[0.1] border-amber-500/35 text-amber-400'
                 : 'biometric-pill text-slate-200 hover:text-white'
             }`}
             title="Google Pixel Watch Sync"
@@ -103,7 +103,7 @@ export const Header: React.FC<HeaderProps> = ({
             <span
               className={`w-1.5 h-1.5 rounded-full ${
                 readinessState === 'Primed'
-                  ? 'bg-brand-recovery animate-pulse'
+                  ? 'bg-brand-primary animate-pulse'
                   : readinessState === 'Amber Shield'
                   ? 'bg-amber-400 animate-pulse'
                   : 'bg-brand-strain'

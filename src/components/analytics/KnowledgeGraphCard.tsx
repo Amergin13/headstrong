@@ -72,7 +72,7 @@ export const KnowledgeGraphCard: React.FC<KnowledgeGraphCardProps> = ({
       <div className="flex items-start justify-between">
         <div>
           <div className="flex items-center space-x-2">
-            <HeartPulse className="w-4 h-4 text-brand-recovery stroke-[2] glow-recovery" />
+            <HeartPulse className="w-4 h-4 text-brand-primary stroke-[2]" />
             <h3 className="font-extrabold text-base text-white tracking-tight">
               Recovery &amp; Body Insights
             </h3>
@@ -85,17 +85,17 @@ export const KnowledgeGraphCard: React.FC<KnowledgeGraphCardProps> = ({
 
       {/* Top Summary Strip */}
       <div className="grid grid-cols-3 gap-2">
-        <div className="p-3 rounded-2xl bg-[#0D1015] border border-white/[0.06] text-center">
+        <div className="p-3 rounded-2xl bg-surface-elevated border border-white/[0.06] text-center">
           <div className="text-xs text-slate-400 font-bold uppercase tracking-wider">
             Full-Stretch Sets
           </div>
-          <div className="text-sm font-mono font-extrabold text-brand-recovery mt-0.5">
+          <div className="text-sm font-mono font-extrabold text-brand-primary mt-0.5">
             {pkg.lengthenedStimulusRatio}%
           </div>
           <div className="text-xs text-slate-400 font-medium">of weekly sets</div>
         </div>
 
-        <div className="p-3 rounded-2xl bg-[#0D1015] border border-white/[0.06] text-center">
+        <div className="p-3 rounded-2xl bg-surface-elevated border border-white/[0.06] text-center">
           <div className="text-xs text-slate-400 font-bold uppercase tracking-wider">
             Lower Back Load
           </div>
@@ -109,11 +109,11 @@ export const KnowledgeGraphCard: React.FC<KnowledgeGraphCardProps> = ({
           <div className="text-xs text-slate-400 font-medium">heavy lifts</div>
         </div>
 
-        <div className="p-3 rounded-2xl bg-[#0D1015] border border-white/[0.06] text-center">
+        <div className="p-3 rounded-2xl bg-surface-elevated border border-white/[0.06] text-center">
           <div className="text-xs text-slate-400 font-bold uppercase tracking-wider">
             Recovery Score
           </div>
-          <div className="text-sm font-mono font-extrabold text-brand-recovery mt-0.5">
+          <div className="text-sm font-mono font-extrabold text-brand-primary mt-0.5">
             {pkg.recoveryEfficiencyScore}/100
           </div>
           <div className="text-xs text-slate-400 font-medium">readiness</div>
@@ -121,7 +121,7 @@ export const KnowledgeGraphCard: React.FC<KnowledgeGraphCardProps> = ({
       </div>
 
       {/* View Mode Switcher */}
-      <div className="grid grid-cols-3 gap-1 bg-[#08090C] p-1 rounded-2xl border border-white/[0.08]">
+      <div className="grid grid-cols-3 gap-1 bg-surface-card p-1 rounded-2xl border border-white/[0.08]">
         {(
           [
             { id: 'overview', label: 'Recovery' },
@@ -136,9 +136,9 @@ export const KnowledgeGraphCard: React.FC<KnowledgeGraphCardProps> = ({
               triggerHaptic('light');
               setViewMode(tab.id);
             }}
-            className={`py-2 rounded-xl text-xs font-bold transition-all ${
+            className={`py-2 rounded-xl text-xs font-bold transition-all min-h-[44px] flex items-center justify-center ${
               viewMode === tab.id
-                ? 'bg-brand-recovery text-black shadow-md glow-recovery'
+                ? 'bg-brand-primary text-black shadow-sm'
                 : 'text-slate-300 hover:text-white'
             }`}
           >
