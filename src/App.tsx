@@ -58,6 +58,7 @@ import { AnalyticsTab } from './components/analytics/AnalyticsTab';
 import { ProgramTab } from './components/program/ProgramTab';
 import { WatchSyncModal } from './components/program/WatchSyncModal';
 import { OnboardingModal } from './components/onboarding/OnboardingModal';
+import { AICoachChatModal } from './components/assistant/AICoachChatModal';
 
 export const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<TabId>('train');
@@ -73,6 +74,7 @@ export const App: React.FC = () => {
   // Modals & Floating Overlays
   const [restTimerOpen, setRestTimerOpen] = useState(false);
   const [watchModalOpen, setWatchModalOpen] = useState(false);
+  const [aiCoachOpen, setAiCoachOpen] = useState(false);
   const [onboardingOpen, setOnboardingOpen] = useState(!profile.onboardingCompleted);
   const [deferredInstallPrompt, setDeferredInstallPrompt] = useState<any>(null);
   const [xpNotification, setXpNotification] = useState<{
@@ -266,11 +268,25 @@ export const App: React.FC = () => {
       profile.activeLocation || 'gym',
       profile.homeEquipment || ['bench', 'dumbbells', 'trx', 'pullup_bar'],
       profile.goalPhase,
-      bodyweightEmaKg
+      bodyweightEmaKg,
+      profile.scheduledWeekLocations
     );
     setActiveWorkout(smartSession);
     if (navigateToTrain) {
       setActiveTab('train');
+    }
+  };
+
+  // Handler: Apply AI Coach mutations (Equipment, Scheduled Location, Split, Workout updates)
+  const handleApplyAssistantAction = (
+    updatedProfile?: Partial<UserProfile>,
+    updatedWorkout?: WorkoutSession
+  ) => {
+    if (updatedProfile) {
+      setProfile((prev) => ({ ...prev, ...updatedProfile }));
+    }
+    if (updatedWorkout) {
+      setActiveWorkout(updatedWorkout);
     }
   };
 
@@ -341,7 +357,8 @@ export const App: React.FC = () => {
       profile.activeLocation || 'gym',
       profile.homeEquipment || ['bench', 'dumbbells', 'trx', 'pullup_bar'],
       profile.goalPhase,
-      bodyweightEmaKg
+      bodyweightEmaKg,
+      profile.scheduledWeekLocations
     );
     setActiveWorkout(recalibrated);
   };
@@ -454,7 +471,8 @@ export const App: React.FC = () => {
       profile.activeLocation || 'gym',
       profile.homeEquipment || ['bench', 'dumbbells', 'trx', 'pullup_bar'],
       profile.goalPhase,
-      bodyweightEmaKg
+      bodyweightEmaKg,
+      profile.scheduledWeekLocations
     );
     setActiveWorkout(nextSmartSession);
 
@@ -623,6 +641,7 @@ export const App: React.FC = () => {
         profile={profile}
         readinessState={readiness.state}
         onOpenWatchSync={() => setWatchModalOpen(true)}
+        onOpenAICoach={() => setAiCoachOpen(true)}
       />
 
       {/* Main Mobile Container */}
@@ -642,6 +661,7 @@ export const App: React.FC = () => {
             onFinishWorkout={handleFinishWorkout}
             onShiftWorkout={handleShiftWorkout}
             onSwitchLocation={handleSwitchTrainingLocation}
+            onOpenAICoach={() => setAiCoachOpen(true)}
           />
         )}
 
@@ -689,7 +709,8 @@ export const App: React.FC = () => {
                 profile.activeLocation || 'gym',
                 profile.homeEquipment || ['bench', 'dumbbells', 'trx', 'pullup_bar'],
                 phase,
-                bodyweightEmaKg
+                bodyweightEmaKg,
+                profile.scheduledWeekLocations
               );
               setActiveWorkout(recalibrated);
             }}
@@ -703,6 +724,22 @@ export const App: React.FC = () => {
           />
         )}
       </main>
+
+      {/* On-Device AI Assistant Conversational Chat Modal */}
+      {aiCoachOpen && (
+        <AICoachChatModal
+          profile={profile}
+          activeWorkout={activeWorkout}
+          workouts={workouts}
+          biometrics={biometrics}
+          exerciseCatalog={exercises}
+          bodyweightEmaKg={bodyweightEmaKg}
+          readinessState={readiness.state}
+          weeklyVolume={weeklyVolume}
+          onClose={() => setAiCoachOpen(false)}
+          onApplyAction={handleApplyAssistantAction}
+        />
+      )}
 
       {/* Onboarding & Equipment Context Setup Modal */}
       {onboardingOpen && (

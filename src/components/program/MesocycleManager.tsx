@@ -1,10 +1,12 @@
 import React from 'react';
-import { Shield } from 'lucide-react';
+import { Shield, Plane } from 'lucide-react';
 import { triggerHaptic } from '../../utils/haptics';
+import { TrainingLocation } from '../../engine/types';
 
 interface MesocycleManagerProps {
   currentWeek: number;
   totalWeeks?: number;
+  scheduledWeekLocations?: Record<number, TrainingLocation>;
   onSelectWeek: (week: number) => void;
   onTriggerDeload: () => void;
 }
@@ -12,6 +14,7 @@ interface MesocycleManagerProps {
 export const MesocycleManager: React.FC<MesocycleManagerProps> = ({
   currentWeek = 3,
   totalWeeks = 6,
+  scheduledWeekLocations,
   onSelectWeek,
   onTriggerDeload,
 }) => {
@@ -94,6 +97,7 @@ export const MesocycleManager: React.FC<MesocycleManagerProps> = ({
         {mesocycleWeeks.map((m) => {
           const isSelected = currentWeek === m.week;
           const isDeload = m.week === 6;
+          const isScheduledTravel = scheduledWeekLocations?.[m.week] === 'travel';
 
           return (
             <button
@@ -109,6 +113,9 @@ export const MesocycleManager: React.FC<MesocycleManagerProps> = ({
               }`}
             >
               <span className="text-xs font-bold">W{m.week}</span>
+              {isScheduledTravel && (
+                <Plane className={`w-2.5 h-2.5 mt-0.5 stroke-[2] ${isSelected ? 'text-black' : 'text-cyan-400'}`} />
+              )}
             </button>
           );
         })}
@@ -127,6 +134,13 @@ export const MesocycleManager: React.FC<MesocycleManagerProps> = ({
         <p className="text-xs text-slate-300 leading-relaxed">
           {currentStage.desc}
         </p>
+
+        {scheduledWeekLocations?.[currentWeek] === 'travel' && (
+          <div className="mt-2 pt-2 border-t border-white/[0.06] flex items-center gap-1.5 text-cyan-300 font-medium">
+            <Plane className="w-3.5 h-3.5 text-cyan-400 stroke-[2]" />
+            <span>Scheduled Travel Week (Calibrated Bodyweight Hypertrophy)</span>
+          </div>
+        )}
       </div>
 
       {/* Light Recovery Week Shortcut */}

@@ -219,6 +219,37 @@ export interface UserProfile {
   activeLocation?: TrainingLocation;
   availableLocations?: TrainingLocation[];
   homeEquipment?: HomeEquipmentTag[];
+  scheduledWeekLocations?: Record<number, TrainingLocation>; // Planned locations for future mesocycle weeks (e.g. week 5 -> 'travel')
   leaderboardOptIn?: boolean;
   leaderboardDisplayName?: string;
+}
+
+export type AssistantActionType =
+  | 'UPDATE_EQUIPMENT'
+  | 'SCHEDULE_LOCATION_WEEK'
+  | 'SWITCH_PROGRAM_SPLIT'
+  | 'SWITCH_GOAL_PHASE'
+  | 'SWITCH_LOCATION'
+  | 'SHIFT_WORKOUT';
+
+export interface AssistantActionPayload {
+  type: AssistantActionType;
+  summary: string;
+  details?: Record<string, any>;
+}
+
+export interface AssistantChatMessage {
+  id: string;
+  sender: 'user' | 'assistant';
+  text: string;
+  timestamp: string;
+  actionApplied?: AssistantActionPayload;
+  knowledgeGraphCitations?: {
+    label: string;
+    metric: string;
+    value: string;
+  }[];
+  latencyMs?: number;
+  backend?: string;
+  isTensorAccelerated?: boolean;
 }

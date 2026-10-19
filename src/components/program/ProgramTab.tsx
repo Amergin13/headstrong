@@ -172,6 +172,7 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
       <MesocycleManager
         currentWeek={profile.mesocycleWeek || 3}
         totalWeeks={6}
+        scheduledWeekLocations={profile.scheduledWeekLocations}
         onSelectWeek={onSelectMesocycleWeek}
         onTriggerDeload={() => onSelectMesocycleWeek(6)}
       />

@@ -9,6 +9,8 @@ import {
   TensorHardwareProfile,
 } from '../engine/tensorAI';
 
+export type { TensorHardwareProfile };
+
 let cachedProfile: TensorHardwareProfile | null = null;
 let profilePromise: Promise<TensorHardwareProfile> | null = null;
 

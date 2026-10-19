@@ -13,6 +13,7 @@ interface TensorAICoachCardProps {
   hardware: TensorHardwareProfile;
   contextInput: TensorCoachingInput;
   onRefreshHardware: () => void;
+  onOpenChat?: () => void;
 }
 
 export const TensorAICoachCard: React.FC<TensorAICoachCardProps> = ({
@@ -20,6 +21,7 @@ export const TensorAICoachCard: React.FC<TensorAICoachCardProps> = ({
   hardware,
   contextInput,
   onRefreshHardware,
+  onOpenChat,
 }) => {
   const [showModal, setShowModal] = useState(false);
 
@@ -72,11 +74,11 @@ export const TensorAICoachCard: React.FC<TensorAICoachCardProps> = ({
 
           <button
             type="button"
-            onClick={handleOpen}
+            onClick={onOpenChat ? () => { triggerHaptic('light'); onOpenChat(); } : handleOpen}
             className="min-h-[44px] px-3 py-1.5 rounded-xl bg-white/[0.06] hover:bg-white/[0.12] text-xs font-semibold text-slate-200 hover:text-white flex items-center gap-1.5 transition-colors"
           >
             <MessageSquare className="w-3.5 h-3.5 text-brand-primary stroke-[2]" />
-            Consult AI Coach
+            Chat with AI Coach
             <ChevronRight className="w-3 h-3 stroke-[2] text-slate-400" />
           </button>
         </div>

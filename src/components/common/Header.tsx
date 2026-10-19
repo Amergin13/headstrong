@@ -1,18 +1,20 @@
 import React from 'react';
 import { UserProfile, ReadinessState } from '../../engine/types';
-import { Flame, Watch } from 'lucide-react';
+import { Flame, Watch, Cpu } from 'lucide-react';
 import { triggerHaptic } from '../../utils/haptics';
 
 interface HeaderProps {
   profile: UserProfile;
   readinessState: ReadinessState;
   onOpenWatchSync: () => void;
+  onOpenAICoach?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
   profile,
   readinessState,
   onOpenWatchSync,
+  onOpenAICoach,
 }) => {
   const currentLevelXp = profile.currentXp % 500;
   const xpPercent = Math.min(100, Math.round((currentLevelXp / 500) * 100));
@@ -61,6 +63,23 @@ export const Header: React.FC<HeaderProps> = ({
             <Flame className="w-3.5 h-3.5 fill-amber-400 stroke-[2]" />
             <span className="font-mono">{profile.streakDays}d</span>
           </div>
+
+          {/* On-Device AI Coach Entry Point */}
+          {onOpenAICoach && (
+            <button
+              type="button"
+              onClick={() => {
+                triggerHaptic('light');
+                onOpenAICoach();
+              }}
+              aria-label="Open On-Device AI Coach"
+              className="flex items-center space-x-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border border-brand-primary/30 bg-brand-primary/10 text-brand-primary hover:bg-brand-primary/20 transition-all active:scale-95"
+              title="On-Device AI Coach"
+            >
+              <Cpu className="w-3.5 h-3.5 stroke-[2]" />
+              <span>AI</span>
+            </button>
+          )}
 
           {/* Single Canonical Watch Sync Entry Point */}
           <button

@@ -27,6 +27,7 @@ import {
 } from '../tensorAI';
 import { SEED_EXERCISES } from '../../services/seedData';
 import { getExerciseBiomechanicalMeta } from '../knowledgeGraph';
+import { processAssistantMessage } from '../../services/aiAssistantService';
 
 function assert(condition: boolean, msg: string) {
   if (!condition) {
@@ -1360,7 +1361,162 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
     `Bodyweight deficit pushup has high stimulus-to-fatigue ratio (${bwMeta.sfrScore} >= 8.5)`
   );
 
-  console.log('\nALL 21 ENGINE, GOVERNANCE, DESIGN HEURISTICS & GOOGLE PIXEL TENSOR AI SUITES PASSED SUCCESSFULLY! 🎯');
+  // ============================================================================
+  // 22. ON-DEVICE AI COACH, KNOWLEDGE GRAPH MUTATIONS & LOCAL PROCESSING
+  // ============================================================================
+  console.log('\n[22. On-Device Conversational AI Assistant & Personal Knowledge Graph Mutations]');
+
+  const testProfile = { ...SAMPLE_DEMO_PROFILE, homeEquipment: ['dumbbells' as const, 'bench' as const], scheduledWeekLocations: {} };
+  const mockBiometrics = [
+    {
+      date: '2026-10-18',
+      bodyweightKg: 80,
+      restingHr: 56,
+      hrvRmssd: 68,
+      sleepHours: 8.0,
+      activeZoneMinutes: 45,
+      dailySteps: 10500,
+      steps: 10500,
+      readinessScore: 88,
+    },
+  ];
+
+  // A. Intent: Add New Equipment ("I got a pull up bar")
+  const equipResult = await processAssistantMessage({
+    userMessage: 'I got a new pull up bar for my room',
+    profile: testProfile,
+    activeWorkout: pushW3,
+    workouts: [pushW3],
+    biometrics: mockBiometrics,
+    exerciseCatalog: SEED_EXERCISES,
+    bodyweightEmaKg: 80,
+    readinessState: 'Primed',
+  });
+
+  assert(
+    equipResult.actionTaken?.type === 'UPDATE_EQUIPMENT',
+    'AI Assistant classifies equipment addition intent (type: UPDATE_EQUIPMENT)'
+  );
+  assert(
+    equipResult.updatedProfile?.homeEquipment?.includes('pullup_bar') === true,
+    'AI Assistant mutates profile.homeEquipment to include pullup_bar'
+  );
+  assert(
+    equipResult.message.text.includes('Pull-Up Bar'),
+    'AI Assistant message articulates authoritative pull-up bar guidance'
+  );
+
+  // B. Intent: Schedule Travel Week ("I'll be away with work during week 5 of my program")
+  const travelScheduleResult = await processAssistantMessage({
+    userMessage: "I'll be away with work during week 5 of my program",
+    profile: testProfile,
+    activeWorkout: pushW3,
+    workouts: [pushW3],
+    biometrics: mockBiometrics,
+    exerciseCatalog: SEED_EXERCISES,
+    bodyweightEmaKg: 80,
+    readinessState: 'Primed',
+  });
+
+  assert(
+    travelScheduleResult.actionTaken?.type === 'SCHEDULE_LOCATION_WEEK',
+    'AI Assistant classifies scheduled travel intent (type: SCHEDULE_LOCATION_WEEK)'
+  );
+  assert(
+    travelScheduleResult.updatedProfile?.scheduledWeekLocations?.[5] === 'travel',
+    'AI Assistant records scheduledWeekLocations[5] = travel in UserProfile'
+  );
+  assert(
+    travelScheduleResult.actionTaken?.details?.week === 5,
+    'AI Assistant extracted exact week 5 parameter from natural language'
+  );
+
+  // C. Verify Workout Session Generated for Scheduled Week 5 Automatically Uses Travel Mode
+  const scheduledLocations = travelScheduleResult.updatedProfile?.scheduledWeekLocations;
+  const week5GeneratedSession = generateSmartWorkoutSession(
+    'Push',
+    [pushW3],
+    SEED_EXERCISES,
+    'Normal',
+    5, // Mesocycle Week 5
+    'gym', // Default location is gym, but scheduled override should take precedence
+    ['bench', 'dumbbells', 'pullup_bar'],
+    'Lean Bulk',
+    80,
+    scheduledLocations
+  );
+
+  assert(
+    week5GeneratedSession.location === 'travel',
+    'generateSmartWorkoutSession automatically applies scheduledWeekLocations[5] override to Travel mode'
+  );
+  assert(
+    week5GeneratedSession.exercises[0].equipment === 'bodyweight',
+    `Week 5 session uses bodyweight exercises (${week5GeneratedSession.exercises[0].name})`
+  );
+  assert(
+    week5GeneratedSession.exercises[0].sets.every((s) => s.targetWeightKg === 0),
+    'Week 5 travel session enforces strictly 0kg external load'
+  );
+
+  // D. Intent: Switch Program Split ("Switch my split to Upper / Lower")
+  const splitResult = await processAssistantMessage({
+    userMessage: 'Switch my split to Upper / Lower',
+    profile: testProfile,
+    activeWorkout: pushW3,
+    workouts: [pushW3],
+    biometrics: mockBiometrics,
+    exerciseCatalog: SEED_EXERCISES,
+    bodyweightEmaKg: 80,
+    readinessState: 'Primed',
+  });
+
+  assert(
+    splitResult.actionTaken?.type === 'SWITCH_PROGRAM_SPLIT',
+    'AI Assistant classifies split change intent (type: SWITCH_PROGRAM_SPLIT)'
+  );
+  assert(
+    splitResult.updatedProfile?.programType === 'upper_lower',
+    'AI Assistant mutates profile.programType to upper_lower'
+  );
+  assert(
+    splitResult.updatedWorkout?.splitDay === 'Upper',
+    'AI Assistant queues starter Upper Day session'
+  );
+
+  // E. Intent: Query Joint Strain & Biomechanical Grounding
+  const jointQueryResult = await processAssistantMessage({
+    userMessage: 'How is my shoulder recovery and joint strain looking?',
+    profile: testProfile,
+    activeWorkout: pushW3,
+    workouts: [pushW3],
+    biometrics: mockBiometrics,
+    exerciseCatalog: SEED_EXERCISES,
+    bodyweightEmaKg: 80,
+    readinessState: 'Normal',
+  });
+
+  assert(
+    jointQueryResult.message.text.toLowerCase().includes('shoulder'),
+    'AI Assistant responds with contextual shoulder joint analysis'
+  );
+  assert(
+    Boolean(jointQueryResult.message.knowledgeGraphCitations && jointQueryResult.message.knowledgeGraphCitations.length > 0),
+    'AI Assistant grounds response with Knowledge Graph citations'
+  );
+
+  // F. Privacy & Latency Invariant
+  assert(
+    jointQueryResult.message.latencyMs !== undefined && jointQueryResult.message.latencyMs <= 30,
+    `On-device AI response generated in <= 30ms (got ${jointQueryResult.message.latencyMs}ms)`
+  );
+  const backendStr = jointQueryResult.message.backend || '';
+  assert(
+    backendStr.includes('On-Device') || backendStr.includes('TPU') || backendStr.includes('Local'),
+    `AI Assistant backend identifies 100% on-device processing: ${backendStr}`
+  );
+
+  console.log('\nALL 22 ENGINE, GOVERNANCE, DESIGN HEURISTICS & GOOGLE PIXEL TENSOR AI SUITES PASSED SUCCESSFULLY! 🎯');
 })().catch((err) => {
   console.error('Test Suite Failed:', err);
   if (typeof process !== 'undefined' && process.exit) {

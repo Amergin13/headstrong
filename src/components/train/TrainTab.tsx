@@ -68,6 +68,7 @@ interface TrainTabProps {
   onFinishWorkout: () => void;
   onShiftWorkout: () => void;
   onSwitchLocation?: (location: TrainingLocation) => void;
+  onOpenAICoach?: () => void;
 }
 
 const MESO_WEEK_PHASE_NAMES: Record<number, { name: string; rule: string }> = {
@@ -99,6 +100,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
   onFinishWorkout,
   onShiftWorkout,
   onSwitchLocation,
+  onOpenAICoach,
 }) => {
   const [swappingExercise, setSwappingExercise] = useState<ExerciseSession | null>(null);
   const [plateCalcWeight, setPlateCalcWeight] = useState<number | null>(null);
@@ -810,6 +812,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
             location: activeWorkout.location || profile.activeLocation || 'gym',
           }}
           onRefreshHardware={loadTensorAI}
+          onOpenChat={onOpenAICoach}
         />
       )}
 

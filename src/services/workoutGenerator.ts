@@ -676,7 +676,8 @@ export function generateSmartWorkoutSession(
   location: TrainingLocation = 'gym',
   homeEquipment: HomeEquipmentTag[] = ['bench', 'dumbbells', 'trx', 'pullup_bar'],
   goalPhase: GoalPhase = 'Lean Bulk',
-  bodyweightEmaKg: number = 81.5
+  bodyweightEmaKg: number = 81.5,
+  scheduledWeekLocations?: Record<number, TrainingLocation>
 ): WorkoutSession {
   const template = SPLIT_TEMPLATES[splitDay] || SPLIT_TEMPLATES.Push;
   const exMap = new Map(exerciseCatalog.map((e) => [e.id, e]));
@@ -826,10 +827,15 @@ export function generateSmartWorkoutSession(
     exercises,
   };
 
-  if (location !== 'gym') {
+  const effectiveLocation =
+    scheduledWeekLocations && scheduledWeekLocations[mesocycleWeek]
+      ? scheduledWeekLocations[mesocycleWeek]
+      : location;
+
+  if (effectiveLocation !== 'gym') {
     return adaptWorkoutSessionToLocation(
       baseSession,
-      location,
+      effectiveLocation,
       homeEquipment,
       exerciseCatalog,
       historicalWorkouts,

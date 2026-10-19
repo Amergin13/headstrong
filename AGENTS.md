@@ -139,6 +139,7 @@ When HeadStrong runs on Google Pixel phones (Pixel 6, 7, 8, 9, Fold), it automat
    - **WASM SIMD Engine:** Zero-dependency, on-device local fallback ensuring 100% reliability across all devices.
 3. **Core AI Capabilities Accelerated by Tensor:**
    - **On-Device Tensor AI Coach:** Contextual physiological analysis synthesizing Pixel Watch HRV, RHR, Sleep, and active mesocycle week into tactical rep tempo and mechanical tension cues.
+   - **On-Device Conversational AI Assistant & Knowledge Graph Mutations:** Natural language assistant enabling athletes to adapt upcoming mesocycle schedules (e.g. work travel in week 5), register new equipment (e.g. pull-up bar), switch splits, and query joint strain and autonomic recovery telemetry. Directly mutates the Personal Knowledge Graph with zero cloud API costs.
    - **Tensor Biomechanical Neural Matcher:** Evaluates exercise substitution compatibility, joint torque, and stimulus-to-fatigue ratios.
    - **Privacy Invariant:** 100% on-device processing. Zero user biometric or health data ever leaves the phone.
    - **Latency Invariant:** On-device inference executes in $\le 15\text{ms}$.
