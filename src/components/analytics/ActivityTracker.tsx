@@ -22,8 +22,8 @@ export const ActivityTracker: React.FC<ActivityTrackerProps> = ({ biometrics }) 
   const STEP_GOAL = 8500;
   const AZM_GOAL = 30;
 
-  const currentSteps = today?.steps ?? 9200;
-  const currentAzm = today?.activeZoneMinutes ?? 38;
+  const currentSteps = today?.steps ?? 0;
+  const currentAzm = today?.activeZoneMinutes ?? 0;
   const hasMetMomentum = currentSteps >= STEP_GOAL && currentAzm >= AZM_GOAL;
 
   const chartData = last14.map((b) => ({

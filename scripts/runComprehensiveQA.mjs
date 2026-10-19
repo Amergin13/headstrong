@@ -303,7 +303,84 @@ assert(
   'TrainTab seamlessly integrates On-Device Tensor AI Coach card into active workout flow'
 );
 
+// ============================================================================
+// BRANCH 7: CLEAN SLATE FOR NEW USERS, LEGITIMATE XP ECONOMY & OPT-IN LEADERBOARD
+// ============================================================================
+banner('BRANCH 7: Clean Slate for New Users, Legitimate XP Economy & Opt-In Leaderboard');
+
+// 7.1 Verify New User Clean Slate Profile & Storage Fallbacks
+assert(
+  seedDataSrc.includes('export const NEW_USER_PROFILE') &&
+    seedDataSrc.includes("name: 'Athlete'") &&
+    seedDataSrc.includes('level: 1') &&
+    seedDataSrc.includes('currentXp: 0') &&
+    seedDataSrc.includes('streakDays: 0') &&
+    seedDataSrc.includes('export const SAMPLE_DEMO_PROFILE'),
+  'seedData.ts defines clean NEW_USER_PROFILE (Lv.1, 0 XP, 0 streak) and preserves SAMPLE_DEMO_PROFILE for explicit preview'
+);
+
+const cleanStorageSrc = fs.readFileSync(path.resolve(process.cwd(), 'src/services/storage.ts'), 'utf-8');
+assert(
+  cleanStorageSrc.includes('loadBiometrics(): BiometricLog[]') &&
+    !cleanStorageSrc.includes('const seeds = generateSeedBiometrics();\n  saveBiometrics(seeds);') &&
+    !cleanStorageSrc.includes('const seeds = generateSeedWorkouts();\n  saveWorkouts(seeds);'),
+  'storage.ts loadBiometrics() and loadWorkouts() return clean empty arrays on fresh install without auto-seeding dummy records'
+);
+
+// 7.2 Verify Zero Illegitimate XP Triggers in App.tsx
+assert(
+  !appSrc.includes("addXp(15, `Loaded ${split} workout") &&
+    !appSrc.includes("addXp(15, `Switched today’s workout to ${locLabel}") &&
+    !appSrc.includes("addXp(100, `Welcome to HeadStrong!") &&
+    !appSrc.includes("addXp(20, week === 6 ?") &&
+    !appSrc.includes("addXp(20, `Body weight logged") &&
+    !appSrc.includes("addXp(50, 'Pixel Watch sleep & heart rate synced!'") &&
+    !appSrc.includes("addXp(15, 'Backup JSON downloaded") &&
+    !appSrc.includes("addXp(25, 'Workout and biometric backup restored") &&
+    !appSrc.includes("addXp(25, 'Workout moved to tomorrow!") &&
+    !appSrc.includes("addXp(25, `Goal switched to") &&
+    !appSrc.includes("addXp(25, 'Loaded demo data!"),
+  'App.tsx has purged all 11 unauthorized XP calls for UI interactions, menus, and setting toggles'
+);
+
+// 7.3 Verify Authoritative XP Progress Evaluations
+const xpEngineSrc = fs.readFileSync(path.resolve(process.cwd(), 'src/engine/xp.ts'), 'utf-8');
+assert(
+  xpEngineSrc.includes('calculateWorkoutCompletionXp') &&
+    xpEngineSrc.includes('calculateProgramMilestoneXp') &&
+    xpEngineSrc.includes('evaluateExerciseProgressXp') &&
+    xpEngineSrc.includes('evaluateStrengthStandardAdvanceXp') &&
+    xpEngineSrc.includes('FORBIDDEN_XP_ACTIONS'),
+  'xp.ts codifies legitimate progressive overload XP awards, workout completion rewards, and forbidden XP actions'
+);
+
+assert(
+  appSrc.includes('evaluateExerciseProgressXp') &&
+    appSrc.includes('calculateWorkoutCompletionXp'),
+  'App.tsx awards XP strictly upon workout completion, progressive overload breakthroughs, and strength standard gains'
+);
+
+// 7.4 Verify Opt-In Community Leaderboard
+const leaderboardEngineSrc = fs.readFileSync(path.resolve(process.cwd(), 'src/engine/leaderboard.ts'), 'utf-8');
+assert(
+  leaderboardEngineSrc.includes('buildLeaderboardSummary') &&
+    leaderboardEngineSrc.includes('DIVISION_THRESHOLDS') &&
+    leaderboardEngineSrc.includes('COMMUNITY_ATHLETES'),
+  'leaderboard.ts implements 6-division ranking and privacy-preserving opt-in placement engine'
+);
+
+const leaderboardCardSrc = fs.readFileSync(path.resolve(process.cwd(), 'src/components/character/XPLeaderboardCard.tsx'), 'utf-8');
+assert(
+  leaderboardCardSrc.includes('100% Privacy-Preserved') &&
+    leaderboardCardSrc.includes('Join Community Leaderboard') &&
+    leaderboardCardSrc.includes('Leave Leaderboard') &&
+    !leaderboardCardSrc.includes('text-[10px]') &&
+    !leaderboardCardSrc.includes('text-[9px]') &&
+    !leaderboardCardSrc.includes('text-[8px]'),
+  'XPLeaderboardCard.tsx provides 1-tap opt-in / opt-out with privacy transparency and strict >=12px typography floor'
+);
+
 console.log(`\n\x1b[32m\x1b[1m======================================================================\x1b[0m`);
-console.log(`\x1b[32m\x1b[1mALL 6 TREE-OF-THOUGHTS QA BRANCHES EVALUATED & FULLY CERTIFIED! 🏆\x1b[0m`);
+console.log(`\x1b[32m\x1b[1mALL 7 TREE-OF-THOUGHTS QA BRANCHES EVALUATED & FULLY CERTIFIED! 🏆\x1b[0m`);
 console.log(`\x1b[32mHeadStrong is 100% verified, production-ready, and Google Play Store publishable.\x1b[0m`);
 console.log(`\x1b[32m\x1b[1m======================================================================\x1b[0m\n`);

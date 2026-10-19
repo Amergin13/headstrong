@@ -6,6 +6,8 @@ import {
   WorkoutSession,
 } from '../engine/types';
 import {
+  NEW_USER_PROFILE,
+  SAMPLE_DEMO_PROFILE,
   INITIAL_USER_PROFILE,
   SEED_EXERCISES,
   createTodaysActiveWorkout,
@@ -29,7 +31,7 @@ export function loadProfile(): UserProfile {
     if (raw) {
       const parsed = JSON.parse(raw) as UserProfile;
       return {
-        ...INITIAL_USER_PROFILE,
+        ...NEW_USER_PROFILE,
         ...parsed,
         programType: parsed.programType || 'ppl_upper',
         activeLocation: parsed.activeLocation || 'gym',
@@ -41,7 +43,7 @@ export function loadProfile(): UserProfile {
     console.error('Failed to load profile:', e);
   }
   return {
-    ...INITIAL_USER_PROFILE,
+    ...NEW_USER_PROFILE,
     onboardingCompleted: false,
   };
 }
@@ -61,9 +63,7 @@ export function loadBiometrics(): BiometricLog[] {
   } catch (e) {
     console.error('Failed to load biometrics:', e);
   }
-  const seeds = generateSeedBiometrics();
-  saveBiometrics(seeds);
-  return seeds;
+  return [];
 }
 
 export function saveBiometrics(logs: BiometricLog[]): void {
@@ -81,9 +81,7 @@ export function loadWorkouts(): WorkoutSession[] {
   } catch (e) {
     console.error('Failed to load workouts:', e);
   }
-  const seeds = generateSeedWorkouts();
-  saveWorkouts(seeds);
-  return seeds;
+  return [];
 }
 
 export function saveWorkouts(workouts: WorkoutSession[]): void {
@@ -157,7 +155,7 @@ export function resetAllToSeedData(): {
   exercises: ExerciseDefinition[];
 } {
   localStorage.clear();
-  const profile = INITIAL_USER_PROFILE;
+  const profile = SAMPLE_DEMO_PROFILE;
   const biometrics = generateSeedBiometrics();
   const workouts = generateSeedWorkouts();
   const activeWorkout = createTodaysActiveWorkout();
@@ -227,13 +225,13 @@ export function calculateBestPillarE1rms(
     }
   }
 
-  // Set realistic default minimums if no history for a pillar
-  if (best.Squat === 0) best.Squat = 135;
-  if (best.Hinge === 0) best.Hinge = 165;
-  if (best['Horizontal Push'] === 0) best['Horizontal Push'] = 112.5;
-  if (best['Vertical Push'] === 0) best['Vertical Push'] = 72.5;
-  if (best['Horizontal Pull'] === 0) best['Horizontal Pull'] = 97.5;
-  if (best['Vertical Pull'] === 0) best['Vertical Pull'] = 122.5;
+  // Set realistic default minimums based on Untrained standard ratio relative to bodyweight if no logged history
+  if (best.Squat === 0) best.Squat = Math.round(bodyweightEmaKg * 0.75 * 10) / 10;
+  if (best.Hinge === 0) best.Hinge = Math.round(bodyweightEmaKg * 0.95 * 10) / 10;
+  if (best['Horizontal Push'] === 0) best['Horizontal Push'] = Math.round(bodyweightEmaKg * 0.60 * 10) / 10;
+  if (best['Vertical Push'] === 0) best['Vertical Push'] = Math.round(bodyweightEmaKg * 0.40 * 10) / 10;
+  if (best['Horizontal Pull'] === 0) best['Horizontal Pull'] = Math.round(bodyweightEmaKg * 0.50 * 10) / 10;
+  if (best['Vertical Pull'] === 0) best['Vertical Pull'] = Math.round(bodyweightEmaKg * 0.85 * 10) / 10;
 
   return best;
 }

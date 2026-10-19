@@ -1,17 +1,26 @@
 import React, { useState, useEffect } from 'react';
 import {
   BiometricLog,
+  ExerciseDefinition,
+  ExerciseSession,
   GoalPhase,
   HomeEquipmentTag,
   ProgramSplitType,
   ReadinessState,
+  StrengthPillar,
   TrainingLocation,
   UserProfile,
   WorkoutSession,
-  ExerciseDefinition,
+  WorkoutSet,
 } from './engine/types';
 import { calculateDailyReadiness } from './engine/readiness';
 import { getLatestBodyweightEma } from './engine/ema';
+import {
+  calculateWorkoutCompletionXp,
+  evaluateExerciseProgressXp,
+  evaluateStrengthStandardAdvanceXp,
+} from './engine/xp';
+import { evaluateStrengthStandard } from './engine/strengthStandards';
 import {
   calculateBestPillarE1rms,
   calculateWeeklyMuscleVolume,
@@ -126,7 +135,7 @@ export const App: React.FC = () => {
         setBiometrics((prev) => [...prev, syncedLog]);
         setProfile((prev) => ({ ...prev, fitbitConnected: true }));
         setXpNotification({
-          amount: 50,
+          amount: 0,
           message: 'Google Pixel Watch connected & recovery data synced!',
           bonusTag: 'Watch Connected',
         });
@@ -139,16 +148,16 @@ export const App: React.FC = () => {
   }, []);
 
   // Derived calculations
-  const bodyweightEmaKg = getLatestBodyweightEma(biometrics, 81.5);
-  const latestBiometrics = biometrics[biometrics.length - 1] || {
+  const bodyweightEmaKg = getLatestBodyweightEma(biometrics, 80.0);
+  const latestBiometrics: BiometricLog = biometrics[biometrics.length - 1] || {
     date: new Date().toISOString().split('T')[0],
-    bodyweightKg: 82.1,
-    hrvRmssd: 62,
-    restingHr: 54,
-    sleepHours: 7.8,
-    steps: 9850,
-    activeZoneMinutes: 42,
-    vo2Max: 46.2,
+    bodyweightKg: 80.0,
+    hrvRmssd: 58,
+    restingHr: 58,
+    sleepHours: 7.5,
+    steps: 0,
+    activeZoneMinutes: 0,
+    vo2Max: 44.0,
   };
 
   const calculatedReadiness = calculateDailyReadiness(latestBiometrics, biometrics);
@@ -196,20 +205,63 @@ export const App: React.FC = () => {
     });
   };
 
-  // Handler: 1-Tap Set Completion
-  const handleSetCompleted = (exerciseName: string, setNumber: number) => {
-    addXp(35, `Set ${setNumber} of ${exerciseName} logged!`);
+  // Handler: 1-Tap Set Completion (Evaluates progressive overload)
+  const handleSetCompleted = (
+    exerciseName: string,
+    setNumber: number,
+    completedSet?: WorkoutSet,
+    exercise?: ExerciseSession
+  ) => {
     setRestTimerOpen(true);
+
+    if (completedSet && exercise && !completedSet.isWarmup && completedSet.setType !== 'warmup') {
+      const currentWeight = completedSet.actualWeightKg ?? completedSet.targetWeightKg ?? 0;
+      const currentReps = completedSet.actualReps ?? completedSet.targetReps ?? 0;
+
+      // Find historical best weight and reps for this exercise
+      let prevBestWeight = 0;
+      let prevBestReps = 0;
+
+      for (const w of workouts) {
+        if (!w.completed) continue;
+        const matchingEx = w.exercises.find((e) => e.exerciseId === exercise.exerciseId);
+        if (!matchingEx) continue;
+        for (const s of matchingEx.sets) {
+          if (!s.completed || s.isWarmup || s.setType === 'warmup') continue;
+          const wKg = s.actualWeightKg ?? s.targetWeightKg ?? 0;
+          const reps = s.actualReps ?? s.targetReps ?? 0;
+          if (wKg > prevBestWeight) {
+            prevBestWeight = wKg;
+            prevBestReps = reps;
+          } else if (wKg === prevBestWeight && reps > prevBestReps) {
+            prevBestReps = reps;
+          }
+        }
+      }
+
+      const progressAward = evaluateExerciseProgressXp(
+        exerciseName,
+        currentWeight,
+        currentReps,
+        prevBestWeight > 0 ? prevBestWeight : undefined,
+        prevBestReps > 0 ? prevBestReps : undefined,
+        exercise.maxReps || 12
+      );
+
+      if (progressAward) {
+        addXp(progressAward.amount, progressAward.description, progressAward.bonusTag);
+      }
+    }
   };
 
-  // Handler: Switch Split Day dynamically
+  // Handler: Switch Split Day dynamically (No illegitimate XP)
   const handleSwitchSplitDay = (split: SplitDayType, navigateToTrain = false) => {
     const smartSession = generateSmartWorkoutSession(
       split,
       workouts,
       exercises,
       readiness.state,
-      profile.mesocycleWeek || 3,
+      profile.mesocycleWeek || 1,
       profile.activeLocation || 'gym',
       profile.homeEquipment || ['bench', 'dumbbells', 'trx', 'pullup_bar'],
       profile.goalPhase
@@ -218,10 +270,9 @@ export const App: React.FC = () => {
     if (navigateToTrain) {
       setActiveTab('train');
     }
-    addXp(15, `Loaded ${split} workout with your latest target weights.`, 'Smart Split');
   };
 
-  // Handler: Switch Training Location ('gym' | 'home' | 'travel') in 1 tap
+  // Handler: Switch Training Location ('gym' | 'home' | 'travel') in 1 tap (No illegitimate XP)
   const handleSwitchTrainingLocation = (location: TrainingLocation) => {
     setProfile((prev) => ({
       ...prev,
@@ -238,22 +289,9 @@ export const App: React.FC = () => {
       bodyweightEmaKg
     );
     setActiveWorkout(adapted);
-
-    const locLabel =
-      location === 'gym'
-        ? 'Full Gym'
-        : location === 'home'
-        ? 'At Home (Bench, Dumbbells, TRX, Bar)'
-        : 'Travel (Bodyweight)';
-
-    addXp(
-      15,
-      `Switched today’s workout to ${locLabel}. Target weights & progress carried over!`,
-      location === 'gym' ? 'Gym Mode' : location === 'home' ? 'Home Mode' : 'Travel Mode'
-    );
   };
 
-  // Handler: Complete Onboarding / Goals & Equipment Setup
+  // Handler: Complete Onboarding / Goals & Equipment Setup (No illegitimate XP)
   const handleCompleteOnboarding = (setup: {
     goalPhase: GoalPhase;
     programType: ProgramSplitType;
@@ -285,22 +323,9 @@ export const App: React.FC = () => {
     );
     setActiveWorkout(day1Session);
     setActiveTab('train');
-
-    const locLabel =
-      setup.activeLocation === 'gym'
-        ? 'Full Gym'
-        : setup.activeLocation === 'home'
-        ? 'At Home'
-        : 'Travel';
-
-    addXp(
-      100,
-      `Welcome to HeadStrong! Loaded Day 1 (${starterSplit}) calibrated to your ${locLabel} setup.`,
-      'Ready to Lift'
-    );
   };
 
-  // Handler: Change Mesocycle Week (1 to 6)
+  // Handler: Change Mesocycle Week (1 to 6) (No illegitimate XP)
   const handleSelectMesocycleWeek = (week: number) => {
     setProfile((prev) => ({ ...prev, mesocycleWeek: week }));
     const currentSplit = (activeWorkout.splitDay as SplitDayType) || 'Push';
@@ -315,16 +340,9 @@ export const App: React.FC = () => {
       profile.goalPhase
     );
     setActiveWorkout(recalibrated);
-    addXp(
-      20,
-      week === 6
-        ? 'Light Recovery Week (Week 6) activated! Sets and effort reduced.'
-        : `Training Week ${week} targets synced to today’s workout.`,
-      week === 6 ? 'Recovery Week' : `Week ${week} Sync`
-    );
   };
 
-  // Handler: Complete entire workout session & advance split rotation
+  // Handler: Complete entire workout session & advance split rotation (Legitimate XP)
   const handleFinishWorkout = () => {
     const todayStr = new Date().toISOString().split('T')[0];
     const completedSetCount = activeWorkout.exercises.reduce(
@@ -339,18 +357,54 @@ export const App: React.FC = () => {
         ? 141
         : 138;
 
+    const completionAward = calculateWorkoutCompletionXp(
+      activeWorkout,
+      readiness.state,
+      readiness.xpMultiplier
+    );
+
     const completedSession: WorkoutSession = {
       ...activeWorkout,
       completed: true,
       completedAt: new Date().toISOString(),
       readinessState: readiness.state,
       readinessZScore: readiness.score,
-      xpEarned: Math.round(400 * readiness.xpMultiplier),
+      xpEarned: completionAward.amount,
       avgHeartRate: estimatedHr,
       durationMinutes: estimatedDuration,
     };
 
+    // Evaluate strength standards advances
+    const prevPillars = calculateBestPillarE1rms(workouts, bodyweightEmaKg);
     const nextWorkouts = [completedSession, ...workouts];
+    const nextPillars = calculateBestPillarE1rms(nextWorkouts, bodyweightEmaKg);
+
+    const pillarsToCheck: StrengthPillar[] = [
+      'Squat',
+      'Hinge',
+      'Horizontal Push',
+      'Vertical Push',
+      'Horizontal Pull',
+      'Vertical Pull',
+    ];
+
+    let strengthAdvanceAward: ReturnType<typeof evaluateStrengthStandardAdvanceXp> = null;
+    for (const p of pillarsToCheck) {
+      const oldStd = evaluateStrengthStandard(p, prevPillars[p], bodyweightEmaKg, profile.gender);
+      const newStd = evaluateStrengthStandard(p, nextPillars[p], bodyweightEmaKg, profile.gender);
+      const adv = evaluateStrengthStandardAdvanceXp(
+        p,
+        oldStd.tier,
+        oldStd.subDivision,
+        newStd.tier,
+        newStd.subDivision
+      );
+      if (adv) {
+        strengthAdvanceAward = adv;
+        break;
+      }
+    }
+
     setWorkouts(nextWorkouts);
 
     setProfile((prev) => ({
@@ -365,21 +419,33 @@ export const App: React.FC = () => {
       nextWorkouts,
       exercises,
       readiness.state,
-      profile.mesocycleWeek || 3,
+      profile.mesocycleWeek || 1,
       profile.activeLocation || 'gym',
       profile.homeEquipment || ['bench', 'dumbbells', 'trx', 'pullup_bar'],
       profile.goalPhase
     );
     setActiveWorkout(nextSmartSession);
 
+    // Award completion XP
     addXp(
-      400,
-      `Workout saved! Next up: ${nextSplit} Split with updated target weights.`,
-      'Session Complete'
+      completionAward.amount,
+      `${completionAward.description} Next up: ${nextSplit} Split.`,
+      completionAward.bonusTag
     );
+
+    // If strength standard advanced, award it too
+    if (strengthAdvanceAward) {
+      setTimeout(() => {
+        addXp(
+          strengthAdvanceAward!.amount,
+          strengthAdvanceAward!.description,
+          strengthAdvanceAward!.bonusTag
+        );
+      }, 1500);
+    }
   };
 
-  // Handler: Daily Weight Log
+  // Handler: Daily Weight Log (No illegitimate XP)
   const handleSaveWeight = (weight: number) => {
     const todayStr = new Date().toISOString().split('T')[0];
     const existingIndex = biometrics.findIndex((b) => b.date === todayStr);
@@ -401,10 +467,9 @@ export const App: React.FC = () => {
     }
 
     setBiometrics(updatedBiometrics);
-    addXp(20, `Body weight logged (${weight} kg)! 7-Day average updated.`);
   };
 
-  // Handler: Watch Sync Telemetry update
+  // Handler: Watch Sync Telemetry update (No illegitimate XP)
   const handleSyncCompleted = (newLog: BiometricLog) => {
     const existingIndex = biometrics.findIndex((b) => b.date === newLog.date);
     let updated: BiometricLog[];
@@ -415,7 +480,6 @@ export const App: React.FC = () => {
     }
 
     setBiometrics(updated);
-    addXp(50, 'Pixel Watch sleep & heart rate synced!', 'Watch Sync');
   };
 
   // Handler: Reset demo seed data
@@ -434,7 +498,7 @@ export const App: React.FC = () => {
     });
   };
 
-  // Handler: Export JSON Backup (Google Play Data Portability)
+  // Handler: Export JSON Backup (Google Play Data Portability - No illegitimate XP)
   const handleExportData = () => {
     const json = exportAllUserDataJSON();
     const blob = new Blob([json], { type: 'application/json' });
@@ -447,10 +511,9 @@ export const App: React.FC = () => {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    addXp(15, 'Backup JSON downloaded to your device.', 'Backup Saved');
   };
 
-  // Handler: Import JSON Backup
+  // Handler: Import JSON Backup (No illegitimate XP)
   const handleImportData = (rawJson: string) => {
     try {
       const restored = importUserDataJSON(rawJson);
@@ -459,7 +522,11 @@ export const App: React.FC = () => {
       setWorkouts(restored.workouts);
       setActiveWorkout(restored.activeWorkout);
       setExercises(restored.exercises);
-      addXp(25, 'Workout and biometric backup restored successfully!', 'Restored');
+      setXpNotification({
+        amount: 0,
+        message: 'Workout and biometric backup restored successfully!',
+        bonusTag: 'Restored',
+      });
     } catch (e) {
       setXpNotification({
         amount: 0,
@@ -493,6 +560,7 @@ export const App: React.FC = () => {
     setDeferredInstallPrompt(null);
   };
 
+  // Handler: Shift Workout Date (No illegitimate XP)
   const handleShiftWorkout = () => {
     const today = new Date();
     const tomorrow = new Date(today);
@@ -503,8 +571,6 @@ export const App: React.FC = () => {
       ...prev,
       date: tomorrowStr,
     }));
-
-    addXp(25, 'Workout moved to tomorrow! Today is an active rest day.', 'Streak Safe');
   };
 
   return (
@@ -543,6 +609,7 @@ export const App: React.FC = () => {
             bodyweightEmaKg={bodyweightEmaKg}
             latestBiometrics={latestBiometrics}
             weeklyVolume={weeklyVolume}
+            onUpdateProfile={(up) => setProfile((p) => ({ ...p, ...up }))}
           />
         )}
 
@@ -575,23 +642,12 @@ export const App: React.FC = () => {
                 workouts,
                 exercises,
                 readiness.state,
-                profile.mesocycleWeek || 3,
+                profile.mesocycleWeek || 1,
                 profile.activeLocation || 'gym',
                 profile.homeEquipment || ['bench', 'dumbbells', 'trx', 'pullup_bar'],
                 phase
               );
               setActiveWorkout(recalibrated);
-              addXp(
-                25,
-                `Goal switched to ${
-                  phase === 'Cut / Recomp'
-                    ? 'Lose Fat (Retention Shield Active)'
-                    : phase === 'Lean Bulk'
-                    ? 'Build Muscle (Hypertrophy Wave)'
-                    : 'Stay Lean (Recomp)'
-                }. Workouts calibrated!`,
-                'Goal Phase'
-              );
             }}
             onLaunchSplitDay={(sp) => handleSwitchSplitDay(sp, true)}
             onAddCustomExercise={(newEx) => setExercises((prev) => [...prev, newEx])}
@@ -611,9 +667,18 @@ export const App: React.FC = () => {
           onCompleteOnboarding={handleCompleteOnboarding}
           onClose={() => setOnboardingOpen(false)}
           onExploreDemo={() => {
-            setProfile((prev) => ({ ...prev, onboardingCompleted: true }));
+            const reset = resetAllToSeedData();
+            setProfile(reset.profile);
+            setBiometrics(reset.biometrics);
+            setWorkouts(reset.workouts);
+            setActiveWorkout(reset.activeWorkout);
+            setExercises(reset.exercises);
             setOnboardingOpen(false);
-            addXp(25, 'Loaded demo data! Explore workouts, programs, and progress.', 'Demo Mode');
+            setXpNotification({
+              amount: 0,
+              message: 'Sample 6-week workout and biometric history loaded.',
+              bonusTag: 'Demo Mode',
+            });
           }}
         />
       )}

@@ -6,7 +6,8 @@ export type GovernanceCategory =
   | 'Equipment & Location Context'
   | 'Hypertrophy Science Engine'
   | 'UX & Information Architecture'
-  | 'Biometrics & Wearables';
+  | 'Biometrics & Wearables'
+  | 'Biometrics & Gamification';
 
 export interface GovernanceChangeItem {
   id: string;
@@ -279,6 +280,29 @@ export const INITIAL_GOVERNANCE_ITEMS: GovernanceChangeItem[] = [
       'src/components/program/ProgramTab.tsx',
       'src/components/analytics/AnalyticsTab.tsx',
       'src/components/character/CharacterTab.tsx',
+    ],
+  },
+  {
+    id: 'gov-clean-slate-and-legitimate-xp-leaderboard',
+    title: 'Clean Slate for New Users, Authoritative XP Economy & Opt-In Leaderboard',
+    category: 'Biometrics & Gamification',
+    status: 'locked',
+    versionIntroduced: 'v1.8',
+    rationale:
+      'New lifters must never be seeded with dummy workouts, 42 days of someone else’s biometrics, or pre-filled Level 14 / 4,850 XP. Furthermore, UI actions (switching splits, changing locations, switching mesocycles, exporting/importing data, syncing watch) must never grant illegitimate XP points. XP is awarded strictly on completing full workouts, program milestones, progressive overload breakthroughs, and international strength standards rank-ups.',
+    whatWorkedWell:
+      'Clean NEW_USER_PROFILE starts at Level 1, 0 XP, 0 streak, and fresh starter workout. Forbidden XP action list strictly prevents UI click-farming. Opt-in Community XP Leaderboard provides privacy-preserving competition across 6 tiers.',
+    critiqueAndRisks:
+      'Never re-introduce automatic dummy data generation in storage loaders or award XP for non-workout actions.',
+    lockedInvariant:
+      'loadProfile() starts new users at Level 1 / 0 XP / 0 workouts; XP is awarded strictly for workouts, progressive overload PRs, and strength standard advances; leaderboard is 100% opt-in.',
+    files: [
+      'src/engine/xp.ts',
+      'src/engine/leaderboard.ts',
+      'src/components/character/XPLeaderboardCard.tsx',
+      'src/services/seedData.ts',
+      'src/services/storage.ts',
+      'src/App.tsx',
     ],
   },
 ];

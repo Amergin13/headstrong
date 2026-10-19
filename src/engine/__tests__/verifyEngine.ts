@@ -393,7 +393,25 @@ import {
   permanentlyEraseAllUserData,
   loadProfile,
   loadWorkouts,
+  loadBiometrics,
 } from '../../services/storage';
+import {
+  NEW_USER_PROFILE,
+  SAMPLE_DEMO_PROFILE,
+} from '../../services/seedData';
+import {
+  FORBIDDEN_XP_ACTIONS,
+  isForbiddenXpAction,
+  calculateWorkoutCompletionXp,
+  calculateProgramMilestoneXp,
+  evaluateExerciseProgressXp,
+  evaluateStrengthStandardAdvanceXp,
+} from '../xp';
+import {
+  buildLeaderboardSummary,
+  DIVISION_THRESHOLDS,
+  COMMUNITY_ATHLETES,
+} from '../leaderboard';
 import {
   adaptWorkoutSessionToLocation,
   generateSmartWorkoutSession,
@@ -1040,9 +1058,169 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
   );
   setTensorSimulationOverride(false);
 
-  console.log('\nALL 19 ENGINE, GOVERNANCE, DESIGN HEURISTICS & GOOGLE PIXEL TENSOR AI SUITES PASSED SUCCESSFULLY! 🎯');
+  // ============================================================================
+  // SUITE 20: CLEAN SLATE FOR NEW USERS, LEGITIMATE XP ECONOMY & OPT-IN LEADERBOARD
+  // ============================================================================
+  console.log('\n--- SUITE 20: CLEAN SLATE FOR NEW USERS, LEGITIMATE XP ECONOMY & OPT-IN LEADERBOARD ---');
+
+  // A. Clean Slate Invariants: Fresh launch must start at Level 1, 0 XP, 0 completed workouts/biometrics
+  memStore.clear(); // Simulate a completely fresh user install with empty localStorage
+  const freshProfile = loadProfile();
+  assert(
+    freshProfile.level === 1 &&
+      freshProfile.currentXp === 0 &&
+      freshProfile.streakDays === 0 &&
+      freshProfile.name === 'Athlete' &&
+      freshProfile.onboardingCompleted === false &&
+      freshProfile.leaderboardOptIn === false,
+    `Fresh user profile starts cleanly at Level 1, 0 XP, 0 streak, 'Athlete', and onboarding uncompleted (got Lv.${freshProfile.level}, ${freshProfile.currentXp} XP)`
+  );
+
+  const freshBiometrics = loadBiometrics();
+  assert(
+    freshBiometrics.length === 0,
+    `Fresh user biometrics returns clean empty array without auto-seeding dummy records (got ${freshBiometrics.length} logs)`
+  );
+
+  const freshWorkouts = loadWorkouts();
+  assert(
+    freshWorkouts.length === 0,
+    `Fresh user workouts returns clean empty array without auto-seeding dummy sessions (got ${freshWorkouts.length} workouts)`
+  );
+
+  assert(
+    SAMPLE_DEMO_PROFILE.level === 14 &&
+      SAMPLE_DEMO_PROFILE.currentXp === 4850 &&
+      SAMPLE_DEMO_PROFILE.name === 'Alex Vance',
+    `SAMPLE_DEMO_PROFILE preserves 6-week demonstration state for explicit demo preview mode`
+  );
+
+  // Restore seed dataset for subsequent tests
+  resetAllToSeedData();
+
+  // B. Forbidden XP Actions (Must NEVER award XP)
+  assert(
+    FORBIDDEN_XP_ACTIONS.length === 13,
+    `All 13 unauthorized UI actions are registered in FORBIDDEN_XP_ACTIONS (got ${FORBIDDEN_XP_ACTIONS.length})`
+  );
+  for (const action of FORBIDDEN_XP_ACTIONS) {
+    assert(isForbiddenXpAction(action) === true, `Action '${action}' is strictly forbidden from awarding XP`);
+  }
+  assert(isForbiddenXpAction('finish_workout') === false, `Legitimate action 'finish_workout' is allowed`);
+
+  // C. Legitimate XP Economy: Workout Completion
+  const mockWorkoutToFinish = JSON.parse(JSON.stringify(pushW3));
+  mockWorkoutToFinish.exercises.forEach((ex: any) =>
+    ex.sets.forEach((s: any) => {
+      s.completed = true;
+    })
+  );
+  const primedCompletionAward = calculateWorkoutCompletionXp(mockWorkoutToFinish, 'Primed', 1.15);
+  assert(
+    primedCompletionAward.category === 'workout_completion' &&
+      primedCompletionAward.amount === Math.round(300 * 1.15) &&
+      Boolean(primedCompletionAward.bonusTag?.includes('Primed')),
+    `Workout completion awards legitimate base + set bonus with Primed multiplier: ${primedCompletionAward.amount} XP`
+  );
+
+  const normalCompletionAward = calculateWorkoutCompletionXp(mockWorkoutToFinish, 'Normal', 1.0);
+  assert(
+    normalCompletionAward.amount === 300,
+    `Normal workout completion awards exact 300 XP (250 base + 50 all working sets completed bonus)`
+  );
+
+  // D. Legitimate XP Economy: Program Milestones
+  const weekMilestone = calculateProgramMilestoneXp(3, 'PPL Upper');
+  assert(
+    weekMilestone.amount === 200 && weekMilestone.category === 'program_milestone',
+    `Mesocycle week milestone awards +200 XP`
+  );
+  const cycleMilestone = calculateProgramMilestoneXp(6, 'PPL Upper');
+  assert(
+    cycleMilestone.amount === 500 && cycleMilestone.title === 'Mesocycle Cycle Complete',
+    `6-week cycle graduation awards +500 XP`
+  );
+
+  // E. Legitimate XP Economy: Progressive Overload Evaluation
+  // Case 1: Load breakthrough (+2.5kg PR)
+  const loadPr = evaluateExerciseProgressXp('Barbell Bench Press', 95, 8, 92.5, 8);
+  assert(
+    loadPr !== null && loadPr.amount === 60 && loadPr.title === 'Load Breakthrough',
+    `Weight increase (+2.5kg) awards +60 XP for Load Breakthrough`
+  );
+
+  // Case 2: Rep breakthrough (+2 reps at same load)
+  const repPr = evaluateExerciseProgressXp('Barbell Bench Press', 92.5, 10, 92.5, 8);
+  assert(
+    repPr !== null && repPr.amount === 40 && repPr.title === 'Rep Breakthrough',
+    `Rep increase (+2 reps) awards +40 XP for Rep Breakthrough`
+  );
+
+  // Case 3: Top of rep range hit (12 reps hit for double progression)
+  const topRep = evaluateExerciseProgressXp('Barbell Bench Press', 92.5, 12, 92.5, 10, 12);
+  assert(
+    topRep !== null && topRep.amount === 50 && topRep.title === 'Progression Earned',
+    `Top of rep range (12 reps) awards +50 XP for Progression Earned`
+  );
+
+  // Case 4: Ordinary non-PR working set
+  const nonPr = evaluateExerciseProgressXp('Barbell Bench Press', 90, 8, 92.5, 8);
+  assert(
+    nonPr === null,
+    `Regular non-PR set produces null XP award (zero phantom XP inflation)`
+  );
+
+  // F. Legitimate XP Economy: Strength Standards Advancement
+  const subDivAdvance = evaluateStrengthStandardAdvanceXp('Horizontal Push', 'Novice', 'I', 'Novice', 'II');
+  assert(
+    subDivAdvance !== null && subDivAdvance.amount === 100 && subDivAdvance.title === 'Strength Standard Advanced',
+    `Advancing sub-division (Novice I -> II) awards +100 XP`
+  );
+
+  const majorTierAdvance = evaluateStrengthStandardAdvanceXp('Horizontal Push', 'Novice', 'IV', 'Intermediate', 'I');
+  assert(
+    majorTierAdvance !== null && majorTierAdvance.amount === 350 && majorTierAdvance.title === 'Major Tier Breakthrough',
+    `Advancing major tier (Novice IV -> Intermediate I) awards +350 XP`
+  );
+
+  const noTierAdvance = evaluateStrengthStandardAdvanceXp('Horizontal Push', 'Novice', 'II', 'Novice', 'II');
+  assert(
+    noTierAdvance === null,
+    `Equal or lower tier produces null award (zero duplicate XP)`
+  );
+
+  // G. Community XP Leaderboard Engine
+  const optedOutSummary = buildLeaderboardSummary(freshProfile);
+  assert(
+    optedOutSummary.isOptedIn === false && optedOutSummary.currentUserEntry === null,
+    `New athlete starts opted OUT of community leaderboard with privacy preserved`
+  );
+
+  const optedInAthlete = {
+    ...freshProfile,
+    currentXp: 1850,
+    leaderboardOptIn: true,
+    leaderboardDisplayName: 'Marcus Vance',
+  };
+  const optedInSummary = buildLeaderboardSummary(optedInAthlete);
+  assert(
+    optedInSummary.isOptedIn === true &&
+      optedInSummary.currentUserEntry !== null &&
+      optedInSummary.currentUserEntry.division === 'Gold' &&
+      optedInSummary.currentUserEntry.rank > 0 &&
+      optedInSummary.currentUserEntry.xp === 1850,
+    `Opted-in athlete with 1,850 XP is dynamically placed into Gold Division at rank #${optedInSummary.currentUserEntry?.rank}`
+  );
+
+  assert(
+    DIVISION_THRESHOLDS.length === 6 &&
+      COMMUNITY_ATHLETES.length >= 10,
+    `Leaderboard contains 6 official competitive divisions and 10+ community athletes`
+  );
+
+  console.log('\nALL 20 ENGINE, GOVERNANCE, DESIGN HEURISTICS & GOOGLE PIXEL TENSOR AI SUITES PASSED SUCCESSFULLY! 🎯');
 })().catch((err) => {
-  console.error('Suite 19 Failed:', err);
+  console.error('Test Suite Failed:', err);
   if (typeof process !== 'undefined' && process.exit) {
     process.exit(1);
   }

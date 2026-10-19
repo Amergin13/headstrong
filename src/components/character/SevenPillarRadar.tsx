@@ -72,6 +72,19 @@ export const SevenPillarRadar: React.FC<SevenPillarRadarProps> = ({
 
   const engineScore = pillarScores.find((p) => p.pillar === 'Engine / Vitality')?.score ?? 75;
 
+  const strengthPillars = pillarScores.filter((p) => p.pillar !== 'Engine / Vitality');
+  const avgStrengthScore =
+    strengthPillars.reduce((acc, p) => acc + p.score, 0) / (strengthPillars.length || 1);
+  let overallTierName = 'Untrained';
+  if (avgStrengthScore >= 90) overallTierName = 'Elite';
+  else if (avgStrengthScore >= 75) overallTierName = 'Advanced';
+  else if (avgStrengthScore >= 50) overallTierName = 'Intermediate';
+  else if (avgStrengthScore >= 25) overallTierName = 'Novice';
+
+  const subDivisionIndex = Math.min(3, Math.floor(((avgStrengthScore % 25) / 25) * 4));
+  const subDivisionLabel = ['I', 'II', 'III', 'IV'][subDivisionIndex] || 'I';
+  const overallBadgeText = overallTierName === 'Elite' ? 'Elite' : `${overallTierName} ${subDivisionLabel}`;
+
   return (
     <div className="rounded-3xl surface-glass p-4 border border-white/[0.08] space-y-3">
       <div className="flex items-center justify-between">
@@ -84,7 +97,7 @@ export const SevenPillarRadar: React.FC<SevenPillarRadarProps> = ({
           </p>
         </div>
         <span className="text-xs font-mono font-bold text-brand-primary px-2.5 py-1 rounded-full bg-brand-primary/10 border border-brand-primary/20">
-          Intermediate III
+          {overallBadgeText}
         </span>
       </div>
 
@@ -142,9 +155,9 @@ export const SevenPillarRadar: React.FC<SevenPillarRadarProps> = ({
           <span className="font-semibold text-white">Cardio &amp; Recovery</span>
         </div>
         <div className="flex items-center space-x-2 font-mono text-slate-300">
-          <span>Fitness {latestBiometrics.vo2Max ?? 46.2}</span>
+          <span>Fitness {latestBiometrics?.vo2Max ?? 44.0}</span>
           <span>•</span>
-          <span>Resting HR {latestBiometrics.restingHr} bpm</span>
+          <span>Resting HR {latestBiometrics?.restingHr ?? 58} bpm</span>
           <span>•</span>
           <span className="font-bold text-brand-primary">{engineScore}/100</span>
         </div>

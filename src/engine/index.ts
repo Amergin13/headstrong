@@ -10,3 +10,5 @@ export * from './vitality';
 export * from './hypertrophyVolume';
 export * from './knowledgeGraph';
 export * from './tensorAI';
+export * from './xp';
+export * from './leaderboard';

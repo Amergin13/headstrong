@@ -872,7 +872,30 @@ export const SEED_EXERCISES: ExerciseDefinition[] = [
   },
 ];
 
-export const INITIAL_USER_PROFILE: UserProfile = {
+export const NEW_USER_PROFILE: UserProfile = {
+  name: 'Athlete',
+  gender: 'male',
+  age: 26,
+  heightCm: 178,
+  goalPhase: 'Lean Bulk',
+  programType: 'ppl_upper',
+  mesocycleWeek: 1,
+  level: 1,
+  currentXp: 0,
+  streakDays: 0,
+  lastWorkoutDate: new Date().toISOString().split('T')[0],
+  fitbitConnected: false,
+  maxHr: 190,
+  restingHrBaseline: 60,
+  onboardingCompleted: false,
+  activeLocation: 'gym',
+  availableLocations: ['gym', 'home', 'travel'],
+  homeEquipment: ['bench', 'dumbbells', 'trx', 'pullup_bar'],
+  leaderboardOptIn: false,
+  leaderboardDisplayName: 'Athlete',
+};
+
+export const SAMPLE_DEMO_PROFILE: UserProfile = {
   name: 'Alex Vance',
   gender: 'male',
   age: 28,
@@ -891,7 +914,11 @@ export const INITIAL_USER_PROFILE: UserProfile = {
   activeLocation: 'gym',
   availableLocations: ['gym', 'home', 'travel'],
   homeEquipment: ['bench', 'dumbbells', 'trx', 'pullup_bar'],
+  leaderboardOptIn: true,
+  leaderboardDisplayName: 'Alex Vance',
 };
+
+export const INITIAL_USER_PROFILE: UserProfile = NEW_USER_PROFILE;
 
 /**
  * Generates 6 weeks (42 days) of realistic daily biometric logs

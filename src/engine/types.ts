@@ -217,4 +217,6 @@ export interface UserProfile {
   activeLocation?: TrainingLocation;
   availableLocations?: TrainingLocation[];
   homeEquipment?: HomeEquipmentTag[];
+  leaderboardOptIn?: boolean;
+  leaderboardDisplayName?: string;
 }

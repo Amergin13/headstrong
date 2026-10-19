@@ -7,6 +7,7 @@ import {
 } from '../../engine/types';
 import { SevenPillarRadar } from './SevenPillarRadar';
 import { VolumeTracker } from './VolumeTracker';
+import { XPLeaderboardCard } from './XPLeaderboardCard';
 import { calculateDotsScore } from '../../engine/dots';
 import { Flame, Zap } from 'lucide-react';
 import { triggerHaptic } from '../../utils/haptics';
@@ -17,6 +18,7 @@ interface CharacterTabProps {
   bodyweightEmaKg: number;
   latestBiometrics: BiometricLog;
   weeklyVolume: Record<string, number>;
+  onUpdateProfile?: (updated: Partial<UserProfile>) => void;
 }
 
 const GOAL_FRIENDLY_NAME: Record<GoalPhase, string> = {
@@ -25,7 +27,7 @@ const GOAL_FRIENDLY_NAME: Record<GoalPhase, string> = {
   Maingain: 'Stay Lean',
 };
 
-type AthleteSubView = 'volume' | 'balance';
+type AthleteSubView = 'volume' | 'balance' | 'leaderboard';
 
 export const CharacterTab: React.FC<CharacterTabProps> = ({
   profile,
@@ -33,6 +35,7 @@ export const CharacterTab: React.FC<CharacterTabProps> = ({
   bodyweightEmaKg,
   latestBiometrics,
   weeklyVolume,
+  onUpdateProfile,
 }) => {
   const [subView, setSubView] = useState<AthleteSubView>('volume');
 
@@ -118,7 +121,7 @@ export const CharacterTab: React.FC<CharacterTabProps> = ({
       <div
         role="group"
         aria-label="Athlete view"
-        className="grid grid-cols-2 gap-1 bg-black/50 p-1 rounded-2xl border border-white/[0.08]"
+        className="grid grid-cols-3 gap-1 bg-black/50 p-1 rounded-2xl border border-white/[0.08]"
       >
         <button
           type="button"
@@ -127,13 +130,13 @@ export const CharacterTab: React.FC<CharacterTabProps> = ({
             triggerHaptic('light');
             setSubView('volume');
           }}
-          className={`py-2 rounded-xl text-xs font-bold transition-all ${
+          className={`py-2 px-1 rounded-xl text-xs font-bold transition-all text-center ${
             subView === 'volume'
               ? 'bg-brand-primary text-black shadow-sm'
               : 'text-slate-300 hover:text-white'
           }`}
         >
-          Weekly Muscle Sets
+          Weekly Sets
         </button>
         <button
           type="button"
@@ -142,20 +145,35 @@ export const CharacterTab: React.FC<CharacterTabProps> = ({
             triggerHaptic('light');
             setSubView('balance');
           }}
-          className={`py-2 rounded-xl text-xs font-bold transition-all ${
+          className={`py-2 px-1 rounded-xl text-xs font-bold transition-all text-center ${
             subView === 'balance'
               ? 'bg-brand-primary text-black shadow-sm'
               : 'text-slate-300 hover:text-white'
           }`}
         >
-          Strength Balance &amp; Bonuses
+          Strength Radar
+        </button>
+        <button
+          type="button"
+          aria-pressed={subView === 'leaderboard'}
+          onClick={() => {
+            triggerHaptic('light');
+            setSubView('leaderboard');
+          }}
+          className={`py-2 px-1 rounded-xl text-xs font-bold transition-all text-center ${
+            subView === 'leaderboard'
+              ? 'bg-brand-primary text-black shadow-sm'
+              : 'text-slate-300 hover:text-white'
+          }`}
+        >
+          XP Leaderboard
         </button>
       </div>
 
       {subView === 'volume' ? (
         /* Primary Focal Point: Weekly Sets by Muscle Tracker */
         <VolumeTracker weeklyVolume={weeklyVolume} />
-      ) : (
+      ) : subView === 'balance' ? (
         <div className="space-y-3.5">
           {/* Strength & Fitness Balance Radar */}
           <SevenPillarRadar
@@ -193,6 +211,12 @@ export const CharacterTab: React.FC<CharacterTabProps> = ({
             </div>
           </div>
         </div>
+      ) : (
+        /* Sub-View C: Community XP Leaderboard */
+        <XPLeaderboardCard
+          profile={profile}
+          onUpdateProfile={onUpdateProfile || (() => {})}
+        />
       )}
     </div>
   );

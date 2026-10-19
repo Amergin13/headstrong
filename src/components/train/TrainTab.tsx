@@ -58,7 +58,12 @@ interface TrainTabProps {
   exerciseCatalog: ExerciseDefinition[];
   onUpdateWorkout: (updated: WorkoutSession) => void;
   onSelectReadinessState: (state: ReadinessState) => void;
-  onSetCompleted: (exerciseName: string, setNumber: number) => void;
+  onSetCompleted: (
+    exerciseName: string,
+    setNumber: number,
+    completedSet?: WorkoutSet,
+    exercise?: ExerciseSession
+  ) => void;
   onFinishWorkout: () => void;
   onShiftWorkout: () => void;
   onSwitchLocation?: (location: TrainingLocation) => void;
@@ -817,7 +822,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
               onUpdateSet={(setId, updated) => handleUpdateSet(ex.id, setId, updated)}
               onCompleteSet={(setId) => {
                 const s = ex.sets.find((item) => item.id === setId);
-                onSetCompleted(ex.name, s?.setNumber || 1);
+                onSetCompleted(ex.name, s?.setNumber || 1, s, ex);
               }}
               onAddSet={(isWarmup) => handleAddSet(ex.id, isWarmup)}
               onDeleteSet={(setId) => handleDeleteSet(ex.id, setId)}

@@ -63,61 +63,72 @@ export const WciChart: React.FC<WciChartProps> = ({
             {latestWci} pts
           </div>
           <span className="text-xs text-brand-primary font-medium">
-            {wciImprovementPct >= 0 ? `+${wciImprovementPct}%` : `${wciImprovementPct}%`} (6 wks)
+            {completedWorkouts.length > 0
+              ? `${wciImprovementPct >= 0 ? `+${wciImprovementPct}%` : `${wciImprovementPct}%`} (6 wks)`
+              : 'Starting Baseline'}
           </span>
         </div>
       </div>
 
       {/* Stamina Area Chart */}
-      <div className="w-full h-48 -ml-2">
-        <ResponsiveContainer width="100%" height="100%">
-          <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -25, bottom: 0 }}>
-            <defs>
-              <linearGradient id="wciGradientClean" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#10B981" stopOpacity={0.25} />
-                <stop offset="95%" stopColor="#10B981" stopOpacity={0.0} />
-              </linearGradient>
-            </defs>
-            <CartesianGrid stroke="#1E222D" strokeDasharray="2 2" vertical={false} />
-            <XAxis
-              dataKey="date"
-              tick={{ fill: '#64748B', fontSize: 10 }}
-              stroke="#262A36"
-            />
-            <YAxis
-              tick={{ fill: '#64748B', fontSize: 10 }}
-              stroke="#262A36"
-            />
-            <Tooltip
-              content={({ active, payload }) => {
-                if (active && payload && payload.length) {
-                  const data = payload[0].payload;
-                  return (
-                    <div className="p-2.5 rounded-xl bg-surface-bg border border-white/[0.12] shadow-2xl text-xs space-y-1">
-                      <div className="font-bold text-white">{data.name} ({data.fullDate})</div>
-                      <div className="text-brand-primary font-mono font-bold">
-                        Stamina Score: {data.wci} pts
+      {chartData.length === 0 ? (
+        <div className="w-full h-40 rounded-2xl bg-black/40 border border-white/[0.05] flex flex-col items-center justify-center p-4 text-center space-y-1.5">
+          <p className="text-xs font-semibold text-white">No completed workouts yet</p>
+          <p className="text-xs text-slate-400 max-w-xs">
+            As you log sessions, your workout stamina score will track your tonnage density and cardiovascular recovery.
+          </p>
+        </div>
+      ) : (
+        <div className="w-full h-48 -ml-2">
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -25, bottom: 0 }}>
+              <defs>
+                <linearGradient id="wciGradientClean" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#10B981" stopOpacity={0.25} />
+                  <stop offset="95%" stopColor="#10B981" stopOpacity={0.0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid stroke="#1E222D" strokeDasharray="2 2" vertical={false} />
+              <XAxis
+                dataKey="date"
+                tick={{ fill: '#64748B', fontSize: 10 }}
+                stroke="#262A36"
+              />
+              <YAxis
+                tick={{ fill: '#64748B', fontSize: 10 }}
+                stroke="#262A36"
+              />
+              <Tooltip
+                content={({ active, payload }) => {
+                  if (active && payload && payload.length) {
+                    const data = payload[0].payload;
+                    return (
+                      <div className="p-2.5 rounded-xl bg-surface-bg border border-white/[0.12] shadow-2xl text-xs space-y-1">
+                        <div className="font-bold text-white">{data.name} ({data.fullDate})</div>
+                        <div className="text-brand-primary font-mono font-bold">
+                          Stamina Score: {data.wci} pts
+                        </div>
+                        <div className="text-xs text-slate-400">
+                          {data.tonnage.toLocaleString()} kg • {data.sets} sets • {data.duration} min
+                        </div>
                       </div>
-                      <div className="text-xs text-slate-400">
-                        {data.tonnage.toLocaleString()} kg • {data.sets} sets • {data.duration} min
-                      </div>
-                    </div>
-                  );
-                }
-                return null;
-              }}
-            />
-            <Area
-              type="monotone"
-              dataKey="wci"
-              stroke="#10B981"
-              strokeWidth={2}
-              fillOpacity={1}
-              fill="url(#wciGradientClean)"
-            />
-          </AreaChart>
-        </ResponsiveContainer>
-      </div>
+                    );
+                  }
+                  return null;
+                }}
+              />
+              <Area
+                type="monotone"
+                dataKey="wci"
+                stroke="#10B981"
+                strokeWidth={2}
+                fillOpacity={1}
+                fill="url(#wciGradientClean)"
+              />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+      )}
     </div>
   );
 };

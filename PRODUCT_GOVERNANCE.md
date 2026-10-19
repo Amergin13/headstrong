@@ -205,4 +205,27 @@ Every screen, modal, copy string, and feature in **HeadStrong** is continuously 
    - **Step 4 (Locations & Equipment):** Configures places (`Full Gym`, `At Home`, `Travel`) and specific home gear (`Bench`, `Dumbbells`, `TRX`, `Pull-Up Bar`, `Bands`).
 3. **Instant First-Time-to-Value Delivery:** Upon tapping *"Start Day 1 Workout"*, the app immediately generates Day 1 for that chosen split, switches to the Workout tab, and displays Exercise #1 ready to train in 1 tap.
 
+---
+
+## 5. Clean Slate, Authoritative XP Economy & Opt-In Leaderboard Governance (`gov-clean-slate-and-legitimate-xp-leaderboard`)
+
+1. **Zero Dummy Data Exposure for New Users:**
+   - Fresh launches with empty `localStorage` start with `NEW_USER_PROFILE`: Level 1, 0 XP, 0 streak, 'Athlete', 0 past workouts, and 0 biometrics.
+   - `loadBiometrics()` and `loadWorkouts()` return clean empty arrays `[]` without auto-seeding.
+   - Sample 6-week demonstration data (`SAMPLE_DEMO_PROFILE`, 42 days biometrics, 24 workouts for Alex Vance) is available strictly on explicit opt-in via "Load Sample Demo History" or the Onboarding "Explore Demo Mode" button.
+2. **Authoritative XP Economy Invariants:**
+   - **Legitimate XP Award Triggers:**
+     - **Workout Completion:** Base 250 XP + 50 XP all-working-sets completed bonus (+15% Primed multiplier).
+     - **Program Milestones:** +200 XP for mesocycle week completion; +500 XP for 6-week cycle graduation.
+     - **Progressive Overload Breakthroughs:** Evaluated per set against historical exercise bests: +60 XP for load increases (>=+2.5kg BB / >=+2kg DB); +40 XP for rep increases at equal/higher load; +50 XP for reaching the top of the rep range (unlocking double progression). Ordinary non-PR sets award 0 XP.
+     - **Strength Standards Gains:** +100 XP for international sub-division rank-ups (I -> II -> III -> IV); +350 XP for major tier breakthroughs (Novice -> Intermediate -> Advanced -> Elite).
+   - **Forbidden XP Actions:**
+     - Zero XP is awarded for: switching exercises, switching split days, switching training locations, changing mesocycle weeks via slider, shifting workout dates, changing goal phases, exporting/importing JSON backups, syncing Pixel Watch, completing onboarding, loading demo data, or logging bodyweight.
+3. **Privacy-Preserved Community XP Leaderboard:**
+   - Lifters start opted OUT by default with full privacy preserved.
+   - Opting in requires an explicit 1-tap confirmation with customizable display name.
+   - Only chosen display name, verified XP, division, and rank are visible to others; bodyweight, health metrics, and sleep data never leave the phone.
+   - Features 6 competitive tiers: `Elite` (5,000+ XP), `Diamond` (3,500–4,999 XP), `Platinum` (2,500–3,499 XP), `Gold` (1,500–2,499 XP), `Silver` (750–1,499 XP), and `Bronze` (0–749 XP).
+   - Provides 1-tap departure ("Leave Leaderboard") at any time.
+
 

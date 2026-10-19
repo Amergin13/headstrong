@@ -254,15 +254,23 @@ export const E1rmVsWeightChart: React.FC<E1rmVsWeightChartProps> = ({
       </div>
 
       {/* Dual Axis Chart */}
-      <div className="w-full h-52 -ml-2">
-        <ResponsiveContainer width="100%" height="100%">
-          <ComposedChart data={chartPoints} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-            <CartesianGrid stroke="#1E222D" strokeDasharray="2 2" vertical={false} />
-            <XAxis
-              dataKey="displayDate"
-              tick={{ fill: '#64748B', fontSize: 10 }}
-              stroke="#262A36"
-            />
+      {chartPoints.length === 0 ? (
+        <div className="w-full h-44 rounded-2xl bg-black/40 border border-white/[0.05] flex flex-col items-center justify-center p-4 text-center space-y-1.5">
+          <p className="text-xs font-semibold text-white">No workout history logged yet</p>
+          <p className="text-xs text-slate-400 max-w-xs">
+            Complete your first session or log your bodyweight to chart your strength-to-weight trends.
+          </p>
+        </div>
+      ) : (
+        <div className="w-full h-52 -ml-2">
+          <ResponsiveContainer width="100%" height="100%">
+            <ComposedChart data={chartPoints} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+              <CartesianGrid stroke="#1E222D" strokeDasharray="2 2" vertical={false} />
+              <XAxis
+                dataKey="displayDate"
+                tick={{ fill: '#64748B', fontSize: 10 }}
+                stroke="#262A36"
+              />
             <YAxis
               yAxisId="left"
               domain={['auto', 'auto']}
@@ -347,6 +355,7 @@ export const E1rmVsWeightChart: React.FC<E1rmVsWeightChartProps> = ({
           </ComposedChart>
         </ResponsiveContainer>
       </div>
+      )}
 
       {/* Matched Weights Across Equipment */}
       <div className="p-3 rounded-2xl bg-black/40 border border-white/[0.06] space-y-2">

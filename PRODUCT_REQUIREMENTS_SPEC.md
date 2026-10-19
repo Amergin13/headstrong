@@ -137,6 +137,9 @@ flowchart TD
 | **FR-TENS-01** | Hardware | Google Pixel Tensor Detection | Queries Client Hints (`Sec-CH-UA-Model`), UA, and WebGL GPU vendor strings (`Mali-G720/G715/G710/G78`) to identify Google Pixel phone and Tensor generation (G1–G4). |
 | **FR-TENS-02** | AI Engine | On-Device Tensor AI Coach | Executes daily coaching synthesis, tactical rep tempo, and autoregulation on-device via Chrome Built-in AI (Gemini Nano on Tensor TPU), WebNN, or WebGPU in $\le 15\text{ms}$. |
 | **FR-TENS-03** | AI Engine | Tensor Biomechanical Matcher | Evaluates exercise substitution compatibility, joint torque, and stimulus-to-fatigue ratios on-device with zero cloud requests. |
+| **FR-XP-01** | Gamification | Authoritative XP Economy & Progress Evaluation | Awards XP strictly for completed workouts (250 base + 50 all-sets bonus), mesocycle milestones (+200 week, +500 graduation), progressive overload breakthroughs (+60 load PR, +40 rep PR, +50 top of rep range), and strength standard promotions (+100 sub-tier, +350 major tier). |
+| **FR-XP-02** | Gamification | Clean Slate & Zero Illegitimate XP Shield | Fresh installs start clean at Level 1, 0 XP, 0 streak, and 0 past logs. 13 non-training UI interactions (exercise swaps, split/location/week switches, wearable syncs, weight logging, JSON import/export, onboarding) are strictly prohibited from awarding XP. |
+| **FR-LEAD-01** | Gamification | Privacy-First Opt-In Community XP Leaderboard | 1-tap opt-in/opt-out community leaderboard across 6 competitive divisions (Bronze to Elite). Dynamically places lifters by verified XP and displays rank gaps. Zero biometric, weight, or sleep logs shared. |
 
 ---
 

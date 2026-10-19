@@ -383,12 +383,45 @@ All future sessions, developers, and AI agents must strictly adhere to the struc
    - *Sub-View A:* Israetel/Schoenfeld Hypertrophy Volume Landmarks horizontal bar gauges across 12 muscles.
    - *Sub-View B:* 7-Pillar Strength Balance Radar + Active Bonuses (Streak Safe & 1.25x Active Bonus).
 
-### 8.2 Non-Negotiable Guardrails
-- **1 Canonical Entry Point Per Job:** Never add duplicate switchers, carousels, or headers.
-- **Strict 12px Minimum Text Floor:** Never use `text-[8px..11px]`.
-- **>=44px Touch Targets:** Every button and trigger must satisfy mobile ergonomics.
-- **Zero Internal Jargon:** Never expose `OOUX`, `Personal Knowledge Graph`, `Canonical Vector`, `SFR`, or `MEV/MRV` acronyms to users.
-- **Asynchronous Queue Invariant:** Never re-introduce calendar-bound day tabs (`1. Push`, `2. Pull`, `3. Legs`, `4. Upper`) or missed-day penalties.
+---
+
+## 9. Google Pixel Tensor Hardware Acceleration & On-Device AI Architecture
+
+When running on Google Pixel hardware (Pixel 6, 7, 8, 9, Fold), HeadStrong routes AI inference through on-device Google Tensor silicon:
+1. **Model Identification:** Client Hints (`Sec-CH-UA-Model`), User-Agent, and WebGL GPU string (`Mali-G720` -> Tensor G4; `Mali-G715` -> Tensor G3; `Mali-G710` -> Tensor G2; `Mali-G78` -> Tensor G1).
+2. **Acceleration Backends:**
+   - **Tensor TPU (Gemini Nano):** Connects via `window.ai.languageModel` for tactical coaching cues and tempo adaptations.
+   - **Tensor NPU (WebNN):** Probes `navigator.ml` for neural fatigue projections.
+   - **Tensor GPU (WebGPU):** Probes `navigator.gpu` for Mali compute shaders.
+   - **WASM SIMD Fallback:** High-performance local engine on non-Pixel devices.
+3. **Invariants:**
+   - Inference latency $\le 15\text{ms}$.
+   - 100% on-device local execution; zero biometric, health, or workout data ever transmitted to cloud servers.
+
+---
+
+## 10. Clean Slate for New Users, Authoritative XP Economy & Opt-In Leaderboard
+
+### 10.1 Zero Dummy Data Exposure Invariant
+- **First-Time Visitors:** Fresh installs start with `NEW_USER_PROFILE`: Level 1, 0 XP, 0 streak, 'Athlete', fresh starter workout, and clean empty arrays `[]` for biometrics and completed workouts.
+- **Preview & Demo Mode:** Sample 6-week demonstration data (`SAMPLE_DEMO_PROFILE`, 42 days biometrics, 24 workouts for Alex Vance) is available strictly on explicit opt-in via "Load Sample Demo History" or the Onboarding "Explore Demo Mode" trigger.
+
+### 10.2 Authoritative XP Economy Invariant
+XP is a measure of genuine athletic progression and consistency:
+- **Legitimate XP Award Triggers:**
+  - **Full Workout Completion:** Base 250 XP + 50 XP all-working-sets completed bonus (+15% Primed multiplier).
+  - **Program Milestones:** +200 XP for mesocycle week completion; +500 XP for 6-week cycle graduation.
+  - **Progressive Overload PRs:** Evaluated per set against historical exercise bests: +60 XP for load increases (>=+2.5kg BB / >=+2kg DB); +40 XP for rep increases at equal/higher load; +50 XP for reaching the top of the rep range (unlocking double progression). Ordinary non-PR sets award 0 XP.
+  - **Strength Standards Gains:** +100 XP for international sub-division rank-ups (I -> II -> III -> IV); +350 XP for major tier breakthroughs (Novice -> Intermediate -> Advanced -> Elite).
+- **Strictly Prohibited XP Actions:**
+  - Zero XP is awarded for: switching exercises, switching split days, switching training locations, changing mesocycle weeks via slider, shifting workout dates, changing goal phases, exporting/importing JSON backups, syncing Pixel Watch, completing onboarding, loading demo data, or logging bodyweight.
+
+### 10.3 Privacy-Preserved Community XP Leaderboard
+- **Opt-In by Default:** Lifters start opted OUT with complete privacy preserved.
+- **1-Tap Opt-In / Opt-Out:** Lifters opt in with 1 tap, choose a public display name, and can leave anytime in 1 tap.
+- **Privacy Boundary:** Only display name, division, rank, and verified XP are published; bodyweight, health metrics, and sleep data never leave the device.
+- **6 Competitive Divisions:** `Elite` (5,000+ XP), `Diamond` (3,500–4,999 XP), `Platinum` (2,500–3,499 XP), `Gold` (1,500–2,499 XP), `Silver` (750–1,499 XP), and `Bronze` (0–749 XP).
+- **Navigation Placement:** Third segment in the Athlete tab subview switcher (`Weekly Sets | Strength Radar | XP Leaderboard`).
 
 
 
