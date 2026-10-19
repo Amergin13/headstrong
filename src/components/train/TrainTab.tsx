@@ -664,6 +664,29 @@ export const TrainTab: React.FC<TrainTabProps> = ({
                 </div>
               </div>
             )}
+
+            {/* On-Device AI Coach Powered by Google Tensor (Diagnostics & Settings) */}
+            {tensorHardware && tensorInsight && (
+              <div className="pt-2.5 border-t border-white/[0.08]">
+                <TensorAICoachCard
+                  insight={tensorInsight}
+                  hardware={tensorHardware}
+                  contextInput={{
+                    workoutSession: activeWorkout,
+                    readinessState: readiness.state,
+                    readinessZScore: readiness.score,
+                    hrvRmssd: latestBiometrics.hrvRmssd,
+                    restingHr: latestBiometrics.restingHr,
+                    sleepHours: latestBiometrics.sleepHours,
+                    goalPhase: profile.goalPhase,
+                    mesocycleWeek: profile.mesocycleWeek || 3,
+                    location: activeWorkout.location || profile.activeLocation || 'gym',
+                  }}
+                  onRefreshHardware={loadTensorAI}
+                  onOpenChat={onOpenAICoach}
+                />
+              </div>
+            )}
           </div>
         )}
 
@@ -802,33 +825,16 @@ export const TrainTab: React.FC<TrainTabProps> = ({
         </div>
       </div>
 
-      {/* 2. Sleek Collapsible Recovery Status Bar */}
+      {/* 2. Sleek Collapsible Recovery Overview with Primed Context */}
       <ReadinessBanner
         readiness={readiness}
         latestBiometrics={latestBiometrics}
         onSelectState={onSelectReadinessState}
+        tensorInsight={tensorInsight}
+        tensorHardware={tensorHardware}
+        mesoWeek={mesoWeek}
+        onOpenChat={onOpenAICoach}
       />
-
-      {/* On-Device AI Coach Powered by Google Tensor */}
-      {tensorHardware && tensorInsight && (
-        <TensorAICoachCard
-          insight={tensorInsight}
-          hardware={tensorHardware}
-          contextInput={{
-            workoutSession: activeWorkout,
-            readinessState: readiness.state,
-            readinessZScore: readiness.score,
-            hrvRmssd: latestBiometrics.hrvRmssd,
-            restingHr: latestBiometrics.restingHr,
-            sleepHours: latestBiometrics.sleepHours,
-            goalPhase: profile.goalPhase,
-            mesocycleWeek: profile.mesocycleWeek || 3,
-            location: activeWorkout.location || profile.activeLocation || 'gym',
-          }}
-          onRefreshHardware={loadTensorAI}
-          onOpenChat={onOpenAICoach}
-        />
-      )}
 
       {/* Undo Set Deletion Guardrail Banner */}
       {deletedSetBackup && (

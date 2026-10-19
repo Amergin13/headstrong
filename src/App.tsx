@@ -121,7 +121,9 @@ export const App: React.FC = () => {
     const actionParam = params.get('action');
     const oauthCode = params.get('code');
 
-    if (
+    if (tabParam === 'chat') {
+      setAiCoachOpen(true);
+    } else if (
       tabParam &&
       ['train', 'character', 'analytics', 'program'].includes(tabParam)
     ) {
@@ -797,8 +799,20 @@ export const App: React.FC = () => {
         />
       )}
 
-      {/* Bottom 4-Tab Navigation */}
-      <NavigationBar activeTab={activeTab} onTabChange={setActiveTab} />
+      {/* Bottom 5-Tab Navigation with Dedicated Chat */}
+      <NavigationBar
+        activeTab={activeTab}
+        onTabChange={(tab) => {
+          if (tab === 'chat') {
+            setAiCoachOpen(true);
+          } else {
+            setActiveTab(tab);
+            setAiCoachOpen(false);
+          }
+        }}
+        isChatOpen={aiCoachOpen}
+        onOpenAICoach={() => setAiCoachOpen(true)}
+      />
     </div>
   );
 };

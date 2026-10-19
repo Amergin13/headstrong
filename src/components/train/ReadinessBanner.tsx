@@ -1,20 +1,28 @@
 import React, { useState } from 'react';
 import { ReadinessState, BiometricLog } from '../../engine/types';
 import { ReadinessEvaluation } from '../../engine/readiness';
-import { ChevronDown, ChevronUp, HeartPulse } from 'lucide-react';
+import { TensorCoachingInsight, TensorHardwareProfile } from '../../engine/tensorAI';
+import { ChevronDown, ChevronUp, HeartPulse, Zap, ShieldCheck } from 'lucide-react';
 import { triggerHaptic } from '../../utils/haptics';
 import { BiometricCircularGauge } from '../common/BiometricCircularGauge';
 
-interface ReadinessBannerProps {
+export interface ReadinessBannerProps {
   readiness: ReadinessEvaluation;
   latestBiometrics: BiometricLog;
   onSelectState: (state: ReadinessState) => void;
+  tensorInsight?: TensorCoachingInsight | null;
+  tensorHardware?: TensorHardwareProfile | null;
+  mesoWeek?: number;
+  onOpenChat?: () => void;
 }
 
 export const ReadinessBanner: React.FC<ReadinessBannerProps> = ({
   readiness,
   latestBiometrics,
   onSelectState,
+  tensorInsight,
+  tensorHardware,
+  mesoWeek = 1,
 }) => {
   const [expanded, setExpanded] = useState(false);
 
@@ -32,6 +40,31 @@ export const ReadinessBanner: React.FC<ReadinessBannerProps> = ({
     triggerHaptic(st === 'Amber Shield' ? 'warning' : 'medium');
     onSelectState(st);
   };
+
+  // Primed & Recovery Context strings
+  const headline =
+    tensorInsight?.headline ||
+    (isPrimed
+      ? 'High Neural Drive • Primed for Heavy Tension'
+      : isAmber
+      ? 'Recovery Buffer Active • Fatigue Shield'
+      : 'Autonomic Balance • Ready to Train');
+
+  const summary =
+    tensorInsight?.summary ||
+    (isPrimed
+      ? `Week ${mesoWeek} Accumulation: Peak parasympathetic recovery detected. You have full capacity to drive progressive overload on your working sets.`
+      : isAmber
+      ? 'Your body shows signs of accumulated fatigue today. Target loads are held steady and your workout streak is protected.'
+      : 'Sleep and heart rate recovery are within target baseline ranges. Proceed with standard overload progression.');
+
+  const tacticalCue =
+    tensorInsight?.tacticalCue ||
+    (isPrimed
+      ? 'Push for +2.5 kg or +1 rep on your main lifts (+15% bonus XP). Stop 1–2 reps shy of failure.'
+      : isAmber
+      ? 'Hold working weights steady, leave 2–3 reps in the tank, and log all prescribed sets to keep momentum.'
+      : 'Hit your prescribed target weights and reps with 1–2 reps left in reserve.');
 
   return (
     <div
@@ -51,20 +84,24 @@ export const ReadinessBanner: React.FC<ReadinessBannerProps> = ({
           setExpanded(!expanded);
         }}
         aria-expanded={expanded}
-        className="w-full flex items-center justify-between text-left group"
+        className="w-full flex items-center justify-between text-left group min-h-[44px]"
       >
         <div className="flex items-center space-x-3 min-w-0">
           {/* Mini Biometric Recovery Badge */}
           <div
             className={`w-9 h-9 rounded-2xl flex items-center justify-center shrink-0 border ${
               isPrimed
-                ? 'bg-brand-recovery/15 border-brand-recovery/35 text-brand-recovery'
+                ? 'bg-brand-recovery/15 border-brand-recovery/35 text-brand-recovery glow-recovery'
                 : isAmber
                 ? 'bg-amber-500/15 border-amber-500/35 text-amber-400'
                 : 'bg-brand-strain/15 border-brand-strain/35 text-brand-strain'
             }`}
           >
-            <HeartPulse className="w-5 h-5 stroke-[2]" />
+            {isPrimed ? (
+              <Zap className="w-5 h-5 stroke-[2]" />
+            ) : (
+              <HeartPulse className="w-5 h-5 stroke-[2]" />
+            )}
           </div>
 
           <div className="truncate">
@@ -82,14 +119,15 @@ export const ReadinessBanner: React.FC<ReadinessBannerProps> = ({
                 }`}
               >
                 {isPrimed
-                  ? 'Ready to Push (+15% XP)'
+                  ? 'Primed for Heavy Tension (+15% XP)'
                   : isAmber
                   ? 'Light Recovery Mode'
                   : 'Well Rested'}
               </span>
             </div>
             <div className="text-xs text-slate-400 font-medium mt-0.5 truncate">
-              {recoveryPercent}% Score • {latestBiometrics.sleepHours}h sleep • {latestBiometrics.restingHr} bpm
+              {recoveryPercent}% Score • {isPrimed ? 'High Neural Drive • ' : isAmber ? 'Fatigue Buffer • ' : ''}
+              {latestBiometrics.sleepHours}h sleep • {latestBiometrics.restingHr} bpm
             </div>
           </div>
         </div>
@@ -98,7 +136,7 @@ export const ReadinessBanner: React.FC<ReadinessBannerProps> = ({
           <span
             className={`px-2.5 py-1 rounded-full text-xs font-bold font-mono border ${
               isPrimed
-                ? 'bg-brand-recovery/10 text-brand-recovery border-brand-recovery/30'
+                ? 'bg-brand-recovery/10 text-brand-recovery border-brand-recovery/30 glow-recovery'
                 : isAmber
                 ? 'bg-amber-500/10 text-amber-400 border-amber-500/30'
                 : 'bg-white/5 text-slate-300 border-white/10'
@@ -116,31 +154,62 @@ export const ReadinessBanner: React.FC<ReadinessBannerProps> = ({
         </div>
       </button>
 
-      {/* Expandable Whoop-Style Biometric Deep-Dive */}
+      {/* Expandable Biometric Deep-Dive with Integrated Primed Context */}
       {expanded && (
         <div className="pt-4 mt-4 border-t border-white/[0.08] space-y-4">
-          {/* Hero Recovery Ring & Guidance */}
-          <div className="flex flex-col sm:flex-row items-center justify-around gap-4 p-3 rounded-2xl bg-[#08090C]/80 border border-white/[0.06]">
-            <BiometricCircularGauge
-              value={recoveryPercent}
-              max={100}
-              unit="%"
-              label="RECOVERY"
-              variant={isPrimed ? 'recovery' : isAmber ? 'amber' : 'strain'}
-              size="md"
-            />
+          {/* Hero Recovery Ring & Primed Physiological Guidance */}
+          <div className="flex flex-col sm:flex-row items-center sm:items-start justify-between gap-4 p-4 rounded-2xl bg-[#08090C]/80 border border-white/[0.06]">
+            <div className="shrink-0 flex items-center justify-center">
+              <BiometricCircularGauge
+                value={recoveryPercent}
+                max={100}
+                unit="%"
+                label="RECOVERY"
+                variant={isPrimed ? 'recovery' : isAmber ? 'amber' : 'strain'}
+                size="md"
+              />
+            </div>
 
-            <div className="flex-1 space-y-2 text-center sm:text-left">
-              <span className="text-xs font-bold tracking-widest uppercase text-slate-400 block">
-                DAILY READINESS STATUS
-              </span>
+            <div className="flex-1 space-y-2.5 text-center sm:text-left min-w-0">
+              <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2">
+                <span
+                  className={`inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-xs font-extrabold border ${
+                    isPrimed
+                      ? 'bg-brand-recovery/15 text-brand-recovery border-brand-recovery/35 glow-recovery'
+                      : isAmber
+                      ? 'bg-amber-500/15 text-amber-400 border-amber-500/35'
+                      : 'bg-brand-strain/15 text-brand-strain border-brand-strain/35'
+                  }`}
+                >
+                  <Zap className="w-3.5 h-3.5 stroke-[2]" />
+                  <span>{headline}</span>
+                </span>
+
+                {tensorHardware && (
+                  <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full bg-white/[0.06] text-slate-300 border border-white/[0.08] text-xs font-semibold">
+                    <ShieldCheck className="w-3 h-3 text-brand-recovery stroke-[2]" />
+                    <span>
+                      {tensorHardware.isPixelDevice
+                        ? `${tensorHardware.chipModel.replace('Google ', '')} TPU`
+                        : 'On-Device Engine'}
+                      {tensorHardware.inferenceLatencyMs > 0 && ` • ${tensorHardware.inferenceLatencyMs}ms`}
+                    </span>
+                  </span>
+                )}
+              </div>
+
               <p className="text-xs text-slate-200 leading-relaxed font-medium">
-                {isPrimed
-                  ? 'Your sleep and heart rate recovery are strong today. Push for +2.5 kg or +1 rep on your main lifts (+15% bonus XP).'
-                  : isAmber
-                  ? 'Your body shows signs of fatigue today. Target weights are held steady and your workout streak is protected.'
-                  : 'Your recovery is on track. Follow today’s target weights and reps below.'}
+                {summary}
               </p>
+
+              <div className="p-3 rounded-xl bg-black/50 border border-white/[0.06] text-xs text-slate-300 font-medium space-y-1">
+                <div className="flex items-center space-x-1.5 text-brand-recovery font-bold">
+                  <span>💡 Tactical Overload Cue:</span>
+                </div>
+                <p className="text-slate-200 leading-relaxed">
+                  {tacticalCue}
+                </p>
+              </div>
             </div>
           </div>
 
@@ -219,10 +288,10 @@ export const ReadinessBanner: React.FC<ReadinessBannerProps> = ({
                     type="button"
                     onClick={() => handleStateChange(st)}
                     aria-pressed={isSelected}
-                    className={`flex-1 sm:flex-initial px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                    className={`flex-1 sm:flex-initial px-3.5 py-2.5 min-h-[44px] flex items-center justify-center rounded-xl text-xs font-bold transition-all ${
                       isSelected
                         ? st === 'Primed'
-                          ? 'bg-brand-recovery text-black shadow-md'
+                          ? 'bg-brand-recovery text-black shadow-md glow-recovery'
                           : st === 'Amber Shield'
                           ? 'bg-amber-400 text-black shadow-md'
                           : 'bg-white text-black shadow-md'
@@ -240,3 +309,4 @@ export const ReadinessBanner: React.FC<ReadinessBannerProps> = ({
     </div>
   );
 };
+
