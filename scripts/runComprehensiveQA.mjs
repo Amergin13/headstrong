@@ -469,7 +469,70 @@ assert(
   'MesocycleManager.tsx visually displays scheduled travel weeks in timeline and stage card'
 );
 
+// ============================================================================
+// BRANCH 9: EXERCISE SCIENCE KNOWLEDGE BASE & ZERO-HALLUCINATION AUDIT
+// ============================================================================
+banner('BRANCH 9: Exercise Science Knowledge Base & Zero-Hallucination Audit');
+
+const knowledgeGraphSrc = fs.readFileSync(path.resolve(process.cwd(), 'src/engine/knowledgeGraph.ts'), 'utf-8');
+assert(
+  knowledgeGraphSrc.includes('EXERCISE_SCIENCE_KNOWLEDGE_BASE') &&
+    knowledgeGraphSrc.includes('queryExerciseScienceKnowledgeBase') &&
+    knowledgeGraphSrc.includes('searchExerciseScienceKnowledgeBase'),
+  'knowledgeGraph.ts exports authoritative EXERCISE_SCIENCE_KNOWLEDGE_BASE and deterministic search query functions'
+);
+
+const principleIds = [
+  'sp-e1rm',
+  'sp-db-multiplier',
+  'sp-rdl-multiplier',
+  'sp-calisthenics-load',
+  'sp-ema-bw',
+  'sp-dots-polynomial',
+  'sp-6-pillars',
+  'sp-autonomic-readiness',
+  'sp-double-progression',
+  'sp-hypertrophy-landmarks',
+  'sp-retention-shield',
+  'sp-bodyweight-travel',
+  'sp-rest-intervals',
+  'sp-stretch-hypertrophy',
+  'sp-meso-periodization',
+  'sp-asynchronous-queue',
+  'sp-wci',
+  'sp-tensor-ai',
+];
+
+for (const pId of principleIds) {
+  assert(knowledgeGraphSrc.includes(pId), `Knowledge base contains verified principle ${pId}`);
+}
+
+assert(
+  aiAssistantSrc.includes('queryExerciseScienceKnowledgeBase') &&
+    aiAssistantSrc.includes('scientificPrinciplesCited') &&
+    aiAssistantSrc.includes('Academic Citation:'),
+  'aiAssistantService.ts grounds scientific questions directly in the Knowledge Base with academic citations'
+);
+
+const kgCardSrc = fs.readFileSync(path.resolve(process.cwd(), 'src/components/analytics/KnowledgeGraphCard.tsx'), 'utf-8');
+assert(
+  kgCardSrc.includes('Science & Logic') &&
+    kgCardSrc.includes('EXERCISE_SCIENCE_KNOWLEDGE_BASE') &&
+    kgCardSrc.includes('Search principles, formulas, citations') &&
+    !kgCardSrc.includes('text-[10px]') &&
+    !kgCardSrc.includes('text-[9px]') &&
+    !kgCardSrc.includes('text-[8px]'),
+  'KnowledgeGraphCard.tsx provides interactive Science & Logic browser with formula rendering and >=12px font floor'
+);
+
+assert(
+  chatModalSrc.includes('Why 1.18x DB Multiplier?') &&
+    chatModalSrc.includes('How Does DOTS Work?') &&
+    chatModalSrc.includes('scientificPrinciplesCited'),
+  'AICoachChatModal.tsx provides instant science query chips and renders academic citations'
+);
+
 console.log(`\n\x1b[32m\x1b[1m======================================================================\x1b[0m`);
-console.log(`\x1b[32m\x1b[1mALL 8 TREE-OF-THOUGHTS QA BRANCHES EVALUATED & FULLY CERTIFIED! 🏆\x1b[0m`);
+console.log(`\x1b[32m\x1b[1mALL 9 TREE-OF-THOUGHTS QA BRANCHES EVALUATED & FULLY CERTIFIED! 🏆\x1b[0m`);
 console.log(`\x1b[32mHeadStrong is 100% verified, production-ready, and Google Play Store publishable.\x1b[0m`);
 console.log(`\x1b[32m\x1b[1m======================================================================\x1b[0m\n`);

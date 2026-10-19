@@ -24,6 +24,7 @@ import {
   Calendar,
   Layers,
   ChevronRight,
+  FlaskConical,
 } from 'lucide-react';
 
 interface AICoachChatModalProps {
@@ -176,6 +177,16 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
       icon: ShieldCheck,
     },
     {
+      label: 'Why 1.18x DB Multiplier?',
+      text: 'Why does dumbbell bench press use a 1.18x multiplier?',
+      icon: FlaskConical,
+    },
+    {
+      label: 'How Does DOTS Work?',
+      text: 'What is the formula and rationale for the DOTS score?',
+      icon: FlaskConical,
+    },
+    {
       label: 'Switch to Upper/Lower',
       text: 'Switch my program split to Upper / Lower',
       icon: Layers,
@@ -308,6 +319,37 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
                             <span className="text-slate-400 font-sans">{c.label}:</span>
                             <span className="font-bold text-white">{c.value}</span>
                           </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Scientific Principles & Academic Citations */}
+                  {!isUser && msg.scientificPrinciplesCited && msg.scientificPrinciplesCited.length > 0 && (
+                    <div className="pt-2 border-t border-white/[0.08] space-y-1.5">
+                      <span className="text-xs font-semibold text-brand-primary flex items-center gap-1">
+                        <FlaskConical className="w-3 h-3 text-brand-primary stroke-[2]" />
+                        Peer-Reviewed Science Grounding
+                      </span>
+                      <div className="space-y-1">
+                        {msg.scientificPrinciplesCited.map((sp) => (
+                          <div
+                            key={sp.id}
+                            className="p-2 rounded-xl bg-black/40 border border-brand-primary/20 text-xs space-y-1"
+                          >
+                            <div className="font-bold text-white flex items-center justify-between">
+                              <span>{sp.title}</span>
+                              <span className="text-xs font-mono text-brand-primary font-normal">{sp.topic}</span>
+                            </div>
+                            {sp.formula && (
+                              <div className="text-brand-primary font-mono text-xs overflow-x-auto no-scrollbar">
+                                {sp.formula}
+                              </div>
+                            )}
+                            <div className="text-slate-400 text-xs italic">
+                              {sp.academicCitation}
+                            </div>
+                          </div>
                         ))}
                       </div>
                     </div>

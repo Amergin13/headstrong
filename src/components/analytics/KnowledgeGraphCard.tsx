@@ -7,6 +7,7 @@ import {
 } from '../../engine/types';
 import {
   buildAthleteKnowledgeGraph,
+  EXERCISE_SCIENCE_KNOWLEDGE_BASE,
   KgNode,
 } from '../../engine/knowledgeGraph';
 import { triggerHaptic } from '../../utils/haptics';
@@ -14,6 +15,10 @@ import {
   Sparkles,
   Zap,
   HeartPulse,
+  FlaskConical,
+  Search,
+  Calculator,
+  BookOpen,
 } from 'lucide-react';
 
 interface KnowledgeGraphCardProps {
@@ -24,7 +29,7 @@ interface KnowledgeGraphCardProps {
   weeklyVolume: Record<string, number>;
 }
 
-type InsightTabMode = 'overview' | 'joints' | 'targets';
+type InsightTabMode = 'overview' | 'joints' | 'science';
 
 export const KnowledgeGraphCard: React.FC<KnowledgeGraphCardProps> = ({
   workouts,
@@ -47,6 +52,7 @@ export const KnowledgeGraphCard: React.FC<KnowledgeGraphCardProps> = ({
 
   const [selectedNodeId, setSelectedNodeId] = useState<string>('node-athlete');
   const [viewMode, setViewMode] = useState<InsightTabMode>('overview');
+  const [scienceSearch, setScienceSearch] = useState('');
 
   const selectedNode: KgNode =
     pkg.nodes.find((n) => n.id === selectedNodeId) || pkg.nodes[0];
@@ -115,11 +121,12 @@ export const KnowledgeGraphCard: React.FC<KnowledgeGraphCardProps> = ({
       </div>
 
       {/* View Mode Switcher */}
-      <div className="grid grid-cols-2 gap-1 bg-black/50 p-1 rounded-2xl border border-white/[0.06]">
+      <div className="grid grid-cols-3 gap-1 bg-black/50 p-1 rounded-2xl border border-white/[0.06]">
         {(
           [
-            { id: 'overview', label: 'Recovery Overview' },
-            { id: 'joints', label: 'Joint Health (5)' },
+            { id: 'overview', label: 'Recovery' },
+            { id: 'joints', label: 'Joints (5)' },
+            { id: 'science', label: 'Science & Logic' },
           ] as const
         ).map((tab) => (
           <button
@@ -385,37 +392,77 @@ export const KnowledgeGraphCard: React.FC<KnowledgeGraphCardProps> = ({
         </div>
       )}
 
-      {/* TAB 3: PERSONALIZED MUSCLE SET TARGETS */}
-      {viewMode === 'targets' && (
-        <div className="space-y-2.5">
+      {/* TAB 3: EXERCISE SCIENCE & LOGIC */}
+      {viewMode === 'science' && (
+        <div className="space-y-3">
           <p className="text-xs text-slate-400 px-1">
-            Adjusts your weekly set targets based on your sleep, recovery, and recent strength gains.
+            Authoritative exercise physiology formulas, volume landmarks, and recovery algorithms driving HeadStrong.
           </p>
 
-          {pkg.muscleProfiles.map((mp) => (
-            <div
-              key={mp.muscleKey}
-              className="p-3.5 rounded-2xl bg-black/45 border border-white/[0.07] space-y-1.5"
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-bold text-white">{mp.displayName}</span>
-                <span className="text-xs font-mono font-bold px-2.5 py-0.5 rounded-full bg-brand-primary/10 text-brand-primary border border-brand-primary/20">
-                  Target: {mp.personalizedMav[0]}–{mp.personalizedMav[1]} sets/wk
-                </span>
-              </div>
+          {/* Search Bar */}
+          <div className="relative">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 stroke-[2]" />
+            <input
+              type="text"
+              value={scienceSearch}
+              onChange={(e) => setScienceSearch(e.target.value)}
+              placeholder="Search principles, formulas, citations..."
+              className="w-full min-h-[44px] pl-10 pr-3.5 py-2 rounded-xl bg-black/50 border border-white/[0.08] text-xs text-white placeholder-slate-500 focus:outline-none focus:border-brand-primary/60 transition-colors"
+            />
+          </div>
 
-              <div className="flex items-center justify-between text-xs text-slate-400">
-                <span>Logged: {mp.weeklySets} sets/wk</span>
-                <span className="text-brand-primary font-mono font-semibold">
-                  +{mp.e1rmVelocityPct}% strength (6 wks)
-                </span>
-              </div>
+          {/* Principle Cards */}
+          <div className="space-y-2.5 max-h-[380px] overflow-y-auto no-scrollbar pr-0.5">
+            {(pkg.scientificKnowledgeBase || EXERCISE_SCIENCE_KNOWLEDGE_BASE)
+              .filter((p) => {
+                if (!scienceSearch.trim()) return true;
+                const q = scienceSearch.toLowerCase();
+                return (
+                  p.title.toLowerCase().includes(q) ||
+                  p.topic.toLowerCase().includes(q) ||
+                  p.scientificRationale.toLowerCase().includes(q) ||
+                  p.keywords.some((k) => k.includes(q))
+                );
+              })
+              .map((p) => (
+                <div
+                  key={p.id}
+                  className="p-3.5 rounded-2xl bg-black/45 border border-white/[0.07] space-y-2 hover:border-white/[0.15] transition-all"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <span className="text-sm font-bold text-white tracking-tight leading-snug">
+                      {p.title}
+                    </span>
+                    <span className="shrink-0 text-xs font-mono font-semibold px-2 py-0.5 rounded-full bg-white/[0.06] text-slate-300 border border-white/[0.08]">
+                      {p.topic}
+                    </span>
+                  </div>
 
-              <p className="text-xs text-slate-300 leading-snug pt-0.5">
-                {mp.recommendation}
-              </p>
-            </div>
-          ))}
+                  {p.formula && (
+                    <div className="p-2.5 rounded-xl bg-black/70 border border-brand-primary/20 text-brand-primary font-mono text-xs flex items-center gap-2 overflow-x-auto no-scrollbar">
+                      <Calculator className="w-3.5 h-3.5 stroke-[2] shrink-0 text-brand-primary" />
+                      <span>{p.formula}</span>
+                    </div>
+                  )}
+
+                  <p className="text-xs text-slate-300 leading-relaxed">
+                    {p.scientificRationale}
+                  </p>
+
+                  <div className="pt-1.5 border-t border-white/[0.04] space-y-1">
+                    <div className="text-xs text-slate-400">
+                      <strong className="text-slate-300">How HeadStrong applies this: </strong>
+                      {p.practicalApplication}
+                    </div>
+
+                    <div className="flex items-center gap-1.5 text-xs text-slate-500 pt-0.5">
+                      <BookOpen className="w-3 h-3 stroke-[2] text-brand-primary shrink-0" />
+                      <span>{p.academicCitation}</span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+          </div>
         </div>
       )}
     </div>

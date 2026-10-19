@@ -238,6 +238,17 @@ export interface AssistantActionPayload {
   details?: Record<string, any>;
 }
 
+export interface ScientificPrinciple {
+  id: string;
+  topic: string;
+  title: string;
+  formula?: string;
+  scientificRationale: string;
+  academicCitation: string;
+  practicalApplication: string;
+  keywords: string[];
+}
+
 export interface AssistantChatMessage {
   id: string;
   sender: 'user' | 'assistant';
@@ -249,7 +260,9 @@ export interface AssistantChatMessage {
     metric: string;
     value: string;
   }[];
+  scientificPrinciplesCited?: ScientificPrinciple[];
   latencyMs?: number;
   backend?: string;
   isTensorAccelerated?: boolean;
 }
+

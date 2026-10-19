@@ -7,6 +7,7 @@ import {
   HomeEquipmentTag,
   ProgramSplitType,
   ReadinessState,
+  ScientificPrinciple,
   TrainingLocation,
   UserProfile,
   WorkoutSession,
@@ -14,6 +15,7 @@ import {
 import {
   AthleteKnowledgeGraph,
   buildAthleteKnowledgeGraph,
+  queryExerciseScienceKnowledgeBase,
 } from '../engine/knowledgeGraph';
 import { getTensorHardwareProfile } from './tensorAIService';
 import {
@@ -91,6 +93,7 @@ export async function processAssistantMessage(
   let updatedProfile: Partial<UserProfile> | undefined;
   let updatedWorkout: WorkoutSession | undefined;
   const citations: { label: string; metric: string; value: string }[] = [];
+  const scientificPrinciplesCited: ScientificPrinciple[] = [];
 
   // ============================================================================
   // 1. INTENT: UPDATE HOME EQUIPMENT (e.g. "I got a pull up bar", "I bought dumbbells")
@@ -385,8 +388,10 @@ export async function processAssistantMessage(
   // ============================================================================
   // 7. INTENT: KNOWLEDGE GRAPH QUERIES (Joints, Recovery, Muscles, Science)
   // ============================================================================
+  // 7. INTENT: KNOWLEDGE GRAPH QUERIES (Joints, Science, Recovery, Muscles)
+  // ============================================================================
   else {
-    // A. Joint Strain Query
+    // A. Joint Strain & Health Query
     const jointQuery = kg.joints.find((j) => {
       const lowerJ = j.joint.toLowerCase();
       return (
@@ -415,84 +420,103 @@ export async function processAssistantMessage(
       });
     }
 
-    // B. Recovery & Autonomic Telemetry Query
-    else if (
-      lowerMsg.includes('recovery') ||
-      lowerMsg.includes('hrv') ||
-      lowerMsg.includes('sleep') ||
-      lowerMsg.includes('readiness') ||
-      lowerMsg.includes('pulse') ||
-      lowerMsg.includes('heart')
-    ) {
-      const latest = biometrics[biometrics.length - 1];
-      const hrv = latest?.hrvRmssd || 58;
-      const sleep = latest?.sleepHours || 7.5;
-      const rhr = latest?.restingHr || 58;
+    // B. Grounded Exercise Science Knowledge Base Query (Exact Formulas & Physiological Rationale)
+    else {
+      const scientificPrinciple = queryExerciseScienceKnowledgeBase(lowerMsg);
 
-      if (readinessState === 'Primed') {
-        answerText = `Your recovery is Primed today with a strong ${hrv} ms HRV and ${sleep} hours of sleep. Your parasympathetic tone is elevated, granting a +15% workout XP multiplier and a green light to push load on your first working sets.`;
-      } else if (readinessState === 'Amber Shield') {
-        answerText = `Your recovery is in Amber Shield mode (HRV: ${hrv} ms, Sleep: ${sleep}h). Your central nervous system needs lighter effort today. Working weights are held steady with 2–3 reps left in reserve to prevent joint burnout and protect your streak.`;
-      } else {
-        answerText = `Your recovery is in a solid Normal baseline (HRV: ${hrv} ms, Sleep: ${sleep}h, Resting HR: ${rhr} bpm). Overall recovery efficiency is ${kg.recoveryEfficiencyScore}/100. Follow your standard double progression targets.`;
+      if (scientificPrinciple) {
+        scientificPrinciplesCited.push(scientificPrinciple);
+        answerText = `${scientificPrinciple.title}\n\n${scientificPrinciple.scientificRationale}\n\n`;
+        if (scientificPrinciple.formula) {
+          answerText += `Scientific Formula:\n${scientificPrinciple.formula}\n\n`;
+        }
+        answerText += `How HeadStrong applies this:\n${scientificPrinciple.practicalApplication}\n\nAcademic Citation:\n${scientificPrinciple.academicCitation}`;
+
+        citations.push({
+          label: scientificPrinciple.title,
+          metric: 'Scientific Grounding',
+          value: scientificPrinciple.academicCitation,
+        });
+        if (scientificPrinciple.formula) {
+          citations.push({
+            label: 'Formula Model',
+            metric: 'Calculation',
+            value: scientificPrinciple.formula,
+          });
+        }
       }
 
-      citations.push({
-        label: 'Daily Readiness',
-        metric: 'Status',
-        value: readinessState,
-      });
-      citations.push({
-        label: 'Recovery Score',
-        metric: 'Efficiency',
-        value: `${kg.recoveryEfficiencyScore}/100`,
-      });
-    }
+      // C. Recovery & Autonomic Telemetry Query
+      else if (
+        lowerMsg.includes('recovery') ||
+        lowerMsg.includes('hrv') ||
+        lowerMsg.includes('sleep') ||
+        lowerMsg.includes('readiness') ||
+        lowerMsg.includes('pulse') ||
+        lowerMsg.includes('heart')
+      ) {
+        const latest = biometrics[biometrics.length - 1];
+        const hrv = latest?.hrvRmssd || 58;
+        const sleep = latest?.sleepHours || 7.5;
+        const rhr = latest?.restingHr || 58;
 
-    // C. Hypertrophy Muscle Volume Query
-    else if (
-      lowerMsg.includes('volume') ||
-      lowerMsg.includes('sets') ||
-      lowerMsg.includes('mav') ||
-      lowerMsg.includes('delts') ||
-      lowerMsg.includes('calves') ||
-      lowerMsg.includes('chest') ||
-      lowerMsg.includes('back') ||
-      lowerMsg.includes('quads') ||
-      lowerMsg.includes('hams')
-    ) {
-      const matchedMuscle = kg.muscleProfiles.find((m) =>
-        lowerMsg.includes(m.displayName.toLowerCase()) || lowerMsg.includes(m.muscleKey.toLowerCase())
-      ) || kg.muscleProfiles[0];
+        if (readinessState === 'Primed') {
+          answerText = `Your recovery is Primed today with a strong ${hrv} ms HRV and ${sleep} hours of sleep. Your parasympathetic tone is elevated, granting a +15% workout XP multiplier and a green light to push load on your first working sets.`;
+        } else if (readinessState === 'Amber Shield') {
+          answerText = `Your recovery is in Amber Shield mode (HRV: ${hrv} ms, Sleep: ${sleep}h). Your central nervous system needs lighter effort today. Working weights are held steady with 2–3 reps left in reserve to prevent joint burnout and protect your streak.`;
+        } else {
+          answerText = `Your recovery is in a solid Normal baseline (HRV: ${hrv} ms, Sleep: ${sleep}h, Resting HR: ${rhr} bpm). Overall recovery efficiency is ${kg.recoveryEfficiencyScore}/100. Follow your standard double progression targets.`;
+        }
 
-      answerText = `${matchedMuscle.displayName} has ${matchedMuscle.weeklySets} sets logged this week against a personalized target sweet spot of ${matchedMuscle.personalizedMav[0]}–${matchedMuscle.personalizedMav[1]} sets. ${matchedMuscle.recommendation}`;
+        citations.push({
+          label: 'Daily Readiness',
+          metric: 'Status',
+          value: readinessState,
+        });
+        citations.push({
+          label: 'Recovery Score',
+          metric: 'Efficiency',
+          value: `${kg.recoveryEfficiencyScore}/100`,
+        });
+      }
 
-      citations.push({
-        label: matchedMuscle.displayName,
-        metric: 'Weekly Volume',
-        value: `${matchedMuscle.weeklySets} / ${matchedMuscle.personalizedMav[1]} sets`,
-      });
-      citations.push({
-        label: 'Full Stretch Stimulus',
-        metric: 'Lengthened Ratio',
-        value: `${kg.lengthenedStimulusRatio}% of sets`,
-      });
-    }
+      // D. Hypertrophy Muscle Volume Query
+      else if (
+        lowerMsg.includes('volume') ||
+        lowerMsg.includes('sets') ||
+        lowerMsg.includes('mav') ||
+        lowerMsg.includes('delts') ||
+        lowerMsg.includes('calves') ||
+        lowerMsg.includes('chest') ||
+        lowerMsg.includes('back') ||
+        lowerMsg.includes('quads') ||
+        lowerMsg.includes('hams')
+      ) {
+        const matchedMuscle = kg.muscleProfiles.find((m) =>
+          lowerMsg.includes(m.displayName.toLowerCase()) || lowerMsg.includes(m.muscleKey.toLowerCase())
+        ) || kg.muscleProfiles[0];
 
-    // D. General Workout / Lifting Advice (Pacing, Tempo, Nutrition)
-    else if (lowerMsg.includes('rest') || lowerMsg.includes('pace') || lowerMsg.includes('tempo')) {
-      answerText =
-        readinessState === 'Amber Shield'
-          ? 'Take full 2.5–3 minute rest intervals today. Lower weights with a 3-second negative and leave 2–3 reps in reserve to protect your joints.'
-          : 'Rest 2–2.5 minutes on compound lifts and 60–90 seconds on isolation accessories. Control the lowering phase for 2 seconds to maximize stretch-mediated hypertrophy.';
-    } else if (lowerMsg.includes('protein') || lowerMsg.includes('eat') || lowerMsg.includes('nutrition') || lowerMsg.includes('food')) {
-      answerText =
-        profile.goalPhase === 'Cut / Recomp'
-          ? `In a caloric deficit, target 2.0g to 2.4g of protein per kg of bodyweight (${Math.round(bodyweightEmaKg * 2.2)}g daily) to support muscle retention while body fat drops.`
-          : `For progressive hypertrophy during a lean bulk, aim for 1.8g to 2.2g of protein per kg of bodyweight (${Math.round(bodyweightEmaKg * 2.0)}g daily) and prioritize complex carbohydrates around workouts.`;
-    } else {
-      // General encouraging answer grounded in active session
-      answerText = `You're training ${activeWorkout.splitDay} Day (${activeWorkout.name}) in Week ${profile.mesocycleWeek || 3} of your 6-week plan. Focus on completing your target reps with 1–2 reps left in the tank. If you need to adjust your gear, plan upcoming travel, or change your split, just let me know!`;
+        answerText = `${matchedMuscle.displayName} has ${matchedMuscle.weeklySets} sets logged this week against a personalized target sweet spot of ${matchedMuscle.personalizedMav[0]}–${matchedMuscle.personalizedMav[1]} sets. ${matchedMuscle.recommendation}`;
+
+        citations.push({
+          label: matchedMuscle.displayName,
+          metric: 'Weekly Volume',
+          value: `${matchedMuscle.weeklySets} / ${matchedMuscle.personalizedMav[1]} sets`,
+        });
+        citations.push({
+          label: 'Full Stretch Stimulus',
+          metric: 'Lengthened Ratio',
+          value: `${kg.lengthenedStimulusRatio}% of sets`,
+        });
+      } else if (lowerMsg.includes('protein') || lowerMsg.includes('eat') || lowerMsg.includes('nutrition') || lowerMsg.includes('food')) {
+        answerText =
+          profile.goalPhase === 'Cut / Recomp'
+            ? `In a caloric deficit, target 2.0g to 2.4g of protein per kg of bodyweight (${Math.round(bodyweightEmaKg * 2.2)}g daily) to support muscle retention while body fat drops.`
+            : `For progressive hypertrophy during a lean bulk, aim for 1.8g to 2.2g of protein per kg of bodyweight (${Math.round(bodyweightEmaKg * 2.0)}g daily) and prioritize complex carbohydrates around workouts.`;
+      } else {
+        // General encouraging answer grounded in active session
+        answerText = `You're training ${activeWorkout.splitDay} Day (${activeWorkout.name}) in Week ${profile.mesocycleWeek || 3} of your 6-week plan. Focus on completing your target reps with 1–2 reps left in the tank. If you need to adjust your gear, plan upcoming travel, or change your split, just let me know!`;
+      }
     }
   }
 
@@ -512,6 +536,8 @@ export async function processAssistantMessage(
     timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     actionApplied: actionTaken,
     knowledgeGraphCitations: citations.length > 0 ? citations : undefined,
+    scientificPrinciplesCited:
+      scientificPrinciplesCited.length > 0 ? scientificPrinciplesCited : undefined,
     latencyMs,
     backend,
     isTensorAccelerated: hardware.isPixelDevice,

@@ -25,8 +25,13 @@ import {
   evaluateTensorBiomechanicalMatch,
   setTensorSimulationOverride,
 } from '../tensorAI';
+import {
+  getExerciseBiomechanicalMeta,
+  EXERCISE_SCIENCE_KNOWLEDGE_BASE,
+  queryExerciseScienceKnowledgeBase,
+  searchExerciseScienceKnowledgeBase,
+} from '../knowledgeGraph';
 import { SEED_EXERCISES } from '../../services/seedData';
-import { getExerciseBiomechanicalMeta } from '../knowledgeGraph';
 import { processAssistantMessage } from '../../services/aiAssistantService';
 
 function assert(condition: boolean, msg: string) {
@@ -1516,7 +1521,110 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
     `AI Assistant backend identifies 100% on-device processing: ${backendStr}`
   );
 
-  console.log('\nALL 22 ENGINE, GOVERNANCE, DESIGN HEURISTICS & GOOGLE PIXEL TENSOR AI SUITES PASSED SUCCESSFULLY! 🎯');
+  // ============================================================================
+  // SUITE 23: EXERCISE SCIENCE KNOWLEDGE BASE & ZERO-HALLUCINATION AI GROUNDING
+  // ============================================================================
+  console.log('\n--- SUITE 23: EXERCISE SCIENCE KNOWLEDGE BASE & ZERO-HALLUCINATION AI GROUNDING ---');
+
+  // A. Knowledge Base Completeness & Structure
+  assert(
+    EXERCISE_SCIENCE_KNOWLEDGE_BASE.length >= 18,
+    `Exercise science knowledge base contains all 18 authoritative scientific principles (got ${EXERCISE_SCIENCE_KNOWLEDGE_BASE.length})`
+  );
+
+  const dotsPrinciple = queryExerciseScienceKnowledgeBase('What is the formula and rationale for the DOTS score?');
+  assert(
+    dotsPrinciple !== null &&
+      dotsPrinciple.id === 'sp-dots-polynomial' &&
+      Boolean(dotsPrinciple.formula?.includes('A·w⁴ + B·w³')) &&
+      dotsPrinciple.academicCitation.includes('International Powerlifting Federation'),
+    `DOTS query returns sp-dots-polynomial with 4th-degree polynomial and IPF citation`
+  );
+
+  const dbMultiplierPrinciple = queryExerciseScienceKnowledgeBase('Why does dumbbell bench press use a 1.18x multiplier?');
+  assert(
+    dbMultiplierPrinciple !== null &&
+      dbMultiplierPrinciple.id === 'sp-db-multiplier' &&
+      Boolean(dbMultiplierPrinciple.formula?.includes('1.18')) &&
+      dbMultiplierPrinciple.academicCitation.includes('Frecassetti'),
+    `DB multiplier query returns sp-db-multiplier with 1.18x factor and Frecassetti citation`
+  );
+
+  const rdlMultiplierPrinciple = queryExerciseScienceKnowledgeBase('RDL deadlift multiplier 1.20x');
+  assert(
+    rdlMultiplierPrinciple !== null &&
+      rdlMultiplierPrinciple.id === 'sp-rdl-multiplier' &&
+      Boolean(rdlMultiplierPrinciple.formula?.includes('1.20')),
+    `RDL multiplier query returns sp-rdl-multiplier with 1.20x normalization`
+  );
+
+  const cutVolumePrinciple = queryExerciseScienceKnowledgeBase('Why are we doing fewer sets on a cut?');
+  assert(
+    cutVolumePrinciple !== null &&
+      cutVolumePrinciple.id === 'sp-retention-shield' &&
+      Boolean(cutVolumePrinciple.formula?.includes('85%')) &&
+      cutVolumePrinciple.academicCitation.includes('Helms'),
+    `Deficit volume query returns sp-retention-shield with 85% volume cap and Helms citation`
+  );
+
+  const hamstringRecovery = queryExerciseScienceKnowledgeBase('Why do hamstrings take 72 hours to recover?');
+  assert(
+    hamstringRecovery !== null &&
+      hamstringRecovery.id === 'sp-hypertrophy-landmarks' &&
+      hamstringRecovery.scientificRationale.includes('hamstrings'),
+    `Hamstring volume query returns sp-hypertrophy-landmarks with high fast-twitch rationale`
+  );
+
+  // B. Search Utility Verification
+  const searchResults = searchExerciseScienceKnowledgeBase('hypertrophy volume sets', 3);
+  assert(
+    searchResults.length >= 2,
+    `Knowledge base search returns top matching principles (got ${searchResults.length})`
+  );
+
+  // C. AI Assistant Grounding & Zero-Hallucination Delivery
+  const aiScienceAnswer = await processAssistantMessage({
+    userMessage: 'Why does dumbbell bench press use a 1.18x multiplier?',
+    profile: testProfile,
+    activeWorkout: pushW3,
+    workouts: [pushW3],
+    biometrics: mockBiometrics,
+    exerciseCatalog: SEED_EXERCISES,
+    bodyweightEmaKg: 80,
+    readinessState: 'Primed',
+  });
+
+  assert(
+    aiScienceAnswer.message.text.includes('1.18x') &&
+      aiScienceAnswer.message.text.includes('stabilizer') &&
+      Boolean(aiScienceAnswer.message.scientificPrinciplesCited && aiScienceAnswer.message.scientificPrinciplesCited.length > 0),
+    `AI Assistant answers dumbbell multiplier query using exact formula and cites scientific principles`
+  );
+  assert(
+    aiScienceAnswer.message.text.includes('Academic Citation:') &&
+      aiScienceAnswer.message.text.includes('Frecassetti'),
+    `AI Assistant provides peer-reviewed academic citation without hallucination`
+  );
+
+  const aiCutAnswer = await processAssistantMessage({
+    userMessage: 'Why is my workout volume reduced during a cut?',
+    profile: testProfile,
+    activeWorkout: pushW3,
+    workouts: [pushW3],
+    biometrics: mockBiometrics,
+    exerciseCatalog: SEED_EXERCISES,
+    bodyweightEmaKg: 80,
+    readinessState: 'Primed',
+  });
+
+  assert(
+    aiCutAnswer.message.text.includes('85%') &&
+      aiCutAnswer.message.text.includes('Retention Shield') &&
+      aiCutAnswer.message.text.includes('Helms'),
+    `AI Assistant delivers Retention Shield deficit rationale citing Helms et al.`
+  );
+
+  console.log('\nALL 23 ENGINE, GOVERNANCE, DESIGN HEURISTICS & GOOGLE PIXEL TENSOR AI SUITES PASSED SUCCESSFULLY! 🎯');
 })().catch((err) => {
   console.error('Test Suite Failed:', err);
   if (typeof process !== 'undefined' && process.exit) {

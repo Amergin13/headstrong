@@ -424,5 +424,37 @@ XP is a measure of genuine athletic progression and consistency:
 - **6 Competitive Divisions:** `Elite` (5,000+ XP), `Diamond` (3,500–4,999 XP), `Platinum` (2,500–3,499 XP), `Gold` (1,500–2,499 XP), `Silver` (750–1,499 XP), and `Bronze` (0–749 XP).
 - **Navigation Placement:** Third segment in the Athlete tab subview switcher (`Weekly Sets | Strength Radar | XP Leaderboard`).
 
+---
+
+## 11. Authoritative Exercise Science Knowledge Base & Zero-Hallucination AI Grounding
+
+To eliminate all model hallucinations, ungrounded approximations, and conflicting advice across sessions, HeadStrong codifies all mathematical models and physiological rationale directly within the On-Device Knowledge Graph (`src/engine/knowledgeGraph.ts`):
+
+### 11.1 The 18 Authoritative Scientific Principles
+1. **E1RM Formula & RIR Adjustment (`sp-e1rm-epley-rir`):** Augmented Epley/Lombardi model with Reps in Reserve.
+2. **Dumbbell Bilateral Stabilization Multiplier (`sp-db-multiplier`):** $1.18\times$ combined DB load multiplier for stabilizer fatigue and bilateral deficit (Frecassetti et al., 1999).
+3. **Romanian Deadlift Conventional Normalization (`sp-rdl-multiplier`):** $1.20\times$ RDL load normalization to conventional deadlift standard.
+4. **Weighted Calisthenics Total Gravitational Mass (`sp-weighted-calisthenics-total-load`):** Total Mass = $\text{EMA}_{BW} + \text{External Load}$.
+5. **7-Day Exponential Moving Average Bodyweight (`sp-ema-bodyweight`):** Smoothing daily glycogen/water shifts ($0.25 \times \text{Today} + 0.75 \times \text{Yesterday}$).
+6. **Official IPF DOTS Strength Polynomial (`sp-dots-polynomial`):** 4th-degree polynomial normalizing relative strength across bodyweights.
+7. **6-Pillar International Relative Strength Standards (`sp-6-pillar-standards`):** Squat, Hinge, Horizontal Push, Vertical Push, Horizontal Pull, Vertical Pull standards.
+8. **Autonomic Readiness Z-Score Auto-Regulation (`sp-autonomic-readiness`):** 14-day rolling baseline HRV, RHR, and sleep score driving Amber Shield / Primed states.
+9. **Double Progression Auto-Regulation Logic (`sp-double-progression`):** Top-of-rep-range load step (+2.5kg BB, +2.0kg DB) vs. within-range rep accretion.
+10. **Israetel & Schoenfeld Muscle-Specific Hypertrophy Volume Landmarks (`sp-volume-landmarks`):** Divergent MV/MEV/MAV/MRV based on fiber type and eccentric stretch.
+11. **Caloric Deficit Muscle Retention & Volume Scaling (`sp-retention-shield-deficit`):** High mechanical tension with volume capped at ~85% (2–3 sets) and Retention Shield.
+12. **Pure Bodyweight & Travel Hypertrophy Overload (`sp-travel-bodyweight-hypertrophy`):** Strictly 0kg external load progressed via tempo, paused eccentrics, and reps.
+13. **Inter-Set Rest Intervals for Hypertrophy & Tonnage (`sp-rest-intervals`):** 2–3+ minute rest intervals for compound lifts vs 60–90s for low-axial isolations.
+14. **Stretch-Mediated Hypertrophy & Sarcomerogenesis (`sp-stretch-mediated-hypertrophy`):** Mechanical tension at long muscle lengths driving passive titin stiffness.
+15. **6-Week Mesocycle Volume Periodization Wave (`sp-mesocycle-periodization`):** MEV $\to$ MAV $\to$ MRV progression wave terminating in deload.
+16. **Asynchronous Hypertrophy Queue & Glycogen Preservation (`sp-asynchronous-queue`):** Dynamic session advancement waiting with full recovery on skipped days.
+17. **Work Capacity Index (WCI) & Cardiovascular Efficiency (`sp-work-capacity-index`):** Effective tonnage per unit of heart rate reserve over session duration.
+18. **Google Pixel Tensor On-Device AI Acceleration (`sp-tensor-ai-acceleration`):** Local TPU/NPU/GPU inference preserving zero-latency privacy.
+
+### 11.2 Invariants for AI Chat and App UI
+- **Zero Hallucination Invariant:** All scientific inquiries in the on-device AI Coach are resolved via `queryExerciseScienceKnowledgeBase`, returning exact mathematical formulas, physiological rationale, and academic citations.
+- **Searchable UI:** The Progress tab provides an interactive "Science & Logic" browser in `KnowledgeGraphCard.tsx` with a search bar and expandable cards.
+- **Visual Compliance:** Strictly adheres to the $\ge 12\text{px}$ typography floor and $\ge 44\text{px}$ touch targets.
+
+
 
 

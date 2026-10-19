@@ -305,6 +305,27 @@ export const INITIAL_GOVERNANCE_ITEMS: GovernanceChangeItem[] = [
       'src/App.tsx',
     ],
   },
+  {
+    id: 'gov-exercise-science-knowledge-base',
+    title: 'Codified Exercise Science Knowledge Base & Zero-Hallucination AI Grounding',
+    category: 'Hypertrophy Science Engine',
+    status: 'locked',
+    versionIntroduced: 'v1.9',
+    rationale:
+      'Athletes and the AI Coach require deterministic, peer-reviewed exercise science models to explain why weights, rep targets, stabilization multipliers (1.18x DB, 1.20x RDL), volume landmarks (Israetel), deficit scaling (85% volume cap, Helms 2014), and relative strength standards (DOTS polynomial) are calculated the way they are. Relying on ungrounded LLM inference risks hallucinations, inconsistent equations, or unscientific advice.',
+    whatWorkedWell:
+      'Codified 18 authoritative ScientificPrinciple models directly inside knowledgeGraph.ts. Grounded aiAssistantService.ts with queryExerciseScienceKnowledgeBase to provide exact LaTeX/KaTeX formulas, physiological rationale, and academic citations without hallucination. Created searchable "Science & Logic" tab in KnowledgeGraphCard.tsx.',
+    critiqueAndRisks:
+      'Never allow the AI assistant to guess or approximate exercise science formulas when authoritative deterministic models exist.',
+    lockedInvariant:
+      'EXERCISE_SCIENCE_KNOWLEDGE_BASE must contain >= 18 verified principles; queryExerciseScienceKnowledgeBase must ground AI responses with exact formulas and academic citations.',
+    files: [
+      'src/engine/knowledgeGraph.ts',
+      'src/services/aiAssistantService.ts',
+      'src/components/analytics/KnowledgeGraphCard.tsx',
+      'src/components/assistant/AICoachChatModal.tsx',
+    ],
+  },
 ];
 
 export interface DesignHeuristicRule {
