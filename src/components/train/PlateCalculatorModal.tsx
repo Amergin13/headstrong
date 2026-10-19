@@ -63,9 +63,10 @@ export const PlateCalculatorModal: React.FC<PlateCalculatorModalProps> = ({
               triggerHaptic('light');
               onClose();
             }}
-            className="p-1 rounded-full text-slate-400 hover:text-white hover:bg-white/[0.08]"
+            aria-label="Close plate calculator"
+            className="w-9 h-9 rounded-full flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/[0.08] transition-colors"
           >
-            <X className="w-4 h-4" />
+            <X className="w-4 h-4 stroke-[2]" />
           </button>
         </div>
 

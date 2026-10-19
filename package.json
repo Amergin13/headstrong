@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "test:engine": "tsc src/engine/__tests__/verifyEngine.ts --rootDir src --outDir .dist-test --module commonjs --target es2020 --moduleResolution node --skipLibCheck && echo '{\"type\":\"commonjs\"}' > .dist-test/package.json && node .dist-test/engine/__tests__/verifyEngine.js && rm -rf .dist-test",
     "verify:playstore": "node scripts/verifyPlayStoreReady.mjs",
-    "verify:all": "npm run generate:assets && npm run test:engine && npm run build && npm run verify:playstore"
+    "qa:full": "node scripts/runComprehensiveQA.mjs",
+    "verify:all": "npm run generate:assets && npm run test:engine && npm run qa:full && npm run build && npm run verify:playstore"
   },
   "dependencies": {
     "lucide-react": "^1.16.0",

@@ -431,6 +431,28 @@ export function prescribeDoubleProgression(
   });
 
   if (allHitTopWithGoodRir) {
+    const isPureBodyweight =
+      (session.equipment === 'bodyweight' && !session.isWeightedCalisthenic) || currentWeight === 0;
+
+    if (isPureBodyweight) {
+      const nextReps = session.sets.map((s, idx) =>
+        Math.min(30, (sets[idx]?.actualReps || sourceMaxReps) + 2)
+      );
+      return {
+        exerciseId: session.exerciseId,
+        nextWeightKg: 0,
+        nextTargetReps: nextReps,
+        reason: `${transferPrefix}You hit ${sourceMaxReps} reps on all bodyweight sets! Increasing target by +2 reps (or pause 2 seconds in the stretch) to continue progressive overload.`,
+        weightChanged: false,
+        repsChanged: true,
+        isAmberShieldBuffer: false,
+        lastSessionDate,
+        previousSetsSummary,
+        transferredFromExerciseName,
+        canonicalE1rmKg,
+      };
+    }
+
     const isDumbbell = session.equipment === 'dumbbell';
     const increment = isDumbbell ? 2.0 : 2.5;
     const nextWeight = Math.round((currentWeight + increment) * 10) / 10;
