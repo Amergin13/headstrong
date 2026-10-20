@@ -73,6 +73,9 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
       : ''
   );
   const [clientSecret, setClientSecret] = useState(profile.whoopClientSecret || '');
+  const [redirectUri, setRedirectUri] = useState(
+    profile.whoopRedirectUri || getWhoopRedirectUri()
+  );
   const [copiedRedirectUri, setCopiedRedirectUri] = useState(false);
   const [oauthUrl, setOauthUrl] = useState<string | null>(null);
   const [importStatus, setImportStatus] = useState<string | null>(null);
@@ -155,7 +158,7 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
 
   const handleCopyRedirectUri = async () => {
     triggerHaptic('light');
-    const uri = getWhoopRedirectUri();
+    const uri = redirectUri.trim() || getWhoopRedirectUri();
     try {
       if (typeof navigator !== 'undefined' && navigator.clipboard) {
         await navigator.clipboard.writeText(uri);
@@ -174,13 +177,15 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
       setOauthUrl(url);
     } else if (selectedProvider === 'whoop') {
       const effectiveId = clientId.trim() || profile.whoopClientId || WHOOP_CONFIG.CLIENT_ID;
+      const effectiveUri = redirectUri.trim() || getWhoopRedirectUri();
       if (onUpdateProfile) {
         onUpdateProfile({
           whoopClientId: effectiveId,
           whoopClientSecret: clientSecret.trim() || undefined,
+          whoopRedirectUri: effectiveUri,
         });
       }
-      const url = await initiateWhoopOAuth(effectiveId);
+      const url = await initiateWhoopOAuth(effectiveId, effectiveUri);
       setOauthUrl(url);
       if (typeof window !== 'undefined') {
         window.location.href = url;
@@ -498,20 +503,24 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
                     </div>
 
                     {/* Redirect URI Row */}
-                    <div className="pt-2 border-t border-white/[0.04] space-y-1">
-                      <span className="text-slate-400 block font-medium">Redirect URI:</span>
+                    <div className="pt-2 border-t border-white/[0.04] space-y-1.5">
+                      <div className="flex justify-between items-center">
+                        <span className="text-slate-400 block font-medium">Redirect URI:</span>
+                        <span className="text-slate-400 text-xs">Must match WHOOP dashboard</span>
+                      </div>
                       <div className="flex items-center space-x-1.5">
                         <input
                           type="text"
-                          readOnly
-                          value={getWhoopRedirectUri()}
+                          value={redirectUri}
+                          onChange={(e) => setRedirectUri(e.target.value)}
+                          placeholder="https://treise.vercel.app/oauth/whoop/callback"
                           aria-label="WHOOP Redirect URI"
-                          className="flex-1 py-2 px-2.5 rounded-lg bg-black/40 text-slate-300 font-mono text-xs border border-white/[0.04] select-all focus:outline-none"
+                          className="flex-1 py-2 px-2.5 rounded-lg bg-black/40 text-slate-200 font-mono text-xs border border-white/[0.04] focus:ring-1 focus:ring-brand-primary focus:outline-none"
                         />
                         <button
                           type="button"
                           onClick={handleCopyRedirectUri}
-                          className="px-2.5 py-2 min-h-[38px] rounded-lg bg-white/[0.08] hover:bg-white/[0.14] text-white text-xs font-semibold flex items-center space-x-1 transition-colors"
+                          className="px-2.5 py-2 min-h-[38px] rounded-lg bg-white/[0.08] hover:bg-white/[0.14] text-white text-xs font-semibold flex items-center space-x-1 transition-colors shrink-0"
                           title="Copy Redirect URI to clipboard"
                         >
                           {copiedRedirectUri ? (
@@ -525,6 +534,43 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
                               <span>Copy</span>
                             </>
                           )}
+                        </button>
+                      </div>
+
+                      {/* Quick Presets */}
+                      <div className="flex flex-wrap gap-1.5 pt-0.5">
+                        <button
+                          type="button"
+                          onClick={() => setRedirectUri('https://treise.vercel.app/oauth/whoop/callback')}
+                          className={`py-1 px-2 rounded-md font-mono text-xs transition-colors ${
+                            redirectUri === 'https://treise.vercel.app/oauth/whoop/callback'
+                              ? 'bg-brand-primary/20 text-brand-primary border border-brand-primary/30'
+                              : 'bg-white/[0.04] text-slate-400 hover:text-white'
+                          }`}
+                        >
+                          Production (/callback)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setRedirectUri('https://treise.vercel.app')}
+                          className={`py-1 px-2 rounded-md font-mono text-xs transition-colors ${
+                            redirectUri === 'https://treise.vercel.app'
+                              ? 'bg-brand-primary/20 text-brand-primary border border-brand-primary/30'
+                              : 'bg-white/[0.04] text-slate-400 hover:text-white'
+                          }`}
+                        >
+                          Root (/treise.vercel.app)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setRedirectUri('http://localhost:5173/oauth/whoop/callback')}
+                          className={`py-1 px-2 rounded-md font-mono text-xs transition-colors ${
+                            redirectUri === 'http://localhost:5173/oauth/whoop/callback'
+                              ? 'bg-brand-primary/20 text-brand-primary border border-brand-primary/30'
+                              : 'bg-white/[0.04] text-slate-400 hover:text-white'
+                          }`}
+                        >
+                          Localhost:5173
                         </button>
                       </div>
                     </div>

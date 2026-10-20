@@ -1,7 +1,14 @@
 import { BiometricLog, ReadinessState, WearableSyncProgress } from '../engine/types';
 import { generateCodeChallenge, generateRandomString } from './fitbitService';
 
-export function getWhoopRedirectUri(): string {
+export function getWhoopRedirectUri(customUri?: string): string {
+  if (customUri && customUri.trim()) {
+    return customUri.trim();
+  }
+  if (typeof localStorage !== 'undefined') {
+    const saved = localStorage.getItem('whoop_redirect_uri');
+    if (saved && saved.trim()) return saved.trim();
+  }
   if (typeof window !== 'undefined') {
     return `${window.location.origin}/oauth/whoop/callback`;
   }
@@ -30,17 +37,19 @@ export const WHOOP_CONFIG = {
  * Initiates Whoop OAuth 2.0 PKCE Authorization flow.
  */
 export async function initiateWhoopOAuth(
-  clientId: string = WHOOP_CONFIG.CLIENT_ID
+  clientId: string = WHOOP_CONFIG.CLIENT_ID,
+  customRedirectUri?: string
 ): Promise<string> {
   const codeVerifier = generateRandomString(64);
   const codeChallenge = await generateCodeChallenge(codeVerifier);
   const state = `whoop_${generateRandomString(24)}`;
-  const redirectUri = getWhoopRedirectUri();
+  const redirectUri = getWhoopRedirectUri(customRedirectUri);
 
   if (typeof window !== 'undefined') {
     try {
       localStorage.setItem('whoop_code_verifier', codeVerifier);
       localStorage.setItem('whoop_oauth_state', state);
+      localStorage.setItem('whoop_redirect_uri', redirectUri);
       if (clientId) {
         localStorage.setItem('whoop_client_id', clientId);
       }
@@ -49,6 +58,7 @@ export async function initiateWhoopOAuth(
     }
     sessionStorage.setItem('whoop_code_verifier', codeVerifier);
     sessionStorage.setItem('whoop_oauth_state', state);
+    sessionStorage.setItem('whoop_redirect_uri', redirectUri);
     if (clientId) {
       sessionStorage.setItem('whoop_client_id', clientId);
     }
@@ -74,7 +84,8 @@ export async function initiateWhoopOAuth(
 export async function exchangeWhoopCodeForToken(
   code: string,
   clientId?: string,
-  clientSecret?: string
+  clientSecret?: string,
+  customRedirectUri?: string
 ): Promise<{ accessToken: string; refreshToken: string; expiresIn: number; userId?: string }> {
   const codeVerifier =
     (typeof localStorage !== 'undefined' && localStorage.getItem('whoop_code_verifier')) ||
@@ -85,7 +96,11 @@ export async function exchangeWhoopCodeForToken(
     (typeof localStorage !== 'undefined' && localStorage.getItem('whoop_client_id')) ||
     (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('whoop_client_id')) ||
     WHOOP_CONFIG.CLIENT_ID;
-  const redirectUri = getWhoopRedirectUri();
+  const redirectUri =
+    customRedirectUri ||
+    (typeof localStorage !== 'undefined' && localStorage.getItem('whoop_redirect_uri')) ||
+    (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('whoop_redirect_uri')) ||
+    getWhoopRedirectUri();
 
   const bodyParams = new URLSearchParams({
     client_id: effectiveClientId,

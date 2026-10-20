@@ -232,7 +232,8 @@ export const App: React.FC = () => {
             const tokenRes = await exchangeWhoopCodeForToken(
               oauthCode,
               profile.whoopClientId || WHOOP_CONFIG.CLIENT_ID,
-              profile.whoopClientSecret
+              profile.whoopClientSecret,
+              profile.whoopRedirectUri
             );
             liveAccessToken = tokenRes.accessToken;
             setProfile((prev) => ({

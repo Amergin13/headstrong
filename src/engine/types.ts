@@ -234,6 +234,7 @@ export interface UserProfile {
   whoopConnected?: boolean;
   whoopClientId?: string;
   whoopClientSecret?: string;
+  whoopRedirectUri?: string;
   whoopAccessToken?: string;
   whoopRefreshToken?: string;
   whoopTokenExpiresAt?: number;
