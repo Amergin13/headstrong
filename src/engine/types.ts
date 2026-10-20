@@ -195,6 +195,23 @@ export interface PillarScore {
   subDivision?: SubDivision;
 }
 
+export type WearableProvider = 'fitbit' | 'whoop' | 'health_connect';
+
+export interface WearableDeviceStatus {
+  provider: WearableProvider;
+  deviceName: string;
+  batteryLevel?: number;
+  lastSyncTime?: string;
+  isConnected: boolean;
+}
+
+export interface WearableSyncProgress {
+  stage: 'idle' | 'connecting' | 'hrv' | 'sleep' | 'steps' | 'complete' | 'error';
+  percent: number;
+  message: string;
+  provider?: WearableProvider;
+}
+
 export type ProgramSplitType = 'ppl_upper' | 'ppl' | 'upper_lower' | 'full_body';
 
 export interface UserProfile {
@@ -209,10 +226,17 @@ export interface UserProfile {
   currentXp: number;
   streakDays: number;
   lastWorkoutDate?: string;
+  wearableSource?: WearableProvider | null;
   fitbitConnected: boolean;
   fitbitAccessToken?: string;
   fitbitRefreshToken?: string;
   fitbitTokenExpiresAt?: number;
+  whoopConnected?: boolean;
+  whoopAccessToken?: string;
+  whoopRefreshToken?: string;
+  whoopTokenExpiresAt?: number;
+  healthConnectConnected?: boolean;
+  healthConnectLastSync?: string;
   maxHr: number; // e.g. 220 - age or measured
   restingHrBaseline: number;
   onboardingCompleted?: boolean;
@@ -222,6 +246,25 @@ export interface UserProfile {
   scheduledWeekLocations?: Record<number, TrainingLocation>; // Planned locations for future mesocycle weeks (e.g. week 5 -> 'travel')
   leaderboardOptIn?: boolean;
   leaderboardDisplayName?: string;
+}
+
+export function isWearableConnected(profile?: UserProfile | null): boolean {
+  if (!profile) return false;
+  return Boolean(
+    profile.wearableSource ||
+    profile.fitbitConnected ||
+    profile.whoopConnected ||
+    profile.healthConnectConnected
+  );
+}
+
+export function getActiveWearableProvider(profile?: UserProfile | null): WearableProvider | null {
+  if (!profile) return null;
+  if (profile.wearableSource) return profile.wearableSource;
+  if (profile.whoopConnected) return 'whoop';
+  if (profile.healthConnectConnected) return 'health_connect';
+  if (profile.fitbitConnected) return 'fitbit';
+  return null;
 }
 
 export type AssistantActionType =

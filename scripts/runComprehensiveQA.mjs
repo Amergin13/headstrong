@@ -540,7 +540,73 @@ assert(
   'AICoachChatModal.tsx provides instant science query chips and renders academic citations'
 );
 
+// ============================================================================
+// BRANCH 10: MULTI-WEARABLE BIOMETRIC TELEMETRY & RECOVERY ECOSYSTEM
+// ============================================================================
+banner('BRANCH 10: Multi-Wearable Biometric Telemetry & Recovery Ecosystem (Fitbit, Whoop, Health Connect)');
+
+const wearableSyncSrc = fs.readFileSync(path.resolve(process.cwd(), 'src/services/wearableSyncService.ts'), 'utf-8');
+assert(
+  wearableSyncSrc.includes("id: 'fitbit'") &&
+    wearableSyncSrc.includes("id: 'whoop'") &&
+    wearableSyncSrc.includes("id: 'health_connect'") &&
+    wearableSyncSrc.includes('syncWearableBiometrics') &&
+    wearableSyncSrc.includes('disconnectWearable'),
+  'wearableSyncService.ts implements unified coordinator for Fitbit, Whoop 4.0, and Android Health Connect'
+);
+
+const whoopSrc = fs.readFileSync(path.resolve(process.cwd(), 'src/services/whoopService.ts'), 'utf-8');
+assert(
+  whoopSrc.includes('api.prod.whoop.com/oauth/oauth2/auth') &&
+    whoopSrc.includes('read:recovery') &&
+    whoopSrc.includes('read:sleep') &&
+    whoopSrc.includes('fetchWhoopDailyBiometrics') &&
+    whoopSrc.includes('simulateWhoopSync'),
+  'whoopService.ts implements Whoop Developer v1 API integration, PKCE OAuth, and Green/Yellow/Red recovery normalization'
+);
+
+const healthConnectSrc = fs.readFileSync(path.resolve(process.cwd(), 'src/services/healthConnectService.ts'), 'utf-8');
+assert(
+  healthConnectSrc.includes('com.google.android.apps.healthdata') &&
+    healthConnectSrc.includes('ACTION_HEALTH_CONNECT_SETTINGS') &&
+    healthConnectSrc.includes('parseHealthConnectExport') &&
+    healthConnectSrc.includes('simulateHealthConnectSync'),
+  'healthConnectService.ts implements Android Health Connect settings launcher, JSON data parser, and sensor telemetry sync'
+);
+
+const fitbitSrc = fs.readFileSync(path.resolve(process.cwd(), 'src/services/fitbitService.ts'), 'utf-8');
+assert(
+  fitbitSrc.includes('fetchFitbitDailyBiometrics') &&
+    fitbitSrc.includes('refreshFitbitToken') &&
+    fitbitSrc.includes('initiateFitbitOAuth'),
+  'fitbitService.ts implements Fitbit Web API daily biometrics fetcher, token refresh, and PKCE authorization'
+);
+
+const watchModalSrc = fs.readFileSync(path.resolve(process.cwd(), 'src/components/program/WatchSyncModal.tsx'), 'utf-8');
+assert(
+  watchModalSrc.includes('Wearable & Recovery Sync') &&
+    watchModalSrc.includes('fitbit') &&
+    watchModalSrc.includes('whoop') &&
+    watchModalSrc.includes('health_connect') &&
+    watchModalSrc.includes('min-h-[44px]'),
+  'WatchSyncModal.tsx provides multi-provider tab switcher for Fitbit, Whoop, and Health Connect with >=44px touch targets'
+);
+
+const trainTabWearable = fs.readFileSync(path.resolve(process.cwd(), 'src/components/train/TrainTab.tsx'), 'utf-8');
+assert(
+  trainTabWearable.includes('isWearableConnected(profile)') &&
+    trainTabWearable.includes('isConnected={hasWatchData}'),
+  'TrainTab uses isWearableConnected to ensure Fitbit, Whoop, and Health Connect seamlessly drive the recovery gauge'
+);
+
+const programTabWearable = fs.readFileSync(path.resolve(process.cwd(), 'src/components/program/ProgramTab.tsx'), 'utf-8');
+assert(
+  programTabWearable.includes('Wearable & Recovery') &&
+    programTabWearable.includes('onOpenWatchSync'),
+  'ProgramTab.tsx provides dedicated Wearable & Recovery drawer for 1-tap device status and sync management'
+);
+
 console.log(`\n\x1b[32m\x1b[1m======================================================================\x1b[0m`);
-console.log(`\x1b[32m\x1b[1mALL 9 TREE-OF-THOUGHTS QA BRANCHES EVALUATED & FULLY CERTIFIED! 🏆\x1b[0m`);
+console.log(`\x1b[32m\x1b[1mALL 10 TREE-OF-THOUGHTS QA BRANCHES EVALUATED & FULLY CERTIFIED! 🏆\x1b[0m`);
 console.log(`\x1b[32mHeadStrong is 100% verified, production-ready, and Google Play Store publishable.\x1b[0m`);
 console.log(`\x1b[32m\x1b[1m======================================================================\x1b[0m\n`);

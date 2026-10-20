@@ -12,6 +12,7 @@ import {
   UserProfile,
   WorkoutSession,
   WorkoutSet,
+  WearableProvider,
 } from './engine/types';
 import { calculateDailyReadiness } from './engine/readiness';
 import { getLatestBodyweightEma } from './engine/ema';
@@ -47,7 +48,7 @@ import {
   getNextSplitDay,
   SplitDayType,
 } from './services/workoutGenerator';
-import { simulatePixelWatchSync } from './services/fitbitService';
+import { syncWearableBiometrics } from './services/wearableSyncService';
 import { Header } from './components/common/Header';
 import { NavigationBar, TabId } from './components/common/NavigationBar';
 import { RestTimerModal } from './components/common/RestTimerModal';
@@ -136,14 +137,17 @@ export const App: React.FC = () => {
     }
 
     if (oauthCode) {
-      // Complete Fitbit OAuth 2.0 PKCE flow gracefully
-      simulatePixelWatchSync(undefined, 'Primed').then((syncedLog) => {
-        setBiometrics((prev) => [...prev, syncedLog]);
-        setProfile((prev) => ({ ...prev, fitbitConnected: true }));
+      const stateParam = params.get('state') || '';
+      const isWhoop = stateParam.startsWith('whoop_') || window.location.pathname.includes('/whoop');
+      const provider: WearableProvider = isWhoop ? 'whoop' : 'fitbit';
+
+      syncWearableBiometrics(provider, { forcedState: 'Primed' }).then((syncedLog) => {
+        handleSyncCompleted(syncedLog, provider);
+        const deviceName = provider === 'whoop' ? 'Whoop 4.0' : 'Google Pixel Watch';
         setXpNotification({
           amount: 0,
-          message: 'Google Pixel Watch connected & recovery data synced!',
-          bonusTag: 'Watch Connected',
+          message: `${deviceName} connected & recovery data synced!`,
+          bonusTag: 'Wearable Connected',
         });
       });
     }
@@ -534,7 +538,7 @@ export const App: React.FC = () => {
   };
 
   // Handler: Watch Sync Telemetry update (No illegitimate XP)
-  const handleSyncCompleted = (newLog: BiometricLog) => {
+  const handleSyncCompleted = (newLog: BiometricLog, provider?: WearableProvider) => {
     const existingIndex = biometrics.findIndex((b) => b.date === newLog.date);
     let updated: BiometricLog[];
     if (existingIndex >= 0) {
@@ -544,6 +548,18 @@ export const App: React.FC = () => {
     }
 
     setBiometrics(updated);
+
+    if (provider) {
+      setProfile((prev) => ({
+        ...prev,
+        wearableSource: provider,
+        fitbitConnected: provider === 'fitbit' ? true : prev.fitbitConnected,
+        whoopConnected: provider === 'whoop' ? true : prev.whoopConnected,
+        healthConnectConnected: provider === 'health_connect' ? true : prev.healthConnectConnected,
+        healthConnectLastSync:
+          provider === 'health_connect' ? new Date().toISOString() : prev.healthConnectLastSync,
+      }));
+    }
   };
 
   // Handler: Reset demo seed data
@@ -695,11 +711,13 @@ export const App: React.FC = () => {
         {activeTab === 'program' && (
           <ProgramTab
             profile={profile}
+            latestBiometrics={latestBiometrics}
             exerciseCatalog={exercises}
             activeSplitDay={activeWorkout.splitDay}
             canInstallPwa={Boolean(deferredInstallPrompt)}
             onTriggerInstallPwa={handleTriggerInstallPwa}
             onUpdateProfile={(up) => setProfile((p) => ({ ...p, ...up }))}
+            onOpenWatchSync={() => setWatchModalOpen(true)}
             onSelectMesocycleWeek={handleSelectMesocycleWeek}
             onUpdateGoalPhase={(phase: GoalPhase) => {
               setProfile((p) => ({ ...p, goalPhase: phase }));
@@ -789,15 +807,16 @@ export const App: React.FC = () => {
         />
       )}
 
-      {/* Pixel Watch Sync Dialog Modal */}
+      {/* Wearable & Recovery Sync Dialog Modal */}
       {watchModalOpen && (
         <WatchSyncModal
           profile={profile}
           latestBiometrics={latestBiometrics}
-          onSyncCompleted={(log) => {
-            handleSyncCompleted(log);
+          onSyncCompleted={(log, provider) => {
+            handleSyncCompleted(log, provider);
             setWatchModalOpen(false);
           }}
+          onUpdateProfile={(up) => setProfile((prev) => ({ ...prev, ...up }))}
           onClose={() => setWatchModalOpen(false)}
           isModal={true}
         />

@@ -1,10 +1,14 @@
 import React, { useState, useRef } from 'react';
 import {
+  BiometricLog,
   ExerciseDefinition,
   GoalPhase,
   UserProfile,
+  getActiveWearableProvider,
+  isWearableConnected,
 } from '../../engine/types';
 import { SplitDayType } from '../../services/workoutGenerator';
+import { WEARABLE_PROVIDERS } from '../../services/wearableSyncService';
 import { SplitEditor } from './SplitEditor';
 import { CustomExerciseModal } from './CustomExerciseModal';
 import { MesocycleManager } from './MesocycleManager';
@@ -21,16 +25,19 @@ import {
   ChevronDown,
   ChevronUp,
   User,
+  Watch,
 } from 'lucide-react';
 import { triggerHaptic } from '../../utils/haptics';
 
 interface ProgramTabProps {
   profile: UserProfile;
+  latestBiometrics?: BiometricLog;
   exerciseCatalog: ExerciseDefinition[];
   activeSplitDay?: string;
   canInstallPwa?: boolean;
   onTriggerInstallPwa?: () => void;
   onUpdateProfile: (updated: Partial<UserProfile>) => void;
+  onOpenWatchSync?: () => void;
   onUpdateGoalPhase?: (phase: GoalPhase) => void;
   onSelectMesocycleWeek: (week: number) => void;
   onLaunchSplitDay: (split: SplitDayType) => void;
@@ -52,11 +59,13 @@ const HOME_EQUIP_LABELS: Record<string, string> = {
 
 export const ProgramTab: React.FC<ProgramTabProps> = ({
   profile,
+  latestBiometrics,
   exerciseCatalog,
   activeSplitDay,
   canInstallPwa = false,
   onTriggerInstallPwa,
   onUpdateProfile,
+  onOpenWatchSync,
   onUpdateGoalPhase,
   onSelectMesocycleWeek,
   onLaunchSplitDay,
@@ -69,10 +78,14 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
 }) => {
   const [showCreateExercise, setShowCreateExercise] = useState(false);
   const [showGovernanceModal, setShowGovernanceModal] = useState(false);
-  const [openSettingsSection, setOpenSettingsSection] = useState<'profile' | 'data' | null>(null);
+  const [openSettingsSection, setOpenSettingsSection] = useState<'profile' | 'wearable' | 'data' | null>(null);
   const [showPrivacyDetails, setShowPrivacyDetails] = useState(false);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const activeWearableKey = getActiveWearableProvider(profile);
+  const activeWearableMeta = activeWearableKey ? WEARABLE_PROVIDERS[activeWearableKey] : null;
+  const isWatchConnected = isWearableConnected(profile);
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -87,7 +100,7 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
     e.target.value = '';
   };
 
-  const toggleSection = (sec: 'profile' | 'data') => {
+  const toggleSection = (sec: 'profile' | 'wearable' | 'data') => {
     triggerHaptic('light');
     setOpenSettingsSection(openSettingsSection === sec ? null : sec);
   };
@@ -294,6 +307,73 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
                   <span className="text-slate-400">bpm</span>
                 </div>
               </div>
+            </div>
+          )}
+        </div>
+
+        {/* B. Wearable Device & Recovery Integration Accordion */}
+        <div className="rounded-3xl surface-glass overflow-hidden">
+          <button
+            type="button"
+            onClick={() => toggleSection('wearable')}
+            aria-expanded={openSettingsSection === 'wearable'}
+            className="w-full p-5 flex items-center justify-between text-left"
+          >
+            <div className="flex items-center space-x-3">
+              <div className="w-9 h-9 rounded-xl bg-white/[0.08] flex items-center justify-center text-brand-primary">
+                <Watch className="w-4 h-4 stroke-[2]" />
+              </div>
+              <div>
+                <div className="text-sm font-bold text-white flex items-center space-x-2">
+                  <span>Wearable & Recovery</span>
+                  {isWatchConnected && (
+                    <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                  )}
+                </div>
+                <div className="text-xs text-slate-400">
+                  {activeWearableMeta ? `${activeWearableMeta.name} • Connected` : 'Connect Fitbit, Whoop, or Health Connect'}
+                </div>
+              </div>
+            </div>
+            {openSettingsSection === 'wearable' ? (
+              <ChevronUp className="w-4 h-4 text-slate-400 stroke-[2]" />
+            ) : (
+              <ChevronDown className="w-4 h-4 text-slate-400 stroke-[2]" />
+            )}
+          </button>
+
+          {openSettingsSection === 'wearable' && (
+            <div className="px-5 pb-5 pt-1 space-y-3 text-xs">
+              <div className="p-3.5 rounded-2xl bg-[#090C12] space-y-2">
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-400">Connected Device</span>
+                  <span className="font-semibold text-white">
+                    {activeWearableMeta?.name || 'None'}
+                  </span>
+                </div>
+                {latestBiometrics && (
+                  <div className="flex justify-between items-center">
+                    <span className="text-slate-400">Recent Recovery</span>
+                    <span className="font-mono text-slate-200">
+                      HRV {latestBiometrics.hrvRmssd} ms • RHR {latestBiometrics.restingHr} bpm
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {onOpenWatchSync && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    triggerHaptic('light');
+                    onOpenWatchSync();
+                  }}
+                  className="w-full py-3 rounded-2xl bg-[#141824] hover:bg-[#1C2233] text-xs font-bold text-white flex items-center justify-center space-x-2 transition-colors min-h-[44px]"
+                >
+                  <Watch className="w-4 h-4 stroke-[2] text-brand-primary" />
+                  <span>Manage Wearables & Sync Recovery</span>
+                </button>
+              )}
             </div>
           )}
         </div>

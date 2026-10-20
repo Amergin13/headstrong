@@ -443,7 +443,31 @@ import {
 } from '../progression';
 import {
   generateRandomString,
+  initiateFitbitOAuth,
+  simulatePixelWatchSync,
+  FITBIT_CONFIG,
 } from '../../services/fitbitService';
+import {
+  initiateWhoopOAuth,
+  simulateWhoopSync,
+  WHOOP_CONFIG,
+} from '../../services/whoopService';
+import {
+  HEALTH_CONNECT_CONFIG,
+  openHealthConnectSettings,
+  parseHealthConnectExport,
+  simulateHealthConnectSync,
+} from '../../services/healthConnectService';
+import {
+  WEARABLE_PROVIDERS,
+  syncWearableBiometrics,
+  disconnectWearable,
+} from '../../services/wearableSyncService';
+import {
+  isWearableConnected,
+  getActiveWearableProvider,
+  UserProfile,
+} from '../types';
 
 // Step A: Initialize 6-week seed dataset
 const seeded = resetAllToSeedData();
@@ -1974,7 +1998,146 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
     `AI Assistant answers Shift Nudge query grounded in Knowledge Graph design system specifications`
   );
 
-  console.log('\nALL 25 ENGINE, GOVERNANCE, DESIGN HEURISTICS, TYPOGRAPHY & GOOGLE PIXEL TENSOR AI SUITES PASSED SUCCESSFULLY! 🎯');
+  // --- SUITE 26: MULTI-WEARABLE BIOMETRIC TELEMETRY (FITBIT, WHOOP, HEALTH CONNECT) ---
+  console.log('\n--- SUITE 26: MULTI-WEARABLE BIOMETRIC TELEMETRY (FITBIT, WHOOP, HEALTH CONNECT) ---');
+  // 1. Fitbit Provider
+  assert(
+    FITBIT_CONFIG.SCOPES.includes('heartrate') && FITBIT_CONFIG.SCOPES.includes('sleep'),
+    `Fitbit Web API config requests heartrate, sleep, and activity scopes`
+  );
+  const fitbitAuthUrl = await initiateFitbitOAuth('test_fitbit_client');
+  assert(
+    fitbitAuthUrl.includes('fitbit.com/oauth2/authorize') &&
+      fitbitAuthUrl.includes('code_challenge') &&
+      fitbitAuthUrl.includes('response_type=code'),
+    `Fitbit OAuth 2.0 PKCE generates valid authorization URL with code_challenge`
+  );
+  const fitbitLog = await simulatePixelWatchSync(undefined, 'Primed');
+  assert(
+    fitbitLog.hrvRmssd >= 65 && fitbitLog.sleepHours >= 8.0 && fitbitLog.restingHr <= 52,
+    `Fitbit / Pixel Watch sync generates high parasympathetic recovery metrics for Primed state`
+  );
+
+  // 2. Whoop 4.0 Provider
+  assert(
+    WHOOP_CONFIG.AUTHORIZATION_URI === 'https://api.prod.whoop.com/oauth/oauth2/auth' &&
+      WHOOP_CONFIG.SCOPES.includes('read:recovery') &&
+      WHOOP_CONFIG.SCOPES.includes('read:sleep'),
+    `Whoop 4.0 Developer config targets v1 API with read:recovery and read:sleep scopes`
+  );
+  const whoopAuthUrl = await initiateWhoopOAuth('test_whoop_client');
+  assert(
+    whoopAuthUrl.includes('api.prod.whoop.com/oauth/oauth2/auth') &&
+      whoopAuthUrl.includes('code_challenge') &&
+      whoopAuthUrl.includes('response_type=code'),
+    `Whoop OAuth 2.0 PKCE generates valid authorization URL with code_challenge`
+  );
+  const whoopPrimedLog = await simulateWhoopSync(undefined, 'Primed');
+  assert(
+    whoopPrimedLog.hrvRmssd >= 70 && whoopPrimedLog.restingHr <= 50,
+    `Whoop 4.0 sync generates Green Recovery metrics (HRV >= 70ms, RHR <= 50bpm) for Primed state`
+  );
+  const whoopAmberLog = await simulateWhoopSync(undefined, 'Amber Shield');
+  assert(
+    whoopAmberLog.hrvRmssd <= 40 && whoopAmberLog.sleepHours <= 5.5,
+    `Whoop 4.0 sync generates Red Recovery metrics (HRV <= 40ms, Sleep <= 5.5h) for Amber Shield recovery`
+  );
+
+  // 3. Android Health Connect Provider
+  assert(
+    HEALTH_CONNECT_CONFIG.PACKAGE_NAME === 'com.google.android.apps.healthdata' &&
+      HEALTH_CONNECT_CONFIG.RECORD_TYPES.includes('HeartRateVariabilityRmssdRecord') &&
+      HEALTH_CONNECT_CONFIG.RECORD_TYPES.includes('RestingHeartRateRecord') &&
+      HEALTH_CONNECT_CONFIG.RECORD_TYPES.includes('SleepSessionRecord'),
+    `Android Health Connect config binds to package com.google.android.apps.healthdata with standard record schemas`
+  );
+  const sampleHealthConnectExport = {
+    records: [
+      {
+        type: 'HeartRateVariabilityRmssdRecord',
+        startTime: '2026-10-18T06:00:00Z',
+        heartRateVariabilityMillis: 68.5,
+      },
+      {
+        type: 'RestingHeartRateRecord',
+        startTime: '2026-10-18T06:00:00Z',
+        beatsPerMinute: 52,
+      },
+      {
+        type: 'SleepSessionRecord',
+        startTime: '2026-10-17T22:30:00Z',
+        endTime: '2026-10-18T06:30:00Z',
+      },
+      {
+        type: 'StepsRecord',
+        startTime: '2026-10-18T18:00:00Z',
+        count: 10450,
+      },
+    ],
+  };
+  const parsedHcLogs = parseHealthConnectExport(sampleHealthConnectExport);
+  assert(
+    parsedHcLogs.length === 1 &&
+      parsedHcLogs[0].date === '2026-10-18' &&
+      parsedHcLogs[0].hrvRmssd === 69 &&
+      parsedHcLogs[0].restingHr === 52 &&
+      parsedHcLogs[0].sleepHours === 8.0 &&
+      parsedHcLogs[0].steps === 10450,
+    `Health Connect JSON export parser extracts HRV, Resting HR, Sleep duration (8.0h), and Steps correctly`
+  );
+  const hcSyncedLog = await simulateHealthConnectSync(undefined, 'Amber Shield');
+  assert(
+    hcSyncedLog.hrvRmssd <= 42 && hcSyncedLog.sleepHours <= 5.5,
+    `Health Connect sync generates valid recovery data for Amber Shield state`
+  );
+
+  // 4. Universal Wearable Sync Coordinator & Multi-Provider State
+  assert(
+    WEARABLE_PROVIDERS.fitbit.name.includes('Pixel Watch') &&
+      WEARABLE_PROVIDERS.whoop.name.includes('Whoop 4.0') &&
+      WEARABLE_PROVIDERS.health_connect.name.includes('Health Connect'),
+    `Universal coordinator exposes metadata for Fitbit, Whoop, and Android Health Connect`
+  );
+
+  const fitbitResult = await syncWearableBiometrics('fitbit', { forcedState: 'Primed' });
+  assert(fitbitResult.hrvRmssd > 0 && fitbitResult.restingHr > 0, `syncWearableBiometrics('fitbit') succeeds`);
+
+  const whoopResult = await syncWearableBiometrics('whoop', { forcedState: 'Normal' });
+  assert(whoopResult.hrvRmssd > 0 && whoopResult.restingHr > 0, `syncWearableBiometrics('whoop') succeeds`);
+
+  const hcResult = await syncWearableBiometrics('health_connect', { forcedState: 'Amber Shield' });
+  assert(hcResult.hrvRmssd > 0 && hcResult.restingHr > 0, `syncWearableBiometrics('health_connect') succeeds`);
+
+  const profileNone: UserProfile = { ...testProfile, fitbitConnected: false, whoopConnected: false, healthConnectConnected: false, wearableSource: null };
+  assert(!isWearableConnected(profileNone), `isWearableConnected returns false when no wearable is connected`);
+  assert(getActiveWearableProvider(profileNone) === null, `getActiveWearableProvider returns null when none connected`);
+
+  const profileFitbit: UserProfile = { ...testProfile, fitbitConnected: true, whoopConnected: false, healthConnectConnected: false, wearableSource: 'fitbit' };
+  assert(isWearableConnected(profileFitbit), `isWearableConnected returns true when Fitbit is connected`);
+  assert(getActiveWearableProvider(profileFitbit) === 'fitbit', `getActiveWearableProvider returns 'fitbit'`);
+
+  const profileWhoop: UserProfile = { ...testProfile, fitbitConnected: false, whoopConnected: true, healthConnectConnected: false, wearableSource: 'whoop' };
+  assert(isWearableConnected(profileWhoop), `isWearableConnected returns true when Whoop is connected`);
+  assert(getActiveWearableProvider(profileWhoop) === 'whoop', `getActiveWearableProvider returns 'whoop'`);
+
+  const profileHealthConnect: UserProfile = { ...testProfile, fitbitConnected: false, whoopConnected: false, healthConnectConnected: true, wearableSource: 'health_connect' };
+  assert(isWearableConnected(profileHealthConnect), `isWearableConnected returns true when Health Connect is connected`);
+  assert(getActiveWearableProvider(profileHealthConnect) === 'health_connect', `getActiveWearableProvider returns 'health_connect'`);
+
+  const disconnectedUpdates = disconnectWearable('whoop', profileWhoop);
+  assert(disconnectedUpdates.whoopConnected === false && disconnectedUpdates.wearableSource === null, `disconnectWearable cleanly disconnects Whoop and resets wearableSource`);
+
+  // 5. Recovery Calculation Driven by Synced Telemetry
+  const readinessFromFitbit = calculateDailyReadiness(fitbitResult, mockBiometrics);
+  assert(readinessFromFitbit.state === 'Primed', `Fitbit sync telemetry correctly drives calculateDailyReadiness to Primed`);
+
+  const readinessFromWhoop = calculateDailyReadiness(whoopAmberLog, mockBiometrics);
+  assert(readinessFromWhoop.state === 'Amber Shield' && readinessFromWhoop.streakProtected, `Whoop sync telemetry correctly triggers Amber Shield recovery with streak protection`);
+
+  const readinessFromHc = calculateDailyReadiness(hcSyncedLog, mockBiometrics);
+  assert(readinessFromHc.state === 'Amber Shield', `Health Connect sync telemetry correctly triggers Amber Shield recovery`);
+
+  console.log('\nALL 26 ENGINE, GOVERNANCE, DESIGN HEURISTICS, TYPOGRAPHY, WEARABLES & GOOGLE PIXEL TENSOR AI SUITES PASSED SUCCESSFULLY! 🎯');
 })().catch((err) => {
   console.error('Test Suite Failed:', err);
   if (typeof process !== 'undefined' && process.exit) {

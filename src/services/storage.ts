@@ -406,6 +406,8 @@ export function permanentlyEraseAllUserData() {
     if (typeof sessionStorage !== 'undefined') {
       sessionStorage.removeItem('fitbit_code_verifier');
       sessionStorage.removeItem('fitbit_oauth_state');
+      sessionStorage.removeItem('whoop_code_verifier');
+      sessionStorage.removeItem('whoop_oauth_state');
     }
   } catch (e) {
     console.error('Failed to clear storage:', e);
@@ -423,7 +425,10 @@ export function permanentlyEraseAllUserData() {
     currentXp: 0,
     streakDays: 0,
     lastWorkoutDate: todayStr,
+    wearableSource: null,
     fitbitConnected: false,
+    whoopConnected: false,
+    healthConnectConnected: false,
     maxHr: 190,
     restingHrBaseline: 58,
   };

@@ -9,6 +9,7 @@ import {
   UserProfile,
   WorkoutSession,
   WorkoutSet,
+  isWearableConnected,
 } from '../../engine/types';
 import { ReadinessEvaluation } from '../../engine/readiness';
 import { ReadinessBanner } from './ReadinessBanner';
@@ -554,7 +555,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
     LOCATION_CONFIG.find((l) => l.id === currentLoc) || LOCATION_CONFIG[0];
 
   const hasWatchData = Boolean(
-    profile.fitbitConnected &&
+    isWearableConnected(profile) &&
       latestBiometrics &&
       (latestBiometrics.hrvRmssd !== undefined || latestBiometrics.restingHr !== undefined)
   );

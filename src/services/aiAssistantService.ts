@@ -491,7 +491,12 @@ export async function processAssistantMessage(
         lowerMsg.includes('sleep') ||
         lowerMsg.includes('readiness') ||
         lowerMsg.includes('pulse') ||
-        lowerMsg.includes('heart')
+        lowerMsg.includes('heart') ||
+        lowerMsg.includes('whoop') ||
+        lowerMsg.includes('fitbit') ||
+        lowerMsg.includes('health connect') ||
+        lowerMsg.includes('wearable') ||
+        lowerMsg.includes('watch')
       ) {
         const latest = biometrics[biometrics.length - 1];
         const hrv = latest?.hrvRmssd || 58;

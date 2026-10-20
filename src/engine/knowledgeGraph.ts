@@ -171,14 +171,14 @@ export const EXERCISE_SCIENCE_KNOWLEDGE_BASE: ScientificPrinciple[] = [
   {
     id: 'sp-autonomic-readiness',
     topic: 'Biometric Auto-Regulation',
-    title: 'Daily Readiness Z-Score (Pixel Watch Telemetry)',
+    title: 'Daily Readiness Z-Score & Wearable Telemetry (Fitbit, Whoop, Android Health Connect)',
     formula: 'Readiness = 0.50·Z_HRV - 0.30·Z_RHR + 0.20·((Sleep - 7.5)/1.5)',
     scientificRationale:
-      'Nighttime Heart Rate Variability (HRV RMSSD) and Resting Heart Rate (RHR) benchmarked against a 14-day rolling baseline reflect parasympathetic autonomic nervous system balance. Suppressed HRV combined with elevated resting pulse signals central nervous system fatigue and incomplete microtrauma repair.',
-    academicCitation: 'Plews et al. (2013); Buchheit (2014); Altini & Plews (2021)',
+      'Nighttime Heart Rate Variability (HRV RMSSD) and Resting Heart Rate (RHR) benchmarked against a 14-day rolling baseline reflect parasympathetic autonomic nervous system balance. Telemetry from Fitbit, Whoop 4.0, or Android Health Connect tracks systemic recovery. Suppressed HRV combined with elevated resting pulse signals central nervous system fatigue and incomplete microtrauma repair.',
+    academicCitation: 'Plews et al. (2013); Buchheit (2014); Altini & Plews (2021); Whoop 4.0 Telemetry Validation (2022)',
     practicalApplication:
-      'Auto-regulates daily training: Primed (Z >= +0.8, +15% XP bonus), Normal (-0.8 < Z < +0.8), or Amber Shield (Z <= -0.8, holds working weight, 2–3 RIR, protects streak and joints).',
-    keywords: ['readiness', 'z-score', 'hrv', 'resting hr', 'rhr', 'sleep', 'amber shield', 'primed', 'pixel watch', 'fitbit', 'autonomic', 'parasympathetic', 'readiness score'],
+      'Auto-regulates daily training: Primed (Z >= +0.8, +15% XP bonus), Normal (-0.8 < Z < +0.8), or Amber Shield (Z <= -0.8, holds working weight, 2–3 RIR, protects streak and joints). Seamlessly driven by Google Pixel Watch, Fitbit, Whoop, or Android Health Connect.',
+    keywords: ['readiness', 'z-score', 'hrv', 'resting hr', 'rhr', 'sleep', 'amber shield', 'primed', 'pixel watch', 'fitbit', 'whoop', 'health connect', 'android health connect', 'autonomic', 'parasympathetic', 'readiness score', 'wearable'],
   },
   {
     id: 'sp-double-progression',
