@@ -34,6 +34,15 @@ export default async function handler(req: any, res: any) {
       params = new URLSearchParams();
     }
 
+    // Default to configured user client ID if not provided in payload
+    if (!params.get('client_id')) {
+      params.append('client_id', '8bcb0a0d-b6ff-42e0-82b7-c3508e18c9f8');
+    }
+
+    if (!params.get('redirect_uri')) {
+      params.append('redirect_uri', 'https://treise.vercel.app/oauth/whoop/callback');
+    }
+
     const response = await fetch('https://api.prod.whoop.com/oauth/oauth2/token', {
       method: 'POST',
       headers: {
@@ -42,9 +51,13 @@ export default async function handler(req: any, res: any) {
       body: params.toString(),
     });
 
-    const data = await response.json();
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      console.warn('WHOOP token exchange rejected by Whoop API:', response.status, data);
+    }
     return res.status(response.status).json(data);
   } catch (error: any) {
+    console.error('WHOOP token proxy error:', error);
     return res.status(500).json({ error: error?.message || 'Whoop token exchange proxy error' });
   }
 }

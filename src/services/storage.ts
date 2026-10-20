@@ -75,6 +75,7 @@ export function loadProfile(): UserProfile {
       return {
         ...NEW_USER_PROFILE,
         ...parsed,
+        whoopClientId: parsed.whoopClientId || NEW_USER_PROFILE.whoopClientId,
         programType: parsed.programType || 'ppl_upper',
         activeLocation: parsed.activeLocation || 'gym',
         availableLocations: parsed.availableLocations || ['gym', 'home', 'travel'],

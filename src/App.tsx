@@ -53,7 +53,7 @@ import {
   SplitDayType,
 } from './services/workoutGenerator';
 import { syncWearableBiometrics } from './services/wearableSyncService';
-import { exchangeWhoopCodeForToken } from './services/whoopService';
+import { exchangeWhoopCodeForToken, WHOOP_CONFIG } from './services/whoopService';
 import { exchangeFitbitCodeForToken } from './services/fitbitService';
 import { Header } from './components/common/Header';
 import { NavigationBar, TabId } from './components/common/NavigationBar';
@@ -231,7 +231,7 @@ export const App: React.FC = () => {
           try {
             const tokenRes = await exchangeWhoopCodeForToken(
               oauthCode,
-              profile.whoopClientId,
+              profile.whoopClientId || WHOOP_CONFIG.CLIENT_ID,
               profile.whoopClientSecret
             );
             liveAccessToken = tokenRes.accessToken;
@@ -289,8 +289,19 @@ export const App: React.FC = () => {
       handleWearableAuth();
     }
 
-    if (tabParam || actionParam || oauthCode || idToken || accessToken || hash) {
-      window.history.replaceState({}, document.title, window.location.pathname);
+    if (
+      tabParam ||
+      actionParam ||
+      oauthCode ||
+      idToken ||
+      accessToken ||
+      hash ||
+      window.location.pathname.includes('/oauth')
+    ) {
+      const cleanPath = window.location.pathname.includes('/oauth')
+        ? '/'
+        : window.location.pathname;
+      window.history.replaceState({}, document.title, cleanPath);
     }
   }, []);
 

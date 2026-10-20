@@ -18,6 +18,7 @@ import {
 import {
   initiateWhoopOAuth,
   getWhoopRedirectUri,
+  WHOOP_CONFIG,
 } from '../../services/whoopService';
 import {
   openHealthConnectSettings,
@@ -67,7 +68,9 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
   const [isSyncing, setIsSyncing] = useState(false);
   const [showAdvancedOAuth, setShowAdvancedOAuth] = useState(false);
   const [clientId, setClientId] = useState(
-    currentActiveProvider === 'whoop' ? profile.whoopClientId || '' : ''
+    currentActiveProvider === 'whoop'
+      ? profile.whoopClientId || WHOOP_CONFIG.CLIENT_ID
+      : ''
   );
   const [clientSecret, setClientSecret] = useState(profile.whoopClientSecret || '');
   const [copiedRedirectUri, setCopiedRedirectUri] = useState(false);
@@ -170,16 +173,17 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
       const url = await initiateFitbitOAuth(clientId || undefined);
       setOauthUrl(url);
     } else if (selectedProvider === 'whoop') {
+      const effectiveId = clientId.trim() || profile.whoopClientId || WHOOP_CONFIG.CLIENT_ID;
       if (onUpdateProfile) {
         onUpdateProfile({
-          whoopClientId: clientId.trim() || undefined,
+          whoopClientId: effectiveId,
           whoopClientSecret: clientSecret.trim() || undefined,
         });
       }
-      const url = await initiateWhoopOAuth(clientId.trim() || undefined);
+      const url = await initiateWhoopOAuth(effectiveId);
       setOauthUrl(url);
       if (typeof window !== 'undefined') {
-        window.open(url, '_blank');
+        window.location.href = url;
       }
     }
   };
@@ -274,7 +278,7 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
                 setOauthUrl(null);
                 setImportStatus(null);
                 if (prov === 'whoop') {
-                  setClientId(profile.whoopClientId || '');
+                  setClientId(profile.whoopClientId || WHOOP_CONFIG.CLIENT_ID);
                   setClientSecret(profile.whoopClientSecret || '');
                 } else {
                   setClientId('');
