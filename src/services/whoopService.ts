@@ -1,6 +1,13 @@
 import { BiometricLog, ReadinessState, WearableSyncProgress } from '../engine/types';
 import { generateCodeChallenge, generateRandomString } from './fitbitService';
 
+export function getWhoopRedirectUri(): string {
+  if (typeof window !== 'undefined') {
+    return `${window.location.origin}/oauth/whoop/callback`;
+  }
+  return 'https://treise.vercel.app/oauth/whoop/callback';
+}
+
 export const WHOOP_CONFIG = {
   CLIENT_ID: 'headstrong_whoop_client',
   AUTHORIZATION_URI: 'https://api.prod.whoop.com/oauth/oauth2/auth',
@@ -16,7 +23,7 @@ export const WHOOP_CONFIG = {
   REDIRECT_URI:
     typeof window !== 'undefined'
       ? `${window.location.origin}/oauth/whoop/callback`
-      : 'http://localhost:5173/oauth/whoop/callback',
+      : 'https://treise.vercel.app/oauth/whoop/callback',
 };
 
 /**
@@ -28,16 +35,20 @@ export async function initiateWhoopOAuth(
   const codeVerifier = generateRandomString(64);
   const codeChallenge = await generateCodeChallenge(codeVerifier);
   const state = `whoop_${generateRandomString(24)}`;
+  const redirectUri = getWhoopRedirectUri();
 
   if (typeof window !== 'undefined') {
     sessionStorage.setItem('whoop_code_verifier', codeVerifier);
     sessionStorage.setItem('whoop_oauth_state', state);
+    if (clientId) {
+      sessionStorage.setItem('whoop_client_id', clientId);
+    }
   }
 
   const params = new URLSearchParams({
     response_type: 'code',
     client_id: clientId,
-    redirect_uri: WHOOP_CONFIG.REDIRECT_URI,
+    redirect_uri: redirectUri,
     code_challenge: codeChallenge,
     code_challenge_method: 'S256',
     scope: WHOOP_CONFIG.SCOPES.join(' '),
@@ -49,21 +60,59 @@ export async function initiateWhoopOAuth(
 
 /**
  * Exchanges authorization code for Whoop access and refresh tokens.
+ * Supports both direct PKCE and serverless proxy (for CORS prevention).
  */
 export async function exchangeWhoopCodeForToken(
   code: string,
-  clientId: string = WHOOP_CONFIG.CLIENT_ID
+  clientId?: string,
+  clientSecret?: string
 ): Promise<{ accessToken: string; refreshToken: string; expiresIn: number; userId?: string }> {
-  const codeVerifier = sessionStorage.getItem('whoop_code_verifier') || '';
+  const codeVerifier =
+    (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('whoop_code_verifier')) || '';
+  const effectiveClientId =
+    clientId ||
+    (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('whoop_client_id')) ||
+    WHOOP_CONFIG.CLIENT_ID;
+  const redirectUri = getWhoopRedirectUri();
 
   const bodyParams = new URLSearchParams({
-    client_id: clientId,
+    client_id: effectiveClientId,
     grant_type: 'authorization_code',
-    redirect_uri: WHOOP_CONFIG.REDIRECT_URI,
+    redirect_uri: redirectUri,
     code,
-    code_verifier: codeVerifier,
   });
 
+  if (codeVerifier) {
+    bodyParams.append('code_verifier', codeVerifier);
+  }
+  if (clientSecret) {
+    bodyParams.append('client_secret', clientSecret);
+  }
+
+  // 1. Try local serverless proxy first (to avoid browser CORS restrictions)
+  try {
+    const proxyResponse = await fetch('/api/whoop/token', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: bodyParams.toString(),
+    });
+
+    if (proxyResponse.ok) {
+      const data = await proxyResponse.json();
+      return {
+        accessToken: data.access_token,
+        refreshToken: data.refresh_token,
+        expiresIn: data.expires_in,
+        userId: data.user?.id ? String(data.user.id) : undefined,
+      };
+    }
+  } catch {
+    // Fall back to direct Whoop token endpoint
+  }
+
+  // 2. Direct Whoop token endpoint
   const response = await fetch(WHOOP_CONFIG.TOKEN_URI, {
     method: 'POST',
     headers: {
@@ -90,13 +139,45 @@ export async function exchangeWhoopCodeForToken(
  */
 export async function refreshWhoopToken(
   refreshToken: string,
-  clientId: string = WHOOP_CONFIG.CLIENT_ID
+  clientId?: string,
+  clientSecret?: string
 ): Promise<{ accessToken: string; refreshToken: string; expiresIn: number }> {
+  const effectiveClientId =
+    clientId ||
+    (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('whoop_client_id')) ||
+    WHOOP_CONFIG.CLIENT_ID;
+
   const bodyParams = new URLSearchParams({
-    client_id: clientId,
+    client_id: effectiveClientId,
     grant_type: 'refresh_token',
     refresh_token: refreshToken,
   });
+
+  if (clientSecret) {
+    bodyParams.append('client_secret', clientSecret);
+  }
+
+  // 1. Try proxy first
+  try {
+    const proxyResponse = await fetch('/api/whoop/token', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: bodyParams.toString(),
+    });
+
+    if (proxyResponse.ok) {
+      const data = await proxyResponse.json();
+      return {
+        accessToken: data.access_token,
+        refreshToken: data.refresh_token,
+        expiresIn: data.expires_in,
+      };
+    }
+  } catch {
+    // Fall back to direct
+  }
 
   const response = await fetch(WHOOP_CONFIG.TOKEN_URI, {
     method: 'POST',

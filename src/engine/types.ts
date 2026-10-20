@@ -232,6 +232,8 @@ export interface UserProfile {
   fitbitRefreshToken?: string;
   fitbitTokenExpiresAt?: number;
   whoopConnected?: boolean;
+  whoopClientId?: string;
+  whoopClientSecret?: string;
   whoopAccessToken?: string;
   whoopRefreshToken?: string;
   whoopTokenExpiresAt?: number;

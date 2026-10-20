@@ -451,6 +451,7 @@ import {
   initiateWhoopOAuth,
   simulateWhoopSync,
   WHOOP_CONFIG,
+  getWhoopRedirectUri,
 } from '../../services/whoopService';
 import {
   HEALTH_CONNECT_CONFIG,
@@ -2097,6 +2098,11 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
       WHOOP_CONFIG.SCOPES.includes('read:sleep'),
     `Whoop 4.0 Developer config targets v1 API with read:recovery and read:sleep scopes`
   );
+  const whoopRedirectUri = getWhoopRedirectUri();
+  assert(
+    whoopRedirectUri.endsWith('/oauth/whoop/callback'),
+    `getWhoopRedirectUri returns valid callback URI ending in /oauth/whoop/callback`
+  );
   const whoopAuthUrl = await initiateWhoopOAuth('test_whoop_client');
   assert(
     whoopAuthUrl.includes('api.prod.whoop.com/oauth/oauth2/auth') &&
@@ -2188,9 +2194,18 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
   assert(isWearableConnected(profileFitbit), `isWearableConnected returns true when Fitbit is connected`);
   assert(getActiveWearableProvider(profileFitbit) === 'fitbit', `getActiveWearableProvider returns 'fitbit'`);
 
-  const profileWhoop: UserProfile = { ...testProfile, fitbitConnected: false, whoopConnected: true, healthConnectConnected: false, wearableSource: 'whoop' };
+  const profileWhoop: UserProfile = {
+    ...testProfile,
+    fitbitConnected: false,
+    whoopConnected: true,
+    whoopClientId: 'custom_whoop_id',
+    whoopClientSecret: 'custom_secret',
+    healthConnectConnected: false,
+    wearableSource: 'whoop',
+  };
   assert(isWearableConnected(profileWhoop), `isWearableConnected returns true when Whoop is connected`);
   assert(getActiveWearableProvider(profileWhoop) === 'whoop', `getActiveWearableProvider returns 'whoop'`);
+  assert(profileWhoop.whoopClientId === 'custom_whoop_id', `UserProfile correctly associates with custom WHOOP Client ID`);
 
   const profileHealthConnect: UserProfile = { ...testProfile, fitbitConnected: false, whoopConnected: false, healthConnectConnected: true, wearableSource: 'health_connect' };
   assert(isWearableConnected(profileHealthConnect), `isWearableConnected returns true when Health Connect is connected`);

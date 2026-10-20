@@ -17,6 +17,7 @@ import {
 } from '../../services/fitbitService';
 import {
   initiateWhoopOAuth,
+  getWhoopRedirectUri,
 } from '../../services/whoopService';
 import {
   openHealthConnectSettings,
@@ -37,6 +38,9 @@ import {
   Upload,
   CheckCircle2,
   Unlink,
+  Copy,
+  Check,
+  Info,
 } from 'lucide-react';
 import { triggerHaptic } from '../../utils/haptics';
 
@@ -62,7 +66,11 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
   const [syncProgress, setSyncProgress] = useState<WearableSyncProgress | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
   const [showAdvancedOAuth, setShowAdvancedOAuth] = useState(false);
-  const [clientId, setClientId] = useState('');
+  const [clientId, setClientId] = useState(
+    currentActiveProvider === 'whoop' ? profile.whoopClientId || '' : ''
+  );
+  const [clientSecret, setClientSecret] = useState(profile.whoopClientSecret || '');
+  const [copiedRedirectUri, setCopiedRedirectUri] = useState(false);
   const [oauthUrl, setOauthUrl] = useState<string | null>(null);
   const [importStatus, setImportStatus] = useState<string | null>(null);
 
@@ -142,14 +150,37 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
     }
   };
 
+  const handleCopyRedirectUri = async () => {
+    triggerHaptic('light');
+    const uri = getWhoopRedirectUri();
+    try {
+      if (typeof navigator !== 'undefined' && navigator.clipboard) {
+        await navigator.clipboard.writeText(uri);
+        setCopiedRedirectUri(true);
+        setTimeout(() => setCopiedRedirectUri(false), 2200);
+      }
+    } catch (e) {
+      console.warn('Could not copy to clipboard:', e);
+    }
+  };
+
   const handleGenerateOauth = async () => {
     triggerHaptic('light');
     if (selectedProvider === 'fitbit') {
       const url = await initiateFitbitOAuth(clientId || undefined);
       setOauthUrl(url);
     } else if (selectedProvider === 'whoop') {
-      const url = await initiateWhoopOAuth(clientId || undefined);
+      if (onUpdateProfile) {
+        onUpdateProfile({
+          whoopClientId: clientId.trim() || undefined,
+          whoopClientSecret: clientSecret.trim() || undefined,
+        });
+      }
+      const url = await initiateWhoopOAuth(clientId.trim() || undefined);
       setOauthUrl(url);
+      if (typeof window !== 'undefined') {
+        window.open(url, '_blank');
+      }
     }
   };
 
@@ -242,6 +273,13 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
                 setSelectedProvider(prov);
                 setOauthUrl(null);
                 setImportStatus(null);
+                if (prov === 'whoop') {
+                  setClientId(profile.whoopClientId || '');
+                  setClientSecret(profile.whoopClientSecret || '');
+                } else {
+                  setClientId('');
+                  setClientSecret('');
+                }
               }}
               className={`py-2 px-1.5 rounded-xl text-xs font-semibold flex flex-col items-center justify-center transition-all min-h-[44px] ${
                 isSelected
@@ -437,25 +475,110 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
             </button>
 
             {showAdvancedOAuth && (
-              <div className="mt-2 space-y-2">
-                <div className="flex space-x-2">
-                  <input
-                    type="text"
-                    value={clientId}
-                    onChange={(e) => setClientId(e.target.value)}
-                    placeholder={`${selectedProvider === 'fitbit' ? 'Fitbit' : 'Whoop'} Client ID`}
-                    aria-label={`${selectedProvider === 'fitbit' ? 'Fitbit' : 'Whoop'} Client ID`}
-                    className="flex-1 py-2.5 px-3 rounded-xl bg-[#090C12] text-white font-mono text-xs focus:ring-1 focus:ring-brand-primary focus:outline-none"
-                  />
-                  <button
-                    type="button"
-                    onClick={handleGenerateOauth}
-                    className="px-3.5 py-2.5 min-h-[44px] rounded-xl bg-white/[0.08] hover:bg-white/[0.14] text-white text-xs font-semibold flex items-center space-x-1.5 transition-colors"
-                  >
-                    <span>Authorize</span>
-                    <ExternalLink className="w-3.5 h-3.5 stroke-[2]" />
-                  </button>
-                </div>
+              <div className="mt-2 space-y-2.5">
+                {selectedProvider === 'whoop' ? (
+                  <div className="p-3 rounded-xl bg-[#090C12] border border-white/[0.04] space-y-2 text-xs">
+                    <div className="flex items-start space-x-2 text-slate-300">
+                      <Info className="w-4 h-4 text-brand-primary shrink-0 mt-0.5 stroke-[2]" />
+                      <div className="space-y-1">
+                        <span className="font-semibold text-white block">
+                          WHOOP Developer Portal Setup
+                        </span>
+                        <p className="text-slate-400 text-xs leading-relaxed">
+                          <strong className="text-white">Webhooks are optional:</strong> You do{' '}
+                          <em>not</em> need a webhook to connect WHOOP. Leave the Webhooks section
+                          blank in the WHOOP portal and tap{' '}
+                          <span className="text-emerald-400 font-medium">[CREATE APP]</span>.
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Redirect URI Row */}
+                    <div className="pt-2 border-t border-white/[0.04] space-y-1">
+                      <span className="text-slate-400 block font-medium">Redirect URI:</span>
+                      <div className="flex items-center space-x-1.5">
+                        <input
+                          type="text"
+                          readOnly
+                          value={getWhoopRedirectUri()}
+                          aria-label="WHOOP Redirect URI"
+                          className="flex-1 py-2 px-2.5 rounded-lg bg-black/40 text-slate-300 font-mono text-xs border border-white/[0.04] select-all focus:outline-none"
+                        />
+                        <button
+                          type="button"
+                          onClick={handleCopyRedirectUri}
+                          className="px-2.5 py-2 min-h-[38px] rounded-lg bg-white/[0.08] hover:bg-white/[0.14] text-white text-xs font-semibold flex items-center space-x-1 transition-colors"
+                          title="Copy Redirect URI to clipboard"
+                        >
+                          {copiedRedirectUri ? (
+                            <>
+                              <Check className="w-3.5 h-3.5 text-emerald-400 stroke-[2.2]" />
+                              <span className="text-emerald-400">Copied</span>
+                            </>
+                          ) : (
+                            <>
+                              <Copy className="w-3.5 h-3.5 stroke-[2]" />
+                              <span>Copy</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Client Credentials Inputs */}
+                    <div className="space-y-1.5 pt-1">
+                      <span className="text-slate-400 block font-medium">WHOOP Client ID:</span>
+                      <input
+                        type="text"
+                        value={clientId}
+                        onChange={(e) => setClientId(e.target.value)}
+                        placeholder="Paste your WHOOP Client ID"
+                        aria-label="WHOOP Client ID"
+                        className="w-full py-2.5 px-3 rounded-xl bg-black/40 text-white font-mono text-xs border border-white/[0.04] focus:ring-1 focus:ring-brand-primary focus:outline-none"
+                      />
+
+                      <span className="text-slate-400 block font-medium pt-1">
+                        WHOOP Client Secret (Optional):
+                      </span>
+                      <input
+                        type="password"
+                        value={clientSecret}
+                        onChange={(e) => setClientSecret(e.target.value)}
+                        placeholder="Paste Client Secret if provided"
+                        aria-label="WHOOP Client Secret"
+                        className="w-full py-2.5 px-3 rounded-xl bg-black/40 text-white font-mono text-xs border border-white/[0.04] focus:ring-1 focus:ring-brand-primary focus:outline-none"
+                      />
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={handleGenerateOauth}
+                      className="w-full py-2.5 min-h-[44px] rounded-xl bg-brand-primary hover:bg-brand-primary/90 text-slate-950 font-bold text-xs flex items-center justify-center space-x-1.5 transition-all shadow-sm"
+                    >
+                      <span>Authorize WHOOP 4.0</span>
+                      <ExternalLink className="w-3.5 h-3.5 stroke-[2.2]" />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex space-x-2">
+                    <input
+                      type="text"
+                      value={clientId}
+                      onChange={(e) => setClientId(e.target.value)}
+                      placeholder="Fitbit Client ID"
+                      aria-label="Fitbit Client ID"
+                      className="flex-1 py-2.5 px-3 rounded-xl bg-[#090C12] text-white font-mono text-xs focus:ring-1 focus:ring-brand-primary focus:outline-none"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleGenerateOauth}
+                      className="px-3.5 py-2.5 min-h-[44px] rounded-xl bg-white/[0.08] hover:bg-white/[0.14] text-white text-xs font-semibold flex items-center space-x-1.5 transition-colors"
+                    >
+                      <span>Authorize</span>
+                      <ExternalLink className="w-3.5 h-3.5 stroke-[2]" />
+                    </button>
+                  </div>
+                )}
 
                 {oauthUrl && (
                   <div className="p-3 rounded-xl bg-[#090C12] text-xs break-all text-slate-300">
@@ -466,9 +589,10 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
                       href={oauthUrl}
                       target="_blank"
                       rel="noreferrer"
-                      className="text-cyan-400 underline font-mono"
+                      className="text-cyan-400 underline font-mono flex items-center space-x-1"
                     >
-                      Open {selectedProvider === 'fitbit' ? 'Fitbit' : 'Whoop'} Authorization &rarr;
+                      <span>Open {selectedProvider === 'fitbit' ? 'Fitbit' : 'Whoop'} Authorization</span>
+                      <ExternalLink className="w-3 h-3 stroke-[2]" />
                     </a>
                   </div>
                 )}
