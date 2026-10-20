@@ -1,0 +1,19 @@
+# Dependencies
+node_modules/
+.npm/
+
+# Build artifacts
+build/
+.gradle/
+app/build/
+
+# Android Keystore & Sensitive Signing Keys
+# Keep your signing keystore safe!
+*.keystore
+*.jks
+*.idsig
+
+# Temp and Logs
+*.log
+.dist-test/
+.DS_Store
