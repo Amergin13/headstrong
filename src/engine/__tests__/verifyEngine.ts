@@ -1611,6 +1611,63 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
     `AI Assistant backend identifies 100% on-device processing: ${backendStr}`
   );
 
+  // G. Dynamic Exercise Targets Grounding (Eliminates Stock Responses)
+  const exerciseTargetResult = await processAssistantMessage({
+    userMessage: 'What is my prescribed weight and rep target on bench press today?',
+    profile: testProfile,
+    activeWorkout: pushW3,
+    workouts: [pushW3],
+    biometrics: mockBiometrics,
+    exerciseCatalog: SEED_EXERCISES,
+    bodyweightEmaKg: 80,
+    readinessState: 'Primed',
+  });
+
+  assert(
+    exerciseTargetResult.message.text.includes('Bench Press') &&
+      exerciseTargetResult.message.text.includes('working sets') &&
+      Boolean(exerciseTargetResult.message.knowledgeGraphCitations?.some((c) => c.metric === 'Target Load & Reps')),
+    'AI Assistant returns exact exercise-specific targets and citations instead of canned stock response'
+  );
+
+  // H. Exercise Substitution Grounding via Biomechanical Neural Matcher
+  const swapResult = await processAssistantMessage({
+    userMessage: 'Can I swap barbell bench press for dumbbell bench press?',
+    profile: testProfile,
+    activeWorkout: pushW3,
+    workouts: [pushW3],
+    biometrics: mockBiometrics,
+    exerciseCatalog: SEED_EXERCISES,
+    bodyweightEmaKg: 80,
+    readinessState: 'Primed',
+  });
+
+  assert(
+    swapResult.message.text.includes('Biomechanical Match') &&
+      Boolean(swapResult.message.knowledgeGraphCitations?.some((c) => c.metric === 'Biomechanical Match')),
+    'AI Assistant evaluates exercise substitution compatibility and joint shear from Knowledge Graph'
+  );
+
+  // I. Dynamic Tactical Session Briefing
+  const briefingResult = await processAssistantMessage({
+    userMessage: "Give me a tactical briefing for today's workout and targets",
+    profile: testProfile,
+    activeWorkout: pushW3,
+    workouts: [pushW3],
+    biometrics: mockBiometrics,
+    exerciseCatalog: SEED_EXERCISES,
+    bodyweightEmaKg: 80,
+    readinessState: 'Primed',
+  });
+
+  assert(
+    briefingResult.message.text.includes('Planned Movements') &&
+      briefingResult.message.text.includes('Push Day') &&
+      briefingResult.message.text.includes('recovery') &&
+      Boolean(briefingResult.message.knowledgeGraphCitations?.some((c) => c.metric === "Today's Session")),
+    'AI Assistant synthesizes bespoke tactical briefing of active session and biometrics'
+  );
+
   // ============================================================================
   // SUITE 23: EXERCISE SCIENCE KNOWLEDGE BASE & ZERO-HALLUCINATION AI GROUNDING
   // ============================================================================

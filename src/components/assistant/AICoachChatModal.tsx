@@ -164,6 +164,16 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
 
   const quickPrompts = [
     {
+      label: "Today's Briefing",
+      text: "Give me a tactical briefing for today's workout and targets",
+      icon: Sparkles,
+    },
+    {
+      label: 'Bench Target',
+      text: 'What is my prescribed weight and rep target on bench press today?',
+      icon: Dumbbell,
+    },
+    {
       label: 'Away in Week 5',
       text: "I'll be away with work during week 5 of my program",
       icon: Plane,

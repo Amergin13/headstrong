@@ -3,6 +3,7 @@ import {
   AssistantChatMessage,
   BiometricLog,
   ExerciseDefinition,
+  ExerciseSession,
   GoalPhase,
   HomeEquipmentTag,
   ProgramSplitType,
@@ -19,7 +20,9 @@ import {
   queryDesignSystemComponents,
   queryExerciseScienceKnowledgeBase,
 } from '../engine/knowledgeGraph';
-import { getTensorHardwareProfile } from './tensorAIService';
+import { getTensorHardwareProfile, queryTensorTPUGeminiNano } from './tensorAIService';
+import { evaluateTensorBiomechanicalMatch } from '../engine/tensorAI';
+import { calculateDotsScore } from '../engine/dots';
 import {
   adaptWorkoutSessionToLocation,
   generateSmartWorkoutSession,
@@ -460,7 +463,35 @@ export async function processAssistantMessage(
 
     // C. Grounded Exercise Science Knowledge Base Query (Exact Formulas & Physiological Rationale)
     else {
-      const scientificPrinciple = queryExerciseScienceKnowledgeBase(lowerMsg);
+      // Prioritize active exercise targets over theoretical science when athlete asks about today's weights/reps
+      const isTacticalWorkoutQuery =
+        (lowerMsg.includes('weight') ||
+          lowerMsg.includes('rep') ||
+          lowerMsg.includes('set') ||
+          lowerMsg.includes('target') ||
+          lowerMsg.includes('today') ||
+          lowerMsg.includes('prescribed') ||
+          lowerMsg.includes('how much') ||
+          lowerMsg.includes('how many') ||
+          lowerMsg.includes('swap') ||
+          lowerMsg.includes('substitute') ||
+          lowerMsg.includes('replace') ||
+          lowerMsg.includes('alternative') ||
+          lowerMsg.includes('instead of') ||
+          lowerMsg.includes('briefing') ||
+          lowerMsg.includes('warm') ||
+          lowerMsg.includes('tempo')) &&
+        !lowerMsg.includes('why') &&
+        !lowerMsg.includes('formula') &&
+        !lowerMsg.includes('multiplier') &&
+        !lowerMsg.includes('citation') &&
+        !lowerMsg.includes('academic') &&
+        !lowerMsg.includes('retention shield') &&
+        !lowerMsg.includes('science');
+
+      const scientificPrinciple = !isTacticalWorkoutQuery
+        ? queryExerciseScienceKnowledgeBase(lowerMsg)
+        : null;
 
       if (scientificPrinciple) {
         scientificPrinciplesCited.push(scientificPrinciple);
@@ -557,8 +588,324 @@ export async function processAssistantMessage(
             ? `In a caloric deficit, target 2.0g to 2.4g of protein per kg of bodyweight (${Math.round(bodyweightEmaKg * 2.2)}g daily) to support muscle retention while body fat drops.`
             : `For progressive hypertrophy during a lean bulk, aim for 1.8g to 2.2g of protein per kg of bodyweight (${Math.round(bodyweightEmaKg * 2.0)}g daily) and prioritize complex carbohydrates around workouts.`;
       } else {
-        // General encouraging answer grounded in active session
-        answerText = `You're training ${activeWorkout.splitDay} Day (${activeWorkout.name}) in Week ${profile.mesocycleWeek || 3} of your 6-week plan. Focus on completing your target reps with 1–2 reps left in the tank. If you need to adjust your gear, plan upcoming travel, or change your split, just let me know!`;
+        // ============================================================================
+        // 8. ATHLETIC COACHING & TACTICAL GUIDANCE (TENSOR TPU + KNOWLEDGE GRAPH)
+        // ============================================================================
+        let nanoHandled = false;
+
+        // A. Google Tensor TPU Acceleration (Chrome Built-in AI / Gemini Nano via Android AICore)
+        if (hardware.isPixelDevice) {
+          const dotsScore = calculateDotsScore(
+            bodyweightEmaKg,
+            (kg.nodes.find((n) => n.id === 'dots-score')?.metrics?.dots as number) || 280,
+            profile.gender
+          );
+
+          const exercisesDesc = (activeWorkout.exercises || [])
+            .map(
+              (e, idx) =>
+                `  ${idx + 1}. ${e.name} (${e.pillar}, ${e.equipment}): ${e.sets.length} sets × ${e.minReps}–${e.maxReps} reps @ ${e.sets[0]?.targetWeightKg ?? 0} kg (Target RIR: ${readinessState === 'Amber Shield' ? '2–3' : '1–2'})`
+            )
+            .join('\n');
+
+          const jointsDesc = kg.joints
+            .map((j) => `  - ${j.joint}: ${j.strainScore}/100 (${j.status}) [Top: ${j.topContributors.slice(0, 2).join(', ') || 'Normal'}]`)
+            .join('\n');
+
+          const musclesDesc = kg.muscleProfiles
+            .slice(0, 5)
+            .map((m) => `  - ${m.displayName}: ${m.weeklySets} sets (Personalized MAV: ${m.personalizedMav[0]}–${m.personalizedMav[1]} sets)`)
+            .join('\n');
+
+          const latestBio = biometrics[biometrics.length - 1];
+
+          const systemPrompt = `You are the Treise On-Device AI Coach executing locally on the Google Pixel ${hardware.chipModel} TPU via Android AICore.
+You have direct, real-time access to the athlete's Personal Knowledge Graph and workout telemetry:
+
+[ATHLETE PROFILE]
+- Name: ${profile.name || 'Athlete'} (${profile.gender || 'male'})
+- 7-Day EMA Bodyweight: ${bodyweightEmaKg.toFixed(1)} kg
+- Goal Phase: ${profile.goalPhase}
+- Mesocycle Week: Week ${profile.mesocycleWeek || 3} of 6
+- Streak: ${profile.streakDays} days
+- Available Home Equipment: ${(profile.homeEquipment || []).map((t) => EQUIPMENT_NAMES[t] || t).join(', ') || 'None registered'}
+
+[AUTONOMIC READINESS & WEARABLE TELEMETRY]
+- Daily Readiness State: ${readinessState} (${readinessState === 'Primed' ? 'Parasympathetic high, +15% XP boost, green light for PR load' : readinessState === 'Amber Shield' ? 'Recovery Shield Active, hold weights static, 2-3 RIR buffer' : 'Standard Double Progression at 1-2 RIR'})
+- Latest HRV: ${latestBio?.hrvRmssd ?? 58} ms
+- Sleep: ${latestBio?.sleepHours ?? 7.5} hours
+- Resting Heart Rate: ${latestBio?.restingHr ?? 58} bpm
+- Recovery Efficiency Score: ${kg.recoveryEfficiencyScore}/100
+
+[TODAY'S ACTIVE WORKOUT: ${activeWorkout.name} (${activeWorkout.splitDay} Day)]
+- Location: ${activeWorkout.location}
+- Planned Movements:
+${exercisesDesc || '  Standard movements'}
+
+[JOINT STRAIN HEALTH]
+${jointsDesc}
+
+[KEY MUSCLE VOLUMES & MAV LANDMARKS]
+${musclesDesc}
+
+[STRENGTH STANDARDS]
+- Current DOTS Score: ${dotsScore}
+
+[COACHING RULES]
+1. Answer the athlete's question directly, authoritatively, and concisely in 2–4 sentences.
+2. Ground your advice directly in their actual planned exercises, target weights, reps, and autonomic readiness.
+3. NEVER mention internal UX jargon, database terms, latency stamps, or 'Knowledge Graph Grounding'.
+4. If asked about an exercise, cite its exact target weight and rep range from today's workout.`;
+
+          const nanoResult = await queryTensorTPUGeminiNano(userMessage, systemPrompt);
+          if (nanoResult && nanoResult.answer) {
+            answerText = nanoResult.answer;
+            nanoHandled = true;
+
+            // Attach Knowledge Graph citations if an exercise or joint was discussed
+            for (const ex of activeWorkout.exercises) {
+              if (
+                lowerMsg.includes(ex.name.toLowerCase()) ||
+                nanoResult.answer.toLowerCase().includes(ex.name.toLowerCase())
+              ) {
+                citations.push({
+                  label: ex.name,
+                  metric: 'Target Load & Reps',
+                  value: `${ex.sets[0]?.targetWeightKg ?? 0} kg × ${ex.minReps}–${ex.maxReps} reps`,
+                });
+                break;
+              }
+            }
+          }
+        }
+
+        // B. On-Device Semantic Athletic Engine Fallback (Zero Latency, 100% Deterministic)
+        if (!nanoHandled) {
+          // B1. Exercise-Specific Targets & Progression Rules
+          const matchedWorkoutEx = activeWorkout.exercises.find((e) =>
+            lowerMsg.includes(e.name.toLowerCase()) ||
+            (lowerMsg.includes('bench') && e.name.toLowerCase().includes('bench')) ||
+            (lowerMsg.includes('incline') && e.name.toLowerCase().includes('incline')) ||
+            (lowerMsg.includes('squat') && e.name.toLowerCase().includes('squat')) ||
+            (lowerMsg.includes('deadlift') && e.name.toLowerCase().includes('deadlift')) ||
+            (lowerMsg.includes('rdl') && (e.name.toLowerCase().includes('rdl') || e.isRdl)) ||
+            (lowerMsg.includes('overhead') && e.name.toLowerCase().includes('overhead')) ||
+            (lowerMsg.includes('ohp') && (e.name.toLowerCase().includes('press') || e.pillar === 'Vertical Push')) ||
+            (lowerMsg.includes('pull up') && (e.name.toLowerCase().includes('pull-up') || e.name.toLowerCase().includes('chin'))) ||
+            (lowerMsg.includes('pulldown') && e.name.toLowerCase().includes('pulldown')) ||
+            (lowerMsg.includes('row') && e.name.toLowerCase().includes('row')) ||
+            (lowerMsg.includes('lateral raise') && e.name.toLowerCase().includes('lateral')) ||
+            (lowerMsg.includes('curl') && e.name.toLowerCase().includes('curl')) ||
+            (lowerMsg.includes('tricep') && e.name.toLowerCase().includes('tricep')) ||
+            (lowerMsg.includes('pushdown') && e.name.toLowerCase().includes('pushdown')) ||
+            (lowerMsg.includes('leg press') && e.name.toLowerCase().includes('leg press')) ||
+            (lowerMsg.includes('leg curl') && e.name.toLowerCase().includes('leg curl')) ||
+            (lowerMsg.includes('extension') && e.name.toLowerCase().includes('extension')) ||
+            (lowerMsg.includes('calf') && e.name.toLowerCase().includes('calf'))
+          );
+
+          const matchedCatalogEx = !matchedWorkoutEx
+            ? exerciseCatalog.find((e) =>
+                lowerMsg.includes(e.name.toLowerCase()) ||
+                (lowerMsg.includes('bench') && e.name.toLowerCase().includes('bench')) ||
+                (lowerMsg.includes('squat') && e.name.toLowerCase().includes('squat')) ||
+                (lowerMsg.includes('deadlift') && e.name.toLowerCase().includes('deadlift'))
+              )
+            : null;
+
+          const targetEx = matchedWorkoutEx || matchedCatalogEx;
+
+          const isExerciseQuery =
+            Boolean(targetEx) &&
+            (lowerMsg.includes('weight') ||
+              lowerMsg.includes('rep') ||
+              lowerMsg.includes('set') ||
+              lowerMsg.includes('target') ||
+              lowerMsg.includes('how much') ||
+              lowerMsg.includes('how many') ||
+              lowerMsg.includes('load') ||
+              lowerMsg.includes('should i') ||
+              lowerMsg.includes('progress') ||
+              !matchedWorkoutEx);
+
+          const isSwapQuery =
+            lowerMsg.includes('swap') ||
+            lowerMsg.includes('substitute') ||
+            lowerMsg.includes('replace') ||
+            lowerMsg.includes('alternative') ||
+            lowerMsg.includes('instead of') ||
+            lowerMsg.includes("don't have") ||
+            lowerMsg.includes('dont have');
+
+          const isWarmupQuery =
+            lowerMsg.includes('warm') ||
+            lowerMsg.includes('ramp up') ||
+            lowerMsg.includes('warm-up') ||
+            lowerMsg.includes('warmup');
+
+          const isRestQuery =
+            lowerMsg.includes('rest') ||
+            lowerMsg.includes('interval') ||
+            lowerMsg.includes('pace') ||
+            lowerMsg.includes('time between') ||
+            lowerMsg.includes('how long');
+
+          const isDotsQuery =
+            lowerMsg.includes('dots') ||
+            lowerMsg.includes('tier') ||
+            lowerMsg.includes('level up') ||
+            lowerMsg.includes('1rm') ||
+            lowerMsg.includes('e1rm') ||
+            lowerMsg.includes('standard') ||
+            lowerMsg.includes('strength ratio') ||
+            lowerMsg.includes('strength score');
+
+          const isTempoQuery =
+            lowerMsg.includes('tempo') ||
+            lowerMsg.includes('cadence') ||
+            lowerMsg.includes('speed') ||
+            lowerMsg.includes('eccentric') ||
+            lowerMsg.includes('form') ||
+            lowerMsg.includes('technique');
+
+          if (isSwapQuery) {
+            // Exercise Substitution Biomechanical Match
+            const sourceEx = matchedWorkoutEx || activeWorkout.exercises[0];
+            const sourceDef = exerciseCatalog.find((c) => c.id === sourceEx.exerciseId);
+            const sourceMuscle = sourceDef?.primaryMuscle || 'target muscles';
+            const candidateEx =
+              exerciseCatalog.find(
+                (e) =>
+                  e.id !== sourceEx.exerciseId &&
+                  (lowerMsg.includes(e.name.toLowerCase()) ||
+                    (lowerMsg.includes('dumbbell') && e.equipment === 'dumbbell' && e.pillar === sourceEx.pillar) ||
+                    (lowerMsg.includes('cable') && e.equipment === 'cable' && e.pillar === sourceEx.pillar) ||
+                    (lowerMsg.includes('machine') && e.equipment === 'machine' && e.pillar === sourceEx.pillar) ||
+                    (e.pillar === sourceEx.pillar && e.primaryMuscle === sourceMuscle))
+              ) || exerciseCatalog.find((e) => e.pillar === sourceEx.pillar && e.id !== sourceEx.exerciseId);
+
+            if (candidateEx) {
+              const fatigue = readinessState === 'Amber Shield' ? 0.75 : 0.4;
+              const match = evaluateTensorBiomechanicalMatch(
+                sourceEx.exerciseId,
+                candidateEx.id,
+                fatigue,
+                hardware
+              );
+
+              answerText = `You can substitute **${sourceEx.name}** with **${candidateEx.name}** (${match.compatibilityScore}% Biomechanical Match).\n\nBoth movements stimulate the same movement vector (${candidateEx.pillar}) with ${match.jointStrainRating.toLowerCase()} joint shear. Use standard progressive double progression (${candidateEx.defaultRepRange[0]}–${candidateEx.defaultRepRange[1]} reps) at 1–2 RIR.`;
+
+              citations.push({
+                label: candidateEx.name,
+                metric: 'Biomechanical Match',
+                value: `${match.compatibilityScore}% Compatibility (${match.jointStrainRating} Joint Shear)`,
+              });
+            } else {
+              answerText = `To swap **${sourceEx.name}**, choose an exercise targeting ${sourceMuscle} within the ${sourceEx.pillar} movement pillar using your available equipment (${(profile.homeEquipment || []).map((t) => EQUIPMENT_NAMES[t] || t).join(', ') || 'gym gear'}).`;
+            }
+          } else if (isWarmupQuery) {
+            // Ramp-Up Warm-Up Protocol
+            const primaryEx = activeWorkout.exercises[0];
+            const targetWeight = primaryEx?.sets[0]?.targetWeightKg ?? 60;
+            const w50 = Math.round((targetWeight * 0.5) / 2.5) * 2.5;
+            const w75 = Math.round((targetWeight * 0.75) / 2.5) * 2.5;
+
+            answerText = `Warm-Up Protocol for **${primaryEx ? primaryEx.name : "today's primary compound lift"}**:\n\n1. **Set 1 (Synovial Lubrication):** Empty bar or light weight × 10 reps.\n2. **Set 2 (Motor Pattern Groove):** ${w50} kg (50% working load) × 5 reps.\n3. **Set 3 (Neuromuscular Potentiation):** ${w75} kg (75% working load) × 2–3 reps (zero fatigue).\n\nRest 2 minutes before starting your first heavy working set.`;
+
+            citations.push({
+              label: primaryEx ? primaryEx.name : 'Warmup Pyramid',
+              metric: 'Ramp-Up Targets',
+              value: `10 reps @ bar → 5 reps @ ${w50}kg → 2 reps @ ${w75}kg`,
+            });
+          } else if (isRestQuery) {
+            // Evidence-Based Rest Intervals
+            const compoundLifts = activeWorkout.exercises.filter((e) => e.equipment === 'barbell' || e.pillar === 'Squat' || e.pillar === 'Hinge' || e.pillar === 'Horizontal Push');
+            const isolationLifts = activeWorkout.exercises.filter((e) => !compoundLifts.includes(e));
+
+            answerText = `Optimal rest intervals for today's **${activeWorkout.name}**:\n\n• **Heavy Compound Movements** (${compoundLifts.map((e) => e.name).slice(0, 2).join(', ') || 'primary lifts'}): 2.5 to 3.5 minutes. Full phosphocreatine and central nervous system resynthesis is essential for maintaining mechanical tension.\n• **Accessory Movements** (${isolationLifts.map((e) => e.name).slice(0, 2).join(', ') || 'isolation exercises'}): 60 to 90 seconds. Sustains metabolic stress and localized cellular swelling.\n\n${readinessState === 'Amber Shield' ? '🛡️ Amber Shield is active: take a full 3–4 minutes on compounds to protect technique.' : ''}`;
+
+            citations.push({
+              label: 'Rest Intervals',
+              metric: 'Rest Time',
+              value: '2.5–3.5 min (Compounds) / 60–90 sec (Accessories)',
+            });
+          } else if (isDotsQuery) {
+            // International DOTS & Strength Standards
+            const dotsNode = kg.nodes.find((n) => n.id === 'dots-score');
+            const dots = dotsNode?.score ?? 280;
+            const pillarNodes = kg.nodes.filter((n) => n.category === 'pillar');
+
+            answerText = `Your current International DOTS score is **${dots}** based on your 7-day EMA bodyweight (${bodyweightEmaKg.toFixed(1)} kg).\n\nStrength Standards Overview:\n${pillarNodes.map((p) => `• **${p.label}:** ${p.subtitle}`).join('\n')}\n\nTo reach the next sub-tier, aim to add +1 rep across your current working sets or advance load by +2.5 kg once all sets reach the top of their rep range.`;
+
+            citations.push({
+              label: 'International DOTS',
+              metric: 'Relative Score',
+              value: `${dots} DOTS Points`,
+            });
+          } else if (isTempoQuery) {
+            // Hypertrophy Lifting Cadence
+            answerText = `Optimal hypertrophy tempo for today's workout:\n\n• **Eccentric (Lowering):** 2–3 seconds controlled descent under active tension.\n• **Paused Stretch:** 1 full second at the lengthened position to maximize stretch-mediated hypertrophy.\n• **Concentric (Lifting):** Explosive intent while maintaining strict path.\n• **Lockout:** 0.5 second squeeze without resting on joints.`;
+
+            citations.push({
+              label: 'Rep Cadence',
+              metric: 'Prescribed Tempo',
+              value: '2-1-1-0 (2s eccentric, 1s stretch pause)',
+            });
+          } else if (isExerciseQuery && targetEx) {
+            // Exact Exercise Target Load, Reps & Double Progression
+            const isWorkoutEx = 'sets' in targetEx;
+            const targetWeight = isWorkoutEx
+              ? (targetEx as ExerciseSession).sets[0]?.targetWeightKg ?? 60
+              : 60;
+            const minReps = isWorkoutEx
+              ? (targetEx as ExerciseSession).minReps
+              : (targetEx as ExerciseDefinition).defaultRepRange[0];
+            const maxReps = isWorkoutEx
+              ? (targetEx as ExerciseSession).maxReps
+              : (targetEx as ExerciseDefinition).defaultRepRange[1];
+            const setCount = isWorkoutEx ? (targetEx as ExerciseSession).sets.length : 3;
+            const targetRir = readinessState === 'Amber Shield' ? '2–3 RIR' : '1–2 RIR';
+            const inc = targetEx.equipment === 'dumbbell' ? '2.0 kg' : '2.5 kg';
+
+            answerText = `For **${targetEx.name}** today, your target is **${targetWeight} kg** for **${setCount} working sets** of **${minReps}–${maxReps} reps** at **${targetRir}**.\n\n${
+              readinessState === 'Primed'
+                ? '⚡ Recovery is Primed: If your warmup feels explosive, aim for the top of the rep range on your first working set.'
+                : readinessState === 'Amber Shield'
+                ? '🛡️ Amber Shield active: Hold working weights constant and keep 2–3 reps in reserve to protect your joints.'
+                : '🎯 Focus on a controlled 2-second eccentric phase to maximize mechanical tension.'
+            }\n\nOnce all ${setCount} sets reach ${maxReps} reps, increment weight by +${inc} next session.`;
+
+            citations.push({
+              label: targetEx.name,
+              metric: 'Target Load & Reps',
+              value: `${targetWeight} kg × ${setCount} sets (${minReps}–${maxReps} reps)`,
+            });
+          } else {
+            // Dynamic Tactical Session Briefing for Today's Workout
+            const plannedList = activeWorkout.exercises
+              .map(
+                (e, idx) =>
+                  `${idx + 1}. **${e.name}** — ${e.sets.length} sets × ${e.minReps}–${e.maxReps} reps @ ${e.sets[0]?.targetWeightKg ?? 0} kg`
+              )
+              .join('\n');
+
+            const latestBio = biometrics[biometrics.length - 1];
+
+            answerText = `Today's session is **${activeWorkout.name}** (**${activeWorkout.splitDay} Day**) in **Week ${profile.mesocycleWeek || 3} of 6** (${activeWorkout.location === 'travel' ? 'Bodyweight' : activeWorkout.location === 'home' ? 'At Home' : 'Full Gym'} mode).\n\nPlanned Movements:\n${plannedList}\n\n${
+              readinessState === 'Primed'
+                ? `⚡ Autonomic recovery is **Primed** (HRV: ${latestBio?.hrvRmssd ?? 58}ms, Sleep: ${latestBio?.sleepHours ?? 7.5}h). You have an active +15% XP multiplier—attack Set 1 with high concentric intent!`
+                : readinessState === 'Amber Shield'
+                ? `🛡️ **Amber Shield** is active today (HRV: ${latestBio?.hrvRmssd ?? 58}ms, Sleep: ${latestBio?.sleepHours ?? 7.5}h). Hold working weights steady, maintain 2–3 reps in reserve, and protect your joints.`
+                : `🎯 Recovery baseline is solid (Recovery Efficiency: ${kg.recoveryEfficiencyScore}/100). Focus on clean 2-second eccentrics, hit 1–2 RIR, and lock in progressive overload.`
+            }\n\nFeel free to ask about specific targets, warm-up sets, tempo, or exercise substitutions!`;
+
+            citations.push({
+              label: activeWorkout.name,
+              metric: 'Today\'s Session',
+              value: `${activeWorkout.splitDay} Day (${activeWorkout.exercises.length} Exercises Planned)`,
+            });
+          }
+        }
       }
     }
   }

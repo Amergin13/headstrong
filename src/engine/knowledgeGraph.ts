@@ -787,15 +787,19 @@ export function queryExerciseScienceKnowledgeBase(query: string): ScientificPrin
     return bestMatch;
   }
 
-  // Fallback: Multi-word token overlap on title and keywords
-  const tokens = cleanQuery.split(/\s+/).filter((t) => t.length > 3);
+  // Fallback: Multi-word token overlap on title and keywords (requires strong overlap >= 12)
+  const tokens = cleanQuery.split(/\s+/).filter((t) => t.length > 3 && !['what', 'this', 'that', 'with', 'from', 'your', 'today'].includes(t));
   for (const principle of EXERCISE_SCIENCE_KNOWLEDGE_BASE) {
     let score = 0;
     for (const tok of tokens) {
-      if (principle.keywords.some((k) => k.toLowerCase() === tok || k.toLowerCase().includes(tok))) score += 3;
-      if (principle.title.toLowerCase().includes(tok)) score += 3;
+      if (principle.keywords.some((k) => k.toLowerCase() === tok || k.toLowerCase().split(/\s+/).includes(tok))) {
+        score += 4;
+      }
+      if (principle.title.toLowerCase().split(/\s+/).includes(tok)) {
+        score += 4;
+      }
     }
-    if (score > maxScore && score >= 6) {
+    if (score > maxScore && score >= 12) {
       maxScore = score;
       bestMatch = principle;
     }

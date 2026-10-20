@@ -87,6 +87,82 @@ export async function getTensorCoachingInsight(input: TensorCoachingInput): Prom
 }
 
 /**
+ * Executes a query directly on the Google Tensor TPU using Chrome Built-in AI / Gemini Nano.
+ * Connects through Android AICore directly to the Google Tensor processor on Pixel devices.
+ * Returns null if the on-device language model is not available or encounters an error.
+ */
+export async function queryTensorTPUGeminiNano(
+  question: string,
+  systemPrompt: string
+): Promise<{ answer: string; latencyMs: number } | null> {
+  if (typeof window === 'undefined') return null;
+
+  const startTime = typeof performance !== 'undefined' ? performance.now() : Date.now();
+  const ai =
+    (window as any).ai ||
+    (window as any).model ||
+    (window as any).chrome?.aiOriginTrial;
+
+  if (!ai) return null;
+
+  const lm = ai.languageModel || ai.assistant;
+  if (!lm) return null;
+
+  try {
+    let isAvailable = false;
+    if (typeof lm.capabilities === 'function') {
+      const caps = await lm.capabilities();
+      isAvailable = Boolean(caps && caps.available !== 'no');
+    } else if (typeof lm.availability === 'function') {
+      const avail = await lm.availability();
+      isAvailable = avail === 'readily' || avail === 'after-download' || avail === true;
+    } else {
+      isAvailable = true;
+    }
+
+    if (!isAvailable) return null;
+
+    let session: any = null;
+    try {
+      session = await lm.create({
+        systemPrompt,
+        initialPrompts: systemPrompt ? [{ role: 'system', content: systemPrompt }] : undefined,
+        temperature: 0.3,
+        topK: 3,
+      });
+    } catch {
+      try {
+        session = await lm.create({ systemPrompt });
+      } catch {
+        session = await lm.create();
+      }
+    }
+
+    const response = await session.prompt(question);
+    if (typeof session.destroy === 'function') {
+      session.destroy();
+    } else if (typeof session.close === 'function') {
+      session.close();
+    }
+
+    if (!response || typeof response !== 'string' || !response.trim()) {
+      return null;
+    }
+
+    const endTime = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    const latencyMs = Math.max(6, Math.round(endTime - startTime));
+
+    return {
+      answer: response.trim(),
+      latencyMs,
+    };
+  } catch (err) {
+    console.warn('Tensor TPU on-device language model query bypassed:', err);
+    return null;
+  }
+}
+
+/**
  * Handles interactive questions from the athlete, utilizing the on-device
  * Google Tensor TPU (via Chrome Built-in AI / Gemini Nano) if available,
  * or the on-device athletic model.
@@ -98,35 +174,34 @@ export async function askOnDeviceTensorCoach(
   const profile = await getTensorHardwareProfile();
   const startTime = typeof performance !== 'undefined' ? performance.now() : Date.now();
 
+  const exercisesSummary = (context.workoutSession.exercises || [])
+    .map(
+      (e, idx) =>
+        `${idx + 1}. ${e.name}: ${e.sets.length} sets × ${e.minReps}–${e.maxReps} reps @ ${e.sets[0]?.targetWeightKg ?? 0} kg`
+    )
+    .join('; ');
+
   // Attempt to use Chrome Built-in AI (Prompt API with Gemini Nano on Tensor TPU)
-  if (typeof window !== 'undefined') {
-    const ai = (window as any).ai || (window as any).model;
-    if (ai?.languageModel && profile.isPixelDevice) {
-      try {
-        const caps = await ai.languageModel.capabilities();
-        if (caps && caps.available !== 'no') {
-          const systemPrompt = `You are the Treise On-Device AI Coach executing locally on the Google Pixel ${profile.chipModel}.
+  if (profile.isPixelDevice) {
+    const systemPrompt = `You are the Treise On-Device AI Coach executing locally on the Google Pixel ${profile.chipModel} TPU via Android AICore.
 Provide concise, authoritative, science-based athletic coaching advice.
 Context: Goal Phase: ${context.goalPhase}, Readiness State: ${context.readinessState} (HRV: ${context.hrvRmssd}ms, Sleep: ${context.sleepHours}h).
-Workout: ${context.workoutSession.name} (${context.workoutSession.splitDay}).
-Never use internal UX jargon. Keep answer under 3 sentences.`;
+Workout: ${context.workoutSession.name} (${context.workoutSession.splitDay} Day, Week ${context.mesocycleWeek} of 6).
+Planned Exercises: ${exercisesSummary || 'Standard session movements'}.
+Never use internal UX jargon. Keep answer under 3 sentences. Answer directly based on the athlete's exercises and readiness.`;
 
-          const session = await ai.languageModel.create({ systemPrompt });
-          const promptText = `Athlete question: "${question}". Provide direct, tactical advice for today's workout.`;
-          const rawAnswer = await session.prompt(promptText);
-          const endTime = typeof performance !== 'undefined' ? performance.now() : Date.now();
-          const latencyMs = Math.max(8, Math.round(endTime - startTime));
+    const nanoResult = await queryTensorTPUGeminiNano(
+      `Athlete question: "${question}". Provide direct, tactical advice for today's workout.`,
+      systemPrompt
+    );
 
-          return {
-            answer: rawAnswer.trim(),
-            latencyMs,
-            backend: `Google Tensor TPU (${profile.chipModel})`,
-            isTensorAccelerated: true,
-          };
-        }
-      } catch {
-        // Fallback to local neural athletic engine
-      }
+    if (nanoResult) {
+      return {
+        answer: nanoResult.answer,
+        latencyMs: nanoResult.latencyMs,
+        backend: `Google Tensor TPU (${profile.chipModel})`,
+        isTensorAccelerated: true,
+      };
     }
   }
 
@@ -138,7 +213,37 @@ Never use internal UX jargon. Keep answer under 3 sentences.`;
   let answer = '';
   const qLower = question.toLowerCase();
 
-  if (qLower.includes('rest') || qLower.includes('pace') || qLower.includes('time')) {
+  // Check if question asks about a specific exercise in the current workout
+  const matchedEx = (context.workoutSession.exercises || []).find((e) =>
+    qLower.includes(e.name.toLowerCase()) ||
+    (qLower.includes('bench') && e.name.toLowerCase().includes('bench')) ||
+    (qLower.includes('squat') && e.name.toLowerCase().includes('squat')) ||
+    (qLower.includes('deadlift') && e.name.toLowerCase().includes('deadlift')) ||
+    (qLower.includes('rdl') && (e.name.toLowerCase().includes('rdl') || e.isRdl)) ||
+    (qLower.includes('press') && e.name.toLowerCase().includes('press')) ||
+    (qLower.includes('pull up') && e.name.toLowerCase().includes('pull-up')) ||
+    (qLower.includes('pulldown') && e.name.toLowerCase().includes('pulldown')) ||
+    (qLower.includes('curl') && e.name.toLowerCase().includes('curl')) ||
+    (qLower.includes('extension') && e.name.toLowerCase().includes('extension'))
+  );
+
+  if (matchedEx) {
+    const targetW = matchedEx.sets[0]?.targetWeightKg ?? 0;
+    const targetRir = isAmber ? '2–3 RIR' : '1–2 RIR';
+    answer = `For ${matchedEx.name} today, your target is ${targetW} kg for ${matchedEx.sets.length} working sets of ${matchedEx.minReps}–${matchedEx.maxReps} reps at ${targetRir}. ${
+      isAmber
+        ? 'Recovery Shield is active: hold this weight steady and focus on smooth technique.'
+        : isPrimed
+        ? 'You are primed: if your warmup sets feel explosive, push for the top of the rep range!'
+        : 'Once all sets hit the top of the rep range, advance weight next session.'
+    }`;
+  } else if (qLower.includes('warm') || qLower.includes('ramp')) {
+    const mainEx = context.workoutSession.exercises?.[0];
+    const mainWeight = mainEx?.sets[0]?.targetWeightKg ?? 60;
+    answer = `For warmups on ${mainEx ? mainEx.name : "today's primary lift"}: Do 1 light set of 10 reps, 1 set of 5 reps @ ${Math.round((mainWeight * 0.5) / 2.5) * 2.5} kg, and 1 set of 2–3 reps @ ${Math.round((mainWeight * 0.75) / 2.5) * 2.5} kg. Rest 2 minutes before working set 1.`;
+  } else if (qLower.includes('tempo') || qLower.includes('cadence') || qLower.includes('speed') || qLower.includes('eccentric')) {
+    answer = 'Use a 2-second controlled eccentric (lowering) phase with a brief 1-second pause at full stretch to trigger maximum mechanical tension and stretch-mediated hypertrophy.';
+  } else if (qLower.includes('rest') || qLower.includes('pace') || qLower.includes('time')) {
     if (isAmber) {
       answer = 'Take full 2.5–3 minute rest intervals today. Your nervous system is under elevated strain, so prioritizing ATP and phosphocreatine resynthesis between sets will protect your technique.';
     } else if (isPrimed) {
@@ -163,13 +268,14 @@ Never use internal UX jargon. Keep answer under 3 sentences.`;
       ? 'Ensure you hit at least 2.0g to 2.4g of protein per kg of bodyweight today to support muscle protein synthesis during your caloric deficit.'
       : 'Maintain steady pre-workout hydration and prioritize high-quality protein and complex carbohydrates to support glycogen replenishment.';
   } else {
-    // General workout question
+    // Dynamic tactical overview grounded in today's workout session
+    const exerciseList = (context.workoutSession.exercises || []).map((e) => e.name).slice(0, 3).join(', ');
     if (isAmber) {
-      answer = 'Focus on clean, controlled repetitions with 2–3 reps left in reserve. Quality movement execution today will maintain your adaptations without digging a recovery hole.';
+      answer = `Today's ${context.workoutSession.name} focuses on ${exerciseList || 'your prescribed exercises'}. Keep 2–3 reps in reserve across all sets—your Recovery Shield is active to prevent central fatigue.`;
     } else if (isPrimed) {
-      answer = 'Your neuromuscular system is in prime condition. Attack your working sets with high intent, control the 2-second negative, and lock in progressive overload.';
+      answer = `Your neuromuscular system is primed for ${context.workoutSession.name} (${exerciseList || 'today\'s movements'}). Attack your first working sets with high concentric intent and secure that +15% workout XP!`;
     } else {
-      answer = `Stick closely to your ${context.workoutSession.name} targets. Complete each set with 1–2 reps in reserve, record your numbers accurately, and celebrate steady progress.`;
+      answer = `Today's ${context.workoutSession.name} (${context.workoutSession.splitDay} Day) programs ${exerciseList || 'your planned exercises'}. Execute each set with 1–2 reps in reserve and lock in progressive overload.`;
     }
   }
 
