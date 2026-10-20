@@ -15,11 +15,30 @@ export function getWhoopRedirectUri(customUri?: string): string {
   return 'https://treise.vercel.app/oauth/whoop/callback';
 }
 
+export function generateAlphanumericString(length: number = 24): string {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  let result = '';
+  const cryptoObj = typeof window !== 'undefined' ? window.crypto : (globalThis as any).crypto;
+  if (cryptoObj?.getRandomValues) {
+    const bytes = new Uint8Array(length);
+    cryptoObj.getRandomValues(bytes);
+    for (let i = 0; i < length; i++) {
+      result += chars[bytes[i] % chars.length];
+    }
+    return result;
+  }
+  for (let i = 0; i < length; i++) {
+    result += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return result;
+}
+
 export const WHOOP_CONFIG = {
   CLIENT_ID: '8bcb0a0d-b6ff-42e0-82b7-c3508e18c9f8',
   AUTHORIZATION_URI: 'https://api.prod.whoop.com/oauth/oauth2/auth',
   TOKEN_URI: 'https://api.prod.whoop.com/oauth/oauth2/token',
   SCOPES: [
+    'offline',
     'read:recovery',
     'read:cycles',
     'read:workout',
@@ -34,20 +53,17 @@ export const WHOOP_CONFIG = {
 };
 
 /**
- * Initiates Whoop OAuth 2.0 PKCE Authorization flow.
+ * Initiates Whoop OAuth 2.0 Authorization flow.
  */
 export async function initiateWhoopOAuth(
   clientId: string = WHOOP_CONFIG.CLIENT_ID,
   customRedirectUri?: string
 ): Promise<string> {
-  const codeVerifier = generateRandomString(64);
-  const codeChallenge = await generateCodeChallenge(codeVerifier);
-  const state = `whoop_${generateRandomString(24)}`;
+  const state = `whoop_${generateAlphanumericString(24)}`;
   const redirectUri = getWhoopRedirectUri(customRedirectUri);
 
   if (typeof window !== 'undefined') {
     try {
-      localStorage.setItem('whoop_code_verifier', codeVerifier);
       localStorage.setItem('whoop_oauth_state', state);
       localStorage.setItem('whoop_redirect_uri', redirectUri);
       if (clientId) {
@@ -56,7 +72,6 @@ export async function initiateWhoopOAuth(
     } catch {
       // In case localStorage is blocked
     }
-    sessionStorage.setItem('whoop_code_verifier', codeVerifier);
     sessionStorage.setItem('whoop_oauth_state', state);
     sessionStorage.setItem('whoop_redirect_uri', redirectUri);
     if (clientId) {
@@ -64,17 +79,17 @@ export async function initiateWhoopOAuth(
     }
   }
 
-  const params = new URLSearchParams({
-    response_type: 'code',
-    client_id: clientId,
-    redirect_uri: redirectUri,
-    code_challenge: codeChallenge,
-    code_challenge_method: 'S256',
-    scope: WHOOP_CONFIG.SCOPES.join(' '),
-    state,
-  });
+  // WHOOP requires standard space-delimited scopes (%20)
+  const scopeString = WHOOP_CONFIG.SCOPES.join(' ');
+  const queryParts = [
+    `response_type=code`,
+    `client_id=${encodeURIComponent(clientId)}`,
+    `redirect_uri=${encodeURIComponent(redirectUri)}`,
+    `scope=${encodeURIComponent(scopeString)}`,
+    `state=${encodeURIComponent(state)}`,
+  ];
 
-  return `${WHOOP_CONFIG.AUTHORIZATION_URI}?${params.toString()}`;
+  return `${WHOOP_CONFIG.AUTHORIZATION_URI}?${queryParts.join('&')}`;
 }
 
 /**

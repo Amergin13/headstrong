@@ -2110,9 +2110,9 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
   const whoopAuthUrl = await initiateWhoopOAuth('test_whoop_client');
   assert(
     whoopAuthUrl.includes('api.prod.whoop.com/oauth/oauth2/auth') &&
-      whoopAuthUrl.includes('code_challenge') &&
-      whoopAuthUrl.includes('response_type=code'),
-    `Whoop OAuth 2.0 PKCE generates valid authorization URL with code_challenge`
+      whoopAuthUrl.includes('response_type=code') &&
+      whoopAuthUrl.includes('offline'),
+    `Whoop OAuth 2.0 generates valid authorization URL with required parameters`
   );
   const whoopPrimedLog = await simulateWhoopSync(undefined, 'Primed');
   assert(

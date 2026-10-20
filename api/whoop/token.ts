@@ -43,6 +43,10 @@ export default async function handler(req: any, res: any) {
       params.append('redirect_uri', 'https://treise.vercel.app/oauth/whoop/callback');
     }
 
+    if (!params.get('client_secret') && process.env.WHOOP_CLIENT_SECRET) {
+      params.append('client_secret', process.env.WHOOP_CLIENT_SECRET);
+    }
+
     const response = await fetch('https://api.prod.whoop.com/oauth/oauth2/token', {
       method: 'POST',
       headers: {
