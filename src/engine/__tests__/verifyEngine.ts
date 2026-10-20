@@ -452,6 +452,7 @@ import {
   simulateWhoopSync,
   WHOOP_CONFIG,
   getWhoopRedirectUri,
+  parseWhoopCsvExport,
 } from '../../services/whoopService';
 import {
   HEALTH_CONNECT_CONFIG,
@@ -2171,6 +2172,20 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
   assert(
     hcSyncedLog.hrvRmssd <= 42 && hcSyncedLog.sleepHours <= 5.5,
     `Health Connect sync generates valid recovery data for Amber Shield state`
+  );
+
+  // Whoop CSV Export Parser
+  const sampleWhoopCsv = `Cycle start time,Cycle end time,Heart Rate Variability (HRV) (ms),Resting Heart Rate (RHR) (bpm),Recovery score (%),Day Strain,Energy burned (kcal)
+2026-10-19 06:30:00,2026-10-20 06:15:00,72.4,49,82,14.2,2450
+2026-10-20 06:15:00,2026-10-21 06:45:00,68.1,51,77,15.8,2680`;
+  const parsedWhoopCsvLogs = parseWhoopCsvExport(sampleWhoopCsv);
+  assert(
+    parsedWhoopCsvLogs.length === 2 &&
+      parsedWhoopCsvLogs[0].date === '2026-10-19' &&
+      parsedWhoopCsvLogs[0].hrvRmssd === 72 &&
+      parsedWhoopCsvLogs[0].restingHr === 49 &&
+      parsedWhoopCsvLogs[0].steps === Math.round(14.2 * 650),
+    `Whoop CSV export parser extracts HRV, Resting HR, Day Strain, and maps to BiometricLog correctly`
   );
 
   // 4. Universal Wearable Sync Coordinator & Multi-Provider State

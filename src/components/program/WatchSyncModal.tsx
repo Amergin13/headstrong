@@ -17,6 +17,7 @@ import {
   initiateWhoopOAuth,
   getWhoopRedirectUri,
   WHOOP_CONFIG,
+  parseWhoopCsvExport,
 } from '../../services/whoopService';
 import {
   openHealthConnectSettings,
@@ -226,10 +227,34 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
     const file = event.target.files?.[0];
     if (!file) return;
 
+    const isWhoopCsv =
+      selectedProvider === 'whoop' ||
+      file.name.toLowerCase().endsWith('.csv') ||
+      file.name.toLowerCase().includes('cycles') ||
+      file.name.toLowerCase().includes('sleep');
+
     const reader = new FileReader();
     reader.onload = (e) => {
       try {
         const text = e.target?.result as string;
+
+        if (isWhoopCsv) {
+          const parsed = parseWhoopCsvExport(text);
+          if (parsed.length > 0) {
+            const latest = parsed[parsed.length - 1];
+            onSyncCompleted(latest, 'whoop');
+            if (onUpdateProfile) {
+              onUpdateProfile({
+                whoopConnected: true,
+                wearableSource: 'whoop',
+              });
+            }
+            setImportStatus(`Imported ${parsed.length} daily recovery records from Whoop CSV export.`);
+            triggerHaptic('success');
+            return;
+          }
+        }
+
         const parsed = parseHealthConnectExport(text);
         if (parsed.length > 0) {
           const latest = parsed[parsed.length - 1];
@@ -247,7 +272,7 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
           setImportStatus('No biometric records found in file.');
         }
       } catch {
-        setImportStatus('Failed to read file. Please ensure it is a valid Health Connect JSON export.');
+        setImportStatus('Failed to read file. Please ensure it is a valid Whoop CSV or Health Connect JSON export.');
       }
     };
     reader.readAsText(file);
@@ -487,6 +512,21 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
 
       {/* Action Buttons */}
       <div className="space-y-2">
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".json,.csv,application/json,text/csv"
+          onChange={handleFileImport}
+          className="hidden"
+          aria-label="Upload biometric data export"
+        />
+
+        {importStatus && (
+          <p className="text-xs text-slate-300 p-2.5 rounded-xl bg-[#090C12] border border-white/[0.04]">
+            {importStatus}
+          </p>
+        )}
+
         {selectedProvider === 'health_connect' ? (
           <div className="space-y-2">
             <button
@@ -506,19 +546,6 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
               <Upload className="w-3.5 h-3.5 stroke-[2] text-brand-primary" />
               <span>Import Health Export (JSON)</span>
             </button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="application/json"
-              onChange={handleFileImport}
-              className="hidden"
-              aria-label="Upload Health Connect JSON export"
-            />
-            {importStatus && (
-              <p className="text-xs text-slate-300 p-2.5 rounded-xl bg-[#090C12] border border-white/[0.04]">
-                {importStatus}
-              </p>
-            )}
           </div>
         ) : isProviderConnected ? (
           <div className="space-y-2">
@@ -532,6 +559,17 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
               <span>Sync {providerMeta.name} Now</span>
             </button>
 
+            {selectedProvider === 'whoop' && (
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="w-full py-2 text-xs text-slate-400 hover:text-slate-200 flex items-center justify-center space-x-1.5 transition-colors min-h-[36px]"
+              >
+                <Upload className="w-3 h-3 stroke-[2] text-brand-primary" />
+                <span>Import Whoop Data Export (CSV)</span>
+              </button>
+            )}
+
             <button
               type="button"
               onClick={handleDisconnectProvider}
@@ -542,24 +580,37 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
             </button>
           </div>
         ) : (
-          <button
-            type="button"
-            disabled={isSyncing}
-            onClick={handleConnectProvider}
-            className="w-full py-3.5 rounded-2xl bg-white hover:bg-slate-100 text-slate-950 font-bold text-xs flex items-center justify-center space-x-2 shadow-lg shadow-white/5 active:scale-95 transition-all min-h-[44px] disabled:opacity-50"
-          >
-            {isSyncing ? (
-              <>
-                <RefreshCw className="w-4 h-4 stroke-[2.2] text-slate-950 animate-spin" />
-                <span>Connecting to {providerMeta.name}...</span>
-              </>
-            ) : (
-              <>
-                <CheckCircle2 className="w-4 h-4 stroke-[2.2] text-emerald-600" />
-                <span>Connect {providerMeta.name}</span>
-              </>
+          <div className="space-y-2">
+            <button
+              type="button"
+              disabled={isSyncing}
+              onClick={handleConnectProvider}
+              className="w-full py-3.5 rounded-2xl bg-white hover:bg-slate-100 text-slate-950 font-bold text-xs flex items-center justify-center space-x-2 shadow-lg shadow-white/5 active:scale-95 transition-all min-h-[44px] disabled:opacity-50"
+            >
+              {isSyncing ? (
+                <>
+                  <RefreshCw className="w-4 h-4 stroke-[2.2] text-slate-950 animate-spin" />
+                  <span>Connecting to {providerMeta.name}...</span>
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 className="w-4 h-4 stroke-[2.2] text-emerald-600" />
+                  <span>Connect {providerMeta.name}</span>
+                </>
+              )}
+            </button>
+
+            {selectedProvider === 'whoop' && (
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="w-full py-2.5 px-3 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] text-xs font-semibold text-slate-300 hover:text-white flex items-center justify-center space-x-1.5 transition-colors min-h-[44px]"
+              >
+                <Upload className="w-3.5 h-3.5 stroke-[2] text-brand-primary" />
+                <span>Import Whoop Data Export (CSV)</span>
+              </button>
             )}
-          </button>
+          </div>
         )}
       </div>
 

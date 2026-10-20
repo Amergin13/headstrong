@@ -481,3 +481,73 @@ export async function simulateWhoopSync(
   update('complete', 100, 'Whoop 4.0 recovery synced!');
   return syncedLog;
 }
+
+/**
+ * Parses raw CSV export files from the Whoop mobile app
+ * (such as physiological_cycles.csv or sleeps.csv) into normalized BiometricLog records.
+ */
+export function parseWhoopCsvExport(csvText: string): BiometricLog[] {
+  if (!csvText || typeof csvText !== 'string') return [];
+  const lines = csvText.split(/\r?\n/).filter((l) => l.trim().length > 0);
+  if (lines.length < 2) return [];
+
+  // Parse header
+  const headers = lines[0].split(',').map((h) => h.trim().toLowerCase().replace(/["']/g, ''));
+  const findCol = (...candidates: string[]) => {
+    return headers.findIndex((h) => candidates.some((c) => h === c.toLowerCase() || h.includes(c.toLowerCase())));
+  };
+
+  const cycleStartIdx = findCol('cycle start time', 'sleep start time', 'start time', 'date');
+  const hrvIdx = findCol('heart rate variability (hrv) (ms)', 'hrv (ms)', 'hrv');
+  const rhrIdx = findCol('resting heart rate (rhr) (bpm)', 'resting heart rate', 'rhr');
+  const strainIdx = findCol('day strain', 'strain');
+  const sleepDurationIdx = findCol('asleep duration', 'asleep duration (min)', 'asleep duration (ms)', 'total sleep time');
+
+  const logs: BiometricLog[] = [];
+
+  for (let i = 1; i < lines.length; i++) {
+    const cols = lines[i].split(',').map((c) => c.trim().replace(/["']/g, ''));
+    if (cols.length < 2) continue;
+
+    const rawDateStr = cycleStartIdx >= 0 ? cols[cycleStartIdx] : '';
+    if (!rawDateStr) continue;
+    const dateMatch = rawDateStr.match(/(\d{4}-\d{2}-\d{2})/);
+    const date = dateMatch ? dateMatch[1] : rawDateStr.split(' ')[0];
+    if (!date || date.length < 10) continue;
+
+    let hrv = hrvIdx >= 0 ? parseFloat(cols[hrvIdx]) : NaN;
+    let rhr = rhrIdx >= 0 ? parseFloat(cols[rhrIdx]) : NaN;
+    let strain = strainIdx >= 0 ? parseFloat(cols[strainIdx]) : NaN;
+    let sleepDuration = sleepDurationIdx >= 0 ? parseFloat(cols[sleepDurationIdx]) : NaN;
+
+    if (isNaN(hrv)) hrv = 60;
+    if (isNaN(rhr)) rhr = 58;
+
+    let sleepHours = 7.5;
+    if (!isNaN(sleepDuration) && sleepDuration > 0) {
+      if (sleepDuration > 100000) {
+        sleepHours = Math.round((sleepDuration / 3600000) * 10) / 10;
+      } else if (sleepDuration > 24) {
+        sleepHours = Math.round((sleepDuration / 60) * 10) / 10;
+      } else {
+        sleepHours = Math.round(sleepDuration * 10) / 10;
+      }
+    }
+
+    const steps = !isNaN(strain) ? Math.round(strain * 650) : 8500;
+    const azm = !isNaN(strain) ? Math.round(strain * 3.5) : 35;
+
+    logs.push({
+      date,
+      bodyweightKg: 80.0,
+      hrvRmssd: Math.round(hrv),
+      restingHr: Math.round(rhr),
+      sleepHours,
+      steps,
+      activeZoneMinutes: azm,
+      vo2Max: 46.0,
+    });
+  }
+
+  return logs.sort((a, b) => a.date.localeCompare(b.date));
+}
