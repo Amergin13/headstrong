@@ -245,12 +245,13 @@ export const App: React.FC = () => {
               wearableSource: 'whoop',
             }));
           } catch (err) {
-            console.warn('Whoop token exchange completed via simulator fallback:', err);
-            setProfile((prev) => ({
-              ...prev,
-              whoopConnected: true,
-              wearableSource: 'whoop',
-            }));
+            console.warn('Whoop token exchange requires client secret:', err);
+            setXpNotification({
+              amount: 0,
+              message: 'Whoop authorization approved! To stream live biometrics, configure your Whoop Client Secret.',
+              bonusTag: 'Secret Required',
+            });
+            return;
           }
         } else {
           try {
@@ -276,14 +277,15 @@ export const App: React.FC = () => {
 
         const syncedLog = await syncWearableBiometrics(provider, {
           accessToken: liveAccessToken,
-          forcedState: 'Primed',
         });
         handleSyncCompleted(syncedLog, provider);
         const deviceName = provider === 'whoop' ? 'Whoop 4.0' : 'Google Pixel Watch';
         setXpNotification({
           amount: 0,
-          message: `${deviceName} connected & recovery data synced!`,
-          bonusTag: 'Wearable Connected',
+          message: liveAccessToken
+            ? `${deviceName} live data synced successfully!`
+            : `${deviceName} connected!`,
+          bonusTag: liveAccessToken ? 'Live Data Synced' : 'Wearable Connected',
         });
       };
 

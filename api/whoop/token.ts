@@ -13,6 +13,15 @@ export default async function handler(req: any, res: any) {
     return;
   }
 
+  if (req.method === 'GET') {
+    return res.status(200).json({
+      status: 'ok',
+      configured: Boolean(process.env.WHOOP_CLIENT_SECRET),
+      clientId: '8bcb0a0d-b6ff-42e0-82b7-c3508e18c9f8',
+      redirectUri: 'https://treise.vercel.app/oauth/whoop/callback',
+    });
+  }
+
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }

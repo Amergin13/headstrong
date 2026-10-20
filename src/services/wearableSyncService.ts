@@ -89,9 +89,14 @@ export async function syncWearableBiometrics(
               activeZoneMinutes: liveData.activeZoneMinutes || 45,
               vo2Max: liveData.vo2Max || 46.0,
             };
+          } else {
+            console.warn('Whoop API responded but lacked overnight recovery metrics:', liveData);
           }
-        } catch {
-          // Fall through to high-fidelity simulator on network failure
+        } catch (err) {
+          console.warn('Whoop live biometrics fetch error:', err);
+          if (!options?.forcedState) {
+            throw err;
+          }
         }
       }
       return simulateWhoopSync(onProg, options?.forcedState);
