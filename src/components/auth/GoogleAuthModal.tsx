@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { AuthUser, UserProfile } from '../../engine/types';
 import {
   initializeGoogleSignIn,
+  isGoogleClientConfigured,
   promptGoogleOneTap,
   renderGoogleSignInButton,
   signInWithDemoGoogleAccount,
@@ -39,12 +40,15 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({
   onSignOut,
 }) => {
   const [clientId, setClientId] = useState(GOOGLE_AUTH_CONFIG.CLIENT_ID);
+  const [customClientIdInput, setCustomClientIdInput] = useState('');
   const [showConfig, setShowConfig] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const googleBtnContainerRef = useRef<HTMLDivElement>(null);
 
+  const isClientValid = isGoogleClientConfigured(clientId);
+
   useEffect(() => {
-    if (!isOpen || currentUser) return;
+    if (!isOpen || currentUser || !isClientValid) return;
 
     let mounted = true;
     initializeGoogleSignIn(clientId, (user) => {
@@ -69,7 +73,7 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({
     return () => {
       mounted = false;
     };
-  }, [isOpen, currentUser, clientId, onAuthSuccess, onClose]);
+  }, [isOpen, currentUser, clientId, isClientValid, onAuthSuccess, onClose]);
 
   if (!isOpen) return null;
 
@@ -86,7 +90,7 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({
 
   const handleGoogleSignInClick = () => {
     triggerHaptic('medium');
-    if (typeof window !== 'undefined' && (window as any).google?.accounts?.id) {
+    if (isClientValid && typeof window !== 'undefined' && (window as any).google?.accounts?.id) {
       try {
         (window as any).google.accounts.id.prompt((notification: any) => {
           if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
@@ -99,6 +103,12 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({
       }
     }
     handleDemoSignIn();
+  };
+
+  const handleApplyCustomClient = () => {
+    if (!customClientIdInput.trim()) return;
+    setClientId(customClientIdInput.trim());
+    setStatusMessage('Updated Client ID. Retrying Google Sign-In...');
   };
 
   const handleSignOutClick = () => {
@@ -221,9 +231,11 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({
               </div>
             </div>
 
-            {/* Official Google Sign-In Container */}
-            <div className="flex flex-col items-center justify-center gap-2.5 pt-1">
-              <div ref={googleBtnContainerRef} className="flex justify-center min-h-[44px]" />
+            {/* Official Google Sign-In Container (rendered only when official Google Client ID is configured) */}
+            <div className="flex flex-col items-center justify-center gap-2.5 pt-1 w-full">
+              {isClientValid && (
+                <div ref={googleBtnContainerRef} className="flex justify-center min-h-[44px]" />
+              )}
 
               {/* Direct 1-Tap Google Sign-In Button (Always Ready) */}
               <button
@@ -250,7 +262,7 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({
                     d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"
                   />
                 </svg>
-                <span>Sign In with Google</span>
+                <span>{isClientValid ? 'Sign In with Google' : 'Sign In as Athlete'}</span>
               </button>
 
               {/* Supabase Bridge Button (if configured) */}
@@ -263,6 +275,44 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({
                   <span>Sign in via Supabase Auth</span>
                 </a>
               )}
+
+              {/* Optional Custom Google Cloud Client ID Drawer */}
+              <div className="w-full pt-1">
+                <button
+                  type="button"
+                  onClick={() => setShowConfig(!showConfig)}
+                  className="text-xs text-slate-500 hover:text-slate-400 font-medium flex items-center justify-center gap-1 mx-auto transition-colors min-h-[36px]"
+                >
+                  <span>{showConfig ? 'Hide Cloud Config' : 'Link Google Cloud Client ID (Optional)'}</span>
+                </button>
+
+                {showConfig && (
+                  <div className="mt-2.5 p-3.5 rounded-2xl bg-[#090C12] border border-white/[0.06] space-y-2.5 text-left">
+                    <label className="text-xs font-semibold text-slate-300 block">
+                      Google OAuth Web Client ID:
+                    </label>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={customClientIdInput}
+                        onChange={(e) => setCustomClientIdInput(e.target.value)}
+                        placeholder="123456...apps.googleusercontent.com"
+                        className="flex-1 py-2 px-3 rounded-xl bg-[#141824] text-white font-mono text-xs focus:ring-1 focus:ring-brand-primary focus:outline-none"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleApplyCustomClient}
+                        className="px-3 py-2 rounded-xl bg-brand-primary text-[#060709] font-bold text-xs hover:bg-brand-primary/90 transition-colors"
+                      >
+                        Apply
+                      </button>
+                    </div>
+                    <p className="text-xs text-slate-500 leading-relaxed">
+                      In Google Cloud Console, ensure <span className="font-mono text-slate-400">https://treise.vercel.app</span> is added to Authorized JavaScript Origins.
+                    </p>
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Offline Guest Option */}

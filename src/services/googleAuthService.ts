@@ -54,6 +54,23 @@ export const GOOGLE_AUTH_CONFIG = {
   SUPABASE_ANON_KEY: getEnv('VITE_SUPABASE_ANON_KEY'),
 };
 
+/**
+ * Checks if a real, valid Google OAuth Client ID has been configured.
+ * Placeholder or dummy client IDs return false to prevent GIS authorization blocks.
+ */
+export function isGoogleClientConfigured(clientId: string = GOOGLE_AUTH_CONFIG.CLIENT_ID): boolean {
+  if (!clientId) return false;
+  const trimmed = clientId.trim();
+  return (
+    trimmed.endsWith('.apps.googleusercontent.com') &&
+    !trimmed.includes('headstrong.apps.googleusercontent.com') &&
+    !trimmed.includes('treise.apps.googleusercontent.com') &&
+    !trimmed.startsWith('dummy') &&
+    !trimmed.startsWith('example') &&
+    /^\d+-[a-zA-Z0-9_-]+\.apps\.googleusercontent\.com$/.test(trimmed)
+  );
+}
+
 let gisScriptLoadingPromise: Promise<boolean> | null = null;
 
 /**
@@ -121,6 +138,10 @@ export async function initializeGoogleSignIn(
   clientId: string = GOOGLE_AUTH_CONFIG.CLIENT_ID,
   onCredentialReceived: (user: AuthUser) => void
 ): Promise<boolean> {
+  if (!isGoogleClientConfigured(clientId)) {
+    return false;
+  }
+
   const isLoaded = await loadGoogleIdentityServicesScript();
   if (!isLoaded || typeof window === 'undefined' || !(window as any).google?.accounts?.id) {
     return false;
