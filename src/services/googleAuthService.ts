@@ -44,7 +44,7 @@ function getEnv(key: string): string {
 export const GOOGLE_AUTH_CONFIG = {
   CLIENT_ID:
     getEnv('VITE_GOOGLE_CLIENT_ID') ||
-    '1084281358961-headstrong.apps.googleusercontent.com',
+    '25580094598-i07npd4l60ur0h5ft8p47sl6g23htape.apps.googleusercontent.com',
   REDIRECT_URI:
     typeof window !== 'undefined' && window.location.origin
       ? window.location.origin
