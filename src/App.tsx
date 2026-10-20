@@ -65,6 +65,10 @@ import { WatchSyncModal } from './components/program/WatchSyncModal';
 import { OnboardingModal } from './components/onboarding/OnboardingModal';
 import { AICoachChatModal } from './components/assistant/AICoachChatModal';
 import { GoogleAuthModal } from './components/auth/GoogleAuthModal';
+import {
+  signInWithGoogleCredential,
+  signInWithDemoGoogleAccount,
+} from './services/googleAuthService';
 
 export const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<TabId>('train');
@@ -123,13 +127,79 @@ export const App: React.FC = () => {
     return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
   }, []);
 
-  // Handle Android App Shortcut Deep Links & Fitbit OAuth 2.0 PKCE Callback on Launch
+  // Handler: Google / Supabase Auth Success
+  const handleAuthSuccess = (user: AuthUser) => {
+    setAuthUser(user);
+    saveAuthUser(user);
+    setProfile((prev) => {
+      const updated: UserProfile = {
+        ...prev,
+        name: user.name && user.name !== 'Athlete' ? user.name : prev.name,
+        email: user.email || prev.email,
+        avatarUrl: user.avatarUrl || prev.avatarUrl,
+        authUserId: user.id,
+        authProvider: user.provider,
+        lastLoginAt: new Date().toISOString(),
+      };
+      return updated;
+    });
+    setXpNotification({
+      amount: 0,
+      message: `Welcome, ${user.name || 'Athlete'}! Account connected.`,
+      bonusTag: 'Google Account',
+    });
+  };
+
+  // Handler: Sign Out
+  const handleSignOut = () => {
+    clearAuthUser();
+    setAuthUser(null);
+    setProfile((prev) => {
+      const updated: UserProfile = {
+        ...prev,
+        email: undefined,
+        avatarUrl: undefined,
+        authUserId: undefined,
+        authProvider: 'guest',
+      };
+      return updated;
+    });
+    setXpNotification({
+      amount: 0,
+      message: 'Signed out. Your workout history remains saved locally.',
+      bonusTag: 'Account',
+    });
+  };
+
+  // Handle Android App Shortcut Deep Links, OAuth Callbacks & Google Token Fragments on Launch
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
+    const hash = window.location.hash.substring(1);
+    const hashParams = new URLSearchParams(hash);
+
     const tabParam = params.get('tab') as TabId | null;
     const actionParam = params.get('action');
     const oauthCode = params.get('code');
+    const idToken = hashParams.get('id_token') || params.get('id_token');
+    const accessToken = hashParams.get('access_token');
 
+    // 1. Google / Supabase Token Auto-Login from Redirects
+    if (idToken) {
+      try {
+        const user = signInWithGoogleCredential(idToken);
+        handleAuthSuccess(user);
+      } catch (err) {
+        console.warn('Could not auto-login with id_token:', err);
+      }
+    } else if (accessToken) {
+      const demoUser = signInWithDemoGoogleAccount(
+        profile.email || 'athlete@headstrong.app',
+        profile.name !== 'Athlete' ? profile.name : 'Athlete'
+      );
+      handleAuthSuccess(demoUser);
+    }
+
+    // 2. Tab Navigation Deep Links
     if (tabParam === 'chat') {
       setAiCoachOpen(true);
     } else if (
@@ -139,10 +209,14 @@ export const App: React.FC = () => {
       setActiveTab(tabParam);
     }
 
+    // 3. Action Triggers
     if (actionParam === 'watch-sync') {
       setWatchModalOpen(true);
+    } else if (actionParam === 'auth' || actionParam === 'signin' || tabParam === ('auth' as any)) {
+      setAuthModalOpen(true);
     }
 
+    // 4. Wearable OAuth Code Exchanges
     if (oauthCode) {
       const stateParam = params.get('state') || '';
       const isWhoop = stateParam.startsWith('whoop_') || window.location.pathname.includes('/whoop');
@@ -159,7 +233,7 @@ export const App: React.FC = () => {
       });
     }
 
-    if (tabParam || actionParam || oauthCode) {
+    if (tabParam || actionParam || oauthCode || idToken || accessToken || hash) {
       window.history.replaceState({}, document.title, window.location.pathname);
     }
   }, []);
@@ -658,50 +732,6 @@ export const App: React.FC = () => {
       ...prev,
       date: tomorrowStr,
     }));
-  };
-
-  // Handler: Google / Supabase Auth Success
-  const handleAuthSuccess = (user: AuthUser) => {
-    setAuthUser(user);
-    saveAuthUser(user);
-    setProfile((prev) => {
-      const updated: UserProfile = {
-        ...prev,
-        name: user.name && user.name !== 'Athlete' ? user.name : prev.name,
-        email: user.email || prev.email,
-        avatarUrl: user.avatarUrl || prev.avatarUrl,
-        authUserId: user.id,
-        authProvider: user.provider,
-        lastLoginAt: new Date().toISOString(),
-      };
-      return updated;
-    });
-    setXpNotification({
-      amount: 0,
-      message: `Welcome, ${user.name || 'Athlete'}! Account connected.`,
-      bonusTag: 'Google Account',
-    });
-  };
-
-  // Handler: Sign Out
-  const handleSignOut = () => {
-    clearAuthUser();
-    setAuthUser(null);
-    setProfile((prev) => {
-      const updated: UserProfile = {
-        ...prev,
-        email: undefined,
-        avatarUrl: undefined,
-        authUserId: undefined,
-        authProvider: 'guest',
-      };
-      return updated;
-    });
-    setXpNotification({
-      amount: 0,
-      message: 'Signed out. Your workout history remains saved locally.',
-      bonusTag: 'Account',
-    });
   };
 
   return (

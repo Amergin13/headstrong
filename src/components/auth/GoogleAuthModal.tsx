@@ -84,6 +84,23 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({
     setTimeout(() => onClose(), 400);
   };
 
+  const handleGoogleSignInClick = () => {
+    triggerHaptic('medium');
+    if (typeof window !== 'undefined' && (window as any).google?.accounts?.id) {
+      try {
+        (window as any).google.accounts.id.prompt((notification: any) => {
+          if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
+            handleDemoSignIn();
+          }
+        });
+        return;
+      } catch (e) {
+        console.warn('GIS prompt error:', e);
+      }
+    }
+    handleDemoSignIn();
+  };
+
   const handleSignOutClick = () => {
     triggerHaptic('light');
     signOutUser();
@@ -211,7 +228,7 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({
               {/* Direct 1-Tap Google Sign-In Button (Always Ready) */}
               <button
                 type="button"
-                onClick={handleDemoSignIn}
+                onClick={handleGoogleSignInClick}
                 className="w-full py-3 px-4 rounded-2xl bg-white hover:bg-slate-100 text-[#1F1F1F] font-bold text-xs flex items-center justify-center space-x-3 shadow-md hover:shadow-lg transition-all min-h-[44px]"
               >
                 {/* Official Google 'G' Logo SVG */}
