@@ -1,7 +1,7 @@
-# HeadStrong ⚡🛡️
+# Treise ⚡🛡️
 ### Mobile-First PWA for Gamified Hypertrophy, Strength Standards & Pixel Watch Biometrics
 
-**HeadStrong** is a Progressive Web App (PWA) built for serious lifters that fuses progressive overload exercise science with real-time biometric auto-regulation from the Google Pixel Watch (Fitbit Web API).
+**Treise** (old Irish for *strength, force, and power*) is a Progressive Web App (PWA) built for serious lifters that fuses progressive overload exercise science with real-time biometric auto-regulation from the Google Pixel Watch (Fitbit Web API).
 
 ---
 

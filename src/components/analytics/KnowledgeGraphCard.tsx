@@ -9,7 +9,7 @@ import {
 import {
   buildAthleteKnowledgeGraph,
   EXERCISE_SCIENCE_KNOWLEDGE_BASE,
-  HEADSTRONG_DESIGN_SYSTEM,
+  TREISE_DESIGN_SYSTEM,
   KgNode,
 } from '../../engine/knowledgeGraph';
 import { triggerHaptic } from '../../utils/haptics';
@@ -404,7 +404,7 @@ export const KnowledgeGraphCard: React.FC<KnowledgeGraphCardProps> = ({
       {viewMode === 'science' && (
         <div className="space-y-3">
           <p className="text-xs text-slate-400 px-1">
-            Authoritative Science & Logic formulas, volume landmarks, and recovery algorithms driving HeadStrong.
+            Authoritative Science & Logic formulas, volume landmarks, and recovery algorithms driving Treise.
           </p>
 
           {/* Search Bar */}
@@ -459,7 +459,7 @@ export const KnowledgeGraphCard: React.FC<KnowledgeGraphCardProps> = ({
 
                   <div className="pt-2 space-y-1">
                     <div className="text-xs text-slate-400">
-                      <strong className="text-slate-300">How HeadStrong applies this: </strong>
+                      <strong className="text-slate-300">How Treise applies this: </strong>
                       {p.practicalApplication}
                     </div>
 
@@ -478,7 +478,7 @@ export const KnowledgeGraphCard: React.FC<KnowledgeGraphCardProps> = ({
       {viewMode === 'design-system' && (
         <div className="space-y-3">
           <p className="text-xs text-slate-400 px-1">
-            Authoritative HeadStrong component specifications stored in the Knowledge Graph with logic, anatomy, variants, and Tailwind tokens.
+            Authoritative Treise component specifications stored in the Knowledge Graph with logic, anatomy, variants, and Tailwind tokens.
           </p>
 
           {/* Search Bar */}
@@ -527,7 +527,7 @@ export const KnowledgeGraphCard: React.FC<KnowledgeGraphCardProps> = ({
 
           {/* Component Specifications */}
           <div className="space-y-3 max-h-[420px] overflow-y-auto no-scrollbar pr-0.5">
-            {(pkg.designSystem || HEADSTRONG_DESIGN_SYSTEM)
+            {(pkg.designSystem || TREISE_DESIGN_SYSTEM)
               .filter((c) => {
                 if (dsCategoryFilter !== 'all' && c.category !== dsCategoryFilter) {
                   return false;

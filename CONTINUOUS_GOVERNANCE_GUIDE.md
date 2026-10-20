@@ -1,6 +1,6 @@
-# HeadStrong Continuous Governance, QA & Publishing Guide
+# Treise Continuous Governance, QA & Publishing Guide
 
-This document establishes the permanent engineering, product evaluation, and QA architecture for **HeadStrong**. It codifies **Tree of Thoughts (ToT) exploration**, **Prompt Chaining pipelines**, and **Recursive Self-Critique loops** to ensure the app maintains publishable Google Play Store production quality across all future development sessions.
+This document establishes the permanent engineering, product evaluation, and QA architecture for **Treise**. It codifies **Tree of Thoughts (ToT) exploration**, **Prompt Chaining pipelines**, and **Recursive Self-Critique loops** to ensure the app maintains publishable Google Play Store production quality across all future development sessions.
 
 ---
 
@@ -10,7 +10,7 @@ Whenever a feature, bug fix, layout refactor, or copy change is introduced, eval
 
 ```mermaid
 flowchart TD
-    Root["HeadStrong Production Quality Gate"] --> B1["Branch 1: Biomechanical Science & Load Engine"]
+    Root["Treise Production Quality Gate"] --> B1["Branch 1: Biomechanical Science & Load Engine"]
     Root --> B2["Branch 2: UX & 19 Design Heuristics"]
     Root --> B3["Branch 3: Data Resilience & Storage"]
     Root --> B4["Branch 4: Google Play Store & PWA"]
@@ -79,7 +79,7 @@ This single command executes:
 
 ## 3. Google Play Store Publishing Runbook
 
-HeadStrong is pre-configured for publishing as a **Trusted Web Activity (TWA)** on Google Play:
+Treise is pre-configured for publishing as a **Trusted Web Activity (TWA)** on Google Play:
 
 ### Step 1: Digital Asset Links Binding
 - The manifest and domain binding are configured in `public/.well-known/assetlinks.json`:
@@ -107,7 +107,7 @@ npx @bubblewrap/cli build --manifest=twa-manifest.json
 The resulting `app-release-bundle.aab` is ready for direct upload to Google Play Console.
 
 ### Step 3: Google Play Console Listing Checklist
-- **App Name:** `HeadStrong` (matches manifest `short_name`).
+- **App Name:** `Treise` (matches manifest `short_name`).
 - **Feature Graphic:** `dist/play-store-feature-graphic.png` (1024x500 RGBA PNG).
 - **App Icon:** `dist/pwa-512x512.png` (512x512 high-res 32-bit PNG).
 - **Screenshots:** `dist/screenshot-mobile-1.png` and `dist/screenshot-mobile-2.png` (9:16 portrait).

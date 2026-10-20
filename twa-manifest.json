@@ -1,8 +1,8 @@
 {
   "packageId": "com.headstrong.app",
   "host": "treise.vercel.app",
-  "name": "HeadStrong",
-  "launcherName": "HeadStrong",
+  "name": "Treise",
+  "launcherName": "Treise",
   "display": "standalone",
   "themeColor": "#060709",
   "themeColorDark": "#060709",
@@ -15,7 +15,7 @@
   "startUrl": "/",
   "iconUrl": "https://treise.vercel.app/pwa-512x512.png",
   "maskableIconUrl": "https://treise.vercel.app/maskable-icon-512x512.png",
-  "monochromeIconUrl": "https://treise.vercel.app/headstrong-icon.svg",
+  "monochromeIconUrl": "https://treise.vercel.app/treise-icon.svg",
   "splashScreenFadeOutDuration": 300,
   "signingKey": {
     "path": "./android.keystore",

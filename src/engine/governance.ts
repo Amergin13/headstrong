@@ -81,7 +81,7 @@ export const INITIAL_GOVERNANCE_ITEMS: GovernanceChangeItem[] = [
     status: 'locked',
     versionIntroduced: 'v1.2',
     rationale:
-      'Traditional trackers (Hevy, Strong) track per-exercise silos—swapping from Barbell Bench to Dumbbell Bench resets history to zero. HeadStrong normalizes load via 1.18x Dumbbell and 1.20x RDL multipliers so progress continues seamlessly.',
+      'Traditional trackers (Hevy, Strong) track per-exercise silos—swapping from Barbell Bench to Dumbbell Bench resets history to zero. Treise normalizes load via 1.18x Dumbbell and 1.20x RDL multipliers so progress continues seamlessly.',
     whatWorkedWell:
       'Translates working weights accurately between barbell, dumbbells, and weighted calisthenics while preserving longitudinal E1RM and rep targets.',
     critiqueAndRisks:
@@ -658,12 +658,15 @@ export const COMPETITOR_COMPARISON_MATRIX: CompetitorMatrixRow[] = [
   },
 ];
 
-const GOVERNANCE_STORAGE_KEY = 'headstrong_governance_v1';
+const GOVERNANCE_STORAGE_KEY = 'treise_governance_v1';
+const LEGACY_GOVERNANCE_STORAGE_KEY = 'headstrong_governance_v1';
 
 export function loadGovernanceItems(): GovernanceChangeItem[] {
   try {
     if (typeof localStorage !== 'undefined') {
-      const raw = localStorage.getItem(GOVERNANCE_STORAGE_KEY);
+      const raw =
+        localStorage.getItem(GOVERNANCE_STORAGE_KEY) ||
+        localStorage.getItem(LEGACY_GOVERNANCE_STORAGE_KEY);
       if (raw) {
         const saved = JSON.parse(raw) as GovernanceChangeItem[];
         const savedMap = new Map(saved.map((item) => [item.id, item]));

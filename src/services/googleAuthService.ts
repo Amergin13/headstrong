@@ -1,5 +1,5 @@
 /**
- * HeadStrong Google Authentication & Cloud Sync Service
+ * Treise Google Authentication & Cloud Sync Service
  * 
  * Supports:
  * 1. Google Identity Services (GIS) One-Tap & standard Sign in with Google
@@ -209,7 +209,7 @@ export function signInWithGoogleCredential(jwtCredential: string): AuthUser {
  * Allows testing full account login, profile synchronization, and logout without immediate Google Cloud Console API credentials.
  */
 export function signInWithDemoGoogleAccount(
-  customEmail: string = 'athlete@headstrong.app',
+  customEmail: string = 'athlete@treise.app',
   customName: string = 'Benen Taylor'
 ): AuthUser {
   const demoUser: AuthUser = {

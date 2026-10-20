@@ -12,6 +12,7 @@ export default defineConfig({
       includeAssets: [
         'favicon.ico',
         'headstrong-icon.svg',
+        'treise-icon.svg',
         'apple-touch-icon.png',
         'pwa-192x192.png',
         'pwa-512x512.png',
@@ -24,8 +25,8 @@ export default defineConfig({
       ],
       manifest: {
         id: '/',
-        name: 'HeadStrong: Hypertrophy & Strength Tracker',
-        short_name: 'HeadStrong',
+        name: 'Treise: Hypertrophy & Strength Tracker',
+        short_name: 'Treise',
         description:
           'Gamified hypertrophy workout tracker with international strength standards, cross-equipment progression, and Google Pixel Watch biometrics.',
         start_url: '/',

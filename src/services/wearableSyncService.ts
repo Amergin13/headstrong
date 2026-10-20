@@ -55,7 +55,7 @@ export const WEARABLE_PROVIDERS: Record<WearableProvider, WearableProviderMeta> 
 
 /**
  * Universal Wearable Biometrics Synchronizer:
- * Seamlessly drives HeadStrong recovery feature from either Fitbit, Whoop, or Android Health Connect.
+ * Seamlessly drives Treise recovery feature from either Fitbit, Whoop, or Android Health Connect.
  */
 export async function syncWearableBiometrics(
   provider: WearableProvider,

@@ -1,6 +1,6 @@
-# HeadStrong Architecture & Exercise Science Formulas
+# Treise Architecture & Exercise Science Formulas
 
-This document outlines the core mathematical models, exercise science principles, and biometric integration formulas implemented in **HeadStrong**, a mobile-first Progressive Web App (PWA) designed for gamified hypertrophy workout tracking, international strength standards, and Google Pixel Watch (Fitbit Web API) telemetry.
+This document outlines the core mathematical models, exercise science principles, and biometric integration formulas implemented in **Treise**, a mobile-first Progressive Web App (PWA) designed for gamified hypertrophy workout tracking, international strength standards, and Google Pixel Watch (Fitbit Web API) telemetry.
 
 ---
 
@@ -129,7 +129,7 @@ Active Zone Minutes (AZM) $\ge 30$ and Daily Steps $\ge 8{,}500$ unlock the `1.2
 ---
 
 ### 2.5 Google Pixel Tensor Hardware Acceleration & On-Device AI Architecture
-When HeadStrong runs on Google Pixel phones (Pixel 6, 7, 8, 9, Fold), it automatically detects the hardware and routes all AI and auto-regulation inference directly through the **Google Tensor processor** (TPU/NPU/GPU):
+When Treise runs on Google Pixel phones (Pixel 6, 7, 8, 9, Fold), it automatically detects the hardware and routes all AI and auto-regulation inference directly through the **Google Tensor processor** (TPU/NPU/GPU):
 1. **Hardware Detection & Identification:**
    - Detects device model via Client Hints (`Sec-CH-UA-Model`), User-Agent, and WebGL GPU vendor strings (`Mali-G720` for Tensor G4, `Mali-G715` for Tensor G3, `Mali-G710` for Tensor G2, `Mali-G78` for Tensor G1).
 2. **Layered Acceleration Backends:**
@@ -204,10 +204,10 @@ Volume scales progressively across a 6-week training block to maximize progressi
 - **Physiological Reality:** In a caloric deficit, muscle protein synthesis (MPS) is reduced, glycogen stores deplete faster, and systemic recovery capacity decreases by 15–20%.
 - **Retention vs. Accretion Stimulus:** Preserving lean tissue during a cut does NOT require high volume (MRV), which causes excess cortisol elevation, muscle protein breakdown, and joint strain. Instead, it requires **high mechanical tension** (heavy loads, 1–2 RIR) to signal the body that muscle mass is vital for survival.
 - **Volume Scaling Invariant:** Volume is capped at ~85% of standard training volume (2–3 working sets per exercise instead of 4–5).
-- **Retention Shield in Double Progression:** When holding load and reps in `Cut / Recomp`, HeadStrong displays explicit **Retention Shield** feedback celebrating lean tissue preservation. As body mass drops, holding absolute strength increases relative strength and official DOTS score.
+- **Retention Shield in Double Progression:** When holding load and reps in `Cut / Recomp`, Treise displays explicit **Retention Shield** feedback celebrating lean tissue preservation. As body mass drops, holding absolute strength increases relative strength and official DOTS score.
 
 ### 4.5 Multi-Program Split Rotations & Asynchronous Queue Invariants
-HeadStrong calibrates 4 evidence-based program structures, each adhering to the Asynchronous Hypertrophy Queue:
+Treise calibrates 4 evidence-based program structures, each adhering to the Asynchronous Hypertrophy Queue:
 1. **Push / Pull / Legs + Upper (`ppl_upper` - 4-Day):** Optimal balance of hypertrophy frequency and volume. Day rotation: `Push` → `Pull` → `Legs` → `Upper`.
 2. **Push / Pull / Legs (`ppl` - 3-Day Classic):** High-efficiency classic split. Day rotation: `Push` → `Pull` → `Legs`.
 3. **Upper / Lower (`upper_lower` - 4-Day Power & Mass):** Heavy compound focus. Day rotation: `Upper` → `Legs`.
@@ -340,7 +340,7 @@ Every UI component, layout, copy change, and new flow MUST be designed and evalu
 ## 7. Onboarding & First-Time-to-Value Specification (Mandatory Flow)
 
 New users must be guided along the **quickest path to value** in under 60 seconds:
-1. **Step 1: Welcome & How HeadStrong Works**
+1. **Step 1: Welcome & How Treise Works**
    - Welcomes the athlete with a friendly, encouraging tone.
    - Explains the 3 core pillars: (1) Asynchronous Hypertrophy Queue, (2) Guaranteed Overload via Double Progression, and (3) Seamless Adaptation across Full Gym, Home Gear, and Travel Bodyweight.
    - Provides a clear primary CTA (`Choose My Program`) and a subtle exit (`Skip to Demo`).
@@ -391,7 +391,7 @@ All future sessions, developers, and AI agents must strictly adhere to the struc
 
 ## 9. Google Pixel Tensor Hardware Acceleration & On-Device AI Architecture
 
-When running on Google Pixel hardware (Pixel 6, 7, 8, 9, Fold), HeadStrong routes AI inference through on-device Google Tensor silicon:
+When running on Google Pixel hardware (Pixel 6, 7, 8, 9, Fold), Treise routes AI inference through on-device Google Tensor silicon:
 1. **Model Identification:** Client Hints (`Sec-CH-UA-Model`), User-Agent, and WebGL GPU string (`Mali-G720` -> Tensor G4; `Mali-G715` -> Tensor G3; `Mali-G710` -> Tensor G2; `Mali-G78` -> Tensor G1).
 2. **Acceleration Backends:**
    - **Tensor TPU (Gemini Nano):** Connects via `window.ai.languageModel` for tactical coaching cues and tempo adaptations.
@@ -431,7 +431,7 @@ XP is a measure of genuine athletic progression and consistency:
 
 ## 11. Authoritative Exercise Science Knowledge Base & Zero-Hallucination AI Grounding
 
-To eliminate all model hallucinations, ungrounded approximations, and conflicting advice across sessions, HeadStrong codifies all mathematical models and physiological rationale directly within the On-Device Knowledge Graph (`src/engine/knowledgeGraph.ts`):
+To eliminate all model hallucinations, ungrounded approximations, and conflicting advice across sessions, Treise codifies all mathematical models and physiological rationale directly within the On-Device Knowledge Graph (`src/engine/knowledgeGraph.ts`):
 
 ### 11.1 The 18 Authoritative Scientific Principles
 1. **E1RM Formula & RIR Adjustment (`sp-e1rm-epley-rir`):** Augmented Epley/Lombardi model with Reps in Reserve.

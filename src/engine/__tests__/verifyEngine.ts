@@ -30,7 +30,7 @@ import {
   EXERCISE_SCIENCE_KNOWLEDGE_BASE,
   queryExerciseScienceKnowledgeBase,
   searchExerciseScienceKnowledgeBase,
-  HEADSTRONG_DESIGN_SYSTEM,
+  TREISE_DESIGN_SYSTEM,
   queryDesignSystemComponents,
   getDesignSystemComponentById,
 } from '../knowledgeGraph';
@@ -52,7 +52,7 @@ function assert(condition: boolean, msg: string) {
   console.log(`✓ ${msg}`);
 }
 
-console.log('--- TEST SUITE: HEADSTRONG EXERCISE SCIENCE ENGINE ---');
+console.log('--- TEST SUITE: TREISE EXERCISE SCIENCE ENGINE ---');
 
 // 1. E1RM Formula & Stabilization Multipliers
 console.log('\n[1. E1RM & Stabilization Multipliers]');
@@ -716,7 +716,7 @@ assert(
         row.hevyStrong &&
         row.whoopAthlytic
     ),
-  `Competitor comparison matrix benchmarks HeadStrong against RP Hypertrophy, Fitbod, Hevy/Strong, and Whoop across ${COMPETITOR_COMPARISON_MATRIX.length} core capabilities`
+  `Competitor comparison matrix benchmarks Treise against RP Hypertrophy, Fitbod, Hevy/Strong, and Whoop across ${COMPETITOR_COMPARISON_MATRIX.length} core capabilities`
 );
 
 const updatedGov = loadGovernanceItems().map((item) =>
@@ -868,7 +868,7 @@ const onboardingModalSrc = fs.readFileSync(
 );
 
 assert(
-  onboardingModalSrc.includes('Welcome to HeadStrong') &&
+  onboardingModalSrc.includes('Welcome to Treise') &&
     onboardingModalSrc.includes('Asynchronous Hypertrophy Queue') &&
     onboardingModalSrc.includes('Guaranteed Overload') &&
     onboardingModalSrc.includes('Adapts Across Any Gear') &&
@@ -1857,11 +1857,11 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
 
   // A. Design System Registry Completeness & Structure
   assert(
-    HEADSTRONG_DESIGN_SYSTEM.length >= 8,
-    `Knowledge Graph contains authoritative design system components (got ${HEADSTRONG_DESIGN_SYSTEM.length} components)`
+    TREISE_DESIGN_SYSTEM.length >= 8,
+    `Knowledge Graph contains authoritative design system components (got ${TREISE_DESIGN_SYSTEM.length} components)`
   );
 
-  for (const comp of HEADSTRONG_DESIGN_SYSTEM) {
+  for (const comp of TREISE_DESIGN_SYSTEM) {
     assert(
       Boolean(comp.id && comp.name && comp.category && comp.anatomy && comp.logic && comp.tailwindTokens && comp.rationale),
       `Component ${comp.id} contains valid anatomy, logic invariants, tailwind tokens, and rationale`
@@ -1940,13 +1940,13 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
     { 'Chest': 14, 'Side Delts': 18 }
   );
   assert(
-    Array.isArray(testPkg.designSystem) && testPkg.designSystem.length === HEADSTRONG_DESIGN_SYSTEM.length,
+    Array.isArray(testPkg.designSystem) && testPkg.designSystem.length === TREISE_DESIGN_SYSTEM.length,
     `AthleteKnowledgeGraph exposes complete designSystem array in the Knowledge Graph (got ${testPkg.designSystem.length} components)`
   );
 
   // F. On-Device AI Assistant Design System Grounding
   const aiDesignAnswer = await processAssistantMessage({
-    userMessage: 'What is the primary CTA button specification and touch target in HeadStrong?',
+    userMessage: 'What is the primary CTA button specification and touch target in Treise?',
     profile: testProfile,
     activeWorkout: pushW3,
     workouts: [pushW3],
@@ -1963,7 +1963,7 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
   );
 
   const aiTypoAnswer = await processAssistantMessage({
-    userMessage: 'What typography sizes does HeadStrong use in its design system?',
+    userMessage: 'What typography sizes does Treise use in its design system?',
     profile: testProfile,
     activeWorkout: pushW3,
     workouts: [pushW3],
@@ -2176,9 +2176,9 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
   const testHeader = base64UrlEncode({ alg: 'RS256', typ: 'JWT' });
   const testPayload = base64UrlEncode({
     sub: 'google-sub-9876543210',
-    email: 'athlete@headstrong.fit',
+    email: 'athlete@treise.fit',
     name: 'Ben Taylor',
-    picture: 'https://lh3.googleusercontent.com/a/headstrong-athlete-avatar',
+    picture: 'https://lh3.googleusercontent.com/a/treise-athlete-avatar',
     given_name: 'Ben',
     family_name: 'Taylor',
     exp: Math.floor(Date.now() / 1000) + 3600,
@@ -2189,9 +2189,9 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
   assert(
     parsedPayload !== null &&
       parsedPayload.sub === 'google-sub-9876543210' &&
-      parsedPayload.email === 'athlete@headstrong.fit' &&
+      parsedPayload.email === 'athlete@treise.fit' &&
       parsedPayload.name === 'Ben Taylor' &&
-      parsedPayload.picture === 'https://lh3.googleusercontent.com/a/headstrong-athlete-avatar',
+      parsedPayload.picture === 'https://lh3.googleusercontent.com/a/treise-athlete-avatar',
     `decodeGoogleIdToken correctly extracts subject ID, email, name, and profile picture from JWT`
   );
 
@@ -2203,9 +2203,9 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
   assert(
     authUserFromJwt.provider === 'google' &&
       authUserFromJwt.id === 'google-sub-9876543210' &&
-      authUserFromJwt.email === 'athlete@headstrong.fit' &&
+      authUserFromJwt.email === 'athlete@treise.fit' &&
       authUserFromJwt.name === 'Ben Taylor' &&
-      authUserFromJwt.avatarUrl === 'https://lh3.googleusercontent.com/a/headstrong-athlete-avatar',
+      authUserFromJwt.avatarUrl === 'https://lh3.googleusercontent.com/a/treise-athlete-avatar',
     `signInWithGoogleCredential normalizes Google JWT into verified AuthUser`
   );
 
@@ -2266,7 +2266,7 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
   assert(
     profileWithAuth.authUserId === 'google-sub-9876543210' &&
       profileWithAuth.authProvider === 'google' &&
-      profileWithAuth.email === 'athlete@headstrong.fit',
+      profileWithAuth.email === 'athlete@treise.fit',
     `UserProfile successfully associates with authenticated Google account`
   );
 

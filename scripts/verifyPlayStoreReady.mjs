@@ -90,7 +90,7 @@ assert(
 // 3. Web App Manifest Specification
 console.log('\n[3. Web App Manifest (Chrome Richer Install UI & Play Store TWA)]');
 const manifest = JSON.parse(fs.readFileSync(path.join(distDir, 'manifest.webmanifest'), 'utf8'));
-assert(manifest.short_name === 'HeadStrong', `short_name is "HeadStrong" (<= 12 chars)`);
+assert(manifest.short_name === 'Treise', `short_name is "Treise" (<= 12 chars)`);
 assert(manifest.display === 'standalone', `display mode is "standalone"`);
 assert(manifest.theme_color === '#060709', `theme_color matches Obsidian #060709`);
 assert(manifest.background_color === '#060709', `background_color matches Obsidian #060709`);

@@ -105,7 +105,7 @@ export async function askOnDeviceTensorCoach(
       try {
         const caps = await ai.languageModel.capabilities();
         if (caps && caps.available !== 'no') {
-          const systemPrompt = `You are the HeadStrong On-Device AI Coach executing locally on the Google Pixel ${profile.chipModel}.
+          const systemPrompt = `You are the Treise On-Device AI Coach executing locally on the Google Pixel ${profile.chipModel}.
 Provide concise, authoritative, science-based athletic coaching advice.
 Context: Goal Phase: ${context.goalPhase}, Readiness State: ${context.readinessState} (HRV: ${context.hrvRmssd}ms, Sleep: ${context.sleepHours}h).
 Workout: ${context.workoutSession.name} (${context.workoutSession.splitDay}).

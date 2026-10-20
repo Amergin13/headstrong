@@ -247,10 +247,10 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                 id="onboarding-modal-title"
                 className="font-bold text-xl text-white tracking-tight"
               >
-                Welcome to HeadStrong
+                Welcome to Treise
               </h2>
               <p className="text-xs text-slate-300 mt-1 leading-relaxed">
-                HeadStrong eliminates the guesswork from muscle building. Here is how we guarantee your progress:
+                Treise eliminates the guesswork from muscle building. Here is how we guarantee your progress:
               </p>
             </div>
 
@@ -394,7 +394,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                 What is your main goal right now?
               </h2>
               <p className="text-xs text-slate-300 mt-1 leading-relaxed">
-                HeadStrong calibrates your volume landmarks, rep targets, and recovery targets to match your training phase.
+                Treise calibrates your volume landmarks, rep targets, and recovery targets to match your training phase.
               </p>
             </div>
 

@@ -225,7 +225,7 @@ export const EXERCISE_SCIENCE_KNOWLEDGE_BASE: ScientificPrinciple[] = [
       'Lifting light loads or pure bodyweight stimulates equal hypertrophy to heavy weights provided sets are taken within 1–3 reps of failure. Terminal motor unit recruitment is achieved via the size principle as muscle fibers fatigue.',
     academicCitation: 'Schoenfeld, Grgic, et al. (2016); Pedrosa et al. (2022)',
     practicalApplication:
-      'When in Travel mode, HeadStrong sets target weight strictly to 0 kg (never telling you to add +5kg) and calibrates reps to your strength level with lengthened tempo cues.',
+      'When in Travel mode, Treise sets target weight strictly to 0 kg (never telling you to add +5kg) and calibrates reps to your strength level with lengthened tempo cues.',
     keywords: ['travel', 'bodyweight', 'hotel', 'no weights', 'deficit pushup', '0kg', 'bodyweight reps', 'calisthenics reps', 'hotel workout'],
   },
   {
@@ -307,7 +307,7 @@ export const EXERCISE_SCIENCE_KNOWLEDGE_BASE: ScientificPrinciple[] = [
     formula: 'Typography Tiers = { Tier 1: text-xs (12px), Tier 2: text-sm (14px), Tier 3: text-base (16px), Tier 4: text-xl (20px) }',
     scientificRationale:
       'Mobile-first cognitive load research proves that limiting typographic hierarchy to strictly at most 4 distinct sizes minimizes eye saccade fatigue and visual friction during heavy compound physical exertion. Enforces a strict 12px (text-xs) minimum floor.',
-    academicCitation: 'Nielsen Norman Group Mobile Readability (2022); HeadStrong Interaction Design Governance',
+    academicCitation: 'Nielsen Norman Group Mobile Readability (2022); Treise Interaction Design Governance',
     practicalApplication:
       'Eliminates erratic font jumps across workouts, cards, and modals, ensuring that headers, metrics, and labels maintain clear, predictable visual weight.',
     keywords: ['typography', 'font size', 'text size', '4-tier', 'text-xs', 'text-sm', 'text-base', 'text-xl', 'hierarchy', 'typography scale'],
@@ -339,10 +339,10 @@ export const EXERCISE_SCIENCE_KNOWLEDGE_BASE: ScientificPrinciple[] = [
 ];
 
 /**
- * Codified HeadStrong Component Design System:
+ * Codified Treise Component Design System:
  * Authoritative registry of component logic, anatomy, variants, and Tailwind tokens stored in the Knowledge Graph.
  */
-export const HEADSTRONG_DESIGN_SYSTEM: DesignSystemComponent[] = [
+export const TREISE_DESIGN_SYSTEM: DesignSystemComponent[] = [
   {
     id: 'ds-typography-scale',
     name: '4-Tier Strict Typography Scale',
@@ -708,20 +708,21 @@ export const HEADSTRONG_DESIGN_SYSTEM: DesignSystemComponent[] = [
     rationale: 'Athletes in the middle of a heavy compound set experience tunnel vision; visual hierarchy must be ruthless so orientation requires zero effort.',
   },
 ];
+export const HEADSTRONG_DESIGN_SYSTEM = TREISE_DESIGN_SYSTEM;
 
 /**
  * Searches and queries the Knowledge Graph's Design System components.
  */
 export function queryDesignSystemComponents(query?: string): DesignSystemComponent[] {
-  if (!query || !query.trim()) return HEADSTRONG_DESIGN_SYSTEM;
+  if (!query || !query.trim()) return TREISE_DESIGN_SYSTEM;
   const q = query.toLowerCase().trim();
-  const stopWords = new Set(['what', 'is', 'the', 'a', 'an', 'and', 'in', 'on', 'of', 'for', 'to', 'how', 'does', 'do', 'are', 'headstrong', 'app']);
+  const stopWords = new Set(['what', 'is', 'the', 'a', 'an', 'and', 'in', 'on', 'of', 'for', 'to', 'how', 'does', 'do', 'are', 'treise', 'headstrong', 'app']);
   const tokens = q
     .replace(/[^a-z0-9\s-]/g, ' ')
     .split(/\s+/)
     .filter((t) => t.length > 1 && !stopWords.has(t));
 
-  const scored = HEADSTRONG_DESIGN_SYSTEM.map((c) => {
+  const scored = TREISE_DESIGN_SYSTEM.map((c) => {
     const textBlob = `${c.id} ${c.name} ${c.category} ${c.rationale} ${c.logic.rules.join(' ')} ${c.tailwindTokens}`.toLowerCase();
     let score = 0;
     if (textBlob.includes(q)) score += 50;
@@ -743,7 +744,7 @@ export function queryDesignSystemComponents(query?: string): DesignSystemCompone
 }
 
 export function getDesignSystemComponentById(id: string): DesignSystemComponent | undefined {
-  return HEADSTRONG_DESIGN_SYSTEM.find((c) => c.id === id);
+  return TREISE_DESIGN_SYSTEM.find((c) => c.id === id);
 }
 
 /**
@@ -1442,7 +1443,7 @@ export function buildAthleteKnowledgeGraph(
     muscleProfiles,
     insights,
     scientificKnowledgeBase: EXERCISE_SCIENCE_KNOWLEDGE_BASE,
-    designSystem: HEADSTRONG_DESIGN_SYSTEM,
+    designSystem: TREISE_DESIGN_SYSTEM,
     systemicAxialLoadScore,
     lengthenedStimulusRatio,
     recoveryEfficiencyScore,

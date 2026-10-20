@@ -1,18 +1,18 @@
-# HeadStrong Product Governance Model & Competitor Feature Matrix
+# Treise Product Governance Model & Competitor Feature Matrix
 
-This document is the authoritative **Product Governance Ledger** for **HeadStrong**. It establishes:
+This document is the authoritative **Product Governance Ledger** for **Treise**. It establishes:
 1. **Why a Governance Model is Required:** Some iterations significantly advanced the core value proposition (*telling the user what they need to do to reach their goals from session to session across any equipment environment*), while other iterations introduced unnecessary complexity, academic jargon, or UI bloat.
 2. **Governance States (`Locked` 🔒 | `Progressing` 🔄 | `Under Review` ⚠️):**
    - **`Locked` 🔒 (Verified & Protected):** High-value capabilities and design guardrails that are proven, tested in `src/engine/__tests__/verifyEngine.ts`, and **must not be regressed or altered** without explicit user approval.
    - **`Progressing` 🔄 (Active Iteration):** Capabilities with a strong foundation that are actively being refined based on session-to-session usage.
    - **`Under Review` ⚠️ (Critique & Remediation):** Changes or UI patterns that exhibited friction, vertical density bloat, or edge cases and require strict oversight or simplification.
-3. **Competitor Feature Comparison Matrix:** Benchmarks HeadStrong against **RP Hypertrophy App**, **Fitbod**, **Hevy / Strong**, and **Whoop / Athlytic**.
+3. **Competitor Feature Comparison Matrix:** Benchmarks Treise against **RP Hypertrophy App**, **Fitbod**, **Hevy / Strong**, and **Whoop / Athlytic**.
 
 ---
 
 ## 1. Competitor Feature Comparison Matrix
 
-| Capability / User Need | Governance Status | **HeadStrong** | **RP Hypertrophy App** | **Fitbod** | **Hevy / Strong** | **Whoop / Athlytic** |
+| Capability / User Need | Governance Status | **Treise** | **RP Hypertrophy App** | **Fitbod** | **Hevy / Strong** | **Whoop / Athlytic** |
 | :--- | :---: | :--- | :--- | :--- | :--- | :--- |
 | **1. Session-to-Session Actionable Targets** (*"What do I lift today to progress?"*) | **Locked** 🔒 | **✓ Leader** — Explicit *"How to Make Progress Today"* checklist + per-set Double Progression (`+1 rep` or `+2.5kg`/`+2kg`). | **✓ Leader** — Prescribes weight/reps from post-set RIR & pump ratings (\$35/mo). | **◐ Partial** — Algorithmic weights often fluctuate unpredictably between sessions. | **✕ None** — Passive digital notebook; shows last session's numbers without prescribing today's target. | **✕ None** — Tracks cardio strain/recovery only; no weight/rep targets. |
 | **2. Cross-Equipment Strength Continuity** (*Barbell ↔ Dumbbell ↔ TRX/Bodyweight*) | **Locked** 🔒 | **✓ Leader** — Unified 13-family movement vectors with `1.18x` DB & `1.20x` RDL load conversion. | **✕ None** — Swapping an exercise mid-block resets weight/rep history for the new lift. | **◐ Partial** — Estimates starting weight from general muscle score, but tracks history per exercise. | **✕ None** — Strict per-exercise silos; swapping equipment breaks your progress chart. | **✕ None** — No exercise progression tracking. |
@@ -98,7 +98,7 @@ This document is the authoritative **Product Governance Ledger** for **HeadStron
 
 ## 3. Authoritative 19-Point Product Design Heuristics Framework
 
-Every screen, modal, copy string, and feature in **HeadStrong** is continuously designed and audited against these 19 non-negotiable heuristics from the product design standards:
+Every screen, modal, copy string, and feature in **Treise** is continuously designed and audited against these 19 non-negotiable heuristics from the product design standards:
 
 ### 3.1 Visual Design Heuristics (6 Principles)
 1. **Hierarchy:**

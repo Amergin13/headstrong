@@ -1,4 +1,4 @@
-# HeadStrong Interaction Design Master Template & Information Architecture
+# Treise Interaction Design Master Template & Information Architecture
 
 **Status:** Locked & Final 🔒  
 **Version:** 1.0.0 (Production Canonical)  
@@ -9,11 +9,11 @@
 
 ## 1. Interaction Design Foundations & Governance Gate
 
-Every screen, card, modal, and control in HeadStrong is governed by three non-negotiable foundations codified from the 19 Product Design Heuristics:
+Every screen, card, modal, and control in Treise is governed by three non-negotiable foundations codified from the 19 Product Design Heuristics:
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                 HEADSTRONG INTERACTION DESIGN GOVERNANCE GATE               │
+│                    TREISE INTERACTION DESIGN GOVERNANCE GATE                │
 ├────────────────────────────────┬────────────────────────────────────────────┤
 │ 1. SINGLE CANONICAL ENTRY POINT│ Exactly 1 interactive path per user job.   │
 │    PER JOB                     │ Never duplicate controls across tabs.      │
@@ -35,7 +35,7 @@ Every screen, card, modal, and control in HeadStrong is governed by three non-ne
 
 ```
 ┌───────────────────────────────────────────────────────────────────────────┐
-│ [HS] HEADSTRONG  Lv.4 [━━━━━━━░░░░] 250/500 XP    🔥 14d   [⌚ Watch 🟢]  │ <- Top Header
+│ [TR] TREISE      Lv.4 [━━━━━━━░░░░] 250/500 XP    🔥 14d   [⌚ Watch 🟢]  │ <- Top Header
 ├───────────────────────────────────────────────────────────────────────────┤
 │                                                                           │
 │                            ACTIVE TAB CONTENT                             │
@@ -50,8 +50,8 @@ Every screen, card, modal, and control in HeadStrong is governed by three non-ne
 ### 2.1 Sticky Top Header (`Header.tsx`)
 - **Visual Hierarchy:** Sticky top `z-30`, surface-glass backdrop blur (`bg-surface-bg/90`), height $52\text{px}$.
 - **Section Order (Left-to-Right):**
-  1. *Brand Monogram:* `w-8 h-8 rounded-xl` Obsidian container with white `"HS"` mark.
-  2. *Athlete Identity & Level:* Headline `HEADSTRONG`, badge `Lv.{level}`, and miniature XP progress bar ($500\text{ XP}$ per level).
+  1. *Brand Monogram:* `w-8 h-8 rounded-xl` Obsidian container with white `"TR"` mark.
+  2. *Athlete Identity & Level:* Headline `TREISE`, badge `Lv.{level}`, and miniature XP progress bar ($500\text{ XP}$ per level).
   3. *Streak Protection Badge:* Flame icon with `{streakDays}d` counter in amber pill.
   4. *Single Canonical Watch Sync Trigger:* `w-auto px-2.5 py-1` pill with watch icon, status text, and live pulsating readiness dot (Emerald = Primed, Amber = Recovery Shield, Cyan = Normal).
 - **Forbidden Iterations:**
@@ -383,7 +383,7 @@ To prevent future sessions from regressing or re-introducing past failures, thes
 
 ## 9. Invariant Governance Mandate
 
-This document represents the **final, authoritative Information Architecture and Interaction Design specification** for HeadStrong. Any automated script, AI pair programmer, or human developer must:
+This document represents the **final, authoritative Information Architecture and Interaction Design specification** for Treise. Any automated script, AI pair programmer, or human developer must:
 1. Treat all sections and layouts defined herein as **LOCKED 🔒**.
 2. Run `npm run verify:all` to guarantee that code changes satisfy these structural invariants.
 3. Reject any proposed redesign that violates single-entry-point architecture, introduces micro-text, or fractures the Asynchronous Hypertrophy Queue.

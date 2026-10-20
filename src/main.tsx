@@ -12,7 +12,7 @@ const updateSW = registerSW({
     }
   },
   onOfflineReady() {
-    console.log('HeadStrong is ready to work offline.');
+    console.log('Treise is ready to work offline.');
   },
 });
 

@@ -212,7 +212,7 @@ export const ProductGovernanceModal: React.FC<ProductGovernanceModalProps> = ({
         {activeView === 'matrix' && (
           <div className="space-y-3">
             <div className="p-4 rounded-2xl bg-[#090C12] text-xs text-slate-300 leading-relaxed">
-              Benchmarks <strong className="text-white">HeadStrong</strong> against{' '}
+              Benchmarks <strong className="text-white">Treise</strong> against{' '}
               <strong className="text-white">RP Hypertrophy</strong>,{' '}
               <strong className="text-white">Fitbod</strong>,{' '}
               <strong className="text-white">Hevy / Strong</strong>, and{' '}
@@ -254,7 +254,7 @@ export const ProductGovernanceModal: React.FC<ProductGovernanceModalProps> = ({
                     <div className="grid grid-cols-1 sm:grid-cols-5 gap-2 pt-2 border-t border-white/[0.04] text-xs">
                       {(
                         [
-                          { key: 'headstrong', name: 'HeadStrong', data: row.headstrong, highlight: true },
+                          { key: 'headstrong', name: 'Treise', data: row.headstrong, highlight: true },
                           { key: 'rp', name: 'RP App', data: row.rpHypertrophy, highlight: false },
                           { key: 'fitbod', name: 'Fitbod', data: row.fitbod, highlight: false },
                           { key: 'hevy', name: 'Hevy / Strong', data: row.hevyStrong, highlight: false },

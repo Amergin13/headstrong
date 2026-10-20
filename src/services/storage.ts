@@ -19,6 +19,15 @@ import { calculateE1RM } from '../engine/e1rm';
 import { getLatestBodyweightEma } from '../engine/ema';
 
 const KEYS = {
+  PROFILE: 'treise_profile_v3',
+  BIOMETRICS: 'treise_biometrics_v3',
+  WORKOUTS: 'treise_workouts_v3',
+  ACTIVE_WORKOUT: 'treise_active_workout_v3',
+  EXERCISES: 'treise_exercises_v3',
+  AUTH_USER: 'treise_auth_user_v1',
+};
+
+const LEGACY_KEYS = {
   PROFILE: 'headstrong_profile_v3',
   BIOMETRICS: 'headstrong_biometrics_v3',
   WORKOUTS: 'headstrong_workouts_v3',
@@ -27,9 +36,14 @@ const KEYS = {
   AUTH_USER: 'headstrong_auth_user_v1',
 };
 
+function getItemWithFallback(key: keyof typeof KEYS): string | null {
+  if (typeof localStorage === 'undefined') return null;
+  return localStorage.getItem(KEYS[key]) || localStorage.getItem(LEGACY_KEYS[key]);
+}
+
 export function loadAuthUser(): AuthUser | null {
   try {
-    const raw = localStorage.getItem(KEYS.AUTH_USER);
+    const raw = getItemWithFallback('AUTH_USER');
     if (raw) return JSON.parse(raw);
   } catch (e) {
     console.error('Failed to load auth user:', e);
@@ -55,7 +69,7 @@ export function clearAuthUser(): void {
 
 export function loadProfile(): UserProfile {
   try {
-    const raw = localStorage.getItem(KEYS.PROFILE);
+    const raw = getItemWithFallback('PROFILE');
     if (raw) {
       const parsed = JSON.parse(raw) as UserProfile;
       return {
@@ -86,7 +100,7 @@ export function saveProfile(profile: UserProfile): void {
 
 export function loadBiometrics(): BiometricLog[] {
   try {
-    const raw = localStorage.getItem(KEYS.BIOMETRICS);
+    const raw = getItemWithFallback('BIOMETRICS');
     if (raw) return JSON.parse(raw);
   } catch (e) {
     console.error('Failed to load biometrics:', e);
@@ -104,7 +118,7 @@ export function saveBiometrics(logs: BiometricLog[]): void {
 
 export function loadWorkouts(): WorkoutSession[] {
   try {
-    const raw = localStorage.getItem(KEYS.WORKOUTS);
+    const raw = getItemWithFallback('WORKOUTS');
     if (raw) return JSON.parse(raw);
   } catch (e) {
     console.error('Failed to load workouts:', e);
@@ -122,7 +136,7 @@ export function saveWorkouts(workouts: WorkoutSession[]): void {
 
 export function loadActiveWorkout(): WorkoutSession {
   try {
-    const raw = localStorage.getItem(KEYS.ACTIVE_WORKOUT);
+    const raw = getItemWithFallback('ACTIVE_WORKOUT');
     if (raw) return JSON.parse(raw);
   } catch (e) {
     console.error('Failed to load active workout:', e);
@@ -142,7 +156,7 @@ export function saveActiveWorkout(workout: WorkoutSession): void {
 
 export function loadExercises(): ExerciseDefinition[] {
   try {
-    const raw = localStorage.getItem(KEYS.EXERCISES);
+    const raw = getItemWithFallback('EXERCISES');
     if (raw) {
       const stored = JSON.parse(raw) as ExerciseDefinition[];
       const seedMap = new Map(SEED_EXERCISES.map((s) => [s.id, s]));
@@ -366,7 +380,7 @@ export function calculateWeeklyMuscleVolume(
   return volume;
 }
 
-export interface HeadStrongDataBackup {
+export interface TreiseDataBackup {
   appVersion: string;
   exportedAt: string;
   profile: UserProfile;
@@ -376,11 +390,13 @@ export interface HeadStrongDataBackup {
   exercises: ExerciseDefinition[];
 }
 
+export type HeadStrongDataBackup = TreiseDataBackup;
+
 /**
  * Exports all user data as a portable JSON backup (Google Play Data Portability)
  */
 export function exportAllUserDataJSON(): string {
-  const payload: HeadStrongDataBackup = {
+  const payload: TreiseDataBackup = {
     appVersion: '1.0.0',
     exportedAt: new Date().toISOString(),
     profile: loadProfile(),
@@ -395,10 +411,10 @@ export function exportAllUserDataJSON(): string {
 /**
  * Validates and restores a JSON backup
  */
-export function importUserDataJSON(rawJson: string): HeadStrongDataBackup {
-  const parsed = JSON.parse(rawJson) as Partial<HeadStrongDataBackup>;
+export function importUserDataJSON(rawJson: string): TreiseDataBackup {
+  const parsed = JSON.parse(rawJson) as Partial<TreiseDataBackup>;
   if (!parsed || !parsed.profile || !Array.isArray(parsed.workouts)) {
-    throw new Error('Invalid HeadStrong backup file format.');
+    throw new Error('Invalid Treise backup file format.');
   }
 
   const profile = parsed.profile;
@@ -431,6 +447,7 @@ export function importUserDataJSON(rawJson: string): HeadStrongDataBackup {
 export function permanentlyEraseAllUserData() {
   try {
     Object.values(KEYS).forEach((k) => localStorage.removeItem(k));
+    Object.values(LEGACY_KEYS).forEach((k) => localStorage.removeItem(k));
     if (typeof sessionStorage !== 'undefined') {
       sessionStorage.removeItem('fitbit_code_verifier');
       sessionStorage.removeItem('fitbit_oauth_state');

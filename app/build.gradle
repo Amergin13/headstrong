@@ -24,8 +24,8 @@ def twaManifest = [
     applicationId: 'com.headstrong.app',
     hostName: 'treise.vercel.app', // The domain being opened in the TWA.
     launchUrl: '/', // The start path for the TWA. Must be relative to the domain.
-    name: 'HeadStrong', // The application name.
-    launcherName: 'HeadStrong', // The name shown on the Android Launcher.
+    name: 'Treise', // The application name.
+    launcherName: 'Treise', // The name shown on the Android Launcher.
     themeColor: '#060709', // The color used for the status bar.
     themeColorDark: '#060709', // The color used for the dark status bar.
     navigationColor: '#060709', // The color used for the navigation bar.

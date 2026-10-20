@@ -7,7 +7,7 @@ import {
 } from './types';
 
 /**
- * HeadStrong Evidence-Based Warmup Set Protocol
+ * Treise Evidence-Based Warmup Set Protocol
  *
  * Grounded in exercise physiology:
  * 1. Warmup sets elevate muscle temperature, lubricate joint capsules with synovial fluid,

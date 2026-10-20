@@ -4,7 +4,7 @@ import path from 'path';
 const rawArg = process.argv[2];
 if (!rawArg) {
   console.error('Usage: node scripts/updateTwaHost.mjs <hostname>');
-  console.error('Example: node scripts/updateTwaHost.mjs headstrong.vercel.app');
+  console.error('Example: node scripts/updateTwaHost.mjs treise.vercel.app');
   process.exit(1);
 }
 
@@ -24,7 +24,7 @@ console.log(`Updating TWA host from "${twa.host}" to "${host}"...`);
 twa.host = host;
 twa.iconUrl = `https://${host}/pwa-512x512.png`;
 twa.maskableIconUrl = `https://${host}/maskable-icon-512x512.png`;
-twa.monochromeIconUrl = `https://${host}/headstrong-icon.svg`;
+twa.monochromeIconUrl = `https://${host}/treise-icon.svg`;
 twa.webManifestUrl = `https://${host}/manifest.webmanifest`;
 twa.fullScopeUrl = `https://${host}/`;
 

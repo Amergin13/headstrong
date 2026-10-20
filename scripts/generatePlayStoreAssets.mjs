@@ -64,7 +64,7 @@ function encodePng(width, height, rgbaBuffer) {
 }
 
 /**
- * Renders the HeadStrong brand emblem (Obsidian #060709 background,
+ * Renders the Treise brand emblem (Obsidian #060709 background,
  * Phosphor Green #00F59B barbell/pulse crest, Cyan #06B6D4 telemetry ring)
  */
 function renderAppIcon(size, isMaskable = false) {

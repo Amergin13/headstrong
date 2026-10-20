@@ -1,6 +1,6 @@
-# HeadStrong — Google Play Store & Android TWA Release Runbook
+# Treise — Google Play Store & Android TWA Release Runbook
 
-This guide outlines the exact end-to-end engineering, cryptographic signing, and Google Play Console compliance procedures required to publish **HeadStrong** (`com.headstrong.app`) as a native Android App Bundle (`.aab`) using Google's official **Bubblewrap / Trusted Web Activity (TWA)** pipeline.
+This guide outlines the exact end-to-end engineering, cryptographic signing, and Google Play Console compliance procedures required to publish **Treise** (`com.headstrong.app`) as a native Android App Bundle (`.aab`) using Google's official **Bubblewrap / Trusted Web Activity (TWA)** pipeline.
 
 ---
 
@@ -32,12 +32,12 @@ Trusted Web Activities require the web app and `/.well-known/assetlinks.json` to
    ```bash
    npm run build
    ```
-2. Deploy the `dist/` directory to your production host (e.g., Firebase Hosting, Cloudflare Pages, Vercel, or Google Cloud Run) at your canonical domain (configured as `https://headstrong.app` in [`twa-manifest.json`](twa-manifest.json)).
+2. Deploy the `dist/` directory to your production host (e.g., Vercel) at your canonical domain (configured as `https://treise.vercel.app` in [`twa-manifest.json`](twa-manifest.json)).
 3. Verify the following endpoints return `HTTP 200 OK` over HTTPS:
-   - `https://headstrong.app/manifest.webmanifest`
-   - `https://headstrong.app/.well-known/assetlinks.json`
-   - `https://headstrong.app/privacy.html`
-   - `https://headstrong.app/terms.html`
+   - `https://treise.vercel.app/manifest.webmanifest`
+   - `https://treise.vercel.app/.well-known/assetlinks.json`
+   - `https://treise.vercel.app/privacy.html`
+   - `https://treise.vercel.app/terms.html`
 
 ---
 
@@ -77,7 +77,7 @@ This produces:
 
 ## 4. Configuring Digital Asset Links (`assetlinks.json`)
 
-For Chrome on Android to hide the URL address bar and render HeadStrong in full-screen standalone mode (`#060709` status & navigation bars), the SHA-256 certificate fingerprint in [`public/.well-known/assetlinks.json`](public/.well-known/assetlinks.json) **must** match Google Play App Signing.
+For Chrome on Android to hide the URL address bar and render Treise in full-screen standalone mode (`#060709` status & navigation bars), the SHA-256 certificate fingerprint in [`public/.well-known/assetlinks.json`](public/.well-known/assetlinks.json) **must** match Google Play App Signing.
 
 1. In **Google Play Console**, navigate to **Test and release > Setup > App signing**.
 2. Copy the **SHA-256 certificate fingerprint** under **App signing key certificate** (and optionally your **Upload key certificate** for local APK testing).
@@ -108,7 +108,7 @@ For Chrome on Android to hide the URL address bar and render HeadStrong in full-
 ## 5. Google Play Console Policy Declarations Cheat Sheet
 
 ### 5.1 Privacy Policy URL
-- **URL:** `https://headstrong.app/privacy.html` (bundled in [`public/privacy.html`](public/privacy.html) and accessible offline inside the app under **Program > Data Safety, Privacy & Legal**).
+- **URL:** `https://treise.vercel.app/privacy.html` (bundled in [`public/privacy.html`](public/privacy.html) and accessible offline inside the app under **Program > Data Safety, Privacy & Legal**).
 
 ### 5.2 Data Safety Section Answers
 - **Does your app collect or share any of the required user data types?**
@@ -122,7 +122,7 @@ For Chrome on Android to hide the URL address bar and render HeadStrong in full-
 - **Categories to select:**
   - [x] *Activity and Fitness* (Strength training log, estimated 1RM, volume landmarks, readiness score).
 - **Categories NOT selected (Medical Exclusion):**
-  - [ ] Do **not** select *Medical Device*, *Clinical Decision Support*, or *Disease Diagnosis/Treatment*. HeadStrong includes an explicit Non-Medical & Exercise Safety Disclaimer in both [`public/privacy.html`](public/privacy.html) and the **Program** tab.
+  - [ ] Do **not** select *Medical Device*, *Clinical Decision Support*, or *Disease Diagnosis/Treatment*. Treise includes an explicit Non-Medical & Exercise Safety Disclaimer in both [`public/privacy.html`](public/privacy.html) and the **Program** tab.
 
 ### 5.4 Store Listing Graphic Assets (Pre-Generated in `public/`)
 | Asset Type | File Path | Dimensions | Format |

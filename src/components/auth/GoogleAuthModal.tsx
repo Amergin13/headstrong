@@ -76,7 +76,7 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({
   const handleDemoSignIn = () => {
     triggerHaptic('medium');
     const demoUser = signInWithDemoGoogleAccount(
-      profile.email || 'athlete@headstrong.app',
+      profile.email || 'athlete@treise.app',
       profile.name !== 'Athlete' ? profile.name : 'Benen Taylor'
     );
     setStatusMessage('Signed in with Google!');
@@ -138,7 +138,7 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({
             <Sparkles className="w-6 h-6 stroke-[2]" />
           </div>
           <h2 id="auth-modal-title" className="text-xl font-bold text-white tracking-tight">
-            {currentUser ? 'Your Athlete Account' : 'Sign In to HeadStrong'}
+            {currentUser ? 'Your Athlete Account' : 'Sign In to Treise'}
           </h2>
           <p className="text-xs text-slate-400 font-medium">
             {currentUser

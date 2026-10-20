@@ -1,4 +1,4 @@
-# HeadStrong Product Requirements Specification (PRS)
+# Treise Product Requirements Specification (PRS)
 
 **Status:** Locked & Final 🔒  
 **Version:** 1.0.0 (Production Canonical)  
@@ -9,7 +9,7 @@
 
 ## 1. Executive Summary & Customer Mission
 
-HeadStrong is an evidence-based, mobile-first Progressive Web App (PWA) and Android Trusted Web Activity (TWA) designed for serious natural hypertrophy lifters, hybrid gym/home athletes, and data-driven lifters utilizing wearable biometrics (Google Pixel Watch / Fitbit Web API).
+Treise is an evidence-based, mobile-first Progressive Web App (PWA) and Android Trusted Web Activity (TWA) designed for serious natural hypertrophy lifters, hybrid gym/home athletes, and data-driven lifters utilizing wearable biometrics (Google Pixel Watch / Fitbit Web API).
 
 ### 1.1 The Customer Mission
 > *"Deliver clear, zero-guesswork guidance from session to session: telling the lifter exactly what exercise, what weight, and how many reps to lift today to guarantee progressive overload—regardless of whether they train in a full gym, at home with dumbbells/TRX, or in a hotel room with bodyweight, and without punishing them when real life interrupts their schedule."*

@@ -15,7 +15,7 @@ import {
 import {
   AthleteKnowledgeGraph,
   buildAthleteKnowledgeGraph,
-  HEADSTRONG_DESIGN_SYSTEM,
+  TREISE_DESIGN_SYSTEM,
   queryDesignSystemComponents,
   queryExerciseScienceKnowledgeBase,
 } from '../engine/knowledgeGraph';
@@ -378,7 +378,7 @@ export async function processAssistantMessage(
       details: { date: tomorrowStr },
     };
 
-    answerText = `Rest day logged! Your ${activeWorkout.splitDay} Day session has been held at the front of your queue for tomorrow. Because HeadStrong uses an asynchronous hypertrophy queue, skipping a calendar day carries zero penalty, preserves your ${profile.streakDays}-day streak, and lets your nervous system recover.`;
+    answerText = `Rest day logged! Your ${activeWorkout.splitDay} Day session has been held at the front of your queue for tomorrow. Because Treise uses an asynchronous hypertrophy queue, skipping a calendar day carries zero penalty, preserves your ${profile.streakDays}-day streak, and lets your nervous system recover.`;
 
     citations.push({
       label: 'Schedule',
@@ -468,7 +468,7 @@ export async function processAssistantMessage(
         if (scientificPrinciple.formula) {
           answerText += `Scientific Formula:\n${scientificPrinciple.formula}\n\n`;
         }
-        answerText += `How HeadStrong applies this:\n${scientificPrinciple.practicalApplication}\n\nAcademic Citation:\n${scientificPrinciple.academicCitation}`;
+        answerText += `How Treise applies this:\n${scientificPrinciple.practicalApplication}\n\nAcademic Citation:\n${scientificPrinciple.academicCitation}`;
 
         citations.push({
           label: scientificPrinciple.title,

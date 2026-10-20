@@ -16,7 +16,7 @@ function banner(title) {
   console.log(`\x1b[36m======================================================================\x1b[0m`);
 }
 
-console.log('\x1b[1m\x1b[35mHEADSTRONG AUTONOMOUS QA & PRODUCTION CERTIFICATION ENGINE\x1b[0m');
+console.log('\x1b[1m\x1b[35mTREISE AUTONOMOUS QA & PRODUCTION CERTIFICATION ENGINE\x1b[0m');
 console.log('Tree of Thoughts • Prompt Chaining • Recursive Self-Critique Verification\n');
 
 // ============================================================================
@@ -201,7 +201,7 @@ if (manifestPath) {
   assert(manifestObj.theme_color === '#060709', 'PWA theme_color is #060709 Obsidian');
 } else {
   const viteConfigSrc = fs.readFileSync(path.resolve(process.cwd(), 'vite.config.ts'), 'utf-8');
-  assert(viteConfigSrc.includes("short_name: 'HeadStrong'"), 'Vite PWA manifest defines short_name <= 12 chars');
+  assert(viteConfigSrc.includes("short_name: 'Treise'"), 'Vite PWA manifest defines short_name <= 12 chars');
   assert(viteConfigSrc.includes("display: 'standalone'"), 'Vite PWA manifest defines standalone display');
   assert(viteConfigSrc.includes("theme_color: '#060709'"), 'Vite PWA manifest defines Obsidian theme color');
 }
@@ -226,7 +226,7 @@ banner('BRANCH 5: Onboarding, First-Time-To-Value & Continuous Governance');
 
 const onboardingSrc = fs.readFileSync(path.resolve(process.cwd(), 'src/components/onboarding/OnboardingModal.tsx'), 'utf-8');
 assert(
-  onboardingSrc.includes('Welcome to HeadStrong') &&
+  onboardingSrc.includes('Welcome to Treise') &&
     onboardingSrc.includes('Choose your training split') &&
     onboardingSrc.includes('What is your main goal right now?') &&
     onboardingSrc.includes('Where do you train') &&
@@ -665,5 +665,5 @@ assert(
 
 console.log(`\n\x1b[32m\x1b[1m======================================================================\x1b[0m`);
 console.log(`\x1b[32m\x1b[1mALL 11 TREE-OF-THOUGHTS QA BRANCHES EVALUATED & FULLY CERTIFIED! 🏆\x1b[0m`);
-console.log(`\x1b[32mHeadStrong is 100% verified, production-ready, and Google Play Store publishable.\x1b[0m`);
+console.log(`\x1b[32mTreise is 100% verified, production-ready, and Google Play Store publishable.\x1b[0m`);
 console.log(`\x1b[32m\x1b[1m======================================================================\x1b[0m\n`);
