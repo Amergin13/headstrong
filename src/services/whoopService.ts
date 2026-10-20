@@ -43,8 +43,6 @@ export const WHOOP_CONFIG = {
     'read:cycles',
     'read:workout',
     'read:sleep',
-    'read:profile',
-    'read:body_measurement',
   ],
   REDIRECT_URI:
     typeof window !== 'undefined'
@@ -59,7 +57,7 @@ export async function initiateWhoopOAuth(
   clientId: string = WHOOP_CONFIG.CLIENT_ID,
   customRedirectUri?: string
 ): Promise<string> {
-  const state = `whoop_${generateAlphanumericString(24)}`;
+  const state = `whoop_${generateAlphanumericString(12)}`;
   const redirectUri = getWhoopRedirectUri(customRedirectUri);
 
   if (typeof window !== 'undefined') {
