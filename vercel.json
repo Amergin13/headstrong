@@ -3,8 +3,12 @@
   "trailingSlash": false,
   "rewrites": [
     {
-      "source": "/.well-known/assetlinks.json",
-      "destination": "/.well-known/assetlinks.json"
+      "source": "/.well-known/:path*",
+      "destination": "/.well-known/:path*"
+    },
+    {
+      "source": "/assets/:path*",
+      "destination": "/assets/:path*"
     },
     {
       "source": "/privacy",
@@ -15,11 +19,7 @@
       "destination": "/terms.html"
     },
     {
-      "source": "/oauth/callback",
-      "destination": "/index.html"
-    },
-    {
-      "source": "/((?!assets/|.*\\..*).*)",
+      "source": "/(.*)",
       "destination": "/index.html"
     }
   ],
