@@ -69,6 +69,7 @@ import {
   signInWithGoogleCredential,
   signInWithDemoGoogleAccount,
 } from './services/googleAuthService';
+import { Analytics } from '@vercel/analytics/react';
 
 export const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<TabId>('train');
@@ -940,6 +941,9 @@ export const App: React.FC = () => {
         isChatOpen={aiCoachOpen}
         onOpenAICoach={() => setAiCoachOpen(true)}
       />
+
+      {/* Vercel Web Analytics */}
+      <Analytics />
     </div>
   );
 };
