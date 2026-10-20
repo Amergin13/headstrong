@@ -22,7 +22,7 @@ plugins {
 
 def twaManifest = [
     applicationId: 'com.headstrong.app',
-    hostName: 'headstrong.app', // The domain being opened in the TWA.
+    hostName: 'treise.vercel.app', // The domain being opened in the TWA.
     launchUrl: '/', // The start path for the TWA. Must be relative to the domain.
     name: 'HeadStrong', // The application name.
     launcherName: 'HeadStrong', // The name shown on the Android Launcher.
@@ -57,7 +57,7 @@ android {
         applicationId "com.headstrong.app"
         minSdkVersion 24
         targetSdkVersion 36
-        versionCode 2
+        versionCode 4
         versionName "1.0.0"
 
         // The name for the application
@@ -76,12 +76,12 @@ android {
             // The URL the Web Manifest for the Progressive Web App that the TWA points to. This
             // is used by Chrome OS and Meta Quest to open the Web version of the PWA instead of
             // the TWA, as it will probably give a better user experience for non-mobile devices.
-            resValue "string", "webManifestUrl", 'http://127.0.0.1:8085/manifest.webmanifest'
+            resValue "string", "webManifestUrl", 'https://treise.vercel.app/manifest.webmanifest'
         
 
         
             // This is used by Meta Quest.
-            resValue "string", "fullScopeUrl", 'https://headstrong.app/'
+            resValue "string", "fullScopeUrl", 'https://treise.vercel.app/'
         
 
         

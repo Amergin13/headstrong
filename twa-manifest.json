@@ -1,6 +1,6 @@
 {
   "packageId": "com.headstrong.app",
-  "host": "headstrong.app",
+  "host": "treise.vercel.app",
   "name": "HeadStrong",
   "launcherName": "HeadStrong",
   "display": "standalone",
@@ -13,38 +13,38 @@
   "backgroundColor": "#060709",
   "enableNotifications": true,
   "startUrl": "/",
-  "iconUrl": "https://headstrong.app/pwa-512x512.png",
-  "maskableIconUrl": "https://headstrong.app/maskable-icon-512x512.png",
-  "monochromeIconUrl": "https://headstrong.app/headstrong-icon.svg",
+  "iconUrl": "https://treise.vercel.app/pwa-512x512.png",
+  "maskableIconUrl": "https://treise.vercel.app/maskable-icon-512x512.png",
+  "monochromeIconUrl": "https://treise.vercel.app/headstrong-icon.svg",
   "splashScreenFadeOutDuration": 300,
   "signingKey": {
     "path": "./android.keystore",
     "alias": "headstrong-release-key"
   },
   "appVersionName": "1.0.0",
-  "appVersionCode": 2,
+  "appVersionCode": 4,
   "shortcuts": [
     {
       "name": "Start Workout",
       "shortName": "Workout",
       "url": "/?tab=train",
-      "chosenIconUrl": "https://headstrong.app/pwa-192x192.png"
+      "chosenIconUrl": "https://treise.vercel.app/pwa-192x192.png"
     },
     {
       "name": "Sync Pixel Watch",
       "shortName": "Watch Sync",
       "url": "/?tab=program&action=watch-sync",
-      "chosenIconUrl": "https://headstrong.app/pwa-192x192.png"
+      "chosenIconUrl": "https://treise.vercel.app/pwa-192x192.png"
     },
     {
       "name": "Log Bodyweight",
       "shortName": "Log Weight",
       "url": "/?tab=analytics&action=log-weight",
-      "chosenIconUrl": "https://headstrong.app/pwa-192x192.png"
+      "chosenIconUrl": "https://treise.vercel.app/pwa-192x192.png"
     }
   ],
   "generatorApp": "bubblewrap-cli",
-  "webManifestUrl": "https://headstrong.app/manifest.webmanifest",
+  "webManifestUrl": "https://treise.vercel.app/manifest.webmanifest",
   "fallbackType": "customtabs",
   "features": {
     "playBilling": {
@@ -60,7 +60,7 @@
   "enableSiteSettingsShortcut": true,
   "isChromeOSOnly": false,
   "isMetaQuest": false,
-  "fullScopeUrl": "https://headstrong.app/",
+  "fullScopeUrl": "https://treise.vercel.app/",
   "minSdkVersion": 24,
   "targetSdkVersion": 35,
   "orientation": "portrait",
