@@ -246,6 +246,29 @@ export interface UserProfile {
   scheduledWeekLocations?: Record<number, TrainingLocation>; // Planned locations for future mesocycle weeks (e.g. week 5 -> 'travel')
   leaderboardOptIn?: boolean;
   leaderboardDisplayName?: string;
+  authUserId?: string;
+  email?: string;
+  avatarUrl?: string;
+  authProvider?: 'google' | 'supabase' | 'guest';
+  lastLoginAt?: string;
+}
+
+export interface AuthUser {
+  id: string;
+  email: string;
+  name: string;
+  avatarUrl?: string;
+  provider: 'google' | 'supabase' | 'guest';
+  idToken?: string;
+  accessToken?: string;
+  createdAt: string;
+}
+
+export interface AuthState {
+  isAuthenticated: boolean;
+  user: AuthUser | null;
+  isLoading: boolean;
+  error?: string | null;
 }
 
 export function isWearableConnected(profile?: UserProfile | null): boolean {

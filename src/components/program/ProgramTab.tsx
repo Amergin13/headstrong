@@ -26,6 +26,8 @@ import {
   ChevronUp,
   User,
   Watch,
+  LogIn,
+  CheckCircle2,
 } from 'lucide-react';
 import { triggerHaptic } from '../../utils/haptics';
 
@@ -38,6 +40,7 @@ interface ProgramTabProps {
   onTriggerInstallPwa?: () => void;
   onUpdateProfile: (updated: Partial<UserProfile>) => void;
   onOpenWatchSync?: () => void;
+  onOpenAuth?: () => void;
   onUpdateGoalPhase?: (phase: GoalPhase) => void;
   onSelectMesocycleWeek: (week: number) => void;
   onLaunchSplitDay: (split: SplitDayType) => void;
@@ -66,6 +69,7 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
   onTriggerInstallPwa,
   onUpdateProfile,
   onOpenWatchSync,
+  onOpenAuth,
   onUpdateGoalPhase,
   onSelectMesocycleWeek,
   onLaunchSplitDay,
@@ -78,7 +82,7 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
 }) => {
   const [showCreateExercise, setShowCreateExercise] = useState(false);
   const [showGovernanceModal, setShowGovernanceModal] = useState(false);
-  const [openSettingsSection, setOpenSettingsSection] = useState<'profile' | 'wearable' | 'data' | null>(null);
+  const [openSettingsSection, setOpenSettingsSection] = useState<'account' | 'profile' | 'wearable' | 'data' | null>(null);
   const [showPrivacyDetails, setShowPrivacyDetails] = useState(false);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -100,7 +104,7 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
     e.target.value = '';
   };
 
-  const toggleSection = (sec: 'profile' | 'wearable' | 'data') => {
+  const toggleSection = (sec: 'account' | 'profile' | 'wearable' | 'data') => {
     triggerHaptic('light');
     setOpenSettingsSection(openSettingsSection === sec ? null : sec);
   };
@@ -204,6 +208,88 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
         <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 px-1">
           Profile &amp; Data Settings
         </h3>
+
+        {/* 0. Account & Cloud Sync Accordion */}
+        <div className="rounded-3xl surface-glass overflow-hidden">
+          <button
+            type="button"
+            onClick={() => toggleSection('account')}
+            aria-expanded={openSettingsSection === 'account'}
+            className="w-full p-5 flex items-center justify-between text-left"
+          >
+            <div className="flex items-center space-x-3">
+              <div className="w-9 h-9 rounded-xl bg-white/[0.08] flex items-center justify-center text-brand-primary overflow-hidden">
+                {profile.avatarUrl ? (
+                  <img
+                    src={profile.avatarUrl}
+                    alt={profile.name}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <User className="w-4 h-4 stroke-[2]" />
+                )}
+              </div>
+              <div>
+                <div className="text-sm font-bold text-white flex items-center space-x-2">
+                  <span>Account &amp; Sync</span>
+                  {profile.email && (
+                    <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                  )}
+                </div>
+                <div className="text-xs text-slate-400">
+                  {profile.email
+                    ? `${profile.email} • Connected`
+                    : 'Guest Mode • Sign in with Google to sync'}
+                </div>
+              </div>
+            </div>
+            {openSettingsSection === 'account' ? (
+              <ChevronUp className="w-4 h-4 text-slate-400 stroke-[2]" />
+            ) : (
+              <ChevronDown className="w-4 h-4 text-slate-400 stroke-[2]" />
+            )}
+          </button>
+
+          {openSettingsSection === 'account' && (
+            <div className="px-5 pb-5 pt-1 space-y-3 text-xs">
+              <div className="p-3.5 rounded-2xl bg-[#090C12] space-y-2">
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-400">Account Status</span>
+                  <span className="font-semibold text-white flex items-center space-x-1.5">
+                    {profile.email ? (
+                      <>
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 stroke-[2]" />
+                        <span>Google Account</span>
+                      </>
+                    ) : (
+                      <span className="text-slate-300">Guest (Local Only)</span>
+                    )}
+                  </span>
+                </div>
+                {profile.email && (
+                  <div className="flex justify-between items-center">
+                    <span className="text-slate-400">Email</span>
+                    <span className="font-mono text-slate-200">{profile.email}</span>
+                  </div>
+                )}
+              </div>
+
+              {onOpenAuth && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    triggerHaptic('light');
+                    onOpenAuth();
+                  }}
+                  className="w-full py-3 rounded-2xl bg-[#141824] hover:bg-[#1C2233] text-xs font-bold text-white flex items-center justify-center space-x-2 transition-colors min-h-[44px]"
+                >
+                  <LogIn className="w-4 h-4 stroke-[2] text-brand-primary" />
+                  <span>{profile.email ? 'Manage Account & Sign Out' : 'Sign In with Google'}</span>
+                </button>
+              )}
+            </div>
+          )}
+        </div>
 
         {/* A. Athlete Profile & Heart Rate Zones Accordion */}
         <div className="rounded-3xl surface-glass overflow-hidden">

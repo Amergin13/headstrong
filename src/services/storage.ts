@@ -1,4 +1,5 @@
 import {
+  AuthUser,
   BiometricLog,
   ExerciseDefinition,
   StrengthPillar,
@@ -23,7 +24,34 @@ const KEYS = {
   WORKOUTS: 'headstrong_workouts_v3',
   ACTIVE_WORKOUT: 'headstrong_active_workout_v3',
   EXERCISES: 'headstrong_exercises_v3',
+  AUTH_USER: 'headstrong_auth_user_v1',
 };
+
+export function loadAuthUser(): AuthUser | null {
+  try {
+    const raw = localStorage.getItem(KEYS.AUTH_USER);
+    if (raw) return JSON.parse(raw);
+  } catch (e) {
+    console.error('Failed to load auth user:', e);
+  }
+  return null;
+}
+
+export function saveAuthUser(user: AuthUser | null): void {
+  try {
+    if (user) {
+      localStorage.setItem(KEYS.AUTH_USER, JSON.stringify(user));
+    } else {
+      localStorage.removeItem(KEYS.AUTH_USER);
+    }
+  } catch (e) {
+    console.error('Failed to save auth user:', e);
+  }
+}
+
+export function clearAuthUser(): void {
+  saveAuthUser(null);
+}
 
 export function loadProfile(): UserProfile {
   try {

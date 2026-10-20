@@ -19,6 +19,7 @@ interface CharacterTabProps {
   latestBiometrics: BiometricLog;
   weeklyVolume: Record<string, number>;
   onUpdateProfile?: (updated: Partial<UserProfile>) => void;
+  onOpenAuth?: () => void;
 }
 
 const GOAL_FRIENDLY_NAME: Record<GoalPhase, string> = {
@@ -36,6 +37,7 @@ export const CharacterTab: React.FC<CharacterTabProps> = ({
   latestBiometrics,
   weeklyVolume,
   onUpdateProfile,
+  onOpenAuth,
 }) => {
   const [subView, setSubView] = useState<AthleteSubView>('volume');
 
@@ -59,9 +61,26 @@ export const CharacterTab: React.FC<CharacterTabProps> = ({
       <div className="biometric-card p-5 sm:p-6 space-y-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3">
-            <div className="w-11 h-11 rounded-2xl bg-white/[0.08] flex items-center justify-center font-extrabold text-white text-base">
-              {profile.name.charAt(0)}
-            </div>
+            <button
+              type="button"
+              onClick={onOpenAuth}
+              disabled={!onOpenAuth}
+              className="relative w-12 h-12 rounded-2xl bg-white/[0.08] hover:bg-white/[0.14] flex items-center justify-center font-extrabold text-white text-base overflow-hidden transition-colors min-h-[44px] min-w-[44px]"
+              aria-label={profile.email ? `Account (${profile.email})` : 'Sign In with Google'}
+            >
+              {profile.avatarUrl ? (
+                <img
+                  src={profile.avatarUrl}
+                  alt={profile.name}
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                profile.name.charAt(0)
+              )}
+              {profile.email && (
+                <span className="absolute bottom-1 right-1 w-2.5 h-2.5 rounded-full bg-emerald-400 ring-2 ring-[#08090C]" />
+              )}
+            </button>
             <div>
               <div className="flex items-center space-x-2">
                 <h2 className="text-base font-extrabold text-white tracking-tight">
@@ -71,9 +90,26 @@ export const CharacterTab: React.FC<CharacterTabProps> = ({
                   Lv.{profile.level}
                 </span>
               </div>
-              <p className="text-xs text-slate-400 font-medium mt-0.5">
-                {bodyweightEmaKg} kg bodyweight (7-day average)
-              </p>
+              <div className="flex items-center space-x-2 mt-0.5">
+                <p className="text-xs text-slate-400 font-medium">
+                  {bodyweightEmaKg} kg bodyweight (7-day average)
+                </p>
+                {onOpenAuth && (
+                  <>
+                    <span className="text-slate-600">•</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        triggerHaptic('light');
+                        onOpenAuth();
+                      }}
+                      className="text-xs text-brand-primary hover:underline font-semibold"
+                    >
+                      {profile.email ? 'Account' : 'Sign in'}
+                    </button>
+                  </>
+                )}
+              </div>
             </div>
           </div>
 

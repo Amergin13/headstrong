@@ -13,6 +13,7 @@ import {
   WorkoutSession,
   WorkoutSet,
   WearableProvider,
+  AuthUser,
 } from './engine/types';
 import { calculateDailyReadiness } from './engine/readiness';
 import { getLatestBodyweightEma } from './engine/ema';
@@ -26,9 +27,11 @@ import { evaluateStrengthStandard } from './engine/strengthStandards';
 import {
   calculateBestPillarE1rms,
   calculateWeeklyMuscleVolume,
+  clearAuthUser,
   exportAllUserDataJSON,
   importUserDataJSON,
   loadActiveWorkout,
+  loadAuthUser,
   loadBiometrics,
   loadExercises,
   loadProfile,
@@ -36,6 +39,7 @@ import {
   permanentlyEraseAllUserData,
   resetAllToSeedData,
   saveActiveWorkout,
+  saveAuthUser,
   saveBiometrics,
   saveExercises,
   saveProfile,
@@ -60,6 +64,7 @@ import { ProgramTab } from './components/program/ProgramTab';
 import { WatchSyncModal } from './components/program/WatchSyncModal';
 import { OnboardingModal } from './components/onboarding/OnboardingModal';
 import { AICoachChatModal } from './components/assistant/AICoachChatModal';
+import { GoogleAuthModal } from './components/auth/GoogleAuthModal';
 
 export const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<TabId>('train');
@@ -76,6 +81,8 @@ export const App: React.FC = () => {
   const [restTimerOpen, setRestTimerOpen] = useState(false);
   const [watchModalOpen, setWatchModalOpen] = useState(false);
   const [aiCoachOpen, setAiCoachOpen] = useState(false);
+  const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [authUser, setAuthUser] = useState<AuthUser | null>(loadAuthUser);
   const [onboardingOpen, setOnboardingOpen] = useState(!profile.onboardingCompleted);
   const [onboardingInitialStep, setOnboardingInitialStep] = useState<1 | 2 | 3 | 4>(1);
   const [deferredInstallPrompt, setDeferredInstallPrompt] = useState<any>(null);
@@ -653,6 +660,50 @@ export const App: React.FC = () => {
     }));
   };
 
+  // Handler: Google / Supabase Auth Success
+  const handleAuthSuccess = (user: AuthUser) => {
+    setAuthUser(user);
+    saveAuthUser(user);
+    setProfile((prev) => {
+      const updated: UserProfile = {
+        ...prev,
+        name: user.name && user.name !== 'Athlete' ? user.name : prev.name,
+        email: user.email || prev.email,
+        avatarUrl: user.avatarUrl || prev.avatarUrl,
+        authUserId: user.id,
+        authProvider: user.provider,
+        lastLoginAt: new Date().toISOString(),
+      };
+      return updated;
+    });
+    setXpNotification({
+      amount: 0,
+      message: `Welcome, ${user.name || 'Athlete'}! Account connected.`,
+      bonusTag: 'Google Account',
+    });
+  };
+
+  // Handler: Sign Out
+  const handleSignOut = () => {
+    clearAuthUser();
+    setAuthUser(null);
+    setProfile((prev) => {
+      const updated: UserProfile = {
+        ...prev,
+        email: undefined,
+        avatarUrl: undefined,
+        authUserId: undefined,
+        authProvider: 'guest',
+      };
+      return updated;
+    });
+    setXpNotification({
+      amount: 0,
+      message: 'Signed out. Your workout history remains saved locally.',
+      bonusTag: 'Account',
+    });
+  };
+
   return (
     <div className="min-h-screen bg-surface-bg text-slate-100 flex flex-col font-sans">
       {/* App Header */}
@@ -661,6 +712,7 @@ export const App: React.FC = () => {
         readinessState={readiness.state}
         onOpenWatchSync={() => setWatchModalOpen(true)}
         onOpenAICoach={() => setAiCoachOpen(true)}
+        onOpenAuth={() => setAuthModalOpen(true)}
       />
 
       {/* Main Mobile Container */}
@@ -693,6 +745,7 @@ export const App: React.FC = () => {
             latestBiometrics={latestBiometrics}
             weeklyVolume={weeklyVolume}
             onUpdateProfile={(up) => setProfile((p) => ({ ...p, ...up }))}
+            onOpenAuth={() => setAuthModalOpen(true)}
           />
         )}
 
@@ -718,6 +771,7 @@ export const App: React.FC = () => {
             onTriggerInstallPwa={handleTriggerInstallPwa}
             onUpdateProfile={(up) => setProfile((p) => ({ ...p, ...up }))}
             onOpenWatchSync={() => setWatchModalOpen(true)}
+            onOpenAuth={() => setAuthModalOpen(true)}
             onSelectMesocycleWeek={handleSelectMesocycleWeek}
             onUpdateGoalPhase={(phase: GoalPhase) => {
               setProfile((p) => ({ ...p, goalPhase: phase }));
@@ -821,6 +875,16 @@ export const App: React.FC = () => {
           isModal={true}
         />
       )}
+
+      {/* Google Sign In & Account Modal */}
+      <GoogleAuthModal
+        currentUser={authUser}
+        profile={profile}
+        isOpen={authModalOpen}
+        onClose={() => setAuthModalOpen(false)}
+        onAuthSuccess={handleAuthSuccess}
+        onSignOut={handleSignOut}
+      />
 
       {/* XP Toast Notification */}
       {xpNotification && (

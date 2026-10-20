@@ -17,3 +17,10 @@ app/build/
 *.log
 .dist-test/
 .DS_Store
+
+# Android Packages & Environment Secrets
+*.aab
+*.apk
+.env*
+.github-backup/
+.github/

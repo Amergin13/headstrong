@@ -464,9 +464,24 @@ import {
   disconnectWearable,
 } from '../../services/wearableSyncService';
 import {
+  GOOGLE_AUTH_CONFIG,
+  decodeGoogleIdToken,
+  signInWithGoogleCredential,
+  signInWithDemoGoogleAccount,
+  signOutUser,
+  isSupabaseConfigured,
+  getSupabaseGoogleAuthUrl,
+} from '../../services/googleAuthService';
+import {
+  loadAuthUser,
+  saveAuthUser,
+  clearAuthUser,
+} from '../../services/storage';
+import {
   isWearableConnected,
   getActiveWearableProvider,
   UserProfile,
+  AuthUser,
 } from '../types';
 
 // Step A: Initialize 6-week seed dataset
@@ -2137,7 +2152,125 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
   const readinessFromHc = calculateDailyReadiness(hcSyncedLog, mockBiometrics);
   assert(readinessFromHc.state === 'Amber Shield', `Health Connect sync telemetry correctly triggers Amber Shield recovery`);
 
-  console.log('\nALL 26 ENGINE, GOVERNANCE, DESIGN HEURISTICS, TYPOGRAPHY, WEARABLES & GOOGLE PIXEL TENSOR AI SUITES PASSED SUCCESSFULLY! 🎯');
+  // --- SUITE 27: GOOGLE IDENTITY SERVICES, JWT CREDENTIALS & ACCOUNT SYNC ---
+  console.log('\n--- SUITE 27: GOOGLE IDENTITY SERVICES, JWT CREDENTIALS & ACCOUNT SYNC ---');
+
+  // 1. Google Auth Configuration Invariants
+  assert(
+    GOOGLE_AUTH_CONFIG.CLIENT_ID.includes('apps.googleusercontent.com') &&
+      GOOGLE_AUTH_CONFIG.REDIRECT_URI === 'https://treise.vercel.app' &&
+      GOOGLE_AUTH_CONFIG.SCOPES.includes('email') &&
+      GOOGLE_AUTH_CONFIG.SCOPES.includes('profile') &&
+      GOOGLE_AUTH_CONFIG.SCOPES.includes('openid'),
+    `Google Auth config binds to official GIS client with email, profile, and openid scopes`
+  );
+
+  // 2. Client-Side JWT Credential Decoder (Zero External Dependencies)
+  const base64UrlEncode = (obj: any) =>
+    Buffer.from(JSON.stringify(obj))
+      .toString('base64')
+      .replace(/=/g, '')
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_');
+
+  const testHeader = base64UrlEncode({ alg: 'RS256', typ: 'JWT' });
+  const testPayload = base64UrlEncode({
+    sub: 'google-sub-9876543210',
+    email: 'athlete@headstrong.fit',
+    name: 'Ben Taylor',
+    picture: 'https://lh3.googleusercontent.com/a/headstrong-athlete-avatar',
+    given_name: 'Ben',
+    family_name: 'Taylor',
+    exp: Math.floor(Date.now() / 1000) + 3600,
+  });
+  const mockValidJwt = `${testHeader}.${testPayload}.mockSignatureString`;
+
+  const parsedPayload = decodeGoogleIdToken(mockValidJwt);
+  assert(
+    parsedPayload !== null &&
+      parsedPayload.sub === 'google-sub-9876543210' &&
+      parsedPayload.email === 'athlete@headstrong.fit' &&
+      parsedPayload.name === 'Ben Taylor' &&
+      parsedPayload.picture === 'https://lh3.googleusercontent.com/a/headstrong-athlete-avatar',
+    `decodeGoogleIdToken correctly extracts subject ID, email, name, and profile picture from JWT`
+  );
+
+  const invalidJwtParsed = decodeGoogleIdToken('invalid.token');
+  assert(invalidJwtParsed === null, `decodeGoogleIdToken safely returns null for malformed JWT`);
+
+  // 3. Credential to AuthUser Conversion
+  const authUserFromJwt = signInWithGoogleCredential(mockValidJwt);
+  assert(
+    authUserFromJwt.provider === 'google' &&
+      authUserFromJwt.id === 'google-sub-9876543210' &&
+      authUserFromJwt.email === 'athlete@headstrong.fit' &&
+      authUserFromJwt.name === 'Ben Taylor' &&
+      authUserFromJwt.avatarUrl === 'https://lh3.googleusercontent.com/a/headstrong-athlete-avatar',
+    `signInWithGoogleCredential normalizes Google JWT into verified AuthUser`
+  );
+
+  // 4. Demo Account Sign-In (Instant Verification & Dev Testing)
+  const demoUser = signInWithDemoGoogleAccount();
+  assert(
+    demoUser.provider === 'google' &&
+      demoUser.email.includes('@') &&
+      demoUser.name.length > 0 &&
+      demoUser.avatarUrl !== undefined &&
+      demoUser.avatarUrl.length > 0,
+    `signInWithDemoGoogleAccount creates fully hydrated demo Google account`
+  );
+
+  // 5. Auth User Local Storage Persistence & Google Play Data Isolation
+  saveAuthUser(authUserFromJwt);
+  const loadedAuthUser = loadAuthUser();
+  assert(
+    loadedAuthUser !== null &&
+      loadedAuthUser.id === authUserFromJwt.id &&
+      loadedAuthUser.email === authUserFromJwt.email &&
+      loadedAuthUser.avatarUrl === authUserFromJwt.avatarUrl,
+    `saveAuthUser and loadAuthUser successfully persist account session locally`
+  );
+
+  clearAuthUser();
+  const clearedAuthUser = loadAuthUser();
+  assert(
+    clearedAuthUser === null,
+    `clearAuthUser cleanly wipes account session from localStorage`
+  );
+
+  // 6. Supabase Auth Bridge & Lovable Compatibility
+  const configured = isSupabaseConfigured();
+  assert(
+    typeof configured === 'boolean',
+    `isSupabaseConfigured cleanly returns boolean check for VITE_SUPABASE_URL`
+  );
+
+  const supabaseUrl = getSupabaseGoogleAuthUrl('https://example.supabase.co');
+  assert(
+    supabaseUrl !== null &&
+      supabaseUrl.includes('example.supabase.co/auth/v1/authorize') &&
+      supabaseUrl.includes('provider=google') &&
+      supabaseUrl.includes('redirect_to=https%3A%2F%2Ftreise.vercel.app'),
+    `getSupabaseGoogleAuthUrl returns valid OAuth authorize URL with provider=google and Vercel redirect`
+  );
+
+  // 7. User Profile Synchronization
+  const profileWithAuth: UserProfile = {
+    ...testProfile,
+    authUserId: authUserFromJwt.id,
+    email: authUserFromJwt.email,
+    avatarUrl: authUserFromJwt.avatarUrl,
+    authProvider: authUserFromJwt.provider,
+    lastLoginAt: new Date().toISOString(),
+  };
+  assert(
+    profileWithAuth.authUserId === 'google-sub-9876543210' &&
+      profileWithAuth.authProvider === 'google' &&
+      profileWithAuth.email === 'athlete@headstrong.fit',
+    `UserProfile successfully associates with authenticated Google account`
+  );
+
+  console.log('\nALL 27 ENGINE, GOVERNANCE, DESIGN HEURISTICS, TYPOGRAPHY, WEARABLES, GOOGLE AUTH & TENSOR AI SUITES PASSED SUCCESSFULLY! 🎯');
 })().catch((err) => {
   console.error('Test Suite Failed:', err);
   if (typeof process !== 'undefined' && process.exit) {
