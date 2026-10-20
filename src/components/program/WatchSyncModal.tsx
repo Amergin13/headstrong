@@ -12,9 +12,7 @@ import {
   syncWearableBiometrics,
   disconnectWearable,
 } from '../../services/wearableSyncService';
-import {
-  initiateFitbitOAuth,
-} from '../../services/fitbitService';
+import { initiateFitbitOAuth } from '../../services/fitbitService';
 import {
   initiateWhoopOAuth,
   getWhoopRedirectUri,
@@ -29,19 +27,11 @@ import {
   Watch,
   X,
   ExternalLink,
-  Zap,
-  Activity,
-  ShieldAlert,
-  ChevronDown,
-  ChevronUp,
   Cpu,
   RefreshCw,
   Upload,
   CheckCircle2,
   Unlink,
-  Copy,
-  Check,
-  Info,
 } from 'lucide-react';
 import { triggerHaptic } from '../../utils/haptics';
 
@@ -66,18 +56,6 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
   const [selectedProvider, setSelectedProvider] = useState<WearableProvider>(currentActiveProvider);
   const [syncProgress, setSyncProgress] = useState<WearableSyncProgress | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
-  const [showAdvancedOAuth, setShowAdvancedOAuth] = useState(false);
-  const [clientId, setClientId] = useState(
-    currentActiveProvider === 'whoop'
-      ? profile.whoopClientId || WHOOP_CONFIG.CLIENT_ID
-      : ''
-  );
-  const [clientSecret, setClientSecret] = useState(profile.whoopClientSecret || '');
-  const [redirectUri, setRedirectUri] = useState(
-    profile.whoopRedirectUri || getWhoopRedirectUri()
-  );
-  const [copiedRedirectUri, setCopiedRedirectUri] = useState(false);
-  const [oauthUrl, setOauthUrl] = useState<string | null>(null);
   const [importStatus, setImportStatus] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -86,18 +64,18 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
 
   const isProviderConnected =
     selectedProvider === 'fitbit'
-      ? profile.fitbitConnected
+      ? Boolean(profile.fitbitConnected)
       : selectedProvider === 'whoop'
-      ? profile.whoopConnected
-      : profile.healthConnectConnected;
+      ? Boolean(profile.whoopConnected)
+      : Boolean(profile.healthConnectConnected);
 
   const handleStartSync = async (stateOverride?: ReadinessState) => {
     setIsSyncing(true);
     triggerHaptic('medium');
     setSyncProgress({
       stage: 'connecting',
-      percent: 15,
-      message: `Connecting to ${providerMeta.name}...`,
+      percent: 20,
+      message: `Syncing with ${providerMeta.name}...`,
       provider: selectedProvider,
     });
 
@@ -121,7 +99,7 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
       setSyncProgress({
         stage: 'error',
         percent: 0,
-        message: `Could not sync data from ${providerMeta.name}.`,
+        message: `Could not sync data from ${providerMeta.name}. Please check your connection.`,
         provider: selectedProvider,
       });
     } finally {
@@ -129,23 +107,67 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
     }
   };
 
-  const handleConnectProvider = () => {
-    triggerHaptic('light');
-    if (onUpdateProfile) {
-      if (selectedProvider === 'fitbit') {
-        onUpdateProfile({ fitbitConnected: true, wearableSource: 'fitbit' });
-      } else if (selectedProvider === 'whoop') {
-        onUpdateProfile({ whoopConnected: true, wearableSource: 'whoop' });
-      } else if (selectedProvider === 'health_connect') {
-        onUpdateProfile({
-          healthConnectConnected: true,
-          wearableSource: 'health_connect',
-          healthConnectLastSync: new Date().toISOString(),
+  const handleConnectProvider = async () => {
+    triggerHaptic('medium');
+    setIsSyncing(true);
+
+    if (selectedProvider === 'whoop') {
+      try {
+        setSyncProgress({
+          stage: 'connecting',
+          percent: 25,
+          message: 'Connecting to Whoop 4.0...',
+          provider: 'whoop',
         });
+        const effectiveId = profile.whoopClientId || WHOOP_CONFIG.CLIENT_ID;
+        const effectiveUri = profile.whoopRedirectUri || getWhoopRedirectUri();
+        const url = await initiateWhoopOAuth(effectiveId, effectiveUri);
+        if (typeof window !== 'undefined') {
+          window.location.href = url;
+        }
+      } catch (err) {
+        console.error('Failed to initiate Whoop OAuth:', err);
+        setSyncProgress({
+          stage: 'error',
+          percent: 0,
+          message: 'Could not connect to Whoop. Please try again.',
+          provider: 'whoop',
+        });
+        setIsSyncing(false);
       }
+      return;
     }
-    // Also trigger initial sync
-    handleStartSync('Normal');
+
+    if (selectedProvider === 'fitbit') {
+      try {
+        setSyncProgress({
+          stage: 'connecting',
+          percent: 25,
+          message: 'Connecting to Pixel Watch / Fitbit...',
+          provider: 'fitbit',
+        });
+        const url = await initiateFitbitOAuth();
+        if (typeof window !== 'undefined') {
+          window.location.href = url;
+        }
+      } catch (err) {
+        console.error('Failed to initiate Fitbit OAuth:', err);
+        setSyncProgress({
+          stage: 'error',
+          percent: 0,
+          message: 'Could not connect to Fitbit. Please try again.',
+          provider: 'fitbit',
+        });
+        setIsSyncing(false);
+      }
+      return;
+    }
+
+    if (selectedProvider === 'health_connect') {
+      handleHealthConnectSettings();
+      setIsSyncing(false);
+      return;
+    }
   };
 
   const handleDisconnectProvider = () => {
@@ -154,43 +176,7 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
       const updates = disconnectWearable(selectedProvider, profile);
       onUpdateProfile(updates);
     }
-  };
-
-  const handleCopyRedirectUri = async () => {
-    triggerHaptic('light');
-    const uri = redirectUri.trim() || getWhoopRedirectUri();
-    try {
-      if (typeof navigator !== 'undefined' && navigator.clipboard) {
-        await navigator.clipboard.writeText(uri);
-        setCopiedRedirectUri(true);
-        setTimeout(() => setCopiedRedirectUri(false), 2200);
-      }
-    } catch (e) {
-      console.warn('Could not copy to clipboard:', e);
-    }
-  };
-
-  const handleGenerateOauth = async () => {
-    triggerHaptic('light');
-    if (selectedProvider === 'fitbit') {
-      const url = await initiateFitbitOAuth(clientId || undefined);
-      setOauthUrl(url);
-    } else if (selectedProvider === 'whoop') {
-      const effectiveId = clientId.trim() || profile.whoopClientId || WHOOP_CONFIG.CLIENT_ID;
-      const effectiveUri = redirectUri.trim() || getWhoopRedirectUri();
-      if (onUpdateProfile) {
-        onUpdateProfile({
-          whoopClientId: effectiveId,
-          whoopClientSecret: clientSecret.trim() || undefined,
-          whoopRedirectUri: effectiveUri,
-        });
-      }
-      const url = await initiateWhoopOAuth(effectiveId, effectiveUri);
-      setOauthUrl(url);
-      if (typeof window !== 'undefined') {
-        window.location.href = url;
-      }
-    }
+    setSyncProgress(null);
   };
 
   const handleHealthConnectSettings = () => {
@@ -198,6 +184,14 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
     const result = openHealthConnectSettings();
     if (!result.launched) {
       setImportStatus('Health Connect is available on Android 14+ devices. You can also import data files below.');
+    } else {
+      if (onUpdateProfile) {
+        onUpdateProfile({
+          healthConnectConnected: true,
+          wearableSource: 'health_connect',
+          healthConnectLastSync: new Date().toISOString(),
+        });
+      }
     }
   };
 
@@ -213,20 +207,27 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
         if (parsed.length > 0) {
           const latest = parsed[parsed.length - 1];
           onSyncCompleted(latest, 'health_connect');
-          setImportStatus(`Successfully imported ${parsed.length} Health Connect records!`);
+          if (onUpdateProfile) {
+            onUpdateProfile({
+              healthConnectConnected: true,
+              wearableSource: 'health_connect',
+              healthConnectLastSync: new Date().toISOString(),
+            });
+          }
+          setImportStatus(`Imported ${parsed.length} biometric records from Health Connect.`);
           triggerHaptic('success');
         } else {
-          setImportStatus('No valid biometric records found in file.');
+          setImportStatus('No biometric records found in file.');
         }
       } catch {
-        setImportStatus('Failed to parse file. Please upload valid JSON.');
+        setImportStatus('Failed to read file. Please ensure it is a valid Health Connect JSON export.');
       }
     };
     reader.readAsText(file);
   };
 
   const content = (
-    <div className="rounded-3xl bg-[#0E1219] p-5 sm:p-6 space-y-4 shadow-xl">
+    <div className="rounded-3xl bg-[#0E1219] p-5 sm:p-6 space-y-4 shadow-xl border border-white/[0.04]">
       {/* Header & Close */}
       <div className="flex items-center justify-between">
         <div className="flex items-center space-x-3">
@@ -238,7 +239,7 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
               Wearable & Recovery Sync
             </h3>
             <p className="text-xs text-slate-400">
-              Drive daily training intensity and recovery scores
+              Auto-regulate daily training loads with biometric telemetry
             </p>
           </div>
         </div>
@@ -256,9 +257,8 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
       </div>
 
       {/* Provider Selector Tabs */}
-      <div className="grid grid-cols-3 gap-1.5 p-1 rounded-2xl bg-[#090C12]">
+      <div className="grid grid-cols-3 gap-1.5 p-1 rounded-2xl bg-[#090C12] border border-white/[0.04]">
         {(['fitbit', 'whoop', 'health_connect'] as const).map((prov) => {
-          const meta = WEARABLE_PROVIDERS[prov];
           const isSelected = selectedProvider === prov;
           const isConnected =
             prov === 'fitbit'
@@ -280,15 +280,8 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
               onClick={() => {
                 triggerHaptic('light');
                 setSelectedProvider(prov);
-                setOauthUrl(null);
                 setImportStatus(null);
-                if (prov === 'whoop') {
-                  setClientId(profile.whoopClientId || WHOOP_CONFIG.CLIENT_ID);
-                  setClientSecret(profile.whoopClientSecret || '');
-                } else {
-                  setClientId('');
-                  setClientSecret('');
-                }
+                setSyncProgress(null);
               }}
               className={`py-2 px-1.5 rounded-xl text-xs font-semibold flex flex-col items-center justify-center transition-all min-h-[44px] ${
                 isSelected
@@ -306,77 +299,69 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
       </div>
 
       {/* Selected Provider Card */}
-      <div className="p-4 rounded-2xl bg-[#090C12] text-xs space-y-2.5">
+      <div className="p-4 rounded-2xl bg-[#090C12] text-xs space-y-3 border border-white/[0.04]">
         <div className="flex justify-between items-center">
           <div>
             <div className="font-bold text-white text-sm">{providerMeta.name}</div>
             <div className="text-slate-400 text-xs">{providerMeta.hardwareFocus}</div>
           </div>
           {isProviderConnected ? (
-            <span className="flex items-center space-x-1.5 text-emerald-400 font-semibold px-2.5 py-1 rounded-full bg-emerald-500/10">
+            <span className="flex items-center space-x-1.5 text-emerald-400 font-semibold px-2.5 py-1 rounded-full bg-emerald-500/10 text-xs">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span>Connected</span>
+              <span>Connected & Active</span>
             </span>
           ) : (
-            <span className="text-slate-400 px-2.5 py-1 rounded-full bg-white/[0.04]">
+            <span className="text-slate-400 text-xs px-2.5 py-1 rounded-full bg-white/[0.04]">
               Not Connected
             </span>
           )}
         </div>
 
-        <div className="pt-2 border-t border-white/[0.04] grid grid-cols-2 gap-2">
-          <div>
-            <span className="text-slate-400 block">Last Night&apos;s HRV</span>
-            <span className="font-mono text-white font-semibold">
-              {latestBiometrics.hrvRmssd} ms
-            </span>
+        {/* Dynamic State: Connected Metrics vs Not-Connected Description */}
+        {isProviderConnected ? (
+          <div className="pt-2 border-t border-white/[0.04] grid grid-cols-2 gap-2.5">
+            <div className="p-2.5 rounded-xl bg-black/30">
+              <span className="text-slate-400 block text-xs">Last Night&apos;s HRV</span>
+              <span className="font-mono text-white font-semibold text-sm">
+                {latestBiometrics.hrvRmssd} ms
+              </span>
+            </div>
+            <div className="p-2.5 rounded-xl bg-black/30">
+              <span className="text-slate-400 block text-xs">Resting Heart Rate</span>
+              <span className="font-mono text-white font-semibold text-sm">
+                {latestBiometrics.restingHr} bpm
+              </span>
+            </div>
+            <div className="p-2.5 rounded-xl bg-black/30">
+              <span className="text-slate-400 block text-xs">Sleep Duration</span>
+              <span className="font-mono text-white font-semibold text-sm">
+                {latestBiometrics.sleepHours} hrs
+              </span>
+            </div>
+            <div className="p-2.5 rounded-xl bg-black/30">
+              <span className="text-slate-400 block text-xs">Daily Steps</span>
+              <span className="font-mono text-white font-semibold text-sm">
+                {latestBiometrics.steps.toLocaleString()}
+              </span>
+            </div>
           </div>
-          <div>
-            <span className="text-slate-400 block">Resting Heart Rate</span>
-            <span className="font-mono text-white font-semibold">
-              {latestBiometrics.restingHr} bpm
-            </span>
+        ) : (
+          <div className="pt-2 border-t border-white/[0.04]">
+            <p className="text-xs text-slate-300 leading-relaxed">
+              {selectedProvider === 'whoop' &&
+                'Sync your overnight recovery score, HRV, resting heart rate, and sleep duration automatically to calibrate your daily training volume and RIR targets.'}
+              {selectedProvider === 'fitbit' &&
+                'Sync your daily active zone minutes, resting heart rate, and sleep staging directly from your Google Pixel Watch or Fitbit tracker.'}
+              {selectedProvider === 'health_connect' &&
+                'Sync unified biometric records directly from Android Health Connect on your phone.'}
+            </p>
           </div>
-          <div>
-            <span className="text-slate-400 block">Sleep Duration</span>
-            <span className="font-mono text-white font-semibold">
-              {latestBiometrics.sleepHours} hrs
-            </span>
-          </div>
-          <div>
-            <span className="text-slate-400 block">Daily Steps</span>
-            <span className="font-mono text-white font-semibold">
-              {latestBiometrics.steps.toLocaleString()}
-            </span>
-          </div>
-        </div>
+        )}
       </div>
-
-      {/* Primary Action Button */}
-      {isProviderConnected ? (
-        <button
-          type="button"
-          disabled={isSyncing}
-          onClick={() => handleStartSync()}
-          className="w-full py-3.5 rounded-2xl bg-white hover:bg-slate-100 text-slate-950 font-bold text-xs flex items-center justify-center space-x-2 shadow-lg shadow-white/5 active:scale-95 transition-all min-h-[44px] disabled:opacity-50"
-        >
-          <RefreshCw className={`w-4 h-4 stroke-[2.2] text-slate-950 ${isSyncing ? 'animate-spin' : ''}`} />
-          <span>Sync {providerMeta.name} Now</span>
-        </button>
-      ) : (
-        <button
-          type="button"
-          onClick={handleConnectProvider}
-          className="w-full py-3.5 rounded-2xl bg-white hover:bg-slate-100 text-slate-950 font-bold text-xs flex items-center justify-center space-x-2 shadow-lg shadow-white/5 active:scale-95 transition-all min-h-[44px]"
-        >
-          <CheckCircle2 className="w-4 h-4 stroke-[2.2] text-emerald-600" />
-          <span>Connect {providerMeta.name}</span>
-        </button>
-      )}
 
       {/* Sync Progress Bar */}
       {syncProgress && (
-        <div className="p-4 rounded-2xl bg-[#090C12] text-xs space-y-2">
+        <div className="p-3.5 rounded-2xl bg-[#090C12] text-xs space-y-2 border border-white/[0.04]">
           <div className="flex justify-between items-center">
             <span className="text-brand-primary font-medium">{syncProgress.message}</span>
             <span className="font-mono font-bold text-brand-primary">{syncProgress.percent}%</span>
@@ -390,282 +375,86 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
         </div>
       )}
 
-      {/* Preview Recovery Modes */}
+      {/* Action Buttons */}
       <div className="space-y-2">
-        <span className="text-xs font-semibold text-slate-300 block">
-          Test Recovery Telemetry
-        </span>
-        <div className="grid grid-cols-3 gap-2">
-          <button
-            type="button"
-            disabled={isSyncing}
-            onClick={() => handleStartSync('Primed')}
-            className="py-3 px-2 rounded-2xl bg-[#141824] hover:bg-[#1C2233] text-xs font-bold text-brand-primary flex flex-col items-center justify-center transition-all disabled:opacity-50 min-h-[44px]"
-          >
-            <Zap className="w-4 h-4 mb-1 stroke-[2]" />
-            <span>Primed (+15%)</span>
-          </button>
-
-          <button
-            type="button"
-            disabled={isSyncing}
-            onClick={() => handleStartSync('Normal')}
-            className="py-3 px-2 rounded-2xl bg-[#141824] hover:bg-[#1C2233] text-xs font-bold text-white flex flex-col items-center justify-center transition-all disabled:opacity-50 min-h-[44px]"
-          >
-            <Activity className="w-4 h-4 mb-1 stroke-[2]" />
-            <span>Normal</span>
-          </button>
-
-          <button
-            type="button"
-            disabled={isSyncing}
-            onClick={() => handleStartSync('Amber Shield')}
-            className="py-3 px-2 rounded-2xl bg-[#141824] hover:bg-[#1C2233] text-xs font-bold text-amber-400 flex flex-col items-center justify-center transition-all disabled:opacity-50 min-h-[44px]"
-          >
-            <ShieldAlert className="w-4 h-4 mb-1 stroke-[2]" />
-            <span>Recovery Mode</span>
-          </button>
-        </div>
-      </div>
-
-      {/* Provider Details & Configuration */}
-      <div className="pt-2 border-t border-white/[0.04] space-y-2">
         {selectedProvider === 'health_connect' ? (
           <div className="space-y-2">
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={handleHealthConnectSettings}
-                className="flex-1 py-2.5 px-3 rounded-xl bg-[#141824] hover:bg-[#1C2233] text-xs font-semibold text-white flex items-center justify-center space-x-1.5 transition-colors min-h-[44px]"
-              >
-                <span>{isAndroidPlatform() ? 'Health Connect Settings' : 'Android App Details'}</span>
-                <ExternalLink className="w-3.5 h-3.5 stroke-[2] text-cyan-400" />
-              </button>
+            <button
+              type="button"
+              onClick={handleHealthConnectSettings}
+              className="w-full py-3.5 rounded-2xl bg-white hover:bg-slate-100 text-slate-950 font-bold text-xs flex items-center justify-center space-x-2 shadow-lg shadow-white/5 active:scale-95 transition-all min-h-[44px]"
+            >
+              <span>{isAndroidPlatform() ? 'Open Health Connect Settings' : 'Connect Android Health'}</span>
+              <ExternalLink className="w-4 h-4 stroke-[2.2] text-slate-950" />
+            </button>
 
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                className="py-2.5 px-3 rounded-xl bg-[#141824] hover:bg-[#1C2233] text-xs font-semibold text-white flex items-center justify-center space-x-1.5 transition-colors min-h-[44px]"
-              >
-                <Upload className="w-3.5 h-3.5 stroke-[2] text-cyan-400" />
-                <span>Import JSON</span>
-              </button>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="application/json"
-                onChange={handleFileImport}
-                className="hidden"
-                aria-label="Upload Health Connect JSON export"
-              />
-            </div>
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="w-full py-2.5 px-3 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] text-xs font-semibold text-slate-300 hover:text-white flex items-center justify-center space-x-1.5 transition-colors min-h-[44px]"
+            >
+              <Upload className="w-3.5 h-3.5 stroke-[2] text-brand-primary" />
+              <span>Import Health Export (JSON)</span>
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="application/json"
+              onChange={handleFileImport}
+              className="hidden"
+              aria-label="Upload Health Connect JSON export"
+            />
             {importStatus && (
-              <p className="text-xs text-slate-300 p-2.5 rounded-xl bg-[#090C12]">
+              <p className="text-xs text-slate-300 p-2.5 rounded-xl bg-[#090C12] border border-white/[0.04]">
                 {importStatus}
               </p>
             )}
           </div>
-        ) : (
-          <div>
+        ) : isProviderConnected ? (
+          <div className="space-y-2">
             <button
               type="button"
-              onClick={() => setShowAdvancedOAuth(!showAdvancedOAuth)}
-              aria-expanded={showAdvancedOAuth}
-              className="w-full flex items-center justify-between text-xs text-slate-400 hover:text-white py-1"
+              disabled={isSyncing}
+              onClick={() => handleStartSync()}
+              className="w-full py-3.5 rounded-2xl bg-white hover:bg-slate-100 text-slate-950 font-bold text-xs flex items-center justify-center space-x-2 shadow-lg shadow-white/5 active:scale-95 transition-all min-h-[44px] disabled:opacity-50"
             >
-              <span className="font-semibold">
-                Connect Live {selectedProvider === 'fitbit' ? 'Fitbit' : 'Whoop'} API
-              </span>
-              {showAdvancedOAuth ? (
-                <ChevronUp className="w-4 h-4 stroke-[2]" />
-              ) : (
-                <ChevronDown className="w-4 h-4 stroke-[2]" />
-              )}
+              <RefreshCw className={`w-4 h-4 stroke-[2.2] text-slate-950 ${isSyncing ? 'animate-spin' : ''}`} />
+              <span>Sync {providerMeta.name} Now</span>
             </button>
 
-            {showAdvancedOAuth && (
-              <div className="mt-2 space-y-2.5">
-                {selectedProvider === 'whoop' ? (
-                  <div className="p-3 rounded-xl bg-[#090C12] border border-white/[0.04] space-y-2 text-xs">
-                    <div className="flex items-start space-x-2 text-slate-300">
-                      <Info className="w-4 h-4 text-brand-primary shrink-0 mt-0.5 stroke-[2]" />
-                      <div className="space-y-1">
-                        <span className="font-semibold text-white block">
-                          WHOOP Developer Portal Setup
-                        </span>
-                        <p className="text-slate-400 text-xs leading-relaxed">
-                          <strong className="text-white">Webhooks are optional:</strong> You do{' '}
-                          <em>not</em> need a webhook to connect WHOOP. Leave the Webhooks section
-                          blank in the WHOOP portal and tap{' '}
-                          <span className="text-emerald-400 font-medium">[CREATE APP]</span>.
-                        </p>
-                      </div>
-                    </div>
-
-                    {/* Redirect URI Row */}
-                    <div className="pt-2 border-t border-white/[0.04] space-y-1.5">
-                      <div className="flex justify-between items-center">
-                        <span className="text-slate-400 block font-medium">Redirect URI:</span>
-                        <span className="text-slate-400 text-xs">Must match WHOOP dashboard</span>
-                      </div>
-                      <div className="flex items-center space-x-1.5">
-                        <input
-                          type="text"
-                          value={redirectUri}
-                          onChange={(e) => setRedirectUri(e.target.value)}
-                          placeholder="https://treise.vercel.app/oauth/whoop/callback"
-                          aria-label="WHOOP Redirect URI"
-                          className="flex-1 py-2 px-2.5 rounded-lg bg-black/40 text-slate-200 font-mono text-xs border border-white/[0.04] focus:ring-1 focus:ring-brand-primary focus:outline-none"
-                        />
-                        <button
-                          type="button"
-                          onClick={handleCopyRedirectUri}
-                          className="px-2.5 py-2 min-h-[38px] rounded-lg bg-white/[0.08] hover:bg-white/[0.14] text-white text-xs font-semibold flex items-center space-x-1 transition-colors shrink-0"
-                          title="Copy Redirect URI to clipboard"
-                        >
-                          {copiedRedirectUri ? (
-                            <>
-                              <Check className="w-3.5 h-3.5 text-emerald-400 stroke-[2.2]" />
-                              <span className="text-emerald-400">Copied</span>
-                            </>
-                          ) : (
-                            <>
-                              <Copy className="w-3.5 h-3.5 stroke-[2]" />
-                              <span>Copy</span>
-                            </>
-                          )}
-                        </button>
-                      </div>
-
-                      {/* Quick Presets */}
-                      <div className="flex flex-wrap gap-1.5 pt-0.5">
-                        <button
-                          type="button"
-                          onClick={() => setRedirectUri('https://treise.vercel.app/oauth/whoop/callback')}
-                          className={`py-1 px-2 rounded-md font-mono text-xs transition-colors ${
-                            redirectUri === 'https://treise.vercel.app/oauth/whoop/callback'
-                              ? 'bg-brand-primary/20 text-brand-primary border border-brand-primary/30'
-                              : 'bg-white/[0.04] text-slate-400 hover:text-white'
-                          }`}
-                        >
-                          Production (/callback)
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setRedirectUri('https://treise.vercel.app')}
-                          className={`py-1 px-2 rounded-md font-mono text-xs transition-colors ${
-                            redirectUri === 'https://treise.vercel.app'
-                              ? 'bg-brand-primary/20 text-brand-primary border border-brand-primary/30'
-                              : 'bg-white/[0.04] text-slate-400 hover:text-white'
-                          }`}
-                        >
-                          Root (/treise.vercel.app)
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setRedirectUri('http://localhost:5173/oauth/whoop/callback')}
-                          className={`py-1 px-2 rounded-md font-mono text-xs transition-colors ${
-                            redirectUri === 'http://localhost:5173/oauth/whoop/callback'
-                              ? 'bg-brand-primary/20 text-brand-primary border border-brand-primary/30'
-                              : 'bg-white/[0.04] text-slate-400 hover:text-white'
-                          }`}
-                        >
-                          Localhost:5173
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Client Credentials Inputs */}
-                    <div className="space-y-1.5 pt-1">
-                      <span className="text-slate-400 block font-medium">WHOOP Client ID:</span>
-                      <input
-                        type="text"
-                        value={clientId}
-                        onChange={(e) => setClientId(e.target.value)}
-                        placeholder="Paste your WHOOP Client ID"
-                        aria-label="WHOOP Client ID"
-                        className="w-full py-2.5 px-3 rounded-xl bg-black/40 text-white font-mono text-xs border border-white/[0.04] focus:ring-1 focus:ring-brand-primary focus:outline-none"
-                      />
-
-                      <span className="text-slate-400 block font-medium pt-1">
-                        WHOOP Client Secret (Optional):
-                      </span>
-                      <input
-                        type="password"
-                        value={clientSecret}
-                        onChange={(e) => setClientSecret(e.target.value)}
-                        placeholder="Paste Client Secret if provided"
-                        aria-label="WHOOP Client Secret"
-                        className="w-full py-2.5 px-3 rounded-xl bg-black/40 text-white font-mono text-xs border border-white/[0.04] focus:ring-1 focus:ring-brand-primary focus:outline-none"
-                      />
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={handleGenerateOauth}
-                      className="w-full py-2.5 min-h-[44px] rounded-xl bg-brand-primary hover:bg-brand-primary/90 text-slate-950 font-bold text-xs flex items-center justify-center space-x-1.5 transition-all shadow-sm"
-                    >
-                      <span>Authorize WHOOP 4.0</span>
-                      <ExternalLink className="w-3.5 h-3.5 stroke-[2.2]" />
-                    </button>
-                  </div>
-                ) : (
-                  <div className="flex space-x-2">
-                    <input
-                      type="text"
-                      value={clientId}
-                      onChange={(e) => setClientId(e.target.value)}
-                      placeholder="Fitbit Client ID"
-                      aria-label="Fitbit Client ID"
-                      className="flex-1 py-2.5 px-3 rounded-xl bg-[#090C12] text-white font-mono text-xs focus:ring-1 focus:ring-brand-primary focus:outline-none"
-                    />
-                    <button
-                      type="button"
-                      onClick={handleGenerateOauth}
-                      className="px-3.5 py-2.5 min-h-[44px] rounded-xl bg-white/[0.08] hover:bg-white/[0.14] text-white text-xs font-semibold flex items-center space-x-1.5 transition-colors"
-                    >
-                      <span>Authorize</span>
-                      <ExternalLink className="w-3.5 h-3.5 stroke-[2]" />
-                    </button>
-                  </div>
-                )}
-
-                {oauthUrl && (
-                  <div className="p-3 rounded-xl bg-[#090C12] text-xs break-all text-slate-300">
-                    <span className="text-brand-primary font-semibold block mb-0.5">
-                      Authorization Link:
-                    </span>
-                    <a
-                      href={oauthUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-cyan-400 underline font-mono flex items-center space-x-1"
-                    >
-                      <span>Open {selectedProvider === 'fitbit' ? 'Fitbit' : 'Whoop'} Authorization</span>
-                      <ExternalLink className="w-3 h-3 stroke-[2]" />
-                    </a>
-                  </div>
-                )}
-              </div>
-            )}
+            <button
+              type="button"
+              onClick={handleDisconnectProvider}
+              className="w-full py-2.5 text-xs text-rose-400 hover:text-rose-300 flex items-center justify-center space-x-1.5 transition-colors min-h-[44px]"
+            >
+              <Unlink className="w-3.5 h-3.5 stroke-[2]" />
+              <span>Disconnect {providerMeta.name}</span>
+            </button>
           </div>
-        )}
-
-        {/* Disconnect Provider Action */}
-        {isProviderConnected && (
+        ) : (
           <button
             type="button"
-            onClick={handleDisconnectProvider}
-            className="w-full py-2.5 text-xs text-rose-400 hover:text-rose-300 flex items-center justify-center space-x-1.5 transition-colors"
+            disabled={isSyncing}
+            onClick={handleConnectProvider}
+            className="w-full py-3.5 rounded-2xl bg-white hover:bg-slate-100 text-slate-950 font-bold text-xs flex items-center justify-center space-x-2 shadow-lg shadow-white/5 active:scale-95 transition-all min-h-[44px] disabled:opacity-50"
           >
-            <Unlink className="w-3.5 h-3.5 stroke-[2]" />
-            <span>Disconnect {providerMeta.name}</span>
+            {isSyncing ? (
+              <>
+                <RefreshCw className="w-4 h-4 stroke-[2.2] text-slate-950 animate-spin" />
+                <span>Connecting to {providerMeta.name}...</span>
+              </>
+            ) : (
+              <>
+                <CheckCircle2 className="w-4 h-4 stroke-[2.2] text-emerald-600" />
+                <span>Connect {providerMeta.name}</span>
+              </>
+            )}
           </button>
         )}
       </div>
 
       {/* Privacy Guarantee */}
-      <div className="p-3.5 rounded-2xl bg-[#090C12] text-xs text-slate-400 flex items-center space-x-2">
+      <div className="p-3.5 rounded-2xl bg-[#090C12] text-xs text-slate-400 flex items-center space-x-2 border border-white/[0.04]">
         <Cpu className="w-4 h-4 text-emerald-400 shrink-0 stroke-[2]" />
         <span>100% On-Device Privacy: Wearable metrics are evaluated locally on your phone.</span>
       </div>
