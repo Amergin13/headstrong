@@ -148,11 +148,20 @@ android {
         resValue "bool", "enableSiteSettingsShortcut", twaManifest.enableSiteSettingsShortcut
         resValue "string", "orientation", twaManifest.orientation
 
-        
+    }
+
+    signingConfigs {
+        release {
+            storeFile file("${project.rootDir}/android.keystore")
+            storePassword "headstrong2026"
+            keyAlias "headstrong-release-key"
+            keyPassword "headstrong2026"
+        }
     }
     buildTypes {
         release {
             minifyEnabled true
+            signingConfig signingConfigs.release
         }
     }
     compileOptions {
