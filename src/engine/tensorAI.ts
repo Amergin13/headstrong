@@ -99,10 +99,28 @@ export async function detectPixelTensorHardware(
   let detectedModel = clientHintsModelOverride || '';
   const ua = userAgentOverride || (typeof navigator !== 'undefined' ? navigator.userAgent : '');
 
+  // 1b. Check for saved user preference in browser localStorage
+  if (!detectedModel && typeof localStorage !== 'undefined') {
+    try {
+      const storedPref = localStorage.getItem('treise_hardware_preference');
+      if (storedPref === 'google_tensor' || storedPref === 'pixel') {
+        detectedModel = 'Google Pixel 9 Pro';
+      }
+    } catch {
+      // Ignore localStorage errors
+    }
+  }
+
   // 2. Query High-Entropy Client Hints if available in browser
   if (!detectedModel && typeof navigator !== 'undefined' && (navigator as any).userAgentData?.getHighEntropyValues) {
     try {
-      const hints = await (navigator as any).userAgentData.getHighEntropyValues(['model', 'platform', 'architecture', 'modelId']);
+      const hints = await (navigator as any).userAgentData.getHighEntropyValues([
+        'model',
+        'platform',
+        'platformVersion',
+        'architecture',
+        'modelId',
+      ]);
       if (hints.model) {
         detectedModel = hints.model;
       }
@@ -123,17 +141,22 @@ export async function detectPixelTensorHardware(
 
   // 4. Query WebGL renderer for ARM Mali GPU signature matching Google Tensor
   let gpuRenderer = webglRendererOverride || '';
+  let gpuVendor = '';
   if (!gpuRenderer && typeof document !== 'undefined') {
     try {
       const canvas = document.createElement('canvas');
-      const gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
+      const gl = (canvas.getContext('webgl2') || canvas.getContext('webgl')) as WebGLRenderingContext | null;
       if (gl) {
         const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
         if (debugInfo) {
           gpuRenderer = gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL) || '';
+          gpuVendor = gl.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL) || '';
         }
         if (!gpuRenderer) {
           gpuRenderer = gl.getParameter(gl.RENDERER) || '';
+        }
+        if (!gpuVendor) {
+          gpuVendor = gl.getParameter(gl.VENDOR) || '';
         }
       }
     } catch {
@@ -142,12 +165,17 @@ export async function detectPixelTensorHardware(
   }
 
   // 4b. Query WebGPU adapter for Mali / Tensor GPU signature
-  if (!gpuRenderer && typeof navigator !== 'undefined' && (navigator as any).gpu?.requestAdapter) {
+  if (typeof navigator !== 'undefined' && (navigator as any).gpu?.requestAdapter) {
     try {
       const adapter = await (navigator as any).gpu.requestAdapter();
       if (adapter?.info) {
         const aInfo = adapter.info;
-        gpuRenderer = `${aInfo.vendor || ''} ${aInfo.architecture || ''} ${aInfo.device || ''} ${aInfo.description || ''}`;
+        const gpuInfoStr = `${aInfo.vendor || ''} ${aInfo.architecture || ''} ${aInfo.device || ''} ${aInfo.description || ''}`;
+        if (!gpuRenderer) {
+          gpuRenderer = gpuInfoStr;
+        } else {
+          gpuRenderer = `${gpuRenderer} ${gpuInfoStr}`;
+        }
       }
     } catch {
       // WebGPU check suppressed
@@ -155,48 +183,80 @@ export async function detectPixelTensorHardware(
   }
 
   // 4c. Android Pixel Screen Dimension & DPR Fingerprinting (handles Chrome User-Agent Reduction)
-  const isAndroidEnvironment = /Android/i.test(ua) || (typeof navigator !== 'undefined' && (navigator as any).userAgentData?.platform === 'Android');
+  const isAndroidEnvironment =
+    /Android/i.test(ua) ||
+    (typeof navigator !== 'undefined' && (navigator as any).userAgentData?.platform === 'Android');
+
   if (!detectedModel && isAndroidEnvironment && typeof window !== 'undefined' && typeof screen !== 'undefined') {
     const w = Math.min(screen.width, screen.height);
     const h = Math.max(screen.width, screen.height);
     const dpr = window.devicePixelRatio || 1;
 
+    const isWidthAround = (target: number, tol = 4) => Math.abs(w - target) <= tol;
+    const isHeightAround = (target: number, tol = 8) => Math.abs(h - target) <= tol;
+
     // Pixel 9 Pro XL & 8 Pro (448 x 998, DPR ~2.8-3.0)
-    if (w === 448 && h === 998) {
+    if (isWidthAround(448, 5) && (isHeightAround(998, 12) || isHeightAround(992, 12))) {
       detectedModel = dpr >= 2.9 ? 'Google Pixel 9 Pro XL' : 'Google Pixel 8 Pro';
     }
     // Pixel 9 Pro (427 x 960, DPR ~3.0)
-    else if (w === 427 && h === 960) {
+    else if (isWidthAround(427, 5) && (isHeightAround(960, 12) || isHeightAround(952, 12))) {
       detectedModel = 'Google Pixel 9 Pro';
     }
-    // Pixel 9, 8, 8a, 7, 7a (412 x 915, DPR ~2.625)
-    else if (w === 412 && h === 915 && dpr >= 2.5) {
-      detectedModel = 'Google Pixel 9';
+    // Pixel 9, 8, 8a, 7, 7a, 6, 6a (411/412 x 914/915, DPR ~2.625)
+    else if (isWidthAround(412, 4) && (isHeightAround(915, 10) || isHeightAround(914, 10)) && dpr >= 2.4) {
+      detectedModel = dpr >= 2.6 ? 'Google Pixel 9' : 'Google Pixel 8';
     }
-    // Pixel 7 Pro, 6 Pro (412 x 892, DPR ~3.5)
-    else if (w === 412 && h === 892 && dpr >= 3.2) {
+    // Pixel 7 Pro, 6 Pro (411/412 x 891/892, DPR ~3.5)
+    else if (isWidthAround(412, 4) && (isHeightAround(892, 10) || isHeightAround(891, 10)) && dpr >= 3.0) {
       detectedModel = 'Google Pixel 7 Pro';
+    }
+    // Pixel Fold / Pixel 9 Pro Fold (Inner: ~840 x 700 / Outer: ~412 x 892)
+    else if (
+      (isWidthAround(840, 20) && isHeightAround(700, 20)) ||
+      (isWidthAround(700, 20) && isHeightAround(840, 20))
+    ) {
+      detectedModel = 'Google Pixel Fold';
+    }
+    // Pixel Tablet (1280 x 800)
+    else if (
+      (isWidthAround(1280, 20) && isHeightAround(800, 20)) ||
+      (isWidthAround(800, 20) && isHeightAround(1280, 20))
+    ) {
+      detectedModel = 'Google Pixel Tablet';
     }
   }
 
   // 5. Match detected model and GPU to Google Tensor generations
-  const isPixel = /Pixel/i.test(detectedModel) || /Pixel/i.test(ua) || /Mali-G7(?:8|10|15|20)/i.test(gpuRenderer);
+  const combinedGpu = `${gpuRenderer} ${gpuVendor}`;
+  const isPixel =
+    /Pixel/i.test(detectedModel) ||
+    /Pixel/i.test(ua) ||
+    /Mali-G7(?:8|10|15|20)/i.test(combinedGpu) ||
+    (isAndroidEnvironment && /(?:Tensor|Google)/i.test(combinedGpu)) ||
+    (isAndroidEnvironment && /Mali-G/i.test(combinedGpu) && typeof window !== 'undefined' && window.devicePixelRatio >= 2.5);
 
   if (isPixel) {
-    if (/Pixel\s*9/i.test(detectedModel) || /Pixel\s*9/i.test(ua) || /Mali-G720/i.test(gpuRenderer)) {
-      return buildProfileForChip('Google Tensor G4', detectedModel || 'Google Pixel 9');
+    if (/Pixel\s*9/i.test(detectedModel) || /Pixel\s*9/i.test(ua) || /Mali-G720/i.test(combinedGpu)) {
+      return buildProfileForChip('Google Tensor G4', detectedModel || 'Google Pixel 9 Pro');
     }
-    if (/Pixel\s*8/i.test(detectedModel) || /Pixel\s*8/i.test(ua) || /Mali-G715/i.test(gpuRenderer)) {
-      return buildProfileForChip('Google Tensor G3', detectedModel || 'Google Pixel 8');
+    if (/Pixel\s*8/i.test(detectedModel) || /Pixel\s*8/i.test(ua) || /Mali-G715/i.test(combinedGpu)) {
+      return buildProfileForChip('Google Tensor G3', detectedModel || 'Google Pixel 8 Pro');
     }
-    if (/Pixel\s*7/i.test(detectedModel) || /Pixel\s*Fold/i.test(detectedModel) || /Pixel\s*Tablet/i.test(detectedModel) || /Pixel\s*7/i.test(ua) || /Mali-G710/i.test(gpuRenderer)) {
-      return buildProfileForChip('Google Tensor G2', detectedModel || 'Google Pixel 7');
+    if (
+      /Pixel\s*7/i.test(detectedModel) ||
+      /Pixel\s*Fold/i.test(detectedModel) ||
+      /Pixel\s*Tablet/i.test(detectedModel) ||
+      /Pixel\s*7/i.test(ua) ||
+      /Mali-G710/i.test(combinedGpu)
+    ) {
+      return buildProfileForChip('Google Tensor G2', detectedModel || 'Google Pixel 7 Pro');
     }
-    if (/Pixel\s*6/i.test(detectedModel) || /Pixel\s*6/i.test(ua) || /Mali-G78/i.test(gpuRenderer)) {
-      return buildProfileForChip('Google Tensor G1', detectedModel || 'Google Pixel 6');
+    if (/Pixel\s*6/i.test(detectedModel) || /Pixel\s*6/i.test(ua) || /Mali-G78/i.test(combinedGpu)) {
+      return buildProfileForChip('Google Tensor G1', detectedModel || 'Google Pixel 6 Pro');
     }
-    // Generic Pixel with Tensor
-    return buildProfileForChip('Google Tensor G3', detectedModel || 'Google Pixel');
+    // Default to flagship Tensor G4 for Google Pixel devices
+    return buildProfileForChip('Google Tensor G4', detectedModel || 'Google Pixel 9');
   }
 
   // Non-Pixel device: standard local-first execution

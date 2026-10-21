@@ -1152,8 +1152,77 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
     `Tensor Biomechanical Matcher scores DB Bench Press at ${matchResult.compatibilityScore}% with optimal stimulus`
   );
 
-  // I. Simulation Override Mode
+  // I. Client Hints & High-Entropy Model Detection
+  const chPixel9 = await detectPixelTensorHardware(undefined, 'Pixel 9 Pro');
+  assert(
+    chPixel9.isPixelDevice === true && chPixel9.chipModel === 'Google Tensor G4',
+    'Client hints model Pixel 9 Pro correctly maps to Google Tensor G4 TPU'
+  );
+
+  const chPixel8 = await detectPixelTensorHardware(undefined, 'Pixel 8 Pro');
+  assert(
+    chPixel8.isPixelDevice === true && chPixel8.chipModel === 'Google Tensor G3',
+    'Client hints model Pixel 8 Pro correctly maps to Google Tensor G3 TPU'
+  );
+
+  const chPixel7 = await detectPixelTensorHardware(undefined, 'Pixel 7 Pro');
+  assert(
+    chPixel7.isPixelDevice === true && chPixel7.chipModel === 'Google Tensor G2',
+    'Client hints model Pixel 7 Pro correctly maps to Google Tensor G2 NPU'
+  );
+
+  const chPixel6 = await detectPixelTensorHardware(undefined, 'Pixel 6 Pro');
+  assert(
+    chPixel6.isPixelDevice === true && chPixel6.chipModel === 'Google Tensor G1',
+    'Client hints model Pixel 6 Pro correctly maps to Google Tensor G1 GPU'
+  );
+
+  // J. WebGL ARM Mali GPU Signatures
+  const maliG710 = await detectPixelTensorHardware(undefined, undefined, 'Mali-G710 MP7');
+  assert(
+    maliG710.isPixelDevice === true && maliG710.chipModel === 'Google Tensor G2',
+    'Mali-G710 correctly maps to Google Tensor G2'
+  );
+
+  const maliG78 = await detectPixelTensorHardware(undefined, undefined, 'Mali-G78 MP20');
+  assert(
+    maliG78.isPixelDevice === true && maliG78.chipModel === 'Google Tensor G1',
+    'Mali-G78 correctly maps to Google Tensor G1'
+  );
+
+  // K. Bottom-Nav AI Coach Execution on Tensor Hardware
   setTensorSimulationOverride(true, 'Google Tensor G4');
+  const tensorCoachMsg = await processAssistantMessage({
+    userMessage: 'What is my bench press target today?',
+    profile: SAMPLE_DEMO_PROFILE,
+    activeWorkout: pushW3,
+    workouts: [pushW3],
+    biometrics: [
+      {
+        date: new Date().toISOString().split('T')[0],
+        bodyweightKg: 80,
+        restingHr: 54,
+        hrvRmssd: 68,
+        sleepHours: 8.0,
+        steps: 9000,
+        activeZoneMinutes: 45,
+      },
+    ],
+    exerciseCatalog: SEED_EXERCISES,
+    bodyweightEmaKg: 80,
+    readinessState: 'Primed',
+  });
+
+  assert(
+    tensorCoachMsg.message.isTensorAccelerated === true,
+    'Bottom-nav AI Coach message sets isTensorAccelerated: true when Google Tensor hardware is active'
+  );
+  assert(
+    Boolean(tensorCoachMsg.message.backend?.includes('Tensor') || tensorCoachMsg.message.backend?.includes('TPU')),
+    `Bottom-nav AI Coach backend identifies Tensor TPU execution (got "${tensorCoachMsg.message.backend}")`
+  );
+
+  // L. Simulation Override Mode
   const simulated = await detectPixelTensorHardware('Generic User Agent');
   assert(
     simulated.isPixelDevice === true && simulated.chipModel === 'Google Tensor G4',

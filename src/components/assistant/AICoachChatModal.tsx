@@ -76,7 +76,22 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
   useEffect(() => {
     let isMounted = true;
     getTensorHardwareProfile().then((hw) => {
-      if (isMounted) setHardware(hw);
+      if (isMounted) {
+        setHardware(hw);
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === 'msg-welcome'
+              ? {
+                  ...m,
+                  isTensorAccelerated: hw.isPixelDevice,
+                  backend: hw.isPixelDevice
+                    ? `${hw.chipModel} TPU • On-Device`
+                    : 'On-Device Engine',
+                }
+              : m
+          )
+        );
+      }
     });
 
     // Initial contextual welcome message
@@ -221,7 +236,13 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
         {/* Header */}
         <div className="p-4 sm:p-5 bg-[#141824] flex items-center justify-between">
           <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 rounded-2xl bg-brand-primary/15 flex items-center justify-center text-brand-primary">
+            <div
+              className={`w-10 h-10 rounded-2xl flex items-center justify-center transition-colors ${
+                hardware.isPixelDevice
+                  ? 'bg-brand-primary/20 text-brand-primary'
+                  : 'bg-brand-primary/15 text-brand-primary'
+              }`}
+            >
               <Cpu className="w-5 h-5 stroke-[2]" />
             </div>
             <div>
@@ -229,10 +250,25 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
                 <h3 id="ai-coach-title" className="font-bold text-sm text-white tracking-tight">
                   AI Coach
                 </h3>
+                {hardware.isPixelDevice && (
+                  <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-brand-primary/15 text-brand-primary flex items-center gap-1 border border-brand-primary/20">
+                    <Zap className="w-3 h-3 stroke-[2]" />
+                    <span>Tensor Active</span>
+                  </span>
+                )}
               </div>
               <p className="text-xs text-slate-400 flex items-center gap-1.5 mt-0.5">
-                <ShieldCheck className="w-3.5 h-3.5 text-emerald-400 stroke-[2]" />
-                <span>Private &amp; Personalized</span>
+                {hardware.isPixelDevice ? (
+                  <>
+                    <Zap className="w-3.5 h-3.5 text-brand-primary stroke-[2]" />
+                    <span className="text-slate-300">Hardware Accelerated • Private</span>
+                  </>
+                ) : (
+                  <>
+                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-400 stroke-[2]" />
+                    <span>Private &amp; Personalized</span>
+                  </>
+                )}
               </p>
             </div>
           </div>
@@ -358,10 +394,16 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
                     </div>
                   )}
 
-                  {/* Message Timestamp */}
+                  {/* Message Timestamp & Hardware Acceleration Badge */}
                   {!isUser && (
                     <div className="flex items-center justify-between text-xs text-slate-400 pt-1">
                       <span>{msg.timestamp}</span>
+                      {msg.isTensorAccelerated && (
+                        <span className="flex items-center gap-1 text-brand-primary text-xs font-semibold">
+                          <Zap className="w-3 h-3 stroke-[2]" />
+                          <span>Hardware Accelerated</span>
+                        </span>
+                      )}
                     </div>
                   )}
                 </div>

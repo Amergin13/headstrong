@@ -9,8 +9,10 @@ import { SevenPillarRadar } from './SevenPillarRadar';
 import { VolumeTracker } from './VolumeTracker';
 import { XPLeaderboardCard } from './XPLeaderboardCard';
 import { calculateDotsScore } from '../../engine/dots';
-import { Flame, Zap } from 'lucide-react';
+import { Flame, Zap, Cpu } from 'lucide-react';
 import { triggerHaptic } from '../../utils/haptics';
+import { getTensorHardwareProfile } from '../../services/tensorAIService';
+import { TensorHardwareProfile } from '../../engine/tensorAI';
 
 interface CharacterTabProps {
   profile: UserProfile;
@@ -40,6 +42,11 @@ export const CharacterTab: React.FC<CharacterTabProps> = ({
   onOpenAuth,
 }) => {
   const [subView, setSubView] = useState<AthleteSubView>('volume');
+  const [hardwareProfile, setHardwareProfile] = React.useState<TensorHardwareProfile | null>(null);
+
+  React.useEffect(() => {
+    getTensorHardwareProfile().then(setHardwareProfile);
+  }, []);
 
   const squat = pillarBestE1rm.Squat || Math.round(bodyweightEmaKg * 0.75 * 10) / 10;
   const bench =
@@ -250,6 +257,37 @@ export const CharacterTab: React.FC<CharacterTabProps> = ({
                 </p>
               </div>
             </div>
+          </div>
+
+          {/* On-Device Hardware & Local AI Processing Card */}
+          <div className="rounded-3xl surface-glass p-5 sm:p-6 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <Cpu className="w-4 h-4 text-brand-primary stroke-[2]" />
+                <h3 className="text-sm font-bold text-white">
+                  On-Device Processing
+                </h3>
+              </div>
+              <span
+                className={`text-xs font-bold px-2.5 py-1 rounded-full flex items-center gap-1 border ${
+                  hardwareProfile?.isPixelDevice
+                    ? 'bg-brand-primary/15 text-brand-primary border-brand-primary/20'
+                    : 'bg-white/[0.08] text-slate-300 border-white/[0.06]'
+                }`}
+              >
+                {hardwareProfile?.isPixelDevice && <Zap className="w-3 h-3 stroke-[2]" />}
+                <span>
+                  {hardwareProfile?.isPixelDevice
+                    ? 'Google Tensor Active'
+                    : 'Standard Engine'}
+                </span>
+              </span>
+            </div>
+            <p className="text-xs text-slate-400 leading-snug">
+              {hardwareProfile?.isPixelDevice
+                ? 'Your AI Coach executes locally on your Pixel processor. 100% private, on-device telemetry with zero subscription fees.'
+                : 'All workout progression and recovery computations execute locally on your device with complete privacy.'}
+            </p>
           </div>
         </div>
       ) : (
