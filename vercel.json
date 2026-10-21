@@ -19,7 +19,7 @@
         },
         {
           "key": "Content-Disposition",
-          "value": "attachment; filename=\"treise-v1.0.3.apk\""
+          "value": "attachment; filename=\"treise-v1.0.4.apk\""
         },
         {
           "key": "Cache-Control",
@@ -36,7 +36,7 @@
         },
         {
           "key": "Content-Disposition",
-          "value": "attachment; filename=\"treise-v1.0.3.aab\""
+          "value": "attachment; filename=\"treise-v1.0.4.aab\""
         },
         {
           "key": "Cache-Control",

@@ -56,9 +56,9 @@ android {
     defaultConfig {
         applicationId "com.headstrong.app"
         minSdkVersion 24
-        targetSdkVersion 35
-        versionCode 10
-        versionName "1.0.3"
+        targetSdkVersion 36
+        versionCode 11
+        versionName "1.0.4"
 
         // The name for the application
         resValue "string", "appName", twaManifest.name

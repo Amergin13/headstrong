@@ -133,8 +133,8 @@ const twaManifest = JSON.parse(
   fs.readFileSync(path.resolve(process.cwd(), 'twa-manifest.json'), 'utf8')
 );
 assert(
-  twaManifest.targetSdkVersion >= 35,
-  `twa-manifest.json targets Android 15 (targetSdkVersion: ${twaManifest.targetSdkVersion} >= 35)`
+  twaManifest.targetSdkVersion >= 36,
+  `twa-manifest.json targets Android 16 (targetSdkVersion: ${twaManifest.targetSdkVersion} >= 36)`
 );
 assert(
   twaManifest.packageId === 'com.headstrong.app',
