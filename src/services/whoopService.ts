@@ -690,6 +690,8 @@ export function parseWhoopCsvExport(csvText: string): BiometricLog[] {
   const rhrIdx = findCol('resting heart rate (rhr) (bpm)', 'resting heart rate', 'rhr');
   const strainIdx = findCol('day strain', 'strain');
   const sleepDurationIdx = findCol('asleep duration', 'asleep duration (min)', 'asleep duration (ms)', 'total sleep time');
+  const avgHrIdx = findCol('average heart rate (bpm)', 'average heart rate', 'avg heart rate', 'avg hr');
+  const maxHrIdx = findCol('max heart rate (bpm)', 'max heart rate', 'peak heart rate', 'max hr');
 
   const logs: BiometricLog[] = [];
 
@@ -707,6 +709,8 @@ export function parseWhoopCsvExport(csvText: string): BiometricLog[] {
     let rhr = rhrIdx >= 0 ? parseFloat(cols[rhrIdx]) : NaN;
     let strain = strainIdx >= 0 ? parseFloat(cols[strainIdx]) : NaN;
     let sleepDuration = sleepDurationIdx >= 0 ? parseFloat(cols[sleepDurationIdx]) : NaN;
+    let avgHr = avgHrIdx >= 0 ? parseFloat(cols[avgHrIdx]) : NaN;
+    let maxHr = maxHrIdx >= 0 ? parseFloat(cols[maxHrIdx]) : NaN;
 
     if (isNaN(hrv)) hrv = 60;
     if (isNaN(rhr)) rhr = 58;
@@ -734,6 +738,8 @@ export function parseWhoopCsvExport(csvText: string): BiometricLog[] {
       steps,
       activeZoneMinutes: azm,
       vo2Max: 46.0,
+      avgWorkoutHr: !isNaN(avgHr) && avgHr > 0 ? Math.round(avgHr) : undefined,
+      maxWorkoutHr: !isNaN(maxHr) && maxHr > 0 ? Math.round(maxHr) : undefined,
     });
   }
 

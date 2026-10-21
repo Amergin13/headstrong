@@ -390,6 +390,15 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
                   {latestBiometrics.steps.toLocaleString()}
                 </span>
               </div>
+              {latestBiometrics.avgWorkoutHr && (
+                <div className="p-2.5 rounded-xl bg-black/30 col-span-2 flex justify-between items-center">
+                  <span className="text-slate-400 text-xs">Workout Heart Rate</span>
+                  <span className="font-mono text-cyan-400 font-semibold text-sm">
+                    {latestBiometrics.avgWorkoutHr} bpm avg
+                    {latestBiometrics.maxWorkoutHr ? ` (${latestBiometrics.maxWorkoutHr} peak)` : ''}
+                  </span>
+                </div>
+              )}
             </div>
           </div>
         ) : (

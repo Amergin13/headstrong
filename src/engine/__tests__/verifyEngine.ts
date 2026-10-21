@@ -2198,6 +2198,16 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
     `Whoop CSV export parser extracts HRV, Resting HR, Day Strain, and maps to BiometricLog correctly`
   );
 
+  const sampleWhoopCsvWithHr = `Cycle start time,Cycle end time,Heart Rate Variability (HRV) (ms),Resting Heart Rate (RHR) (bpm),Recovery score (%),Day Strain,Energy burned (kcal),Average Heart Rate (bpm),Max Heart Rate (bpm)
+2026-10-19 06:30:00,2026-10-20 06:15:00,72.4,49,82,14.2,2450,138,168`;
+  const parsedWhoopLogsWithHr = parseWhoopCsvExport(sampleWhoopCsvWithHr);
+  assert(
+    parsedWhoopLogsWithHr.length === 1 &&
+      parsedWhoopLogsWithHr[0].avgWorkoutHr === 138 &&
+      parsedWhoopLogsWithHr[0].maxWorkoutHr === 168,
+    'Whoop CSV export parser extracts Average Heart Rate (138 bpm) and Max Heart Rate (168 bpm)'
+  );
+
   // 4. Universal Wearable Sync Coordinator & Multi-Provider State
   assert(
     WEARABLE_PROVIDERS.fitbit.name.includes('Pixel Watch') &&
