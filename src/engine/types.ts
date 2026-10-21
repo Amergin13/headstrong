@@ -357,7 +357,8 @@ export type DesignSystemComponentCategory =
   | 'modal'
   | 'badge'
   | 'toggle'
-  | 'layout';
+  | 'layout'
+  | 'navigation';
 
 export interface DesignSystemComponent {
   id: string;

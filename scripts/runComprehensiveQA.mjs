@@ -451,16 +451,24 @@ assert(
 
 const headerSrc = fs.readFileSync(path.resolve(process.cwd(), 'src/components/common/Header.tsx'), 'utf-8');
 assert(
-  !headerSrc.includes('title="AI Coach"') &&
-    !headerSrc.includes('title="Google Pixel Watch Sync"'),
-  'Header.tsx has cleanly removed the AI and Watch icons for a decluttered app bar'
+  !headerSrc.includes('onOpenAICoach') &&
+    !headerSrc.includes('Open AI Coach') &&
+    !headerSrc.includes('Coach'),
+  'Header.tsx enforces zero AI Coach icons, pills, or buttons for a decluttered header'
 );
 
-const tensorCardSrc = fs.readFileSync(path.resolve(process.cwd(), 'src/components/train/TensorAICoachCard.tsx'), 'utf-8');
+const currentTrainTabSrc = fs.readFileSync(path.resolve(process.cwd(), 'src/components/train/TrainTab.tsx'), 'utf-8');
 assert(
-  tensorCardSrc.includes('Chat with AI Coach') &&
-    tensorCardSrc.includes('onOpenChat'),
-  'TensorAICoachCard.tsx offers 1-tap entry to chat with the on-device assistant directly from active training'
+  !currentTrainTabSrc.includes('TensorAICoachCard') &&
+    !currentTrainTabSrc.includes('onOpenAICoach'),
+  'TrainTab.tsx enforces zero dedicated AI Coach cards in the workout view'
+);
+
+const knowledgeGraphSrc = fs.readFileSync(path.resolve(process.cwd(), 'src/engine/knowledgeGraph.ts'), 'utf-8');
+assert(
+  knowledgeGraphSrc.includes('sp-ai-coach-single-entry-invariant') &&
+    knowledgeGraphSrc.includes('ds-ai-coach-navigation-rule'),
+  'Knowledge Graph codifies mandatory rule: bottom nav is the exclusive entry point to the AI coach'
 );
 
 assert(
@@ -482,7 +490,6 @@ assert(
 // ============================================================================
 banner('BRANCH 9: Exercise Science Knowledge Base & Zero-Hallucination Audit');
 
-const knowledgeGraphSrc = fs.readFileSync(path.resolve(process.cwd(), 'src/engine/knowledgeGraph.ts'), 'utf-8');
 assert(
   knowledgeGraphSrc.includes('EXERCISE_SCIENCE_KNOWLEDGE_BASE') &&
     knowledgeGraphSrc.includes('queryExerciseScienceKnowledgeBase') &&
@@ -509,6 +516,7 @@ const principleIds = [
   'sp-asynchronous-queue',
   'sp-wci',
   'sp-tensor-ai',
+  'sp-ai-coach-single-entry-invariant',
 ];
 
 for (const pId of principleIds) {

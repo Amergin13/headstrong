@@ -13,7 +13,6 @@ import {
 } from '../../engine/types';
 import { ReadinessEvaluation } from '../../engine/readiness';
 import { ReadinessBanner } from './ReadinessBanner';
-import { TensorAICoachCard } from './TensorAICoachCard';
 import { ExerciseCard } from './ExerciseCard';
 import { ExerciseSwapModal } from './ExerciseSwapModal';
 import { PlateCalculatorModal } from './PlateCalculatorModal';
@@ -82,7 +81,6 @@ interface TrainTabProps {
   onFinishWorkout: (whoopTelemetry?: WhoopWorkoutStrainSummary) => void;
   onShiftWorkout: () => void;
   onSwitchLocation?: (location: TrainingLocation) => void;
-  onOpenAICoach?: () => void;
   onOpenWatchSync?: () => void;
 }
 
@@ -115,7 +113,6 @@ export const TrainTab: React.FC<TrainTabProps> = ({
   onFinishWorkout,
   onShiftWorkout,
   onSwitchLocation,
-  onOpenAICoach,
   onOpenWatchSync,
 }) => {
   const [swappingExercise, setSwappingExercise] = useState<ExerciseSession | null>(null);
@@ -720,7 +717,6 @@ export const TrainTab: React.FC<TrainTabProps> = ({
           tensorHardware={tensorHardware}
           mesoWeek={mesoWeek}
           goalPhase={profile.goalPhase}
-          onOpenChat={onOpenAICoach}
         >
           <div className="space-y-1.5">
             <div className="flex items-center space-x-2">
@@ -739,29 +735,6 @@ export const TrainTab: React.FC<TrainTabProps> = ({
           </div>
         </ReadinessBanner>
       </div>
-
-      {/* On-Device AI Coach Card */}
-      {tensorInsight && tensorHardware && (
-        <TensorAICoachCard
-          insight={tensorInsight}
-          hardware={tensorHardware}
-          contextInput={{
-            workoutSession: activeWorkout,
-            readinessState: readiness.state,
-            readinessZScore: readiness.score,
-            hrvRmssd: latestBiometrics.hrvRmssd,
-            restingHr: latestBiometrics.restingHr,
-            sleepHours: latestBiometrics.sleepHours,
-            goalPhase: profile.goalPhase,
-            mesocycleWeek: mesoWeek,
-            location: currentLoc,
-            recoveryScore: latestBiometrics.recoveryScore,
-            workoutStrain: latestBiometrics.workoutStrain,
-          }}
-          onRefreshHardware={loadTensorAI}
-          onOpenChat={onOpenAICoach}
-        />
-      )}
 
       {/* 3. Exercise Cards with Clear Step Numbers & "Target vs. Last Time" */}
       <div className="space-y-4 sm:space-y-5">

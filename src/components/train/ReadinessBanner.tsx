@@ -2,7 +2,7 @@ import React from 'react';
 import { ReadinessEvaluation } from '../../engine/readiness';
 import { BiometricLog, GoalPhase, ReadinessState } from '../../engine/types';
 import { TensorCoachingInsight, TensorHardwareProfile } from '../../engine/tensorAI';
-import { Watch, MessageSquare } from 'lucide-react';
+import { Watch } from 'lucide-react';
 import { triggerHaptic } from '../../utils/haptics';
 import { BiometricCircularGauge } from '../common/BiometricCircularGauge';
 
@@ -16,7 +16,6 @@ export interface ReadinessBannerProps {
   tensorHardware?: TensorHardwareProfile | null;
   mesoWeek?: number;
   goalPhase?: GoalPhase;
-  onOpenChat?: () => void;
   children?: React.ReactNode;
 }
 
@@ -27,7 +26,6 @@ export const ReadinessBanner: React.FC<ReadinessBannerProps> = ({
   onOpenWatchSync,
   tensorInsight,
   mesoWeek = 1,
-  onOpenChat,
   children,
 }) => {
   const hasWatchData =
@@ -142,22 +140,6 @@ export const ReadinessBanner: React.FC<ReadinessBannerProps> = ({
                     {latestBiometrics.hrvRmssd} ms HRV
                   </span>
                 )}
-              </div>
-            )}
-            {onOpenChat && (
-              <div className="pt-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    triggerHaptic('light');
-                    onOpenChat();
-                  }}
-                  className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-white/[0.06] hover:bg-white/[0.12] text-xs font-semibold text-slate-200 hover:text-white transition-colors min-h-[44px]"
-                  aria-label="Ask AI Coach"
-                >
-                  <MessageSquare className="w-3.5 h-3.5 text-brand-primary stroke-[2]" />
-                  <span>Ask AI Coach</span>
-                </button>
               </div>
             )}
           </div>

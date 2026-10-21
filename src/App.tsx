@@ -1004,7 +1004,6 @@ export const App: React.FC = () => {
         profile={profile}
         readinessState={readiness.state}
         onOpenWatchSync={() => setWatchModalOpen(true)}
-        onOpenAICoach={() => setAiCoachOpen(true)}
         onOpenAuth={() => setAuthModalOpen(true)}
       />
 
@@ -1025,7 +1024,6 @@ export const App: React.FC = () => {
             onFinishWorkout={handleFinishWorkout}
             onShiftWorkout={handleShiftWorkout}
             onSwitchLocation={handleSwitchTrainingLocation}
-            onOpenAICoach={() => setAiCoachOpen(true)}
             onOpenWatchSync={() => setWatchModalOpen(true)}
           />
         )}

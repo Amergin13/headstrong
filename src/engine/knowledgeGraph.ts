@@ -301,6 +301,18 @@ export const EXERCISE_SCIENCE_KNOWLEDGE_BASE: ScientificPrinciple[] = [
     keywords: ['tensor', 'pixel', 'tpu', 'gemini nano', 'on-device', 'local ai', 'latency', 'privacy', 'aicore', 'google pixel ai'],
   },
   {
+    id: 'sp-ai-coach-single-entry-invariant',
+    topic: 'Product Architecture & Interface Governance',
+    title: 'AI Coach Single Entry Point & Interface Invariant',
+    formula: 'AI Coach Entry = Bottom Navigation Bar ONLY; Zero Dedicated Cards; Zero Header Icons',
+    scientificRationale:
+      'Cognitive load research proves that attention span and executive function degrade under heavy neuromuscular strain. Displaying dedicated AI Coach cards across training sessions or placing repetitive AI Coach icons/pills in the app header fragments focus, creates visual clutter, and competes with immediate workout execution and telemetry. Maintaining exactly one canonical entry point in the bottom navigation bar preserves visual hierarchy and intentional engagement.',
+    academicCitation: 'Hick-Hyman Law of Decision Latency; Treise Product Governance Framework 2026',
+    practicalApplication:
+      'The athlete accesses the conversational AI Coach exclusively via the dedicated bottom navigation bar tab ("AI Coach"). The active training workout contains zero dedicated AI Coach cards, and the top app header contains zero AI Coach icons or pill buttons.',
+    keywords: ['ai coach entry', 'bottom nav', 'no cards', 'no header icon', 'ai coach card', 'header coach icon', 'single entry point', 'coach navigation'],
+  },
+  {
     id: 'sp-design-system-4-tier-typography',
     topic: 'Design System & Visual Hierarchy',
     title: '4-Tier Strict Typography Scale',
@@ -706,6 +718,36 @@ export const TREISE_DESIGN_SYSTEM: DesignSystemComponent[] = [
     },
     tailwindTokens: 'Primary CTA: bg-white text-slate-950 font-bold | Active Card: bg-[#0E1219] shadow-2xl',
     rationale: 'Athletes in the middle of a heavy compound set experience tunnel vision; visual hierarchy must be ruthless so orientation requires zero effort.',
+  },
+  {
+    id: 'ds-ai-coach-navigation-rule',
+    name: 'AI Coach Single Entry Navigation Rule',
+    category: 'navigation',
+    anatomy: {
+      container: 'NavigationBar.tsx 5-column bottom navigation grid (tab id: "chat")',
+      typography: 'Label: text-xs font-medium / font-bold',
+      colors: 'Active: text-brand-primary | Inactive: text-slate-400',
+      states: {
+        active: 'text-brand-primary stroke-[2.2]',
+        inactive: 'text-slate-400 group-hover:text-slate-200 stroke-[1.8]',
+      },
+      touchTarget: 'Min 44px vertical height (min-h-[44px]) in bottom navigation bar',
+      iconSpec: 'MessageSquare w-5 h-5 stroke-[2]',
+    },
+    logic: {
+      rules: [
+        'MANDATORY INVARIANT: The ONLY entry point to the AI Coach is the dedicated "AI Coach" tab in the bottom navigation bar.',
+        'Zero dedicated AI Coach cards are permitted on the workout/training tab or any other screen.',
+        'Zero AI Coach buttons, pills, sparkles, or icons are permitted in the top application header.',
+        'Tapping "AI Coach" in the bottom navigation opens the assistant modal or switches to the conversational view.',
+      ],
+      variants: {
+        bottomNavTab: 'Central item in NavigationBar.tsx with MessageSquare icon',
+      },
+      accessibility: 'ARIA role="tab" with aria-label="AI Coach tab" and min-h-[44px] touch target',
+    },
+    tailwindTokens: 'fixed bottom-0 left-0 right-0 z-40 bg-[#060709]/95 border-t border-white/[0.04] h-14',
+    rationale: 'Eliminating redundant header buttons and dedicated cards prevents clutter and ensures lifters stay 100% focused on their current exercise and set progression.',
   },
 ];
 export const HEADSTRONG_DESIGN_SYSTEM = TREISE_DESIGN_SYSTEM;

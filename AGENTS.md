@@ -144,6 +144,7 @@ When Treise runs on Google Pixel phones (Pixel 6, 7, 8, 9, Fold), it automatical
    - **Privacy Invariant:** 100% on-device processing. Zero user biometric or health data ever leaves the phone.
    - **Latency Invariant:** On-device inference executes in $\le 15\text{ms}$.
    - **User Interface Invariant (Zero Technical Concept Leaks):** Local execution and acceleration must remain completely invisible to the user. The UI must never display "Knowledge Graph Grounding", "On-Device Local Engine", hardware chip names, or millisecond latency telemetry. All actions taken by the AI (such as registering equipment) must surface clear user outcomes with direct action buttons (e.g. "View All Equipment").
+   - **AI Coach Single Entry Point Invariant (Mandatory Governance Rule):** The ONLY entry point to the AI Coach is the dedicated "AI Coach" tab in the primary bottom navigation bar. There are to be strictly **NO dedicated AI Coach cards** on the workout/training tab or any other screen, and strictly **NO AI Coach buttons, pills, sparkles, or icons in the application header**. All AI interactions are initiated solely via the bottom navigation bar.
 
 ---
 
