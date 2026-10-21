@@ -55,6 +55,7 @@ export interface BiometricLog {
   steps: number;
   activeZoneMinutes: number; // AZM
   vo2Max?: number; // mL/kg/min
+  recoveryScore?: number; // % (0-100, e.g. Whoop recovery)
   avgWorkoutHr?: number;
   workoutDurationMin?: number;
 }

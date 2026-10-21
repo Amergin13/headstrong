@@ -275,16 +275,28 @@ export const App: React.FC = () => {
           }
         }
 
-        const syncedLog = await syncWearableBiometrics(provider, {
-          accessToken: liveAccessToken,
-        });
-        handleSyncCompleted(syncedLog, provider);
-        const deviceName = provider === 'whoop' ? 'Whoop 4.0' : 'Google Pixel Watch';
-        setXpNotification({
-          amount: 0,
-          message: `${deviceName} connected & live recovery synced!`,
-          bonusTag: 'Live Data Synced',
-        });
+        try {
+          const syncedLog = await syncWearableBiometrics(provider, {
+            accessToken: liveAccessToken,
+          });
+          handleSyncCompleted(syncedLog, provider);
+          const deviceName = provider === 'whoop' ? 'Whoop 4.0' : 'Google Pixel Watch';
+          setXpNotification({
+            amount: 0,
+            message: `${deviceName} connected & live recovery synced!`,
+            bonusTag: 'Live Data Synced',
+          });
+        } catch (syncErr: any) {
+          console.warn('Initial sync notice after connecting:', syncErr);
+          const deviceName = provider === 'whoop' ? 'Whoop 4.0' : 'Google Pixel Watch';
+          setXpNotification({
+            amount: 0,
+            message:
+              syncErr?.message ||
+              `${deviceName} connected! Tap "Sync Now" in Wearable Settings once your strap syncs.`,
+            bonusTag: 'Connected',
+          });
+        }
       };
 
       handleWearableAuth();

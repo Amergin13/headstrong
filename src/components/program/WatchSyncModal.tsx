@@ -344,34 +344,52 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
 
         {/* Dynamic State: Connected Metrics vs Not-Connected Description */}
         {isProviderConnected ? (
-          <div className="pt-2 border-t border-white/[0.04] grid grid-cols-2 gap-2.5">
-            <div className="p-2.5 rounded-xl bg-black/30">
-              <span className="text-slate-400 block text-xs">Last Night&apos;s HRV</span>
-              <span className="font-mono text-white font-semibold text-sm">
-                {latestBiometrics.hrvRmssd} ms
-              </span>
-            </div>
-            <div className="p-2.5 rounded-xl bg-black/30">
-              <span className="text-slate-400 block text-xs">Resting Heart Rate</span>
-              <span className="font-mono text-white font-semibold text-sm">
-                {latestBiometrics.restingHr} bpm
-              </span>
-            </div>
-            <div className="p-2.5 rounded-xl bg-black/30">
-              <span className="text-slate-400 block text-xs">Sleep Duration</span>
-              <span className="font-mono text-white font-semibold text-sm">
-                {latestBiometrics.sleepHours} hrs
-              </span>
-            </div>
-            <div className="p-2.5 rounded-xl bg-black/30">
-              <span className="text-slate-400 block text-xs">Daily Steps</span>
-              <span className="font-mono text-white font-semibold text-sm">
-                {latestBiometrics.steps.toLocaleString()}
-              </span>
+          <div className="pt-2 border-t border-white/[0.04] space-y-2.5">
+            {selectedProvider === 'whoop' && typeof latestBiometrics.recoveryScore === 'number' && (
+              <div className="p-2.5 rounded-xl bg-black/30 flex items-center justify-between">
+                <span className="text-slate-400 text-xs">Whoop Recovery Score</span>
+                <span
+                  className={`font-mono font-bold text-sm px-2 py-0.5 rounded-lg ${
+                    latestBiometrics.recoveryScore >= 67
+                      ? 'text-emerald-400 bg-emerald-500/15'
+                      : latestBiometrics.recoveryScore >= 34
+                      ? 'text-amber-400 bg-amber-500/15'
+                      : 'text-rose-400 bg-rose-500/15'
+                  }`}
+                >
+                  {latestBiometrics.recoveryScore}%
+                </span>
+              </div>
+            )}
+            <div className="grid grid-cols-2 gap-2.5">
+              <div className="p-2.5 rounded-xl bg-black/30">
+                <span className="text-slate-400 block text-xs">Last Night&apos;s HRV</span>
+                <span className="font-mono text-white font-semibold text-sm">
+                  {latestBiometrics.hrvRmssd} ms
+                </span>
+              </div>
+              <div className="p-2.5 rounded-xl bg-black/30">
+                <span className="text-slate-400 block text-xs">Resting Heart Rate</span>
+                <span className="font-mono text-white font-semibold text-sm">
+                  {latestBiometrics.restingHr} bpm
+                </span>
+              </div>
+              <div className="p-2.5 rounded-xl bg-black/30">
+                <span className="text-slate-400 block text-xs">Sleep Duration</span>
+                <span className="font-mono text-white font-semibold text-sm">
+                  {latestBiometrics.sleepHours} hrs
+                </span>
+              </div>
+              <div className="p-2.5 rounded-xl bg-black/30">
+                <span className="text-slate-400 block text-xs">Daily Steps</span>
+                <span className="font-mono text-white font-semibold text-sm">
+                  {latestBiometrics.steps.toLocaleString()}
+                </span>
+              </div>
             </div>
           </div>
         ) : (
-          <div className="pt-2 border-t border-white/[0.04]">
+          <div className="pt-2 border-t border-white/[0.04] space-y-2">
             <p className="text-xs text-slate-300 leading-relaxed">
               {selectedProvider === 'whoop' &&
                 'Sync your overnight recovery score, HRV, resting heart rate, and sleep duration automatically to calibrate your daily training volume and RIR targets.'}
@@ -380,6 +398,11 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
               {selectedProvider === 'health_connect' &&
                 'Sync unified biometric records directly from Android Health Connect on your phone.'}
             </p>
+            {selectedProvider === 'whoop' && (
+              <p className="text-xs text-slate-400 bg-white/[0.02] p-2 rounded-xl border border-white/[0.04]">
+                Note: If Whoop shows &ldquo;Request Header Or Cookie Too Large&rdquo;, clear cookies for whoop.com in your browser or connect using an Incognito tab.
+              </p>
+            )}
           </div>
         )}
       </div>
@@ -459,24 +482,47 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
             </button>
           </div>
         ) : (
-          <button
-            type="button"
-            disabled={isSyncing}
-            onClick={handleConnectProvider}
-            className="w-full py-3.5 rounded-2xl bg-white hover:bg-slate-100 text-slate-950 font-bold text-xs flex items-center justify-center space-x-2 shadow-lg shadow-white/5 active:scale-95 transition-all min-h-[44px] disabled:opacity-50"
-          >
-            {isSyncing ? (
-              <>
-                <RefreshCw className="w-4 h-4 stroke-[2.2] text-slate-950 animate-spin" />
-                <span>Connecting to {providerMeta.name}...</span>
-              </>
-            ) : (
-              <>
-                <CheckCircle2 className="w-4 h-4 stroke-[2.2] text-emerald-600" />
-                <span>Connect {providerMeta.name}</span>
-              </>
+          <div className="space-y-2">
+            <button
+              type="button"
+              disabled={isSyncing}
+              onClick={handleConnectProvider}
+              className="w-full py-3.5 rounded-2xl bg-white hover:bg-slate-100 text-slate-950 font-bold text-xs flex items-center justify-center space-x-2 shadow-lg shadow-white/5 active:scale-95 transition-all min-h-[44px] disabled:opacity-50"
+            >
+              {isSyncing ? (
+                <>
+                  <RefreshCw className="w-4 h-4 stroke-[2.2] text-slate-950 animate-spin" />
+                  <span>Connecting to {providerMeta.name}...</span>
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 className="w-4 h-4 stroke-[2.2] text-emerald-600" />
+                  <span>Connect {providerMeta.name}</span>
+                </>
+              )}
+            </button>
+
+            {selectedProvider === 'whoop' && (
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    const effectiveId = profile.whoopClientId || WHOOP_CONFIG.CLIENT_ID;
+                    const effectiveUri = profile.whoopRedirectUri || getWhoopRedirectUri();
+                    const url = await initiateWhoopOAuth(effectiveId, effectiveUri);
+                    await navigator.clipboard.writeText(url);
+                    setImportStatus('Copied Whoop sign-in link! You can paste it into an Incognito tab.');
+                    setTimeout(() => setImportStatus(null), 5000);
+                  } catch {
+                    setImportStatus('Could not copy link to clipboard.');
+                  }
+                }}
+                className="w-full py-2 text-xs text-slate-400 hover:text-slate-200 flex items-center justify-center space-x-1.5 transition-colors min-h-[44px]"
+              >
+                <span>Copy Sign-In Link (for Incognito tab)</span>
+              </button>
             )}
-          </button>
+          </div>
         )}
       </div>
 

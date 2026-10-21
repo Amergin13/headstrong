@@ -88,9 +88,15 @@ export async function syncWearableBiometrics(
               steps: liveData.steps || 9000,
               activeZoneMinutes: liveData.activeZoneMinutes || 45,
               vo2Max: liveData.vo2Max || 46.0,
+              recoveryScore: liveData.recoveryScore,
             };
           } else {
             console.warn('Whoop API responded but lacked overnight recovery metrics:', liveData);
+            if (!options?.forcedState) {
+              throw new Error(
+                'Whoop is connected, but today\'s recovery metrics are still pending in your Whoop app. Open your Whoop app to complete strap sync, then tap Sync.'
+              );
+            }
           }
         } catch (err) {
           console.warn('Whoop live biometrics fetch error:', err);

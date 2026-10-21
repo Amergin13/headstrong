@@ -263,6 +263,8 @@ export async function refreshWhoopToken(
 
 /**
  * Fetches daily telemetry from Whoop Developer API (v1 / v2):
+ * - Prioritizes /api/whoop/biometrics serverless aggregator (zero CORS, server-to-server)
+ * - Falls back to direct browser fetch if serverless proxy is unreachable
  * - Recovery: recovery_score, resting_heart_rate, hrv_rmssd_milli
  * - Sleep: total_sleep_time (hours)
  * - Cycle: strain, steps, kilojoules -> activeZoneMinutes
@@ -270,9 +272,55 @@ export async function refreshWhoopToken(
  */
 export async function fetchWhoopDailyBiometrics(
   accessToken: string,
-  dateStr?: string
+  dateStr?: string,
+  refreshToken?: string
 ): Promise<Partial<BiometricLog>> {
   const date = dateStr || new Date().toISOString().split('T')[0];
+  const effectiveRefreshToken =
+    refreshToken ||
+    (typeof localStorage !== 'undefined' && localStorage.getItem('whoop_refresh_token')) ||
+    (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('whoop_refresh_token')) ||
+    undefined;
+
+  // 1. Primary: Serverless Aggregator Proxy (zero CORS, server-to-server)
+  try {
+    const proxyRes = await fetch('/api/whoop/biometrics', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({
+        accessToken,
+        refreshToken: effectiveRefreshToken,
+      }),
+    });
+
+    if (proxyRes.ok) {
+      const data = await proxyRes.json();
+      if (data.success && data.biometrics) {
+        if (data.refreshedTokens && typeof window !== 'undefined') {
+          try {
+            localStorage.setItem('whoop_access_token', data.refreshedTokens.accessToken);
+            if (data.refreshedTokens.refreshToken) {
+              localStorage.setItem('whoop_refresh_token', data.refreshedTokens.refreshToken);
+            }
+          } catch {}
+        }
+        return {
+          ...data.biometrics,
+          date,
+        };
+      }
+    } else {
+      const errJson = await proxyRes.json().catch(() => ({}));
+      console.warn('Whoop biometrics proxy response error:', proxyRes.status, errJson);
+    }
+  } catch (proxyErr) {
+    console.warn('Whoop biometrics proxy connection error:', proxyErr);
+  }
+
+  // 2. Direct Fallback
   const headers = {
     Authorization: `Bearer ${accessToken}`,
   };
@@ -287,7 +335,9 @@ export async function fetchWhoopDailyBiometrics(
       ? recordsData
       : [recordsData];
     if (records.length === 0) return null;
-    return [...records].sort((a: any, b: any) => {
+    const scored = records.filter((r: any) => r && (r.score || r.score_state === 'SCORED'));
+    const candidateList = scored.length > 0 ? scored : records;
+    return [...candidateList].sort((a: any, b: any) => {
       const timeA = new Date(a.created_at || a.updated_at || a.start || 0).getTime();
       const timeB = new Date(b.created_at || b.updated_at || b.start || 0).getTime();
       return timeB - timeA;
@@ -309,10 +359,9 @@ export async function fetchWhoopDailyBiometrics(
   };
 
   try {
-    // 1. Recovery Endpoint (v1 / v2 fallback)
     const recRes = await fetchWithFallback(
-      'https://api.prod.whoop.com/developer/v1/recovery',
-      'https://api.prod.whoop.com/developer/v2/recovery'
+      'https://api.prod.whoop.com/developer/v1/recovery?limit=10',
+      'https://api.prod.whoop.com/developer/v2/recovery?limit=10'
     );
     if (recRes && recRes.ok) {
       const recData = await recRes.json();
@@ -326,25 +375,22 @@ export async function fetchWhoopDailyBiometrics(
             : typeof latest.score.heart_rate_variability_rmssd === 'number'
             ? latest.score.heart_rate_variability_rmssd
             : latest.score.hrv;
-        if (typeof rawHrv === 'number') {
+        if (typeof rawHrv === 'number' && !isNaN(rawHrv)) {
           results.hrvRmssd = Math.round(rawHrv);
         }
-        if (typeof latest.score.resting_heart_rate === 'number') {
+        if (typeof latest.score.resting_heart_rate === 'number' && !isNaN(latest.score.resting_heart_rate)) {
           results.restingHr = Math.round(latest.score.resting_heart_rate);
         }
       }
-    } else if (recRes) {
-      console.warn('Whoop recovery endpoint returned:', recRes.status);
     }
   } catch (e) {
-    console.warn('Could not fetch Whoop recovery:', e);
+    console.warn('Could not fetch Whoop recovery directly:', e);
   }
 
   try {
-    // 2. Sleep Endpoint (v1 / v2 fallback)
     const sleepRes = await fetchWithFallback(
-      'https://api.prod.whoop.com/developer/v1/activity/sleep',
-      'https://api.prod.whoop.com/developer/v2/activity/sleep'
+      'https://api.prod.whoop.com/developer/v1/activity/sleep?limit=10',
+      'https://api.prod.whoop.com/developer/v2/activity/sleep?limit=10'
     );
     if (sleepRes && sleepRes.ok) {
       const sleepData = await sleepRes.json();
@@ -373,14 +419,13 @@ export async function fetchWhoopDailyBiometrics(
       }
     }
   } catch (e) {
-    console.warn('Could not fetch Whoop sleep:', e);
+    console.warn('Could not fetch Whoop sleep directly:', e);
   }
 
   try {
-    // 3. Cycle / Strain Endpoint (v1 / v2 fallback)
     const cycleRes = await fetchWithFallback(
-      'https://api.prod.whoop.com/developer/v1/cycle',
-      'https://api.prod.whoop.com/developer/v2/cycle'
+      'https://api.prod.whoop.com/developer/v1/cycle?limit=10',
+      'https://api.prod.whoop.com/developer/v2/cycle?limit=10'
     );
     if (cycleRes && cycleRes.ok) {
       const cycleData = await cycleRes.json();
@@ -397,11 +442,10 @@ export async function fetchWhoopDailyBiometrics(
       }
     }
   } catch (e) {
-    console.warn('Could not fetch Whoop cycle:', e);
+    console.warn('Could not fetch Whoop cycle directly:', e);
   }
 
   try {
-    // 4. Body Measurement Endpoint (v1 / v2 fallback)
     const bodyRes = await fetchWithFallback(
       'https://api.prod.whoop.com/developer/v1/user/measurement/body',
       'https://api.prod.whoop.com/developer/v2/user/measurement/body'

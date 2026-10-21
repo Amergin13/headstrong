@@ -2129,6 +2129,11 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
     whoopAmberLog.hrvRmssd <= 40 && whoopAmberLog.sleepHours <= 5.5,
     `Whoop 4.0 sync generates Red Recovery metrics (HRV <= 40ms, Sleep <= 5.5h) for Amber Shield recovery`
   );
+  const whoopCoordinatorLog = await syncWearableBiometrics('whoop', { forcedState: 'Primed' });
+  assert(
+    whoopCoordinatorLog.hrvRmssd >= 70 && whoopCoordinatorLog.restingHr <= 50,
+    `syncWearableBiometrics coordinates Whoop provider correctly for Primed state`
+  );
 
   // 3. Android Health Connect Provider
   assert(

@@ -48,18 +48,10 @@ export default async function handler(req: any, res: any) {
       params = new URLSearchParams();
     }
 
-    // Default to configured user client ID if not provided in payload
-    if (!params.get('client_id')) {
-      params.append('client_id', WHOOP_CLIENT_ID);
-    }
-
-    if (!params.get('redirect_uri')) {
-      params.append('redirect_uri', WHOOP_REDIRECT_URI);
-    }
-
-    if (!params.get('client_secret')) {
-      params.append('client_secret', WHOOP_CLIENT_SECRET);
-    }
+    // Ensure configured credentials and registered redirect URI are always strictly enforced
+    params.set('client_id', WHOOP_CLIENT_ID);
+    params.set('client_secret', WHOOP_CLIENT_SECRET);
+    params.set('redirect_uri', WHOOP_REDIRECT_URI);
 
     const response = await fetch('https://api.prod.whoop.com/oauth/oauth2/token', {
       method: 'POST',
