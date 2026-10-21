@@ -13,20 +13,15 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.treise.app;
+package com.headstrong.app;
 
 import android.content.pm.ActivityInfo;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 
-
-
 public class LauncherActivity
         extends com.google.androidbrowserhelper.trusted.LauncherActivity {
-    
-
-    
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -44,10 +39,8 @@ public class LauncherActivity
 
     @Override
     protected Uri getLaunchingUrl() {
-        // Get the original launch Url.
+        // Get the original launch url.
         Uri uri = super.getLaunchingUrl();
-
-        
 
         return uri;
     }

@@ -209,7 +209,7 @@ if (manifestPath) {
 const twaManifestSrc = fs.readFileSync(path.resolve(process.cwd(), 'twa-manifest.json'), 'utf-8');
 const twaManifest = JSON.parse(twaManifestSrc);
 assert(twaManifest.targetSdkVersion >= 35, `Android 15 SDK target verified (targetSdkVersion: ${twaManifest.targetSdkVersion} >= 35)`);
-assert(twaManifest.packageId === 'com.treise.app', 'Android packageId matches com.treise.app');
+assert(twaManifest.packageId === 'com.headstrong.app', 'Android packageId matches com.headstrong.app');
 
 const privacySrc = fs.readFileSync(path.resolve(process.cwd(), 'public/privacy.html'), 'utf-8');
 assert(
