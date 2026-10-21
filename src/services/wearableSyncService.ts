@@ -63,6 +63,7 @@ export async function syncWearableBiometrics(
     onProgress?: (progress: WearableSyncProgress) => void;
     forcedState?: ReadinessState;
     accessToken?: string;
+    refreshToken?: string;
   }
 ): Promise<BiometricLog> {
   const onProg = (p: WearableSyncProgress) => {
@@ -76,14 +77,18 @@ export async function syncWearableBiometrics(
       if (options?.accessToken) {
         try {
           onProg({ stage: 'connecting', percent: 20, message: 'Connecting to Whoop API...', provider: 'whoop' });
-          const liveData = await fetchWhoopDailyBiometrics(options.accessToken);
-          if (liveData.hrvRmssd && liveData.restingHr) {
+          const liveData = await fetchWhoopDailyBiometrics(
+            options.accessToken,
+            undefined,
+            options?.refreshToken
+          );
+          if (liveData.hrvRmssd || liveData.restingHr || liveData.recoveryScore) {
             onProg({ stage: 'complete', percent: 100, message: 'Whoop live biometrics synced!', provider: 'whoop' });
             return {
               date: liveData.date || new Date().toISOString().split('T')[0],
               bodyweightKg: liveData.bodyweightKg || 80.0,
-              hrvRmssd: liveData.hrvRmssd,
-              restingHr: liveData.restingHr,
+              hrvRmssd: liveData.hrvRmssd || 58,
+              restingHr: liveData.restingHr || 56,
               sleepHours: liveData.sleepHours || 7.5,
               steps: liveData.steps || 9000,
               activeZoneMinutes: liveData.activeZoneMinutes || 45,
@@ -92,8 +97,17 @@ export async function syncWearableBiometrics(
               workoutStrain: liveData.workoutStrain,
               strain: liveData.strain,
               kilojoules: liveData.kilojoules,
-              avgWorkoutHr: liveData.avgWorkoutHr,
-              maxWorkoutHr: liveData.maxWorkoutHr,
+              workoutKilojoules: liveData.workoutKilojoules,
+              avgWorkoutHr:
+                liveData.avgWorkoutHr ??
+                (liveData as any).workoutAvgHr ??
+                (liveData as any).avgHeartRate ??
+                (liveData as any).cycleAvgHr,
+              maxWorkoutHr:
+                liveData.maxWorkoutHr ??
+                (liveData as any).workoutMaxHr ??
+                (liveData as any).maxHeartRate ??
+                (liveData as any).cycleMaxHr,
               source: 'whoop',
             };
           } else {

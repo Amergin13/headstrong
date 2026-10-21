@@ -95,6 +95,20 @@ export const ReadinessBanner: React.FC<ReadinessBannerProps> = ({
               {prefix && <strong className="text-white font-bold">{prefix} </strong>}
               {bodyText}
             </p>
+            {(latestBiometrics?.restingHr !== undefined || latestBiometrics?.hrvRmssd !== undefined) && (
+              <div className="flex items-center gap-2 mt-2 flex-wrap">
+                {latestBiometrics?.restingHr !== undefined && (
+                  <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-white/[0.05] border border-white/[0.06] text-xs font-semibold text-slate-300">
+                    {latestBiometrics.restingHr} bpm RHR
+                  </span>
+                )}
+                {latestBiometrics?.hrvRmssd !== undefined && (
+                  <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-white/[0.05] border border-white/[0.06] text-xs font-semibold text-slate-300">
+                    {latestBiometrics.hrvRmssd} ms HRV
+                  </span>
+                )}
+              </div>
+            )}
           </div>
         </div>
       ) : (

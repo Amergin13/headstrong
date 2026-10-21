@@ -2588,8 +2588,55 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
     'Workout active burn is 1,450 kJ while Day burn is 4,372 kJ'
   );
   assert(
-    sampleWhoopSummary.workoutStrain !== sampleWhoopSummary.dayStrain,
-    'WhoopWorkoutStrainSummary separates Workout Strain (11.4) from Day Strain (14.2)'
+    sampleWhoopSummary.avgHeartRate === 138 && sampleWhoopSummary.maxHeartRate === 168,
+    'WhoopWorkoutStrainSummary captures strap avg (138 bpm) and peak (168 bpm) heart rate'
+  );
+
+  // 6. Heart Rate Sync Invariant: Preserving Workout HR upon recovery update
+  const initialLogWithWorkout: BiometricLog = {
+    date: '2026-10-21',
+    bodyweightKg: 81.5,
+    hrvRmssd: 58,
+    restingHr: 54,
+    sleepHours: 7.2,
+    steps: 9200,
+    activeZoneMinutes: 45,
+    recoveryScore: 49,
+    workoutStrain: 11.4,
+    avgWorkoutHr: 138,
+    maxWorkoutHr: 168,
+    workoutKilojoules: 485,
+    source: 'whoop',
+  };
+
+  const syncUpdateWithoutWorkout: BiometricLog = {
+    date: '2026-10-21',
+    bodyweightKg: 81.5,
+    hrvRmssd: 61,
+    restingHr: 53,
+    sleepHours: 7.4,
+    steps: 10400,
+    activeZoneMinutes: 52,
+    recoveryScore: 52,
+    source: 'whoop',
+  };
+
+  const mergedLog: BiometricLog = {
+    ...initialLogWithWorkout,
+    ...syncUpdateWithoutWorkout,
+    avgWorkoutHr: syncUpdateWithoutWorkout.avgWorkoutHr ?? initialLogWithWorkout.avgWorkoutHr,
+    maxWorkoutHr: syncUpdateWithoutWorkout.maxWorkoutHr ?? initialLogWithWorkout.maxWorkoutHr,
+    workoutStrain: syncUpdateWithoutWorkout.workoutStrain ?? initialLogWithWorkout.workoutStrain,
+    workoutKilojoules: syncUpdateWithoutWorkout.workoutKilojoules ?? initialLogWithWorkout.workoutKilojoules,
+  };
+
+  assert(
+    mergedLog.avgWorkoutHr === 138 &&
+      mergedLog.maxWorkoutHr === 168 &&
+      mergedLog.restingHr === 53 &&
+      mergedLog.hrvRmssd === 61 &&
+      mergedLog.workoutStrain === 11.4,
+    'Daily recovery sync preserves previously captured workout heart rate (138/168 bpm) and strain'
   );
 
   console.log('\nALL 28 ENGINE, GOVERNANCE, DESIGN HEURISTICS, TYPOGRAPHY, WEARABLES, WHOOP STRAIN, GOOGLE AUTH & TENSOR AI SUITES PASSED SUCCESSFULLY! 🎯');

@@ -323,6 +323,22 @@ export const App: React.FC = () => {
     }
   }, []);
 
+  // Auto-sync connected wearable biometrics on launch
+  useEffect(() => {
+    if (profile.whoopConnected && profile.whoopAccessToken) {
+      syncWearableBiometrics('whoop', {
+        accessToken: profile.whoopAccessToken,
+        refreshToken: profile.whoopRefreshToken,
+      })
+        .then((log) => {
+          handleSyncCompleted(log, 'whoop');
+        })
+        .catch((err) => {
+          console.warn('Background Whoop auto-sync skipped:', err);
+        });
+    }
+  }, []);
+
   // Derived calculations
   const bodyweightEmaKg = getLatestBodyweightEma(biometrics, 80.0);
   const latestBiometrics: BiometricLog = biometrics[biometrics.length - 1] || {
@@ -603,7 +619,9 @@ export const App: React.FC = () => {
       whoopTelemetry &&
       (whoopTelemetry.workoutStrain !== undefined ||
         whoopTelemetry.dayStrain !== undefined ||
-        whoopTelemetry.kilojoules !== undefined)
+        whoopTelemetry.kilojoules !== undefined ||
+        whoopTelemetry.avgHeartRate !== undefined ||
+        whoopTelemetry.maxHeartRate !== undefined)
     ) {
       setBiometrics((prev) => {
         const existingIdx = prev.findIndex((b) => b.date === todayStr);
@@ -630,11 +648,11 @@ export const App: React.FC = () => {
             {
               date: todayStr,
               bodyweightKg: bodyweightEmaKg,
-              hrvRmssd: 58,
-              restingHr: 58,
-              sleepHours: 7.5,
-              steps: 8500,
-              activeZoneMinutes: 35,
+              hrvRmssd: latestBiometrics.hrvRmssd || 58,
+              restingHr: latestBiometrics.restingHr || 58,
+              sleepHours: latestBiometrics.sleepHours || 7.5,
+              steps: latestBiometrics.steps || 8500,
+              activeZoneMinutes: latestBiometrics.activeZoneMinutes || 35,
               workoutStrain: whoopTelemetry.workoutStrain,
               strain: whoopTelemetry.dayStrain,
               kilojoules: whoopTelemetry.dayKilojoules ?? whoopTelemetry.kilojoules,
@@ -842,7 +860,21 @@ export const App: React.FC = () => {
     const existingIndex = biometrics.findIndex((b) => b.date === newLog.date);
     let updated: BiometricLog[];
     if (existingIndex >= 0) {
-      updated = biometrics.map((b, idx) => (idx === existingIndex ? newLog : b));
+      const existing = biometrics[existingIndex];
+      const merged: BiometricLog = {
+        ...existing,
+        ...newLog,
+        // Preserve existing workout metrics if newLog does not have them
+        avgWorkoutHr: newLog.avgWorkoutHr ?? existing.avgWorkoutHr,
+        maxWorkoutHr: newLog.maxWorkoutHr ?? existing.maxWorkoutHr,
+        workoutStrain: newLog.workoutStrain ?? existing.workoutStrain,
+        workoutKilojoules: newLog.workoutKilojoules ?? existing.workoutKilojoules,
+        recoveryScore: newLog.recoveryScore ?? existing.recoveryScore,
+        strain: newLog.strain ?? existing.strain,
+        kilojoules: newLog.kilojoules ?? existing.kilojoules,
+        source: newLog.source ?? existing.source,
+      };
+      updated = biometrics.map((b, idx) => (idx === existingIndex ? merged : b));
     } else {
       updated = [...biometrics, newLog];
     }

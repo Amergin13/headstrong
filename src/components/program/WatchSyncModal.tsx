@@ -88,10 +88,14 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
           ? profile.whoopAccessToken
           : undefined;
 
+      const refreshToken =
+        selectedProvider === 'whoop' ? profile.whoopRefreshToken : undefined;
+
       const result = await syncWearableBiometrics(selectedProvider, {
         onProgress: (prog) => setSyncProgress(prog),
         forcedState: stateOverride,
         accessToken,
+        refreshToken,
       });
 
       triggerHaptic('success');

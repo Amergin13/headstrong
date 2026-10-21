@@ -53,28 +53,31 @@ export default async function handler(req: any, res: any) {
     });
   }
 
-  const fetchWithFallback = async (token: string, urlV2: string, urlV1: string) => {
+  const fetchWithFallback = async (token: string, urlV1: string, urlV2?: string) => {
     const headers = { Authorization: `Bearer ${token}` };
     try {
-      const res2 = await fetch(urlV2, { headers });
-      if (res2.ok) {
-        return { ok: true, status: res2.status, data: await res2.json().catch(() => null) };
+      const res1 = await fetch(urlV1, { headers });
+      if (res1.ok) {
+        return { ok: true, status: res1.status, data: await res1.json().catch(() => null) };
       }
-      // If v2 fails (and not 401 unauthorized), try v1 fallback
-      if (res2.status !== 401) {
-        const res1 = await fetch(urlV1, { headers });
-        if (res1.ok) {
-          return { ok: true, status: res1.status, data: await res1.json().catch(() => null) };
+      // If v1 fails with 404 or non-401 error and v2 exists, try v2
+      if (urlV2 && res1.status !== 401) {
+        const res2 = await fetch(urlV2, { headers });
+        if (res2.ok) {
+          return { ok: true, status: res2.status, data: await res2.json().catch(() => null) };
         }
       }
-      return { ok: false, status: res2.status, data: await res2.json().catch(() => null) };
+      return { ok: false, status: res1.status, data: await res1.json().catch(() => null) };
     } catch (e: any) {
-      try {
-        const res1 = await fetch(urlV1, { headers });
-        return { ok: res1.ok, status: res1.status, data: await res1.json().catch(() => null) };
-      } catch (err: any) {
-        return { ok: false, status: 500, error: err?.message || String(err) };
+      if (urlV2) {
+        try {
+          const res2 = await fetch(urlV2, { headers });
+          return { ok: res2.ok, status: res2.status, data: await res2.json().catch(() => null) };
+        } catch (err: any) {
+          return { ok: false, status: 500, error: err?.message || String(err) };
+        }
       }
+      return { ok: false, status: 500, error: e?.message || String(e) };
     }
   };
 
@@ -94,8 +97,8 @@ export default async function handler(req: any, res: any) {
     const candidateList = scored.length > 0 ? scored : records;
 
     return [...candidateList].sort((a: any, b: any) => {
-      const timeA = new Date(a.created_at || a.updated_at || a.start || 0).getTime();
-      const timeB = new Date(b.created_at || b.updated_at || b.start || 0).getTime();
+      const timeA = new Date(a.updated_at || a.created_at || a.end || a.start || a.timestamp || 0).getTime();
+      const timeB = new Date(b.updated_at || b.created_at || b.end || b.start || b.timestamp || 0).getTime();
       return timeB - timeA;
     })[0];
   };
@@ -129,11 +132,11 @@ export default async function handler(req: any, res: any) {
   };
 
   try {
-    // 1. Initial attempt to fetch recovery (prioritizing v2)
+    // 1. Initial attempt to fetch recovery (prioritizing official v1)
     let recResult = await fetchWithFallback(
       currentToken,
-      'https://api.prod.whoop.com/developer/v2/recovery?limit=10',
-      'https://api.prod.whoop.com/developer/v1/recovery?limit=10'
+      'https://api.prod.whoop.com/developer/v1/recovery?limit=10',
+      'https://api.prod.whoop.com/developer/v2/recovery?limit=10'
     );
 
     // If unauthorized and refresh token is available, refresh and retry
@@ -148,33 +151,33 @@ export default async function handler(req: any, res: any) {
         };
         recResult = await fetchWithFallback(
           currentToken,
-          'https://api.prod.whoop.com/developer/v2/recovery?limit=10',
-          'https://api.prod.whoop.com/developer/v1/recovery?limit=10'
+          'https://api.prod.whoop.com/developer/v1/recovery?limit=10',
+          'https://api.prod.whoop.com/developer/v2/recovery?limit=10'
         );
       }
     }
 
-    // 2. Fetch Sleep, Cycle, Body, Workout in parallel (prioritizing v2)
+    // 2. Fetch Sleep, Cycle, Body, Workout in parallel (prioritizing official v1)
     const [sleepResult, cycleResult, bodyResult, workoutResult] = await Promise.all([
       fetchWithFallback(
         currentToken,
-        'https://api.prod.whoop.com/developer/v2/activity/sleep?limit=10',
-        'https://api.prod.whoop.com/developer/v1/activity/sleep?limit=10'
+        'https://api.prod.whoop.com/developer/v1/activity/sleep?limit=10',
+        'https://api.prod.whoop.com/developer/v2/activity/sleep?limit=10'
       ),
       fetchWithFallback(
         currentToken,
-        'https://api.prod.whoop.com/developer/v2/cycle?limit=10',
-        'https://api.prod.whoop.com/developer/v1/cycle?limit=10'
+        'https://api.prod.whoop.com/developer/v1/cycle?limit=10',
+        'https://api.prod.whoop.com/developer/v2/cycle?limit=10'
       ),
       fetchWithFallback(
         currentToken,
-        'https://api.prod.whoop.com/developer/v2/user/measurement/body',
-        'https://api.prod.whoop.com/developer/v1/user/measurement/body'
+        'https://api.prod.whoop.com/developer/v1/user/measurement/body',
+        'https://api.prod.whoop.com/developer/v2/user/measurement/body'
       ),
       fetchWithFallback(
         currentToken,
-        'https://api.prod.whoop.com/developer/v2/activity/workout?limit=10',
-        'https://api.prod.whoop.com/developer/v1/activity/workout?limit=10'
+        'https://api.prod.whoop.com/developer/v1/activity/workout?limit=10',
+        'https://api.prod.whoop.com/developer/v2/activity/workout?limit=10'
       ),
     ]);
 
@@ -200,8 +203,16 @@ export default async function handler(req: any, res: any) {
       if (typeof rawHrv === 'number' && !isNaN(rawHrv)) {
         biometrics.hrvRmssd = Math.round(rawHrv);
       }
-      if (typeof s.resting_heart_rate === 'number' && !isNaN(s.resting_heart_rate)) {
-        biometrics.restingHr = Math.round(s.resting_heart_rate);
+      const rawRhr =
+        typeof s.resting_heart_rate === 'number'
+          ? s.resting_heart_rate
+          : typeof s.resting_hr === 'number'
+          ? s.resting_hr
+          : typeof s.rhr === 'number'
+          ? s.rhr
+          : s.resting_heart_rate_bpm;
+      if (typeof rawRhr === 'number' && !isNaN(rawRhr) && rawRhr > 0) {
+        biometrics.restingHr = Math.round(rawRhr);
       }
       if (typeof s.recovery_score === 'number' && !isNaN(s.recovery_score)) {
         biometrics.recoveryScore = Math.round(s.recovery_score);
@@ -217,6 +228,17 @@ export default async function handler(req: any, res: any) {
     // Extract Sleep
     const latestSleep = getLatestScoredRecord(sleepResult.data);
     if (latestSleep?.score) {
+      if (biometrics.restingHr === undefined) {
+        const sleepRhr =
+          typeof latestSleep.score.resting_heart_rate === 'number'
+            ? latestSleep.score.resting_heart_rate
+            : typeof latestSleep.score.resting_hr === 'number'
+            ? latestSleep.score.resting_hr
+            : latestSleep.score.rhr;
+        if (typeof sleepRhr === 'number' && !isNaN(sleepRhr) && sleepRhr > 0) {
+          biometrics.restingHr = Math.round(sleepRhr);
+        }
+      }
       const stages = latestSleep.score.stage_summary;
       if (stages) {
         const totalInBed = stages.total_in_bed_time_milli || 0;
@@ -254,6 +276,9 @@ export default async function handler(req: any, res: any) {
     // Extract Cycle (Daily baseline and cumulative expenditure)
     const latestCycle = getLatestScoredRecord(cycleResult.data);
     if (latestCycle) {
+      if (biometrics.restingHr === undefined && typeof latestCycle.score?.resting_heart_rate === 'number') {
+        biometrics.restingHr = Math.round(latestCycle.score.resting_heart_rate);
+      }
       const strain = typeof latestCycle.score?.strain === 'number' ? latestCycle.score.strain : 0;
       biometrics.strain = Math.round(strain * 10) / 10;
       biometrics.steps =
@@ -267,10 +292,12 @@ export default async function handler(req: any, res: any) {
         biometrics.dayKilojoules = Math.round(latestCycle.score.kilojoule);
       }
       if (typeof latestCycle.score?.average_heart_rate === 'number') {
-        biometrics.cycleAvgHr = Math.round(latestCycle.score.average_heart_rate);
+        const cAvg = Math.round(latestCycle.score.average_heart_rate);
+        biometrics.cycleAvgHr = cAvg;
       }
       if (typeof latestCycle.score?.max_heart_rate === 'number') {
-        biometrics.cycleMaxHr = Math.round(latestCycle.score.max_heart_rate);
+        const cMax = Math.round(latestCycle.score.max_heart_rate);
+        biometrics.cycleMaxHr = cMax;
       }
     }
 
@@ -284,19 +311,20 @@ export default async function handler(req: any, res: any) {
       : [];
 
     const now = Date.now();
-    // Sort all workouts descending by start/created_at
+    // Sort all workouts descending by end/start/created_at
     const sortedWorkouts = [...workoutRecords].filter(Boolean).sort((a: any, b: any) => {
-      const timeA = new Date(a.start || a.created_at || 0).getTime();
-      const timeB = new Date(b.start || b.created_at || 0).getTime();
+      const timeA = new Date(a.end || a.start || a.created_at || 0).getTime();
+      const timeB = new Date(b.end || b.start || b.created_at || 0).getTime();
       return timeB - timeA;
     });
 
-    // A workout is considered "recent" if it started within the last 12 hours
-    const recentWorkout = sortedWorkouts.find((w: any) => {
-      const startTime = new Date(w.start || w.created_at || 0).getTime();
-      const hoursAgo = (now - startTime) / (1000 * 60 * 60);
-      return hoursAgo >= -1 && hoursAgo <= 12;
-    });
+    // A workout is considered "recent" if it started within the last 24 hours, or the latest available
+    const recentWorkout =
+      sortedWorkouts.find((w: any) => {
+        const startTime = new Date(w.start || w.created_at || 0).getTime();
+        const hoursAgo = (now - startTime) / (1000 * 60 * 60);
+        return hoursAgo >= -1 && hoursAgo <= 24;
+      }) || sortedWorkouts[0];
 
     if (recentWorkout) {
       biometrics.hasRecentWorkout = true;
@@ -324,10 +352,16 @@ export default async function handler(req: any, res: any) {
           biometrics.workoutStrain = Math.round(ws.strain * 10) / 10;
         }
         if (typeof ws.average_heart_rate === 'number') {
-          biometrics.workoutAvgHr = Math.round(ws.average_heart_rate);
+          const avg = Math.round(ws.average_heart_rate);
+          biometrics.workoutAvgHr = avg;
+          biometrics.avgWorkoutHr = avg;
+          biometrics.avgHeartRate = avg;
         }
         if (typeof ws.max_heart_rate === 'number') {
-          biometrics.workoutMaxHr = Math.round(ws.max_heart_rate);
+          const max = Math.round(ws.max_heart_rate);
+          biometrics.workoutMaxHr = max;
+          biometrics.maxWorkoutHr = max;
+          biometrics.maxHeartRate = max;
         }
         if (typeof ws.kilojoule === 'number') {
           biometrics.workoutKilojoules = Math.round(ws.kilojoule);

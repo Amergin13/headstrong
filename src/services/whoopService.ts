@@ -309,6 +309,16 @@ export async function fetchWhoopDailyBiometrics(
         }
         return {
           ...data.biometrics,
+          avgWorkoutHr:
+            data.biometrics.avgWorkoutHr ??
+            data.biometrics.workoutAvgHr ??
+            data.biometrics.avgHeartRate ??
+            data.biometrics.cycleAvgHr,
+          maxWorkoutHr:
+            data.biometrics.maxWorkoutHr ??
+            data.biometrics.workoutMaxHr ??
+            data.biometrics.maxHeartRate ??
+            data.biometrics.cycleMaxHr,
           date,
         };
       }
@@ -443,6 +453,12 @@ export async function fetchWhoopDailyBiometrics(
         if (typeof latest?.score?.kilojoule === 'number') {
           results.kilojoules = Math.round(latest.score.kilojoule);
         }
+        if (typeof latest?.score?.average_heart_rate === 'number') {
+          (results as any).cycleAvgHr = Math.round(latest.score.average_heart_rate);
+        }
+        if (typeof latest?.score?.max_heart_rate === 'number') {
+          (results as any).cycleMaxHr = Math.round(latest.score.max_heart_rate);
+        }
       }
     }
   } catch (e) {
@@ -451,8 +467,8 @@ export async function fetchWhoopDailyBiometrics(
 
   try {
     const workoutRes = await fetchWithFallback(
-      'https://api.prod.whoop.com/developer/v2/activity/workout?limit=10',
-      'https://api.prod.whoop.com/developer/v1/activity/workout?limit=10'
+      'https://api.prod.whoop.com/developer/v1/activity/workout?limit=10',
+      'https://api.prod.whoop.com/developer/v2/activity/workout?limit=10'
     );
     if (workoutRes && workoutRes.ok) {
       const workoutData = await workoutRes.json();
@@ -462,18 +478,19 @@ export async function fetchWhoopDailyBiometrics(
         ? workoutData
         : [];
       const now = Date.now();
-      const recent = records
-        .filter(Boolean)
-        .sort((a: any, b: any) => {
-          const timeA = new Date(a.start || a.created_at || 0).getTime();
-          const timeB = new Date(b.start || b.created_at || 0).getTime();
-          return timeB - timeA;
-        })
-        .find((w: any) => {
-          const startTime = new Date(w.start || w.created_at || 0).getTime();
-          const hoursAgo = (now - startTime) / (1000 * 60 * 60);
-          return hoursAgo >= -1 && hoursAgo <= 12;
-        });
+      const recent =
+        records
+          .filter(Boolean)
+          .sort((a: any, b: any) => {
+            const timeA = new Date(a.end || a.start || a.created_at || 0).getTime();
+            const timeB = new Date(b.end || b.start || b.created_at || 0).getTime();
+            return timeB - timeA;
+          })
+          .find((w: any) => {
+            const startTime = new Date(w.start || w.created_at || 0).getTime();
+            const hoursAgo = (now - startTime) / (1000 * 60 * 60);
+            return hoursAgo >= -1 && hoursAgo <= 24;
+          }) || records[0];
 
       if (recent) {
         (results as any).hasRecentWorkout = true;
@@ -491,10 +508,16 @@ export async function fetchWhoopDailyBiometrics(
             results.workoutStrain = Math.round(recent.score.strain * 10) / 10;
           }
           if (typeof recent.score.average_heart_rate === 'number') {
-            results.avgWorkoutHr = Math.round(recent.score.average_heart_rate);
+            const avg = Math.round(recent.score.average_heart_rate);
+            results.avgWorkoutHr = avg;
+            (results as any).workoutAvgHr = avg;
+            (results as any).avgHeartRate = avg;
           }
           if (typeof recent.score.max_heart_rate === 'number') {
-            results.maxWorkoutHr = Math.round(recent.score.max_heart_rate);
+            const max = Math.round(recent.score.max_heart_rate);
+            results.maxWorkoutHr = max;
+            (results as any).workoutMaxHr = max;
+            (results as any).maxHeartRate = max;
           }
           if (typeof recent.score.kilojoule === 'number') {
             results.workoutKilojoules = Math.round(recent.score.kilojoule);
@@ -510,8 +533,8 @@ export async function fetchWhoopDailyBiometrics(
 
   try {
     const bodyRes = await fetchWithFallback(
-      'https://api.prod.whoop.com/developer/v2/user/measurement/body',
-      'https://api.prod.whoop.com/developer/v1/user/measurement/body'
+      'https://api.prod.whoop.com/developer/v1/user/measurement/body',
+      'https://api.prod.whoop.com/developer/v2/user/measurement/body'
     );
     if (bodyRes && bodyRes.ok) {
       const bodyData = await bodyRes.json();
@@ -556,11 +579,23 @@ export async function fetchWhoopWorkoutStrain(
       ? bio.kilojoules
       : undefined;
 
+  const avgHeartRate =
+    bio.avgWorkoutHr ??
+    (bio as any).workoutAvgHr ??
+    (bio as any).avgHeartRate ??
+    (bio as any).cycleAvgHr;
+
+  const maxHeartRate =
+    bio.maxWorkoutHr ??
+    (bio as any).workoutMaxHr ??
+    (bio as any).maxHeartRate ??
+    (bio as any).cycleMaxHr;
+
   return {
     workoutStrain: bio.workoutStrain,
     dayStrain: bio.strain,
-    avgHeartRate: bio.avgWorkoutHr,
-    maxHeartRate: bio.maxWorkoutHr,
+    avgHeartRate,
+    maxHeartRate,
     kilojoules: workoutKj,
     dayKilojoules: bio.kilojoules,
     recoveryScore: bio.recoveryScore,

@@ -232,7 +232,14 @@ export const WorkoutSummaryModal: React.FC<WorkoutSummaryModalProps> = ({
         {/* Heart Rate & Duration Strip */}
         <div className="p-3.5 rounded-2xl bg-[#141824] text-xs space-y-1.5">
           <div className="flex justify-between text-slate-300">
-            <span>Average Heart Rate</span>
+            <span className="flex items-center space-x-1.5">
+              <span>Average Heart Rate</span>
+              {(whoopTelemetry?.avgHeartRate || (workout.avgHeartRate && workout.wearableSource === 'whoop')) && (
+                <span className="px-1.5 py-0.5 rounded bg-cyan-500/10 text-cyan-400 font-semibold text-xs">
+                  WHOOP
+                </span>
+              )}
+            </span>
             <span className="font-mono text-white font-bold">
               {whoopTelemetry?.avgHeartRate || resolvedAvgHr} bpm
             </span>
