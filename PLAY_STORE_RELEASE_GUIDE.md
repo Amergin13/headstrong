@@ -1,6 +1,6 @@
 # Treise — Google Play Store & Android TWA Release Runbook
 
-This guide outlines the exact end-to-end engineering, cryptographic signing, and Google Play Console compliance procedures required to publish **Treise** (`com.headstrong.app`) as a native Android App Bundle (`.aab`) using Google's official **Bubblewrap / Trusted Web Activity (TWA)** pipeline.
+This guide outlines the exact end-to-end engineering, cryptographic signing, and Google Play Console compliance procedures required to publish **Treise** (`com.treise.app`) as a native Android App Bundle (`.aab`) using Google's official **Bubblewrap / Trusted Web Activity (TWA)** pipeline.
 
 ---
 
@@ -88,7 +88,7 @@ For Chrome on Android to hide the URL address bar and render Treise in full-scre
        "relation": ["delegate_permission/common.handle_all_urls"],
        "target": {
          "namespace": "android_app",
-         "package_name": "com.headstrong.app",
+         "package_name": "com.treise.app",
          "sha256_cert_fingerprints": [
            "YOUR_PLAY_APP_SIGNING_SHA256_FINGERPRINT",
            "YOUR_LOCAL_UPLOAD_KEY_SHA256_FINGERPRINT"
@@ -100,7 +100,7 @@ For Chrome on Android to hide the URL address bar and render Treise in full-scre
 4. Re-run `npm run build` and redeploy `dist/`.
 5. Verify verification on a connected Android device:
    ```bash
-   adb shell pm get-app-links com.headstrong.app
+   adb shell pm get-app-links com.treise.app
    ```
 
 ---

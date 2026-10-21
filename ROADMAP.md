@@ -31,7 +31,7 @@ flowchart LR
 
 - [x] **Exercise Science Engine:** RIR-adjusted E1RM, 7-day EMA bodyweight, official DOTS powerlifting polynomial, and 6-pillar strength standards with 4 sub-divisions.
 - [x] **Biometric Auto-Regulation:** Z-score readiness computation from Google Pixel Watch (Fitbit Web API) and Whoop 4.0; Amber Shield streak protection.
-- [x] **Cross-Platform Delivery:** PWA with service worker caching, Android TWA package (`com.headstrong.app`), Google Asset Links (`.well-known/assetlinks.json`).
+- [x] **Cross-Platform Delivery:** PWA with service worker caching, Android TWA package (`com.treise.app`), Google Asset Links (`.well-known/assetlinks.json`).
 - [x] **Vercel Cloud Backend & Auth:** Live deployment at `https://treise.vercel.app/`, Google Identity Services One-Tap sign-in, and Supabase database bridge.
 - [x] **Internal Play Store Track:** Release keystore signed Android App Bundle (`app-release-bundle.aab`) deployed to Google Play Console Internal Testing track.
 

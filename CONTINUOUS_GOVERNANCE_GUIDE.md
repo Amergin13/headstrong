@@ -89,7 +89,7 @@ Treise is pre-configured for publishing as a **Trusted Web Activity (TWA)** on G
       "relation": ["delegate_permission/common.handle_all_urls"],
       "target": {
         "namespace": "android_app",
-        "package_name": "com.headstrong.app",
+        "package_name": "com.treise.app",
         "sha256_cert_fingerprints": [
           "14:6D:E9:7D:0F:52:AB:12:34:56:78:90:AB:CD:EF:12:34:56:78:90:AB:CD:EF:12:34:56:78:90:AB:CD:EF:12"
         ]

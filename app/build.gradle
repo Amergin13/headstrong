@@ -21,7 +21,7 @@ plugins {
 }
 
 def twaManifest = [
-    applicationId: 'com.headstrong.app',
+    applicationId: 'com.treise.app',
     hostName: 'treise.vercel.app', // The domain being opened in the TWA.
     launchUrl: '/', // The start path for the TWA. Must be relative to the domain.
     name: 'Treise', // The application name.
@@ -52,9 +52,9 @@ def twaManifest = [
 
 android {
     compileSdkVersion 36
-    namespace "com.headstrong.app"
+    namespace "com.treise.app"
     defaultConfig {
-        applicationId "com.headstrong.app"
+        applicationId "com.treise.app"
         minSdkVersion 24
         targetSdkVersion 36
         versionCode 8

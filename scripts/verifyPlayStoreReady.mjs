@@ -121,8 +121,8 @@ const assetLinks = JSON.parse(
   fs.readFileSync(path.join(distDir, '.well-known/assetlinks.json'), 'utf8')
 );
 assert(
-  assetLinks[0]?.target?.package_name === 'com.headstrong.app',
-  'assetlinks.json binds package_name "com.headstrong.app"'
+  assetLinks[0]?.target?.package_name === 'com.treise.app',
+  'assetlinks.json binds package_name "com.treise.app"'
 );
 assert(
   assetLinks[0]?.relation?.includes('delegate_permission/common.handle_all_urls'),
@@ -137,8 +137,8 @@ assert(
   `twa-manifest.json targets Android 15 (targetSdkVersion: ${twaManifest.targetSdkVersion} >= 35)`
 );
 assert(
-  twaManifest.packageId === 'com.headstrong.app',
-  `twa-manifest.json packageId is "com.headstrong.app"`
+  twaManifest.packageId === 'com.treise.app',
+  `twa-manifest.json packageId is "com.treise.app"`
 );
 
 // 5. Google Play Policy & Accessibility Checks
