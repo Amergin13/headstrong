@@ -154,8 +154,8 @@ export default async function handler(req: any, res: any) {
       }
     }
 
-    // 2. Fetch Sleep, Cycle, Body in parallel
-    const [sleepResult, cycleResult, bodyResult] = await Promise.all([
+    // 2. Fetch Sleep, Cycle, Body, Workout in parallel
+    const [sleepResult, cycleResult, bodyResult, workoutResult] = await Promise.all([
       fetchWithFallback(
         currentToken,
         'https://api.prod.whoop.com/developer/v1/activity/sleep?limit=10',
@@ -170,6 +170,11 @@ export default async function handler(req: any, res: any) {
         currentToken,
         'https://api.prod.whoop.com/developer/v1/user/measurement/body',
         'https://api.prod.whoop.com/developer/v2/user/measurement/body'
+      ),
+      fetchWithFallback(
+        currentToken,
+        'https://api.prod.whoop.com/developer/v1/activity/workout?limit=5',
+        'https://api.prod.whoop.com/developer/v2/activity/workout?limit=5'
       ),
     ]);
 
@@ -256,6 +261,42 @@ export default async function handler(req: any, res: any) {
           ? latestCycle.step_count
           : Math.round(strain * 650);
       biometrics.activeZoneMinutes = Math.round(strain * 3.5);
+      if (typeof latestCycle.score?.kilojoule === 'number') {
+        biometrics.kilojoules = Math.round(latestCycle.score.kilojoule);
+      }
+      if (typeof latestCycle.score?.average_heart_rate === 'number') {
+        biometrics.cycleAvgHr = Math.round(latestCycle.score.average_heart_rate);
+      }
+      if (typeof latestCycle.score?.max_heart_rate === 'number') {
+        biometrics.cycleMaxHr = Math.round(latestCycle.score.max_heart_rate);
+      }
+    }
+
+    // Extract Workout Activity (for post-workout strain capture)
+    const latestWorkout = getLatestScoredRecord(workoutResult.data);
+    if (latestWorkout?.score) {
+      const ws = latestWorkout.score;
+      if (typeof ws.strain === 'number') {
+        biometrics.workoutStrain = Math.round(ws.strain * 10) / 10;
+      }
+      if (typeof ws.average_heart_rate === 'number') {
+        biometrics.workoutAvgHr = Math.round(ws.average_heart_rate);
+      }
+      if (typeof ws.max_heart_rate === 'number') {
+        biometrics.workoutMaxHr = Math.round(ws.max_heart_rate);
+      }
+      if (typeof ws.kilojoule === 'number') {
+        biometrics.workoutKilojoules = Math.round(ws.kilojoule);
+      }
+      if (latestWorkout.start) {
+        biometrics.workoutStartTime = latestWorkout.start;
+      }
+      if (latestWorkout.end) {
+        biometrics.workoutEndTime = latestWorkout.end;
+      }
+      if (latestWorkout.sport_name) {
+        biometrics.workoutSportName = latestWorkout.sport_name;
+      }
     }
 
     // Extract Body
@@ -278,6 +319,7 @@ export default async function handler(req: any, res: any) {
         sleepStatus: sleepResult.status,
         cycleStatus: cycleResult.status,
         bodyStatus: bodyResult.status,
+        workoutStatus: workoutResult.status,
       },
     });
   } catch (error: any) {

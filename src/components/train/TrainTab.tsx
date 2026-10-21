@@ -18,6 +18,10 @@ import { ExerciseSwapModal } from './ExerciseSwapModal';
 import { PlateCalculatorModal } from './PlateCalculatorModal';
 import { WorkoutSummaryModal } from './WorkoutSummaryModal';
 import {
+  WhoopWorkoutStrainSummary,
+  fetchWhoopWorkoutStrain,
+} from '../../services/whoopService';
+import {
   TensorCoachingInsight,
   TensorCoachingInput,
   TensorHardwareProfile,
@@ -74,7 +78,7 @@ interface TrainTabProps {
     completedSet?: WorkoutSet,
     exercise?: ExerciseSession
   ) => void;
-  onFinishWorkout: () => void;
+  onFinishWorkout: (whoopTelemetry?: WhoopWorkoutStrainSummary) => void;
   onShiftWorkout: () => void;
   onSwitchLocation?: (location: TrainingLocation) => void;
   onOpenAICoach?: () => void;
@@ -119,6 +123,8 @@ export const TrainTab: React.FC<TrainTabProps> = ({
   const [previewPastWorkout, setPreviewPastWorkout] = useState<WorkoutSession | null>(null);
   const [showAddExerciseModal, setShowAddExerciseModal] = useState(false);
   const [showLocationDropdown, setShowLocationDropdown] = useState(false);
+  const [whoopStrainSummary, setWhoopStrainSummary] = useState<WhoopWorkoutStrainSummary | null>(null);
+  const [isSyncingWhoopStrain, setIsSyncingWhoopStrain] = useState(false);
 
   const [tensorHardware, setTensorHardware] = useState<TensorHardwareProfile | null>(null);
   const [tensorInsight, setTensorInsight] = useState<TensorCoachingInsight | null>(null);
@@ -527,11 +533,25 @@ export const TrainTab: React.FC<TrainTabProps> = ({
   const handleFinishWorkoutClick = () => {
     triggerHaptic('success');
     setShowSummaryModal(true);
+
+    if (profile.whoopConnected && profile.whoopAccessToken) {
+      setIsSyncingWhoopStrain(true);
+      fetchWhoopWorkoutStrain(profile.whoopAccessToken, profile.whoopRefreshToken)
+        .then((summary) => {
+          setWhoopStrainSummary(summary);
+        })
+        .catch((err) => {
+          console.warn('Could not auto-fetch live Whoop workout strain:', err);
+        })
+        .finally(() => {
+          setIsSyncingWhoopStrain(false);
+        });
+    }
   };
 
   const handleCloseSummary = () => {
     setShowSummaryModal(false);
-    onFinishWorkout();
+    onFinishWorkout(whoopStrainSummary || undefined);
   };
 
   const phaseMeta = MESO_WEEK_PHASE_NAMES[mesoWeek] || MESO_WEEK_PHASE_NAMES[3];
@@ -899,6 +919,9 @@ export const TrainTab: React.FC<TrainTabProps> = ({
           workout={activeWorkout}
           readinessState={readiness.state}
           onClose={handleCloseSummary}
+          whoopTelemetry={whoopStrainSummary}
+          isWhoopConnected={Boolean(profile.whoopConnected)}
+          isSyncingWhoop={isSyncingWhoopStrain}
         />
       )}
 

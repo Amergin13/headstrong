@@ -68,6 +68,68 @@ export function calculateDailyReadiness(
   const hrvChangePercent = meanHrv > 0 ? ((todayLog.hrvRmssd - meanHrv) / meanHrv) * 100 : 0;
   const rhrDeltaBpm = todayLog.restingHr - meanRhr;
 
+  // 1. Authoritative Wearable Recovery Score Integration (e.g. Whoop official recovery score 0-100%):
+  // Directly adheres to international recovery zones:
+  // - Green (>= 67%): Primed
+  // - Yellow (34% - 66%): Normal
+  // - Red (< 34%): Amber Shield
+  if (typeof todayLog.recoveryScore === 'number' && !isNaN(todayLog.recoveryScore)) {
+    const recScore = todayLog.recoveryScore;
+    const roundedZHrv = Math.round(zHrv * 100) / 100;
+    const roundedZRhr = Math.round(zRhr * 100) / 100;
+    const roundedSleep = Math.round(sleepNorm * 100) / 100;
+
+    if (recScore >= 67) {
+      const mappedZ = Math.round((0.8 + ((recScore - 67) / 33) * 0.7) * 100) / 100;
+      return {
+        state: 'Primed',
+        score: mappedZ,
+        zHrv: roundedZHrv,
+        zRhr: roundedZRhr,
+        sleepDeviation: roundedSleep,
+        hrvChangePercent: Math.round(hrvChangePercent * 10) / 10,
+        rhrDeltaBpm: Math.round(rhrDeltaBpm * 10) / 10,
+        sleepHours: todayLog.sleepHours,
+        reason: `Great recovery (${recScore}% - Green). Peak parasympathetic tone—ready to push for PRs and progressive overload (+15% XP bonus).`,
+        xpMultiplier: 1.15,
+        streakProtected: false,
+      };
+    }
+
+    if (recScore >= 34) {
+      const mappedZ = Math.round((((recScore - 34) / 33) * 1.4 - 0.7) * 100) / 100;
+      return {
+        state: 'Normal',
+        score: mappedZ,
+        zHrv: roundedZHrv,
+        zRhr: roundedZRhr,
+        sleepDeviation: roundedSleep,
+        hrvChangePercent: Math.round(hrvChangePercent * 10) / 10,
+        rhrDeltaBpm: Math.round(rhrDeltaBpm * 10) / 10,
+        sleepHours: todayLog.sleepHours,
+        reason: `Steady recovery (${recScore}% - Yellow). Standard double progression targets (1–2 RIR) apply today.`,
+        xpMultiplier: 1.0,
+        streakProtected: false,
+      };
+    }
+
+    // Red zone (< 34%): Amber Shield triggered
+    return {
+      state: 'Amber Shield',
+      score: -1.0,
+      zHrv: roundedZHrv,
+      zRhr: roundedZRhr,
+      sleepDeviation: roundedSleep,
+      hrvChangePercent: Math.round(hrvChangePercent * 10) / 10,
+      rhrDeltaBpm: Math.round(rhrDeltaBpm * 10) / 10,
+      sleepHours: todayLog.sleepHours,
+      reason: `Recovery Shield Active (${recScore}% - Red). Working loads are held steady today (2–3 RIR buffer) and your streak is protected.`,
+      xpMultiplier: 1.0,
+      streakProtected: true,
+    };
+  }
+
+  // 2. Statistical Baseline Z-Score Evaluation (Pixel Watch / Fitbit / Health Connect):
   // Amber Shield conditions:
   // - HRV down > 15% (hrvChangePercent < -15)
   // - RHR +4 bpm (rhrDeltaBpm >= 4)

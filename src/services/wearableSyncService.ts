@@ -89,6 +89,12 @@ export async function syncWearableBiometrics(
               activeZoneMinutes: liveData.activeZoneMinutes || 45,
               vo2Max: liveData.vo2Max || 46.0,
               recoveryScore: liveData.recoveryScore,
+              workoutStrain: liveData.workoutStrain,
+              strain: liveData.strain,
+              kilojoules: liveData.kilojoules,
+              avgWorkoutHr: liveData.avgWorkoutHr,
+              maxWorkoutHr: liveData.maxWorkoutHr,
+              source: 'whoop',
             };
           } else {
             console.warn('Whoop API responded but lacked overnight recovery metrics:', liveData);

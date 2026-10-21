@@ -40,15 +40,26 @@ export const ReadinessBanner: React.FC<ReadinessBannerProps> = ({
   const isPrimed = readiness.state === 'Primed';
   const isAmber = readiness.state === 'Amber Shield';
 
-  // Calculate biometric recovery percentage (e.g. 85-99% for primed, 35-65% for amber, 68-80% for normal)
-  const recoveryPercent = isAmber
-    ? Math.max(35, Math.min(65, Math.round(55 + (readiness.score + 0.8) * 12)))
-    : isPrimed
-    ? Math.min(99, Math.max(82, Math.round(85 + (readiness.score - 0.8) * 10)))
-    : Math.min(80, Math.max(68, Math.round(72 + readiness.score * 8)));
+  // Accurately reflect authentic wearable recovery score (e.g. Whoop official recovery score: 49%)
+  const recoveryPercent =
+    typeof latestBiometrics?.recoveryScore === 'number'
+      ? latestBiometrics.recoveryScore
+      : isAmber
+      ? Math.max(35, Math.min(65, Math.round(55 + (readiness.score + 0.8) * 12)))
+      : isPrimed
+      ? Math.min(99, Math.max(82, Math.round(85 + (readiness.score - 0.8) * 10)))
+      : Math.min(80, Math.max(68, Math.round(72 + readiness.score * 8)));
+
+  const gaugeVariant =
+    recoveryPercent >= 67
+      ? 'recovery'
+      : recoveryPercent >= 34
+      ? 'amber'
+      : 'amber';
 
   const summary =
     tensorInsight?.summary ||
+    readiness.reason ||
     (isPrimed
       ? `Week ${mesoWeek} Accumulation: Peak parasympathetic recovery detected. You have full capacity to drive progressive overload on your working sets.`
       : isAmber
@@ -73,7 +84,7 @@ export const ReadinessBanner: React.FC<ReadinessBannerProps> = ({
               max={100}
               unit="%"
               label="RECOVERY"
-              variant={isPrimed ? 'recovery' : isAmber ? 'amber' : 'recovery'}
+              variant={gaugeVariant}
               size="sm"
             />
           </div>

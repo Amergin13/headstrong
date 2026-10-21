@@ -42,6 +42,8 @@ export interface TensorCoachingInput {
   goalPhase: GoalPhase;
   mesocycleWeek: number;
   location: TrainingLocation;
+  recoveryScore?: number;
+  workoutStrain?: number;
 }
 
 export interface TensorCoachingInsight {

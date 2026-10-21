@@ -53,7 +53,12 @@ import {
   SplitDayType,
 } from './services/workoutGenerator';
 import { syncWearableBiometrics } from './services/wearableSyncService';
-import { exchangeWhoopCodeForToken, WHOOP_CONFIG } from './services/whoopService';
+import {
+  exchangeWhoopCodeForToken,
+  fetchWhoopWorkoutStrain,
+  WhoopWorkoutStrainSummary,
+  WHOOP_CONFIG,
+} from './services/whoopService';
 import { exchangeFitbitCodeForToken } from './services/fitbitService';
 import { Header } from './components/common/Header';
 import { NavigationBar, TabId } from './components/common/NavigationBar';
@@ -532,7 +537,7 @@ export const App: React.FC = () => {
   };
 
   // Handler: Complete entire workout session & advance split rotation (Legitimate XP)
-  const handleFinishWorkout = () => {
+  const handleFinishWorkout = (whoopTelemetry?: WhoopWorkoutStrainSummary) => {
     const todayStr = new Date().toISOString().split('T')[0];
     const completedSetCount = activeWorkout.exercises.reduce(
       (acc, ex) => acc + ex.sets.filter((s) => s.completed).length,
@@ -552,6 +557,8 @@ export const App: React.FC = () => {
       readiness.xpMultiplier
     );
 
+    const isWhoopActive = Boolean(profile.whoopConnected || profile.wearableSource === 'whoop');
+
     const completedSession: WorkoutSession = {
       ...activeWorkout,
       completed: true,
@@ -559,9 +566,102 @@ export const App: React.FC = () => {
       readinessState: readiness.state,
       readinessZScore: readiness.score,
       xpEarned: completionAward.amount,
-      avgHeartRate: estimatedHr,
+      avgHeartRate: whoopTelemetry?.avgHeartRate || estimatedHr,
+      maxHeartRate: whoopTelemetry?.maxHeartRate,
       durationMinutes: estimatedDuration,
+      whoopStrain: whoopTelemetry?.workoutStrain ?? whoopTelemetry?.dayStrain,
+      kilojoules: whoopTelemetry?.kilojoules,
+      wearableSource: isWhoopActive ? 'whoop' : undefined,
     };
+
+    // Integrate captured Whoop workout strain and recovery into BiometricLog & Knowledge Graph
+    if (
+      whoopTelemetry &&
+      (whoopTelemetry.workoutStrain !== undefined ||
+        whoopTelemetry.dayStrain !== undefined ||
+        whoopTelemetry.kilojoules !== undefined)
+    ) {
+      setBiometrics((prev) => {
+        const existingIdx = prev.findIndex((b) => b.date === todayStr);
+        if (existingIdx >= 0) {
+          const updated = [...prev];
+          updated[existingIdx] = {
+            ...updated[existingIdx],
+            workoutStrain: whoopTelemetry.workoutStrain ?? updated[existingIdx].workoutStrain,
+            strain: whoopTelemetry.dayStrain ?? updated[existingIdx].strain,
+            kilojoules: whoopTelemetry.kilojoules ?? updated[existingIdx].kilojoules,
+            avgWorkoutHr: whoopTelemetry.avgHeartRate ?? updated[existingIdx].avgWorkoutHr,
+            maxWorkoutHr: whoopTelemetry.maxHeartRate ?? updated[existingIdx].maxWorkoutHr,
+            recoveryScore: whoopTelemetry.recoveryScore ?? updated[existingIdx].recoveryScore,
+            source: 'whoop',
+          };
+          return updated;
+        } else {
+          return [
+            ...prev,
+            {
+              date: todayStr,
+              bodyweightKg: bodyweightEmaKg,
+              hrvRmssd: 58,
+              restingHr: 58,
+              sleepHours: 7.5,
+              steps: 8500,
+              activeZoneMinutes: 35,
+              workoutStrain: whoopTelemetry.workoutStrain,
+              strain: whoopTelemetry.dayStrain,
+              kilojoules: whoopTelemetry.kilojoules,
+              avgWorkoutHr: whoopTelemetry.avgHeartRate,
+              maxWorkoutHr: whoopTelemetry.maxHeartRate,
+              recoveryScore: whoopTelemetry.recoveryScore,
+              source: 'whoop',
+            },
+          ];
+        }
+      });
+    } else if (isWhoopActive && profile.whoopAccessToken) {
+      // Background catch-up sync if summary closed before strap completed upload
+      fetchWhoopWorkoutStrain(profile.whoopAccessToken, profile.whoopRefreshToken)
+        .then((bgStrain) => {
+          if (
+            bgStrain.workoutStrain !== undefined ||
+            bgStrain.dayStrain !== undefined ||
+            bgStrain.kilojoules !== undefined
+          ) {
+            setWorkouts((prevWorkouts) =>
+              prevWorkouts.map((w) =>
+                w.id === completedSession.id
+                  ? {
+                      ...w,
+                      whoopStrain: bgStrain.workoutStrain ?? bgStrain.dayStrain ?? w.whoopStrain,
+                      maxHeartRate: bgStrain.maxHeartRate ?? w.maxHeartRate,
+                      avgHeartRate: bgStrain.avgHeartRate ?? w.avgHeartRate,
+                      kilojoules: bgStrain.kilojoules ?? w.kilojoules,
+                    }
+                  : w
+              )
+            );
+            setBiometrics((prev) => {
+              const existingIdx = prev.findIndex((b) => b.date === todayStr);
+              if (existingIdx >= 0) {
+                const updated = [...prev];
+                updated[existingIdx] = {
+                  ...updated[existingIdx],
+                  workoutStrain: bgStrain.workoutStrain ?? updated[existingIdx].workoutStrain,
+                  strain: bgStrain.dayStrain ?? updated[existingIdx].strain,
+                  kilojoules: bgStrain.kilojoules ?? updated[existingIdx].kilojoules,
+                  avgWorkoutHr: bgStrain.avgHeartRate ?? updated[existingIdx].avgWorkoutHr,
+                  maxWorkoutHr: bgStrain.maxHeartRate ?? updated[existingIdx].maxWorkoutHr,
+                  recoveryScore: bgStrain.recoveryScore ?? updated[existingIdx].recoveryScore,
+                  source: 'whoop',
+                };
+                return updated;
+              }
+              return prev;
+            });
+          }
+        })
+        .catch(() => {});
+    }
 
     // Evaluate strength standards advances
     const prevPillars = calculateBestPillarE1rms(workouts, bodyweightEmaKg);

@@ -428,7 +428,7 @@ export async function processAssistantMessage(
       );
     });
 
-    if (jointQuery || lowerMsg.includes('joint') || lowerMsg.includes('sore') || lowerMsg.includes('pain') || lowerMsg.includes('strain')) {
+    if (jointQuery || lowerMsg.includes('joint') || lowerMsg.includes('sore') || lowerMsg.includes('pain') || lowerMsg.includes('joint strain')) {
       const targetJoint = jointQuery || kg.joints.sort((a, b) => b.strainScore - a.strainScore)[0];
       answerText = `Your ${targetJoint.joint} is currently at ${targetJoint.strainScore}/100 load (${targetJoint.status}). Most of the recent stress came from ${targetJoint.topContributors.slice(0, 2).join(' and ') || 'recent pressing movements'}. ${targetJoint.biomechanicalAdvice}`;
 
@@ -488,10 +488,27 @@ export async function processAssistantMessage(
         !lowerMsg.includes('academic') &&
         !lowerMsg.includes('retention shield') &&
         !lowerMsg.includes('science');
+      const isPersonalTelemetryQuery =
+        (lowerMsg.includes('my') ||
+          lowerMsg.includes('today') ||
+          lowerMsg.includes('current') ||
+          lowerMsg.includes('score') ||
+          lowerMsg.includes('what was') ||
+          lowerMsg.includes('what is') ||
+          lowerMsg.includes('how was') ||
+          lowerMsg.includes('how much')) &&
+        (lowerMsg.includes('recovery') ||
+          lowerMsg.includes('strain') ||
+          lowerMsg.includes('hrv') ||
+          lowerMsg.includes('sleep') ||
+          lowerMsg.includes('whoop') ||
+          lowerMsg.includes('fitbit') ||
+          lowerMsg.includes('readiness'));
 
-      const scientificPrinciple = !isTacticalWorkoutQuery
-        ? queryExerciseScienceKnowledgeBase(lowerMsg)
-        : null;
+      const scientificPrinciple =
+        !isTacticalWorkoutQuery && !isPersonalTelemetryQuery
+          ? queryExerciseScienceKnowledgeBase(lowerMsg)
+          : null;
 
       if (scientificPrinciple) {
         scientificPrinciplesCited.push(scientificPrinciple);
@@ -515,9 +532,10 @@ export async function processAssistantMessage(
         }
       }
 
-      // C. Recovery & Autonomic Telemetry Query
+      // C. Recovery, Strain & Autonomic Telemetry Query
       else if (
         lowerMsg.includes('recovery') ||
+        lowerMsg.includes('strain') ||
         lowerMsg.includes('hrv') ||
         lowerMsg.includes('sleep') ||
         lowerMsg.includes('readiness') ||
@@ -533,8 +551,42 @@ export async function processAssistantMessage(
         const hrv = latest?.hrvRmssd || 58;
         const sleep = latest?.sleepHours || 7.5;
         const rhr = latest?.restingHr || 58;
+        const recScore = latest?.recoveryScore;
+        const workoutStrain = latest?.workoutStrain;
+        const dayStrain = latest?.strain;
+        const kilojoules = latest?.kilojoules;
 
-        if (readinessState === 'Primed') {
+        const isWhoop = profile.whoopConnected || recScore !== undefined || workoutStrain !== undefined;
+        const zoneLabel =
+          typeof recScore === 'number'
+            ? recScore >= 67
+              ? 'Green'
+              : recScore >= 34
+              ? 'Yellow'
+              : 'Red'
+            : readinessState === 'Primed'
+            ? 'Green'
+            : readinessState === 'Amber Shield'
+            ? 'Red'
+            : 'Yellow';
+
+        if (lowerMsg.includes('strain')) {
+          if (workoutStrain !== undefined) {
+            answerText = `Your Whoop workout strain is ${workoutStrain}${dayStrain ? ` (Day Strain: ${dayStrain})` : ''}${kilojoules ? ` with ${kilojoules} kJ burned` : ''}. Combined with your ${recScore ?? 49}% ${zoneLabel} recovery, your stimulus-to-fatigue ratio is balanced. Standard progressive double progression applies.`;
+          } else if (dayStrain !== undefined) {
+            answerText = `Your Whoop day strain is ${dayStrain}${kilojoules ? ` with ${kilojoules} kJ energy burned` : ''}. Combined with your ${recScore ?? 49}% ${zoneLabel} recovery, your recovery capacity matches today's prescribed training volume.`;
+          } else {
+            answerText = `Your daily strain is currently balanced with your recovery. Complete today's session to capture your full cardiovascular and muscular workout strain.`;
+          }
+        } else if (recScore !== undefined) {
+          if (recScore >= 67) {
+            answerText = `Your Whoop recovery is at ${recScore}% (${zoneLabel} zone) with an HRV of ${hrv} ms and ${sleep} hours of sleep. Your parasympathetic tone is elevated (+15% workout XP multiplier), giving you a green light to push load on your working sets.`;
+          } else if (recScore >= 34) {
+            answerText = `Your Whoop recovery is at ${recScore}% (${zoneLabel} zone) with an HRV of ${hrv} ms and ${sleep} hours of sleep. Your autonomic nervous system is in a balanced baseline. Follow your standard 1–2 RIR double progression targets.`;
+          } else {
+            answerText = `Your Whoop recovery is at ${recScore}% (${zoneLabel} zone, Amber Shield active) with an HRV of ${hrv} ms and ${sleep} hours of sleep. Systemic fatigue has accumulated. Working weights are held steady with 2–3 reps left in reserve to prevent joint burnout and protect your streak.`;
+          }
+        } else if (readinessState === 'Primed') {
           answerText = `Your recovery is Primed today with a strong ${hrv} ms HRV and ${sleep} hours of sleep. Your parasympathetic tone is elevated, granting a +15% workout XP multiplier and a green light to push load on your first working sets.`;
         } else if (readinessState === 'Amber Shield') {
           answerText = `Your recovery is in Amber Shield mode (HRV: ${hrv} ms, Sleep: ${sleep}h). Your central nervous system needs lighter effort today. Working weights are held steady with 2–3 reps left in reserve to prevent joint burnout and protect your streak.`;
@@ -543,10 +595,17 @@ export async function processAssistantMessage(
         }
 
         citations.push({
-          label: 'Daily Readiness',
+          label: isWhoop ? 'Whoop Recovery' : 'Daily Readiness',
           metric: 'Status',
-          value: readinessState,
+          value: recScore !== undefined ? `${recScore}% (${zoneLabel})` : readinessState,
         });
+        if (workoutStrain !== undefined) {
+          citations.push({
+            label: 'Workout Strain',
+            metric: 'Strain Score',
+            value: `${workoutStrain} (Whoop)`,
+          });
+        }
         citations.push({
           label: 'Recovery Score',
           metric: 'Efficiency',

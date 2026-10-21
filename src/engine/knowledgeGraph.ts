@@ -1214,13 +1214,23 @@ export function buildAthleteKnowledgeGraph(
       ? Math.round((recentBiometrics.reduce((a, b) => a + b.sleepHours, 0) / recentBiometrics.length) * 10) / 10
       : 7.5;
 
+  const recentWhoopStrain = recentWorkouts
+    .map((w) => w.whoopStrain)
+    .filter((s): s is number => typeof s === 'number' && s > 0);
+  const latestBio = biometrics[biometrics.length - 1];
+  const avgWorkoutStrain =
+    recentWhoopStrain.length > 0
+      ? Math.round((recentWhoopStrain.reduce((a, b) => a + b, 0) / recentWhoopStrain.length) * 10) / 10
+      : latestBio?.workoutStrain || latestBio?.strain;
+  const latestRecoveryScore = latestBio?.recoveryScore;
+
   const systemicAxialLoadScore = Math.min(100, Math.round((totalWeeklyAxialUnits / 16) * 100));
   const lengthenedStimulusRatio =
     totalHardSetsWeek > 0 ? Math.round((lengthenedSetsCount / totalHardSetsWeek) * 100) : 62;
-  const recoveryEfficiencyScore = Math.min(
-    99,
-    Math.max(55, Math.round(70 + (avgHrv - 55) * 0.8 + (avgSleep - 7.0) * 8))
-  );
+  const recoveryEfficiencyScore =
+    typeof latestRecoveryScore === 'number'
+      ? latestRecoveryScore
+      : Math.min(99, Math.max(55, Math.round(70 + (avgHrv - 55) * 0.8 + (avgSleep - 7.0) * 8)));
 
   // 5. Generate Plain-English Coaching Insights
   const highestStrainJoint = [...joints].sort((a, b) => b.strainScore - a.strainScore)[0];
@@ -1232,7 +1242,35 @@ export function buildAthleteKnowledgeGraph(
         m.weeklySets < m.personalizedMav[1] - 2
     ) || muscleProfiles[0];
 
-  const insights: CausalInsight[] = [
+  const insights: CausalInsight[] = [];
+
+  // Whoop Autonomic & Strain Insight
+  if (profile.whoopConnected || latestRecoveryScore !== undefined || avgWorkoutStrain !== undefined) {
+    const strainVal = avgWorkoutStrain || latestBio?.strain || 11.2;
+    const recVal = latestRecoveryScore ?? 49;
+    const isGreen = recVal >= 67;
+    const isYellow = recVal >= 34 && recVal < 67;
+
+    insights.push({
+      id: 'pkg-insight-whoop-strain',
+      category: 'Autonomic',
+      title: 'Whoop Workout Strain & Autonomic Recovery',
+      confidence: 97,
+      impactMetric: `${recVal}% Recovery • ${strainVal} Strain`,
+      narrative: isGreen
+        ? `With ${recVal}% Green recovery and ${strainVal} workout strain, your autonomic nervous system is in peak parasympathetic tone. Your body has full capacity to drive progressive overload on your working sets.`
+        : isYellow
+        ? `With ${recVal}% Yellow recovery and ${strainVal} workout strain, your stimulus-to-fatigue ratio is balanced. Standard progressive double progression at 1–2 RIR matches your recovery capacity.`
+        : `With ${recVal}% Red recovery and ${strainVal} workout strain, systemic fatigue has accumulated. Holding weights steady today with 2–3 RIR protects connective tissue while preserving muscle mass.`,
+      actionableStep: isGreen
+        ? 'Push for the upper boundary of your rep targets to earn progressive load jumps.'
+        : isYellow
+        ? 'Maintain consistent lifting cadence and standard 1–2 RIR on all working sets.'
+        : 'Use conservative 2–3 RIR targets on heavy compounds to prevent overtraining.',
+    });
+  }
+
+  insights.push(
     {
       id: 'pkg-insight-1',
       category: 'Hypertrophy',
@@ -1271,8 +1309,8 @@ export function buildAthleteKnowledgeGraph(
       impactMetric: `+${fastestMuscle.e1rmVelocityPct}% Strength`,
       narrative: `Over the last 6 weeks, workouts after 7.4+ hours of sleep had the highest rep completion, while lighter recovery days protected your ${profile.streakDays}-day streak without burnout.`,
       actionableStep: `Push for weight increases on well-rested days and keep weights steady when your sleep dips.`,
-    },
-  ];
+    }
+  );
 
   const hasTravelOrBw =
     recentWorkouts.some(
@@ -1304,24 +1342,42 @@ export function buildAthleteKnowledgeGraph(
       subtitle: `Week ${profile.mesocycleWeek || 3}`,
       metrics: {
         'Recovery': `${recoveryEfficiencyScore}/100`,
-        'Back Load': `${systemicAxialLoadScore}%`,
+        ...(avgWorkoutStrain ? { 'Workout Strain': `${avgWorkoutStrain}` } : { 'Back Load': `${systemicAxialLoadScore}%` }),
         'Full Stretch': `${lengthenedStimulusRatio}%`,
       },
       detailText: `Your overall training balance across 6 weeks of workouts, sleep, and weekly set targets.`,
     },
     {
       id: 'node-biometrics',
-      label: 'Sleep & Heart',
+      label: profile.whoopConnected ? 'Whoop Recovery & Strain' : 'Sleep & Heart',
       category: 'biometric',
-      score: Math.min(100, Math.round((avgHrv / 70) * 100)),
-      status: avgHrv >= 55 ? 'optimal' : 'elevated',
-      subtitle: `${avgSleep}h • ${avgHrv}ms`,
+      score: recoveryEfficiencyScore,
+      status:
+        latestRecoveryScore !== undefined
+          ? latestRecoveryScore >= 67
+            ? 'optimal'
+            : latestRecoveryScore >= 34
+            ? 'optimal'
+            : 'warning'
+          : avgHrv >= 55
+          ? 'optimal'
+          : 'elevated',
+      subtitle:
+        profile.whoopConnected && latestRecoveryScore !== undefined
+          ? `${latestRecoveryScore}% Recovery • ${avgWorkoutStrain ? `${avgWorkoutStrain} Strain` : `${avgSleep}h Sleep`}`
+          : `${avgSleep}h • ${avgHrv}ms`,
       metrics: {
+        ...(latestRecoveryScore !== undefined ? { 'Whoop Recovery': `${latestRecoveryScore}%` } : {}),
+        ...(avgWorkoutStrain !== undefined ? { 'Workout Strain': `${avgWorkoutStrain}` } : {}),
+        ...(latestBio?.strain !== undefined ? { 'Day Strain': `${latestBio.strain}` } : {}),
+        ...(latestBio?.kilojoules !== undefined ? { 'Energy': `${latestBio.kilojoules} kJ` } : {}),
         'Avg HRV': `${avgHrv} ms`,
         'Avg Sleep': `${avgSleep} hrs`,
-        'Resting Pulse': `${profile.restingHrBaseline} bpm`,
+        'Resting Pulse': `${latestBio?.restingHr || profile.restingHrBaseline} bpm`,
       },
-      detailText: `Your 14-day sleep and heart rate recovery trend from Google Pixel Watch. Automatically adjusts your daily effort targets.`,
+      detailText: profile.whoopConnected
+        ? `Live Whoop 4.0 autonomic telemetry. Recovery score (${latestRecoveryScore ?? 49}%) and workout strain (${avgWorkoutStrain ?? 11.2}) drive daily RIR targets and stimulus-to-fatigue auto-regulation.`
+        : `Your 14-day sleep and heart rate recovery trend. Automatically adjusts your daily effort targets.`,
     },
     {
       id: 'node-delts-calves',

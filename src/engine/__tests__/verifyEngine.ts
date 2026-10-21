@@ -2252,6 +2252,32 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
   const readinessFromHc = calculateDailyReadiness(hcSyncedLog, mockBiometrics);
   assert(readinessFromHc.state === 'Amber Shield', `Health Connect sync telemetry correctly triggers Amber Shield recovery`);
 
+  // 6. Whoop 49% Official Recovery Score Evaluation (Yellow Zone -> Normal Progression)
+  const whoop49Log: BiometricLog = {
+    date: '2026-10-21',
+    bodyweightKg: 81.8,
+    hrvRmssd: 58,
+    restingHr: 54,
+    sleepHours: 7.2,
+    steps: 9200,
+    activeZoneMinutes: 40,
+    recoveryScore: 49,
+    source: 'whoop',
+  };
+  const readinessWhoop49 = calculateDailyReadiness(whoop49Log, mockBiometrics);
+  assert(
+    readinessWhoop49.state === 'Normal',
+    `Whoop 49% recovery score maps to Normal baseline (not Amber Shield) (got ${readinessWhoop49.state})`
+  );
+  assert(
+    readinessWhoop49.xpMultiplier === 1.0,
+    `Whoop 49% recovery score provides standard 1.0x XP multiplier`
+  );
+  assert(
+    readinessWhoop49.reason.includes('49%') && readinessWhoop49.reason.includes('Yellow'),
+    `Whoop 49% recovery reason indicates 49% Yellow recovery (${readinessWhoop49.reason})`
+  );
+
   // --- SUITE 27: GOOGLE IDENTITY SERVICES, JWT CREDENTIALS & ACCOUNT SYNC ---
   console.log('\n--- SUITE 27: GOOGLE IDENTITY SERVICES, JWT CREDENTIALS & ACCOUNT SYNC ---');
 
@@ -2370,7 +2396,176 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
     `UserProfile successfully associates with authenticated Google account`
   );
 
-  console.log('\nALL 27 ENGINE, GOVERNANCE, DESIGN HEURISTICS, TYPOGRAPHY, WEARABLES, GOOGLE AUTH & TENSOR AI SUITES PASSED SUCCESSFULLY! 🎯');
+  // --- SUITE 28: WHOOP 4.0 WORKOUT STRAIN CAPTURE, KNOWLEDGE GRAPH & AI COACH INTEGRATION ---
+  console.log('\n--- SUITE 28: WHOOP 4.0 WORKOUT STRAIN CAPTURE, KNOWLEDGE GRAPH & AI COACH INTEGRATION ---');
+
+  // 1. Workout Session with Whoop Strain Telemetry
+  const sessionWithWhoopStrain: WorkoutSession = {
+    id: 'whoop-session-1',
+    date: '2026-10-21',
+    name: 'Day 1: Chest & Shoulders',
+    splitDay: 'Push',
+    completed: true,
+    completedAt: '2026-10-21T10:30:00Z',
+    readinessState: 'Normal',
+    readinessZScore: -0.04,
+    xpEarned: 460,
+    avgHeartRate: 142,
+    maxHeartRate: 168,
+    durationMinutes: 58,
+    whoopStrain: 11.4,
+    kilojoules: 485,
+    wearableSource: 'whoop',
+    exercises: [
+      {
+        id: 'w-ex-1',
+        exerciseId: 'ex-bench-press',
+        name: 'Barbell Bench Press',
+        pillar: 'Horizontal Push',
+        equipment: 'barbell',
+        minReps: 8,
+        maxReps: 12,
+        sets: [
+          { id: 'ws-1', setNumber: 1, targetWeightKg: 85, actualWeightKg: 85, targetReps: 10, actualReps: 10, targetRir: 2, actualRir: 2, completed: true, setType: 'working' },
+          { id: 'ws-2', setNumber: 2, targetWeightKg: 85, actualWeightKg: 85, targetReps: 10, actualReps: 10, targetRir: 2, actualRir: 2, completed: true, setType: 'working' },
+          { id: 'ws-3', setNumber: 3, targetWeightKg: 85, actualWeightKg: 85, targetReps: 10, actualReps: 10, targetRir: 1, actualRir: 1, completed: true, setType: 'working' },
+        ],
+      },
+    ],
+  };
+
+  assert(
+    sessionWithWhoopStrain.whoopStrain === 11.4 &&
+      sessionWithWhoopStrain.maxHeartRate === 168 &&
+      sessionWithWhoopStrain.kilojoules === 485 &&
+      sessionWithWhoopStrain.wearableSource === 'whoop',
+    'WorkoutSession encapsulates Whoop workout strain (11.4), peak HR (168 bpm), kilojoules (485 kJ), and wearable source'
+  );
+
+  // 2. Hydrated BiometricLog with Recovery and Strain
+  const biometricsWithWhoop: BiometricLog[] = [
+    ...mockBiometrics,
+    {
+      date: '2026-10-21',
+      bodyweightKg: 81.8,
+      hrvRmssd: 58,
+      restingHr: 54,
+      sleepHours: 7.2,
+      steps: 9200,
+      activeZoneMinutes: 40,
+      recoveryScore: 49,
+      workoutStrain: 11.4,
+      strain: 13.8,
+      kilojoules: 485,
+      source: 'whoop',
+    },
+  ];
+
+  // 3. Athlete Personal Knowledge Graph Grounding with Whoop Recovery & Strain
+  const whoopProfile: UserProfile = {
+    ...testProfile,
+    whoopConnected: true,
+    wearableSource: 'whoop',
+  };
+
+  const kgWithWhoop = buildAthleteKnowledgeGraph(
+    [sessionWithWhoopStrain],
+    biometricsWithWhoop,
+    SEED_EXERCISES,
+    whoopProfile,
+    { Chest: 14, Shoulders: 12 }
+  );
+
+  // Check Knowledge Graph node-biometrics
+  const nodeBio = kgWithWhoop.nodes.find((n) => n.id === 'node-biometrics');
+  assert(
+    nodeBio !== undefined &&
+      nodeBio.label === 'Whoop Recovery & Strain' &&
+      nodeBio.subtitle?.includes('49% Recovery') &&
+      nodeBio.subtitle?.includes('11.4 Strain'),
+    `Knowledge Graph node-biometrics reflects authentic 49% Recovery and 11.4 Workout Strain (got "${nodeBio?.subtitle}")`
+  );
+  assert(
+    nodeBio?.metrics['Whoop Recovery'] === '49%' &&
+      nodeBio?.metrics['Workout Strain'] === '11.4',
+    `Knowledge Graph node-biometrics metrics include Whoop Recovery: 49% and Workout Strain: 11.4`
+  );
+
+  // Check Knowledge Graph node-athlete
+  const nodeAthlete = kgWithWhoop.nodes.find((n) => n.id === 'node-athlete');
+  assert(
+    nodeAthlete !== undefined &&
+      nodeAthlete.metrics['Workout Strain'] === '11.4',
+    `Knowledge Graph node-athlete reflects 11.4 Workout Strain`
+  );
+
+  // Check Causal Insight
+  const autonomicInsight = kgWithWhoop.insights.find((i) => i.id === 'pkg-insight-whoop-strain');
+  assert(
+    autonomicInsight !== undefined &&
+      autonomicInsight.category === 'Autonomic' &&
+      autonomicInsight.impactMetric.includes('49% Recovery') &&
+      autonomicInsight.impactMetric.includes('11.4 Strain'),
+    `Knowledge Graph produces Autonomic causal insight integrating 49% Recovery and 11.4 Strain`
+  );
+  assert(
+    Boolean(
+      autonomicInsight?.narrative.includes('Yellow recovery') &&
+        autonomicInsight?.narrative.includes('11.4 workout strain')
+    ),
+    `Causal insight narrative accurately evaluates Yellow recovery and 11.4 workout strain`
+  );
+
+  // 4. AI Assistant Context Synthesis (Recovery & Workout Strain queries)
+  const aiRecoveryQuery = await processAssistantMessage({
+    userMessage: 'What is my whoop recovery score today?',
+    profile: whoopProfile,
+    activeWorkout: sessionWithWhoopStrain,
+    workouts: [sessionWithWhoopStrain],
+    biometrics: biometricsWithWhoop,
+    exerciseCatalog: SEED_EXERCISES,
+    bodyweightEmaKg: 81.8,
+    readinessState: 'Normal',
+  });
+  assert(
+    aiRecoveryQuery.message.text.includes('49%') &&
+      aiRecoveryQuery.message.text.includes('Yellow zone'),
+    `AI Assistant answers recovery query stating 49% Yellow recovery (got "${aiRecoveryQuery.message.text.slice(0, 100)}...")`
+  );
+  assert(
+    Boolean(
+      aiRecoveryQuery.message.knowledgeGraphCitations?.some(
+        (c) => c.label === 'Whoop Recovery' && c.value.includes('49%')
+      )
+    ),
+    `AI Assistant recovery query cites 49% Whoop Recovery in Knowledge Graph citations`
+  );
+
+  const aiStrainQuery = await processAssistantMessage({
+    userMessage: 'What was my workout strain from Whoop?',
+    profile: whoopProfile,
+    activeWorkout: sessionWithWhoopStrain,
+    workouts: [sessionWithWhoopStrain],
+    biometrics: biometricsWithWhoop,
+    exerciseCatalog: SEED_EXERCISES,
+    bodyweightEmaKg: 81.8,
+    readinessState: 'Normal',
+  });
+  assert(
+    aiStrainQuery.message.text.includes('11.4') &&
+      aiStrainQuery.message.text.includes('49%'),
+    `AI Assistant answers strain query citing 11.4 workout strain and 49% recovery (got "${aiStrainQuery.message.text.slice(0, 100)}...")`
+  );
+  assert(
+    Boolean(
+      aiStrainQuery.message.knowledgeGraphCitations?.some(
+        (c) => c.label === 'Workout Strain' && c.value.includes('11.4')
+      )
+    ),
+    `AI Assistant strain query cites 11.4 Workout Strain in citations`
+  );
+
+  console.log('\nALL 28 ENGINE, GOVERNANCE, DESIGN HEURISTICS, TYPOGRAPHY, WEARABLES, WHOOP STRAIN, GOOGLE AUTH & TENSOR AI SUITES PASSED SUCCESSFULLY! 🎯');
 })().catch((err) => {
   console.error('Test Suite Failed:', err);
   if (typeof process !== 'undefined' && process.exit) {

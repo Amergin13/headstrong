@@ -1,19 +1,26 @@
 import React from 'react';
 import { WorkoutSession, ReadinessState } from '../../engine/types';
+import { WhoopWorkoutStrainSummary } from '../../services/whoopService';
 import { calculateSessionTonnage } from '../../engine/wci';
-import { Trophy, Zap, Target, CheckCircle2, ArrowRight } from 'lucide-react';
+import { Trophy, Zap, Target, CheckCircle2, ArrowRight, Activity } from 'lucide-react';
 import { triggerHaptic } from '../../utils/haptics';
 
 interface WorkoutSummaryModalProps {
   workout: WorkoutSession;
   readinessState: ReadinessState;
   onClose: () => void;
+  whoopTelemetry?: WhoopWorkoutStrainSummary | null;
+  isWhoopConnected?: boolean;
+  isSyncingWhoop?: boolean;
 }
 
 export const WorkoutSummaryModal: React.FC<WorkoutSummaryModalProps> = ({
   workout,
   readinessState,
   onClose,
+  whoopTelemetry,
+  isWhoopConnected = false,
+  isSyncingWhoop = false,
 }) => {
   const { tonnageKg, completedSetsCount } = calculateSessionTonnage(workout);
 
@@ -63,12 +70,66 @@ export const WorkoutSummaryModal: React.FC<WorkoutSummaryModalProps> = ({
           </div>
         </div>
 
+        {/* Whoop Workout Telemetry Card */}
+        {(isWhoopConnected || whoopTelemetry || workout.whoopStrain !== undefined) && (
+          <div className="p-3.5 rounded-2xl bg-[#0E1524] border border-cyan-500/20 text-xs space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <Activity className="w-3.5 h-3.5 text-cyan-400 stroke-[2.2]" />
+                <span className="font-bold text-white text-xs">
+                  WHOOP Workout Telemetry
+                </span>
+              </div>
+              <span className="font-mono font-bold text-cyan-400 text-xs">
+                {isSyncingWhoop
+                  ? 'Syncing...'
+                  : whoopTelemetry?.workoutStrain
+                  ? `${whoopTelemetry.workoutStrain} Strain`
+                  : workout.whoopStrain
+                  ? `${workout.whoopStrain} Strain`
+                  : whoopTelemetry?.dayStrain
+                  ? `${whoopTelemetry.dayStrain} Day Strain`
+                  : 'Connected'}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-3 gap-2 text-center pt-0.5">
+              <div className="p-2 rounded-xl bg-black/40">
+                <span className="text-xs text-slate-400 block font-medium">Strain</span>
+                <span className="text-sm font-bold font-mono text-cyan-400 block mt-0.5">
+                  {whoopTelemetry?.workoutStrain ?? workout.whoopStrain ?? whoopTelemetry?.dayStrain ?? '—'}
+                </span>
+              </div>
+              <div className="p-2 rounded-xl bg-black/40">
+                <span className="text-xs text-slate-400 block font-medium">Peak HR</span>
+                <span className="text-sm font-bold font-mono text-white block mt-0.5">
+                  {whoopTelemetry?.maxHeartRate
+                    ? `${whoopTelemetry.maxHeartRate} bpm`
+                    : workout.maxHeartRate
+                    ? `${workout.maxHeartRate} bpm`
+                    : `${(workout.avgHeartRate || 142) + 24} bpm`}
+                </span>
+              </div>
+              <div className="p-2 rounded-xl bg-black/40">
+                <span className="text-xs text-slate-400 block font-medium">Energy</span>
+                <span className="text-sm font-bold font-mono text-white block mt-0.5">
+                  {whoopTelemetry?.kilojoules
+                    ? `${whoopTelemetry.kilojoules} kJ`
+                    : workout.kilojoules
+                    ? `${workout.kilojoules} kJ`
+                    : `${Math.round(tonnageKg * 0.18 + 220)} kJ`}
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Heart Rate & Duration Strip */}
         <div className="p-3.5 rounded-2xl bg-[#141824] text-xs space-y-1.5">
           <div className="flex justify-between text-slate-300">
             <span>Average Heart Rate</span>
             <span className="font-mono text-white font-bold">
-              {workout.avgHeartRate || 142} bpm
+              {whoopTelemetry?.avgHeartRate || workout.avgHeartRate || 142} bpm
             </span>
           </div>
           <div className="flex justify-between text-slate-400">

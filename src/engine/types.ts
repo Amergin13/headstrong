@@ -56,8 +56,13 @@ export interface BiometricLog {
   activeZoneMinutes: number; // AZM
   vo2Max?: number; // mL/kg/min
   recoveryScore?: number; // % (0-100, e.g. Whoop recovery)
+  workoutStrain?: number; // 0 - 21 Whoop workout strain
+  strain?: number; // 0 - 21 Whoop day strain
+  kilojoules?: number; // Energy burned
   avgWorkoutHr?: number;
+  maxWorkoutHr?: number;
   workoutDurationMin?: number;
+  source?: WearableProvider;
 }
 
 export type SetType = 'working' | 'warmup' | 'drop' | 'myo';
@@ -149,8 +154,12 @@ export interface WorkoutSession {
   readinessZScore: number;
   xpEarned: number;
   avgHeartRate?: number;
+  maxHeartRate?: number;
   durationMinutes?: number;
   location?: TrainingLocation;
+  whoopStrain?: number; // 0 - 21 Whoop workout strain
+  kilojoules?: number; // energy burned during session
+  wearableSource?: WearableProvider;
 }
 
 export interface SubTierQuest {

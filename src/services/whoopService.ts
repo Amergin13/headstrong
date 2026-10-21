@@ -446,6 +446,33 @@ export async function fetchWhoopDailyBiometrics(
   }
 
   try {
+    const workoutRes = await fetchWithFallback(
+      'https://api.prod.whoop.com/developer/v1/activity/workout?limit=5',
+      'https://api.prod.whoop.com/developer/v2/activity/workout?limit=5'
+    );
+    if (workoutRes && workoutRes.ok) {
+      const workoutData = await workoutRes.json();
+      const latest = getLatestRecord(workoutData);
+      if (latest?.score) {
+        if (typeof latest.score.strain === 'number') {
+          results.workoutStrain = Math.round(latest.score.strain * 10) / 10;
+        }
+        if (typeof latest.score.average_heart_rate === 'number') {
+          results.avgWorkoutHr = Math.round(latest.score.average_heart_rate);
+        }
+        if (typeof latest.score.max_heart_rate === 'number') {
+          results.maxWorkoutHr = Math.round(latest.score.max_heart_rate);
+        }
+        if (typeof latest.score.kilojoule === 'number') {
+          results.kilojoules = Math.round(latest.score.kilojoule);
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('Could not fetch Whoop workout directly:', e);
+  }
+
+  try {
     const bodyRes = await fetchWithFallback(
       'https://api.prod.whoop.com/developer/v1/user/measurement/body',
       'https://api.prod.whoop.com/developer/v2/user/measurement/body'
@@ -461,6 +488,33 @@ export async function fetchWhoopDailyBiometrics(
   }
 
   return results;
+}
+
+export interface WhoopWorkoutStrainSummary {
+  workoutStrain?: number;
+  dayStrain?: number;
+  avgHeartRate?: number;
+  maxHeartRate?: number;
+  kilojoules?: number;
+  recoveryScore?: number;
+}
+
+/**
+ * Captures live workout strain and recovery telemetry from Whoop at session completion.
+ */
+export async function fetchWhoopWorkoutStrain(
+  accessToken: string,
+  refreshToken?: string
+): Promise<WhoopWorkoutStrainSummary> {
+  const bio = await fetchWhoopDailyBiometrics(accessToken, undefined, refreshToken);
+  return {
+    workoutStrain: bio.workoutStrain,
+    dayStrain: bio.strain,
+    avgHeartRate: bio.avgWorkoutHr,
+    maxHeartRate: bio.maxWorkoutHr,
+    kilojoules: bio.kilojoules,
+    recoveryScore: bio.recoveryScore,
+  };
 }
 
 /**
