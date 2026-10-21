@@ -543,13 +543,17 @@ export const App: React.FC = () => {
       (acc, ex) => acc + ex.sets.filter((s) => s.completed).length,
       0
     );
-    const estimatedDuration = Math.max(35, completedSetCount * 3 + 12);
+    const estimatedDuration = Math.max(30, completedSetCount * 3 + 8);
     const estimatedHr =
       activeWorkout.splitDay === 'Legs'
-        ? 149
+        ? 148
         : activeWorkout.splitDay === 'Pull'
-        ? 141
-        : 138;
+        ? 138
+        : activeWorkout.splitDay === 'Push'
+        ? 136
+        : activeWorkout.splitDay === 'Upper'
+        ? 140
+        : 142;
 
     const completionAward = calculateWorkoutCompletionXp(
       activeWorkout,
@@ -559,6 +563,23 @@ export const App: React.FC = () => {
 
     const isWhoopActive = Boolean(profile.whoopConnected || profile.wearableSource === 'whoop');
 
+    const totalTonnageKg = Math.round(
+      activeWorkout.exercises.reduce((acc, ex) => {
+        return (
+          acc +
+          ex.sets
+            .filter((s) => s.completed)
+            .reduce(
+              (sAcc, s) =>
+                sAcc + (s.actualWeightKg ?? s.targetWeightKg) * (s.actualReps ?? s.targetReps),
+              0
+            )
+        );
+      }, 0)
+    );
+
+    const calculatedEnergyKj = Math.round(totalTonnageKg * 0.16 + estimatedDuration * 11);
+
     const completedSession: WorkoutSession = {
       ...activeWorkout,
       completed: true,
@@ -567,10 +588,13 @@ export const App: React.FC = () => {
       readinessZScore: readiness.score,
       xpEarned: completionAward.amount,
       avgHeartRate: whoopTelemetry?.avgHeartRate || estimatedHr,
-      maxHeartRate: whoopTelemetry?.maxHeartRate,
-      durationMinutes: estimatedDuration,
+      maxHeartRate: whoopTelemetry?.maxHeartRate || (estimatedHr + 24),
+      durationMinutes: whoopTelemetry?.workoutDurationMin || estimatedDuration,
       whoopStrain: whoopTelemetry?.workoutStrain ?? whoopTelemetry?.dayStrain,
-      kilojoules: whoopTelemetry?.kilojoules,
+      kilojoules:
+        whoopTelemetry?.kilojoules && whoopTelemetry.kilojoules < 3500
+          ? whoopTelemetry.kilojoules
+          : calculatedEnergyKj,
       wearableSource: isWhoopActive ? 'whoop' : undefined,
     };
 
@@ -589,7 +613,11 @@ export const App: React.FC = () => {
             ...updated[existingIdx],
             workoutStrain: whoopTelemetry.workoutStrain ?? updated[existingIdx].workoutStrain,
             strain: whoopTelemetry.dayStrain ?? updated[existingIdx].strain,
-            kilojoules: whoopTelemetry.kilojoules ?? updated[existingIdx].kilojoules,
+            kilojoules: whoopTelemetry.dayKilojoules ?? whoopTelemetry.kilojoules ?? updated[existingIdx].kilojoules,
+            workoutKilojoules:
+              whoopTelemetry.kilojoules && whoopTelemetry.kilojoules < 3500
+                ? whoopTelemetry.kilojoules
+                : updated[existingIdx].workoutKilojoules,
             avgWorkoutHr: whoopTelemetry.avgHeartRate ?? updated[existingIdx].avgWorkoutHr,
             maxWorkoutHr: whoopTelemetry.maxHeartRate ?? updated[existingIdx].maxWorkoutHr,
             recoveryScore: whoopTelemetry.recoveryScore ?? updated[existingIdx].recoveryScore,
@@ -609,7 +637,11 @@ export const App: React.FC = () => {
               activeZoneMinutes: 35,
               workoutStrain: whoopTelemetry.workoutStrain,
               strain: whoopTelemetry.dayStrain,
-              kilojoules: whoopTelemetry.kilojoules,
+              kilojoules: whoopTelemetry.dayKilojoules ?? whoopTelemetry.kilojoules,
+              workoutKilojoules:
+                whoopTelemetry.kilojoules && whoopTelemetry.kilojoules < 3500
+                  ? whoopTelemetry.kilojoules
+                  : undefined,
               avgWorkoutHr: whoopTelemetry.avgHeartRate,
               maxWorkoutHr: whoopTelemetry.maxHeartRate,
               recoveryScore: whoopTelemetry.recoveryScore,
@@ -635,7 +667,10 @@ export const App: React.FC = () => {
                       whoopStrain: bgStrain.workoutStrain ?? bgStrain.dayStrain ?? w.whoopStrain,
                       maxHeartRate: bgStrain.maxHeartRate ?? w.maxHeartRate,
                       avgHeartRate: bgStrain.avgHeartRate ?? w.avgHeartRate,
-                      kilojoules: bgStrain.kilojoules ?? w.kilojoules,
+                      kilojoules:
+                        bgStrain.kilojoules && bgStrain.kilojoules < 3500
+                          ? bgStrain.kilojoules
+                          : w.kilojoules,
                     }
                   : w
               )
@@ -648,7 +683,11 @@ export const App: React.FC = () => {
                   ...updated[existingIdx],
                   workoutStrain: bgStrain.workoutStrain ?? updated[existingIdx].workoutStrain,
                   strain: bgStrain.dayStrain ?? updated[existingIdx].strain,
-                  kilojoules: bgStrain.kilojoules ?? updated[existingIdx].kilojoules,
+                  kilojoules: bgStrain.dayKilojoules ?? bgStrain.kilojoules ?? updated[existingIdx].kilojoules,
+                  workoutKilojoules:
+                    bgStrain.kilojoules && bgStrain.kilojoules < 3500
+                      ? bgStrain.kilojoules
+                      : updated[existingIdx].workoutKilojoules,
                   avgWorkoutHr: bgStrain.avgHeartRate ?? updated[existingIdx].avgWorkoutHr,
                   maxWorkoutHr: bgStrain.maxHeartRate ?? updated[existingIdx].maxWorkoutHr,
                   recoveryScore: bgStrain.recoveryScore ?? updated[existingIdx].recoveryScore,

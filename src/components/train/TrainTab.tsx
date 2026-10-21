@@ -530,22 +530,27 @@ export const TrainTab: React.FC<TrainTabProps> = ({
     [mesoWeek, profile.goalPhase, readiness.state]
   );
 
+  const syncWhoopWorkoutTelemetry = useCallback(() => {
+    if (!profile.whoopAccessToken) return;
+    setIsSyncingWhoopStrain(true);
+    fetchWhoopWorkoutStrain(profile.whoopAccessToken, profile.whoopRefreshToken)
+      .then((summary) => {
+        setWhoopStrainSummary(summary);
+      })
+      .catch((err) => {
+        console.warn('Could not auto-fetch live Whoop workout strain:', err);
+      })
+      .finally(() => {
+        setIsSyncingWhoopStrain(false);
+      });
+  }, [profile.whoopAccessToken, profile.whoopRefreshToken]);
+
   const handleFinishWorkoutClick = () => {
     triggerHaptic('success');
     setShowSummaryModal(true);
 
     if (profile.whoopConnected && profile.whoopAccessToken) {
-      setIsSyncingWhoopStrain(true);
-      fetchWhoopWorkoutStrain(profile.whoopAccessToken, profile.whoopRefreshToken)
-        .then((summary) => {
-          setWhoopStrainSummary(summary);
-        })
-        .catch((err) => {
-          console.warn('Could not auto-fetch live Whoop workout strain:', err);
-        })
-        .finally(() => {
-          setIsSyncingWhoopStrain(false);
-        });
+      syncWhoopWorkoutTelemetry();
     }
   };
 
@@ -922,6 +927,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
           whoopTelemetry={whoopStrainSummary}
           isWhoopConnected={Boolean(profile.whoopConnected)}
           isSyncingWhoop={isSyncingWhoopStrain}
+          onRefreshWhoop={syncWhoopWorkoutTelemetry}
         />
       )}
 

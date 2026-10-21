@@ -36,6 +36,7 @@ import {
 } from '../knowledgeGraph';
 import { SEED_EXERCISES } from '../../services/seedData';
 import { processAssistantMessage } from '../../services/aiAssistantService';
+import { WhoopWorkoutStrainSummary } from '../../services/whoopService';
 import {
   calculateWarmupPrescription,
   generateWarmupSets,
@@ -2556,13 +2557,39 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
       aiStrainQuery.message.text.includes('49%'),
     `AI Assistant answers strain query citing 11.4 workout strain and 49% recovery (got "${aiStrainQuery.message.text.slice(0, 100)}...")`
   );
+    assert(
+      Boolean(
+        aiStrainQuery.message.knowledgeGraphCitations?.some(
+          (c) => c.label === 'Workout Strain' && c.value.includes('11.4')
+        )
+      ),
+      'AI Assistant strain query cites 11.4 Workout Strain in citations'
+    );
+
+    // 5. Whoop Workout Telemetry vs Daily Cycle Invariants
+    const sampleWhoopSummary: WhoopWorkoutStrainSummary = {
+    workoutStrain: 11.4,
+    dayStrain: 14.2,
+    avgHeartRate: 138,
+    maxHeartRate: 168,
+    kilojoules: 1450, // Authentic workout active burn
+    dayKilojoules: 4372, // Authentic total cumulative day burn
+    recoveryScore: 49,
+    hasRecentWorkout: true,
+    isPendingScore: false,
+    workoutDurationMin: 65,
+  };
   assert(
-    Boolean(
-      aiStrainQuery.message.knowledgeGraphCitations?.some(
-        (c) => c.label === 'Workout Strain' && c.value.includes('11.4')
-      )
-    ),
-    `AI Assistant strain query cites 11.4 Workout Strain in citations`
+    sampleWhoopSummary.kilojoules !== sampleWhoopSummary.dayKilojoules,
+    'WhoopWorkoutStrainSummary strictly isolates workout active burn from cumulative day burn'
+  );
+  assert(
+    sampleWhoopSummary.kilojoules === 1450 && sampleWhoopSummary.dayKilojoules === 4372,
+    'Workout active burn is 1,450 kJ while Day burn is 4,372 kJ'
+  );
+  assert(
+    sampleWhoopSummary.workoutStrain !== sampleWhoopSummary.dayStrain,
+    'WhoopWorkoutStrainSummary separates Workout Strain (11.4) from Day Strain (14.2)'
   );
 
   console.log('\nALL 28 ENGINE, GOVERNANCE, DESIGN HEURISTICS, TYPOGRAPHY, WEARABLES, WHOOP STRAIN, GOOGLE AUTH & TENSOR AI SUITES PASSED SUCCESSFULLY! 🎯');

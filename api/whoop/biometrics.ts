@@ -53,25 +53,25 @@ export default async function handler(req: any, res: any) {
     });
   }
 
-  const fetchWithFallback = async (token: string, urlV1: string, urlV2: string) => {
+  const fetchWithFallback = async (token: string, urlV2: string, urlV1: string) => {
     const headers = { Authorization: `Bearer ${token}` };
     try {
-      const res1 = await fetch(urlV1, { headers });
-      if (res1.ok) {
-        return { ok: true, status: res1.status, data: await res1.json().catch(() => null) };
+      const res2 = await fetch(urlV2, { headers });
+      if (res2.ok) {
+        return { ok: true, status: res2.status, data: await res2.json().catch(() => null) };
       }
-      if (res1.status === 404 || res1.status === 410) {
-        const res2 = await fetch(urlV2, { headers });
-        if (res2.ok) {
-          return { ok: true, status: res2.status, data: await res2.json().catch(() => null) };
+      // If v2 fails (and not 401 unauthorized), try v1 fallback
+      if (res2.status !== 401) {
+        const res1 = await fetch(urlV1, { headers });
+        if (res1.ok) {
+          return { ok: true, status: res1.status, data: await res1.json().catch(() => null) };
         }
-        return { ok: false, status: res2.status, data: await res2.json().catch(() => null) };
       }
-      return { ok: false, status: res1.status, data: await res1.json().catch(() => null) };
+      return { ok: false, status: res2.status, data: await res2.json().catch(() => null) };
     } catch (e: any) {
       try {
-        const res2 = await fetch(urlV2, { headers });
-        return { ok: res2.ok, status: res2.status, data: await res2.json().catch(() => null) };
+        const res1 = await fetch(urlV1, { headers });
+        return { ok: res1.ok, status: res1.status, data: await res1.json().catch(() => null) };
       } catch (err: any) {
         return { ok: false, status: 500, error: err?.message || String(err) };
       }
@@ -129,11 +129,11 @@ export default async function handler(req: any, res: any) {
   };
 
   try {
-    // 1. Initial attempt to fetch recovery
+    // 1. Initial attempt to fetch recovery (prioritizing v2)
     let recResult = await fetchWithFallback(
       currentToken,
-      'https://api.prod.whoop.com/developer/v1/recovery?limit=10',
-      'https://api.prod.whoop.com/developer/v2/recovery?limit=10'
+      'https://api.prod.whoop.com/developer/v2/recovery?limit=10',
+      'https://api.prod.whoop.com/developer/v1/recovery?limit=10'
     );
 
     // If unauthorized and refresh token is available, refresh and retry
@@ -148,33 +148,33 @@ export default async function handler(req: any, res: any) {
         };
         recResult = await fetchWithFallback(
           currentToken,
-          'https://api.prod.whoop.com/developer/v1/recovery?limit=10',
-          'https://api.prod.whoop.com/developer/v2/recovery?limit=10'
+          'https://api.prod.whoop.com/developer/v2/recovery?limit=10',
+          'https://api.prod.whoop.com/developer/v1/recovery?limit=10'
         );
       }
     }
 
-    // 2. Fetch Sleep, Cycle, Body, Workout in parallel
+    // 2. Fetch Sleep, Cycle, Body, Workout in parallel (prioritizing v2)
     const [sleepResult, cycleResult, bodyResult, workoutResult] = await Promise.all([
       fetchWithFallback(
         currentToken,
-        'https://api.prod.whoop.com/developer/v1/activity/sleep?limit=10',
-        'https://api.prod.whoop.com/developer/v2/activity/sleep?limit=10'
+        'https://api.prod.whoop.com/developer/v2/activity/sleep?limit=10',
+        'https://api.prod.whoop.com/developer/v1/activity/sleep?limit=10'
       ),
       fetchWithFallback(
         currentToken,
-        'https://api.prod.whoop.com/developer/v1/cycle?limit=10',
-        'https://api.prod.whoop.com/developer/v2/cycle?limit=10'
+        'https://api.prod.whoop.com/developer/v2/cycle?limit=10',
+        'https://api.prod.whoop.com/developer/v1/cycle?limit=10'
       ),
       fetchWithFallback(
         currentToken,
-        'https://api.prod.whoop.com/developer/v1/user/measurement/body',
-        'https://api.prod.whoop.com/developer/v2/user/measurement/body'
+        'https://api.prod.whoop.com/developer/v2/user/measurement/body',
+        'https://api.prod.whoop.com/developer/v1/user/measurement/body'
       ),
       fetchWithFallback(
         currentToken,
-        'https://api.prod.whoop.com/developer/v1/activity/workout?limit=5',
-        'https://api.prod.whoop.com/developer/v2/activity/workout?limit=5'
+        'https://api.prod.whoop.com/developer/v2/activity/workout?limit=10',
+        'https://api.prod.whoop.com/developer/v1/activity/workout?limit=10'
       ),
     ]);
 
@@ -251,7 +251,7 @@ export default async function handler(req: any, res: any) {
       }
     }
 
-    // Extract Cycle
+    // Extract Cycle (Daily baseline and cumulative expenditure)
     const latestCycle = getLatestScoredRecord(cycleResult.data);
     if (latestCycle) {
       const strain = typeof latestCycle.score?.strain === 'number' ? latestCycle.score.strain : 0;
@@ -262,7 +262,9 @@ export default async function handler(req: any, res: any) {
           : Math.round(strain * 650);
       biometrics.activeZoneMinutes = Math.round(strain * 3.5);
       if (typeof latestCycle.score?.kilojoule === 'number') {
+        // Daily cumulative energy expenditure (e.g. 4,372 kJ)
         biometrics.kilojoules = Math.round(latestCycle.score.kilojoule);
+        biometrics.dayKilojoules = Math.round(latestCycle.score.kilojoule);
       }
       if (typeof latestCycle.score?.average_heart_rate === 'number') {
         biometrics.cycleAvgHr = Math.round(latestCycle.score.average_heart_rate);
@@ -272,31 +274,71 @@ export default async function handler(req: any, res: any) {
       }
     }
 
-    // Extract Workout Activity (for post-workout strain capture)
-    const latestWorkout = getLatestScoredRecord(workoutResult.data);
-    if (latestWorkout?.score) {
-      const ws = latestWorkout.score;
-      if (typeof ws.strain === 'number') {
-        biometrics.workoutStrain = Math.round(ws.strain * 10) / 10;
+    // Extract Workout Activity (for post-workout strain & session energy capture)
+    const workoutRecords = Array.isArray(workoutResult.data?.records)
+      ? workoutResult.data.records
+      : Array.isArray(workoutResult.data)
+      ? workoutResult.data
+      : workoutResult.data
+      ? [workoutResult.data]
+      : [];
+
+    const now = Date.now();
+    // Sort all workouts descending by start/created_at
+    const sortedWorkouts = [...workoutRecords].filter(Boolean).sort((a: any, b: any) => {
+      const timeA = new Date(a.start || a.created_at || 0).getTime();
+      const timeB = new Date(b.start || b.created_at || 0).getTime();
+      return timeB - timeA;
+    });
+
+    // A workout is considered "recent" if it started within the last 12 hours
+    const recentWorkout = sortedWorkouts.find((w: any) => {
+      const startTime = new Date(w.start || w.created_at || 0).getTime();
+      const hoursAgo = (now - startTime) / (1000 * 60 * 60);
+      return hoursAgo >= -1 && hoursAgo <= 12;
+    });
+
+    if (recentWorkout) {
+      biometrics.hasRecentWorkout = true;
+      if (recentWorkout.sport_name) {
+        biometrics.workoutSportName = recentWorkout.sport_name;
       }
-      if (typeof ws.average_heart_rate === 'number') {
-        biometrics.workoutAvgHr = Math.round(ws.average_heart_rate);
+      if (recentWorkout.start) {
+        biometrics.workoutStartTime = recentWorkout.start;
       }
-      if (typeof ws.max_heart_rate === 'number') {
-        biometrics.workoutMaxHr = Math.round(ws.max_heart_rate);
+      if (recentWorkout.end) {
+        biometrics.workoutEndTime = recentWorkout.end;
       }
-      if (typeof ws.kilojoule === 'number') {
-        biometrics.workoutKilojoules = Math.round(ws.kilojoule);
+      if (recentWorkout.start && recentWorkout.end) {
+        const durMin = Math.round(
+          (new Date(recentWorkout.end).getTime() - new Date(recentWorkout.start).getTime()) / 60000
+        );
+        if (durMin > 0) {
+          biometrics.workoutDurationMin = durMin;
+        }
       }
-      if (latestWorkout.start) {
-        biometrics.workoutStartTime = latestWorkout.start;
+
+      if (recentWorkout.score && (recentWorkout.score_state === 'SCORED' || !recentWorkout.score_state)) {
+        const ws = recentWorkout.score;
+        if (typeof ws.strain === 'number') {
+          biometrics.workoutStrain = Math.round(ws.strain * 10) / 10;
+        }
+        if (typeof ws.average_heart_rate === 'number') {
+          biometrics.workoutAvgHr = Math.round(ws.average_heart_rate);
+        }
+        if (typeof ws.max_heart_rate === 'number') {
+          biometrics.workoutMaxHr = Math.round(ws.max_heart_rate);
+        }
+        if (typeof ws.kilojoule === 'number') {
+          biometrics.workoutKilojoules = Math.round(ws.kilojoule);
+        }
+        biometrics.isPendingScore = false;
+      } else if (recentWorkout.score_state === 'PENDING_SCORE') {
+        biometrics.isPendingScore = true;
       }
-      if (latestWorkout.end) {
-        biometrics.workoutEndTime = latestWorkout.end;
-      }
-      if (latestWorkout.sport_name) {
-        biometrics.workoutSportName = latestWorkout.sport_name;
-      }
+    } else {
+      biometrics.hasRecentWorkout = false;
+      biometrics.isPendingScore = false;
     }
 
     // Extract Body

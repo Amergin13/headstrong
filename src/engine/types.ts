@@ -58,7 +58,8 @@ export interface BiometricLog {
   recoveryScore?: number; // % (0-100, e.g. Whoop recovery)
   workoutStrain?: number; // 0 - 21 Whoop workout strain
   strain?: number; // 0 - 21 Whoop day strain
-  kilojoules?: number; // Energy burned
+  kilojoules?: number; // Daily cumulative energy burned (kJ)
+  workoutKilojoules?: number; // Single session active workout energy burned (kJ)
   avgWorkoutHr?: number;
   maxWorkoutHr?: number;
   workoutDurationMin?: number;
