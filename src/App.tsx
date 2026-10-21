@@ -1192,14 +1192,14 @@ export const App: React.FC = () => {
         activeTab={activeTab}
         onTabChange={(tab) => {
           if (tab === 'chat') {
-            setAiCoachOpen(true);
+            setAiCoachOpen((prev) => !prev);
           } else {
             setActiveTab(tab);
             setAiCoachOpen(false);
           }
         }}
         isChatOpen={aiCoachOpen}
-        onOpenAICoach={() => setAiCoachOpen(true)}
+        onOpenAICoach={() => setAiCoachOpen((prev) => !prev)}
       />
     </div>
   );

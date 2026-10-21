@@ -114,14 +114,18 @@ export async function detectPixelTensorHardware(
   // 2. Query High-Entropy Client Hints if available in browser
   if (!detectedModel && typeof navigator !== 'undefined' && (navigator as any).userAgentData?.getHighEntropyValues) {
     try {
-      const hints = await (navigator as any).userAgentData.getHighEntropyValues([
+      const hintsPromise = (navigator as any).userAgentData.getHighEntropyValues([
         'model',
         'platform',
         'platformVersion',
         'architecture',
         'modelId',
       ]);
-      if (hints.model) {
+      const hints = await Promise.race([
+        hintsPromise,
+        new Promise<any>((resolve) => setTimeout(() => resolve({}), 400)),
+      ]);
+      if (hints?.model) {
         detectedModel = hints.model;
       }
     } catch {
@@ -167,7 +171,11 @@ export async function detectPixelTensorHardware(
   // 4b. Query WebGPU adapter for Mali / Tensor GPU signature
   if (typeof navigator !== 'undefined' && (navigator as any).gpu?.requestAdapter) {
     try {
-      const adapter = await (navigator as any).gpu.requestAdapter();
+      const adapterPromise = (navigator as any).gpu.requestAdapter();
+      const adapter = await Promise.race([
+        adapterPromise,
+        new Promise<any>((resolve) => setTimeout(() => resolve(null), 400)),
+      ]);
       if (adapter?.info) {
         const aInfo = adapter.info;
         const gpuInfoStr = `${aInfo.vendor || ''} ${aInfo.architecture || ''} ${aInfo.device || ''} ${aInfo.description || ''}`;

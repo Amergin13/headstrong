@@ -44,8 +44,11 @@ export const NavigationBar: React.FC<NavigationBarProps> = ({
               onClick={() => {
                 triggerHaptic('light');
                 if (tab.id === 'chat') {
-                  if (onOpenAICoach) onOpenAICoach();
-                  onTabChange('chat');
+                  if (onOpenAICoach) {
+                    onOpenAICoach();
+                  } else {
+                    onTabChange('chat');
+                  }
                 } else {
                   onTabChange(tab.id);
                 }

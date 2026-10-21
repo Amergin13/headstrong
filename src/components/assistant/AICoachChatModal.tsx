@@ -97,10 +97,10 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
     // Initial contextual welcome message
     const welcomeText = `Hey! I'm your AI Coach. You're currently on Week ${
       profile.mesocycleWeek || 3
-    } training ${activeWorkout.splitDay} Day (${activeWorkout.name}) in ${
-      activeWorkout.location === 'travel'
+    } training ${activeWorkout?.splitDay || 'Push'} Day (${activeWorkout?.name || 'Workout'}) in ${
+      activeWorkout?.location === 'travel'
         ? 'Bodyweight mode'
-        : activeWorkout.location === 'home'
+        : activeWorkout?.location === 'home'
         ? 'At Home'
         : 'Gym'
     }. You can ask me to adapt your plan for upcoming travel, register new home equipment, switch your split, or analyze your joints and recovery.`;
@@ -230,9 +230,9 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
       role="dialog"
       aria-modal="true"
       aria-labelledby="ai-coach-title"
-      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200"
+      className="fixed inset-0 z-50 flex flex-col sm:items-center sm:justify-center sm:p-4 bg-black/90 sm:backdrop-blur-md animate-in fade-in duration-200"
     >
-      <div className="w-full max-w-md h-[92vh] max-h-[820px] rounded-3xl bg-[#0E1219] shadow-2xl flex flex-col overflow-hidden">
+      <div className="w-full sm:max-w-md h-full sm:h-[92vh] sm:max-h-[820px] rounded-none sm:rounded-3xl bg-[#0E1219] shadow-2xl flex flex-col overflow-hidden">
         {/* Header */}
         <div className="p-4 sm:p-5 bg-[#141824] flex items-center justify-between">
           <div className="flex items-center space-x-3">
@@ -306,7 +306,7 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
         </div>
 
         {/* Message Thread */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-3.5 no-scrollbar">
+        <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3.5 no-scrollbar overscroll-contain">
           {messages.map((msg) => {
             const isUser = msg.sender === 'user';
 
@@ -432,7 +432,7 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
         </div>
 
         {/* Input Bar */}
-        <div className="p-4 bg-[#141824]">
+        <div className="p-3.5 sm:p-4 bg-[#141824] border-t border-white/[0.06] shrink-0 pb-safe sm:pb-4">
           <form
             onSubmit={(e) => {
               e.preventDefault();
@@ -446,12 +446,15 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
               onChange={(e) => setInputMessage(e.target.value)}
               placeholder="Ask anything or modify your plan..."
               disabled={isProcessing}
+              autoComplete="off"
+              autoCorrect="off"
               className="flex-1 min-h-[44px] px-4 py-2.5 rounded-xl bg-[#090C12] text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-brand-primary transition-colors"
             />
 
             <button
               type="submit"
               disabled={!inputMessage.trim() || isProcessing}
+              onMouseDown={(e) => e.preventDefault()}
               aria-label="Send message"
               className="min-h-[44px] min-w-[44px] w-11 h-11 rounded-xl bg-white hover:bg-slate-100 disabled:opacity-30 text-slate-950 flex items-center justify-center transition-all active:scale-95 shrink-0 shadow-sm"
             >

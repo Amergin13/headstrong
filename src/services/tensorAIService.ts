@@ -14,6 +14,13 @@ export type { TensorHardwareProfile };
 let cachedProfile: TensorHardwareProfile | null = null;
 let profilePromise: Promise<TensorHardwareProfile> | null = null;
 
+function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((resolve) => setTimeout(() => resolve(fallback), ms)),
+  ]);
+}
+
 /**
  * Returns the active Google Pixel Tensor hardware profile.
  * Automatically queries device capabilities, client hints, and GPU vendor strings.
@@ -33,21 +40,19 @@ export async function getTensorHardwareProfile(forceRefresh = false): Promise<Te
         (ai && ai.languageModel) ||
         (typeof window !== 'undefined' && (window as any).ai?.languageModel) ||
         (typeof window !== 'undefined' && (window as any).ai?.assistant) ||
-        (typeof window !== 'undefined' && (window as any).model?.languageModel) ||
-        (typeof window !== 'undefined' && (window as any).model) ||
         (typeof window !== 'undefined' && (window as any).chrome?.aiOriginTrial?.languageModel) ||
         (typeof navigator !== 'undefined' && (navigator as any).ai?.languageModel);
 
-      if (lm) {
+      if (lm && typeof lm.create === 'function') {
         try {
           if (typeof lm.availability === 'function') {
-            const avail = await lm.availability();
+            const avail = await withTimeout(lm.availability(), 500, 'none');
             if (
               avail === 'available' ||
               avail === 'readily' ||
               avail === 'after-download' ||
               avail === 'downloadable' ||
-              avail === true ||
+              (avail as any) === true ||
               (typeof avail === 'string' &&
                 avail !== 'no' &&
                 avail !== 'unavailable' &&
@@ -56,14 +61,14 @@ export async function getTensorHardwareProfile(forceRefresh = false): Promise<Te
               hasBuiltinAI = true;
             }
           } else if (typeof lm.capabilities === 'function') {
-            const caps = await lm.capabilities();
+            const caps = await withTimeout(lm.capabilities(), 500, { available: 'none' });
             const capAvail = caps?.available;
             if (
               capAvail === 'available' ||
               capAvail === 'readily' ||
               capAvail === 'after-download' ||
               capAvail === 'downloadable' ||
-              capAvail === true ||
+              (capAvail as any) === true ||
               (typeof capAvail === 'string' &&
                 capAvail !== 'no' &&
                 capAvail !== 'unavailable' &&
@@ -155,36 +160,34 @@ export async function queryTensorTPUGeminiNano(
     (window as any).LanguageModel ||
     (window as any).ai?.languageModel ||
     (window as any).ai?.assistant ||
-    (window as any).model?.languageModel ||
-    (window as any).model ||
     (window as any).chrome?.aiOriginTrial?.languageModel ||
     (typeof navigator !== 'undefined' && (navigator as any).ai?.languageModel);
 
-  if (!lm) return null;
+  if (!lm || typeof lm.create !== 'function') return null;
 
   try {
     let isAvailable = false;
     if (typeof lm.availability === 'function') {
-      const avail = await lm.availability();
+      const avail = await withTimeout(lm.availability(), 500, 'none');
       isAvailable =
         avail === 'available' ||
         avail === 'readily' ||
         avail === 'after-download' ||
         avail === 'downloadable' ||
-        avail === true ||
+        (avail as any) === true ||
         (typeof avail === 'string' &&
           avail !== 'no' &&
           avail !== 'unavailable' &&
           avail !== 'none');
     } else if (typeof lm.capabilities === 'function') {
-      const caps = await lm.capabilities();
+      const caps = await withTimeout(lm.capabilities(), 500, { available: 'none' });
       const capAvail = caps?.available;
       isAvailable =
         capAvail === 'available' ||
         capAvail === 'readily' ||
         capAvail === 'after-download' ||
         capAvail === 'downloadable' ||
-        capAvail === true ||
+        (capAvail as any) === true ||
         (typeof capAvail === 'string' &&
           capAvail !== 'no' &&
           capAvail !== 'unavailable' &&
@@ -204,28 +207,33 @@ export async function queryTensorTPUGeminiNano(
     };
 
     try {
-      session = await lm.create(sessionOpts);
+      session = await withTimeout(lm.create(sessionOpts), 1200, null);
     } catch {
       try {
-        session = await lm.create({ systemPrompt });
+        session = await withTimeout(lm.create({ systemPrompt }), 1000, null);
       } catch {
-        session = await lm.create();
+        session = await withTimeout(lm.create(), 800, null);
       }
     }
 
     if (!session) return null;
 
     let response: any = null;
-    if (typeof session.prompt === 'function') {
-      response = await session.prompt(question);
-    } else if (typeof session.promptStreaming === 'function') {
-      const stream = session.promptStreaming(question);
-      let chunks = '';
-      for await (const chunk of stream) {
-        chunks += chunk;
+    const promptPromise = (async () => {
+      if (typeof session.prompt === 'function') {
+        return await session.prompt(question);
+      } else if (typeof session.promptStreaming === 'function') {
+        const stream = session.promptStreaming(question);
+        let chunks = '';
+        for await (const chunk of stream) {
+          chunks += chunk;
+        }
+        return chunks;
       }
-      response = chunks;
-    }
+      return null;
+    })();
+
+    response = await withTimeout(promptPromise, 2200, null);
 
     try {
       if (typeof session.destroy === 'function') {

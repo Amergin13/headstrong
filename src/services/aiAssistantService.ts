@@ -646,11 +646,20 @@ export async function processAssistantMessage(
           profile.goalPhase === 'Cut / Recomp'
             ? `In a caloric deficit, target 2.0g to 2.4g of protein per kg of bodyweight (${Math.round(bodyweightEmaKg * 2.2)}g daily) to support muscle retention while body fat drops.`
             : `For progressive hypertrophy during a lean bulk, aim for 1.8g to 2.2g of protein per kg of bodyweight (${Math.round(bodyweightEmaKg * 2.0)}g daily) and prioritize complex carbohydrates around workouts.`;
+      } else if (
+        /^(hi|hello|hey|heya|howdy|greetings|good\s*(morning|afternoon|evening)|help|who\s*are\s*you|what\s*can\s*you\s*do)\b/i.test(
+          lowerMsg
+        ) && lowerMsg.split(/\s+/).length <= 6
+      ) {
+        // Conversational Welcome & Capabilities Intent
+        const firstName = profile.name?.trim().split(/\s+/)[0] || 'Athlete';
+        answerText = `Hey ${firstName}! I'm your on-device AI Coach. I'm here to optimize your training, auto-regulate your loads, and adapt your plan.\n\nHere are some things you can ask me:\n• **Workout Briefing:** "Give me today's tactical briefing"\n• **Exercise Targets:** "What should I bench press today?"\n• **Substitutions:** "Substitute incline dumbbell press"\n• **Equipment Updates:** "I got a pull-up bar" or "I bought dumbbells"\n• **Travel & Location:** "I'll be away in week 5" or "Switch to bodyweight today"\n• **Recovery & Science:** "How is my shoulder strain?" or "Why the 1.18x dumbbell multiplier?"\n\nWhat would you like to focus on?`;
       } else {
         // ============================================================================
         // 8. ATHLETIC COACHING & TACTICAL GUIDANCE (TENSOR TPU + KNOWLEDGE GRAPH)
         // ============================================================================
         let nanoHandled = false;
+        const workoutExercises = activeWorkout?.exercises || [];
 
         // A. Google Tensor TPU Acceleration (Chrome Built-in AI / Gemini Nano via Android AICore)
         if (hardware.isPixelDevice || hardware.isHardwareAccelerated) {
@@ -660,7 +669,7 @@ export async function processAssistantMessage(
             profile.gender
           );
 
-          const exercisesDesc = (activeWorkout.exercises || [])
+          const exercisesDesc = workoutExercises
             .map(
               (e, idx) =>
                 `  ${idx + 1}. ${e.name} (${e.pillar}, ${e.equipment}): ${e.sets.length} sets × ${e.minReps}–${e.maxReps} reps @ ${e.sets[0]?.targetWeightKg ?? 0} kg (Target RIR: ${readinessState === 'Amber Shield' ? '2–3' : '1–2'})`
@@ -696,8 +705,8 @@ You have direct, real-time access to the athlete's Personal Knowledge Graph and 
 - Resting Heart Rate: ${latestBio?.restingHr ?? 58} bpm
 - Recovery Efficiency Score: ${kg.recoveryEfficiencyScore}/100
 
-[TODAY'S ACTIVE WORKOUT: ${activeWorkout.name} (${activeWorkout.splitDay} Day)]
-- Location: ${activeWorkout.location}
+[TODAY'S ACTIVE WORKOUT: ${activeWorkout?.name || 'Session'} (${activeWorkout?.splitDay || 'Scheduled'} Day)]
+- Location: ${activeWorkout?.location || 'gym'}
 - Planned Movements:
 ${exercisesDesc || '  Standard movements'}
 
@@ -722,7 +731,7 @@ ${musclesDesc}
             nanoHandled = true;
 
             // Attach Knowledge Graph citations if an exercise or joint was discussed
-            for (const ex of activeWorkout.exercises) {
+            for (const ex of workoutExercises) {
               if (
                 lowerMsg.includes(ex.name.toLowerCase()) ||
                 nanoResult.answer.toLowerCase().includes(ex.name.toLowerCase())
@@ -741,7 +750,7 @@ ${musclesDesc}
         // B. On-Device Semantic Athletic Engine Fallback (Zero Latency, 100% Deterministic)
         if (!nanoHandled) {
           // B1. Exercise-Specific Targets & Progression Rules
-          const matchedWorkoutEx = activeWorkout.exercises.find((e) =>
+          const matchedWorkoutEx = workoutExercises.find((e) =>
             lowerMsg.includes(e.name.toLowerCase()) ||
             (lowerMsg.includes('bench') && e.name.toLowerCase().includes('bench')) ||
             (lowerMsg.includes('incline') && e.name.toLowerCase().includes('incline')) ||
@@ -829,21 +838,24 @@ ${musclesDesc}
 
           if (isSwapQuery) {
             // Exercise Substitution Biomechanical Match
-            const sourceEx = matchedWorkoutEx || activeWorkout.exercises[0];
-            const sourceDef = exerciseCatalog.find((c) => c.id === sourceEx.exerciseId);
+            const sourceEx = matchedWorkoutEx || workoutExercises[0];
+            const sourceDef = sourceEx
+              ? exerciseCatalog.find((c) => c.id === sourceEx.exerciseId)
+              : exerciseCatalog[0];
             const sourceMuscle = sourceDef?.primaryMuscle || 'target muscles';
+            const sourcePillar = sourceEx?.pillar || sourceDef?.pillar || 'Horizontal Push';
             const candidateEx =
               exerciseCatalog.find(
                 (e) =>
-                  e.id !== sourceEx.exerciseId &&
+                  (!sourceEx || e.id !== sourceEx.exerciseId) &&
                   (lowerMsg.includes(e.name.toLowerCase()) ||
-                    (lowerMsg.includes('dumbbell') && e.equipment === 'dumbbell' && e.pillar === sourceEx.pillar) ||
-                    (lowerMsg.includes('cable') && e.equipment === 'cable' && e.pillar === sourceEx.pillar) ||
-                    (lowerMsg.includes('machine') && e.equipment === 'machine' && e.pillar === sourceEx.pillar) ||
-                    (e.pillar === sourceEx.pillar && e.primaryMuscle === sourceMuscle))
-              ) || exerciseCatalog.find((e) => e.pillar === sourceEx.pillar && e.id !== sourceEx.exerciseId);
+                    (lowerMsg.includes('dumbbell') && e.equipment === 'dumbbell' && e.pillar === sourcePillar) ||
+                    (lowerMsg.includes('cable') && e.equipment === 'cable' && e.pillar === sourcePillar) ||
+                    (lowerMsg.includes('machine') && e.equipment === 'machine' && e.pillar === sourcePillar) ||
+                    (e.pillar === sourcePillar && e.primaryMuscle === sourceMuscle))
+              ) || exerciseCatalog.find((e) => e.pillar === sourcePillar && (!sourceEx || e.id !== sourceEx.exerciseId));
 
-            if (candidateEx) {
+            if (candidateEx && sourceEx) {
               const fatigue = readinessState === 'Amber Shield' ? 0.75 : 0.4;
               const match = evaluateTensorBiomechanicalMatch(
                 sourceEx.exerciseId,
@@ -859,13 +871,15 @@ ${musclesDesc}
                 metric: 'Biomechanical Match',
                 value: `${match.compatibilityScore}% Compatibility (${match.jointStrainRating} Joint Shear)`,
               });
+            } else if (candidateEx) {
+              answerText = `A great alternative is **${candidateEx.name}** (${candidateEx.equipment}, ${candidateEx.pillar}). It targets ${candidateEx.primaryMuscle} with a standard hypertrophy rep range of ${candidateEx.defaultRepRange[0]}–${candidateEx.defaultRepRange[1]} reps at 1–2 RIR.`;
             } else {
-              answerText = `To swap **${sourceEx.name}**, choose an exercise targeting ${sourceMuscle} within the ${sourceEx.pillar} movement pillar using your available equipment (${(profile.homeEquipment || []).map((t) => EQUIPMENT_NAMES[t] || t).join(', ') || 'gym gear'}).`;
+              answerText = `To swap exercises, choose a movement targeting ${sourceMuscle} within the ${sourcePillar} movement pillar using your available equipment (${(profile.homeEquipment || []).map((t) => EQUIPMENT_NAMES[t] || t).join(', ') || 'gym gear'}).`;
             }
           } else if (isWarmupQuery) {
             // Ramp-Up Warm-Up Protocol
-            const primaryEx = activeWorkout.exercises[0];
-            const targetWeight = primaryEx?.sets[0]?.targetWeightKg ?? 60;
+            const primaryEx = workoutExercises[0];
+            const targetWeight = primaryEx?.sets?.[0]?.targetWeightKg ?? 60;
             const w50 = Math.round((targetWeight * 0.5) / 2.5) * 2.5;
             const w75 = Math.round((targetWeight * 0.75) / 2.5) * 2.5;
 
@@ -878,10 +892,10 @@ ${musclesDesc}
             });
           } else if (isRestQuery) {
             // Evidence-Based Rest Intervals
-            const compoundLifts = activeWorkout.exercises.filter((e) => e.equipment === 'barbell' || e.pillar === 'Squat' || e.pillar === 'Hinge' || e.pillar === 'Horizontal Push');
-            const isolationLifts = activeWorkout.exercises.filter((e) => !compoundLifts.includes(e));
+            const compoundLifts = workoutExercises.filter((e) => e.equipment === 'barbell' || e.pillar === 'Squat' || e.pillar === 'Hinge' || e.pillar === 'Horizontal Push');
+            const isolationLifts = workoutExercises.filter((e) => !compoundLifts.includes(e));
 
-            answerText = `Optimal rest intervals for today's **${activeWorkout.name}**:\n\n• **Heavy Compound Movements** (${compoundLifts.map((e) => e.name).slice(0, 2).join(', ') || 'primary lifts'}): 2.5 to 3.5 minutes. Full phosphocreatine and central nervous system resynthesis is essential for maintaining mechanical tension.\n• **Accessory Movements** (${isolationLifts.map((e) => e.name).slice(0, 2).join(', ') || 'isolation exercises'}): 60 to 90 seconds. Sustains metabolic stress and localized cellular swelling.\n\n${readinessState === 'Amber Shield' ? '🛡️ Amber Shield is active: take a full 3–4 minutes on compounds to protect technique.' : ''}`;
+            answerText = `Optimal rest intervals for today's **${activeWorkout?.name || 'Workout'}**:\n\n• **Heavy Compound Movements** (${compoundLifts.map((e) => e.name).slice(0, 2).join(', ') || 'primary lifts'}): 2.5 to 3.5 minutes. Full phosphocreatine and central nervous system resynthesis is essential for maintaining mechanical tension.\n• **Accessory Movements** (${isolationLifts.map((e) => e.name).slice(0, 2).join(', ') || 'isolation exercises'}): 60 to 90 seconds. Sustains metabolic stress and localized cellular swelling.\n\n${readinessState === 'Amber Shield' ? '🛡️ Amber Shield is active: take a full 3–4 minutes on compounds to protect technique.' : ''}`;
 
             citations.push({
               label: 'Rest Intervals',
@@ -941,16 +955,18 @@ ${musclesDesc}
             });
           } else {
             // Dynamic Tactical Session Briefing for Today's Workout
-            const plannedList = activeWorkout.exercises
-              .map(
-                (e, idx) =>
-                  `${idx + 1}. **${e.name}** — ${e.sets.length} sets × ${e.minReps}–${e.maxReps} reps @ ${e.sets[0]?.targetWeightKg ?? 0} kg`
-              )
-              .join('\n');
+            const plannedList = workoutExercises.length > 0
+              ? workoutExercises
+                  .map(
+                    (e, idx) =>
+                      `${idx + 1}. **${e.name}** — ${e.sets.length} sets × ${e.minReps}–${e.maxReps} reps @ ${e.sets[0]?.targetWeightKg ?? 0} kg`
+                  )
+                  .join('\n')
+              : '  No movements scheduled.';
 
             const latestBio = biometrics[biometrics.length - 1];
 
-            answerText = `Today's session is **${activeWorkout.name}** (**${activeWorkout.splitDay} Day**) in **Week ${profile.mesocycleWeek || 3} of 6** (${activeWorkout.location === 'travel' ? 'Bodyweight' : activeWorkout.location === 'home' ? 'At Home' : 'Full Gym'} mode).\n\nPlanned Movements:\n${plannedList}\n\n${
+            answerText = `Today's session is **${activeWorkout?.name || 'Workout'}** (**${activeWorkout?.splitDay || 'Scheduled'} Day**) in **Week ${profile.mesocycleWeek || 3} of 6** (${activeWorkout?.location === 'travel' ? 'Bodyweight' : activeWorkout?.location === 'home' ? 'At Home' : 'Full Gym'} mode).\n\nPlanned Movements:\n${plannedList}\n\n${
               readinessState === 'Primed'
                 ? `⚡ Autonomic recovery is **Primed** (HRV: ${latestBio?.hrvRmssd ?? 58}ms, Sleep: ${latestBio?.sleepHours ?? 7.5}h). You have an active +15% XP multiplier—attack Set 1 with high concentric intent!`
                 : readinessState === 'Amber Shield'
@@ -959,9 +975,9 @@ ${musclesDesc}
             }\n\nFeel free to ask about specific targets, warm-up sets, tempo, or exercise substitutions!`;
 
             citations.push({
-              label: activeWorkout.name,
+              label: activeWorkout?.name || 'Session Briefing',
               metric: 'Today\'s Session',
-              value: `${activeWorkout.splitDay} Day (${activeWorkout.exercises.length} Exercises Planned)`,
+              value: `${activeWorkout?.splitDay || 'Active'} Day (${workoutExercises.length} Exercises Planned)`,
             });
           }
         }
