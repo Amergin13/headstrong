@@ -5,6 +5,14 @@
       "destination": "/api/$1"
     },
     {
+      "source": "/download/(.*)",
+      "destination": "/download/$1"
+    },
+    {
+      "source": "/download",
+      "destination": "/download/index.html"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }
