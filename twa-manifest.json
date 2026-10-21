@@ -21,8 +21,8 @@
     "path": "./android.keystore",
     "alias": "headstrong-release-key"
   },
-  "appVersionName": "1.0.0",
-  "appVersionCode": 7,
+  "appVersionName": "1.0.1",
+  "appVersionCode": 8,
   "shortcuts": [
     {
       "name": "Start Workout",
@@ -77,5 +77,5 @@
   "additionalTrustedOrigins": [],
   "retainedBundles": [],
   "displayOverride": [],
-  "appVersion": "1.0.0"
+  "appVersion": "1.0.1"
 }
