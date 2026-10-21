@@ -190,9 +190,9 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
               {step === 1
                 ? 'Welcome & How It Works'
                 : step === 2
-                ? 'Choose Training Split'
-                : step === 3
                 ? 'Your Primary Goal'
+                : step === 3
+                ? 'Choose Training Split'
                 : 'Locations & Equipment'}
             </span>
           </div>
@@ -202,7 +202,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
               <button
                 type="button"
                 onClick={handleDemoClick}
-                className="text-xs font-semibold text-slate-400 hover:text-white px-2 py-1 rounded-lg transition-colors"
+                className="text-xs font-semibold text-slate-400 hover:text-white px-3 py-2 min-h-[44px] rounded-xl transition-colors flex items-center"
               >
                 Skip to Demo
               </button>
@@ -214,9 +214,9 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                 onClose();
               }}
               aria-label="Close setup"
-              className="w-9 h-9 rounded-full flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/[0.08] transition-colors"
+              className="w-11 h-11 min-h-[44px] min-w-[44px] rounded-full flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/[0.08] transition-colors"
             >
-              <X className="w-4 h-4 stroke-[2]" />
+              <X className="w-5 h-5 stroke-[2]" />
             </button>
           </div>
         </div>
@@ -304,11 +304,83 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
         )}
 
         {/* ==================================================================== */}
-        {/* STEP 2: CHOOSE TRAINING SPLIT / PROGRAM TYPE                         */}
+        {/* STEP 2: MAIN GOAL & PHASE                                            */}
         {/* ==================================================================== */}
         {step === 2 && (
           <div className="space-y-3.5">
             <div>
+              <div className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-full bg-brand-primary/15 border border-brand-primary/30 text-brand-primary text-xs font-bold mb-2">
+                <Target className="w-3.5 h-3.5 stroke-[2]" />
+                <span>Intent &amp; Recovery Strategy</span>
+              </div>
+              <h2
+                id="onboarding-modal-title"
+                className="font-bold text-xl text-white tracking-tight"
+              >
+                What is your main goal right now?
+              </h2>
+              <p className="text-xs text-slate-300 mt-1 leading-relaxed">
+                Treise calibrates your volume landmarks, rep targets, and recovery targets to match your training phase.
+              </p>
+            </div>
+
+            <div className="space-y-3">
+              {GOAL_OPTIONS.map((opt) => {
+                const isSelected = selectedGoal === opt.phase;
+                return (
+                  <button
+                    key={opt.phase}
+                    type="button"
+                    aria-pressed={isSelected}
+                    onClick={() => {
+                      triggerHaptic('light');
+                      setSelectedGoal(opt.phase);
+                    }}
+                    className={`w-full p-4 rounded-2xl text-left transition-all space-y-2 border ${
+                      isSelected
+                        ? 'bg-brand-primary/15 border-brand-primary text-white shadow-lg shadow-brand-primary/10'
+                        : 'bg-[#141824] border-white/[0.04] text-slate-200 hover:bg-[#1C2233]'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-2">
+                        <span className="font-bold text-sm text-white">{opt.title}</span>
+                        <span className="px-2.5 py-0.5 rounded-md bg-white/[0.06] text-slate-300 text-xs font-semibold">
+                          {opt.badge}
+                        </span>
+                      </div>
+                      <span
+                        className={`w-5 h-5 rounded-full flex items-center justify-center text-xs ${
+                          isSelected
+                            ? 'bg-brand-primary text-black font-bold'
+                            : 'bg-white/[0.08]'
+                        }`}
+                      >
+                        {isSelected && <Check className="w-3.5 h-3.5 stroke-[2.5]" />}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-300">{opt.subtitle}</p>
+                    <div className="pt-1.5 border-t border-white/[0.04] text-xs text-brand-primary font-medium">
+                      Session rule: {opt.sessionRule}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* ==================================================================== */}
+        {/* STEP 3: CHOOSE TRAINING SPLIT / PROGRAM TYPE                         */}
+        {/* ==================================================================== */}
+        {step === 3 && (
+          <div className="space-y-3.5">
+            <div>
+              <div className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full bg-white/[0.06] text-slate-300 text-xs font-semibold mb-2 border border-white/[0.06]">
+                <Target className="w-3.5 h-3.5 text-brand-primary stroke-[2]" />
+                <span>Selected Goal:</span>
+                <span className="text-brand-primary font-bold">{selectedGoal}</span>
+              </div>
               <h2
                 id="onboarding-modal-title"
                 className="font-bold text-xl text-white tracking-tight"
@@ -332,10 +404,10 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                       triggerHaptic('light');
                       setSelectedProgram(opt.id);
                     }}
-                    className={`w-full p-4 rounded-2xl text-left transition-all space-y-2.5 ${
+                    className={`w-full p-4 rounded-2xl text-left transition-all space-y-2.5 border ${
                       isSelected
-                        ? 'bg-brand-primary/15 text-white shadow-lg shadow-brand-primary/10'
-                        : 'bg-[#141824] text-slate-200 hover:bg-[#1C2233]'
+                        ? 'bg-brand-primary/15 border-brand-primary text-white shadow-lg shadow-brand-primary/10'
+                        : 'bg-[#141824] border-white/[0.04] text-slate-200 hover:bg-[#1C2233]'
                     }`}
                   >
                     <div className="flex items-start justify-between">
@@ -373,69 +445,6 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                     <div className="text-xs text-brand-primary font-semibold flex items-center space-x-1.5">
                       <span>Starter workout:</span>
                       <span className="text-white font-bold">{opt.firstSession}</span>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        {/* ==================================================================== */}
-        {/* STEP 3: MAIN GOAL & PHASE                                            */}
-        {/* ==================================================================== */}
-        {step === 3 && (
-          <div className="space-y-3.5">
-            <div>
-              <h2
-                id="onboarding-modal-title"
-                className="font-bold text-xl text-white tracking-tight"
-              >
-                What is your main goal right now?
-              </h2>
-              <p className="text-xs text-slate-300 mt-1 leading-relaxed">
-                Treise calibrates your volume landmarks, rep targets, and recovery targets to match your training phase.
-              </p>
-            </div>
-
-            <div className="space-y-3">
-              {GOAL_OPTIONS.map((opt) => {
-                const isSelected = selectedGoal === opt.phase;
-                return (
-                  <button
-                    key={opt.phase}
-                    type="button"
-                    aria-pressed={isSelected}
-                    onClick={() => {
-                      triggerHaptic('light');
-                      setSelectedGoal(opt.phase);
-                    }}
-                    className={`w-full p-4 rounded-2xl text-left transition-all space-y-2 ${
-                      isSelected
-                        ? 'bg-brand-primary/15 text-white'
-                        : 'bg-[#141824] text-slate-200 hover:bg-[#1C2233]'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center space-x-2">
-                        <span className="font-bold text-sm text-white">{opt.title}</span>
-                        <span className="px-2.5 py-0.5 rounded-md bg-white/[0.06] text-slate-300 text-xs font-semibold">
-                          {opt.badge}
-                        </span>
-                      </div>
-                      <span
-                        className={`w-5 h-5 rounded-full flex items-center justify-center text-xs ${
-                          isSelected
-                            ? 'bg-brand-primary text-black font-bold'
-                            : 'bg-white/[0.08]'
-                        }`}
-                      >
-                        {isSelected && <Check className="w-3.5 h-3.5 stroke-[2.5]" />}
-                      </span>
-                    </div>
-                    <p className="text-xs text-slate-300">{opt.subtitle}</p>
-                    <div className="pt-1.5 border-t border-white/[0.04] text-xs text-brand-primary font-medium">
-                      Session rule: {opt.sessionRule}
                     </div>
                   </button>
                 );
@@ -630,7 +639,13 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
               }}
               className="px-5 py-2.5 min-h-[44px] rounded-2xl bg-white hover:bg-slate-100 text-slate-950 text-xs font-bold flex items-center space-x-1.5 shadow-md shadow-white/5 active:scale-95"
             >
-              <span>{step === 1 ? 'Choose My Program' : 'Next'}</span>
+              <span>
+                {step === 1
+                  ? 'Choose My Goal'
+                  : step === 2
+                  ? 'Continue to Split'
+                  : 'Set Up Equipment'}
+              </span>
               <ChevronRight className="w-4 h-4 stroke-[2.5]" />
             </button>
           ) : (

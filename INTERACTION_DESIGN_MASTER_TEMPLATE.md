@@ -301,10 +301,10 @@ Every screen, card, modal, and control in Treise is governed by three non-negoti
 
 ### 7.1 Onboarding Wizard (`OnboardingModal.tsx`)
 - **Structure:** 4 sequential steps with progress indicators (`Step X of 4`).
-  - *Step 1: Welcome & Principles:* Explains Asynchronous Queue, Double Progression, and Multi-Location adaptation. Includes subtle `[Skip to Demo]` escape hatch.
-  - *Step 2: Training Split Selection:* 4 evidence-based cards (4-Day PPL+Upper, 3-Day PPL, 4-Day Upper/Lower, 3-Day Full Body).
-  - *Step 3: Primary Goal & Phase:* Build Muscle, Lose Fat (Retention Shield), or Stay Lean.
-  - *Step 4: Training Locations & Gear:* Selects places and checks specific home equipment.
+  - *Step 1: Welcome & Principles (Introduction):* Explains Asynchronous Queue, Double Progression, and Multi-Location adaptation. Includes subtle `[Skip to Demo]` escape hatch.
+  - *Step 2: Primary Goal & Phase (Goal Selection):* Anchors intent and calibrates volume: Build Muscle, Lose Fat (Retention Shield), or Stay Lean.
+  - *Step 3: Training Split Selection (Split):* 4 evidence-based cards (4-Day PPL+Upper, 3-Day PPL, 4-Day Upper/Lower, 3-Day Full Body) grounded in the selected goal.
+  - *Step 4: Training Locations & Gear (Locations and Equipment Context):* Selects places, checks home equipment, and configures today's workout location.
 - **Completion Guarantee:** On step 4 completion, immediately routes athlete to the Workout tab with Day 1 ready to train in 1 tap.
 
 ### 7.2 Biomechanical Exercise Swap Modal (`ExerciseSwapModal.tsx`)

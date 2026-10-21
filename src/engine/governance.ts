@@ -223,7 +223,7 @@ export const INITIAL_GOVERNANCE_ITEMS: GovernanceChangeItem[] = [
     status: 'locked',
     versionIntroduced: 'v1.6',
     rationale:
-      'New users must be introduced to the app, understand how it works (Asynchronous Hypertrophy Queue & Double Progression), pick their program split, and configure their equipment before immediately landing on their Day 1 session.',
+      'New users must be introduced to the app, understand how it works (Asynchronous Hypertrophy Queue & Double Progression), declare their primary goal, pick their program split, and configure their equipment before immediately landing on their Day 1 session.',
     whatWorkedWell:
       'Combines a 4-step wizard with smart defaults so users can complete onboarding in under 60 seconds and immediately see Day 1 loaded with target weights ready to train in 1 tap.',
     critiqueAndRisks:

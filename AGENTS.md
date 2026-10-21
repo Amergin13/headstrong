@@ -341,19 +341,21 @@ Every UI component, layout, copy change, and new flow MUST be designed and evalu
 ## 7. Onboarding & First-Time-to-Value Specification (Mandatory Flow)
 
 New users must be guided along the **quickest path to value** in under 60 seconds:
-1. **Step 1: Welcome & How Treise Works**
+1. **Step 1: Welcome & How Treise Works (Introduction)**
    - Welcomes the athlete with a friendly, encouraging tone.
    - Explains the 3 core pillars: (1) Asynchronous Hypertrophy Queue, (2) Guaranteed Overload via Double Progression, and (3) Seamless Adaptation across Full Gym, Home Gear, and Travel Bodyweight.
-   - Provides a clear primary CTA (`Choose My Program`) and a subtle exit (`Skip to Demo`).
-2. **Step 2: Choose Training Split (Program Type)**
-   - Presents the 4 evidence-based hypertrophy splits:
+   - Provides a clear primary CTA (`Choose My Goal`) and a subtle exit (`Skip to Demo`).
+2. **Step 2: Primary Goal & Phase (Goal Selection)**
+   - Anchors the athlete's motivation and intent first. Calibrates volume landmarks and rules for `Lean Bulk`, `Cut / Recomp` (with Retention Shield), or `Maingain`.
+   - Provides a clear primary CTA (`Continue to Split`).
+3. **Step 3: Choose Training Split (Program Type)**
+   - Presents the 4 evidence-based hypertrophy splits calibrated to their selected goal:
      - `Push / Pull / Legs + Upper (4-Day)` *(Recommended for Hypertrophy)*
      - `Push / Pull / Legs (3-Day Classic)`
      - `Upper / Lower (4-Day Power & Mass)`
      - `Full Body (3-Day High Frequency)`
    - Clearly displays session rotation, weekly frequency, and Day 1 starter workout.
-3. **Step 3: Primary Goal & Phase**
-   - Calibrates volume landmarks and rules for `Lean Bulk`, `Cut / Recomp` (with Retention Shield), or `Maingain`.
+   - Provides a clear primary CTA (`Set Up Equipment`).
 4. **Step 4: Training Locations & Available Equipment**
    - Configures places (`Full Gym`, `At Home`, `Travel`), home gear (`Bench`, `Dumbbells`, `TRX`, `Pull-Up Bar`, `Bands`), and today's location.
 5. **First-Time-to-Value Delivery:**
