@@ -13,6 +13,7 @@ import {
 } from '../../engine/types';
 import { ReadinessEvaluation } from '../../engine/readiness';
 import { ReadinessBanner } from './ReadinessBanner';
+import { TensorAICoachCard } from './TensorAICoachCard';
 import { ExerciseCard } from './ExerciseCard';
 import { ExerciseSwapModal } from './ExerciseSwapModal';
 import { PlateCalculatorModal } from './PlateCalculatorModal';
@@ -739,7 +740,28 @@ export const TrainTab: React.FC<TrainTabProps> = ({
         </ReadinessBanner>
       </div>
 
-
+      {/* On-Device AI Coach Card */}
+      {tensorInsight && tensorHardware && (
+        <TensorAICoachCard
+          insight={tensorInsight}
+          hardware={tensorHardware}
+          contextInput={{
+            workoutSession: activeWorkout,
+            readinessState: readiness.state,
+            readinessZScore: readiness.score,
+            hrvRmssd: latestBiometrics.hrvRmssd,
+            restingHr: latestBiometrics.restingHr,
+            sleepHours: latestBiometrics.sleepHours,
+            goalPhase: profile.goalPhase,
+            mesocycleWeek: mesoWeek,
+            location: currentLoc,
+            recoveryScore: latestBiometrics.recoveryScore,
+            workoutStrain: latestBiometrics.workoutStrain,
+          }}
+          onRefreshHardware={loadTensorAI}
+          onOpenChat={onOpenAICoach}
+        />
+      )}
 
       {/* 3. Exercise Cards with Clear Step Numbers & "Target vs. Last Time" */}
       <div className="space-y-4 sm:space-y-5">

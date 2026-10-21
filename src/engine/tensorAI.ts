@@ -102,7 +102,7 @@ export async function detectPixelTensorHardware(
   // 2. Query High-Entropy Client Hints if available in browser
   if (!detectedModel && typeof navigator !== 'undefined' && (navigator as any).userAgentData?.getHighEntropyValues) {
     try {
-      const hints = await (navigator as any).userAgentData.getHighEntropyValues(['model', 'platform', 'architecture']);
+      const hints = await (navigator as any).userAgentData.getHighEntropyValues(['model', 'platform', 'architecture', 'modelId']);
       if (hints.model) {
         detectedModel = hints.model;
       }
@@ -132,9 +132,50 @@ export async function detectPixelTensorHardware(
         if (debugInfo) {
           gpuRenderer = gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL) || '';
         }
+        if (!gpuRenderer) {
+          gpuRenderer = gl.getParameter(gl.RENDERER) || '';
+        }
       }
     } catch {
       // WebGL check suppressed in headless environments
+    }
+  }
+
+  // 4b. Query WebGPU adapter for Mali / Tensor GPU signature
+  if (!gpuRenderer && typeof navigator !== 'undefined' && (navigator as any).gpu?.requestAdapter) {
+    try {
+      const adapter = await (navigator as any).gpu.requestAdapter();
+      if (adapter?.info) {
+        const aInfo = adapter.info;
+        gpuRenderer = `${aInfo.vendor || ''} ${aInfo.architecture || ''} ${aInfo.device || ''} ${aInfo.description || ''}`;
+      }
+    } catch {
+      // WebGPU check suppressed
+    }
+  }
+
+  // 4c. Android Pixel Screen Dimension & DPR Fingerprinting (handles Chrome User-Agent Reduction)
+  const isAndroidEnvironment = /Android/i.test(ua) || (typeof navigator !== 'undefined' && (navigator as any).userAgentData?.platform === 'Android');
+  if (!detectedModel && isAndroidEnvironment && typeof window !== 'undefined' && typeof screen !== 'undefined') {
+    const w = Math.min(screen.width, screen.height);
+    const h = Math.max(screen.width, screen.height);
+    const dpr = window.devicePixelRatio || 1;
+
+    // Pixel 9 Pro XL & 8 Pro (448 x 998, DPR ~2.8-3.0)
+    if (w === 448 && h === 998) {
+      detectedModel = dpr >= 2.9 ? 'Google Pixel 9 Pro XL' : 'Google Pixel 8 Pro';
+    }
+    // Pixel 9 Pro (427 x 960, DPR ~3.0)
+    else if (w === 427 && h === 960) {
+      detectedModel = 'Google Pixel 9 Pro';
+    }
+    // Pixel 9, 8, 8a, 7, 7a (412 x 915, DPR ~2.625)
+    else if (w === 412 && h === 915 && dpr >= 2.5) {
+      detectedModel = 'Google Pixel 9';
+    }
+    // Pixel 7 Pro, 6 Pro (412 x 892, DPR ~3.5)
+    else if (w === 412 && h === 892 && dpr >= 3.2) {
+      detectedModel = 'Google Pixel 7 Pro';
     }
   }
 

@@ -1,6 +1,6 @@
 import React from 'react';
 import { UserProfile, ReadinessState } from '../../engine/types';
-import { Flame } from 'lucide-react';
+import { Flame, Sparkles } from 'lucide-react';
 
 interface HeaderProps {
   profile: UserProfile;
@@ -12,6 +12,7 @@ interface HeaderProps {
 
 export const Header: React.FC<HeaderProps> = ({
   profile,
+  onOpenAICoach,
   onOpenAuth,
 }) => {
   const currentLevelXp = profile.currentXp % 500;
@@ -47,6 +48,19 @@ export const Header: React.FC<HeaderProps> = ({
 
         {/* Right Status Actions */}
         <div className="flex items-center space-x-2">
+          {/* AI Coach Quick Access Button */}
+          {onOpenAICoach && (
+            <button
+              type="button"
+              onClick={onOpenAICoach}
+              className="flex items-center space-x-1.5 px-3 py-1 rounded-full bg-brand-primary/[0.12] hover:bg-brand-primary/[0.20] text-brand-primary text-xs font-bold transition-colors min-h-[44px]"
+              aria-label="Open AI Coach"
+            >
+              <Sparkles className="w-3.5 h-3.5 stroke-[2]" />
+              <span className="hidden sm:inline">Coach</span>
+            </button>
+          )}
+
           {/* Streak Badge */}
           <div
             className="flex items-center space-x-1.5 px-3 py-1 rounded-full bg-amber-500/[0.15] text-amber-400 text-xs font-bold"

@@ -653,7 +653,7 @@ export async function processAssistantMessage(
         let nanoHandled = false;
 
         // A. Google Tensor TPU Acceleration (Chrome Built-in AI / Gemini Nano via Android AICore)
-        if (hardware.isPixelDevice) {
+        if (hardware.isPixelDevice || hardware.isHardwareAccelerated) {
           const dotsScore = calculateDotsScore(
             bodyweightEmaKg,
             (kg.nodes.find((n) => n.id === 'dots-score')?.metrics?.dots as number) || 280,
