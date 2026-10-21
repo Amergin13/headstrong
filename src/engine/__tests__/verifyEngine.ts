@@ -465,6 +465,7 @@ import {
   WEARABLE_PROVIDERS,
   syncWearableBiometrics,
   disconnectWearable,
+  setActiveTracker,
 } from '../../services/wearableSyncService';
 import {
   GOOGLE_AUTH_CONFIG,
@@ -2287,6 +2288,155 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
   assert(
     readinessWhoop49.reason.includes('49%') && readinessWhoop49.reason.includes('Yellow'),
     `Whoop 49% recovery reason indicates 49% Yellow recovery (${readinessWhoop49.reason})`
+  );
+
+  // 7. Single Tracker Exclusivity (setActiveTracker)
+  const multiProfile: UserProfile = {
+    ...testProfile,
+    fitbitConnected: true,
+    whoopConnected: true,
+    healthConnectConnected: true,
+    wearableSource: 'fitbit',
+  };
+  const activeFitbitUpdates = setActiveTracker('fitbit', multiProfile);
+  assert(
+    activeFitbitUpdates.wearableSource === 'fitbit' &&
+      activeFitbitUpdates.fitbitConnected === true &&
+      activeFitbitUpdates.whoopConnected === false &&
+      activeFitbitUpdates.healthConnectConnected === false,
+    'setActiveTracker(fitbit) activates only Fitbit and deactivates Whoop and Health Connect'
+  );
+
+  const activeWhoopUpdates = setActiveTracker('whoop', multiProfile);
+  assert(
+    activeWhoopUpdates.wearableSource === 'whoop' &&
+      activeWhoopUpdates.whoopConnected === true &&
+      activeWhoopUpdates.fitbitConnected === false &&
+      activeWhoopUpdates.healthConnectConnected === false,
+    'setActiveTracker(whoop) activates only Whoop and deactivates Fitbit and Health Connect'
+  );
+
+  const activeNoneUpdates = setActiveTracker(null, multiProfile);
+  assert(
+    activeNoneUpdates.wearableSource === null &&
+      activeNoneUpdates.whoopConnected === false &&
+      activeNoneUpdates.fitbitConnected === false &&
+      activeNoneUpdates.healthConnectConnected === false,
+    'setActiveTracker(null) deactivates all wearable trackers'
+  );
+
+  // 8. Pixel Watch / Fitbit Daily Readiness Score Pipeline (1 - 100)
+  const fitbitHighLog: BiometricLog = {
+    date: '2026-10-21',
+    bodyweightKg: 82.0,
+    hrvRmssd: 68,
+    restingHr: 52,
+    sleepHours: 8.0,
+    steps: 11000,
+    activeZoneMinutes: 50,
+    fitbitReadinessScore: 88,
+    source: 'fitbit',
+  };
+  const fitbitHighEval = calculateDailyReadiness(fitbitHighLog, mockBiometrics, 'fitbit');
+  assert(
+    fitbitHighEval.state === 'Primed' &&
+      fitbitHighEval.provider === 'fitbit' &&
+      fitbitHighEval.scoreLabel === 'Daily Readiness' &&
+      fitbitHighEval.xpMultiplier === 1.15 &&
+      fitbitHighEval.readinessScore === 88,
+    `Pixel Watch High Readiness (88 >= 65) evaluates to Primed (+15% XP) with Daily Readiness label`
+  );
+
+  const fitbitTargetLog: BiometricLog = {
+    date: '2026-10-21',
+    bodyweightKg: 82.0,
+    hrvRmssd: 58,
+    restingHr: 56,
+    sleepHours: 7.2,
+    steps: 9000,
+    activeZoneMinutes: 35,
+    fitbitReadinessScore: 54,
+    source: 'fitbit',
+  };
+  const fitbitTargetEval = calculateDailyReadiness(fitbitTargetLog, mockBiometrics, 'fitbit');
+  assert(
+    fitbitTargetEval.state === 'Normal' &&
+      fitbitTargetEval.provider === 'fitbit' &&
+      fitbitTargetEval.scoreLabel === 'Daily Readiness' &&
+      fitbitTargetEval.xpMultiplier === 1.0 &&
+      fitbitTargetEval.readinessScore === 54,
+    `Pixel Watch Target Readiness (54, 30-64) evaluates to Normal (1.0x XP) with Daily Readiness label`
+  );
+
+  const fitbitLowLog: BiometricLog = {
+    date: '2026-10-21',
+    bodyweightKg: 82.0,
+    hrvRmssd: 40,
+    restingHr: 65,
+    sleepHours: 5.0,
+    steps: 5000,
+    activeZoneMinutes: 10,
+    fitbitReadinessScore: 24,
+    source: 'fitbit',
+  };
+  const fitbitLowEval = calculateDailyReadiness(fitbitLowLog, mockBiometrics, 'fitbit');
+  assert(
+    fitbitLowEval.state === 'Amber Shield' &&
+      fitbitLowEval.streakProtected === true &&
+      fitbitLowEval.provider === 'fitbit' &&
+      fitbitLowEval.scoreLabel === 'Daily Readiness' &&
+      fitbitLowEval.readinessScore === 24,
+    `Pixel Watch Low Readiness (24 < 30) evaluates to Amber Shield with streak protection`
+  );
+
+  // 9. Strict Baseline Isolation between Fitbit and Whoop
+  const mixedHistory: BiometricLog[] = [
+    // 7 days of Whoop logs with high HRV (90ms) and low RHR (45bpm)
+    ...Array.from({ length: 7 }, (_, i) => ({
+      date: `2026-10-0${i + 1}`,
+      bodyweightKg: 82.0,
+      hrvRmssd: 90,
+      restingHr: 45,
+      sleepHours: 8.5,
+      steps: 10000,
+      activeZoneMinutes: 45,
+      recoveryScore: 92,
+      source: 'whoop' as const,
+    })),
+    // 7 days of Fitbit logs with standard baseline (55ms HRV, 58bpm RHR)
+    ...Array.from({ length: 7 }, (_, i) => ({
+      date: `2026-10-${i + 10}`,
+      bodyweightKg: 82.0,
+      hrvRmssd: 55,
+      restingHr: 58,
+      sleepHours: 7.5,
+      steps: 9000,
+      activeZoneMinutes: 40,
+      fitbitReadinessScore: 60,
+      source: 'fitbit' as const,
+    })),
+  ];
+
+  // If Fitbit baseline is calculated, Whoop's 90ms HRV must NOT be included in Fitbit's past14 baseline
+  const fitbitIsolatedTestLog: BiometricLog = {
+    date: '2026-10-22',
+    bodyweightKg: 82.0,
+    hrvRmssd: 56, // Close to Fitbit mean of 55, far below Whoop mean of 90
+    restingHr: 57,
+    sleepHours: 7.5,
+    steps: 9000,
+    activeZoneMinutes: 40,
+    fitbitReadinessScore: 58,
+    source: 'fitbit',
+  };
+  const isolatedFitbitEval = calculateDailyReadiness(fitbitIsolatedTestLog, mixedHistory, 'fitbit');
+  assert(
+    isolatedFitbitEval.hrvChangePercent > -5 && isolatedFitbitEval.hrvChangePercent < 5,
+    `Fitbit baseline strictly filters out Whoop logs, preventing artificial HRV depression (got ${isolatedFitbitEval.hrvChangePercent}%)`
+  );
+  assert(
+    isolatedFitbitEval.state === 'Normal',
+    `Fitbit evaluation remains Normal without being penalized by Whoop history`
   );
 
   // --- SUITE 27: GOOGLE IDENTITY SERVICES, JWT CREDENTIALS & ACCOUNT SYNC ---

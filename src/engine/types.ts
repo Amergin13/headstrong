@@ -55,7 +55,9 @@ export interface BiometricLog {
   steps: number;
   activeZoneMinutes: number; // AZM
   vo2Max?: number; // mL/kg/min
-  recoveryScore?: number; // % (0-100, e.g. Whoop recovery)
+  recoveryScore?: number; // % (0-100, e.g. Whoop recovery score)
+  fitbitReadinessScore?: number; // % (1-100, Fitbit / Pixel Watch Daily Readiness Score)
+  readinessScore?: number; // % (1-100, Universal active tracker readiness score)
   workoutStrain?: number; // 0 - 21 Whoop workout strain
   strain?: number; // 0 - 21 Whoop day strain
   kilojoules?: number; // Daily cumulative energy burned (kJ)

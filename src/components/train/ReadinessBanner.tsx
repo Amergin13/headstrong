@@ -40,22 +40,56 @@ export const ReadinessBanner: React.FC<ReadinessBannerProps> = ({
   const isPrimed = readiness.state === 'Primed';
   const isAmber = readiness.state === 'Amber Shield';
 
-  // Accurately reflect authentic wearable recovery score (e.g. Whoop official recovery score: 49%)
-  const recoveryPercent =
-    typeof latestBiometrics?.recoveryScore === 'number'
-      ? latestBiometrics.recoveryScore
-      : isAmber
-      ? Math.max(35, Math.min(65, Math.round(55 + (readiness.score + 0.8) * 12)))
-      : isPrimed
-      ? Math.min(99, Math.max(82, Math.round(85 + (readiness.score - 0.8) * 10)))
-      : Math.min(80, Math.max(68, Math.round(72 + readiness.score * 8)));
+  // Determine active wearable provider
+  const activeProvider =
+    readiness.provider ||
+    latestBiometrics?.source ||
+    (typeof latestBiometrics?.fitbitReadinessScore === 'number'
+      ? 'fitbit'
+      : typeof latestBiometrics?.recoveryScore === 'number'
+      ? 'whoop'
+      : undefined);
 
-  const gaugeVariant =
-    recoveryPercent >= 67
-      ? 'recovery'
-      : recoveryPercent >= 34
-      ? 'amber'
-      : 'amber';
+  const isFitbit = activeProvider === 'fitbit' || typeof latestBiometrics?.fitbitReadinessScore === 'number';
+  const isWhoop = activeProvider === 'whoop' || typeof latestBiometrics?.recoveryScore === 'number';
+
+  const gaugeLabel = isFitbit ? 'READINESS' : isWhoop ? 'RECOVERY' : (readiness.scoreLabel?.toUpperCase() || 'READINESS');
+  const gaugeUnit = isFitbit ? '' : '%';
+
+  // Accurately reflect authentic wearable score:
+  // - Fitbit / Pixel Watch: Daily Readiness Score (1-100, High >=65, Target 30-64, Low <30)
+  // - Whoop: Recovery Score (0-100%, Green >=67%, Yellow 34-66%, Red <34%)
+  const displayScore = isFitbit
+    ? (typeof latestBiometrics?.fitbitReadinessScore === 'number'
+        ? latestBiometrics.fitbitReadinessScore
+        : typeof readiness.readinessScore === 'number'
+        ? readiness.readinessScore
+        : isAmber
+        ? 24
+        : isPrimed
+        ? 88
+        : 54)
+    : isWhoop
+    ? (typeof latestBiometrics?.recoveryScore === 'number'
+        ? latestBiometrics.recoveryScore
+        : typeof readiness.readinessScore === 'number'
+        ? readiness.readinessScore
+        : isAmber
+        ? 33
+        : isPrimed
+        ? 85
+        : 55)
+    : (typeof readiness.readinessScore === 'number'
+        ? readiness.readinessScore
+        : isAmber
+        ? Math.max(25, Math.min(50, Math.round(55 + (readiness.score + 0.8) * 12)))
+        : isPrimed
+        ? Math.min(99, Math.max(82, Math.round(85 + (readiness.score - 0.8) * 10)))
+        : Math.min(80, Math.max(65, Math.round(72 + readiness.score * 8))));
+
+  const gaugeVariant = isFitbit
+    ? (displayScore >= 65 ? 'emerald' : 'amber')
+    : (displayScore >= 67 ? 'recovery' : 'amber');
 
   const summary =
     tensorInsight?.summary ||
@@ -80,10 +114,10 @@ export const ReadinessBanner: React.FC<ReadinessBannerProps> = ({
           {/* Recovery Value (Circular Gauge matching Image 1) */}
           <div className="shrink-0">
             <BiometricCircularGauge
-              value={recoveryPercent}
+              value={displayScore}
               max={100}
-              unit="%"
-              label="RECOVERY"
+              unit={gaugeUnit}
+              label={gaugeLabel}
               variant={gaugeVariant}
               size="sm"
             />

@@ -11,6 +11,7 @@ import {
   WEARABLE_PROVIDERS,
   syncWearableBiometrics,
   disconnectWearable,
+  setActiveTracker,
 } from '../../services/wearableSyncService';
 import { initiateFitbitOAuth } from '../../services/fitbitService';
 import {
@@ -70,6 +71,18 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
       ? Boolean(profile.whoopConnected)
       : Boolean(profile.healthConnectConnected);
 
+  const isCurrentActive = profile.wearableSource === selectedProvider;
+
+  const handleSetActiveTracker = () => {
+    triggerHaptic('success');
+    if (onUpdateProfile) {
+      const updates = setActiveTracker(selectedProvider, profile);
+      onUpdateProfile(updates);
+      setImportStatus(`${providerMeta.name} is now your active tracker.`);
+      setTimeout(() => setImportStatus(null), 4000);
+    }
+  };
+
   const handleStartSync = async (stateOverride?: ReadinessState) => {
     setIsSyncing(true);
     triggerHaptic('medium');
@@ -89,7 +102,11 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
           : undefined;
 
       const refreshToken =
-        selectedProvider === 'whoop' ? profile.whoopRefreshToken : undefined;
+        selectedProvider === 'whoop'
+          ? profile.whoopRefreshToken
+          : selectedProvider === 'fitbit'
+          ? profile.fitbitRefreshToken
+          : undefined;
 
       const result = await syncWearableBiometrics(selectedProvider, {
         onProgress: (prog) => setSyncProgress(prog),
@@ -100,6 +117,9 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
 
       triggerHaptic('success');
       onSyncCompleted(result, selectedProvider);
+      if (onUpdateProfile) {
+        onUpdateProfile(setActiveTracker(selectedProvider, profile));
+      }
     } catch {
       setSyncProgress({
         stage: 'error',
@@ -192,8 +212,8 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
     } else {
       if (onUpdateProfile) {
         onUpdateProfile({
+          ...setActiveTracker('health_connect', profile),
           healthConnectConnected: true,
-          wearableSource: 'health_connect',
           healthConnectLastSync: new Date().toISOString(),
         });
       }
@@ -222,8 +242,8 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
             onSyncCompleted(latest, 'whoop');
             if (onUpdateProfile) {
               onUpdateProfile({
+                ...setActiveTracker('whoop', profile),
                 whoopConnected: true,
-                wearableSource: 'whoop',
               });
             }
             setImportStatus(`Imported ${parsed.length} daily recovery records from Whoop CSV export.`);
@@ -238,8 +258,8 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
           onSyncCompleted(latest, 'health_connect');
           if (onUpdateProfile) {
             onUpdateProfile({
+              ...setActiveTracker('health_connect', profile),
               healthConnectConnected: true,
-              wearableSource: 'health_connect',
               healthConnectLastSync: new Date().toISOString(),
             });
           }
@@ -289,6 +309,7 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
       <div className="grid grid-cols-3 gap-1.5 p-1 rounded-2xl bg-[#090C12] border border-white/[0.04]">
         {(['fitbit', 'whoop', 'health_connect'] as const).map((prov) => {
           const isSelected = selectedProvider === prov;
+          const isActive = profile.wearableSource === prov;
           const isConnected =
             prov === 'fitbit'
               ? profile.fitbitConnected
@@ -319,9 +340,13 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
               }`}
             >
               <span className="truncate">{shortLabels[prov]}</span>
-              {isConnected && (
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 mt-1" />
-              )}
+              {isActive ? (
+                <span className="inline-flex items-center px-1.5 py-0.5 rounded-full bg-emerald-400/20 text-emerald-400 text-xs font-bold mt-1">
+                  Active
+                </span>
+              ) : isConnected ? (
+                <span className="w-1.5 h-1.5 rounded-full bg-slate-500 mt-1" />
+              ) : null}
             </button>
           );
         })}
@@ -334,11 +359,19 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
             <div className="font-bold text-white text-sm">{providerMeta.name}</div>
             <div className="text-slate-400 text-xs">{providerMeta.hardwareFocus}</div>
           </div>
-          {isProviderConnected ? (
+          {isCurrentActive ? (
             <span className="flex items-center space-x-1.5 text-emerald-400 font-semibold px-2.5 py-1 rounded-full bg-emerald-500/10 text-xs">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span>Connected & Active</span>
+              <span>Active Tracker</span>
             </span>
+          ) : isProviderConnected ? (
+            <button
+              type="button"
+              onClick={handleSetActiveTracker}
+              className="px-2.5 py-1 rounded-full bg-brand-primary/15 hover:bg-brand-primary/25 text-brand-primary text-xs font-bold transition-colors flex items-center min-h-[30px]"
+            >
+              Set as Active
+            </button>
           ) : (
             <span className="text-slate-400 text-xs px-2.5 py-1 rounded-full bg-white/[0.04]">
               Not Connected
@@ -351,9 +384,18 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
           <div className="pt-2 border-t border-white/[0.04] space-y-2.5">
             {selectedProvider === 'whoop' && typeof latestBiometrics.recoveryScore === 'number' && (
               <div className="p-2.5 rounded-xl bg-black/30 flex items-center justify-between">
-                <span className="text-slate-400 text-xs">Whoop Recovery Score</span>
+                <div>
+                  <span className="text-slate-400 text-xs block">Whoop Recovery Score</span>
+                  <span className="text-xs text-slate-500">
+                    {latestBiometrics.recoveryScore >= 67
+                      ? 'Green (Prime to train)'
+                      : latestBiometrics.recoveryScore >= 34
+                      ? 'Yellow (Standard progression)'
+                      : 'Red (Recovery Shield)'}
+                  </span>
+                </div>
                 <span
-                  className={`font-mono font-bold text-sm px-2 py-0.5 rounded-lg ${
+                  className={`font-mono font-bold text-sm px-2.5 py-1 rounded-lg ${
                     latestBiometrics.recoveryScore >= 67
                       ? 'text-emerald-400 bg-emerald-500/15'
                       : latestBiometrics.recoveryScore >= 34
@@ -362,6 +404,31 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
                   }`}
                 >
                   {latestBiometrics.recoveryScore}%
+                </span>
+              </div>
+            )}
+            {selectedProvider === 'fitbit' && (typeof latestBiometrics.fitbitReadinessScore === 'number' || typeof latestBiometrics.readinessScore === 'number') && (
+              <div className="p-2.5 rounded-xl bg-black/30 flex items-center justify-between">
+                <div>
+                  <span className="text-slate-400 text-xs block">Pixel Watch Daily Readiness</span>
+                  <span className="text-xs text-slate-500">
+                    {(latestBiometrics.fitbitReadinessScore ?? latestBiometrics.readinessScore!) >= 65
+                      ? 'High Readiness (Prime to train)'
+                      : (latestBiometrics.fitbitReadinessScore ?? latestBiometrics.readinessScore!) >= 30
+                      ? 'Target Readiness (Standard progression)'
+                      : 'Low Readiness (Recovery Shield)'}
+                  </span>
+                </div>
+                <span
+                  className={`font-mono font-bold text-sm px-2.5 py-1 rounded-lg ${
+                    (latestBiometrics.fitbitReadinessScore ?? latestBiometrics.readinessScore!) >= 65
+                      ? 'text-emerald-400 bg-emerald-500/15'
+                      : (latestBiometrics.fitbitReadinessScore ?? latestBiometrics.readinessScore!) >= 30
+                      ? 'text-amber-400 bg-amber-500/15'
+                      : 'text-rose-400 bg-rose-500/15'
+                  }`}
+                >
+                  {latestBiometrics.fitbitReadinessScore ?? latestBiometrics.readinessScore}
                 </span>
               </div>
             )}
@@ -407,7 +474,7 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
               {selectedProvider === 'whoop' &&
                 'Sync your overnight recovery score, HRV, resting heart rate, and sleep duration automatically to calibrate your daily training volume and RIR targets.'}
               {selectedProvider === 'fitbit' &&
-                'Sync your daily active zone minutes, resting heart rate, and sleep staging directly from your Google Pixel Watch or Fitbit tracker.'}
+                'Sync your daily readiness score, resting heart rate, and sleep staging directly from your Google Pixel Watch or Fitbit tracker.'}
               {selectedProvider === 'health_connect' &&
                 'Sync unified biometric records directly from Android Health Connect on your phone.'}
             </p>
@@ -475,6 +542,17 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
           </div>
         ) : isProviderConnected ? (
           <div className="space-y-2">
+            {!isCurrentActive && (
+              <button
+                type="button"
+                onClick={handleSetActiveTracker}
+                className="w-full py-3 rounded-2xl bg-brand-primary hover:brightness-110 text-slate-950 font-bold text-xs flex items-center justify-center space-x-2 shadow-lg shadow-brand-primary/10 active:scale-95 transition-all min-h-[44px]"
+              >
+                <CheckCircle2 className="w-4 h-4 stroke-[2.2] text-slate-950" />
+                <span>Use {providerMeta.name} as Active Tracker</span>
+              </button>
+            )}
+
             <button
               type="button"
               disabled={isSyncing}

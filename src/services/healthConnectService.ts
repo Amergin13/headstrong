@@ -237,6 +237,7 @@ export async function simulateHealthConnectSync(
     vo2Max: 46.5,
     avgWorkoutHr: 143,
     workoutDurationMin: 62,
+    source: 'health_connect',
   };
 
   update('complete', 100, 'Health Connect recovery data synced!');

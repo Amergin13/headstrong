@@ -14,6 +14,7 @@ import {
   WorkoutSet,
   WearableProvider,
   AuthUser,
+  getActiveWearableProvider,
 } from './engine/types';
 import { calculateDailyReadiness } from './engine/readiness';
 import { getLatestBodyweightEma } from './engine/ema';
@@ -52,7 +53,7 @@ import {
   getNextSplitDay,
   SplitDayType,
 } from './services/workoutGenerator';
-import { syncWearableBiometrics } from './services/wearableSyncService';
+import { syncWearableBiometrics, setActiveTracker } from './services/wearableSyncService';
 import {
   exchangeWhoopCodeForToken,
   fetchWhoopWorkoutStrain,
@@ -241,13 +242,13 @@ export const App: React.FC = () => {
               profile.whoopRedirectUri
             );
             liveAccessToken = tokenRes.accessToken;
+            const trackerUpdates = setActiveTracker('whoop', profile);
             setProfile((prev) => ({
               ...prev,
-              whoopConnected: true,
+              ...trackerUpdates,
               whoopAccessToken: tokenRes.accessToken,
               whoopRefreshToken: tokenRes.refreshToken,
               whoopTokenExpiresAt: Date.now() + tokenRes.expiresIn * 1000,
-              wearableSource: 'whoop',
             }));
           } catch (err) {
             console.error('Whoop connection error:', err);
@@ -262,20 +263,20 @@ export const App: React.FC = () => {
           try {
             const tokenRes = await exchangeFitbitCodeForToken(oauthCode);
             liveAccessToken = tokenRes.accessToken;
+            const trackerUpdates = setActiveTracker('fitbit', profile);
             setProfile((prev) => ({
               ...prev,
-              fitbitConnected: true,
+              ...trackerUpdates,
               fitbitAccessToken: tokenRes.accessToken,
               fitbitRefreshToken: tokenRes.refreshToken,
               fitbitTokenExpiresAt: Date.now() + tokenRes.expiresIn * 1000,
-              wearableSource: 'fitbit',
             }));
           } catch (err) {
             console.warn('Fitbit token exchange completed via simulator fallback:', err);
+            const trackerUpdates = setActiveTracker('fitbit', profile);
             setProfile((prev) => ({
               ...prev,
-              fitbitConnected: true,
-              wearableSource: 'fitbit',
+              ...trackerUpdates,
             }));
           }
         }
@@ -323,9 +324,12 @@ export const App: React.FC = () => {
     }
   }, []);
 
-  // Auto-sync connected wearable biometrics on launch
+  // Auto-sync connected wearable biometrics on launch for the single active tracker
   useEffect(() => {
-    if (profile.whoopConnected && profile.whoopAccessToken) {
+    const activeProvider = getActiveWearableProvider(profile);
+    if (!activeProvider) return;
+
+    if (activeProvider === 'whoop' && profile.whoopAccessToken) {
       syncWearableBiometrics('whoop', {
         accessToken: profile.whoopAccessToken,
         refreshToken: profile.whoopRefreshToken,
@@ -335,6 +339,17 @@ export const App: React.FC = () => {
         })
         .catch((err) => {
           console.warn('Background Whoop auto-sync skipped:', err);
+        });
+    } else if (activeProvider === 'fitbit' && profile.fitbitAccessToken) {
+      syncWearableBiometrics('fitbit', {
+        accessToken: profile.fitbitAccessToken,
+        refreshToken: profile.fitbitRefreshToken,
+      })
+        .then((log) => {
+          handleSyncCompleted(log, 'fitbit');
+        })
+        .catch((err) => {
+          console.warn('Background Fitbit auto-sync skipped:', err);
         });
     }
   }, []);
@@ -352,7 +367,8 @@ export const App: React.FC = () => {
     vo2Max: 44.0,
   };
 
-  const calculatedReadiness = calculateDailyReadiness(latestBiometrics, biometrics);
+  const activeWearable = getActiveWearableProvider(profile);
+  const calculatedReadiness = calculateDailyReadiness(latestBiometrics, biometrics, activeWearable);
 
   const readiness = readinessOverride
     ? {
@@ -882,14 +898,10 @@ export const App: React.FC = () => {
     setBiometrics(updated);
 
     if (provider) {
+      const trackerUpdates = setActiveTracker(provider, profile);
       setProfile((prev) => ({
         ...prev,
-        wearableSource: provider,
-        fitbitConnected: provider === 'fitbit' ? true : prev.fitbitConnected,
-        whoopConnected: provider === 'whoop' ? true : prev.whoopConnected,
-        healthConnectConnected: provider === 'health_connect' ? true : prev.healthConnectConnected,
-        healthConnectLastSync:
-          provider === 'health_connect' ? new Date().toISOString() : prev.healthConnectLastSync,
+        ...trackerUpdates,
       }));
     }
   };

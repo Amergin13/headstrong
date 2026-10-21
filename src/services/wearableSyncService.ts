@@ -137,7 +137,11 @@ export async function syncWearableBiometrics(
       if (options?.accessToken) {
         try {
           onProg({ stage: 'connecting', percent: 20, message: 'Connecting to Fitbit API...', provider: 'fitbit' });
-          const liveData = await fetchFitbitDailyBiometrics(options.accessToken);
+          const liveData = await fetchFitbitDailyBiometrics(
+            options.accessToken,
+            undefined,
+            options?.refreshToken
+          );
           if (liveData.hrvRmssd && liveData.restingHr) {
             onProg({ stage: 'complete', percent: 100, message: 'Fitbit live biometrics synced!', provider: 'fitbit' });
             return {
@@ -149,6 +153,12 @@ export async function syncWearableBiometrics(
               steps: liveData.steps || 9000,
               activeZoneMinutes: liveData.activeZoneMinutes || 45,
               vo2Max: liveData.vo2Max || 46.0,
+              fitbitReadinessScore: liveData.fitbitReadinessScore,
+              readinessScore: liveData.readinessScore || liveData.fitbitReadinessScore,
+              kilojoules: liveData.kilojoules,
+              avgWorkoutHr: liveData.avgWorkoutHr,
+              maxWorkoutHr: liveData.maxWorkoutHr,
+              source: 'fitbit',
             };
           }
         } catch {
@@ -161,6 +171,37 @@ export async function syncWearableBiometrics(
       );
     }
   }
+}
+
+/**
+ * Enforces single tracker exclusivity:
+ * Only ONE wearable tracker can be active at a time.
+ * Activating one tracker marks it as active and deactivates the others,
+ * preventing cross-tracker contamination of readiness and scoring pipelines.
+ */
+export function setActiveTracker(
+  provider: WearableProvider | null,
+  currentProfile: UserProfile
+): Partial<UserProfile> {
+  if (!provider) {
+    return {
+      wearableSource: null,
+      fitbitConnected: false,
+      whoopConnected: false,
+      healthConnectConnected: false,
+    };
+  }
+
+  return {
+    wearableSource: provider,
+    fitbitConnected: provider === 'fitbit',
+    whoopConnected: provider === 'whoop',
+    healthConnectConnected: provider === 'health_connect',
+    healthConnectLastSync:
+      provider === 'health_connect'
+        ? new Date().toISOString()
+        : currentProfile.healthConnectLastSync,
+  };
 }
 
 /**
@@ -195,17 +236,9 @@ export function disconnectWearable(
     updates.healthConnectLastSync = undefined;
   }
 
-  // If the active source is the one being disconnected, update wearableSource to another connected source or null
+  // If the active source is the one being disconnected, clear wearableSource
   if (currentProfile.wearableSource === provider) {
-    if (provider !== 'fitbit' && currentProfile.fitbitConnected) {
-      updates.wearableSource = 'fitbit';
-    } else if (provider !== 'whoop' && currentProfile.whoopConnected) {
-      updates.wearableSource = 'whoop';
-    } else if (provider !== 'health_connect' && currentProfile.healthConnectConnected) {
-      updates.wearableSource = 'health_connect';
-    } else {
-      updates.wearableSource = null;
-    }
+    updates.wearableSource = null;
   }
 
   return updates;

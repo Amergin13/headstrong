@@ -61,8 +61,39 @@ export async function exchangeFitbitCodeForToken(
   code: string,
   clientId: string = FITBIT_CONFIG.CLIENT_ID
 ): Promise<{ accessToken: string; refreshToken: string; expiresIn: number; userId: string }> {
-  const codeVerifier = sessionStorage.getItem('fitbit_code_verifier') || '';
+  const codeVerifier = (typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('fitbit_code_verifier') : '') || '';
 
+  // 1. Try serverless proxy first to eliminate CORS barriers in production
+  try {
+    const proxyRes = await fetch('/api/fitbit/token', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        grant_type: 'authorization_code',
+        code,
+        code_verifier: codeVerifier,
+        redirect_uri: FITBIT_CONFIG.REDIRECT_URI,
+        client_id: clientId,
+      }),
+    });
+    if (proxyRes.ok) {
+      const data = await proxyRes.json();
+      if (data.access_token) {
+        return {
+          accessToken: data.access_token,
+          refreshToken: data.refresh_token,
+          expiresIn: data.expires_in,
+          userId: data.user_id,
+        };
+      }
+    }
+  } catch {
+    // Fall back to direct fetch
+  }
+
+  // 2. Direct browser fetch fallback
   const bodyParams = new URLSearchParams({
     client_id: clientId,
     grant_type: 'authorization_code',
@@ -96,6 +127,34 @@ export async function refreshFitbitToken(
   refreshToken: string,
   clientId: string = FITBIT_CONFIG.CLIENT_ID
 ): Promise<{ accessToken: string; refreshToken: string; expiresIn: number }> {
+  // 1. Try serverless proxy first
+  try {
+    const proxyRes = await fetch('/api/fitbit/token', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        grant_type: 'refresh_token',
+        refresh_token: refreshToken,
+        client_id: clientId,
+      }),
+    });
+    if (proxyRes.ok) {
+      const data = await proxyRes.json();
+      if (data.access_token) {
+        return {
+          accessToken: data.access_token,
+          refreshToken: data.refresh_token,
+          expiresIn: data.expires_in,
+        };
+      }
+    }
+  } catch {
+    // Fall back to direct fetch
+  }
+
+  // 2. Direct browser fetch fallback
   const bodyParams = new URLSearchParams({
     client_id: clientId,
     grant_type: 'refresh_token',
@@ -124,18 +183,50 @@ export async function refreshFitbitToken(
 
 /**
  * Fetches real daily biometrics from Fitbit Web API:
- * Heart rate/Resting HR, HRV RMSSD, Sleep, Steps & AZM, Bodyweight.
+ * Heart rate/Resting HR, HRV RMSSD, Sleep, Steps & AZM, Bodyweight, and Daily Readiness Score.
+ * Routes through /api/fitbit/biometrics serverless proxy to eliminate CORS restrictions.
  */
 export async function fetchFitbitDailyBiometrics(
   accessToken: string,
-  dateStr?: string
+  dateStr?: string,
+  refreshToken?: string
 ): Promise<Partial<BiometricLog>> {
   const date = dateStr || new Date().toISOString().split('T')[0];
+
+  // 1. Try serverless proxy aggregator first
+  try {
+    const proxyRes = await fetch(`/api/fitbit/biometrics?date=${date}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({
+        accessToken,
+        refreshToken,
+        date,
+      }),
+    });
+
+    if (proxyRes.ok) {
+      const data = await proxyRes.json();
+      if (data.success && data.biometrics) {
+        return {
+          ...data.biometrics,
+          source: 'fitbit',
+        };
+      }
+    }
+  } catch {
+    // Fall back to direct browser fetch
+  }
+
+  // 2. Direct browser fetch fallback
   const headers = {
     Authorization: `Bearer ${accessToken}`,
   };
 
-  const results: Partial<BiometricLog> = { date };
+  const results: Partial<BiometricLog> = { date, source: 'fitbit' };
 
   try {
     const heartRes = await fetch(
@@ -205,6 +296,23 @@ export async function fetchFitbitDailyBiometrics(
     // Non-fatal
   }
 
+  try {
+    const readinessRes = await fetch(`https://api.fitbit.com/1/user/-/readiness/date/${date}.json`, { headers });
+    if (readinessRes.ok) {
+      const readinessData = await readinessRes.json();
+      const rawScore =
+        readinessData?.readiness?.[0]?.value?.score ??
+        readinessData?.readiness?.[0]?.score ??
+        readinessData?.score;
+      if (typeof rawScore === 'number' && rawScore > 0) {
+        results.fitbitReadinessScore = Math.round(rawScore);
+        results.readinessScore = Math.round(rawScore);
+      }
+    }
+  } catch {
+    // Non-fatal
+  }
+
   return results;
 }
 
@@ -217,7 +325,7 @@ export interface WatchSyncProgress {
 /**
  * Live Demo Pixel Watch Telemetry Simulator:
  * Seamlessly generates high-resolution biometric readings from Google Pixel Watch 3
- * without requiring real-world API credentials during testing.
+ * including authentic Daily Readiness Score (1-100).
  */
 export async function simulatePixelWatchSync(
   onProgress?: (progress: WatchSyncProgress) => void,
@@ -246,6 +354,7 @@ export async function simulatePixelWatchSync(
   let sleep = 7.8;
   let steps = 9850;
   let azm = 45;
+  let fitbitReadinessScore = 78;
 
   if (forcedState === 'Amber Shield') {
     hrv = 41; // >15% drop
@@ -253,12 +362,14 @@ export async function simulatePixelWatchSync(
     sleep = 5.2; // <6h
     steps = 6200;
     azm = 18;
+    fitbitReadinessScore = 24; // Low Readiness (<30)
   } else if (forcedState === 'Primed') {
     hrv = 69;
     rhr = 51;
     sleep = 8.3;
     steps = 11400;
     azm = 56;
+    fitbitReadinessScore = 88; // High Readiness (>=65)
   }
 
   const syncedLog: BiometricLog = {
@@ -272,8 +383,11 @@ export async function simulatePixelWatchSync(
     vo2Max: 46.2,
     avgWorkoutHr: 144,
     workoutDurationMin: 65,
+    fitbitReadinessScore,
+    readinessScore: fitbitReadinessScore,
+    source: 'fitbit',
   };
 
-  update('complete', 100, 'Watch recovery data synced!');
+  update('complete', 100, 'Pixel Watch readiness data synced!');
   return syncedLog;
 }
