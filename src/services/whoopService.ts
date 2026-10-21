@@ -35,6 +35,7 @@ export function generateAlphanumericString(length: number = 24): string {
 
 export const WHOOP_CONFIG = {
   CLIENT_ID: '8bcb0a0d-b6ff-42e0-82b7-c3508e18c9f8',
+  CLIENT_SECRET: 'f3f985af0e1113b650b43fe977eb2f22ffb0f008c98e90e5d60ad669d4c365ea',
   AUTHORIZATION_URI: 'https://api.prod.whoop.com/oauth/oauth2/auth',
   TOKEN_URI: 'https://api.prod.whoop.com/oauth/oauth2/token',
   SCOPES: [
@@ -113,7 +114,7 @@ export async function exchangeWhoopCodeForToken(
     clientSecret ||
     (typeof localStorage !== 'undefined' && localStorage.getItem('whoop_client_secret')) ||
     (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('whoop_client_secret')) ||
-    '';
+    WHOOP_CONFIG.CLIENT_SECRET;
   const redirectUri =
     customRedirectUri ||
     (typeof localStorage !== 'undefined' && localStorage.getItem('whoop_redirect_uri')) ||
@@ -206,7 +207,7 @@ export async function refreshWhoopToken(
     clientSecret ||
     (typeof localStorage !== 'undefined' && localStorage.getItem('whoop_client_secret')) ||
     (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('whoop_client_secret')) ||
-    '';
+    WHOOP_CONFIG.CLIENT_SECRET;
 
   const bodyParams = new URLSearchParams({
     client_id: effectiveClientId,

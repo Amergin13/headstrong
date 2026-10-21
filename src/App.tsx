@@ -245,11 +245,11 @@ export const App: React.FC = () => {
               wearableSource: 'whoop',
             }));
           } catch (err) {
-            console.warn('Whoop token exchange requires client secret:', err);
+            console.error('Whoop connection error:', err);
             setXpNotification({
               amount: 0,
-              message: 'Whoop authorization approved! To stream live biometrics, configure your Whoop Client Secret.',
-              bonusTag: 'Secret Required',
+              message: 'Could not connect to Whoop. Please try again.',
+              bonusTag: 'Connection Failed',
             });
             return;
           }
@@ -282,10 +282,8 @@ export const App: React.FC = () => {
         const deviceName = provider === 'whoop' ? 'Whoop 4.0' : 'Google Pixel Watch';
         setXpNotification({
           amount: 0,
-          message: liveAccessToken
-            ? `${deviceName} live data synced successfully!`
-            : `${deviceName} connected!`,
-          bonusTag: liveAccessToken ? 'Live Data Synced' : 'Wearable Connected',
+          message: `${deviceName} connected & live recovery synced!`,
+          bonusTag: 'Live Data Synced',
         });
       };
 

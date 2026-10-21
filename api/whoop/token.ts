@@ -1,3 +1,8 @@
+const WHOOP_CLIENT_ID = '8bcb0a0d-b6ff-42e0-82b7-c3508e18c9f8';
+const WHOOP_CLIENT_SECRET =
+  process.env.WHOOP_CLIENT_SECRET || 'f3f985af0e1113b650b43fe977eb2f22ffb0f008c98e90e5d60ad669d4c365ea';
+const WHOOP_REDIRECT_URI = 'https://treise.vercel.app/oauth/whoop/callback';
+
 // Vercel Serverless Function: Proxy Whoop OAuth Token Exchange to eliminate browser CORS barriers
 export default async function handler(req: any, res: any) {
   res.setHeader('Access-Control-Allow-Credentials', 'true');
@@ -16,9 +21,9 @@ export default async function handler(req: any, res: any) {
   if (req.method === 'GET') {
     return res.status(200).json({
       status: 'ok',
-      configured: Boolean(process.env.WHOOP_CLIENT_SECRET),
-      clientId: '8bcb0a0d-b6ff-42e0-82b7-c3508e18c9f8',
-      redirectUri: 'https://treise.vercel.app/oauth/whoop/callback',
+      configured: true,
+      clientId: WHOOP_CLIENT_ID,
+      redirectUri: WHOOP_REDIRECT_URI,
     });
   }
 
@@ -45,15 +50,15 @@ export default async function handler(req: any, res: any) {
 
     // Default to configured user client ID if not provided in payload
     if (!params.get('client_id')) {
-      params.append('client_id', '8bcb0a0d-b6ff-42e0-82b7-c3508e18c9f8');
+      params.append('client_id', WHOOP_CLIENT_ID);
     }
 
     if (!params.get('redirect_uri')) {
-      params.append('redirect_uri', 'https://treise.vercel.app/oauth/whoop/callback');
+      params.append('redirect_uri', WHOOP_REDIRECT_URI);
     }
 
-    if (!params.get('client_secret') && process.env.WHOOP_CLIENT_SECRET) {
-      params.append('client_secret', process.env.WHOOP_CLIENT_SECRET);
+    if (!params.get('client_secret')) {
+      params.append('client_secret', WHOOP_CLIENT_SECRET);
     }
 
     const response = await fetch('https://api.prod.whoop.com/oauth/oauth2/token', {

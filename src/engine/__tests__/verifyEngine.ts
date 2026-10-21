@@ -2098,6 +2098,10 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
     `WHOOP_CONFIG.CLIENT_ID binds to user's registered Whoop Client ID`
   );
   assert(
+    WHOOP_CONFIG.CLIENT_SECRET === 'f3f985af0e1113b650b43fe977eb2f22ffb0f008c98e90e5d60ad669d4c365ea',
+    `WHOOP_CONFIG.CLIENT_SECRET binds to user's registered Whoop Client Secret`
+  );
+  assert(
     WHOOP_CONFIG.AUTHORIZATION_URI === 'https://api.prod.whoop.com/oauth/oauth2/auth' &&
       WHOOP_CONFIG.SCOPES.includes('read:recovery') &&
       WHOOP_CONFIG.SCOPES.includes('read:sleep'),
