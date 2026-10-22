@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   ExerciseDefinition,
   ExerciseSession,
@@ -8,6 +8,7 @@ import {
   WorkoutSet,
 } from '../../engine/types';
 import { formatImplementWeightLabel } from '../../engine/e1rm';
+import { calculate5StepWarmupRamp } from '../../engine/muscleBuildingProgram';
 import { SetRow } from './SetRow';
 import {
   Plus,
@@ -17,6 +18,11 @@ import {
   TrendingUp,
   CheckCircle2,
   Check,
+  Clock,
+  Flame,
+  ChevronDown,
+  ChevronUp,
+  Sparkles,
 } from 'lucide-react';
 import { triggerHaptic } from '../../utils/haptics';
 
@@ -44,6 +50,24 @@ const PILLAR_FRIENDLY_LABELS: Record<string, string> = {
   Hinge: 'Hamstrings & Lower Back',
 };
 
+function formatTempoLabel(tempo?: string): { pill: string; explanation?: string } | null {
+  if (!tempo) return null;
+  if (/^\d{4}$/.test(tempo)) {
+    const [ecc, pauseBottom, con, pauseTop] = tempo.split('');
+    return {
+      pill: `Tempo ${tempo}`,
+      explanation: `${ecc}s lower • ${pauseBottom}s pause • ${con}s lift • ${pauseTop}s top`,
+    };
+  }
+  if (tempo.includes('sec')) {
+    return { pill: `Hold ${tempo}`, explanation: 'Isometric hold duration' };
+  }
+  if (tempo.includes('min')) {
+    return { pill: `Cardio ${tempo}`, explanation: 'High-intensity interval duration' };
+  }
+  return { pill: tempo };
+}
+
 export const ExerciseCard: React.FC<ExerciseCardProps> = ({
   exerciseIndex,
   totalExercises,
@@ -58,6 +82,9 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
   onOpenSwap,
   onOpenPlateCalc,
 }) => {
+  const [showWarmupRamp, setShowWarmupRamp] = useState(false);
+  const [showNotes, setShowNotes] = useState(false);
+
   const handleAddSetWithHaptic = (isWarmup = false) => {
     triggerHaptic('light');
     onAddSet(isWarmup);
@@ -86,7 +113,11 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
   const firstTargetReps = prescription.nextTargetReps?.[0] ?? exercise.minReps;
   const isAtMaxReps = firstTargetReps >= exercise.maxReps;
   const targetRepsDisplay =
-    prescription.repsChanged && isAtMaxReps
+    exercise.repTargetType === 'wave' && exercise.sets.length >= 2
+      ? `${exercise.sets[0]?.targetReps}/${exercise.sets[1]?.targetReps} wave`
+      : exercise.repTargetType === 'form_failure'
+      ? 'F* (Form Failure)'
+      : prescription.repsChanged && isAtMaxReps
       ? `${firstTargetReps}+ reps`
       : `${firstTargetReps} reps`;
 
@@ -105,6 +136,9 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
       ? 'Top of Range'
       : null;
 
+  const tempoData = formatTempoLabel(exercise.tempo);
+  const warmupSteps = exercise.useWarmupProtocol ? calculate5StepWarmupRamp(currentWeight) : [];
+
   return (
     <section
       aria-label={exercise.name}
@@ -112,16 +146,21 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
         allSetsDone ? 'bg-[#0E1513]' : 'bg-[#0E1219]'
       }`}
     >
-      {/* 1. Card Header: Step Index, Target Muscle, Exercise Name, Status & Single Swap Action */}
-      <div className="space-y-1.5">
+      {/* 1. Card Header: Step Index, Group Code (A1/A2), Target Muscle, Exercise Name, Status & Actions */}
+      <div className="space-y-2">
         <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center space-x-2 min-w-0">
+          <div className="flex items-center space-x-2 min-w-0 flex-wrap gap-y-1">
             {exerciseIndex !== undefined && totalExercises !== undefined && (
               <span className="text-xs font-mono font-bold px-2 py-0.5 rounded-lg bg-white/[0.08] text-white shrink-0">
                 {exerciseIndex}/{totalExercises}
               </span>
             )}
-            <span className="text-xs font-semibold text-slate-300">
+            {exercise.orderCode && (
+              <span className="text-xs font-mono font-extrabold px-2 py-0.5 rounded-lg bg-brand-primary/20 text-brand-primary border border-brand-primary/30 shrink-0">
+                {exercise.orderCode}
+              </span>
+            )}
+            <span className="text-xs font-semibold text-slate-300 truncate">
               {friendlyMuscle}
             </span>
           </div>
@@ -176,9 +215,9 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
         </div>
       </div>
 
-      {/* 2. Streamlined Target Progression Micro-Cue */}
+      {/* 2. Target Progression & Tempo Micro-Cue */}
       <div
-        className={`px-3.5 py-2.5 rounded-xl flex items-center justify-between gap-2 transition-colors ${
+        className={`px-3.5 py-2.5 rounded-xl flex items-center justify-between gap-2 transition-colors flex-wrap sm:flex-nowrap ${
           readinessState === 'Amber Shield'
             ? 'bg-amber-500/10 text-amber-300'
             : 'bg-white/[0.04] text-slate-300'
@@ -198,20 +237,133 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
           </span>
         </div>
 
-        {progressBadge && (
-          <span
-            className={`text-xs font-bold px-2 py-0.5 rounded-full shrink-0 ${
-              readinessState === 'Amber Shield'
-                ? 'bg-amber-500/20 text-amber-300'
-                : prescription.weightChanged
-                ? 'bg-brand-primary/20 text-brand-primary'
-                : 'bg-white/[0.08] text-slate-300'
-            }`}
-          >
-            {progressBadge}
-          </span>
-        )}
+        <div className="flex items-center space-x-2">
+          {tempoData && (
+            <span
+              className="text-xs font-mono font-semibold px-2 py-0.5 rounded-md bg-white/[0.08] text-slate-300 shrink-0"
+              title={tempoData.explanation}
+            >
+              {tempoData.pill}
+            </span>
+          )}
+
+          {progressBadge && (
+            <span
+              className={`text-xs font-bold px-2 py-0.5 rounded-full shrink-0 ${
+                readinessState === 'Amber Shield'
+                  ? 'bg-amber-500/20 text-amber-300'
+                  : prescription.weightChanged
+                  ? 'bg-brand-primary/20 text-brand-primary'
+                  : 'bg-white/[0.08] text-slate-300'
+              }`}
+            >
+              {progressBadge}
+            </span>
+          )}
+        </div>
       </div>
+
+      {/* 2.5 Intensity Protocol Finisher Callout (Rest-Pause, Triple Drop-Set, Iso-Hold Partials) */}
+      {exercise.intensityProtocol && (
+        <div className="p-3.5 rounded-2xl bg-gradient-to-r from-rose-500/15 via-rose-500/10 to-amber-500/10 border border-rose-500/25 space-y-1.5">
+          <div className="flex items-center space-x-2">
+            <span className="text-xs font-extrabold font-mono px-2 py-0.5 rounded-md bg-rose-500/25 text-rose-300">
+              {exercise.intensityProtocol.symbol}
+            </span>
+            <span className="text-xs font-extrabold text-white">
+              {exercise.intensityProtocol.name}
+            </span>
+          </div>
+          <p className="text-xs text-slate-300 leading-relaxed">
+            {exercise.intensityProtocol.instruction}
+          </p>
+        </div>
+      )}
+
+      {/* 2.6 First-Compound 5-Step Warmup Ramp Calculator */}
+      {exercise.useWarmupProtocol && warmupSteps.length > 0 && (
+        <div className="rounded-2xl bg-amber-500/10 border border-amber-500/20 p-3.5 space-y-2.5">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-2">
+              <Flame className="w-4 h-4 text-amber-400 stroke-[2]" />
+              <span className="text-xs font-bold text-amber-300">
+                5-Step Warmup Ramp ({currentWeight} kg work weight)
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                triggerHaptic('light');
+                setShowWarmupRamp(!showWarmupRamp);
+              }}
+              className="text-xs font-bold text-white px-2.5 py-1 rounded-lg bg-white/[0.08] hover:bg-white/[0.14] transition-colors min-h-[36px] flex items-center space-x-1"
+            >
+              <span>{showWarmupRamp ? 'Hide Ramp' : 'View Ramp'}</span>
+              {showWarmupRamp ? (
+                <ChevronUp className="w-3.5 h-3.5" />
+              ) : (
+                <ChevronDown className="w-3.5 h-3.5" />
+              )}
+            </button>
+          </div>
+
+          {showWarmupRamp && (
+            <div className="space-y-2 pt-1 border-t border-amber-500/15">
+              <p className="text-xs text-slate-300">
+                Perform these 5 progressive ramp sets before your 10 working sets:
+              </p>
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs">
+                {warmupSteps.map((step) => (
+                  <div
+                    key={step.setNumber}
+                    className="p-2 rounded-xl bg-black/40 border border-white/[0.06] text-center space-y-0.5"
+                  >
+                    <div className="font-mono font-bold text-white text-xs">
+                      Set {step.setNumber}: {step.targetWeightKg} kg
+                    </div>
+                    <div className="text-slate-400 font-mono text-xs">
+                      {step.percentage}% • {step.reps} reps
+                    </div>
+                    <div className="text-amber-400 text-xs truncate">
+                      {step.restLabel}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 2.7 Exercise Execution Cues / Notes */}
+      {exercise.exerciseNotes && exercise.exerciseNotes.length > 0 && (
+        <div className="space-y-1">
+          <button
+            type="button"
+            onClick={() => {
+              triggerHaptic('light');
+              setShowNotes(!showNotes);
+            }}
+            className="text-xs text-slate-400 hover:text-white flex items-center space-x-1 transition-colors py-1"
+          >
+            <span>Technique &amp; Execution Cues</span>
+            {showNotes ? (
+              <ChevronUp className="w-3.5 h-3.5" />
+            ) : (
+              <ChevronDown className="w-3.5 h-3.5" />
+            )}
+          </button>
+          {showNotes && (
+            <ul className="p-3 rounded-xl bg-white/[0.03] border border-white/[0.06] space-y-1 text-xs text-slate-300 list-disc list-inside">
+              {exercise.exerciseNotes.map((note, nIdx) => (
+                <li key={nIdx} className="leading-relaxed">
+                  {note}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
 
       {/* 3. Aligned 12-Column Set Logging Table */}
       <div className="space-y-1.5">

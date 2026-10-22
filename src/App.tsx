@@ -61,6 +61,7 @@ import {
   WHOOP_CONFIG,
 } from './services/whoopService';
 import { exchangeFitbitCodeForToken } from './services/fitbitService';
+import { generate6WeekMuscleBuildingWorkout } from './engine/muscleBuildingProgram';
 import { Header } from './components/common/Header';
 import { NavigationBar, TabId } from './components/common/NavigationBar';
 import { RestTimerModal } from './components/common/RestTimerModal';
@@ -91,6 +92,8 @@ export const App: React.FC = () => {
 
   // Modals & Floating Overlays
   const [restTimerOpen, setRestTimerOpen] = useState(false);
+  const [restTimerSeconds, setRestTimerSeconds] = useState(90);
+  const [restTimerKey, setRestTimerKey] = useState(0);
   const [watchModalOpen, setWatchModalOpen] = useState(false);
   const [aiCoachOpen, setAiCoachOpen] = useState(false);
   const [authModalOpen, setAuthModalOpen] = useState(false);
@@ -420,7 +423,15 @@ export const App: React.FC = () => {
     completedSet?: WorkoutSet,
     exercise?: ExerciseSession
   ) => {
-    setRestTimerOpen(true);
+    const restSecs = exercise?.restSeconds;
+    if (restSecs === 0) {
+      // 0sec rest indicates an immediate transition to the next exercise in the group
+      setRestTimerOpen(false);
+    } else {
+      setRestTimerSeconds(restSecs && restSecs > 0 ? restSecs : 90);
+      setRestTimerKey((k) => k + 1);
+      setRestTimerOpen(true);
+    }
 
     if (completedSet && exercise && !completedSet.isWarmup && completedSet.setType !== 'warmup') {
       const currentWeight = completedSet.actualWeightKg ?? completedSet.targetWeightKg ?? 0;
@@ -534,19 +545,58 @@ export const App: React.FC = () => {
 
     // Quickest path to value: Generate Day 1 workout for the chosen split and take user to Workout tab
     const starterSplit = getFirstSplitDayForProgram(setup.programType);
-    const day1Session = generateSmartWorkoutSession(
-      starterSplit,
-      workouts,
-      exercises,
-      readiness.state,
-      1,
-      setup.activeLocation,
-      setup.homeEquipment,
-      setup.goalPhase,
-      bodyweightEmaKg
-    );
-    setActiveWorkout(day1Session);
+    const starterSession =
+      setup.programType === 'muscle_building_6wk'
+        ? generate6WeekMuscleBuildingWorkout(1, bodyweightEmaKg)
+        : generateSmartWorkoutSession(
+            starterSplit,
+            workouts,
+            exercises,
+            readiness.state,
+            1,
+            setup.activeLocation,
+            setup.homeEquipment,
+            setup.goalPhase,
+            bodyweightEmaKg
+          );
+    setActiveWorkout(starterSession);
     setActiveTab('train');
+  };
+
+  // Handler: Launch specific workout number from 6-Week Muscle Building Plan
+  const handleLaunchWorkoutNumber = (workoutNum: number) => {
+    const session = generate6WeekMuscleBuildingWorkout(workoutNum, bodyweightEmaKg);
+    setActiveWorkout(session);
+    setActiveTab('train');
+    setXpNotification({
+      amount: 0,
+      message: `Loaded Workout #${workoutNum} (${session.name}). Ready to train!`,
+      bonusTag: 'Workout Loaded',
+    });
+  };
+
+  // Handler: Switch Program Type (Standard Splits or 6-Week Muscle Building Plan)
+  const handleUpdateProgram = (newProgramType: ProgramSplitType) => {
+    setProfile((prev) => ({ ...prev, programType: newProgramType }));
+    if (newProgramType === 'muscle_building_6wk') {
+      const session = generate6WeekMuscleBuildingWorkout(1, bodyweightEmaKg);
+      setActiveWorkout(session);
+    } else {
+      const starterSplit = getFirstSplitDayForProgram(newProgramType);
+      const session = generateSmartWorkoutSession(
+        starterSplit,
+        workouts,
+        exercises,
+        readiness.state,
+        profile.mesocycleWeek || 1,
+        profile.activeLocation || 'gym',
+        profile.homeEquipment || ['bench', 'dumbbells', 'trx', 'pullup_bar'],
+        profile.goalPhase,
+        bodyweightEmaKg,
+        profile.scheduledWeekLocations
+      );
+      setActiveWorkout(session);
+    }
   };
 
   // Handler: Change Mesocycle Week (1 to 6) (No illegitimate XP)
@@ -773,6 +823,7 @@ export const App: React.FC = () => {
       ppl: 3,
       upper_lower: 4,
       full_body: 3,
+      muscle_building_6wk: 4,
     };
     const sessionsPerWeek = sessionsPerWeekMap[profile.programType || 'ppl_upper'] || 4;
     const isWeekMilestone = nextWorkouts.length > 0 && nextWorkouts.length % sessionsPerWeek === 0;
@@ -787,6 +838,7 @@ export const App: React.FC = () => {
         ppl: 'PPL Classic',
         upper_lower: 'Upper / Lower',
         full_body: 'Full Body',
+        muscle_building_6wk: '6-Week Muscle Building Plan',
       };
       const progName = programLabels[profile.programType || 'ppl_upper'] || 'Hypertrophy Split';
       milestoneAward = calculateProgramMilestoneXp(completedWeek, progName);
@@ -802,25 +854,35 @@ export const App: React.FC = () => {
       mesocycleWeek: nextMesocycleWeek,
     }));
 
-    const nextSplit = getNextSplitDay(activeWorkout.splitDay, profile.programType);
-    const nextSmartSession = generateSmartWorkoutSession(
-      nextSplit,
-      nextWorkouts,
-      exercises,
-      readiness.state,
-      nextMesocycleWeek,
-      profile.activeLocation || 'gym',
-      profile.homeEquipment || ['bench', 'dumbbells', 'trx', 'pullup_bar'],
-      profile.goalPhase,
-      bodyweightEmaKg,
-      profile.scheduledWeekLocations
-    );
+    let nextSmartSession: WorkoutSession;
+    let nextSessionLabel = '';
+
+    if (profile.programType === 'muscle_building_6wk') {
+      const nextWorkoutNum = (nextWorkouts.length % 24) + 1;
+      nextSessionLabel = `Workout #${nextWorkoutNum}`;
+      nextSmartSession = generate6WeekMuscleBuildingWorkout(nextWorkoutNum, bodyweightEmaKg);
+    } else {
+      const nextSplit = getNextSplitDay(activeWorkout.splitDay, profile.programType);
+      nextSessionLabel = `${nextSplit} Split`;
+      nextSmartSession = generateSmartWorkoutSession(
+        nextSplit,
+        nextWorkouts,
+        exercises,
+        readiness.state,
+        nextMesocycleWeek,
+        profile.activeLocation || 'gym',
+        profile.homeEquipment || ['bench', 'dumbbells', 'trx', 'pullup_bar'],
+        profile.goalPhase,
+        bodyweightEmaKg,
+        profile.scheduledWeekLocations
+      );
+    }
     setActiveWorkout(nextSmartSession);
 
     // Award completion XP
     addXp(
       completionAward.amount,
-      `${completionAward.description} Next up: ${nextSplit} Split.`,
+      `${completionAward.description} Next up: ${nextSessionLabel}.`,
       completionAward.bonusTag
     );
 
@@ -1082,6 +1144,8 @@ export const App: React.FC = () => {
               setActiveWorkout(recalibrated);
             }}
             onLaunchSplitDay={(sp) => handleSwitchSplitDay(sp, true)}
+            onLaunchWorkoutNumber={handleLaunchWorkoutNumber}
+            onUpdateProgram={handleUpdateProgram}
             onAddCustomExercise={(newEx) => setExercises((prev) => [...prev, newEx])}
             onResetData={handleResetData}
             onExportData={handleExportData}
@@ -1146,7 +1210,8 @@ export const App: React.FC = () => {
       {/* Floating Rest Timer with Simulated 60% Max HR Ready Indicator */}
       {restTimerOpen && (
         <RestTimerModal
-          initialSeconds={90}
+          key={`rest-${restTimerKey}`}
+          initialSeconds={restTimerSeconds}
           maxHr={profile.maxHr}
           onDismiss={() => setRestTimerOpen(false)}
         />

@@ -88,6 +88,28 @@ export type HomeEquipmentTag =
   | 'pullup_bar'
   | 'bands';
 
+export interface IntensityProtocol {
+  id: string;
+  symbol: string;
+  name: string;
+  instruction: string;
+}
+
+export interface WarmupProtocolStep {
+  setNumber: number;
+  reps: number;
+  percentageOfWorkWeight: number;
+  exampleWeightKg?: number;
+  restSecondsMin?: number;
+  restSecondsMax?: number;
+  restLabel?: string;
+}
+
+export interface WarmupProtocol {
+  description: string;
+  sets: WarmupProtocolStep[];
+}
+
 export interface WorkoutSet {
   id: string;
   setNumber: number;
@@ -101,6 +123,9 @@ export interface WorkoutSet {
   completedAt?: string;
   isWarmup?: boolean;
   setType?: SetType;
+  tempo?: string;
+  isFormFailure?: boolean;
+  repDisplay?: string;
 }
 
 export interface ExerciseDefinition {
@@ -143,6 +168,16 @@ export interface ExerciseSession {
   maxReps: number;
   sets: WorkoutSet[];
   notes?: string;
+  orderCode?: string; // Grouping / superset code, e.g. 'A1', 'A2', 'B1', 'B2', 'C'
+  tempo?: string; // 4-digit tempo e.g. '4010', '3110', or duration target e.g. '60sec', '15-30min'
+  restSeconds?: number;
+  durationSeconds?: number;
+  durationMinutesRange?: [number, number];
+  intensityProtocol?: IntensityProtocol;
+  useWarmupProtocol?: boolean;
+  repTargetType?: 'reps' | 'wave' | 'form_failure' | 'duration';
+  waveReps?: [number, number];
+  exerciseNotes?: string[];
 }
 
 export interface WorkoutSession {
@@ -225,7 +260,7 @@ export interface WearableSyncProgress {
   provider?: WearableProvider;
 }
 
-export type ProgramSplitType = 'ppl_upper' | 'ppl' | 'upper_lower' | 'full_body';
+export type ProgramSplitType = 'ppl_upper' | 'ppl' | 'upper_lower' | 'full_body' | 'muscle_building_6wk';
 
 export interface UserProfile {
   name: string;

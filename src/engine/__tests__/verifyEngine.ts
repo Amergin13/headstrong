@@ -45,6 +45,15 @@ import {
   isFirstCompoundForPillar,
   ensureWarmupSetsOnExercise,
 } from '../warmup';
+import {
+  WORKOUT_TEMPLATES_24,
+  PROGRAM_PHASES,
+  WARMUP_PROTOCOL,
+  INTENSITY_PROTOCOLS,
+  calculate5StepWarmupRamp,
+  generate6WeekMuscleBuildingWorkout,
+  MUSCLE_BUILDING_PROGRAM_META,
+} from '../muscleBuildingProgram';
 
 function assert(condition: boolean, msg: string) {
   if (!condition) {
@@ -2984,7 +2993,66 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
     'OnboardingModal Step 1 presents complete context on automated planning, morning weigh-ins, body recomposition, and smart scales'
   );
 
-  console.log('\nALL 29 ENGINE, GOVERNANCE, DESIGN HEURISTICS, TYPOGRAPHY, WEARABLES, WHOOP STRAIN, GOOGLE AUTH, ONBOARDING CONTEXT & TENSOR AI SUITES PASSED SUCCESSFULLY! 🎯');
+  // 30. 6-Week Muscle Building Program, Wave Sets, Warm-Up Calculator, Giant Sets & Knowledge Base
+  console.log('\n[30. 6-Week Muscle Building Program, Wave Sets, Warm-Up Calculator & Giant Sets]');
+  assert(WORKOUT_TEMPLATES_24.length === 24, '6-Week program contains exactly 24 workout templates');
+  assert(PROGRAM_PHASES.length === 3, 'Program contains 3 two-week phases');
+  for (let p = 1; p <= 3; p++) {
+    const pWorkouts = WORKOUT_TEMPLATES_24.filter((w) => w.phase === p);
+    assert(pWorkouts.length === 8, `Phase ${p} contains exactly 8 scheduled workouts (4/week x 2 weeks)`);
+  }
+
+  // Warmup Ramp Calculator
+  const ramp100 = calculate5StepWarmupRamp(100);
+  assert(ramp100.length === 5, 'Warmup ramp calculator produces 5 graduated sets');
+  assert(ramp100[0].targetWeightKg === 30 && ramp100[0].reps === 8, 'Warmup Set 1: 30% x 8 reps (30kg for 100kg work weight)');
+  assert(ramp100[1].targetWeightKg === 50 && ramp100[1].reps === 5, 'Warmup Set 2: 50% x 5 reps (50kg for 100kg work weight)');
+  assert(ramp100[2].targetWeightKg === 70 && ramp100[2].reps === 3, 'Warmup Set 3: 70% x 3 reps (70kg for 100kg work weight)');
+  assert(ramp100[3].targetWeightKg === 85 && ramp100[3].reps === 2, 'Warmup Set 4: 85% x 2 reps (85kg for 100kg work weight)');
+  assert(ramp100[4].targetWeightKg === 95 && ramp100[4].reps === 1, 'Warmup Set 5: 95% x 1 rep (95kg for 100kg work weight)');
+
+  // Saturday 10-Set Squats Linear Progression
+  const satW1 = WORKOUT_TEMPLATES_24.find((w) => w.workoutNumber === 4)!;
+  const satW2 = WORKOUT_TEMPLATES_24.find((w) => w.workoutNumber === 8)!;
+  const satW3 = WORKOUT_TEMPLATES_24.find((w) => w.workoutNumber === 12)!;
+  const satW4 = WORKOUT_TEMPLATES_24.find((w) => w.workoutNumber === 16)!;
+  const satW5 = WORKOUT_TEMPLATES_24.find((w) => w.workoutNumber === 20)!;
+  const satW6 = WORKOUT_TEMPLATES_24.find((w) => w.workoutNumber === 24)!;
+
+  assert(satW1.exercises[0].sets === 10 && satW1.exercises[0].reps === '10', 'Sat Wk 1 Squats: 10 sets x 10 reps');
+  assert(satW2.exercises[0].sets === 10 && satW2.exercises[0].reps === '9', 'Sat Wk 2 Squats: 10 sets x 9 reps');
+  assert(satW3.exercises[0].sets === 10 && satW3.exercises[0].reps === '8', 'Sat Wk 3 Squats: 10 sets x 8 reps');
+  assert(satW4.exercises[0].sets === 10 && satW4.exercises[0].reps === '8', 'Sat Wk 4 Squats: 10 sets x 8 reps');
+  assert(satW5.exercises[0].sets === 10 && satW5.exercises[0].reps === '6', 'Sat Wk 5 Squats: 10 sets x 6 reps');
+  assert(satW6.exercises[0].sets === 10 && satW6.exercises[0].reps === '6', 'Sat Wk 6 Squats: 10 sets x 6 reps');
+
+  // Workout Generation: Phase 1 Antagonist Supersets
+  const genW1 = generate6WeekMuscleBuildingWorkout(1, 80);
+  assert(genW1.exercises.length === 5, 'Workout 1 generates 5 exercises across antagonist superset pairs and core');
+  assert(genW1.exercises[0].orderCode === 'A1' && genW1.exercises[0].restSeconds === 0, 'Exercise A1 has 0s rest to transition immediately into A2');
+  assert(genW1.exercises[1].orderCode === 'A2' && genW1.exercises[1].restSeconds === 60, 'Exercise A2 has 60s rest completing the superset group');
+  assert(genW1.exercises[0].tempo === '3110', 'Exercise A1 has strict 3110 4-digit tempo cue');
+
+  // Workout Generation: Phase 2 Wave Reps & Intensity Protocols
+  const genW10 = generate6WeekMuscleBuildingWorkout(10, 80);
+  assert(genW10.exercises[0].sets.length === 2, 'Phase 2 lateral raise has 2 working sets');
+  assert(genW10.exercises[0].sets[0].targetReps === 12 && genW10.exercises[0].sets[1].targetReps === 8, 'Phase 2 lateral raise applies 12/8 wave rep progression');
+  assert(genW10.exercises[0].intensityProtocol !== undefined, 'Phase 2 lateral raise specifies attached intensity protocol');
+
+  // Workout Generation: Phase 3 Giant Sets
+  const genW17 = generate6WeekMuscleBuildingWorkout(17, 80);
+  assert(genW17.exercises[0].orderCode === 'A1' && genW17.exercises[3].orderCode === 'A4', 'Phase 3 Workout 17 generates 4-exercise Giant Set A1-A4');
+  assert(genW17.exercises[0].restSeconds === 0 && genW17.exercises[1].restSeconds === 0 && genW17.exercises[2].restSeconds === 0, 'Giant set intra-group exercises have 0s rest');
+  assert(genW17.exercises[3].restSeconds === 90, 'Giant set anchor exercise has 90s rest');
+
+  // Knowledge Graph Grounding
+  const q6Wk = queryExerciseScienceKnowledgeBase('6-week muscle building plan');
+  assert(q6Wk !== null && q6Wk.id === 'sp-6wk-muscle-building-plan', 'queryExerciseScienceKnowledgeBase returns sp-6wk-muscle-building-plan');
+  const qSquat10 = queryExerciseScienceKnowledgeBase('Saturday 10-set squats linear progression');
+  assert(qSquat10 !== null && qSquat10.id === 'sp-6wk-muscle-building-plan', 'queryExerciseScienceKnowledgeBase returns sp-6wk-muscle-building-plan for Saturday 10-set squats');
+  assert(q6Wk?.academicCitation.includes('Schoenfeld') ?? false, 'Knowledge principle cites Schoenfeld on giant sets and mechanical tension');
+
+  console.log('\nALL 30 ENGINE, GOVERNANCE, DESIGN HEURISTICS, TYPOGRAPHY, WEARABLES, WHOOP STRAIN, GOOGLE AUTH, ONBOARDING CONTEXT, 6-WEEK PROGRAM & TENSOR AI SUITES PASSED SUCCESSFULLY! 🎯');
 })().catch((err) => {
   console.error('Test Suite Failed:', err);
   if (typeof process !== 'undefined' && process.exit) {

@@ -3,11 +3,12 @@ import {
   BiometricLog,
   ExerciseDefinition,
   GoalPhase,
+  ProgramSplitType,
   UserProfile,
   getActiveWearableProvider,
   isWearableConnected,
 } from '../../engine/types';
-import { SplitDayType } from '../../services/workoutGenerator';
+import { SplitDayType, PROGRAM_OPTIONS, FEATURED_PROGRAM_OPTIONS } from '../../services/workoutGenerator';
 import { WEARABLE_PROVIDERS } from '../../services/wearableSyncService';
 import { SplitEditor } from './SplitEditor';
 import { CustomExerciseModal } from './CustomExerciseModal';
@@ -28,6 +29,7 @@ import {
   Watch,
   LogIn,
   CheckCircle2,
+  Check,
 } from 'lucide-react';
 import { triggerHaptic } from '../../utils/haptics';
 
@@ -44,6 +46,8 @@ interface ProgramTabProps {
   onUpdateGoalPhase?: (phase: GoalPhase) => void;
   onSelectMesocycleWeek: (week: number) => void;
   onLaunchSplitDay: (split: SplitDayType) => void;
+  onLaunchWorkoutNumber?: (workoutNumber: number) => void;
+  onUpdateProgram?: (program: ProgramSplitType) => void;
   onAddCustomExercise: (newEx: ExerciseDefinition) => void;
   onResetData: () => void;
   onExportData?: () => void;
@@ -73,6 +77,8 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
   onUpdateGoalPhase,
   onSelectMesocycleWeek,
   onLaunchSplitDay,
+  onLaunchWorkoutNumber,
+  onUpdateProgram,
   onAddCustomExercise,
   onResetData,
   onExportData,
@@ -201,6 +207,14 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
         programType={profile.programType}
         onOpenCreateExercise={() => setShowCreateExercise(true)}
         onLaunchSplitDay={onLaunchSplitDay}
+        onLaunchWorkoutNumber={onLaunchWorkoutNumber}
+        onChangeProgram={(newProg) => {
+          if (onUpdateProgram) {
+            onUpdateProgram(newProg);
+          } else {
+            onUpdateProfile({ programType: newProg });
+          }
+        }}
       />
 
       {/* 5. Secondary Section: Profile & Data Settings (Collapsible Accordions) */}

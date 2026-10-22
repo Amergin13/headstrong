@@ -439,6 +439,40 @@ export const EXERCISE_SCIENCE_KNOWLEDGE_BASE: ScientificPrinciple[] = [
       'friction free tracking',
     ],
   },
+  {
+    id: 'sp-6wk-muscle-building-plan',
+    topic: 'Program Architecture & Hypertrophy Blocks',
+    title: '6-Week Muscle Building Plan (High-Volume, High-Intensity & Giant Sets)',
+    formula: 'Phase 1: Antagonist Supersets (4x12) + 10x10 Squats -> Phase 2: Rest-Pause / Drop-Sets (2x12) + 10x8 Squats -> Phase 3: Giant Sets / Tri-Sets + 10x6 Squats',
+    scientificRationale:
+      'An intensive 6-week, 24-workout periodized hypertrophy mesocycle structured into three distinct 2-week microcycles based on the Nick Mitchell & Joe Warner body transformation methodology. Phase 1 accumulates volume and structural work capacity through antagonist pairings (Chest & Back) and a 10-set Squat volume foundation (10x10 down to 10x9). Phase 2 cuts set volume to 2 high-intensity sets taken beyond form failure via double/triple rest-pause, triple drop-sets, and heavy partial holds (Squats 10x8). Phase 3 maximizes muscular density and lactate buffering through 4-exercise Giant Sets and 3-exercise Tri-Sets with 0-second intra-group rest (Squats 10x6 peak load). Strict 4-digit tempo control (e.g. 4010, 3110) guarantees time under tension and maximal stretch-mediated hypertrophy.',
+    academicCitation: 'Mitchell & Warner (2012); Schoenfeld et al. (2019); Fink et al. (2018); Israetel (2017)',
+    practicalApplication:
+      'Available as a full 24-workout program in Treise with superset/giant set grouping (A1–A4), 4-digit tempo cues, 5-step warmup ramp calculator, and intensity protocol finisher instructions.',
+    keywords: [
+      '6-week',
+      '6 week muscle building plan',
+      'muscle building plan',
+      'nick mitchell',
+      'joe warner',
+      '12-week body plan',
+      'guillotine press',
+      'ring press-up',
+      'rest-pause',
+      'drop set',
+      'triple drop set',
+      'giant set',
+      'giant sets',
+      'tri-set',
+      'tri-sets',
+      '10-set squat',
+      '10x10 squats',
+      '10x8 squats',
+      '10x6 squats',
+      'warmup ramp',
+      'antagonist supersets',
+    ],
+  },
 ];
 
 /**

@@ -185,7 +185,7 @@ export function getNextSplitDay(
 
   if (programType === 'ppl') {
     order = ['Push', 'Pull', 'Legs'];
-  } else if (programType === 'upper_lower') {
+  } else if (programType === 'upper_lower' || programType === 'muscle_building_6wk') {
     order = ['Upper', 'Legs'];
   } else if (programType === 'full_body') {
     order = ['Push', 'Pull', 'Legs'];
@@ -202,6 +202,11 @@ export function getSplitDaysForProgram(
   programType: ProgramSplitType = 'ppl_upper'
 ): { id: SplitDayType; label: string; desc: string }[] {
   switch (programType) {
+    case 'muscle_building_6wk':
+      return [
+        { id: 'Upper', label: 'Upper Body', desc: 'Chest, Back, Delts & Arms' },
+        { id: 'Legs', label: 'Legs & Abs', desc: '10-Set Squats & Core' },
+      ];
     case 'ppl':
       return [
         { id: 'Push', label: 'Push', desc: 'Chest, Shoulders & Triceps' },
@@ -233,6 +238,7 @@ export function getSplitDaysForProgram(
 export function getFirstSplitDayForProgram(programType?: ProgramSplitType): SplitDayType {
   switch (programType) {
     case 'upper_lower':
+    case 'muscle_building_6wk':
       return 'Upper';
     case 'ppl':
     case 'ppl_upper':
@@ -241,6 +247,19 @@ export function getFirstSplitDayForProgram(programType?: ProgramSplitType): Spli
       return 'Push';
   }
 }
+
+export const FEATURED_PROGRAM_OPTIONS: ProgramSplitOption[] = [
+  {
+    id: 'muscle_building_6wk',
+    title: '6-Week Muscle Building Plan',
+    badge: 'High-Volume & High-Intensity',
+    frequency: '4 sessions / week • 3 progressive 2-week phases',
+    rotation: 'Chest & Back / Delts & Arms → Saturday 10-Set Squats',
+    detail:
+      'An intensive 24-workout program structured into three 2-week meso-cycles: Phase 1 antagonist supersets, Phase 2 rest-pause & drop-sets, Phase 3 giant sets & tri-sets.',
+    firstSession: 'Chest & Back (Antagonist Supersets)',
+  },
+];
 
 export interface ProgramSplitOption {
   id: ProgramSplitType;

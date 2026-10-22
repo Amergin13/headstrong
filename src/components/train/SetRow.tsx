@@ -169,7 +169,7 @@ export const SetRow: React.FC<SetRowProps> = ({
       </div>
 
       {/* 4. Reps Input (col-span-3) */}
-      <div className="col-span-3 flex justify-center">
+      <div className="col-span-3 flex justify-center relative items-center">
         <input
           type="number"
           value={currentReps}
@@ -180,6 +180,14 @@ export const SetRow: React.FC<SetRowProps> = ({
             set.completed ? 'text-brand-primary' : 'text-white'
           } focus:outline-none focus:ring-1 focus:ring-brand-primary/50`}
         />
+        {(set.isFormFailure || set.repDisplay === 'F*') && (
+          <span
+            className="absolute -top-1.5 right-1 px-1 py-0.5 rounded bg-rose-500/30 text-rose-300 font-mono font-bold text-xs pointer-events-none"
+            title="Perform until technical form failure"
+          >
+            F*
+          </span>
+        )}
       </div>
 
       {/* 5. Effort / Reps Left Pill (col-span-1) */}

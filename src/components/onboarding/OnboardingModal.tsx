@@ -44,10 +44,11 @@ export interface OnboardingModalProps {
 
 import {
   PROGRAM_OPTIONS,
+  FEATURED_PROGRAM_OPTIONS,
   ProgramSplitOption,
 } from '../../services/workoutGenerator';
 
-export { PROGRAM_OPTIONS };
+export { PROGRAM_OPTIONS, FEATURED_PROGRAM_OPTIONS };
 export type { ProgramSplitOption };
 
 const GOAL_OPTIONS: {
@@ -466,6 +467,67 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                               Recommended
                             </span>
                           )}
+                        </div>
+                        <div className="text-xs text-slate-400 font-medium">
+                          {opt.frequency}
+                        </div>
+                      </div>
+                      <span
+                        className={`w-5 h-5 rounded-full flex items-center justify-center text-xs shrink-0 mt-0.5 ${
+                          isSelected
+                            ? 'bg-brand-primary text-black font-bold'
+                            : 'bg-white/[0.08]'
+                        }`}
+                      >
+                        {isSelected && <Check className="w-3.5 h-3.5 stroke-[2.5]" />}
+                      </span>
+                    </div>
+
+                    <p className="text-xs text-slate-300 leading-relaxed">{opt.detail}</p>
+
+                    <div className="pt-2 border-t border-white/[0.04] flex items-center justify-between text-xs">
+                      <span className="text-slate-400">Rotation:</span>
+                      <span className="text-slate-200 font-medium">{opt.rotation}</span>
+                    </div>
+
+                    <div className="text-xs text-brand-primary font-semibold flex items-center space-x-1.5">
+                      <span>Starter workout:</span>
+                      <span className="text-white font-bold">{opt.firstSession}</span>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Featured Periodized 6-Week Program Option */}
+            <div className="pt-2 space-y-2">
+              <div className="text-xs font-bold uppercase tracking-wider text-slate-400 px-1">
+                Featured 6-Week Periodized Block
+              </div>
+              {FEATURED_PROGRAM_OPTIONS.map((opt) => {
+                const isSelected = selectedProgram === opt.id;
+                return (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    aria-pressed={isSelected}
+                    onClick={() => {
+                      triggerHaptic('light');
+                      setSelectedProgram(opt.id);
+                    }}
+                    className={`w-full p-4 rounded-2xl text-left transition-all space-y-2.5 border ${
+                      isSelected
+                        ? 'bg-brand-primary/15 border-brand-primary text-white shadow-lg shadow-brand-primary/10'
+                        : 'bg-[#141824] border-white/[0.04] text-slate-200 hover:bg-[#1C2233]'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between">
+                      <div className="space-y-1">
+                        <div className="flex items-center space-x-2">
+                          <span className="font-bold text-sm text-white">{opt.title}</span>
+                          <span className="px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 text-xs font-bold">
+                            {opt.badge}
+                          </span>
                         </div>
                         <div className="text-xs text-slate-400 font-medium">
                           {opt.frequency}
