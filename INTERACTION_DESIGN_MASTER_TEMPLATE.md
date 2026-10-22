@@ -301,7 +301,11 @@ Every screen, card, modal, and control in Treise is governed by three non-negoti
 
 ### 7.1 Onboarding Wizard (`OnboardingModal.tsx`)
 - **Structure:** 4 sequential steps with progress indicators (`Step X of 4`).
-  - *Step 1: Welcome & Principles (Introduction):* Explains Asynchronous Queue, Double Progression, and Multi-Location adaptation. Includes subtle `[Skip to Demo]` escape hatch.
+  - *Step 1: Welcome & How It Works (Introduction):*
+    - **What Treise Does for You:** Explains automated tracking (weights, sets, reps, tempo, rest) and weekly double progression planning (+1 rep or +2.5 kg), replacing the manual paper gym diary ("You just show up").
+    - **How to Measure Real Progress:** Explains morning weigh-ins on the same scale under consistent conditions, body circumference measurements (waist, chest, arms), and body recomposition dynamics (why scale weight can stay flat or move slowly while fat is burned and muscle built, looking radically different with your shirt off; 7-day EMA smoothing).
+    - **Friction-Free Smart Devices:** Explains automated telemetry ingestion from Bluetooth smart scales, digital measuring tapes, and wearables (Google Pixel Watch, Fitbit, Whoop, Android Health Connect).
+    - **Life-Proof Schedule & Anywhere Gear:** Explains Asynchronous Hypertrophy Queue (train when muscles recover with zero missed-day guilt) and multi-location gear adaptation across Gym, Home, and Travel Bodyweight. Includes subtle `[Skip to Demo]` escape hatch.
   - *Step 2: Primary Goal & Phase (Goal Selection):* Anchors intent and calibrates volume: Build Muscle, Lose Fat (Retention Shield), or Stay Lean.
   - *Step 3: Training Split Selection (Split):* 4 evidence-based cards (4-Day PPL+Upper, 3-Day PPL, 4-Day Upper/Lower, 3-Day Full Body) grounded in the selected goal.
   - *Step 4: Training Locations & Gear (Locations and Equipment Context):* Selects places, checks home equipment, and configures today's workout location.

@@ -342,8 +342,11 @@ Every UI component, layout, copy change, and new flow MUST be designed and evalu
 
 New users must be guided along the **quickest path to value** in under 60 seconds:
 1. **Step 1: Welcome & How Treise Works (Introduction)**
-   - Welcomes the athlete with a friendly, encouraging tone.
-   - Explains the 3 core pillars: (1) Asynchronous Hypertrophy Queue, (2) Guaranteed Overload via Double Progression, and (3) Seamless Adaptation across Full Gym, Home Gear, and Travel Bodyweight.
+   - Welcomes the athlete with a friendly, motivating, and clear product voice.
+   - **What Treise Does for You:** Explains that the app automatically tracks your weights, sets, reps, tempo, and rest intervals, and handles all weekly progressive overload planning (+1 rep or +2.5 kg). It completely replaces the tedious, error-prone manual paper training diary—the athlete just needs to show up and lift.
+   - **How to Measure Real Progress:** Explains morning weigh-ins on the same scale under consistent conditions, taking body circumference measurements (waist, chest, arms), and the physiological reality of **body recomposition** (since muscle is ~18% denser than fat, the scale may stay flat or move slowly while fat is burned and muscle built, yet you look radically different with your shirt off; smoothed via a 7-day rolling average).
+   - **Friction-Free Smart Devices:** Explains automated ingestion from Bluetooth smart scales, digital measuring devices, and wearable telemetry (Google Pixel Watch, Fitbit, Whoop, Android Health Connect) to remove manual data-entry fatigue.
+   - **Life-Proof Schedule & Anywhere Gear:** Explains the Asynchronous Hypertrophy Queue (train when muscles recover with zero missed-day guilt) and multi-location adaptability across Full Gym, Home Gear, and Travel Bodyweight.
    - Provides a clear primary CTA (`Choose My Goal`) and a subtle exit (`Skip to Demo`).
 2. **Step 2: Primary Goal & Phase (Goal Selection)**
    - Anchors the athlete's motivation and intent first. Calibrates volume landmarks and rules for `Lean Bulk`, `Cut / Recomp` (with Retention Shield), or `Maingain`.
@@ -436,7 +439,7 @@ XP is a measure of genuine athletic progression and consistency:
 
 To eliminate all model hallucinations, ungrounded approximations, and conflicting advice across sessions, Treise codifies all mathematical models and physiological rationale directly within the On-Device Knowledge Graph (`src/engine/knowledgeGraph.ts`):
 
-### 11.1 The 18 Authoritative Scientific Principles
+### 11.1 The 21 Authoritative Scientific Principles
 1. **E1RM Formula & RIR Adjustment (`sp-e1rm-epley-rir`):** Augmented Epley/Lombardi model with Reps in Reserve.
 2. **Dumbbell Bilateral Stabilization Multiplier (`sp-db-multiplier`):** $1.18\times$ combined DB load multiplier for stabilizer fatigue and bilateral deficit (Frecassetti et al., 1999).
 3. **Romanian Deadlift Conventional Normalization (`sp-rdl-multiplier`):** $1.20\times$ RDL load normalization to conventional deadlift standard.
@@ -455,6 +458,9 @@ To eliminate all model hallucinations, ungrounded approximations, and conflictin
 16. **Asynchronous Hypertrophy Queue & Glycogen Preservation (`sp-asynchronous-queue`):** Dynamic session advancement waiting with full recovery on skipped days.
 17. **Work Capacity Index (WCI) & Cardiovascular Efficiency (`sp-work-capacity-index`):** Effective tonnage per unit of heart rate reserve over session duration.
 18. **Google Pixel Tensor On-Device AI Acceleration (`sp-tensor-ai-acceleration`):** Local TPU/NPU/GPU inference preserving zero-latency privacy.
+19. **Automated Progressive Overload vs. Traditional Paper Training Diary (`sp-progress-tracking-diary`):** Automated tracking of weights, sets, reps, tempo, and rest; calculates weekly double progression (+1 rep or +2.5kg load) so lifters never have to guess or keep manual notebooks; they just show up and lift.
+20. **Morning Weigh-Ins, Circumference Measurements & Body Recomposition (`sp-scale-weight-measurements`):** Muscle tissue density (~1.06 g/mL vs ~0.90 g/mL) explains scale neutrality during concurrent fat loss and muscle gain; paired with waist/chest/arm measurements and 7-day EMA smoothing ("look radically different with shirt off").
+21. **Friction-Free Telemetry & Smart Device Integration (`sp-smart-device-integration`):** Automated ingestion from Bluetooth smart scales, digital measuring tapes, and wearable APIs (Google Pixel Watch, Fitbit, Whoop, Android Health Connect) to eliminate data-entry cognitive friction and tracking abandonment.
 
 ### 11.2 Invariants for AI Chat and App UI
 - **Zero Hallucination Invariant:** All scientific inquiries in the on-device AI Coach are resolved via `queryExerciseScienceKnowledgeBase`, returning exact mathematical formulas, physiological rationale, and academic citations.

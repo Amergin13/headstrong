@@ -2868,7 +2868,123 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
     'Daily recovery sync preserves previously captured workout heart rate (138/168 bpm) and strain'
   );
 
-  console.log('\nALL 28 ENGINE, GOVERNANCE, DESIGN HEURISTICS, TYPOGRAPHY, WEARABLES, WHOOP STRAIN, GOOGLE AUTH & TENSOR AI SUITES PASSED SUCCESSFULLY! 🎯');
+  // ============================================================================
+  // SUITE 29: ONBOARDING PROGRESS MEASUREMENT, BODY RECOMP & AUTOMATED DIARY
+  // ============================================================================
+  console.log('\n--- SUITE 29: ONBOARDING PROGRESS MEASUREMENT, BODY RECOMP & AUTOMATED DIARY ---');
+
+  // A. Knowledge Graph verification of all 3 principles
+  const diaryPrinciple = EXERCISE_SCIENCE_KNOWLEDGE_BASE.find((p) => p.id === 'sp-progress-tracking-diary');
+  assert(
+    diaryPrinciple !== undefined &&
+      diaryPrinciple.title.includes('Paper Training Diary') &&
+      diaryPrinciple.practicalApplication.includes('You just show up'),
+    'Knowledge Graph codifies sp-progress-tracking-diary replacing manual paper diary'
+  );
+
+  const recompPrinciple = EXERCISE_SCIENCE_KNOWLEDGE_BASE.find((p) => p.id === 'sp-scale-weight-measurements');
+  assert(
+    recompPrinciple !== undefined &&
+      recompPrinciple.scientificRationale.includes('18% denser') &&
+      recompPrinciple.scientificRationale.includes('shirt off') &&
+      recompPrinciple.academicCitation.includes('Barakat'),
+    'Knowledge Graph codifies sp-scale-weight-measurements with recomp dynamics and Barakat citation'
+  );
+
+  const smartPrinciple = EXERCISE_SCIENCE_KNOWLEDGE_BASE.find((p) => p.id === 'sp-smart-device-integration');
+  assert(
+    smartPrinciple !== undefined &&
+      smartPrinciple.title.includes('Smart Device Integration') &&
+      Boolean(smartPrinciple.formula?.includes('Bluetooth Smart Scales')),
+    'Knowledge Graph codifies sp-smart-device-integration for friction-free data ingestion'
+  );
+
+  // B. Querying Knowledge Base
+  const qRecomp = queryExerciseScienceKnowledgeBase('Why is my scale weight flat despite fat loss?');
+  assert(
+    qRecomp !== null && qRecomp.id === 'sp-scale-weight-measurements',
+    'queryExerciseScienceKnowledgeBase returns sp-scale-weight-measurements for scale weight / recomp query'
+  );
+
+  const qDiary = queryExerciseScienceKnowledgeBase('Do I need a paper training diary or does the app track for me?');
+  assert(
+    qDiary !== null && qDiary.id === 'sp-progress-tracking-diary',
+    'queryExerciseScienceKnowledgeBase returns sp-progress-tracking-diary for training diary query'
+  );
+
+  const qSmart = queryExerciseScienceKnowledgeBase('How do smart scales and measuring devices connect?');
+  assert(
+    qSmart !== null && qSmart.id === 'sp-smart-device-integration',
+    'queryExerciseScienceKnowledgeBase returns sp-smart-device-integration for smart scale query'
+  );
+
+  // C. AI Assistant Grounding & Conversational Delivery
+  const recompAnswer = await processAssistantMessage({
+    userMessage: 'Why is the scale not moving?',
+    profile: testProfile,
+    activeWorkout: pushW3,
+    workouts: [pushW3],
+    biometrics: mockBiometrics,
+    exerciseCatalog: SEED_EXERCISES,
+    bodyweightEmaKg: 80,
+    readinessState: 'Primed',
+  });
+  assert(
+    recompAnswer.message.text.includes('shirt off') &&
+      recompAnswer.message.text.includes('18% denser') &&
+      recompAnswer.message.text.includes('Circumference Measurements'),
+    'AI Assistant explains body recomposition, scale neutrality, and morning measurements when asked why scale is not moving'
+  );
+
+  const diaryAnswer = await processAssistantMessage({
+    userMessage: 'What does the app do for me?',
+    profile: testProfile,
+    activeWorkout: pushW3,
+    workouts: [pushW3],
+    biometrics: mockBiometrics,
+    exerciseCatalog: SEED_EXERCISES,
+    bodyweightEmaKg: 80,
+    readinessState: 'Primed',
+  });
+  assert(
+    diaryAnswer.message.text.includes('replaces the traditional paper training diary') &&
+      diaryAnswer.message.text.includes('just need to show up'),
+    'AI Assistant explains automated tracking and planning from week to week replacing paper diary'
+  );
+
+  const smartDeviceAnswer = await processAssistantMessage({
+    userMessage: 'Tell me about smart scales and measuring devices',
+    profile: testProfile,
+    activeWorkout: pushW3,
+    workouts: [pushW3],
+    biometrics: mockBiometrics,
+    exerciseCatalog: SEED_EXERCISES,
+    bodyweightEmaKg: 80,
+    readinessState: 'Primed',
+  });
+  assert(
+    smartDeviceAnswer.message.text.toLowerCase().includes('friction-free') &&
+      smartDeviceAnswer.message.text.includes('Bluetooth smart scales'),
+    'AI Assistant explains friction-free smart scale and measuring device telemetry'
+  );
+
+  // D. OnboardingModal Source Context Verification
+  const freshOnboardingModalSrc = fs.readFileSync(
+    path.resolve(process.cwd(), 'src/components/onboarding/OnboardingModal.tsx'),
+    'utf-8'
+  );
+  assert(
+    freshOnboardingModalSrc.includes('What Treise Does for You') &&
+      freshOnboardingModalSrc.includes('Automated Planning • You Just Show Up') &&
+      freshOnboardingModalSrc.includes('How to Measure Real Progress') &&
+      freshOnboardingModalSrc.includes('Morning Weigh-Ins &amp; Circumference Measurements') &&
+      freshOnboardingModalSrc.includes('radically different with your shirt off') &&
+      freshOnboardingModalSrc.includes('Friction-Free Smart Devices') &&
+      freshOnboardingModalSrc.includes('Bluetooth smart scales'),
+    'OnboardingModal Step 1 presents complete context on automated planning, morning weigh-ins, body recomposition, and smart scales'
+  );
+
+  console.log('\nALL 29 ENGINE, GOVERNANCE, DESIGN HEURISTICS, TYPOGRAPHY, WEARABLES, WHOOP STRAIN, GOOGLE AUTH, ONBOARDING CONTEXT & TENSOR AI SUITES PASSED SUCCESSFULLY! 🎯');
 })().catch((err) => {
   console.error('Test Suite Failed:', err);
   if (typeof process !== 'undefined' && process.exit) {

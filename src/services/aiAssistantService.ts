@@ -16,6 +16,7 @@ import {
 import {
   AthleteKnowledgeGraph,
   buildAthleteKnowledgeGraph,
+  EXERCISE_SCIENCE_KNOWLEDGE_BASE,
   TREISE_DESIGN_SYSTEM,
   queryDesignSystemComponents,
   queryExerciseScienceKnowledgeBase,
@@ -487,6 +488,16 @@ export async function processAssistantMessage(
         !lowerMsg.includes('citation') &&
         !lowerMsg.includes('academic') &&
         !lowerMsg.includes('retention shield') &&
+        !lowerMsg.includes('scale') &&
+        !lowerMsg.includes('diary') &&
+        !lowerMsg.includes('measure') &&
+        !lowerMsg.includes('recomp') &&
+        !lowerMsg.includes('shirt off') &&
+        !lowerMsg.includes('progress') &&
+        !lowerMsg.includes('app do') &&
+        !lowerMsg.includes('plan for me') &&
+        !lowerMsg.includes('just show up') &&
+        !lowerMsg.includes('how does the app') &&
         !lowerMsg.includes('science');
       const isPersonalTelemetryQuery =
         (lowerMsg.includes('my') ||
@@ -646,6 +657,73 @@ export async function processAssistantMessage(
           profile.goalPhase === 'Cut / Recomp'
             ? `In a caloric deficit, target 2.0g to 2.4g of protein per kg of bodyweight (${Math.round(bodyweightEmaKg * 2.2)}g daily) to support muscle retention while body fat drops.`
             : `For progressive hypertrophy during a lean bulk, aim for 1.8g to 2.2g of protein per kg of bodyweight (${Math.round(bodyweightEmaKg * 2.0)}g daily) and prioritize complex carbohydrates around workouts.`;
+      } else if (
+        /\b(scale\s*weight|scale\s*flat|scale\s*not\s*moving|why\s*isn'?t\s*(my|the)\s*scale|measure\s*progress|weigh\s*myself|weigh\s*in|take\s*measurements|body\s*recomp|recomposition|shirt\s*off|measuring\s*progress)\b/i.test(
+          lowerMsg
+        )
+      ) {
+        const recompPrinciple = EXERCISE_SCIENCE_KNOWLEDGE_BASE.find(
+          (p) => p.id === 'sp-scale-weight-measurements'
+        );
+        if (recompPrinciple) {
+          scientificPrinciplesCited.push(recompPrinciple);
+          citations.push({
+            label: recompPrinciple.title,
+            metric: 'Scientific Grounding',
+            value: recompPrinciple.academicCitation,
+          });
+        }
+        answerText =
+          `When you are resistance training, **scale weight tells only part of the story**.\n\n` +
+          `Muscle tissue is ~18% denser than fat (~1.06 g/mL vs ~0.90 g/mL). If you are building lean muscle while losing body fat (body recomposition), total scale weight may stay completely flat or even fluctuate—yet you will look radically different with your shirt off!\n\n` +
+          `**How to accurately track your progress:**\n` +
+          `1. **Morning Weigh-Ins:** Weigh yourself first thing in the morning on the same scale under consistent conditions (after using the bathroom, before food or water). Treise tracks a 7-day rolling average to filter out normal water and glycogen swings.\n` +
+          `2. **Circumference Measurements:** Take tape measurements (waist, chest, arms). A narrowing waist alongside steady or growing arms confirms real muscle gain and visceral fat reduction.\n` +
+          `3. **Progressive Overload in the App:** If your workout weights and reps are advancing from week to week, you are unequivocally building new contractile muscle tissue.`;
+      } else if (
+        /\b(training\s*diary|paper\s*diary|gym\s*notebook|what\s*(does\s*)?(the\s*)?app\s*(do|does)|plan(ning)?\s*(for\s*me|from\s*week\s*to\s*week)|just\s*show\s*up|paper\s*log|track(s)?\s*(my|your)?\s*weights)\b/i.test(
+          lowerMsg
+        )
+      ) {
+        const diaryPrinciple = EXERCISE_SCIENCE_KNOWLEDGE_BASE.find(
+          (p) => p.id === 'sp-progress-tracking-diary'
+        );
+        if (diaryPrinciple) {
+          scientificPrinciplesCited.push(diaryPrinciple);
+          citations.push({
+            label: diaryPrinciple.title,
+            metric: 'Scientific Grounding',
+            value: diaryPrinciple.academicCitation,
+          });
+        }
+        answerText =
+          `Treise completely replaces the traditional paper training diary!\n\n` +
+          `**What Treise does for you:**\n` +
+          `• **Automated Tracking:** Automatically logs your weights, sets, reps, tempo, and rest intervals.\n` +
+          `• **Weekly Overload Planning:** Calculates your exact double progression from week to week (+1 rep or +2.5 kg load) so you never have to guess or manually calculate next week's weights.\n` +
+          `• **Life-Proof Schedule:** An asynchronous queue means missed workouts wait without guilt or streak penalties, adapting to your location in 1 tap.\n\n` +
+          `You don't need to carry a gym notebook or calculate progression math—**you just need to show up and lift.**`;
+      } else if (
+        /\b(smart\s*scale|smart\s*scales|measuring\s*devices?|smart\s*measuring|smart\s*tape|friction\s*free\s*track)\b/i.test(
+          lowerMsg
+        )
+      ) {
+        const smartPrinciple = EXERCISE_SCIENCE_KNOWLEDGE_BASE.find(
+          (p) => p.id === 'sp-smart-device-integration'
+        );
+        if (smartPrinciple) {
+          scientificPrinciplesCited.push(smartPrinciple);
+          citations.push({
+            label: smartPrinciple.title,
+            metric: 'Scientific Grounding',
+            value: smartPrinciple.academicCitation,
+          });
+        }
+        answerText =
+          `Treise is built to make progress tracking completely friction-free!\n\n` +
+          `• **Smart Scales & Measuring Devices:** Connects with Bluetooth smart scales and digital measuring devices to automatically sync your morning weight and circumference metrics without manual typing.\n` +
+          `• **Wearable Telemetry:** Integrates with Google Pixel Watch, Fitbit, Whoop, and Android Health Connect to feed your 7-day average weight and daily recovery readiness directly into your training plan.\n\n` +
+          `Automating your data input eliminates tracking fatigue so you can focus 100% on execution.`;
       } else if (
         /^(hi|hello|hey|heya|howdy|greetings|good\s*(morning|afternoon|evening)|help|who\s*are\s*you|what\s*can\s*you\s*do)\b/i.test(
           lowerMsg

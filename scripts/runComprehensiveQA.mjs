@@ -233,6 +233,14 @@ assert(
     onboardingSrc.includes('Start Day 1 Workout'),
   'Onboarding contains complete 4-step wizard introducing app, split selection, goals, and equipment'
 );
+assert(
+  onboardingSrc.includes('What Treise Does for You') &&
+    onboardingSrc.includes('Automated Planning • You Just Show Up') &&
+    onboardingSrc.includes('How to Measure Real Progress') &&
+    onboardingSrc.includes('radically different with your shirt off') &&
+    onboardingSrc.includes('Friction-Free Smart Devices'),
+  'Onboarding Step 1 introduces automated diary planning, body recomposition progress measurement, and friction-free smart devices'
+);
 
 const appSrc = fs.readFileSync(path.resolve(process.cwd(), 'src/App.tsx'), 'utf-8');
 assert(
@@ -517,6 +525,9 @@ const principleIds = [
   'sp-wci',
   'sp-tensor-ai',
   'sp-ai-coach-single-entry-invariant',
+  'sp-progress-tracking-diary',
+  'sp-scale-weight-measurements',
+  'sp-smart-device-integration',
 ];
 
 for (const pId of principleIds) {

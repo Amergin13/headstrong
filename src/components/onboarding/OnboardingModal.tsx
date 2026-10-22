@@ -21,6 +21,10 @@ import {
   Layers,
   Shield,
   Zap,
+  Scale,
+  Ruler,
+  Smartphone,
+  BookOpen,
 } from 'lucide-react';
 import { triggerHaptic } from '../../utils/haptics';
 
@@ -234,10 +238,10 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
         </div>
 
         {/* ==================================================================== */}
-        {/* STEP 1: WELCOME & HOW HEADSTRONG WORKS                               */}
+        {/* STEP 1: WELCOME & HOW TREISE WORKS                                   */}
         {/* ==================================================================== */}
         {step === 1 && (
-          <div className="space-y-4">
+          <div className="space-y-3.5">
             <div>
               <div className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-full bg-brand-primary/15 border border-brand-primary/30 text-brand-primary text-xs font-bold mb-2">
                 <Sparkles className="w-3.5 h-3.5 stroke-[2]" />
@@ -250,54 +254,97 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                 Welcome to Treise
               </h2>
               <p className="text-xs text-slate-300 mt-1 leading-relaxed">
-                Treise eliminates the guesswork from muscle building. Here is how we guarantee your progress:
+                Treise eliminates all guesswork from training. We do all the planning, tracking, and progressive overload math—you just need to show up.
               </p>
             </div>
 
             <div className="space-y-3">
-              {/* Feature 1: Asynchronous Hypertrophy Queue */}
-              <div className="p-4 rounded-2xl bg-[#141824] flex items-start space-x-3">
-                <div className="w-8 h-8 rounded-xl bg-indigo-500/15 flex items-center justify-center text-indigo-400 shrink-0 mt-0.5">
-                  <Clock className="w-4 h-4 stroke-[2]" />
-                </div>
-                <div className="space-y-1">
-                  <div className="font-bold text-xs text-white">
-                    1. Asynchronous Hypertrophy Queue
+              {/* Feature 1: What Treise Does for You (Guaranteed Overload & Automated Planning) */}
+              <div className="p-4 rounded-2xl bg-[#141824] border border-white/[0.04] space-y-2">
+                <div className="flex items-center space-x-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-emerald-500/15 flex items-center justify-center text-emerald-400 shrink-0">
+                    <BookOpen className="w-4 h-4 stroke-[2]" />
                   </div>
-                  <p className="text-xs text-slate-300 leading-relaxed">
-                    Train when your muscles recover (24h–72h), not on rigid calendar days. If life happens and you skip a day, your next workout simply waits with full recovery and zero penalty.
+                  <div>
+                    <div className="font-bold text-xs text-white">
+                      1. Guaranteed Overload (We Do the Math)
+                    </div>
+                    <div className="text-xs text-emerald-400 font-semibold">
+                      Automated Planning • You Just Show Up
+                    </div>
+                  </div>
+                </div>
+                <p className="text-xs text-slate-300 leading-relaxed">
+                  The app tracks your weights, sets, reps, tempo, and rest, completely replacing the tedious paper gym diary. From week to week, we calculate your progressive overload (+1 rep or +2.5 kg). You never have to guess what to lift—you just show up and execute.
+                </p>
+              </div>
+
+              {/* Feature 2: How to Measure Progress & Body Recomposition */}
+              <div className="p-4 rounded-2xl bg-[#141824] border border-white/[0.04] space-y-2">
+                <div className="flex items-center space-x-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-cyan-500/15 flex items-center justify-center text-cyan-400 shrink-0">
+                    <Scale className="w-4 h-4 stroke-[2]" />
+                  </div>
+                  <div>
+                    <div className="font-bold text-xs text-white">
+                      2. How to Measure Real Progress
+                    </div>
+                    <div className="text-xs text-cyan-400 font-semibold">
+                      Morning Weigh-Ins &amp; Circumference Measurements
+                    </div>
+                  </div>
+                </div>
+                <p className="text-xs text-slate-300 leading-relaxed">
+                  For the best tracking, weigh yourself first thing in the morning on the same scale, and take body circumference measurements (waist, chest, arms).
+                </p>
+                <div className="p-3 rounded-xl bg-[#090C12] border border-white/[0.04] space-y-1">
+                  <div className="text-xs font-bold text-slate-200">
+                    Body Recomposition Note:
+                  </div>
+                  <p className="text-xs text-slate-400 leading-snug">
+                    When building muscle and losing fat at the same time, the scale may stay flat or move slowly. Even when the number barely budges, your waist shrinks and you will look radically different with your shirt off. We use a 7-day average to smooth out normal daily water changes.
                   </p>
                 </div>
               </div>
 
-              {/* Feature 2: Double Progression Engine */}
-              <div className="p-4 rounded-2xl bg-[#141824] flex items-start space-x-3">
-                <div className="w-8 h-8 rounded-xl bg-emerald-500/15 flex items-center justify-center text-emerald-400 shrink-0 mt-0.5">
-                  <TrendingUp className="w-4 h-4 stroke-[2]" />
-                </div>
-                <div className="space-y-1">
-                  <div className="font-bold text-xs text-white">
-                    2. Guaranteed Overload (We Do the Math)
+              {/* Feature 3: Friction-Free Smart Tracking */}
+              <div className="p-4 rounded-2xl bg-[#141824] border border-white/[0.04] space-y-2">
+                <div className="flex items-center space-x-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-purple-500/15 flex items-center justify-center text-purple-400 shrink-0">
+                    <Smartphone className="w-4 h-4 stroke-[2]" />
                   </div>
-                  <p className="text-xs text-slate-300 leading-relaxed">
-                    Every session tells you the exact weight and rep target to beat your last workout. When you hit the top of your rep range, we automatically increase the load.
-                  </p>
+                  <div>
+                    <div className="font-bold text-xs text-white">
+                      3. Friction-Free Smart Devices
+                    </div>
+                    <div className="text-xs text-purple-400 font-semibold">
+                      Smart Scales, Measuring Devices &amp; Wearables
+                    </div>
+                  </div>
                 </div>
+                <p className="text-xs text-slate-300 leading-relaxed">
+                  Treise integrates with Bluetooth smart scales, digital measuring devices, and wearable telemetry (Google Pixel Watch, Fitbit, Whoop, Android Health Connect) to sync your weight and measurements automatically—keeping your logging completely friction-free.
+                </p>
               </div>
 
-              {/* Feature 3: Adaptive Locations & Gear */}
-              <div className="p-4 rounded-2xl bg-[#141824] flex items-start space-x-3">
-                <div className="w-8 h-8 rounded-xl bg-cyan-500/15 flex items-center justify-center text-cyan-400 shrink-0 mt-0.5">
-                  <Layers className="w-4 h-4 stroke-[2]" />
-                </div>
-                <div className="space-y-1">
-                  <div className="font-bold text-xs text-white">
-                    3. Adapts Across Any Gear (Gym, Home, Bodyweight)
+              {/* Feature 4: Asynchronous Queue & Adapts Across Any Gear */}
+              <div className="p-4 rounded-2xl bg-[#141824] border border-white/[0.04] space-y-2">
+                <div className="flex items-center space-x-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-amber-500/15 flex items-center justify-center text-amber-400 shrink-0">
+                    <Clock className="w-4 h-4 stroke-[2]" />
                   </div>
-                  <p className="text-xs text-slate-300 leading-relaxed">
-                    Can&apos;t make the gym? Switch to Home or Bodyweight in 1 tap. Exercises adapt with true biomechanical alternatives while your strength progress carries over seamlessly.
-                  </p>
+                  <div>
+                    <div className="font-bold text-xs text-white">
+                      4. Asynchronous Hypertrophy Queue
+                    </div>
+                    <div className="text-xs text-amber-400 font-semibold">
+                      Adapts Across Any Gear • Gym, Home &amp; Travel
+                    </div>
+                  </div>
                 </div>
+                <p className="text-xs text-slate-300 leading-relaxed">
+                  Train when muscles recover. If life delays a workout, your session waits in the queue with zero missed-day guilt. Adapts Across Any Gear: switch between Gym, Home, and Bodyweight in 1 tap with seamless strength continuity.
+                </p>
               </div>
             </div>
           </div>
