@@ -52,8 +52,8 @@ const SCHEMA_VERSION_KEY = 'treise_schema_version';
  */
 /**
  * Older versions saved simulated wearable syncs as real readings and guessed Whoop steps and
- * active minutes from strain (strain x 650 / x 3.5). Drop the simulated days and clear Whoop
- * steps and active minutes, keeping everything the wearable actually measured.
+ * active minutes from strain (strain x 650 / x 3.5). Drop the simulated days and clear the
+ * guessed values, keeping everything the wearable actually measured.
  */
 const SIMULATED_SYNC_FINGERPRINTS = [
   { bodyweightKg: 81.8, vo2Max: 47, avgWorkoutHr: 142, workoutDurationMin: 60 }, // Whoop simulator
@@ -77,8 +77,16 @@ export function removeFabricatedBiometrics(): void {
             l.workoutDurationMin === f.workoutDurationMin
         )
     )
-    // Whoop's API reports no steps or active minutes, so any on a Whoop day were guessed.
-    .map((l) => (l.source === 'whoop' ? { ...l, steps: 0, activeZoneMinutes: 0 } : l));
+    // Whoop reports real steps (step_count) but no active minutes. Clear only values that match the old guesses.
+    .map((l) => {
+      if (l.source !== 'whoop') return l;
+      const strain = typeof l.strain === 'number' ? l.strain : undefined;
+      return {
+        ...l,
+        steps: strain !== undefined && l.steps === Math.round(strain * 650) ? 0 : l.steps,
+        activeZoneMinutes: 0,
+      };
+    });
   localStorage.setItem(KEYS.BIOMETRICS, JSON.stringify(cleaned));
 }
 

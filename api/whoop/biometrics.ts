@@ -278,7 +278,7 @@ export default async function handler(req: any, res: any) {
       }
       const strain = typeof latestCycle.score?.strain === 'number' ? latestCycle.score.strain : 0;
       biometrics.strain = Math.round(strain * 10) / 10;
-      // Whoop doesn't report steps or active minutes; never derive them from strain.
+      // Use Whoop's own step count when present; never derive steps or active minutes from strain.
       if (typeof latestCycle.step_count === 'number') biometrics.steps = latestCycle.step_count;
       if (typeof latestCycle.score?.kilojoule === 'number') {
         // Daily cumulative energy expenditure (e.g. 4,372 kJ)

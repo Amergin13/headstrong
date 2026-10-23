@@ -2415,20 +2415,22 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
     'treise_biometrics_v3',
     JSON.stringify([
       { date: '2026-10-20', bodyweightKg: 81.8, hrvRmssd: 66, restingHr: 52, sleepHours: 7.9, steps: 10200, activeZoneMinutes: 48, vo2Max: 47, avgWorkoutHr: 142, workoutDurationMin: 60 },
-      { date: '2026-10-23', bodyweightKg: 0, hrvRmssd: 29, restingHr: 71, sleepHours: 7.8, steps: 2525, activeZoneMinutes: 17, strain: 3.9, source: 'whoop', recoveryScore: 86 },
+      { date: '2026-10-23', bodyweightKg: 0, hrvRmssd: 29, restingHr: 71, sleepHours: 7.8, steps: 3120, activeZoneMinutes: 17, strain: 4.8, source: 'whoop', recoveryScore: 86 },
+      { date: '2026-10-21', bodyweightKg: 0, hrvRmssd: 40, restingHr: 60, sleepHours: 7, steps: 2525, activeZoneMinutes: 17, strain: 4.8, source: 'whoop' },
       { date: '2026-10-22', bodyweightKg: 80, hrvRmssd: 50, restingHr: 55, sleepHours: 7, steps: 8000, activeZoneMinutes: 30 },
     ])
   );
   removeFabricatedBiometrics();
   const cleanedLogs = JSON.parse(localStorage.getItem('treise_biometrics_v3') || '[]');
   assert(
-    cleanedLogs.length === 2 &&
+    cleanedLogs.length === 3 &&
+      cleanedLogs.find((l: any) => l.date === '2026-10-21').steps === 2525 &&
       !cleanedLogs.some((l: any) => l.date === '2026-10-20') &&
       cleanedLogs.find((l: any) => l.date === '2026-10-23').steps === 0 &&
       cleanedLogs.find((l: any) => l.date === '2026-10-23').activeZoneMinutes === 0 &&
       cleanedLogs.find((l: any) => l.date === '2026-10-23').hrvRmssd === 29 &&
       cleanedLogs.find((l: any) => l.date === '2026-10-22').steps === 8000,
-    'Migration removes simulated syncs and strain-guessed steps, keeping measured values'
+    'Migration removes simulated syncs and strain-guessed steps, keeping measured values (incl. real Whoop steps)'
   );
   localStorage.removeItem('treise_biometrics_v3');
 

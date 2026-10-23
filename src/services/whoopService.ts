@@ -372,7 +372,7 @@ export async function fetchWhoopDailyBiometrics(
       const cycleData = await cycleRes.json();
       const latest = getLatestRecord(cycleData);
       if (latest) {
-        // Whoop doesn't report steps or active minutes; never derive them from strain.
+        // Use Whoop's own step count when present; never derive steps or active minutes from strain.
         if (typeof latest.step_count === 'number') {
           results.steps = latest.step_count;
         }
