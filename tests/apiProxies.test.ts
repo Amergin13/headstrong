@@ -89,6 +89,18 @@ const iso = (msAgo: number) => new Date(Date.now() - msAgo).toISOString();
   assert(res.statusCode === 200 && res.body.access_token === 'tok', 'Token exchange succeeds with the server-side secret');
   assert(sent.get('client_secret') === 'server-only-secret', 'Client-supplied secrets are overridden by the server secret');
   assert(sent.get('redirect_uri') === 'https://treise.vercel.app/oauth/whoop/callback', 'Redirect URI is pinned server-side');
+
+  installFetch((url) => (url.includes('oauth2/token') ? { status: 200, body: { access_token: 'tok2', refresh_token: 'r2', expires_in: 3600 } } : undefined));
+  res = mockRes();
+  await whoopToken(
+    { method: 'POST', headers: { origin: 'https://treise.vercel.app' }, body: 'grant_type=refresh_token&refresh_token=r&redirect_uri=https://treise.vercel.app/oauth/whoop/callback' },
+    res
+  );
+  const sentRefresh = new URLSearchParams(calls[0]?.init?.body || '');
+  assert(
+    res.statusCode === 200 && !sentRefresh.has('redirect_uri') && sentRefresh.get('scope') === 'offline' && sentRefresh.get('client_secret') === 'server-only-secret',
+    'Token renewals omit redirect_uri (Whoop rejects it) and request scope=offline'
+  );
   assert(res.headers['Access-Control-Allow-Origin'] === 'https://treise.vercel.app', 'The app origin is allowed');
 
   res = mockRes();

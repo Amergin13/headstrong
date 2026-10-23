@@ -46,7 +46,13 @@ export default async function handler(req: any, res: any) {
     // Ensure configured credentials and registered redirect URI are always strictly enforced
     params.set('client_id', WHOOP_CLIENT_ID);
     params.set('client_secret', getWhoopClientSecret());
-    params.set('redirect_uri', WHOOP_REDIRECT_URI);
+    if (params.get('grant_type') === 'refresh_token') {
+      // Whoop rejects renewals that carry a redirect_uri; they need scope=offline instead.
+      params.delete('redirect_uri');
+      params.set('scope', 'offline');
+    } else {
+      params.set('redirect_uri', WHOOP_REDIRECT_URI);
+    }
 
     const response = await fetch('https://api.prod.whoop.com/oauth/oauth2/token', {
       method: 'POST',

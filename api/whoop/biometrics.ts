@@ -111,6 +111,7 @@ export default async function handler(req: any, res: any) {
         client_secret: getWhoopClientSecret(),
         grant_type: 'refresh_token',
         refresh_token: String(refreshToken).trim(),
+        scope: 'offline',
       });
       const refreshRes = await fetch('https://api.prod.whoop.com/oauth/oauth2/token', {
         method: 'POST',
