@@ -1,4 +1,4 @@
-import { applyCors } from '../_lib/cors';
+import { applyCors } from '../_lib/cors.js';
 /**
  * Vercel Serverless Function: Proxy Fitbit / Pixel Watch OAuth Token Exchange
  * Eliminates browser CORS barriers by exchanging auth code / refresh token server-side.

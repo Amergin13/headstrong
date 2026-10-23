@@ -5,6 +5,8 @@
 import whoopToken from '../api/whoop/token';
 import whoopBiometrics from '../api/whoop/biometrics';
 import fitbitBiometrics from '../api/fitbit/biometrics';
+import * as fs from 'fs';
+import * as path from 'path';
 
 let failures = 0;
 function assert(condition: boolean, msg: string) {
@@ -181,6 +183,27 @@ const iso = (msAgo: number) => new Date(Date.now() - msAgo).toISOString();
   assert(f.maxWorkoutHr === undefined, 'Does not invent a workout peak heart rate from zone boundaries');
   assert(f.fitbitReadinessScore === undefined, "Does not label its own estimate as Fitbit's readiness score");
   assert(calls.every((c) => !c.url.includes('/date/') || c.url.includes('2026-10-22')), "Uses the athlete's local date sent by the app");
+
+  // ---------------------------------------------------------------- Deployability
+  // package.json is "type": "module", so Vercel runs api/ as ES modules, which need explicit
+  // file extensions on relative imports. A missing ".js" crashes every function at runtime.
+  console.log('\n[Deployability]');
+  const apiDir = path.join(process.cwd(), 'api');
+  const apiFiles: string[] = [];
+  const walk = (dir: string) =>
+    fs.readdirSync(dir, { withFileTypes: true }).forEach((d) => {
+      const p = path.join(dir, d.name);
+      if (d.isDirectory()) walk(p);
+      else if (p.endsWith('.ts')) apiFiles.push(p);
+    });
+  walk(apiDir);
+  const badImports = apiFiles.flatMap((file) =>
+    [...fs.readFileSync(file, 'utf8').matchAll(/from\s+['"](\.{1,2}\/[^'"]+)['"]/g)]
+      .map((m) => m[1])
+      .filter((spec) => !spec.endsWith('.js'))
+      .map((spec) => `${path.relative(process.cwd(), file)} -> ${spec}`)
+  );
+  assert(apiFiles.length > 0 && badImports.length === 0, `Relative imports in api/ end in .js (${badImports.join(', ') || 'all OK'})`);
 
   console.log(failures === 0 ? '\nALL API PROXY TESTS PASSED' : `\n${failures} API PROXY TEST(S) FAILED`);
   if (failures > 0) process.exit(1);

@@ -1,4 +1,4 @@
-import { applyCors } from '../_lib/cors';
+import { applyCors } from '../_lib/cors.js';
 const WHOOP_CLIENT_ID = '8bcb0a0d-b6ff-42e0-82b7-c3508e18c9f8';
 // Must be configured as a Vercel environment variable. Never hardcode it.
 // Read per request so a newly set variable takes effect without a code change.

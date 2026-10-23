@@ -1,4 +1,4 @@
-import { applyCors } from '../_lib/cors';
+import { applyCors } from '../_lib/cors.js';
 // Vercel Serverless Function: Optional WHOOP Webhook Receiver
 export default async function handler(req: any, res: any) {
   if (applyCors(req, res)) return;

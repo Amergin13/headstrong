@@ -1,4 +1,4 @@
-import { applyCors } from '../_lib/cors';
+import { applyCors } from '../_lib/cors.js';
 /**
  * Vercel Serverless Function: Fitbit / Google Pixel Watch Biometrics Aggregator & Proxy
  * Eliminates browser CORS restrictions and aggregates heart rate, HRV, sleep,
