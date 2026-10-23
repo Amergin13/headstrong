@@ -441,6 +441,7 @@ import {
   loadProfile,
   loadWorkouts,
   loadBiometrics,
+  removeFabricatedBiometrics,
 } from '../../services/storage';
 import {
   NEW_USER_PROFILE,
@@ -2397,9 +2398,39 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
       parsedWhoopCsvLogs[0].date === '2026-10-19' &&
       parsedWhoopCsvLogs[0].hrvRmssd === 72 &&
       parsedWhoopCsvLogs[0].restingHr === 49 &&
-      parsedWhoopCsvLogs[0].steps === Math.round(14.2 * 650),
-    `Whoop CSV export parser extracts HRV, Resting HR, Day Strain, and maps to BiometricLog correctly`
+      parsedWhoopCsvLogs[0].steps === 0 &&
+      parsedWhoopCsvLogs[0].strain === 14.2 &&
+      parsedWhoopCsvLogs[0].bodyweightKg === 0,
+    `Whoop CSV export parser extracts HRV, Resting HR and Day Strain, without guessing steps or bodyweight`
   );
+  const csvMissingHrv = parseWhoopCsvExport(`Cycle start time,Day Strain
+2026-10-19 06:30:00,9.1`);
+  assert(
+    csvMissingHrv.length === 1 && csvMissingHrv[0].hrvRmssd === 0 && csvMissingHrv[0].restingHr === 0 && csvMissingHrv[0].sleepHours === 0,
+    'Missing CSV columns are stored as not measured (0), never typical-looking defaults'
+  );
+
+  // Saved data from older versions: simulated syncs removed, strain-derived steps cleared.
+  localStorage.setItem(
+    'treise_biometrics_v3',
+    JSON.stringify([
+      { date: '2026-10-20', bodyweightKg: 81.8, hrvRmssd: 66, restingHr: 52, sleepHours: 7.9, steps: 10200, activeZoneMinutes: 48, vo2Max: 47, avgWorkoutHr: 142, workoutDurationMin: 60 },
+      { date: '2026-10-23', bodyweightKg: 0, hrvRmssd: 29, restingHr: 71, sleepHours: 7.8, steps: 2525, activeZoneMinutes: 17, strain: 3.9, source: 'whoop', recoveryScore: 86 },
+      { date: '2026-10-22', bodyweightKg: 80, hrvRmssd: 50, restingHr: 55, sleepHours: 7, steps: 8000, activeZoneMinutes: 30 },
+    ])
+  );
+  removeFabricatedBiometrics();
+  const cleanedLogs = JSON.parse(localStorage.getItem('treise_biometrics_v3') || '[]');
+  assert(
+    cleanedLogs.length === 2 &&
+      !cleanedLogs.some((l: any) => l.date === '2026-10-20') &&
+      cleanedLogs.find((l: any) => l.date === '2026-10-23').steps === 0 &&
+      cleanedLogs.find((l: any) => l.date === '2026-10-23').activeZoneMinutes === 0 &&
+      cleanedLogs.find((l: any) => l.date === '2026-10-23').hrvRmssd === 29 &&
+      cleanedLogs.find((l: any) => l.date === '2026-10-22').steps === 8000,
+    'Migration removes simulated syncs and strain-guessed steps, keeping measured values'
+  );
+  localStorage.removeItem('treise_biometrics_v3');
 
   const sampleWhoopCsvWithHr = `Cycle start time,Cycle end time,Heart Rate Variability (HRV) (ms),Resting Heart Rate (RHR) (bpm),Recovery score (%),Day Strain,Energy burned (kcal),Average Heart Rate (bpm),Max Heart Rate (bpm)
 2026-10-19 06:30:00,2026-10-20 06:15:00,72.4,49,82,14.2,2450,138,168`;

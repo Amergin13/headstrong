@@ -372,13 +372,11 @@ export async function fetchWhoopDailyBiometrics(
       const cycleData = await cycleRes.json();
       const latest = getLatestRecord(cycleData);
       if (latest) {
+        // Whoop doesn't report steps or active minutes; never derive them from strain.
         if (typeof latest.step_count === 'number') {
           results.steps = latest.step_count;
-        } else if (latest?.score?.strain) {
-          results.steps = Math.round(latest.score.strain * 650);
         }
         if (latest?.score?.strain) {
-          results.activeZoneMinutes = Math.round(latest.score.strain * 3.5);
           results.strain = Math.round(latest.score.strain * 10) / 10;
         }
         if (typeof latest?.score?.kilojoule === 'number') {
@@ -644,10 +642,8 @@ export function parseWhoopCsvExport(csvText: string): BiometricLog[] {
     let avgHr = avgHrIdx >= 0 ? parseFloat(cols[avgHrIdx]) : NaN;
     let maxHr = maxHrIdx >= 0 ? parseFloat(cols[maxHrIdx]) : NaN;
 
-    if (isNaN(hrv)) hrv = 60;
-    if (isNaN(rhr)) rhr = 58;
-
-    let sleepHours = 7.5;
+    // Missing columns stay 0 ("not measured"), never typical-looking defaults.
+    let sleepHours = 0;
     if (!isNaN(sleepDuration) && sleepDuration > 0) {
       if (sleepDuration > 100000) {
         sleepHours = Math.round((sleepDuration / 3600000) * 10) / 10;
@@ -658,18 +654,16 @@ export function parseWhoopCsvExport(csvText: string): BiometricLog[] {
       }
     }
 
-    const steps = !isNaN(strain) ? Math.round(strain * 650) : 8500;
-    const azm = !isNaN(strain) ? Math.round(strain * 3.5) : 35;
-
     logs.push({
       date,
-      bodyweightKg: 80.0,
-      hrvRmssd: Math.round(hrv),
-      restingHr: Math.round(rhr),
+      bodyweightKg: 0,
+      hrvRmssd: isNaN(hrv) ? 0 : Math.round(hrv),
+      restingHr: isNaN(rhr) ? 0 : Math.round(rhr),
       sleepHours,
-      steps,
-      activeZoneMinutes: azm,
-      vo2Max: 46.0,
+      steps: 0,
+      activeZoneMinutes: 0,
+      strain: isNaN(strain) ? undefined : Math.round(strain * 10) / 10,
+      source: 'whoop',
       avgWorkoutHr: !isNaN(avgHr) && avgHr > 0 ? Math.round(avgHr) : undefined,
       maxWorkoutHr: !isNaN(maxHr) && maxHr > 0 ? Math.round(maxHr) : undefined,
     });

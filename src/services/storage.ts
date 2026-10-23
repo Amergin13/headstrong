@@ -42,7 +42,7 @@ const LEGACY_KEYS = {
  * Version of the saved-data format. Bump it and add a step to runStorageMigrations whenever
  * the shape of stored data changes, so existing athletes' history keeps loading.
  */
-export const STORAGE_SCHEMA_VERSION = 4;
+export const STORAGE_SCHEMA_VERSION = 5;
 const SCHEMA_VERSION_KEY = 'treise_schema_version';
 
 /**
@@ -50,6 +50,38 @@ const SCHEMA_VERSION_KEY = 'treise_schema_version';
  * v4: removes any Whoop client secret earlier builds stored on the device, and drops the
  *     stored profile copy of it.
  */
+/**
+ * Older versions saved simulated wearable syncs as real readings and guessed Whoop steps and
+ * active minutes from strain (strain x 650 / x 3.5). Drop the simulated days and clear Whoop
+ * steps and active minutes, keeping everything the wearable actually measured.
+ */
+const SIMULATED_SYNC_FINGERPRINTS = [
+  { bodyweightKg: 81.8, vo2Max: 47, avgWorkoutHr: 142, workoutDurationMin: 60 }, // Whoop simulator
+  { bodyweightKg: 82.1, vo2Max: 46.2, avgWorkoutHr: 144, workoutDurationMin: 65 }, // Pixel Watch simulator
+  { bodyweightKg: 82.0, vo2Max: 46.5, avgWorkoutHr: 143, workoutDurationMin: 62 }, // Health Connect simulator
+];
+
+export function removeFabricatedBiometrics(): void {
+  const raw = localStorage.getItem(KEYS.BIOMETRICS);
+  if (!raw) return;
+  const logs: BiometricLog[] = JSON.parse(raw);
+  if (!Array.isArray(logs)) return;
+  const cleaned = logs
+    .filter(
+      (l) =>
+        !SIMULATED_SYNC_FINGERPRINTS.some(
+          (f) =>
+            l.bodyweightKg === f.bodyweightKg &&
+            l.vo2Max === f.vo2Max &&
+            l.avgWorkoutHr === f.avgWorkoutHr &&
+            l.workoutDurationMin === f.workoutDurationMin
+        )
+    )
+    // Whoop's API reports no steps or active minutes, so any on a Whoop day were guessed.
+    .map((l) => (l.source === 'whoop' ? { ...l, steps: 0, activeZoneMinutes: 0 } : l));
+  localStorage.setItem(KEYS.BIOMETRICS, JSON.stringify(cleaned));
+}
+
 export function runStorageMigrations(): void {
   if (typeof localStorage === 'undefined') return;
   try {
@@ -63,6 +95,9 @@ export function runStorageMigrations(): void {
         delete parsed.whoopClientSecret;
         localStorage.setItem(KEYS.PROFILE, JSON.stringify(parsed));
       }
+    }
+    if (current < 5) {
+      removeFabricatedBiometrics();
     }
     if (current < STORAGE_SCHEMA_VERSION) {
       localStorage.setItem(SCHEMA_VERSION_KEY, String(STORAGE_SCHEMA_VERSION));

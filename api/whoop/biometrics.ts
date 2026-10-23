@@ -278,11 +278,8 @@ export default async function handler(req: any, res: any) {
       }
       const strain = typeof latestCycle.score?.strain === 'number' ? latestCycle.score.strain : 0;
       biometrics.strain = Math.round(strain * 10) / 10;
-      biometrics.steps =
-        typeof latestCycle.step_count === 'number'
-          ? latestCycle.step_count
-          : Math.round(strain * 650);
-      biometrics.activeZoneMinutes = Math.round(strain * 3.5);
+      // Whoop doesn't report steps or active minutes; never derive them from strain.
+      if (typeof latestCycle.step_count === 'number') biometrics.steps = latestCycle.step_count;
       if (typeof latestCycle.score?.kilojoule === 'number') {
         // Daily cumulative energy expenditure (e.g. 4,372 kJ)
         biometrics.kilojoules = Math.round(latestCycle.score.kilojoule);
