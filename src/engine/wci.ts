@@ -27,7 +27,7 @@ export function calculateSessionTonnage(session: WorkoutSession): {
 
   for (const ex of session.exercises) {
     for (const s of ex.sets) {
-      if (s.completed && s.actualReps && s.actualReps > 0) {
+      if (s.completed && !s.isWarmup && s.setType !== 'warmup' && s.actualReps && s.actualReps > 0) {
         const weight = s.actualWeightKg ?? s.targetWeightKg ?? 0;
         tonnageKg += weight * s.actualReps;
         completedSetsCount++;
@@ -54,7 +54,9 @@ export function calculateWci(
   if (completedSetsCount === 0 || tonnageKg === 0) return 0;
 
   const durationMin = Math.max(15, session.durationMinutes || 60);
-  const avgHr = session.avgHeartRate || 135;
+  // Needs a measured workout heart rate; never assume one.
+  if (!session.avgHeartRate) return 0;
+  const avgHr = session.avgHeartRate;
   const hrrPct = calculateHrrPercentage(avgHr, restingHr, maxHr);
 
   const denominator = hrrPct * durationMin;

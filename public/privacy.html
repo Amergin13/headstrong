@@ -36,19 +36,19 @@
   <body>
     <a href="/">&larr; Back to Treise App</a>
     <h1>Privacy Policy &amp; Google Play Health Data Safety</h1>
-    <p><strong>Effective Date:</strong> October 17, 2026 &bull; <strong>Package ID:</strong> <code>com.headstrong.app</code></p>
+    <p><strong>Effective Date:</strong> October 23, 2026 &bull; <strong>Package ID:</strong> <code>com.headstrong.app</code></p>
 
     <div class="card">
       <strong>Google Play Data Safety Summary:</strong>
       <ul>
-        <li><strong>100% On-Device Storage:</strong> Your workout logs, body weight history, and biometric recovery metrics are stored locally on your device.</li>
-        <li><strong>Zero Third-Party Data Sharing:</strong> Treise never sells, rents, or shares your health or fitness data with advertising networks or third parties.</li>
-        <li><strong>Instant In-App Data Deletion:</strong> You can export or permanently erase all stored data at any time inside <em>Program &rarr; Data Safety &amp; Privacy</em>.</li>
+        <li><strong>Stored on Your Device:</strong> Your workout logs, body weight history, recovery metrics and AI Coach conversations are stored on your device. There is no Treise account database or cloud copy.</li>
+        <li><strong>No Selling or Advertising Use:</strong> Treise never sells, rents, or shares your health or fitness data with advertisers or data brokers.</li>
+        <li><strong>Instant In-App Data Deletion:</strong> You can export or permanently erase all stored data at any time inside <em>Program &rarr; Data Backup &amp; Privacy</em>.</li>
       </ul>
     </div>
 
     <h2>1. Health &amp; Biometric Data We Process</h2>
-    <p>When you log workouts or optionally connect your Google Pixel Watch via the Fitbit Web API (OAuth 2.0 PKCE), Treise processes:</p>
+    <p>When you log workouts, or optionally connect Fitbit (including Google Pixel Watch) or Whoop, Treise processes:</p>
     <ul>
       <li><strong>Workout &amp; Strength Logs:</strong> Exercises, sets, repetitions, weights lifted, and Repetitions in Reserve (RIR).</li>
       <li><strong>Body Weight Metrics:</strong> Daily scale entries used to compute your 7-day Exponential Moving Average (EMA) and DOTS strength score.</li>
@@ -56,13 +56,16 @@
     </ul>
 
     <h2>2. How Your Data Is Stored &amp; Protected</h2>
-    <p>All workout sessions, custom exercises, and biometric logs are persisted locally on your device. If you authorize Fitbit Web API via OAuth 2.0 PKCE (RFC 7636), cryptographic code verifiers are held strictly in ephemeral session storage and connections occur over TLS/HTTPS directly between your device and <code>api.fitbit.com</code>.</p>
+    <p>All workout sessions, custom exercises, biometric logs and AI Coach conversations are stored locally on your device. The AI Coach runs on your device, using Chrome&rsquo;s built-in Gemini Nano model where available, or, if you choose to download it, an AI model that runs on your phone&rsquo;s graphics chip. Your questions are not sent to any server.</p>
+    <p><strong>Optional coach download:</strong> If you tap Download in the AI Coach, the model files (about 1 GB) are downloaded once from Hugging Face&rsquo;s public servers (huggingface.co) and stored on your device. That download contains none of your data. You can remove it in Program &rarr; Data Backup &amp; Privacy.</p>
+    <p><strong>Wearable connections:</strong> If you connect Fitbit or Whoop, your device sends your access token over HTTPS to Treise&rsquo;s serverless functions hosted on Vercel, which fetch your recovery, sleep, activity and workout data from Fitbit or Whoop and return it to your device. These functions do not store your data or tokens; standard request logs kept by our hosting provider may include technical metadata such as IP addresses. Fitbit and Whoop handle your data under their own privacy policies.</p>
+    <p><strong>Google sign-in:</strong> If you sign in with Google, Treise receives your name, email address and profile picture to personalize the app. These are stored on your device only.</p>
 
     <h2>3. Data Retention, Export &amp; Permanent Deletion</h2>
     <p>In compliance with Google Play&rsquo;s User Data and Account Deletion Policy, you have complete control over your data directly inside the app:</p>
     <ul>
-      <li><strong>Export Backup:</strong> Navigate to <em>Program &rarr; Data Safety &amp; Privacy &rarr; Export My Data (JSON)</em> to download a complete copy of your records.</li>
-      <li><strong>Permanent Deletion:</strong> Navigate to <em>Program &rarr; Data Safety &amp; Privacy &rarr; Delete All My Data</em> to permanently wipe all workout logs, biometric records, and OAuth tokens from your device.</li>
+      <li><strong>Export Backup:</strong> Navigate to <em>Program &rarr; Data Backup &amp; Privacy &rarr; Export Backup</em> to download a complete copy of your records.</li>
+      <li><strong>Permanent Deletion:</strong> Navigate to <em>Program &rarr; Data Backup &amp; Privacy &rarr; Delete All Data</em> to permanently wipe all workout logs, biometric records, and OAuth tokens from your device.</li>
     </ul>
 
     <h2>4. Non-Medical Fitness Disclaimer</h2>

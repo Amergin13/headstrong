@@ -5,7 +5,6 @@ import {
   isGoogleClientConfigured,
   promptGoogleOneTap,
   renderGoogleSignInButton,
-  signInWithDemoGoogleAccount,
   signOutUser,
   isSupabaseConfigured,
   getSupabaseGoogleAuthUrl,
@@ -77,24 +76,14 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({
 
   if (!isOpen) return null;
 
-  const handleDemoSignIn = () => {
-    triggerHaptic('medium');
-    const demoUser = signInWithDemoGoogleAccount(
-      profile.email || 'athlete@treise.app',
-      profile.name !== 'Athlete' ? profile.name : 'Benen Taylor'
-    );
-    setStatusMessage('Signed in with Google!');
-    onAuthSuccess(demoUser);
-    setTimeout(() => onClose(), 400);
-  };
-
+  // Real Google sign-in only. If Google's sign-in can't be shown, say so; never fake an account.
   const handleGoogleSignInClick = () => {
     triggerHaptic('medium');
     if (isClientValid && typeof window !== 'undefined' && (window as any).google?.accounts?.id) {
       try {
         (window as any).google.accounts.id.prompt((notification: any) => {
           if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
-            handleDemoSignIn();
+            setStatusMessage('Google sign-in was closed or blocked. Use the Google button above, or try again.');
           }
         });
         return;
@@ -102,7 +91,7 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({
         console.warn('GIS prompt error:', e);
       }
     }
-    handleDemoSignIn();
+    setStatusMessage("Google sign-in isn't available right now. You can keep using Treise without an account.");
   };
 
   const handleApplyCustomClient = () => {
@@ -152,8 +141,8 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({
           </h2>
           <p className="text-xs text-slate-400 font-medium">
             {currentUser
-              ? 'Your profile, workouts, and strength milestones are saved'
-              : 'Sync your workouts and personal records across all your devices'}
+              ? 'Your workouts are saved on this device'
+              : 'Add your name and photo to your profile'}
           </p>
         </div>
 
@@ -214,19 +203,13 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({
               <div className="flex items-start space-x-2.5">
                 <CheckCircle2 className="w-4 h-4 text-brand-primary stroke-[2] shrink-0 mt-0.5" />
                 <span className="text-xs text-slate-300 font-medium leading-relaxed">
-                  Automatic cloud sync across your phone, tablet, and Google Pixel Watch
+                  Personalize your profile with your Google name and photo
                 </span>
               </div>
               <div className="flex items-start space-x-2.5">
                 <CheckCircle2 className="w-4 h-4 text-brand-primary stroke-[2] shrink-0 mt-0.5" />
                 <span className="text-xs text-slate-300 font-medium leading-relaxed">
-                  Preserve your 7-day bodyweight average, DOTS score, and strength PRs
-                </span>
-              </div>
-              <div className="flex items-start space-x-2.5">
-                <CheckCircle2 className="w-4 h-4 text-brand-primary stroke-[2] shrink-0 mt-0.5" />
-                <span className="text-xs text-slate-300 font-medium leading-relaxed">
-                  Protect your streak days and progressive overload history
+                  Workouts stay on this device. Cloud sync is coming soon, so use Export Backup to keep a copy
                 </span>
               </div>
             </div>

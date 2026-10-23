@@ -16,6 +16,7 @@ import {
 import {
   simulateHealthConnectSync,
 } from './healthConnectService';
+import { localDateString } from '../utils/date';
 
 export interface WearableProviderMeta {
   id: WearableProvider;
@@ -64,6 +65,8 @@ export async function syncWearableBiometrics(
     forcedState?: ReadinessState;
     accessToken?: string;
     refreshToken?: string;
+    /** Only for the explicit sample-data demo. Real syncs never fabricate readings. */
+    allowSimulation?: boolean;
   }
 ): Promise<BiometricLog> {
   const onProg = (p: WearableSyncProgress) => {
@@ -72,103 +75,87 @@ export async function syncWearableBiometrics(
     }
   };
 
+  if (options?.allowSimulation) {
+    if (provider === 'whoop') return simulateWhoopSync(onProg, options.forcedState);
+    if (provider === 'health_connect') return simulateHealthConnectSync(onProg, options.forcedState);
+    return simulatePixelWatchSync((prog) => onProg({ ...prog, provider: 'fitbit' }), options.forcedState);
+  }
+
+  // Missing values are stored as 0 ("not measured"), never as typical-looking defaults.
   switch (provider) {
     case 'whoop': {
-      if (options?.accessToken) {
-        try {
-          onProg({ stage: 'connecting', percent: 20, message: 'Connecting to Whoop API...', provider: 'whoop' });
-          const liveData = await fetchWhoopDailyBiometrics(
-            options.accessToken,
-            undefined,
-            options?.refreshToken
-          );
-          if (liveData.hrvRmssd || liveData.restingHr || liveData.recoveryScore) {
-            onProg({ stage: 'complete', percent: 100, message: 'Whoop live biometrics synced!', provider: 'whoop' });
-            return {
-              date: liveData.date || new Date().toISOString().split('T')[0],
-              bodyweightKg: liveData.bodyweightKg || 80.0,
-              hrvRmssd: liveData.hrvRmssd || 58,
-              restingHr: liveData.restingHr || 56,
-              sleepHours: liveData.sleepHours || 7.5,
-              steps: liveData.steps || 9000,
-              activeZoneMinutes: liveData.activeZoneMinutes || 45,
-              vo2Max: liveData.vo2Max || 46.0,
-              recoveryScore: liveData.recoveryScore,
-              workoutStrain: liveData.workoutStrain,
-              strain: liveData.strain,
-              kilojoules: liveData.kilojoules,
-              workoutKilojoules: liveData.workoutKilojoules,
-              avgWorkoutHr:
-                liveData.avgWorkoutHr ??
-                (liveData as any).workoutAvgHr ??
-                (liveData as any).avgHeartRate ??
-                (liveData as any).cycleAvgHr,
-              maxWorkoutHr:
-                liveData.maxWorkoutHr ??
-                (liveData as any).workoutMaxHr ??
-                (liveData as any).maxHeartRate ??
-                (liveData as any).cycleMaxHr,
-              source: 'whoop',
-            };
-          } else {
-            console.warn('Whoop API responded but lacked overnight recovery metrics:', liveData);
-            if (!options?.forcedState) {
-              throw new Error(
-                'Whoop is connected, but today\'s recovery metrics are still pending in your Whoop app. Open your Whoop app to complete strap sync, then tap Sync.'
-              );
-            }
-          }
-        } catch (err) {
-          console.warn('Whoop live biometrics fetch error:', err);
-          if (!options?.forcedState) {
-            throw err;
-          }
-        }
+      if (!options?.accessToken) {
+        throw new Error('Connect Whoop first, then sync.');
       }
-      return simulateWhoopSync(onProg, options?.forcedState);
+      onProg({ stage: 'connecting', percent: 20, message: 'Connecting to Whoop...', provider: 'whoop' });
+      const liveData = await fetchWhoopDailyBiometrics(options.accessToken, undefined, options.refreshToken);
+      if (!(liveData.hrvRmssd || liveData.restingHr || liveData.recoveryScore)) {
+        throw new Error(
+          "Whoop is connected, but today's recovery isn't ready yet. Open the Whoop app to finish syncing your strap, then try again."
+        );
+      }
+      onProg({ stage: 'complete', percent: 100, message: 'Whoop synced', provider: 'whoop' });
+      return {
+        date: liveData.date || localDateString(),
+        bodyweightKg: liveData.bodyweightKg || 0,
+        hrvRmssd: liveData.hrvRmssd || 0,
+        restingHr: liveData.restingHr || 0,
+        sleepHours: liveData.sleepHours || 0,
+        steps: liveData.steps || 0,
+        activeZoneMinutes: liveData.activeZoneMinutes || 0,
+        vo2Max: liveData.vo2Max,
+        recoveryScore: liveData.recoveryScore,
+        workoutStrain: liveData.workoutStrain,
+        strain: liveData.strain,
+        kilojoules: liveData.kilojoules,
+        workoutKilojoules: liveData.workoutKilojoules,
+        avgWorkoutHr:
+          liveData.avgWorkoutHr ??
+          (liveData as any).workoutAvgHr ??
+          (liveData as any).avgHeartRate ??
+          (liveData as any).cycleAvgHr,
+        maxWorkoutHr:
+          liveData.maxWorkoutHr ??
+          (liveData as any).workoutMaxHr ??
+          (liveData as any).maxHeartRate ??
+          (liveData as any).cycleMaxHr,
+        source: 'whoop',
+      };
     }
 
     case 'health_connect': {
-      return simulateHealthConnectSync(onProg, options?.forcedState);
+      throw new Error('Health Connect data is added by importing an export file (Import Data below).');
     }
 
     case 'fitbit':
     default: {
-      if (options?.accessToken) {
-        try {
-          onProg({ stage: 'connecting', percent: 20, message: 'Connecting to Fitbit API...', provider: 'fitbit' });
-          const liveData = await fetchFitbitDailyBiometrics(
-            options.accessToken,
-            undefined,
-            options?.refreshToken
-          );
-          if (liveData.hrvRmssd && liveData.restingHr) {
-            onProg({ stage: 'complete', percent: 100, message: 'Fitbit live biometrics synced!', provider: 'fitbit' });
-            return {
-              date: liveData.date || new Date().toISOString().split('T')[0],
-              bodyweightKg: liveData.bodyweightKg || 80.0,
-              hrvRmssd: liveData.hrvRmssd,
-              restingHr: liveData.restingHr,
-              sleepHours: liveData.sleepHours || 7.5,
-              steps: liveData.steps || 9000,
-              activeZoneMinutes: liveData.activeZoneMinutes || 45,
-              vo2Max: liveData.vo2Max || 46.0,
-              fitbitReadinessScore: liveData.fitbitReadinessScore,
-              readinessScore: liveData.readinessScore || liveData.fitbitReadinessScore,
-              kilojoules: liveData.kilojoules,
-              avgWorkoutHr: liveData.avgWorkoutHr,
-              maxWorkoutHr: liveData.maxWorkoutHr,
-              source: 'fitbit',
-            };
-          }
-        } catch {
-          // Fall through to simulator
-        }
+      if (!options?.accessToken) {
+        throw new Error('Connect your Pixel Watch or Fitbit first, then sync.');
       }
-      return simulatePixelWatchSync(
-        (prog) => onProg({ ...prog, provider: 'fitbit' }),
-        options?.forcedState
-      );
+      onProg({ stage: 'connecting', percent: 20, message: 'Connecting to Fitbit...', provider: 'fitbit' });
+      const liveData = await fetchFitbitDailyBiometrics(options.accessToken, undefined, options.refreshToken);
+      if (!(liveData.hrvRmssd || liveData.restingHr || liveData.fitbitReadinessScore)) {
+        throw new Error(
+          "Fitbit is connected, but today's sleep and heart data aren't ready yet. Sync your watch in the Fitbit app, then try again."
+        );
+      }
+      onProg({ stage: 'complete', percent: 100, message: 'Fitbit synced', provider: 'fitbit' });
+      return {
+        date: liveData.date || localDateString(),
+        bodyweightKg: liveData.bodyweightKg || 0,
+        hrvRmssd: liveData.hrvRmssd || 0,
+        restingHr: liveData.restingHr || 0,
+        sleepHours: liveData.sleepHours || 0,
+        steps: liveData.steps || 0,
+        activeZoneMinutes: liveData.activeZoneMinutes || 0,
+        vo2Max: liveData.vo2Max,
+        fitbitReadinessScore: liveData.fitbitReadinessScore,
+        readinessScore: liveData.readinessScore || liveData.fitbitReadinessScore,
+        kilojoules: liveData.kilojoules,
+        avgWorkoutHr: liveData.avgWorkoutHr,
+        maxWorkoutHr: liveData.maxWorkoutHr,
+        source: 'fitbit',
+      };
     }
   }
 }

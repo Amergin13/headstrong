@@ -16,7 +16,9 @@ import {
   generateSeedWorkouts,
 } from './seedData';
 import { calculateE1RM } from '../engine/e1rm';
+import { isPillarBenchmarkExercise } from '../engine/strengthStandards';
 import { getLatestBodyweightEma } from '../engine/ema';
+import { localDateString } from '../utils/date';
 
 const KEYS = {
   PROFILE: 'treise_profile_v3',
@@ -35,6 +37,40 @@ const LEGACY_KEYS = {
   EXERCISES: 'headstrong_exercises_v3',
   AUTH_USER: 'headstrong_auth_user_v1',
 };
+
+/**
+ * Version of the saved-data format. Bump it and add a step to runStorageMigrations whenever
+ * the shape of stored data changes, so existing athletes' history keeps loading.
+ */
+export const STORAGE_SCHEMA_VERSION = 4;
+const SCHEMA_VERSION_KEY = 'treise_schema_version';
+
+/**
+ * Upgrades data saved by older versions. Safe to run on every launch.
+ * v4: removes any Whoop client secret earlier builds stored on the device, and drops the
+ *     stored profile copy of it.
+ */
+export function runStorageMigrations(): void {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    const current = parseInt(localStorage.getItem(SCHEMA_VERSION_KEY) || '0', 10) || 0;
+    if (current < 4) {
+      localStorage.removeItem('whoop_client_secret');
+      if (typeof sessionStorage !== 'undefined') sessionStorage.removeItem('whoop_client_secret');
+      const rawProfile = localStorage.getItem(KEYS.PROFILE) || localStorage.getItem(LEGACY_KEYS.PROFILE);
+      if (rawProfile) {
+        const parsed = JSON.parse(rawProfile);
+        delete parsed.whoopClientSecret;
+        localStorage.setItem(KEYS.PROFILE, JSON.stringify(parsed));
+      }
+    }
+    if (current < STORAGE_SCHEMA_VERSION) {
+      localStorage.setItem(SCHEMA_VERSION_KEY, String(STORAGE_SCHEMA_VERSION));
+    }
+  } catch (e) {
+    console.error('Saved data migration failed:', e);
+  }
+}
 
 function getItemWithFallback(key: keyof typeof KEYS): string | null {
   if (typeof localStorage === 'undefined') return null;
@@ -79,7 +115,7 @@ export function loadProfile(): UserProfile {
         programType: parsed.programType || 'ppl_upper',
         activeLocation: parsed.activeLocation || 'gym',
         availableLocations: parsed.availableLocations || ['gym', 'home', 'travel'],
-        homeEquipment: parsed.homeEquipment || ['bench', 'dumbbells', 'trx', 'pullup_bar'],
+        homeEquipment: parsed.homeEquipment || [],
       };
     }
   } catch (e) {
@@ -219,7 +255,8 @@ export function resetAllToSeedData(): {
  */
 export function calculateBestPillarE1rms(
   workouts: WorkoutSession[],
-  bodyweightEmaKg: number
+  bodyweightEmaKg: number,
+  options: { loadedLiftsOnly?: boolean } = {}
 ): Record<StrengthPillar, number> {
   const best: Record<StrengthPillar, number> = {
     Squat: 0,
@@ -233,18 +270,11 @@ export function calculateBestPillarE1rms(
   for (const w of workouts) {
     if (!w.completed) continue;
     for (const ex of w.exercises) {
-      const id = ex.exerciseId.toLowerCase();
-      const isIsolation =
-        ex.isIsolation ||
-        id.includes('calf') ||
-        id.includes('lateral') ||
-        id.includes('curl') ||
-        id.includes('pushdown') ||
-        id.includes('face-pull') ||
-        id.includes('crunch') ||
-        id.includes('fly');
+      const isIsolation = !isPillarBenchmarkExercise(ex);
 
       if (isIsolation) continue;
+      // "Big 3" style numbers should come from loaded lifts, not push-ups or chin-ups.
+      if (options.loadedLiftsOnly && ex.equipment === 'bodyweight') continue;
 
       for (const s of ex.sets) {
         if (!s.completed || s.isWarmup || s.setType === 'warmup' || !s.actualReps || s.actualReps <= 0) {
@@ -268,14 +298,7 @@ export function calculateBestPillarE1rms(
     }
   }
 
-  // Set realistic default minimums based on Untrained standard ratio relative to bodyweight if no logged history
-  if (best.Squat === 0) best.Squat = Math.round(bodyweightEmaKg * 0.75 * 10) / 10;
-  if (best.Hinge === 0) best.Hinge = Math.round(bodyweightEmaKg * 0.95 * 10) / 10;
-  if (best['Horizontal Push'] === 0) best['Horizontal Push'] = Math.round(bodyweightEmaKg * 0.60 * 10) / 10;
-  if (best['Vertical Push'] === 0) best['Vertical Push'] = Math.round(bodyweightEmaKg * 0.40 * 10) / 10;
-  if (best['Horizontal Pull'] === 0) best['Horizontal Pull'] = Math.round(bodyweightEmaKg * 0.50 * 10) / 10;
-  if (best['Vertical Pull'] === 0) best['Vertical Pull'] = Math.round(bodyweightEmaKg * 0.85 * 10) / 10;
-
+  // Pillars with no logged sets stay at 0 ("no data"); never substitute estimates.
   return best;
 }
 
@@ -291,7 +314,7 @@ export function calculateWeeklyMuscleVolume(
   const now = new Date();
   const weekStart = new Date(now);
   weekStart.setDate(weekStart.getDate() - 7);
-  const weekStartStr = weekStart.toISOString().split('T')[0];
+  const weekStartStr = localDateString(weekStart);
 
   const exMap = new Map(exerciseCatalog.map((e) => [e.id, e]));
   const volume: Record<string, number> = {
@@ -459,7 +482,7 @@ export function permanentlyEraseAllUserData() {
     console.error('Failed to clear storage:', e);
   }
 
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = localDateString();
   const cleanProfile: UserProfile = {
     name: 'Athlete',
     gender: 'male',

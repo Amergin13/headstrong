@@ -35,7 +35,19 @@ import {
   getDesignSystemComponentById,
 } from '../knowledgeGraph';
 import { SEED_EXERCISES } from '../../services/seedData';
-import { processAssistantMessage } from '../../services/aiAssistantService';
+import { processAssistantMessage, buildSafetyResponse, buildProgressSummary } from '../../services/aiAssistantService';
+import { evaluateSessionRecovery } from '../recovery';
+import { personalizeSessionLoads } from '../loadPersonalization';
+import { getNextProgramWorkoutNumber } from '../muscleBuildingProgram';
+import { getTemplateDefaultWeight } from '../../services/workoutGenerator';
+import { snapLoadKg, formatWeight } from '../../utils/units';
+import { localDateString } from '../../utils/date';
+import { calculateBestPillarE1rms } from '../../services/storage';
+import { evaluateSetProgressAward, planRestAfterSet } from '../../services/setCompletion';
+import { completeWorkout } from '../../services/workoutCompletion';
+import { onWearableTokensRefreshed } from '../../services/wearableTokens';
+import { registerFallbackOnDeviceModel } from '../../services/onDeviceModel';
+import { fetchWhoopDailyBiometrics } from '../../services/whoopService';
 import { WhoopWorkoutStrainSummary } from '../../services/whoopService';
 import {
   calculateWarmupPrescription,
@@ -146,6 +158,11 @@ const amberLog: BiometricLog = {
 const amberEval = calculateDailyReadiness(amberLog, baselineLogs);
 assert(amberEval.state === 'Amber Shield', `Depressed biometrics trigger Amber Shield (got ${amberEval.state})`);
 assert(amberEval.streakProtected === true, `Amber Shield protects streak`);
+const weighInOnlyEval = calculateDailyReadiness({ date: '2026-10-16', bodyweightKg: 80, hrvRmssd: 0, restingHr: 0, sleepHours: 0, steps: 0, activeZoneMinutes: 0 }, baselineLogs, 'whoop');
+assert(
+  weighInOnlyEval.hasRecoveryData === false && primedEval.hasRecoveryData !== false,
+  'A day with nothing measured is flagged so no readiness score is shown'
+);
 
 // 6. Double Progression
 console.log('\n[6. Double Progression Logic]');
@@ -440,7 +457,6 @@ import {
 import {
   buildLeaderboardSummary,
   DIVISION_THRESHOLDS,
-  COMMUNITY_ATHLETES,
 } from '../leaderboard';
 import {
   adaptWorkoutSessionToLocation,
@@ -882,11 +898,12 @@ const onboardingModalSrc = fs.readFileSync(
 
 assert(
   onboardingModalSrc.includes('Welcome to Treise') &&
-    onboardingModalSrc.includes('Asynchronous Hypertrophy Queue') &&
+    onboardingModalSrc.includes("Train when you're recovered") &&
     onboardingModalSrc.includes('Guaranteed Overload') &&
     onboardingModalSrc.includes('Adapts Across Any Gear') &&
     onboardingModalSrc.includes('Choose your training split') &&
     onboardingModalSrc.includes('What is your main goal right now?') &&
+    onboardingModalSrc.includes('About you') &&
     onboardingModalSrc.includes('Where do you train') &&
     onboardingModalSrc.includes('what gear do you have') &&
     onboardingModalSrc.includes('Start Day 1 Workout'),
@@ -1223,13 +1240,161 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
   });
 
   assert(
-    tensorCoachMsg.message.isTensorAccelerated === true,
-    'Bottom-nav AI Coach message sets isTensorAccelerated: true when Google Tensor hardware is active'
+    tensorCoachMsg.message.isTensorAccelerated === undefined &&
+      tensorCoachMsg.message.backend === undefined &&
+      tensorCoachMsg.message.latencyMs === undefined,
+    'AI Coach replies never carry hardware, backend or latency claims'
+  );
+
+  // K2. When the on-device model (Chrome Prompt API / Gemini Nano) is available, free-form
+  // questions are answered by it; the system prompt carries the athlete's real context.
+  let capturedSystemPrompt = '';
+  (globalThis as any).window = globalThis;
+  (globalThis as any).LanguageModel = {
+    availability: async () => 'available',
+    create: async (opts: any) => {
+      capturedSystemPrompt = opts?.initialPrompts?.[0]?.content || '';
+      return {
+        promptStreaming: async function* () {
+          yield 'Keep your elbows ';
+          yield 'tucked and control the descent.';
+        },
+        destroy: () => undefined,
+      };
+    },
+  };
+  const nanoReply = await processAssistantMessage({
+    userMessage: 'Any tips for staying focused before I train?',
+    profile: SAMPLE_DEMO_PROFILE,
+    activeWorkout: pushW3,
+    workouts: [pushW3],
+    biometrics: [],
+    exerciseCatalog: SEED_EXERCISES,
+    bodyweightEmaKg: 80,
+    readinessState: 'Normal',
+  });
+  assert(
+    nanoReply.message.text === 'Keep your elbows tucked and control the descent.',
+    `On-device model answer is streamed and used (got "${nanoReply.message.text}")`
   );
   assert(
-    Boolean(tensorCoachMsg.message.backend?.includes('Tensor') || tensorCoachMsg.message.backend?.includes('TPU')),
-    `Bottom-nav AI Coach backend identifies Tensor TPU execution (got "${tensorCoachMsg.message.backend}")`
+    capturedSystemPrompt.includes(pushW3.name) && !/Tensor|TPU|Knowledge Graph/.test(capturedSystemPrompt),
+    'On-device model prompt is grounded in today\'s workout without technical jargon'
   );
+  const cardioReply = await processAssistantMessage({
+    userMessage: 'Should I do cardio on my rest days?',
+    profile: SAMPLE_DEMO_PROFILE,
+    activeWorkout: pushW3,
+    workouts: [pushW3],
+    biometrics: [],
+    exerciseCatalog: SEED_EXERCISES,
+    bodyweightEmaKg: 80,
+    readinessState: 'Normal',
+  });
+  assert(
+    cardioReply.message.text === 'Keep your elbows tucked and control the descent.',
+    `Open questions go to the on-device model when available (got "${cardioReply.message.text.slice(0, 60)}")`
+  );
+
+  // K2b. A stub that echoes the prompt (Chromium without Gemini Nano) must never be shown.
+  (globalThis as any).LanguageModel = {
+    availability: async () => 'available',
+    create: async (opts: any) => ({
+      promptStreaming: async function* (q: string) {
+        yield `On-device model is not available in Chromium, this API is just echoing back the input:\n${opts?.initialPrompts?.[0]?.content}${q}`;
+      },
+      destroy: () => undefined,
+    }),
+  };
+  const echoReply = await processAssistantMessage({
+    userMessage: 'Any tips for staying focused before I train?',
+    profile: SAMPLE_DEMO_PROFILE,
+    activeWorkout: pushW3,
+    workouts: [pushW3],
+    biometrics: [],
+    exerciseCatalog: SEED_EXERCISES,
+    bodyweightEmaKg: 80,
+    readinessState: 'Normal',
+  });
+  assert(
+    !/echoing|not available in Chromium|You are Treise/.test(echoReply.message.text),
+    'An echoing stub model is rejected and the regular coach answers instead'
+  );
+  delete (globalThis as any).LanguageModel;
+  delete (globalThis as any).window;
+
+  // K2c. Where Gemini Nano isn't exposed (Chrome on Android), a registered on-device GPU model answers.
+  registerFallbackOnDeviceModel({
+    isReady: async () => true,
+    prompt: async (_sys: string, _q: string, onPartial?: (t: string) => void) => {
+      const text = 'Do five minutes of light cardio, then two easy ramp-up sets before your first working set.';
+      onPartial?.(text);
+      return text;
+    },
+  });
+  const gpuReply = await processAssistantMessage({
+    userMessage: 'Any tips for staying focused before I train?',
+    profile: SAMPLE_DEMO_PROFILE,
+    activeWorkout: pushW3,
+    workouts: [pushW3],
+    biometrics: [],
+    exerciseCatalog: SEED_EXERCISES,
+    bodyweightEmaKg: 80,
+    readinessState: 'Normal',
+  });
+  const briefingWithModel = await processAssistantMessage({
+    userMessage: "Give me a briefing for today's workout and targets",
+    profile: SAMPLE_DEMO_PROFILE,
+    activeWorkout: pushW3,
+    workouts: [pushW3],
+    biometrics: [],
+    exerciseCatalog: SEED_EXERCISES,
+    bodyweightEmaKg: 80,
+    readinessState: 'Normal',
+  });
+  assert(
+    !briefingWithModel.message.text.startsWith('Do five minutes') && briefingWithModel.message.text.includes(pushW3.exercises[0].name),
+    "Today's briefing is built from the plan even when a model is available (no invented details)"
+  );
+  const progressWithModel = await processAssistantMessage({
+    userMessage: 'How am I progressing?',
+    profile: SAMPLE_DEMO_PROFILE,
+    activeWorkout: pushW3,
+    workouts: [],
+    biometrics: [],
+    exerciseCatalog: SEED_EXERCISES,
+    bodyweightEmaKg: 80,
+    readinessState: 'Normal',
+  });
+  assert(
+    /haven't finished a workout yet/.test(progressWithModel.message.text),
+    'Progress questions are answered from real history, not by the model'
+  );
+  registerFallbackOnDeviceModel(null);
+  assert(
+    gpuReply.message.text.startsWith('Do five minutes of light cardio'),
+    'Without Gemini Nano, the downloaded on-device GPU model answers open questions'
+  );
+
+  // K3. Pain reports always get the fixed safety reply, never "your joint is fine".
+  const painReply = await processAssistantMessage({
+    userMessage: 'My shoulder hurts when I bench, what should I do today?',
+    profile: SAMPLE_DEMO_PROFILE,
+    activeWorkout: pushW3,
+    workouts: [pushW3],
+    biometrics: [],
+    exerciseCatalog: SEED_EXERCISES,
+    bodyweightEmaKg: 80,
+    readinessState: 'Normal',
+  });
+  assert(
+    /Don't train through shoulder pain/.test(painReply.message.text) &&
+      /physiotherapist|doctor/.test(painReply.message.text) &&
+      !/healthy|comfortable range/i.test(painReply.message.text),
+    'Shoulder pain triggers the safety reply with a swap suggestion and professional referral'
+  );
+  const urgentReply = buildSafetyResponse('I feel dizzy and have chest pain');
+  assert(Boolean(urgentReply && /emergency/.test(urgentReply)), 'Chest pain or dizziness tells the athlete to stop and seek help');
 
   // L. Simulation Override Mode
   const simulated = await detectPixelTensorHardware('Generic User Agent');
@@ -1395,8 +1560,8 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
 
   assert(
     DIVISION_THRESHOLDS.length === 6 &&
-      COMMUNITY_ATHLETES.length >= 10,
-    `Leaderboard contains 6 official competitive divisions and 10+ community athletes`
+      optedInSummary.entries.every((e) => e.isCurrentUser),
+    `Leaderboard has 6 divisions and never contains fabricated athletes`
   );
 
   // ============================================================================
@@ -1682,15 +1847,10 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
     'AI Assistant grounds response with Knowledge Graph citations'
   );
 
-  // F. Privacy & Latency Invariant
+  // F. Privacy invariant: replies carry no fabricated latency or hardware stamps
   assert(
-    jointQueryResult.message.latencyMs !== undefined && jointQueryResult.message.latencyMs <= 30,
-    `On-device AI response generated in <= 30ms (got ${jointQueryResult.message.latencyMs}ms)`
-  );
-  const backendStr = jointQueryResult.message.backend || '';
-  assert(
-    backendStr.includes('On-Device') || backendStr.includes('TPU') || backendStr.includes('Local'),
-    `AI Assistant backend identifies 100% on-device processing: ${backendStr}`
+    jointQueryResult.message.latencyMs === undefined && jointQueryResult.message.backend === undefined,
+    'AI Assistant replies carry no latency or hardware stamps'
   );
 
   // G. Dynamic Exercise Targets Grounding (Eliminates Stock Responses)
@@ -1775,8 +1935,8 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
     dbMultiplierPrinciple !== null &&
       dbMultiplierPrinciple.id === 'sp-db-multiplier' &&
       Boolean(dbMultiplierPrinciple.formula?.includes('1.18')) &&
-      dbMultiplierPrinciple.academicCitation.includes('Frecassetti'),
-    `DB multiplier query returns sp-db-multiplier with 1.18x factor and Frecassetti citation`
+      dbMultiplierPrinciple.academicCitation.includes('Saeterbakken'),
+    `DB multiplier query returns sp-db-multiplier with 1.18x factor and a verifiable citation`
   );
 
   const rdlMultiplierPrinciple = queryExerciseScienceKnowledgeBase('RDL deadlift multiplier 1.20x');
@@ -1831,7 +1991,7 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
   );
   assert(
     aiScienceAnswer.message.text.includes('Academic Citation:') &&
-      aiScienceAnswer.message.text.includes('Frecassetti'),
+      aiScienceAnswer.message.text.includes('Saeterbakken'),
     `AI Assistant provides peer-reviewed academic citation without hallucination`
   );
 
@@ -2095,27 +2255,8 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
     readinessState: 'Primed',
   });
   assert(
-    aiDesignAnswer.message.text.includes('Primary CTA Button') &&
-      aiDesignAnswer.message.text.includes('44px') &&
-      aiDesignAnswer.message.text.includes('bg-white'),
-    `AI Assistant answers button design query citing solid white bg-white and 44px touch target`
-  );
-
-  const aiTypoAnswer = await processAssistantMessage({
-    userMessage: 'What typography sizes does Treise use in its design system?',
-    profile: testProfile,
-    activeWorkout: pushW3,
-    workouts: [pushW3],
-    biometrics: mockBiometrics,
-    exerciseCatalog: SEED_EXERCISES,
-    bodyweightEmaKg: 80,
-    readinessState: 'Primed',
-  });
-  assert(
-    aiTypoAnswer.message.text.includes('4-Tier') &&
-      aiTypoAnswer.message.text.includes('text-xs') &&
-      aiTypoAnswer.message.text.includes('text-xl'),
-    `AI Assistant answers typography query citing 4-tier scale and exact tokens`
+    !aiDesignAnswer.message.text.includes('bg-white') && !aiDesignAnswer.message.text.includes('Tailwind'),
+    'Athlete-facing AI Coach never exposes internal design-system documentation'
   );
 
   // G. Shift Nudge Nested Radius & 8pt Spatial Grid Codification
@@ -2133,23 +2274,6 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
       spatialGridComp.category === 'layout' &&
       Boolean(spatialGridComp?.logic.rules.some((r) => r.includes('base-8'))),
     `Design system codifies Shift Nudge 8pt spatial grid and proximity hierarchy`
-  );
-
-  const aiShiftNudgeAnswer = await processAssistantMessage({
-    userMessage: 'How does the Shift Nudge nested radius rule work in our design system?',
-    profile: testProfile,
-    activeWorkout: pushW3,
-    workouts: [pushW3],
-    biometrics: mockBiometrics,
-    exerciseCatalog: SEED_EXERCISES,
-    bodyweightEmaKg: 80,
-    readinessState: 'Primed',
-  });
-  assert(
-    aiShiftNudgeAnswer.message.text.includes('Shift Nudge') &&
-      aiShiftNudgeAnswer.message.text.includes('Nested Radius') &&
-      aiShiftNudgeAnswer.message.text.includes('Inner Radius = Outer Radius - Padding'),
-    `AI Assistant answers Shift Nudge query grounded in Knowledge Graph design system specifications`
   );
 
   // --- SUITE 26: MULTI-WEARABLE BIOMETRIC TELEMETRY (FITBIT, WHOOP, HEALTH CONNECT) ---
@@ -2178,8 +2302,8 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
     `WHOOP_CONFIG.CLIENT_ID binds to user's registered Whoop Client ID`
   );
   assert(
-    WHOOP_CONFIG.CLIENT_SECRET === 'f3f985af0e1113b650b43fe977eb2f22ffb0f008c98e90e5d60ad669d4c365ea',
-    `WHOOP_CONFIG.CLIENT_SECRET binds to user's registered Whoop Client Secret`
+    !('CLIENT_SECRET' in WHOOP_CONFIG),
+    `Whoop client secret is never shipped in the client bundle`
   );
   assert(
     WHOOP_CONFIG.AUTHORIZATION_URI === 'https://api.prod.whoop.com/oauth/oauth2/auth' &&
@@ -2209,7 +2333,7 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
     whoopAmberLog.hrvRmssd <= 40 && whoopAmberLog.sleepHours <= 5.5,
     `Whoop 4.0 sync generates Red Recovery metrics (HRV <= 40ms, Sleep <= 5.5h) for Amber Shield recovery`
   );
-  const whoopCoordinatorLog = await syncWearableBiometrics('whoop', { forcedState: 'Primed' });
+  const whoopCoordinatorLog = await syncWearableBiometrics('whoop', { forcedState: 'Primed', allowSimulation: true });
   assert(
     whoopCoordinatorLog.hrvRmssd >= 70 && whoopCoordinatorLog.restingHr <= 50,
     `syncWearableBiometrics coordinates Whoop provider correctly for Primed state`
@@ -2295,13 +2419,22 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
     `Universal coordinator exposes metadata for Fitbit, Whoop, and Android Health Connect`
   );
 
-  const fitbitResult = await syncWearableBiometrics('fitbit', { forcedState: 'Primed' });
+  // Real syncs never fabricate readings: without a connection they fail with a clear message.
+  let unconnectedError = '';
+  try {
+    await syncWearableBiometrics('fitbit');
+  } catch (e: any) {
+    unconnectedError = e?.message || '';
+  }
+  assert(/Connect your Pixel Watch or Fitbit/.test(unconnectedError), 'Sync without a connected watch fails instead of inventing data');
+
+  const fitbitResult = await syncWearableBiometrics('fitbit', { forcedState: 'Primed', allowSimulation: true });
   assert(fitbitResult.hrvRmssd > 0 && fitbitResult.restingHr > 0, `syncWearableBiometrics('fitbit') succeeds`);
 
-  const whoopResult = await syncWearableBiometrics('whoop', { forcedState: 'Normal' });
+  const whoopResult = await syncWearableBiometrics('whoop', { forcedState: 'Normal', allowSimulation: true });
   assert(whoopResult.hrvRmssd > 0 && whoopResult.restingHr > 0, `syncWearableBiometrics('whoop') succeeds`);
 
-  const hcResult = await syncWearableBiometrics('health_connect', { forcedState: 'Amber Shield' });
+  const hcResult = await syncWearableBiometrics('health_connect', { forcedState: 'Amber Shield', allowSimulation: true });
   assert(hcResult.hrvRmssd > 0 && hcResult.restingHr > 0, `syncWearableBiometrics('health_connect') succeeds`);
 
   const profileNone: UserProfile = { ...testProfile, fitbitConnected: false, whoopConnected: false, healthConnectConnected: false, wearableSource: null };
@@ -2904,7 +3037,8 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
   assert(
     smartPrinciple !== undefined &&
       smartPrinciple.title.includes('Smart Device Integration') &&
-      Boolean(smartPrinciple.formula?.includes('Bluetooth Smart Scales')),
+      Boolean(smartPrinciple.formula?.includes('Fitbit')) &&
+      !smartPrinciple.formula?.includes('Bluetooth'),
     'Knowledge Graph codifies sp-smart-device-integration for friction-free data ingestion'
   );
 
@@ -2973,7 +3107,8 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
   });
   assert(
     smartDeviceAnswer.message.text.toLowerCase().includes('friction-free') &&
-      smartDeviceAnswer.message.text.includes('Bluetooth smart scales'),
+      smartDeviceAnswer.message.text.includes('Fitbit') &&
+      !smartDeviceAnswer.message.text.includes('Bluetooth'),
     'AI Assistant explains friction-free smart scale and measuring device telemetry'
   );
 
@@ -2983,14 +3118,12 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
     'utf-8'
   );
   assert(
-    freshOnboardingModalSrc.includes('What Treise Does for You') &&
-      freshOnboardingModalSrc.includes('Automated Planning • You Just Show Up') &&
-      freshOnboardingModalSrc.includes('How to Measure Real Progress') &&
-      freshOnboardingModalSrc.includes('Morning Weigh-Ins &amp; Circumference Measurements') &&
-      freshOnboardingModalSrc.includes('radically different with your shirt off') &&
-      freshOnboardingModalSrc.includes('Friction-Free Smart Devices') &&
-      freshOnboardingModalSrc.includes('Bluetooth smart scales'),
-    'OnboardingModal Step 1 presents complete context on automated planning, morning weigh-ins, body recomposition, and smart scales'
+    freshOnboardingModalSrc.includes('we do the math') &&
+      freshOnboardingModalSrc.includes('Track real progress') &&
+      freshOnboardingModalSrc.includes('7-day average') &&
+      freshOnboardingModalSrc.includes('waist shrinks') &&
+      !freshOnboardingModalSrc.includes('Bluetooth smart scales'),
+    'OnboardingModal Step 1 briefly covers automated planning, morning weigh-ins and body recomposition, with no unbuilt smart-scale claims'
   );
 
   // 30. 6-Week Muscle Building Program, Wave Sets, Warm-Up Calculator, Giant Sets & Knowledge Base
@@ -3052,7 +3185,226 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
   assert(qSquat10 !== null && qSquat10.id === 'sp-6wk-muscle-building-plan', 'queryExerciseScienceKnowledgeBase returns sp-6wk-muscle-building-plan for Saturday 10-set squats');
   assert(q6Wk?.academicCitation.includes('Schoenfeld') ?? false, 'Knowledge principle cites Schoenfeld on giant sets and mechanical tension');
 
-  console.log('\nALL 30 ENGINE, GOVERNANCE, DESIGN HEURISTICS, TYPOGRAPHY, WEARABLES, WHOOP STRAIN, GOOGLE AUTH, ONBOARDING CONTEXT, 6-WEEK PROGRAM & TENSOR AI SUITES PASSED SUCCESSFULLY! 🎯');
+  // ============================================================================
+  // 31. Recovery Gate, Weight Carry-Over, Units, Local Dates & Honest Data
+  // ============================================================================
+  console.log('\n[31. Recovery Gate, Weight Carry-Over, Units, Local Dates & Honest Data]');
+  {
+    const HOUR = 60 * 60 * 1000;
+    const now = new Date(2026, 9, 22, 18, 0, 0).getTime(); // Thu 6 PM local
+    const mkDone = (num: number, hoursAgo: number, edit?: (w: WorkoutSession) => void): WorkoutSession => {
+      const w = generate6WeekMuscleBuildingWorkout(num, 80);
+      const at = new Date(now - hoursAgo * HOUR);
+      w.completed = true;
+      w.completedAt = at.toISOString();
+      w.date = localDateString(at);
+      w.exercises.forEach((ex) => ex.sets.forEach((st) => (st.completed = true)));
+      edit?.(w);
+      return w;
+    };
+
+    // A. Finishing Day 1 today holds Day 2 until muscles recover (and never before tomorrow).
+    const day1 = mkDone(1, 0.5);
+    const day2 = generate6WeekMuscleBuildingWorkout(2, 80);
+    const gateToday = evaluateSessionRecovery(day2, [day1], SEED_EXERCISES, now);
+    assert(
+      !gateToday.isReady && gateToday.trainedToday && (gateToday.readyAt ?? 0) > now + 6 * HOUR,
+      'After finishing Day 1, Day 2 is not offered today: it waits for recovery'
+    );
+    const day3 = generate6WeekMuscleBuildingWorkout(3, 80);
+    const gateChest = evaluateSessionRecovery(day3, [mkDone(1, 26)], SEED_EXERCISES, now);
+    assert(
+      !gateChest.isReady && gateChest.limitingMuscles.some((m) => m.muscle === 'Chest'),
+      'Chest & Back again 26h later is held back because chest is still recovering'
+    );
+    const gateLater = evaluateSessionRecovery(day3, [mkDone(1, 96)], SEED_EXERCISES, now);
+    assert(gateLater.isReady, 'Four days later the same session is ready');
+    assert(getNextProgramWorkoutNumber([day1]) === 2, 'Next 6-week plan workout follows the last completed one');
+    assert(getNextProgramWorkoutNumber([mkDone(24, 1)]) === 1, 'The plan wraps from workout 24 back to 1');
+
+    // B. Exact weight carry-over: same exercise next time uses what was actually lifted.
+    const liftedDay1 = mkDone(1, 72, (w) => {
+      const g = w.exercises.find((e) => e.exerciseId === 'ex-guillotine-press')!;
+      g.sets.forEach((st) => {
+        st.actualWeightKg = 40;
+        st.actualReps = 12;
+        st.actualRir = 2;
+      });
+    });
+    const personalized = personalizeSessionLoads(generate6WeekMuscleBuildingWorkout(3, 80), {
+      history: [liftedDay1],
+      bodyweightKg: 80,
+      templateDefaultFor: getTemplateDefaultWeight,
+      templateReferenceLevel: 'intermediate',
+      carryOverExactHistory: true,
+    });
+    const guillotine = personalized.exercises.find((e) => e.exerciseId === 'ex-guillotine-press')!;
+    assert(
+      guillotine.sets.find((st) => !st.isWarmup)!.targetWeightKg === 42.5,
+      `Guillotine press carries over 40 kg x 12 (all reps hit) to 42.5 kg next time (got ${guillotine.sets[0].targetWeightKg})`
+    );
+
+    // C. Never-done exercises scale by what the athlete has lifted elsewhere, not template weights.
+    // An athlete who lifted ~60% of every template weight on Day 1.
+    const lighterDay1 = mkDone(1, 72, (w) =>
+      w.exercises.forEach((ex) =>
+        ex.sets.forEach((st) => {
+          st.actualWeightKg = Math.round(st.targetWeightKg * 0.6 * 2) / 2;
+        })
+      )
+    );
+    const day2Personalized = personalizeSessionLoads(generate6WeekMuscleBuildingWorkout(2, 80), {
+      history: [lighterDay1],
+      bodyweightKg: 80,
+      templateDefaultFor: getTemplateDefaultWeight,
+      templateReferenceLevel: 'intermediate',
+      carryOverExactHistory: true,
+    });
+    const btn = day2Personalized.exercises.find((e) => e.exerciseId === 'ex-btn-press')!;
+    assert(
+      btn.sets[0].targetWeightKg <= 30,
+      `Behind-the-neck press is scaled down from the 45 kg template for a lighter lifter (got ${btn.sets[0].targetWeightKg} kg)`
+    );
+
+    // C2. A loaded exercise saved with no weight (old swaps) gets a calibrated starting weight.
+    const weightlessDay2 = generate6WeekMuscleBuildingWorkout(2, 80);
+    weightlessDay2.exercises[1] = {
+      ...weightlessDay2.exercises[1],
+      exerciseId: 'ex-ohp',
+      equipment: 'barbell',
+      sets: weightlessDay2.exercises[1].sets.map((st) => ({ ...st, targetWeightKg: 0, actualWeightKg: 0 })),
+    };
+    const repairedOhp = personalizeSessionLoads(weightlessDay2, {
+      history: [],
+      bodyweightKg: 82,
+      experienceLevel: 'new',
+      templateDefaultFor: getTemplateDefaultWeight,
+      templateReferenceLevel: 'intermediate',
+    }).exercises[1];
+    assert(
+      repairedOhp.sets[0].targetWeightKg > 10 && repairedOhp.sets[0].targetWeightKg < 57.5,
+      `A weightless overhead press gets a scaled starting weight (got ${repairedOhp.sets[0].targetWeightKg} kg)`
+    );
+
+    const borrowedCableCurl = getTemplateDefaultWeight('ex-cable-curl');
+    assert(
+      borrowedCableCurl !== undefined && borrowedCableCurl > 0 && getTemplateDefaultWeight('ex-pushup') === undefined,
+      `Exercises outside the templates borrow a default from the same movement (cable curl ${borrowedCableCurl} kg); bodyweight moves don't`
+    );
+
+    // D. New athletes get calibrated starting weights.
+    const beginnerPush = personalizeSessionLoads(
+      generateSmartWorkoutSession('Push', [], SEED_EXERCISES, 'Normal', 1, 'gym', [], 'Lean Bulk', 70),
+      { history: [], bodyweightKg: 70, experienceLevel: 'new', gender: 'female', templateDefaultFor: getTemplateDefaultWeight }
+    );
+    const beginnerBench = beginnerPush.exercises.find((e) => e.exerciseId === 'ex-bench-press')!;
+    assert(
+      beginnerBench.sets.find((st) => !st.isWarmup)!.targetWeightKg <= 30,
+      `A new 70 kg female lifter is not prescribed the 92.5 kg template bench (got ${beginnerBench.sets.find((st) => !st.isWarmup)!.targetWeightKg} kg)`
+    );
+
+    // E. Units and dates.
+    assert(Math.abs(snapLoadKg(92.5, 'lb', 'barbell') * 2.2046226218 - 205) < 0.01, '92.5 kg snaps to 205 lb for lb users');
+    assert(formatWeight(92.5, 'lb') === '204 lb' && formatWeight(92.5, 'kg') === '92.5 kg', 'Weights format in the athlete unit');
+    const lateEvening = new Date(2026, 9, 22, 23, 30);
+    assert(localDateString(lateEvening) === '2026-10-22', 'Late-evening dates stay on the local day (no UTC rollover)');
+
+    // F. No fabricated pillar maxes for lifts never logged.
+    const pillars = calculateBestPillarE1rms([liftedDay1], 80);
+    assert(pillars.Squat === 0 && pillars.Hinge === 0, 'Squat and deadlift stay empty until actually logged');
+  }
+
+  {
+    const mk = (hoursAgo: number, kg: number): WorkoutSession => {
+      const w = generate6WeekMuscleBuildingWorkout(1, 80);
+      w.completed = true;
+      w.completedAt = new Date(Date.now() - hoursAgo * 3600e3).toISOString();
+      w.exercises.forEach((ex) => ex.sets.forEach((st) => { st.completed = true; if (ex.exerciseId === 'ex-guillotine-press') st.actualWeightKg = kg; }));
+      return w;
+    };
+    const summary = buildProgressSummary([mk(100, 40), mk(4, 42.5)], 'kg');
+    assert(/2 workouts/.test(summary) && /Guillotine press: 40 kg → 42.5 kg/.test(summary), `Progress summary reports real lift changes (${summary.split('\n')[1]})`);
+  }
+
+  // ============================================================================
+  // 32. Set Completion, Workout Completion & Wearable Token Rotation
+  // ============================================================================
+  console.log('\n[32. Set Completion, Workout Completion & Wearable Token Rotation]');
+  {
+    const mkHistoryWith = (exerciseId: string, weightKg: number, reps: number): WorkoutSession => {
+      const w = generate6WeekMuscleBuildingWorkout(1, 80);
+      w.completed = true;
+      w.completedAt = new Date(Date.now() - 72 * 3600e3).toISOString();
+      w.exercises.forEach((ex) =>
+        ex.sets.forEach((st) => {
+          st.completed = true;
+          if (ex.exerciseId === exerciseId) {
+            st.actualWeightKg = weightKg;
+            st.actualReps = reps;
+          }
+        })
+      );
+      return w;
+    };
+    const plan = generate6WeekMuscleBuildingWorkout(1, 80);
+    const a1 = plan.exercises[0]; // superset A1 -> 0 s rest
+    const b2 = plan.exercises.find((e) => e.orderCode === 'B2')!;
+    assert(planRestAfterSet(plan, a1, a1.sets[0].id).seconds === 0, 'Superset first exercise goes straight to its pair (no rest timer)');
+    const b2Rest = planRestAfterSet(plan, b2, b2.sets[0].id);
+    assert(
+      b2Rest.seconds === 60 && b2Rest.context.nextLabel === 'set 2 of 4' && b2Rest.context.exerciseName === b2.name,
+      `Rest timer is labelled with the exercise and next set (${b2Rest.context.nextLabel})`
+    );
+
+    // Per-set XP: a PR pays once, and re-ticking the same set pays nothing.
+    const prev = mkHistoryWith('ex-guillotine-press', 40, 12);
+    const live = generate6WeekMuscleBuildingWorkout(3, 80);
+    const g = live.exercises.find((e) => e.exerciseId === 'ex-guillotine-press')!;
+    const prSet = { ...g.sets[0], completed: true, actualWeightKg: 42.5, actualReps: 12 };
+    const liveWithSet = { ...live, exercises: live.exercises.map((e) => (e.id === g.id ? { ...e, sets: [prSet, ...e.sets.slice(1)] } : e)) };
+    const award = evaluateSetProgressAward(liveWithSet, [prev], g, prSet);
+    assert(Boolean(award && award.amount > 0), 'A heavier set than last session earns progress XP');
+    const again = evaluateSetProgressAward({ ...liveWithSet, xpAwardedSetIds: [prSet.id] }, [prev], g, prSet);
+    assert(again === null, 'Unticking and re-ticking the same set does not pay XP twice');
+    const secondSet = { ...g.sets[1], completed: true, actualWeightKg: 42.5, actualReps: 12 };
+    const both = { ...live, exercises: live.exercises.map((e) => (e.id === g.id ? { ...e, sets: [prSet, secondSet, ...e.sets.slice(2)] } : e)) };
+    assert(evaluateSetProgressAward(both, [prev], g, secondSet) === null, 'Repeating the same PR on the next set pays nothing');
+
+    // Workout completion: measured values only, plan week follows the workout number.
+    const done = completeWorkout({
+      activeWorkout: { ...plan, exercises: plan.exercises.map((e) => ({ ...e, sets: e.sets.map((st) => ({ ...st, completed: true })) })) },
+      history: [],
+      profile: { ...NEW_USER_PROFILE, programType: 'muscle_building_6wk', mesocycleWeek: 1 },
+      readiness: { state: 'Normal', score: 0, xpMultiplier: 1 },
+      bodyweightKg: 80,
+    });
+    assert(
+      done.completedSession.avgHeartRate === undefined && done.completedSession.kilojoules === undefined,
+      'Completed workouts store no estimated heart rate or energy'
+    );
+    assert(done.completionAward.amount === 300 && done.strengthAdvanceAward === null, 'Day 1 earns 300 XP and no first-log rank-up');
+    assert(done.nextMesocycleWeek === 1 && getNextProgramWorkoutNumber(done.nextHistory) === 2, 'After plan workout 1 the plan moves to workout 2 in week 1');
+
+    // Wearable token rotation: refreshed tokens from the proxy reach the app.
+    const received: string[] = [];
+    const unsubscribe = onWearableTokensRefreshed((u) => received.push(`${u.provider}:${u.accessToken}:${u.refreshToken}`));
+    const realFetch = (globalThis as any).fetch;
+    (globalThis as any).fetch = async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        success: true,
+        biometrics: { hrvRmssd: 60, restingHr: 52 },
+        refreshedTokens: { accessToken: 'new-access', refreshToken: 'new-refresh', expiresIn: 3600 },
+      }),
+    });
+    await fetchWhoopDailyBiometrics('old-access', '2026-10-22', 'old-refresh');
+    (globalThis as any).fetch = realFetch;
+    unsubscribe();
+    assert(received.includes('whoop:new-access:new-refresh'), 'Rotated Whoop tokens are published so the profile saves them');
+  }
+
+  console.log('\nALL 32 ENGINE, GOVERNANCE, DESIGN HEURISTICS, TYPOGRAPHY, WEARABLES, WHOOP STRAIN, GOOGLE AUTH, ONBOARDING CONTEXT, 6-WEEK PROGRAM & TENSOR AI SUITES PASSED SUCCESSFULLY! 🎯');
 })().catch((err) => {
   console.error('Test Suite Failed:', err);
   if (typeof process !== 'undefined' && process.exit) {

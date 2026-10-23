@@ -5,6 +5,7 @@ import {
   WorkoutSession,
   WorkoutSet,
 } from './types';
+import { localDateString } from '../utils/date';
 
 export const WARMUP_PROTOCOL: WarmupProtocol = {
   description:
@@ -138,7 +139,7 @@ export const PROGRAM_PHASES: ProgramPhaseMeta[] = [
     name: 'Phase 1: Antagonist Supersets & Volume Foundation',
     weeks: [1, 2],
     description:
-      'High-volume 4-set antagonist supersets for Chest/Back and straight sets + arm supersets for Delts/Arms, paired with 10x10 and 10x9 Squat Saturdays.',
+      'High-volume 4-set antagonist supersets for Chest/Back and straight sets + arm supersets for Delts/Arms, paired with 10x10 and 10x9 squat leg days.',
     intensityFocus: 'Volume accumulation, controlled eccentric tempo (3–4s), and structural work capacity.',
   },
   {
@@ -146,7 +147,7 @@ export const PROGRAM_PHASES: ProgramPhaseMeta[] = [
     name: 'Phase 2: High-Intensity Overload (Rest-Pause & Drop-Sets)',
     weeks: [3, 4],
     description:
-      'Low-volume (2 working sets) taken beyond mechanical failure using double/triple rest-pause sets, triple drop-sets, and heavy partial iso-holds, paired with 10x8 Squat Saturdays.',
+      'Low-volume (2 working sets) taken beyond mechanical failure using double/triple rest-pause sets, triple drop-sets, and heavy partial iso-holds, paired with 10x8 squat leg days.',
     intensityFocus: 'High mechanical tension, motor unit recruitment past technical failure, and 10x8 squats.',
   },
   {
@@ -154,7 +155,7 @@ export const PROGRAM_PHASES: ProgramPhaseMeta[] = [
     name: 'Phase 3: High-Density Giant Sets & Tri-Sets',
     weeks: [5, 6],
     description:
-      'Zero-rest 4-exercise Giant Sets and 3-exercise Tri-Sets to maximize metabolic stress and muscular density, paired with heavy 10x6 Squat Saturdays.',
+      'Zero-rest 4-exercise Giant Sets and 3-exercise Tri-Sets to maximize metabolic stress and muscular density, paired with heavy 10x6 squat leg days.',
     intensityFocus: 'Muscular density, zero-rest intra-group transitions, peak lactate tolerance, and 10x6 heavy squats.',
   },
 ];
@@ -192,7 +193,7 @@ export const MUSCLE_BUILDING_PROGRAM_META = {
   name: '6-Week Muscle Building Plan',
   subtitle: 'High-Volume Hypertrophy, High-Intensity Failure & Giant-Set Density',
   description:
-    'An intensive 6-week, 24-workout hypertrophy program structured into three 2-week meso-cycles: Phase 1 builds volume through antagonist supersets; Phase 2 drives mechanical and metabolic failure via low-volume rest-pause and triple drop-sets; Phase 3 maximizes muscular density with 3- and 4-exercise tri-sets and giant sets. Every Saturday anchors lower-body development with a 10-set Squat linear intensification progression (10x10 down to 10x6) paired with core work and HIIT sprints.',
+    'An intensive 6-week, 24-workout hypertrophy program structured into three 2-week meso-cycles: Phase 1 builds volume through antagonist supersets; Phase 2 drives mechanical and metabolic failure via low-volume rest-pause and triple drop-sets; Phase 3 maximizes muscular density with 3- and 4-exercise tri-sets and giant sets. Each weekly leg day anchors lower-body development with a 10-set Squat linear intensification progression (10x10 down to 10x6) paired with core work and HIIT sprints.',
   durationWeeks: 6,
   daysPerWeek: 4,
   scheduleDays: ['Monday', 'Wednesday', 'Friday', 'Saturday'],
@@ -710,7 +711,7 @@ export function generate6WeekMuscleBuildingWorkout(
     WORKOUT_TEMPLATES_24.find((w) => w.workoutNumber === workoutNumber) ||
     WORKOUT_TEMPLATES_24[0];
 
-  const today = new Date().toISOString().split('T')[0];
+  const today = localDateString();
 
   const exercises: ExerciseSession[] = tmpl.exercises.map((e, idx) => {
     const notesArray = EXERCISE_NOTES_MAP[e.name] || [];
@@ -805,5 +806,26 @@ export function generate6WeekMuscleBuildingWorkout(
     readinessZScore: 0.2,
     xpEarned: 0,
     location: 'gym',
+    programWorkoutNumber: tmpl.workoutNumber,
   };
+}
+
+/** Plan position of a session (1-24), including sessions saved before the field existed. */
+export function getProgramWorkoutNumber(w: WorkoutSession): number | undefined {
+  if (w.programWorkoutNumber) return w.programWorkoutNumber;
+  const match = /^workout-6wk-(\d+)-/.exec(w.id);
+  return match ? parseInt(match[1], 10) : undefined;
+}
+
+/**
+ * Next workout in the 6-Week plan: the one after the most recently completed plan workout,
+ * wrapping back to Workout 1 after Workout 24. Non-plan sessions are ignored.
+ */
+export function getNextProgramWorkoutNumber(workouts: WorkoutSession[]): number {
+  const done = workouts
+    .filter((w) => w.completed && getProgramWorkoutNumber(w) !== undefined)
+    .sort((a, b) => (b.completedAt || b.date).localeCompare(a.completedAt || a.date));
+  const last = done[0] ? getProgramWorkoutNumber(done[0]) : undefined;
+  if (!last) return 1;
+  return last >= WORKOUT_TEMPLATES_24.length ? 1 : last + 1;
 }

@@ -7,13 +7,31 @@ import {
   UserProfile,
   WorkoutSession,
 } from '../../engine/types';
-import { processAssistantMessage } from '../../services/aiAssistantService';
-import { getTensorHardwareProfile } from '../../services/tensorAIService';
-import { TensorHardwareProfile } from '../../engine/tensorAI';
+import { buildCoachSystemPrompt, processAssistantMessage } from '../../services/aiAssistantService';
+import {
+  getOnDeviceModelStatus,
+  prepareOnDeviceModel,
+  registerFallbackOnDeviceModel,
+  warmUpOnDeviceModel,
+} from '../../services/onDeviceModel';
+import {
+  dismissGpuModelOffer,
+  getGpuModelId,
+  GPU_MODEL_DOWNLOAD_LABEL,
+  isGpuModelOfferDismissed,
+  isGpuModelReady,
+  loadGpuModel,
+  primeGpuModel,
+  promptGpuModel,
+} from '../../services/gpuModel';
+
+// Where Chrome doesn't expose Gemini Nano (Chrome on Android), the coach can use a model that
+// runs on the phone's GPU once the athlete has chosen to download it.
+registerFallbackOnDeviceModel({ isReady: isGpuModelReady, prompt: promptGpuModel });
+
+type DeviceCoachOffer = 'hidden' | 'offer' | 'downloading' | 'ready' | 'error';
 import { triggerHaptic } from '../../utils/haptics';
 import {
-  Cpu,
-  Zap,
   ShieldCheck,
   X,
   Send,
@@ -41,6 +59,19 @@ interface AICoachChatModalProps {
   onViewAllEquipment?: () => void;
 }
 
+/** Renders **bold** segments as <strong> (React text nodes only, never raw HTML). */
+function renderBold(text: string): React.ReactNode[] {
+  return text.split(/(\*\*[^*]+\*\*)/g).map((part, i) =>
+    part.startsWith('**') && part.endsWith('**') ? (
+      <strong key={i} className="text-white font-semibold">
+        {part.slice(2, -2)}
+      </strong>
+    ) : (
+      <React.Fragment key={i}>{part}</React.Fragment>
+    )
+  );
+}
+
 export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
   profile,
   activeWorkout,
@@ -54,65 +85,84 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
   onApplyAction,
   onViewAllEquipment,
 }) => {
-  const [hardware, setHardware] = useState<TensorHardwareProfile>({
-    isPixelDevice: false,
-    chipModel: 'Generic / Standard',
-    backend: 'WASM SIMD Neural Engine',
-    deviceModel: 'Local Device',
-    inferenceLatencyMs: 8,
-    isHardwareAccelerated: false,
-    isOnDevicePrivate: true,
-    tpuCores: 0,
-    tpuName: 'CPU Engine',
-    architectureDetails: 'Standard on-device local computation (Privacy Preserved)',
-  });
-
   const [inputMessage, setInputMessage] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [messages, setMessages] = useState<AssistantChatMessage[]>([]);
+  const [streamingText, setStreamingText] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [deviceCoach, setDeviceCoach] = useState<DeviceCoachOffer>('hidden');
+  const coachContext = () => ({
+    userMessage: '',
+    profile,
+    activeWorkout,
+    workouts,
+    biometrics,
+    exerciseCatalog,
+    bodyweightEmaKg,
+    readinessState,
+    weeklyVolume,
+  });
+  const [deviceCoachProgress, setDeviceCoachProgress] = useState(0);
 
-  // Initialize hardware profile & starter greeting
+  // Offer the on-device GPU model only where Gemini Nano isn't available and the phone can run it.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if ((await getOnDeviceModelStatus()) === 'available') return;
+      if (await isGpuModelReady()) {
+        // Load the model and read the coach instructions while the athlete reads and types.
+        loadGpuModel()
+          .then(() => primeGpuModel(buildCoachSystemPrompt(coachContext())))
+          .catch(() => undefined);
+        return;
+      }
+      if (isGpuModelOfferDismissed() || !(await getGpuModelId())) return;
+      if (!cancelled) setDeviceCoach('offer');
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const handleDownloadDeviceCoach = () => {
+    triggerHaptic('medium');
+    setDeviceCoach('downloading');
+    setDeviceCoachProgress(0);
+    loadGpuModel((fraction) => setDeviceCoachProgress(fraction))
+      .then(() => {
+        setDeviceCoach('ready');
+        triggerHaptic('success');
+        primeGpuModel(buildCoachSystemPrompt(coachContext())).catch(() => undefined);
+      })
+      .catch((err) => {
+        console.warn('On-device coach download failed:', err);
+        setDeviceCoach('error');
+      });
+  };
+
+  // Starter greeting
   useEffect(() => {
     let isMounted = true;
-    getTensorHardwareProfile().then((hw) => {
-      if (isMounted) {
-        setHardware(hw);
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === 'msg-welcome'
-              ? {
-                  ...m,
-                  isTensorAccelerated: hw.isPixelDevice,
-                  backend: hw.isPixelDevice
-                    ? `${hw.chipModel} TPU • On-Device`
-                    : 'On-Device Engine',
-                }
-              : m
-          )
-        );
-      }
-    });
+    // Load the on-device model while the athlete reads the greeting (no-op if unsupported).
+    warmUpOnDeviceModel().catch(() => undefined);
 
     // Initial contextual welcome message
-    const welcomeText = `Hey! I'm your AI Coach. You're currently on Week ${
-      profile.mesocycleWeek || 3
-    } training ${activeWorkout?.splitDay || 'Push'} Day (${activeWorkout?.name || 'Workout'}) in ${
+    const welcomeText = `Hey! I'm your AI Coach. You're on week ${
+      profile.mesocycleWeek || 1
+    } of 6, and up next is ${activeWorkout?.name || 'your workout'} (${
       activeWorkout?.location === 'travel'
         ? 'Bodyweight mode'
         : activeWorkout?.location === 'home'
         ? 'At Home'
-        : 'Gym'
-    }. You can ask me to adapt your plan for upcoming travel, register new home equipment, switch your split, or analyze your joints and recovery.`;
+        : 'gym'
+    }). Ask me about today's weights, swapping an exercise, travelling, new home equipment, or how your recovery looks.`;
 
     const starterMessage: AssistantChatMessage = {
       id: 'msg-welcome',
       sender: 'assistant',
       text: welcomeText,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      backend: 'On-Device Engine',
-      latencyMs: 4,
-      isTensorAccelerated: false,
     };
 
     setMessages([starterMessage]);
@@ -143,6 +193,8 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
     setMessages((prev) => [...prev, userMsg]);
     setInputMessage('');
     setIsProcessing(true);
+    // On Pixel phones, quietly get the on-device model ready for future answers.
+    prepareOnDeviceModel().catch(() => undefined);
 
     try {
       const result = await processAssistantMessage({
@@ -155,6 +207,7 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
         bodyweightEmaKg,
         readinessState,
         weeklyVolume,
+        onPartial: (textSoFar) => setStreamingText(textSoFar),
       });
 
       setMessages((prev) => [...prev, result.message]);
@@ -168,60 +221,59 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
       const errorMsg: AssistantChatMessage = {
         id: `err-${Date.now()}`,
         sender: 'assistant',
-        text: 'Sorry, I encountered an issue analyzing that request locally. Please try again.',
+        text: "Sorry, I couldn't answer that just now. Please try again.",
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       };
       setMessages((prev) => [...prev, errorMsg]);
     } finally {
       setIsProcessing(false);
+      setStreamingText(null);
+      // Keep the message box ready for a follow-up (after it re-enables on the next render).
+      setTimeout(() => inputRef.current?.focus(), 0);
     }
   };
 
+  // Athlete-focused shortcuts, built from today's actual workout.
+  const firstLoadedExercise = activeWorkout?.exercises.find((e) => e.equipment !== 'bodyweight')?.name;
   const quickPrompts = [
     {
-      label: "Today's Briefing",
-      text: "Give me a tactical briefing for today's workout and targets",
+      label: "Today's briefing",
+      text: "Give me a briefing for today's workout and targets",
       icon: Sparkles,
     },
+    ...(firstLoadedExercise
+      ? [
+          {
+            label: `${firstLoadedExercise.split(' ').slice(0, 2).join(' ')} target`,
+            text: `What is my target weight and reps on ${firstLoadedExercise} today?`,
+            icon: Dumbbell,
+          },
+        ]
+      : []),
     {
-      label: 'Bench Target',
-      text: 'What is my prescribed weight and rep target on bench press today?',
+      label: 'Warm-up plan',
+      text: 'How should I warm up today?',
       icon: Dumbbell,
     },
     {
-      label: 'Away in Week 5',
-      text: "I'll be away with work during week 5 of my program",
+      label: "I'm travelling",
+      text: "I'll be away travelling next week",
       icon: Plane,
     },
     {
-      label: 'Got a Pull-Up Bar',
+      label: 'Got a pull-up bar',
       text: 'I got a new pull-up bar for my home setup',
       icon: Dumbbell,
     },
     {
-      label: 'Check Shoulder Strain',
-      text: 'How is my shoulder recovery and joint load looking?',
+      label: 'How is my recovery?',
+      text: 'How is my recovery looking?',
       icon: ShieldCheck,
     },
     {
-      label: 'Why 1.18x DB Multiplier?',
-      text: 'Why does dumbbell bench press use a 1.18x multiplier?',
-      icon: FlaskConical,
-    },
-    {
-      label: 'How Does DOTS Work?',
-      text: 'What is the formula and rationale for the DOTS score?',
-      icon: FlaskConical,
-    },
-    {
-      label: 'Switch to Upper/Lower',
-      text: 'Switch my program split to Upper / Lower',
+      label: 'Take a rest day',
+      text: "I can't train today, take a rest day",
       icon: Layers,
-    },
-    {
-      label: 'Take a Rest Day',
-      text: "I can't train today, log a rest day and shift my workout",
-      icon: Calendar,
     },
   ];
 
@@ -236,39 +288,16 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
         {/* Header */}
         <div className="p-4 sm:p-5 bg-[#141824] flex items-center justify-between">
           <div className="flex items-center space-x-3">
-            <div
-              className={`w-10 h-10 rounded-2xl flex items-center justify-center transition-colors ${
-                hardware.isPixelDevice
-                  ? 'bg-brand-primary/20 text-brand-primary'
-                  : 'bg-brand-primary/15 text-brand-primary'
-              }`}
-            >
-              <Cpu className="w-5 h-5 stroke-[2]" />
+            <div className="w-10 h-10 rounded-2xl flex items-center justify-center bg-brand-primary/15 text-brand-primary">
+              <Sparkles className="w-5 h-5 stroke-[2]" aria-hidden="true" />
             </div>
             <div>
-              <div className="flex items-center space-x-2">
-                <h3 id="ai-coach-title" className="font-bold text-sm text-white tracking-tight">
-                  AI Coach
-                </h3>
-                {hardware.isPixelDevice && (
-                  <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-brand-primary/15 text-brand-primary flex items-center gap-1 border border-brand-primary/20">
-                    <Zap className="w-3 h-3 stroke-[2]" />
-                    <span>Tensor Active</span>
-                  </span>
-                )}
-              </div>
+              <h3 id="ai-coach-title" className="font-bold text-sm text-white tracking-tight">
+                AI Coach
+              </h3>
               <p className="text-xs text-slate-400 flex items-center gap-1.5 mt-0.5">
-                {hardware.isPixelDevice ? (
-                  <>
-                    <Zap className="w-3.5 h-3.5 text-brand-primary stroke-[2]" />
-                    <span className="text-slate-300">Hardware Accelerated • Private</span>
-                  </>
-                ) : (
-                  <>
-                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-400 stroke-[2]" />
-                    <span>Private &amp; Personalized</span>
-                  </>
-                )}
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-400 stroke-[2]" aria-hidden="true" />
+                <span>Your chats stay on this phone</span>
               </p>
             </div>
           </div>
@@ -307,6 +336,71 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
 
         {/* Message Thread */}
         <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3.5 no-scrollbar overscroll-contain">
+          {deviceCoach !== 'hidden' && (
+            <div className="p-4 rounded-2xl bg-[#141824] border border-brand-primary/20 space-y-2.5" aria-live="polite">
+              {deviceCoach === 'offer' && (
+                <>
+                  <p className="text-xs font-bold text-white">Get smarter answers on this phone</p>
+                  <p className="text-xs text-slate-300 leading-relaxed">
+                    A one-time download ({GPU_MODEL_DOWNLOAD_LABEL}) lets your coach write full answers right on your
+                    phone, even offline. Your chats never leave it. Use Wi-Fi.
+                  </p>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={handleDownloadDeviceCoach}
+                      className="flex-1 min-h-[44px] rounded-xl bg-white text-slate-950 text-xs font-bold"
+                    >
+                      Download
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        dismissGpuModelOffer();
+                        setDeviceCoach('hidden');
+                      }}
+                      className="min-h-[44px] px-4 rounded-xl bg-white/[0.06] text-slate-300 text-xs font-semibold"
+                    >
+                      Not now
+                    </button>
+                  </div>
+                </>
+              )}
+              {deviceCoach === 'downloading' && (
+                <>
+                  <p className="text-xs font-bold text-white">
+                    Downloading… {Math.round(deviceCoachProgress * 100)}%
+                  </p>
+                  <div
+                    className="h-1.5 rounded-full bg-white/[0.06] overflow-hidden"
+                    role="progressbar"
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={Math.round(deviceCoachProgress * 100)}
+                    aria-label="Coach download progress"
+                  >
+                    <div className="h-full bg-brand-primary rounded-full" style={{ width: `${Math.round(deviceCoachProgress * 100)}%` }} />
+                  </div>
+                  <p className="text-xs text-slate-400">You can keep chatting while this finishes.</p>
+                </>
+              )}
+              {deviceCoach === 'ready' && (
+                <p className="text-xs text-brand-primary font-semibold">Done. Your coach now answers fully on this phone.</p>
+              )}
+              {deviceCoach === 'error' && (
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-xs text-slate-300">The download didn't finish. Check your connection and try again.</p>
+                  <button
+                    type="button"
+                    onClick={handleDownloadDeviceCoach}
+                    className="min-h-[44px] px-3 rounded-xl bg-white/[0.08] text-white text-xs font-bold shrink-0"
+                  >
+                    Retry
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
           {messages.map((msg) => {
             const isUser = msg.sender === 'user';
 
@@ -322,7 +416,7 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
                       : 'bg-[#141824] text-slate-200 rounded-bl-sm space-y-2.5'
                   }`}
                 >
-                  <p className="whitespace-pre-wrap">{msg.text}</p>
+                  <p className="whitespace-pre-wrap">{renderBold(msg.text)}</p>
 
                   {/* Assistant Action Badge if an action was taken */}
                   {!isUser && msg.actionApplied && (
@@ -394,16 +488,9 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
                     </div>
                   )}
 
-                  {/* Message Timestamp & Hardware Acceleration Badge */}
                   {!isUser && (
-                    <div className="flex items-center justify-between text-xs text-slate-400 pt-1">
+                    <div className="text-xs text-slate-400 pt-1">
                       <span>{msg.timestamp}</span>
-                      {msg.isTensorAccelerated && (
-                        <span className="flex items-center gap-1 text-brand-primary text-xs font-semibold">
-                          <Zap className="w-3 h-3 stroke-[2]" />
-                          <span>Hardware Accelerated</span>
-                        </span>
-                      )}
                     </div>
                   )}
                 </div>
@@ -419,12 +506,18 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
 
           {isProcessing && (
             <div className="flex items-start">
-              <div className="max-w-[85%] rounded-2xl p-4 bg-[#141824] text-slate-300 rounded-bl-sm flex items-center space-x-2.5">
-                <div className="w-2 h-2 rounded-full bg-brand-primary animate-ping" />
-                <span className="text-xs font-medium text-slate-300">
-                  Thinking...
-                </span>
-              </div>
+              {streamingText ? (
+                <div className="max-w-[85%] rounded-2xl p-4 bg-[#141824] text-slate-200 rounded-bl-sm text-xs leading-relaxed whitespace-pre-wrap" aria-live="polite">
+                  {renderBold(streamingText)}
+                </div>
+              ) : (
+                <div className="max-w-[85%] rounded-2xl p-4 bg-[#141824] text-slate-300 rounded-bl-sm flex items-center space-x-2.5" aria-live="polite">
+                  <div className="w-2 h-2 rounded-full bg-brand-primary animate-ping" />
+                  <span className="text-xs font-medium text-slate-300">
+                    Thinking…
+                  </span>
+                </div>
+              )}
             </div>
           )}
 
@@ -444,6 +537,7 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
               type="text"
               value={inputMessage}
               onChange={(e) => setInputMessage(e.target.value)}
+              ref={inputRef}
               placeholder="Ask anything or modify your plan..."
               disabled={isProcessing}
               autoComplete="off"

@@ -65,93 +65,67 @@ export function getNextDivisionInfo(currentXp: number): { nextDivision: Leaderbo
   };
 }
 
-// Canonical community leaderboard entries (active verified lifters)
-export const COMMUNITY_ATHLETES: Omit<LeaderboardEntry, 'rank'>[] = [
-  { athleteId: 'ath-1', displayName: 'Marcus Vance', xp: 5820, division: 'Elite', level: 16, streakDays: 32, avatarInitial: 'M', primaryPillar: 'Squat' },
-  { athleteId: 'ath-2', displayName: 'Elena Rostova', xp: 5240, division: 'Elite', level: 15, streakDays: 28, avatarInitial: 'E', primaryPillar: 'Horizontal Push' },
-  { athleteId: 'ath-3', displayName: 'Tariq Al-Mansoor', xp: 4890, division: 'Diamond', level: 14, streakDays: 24, avatarInitial: 'T', primaryPillar: 'Hinge' },
-  { athleteId: 'ath-4', displayName: 'Chloe Dupont', xp: 4420, division: 'Diamond', level: 13, streakDays: 21, avatarInitial: 'C', primaryPillar: 'Vertical Pull' },
-  { athleteId: 'ath-5', displayName: 'Henrik Lindqvist', xp: 3980, division: 'Diamond', level: 12, streakDays: 19, avatarInitial: 'H', primaryPillar: 'Squat' },
-  { athleteId: 'ath-6', displayName: 'Aisha Sharma', xp: 3560, division: 'Diamond', level: 11, streakDays: 17, avatarInitial: 'A', primaryPillar: 'Horizontal Pull' },
-  { athleteId: 'ath-7', displayName: 'Devon Miller', xp: 3240, division: 'Platinum', level: 10, streakDays: 15, avatarInitial: 'D', primaryPillar: 'Horizontal Push' },
-  { athleteId: 'ath-8', displayName: 'Kaito Tanaka', xp: 2950, division: 'Platinum', level: 9, streakDays: 14, avatarInitial: 'K', primaryPillar: 'Hinge' },
-  { athleteId: 'ath-9', displayName: 'Sarah Jenkins', xp: 2680, division: 'Platinum', level: 8, streakDays: 12, avatarInitial: 'S', primaryPillar: 'Vertical Push' },
-  { athleteId: 'ath-10', displayName: 'Mateo Morales', xp: 2480, division: 'Gold', level: 7, streakDays: 11, avatarInitial: 'M', primaryPillar: 'Squat' },
-  { athleteId: 'ath-11', displayName: 'Liam O’Connor', xp: 2180, division: 'Gold', level: 7, streakDays: 9, avatarInitial: 'L', primaryPillar: 'Horizontal Push' },
-  { athleteId: 'ath-12', displayName: 'Zoe Kravitz', xp: 1920, division: 'Gold', level: 6, streakDays: 8, avatarInitial: 'Z', primaryPillar: 'Vertical Pull' },
-  { athleteId: 'ath-13', displayName: 'Noah Kim', xp: 1650, division: 'Gold', level: 5, streakDays: 7, avatarInitial: 'N', primaryPillar: 'Hinge' },
-  { athleteId: 'ath-14', displayName: 'Amara Okafor', xp: 1380, division: 'Silver', level: 4, streakDays: 6, avatarInitial: 'A', primaryPillar: 'Squat' },
-  { athleteId: 'ath-15', displayName: 'Lucas Silva', xp: 1140, division: 'Silver', level: 3, streakDays: 5, avatarInitial: 'L', primaryPillar: 'Horizontal Push' },
-  { athleteId: 'ath-16', displayName: 'Freja Nielsen', xp: 890, division: 'Silver', level: 2, streakDays: 4, avatarInitial: 'F', primaryPillar: 'Horizontal Pull' },
-  { athleteId: 'ath-17', displayName: 'Jordan Reed', xp: 650, division: 'Bronze', level: 2, streakDays: 3, avatarInitial: 'J', primaryPillar: 'Vertical Push' },
-  { athleteId: 'ath-18', displayName: 'Samira Khan', xp: 420, division: 'Bronze', level: 1, streakDays: 2, avatarInitial: 'S', primaryPillar: 'Hinge' },
-  { athleteId: 'ath-19', displayName: 'Oliver Bennett', xp: 240, division: 'Bronze', level: 1, streakDays: 1, avatarInitial: 'O', primaryPillar: 'Squat' },
-];
+export interface DivisionProgress {
+  division: LeaderboardDivision;
+  currentXp: number;
+  divisionMinXp: number;
+  nextDivision: LeaderboardDivision | null;
+  xpToNextDivision: number;
+  progressPercent: number; // 0-100 progress through the current division
+}
 
 /**
- * Builds the complete Leaderboard Summary.
- * If the user has opted in (`profile.leaderboardOptIn === true`),
- * the user is seamlessly inserted at their exact rank according to `profile.currentXp`.
+ * Personal XP division progress. There is no community backend yet, so Treise only
+ * shows the athlete's own standing and never fabricates other athletes.
+ */
+export function getDivisionProgress(currentXp: number): DivisionProgress {
+  const division = getDivisionForXp(currentXp);
+  const tier = DIVISION_THRESHOLDS.find((d) => d.division === division)!;
+  const { nextDivision, gapXp } = getNextDivisionInfo(currentXp);
+  const span = Number.isFinite(tier.maxXp) ? tier.maxXp + 1 - tier.minXp : 1;
+  const progressPercent = nextDivision
+    ? Math.max(0, Math.min(100, Math.round(((currentXp - tier.minXp) / span) * 100)))
+    : 100;
+  return {
+    division,
+    currentXp,
+    divisionMinXp: tier.minXp,
+    nextDivision,
+    xpToNextDivision: gapXp,
+    progressPercent,
+  };
+}
+
+/**
+ * Builds the leaderboard summary. Until a real, verified community service exists the
+ * board only ever contains the current athlete (when opted in) — no sample athletes.
  */
 export function buildLeaderboardSummary(profile: UserProfile): LeaderboardSummary {
   const isOptedIn = Boolean(profile.leaderboardOptIn);
   const userXp = profile.currentXp;
-  const userDiv = getDivisionForXp(userXp);
   const nextDivInfo = getNextDivisionInfo(userXp);
 
-  const rawEntries = [...COMMUNITY_ATHLETES];
-
-  let userEntry: LeaderboardEntry | null = null;
-
-  if (isOptedIn) {
-    userEntry = {
-      rank: 0, // Assigned after sorting
-      athleteId: 'current-user',
-      displayName: profile.leaderboardDisplayName || profile.name || 'You',
-      xp: userXp,
-      division: userDiv,
-      level: profile.level,
-      streakDays: profile.streakDays,
-      isCurrentUser: true,
-      avatarInitial: (profile.name || 'A').charAt(0).toUpperCase(),
-      primaryPillar: 'Horizontal Push',
-    };
-    rawEntries.push(userEntry);
-  }
-
-  // Sort descending by XP
-  rawEntries.sort((a, b) => b.xp - a.xp);
-
-  // Assign sequential 1-indexed ranks
-  const rankedEntries: LeaderboardEntry[] = rawEntries.map((entry, index) => {
-    const rank = index + 1;
-    if (entry.isCurrentUser && userEntry) {
-      userEntry.rank = rank;
-    }
-    return {
-      ...entry,
-      rank,
-    };
-  });
-
-  const currentUserRank = userEntry ? userEntry.rank : null;
-
-  // Calculate XP gap to overtake the athlete right above the user
-  let xpToNextRank = 0;
-  if (currentUserRank && currentUserRank > 1) {
-    const athleteAbove = rankedEntries[currentUserRank - 2];
-    if (athleteAbove) {
-      xpToNextRank = Math.max(1, athleteAbove.xp - userXp + 1);
-    }
-  }
+  const userEntry: LeaderboardEntry | null = isOptedIn
+    ? {
+        rank: 1,
+        athleteId: 'current-user',
+        displayName: profile.leaderboardDisplayName || profile.name || 'You',
+        xp: userXp,
+        division: getDivisionForXp(userXp),
+        level: profile.level,
+        streakDays: profile.streakDays,
+        isCurrentUser: true,
+        avatarInitial: (profile.name || 'A').charAt(0).toUpperCase(),
+      }
+    : null;
 
   return {
-    entries: rankedEntries,
+    entries: userEntry ? [userEntry] : [],
     currentUserEntry: userEntry,
-    userDivision: userDiv,
-    userRank: currentUserRank,
-    totalAthletes: rankedEntries.length,
-    xpToNextRank,
+    userDivision: getDivisionForXp(userXp),
+    userRank: userEntry ? 1 : null,
+    totalAthletes: userEntry ? 1 : 0,
+    xpToNextRank: 0,
     xpToNextDivision: nextDivInfo.gapXp,
     nextDivision: nextDivInfo.nextDivision,
     isOptedIn,

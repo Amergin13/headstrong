@@ -4,6 +4,7 @@ import {
   UserProfile,
   WorkoutSession,
 } from '../engine/types';
+import { localDateString } from '../utils/date';
 
 export const SEED_EXERCISES: ExerciseDefinition[] = [
   // ============================================================================
@@ -1288,7 +1289,7 @@ export const NEW_USER_PROFILE: UserProfile = {
   level: 1,
   currentXp: 0,
   streakDays: 0,
-  lastWorkoutDate: new Date().toISOString().split('T')[0],
+  lastWorkoutDate: undefined,
   wearableSource: null,
   fitbitConnected: false,
   whoopConnected: false,
@@ -1299,7 +1300,7 @@ export const NEW_USER_PROFILE: UserProfile = {
   onboardingCompleted: false,
   activeLocation: 'gym',
   availableLocations: ['gym', 'home', 'travel'],
-  homeEquipment: ['bench', 'dumbbells', 'trx', 'pullup_bar'],
+  homeEquipment: [],
   leaderboardOptIn: false,
   leaderboardDisplayName: 'Athlete',
 };
@@ -1347,7 +1348,7 @@ export function generateSeedBiometrics(): BiometricLog[] {
   for (let i = 0; i <= 42; i++) {
     const d = new Date(baseDate);
     d.setDate(d.getDate() + i);
-    const dateStr = d.toISOString().split('T')[0];
+    const dateStr = localDateString(d);
 
     // Gradual progression with natural day-to-day noise
     const progressFrac = i / 42;
@@ -1407,7 +1408,7 @@ export function generateSeedWorkouts(): WorkoutSession[] {
     if (dayOfWeek === 1 || dayOfWeek === 3 || dayOfWeek === 5 || dayOfWeek === 6) {
       const d = new Date(baseDate);
       d.setDate(d.getDate() + day);
-      const dateStr = d.toISOString().split('T')[0];
+      const dateStr = localDateString(d);
 
       const split = splitCycle[workoutCount % splitCycle.length];
       workoutCount++;
@@ -1739,7 +1740,7 @@ export function generateSeedWorkouts(): WorkoutSession[] {
  * Creates today's default active workout session ready to train in Train Tab
  */
 export function createTodaysActiveWorkout(): WorkoutSession {
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = localDateString();
 
   return {
     id: `active-workout-${Date.now()}`,

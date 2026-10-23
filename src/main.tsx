@@ -3,6 +3,10 @@ import ReactDOM from 'react-dom/client';
 import App from './App';
 import './index.css';
 import { registerSW } from 'virtual:pwa-register';
+import { runStorageMigrations } from './services/storage';
+
+// Upgrade saved data from older versions before the app reads it.
+runStorageMigrations();
 
 // Register PWA service worker with auto-update
 const updateSW = registerSW({

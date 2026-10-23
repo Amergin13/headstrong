@@ -1,14 +1,13 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import {
   BiometricLog,
   ExerciseDefinition,
   ExerciseSession,
-  GoalPhase,
-  ReadinessState,
   TrainingLocation,
   UserProfile,
   WorkoutSession,
   WorkoutSet,
+  MuscleGroup,
   isWearableConnected,
 } from '../../engine/types';
 import { ReadinessEvaluation } from '../../engine/readiness';
@@ -22,14 +21,15 @@ import {
   fetchWhoopWorkoutStrain,
 } from '../../services/whoopService';
 import {
-  TensorCoachingInsight,
-  TensorCoachingInput,
-  TensorHardwareProfile,
-} from '../../engine/tensorAI';
-import {
-  getTensorHardwareProfile,
-  getTensorCoachingInsight,
-} from '../../services/tensorAIService';
+  computeMuscleRecovery,
+  evaluateSessionRecovery,
+  formatReadyTime,
+  MUSCLE_FRIENDLY_NAMES,
+  READY_THRESHOLD,
+} from '../../engine/recovery';
+import { PROGRAM_PHASES } from '../../engine/muscleBuildingProgram';
+import { useUnits } from '../../utils/unitsContext';
+import { PreviousSet } from './SetRow';
 import {
   prescribeDoubleProgression,
   getSessionProgressNarrative,
@@ -38,7 +38,6 @@ import { calculateSubTierQuest } from '../../engine/strengthStandards';
 import {
   calculateE1RM,
   calculateHypertrophyBodyweightReps,
-  formatImplementWeightLabel,
 } from '../../engine/e1rm';
 import { getExerciseBiomechanicalMeta } from '../../engine/knowledgeGraph';
 import {
@@ -48,7 +47,8 @@ import {
   isFirstCompoundForPillar,
 } from '../../engine/warmup';
 import {
-  getHypertrophyQueueRecommendation,
+  getSplitDaysForProgram,
+  SplitDayType,
 } from '../../services/workoutGenerator';
 import {
   CheckCircle2,
@@ -59,6 +59,9 @@ import {
   TrendingUp,
   Calendar,
   History,
+  ChevronRight,
+  Moon,
+  BedDouble,
 } from 'lucide-react';
 import { triggerHaptic } from '../../utils/haptics';
 
@@ -71,7 +74,6 @@ interface TrainTabProps {
   profile: UserProfile;
   exerciseCatalog: ExerciseDefinition[];
   onUpdateWorkout: (updated: WorkoutSession) => void;
-  onSelectReadinessState: (state: ReadinessState) => void;
   onSetCompleted: (
     exerciseName: string,
     setNumber: number,
@@ -82,6 +84,36 @@ interface TrainTabProps {
   onShiftWorkout: () => void;
   onSwitchLocation?: (location: TrainingLocation) => void;
   onOpenWatchSync?: () => void;
+  /** Opens the Program tab (plan overview, weeks, splits). */
+  onOpenProgram?: () => void;
+  /** Swap today's queued session for another split day (standard splits only). */
+  onSwitchSplitDay?: (split: SplitDayType) => void;
+}
+
+/** Primary muscles each split day trains, used to suggest a recovered alternative. */
+const SPLIT_TARGET_MUSCLES: Record<SplitDayType, MuscleGroup[]> = {
+  Push: ['Chest', 'Shoulders', 'Triceps', 'Side Delts'],
+  Pull: ['Back', 'Rear Delts', 'Biceps'],
+  Legs: ['Quads', 'Hamstrings', 'Glutes', 'Calves'],
+  Upper: ['Chest', 'Back', 'Side Delts', 'Biceps'],
+};
+
+/** Working sets from the last completed session of this exact exercise (newest first by finish time). */
+function getPreviousWorkingSets(exerciseId: string, workouts: WorkoutSession[]): PreviousSet[] {
+  const ordered = workouts
+    .filter((w) => w.completed)
+    .sort((a, b) => (b.completedAt || b.date).localeCompare(a.completedAt || a.date));
+  for (const w of ordered) {
+    const ex = w.exercises.find((e) => e.exerciseId === exerciseId);
+    const done = ex?.sets.filter((st) => st.completed && !st.isWarmup && st.setType !== 'warmup') || [];
+    if (done.length > 0) {
+      return done.map((st) => ({
+        weightKg: st.actualWeightKg ?? st.targetWeightKg,
+        reps: st.actualReps ?? st.targetReps,
+      }));
+    }
+  }
+  return [];
 }
 
 const MESO_WEEK_PHASE_NAMES: Record<number, { name: string; rule: string }> = {
@@ -93,12 +125,6 @@ const MESO_WEEK_PHASE_NAMES: Record<number, { name: string; rule: string }> = {
   6: { name: 'Light Recovery Week', rule: 'Half sets • Leave 3–4 easy reps in the tank' },
 };
 
-const GOAL_FRIENDLY_NAME: Record<GoalPhase, string> = {
-  'Lean Bulk': 'Build Muscle',
-  'Cut / Recomp': 'Lose Fat',
-  Maingain: 'Stay Lean',
-};
-
 export const TrainTab: React.FC<TrainTabProps> = ({
   activeWorkout,
   workouts,
@@ -108,13 +134,15 @@ export const TrainTab: React.FC<TrainTabProps> = ({
   profile,
   exerciseCatalog,
   onUpdateWorkout,
-  onSelectReadinessState,
   onSetCompleted,
   onFinishWorkout,
   onShiftWorkout,
   onSwitchLocation,
   onOpenWatchSync,
+  onOpenProgram,
+  onSwitchSplitDay,
 }) => {
+  const units = useUnits();
   const [swappingExercise, setSwappingExercise] = useState<ExerciseSession | null>(null);
   const [plateCalcWeight, setPlateCalcWeight] = useState<number | null>(null);
   const [showSummaryModal, setShowSummaryModal] = useState(false);
@@ -123,47 +151,6 @@ export const TrainTab: React.FC<TrainTabProps> = ({
   const [showLocationDropdown, setShowLocationDropdown] = useState(false);
   const [whoopStrainSummary, setWhoopStrainSummary] = useState<WhoopWorkoutStrainSummary | null>(null);
   const [isSyncingWhoopStrain, setIsSyncingWhoopStrain] = useState(false);
-
-  const [tensorHardware, setTensorHardware] = useState<TensorHardwareProfile | null>(null);
-  const [tensorInsight, setTensorInsight] = useState<TensorCoachingInsight | null>(null);
-
-  const loadTensorAI = useCallback(async () => {
-    try {
-      const hw = await getTensorHardwareProfile();
-      setTensorHardware(hw);
-      const input: TensorCoachingInput = {
-        workoutSession: activeWorkout,
-        readinessState: readiness.state,
-        readinessZScore: readiness.score,
-        hrvRmssd: latestBiometrics.hrvRmssd,
-        restingHr: latestBiometrics.restingHr,
-        sleepHours: latestBiometrics.sleepHours,
-        goalPhase: profile.goalPhase,
-        mesocycleWeek: profile.mesocycleWeek || 3,
-        location: activeWorkout.location || profile.activeLocation || 'gym',
-      };
-      const ins = await getTensorCoachingInsight(input);
-      setTensorInsight(ins);
-    } catch {
-      // Graceful fallback
-    }
-  }, [
-    activeWorkout.id,
-    activeWorkout.name,
-    activeWorkout.location,
-    readiness.state,
-    readiness.score,
-    latestBiometrics.hrvRmssd,
-    latestBiometrics.restingHr,
-    latestBiometrics.sleepHours,
-    profile.goalPhase,
-    profile.mesocycleWeek,
-    profile.activeLocation,
-  ]);
-
-  useEffect(() => {
-    loadTensorAI();
-  }, [loadTensorAI]);
 
   const exMap = new Map(exerciseCatalog.map((e) => [e.id, e]));
 
@@ -434,8 +421,11 @@ export const TrainTab: React.FC<TrainTabProps> = ({
         setType: 'working' as const,
       }));
 
+      // Keep the same structure as before the swap: only re-create warm-ups if the original
+      // exercise had them, and never add more than it had.
+      const originalWarmupCount = ex.sets.filter((st) => st.isWarmup || st.setType === 'warmup').length;
       let calibratedSets: WorkoutSet[] = calibratedWorkingSets;
-      if (!isPureBw && !meta.isIsolation) {
+      if (originalWarmupCount > 0 && !isPureBw && !meta.isIsolation) {
         const isFirstCompound = isFirstCompoundForPillar(
           {
             pillar: newDef.pillar,
@@ -460,8 +450,8 @@ export const TrainTab: React.FC<TrainTabProps> = ({
           effectiveTargetWeight,
           isFirstCompound
         );
-        const warmupSets = generateWarmupSets(newDef.id, warmupPrescription);
-        calibratedSets = [...warmupSets, ...calibratedWorkingSets];
+        const warmupSets = generateWarmupSets(newDef.id, warmupPrescription).slice(-originalWarmupCount);
+        calibratedSets = [...warmupSets, ...calibratedWorkingSets].map((st, i) => ({ ...st, setNumber: i + 1 }));
       }
 
       return {
@@ -506,9 +496,10 @@ export const TrainTab: React.FC<TrainTabProps> = ({
     }, 0)
   );
 
+  // Prescriptions look only at past sessions; sets ticked today must not change the target or PREV.
   const exercisePrescriptions = activeWorkout.exercises.map((ex) => {
     const prescription = prescribeDoubleProgression(
-      ex,
+      { ...ex, sets: ex.sets.map((st) => ({ ...st, completed: false })) },
       readiness.state,
       workouts,
       bodyweightEmaKg,
@@ -517,7 +508,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
     return { ex, prescription };
   });
 
-  const mesoWeek = profile.mesocycleWeek || 3;
+  const mesoWeek = profile.mesocycleWeek || 1;
   const sessionNarrative = useMemo(
     () =>
       getSessionProgressNarrative(
@@ -531,7 +522,14 @@ export const TrainTab: React.FC<TrainTabProps> = ({
   const syncWhoopWorkoutTelemetry = useCallback(() => {
     if (!profile.whoopAccessToken) return;
     setIsSyncingWhoopStrain(true);
-    fetchWhoopWorkoutStrain(profile.whoopAccessToken, profile.whoopRefreshToken)
+    const setTimes = activeWorkout.exercises
+      .flatMap((ex) => ex.sets)
+      .filter((st) => st.completed && st.completedAt)
+      .map((st) => new Date(st.completedAt as string).getTime())
+      .filter((t) => !Number.isNaN(t));
+    const end = new Date().toISOString();
+    const start = new Date(setTimes.length > 0 ? Math.min(...setTimes) : Date.now() - 60 * 60 * 1000).toISOString();
+    fetchWhoopWorkoutStrain(profile.whoopAccessToken, profile.whoopRefreshToken, { start, end })
       .then((summary) => {
         setWhoopStrainSummary(summary);
       })
@@ -541,7 +539,8 @@ export const TrainTab: React.FC<TrainTabProps> = ({
       .finally(() => {
         setIsSyncingWhoopStrain(false);
       });
-  }, [profile.whoopAccessToken, profile.whoopRefreshToken]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile.whoopAccessToken, profile.whoopRefreshToken, activeWorkout.id]);
 
   const handleFinishWorkoutClick = () => {
     triggerHaptic('success');
@@ -558,16 +557,39 @@ export const TrainTab: React.FC<TrainTabProps> = ({
   };
 
   const phaseMeta = MESO_WEEK_PHASE_NAMES[mesoWeek] || MESO_WEEK_PHASE_NAMES[3];
-  const friendlyGoal = GOAL_FRIENDLY_NAME[profile.goalPhase] || profile.goalPhase;
   const recentCompletedWorkouts = workouts.filter((w) => w.completed).slice(0, 4);
   const currentLoc = activeWorkout.location || profile.activeLocation || 'gym';
-  const queueRec = getHypertrophyQueueRecommendation(
-    activeWorkout.splitDay,
-    workouts,
-    activeWorkout.date,
-    profile.programType,
-    profile.goalPhase
-  );
+
+  // Recovery gate: after a workout, the next queued session waits until its muscles recover.
+  const recoveryGate = evaluateSessionRecovery(activeWorkout, workouts, exerciseCatalog);
+  const showRecoveryGate =
+    !recoveryGate.isReady && completedSets === 0 && !activeWorkout.recoveryOverride;
+  const recoveredAlternative: SplitDayType | null = (() => {
+    if (!onSwitchSplitDay || recoveryGate.trainedToday) return null;
+    const recovery = computeMuscleRecovery(workouts, exerciseCatalog);
+    const options = getSplitDaysForProgram(profile.programType).map((o) => o.id);
+    return (
+      options.find(
+        (split) =>
+          split !== activeWorkout.splitDay &&
+          SPLIT_TARGET_MUSCLES[split].every((m) => {
+            const r = recovery[m];
+            return !r || r.recoveryPct >= READY_THRESHOLD * 100;
+          })
+      ) || null
+    );
+  })();
+  const lastWorkoutAgoHours = recoveryGate.lastWorkoutAt
+    ? Math.max(0, Math.round((Date.now() - recoveryGate.lastWorkoutAt) / (60 * 60 * 1000)))
+    : null;
+
+  // 6-Week plan sessions show their own week and phase.
+  const planWorkoutNumber = activeWorkout.programWorkoutNumber;
+  const planWeek = planWorkoutNumber ? Math.ceil(planWorkoutNumber / 4) : undefined;
+  const planPhase = planWeek ? PROGRAM_PHASES.find((p) => planWeek >= p.weeks[0] && planWeek <= p.weeks[1]) : undefined;
+  const weekPillLabel = planWeek
+    ? `Week ${planWeek} of 6 • Phase ${planPhase?.phaseNumber ?? 1}`
+    : `Week ${mesoWeek} of 6 • ${phaseMeta.name}`;
 
   const LOCATION_CONFIG: Array<{ id: TrainingLocation; label: string; detail: string }> = [
     { id: 'gym', label: 'Full Gym', detail: 'Barbell, dumbbells & machines' },
@@ -589,9 +611,19 @@ export const TrainTab: React.FC<TrainTabProps> = ({
       <div className="biometric-card p-5 sm:p-6 space-y-4">
         {/* A. Compact Context Header + Location Dropdown Toggle */}
         <div className="flex items-center justify-between gap-2">
-          <span className="px-3 py-1 rounded-full bg-white/[0.06] text-slate-200 text-xs font-semibold">
-            Week {mesoWeek} of 6 • {phaseMeta.name}
-          </span>
+          <button
+            type="button"
+            onClick={() => {
+              triggerHaptic('light');
+              onOpenProgram?.();
+            }}
+            disabled={!onOpenProgram}
+            aria-label={`${weekPillLabel}. Open your program`}
+            className="px-3 min-h-[36px] rounded-full bg-white/[0.06] hover:bg-white/[0.12] text-slate-200 text-xs font-semibold flex items-center gap-1 transition-colors"
+          >
+            <span>{weekPillLabel}</span>
+            {onOpenProgram && <ChevronRight className="w-3.5 h-3.5 stroke-[2] text-slate-400" aria-hidden="true" />}
+          </button>
 
           {/* Location Switcher Dropdown (defaults to onboarding setting) */}
           <div className="relative">
@@ -712,9 +744,6 @@ export const TrainTab: React.FC<TrainTabProps> = ({
           latestBiometrics={latestBiometrics}
           isConnected={hasWatchData}
           onOpenWatchSync={onOpenWatchSync}
-          onSelectState={onSelectReadinessState}
-          tensorInsight={tensorInsight}
-          tensorHardware={tensorHardware}
           mesoWeek={mesoWeek}
           goalPhase={profile.goalPhase}
         >
@@ -736,6 +765,103 @@ export const TrainTab: React.FC<TrainTabProps> = ({
         </ReadinessBanner>
       </div>
 
+      {showRecoveryGate && (
+        <section aria-label="Recovery before next workout" className="biometric-card p-5 sm:p-6 space-y-4">
+          <div className="flex items-start gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-sky-500/15 flex items-center justify-center text-sky-300 shrink-0">
+              {recoveryGate.trainedToday ? (
+                <BedDouble className="w-5 h-5 stroke-[2]" aria-hidden="true" />
+              ) : (
+                <Moon className="w-5 h-5 stroke-[2]" aria-hidden="true" />
+              )}
+            </div>
+            <div className="min-w-0">
+              <h2 className="text-base font-extrabold text-white">
+                {recoveryGate.trainedToday ? 'Done for today. Time to recover.' : 'Your muscles are still recovering'}
+              </h2>
+              <p className="text-xs text-slate-300 mt-1">
+                {activeWorkout.name} will be ready{' '}
+                <strong className="text-white">{formatReadyTime(recoveryGate.readyAt ?? Date.now())}</strong>.
+                {lastWorkoutAgoHours !== null && recoveryGate.lastWorkoutName
+                  ? ` You finished ${recoveryGate.lastWorkoutName} ${
+                      lastWorkoutAgoHours < 1 ? 'less than an hour' : `${lastWorkoutAgoHours} hour${lastWorkoutAgoHours === 1 ? '' : 's'}`
+                    } ago.`
+                  : ''}
+              </p>
+            </div>
+          </div>
+
+          {recoveryGate.limitingMuscles.length > 0 && (
+            <ul className="space-y-2" aria-label="Muscle recovery">
+              {recoveryGate.limitingMuscles.slice(0, 4).map((m) => (
+                <li key={m.muscle} className="space-y-1">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-semibold text-slate-200">{MUSCLE_FRIENDLY_NAMES[m.muscle]}</span>
+                    <span className="text-slate-400">
+                      {m.recoveryPct}% • ready {formatReadyTime(m.readyAt)}
+                    </span>
+                  </div>
+                  <div
+                    className="h-1.5 rounded-full bg-white/[0.06] overflow-hidden"
+                    role="progressbar"
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={m.recoveryPct}
+                    aria-label={`${MUSCLE_FRIENDLY_NAMES[m.muscle]} recovery`}
+                  >
+                    <div className="h-full bg-sky-400 rounded-full" style={{ width: `${m.recoveryPct}%` }} />
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          <p className="text-xs text-slate-400">
+            Muscles grow while they recover. Skipping ahead early means less growth from your next session, not more.
+          </p>
+
+          <div className="flex flex-col gap-2">
+            {recoveredAlternative && onSwitchSplitDay && (
+              <button
+                type="button"
+                onClick={() => {
+                  triggerHaptic('medium');
+                  onSwitchSplitDay(recoveredAlternative);
+                }}
+                className="w-full min-h-[48px] rounded-2xl bg-white text-slate-950 text-xs font-bold"
+              >
+                Train {recoveredAlternative} instead (fully recovered)
+              </button>
+            )}
+            {onOpenProgram && (
+              <button
+                type="button"
+                onClick={() => {
+                  triggerHaptic('light');
+                  onOpenProgram();
+                }}
+                className={`w-full min-h-[44px] rounded-2xl text-xs font-bold ${
+                  recoveredAlternative ? 'bg-white/[0.06] text-slate-200' : 'bg-white text-slate-950'
+                }`}
+              >
+                View my program
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => {
+                triggerHaptic('warning');
+                onUpdateWorkout({ ...activeWorkout, recoveryOverride: true });
+              }}
+              className="w-full min-h-[44px] rounded-2xl text-xs font-semibold text-slate-400 hover:text-white"
+            >
+              Train anyway
+            </button>
+          </div>
+        </section>
+      )}
+
+      {!showRecoveryGate && (<>
       {/* 3. Exercise Cards with Clear Step Numbers & "Target vs. Last Time" */}
       <div className="space-y-4 sm:space-y-5">
         {exercisePrescriptions.map(({ ex, prescription }, index) => {
@@ -800,6 +926,8 @@ export const TrainTab: React.FC<TrainTabProps> = ({
               onDeleteSet={(setId) => handleDeleteSet(ex.id, setId)}
               onOpenSwap={() => setSwappingExercise(ex)}
               onOpenPlateCalc={(kg) => setPlateCalcWeight(kg)}
+              muscleLabel={def ? MUSCLE_FRIENDLY_NAMES[def.primaryMuscle] : undefined}
+              previousSets={getPreviousWorkingSets(ex.exerciseId, workouts)}
             />
           );
         })}
@@ -831,9 +959,11 @@ export const TrainTab: React.FC<TrainTabProps> = ({
       >
         <CheckCircle2 className={`w-4 h-4 stroke-[2.2] ${completedSets > 0 ? 'text-emerald-600' : 'text-slate-500'}`} />
         <span>
-          Finish Workout{completedSets > 0 ? ` (${completedSets} of ${totalSets} sets logged${liveTonnageKg > 0 ? ` • ${liveTonnageKg.toLocaleString()} kg` : ''})` : ''}
+          Finish Workout{completedSets > 0 ? ` (${completedSets} of ${totalSets} sets logged${liveTonnageKg > 0 ? ` • ${Math.round(units.toDisplay(liveTonnageKg)).toLocaleString()} ${units.unit}` : ''})` : ''}
         </span>
       </button>
+
+      </>)}
 
       {/* Add Exercise Picker Modal */}
       {showAddExerciseModal && (
@@ -902,6 +1032,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
           homeEquipment={profile.homeEquipment}
           onConfirmSwap={handleConfirmSwap}
           onClose={() => setSwappingExercise(null)}
+          excludeExerciseIds={activeWorkout.exercises.map((e) => e.exerciseId)}
         />
       )}
 
@@ -960,7 +1091,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
                       .filter((s) => s.completed)
                       .map(
                         (s) =>
-                          `${s.actualWeightKg ?? s.targetWeightKg} kg × ${
+                          `${units.format(s.actualWeightKg ?? s.targetWeightKg)} × ${
                             s.actualReps ?? s.targetReps
                           }`
                       )

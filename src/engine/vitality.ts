@@ -91,13 +91,16 @@ export function generate7PillarRadarData(
     };
   });
 
-  // 7th Pillar: Engine / Vitality
-  const vitalityScore = calculateEngineVitalityScore(latestBiometrics);
+  // 7th Pillar: Engine / Vitality — only scored from real watch data (0 = no data).
+  const hasCardioData = Boolean(
+    latestBiometrics && ((latestBiometrics.restingHr || 0) > 0 || (latestBiometrics.vo2Max || 0) > 0 || (latestBiometrics.steps || 0) > 0)
+  );
+  const vitalityScore = hasCardioData ? calculateEngineVitalityScore(latestBiometrics) : 0;
   results.push({
     pillar: 'Engine / Vitality',
     score: vitalityScore,
     rawRatioOrScore: latestBiometrics?.vo2Max ?? 45,
-    tier: vitalityScore >= 85 ? 'Elite' : vitalityScore >= 70 ? 'Advanced' : 'Intermediate',
+    tier: !hasCardioData ? 'Untrained' : vitalityScore >= 85 ? 'Elite' : vitalityScore >= 70 ? 'Advanced' : 'Intermediate',
   });
 
   return results;

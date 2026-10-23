@@ -10,6 +10,7 @@ import {
 } from 'recharts';
 import { WorkoutSession } from '../../engine/types';
 import { calculateWci, calculateSessionTonnage } from '../../engine/wci';
+import { useUnits } from '../../utils/unitsContext';
 
 interface WciChartProps {
   workouts: WorkoutSession[];
@@ -22,60 +23,74 @@ export const WciChart: React.FC<WciChartProps> = ({
   restingHr = 56,
   maxHr = 192,
 }) => {
-  const completedWorkouts = workouts.filter((w) => w.completed);
+  const units = useUnits();
+  // Oldest to newest, so the chart reads left to right.
+  const completedWorkouts = workouts
+    .filter((w) => w.completed)
+    .sort((a, b) => (a.completedAt || a.date).localeCompare(b.completedAt || b.date));
 
-  const chartData = completedWorkouts.map((w) => {
-    const wci = calculateWci(w, restingHr, maxHr);
+  // Stamina needs a measured workout heart rate (e.g. from Whoop). Without one, show volume instead.
+  const withHeartRate = completedWorkouts.filter((w) => (w.avgHeartRate || 0) > 0);
+  const showStamina = withHeartRate.length >= 1;
+  const source = showStamina ? withHeartRate : completedWorkouts;
+
+  const chartData = source.slice(-30).map((w) => {
     const { tonnageKg, completedSetsCount } = calculateSessionTonnage(w);
-    const shortDate = w.date.substring(5);
-
     return {
-      date: shortDate,
+      date: w.date.substring(5),
       fullDate: w.date,
       name: w.name,
-      split: w.splitDay,
-      wci,
+      value: showStamina
+        ? calculateWci(w, restingHr, maxHr)
+        : Math.round(units.toDisplay(tonnageKg)),
       tonnage: tonnageKg,
       sets: completedSetsCount,
-      avgHr: w.avgHeartRate || 140,
-      duration: w.durationMinutes || 60,
+      duration: w.durationMinutes,
     };
   });
 
-  const latestWci = chartData[chartData.length - 1]?.wci || 0;
-  const firstWci = chartData[0]?.wci || 0;
-  const wciImprovementPct = firstWci > 0 ? Math.round(((latestWci - firstWci) / firstWci) * 100) : 0;
+  const latest = chartData[chartData.length - 1]?.value || 0;
+  const first = chartData[0]?.value || 0;
+  const changePct = chartData.length > 1 && first > 0 ? Math.round(((latest - first) / first) * 100) : null;
 
   return (
     <div className="rounded-3xl surface-glass p-5 sm:p-6 space-y-4">
       <div className="flex items-center justify-between">
         <div>
           <h3 className="font-bold text-base text-white tracking-tight">
-            Workout Stamina
+            {showStamina ? 'Workout Stamina' : 'Workout Volume'}
           </h3>
           <p className="text-xs text-slate-400 mt-0.5">
-            How much weight you lift relative to heart rate and workout time
+            {showStamina
+              ? 'Weight lifted relative to workout heart rate and time'
+              : 'Total weight lifted per workout (weight × reps)'}
           </p>
         </div>
 
         <div className="text-right">
           <div className="text-base font-bold font-mono text-brand-primary">
-            {latestWci} pts
+            {latest.toLocaleString()} {showStamina ? 'pts' : units.unit}
           </div>
-          <span className="text-xs text-brand-primary font-medium">
-            {completedWorkouts.length > 0
-              ? `${wciImprovementPct >= 0 ? `+${wciImprovementPct}%` : `${wciImprovementPct}%`} (6 wks)`
-              : 'Starting Baseline'}
+          <span className="text-xs text-slate-400 font-medium">
+            {changePct !== null
+              ? `${changePct >= 0 ? '+' : ''}${changePct}% since ${chartData[0].fullDate.substring(5)}`
+              : 'Latest workout'}
           </span>
         </div>
       </div>
 
       {/* Stamina Area Chart */}
+      {!showStamina && completedWorkouts.length > 0 && (
+        <p className="text-xs text-slate-400">
+          Connect Whoop to see stamina. It needs your heart rate during workouts.
+        </p>
+      )}
+
       {chartData.length === 0 ? (
         <div className="w-full h-40 rounded-2xl bg-[#090C12] flex flex-col items-center justify-center p-4 text-center space-y-1.5">
           <p className="text-xs font-semibold text-white">No completed workouts yet</p>
           <p className="text-xs text-slate-400 max-w-xs">
-            As you log sessions, your workout stamina score will track your tonnage density and cardiovascular recovery.
+            Finish your first workout to start this chart.
           </p>
         </div>
       ) : (
@@ -91,11 +106,11 @@ export const WciChart: React.FC<WciChartProps> = ({
               <CartesianGrid stroke="#1E222D" strokeDasharray="2 2" vertical={false} />
               <XAxis
                 dataKey="date"
-                tick={{ fill: '#64748B', fontSize: 10 }}
+                tick={{ fill: '#94A3B8', fontSize: 12 }}
                 stroke="#262A36"
               />
               <YAxis
-                tick={{ fill: '#64748B', fontSize: 10 }}
+                tick={{ fill: '#94A3B8', fontSize: 12 }}
                 stroke="#262A36"
               />
               <Tooltip
@@ -106,10 +121,10 @@ export const WciChart: React.FC<WciChartProps> = ({
                       <div className="p-3 rounded-xl bg-[#0C0E14] shadow-2xl text-xs space-y-1">
                         <div className="font-bold text-white">{data.name} ({data.fullDate})</div>
                         <div className="text-brand-primary font-mono font-bold">
-                          Stamina Score: {data.wci} pts
+                          {showStamina ? `Stamina: ${data.value} pts` : `Volume: ${data.value.toLocaleString()} ${units.unit}`}
                         </div>
                         <div className="text-xs text-slate-400">
-                          {data.tonnage.toLocaleString()} kg • {data.sets} sets • {data.duration} min
+                          {data.sets} sets{data.duration ? ` • ${data.duration} min` : ''}
                         </div>
                       </div>
                     );
@@ -119,7 +134,7 @@ export const WciChart: React.FC<WciChartProps> = ({
               />
               <Area
                 type="monotone"
-                dataKey="wci"
+                dataKey="value"
                 stroke="#10B981"
                 strokeWidth={2}
                 fillOpacity={1}

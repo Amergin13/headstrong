@@ -1,4 +1,5 @@
 import { BiometricLog, ReadinessState, WearableSyncProgress } from '../engine/types';
+import { localDateString } from '../utils/date';
 
 export const HEALTH_CONNECT_CONFIG = {
   PACKAGE_NAME: 'com.google.android.apps.healthdata',
@@ -165,7 +166,7 @@ export function parseHealthConnectExport(rawInput: string | Record<string, any>)
   }
 
   const parsedLogs: BiometricLog[] = Array.from(logsByDate.values()).map((p) => ({
-    date: p.date || new Date().toISOString().split('T')[0],
+    date: p.date || localDateString(),
     bodyweightKg: p.bodyweightKg || 80.0,
     hrvRmssd: p.hrvRmssd || 58,
     restingHr: p.restingHr || 58,
@@ -188,7 +189,7 @@ export async function simulateHealthConnectSync(
   onProgress?: (progress: WearableSyncProgress) => void,
   forcedState?: ReadinessState
 ): Promise<BiometricLog> {
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = localDateString();
 
   const update = (stage: WearableSyncProgress['stage'], percent: number, message: string) => {
     if (onProgress) onProgress({ stage, percent, message, provider: 'health_connect' });

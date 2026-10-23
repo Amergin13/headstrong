@@ -33,27 +33,21 @@
 
 ---
 
-## 📱 Mobile-First 4-Tab Interface
+## 📱 Mobile-First Tabs
 
-1. **Train Tab (Live Workout HUD):**
-   - Morning Pixel Watch Readiness Banner with interactive 1-tap testing toggle (`⚡ Primed (+15% XP)`, `🟢 Normal`, `🛡️ Amber Shield`).
-   - Dynamic Double Progression recommendations and Sub-Tier Quest callouts.
-   - 1-tap set completion with `0 | 1 | 2 | 3+` RIR selector pills.
-   - Floating Rest Timer with real-time simulated Pixel Watch "60% Max HR Ready" recovery telemetry.
-   - Live XP popups and level progression rings.
-2. **Character Tab (Gamification & Goals):**
-   - Macro Goal Phase switcher: `Lean Bulk`, `Cut / Recomp` (with Retention Shield active), `Maingain`.
-   - 7-Pillar Athletic Radar Chart.
-   - Weekly Muscle Group Volume tracker highlighting the evidence-based 10–20 hard-set sweet spot.
-   - International DOTS score breakdown.
-3. **Analytics Tab (The Fitness Story):**
-   - Dual-axis trend chart: E1RM progression vs. 7-Day EMA Bodyweight with 1-tap daily scale log.
-   - Work Capacity Index (WCI) cardiovascular efficiency area chart.
-   - Daily Steps & Active Zone Minutes (AZM) with `1.25x Metabolic Momentum` XP badge.
-4. **Program & Watch Sync Tab:**
-   - Push / Pull / Legs workout split and template editor.
-   - Custom exercise creator with equipment multipliers.
-   - Google Pixel Watch 3 / Fitbit OAuth 2.0 PKCE module and live demo telemetry simulator.
+1. **Workout:** the next queued session with weights carried over from your history, exact previous sets (PREV), optional haptic tempo guide, a rest timer labelled with the exercise and next set, and a recovery screen that holds the next session until your muscles are ready (with per-muscle ready times, a recovered alternative, and "Train anyway").
+2. **Program:** goal, 6-week block, splits (including the 24-workout 6-Week Muscle Building Plan), equipment, units (kg/lb), wearables, and data backup. Has a "Back to workout" link; the Workout tab's week pill opens it.
+3. **AI Coach:** answers with on-device Gemini Nano when Chrome has it available (Pixel phones via AICore), otherwise with the rule-based coach. Pain or warning symptoms always get a fixed safety reply.
+4. **Progress:** estimated 1-rep max vs bodyweight per movement, workout volume (or stamina when Whoop provides workout heart rate), recovery insights from real watch data only.
+5. **Athlete:** strength-to-weight score and Big 3 from logged lifts only, weekly sets per muscle against this week's target, strength balance, and your XP division.
+
+## 🔐 Configuration
+
+Set these as Vercel environment variables (never in code):
+
+- `WHOOP_CLIENT_SECRET`: Whoop OAuth client secret (rotate the one that was previously committed).
+- `FITBIT_CLIENT_SECRET` (and optionally `FITBIT_CLIENT_ID`).
+- `ALLOWED_ORIGINS` (optional): extra comma-separated origins allowed to call `api/`.
 
 ---
 
@@ -64,9 +58,12 @@
 npm install
 ```
 
-### Run Engine Test Suite:
+### Run Test Suites:
 ```bash
 npm run test:engine
+```
+```bash
+npm run test:api
 ```
 
 ### Start Development Server:

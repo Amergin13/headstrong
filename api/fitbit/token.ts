@@ -1,20 +1,10 @@
+import { applyCors } from '../_lib/cors';
 /**
  * Vercel Serverless Function: Proxy Fitbit / Pixel Watch OAuth Token Exchange
  * Eliminates browser CORS barriers by exchanging auth code / refresh token server-side.
  */
 export default async function handler(req: any, res: any) {
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
-  res.setHeader(
-    'Access-Control-Allow-Headers',
-    'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, Authorization'
-  );
-
-  if (req.method === 'OPTIONS') {
-    res.status(200).end();
-    return;
-  }
+  if (applyCors(req, res)) return;
 
   if (req.method === 'GET') {
     return res.status(200).json({
@@ -46,7 +36,7 @@ export default async function handler(req: any, res: any) {
     }
 
     const clientId = params.get('client_id') || process.env.FITBIT_CLIENT_ID || '23QW89';
-    const clientSecret = params.get('client_secret') || process.env.FITBIT_CLIENT_SECRET;
+    const clientSecret = process.env.FITBIT_CLIENT_SECRET;
 
     const headers: Record<string, string> = {
       'Content-Type': 'application/x-www-form-urlencoded',

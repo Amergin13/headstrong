@@ -1,7 +1,6 @@
 import React from 'react';
 import { ReadinessEvaluation } from '../../engine/readiness';
-import { BiometricLog, GoalPhase, ReadinessState } from '../../engine/types';
-import { TensorCoachingInsight, TensorHardwareProfile } from '../../engine/tensorAI';
+import { BiometricLog, GoalPhase } from '../../engine/types';
 import { Watch } from 'lucide-react';
 import { triggerHaptic } from '../../utils/haptics';
 import { BiometricCircularGauge } from '../common/BiometricCircularGauge';
@@ -11,9 +10,6 @@ export interface ReadinessBannerProps {
   latestBiometrics?: BiometricLog | null;
   isConnected?: boolean;
   onOpenWatchSync?: () => void;
-  onSelectState?: (state: ReadinessState) => void;
-  tensorInsight?: TensorCoachingInsight | null;
-  tensorHardware?: TensorHardwareProfile | null;
   mesoWeek?: number;
   goalPhase?: GoalPhase;
   children?: React.ReactNode;
@@ -24,7 +20,6 @@ export const ReadinessBanner: React.FC<ReadinessBannerProps> = ({
   latestBiometrics,
   isConnected,
   onOpenWatchSync,
-  tensorInsight,
   mesoWeek = 1,
   children,
 }) => {
@@ -55,43 +50,20 @@ export const ReadinessBanner: React.FC<ReadinessBannerProps> = ({
   const gaugeLabel = isFitbit ? 'READINESS' : isWhoop ? 'RECOVERY' : (readiness.scoreLabel?.toUpperCase() || 'READINESS');
   const gaugeUnit = isFitbit ? '' : '%';
 
-  // Accurately reflect authentic wearable score:
-  // - Fitbit / Pixel Watch: Daily Readiness Score (1-100, High >=65, Target 30-64, Low <30)
-  // - Whoop: Recovery Score (0-100%, Green >=67%, Yellow 34-66%, Red <34%)
+  // Show the wearable's own score when it exists; otherwise derive one from today's z-score.
+  // Never substitute a made-up number.
+  const derivedScore = Math.max(1, Math.min(99, Math.round(60 + readiness.score * 20)));
   const displayScore = isFitbit
-    ? (typeof latestBiometrics?.fitbitReadinessScore === 'number'
-        ? latestBiometrics.fitbitReadinessScore
-        : typeof readiness.readinessScore === 'number'
-        ? readiness.readinessScore
-        : isAmber
-        ? 24
-        : isPrimed
-        ? 88
-        : 54)
+    ? latestBiometrics?.fitbitReadinessScore ?? readiness.readinessScore ?? derivedScore
     : isWhoop
-    ? (typeof latestBiometrics?.recoveryScore === 'number'
-        ? latestBiometrics.recoveryScore
-        : typeof readiness.readinessScore === 'number'
-        ? readiness.readinessScore
-        : isAmber
-        ? 33
-        : isPrimed
-        ? 85
-        : 55)
-    : (typeof readiness.readinessScore === 'number'
-        ? readiness.readinessScore
-        : isAmber
-        ? Math.max(25, Math.min(50, Math.round(55 + (readiness.score + 0.8) * 12)))
-        : isPrimed
-        ? Math.min(99, Math.max(82, Math.round(85 + (readiness.score - 0.8) * 10)))
-        : Math.min(80, Math.max(65, Math.round(72 + readiness.score * 8))));
+    ? latestBiometrics?.recoveryScore ?? readiness.readinessScore ?? derivedScore
+    : readiness.readinessScore ?? derivedScore;
 
   const gaugeVariant = isFitbit
     ? (displayScore >= 65 ? 'emerald' : 'amber')
     : (displayScore >= 67 ? 'recovery' : 'amber');
 
   const summary =
-    tensorInsight?.summary ||
     readiness.reason ||
     (isPrimed
       ? `Week ${mesoWeek} Accumulation: Peak parasympathetic recovery detected. You have full capacity to drive progressive overload on your working sets.`
@@ -110,17 +82,23 @@ export const ReadinessBanner: React.FC<ReadinessBannerProps> = ({
       {/* 1. Recovery Telemetry Row (Image 1) */}
       {hasWatchData ? (
         <div className="flex items-center gap-4 sm:gap-5">
-          {/* Recovery Value (Circular Gauge matching Image 1) */}
-          <div className="shrink-0">
-            <BiometricCircularGauge
-              value={displayScore}
-              max={100}
-              unit={gaugeUnit}
-              label={gaugeLabel}
-              variant={gaugeVariant}
-              size="sm"
-            />
-          </div>
+          {/* Recovery Value (Circular Gauge matching Image 1); hidden when nothing was measured today */}
+          {readiness.hasRecoveryData !== false ? (
+            <div className="shrink-0">
+              <BiometricCircularGauge
+                value={displayScore}
+                max={100}
+                unit={gaugeUnit}
+                label={gaugeLabel}
+                variant={gaugeVariant}
+                size="sm"
+              />
+            </div>
+          ) : (
+            <div className="w-8 h-8 rounded-xl bg-white/[0.06] flex items-center justify-center shrink-0 text-slate-400">
+              <Watch className="w-4 h-4 stroke-[2]" aria-hidden="true" />
+            </div>
+          )}
 
           {/* Description Text matching Image 1 */}
           <div className="flex-1 min-w-0">
@@ -128,16 +106,16 @@ export const ReadinessBanner: React.FC<ReadinessBannerProps> = ({
               {prefix && <strong className="text-white font-bold">{prefix} </strong>}
               {bodyText}
             </p>
-            {(latestBiometrics?.restingHr !== undefined || latestBiometrics?.hrvRmssd !== undefined) && (
+            {((latestBiometrics?.restingHr || 0) > 0 || (latestBiometrics?.hrvRmssd || 0) > 0) && (
               <div className="flex items-center gap-2 mt-2 flex-wrap">
-                {latestBiometrics?.restingHr !== undefined && (
+                {(latestBiometrics?.restingHr || 0) > 0 && (
                   <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-white/[0.05] border border-white/[0.06] text-xs font-semibold text-slate-300">
-                    {latestBiometrics.restingHr} bpm RHR
+                    {latestBiometrics?.restingHr} bpm resting HR
                   </span>
                 )}
-                {latestBiometrics?.hrvRmssd !== undefined && (
+                {(latestBiometrics?.hrvRmssd || 0) > 0 && (
                   <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-white/[0.05] border border-white/[0.06] text-xs font-semibold text-slate-300">
-                    {latestBiometrics.hrvRmssd} ms HRV
+                    {latestBiometrics?.hrvRmssd} ms HRV
                   </span>
                 )}
               </div>

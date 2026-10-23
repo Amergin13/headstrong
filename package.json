@@ -11,9 +11,11 @@
     "test:engine": "tsc src/engine/__tests__/verifyEngine.ts --rootDir src --outDir .dist-test --module commonjs --target es2020 --moduleResolution node --skipLibCheck && echo '{\"type\":\"commonjs\"}' > .dist-test/package.json && node .dist-test/engine/__tests__/verifyEngine.js && rm -rf .dist-test",
     "verify:playstore": "node scripts/verifyPlayStoreReady.mjs",
     "qa:full": "node scripts/runComprehensiveQA.mjs",
-    "verify:all": "npm run generate:assets && npm run test:engine && npm run qa:full && npm run build && npm run verify:playstore"
+    "verify:all": "npm run generate:assets && npm run test:engine && npm run qa:full && npm run build && npm run verify:playstore",
+    "test:api": "tsc tests/apiProxies.test.ts --rootDir . --outDir .dist-api-test --module commonjs --target es2020 --moduleResolution node --skipLibCheck --esModuleInterop && echo '{\"type\":\"commonjs\"}' > .dist-api-test/package.json && node .dist-api-test/tests/apiProxies.test.js; status=$?; rm -rf .dist-api-test; exit $status"
   },
   "dependencies": {
+    "@mlc-ai/web-llm": "0.2.85",
     "lucide-react": "^1.16.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",

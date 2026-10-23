@@ -11,12 +11,9 @@ import {
 } from 'recharts';
 import { BiometricLog, StrengthPillar, WorkoutSession } from '../../engine/types';
 import { calculateEmaSeries } from '../../engine/ema';
-import {
-  calculateE1RM,
-  calculateWeightNeededForTargetE1RM,
-  formatImplementWeightLabel,
-} from '../../engine/e1rm';
-import { getMovementVectorId } from '../../engine/progression';
+import { calculateE1RM, calculateWeightNeededForTargetE1RM } from '../../engine/e1rm';
+import { isPillarBenchmarkExercise } from '../../engine/strengthStandards';
+import { useUnits } from '../../utils/unitsContext';
 import { Plus, ArrowRightLeft } from 'lucide-react';
 
 interface E1rmVsWeightChartProps {
@@ -65,150 +62,96 @@ export const E1rmVsWeightChart: React.FC<E1rmVsWeightChartProps> = ({
 }) => {
   const [selectedPillar, setSelectedPillar] = useState<StrengthPillar>('Horizontal Push');
 
+  const units = useUnits();
   const activeGroupMeta =
     PILLAR_GROUPS.find((p) => p.pillar === selectedPillar) || PILLAR_GROUPS[0];
-  const targetVectorId = `vector-pillar-${selectedPillar.toLowerCase().replace(/\s+/g, '-')}`;
 
-  const emaData = calculateEmaSeries(biometrics);
-  const emaMap = new Map(emaData.map((d) => [d.date, d.ema]));
-  const latestBwEma = emaData[emaData.length - 1]?.ema || 81.5;
+  const emaData = calculateEmaSeries(
+    [...biometrics].filter((b) => b.bodyweightKg > 0).sort((a, b) => a.date.localeCompare(b.date))
+  );
+  const latestBwEma = emaData[emaData.length - 1]?.ema;
+  const emaOnOrBefore = (date: string): number | undefined => {
+    let found: number | undefined;
+    for (const d of emaData) {
+      if (d.date <= date) found = d.ema;
+      else break;
+    }
+    return found;
+  };
 
+  // Best estimated 1-rep max per workout date for this movement (any implement).
   const workoutMap = new Map<
     string,
-    {
-      canonicalE1rm: number;
-      implementName: string;
-      equipment: string;
-      rawSetSummary: string;
-      isSubstitutedImplement: boolean;
-    }
+    { canonicalE1rm: number; implementName: string; rawSetSummary: string; isSubstitutedImplement: boolean }
   >();
 
   for (const w of workouts) {
     if (!w.completed) continue;
-    const bwEma = emaMap.get(w.date) || latestBwEma;
+    const bwEma = emaOnOrBefore(w.date) ?? latestBwEma ?? 80;
 
     for (const ex of w.exercises) {
-      if (getMovementVectorId(ex) === targetVectorId) {
-        let bestExE1rm = 0;
-        let bestSetSummary = '';
+      if (ex.pillar !== selectedPillar || !isPillarBenchmarkExercise(ex)) continue;
+      let bestExE1rm = 0;
+      let bestSetSummary = '';
 
-        for (const s of ex.sets) {
-          if (s.completed && s.actualReps && !s.isWarmup && s.setType !== 'warmup') {
-            const weight = s.actualWeightKg ?? s.targetWeightKg;
-            const rir = s.actualRir ?? 2;
-            const e1rm = calculateE1RM(
-              weight,
-              s.actualReps,
-              rir,
-              ex.equipment,
-              ex.isRdl,
-              ex.isWeightedCalisthenic,
-              bwEma
-            );
-            if (e1rm > bestExE1rm) {
-              bestExE1rm = e1rm;
-              const formattedW = formatImplementWeightLabel(
-                weight,
-                ex.equipment,
-                ex.isWeightedCalisthenic
-              );
-              bestSetSummary = `${formattedW} × ${s.actualReps} reps`;
-            }
-          }
+      for (const s of ex.sets) {
+        const reps = s.actualReps ?? s.targetReps;
+        if (!s.completed || !reps || s.isWarmup || s.setType === 'warmup') continue;
+        const weight = s.actualWeightKg ?? s.targetWeightKg;
+        const e1rm = calculateE1RM(weight, reps, s.actualRir ?? 2, ex.equipment, ex.isRdl, ex.isWeightedCalisthenic, bwEma, ex.exerciseId, ex.pillar);
+        if (e1rm > bestExE1rm) {
+          bestExE1rm = e1rm;
+          const label =
+            ex.equipment === 'bodyweight' && weight === 0
+              ? 'Bodyweight'
+              : ex.equipment === 'dumbbell'
+              ? `${units.format(weight / 2)} each`
+              : units.format(weight);
+          bestSetSummary = `${label} × ${reps} reps`;
         }
+      }
 
-        const existing = workoutMap.get(w.date);
-        if (bestExE1rm > 0 && (!existing || bestExE1rm > existing.canonicalE1rm)) {
-          workoutMap.set(w.date, {
-            canonicalE1rm: bestExE1rm,
-            implementName: ex.name,
-            equipment: ex.equipment,
-            rawSetSummary: bestSetSummary,
-            isSubstitutedImplement: ex.equipment !== 'barbell' || Boolean(ex.isRdl),
-          });
-        }
+      const existing = workoutMap.get(w.date);
+      if (bestExE1rm > 0 && (!existing || bestExE1rm > existing.canonicalE1rm)) {
+        workoutMap.set(w.date, {
+          canonicalE1rm: Math.round(bestExE1rm * 10) / 10,
+          implementName: ex.name,
+          rawSetSummary: bestSetSummary,
+          isSubstitutedImplement: ex.equipment !== 'barbell' || Boolean(ex.isRdl),
+        });
       }
     }
   }
 
-  const sampledEma = emaData.slice(-24);
-  const chartPoints: {
-    date: string;
-    displayDate: string;
-    e1rm: number | null;
-    bodyweightEma: number;
-    implementName?: string;
-    rawSetSummary?: string;
-    isSubstitutedImplement?: boolean;
-  }[] = [];
-
-  let lastKnownE1rm: number | null = null;
-  let lastImplementName: string | undefined;
-  let lastSetSummary: string | undefined;
-  let lastIsSub = false;
-
-  sampledEma.forEach((point) => {
-    const match = workoutMap.get(point.date);
-    if (match !== undefined) {
-      lastKnownE1rm = match.canonicalE1rm;
-      lastImplementName = match.implementName;
-      lastSetSummary = match.rawSetSummary;
-      lastIsSub = match.isSubstitutedImplement;
-    }
-
-    const shortDate = point.date.substring(5);
-    chartPoints.push({
-      date: point.date,
-      displayDate: shortDate,
-      e1rm: lastKnownE1rm,
-      bodyweightEma: point.ema,
-      implementName: match ? match.implementName : lastImplementName,
-      rawSetSummary: match ? match.rawSetSummary : lastSetSummary,
-      isSubstitutedImplement: match ? match.isSubstitutedImplement : lastIsSub,
-    });
+  // X-axis: every date with a workout for this movement or a weigh-in (last 60 points).
+  const allDates = Array.from(new Set([...workoutMap.keys(), ...emaData.map((d) => d.date)])).sort().slice(-60);
+  const chartPoints = allDates.map((date) => {
+    const match = workoutMap.get(date);
+    const bw = emaOnOrBefore(date);
+    return {
+      date,
+      displayDate: date.substring(5),
+      e1rm: match ? units.toDisplay(match.canonicalE1rm) : null,
+      bodyweightEma: bw !== undefined ? units.toDisplay(bw) : null,
+      implementName: match?.implementName,
+      rawSetSummary: match?.rawSetSummary,
+      isSubstitutedImplement: match?.isSubstitutedImplement,
+    };
   });
+  const hasStrengthData = workoutMap.size > 0;
 
-  const currentPeakCanonicalE1rm = lastKnownE1rm || 110;
+  const currentPeakCanonicalE1rm = Array.from(workoutMap.values()).reduce(
+    (max, v) => Math.max(max, v.canonicalE1rm),
+    0
+  );
+  const bwForEquivalents = latestBwEma ?? 80;
 
-  const eqBarbell10RM = calculateWeightNeededForTargetE1RM(
-    currentPeakCanonicalE1rm,
-    10,
-    2,
-    'barbell',
-    false,
-    false,
-    latestBwEma
-  );
-  const eqDumbbell10RM = calculateWeightNeededForTargetE1RM(
-    currentPeakCanonicalE1rm,
-    10,
-    2,
-    'dumbbell',
-    false,
-    false,
-    latestBwEma
-  );
+  const eqBarbell10RM = calculateWeightNeededForTargetE1RM(currentPeakCanonicalE1rm, 10, 2, 'barbell', false, false, bwForEquivalents);
+  const eqDumbbell10RM = calculateWeightNeededForTargetE1RM(currentPeakCanonicalE1rm, 10, 2, 'dumbbell', false, false, bwForEquivalents);
   const eqThird10RM =
     selectedPillar === 'Hinge'
-      ? calculateWeightNeededForTargetE1RM(
-          currentPeakCanonicalE1rm,
-          10,
-          2,
-          'barbell',
-          true,
-          false,
-          latestBwEma
-        )
-      : calculateWeightNeededForTargetE1RM(
-          currentPeakCanonicalE1rm,
-          10,
-          2,
-          'weighted_bodyweight',
-          false,
-          true,
-          latestBwEma
-        );
+      ? calculateWeightNeededForTargetE1RM(currentPeakCanonicalE1rm, 10, 2, 'barbell', true, false, bwForEquivalents)
+      : calculateWeightNeededForTargetE1RM(currentPeakCanonicalE1rm, 10, 2, 'weighted_bodyweight', false, true, bwForEquivalents);
 
   return (
     <div className="rounded-3xl surface-glass p-5 sm:p-6 space-y-4">
@@ -254,11 +197,13 @@ export const E1rmVsWeightChart: React.FC<E1rmVsWeightChartProps> = ({
       </div>
 
       {/* Dual Axis Chart */}
-      {chartPoints.length === 0 ? (
+      {chartPoints.length === 0 || (!hasStrengthData && emaData.length < 2) ? (
         <div className="w-full h-44 rounded-2xl bg-[#090C12] flex flex-col items-center justify-center p-4 text-center space-y-1.5">
-          <p className="text-xs font-semibold text-white">No workout history logged yet</p>
+          <p className="text-xs font-semibold text-white">
+            No {activeGroupMeta.label.toLowerCase()} sets logged yet
+          </p>
           <p className="text-xs text-slate-400 max-w-xs">
-            Complete your first session or log your bodyweight to chart your strength-to-weight trends.
+            Finish a workout with this movement, or log your weight, and your trend will appear here.
           </p>
         </div>
       ) : (
@@ -268,20 +213,20 @@ export const E1rmVsWeightChart: React.FC<E1rmVsWeightChartProps> = ({
               <CartesianGrid stroke="#1E222D" strokeDasharray="2 2" vertical={false} />
               <XAxis
                 dataKey="displayDate"
-                tick={{ fill: '#64748B', fontSize: 10 }}
+                tick={{ fill: '#94A3B8', fontSize: 12 }}
                 stroke="#262A36"
               />
             <YAxis
               yAxisId="left"
               domain={['auto', 'auto']}
-              tick={{ fill: '#00F59B', fontSize: 10 }}
+              tick={{ fill: '#00F59B', fontSize: 12 }}
               stroke="#00F59B"
             />
             <YAxis
               yAxisId="right"
               orientation="right"
               domain={['auto', 'auto']}
-              tick={{ fill: '#06B6D4', fontSize: 10 }}
+              tick={{ fill: '#06B6D4', fontSize: 12 }}
               stroke="#06B6D4"
             />
             <Tooltip
@@ -307,7 +252,7 @@ export const E1rmVsWeightChart: React.FC<E1rmVsWeightChartProps> = ({
                       {payload.map((entry: any) => (
                         <div key={entry.name} className="flex justify-between space-x-4">
                           <span style={{ color: entry.color }}>{entry.name}:</span>
-                          <span className="font-mono font-bold text-white">{entry.value} kg</span>
+                          <span className="font-mono font-bold text-white">{entry.value} {units.unit}</span>
                         </div>
                       ))}
                     </div>
@@ -321,7 +266,8 @@ export const E1rmVsWeightChart: React.FC<E1rmVsWeightChartProps> = ({
               yAxisId="left"
               type="monotone"
               dataKey="e1rm"
-              name="Est. 1-Rep Max (kg)"
+              connectNulls
+              name={`Est. 1-rep max (${units.unit})`}
               stroke="#00F59B"
               strokeWidth={2.5}
               dot={(props: any) => {
@@ -346,7 +292,8 @@ export const E1rmVsWeightChart: React.FC<E1rmVsWeightChartProps> = ({
               yAxisId="right"
               type="monotone"
               dataKey="bodyweightEma"
-              name="7-Day Avg Weight (kg)"
+              name={`7-day avg weight (${units.unit})`}
+              connectNulls
               stroke="#06B6D4"
               strokeWidth={1.8}
               strokeDasharray="4 4"
@@ -357,52 +304,40 @@ export const E1rmVsWeightChart: React.FC<E1rmVsWeightChartProps> = ({
       </div>
       )}
 
-      {/* Matched Weights Across Equipment */}
+      {/* Matched Weights Across Equipment (only once there is real data) */}
+      {hasStrengthData && (
       <div className="p-4 rounded-2xl bg-[#090C12] space-y-2.5">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-1.5">
-            <ArrowRightLeft className="w-3.5 h-3.5 text-brand-primary stroke-[2]" />
-            <span className="text-xs font-bold text-white">
-              Matched Weights Across Equipment (10 reps)
-            </span>
+            <ArrowRightLeft className="w-3.5 h-3.5 text-brand-primary stroke-[2]" aria-hidden="true" />
+            <span className="text-xs font-bold text-white">Matching weights for 10 reps</span>
           </div>
           <span className="text-xs font-mono text-brand-primary font-bold">
-            Est. Max: {currentPeakCanonicalE1rm} kg
+            Est. max: {units.format(currentPeakCanonicalE1rm)}
           </span>
         </div>
 
         <div className="grid grid-cols-3 gap-2 text-center">
           <div className="p-3 rounded-xl bg-[#141824]">
-            <div className="text-xs text-slate-400 font-semibold">
-              Barbell
-            </div>
-            <div className="text-sm font-mono font-bold text-white mt-0.5">
-              {eqBarbell10RM} kg
-            </div>
-            <div className="text-xs text-slate-400">× 10 reps</div>
+            <div className="text-xs text-slate-400 font-semibold">Barbell</div>
+            <div className="text-sm font-mono font-bold text-white mt-0.5">{units.format(eqBarbell10RM)}</div>
           </div>
-
           <div className="p-3 rounded-xl bg-[#141824]">
-            <div className="text-xs text-slate-400 font-semibold">
-              Dumbbells
-            </div>
-            <div className="text-sm font-mono font-bold text-brand-primary mt-0.5">
-              {eqDumbbell10RM / 2} kg each
-            </div>
-            <div className="text-xs text-slate-400">{eqDumbbell10RM} kg total</div>
+            <div className="text-xs text-slate-400 font-semibold">Dumbbells</div>
+            <div className="text-sm font-mono font-bold text-brand-primary mt-0.5">{units.format(eqDumbbell10RM / 2)}</div>
+            <div className="text-xs text-slate-400">each</div>
           </div>
-
           <div className="p-3 rounded-xl bg-[#141824]">
             <div className="text-xs text-slate-400 font-semibold">
               {selectedPillar === 'Hinge' ? 'Romanian DL' : 'Bodyweight'}
             </div>
             <div className="text-sm font-mono font-bold text-white mt-0.5">
-              {selectedPillar === 'Hinge' ? `${eqThird10RM} kg` : `+${eqThird10RM} kg`}
+              {selectedPillar === 'Hinge' ? units.format(eqThird10RM) : `+${units.format(eqThird10RM)}`}
             </div>
-            <div className="text-xs text-slate-400">× 10 reps</div>
           </div>
         </div>
       </div>
+      )}
     </div>
   );
 };

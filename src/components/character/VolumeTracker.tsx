@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import {
   HYPERTROPHY_VOLUME_LANDMARKS,
   evaluateVolumeStatus,
+  getRecommendedSetsForWeek,
 } from '../../engine/hypertrophyVolume';
 import { triggerHaptic } from '../../utils/haptics';
 import {
@@ -15,11 +16,18 @@ import {
 
 interface VolumeTrackerProps {
   weeklyVolume: Record<string, number>;
+  /** Current week of the 6-week plan; weekly targets ramp up across the block. */
+  mesoWeek?: number;
+  goalPhase?: 'Lean Bulk' | 'Cut / Recomp' | 'Maingain';
 }
 
 type FilterCategory = 'All' | 'Fast Recovery' | 'Needs More Rest' | 'Worked in Presses';
 
-export const VolumeTracker: React.FC<VolumeTrackerProps> = ({ weeklyVolume }) => {
+export const VolumeTracker: React.FC<VolumeTrackerProps> = ({
+  weeklyVolume,
+  mesoWeek = 1,
+  goalPhase = 'Lean Bulk',
+}) => {
   const [selectedMuscle, setSelectedMuscle] = useState<string | null>(null);
   const [showScienceModal, setShowScienceModal] = useState(false);
   const [activeFilter, setActiveFilter] = useState<FilterCategory>('All');
@@ -58,10 +66,11 @@ export const VolumeTracker: React.FC<VolumeTrackerProps> = ({ weeklyVolume }) =>
     return true;
   });
 
+  // "On target" means this week's planned target is met (targets ramp up week by week).
   const optimalCount = muscleKeys.filter((k) => {
     const sets = weeklyVolume[k] || 0;
-    const status = evaluateVolumeStatus(k, sets).status;
-    return status === 'optimal_mav' || status === 'near_mrv';
+    const weekTarget = getRecommendedSetsForWeek(k, mesoWeek, goalPhase).targetSets;
+    return sets >= weekTarget && evaluateVolumeStatus(k, sets).status !== 'above_mrv';
   }).length;
 
   return (
@@ -121,6 +130,8 @@ export const VolumeTracker: React.FC<VolumeTrackerProps> = ({ weeklyVolume }) =>
         {filteredKeys.map((key) => {
           const sets = weeklyVolume[key] || 0;
           const evaluation = evaluateVolumeStatus(key, sets);
+          const weekTarget = getRecommendedSetsForWeek(key, mesoWeek, goalPhase).targetSets;
+          const metWeekTarget = sets >= weekTarget;
           const { landmark, status } = evaluation;
           const isExpanded = selectedMuscle === key;
 
@@ -169,7 +180,7 @@ export const VolumeTracker: React.FC<VolumeTrackerProps> = ({ weeklyVolume }) =>
                         {sets}
                       </span>
                       <span className="text-xs text-slate-400 ml-1">
-                        / {landmark.mavMin}–{landmark.mavMax} sets
+                        / {weekTarget} sets
                       </span>
                     </span>
 
@@ -211,14 +222,28 @@ export const VolumeTracker: React.FC<VolumeTrackerProps> = ({ weeklyVolume }) =>
                 {/* Status Indicator Line */}
                 <div className="flex items-center justify-between text-xs">
                   <span className="text-slate-400 font-medium">
-                    Target: {landmark.mavMin}–{landmark.mavMax} sets/wk
+                    Week {mesoWeek} target: {weekTarget} sets
                   </span>
 
-                  <span className={`font-semibold flex items-center space-x-1 ${evaluation.statusColor}`}>
-                    {isOptimal && <CheckCircle2 className="w-3.5 h-3.5 text-brand-primary stroke-[2]" />}
-                    {isAboveMrv && <AlertTriangle className="w-3.5 h-3.5 text-rose-400 stroke-[2]" />}
-                    {isNearMrv && <Flame className="w-3.5 h-3.5 text-amber-400 stroke-[2]" />}
-                    <span>{evaluation.statusLabel}</span>
+                  <span
+                    className={`font-semibold flex items-center space-x-1 ${
+                      isAboveMrv ? 'text-rose-400' : metWeekTarget ? 'text-brand-primary' : 'text-slate-400'
+                    }`}
+                  >
+                    {isAboveMrv ? (
+                      <AlertTriangle className="w-3.5 h-3.5 stroke-[2]" aria-hidden="true" />
+                    ) : metWeekTarget ? (
+                      <CheckCircle2 className="w-3.5 h-3.5 stroke-[2]" aria-hidden="true" />
+                    ) : null}
+                    <span>
+                      {isAboveMrv
+                        ? 'Too many sets'
+                        : metWeekTarget
+                        ? 'Target reached'
+                        : sets === 0
+                        ? 'Not trained yet'
+                        : `${weekTarget - sets} to go`}
+                    </span>
                   </span>
                 </div>
               </div>

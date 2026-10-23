@@ -120,11 +120,11 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
       if (onUpdateProfile) {
         onUpdateProfile(setActiveTracker(selectedProvider, profile));
       }
-    } catch {
+    } catch (err: any) {
       setSyncProgress({
         stage: 'error',
         percent: 0,
-        message: `Could not sync data from ${providerMeta.name}. Please check your connection.`,
+        message: err?.message || `Could not sync data from ${providerMeta.name}. Please check your connection.`,
         provider: selectedProvider,
       });
     } finally {

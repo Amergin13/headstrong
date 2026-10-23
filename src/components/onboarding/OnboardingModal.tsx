@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import {
+  ExperienceLevel,
+  Gender,
   GoalPhase,
   HomeEquipmentTag,
   ProgramSplitType,
@@ -27,6 +29,7 @@ import {
   BookOpen,
 } from 'lucide-react';
 import { triggerHaptic } from '../../utils/haptics';
+import { unitToKg, WeightUnit } from '../../utils/units';
 
 export interface OnboardingModalProps {
   profile: UserProfile;
@@ -37,6 +40,12 @@ export interface OnboardingModalProps {
     activeLocation: TrainingLocation;
     availableLocations: TrainingLocation[];
     homeEquipment: HomeEquipmentTag[];
+    athlete?: {
+      gender: Gender;
+      experienceLevel: ExperienceLevel;
+      weightUnit: WeightUnit;
+      bodyweightKg?: number;
+    };
   }) => void;
   onClose: () => void;
   onExploreDemo?: () => void;
@@ -61,21 +70,21 @@ const GOAL_OPTIONS: {
   {
     phase: 'Lean Bulk',
     title: 'Build Muscle & Strength',
-    badge: 'Optimal Hypertrophy',
+    badge: 'Most popular',
     subtitle: 'Maximize muscle growth and add weight or reps every week.',
     sessionRule: 'Beat last session by +1 rep, then add weight when you hit the top of your rep range.',
   },
   {
     phase: 'Cut / Recomp',
     title: 'Lose Fat & Keep Muscle',
-    badge: 'Retention Shield Active',
+    badge: 'Keeps your strength',
     subtitle: 'Hold onto all your strength while leaning out in a calorie deficit.',
     sessionRule: 'Match your target weights at slightly lower weekly sets so you recover well in a calorie deficit.',
   },
   {
     phase: 'Maingain',
     title: 'Stay Lean & Build Stamina',
-    badge: 'Work Capacity Focus',
+    badge: 'Fitness focus',
     subtitle: 'Build strength and work capacity at your current bodyweight.',
     sessionRule: 'Progress reps steadily while keeping rest periods crisp and cardiovascular fitness high.',
   },
@@ -133,9 +142,16 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
   const [availableLocations, setAvailableLocations] = useState<TrainingLocation[]>(
     profile.availableLocations || ['gym', 'home', 'travel']
   );
+  // New athletes start with nothing ticked: we never assume home gear they may not own.
   const [homeEquipment, setHomeEquipment] = useState<HomeEquipmentTag[]>(
-    profile.homeEquipment || ['bench', 'dumbbells', 'trx', 'pullup_bar']
+    profile.onboardingCompleted ? profile.homeEquipment || [] : []
   );
+  const [weightUnit, setWeightUnit] = useState<WeightUnit>(profile.weightUnit || 'kg');
+  const [gender, setGender] = useState<Gender>(profile.gender || 'male');
+  const [experienceLevel, setExperienceLevel] = useState<ExperienceLevel>(
+    profile.experienceLevel || 'intermediate'
+  );
+  const [bodyweightInput, setBodyweightInput] = useState('');
 
   const toggleHomeEquipment = (tag: HomeEquipmentTag) => {
     triggerHaptic('light');
@@ -163,6 +179,17 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
       activeLocation,
       availableLocations,
       homeEquipment,
+      athlete: {
+        gender,
+        experienceLevel,
+        weightUnit,
+        bodyweightKg: (() => {
+          const v = parseFloat(bodyweightInput);
+          if (!Number.isFinite(v) || v <= 0) return undefined;
+          const kg = unitToKg(v, weightUnit);
+          return kg >= 30 && kg <= 300 ? Math.round(kg * 10) / 10 : undefined;
+        })(),
+      },
     });
     onClose();
   };
@@ -255,99 +282,45 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                 Welcome to Treise
               </h2>
               <p className="text-xs text-slate-300 mt-1 leading-relaxed">
-                Treise eliminates all guesswork from training. We do all the planning, tracking, and progressive overload math—you just need to show up.
+                Your plan, your weights and your progress in one place. Just show up and lift.
               </p>
             </div>
 
-            <div className="space-y-3">
-              {/* Feature 1: What Treise Does for You (Guaranteed Overload & Automated Planning) */}
-              <div className="p-4 rounded-2xl bg-[#141824] border border-white/[0.04] space-y-2">
-                <div className="flex items-center space-x-2.5">
-                  <div className="w-8 h-8 rounded-xl bg-emerald-500/15 flex items-center justify-center text-emerald-400 shrink-0">
-                    <BookOpen className="w-4 h-4 stroke-[2]" />
+            <ul className="space-y-2.5">
+              {[
+                {
+                  icon: <BookOpen className="w-4 h-4 stroke-[2]" aria-hidden="true" />,
+                  tone: 'bg-emerald-500/15 text-emerald-400',
+                  title: 'Guaranteed Overload: we do the math',
+                  body: 'Log your sets and Treise tells you exactly what to lift next time: one more rep, or a little more weight.',
+                },
+                {
+                  icon: <Clock className="w-4 h-4 stroke-[2]" aria-hidden="true" />,
+                  tone: 'bg-amber-500/15 text-amber-400',
+                  title: "Train when you're recovered",
+                  body: 'Your next workout waits until your muscles are ready, with no missed-day guilt. Adapts Across Any Gear: gym, home or travel in one tap.',
+                },
+                {
+                  icon: <Scale className="w-4 h-4 stroke-[2]" aria-hidden="true" />,
+                  tone: 'bg-cyan-500/15 text-cyan-400',
+                  title: 'Track real progress',
+                  body: "Weigh in each morning and we'll use a 7-day average. When you build muscle and lose fat together, the scale can barely move while your waist shrinks. That's still progress.",
+                },
+              ].map((item) => (
+                <li key={item.title} className="p-3.5 rounded-2xl bg-[#141824] flex gap-3">
+                  <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${item.tone}`}>
+                    {item.icon}
                   </div>
-                  <div>
-                    <div className="font-bold text-xs text-white">
-                      1. Guaranteed Overload (We Do the Math)
-                    </div>
-                    <div className="text-xs text-emerald-400 font-semibold">
-                      Automated Planning • You Just Show Up
-                    </div>
+                  <div className="space-y-0.5">
+                    <div className="font-bold text-xs text-white">{item.title}</div>
+                    <p className="text-xs text-slate-300 leading-relaxed">{item.body}</p>
                   </div>
-                </div>
-                <p className="text-xs text-slate-300 leading-relaxed">
-                  The app tracks your weights, sets, reps, tempo, and rest, completely replacing the tedious paper gym diary. From week to week, we calculate your progressive overload (+1 rep or +2.5 kg). You never have to guess what to lift—you just show up and execute.
-                </p>
-              </div>
-
-              {/* Feature 2: How to Measure Progress & Body Recomposition */}
-              <div className="p-4 rounded-2xl bg-[#141824] border border-white/[0.04] space-y-2">
-                <div className="flex items-center space-x-2.5">
-                  <div className="w-8 h-8 rounded-xl bg-cyan-500/15 flex items-center justify-center text-cyan-400 shrink-0">
-                    <Scale className="w-4 h-4 stroke-[2]" />
-                  </div>
-                  <div>
-                    <div className="font-bold text-xs text-white">
-                      2. How to Measure Real Progress
-                    </div>
-                    <div className="text-xs text-cyan-400 font-semibold">
-                      Morning Weigh-Ins &amp; Circumference Measurements
-                    </div>
-                  </div>
-                </div>
-                <p className="text-xs text-slate-300 leading-relaxed">
-                  For the best tracking, weigh yourself first thing in the morning on the same scale, and take body circumference measurements (waist, chest, arms).
-                </p>
-                <div className="p-3 rounded-xl bg-[#090C12] border border-white/[0.04] space-y-1">
-                  <div className="text-xs font-bold text-slate-200">
-                    Body Recomposition Note:
-                  </div>
-                  <p className="text-xs text-slate-400 leading-snug">
-                    When building muscle and losing fat at the same time, the scale may stay flat or move slowly. Even when the number barely budges, your waist shrinks and you will look radically different with your shirt off. We use a 7-day average to smooth out normal daily water changes.
-                  </p>
-                </div>
-              </div>
-
-              {/* Feature 3: Friction-Free Smart Tracking */}
-              <div className="p-4 rounded-2xl bg-[#141824] border border-white/[0.04] space-y-2">
-                <div className="flex items-center space-x-2.5">
-                  <div className="w-8 h-8 rounded-xl bg-purple-500/15 flex items-center justify-center text-purple-400 shrink-0">
-                    <Smartphone className="w-4 h-4 stroke-[2]" />
-                  </div>
-                  <div>
-                    <div className="font-bold text-xs text-white">
-                      3. Friction-Free Smart Devices
-                    </div>
-                    <div className="text-xs text-purple-400 font-semibold">
-                      Smart Scales, Measuring Devices &amp; Wearables
-                    </div>
-                  </div>
-                </div>
-                <p className="text-xs text-slate-300 leading-relaxed">
-                  Treise integrates with Bluetooth smart scales, digital measuring devices, and wearable telemetry (Google Pixel Watch, Fitbit, Whoop, Android Health Connect) to sync your weight and measurements automatically—keeping your logging completely friction-free.
-                </p>
-              </div>
-
-              {/* Feature 4: Asynchronous Queue & Adapts Across Any Gear */}
-              <div className="p-4 rounded-2xl bg-[#141824] border border-white/[0.04] space-y-2">
-                <div className="flex items-center space-x-2.5">
-                  <div className="w-8 h-8 rounded-xl bg-amber-500/15 flex items-center justify-center text-amber-400 shrink-0">
-                    <Clock className="w-4 h-4 stroke-[2]" />
-                  </div>
-                  <div>
-                    <div className="font-bold text-xs text-white">
-                      4. Asynchronous Hypertrophy Queue
-                    </div>
-                    <div className="text-xs text-amber-400 font-semibold">
-                      Adapts Across Any Gear • Gym, Home &amp; Travel
-                    </div>
-                  </div>
-                </div>
-                <p className="text-xs text-slate-300 leading-relaxed">
-                  Train when muscles recover. If life delays a workout, your session waits in the queue with zero missed-day guilt. Adapts Across Any Gear: switch between Gym, Home, and Bodyweight in 1 tap with seamless strength continuity.
-                </p>
-              </div>
-            </div>
+                </li>
+              ))}
+            </ul>
+            <p className="text-xs text-slate-400">
+              You can connect a Pixel Watch, Fitbit or Whoop later to adjust training to your recovery.
+            </p>
           </div>
         )}
 
@@ -368,9 +341,94 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                 What is your main goal right now?
               </h2>
               <p className="text-xs text-slate-300 mt-1 leading-relaxed">
-                Treise calibrates your volume landmarks, rep targets, and recovery targets to match your training phase.
+                Your sets, reps and recovery targets are tuned to this goal. You can change it any time.
               </p>
             </div>
+
+            <section aria-label="About you" className="p-4 rounded-2xl bg-[#141824] space-y-3">
+              <div>
+                <h3 className="text-xs font-bold text-white">About you</h3>
+                <p className="text-xs text-slate-400">Sets your starting weights so day one isn't a guess.</p>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs text-slate-300">Units</span>
+                <div className="flex bg-[#0B0E14] p-1 rounded-xl" role="group" aria-label="Weight units">
+                  {(['kg', 'lb'] as const).map((u) => (
+                    <button
+                      key={u}
+                      type="button"
+                      aria-pressed={weightUnit === u}
+                      onClick={() => setWeightUnit(u)}
+                      className={`px-4 min-h-[40px] rounded-lg text-xs font-bold ${
+                        weightUnit === u ? 'bg-white/[0.14] text-white' : 'text-slate-400'
+                      }`}
+                    >
+                      {u}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <label htmlFor="onboarding-bodyweight" className="text-xs text-slate-300">
+                  Bodyweight
+                </label>
+                <div className="flex items-center gap-1.5">
+                  <input
+                    id="onboarding-bodyweight"
+                    type="number"
+                    inputMode="decimal"
+                    placeholder={weightUnit === 'lb' ? '175' : '80'}
+                    value={bodyweightInput}
+                    onChange={(e) => setBodyweightInput(e.target.value)}
+                    className="w-20 min-h-[40px] px-2 rounded-xl bg-[#0B0E14] text-center font-mono font-bold text-white text-xs focus:outline-none focus:ring-1 focus:ring-brand-primary"
+                  />
+                  <span className="text-xs text-slate-400 w-5">{weightUnit}</span>
+                </div>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs text-slate-300">Strength standards</span>
+                <div className="flex bg-[#0B0E14] p-1 rounded-xl" role="group" aria-label="Strength standards">
+                  {([
+                    { id: 'male', label: 'Male' },
+                    { id: 'female', label: 'Female' },
+                  ] as const).map((g) => (
+                    <button
+                      key={g.id}
+                      type="button"
+                      aria-pressed={gender === g.id}
+                      onClick={() => setGender(g.id)}
+                      className={`px-3 min-h-[40px] rounded-lg text-xs font-bold ${
+                        gender === g.id ? 'bg-white/[0.14] text-white' : 'text-slate-400'
+                      }`}
+                    >
+                      {g.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <span className="text-xs text-slate-300">How long have you been lifting?</span>
+                <div className="grid grid-cols-3 gap-1 bg-[#0B0E14] p-1 rounded-xl" role="group" aria-label="Training experience">
+                  {([
+                    { id: 'new', label: 'New' },
+                    { id: 'intermediate', label: '1–3 years' },
+                    { id: 'experienced', label: '3+ years' },
+                  ] as const).map((opt) => (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      aria-pressed={experienceLevel === opt.id}
+                      onClick={() => setExperienceLevel(opt.id)}
+                      className={`min-h-[40px] rounded-lg text-xs font-bold ${
+                        experienceLevel === opt.id ? 'bg-white/[0.14] text-white' : 'text-slate-400'
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </section>
 
             <div className="space-y-3">
               {GOAL_OPTIONS.map((opt) => {

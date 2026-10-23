@@ -26,6 +26,16 @@ import {
   Sliders,
 } from 'lucide-react';
 
+// Internal engineering and design-governance entries are not shown in the athlete's science browser.
+const INTERNAL_PRINCIPLE_IDS = [
+  'sp-tensor-ai',
+  'sp-tensor-ai-acceleration',
+  'sp-ai-coach-single-entry-invariant',
+  'sp-design-system-4-tier-typography',
+  'sp-design-system-semantic-colors',
+  'sp-design-system-touch-targets',
+];
+
 interface KnowledgeGraphCardProps {
   workouts: WorkoutSession[];
   biometrics: BiometricLog[];
@@ -121,20 +131,19 @@ export const KnowledgeGraphCard: React.FC<KnowledgeGraphCardProps> = ({
             Recovery Score
           </div>
           <div className="text-sm font-mono font-extrabold text-brand-primary mt-0.5">
-            {pkg.recoveryEfficiencyScore}/100
+            {pkg.recoveryEfficiencyScore > 0 ? `${pkg.recoveryEfficiencyScore}/100` : '—'}
           </div>
           <div className="text-xs text-slate-400 font-medium">readiness</div>
         </div>
       </div>
 
       {/* View Mode Switcher */}
-      <div className="grid grid-cols-4 gap-1 bg-[#090C12] p-1.5 rounded-2xl">
+      <div className="grid grid-cols-3 gap-1 bg-[#090C12] p-1.5 rounded-2xl">
         {(
           [
             { id: 'overview', label: 'Recovery' },
             { id: 'joints', label: 'Joints' },
             { id: 'science', label: 'Science & Logic' },
-            { id: 'design-system', label: 'Design' },
           ] as const
         ).map((tab) => (
           <button
@@ -422,6 +431,8 @@ export const KnowledgeGraphCard: React.FC<KnowledgeGraphCardProps> = ({
           {/* Principle Cards */}
           <div className="space-y-3 max-h-[380px] overflow-y-auto no-scrollbar pr-0.5">
             {(pkg.scientificKnowledgeBase || EXERCISE_SCIENCE_KNOWLEDGE_BASE)
+              // Internal engineering and design-governance entries are not training science.
+              .filter((p) => !INTERNAL_PRINCIPLE_IDS.includes(p.id))
               .filter((p) => {
                 if (!scienceSearch.trim()) return true;
                 const q = scienceSearch.toLowerCase();

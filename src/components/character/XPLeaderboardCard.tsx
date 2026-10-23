@@ -1,327 +1,117 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { UserProfile } from '../../engine/types';
-import {
-  buildLeaderboardSummary,
-  LeaderboardDivision,
-  LeaderboardEntry,
-} from '../../engine/leaderboard';
-import {
-  Trophy,
-  ShieldCheck,
-  Medal,
-  Users,
-  ChevronRight,
-  TrendingUp,
-  UserCheck,
-  Check,
-  ArrowUpRight,
-} from 'lucide-react';
-import { triggerHaptic } from '../../utils/haptics';
+import { DIVISION_THRESHOLDS, getDivisionProgress } from '../../engine/leaderboard';
+import { Trophy, Check, Dumbbell, TrendingUp, Award } from 'lucide-react';
 
 interface XPLeaderboardCardProps {
   profile: UserProfile;
-  onUpdateProfile: (updated: Partial<UserProfile>) => void;
+  onUpdateProfile?: (updated: Partial<UserProfile>) => void;
 }
 
-type LeaderboardFilter = 'all' | 'division' | 'surrounding';
+const XP_SOURCES: { label: string; detail: string }[] = [
+  { label: 'Finish a workout', detail: '+250 XP, +50 when every working set is logged' },
+  { label: 'Beat your best', detail: '+40 to +60 XP for more weight or more reps' },
+  { label: 'Rank up a lift', detail: '+100 XP per step, +350 XP per new tier' },
+  { label: 'Finish a training week', detail: '+200 XP, +500 XP for the full 6 weeks' },
+];
 
-export const XPLeaderboardCard: React.FC<XPLeaderboardCardProps> = ({
-  profile,
-  onUpdateProfile,
-}) => {
-  const [filter, setFilter] = useState<LeaderboardFilter>('all');
-  const [customName, setCustomName] = useState(profile.leaderboardDisplayName || profile.name || 'Athlete');
-  const [isEditingName, setIsEditingName] = useState(false);
-
-  const summary = buildLeaderboardSummary(profile);
-  const isOptedIn = summary.isOptedIn;
-
-  const handleJoinLeaderboard = () => {
-    triggerHaptic('success');
-    onUpdateProfile({
-      leaderboardOptIn: true,
-      leaderboardDisplayName: customName.trim() || profile.name || 'Athlete',
-    });
-  };
-
-  const handleLeaveLeaderboard = () => {
-    triggerHaptic('light');
-    onUpdateProfile({
-      leaderboardOptIn: false,
-    });
-  };
-
-  const handleSaveDisplayName = () => {
-    triggerHaptic('light');
-    onUpdateProfile({
-      leaderboardDisplayName: customName.trim() || profile.name || 'Athlete',
-    });
-    setIsEditingName(false);
-  };
-
-  // Filter entries based on selected tab
-  let displayedEntries = summary.entries;
-  if (filter === 'division') {
-    displayedEntries = summary.entries.filter((e) => e.division === summary.userDivision);
-  } else if (filter === 'surrounding' && summary.userRank !== null) {
-    const userIdx = summary.entries.findIndex((e) => e.isCurrentUser);
-    if (userIdx >= 0) {
-      const start = Math.max(0, userIdx - 3);
-      const end = Math.min(summary.entries.length, userIdx + 4);
-      displayedEntries = summary.entries.slice(start, end);
-    }
-  }
+/**
+ * XP divisions: the athlete's own standing. Community rankings are not live yet, so this card
+ * never shows other athletes or claims anything is shared.
+ */
+export const XPLeaderboardCard: React.FC<XPLeaderboardCardProps> = ({ profile }) => {
+  const progress = getDivisionProgress(profile.currentXp);
+  const ladder = [...DIVISION_THRESHOLDS].reverse();
 
   return (
     <div className="rounded-3xl surface-glass p-5 sm:p-6 space-y-5 shadow-xl">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center space-x-2.5">
-          <div className="w-10 h-10 rounded-2xl bg-amber-500/15 flex items-center justify-center text-amber-400">
-            <Trophy className="w-5 h-5 stroke-[2]" />
-          </div>
-          <div>
-            <div className="flex items-center space-x-2">
-              <h3 className="font-bold text-base text-white tracking-tight">
-                Community XP Leaderboard
-              </h3>
-              <span className="px-2.5 py-0.5 rounded-full bg-white/[0.08] text-xs font-semibold text-slate-300">
-                {summary.totalAthletes} Athletes
-              </span>
-            </div>
-            <p className="text-xs text-slate-400">
-              Verified progress from completed workouts &amp; strength milestones
-            </p>
-          </div>
+      <div className="flex items-center space-x-2.5">
+        <div className="w-10 h-10 rounded-2xl bg-amber-500/15 flex items-center justify-center text-amber-400">
+          <Trophy className="w-5 h-5 stroke-[2]" aria-hidden="true" />
+        </div>
+        <div>
+          <h3 className="font-bold text-base text-white tracking-tight">Your XP Division</h3>
+          <p className="text-xs text-slate-400">Earned only from real training progress</p>
         </div>
       </div>
 
-      {!isOptedIn ? (
-        /* Opt-In State */
-        <div className="p-4 rounded-2xl bg-[#090C12] space-y-3.5">
-          <div className="space-y-1.5">
-            <span className="text-xs font-bold uppercase tracking-wider text-brand-primary flex items-center gap-1.5">
-              <Users className="w-4 h-4 stroke-[2]" />
-              Opt In to Compete
-            </span>
-            <p className="text-xs text-slate-200 leading-relaxed">
-              Earn XP strictly through genuine workout consistency, progressive overload, and strength standards breakthroughs. No XP is awarded for clicks or menu changes.
-            </p>
-          </div>
-
-          <div className="p-3.5 rounded-xl bg-[#0E1219] space-y-1">
-            <div className="flex items-center space-x-1.5 text-emerald-400">
-              <ShieldCheck className="w-4 h-4 stroke-[2]" />
-              <span className="text-xs font-bold">100% Privacy-Preserved</span>
-            </div>
-            <p className="text-xs text-slate-400 leading-relaxed">
-              Only your chosen display name and verified workout XP are shared. Your bodyweight, biometrics, and sleep data never leave your phone.
-            </p>
-          </div>
-
-          {/* Display Name Input */}
-          <div className="space-y-1">
-            <label htmlFor="athlete-name-input" className="text-xs font-medium text-slate-300 block">
-              Leaderboard Display Name:
-            </label>
-            <input
-              id="athlete-name-input"
-              type="text"
-              value={customName}
-              onChange={(e) => setCustomName(e.target.value)}
-              placeholder="e.g. Alex Vance, HeavyLifter"
-              className="w-full bg-[#0B0E14] rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-brand-primary"
-            />
-          </div>
-
-          <button
-            type="button"
-            onClick={handleJoinLeaderboard}
-            className="w-full min-h-[44px] py-2.5 px-4 rounded-2xl bg-white hover:bg-slate-100 text-slate-950 font-bold text-xs flex items-center justify-center space-x-2 transition-all shadow-md shadow-white/5 active:scale-[0.98]"
-          >
-            <UserCheck className="w-4 h-4 stroke-[2]" />
-            <span>Join Community Leaderboard</span>
-          </button>
+      <div className="p-4 rounded-2xl bg-[#141824] space-y-3">
+        <div className="flex items-center justify-between">
+          <span className="text-sm font-extrabold text-white">{progress.division}</span>
+          <span className="text-xs font-mono font-bold text-white">
+            {profile.currentXp.toLocaleString()} XP
+          </span>
         </div>
-      ) : (
-        /* Opted-In Active Leaderboard */
-        <div className="space-y-3.5">
-          {/* User Status Banner */}
-          <div className="p-4 rounded-2xl bg-[#141824] space-y-2">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-2">
-                <span className="text-xs font-bold text-slate-300">Your Standing:</span>
-                <span className="text-xs font-mono font-extrabold px-2.5 py-0.5 rounded-full bg-brand-primary/15 text-brand-primary">
-                  Rank #{summary.userRank}
-                </span>
-                <span className="text-xs font-semibold px-2 py-0.5 rounded-lg bg-white/[0.08] text-white">
-                  {summary.userDivision} Division
-                </span>
-              </div>
-              <span className="text-xs font-mono font-bold text-white">
-                {profile.currentXp.toLocaleString()} XP
-              </span>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2 pt-2 text-xs">
-              <div className="text-slate-300">
-                {summary.xpToNextRank > 0 ? (
-                  <span className="flex items-center gap-1">
-                    <TrendingUp className="w-3.5 h-3.5 text-emerald-400 stroke-[2]" />
-                    <strong className="text-white">+{summary.xpToNextRank} XP</strong> to rank up
-                  </span>
-                ) : (
-                  <span className="text-amber-400 font-bold flex items-center gap-1">
-                    <Medal className="w-3.5 h-3.5 stroke-[2]" />
-                    Leaderboard Leader!
-                  </span>
-                )}
-              </div>
-              <div className="text-right text-slate-400">
-                {summary.nextDivision ? (
-                  <span>
-                    <strong className="text-white">+{summary.xpToNextDivision} XP</strong> to {summary.nextDivision}
-                  </span>
-                ) : (
-                  <span className="text-emerald-400 font-semibold">Top Division Reached</span>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* Filter Bar */}
+        <div
+          className="h-2 rounded-full bg-white/[0.06] overflow-hidden"
+          role="progressbar"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={progress.progressPercent}
+          aria-label={`Progress through ${progress.division} division`}
+        >
           <div
-            role="group"
-            aria-label="Filter leaderboard"
-            className="grid grid-cols-3 gap-1 bg-[#090C12] p-1.5 rounded-2xl"
-          >
-            {(
-              [
-                { id: 'all', label: 'All Athletes' },
-                { id: 'division', label: `${summary.userDivision}` },
-                { id: 'surrounding', label: 'Near You' },
-              ] as const
-            ).map((t) => (
-              <button
-                key={t.id}
-                type="button"
-                aria-pressed={filter === t.id}
-                onClick={() => {
-                  triggerHaptic('light');
-                  setFilter(t.id);
-                }}
-                className={`py-1.5 px-2 rounded-xl text-xs font-bold transition-all ${
-                  filter === t.id
-                    ? 'bg-white/[0.14] text-white font-bold shadow-sm'
-                    : 'text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                {t.label}
-              </button>
-            ))}
-          </div>
-
-          {/* Leaderboard Entries List */}
-          <div className="space-y-1.5 max-h-80 overflow-y-auto no-scrollbar">
-            {displayedEntries.map((athlete) => {
-              const isUser = athlete.isCurrentUser;
-              const isTop3 = athlete.rank <= 3;
-
-              return (
-                <div
-                  key={athlete.athleteId}
-                  className={`p-3 rounded-2xl transition-all flex items-center justify-between ${
-                    isUser
-                      ? 'bg-brand-primary/[0.15] shadow-sm'
-                      : 'bg-[#0B0E14] hover:bg-[#11141B]'
-                  }`}
-                >
-                  <div className="flex items-center space-x-2.5 min-w-0">
-                    <div
-                      className={`w-7 h-7 rounded-xl flex items-center justify-center font-mono text-xs font-bold shrink-0 ${
-                        athlete.rank === 1
-                          ? 'bg-amber-400 text-dark-950 shadow-sm'
-                          : athlete.rank === 2
-                          ? 'bg-slate-300 text-dark-950'
-                          : athlete.rank === 3
-                          ? 'bg-amber-700/60 text-amber-200'
-                          : 'bg-white/[0.06] text-slate-400'
-                      }`}
-                    >
-                      {athlete.rank}
-                    </div>
-
-                    <div className="w-7 h-7 rounded-full bg-white/[0.08] flex items-center justify-center text-xs font-bold text-white shrink-0">
-                      {athlete.avatarInitial}
-                    </div>
-
-                    <div className="min-w-0">
-                      <div className="flex items-center space-x-1.5">
-                        <span className={`text-xs font-bold truncate ${isUser ? 'text-brand-primary' : 'text-white'}`}>
-                          {athlete.displayName} {isUser && '(You)'}
-                        </span>
-                        {isTop3 && <Medal className="w-3.5 h-3.5 text-amber-400 shrink-0 stroke-[2]" />}
-                      </div>
-                      <div className="flex items-center space-x-2 text-xs text-slate-400">
-                        <span>{athlete.division}</span>
-                        <span>•</span>
-                        <span>Lv.{athlete.level}</span>
-                        <span>•</span>
-                        <span>{athlete.streakDays}d streak</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="text-right shrink-0">
-                    <span className="font-mono text-xs font-bold text-white block">
-                      {athlete.xp.toLocaleString()} XP
-                    </span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          {/* Display Name Edit & Opt-Out Footer */}
-          <div className="pt-2 flex items-center justify-between text-xs text-slate-400">
-            {isEditingName ? (
-              <div className="flex items-center space-x-1.5 w-full">
-                <input
-                  type="text"
-                  value={customName}
-                  onChange={(e) => setCustomName(e.target.value)}
-                  className="flex-1 bg-[#0B0E14] rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-brand-primary"
-                />
-                <button
-                  type="button"
-                  onClick={handleSaveDisplayName}
-                  className="px-3 py-1.5 bg-white text-slate-950 hover:bg-slate-100 font-bold rounded-lg text-xs transition-colors shadow-sm"
-                >
-                  Save
-                </button>
-              </div>
-            ) : (
-              <>
-                <button
-                  type="button"
-                  onClick={() => setIsEditingName(true)}
-                  className="text-slate-400 hover:text-white underline text-xs transition-colors"
-                >
-                  Edit Name ({profile.leaderboardDisplayName || profile.name})
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleLeaveLeaderboard}
-                  className="text-slate-500 hover:text-red-400 text-xs transition-colors"
-                >
-                  Leave Leaderboard
-                </button>
-              </>
-            )}
-          </div>
+            className="h-full bg-brand-primary rounded-full transition-all"
+            style={{ width: `${progress.progressPercent}%` }}
+          />
         </div>
-      )}
+        <p className="text-xs text-slate-300">
+          {progress.nextDivision ? (
+            <>
+              <strong className="text-white">{progress.xpToNextDivision.toLocaleString()} XP</strong> to{' '}
+              {progress.nextDivision}
+            </>
+          ) : (
+            <span className="text-emerald-400 font-semibold">Top division reached</span>
+          )}
+        </p>
+      </div>
+
+      <ol className="space-y-1.5" aria-label="XP divisions">
+        {ladder.map((d) => {
+          const reached = profile.currentXp >= d.minXp;
+          const isCurrent = d.division === progress.division;
+          return (
+            <li
+              key={d.division}
+              className={`px-3 py-2.5 rounded-xl flex items-center justify-between text-xs ${
+                isCurrent ? 'bg-brand-primary/[0.12] text-white' : 'bg-[#0B0E14] text-slate-400'
+              }`}
+            >
+              <span className="flex items-center gap-2 font-bold">
+                {reached ? (
+                  <Check className="w-3.5 h-3.5 text-emerald-400 stroke-[2]" aria-hidden="true" />
+                ) : (
+                  <Award className="w-3.5 h-3.5 text-slate-500 stroke-[2]" aria-hidden="true" />
+                )}
+                {d.division}
+                {isCurrent && <span className="text-brand-primary">• You</span>}
+              </span>
+              <span className="font-mono">{d.minXp.toLocaleString()}+ XP</span>
+            </li>
+          );
+        })}
+      </ol>
+
+      <div className="space-y-2">
+        <h4 className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
+          <TrendingUp className="w-3.5 h-3.5 stroke-[2]" aria-hidden="true" />
+          How to earn XP
+        </h4>
+        <ul className="space-y-1.5">
+          {XP_SOURCES.map((src) => (
+            <li key={src.label} className="flex items-start gap-2 text-xs">
+              <Dumbbell className="w-3.5 h-3.5 mt-0.5 text-brand-primary stroke-[2] shrink-0" aria-hidden="true" />
+              <span className="text-slate-300">
+                <strong className="text-white">{src.label}:</strong> {src.detail}
+              </span>
+            </li>
+          ))}
+        </ul>
+        <p className="text-xs text-slate-500 pt-1">
+          Community rankings are coming soon. Nothing about you is shared today.
+        </p>
+      </div>
     </div>
   );
 };

@@ -1,5 +1,7 @@
 import { BiometricLog, ReadinessState, WearableSyncProgress } from '../engine/types';
 import { generateCodeChallenge, generateRandomString } from './fitbitService';
+import { localDateString } from '../utils/date';
+import { publishRefreshedTokens } from './wearableTokens';
 
 export function getWhoopRedirectUri(customUri?: string): string {
   if (customUri && customUri.trim()) {
@@ -34,8 +36,9 @@ export function generateAlphanumericString(length: number = 24): string {
 }
 
 export const WHOOP_CONFIG = {
+  // Public OAuth client ID. The client secret lives only in the serverless
+  // token proxy (WHOOP_CLIENT_SECRET env var) and is never shipped to the browser.
   CLIENT_ID: '8bcb0a0d-b6ff-42e0-82b7-c3508e18c9f8',
-  CLIENT_SECRET: 'f3f985af0e1113b650b43fe977eb2f22ffb0f008c98e90e5d60ad669d4c365ea',
   AUTHORIZATION_URI: 'https://api.prod.whoop.com/oauth/oauth2/auth',
   TOKEN_URI: 'https://api.prod.whoop.com/oauth/oauth2/token',
   SCOPES: [
@@ -98,7 +101,7 @@ export async function initiateWhoopOAuth(
 export async function exchangeWhoopCodeForToken(
   code: string,
   clientId?: string,
-  clientSecret?: string,
+  _clientSecret?: string,
   customRedirectUri?: string
 ): Promise<{ accessToken: string; refreshToken: string; expiresIn: number; userId?: string }> {
   const codeVerifier =
@@ -110,11 +113,6 @@ export async function exchangeWhoopCodeForToken(
     (typeof localStorage !== 'undefined' && localStorage.getItem('whoop_client_id')) ||
     (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('whoop_client_id')) ||
     WHOOP_CONFIG.CLIENT_ID;
-  const effectiveClientSecret =
-    clientSecret ||
-    (typeof localStorage !== 'undefined' && localStorage.getItem('whoop_client_secret')) ||
-    (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('whoop_client_secret')) ||
-    WHOOP_CONFIG.CLIENT_SECRET;
   const redirectUri =
     customRedirectUri ||
     (typeof localStorage !== 'undefined' && localStorage.getItem('whoop_redirect_uri')) ||
@@ -131,43 +129,10 @@ export async function exchangeWhoopCodeForToken(
   if (codeVerifier) {
     bodyParams.append('code_verifier', codeVerifier);
   }
-  if (effectiveClientSecret) {
-    bodyParams.append('client_secret', effectiveClientSecret);
-  }
 
-  // 1. Try local serverless proxy first (to avoid browser CORS restrictions)
-  try {
-    const proxyResponse = await fetch('/api/whoop/token', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: bodyParams.toString(),
-    });
-
-    if (proxyResponse.ok) {
-      const data = await proxyResponse.json();
-      return {
-        accessToken: data.access_token,
-        refreshToken: data.refresh_token,
-        expiresIn: data.expires_in,
-        userId: data.user?.id ? String(data.user.id) : undefined,
-      };
-    } else {
-      const errData = await proxyResponse.json().catch(() => ({}));
-      console.warn('WHOOP token exchange error via proxy:', proxyResponse.status, errData);
-      const errMsg = errData.error_description || errData.error || `HTTP ${proxyResponse.status}`;
-      throw new Error(`Whoop token exchange failed: ${errMsg}`);
-    }
-  } catch (proxyErr: any) {
-    if (proxyErr?.message?.includes('Whoop token exchange failed')) {
-      throw proxyErr;
-    }
-    // Fall back to direct Whoop token endpoint only on network failure of proxy
-  }
-
-  // 2. Direct Whoop token endpoint
-  const response = await fetch(WHOOP_CONFIG.TOKEN_URI, {
+  // The token exchange always goes through the serverless proxy, which adds the
+  // client secret server-side. There is deliberately no direct browser fallback.
+  const proxyResponse = await fetch('/api/whoop/token', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
@@ -175,13 +140,13 @@ export async function exchangeWhoopCodeForToken(
     body: bodyParams.toString(),
   });
 
-  if (!response.ok) {
-    const errData = await response.json().catch(() => ({}));
-    const errMsg = errData.error_description || errData.error || response.statusText;
-    throw new Error(`Whoop OAuth token exchange failed: ${errMsg}`);
+  if (!proxyResponse.ok) {
+    const errData = await proxyResponse.json().catch(() => ({}));
+    const errMsg = errData.error_description || errData.error || `HTTP ${proxyResponse.status}`;
+    throw new Error(`Whoop token exchange failed: ${errMsg}`);
   }
 
-  const data = await response.json();
+  const data = await proxyResponse.json();
   return {
     accessToken: data.access_token,
     refreshToken: data.refresh_token,
@@ -191,23 +156,18 @@ export async function exchangeWhoopCodeForToken(
 }
 
 /**
- * Refreshes an expired Whoop access token using a refresh token.
+ * Refreshes an expired Whoop access token using a refresh token (via the serverless proxy).
  */
 export async function refreshWhoopToken(
   refreshToken: string,
   clientId?: string,
-  clientSecret?: string
+  _clientSecret?: string
 ): Promise<{ accessToken: string; refreshToken: string; expiresIn: number }> {
   const effectiveClientId =
     clientId ||
     (typeof localStorage !== 'undefined' && localStorage.getItem('whoop_client_id')) ||
     (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('whoop_client_id')) ||
     WHOOP_CONFIG.CLIENT_ID;
-  const effectiveClientSecret =
-    clientSecret ||
-    (typeof localStorage !== 'undefined' && localStorage.getItem('whoop_client_secret')) ||
-    (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('whoop_client_secret')) ||
-    WHOOP_CONFIG.CLIENT_SECRET;
 
   const bodyParams = new URLSearchParams({
     client_id: effectiveClientId,
@@ -215,33 +175,7 @@ export async function refreshWhoopToken(
     refresh_token: refreshToken,
   });
 
-  if (effectiveClientSecret) {
-    bodyParams.append('client_secret', effectiveClientSecret);
-  }
-
-  // 1. Try proxy first
-  try {
-    const proxyResponse = await fetch('/api/whoop/token', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: bodyParams.toString(),
-    });
-
-    if (proxyResponse.ok) {
-      const data = await proxyResponse.json();
-      return {
-        accessToken: data.access_token,
-        refreshToken: data.refresh_token,
-        expiresIn: data.expires_in,
-      };
-    }
-  } catch {
-    // Fall back to direct
-  }
-
-  const response = await fetch(WHOOP_CONFIG.TOKEN_URI, {
+  const proxyResponse = await fetch('/api/whoop/token', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
@@ -249,11 +183,11 @@ export async function refreshWhoopToken(
     body: bodyParams.toString(),
   });
 
-  if (!response.ok) {
-    throw new Error(`Whoop token refresh failed: ${response.statusText}`);
+  if (!proxyResponse.ok) {
+    throw new Error(`Whoop token refresh failed: HTTP ${proxyResponse.status}`);
   }
 
-  const data = await response.json();
+  const data = await proxyResponse.json();
   return {
     accessToken: data.access_token,
     refreshToken: data.refresh_token,
@@ -273,9 +207,10 @@ export async function refreshWhoopToken(
 export async function fetchWhoopDailyBiometrics(
   accessToken: string,
   dateStr?: string,
-  refreshToken?: string
+  refreshToken?: string,
+  workoutWindow?: { start: string; end: string }
 ): Promise<Partial<BiometricLog>> {
-  const date = dateStr || new Date().toISOString().split('T')[0];
+  const date = dateStr || localDateString();
   const effectiveRefreshToken =
     refreshToken ||
     (typeof localStorage !== 'undefined' && localStorage.getItem('whoop_refresh_token')) ||
@@ -293,20 +228,16 @@ export async function fetchWhoopDailyBiometrics(
       body: JSON.stringify({
         accessToken,
         refreshToken: effectiveRefreshToken,
+        workoutWindowStart: workoutWindow?.start,
+        workoutWindowEnd: workoutWindow?.end,
       }),
     });
 
     if (proxyRes.ok) {
       const data = await proxyRes.json();
       if (data.success && data.biometrics) {
-        if (data.refreshedTokens && typeof window !== 'undefined') {
-          try {
-            localStorage.setItem('whoop_access_token', data.refreshedTokens.accessToken);
-            if (data.refreshedTokens.refreshToken) {
-              localStorage.setItem('whoop_refresh_token', data.refreshedTokens.refreshToken);
-            }
-          } catch {}
-        }
+        // Save rotated tokens to the profile (Whoop refresh tokens are single-use).
+        publishRefreshedTokens('whoop', data.refreshedTokens);
         return {
           ...data.biometrics,
           avgWorkoutHr:
@@ -568,9 +499,10 @@ export interface WhoopWorkoutStrainSummary {
  */
 export async function fetchWhoopWorkoutStrain(
   accessToken: string,
-  refreshToken?: string
+  refreshToken?: string,
+  workoutWindow?: { start: string; end: string }
 ): Promise<WhoopWorkoutStrainSummary> {
-  const bio = await fetchWhoopDailyBiometrics(accessToken, undefined, refreshToken);
+  const bio = await fetchWhoopDailyBiometrics(accessToken, undefined, refreshToken, workoutWindow);
   // Ensure workout energy (kJ) is distinct from cumulative daily energy (kJ)
   const workoutKj =
     bio.workoutKilojoules !== undefined
@@ -615,7 +547,7 @@ export async function simulateWhoopSync(
   onProgress?: (progress: WearableSyncProgress) => void,
   forcedState?: ReadinessState
 ): Promise<BiometricLog> {
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = localDateString();
 
   const update = (stage: WearableSyncProgress['stage'], percent: number, message: string) => {
     if (onProgress) onProgress({ stage, percent, message, provider: 'whoop' });

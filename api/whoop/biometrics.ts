@@ -1,6 +1,8 @@
+import { applyCors } from '../_lib/cors';
 const WHOOP_CLIENT_ID = '8bcb0a0d-b6ff-42e0-82b7-c3508e18c9f8';
-const WHOOP_CLIENT_SECRET =
-  process.env.WHOOP_CLIENT_SECRET || 'f3f985af0e1113b650b43fe977eb2f22ffb0f008c98e90e5d60ad669d4c365ea';
+// Must be configured as a Vercel environment variable. Never hardcode it.
+// Read per request so a newly set variable takes effect without a code change.
+const getWhoopClientSecret = (): string => process.env.WHOOP_CLIENT_SECRET || '';
 
 /**
  * Vercel Serverless Function: Whoop Biometrics Aggregator & Proxy
@@ -8,17 +10,7 @@ const WHOOP_CLIENT_SECRET =
  * telemetry requests server-side.
  */
 export default async function handler(req: any, res: any) {
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
-  res.setHeader(
-    'Access-Control-Allow-Headers',
-    'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, Authorization'
-  );
-
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
-  }
+  if (applyCors(req, res)) return;
 
   // Extract access token from Authorization header or body/query
   let accessToken = '';
@@ -45,6 +37,10 @@ export default async function handler(req: any, res: any) {
   }
 
   const refreshToken = body.refreshToken || req.query?.refreshToken;
+  // Optional time window (ISO strings) of the Treise session, used to pick the matching Whoop workout.
+  const windowStartMs = body.workoutWindowStart ? new Date(body.workoutWindowStart).getTime() : NaN;
+  const windowEndMs = body.workoutWindowEnd ? new Date(body.workoutWindowEnd).getTime() : NaN;
+  const hasWindow = Number.isFinite(windowStartMs) && Number.isFinite(windowEndMs);
 
   if (!accessToken) {
     return res.status(400).json({
@@ -112,7 +108,7 @@ export default async function handler(req: any, res: any) {
     try {
       const refreshParams = new URLSearchParams({
         client_id: WHOOP_CLIENT_ID,
-        client_secret: WHOOP_CLIENT_SECRET,
+        client_secret: getWhoopClientSecret(),
         grant_type: 'refresh_token',
         refresh_token: String(refreshToken).trim(),
       });
@@ -135,8 +131,8 @@ export default async function handler(req: any, res: any) {
     // 1. Initial attempt to fetch recovery (prioritizing official v1)
     let recResult = await fetchWithFallback(
       currentToken,
-      'https://api.prod.whoop.com/developer/v1/recovery?limit=10',
-      'https://api.prod.whoop.com/developer/v2/recovery?limit=10'
+      'https://api.prod.whoop.com/developer/v2/recovery?limit=10',
+      'https://api.prod.whoop.com/developer/v1/recovery?limit=10'
     );
 
     // If unauthorized and refresh token is available, refresh and retry
@@ -151,8 +147,8 @@ export default async function handler(req: any, res: any) {
         };
         recResult = await fetchWithFallback(
           currentToken,
-          'https://api.prod.whoop.com/developer/v1/recovery?limit=10',
-          'https://api.prod.whoop.com/developer/v2/recovery?limit=10'
+          'https://api.prod.whoop.com/developer/v2/recovery?limit=10',
+          'https://api.prod.whoop.com/developer/v1/recovery?limit=10'
         );
       }
     }
@@ -161,23 +157,23 @@ export default async function handler(req: any, res: any) {
     const [sleepResult, cycleResult, bodyResult, workoutResult] = await Promise.all([
       fetchWithFallback(
         currentToken,
-        'https://api.prod.whoop.com/developer/v1/activity/sleep?limit=10',
-        'https://api.prod.whoop.com/developer/v2/activity/sleep?limit=10'
+        'https://api.prod.whoop.com/developer/v2/activity/sleep?limit=10',
+        'https://api.prod.whoop.com/developer/v1/activity/sleep?limit=10'
       ),
       fetchWithFallback(
         currentToken,
-        'https://api.prod.whoop.com/developer/v1/cycle?limit=10',
-        'https://api.prod.whoop.com/developer/v2/cycle?limit=10'
+        'https://api.prod.whoop.com/developer/v2/cycle?limit=10',
+        'https://api.prod.whoop.com/developer/v1/cycle?limit=10'
       ),
       fetchWithFallback(
         currentToken,
-        'https://api.prod.whoop.com/developer/v1/user/measurement/body',
-        'https://api.prod.whoop.com/developer/v2/user/measurement/body'
+        'https://api.prod.whoop.com/developer/v2/user/measurement/body',
+        'https://api.prod.whoop.com/developer/v1/user/measurement/body'
       ),
       fetchWithFallback(
         currentToken,
-        'https://api.prod.whoop.com/developer/v1/activity/workout?limit=10',
-        'https://api.prod.whoop.com/developer/v2/activity/workout?limit=10'
+        'https://api.prod.whoop.com/developer/v2/activity/workout?limit=10',
+        'https://api.prod.whoop.com/developer/v1/activity/workout?limit=10'
       ),
     ]);
 
@@ -318,13 +314,23 @@ export default async function handler(req: any, res: any) {
       return timeB - timeA;
     });
 
-    // A workout is considered "recent" if it started within the last 24 hours, or the latest available
-    const recentWorkout =
-      sortedWorkouts.find((w: any) => {
-        const startTime = new Date(w.start || w.created_at || 0).getTime();
-        const hoursAgo = (now - startTime) / (1000 * 60 * 60);
-        return hoursAgo >= -1 && hoursAgo <= 24;
-      }) || sortedWorkouts[0];
+    // When the app sends its session window, pick the Whoop workout that overlaps it the most
+    // (with 30 minutes of slack either side). Otherwise fall back to the latest workout in 24h.
+    const SLACK_MS = 30 * 60 * 1000;
+    const overlapMs = (w: any) => {
+      const start = new Date(w.start || w.created_at || 0).getTime();
+      const end = w.end ? new Date(w.end).getTime() : now;
+      return Math.min(end, windowEndMs + SLACK_MS) - Math.max(start, windowStartMs - SLACK_MS);
+    };
+    const recentWorkout = hasWindow
+      ? sortedWorkouts
+          .filter((w: any) => overlapMs(w) > 0)
+          .sort((a: any, b: any) => overlapMs(b) - overlapMs(a))[0]
+      : sortedWorkouts.find((w: any) => {
+          const startTime = new Date(w.start || w.created_at || 0).getTime();
+          const hoursAgo = (now - startTime) / (1000 * 60 * 60);
+          return hoursAgo >= -1 && hoursAgo <= 24;
+        });
 
     if (recentWorkout) {
       biometrics.hasRecentWorkout = true;
@@ -367,8 +373,9 @@ export default async function handler(req: any, res: any) {
           biometrics.workoutKilojoules = Math.round(ws.kilojoule);
         }
         biometrics.isPendingScore = false;
-      } else if (recentWorkout.score_state === 'PENDING_SCORE') {
-        biometrics.isPendingScore = true;
+      } else {
+        // PENDING_SCORE or UNSCORABLE: Whoop has the workout but no strain yet.
+        biometrics.isPendingScore = recentWorkout.score_state !== 'UNSCORABLE';
       }
     } else {
       biometrics.hasRecentWorkout = false;

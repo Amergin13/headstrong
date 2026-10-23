@@ -1,5 +1,8 @@
 import { EquipmentType } from './types';
 
+/** Above this many reps from failure, rep-max equations stop being reliable. */
+export const MAX_E1RM_REPS_FROM_FAILURE = 15;
+
 export const EQUIPMENT_MULTIPLIERS = {
   DUMBBELL: 1.18, // 1.18x combined dumbbell weight (stabilizer & bilateral deficit)
   RDL: 1.20,      // 1.20x vs Conventional Deadlift standard
@@ -346,7 +349,9 @@ export function calculateE1RM(
     pillar
   );
 
-  const e1rm = effectiveWeight * (1 + (reps + rir) / 30);
+  // Epley drifts high beyond ~15 reps from failure, so cap the rep term for estimation only.
+  const repsFromFailure = Math.min(reps + rir, MAX_E1RM_REPS_FROM_FAILURE);
+  const e1rm = effectiveWeight * (1 + repsFromFailure / 30);
   return Math.round(e1rm * 10) / 10;
 }
 

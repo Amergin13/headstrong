@@ -11,6 +11,7 @@ import { ActivityTracker } from './ActivityTracker';
 import { WeightLogModal } from './WeightLogModal';
 import { KnowledgeGraphCard } from './KnowledgeGraphCard';
 import { triggerHaptic } from '../../utils/haptics';
+import { useUnits } from '../../utils/unitsContext';
 
 interface AnalyticsTabProps {
   workouts: WorkoutSession[];
@@ -35,7 +36,8 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
 }) => {
   const [activeView, setActiveView] = useState<ProgressView>('strength');
   const [showWeightModal, setShowWeightModal] = useState(false);
-  const latestWeight = biometrics[biometrics.length - 1]?.bodyweightKg || 82;
+  const units = useUnits();
+  const latestWeight = [...biometrics].reverse().find((b) => b.bodyweightKg > 0)?.bodyweightKg || 0;
 
 
   return (
@@ -55,7 +57,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
           <div className="text-right">
             <div className="text-xs text-slate-400 font-medium">7-Day Avg Weight</div>
             <div className="text-sm font-extrabold font-mono text-brand-primary">
-              {bodyweightEmaKg} kg
+              {latestWeight > 0 ? units.format(bodyweightEmaKg) : '—'}
             </div>
           </div>
         </div>

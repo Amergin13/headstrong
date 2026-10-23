@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { X, Scale, Check } from 'lucide-react';
+import { useUnits } from '../../utils/unitsContext';
 
 interface WeightLogModalProps {
   currentWeight: number;
@@ -14,14 +15,18 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
   onSaveWeight,
   onClose,
 }) => {
-  const [weightInput, setWeightInput] = useState(currentWeight.toString());
-  const numWeight = parseFloat(weightInput) || currentWeight;
-  const simulatedEma = Math.round((numWeight * 0.25 + currentEma * 0.75) * 100) / 100;
+  const units = useUnits();
+  const hasPrevious = currentWeight > 0;
+  const [weightInput, setWeightInput] = useState(hasPrevious ? `${units.toDisplay(currentWeight)}` : '');
+  const parsed = parseFloat(weightInput);
+  const numWeightKg = Number.isFinite(parsed) && parsed > 0 ? units.fromDisplay(parsed) : 0;
+  const isValid = numWeightKg > 30 && numWeightKg < 300;
+  const previewEmaKg = currentEma > 0 && hasPrevious ? numWeightKg * 0.25 + currentEma * 0.75 : numWeightKg;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (numWeight > 30 && numWeight < 300) {
-      onSaveWeight(numWeight);
+    if (isValid) {
+      onSaveWeight(Math.round(numWeightKg * 100) / 100);
       onClose();
     }
   };
@@ -49,26 +54,32 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
             <div className="relative">
               <input
                 type="number"
+                inputMode="decimal"
                 step="0.1"
                 autoFocus
+                aria-label={`Today's weight in ${units.unit === 'lb' ? 'pounds' : 'kilograms'}`}
                 value={weightInput}
                 onChange={(e) => setWeightInput(e.target.value)}
                 className="w-full py-3.5 px-4 rounded-2xl bg-[#090C12] text-white font-mono text-xl font-bold focus:ring-1 focus:ring-brand-primary focus:outline-none text-center"
               />
-              <span className="absolute right-4 top-4 text-slate-400 font-bold text-sm">kg</span>
+              <span className="absolute right-4 top-4 text-slate-400 font-bold text-sm">{units.unit}</span>
             </div>
           </div>
 
           {/* 7-Day Average preview */}
           <div className="p-4 rounded-2xl bg-[#090C12] text-xs space-y-2">
-            <div className="flex justify-between text-slate-400">
-              <span>Previous 7-Day Average</span>
-              <span className="font-mono text-white font-semibold">{currentEma} kg</span>
-            </div>
-            <div className="flex justify-between text-slate-300">
-              <span>New 7-Day Average</span>
-              <span className="font-mono font-bold text-brand-primary">{simulatedEma} kg</span>
-            </div>
+            {hasPrevious && (
+              <div className="flex justify-between text-slate-400">
+                <span>Previous 7-day average</span>
+                <span className="font-mono text-white font-semibold">{units.format(currentEma)}</span>
+              </div>
+            )}
+            {isValid && (
+              <div className="flex justify-between text-slate-300">
+                <span>New 7-day average</span>
+                <span className="font-mono font-bold text-brand-primary">{units.format(previewEmaKg)}</span>
+              </div>
+            )}
             <p className="text-xs text-slate-400 pt-1 leading-snug">
               We use a 7-day rolling average so normal daily water changes don&apos;t throw off your progress.
             </p>
@@ -84,7 +95,8 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
             </button>
             <button
               type="submit"
-              className="py-3 min-h-[44px] rounded-xl bg-white hover:bg-slate-100 text-slate-950 font-bold text-xs flex items-center justify-center space-x-1.5 shadow-sm active:scale-95"
+              disabled={!isValid}
+              className="disabled:opacity-50 py-3 min-h-[44px] rounded-xl bg-white hover:bg-slate-100 text-slate-950 font-bold text-xs flex items-center justify-center space-x-1.5 shadow-sm active:scale-95"
             >
               <Check className="w-4 h-4 stroke-[2]" />
               <span>Save Weight</span>

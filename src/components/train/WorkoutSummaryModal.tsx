@@ -2,6 +2,8 @@ import React, { useMemo } from 'react';
 import { WorkoutSession, ReadinessState } from '../../engine/types';
 import { WhoopWorkoutStrainSummary } from '../../services/whoopService';
 import { calculateSessionTonnage } from '../../engine/wci';
+import { calculateWorkoutCompletionXp } from '../../engine/xp';
+import { useUnits } from '../../utils/unitsContext';
 import { Trophy, Zap, ArrowRight, Activity, RefreshCw } from 'lucide-react';
 import { triggerHaptic } from '../../utils/haptics';
 
@@ -26,70 +28,33 @@ export const WorkoutSummaryModal: React.FC<WorkoutSummaryModalProps> = ({
 }) => {
   const { tonnageKg, completedSetsCount } = calculateSessionTonnage(workout);
 
-  // Compute authentic session duration (never static 62 min)
+  const units = useUnits();
+
+  // Real duration only: Whoop's measured workout, or first logged set → now (+5 min warm-up).
   const resolvedDurationMinutes = useMemo(() => {
     if (whoopTelemetry?.workoutDurationMin && whoopTelemetry.workoutDurationMin > 5) {
       return whoopTelemetry.workoutDurationMin;
     }
-    if (workout.durationMinutes && workout.durationMinutes > 0 && workout.durationMinutes !== 62) {
-      return workout.durationMinutes;
-    }
-    // Calculate from completed sets timestamps if available
-    const completedSets = workout.exercises.flatMap((ex) =>
-      ex.sets.filter((s) => s.completed)
-    );
-    const timestamps = completedSets
-      .map((s) => (s.completedAt ? new Date(s.completedAt).getTime() : 0))
-      .filter((t) => t > 0);
-    if (timestamps.length >= 2) {
-      const minTime = Math.min(...timestamps);
-      const maxTime = Math.max(...timestamps);
-      const elapsed = Math.round((maxTime - minTime) / 60000);
-      if (elapsed >= 10 && elapsed <= 240) {
-        return elapsed;
-      }
-    }
-    // Hypertrophy model: ~3 min per working set (work + rest) + 8 min warmup/prep
-    return Math.max(30, Math.min(120, completedSetsCount * 3 + 8));
-  }, [whoopTelemetry?.workoutDurationMin, workout, completedSetsCount]);
+    const timestamps = workout.exercises
+      .flatMap((ex) => ex.sets.filter((s) => s.completed && s.completedAt))
+      .map((s) => new Date(s.completedAt as string).getTime())
+      .filter((t) => !Number.isNaN(t));
+    if (timestamps.length === 0) return undefined;
+    const elapsed = Math.round((Date.now() - Math.min(...timestamps)) / 60000) + 5;
+    return elapsed <= 240 ? elapsed : undefined;
+  }, [whoopTelemetry?.workoutDurationMin, workout]);
 
-  // Compute authentic session heart rate (never static 142 bpm)
-  const resolvedAvgHr = useMemo(() => {
-    if (whoopTelemetry?.avgHeartRate) return whoopTelemetry.avgHeartRate;
-    if (workout.avgHeartRate && workout.avgHeartRate !== 142) return workout.avgHeartRate;
-    switch (workout.splitDay) {
-      case 'Legs':
-        return 148;
-      case 'Pull':
-        return 138;
-      case 'Push':
-        return 136;
-      case 'Upper':
-        return 140;
-      case 'Full Body':
-        return 144;
-      default:
-        return 138;
-    }
-  }, [whoopTelemetry?.avgHeartRate, workout]);
+  // Heart rate and energy are only shown when Whoop measured them.
+  const measuredAvgHr = whoopTelemetry?.avgHeartRate;
+  const measuredPeakHr = whoopTelemetry?.maxHeartRate;
+  const measuredKj =
+    whoopTelemetry?.kilojoules && whoopTelemetry.kilojoules < 3500 ? whoopTelemetry.kilojoules : undefined;
 
-  const resolvedPeakHr = useMemo(() => {
-    if (whoopTelemetry?.maxHeartRate) return whoopTelemetry.maxHeartRate;
-    if (workout.maxHeartRate) return workout.maxHeartRate;
-    return resolvedAvgHr + 24;
-  }, [whoopTelemetry?.maxHeartRate, workout.maxHeartRate, resolvedAvgHr]);
-
-  // Compute authentic session energy in kJ (never showing 4372 kJ daily total as workout burn)
-  const resolvedSessionKj = useMemo(() => {
-    if (whoopTelemetry?.kilojoules && whoopTelemetry.kilojoules < 3500) {
-      return whoopTelemetry.kilojoules;
-    }
-    if (workout.kilojoules && workout.kilojoules < 3500) {
-      return workout.kilojoules;
-    }
-    // Scientific model: load displacement tonnage + metabolic baseline over session duration
-    return Math.round(tonnageKg * 0.16 + resolvedDurationMinutes * 11);
-  }, [whoopTelemetry?.kilojoules, workout.kilojoules, tonnageKg, resolvedDurationMinutes]);
+  const completionXp = calculateWorkoutCompletionXp(
+    workout,
+    readinessState,
+    readinessState === 'Primed' ? 1.15 : 1
+  ).amount;
 
   const handleDone = () => {
     triggerHaptic('success');
@@ -123,9 +88,9 @@ export const WorkoutSummaryModal: React.FC<WorkoutSummaryModalProps> = ({
               Total Weight Lifted
             </span>
             <span className="text-xl font-bold font-mono text-brand-primary block mt-0.5">
-              {tonnageKg.toLocaleString()}
+              {Math.round(units.toDisplay(tonnageKg)).toLocaleString()}
             </span>
-            <span className="text-xs text-slate-400">kg</span>
+            <span className="text-xs text-slate-400">{units.unit}</span>
           </div>
 
           <div className="p-3.5 rounded-2xl bg-[#090C12] text-center">
@@ -186,13 +151,13 @@ export const WorkoutSummaryModal: React.FC<WorkoutSummaryModalProps> = ({
                   {whoopTelemetry?.maxHeartRate ? 'Peak HR' : 'Peak HR'}
                 </span>
                 <span className="text-sm font-bold font-mono text-white block mt-0.5">
-                  {resolvedPeakHr} bpm
+                  {measuredPeakHr ? `${measuredPeakHr} bpm` : '—'}
                 </span>
               </div>
               <div className="p-2 rounded-xl bg-black/40">
                 <span className="text-xs text-slate-400 block font-medium">Active Burn</span>
                 <span className="text-sm font-bold font-mono text-white block mt-0.5">
-                  {resolvedSessionKj.toLocaleString()} kJ
+                  {measuredKj ? `${measuredKj.toLocaleString()} kJ` : '—'}
                 </span>
                 {whoopTelemetry?.dayKilojoules && (
                   <span className="text-xs text-slate-400 block font-mono">
@@ -209,8 +174,8 @@ export const WorkoutSummaryModal: React.FC<WorkoutSummaryModalProps> = ({
                   {whoopTelemetry?.workoutStrain
                     ? 'Captured from WHOOP strap'
                     : whoopTelemetry?.isPendingScore
-                    ? 'WHOOP is scoring your workout'
-                    : 'Auto-detecting on WHOOP'}
+                    ? "Whoop is still scoring this. We'll add strain automatically."
+                    : "Not on Whoop yet. We'll keep checking for a few hours."}
                 </span>
                 <button
                   type="button"
@@ -229,26 +194,23 @@ export const WorkoutSummaryModal: React.FC<WorkoutSummaryModalProps> = ({
           </div>
         )}
 
-        {/* Heart Rate & Duration Strip */}
-        <div className="p-3.5 rounded-2xl bg-[#141824] text-xs space-y-1.5">
-          <div className="flex justify-between text-slate-300">
-            <span className="flex items-center space-x-1.5">
-              <span>Average Heart Rate</span>
-              {(whoopTelemetry?.avgHeartRate || (workout.avgHeartRate && workout.wearableSource === 'whoop')) && (
-                <span className="px-1.5 py-0.5 rounded bg-cyan-500/10 text-cyan-400 font-semibold text-xs">
-                  WHOOP
-                </span>
-              )}
-            </span>
-            <span className="font-mono text-white font-bold">
-              {whoopTelemetry?.avgHeartRate || resolvedAvgHr} bpm
-            </span>
+        {/* Heart rate & duration: measured values only */}
+        {(measuredAvgHr || resolvedDurationMinutes) && (
+          <div className="p-3.5 rounded-2xl bg-[#141824] text-xs space-y-1.5">
+            {measuredAvgHr && (
+              <div className="flex justify-between text-slate-300">
+                <span>Average heart rate (Whoop)</span>
+                <span className="font-mono text-white font-bold">{measuredAvgHr} bpm</span>
+              </div>
+            )}
+            {resolvedDurationMinutes && (
+              <div className="flex justify-between text-slate-400">
+                <span>Workout time</span>
+                <span className="font-mono text-slate-200 font-semibold">{resolvedDurationMinutes} min</span>
+              </div>
+            )}
           </div>
-          <div className="flex justify-between text-slate-400">
-            <span>Workout Time</span>
-            <span className="font-mono text-slate-200 font-semibold">{resolvedDurationMinutes} min</span>
-          </div>
-        </div>
+        )}
 
         {/* Gamified XP Earned */}
         <div className="p-3.5 rounded-2xl bg-brand-primary/15 flex items-center justify-between">
@@ -256,10 +218,10 @@ export const WorkoutSummaryModal: React.FC<WorkoutSummaryModalProps> = ({
             <Zap className="w-5 h-5 text-brand-primary stroke-[2]" />
             <div>
               <span className="text-sm font-bold text-white block">
-                +{workout.xpEarned || Math.round(350 + completedSetsCount * 12)} XP Earned
+                +{completionXp} XP for finishing
               </span>
               <span className="text-xs text-brand-primary font-medium">
-                {readinessState === 'Primed' ? 'Includes +15% Recovery Bonus' : 'Streak & Progress Saved'}
+                {readinessState === 'Primed' ? 'Includes +15% recovery bonus' : 'Progress saved'}
               </span>
             </div>
           </div>

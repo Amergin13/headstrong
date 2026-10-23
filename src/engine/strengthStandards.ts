@@ -228,3 +228,23 @@ export function calculateSubTierQuest(
     resistanceProfile: isolationMeta?.resistanceProfile,
   };
 }
+
+/**
+ * Whether an exercise counts toward a movement pillar's strength benchmark (E1RM charts,
+ * strength standards). Isolation work, core, carries/holds and conditioning never do,
+ * even when they are filed under a pillar for programming purposes.
+ */
+const NON_BENCHMARK_ID_PATTERN =
+  /(calf|lateral|curl|pushdown|face-pull|crunch|fly|extension|-ext\b|upright-row|plank|sprint|hiit|raise|kickback|shrug|leg-ext|hollow|dead-bug|pike-plank)/;
+
+export function isPillarBenchmarkExercise(ex: {
+  exerciseId: string;
+  isIsolation?: boolean;
+  durationSeconds?: number;
+  durationMinutesRange?: [number, number];
+  repTargetType?: string;
+}): boolean {
+  if (ex.isIsolation) return false;
+  if (ex.durationSeconds || ex.durationMinutesRange || ex.repTargetType === 'duration') return false;
+  return !NON_BENCHMARK_ID_PATTERN.test(ex.exerciseId.toLowerCase());
+}

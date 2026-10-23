@@ -9,6 +9,7 @@ import {
   UserProfile,
   WorkoutSession,
 } from './types';
+import { localDateString } from '../utils/date';
 export type { ScientificPrinciple, DesignSystemComponent, DesignSystemComponentCategory };
 import { HYPERTROPHY_VOLUME_LANDMARKS, evaluateVolumeStatus } from './hypertrophyVolume';
 import { calculateE1RM } from './e1rm';
@@ -103,7 +104,7 @@ export const EXERCISE_SCIENCE_KNOWLEDGE_BASE: ScientificPrinciple[] = [
     formula: 'Effective Barbell-Equivalent = Combined Dumbbell Weight × 1.18',
     scientificRationale:
       'Dumbbells require independent neuromuscular control across multiple rotational axes, recruiting rotator cuff and serratus stabilizers while exhibiting a bilateral force deficit compared to a rigid barbell bar.',
-    academicCitation: 'Frecassetti et al. (2020); Saeterbakken et al. (2011)',
+    academicCitation: 'Saeterbakken, van den Tillaar & Fimland (2011), J Sports Sci: dumbbell bench 1RM ~17% below barbell, so 1.18x is an approximation',
     practicalApplication:
       'Allows seamless progressive overload when training with dumbbells at home. For example, pressing two 30 kg dumbbells (60 kg total) provides an authoritative 70.8 kg barbell bench press equivalent.',
     keywords: ['dumbbell', 'dumbbells', 'db', 'multiplier', '1.18', 'stabilizer', 'bilateral deficit', 'barbell equivalent', 'dumbbell bench'],
@@ -414,9 +415,9 @@ export const EXERCISE_SCIENCE_KNOWLEDGE_BASE: ScientificPrinciple[] = [
     id: 'sp-smart-device-integration',
     topic: 'Biometric Auto-Regulation & IoT',
     title: 'Friction-Free Telemetry & Smart Device Integration',
-    formula: 'Telemetry Ingestion = Bluetooth Smart Scales + Digital Measuring Devices + Health Connect / Fitbit / Whoop APIs',
+    formula: 'Telemetry Ingestion = Fitbit / Pixel Watch / Whoop APIs (including Fitbit-synced smart scales) + Health Connect data import',
     scientificRationale:
-      'Adherence is the single greatest determinant of long-term physique and athletic progress. Manual data entry creates cognitive friction and tracking abandonment. Integrating Bluetooth smart scales, digital measuring tapes, and wearable biometric telemetry (Fitbit, Whoop, Android Health Connect) automates continuous data ingestion with zero friction, providing reliable inputs for 7-day EMA smoothing and daily autonomic readiness auto-regulation.',
+      'Adherence is the single greatest determinant of long-term physique and athletic progress. Manual data entry creates cognitive friction and tracking abandonment. Pulling wearable and scale data from Fitbit or Whoop, and importing Health Connect exports, replaces manual entry, providing reliable inputs for 7-day EMA smoothing and daily autonomic readiness auto-regulation.',
     academicCitation: 'Piwek et al. (2016); Hermsen et al. (2017); WCAG Cognitive Accessibility & Friction Reduction',
     practicalApplication:
       'Seamlessly syncs with your smart scale, digital measuring tape, and smart watch so your weight, body measurements, and recovery telemetry update automatically without manual typing.',
@@ -1152,7 +1153,7 @@ export function buildAthleteKnowledgeGraph(
   const now = new Date();
   const weekStart = new Date(now);
   weekStart.setDate(now.getDate() - 7);
-  const weekStartStr = weekStart.toISOString().split('T')[0];
+  const weekStartStr = localDateString(weekStart);
 
   const recentWorkouts = workouts.filter((w) => w.date >= weekStartStr);
 
@@ -1371,15 +1372,18 @@ export function buildAthleteKnowledgeGraph(
   });
 
   // 4. Compute Biometric & Autonomic Correlations
+  // Only days with real watch data count; zeros mean "not measured".
   const recentBiometrics = biometrics.slice(-14);
-  const avgHrv =
-    recentBiometrics.length > 0
-      ? Math.round(recentBiometrics.reduce((a, b) => a + b.hrvRmssd, 0) / recentBiometrics.length)
-      : 60;
+  const hrvDays = recentBiometrics.filter((b) => (b.hrvRmssd || 0) > 0);
+  const sleepDays = recentBiometrics.filter((b) => (b.sleepHours || 0) > 0);
+  const hasRecoveryData = hrvDays.length > 0;
+  const avgHrv = hasRecoveryData
+    ? Math.round(hrvDays.reduce((a, b) => a + b.hrvRmssd, 0) / hrvDays.length)
+    : 0;
   const avgSleep =
-    recentBiometrics.length > 0
-      ? Math.round((recentBiometrics.reduce((a, b) => a + b.sleepHours, 0) / recentBiometrics.length) * 10) / 10
-      : 7.5;
+    sleepDays.length > 0
+      ? Math.round((sleepDays.reduce((a, b) => a + b.sleepHours, 0) / sleepDays.length) * 10) / 10
+      : 0;
 
   const recentWhoopStrain = recentWorkouts
     .map((w) => w.whoopStrain)
@@ -1397,7 +1401,9 @@ export function buildAthleteKnowledgeGraph(
   const recoveryEfficiencyScore =
     typeof latestRecoveryScore === 'number'
       ? latestRecoveryScore
-      : Math.min(99, Math.max(55, Math.round(70 + (avgHrv - 55) * 0.8 + (avgSleep - 7.0) * 8)));
+      : hasRecoveryData
+      ? Math.min(99, Math.max(1, Math.round(70 + (avgHrv - 55) * 0.8 + ((avgSleep || 7) - 7.0) * 8)))
+      : 0; // 0 = no recovery data
 
   // 5. Generate Plain-English Coaching Insights
   const highestStrainJoint = [...joints].sort((a, b) => b.strainScore - a.strainScore)[0];
@@ -1412,9 +1418,11 @@ export function buildAthleteKnowledgeGraph(
   const insights: CausalInsight[] = [];
 
   // Whoop Autonomic & Strain Insight
-  if (profile.whoopConnected || latestRecoveryScore !== undefined || avgWorkoutStrain !== undefined) {
-    const strainVal = avgWorkoutStrain || latestBio?.strain || 11.2;
-    const recVal = latestRecoveryScore ?? 49;
+  // Only when Whoop has actually reported a recovery score and a strain value.
+  const measuredStrain = avgWorkoutStrain || latestBio?.strain;
+  if (latestRecoveryScore !== undefined && measuredStrain !== undefined) {
+    const strainVal = measuredStrain;
+    const recVal = latestRecoveryScore;
     const isGreen = recVal >= 67;
     const isYellow = recVal >= 34 && recVal < 67;
 
@@ -1468,16 +1476,21 @@ export function buildAthleteKnowledgeGraph(
       narrative: `Most of the load on your ${highestStrainJoint.joint.toLowerCase()} this week came from ${highestStrainJoint.topContributors.join(', ')}.`,
       actionableStep: highestStrainJoint.biomechanicalAdvice,
     },
-    {
+  );
+  if (sleepDays.length >= 3) {
+    insights.push({
       id: 'pkg-insight-4',
       category: 'Autonomic',
-      title: `How Sleep (${avgSleep}h) Is Boosting Your Strength`,
-      confidence: 95,
-      impactMetric: `+${fastestMuscle.e1rmVelocityPct}% Strength`,
-      narrative: `Over the last 6 weeks, workouts after 7.4+ hours of sleep had the highest rep completion, while lighter recovery days protected your ${profile.streakDays}-day streak without burnout.`,
-      actionableStep: `Push for weight increases on well-rested days and keep weights steady when your sleep dips.`,
-    }
-  );
+      title: `Your sleep: ${avgSleep}h a night`,
+      confidence: 80,
+      impactMetric: avgSleep >= 7 ? 'On track' : 'Below 7 hours',
+      narrative: `Over your last ${sleepDays.length} nights with watch data you averaged ${avgSleep} hours of sleep. Most lifters recover best with 7–9 hours.`,
+      actionableStep:
+        avgSleep >= 7
+          ? 'Keep it up. Push for weight increases on well-rested days.'
+          : 'Aim for an earlier bedtime this week, and keep weights steady on short-sleep days.',
+    });
+  }
 
   const hasTravelOrBw =
     recentWorkouts.some(
@@ -1508,7 +1521,7 @@ export function buildAthleteKnowledgeGraph(
       status: 'optimal',
       subtitle: `Week ${profile.mesocycleWeek || 3}`,
       metrics: {
-        'Recovery': `${recoveryEfficiencyScore}/100`,
+        'Recovery': recoveryEfficiencyScore > 0 ? `${recoveryEfficiencyScore}/100` : 'No watch data',
         ...(avgWorkoutStrain ? { 'Workout Strain': `${avgWorkoutStrain}` } : { 'Back Load': `${systemicAxialLoadScore}%` }),
         'Full Stretch': `${lengthenedStimulusRatio}%`,
       },
@@ -1531,20 +1544,24 @@ export function buildAthleteKnowledgeGraph(
           : 'elevated',
       subtitle:
         profile.whoopConnected && latestRecoveryScore !== undefined
-          ? `${latestRecoveryScore}% Recovery • ${avgWorkoutStrain ? `${avgWorkoutStrain} Strain` : `${avgSleep}h Sleep`}`
-          : `${avgSleep}h • ${avgHrv}ms`,
+          ? `${latestRecoveryScore}% Recovery${avgWorkoutStrain ? ` • ${avgWorkoutStrain} Strain` : avgSleep ? ` • ${avgSleep}h Sleep` : ''}`
+          : hasRecoveryData
+          ? `${avgSleep ? `${avgSleep}h • ` : ''}${avgHrv}ms`
+          : 'No watch data yet',
       metrics: {
         ...(latestRecoveryScore !== undefined ? { 'Whoop Recovery': `${latestRecoveryScore}%` } : {}),
         ...(avgWorkoutStrain !== undefined ? { 'Workout Strain': `${avgWorkoutStrain}` } : {}),
         ...(latestBio?.strain !== undefined ? { 'Day Strain': `${latestBio.strain}` } : {}),
         ...(latestBio?.kilojoules !== undefined ? { 'Energy': `${latestBio.kilojoules} kJ` } : {}),
-        'Avg HRV': `${avgHrv} ms`,
-        'Avg Sleep': `${avgSleep} hrs`,
-        'Resting Pulse': `${latestBio?.restingHr || profile.restingHrBaseline} bpm`,
+        ...(hasRecoveryData ? { 'Avg HRV': `${avgHrv} ms` } : {}),
+        ...(avgSleep ? { 'Avg Sleep': `${avgSleep} hrs` } : {}),
+        ...((latestBio?.restingHr || 0) > 0 ? { 'Resting Pulse': `${latestBio?.restingHr} bpm` } : {}),
       },
       detailText: profile.whoopConnected
-        ? `Live Whoop 4.0 autonomic telemetry. Recovery score (${latestRecoveryScore ?? 49}%) and workout strain (${avgWorkoutStrain ?? 11.2}) drive daily RIR targets and stimulus-to-fatigue auto-regulation.`
-        : `Your 14-day sleep and heart rate recovery trend. Automatically adjusts your daily effort targets.`,
+        ? `Your Whoop recovery${latestRecoveryScore !== undefined ? ` (${latestRecoveryScore}%)` : ''}${avgWorkoutStrain !== undefined ? ` and workout strain (${avgWorkoutStrain})` : ''} set how hard each day's workout should be.`
+        : hasRecoveryData
+        ? `Your 14-day sleep and heart rate recovery trend. It adjusts your daily effort targets.`
+        : `Connect a watch to see your sleep and heart rate recovery here.`,
     },
     {
       id: 'node-delts-calves',
@@ -1555,10 +1572,10 @@ export function buildAthleteKnowledgeGraph(
         (weeklyVolume.SideDelts || 0) >= 16 && (weeklyVolume.Calves || 0) >= 16
           ? 'optimal'
           : 'under',
-      subtitle: `${weeklyVolume.SideDelts || 16} / ${weeklyVolume.Calves || 16} sets`,
+      subtitle: `${weeklyVolume.SideDelts || 0} / ${weeklyVolume.Calves || 0} sets`,
       metrics: {
-        'Side Shoulders': `${weeklyVolume.SideDelts || 16} / 16–26 sets`,
-        'Calves': `${weeklyVolume.Calves || 16} / 16–24 sets`,
+        'Side Shoulders': `${weeklyVolume.SideDelts || 0} / 16–26 sets`,
+        'Calves': `${weeklyVolume.Calves || 0} / 16–24 sets`,
         'Recovery Speed': '24 Hours',
       },
       detailText: `Fast-recovering muscles that cause zero lower-back fatigue and grow best with 16–26 sets per week.`,
@@ -1569,10 +1586,10 @@ export function buildAthleteKnowledgeGraph(
       category: 'muscle',
       score: 88,
       status: 'optimal',
-      subtitle: `${weeklyVolume.Chest || 14} / ${weeklyVolume.Quads || 14} sets`,
+      subtitle: `${weeklyVolume.Chest || 0} / ${weeklyVolume.Quads || 0} sets`,
       metrics: {
-        'Chest': `${weeklyVolume.Chest || 14} / 12–18 sets`,
-        'Quads': `${weeklyVolume.Quads || 14} / 12–18 sets`,
+        'Chest': `${weeklyVolume.Chest || 0} / 12–18 sets`,
+        'Quads': `${weeklyVolume.Quads || 0} / 12–18 sets`,
         '6-Wk Gain': `+${fastestMuscle.e1rmVelocityPct}%`,
       },
       detailText: `Pushing and squatting muscles. Best trained with 12–18 quality sets per week and 48–60 hours of rest between heavy sessions.`,
@@ -1583,10 +1600,10 @@ export function buildAthleteKnowledgeGraph(
       category: 'muscle',
       score: 86,
       status: (weeklyVolume.Hamstrings || 0) > 18 ? 'warning' : 'optimal',
-      subtitle: `${weeklyVolume.Back || 16} / ${weeklyVolume.Hamstrings || 12} sets`,
+      subtitle: `${weeklyVolume.Back || 0} / ${weeklyVolume.Hamstrings || 0} sets`,
       metrics: {
-        'Back & Lats': `${weeklyVolume.Back || 16} / 14–22 sets`,
-        'Hamstrings': `${weeklyVolume.Hamstrings || 12} / 10–16 sets`,
+        'Back & Lats': `${weeklyVolume.Back || 0} / 14–22 sets`,
+        'Hamstrings': `${weeklyVolume.Hamstrings || 0} / 10–16 sets`,
         'Recovery Speed': '48–72 Hours',
       },
       detailText: `Pulling and hinge muscles. Hamstrings take up to 72 hours to recover after heavy deadlifts, so 10–16 sets is the ideal weekly target.`,

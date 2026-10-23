@@ -1,6 +1,22 @@
 # Treise Architecture & Exercise Science Formulas
 
-This document outlines the core mathematical models, exercise science principles, and biometric integration formulas implemented in **Treise**, a mobile-first Progressive Web App (PWA) designed for gamified hypertrophy workout tracking, international strength standards, and Google Pixel Watch (Fitbit Web API) telemetry.
+## 0. Non-Negotiables (read first, override everything below)
+
+These rules exist because earlier sessions broke them. Any change that violates one is wrong, even if another section seems to allow it.
+
+1. **Never fabricate data or claims.** No fake users, leaderboard entries, heart rates, sleep, HRV, durations, "simulated" syncs, demo sign-ins, latency numbers or hardware badges in the real app. Missing data is stored as `0`/`undefined` and shown as "—" or an empty state. Sample data only appears after the athlete explicitly loads the demo.
+2. **Never put secrets in client code.** OAuth client secrets live only in Vercel environment variables (`WHOOP_CLIENT_SECRET`, `FITBIT_CLIENT_SECRET`) and are used only in `api/`. CI fails if `client_secret` appears in the built bundle.
+3. **Never claim what isn't built.** No "cloud sync", "community", "Bluetooth scale" or hardware claims unless the feature exists end to end. The privacy policy (`public/privacy.html`) must match what the code actually does.
+4. **Safety beats engagement.** Pain, injury or warning-symptom messages always get the fixed reply from `buildSafetyResponse` (stop the movement, swap it, see a professional). The model never answers these.
+5. **Respect recovery.** The Workout tab never offers the next session as "today's workout" while its muscles are still recovering (`src/engine/recovery.ts`). It shows when it will be ready, a recovered alternative if one exists, and a secondary "Train anyway".
+6. **Weights come from the athlete.** Every generated session goes through `personalizeSessionLoads` (history carry-over, learned strength ratios, onboarding calibration). Never show template weights to a new athlete unscaled.
+7. **Store kg, display the athlete's unit.** Use `useUnits()` for every weight shown or typed.
+8. **Use local dates** (`localDateString`), never `toISOString().split('T')[0]`.
+9. **Run `npm run test:engine`, `npm run test:api` and `npx tsc --noEmit -p .` before finishing.** Update tests when behaviour intentionally changes; never weaken a test to hide a regression.
+
+---
+
+This document outlines the core mathematical models, exercise science principles, and biometric integration formulas implemented in **Treise**, a mobile-first Progressive Web App (PWA) designed for gamified hypertrophy workout tracking, international strength standards, and Google Pixel Watch / Fitbit and Whoop telemetry.
 
 ---
 
@@ -124,12 +140,25 @@ where:
 Combines cardiovascular fitness and metabolic output with strength:
 $$\text{Vitality Score} = 0.40 \cdot \text{Score}_{\text{VO2Max}} + 0.30 \cdot \text{Score}_{\text{RHR}} + 0.30 \cdot \text{Score}_{\text{Steps}}$$
 A high vitality score expands the lifter's 7-Pillar Radar profile.
-Active Zone Minutes (AZM) $\ge 30$ and Daily Steps $\ge 8{,}500$ unlock the `1.25x Metabolic Momentum` XP multiplier.
+(The previously documented `1.25x Metabolic Momentum` XP multiplier was never implemented and is not shown in the app.)
 
 ---
 
-### 2.5 Google Pixel Tensor Hardware Acceleration & On-Device AI Architecture
-When Treise runs on Google Pixel phones (Pixel 6, 7, 8, 9, Fold), it automatically detects the hardware and routes all AI and auto-regulation inference directly through the **Google Tensor processor** (TPU/NPU/GPU):
+### 2.5 On-Device AI Coach (Gemini Nano via Chrome's Prompt API)
+Implementation: `src/services/onDeviceModel.ts` + `src/services/aiAssistantService.ts`.
+- Free-form questions are answered by Chrome's built-in Prompt API (`LanguageModel`) **only when the model is already `available`** on the device. On Pixel phones Chrome runs Gemini Nano through Android AICore on the Tensor chip; on desktop Chrome it runs locally too. Prompts and answers never leave the device.
+- On Pixel phones with status `downloadable`, `prepareOnDeviceModel()` starts the one-time model download in the background from a user gesture. Other devices never auto-download.
+- Otherwise the rule-based coach answers. Plan changes (equipment, travel, split, rest day) are always deterministic intents, never model output.
+- The system prompt is compact (Nano has a small context window) and grounded in the athlete's workout, recovery and one matching knowledge-base fact.
+- Open questions go to the model when it is available; explicit "why / how does / formula" questions get the knowledge-base card. Answers are rejected (and the rule-based coach answers) if they echo the prompt, which is what Chromium builds without Gemini Nano do.
+- The model is warmed up when the coach opens (first load takes several seconds); a question asked meanwhile waits for that load instead of starting a second one.
+- **Chrome on Android does not expose Gemini Nano to web apps** (verified on a Pixel 11 Pro XL, Chrome 155). There, the coach offers an opt-in download of Qwen2.5 1.5B Instruct (Apache-2.0) that runs on the phone's GPU through WebGPU (`src/services/gpuModel.ts`, WebLLM in a Web Worker). It is registered with `registerFallbackOnDeviceModel`, used only when Nano isn't available, never downloaded without a tap, kept out of the PWA pre-cache, and removable in Program → Data Backup & Privacy.
+- Measured on that Pixel (Imagination GPU, f16): prefill ~30–37 tokens/s, decode ~7 tokens/s. Keep the system prompt short (`buildCoachSystemPrompt`, ~180 tokens) and stable for the whole chat; it is pre-read when the coach opens (`primeGpuModel`) and follow-ups continue the same conversation. Result: ~3 s to first words, 8–13 s per full answer.
+- The model only handles open coaching questions. Plan facts (briefing, targets, warm-ups, swaps), progress (`buildProgressSummary`), nutrition timing, equipment/travel changes and pain/safety are answered from the athlete's data or fixed text, because a small model misreads and invents numbers.
+- No hardware names, latency figures or "accelerated" badges in the UI. The only user-facing statement is "Your chats stay on this phone".
+
+The section below describes the original hardware-detection design; detection code remains in `src/engine/tensorAI.ts` but nothing in the UI depends on it.
+
 1. **Hardware Detection & Identification:**
    - Detects device model via Client Hints (`Sec-CH-UA-Model`), User-Agent, and WebGL GPU vendor strings (`Mali-G720` for Tensor G4, `Mali-G715` for Tensor G3, `Mali-G710` for Tensor G2, `Mali-G78` for Tensor G1).
 2. **Layered Acceleration Backends:**
@@ -142,7 +171,6 @@ When Treise runs on Google Pixel phones (Pixel 6, 7, 8, 9, Fold), it automatical
    - **On-Device Conversational AI Assistant & Knowledge Graph Mutations:** Natural language assistant enabling athletes to adapt upcoming mesocycle schedules (e.g. work travel in week 5), register new equipment (e.g. pull-up bar), switch splits, and query joint strain and autonomic recovery telemetry. Directly mutates the Personal Knowledge Graph with zero cloud API costs.
    - **Tensor Biomechanical Neural Matcher:** Evaluates exercise substitution compatibility, joint torque, and stimulus-to-fatigue ratios.
    - **Privacy Invariant:** 100% on-device processing. Zero user biometric or health data ever leaves the phone.
-   - **Latency Invariant:** On-device inference executes in $\le 15\text{ms}$.
    - **User Interface Invariant (Zero Technical Concept Leaks):** Local execution and acceleration must remain completely invisible to the user. The UI must never display "Knowledge Graph Grounding", "On-Device Local Engine", hardware chip names, or millisecond latency telemetry. All actions taken by the AI (such as registering equipment) must surface clear user outcomes with direct action buttons (e.g. "View All Equipment").
    - **AI Coach Single Entry Point Invariant (Mandatory Governance Rule):** The ONLY entry point to the AI Coach is the dedicated "AI Coach" tab in the primary bottom navigation bar. There are to be strictly **NO dedicated AI Coach cards** on the workout/training tab or any other screen, and strictly **NO AI Coach buttons, pills, sparkles, or icons in the application header**. All AI interactions are initiated solely via the bottom navigation bar.
 
@@ -208,7 +236,7 @@ Volume scales progressively across a 6-week training block to maximize progressi
 - **Retention Shield in Double Progression:** When holding load and reps in `Cut / Recomp`, Treise displays explicit **Retention Shield** feedback celebrating lean tissue preservation. As body mass drops, holding absolute strength increases relative strength and official DOTS score.
 
 ### 4.5 Multi-Program Split Rotations & Asynchronous Queue Invariants
-Treise calibrates 4 evidence-based program structures, each adhering to the Asynchronous Hypertrophy Queue:
+Treise offers 5 program structures (the 4 splits below plus the 24-workout **6-Week Muscle Building Plan**, `muscle_building_6wk`, whose next workout is the one after the last completed plan workout), each adhering to the Asynchronous Hypertrophy Queue:
 1. **Push / Pull / Legs + Upper (`ppl_upper` - 4-Day):** Optimal balance of hypertrophy frequency and volume. Day rotation: `Push` → `Pull` → `Legs` → `Upper`.
 2. **Push / Pull / Legs (`ppl` - 3-Day Classic):** High-efficiency classic split. Day rotation: `Push` → `Pull` → `Legs`.
 3. **Upper / Lower (`upper_lower` - 4-Day Power & Mass):** Heavy compound focus. Day rotation: `Upper` → `Legs`.
@@ -334,6 +362,7 @@ Every UI component, layout, copy change, and new flow MUST be designed and evalu
 
 - **No Rigid Calendar Days:** Muscle tissue responds to mechanical tension and local recovery windows (`24h–72h`), not days of the week.
 - **Skipping a Day Has Zero Penalty:** The 4-session rotation (`Push` → `Pull` → `Legs` → `Upper`) operates as an **Asynchronous Hypertrophy Queue**. If a user skips a day (due to work, travel, or sleep), the next queued session simply waits for them with full glycogen and CNS recovery—never show confusing "missed calendar day" states or competing day tabs.
+- **Recovery gate (implemented in `src/engine/recovery.ts`):** each completed session stimulates its exercises' primary muscles fully and secondary muscles at half weight; windows come from §4.2 and scale with hard sets. The queued session is ready when every target muscle reaches 90% of its window, and never before 6 AM the day after a workout. Until then the Workout tab shows a rest card with per-muscle ready times.
 - **Single Opinionated Recommendation:** The Workout screen presents **one clear "Up Next" session** with its muscle recovery status (e.g., *"Chest, Shoulders & Triceps • 100% Recovered"*), while keeping manual split/location overrides tucked neatly inside a progressive-disclosure menu (`Switch Location or Split ▾`).
 
 ---
@@ -405,8 +434,8 @@ When running on Google Pixel hardware (Pixel 6, 7, 8, 9, Fold), Treise routes AI
    - **Tensor GPU (WebGPU):** Probes `navigator.gpu` for Mali compute shaders.
    - **WASM SIMD Fallback:** High-performance local engine on non-Pixel devices.
 3. **Invariants:**
-   - Inference latency $\le 15\text{ms}$.
-   - 100% on-device local execution; zero biometric, health, or workout data ever transmitted to cloud servers.
+   - AI Coach prompts and answers stay on the device.
+   - Wearable data is fetched through Treise's Vercel functions (`api/`), which do not store it. Workout history is stored only on the device.
 
 ---
 
@@ -422,16 +451,15 @@ XP is a measure of genuine athletic progression and consistency:
   - **Full Workout Completion:** Base 250 XP + 50 XP all-working-sets completed bonus (+15% Primed multiplier).
   - **Program Milestones:** +200 XP for mesocycle week completion; +500 XP for 6-week cycle graduation.
   - **Progressive Overload PRs:** Evaluated per set against historical exercise bests: +60 XP for load increases (>=+2.5kg BB / >=+2kg DB); +40 XP for rep increases at equal/higher load; +50 XP for reaching the top of the rep range (unlocking double progression). Ordinary non-PR sets award 0 XP.
-  - **Strength Standards Gains:** +100 XP for international sub-division rank-ups (I -> II -> III -> IV); +350 XP for major tier breakthroughs (Novice -> Intermediate -> Advanced -> Elite).
+  - **Strength Standards Gains:** +100 XP for international sub-division rank-ups (I -> II -> III -> IV); +350 XP for major tier breakthroughs (Novice -> Intermediate -> Advanced -> Elite). A lift's first-ever log is its starting point and earns no rank-up XP.
+  - Each set earns progress XP at most once, even if it is unticked and ticked again.
 - **Strictly Prohibited XP Actions:**
   - Zero XP is awarded for: switching exercises, switching split days, switching training locations, changing mesocycle weeks via slider, shifting workout dates, changing goal phases, exporting/importing JSON backups, syncing Pixel Watch, completing onboarding, loading demo data, or logging bodyweight.
 
-### 10.3 Privacy-Preserved Community XP Leaderboard
-- **Opt-In by Default:** Lifters start opted OUT with complete privacy preserved.
-- **1-Tap Opt-In / Opt-Out:** Lifters opt in with 1 tap, choose a public display name, and can leave anytime in 1 tap.
-- **Privacy Boundary:** Only display name, division, rank, and verified XP are published; bodyweight, health metrics, and sleep data never leave the device.
-- **6 Competitive Divisions:** `Elite` (5,000+ XP), `Diamond` (3,500–4,999 XP), `Platinum` (2,500–3,499 XP), `Gold` (1,500–2,499 XP), `Silver` (750–1,499 XP), and `Bronze` (0–749 XP).
-- **Navigation Placement:** Third segment in the Athlete tab subview switcher (`Weekly Sets | Strength Radar | XP Leaderboard`).
+### 10.3 XP Divisions (community leaderboard not built yet)
+- There is no backend, so the app shows only the athlete's own division and progress. It must never show other athletes or say anything is shared. A real leaderboard needs a server with verified XP before it returns.
+- **6 Divisions:** `Elite` (5,000+ XP), `Diamond` (3,500–4,999 XP), `Platinum` (2,500–3,499 XP), `Gold` (1,500–2,499 XP), `Silver` (750–1,499 XP), and `Bronze` (0–749 XP).
+- **Navigation Placement:** Third segment in the Athlete tab subview switcher (`Weekly Sets | Strength Radar | XP Division`).
 
 ---
 
@@ -441,7 +469,7 @@ To eliminate all model hallucinations, ungrounded approximations, and conflictin
 
 ### 11.1 The 21 Authoritative Scientific Principles
 1. **E1RM Formula & RIR Adjustment (`sp-e1rm-epley-rir`):** Augmented Epley/Lombardi model with Reps in Reserve.
-2. **Dumbbell Bilateral Stabilization Multiplier (`sp-db-multiplier`):** $1.18\times$ combined DB load multiplier for stabilizer fatigue and bilateral deficit (Frecassetti et al., 1999).
+2. **Dumbbell Bilateral Stabilization Multiplier (`sp-db-multiplier`):** $1.18\times$ combined DB load multiplier for stabilizer fatigue and bilateral deficit (Saeterbakken et al., 2011; approximation).
 3. **Romanian Deadlift Conventional Normalization (`sp-rdl-multiplier`):** $1.20\times$ RDL load normalization to conventional deadlift standard.
 4. **Weighted Calisthenics Total Gravitational Mass (`sp-weighted-calisthenics-total-load`):** Total Mass = $\text{EMA}_{BW} + \text{External Load}$.
 5. **7-Day Exponential Moving Average Bodyweight (`sp-ema-bodyweight`):** Smoothing daily glycogen/water shifts ($0.25 \times \text{Today} + 0.75 \times \text{Yesterday}$).

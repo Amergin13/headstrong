@@ -1,52 +1,50 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Play, Pause, X, Plus, Heart, CheckCircle2 } from 'lucide-react';
+import { Play, Pause, X, Plus, CheckCircle2, Timer } from 'lucide-react';
 import { triggerHaptic } from '../../utils/haptics';
+import type { RestTimerContext } from '../../services/setCompletion';
+
+export type { RestTimerContext };
 
 interface RestTimerModalProps {
   initialSeconds?: number;
-  maxHr?: number;
+  context?: RestTimerContext;
   onDismiss: () => void;
 }
 
+/**
+ * Rest timer between sets. It is labelled with the exercise and the next set so the athlete
+ * always knows what the countdown is for. It is based on wall-clock time, so it stays accurate
+ * when the phone is locked or the app is in the background. Heart rate is not shown because
+ * no live heart-rate stream is available in the app.
+ */
 export const RestTimerModal: React.FC<RestTimerModalProps> = ({
   initialSeconds = 90,
-  maxHr = 192,
+  context,
   onDismiss,
 }) => {
-  const [secondsRemaining, setSecondsRemaining] = useState(initialSeconds);
-  const [isRunning, setIsRunning] = useState(true);
-  const hasTriggeredRecoveryHaptic = useRef(false);
+  const [endsAt, setEndsAt] = useState(() => Date.now() + initialSeconds * 1000);
+  const [pausedRemaining, setPausedRemaining] = useState<number | null>(null);
+  const [now, setNow] = useState(Date.now());
+  const hasTriggeredDoneHaptic = useRef(false);
 
-  // Recovery HR threshold: 60% of Max HR (e.g. 115 bpm)
-  const targetRecoveryHr = Math.round(maxHr * 0.60);
-
-  // Smoothly simulates HR dropping during the rest interval
-  const progressRatio = Math.max(0, Math.min(1, 1 - secondsRemaining / initialSeconds));
-  const currentSimulatedHr = Math.round(155 - progressRatio * 43); // 155 down to 112 bpm
-  const isRecovered = currentSimulatedHr <= targetRecoveryHr || secondsRemaining === 0;
+  const isRunning = pausedRemaining === null;
+  const secondsRemaining = isRunning
+    ? Math.max(0, Math.ceil((endsAt - now) / 1000))
+    : pausedRemaining;
+  const isDone = secondsRemaining === 0;
 
   useEffect(() => {
-    if (isRecovered && !hasTriggeredRecoveryHaptic.current) {
-      hasTriggeredRecoveryHaptic.current = true;
+    if (!isRunning || isDone) return;
+    const timer = setInterval(() => setNow(Date.now()), 250);
+    return () => clearInterval(timer);
+  }, [isRunning, isDone]);
+
+  useEffect(() => {
+    if (isDone && !hasTriggeredDoneHaptic.current) {
+      hasTriggeredDoneHaptic.current = true;
       triggerHaptic('success');
     }
-  }, [isRecovered]);
-
-  useEffect(() => {
-    if (!isRunning) return;
-
-    const timer = setInterval(() => {
-      setSecondsRemaining((prev) => {
-        if (prev <= 1) {
-          setIsRunning(false);
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-
-    return () => clearInterval(timer);
-  }, [isRunning]);
+  }, [isDone]);
 
   const formatTime = (secs: number) => {
     const m = Math.floor(secs / 60);
@@ -56,28 +54,49 @@ export const RestTimerModal: React.FC<RestTimerModalProps> = ({
 
   const handleAdd30s = () => {
     triggerHaptic('light');
-    setSecondsRemaining((s) => s + 30);
+    hasTriggeredDoneHaptic.current = false;
+    if (isRunning) {
+      setEndsAt((t) => Math.max(t, Date.now()) + 30_000);
+      setNow(Date.now());
+    } else {
+      setPausedRemaining((s) => (s ?? 0) + 30);
+    }
+  };
+
+  const handleTogglePause = () => {
+    triggerHaptic('light');
+    if (isRunning) {
+      setPausedRemaining(secondsRemaining);
+    } else {
+      setEndsAt(Date.now() + (pausedRemaining ?? 0) * 1000);
+      setNow(Date.now());
+      setPausedRemaining(null);
+    }
   };
 
   return (
-    <aside aria-label="Rest timer" className="fixed bottom-20 left-3 right-3 z-50 max-w-md mx-auto">
+    <aside aria-label="Rest timer" className="fixed bottom-20 left-3 right-3 z-40 max-w-md mx-auto">
       <div
-        className={`px-5 py-3.5 rounded-3xl bg-[#0E1219]/95 backdrop-blur-2xl transition-all duration-300 shadow-2xl ${
-          isRecovered
-            ? 'shadow-brand-primary/15'
-            : ''
+        className={`px-4 py-3 rounded-3xl bg-[#0E1219]/95 backdrop-blur-2xl transition-all duration-300 shadow-2xl ${
+          isDone ? 'shadow-brand-primary/15' : ''
         }`}
       >
-        <div className="flex items-center justify-between">
-          {/* Chronometer & Heart Rate */}
-          <div className="flex items-center space-x-3.5">
+        {context && (
+          <div className="flex items-center gap-1.5 text-xs text-slate-400 mb-2 min-w-0">
+            <Timer className="w-3.5 h-3.5 stroke-[2] shrink-0" aria-hidden="true" />
+            <span className="truncate">
+              Rest after <strong className="text-slate-200">{context.exerciseName}</strong>
+              {context.restReason ? ` • ${context.restReason}` : ''}
+            </span>
+          </div>
+        )}
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center space-x-3 min-w-0">
             <button
               type="button"
-              onClick={() => {
-                triggerHaptic('light');
-                setIsRunning(!isRunning);
-              }}
-              className="w-10 h-10 rounded-2xl bg-white/[0.08] hover:bg-white/[0.12] active:scale-95 flex items-center justify-center text-white transition-all"
+              onClick={handleTogglePause}
+              aria-label={isRunning ? 'Pause rest timer' : 'Resume rest timer'}
+              className="w-11 h-11 rounded-2xl bg-white/[0.08] hover:bg-white/[0.12] active:scale-95 flex items-center justify-center text-white transition-all shrink-0"
             >
               {isRunning ? (
                 <Pause className="w-4 h-4 fill-white" />
@@ -86,41 +105,41 @@ export const RestTimerModal: React.FC<RestTimerModalProps> = ({
               )}
             </button>
 
-            <div>
-              <div className="text-xl font-mono font-extrabold tracking-tight text-white tabular-numbers leading-none">
+            <div className="min-w-0">
+              <div
+                className="text-xl font-mono font-extrabold tracking-tight text-white tabular-numbers leading-none"
+                aria-live="off"
+              >
                 {formatTime(secondsRemaining)}
               </div>
-              <div className="text-xs text-slate-400 mt-1 flex items-center space-x-1.5">
-                <Heart
-                  className={`w-3.5 h-3.5 stroke-[2] ${
-                    isRecovered
-                      ? 'text-brand-primary fill-brand-primary'
-                      : 'text-rose-400 animate-pulse'
-                  }`}
-                />
-                <span className="font-mono">{currentSimulatedHr} bpm</span>
-                <span>•</span>
-                <span className={isRecovered ? 'text-brand-primary font-semibold' : 'text-slate-400'}>
-                  {isRecovered ? 'Heart rate recovered' : 'Catching your breath'}
-                </span>
+              <div className="text-xs mt-1 truncate" aria-live="polite">
+                {isDone ? (
+                  <span className="text-brand-primary font-semibold">
+                    Ready{context ? ` for ${context.nextLabel}` : ''}
+                  </span>
+                ) : (
+                  <span className="text-slate-400">
+                    {context ? `Next: ${context.nextLabel}` : 'Resting'}
+                  </span>
+                )}
               </div>
             </div>
           </div>
 
-          {/* Quick Actions */}
-          <div className="flex items-center space-x-2">
-            {isRecovered ? (
-              <span className="px-3 py-1.5 rounded-full bg-brand-primary/15 text-brand-primary text-xs font-bold flex items-center space-x-1 animate-pulse">
-                <CheckCircle2 className="w-3.5 h-3.5 stroke-[2.5]" />
-                <span>Ready</span>
+          <div className="flex items-center space-x-2 shrink-0">
+            {isDone ? (
+              <span className="px-3 py-1.5 rounded-full bg-brand-primary/15 text-brand-primary text-xs font-bold flex items-center space-x-1">
+                <CheckCircle2 className="w-3.5 h-3.5 stroke-[2.5]" aria-hidden="true" />
+                <span>Go</span>
               </span>
             ) : (
               <button
                 type="button"
                 onClick={handleAdd30s}
-                className="px-2.5 py-1.5 rounded-xl bg-white/[0.06] hover:bg-white/[0.1] text-slate-200 text-xs font-mono font-bold transition-colors flex items-center space-x-1"
+                aria-label="Add 30 seconds"
+                className="px-2.5 min-h-[44px] rounded-xl bg-white/[0.06] hover:bg-white/[0.1] text-slate-200 text-xs font-mono font-bold transition-colors flex items-center space-x-1"
               >
-                <Plus className="w-3 h-3" />
+                <Plus className="w-3 h-3" aria-hidden="true" />
                 <span>30s</span>
               </button>
             )}
@@ -131,7 +150,8 @@ export const RestTimerModal: React.FC<RestTimerModalProps> = ({
                 triggerHaptic('light');
                 onDismiss();
               }}
-              className="p-2 rounded-full text-slate-500 hover:text-white hover:bg-white/[0.06] transition-colors"
+              aria-label="Close rest timer"
+              className="w-11 h-11 flex items-center justify-center rounded-full text-slate-500 hover:text-white hover:bg-white/[0.06] transition-colors"
             >
               <X className="w-4 h-4" />
             </button>

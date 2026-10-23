@@ -9,14 +9,15 @@ import { SevenPillarRadar } from './SevenPillarRadar';
 import { VolumeTracker } from './VolumeTracker';
 import { XPLeaderboardCard } from './XPLeaderboardCard';
 import { calculateDotsScore } from '../../engine/dots';
-import { Flame, Zap, Cpu } from 'lucide-react';
+import { Flame, Zap } from 'lucide-react';
+import { useUnits } from '../../utils/unitsContext';
 import { triggerHaptic } from '../../utils/haptics';
-import { getTensorHardwareProfile } from '../../services/tensorAIService';
-import { TensorHardwareProfile } from '../../engine/tensorAI';
 
 interface CharacterTabProps {
   profile: UserProfile;
   pillarBestE1rm: Record<StrengthPillar, number>;
+  /** Best maxes from loaded lifts only (barbell, dumbbell, cable, machine) for the Big 3 card. */
+  big3BestE1rm?: Record<StrengthPillar, number>;
   bodyweightEmaKg: number;
   latestBiometrics: BiometricLog;
   weeklyVolume: Record<string, number>;
@@ -35,6 +36,7 @@ type AthleteSubView = 'volume' | 'balance' | 'leaderboard';
 export const CharacterTab: React.FC<CharacterTabProps> = ({
   profile,
   pillarBestE1rm,
+  big3BestE1rm,
   bodyweightEmaKg,
   latestBiometrics,
   weeklyVolume,
@@ -42,23 +44,17 @@ export const CharacterTab: React.FC<CharacterTabProps> = ({
   onOpenAuth,
 }) => {
   const [subView, setSubView] = useState<AthleteSubView>('volume');
-  const [hardwareProfile, setHardwareProfile] = React.useState<TensorHardwareProfile | null>(null);
-
-  React.useEffect(() => {
-    getTensorHardwareProfile().then(setHardwareProfile);
-  }, []);
-
-  const squat = pillarBestE1rm.Squat || Math.round(bodyweightEmaKg * 0.75 * 10) / 10;
-  const bench =
-    pillarBestE1rm['Horizontal Push'] || Math.round(bodyweightEmaKg * 0.6 * 10) / 10;
-  const deadlift = pillarBestE1rm.Hinge || Math.round(bodyweightEmaKg * 0.95 * 10) / 10;
+  const units = useUnits();
+  // Only real logged lifts count. No placeholder estimates for lifts the athlete hasn't done.
+  const squat = big3BestE1rm?.Squat ?? pillarBestE1rm.Squat ?? 0;
+  const bench = big3BestE1rm?.['Horizontal Push'] ?? pillarBestE1rm['Horizontal Push'] ?? 0;
+  const deadlift = big3BestE1rm?.Hinge ?? pillarBestE1rm.Hinge ?? 0;
   const powerliftingTotalE1rm = Math.round((squat + bench + deadlift) * 10) / 10;
+  const hasBig3Data = powerliftingTotalE1rm > 0;
 
-  const dotsScore = calculateDotsScore(
-    powerliftingTotalE1rm,
-    bodyweightEmaKg,
-    profile.gender
-  );
+  const dotsScore = hasBig3Data
+    ? calculateDotsScore(powerliftingTotalE1rm, bodyweightEmaKg, profile.gender)
+    : 0;
 
   const friendlyGoal = GOAL_FRIENDLY_NAME[profile.goalPhase] || profile.goalPhase;
 
@@ -99,7 +95,7 @@ export const CharacterTab: React.FC<CharacterTabProps> = ({
               </div>
               <div className="flex items-center space-x-2 mt-0.5">
                 <p className="text-xs text-slate-400 font-medium">
-                  {bodyweightEmaKg} kg bodyweight (7-day average)
+                  {units.format(bodyweightEmaKg)} bodyweight (7-day average)
                 </p>
                 {onOpenAuth && (
                   <>
@@ -133,12 +129,12 @@ export const CharacterTab: React.FC<CharacterTabProps> = ({
             </span>
             <div className="flex items-baseline space-x-2 mt-1">
               <span className="text-xl font-extrabold font-mono text-white tabular-numbers tracking-tight">
-                {dotsScore}
+                {hasBig3Data ? dotsScore : '—'}
               </span>
               <span className="text-xs font-bold text-slate-400">pts</span>
             </div>
             <span className="text-xs text-slate-400 font-medium block mt-0.5">
-              Adjusted for {bodyweightEmaKg} kg bodyweight
+              {hasBig3Data ? `Adjusted for ${units.format(bodyweightEmaKg)} bodyweight` : 'Log a squat, bench or deadlift to see this'}
             </span>
           </div>
 
@@ -148,18 +144,20 @@ export const CharacterTab: React.FC<CharacterTabProps> = ({
             </span>
             <div className="flex items-baseline space-x-2 mt-1">
               <span className="text-xl font-extrabold font-mono text-brand-primary tabular-numbers tracking-tight">
-                {powerliftingTotalE1rm}
+                {hasBig3Data ? units.format(powerliftingTotalE1rm, false) : '—'}
               </span>
-              <span className="text-xs font-bold text-slate-300">
-                kg ({Math.round((powerliftingTotalE1rm / bodyweightEmaKg) * 10) / 10}x BW)
-              </span>
+              {hasBig3Data && (
+                <span className="text-xs font-bold text-slate-300">
+                  {units.unit} ({Math.round((powerliftingTotalE1rm / bodyweightEmaKg) * 10) / 10}x bodyweight)
+                </span>
+              )}
             </div>
             <div className="pt-2 flex items-center justify-between text-xs text-slate-400 font-medium">
-              <span>Squat: <strong className="text-white font-mono">{squat}</strong></span>
+              <span>Squat: <strong className="text-white font-mono">{squat ? units.format(squat, false) : '—'}</strong></span>
               <span>•</span>
-              <span>Bench: <strong className="text-white font-mono">{bench}</strong></span>
+              <span>Bench: <strong className="text-white font-mono">{bench ? units.format(bench, false) : '—'}</strong></span>
               <span>•</span>
-              <span>Dead: <strong className="text-white font-mono">{deadlift}</strong></span>
+              <span>Dead: <strong className="text-white font-mono">{deadlift ? units.format(deadlift, false) : '—'}</strong></span>
             </div>
           </div>
         </div>
@@ -214,13 +212,17 @@ export const CharacterTab: React.FC<CharacterTabProps> = ({
               : 'text-slate-400 hover:text-slate-200'
           }`}
         >
-          XP Leaderboard
+          XP Division
         </button>
       </div>
 
       {subView === 'volume' ? (
         /* Primary Focal Point: Weekly Sets by Muscle Tracker */
-        <VolumeTracker weeklyVolume={weeklyVolume} />
+        <VolumeTracker
+          weeklyVolume={weeklyVolume}
+          mesoWeek={profile.mesocycleWeek || 1}
+          goalPhase={profile.goalPhase}
+        />
       ) : subView === 'balance' ? (
         <div className="space-y-4">
           {/* Strength & Fitness Balance Radar */}
@@ -231,67 +233,37 @@ export const CharacterTab: React.FC<CharacterTabProps> = ({
             gender={profile.gender}
           />
 
-          {/* Active Bonuses */}
+          {/* Consistency & Activity (real values only) */}
           <div className="rounded-3xl surface-glass p-5 sm:p-6 space-y-3">
-            <h3 className="text-sm font-bold text-white">
-              Active Bonuses
-            </h3>
+            <h3 className="text-sm font-bold text-white">Consistency & Activity</h3>
             <div className="grid grid-cols-2 gap-3 text-xs">
               <div className="p-4 rounded-2xl bg-[#090C12] space-y-1">
                 <div className="flex items-center space-x-1.5 font-bold text-amber-400">
-                  <Flame className="w-4 h-4 stroke-[2]" />
-                  <span>{profile.streakDays}-Day Streak Safe</span>
+                  <Flame className="w-4 h-4 stroke-[2]" aria-hidden="true" />
+                  <span>{profile.streakDays} training {profile.streakDays === 1 ? 'day' : 'days'}</span>
                 </div>
                 <p className="text-xs text-slate-400 leading-snug">
-                  Your streak is automatically protected on recovery and rest days.
+                  Rest days never reset this count.
                 </p>
               </div>
 
               <div className="p-4 rounded-2xl bg-[#090C12] space-y-1">
                 <div className="flex items-center space-x-1.5 font-bold text-brand-primary">
-                  <Zap className="w-4 h-4 stroke-[2]" />
-                  <span>1.25x Active Bonus</span>
+                  <Zap className="w-4 h-4 stroke-[2]" aria-hidden="true" />
+                  <span>
+                    {(latestBiometrics.steps || 0).toLocaleString()} steps
+                  </span>
                 </div>
                 <p className="text-xs text-slate-400 leading-snug">
-                  Unlocked by hitting 30+ active minutes and 8,500+ steps today.
+                  {latestBiometrics.activeZoneMinutes || 0} active minutes today
+                  {latestBiometrics.steps ? '' : ' • connect a watch to track'}
                 </p>
               </div>
             </div>
           </div>
-
-          {/* On-Device Hardware & Local AI Processing Card */}
-          <div className="rounded-3xl surface-glass p-5 sm:p-6 space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-2">
-                <Cpu className="w-4 h-4 text-brand-primary stroke-[2]" />
-                <h3 className="text-sm font-bold text-white">
-                  On-Device Processing
-                </h3>
-              </div>
-              <span
-                className={`text-xs font-bold px-2.5 py-1 rounded-full flex items-center gap-1 border ${
-                  hardwareProfile?.isPixelDevice
-                    ? 'bg-brand-primary/15 text-brand-primary border-brand-primary/20'
-                    : 'bg-white/[0.08] text-slate-300 border-white/[0.06]'
-                }`}
-              >
-                {hardwareProfile?.isPixelDevice && <Zap className="w-3 h-3 stroke-[2]" />}
-                <span>
-                  {hardwareProfile?.isPixelDevice
-                    ? 'Google Tensor Active'
-                    : 'Standard Engine'}
-                </span>
-              </span>
-            </div>
-            <p className="text-xs text-slate-400 leading-snug">
-              {hardwareProfile?.isPixelDevice
-                ? 'Your AI Coach executes locally on your Pixel processor. 100% private, on-device telemetry with zero subscription fees.'
-                : 'All workout progression and recovery computations execute locally on your device with complete privacy.'}
-            </p>
-          </div>
         </div>
       ) : (
-        /* Sub-View C: Community XP Leaderboard */
+        /* Sub-View C: Personal XP Division */
         <XPLeaderboardCard
           profile={profile}
           onUpdateProfile={onUpdateProfile || (() => {})}

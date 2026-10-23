@@ -1,4 +1,5 @@
 import { BiometricLog } from './types';
+import { daysBetweenLocalDates } from '../utils/date';
 
 export const EMA_ALPHA = 0.25; // 0.25 for today, 0.75 for yesterday
 
@@ -15,8 +16,12 @@ export function calculateNextEma(todayWeight: number, yesterdayEma: number): num
  * Computes 7-Day EMA bodyweight array across chronological biometric logs
  */
 export function calculateEmaSeries(
-  logs: { date: string; bodyweightKg: number }[]
+  rawLogs: { date: string; bodyweightKg: number }[]
 ): { date: string; weight: number; ema: number }[] {
+  // Days without a weigh-in (0 = not measured) are skipped, oldest first.
+  const logs = rawLogs
+    .filter((l) => l.bodyweightKg > 0)
+    .sort((a, b) => a.date.localeCompare(b.date));
   if (logs.length === 0) return [];
 
   const result: { date: string; weight: number; ema: number }[] = [];
@@ -27,7 +32,11 @@ export function calculateEmaSeries(
     if (i === 0) {
       currentEma = log.bodyweightKg;
     } else {
-      currentEma = calculateNextEma(log.bodyweightKg, currentEma);
+      // Gap-aware: a weigh-in after N days without one counts as N daily steps,
+      // so a single reading after a break moves the average as much as it should.
+      const days = Math.max(1, daysBetweenLocalDates(logs[i - 1].date, log.date));
+      const alpha = 1 - Math.pow(1 - EMA_ALPHA, days);
+      currentEma = Math.round((log.bodyweightKg * alpha + currentEma * (1 - alpha)) * 100) / 100;
     }
     result.push({
       date: log.date,

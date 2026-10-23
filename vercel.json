@@ -1,4 +1,9 @@
 {
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "vite",
+  "installCommand": "npm ci",
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
   "rewrites": [
     {
       "source": "/api/(.*)",
@@ -19,7 +24,7 @@
         },
         {
           "key": "Content-Disposition",
-          "value": "attachment; filename=\"treise-v1.0.4.apk\""
+          "value": "attachment"
         },
         {
           "key": "Cache-Control",
@@ -36,7 +41,7 @@
         },
         {
           "key": "Content-Disposition",
-          "value": "attachment; filename=\"treise-v1.0.4.aab\""
+          "value": "attachment"
         },
         {
           "key": "Cache-Control",

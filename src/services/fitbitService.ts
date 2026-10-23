@@ -1,4 +1,6 @@
 import { BiometricLog, ReadinessState } from '../engine/types';
+import { localDateString } from '../utils/date';
+import { publishRefreshedTokens } from './wearableTokens';
 
 export const FITBIT_CONFIG = {
   CLIENT_ID: '23QW89', // Example registered client ID or user provided
@@ -191,7 +193,7 @@ export async function fetchFitbitDailyBiometrics(
   dateStr?: string,
   refreshToken?: string
 ): Promise<Partial<BiometricLog>> {
-  const date = dateStr || new Date().toISOString().split('T')[0];
+  const date = dateStr || localDateString();
 
   // 1. Try serverless proxy aggregator first
   try {
@@ -211,6 +213,8 @@ export async function fetchFitbitDailyBiometrics(
     if (proxyRes.ok) {
       const data = await proxyRes.json();
       if (data.success && data.biometrics) {
+        // Save rotated tokens to the profile (Fitbit refresh tokens are single-use).
+        publishRefreshedTokens('fitbit', data.refreshedTokens);
         return {
           ...data.biometrics,
           source: 'fitbit',
@@ -331,7 +335,7 @@ export async function simulatePixelWatchSync(
   onProgress?: (progress: WatchSyncProgress) => void,
   forcedState?: ReadinessState
 ): Promise<BiometricLog> {
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = localDateString();
 
   const update = (stage: WatchSyncProgress['stage'], percent: number, message: string) => {
     if (onProgress) onProgress({ stage, percent, message });

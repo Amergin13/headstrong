@@ -9,6 +9,11 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
+      workbox: {
+        // The on-device coach model library (~6 MB) loads only after the athlete opts in,
+        // so it is not part of the app's offline pre-cache.
+        globIgnores: ['**/vendor-webllm-*.js', '**/coachModel.worker-*.js'],
+      },
       includeAssets: [
         'favicon.ico',
         'headstrong-icon.svg',
@@ -28,7 +33,7 @@ export default defineConfig({
         name: 'Treise: Hypertrophy & Strength Tracker',
         short_name: 'Treise',
         description:
-          'Gamified hypertrophy workout tracker with international strength standards, cross-equipment progression, and Google Pixel Watch biometrics.',
+          'Hypertrophy workout tracker that plans your progression, waits for your muscles to recover, and adapts to Pixel Watch, Fitbit or Whoop recovery data.',
         start_url: '/',
         scope: '/',
         display: 'standalone',
@@ -71,7 +76,7 @@ export default defineConfig({
             sizes: '540x960',
             type: 'image/png',
             form_factor: 'narrow',
-            label: '7-Pillar Strength Radar, Volume Landmarks & Personal Knowledge Graph',
+            label: 'Strength balance, weekly sets per muscle and progress charts',
           },
         ],
         shortcuts: [
@@ -113,10 +118,16 @@ export default defineConfig({
     chunkSizeWarningLimit: 600,
     rollupOptions: {
       output: {
-        manualChunks: {
-          'vendor-react': ['react', 'react-dom'],
-          'vendor-charts': ['recharts'],
-          'vendor-icons': ['lucide-react'],
+        // Path-based so CommonJS packages (react, react-dom) actually land in their chunk.
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return undefined;
+          if (/node_modules\/(react|react-dom|scheduler)\//.test(id)) return 'vendor-react';
+          if (/node_modules\/(recharts|d3-[^/]+|victory-vendor|internmap|decimal\.js-light|lodash|react-smooth|recharts-scale|eventemitter3|tiny-invariant|clsx)\//.test(id)) {
+            return 'vendor-charts';
+          }
+          if (id.includes('node_modules/lucide-react')) return 'vendor-icons';
+          if (id.includes('node_modules/@mlc-ai/web-llm')) return 'vendor-webllm';
+          return undefined;
         },
       },
     },

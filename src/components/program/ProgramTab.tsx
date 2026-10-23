@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   BiometricLog,
   ExerciseDefinition,
@@ -30,8 +30,10 @@ import {
   LogIn,
   CheckCircle2,
   Check,
+  ArrowLeft,
 } from 'lucide-react';
 import { triggerHaptic } from '../../utils/haptics';
+import { GPU_MODEL_DOWNLOAD_LABEL, isGpuModelReady, removeGpuModel } from '../../services/gpuModel';
 
 interface ProgramTabProps {
   profile: UserProfile;
@@ -54,6 +56,10 @@ interface ProgramTabProps {
   onImportData?: (rawJson: string) => void;
   onDeleteAllData?: () => void;
   onOpenOnboarding?: () => void;
+  /** Name of the queued workout, shown on the "Back to workout" link. */
+  activeWorkoutName?: string;
+  activeProgramWorkoutNumber?: number;
+  onBackToWorkout?: () => void;
 }
 
 const HOME_EQUIP_LABELS: Record<string, string> = {
@@ -85,12 +91,20 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
   onImportData,
   onDeleteAllData,
   onOpenOnboarding,
+  activeWorkoutName,
+  activeProgramWorkoutNumber,
+  onBackToWorkout,
 }) => {
   const [showCreateExercise, setShowCreateExercise] = useState(false);
   const [showGovernanceModal, setShowGovernanceModal] = useState(false);
   const [openSettingsSection, setOpenSettingsSection] = useState<'account' | 'profile' | 'wearable' | 'data' | null>(null);
   const [showPrivacyDetails, setShowPrivacyDetails] = useState(false);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const [deviceCoachReady, setDeviceCoachReady] = useState(false);
+
+  useEffect(() => {
+    isGpuModelReady().then(setDeviceCoachReady).catch(() => setDeviceCoachReady(false));
+  }, []);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const activeWearableKey = getActiveWearableProvider(profile);
@@ -122,6 +136,20 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
 
   return (
     <div className="space-y-4 pb-28">
+      {onBackToWorkout && (
+        <button
+          type="button"
+          onClick={() => {
+            triggerHaptic('light');
+            onBackToWorkout();
+          }}
+          className="min-h-[44px] px-3 -ml-1 rounded-xl text-xs font-semibold text-slate-300 hover:text-white hover:bg-white/[0.06] flex items-center gap-1.5 transition-colors"
+        >
+          <ArrowLeft className="w-4 h-4 stroke-[2]" aria-hidden="true" />
+          <span className="truncate">Back to workout{activeWorkoutName ? `: ${activeWorkoutName}` : ''}</span>
+        </button>
+      )}
+
       {/* 1. Primary Section Header */}
       <div className="px-1 py-0.5">
         <h2 className="text-base font-bold text-white tracking-tight">
@@ -193,7 +221,7 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
 
       {/* 3. 6-Week Training Plan (Mesocycle Periodization) */}
       <MesocycleManager
-        currentWeek={profile.mesocycleWeek || 3}
+        currentWeek={profile.mesocycleWeek || 1}
         totalWeeks={6}
         scheduledWeekLocations={profile.scheduledWeekLocations}
         onSelectWeek={onSelectMesocycleWeek}
@@ -204,6 +232,7 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
       <SplitEditor
         exerciseCatalog={exerciseCatalog}
         activeSplitDay={activeSplitDay}
+        activeProgramWorkoutNumber={activeProgramWorkoutNumber}
         programType={profile.programType}
         onOpenCreateExercise={() => setShowCreateExercise(true)}
         onLaunchSplitDay={onLaunchSplitDay}
@@ -252,8 +281,8 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
                 </div>
                 <div className="text-xs text-slate-400">
                   {profile.email
-                    ? `${profile.email} • Connected`
-                    : 'Guest Mode • Sign in with Google to sync'}
+                    ? `${profile.email} • Signed in`
+                    : 'Guest • Your data stays on this device'}
                 </div>
               </div>
             </div>
@@ -286,6 +315,10 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
                     <span className="font-mono text-slate-200">{profile.email}</span>
                   </div>
                 )}
+                <p className="text-slate-400 leading-relaxed pt-1">
+                  Workouts are saved on this device only. Cloud sync isn't available yet, so use Export
+                  Backup below to keep a copy.
+                </p>
               </div>
 
               {onOpenAuth && (
@@ -373,6 +406,54 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
               </div>
 
               <div className="flex justify-between items-center py-1.5">
+                <span className="text-slate-300 font-medium">Weight Units</span>
+                <div className="flex bg-[#0B0E14] p-1 rounded-xl" role="group" aria-label="Weight units">
+                  {(['kg', 'lb'] as const).map((u) => {
+                    const isSelected = (profile.weightUnit || 'kg') === u;
+                    return (
+                      <button
+                        key={u}
+                        type="button"
+                        aria-pressed={isSelected}
+                        onClick={() => onUpdateProfile({ weightUnit: u })}
+                        className={`px-3 min-h-[36px] rounded-lg text-xs font-semibold transition-all ${
+                          isSelected ? 'bg-white/[0.14] text-white font-bold shadow-sm' : 'text-slate-400 hover:text-slate-200'
+                        }`}
+                      >
+                        {u}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="flex justify-between items-center py-1.5 gap-2">
+                <span className="text-slate-300 font-medium">Training Experience</span>
+                <div className="flex bg-[#0B0E14] p-1 rounded-xl" role="group" aria-label="Training experience">
+                  {([
+                    { id: 'new', label: 'New' },
+                    { id: 'intermediate', label: '1–3 yrs' },
+                    { id: 'experienced', label: '3+ yrs' },
+                  ] as const).map((opt) => {
+                    const isSelected = (profile.experienceLevel || 'intermediate') === opt.id;
+                    return (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        aria-pressed={isSelected}
+                        onClick={() => onUpdateProfile({ experienceLevel: opt.id })}
+                        className={`px-2.5 min-h-[36px] rounded-lg text-xs font-semibold transition-all ${
+                          isSelected ? 'bg-white/[0.14] text-white font-bold shadow-sm' : 'text-slate-400 hover:text-slate-200'
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="flex justify-between items-center py-1.5">
                 <label htmlFor="max-hr-input" className="text-slate-300 font-medium">
                   Max Heart Rate
                 </label>
@@ -451,7 +532,7 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
                     {activeWearableMeta?.name || 'None'}
                   </span>
                 </div>
-                {latestBiometrics && (
+                {latestBiometrics && latestBiometrics.hrvRmssd > 0 && (
                   <div className="flex justify-between items-center">
                     <span className="text-slate-400">Recent Recovery</span>
                     <span className="font-mono text-slate-200">
@@ -567,12 +648,18 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
                   type="button"
                   onClick={() => {
                     triggerHaptic('medium');
-                    onResetData();
+                    if (
+                      window.confirm(
+                        'Load sample data? This replaces your own workouts and history on this device. Export a backup first if you want to keep them.'
+                      )
+                    ) {
+                      onResetData();
+                    }
                   }}
                   className="py-2.5 px-2.5 rounded-2xl bg-[#0B0E14] hover:bg-[#141824] text-xs font-semibold text-slate-200 flex items-center justify-center space-x-1.5 transition-colors"
                 >
                   <RotateCcw className="w-3.5 h-3.5 text-amber-400 stroke-[2]" />
-                  <span>Load 6-Wk Sample</span>
+                  <span>Load Sample Data</span>
                 </button>
 
                 <button
@@ -587,6 +674,20 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
                   <span>Delete All Data</span>
                 </button>
               </div>
+
+              {deviceCoachReady && (
+                <button
+                  type="button"
+                  onClick={async () => {
+                    triggerHaptic('light');
+                    await removeGpuModel();
+                    setDeviceCoachReady(false);
+                  }}
+                  className="w-full min-h-[44px] py-2.5 px-3 rounded-2xl bg-[#0B0E14] hover:bg-[#141824] text-xs font-semibold text-slate-200 transition-colors"
+                >
+                  Remove on-phone coach download (frees {GPU_MODEL_DOWNLOAD_LABEL})
+                </button>
+              )}
 
               {confirmDeleteOpen && onDeleteAllData && (
                 <div className="p-3.5 rounded-2xl bg-rose-950/60 text-xs space-y-2">
@@ -640,7 +741,7 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
                 {showPrivacyDetails && (
                   <div className="mt-2 p-3.5 rounded-2xl bg-[#090C12] text-xs text-slate-300 space-y-2 leading-relaxed">
                     <p>
-                      <strong className="text-white">On-Device Privacy:</strong> Your workout sets, bodyweight history, and watch sleep/heart rate logs are stored locally on your device. No health data is sold or shared.
+                      <strong className="text-white">Privacy:</strong> Your workouts, bodyweight and recovery logs are stored on this device. When you connect Fitbit or Whoop, their data passes through our server only to fetch it and is not stored there. Health data is never sold or shared.
                     </p>
                     <p>
                       <strong className="text-white">Fitness Disclaimer:</strong> Recovery scores and target weights are for informational fitness tracking only and are not medical advice.
@@ -660,7 +761,8 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
           )}
         </div>
 
-        {/* D. Product Governance & Competitor Comparison Matrix */}
+        {/* D. Product Governance & Competitor Comparison Matrix (internal tool: development builds only) */}
+        {import.meta.env.DEV && (
         <div className="rounded-3xl surface-glass p-5 sm:p-6 flex items-center justify-between gap-3">
           <div className="flex items-center space-x-3">
             <div className="w-9 h-9 rounded-2xl bg-brand-primary/15 flex items-center justify-center text-brand-primary shrink-0">
@@ -687,6 +789,7 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
             Open Matrix
           </button>
         </div>
+        )}
       </div>
 
       {/* Custom Exercise Modal */}

@@ -15,6 +15,7 @@ export interface ReadinessEvaluation {
   provider?: WearableProvider;
   readinessScore?: number; // 1-100 score for display
   scoreLabel?: string; // 'Recovery' vs 'Daily Readiness' vs 'Readiness'
+  hasRecoveryData?: boolean; // false when nothing was measured today, so no score may be shown
 }
 
 /**
@@ -58,8 +59,32 @@ export function calculateDailyReadiness(
       ? 'fitbit'
       : null);
 
+  // No recovery data today (no wearable, or only a manual weigh-in): stay at the normal plan.
+  // Never invent HRV / resting heart rate values.
+  const hasCoreMetrics = (l: BiometricLog) => (l.hrvRmssd || 0) > 0 && (l.restingHr || 0) > 0;
+  const hasProviderScore =
+    typeof todayLog.recoveryScore === 'number' || typeof todayLog.fitbitReadinessScore === 'number';
+  if (!hasCoreMetrics(todayLog) && !hasProviderScore) {
+    return {
+      state: 'Normal',
+      score: 0,
+      zHrv: 0,
+      zRhr: 0,
+      sleepDeviation: 0,
+      hrvChangePercent: 0,
+      rhrDeltaBpm: 0,
+      sleepHours: todayLog.sleepHours || 0,
+      reason: 'No recovery data today. Your plan runs at normal effort.',
+      xpMultiplier: 1.0,
+      streakProtected: false,
+      provider: effectiveProvider ?? undefined,
+      hasRecoveryData: false,
+    };
+  }
+
   // Filter history logs strictly by active provider to guarantee zero cross-contamination
   const providerHistory = historyLogs.filter((l) => {
+    if (!hasCoreMetrics(l)) return false;
     if (l.date === todayLog.date) return false;
     if (effectiveProvider === 'whoop') {
       return l.source === 'whoop' || (!l.source && l.recoveryScore !== undefined && l.fitbitReadinessScore === undefined);
@@ -77,6 +102,8 @@ export function calculateDailyReadiness(
 
   let meanHrv = 55;
   let stdDevHrv = 8;
+  let lnMeanHrv = Math.log(55);
+  let lnStdDevHrv = 0.15;
   let meanRhr = 58;
   let stdDevRhr = 3;
 
@@ -84,13 +111,17 @@ export function calculateDailyReadiness(
     const hrvStats = calculateMeanAndStdDev(past14.map((l) => l.hrvRmssd));
     meanHrv = hrvStats.mean;
     stdDevHrv = hrvStats.stdDev;
+    // HRV is log-normally distributed, so the z-score uses ln(rMSSD) (Plews et al., 2013).
+    const lnStats = calculateMeanAndStdDev(past14.map((l) => Math.log(Math.max(1, l.hrvRmssd))));
+    lnMeanHrv = lnStats.mean;
+    lnStdDevHrv = lnStats.stdDev;
 
     const rhrStats = calculateMeanAndStdDev(past14.map((l) => l.restingHr));
     meanRhr = rhrStats.mean;
     stdDevRhr = rhrStats.stdDev;
   }
 
-  const zHrv = (todayLog.hrvRmssd - meanHrv) / stdDevHrv;
+  const zHrv = (Math.log(Math.max(1, todayLog.hrvRmssd)) - lnMeanHrv) / lnStdDevHrv;
   const zRhr = (todayLog.restingHr - meanRhr) / stdDevRhr;
   const sleepNorm = (todayLog.sleepHours - 7.5) / 1.5;
 

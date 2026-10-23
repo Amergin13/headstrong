@@ -23,4 +23,7 @@ app/build/
 *.apk
 .env*
 .github-backup/
-.github/
+
+# Build output (Vercel builds from source)
+dist/
+.dist-api-test/

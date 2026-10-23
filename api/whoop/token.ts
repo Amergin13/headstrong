@@ -1,27 +1,18 @@
+import { applyCors } from '../_lib/cors';
 const WHOOP_CLIENT_ID = '8bcb0a0d-b6ff-42e0-82b7-c3508e18c9f8';
-const WHOOP_CLIENT_SECRET =
-  process.env.WHOOP_CLIENT_SECRET || 'f3f985af0e1113b650b43fe977eb2f22ffb0f008c98e90e5d60ad669d4c365ea';
+// Must be configured as a Vercel environment variable. Never hardcode it.
+// Read per request so a newly set variable takes effect without a code change.
+const getWhoopClientSecret = (): string => process.env.WHOOP_CLIENT_SECRET || '';
 const WHOOP_REDIRECT_URI = 'https://treise.vercel.app/oauth/whoop/callback';
 
 // Vercel Serverless Function: Proxy Whoop OAuth Token Exchange to eliminate browser CORS barriers
 export default async function handler(req: any, res: any) {
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
-  res.setHeader(
-    'Access-Control-Allow-Headers',
-    'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version'
-  );
-
-  if (req.method === 'OPTIONS') {
-    res.status(200).end();
-    return;
-  }
+  if (applyCors(req, res)) return;
 
   if (req.method === 'GET') {
     return res.status(200).json({
       status: 'ok',
-      configured: true,
+      configured: Boolean(getWhoopClientSecret()),
       clientId: WHOOP_CLIENT_ID,
       redirectUri: WHOOP_REDIRECT_URI,
     });
@@ -29,6 +20,10 @@ export default async function handler(req: any, res: any) {
 
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
+  }
+
+  if (!getWhoopClientSecret()) {
+    return res.status(503).json({ error: 'server_not_configured', error_description: 'Whoop connection is not configured on the server.' });
   }
 
   try {
@@ -50,7 +45,7 @@ export default async function handler(req: any, res: any) {
 
     // Ensure configured credentials and registered redirect URI are always strictly enforced
     params.set('client_id', WHOOP_CLIENT_ID);
-    params.set('client_secret', WHOOP_CLIENT_SECRET);
+    params.set('client_secret', getWhoopClientSecret());
     params.set('redirect_uri', WHOOP_REDIRECT_URI);
 
     const response = await fetch('https://api.prod.whoop.com/oauth/oauth2/token', {

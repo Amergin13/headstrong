@@ -198,6 +198,16 @@ export interface WorkoutSession {
   whoopStrain?: number; // 0 - 21 Whoop workout strain
   kilojoules?: number; // energy burned during session
   wearableSource?: WearableProvider;
+  /** True when heart rate / duration came from a real wearable rather than estimates. */
+  hasMeasuredHeartRate?: boolean;
+  /** When the first set of the session was logged (ISO), used for real session duration. */
+  startedAt?: string;
+  /** 1-24 position in the 6-Week Muscle Building Plan, when the session belongs to it. */
+  programWorkoutNumber?: number;
+  /** Athlete chose to train before the queued session's muscles were recovered. */
+  recoveryOverride?: boolean;
+  /** Working-set IDs that have already earned progressive-overload XP this session. */
+  xpAwardedSetIds?: string[];
 }
 
 export interface SubTierQuest {
@@ -262,9 +272,15 @@ export interface WearableSyncProgress {
 
 export type ProgramSplitType = 'ppl_upper' | 'ppl' | 'upper_lower' | 'full_body' | 'muscle_building_6wk';
 
+export type ExperienceLevel = 'new' | 'intermediate' | 'experienced';
+
 export interface UserProfile {
   name: string;
   gender: Gender;
+  /** Training experience chosen in onboarding; calibrates starting weights. */
+  experienceLevel?: ExperienceLevel;
+  /** Display/input unit for weights. Data is always stored in kg. */
+  weightUnit?: 'kg' | 'lb';
   age: number;
   heightCm: number;
   goalPhase: GoalPhase;

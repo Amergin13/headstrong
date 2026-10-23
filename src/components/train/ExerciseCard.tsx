@@ -7,9 +7,10 @@ import {
   SubTierQuest,
   WorkoutSet,
 } from '../../engine/types';
-import { formatImplementWeightLabel } from '../../engine/e1rm';
 import { calculate5StepWarmupRamp } from '../../engine/muscleBuildingProgram';
-import { SetRow } from './SetRow';
+import { SetRow, PreviousSet } from './SetRow';
+import { TempoPacer } from './TempoPacer';
+import { useUnits } from '../../utils/unitsContext';
 import {
   Plus,
   Minus,
@@ -39,6 +40,10 @@ interface ExerciseCardProps {
   onDeleteSet: (setId: string) => void;
   onOpenSwap?: () => void;
   onOpenPlateCalc?: (weightKg: number) => void;
+  /** Plain-English primary muscle, e.g. "Triceps". */
+  muscleLabel?: string;
+  /** Working sets from the last time this exact exercise was completed. */
+  previousSets?: PreviousSet[];
 }
 
 const PILLAR_FRIENDLY_LABELS: Record<string, string> = {
@@ -81,7 +86,10 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
   onDeleteSet,
   onOpenSwap,
   onOpenPlateCalc,
+  muscleLabel,
+  previousSets = [],
 }) => {
+  const units = useUnits();
   const [showWarmupRamp, setShowWarmupRamp] = useState(false);
   const [showNotes, setShowNotes] = useState(false);
 
@@ -104,24 +112,36 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
     exercise.sets[0]?.targetWeightKg ??
     20;
 
-  const formattedTargetWeight = formatImplementWeightLabel(
-    prescription.nextWeightKg,
-    exercise.equipment,
-    exercise.isWeightedCalisthenic
+  // The target shown is what this session actually prescribes (the first working set),
+  // so it always matches the pre-filled set rows.
+  const firstWorkingSet = exercise.sets.find((s) => !s.isWarmup && s.setType !== 'warmup');
+  // Moves done holding one dumbbell (crunches, goblet squats, two-hand overhead extensions).
+  const isSingleDumbbell = /crunch|goblet|single|one-arm|overhead dumbbell tricep|overhead-db/i.test(
+    `${exercise.name} ${exercise.exerciseId}`
   );
+  const plannedWeightKg = firstWorkingSet?.targetWeightKg ?? 0;
+  const isBodyweightOnly =
+    exercise.equipment === 'bodyweight' && (!exercise.isWeightedCalisthenic || plannedWeightKg === 0);
+  const formattedTargetWeight = isBodyweightOnly
+    ? 'Bodyweight'
+    : exercise.isWeightedCalisthenic || exercise.equipment === 'weighted_bodyweight'
+    ? `BW + ${units.format(plannedWeightKg)}`
+    : exercise.equipment === 'dumbbell' && !isSingleDumbbell
+    ? `${units.format(plannedWeightKg / 2)} each`
+    : units.format(plannedWeightKg);
 
-  const firstTargetReps = prescription.nextTargetReps?.[0] ?? exercise.minReps;
+  const firstTargetReps = firstWorkingSet?.targetReps ?? prescription.nextTargetReps?.[0] ?? exercise.minReps;
   const isAtMaxReps = firstTargetReps >= exercise.maxReps;
   const targetRepsDisplay =
     exercise.repTargetType === 'wave' && exercise.sets.length >= 2
       ? `${exercise.sets[0]?.targetReps}/${exercise.sets[1]?.targetReps} wave`
       : exercise.repTargetType === 'form_failure'
       ? 'F* (Form Failure)'
-      : prescription.repsChanged && isAtMaxReps
-      ? `${firstTargetReps}+ reps`
       : `${firstTargetReps} reps`;
 
-  const friendlyMuscle = PILLAR_FRIENDLY_LABELS[exercise.pillar] || exercise.pillar;
+  const friendlyMuscle = muscleLabel || PILLAR_FRIENDLY_LABELS[exercise.pillar] || exercise.pillar;
+  const previousTopKg = previousSets.reduce((max, p) => Math.max(max, p.weightKg), 0);
+  const loadIncreaseKg = previousTopKg > 0 && !isBodyweightOnly ? plannedWeightKg - previousTopKg : 0;
   const completedCount = exercise.sets.filter((s) => s.completed).length;
   const allSetsDone = completedCount === exercise.sets.length && exercise.sets.length > 0;
   const warmupCount = exercise.sets.filter((s) => s.isWarmup || s.setType === 'warmup').length;
@@ -130,9 +150,9 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
   const progressBadge =
     readinessState === 'Amber Shield'
       ? 'Hold Steady'
-      : prescription.weightChanged
-      ? `+${exercise.equipment === 'dumbbell' ? '2.0' : '2.5'} kg Load`
-      : isAtMaxReps
+      : loadIncreaseKg > 0.1
+      ? `+${units.format(loadIncreaseKg)}`
+      : isAtMaxReps && exercise.maxReps > exercise.minReps
       ? 'Top of Range'
       : null;
 
@@ -173,7 +193,7 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
                   triggerHaptic('light');
                   onOpenPlateCalc(currentWeight);
                 }}
-                aria-label={`Open plate calculator for ${currentWeight} kg`}
+                aria-label={`Open plate calculator for ${units.format(currentWeight)}`}
                 className="px-3 py-1.5 rounded-xl bg-white/[0.06] hover:bg-white/[0.12] text-slate-300 hover:text-white text-xs font-semibold flex items-center space-x-1.5 transition-all min-h-[44px]"
               >
                 <Disc className="w-3.5 h-3.5 stroke-[2]" />
@@ -252,7 +272,7 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
               className={`text-xs font-bold px-2 py-0.5 rounded-full shrink-0 ${
                 readinessState === 'Amber Shield'
                   ? 'bg-amber-500/20 text-amber-300'
-                  : prescription.weightChanged
+                  : loadIncreaseKg > 0.1
                   ? 'bg-brand-primary/20 text-brand-primary'
                   : 'bg-white/[0.08] text-slate-300'
               }`}
@@ -262,6 +282,9 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
           )}
         </div>
       </div>
+
+      {/* 2.4 Optional haptic tempo guide */}
+      {exercise.tempo && /^[\dXx]{4}$/.test(exercise.tempo) && <TempoPacer tempo={exercise.tempo} />}
 
       {/* 2.5 Intensity Protocol Finisher Callout (Rest-Pause, Triple Drop-Set, Iso-Hold Partials) */}
       {exercise.intensityProtocol && (
@@ -287,7 +310,7 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
             <div className="flex items-center space-x-2">
               <Flame className="w-4 h-4 text-amber-400 stroke-[2]" />
               <span className="text-xs font-bold text-amber-300">
-                5-Step Warmup Ramp ({currentWeight} kg work weight)
+                5-Step Warmup Ramp ({units.format(currentWeight)} work weight)
               </span>
             </div>
             <button
@@ -310,7 +333,7 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
           {showWarmupRamp && (
             <div className="space-y-2 pt-1 border-t border-amber-500/15">
               <p className="text-xs text-slate-300">
-                Perform these 5 progressive ramp sets before your 10 working sets:
+                Do these 5 lighter sets before your first working set:
               </p>
               <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs">
                 {warmupSteps.map((step) => (
@@ -319,7 +342,7 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
                     className="p-2 rounded-xl bg-black/40 border border-white/[0.06] text-center space-y-0.5"
                   >
                     <div className="font-mono font-bold text-white text-xs">
-                      Set {step.setNumber}: {step.targetWeightKg} kg
+                      Set {step.setNumber}: {units.format(step.targetWeightKg)}
                     </div>
                     <div className="text-slate-400 font-mono text-xs">
                       {step.percentage}% • {step.reps} reps
@@ -370,7 +393,7 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
         <div className="grid grid-cols-12 gap-2 px-3 text-xs font-bold uppercase tracking-wider text-slate-400 text-center items-center">
           <div className="col-span-1">Set</div>
           <div className="col-span-2">Prev</div>
-          <div className="col-span-4">Weight (kg)</div>
+          <div className="col-span-4">Weight ({units.unit})</div>
           <div className="col-span-3">Reps</div>
           <div className="col-span-1 flex justify-center" title="Reps in reserve (RIR)">
             RIR
@@ -403,12 +426,8 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
               displayLabel = `Working Set ${workingIndex}`;
             }
 
-            const ghostIdx = isWarm ? undefined : workingIndex - 1;
-            const ghost =
-              ghostIdx !== undefined
-                ? (prescription.previousSetsSummary?.[ghostIdx] ??
-                   prescription.previousSetsSummary?.[prescription.previousSetsSummary.length - 1])
-                : undefined;
+            // PREV is the matching set from the last time this exact exercise was completed.
+            const previous = isWarm ? undefined : previousSets[workingIndex - 1];
 
             return (
               <SetRow
@@ -416,7 +435,8 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
                 set={s}
                 displayBadge={displayBadge}
                 displayLabel={displayLabel}
-                prevGhost={ghost}
+                previous={previous}
+                isBodyweight={isBodyweightOnly}
                 isDumbbell={exercise.equipment === 'dumbbell'}
                 onUpdate={(updated) => onUpdateSet(s.id, updated)}
                 onComplete={() => onCompleteSet(s.id)}

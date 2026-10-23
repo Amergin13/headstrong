@@ -2,10 +2,18 @@ import React from 'react';
 import { SetType, WorkoutSet } from '../../engine/types';
 import { Check } from 'lucide-react';
 import { triggerHaptic } from '../../utils/haptics';
+import { useUnits } from '../../utils/unitsContext';
+
+/** A working set from the last time this exact exercise was completed. */
+export interface PreviousSet {
+  weightKg: number;
+  reps: number;
+}
 
 interface SetRowProps {
   set: WorkoutSet;
-  prevGhost?: string;
+  previous?: PreviousSet;
+  isBodyweight?: boolean;
   isDumbbell?: boolean;
   displayBadge?: string;
   displayLabel?: string;
@@ -15,18 +23,21 @@ interface SetRowProps {
 
 export const SetRow: React.FC<SetRowProps> = ({
   set,
-  prevGhost,
+  previous,
+  isBodyweight = false,
   isDumbbell = false,
   displayBadge,
   onUpdate,
   onComplete,
 }) => {
+  const units = useUnits();
   const currentWeight = set.actualWeightKg ?? set.targetWeightKg;
+  const displayWeight = units.toDisplay(currentWeight);
   const currentReps = set.actualReps ?? set.targetReps;
   const currentRir = set.actualRir ?? set.targetRir ?? 2;
   const currentSetType: SetType = set.setType || (set.isWarmup ? 'warmup' : 'working');
 
-  const weightStep = isDumbbell ? 2.0 : 2.5;
+  const weightStep = units.unit === 'lb' ? 5 : isDumbbell ? 2.0 : 2.5;
 
   const handleToggleComplete = () => {
     const nextCompleted = !set.completed;
@@ -58,28 +69,11 @@ export const SetRow: React.FC<SetRowProps> = ({
     onUpdate({ actualRir: nextRir });
   };
 
-  // Tap previous session reference to copy weight & reps into current set
+  // Tap the previous-session value to copy its weight & reps into this set
   const handleCopyPrevious = () => {
-    if (!prevGhost || prevGhost === '—') return;
-    const cleaned = prevGhost.replace(/^≈/, '');
-    const bwMatch = cleaned.match(/^BW×(\d+)/i);
-    if (bwMatch) {
-      triggerHaptic('light');
-      const parsedR = parseInt(bwMatch[1], 10);
-      if (!isNaN(parsedR)) {
-        onUpdate({ actualWeightKg: 0, actualReps: parsedR });
-      }
-      return;
-    }
-    const match = cleaned.match(/^([\d.]+)×(\d+)/);
-    if (match) {
-      triggerHaptic('light');
-      const parsedW = parseFloat(match[1]);
-      const parsedR = parseInt(match[2], 10);
-      if (!isNaN(parsedW) && !isNaN(parsedR)) {
-        onUpdate({ actualWeightKg: parsedW, actualReps: parsedR });
-      }
-    }
+    if (!previous || set.completed) return;
+    triggerHaptic('light');
+    onUpdate({ actualWeightKg: isBodyweight ? 0 : previous.weightKg, actualReps: previous.reps });
   };
 
   const renderSetBadge = () => {
@@ -120,9 +114,8 @@ export const SetRow: React.FC<SetRowProps> = ({
     );
   };
 
-  // Clean display for previous set (strip @2R suffix and ≈ prefix so it fits cleanly and reads naturally)
-  const cleanPrevDisplay = prevGhost
-    ? prevGhost.replace(/^≈/, '').replace(/\s*@\d+R$/, '').trim()
+  const prevDisplay = previous
+    ? `${isBodyweight || previous.weightKg === 0 ? 'BW' : units.format(previous.weightKg, false)}×${previous.reps}`
     : '—';
 
   return (
@@ -145,11 +138,12 @@ export const SetRow: React.FC<SetRowProps> = ({
         <button
           type="button"
           onClick={handleCopyPrevious}
-          disabled={!prevGhost || prevGhost === '—'}
-          className="text-xs font-mono text-slate-400 hover:text-white truncate max-w-full px-0.5 transition-colors disabled:pointer-events-none"
-          title={prevGhost ? `Last time: ${cleanPrevDisplay} (tap to copy)` : 'First time logging this exercise'}
+          disabled={!previous}
+          aria-label={previous ? `Last time ${prevDisplay}. Tap to copy` : 'No previous set for this exercise'}
+          className="text-xs font-mono text-slate-400 hover:text-white truncate max-w-full px-0.5 min-h-[36px] transition-colors disabled:pointer-events-none"
+          title={previous ? `Last time: ${prevDisplay} (tap to copy)` : 'First time logging this exercise'}
         >
-          {cleanPrevDisplay}
+          {prevDisplay}
         </button>
       </div>
 
@@ -158,10 +152,11 @@ export const SetRow: React.FC<SetRowProps> = ({
         <input
           type="number"
           step={weightStep}
-          value={currentWeight}
-          aria-label={`Set ${set.setNumber} weight in kilograms`}
+          inputMode="decimal"
+          value={displayWeight}
+          aria-label={`Set ${set.setNumber} weight in ${units.unit === 'lb' ? 'pounds' : 'kilograms'}`}
           onFocus={(e) => e.target.select()}
-          onChange={(e) => onUpdate({ actualWeightKg: parseFloat(e.target.value) || 0 })}
+          onChange={(e) => onUpdate({ actualWeightKg: units.fromDisplay(parseFloat(e.target.value) || 0) })}
           className={`w-full py-2 px-1 bg-[#0B0E14] rounded-xl text-center font-mono text-sm font-extrabold tabular-numbers transition-colors ${
             set.completed ? 'text-brand-primary' : 'text-white'
           } focus:outline-none focus:ring-1 focus:ring-brand-primary/50`}
@@ -172,6 +167,7 @@ export const SetRow: React.FC<SetRowProps> = ({
       <div className="col-span-3 flex justify-center relative items-center">
         <input
           type="number"
+          inputMode="numeric"
           value={currentReps}
           aria-label={`Set ${set.setNumber} repetitions`}
           onFocus={(e) => e.target.select()}

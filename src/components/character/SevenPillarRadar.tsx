@@ -70,7 +70,7 @@ export const SevenPillarRadar: React.FC<SevenPillarRadarProps> = ({
     };
   });
 
-  const engineScore = pillarScores.find((p) => p.pillar === 'Engine / Vitality')?.score ?? 75;
+  const engineScore = pillarScores.find((p) => p.pillar === 'Engine / Vitality')?.score ?? 0;
 
   const strengthPillars = pillarScores.filter((p) => p.pillar !== 'Engine / Vitality');
   const avgStrengthScore =
@@ -154,13 +154,25 @@ export const SevenPillarRadar: React.FC<SevenPillarRadarProps> = ({
           <Heart className="w-4 h-4 text-brand-primary stroke-[2]" />
           <span className="font-semibold text-white">Cardio &amp; Recovery</span>
         </div>
-        <div className="flex items-center space-x-2 font-mono text-slate-300">
-          <span>Fitness {latestBiometrics?.vo2Max ?? 44.0}</span>
-          <span>•</span>
-          <span>Resting HR {latestBiometrics?.restingHr ?? 58} bpm</span>
-          <span>•</span>
-          <span className="font-bold text-brand-primary">{engineScore}/100</span>
-        </div>
+        {engineScore > 0 ? (
+          <div className="flex items-center space-x-2 font-mono text-slate-300">
+            {(latestBiometrics?.vo2Max || 0) > 0 && (
+              <>
+                <span>Fitness {latestBiometrics?.vo2Max}</span>
+                <span>•</span>
+              </>
+            )}
+            {(latestBiometrics?.restingHr || 0) > 0 && (
+              <>
+                <span>Resting HR {latestBiometrics?.restingHr} bpm</span>
+                <span>•</span>
+              </>
+            )}
+            <span className="font-bold text-brand-primary">{engineScore}/100</span>
+          </div>
+        ) : (
+          <span className="text-slate-400">Connect a watch to score this</span>
+        )}
       </div>
     </div>
   );

@@ -16,6 +16,7 @@ import {
 } from '../../engine/progression';
 import { X, ArrowRightLeft } from 'lucide-react';
 import { triggerHaptic } from '../../utils/haptics';
+import { useUnits } from '../../utils/unitsContext';
 
 interface ExerciseSwapModalProps {
   currentExercise: ExerciseSession;
@@ -25,6 +26,8 @@ interface ExerciseSwapModalProps {
   homeEquipment?: HomeEquipmentTag[];
   onConfirmSwap: (newExerciseDef: ExerciseDefinition, convertedWeightKg: number) => void;
   onClose: () => void;
+  /** Exercise IDs already in today's workout (not offered again). */
+  excludeExerciseIds?: string[];
 }
 
 const EQUIPMENT_LABELS: Record<string, string> = {
@@ -52,7 +55,9 @@ export const ExerciseSwapModal: React.FC<ExerciseSwapModalProps> = ({
   homeEquipment = ['bench', 'dumbbells', 'trx', 'pullup_bar'],
   onConfirmSwap,
   onClose,
+  excludeExerciseIds = [],
 }) => {
+  const units = useUnits();
   const [selectedLocation, setSelectedLocation] = useState<TrainingLocation>(activeLocation);
 
   const currentWeight =
@@ -68,7 +73,7 @@ export const ExerciseSwapModal: React.FC<ExerciseSwapModalProps> = ({
   // Strictly filter by selected training environment so gym barbell/cables NEVER appear in Travel
   const alternatives = exerciseCatalog
     .filter((ex) => {
-      if (ex.id === currentExercise.exerciseId) return false;
+      if (ex.id === currentExercise.exerciseId || excludeExerciseIds.includes(ex.id)) return false;
       if (getMovementVectorId(ex) !== targetVectorId) return false;
       return canPerformExerciseInLocation(ex, selectedLocation, homeEquipment);
     })
@@ -263,14 +268,14 @@ export const ExerciseSwapModal: React.FC<ExerciseSwapModalProps> = ({
                       <span className="font-mono font-bold text-brand-primary text-sm block">
                         {isPureBw
                           ? 'Bodyweight'
-                          : formatImplementWeightLabel(
-                              convertedKg,
-                              alt.equipment,
-                              alt.isWeightedCalisthenic
-                            )}
+                          : alt.isWeightedCalisthenic || alt.equipment === 'weighted_bodyweight'
+                          ? `BW + ${units.format(convertedKg)}`
+                          : alt.equipment === 'dumbbell'
+                          ? `${units.format(convertedKg / 2)} each`
+                          : units.format(convertedKg)}
                       </span>
                       <span className="text-xs text-slate-400">
-                        {isPureBw ? '0 kg load' : 'Matched target'}
+                        {isPureBw ? 'No added weight' : 'Matched to your strength'}
                       </span>
                     </div>
                   </div>

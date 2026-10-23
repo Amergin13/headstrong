@@ -1,20 +1,11 @@
+import { applyCors } from '../_lib/cors';
 /**
  * Vercel Serverless Function: Fitbit / Google Pixel Watch Biometrics Aggregator & Proxy
  * Eliminates browser CORS restrictions and aggregates heart rate, HRV, sleep,
  * active zone minutes, and Daily Readiness Score server-side.
  */
 export default async function handler(req: any, res: any) {
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
-  res.setHeader(
-    'Access-Control-Allow-Headers',
-    'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, Authorization'
-  );
-
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
-  }
+  if (applyCors(req, res)) return;
 
   let accessToken = '';
   const authHeader = req.headers.authorization || req.headers.Authorization;
@@ -40,6 +31,7 @@ export default async function handler(req: any, res: any) {
   }
 
   const refreshToken = body.refreshToken || req.query?.refreshToken;
+  // The app sends the athlete's local date; the UTC fallback is only for direct calls.
   const targetDate = body.date || req.query?.date || new Date().toISOString().split('T')[0];
 
   if (!accessToken) {
@@ -140,14 +132,7 @@ export default async function handler(req: any, res: any) {
       if (typeof restingHr === 'number' && restingHr > 0) {
         biometrics.restingHr = Math.round(restingHr);
       }
-      // Check heart rate zones for average/peak
-      const zones = heartData['activities-heart']?.[0]?.value?.heartRateZones;
-      if (Array.isArray(zones)) {
-        const peakZone = zones.find((z: any) => z.name === 'Peak');
-        if (peakZone && typeof peakZone.min === 'number') {
-          biometrics.maxWorkoutHr = Math.round(peakZone.min + 10);
-        }
-      }
+      // Heart rate zone boundaries are not workout measurements, so no workout HR is derived here.
     }
 
     // Extract HRV
@@ -198,18 +183,11 @@ export default async function handler(req: any, res: any) {
       }
     }
 
+    // Only Fitbit's own score is reported as Fitbit's. Without one, the app computes readiness
+    // itself from HRV, resting HR and sleep against the athlete's 14-day baseline.
     if (explicitScore !== undefined) {
       biometrics.fitbitReadinessScore = explicitScore;
       biometrics.readinessScore = explicitScore;
-    } else if (biometrics.hrvRmssd && biometrics.restingHr) {
-      // Calculate authentic Pixel Watch Daily Readiness Score using Section 2.1 model
-      const hrvZ = (biometrics.hrvRmssd - 55) / 8;
-      const rhrZ = (biometrics.restingHr - 58) / 3;
-      const sleepNorm = ((biometrics.sleepHours || 7.5) - 7.5) / 1.5;
-      const zScore = 0.50 * hrvZ - 0.30 * rhrZ + 0.20 * sleepNorm;
-      const calculatedScore = Math.max(1, Math.min(100, Math.round(55 + 20 * zScore)));
-      biometrics.fitbitReadinessScore = calculatedScore;
-      biometrics.readinessScore = calculatedScore;
     }
 
     const hasCoreMetrics = typeof biometrics.restingHr === 'number' || typeof biometrics.hrvRmssd === 'number';

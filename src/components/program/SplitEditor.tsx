@@ -6,6 +6,7 @@ import {
   getSplitDaysForProgram,
   PROGRAM_OPTIONS,
   FEATURED_PROGRAM_OPTIONS,
+  getSplitTemplateExerciseIds,
 } from '../../services/workoutGenerator';
 import {
   WORKOUT_TEMPLATES_24,
@@ -16,6 +17,8 @@ import { Plus, Play, Flame, Layers, Zap, Dumbbell, ChevronDown, ChevronUp, X, Ch
 import { triggerHaptic } from '../../utils/haptics';
 
 interface SplitEditorProps {
+  /** 6-week plan position of the queued workout, so the plan opens there. */
+  activeProgramWorkoutNumber?: number;
   exerciseCatalog: ExerciseDefinition[];
   activeSplitDay?: string;
   programType?: ProgramSplitType;
@@ -27,6 +30,7 @@ interface SplitEditorProps {
 
 export const SplitEditor: React.FC<SplitEditorProps> = ({
   exerciseCatalog,
+  activeProgramWorkoutNumber,
   activeSplitDay = 'Push',
   programType = 'ppl_upper',
   onOpenCreateExercise,
@@ -35,8 +39,11 @@ export const SplitEditor: React.FC<SplitEditorProps> = ({
   onChangeProgram,
 }) => {
   const is6WkProgram = programType === 'muscle_building_6wk';
-  const [selectedPhase, setSelectedPhase] = useState<number>(1);
-  const [expandedWorkoutNum, setExpandedWorkoutNum] = useState<number | null>(1);
+  const startWorkoutNum = activeProgramWorkoutNumber || 1;
+  const [selectedPhase, setSelectedPhase] = useState<number>(
+    WORKOUT_TEMPLATES_24.find((w) => w.workoutNumber === startWorkoutNum)?.phase || 1
+  );
+  const [expandedWorkoutNum, setExpandedWorkoutNum] = useState<number | null>(startWorkoutNum);
   const [showProgramPicker, setShowProgramPicker] = useState<boolean>(false);
   const days = getSplitDaysForProgram(programType);
   const [activeDay, setActiveDay] = useState<SplitDayType>(
@@ -49,6 +56,12 @@ export const SplitEditor: React.FC<SplitEditorProps> = ({
     }
   }, [programType]);
 
+  const [showAlternatives, setShowAlternatives] = useState(false);
+  const routineIds = getSplitTemplateExerciseIds(activeDay);
+  const catalogById = new Map(exerciseCatalog.map((e) => [e.id, e]));
+  const routineExercises = routineIds
+    .map((id) => catalogById.get(id))
+    .filter((e): e is ExerciseDefinition => Boolean(e));
   const filteredExercises = exerciseCatalog.filter((ex) => {
     if (activeDay === 'Push') {
       return (
@@ -85,6 +98,8 @@ export const SplitEditor: React.FC<SplitEditorProps> = ({
       ex.primaryMuscle === 'Biceps'
     );
   });
+
+  const alternativeExercises = filteredExercises.filter((ex) => !routineIds.includes(ex.id));
 
   const programPickerModal = showProgramPicker && (
     <div
@@ -352,7 +367,7 @@ export const SplitEditor: React.FC<SplitEditorProps> = ({
                         #{workout.workoutNumber}
                       </span>
                       <span className="text-xs text-slate-400">
-                        Week {workout.week} • {workout.dayOfWeek}
+                        Week {workout.week} • Session {((workout.workoutNumber - 1) % 4) + 1} of 4
                       </span>
                     </div>
                     <div className="font-bold text-sm text-white">
@@ -514,9 +529,51 @@ export const SplitEditor: React.FC<SplitEditorProps> = ({
         </button>
       )}
 
-      {/* Exercise Items */}
+      {/* The actual routine for this day, then alternatives behind a disclosure */}
+      <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 px-1">
+        In this workout
+      </h4>
       <div className="space-y-2">
-        {filteredExercises.map((ex) => {
+        {routineExercises.map((ex, idx) => {
+          const equipLabel =
+            ex.equipment === 'barbell'
+              ? 'Barbell'
+              : ex.equipment === 'dumbbell'
+              ? 'Dumbbell'
+              : ex.equipment === 'cable'
+              ? 'Cable'
+              : ex.equipment === 'machine'
+              ? 'Machine'
+              : 'Bodyweight';
+          return (
+            <div key={ex.id} className="p-3.5 rounded-2xl bg-[#090C12] flex items-center gap-3 text-xs">
+              <span className="w-6 h-6 rounded-lg bg-white/[0.08] flex items-center justify-center font-mono font-bold text-white shrink-0">
+                {idx + 1}
+              </span>
+              <div className="min-w-0">
+                <div className="font-bold text-sm text-white">{ex.name}</div>
+                <div className="text-xs text-slate-400 mt-0.5">
+                  {ex.primaryMuscle} • {equipLabel} • {ex.defaultRepRange[0]}–{ex.defaultRepRange[1]} reps
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <button
+        type="button"
+        onClick={() => setShowAlternatives((v) => !v)}
+        aria-expanded={showAlternatives}
+        className="w-full min-h-[44px] px-1 flex items-center justify-between text-xs font-semibold text-slate-300 hover:text-white"
+      >
+        <span>Other exercises for this day ({alternativeExercises.length})</span>
+        <span aria-hidden="true">{showAlternatives ? '−' : '+'}</span>
+      </button>
+
+      {showAlternatives && (
+      <div className="space-y-2">
+        {alternativeExercises.map((ex) => {
           const meta = getExerciseBiomechanicalMeta(ex);
           const equipLabel =
             ex.equipment === 'barbell'
@@ -550,6 +607,7 @@ export const SplitEditor: React.FC<SplitEditorProps> = ({
           );
         })}
       </div>
+      )}
     </div>
     {programPickerModal}
   </>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, Suspense, lazy } from 'react';
 import {
   BiometricLog,
   ExerciseDefinition,
@@ -6,25 +6,15 @@ import {
   GoalPhase,
   HomeEquipmentTag,
   ProgramSplitType,
-  ReadinessState,
-  StrengthPillar,
   TrainingLocation,
   UserProfile,
   WorkoutSession,
   WorkoutSet,
-  WearableProvider,
   AuthUser,
   getActiveWearableProvider,
 } from './engine/types';
 import { calculateDailyReadiness } from './engine/readiness';
 import { getLatestBodyweightEma } from './engine/ema';
-import {
-  calculateProgramMilestoneXp,
-  calculateWorkoutCompletionXp,
-  evaluateExerciseProgressXp,
-  evaluateStrengthStandardAdvanceXp,
-} from './engine/xp';
-import { evaluateStrengthStandard } from './engine/strengthStandards';
 import {
   calculateBestPillarE1rms,
   calculateWeeklyMuscleVolume,
@@ -53,47 +43,51 @@ import {
   getNextSplitDay,
   SplitDayType,
 } from './services/workoutGenerator';
-import { syncWearableBiometrics, setActiveTracker } from './services/wearableSyncService';
+import { WhoopWorkoutStrainSummary } from './services/whoopService';
 import {
-  exchangeWhoopCodeForToken,
-  fetchWhoopWorkoutStrain,
-  WhoopWorkoutStrainSummary,
-  WHOOP_CONFIG,
-} from './services/whoopService';
-import { exchangeFitbitCodeForToken } from './services/fitbitService';
-import { generate6WeekMuscleBuildingWorkout } from './engine/muscleBuildingProgram';
+  generate6WeekMuscleBuildingWorkout,
+  getNextProgramWorkoutNumber,
+} from './engine/muscleBuildingProgram';
+import { prepareSessionForAthlete } from './services/sessionPreparation';
+import { completeWorkout } from './services/workoutCompletion';
+import { evaluateSetProgressAward, planRestAfterSet } from './services/setCompletion';
+import { usePersistedState } from './hooks/usePersistedState';
+import { useWearableSync } from './hooks/useWearableSync';
+import { useLaunchLinks } from './hooks/useLaunchLinks';
+import { UnitsProvider } from './utils/unitsContext';
+import { WeightUnit } from './utils/units';
+import { RestTimerContext } from './components/common/RestTimerModal';
+import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { Header } from './components/common/Header';
 import { NavigationBar, TabId } from './components/common/NavigationBar';
 import { RestTimerModal } from './components/common/RestTimerModal';
 import { XPNotification } from './components/common/XPNotification';
 import { TrainTab } from './components/train/TrainTab';
-import { CharacterTab } from './components/character/CharacterTab';
-import { AnalyticsTab } from './components/analytics/AnalyticsTab';
-import { ProgramTab } from './components/program/ProgramTab';
 import { WatchSyncModal } from './components/program/WatchSyncModal';
 import { OnboardingModal } from './components/onboarding/OnboardingModal';
-import { AICoachChatModal } from './components/assistant/AICoachChatModal';
 import { GoogleAuthModal } from './components/auth/GoogleAuthModal';
-import {
-  signInWithGoogleCredential,
-  signInWithDemoGoogleAccount,
-} from './services/googleAuthService';
+import { localDateString } from './utils/date';
+
+// Secondary tabs and the coach load on demand, keeping the first download small.
+const CharacterTab = lazy(() => import('./components/character/CharacterTab').then((m) => ({ default: m.CharacterTab })));
+const AnalyticsTab = lazy(() => import('./components/analytics/AnalyticsTab').then((m) => ({ default: m.AnalyticsTab })));
+const ProgramTab = lazy(() => import('./components/program/ProgramTab').then((m) => ({ default: m.ProgramTab })));
+const AICoachChatModal = lazy(() => import('./components/assistant/AICoachChatModal').then((m) => ({ default: m.AICoachChatModal })));
 
 export const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<TabId>('train');
-  const [profile, setProfile] = useState<UserProfile>(loadProfile);
-  const [biometrics, setBiometrics] = useState<BiometricLog[]>(loadBiometrics);
-  const [workouts, setWorkouts] = useState<WorkoutSession[]>(loadWorkouts);
-  const [activeWorkout, setActiveWorkout] = useState<WorkoutSession>(loadActiveWorkout);
-  const [exercises, setExercises] = useState<ExerciseDefinition[]>(loadExercises);
-
-  // Auto-regulation interactive tester state
-  const [readinessOverride, setReadinessOverride] = useState<ReadinessState | null>(null);
+  // Saved on every change.
+  const [profile, setProfile] = usePersistedState<UserProfile>(loadProfile, saveProfile);
+  const [biometrics, setBiometrics] = usePersistedState<BiometricLog[]>(loadBiometrics, saveBiometrics);
+  const [workouts, setWorkouts] = usePersistedState<WorkoutSession[]>(loadWorkouts, saveWorkouts);
+  const [activeWorkout, setActiveWorkout] = usePersistedState<WorkoutSession>(loadActiveWorkout, saveActiveWorkout);
+  const [exercises, setExercises] = usePersistedState<ExerciseDefinition[]>(loadExercises, saveExercises);
 
   // Modals & Floating Overlays
   const [restTimerOpen, setRestTimerOpen] = useState(false);
   const [restTimerSeconds, setRestTimerSeconds] = useState(90);
   const [restTimerKey, setRestTimerKey] = useState(0);
+  const [restTimerContext, setRestTimerContext] = useState<RestTimerContext | undefined>(undefined);
   const [watchModalOpen, setWatchModalOpen] = useState(false);
   const [aiCoachOpen, setAiCoachOpen] = useState(false);
   const [authModalOpen, setAuthModalOpen] = useState(false);
@@ -106,27 +100,6 @@ export const App: React.FC = () => {
     message: string;
     bonusTag?: string;
   } | null>(null);
-
-  // Save to localStorage when state changes
-  useEffect(() => {
-    saveProfile(profile);
-  }, [profile]);
-
-  useEffect(() => {
-    saveBiometrics(biometrics);
-  }, [biometrics]);
-
-  useEffect(() => {
-    saveWorkouts(workouts);
-  }, [workouts]);
-
-  useEffect(() => {
-    saveActiveWorkout(activeWorkout);
-  }, [activeWorkout]);
-
-  useEffect(() => {
-    saveExercises(exercises);
-  }, [exercises]);
 
   // Listen for PWA beforeinstallprompt event
   useEffect(() => {
@@ -182,294 +155,142 @@ export const App: React.FC = () => {
     });
   };
 
-  // Handle Android App Shortcut Deep Links, OAuth Callbacks & Google Token Fragments on Launch
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const hash = window.location.hash.substring(1);
-    const hashParams = new URLSearchParams(hash);
+  const notify = (message: string, bonusTag: string) => setXpNotification({ amount: 0, message, bonusTag });
 
-    const tabParam = params.get('tab') as TabId | null;
-    const actionParam = params.get('action');
-    const oauthCode = params.get('code');
-    const idToken = hashParams.get('id_token') || params.get('id_token');
-    const accessToken = hashParams.get('access_token');
+  const { handleSyncCompleted, completeWearableConnection } = useWearableSync({
+    profile,
+    setProfile,
+    workouts,
+    setWorkouts,
+    setBiometrics,
+    notify,
+  });
 
-    // 1. Google / Supabase Token Auto-Login from Redirects
-    if (idToken) {
-      try {
-        const user = signInWithGoogleCredential(idToken);
-        handleAuthSuccess(user);
-      } catch (err) {
-        console.warn('Could not auto-login with id_token:', err);
-      }
-    } else if (accessToken) {
-      const demoUser = signInWithDemoGoogleAccount(
-        profile.email || 'athlete@headstrong.app',
-        profile.name !== 'Athlete' ? profile.name : 'Athlete'
-      );
-      handleAuthSuccess(demoUser);
-    }
-
-    // 2. Tab Navigation Deep Links
-    if (tabParam === 'chat') {
-      setAiCoachOpen(true);
-    } else if (
-      tabParam &&
-      ['train', 'character', 'analytics', 'program'].includes(tabParam)
-    ) {
-      setActiveTab(tabParam);
-    }
-
-    // 3. Action Triggers
-    if (actionParam === 'watch-sync') {
-      setWatchModalOpen(true);
-    } else if (actionParam === 'auth' || actionParam === 'signin' || tabParam === ('auth' as any)) {
-      setAuthModalOpen(true);
-    }
-
-    // 4. Wearable OAuth Code Exchanges
-    if (oauthCode) {
-      const stateParam = params.get('state') || '';
-      const isWhoop = stateParam.startsWith('whoop_') || window.location.pathname.includes('/whoop');
-      const provider: WearableProvider = isWhoop ? 'whoop' : 'fitbit';
-
-      const handleWearableAuth = async () => {
-        let liveAccessToken: string | undefined;
-
-        if (provider === 'whoop') {
-          try {
-            const tokenRes = await exchangeWhoopCodeForToken(
-              oauthCode,
-              profile.whoopClientId || WHOOP_CONFIG.CLIENT_ID,
-              profile.whoopClientSecret,
-              profile.whoopRedirectUri
-            );
-            liveAccessToken = tokenRes.accessToken;
-            const trackerUpdates = setActiveTracker('whoop', profile);
-            setProfile((prev) => ({
-              ...prev,
-              ...trackerUpdates,
-              whoopAccessToken: tokenRes.accessToken,
-              whoopRefreshToken: tokenRes.refreshToken,
-              whoopTokenExpiresAt: Date.now() + tokenRes.expiresIn * 1000,
-            }));
-          } catch (err) {
-            console.error('Whoop connection error:', err);
-            setXpNotification({
-              amount: 0,
-              message: 'Could not connect to Whoop. Please try again.',
-              bonusTag: 'Connection Failed',
-            });
-            return;
-          }
-        } else {
-          try {
-            const tokenRes = await exchangeFitbitCodeForToken(oauthCode);
-            liveAccessToken = tokenRes.accessToken;
-            const trackerUpdates = setActiveTracker('fitbit', profile);
-            setProfile((prev) => ({
-              ...prev,
-              ...trackerUpdates,
-              fitbitAccessToken: tokenRes.accessToken,
-              fitbitRefreshToken: tokenRes.refreshToken,
-              fitbitTokenExpiresAt: Date.now() + tokenRes.expiresIn * 1000,
-            }));
-          } catch (err) {
-            console.warn('Fitbit token exchange completed via simulator fallback:', err);
-            const trackerUpdates = setActiveTracker('fitbit', profile);
-            setProfile((prev) => ({
-              ...prev,
-              ...trackerUpdates,
-            }));
-          }
-        }
-
-        try {
-          const syncedLog = await syncWearableBiometrics(provider, {
-            accessToken: liveAccessToken,
-          });
-          handleSyncCompleted(syncedLog, provider);
-          const deviceName = provider === 'whoop' ? 'Whoop 4.0' : 'Google Pixel Watch';
-          setXpNotification({
-            amount: 0,
-            message: `${deviceName} connected & live recovery synced!`,
-            bonusTag: 'Live Data Synced',
-          });
-        } catch (syncErr: any) {
-          console.warn('Initial sync notice after connecting:', syncErr);
-          const deviceName = provider === 'whoop' ? 'Whoop 4.0' : 'Google Pixel Watch';
-          setXpNotification({
-            amount: 0,
-            message:
-              syncErr?.message ||
-              `${deviceName} connected! Tap "Sync Now" in Wearable Settings once your strap syncs.`,
-            bonusTag: 'Connected',
-          });
-        }
-      };
-
-      handleWearableAuth();
-    }
-
-    if (
-      tabParam ||
-      actionParam ||
-      oauthCode ||
-      idToken ||
-      accessToken ||
-      hash ||
-      window.location.pathname.includes('/oauth')
-    ) {
-      const cleanPath = window.location.pathname.includes('/oauth')
-        ? '/'
-        : window.location.pathname;
-      window.history.replaceState({}, document.title, cleanPath);
-    }
-  }, []);
-
-  // Auto-sync connected wearable biometrics on launch for the single active tracker
-  useEffect(() => {
-    const activeProvider = getActiveWearableProvider(profile);
-    if (!activeProvider) return;
-
-    if (activeProvider === 'whoop' && profile.whoopAccessToken) {
-      syncWearableBiometrics('whoop', {
-        accessToken: profile.whoopAccessToken,
-        refreshToken: profile.whoopRefreshToken,
-      })
-        .then((log) => {
-          handleSyncCompleted(log, 'whoop');
-        })
-        .catch((err) => {
-          console.warn('Background Whoop auto-sync skipped:', err);
-        });
-    } else if (activeProvider === 'fitbit' && profile.fitbitAccessToken) {
-      syncWearableBiometrics('fitbit', {
-        accessToken: profile.fitbitAccessToken,
-        refreshToken: profile.fitbitRefreshToken,
-      })
-        .then((log) => {
-          handleSyncCompleted(log, 'fitbit');
-        })
-        .catch((err) => {
-          console.warn('Background Fitbit auto-sync skipped:', err);
-        });
-    }
-  }, []);
+  useLaunchLinks({
+    onOpenTab: (tab) => setActiveTab(tab),
+    onOpenCoach: () => setAiCoachOpen(true),
+    onOpenWatchSync: () => setWatchModalOpen(true),
+    onOpenAuth: () => setAuthModalOpen(true),
+    onAuthSuccess: handleAuthSuccess,
+    onWearableOAuthCode: (code, provider) => {
+      completeWearableConnection(code, provider);
+    },
+  });
 
   // Derived calculations
   const bodyweightEmaKg = getLatestBodyweightEma(biometrics, 80.0);
+  // Zeros mean "no data" — never fabricate recovery metrics for athletes without a wearable.
   const latestBiometrics: BiometricLog = biometrics[biometrics.length - 1] || {
-    date: new Date().toISOString().split('T')[0],
-    bodyweightKg: 80.0,
-    hrvRmssd: 58,
-    restingHr: 58,
-    sleepHours: 7.5,
+    date: localDateString(),
+    bodyweightKg: bodyweightEmaKg,
+    hrvRmssd: 0,
+    restingHr: 0,
+    sleepHours: 0,
     steps: 0,
     activeZoneMinutes: 0,
-    vo2Max: 44.0,
   };
 
   const activeWearable = getActiveWearableProvider(profile);
-  const calculatedReadiness = calculateDailyReadiness(latestBiometrics, biometrics, activeWearable);
 
-  const readiness = readinessOverride
-    ? {
-        ...calculatedReadiness,
-        state: readinessOverride,
-        score:
-          readinessOverride === 'Primed'
-            ? 1.25
-            : readinessOverride === 'Amber Shield'
-            ? -1.15
-            : 0.2,
-        xpMultiplier: readinessOverride === 'Primed' ? 1.15 : 1.0,
-        streakProtected: readinessOverride === 'Amber Shield',
-        reason:
-          readinessOverride === 'Primed'
-            ? 'Ready to push hard (+15% XP Bonus).'
-            : readinessOverride === 'Amber Shield'
-            ? 'Recovery mode active (weights held steady, streak protected).'
-            : 'Normal recovery baseline.',
-      }
-    : calculatedReadiness;
+  const readiness = calculateDailyReadiness(latestBiometrics, biometrics, activeWearable);
 
   const pillarBestE1rm = calculateBestPillarE1rms(workouts, bodyweightEmaKg);
   const weeklyVolume = calculateWeeklyMuscleVolume(workouts, exercises, activeWorkout);
 
   // Handler: Award XP & update level
+  // Amounts arrive final (the Primed bonus is applied only to workout completion, inside
+  // calculateWorkoutCompletionXp). Uses a functional update so delayed awards never overwrite
+  // each other with a stale XP total.
   const addXp = (amount: number, message: string, bonusTag?: string) => {
-    const finalAmount = Math.round(amount * readiness.xpMultiplier);
-    const newTotalXp = profile.currentXp + finalAmount;
-    const newLevel = Math.floor(newTotalXp / 500) + 1;
-
-    setProfile((prev) => ({
-      ...prev,
-      currentXp: newTotalXp,
-      level: newLevel,
-    }));
+    const finalAmount = Math.round(amount);
+    setProfile((prev) => {
+      const newTotalXp = prev.currentXp + finalAmount;
+      return {
+        ...prev,
+        currentXp: newTotalXp,
+        level: Math.floor(newTotalXp / 500) + 1,
+      };
+    });
 
     setXpNotification({
       amount: finalAmount,
       message,
-      bonusTag: bonusTag ?? (readiness.state === 'Primed' ? '+15% Primed' : undefined),
+      bonusTag,
     });
   };
 
-  // Handler: 1-Tap Set Completion (Evaluates progressive overload)
+  const weightUnit: WeightUnit = profile.weightUnit || 'kg';
+
+  /** Personalizes weights and snaps loads for every generated session. */
+  const prepareSession = (
+    session: WorkoutSession,
+    opts: {
+      isProgramPlan?: boolean;
+      history?: WorkoutSession[];
+      overrides?: Partial<Pick<UserProfile, 'experienceLevel' | 'gender' | 'weightUnit'>> & { bodyweightKg?: number };
+    } = {}
+  ): WorkoutSession =>
+    prepareSessionForAthlete(session, {
+      history: opts.history ?? workouts,
+      bodyweightKg: opts.overrides?.bodyweightKg ?? bodyweightEmaKg,
+      readinessState: readiness.state,
+      gender: opts.overrides?.gender ?? profile.gender,
+      experienceLevel: opts.overrides?.experienceLevel ?? profile.experienceLevel,
+      unit: opts.overrides?.weightUnit || weightUnit,
+      isProgramPlan: opts.isProgramPlan,
+    });
+
+  // Saved workouts from older versions can hold loaded exercises with no weight (e.g. after a swap).
+  // Fill only those exercises once on open, so already-personalized weights aren't scaled twice.
+  const repairedWeightlessRef = useRef(false);
+  useEffect(() => {
+    if (repairedWeightlessRef.current) return;
+    repairedWeightlessRef.current = true;
+    if (activeWorkout.completed) return;
+    const isWeightless = (ex: ExerciseSession) =>
+      !(ex.equipment === 'bodyweight' && !ex.isWeightedCalisthenic) &&
+      !ex.sets.some((s) => s.completed) &&
+      ex.sets.filter((s) => !s.isWarmup).every((s) => (s.targetWeightKg ?? 0) <= 0);
+    const weightless = activeWorkout.exercises.filter(isWeightless);
+    if (weightless.length === 0) return;
+    const repaired = prepareSession(
+      { ...activeWorkout, exercises: weightless },
+      { isProgramPlan: Boolean(activeWorkout.programWorkoutNumber) }
+    );
+    const byId = new Map(repaired.exercises.map((ex) => [ex.id, ex]));
+    setActiveWorkout((prev) => ({
+      ...prev,
+      exercises: prev.exercises.map((ex) => (isWeightless(ex) && byId.has(ex.id) ? byId.get(ex.id)! : ex)),
+    }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Handler: a set was ticked off. Starts the labelled rest timer and awards progress XP once per set.
   const handleSetCompleted = (
-    exerciseName: string,
-    setNumber: number,
+    _exerciseName: string,
+    _setNumber: number,
     completedSet?: WorkoutSet,
     exercise?: ExerciseSession
   ) => {
-    const restSecs = exercise?.restSeconds;
-    if (restSecs === 0) {
-      // 0sec rest indicates an immediate transition to the next exercise in the group
+    if (!exercise || !completedSet) return;
+
+    const rest = planRestAfterSet(activeWorkout, exercise, completedSet.id);
+    if (rest.seconds === 0) {
       setRestTimerOpen(false);
     } else {
-      setRestTimerSeconds(restSecs && restSecs > 0 ? restSecs : 90);
+      setRestTimerSeconds(rest.seconds);
+      setRestTimerContext(rest.context);
       setRestTimerKey((k) => k + 1);
       setRestTimerOpen(true);
     }
 
-    if (completedSet && exercise && !completedSet.isWarmup && completedSet.setType !== 'warmup') {
-      const currentWeight = completedSet.actualWeightKg ?? completedSet.targetWeightKg ?? 0;
-      const currentReps = completedSet.actualReps ?? completedSet.targetReps ?? 0;
-
-      // Find historical best weight and reps for this exercise
-      let prevBestWeight = 0;
-      let prevBestReps = 0;
-
-      for (const w of workouts) {
-        if (!w.completed) continue;
-        const matchingEx = w.exercises.find((e) => e.exerciseId === exercise.exerciseId);
-        if (!matchingEx) continue;
-        for (const s of matchingEx.sets) {
-          if (!s.completed || s.isWarmup || s.setType === 'warmup') continue;
-          const wKg = s.actualWeightKg ?? s.targetWeightKg ?? 0;
-          const reps = s.actualReps ?? s.targetReps ?? 0;
-          if (wKg > prevBestWeight) {
-            prevBestWeight = wKg;
-            prevBestReps = reps;
-          } else if (wKg === prevBestWeight && reps > prevBestReps) {
-            prevBestReps = reps;
-          }
-        }
-      }
-
-      const progressAward = evaluateExerciseProgressXp(
-        exerciseName,
-        currentWeight,
-        currentReps,
-        prevBestWeight > 0 ? prevBestWeight : undefined,
-        prevBestReps > 0 ? prevBestReps : undefined,
-        exercise.maxReps || 12
-      );
-
-      if (progressAward) {
-        addXp(progressAward.amount, progressAward.description, progressAward.bonusTag);
-      }
+    const award = evaluateSetProgressAward(activeWorkout, workouts, exercise, completedSet);
+    if (award) {
+      setActiveWorkout((prev) => ({
+        ...prev,
+        xpAwardedSetIds: [...(prev.xpAwardedSetIds || []), completedSet.id],
+      }));
+      addXp(award.amount, award.description, award.bonusTag);
     }
   };
 
@@ -487,7 +308,7 @@ export const App: React.FC = () => {
       bodyweightEmaKg,
       profile.scheduledWeekLocations
     );
-    setActiveWorkout(smartSession);
+    setActiveWorkout(prepareSession(smartSession));
     if (navigateToTrain) {
       setActiveTab('train');
     }
@@ -532,7 +353,16 @@ export const App: React.FC = () => {
     activeLocation: TrainingLocation;
     availableLocations: TrainingLocation[];
     homeEquipment: HomeEquipmentTag[];
+    athlete?: {
+      gender: UserProfile['gender'];
+      experienceLevel: NonNullable<UserProfile['experienceLevel']>;
+      weightUnit: NonNullable<UserProfile['weightUnit']>;
+      bodyweightKg?: number;
+    };
   }) => {
+    const athlete = setup.athlete;
+    const startingBodyweight = athlete?.bodyweightKg && athlete.bodyweightKg > 0 ? athlete.bodyweightKg : undefined;
+
     setProfile((prev) => ({
       ...prev,
       goalPhase: setup.goalPhase,
@@ -541,31 +371,84 @@ export const App: React.FC = () => {
       availableLocations: setup.availableLocations,
       homeEquipment: setup.homeEquipment,
       onboardingCompleted: true,
+      ...(athlete
+        ? {
+            gender: athlete.gender,
+            experienceLevel: athlete.experienceLevel,
+            weightUnit: athlete.weightUnit,
+          }
+        : {}),
+      mesocycleWeek: prev.onboardingCompleted ? prev.mesocycleWeek : 1,
     }));
+
+    // Record the starting bodyweight so DOTS and calibration use the real number from day one.
+    if (startingBodyweight) {
+      const todayStr = localDateString();
+      setBiometrics((prev) => {
+        const idx = prev.findIndex((b) => b.date === todayStr);
+        if (idx >= 0) {
+          return prev.map((b, i) => (i === idx ? { ...b, bodyweightKg: startingBodyweight } : b));
+        }
+        return [
+          ...prev,
+          {
+            date: todayStr,
+            bodyweightKg: startingBodyweight,
+            hrvRmssd: 0,
+            restingHr: 0,
+            sleepHours: 0,
+            steps: 0,
+            activeZoneMinutes: 0,
+            isManualEntry: true,
+          } as BiometricLog,
+        ];
+      });
+    }
+
+    // Re-running setup (e.g. to edit equipment) must not throw away a workout in progress.
+    const hasProgress = activeWorkout.exercises.some((ex) => ex.sets.some((st) => st.completed));
+    if (profile.onboardingCompleted && hasProgress) {
+      setActiveTab('train');
+      return;
+    }
 
     // Quickest path to value: Generate Day 1 workout for the chosen split and take user to Workout tab
     const starterSplit = getFirstSplitDayForProgram(setup.programType);
-    const starterSession =
-      setup.programType === 'muscle_building_6wk'
-        ? generate6WeekMuscleBuildingWorkout(1, bodyweightEmaKg)
-        : generateSmartWorkoutSession(
-            starterSplit,
-            workouts,
-            exercises,
-            readiness.state,
-            1,
-            setup.activeLocation,
-            setup.homeEquipment,
-            setup.goalPhase,
-            bodyweightEmaKg
-          );
-    setActiveWorkout(starterSession);
+    const isPlan = setup.programType === 'muscle_building_6wk';
+    const starterSession = isPlan
+      ? generate6WeekMuscleBuildingWorkout(getNextProgramWorkoutNumber(workouts), bodyweightEmaKg)
+      : generateSmartWorkoutSession(
+          starterSplit,
+          workouts,
+          exercises,
+          readiness.state,
+          profile.onboardingCompleted ? profile.mesocycleWeek || 1 : 1,
+          setup.activeLocation,
+          setup.homeEquipment,
+          setup.goalPhase,
+          startingBodyweight ?? bodyweightEmaKg
+        );
+    setActiveWorkout(
+      prepareSession(starterSession, {
+        isProgramPlan: isPlan,
+        overrides: athlete
+          ? {
+              experienceLevel: athlete.experienceLevel,
+              gender: athlete.gender,
+              weightUnit: athlete.weightUnit,
+              bodyweightKg: startingBodyweight,
+            }
+          : undefined,
+      })
+    );
     setActiveTab('train');
   };
 
   // Handler: Launch specific workout number from 6-Week Muscle Building Plan
   const handleLaunchWorkoutNumber = (workoutNum: number) => {
-    const session = generate6WeekMuscleBuildingWorkout(workoutNum, bodyweightEmaKg);
+    const session = prepareSession(generate6WeekMuscleBuildingWorkout(workoutNum, bodyweightEmaKg), {
+      isProgramPlan: true,
+    });
     setActiveWorkout(session);
     setActiveTab('train');
     setXpNotification({
@@ -579,8 +462,8 @@ export const App: React.FC = () => {
   const handleUpdateProgram = (newProgramType: ProgramSplitType) => {
     setProfile((prev) => ({ ...prev, programType: newProgramType }));
     if (newProgramType === 'muscle_building_6wk') {
-      const session = generate6WeekMuscleBuildingWorkout(1, bodyweightEmaKg);
-      setActiveWorkout(session);
+      const session = generate6WeekMuscleBuildingWorkout(getNextProgramWorkoutNumber(workouts), bodyweightEmaKg);
+      setActiveWorkout(prepareSession(session, { isProgramPlan: true }));
     } else {
       const starterSplit = getFirstSplitDayForProgram(newProgramType);
       const session = generateSmartWorkoutSession(
@@ -595,7 +478,7 @@ export const App: React.FC = () => {
         bodyweightEmaKg,
         profile.scheduledWeekLocations
       );
-      setActiveWorkout(session);
+      setActiveWorkout(prepareSession(session));
     }
   };
 
@@ -615,238 +498,40 @@ export const App: React.FC = () => {
       bodyweightEmaKg,
       profile.scheduledWeekLocations
     );
-    setActiveWorkout(recalibrated);
+    setActiveWorkout(prepareSession(recalibrated));
   };
 
-  // Handler: Complete entire workout session & advance split rotation (Legitimate XP)
+  // Handler: Complete the workout, advance the queue, award XP (see services/workoutCompletion.ts)
   const handleFinishWorkout = (whoopTelemetry?: WhoopWorkoutStrainSummary) => {
-    const todayStr = new Date().toISOString().split('T')[0];
-    const completedSetCount = activeWorkout.exercises.reduce(
-      (acc, ex) => acc + ex.sets.filter((s) => s.completed).length,
-      0
-    );
-    const estimatedDuration = Math.max(30, completedSetCount * 3 + 8);
-    const estimatedHr =
-      activeWorkout.splitDay === 'Legs'
-        ? 148
-        : activeWorkout.splitDay === 'Pull'
-        ? 138
-        : activeWorkout.splitDay === 'Push'
-        ? 136
-        : activeWorkout.splitDay === 'Upper'
-        ? 140
-        : 142;
-
-    const completionAward = calculateWorkoutCompletionXp(
+    const result = completeWorkout({
       activeWorkout,
-      readiness.state,
-      readiness.xpMultiplier
-    );
+      history: workouts,
+      profile,
+      readiness,
+      bodyweightKg: bodyweightEmaKg,
+      whoopTelemetry,
+    });
+    const { completedSession, nextHistory, nextMesocycleWeek } = result;
+    const todayStr = completedSession.date;
 
-    const isWhoopActive = Boolean(profile.whoopConnected || profile.wearableSource === 'whoop');
-
-    const totalTonnageKg = Math.round(
-      activeWorkout.exercises.reduce((acc, ex) => {
-        return (
-          acc +
-          ex.sets
-            .filter((s) => s.completed)
-            .reduce(
-              (sAcc, s) =>
-                sAcc + (s.actualWeightKg ?? s.targetWeightKg) * (s.actualReps ?? s.targetReps),
-              0
-            )
-        );
-      }, 0)
-    );
-
-    const calculatedEnergyKj = Math.round(totalTonnageKg * 0.16 + estimatedDuration * 11);
-
-    const completedSession: WorkoutSession = {
-      ...activeWorkout,
-      completed: true,
-      completedAt: new Date().toISOString(),
-      readinessState: readiness.state,
-      readinessZScore: readiness.score,
-      xpEarned: completionAward.amount,
-      avgHeartRate: whoopTelemetry?.avgHeartRate || estimatedHr,
-      maxHeartRate: whoopTelemetry?.maxHeartRate || (estimatedHr + 24),
-      durationMinutes: whoopTelemetry?.workoutDurationMin || estimatedDuration,
-      whoopStrain: whoopTelemetry?.workoutStrain ?? whoopTelemetry?.dayStrain,
-      kilojoules:
-        whoopTelemetry?.kilojoules && whoopTelemetry.kilojoules < 3500
-          ? whoopTelemetry.kilojoules
-          : calculatedEnergyKj,
-      wearableSource: isWhoopActive ? 'whoop' : undefined,
-    };
-
-    // Integrate captured Whoop workout strain and recovery into BiometricLog & Knowledge Graph
-    if (
-      whoopTelemetry &&
-      (whoopTelemetry.workoutStrain !== undefined ||
-        whoopTelemetry.dayStrain !== undefined ||
-        whoopTelemetry.kilojoules !== undefined ||
-        whoopTelemetry.avgHeartRate !== undefined ||
-        whoopTelemetry.maxHeartRate !== undefined)
-    ) {
+    if (whoopTelemetry) {
       setBiometrics((prev) => {
-        const existingIdx = prev.findIndex((b) => b.date === todayStr);
-        if (existingIdx >= 0) {
-          const updated = [...prev];
-          updated[existingIdx] = {
-            ...updated[existingIdx],
-            workoutStrain: whoopTelemetry.workoutStrain ?? updated[existingIdx].workoutStrain,
-            strain: whoopTelemetry.dayStrain ?? updated[existingIdx].strain,
-            kilojoules: whoopTelemetry.dayKilojoules ?? whoopTelemetry.kilojoules ?? updated[existingIdx].kilojoules,
-            workoutKilojoules:
-              whoopTelemetry.kilojoules && whoopTelemetry.kilojoules < 3500
-                ? whoopTelemetry.kilojoules
-                : updated[existingIdx].workoutKilojoules,
-            avgWorkoutHr: whoopTelemetry.avgHeartRate ?? updated[existingIdx].avgWorkoutHr,
-            maxWorkoutHr: whoopTelemetry.maxHeartRate ?? updated[existingIdx].maxWorkoutHr,
-            recoveryScore: whoopTelemetry.recoveryScore ?? updated[existingIdx].recoveryScore,
-            source: 'whoop',
-          };
-          return updated;
-        } else {
-          return [
-            ...prev,
-            {
-              date: todayStr,
-              bodyweightKg: bodyweightEmaKg,
-              hrvRmssd: latestBiometrics.hrvRmssd || 58,
-              restingHr: latestBiometrics.restingHr || 58,
-              sleepHours: latestBiometrics.sleepHours || 7.5,
-              steps: latestBiometrics.steps || 8500,
-              activeZoneMinutes: latestBiometrics.activeZoneMinutes || 35,
-              workoutStrain: whoopTelemetry.workoutStrain,
-              strain: whoopTelemetry.dayStrain,
-              kilojoules: whoopTelemetry.dayKilojoules ?? whoopTelemetry.kilojoules,
-              workoutKilojoules:
-                whoopTelemetry.kilojoules && whoopTelemetry.kilojoules < 3500
-                  ? whoopTelemetry.kilojoules
-                  : undefined,
-              avgWorkoutHr: whoopTelemetry.avgHeartRate,
-              maxWorkoutHr: whoopTelemetry.maxHeartRate,
-              recoveryScore: whoopTelemetry.recoveryScore,
-              source: 'whoop',
-            },
-          ];
-        }
+        const idx = prev.findIndex((b) => b.date === todayStr);
+        if (idx < 0) return prev;
+        const updated = [...prev];
+        updated[idx] = {
+          ...updated[idx],
+          workoutStrain: whoopTelemetry.workoutStrain ?? updated[idx].workoutStrain,
+          strain: whoopTelemetry.dayStrain ?? updated[idx].strain,
+          avgWorkoutHr: whoopTelemetry.avgHeartRate ?? updated[idx].avgWorkoutHr,
+          maxWorkoutHr: whoopTelemetry.maxHeartRate ?? updated[idx].maxWorkoutHr,
+          recoveryScore: whoopTelemetry.recoveryScore ?? updated[idx].recoveryScore,
+        };
+        return updated;
       });
-    } else if (isWhoopActive && profile.whoopAccessToken) {
-      // Background catch-up sync if summary closed before strap completed upload
-      fetchWhoopWorkoutStrain(profile.whoopAccessToken, profile.whoopRefreshToken)
-        .then((bgStrain) => {
-          if (
-            bgStrain.workoutStrain !== undefined ||
-            bgStrain.dayStrain !== undefined ||
-            bgStrain.kilojoules !== undefined
-          ) {
-            setWorkouts((prevWorkouts) =>
-              prevWorkouts.map((w) =>
-                w.id === completedSession.id
-                  ? {
-                      ...w,
-                      whoopStrain: bgStrain.workoutStrain ?? bgStrain.dayStrain ?? w.whoopStrain,
-                      maxHeartRate: bgStrain.maxHeartRate ?? w.maxHeartRate,
-                      avgHeartRate: bgStrain.avgHeartRate ?? w.avgHeartRate,
-                      kilojoules:
-                        bgStrain.kilojoules && bgStrain.kilojoules < 3500
-                          ? bgStrain.kilojoules
-                          : w.kilojoules,
-                    }
-                  : w
-              )
-            );
-            setBiometrics((prev) => {
-              const existingIdx = prev.findIndex((b) => b.date === todayStr);
-              if (existingIdx >= 0) {
-                const updated = [...prev];
-                updated[existingIdx] = {
-                  ...updated[existingIdx],
-                  workoutStrain: bgStrain.workoutStrain ?? updated[existingIdx].workoutStrain,
-                  strain: bgStrain.dayStrain ?? updated[existingIdx].strain,
-                  kilojoules: bgStrain.dayKilojoules ?? bgStrain.kilojoules ?? updated[existingIdx].kilojoules,
-                  workoutKilojoules:
-                    bgStrain.kilojoules && bgStrain.kilojoules < 3500
-                      ? bgStrain.kilojoules
-                      : updated[existingIdx].workoutKilojoules,
-                  avgWorkoutHr: bgStrain.avgHeartRate ?? updated[existingIdx].avgWorkoutHr,
-                  maxWorkoutHr: bgStrain.maxHeartRate ?? updated[existingIdx].maxWorkoutHr,
-                  recoveryScore: bgStrain.recoveryScore ?? updated[existingIdx].recoveryScore,
-                  source: 'whoop',
-                };
-                return updated;
-              }
-              return prev;
-            });
-          }
-        })
-        .catch(() => {});
     }
 
-    // Evaluate strength standards advances
-    const prevPillars = calculateBestPillarE1rms(workouts, bodyweightEmaKg);
-    const nextWorkouts = [completedSession, ...workouts];
-    const nextPillars = calculateBestPillarE1rms(nextWorkouts, bodyweightEmaKg);
-
-    const pillarsToCheck: StrengthPillar[] = [
-      'Squat',
-      'Hinge',
-      'Horizontal Push',
-      'Vertical Push',
-      'Horizontal Pull',
-      'Vertical Pull',
-    ];
-
-    let strengthAdvanceAward: ReturnType<typeof evaluateStrengthStandardAdvanceXp> = null;
-    for (const p of pillarsToCheck) {
-      const oldStd = evaluateStrengthStandard(p, prevPillars[p], bodyweightEmaKg, profile.gender);
-      const newStd = evaluateStrengthStandard(p, nextPillars[p], bodyweightEmaKg, profile.gender);
-      const adv = evaluateStrengthStandardAdvanceXp(
-        p,
-        oldStd.tier,
-        oldStd.subDivision,
-        newStd.tier,
-        newStd.subDivision
-      );
-      if (adv) {
-        strengthAdvanceAward = adv;
-        break;
-      }
-    }
-
-    // Check if completing this workout completes a Program Milestone (training week or 6-week mesocycle)
-    const sessionsPerWeekMap: Record<ProgramSplitType, number> = {
-      ppl_upper: 4,
-      ppl: 3,
-      upper_lower: 4,
-      full_body: 3,
-      muscle_building_6wk: 4,
-    };
-    const sessionsPerWeek = sessionsPerWeekMap[profile.programType || 'ppl_upper'] || 4;
-    const isWeekMilestone = nextWorkouts.length > 0 && nextWorkouts.length % sessionsPerWeek === 0;
-
-    let milestoneAward: ReturnType<typeof calculateProgramMilestoneXp> | null = null;
-    let nextMesocycleWeek = profile.mesocycleWeek || 1;
-
-    if (isWeekMilestone) {
-      const completedWeek = profile.mesocycleWeek || 1;
-      const programLabels: Record<ProgramSplitType, string> = {
-        ppl_upper: 'PPL + Upper',
-        ppl: 'PPL Classic',
-        upper_lower: 'Upper / Lower',
-        full_body: 'Full Body',
-        muscle_building_6wk: '6-Week Muscle Building Plan',
-      };
-      const progName = programLabels[profile.programType || 'ppl_upper'] || 'Hypertrophy Split';
-      milestoneAward = calculateProgramMilestoneXp(completedWeek, progName);
-      nextMesocycleWeek = completedWeek >= 6 ? 1 : completedWeek + 1;
-    }
-
-    setWorkouts(nextWorkouts);
-
+    setWorkouts(nextHistory);
     setProfile((prev) => ({
       ...prev,
       streakDays: prev.lastWorkoutDate === todayStr ? prev.streakDays : prev.streakDays + 1,
@@ -854,64 +539,46 @@ export const App: React.FC = () => {
       mesocycleWeek: nextMesocycleWeek,
     }));
 
-    let nextSmartSession: WorkoutSession;
-    let nextSessionLabel = '';
+    const nextSession =
+      profile.programType === 'muscle_building_6wk'
+        ? prepareSession(
+            generate6WeekMuscleBuildingWorkout(getNextProgramWorkoutNumber(nextHistory), bodyweightEmaKg),
+            { isProgramPlan: true, history: nextHistory }
+          )
+        : prepareSession(
+            generateSmartWorkoutSession(
+              getNextSplitDay(activeWorkout.splitDay, profile.programType),
+              nextHistory,
+              exercises,
+              readiness.state,
+              nextMesocycleWeek,
+              profile.activeLocation || 'gym',
+              profile.homeEquipment || [],
+              profile.goalPhase,
+              bodyweightEmaKg,
+              profile.scheduledWeekLocations
+            ),
+            { history: nextHistory }
+          );
+    setActiveWorkout(nextSession);
+    setRestTimerOpen(false);
+    setActiveTab('train');
+    if (typeof window !== 'undefined') window.scrollTo({ top: 0 });
 
-    if (profile.programType === 'muscle_building_6wk') {
-      const nextWorkoutNum = (nextWorkouts.length % 24) + 1;
-      nextSessionLabel = `Workout #${nextWorkoutNum}`;
-      nextSmartSession = generate6WeekMuscleBuildingWorkout(nextWorkoutNum, bodyweightEmaKg);
-    } else {
-      const nextSplit = getNextSplitDay(activeWorkout.splitDay, profile.programType);
-      nextSessionLabel = `${nextSplit} Split`;
-      nextSmartSession = generateSmartWorkoutSession(
-        nextSplit,
-        nextWorkouts,
-        exercises,
-        readiness.state,
-        nextMesocycleWeek,
-        profile.activeLocation || 'gym',
-        profile.homeEquipment || ['bench', 'dumbbells', 'trx', 'pullup_bar'],
-        profile.goalPhase,
-        bodyweightEmaKg,
-        profile.scheduledWeekLocations
-      );
-    }
-    setActiveWorkout(nextSmartSession);
-
-    // Award completion XP
-    addXp(
-      completionAward.amount,
-      `${completionAward.description} Next up: ${nextSessionLabel}.`,
-      completionAward.bonusTag
-    );
-
-    // If strength standard advanced, award it too
+    // addXp uses functional updates, so these never overwrite each other.
+    const { completionAward, strengthAdvanceAward, milestoneAward } = result;
+    addXp(completionAward.amount, completionAward.description, completionAward.bonusTag);
     if (strengthAdvanceAward) {
-      setTimeout(() => {
-        addXp(
-          strengthAdvanceAward!.amount,
-          strengthAdvanceAward!.description,
-          strengthAdvanceAward!.bonusTag
-        );
-      }, 1500);
+      setTimeout(() => addXp(strengthAdvanceAward.amount, strengthAdvanceAward.description, strengthAdvanceAward.bonusTag), 1500);
     }
-
-    // If completing the week/mesocycle, award program milestone XP
     if (milestoneAward) {
-      setTimeout(() => {
-        addXp(
-          milestoneAward!.amount,
-          milestoneAward!.description,
-          milestoneAward!.bonusTag
-        );
-      }, 3000);
+      setTimeout(() => addXp(milestoneAward.amount, milestoneAward.description, milestoneAward.bonusTag), 3000);
     }
   };
 
   // Handler: Daily Weight Log (No illegitimate XP)
   const handleSaveWeight = (weight: number) => {
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = localDateString();
     const existingIndex = biometrics.findIndex((b) => b.date === todayStr);
 
     let updatedBiometrics: BiometricLog[];
@@ -920,52 +587,22 @@ export const App: React.FC = () => {
         idx === existingIndex ? { ...b, bodyweightKg: weight } : b
       );
     } else {
+      // A new day's weigh-in must not copy yesterday's recovery numbers.
       updatedBiometrics = [
         ...biometrics,
         {
-          ...latestBiometrics,
           date: todayStr,
           bodyweightKg: weight,
+          hrvRmssd: 0,
+          restingHr: 0,
+          sleepHours: 0,
+          steps: 0,
+          activeZoneMinutes: 0,
         },
       ];
     }
 
     setBiometrics(updatedBiometrics);
-  };
-
-  // Handler: Watch Sync Telemetry update (No illegitimate XP)
-  const handleSyncCompleted = (newLog: BiometricLog, provider?: WearableProvider) => {
-    const existingIndex = biometrics.findIndex((b) => b.date === newLog.date);
-    let updated: BiometricLog[];
-    if (existingIndex >= 0) {
-      const existing = biometrics[existingIndex];
-      const merged: BiometricLog = {
-        ...existing,
-        ...newLog,
-        // Preserve existing workout metrics if newLog does not have them
-        avgWorkoutHr: newLog.avgWorkoutHr ?? existing.avgWorkoutHr,
-        maxWorkoutHr: newLog.maxWorkoutHr ?? existing.maxWorkoutHr,
-        workoutStrain: newLog.workoutStrain ?? existing.workoutStrain,
-        workoutKilojoules: newLog.workoutKilojoules ?? existing.workoutKilojoules,
-        recoveryScore: newLog.recoveryScore ?? existing.recoveryScore,
-        strain: newLog.strain ?? existing.strain,
-        kilojoules: newLog.kilojoules ?? existing.kilojoules,
-        source: newLog.source ?? existing.source,
-      };
-      updated = biometrics.map((b, idx) => (idx === existingIndex ? merged : b));
-    } else {
-      updated = [...biometrics, newLog];
-    }
-
-    setBiometrics(updated);
-
-    if (provider) {
-      const trackerUpdates = setActiveTracker(provider, profile);
-      setProfile((prev) => ({
-        ...prev,
-        ...trackerUpdates,
-      }));
-    }
   };
 
   // Handler: Reset demo seed data
@@ -976,7 +613,6 @@ export const App: React.FC = () => {
     setWorkouts(reset.workouts);
     setActiveWorkout(reset.activeWorkout);
     setExercises(reset.exercises);
-    setReadinessOverride(null);
     setXpNotification({
       amount: 0,
       message: 'Restored 6-week sample workout and biometric history.',
@@ -990,7 +626,7 @@ export const App: React.FC = () => {
     const blob = new Blob([json], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = localDateString();
     a.href = url;
     a.download = `headstrong-backup-${todayStr}.json`;
     document.body.appendChild(a);
@@ -1030,7 +666,6 @@ export const App: React.FC = () => {
     setWorkouts(wiped.workouts);
     setActiveWorkout(wiped.activeWorkout);
     setExercises(wiped.exercises);
-    setReadinessOverride(null);
     setXpNotification({
       amount: 0,
       message: 'All personal workout and biometric data permanently erased from device.',
@@ -1051,7 +686,7 @@ export const App: React.FC = () => {
     const today = new Date();
     const tomorrow = new Date(today);
     tomorrow.setDate(today.getDate() + 1);
-    const tomorrowStr = tomorrow.toISOString().split('T')[0];
+    const tomorrowStr = localDateString(tomorrow);
 
     setActiveWorkout((prev) => ({
       ...prev,
@@ -1060,6 +695,7 @@ export const App: React.FC = () => {
   };
 
   return (
+    <UnitsProvider unit={weightUnit}>
     <div className="min-h-screen bg-surface-bg text-slate-100 flex flex-col font-sans">
       {/* App Header */}
       <Header
@@ -1071,6 +707,8 @@ export const App: React.FC = () => {
 
       {/* Main Mobile Container */}
       <main className="flex-1 max-w-md mx-auto w-full px-3.5 pt-3">
+        <Suspense fallback={<div className="biometric-card p-6 text-xs text-slate-400" role="status">Loading…</div>}>
+        <ErrorBoundary key={activeTab} area={activeTab === 'train' ? 'Workout' : activeTab === 'analytics' ? 'Progress' : activeTab === 'program' ? 'Program' : 'Athlete'}>
         {activeTab === 'train' && (
           <TrainTab
             activeWorkout={activeWorkout}
@@ -1081,12 +719,20 @@ export const App: React.FC = () => {
             profile={profile}
             exerciseCatalog={exercises}
             onUpdateWorkout={setActiveWorkout}
-            onSelectReadinessState={(st) => setReadinessOverride(st)}
             onSetCompleted={handleSetCompleted}
             onFinishWorkout={handleFinishWorkout}
             onShiftWorkout={handleShiftWorkout}
             onSwitchLocation={handleSwitchTrainingLocation}
             onOpenWatchSync={() => setWatchModalOpen(true)}
+            onOpenProgram={() => {
+              setActiveTab('program');
+              window.scrollTo({ top: 0 });
+            }}
+            onSwitchSplitDay={
+              profile.programType === 'muscle_building_6wk'
+                ? undefined
+                : (split) => handleSwitchSplitDay(split)
+            }
           />
         )}
 
@@ -1094,6 +740,7 @@ export const App: React.FC = () => {
           <CharacterTab
             profile={profile}
             pillarBestE1rm={pillarBestE1rm}
+            big3BestE1rm={calculateBestPillarE1rms(workouts, bodyweightEmaKg, { loadedLiftsOnly: true })}
             bodyweightEmaKg={bodyweightEmaKg}
             latestBiometrics={latestBiometrics}
             weeklyVolume={weeklyVolume}
@@ -1141,7 +788,7 @@ export const App: React.FC = () => {
                 bodyweightEmaKg,
                 profile.scheduledWeekLocations
               );
-              setActiveWorkout(recalibrated);
+              setActiveWorkout(prepareSession(recalibrated));
             }}
             onLaunchSplitDay={(sp) => handleSwitchSplitDay(sp, true)}
             onLaunchWorkoutNumber={handleLaunchWorkoutNumber}
@@ -1155,12 +802,21 @@ export const App: React.FC = () => {
               setOnboardingInitialStep(4);
               setOnboardingOpen(true);
             }}
+            activeWorkoutName={activeWorkout.name}
+            activeProgramWorkoutNumber={activeWorkout.programWorkoutNumber}
+            onBackToWorkout={() => {
+              setActiveTab('train');
+              window.scrollTo({ top: 0 });
+            }}
           />
         )}
+        </ErrorBoundary>
+        </Suspense>
       </main>
 
       {/* AI Assistant Conversational Chat Modal */}
       {aiCoachOpen && (
+        <Suspense fallback={null}>
         <AICoachChatModal
           profile={profile}
           activeWorkout={activeWorkout}
@@ -1178,6 +834,7 @@ export const App: React.FC = () => {
             setOnboardingOpen(true);
           }}
         />
+        </Suspense>
       )}
 
       {/* Onboarding & Equipment Context Setup Modal */}
@@ -1207,12 +864,12 @@ export const App: React.FC = () => {
         />
       )}
 
-      {/* Floating Rest Timer with Simulated 60% Max HR Ready Indicator */}
-      {restTimerOpen && (
+      {/* Floating rest timer, labelled with the exercise and next set (hidden behind the coach chat) */}
+      {restTimerOpen && !aiCoachOpen && (
         <RestTimerModal
           key={`rest-${restTimerKey}`}
           initialSeconds={restTimerSeconds}
-          maxHr={profile.maxHr}
+          context={restTimerContext}
           onDismiss={() => setRestTimerOpen(false)}
         />
       )}
@@ -1267,6 +924,7 @@ export const App: React.FC = () => {
         onOpenAICoach={() => setAiCoachOpen((prev) => !prev)}
       />
     </div>
+    </UnitsProvider>
   );
 };
 

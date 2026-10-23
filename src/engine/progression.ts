@@ -215,7 +215,7 @@ export function findLastCompletedExerciseSession(
 ): { session: ExerciseSession; date: string; isCrossImplementTransfer: boolean } | null {
   const completedWorkouts = workouts
     .filter((w) => w.completed)
-    .sort((a, b) => b.date.localeCompare(a.date));
+    .sort((a, b) => (b.completedAt || b.date).localeCompare(a.completedAt || a.date));
 
   const targetVector = targetSessionForVectorLookup
     ? getMovementVectorId(targetSessionForVectorLookup)

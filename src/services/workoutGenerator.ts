@@ -21,11 +21,14 @@ import {
   translateWeightBetweenImplements,
 } from '../engine/e1rm';
 import { getExerciseBiomechanicalMeta } from '../engine/knowledgeGraph';
+import { WORKOUT_TEMPLATES_24 } from '../engine/muscleBuildingProgram';
 import {
   calculateWarmupPrescription,
   generateWarmupSets,
   isFirstCompoundForPillar,
 } from '../engine/warmup';
+import { localDateString } from '../utils/date';
+import { SEED_EXERCISES } from './seedData';
 
 export type SplitDayType = 'Push' | 'Pull' | 'Legs' | 'Upper';
 
@@ -177,6 +180,52 @@ const SPLIT_TEMPLATES: Record<
   },
 };
 
+/** Exercise IDs in the routine for a split day, in workout order. */
+export function getSplitTemplateExerciseIds(split: SplitDayType): string[] {
+  return (SPLIT_TEMPLATES[split] || SPLIT_TEMPLATES.Push).exercises.map((e) => e.exerciseId);
+}
+
+/**
+ * Template working weight for an exercise, expressed for the experienced reference lifter.
+ * Split templates are written for that lifter; the 6-week plan is written for an intermediate
+ * lifter (factor 0.75), so its weights are scaled up to the same reference.
+ */
+export function getTemplateDefaultWeight(exerciseId: string): number | undefined {
+  const direct = getDirectTemplateDefaultWeight(exerciseId);
+  if (direct !== undefined) return direct;
+
+  // Not in any template: borrow the default of a templated exercise with the same movement,
+  // converted between implements (same equipment preferred).
+  const def = SEED_EXERCISES.find((e) => e.id === exerciseId);
+  if (!def || def.equipment === 'bodyweight' || def.isWeightedCalisthenic) return undefined;
+  const vector = getMovementVectorId(def);
+  const source = SEED_EXERCISES.filter(
+    (e) => e.id !== exerciseId && e.equipment !== 'bodyweight' && !e.isWeightedCalisthenic && getMovementVectorId(e) === vector
+  )
+    .map((e) => ({ e, weight: getDirectTemplateDefaultWeight(e.id) }))
+    .filter((x): x is { e: ExerciseDefinition; weight: number } => x.weight !== undefined)
+    .sort((a, b) => Number(b.e.equipment === def.equipment) - Number(a.e.equipment === def.equipment))[0];
+  if (!source) return undefined;
+  const converted = translateWeightBetweenImplements(
+    source.weight,
+    { ...source.e, exerciseId: source.e.id },
+    { ...def, exerciseId: def.id }
+  );
+  return converted > 0 ? converted : undefined;
+}
+
+function getDirectTemplateDefaultWeight(exerciseId: string): number | undefined {
+  for (const tmpl of Object.values(SPLIT_TEMPLATES)) {
+    const item = tmpl.exercises.find((e) => e.exerciseId === exerciseId);
+    if (item && item.defaultWeightKg > 0) return item.defaultWeightKg;
+  }
+  for (const w of WORKOUT_TEMPLATES_24) {
+    const item = w.exercises.find((e) => e.exerciseId === exerciseId);
+    if (item && (item.defaultWeightKg ?? 0) > 0) return (item.defaultWeightKg as number) / 0.75;
+  }
+  return undefined;
+}
+
 export function getNextSplitDay(
   current: string,
   programType: ProgramSplitType = 'ppl_upper'
@@ -205,7 +254,7 @@ export function getSplitDaysForProgram(
     case 'muscle_building_6wk':
       return [
         { id: 'Upper', label: 'Upper Body', desc: 'Chest, Back, Delts & Arms' },
-        { id: 'Legs', label: 'Legs & Abs', desc: '10-Set Squats & Core' },
+        { id: 'Legs', label: 'Legs & Abs', desc: '10-set squats & core' },
       ];
     case 'ppl':
       return [
@@ -254,7 +303,7 @@ export const FEATURED_PROGRAM_OPTIONS: ProgramSplitOption[] = [
     title: '6-Week Muscle Building Plan',
     badge: 'High-Volume & High-Intensity',
     frequency: '4 sessions / week • 3 progressive 2-week phases',
-    rotation: 'Chest & Back / Delts & Arms → Saturday 10-Set Squats',
+    rotation: 'Chest & Back → Delts & Arms → Chest & Back → Legs (10-set squats)',
     detail:
       'An intensive 24-workout program structured into three 2-week meso-cycles: Phase 1 antagonist supersets, Phase 2 rest-pause & drop-sets, Phase 3 giant sets & tri-sets.',
     firstSession: 'Chest & Back (Antagonist Supersets)',
@@ -308,7 +357,7 @@ export const PROGRAM_OPTIONS: ProgramSplitOption[] = [
     frequency: '3 sessions per rotation • Whole-body stimulus',
     rotation: 'Full Body A → Full Body B → Full Body C',
     detail: 'Stimulates major muscle groups 3 times per week with high recovery windows between sessions. Ideal for busy lifters.',
-    firstSession: 'Push / Compound Day',
+    firstSession: 'Full Body A (Squat & Chest)',
   },
 ];
 
@@ -749,7 +798,7 @@ export function generateSmartWorkoutSession(
 ): WorkoutSession {
   const template = SPLIT_TEMPLATES[splitDay] || SPLIT_TEMPLATES.Push;
   const exMap = new Map(exerciseCatalog.map((e) => [e.id, e]));
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = localDateString();
 
   // Determine target RIR & set count modifier by Mesocycle Week (RP Periodization Wave)
   let baseRir = 2;
@@ -848,6 +897,8 @@ export function generateSmartWorkoutSession(
       sfrScore: meta.sfrScore,
       minReps,
       maxReps,
+      // Controlled 2-second lowering on every lift (matches the coaching cues); powers the tempo guide.
+      tempo: '2010',
       notes:
         goalPhase === 'Cut / Recomp'
           ? `${item.notes} • Retention Shield: Hold high tension at 1–2 RIR to signal muscle preservation.`
@@ -859,7 +910,7 @@ export function generateSmartWorkoutSession(
       seedSession,
       readinessState,
       historicalWorkouts,
-      81.5,
+      bodyweightEmaKg,
       goalPhase
     );
 
