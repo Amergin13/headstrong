@@ -228,19 +228,23 @@ export function getTrainableReadyAt(rawReadyAt: number): number {
   return ready.getTime();
 }
 
+/** The ready time as shown to the athlete: rounded up to the hour, overnight moved to the morning. */
+export function getDisplayReadyAt(rawReadyAt: number): number {
+  const rounded = new Date(rawReadyAt);
+  if (rounded.getMinutes() || rounded.getSeconds() || rounded.getMilliseconds()) {
+    rounded.setHours(rounded.getHours() + 1, 0, 0, 0);
+  }
+  return getTrainableReadyAt(rounded.getTime());
+}
+
 /** Calendar days from today until the next session can be trained (0 = later today). */
 export function getDaysUntilReady(rawReadyAt: number, now: number = Date.now()): number {
-  return Math.max(0, daysBetweenLocalDates(localDateString(new Date(now)), localDateString(new Date(getTrainableReadyAt(rawReadyAt)))));
+  return Math.max(0, daysBetweenLocalDates(localDateString(new Date(now)), localDateString(new Date(getDisplayReadyAt(rawReadyAt)))));
 }
 
 /** "Tomorrow at 6 PM", "Friday at 9 AM", or "in 3 hours" — plain English for the rest screen. */
 export function formatReadyTime(rawReadyAt: number, now: number = Date.now()): string {
-  // Round up to the hour: "ready at 4 PM" reads better than "ready at 3:04 PM".
-  const rounded = new Date(getTrainableReadyAt(rawReadyAt));
-  if (rounded.getMinutes() || rounded.getSeconds() || rounded.getMilliseconds()) {
-    rounded.setHours(rounded.getHours() + 1, 0, 0, 0);
-  }
-  const readyAt = rounded.getTime();
+  const readyAt = getDisplayReadyAt(rawReadyAt);
   const diffHours = (readyAt - now) / HOUR_MS;
   if (diffHours <= 0) return 'now';
   if (diffHours < 1) return 'in under an hour';

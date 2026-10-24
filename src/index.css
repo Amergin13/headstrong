@@ -8,9 +8,10 @@
   }
 
   body {
-    background-color: #060709;
+    background-color: #13181C;
+    min-height: 100vh;
     color: #F8FAFC;
-    font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'SF Pro Display', Inter, sans-serif;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     -webkit-tap-highlight-color: transparent;
@@ -152,4 +153,109 @@ select:focus-visible {
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+/* ------------------------------------------------------------------------------------------
+ * Workout page (Figma: 1344 px wide frame). --f converts one Figma pixel to screen pixels, so
+ * every size is written as calc(<figma px> * var(--f)). On a Pixel (448 px wide) --f is 1/3.
+ * ---------------------------------------------------------------------------------------- */
+.wk {
+  --f: calc(min(100vw, 448px) / 1344);
+  --wk-card: #2C3034;
+  --wk-raised: #3B4044;
+  --wk-pill: #474D50;
+  --wk-accent: #00F19F;
+  --wk-muted: rgba(255, 255, 255, 0.6);
+  --wk-body: rgba(255, 255, 255, 0.75);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  letter-spacing: 0;
+}
+.wk-card {
+  background: var(--wk-card);
+  border-radius: calc(30 * var(--f));
+  padding: calc(38 * var(--f));
+}
+.wk-h1 {
+  font-size: calc(28 * var(--f));
+  line-height: 1.2;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #fff;
+}
+.wk-body {
+  font-size: calc(26 * var(--f));
+  line-height: calc(34 * var(--f));
+  color: var(--wk-body);
+}
+.wk-label {
+  font-size: calc(24 * var(--f));
+  line-height: 1.2;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #fff;
+}
+.wk-caption {
+  font-size: calc(22 * var(--f));
+  line-height: 1.2;
+  font-weight: 600;
+  color: var(--wk-muted);
+}
+.wk-pill {
+  display: inline-flex;
+  align-items: center;
+  background: var(--wk-pill);
+  border-radius: calc(8 * var(--f));
+  padding: calc(6 * var(--f)) calc(22 * var(--f));
+  font-size: calc(24 * var(--f));
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #C9CDD0;
+}
+.wk-bar {
+  height: calc(10 * var(--f));
+  border-radius: calc(30 * var(--f));
+  background: var(--wk-pill);
+  overflow: hidden;
+}
+.wk-bar > div {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--wk-accent);
+}
+.wk-chevron {
+  width: calc(40 * var(--f));
+  height: calc(40 * var(--f));
+  color: var(--wk-muted);
+  flex-shrink: 0;
+}
+.wk-input {
+  background: var(--wk-raised);
+  border-radius: calc(15 * var(--f));
+  height: calc(74 * var(--f));
+  font-size: calc(26 * var(--f));
+  font-weight: 700;
+  color: #fff;
+  text-align: center;
+  width: 100%;
+}
+.wk-input:focus-within,
+.wk-input:focus {
+  outline: calc(3 * var(--f)) solid var(--wk-accent);
+}
+.wk-button {
+  width: 100%;
+  min-height: 48px;
+  height: calc(130 * var(--f));
+  border-radius: calc(30 * var(--f));
+  font-size: calc(28 * var(--f));
+  font-weight: 700;
+  text-transform: uppercase;
+}
+.wk input[type='number']::-webkit-inner-spin-button,
+.wk input[type='number']::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.wk input[type='number'] {
+  -moz-appearance: textfield;
 }

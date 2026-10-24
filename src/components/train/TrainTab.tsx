@@ -1,4 +1,5 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useLayoutEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import {
   BiometricLog,
   ExerciseDefinition,
@@ -27,7 +28,7 @@ import {
   MUSCLE_FRIENDLY_NAMES,
   READY_THRESHOLD,
 } from '../../engine/recovery';
-import { PROGRAM_PHASES } from '../../engine/muscleBuildingProgram';
+import { PROGRAM_PHASES, WORKOUT_TEMPLATES_24 } from '../../engine/muscleBuildingProgram';
 import { useUnits } from '../../utils/unitsContext';
 import { PreviousSet } from './SetRow';
 import {
@@ -43,6 +44,11 @@ import { buildAthleteKnowledgeGraph, getExerciseBiomechanicalMeta } from '../../
 import { calculateWeeklyMuscleVolume } from '../../services/storage';
 import { buildSessionProgressReport } from '../../services/sessionReport';
 import { SessionCompleteCard } from './SessionCompleteCard';
+import { WorkoutPageHeader } from './WorkoutPageHeader';
+import { ProgramProgressCard } from './ProgramProgressCard';
+import { RecoveryScoreCard } from './RecoveryScoreCard';
+import { buildWeekStrip } from '../../services/sessionSchedule';
+import { buildExerciseInsight } from '../../services/exerciseInsight';
 import {
   calculateWarmupPrescription,
   ensureWarmupSetsOnExercise,
@@ -120,6 +126,18 @@ function getPreviousWorkingSets(exerciseId: string, workouts: WorkoutSession[]):
   }
   return [];
 }
+
+/** One Figma pixel (1344 px wide frame) in screen pixels; see .wk in index.css. */
+const fig = (px: number) => `calc(${px} * var(--f))`;
+/** Side margin of the Workout page in the Figma frame. */
+const PAGE_GUTTER = 186;
+
+const PROGRAM_TITLES: Record<string, string> = {
+  ppl_upper: 'Push / Pull / Legs + Upper',
+  ppl: 'Push / Pull / Legs',
+  upper_lower: 'Upper / Lower',
+  full_body: 'Full Body',
+};
 
 const MESO_WEEK_PHASE_NAMES: Record<number, { name: string; rule: string }> = {
   1: { name: 'Smooth Start', rule: 'Base sets • Leave 2–3 reps in the tank' },
@@ -633,9 +651,147 @@ export const TrainTab: React.FC<TrainTabProps> = ({
       (latestBiometrics.hrvRmssd !== undefined || latestBiometrics.restingHr !== undefined)
   );
 
+  // Program card: plan phase and position, or the mesocycle week for standard splits.
+  const planTemplate = planWorkoutNumber ? WORKOUT_TEMPLATES_24.find((t) => t.workoutNumber === planWorkoutNumber) : undefined;
+  const sessionWord = showRecoveryGate ? 'Next' : 'Today';
+  const programCard = planWorkoutNumber
+    ? {
+        title: `Phase ${planPhase?.phaseNumber ?? 1}`,
+        subtitle: planPhase?.shortName ?? '',
+        sessionLabel: `${sessionWord}: ${planTemplate?.title ?? activeWorkout.name}`,
+        current: planWorkoutNumber,
+        total: WORKOUT_TEMPLATES_24.length,
+      }
+    : {
+        title: `Week ${mesoWeek}`,
+        subtitle: phaseMeta.name,
+        sessionLabel: `${sessionWord}: ${activeWorkout.name.split(' — ')[0]}`,
+        current: mesoWeek,
+        total: 6,
+      };
+  const pageTitle = planWorkoutNumber ? '6 Week Muscle Plan' : PROGRAM_TITLES[profile.programType || 'ppl_upper'] || 'Your Program';
+
+  const stripDays = useMemo(
+    () =>
+      buildWeekStrip({
+        workouts,
+        nextSession: activeWorkout,
+        programType: profile.programType,
+        exerciseCatalog,
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [workouts, activeWorkout.id, activeWorkout.programWorkoutNumber, profile.programType, exerciseCatalog]
+  );
+
+  // Page background: #283339 at the top fading to #13181C exactly where the first workout card starts.
+  const cardsTopRef = useRef<HTMLDivElement>(null);
+  const exercisesTopRef = useRef<HTMLDivElement>(null);
+  const [gradientEnd, setGradientEnd] = useState<number | null>(null);
+  useLayoutEffect(() => {
+    const measure = () => {
+      const marker = exercisesTopRef.current ?? cardsTopRef.current;
+      if (!marker) return;
+      setGradientEnd(Math.round(marker.getBoundingClientRect().top + window.scrollY));
+    };
+    measure();
+    const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(measure) : null;
+    if (observer && cardsTopRef.current) observer.observe(cardsTopRef.current);
+    window.addEventListener('resize', measure);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener('resize', measure);
+    };
+  }, [showRecoveryGate, sessionReport]);
+
+  const renderOptionsMenu = (close: () => void) => (
+    <div
+      role="menu"
+      aria-label="Workout options"
+      className="w-60 rounded-2xl bg-[#2C3034] border border-white/[0.08] shadow-2xl p-1.5 space-y-1 text-left"
+    >
+      <div className="px-3 py-1.5 text-xs font-bold text-white/60 uppercase tracking-wider">Location</div>
+      {LOCATION_CONFIG.map((loc) => {
+        const isSelected = currentLoc === loc.id;
+        return (
+          <button
+            key={loc.id}
+            type="button"
+            role="menuitemradio"
+            aria-checked={isSelected}
+            onClick={() => {
+              if (onSwitchLocation && loc.id !== currentLoc) {
+                triggerHaptic('medium');
+                onSwitchLocation(loc.id);
+              }
+              close();
+            }}
+            className={`w-full text-left px-3 py-2 rounded-xl min-h-[44px] flex items-center justify-between transition-colors ${
+              isSelected ? 'bg-white/[0.10] text-white' : 'text-white/80 hover:bg-white/[0.06]'
+            }`}
+          >
+            <div>
+              <span className="text-sm font-bold block">{loc.label}</span>
+              <span className="text-xs text-white/60">{loc.detail}</span>
+            </div>
+            {isSelected && <Check className="w-4 h-4 text-[#00F19F] stroke-[2.5] shrink-0 ml-2" />}
+          </button>
+        );
+      })}
+      <div className="pt-1.5 border-t border-white/[0.08] space-y-1">
+        <button
+          type="button"
+          role="menuitem"
+          onClick={() => {
+            triggerHaptic('medium');
+            onShiftWorkout();
+            close();
+          }}
+          className="w-full text-left px-3 py-2 rounded-xl text-sm font-semibold text-white/70 hover:text-white hover:bg-white/[0.06] flex items-center gap-2 min-h-[44px]"
+        >
+          <Calendar className="w-4 h-4 stroke-[2]" />
+          <span>Log rest day</span>
+        </button>
+        {recentCompletedWorkouts.length > 0 && (
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              setPreviewPastWorkout(recentCompletedWorkouts[0]);
+              close();
+            }}
+            className="w-full text-left px-3 py-2 rounded-xl text-sm font-semibold text-white/70 hover:text-white hover:bg-white/[0.06] flex items-center gap-2 min-h-[44px]"
+          >
+            <History className="w-4 h-4 stroke-[2]" />
+            <span>Last workout</span>
+          </button>
+        )}
+      </div>
+    </div>
+  );
+
   return (
-    <div className="space-y-4 sm:space-y-5 pb-28">
-      {/* After today's session: lead with "complete" and the progress breakdown instead of the next workout. */}
+    <div className="wk -mx-3.5" style={{ paddingLeft: fig(PAGE_GUTTER), paddingRight: fig(PAGE_GUTTER), paddingBottom: 112 }}>
+      {gradientEnd !== null &&
+        createPortal(
+          <div
+            aria-hidden="true"
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              height: gradientEnd,
+              background: 'linear-gradient(180deg, #283339 0%, #13181C 100%)',
+              zIndex: -1,
+              pointerEvents: 'none',
+            }}
+          />,
+          document.body
+        )}
+      <WorkoutPageHeader title={pageTitle} days={stripDays} renderMenu={renderOptionsMenu} />
+
+      <div ref={cardsTopRef} className="flex flex-col" style={{ gap: fig(22), marginTop: fig(64) }}>
+      {/* After today's session: lead with "complete" and the progress breakdown. */}
       {sessionReport ? (
         <SessionCompleteCard
           report={sessionReport}
@@ -644,221 +800,62 @@ export const TrainTab: React.FC<TrainTabProps> = ({
           onTrainAnyway={() => onUpdateWorkout({ ...activeWorkout, recoveryOverride: true })}
         />
       ) : (
-      /* UNIFIED HERO CARD: Opinionated Asynchronous Hypertrophy Queue & Session Goals */
-      <div className="biometric-card p-5 sm:p-6 space-y-4">
-        {/* A. Compact Context Header + Location Dropdown Toggle */}
-        <div className="flex items-center justify-between gap-2">
-          <button
-            type="button"
-            onClick={() => {
-              triggerHaptic('light');
-              onOpenProgram?.();
-            }}
-            disabled={!onOpenProgram}
-            aria-label={`${weekPillLabel}. Open your program`}
-            className="px-3 min-h-[36px] rounded-full bg-white/[0.06] hover:bg-white/[0.12] text-slate-200 text-xs font-semibold flex items-center gap-1 transition-colors"
-          >
-            <span>{weekPillLabel}</span>
-            {onOpenProgram && <ChevronRight className="w-3.5 h-3.5 stroke-[2] text-slate-400" aria-hidden="true" />}
-          </button>
-
-          {/* Location Switcher Dropdown (defaults to onboarding setting) */}
-          <div className="relative">
-            <button
-              type="button"
-              onClick={() => {
-                triggerHaptic('light');
-                setShowLocationDropdown(!showLocationDropdown);
-              }}
-              aria-expanded={showLocationDropdown}
-              aria-haspopup="listbox"
-              aria-label="Switch training location"
-              className="px-3 py-1.5 rounded-xl bg-white/[0.06] hover:bg-white/[0.12] text-xs font-semibold text-slate-200 hover:text-white flex items-center space-x-1.5 shrink-0 transition-colors min-h-[36px]"
-            >
-              <span>{activeLocationOption.label}</span>
-              {showLocationDropdown ? (
-                <ChevronUp className="w-3.5 h-3.5 stroke-[2] text-slate-400" />
-              ) : (
-                <ChevronDown className="w-3.5 h-3.5 stroke-[2] text-slate-400" />
-              )}
-            </button>
-
-            {showLocationDropdown && (
-              <>
-                <div
-                  className="fixed inset-0 z-20"
-                  onClick={() => setShowLocationDropdown(false)}
-                />
-                <div
-                  role="listbox"
-                  aria-label="Training location options"
-                  className="absolute right-0 top-full mt-2 z-30 w-56 rounded-2xl bg-[#0E1219] border border-white/[0.08] shadow-2xl p-1.5 space-y-1"
-                >
-                  <div className="px-3 py-1.5 text-xs font-bold text-slate-400 uppercase tracking-wider">
-                    Location
-                  </div>
-                  {LOCATION_CONFIG.map((loc) => {
-                    const isSelected = currentLoc === loc.id;
-                    return (
-                      <button
-                        key={loc.id}
-                        type="button"
-                        role="option"
-                        aria-selected={isSelected}
-                        onClick={() => {
-                          if (onSwitchLocation && loc.id !== currentLoc) {
-                            triggerHaptic('medium');
-                            onSwitchLocation(loc.id);
-                          }
-                          setShowLocationDropdown(false);
-                        }}
-                        className={`w-full text-left px-3 py-2 rounded-xl min-h-[44px] flex items-center justify-between transition-colors ${
-                          isSelected
-                            ? 'bg-white/[0.12] text-white font-bold'
-                            : 'text-slate-300 hover:bg-white/[0.06] hover:text-white'
-                        }`}
-                      >
-                        <div>
-                          <span className="text-xs font-bold block">{loc.label}</span>
-                          <span className="text-xs text-slate-400 font-medium">{loc.detail}</span>
-                        </div>
-                        {isSelected && (
-                          <Check className="w-4 h-4 text-brand-primary stroke-[2.5] shrink-0 ml-2" />
-                        )}
-                      </button>
-                    );
-                  })}
-
-                  <div className="pt-1.5 border-t border-white/[0.06] space-y-1">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        triggerHaptic('medium');
-                        onShiftWorkout();
-                        setShowLocationDropdown(false);
-                      }}
-                      className="w-full text-left px-3 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white hover:bg-white/[0.06] flex items-center space-x-2 transition-colors min-h-[44px]"
-                    >
-                      <Calendar className="w-3.5 h-3.5 stroke-[2]" />
-                      <span>Log Rest Day</span>
-                    </button>
-
-                    {recentCompletedWorkouts.length > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setPreviewPastWorkout(recentCompletedWorkouts[0]);
-                          setShowLocationDropdown(false);
-                        }}
-                        className="w-full text-left px-3 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white hover:bg-white/[0.06] flex items-center space-x-2 transition-colors min-h-[44px]"
-                      >
-                        <History className="w-3.5 h-3.5 stroke-[2]" />
-                        <span>Inspect Last Workout</span>
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-
-        {/* B. Primary Focal Point: Clean Opinionated Workout Identity & Scope */}
-        <div className="space-y-1">
-          <h1 className="font-extrabold text-xl text-white tracking-tight">
-            {activeWorkout.name}
-          </h1>
-          <div className="flex items-center space-x-2 text-xs text-slate-400 font-medium">
-            <span>{activeWorkout.exercises.length} exercises</span>
-            <span>•</span>
-            <span>{totalSets} sets</span>
-          </div>
-        </div>
-
-        {/* C. Blended Recovery & How to Make Progress This Session Area */}
-        <ReadinessBanner
-          readiness={readiness}
-          latestBiometrics={latestBiometrics}
-          isConnected={hasWatchData}
-          onOpenWatchSync={onOpenWatchSync}
-          mesoWeek={mesoWeek}
-          goalPhase={profile.goalPhase}
-        >
-          <div className="space-y-1.5">
-            <div className="flex items-center space-x-2">
-              <TrendingUp className="w-4 h-4 text-brand-primary stroke-[2]" />
-              <h2 className="text-xs font-bold uppercase tracking-wider text-white">
-                How to Make Progress This Session
-              </h2>
-            </div>
-
-            <p className="text-xs text-slate-300 leading-relaxed font-normal">
-              <strong className="text-white font-semibold">
-                {sessionNarrative.stageHeadline}:{' '}
-              </strong>
-              {sessionNarrative.narrativeText}
-            </p>
-          </div>
-        </ReadinessBanner>
-      </div>
+        <>
+          <ProgramProgressCard {...programCard} onOpen={onOpenProgram} />
+          {!showRecoveryGate && (
+            <RecoveryScoreCard
+              readiness={readiness}
+              latestBiometrics={latestBiometrics}
+              isConnected={isWearableConnected(profile)}
+              onOpen={onOpenWatchSync}
+            />
+          )}
+        </>
       )}
 
       {showRecoveryGate && !sessionReport && (
-        <section aria-label="Recovery before next workout" className="biometric-card p-5 sm:p-6 space-y-4">
-          <div className="flex items-start gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-sky-500/15 flex items-center justify-center text-sky-300 shrink-0">
-              {recoveryGate.trainedToday ? (
-                <BedDouble className="w-5 h-5 stroke-[2]" aria-hidden="true" />
-              ) : (
-                <Moon className="w-5 h-5 stroke-[2]" aria-hidden="true" />
-              )}
-            </div>
-            <div className="min-w-0">
-              <h2 className="text-base font-extrabold text-white">
-                {recoveryGate.trainedToday ? 'Done for today. Time to recover.' : 'Your muscles are still recovering'}
-              </h2>
-              <p className="text-xs text-slate-300 mt-1">
-                {activeWorkout.name} will be ready{' '}
-                <strong className="text-white">{formatReadyTime(recoveryGate.readyAt ?? Date.now())}</strong>.
-                {lastWorkoutAgoHours !== null && recoveryGate.lastWorkoutName
-                  ? ` You finished ${recoveryGate.lastWorkoutName} ${
-                      lastWorkoutAgoHours < 1 ? 'less than an hour' : `${lastWorkoutAgoHours} hour${lastWorkoutAgoHours === 1 ? '' : 's'}`
-                    } ago.`
-                  : ''}
-              </p>
-            </div>
-          </div>
+        <section aria-label="Recovery before next workout" className="wk-card">
+          <h2 className="wk-h1">Your muscles are still recovering</h2>
+          <p className="wk-body" style={{ marginTop: fig(20) }}>
+            {activeWorkout.name} will be ready{' '}
+            <strong className="text-white">{formatReadyTime(recoveryGate.readyAt ?? Date.now())}</strong>.
+            {lastWorkoutAgoHours !== null && recoveryGate.lastWorkoutName
+              ? ` You finished ${recoveryGate.lastWorkoutName} ${
+                  lastWorkoutAgoHours < 1 ? 'less than an hour' : `${lastWorkoutAgoHours} hour${lastWorkoutAgoHours === 1 ? '' : 's'}`
+                } ago.`
+              : ''}
+          </p>
 
           {recoveryGate.limitingMuscles.length > 0 && (
-            <ul className="space-y-2" aria-label="Muscle recovery">
+            <ul className="flex flex-col" style={{ gap: fig(28), marginTop: fig(40) }} aria-label="Muscle recovery">
               {recoveryGate.limitingMuscles.slice(0, 4).map((m) => (
-                <li key={m.muscle} className="space-y-1">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="font-semibold text-slate-200">{MUSCLE_FRIENDLY_NAMES[m.muscle]}</span>
-                    <span className="text-slate-400">
+                <li key={m.muscle}>
+                  <div className="flex items-center justify-between" style={{ marginBottom: fig(12) }}>
+                    <span className="wk-label">{MUSCLE_FRIENDLY_NAMES[m.muscle]}</span>
+                    <span className="wk-caption">
                       {m.recoveryPct}% • ready {formatReadyTime(m.readyAt)}
                     </span>
                   </div>
                   <div
-                    className="h-1.5 rounded-full bg-white/[0.06] overflow-hidden"
+                    className="wk-bar"
                     role="progressbar"
                     aria-valuemin={0}
                     aria-valuemax={100}
                     aria-valuenow={m.recoveryPct}
                     aria-label={`${MUSCLE_FRIENDLY_NAMES[m.muscle]} recovery`}
                   >
-                    <div className="h-full bg-sky-400 rounded-full" style={{ width: `${m.recoveryPct}%` }} />
+                    <div style={{ width: `${m.recoveryPct}%`, background: '#8FD3FF' }} />
                   </div>
                 </li>
               ))}
             </ul>
           )}
 
-          <p className="text-xs text-slate-400">
-            Muscles grow while they recover. Skipping ahead early means less growth from your next session, not more.
+          <p className="wk-body" style={{ marginTop: fig(40) }}>
+            Muscles grow while they recover. Training them again early means less growth, not more.
           </p>
 
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col" style={{ gap: fig(16), marginTop: fig(40) }}>
             {recoveredAlternative && onSwitchSplitDay && (
               <button
                 type="button"
@@ -866,23 +863,10 @@ export const TrainTab: React.FC<TrainTabProps> = ({
                   triggerHaptic('medium');
                   onSwitchSplitDay(recoveredAlternative);
                 }}
-                className="w-full min-h-[48px] rounded-2xl bg-white text-slate-950 text-xs font-bold"
+                className="wk-button"
+                style={{ background: 'var(--wk-accent)', color: '#13181C' }}
               >
-                Train {recoveredAlternative} instead (fully recovered)
-              </button>
-            )}
-            {onOpenProgram && (
-              <button
-                type="button"
-                onClick={() => {
-                  triggerHaptic('light');
-                  onOpenProgram();
-                }}
-                className={`w-full min-h-[44px] rounded-2xl text-xs font-bold ${
-                  recoveredAlternative ? 'bg-white/[0.06] text-slate-200' : 'bg-white text-slate-950'
-                }`}
-              >
-                View my program
+                Train {recoveredAlternative} instead
               </button>
             )}
             <button
@@ -891,7 +875,8 @@ export const TrainTab: React.FC<TrainTabProps> = ({
                 triggerHaptic('warning');
                 onUpdateWorkout({ ...activeWorkout, recoveryOverride: true });
               }}
-              className="w-full min-h-[44px] rounded-2xl text-xs font-semibold text-slate-400 hover:text-white"
+              className="wk-button"
+              style={{ background: 'var(--wk-pill)', color: '#fff' }}
             >
               Train anyway
             </button>
@@ -900,8 +885,8 @@ export const TrainTab: React.FC<TrainTabProps> = ({
       )}
 
       {!showRecoveryGate && (<>
-      {/* 3. Exercise Cards with Clear Step Numbers & "Target vs. Last Time" */}
-      <div className="space-y-4 sm:space-y-5">
+      {/* Exercise cards (the page gradient ends where the first one starts) */}
+      <div ref={exercisesTopRef} className="flex flex-col" style={{ gap: fig(22) }}>
         {exercisePrescriptions.map(({ ex, prescription }, index) => {
           const def = exMap.get(ex.exerciseId);
           const meta = def
@@ -966,42 +951,49 @@ export const TrainTab: React.FC<TrainTabProps> = ({
               onOpenPlateCalc={(kg) => setPlateCalcWeight(kg)}
               muscleLabel={def ? MUSCLE_FRIENDLY_NAMES[def.primaryMuscle] : undefined}
               previousSets={getPreviousWorkingSets(ex.exerciseId, workouts)}
+              insight={buildExerciseInsight(ex, workouts, readiness.state, bodyweightEmaKg)}
             />
           );
         })}
       </div>
 
-      {/* Add Exercise to Active Workout Button */}
+      {/* Add an exercise */}
       <button
         type="button"
         onClick={() => {
           triggerHaptic('light');
           setShowAddExerciseModal(true);
         }}
-        className="w-full py-3.5 rounded-2xl bg-[#0E1219] hover:bg-[#141824] text-xs font-bold text-slate-300 hover:text-brand-primary flex items-center justify-center space-x-2 transition-all min-h-[44px]"
+        className="wk-button flex items-center justify-center"
+        style={{ border: `${fig(3)} dashed rgba(255,255,255,0.25)`, color: 'var(--wk-muted)', gap: fig(12) }}
       >
-        <Plus className="w-4 h-4 stroke-[2]" />
-        <span>Add Exercise to Today&apos;s Session</span>
+        <Plus style={{ width: fig(32), height: fig(32) }} strokeWidth={2.5} aria-hidden="true" />
+        <span>Add exercise</span>
       </button>
 
-      {/* Finish Workout Primary Action */}
+      {/* Finish */}
       <button
         type="button"
         onClick={handleFinishWorkoutClick}
         disabled={completedSets === 0}
-        className={`w-full py-4 rounded-2xl text-xs font-bold transition-all active:scale-95 flex items-center justify-center space-x-2 min-h-[48px] ${
+        className="wk-button transition-transform active:scale-[0.98]"
+        style={
           completedSets > 0
-            ? 'bg-white hover:bg-slate-100 text-slate-950 font-bold shadow-lg shadow-white/5 cursor-pointer'
-            : 'bg-white/[0.06] text-slate-400 cursor-not-allowed'
-        }`}
+            ? { background: 'var(--wk-accent)', color: '#13181C' }
+            : { background: 'var(--wk-pill)', color: 'rgba(255,255,255,0.5)', cursor: 'not-allowed' }
+        }
       >
-        <CheckCircle2 className={`w-4 h-4 stroke-[2.2] ${completedSets > 0 ? 'text-emerald-600' : 'text-slate-500'}`} />
-        <span>
-          Finish Workout{completedSets > 0 ? ` (${completedSets} of ${totalSets} sets logged${liveTonnageKg > 0 ? ` • ${Math.round(units.toDisplay(liveTonnageKg)).toLocaleString()} ${units.unit}` : ''})` : ''}
-        </span>
+        Finish workout
+        {completedSets > 0 && (
+          <span className="block normal-case font-semibold" style={{ fontSize: fig(22), opacity: 0.75 }}>
+            {completedSets} of {totalSets} sets logged
+            {liveTonnageKg > 0 ? ` • ${Math.round(units.toDisplay(liveTonnageKg)).toLocaleString()} ${units.unit}` : ''}
+          </span>
+        )}
       </button>
 
       </>)}
+      </div>
 
       {/* Add Exercise Picker Modal */}
       {showAddExerciseModal && (

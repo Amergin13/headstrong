@@ -696,7 +696,7 @@ export const App: React.FC = () => {
 
   return (
     <UnitsProvider unit={weightUnit}>
-    <div className="min-h-screen bg-surface-bg text-slate-100 flex flex-col font-sans">
+    <div className="min-h-screen text-slate-100 flex flex-col font-sans">
       {/* App Header */}
       <Header
         profile={profile}

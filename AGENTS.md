@@ -4,7 +4,7 @@
 
 These rules exist because earlier sessions broke them. Any change that violates one is wrong, even if another section seems to allow it.
 
-1. **Never fabricate data or claims.** No fake users, leaderboard entries, heart rates, sleep, HRV, durations, "simulated" syncs, demo sign-ins, latency numbers or hardware badges in the real app. Missing data is stored as `0`/`undefined` and shown as "—" or an empty state. Sample data only appears after the athlete explicitly loads the demo.
+1. **Never fabricate data or claims.** No fake users, leaderboard entries, heart rates, sleep, HRV, durations, "simulated" syncs, demo sign-ins, latency numbers or hardware badges in the real app. Missing data is stored as `0`/`undefined` and shown as "—" or an empty state. Sample data only appears after the athlete explicitly loads the demo. The one exception: an exercise card with fewer than two logged sessions shows a dimmed progress chart labelled "Example" (shape only, no numbers).
 2. **Never put secrets in client code.** OAuth client secrets live only in Vercel environment variables (`WHOOP_CLIENT_SECRET`, `FITBIT_CLIENT_SECRET`) and are used only in `api/`. CI fails if `client_secret` appears in the built bundle.
 3. **Never claim what isn't built.** No "cloud sync", "community", "Bluetooth scale" or hardware claims unless the feature exists end to end. The privacy policy (`public/privacy.html`) must match what the code actually does.
 4. **Safety beats engagement.** Pain, injury or warning-symptom messages always get the fixed reply from `buildSafetyResponse` (stop the movement, swap it, see a professional). The model never answers these.
@@ -400,12 +400,12 @@ New users must be guided along the **quickest path to value** in under 60 second
 All future sessions, developers, and AI agents must strictly adhere to the structure defined in `PRODUCT_REQUIREMENTS_SPEC.md` and `INTERACTION_DESIGN_MASTER_TEMPLATE.md`. **Do not iterate on, rearrange, or redesign what has been agreed as complete and final.**
 
 ### 8.1 4-Page Information Architecture & Canonical Focal Points
-1. **Workout Tab (`TrainTab.tsx`):**
-   - *Focal Point:* Unified Hero Card (`[Up Next]` Asynchronous Queue, Week X of 6, Science Rationale, 1-Tap Location Switcher `Full Gym | At Home | Travel`).
-   - *Progression Checklist:* "How to Make Progress This Session" (top breakthroughs, live progress bar, tonnage).
-   - *Recovery Status:* Collapsible `ReadinessBanner.tsx` (Primed / Baseline / Amber Shield).
-   - *Exercise Cards:* Step number, `[Plates]`, single `[Change Exercise]` button, Target Box, 12-column set table, Quest accordion, `[+ Warmup] [+ Add Set] [- Remove]` footer.
-   - *Add Exercise:* Single dashed CTA button at bottom.
+1. **Workout Tab (`TrainTab.tsx`):** built from the Figma design (1344 px frame; every size is `calc(<figma px> * var(--f))`, see `.wk` in `src/index.css`). Inter font, page gradient #283339 → #13181C, cards #2C3034 with radius 30 / padding 38, accent #00F19F.
+   - *Header:* program name, "⋯" menu (location, log rest day, last workout), and a 7-day strip (2 days back, today, 4 ahead): tick = trained, ring = today, filled = next sessions expected from recovery (`buildWeekStrip`).
+   - *Program card:* phase (or mesocycle week), plain-English phase name, "Today/Next: <session>", "n/24" and progress bar; opens the Program tab.
+   - *Recovery card:* wearable score ring, provider tag, what today's plan does; opens watch sync.
+   - *Exercise cards:* name + swap button, order chip (A1), progress summary + best-set estimated max per session chart (`buildExerciseInsight`; labelled "Example" until 2 sessions), SET/PREV/WEIGHT/REPS/RIR/✓ table; tempo, warm-ups, plates and add/remove set behind the chevron.
+   - *After today's session:* the session-complete card leads instead of the Program and recovery cards.
 2. **Program Tab (`ProgramTab.tsx`):**
    - *Focal Point:* Training Locations & Equipment Summary Card with single `[Edit Equipment]` trigger.
    - *Goal Phase Switcher:* Build Muscle, Lose Fat, Stay Lean.

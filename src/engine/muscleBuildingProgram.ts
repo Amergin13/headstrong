@@ -128,6 +128,8 @@ export const INTENSITY_PROTOCOLS: Record<string, IntensityProtocol> = {
 export interface ProgramPhaseMeta {
   phaseNumber: number;
   name: string;
+  /** Plain-English phase summary shown on the Workout page, e.g. "Building foundations". */
+  shortName: string;
   weeks: [number, number];
   description: string;
   intensityFocus: string;
@@ -136,6 +138,7 @@ export interface ProgramPhaseMeta {
 export const PROGRAM_PHASES: ProgramPhaseMeta[] = [
   {
     phaseNumber: 1,
+    shortName: 'Building foundations',
     name: 'Phase 1: Antagonist Supersets & Volume Foundation',
     weeks: [1, 2],
     description:
@@ -144,6 +147,7 @@ export const PROGRAM_PHASES: ProgramPhaseMeta[] = [
   },
   {
     phaseNumber: 2,
+    shortName: 'Pushing intensity',
     name: 'Phase 2: High-Intensity Overload (Rest-Pause & Drop-Sets)',
     weeks: [3, 4],
     description:
@@ -152,6 +156,7 @@ export const PROGRAM_PHASES: ProgramPhaseMeta[] = [
   },
   {
     phaseNumber: 3,
+    shortName: 'Building density',
     name: 'Phase 3: High-Density Giant Sets & Tri-Sets',
     weeks: [5, 6],
     description:

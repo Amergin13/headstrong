@@ -36,7 +36,9 @@ import {
 } from '../knowledgeGraph';
 import { SEED_EXERCISES } from '../../services/seedData';
 import { processAssistantMessage, buildSafetyResponse, buildProgressSummary } from '../../services/aiAssistantService';
-import { evaluateSessionRecovery, getDaysUntilReady } from '../recovery';
+import { evaluateSessionRecovery, getDaysUntilReady, getDisplayReadyAt } from '../recovery';
+import { buildWeekStrip } from '../../services/sessionSchedule';
+import { buildExerciseInsight } from '../../services/exerciseInsight';
 import { buildSessionProgressReport } from '../../services/sessionReport';
 import { personalizeSessionLoads } from '../loadPersonalization';
 import { getNextProgramWorkoutNumber } from '../muscleBuildingProgram';
@@ -826,7 +828,7 @@ assert(
   !exerciseCardSrc.includes('implementOptions') &&
     !exerciseCardSrc.includes('onSwitchImplement') &&
     !exerciseCardSrc.includes('Equipment:') &&
-    exerciseCardSrc.includes('Change Exercise') &&
+    (exerciseCardSrc.match(/Change exercise/gi) || []).length === 1 &&
     swapModalSrc.includes('Change Exercise'),
   `ExerciseCard has 1 single "Change Exercise" entry point and zero duplicate inline Equipment carousels`
 );
@@ -3550,7 +3552,80 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
     );
   }
 
-  console.log('\nALL 33 ENGINE, GOVERNANCE, DESIGN HEURISTICS, TYPOGRAPHY, WEARABLES, WHOOP STRAIN, GOOGLE AUTH, ONBOARDING CONTEXT, 6-WEEK PROGRAM, TENSOR AI & SESSION REPORT SUITES PASSED SUCCESSFULLY! 🎯');
+  console.log('\n[34. Workout Page: Day Strip & Exercise Summaries]');
+  {
+    const HOUR = 60 * 60 * 1000;
+    const stripNow = new Date(2026, 9, 24, 12, 0).getTime(); // Saturday noon
+    const doneAt = (num: number, at: number): WorkoutSession => {
+      const w = generate6WeekMuscleBuildingWorkout(num, 80);
+      w.completed = true;
+      w.completedAt = new Date(at).toISOString();
+      w.date = localDateString(new Date(at));
+      w.exercises.forEach((ex) => ex.sets.forEach((st) => { st.completed = true; st.actualReps = st.targetReps; }));
+      return w;
+    };
+    const yesterday = doneAt(1, stripNow - 20 * HOUR);
+    const strip = buildWeekStrip({
+      workouts: [yesterday],
+      nextSession: generate6WeekMuscleBuildingWorkout(2, 80),
+      programType: 'muscle_building_6wk',
+      exerciseCatalog: SEED_EXERCISES,
+      now: stripNow,
+    });
+    assert(
+      strip.length === 7 && strip[2].isToday && strip[2].label === 'SAT' && strip[1].status === 'trained' && strip[0].status === 'rest',
+      'Day strip shows two days back, today, and four days ahead, marking the day trained'
+    );
+    const plannedAhead = strip.filter((d) => d.status === 'planned');
+    assert(
+      plannedAhead.length >= 2 && plannedAhead.every((d) => d.date >= strip[2].date),
+      `Upcoming sessions are spread out by recovery (${plannedAhead.map((d) => d.label).join(', ')}), never in the past`
+    );
+    const trainedToday = buildWeekStrip({
+      workouts: [doneAt(1, stripNow - HOUR)],
+      nextSession: generate6WeekMuscleBuildingWorkout(2, 80),
+      programType: 'muscle_building_6wk',
+      exerciseCatalog: SEED_EXERCISES,
+      now: stripNow,
+    });
+    assert(trainedToday[2].status === 'trained' && trainedToday[3].status === 'planned', 'After training today, the next session is expected tomorrow at the earliest');
+
+    const first = buildExerciseInsight(generate6WeekMuscleBuildingWorkout(1, 80).exercises[0], [], 'Normal');
+    assert(first.history.length === 0 && /First time/.test(first.summary), 'A new exercise says it sets the starting point');
+    const plan2 = generate6WeekMuscleBuildingWorkout(2, 80);
+    const lighter = doneAt(2, stripNow - 14 * 24 * HOUR);
+    lighter.exercises.forEach((ex) => ex.sets.forEach((st) => (st.actualWeightKg = st.targetWeightKg - 2)));
+    const same = doneAt(2, stripNow - 7 * 24 * HOUR);
+    same.exercises.forEach((ex) => ex.sets.forEach((st) => (st.actualWeightKg = st.targetWeightKg - 1)));
+    const insight = buildExerciseInsight(plan2.exercises[0], [lighter, same], 'Normal');
+    assert(
+      insight.history.length === 2 &&
+        insight.history[1].e1rmKg > insight.history[0].e1rmKg &&
+        /strength on this lift rising/.test(insight.summary) &&
+        /increase the weight/.test(insight.summary),
+      `Exercise summary describes the trend and today's change: "${insight.summary}"`
+    );
+    assert(/holds the weight steady/.test(buildExerciseInsight(plan2.exercises[0], [same], 'Amber Shield').summary), 'Low recovery days say the weight is held');
+    // Fewer sets at a heavier weight is progress, even though session volume falls (Phase 2 drops to 2 sets).
+    const fourSets = doneAt(2, stripNow - 7 * 24 * HOUR);
+    const twoHeavierSets = doneAt(2, stripNow - 2 * 24 * HOUR);
+    twoHeavierSets.exercises.forEach((ex) => {
+      ex.sets = ex.sets.slice(0, 2).map((st) => ({ ...st, actualWeightKg: st.targetWeightKg + 2.5 }));
+    });
+    const phaseChange = buildExerciseInsight(plan2.exercises[0], [fourSets, twoHeavierSets], 'Normal');
+    assert(
+      phaseChange.history[1].e1rmKg > phaseChange.history[0].e1rmKg && /rising/.test(phaseChange.summary),
+      'Progress is tracked by estimated max, so dropping from 4 to 2 heavier sets shows as progress, not a decline'
+    );
+
+    const lateEvening = new Date(2026, 9, 24, 21, 40).getTime();
+    assert(
+      new Date(getDisplayReadyAt(lateEvening)).getHours() === 6 && new Date(getDisplayReadyAt(lateEvening)).getDate() === 25,
+      'A ready time just before 10 PM rounds to the next morning, not "22:00"'
+    );
+  }
+
+  console.log('\nALL 34 ENGINE, GOVERNANCE, DESIGN HEURISTICS, TYPOGRAPHY, WEARABLES, WHOOP STRAIN, GOOGLE AUTH, ONBOARDING CONTEXT, 6-WEEK PROGRAM, TENSOR AI, SESSION REPORT & WORKOUT PAGE SUITES PASSED SUCCESSFULLY! 🎯');
 })().catch((err) => {
   console.error('Test Suite Failed:', err);
   if (typeof process !== 'undefined' && process.exit) {

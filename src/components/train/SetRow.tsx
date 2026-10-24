@@ -4,6 +4,12 @@ import { Check } from 'lucide-react';
 import { triggerHaptic } from '../../utils/haptics';
 import { useUnits } from '../../utils/unitsContext';
 
+const fig = (px: number) => `calc(${px} * var(--f))`;
+
+/** SET | PREV | WEIGHT | REPS | RIR | ✓ — shared by the header and every row (Figma column widths). */
+export const SET_TABLE_COLUMNS = '54fr 96fr 170fr 170fr 170fr 59fr';
+export const SET_TABLE_GAP = fig(36);
+
 /** A working set from the last time this exact exercise was completed. */
 export interface PreviousSet {
   weightKg: number;
@@ -27,6 +33,7 @@ export const SetRow: React.FC<SetRowProps> = ({
   isBodyweight = false,
   isDumbbell = false,
   displayBadge,
+  displayLabel,
   onUpdate,
   onComplete,
 }) => {
@@ -36,17 +43,12 @@ export const SetRow: React.FC<SetRowProps> = ({
   const currentReps = set.actualReps ?? set.targetReps;
   const currentRir = set.actualRir ?? set.targetRir ?? 2;
   const currentSetType: SetType = set.setType || (set.isWarmup ? 'warmup' : 'working');
-
   const weightStep = units.unit === 'lb' ? 5 : isDumbbell ? 2.0 : 2.5;
+  const label = displayLabel || `Set ${set.setNumber}`;
 
   const handleToggleComplete = () => {
     const nextCompleted = !set.completed;
-    if (nextCompleted) {
-      triggerHaptic('success');
-    } else {
-      triggerHaptic('light');
-    }
-
+    triggerHaptic(nextCompleted ? 'success' : 'light');
     onUpdate({
       actualWeightKg: currentWeight,
       actualReps: currentReps,
@@ -54,19 +56,7 @@ export const SetRow: React.FC<SetRowProps> = ({
       completed: nextCompleted,
       completedAt: nextCompleted ? new Date().toISOString() : undefined,
     });
-
-    if (nextCompleted) {
-      onComplete();
-    }
-  };
-
-  // 1-Tap Effort (Reps Left) cycler: 2 -> 1 -> 0 -> 3 -> 2
-  const handleCycleRir = () => {
-    triggerHaptic('light');
-    const rirCycle = [2, 1, 0, 3];
-    const currentIndex = rirCycle.indexOf(currentRir);
-    const nextRir = rirCycle[(currentIndex + 1) % rirCycle.length];
-    onUpdate({ actualRir: nextRir });
+    if (nextCompleted) onComplete();
   };
 
   // Tap the previous-session value to copy its weight & reps into this set
@@ -76,149 +66,96 @@ export const SetRow: React.FC<SetRowProps> = ({
     onUpdate({ actualWeightKg: isBodyweight ? 0 : previous.weightKg, actualReps: previous.reps });
   };
 
-  const renderSetBadge = () => {
-    if (currentSetType === 'warmup') {
-      return (
-        <span
-          className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-amber-500/15 text-amber-300 font-mono font-bold text-xs"
-          title="Warmup Set"
-        >
-          {displayBadge || 'W'}
-        </span>
-      );
-    }
-    if (currentSetType === 'drop') {
-      return (
-        <span
-          className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-white/[0.1] text-white font-mono font-bold text-xs"
-          title="Drop Set"
-        >
-          {displayBadge || 'D'}
-        </span>
-      );
-    }
-    if (currentSetType === 'myo') {
-      return (
-        <span
-          className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-brand-primary/20 text-brand-primary font-mono font-bold text-xs"
-          title="Bonus Set"
-        >
-          {displayBadge || '+'}
-        </span>
-      );
-    }
-    return (
-      <span className="inline-flex items-center justify-center w-7 h-7 rounded-lg text-slate-400 font-mono font-bold text-xs">
-        {displayBadge || set.setNumber}
-      </span>
-    );
-  };
-
   const prevDisplay = previous
     ? `${isBodyweight || previous.weightKg === 0 ? 'BW' : units.format(previous.weightKg, false)}×${previous.reps}`
     : '—';
+  const badge =
+    displayBadge || (currentSetType === 'warmup' ? 'W' : currentSetType === 'drop' ? 'D' : currentSetType === 'myo' ? '+' : `${set.setNumber}`);
+  const greyText: React.CSSProperties = { fontSize: fig(26), fontWeight: 600, color: '#A7ACAF' };
 
   return (
     <div
-      className={`grid grid-cols-12 gap-2 items-center py-2 px-3 rounded-2xl transition-all duration-200 ${
-        set.completed
-          ? 'bg-brand-primary/[0.12] text-white'
-          : currentSetType === 'warmup'
-          ? 'bg-white/[0.03]'
-          : 'bg-[#151924] hover:bg-[#181E2C]'
-      }`}
+      className="grid items-center"
+      style={{ gridTemplateColumns: SET_TABLE_COLUMNS, columnGap: SET_TABLE_GAP }}
+      aria-label={label}
     >
-      {/* 1. Set Number / Type Badge (col-span-1, Static Stable Indicator) */}
-      <div className="col-span-1 flex justify-center">
-        {renderSetBadge()}
-      </div>
+      <span className="text-center" style={{ ...greyText, color: currentSetType === 'warmup' ? '#F5B94A' : greyText.color }} title={label}>
+        {badge}
+      </span>
 
-      {/* 2. Previous Session Reference (col-span-2) */}
-      <div className="col-span-2 text-center">
-        <button
-          type="button"
-          onClick={handleCopyPrevious}
-          disabled={!previous}
-          aria-label={previous ? `Last time ${prevDisplay}. Tap to copy` : 'No previous set for this exercise'}
-          className="text-xs font-mono text-slate-400 hover:text-white truncate max-w-full px-0.5 min-h-[36px] transition-colors disabled:pointer-events-none"
-          title={previous ? `Last time: ${prevDisplay} (tap to copy)` : 'First time logging this exercise'}
-        >
-          {prevDisplay}
-        </button>
-      </div>
+      <button
+        type="button"
+        onClick={handleCopyPrevious}
+        disabled={!previous}
+        aria-label={previous ? `Last time ${prevDisplay}. Tap to copy` : 'No previous set for this exercise'}
+        className="text-center truncate disabled:pointer-events-none"
+        style={greyText}
+      >
+        {prevDisplay}
+      </button>
 
-      {/* 3. Weight Input (KG) (col-span-4) */}
-      <div className="col-span-4 flex justify-center">
+      <label className="wk-input flex items-center justify-center cursor-text">
         <input
           type="number"
           step={weightStep}
           inputMode="decimal"
           value={displayWeight}
-          aria-label={`Set ${set.setNumber} weight in ${units.unit === 'lb' ? 'pounds' : 'kilograms'}`}
+          aria-label={`${label} weight in ${units.unit === 'lb' ? 'pounds' : 'kilograms'}`}
           onFocus={(e) => e.target.select()}
           onChange={(e) => onUpdate({ actualWeightKg: units.fromDisplay(parseFloat(e.target.value) || 0) })}
-          className={`w-full py-2 px-1 bg-[#0B0E14] rounded-xl text-center font-mono text-sm font-extrabold tabular-numbers transition-colors ${
-            set.completed ? 'text-brand-primary' : 'text-white'
-          } focus:outline-none focus:ring-1 focus:ring-brand-primary/50`}
+          className="bg-transparent text-right font-bold text-white outline-none p-0"
+          style={{ width: `${Math.max(1, String(displayWeight).length)}ch`, fontSize: 'inherit' }}
         />
-      </div>
+        {displayWeight > 0 && <span aria-hidden="true">{units.unit.toUpperCase()}</span>}
+      </label>
 
-      {/* 4. Reps Input (col-span-3) */}
-      <div className="col-span-3 flex justify-center relative items-center">
+      <span className="relative block">
         <input
           type="number"
           inputMode="numeric"
           value={currentReps}
-          aria-label={`Set ${set.setNumber} repetitions`}
+          aria-label={`${label} repetitions`}
           onFocus={(e) => e.target.select()}
           onChange={(e) => onUpdate({ actualReps: parseInt(e.target.value, 10) || 0 })}
-          className={`w-full py-2 px-1 bg-[#0B0E14] rounded-xl text-center font-mono text-sm font-extrabold tabular-numbers transition-colors ${
-            set.completed ? 'text-brand-primary' : 'text-white'
-          } focus:outline-none focus:ring-1 focus:ring-brand-primary/50`}
+          className="wk-input outline-none block"
         />
         {(set.isFormFailure || set.repDisplay === 'F*') && (
           <span
-            className="absolute -top-1.5 right-1 px-1 py-0.5 rounded bg-rose-500/30 text-rose-300 font-mono font-bold text-xs pointer-events-none"
-            title="Perform until technical form failure"
+            className="absolute rounded pointer-events-none font-bold"
+            style={{ top: fig(-12), right: fig(-6), fontSize: fig(18), padding: `0 ${fig(6)}`, background: '#5B2A33', color: '#FFB3BF' }}
+            title="Do as many reps as you can with good form"
           >
             F*
           </span>
         )}
-      </div>
+      </span>
 
-      {/* 5. Effort / Reps Left Pill (col-span-1) */}
-      <div className="col-span-1 flex justify-center">
-        <button
-          type="button"
-          onClick={handleCycleRir}
-          aria-label={`${currentRir} reps left before failure. Tap to change`}
-          title={`${currentRir} reps left before failure (tap to change)`}
-          className={`w-7 h-7 rounded-lg text-xs font-mono font-bold transition-all flex items-center justify-center ${
-            currentRir === 0
-              ? 'bg-amber-500/20 text-amber-300 shadow-sm'
-              : 'bg-[#0B0E14] hover:bg-white/[0.08] text-slate-200'
-          }`}
-        >
-          {currentRir}
-        </button>
-      </div>
+      <input
+        type="number"
+        inputMode="numeric"
+        min={0}
+        max={5}
+        value={currentRir}
+        aria-label={`${label} reps in reserve`}
+        onFocus={(e) => e.target.select()}
+        onChange={(e) => onUpdate({ actualRir: Math.max(0, Math.min(5, parseInt(e.target.value, 10) || 0)) })}
+        className="wk-input outline-none block"
+      />
 
-      {/* 6. Complete Set Checkmark (col-span-1) */}
-      <div className="col-span-1 flex justify-center">
-        <button
-          type="button"
-          onClick={handleToggleComplete}
-          aria-label={set.completed ? `Mark set ${set.setNumber} incomplete` : `Complete set ${set.setNumber}`}
-          aria-pressed={set.completed}
-          className={`w-8 h-8 rounded-xl flex items-center justify-center transition-all duration-200 active:scale-90 ${
-            set.completed
-              ? 'bg-brand-primary text-black font-extrabold shadow-sm'
-              : 'bg-[#0B0E14] hover:bg-white/[0.08] text-slate-400 hover:text-white'
-          }`}
-        >
-          <Check className="w-4 h-4 stroke-[2.5]" />
-        </button>
-      </div>
+      <button
+        type="button"
+        onClick={handleToggleComplete}
+        aria-label={set.completed ? `Mark ${label.toLowerCase()} not done` : `Complete ${label.toLowerCase()}`}
+        aria-pressed={set.completed}
+        className="flex items-center justify-center transition-colors active:scale-95"
+        style={{
+          height: fig(74),
+          borderRadius: fig(15),
+          background: set.completed ? 'var(--wk-accent)' : 'var(--wk-pill)',
+        }}
+      >
+        {set.completed && <Check style={{ width: fig(34), height: fig(34), color: '#13181C' }} strokeWidth={3} aria-hidden="true" />}
+      </button>
     </div>
   );
 };

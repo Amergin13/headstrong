@@ -34,7 +34,7 @@ export default {
         },
       },
       fontFamily: {
-        sans: ['Plus Jakarta Sans', '-apple-system', 'BlinkMacSystemFont', 'SF Pro Display', 'Inter', 'sans-serif'],
+        sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'SF Pro Display', 'sans-serif'],
         mono: ['JetBrains Mono', 'SF Mono', 'ui-monospace', 'monospace'],
       },
       borderRadius: {

@@ -1,31 +1,14 @@
-import React, { useState } from 'react';
-import {
-  ExerciseDefinition,
-  ExerciseSession,
-  ProgressionPrescription,
-  ReadinessState,
-  SubTierQuest,
-  WorkoutSet,
-} from '../../engine/types';
+import React, { useId, useState } from 'react';
+import { ExerciseSession, ProgressionPrescription, ReadinessState, SubTierQuest, WorkoutSet } from '../../engine/types';
 import { calculate5StepWarmupRamp } from '../../engine/muscleBuildingProgram';
-import { SetRow, PreviousSet } from './SetRow';
+import { SetRow, PreviousSet, SET_TABLE_COLUMNS, SET_TABLE_GAP } from './SetRow';
 import { TempoPacer } from './TempoPacer';
 import { useUnits } from '../../utils/unitsContext';
-import {
-  Plus,
-  Minus,
-  ArrowRightLeft,
-  Disc,
-  TrendingUp,
-  CheckCircle2,
-  Check,
-  Clock,
-  Flame,
-  ChevronDown,
-  ChevronUp,
-  Sparkles,
-} from 'lucide-react';
+import { ArrowRightLeft, ChevronRight } from 'lucide-react';
 import { triggerHaptic } from '../../utils/haptics';
+import { ExerciseInsight } from '../../services/exerciseInsight';
+
+const fig = (px: number) => `calc(${px} * var(--f))`;
 
 interface ExerciseCardProps {
   exerciseIndex?: number;
@@ -44,41 +27,73 @@ interface ExerciseCardProps {
   muscleLabel?: string;
   /** Working sets from the last time this exact exercise was completed. */
   previousSets?: PreviousSet[];
+  /** Past sessions of this exercise and the progress summary. */
+  insight?: ExerciseInsight;
 }
 
-const PILLAR_FRIENDLY_LABELS: Record<string, string> = {
-  'Horizontal Push': 'Chest',
-  'Vertical Push': 'Shoulders',
-  'Horizontal Pull': 'Back',
-  'Vertical Pull': 'Lats & Upper Back',
-  Squat: 'Quads & Glutes',
-  Hinge: 'Hamstrings & Lower Back',
-};
-
-function formatTempoLabel(tempo?: string): { pill: string; explanation?: string } | null {
+function formatTempo(tempo?: string): string | null {
   if (!tempo) return null;
   if (/^\d{4}$/.test(tempo)) {
     const [ecc, pauseBottom, con, pauseTop] = tempo.split('');
-    return {
-      pill: `Tempo ${tempo}`,
-      explanation: `${ecc}s lower • ${pauseBottom}s pause • ${con}s lift • ${pauseTop}s top`,
-    };
+    return `Tempo ${tempo}: ${ecc}s lower, ${pauseBottom}s pause, ${con}s lift, ${pauseTop}s at the top`;
   }
-  if (tempo.includes('sec')) {
-    return { pill: `Hold ${tempo}`, explanation: 'Isometric hold duration' };
-  }
-  if (tempo.includes('min')) {
-    return { pill: `Cardio ${tempo}`, explanation: 'High-intensity interval duration' };
-  }
-  return { pill: tempo };
+  return tempo;
 }
+
+/** Shape-only sample series for the "Example" chart shown until an exercise has 2+ sessions. */
+const EXAMPLE_SERIES = [100, 104, 101, 103, 99, 102, 106, 103, 109, 106, 111, 108, 113];
+
+/** Best-set estimated max per session (newest point marked), or a labelled example. */
+const ProgressChart: React.FC<{ values: number[]; label: string; example?: boolean }> = ({ values, label, example }) => {
+  const gradientId = useId();
+  const W = 425;
+  const H = 200;
+  const PAD = 16;
+  const max = Math.max(...values);
+  const min = Math.min(...values);
+  const span = max - min || 1;
+  const points = values.map((v, i) => ({
+    x: PAD + (i / Math.max(1, values.length - 1)) * (W - PAD * 2),
+    y: H - PAD - ((v - min) / span) * (H - PAD * 2),
+  }));
+  const last = points[points.length - 1];
+  const d = points.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+  return (
+    <div className="relative shrink-0" style={{ width: fig(W), height: fig(H) }}>
+      <svg
+        viewBox={`0 0 ${W} ${H}`}
+        className="w-full h-full"
+        style={{
+          background: 'linear-gradient(180deg, rgba(0,0,0,0.10), rgba(0,0,0,0.22))',
+          borderRadius: fig(12),
+          opacity: example ? 0.4 : 1,
+        }}
+        role="img"
+        aria-label={label}
+      >
+        <defs>
+          <linearGradient id={gradientId} x1="0" x2="1" y1="0" y2="0">
+            <stop offset="0%" stopColor="#1F8F7E" />
+            <stop offset="100%" stopColor="#00F19F" />
+          </linearGradient>
+        </defs>
+        <line x1={0} x2={W} y1={1} y2={1} stroke="rgba(255,255,255,0.08)" strokeWidth={2} />
+        <line x1={last.x} x2={last.x} y1={6} y2={H - 6} stroke="rgba(255,255,255,0.35)" strokeWidth={2} strokeDasharray="4 6" />
+        <path d={d} fill="none" stroke={`url(#${gradientId})`} strokeWidth={4} strokeLinejoin="round" strokeLinecap="round" />
+        <circle cx={last.x} cy={last.y} r={9} fill="#fff" stroke="#2C3034" strokeWidth={3} />
+      </svg>
+      {example && (
+        <span className="wk-pill absolute" style={{ top: fig(12), left: fig(12) }} aria-hidden="true">
+          Example
+        </span>
+      )}
+    </div>
+  );
+};
 
 export const ExerciseCard: React.FC<ExerciseCardProps> = ({
   exerciseIndex,
-  totalExercises,
   exercise,
-  prescription,
-  quest,
   readinessState,
   onUpdateSet,
   onCompleteSet,
@@ -88,386 +103,242 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
   onOpenPlateCalc,
   muscleLabel,
   previousSets = [],
+  insight,
 }) => {
   const units = useUnits();
-  const [showWarmupRamp, setShowWarmupRamp] = useState(false);
-  const [showNotes, setShowNotes] = useState(false);
+  const [showDetails, setShowDetails] = useState(false);
+  const detailsId = useId();
 
-  const handleAddSetWithHaptic = (isWarmup = false) => {
-    triggerHaptic('light');
-    onAddSet(isWarmup);
-  };
-
-  const handleRemoveLastSet = () => {
-    if (exercise.sets.length <= 1) return;
-    triggerHaptic('light');
-    const lastSet = exercise.sets[exercise.sets.length - 1];
-    if (lastSet) {
-      onDeleteSet(lastSet.id);
-    }
-  };
-
-  const currentWeight =
-    exercise.sets.find((s) => !s.isWarmup && s.setType !== 'warmup')?.targetWeightKg ??
-    exercise.sets[0]?.targetWeightKg ??
-    20;
-
-  // The target shown is what this session actually prescribes (the first working set),
-  // so it always matches the pre-filled set rows.
   const firstWorkingSet = exercise.sets.find((s) => !s.isWarmup && s.setType !== 'warmup');
-  // Moves done holding one dumbbell (crunches, goblet squats, two-hand overhead extensions).
-  const isSingleDumbbell = /crunch|goblet|single|one-arm|overhead dumbbell tricep|overhead-db/i.test(
-    `${exercise.name} ${exercise.exerciseId}`
-  );
+  const currentWeight = firstWorkingSet?.targetWeightKg ?? exercise.sets[0]?.targetWeightKg ?? 20;
   const plannedWeightKg = firstWorkingSet?.targetWeightKg ?? 0;
   const isBodyweightOnly =
     exercise.equipment === 'bodyweight' && (!exercise.isWeightedCalisthenic || plannedWeightKg === 0);
-  const formattedTargetWeight = isBodyweightOnly
-    ? 'Bodyweight'
-    : exercise.isWeightedCalisthenic || exercise.equipment === 'weighted_bodyweight'
-    ? `BW + ${units.format(plannedWeightKg)}`
-    : exercise.equipment === 'dumbbell' && !isSingleDumbbell
-    ? `${units.format(plannedWeightKg / 2)} each`
-    : units.format(plannedWeightKg);
-
-  const firstTargetReps = firstWorkingSet?.targetReps ?? prescription.nextTargetReps?.[0] ?? exercise.minReps;
-  const isAtMaxReps = firstTargetReps >= exercise.maxReps;
-  const targetRepsDisplay =
-    exercise.repTargetType === 'wave' && exercise.sets.length >= 2
-      ? `${exercise.sets[0]?.targetReps}/${exercise.sets[1]?.targetReps} wave`
-      : exercise.repTargetType === 'form_failure'
-      ? 'F* (Form Failure)'
-      : `${firstTargetReps} reps`;
-
-  const friendlyMuscle = muscleLabel || PILLAR_FRIENDLY_LABELS[exercise.pillar] || exercise.pillar;
-  const previousTopKg = previousSets.reduce((max, p) => Math.max(max, p.weightKg), 0);
-  const loadIncreaseKg = previousTopKg > 0 && !isBodyweightOnly ? plannedWeightKg - previousTopKg : 0;
-  const completedCount = exercise.sets.filter((s) => s.completed).length;
-  const allSetsDone = completedCount === exercise.sets.length && exercise.sets.length > 0;
   const warmupCount = exercise.sets.filter((s) => s.isWarmup || s.setType === 'warmup').length;
-
-  // Only display a progression badge when there is an exceptional event (load increase, amber shield, or top of range)
-  const progressBadge =
-    readinessState === 'Amber Shield'
-      ? 'Hold Steady'
-      : loadIncreaseKg > 0.1
-      ? `+${units.format(loadIncreaseKg)}`
-      : isAtMaxReps && exercise.maxReps > exercise.minReps
-      ? 'Top of Range'
-      : null;
-
-  const tempoData = formatTempoLabel(exercise.tempo);
+  const tempoText = formatTempo(exercise.tempo);
   const warmupSteps = exercise.useWarmupProtocol ? calculate5StepWarmupRamp(currentWeight) : [];
+  const chip = exercise.orderCode || (exerciseIndex !== undefined ? String(exerciseIndex) : null);
+  const history = insight?.history ?? [];
+
+  const secondaryButton =
+    'wk-pill justify-center normal-case min-h-[44px] active:scale-95 transition-transform';
 
   return (
-    <section
-      aria-label={exercise.name}
-      className={`biometric-card p-5 sm:p-6 transition-all duration-300 space-y-4 ${
-        allSetsDone ? 'bg-[#0E1513]' : 'bg-[#0E1219]'
-      }`}
-    >
-      {/* 1. Card Header: Step Index, Group Code (A1/A2), Target Muscle, Exercise Name, Status & Actions */}
-      <div className="space-y-2">
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center space-x-2 min-w-0 flex-wrap gap-y-1">
-            {exerciseIndex !== undefined && totalExercises !== undefined && (
-              <span className="text-xs font-mono font-bold px-2 py-0.5 rounded-lg bg-white/[0.08] text-white shrink-0">
-                {exerciseIndex}/{totalExercises}
-              </span>
-            )}
-            {exercise.orderCode && (
-              <span className="text-xs font-mono font-extrabold px-2 py-0.5 rounded-lg bg-brand-primary/20 text-brand-primary border border-brand-primary/30 shrink-0">
-                {exercise.orderCode}
-              </span>
-            )}
-            <span className="text-xs font-semibold text-slate-300 truncate">
-              {friendlyMuscle}
-            </span>
-          </div>
-
-          <div className="flex items-center space-x-1.5 shrink-0">
-            {onOpenPlateCalc && exercise.equipment === 'barbell' && (
-              <button
-                type="button"
-                onClick={() => {
-                  triggerHaptic('light');
-                  onOpenPlateCalc(currentWeight);
-                }}
-                aria-label={`Open plate calculator for ${units.format(currentWeight)}`}
-                className="px-3 py-1.5 rounded-xl bg-white/[0.06] hover:bg-white/[0.12] text-slate-300 hover:text-white text-xs font-semibold flex items-center space-x-1.5 transition-all min-h-[44px]"
-              >
-                <Disc className="w-3.5 h-3.5 stroke-[2]" />
-                <span>Plates</span>
-              </button>
-            )}
-
-            {onOpenSwap && (
-              <button
-                type="button"
-                onClick={() => {
-                  triggerHaptic('light');
-                  onOpenSwap();
-                }}
-                aria-label={`Change exercise from ${exercise.name}`}
-                className="px-3 py-1.5 rounded-xl bg-white/[0.06] hover:bg-white/[0.12] text-slate-200 hover:text-white text-xs font-semibold flex items-center space-x-1.5 transition-all min-h-[44px]"
-              >
-                <ArrowRightLeft className="w-3.5 h-3.5 stroke-[2]" />
-                <span>Change Exercise</span>
-              </button>
-            )}
-          </div>
-        </div>
-
-        <div className="flex items-center justify-between gap-2">
-          <h3 className="font-extrabold text-base text-white tracking-tight">
-            {exercise.name}
-          </h3>
-          <span className="text-xs font-mono text-slate-400 shrink-0">
-            {allSetsDone ? (
-              <span className="text-xs font-bold text-brand-primary flex items-center space-x-1">
-                <CheckCircle2 className="w-4 h-4 stroke-[2]" />
-                <span>Done</span>
-              </span>
-            ) : (
-              `${completedCount}/${exercise.sets.length} sets`
-            )}
-          </span>
-        </div>
-      </div>
-
-      {/* 2. Target Progression & Tempo Micro-Cue */}
-      <div
-        className={`px-3.5 py-2.5 rounded-xl flex items-center justify-between gap-2 transition-colors flex-wrap sm:flex-nowrap ${
-          readinessState === 'Amber Shield'
-            ? 'bg-amber-500/10 text-amber-300'
-            : 'bg-white/[0.04] text-slate-300'
-        }`}
-      >
-        <div className="flex items-center space-x-2 min-w-0">
-          <TrendingUp
-            className={`w-3.5 h-3.5 shrink-0 stroke-[2] ${
-              readinessState === 'Amber Shield' ? 'text-amber-400' : 'text-brand-primary'
-            }`}
-          />
-          <span className="text-xs font-semibold text-slate-300 truncate">
-            Target:{' '}
-            <strong className="text-white font-mono font-bold">
-              {formattedTargetWeight} × {targetRepsDisplay}
-            </strong>
-          </span>
-        </div>
-
-        <div className="flex items-center space-x-2">
-          {tempoData && (
-            <span
-              className="text-xs font-mono font-semibold px-2 py-0.5 rounded-md bg-white/[0.08] text-slate-300 shrink-0"
-              title={tempoData.explanation}
-            >
-              {tempoData.pill}
-            </span>
-          )}
-
-          {progressBadge && (
-            <span
-              className={`text-xs font-bold px-2 py-0.5 rounded-full shrink-0 ${
-                readinessState === 'Amber Shield'
-                  ? 'bg-amber-500/20 text-amber-300'
-                  : loadIncreaseKg > 0.1
-                  ? 'bg-brand-primary/20 text-brand-primary'
-                  : 'bg-white/[0.08] text-slate-300'
-              }`}
-            >
-              {progressBadge}
-            </span>
-          )}
-        </div>
-      </div>
-
-      {/* 2.4 Optional haptic tempo guide */}
-      {exercise.tempo && /^[\dXx]{4}$/.test(exercise.tempo) && <TempoPacer tempo={exercise.tempo} />}
-
-      {/* 2.5 Intensity Protocol Finisher Callout (Rest-Pause, Triple Drop-Set, Iso-Hold Partials) */}
-      {exercise.intensityProtocol && (
-        <div className="p-3.5 rounded-2xl bg-gradient-to-r from-rose-500/15 via-rose-500/10 to-amber-500/10 border border-rose-500/25 space-y-1.5">
-          <div className="flex items-center space-x-2">
-            <span className="text-xs font-extrabold font-mono px-2 py-0.5 rounded-md bg-rose-500/25 text-rose-300">
-              {exercise.intensityProtocol.symbol}
-            </span>
-            <span className="text-xs font-extrabold text-white">
-              {exercise.intensityProtocol.name}
-            </span>
-          </div>
-          <p className="text-xs text-slate-300 leading-relaxed">
-            {exercise.intensityProtocol.instruction}
-          </p>
-        </div>
-      )}
-
-      {/* 2.6 First-Compound 5-Step Warmup Ramp Calculator */}
-      {exercise.useWarmupProtocol && warmupSteps.length > 0 && (
-        <div className="rounded-2xl bg-amber-500/10 border border-amber-500/20 p-3.5 space-y-2.5">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-2">
-              <Flame className="w-4 h-4 text-amber-400 stroke-[2]" />
-              <span className="text-xs font-bold text-amber-300">
-                5-Step Warmup Ramp ({units.format(currentWeight)} work weight)
-              </span>
-            </div>
+    <section aria-label={exercise.name} className="wk-card">
+      {/* Title, swap button, details toggle */}
+      <div className="flex items-start justify-between" style={{ gap: fig(20) }}>
+        <div className="flex items-center min-w-0 flex-wrap" style={{ columnGap: fig(16), rowGap: fig(8) }}>
+          <h3 className="wk-h1">{exercise.name}</h3>
+          {onOpenSwap && (
             <button
               type="button"
               onClick={() => {
                 triggerHaptic('light');
-                setShowWarmupRamp(!showWarmupRamp);
+                onOpenSwap();
               }}
-              className="text-xs font-bold text-white px-2.5 py-1 rounded-lg bg-white/[0.08] hover:bg-white/[0.14] transition-colors min-h-[36px] flex items-center space-x-1"
+              aria-label={`Change exercise from ${exercise.name}`}
+              className="flex items-center justify-center"
+              style={{ width: 44, height: 44, margin: -14, color: 'var(--wk-muted)' }}
             >
-              <span>{showWarmupRamp ? 'Hide Ramp' : 'View Ramp'}</span>
-              {showWarmupRamp ? (
-                <ChevronUp className="w-3.5 h-3.5" />
-              ) : (
-                <ChevronDown className="w-3.5 h-3.5" />
-              )}
+              <ArrowRightLeft style={{ width: fig(32), height: fig(32) }} strokeWidth={2} aria-hidden="true" />
             </button>
-          </div>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={() => {
+            triggerHaptic('light');
+            setShowDetails((v) => !v);
+          }}
+          aria-expanded={showDetails}
+          aria-controls={detailsId}
+          aria-label={`${showDetails ? 'Hide' : 'Show'} tempo, warm-up and set options for ${exercise.name}`}
+          className="flex items-center justify-center"
+          style={{ width: 44, height: 44, margin: -14 }}
+        >
+          <ChevronRight
+            className="wk-chevron transition-transform"
+            style={{ transform: showDetails ? 'rotate(90deg)' : undefined }}
+            strokeWidth={2}
+            aria-hidden="true"
+          />
+        </button>
+      </div>
 
-          {showWarmupRamp && (
-            <div className="space-y-2 pt-1 border-t border-amber-500/15">
-              <p className="text-xs text-slate-300">
-                Do these 5 lighter sets before your first working set:
-              </p>
-              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs">
-                {warmupSteps.map((step) => (
-                  <div
-                    key={step.setNumber}
-                    className="p-2 rounded-xl bg-black/40 border border-white/[0.06] text-center space-y-0.5"
-                  >
-                    <div className="font-mono font-bold text-white text-xs">
-                      Set {step.setNumber}: {units.format(step.targetWeightKg)}
-                    </div>
-                    <div className="text-slate-400 font-mono text-xs">
-                      {step.percentage}% • {step.reps} reps
-                    </div>
-                    <div className="text-amber-400 text-xs truncate">
-                      {step.restLabel}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
+      {(chip || exercise.intensityProtocol) && (
+        <div className="flex items-center flex-wrap" style={{ gap: fig(12), marginTop: fig(16) }}>
+          {chip && <span className="wk-pill">{chip}</span>}
+          {exercise.intensityProtocol && <span className="wk-pill">{exercise.intensityProtocol.name}</span>}
+        </div>
+      )}
+
+      {/* Progress summary and history chart */}
+      {insight && (
+        <div className="flex items-start" style={{ gap: fig(40), marginTop: fig(40) }}>
+          <p className="wk-body flex-1 min-w-0">{insight.summary}</p>
+          {history.length >= 2 ? (
+            <ProgressChart
+              values={history.map((h) => h.e1rmKg)}
+              label={`Estimated one-rep max over your last ${history.length} sessions: ${units.format(history[0].e1rmKg)} to ${units.format(
+                history[history.length - 1].e1rmKg
+              )}`}
+            />
+          ) : (
+            <ProgressChart
+              values={EXAMPLE_SERIES}
+              example
+              label="Example chart. Your estimated one-rep max for this exercise appears here after two sessions."
+            />
           )}
         </div>
       )}
 
-      {/* 2.7 Exercise Execution Cues / Notes */}
-      {exercise.exerciseNotes && exercise.exerciseNotes.length > 0 && (
-        <div className="space-y-1">
-          <button
-            type="button"
-            onClick={() => {
-              triggerHaptic('light');
-              setShowNotes(!showNotes);
-            }}
-            className="text-xs text-slate-400 hover:text-white flex items-center space-x-1 transition-colors py-1"
-          >
-            <span>Technique &amp; Execution Cues</span>
-            {showNotes ? (
-              <ChevronUp className="w-3.5 h-3.5" />
-            ) : (
-              <ChevronDown className="w-3.5 h-3.5" />
-            )}
-          </button>
-          {showNotes && (
-            <ul className="p-3 rounded-xl bg-white/[0.03] border border-white/[0.06] space-y-1 text-xs text-slate-300 list-disc list-inside">
-              {exercise.exerciseNotes.map((note, nIdx) => (
-                <li key={nIdx} className="leading-relaxed">
-                  {note}
-                </li>
+      {/* Details: tempo, warm-up ramp, technique, set options */}
+      {showDetails && (
+        <div id={detailsId} className="space-y-3" style={{ marginTop: fig(40) }}>
+          {(muscleLabel || tempoText) && (
+            <p className="wk-body">
+              {muscleLabel && <strong className="text-white font-semibold">{muscleLabel}. </strong>}
+              {tempoText}
+              {readinessState === 'Amber Shield' ? ' Holding weight steady today.' : ''}
+            </p>
+          )}
+          {exercise.tempo && /^[\dXx]{4}$/.test(exercise.tempo) && <TempoPacer tempo={exercise.tempo} />}
+          {exercise.intensityProtocol && <p className="wk-body">{exercise.intensityProtocol.instruction}</p>}
+          {warmupSteps.length > 0 && (
+            <div className="space-y-1">
+              <p className="wk-label">Warm-up ramp</p>
+              <ul className="wk-body">
+                {warmupSteps.map((step) => (
+                  <li key={step.setNumber}>
+                    {units.format(step.targetWeightKg)} × {step.reps} ({step.percentage}%) · {step.restLabel}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {exercise.exerciseNotes && exercise.exerciseNotes.length > 0 && (
+            <ul className="wk-body list-disc pl-4">
+              {exercise.exerciseNotes.map((note, i) => (
+                <li key={i}>{note}</li>
               ))}
             </ul>
           )}
+          <div className="flex flex-wrap" style={{ gap: fig(16) }}>
+            {onOpenPlateCalc && exercise.equipment === 'barbell' && (
+              <button
+                type="button"
+                className={secondaryButton}
+                onClick={() => {
+                  triggerHaptic('light');
+                  onOpenPlateCalc(currentWeight);
+                }}
+              >
+                Plates
+              </button>
+            )}
+            {!isBodyweightOnly && (
+              <button
+                type="button"
+                className={secondaryButton}
+                onClick={() => {
+                  triggerHaptic('light');
+                  onAddSet(true);
+                }}
+              >
+                + Warm-up set
+              </button>
+            )}
+            <button
+              type="button"
+              className={secondaryButton}
+              onClick={() => {
+                triggerHaptic('light');
+                onAddSet(false);
+              }}
+            >
+              + Add set
+            </button>
+            {exercise.sets.length > 1 && (
+              <button
+                type="button"
+                className={secondaryButton}
+                aria-label={`Remove set ${exercise.sets.length} from ${exercise.name}`}
+                onClick={() => {
+                  triggerHaptic('light');
+                  const lastSet = exercise.sets[exercise.sets.length - 1];
+                  if (lastSet) onDeleteSet(lastSet.id);
+                }}
+              >
+                − Remove set
+              </button>
+            )}
+          </div>
         </div>
       )}
 
-      {/* 3. Aligned 12-Column Set Logging Table */}
-      <div className="space-y-1.5">
-        <div className="grid grid-cols-12 gap-2 px-3 text-xs font-bold uppercase tracking-wider text-slate-400 text-center items-center">
-          <div className="col-span-1">Set</div>
-          <div className="col-span-2">Prev</div>
-          <div className="col-span-4">Weight ({units.unit})</div>
-          <div className="col-span-3">Reps</div>
-          <div className="col-span-1 flex justify-center" title="Reps in reserve (RIR)">
-            RIR
-          </div>
-          <div className="col-span-1 flex justify-center" title="Complete set">
-            <Check className="w-3.5 h-3.5 stroke-[2.5]" />
-          </div>
-        </div>
-
-        {(() => {
-          let warmupIndex = 0;
-          let workingIndex = 0;
-          return exercise.sets.map((s) => {
-            const isWarm = s.isWarmup || s.setType === 'warmup';
-            let displayBadge: string;
-            let displayLabel: string;
-            if (isWarm) {
-              warmupIndex++;
-              displayBadge = warmupCount > 1 ? `W${warmupIndex}` : 'W';
-              displayLabel = `Warmup Set ${warmupIndex}`;
-            } else if (s.setType === 'drop') {
-              displayBadge = 'D';
-              displayLabel = 'Drop Set';
-            } else if (s.setType === 'myo') {
-              displayBadge = '+';
-              displayLabel = 'Bonus Rest-Pause Set';
-            } else {
-              workingIndex++;
-              displayBadge = `${workingIndex}`;
-              displayLabel = `Working Set ${workingIndex}`;
-            }
-
-            // PREV is the matching set from the last time this exact exercise was completed.
-            const previous = isWarm ? undefined : previousSets[workingIndex - 1];
-
-            return (
-              <SetRow
-                key={s.id}
-                set={s}
-                displayBadge={displayBadge}
-                displayLabel={displayLabel}
-                previous={previous}
-                isBodyweight={isBodyweightOnly}
-                isDumbbell={exercise.equipment === 'dumbbell'}
-                onUpdate={(updated) => onUpdateSet(s.id, updated)}
-                onComplete={() => onCompleteSet(s.id)}
-              />
-            );
-          });
-        })()}
-      </div>
-
-      {/* 4. Progressive Set Management (Discreet Secondary Action) */}
-      <div className="flex items-center justify-between pt-1 px-1 text-xs">
-        <button
-          type="button"
-          onClick={() => handleAddSetWithHaptic(false)}
-          className="text-slate-500 hover:text-slate-300 flex items-center space-x-1.5 py-1.5 px-2 rounded-lg transition-colors min-h-[36px]"
+      {/* Set table */}
+      <div role="table" aria-label={`${exercise.name} sets`} style={{ marginTop: fig(60) }}>
+        <div
+          role="row"
+          className="grid items-center text-center"
+          style={{
+            gridTemplateColumns: SET_TABLE_COLUMNS,
+            columnGap: SET_TABLE_GAP,
+            fontSize: fig(24),
+            fontWeight: 600,
+            color: 'var(--wk-muted)',
+            marginBottom: fig(30),
+          }}
         >
-          <Plus className="w-3.5 h-3.5 stroke-[2]" />
-          <span>Add set</span>
-        </button>
-
-        {exercise.sets.length > 1 && (
-          <button
-            type="button"
-            onClick={handleRemoveLastSet}
-            aria-label={`Remove set ${exercise.sets.length} from ${exercise.name}`}
-            className="text-slate-600 hover:text-rose-400 flex items-center space-x-1 py-1.5 px-2 rounded-lg transition-colors min-h-[36px]"
-          >
-            <Minus className="w-3.5 h-3.5 stroke-[2]" />
-            <span>Remove set</span>
-          </button>
-        )}
+          <span role="columnheader">SET</span>
+          <span role="columnheader">PREV</span>
+          <span role="columnheader">WEIGHT</span>
+          <span role="columnheader">REPS</span>
+          <span role="columnheader" title="Reps in reserve">RIR</span>
+          <span role="columnheader" className="sr-only">Done</span>
+        </div>
+        <div className="flex flex-col" style={{ gap: fig(27) }}>
+          {(() => {
+            let warmupIndex = 0;
+            let workingIndex = 0;
+            return exercise.sets.map((s) => {
+              const isWarm = s.isWarmup || s.setType === 'warmup';
+              let displayBadge: string;
+              let displayLabel: string;
+              if (isWarm) {
+                warmupIndex++;
+                displayBadge = warmupCount > 1 ? `W${warmupIndex}` : 'W';
+                displayLabel = `Warm-up set ${warmupIndex}`;
+              } else if (s.setType === 'drop') {
+                displayBadge = 'D';
+                displayLabel = 'Drop set';
+              } else if (s.setType === 'myo') {
+                displayBadge = '+';
+                displayLabel = 'Bonus rest-pause set';
+              } else {
+                workingIndex++;
+                displayBadge = `${workingIndex}`;
+                displayLabel = `Set ${workingIndex}`;
+              }
+              // PREV is the matching set from the last time this exact exercise was completed.
+              const previous = isWarm ? undefined : previousSets[workingIndex - 1];
+              return (
+                <SetRow
+                  key={s.id}
+                  set={s}
+                  displayBadge={displayBadge}
+                  displayLabel={displayLabel}
+                  previous={previous}
+                  isBodyweight={isBodyweightOnly}
+                  isDumbbell={exercise.equipment === 'dumbbell'}
+                  onUpdate={(updated) => onUpdateSet(s.id, updated)}
+                  onComplete={() => onCompleteSet(s.id)}
+                />
+              );
+            });
+          })()}
+        </div>
       </div>
     </section>
   );
