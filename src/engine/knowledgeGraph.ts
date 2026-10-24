@@ -1316,19 +1316,9 @@ export function buildAthleteKnowledgeGraph(
     const weeklySets = Math.round((weeklyVolume[mKey] || 0) * 10) / 10;
     const stats = muscleLengthenedSets[mKey] || { lengthened: 0, total: 0, sfrSum: 0 };
 
-    const lengthenedBiasPct =
-      stats.total > 0
-        ? Math.round((stats.lengthened / stats.total) * 100)
-        : mKey === 'Hamstrings' || mKey === 'Calves' || mKey === 'Chest'
-        ? 68
-        : 45;
-
-    const avgSfr =
-      stats.total > 0
-        ? Math.round((stats.sfrSum / stats.total) * 10) / 10
-        : mKey === 'SideDelts' || mKey === 'Calves'
-        ? 9.2
-        : 8.1;
+    // 0 = not measured (no sets logged for this muscle yet).
+    const lengthenedBiasPct = stats.total > 0 ? Math.round((stats.lengthened / stats.total) * 100) : 0;
+    const avgSfr = stats.total > 0 ? Math.round((stats.sfrSum / stats.total) * 10) / 10 : 0;
 
     // Personalized MAV calibration based on athlete's goal phase and recovery kinetics
     const phaseModifier = profile.goalPhase === 'Cut / Recomp' ? 0.85 : profile.goalPhase === 'Lean Bulk' ? 1.05 : 1.0;
@@ -1347,14 +1337,19 @@ export function buildAthleteKnowledgeGraph(
         ? 'Hinge'
         : 'Vertical Push';
 
-    const earlyBest = getAvgE1rmForPillar(firstHalf, pillarForMuscle) || 100;
-    const lateBest = getAvgE1rmForPillar(secondHalf, pillarForMuscle) || 106;
-    const e1rmVelocityPct = Math.max(1.8, Math.round(((lateBest - earlyBest) / earlyBest) * 1000) / 10);
+    // Strength change between the first and second half of the athlete's history; 0 = not enough data.
+    const earlyBest = sortedWorkouts.length >= 2 ? getAvgE1rmForPillar(firstHalf, pillarForMuscle) : 0;
+    const lateBest = sortedWorkouts.length >= 2 ? getAvgE1rmForPillar(secondHalf, pillarForMuscle) : 0;
+    const e1rmVelocityPct =
+      earlyBest > 0 && lateBest > 0 ? Math.round(((lateBest - earlyBest) / earlyBest) * 1000) / 10 : 0;
 
-    let recommendation = `Growing steadily (+${e1rmVelocityPct}% over 6 weeks). Keep weekly sets between ${personalMin} and ${personalMax}.`;
+    let recommendation =
+      e1rmVelocityPct > 0
+        ? `Growing steadily (+${e1rmVelocityPct}% so far). Keep weekly sets between ${personalMin} and ${personalMax}.`
+        : `Keep weekly sets between ${personalMin} and ${personalMax}.`;
     if (weeklySets < personalMin) {
       recommendation = `Currently ${Math.round((personalMin - weeklySets) * 10) / 10} sets below your target range (${personalMin}–${personalMax} sets). Add 2–3 sets this week.`;
-    } else if (lengthenedBiasPct < 40) {
+    } else if (stats.total > 0 && lengthenedBiasPct < 40) {
       recommendation = `Set count is on track (${weeklySets} sets). Include an exercise with a full bottom stretch (like Incline DB or Cable variations) for extra growth.`;
     }
 
@@ -1590,7 +1585,7 @@ export function buildAthleteKnowledgeGraph(
       metrics: {
         'Chest': `${weeklyVolume.Chest || 0} / 12–18 sets`,
         'Quads': `${weeklyVolume.Quads || 0} / 12–18 sets`,
-        '6-Wk Gain': `+${fastestMuscle.e1rmVelocityPct}%`,
+        'Strength Gain': fastestMuscle.e1rmVelocityPct > 0 ? `+${fastestMuscle.e1rmVelocityPct}%` : '—',
       },
       detailText: `Pushing and squatting muscles. Best trained with 12–18 quality sets per week and 48–60 hours of rest between heavy sessions.`,
     },

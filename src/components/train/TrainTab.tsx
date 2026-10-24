@@ -39,7 +39,10 @@ import {
   calculateE1RM,
   calculateHypertrophyBodyweightReps,
 } from '../../engine/e1rm';
-import { getExerciseBiomechanicalMeta } from '../../engine/knowledgeGraph';
+import { buildAthleteKnowledgeGraph, getExerciseBiomechanicalMeta } from '../../engine/knowledgeGraph';
+import { calculateWeeklyMuscleVolume } from '../../services/storage';
+import { buildSessionProgressReport } from '../../services/sessionReport';
+import { SessionCompleteCard } from './SessionCompleteCard';
 import {
   calculateWarmupPrescription,
   ensureWarmupSetsOnExercise,
@@ -70,6 +73,8 @@ interface TrainTabProps {
   workouts: WorkoutSession[];
   readiness: ReadinessEvaluation;
   latestBiometrics: BiometricLog;
+  /** Full biometric history, used for the athlete's knowledge graph. */
+  biometrics?: BiometricLog[];
   bodyweightEmaKg: number;
   profile: UserProfile;
   exerciseCatalog: ExerciseDefinition[];
@@ -130,6 +135,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
   workouts,
   readiness,
   latestBiometrics,
+  biometrics = [],
   bodyweightEmaKg,
   profile,
   exerciseCatalog,
@@ -579,6 +585,28 @@ export const TrainTab: React.FC<TrainTabProps> = ({
       ) || null
     );
   })();
+  // Progress report for a session finished today, grounded in the athlete's knowledge graph.
+  const sessionReport = useMemo(() => {
+    if (!showRecoveryGate || !recoveryGate.trainedToday) return null;
+    const knowledgeGraph = buildAthleteKnowledgeGraph(
+      workouts,
+      biometrics,
+      exerciseCatalog,
+      profile,
+      calculateWeeklyMuscleVolume(workouts, exerciseCatalog)
+    );
+    return buildSessionProgressReport({
+      workouts,
+      nextSession: activeWorkout,
+      nextReadyAt: recoveryGate.readyAt,
+      exerciseCatalog,
+      knowledgeGraph,
+      bodyweightKg: biometrics.some((b) => (b.bodyweightKg || 0) > 0) ? bodyweightEmaKg : undefined,
+      gender: profile.gender,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showRecoveryGate, recoveryGate.trainedToday, recoveryGate.readyAt, workouts, biometrics, exerciseCatalog, profile, activeWorkout, bodyweightEmaKg]);
+
   const lastWorkoutAgoHours = recoveryGate.lastWorkoutAt
     ? Math.max(0, Math.round((Date.now() - recoveryGate.lastWorkoutAt) / (60 * 60 * 1000)))
     : null;
@@ -607,7 +635,16 @@ export const TrainTab: React.FC<TrainTabProps> = ({
 
   return (
     <div className="space-y-4 sm:space-y-5 pb-28">
-      {/* UNIFIED HERO CARD: Opinionated Asynchronous Hypertrophy Queue & Session Goals */}
+      {/* After today's session: lead with "complete" and the progress breakdown instead of the next workout. */}
+      {sessionReport ? (
+        <SessionCompleteCard
+          report={sessionReport}
+          limitingMuscles={recoveryGate.limitingMuscles}
+          onOpenProgram={onOpenProgram}
+          onTrainAnyway={() => onUpdateWorkout({ ...activeWorkout, recoveryOverride: true })}
+        />
+      ) : (
+      /* UNIFIED HERO CARD: Opinionated Asynchronous Hypertrophy Queue & Session Goals */
       <div className="biometric-card p-5 sm:p-6 space-y-4">
         {/* A. Compact Context Header + Location Dropdown Toggle */}
         <div className="flex items-center justify-between gap-2">
@@ -764,8 +801,9 @@ export const TrainTab: React.FC<TrainTabProps> = ({
           </div>
         </ReadinessBanner>
       </div>
+      )}
 
-      {showRecoveryGate && (
+      {showRecoveryGate && !sessionReport && (
         <section aria-label="Recovery before next workout" className="biometric-card p-5 sm:p-6 space-y-4">
           <div className="flex items-start gap-3">
             <div className="w-10 h-10 rounded-2xl bg-sky-500/15 flex items-center justify-center text-sky-300 shrink-0">

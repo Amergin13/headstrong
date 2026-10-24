@@ -36,7 +36,8 @@ import {
 } from '../knowledgeGraph';
 import { SEED_EXERCISES } from '../../services/seedData';
 import { processAssistantMessage, buildSafetyResponse, buildProgressSummary } from '../../services/aiAssistantService';
-import { evaluateSessionRecovery } from '../recovery';
+import { evaluateSessionRecovery, getDaysUntilReady } from '../recovery';
+import { buildSessionProgressReport } from '../../services/sessionReport';
 import { personalizeSessionLoads } from '../loadPersonalization';
 import { getNextProgramWorkoutNumber } from '../muscleBuildingProgram';
 import { getTemplateDefaultWeight } from '../../services/workoutGenerator';
@@ -3437,7 +3438,86 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
     assert(received.includes('whoop:new-access:new-refresh'), 'Rotated Whoop tokens are published so the profile saves them');
   }
 
-  console.log('\nALL 32 ENGINE, GOVERNANCE, DESIGN HEURISTICS, TYPOGRAPHY, WEARABLES, WHOOP STRAIN, GOOGLE AUTH, ONBOARDING CONTEXT, 6-WEEK PROGRAM & TENSOR AI SUITES PASSED SUCCESSFULLY! 🎯');
+  console.log('\n[33. Session Complete Report]');
+  {
+    const HOUR = 60 * 60 * 1000;
+    const reportNow = Date.now();
+    const finish = (w: WorkoutSession, hoursAgo: number, edit?: (w: WorkoutSession) => void): WorkoutSession => {
+      const at = new Date(reportNow - hoursAgo * HOUR);
+      w.completed = true;
+      w.completedAt = at.toISOString();
+      w.startedAt = new Date(at.getTime() - 55 * 60 * 1000).toISOString();
+      w.date = localDateString(at);
+      w.exercises.forEach((ex) => ex.sets.forEach((st) => (st.completed = true)));
+      edit?.(w);
+      return w;
+    };
+    const lastWeek = finish(generate6WeekMuscleBuildingWorkout(1, 80), 6 * 24);
+    const today = finish({ ...generate6WeekMuscleBuildingWorkout(1, 80), id: 'today-5', programWorkoutNumber: 5 }, 1, (w) => {
+      const first = w.exercises[0];
+      first.sets.forEach((st) => {
+        if (!st.isWarmup) st.actualWeightKg = (st.actualWeightKg ?? st.targetWeightKg) + 5;
+      });
+      const last = w.exercises[w.exercises.length - 1];
+      w.exercises[w.exercises.length - 1] = { ...last, exerciseId: 'ex-cable-curl', name: 'Behind-Back Cable Bicep Curl', equipment: 'cable' };
+    });
+    const history = [lastWeek, today];
+    const nextSession = generate6WeekMuscleBuildingWorkout(6, 80);
+    const gate = evaluateSessionRecovery(nextSession, history, SEED_EXERCISES, reportNow);
+    const kg = buildAthleteKnowledgeGraph(history, [], SEED_EXERCISES, NEW_USER_PROFILE, calculateWeeklyMuscleVolume(history, SEED_EXERCISES));
+    const report = buildSessionProgressReport({
+      workouts: history,
+      nextSession,
+      nextReadyAt: gate.readyAt,
+      exerciseCatalog: SEED_EXERCISES,
+      knowledgeGraph: kg,
+      bodyweightKg: 80,
+      gender: 'male',
+      now: reportNow,
+    })!;
+    assert(
+      report.next !== null && report.next.daysUntil >= 1 && report.next.name === nextSession.name,
+      `The report leads with when the next session is (in ${report.next?.daysUntil} day(s))`
+    );
+    assert(
+      report.program.kind === 'plan' && report.program.workoutNumber === 5 && report.program.week === 2 && report.program.totalWorkouts === 24,
+      'Program context shows the plan position (workout 5 of 24, week 2)'
+    );
+    assert(
+      report.records.some((r) => r.exerciseName === today.exercises[0].name && r.kind === 'heavier' && r.newKg > r.previousKg),
+      'A heavier working set than any earlier session is reported as a personal best'
+    );
+    assert(report.firstTimeExercises.includes('Behind-Back Cable Bicep Curl'), 'A first-time exercise is a starting point, not a record');
+    assert(
+      report.trends.some((t) => t.exerciseName === today.exercises[0].name && t.sessions === 2 && t.changePct > 0),
+      'Lift trends compare the first session with today'
+    );
+    assert(
+      report.muscles.length > 0 &&
+        report.muscles.every((m) => m.targetMin > 0 && m.targetMax >= m.targetMin && m.weeklySets >= m.setsThisSession),
+      'Muscle growth uses weekly sets and personal targets from the knowledge graph'
+    );
+    assert(report.session.durationMin === 55 && report.session.whoopStrain === undefined, 'Session stats use measured values only');
+    const noBodyweight = buildSessionProgressReport({ workouts: history, exerciseCatalog: SEED_EXERCISES, knowledgeGraph: kg, now: reportNow })!;
+    assert(noBodyweight.strengthLevels.length === 0 && noBodyweight.next === null, 'No strength levels without a logged bodyweight');
+
+    const fixedNow = new Date(2026, 9, 24, 18, 0).getTime();
+    assert(
+      getDaysUntilReady(new Date(2026, 9, 25, 3, 0).getTime(), fixedNow) === 1 &&
+        getDaysUntilReady(new Date(2026, 9, 26, 9, 0).getTime(), fixedNow) === 2 &&
+        getDaysUntilReady(new Date(2026, 9, 24, 21, 0).getTime(), fixedNow) === 0,
+      'Days until the next session count calendar days, with overnight times moved to the morning'
+    );
+    assert(
+      kg.muscleProfiles.every((m) => m.e1rmVelocityPct === 0 || Number.isFinite(m.e1rmVelocityPct)) &&
+        buildAthleteKnowledgeGraph([], [], SEED_EXERCISES, NEW_USER_PROFILE, {}).muscleProfiles.every(
+          (m) => m.e1rmVelocityPct === 0 && m.lengthenedBiasPct === 0 && m.avgSfr === 0
+        ),
+      'The knowledge graph reports no strength gain or stretch data for an athlete with no history'
+    );
+  }
+
+  console.log('\nALL 33 ENGINE, GOVERNANCE, DESIGN HEURISTICS, TYPOGRAPHY, WEARABLES, WHOOP STRAIN, GOOGLE AUTH, ONBOARDING CONTEXT, 6-WEEK PROGRAM, TENSOR AI & SESSION REPORT SUITES PASSED SUCCESSFULLY! 🎯');
 })().catch((err) => {
   console.error('Test Suite Failed:', err);
   if (typeof process !== 'undefined' && process.exit) {

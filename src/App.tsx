@@ -715,6 +715,7 @@ export const App: React.FC = () => {
             workouts={workouts}
             readiness={readiness}
             latestBiometrics={latestBiometrics}
+            biometrics={biometrics}
             bodyweightEmaKg={bodyweightEmaKg}
             profile={profile}
             exerciseCatalog={exercises}

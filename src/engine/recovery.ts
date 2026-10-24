@@ -1,5 +1,5 @@
 import { ExerciseDefinition, MuscleGroup, WorkoutSession } from './types';
-import { localDateString } from '../utils/date';
+import { daysBetweenLocalDates, localDateString } from '../utils/date';
 
 /**
  * Muscle-level recovery model behind the Asynchronous Hypertrophy Queue.
@@ -216,9 +216,8 @@ export function evaluateSessionRecovery(
   };
 }
 
-/** "Tomorrow at 6 PM", "Friday at 9 AM", or "in 3 hours" — plain English for the rest screen. */
-export function formatReadyTime(rawReadyAt: number, now: number = Date.now()): string {
-  // Nobody trains at 2 AM: overnight ready times are shown as the following morning.
+/** Nobody trains at 2 AM: overnight ready times move to the following morning. */
+export function getTrainableReadyAt(rawReadyAt: number): number {
   const ready = new Date(rawReadyAt);
   if (ready.getHours() < NEXT_DAY_EARLIEST_HOUR) {
     ready.setHours(NEXT_DAY_EARLIEST_HOUR, 0, 0, 0);
@@ -226,12 +225,27 @@ export function formatReadyTime(rawReadyAt: number, now: number = Date.now()): s
     ready.setDate(ready.getDate() + 1);
     ready.setHours(NEXT_DAY_EARLIEST_HOUR, 0, 0, 0);
   }
-  const readyAt = ready.getTime();
+  return ready.getTime();
+}
+
+/** Calendar days from today until the next session can be trained (0 = later today). */
+export function getDaysUntilReady(rawReadyAt: number, now: number = Date.now()): number {
+  return Math.max(0, daysBetweenLocalDates(localDateString(new Date(now)), localDateString(new Date(getTrainableReadyAt(rawReadyAt)))));
+}
+
+/** "Tomorrow at 6 PM", "Friday at 9 AM", or "in 3 hours" — plain English for the rest screen. */
+export function formatReadyTime(rawReadyAt: number, now: number = Date.now()): string {
+  // Round up to the hour: "ready at 4 PM" reads better than "ready at 3:04 PM".
+  const rounded = new Date(getTrainableReadyAt(rawReadyAt));
+  if (rounded.getMinutes() || rounded.getSeconds() || rounded.getMilliseconds()) {
+    rounded.setHours(rounded.getHours() + 1, 0, 0, 0);
+  }
+  const readyAt = rounded.getTime();
   const diffHours = (readyAt - now) / HOUR_MS;
   if (diffHours <= 0) return 'now';
   if (diffHours < 1) return 'in under an hour';
   const target = new Date(readyAt);
-  const timeLabel = target.toLocaleTimeString([], { hour: 'numeric', minute: target.getMinutes() ? '2-digit' : undefined });
+  const timeLabel = target.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
   const dayDiff = Math.round(
     (new Date(target.getFullYear(), target.getMonth(), target.getDate()).getTime() -
       new Date(new Date(now).getFullYear(), new Date(now).getMonth(), new Date(now).getDate()).getTime()) /
