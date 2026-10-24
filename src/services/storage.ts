@@ -42,7 +42,7 @@ const LEGACY_KEYS = {
  * Version of the saved-data format. Bump it and add a step to runStorageMigrations whenever
  * the shape of stored data changes, so existing athletes' history keeps loading.
  */
-export const STORAGE_SCHEMA_VERSION = 5;
+export const STORAGE_SCHEMA_VERSION = 6;
 const SCHEMA_VERSION_KEY = 'treise_schema_version';
 
 /**
@@ -90,6 +90,38 @@ export function removeFabricatedBiometrics(): void {
   localStorage.setItem(KEYS.BIOMETRICS, JSON.stringify(cleaned));
 }
 
+/**
+ * Older versions stored Whoop's all-day heart rate as workout heart rate when no Whoop workout
+ * matched the session. A real Whoop workout always comes with its strain, so heart rate without
+ * strain on a Whoop session (or a Whoop day log) is cleared.
+ */
+export function removeDayHeartRateFromWorkouts(): void {
+  const rawWorkouts = localStorage.getItem(KEYS.WORKOUTS);
+  if (rawWorkouts) {
+    const workouts: WorkoutSession[] = JSON.parse(rawWorkouts);
+    if (Array.isArray(workouts)) {
+      const cleaned = workouts.map((w) =>
+        w.wearableSource === 'whoop' && !(typeof w.whoopStrain === 'number' && w.whoopStrain > 0)
+          ? { ...w, avgHeartRate: undefined, maxHeartRate: undefined, hasMeasuredHeartRate: false }
+          : w
+      );
+      localStorage.setItem(KEYS.WORKOUTS, JSON.stringify(cleaned));
+    }
+  }
+  const rawLogs = localStorage.getItem(KEYS.BIOMETRICS);
+  if (rawLogs) {
+    const logs: BiometricLog[] = JSON.parse(rawLogs);
+    if (Array.isArray(logs)) {
+      const cleaned = logs.map((l) =>
+        l.source === 'whoop' && !(typeof l.workoutStrain === 'number' && l.workoutStrain > 0)
+          ? { ...l, avgWorkoutHr: undefined, maxWorkoutHr: undefined }
+          : l
+      );
+      localStorage.setItem(KEYS.BIOMETRICS, JSON.stringify(cleaned));
+    }
+  }
+}
+
 export function runStorageMigrations(): void {
   if (typeof localStorage === 'undefined') return;
   try {
@@ -106,6 +138,9 @@ export function runStorageMigrations(): void {
     }
     if (current < 5) {
       removeFabricatedBiometrics();
+    }
+    if (current < 6) {
+      removeDayHeartRateFromWorkouts();
     }
     if (current < STORAGE_SCHEMA_VERSION) {
       localStorage.setItem(SCHEMA_VERSION_KEY, String(STORAGE_SCHEMA_VERSION));

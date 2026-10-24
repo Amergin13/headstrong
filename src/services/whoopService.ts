@@ -240,16 +240,9 @@ export async function fetchWhoopDailyBiometrics(
         publishRefreshedTokens('whoop', data.refreshedTokens);
         return {
           ...data.biometrics,
-          avgWorkoutHr:
-            data.biometrics.avgWorkoutHr ??
-            data.biometrics.workoutAvgHr ??
-            data.biometrics.avgHeartRate ??
-            data.biometrics.cycleAvgHr,
-          maxWorkoutHr:
-            data.biometrics.maxWorkoutHr ??
-            data.biometrics.workoutMaxHr ??
-            data.biometrics.maxHeartRate ??
-            data.biometrics.cycleMaxHr,
+          // Workout heart rate only comes from a Whoop workout; the all-day average is not a workout.
+          avgWorkoutHr: data.biometrics.avgWorkoutHr ?? data.biometrics.workoutAvgHr,
+          maxWorkoutHr: data.biometrics.maxWorkoutHr ?? data.biometrics.workoutMaxHr,
           date,
         };
       }
@@ -509,17 +502,10 @@ export async function fetchWhoopWorkoutStrain(
       ? bio.kilojoules
       : undefined;
 
-  const avgHeartRate =
-    bio.avgWorkoutHr ??
-    (bio as any).workoutAvgHr ??
-    (bio as any).avgHeartRate ??
-    (bio as any).cycleAvgHr;
-
-  const maxHeartRate =
-    bio.maxWorkoutHr ??
-    (bio as any).workoutMaxHr ??
-    (bio as any).maxHeartRate ??
-    (bio as any).cycleMaxHr;
+  // Heart rate belongs to the session only when Whoop recorded a workout in its time window.
+  const matchedWorkout = Boolean((bio as any).hasRecentWorkout) && typeof bio.workoutStrain === 'number';
+  const avgHeartRate = matchedWorkout ? bio.avgWorkoutHr ?? (bio as any).workoutAvgHr : undefined;
+  const maxHeartRate = matchedWorkout ? bio.maxWorkoutHr ?? (bio as any).workoutMaxHr : undefined;
 
   return {
     workoutStrain: bio.workoutStrain,

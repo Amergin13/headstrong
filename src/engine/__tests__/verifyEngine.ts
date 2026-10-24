@@ -48,7 +48,7 @@ import { evaluateSetProgressAward, planRestAfterSet } from '../../services/setCo
 import { completeWorkout } from '../../services/workoutCompletion';
 import { onWearableTokensRefreshed } from '../../services/wearableTokens';
 import { registerFallbackOnDeviceModel } from '../../services/onDeviceModel';
-import { fetchWhoopDailyBiometrics } from '../../services/whoopService';
+import { fetchWhoopDailyBiometrics, fetchWhoopWorkoutStrain } from '../../services/whoopService';
 import { WhoopWorkoutStrainSummary } from '../../services/whoopService';
 import {
   calculateWarmupPrescription,
@@ -443,6 +443,7 @@ import {
   loadWorkouts,
   loadBiometrics,
   removeFabricatedBiometrics,
+  removeDayHeartRateFromWorkouts,
 } from '../../services/storage';
 import {
   NEW_USER_PROFILE,
@@ -3436,6 +3437,36 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
     (globalThis as any).fetch = realFetch;
     unsubscribe();
     assert(received.includes('whoop:new-access:new-refresh'), 'Rotated Whoop tokens are published so the profile saves them');
+
+    // Workout heart rate comes only from a matched Whoop workout, never the all-day average.
+    const mockWhoop = (biometrics: Record<string, unknown>) =>
+      ((globalThis as any).fetch = async () => ({ ok: true, status: 200, json: async () => ({ success: true, biometrics }) }));
+    mockWhoop({ hrvRmssd: 30, restingHr: 70, strain: 4.8, cycleAvgHr: 79, cycleMaxHr: 136, hasRecentWorkout: false });
+    const noWorkout = await fetchWhoopWorkoutStrain('a', 'r', { start: '2026-10-24T10:00:00Z', end: '2026-10-24T11:00:00Z' });
+    const dayOnly = await fetchWhoopDailyBiometrics('a', '2026-10-24', 'r');
+    mockWhoop({ strain: 9, workoutStrain: 11.1, avgWorkoutHr: 128, maxWorkoutHr: 161, cycleAvgHr: 80, hasRecentWorkout: true });
+    const matched = await fetchWhoopWorkoutStrain('a', 'r', { start: '2026-10-22T11:40:00Z', end: '2026-10-22T12:30:00Z' });
+    (globalThis as any).fetch = realFetch;
+    assert(
+      noWorkout.avgHeartRate === undefined && noWorkout.maxHeartRate === undefined && dayOnly.avgWorkoutHr === undefined,
+      "Without a Whoop workout in the session's window, no heart rate is attached (the all-day average isn't a workout)"
+    );
+    assert(matched.workoutStrain === 11.1 && matched.avgHeartRate === 128 && matched.maxHeartRate === 161, 'A matched Whoop workout brings its strain and heart rate');
+
+    localStorage.setItem(
+      'treise_workouts_v3',
+      JSON.stringify([
+        { ...generate6WeekMuscleBuildingWorkout(1, 80), completed: true, wearableSource: 'whoop', avgHeartRate: 78, maxHeartRate: 136, hasMeasuredHeartRate: true },
+        { ...generate6WeekMuscleBuildingWorkout(2, 80), id: 'w2', completed: true, wearableSource: 'whoop', whoopStrain: 11.1, avgHeartRate: 128, maxHeartRate: 161, hasMeasuredHeartRate: true },
+      ])
+    );
+    removeDayHeartRateFromWorkouts();
+    const cleanedWorkouts = JSON.parse(localStorage.getItem('treise_workouts_v3') || '[]');
+    assert(
+      cleanedWorkouts[0].avgHeartRate === undefined && cleanedWorkouts[0].hasMeasuredHeartRate === false && cleanedWorkouts[1].avgHeartRate === 128,
+      'Migration clears all-day heart rate saved on Whoop sessions without a matched workout, keeping real workout heart rate'
+    );
+    localStorage.removeItem('treise_workouts_v3');
   }
 
   console.log('\n[33. Session Complete Report]');
