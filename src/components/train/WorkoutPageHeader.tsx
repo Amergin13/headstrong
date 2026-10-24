@@ -95,7 +95,7 @@ export const WorkoutPageHeader: React.FC<WorkoutPageHeaderProps> = ({ title, day
 
       <ol
         className="grid grid-cols-7 mx-auto"
-        style={{ width: fig(7 * 131), marginTop: fig(52) }}
+        style={{ width: `min(${fig(7 * 131)}, 100%)`, marginTop: fig(52) }}
         aria-label="This week"
       >
         {days.map((day) => (

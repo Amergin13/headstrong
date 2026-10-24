@@ -7,8 +7,8 @@ import { useUnits } from '../../utils/unitsContext';
 const fig = (px: number) => `calc(${px} * var(--f))`;
 
 /** SET | PREV | WEIGHT | REPS | RIR | ✓ — shared by the header and every row (Figma column widths). */
-export const SET_TABLE_COLUMNS = '54fr 96fr 170fr 170fr 170fr 59fr';
-export const SET_TABLE_GAP = fig(36);
+export const SET_TABLE_COLUMNS = '36fr 92fr 130fr 100fr 90fr 74fr';
+export const SET_TABLE_GAP = fig(20);
 
 /** A working set from the last time this exact exercise was completed. */
 export interface PreviousSet {
@@ -106,7 +106,11 @@ export const SetRow: React.FC<SetRowProps> = ({
           className="bg-transparent text-right font-bold text-white outline-none p-0"
           style={{ width: `${Math.max(1, String(displayWeight).length)}ch`, fontSize: 'inherit' }}
         />
-        {displayWeight > 0 && <span aria-hidden="true">{units.unit.toUpperCase()}</span>}
+        {displayWeight > 0 && (
+          <span aria-hidden="true" style={{ fontSize: '0.8em', marginLeft: '0.1em' }}>
+            {units.unit.toUpperCase()}
+          </span>
+        )}
       </label>
 
       <span className="relative block">

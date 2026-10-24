@@ -61,9 +61,10 @@ const ProgressChart: React.FC<{ values: number[]; label: string; example?: boole
   const last = points[points.length - 1];
   const d = points.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
   return (
-    <div className="relative shrink-0" style={{ width: fig(W), height: fig(H) }}>
+    <div className="relative w-full" style={{ height: fig(170) }}>
       <svg
         viewBox={`0 0 ${W} ${H}`}
+        preserveAspectRatio="none"
         className="w-full h-full"
         style={{
           background: 'linear-gradient(180deg, rgba(0,0,0,0.10), rgba(0,0,0,0.22))',
@@ -80,10 +81,21 @@ const ProgressChart: React.FC<{ values: number[]; label: string; example?: boole
           </linearGradient>
         </defs>
         <line x1={0} x2={W} y1={1} y2={1} stroke="rgba(255,255,255,0.08)" strokeWidth={2} />
-        <line x1={last.x} x2={last.x} y1={6} y2={H - 6} stroke="rgba(255,255,255,0.35)" strokeWidth={2} strokeDasharray="4 6" />
-        <path d={d} fill="none" stroke={`url(#${gradientId})`} strokeWidth={4} strokeLinejoin="round" strokeLinecap="round" />
-        <circle cx={last.x} cy={last.y} r={9} fill="#fff" stroke="#2C3034" strokeWidth={3} />
+        <line x1={last.x} x2={last.x} y1={6} y2={H - 6} stroke="rgba(255,255,255,0.35)" strokeWidth={2} strokeDasharray="4 6" vectorEffect="non-scaling-stroke" />
+        <path d={d} fill="none" stroke={`url(#${gradientId})`} strokeWidth={2.5} strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
       </svg>
+      <span
+        className="absolute rounded-full bg-white"
+        style={{
+          width: fig(16),
+          height: fig(16),
+          left: `calc(${(last.x / W) * 100}% - ${fig(8)})`,
+          top: `calc(${(last.y / H) * 100}% - ${fig(8)})`,
+          boxShadow: `0 0 0 ${fig(4)} #2C3034`,
+          opacity: example ? 0.4 : 1,
+        }}
+        aria-hidden="true"
+      />
       {example && (
         <span className="wk-pill absolute" style={{ top: fig(12), left: fig(12) }} aria-hidden="true">
           Example
@@ -177,8 +189,8 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
 
       {/* Progress summary and history chart */}
       {insight && (
-        <div className="flex items-start" style={{ gap: fig(40), marginTop: fig(40) }}>
-          <p className="wk-body flex-1 min-w-0" aria-live="polite">
+        <div className="flex flex-col" style={{ gap: fig(28), marginTop: fig(36) }}>
+          <p className="wk-body" aria-live="polite">
             {note ?? insight.summary}
           </p>
           {history.length >= 2 ? (
