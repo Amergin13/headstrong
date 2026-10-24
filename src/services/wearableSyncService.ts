@@ -109,16 +109,9 @@ export async function syncWearableBiometrics(
         strain: liveData.strain,
         kilojoules: liveData.kilojoules,
         workoutKilojoules: liveData.workoutKilojoules,
-        avgWorkoutHr:
-          liveData.avgWorkoutHr ??
-          (liveData as any).workoutAvgHr ??
-          (liveData as any).avgHeartRate ??
-          (liveData as any).cycleAvgHr,
-        maxWorkoutHr:
-          liveData.maxWorkoutHr ??
-          (liveData as any).workoutMaxHr ??
-          (liveData as any).maxHeartRate ??
-          (liveData as any).cycleMaxHr,
+        // Workout heart rate only from a Whoop workout; the all-day average is not a workout.
+        avgWorkoutHr: liveData.avgWorkoutHr ?? (liveData as any).workoutAvgHr,
+        maxWorkoutHr: liveData.maxWorkoutHr ?? (liveData as any).workoutMaxHr,
         source: 'whoop',
       };
     }

@@ -42,7 +42,7 @@ const LEGACY_KEYS = {
  * Version of the saved-data format. Bump it and add a step to runStorageMigrations whenever
  * the shape of stored data changes, so existing athletes' history keeps loading.
  */
-export const STORAGE_SCHEMA_VERSION = 6;
+export const STORAGE_SCHEMA_VERSION = 7;
 const SCHEMA_VERSION_KEY = 'treise_schema_version';
 
 /**
@@ -139,7 +139,8 @@ export function runStorageMigrations(): void {
     if (current < 5) {
       removeFabricatedBiometrics();
     }
-    if (current < 6) {
+    if (current < 7) {
+      // v6 ran before the daily sync stopped writing all-day heart rate; v7 runs it again.
       removeDayHeartRateFromWorkouts();
     }
     if (current < STORAGE_SCHEMA_VERSION) {

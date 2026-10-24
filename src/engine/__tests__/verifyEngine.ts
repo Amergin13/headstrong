@@ -3444,11 +3444,13 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
     mockWhoop({ hrvRmssd: 30, restingHr: 70, strain: 4.8, cycleAvgHr: 79, cycleMaxHr: 136, hasRecentWorkout: false });
     const noWorkout = await fetchWhoopWorkoutStrain('a', 'r', { start: '2026-10-24T10:00:00Z', end: '2026-10-24T11:00:00Z' });
     const dayOnly = await fetchWhoopDailyBiometrics('a', '2026-10-24', 'r');
+    const daySync = await syncWearableBiometrics('whoop', { accessToken: 'a', refreshToken: 'r' });
     mockWhoop({ strain: 9, workoutStrain: 11.1, avgWorkoutHr: 128, maxWorkoutHr: 161, cycleAvgHr: 80, hasRecentWorkout: true });
     const matched = await fetchWhoopWorkoutStrain('a', 'r', { start: '2026-10-22T11:40:00Z', end: '2026-10-22T12:30:00Z' });
     (globalThis as any).fetch = realFetch;
     assert(
-      noWorkout.avgHeartRate === undefined && noWorkout.maxHeartRate === undefined && dayOnly.avgWorkoutHr === undefined,
+      noWorkout.avgHeartRate === undefined && noWorkout.maxHeartRate === undefined && dayOnly.avgWorkoutHr === undefined &&
+        daySync.avgWorkoutHr === undefined && daySync.maxWorkoutHr === undefined,
       "Without a Whoop workout in the session's window, no heart rate is attached (the all-day average isn't a workout)"
     );
     assert(matched.workoutStrain === 11.1 && matched.avgHeartRate === 128 && matched.maxHeartRate === 161, 'A matched Whoop workout brings its strain and heart rate');
