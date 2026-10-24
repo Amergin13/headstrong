@@ -29,6 +29,8 @@ interface ExerciseCardProps {
   previousSets?: PreviousSet[];
   /** Past sessions of this exercise and the progress summary. */
   insight?: ExerciseInsight;
+  /** Personal overview for today (written on the device); replaces the plain summary. */
+  note?: string;
 }
 
 function formatTempo(tempo?: string): string | null {
@@ -104,6 +106,7 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
   muscleLabel,
   previousSets = [],
   insight,
+  note,
 }) => {
   const units = useUnits();
   const [showDetails, setShowDetails] = useState(false);
@@ -175,7 +178,9 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
       {/* Progress summary and history chart */}
       {insight && (
         <div className="flex items-start" style={{ gap: fig(40), marginTop: fig(40) }}>
-          <p className="wk-body flex-1 min-w-0">{insight.summary}</p>
+          <p className="wk-body flex-1 min-w-0" aria-live="polite">
+            {note ?? insight.summary}
+          </p>
           {history.length >= 2 ? (
             <ProgressChart
               values={history.map((h) => h.e1rmKg)}

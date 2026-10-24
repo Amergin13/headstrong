@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo, useLayoutEffect, useRef } from 'react';
+import React, { useState, useCallback, useMemo, useLayoutEffect, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import {
   BiometricLog,
@@ -49,6 +49,15 @@ import { ProgramProgressCard } from './ProgramProgressCard';
 import { RecoveryScoreCard } from './RecoveryScoreCard';
 import { buildWeekStrip } from '../../services/sessionSchedule';
 import { buildExerciseInsight } from '../../services/exerciseInsight';
+import {
+  acceptExerciseNote,
+  buildExerciseNoteFacts,
+  cacheExerciseNote,
+  generateExerciseNote,
+  getCachedExerciseNote,
+} from '../../services/exerciseCoachNote';
+import { isOnDeviceModelReady } from '../../services/onDeviceModel';
+import '../../services/deviceModels';
 import {
   calculateWarmupPrescription,
   ensureWarmupSetsOnExercise,
@@ -683,6 +692,64 @@ export const TrainTab: React.FC<TrainTabProps> = ({
     [workouts, activeWorkout.id, activeWorkout.programWorkoutNumber, profile.programType, exerciseCatalog]
   );
 
+  // Exercise overviews: personal notes written on the device from the athlete's knowledge graph.
+  const knowledgeGraph = useMemo(
+    () =>
+      buildAthleteKnowledgeGraph(workouts, biometrics, exerciseCatalog, profile, calculateWeeklyMuscleVolume(workouts, exerciseCatalog)),
+    [workouts, biometrics, exerciseCatalog, profile]
+  );
+  const programLabel = planWorkoutNumber
+    ? `Phase ${planPhase?.phaseNumber ?? 1} (${planPhase?.shortName ?? ''}), week ${planWeek} of 6`
+    : `week ${mesoWeek} of 6 (${phaseMeta.name})`;
+  const exerciseNotes = useMemo(
+    () =>
+      activeWorkout.exercises.map((ex) => {
+        const def = exMap.get(ex.exerciseId);
+        return buildExerciseNoteFacts({
+          exercise: ex,
+          insight: buildExerciseInsight(ex, workouts, readiness.state, bodyweightEmaKg),
+          workouts,
+          readinessState: readiness.state,
+          knowledgeGraph,
+          primaryMuscle: def?.primaryMuscle,
+          muscleLabel: def ? MUSCLE_FRIENDLY_NAMES[def.primaryMuscle] : undefined,
+          programLabel,
+          formatWeight: (kg) => units.format(kg),
+        });
+      }),
+    // Facts use planned targets and history only, so ticking sets doesn't rewrite the notes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [activeWorkout.id, activeWorkout.exercises.map((e) => `${e.id}:${e.exerciseId}:${e.sets.length}`).join('|'), workouts, readiness.state, knowledgeGraph, programLabel, units.unit, bodyweightEmaKg]
+  );
+  const [generatedNotes, setGeneratedNotes] = useState<Record<string, string>>({});
+  const noteKeys = exerciseNotes.map((n) => n.key).join('|');
+  useEffect(() => {
+    if (showRecoveryGate) return;
+    let cancelled = false;
+    const cached: Record<string, string> = {};
+    for (const n of exerciseNotes) {
+      const hit = acceptExerciseNote(getCachedExerciseNote(n.key) ?? null, n);
+      if (hit) cached[n.key] = hit;
+    }
+    setGeneratedNotes(cached);
+    (async () => {
+      if (!(await isOnDeviceModelReady())) return;
+      // One at a time, top to bottom: the model answers one request at a time.
+      for (const n of exerciseNotes) {
+        if (cancelled) return;
+        if (cached[n.key]) continue;
+        const note = await generateExerciseNote(n);
+        if (cancelled || !note) continue;
+        cacheExerciseNote(n.key, note);
+        setGeneratedNotes((prev) => ({ ...prev, [n.key]: note }));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [noteKeys, showRecoveryGate]);
+
   // Page background: #283339 at the top fading to #13181C exactly where the first workout card starts.
   const cardsTopRef = useRef<HTMLDivElement>(null);
   const exercisesTopRef = useRef<HTMLDivElement>(null);
@@ -952,6 +1019,10 @@ export const TrainTab: React.FC<TrainTabProps> = ({
               muscleLabel={def ? MUSCLE_FRIENDLY_NAMES[def.primaryMuscle] : undefined}
               previousSets={getPreviousWorkingSets(ex.exerciseId, workouts)}
               insight={buildExerciseInsight(ex, workouts, readiness.state, bodyweightEmaKg)}
+              note={(() => {
+                const n = exerciseNotes[index];
+                return n ? generatedNotes[n.key] ?? n.fallback : undefined;
+              })()}
             />
           );
         })}

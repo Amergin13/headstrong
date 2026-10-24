@@ -97,6 +97,8 @@ export interface OnDevicePromptOptions {
   onDownloadProgress?: (fraction: number) => void;
   /** Overall time limit for creating the session and answering. */
   timeoutMs?: number;
+  /** A one-off request that must not join an ongoing chat conversation. */
+  stateless?: boolean;
 }
 
 async function createSession(systemPrompt: string, onDownloadProgress?: (f: number) => void): Promise<any | null> {
@@ -137,7 +139,12 @@ async function createSession(systemPrompt: string, onDownloadProgress?: (f: numb
  */
 interface FallbackModel {
   isReady: () => Promise<boolean>;
-  prompt: (systemPrompt: string, userPrompt: string, onPartial?: (t: string) => void) => Promise<string | null>;
+  prompt: (
+    systemPrompt: string,
+    userPrompt: string,
+    onPartial?: (t: string) => void,
+    options?: { stateless?: boolean }
+  ) => Promise<string | null>;
 }
 let fallbackModel: FallbackModel | null = null;
 export function registerFallbackOnDeviceModel(model: FallbackModel | null): void {
@@ -167,12 +174,17 @@ export async function promptOnDeviceModel(
     try {
       let shown = false;
       const answer = await withTimeout(
-        fallbackModel.prompt(systemPrompt, userPrompt, (text) => {
-          if (shown || (text.length > 40 && isUsableModelAnswer(text, systemPrompt, userPrompt))) {
-            shown = true;
-            options.onPartial?.(text);
-          }
-        }),
+        fallbackModel.prompt(
+          systemPrompt,
+          userPrompt,
+          (text) => {
+            if (shown || (text.length > 40 && isUsableModelAnswer(text, systemPrompt, userPrompt))) {
+              shown = true;
+              options.onPartial?.(text);
+            }
+          },
+          { stateless: options.stateless }
+        ),
         options.timeoutMs ?? 60_000
       );
       return answer && isUsableModelAnswer(answer, systemPrompt, userPrompt) ? answer.trim() : null;

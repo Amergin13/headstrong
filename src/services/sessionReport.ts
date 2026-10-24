@@ -122,7 +122,7 @@ function sessionVolume(w: WorkoutSession): number {
 }
 
 /** Catalog muscle names to the knowledge graph's muscle keys. */
-const MUSCLE_TO_GRAPH_KEY: Record<string, string> = {
+export const MUSCLE_TO_GRAPH_KEY: Record<string, string> = {
   'Side Delts': 'SideDelts',
   'Rear Delts': 'RearDelts',
   Back: 'Back',

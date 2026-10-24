@@ -39,6 +39,7 @@ import { processAssistantMessage, buildSafetyResponse, buildProgressSummary } fr
 import { evaluateSessionRecovery, getDaysUntilReady, getDisplayReadyAt } from '../recovery';
 import { buildWeekStrip } from '../../services/sessionSchedule';
 import { buildExerciseInsight } from '../../services/exerciseInsight';
+import { acceptExerciseNote, buildExerciseNoteFacts, generateExerciseNote } from '../../services/exerciseCoachNote';
 import { buildSessionProgressReport } from '../../services/sessionReport';
 import { personalizeSessionLoads } from '../loadPersonalization';
 import { getNextProgramWorkoutNumber } from '../muscleBuildingProgram';
@@ -3625,7 +3626,90 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
     );
   }
 
-  console.log('\nALL 34 ENGINE, GOVERNANCE, DESIGN HEURISTICS, TYPOGRAPHY, WEARABLES, WHOOP STRAIN, GOOGLE AUTH, ONBOARDING CONTEXT, 6-WEEK PROGRAM, TENSOR AI, SESSION REPORT & WORKOUT PAGE SUITES PASSED SUCCESSFULLY! 🎯');
+  console.log('\n[35. Personal Exercise Overviews (On-Device, Knowledge-Graph Grounded)]');
+  {
+    const HOUR = 60 * 60 * 1000;
+    const done = (num: number, hoursAgo: number, bump: number): WorkoutSession => {
+      const w = generate6WeekMuscleBuildingWorkout(num, 80);
+      const at = new Date(Date.now() - hoursAgo * HOUR);
+      w.completed = true;
+      w.completedAt = at.toISOString();
+      w.date = localDateString(at);
+      w.exercises.forEach((ex) =>
+        ex.sets.forEach((st) => {
+          st.completed = true;
+          st.actualReps = st.targetReps;
+          st.actualRir = 2;
+          st.actualWeightKg = st.targetWeightKg + bump;
+        })
+      );
+      return w;
+    };
+    const history = [done(2, 14 * 24, -2), done(2, 3 * 24, -1)];
+    const today = generate6WeekMuscleBuildingWorkout(2, 80);
+    const lateral = today.exercises[0];
+    const kgForNotes = buildAthleteKnowledgeGraph(history, [], SEED_EXERCISES, NEW_USER_PROFILE, calculateWeeklyMuscleVolume(history, SEED_EXERCISES));
+    const facts = buildExerciseNoteFacts({
+      exercise: lateral,
+      insight: buildExerciseInsight(lateral, history, 'Normal'),
+      workouts: history,
+      readinessState: 'Normal',
+      knowledgeGraph: kgForNotes,
+      primaryMuscle: 'Side Delts',
+      muscleLabel: 'Side shoulders',
+      programLabel: 'Phase 1 (Building foundations), week 1 of 6',
+      formatWeight: (kg) => `${kg} kg`,
+    });
+    assert(
+      facts.facts.some((f) => /this week: .* hard sets against a target of \d+–\d+/.test(f)) &&
+        facts.facts.some((f) => /^Last time: 4 sets/.test(f)) &&
+        facts.facts.some((f) => /^Today's plan: 4 sets of 15 reps at 10 kg/.test(f)) &&
+        facts.facts.some((f) => /heavier than last time/.test(f)),
+      "Exercise facts combine history, today's plan and the knowledge graph's weekly target for the muscle"
+    );
+    assert(/12 of 17–27 sets for side shoulders this week/.test(facts.fallback) && facts.fallback.length > 60, `Fallback overview is personal: "${facts.fallback}"`);
+
+    const good = 'Your strength on this lift has been climbing and your side shoulders still need sets this week. Today, lift 10 kg for all 4 sets of 15 with 2 reps in reserve and lower each rep slowly.';
+    assert(acceptExerciseNote(good, facts) === good, 'A note that only uses numbers from the facts is accepted');
+    assert(acceptExerciseNote('Great work! Today lift 12 kg for 4 sets of 15 and you will add 3 kg next week.', facts) === null, 'A note with invented numbers is rejected');
+    assert(acceptExerciseNote('As an AI language model, I think you should lift the weight today with good form.', facts) === null, 'Notes that talk about being an AI are rejected');
+    assert(acceptExerciseNote('**Note:** ' + good, facts) === good, 'Markdown and "Note:" prefixes are stripped');
+    assert(
+      acceptExerciseNote("You're hitting your target for side shoulders this week. Today, lift 10 kg for 4 sets of 15 with 2 reps in reserve.", facts) === null,
+      'A note that contradicts the knowledge graph (on target vs below target) is rejected'
+    );
+    const noTargetFacts = { ...facts, facts: facts.facts.filter((f) => !/hard sets against a target/.test(f)) };
+    assert(
+      acceptExerciseNote("You've shown good progress, hitting the target of 4 sets. Today lift 10 kg for 4 sets of 15 with 2 reps in reserve.", noTargetFacts) === null,
+      'A note may not mention a weekly target when the knowledge graph has none for that muscle'
+    );
+
+    let seenSystem = '';
+    let seenUser = '';
+    const fromModel = await generateExerciseNote(facts, async (system: string, user: string) => {
+      seenSystem = system;
+      seenUser = user;
+      return good;
+    });
+    assert(fromModel === good && /Use only the facts/.test(seenSystem) && seenUser.includes('hard sets against a target'), 'The on-device model is prompted with the knowledge-graph facts and its checked note is used');
+    assert((await generateExerciseNote(facts, async () => null)) === null, 'Without an on-device model the card keeps the fact-based overview');
+    let calls = 0;
+    const retried = await generateExerciseNote(facts, async () => (++calls === 1 ? 'Lift 99 kg today for 7 sets and you will set a record this week.' : good));
+    assert(retried === good && calls === 2, 'A rejected note gets one retry before falling back');
+    assert(facts.key === buildExerciseNoteFacts({
+      exercise: lateral,
+      insight: buildExerciseInsight(lateral, history, 'Normal'),
+      workouts: history,
+      readinessState: 'Normal',
+      knowledgeGraph: kgForNotes,
+      primaryMuscle: 'Side Delts',
+      muscleLabel: 'Side shoulders',
+      programLabel: 'Phase 1 (Building foundations), week 1 of 6',
+      formatWeight: (kg) => `${kg} kg`,
+    }).key, 'Notes are cached by their facts, so the same facts reuse the same note');
+  }
+
+  console.log('\nALL 35 ENGINE, GOVERNANCE, DESIGN HEURISTICS, TYPOGRAPHY, WEARABLES, WHOOP STRAIN, GOOGLE AUTH, ONBOARDING CONTEXT, 6-WEEK PROGRAM, TENSOR AI, SESSION REPORT, WORKOUT PAGE & EXERCISE OVERVIEW SUITES PASSED SUCCESSFULLY! 🎯');
 })().catch((err) => {
   console.error('Test Suite Failed:', err);
   if (typeof process !== 'undefined' && process.exit) {

@@ -123,16 +123,51 @@ let conversation: ChatTurn[] = [];
 let primePromise: Promise<void> | null = null;
 const MAX_REMEMBERED_EXCHANGES = 4;
 
+/** The engine answers one request at a time; chat replies and exercise notes queue here. */
+let requestQueue: Promise<unknown> = Promise.resolve();
+function enqueue<T>(task: () => Promise<T>): Promise<T> {
+  const run = requestQueue.then(task, task);
+  requestQueue = run.catch(() => undefined);
+  return run;
+}
+
+export interface GpuPromptOptions {
+  /** One-off request (e.g. an exercise note) that neither uses nor changes the chat conversation. */
+  stateless?: boolean;
+  maxTokens?: number;
+}
+
 /** Streams an answer from the GPU model. Returns null if it isn't ready or fails. */
 export async function promptGpuModel(
   systemPrompt: string,
   userPrompt: string,
-  onPartial?: (textSoFar: string) => void
+  onPartial?: (textSoFar: string) => void,
+  options: GpuPromptOptions = {}
 ): Promise<string | null> {
   if (!(await isGpuModelReady())) return null;
+  return enqueue(() => runGpuPrompt(systemPrompt, userPrompt, onPartial, options));
+}
+
+async function runGpuPrompt(
+  systemPrompt: string,
+  userPrompt: string,
+  onPartial: ((textSoFar: string) => void) | undefined,
+  options: GpuPromptOptions
+): Promise<string | null> {
   try {
     const engine = await loadGpuModel();
     if (primePromise) await primePromise;
+    if (options.stateless) {
+      const reply = await engine.chat.completions.create({
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+        temperature: 0.3,
+        max_tokens: options.maxTokens ?? 120,
+      });
+      return reply.choices[0]?.message?.content?.trim() || null;
+    }
     const sameInstructions = conversation[0]?.content === systemPrompt;
     const exchanges = (conversation.length - 1) / 2;
     if (!sameInstructions || exchanges >= MAX_REMEMBERED_EXCHANGES) {

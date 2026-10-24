@@ -11,7 +11,6 @@ import { buildCoachSystemPrompt, processAssistantMessage } from '../../services/
 import {
   getOnDeviceModelStatus,
   prepareOnDeviceModel,
-  registerFallbackOnDeviceModel,
   warmUpOnDeviceModel,
 } from '../../services/onDeviceModel';
 import {
@@ -22,12 +21,11 @@ import {
   isGpuModelReady,
   loadGpuModel,
   primeGpuModel,
-  promptGpuModel,
 } from '../../services/gpuModel';
 
 // Where Chrome doesn't expose Gemini Nano (Chrome on Android), the coach can use a model that
 // runs on the phone's GPU once the athlete has chosen to download it.
-registerFallbackOnDeviceModel({ isReady: isGpuModelReady, prompt: promptGpuModel });
+import '../../services/deviceModels';
 
 type DeviceCoachOffer = 'hidden' | 'offer' | 'downloading' | 'ready' | 'error';
 import { triggerHaptic } from '../../utils/haptics';
