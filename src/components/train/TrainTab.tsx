@@ -139,7 +139,7 @@ function getPreviousWorkingSets(exerciseId: string, workouts: WorkoutSession[]):
 /** One Figma pixel (1344 px wide frame) in screen pixels; see .wk in index.css. */
 const fig = (px: number) => `calc(${px} * var(--f))`;
 /** Side margin of the Workout page in the Figma frame. */
-const PAGE_GUTTER = 186;
+const PAGE_GUTTER = 38;
 
 const PROGRAM_TITLES: Record<string, string> = {
   ppl_upper: 'Push / Pull / Legs + Upper',
