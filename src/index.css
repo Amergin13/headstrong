@@ -157,12 +157,12 @@ select:focus-visible {
 
 /* ------------------------------------------------------------------------------------------
  * Workout page (Figma: 1344 px wide frame). --f converts one Figma pixel to screen pixels, so
- * every size is written as calc(<figma px> * var(--f)). On a Pixel (448 px wide) --f is 0.5, which
- * puts body text at 13 px and inputs at 37 px, close to Whoop. (Dividing the frame by the
+ * every size is written as calc(<figma px> * var(--f)). On a Pixel (448 px wide) --f is 0.45, which
+ * puts body text at ~12 px and inputs at 33 px, matched against Whoop. (Dividing the frame by the
  * screen width, 1/3, made text ~9 px.)
  * ---------------------------------------------------------------------------------------- */
 .wk {
-  --f: calc(min(100vw, 448px) / 896);
+  --f: calc(min(100vw, 448px) / 996);
   --wk-card: #2C3034;
   --wk-raised: #3B4044;
   --wk-pill: #474D50;
