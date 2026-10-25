@@ -697,7 +697,7 @@ export const App: React.FC = () => {
 
   return (
     <UnitsProvider unit={weightUnit}>
-    <div className="min-h-screen text-slate-100 flex flex-col font-sans">
+    <div className="wk min-h-screen text-slate-100 flex flex-col font-sans">
       {/* App Header */}
       <Header
         profile={profile}
@@ -708,7 +708,7 @@ export const App: React.FC = () => {
 
       {/* Main Mobile Container */}
       <main className="flex-1 max-w-md mx-auto w-full px-3.5 pt-3">
-        <Suspense fallback={<div className="biometric-card p-6 text-xs text-slate-400" role="status">Loading…</div>}>
+        <Suspense fallback={<div className="wk-card wk-body" role="status">Loading…</div>}>
         <ErrorBoundary key={activeTab} area={activeTab === 'train' ? 'Workout' : activeTab === 'analytics' ? 'Progress' : activeTab === 'program' ? 'Program' : 'Athlete'}>
         {activeTab === 'train' && (
           <TrainTab

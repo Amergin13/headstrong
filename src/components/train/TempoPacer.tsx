@@ -72,12 +72,12 @@ export const TempoPacer: React.FC<TempoPacerProps> = ({ tempo }) => {
   const phase = phases[phaseIdx];
 
   return (
-    <div className="flex items-center justify-between gap-2 px-3 py-2 rounded-xl bg-white/[0.04]">
-      <div className="text-xs text-slate-300 min-w-0" aria-live="polite">
+    <div className="wk-raised flex items-center justify-between gap-2">
+      <div className="wk-body min-w-0" aria-live="polite">
         {running ? (
           <span>
             Rep {rep} • <strong className="text-white">{phase.label}</strong>{' '}
-            <span className="font-mono">{phase.seconds - secondInPhase}s</span>
+            <span className="tabular-numbers font-bold">{phase.seconds - secondInPhase}s</span>
           </span>
         ) : (
           <span>
@@ -89,9 +89,12 @@ export const TempoPacer: React.FC<TempoPacerProps> = ({ tempo }) => {
         type="button"
         onClick={() => setRunning((r) => !r)}
         aria-pressed={running}
-        className={`shrink-0 min-h-[44px] px-3 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors ${
-          running ? 'bg-brand-primary text-black' : 'bg-white/[0.08] text-slate-200 hover:bg-white/[0.14]'
-        }`}
+        className="wk-pill shrink-0 min-h-[44px] gap-1.5 transition-colors"
+        style={
+          running
+            ? { background: 'var(--wk-accent)', color: '#13181C' }
+            : { background: 'var(--wk-pill)', color: '#fff' }
+        }
       >
         {running ? <Square className="w-3.5 h-3.5" aria-hidden="true" /> : <Activity className="w-3.5 h-3.5 stroke-[2]" aria-hidden="true" />}
         <span>{running ? 'Stop' : 'Pace me'}</span>
@@ -99,3 +102,4 @@ export const TempoPacer: React.FC<TempoPacerProps> = ({ tempo }) => {
     </div>
   );
 };
+

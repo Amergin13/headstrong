@@ -65,17 +65,20 @@ export const WorkoutSummaryModal: React.FC<WorkoutSummaryModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md">
-      <div className="w-full max-w-sm rounded-3xl surface-glass p-5 sm:p-6 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-200">
+      <div className="wk-card w-full max-w-sm shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-200">
         {/* Trophy Header */}
         <div className="text-center space-y-2 pt-2">
-          <div className="w-14 h-14 rounded-3xl bg-brand-primary/15 mx-auto flex items-center justify-center text-brand-primary shadow-lg shadow-brand-primary/20">
+          <div
+            className="w-14 h-14 rounded-3xl mx-auto flex items-center justify-center"
+            style={{ background: 'var(--wk-raised)', color: 'var(--wk-accent)' }}
+          >
             <Trophy className="w-7 h-7 stroke-[2.5]" />
           </div>
           <div>
-            <h3 className="font-black text-xl text-white tracking-tight">
+            <h3 className="wk-h1 text-lg">
               Session Completed!
             </h3>
-            <p className="text-xs text-slate-400 mt-0.5">
+            <p className="wk-caption mt-0.5">
               {workout.name} • {workout.splitDay} Split
             </p>
           </div>
@@ -83,84 +86,84 @@ export const WorkoutSummaryModal: React.FC<WorkoutSummaryModalProps> = ({
 
         {/* Core Stats Grid */}
         <div className="grid grid-cols-2 gap-2.5 text-xs">
-          <div className="p-3.5 rounded-2xl bg-[#090C12] text-center">
-            <span className="text-xs font-semibold text-slate-400 block">
+          <div className="wk-raised text-center">
+            <span className="wk-caption uppercase block">
               Total Weight Lifted
             </span>
-            <span className="text-xl font-bold font-mono text-brand-primary block mt-0.5">
+            <span className="text-xl font-bold tabular-numbers block mt-0.5" style={{ color: 'var(--wk-accent)' }}>
               {Math.round(units.toDisplay(tonnageKg)).toLocaleString()}
             </span>
-            <span className="text-xs text-slate-400">{units.unit}</span>
+            <span className="wk-caption">{units.unit}</span>
           </div>
 
-          <div className="p-3.5 rounded-2xl bg-[#090C12] text-center">
-            <span className="text-xs font-semibold text-slate-400 block">
+          <div className="wk-raised text-center">
+            <span className="wk-caption uppercase block">
               Sets Completed
             </span>
-            <span className="text-xl font-bold font-mono text-white block mt-0.5">
+            <span className="text-xl font-bold tabular-numbers text-white block mt-0.5">
               {completedSetsCount}
             </span>
-            <span className="text-xs text-slate-400">working sets</span>
+            <span className="wk-caption">working sets</span>
           </div>
         </div>
 
         {/* Whoop Workout Telemetry Card */}
         {hasWhoopData && (
-          <div className="p-3.5 rounded-2xl bg-[#0E1524] border border-cyan-500/20 text-xs space-y-2.5">
+          <div className="wk-raised text-xs space-y-2.5">
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-2">
-                <Activity className="w-3.5 h-3.5 text-cyan-400 stroke-[2.2]" />
-                <span className="font-bold text-white text-xs">
+                <Activity className="w-3.5 h-3.5 stroke-[2]" style={{ color: '#8FD3FF' }} />
+                <span className="wk-label">
                   WHOOP Workout Telemetry
                 </span>
               </div>
-              <span className="font-mono font-bold text-xs">
+              <span className="tabular-numbers font-bold text-xs">
                 {isSyncingWhoop ? (
-                  <span className="inline-flex items-center space-x-1.5 text-cyan-400">
+                  <span className="inline-flex items-center space-x-1.5" style={{ color: '#8FD3FF' }}>
                     <RefreshCw className="w-3 h-3 animate-spin stroke-[2]" />
                     <span>Syncing...</span>
                   </span>
                 ) : whoopTelemetry?.workoutStrain ? (
-                  <span className="text-cyan-400">{whoopTelemetry.workoutStrain} Workout Strain</span>
+                  <span style={{ color: '#8FD3FF' }}>{whoopTelemetry.workoutStrain} Workout Strain</span>
                 ) : workout.whoopStrain && !whoopTelemetry?.dayStrain ? (
-                  <span className="text-cyan-400">{workout.whoopStrain} Workout Strain</span>
+                  <span style={{ color: '#8FD3FF' }}>{workout.whoopStrain} Workout Strain</span>
                 ) : whoopTelemetry?.isPendingScore ? (
-                  <span className="text-amber-400">Scoring Activity...</span>
+                  <span style={{ color: '#FFC83D' }}>Scoring Activity...</span>
                 ) : whoopTelemetry?.dayStrain ? (
-                  <span className="text-cyan-400">{whoopTelemetry.dayStrain} Day Strain</span>
+                  <span style={{ color: '#8FD3FF' }}>{whoopTelemetry.dayStrain} Day Strain</span>
                 ) : (
-                  <span className="text-slate-400">Connected</span>
+                  <span className="wk-caption">Connected</span>
                 )}
               </span>
             </div>
 
             <div className="grid grid-cols-3 gap-2 text-center pt-0.5">
-              <div className="p-2 rounded-xl bg-black/40">
-                <span className="text-xs text-slate-400 block font-medium">
+              <div className="p-2 rounded-xl" style={{ background: 'var(--wk-card)' }}>
+                <span className="wk-caption block">
                   {whoopTelemetry?.workoutStrain ? 'Workout Strain' : whoopTelemetry?.dayStrain ? 'Day Strain' : 'Strain'}
                 </span>
-                <span className="text-sm font-bold font-mono text-cyan-400 block mt-0.5">
+                <span className="text-sm font-bold tabular-numbers block mt-0.5" style={{ color: '#8FD3FF' }}>
                   {whoopTelemetry?.workoutStrain ??
                     (whoopTelemetry?.isPendingScore
                       ? 'Scoring'
                       : whoopTelemetry?.dayStrain ?? workout.whoopStrain ?? '—')}
                 </span>
               </div>
-              <div className="p-2 rounded-xl bg-black/40">
-                <span className="text-xs text-slate-400 block font-medium">
-                  {whoopTelemetry?.maxHeartRate ? 'Peak HR' : 'Peak HR'}
+              <div className="p-2 rounded-xl" style={{ background: 'var(--wk-card)' }}>
+                <span className="wk-caption block">
+                  Peak HR
                 </span>
-                <span className="text-sm font-bold font-mono text-white block mt-0.5">
+                <span className="text-sm font-bold tabular-numbers text-white block mt-0.5">
                   {measuredPeakHr ? `${measuredPeakHr} bpm` : '—'}
                 </span>
               </div>
-              <div className="p-2 rounded-xl bg-black/40">
-                <span className="text-xs text-slate-400 block font-medium">Active Burn</span>
-                <span className="text-sm font-bold font-mono text-white block mt-0.5">
+              <div className="p-2 rounded-xl" style={{ background: 'var(--wk-card)' }}>
+                <span className="wk-caption block">Active Burn</span>
+                <span className="text-sm font-bold tabular-numbers text-white block mt-0.5">
                   {measuredKj ? `${measuredKj.toLocaleString()} kJ` : '—'}
                 </span>
                 {whoopTelemetry?.dayKilojoules && (
-                  <span className="text-xs text-slate-400 block font-mono">
+                  <span className="wk-caption block tabular-numbers">
                     ({whoopTelemetry.dayKilojoules.toLocaleString()} kJ day)
                   </span>
                 )}
@@ -169,8 +172,8 @@ export const WorkoutSummaryModal: React.FC<WorkoutSummaryModalProps> = ({
 
             {/* 1-Tap Sync Telemetry Button */}
             {onRefreshWhoop && (
-              <div className="pt-1.5 flex items-center justify-between border-t border-cyan-500/10">
-                <span className="text-xs text-slate-400">
+              <div className="pt-1.5 flex items-center justify-between border-t border-white/[0.06]">
+                <span className="wk-caption">
                   {whoopTelemetry?.workoutStrain
                     ? 'Captured from WHOOP strap'
                     : whoopTelemetry?.isPendingScore
@@ -184,9 +187,10 @@ export const WorkoutSummaryModal: React.FC<WorkoutSummaryModalProps> = ({
                     onRefreshWhoop();
                   }}
                   disabled={isSyncingWhoop}
-                  className="inline-flex items-center space-x-1 text-xs font-semibold text-cyan-400 hover:text-cyan-300 active:scale-95 transition-all disabled:opacity-50"
+                  className="inline-flex items-center space-x-1 text-xs font-bold active:scale-95 transition-all disabled:opacity-50"
+                  style={{ color: '#8FD3FF' }}
                 >
-                  <RefreshCw className={`w-3 h-3 stroke-[2.2] ${isSyncingWhoop ? 'animate-spin' : ''}`} />
+                  <RefreshCw className={`w-3 h-3 stroke-[2] ${isSyncingWhoop ? 'animate-spin' : ''}`} />
                   <span>{isSyncingWhoop ? 'Syncing...' : 'Sync WHOOP'}</span>
                 </button>
               </div>
@@ -196,31 +200,31 @@ export const WorkoutSummaryModal: React.FC<WorkoutSummaryModalProps> = ({
 
         {/* Heart rate & duration: measured values only */}
         {(measuredAvgHr || resolvedDurationMinutes) && (
-          <div className="p-3.5 rounded-2xl bg-[#141824] text-xs space-y-1.5">
+          <div className="wk-raised text-xs space-y-1.5">
             {measuredAvgHr && (
-              <div className="flex justify-between text-slate-300">
+              <div className="flex justify-between wk-body">
                 <span>Average heart rate (Whoop)</span>
-                <span className="font-mono text-white font-bold">{measuredAvgHr} bpm</span>
+                <span className="tabular-numbers text-white font-bold">{measuredAvgHr} bpm</span>
               </div>
             )}
             {resolvedDurationMinutes && (
-              <div className="flex justify-between text-slate-400">
+              <div className="flex justify-between wk-body">
                 <span>Workout time</span>
-                <span className="font-mono text-slate-200 font-semibold">{resolvedDurationMinutes} min</span>
+                <span className="tabular-numbers text-white font-semibold">{resolvedDurationMinutes} min</span>
               </div>
             )}
           </div>
         )}
 
         {/* Gamified XP Earned */}
-        <div className="p-3.5 rounded-2xl bg-brand-primary/15 flex items-center justify-between">
+        <div className="wk-raised flex items-center justify-between">
           <div className="flex items-center space-x-2.5">
-            <Zap className="w-5 h-5 text-brand-primary stroke-[2]" />
+            <Zap className="w-5 h-5 stroke-[2]" style={{ color: 'var(--wk-accent)' }} />
             <div>
-              <span className="text-sm font-bold text-white block">
+              <span className="wk-label normal-case block">
                 +{completionXp} XP for finishing
               </span>
-              <span className="text-xs text-brand-primary font-medium">
+              <span className="wk-caption" style={{ color: 'var(--wk-accent)' }}>
                 {readinessState === 'Primed' ? 'Includes +15% recovery bonus' : 'Progress saved'}
               </span>
             </div>
@@ -231,7 +235,8 @@ export const WorkoutSummaryModal: React.FC<WorkoutSummaryModalProps> = ({
         <button
           type="button"
           onClick={handleDone}
-          className="w-full py-3 min-h-[44px] rounded-2xl bg-white hover:bg-slate-100 text-slate-950 font-bold text-sm transition-all flex items-center justify-center space-x-2 shadow-lg shadow-white/5 active:scale-95"
+          className="wk-button transition-all flex items-center justify-center space-x-2 active:scale-95"
+          style={{ background: 'var(--wk-accent)', color: '#13181C' }}
         >
           <span>Done</span>
           <ArrowRight className="w-4 h-4 stroke-[2]" />
@@ -240,4 +245,5 @@ export const WorkoutSummaryModal: React.FC<WorkoutSummaryModalProps> = ({
     </div>
   );
 };
+
 

@@ -46,6 +46,17 @@ export type ReadinessState = 'Primed' | 'Normal' | 'Amber Shield';
 
 export type Gender = 'male' | 'female';
 
+export type BodyMeasurementSite =
+  | 'waist'
+  | 'chest'
+  | 'shoulders'
+  | 'arm'
+  | 'forearm'
+  | 'neck'
+  | 'hips'
+  | 'thigh'
+  | 'calf';
+
 export interface BiometricLog {
   date: string; // ISO date 'YYYY-MM-DD'
   bodyweightKg: number;
@@ -66,11 +77,17 @@ export interface BiometricLog {
   maxWorkoutHr?: number;
   workoutDurationMin?: number;
   source?: WearableProvider;
-  /** Body composition the athlete measured (smart scale, calipers or tape). Undefined = not measured. */
+  /** Body composition the athlete measured (RENPHO Bluetooth scale, smart tape, calipers or manual). Undefined = not measured. */
   bodyFatPct?: number;
   waistCm?: number;
   chestCm?: number;
+  shouldersCm?: number;
   armCm?: number;
+  forearmCm?: number;
+  neckCm?: number;
+  hipsCm?: number;
+  thighCm?: number;
+  calfCm?: number;
 }
 
 export type SetType = 'working' | 'warmup' | 'drop' | 'myo';

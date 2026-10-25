@@ -1,7 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import {
   BiometricLog,
-  DesignSystemComponent,
   ExerciseDefinition,
   UserProfile,
   WorkoutSession,
@@ -9,22 +8,8 @@ import {
 import {
   buildAthleteKnowledgeGraph,
   EXERCISE_SCIENCE_KNOWLEDGE_BASE,
-  TREISE_DESIGN_SYSTEM,
-  KgNode,
 } from '../../engine/knowledgeGraph';
 import { triggerHaptic } from '../../utils/haptics';
-import {
-  Sparkles,
-  Zap,
-  HeartPulse,
-  FlaskConical,
-  Search,
-  Calculator,
-  BookOpen,
-  Layers,
-  CheckCircle2,
-  Sliders,
-} from 'lucide-react';
 
 // Internal engineering and design-governance entries are not shown in the athlete's science browser.
 const INTERNAL_PRINCIPLE_IDS = [
@@ -44,7 +29,9 @@ interface KnowledgeGraphCardProps {
   weeklyVolume: Record<string, number>;
 }
 
-type InsightTabMode = 'overview' | 'joints' | 'science' | 'design-system';
+type InsightTabMode = 'overview' | 'joints' | 'science';
+
+const fig = (px: number) => `calc(${px} * var(--f))`;
 
 export const KnowledgeGraphCard: React.FC<KnowledgeGraphCardProps> = ({
   workouts,
@@ -65,571 +52,270 @@ export const KnowledgeGraphCard: React.FC<KnowledgeGraphCardProps> = ({
     [workouts, biometrics, exerciseCatalog, profile, weeklyVolume]
   );
 
-  const [selectedNodeId, setSelectedNodeId] = useState<string>('node-athlete');
   const [viewMode, setViewMode] = useState<InsightTabMode>('overview');
   const [scienceSearch, setScienceSearch] = useState('');
-  const [dsSearch, setDsSearch] = useState('');
-  const [dsCategoryFilter, setDsCategoryFilter] = useState<string>('all');
-
-  const selectedNode: KgNode =
-    pkg.nodes.find((n) => n.id === selectedNodeId) || pkg.nodes[0];
-
-  const nodePositions: Record<string, { x: number; y: number }> = {
-    'node-athlete': { x: 180, y: 110 },
-    'node-biometrics': { x: 68, y: 46 },
-    'node-delts-calves': { x: 292, y: 46 },
-    'node-anterior-chain': { x: 64, y: 168 },
-    'node-posterior-chain': { x: 296, y: 168 },
-    'node-joints': { x: 180, y: 192 },
-  };
 
   return (
-    <div className="biometric-card p-5 sm:p-6 space-y-4">
-      {/* Header */}
-      <div className="flex items-start justify-between">
-        <div>
-          <div className="flex items-center space-x-2">
-            <HeartPulse className="w-4 h-4 text-brand-primary stroke-[2]" />
-            <h3 className="font-extrabold text-base text-white tracking-tight">
-              Recovery &amp; Body Insights
-            </h3>
-          </div>
-          <p className="text-xs text-slate-400 font-medium mt-0.5">
-            How your sleep, joints, and weekly workouts work together
-          </p>
+    <div className="flex flex-col" style={{ gap: fig(22) }}>
+      {/* Top Summary Card */}
+      <div className="wk-card w-full text-left block">
+        <div className="flex items-start justify-between" style={{ gap: fig(24) }}>
+          <h2 className="wk-h1" style={{ lineHeight: 1.21 }}>
+            Recovery &amp; Body Insights
+          </h2>
+          <span className="wk-pill shrink-0">
+            {pkg.recoveryEfficiencyScore > 0 ? `${pkg.recoveryEfficiencyScore}/100` : 'READY'}
+          </span>
         </div>
-      </div>
 
-      {/* Top Summary Strip */}
-      <div className="grid grid-cols-3 gap-2.5">
-        <div className="p-3 rounded-2xl bg-[#141824] text-center">
-          <div className="text-xs text-slate-400 font-bold uppercase tracking-wider">
-            Full-Stretch Sets
-          </div>
-          <div className="text-sm font-mono font-extrabold text-brand-primary mt-0.5">
+        <p
+          style={{
+            fontSize: fig(28),
+            lineHeight: 1.21,
+            color: 'var(--wk-muted)',
+            marginTop: fig(20),
+          }}
+        >
+          How your sleep, joints, and weekly workouts work together
+        </p>
+
+        <div
+          className="flex items-end justify-between"
+          style={{ marginTop: fig(60), gap: fig(20) }}
+        >
+          <span className="wk-label" style={{ lineHeight: 1.21 }}>
+            FULL-STRETCH SETS
+          </span>
+          <span
+            className="font-bold text-white shrink-0"
+            style={{ fontSize: fig(40), lineHeight: 1 }}
+          >
             {pkg.lengthenedStimulusRatio}%
-          </div>
-          <div className="text-xs text-slate-400 font-medium">of weekly sets</div>
+          </span>
         </div>
 
-        <div className="p-3 rounded-2xl bg-[#141824] text-center">
-          <div className="text-xs text-slate-400 font-bold uppercase tracking-wider">
-            Lower Back Load
-          </div>
-          <div
-            className={`text-sm font-mono font-extrabold mt-0.5 ${
-              pkg.systemicAxialLoadScore > 75 ? 'text-amber-400' : 'text-white'
-            }`}
+        <div className="wk-bar" style={{ marginTop: fig(30) }}>
+          <div style={{ width: `${Math.min(100, pkg.lengthenedStimulusRatio)}%` }} />
+        </div>
+
+        <div
+          className="flex items-end justify-between"
+          style={{ marginTop: fig(40), gap: fig(20) }}
+        >
+          <span className="wk-label" style={{ lineHeight: 1.21 }}>
+            LOWER BACK LOAD
+          </span>
+          <span
+            className="font-bold text-white shrink-0"
+            style={{ fontSize: fig(40), lineHeight: 1 }}
           >
             {pkg.systemicAxialLoadScore}%
-          </div>
-          <div className="text-xs text-slate-400 font-medium">heavy lifts</div>
+          </span>
         </div>
 
-        <div className="p-3 rounded-2xl bg-[#141824] text-center">
-          <div className="text-xs text-slate-400 font-bold uppercase tracking-wider">
-            Recovery Score
-          </div>
-          <div className="text-sm font-mono font-extrabold text-brand-primary mt-0.5">
-            {pkg.recoveryEfficiencyScore > 0 ? `${pkg.recoveryEfficiencyScore}/100` : '—'}
-          </div>
-          <div className="text-xs text-slate-400 font-medium">readiness</div>
+        <div className="wk-bar" style={{ marginTop: fig(30) }}>
+          <div style={{ width: `${Math.min(100, pkg.systemicAxialLoadScore)}%` }} />
         </div>
-      </div>
 
-      {/* View Mode Switcher */}
-      <div className="grid grid-cols-3 gap-1 bg-[#090C12] p-1.5 rounded-2xl">
-        {(
-          [
-            { id: 'overview', label: 'Recovery' },
-            { id: 'joints', label: 'Joints' },
-            { id: 'science', label: 'Science & Logic' },
-          ] as const
-        ).map((tab) => (
-          <button
-            key={tab.id}
-            type="button"
-            onClick={() => {
-              triggerHaptic('light');
-              setViewMode(tab.id);
-            }}
-            className={`py-2 rounded-xl text-xs font-bold transition-all min-h-[44px] flex items-center justify-center ${
-              viewMode === tab.id
-                ? 'bg-white/[0.14] text-white font-bold shadow-sm'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
-
-      {/* TAB 1: OVERVIEW & COACHING TAKEAWAYS */}
-      {viewMode === 'overview' && (
-        <div className="space-y-3">
-          {/* Interactive Body & Recovery Map */}
-          <div className="relative rounded-2xl bg-[#090C12] overflow-hidden p-3">
-            <div className="flex items-center justify-between px-1.5 pt-0.5 text-xs text-slate-400">
-              <span>Tap any circle to view details</span>
-              <span className="font-mono text-brand-primary font-semibold">
-                {selectedNode.label}
-              </span>
-            </div>
-
-            <svg
-              viewBox="0 0 360 225"
-              className="w-full h-52 select-none"
-              role="img"
-              aria-label="Recovery and Body Balance Map"
-            >
-              <defs>
-                <radialGradient id="athleteGlow" cx="50%" cy="50%" r="50%">
-                  <stop offset="0%" stopColor="#00F59B" stopOpacity="0.3" />
-                  <stop offset="100%" stopColor="#00F59B" stopOpacity="0" />
-                </radialGradient>
-              </defs>
-
-              <circle cx="180" cy="110" r="55" fill="url(#athleteGlow)" />
-
-              {/* Connections */}
-              {pkg.edges.map((edge) => {
-                const src = nodePositions[edge.source];
-                const tgt = nodePositions[edge.target];
-                if (!src || !tgt) return null;
-
-                const isHighlighted =
-                  selectedNodeId === edge.source || selectedNodeId === edge.target;
-
-                const strokeColor =
-                  edge.relation === 'LOADS_JOINT'
-                    ? '#F59E0B'
-                    : edge.relation === 'MODULATES_RECOVERY'
-                    ? '#06B6D4'
-                    : '#00F59B';
-
-                return (
-                  <g key={edge.id}>
-                    <line
-                      x1={src.x}
-                      y1={src.y}
-                      x2={tgt.x}
-                      y2={tgt.y}
-                      stroke={strokeColor}
-                      strokeOpacity={isHighlighted ? 0.75 : 0.22}
-                      strokeWidth={isHighlighted ? 2.2 : 1.2}
-                      strokeDasharray={edge.relation === 'LOADS_JOINT' ? '3 3' : undefined}
-                    />
-                  </g>
-                );
-              })}
-
-              {/* Interactive Circles */}
-              {pkg.nodes.map((node) => {
-                const pos = nodePositions[node.id] || { x: 180, y: 110 };
-                const isSelected = node.id === selectedNodeId;
-                const isCenter = node.id === 'node-athlete';
-                const radius = isCenter ? 26 : 21;
-
-                const ringColor =
-                  node.status === 'warning'
-                    ? '#F43F5E'
-                    : node.status === 'elevated'
-                    ? '#F59E0B'
-                    : node.category === 'biometric'
-                    ? '#06B6D4'
-                    : '#00F59B';
-
-                return (
-                  <g
-                    key={node.id}
-                    onClick={() => {
-                      triggerHaptic('light');
-                      setSelectedNodeId(node.id);
-                    }}
-                    className="cursor-pointer"
-                  >
-                    {isSelected && (
-                      <circle
-                        cx={pos.x}
-                        cy={pos.y}
-                        r={radius + 5}
-                        fill="none"
-                        stroke={ringColor}
-                        strokeWidth="1.5"
-                        strokeOpacity="0.6"
-                      />
-                    )}
-                    <circle
-                      cx={pos.x}
-                      cy={pos.y}
-                      r={radius}
-                      fill="#0E1117"
-                      stroke={ringColor}
-                      strokeWidth={isSelected ? '2.5' : '1.5'}
-                    />
-                    <text
-                      x={pos.x}
-                      y={pos.y - 2}
-                      textAnchor="middle"
-                      fill="#FFFFFF"
-                      fontSize={isCenter ? '10' : '8.5'}
-                      fontWeight="700"
-                    >
-                      {node.label}
-                    </text>
-                    <text
-                      x={pos.x}
-                      y={pos.y + 9}
-                      textAnchor="middle"
-                      fill="#94A3B8"
-                      fontSize="7.5"
-                      fontFamily="monospace"
-                    >
-                      {node.subtitle}
-                    </text>
-                  </g>
-                );
-              })}
-            </svg>
-
-            {/* Selected Area Detail Box */}
-            <div className="p-4 rounded-2xl bg-[#141824] space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-bold text-white">
-                  {selectedNode.label}
-                </span>
-                <span className="text-xs font-mono text-brand-primary font-bold">
-                  Score: {selectedNode.score}/100
-                </span>
-              </div>
-              <p className="text-xs text-slate-300 leading-snug">
-                {selectedNode.detailText}
-              </p>
-              <div className="grid grid-cols-3 gap-2 pt-1">
-                {Object.entries(selectedNode.metrics).map(([k, v]) => (
-                  <div
-                    key={k}
-                    className="p-2.5 rounded-xl bg-[#090C12] text-center"
-                  >
-                    <div className="text-xs text-slate-400 truncate">{k}</div>
-                    <div className="text-xs font-mono font-bold text-white mt-0.5">{v}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* Coaching Takeaways */}
-          <div className="space-y-2">
-            <h4 className="text-xs font-bold text-slate-300 px-1">
-              What We Noticed From Your Recent Workouts
-            </h4>
-
-            {pkg.insights.map((ins) => (
-              <div
-                key={ins.id}
-                className="p-4 rounded-2xl bg-[#090C12] space-y-2"
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-1.5">
-                    <Sparkles className="w-4 h-4 text-brand-primary shrink-0 stroke-[2]" />
-                    <span className="text-sm font-bold text-white">{ins.title}</span>
-                  </div>
-                  <span className="text-xs font-mono font-bold px-2.5 py-0.5 rounded-full bg-brand-primary/15 text-brand-primary">
-                    {ins.impactMetric}
-                  </span>
-                </div>
-                <p className="text-xs text-slate-300 leading-relaxed">
-                  {ins.narrative}
-                </p>
-                <div className="pt-1 flex items-start space-x-1.5 text-xs text-brand-primary font-medium">
-                  <Zap className="w-3.5 h-3.5 shrink-0 mt-0.5 stroke-[2]" />
-                  <span>{ins.actionableStep}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* TAB 2: JOINT HEALTH */}
-      {viewMode === 'joints' && (
-        <div className="space-y-3">
-          <p className="text-xs text-slate-400 px-1">
-            Monitors weekly stress on your joints and lower back so you can switch to joint-friendly equipment before soreness builds up.
-          </p>
-
-          {pkg.joints.map((j) => {
-            const isHigh = j.status === 'High Strain Alert';
-            const isMod = j.status === 'Moderate Load';
-
+        {/* View Mode Switcher */}
+        <div
+          className="grid grid-cols-3 items-center"
+          style={{
+            marginTop: fig(30),
+            height: fig(84),
+            padding: fig(8),
+            borderRadius: fig(22),
+            background: 'var(--wk-raised)',
+          }}
+        >
+          {(
+            [
+              { id: 'overview', label: 'Recovery' },
+              { id: 'joints', label: 'Joints' },
+              { id: 'science', label: 'Science & Logic' },
+            ] as const
+          ).map((tab) => {
+            const isSelected = viewMode === tab.id;
             return (
-              <div
-                key={j.joint}
-                className="p-4 rounded-2xl bg-[#090C12] space-y-2.5"
+              <button
+                key={tab.id}
+                type="button"
+                aria-pressed={isSelected}
+                onClick={() => {
+                  triggerHaptic('light');
+                  setViewMode(tab.id);
+                }}
+                className="h-full flex items-center justify-center font-bold uppercase transition-colors"
+                style={{
+                  borderRadius: fig(16),
+                  fontSize: fig(24),
+                  letterSpacing: '0.02em',
+                  background: isSelected ? 'var(--wk-pill)' : 'transparent',
+                  color: isSelected ? '#fff' : 'var(--wk-muted)',
+                }}
               >
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-bold text-white">{j.joint}</span>
-                  <span
-                    className={`text-xs font-mono font-bold px-3 py-1 rounded-full ${
-                      isHigh
-                        ? 'bg-rose-500/15 text-rose-300'
-                        : isMod
-                        ? 'bg-amber-500/15 text-amber-300'
-                        : 'bg-brand-primary/15 text-brand-primary'
-                    }`}
-                  >
-                    {j.status}
-                  </span>
-                </div>
-
-                <div className="w-full bg-[#141824] h-2 rounded-full overflow-hidden">
-                  <div
-                    className={`h-full rounded-full transition-all ${
-                      isHigh
-                        ? 'bg-rose-500'
-                        : isMod
-                        ? 'bg-amber-400'
-                        : 'bg-brand-primary'
-                    }`}
-                    style={{ width: `${j.strainScore}%` }}
-                  />
-                </div>
-
-                <div className="text-xs text-slate-400">
-                  Main exercises: <span className="text-slate-200 font-medium">{j.topContributors.join(', ')}</span>
-                </div>
-
-                <p className="text-xs text-slate-300 leading-snug">
-                  {j.biomechanicalAdvice}
-                </p>
-              </div>
+                {tab.label}
+              </button>
             );
           })}
         </div>
-      )}
+      </div>
+
+      {/* TAB 1: RECOVERY INSIGHTS */}
+      {viewMode === 'overview' &&
+        pkg.insights.map((ins) => (
+          <div key={ins.id} className="wk-card w-full text-left block">
+            <div className="flex items-start justify-between" style={{ gap: fig(24) }}>
+              <h3 className="wk-h1" style={{ lineHeight: 1.21 }}>
+                {ins.title}
+              </h3>
+              <span className="wk-pill shrink-0">
+                {ins.impactMetric}
+              </span>
+            </div>
+
+            <p
+              style={{
+                fontSize: fig(28),
+                lineHeight: 1.21,
+                color: 'var(--wk-muted)',
+                marginTop: fig(20),
+              }}
+            >
+              {ins.narrative}
+            </p>
+
+            <p className="wk-body" style={{ marginTop: fig(24) }}>
+              {ins.actionableStep}
+            </p>
+          </div>
+        ))}
+
+      {/* TAB 2: JOINT HEALTH */}
+      {viewMode === 'joints' &&
+        pkg.joints.map((j) => (
+          <div key={j.joint} className="wk-card w-full text-left block">
+            <div className="flex items-start justify-between" style={{ gap: fig(24) }}>
+              <h3 className="wk-h1" style={{ lineHeight: 1.21 }}>
+                {j.joint}
+              </h3>
+              <span className="wk-pill shrink-0">
+                {j.status}
+              </span>
+            </div>
+
+            <p
+              style={{
+                fontSize: fig(28),
+                lineHeight: 1.21,
+                color: 'var(--wk-muted)',
+                marginTop: fig(20),
+              }}
+            >
+              {j.biomechanicalAdvice}
+            </p>
+
+            <div
+              className="flex items-end justify-between"
+              style={{ marginTop: fig(60), gap: fig(20) }}
+            >
+              <span className="wk-label" style={{ lineHeight: 1.21 }}>
+                MAIN EXERCISES: {j.topContributors.join(', ') || 'BALANCED'}
+              </span>
+              <span
+                className="font-bold text-white shrink-0"
+                style={{ fontSize: fig(40), lineHeight: 1 }}
+              >
+                {j.strainScore}%
+              </span>
+            </div>
+
+            <div className="wk-bar" style={{ marginTop: fig(30) }}>
+              <div style={{ width: `${Math.min(100, j.strainScore)}%` }} />
+            </div>
+          </div>
+        ))}
 
       {/* TAB 3: EXERCISE SCIENCE & LOGIC */}
       {viewMode === 'science' && (
-        <div className="space-y-3">
-          <p className="text-xs text-slate-400 px-1">
-            Authoritative Science & Logic formulas, volume landmarks, and recovery algorithms driving Treise.
-          </p>
-
-          {/* Search Bar */}
-          <div className="relative">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 stroke-[2]" />
+        <>
+          <div className="wk-card w-full text-left block">
+            <div className="flex items-start justify-between" style={{ gap: fig(24) }}>
+              <h3 className="wk-h1" style={{ lineHeight: 1.21 }}>
+                Science &amp; Logic
+              </h3>
+              <span className="wk-pill shrink-0">FORMULAS</span>
+            </div>
+            <p
+              style={{
+                fontSize: fig(28),
+                lineHeight: 1.21,
+                color: 'var(--wk-muted)',
+                marginTop: fig(20),
+              }}
+            >
+              Authoritative formulas, volume landmarks, and recovery rules driving Treise
+            </p>
             <input
               type="text"
               value={scienceSearch}
               onChange={(e) => setScienceSearch(e.target.value)}
               placeholder="Search principles, formulas, citations..."
-              className="w-full min-h-[44px] pl-10 pr-3.5 py-2 rounded-xl bg-[#0B0E14] text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-brand-primary transition-colors"
+              className="wk-field w-full"
+              style={{ marginTop: fig(28) }}
             />
           </div>
 
-          {/* Principle Cards */}
-          <div className="space-y-3 max-h-[380px] overflow-y-auto no-scrollbar pr-0.5">
-            {(pkg.scientificKnowledgeBase || EXERCISE_SCIENCE_KNOWLEDGE_BASE)
-              // Internal engineering and design-governance entries are not training science.
-              .filter((p) => !INTERNAL_PRINCIPLE_IDS.includes(p.id))
-              .filter((p) => {
-                if (!scienceSearch.trim()) return true;
-                const q = scienceSearch.toLowerCase();
-                return (
-                  p.title.toLowerCase().includes(q) ||
-                  p.topic.toLowerCase().includes(q) ||
-                  p.scientificRationale.toLowerCase().includes(q) ||
-                  p.keywords.some((k) => k.includes(q))
-                );
-              })
-              .map((p) => (
-                <div
-                  key={p.id}
-                  className="p-4 rounded-2xl bg-[#090C12] space-y-2 transition-all"
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <span className="text-sm font-bold text-white tracking-tight leading-snug">
-                      {p.title}
-                    </span>
-                    <span className="shrink-0 text-xs font-mono font-semibold px-2.5 py-0.5 rounded-full bg-white/[0.08] text-slate-300">
-                      {p.topic}
-                    </span>
-                  </div>
-
-                  {p.formula && (
-                    <div className="p-3 rounded-xl bg-[#141824] text-brand-primary font-mono text-xs flex items-center gap-2 overflow-x-auto no-scrollbar">
-                      <Calculator className="w-3.5 h-3.5 stroke-[2] shrink-0 text-brand-primary" />
-                      <span>{p.formula}</span>
-                    </div>
-                  )}
-
-                  <p className="text-xs text-slate-300 leading-relaxed">
-                    {p.scientificRationale}
-                  </p>
-
-                  <div className="pt-2 space-y-1">
-                    <div className="text-xs text-slate-400">
-                      <strong className="text-slate-300">How Treise applies this: </strong>
-                      {p.practicalApplication}
-                    </div>
-
-                    <div className="flex items-center gap-1.5 text-xs text-slate-500 pt-0.5">
-                      <BookOpen className="w-3 h-3 stroke-[2] text-brand-primary shrink-0" />
-                      <span>{p.academicCitation}</span>
-                    </div>
-                  </div>
+          {(pkg.scientificKnowledgeBase || EXERCISE_SCIENCE_KNOWLEDGE_BASE)
+            .filter((p) => !INTERNAL_PRINCIPLE_IDS.includes(p.id))
+            .filter((p) => {
+              if (!scienceSearch.trim()) return true;
+              const q = scienceSearch.toLowerCase();
+              return (
+                p.title.toLowerCase().includes(q) ||
+                p.topic.toLowerCase().includes(q) ||
+                p.scientificRationale.toLowerCase().includes(q) ||
+                p.keywords.some((k) => k.includes(q))
+              );
+            })
+            .map((p) => (
+              <div key={p.id} className="wk-card w-full text-left block">
+                <div className="flex items-start justify-between" style={{ gap: fig(24) }}>
+                  <h3 className="wk-h1" style={{ lineHeight: 1.21 }}>
+                    {p.title}
+                  </h3>
+                  <span className="wk-pill shrink-0">
+                    {p.topic}
+                  </span>
                 </div>
-              ))}
-          </div>
-        </div>
-      )}
 
-      {/* TAB 4: CODIFIED DESIGN SYSTEM */}
-      {viewMode === 'design-system' && (
-        <div className="space-y-3">
-          <p className="text-xs text-slate-400 px-1">
-            Authoritative Treise component specifications stored in the Knowledge Graph with logic, anatomy, variants, and Tailwind tokens.
-          </p>
+                <p
+                  style={{
+                    fontSize: fig(28),
+                    lineHeight: 1.21,
+                    color: 'var(--wk-muted)',
+                    marginTop: fig(20),
+                  }}
+                >
+                  {p.scientificRationale}
+                </p>
 
-          {/* Search Bar */}
-          <div className="relative">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 stroke-[2]" />
-            <input
-              type="text"
-              value={dsSearch}
-              onChange={(e) => setDsSearch(e.target.value)}
-              placeholder="Search components, anatomy, tokens..."
-              className="w-full min-h-[44px] pl-10 pr-3.5 py-2 rounded-xl bg-[#0B0E14] text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-brand-primary transition-colors"
-            />
-          </div>
+                {p.formula && (
+                  <p className="wk-label" style={{ marginTop: fig(24) }}>
+                    {p.formula}
+                  </p>
+                )}
 
-          {/* Category Filter Pills */}
-          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1">
-            {[
-              { id: 'all', label: 'All Components' },
-              { id: 'typography', label: 'Typography' },
-              { id: 'button', label: 'Buttons' },
-              { id: 'pill', label: 'Pills' },
-              { id: 'toggle', label: 'Toggles' },
-              { id: 'card', label: 'Cards' },
-              { id: 'badge', label: 'Badges' },
-              { id: 'input', label: 'Inputs' },
-              { id: 'modal', label: 'Modals' },
-              { id: 'layout', label: 'Layout & Spatial' },
-            ].map((cat) => (
-              <button
-                key={cat.id}
-                type="button"
-                onClick={() => {
-                  triggerHaptic('light');
-                  setDsCategoryFilter(cat.id);
-                }}
-                className={`px-3 py-1.5 rounded-xl text-xs font-semibold shrink-0 transition-all min-h-[36px] flex items-center justify-center ${
-                  dsCategoryFilter === cat.id
-                    ? 'bg-white/[0.14] text-white font-bold shadow-sm'
-                    : 'text-slate-400 hover:text-slate-200 bg-white/[0.04]'
-                }`}
-              >
-                {cat.label}
-              </button>
+                <p className="wk-body" style={{ marginTop: fig(16) }}>
+                  {p.practicalApplication}
+                </p>
+
+                <p className="wk-caption" style={{ marginTop: fig(16) }}>
+                  {p.academicCitation}
+                </p>
+              </div>
             ))}
-          </div>
-
-          {/* Component Specifications */}
-          <div className="space-y-3 max-h-[420px] overflow-y-auto no-scrollbar pr-0.5">
-            {(pkg.designSystem || TREISE_DESIGN_SYSTEM)
-              .filter((c) => {
-                if (dsCategoryFilter !== 'all' && c.category !== dsCategoryFilter) {
-                  return false;
-                }
-                if (!dsSearch.trim()) return true;
-                const q = dsSearch.toLowerCase();
-                return (
-                  c.name.toLowerCase().includes(q) ||
-                  c.category.toLowerCase().includes(q) ||
-                  c.rationale.toLowerCase().includes(q) ||
-                  c.tailwindTokens.toLowerCase().includes(q) ||
-                  c.logic.rules.some((r) => r.toLowerCase().includes(q))
-                );
-              })
-              .map((c) => (
-                <div
-                  key={c.id}
-                  className="p-4 rounded-2xl bg-[#090C12] space-y-3 transition-all"
-                >
-                  {/* Title & Metadata Header */}
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <div className="flex items-center space-x-2">
-                        <Layers className="w-3.5 h-3.5 text-brand-primary stroke-[2]" />
-                        <span className="text-sm font-bold text-white tracking-tight leading-snug">
-                          {c.name}
-                        </span>
-                      </div>
-                      <span className="text-xs text-slate-500 font-mono mt-0.5 block">
-                        {c.id}
-                      </span>
-                    </div>
-                    <span className="shrink-0 text-xs font-mono font-semibold px-2.5 py-0.5 rounded-full bg-white/[0.08] text-slate-300 capitalize">
-                      {c.category}
-                    </span>
-                  </div>
-
-                  <p className="text-xs text-slate-300 leading-relaxed font-medium">
-                    {c.rationale}
-                  </p>
-
-                  {/* Component Anatomy */}
-                  <div className="p-3.5 rounded-xl bg-[#141824] space-y-2 text-xs">
-                    <span className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center space-x-1.5">
-                      <Sliders className="w-3.5 h-3.5 text-brand-primary stroke-[2]" />
-                      <span>Component Anatomy</span>
-                    </span>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-slate-300">
-                      <div>
-                        <strong className="text-white block">Typography:</strong>
-                        <span className="text-slate-400 font-mono">{c.anatomy.typography}</span>
-                      </div>
-                      <div>
-                        <strong className="text-white block">Touch Target:</strong>
-                        <span className="text-slate-400">{c.anatomy.touchTarget}</span>
-                      </div>
-                      <div className="sm:col-span-2">
-                        <strong className="text-white block">Colors &amp; States:</strong>
-                        <span className="text-slate-400">{c.anatomy.colors}</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Logic & Invariant Rules */}
-                  <div className="space-y-1.5 text-xs">
-                    <span className="text-xs font-bold uppercase tracking-wider text-slate-400 block">
-                      Component Logic &amp; Invariants:
-                    </span>
-                    <ul className="space-y-1 text-slate-300 pl-1">
-                      {c.logic.rules.map((rule, idx) => (
-                        <li key={idx} className="flex items-start space-x-2">
-                          <CheckCircle2 className="w-3.5 h-3.5 text-brand-primary shrink-0 mt-0.5 stroke-[2]" />
-                          <span>{rule}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-
-                  {/* Tailwind Tokens Snippet */}
-                  <div className="pt-1">
-                    <span className="text-xs font-bold uppercase tracking-wider text-slate-400 block mb-1">
-                      Tailwind Tokens:
-                    </span>
-                    <div className="p-2.5 rounded-xl bg-[#050608] font-mono text-xs text-brand-primary overflow-x-auto no-scrollbar">
-                      {c.tailwindTokens}
-                    </div>
-                  </div>
-                </div>
-              ))}
-          </div>
-        </div>
+        </>
       )}
     </div>
   );

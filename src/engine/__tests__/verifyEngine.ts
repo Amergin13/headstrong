@@ -51,6 +51,15 @@ import { evaluateSetProgressAward, planRestAfterSet } from '../../services/setCo
 import { completeWorkout } from '../../services/workoutCompletion';
 import { prepareSessionForAthlete } from '../../services/sessionPreparation';
 import { buildCompositionCharts, buildStrengthCharts } from '../../services/progressSeries';
+import {
+  BODY_MEASUREMENT_SITES,
+  buildQnScaleConfigPayload,
+  buildQnScaleTimePayload,
+  decodeRenphoScalePacket,
+  decodeRenphoTapePacket,
+  RENPHO_SCALE_UUIDS,
+  RENPHO_TAPE_UUIDS,
+} from '../../services/renphoBluetooth';
 
 import { onWearableTokensRefreshed } from '../../services/wearableTokens';
 import { registerFallbackOnDeviceModel } from '../../services/onDeviceModel';
@@ -3079,8 +3088,9 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
     smartPrinciple !== undefined &&
       smartPrinciple.title.includes('Smart Device Integration') &&
       Boolean(smartPrinciple.formula?.includes('Fitbit')) &&
-      !smartPrinciple.formula?.includes('Bluetooth'),
-    'Knowledge Graph codifies sp-smart-device-integration for friction-free data ingestion'
+      Boolean(smartPrinciple.formula?.includes('RENPHO')) &&
+      Boolean(smartPrinciple.formula?.includes('Bluetooth')),
+    'Knowledge Graph codifies sp-smart-device-integration with RENPHO Web Bluetooth scales & smart tape measures'
   );
 
   // B. Querying Knowledge Base
@@ -3096,10 +3106,10 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
     'queryExerciseScienceKnowledgeBase returns sp-progress-tracking-diary for training diary query'
   );
 
-  const qSmart = queryExerciseScienceKnowledgeBase('How do smart scales and measuring devices connect?');
+  const qSmart = queryExerciseScienceKnowledgeBase('How do RENPHO smart scales and measuring devices connect?');
   assert(
     qSmart !== null && qSmart.id === 'sp-smart-device-integration',
-    'queryExerciseScienceKnowledgeBase returns sp-smart-device-integration for smart scale query'
+    'queryExerciseScienceKnowledgeBase returns sp-smart-device-integration for RENPHO smart scale query'
   );
 
   // C. AI Assistant Grounding & Conversational Delivery
@@ -3149,8 +3159,9 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
   assert(
     smartDeviceAnswer.message.text.toLowerCase().includes('friction-free') &&
       smartDeviceAnswer.message.text.includes('Fitbit') &&
-      !smartDeviceAnswer.message.text.includes('Bluetooth'),
-    'AI Assistant explains friction-free smart scale and measuring device telemetry'
+      smartDeviceAnswer.message.text.includes('RENPHO') &&
+      smartDeviceAnswer.message.text.includes('Bluetooth'),
+    'AI Assistant explains friction-free RENPHO Bluetooth scale, smart tape measure, and wearable telemetry'
   );
 
   // D. OnboardingModal Source Context Verification
@@ -3889,13 +3900,192 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
     assert(buildStrengthCharts({ workouts: [], profile: bulker, bodyweightKg: 80, fmt: fmtP }).length === 1, 'With no workouts, only the weekly sets card (as an example) shows');
   }
 
-  console.log('\nALL 35 ENGINE, GOVERNANCE, DESIGN HEURISTICS, TYPOGRAPHY, WEARABLES, WHOOP STRAIN, GOOGLE AUTH, ONBOARDING CONTEXT, 6-WEEK PROGRAM, TENSOR AI, SESSION REPORT, WORKOUT PAGE & EXERCISE OVERVIEW SUITES PASSED SUCCESSFULLY! 🎯');
+  console.log('\n[38. RENPHO Bluetooth Scale & Smart Tape Measure Integration + Multi-Site Body Circumference Charts]');
+  {
+    assert(
+      BODY_MEASUREMENT_SITES.length === 9 &&
+        ['waist', 'chest', 'arm', 'shoulders', 'hips', 'thigh', 'calf', 'forearm', 'neck'].every((id) =>
+          BODY_MEASUREMENT_SITES.some((s) => s.id === id)
+        ),
+      'BODY_MEASUREMENT_SITES covers all 9 body circumference areas (waist, chest, arm, shoulders, hips, thigh, calf, forearm, neck)'
+    );
+
+    // 1. QN-Scale / Yolanda (0xFFE1/0xFFE2) live & locked packets
+    // 82.45 kg = 8245 = 0x2035; divisor byte[2]=0x00 (100); state byte[5]=0x00 (live) vs 0x01 (locked); impedance 512 ohms = 0x0200
+    const qnLive = decodeRenphoScalePacket(
+      new Uint8Array([0x10, 0x0b, 0x00, 0x20, 0x35, 0x00, 0x00, 0x00]),
+      RENPHO_SCALE_UUIDS.QN_NOTIFY_FFE1
+    );
+    assert(
+      qnLive !== null && qnLive.weightKg === 82.45 && qnLive.stabilized === false && qnLive.sourceProtocol === 'qn_scale',
+      `QN-Scale live packet decodes 82.45 kg unsteady reading (got ${qnLive?.weightKg} kg, stabilized=${qnLive?.stabilized})`
+    );
+
+    const qnLocked = decodeRenphoScalePacket(
+      new Uint8Array([0x10, 0x0b, 0x00, 0x20, 0x35, 0x01, 0x02, 0x00]),
+      RENPHO_SCALE_UUIDS.QN_NOTIFY_FFE1
+    );
+    assert(
+      qnLocked !== null &&
+        qnLocked.weightKg === 82.45 &&
+        qnLocked.stabilized === true &&
+        qnLocked.impedanceOhms === 512,
+      `QN-Scale locked packet decodes 82.45 kg stabilized reading with 512Ω bio-impedance`
+    );
+
+    // 2. Standard Bluetooth SIG Weight Measurement (0x2A9D) SI & Imperial packets
+    // SI: 80.00 kg -> 80 / 0.005 = 16000 = 0x3E80 LE -> [0x00, 0x80, 0x3E]
+    const bleSi = decodeRenphoScalePacket(
+      new Uint8Array([0x00, 0x80, 0x3e]),
+      RENPHO_SCALE_UUIDS.BLE_WEIGHT_MEASUREMENT_CHAR
+    );
+    assert(
+      bleSi !== null && bleSi.weightKg === 80 && bleSi.stabilized === true && bleSi.sourceProtocol === 'ble_weight_scale',
+      `Standard BLE 0x2A9D SI packet decodes 80.0 kg (got ${bleSi?.weightKg} kg)`
+    );
+
+    // Imperial: 176.40 lb -> 17640 = 0x44E8 LE -> [0x01, 0xE8, 0x44] -> ~80.01 kg
+    const bleImp = decodeRenphoScalePacket(
+      new Uint8Array([0x01, 0xe8, 0x44]),
+      RENPHO_SCALE_UUIDS.BLE_WEIGHT_MEASUREMENT_CHAR
+    );
+    assert(
+      bleImp !== null && Math.abs(bleImp.weightKg - 80.01) < 0.02 && bleImp.stabilized === true,
+      `Standard BLE 0x2A9D Imperial packet converts 176.4 lb to ${bleImp?.weightKg} kg`
+    );
+
+    // 3. Standard Bluetooth SIG Body Composition (0x2A9C) packet
+    // Body fat 14.8% -> 148 = 0x0094 LE -> [0x00, 0x00, 0x94, 0x00]
+    const bleBf = decodeRenphoScalePacket(
+      new Uint8Array([0x00, 0x00, 0x94, 0x00]),
+      RENPHO_SCALE_UUIDS.BLE_BODY_COMPOSITION_CHAR
+    );
+    assert(
+      bleBf !== null && bleBf.bodyFatPct === 14.8 && bleBf.sourceProtocol === 'ble_body_composition',
+      `Standard BLE 0x2A9C packet decodes 14.8% body fat (got ${bleBf?.bodyFatPct}%)`
+    );
+
+    // 4. QN-Scale config & time payloads
+    const cfgKg = buildQnScaleConfigPayload('kg');
+    const cfgLb = buildQnScaleConfigPayload('lb');
+    assert(
+      cfgKg.length === 9 && cfgKg[0] === 0x13 && cfgKg[3] === 0x01 && cfgLb[3] === 0x02,
+      'buildQnScaleConfigPayload builds valid 9-byte checksummed handshake for kg and lb'
+    );
+    const timePayload = buildQnScaleTimePayload(1761400000000);
+    assert(timePayload.length === 5 && timePayload[0] === 0x02, 'buildQnScaleTimePayload builds 5-byte timestamp packet');
+
+    // 5. RENPHO Smart Tape Measure (0783b03e-8535-b5a0-7140-a304d2495cb8) 20-byte ASCII packets
+    const enc = (str: string) => new TextEncoder().encode(str);
+    const tapeLiveMetric = decodeRenphoTapePacket(enc('*08510;00000;0000PM\n'));
+    assert(
+      tapeLiveMetric !== null &&
+        tapeLiveMetric.lengthCm === 85.1 &&
+        tapeLiveMetric.stabilized === false &&
+        tapeLiveMetric.deviceUnit === 'cm' &&
+        tapeLiveMetric.sourceProtocol === 'renpho_ascii_tape',
+      `RENPHO Smart Tape live packet '*08510;00000;0000PM\\n' decodes 85.1 cm unsteady (got ${tapeLiveMetric?.lengthCm} cm)`
+    );
+
+    const tapeLockedMetric = decodeRenphoTapePacket(enc('*08510;00000;0000SM\n'));
+    assert(
+      tapeLockedMetric !== null &&
+        tapeLockedMetric.lengthCm === 85.1 &&
+        tapeLockedMetric.stabilized === true &&
+        tapeLockedMetric.deviceUnit === 'cm',
+      `RENPHO Smart Tape button-locked packet '*08510;00000;0000SM\\n' decodes 85.1 cm stabilized`
+    );
+
+    const tapeLockedImperial = decodeRenphoTapePacket(enc('*03810;00000;0000SI\n'));
+    assert(
+      tapeLockedImperial !== null &&
+        tapeLockedImperial.lengthCm === 38.1 &&
+        tapeLockedImperial.stabilized === true &&
+        tapeLockedImperial.deviceUnit === 'in',
+      `RENPHO Smart Tape imperial-mode packet '*03810;00000;0000SI\\n' decodes 38.1 cm (15.0 in) stabilized`
+    );
+
+    const tapeZero = decodeRenphoTapePacket(enc('*00000;00000;0000PM\n'));
+    assert(tapeZero === null, 'RENPHO Smart Tape zero reading is ignored');
+
+    // Binary millimeter tape packet: 850 mm = 0x0352 -> 85.0 cm locked
+    const tapeBinary = decodeRenphoTapePacket(new Uint8Array([0xaa, 0x01, 0x03, 0x52, 0x01, 0x00]));
+    assert(
+      tapeBinary !== null && tapeBinary.lengthCm === 85 && tapeBinary.stabilized === true,
+      `RENPHO binary tape frame decodes 85.0 cm locked`
+    );
+    assert(
+      RENPHO_TAPE_UUIDS.TAPE_SERVICE === '0783b03e-8535-b5a0-7140-a304d2495cb7' &&
+        RENPHO_TAPE_UUIDS.TAPE_NOTIFY_CHAR === '0783b03e-8535-b5a0-7140-a304d2495cb8',
+      'RENPHO Smart Tape GATT service and notification characteristic UUIDs are configured'
+    );
+
+    // 6. Multi-site body circumference charts in both cm and inches over time
+    const day = (n: number) => localDateString(new Date(2026, 9, n));
+    const blank = { hrvRmssd: 0, restingHr: 0, sleepHours: 0, steps: 0, activeZoneMinutes: 0 };
+    const multiSiteLogs: BiometricLog[] = [
+      {
+        date: day(1),
+        bodyweightKg: 80,
+        waistCm: 84,
+        chestCm: 104,
+        armCm: 38,
+        shouldersCm: 122,
+        hipsCm: 98,
+        thighCm: 58,
+        calfCm: 39,
+        forearmCm: 31,
+        neckCm: 40,
+        ...blank,
+      },
+      {
+        date: day(15),
+        bodyweightKg: 80.5,
+        waistCm: 82.5,
+        chestCm: 105.5,
+        armCm: 38.6,
+        shouldersCm: 123.5,
+        hipsCm: 97.5,
+        thighCm: 59,
+        calfCm: 39.4,
+        forearmCm: 31.4,
+        neckCm: 40.2,
+        ...blank,
+      },
+    ];
+    const fmtCm = { weight: (kg: number) => `${kg} kg`, length: (cm: number) => `${Math.round(cm * 10) / 10} cm` };
+    const fmtIn = { weight: (kg: number) => `${Math.round(kg * 2.20462 * 10) / 10} lb`, length: (cm: number) => `${Math.round((cm / 2.54) * 10) / 10} in` };
+    const bulker = { ...NEW_USER_PROFILE, goalPhase: 'Lean Bulk' } as UserProfile;
+
+    const chartsCm = buildCompositionCharts({ biometrics: multiSiteLogs, profile: bulker, fmt: fmtCm });
+    const chartsIn = buildCompositionCharts({ biometrics: multiSiteLogs, profile: bulker, fmt: fmtIn });
+
+    const allSiteChartIds = ['waist', 'chest', 'arms', 'shoulders', 'hips', 'thighs', 'calves', 'forearms', 'neck'];
+    assert(
+      allSiteChartIds.every((id) => {
+        const c = chartsCm.find((ch) => ch.id === id);
+        return c !== undefined && c.points.length === 2;
+      }),
+      'All 9 body circumference charts populate 2-point time series when logged'
+    );
+    const shouldersCmChart = chartsCm.find((c) => c.id === 'shoulders')!;
+    const shouldersInChart = chartsIn.find((c) => c.id === 'shoulders')!;
+    assert(
+      shouldersCmChart.summary.includes('123.5 cm') &&
+        shouldersCmChart.summary.includes('up 1.5 cm') &&
+        shouldersInChart.summary.includes('48.6 in'),
+      `Shoulders chart formats summary in cm ("${shouldersCmChart.summary}") and inches ("${shouldersInChart.summary}")`
+    );
+  }
+
+  console.log('\nALL 38 ENGINE, GOVERNANCE, DESIGN HEURISTICS, TYPOGRAPHY, WEARABLES, WHOOP STRAIN, GOOGLE AUTH, ONBOARDING CONTEXT, 6-WEEK PROGRAM, TENSOR AI, SESSION REPORT, WORKOUT PAGE, EXERCISE OVERVIEW & RENPHO BLUETOOTH SUITES PASSED SUCCESSFULLY! 🎯');
 })().catch((err) => {
   console.error('Test Suite Failed:', err);
   if (typeof process !== 'undefined' && process.exit) {
     process.exit(1);
   }
 });
+
 
 
 

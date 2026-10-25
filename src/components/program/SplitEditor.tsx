@@ -13,7 +13,7 @@ import {
   PROGRAM_PHASES,
   MUSCLE_BUILDING_PROGRAM_META,
 } from '../../engine/muscleBuildingProgram';
-import { Plus, Play, Flame, Layers, Zap, Dumbbell, ChevronDown, ChevronUp, X, Check } from 'lucide-react';
+import { ChevronRight, X } from 'lucide-react';
 import { triggerHaptic } from '../../utils/haptics';
 
 interface SplitEditorProps {
@@ -27,6 +27,8 @@ interface SplitEditorProps {
   onLaunchWorkoutNumber?: (workoutNumber: number) => void;
   onChangeProgram?: (program: ProgramSplitType) => void;
 }
+
+const fig = (px: number) => `calc(${px} * var(--f))`;
 
 export const SplitEditor: React.FC<SplitEditorProps> = ({
   exerciseCatalog,
@@ -108,13 +110,23 @@ export const SplitEditor: React.FC<SplitEditorProps> = ({
       aria-label="Select Training Program"
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
     >
-      <div className="w-full max-w-lg bg-[#0F1420] border border-white/[0.08] rounded-3xl p-5 sm:p-6 space-y-4 max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between">
+      <div
+        className="wk-card w-full max-w-lg max-h-[90vh] overflow-y-auto shadow-2xl"
+        style={{ display: 'flex', flexDirection: 'column', gap: fig(28) }}
+      >
+        <div className="flex items-start justify-between" style={{ gap: fig(24) }}>
           <div>
-            <h3 className="text-base font-bold text-white tracking-tight">
+            <h3 className="wk-h1" style={{ lineHeight: 1.21 }}>
               Select Training Program
             </h3>
-            <p className="text-xs text-slate-400 mt-0.5">
+            <p
+              style={{
+                fontSize: fig(28),
+                lineHeight: 1.21,
+                color: 'var(--wk-muted)',
+                marginTop: fig(16),
+              }}
+            >
               Choose your hypertrophy split or periodized 6-week plan
             </p>
           </div>
@@ -125,51 +137,46 @@ export const SplitEditor: React.FC<SplitEditorProps> = ({
               setShowProgramPicker(false);
             }}
             aria-label="Close program selector"
-            className="w-11 h-11 rounded-xl bg-white/[0.06] hover:bg-white/[0.12] text-slate-300 hover:text-white flex items-center justify-center transition-colors min-h-[44px]"
+            className="w-11 h-11 rounded-full text-white/70 hover:text-white flex items-center justify-center transition-colors min-h-[44px] shrink-0"
+            style={{ background: 'var(--wk-raised)' }}
           >
-            <X className="w-4 h-4 stroke-[2]" />
+            <X className="w-5 h-5 stroke-[2]" />
           </button>
         </div>
 
-        {/* Featured Periodized Block */}
-        <div className="space-y-2 pt-1">
-          <div className="text-xs font-bold uppercase tracking-wider text-amber-400/90 px-1">
-            Periodized Program
-          </div>
-          {FEATURED_PROGRAM_OPTIONS.map((opt) => {
+        <div className="flex flex-col" style={{ gap: fig(22) }}>
+          {[...FEATURED_PROGRAM_OPTIONS, ...PROGRAM_OPTIONS].map((opt) => {
             const isCurrent = programType === opt.id;
             return (
               <div
                 key={opt.id}
-                className={`p-4 rounded-2xl border transition-all ${
-                  isCurrent
-                    ? 'bg-amber-500/[0.08] border-amber-500/30'
-                    : 'bg-white/[0.03] border-white/[0.06] hover:border-white/[0.12]'
-                }`}
+                style={{
+                  paddingTop: fig(24),
+                  borderTop: '1px solid rgba(255,255,255,0.08)',
+                }}
               >
-                <div className="flex items-start justify-between gap-2">
+                <div className="flex items-start justify-between" style={{ gap: fig(16) }}>
                   <div>
-                    <div className="flex items-center space-x-2">
-                      <span className="font-bold text-sm text-white">
-                        {opt.title}
-                      </span>
-                      <span className="px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 font-extrabold text-xs">
-                        {opt.badge}
-                      </span>
+                    <div className="wk-label" style={{ lineHeight: 1.21 }}>
+                      {opt.title}
                     </div>
-                    <div className="text-xs text-slate-300 mt-1">
+                    <p
+                      style={{
+                        fontSize: fig(26),
+                        lineHeight: 1.21,
+                        color: 'var(--wk-muted)',
+                        marginTop: fig(8),
+                      }}
+                    >
                       {opt.frequency}
-                    </div>
+                    </p>
                   </div>
-                  {isCurrent && (
-                    <span className="px-2.5 py-1 rounded-xl bg-amber-500/20 text-amber-300 text-xs font-bold flex items-center space-x-1 shrink-0">
-                      <Check className="w-3.5 h-3.5 stroke-[2]" />
-                      <span>Active</span>
-                    </span>
-                  )}
+                  <span className="wk-pill shrink-0">
+                    {isCurrent ? 'ACTIVE' : opt.badge || 'SPLIT'}
+                  </span>
                 </div>
 
-                <p className="text-xs text-slate-400 mt-2 leading-relaxed">
+                <p className="wk-body" style={{ marginTop: fig(16) }}>
                   {opt.detail}
                 </p>
 
@@ -181,71 +188,14 @@ export const SplitEditor: React.FC<SplitEditorProps> = ({
                       onChangeProgram(opt.id);
                       setShowProgramPicker(false);
                     }}
-                    className="mt-3 w-full py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs transition-colors min-h-[44px] flex items-center justify-center space-x-1.5 shadow-sm"
-                  >
-                    <span>Switch to {opt.title}</span>
-                  </button>
-                )}
-              </div>
-            );
-          })}
-        </div>
-
-        {/* Standard Splits */}
-        <div className="space-y-2 pt-2">
-          <div className="text-xs font-bold uppercase tracking-wider text-slate-400 px-1">
-            Standard Hypertrophy Splits
-          </div>
-          {PROGRAM_OPTIONS.map((opt) => {
-            const isCurrent = programType === opt.id;
-            return (
-              <div
-                key={opt.id}
-                className={`p-4 rounded-2xl border transition-all ${
-                  isCurrent
-                    ? 'bg-brand-primary/[0.08] border-brand-primary/30'
-                    : 'bg-white/[0.03] border-white/[0.06] hover:border-white/[0.12]'
-                }`}
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <div className="flex items-center space-x-2">
-                      <span className="font-bold text-sm text-white">
-                        {opt.title}
-                      </span>
-                      {opt.badge && (
-                        <span className="px-2 py-0.5 rounded-md bg-brand-primary/20 text-brand-primary font-bold text-xs">
-                          {opt.badge}
-                        </span>
-                      )}
-                    </div>
-                    <div className="text-xs text-slate-300 mt-1">
-                      {opt.frequency}
-                    </div>
-                  </div>
-                  {isCurrent && (
-                    <span className="px-2.5 py-1 rounded-xl bg-brand-primary/20 text-brand-primary text-xs font-bold flex items-center space-x-1 shrink-0">
-                      <Check className="w-3.5 h-3.5 stroke-[2]" />
-                      <span>Active</span>
-                    </span>
-                  )}
-                </div>
-
-                <p className="text-xs text-slate-400 mt-2 leading-relaxed">
-                  {opt.detail}
-                </p>
-
-                {!isCurrent && onChangeProgram && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      triggerHaptic('medium');
-                      onChangeProgram(opt.id);
-                      setShowProgramPicker(false);
+                    className="wk-button"
+                    style={{
+                      marginTop: fig(20),
+                      background: 'var(--wk-accent)',
+                      color: '#13181C',
                     }}
-                    className="mt-3 w-full py-2.5 rounded-xl bg-white/[0.08] hover:bg-white/[0.14] text-white font-bold text-xs transition-colors min-h-[44px] flex items-center justify-center space-x-1.5"
                   >
-                    <span>Switch to {opt.title}</span>
+                    Switch to {opt.title}
                   </button>
                 )}
               </div>
@@ -262,164 +212,183 @@ export const SplitEditor: React.FC<SplitEditorProps> = ({
 
     return (
       <>
-        <div className="biometric-card p-5 sm:p-6 space-y-4">
-          {/* Program Header */}
-          <div className="flex items-start justify-between gap-3">
-            <div className="space-y-1">
-              <div className="flex items-center space-x-2">
-                <span className="px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 font-extrabold text-xs">
-                  6-Week Mesocycle
-                </span>
-                <span className="text-xs text-slate-400 font-medium">
-                  24 Workouts Total
-                </span>
-              </div>
-              <h3 className="font-extrabold text-base text-white tracking-tight">
+        <div className="flex flex-col" style={{ gap: fig(22) }}>
+          {/* Program Header Card */}
+          <div className="wk-card w-full text-left block">
+            <div className="flex items-start justify-between" style={{ gap: fig(24) }}>
+              <h2 className="wk-h1" style={{ lineHeight: 1.21 }}>
                 {MUSCLE_BUILDING_PROGRAM_META.name}
-              </h3>
-              <p className="text-xs text-slate-400 leading-relaxed">
-                {MUSCLE_BUILDING_PROGRAM_META.subtitle}
-              </p>
-            </div>
-
-            {onChangeProgram && (
-              <button
-                type="button"
-                onClick={() => {
-                  triggerHaptic('light');
-                  setShowProgramPicker(true);
-                }}
-                className="px-3 py-1.5 rounded-xl bg-white/[0.08] hover:bg-white/[0.14] text-xs font-bold text-white transition-all shrink-0 min-h-[44px]"
-              >
-                Change Split
-              </button>
-            )}
-          </div>
-
-          {/* Phase Switcher Tabs */}
-          <div className="grid grid-cols-3 gap-1 bg-[#090C12] p-1.5 rounded-2xl">
-            {PROGRAM_PHASES.map((p) => {
-              const isSelected = selectedPhase === p.phaseNumber;
-              return (
+              </h2>
+              {onChangeProgram && (
                 <button
-                  key={p.phaseNumber}
                   type="button"
                   onClick={() => {
                     triggerHaptic('light');
-                    setSelectedPhase(p.phaseNumber);
-                    const firstW = WORKOUT_TEMPLATES_24.find((w) => w.phase === p.phaseNumber);
-                    if (firstW) setExpandedWorkoutNum(firstW.workoutNumber);
+                    setShowProgramPicker(true);
                   }}
-                  className={`py-2 px-1 rounded-xl text-xs font-bold transition-all min-h-[44px] flex flex-col items-center justify-center text-center ${
-                    isSelected
-                      ? 'bg-white/[0.14] text-white shadow-sm'
-                      : 'text-slate-400 hover:text-slate-200'
-                  }`}
+                  className="wk-pill shrink-0"
                 >
-                  <span>Phase {p.phaseNumber}</span>
-                  <span className="text-xs font-mono text-slate-400">
-                    Wk {p.weeks[0]}–{p.weeks[1]}
-                  </span>
+                  Change Split
                 </button>
-              );
-            })}
+              )}
+            </div>
+
+            <p
+              style={{
+                fontSize: fig(28),
+                lineHeight: 1.21,
+                color: 'var(--wk-muted)',
+                marginTop: fig(20),
+              }}
+            >
+              {activePhaseData.description}
+            </p>
+
+            <div
+              className="flex items-end justify-between"
+              style={{ marginTop: fig(60), gap: fig(20) }}
+            >
+              <span className="wk-label" style={{ lineHeight: 1.21 }}>
+                {activePhaseData.name}
+              </span>
+              <span
+                className="font-bold text-white shrink-0"
+                style={{ fontSize: fig(40), lineHeight: 1 }}
+              >
+                Phase {selectedPhase}/3
+              </span>
+            </div>
+
+            <div className="wk-bar" style={{ marginTop: fig(30) }}>
+              <div style={{ width: `${Math.round((selectedPhase / 3) * 100)}%` }} />
+            </div>
+
+            {/* Phase Switcher Tabs */}
+            <div
+              className="grid grid-cols-3 items-center"
+              style={{
+                marginTop: fig(30),
+                height: fig(84),
+                padding: fig(8),
+                borderRadius: fig(22),
+                background: 'var(--wk-raised)',
+              }}
+            >
+              {PROGRAM_PHASES.map((p) => {
+                const isSelected = selectedPhase === p.phaseNumber;
+                return (
+                  <button
+                    key={p.phaseNumber}
+                    type="button"
+                    onClick={() => {
+                      triggerHaptic('light');
+                      setSelectedPhase(p.phaseNumber);
+                      const firstW = WORKOUT_TEMPLATES_24.find((w) => w.phase === p.phaseNumber);
+                      if (firstW) setExpandedWorkoutNum(firstW.workoutNumber);
+                    }}
+                    className="h-full flex items-center justify-center font-bold uppercase transition-colors"
+                    style={{
+                      borderRadius: fig(16),
+                      fontSize: fig(24),
+                      letterSpacing: '0.02em',
+                      background: isSelected ? 'var(--wk-pill)' : 'transparent',
+                      color: isSelected ? '#fff' : 'var(--wk-muted)',
+                    }}
+                  >
+                    Phase {p.phaseNumber} (W{p.weeks[0]}–{p.weeks[1]})
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
-        {/* Active Phase Description */}
-        <div className="p-3.5 rounded-2xl bg-white/[0.03] border border-white/[0.06] space-y-1">
-          <div className="font-bold text-xs text-white">
-            {activePhaseData.name}
-          </div>
-          <p className="text-xs text-slate-300 leading-relaxed">
-            {activePhaseData.description}
-          </p>
-          <div className="text-xs text-amber-300/90 font-medium pt-1">
-            Focus: {activePhaseData.intensityFocus}
-          </div>
-        </div>
-
-        {/* Phase Workouts List */}
-        <div className="space-y-2.5">
-          <div className="flex items-center justify-between text-xs text-slate-400 font-bold uppercase tracking-wider px-1">
-            <span>Workouts ({phaseWorkouts.length})</span>
-            <span>Tap to View Details</span>
-          </div>
-
+          {/* Phase Workouts as ProgramProgressCard Cards */}
           {phaseWorkouts.map((workout) => {
             const isExpanded = expandedWorkoutNum === workout.workoutNumber;
+            const progressPct = Math.round((workout.workoutNumber / 24) * 100);
             return (
-              <div
-                key={workout.workoutNumber}
-                className="rounded-2xl bg-[#090C12] border border-white/[0.04] overflow-hidden transition-all"
-              >
-                {/* Workout Summary Header */}
+              <div key={workout.workoutNumber} className="wk-card w-full text-left block">
                 <button
                   type="button"
                   onClick={() => {
                     triggerHaptic('light');
                     setExpandedWorkoutNum(isExpanded ? null : workout.workoutNumber);
                   }}
-                  className="w-full p-4 flex items-center justify-between text-left hover:bg-white/[0.02] transition-colors"
+                  aria-expanded={isExpanded}
+                  className="w-full text-left block"
                 >
-                  <div className="space-y-0.5">
-                    <div className="flex items-center space-x-2">
-                      <span className="font-mono font-bold text-xs px-2 py-0.5 rounded-md bg-white/[0.08] text-white">
-                        #{workout.workoutNumber}
-                      </span>
-                      <span className="text-xs text-slate-400">
-                        Week {workout.week} • Session {((workout.workoutNumber - 1) % 4) + 1} of 4
-                      </span>
-                    </div>
-                    <div className="font-bold text-sm text-white">
+                  <div className="flex items-start justify-between" style={{ gap: fig(24) }}>
+                    <h3 className="wk-h1" style={{ lineHeight: 1.21 }}>
                       {workout.title}
-                    </div>
+                    </h3>
+                    <ChevronRight
+                      className="wk-chevron shrink-0 transition-transform"
+                      style={{
+                        marginTop: fig(4),
+                        transform: isExpanded ? 'rotate(90deg)' : undefined,
+                      }}
+                      strokeWidth={2}
+                      aria-hidden="true"
+                    />
                   </div>
 
-                  <div className="flex items-center space-x-2">
-                    <span className="text-xs font-mono text-slate-400">
-                      {workout.exercises.length} exercises
+                  <p
+                    style={{
+                      fontSize: fig(28),
+                      lineHeight: 1.21,
+                      color: 'var(--wk-muted)',
+                      marginTop: fig(20),
+                    }}
+                  >
+                    Week {workout.week} • Session {((workout.workoutNumber - 1) % 4) + 1} of 4
+                  </p>
+
+                  <div
+                    className="flex items-end justify-between"
+                    style={{ marginTop: fig(60), gap: fig(20) }}
+                  >
+                    <span className="wk-label" style={{ lineHeight: 1.21 }}>
+                      WORKOUT #{workout.workoutNumber} • {workout.exercises.length} EXERCISES
                     </span>
-                    {isExpanded ? (
-                      <ChevronUp className="w-4 h-4 text-slate-400" />
-                    ) : (
-                      <ChevronDown className="w-4 h-4 text-slate-400" />
-                    )}
+                    <span
+                      className="font-bold text-white shrink-0"
+                      style={{ fontSize: fig(40), lineHeight: 1 }}
+                    >
+                      {workout.workoutNumber}/24
+                    </span>
+                  </div>
+
+                  <div className="wk-bar" style={{ marginTop: fig(30) }}>
+                    <div style={{ width: `${progressPct}%` }} />
                   </div>
                 </button>
 
-                {/* Expanded Workout Exercises & Start Button */}
                 {isExpanded && (
-                  <div className="px-4 pb-4 space-y-3 border-t border-white/[0.04] pt-3">
-                    <div className="space-y-1.5">
+                  <div
+                    style={{
+                      marginTop: fig(28),
+                      paddingTop: fig(24),
+                      borderTop: '1px solid rgba(255,255,255,0.08)',
+                    }}
+                  >
+                    <div className="flex flex-col" style={{ gap: fig(18) }}>
                       {workout.exercises.map((ex, exIdx) => (
                         <div
                           key={exIdx}
-                          className="p-2.5 rounded-xl bg-white/[0.03] flex items-center justify-between text-xs"
+                          className="flex items-center justify-between"
+                          style={{ gap: fig(16) }}
                         >
-                          <div className="flex items-center space-x-2 min-w-0">
-                            <span className="font-mono font-extrabold text-xs px-1.5 py-0.5 rounded bg-brand-primary/20 text-brand-primary shrink-0">
+                          <div className="flex items-center min-w-0" style={{ gap: fig(16) }}>
+                            <span className="wk-pill shrink-0">
                               {ex.order}
                             </span>
-                            <div className="truncate">
-                              <span className="font-bold text-white truncate">
-                                {ex.name}
-                              </span>
-                              {ex.intensityProtocol && (
-                                <span className="ml-1.5 font-mono text-rose-300 font-bold">
-                                  {ex.intensityProtocol.symbol}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-
-                          <div className="flex items-center space-x-2 shrink-0 font-mono text-xs">
-                            <span className="text-white font-bold">
-                              {ex.sets} × {ex.reps}
-                            </span>
-                            <span className="text-slate-400">
-                              {ex.tempo}
+                            <span className="wk-label truncate">
+                              {ex.name}
                             </span>
                           </div>
+                          <span className="wk-pill shrink-0">
+                            {ex.sets} × {ex.reps}
+                          </span>
                         </div>
                       ))}
                     </div>
@@ -431,10 +400,14 @@ export const SplitEditor: React.FC<SplitEditorProps> = ({
                           triggerHaptic('medium');
                           onLaunchWorkoutNumber(workout.workoutNumber);
                         }}
-                        className="w-full py-2.5 rounded-xl bg-white hover:bg-slate-100 text-slate-950 font-bold text-xs flex items-center justify-center space-x-1.5 transition-all min-h-[44px] shadow-sm active:scale-95"
+                        className="wk-button transition-all active:scale-95"
+                        style={{
+                          marginTop: fig(28),
+                          background: 'var(--wk-accent)',
+                          color: '#13181C',
+                        }}
                       >
-                        <Play className="w-3.5 h-3.5 fill-slate-950 stroke-[2]" />
-                        <span>Start Workout #{workout.workoutNumber}</span>
+                        Start Workout #{workout.workoutNumber}
                       </button>
                     )}
                   </div>
@@ -443,173 +416,210 @@ export const SplitEditor: React.FC<SplitEditorProps> = ({
             );
           })}
         </div>
-      </div>
-      {programPickerModal}
-    </>
-  );
-}
+        {programPickerModal}
+      </>
+    );
+  }
 
   return (
     <>
-      <div className="biometric-card p-5 sm:p-6 space-y-4">
-        <div className="flex items-center justify-between gap-2">
-          <div>
-            <h3 className="font-extrabold text-base text-white tracking-tight">
-              Workout Splits &amp; Exercises
-            </h3>
-            <p className="text-xs text-slate-400 font-medium mt-0.5">
-              Browse exercises by workout day or add your own
-            </p>
-          </div>
+      <div className="wk-card w-full text-left block">
+        <div className="flex items-start justify-between" style={{ gap: fig(24) }}>
+          <h2 className="wk-h1" style={{ lineHeight: 1.21 }}>
+            Workout Splits &amp; Exercises
+          </h2>
+          {onChangeProgram && (
+            <button
+              type="button"
+              onClick={() => {
+                triggerHaptic('light');
+                setShowProgramPicker(true);
+              }}
+              className="wk-pill shrink-0"
+            >
+              Change Split
+            </button>
+          )}
+        </div>
 
-          <div className="flex items-center space-x-2 shrink-0">
-            {onChangeProgram && (
+        <p
+          style={{
+            fontSize: fig(28),
+            lineHeight: 1.21,
+            color: 'var(--wk-muted)',
+            marginTop: fig(20),
+          }}
+        >
+          Browse exercises by workout day or add your own custom movement
+        </p>
+
+        <div
+          className="flex items-end justify-between"
+          style={{ marginTop: fig(60), gap: fig(20) }}
+        >
+          <span className="wk-label" style={{ lineHeight: 1.21 }}>
+            {activeDay} WORKOUT ROUTINE
+          </span>
+          <span
+            className="font-bold text-white shrink-0"
+            style={{ fontSize: fig(40), lineHeight: 1 }}
+          >
+            {routineExercises.length} EXERCISES
+          </span>
+        </div>
+
+        <div className="wk-bar" style={{ marginTop: fig(30) }}>
+          <div style={{ width: '100%' }} />
+        </div>
+
+        {/* Segmented Control */}
+        <div
+          className={`grid items-center ${
+            days.length === 2 ? 'grid-cols-2' : days.length === 3 ? 'grid-cols-3' : 'grid-cols-4'
+          }`}
+          style={{
+            marginTop: fig(30),
+            height: fig(84),
+            padding: fig(8),
+            borderRadius: fig(22),
+            background: 'var(--wk-raised)',
+          }}
+        >
+          {days.map((d) => {
+            const isSelected = activeDay === d.id;
+            return (
               <button
+                key={d.id}
                 type="button"
                 onClick={() => {
                   triggerHaptic('light');
-                  setShowProgramPicker(true);
+                  setActiveDay(d.id);
                 }}
-                className="px-3 py-1.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/20 text-xs font-bold transition-all min-h-[44px]"
+                className="h-full flex items-center justify-center font-bold uppercase transition-colors"
+                style={{
+                  borderRadius: fig(16),
+                  fontSize: fig(24),
+                  letterSpacing: '0.02em',
+                  background: isSelected ? 'var(--wk-pill)' : 'transparent',
+                  color: isSelected ? '#fff' : 'var(--wk-muted)',
+                }}
               >
-                Change Split
+                {d.label}
               </button>
-            )}
+            );
+          })}
+        </div>
+
+        {/* Routine Exercises */}
+        <div
+          className="flex flex-col"
+          style={{
+            marginTop: fig(28),
+            paddingTop: fig(24),
+            borderTop: '1px solid rgba(255,255,255,0.08)',
+            gap: fig(20),
+          }}
+        >
+          {routineExercises.map((ex, idx) => {
+            const equipLabel =
+              ex.equipment === 'barbell'
+                ? 'Barbell'
+                : ex.equipment === 'dumbbell'
+                ? 'Dumbbell'
+                : ex.equipment === 'cable'
+                ? 'Cable'
+                : ex.equipment === 'machine'
+                ? 'Machine'
+                : 'Bodyweight';
+            return (
+              <div
+                key={ex.id}
+                className="flex items-center justify-between"
+                style={{ gap: fig(16) }}
+              >
+                <div className="min-w-0">
+                  <div className="wk-label">{idx + 1}. {ex.name}</div>
+                  <div className="wk-caption" style={{ marginTop: fig(6) }}>
+                    {ex.primaryMuscle} • {equipLabel}
+                  </div>
+                </div>
+                <span className="wk-pill shrink-0">
+                  {ex.defaultRepRange[0]}–{ex.defaultRepRange[1]} REPS
+                </span>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Action Buttons */}
+        <div className="flex flex-col" style={{ marginTop: fig(28), gap: fig(16) }}>
+          {onLaunchSplitDay && (
+            <button
+              type="button"
+              onClick={() => {
+                triggerHaptic('medium');
+                onLaunchSplitDay(activeDay);
+              }}
+              className="wk-button transition-all active:scale-95"
+              style={{ background: 'var(--wk-accent)', color: '#13181C' }}
+            >
+              Start {activeDay} Workout
+            </button>
+          )}
+
+          <div className="flex items-center justify-between" style={{ gap: fig(16) }}>
+            <button
+              type="button"
+              onClick={() => setShowAlternatives((v) => !v)}
+              aria-expanded={showAlternatives}
+              className="wk-pill"
+            >
+              {showAlternatives ? 'Hide' : 'Show'} {alternativeExercises.length} Alternatives
+            </button>
             <button
               type="button"
               onClick={onOpenCreateExercise}
-              className="px-3 py-1.5 rounded-xl bg-white/[0.08] hover:bg-white/[0.14] text-xs font-bold text-white transition-all flex items-center space-x-1 min-h-[44px]"
+              className="wk-pill"
             >
-              <Plus className="w-3.5 h-3.5 stroke-[2]" />
-              <span>Add Exercise</span>
+              + Add Exercise
             </button>
           </div>
         </div>
 
-      {/* Segmented Control */}
-      <div
-        className={`grid gap-1 bg-[#090C12] p-1.5 rounded-2xl ${
-          days.length === 2 ? 'grid-cols-2' : days.length === 3 ? 'grid-cols-3' : 'grid-cols-4'
-        }`}
-      >
-        {days.map((d) => {
-          const isSelected = activeDay === d.id;
-          return (
-            <button
-              key={d.id}
-              type="button"
-              onClick={() => {
-                triggerHaptic('light');
-                setActiveDay(d.id);
-              }}
-              className={`py-2 rounded-xl text-xs font-bold transition-all min-h-[44px] flex items-center justify-center ${
-                isSelected
-                  ? 'bg-white/[0.14] text-white font-bold shadow-sm'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              {d.label}
-            </button>
-          );
-        })}
-      </div>
-
-      {/* Start Selected Split Workout */}
-      {onLaunchSplitDay && (
-        <button
-          type="button"
-          onClick={() => {
-            triggerHaptic('medium');
-            onLaunchSplitDay(activeDay);
-          }}
-          className="w-full py-2.5 rounded-xl bg-white hover:bg-slate-100 text-slate-950 font-bold text-xs flex items-center justify-center space-x-1.5 transition-all min-h-[44px] shadow-sm active:scale-95"
-        >
-          <Play className="w-3.5 h-3.5 fill-slate-950 stroke-[2]" />
-          <span>Start {activeDay} Workout</span>
-        </button>
-      )}
-
-      {/* The actual routine for this day, then alternatives behind a disclosure */}
-      <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 px-1">
-        In this workout
-      </h4>
-      <div className="space-y-2">
-        {routineExercises.map((ex, idx) => {
-          const equipLabel =
-            ex.equipment === 'barbell'
-              ? 'Barbell'
-              : ex.equipment === 'dumbbell'
-              ? 'Dumbbell'
-              : ex.equipment === 'cable'
-              ? 'Cable'
-              : ex.equipment === 'machine'
-              ? 'Machine'
-              : 'Bodyweight';
-          return (
-            <div key={ex.id} className="p-3.5 rounded-2xl bg-[#090C12] flex items-center gap-3 text-xs">
-              <span className="w-6 h-6 rounded-lg bg-white/[0.08] flex items-center justify-center font-mono font-bold text-white shrink-0">
-                {idx + 1}
-              </span>
-              <div className="min-w-0">
-                <div className="font-bold text-sm text-white">{ex.name}</div>
-                <div className="text-xs text-slate-400 mt-0.5">
-                  {ex.primaryMuscle} • {equipLabel} • {ex.defaultRepRange[0]}–{ex.defaultRepRange[1]} reps
+        {showAlternatives && (
+          <div
+            className="flex flex-col"
+            style={{
+              marginTop: fig(24),
+              paddingTop: fig(24),
+              borderTop: '1px solid rgba(255,255,255,0.08)',
+              gap: fig(18),
+            }}
+          >
+            {alternativeExercises.map((ex) => {
+              const meta = getExerciseBiomechanicalMeta(ex);
+              return (
+                <div
+                  key={ex.id}
+                  className="flex items-center justify-between"
+                  style={{ gap: fig(16) }}
+                >
+                  <div>
+                    <div className="wk-label">{ex.name}</div>
+                    <div className="wk-caption" style={{ marginTop: fig(6) }}>
+                      {ex.primaryMuscle} • {ex.defaultRepRange[0]}–{ex.defaultRepRange[1]} reps
+                    </div>
+                  </div>
+                  <span className="wk-pill shrink-0">
+                    {meta.isIsolation ? '3–4 SETS' : '3 SETS'}
+                  </span>
                 </div>
-              </div>
-            </div>
-          );
-        })}
+              );
+            })}
+          </div>
+        )}
       </div>
-
-      <button
-        type="button"
-        onClick={() => setShowAlternatives((v) => !v)}
-        aria-expanded={showAlternatives}
-        className="w-full min-h-[44px] px-1 flex items-center justify-between text-xs font-semibold text-slate-300 hover:text-white"
-      >
-        <span>Other exercises for this day ({alternativeExercises.length})</span>
-        <span aria-hidden="true">{showAlternatives ? '−' : '+'}</span>
-      </button>
-
-      {showAlternatives && (
-      <div className="space-y-2">
-        {alternativeExercises.map((ex) => {
-          const meta = getExerciseBiomechanicalMeta(ex);
-          const equipLabel =
-            ex.equipment === 'barbell'
-              ? 'Barbell'
-              : ex.equipment === 'dumbbell'
-              ? 'Dumbbell'
-              : ex.equipment === 'cable'
-              ? 'Cable'
-              : ex.equipment === 'machine'
-              ? 'Machine'
-              : 'Bodyweight';
-
-          return (
-            <div
-              key={ex.id}
-              className="p-3.5 rounded-2xl bg-[#090C12] flex items-center justify-between text-xs"
-            >
-              <div>
-                <div className="font-bold text-sm text-white">
-                  {ex.name}
-                </div>
-                <div className="text-xs text-slate-400 mt-0.5">
-                  {ex.primaryMuscle} • {equipLabel} • {ex.defaultRepRange[0]}–{ex.defaultRepRange[1]} reps
-                </div>
-              </div>
-
-              <span className="text-xs font-mono text-slate-300 px-2.5 py-1 rounded-lg bg-white/[0.08]">
-                {meta.isIsolation ? '3–4 Sets' : '3 Sets'}
-              </span>
-            </div>
-          );
-        })}
-      </div>
-      )}
-    </div>
-    {programPickerModal}
-  </>
+      {programPickerModal}
+    </>
   );
 };

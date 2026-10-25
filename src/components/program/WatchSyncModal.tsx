@@ -25,16 +25,7 @@ import {
   parseHealthConnectExport,
   isAndroidPlatform,
 } from '../../services/healthConnectService';
-import {
-  Watch,
-  X,
-  ExternalLink,
-  Cpu,
-  RefreshCw,
-  Upload,
-  CheckCircle2,
-  Unlink,
-} from 'lucide-react';
+import { X } from 'lucide-react';
 import { triggerHaptic } from '../../utils/haptics';
 
 interface WatchSyncModalProps {
@@ -45,6 +36,8 @@ interface WatchSyncModalProps {
   onClose?: () => void;
   isModal?: boolean;
 }
+
+const fig = (px: number) => `calc(${px} * var(--f))`;
 
 export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
   profile,
@@ -276,21 +269,23 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
   };
 
   const content = (
-    <div className="rounded-3xl bg-[#0E1219] p-5 sm:p-6 space-y-4 shadow-xl border border-white/[0.04]">
+    <div className="wk-card w-full text-left block shadow-xl">
       {/* Header & Close */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center space-x-3">
-          <div className="w-10 h-10 rounded-2xl bg-brand-primary/15 flex items-center justify-center text-brand-primary">
-            <Watch className="w-5 h-5 stroke-[2]" />
-          </div>
-          <div>
-            <h3 className="font-bold text-base text-white tracking-tight">
-              Wearable & Recovery Sync
-            </h3>
-            <p className="text-xs text-slate-400">
-              Auto-regulate daily training loads with biometric telemetry
-            </p>
-          </div>
+      <div className="flex items-start justify-between" style={{ gap: fig(24) }}>
+        <div>
+          <h3 className="wk-h1" style={{ lineHeight: 1.21 }}>
+            Wearable &amp; Recovery Sync
+          </h3>
+          <p
+            style={{
+              fontSize: fig(28),
+              lineHeight: 1.21,
+              color: 'var(--wk-muted)',
+              marginTop: fig(16),
+            }}
+          >
+            Auto-regulate daily training loads with biometric telemetry
+          </p>
         </div>
 
         {onClose && (
@@ -298,25 +293,27 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
             type="button"
             onClick={onClose}
             aria-label="Close watch sync modal"
-            className="w-9 h-9 rounded-full flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/[0.08] transition-colors"
+            className="w-11 h-11 min-h-[44px] rounded-full flex items-center justify-center text-white/70 hover:text-white transition-colors shrink-0"
+            style={{ background: 'var(--wk-raised)' }}
           >
-            <X className="w-4 h-4 stroke-[2]" />
+            <X className="w-5 h-5 stroke-[2]" />
           </button>
         )}
       </div>
 
       {/* Provider Selector Tabs */}
-      <div className="grid grid-cols-3 gap-1.5 p-1 rounded-2xl bg-[#090C12] border border-white/[0.04]">
+      <div
+        className="grid grid-cols-3 items-center"
+        style={{
+          marginTop: fig(30),
+          height: fig(84),
+          padding: fig(8),
+          borderRadius: fig(22),
+          background: 'var(--wk-raised)',
+        }}
+      >
         {(['fitbit', 'whoop', 'health_connect'] as const).map((prov) => {
           const isSelected = selectedProvider === prov;
-          const isActive = profile.wearableSource === prov;
-          const isConnected =
-            prov === 'fitbit'
-              ? profile.fitbitConnected
-              : prov === 'whoop'
-              ? profile.whoopConnected
-              : profile.healthConnectConnected;
-
           const shortLabels: Record<WearableProvider, string> = {
             fitbit: 'Pixel / Fitbit',
             whoop: 'Whoop 4.0',
@@ -333,178 +330,117 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
                 setImportStatus(null);
                 setSyncProgress(null);
               }}
-              className={`py-2 px-1.5 rounded-xl text-xs font-semibold flex flex-col items-center justify-center transition-all min-h-[44px] ${
-                isSelected
-                  ? 'bg-white/[0.12] text-white shadow-sm'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
+              className="h-full flex items-center justify-center font-bold uppercase transition-colors px-1 min-h-[44px]"
+              style={{
+                borderRadius: fig(16),
+                fontSize: fig(22),
+                letterSpacing: '0.02em',
+                background: isSelected ? 'var(--wk-pill)' : 'transparent',
+                color: isSelected ? '#fff' : 'var(--wk-muted)',
+              }}
             >
               <span className="truncate">{shortLabels[prov]}</span>
-              {isActive ? (
-                <span className="inline-flex items-center px-1.5 py-0.5 rounded-full bg-emerald-400/20 text-emerald-400 text-xs font-bold mt-1">
-                  Active
-                </span>
-              ) : isConnected ? (
-                <span className="w-1.5 h-1.5 rounded-full bg-slate-500 mt-1" />
-              ) : null}
             </button>
           );
         })}
       </div>
 
-      {/* Selected Provider Card */}
-      <div className="p-4 rounded-2xl bg-[#090C12] text-xs space-y-3 border border-white/[0.04]">
-        <div className="flex justify-between items-center">
-          <div>
-            <div className="font-bold text-white text-sm">{providerMeta.name}</div>
-            <div className="text-slate-400 text-xs">{providerMeta.hardwareFocus}</div>
-          </div>
-          {isCurrentActive ? (
-            <span className="flex items-center space-x-1.5 text-emerald-400 font-semibold px-2.5 py-1 rounded-full bg-emerald-500/10 text-xs">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span>Active Tracker</span>
-            </span>
-          ) : isProviderConnected ? (
-            <button
-              type="button"
-              onClick={handleSetActiveTracker}
-              className="px-2.5 py-1 rounded-full bg-brand-primary/15 hover:bg-brand-primary/25 text-brand-primary text-xs font-bold transition-colors flex items-center min-h-[30px]"
-            >
-              Set as Active
-            </button>
-          ) : (
-            <span className="text-slate-400 text-xs px-2.5 py-1 rounded-full bg-white/[0.04]">
-              Not Connected
-            </span>
-          )}
-        </div>
+      {/* Selected Provider Summary */}
+      <div
+        className="flex items-end justify-between"
+        style={{ marginTop: fig(44), gap: fig(20) }}
+      >
+        <span className="wk-label" style={{ lineHeight: 1.21 }}>
+          {providerMeta.name}
+        </span>
+        {isCurrentActive ? (
+          <span className="wk-pill shrink-0">ACTIVE TRACKER</span>
+        ) : isProviderConnected ? (
+          <button
+            type="button"
+            onClick={handleSetActiveTracker}
+            className="wk-pill shrink-0 min-h-[44px]"
+          >
+            Set as Active
+          </button>
+        ) : (
+          <span className="wk-pill shrink-0">NOT CONNECTED</span>
+        )}
+      </div>
 
-        {/* Dynamic State: Connected Metrics vs Not-Connected Description */}
-        {isProviderConnected ? (
-          <div className="pt-2 border-t border-white/[0.04] space-y-2.5">
-            {selectedProvider === 'whoop' && typeof latestBiometrics.recoveryScore === 'number' && (
-              <div className="p-2.5 rounded-xl bg-black/30 flex items-center justify-between">
-                <div>
-                  <span className="text-slate-400 text-xs block">Whoop Recovery Score</span>
-                  <span className="text-xs text-slate-500">
-                    {latestBiometrics.recoveryScore >= 67
-                      ? 'Green (Prime to train)'
-                      : latestBiometrics.recoveryScore >= 34
-                      ? 'Yellow (Standard progression)'
-                      : 'Red (Recovery Shield)'}
-                  </span>
-                </div>
-                <span
-                  className={`font-mono font-bold text-sm px-2.5 py-1 rounded-lg ${
-                    latestBiometrics.recoveryScore >= 67
-                      ? 'text-emerald-400 bg-emerald-500/15'
-                      : latestBiometrics.recoveryScore >= 34
-                      ? 'text-amber-400 bg-amber-500/15'
-                      : 'text-rose-400 bg-rose-500/15'
-                  }`}
-                >
-                  {latestBiometrics.recoveryScore}%
-                </span>
-              </div>
-            )}
-            {selectedProvider === 'fitbit' && (typeof latestBiometrics.fitbitReadinessScore === 'number' || typeof latestBiometrics.readinessScore === 'number') && (
-              <div className="p-2.5 rounded-xl bg-black/30 flex items-center justify-between">
-                <div>
-                  <span className="text-slate-400 text-xs block">Pixel Watch Daily Readiness</span>
-                  <span className="text-xs text-slate-500">
-                    {(latestBiometrics.fitbitReadinessScore ?? latestBiometrics.readinessScore!) >= 65
-                      ? 'High Readiness (Prime to train)'
-                      : (latestBiometrics.fitbitReadinessScore ?? latestBiometrics.readinessScore!) >= 30
-                      ? 'Target Readiness (Standard progression)'
-                      : 'Low Readiness (Recovery Shield)'}
-                  </span>
-                </div>
-                <span
-                  className={`font-mono font-bold text-sm px-2.5 py-1 rounded-lg ${
-                    (latestBiometrics.fitbitReadinessScore ?? latestBiometrics.readinessScore!) >= 65
-                      ? 'text-emerald-400 bg-emerald-500/15'
-                      : (latestBiometrics.fitbitReadinessScore ?? latestBiometrics.readinessScore!) >= 30
-                      ? 'text-amber-400 bg-amber-500/15'
-                      : 'text-rose-400 bg-rose-500/15'
-                  }`}
-                >
+      <div className="wk-bar" style={{ marginTop: fig(24) }}>
+        <div style={{ width: isProviderConnected ? '100%' : '0%' }} />
+      </div>
+
+      {isProviderConnected ? (
+        <div
+          className="flex flex-col"
+          style={{
+            marginTop: fig(28),
+            paddingTop: fig(24),
+            borderTop: '1px solid rgba(255,255,255,0.08)',
+            gap: fig(18),
+          }}
+        >
+          {selectedProvider === 'whoop' && typeof latestBiometrics.recoveryScore === 'number' && (
+            <div className="flex items-center justify-between" style={{ gap: fig(16) }}>
+              <span className="wk-label">Whoop Recovery Score</span>
+              <span className="wk-pill">{latestBiometrics.recoveryScore}%</span>
+            </div>
+          )}
+          {selectedProvider === 'fitbit' &&
+            (typeof latestBiometrics.fitbitReadinessScore === 'number' ||
+              typeof latestBiometrics.readinessScore === 'number') && (
+              <div className="flex items-center justify-between" style={{ gap: fig(16) }}>
+                <span className="wk-label">Daily Readiness</span>
+                <span className="wk-pill">
                   {latestBiometrics.fitbitReadinessScore ?? latestBiometrics.readinessScore}
                 </span>
               </div>
             )}
-            <div className="grid grid-cols-2 gap-2.5">
-              <div className="p-2.5 rounded-xl bg-black/30">
-                <span className="text-slate-400 block text-xs">Last Night&apos;s HRV</span>
-                <span className="font-mono text-white font-semibold text-sm">
-                  {latestBiometrics.hrvRmssd} ms
-                </span>
-              </div>
-              <div className="p-2.5 rounded-xl bg-black/30">
-                <span className="text-slate-400 block text-xs">Resting Heart Rate</span>
-                <span className="font-mono text-white font-semibold text-sm">
-                  {latestBiometrics.restingHr} bpm
-                </span>
-              </div>
-              <div className="p-2.5 rounded-xl bg-black/30">
-                <span className="text-slate-400 block text-xs">Sleep Duration</span>
-                <span className="font-mono text-white font-semibold text-sm">
-                  {latestBiometrics.sleepHours} hrs
-                </span>
-              </div>
-              <div className="p-2.5 rounded-xl bg-black/30">
-                <span className="text-slate-400 block text-xs">Daily Steps</span>
-                <span className="font-mono text-white font-semibold text-sm">
-                  {latestBiometrics.steps.toLocaleString()}
-                </span>
-              </div>
-              {latestBiometrics.avgWorkoutHr && (
-                <div className="p-2.5 rounded-xl bg-black/30 col-span-2 flex justify-between items-center">
-                  <span className="text-slate-400 text-xs">Workout Heart Rate</span>
-                  <span className="font-mono text-cyan-400 font-semibold text-sm">
-                    {latestBiometrics.avgWorkoutHr} bpm avg
-                    {latestBiometrics.maxWorkoutHr ? ` (${latestBiometrics.maxWorkoutHr} peak)` : ''}
-                  </span>
-                </div>
-              )}
-            </div>
+          <div className="flex items-center justify-between" style={{ gap: fig(16) }}>
+            <span className="wk-label">Last Night&apos;s HRV</span>
+            <span className="wk-pill">{latestBiometrics.hrvRmssd} ms</span>
           </div>
-        ) : (
-          <div className="pt-2 border-t border-white/[0.04] space-y-2">
-            <p className="text-xs text-slate-300 leading-relaxed">
-              {selectedProvider === 'whoop' &&
-                'Sync your overnight recovery score, HRV, resting heart rate, and sleep duration automatically to calibrate your daily training volume and RIR targets.'}
-              {selectedProvider === 'fitbit' &&
-                'Sync your daily readiness score, resting heart rate, and sleep staging directly from your Google Pixel Watch or Fitbit tracker.'}
-              {selectedProvider === 'health_connect' &&
-                'Sync unified biometric records directly from Android Health Connect on your phone.'}
-            </p>
-            {selectedProvider === 'whoop' && (
-              <p className="text-xs text-slate-400 bg-white/[0.02] p-2 rounded-xl border border-white/[0.04]">
-                Note: If Whoop shows &ldquo;Request Header Or Cookie Too Large&rdquo;, clear cookies for whoop.com in your browser or connect using an Incognito tab.
-              </p>
-            )}
+          <div className="flex items-center justify-between" style={{ gap: fig(16) }}>
+            <span className="wk-label">Resting Heart Rate</span>
+            <span className="wk-pill">{latestBiometrics.restingHr} bpm</span>
           </div>
-        )}
-      </div>
+          <div className="flex items-center justify-between" style={{ gap: fig(16) }}>
+            <span className="wk-label">Sleep Duration</span>
+            <span className="wk-pill">{latestBiometrics.sleepHours} hrs</span>
+          </div>
+          <div className="flex items-center justify-between" style={{ gap: fig(16) }}>
+            <span className="wk-label">Daily Steps</span>
+            <span className="wk-pill">{latestBiometrics.steps.toLocaleString()}</span>
+          </div>
+        </div>
+      ) : (
+        <p className="wk-body" style={{ marginTop: fig(24) }}>
+          {selectedProvider === 'whoop' &&
+            'Sync your overnight recovery score, HRV, resting heart rate, and sleep duration automatically to calibrate your daily training volume and RIR targets.'}
+          {selectedProvider === 'fitbit' &&
+            'Sync your daily readiness score, resting heart rate, and sleep staging directly from your Google Pixel Watch or Fitbit tracker.'}
+          {selectedProvider === 'health_connect' &&
+            'Sync unified biometric records directly from Android Health Connect on your phone.'}
+        </p>
+      )}
 
       {/* Sync Progress Bar */}
       {syncProgress && (
-        <div className="p-3.5 rounded-2xl bg-[#090C12] text-xs space-y-2 border border-white/[0.04]">
+        <div style={{ marginTop: fig(24) }}>
           <div className="flex justify-between items-center">
-            <span className="text-brand-primary font-medium">{syncProgress.message}</span>
-            <span className="font-mono font-bold text-brand-primary">{syncProgress.percent}%</span>
+            <span className="wk-label">{syncProgress.message}</span>
+            <span className="wk-pill">{syncProgress.percent}%</span>
           </div>
-          <div className="w-full bg-white/[0.08] h-1.5 rounded-full overflow-hidden">
-            <div
-              className="bg-brand-primary h-full rounded-full transition-all duration-300"
-              style={{ width: `${syncProgress.percent}%` }}
-            />
+          <div className="wk-bar" style={{ marginTop: fig(16) }}>
+            <div style={{ width: `${syncProgress.percent}%` }} />
           </div>
         </div>
       )}
 
       {/* Action Buttons */}
-      <div className="space-y-2">
+      <div className="flex flex-col" style={{ marginTop: fig(28), gap: fig(16) }}>
         <input
           ref={fileInputRef}
           type="file"
@@ -514,42 +450,38 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
           aria-label="Upload biometric data export"
         />
 
-        {importStatus && (
-          <p className="text-xs text-slate-300 p-2.5 rounded-xl bg-[#090C12] border border-white/[0.04]">
-            {importStatus}
-          </p>
-        )}
+        {importStatus && <p className="wk-body">{importStatus}</p>}
 
         {selectedProvider === 'health_connect' ? (
-          <div className="space-y-2">
+          <>
             <button
               type="button"
               onClick={handleHealthConnectSettings}
-              className="w-full py-3.5 rounded-2xl bg-white hover:bg-slate-100 text-slate-950 font-bold text-xs flex items-center justify-center space-x-2 shadow-lg shadow-white/5 active:scale-95 transition-all min-h-[44px]"
+              className="wk-button min-h-[44px]"
+              style={{ background: 'var(--wk-accent)', color: '#13181C' }}
             >
-              <span>{isAndroidPlatform() ? 'Open Health Connect Settings' : 'Connect Android Health'}</span>
-              <ExternalLink className="w-4 h-4 stroke-[2.2] text-slate-950" />
+              {isAndroidPlatform() ? 'Open Health Connect Settings' : 'Connect Android Health'}
             </button>
 
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              className="w-full py-2.5 px-3 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] text-xs font-semibold text-slate-300 hover:text-white flex items-center justify-center space-x-1.5 transition-colors min-h-[44px]"
+              className="wk-button min-h-[44px]"
+              style={{ background: 'var(--wk-pill)', color: '#fff' }}
             >
-              <Upload className="w-3.5 h-3.5 stroke-[2] text-brand-primary" />
-              <span>Import Health Export (JSON)</span>
+              Import Health Export (JSON)
             </button>
-          </div>
+          </>
         ) : isProviderConnected ? (
-          <div className="space-y-2">
+          <>
             {!isCurrentActive && (
               <button
                 type="button"
                 onClick={handleSetActiveTracker}
-                className="w-full py-3 rounded-2xl bg-brand-primary hover:brightness-110 text-slate-950 font-bold text-xs flex items-center justify-center space-x-2 shadow-lg shadow-brand-primary/10 active:scale-95 transition-all min-h-[44px]"
+                className="wk-button min-h-[44px]"
+                style={{ background: 'var(--wk-accent)', color: '#13181C' }}
               >
-                <CheckCircle2 className="w-4 h-4 stroke-[2.2] text-slate-950" />
-                <span>Use {providerMeta.name} as Active Tracker</span>
+                Use {providerMeta.name} as Active Tracker
               </button>
             )}
 
@@ -557,78 +489,44 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
               type="button"
               disabled={isSyncing}
               onClick={() => handleStartSync()}
-              className="w-full py-3.5 rounded-2xl bg-white hover:bg-slate-100 text-slate-950 font-bold text-xs flex items-center justify-center space-x-2 shadow-lg shadow-white/5 active:scale-95 transition-all min-h-[44px] disabled:opacity-50"
+              className="wk-button min-h-[44px] disabled:opacity-50"
+              style={{ background: 'var(--wk-accent)', color: '#13181C' }}
             >
-              <RefreshCw className={`w-4 h-4 stroke-[2.2] text-slate-950 ${isSyncing ? 'animate-spin' : ''}`} />
-              <span>Sync {providerMeta.name} Now</span>
+              Sync {providerMeta.name} Now
             </button>
 
             <button
               type="button"
               onClick={handleDisconnectProvider}
-              className="w-full py-2.5 text-xs text-rose-400 hover:text-rose-300 flex items-center justify-center space-x-1.5 transition-colors min-h-[44px]"
+              className="wk-button min-h-[44px]"
+              style={{ background: 'var(--wk-raised)', color: '#FF3B4E' }}
             >
-              <Unlink className="w-3.5 h-3.5 stroke-[2]" />
-              <span>Disconnect {providerMeta.name}</span>
+              Disconnect {providerMeta.name}
             </button>
-          </div>
+          </>
         ) : (
-          <div className="space-y-2">
-            <button
-              type="button"
-              disabled={isSyncing}
-              onClick={handleConnectProvider}
-              className="w-full py-3.5 rounded-2xl bg-white hover:bg-slate-100 text-slate-950 font-bold text-xs flex items-center justify-center space-x-2 shadow-lg shadow-white/5 active:scale-95 transition-all min-h-[44px] disabled:opacity-50"
-            >
-              {isSyncing ? (
-                <>
-                  <RefreshCw className="w-4 h-4 stroke-[2.2] text-slate-950 animate-spin" />
-                  <span>Connecting to {providerMeta.name}...</span>
-                </>
-              ) : (
-                <>
-                  <CheckCircle2 className="w-4 h-4 stroke-[2.2] text-emerald-600" />
-                  <span>Connect {providerMeta.name}</span>
-                </>
-              )}
-            </button>
-
-            {selectedProvider === 'whoop' && (
-              <button
-                type="button"
-                onClick={async () => {
-                  try {
-                    const effectiveId = profile.whoopClientId || WHOOP_CONFIG.CLIENT_ID;
-                    const effectiveUri = profile.whoopRedirectUri || getWhoopRedirectUri();
-                    const url = await initiateWhoopOAuth(effectiveId, effectiveUri);
-                    await navigator.clipboard.writeText(url);
-                    setImportStatus('Copied Whoop sign-in link! You can paste it into an Incognito tab.');
-                    setTimeout(() => setImportStatus(null), 5000);
-                  } catch {
-                    setImportStatus('Could not copy link to clipboard.');
-                  }
-                }}
-                className="w-full py-2 text-xs text-slate-400 hover:text-slate-200 flex items-center justify-center space-x-1.5 transition-colors min-h-[44px]"
-              >
-                <span>Copy Sign-In Link (for Incognito tab)</span>
-              </button>
-            )}
-          </div>
+          <button
+            type="button"
+            disabled={isSyncing}
+            onClick={handleConnectProvider}
+            className="wk-button min-h-[44px] disabled:opacity-50"
+            style={{ background: 'var(--wk-accent)', color: '#13181C' }}
+          >
+            {isSyncing ? `Connecting to ${providerMeta.name}...` : `Connect ${providerMeta.name}`}
+          </button>
         )}
       </div>
 
-      {/* Privacy Guarantee */}
-      <div className="p-3.5 rounded-2xl bg-[#090C12] text-xs text-slate-400 flex items-center space-x-2 border border-white/[0.04]">
-        <Cpu className="w-4 h-4 text-emerald-400 shrink-0 stroke-[2]" />
-        <span>100% On-Device Privacy: Wearable metrics are evaluated locally on your phone.</span>
-      </div>
+      <p className="wk-caption" style={{ marginTop: fig(24) }}>
+        Wearable metrics are evaluated locally on your phone.
+      </p>
     </div>
   );
 
   if (isModal) {
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
-        <div className="w-full max-w-sm">{content}</div>
+      <div className="wk fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
+        <div className="w-full max-w-md">{content}</div>
       </div>
     );
   }

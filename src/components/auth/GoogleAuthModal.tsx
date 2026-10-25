@@ -10,15 +10,7 @@ import {
   getSupabaseGoogleAuthUrl,
   GOOGLE_AUTH_CONFIG,
 } from '../../services/googleAuthService';
-import {
-  X,
-  ShieldCheck,
-  CheckCircle2,
-  LogOut,
-  Sparkles,
-  Smartphone,
-  ExternalLink,
-} from 'lucide-react';
+import { X } from 'lucide-react';
 import { triggerHaptic } from '../../utils/haptics';
 
 interface GoogleAuthModalProps {
@@ -30,9 +22,10 @@ interface GoogleAuthModalProps {
   onSignOut: () => void;
 }
 
+const fig = (px: number) => `calc(${px} * var(--f))`;
+
 export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({
   currentUser,
-  profile,
   isOpen,
   onClose,
   onAuthSuccess,
@@ -112,215 +105,155 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fadeIn"
+      className="wk fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md"
       role="dialog"
       aria-modal="true"
       aria-labelledby="auth-modal-title"
     >
-      <div className="bg-[#0E1219] rounded-3xl w-full max-w-md p-6 space-y-5 border border-white/[0.08] shadow-2xl relative">
-        {/* Close Button */}
-        <button
-          type="button"
-          onClick={() => {
-            triggerHaptic('light');
-            onClose();
-          }}
-          className="absolute top-5 right-5 w-9 h-9 rounded-full bg-white/[0.06] hover:bg-white/[0.12] flex items-center justify-center text-slate-400 hover:text-white transition-colors"
-          aria-label="Close dialog"
-        >
-          <X className="w-4 h-4 stroke-[2]" />
-        </button>
-
-        {/* Header */}
-        <div className="space-y-1 text-center pt-2">
-          <div className="w-12 h-12 rounded-2xl bg-brand-primary/15 text-brand-primary flex items-center justify-center mx-auto mb-3">
-            <Sparkles className="w-6 h-6 stroke-[2]" />
+      <div className="wk-card w-full max-w-md text-left block shadow-2xl">
+        <div className="flex items-start justify-between" style={{ gap: fig(24) }}>
+          <div>
+            <h2 id="auth-modal-title" className="wk-h1" style={{ lineHeight: 1.21 }}>
+              {currentUser ? 'Your Athlete Account' : 'Sign In to Treise'}
+            </h2>
+            <p
+              style={{
+                fontSize: fig(28),
+                lineHeight: 1.21,
+                color: 'var(--wk-muted)',
+                marginTop: fig(16),
+              }}
+            >
+              {currentUser
+                ? 'Your workouts are saved on this device'
+                : 'Add your name and photo to your profile'}
+            </p>
           </div>
-          <h2 id="auth-modal-title" className="text-xl font-bold text-white tracking-tight">
-            {currentUser ? 'Your Athlete Account' : 'Sign In to Treise'}
-          </h2>
-          <p className="text-xs text-slate-400 font-medium">
-            {currentUser
-              ? 'Your workouts are saved on this device'
-              : 'Add your name and photo to your profile'}
-          </p>
+          <button
+            type="button"
+            onClick={() => {
+              triggerHaptic('light');
+              onClose();
+            }}
+            className="w-11 h-11 min-h-[44px] rounded-full flex items-center justify-center text-white/70 hover:text-white transition-colors shrink-0"
+            style={{ background: 'var(--wk-raised)' }}
+            aria-label="Close dialog"
+          >
+            <X className="w-5 h-5 stroke-[2]" />
+          </button>
         </div>
 
-        {/* Status Message */}
         {statusMessage && (
-          <div className="p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-semibold flex items-center justify-center gap-2">
-            <CheckCircle2 className="w-4 h-4 stroke-[2]" />
-            <span>{statusMessage}</span>
-          </div>
+          <p className="wk-body" style={{ marginTop: fig(24) }}>
+            {statusMessage}
+          </p>
         )}
 
-        {/* Signed In State */}
         {currentUser ? (
-          <div className="space-y-4">
-            <div className="p-4 rounded-2xl bg-[#090C12] border border-white/[0.04] flex items-center space-x-3.5">
-              {currentUser.avatarUrl ? (
-                <img
-                  src={currentUser.avatarUrl}
-                  alt={currentUser.name}
-                  className="w-12 h-12 rounded-2xl object-cover ring-2 ring-brand-primary/30"
-                />
-              ) : (
-                <div className="w-12 h-12 rounded-2xl bg-white/[0.08] flex items-center justify-center text-white font-bold text-base">
-                  {currentUser.name.charAt(0)}
-                </div>
-              )}
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center space-x-2">
-                  <h3 className="text-sm font-bold text-white truncate">{currentUser.name}</h3>
-                  <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-brand-primary/15 text-brand-primary">
-                    Active
-                  </span>
-                </div>
-                <p className="text-xs text-slate-400 truncate mt-0.5">{currentUser.email}</p>
-                <div className="text-xs text-slate-500 flex items-center gap-1 mt-1">
-                  <ShieldCheck className="w-3.5 h-3.5 text-brand-primary stroke-[2]" />
-                  <span>Google Account Verified</span>
-                </div>
-              </div>
+          <div
+            className="flex flex-col"
+            style={{
+              marginTop: fig(28),
+              paddingTop: fig(24),
+              borderTop: '1px solid rgba(255,255,255,0.08)',
+              gap: fig(20),
+            }}
+          >
+            <div className="flex items-center justify-between" style={{ gap: fig(16) }}>
+              <span className="wk-label">{currentUser.name}</span>
+              <span className="wk-pill">ACTIVE</span>
             </div>
+            <p className="wk-body">{currentUser.email}</p>
 
-            <div className="space-y-2 pt-1">
-              <button
-                type="button"
-                onClick={handleSignOutClick}
-                className="w-full py-3 rounded-2xl bg-[#141824] hover:bg-rose-500/15 hover:text-rose-400 text-xs font-bold text-slate-300 flex items-center justify-center space-x-2 transition-all min-h-[44px]"
-              >
-                <LogOut className="w-4 h-4 stroke-[2]" />
-                <span>Sign Out</span>
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={handleSignOutClick}
+              className="wk-button min-h-[44px]"
+              style={{ background: 'var(--wk-raised)', color: '#FF3B4E' }}
+            >
+              Sign Out
+            </button>
           </div>
         ) : (
-          /* Logged Out / Sign In Flow */
-          <div className="space-y-4">
-            {/* Value Proposition Bullets */}
-            <div className="p-4 rounded-2xl bg-[#090C12] space-y-2.5">
-              <div className="flex items-start space-x-2.5">
-                <CheckCircle2 className="w-4 h-4 text-brand-primary stroke-[2] shrink-0 mt-0.5" />
-                <span className="text-xs text-slate-300 font-medium leading-relaxed">
-                  Personalize your profile with your Google name and photo
-                </span>
-              </div>
-              <div className="flex items-start space-x-2.5">
-                <CheckCircle2 className="w-4 h-4 text-brand-primary stroke-[2] shrink-0 mt-0.5" />
-                <span className="text-xs text-slate-300 font-medium leading-relaxed">
-                  Workouts stay on this device. Cloud sync is coming soon, so use Export Backup to keep a copy
-                </span>
-              </div>
-            </div>
+          <div
+            className="flex flex-col"
+            style={{
+              marginTop: fig(28),
+              paddingTop: fig(24),
+              borderTop: '1px solid rgba(255,255,255,0.08)',
+              gap: fig(20),
+            }}
+          >
+            <p className="wk-body">
+              Personalize your profile with your Google name and photo. Workouts stay on this device—use Export Backup in Program to keep a copy.
+            </p>
 
-            {/* Official Google Sign-In Container (rendered only when official Google Client ID is configured) */}
-            <div className="flex flex-col items-center justify-center gap-2.5 pt-1 w-full">
-              {isClientValid && (
-                <div ref={googleBtnContainerRef} className="flex justify-center min-h-[44px]" />
-              )}
+            {isClientValid && (
+              <div ref={googleBtnContainerRef} className="flex justify-center min-h-[44px]" />
+            )}
 
-              {/* Direct 1-Tap Google Sign-In Button (Always Ready) */}
-              <button
-                type="button"
-                onClick={handleGoogleSignInClick}
-                className="w-full py-3 px-4 rounded-2xl bg-white hover:bg-slate-100 text-[#1F1F1F] font-bold text-xs flex items-center justify-center space-x-3 shadow-md hover:shadow-lg transition-all min-h-[44px]"
+            <button
+              type="button"
+              onClick={handleGoogleSignInClick}
+              className="wk-button min-h-[44px]"
+              style={{ background: 'var(--wk-accent)', color: '#13181C' }}
+            >
+              {isClientValid ? 'Sign In with Google' : 'Sign In as Athlete'}
+            </button>
+
+            {supabaseUrl && (
+              <a
+                href={supabaseUrl}
+                className="wk-button min-h-[44px]"
+                style={{ background: 'var(--wk-pill)', color: '#fff' }}
               >
-                {/* Official Google 'G' Logo SVG */}
-                <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
-                  <path
-                    fill="#4285F4"
-                    d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.66-5.17 3.66-9.17z"
-                  />
-                  <path
-                    fill="#34A853"
-                    d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.33 24 12 24z"
-                  />
-                  <path
-                    fill="#FBBC05"
-                    d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 9.99 0 12s.45 3.82 1.25 5.42l4.03-3.15z"
-                  />
-                  <path
-                    fill="#EA4335"
-                    d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"
-                  />
-                </svg>
-                <span>{isClientValid ? 'Sign In with Google' : 'Sign In as Athlete'}</span>
-              </button>
+                Sign in via Supabase Auth
+              </a>
+            )}
 
-              {/* Supabase Bridge Button (if configured) */}
-              {supabaseUrl && (
-                <a
-                  href={supabaseUrl}
-                  className="w-full py-2.5 px-4 rounded-2xl bg-[#141824] hover:bg-[#1C2233] text-xs font-bold text-slate-300 flex items-center justify-center space-x-2 transition-colors min-h-[44px]"
-                >
-                  <ExternalLink className="w-3.5 h-3.5 stroke-[2] text-brand-primary" />
-                  <span>Sign in via Supabase Auth</span>
-                </a>
-              )}
+            <button
+              type="button"
+              onClick={() => setShowConfig(!showConfig)}
+              className="wk-caption hover:text-white min-h-[44px] flex items-center justify-center"
+            >
+              {showConfig ? 'Hide Cloud Config' : 'Link Google Cloud Client ID (Optional)'}
+            </button>
 
-              {/* Optional Custom Google Cloud Client ID Drawer */}
-              <div className="w-full pt-1">
-                <button
-                  type="button"
-                  onClick={() => setShowConfig(!showConfig)}
-                  className="text-xs text-slate-500 hover:text-slate-400 font-medium flex items-center justify-center gap-1 mx-auto transition-colors min-h-[36px]"
-                >
-                  <span>{showConfig ? 'Hide Cloud Config' : 'Link Google Cloud Client ID (Optional)'}</span>
-                </button>
-
-                {showConfig && (
-                  <div className="mt-2.5 p-3.5 rounded-2xl bg-[#090C12] border border-white/[0.06] space-y-2.5 text-left">
-                    <label className="text-xs font-semibold text-slate-300 block">
-                      Google OAuth Web Client ID:
-                    </label>
-                    <div className="flex gap-2">
-                      <input
-                        type="text"
-                        value={customClientIdInput}
-                        onChange={(e) => setCustomClientIdInput(e.target.value)}
-                        placeholder="123456...apps.googleusercontent.com"
-                        className="flex-1 py-2 px-3 rounded-xl bg-[#141824] text-white font-mono text-xs focus:ring-1 focus:ring-brand-primary focus:outline-none"
-                      />
-                      <button
-                        type="button"
-                        onClick={handleApplyCustomClient}
-                        className="px-3 py-2 rounded-xl bg-brand-primary text-[#060709] font-bold text-xs hover:bg-brand-primary/90 transition-colors"
-                      >
-                        Apply
-                      </button>
-                    </div>
-                    <p className="text-xs text-slate-500 leading-relaxed">
-                      In Google Cloud Console, ensure <span className="font-mono text-slate-400">https://treise.vercel.app</span> is added to Authorized JavaScript Origins.
-                    </p>
-                  </div>
-                )}
+            {showConfig && (
+              <div className="flex flex-col" style={{ gap: fig(16) }}>
+                <label className="wk-label block">Google OAuth Web Client ID</label>
+                <div className="flex" style={{ gap: fig(12) }}>
+                  <input
+                    type="text"
+                    value={customClientIdInput}
+                    onChange={(e) => setCustomClientIdInput(e.target.value)}
+                    placeholder="123456...apps.googleusercontent.com"
+                    className="wk-field flex-1"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleApplyCustomClient}
+                    className="wk-pill shrink-0 min-h-[44px]"
+                  >
+                    Apply
+                  </button>
+                </div>
               </div>
-            </div>
+            )}
 
-            {/* Offline Guest Option */}
-            <div className="pt-2 text-center">
-              <button
-                type="button"
-                onClick={() => {
-                  triggerHaptic('light');
-                  onClose();
-                }}
-                className="text-xs text-slate-400 hover:text-slate-200 font-semibold py-2 px-3 transition-colors min-h-[44px] flex items-center justify-center mx-auto"
-              >
-                Continue as Guest (Offline Storage Only)
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={() => {
+                triggerHaptic('light');
+                onClose();
+              }}
+              className="wk-button min-h-[44px]"
+              style={{ background: 'var(--wk-raised)', color: '#fff' }}
+            >
+              Continue as Guest
+            </button>
           </div>
         )}
-
-        {/* Privacy Note */}
-        <div className="pt-2 border-t border-white/[0.04] text-center">
-          <p className="text-xs text-slate-500 font-medium leading-relaxed">
-            Your workout logs and biometrics are stored locally on your device. We respect your
-            privacy and never sell your personal fitness data.
-          </p>
-        </div>
       </div>
     </div>
   );

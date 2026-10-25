@@ -10,7 +10,8 @@ import {
 } from 'recharts';
 import { BiometricLog, StrengthPillar } from '../../engine/types';
 import { generate7PillarRadarData } from '../../engine/vitality';
-import { Heart } from 'lucide-react';
+
+const fig = (px: number) => `calc(${px} * var(--f))`;
 
 interface SevenPillarRadarProps {
   pillarBestE1rm: Record<StrengthPillar, number>;
@@ -86,29 +87,32 @@ export const SevenPillarRadar: React.FC<SevenPillarRadarProps> = ({
   const overallBadgeText = overallTierName === 'Elite' ? 'Elite' : `${overallTierName} ${subDivisionLabel}`;
 
   return (
-    <div className="rounded-3xl surface-glass p-5 sm:p-6 space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h3 className="font-bold text-sm text-white tracking-tight">
-            Strength &amp; Fitness Balance
-          </h3>
-          <p className="text-xs text-slate-400 mt-0.5">
-            How your main lifts and cardio compare
-          </p>
-        </div>
-        <span className="text-xs font-mono font-bold text-brand-primary px-3 py-1 rounded-full bg-brand-primary/15">
-          {overallBadgeText}
-        </span>
+    <section aria-label="Strength and Fitness Balance" className="wk-card w-full text-left block">
+      <div className="flex items-start justify-between" style={{ gap: fig(20) }}>
+        <h2 className="wk-h1" style={{ lineHeight: 1.21 }}>
+          Strength &amp; Fitness Balance
+        </h2>
+        <span className="wk-pill">{overallBadgeText}</span>
       </div>
+      <p
+        style={{
+          fontSize: fig(28),
+          lineHeight: 1.21,
+          color: 'var(--wk-muted)',
+          marginTop: fig(20),
+        }}
+      >
+        How your 6 movement pillars and cardio compare
+      </p>
 
       {/* Radar Chart */}
-      <div className="w-full h-56 -my-1">
+      <div className="w-full h-56" style={{ marginTop: fig(28) }}>
         <ResponsiveContainer width="100%" height="100%">
           <RadarChart cx="50%" cy="50%" outerRadius="72%" data={chartData}>
-            <PolarGrid stroke="#202432" strokeDasharray="2 2" />
+            <PolarGrid stroke="#474D50" strokeDasharray="2 2" />
             <PolarAngleAxis
               dataKey="pillar"
-              tick={{ fill: '#94A3B8', fontSize: 11, fontWeight: 600 }}
+              tick={{ fill: 'rgba(255,255,255,0.65)', fontSize: 12, fontWeight: 700 }}
             />
             <PolarRadiusAxis
               angle={90}
@@ -119,24 +123,25 @@ export const SevenPillarRadar: React.FC<SevenPillarRadarProps> = ({
             <Radar
               name="Strength & Fitness"
               dataKey="score"
-              stroke="#00F59B"
+              stroke="#00F19F"
               strokeWidth={2}
-              fill="#00F59B"
+              fill="#00F19F"
               fillOpacity={0.2}
-              dot={{ r: 3, fill: '#00F59B', stroke: '#060709', strokeWidth: 1.5 }}
+              dot={{ r: 3, fill: '#00F19F', stroke: '#2C3034', strokeWidth: 1.5 }}
             />
             <Tooltip
               content={({ active, payload }) => {
                 if (active && payload && payload.length) {
                   const data = payload[0].payload;
                   return (
-                    <div className="p-3 rounded-2xl bg-[#0C0E14] shadow-2xl text-xs space-y-0.5">
-                      <div className="font-bold text-white">{data.fullName}</div>
-                      <div className="text-brand-primary font-mono font-bold">
-                        Score: {data.score}/100
-                      </div>
-                      <div className="text-xs text-slate-400">
-                        Level: {data.tier} {data.subDivision || ''}
+                    <div
+                      className="wk-card shadow-2xl"
+                      style={{ padding: fig(24), borderRadius: fig(20) }}
+                    >
+                      <div className="wk-label">{data.fullName}</div>
+                      <div className="wk-body" style={{ marginTop: fig(8) }}>
+                        Score: <strong className="text-white">{data.score}/100</strong> • {data.tier}{' '}
+                        {data.subDivision || ''}
                       </div>
                     </div>
                   );
@@ -148,32 +153,35 @@ export const SevenPillarRadar: React.FC<SevenPillarRadarProps> = ({
         </ResponsiveContainer>
       </div>
 
-      {/* Cardio & Heart Health Summary Row */}
-      <div className="p-3.5 rounded-2xl bg-[#090C12] flex items-center justify-between text-xs">
-        <div className="flex items-center space-x-2">
-          <Heart className="w-4 h-4 text-brand-primary stroke-[2]" />
-          <span className="font-semibold text-white">Cardio &amp; Recovery</span>
-        </div>
-        {engineScore > 0 ? (
-          <div className="flex items-center space-x-2 font-mono text-slate-300">
-            {(latestBiometrics?.vo2Max || 0) > 0 && (
-              <>
-                <span>Fitness {latestBiometrics?.vo2Max}</span>
-                <span>•</span>
-              </>
-            )}
-            {(latestBiometrics?.restingHr || 0) > 0 && (
-              <>
-                <span>Resting HR {latestBiometrics?.restingHr} bpm</span>
-                <span>•</span>
-              </>
-            )}
-            <span className="font-bold text-brand-primary">{engineScore}/100</span>
-          </div>
-        ) : (
-          <span className="text-slate-400">Connect a watch to score this</span>
-        )}
+      {/* Cardio & Recovery Bar Row — ProgramProgressCard anatomy */}
+      <div
+        className="flex items-end justify-between"
+        style={{ marginTop: fig(40), gap: fig(20) }}
+      >
+        <span className="wk-label" style={{ lineHeight: 1.21 }}>
+          CARDIO &amp; RECOVERY
+          {engineScore > 0 && (latestBiometrics?.restingHr || 0) > 0
+            ? ` • ${latestBiometrics.restingHr} BPM RHR`
+            : ''}
+        </span>
+        <span
+          className="font-bold text-white shrink-0"
+          style={{ fontSize: fig(40), lineHeight: 1 }}
+        >
+          {engineScore > 0 ? `${engineScore}/100` : '—'}
+        </span>
       </div>
-    </div>
+      <div
+        className="wk-bar"
+        style={{ marginTop: fig(30) }}
+        role="progressbar"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={engineScore}
+        aria-label="Cardio and recovery score"
+      >
+        <div style={{ width: `${Math.max(0, Math.min(100, engineScore))}%` }} />
+      </div>
+    </section>
   );
 };

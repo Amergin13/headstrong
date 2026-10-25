@@ -123,19 +123,22 @@ export const ExerciseSwapModal: React.FC<ExerciseSwapModalProps> = ({
       aria-labelledby="change-exercise-title"
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md"
     >
-      <div className="w-full max-w-sm rounded-3xl surface-glass p-5 sm:p-6 shadow-2xl max-h-[85vh] overflow-y-auto space-y-4">
+      <div className="wk-card w-full max-w-sm shadow-2xl max-h-[85vh] overflow-y-auto space-y-4">
         {/* Header */}
         <div className="flex items-start justify-between">
           <div className="flex items-center space-x-2.5">
-            <div className="w-9 h-9 rounded-2xl bg-brand-primary/15 flex items-center justify-center text-brand-primary shrink-0">
+            <div
+              className="w-9 h-9 rounded-2xl flex items-center justify-center shrink-0"
+              style={{ background: 'var(--wk-raised)', color: 'var(--wk-accent)' }}
+            >
               <ArrowRightLeft className="w-4 h-4 stroke-[2]" />
             </div>
             <div>
-              <h3 id="change-exercise-title" className="font-bold text-base text-white tracking-tight">
+              <h3 id="change-exercise-title" className="wk-h1">
                 Change Exercise
               </h3>
-              <p className="text-xs text-slate-400 mt-0.5">
-                Alternatives for <strong className="text-slate-200">{familyLabel}</strong> • Target weight carries over
+              <p className="wk-caption mt-0.5">
+                Alternatives for <strong className="text-white">{familyLabel}</strong> • Target weight carries over
               </p>
             </div>
           </div>
@@ -147,25 +150,26 @@ export const ExerciseSwapModal: React.FC<ExerciseSwapModalProps> = ({
               onClose();
             }}
             aria-label="Close change exercise dialog"
-            className="p-1.5 rounded-full text-slate-400 hover:text-white hover:bg-white/[0.08] transition-colors"
+            className="w-9 h-9 rounded-full flex items-center justify-center text-white/60 hover:text-white transition-colors shrink-0"
+            style={{ background: 'var(--wk-raised)' }}
           >
             <X className="w-4 h-4 stroke-[2]" />
           </button>
         </div>
 
         {/* Currently Selected Exercise */}
-        <div className="p-3.5 rounded-2xl bg-[#090C12] space-y-1">
+        <div className="wk-raised space-y-1">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-slate-400">
+            <span className="wk-caption uppercase">
               Replacing
             </span>
-            <span className="text-xs font-semibold text-brand-primary">
+            <span className="wk-caption font-bold" style={{ color: 'var(--wk-accent)' }}>
               {familyLabel}
             </span>
           </div>
           <div className="flex justify-between items-center">
-            <span className="font-bold text-white text-sm">{currentExercise.name}</span>
-            <span className="font-mono font-bold text-sm text-white">
+            <span className="wk-label normal-case">{currentExercise.name}</span>
+            <span className="wk-label tabular-numbers">
               {formatImplementWeightLabel(
                 currentWeight,
                 currentExercise.equipment,
@@ -179,7 +183,8 @@ export const ExerciseSwapModal: React.FC<ExerciseSwapModalProps> = ({
         <div
           role="group"
           aria-label="Filter replacement exercises by environment"
-          className="grid grid-cols-3 gap-1 bg-[#090C12] p-1.5 rounded-2xl"
+          className="wk-segments grid-cols-3"
+          style={{ background: 'var(--wk-raised)' }}
         >
           {(
             [
@@ -198,18 +203,13 @@ export const ExerciseSwapModal: React.FC<ExerciseSwapModalProps> = ({
                   triggerHaptic('light');
                   setSelectedLocation(loc.id);
                 }}
-                className={`py-2 px-1 text-center rounded-xl text-xs font-bold transition-all min-h-[44px] flex items-center justify-center space-x-1 ${
-                  isSelected
-                    ? 'bg-white/[0.14] text-white font-bold shadow-sm'
-                    : 'text-slate-400 hover:text-white hover:bg-white/[0.04]'
-                }`}
+                className="wk-segment px-1 text-center"
+                style={{
+                  background: isSelected ? 'var(--wk-pill)' : 'transparent',
+                  color: isSelected ? '#fff' : 'var(--wk-muted)',
+                }}
               >
                 <span>{loc.label}</span>
-                {loc.id === activeLocation && (
-                  <span className="text-xs font-normal opacity-80">
-                    (Active)
-                  </span>
-                )}
               </button>
             );
           })}
@@ -218,20 +218,20 @@ export const ExerciseSwapModal: React.FC<ExerciseSwapModalProps> = ({
         {/* Matched Alternatives */}
         <div className="space-y-2">
           <div className="flex items-center justify-between px-0.5">
-            <span className="text-xs font-semibold text-slate-300">
+            <span className="wk-label">
               Select Replacement Exercise
             </span>
-            <span className="text-xs text-slate-400">
+            <span className="wk-caption">
               {alternatives.length} {alternatives.length === 1 ? 'option' : 'options'}
             </span>
           </div>
 
           {alternatives.length === 0 ? (
-            <div className="p-4 rounded-2xl bg-[#141824] text-center space-y-1">
-              <p className="text-xs font-bold text-white">
+            <div className="wk-raised text-center space-y-1">
+              <p className="wk-label normal-case">
                 No {selectedLocation === 'travel' ? 'bodyweight' : selectedLocation === 'home' ? 'home' : 'gym'} exercises found
               </p>
-              <p className="text-xs text-slate-400">
+              <p className="wk-caption">
                 Switch environment tabs above to view loaded alternatives with target weight carry-over.
               </p>
             </div>
@@ -251,21 +251,24 @@ export const ExerciseSwapModal: React.FC<ExerciseSwapModalProps> = ({
                   key={alt.id}
                   type="button"
                   onClick={() => handleSelectAlternative(alt)}
-                  className="w-full p-4 rounded-2xl bg-[#141824] hover:bg-[#1C2233] text-left transition-all space-y-2 min-h-[44px]"
+                  className="wk-raised w-full text-left transition-all space-y-2 min-h-[44px] active:scale-[0.99]"
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
-                      <div className="font-bold text-white text-sm">
+                      <div className="wk-label normal-case">
                         {alt.name}
                       </div>
-                      <div className="text-xs text-slate-400 mt-0.5">
+                      <div className="wk-caption mt-0.5">
                         {equipLabel} • {alt.defaultRepRange[0]}–{alt.defaultRepRange[1]} reps
                         {selectedLocation === 'travel' ? ' • Zero Equipment' : ''}
                       </div>
                     </div>
 
                     <div className="text-right shrink-0">
-                      <span className="font-mono font-bold text-brand-primary text-sm block">
+                      <span
+                        className="wk-label tabular-numbers block"
+                        style={{ color: 'var(--wk-accent)' }}
+                      >
                         {isPureBw
                           ? 'Bodyweight'
                           : alt.isWeightedCalisthenic || alt.equipment === 'weighted_bodyweight'
@@ -274,14 +277,14 @@ export const ExerciseSwapModal: React.FC<ExerciseSwapModalProps> = ({
                           ? `${units.format(convertedKg / 2)} each`
                           : units.format(convertedKg)}
                       </span>
-                      <span className="text-xs text-slate-400">
+                      <span className="wk-caption">
                         {isPureBw ? 'No added weight' : 'Matched to your strength'}
                       </span>
                     </div>
                   </div>
 
                   {alt.whyItWorks && (
-                    <p className="text-xs text-slate-300 leading-relaxed pt-1">
+                    <p className="wk-body pt-1">
                       {alt.whyItWorks}
                     </p>
                   )}
@@ -294,4 +297,5 @@ export const ExerciseSwapModal: React.FC<ExerciseSwapModalProps> = ({
     </div>
   );
 };
+
 

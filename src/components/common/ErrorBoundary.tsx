@@ -28,17 +28,18 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
   render() {
     if (!this.state.error) return this.props.children;
     return (
-      <div role="alert" className="biometric-card p-5 space-y-3 text-center">
-        <h2 className="text-base font-bold text-white">
+      <div role="alert" className="wk-card space-y-3 text-center">
+        <h2 className="wk-h1">
           {this.props.area ? `${this.props.area} couldn't load` : "Something didn't load"}
         </h2>
-        <p className="text-xs text-slate-400">
+        <p className="wk-body">
           Your workouts and history are safe. Try again, or switch tabs and come back.
         </p>
         <button
           type="button"
           onClick={() => this.setState({ error: null })}
-          className="min-h-[44px] px-4 rounded-2xl bg-white text-slate-950 text-xs font-bold"
+          className="wk-button"
+          style={{ background: 'var(--wk-accent)', color: '#13181C' }}
         >
           Try again
         </button>
@@ -46,3 +47,4 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
     );
   }
 }
+

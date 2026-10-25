@@ -8,30 +8,14 @@ import {
   getActiveWearableProvider,
   isWearableConnected,
 } from '../../engine/types';
-import { SplitDayType, PROGRAM_OPTIONS, FEATURED_PROGRAM_OPTIONS } from '../../services/workoutGenerator';
+import { SplitDayType } from '../../services/workoutGenerator';
 import { WEARABLE_PROVIDERS } from '../../services/wearableSyncService';
 import { SplitEditor } from './SplitEditor';
 import { CustomExerciseModal } from './CustomExerciseModal';
 import { MesocycleManager } from './MesocycleManager';
 import { ProductGovernanceModal } from './ProductGovernanceModal';
 import { GoalPhaseSwitcher } from '../character/GoalPhaseSwitcher';
-import {
-  RotateCcw,
-  ShieldCheck,
-  Download,
-  Upload,
-  Trash2,
-  Smartphone,
-  FileText,
-  ChevronDown,
-  ChevronUp,
-  User,
-  Watch,
-  LogIn,
-  CheckCircle2,
-  Check,
-  ArrowLeft,
-} from 'lucide-react';
+import { ChevronRight } from 'lucide-react';
 import { triggerHaptic } from '../../utils/haptics';
 import { GPU_MODEL_DOWNLOAD_LABEL, isGpuModelReady, removeGpuModel } from '../../services/gpuModel';
 
@@ -69,6 +53,8 @@ const HOME_EQUIP_LABELS: Record<string, string> = {
   pullup_bar: 'Pull-Up Bar',
   bands: 'Bands',
 };
+
+const fig = (px: number) => `calc(${px} * var(--f))`;
 
 export const ProgramTab: React.FC<ProgramTabProps> = ({
   profile,
@@ -129,197 +115,213 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
     setOpenSettingsSection(openSettingsSection === sec ? null : sec);
   };
 
+  const homeEquipItems = profile.homeEquipment || ['bench', 'dumbbells', 'trx', 'pullup_bar'];
   const homeEquipList =
-    (profile.homeEquipment || ['bench', 'dumbbells', 'trx', 'pullup_bar'])
-      .map((item) => HOME_EQUIP_LABELS[item] || item)
-      .join(', ') || 'Bodyweight';
+    homeEquipItems.map((item) => HOME_EQUIP_LABELS[item] || item).join(', ') || 'Bodyweight';
 
   return (
-    <div className="space-y-4 pb-28">
-      {onBackToWorkout && (
-        <button
-          type="button"
-          onClick={() => {
-            triggerHaptic('light');
-            onBackToWorkout();
-          }}
-          className="min-h-[44px] px-3 -ml-1 rounded-xl text-xs font-semibold text-slate-300 hover:text-white hover:bg-white/[0.06] flex items-center gap-1.5 transition-colors"
-        >
-          <ArrowLeft className="w-4 h-4 stroke-[2]" aria-hidden="true" />
-          <span className="truncate">Back to workout{activeWorkoutName ? `: ${activeWorkoutName}` : ''}</span>
-        </button>
-      )}
+    <div
+      className="wk -mx-3.5"
+      style={{ paddingLeft: fig(38), paddingRight: fig(38), paddingBottom: 112 }}
+    >
+      <header style={{ paddingTop: fig(20) }}>
+        <h1 className="wk-page-title">Program</h1>
+      </header>
 
-      {/* 1. Primary Section Header */}
-      <div className="px-1 py-0.5">
-        <h2 className="text-base font-bold text-white tracking-tight">
-          Training Program &amp; Setup
-        </h2>
-        <p className="text-xs text-slate-400">
-          Your goal phase, equipment locations, and 6-week plan
-        </p>
-      </div>
+      <div className="flex flex-col" style={{ gap: fig(22), marginTop: fig(40) }}>
+        {onBackToWorkout && (
+          <button
+            type="button"
+            onClick={() => {
+              triggerHaptic('light');
+              onBackToWorkout();
+            }}
+            className="wk-pill self-start"
+          >
+            Back to workout{activeWorkoutName ? `: ${activeWorkoutName}` : ''}
+          </button>
+        )}
 
-      {/* 1.5 Training Locations & Equipment Summary Card (Single Canonical Setup Entry Point) */}
-      <div className="rounded-3xl surface-glass p-5 sm:p-6 space-y-3">
-        <div className="flex items-center justify-between gap-2">
-          <div>
-            <h3 className="text-sm font-bold text-white">
+        {/* 1. Training Locations & Equipment Summary Card */}
+        <div className="wk-card w-full text-left block">
+          <div className="flex items-start justify-between" style={{ gap: fig(24) }}>
+            <h2 className="wk-h1" style={{ lineHeight: 1.21 }}>
               Training Locations &amp; Equipment
-            </h3>
-            <p className="text-xs text-slate-400">
-              Exercises adapt automatically when you switch location on the Workout tab
-            </p>
+            </h2>
+            {onOpenOnboarding && (
+              <button
+                type="button"
+                onClick={() => {
+                  triggerHaptic('light');
+                  onOpenOnboarding();
+                }}
+                className="wk-pill shrink-0"
+              >
+                Edit Equipment
+              </button>
+            )}
           </div>
-          {onOpenOnboarding && (
-            <button
-              type="button"
-              onClick={() => {
-                triggerHaptic('light');
-                onOpenOnboarding();
-              }}
-              className="px-3.5 py-1.5 rounded-xl bg-white/[0.08] hover:bg-white/[0.14] text-white text-xs font-semibold shrink-0 transition-colors"
+
+          <p
+            style={{
+              fontSize: fig(28),
+              lineHeight: 1.21,
+              color: 'var(--wk-muted)',
+              marginTop: fig(20),
+            }}
+          >
+            Exercises adapt automatically when you switch location on the Workout tab
+          </p>
+
+          <div
+            className="flex items-end justify-between"
+            style={{ marginTop: fig(60), gap: fig(20) }}
+          >
+            <span className="wk-label" style={{ lineHeight: 1.21 }}>
+              HOME SETUP • {homeEquipItems.length} ITEMS
+            </span>
+            <span
+              className="font-bold text-white shrink-0"
+              style={{ fontSize: fig(40), lineHeight: 1 }}
             >
-              Edit Equipment
-            </button>
-          )}
+              3 LOCATIONS
+            </span>
+          </div>
+
+          <div className="wk-bar" style={{ marginTop: fig(30) }}>
+            <div style={{ width: '100%' }} />
+          </div>
+
+          <div
+            className="flex flex-col"
+            style={{
+              marginTop: fig(28),
+              paddingTop: fig(24),
+              borderTop: '1px solid rgba(255,255,255,0.08)',
+              gap: fig(18),
+            }}
+          >
+            <div className="flex items-center justify-between" style={{ gap: fig(16) }}>
+              <span className="wk-label">Full Gym</span>
+              <span className="wk-pill">Barbells, Cables &amp; Machines</span>
+            </div>
+            <div className="flex items-center justify-between" style={{ gap: fig(16) }}>
+              <span className="wk-label">At Home</span>
+              <span className="wk-pill">{homeEquipList}</span>
+            </div>
+            <div className="flex items-center justify-between" style={{ gap: fig(16) }}>
+              <span className="wk-label">Bodyweight</span>
+              <span className="wk-pill">Zero-Equipment Variations</span>
+            </div>
+          </div>
         </div>
 
-        <div className="grid grid-cols-3 gap-2.5 text-xs">
-          <div className="p-3 rounded-2xl bg-[#090C12]">
-            <div className="font-bold text-white">Full Gym</div>
-            <div className="text-xs text-slate-400 mt-0.5">
-              Barbells, Cables &amp; Machines
-            </div>
-          </div>
-          <div className="p-3 rounded-2xl bg-[#090C12]">
-            <div className="font-bold text-white">At Home</div>
-            <div className="text-xs text-slate-400 mt-0.5">
-              {homeEquipList}
-            </div>
-          </div>
-          <div className="p-3 rounded-2xl bg-[#090C12]">
-            <div className="font-bold text-white">Bodyweight</div>
-            <div className="text-xs text-slate-400 mt-0.5">
-              Zero-Equipment Variations
-            </div>
-          </div>
-        </div>
-      </div>
+        {/* 2. Training Goal Phase (Build Muscle / Lose Fat / Stay Lean) */}
+        <GoalPhaseSwitcher
+          currentPhase={profile.goalPhase}
+          onSelectPhase={(phase) => {
+            if (onUpdateGoalPhase) {
+              onUpdateGoalPhase(phase);
+            } else {
+              onUpdateProfile({ goalPhase: phase });
+            }
+          }}
+        />
 
-      {/* 2. Training Goal Phase (Build Muscle / Lose Fat / Stay Lean) */}
-      <GoalPhaseSwitcher
-        currentPhase={profile.goalPhase}
-        onSelectPhase={(phase) => {
-          if (onUpdateGoalPhase) {
-            onUpdateGoalPhase(phase);
-          } else {
-            onUpdateProfile({ goalPhase: phase });
-          }
-        }}
-      />
+        {/* 3. 6-Week Training Plan (Mesocycle Periodization) */}
+        <MesocycleManager
+          currentWeek={profile.mesocycleWeek || 1}
+          totalWeeks={6}
+          scheduledWeekLocations={profile.scheduledWeekLocations}
+          onSelectWeek={onSelectMesocycleWeek}
+          onTriggerDeload={() => onSelectMesocycleWeek(6)}
+        />
 
-      {/* 3. 6-Week Training Plan (Mesocycle Periodization) */}
-      <MesocycleManager
-        currentWeek={profile.mesocycleWeek || 1}
-        totalWeeks={6}
-        scheduledWeekLocations={profile.scheduledWeekLocations}
-        onSelectWeek={onSelectMesocycleWeek}
-        onTriggerDeload={() => onSelectMesocycleWeek(6)}
-      />
+        {/* 4. Workout Split & Exercises */}
+        <SplitEditor
+          exerciseCatalog={exerciseCatalog}
+          activeSplitDay={activeSplitDay}
+          activeProgramWorkoutNumber={activeProgramWorkoutNumber}
+          programType={profile.programType}
+          onOpenCreateExercise={() => setShowCreateExercise(true)}
+          onLaunchSplitDay={onLaunchSplitDay}
+          onLaunchWorkoutNumber={onLaunchWorkoutNumber}
+          onChangeProgram={(newProg) => {
+            if (onUpdateProgram) {
+              onUpdateProgram(newProg);
+            } else {
+              onUpdateProfile({ programType: newProg });
+            }
+          }}
+        />
 
-      {/* 4. Workout Split & Exercises */}
-      <SplitEditor
-        exerciseCatalog={exerciseCatalog}
-        activeSplitDay={activeSplitDay}
-        activeProgramWorkoutNumber={activeProgramWorkoutNumber}
-        programType={profile.programType}
-        onOpenCreateExercise={() => setShowCreateExercise(true)}
-        onLaunchSplitDay={onLaunchSplitDay}
-        onLaunchWorkoutNumber={onLaunchWorkoutNumber}
-        onChangeProgram={(newProg) => {
-          if (onUpdateProgram) {
-            onUpdateProgram(newProg);
-          } else {
-            onUpdateProfile({ programType: newProg });
-          }
-        }}
-      />
-
-      {/* 5. Secondary Section: Profile & Data Settings (Collapsible Accordions) */}
-      <div className="pt-2 space-y-3">
-        <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 px-1">
-          Profile &amp; Data Settings
-        </h3>
-
-        {/* 0. Account & Cloud Sync Accordion */}
-        <div className="rounded-3xl surface-glass overflow-hidden">
+        {/* 5. Account & Sync Card */}
+        <div className="wk-card w-full text-left block">
           <button
             type="button"
             onClick={() => toggleSection('account')}
             aria-expanded={openSettingsSection === 'account'}
-            className="w-full p-5 flex items-center justify-between text-left"
+            className="w-full text-left block"
           >
-            <div className="flex items-center space-x-3">
-              <div className="w-9 h-9 rounded-xl bg-white/[0.08] flex items-center justify-center text-brand-primary overflow-hidden">
-                {profile.avatarUrl ? (
-                  <img
-                    src={profile.avatarUrl}
-                    alt={profile.name}
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <User className="w-4 h-4 stroke-[2]" />
-                )}
-              </div>
-              <div>
-                <div className="text-sm font-bold text-white flex items-center space-x-2">
-                  <span>Account &amp; Sync</span>
-                  {profile.email && (
-                    <span className="w-2 h-2 rounded-full bg-emerald-400" />
-                  )}
-                </div>
-                <div className="text-xs text-slate-400">
-                  {profile.email
-                    ? `${profile.email} • Signed in`
-                    : 'Guest • Your data stays on this device'}
-                </div>
+            <div className="flex items-start justify-between" style={{ gap: fig(24) }}>
+              <h2 className="wk-h1" style={{ lineHeight: 1.21 }}>
+                Account &amp; Sync
+              </h2>
+              <div className="flex items-center shrink-0" style={{ gap: fig(16) }}>
+                <span className="wk-pill">
+                  {profile.email ? 'SIGNED IN' : 'LOCAL ONLY'}
+                </span>
+                <ChevronRight
+                  className="wk-chevron transition-transform"
+                  style={{
+                    transform: openSettingsSection === 'account' ? 'rotate(90deg)' : undefined,
+                  }}
+                  strokeWidth={2}
+                  aria-hidden="true"
+                />
               </div>
             </div>
-            {openSettingsSection === 'account' ? (
-              <ChevronUp className="w-4 h-4 text-slate-400 stroke-[2]" />
-            ) : (
-              <ChevronDown className="w-4 h-4 text-slate-400 stroke-[2]" />
-            )}
+
+            <p
+              style={{
+                fontSize: fig(28),
+                lineHeight: 1.21,
+                color: 'var(--wk-muted)',
+                marginTop: fig(20),
+              }}
+            >
+              {profile.email
+                ? `${profile.email} • Signed in`
+                : 'Guest • Your data stays on this device'}
+            </p>
           </button>
 
           {openSettingsSection === 'account' && (
-            <div className="px-5 pb-5 pt-1 space-y-3 text-xs">
-              <div className="p-3.5 rounded-2xl bg-[#090C12] space-y-2">
-                <div className="flex justify-between items-center">
-                  <span className="text-slate-400">Account Status</span>
-                  <span className="font-semibold text-white flex items-center space-x-1.5">
-                    {profile.email ? (
-                      <>
-                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 stroke-[2]" />
-                        <span>Google Account</span>
-                      </>
-                    ) : (
-                      <span className="text-slate-300">Guest (Local Only)</span>
-                    )}
-                  </span>
-                </div>
-                {profile.email && (
-                  <div className="flex justify-between items-center">
-                    <span className="text-slate-400">Email</span>
-                    <span className="font-mono text-slate-200">{profile.email}</span>
-                  </div>
-                )}
-                <p className="text-slate-400 leading-relaxed pt-1">
-                  Workouts are saved on this device only. Cloud sync isn't available yet, so use Export
-                  Backup below to keep a copy.
-                </p>
+            <div
+              className="flex flex-col"
+              style={{
+                marginTop: fig(28),
+                paddingTop: fig(24),
+                borderTop: '1px solid rgba(255,255,255,0.08)',
+                gap: fig(20),
+              }}
+            >
+              <div className="flex items-center justify-between" style={{ gap: fig(16) }}>
+                <span className="wk-label">Account Status</span>
+                <span className="wk-pill">
+                  {profile.email ? 'Google Account' : 'Guest (Local Only)'}
+                </span>
               </div>
+              {profile.email && (
+                <div className="flex items-center justify-between" style={{ gap: fig(16) }}>
+                  <span className="wk-label">Email</span>
+                  <span className="wk-body">{profile.email}</span>
+                </div>
+              )}
+              <p className="wk-body">
+                Workouts are saved on this device only. Cloud sync isn&apos;t available yet, so use Export
+                Backup below to keep a copy.
+              </p>
 
               {onOpenAuth && (
                 <button
@@ -328,48 +330,67 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
                     triggerHaptic('light');
                     onOpenAuth();
                   }}
-                  className="w-full py-3 rounded-2xl bg-[#141824] hover:bg-[#1C2233] text-xs font-bold text-white flex items-center justify-center space-x-2 transition-colors min-h-[44px]"
+                  className="wk-button"
+                  style={{ background: 'var(--wk-pill)', color: '#fff' }}
                 >
-                  <LogIn className="w-4 h-4 stroke-[2] text-brand-primary" />
-                  <span>{profile.email ? 'Manage Account & Sign Out' : 'Sign In with Google'}</span>
+                  {profile.email ? 'Manage Account & Sign Out' : 'Sign In with Google'}
                 </button>
               )}
             </div>
           )}
         </div>
 
-        {/* A. Athlete Profile & Heart Rate Zones Accordion */}
-        <div className="rounded-3xl surface-glass overflow-hidden">
+        {/* 6. Athlete Profile & Heart Rate Card */}
+        <div className="wk-card w-full text-left block">
           <button
             type="button"
             onClick={() => toggleSection('profile')}
             aria-expanded={openSettingsSection === 'profile'}
-            className="w-full p-5 flex items-center justify-between text-left"
+            className="w-full text-left block"
           >
-            <div className="flex items-center space-x-3">
-              <div className="w-9 h-9 rounded-xl bg-white/[0.08] flex items-center justify-center text-white">
-                <User className="w-4 h-4 stroke-[2]" />
-              </div>
-              <div>
-                <div className="text-sm font-bold text-white">
-                  Athlete Profile &amp; Heart Rate
-                </div>
-                <div className="text-xs text-slate-400">
-                  {profile.name} • Max HR {profile.maxHr} bpm • Resting {profile.restingHrBaseline} bpm
-                </div>
+            <div className="flex items-start justify-between" style={{ gap: fig(24) }}>
+              <h2 className="wk-h1" style={{ lineHeight: 1.21 }}>
+                Athlete Profile &amp; Heart Rate
+              </h2>
+              <div className="flex items-center shrink-0" style={{ gap: fig(16) }}>
+                <span className="wk-pill">
+                  {(profile.weightUnit || 'kg').toUpperCase()}
+                </span>
+                <ChevronRight
+                  className="wk-chevron transition-transform"
+                  style={{
+                    transform: openSettingsSection === 'profile' ? 'rotate(90deg)' : undefined,
+                  }}
+                  strokeWidth={2}
+                  aria-hidden="true"
+                />
               </div>
             </div>
-            {openSettingsSection === 'profile' ? (
-              <ChevronUp className="w-4 h-4 text-slate-400 stroke-[2]" />
-            ) : (
-              <ChevronDown className="w-4 h-4 text-slate-400 stroke-[2]" />
-            )}
+
+            <p
+              style={{
+                fontSize: fig(28),
+                lineHeight: 1.21,
+                color: 'var(--wk-muted)',
+                marginTop: fig(20),
+              }}
+            >
+              {profile.name} • Max HR {profile.maxHr} bpm • Resting {profile.restingHrBaseline} bpm
+            </p>
           </button>
 
           {openSettingsSection === 'profile' && (
-            <div className="px-5 pb-5 pt-1 space-y-3 text-xs">
-              <div className="flex justify-between items-center py-1.5">
-                <label htmlFor="athlete-name-input" className="text-slate-300 font-medium">
+            <div
+              className="flex flex-col"
+              style={{
+                marginTop: fig(28),
+                paddingTop: fig(24),
+                borderTop: '1px solid rgba(255,255,255,0.08)',
+                gap: fig(22),
+              }}
+            >
+              <div className="flex items-center justify-between" style={{ gap: fig(16) }}>
+                <label htmlFor="athlete-name-input" className="wk-label">
                   Name
                 </label>
                 <input
@@ -377,13 +398,22 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
                   type="text"
                   value={profile.name}
                   onChange={(e) => onUpdateProfile({ name: e.target.value })}
-                  className="w-36 py-1.5 px-3 rounded-xl bg-[#0B0E14] text-right font-bold text-white text-xs focus:outline-none focus:ring-1 focus:ring-brand-primary"
+                  className="wk-field"
+                  style={{ width: fig(320) }}
                 />
               </div>
 
-              <div className="flex justify-between items-center py-1.5">
-                <span className="text-slate-300 font-medium">Strength Standard Category</span>
-                <div className="flex bg-[#0B0E14] p-1 rounded-xl">
+              <div className="flex items-center justify-between" style={{ gap: fig(16) }}>
+                <span className="wk-label">Strength Standard Category</span>
+                <div
+                  className="grid grid-cols-2 items-center"
+                  style={{
+                    height: fig(76),
+                    padding: fig(6),
+                    borderRadius: fig(18),
+                    background: 'var(--wk-raised)',
+                  }}
+                >
                   {(['male', 'female'] as const).map((g) => {
                     const isSelected = profile.gender === g;
                     return (
@@ -392,11 +422,13 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
                         type="button"
                         aria-pressed={isSelected}
                         onClick={() => onUpdateProfile({ gender: g })}
-                        className={`px-3 py-1 rounded-lg text-xs font-semibold capitalize transition-all ${
-                          isSelected
-                            ? 'bg-white/[0.14] text-white font-bold shadow-sm'
-                            : 'text-slate-400 hover:text-slate-200'
-                        }`}
+                        className="h-full px-3 font-bold uppercase transition-colors"
+                        style={{
+                          borderRadius: fig(14),
+                          fontSize: fig(22),
+                          background: isSelected ? 'var(--wk-pill)' : 'transparent',
+                          color: isSelected ? '#fff' : 'var(--wk-muted)',
+                        }}
                       >
                         {g}
                       </button>
@@ -405,9 +437,19 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
                 </div>
               </div>
 
-              <div className="flex justify-between items-center py-1.5">
-                <span className="text-slate-300 font-medium">Weight Units</span>
-                <div className="flex bg-[#0B0E14] p-1 rounded-xl" role="group" aria-label="Weight units">
+              <div className="flex items-center justify-between" style={{ gap: fig(16) }}>
+                <span className="wk-label">Weight Units</span>
+                <div
+                  className="grid grid-cols-2 items-center"
+                  style={{
+                    height: fig(76),
+                    padding: fig(6),
+                    borderRadius: fig(18),
+                    background: 'var(--wk-raised)',
+                  }}
+                  role="group"
+                  aria-label="Weight units"
+                >
                   {(['kg', 'lb'] as const).map((u) => {
                     const isSelected = (profile.weightUnit || 'kg') === u;
                     return (
@@ -416,9 +458,13 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
                         type="button"
                         aria-pressed={isSelected}
                         onClick={() => onUpdateProfile({ weightUnit: u })}
-                        className={`px-3 min-h-[36px] rounded-lg text-xs font-semibold transition-all ${
-                          isSelected ? 'bg-white/[0.14] text-white font-bold shadow-sm' : 'text-slate-400 hover:text-slate-200'
-                        }`}
+                        className="h-full px-3 font-bold uppercase transition-colors"
+                        style={{
+                          borderRadius: fig(14),
+                          fontSize: fig(22),
+                          background: isSelected ? 'var(--wk-pill)' : 'transparent',
+                          color: isSelected ? '#fff' : 'var(--wk-muted)',
+                        }}
                       >
                         {u}
                       </button>
@@ -427,9 +473,19 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
                 </div>
               </div>
 
-              <div className="flex justify-between items-center py-1.5 gap-2">
-                <span className="text-slate-300 font-medium">Training Experience</span>
-                <div className="flex bg-[#0B0E14] p-1 rounded-xl" role="group" aria-label="Training experience">
+              <div className="flex items-center justify-between" style={{ gap: fig(16) }}>
+                <span className="wk-label">Training Experience</span>
+                <div
+                  className="grid grid-cols-3 items-center"
+                  style={{
+                    height: fig(76),
+                    padding: fig(6),
+                    borderRadius: fig(18),
+                    background: 'var(--wk-raised)',
+                  }}
+                  role="group"
+                  aria-label="Training experience"
+                >
                   {([
                     { id: 'new', label: 'New' },
                     { id: 'intermediate', label: '1–3 yrs' },
@@ -442,9 +498,13 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
                         type="button"
                         aria-pressed={isSelected}
                         onClick={() => onUpdateProfile({ experienceLevel: opt.id })}
-                        className={`px-2.5 min-h-[36px] rounded-lg text-xs font-semibold transition-all ${
-                          isSelected ? 'bg-white/[0.14] text-white font-bold shadow-sm' : 'text-slate-400 hover:text-slate-200'
-                        }`}
+                        className="h-full px-2.5 font-bold uppercase transition-colors"
+                        style={{
+                          borderRadius: fig(14),
+                          fontSize: fig(22),
+                          background: isSelected ? 'var(--wk-pill)' : 'transparent',
+                          color: isSelected ? '#fff' : 'var(--wk-muted)',
+                        }}
                       >
                         {opt.label}
                       </button>
@@ -453,94 +513,104 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
                 </div>
               </div>
 
-              <div className="flex justify-between items-center py-1.5">
-                <label htmlFor="max-hr-input" className="text-slate-300 font-medium">
-                  Max Heart Rate
+              <div className="flex items-center justify-between" style={{ gap: fig(16) }}>
+                <label htmlFor="max-hr-input" className="wk-label">
+                  Max Heart Rate (bpm)
                 </label>
-                <div className="flex items-center space-x-1.5">
-                  <input
-                    id="max-hr-input"
-                    type="number"
-                    value={profile.maxHr}
-                    onChange={(e) =>
-                      onUpdateProfile({ maxHr: parseInt(e.target.value, 10) || 190 })
-                    }
-                    className="w-16 py-1.5 px-2 rounded-xl bg-[#0B0E14] font-mono text-center font-bold text-white text-xs focus:outline-none focus:ring-1 focus:ring-brand-primary"
-                  />
-                  <span className="text-slate-400">bpm</span>
-                </div>
+                <input
+                  id="max-hr-input"
+                  type="number"
+                  value={profile.maxHr}
+                  onChange={(e) =>
+                    onUpdateProfile({ maxHr: parseInt(e.target.value, 10) || 190 })
+                  }
+                  className="wk-field"
+                  style={{ width: fig(180) }}
+                />
               </div>
 
-              <div className="flex justify-between items-center py-1.5">
-                <label htmlFor="resting-hr-input" className="text-slate-300 font-medium">
-                  Normal Resting Heart Rate
+              <div className="flex items-center justify-between" style={{ gap: fig(16) }}>
+                <label htmlFor="resting-hr-input" className="wk-label">
+                  Normal Resting HR (bpm)
                 </label>
-                <div className="flex items-center space-x-1.5">
-                  <input
-                    id="resting-hr-input"
-                    type="number"
-                    value={profile.restingHrBaseline}
-                    onChange={(e) =>
-                      onUpdateProfile({ restingHrBaseline: parseInt(e.target.value, 10) || 56 })
-                    }
-                    className="w-16 py-1.5 px-2 rounded-xl bg-[#0B0E14] font-mono text-center font-bold text-white text-xs focus:outline-none focus:ring-1 focus:ring-brand-primary"
-                  />
-                  <span className="text-slate-400">bpm</span>
-                </div>
+                <input
+                  id="resting-hr-input"
+                  type="number"
+                  value={profile.restingHrBaseline}
+                  onChange={(e) =>
+                    onUpdateProfile({ restingHrBaseline: parseInt(e.target.value, 10) || 56 })
+                  }
+                  className="wk-field"
+                  style={{ width: fig(180) }}
+                />
               </div>
             </div>
           )}
         </div>
 
-        {/* B. Wearable Device & Recovery Integration Accordion */}
-        <div className="rounded-3xl surface-glass overflow-hidden">
+        {/* 7. Wearable & Recovery Card */}
+        <div className="wk-card w-full text-left block">
           <button
             type="button"
             onClick={() => toggleSection('wearable')}
             aria-expanded={openSettingsSection === 'wearable'}
-            className="w-full p-5 flex items-center justify-between text-left"
+            className="w-full text-left block"
           >
-            <div className="flex items-center space-x-3">
-              <div className="w-9 h-9 rounded-xl bg-white/[0.08] flex items-center justify-center text-brand-primary">
-                <Watch className="w-4 h-4 stroke-[2]" />
-              </div>
-              <div>
-                <div className="text-sm font-bold text-white flex items-center space-x-2">
-                  <span>Wearable & Recovery</span>
-                  {isWatchConnected && (
-                    <span className="w-2 h-2 rounded-full bg-emerald-400" />
-                  )}
-                </div>
-                <div className="text-xs text-slate-400">
-                  {activeWearableMeta ? `${activeWearableMeta.name} • Connected` : 'Connect Fitbit, Whoop, or Health Connect'}
-                </div>
+            <div className="flex items-start justify-between" style={{ gap: fig(24) }}>
+              <h2 className="wk-h1" style={{ lineHeight: 1.21 }}>
+                Wearable &amp; Recovery
+              </h2>
+              <div className="flex items-center shrink-0" style={{ gap: fig(16) }}>
+                <span className="wk-pill">
+                  {isWatchConnected ? 'CONNECTED' : 'OFFLINE'}
+                </span>
+                <ChevronRight
+                  className="wk-chevron transition-transform"
+                  style={{
+                    transform: openSettingsSection === 'wearable' ? 'rotate(90deg)' : undefined,
+                  }}
+                  strokeWidth={2}
+                  aria-hidden="true"
+                />
               </div>
             </div>
-            {openSettingsSection === 'wearable' ? (
-              <ChevronUp className="w-4 h-4 text-slate-400 stroke-[2]" />
-            ) : (
-              <ChevronDown className="w-4 h-4 text-slate-400 stroke-[2]" />
-            )}
+
+            <p
+              style={{
+                fontSize: fig(28),
+                lineHeight: 1.21,
+                color: 'var(--wk-muted)',
+                marginTop: fig(20),
+              }}
+            >
+              {activeWearableMeta
+                ? `${activeWearableMeta.name} • Connected`
+                : 'Connect Fitbit, Whoop, or Health Connect'}
+            </p>
           </button>
 
           {openSettingsSection === 'wearable' && (
-            <div className="px-5 pb-5 pt-1 space-y-3 text-xs">
-              <div className="p-3.5 rounded-2xl bg-[#090C12] space-y-2">
-                <div className="flex justify-between items-center">
-                  <span className="text-slate-400">Connected Device</span>
-                  <span className="font-semibold text-white">
-                    {activeWearableMeta?.name || 'None'}
+            <div
+              className="flex flex-col"
+              style={{
+                marginTop: fig(28),
+                paddingTop: fig(24),
+                borderTop: '1px solid rgba(255,255,255,0.08)',
+                gap: fig(20),
+              }}
+            >
+              <div className="flex items-center justify-between" style={{ gap: fig(16) }}>
+                <span className="wk-label">Connected Device</span>
+                <span className="wk-pill">{activeWearableMeta?.name || 'None'}</span>
+              </div>
+              {latestBiometrics && latestBiometrics.hrvRmssd > 0 && (
+                <div className="flex items-center justify-between" style={{ gap: fig(16) }}>
+                  <span className="wk-label">Recent Recovery</span>
+                  <span className="wk-pill">
+                    HRV {latestBiometrics.hrvRmssd} ms • RHR {latestBiometrics.restingHr} bpm
                   </span>
                 </div>
-                {latestBiometrics && latestBiometrics.hrvRmssd > 0 && (
-                  <div className="flex justify-between items-center">
-                    <span className="text-slate-400">Recent Recovery</span>
-                    <span className="font-mono text-slate-200">
-                      HRV {latestBiometrics.hrvRmssd} ms • RHR {latestBiometrics.restingHr} bpm
-                    </span>
-                  </div>
-                )}
-              </div>
+              )}
 
               {onOpenWatchSync && (
                 <button
@@ -549,46 +619,63 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
                     triggerHaptic('light');
                     onOpenWatchSync();
                   }}
-                  className="w-full py-3 rounded-2xl bg-[#141824] hover:bg-[#1C2233] text-xs font-bold text-white flex items-center justify-center space-x-2 transition-colors min-h-[44px]"
+                  className="wk-button"
+                  style={{ background: 'var(--wk-pill)', color: '#fff' }}
                 >
-                  <Watch className="w-4 h-4 stroke-[2] text-brand-primary" />
-                  <span>Manage Wearables & Sync Recovery</span>
+                  Manage Wearables &amp; Sync Recovery
                 </button>
               )}
             </div>
           )}
         </div>
 
-        {/* C. Data Backup, Privacy & Reset Accordion */}
-        <div className="rounded-3xl surface-glass overflow-hidden">
+        {/* 8. Data Backup & Privacy Card */}
+        <div className="wk-card w-full text-left block">
           <button
             type="button"
             onClick={() => toggleSection('data')}
             aria-expanded={openSettingsSection === 'data'}
-            className="w-full p-5 flex items-center justify-between text-left"
+            className="w-full text-left block"
           >
-            <div className="flex items-center space-x-3">
-              <div className="w-9 h-9 rounded-xl bg-white/[0.08] flex items-center justify-center text-brand-primary">
-                <ShieldCheck className="w-4 h-4 stroke-[2]" />
-              </div>
-              <div>
-                <div className="text-sm font-bold text-white">
-                  Data Backup &amp; Privacy
-                </div>
-                <div className="text-xs text-slate-400">
-                  Stored privately on your device • Export or reset anytime
-                </div>
+            <div className="flex items-start justify-between" style={{ gap: fig(24) }}>
+              <h2 className="wk-h1" style={{ lineHeight: 1.21 }}>
+                Data Backup &amp; Privacy
+              </h2>
+              <div className="flex items-center shrink-0" style={{ gap: fig(16) }}>
+                <span className="wk-pill">ON DEVICE</span>
+                <ChevronRight
+                  className="wk-chevron transition-transform"
+                  style={{
+                    transform: openSettingsSection === 'data' ? 'rotate(90deg)' : undefined,
+                  }}
+                  strokeWidth={2}
+                  aria-hidden="true"
+                />
               </div>
             </div>
-            {openSettingsSection === 'data' ? (
-              <ChevronUp className="w-4 h-4 text-slate-400 stroke-[2]" />
-            ) : (
-              <ChevronDown className="w-4 h-4 text-slate-400 stroke-[2]" />
-            )}
+
+            <p
+              style={{
+                fontSize: fig(28),
+                lineHeight: 1.21,
+                color: 'var(--wk-muted)',
+                marginTop: fig(20),
+              }}
+            >
+              Stored privately on your device • Export or reset anytime
+            </p>
           </button>
 
           {openSettingsSection === 'data' && (
-            <div className="px-5 pb-5 pt-1 space-y-3">
+            <div
+              className="flex flex-col"
+              style={{
+                marginTop: fig(28),
+                paddingTop: fig(24),
+                borderTop: '1px solid rgba(255,255,255,0.08)',
+                gap: fig(20),
+              }}
+            >
               {canInstallPwa && onTriggerInstallPwa && (
                 <button
                   type="button"
@@ -596,14 +683,14 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
                     triggerHaptic('medium');
                     onTriggerInstallPwa();
                   }}
-                  className="w-full py-2.5 rounded-2xl bg-white hover:bg-slate-100 text-slate-950 font-bold text-xs flex items-center justify-center space-x-2 shadow-md shadow-white/5 active:scale-95"
+                  className="wk-button"
+                  style={{ background: 'var(--wk-accent)', color: '#13181C' }}
                 >
-                  <Smartphone className="w-4 h-4 stroke-[2]" />
-                  <span>Install App to Home Screen</span>
+                  Install App to Home Screen
                 </button>
               )}
 
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-2" style={{ gap: fig(16) }}>
                 {onExportData && (
                   <button
                     type="button"
@@ -611,10 +698,10 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
                       triggerHaptic('light');
                       onExportData();
                     }}
-                    className="py-2.5 px-3 rounded-2xl bg-[#141824] hover:bg-[#1C2233] text-xs font-semibold text-white flex items-center justify-center space-x-1.5 transition-colors"
+                    className="wk-button"
+                    style={{ background: 'var(--wk-pill)', color: '#fff' }}
                   >
-                    <Download className="w-3.5 h-3.5 text-brand-primary stroke-[2]" />
-                    <span>Export Backup</span>
+                    Export Backup
                   </button>
                 )}
 
@@ -634,16 +721,16 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
                         triggerHaptic('light');
                         fileInputRef.current?.click();
                       }}
-                      className="py-2.5 px-3 rounded-2xl bg-[#141824] hover:bg-[#1C2233] text-xs font-semibold text-white flex items-center justify-center space-x-1.5 transition-colors"
+                      className="wk-button"
+                      style={{ background: 'var(--wk-pill)', color: '#fff' }}
                     >
-                      <Upload className="w-3.5 h-3.5 text-cyan-400 stroke-[2]" />
-                      <span>Restore Backup</span>
+                      Restore Backup
                     </button>
                   </>
                 )}
               </div>
 
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-2" style={{ gap: fig(16) }}>
                 <button
                   type="button"
                   onClick={() => {
@@ -656,10 +743,10 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
                       onResetData();
                     }
                   }}
-                  className="py-2.5 px-2.5 rounded-2xl bg-[#0B0E14] hover:bg-[#141824] text-xs font-semibold text-slate-200 flex items-center justify-center space-x-1.5 transition-colors"
+                  className="wk-button"
+                  style={{ background: 'var(--wk-raised)', color: '#fff' }}
                 >
-                  <RotateCcw className="w-3.5 h-3.5 text-amber-400 stroke-[2]" />
-                  <span>Load Sample Data</span>
+                  Load Sample Data
                 </button>
 
                 <button
@@ -668,10 +755,10 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
                     triggerHaptic('warning');
                     setConfirmDeleteOpen(!confirmDeleteOpen);
                   }}
-                  className="py-2.5 px-2.5 rounded-2xl bg-rose-500/15 hover:bg-rose-500/25 text-xs font-semibold text-rose-300 flex items-center justify-center space-x-1.5 transition-colors"
+                  className="wk-button"
+                  style={{ background: 'var(--wk-raised)', color: '#FF3B4E' }}
                 >
-                  <Trash2 className="w-3.5 h-3.5 text-rose-400 stroke-[2]" />
-                  <span>Delete All Data</span>
+                  Delete All Data
                 </button>
               </div>
 
@@ -683,25 +770,32 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
                     await removeGpuModel();
                     setDeviceCoachReady(false);
                   }}
-                  className="w-full min-h-[44px] py-2.5 px-3 rounded-2xl bg-[#0B0E14] hover:bg-[#141824] text-xs font-semibold text-slate-200 transition-colors"
+                  className="wk-button"
+                  style={{ background: 'var(--wk-raised)', color: '#fff' }}
                 >
                   Remove on-phone coach download (frees {GPU_MODEL_DOWNLOAD_LABEL})
                 </button>
               )}
 
               {confirmDeleteOpen && onDeleteAllData && (
-                <div className="p-3.5 rounded-2xl bg-rose-950/60 text-xs space-y-2">
-                  <div className="font-bold text-white">
+                <div
+                  style={{
+                    paddingTop: fig(20),
+                    borderTop: '1px solid rgba(255,255,255,0.08)',
+                  }}
+                >
+                  <div className="wk-label">
                     Permanently erase all workout &amp; recovery data?
                   </div>
-                  <p className="text-slate-300 leading-relaxed">
+                  <p className="wk-body" style={{ marginTop: fig(12) }}>
                     This will wipe all workout history, bodyweight logs, custom exercises, and watch settings from this device.
                   </p>
-                  <div className="flex space-x-2 pt-1">
+                  <div className="grid grid-cols-2" style={{ marginTop: fig(20), gap: fig(16) }}>
                     <button
                       type="button"
                       onClick={() => setConfirmDeleteOpen(false)}
-                      className="flex-1 py-2 rounded-xl bg-[#141824] text-slate-200 font-semibold"
+                      className="wk-button"
+                      style={{ background: 'var(--wk-pill)', color: '#fff' }}
                     >
                       Cancel
                     </button>
@@ -712,7 +806,8 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
                         onDeleteAllData();
                         setConfirmDeleteOpen(false);
                       }}
-                      className="flex-1 py-2 rounded-xl bg-rose-500 text-white font-bold hover:bg-rose-400"
+                      className="wk-button"
+                      style={{ background: '#FF3B4E', color: '#fff' }}
                     >
                       Confirm Erase
                     </button>
@@ -720,33 +815,38 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
                 </div>
               )}
 
-              <div className="pt-2">
+              <div
+                style={{
+                  paddingTop: fig(20),
+                  borderTop: '1px solid rgba(255,255,255,0.08)',
+                }}
+              >
                 <button
                   type="button"
                   onClick={() => setShowPrivacyDetails(!showPrivacyDetails)}
                   aria-expanded={showPrivacyDetails}
-                  className="w-full flex items-center justify-between text-xs text-slate-300 hover:text-white py-1"
+                  className="w-full flex items-center justify-between wk-label"
                 >
-                  <span className="flex items-center space-x-1.5 font-semibold">
-                    <FileText className="w-3.5 h-3.5 text-brand-primary stroke-[2]" />
-                    <span>Privacy Policy &amp; Fitness Disclaimer</span>
-                  </span>
-                  {showPrivacyDetails ? (
-                    <ChevronUp className="w-4 h-4 stroke-[2]" />
-                  ) : (
-                    <ChevronDown className="w-4 h-4 stroke-[2]" />
-                  )}
+                  <span>Privacy Policy &amp; Fitness Disclaimer</span>
+                  <ChevronRight
+                    className="wk-chevron transition-transform"
+                    style={{ transform: showPrivacyDetails ? 'rotate(90deg)' : undefined }}
+                    strokeWidth={2}
+                  />
                 </button>
 
                 {showPrivacyDetails && (
-                  <div className="mt-2 p-3.5 rounded-2xl bg-[#090C12] text-xs text-slate-300 space-y-2 leading-relaxed">
+                  <div className="wk-body" style={{ marginTop: fig(16) }}>
                     <p>
                       <strong className="text-white">Privacy:</strong> Your workouts, bodyweight and recovery logs are stored on this device. When you connect Fitbit or Whoop, their data passes through our server only to fetch it and is not stored there. Health data is never sold or shared.
                     </p>
-                    <p>
+                    <p style={{ marginTop: fig(12) }}>
                       <strong className="text-white">Fitness Disclaimer:</strong> Recovery scores and target weights are for informational fitness tracking only and are not medical advice.
                     </p>
-                    <div className="flex items-center space-x-4 pt-1 font-semibold text-brand-primary">
+                    <div
+                      className="flex items-center font-bold"
+                      style={{ marginTop: fig(16), gap: fig(24), color: 'var(--wk-accent)' }}
+                    >
                       <a href="/privacy.html" target="_blank" rel="noreferrer" className="hover:underline">
                         Full Privacy Policy &rarr;
                       </a>
@@ -763,32 +863,33 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
 
         {/* D. Product Governance & Competitor Comparison Matrix (internal tool: development builds only) */}
         {import.meta.env.DEV && (
-        <div className="rounded-3xl surface-glass p-5 sm:p-6 flex items-center justify-between gap-3">
-          <div className="flex items-center space-x-3">
-            <div className="w-9 h-9 rounded-2xl bg-brand-primary/15 flex items-center justify-center text-brand-primary shrink-0">
-              <ShieldCheck className="w-4 h-4 stroke-[2]" />
-            </div>
-            <div>
-              <div className="text-sm font-bold text-white">
+          <div className="wk-card w-full text-left block">
+            <div className="flex items-start justify-between" style={{ gap: fig(24) }}>
+              <h2 className="wk-h1" style={{ lineHeight: 1.21 }}>
                 Product Governance &amp; Competitor Matrix
-              </div>
-              <div className="text-xs text-slate-400">
-                Review Locked vs. Progressing features, rationale &amp; competitor benchmarks
-              </div>
+              </h2>
+              <button
+                type="button"
+                onClick={() => {
+                  triggerHaptic('light');
+                  setShowGovernanceModal(true);
+                }}
+                className="wk-pill shrink-0"
+              >
+                Open Matrix
+              </button>
             </div>
+            <p
+              style={{
+                fontSize: fig(28),
+                lineHeight: 1.21,
+                color: 'var(--wk-muted)',
+                marginTop: fig(20),
+              }}
+            >
+              Review Locked vs. Progressing features, rationale &amp; competitor benchmarks
+            </p>
           </div>
-
-          <button
-            type="button"
-            onClick={() => {
-              triggerHaptic('light');
-              setShowGovernanceModal(true);
-            }}
-            className="px-3.5 py-2 rounded-xl bg-white/[0.08] hover:bg-white/[0.14] text-white text-xs font-semibold shrink-0 transition-colors"
-          >
-            Open Matrix
-          </button>
-        </div>
         )}
       </div>
 

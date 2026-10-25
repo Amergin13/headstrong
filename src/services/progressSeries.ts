@@ -203,6 +203,78 @@ export function buildCompositionCharts(input: {
     format: fmt.length,
   });
 
+  const shoulders = measured(biometrics, (l) => l.shouldersCm);
+  charts.push({
+    id: 'shoulders',
+    title: 'Shoulders',
+    points: shoulders,
+    lastUpdated: shoulders[shoulders.length - 1]?.date,
+    summary:
+      changeSummary('Your shoulders', shoulders, fmt.length, fmt.length) ||
+      'Measure around the widest point of both deltoids, relaxed, to track shoulder width over time.',
+    format: fmt.length,
+  });
+
+  const hips = measured(biometrics, (l) => l.hipsCm);
+  charts.push({
+    id: 'hips',
+    title: 'Hips / Glutes',
+    points: hips,
+    lastUpdated: hips[hips.length - 1]?.date,
+    summary:
+      changeSummary('Your hips', hips, fmt.length, fmt.length) ||
+      'Measure around the fullest part of your glutes with your feet together to track lower-body changes.',
+    format: fmt.length,
+  });
+
+  const thighs = measured(biometrics, (l) => l.thighCm);
+  charts.push({
+    id: 'thighs',
+    title: 'Thighs',
+    points: thighs,
+    lastUpdated: thighs[thighs.length - 1]?.date,
+    summary:
+      changeSummary('Your thigh', thighs, fmt.length, fmt.length) ||
+      'Measure midway between your hip crease and kneecap to track quad and hamstring growth.',
+    format: fmt.length,
+  });
+
+  const calves = measured(biometrics, (l) => l.calfCm);
+  charts.push({
+    id: 'calves',
+    title: 'Calves',
+    points: calves,
+    lastUpdated: calves[calves.length - 1]?.date,
+    summary:
+      changeSummary('Your calf', calves, fmt.length, fmt.length) ||
+      'Measure around the widest point of your calf while standing to track lower-leg hypertrophy.',
+    format: fmt.length,
+  });
+
+  const forearms = measured(biometrics, (l) => l.forearmCm);
+  charts.push({
+    id: 'forearms',
+    title: 'Forearms',
+    points: forearms,
+    lastUpdated: forearms[forearms.length - 1]?.date,
+    summary:
+      changeSummary('Your forearm', forearms, fmt.length, fmt.length) ||
+      'Measure around the thickest part of your forearm below the elbow to track forearm development.',
+    format: fmt.length,
+  });
+
+  const neck = measured(biometrics, (l) => l.neckCm);
+  charts.push({
+    id: 'neck',
+    title: 'Neck',
+    points: neck,
+    lastUpdated: neck[neck.length - 1]?.date,
+    summary:
+      changeSummary('Your neck', neck, fmt.length, fmt.length) ||
+      'Measure just below the larynx with your shoulders relaxed to track neck circumference over time.',
+    format: fmt.length,
+  });
+
   return charts;
 }
 

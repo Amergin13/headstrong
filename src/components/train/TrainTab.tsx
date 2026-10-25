@@ -1069,13 +1069,13 @@ export const TrainTab: React.FC<TrainTabProps> = ({
       {/* Add Exercise Picker Modal */}
       {showAddExerciseModal && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/85 backdrop-blur-md">
-          <div className="w-full max-w-md rounded-3xl bg-[#0E1219] p-5 sm:p-6 shadow-2xl space-y-4 max-h-[80vh] flex flex-col">
-            <div className="flex items-center justify-between border-b border-white/[0.04] pb-3">
+          <div className="wk-card w-full max-w-md shadow-2xl space-y-4 max-h-[80vh] flex flex-col">
+            <div className="flex items-center justify-between pb-1">
               <div>
-                <h3 className="font-bold text-base text-white">
+                <h3 className="wk-h1">
                   Add Exercise
                 </h3>
-                <p className="text-xs text-slate-400 mt-0.5">
+                <p className="wk-caption mt-1">
                   Target weights and reps are pre-filled from your workout history
                 </p>
               </div>
@@ -1083,7 +1083,8 @@ export const TrainTab: React.FC<TrainTabProps> = ({
                 type="button"
                 onClick={() => setShowAddExerciseModal(false)}
                 aria-label="Close add exercise modal"
-                className="w-9 h-9 rounded-full bg-white/[0.06] hover:bg-white/[0.12] text-slate-400 hover:text-white flex items-center justify-center text-xs font-bold transition-colors"
+                className="w-10 h-10 rounded-full text-white/60 hover:text-white flex items-center justify-center text-xs font-bold transition-colors shrink-0"
+                style={{ background: 'var(--wk-raised)' }}
               >
                 ✕
               </button>
@@ -1104,17 +1105,17 @@ export const TrainTab: React.FC<TrainTabProps> = ({
                     key={def.id}
                     type="button"
                     onClick={() => handleAddExerciseToSession(def)}
-                    className="w-full p-3.5 rounded-2xl bg-[#090C12] hover:bg-[#141824] flex items-center justify-between text-left transition-all"
+                    className="wk-raised w-full flex items-center justify-between text-left transition-all active:scale-[0.99]"
                   >
                     <div>
-                      <div className="font-bold text-sm text-white">
+                      <div className="wk-label normal-case">
                         {def.name}
                       </div>
-                      <div className="text-xs text-slate-400 mt-0.5">
+                      <div className="wk-caption mt-1">
                         {def.primaryMuscle} • {equipLabel} • {def.defaultRepRange[0]}–{def.defaultRepRange[1]} reps
                       </div>
                     </div>
-                    <Plus className="w-4 h-4 text-brand-primary shrink-0 stroke-[2]" />
+                    <Plus className="w-4 h-4 shrink-0 stroke-[2]" style={{ color: 'var(--wk-accent)' }} />
                   </button>
                 );
               })}
@@ -1161,22 +1162,22 @@ export const TrainTab: React.FC<TrainTabProps> = ({
       {/* Past Workout Preview Modal */}
       {previewPastWorkout && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md">
-          <div className="w-full max-w-sm rounded-3xl bg-[#0E1219] p-5 sm:p-6 shadow-2xl space-y-4">
+          <div className="wk-card w-full max-w-sm shadow-2xl space-y-4">
             <div className="flex justify-between items-center">
-              <h3 className="font-bold text-base text-white">
+              <h3 className="wk-h1">
                 Completed Workout ({previewPastWorkout.date})
               </h3>
               <button
                 type="button"
                 onClick={() => setPreviewPastWorkout(null)}
-                className="text-xs font-bold text-slate-400 hover:text-white"
+                className="wk-pill min-h-[36px] text-white"
               >
                 Close
               </button>
             </div>
-            <div className="text-xs text-slate-400">
+            <div className="wk-body">
               {previewPastWorkout.name} •{' '}
-              <span className="text-brand-primary font-mono font-bold">
+              <span className="font-bold tabular-numbers" style={{ color: 'var(--wk-accent)' }}>
                 +{previewPastWorkout.xpEarned} XP
               </span>
             </div>
@@ -1184,10 +1185,10 @@ export const TrainTab: React.FC<TrainTabProps> = ({
               {previewPastWorkout.exercises.map((ex) => (
                 <div
                   key={ex.id}
-                  className="p-3 rounded-xl bg-[#090C12] text-xs"
+                  className="wk-raised"
                 >
-                  <div className="font-bold text-white">{ex.name}</div>
-                  <div className="text-xs text-slate-400 font-mono mt-1">
+                  <div className="wk-label normal-case">{ex.name}</div>
+                  <div className="wk-caption tabular-numbers mt-1">
                     {ex.sets
                       .filter((s) => s.completed)
                       .map(

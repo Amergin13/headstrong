@@ -415,12 +415,13 @@ export const EXERCISE_SCIENCE_KNOWLEDGE_BASE: ScientificPrinciple[] = [
     id: 'sp-smart-device-integration',
     topic: 'Biometric Auto-Regulation & IoT',
     title: 'Friction-Free Telemetry & Smart Device Integration',
-    formula: 'Telemetry Ingestion = Fitbit / Pixel Watch / Whoop APIs (including Fitbit-synced smart scales) + Health Connect data import',
+    formula:
+      'Telemetry Ingestion = RENPHO Web Bluetooth Scales & Smart Tape Measures (kg/lb & cm/in) + Fitbit / Pixel Watch / Whoop APIs + Health Connect data import',
     scientificRationale:
-      'Adherence is the single greatest determinant of long-term physique and athletic progress. Manual data entry creates cognitive friction and tracking abandonment. Pulling wearable and scale data from Fitbit or Whoop, and importing Health Connect exports, replaces manual entry, providing reliable inputs for 7-day EMA smoothing and daily autonomic readiness auto-regulation.',
+      'Adherence is the single greatest determinant of long-term physique and athletic progress. Manual data entry creates cognitive friction and tracking abandonment. Connecting directly to RENPHO Bluetooth scales and smart body tape measures via Web Bluetooth—alongside Fitbit, Whoop, and Health Connect exports—replaces manual entry, capturing daily weight and multi-site body circumferences (waist, chest, shoulders, arms, forearms, neck, hips, thighs, calves) in cm or inches for 7-day EMA smoothing and recomposition tracking.',
     academicCitation: 'Piwek et al. (2016); Hermsen et al. (2017); WCAG Cognitive Accessibility & Friction Reduction',
     practicalApplication:
-      'Seamlessly syncs with your smart scale, digital measuring tape, and smart watch so your weight, body measurements, and recovery telemetry update automatically without manual typing.',
+      'Pairs directly with RENPHO Bluetooth scales and smart tape measures in Progress → Composition → Log measurements, and syncs wearable recovery from Fitbit or Whoop so your weight, body circumferences, and readiness update with friction-free precision.',
     keywords: [
       'smart scale',
       'smart scales',
@@ -428,6 +429,10 @@ export const EXERCISE_SCIENCE_KNOWLEDGE_BASE: ScientificPrinciple[] = [
       'smart tape',
       'friction free',
       'bluetooth scale',
+      'bluetooth tape',
+      'renpho',
+      'renpho scale',
+      'renpho tape',
       'health connect',
       'fitbit',
       'whoop',

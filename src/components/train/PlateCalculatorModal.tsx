@@ -61,12 +61,12 @@ export const PlateCalculatorModal: React.FC<PlateCalculatorModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md">
-      <div className="w-full max-w-sm rounded-3xl bg-[#0E1219] p-5 sm:p-6 shadow-2xl space-y-5">
+      <div className="wk-card w-full max-w-sm shadow-2xl space-y-5">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-2">
-            <Disc className="w-5 h-5 text-brand-primary" />
-            <h3 className="font-extrabold text-base text-white tracking-tight">
+            <Disc className="w-5 h-5" style={{ color: 'var(--wk-accent)' }} />
+            <h3 className="wk-h1">
               Barbell Plate Calculator
             </h3>
           </div>
@@ -77,7 +77,8 @@ export const PlateCalculatorModal: React.FC<PlateCalculatorModalProps> = ({
               onClose();
             }}
             aria-label="Close plate calculator"
-            className="w-9 h-9 rounded-full flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/[0.08] transition-colors"
+            className="w-9 h-9 rounded-full flex items-center justify-center text-white/60 hover:text-white transition-colors"
+            style={{ background: 'var(--wk-raised)' }}
           >
             <X className="w-4 h-4 stroke-[2]" />
           </button>
@@ -85,9 +86,9 @@ export const PlateCalculatorModal: React.FC<PlateCalculatorModalProps> = ({
 
         {/* Target Weight & Bar Weight Selector */}
         <div className="space-y-3">
-          <div className="flex items-center justify-between p-3.5 rounded-2xl bg-[#090C12]">
+          <div className="wk-raised flex items-center justify-between">
             <div>
-              <span className="text-xs uppercase font-bold text-slate-400 tracking-wider block">
+              <span className="wk-caption uppercase block">
                 Total Bar Load
               </span>
               <div className="flex items-baseline space-x-1.5 mt-0.5">
@@ -96,14 +97,14 @@ export const PlateCalculatorModal: React.FC<PlateCalculatorModalProps> = ({
                   step="0.5"
                   value={targetWeight}
                   onChange={(e) => setTargetWeight(parseFloat(e.target.value) || barWeight)}
-                  className="w-24 bg-transparent font-mono font-black text-xl text-white focus:outline-none"
+                  className="w-24 bg-transparent tabular-numbers font-black text-xl text-white focus:outline-none"
                 />
-                <span className="text-xs font-bold text-slate-400">{unit}</span>
+                <span className="wk-caption">{unit}</span>
               </div>
             </div>
 
             {/* Bar weight toggle */}
-            <div className="flex bg-[#141824] p-1 rounded-xl">
+            <div className="flex p-1 rounded-xl gap-1" style={{ background: 'var(--wk-card)' }}>
               {plateSet.bars.map((b) => (
                 <button
                   key={b}
@@ -112,11 +113,11 @@ export const PlateCalculatorModal: React.FC<PlateCalculatorModalProps> = ({
                     triggerHaptic('light');
                     setBarWeight(b);
                   }}
-                  className={`px-2.5 py-1 rounded-lg text-xs font-mono font-bold transition-all ${
-                    barWeight === b
-                      ? 'bg-white text-slate-950 shadow-sm'
-                      : 'text-slate-400 hover:text-white'
-                  }`}
+                  className="px-2.5 py-1.5 rounded-lg text-xs tabular-numbers font-bold transition-all"
+                  style={{
+                    background: barWeight === b ? 'var(--wk-pill)' : 'transparent',
+                    color: barWeight === b ? '#fff' : 'var(--wk-muted)',
+                  }}
                 >
                   {b} {unit} bar
                 </button>
@@ -126,13 +127,13 @@ export const PlateCalculatorModal: React.FC<PlateCalculatorModalProps> = ({
         </div>
 
         {/* Visual Barbell Collar & Plates */}
-        <div className="p-4 rounded-2xl bg-[#090C12] flex flex-col items-center justify-center min-h-[140px]">
-          <span className="text-xs uppercase font-bold tracking-wider text-slate-400 mb-2">
+        <div className="wk-raised flex flex-col items-center justify-center min-h-[140px]">
+          <span className="wk-caption uppercase mb-2">
             Plates per side ({Math.max(0, (targetWeight - barWeight) / 2)} {unit} each side)
           </span>
 
           {platesPerSide.length === 0 ? (
-            <span className="text-xs font-mono text-slate-400 py-6">Empty bar ({barWeight} {unit})</span>
+            <span className="wk-caption tabular-numbers py-6">Empty bar ({barWeight} {unit})</span>
           ) : (
             <div className="flex items-center space-x-1 py-2 overflow-x-auto max-w-full">
               {/* Barbell Sleeve */}
@@ -164,29 +165,31 @@ export const PlateCalculatorModal: React.FC<PlateCalculatorModalProps> = ({
           )}
 
           {remainderKg > 0 && (
-            <span className="text-xs font-mono text-amber-400 mt-2">
+            <span className="wk-caption mt-2" style={{ color: '#FFC83D' }}>
               {remainderKg} {unit} can't be made with standard plates.
             </span>
           )}
         </div>
 
         {/* Plate Counts Summary Grid */}
-        <div className="space-y-1.5">
-          <span className="text-xs uppercase font-bold tracking-wider text-slate-400">
+        <div className="space-y-2">
+          <span className="wk-caption uppercase">
             Plate Checklist Per Side:
           </span>
 
-          <div className="grid grid-cols-4 gap-1.5 text-xs font-mono">
+          <div className="grid grid-cols-4 gap-2 text-xs">
             {availablePlates.map((plate) => {
               const count = platesPerSide.filter((p) => p === plate).length;
               if (count === 0) return null;
               return (
                 <div
                   key={plate}
-                  className="p-2.5 rounded-xl bg-[#141824] text-center"
+                  className="wk-raised text-center"
                 >
-                  <span className="text-slate-400 text-xs block">{plate} {unit}</span>
-                  <span className="font-black text-brand-primary text-sm">× {count}</span>
+                  <span className="wk-caption block">{plate} {unit}</span>
+                  <span className="wk-label tabular-numbers block mt-0.5" style={{ color: 'var(--wk-accent)' }}>
+                    × {count}
+                  </span>
                 </div>
               );
             })}
@@ -200,7 +203,8 @@ export const PlateCalculatorModal: React.FC<PlateCalculatorModalProps> = ({
             triggerHaptic('light');
             onClose();
           }}
-          className="w-full py-3 rounded-2xl bg-[#141824] hover:bg-[#1C2233] text-xs font-bold text-white transition-all active:scale-98 min-h-[44px]"
+          className="wk-button transition-all active:scale-98"
+          style={{ background: 'var(--wk-pill)', color: '#fff' }}
         >
           Close Calculator
         </button>
@@ -208,3 +212,4 @@ export const PlateCalculatorModal: React.FC<PlateCalculatorModalProps> = ({
     </div>
   );
 };
+

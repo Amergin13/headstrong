@@ -51,13 +51,14 @@
     <p>When you log workouts, or optionally connect Fitbit (including Google Pixel Watch) or Whoop, Treise processes:</p>
     <ul>
       <li><strong>Workout &amp; Strength Logs:</strong> Exercises, sets, repetitions, weights lifted, and Repetitions in Reserve (RIR).</li>
-      <li><strong>Body Weight Metrics:</strong> Daily scale entries used to compute your 7-day Exponential Moving Average (EMA) and DOTS strength score.</li>
+      <li><strong>Body Weight &amp; Circumference Metrics:</strong> Daily scale entries and body tape measurements (waist, chest, shoulders, arms, forearms, neck, hips, thighs, calves) used to compute your 7-day Exponential Moving Average (EMA), DOTS strength score, and body composition trends.</li>
       <li><strong>Optional Wearable Telemetry:</strong> Heart Rate Variability (RMSSD), Resting Heart Rate (RHR), Sleep duration, Daily Steps, VO2 Max, and Active Zone Minutes (AZM) to compute your Daily Readiness Score.</li>
     </ul>
 
     <h2>2. How Your Data Is Stored &amp; Protected</h2>
     <p>All workout sessions, custom exercises, biometric logs and AI Coach conversations are stored locally on your device. The AI Coach runs on your device, using Chrome&rsquo;s built-in Gemini Nano model where available, or, if you choose to download it, an AI model that runs on your phone&rsquo;s graphics chip. Your questions are not sent to any server.</p>
     <p><strong>Optional coach download:</strong> If you tap Download in the AI Coach, the model files (about 1 GB) are downloaded once from Hugging Face&rsquo;s public servers (huggingface.co) and stored on your device. That download contains none of your data. You can remove it in Program &rarr; Data Backup &amp; Privacy.</p>
+    <p><strong>Bluetooth scales &amp; smart tape measures:</strong> If you pair a RENPHO Bluetooth scale or smart tape measure, weight and body circumference readings are transmitted directly from the hardware device to your phone over Web Bluetooth and saved only in your local on-device storage.</p>
     <p><strong>Wearable connections:</strong> If you connect Fitbit or Whoop, your device sends your access token over HTTPS to Treise&rsquo;s serverless functions hosted on Vercel, which fetch your recovery, sleep, activity and workout data from Fitbit or Whoop and return it to your device. These functions do not store your data or tokens; standard request logs kept by our hosting provider may include technical metadata such as IP addresses. Fitbit and Whoop handle your data under their own privacy policies.</p>
     <p><strong>Google sign-in:</strong> If you sign in with Google, Treise receives your name, email address and profile picture to personalize the app. These are stored on your device only.</p>
 

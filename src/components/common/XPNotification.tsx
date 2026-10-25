@@ -21,26 +21,30 @@ export const XPNotification: React.FC<XPNotificationProps> = ({
 
   return (
     <div className="fixed top-14 left-4 right-4 z-50 max-w-sm mx-auto pointer-events-none transition-all duration-300">
-      <div className="p-3.5 rounded-2xl bg-[#0E1219]/95 backdrop-blur-2xl shadow-2xl flex items-center justify-between">
+      <div className="wk-card shadow-2xl border border-white/[0.08] flex items-center justify-between">
         <div className="flex items-center space-x-3">
-          <div className="w-8 h-8 rounded-xl bg-brand-primary/15 flex items-center justify-center text-brand-primary">
-            <Zap className="w-4 h-4 fill-brand-primary" />
+          <div
+            className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
+            style={{ background: 'var(--wk-raised)', color: 'var(--wk-accent)' }}
+          >
+            <Zap className="w-4 h-4 fill-[#00F19F]" />
           </div>
           <div>
-            <div className="flex items-center space-x-1.5">
-              <span className="font-extrabold text-sm text-white font-mono">
-                +{amount} XP
+            <div className="flex items-center space-x-2">
+              <span className="wk-h1 tabular-numbers">
+                {amount > 0 ? `+${amount} XP` : 'TREISE'}
               </span>
               {bonusTag && (
-                <span className="text-xs font-mono px-1.5 py-0.5 rounded bg-white/[0.08] text-slate-300 font-medium">
+                <span className="wk-pill">
                   {bonusTag}
                 </span>
               )}
             </div>
-            <p className="text-xs text-slate-400 font-normal">{message}</p>
+            <p className="wk-body mt-0.5">{message}</p>
           </div>
         </div>
       </div>
     </div>
   );
 };
+

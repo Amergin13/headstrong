@@ -1,5 +1,4 @@
 import React from 'react';
-import { Shield, Plane } from 'lucide-react';
 import { triggerHaptic } from '../../utils/haptics';
 import { TrainingLocation } from '../../engine/types';
 
@@ -10,6 +9,8 @@ interface MesocycleManagerProps {
   onSelectWeek: (week: number) => void;
   onTriggerDeload: () => void;
 }
+
+const fig = (px: number) => `calc(${px} * var(--f))`;
 
 export const MesocycleManager: React.FC<MesocycleManagerProps> = ({
   currentWeek = 3,
@@ -76,27 +77,58 @@ export const MesocycleManager: React.FC<MesocycleManagerProps> = ({
   };
 
   return (
-    <div className="biometric-card p-5 sm:p-6 space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h3 className="font-extrabold text-base text-white tracking-tight">
-            6-Week Training Plan
-          </h3>
-          <p className="text-xs text-slate-400 font-medium mt-0.5">
-            Automatically adjusts your sets and effort each week
-          </p>
-        </div>
-
-        <span className="text-xs font-mono font-bold text-brand-primary px-3 py-1 rounded-full bg-brand-primary/15">
-          Week {currentWeek} of {totalWeeks}
+    <div className="wk-card w-full text-left block">
+      <div className="flex items-start justify-between" style={{ gap: fig(24) }}>
+        <h2 className="wk-h1" style={{ lineHeight: 1.21 }}>
+          {currentStage.title}
+        </h2>
+        <span className="wk-pill shrink-0">
+          {currentStage.volume}
         </span>
       </div>
 
-      {/* Week Timeline Pills */}
-      <div className="grid grid-cols-6 gap-1.5 bg-[#090C12] p-1.5 rounded-2xl">
+      <p
+        style={{
+          fontSize: fig(28),
+          lineHeight: 1.21,
+          color: 'var(--wk-muted)',
+          marginTop: fig(20),
+        }}
+      >
+        {currentStage.desc}
+      </p>
+
+      <div
+        className="flex items-end justify-between"
+        style={{ marginTop: fig(60), gap: fig(20) }}
+      >
+        <span className="wk-label" style={{ lineHeight: 1.21 }}>
+          6-WEEK TRAINING PLAN
+        </span>
+        <span
+          className="font-bold text-white shrink-0"
+          style={{ fontSize: fig(40), lineHeight: 1 }}
+        >
+          {currentWeek}/{totalWeeks}
+        </span>
+      </div>
+
+      <div className="wk-bar" style={{ marginTop: fig(30) }}>
+        <div style={{ width: `${Math.round((currentWeek / totalWeeks) * 100)}%` }} />
+      </div>
+
+      <div
+        className="grid grid-cols-6 items-center"
+        style={{
+          marginTop: fig(30),
+          height: fig(84),
+          padding: fig(8),
+          borderRadius: fig(22),
+          background: 'var(--wk-raised)',
+        }}
+      >
         {mesocycleWeeks.map((m) => {
           const isSelected = currentWeek === m.week;
-          const isDeload = m.week === 6;
           const isScheduledTravel = scheduledWeekLocations?.[m.week] === 'travel';
 
           return (
@@ -104,58 +136,48 @@ export const MesocycleManager: React.FC<MesocycleManagerProps> = ({
               key={m.week}
               type="button"
               onClick={() => handleSelectWeek(m.week)}
-              className={`py-2 px-1 rounded-xl flex flex-col items-center justify-center transition-all ${
-                isSelected
-                  ? isDeload
-                    ? 'bg-amber-400 text-black font-extrabold shadow-sm'
-                    : 'bg-white text-slate-950 font-extrabold shadow-sm'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-white/[0.04]'
-              }`}
+              className="h-full flex flex-col items-center justify-center font-bold uppercase transition-colors"
+              style={{
+                borderRadius: fig(16),
+                fontSize: fig(24),
+                letterSpacing: '0.02em',
+                background: isSelected ? 'var(--wk-pill)' : 'transparent',
+                color: isSelected ? '#fff' : 'var(--wk-muted)',
+              }}
             >
-              <span className="text-xs font-extrabold">W{m.week}</span>
-              {isScheduledTravel && (
-                <Plane className={`w-3 h-3 mt-0.5 stroke-[2] ${isSelected ? 'text-black' : 'text-cyan-400'}`} />
-              )}
+              <span>W{m.week}{isScheduledTravel ? '•' : ''}</span>
             </button>
           );
         })}
       </div>
 
-      {/* Current Stage Card */}
-      <div className="p-4 rounded-2xl bg-[#090C12] text-xs space-y-2">
-        <div className="flex items-center justify-between">
-          <span className="font-bold text-white text-sm">
-            {currentStage.title}
-          </span>
-          <span className="text-xs font-mono font-bold text-brand-primary">
-            {currentStage.volume}
+      {scheduledWeekLocations?.[currentWeek] === 'travel' && (
+        <div style={{ marginTop: fig(24) }}>
+          <span className="wk-pill">
+            Scheduled Travel Week (Calibrated Bodyweight Hypertrophy)
           </span>
         </div>
-        <p className="text-xs text-slate-300 leading-relaxed font-medium">
-          {currentStage.desc}
-        </p>
+      )}
 
-        {scheduledWeekLocations?.[currentWeek] === 'travel' && (
-          <div className="mt-2 pt-2 flex items-center gap-1.5 text-cyan-300 font-medium">
-            <Plane className="w-3.5 h-3.5 text-cyan-400 stroke-[2]" />
-            <span>Scheduled Travel Week (Calibrated Bodyweight Hypertrophy)</span>
-          </div>
-        )}
-      </div>
-
-      {/* Light Recovery Week Shortcut */}
       {currentWeek !== 6 && (
-        <div className="pt-1 flex items-center justify-between text-xs">
-          <span className="text-slate-400">
+        <div
+          className="flex items-center justify-between"
+          style={{
+            marginTop: fig(28),
+            paddingTop: fig(24),
+            borderTop: '1px solid rgba(255,255,255,0.08)',
+            gap: fig(16),
+          }}
+        >
+          <span className="wk-caption">
             Feeling sore or worn out?
           </span>
           <button
             type="button"
             onClick={handleDeloadClick}
-            className="text-amber-400 hover:text-amber-300 font-bold text-xs flex items-center space-x-1"
+            className="wk-pill"
           >
-            <Shield className="w-3.5 h-3.5 stroke-[2]" />
-            <span>Switch to Light Recovery Week</span>
+            Switch to Light Recovery Week
           </button>
         </div>
       )}
