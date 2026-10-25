@@ -7,6 +7,8 @@ import { useUnits } from '../../utils/unitsContext';
 import { ArrowRightLeft, ChevronRight } from 'lucide-react';
 import { triggerHaptic } from '../../utils/haptics';
 import { ExerciseInsight } from '../../services/exerciseInsight';
+import { TrendChart } from '../common/TrendChart';
+import { localDateString } from '../../utils/date';
 
 const fig = (px: number) => `calc(${px} * var(--f))`;
 
@@ -41,69 +43,6 @@ function formatTempo(tempo?: string): string | null {
   }
   return tempo;
 }
-
-/** Shape-only sample series for the "Example" chart shown until an exercise has 2+ sessions. */
-const EXAMPLE_SERIES = [100, 104, 101, 103, 99, 102, 106, 103, 109, 106, 111, 108, 113];
-
-/** Best-set estimated max per session (newest point marked), or a labelled example. */
-const ProgressChart: React.FC<{ values: number[]; label: string; example?: boolean }> = ({ values, label, example }) => {
-  const gradientId = useId();
-  const W = 425;
-  const H = 200;
-  const PAD = 16;
-  const max = Math.max(...values);
-  const min = Math.min(...values);
-  const span = max - min || 1;
-  const points = values.map((v, i) => ({
-    x: PAD + (i / Math.max(1, values.length - 1)) * (W - PAD * 2),
-    y: H - PAD - ((v - min) / span) * (H - PAD * 2),
-  }));
-  const last = points[points.length - 1];
-  const d = points.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
-  return (
-    <div className="relative w-full" style={{ height: fig(170) }}>
-      <svg
-        viewBox={`0 0 ${W} ${H}`}
-        preserveAspectRatio="none"
-        className="w-full h-full"
-        style={{
-          background: 'linear-gradient(180deg, rgba(0,0,0,0.10), rgba(0,0,0,0.22))',
-          borderRadius: fig(12),
-          opacity: example ? 0.4 : 1,
-        }}
-        role="img"
-        aria-label={label}
-      >
-        <defs>
-          <linearGradient id={gradientId} x1="0" x2="1" y1="0" y2="0">
-            <stop offset="0%" stopColor="#1F8F7E" />
-            <stop offset="100%" stopColor="#00F19F" />
-          </linearGradient>
-        </defs>
-        <line x1={0} x2={W} y1={1} y2={1} stroke="rgba(255,255,255,0.08)" strokeWidth={2} />
-        <line x1={last.x} x2={last.x} y1={6} y2={H - 6} stroke="rgba(255,255,255,0.35)" strokeWidth={2} strokeDasharray="4 6" vectorEffect="non-scaling-stroke" />
-        <path d={d} fill="none" stroke={`url(#${gradientId})`} strokeWidth={2.5} strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
-      </svg>
-      <span
-        className="absolute rounded-full bg-white"
-        style={{
-          width: fig(16),
-          height: fig(16),
-          left: `calc(${(last.x / W) * 100}% - ${fig(8)})`,
-          top: `calc(${(last.y / H) * 100}% - ${fig(8)})`,
-          boxShadow: `0 0 0 ${fig(4)} #2C3034`,
-          opacity: example ? 0.4 : 1,
-        }}
-        aria-hidden="true"
-      />
-      {example && (
-        <span className="wk-pill absolute" style={{ top: fig(12), left: fig(12) }} aria-hidden="true">
-          Example
-        </span>
-      )}
-    </div>
-  );
-};
 
 export const ExerciseCard: React.FC<ExerciseCardProps> = ({
   exerciseIndex,
@@ -193,18 +132,16 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
           <p className="wk-body" aria-live="polite">
             {note ?? insight.summary}
           </p>
-          {history.length >= 2 ? (
-            <ProgressChart
-              values={history.map((h) => h.e1rmKg)}
-              label={`Estimated one-rep max over your last ${history.length} sessions: ${units.format(history[0].e1rmKg)} to ${units.format(
-                history[history.length - 1].e1rmKg
-              )}`}
-            />
-          ) : (
-            <ProgressChart
-              values={EXAMPLE_SERIES}
-              example
-              label="Example chart. Your estimated one-rep max for this exercise appears here after two sessions."
+          {!(exercise.durationSeconds || exercise.durationMinutesRange) && (
+            <TrendChart
+              points={history.map((h) => ({ date: localDateString(new Date(h.at)), value: h.e1rmKg }))}
+              format={(kg) => units.format(kg)}
+              height={240}
+              label={
+                history.length >= 2
+                  ? `Estimated one-rep max over your last ${history.length} sessions: ${units.format(history[0].e1rmKg)} to ${units.format(history[history.length - 1].e1rmKg)}`
+                  : 'Example chart. Your estimated one-rep max for this exercise appears here after two sessions.'
+              }
             />
           )}
         </div>

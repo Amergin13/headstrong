@@ -66,6 +66,11 @@ export interface BiometricLog {
   maxWorkoutHr?: number;
   workoutDurationMin?: number;
   source?: WearableProvider;
+  /** Body composition the athlete measured (smart scale, calipers or tape). Undefined = not measured. */
+  bodyFatPct?: number;
+  waistCm?: number;
+  chestCm?: number;
+  armCm?: number;
 }
 
 export type SetType = 'working' | 'warmup' | 'drop' | 'myo';
@@ -283,6 +288,8 @@ export interface UserProfile {
   weightUnit?: 'kg' | 'lb';
   age: number;
   heightCm: number;
+  /** Height the athlete entered themselves; heightCm is only a placeholder until then. */
+  measuredHeightCm?: number;
   goalPhase: GoalPhase;
   programType?: ProgramSplitType;
   mesocycleWeek?: number; // 1 to 6

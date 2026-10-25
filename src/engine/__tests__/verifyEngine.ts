@@ -49,6 +49,9 @@ import { localDateString } from '../../utils/date';
 import { calculateBestPillarE1rms } from '../../services/storage';
 import { evaluateSetProgressAward, planRestAfterSet } from '../../services/setCompletion';
 import { completeWorkout } from '../../services/workoutCompletion';
+import { prepareSessionForAthlete } from '../../services/sessionPreparation';
+import { buildCompositionCharts, buildStrengthCharts } from '../../services/progressSeries';
+
 import { onWearableTokensRefreshed } from '../../services/wearableTokens';
 import { registerFallbackOnDeviceModel } from '../../services/onDeviceModel';
 import { fetchWhoopDailyBiometrics, fetchWhoopWorkoutStrain } from '../../services/whoopService';
@@ -3707,6 +3710,183 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
       programLabel: 'Phase 1 (Building foundations), week 1 of 6',
       formatWeight: (kg) => `${kg} kg`,
     }).key, 'Notes are cached by their facts, so the same facts reuse the same note');
+  }
+
+  console.log('\n[36. Full 6-Week Plan Simulation (24 workouts, session 1 to graduation)]');
+  {
+    const HOUR = 60 * 60 * 1000;
+    const issues: string[] = [];
+    let profile6: UserProfile = { ...NEW_USER_PROFILE, programType: 'muscle_building_6wk', mesocycleWeek: 1, experienceLevel: 'intermediate', gender: 'male' } as UserProfile;
+    let history6: WorkoutSession[] = [];
+    let t = new Date(2026, 9, 19, 18, 0).getTime(); // Monday evening, session 1
+    const start = t;
+    const awards: string[] = [];
+    let maxWaitDays = 0;
+    const topWeightByExercise = new Map<string, number>();
+    const hasBadNumber = (v: unknown): boolean =>
+      typeof v === 'number' ? !Number.isFinite(v) : Array.isArray(v) ? v.some(hasBadNumber) : v && typeof v === 'object' ? Object.values(v).some(hasBadNumber) : false;
+
+    for (let k = 1; k <= 24; k++) {
+      const n = getNextProgramWorkoutNumber(history6);
+      if (n !== k) issues.push(`expected plan workout ${k}, app queued ${n}`);
+      let session = prepareSessionForAthlete(generate6WeekMuscleBuildingWorkout(n, 80), {
+        history: history6,
+        bodyweightKg: 80,
+        gender: 'male',
+        experienceLevel: 'intermediate',
+        readinessState: 'Normal',
+        unit: 'kg',
+        isProgramPlan: true,
+      });
+      if (hasBadNumber(session)) issues.push(`workout ${n}: NaN/Infinity in prepared session`);
+      for (const ex of session.exercises) {
+        const timed = Boolean(ex.durationSeconds || ex.durationMinutesRange);
+        const pureBw = ex.equipment === 'bodyweight' && !ex.isWeightedCalisthenic;
+        for (const st of ex.sets.filter((x) => !x.isWarmup && x.setType !== 'warmup')) {
+          if (!pureBw && !(st.targetWeightKg > 0)) issues.push(`workout ${n}: ${ex.name} has no weight`);
+          if (!timed && !(st.targetReps > 0)) issues.push(`workout ${n}: ${ex.name} has no reps`);
+        }
+        const prevTop = topWeightByExercise.get(ex.exerciseId);
+        const planned = ex.sets.find((x) => !x.isWarmup && x.setType !== 'warmup')?.targetWeightKg ?? 0;
+        if (prevTop && planned > prevTop * 1.3 + 2.5) issues.push(`workout ${n}: ${ex.name} jumps from ${prevTop} to ${planned} kg`);
+      }
+
+      // Wait until the recovery gate opens (as the Workout tab would).
+      const gate = evaluateSessionRecovery(session, history6, SEED_EXERCISES, t);
+      if (!gate.isReady && gate.readyAt) {
+        const trainAt = new Date(getDisplayReadyAt(gate.readyAt));
+        if (trainAt.getHours() < 17) trainAt.setHours(17, 0, 0, 0);
+        maxWaitDays = Math.max(maxWaitDays, (trainAt.getTime() - t) / (24 * HOUR));
+        t = trainAt.getTime();
+      }
+
+      // Things the Workout tab builds for this session must not throw.
+      try {
+        buildWeekStrip({ workouts: history6, nextSession: session, programType: 'muscle_building_6wk', exerciseCatalog: SEED_EXERCISES, now: t });
+        const kgSim = buildAthleteKnowledgeGraph(history6, [], SEED_EXERCISES, profile6, calculateWeeklyMuscleVolume(history6, SEED_EXERCISES));
+        for (const ex of session.exercises) {
+          const def = SEED_EXERCISES.find((d) => d.id === ex.exerciseId);
+          if (!def) issues.push(`workout ${n}: ${ex.name} (${ex.exerciseId}) missing from the exercise catalog`);
+          const f = buildExerciseNoteFacts({
+            exercise: ex,
+            insight: buildExerciseInsight(ex, history6, 'Normal', 80),
+            workouts: history6,
+            readinessState: 'Normal',
+            knowledgeGraph: kgSim,
+            primaryMuscle: def?.primaryMuscle,
+            formatWeight: (kg) => `${kg} kg`,
+          });
+          if (/NaN|undefined/.test(f.fallback + f.facts.join(' '))) issues.push(`workout ${n}: ${ex.name} overview text has NaN/undefined`);
+        }
+      } catch (err) {
+        issues.push(`workout ${n}: Workout tab helpers threw ${(err as Error).message}`);
+      }
+
+      // The athlete does the session as prescribed.
+      session = {
+        ...session,
+        exercises: session.exercises.map((ex) => ({
+          ...ex,
+          sets: ex.sets.map((st, i) => ({
+            ...st,
+            completed: true,
+            completedAt: new Date(t + i * 3 * 60 * 1000).toISOString(),
+            actualWeightKg: st.targetWeightKg,
+            actualReps: st.targetReps,
+            actualRir: st.targetRir ?? 2,
+          })),
+        })),
+      };
+      t += 60 * 60 * 1000;
+      const result = completeWorkout({
+        activeWorkout: session,
+        history: history6,
+        profile: profile6,
+        readiness: { state: 'Normal', score: 0, xpMultiplier: 1 } as any,
+        bodyweightKg: 80,
+        now: new Date(t),
+      });
+      if (result.completedSession.programWorkoutNumber !== n) issues.push(`workout ${n}: completed session lost its plan number`);
+      if (result.milestoneAward) awards.push(`${n}:${result.milestoneAward.amount}`);
+      history6 = result.nextHistory;
+      profile6 = { ...profile6, mesocycleWeek: result.nextMesocycleWeek };
+      if (n < 24 && result.nextMesocycleWeek !== Math.ceil((n + 1) / 4)) issues.push(`after workout ${n}: week ${result.nextMesocycleWeek}, expected ${Math.ceil((n + 1) / 4)}`);
+      for (const ex of session.exercises) {
+        const top = ex.sets.filter((x) => !x.isWarmup && x.setType !== 'warmup').reduce((m, x) => Math.max(m, x.actualWeightKg ?? 0), 0);
+        if (top > 0) topWeightByExercise.set(ex.exerciseId, top);
+      }
+      try {
+        const kgDone = buildAthleteKnowledgeGraph(history6, [], SEED_EXERCISES, profile6, calculateWeeklyMuscleVolume(history6, SEED_EXERCISES));
+        const rep = buildSessionProgressReport({ workouts: history6, exerciseCatalog: SEED_EXERCISES, knowledgeGraph: kgDone, bodyweightKg: 80, now: t });
+        if (!rep || rep.program.kind !== 'plan' || (rep.program.kind === 'plan' && rep.program.workoutNumber !== n)) issues.push(`workout ${n}: session report has the wrong plan position`);
+      } catch (err) {
+        issues.push(`workout ${n}: session report threw ${(err as Error).message}`);
+      }
+      t += 60 * 1000;
+    }
+
+    const days = (t - start) / (24 * HOUR);
+    console.log(`   24 workouts over ${days.toFixed(1)} days; longest recovery wait ${maxWaitDays.toFixed(1)} days; milestones ${awards.join(', ')}`);
+    issues.slice(0, 25).forEach((i) => console.log(`   ISSUE: ${i}`));
+    assert(issues.length === 0, `All 24 plan workouts prepare, wait for recovery, complete and report without issues (${issues.length} issues)`);
+    assert(awards.length === 6 && awards[5] === '24:500' && awards.slice(0, 5).every((a) => a.endsWith(':200')), 'Five week milestones and the 6-week graduation award are earned');
+    assert(getNextProgramWorkoutNumber(history6) === 1 && profile6.mesocycleWeek === 1, 'After graduation the plan starts again at workout 1, week 1');
+    assert(days <= 49 && maxWaitDays <= 4, `The plan fits in about 6 weeks (${days.toFixed(1)} days) and no session waits more than 4 days`);
+  }
+
+  console.log('\n[37. Progress Tab: Strength & Composition Charts]');
+  {
+    const fmtP = { weight: (kg: number) => `${kg} kg`, length: (cm: number) => `${cm} cm` };
+    const day = (n: number) => localDateString(new Date(2026, 9, n));
+    const blank = { hrvRmssd: 0, restingHr: 0, sleepHours: 0, steps: 0, activeZoneMinutes: 0 };
+    const logs: BiometricLog[] = [
+      { date: day(1), bodyweightKg: 80, bodyFatPct: 20, waistCm: 86, ...blank },
+      ...Array.from({ length: 20 }, (_, i) => ({ date: day(i + 2), bodyweightKg: Math.round((80 + (i + 1) * 0.05) * 100) / 100, ...blank })),
+      { date: day(22), bodyweightKg: 81.1, bodyFatPct: 19, waistCm: 85, ...blank },
+    ];
+    const bulker = { ...NEW_USER_PROFILE, goalPhase: 'Lean Bulk' } as UserProfile;
+    const charts = buildCompositionCharts({ biometrics: logs, profile: bulker, fmt: fmtP });
+    const byId = (id: string) => charts.find((c) => c.id === id)!;
+    assert(
+      ['bodyweight', 'body-fat', 'lean-mass', 'ffmi', 'waist', 'waist-to-height', 'chest', 'arms'].every((id) => charts.some((c) => c.id === id)),
+      'Composition charts: bodyweight, body fat, lean mass, FFMI, waist, waist-to-height, chest and arms'
+    );
+    assert(
+      byId('bodyweight').points.length === 22 && byId('bodyweight').secondary!.length === 22 && /a week/.test(byId('bodyweight').summary) && /lean bulk/.test(byId('bodyweight').summary),
+      `Bodyweight shows the 7-day average over daily weigh-ins and the weekly pace against the goal: "${byId('bodyweight').summary}"`
+    );
+    assert(
+      byId('body-fat').points.map((p) => p.value).join() === '20,19' && /down 1 point since/.test(byId('body-fat').summary),
+      'Body fat charts only measured days and reports the change'
+    );
+    assert(byId('lean-mass').points.map((p) => p.value).join() === '64,65.7', 'Lean mass = weight × (1 − body fat)');
+    assert(
+      byId('ffmi').points.length === 0 && byId('waist-to-height').points.length === 0 && /Add your height/.test(byId('ffmi').summary),
+      'FFMI and waist-to-height need a height the athlete entered (no placeholder height)'
+    );
+    const withHeight = buildCompositionCharts({ biometrics: logs, profile: { ...bulker, measuredHeightCm: 180 }, fmt: fmtP });
+    const ffmi = withHeight.find((c) => c.id === 'ffmi')!;
+    const whtr = withHeight.find((c) => c.id === 'waist-to-height')!;
+    assert(ffmi.points[1].value === 20.3 && whtr.points[1].value === 0.47 && /healthy range/.test(whtr.summary), `FFMI (${ffmi.points[1].value}) and waist-to-height (${whtr.points[1].value}) use the entered height`);
+    assert(
+      buildCompositionCharts({ biometrics: [], profile: bulker, fmt: fmtP }).every((c) => c.points.length === 0 && c.summary.length > 20),
+      'With no measurements every chart explains how to start, with no numbers'
+    );
+
+    const w1 = generate6WeekMuscleBuildingWorkout(1, 80);
+    w1.completed = true;
+    w1.date = day(5);
+    w1.exercises.forEach((ex) => ex.sets.forEach((st) => { st.completed = true; st.actualReps = st.targetReps; st.actualRir = 2; }));
+    const w2 = JSON.parse(JSON.stringify(w1)) as WorkoutSession;
+    w2.id = 'w2';
+    w2.date = day(12);
+    w2.exercises.forEach((ex) => ex.sets.forEach((st) => (st.actualWeightKg = (st.targetWeightKg || 0) + 2.5)));
+    const strength = buildStrengthCharts({ workouts: [w1, w2], profile: bulker, bodyweightKg: 80, fmt: fmtP });
+    const lifts = strength.filter((c) => c.id.startsWith('strength-'));
+    assert(lifts.length > 0 && lifts.every((c) => c.points.length === 2 && c.points[1].value > c.points[0].value) && /up .*% since/.test(lifts[0].summary), 'Strength charts track estimated max per movement type over sessions');
+    assert(strength.some((c) => c.id === 'weekly-sets' && c.points.length === 2), 'Weekly hard sets are charted per week');
+    assert(!strength.some((c) => c.id === 'work-capacity'), 'Work capacity only appears with measured workout heart rate');
+    assert(buildStrengthCharts({ workouts: [], profile: bulker, bodyweightKg: 80, fmt: fmtP }).length === 1, 'With no workouts, only the weekly sets card (as an example) shows');
   }
 
   console.log('\nALL 35 ENGINE, GOVERNANCE, DESIGN HEURISTICS, TYPOGRAPHY, WEARABLES, WHOOP STRAIN, GOOGLE AUTH, ONBOARDING CONTEXT, 6-WEEK PROGRAM, TENSOR AI, SESSION REPORT, WORKOUT PAGE & EXERCISE OVERVIEW SUITES PASSED SUCCESSFULLY! 🎯');

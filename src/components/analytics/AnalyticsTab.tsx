@@ -1,17 +1,16 @@
-import React, { useState } from 'react';
-import {
-  BiometricLog,
-  ExerciseDefinition,
-  UserProfile,
-  WorkoutSession,
-} from '../../engine/types';
-import { E1rmVsWeightChart } from './E1rmVsWeightChart';
-import { WciChart } from './WciChart';
-import { ActivityTracker } from './ActivityTracker';
-import { WeightLogModal } from './WeightLogModal';
+import React, { useMemo, useState } from 'react';
+import { BiometricLog, ExerciseDefinition, UserProfile, WorkoutSession } from '../../engine/types';
+import { MeasurementEntry, WeightLogModal } from './WeightLogModal';
 import { KnowledgeGraphCard } from './KnowledgeGraphCard';
+import { ProgressChartCard } from './ProgressChartCard';
+import { buildCompositionCharts, buildStrengthCharts, ProgressFormatters } from '../../services/progressSeries';
 import { triggerHaptic } from '../../utils/haptics';
 import { useUnits } from '../../utils/unitsContext';
+import { kgToUnit } from '../../utils/units';
+
+/** One Figma pixel (1344 px frame) in screen pixels; see .wk in index.css. */
+const fig = (px: number) => `calc(${px} * var(--f))`;
+const PAGE_GUTTER = 38;
 
 interface AnalyticsTabProps {
   workouts: WorkoutSession[];
@@ -20,10 +19,10 @@ interface AnalyticsTabProps {
   bodyweightEmaKg: number;
   exerciseCatalog: ExerciseDefinition[];
   weeklyVolume: Record<string, number>;
-  onSaveWeight: (weight: number) => void;
+  onSaveMeasurements: (entry: MeasurementEntry) => void;
 }
 
-type ProgressView = 'strength' | 'recovery';
+type ProgressView = 'strength' | 'composition';
 
 export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
   workouts,
@@ -32,114 +31,111 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
   bodyweightEmaKg,
   exerciseCatalog,
   weeklyVolume,
-  onSaveWeight,
+  onSaveMeasurements,
 }) => {
   const [activeView, setActiveView] = useState<ProgressView>('strength');
-  const [showWeightModal, setShowWeightModal] = useState(false);
+  const [showLogModal, setShowLogModal] = useState(false);
   const units = useUnits();
   const latestWeight = [...biometrics].reverse().find((b) => b.bodyweightKg > 0)?.bodyweightKg || 0;
+  const hasBodyweight = latestWeight > 0;
 
+  const fmt: ProgressFormatters = useMemo(
+    () => ({
+      // Exact values (not rounded to plate steps) so small body changes show.
+      weight: (kg) => `${Math.round(kgToUnit(kg, units.unit) * 10) / 10} ${units.unit}`,
+      weightPrecise: (kg) => `${Math.round(kgToUnit(kg, units.unit) * 100) / 100} ${units.unit}`,
+      length: (cm) => (units.unit === 'lb' ? `${Math.round((cm / 2.54) * 10) / 10} in` : `${Math.round(cm * 10) / 10} cm`),
+    }),
+    [units]
+  );
+  const strengthCharts = useMemo(
+    () => buildStrengthCharts({ workouts, profile, bodyweightKg: hasBodyweight ? bodyweightEmaKg : 80, fmt }),
+    [workouts, profile, bodyweightEmaKg, hasBodyweight, fmt]
+  );
+  const compositionCharts = useMemo(() => buildCompositionCharts({ biometrics, profile, fmt }), [biometrics, profile, fmt]);
+  const openLog = () => setShowLogModal(true);
+
+  const segment = (view: ProgressView, label: string) => (
+    <button
+      type="button"
+      aria-pressed={activeView === view}
+      onClick={() => {
+        triggerHaptic('light');
+        setActiveView(view);
+      }}
+      className="flex items-center justify-center font-bold uppercase transition-colors"
+      style={{
+        minHeight: 44,
+        height: fig(96),
+        borderRadius: fig(22),
+        fontSize: fig(24),
+        background: activeView === view ? 'var(--wk-pill)' : 'transparent',
+        color: activeView === view ? '#fff' : 'var(--wk-muted)',
+      }}
+    >
+      {label}
+    </button>
+  );
 
   return (
-    <div className="space-y-3.5 pb-28">
-      {/* Progress Overview Header & View Switcher */}
-      <div className="space-y-3">
-        <div className="flex items-center justify-between px-1">
-          <div>
-            <h2 className="text-base font-extrabold text-white tracking-tight">
-              Progress &amp; Body Trends
-            </h2>
-            <p className="text-xs text-slate-400 font-medium">
-              Strength across all equipment, stamina &amp; joint recovery
-            </p>
-          </div>
-
-          <div className="text-right">
-            <div className="text-xs text-slate-400 font-medium">7-Day Avg Weight</div>
-            <div className="text-sm font-extrabold font-mono text-brand-primary">
-              {latestWeight > 0 ? units.format(bodyweightEmaKg) : '—'}
-            </div>
-          </div>
-        </div>
-
-        {/* 2-Way Segmented Switcher to Prevent Long Vertical Scroll */}
+    <div className="wk -mx-3.5" style={{ paddingLeft: fig(PAGE_GUTTER), paddingRight: fig(PAGE_GUTTER), paddingBottom: 112 }}>
+      <header style={{ paddingTop: fig(20) }}>
+        <h1 className="font-bold text-white uppercase text-center" style={{ fontSize: fig(26), letterSpacing: '0.02em' }}>
+          Progress
+        </h1>
         <div
           role="group"
           aria-label="Progress category"
-          className="grid grid-cols-2 gap-1 bg-[#090C12] p-1.5 rounded-2xl"
+          className="grid grid-cols-2"
+          style={{ marginTop: fig(40), padding: fig(8), gap: fig(8), borderRadius: fig(30), background: 'var(--wk-card)' }}
         >
-          <button
-            type="button"
-            aria-pressed={activeView === 'strength'}
-            onClick={() => {
-              triggerHaptic('light');
-              setActiveView('strength');
-            }}
-            className={`py-2 rounded-xl text-xs font-bold transition-all min-h-[44px] flex items-center justify-center ${
-              activeView === 'strength'
-                ? 'bg-white/[0.14] text-white font-bold shadow-sm'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            Strength &amp; Stamina
-          </button>
-          <button
-            type="button"
-            aria-pressed={activeView === 'recovery'}
-            onClick={() => {
-              triggerHaptic('light');
-              setActiveView('recovery');
-            }}
-            className={`py-2 rounded-xl text-xs font-bold transition-all min-h-[44px] flex items-center justify-center ${
-              activeView === 'recovery'
-                ? 'bg-white/[0.14] text-white font-bold shadow-sm'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            Recovery, Joints &amp; Steps
-          </button>
+          {segment('strength', 'Strength')}
+          {segment('composition', 'Composition')}
         </div>
+      </header>
+
+      <div className="flex flex-col" style={{ gap: fig(22), marginTop: fig(40) }}>
+        {activeView === 'strength' ? (
+          <>
+            {strengthCharts.map((chart) => (
+              <ProgressChartCard key={chart.id} chart={chart} />
+            ))}
+            {/* How progress is worked out, joint load and recovery insights. */}
+            <KnowledgeGraphCard
+              workouts={workouts}
+              biometrics={biometrics}
+              exerciseCatalog={exerciseCatalog}
+              profile={profile}
+              weeklyVolume={weeklyVolume}
+            />
+          </>
+        ) : (
+          <>
+            <button
+              type="button"
+              onClick={() => {
+                triggerHaptic('light');
+                openLog();
+              }}
+              className="wk-button"
+              style={{ background: 'var(--wk-accent)', color: '#13181C' }}
+            >
+              Log measurements
+            </button>
+            {compositionCharts.map((chart) => (
+              <ProgressChartCard key={chart.id} chart={chart} onOpen={openLog} />
+            ))}
+          </>
+        )}
       </div>
 
-      {activeView === 'strength' ? (
-        <div className="space-y-3.5">
-          {/* Primary Focal Point: Unified Strength Progress vs Bodyweight */}
-          <E1rmVsWeightChart
-            workouts={workouts}
-            biometrics={biometrics}
-            onOpenWeightModal={() => setShowWeightModal(true)}
-          />
-
-          {/* Supporting Chart: Workout Stamina */}
-          <WciChart
-            workouts={workouts}
-            restingHr={profile.restingHrBaseline}
-            maxHr={profile.maxHr}
-          />
-        </div>
-      ) : (
-        <div className="space-y-3.5">
-          {/* Primary Focal Point: Recovery & Joint Health Insights */}
-          <KnowledgeGraphCard
-            workouts={workouts}
-            biometrics={biometrics}
-            exerciseCatalog={exerciseCatalog}
-            profile={profile}
-            weeklyVolume={weeklyVolume}
-          />
-
-          {/* Supporting Chart: Daily Steps & Active Minutes */}
-          <ActivityTracker biometrics={biometrics} />
-        </div>
-      )}
-
-      {/* Daily Weight Log Modal */}
-      {showWeightModal && (
+      {showLogModal && (
         <WeightLogModal
           currentWeight={latestWeight}
           currentEma={bodyweightEmaKg}
-          onSaveWeight={onSaveWeight}
-          onClose={() => setShowWeightModal(false)}
+          heightCm={profile.measuredHeightCm}
+          onSave={onSaveMeasurements}
+          onClose={() => setShowLogModal(false)}
         />
       )}
     </div>

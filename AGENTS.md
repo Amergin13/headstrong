@@ -413,10 +413,10 @@ All future sessions, developers, and AI agents must strictly adhere to the struc
    - *6-Week Mesocycle:* Week 1 to 6 periodization with 1-tap Deload trigger.
    - *Split Editor:* Routine preview, `[+ Custom Exercise]`, and `[Start This Workout]` triggers.
    - *Profile & Data Drawers:* Collapsible accordions for Athlete Profile, Data Backup (export/restore/erase), and Product Governance Matrix.
-3. **Progress Tab (`AnalyticsTab.tsx`):**
-   - *Focal Point:* 2-Way Segmented Switcher (`Strength & Stamina` vs. `Recovery, Joints & Steps`).
-   - *View A (Strength & Stamina):* E1RM vs Bodyweight Chart (with `[Log Today's Weight]`) + Work Capacity Index (WCI) Chart.
-   - *View B (Recovery, Joints & Steps):* Joint Health & Recovery Insights Knowledge Graph + Daily Steps & Active Minutes Tracker.
+3. **Progress Tab (`AnalyticsTab.tsx`):** same `.wk` card style as the Workout tab. Every chart is a `ProgressChartCard` (title, "Last updated", plain-English summary, `TrendChart` with gridline values and first/last dates; "Example" until two points). Series come from `services/progressSeries.ts`.
+   - *Switcher:* `Strength` | `Composition`.
+   - *Strength:* estimated one-rep max per movement type, weekly hard sets, work capacity (only with measured heart rate), then the knowledge-graph card (joint load, recovery, Science & Logic).
+   - *Composition:* "Log measurements" (weight, optional body fat, waist, chest, arm; height asked once and stored as `measuredHeightCm`), then bodyweight (7-day average over daily weigh-ins, weekly pace vs the goal), body fat, lean mass, FFMI, waist, waist-to-height, chest and arms. FFMI and waist-to-height only use a height the athlete entered, never the placeholder `heightCm`.
 4. **Athlete Tab (`CharacterTab.tsx`):**
    - *Focal Point:* Athlete Scorecard (Avatar, Level, 7-day EMA weight, DOTS score, Big 3 total).
    - *Sub-View Switcher:* `Weekly Muscle Sets` vs. `Strength Balance & Bonuses`.

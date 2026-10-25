@@ -70,6 +70,7 @@ import { localDateString } from './utils/date';
 
 // Secondary tabs and the coach load on demand, keeping the first download small.
 const CharacterTab = lazy(() => import('./components/character/CharacterTab').then((m) => ({ default: m.CharacterTab })));
+import type { MeasurementEntry } from './components/analytics/WeightLogModal';
 const AnalyticsTab = lazy(() => import('./components/analytics/AnalyticsTab').then((m) => ({ default: m.AnalyticsTab })));
 const ProgramTab = lazy(() => import('./components/program/ProgramTab').then((m) => ({ default: m.ProgramTab })));
 const AICoachChatModal = lazy(() => import('./components/assistant/AICoachChatModal').then((m) => ({ default: m.AICoachChatModal })));
@@ -576,33 +577,33 @@ export const App: React.FC = () => {
     }
   };
 
-  // Handler: Daily Weight Log (No illegitimate XP)
-  const handleSaveWeight = (weight: number) => {
+  // Handler: today's weight and body measurements (No illegitimate XP)
+  const handleSaveMeasurements = (entry: MeasurementEntry) => {
+    const { heightCm, ...measures } = entry;
+    if (heightCm) setProfile((prev) => ({ ...prev, measuredHeightCm: heightCm, heightCm }));
+    const values = Object.fromEntries(Object.entries(measures).filter(([, v]) => typeof v === 'number' && v > 0));
+    if (Object.keys(values).length === 0) return;
     const todayStr = localDateString();
-    const existingIndex = biometrics.findIndex((b) => b.date === todayStr);
-
-    let updatedBiometrics: BiometricLog[];
-    if (existingIndex >= 0) {
-      updatedBiometrics = biometrics.map((b, idx) =>
-        idx === existingIndex ? { ...b, bodyweightKg: weight } : b
-      );
-    } else {
-      // A new day's weigh-in must not copy yesterday's recovery numbers.
-      updatedBiometrics = [
-        ...biometrics,
+    setBiometrics((prev) => {
+      const existingIndex = prev.findIndex((b) => b.date === todayStr);
+      if (existingIndex >= 0) {
+        return prev.map((b, idx) => (idx === existingIndex ? { ...b, ...values } : b));
+      }
+      // A new day's entry must not copy yesterday's recovery numbers.
+      return [
+        ...prev,
         {
           date: todayStr,
-          bodyweightKg: weight,
+          bodyweightKg: 0,
           hrvRmssd: 0,
           restingHr: 0,
           sleepHours: 0,
           steps: 0,
           activeZoneMinutes: 0,
+          ...values,
         },
       ];
-    }
-
-    setBiometrics(updatedBiometrics);
+    });
   };
 
   // Handler: Reset demo seed data
@@ -758,7 +759,7 @@ export const App: React.FC = () => {
             bodyweightEmaKg={bodyweightEmaKg}
             exerciseCatalog={exercises}
             weeklyVolume={weeklyVolume}
-            onSaveWeight={handleSaveWeight}
+            onSaveMeasurements={handleSaveMeasurements}
           />
         )}
 

@@ -1,105 +1,151 @@
 import React, { useState } from 'react';
-import { X, Scale, Check } from 'lucide-react';
+import { X, Ruler, Check } from 'lucide-react';
 import { useUnits } from '../../utils/unitsContext';
+
+export interface MeasurementEntry {
+  bodyweightKg?: number;
+  bodyFatPct?: number;
+  waistCm?: number;
+  chestCm?: number;
+  armCm?: number;
+  heightCm?: number;
+}
 
 interface WeightLogModalProps {
   currentWeight: number;
   currentEma: number;
-  onSaveWeight: (weight: number) => void;
+  /** Height the athlete already entered (asked once). */
+  heightCm?: number;
+  onSave: (entry: MeasurementEntry) => void;
   onClose: () => void;
 }
 
-export const WeightLogModal: React.FC<WeightLogModalProps> = ({
-  currentWeight,
-  currentEma,
-  onSaveWeight,
-  onClose,
-}) => {
+const CM_PER_IN = 2.54;
+
+/** Logs today's weight and, optionally, body fat, tape measurements and height. */
+export const WeightLogModal: React.FC<WeightLogModalProps> = ({ currentWeight, currentEma, heightCm, onSave, onClose }) => {
   const units = useUnits();
+  const imperial = units.unit === 'lb';
+  const lengthUnit = imperial ? 'in' : 'cm';
+  const toCm = (v: number) => (imperial ? v * CM_PER_IN : v);
   const hasPrevious = currentWeight > 0;
   const [weightInput, setWeightInput] = useState(hasPrevious ? `${units.toDisplay(currentWeight)}` : '');
-  const parsed = parseFloat(weightInput);
-  const numWeightKg = Number.isFinite(parsed) && parsed > 0 ? units.fromDisplay(parsed) : 0;
-  const isValid = numWeightKg > 30 && numWeightKg < 300;
-  const previewEmaKg = currentEma > 0 && hasPrevious ? numWeightKg * 0.25 + currentEma * 0.75 : numWeightKg;
+  const [bodyFat, setBodyFat] = useState('');
+  const [waist, setWaist] = useState('');
+  const [chest, setChest] = useState('');
+  const [arm, setArm] = useState('');
+  const [height, setHeight] = useState('');
+
+  const num = (s: string) => {
+    const n = parseFloat(s);
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  };
+  const weightKg = num(weightInput) ? units.fromDisplay(num(weightInput)) : 0;
+  const weightValid = weightKg === 0 || (weightKg > 30 && weightKg < 300);
+  const bfValid = !bodyFat || (num(bodyFat) >= 3 && num(bodyFat) <= 60);
+  const lengthValid = (s: string, min: number, max: number) => !s || (toCm(num(s)) >= min && toCm(num(s)) <= max);
+  const valid =
+    weightValid &&
+    bfValid &&
+    lengthValid(waist, 40, 200) &&
+    lengthValid(chest, 50, 200) &&
+    lengthValid(arm, 15, 70) &&
+    lengthValid(height, 120, 230) &&
+    (weightKg > 0 || num(bodyFat) > 0 || num(waist) > 0 || num(chest) > 0 || num(arm) > 0 || num(height) > 0);
+  const previewEmaKg = currentEma > 0 && hasPrevious && weightKg > 0 ? weightKg * 0.25 + currentEma * 0.75 : weightKg;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (isValid) {
-      onSaveWeight(Math.round(numWeightKg * 100) / 100);
-      onClose();
-    }
+    if (!valid) return;
+    const round = (v: number) => Math.round(v * 10) / 10;
+    onSave({
+      bodyweightKg: weightKg > 0 ? Math.round(weightKg * 100) / 100 : undefined,
+      bodyFatPct: num(bodyFat) ? round(num(bodyFat)) : undefined,
+      waistCm: num(waist) ? round(toCm(num(waist))) : undefined,
+      chestCm: num(chest) ? round(toCm(num(chest))) : undefined,
+      armCm: num(arm) ? round(toCm(num(arm))) : undefined,
+      heightCm: num(height) ? round(toCm(num(height))) : undefined,
+    });
+    onClose();
   };
 
+  const field = (
+    label: string,
+    value: string,
+    set: (v: string) => void,
+    unit: string,
+    hint?: string,
+    ok = true
+  ) => (
+    <label className="block">
+      <span className="text-xs font-semibold text-slate-300">{label}</span>
+      {hint && <span className="block text-xs text-slate-400">{hint}</span>}
+      <div className="relative mt-1">
+        <input
+          type="number"
+          inputMode="decimal"
+          step="0.1"
+          value={value}
+          onChange={(e) => set(e.target.value)}
+          aria-label={`${label} in ${unit}`}
+          aria-invalid={!ok}
+          className={`w-full py-2.5 px-3 pr-12 rounded-xl bg-[#13181C] text-white font-bold text-base focus:outline-none focus:ring-1 ${
+            ok ? 'focus:ring-[#00F19F]' : 'ring-1 ring-rose-400'
+          }`}
+        />
+        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm font-semibold">{unit}</span>
+      </div>
+    </label>
+  );
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md">
-      <div className="w-full max-w-sm rounded-3xl bg-[#0E1219] p-5 sm:p-6 shadow-2xl space-y-5">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/85 backdrop-blur-md">
+      <div className="w-full max-w-sm rounded-3xl bg-[#2C3034] p-5 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-2">
-            <Scale className="w-5 h-5 text-brand-primary stroke-[2]" />
-            <h3 className="font-bold text-base text-white">Log Today&apos;s Weight</h3>
+          <div className="flex items-center gap-2">
+            <Ruler className="w-5 h-5 text-[#00F19F] stroke-[2]" />
+            <h3 className="font-bold text-base text-white">Log measurements</h3>
           </div>
           <button
             type="button"
             onClick={onClose}
-            aria-label="Close weight log"
-            className="w-9 h-9 rounded-full flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/[0.08]"
+            aria-label="Close measurements"
+            className="w-11 h-11 rounded-full flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/[0.08]"
           >
             <X className="w-4 h-4 stroke-[2]" />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <div className="relative">
-              <input
-                type="number"
-                inputMode="decimal"
-                step="0.1"
-                autoFocus
-                aria-label={`Today's weight in ${units.unit === 'lb' ? 'pounds' : 'kilograms'}`}
-                value={weightInput}
-                onChange={(e) => setWeightInput(e.target.value)}
-                className="w-full py-3.5 px-4 rounded-2xl bg-[#090C12] text-white font-mono text-xl font-bold focus:ring-1 focus:ring-brand-primary focus:outline-none text-center"
-              />
-              <span className="absolute right-4 top-4 text-slate-400 font-bold text-sm">{units.unit}</span>
-            </div>
-          </div>
-
-          {/* 7-Day Average preview */}
-          <div className="p-4 rounded-2xl bg-[#090C12] text-xs space-y-2">
-            {hasPrevious && (
-              <div className="flex justify-between text-slate-400">
-                <span>Previous 7-day average</span>
-                <span className="font-mono text-white font-semibold">{units.format(currentEma)}</span>
-              </div>
-            )}
-            {isValid && (
-              <div className="flex justify-between text-slate-300">
-                <span>New 7-day average</span>
-                <span className="font-mono font-bold text-brand-primary">{units.format(previewEmaKg)}</span>
-              </div>
-            )}
-            <p className="text-xs text-slate-400 pt-1 leading-snug">
-              We use a 7-day rolling average so normal daily water changes don&apos;t throw off your progress.
+        <form onSubmit={handleSubmit} className="space-y-3">
+          {field("Today's weight", weightInput, setWeightInput, units.unit, 'Morning, after the toilet, before eating', weightValid)}
+          {weightKg > 0 && weightValid && (
+            <p className="text-xs text-slate-400">
+              New 7-day average: <strong className="text-white">{units.format(previewEmaKg)}</strong>. The average smooths out
+              normal daily water changes.
             </p>
-          </div>
+          )}
+          {field('Body fat', bodyFat, setBodyFat, '%', 'Optional. Smart scale, calipers or scan, same method each time', bfValid)}
+          {field('Waist', waist, setWaist, lengthUnit, 'Optional. At the belly button, relaxed, after breathing out', lengthValid(waist, 40, 200))}
+          {field('Chest', chest, setChest, lengthUnit, 'Optional. Fullest part, relaxed', lengthValid(chest, 50, 200))}
+          {field('Upper arm', arm, setArm, lengthUnit, 'Optional. Widest part, flexed', lengthValid(arm, 15, 70))}
+          {!heightCm && field('Height', height, setHeight, lengthUnit, 'Asked once, for lean mass and waist ratios', lengthValid(height, 120, 230))}
 
           <div className="grid grid-cols-2 gap-3 pt-1">
             <button
               type="button"
               onClick={onClose}
-              className="py-3 min-h-[44px] rounded-xl bg-white/[0.08] hover:bg-white/[0.14] text-white font-semibold text-xs transition-colors"
+              className="py-3 min-h-[44px] rounded-xl bg-white/[0.08] hover:bg-white/[0.14] text-white font-semibold text-sm"
             >
               Cancel
             </button>
             <button
               type="submit"
-              disabled={!isValid}
-              className="disabled:opacity-50 py-3 min-h-[44px] rounded-xl bg-white hover:bg-slate-100 text-slate-950 font-bold text-xs flex items-center justify-center space-x-1.5 shadow-sm active:scale-95"
+              disabled={!valid}
+              aria-label="Save measurements"
+              className="disabled:opacity-50 py-3 min-h-[44px] rounded-xl bg-[#00F19F] text-[#13181C] font-bold text-sm flex items-center justify-center gap-1.5 active:scale-95"
             >
-              <Check className="w-4 h-4 stroke-[2]" />
-              <span>Save Weight</span>
+              <Check className="w-4 h-4 stroke-[2.5]" />
+              <span>Save</span>
             </button>
           </div>
         </form>

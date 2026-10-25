@@ -59,10 +59,21 @@ export function buildExerciseInsight(
   const plannedSet = exercise.sets.find(isWorking);
   const plannedRir = plannedSet?.targetRir ?? 2;
 
+  // Timed holds and intervals are measured in time, not load.
+  if (exercise.durationSeconds || exercise.durationMinutesRange) {
+    const time = exercise.durationSeconds
+      ? `${exercise.durationSeconds}-second holds`
+      : `${exercise.durationMinutesRange![0]}–${exercise.durationMinutesRange![1]} minutes`;
+    return { history: [], summary: `Timed work: ${time}. Keep good form for the full time and steady breathing throughout.` };
+  }
   if (past.length === 0) {
+    const pureBw = exercise.equipment === 'bodyweight' && !exercise.isWeightedCalisthenic;
+    const spare = `${plannedRir} ${plannedRir === 1 ? 'rep' : 'reps'} to spare`;
     return {
       history,
-      summary: `First time doing this exercise. Today sets your starting point: use a weight you can lift for the target reps with ${plannedRir} reps to spare.`,
+      summary: pureBw
+        ? `First time doing this exercise. Today sets your starting point: stop each set with ${spare}.`
+        : `First time doing this exercise. Today sets your starting point: use a weight you can lift for the target reps with ${spare}.`,
     };
   }
 
