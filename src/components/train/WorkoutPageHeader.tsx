@@ -24,7 +24,7 @@ const DayCircle: React.FC<{ day: StripDay }> = ({ day }) => {
   if (day.status === 'trained') {
     return (
       <span
-        className="rounded-full flex items-center justify-center"
+        className={`rounded-full flex items-center justify-center ${day.isToday ? 'wk-today' : ''}`}
         style={{
           width: size,
           height: size,
@@ -39,7 +39,7 @@ const DayCircle: React.FC<{ day: StripDay }> = ({ day }) => {
   if (day.isToday) {
     return (
       <span
-        className="rounded-full flex items-center justify-center"
+        className="wk-today rounded-full flex items-center justify-center"
         style={{ width: size, height: size, border: `${stroke} solid #fff` }}
       >
         {day.status === 'planned' && (

@@ -409,3 +409,31 @@ select:focus-visible {
   background: #fff;
   animation: wk-dot-pulse 900ms 1250ms ease-out both;
 }
+
+/* Workout page: today's circle in the week strip pops in, then sends out two soft halos. */
+@keyframes wk-today-pop {
+  0% { transform: scale(0.4); opacity: 0; }
+  60% { transform: scale(1.2); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+@keyframes wk-today-halo {
+  from { transform: scale(1); opacity: 0.75; }
+  to { transform: scale(2.2); opacity: 0; }
+}
+.wk-today {
+  position: relative;
+  animation: wk-today-pop 650ms 250ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+.wk-today::before,
+.wk-today::after {
+  content: '';
+  position: absolute;
+  inset: calc(-4 * var(--f));
+  border-radius: 9999px;
+  border: calc(3 * var(--f)) solid #fff;
+  pointer-events: none;
+  animation: wk-today-halo 1100ms 750ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.wk-today::after {
+  animation-delay: 1100ms;
+}

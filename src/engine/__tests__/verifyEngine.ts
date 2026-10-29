@@ -3497,12 +3497,12 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
       now: stripNow,
     });
     assert(
-      strip.length === 7 && strip[2].isToday && strip[2].label === 'SAT' && strip[1].status === 'trained' && strip[0].status === 'rest',
-      'Day strip shows two days back, today, and four days ahead, marking the day trained'
+      strip.length === 7 && strip[3].isToday && strip[3].label === 'SAT' && strip[2].status === 'trained' && strip[1].status === 'rest',
+      'Day strip shows three days back, today in the middle, and three days ahead, marking the day trained'
     );
     const plannedAhead = strip.filter((d) => d.status === 'planned');
     assert(
-      plannedAhead.length >= 2 && plannedAhead.every((d) => d.date >= strip[2].date),
+      plannedAhead.length >= 2 && plannedAhead.every((d) => d.date >= strip[3].date),
       `Upcoming sessions are spread out by recovery (${plannedAhead.map((d) => d.label).join(', ')}), never in the past`
     );
     const trainedToday = buildWeekStrip({
@@ -3512,7 +3512,7 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
       exerciseCatalog: SEED_EXERCISES,
       now: stripNow,
     });
-    assert(trainedToday[2].status === 'trained' && trainedToday[3].status === 'planned', 'After training today, the next session is expected tomorrow at the earliest');
+    assert(trainedToday[3].status === 'trained' && trainedToday[4].status === 'planned', 'After training today, the next session is expected tomorrow at the earliest');
 
     const first = buildExerciseInsight(generate6WeekMuscleBuildingWorkout(1, 80).exercises[0], [], 'Normal');
     assert(first.history.length === 0 && /First time/.test(first.summary), 'A new exercise says it sets the starting point');

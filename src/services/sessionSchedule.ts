@@ -89,8 +89,9 @@ export function buildWeekStrip(input: {
 }): StripDay[] {
   const now = input.now ?? Date.now();
   const today = new Date(now);
-  const daysBefore = input.daysBefore ?? 2;
-  const daysAfter = input.daysAfter ?? 4;
+  // Today sits in the middle of the week.
+  const daysBefore = input.daysBefore ?? 3;
+  const daysAfter = input.daysAfter ?? 3;
   const dates = Array.from({ length: daysBefore + 1 + daysAfter }, (_, i) => localDateOffset(i - daysBefore, today));
   const lastDate = dates[dates.length - 1];
 
