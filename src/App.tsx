@@ -726,6 +726,9 @@ export const App: React.FC = () => {
           <ProgramTab
             profile={profile}
             workouts={workouts}
+            biometrics={biometrics}
+            readinessState={readiness.state}
+            bodyweightKg={bodyweightEmaKg}
             latestBiometrics={latestBiometrics}
             exerciseCatalog={exercises}
             activeSplitDay={activeWorkout.splitDay}

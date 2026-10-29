@@ -1,12 +1,23 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronRight } from 'lucide-react';
-import { WorkoutSession } from '../../engine/types';
+import { BiometricLog, ExerciseDefinition, ReadinessState, UserProfile, WorkoutSession } from '../../engine/types';
+import { buildAthleteKnowledgeGraph } from '../../engine/knowledgeGraph';
+import { calculateWeeklyMuscleVolume } from '../../services/storage';
+import { isOnDeviceModelReady } from '../../services/onDeviceModel';
+import {
+  acceptIdentityMessage,
+  buildIdentityFacts,
+  cacheIdentityMessage,
+  generateIdentityMessage,
+  getCachedIdentityMessage,
+} from '../../services/identityMessage';
 import {
   PROGRAM_PHASES,
   WORKOUT_TEMPLATES_24,
   PlanWorkoutOverview,
   buildPlanOverview,
+  generate6WeekMuscleBuildingWorkout,
 } from '../../engine/muscleBuildingProgram';
 import { triggerHaptic } from '../../utils/haptics';
 import { PastWorkoutModal } from './PastWorkoutModal';
@@ -14,21 +25,6 @@ import { PastWorkoutModal } from './PastWorkoutModal';
 /** One Figma pixel (1344 px frame) in screen pixels; see .wk in index.css. */
 const fig = (px: number) => `calc(${px} * var(--f))`;
 const TOTAL = WORKOUT_TEMPLATES_24.length;
-
-/** What the next workout trains, for "your goal of increasing ... strength". */
-function focusFor(label: string): string {
-  if (/shoulder/i.test(label)) return 'shoulder and arm';
-  if (/leg/i.test(label)) return 'leg and core';
-  return 'chest and back';
-}
-
-function identityMessage(completed: number, nextLabel: string): string {
-  if (completed === 0) {
-    return `Every workout you finish shapes the athlete you are becoming. Your first workout, ${nextLabel.toLowerCase()}, is ready when you are.`;
-  }
-  const done = completed === 1 ? 'Your first workout is done' : `${completed} workouts done`;
-  return `${done}. Remember that feeling ahead of your next workout where you’ll have an opportunity to progress your goal of increasing ${focusFor(nextLabel)} strength.`;
-}
 
 /** One contour of the identity form: a finished workout, or the outline of the next one. */
 interface IdentityRing {
@@ -306,6 +302,11 @@ const IdentityForm: React.FC<{ rings: IdentityRing[]; seed: string }> = ({ rings
 
 interface ProgramPlanViewProps {
   workouts: WorkoutSession[];
+  biometrics: BiometricLog[];
+  profile: UserProfile;
+  exerciseCatalog: ExerciseDefinition[];
+  readinessState: ReadinessState;
+  bodyweightKg: number;
   /** Plan number of the workout already loaded on the Workout tab. */
   activeProgramWorkoutNumber?: number;
   onLaunchWorkoutNumber?: (workoutNumber: number) => void;
@@ -315,6 +316,11 @@ interface ProgramPlanViewProps {
 /** Program page for the 6-Week Muscle Building Plan: identity, progress, then the three phases. */
 export const ProgramPlanView: React.FC<ProgramPlanViewProps> = ({
   workouts,
+  biometrics,
+  profile,
+  exerciseCatalog,
+  readinessState,
+  bodyweightKg,
   activeProgramWorkoutNumber,
   onLaunchWorkoutNumber,
   onBackToWorkout,
@@ -324,6 +330,47 @@ export const ProgramPlanView: React.FC<ProgramPlanViewProps> = ({
   const [viewing, setViewing] = useState<PlanWorkoutOverview | null>(null);
   const next = plan.workouts.find((w) => w.workoutNumber === plan.nextWorkoutNumber)!;
   const isFirstRun = plan.cycleNumber === 1;
+
+  // Identity message: facts from the plan, history and knowledge graph; written by the on-device
+  // model when one is ready, otherwise the fact-based fallback.
+  const identityFacts = useMemo(() => {
+    const knowledgeGraph = buildAthleteKnowledgeGraph(
+      workouts,
+      biometrics,
+      exerciseCatalog,
+      profile,
+      calculateWeeklyMuscleVolume(workouts, exerciseCatalog)
+    );
+    return buildIdentityFacts({
+      plan,
+      workouts,
+      nextSession: generate6WeekMuscleBuildingWorkout(plan.nextWorkoutNumber, bodyweightKg),
+      exerciseCatalog,
+      knowledgeGraph,
+      readinessState,
+      bodyweightKg,
+    });
+    // Facts change with history and readiness, not with every profile edit.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [plan, workouts, biometrics, exerciseCatalog, readinessState, bodyweightKg]);
+  const [identityMessage, setIdentityMessage] = useState<string | null>(null);
+  useEffect(() => {
+    if (!isFirstRun) return;
+    let cancelled = false;
+    const cached = acceptIdentityMessage(getCachedIdentityMessage(identityFacts.key) ?? null, identityFacts);
+    setIdentityMessage(cached);
+    if (cached) return;
+    (async () => {
+      if (!(await isOnDeviceModelReady())) return;
+      const message = await generateIdentityMessage(identityFacts);
+      if (cancelled || !message) return;
+      cacheIdentityMessage(identityFacts.key, message);
+      setIdentityMessage(message);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [identityFacts, isFirstRun]);
   const identityRings = useMemo<IdentityRing[]>(
     () =>
       plan.workouts.map((w) => ({
@@ -418,7 +465,9 @@ export const ProgramPlanView: React.FC<ProgramPlanViewProps> = ({
               color: 'var(--wk-muted)',
             }}
           >
-            {identityMessage(plan.completedCount, next.label)}
+            <span key={identityMessage ? 'model' : 'facts'} className="wk-text-swap">
+              {identityMessage ?? identityFacts.fallback}
+            </span>
           </p>
         </section>
       )}

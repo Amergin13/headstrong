@@ -437,3 +437,9 @@ select:focus-visible {
 .wk-today::after {
   animation-delay: 1100ms;
 }
+
+/* A written message replacing its fact-based placeholder fades in instead of jumping. */
+.wk-text-swap {
+  display: inline;
+  animation: wk-fade-in 450ms ease-out both;
+}

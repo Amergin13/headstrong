@@ -130,7 +130,10 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
       {insight && (
         <div className="flex flex-col" style={{ gap: fig(28), marginTop: fig(36) }}>
           <p className="wk-body" aria-live="polite">
-            {note ?? insight.summary}
+            {/* Re-keyed on change so a written note replacing its placeholder fades in. */}
+            <span key={note ?? insight.summary} className="wk-text-swap">
+              {note ?? insight.summary}
+            </span>
           </p>
           {!(exercise.durationSeconds || exercise.durationMinutesRange) && (
             <TrendChart

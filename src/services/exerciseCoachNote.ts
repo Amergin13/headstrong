@@ -85,6 +85,7 @@ export function buildExerciseNoteFacts(input: ExerciseNoteInput): ExerciseNoteFa
     .find(Boolean);
   const isBodyweight = exercise.equipment === 'bodyweight' && !exercise.isWeightedCalisthenic;
   const load = (kg: number) => (kg > 0 ? formatWeight(kg) : isBodyweight ? 'bodyweight' : formatWeight(0));
+  let historySentence = `First time on ${exercise.name}, so today sets your starting point.`;
   if (!lastSession) {
     facts.push('This is the first time you have logged this exercise.');
   } else {
@@ -93,34 +94,58 @@ export function buildExerciseNoteFacts(input: ExerciseNoteInput): ExerciseNoteFa
     facts.push(
       `Last time: ${sets.length} sets, best set ${load(weightOf(best))} for ${best.actualReps} reps with ${best.actualRir ?? best.targetRir ?? 2} reps in reserve.`
     );
+    const bestSet = `${load(weightOf(best))} × ${best.actualReps}`;
+    historySentence = `Last time your best set was ${bestSet}.`;
     if (insight.history.length >= 2) {
       const first = insight.history[0].e1rmKg;
       const last = insight.history[insight.history.length - 1].e1rmKg;
       const pct = first > 0 ? Math.round(((last - first) / first) * 100) : 0;
+      const n = insight.history.length;
       facts.push(
         pct === 0
-          ? `Estimated strength on this exercise has held steady over ${insight.history.length} sessions.`
-          : `Estimated strength on this exercise has ${pct > 0 ? 'risen' : 'fallen'} ${Math.abs(pct)}% over ${insight.history.length} sessions.`
+          ? `Estimated strength on this exercise has held steady over ${n} sessions.`
+          : `Estimated strength on this exercise has ${pct > 0 ? 'risen' : 'fallen'} ${Math.abs(pct)}% over ${n} sessions.`
       );
+      historySentence =
+        pct === 0
+          ? `Your strength on this lift has held steady over ${n} sessions, with a best set of ${bestSet} last time.`
+          : `Your strength on this lift is ${pct > 0 ? 'up' : 'down'} ${Math.abs(pct)}% over ${n} sessions, with a best set of ${bestSet} last time.`;
     }
   }
 
   // Today's plan.
   const working = exercise.sets.filter(isWorking);
   const planned = working[0];
+  let todaySentence = '';
   if (planned) {
     const tempo = exercise.tempo && /^\d{4}$/.test(exercise.tempo) ? `, taking ${exercise.tempo[0]} seconds to lower each rep` : '';
+    const rir = planned.targetRir ?? 2;
     facts.push(
-      `Today's plan: ${working.length} sets of ${planned.targetReps} reps at ${load(planned.targetWeightKg)}, leaving ${planned.targetRir ?? 2} reps in reserve${tempo}.`
+      `Today's plan: ${working.length} sets of ${planned.targetReps} reps at ${load(planned.targetWeightKg)}, leaving ${rir} reps in reserve${tempo}.`
     );
+    const w = load(planned.targetWeightKg);
+    const work = `${working.length} sets of ${planned.targetReps}`;
+    let lead = `Start with ${work} at ${w}`;
     if (lastSession) {
       const prevTop = lastSession.sets.filter(done).reduce((m, s) => Math.max(m, weightOf(s)), 0);
       const prevReps = lastSession.sets.filter(done).reduce((m, s) => Math.max(m, s.actualReps ?? 0), 0);
-      if (planned.targetWeightKg > prevTop + 0.01) facts.push('Today is heavier than last time.');
-      else if (planned.targetWeightKg < prevTop - 0.01) facts.push('Today is lighter than last time.');
-      else if (planned.targetReps > prevReps) facts.push('Today keeps the same weight and adds reps.');
-      else facts.push('Today repeats last time\'s weight and reps.');
+      if (planned.targetWeightKg > prevTop + 0.01) {
+        facts.push('Today is heavier than last time.');
+        lead = `Today goes up to ${w} for ${work}`;
+      } else if (planned.targetWeightKg < prevTop - 0.01) {
+        facts.push('Today is lighter than last time.');
+        lead = `Today eases back to ${w} for ${work}`;
+      } else if (planned.targetReps > prevReps) {
+        facts.push('Today keeps the same weight and adds reps.');
+        lead = `Today adds reps at ${w}: ${work}`;
+      } else {
+        facts.push('Today repeats last time\'s weight and reps.');
+        lead = `Today repeats ${work} at ${w} so you can own every rep`;
+      }
     }
+    if (readinessState === 'Amber Shield') lead = `Recovery is low, so today holds ${w} for ${work}`;
+    const lowering = tempo ? `, lowering each rep over ${exercise.tempo![0]} seconds` : '';
+    todaySentence = ` ${lead}, stopping with ${rir} ${rir === 1 ? 'rep' : 'reps'} to spare${lowering}.`;
   }
   if (exercise.intensityProtocol) facts.push(`Technique today: ${exercise.intensityProtocol.name}.`);
 
@@ -136,13 +161,18 @@ export function buildExerciseNoteFacts(input: ExerciseNoteInput): ExerciseNoteFa
   // Knowledge graph: joints this exercise has been loading hard.
   const joint = knowledgeGraph.joints.find((j) => j.status !== 'Optimal' && j.topContributors.includes(exercise.name));
   if (joint) facts.push(`${joint.joint} load this week: ${joint.status.toLowerCase()}, partly from this exercise.`);
+  const jointSentence = joint ? ` Your ${joint.joint.toLowerCase()} has worked hard this week, so keep every rep smooth.` : '';
   if (input.programLabel) facts.push(`Program: ${input.programLabel}.`);
 
   return {
     exerciseId: exercise.id,
     key: hash(`${EXERCISE_NOTE_SYSTEM_PROMPT}\n${facts.join('\n')}`),
     facts,
-    fallback: `${insight.summary}${weekSentence}`,
+    // Built from the same facts the model sees, so it is personal even without a model.
+    fallback:
+      exercise.durationSeconds || exercise.durationMinutesRange || !planned
+        ? `${insight.summary}${weekSentence}`
+        : `${historySentence}${todaySentence}${weekSentence || jointSentence}`,
   };
 }
 

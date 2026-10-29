@@ -41,6 +41,7 @@ import { evaluateSessionRecovery, getDaysUntilReady, getDisplayReadyAt } from '.
 import { buildWeekStrip } from '../../services/sessionSchedule';
 import { buildExerciseInsight } from '../../services/exerciseInsight';
 import { acceptExerciseNote, buildExerciseNoteFacts, generateExerciseNote } from '../../services/exerciseCoachNote';
+import { acceptIdentityMessage, buildIdentityFacts, generateIdentityMessage } from '../../services/identityMessage';
 import { buildSessionProgressReport } from '../../services/sessionReport';
 import { personalizeSessionLoads } from '../loadPersonalization';
 import { buildPlanOverview, getNextProgramWorkoutNumber, planWorkoutLabel } from '../muscleBuildingProgram';
@@ -3630,6 +3631,70 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
       programLabel: 'Phase 1 (Building foundations), week 1 of 6',
       formatWeight: (kg) => `${kg} kg`,
     }).key, 'Notes are cached by their facts, so the same facts reuse the same note');
+  }
+
+  console.log('\n[35b. Program Page Identity Message (facts, AI checks, fallback)]');
+  {
+    const DAYMS = 24 * 60 * 60 * 1000;
+    const idNow = new Date(2026, 9, 29, 18, 0).getTime();
+    const doneSession = (n: number, at: number, kg: (planned: number) => number) => {
+      const w = generate6WeekMuscleBuildingWorkout(n, 80);
+      w.completed = true;
+      w.completedAt = new Date(at).toISOString();
+      w.date = localDateString(new Date(at));
+      w.exercises.forEach((ex) =>
+        ex.sets.forEach((st) => {
+          st.completed = true;
+          st.actualReps = st.targetReps;
+          st.actualRir = 2;
+          st.actualWeightKg = kg(st.targetWeightKg);
+        })
+      );
+      return w;
+    };
+    const fresh = buildIdentityFacts({ plan: buildPlanOverview([]), workouts: [], exerciseCatalog: SEED_EXERCISES, now: idNow });
+    assert(
+      /first workout, chest and back, is ready/.test(fresh.fallback) && fresh.facts.some((f) => /0 of 24/.test(f)),
+      `A new athlete's message points at their first workout: "${fresh.fallback}"`
+    );
+
+    const day1 = doneSession(1, idNow - 4 * DAYMS, (kg) => kg);
+    const day3 = doneSession(3, idNow - DAYMS, (kg) => kg + 2.5);
+    const idHistory = [day3, day1];
+    const plan = buildPlanOverview(idHistory);
+    const idFacts = buildIdentityFacts({
+      plan,
+      workouts: idHistory,
+      nextSession: generate6WeekMuscleBuildingWorkout(plan.nextWorkoutNumber, 80),
+      exerciseCatalog: SEED_EXERCISES,
+      readinessState: 'Normal',
+      now: idNow,
+    });
+    const all = idFacts.facts.join(' ');
+    assert(
+      /2 of 24/.test(all) && /Last workout: Chest and Back, yesterday/.test(all) && /personal best/.test(all) && /Estimated strength is up on \d+ of \d+/.test(all),
+      'Identity facts come from the athlete\'s history: workouts done, last workout, personal bests and strength trend'
+    );
+    assert(
+      /^2 workouts done, with \d+ personal bests? along the way\. Your estimated strength is already up on/.test(idFacts.fallback) && /Next up is legs and abs/.test(idFacts.fallback),
+      `Without a model the message is built from the same facts: "${idFacts.fallback}"`
+    );
+    assert(!/NaN|undefined/.test(idFacts.fallback + all), 'Identity facts and fallback have no NaN or undefined');
+
+    const goodId = 'Two workouts in and your lifts are already climbing. Next up is legs and abs, a chance to build a stronger base.';
+    assert(acceptIdentityMessage(goodId, idFacts) === goodId, 'A message with no invented numbers or claims is accepted');
+    assert(acceptIdentityMessage('Your first workout was strong, and you felt great afterwards. Keep that feeling for legs and abs next.', idFacts) === null, 'A message that claims how the athlete felt is rejected');
+    assert(acceptIdentityMessage('You have done 9 workouts and set 14 personal bests. Next up is legs and abs, so keep building.', idFacts) === null, 'A message with invented numbers is rejected');
+    const noPbFacts = { ...idFacts, facts: idFacts.facts.filter((f) => !/personal best/i.test(f)) };
+    assert(acceptIdentityMessage('You keep setting personal bests and showing up. Next up is legs and abs, a chance to build your base.', noPbFacts) === null, 'A message may not mention personal bests the history does not show');
+
+    let idSystem = '';
+    const fromIdModel = await generateIdentityMessage(idFacts, async (system: string) => {
+      idSystem = system;
+      return goodId;
+    });
+    assert(fromIdModel === goodId && /Never say how they felt/.test(idSystem), 'The on-device model writes the message from the facts and its checked answer is used');
+    assert((await generateIdentityMessage(idFacts, async () => null)) === null, 'Without an on-device model the page keeps the fact-based message');
   }
 
   console.log('\n[36. Full 6-Week Plan Simulation (24 workouts, session 1 to graduation)]');

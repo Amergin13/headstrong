@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import {
   BiometricLog,
   ExerciseDefinition,
+  ReadinessState,
   WorkoutSession,
   GoalPhase,
   ProgramSplitType,
@@ -26,6 +27,9 @@ interface ProgramTabProps {
   profile: UserProfile;
   /** Completed and saved sessions, newest first. */
   workouts: WorkoutSession[];
+  biometrics: BiometricLog[];
+  readinessState: ReadinessState;
+  bodyweightKg: number;
   latestBiometrics?: BiometricLog;
   exerciseCatalog: ExerciseDefinition[];
   activeSplitDay?: string;
@@ -64,6 +68,9 @@ const fig = (px: number) => `calc(${px} * var(--f))`;
 export const ProgramTab: React.FC<ProgramTabProps> = ({
   profile,
   workouts,
+  biometrics,
+  readinessState,
+  bodyweightKg,
   latestBiometrics,
   exerciseCatalog,
   activeSplitDay,
@@ -149,6 +156,11 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
         <>
           <ProgramPlanView
             workouts={workouts}
+            biometrics={biometrics}
+            profile={profile}
+            exerciseCatalog={exerciseCatalog}
+            readinessState={readinessState}
+            bodyweightKg={bodyweightKg}
             activeProgramWorkoutNumber={activeProgramWorkoutNumber}
             onLaunchWorkoutNumber={onLaunchWorkoutNumber}
             onBackToWorkout={onBackToWorkout}
