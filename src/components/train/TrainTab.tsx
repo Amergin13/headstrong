@@ -30,7 +30,6 @@ import {
 } from '../../engine/recovery';
 import { PROGRAM_PHASES, WORKOUT_TEMPLATES_24 } from '../../engine/muscleBuildingProgram';
 import { useUnits } from '../../utils/unitsContext';
-import { PreviousSet } from './SetRow';
 import {
   prescribeDoubleProgression,
   getSessionProgressNarrative,
@@ -48,7 +47,7 @@ import { WorkoutPageHeader } from './WorkoutPageHeader';
 import { ProgramProgressCard } from './ProgramProgressCard';
 import { RecoveryScoreCard } from './RecoveryScoreCard';
 import { buildWeekStrip } from '../../services/sessionSchedule';
-import { buildExerciseInsight } from '../../services/exerciseInsight';
+import { buildExerciseInsight, getPreviousWorkingSets } from '../../services/exerciseInsight';
 import {
   acceptExerciseNote,
   buildExerciseNoteFacts,
@@ -117,24 +116,6 @@ const SPLIT_TARGET_MUSCLES: Record<SplitDayType, MuscleGroup[]> = {
   Legs: ['Quads', 'Hamstrings', 'Glutes', 'Calves'],
   Upper: ['Chest', 'Back', 'Side Delts', 'Biceps'],
 };
-
-/** Working sets from the last completed session of this exact exercise (newest first by finish time). */
-function getPreviousWorkingSets(exerciseId: string, workouts: WorkoutSession[]): PreviousSet[] {
-  const ordered = workouts
-    .filter((w) => w.completed)
-    .sort((a, b) => (b.completedAt || b.date).localeCompare(a.completedAt || a.date));
-  for (const w of ordered) {
-    const ex = w.exercises.find((e) => e.exerciseId === exerciseId);
-    const done = ex?.sets.filter((st) => st.completed && !st.isWarmup && st.setType !== 'warmup') || [];
-    if (done.length > 0) {
-      return done.map((st) => ({
-        weightKg: st.actualWeightKg ?? st.targetWeightKg,
-        reps: st.actualReps ?? st.targetReps,
-      }));
-    }
-  }
-  return [];
-}
 
 /** One Figma pixel (1344 px wide frame) in screen pixels; see .wk in index.css. */
 const fig = (px: number) => `calc(${px} * var(--f))`;

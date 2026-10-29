@@ -1,3 +1,4 @@
+import { PROGRESSION_RULES, hadQualityEffort, loadIncrementFor } from './progressionRules';
 import {
   ExerciseDefinition,
   ExerciseSession,
@@ -221,24 +222,21 @@ export function findLastCompletedExerciseSession(
     ? getMovementVectorId(targetSessionForVectorLookup)
     : null;
 
+  const hasWorkingSet = (ex: ExerciseSession) => ex.sets.some((s) => s.completed && !s.isWarmup && s.setType !== 'warmup');
+
+  // 1. The exercise's own last session, however long ago: its own history is the best guide to
+  //    what to lift next, even when a similar movement was trained more recently.
   for (const w of completedWorkouts) {
-    // 1. Prefer exact exercise match in that workout if present
-    const exactMatch = w.exercises.find(
-      (ex) =>
-        ex.exerciseId === exerciseId &&
-        ex.sets.some((s) => s.completed && !s.isWarmup && s.setType !== 'warmup')
-    );
+    const exactMatch = w.exercises.find((ex) => ex.exerciseId === exerciseId && hasWorkingSet(ex));
     if (exactMatch) {
       return { session: exactMatch, date: w.date, isCrossImplementTransfer: false };
     }
+  }
 
-    // 2. Otherwise match any completed exercise expressing the same Canonical Movement Vector!
-    if (targetVector) {
-      const vectorMatch = w.exercises.find(
-        (ex) =>
-          getMovementVectorId(ex) === targetVector &&
-          ex.sets.some((s) => s.completed && !s.isWarmup && s.setType !== 'warmup')
-      );
+  // 2. Never done before: the most recent exercise with the same movement pattern.
+  if (targetVector) {
+    for (const w of completedWorkouts) {
+      const vectorMatch = w.exercises.find((ex) => getMovementVectorId(ex) === targetVector && hasWorkingSet(ex));
       if (vectorMatch) {
         return {
           session: vectorMatch,
@@ -486,11 +484,11 @@ export function prescribeDoubleProgression(
   }
 
   // Check if all working sets hit top of rep range at 1–2 RIR:
-  const allHitTopWithGoodRir = sets.every((s) => {
-    const reps = s.actualReps ?? 0;
-    const rir = s.actualRir ?? 2;
-    return reps >= sourceMaxReps && rir >= 1 && rir <= 2;
-  });
+  // Reps left in reserve count as quality reps; more reserve than planned means the weight is easy,
+  // so it still progresses (PROGRESSION_RULES, knowledge graph `sp-double-progression`).
+  const allHitTopWithGoodRir = sets.every(
+    (s) => (s.actualReps ?? 0) >= sourceMaxReps && hadQualityEffort(s.actualRir, s.targetRir)
+  );
 
   if (allHitTopWithGoodRir) {
     if (isPureBodyweight) {
@@ -514,8 +512,7 @@ export function prescribeDoubleProgression(
       };
     }
 
-    const isDumbbell = session.equipment === 'dumbbell';
-    const increment = isDumbbell ? 2.0 : 2.5;
+    const increment = loadIncrementFor(session.equipment);
     const nextWeight = Math.round((currentWeight + increment) * 10) / 10;
     const reasonText =
       goalPhase === 'Cut / Recomp'
@@ -539,11 +536,9 @@ export function prescribeDoubleProgression(
   }
 
   // Check if within rep range at 1–2 RIR:
-  const goodQualitySets = sets.filter((s) => {
-    const reps = s.actualReps ?? 0;
-    const rir = s.actualRir ?? 2;
-    return reps >= sourceMinReps && rir >= 1 && rir <= 2;
-  });
+  const goodQualitySets = sets.filter(
+    (s) => (s.actualReps ?? 0) >= sourceMinReps && hadQualityEffort(s.actualRir, s.targetRir)
+  );
 
   if (goodQualitySets.length > 0) {
     if (isPureBodyweight) {

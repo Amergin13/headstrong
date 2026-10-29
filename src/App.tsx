@@ -240,6 +240,19 @@ export const App: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // On the 6-week plan, today's session must be the plan's next workout (with the athlete's own
+  // weights). A fresh install or cleared session otherwise starts on a generic split day.
+  useEffect(() => {
+    if (profile.programType !== 'muscle_building_6wk' || activeWorkout.programWorkoutNumber) return;
+    if (activeWorkout.exercises.some((ex) => ex.sets.some((s) => s.completed))) return;
+    setActiveWorkout(
+      prepareSession(generate6WeekMuscleBuildingWorkout(getNextProgramWorkoutNumber(workouts), bodyweightEmaKg), {
+        isProgramPlan: true,
+      })
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile.programType]);
+
   // Handler: a set was ticked off. Starts the labelled rest timer and celebrates a personal best once per set.
   const handleSetCompleted = (
     _exerciseName: string,

@@ -127,6 +127,8 @@ For any target rep range (e.g., 8–12 reps):
 
 ---
 
+Implementation: the numbers live in one place, `PROGRESSION_RULES` (`src/engine/progressionRules.ts`); the knowledge graph's `sp-double-progression` text is written from them, and both the split path (`prescribeDoubleProgression`) and the 6-week plan's carry-over (`personalizeSessionLoads`) apply them. Quality reps = at least 1 rep in reserve (or the plan's 0 RIR on failure sets); more reserve still counts. Missed reps, ground-out sets or low recovery never raise the weight. An exercise's own last session sets its next weight (`findLastCompletedExerciseSession` only falls back to a similar movement when the exercise has never been done). Jumps are capped at +10% plus one step, after rounding to real plate/dumbbell sizes. Engine suite 36b simulates all 24 plan workouts with a realistic athlete and checks every prescription, PREV value, chart, Progress/Athlete card and the knowledge graph.
+
 ### 2.3 Work Capacity Index (WCI)
 Measures cardiovascular efficiency and localized muscular stamina under load:
 $$\text{WCI} = \frac{\text{Effective Tonnage} \times \text{Completed Sets}}{\text{Avg Session HRR}\% \times \text{Duration (min)}}$$

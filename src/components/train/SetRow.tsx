@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { SetType, WorkoutSet } from '../../engine/types';
 import { triggerHaptic } from '../../utils/haptics';
 import { useUnits } from '../../utils/unitsContext';
+import type { PreviousSet } from '../../services/exerciseInsight';
 
 const fig = (px: number) => `calc(${px} * var(--f))`;
 
@@ -9,11 +10,7 @@ const fig = (px: number) => `calc(${px} * var(--f))`;
 export const SET_TABLE_COLUMNS = '36fr 92fr 130fr 100fr 90fr 74fr';
 export const SET_TABLE_GAP = fig(20);
 
-/** A working set from the last time this exact exercise was completed. */
-export interface PreviousSet {
-  weightKg: number;
-  reps: number;
-}
+export type { PreviousSet } from '../../services/exerciseInsight';
 
 interface SetRowProps {
   set: WorkoutSet;

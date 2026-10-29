@@ -116,3 +116,27 @@ export function buildExerciseInsight(
   const rirClause = plannedRir < prevRir ? ' and focus on reduced reps in reserve.' : '.';
   return { history, summary: `${trend} ${today}${rirClause}` };
 }
+
+/** One set from last time, shown in the PREV column. */
+export interface PreviousSet {
+  weightKg: number;
+  reps: number;
+}
+
+/** Working sets from the last completed session of this exact exercise (newest first by finish time). */
+export function getPreviousWorkingSets(exerciseId: string, workouts: WorkoutSession[]): PreviousSet[] {
+  const ordered = workouts
+    .filter((w) => w.completed)
+    .sort((a, b) => (b.completedAt || b.date).localeCompare(a.completedAt || a.date));
+  for (const w of ordered) {
+    const ex = w.exercises.find((e) => e.exerciseId === exerciseId);
+    const done = ex?.sets.filter((st) => st.completed && !st.isWarmup && st.setType !== 'warmup') || [];
+    if (done.length > 0) {
+      return done.map((st) => ({
+        weightKg: st.actualWeightKg ?? st.targetWeightKg,
+        reps: st.actualReps ?? st.targetReps,
+      }));
+    }
+  }
+  return [];
+}

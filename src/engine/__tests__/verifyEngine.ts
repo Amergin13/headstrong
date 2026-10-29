@@ -15,7 +15,7 @@ import {
   calculateSubTierQuest,
 } from '../strengthStandards';
 import { calculateDailyReadiness } from '../readiness';
-import { prescribeDoubleProgression } from '../progression';
+import { findLastCompletedExerciseSession, prescribeDoubleProgression } from '../progression';
 import { calculateWci, calculateHrrPercentage } from '../wci';
 import { calculateEngineVitalityScore, generate7PillarRadarData } from '../vitality';
 import { BiometricLog, ExerciseSession, WorkoutSession } from '../types';
@@ -39,7 +39,8 @@ import { SEED_EXERCISES } from '../../services/seedData';
 import { processAssistantMessage, buildSafetyResponse, buildProgressSummary } from '../../services/aiAssistantService';
 import { evaluateSessionRecovery, getDaysUntilReady, getDisplayReadyAt } from '../recovery';
 import { buildWeekStrip } from '../../services/sessionSchedule';
-import { buildExerciseInsight } from '../../services/exerciseInsight';
+import { buildExerciseInsight, getPreviousWorkingSets } from '../../services/exerciseInsight';
+import { PROGRESSION_RULES, hadQualityEffort, loadIncrementFor } from '../progressionRules';
 import { acceptExerciseNote, buildExerciseNoteFacts, generateExerciseNote } from '../../services/exerciseCoachNote';
 import { acceptIdentityMessage, buildIdentityFacts, generateIdentityMessage } from '../../services/identityMessage';
 import { buildSessionProgressReport } from '../../services/sessionReport';
@@ -3820,6 +3821,173 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
     );
     assert(getNextProgramWorkoutNumber(history6) === 1 && profile6.mesocycleWeek === 1, 'After graduation the plan starts again at workout 1, week 1');
     assert(days <= 49 && maxWaitDays <= 4, `The plan fits in about 6 weeks (${days.toFixed(1)} days) and no session waits more than 4 days`);
+  }
+
+  console.log('\n[36b. End to End: Data Carries Across Workouts, Fills Every Card, Progresses by the Knowledge-Graph Rule]');
+  {
+    const HOUR = 60 * 60 * 1000;
+    const isWork = (st: { isWarmup?: boolean; setType?: string }) => !st.isWarmup && st.setType !== 'warmup';
+    const rule = EXERCISE_SCIENCE_KNOWLEDGE_BASE.find((p) => p.id === 'sp-double-progression')!;
+    const ruleText = rule.formula ?? '';
+    assert(
+      ruleText.includes(`+${PROGRESSION_RULES.barbellIncrementKg} kg barbell`) &&
+        ruleText.includes(`+${PROGRESSION_RULES.dumbbellIncrementKg} kg dumbbell`) &&
+        ruleText.includes(`+${PROGRESSION_RULES.repStep} rep`) &&
+        loadIncrementFor('barbell') === PROGRESSION_RULES.barbellIncrementKg &&
+        loadIncrementFor('dumbbell') === PROGRESSION_RULES.dumbbellIncrementKg,
+      'The knowledge graph states the exact progression rule the app applies (one shared source)'
+    );
+    assert(
+      hadQualityEffort(2, 2) && hadQualityEffort(3, 2) && hadQualityEffort(1, 2) && !hadQualityEffort(0, 2) && hadQualityEffort(0, 0),
+      'Quality effort: reps in reserve count (more is fine), grinding to failure does not, unless the plan asked for failure'
+    );
+
+    // Split programs (rep ranges): easy sets at the top of the range still earn the load step.
+    const splitEx: ExerciseSession = {
+      ...generateSmartWorkoutSession('Push', [], SEED_EXERCISES, 'Normal', 1, 'gym', [], 'Lean Bulk', 80).exercises.find((e) => e.equipment === 'barbell')!,
+    };
+    const easyTop = { ...splitEx, sets: splitEx.sets.map((st) => ({ ...st, completed: true, actualWeightKg: 60, actualReps: splitEx.maxReps || 12, actualRir: 3 })) };
+    const easyRx = prescribeDoubleProgression(easyTop, 'Normal');
+    assert(easyRx.weightChanged && easyRx.nextWeightKg === 60 + PROGRESSION_RULES.barbellIncrementKg, `Top of the range with 3 reps to spare adds ${PROGRESSION_RULES.barbellIncrementKg} kg (got ${easyRx.nextWeightKg})`);
+    const groundOut = { ...easyTop, sets: easyTop.sets.map((st) => ({ ...st, actualRir: 0 })) };
+    assert(!prescribeDoubleProgression(groundOut, 'Normal').weightChanged, 'Top of the range ground out to failure holds the weight');
+    const newer = { ...generate6WeekMuscleBuildingWorkout(1, 80) };
+    assert(
+      findLastCompletedExerciseSession('ex-guillotine-press', [newer], newer.exercises.find((e) => e.exerciseId === 'ex-guillotine-press')) === null,
+      'An exercise never completed has no last session'
+    );
+
+    let hist: WorkoutSession[] = [];
+    let prof: UserProfile = { ...NEW_USER_PROFILE, programType: 'muscle_building_6wk', mesocycleWeek: 1, experienceLevel: 'intermediate', gender: 'male' } as UserProfile;
+    let t = new Date(2026, 9, 19, 18, 0).getTime();
+    const issues: string[] = [];
+    const truth = new Map<string, number>(); // the athlete's real estimated max per exercise
+    const last = new Map<string, { weight: number; reps: number; target: number; quality: boolean }>();
+    const sessionsDone = new Map<string, number>();
+    let increases = 0;
+    let holds = 0;
+    let amberChecked = 0;
+    const AMBER_WORKOUT = 14;
+
+    for (let k = 1; k <= 24; k++) {
+      const n = getNextProgramWorkoutNumber(hist);
+      const amber = n === AMBER_WORKOUT;
+      let session = prepareSessionForAthlete(generate6WeekMuscleBuildingWorkout(n, 80), {
+        history: hist,
+        bodyweightKg: 80,
+        gender: 'male',
+        experienceLevel: 'intermediate',
+        readinessState: amber ? 'Amber Shield' : 'Normal',
+        unit: 'kg',
+        isProgramPlan: true,
+      });
+
+      // What the Workout tab shows before training: prescription, PREV column, chart history.
+      for (const ex of session.exercises) {
+        const first = ex.sets.find(isWork);
+        if (!first || ex.durationSeconds || ex.durationMinutesRange) continue;
+        const prev = last.get(ex.exerciseId);
+        const done = sessionsDone.get(ex.exerciseId) ?? 0;
+        const insight = buildExerciseInsight(ex, hist, 'Normal', 80);
+        if (insight.history.length !== Math.min(12, done)) issues.push(`workout ${n}: ${ex.name} chart has ${insight.history.length} points, expected ${done}`);
+        if (!prev) continue;
+        const prevCol = getPreviousWorkingSets(ex.exerciseId, hist);
+        if (prevCol.length === 0 || prevCol[0].weightKg !== prev.weight || prevCol[0].reps !== prev.reps) {
+          issues.push(`workout ${n}: ${ex.name} PREV shows ${prevCol[0]?.weightKg}×${prevCol[0]?.reps}, logged ${prev.weight}×${prev.reps}`);
+        }
+        if (first.targetWeightKg <= 0 || first.targetReps !== prev.target) continue; // rep target changed with the phase
+        const planned = first.targetWeightKg;
+        const step = loadIncrementFor(ex.equipment);
+        if (amber) {
+          amberChecked++;
+          if (planned > prev.weight + 1e-9) issues.push(`workout ${n}: ${ex.name} went up on a low-recovery day (${prev.weight} → ${planned})`);
+        } else if (prev.quality) {
+          if (!(planned > prev.weight && planned <= prev.weight * (1 + PROGRESSION_RULES.maxSessionIncreaseFraction) + step + 0.01)) {
+            issues.push(`workout ${n}: ${ex.name} hit every target last time but went ${prev.weight} → ${planned}`);
+          } else increases++;
+        } else if (planned > prev.weight + 1e-9) {
+          issues.push(`workout ${n}: ${ex.name} missed reps last time but went up ${prev.weight} → ${planned}`);
+        } else holds++;
+      }
+
+      // Wait for recovery, as the Workout tab does.
+      const gate = evaluateSessionRecovery(session, hist, SEED_EXERCISES, t);
+      if (!gate.isReady && gate.readyAt) {
+        const at = new Date(getDisplayReadyAt(gate.readyAt));
+        if (at.getHours() < 17) at.setHours(17, 0, 0, 0);
+        t = at.getTime();
+      }
+
+      // The athlete trains: reps come from their real strength, so some sets fall short.
+      session = {
+        ...session,
+        exercises: session.exercises.map((ex, exIdx) => {
+          const working = ex.sets.filter(isWork);
+          const firstW = working[0];
+          const weighted = firstW && firstW.targetWeightKg > 0 && !ex.durationSeconds && !ex.durationMinutesRange;
+          if (weighted && !truth.has(ex.exerciseId)) {
+            const base = firstW.targetWeightKg * (1 + (firstW.targetReps + (firstW.targetRir ?? 2)) / 30);
+            truth.set(ex.exerciseId, base * (exIdx % 3 === 0 ? 0.95 : 1.04)); // some lifts start too heavy
+          }
+          const e1 = truth.get(ex.exerciseId) ?? 0;
+          let wi = 0;
+          return {
+            ...ex,
+            sets: ex.sets.map((st, i) => {
+              if (!weighted || !isWork(st)) {
+                return { ...st, completed: true, completedAt: new Date(t + i * 180000).toISOString(), actualWeightKg: st.targetWeightKg, actualReps: st.targetReps, actualRir: st.targetRir ?? 2 };
+              }
+              const toFailure = Math.floor(30 * (e1 / st.targetWeightKg - 1)) - Math.floor(wi++ / 2);
+              const reps = Math.max(1, Math.min(st.targetReps, toFailure));
+              const rir = Math.max(0, Math.min(5, toFailure - reps));
+              return { ...st, completed: true, completedAt: new Date(t + i * 180000).toISOString(), actualWeightKg: st.targetWeightKg, actualReps: reps, actualRir: rir };
+            }),
+          };
+        }),
+      };
+      t += HOUR;
+      const result = completeWorkout({ activeWorkout: session, history: hist, profile: prof, readiness: { state: amber ? 'Amber Shield' : 'Normal', score: 0 }, bodyweightKg: 80, now: new Date(t) });
+      hist = result.nextHistory;
+      prof = { ...prof, mesocycleWeek: result.nextMesocycleWeek };
+      t += 60 * 1000;
+
+      for (const ex of session.exercises) {
+        const working = ex.sets.filter(isWork);
+        if (!working.length || ex.durationSeconds || ex.durationMinutesRange) continue;
+        sessionsDone.set(ex.exerciseId, (sessionsDone.get(ex.exerciseId) ?? 0) + 1);
+        const quality = working.every((st) => (st.actualReps ?? 0) >= st.targetReps && hadQualityEffort(st.actualRir, st.targetRir));
+        last.set(ex.exerciseId, { weight: working[0].actualWeightKg ?? 0, reps: working[0].actualReps ?? 0, target: working[0].targetReps, quality });
+        if (truth.has(ex.exerciseId)) truth.set(ex.exerciseId, truth.get(ex.exerciseId)! * (quality ? 1.015 : 1.005));
+      }
+
+      // What the Progress and Athlete tabs show after each workout.
+      const kgNow = buildAthleteKnowledgeGraph(hist, [], SEED_EXERCISES, prof, calculateWeeklyMuscleVolume(hist, SEED_EXERCISES));
+      const report = buildSessionProgressReport({ workouts: hist, exerciseCatalog: SEED_EXERCISES, knowledgeGraph: kgNow, bodyweightKg: 80, now: t });
+      if (!report) issues.push(`workout ${n}: no session report`);
+    }
+
+    issues.slice(0, 25).forEach((i) => console.log(`   ISSUE: ${i}`));
+    console.log(`   ${increases} load increases after every target was hit; ${holds} holds after missed reps; ${amberChecked} lifts held on the low-recovery day`);
+    assert(issues.length === 0, `Across 24 workouts every prescription, PREV value and chart follows the logged data (${issues.length} issues)`);
+    assert(increases > 10 && holds > 0 && amberChecked > 0, 'Weights go up only after every target is hit with reps to spare, hold after missed reps, and hold on low recovery');
+
+    const strengthCards = buildStrengthCharts({ workouts: hist, profile: prof, bodyweightKg: 80, fmt: { weight: (kg) => `${kg} kg`, length: (cm) => `${cm} cm` } });
+    const realCards = strengthCards.filter((c) => c.points.length >= 2);
+    assert(
+      realCards.length >= 3 && strengthCards.some((c) => /sets/i.test(c.title) && c.points.length > 0),
+      `Progress tab strength cards fill from the logged workouts (${realCards.map((c) => `${c.title}: ${c.points.length}`).join(', ')})`
+    );
+    const pressCard = realCards.find((c) => c.points.length >= 3);
+    assert(Boolean(pressCard) && pressCard!.points[pressCard!.points.length - 1].value > pressCard!.points[0].value, `Estimated strength rises across the plan on the Progress tab (${pressCard?.title})`);
+    const kgEnd = buildAthleteKnowledgeGraph(hist, [], SEED_EXERCISES, prof, calculateWeeklyMuscleVolume(hist, SEED_EXERCISES));
+    assert(
+      kgEnd.muscleProfiles.some((m) => m.weeklySets > 0) && kgEnd.muscleProfiles.some((m) => m.e1rmVelocityPct > 0),
+      'The knowledge graph records weekly sets per muscle and a rising strength trend from the same workouts'
+    );
+    const pillarsEnd = calculateBestPillarE1rms(hist, 80);
+    assert((pillarsEnd['Horizontal Push'] ?? 0) > 0 && (pillarsEnd['Horizontal Pull'] ?? 0) > 0, 'Athlete tab strength scores fill from the logged workouts');
+    const volumeEnd = calculateWeeklyMuscleVolume(hist, SEED_EXERCISES);
+    assert(Object.values(volumeEnd).some((v) => v > 0), 'Athlete tab weekly sets fill from the logged workouts');
   }
 
   console.log('\n[37. Progress Tab: Strength & Composition Charts]');

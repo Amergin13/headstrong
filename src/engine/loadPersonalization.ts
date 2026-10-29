@@ -1,3 +1,4 @@
+import { PROGRESSION_RULES, hadQualityEffort, loadIncrementFor } from './progressionRules';
 import {
   ExerciseSession,
   ExperienceLevel,
@@ -131,7 +132,7 @@ function equivalentWeight(prevWeight: number, prevReps: number, prevRir: number,
 
 function loadIncrementKg(ex: ExerciseSession, unit: WeightUnit): number {
   if (unit === 'lb') return 5 / 2.2046226218;
-  return ex.equipment === 'dumbbell' ? 2 : 2.5;
+  return loadIncrementFor(ex.equipment);
 }
 
 /** Carry-over weight for an exercise the athlete has done before (exact same exercise only). */
@@ -159,14 +160,26 @@ function carryOverWeight(
 
   let weight = equivalentWeight(prevWeight, prevReps, prevRir, newReps, newRir);
 
-  // Double progression: every set hit its target last time → add one loading step.
-  const hitAllTargets = done.every((s) => (s.actualReps ?? s.targetReps) >= s.targetReps);
+  // Double progression (knowledge graph `sp-double-progression`): plan sessions prescribe a fixed rep
+  // target, which is the top of the range. Every set reaching it with quality reps → one load step.
+  // Missed reps or ground-out sets → the weight that matches what was actually lifted (no increase).
+  const hitAllTargets = done.every(
+    (s) => (s.actualReps ?? s.targetReps) >= s.targetReps && hadQualityEffort(s.actualRir, s.targetRir)
+  );
   if (hitAllTargets && readinessState !== 'Amber Shield' && newReps >= prevReps) {
     weight = Math.max(weight, prevWeight) + loadIncrementKg(ex, unit);
+  } else if (readinessState === 'Amber Shield' || newReps >= prevReps) {
+    // Low recovery, or the same/higher rep target: never heavier than last time.
+    weight = Math.min(weight, prevWeight);
   }
-  // Never prescribe a big jump from one session to the next.
-  weight = Math.min(weight, prevWeight * 1.1 + loadIncrementKg(ex, unit));
-  return weight;
+  // Never prescribe a big jump from one session to the next, including after rounding to the
+  // weights that exist (e.g. dumbbells in 2 kg steps).
+  const cap = prevWeight * (1 + PROGRESSION_RULES.maxSessionIncreaseFraction) + loadIncrementKg(ex, unit);
+  let snapped = snapLoadKg(Math.min(weight, cap), unit, ex.equipment);
+  while (snapped > cap + 1e-9 && snapped > prevWeight) {
+    snapped = snapLoadKg(snapped - loadIncrementKg(ex, unit), unit, ex.equipment);
+  }
+  return snapped;
 }
 
 function applyWeightToExercise(

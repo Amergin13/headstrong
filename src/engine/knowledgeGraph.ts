@@ -1,3 +1,4 @@
+import { PROGRESSION_RULES } from './progressionRules';
 import {
   BiometricLog,
   BodyMeasurementSite,
@@ -237,12 +238,12 @@ export const EXERCISE_SCIENCE_KNOWLEDGE_BASE: ScientificPrinciple[] = [
     id: 'sp-double-progression',
     topic: 'Progression Mechanics',
     title: 'Double Progression Auto-Regulation Logic',
-    formula: 'Top of Rep Range (1-2 RIR) -> +2.5kg BB / +2.0kg DB; Within Range -> +1 Rep',
+    formula: `Every set at the top of the rep range with >= ${PROGRESSION_RULES.minRirForProgress} rep in reserve (or the planned 0 RIR) -> +${PROGRESSION_RULES.barbellIncrementKg} kg barbell / +${PROGRESSION_RULES.dumbbellIncrementKg} kg dumbbell / +${PROGRESSION_RULES.otherIncrementKg} kg machine and cable; inside the range -> same weight, +${PROGRESSION_RULES.repStep} rep; missed reps, ground-out sets or low recovery -> no increase; never more than +${Math.round(PROGRESSION_RULES.maxSessionIncreaseFraction * 100)}% plus one step per session`,
     scientificRationale:
-      'Prevents the common pitfall of increasing weight too early, which compromises technique and reduces effective motor unit recruitment. Lifters must first master the rep range before increasing external load.',
-    academicCitation: 'Israetel, Feather & Helms (2020)',
+      'Prevents the common pitfall of increasing weight too early, which compromises technique and reduces effective motor unit recruitment. Lifters first master the rep range with reps in reserve, then add load. Reps taken to failure when the plan did not ask for it signal the weight is not yet owned, so load holds.',
+    academicCitation: 'Helms, Morgan & Valdez (2019); Israetel, Feather & Helms (2020)',
     practicalApplication:
-      'Tells you exactly what to lift on each set. When you hit 12/12/12 reps, load increases by 2.5 kg next session; otherwise, you aim for +1 rep with weights held steady.',
+      `Tells you exactly what to lift on each set. In the 6-week plan each workout sets a fixed rep target, which is the top of the range: hit it on every set with reps to spare and the weight goes up by ${PROGRESSION_RULES.barbellIncrementKg} kg (${PROGRESSION_RULES.dumbbellIncrementKg} kg on dumbbells) next time; miss it and the weight stays where your reps say it should. In the other splits you add ${PROGRESSION_RULES.repStep} rep at the same weight until you reach the top of the range. Each exercise's own last session sets its next weight; a similar exercise is only used the first time.`,
     keywords: ['double progression', 'progression', 'add weight', 'add rep', 'rep range', 'auto-regulation', 'overload', 'progressive overload'],
   },
   {
