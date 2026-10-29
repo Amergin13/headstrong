@@ -33,6 +33,8 @@ interface ExerciseCardProps {
   insight?: ExerciseInsight;
   /** Personal overview for today (written on the device); replaces the plain summary. */
   note?: string;
+  /** This week's hard sets for the exercise's main muscle, from the knowledge graph. */
+  muscleWeek?: { label: string; sets: number; target: [number, number] };
 }
 
 function formatTempo(tempo?: string): string | null {
@@ -58,6 +60,7 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
   previousSets = [],
   insight,
   note,
+  muscleWeek,
 }) => {
   const units = useUnits();
   const [showDetails, setShowDetails] = useState(false);
@@ -148,6 +151,24 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
                   : 'Example chart. Your estimated one-rep max for this exercise appears here after your first session.'
               }
             />
+          )}
+          {muscleWeek && (
+            <div aria-label={`${muscleWeek.label} this week: ${muscleWeek.sets} of ${muscleWeek.target[0]} to ${muscleWeek.target[1]} hard sets`}>
+              <div className="flex justify-between" style={{ fontSize: fig(22), color: 'var(--wk-muted)' }} aria-hidden="true">
+                <span>{muscleWeek.label} this week</span>
+                <span>
+                  {muscleWeek.sets} of {muscleWeek.target[0]}–{muscleWeek.target[1]} hard sets
+                </span>
+              </div>
+              <div className="wk-bar" style={{ marginTop: fig(12) }} aria-hidden="true">
+                <div
+                  style={{
+                    width: `${Math.min(100, (muscleWeek.sets / muscleWeek.target[0]) * 100)}%`,
+                    background: muscleWeek.sets >= muscleWeek.target[0] ? 'var(--wk-accent)' : '#4FC3D9',
+                  }}
+                />
+              </div>
+            </div>
           )}
         </div>
       )}

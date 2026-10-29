@@ -40,6 +40,7 @@ import { processAssistantMessage, buildSafetyResponse, buildProgressSummary } fr
 import { evaluateSessionRecovery, getDaysUntilReady, getDisplayReadyAt } from '../recovery';
 import { buildWeekStrip } from '../../services/sessionSchedule';
 import { buildExerciseInsight, getPreviousWorkingSets } from '../../services/exerciseInsight';
+import { buildMuscleProgress } from '../../services/muscleProgress';
 import { PROGRESSION_RULES, hadQualityEffort, loadIncrementFor } from '../progressionRules';
 import { acceptExerciseNote, buildExerciseNoteFacts, generateExerciseNote } from '../../services/exerciseCoachNote';
 import { acceptIdentityMessage, buildIdentityFacts, generateIdentityMessage } from '../../services/identityMessage';
@@ -4004,6 +4005,48 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
     assert(first.history.length === 1 && first.history[0].e1rmKg === expected, `After one session the card chart has the real starting point (${first.history[0]?.e1rmKg} kg), not an example`);
     const sameDay = { ...once, id: 'same-day-2', completedAt: new Date(at + 2 * 60 * 60 * 1000).toISOString() };
     assert(buildExerciseInsight(press, [sameDay, once], 'Normal', 80).history.length === 2, 'Two sessions on the same day are two points on the chart');
+  }
+
+  console.log('\n[36d. Muscle Progress: Weekly Sets, Strength Index and Size per Muscle]');
+  {
+    const DAYM = 24 * 60 * 60 * 1000;
+    const mNow = new Date(2026, 9, 29, 20, 0).getTime();
+    const session = (n: number, at: number, kg: (planned: number) => number) => {
+      const w = generate6WeekMuscleBuildingWorkout(n, 80);
+      w.completed = true;
+      w.completedAt = new Date(at).toISOString();
+      w.date = localDateString(new Date(at));
+      w.exercises.forEach((ex) => ex.sets.forEach((st) => { st.completed = true; st.actualReps = st.targetReps; st.actualRir = 2; st.actualWeightKg = kg(st.targetWeightKg); }));
+      return w;
+    };
+    // Chest and Back three weeks running, 2.5 kg heavier each week.
+    const mHist = [session(1, mNow - 15 * DAYM, (k) => k), session(1, mNow - 8 * DAYM, (k) => k + 2.5), session(1, mNow - DAYM, (k) => k + 5)];
+    const kgM = buildAthleteKnowledgeGraph(mHist, [], SEED_EXERCISES, NEW_USER_PROFILE, calculateWeeklyMuscleVolume(mHist, SEED_EXERCISES));
+    const tape: BiometricLog[] = [
+      { date: localDateString(new Date(mNow - 14 * DAYM)), bodyweightKg: 80, hrvRmssd: 0, restingHr: 0, sleepHours: 0, steps: 0, activeZoneMinutes: 0, chestCm: 100 },
+      { date: localDateString(new Date(mNow - DAYM)), bodyweightKg: 80, hrvRmssd: 0, restingHr: 0, sleepHours: 0, steps: 0, activeZoneMinutes: 0, chestCm: 101.5 },
+    ];
+    const muscles = buildMuscleProgress({ workouts: mHist, exerciseCatalog: SEED_EXERCISES, biometrics: tape, knowledgeGraph: kgM, bodyweightKg: 80, now: mNow });
+    const chest = muscles.find((m) => m.key === 'Chest')!;
+    const weekly = calculateWeeklyMuscleVolume(mHist, SEED_EXERCISES);
+    assert(Boolean(chest) && chest.weeklySets === weekly.Chest, `Muscle view weekly sets match the knowledge graph and cards (${chest?.weeklySets} = ${weekly.Chest})`);
+    assert(chest.setsByWeek.length === 8 && chest.setsByWeek[7].sets === chest.weeklySets && chest.setsByWeek.filter((w) => w.sets > 0).length >= 3, 'Weekly sets history covers 8 weeks and includes each trained week');
+    assert(
+      chest.strengthIndex.length === 3 && chest.strengthIndex[0].value === 100 && chest.strengthIndex[2].value > chest.strengthIndex[1].value && chest.strengthIndex[1].value > 100,
+      `Chest strength index starts at 100 and rises as the lifts get heavier (${chest.strengthIndex.map((p) => p.value).join(' → ')})`
+    );
+    assert(chest.measurement?.label === 'Chest' && chest.measurement.points.length === 2 && /Chest measurement up 1.5 cm/.test(chest.summary), `Chest tape measurement is part of the muscle view: "${chest.summary}"`);
+    assert(chest.exercises[0] === 'Ring press-up' || chest.exercises.includes('Guillotine press'), `Muscle view lists the exercises that feed it (${chest.exercises.join(', ')})`);
+    const triceps = muscles.find((m) => m.key === 'Triceps');
+    assert(Boolean(triceps) && triceps!.strengthIndex.length > 0, 'Helping muscles (triceps in pressing) get credit too');
+    // Swapping in a new exercise does not jump the index.
+    const swapped = session(3, mNow - 0.5 * DAYM, (k) => k);
+    swapped.exercises = swapped.exercises.map((ex) => (ex.exerciseId === 'ex-guillotine-press' ? { ...ex, exerciseId: 'ex-incline-db-press', name: 'Incline dumbbell press', equipment: 'dumbbell' as const } : ex));
+    const withSwap = buildMuscleProgress({ workouts: [...mHist, swapped], exerciseCatalog: SEED_EXERCISES, biometrics: [], knowledgeGraph: kgM, bodyweightKg: 80, now: mNow });
+    const chestSwap = withSwap.find((m) => m.key === 'Chest')!;
+    assert(Math.abs(chestSwap.strengthIndex[chestSwap.strengthIndex.length - 1].value - chest.strengthIndex[2].value) < 6, 'A newly swapped-in exercise starts at its own baseline, so the index does not jump');
+    assert(buildMuscleProgress({ workouts: [], exerciseCatalog: SEED_EXERCISES, biometrics: [], bodyweightKg: 80, now: mNow }).length === 0, 'No workouts: no muscle cards (the view shows an empty state)');
+    assert(EXERCISE_SCIENCE_KNOWLEDGE_BASE.some((p) => p.id === 'sp-muscle-progress'), 'The knowledge graph explains how muscle progress is measured');
   }
 
   console.log('\n[37. Progress Tab: Strength & Composition Charts]');

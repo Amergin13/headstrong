@@ -247,6 +247,19 @@ export const EXERCISE_SCIENCE_KNOWLEDGE_BASE: ScientificPrinciple[] = [
     keywords: ['double progression', 'progression', 'add weight', 'add rep', 'rep range', 'auto-regulation', 'overload', 'progressive overload'],
   },
   {
+    id: 'sp-muscle-progress',
+    topic: 'Progress Tracking',
+    title: 'Measuring Progress per Muscle: Sets, Strength and Size',
+    formula:
+      'Weekly hard sets (<= 3 reps in reserve; main muscle 1 set, helping muscle 0.5) vs personal target; strength index = 100 x chain of weekly weighted mean (best estimated max this week / previous best) per exercise (main 1, helper 0.5; sets over 15 reps excluded); size = tape measurement for the muscle',
+    scientificRationale:
+      'Muscle growth rises with weekly hard sets up to a point (dose-response), and sets where a muscle only assists count about half. Strength is specific to each exercise, so each lift is compared only with itself and the changes are averaged, which keeps the index honest when exercises are swapped. Circumference is the most practical sign of actual size change. Together they separate what drove growth, what the muscle can now do, and what changed.',
+    academicCitation: 'Schoenfeld, Ogborn & Krieger (2017); Baz-Valle et al. (2022); Pelland et al. (2024)',
+    practicalApplication:
+      "The Progress tab's Muscles view shows, for each muscle, this week's hard sets against your target, a strength index that starts at 100, and its tape measurement when you log one. Each exercise card shows this week's sets for its main muscle.",
+    keywords: ['muscle', 'muscle group', 'weekly sets', 'strength index', 'progress', 'chest', 'back', 'arms', 'legs', 'hypertrophy tracking'],
+  },
+  {
     id: 'sp-hypertrophy-landmarks',
     topic: 'Hypertrophy Volume Landmarks',
     title: 'Israetel & Schoenfeld Muscle Volume Landmarks (MV/MEV/MAV/MRV)',

@@ -47,6 +47,7 @@ import { WorkoutPageHeader } from './WorkoutPageHeader';
 import { ProgramProgressCard } from './ProgramProgressCard';
 import { RecoveryScoreCard } from './RecoveryScoreCard';
 import { buildWeekStrip } from '../../services/sessionSchedule';
+import { MUSCLE_TO_GRAPH_KEY } from '../../services/sessionReport';
 import { buildExerciseInsight, getPreviousWorkingSets } from '../../services/exerciseInsight';
 import {
   acceptExerciseNote,
@@ -1003,6 +1004,11 @@ export const TrainTab: React.FC<TrainTabProps> = ({
               note={(() => {
                 const n = exerciseNotes[index];
                 return n ? generatedNotes[n.key] ?? n.fallback : undefined;
+              })()}
+              muscleWeek={(() => {
+                const graphKey = def ? MUSCLE_TO_GRAPH_KEY[def.primaryMuscle] : undefined;
+                const m = graphKey ? knowledgeGraph.muscleProfiles.find((p) => p.muscleKey === graphKey) : undefined;
+                return m ? { label: m.displayName, sets: m.weeklySets, target: m.personalizedMav } : undefined;
               })()}
             />
           );

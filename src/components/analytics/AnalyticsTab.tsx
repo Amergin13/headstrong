@@ -5,6 +5,10 @@ import { buildBodyCompositionKnowledgeGraph } from '../../engine/knowledgeGraph'
 import { LogModalMode, MeasurementEntry, WeightLogModal } from './WeightLogModal';
 import { KnowledgeGraphCard } from './KnowledgeGraphCard';
 import { ProgressChartCard } from './ProgressChartCard';
+import { MuscleProgressCard } from './MuscleProgressCard';
+import { buildMuscleProgress } from '../../services/muscleProgress';
+import { buildAthleteKnowledgeGraph } from '../../engine/knowledgeGraph';
+import { calculateWeeklyMuscleVolume } from '../../services/storage';
 import { buildCompositionCharts, buildStrengthCharts, ProgressChart, ProgressFormatters } from '../../services/progressSeries';
 import { loadSavedRenphoDevices } from '../../services/renphoBluetooth';
 import { triggerHaptic } from '../../utils/haptics';
@@ -41,7 +45,7 @@ interface AnalyticsTabProps {
   onSaveMeasurements: (entry: MeasurementEntry) => void;
 }
 
-type ProgressView = 'strength' | 'composition';
+type ProgressView = 'strength' | 'muscles' | 'composition';
 type CompositionFilter = 'all' | 'scale' | 'tape';
 
 export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
@@ -76,6 +80,23 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
     [workouts, profile, bodyweightEmaKg, hasBodyweight, fmt]
   );
   const compositionCharts = useMemo(() => buildCompositionCharts({ biometrics, profile, fmt }), [biometrics, profile, fmt]);
+  const muscleProgress = useMemo(() => {
+    const knowledgeGraph = buildAthleteKnowledgeGraph(
+      workouts,
+      biometrics,
+      exerciseCatalog,
+      profile,
+      calculateWeeklyMuscleVolume(workouts, exerciseCatalog)
+    );
+    return buildMuscleProgress({
+      workouts,
+      exerciseCatalog,
+      biometrics,
+      knowledgeGraph,
+      bodyweightKg: hasBodyweight ? bodyweightEmaKg : 80,
+      formatLength: fmt.length,
+    });
+  }, [workouts, exerciseCatalog, biometrics, profile, hasBodyweight, bodyweightEmaKg, fmt]);
   const bodyComposition = useMemo(
     () => buildBodyCompositionKnowledgeGraph(biometrics, profile),
     [biometrics, profile]
@@ -163,11 +184,12 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
         <div
           role="group"
           aria-label="Progress category"
-          className="grid grid-cols-2"
+          className="grid grid-cols-3"
           style={{ marginTop: fig(40), padding: fig(8), gap: fig(8), borderRadius: fig(30), background: 'var(--wk-card)' }}
         >
           {segment('strength', 'Strength')}
-          {segment('composition', 'Composition')}
+          {segment('muscles', 'Muscles')}
+          {segment('composition', 'Body')}
         </div>
       </header>
 
@@ -221,7 +243,18 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
           )}
         </div>
 
-        {activeView === 'strength' ? (
+        {activeView === 'muscles' ? (
+          muscleProgress.length > 0 ? (
+            muscleProgress.map((m) => <MuscleProgressCard key={m.key} progress={m} formatLength={fmt.length} />)
+          ) : (
+            <div className="wk-card">
+              <h2 className="wk-h1">Muscles</h2>
+              <p className="wk-body" style={{ marginTop: fig(24) }}>
+                Finish a workout to see each muscle's weekly sets, strength and size here.
+              </p>
+            </div>
+          )
+        ) : activeView === 'strength' ? (
           <>
             {strengthCharts.map((chart) => (
               <ProgressChartCard key={chart.id} chart={chart} />

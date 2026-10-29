@@ -387,102 +387,112 @@ export function calculateBestPillarE1rms(
  * Calculates weekly muscle group volume (hard sets count) for current rolling 7-day window.
  * Accumulates exact 0.5 fractional synergist sets and excludes warmup sets.
  */
+/** Muscles tracked for weekly hard sets (knowledge-graph keys). */
+export const EMPTY_MUSCLE_VOLUME = (): Record<string, number> => ({
+  SideDelts: 0,
+  Calves: 0,
+  RearDelts: 0,
+  Back: 0,
+  Chest: 0,
+  Quads: 0,
+  Hamstrings: 0,
+  Triceps: 0,
+  Biceps: 0,
+  Glutes: 0,
+  Core: 0,
+  FrontDelts: 0,
+  Shoulders: 0,
+});
+
+/**
+ * Credits one exercise's hard sets to the muscles it trains: full credit to the main muscle, half
+ * to muscles that help (fractional counting, Pelland et al., 2024).
+ */
+export function creditMuscleSets(
+  volume: Record<string, number>,
+  def: ExerciseDefinition | undefined,
+  pillar: WorkoutSession['exercises'][number]['pillar'],
+  hardSets: number
+): void {
+  if (hardSets === 0) return;
+  if (def) {
+    const primary = def.primaryMuscle;
+    if (primary === 'Side Delts') {
+      volume.SideDelts = (volume.SideDelts || 0) + hardSets;
+      volume.Shoulders = (volume.Shoulders || 0) + hardSets;
+    } else if (primary === 'Rear Delts') {
+      volume.RearDelts = (volume.RearDelts || 0) + hardSets;
+      volume.Shoulders = (volume.Shoulders || 0) + hardSets;
+    } else if (primary === 'Front Delts') {
+      volume.FrontDelts = (volume.FrontDelts || 0) + hardSets;
+      volume.Shoulders = (volume.Shoulders || 0) + hardSets;
+    } else if (primary === 'Shoulders') {
+      volume.Shoulders = (volume.Shoulders || 0) + hardSets;
+      volume.FrontDelts = (volume.FrontDelts || 0) + hardSets;
+      volume.SideDelts = (volume.SideDelts || 0) + hardSets * 0.5;
+    } else {
+      volume[primary] = (volume[primary] || 0) + hardSets;
+    }
+    for (const sec of def.secondaryMuscles ?? []) {
+      const secCredit = hardSets * 0.5;
+      if (sec === 'Side Delts') {
+        volume.SideDelts = (volume.SideDelts || 0) + secCredit;
+      } else if (sec === 'Rear Delts') {
+        volume.RearDelts = (volume.RearDelts || 0) + secCredit;
+      } else if (sec === 'Shoulders') {
+        volume.Shoulders = (volume.Shoulders || 0) + secCredit;
+        volume.FrontDelts = (volume.FrontDelts || 0) + secCredit;
+      } else {
+        volume[sec] = (volume[sec] || 0) + secCredit;
+      }
+    }
+    return;
+  }
+  if (pillar === 'Squat') volume.Quads += hardSets;
+  if (pillar === 'Hinge') volume.Hamstrings += hardSets;
+  if (pillar === 'Horizontal Push') volume.Chest += hardSets;
+  if (pillar === 'Vertical Push') {
+    volume.Shoulders += hardSets;
+    volume.SideDelts += hardSets;
+  }
+  if (pillar === 'Horizontal Pull') volume.Back += hardSets;
+  if (pillar === 'Vertical Pull') volume.Back += hardSets;
+}
+
+/** Hard sets: completed working sets taken within 3 reps of failure. */
+export function countHardSets(ex: WorkoutSession['exercises'][number]): number {
+  return ex.sets.filter((s) => s.completed && !s.isWarmup && s.setType !== 'warmup' && (s.actualRir ?? 2) <= 3).length;
+}
+
+/** Hard sets per muscle for sessions dated from `fromDate` to `toDate` (inclusive, local dates). */
+export function muscleSetsBetween(
+  sessions: WorkoutSession[],
+  exerciseCatalog: ExerciseDefinition[],
+  fromDate: string,
+  toDate?: string
+): Record<string, number> {
+  const exMap = new Map(exerciseCatalog.map((e) => [e.id, e]));
+  const volume = EMPTY_MUSCLE_VOLUME();
+  for (const w of sessions) {
+    if (w.date < fromDate || (toDate && w.date > toDate)) continue;
+    for (const ex of w.exercises) creditMuscleSets(volume, exMap.get(ex.exerciseId), ex.pillar, countHardSets(ex));
+  }
+  // Round to nearest 0.5 set for clean presentation
+  for (const key of Object.keys(volume)) {
+    volume[key] = Math.round(volume[key] * 2) / 2;
+  }
+  return volume;
+}
+
 export function calculateWeeklyMuscleVolume(
   workouts: WorkoutSession[],
   exerciseCatalog: ExerciseDefinition[],
   activeWorkout?: WorkoutSession
 ): Record<string, number> {
-  const now = new Date();
-  const weekStart = new Date(now);
+  const weekStart = new Date();
   weekStart.setDate(weekStart.getDate() - 7);
-  const weekStartStr = localDateString(weekStart);
-
-  const exMap = new Map(exerciseCatalog.map((e) => [e.id, e]));
-  const volume: Record<string, number> = {
-    SideDelts: 0,
-    Calves: 0,
-    RearDelts: 0,
-    Back: 0,
-    Chest: 0,
-    Quads: 0,
-    Hamstrings: 0,
-    Triceps: 0,
-    Biceps: 0,
-    Glutes: 0,
-    Core: 0,
-    FrontDelts: 0,
-    Shoulders: 0,
-  };
-
   const sessionsToScan = activeWorkout ? [activeWorkout, ...workouts] : workouts;
-
-  for (const w of sessionsToScan) {
-    if (w.date < weekStartStr) continue;
-    for (const ex of w.exercises) {
-      const def = exMap.get(ex.exerciseId);
-      const hardSets = ex.sets.filter(
-        (s) =>
-          s.completed &&
-          !s.isWarmup &&
-          s.setType !== 'warmup' &&
-          (s.actualRir ?? 2) <= 3
-      ).length;
-      if (hardSets === 0) continue;
-
-      if (def) {
-        const primary = def.primaryMuscle;
-        if (primary === 'Side Delts') {
-          volume.SideDelts = (volume.SideDelts || 0) + hardSets;
-          volume.Shoulders = (volume.Shoulders || 0) + hardSets;
-        } else if (primary === 'Rear Delts') {
-          volume.RearDelts = (volume.RearDelts || 0) + hardSets;
-          volume.Shoulders = (volume.Shoulders || 0) + hardSets;
-        } else if (primary === 'Front Delts') {
-          volume.FrontDelts = (volume.FrontDelts || 0) + hardSets;
-          volume.Shoulders = (volume.Shoulders || 0) + hardSets;
-        } else if (primary === 'Shoulders') {
-          volume.Shoulders = (volume.Shoulders || 0) + hardSets;
-          volume.FrontDelts = (volume.FrontDelts || 0) + hardSets;
-          volume.SideDelts = (volume.SideDelts || 0) + hardSets * 0.5;
-        } else {
-          volume[primary] = (volume[primary] || 0) + hardSets;
-        }
-
-        if (def.secondaryMuscles) {
-          for (const sec of def.secondaryMuscles) {
-            const secCredit = hardSets * 0.5;
-            if (sec === 'Side Delts') {
-              volume.SideDelts = (volume.SideDelts || 0) + secCredit;
-            } else if (sec === 'Rear Delts') {
-              volume.RearDelts = (volume.RearDelts || 0) + secCredit;
-            } else if (sec === 'Shoulders') {
-              volume.Shoulders = (volume.Shoulders || 0) + secCredit;
-              volume.FrontDelts = (volume.FrontDelts || 0) + secCredit;
-            } else {
-              volume[sec] = (volume[sec] || 0) + secCredit;
-            }
-          }
-        }
-      } else {
-        if (ex.pillar === 'Squat') volume.Quads += hardSets;
-        if (ex.pillar === 'Hinge') volume.Hamstrings += hardSets;
-        if (ex.pillar === 'Horizontal Push') volume.Chest += hardSets;
-        if (ex.pillar === 'Vertical Push') {
-          volume.Shoulders += hardSets;
-          volume.SideDelts += hardSets;
-        }
-        if (ex.pillar === 'Horizontal Pull') volume.Back += hardSets;
-        if (ex.pillar === 'Vertical Pull') volume.Back += hardSets;
-      }
-    }
-  }
-
-  // Round to nearest 0.5 set for clean presentation
-  for (const key of Object.keys(volume)) {
-    volume[key] = Math.round(volume[key] * 2) / 2;
-  }
-
-  return volume;
+  return muscleSetsBetween(sessionsToScan, exerciseCatalog, localDateString(weekStart));
 }
 
 export interface TreiseDataBackup {
