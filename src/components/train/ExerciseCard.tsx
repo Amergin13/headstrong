@@ -143,7 +143,9 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
               label={
                 history.length >= 2
                   ? `Estimated one-rep max over your last ${history.length} sessions: ${units.format(history[0].e1rmKg)} to ${units.format(history[history.length - 1].e1rmKg)}`
-                  : 'Example chart. Your estimated one-rep max for this exercise appears here after two sessions.'
+                  : history.length === 1
+                  ? `Starting point: estimated one-rep max ${units.format(history[0].e1rmKg)}. The trend line starts after your next session.`
+                  : 'Example chart. Your estimated one-rep max for this exercise appears here after your first session.'
               }
             />
           )}

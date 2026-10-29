@@ -33,8 +33,9 @@ const dayMonth = (date: string) => {
 
 /**
  * Line chart in the Workout/Progress card style: soft gridlines with their values, a gradient line,
- * a dotted marker and white dot on the latest point, and first/last dates underneath. With fewer
- * than two points it shows a dimmed shape labelled "Example".
+ * a dotted marker and white dot on the latest point, and first/last dates underneath. With one
+ * point it shows that real starting point; only with no data does it show a dimmed shape labelled
+ * "Example".
  */
 export const TrendChart: React.FC<TrendChartProps> = ({ points, secondary, format, label, height = 300 }) => {
   const gradientId = useId();
@@ -60,7 +61,8 @@ export const TrendChart: React.FC<TrendChartProps> = ({ points, secondary, forma
     observer.observe(el);
     return () => observer.disconnect();
   }, [play]);
-  const example = points.length < 2;
+  const example = points.length === 0;
+  const single = points.length === 1;
   const values = example ? EXAMPLE_SERIES : points.map((p) => p.value);
   const all = example ? values : [...values, ...(secondary ?? []).map((p) => p.value)];
   let min = Math.min(...all);
@@ -78,8 +80,12 @@ export const TrendChart: React.FC<TrendChartProps> = ({ points, secondary, forma
   const t0 = example ? 0 : parseLocalDate(points[0].date).getTime();
   const t1 = example ? 1 : parseLocalDate(points[points.length - 1].date).getTime();
   const span = Math.max(1, t1 - t0);
+  // By index for the example, or when every point falls on the same day.
+  const byIndex = example || (t1 === t0 && values.length > 1);
   const xOf = (p: TrendPoint | number, i: number) =>
-    example
+    single
+      ? PAD_X * 4 // a lone starting point sits in from the edge, with room for the line to come
+      : byIndex
       ? PAD_X + (i / (values.length - 1)) * (W - PAD_X * 2)
       : PAD_X + ((parseLocalDate((p as TrendPoint).date).getTime() - t0) / span) * (W - PAD_X * 2);
   const main = (example ? values : points).map((p, i) => ({ x: xOf(p as TrendPoint | number, i), y: y(example ? (p as number) : (p as TrendPoint).value) }));
@@ -140,6 +146,7 @@ export const TrendChart: React.FC<TrendChartProps> = ({ points, secondary, forma
           aria-hidden="true"
         />
         {!example &&
+          !single &&
           grid.map((g) => (
             <span key={g.y} className="wk-chart-fade absolute" style={{ ...muted, left: fig(12), top: `calc(${(g.y / H) * 100}% - ${fig(24)})` }} aria-hidden="true">
               {format(g.value)}
@@ -151,7 +158,15 @@ export const TrendChart: React.FC<TrendChartProps> = ({ points, secondary, forma
           </span>
         )}
       </div>
-      {!example && (
+      {single && (
+        <div className="wk-chart-fade flex justify-between" style={{ ...muted, marginTop: fig(12) }} aria-hidden="true">
+          <span>Starting point</span>
+          <span>
+            {dayMonth(points[0].date)} · {format(points[0].value)}
+          </span>
+        </div>
+      )}
+      {!example && !single && (
         <div className="wk-chart-fade flex justify-between" style={{ ...muted, marginTop: fig(12) }} aria-hidden="true">
           <span>{dayMonth(points[0].date)}</span>
           <span>

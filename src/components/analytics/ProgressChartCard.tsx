@@ -52,7 +52,9 @@ export const ProgressChartCard: React.FC<{ chart: ProgressChart; onOpen?: () => 
         label={
           chart.points.length >= 2
             ? `${chart.title} from ${chart.format(chart.points[0].value)} to ${chart.format(chart.points[chart.points.length - 1].value)}`
-            : `Example chart. ${chart.title} appears here after two measurements.`
+            : chart.points.length === 1
+            ? `${chart.title}: starting point ${chart.format(chart.points[0].value)}. The trend line starts after your next one.`
+            : `Example chart. ${chart.title} appears here after your first one.`
         }
       />
     </div>

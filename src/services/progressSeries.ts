@@ -1,7 +1,7 @@
 /**
  * Chart series and plain-English summaries for the Progress tab. Every value comes from logged
- * workouts or measurements the athlete entered; a chart with fewer than two points shows the
- * labelled "Example" shape instead of numbers.
+ * workouts or measurements the athlete entered; one point shows that real starting value, and
+ * only a chart with no points shows the labelled "Example" shape instead of numbers.
  */
 import { calculateE1RM } from '../engine/e1rm';
 import { calculateEmaSeries } from '../engine/ema';

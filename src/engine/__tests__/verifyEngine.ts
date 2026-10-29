@@ -3990,6 +3990,22 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
     assert(Object.values(volumeEnd).some((v) => v > 0), 'Athlete tab weekly sets fill from the logged workouts');
   }
 
+  console.log('\n[36c. Exercise Card Charts Show Real Data From the First Session]');
+  {
+    const at = new Date(2026, 9, 26, 18, 0).getTime();
+    const once = generate6WeekMuscleBuildingWorkout(1, 80);
+    once.completed = true;
+    once.completedAt = new Date(at).toISOString();
+    once.date = localDateString(new Date(at));
+    once.exercises.forEach((ex) => ex.sets.forEach((st) => { st.completed = true; st.actualWeightKg = 50; st.actualReps = 12; st.actualRir = 2; }));
+    const press = generate6WeekMuscleBuildingWorkout(3, 80).exercises.find((e) => e.exerciseId === 'ex-guillotine-press')!;
+    const first = buildExerciseInsight(press, [once], 'Normal', 80);
+    const expected = Math.round(calculateE1RM(50, 12, 2, 'barbell', false, false, 80, 'ex-guillotine-press', 'Horizontal Push') * 10) / 10;
+    assert(first.history.length === 1 && first.history[0].e1rmKg === expected, `After one session the card chart has the real starting point (${first.history[0]?.e1rmKg} kg), not an example`);
+    const sameDay = { ...once, id: 'same-day-2', completedAt: new Date(at + 2 * 60 * 60 * 1000).toISOString() };
+    assert(buildExerciseInsight(press, [sameDay, once], 'Normal', 80).history.length === 2, 'Two sessions on the same day are two points on the chart');
+  }
+
   console.log('\n[37. Progress Tab: Strength & Composition Charts]');
   {
     const fmtP = { weight: (kg: number) => `${kg} kg`, length: (cm: number) => `${cm} cm` };
