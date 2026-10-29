@@ -400,7 +400,7 @@ export async function generateTensorCoachingInsight(
     if (isCut) {
       summary = 'Caloric deficit plus low autonomic recovery requires strict joint and nervous system protection. Preserving muscle tissue does not require high volume.';
       tacticalCue = 'Stop all sets with 2–3 reps in reserve. Hold loads steady—never force a PR when under recovery strain.';
-      recommendedAction = 'Complete 2 clean working sets per exercise at steady weight. Your streak and XP are fully protected.';
+      recommendedAction = 'Complete 2 clean working sets per exercise at steady weight. Your streak is protected.';
     } else {
       summary = 'Systemic fatigue is accumulated. Today focuses on maintaining motor patterns without incurring deep muscle damage or tendon strain.';
       tacticalCue = 'Keep 2–3 reps in reserve. Avoid failure or forced reps to ensure fast 48h recovery.';

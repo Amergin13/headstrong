@@ -1,5 +1,6 @@
 import {
   BiometricLog,
+  BodyMeasurementSite,
   DesignSystemComponent,
   DesignSystemComponentCategory,
   ExerciseDefinition,
@@ -13,6 +14,11 @@ import { localDateString } from '../utils/date';
 export type { ScientificPrinciple, DesignSystemComponent, DesignSystemComponentCategory };
 import { HYPERTROPHY_VOLUME_LANDMARKS, evaluateVolumeStatus } from './hypertrophyVolume';
 import { calculateE1RM } from './e1rm';
+import {
+  BODY_MEASUREMENT_SITES,
+  RENPHO_SCALE_METRICS,
+  RenphoScaleMetricUnitKind,
+} from '../services/renphoBluetooth';
 
 export type KgNodeCategory = 'athlete' | 'muscle' | 'joint' | 'biometric' | 'pillar';
 
@@ -66,11 +72,57 @@ export interface CausalInsight {
   actionableStep: string;
 }
 
+export interface KgMetricTrend {
+  id: string;
+  field: keyof BiometricLog;
+  label: string;
+  shortLabel: string;
+  category: 'scale' | 'tape';
+  unitKind: RenphoScaleMetricUnitKind | 'length';
+  latest?: number;
+  latestDate?: string;
+  baseline?: number;
+  baselineDate?: string;
+  delta?: number;
+  deltaPct?: number;
+  ema7d?: number;
+  sampleCount: number;
+  direction: 'up' | 'down' | 'flat' | 'empty';
+  points: Array<{ date: string; value: number }>;
+}
+
+export interface KgBilateralPair {
+  id: 'bicep' | 'thigh' | 'calf';
+  label: string;
+  leftSite: BodyMeasurementSite;
+  rightSite: BodyMeasurementSite;
+  leftCm?: number;
+  rightCm?: number;
+  diffCm?: number;
+  asymmetryPct?: number;
+  dominantSide?: 'left' | 'right' | 'balanced';
+  status: 'balanced' | 'mild_asymmetry' | 'notable_asymmetry' | 'insufficient_data';
+  summary: string;
+}
+
+export interface BodyCompositionKnowledgeProfile {
+  scaleTrends: KgMetricTrend[];
+  tapeTrends: KgMetricTrend[];
+  bilateralSymmetry: KgBilateralPair[];
+  recompositionStatus: 'recomp_positive' | 'lean_gain' | 'fat_loss' | 'holding' | 'insufficient_data';
+  recompositionSummary: string;
+  populatedScaleCount: number;
+  populatedTapeCount: number;
+  latestScaleDate?: string;
+  latestTapeDate?: string;
+}
+
 export interface AthleteKnowledgeGraph {
   nodes: KgNode[];
   edges: KgEdge[];
   joints: JointStrainProfile[];
   muscleProfiles: MuscleAdaptationProfile[];
+  bodyComposition: BodyCompositionKnowledgeProfile;
   insights: CausalInsight[];
   scientificKnowledgeBase: ScientificPrinciple[];
   designSystem: DesignSystemComponent[];
@@ -178,7 +230,7 @@ export const EXERCISE_SCIENCE_KNOWLEDGE_BASE: ScientificPrinciple[] = [
       'Nighttime Heart Rate Variability (HRV RMSSD) and Resting Heart Rate (RHR) benchmarked against a 14-day rolling baseline reflect parasympathetic autonomic nervous system balance. Telemetry from Fitbit, Whoop 4.0, or Android Health Connect tracks systemic recovery. Suppressed HRV combined with elevated resting pulse signals central nervous system fatigue and incomplete microtrauma repair.',
     academicCitation: 'Plews et al. (2013); Buchheit (2014); Altini & Plews (2021); Whoop 4.0 Telemetry Validation (2022)',
     practicalApplication:
-      'Auto-regulates daily training: Primed (Z >= +0.8, +15% XP bonus), Normal (-0.8 < Z < +0.8), or Amber Shield (Z <= -0.8, holds working weight, 2–3 RIR, protects streak and joints). Seamlessly driven by Google Pixel Watch, Fitbit, Whoop, or Android Health Connect.',
+      'Auto-regulates daily training: Primed (Z >= +0.8, push for records), Normal (-0.8 < Z < +0.8), or Amber Shield (Z <= -0.8, holds working weight, 2–3 RIR, protects streak and joints). Seamlessly driven by Google Pixel Watch, Fitbit, Whoop, or Android Health Connect.',
     keywords: ['readiness', 'z-score', 'hrv', 'resting hr', 'rhr', 'sleep', 'amber shield', 'primed', 'pixel watch', 'fitbit', 'whoop', 'health connect', 'android health connect', 'autonomic', 'parasympathetic', 'readiness score', 'wearable'],
   },
   {
@@ -382,12 +434,13 @@ export const EXERCISE_SCIENCE_KNOWLEDGE_BASE: ScientificPrinciple[] = [
     id: 'sp-scale-weight-measurements',
     topic: 'Body Composition & Physical Metrics',
     title: 'Morning Weigh-Ins, Circumference Measurements & Body Recomposition',
-    formula: 'True Physical Progress = 7-Day EMA Bodyweight + Body Circumference (Waist, Chest, Arms) + Recomp Dynamics',
+    formula:
+      'True Physical Progress = 7-Day EMA Bodyweight + 13 Scale Composition Metrics (BF%, FFM, SMM, Visceral Fat, Water, Bone, Protein, BMR, Metabolic Age) + 12 Tape Sites (Neck, Shoulder, Chest, Waist, Abdomen, Hip, Bicep L/R, Thigh L/R, Calf L/R)',
     scientificRationale:
-      'Muscle tissue is ~18% denser than adipose tissue (~1.06 g/mL vs ~0.90 g/mL). Lifters with extra body fat undergoing progressive resistance training often experience simultaneous muscle hypertrophy and fat loss (body recomposition). Under recomposition, total scale weight may remain flat or even fluctuate upwards despite substantial loss of visceral and subcutaneous fat. Assessing progress solely through bathroom scales creates false stalls; pairing morning weigh-ins (dampened by a 7-day EMA) with tape circumference measurements (waist reduction alongside arm/chest expansion) captures real muscular cross-sectional changes. You look radically different with your shirt off even when the scale barely budges.',
-    academicCitation: 'Barakat et al. (2020); Longland et al. (2016); Morton et al. (2018)',
+      'Muscle tissue is ~18% denser than adipose tissue (~1.06 g/mL vs ~0.90 g/mL). Lifters with extra body fat undergoing progressive resistance training often experience simultaneous muscle hypertrophy and fat loss (body recomposition). Under recomposition, total scale weight may remain flat or even fluctuate upwards despite substantial loss of visceral and subcutaneous fat. Assessing progress solely through bathroom scales creates false stalls; pairing morning weigh-ins (dampened by a 7-day EMA) and 4-compartment bioelectrical impedance body composition with 12-site tape circumference measurements (waist/abdomen reduction alongside chest/shoulder and bilateral left/right arm, thigh, and calf expansion) captures real muscular cross-sectional changes. You look radically different with your shirt off even when the scale barely budges.',
+    academicCitation: 'Barakat et al. (2020); Longland et al. (2016); Morton et al. (2018); Lukaski et al. (1986)',
     practicalApplication:
-      'Weigh yourself first thing in the morning on the same scale under consistent conditions, and track circumference measurements. Even if the scale stays flat, burning fat while building muscle transforms your physique.',
+      'Weigh yourself first thing in the morning on the same scale under consistent conditions, and track body fat and circumference measurements manually or via RENPHO Bluetooth devices. Even if total weight stays flat, losing waist/abdomen circumference while growing fat-free mass and limb circumferences proves body recomposition.',
     keywords: [
       'weigh yourself',
       'morning weigh-in',
@@ -398,6 +451,13 @@ export const EXERCISE_SCIENCE_KNOWLEDGE_BASE: ScientificPrinciple[] = [
       'tape measure',
       'circumference',
       'waist',
+      'abdomen',
+      'bicep left',
+      'bicep right',
+      'thigh left',
+      'thigh right',
+      'calf left',
+      'calf right',
       'shirt off',
       'scale flat',
       'scale not moving',
@@ -409,6 +469,15 @@ export const EXERCISE_SCIENCE_KNOWLEDGE_BASE: ScientificPrinciple[] = [
       'body measurements',
       'weighing yourself',
       'measure progress',
+      'visceral fat',
+      'subcutaneous fat',
+      'skeletal muscle mass',
+      'fat free mass',
+      'metabolic age',
+      'bmr',
+      'body water',
+      'bone mass',
+      'protein mass',
     ],
   },
   {
@@ -416,12 +485,12 @@ export const EXERCISE_SCIENCE_KNOWLEDGE_BASE: ScientificPrinciple[] = [
     topic: 'Biometric Auto-Regulation & IoT',
     title: 'Friction-Free Telemetry & Smart Device Integration',
     formula:
-      'Telemetry Ingestion = RENPHO Web Bluetooth Scales & Smart Tape Measures (kg/lb & cm/in) + Fitbit / Pixel Watch / Whoop APIs + Health Connect data import',
+      'Telemetry Ingestion = RENPHO Web Bluetooth Scales (13 Metrics) & Smart Tape Measures (12 Sites in cm/in) + Manual Entry + Fitbit / Pixel Watch / Whoop APIs + Health Connect data import',
     scientificRationale:
-      'Adherence is the single greatest determinant of long-term physique and athletic progress. Manual data entry creates cognitive friction and tracking abandonment. Connecting directly to RENPHO Bluetooth scales and smart body tape measures via Web Bluetooth—alongside Fitbit, Whoop, and Health Connect exports—replaces manual entry, capturing daily weight and multi-site body circumferences (waist, chest, shoulders, arms, forearms, neck, hips, thighs, calves) in cm or inches for 7-day EMA smoothing and recomposition tracking.',
+      'Adherence is the single greatest determinant of long-term physique and athletic progress. Manual data entry creates cognitive friction and tracking abandonment. Connecting directly to RENPHO Bluetooth health scales (capturing Weight, BMI, Body Fat %, Fat-Free Mass, Subcutaneous Fat, Visceral Fat, Body Water, Skeletal Muscle Mass, Muscle Mass, Bone Mass, Protein Mass, BMR, and Metabolic Age) and RENPHO smart body tape measures (capturing Neck, Shoulder, Chest, Waist, Abdomen, Hip, Bicep Left, Bicep Right, Thigh Left, Thigh Right, Calf Left, and Calf Right) via Web Bluetooth—while always allowing full manual entry with zero hardware requirement—populates longitudinal trends and bilateral symmetry tracking.',
     academicCitation: 'Piwek et al. (2016); Hermsen et al. (2017); WCAG Cognitive Accessibility & Friction Reduction',
     practicalApplication:
-      'Pairs directly with RENPHO Bluetooth scales and smart tape measures in Progress → Composition → Log measurements, and syncs wearable recovery from Fitbit or Whoop so your weight, body circumferences, and readiness update with friction-free precision.',
+      'Pairs directly with RENPHO Bluetooth health scales and smart tape measures in Progress → Composition → Log measurements (or lets you type Weight, Body Fat %, and any of the 12 tape sites manually at any time), and syncs wearable recovery from Fitbit or Whoop.',
     keywords: [
       'smart scale',
       'smart scales',
@@ -634,7 +703,7 @@ export const TREISE_DESIGN_SYSTEM: DesignSystemComponent[] = [
       rules: [
         'Green is strictly reserved for the completed set checkmark, celebrating progressive overload.',
         'Warmup sets display distinctive amber "W" badge to avoid user confusion with working sets.',
-        'Completing a set triggers haptic feedback and real-time tonnage/XP updates.',
+        'Completing a set triggers haptic feedback and real-time tonnage updates.',
       ],
       variants: {
         workingSet: 'Checkmark toggle with green completion state',
@@ -1141,6 +1210,275 @@ export function getExerciseBiomechanicalMeta(ex: ExerciseDefinition): {
 }
 
 /**
+ * Builds the longitudinal Body Composition & Anthropometry Knowledge Profile across all
+ * 13 RENPHO Health Scale metrics and 12 RENPHO Smart Tape Measure sites, including
+ * bilateral left/right symmetry analysis for Biceps, Thighs, and Calves.
+ */
+export function buildBodyCompositionKnowledgeGraph(
+  biometrics: BiometricLog[],
+  profile: UserProfile
+): BodyCompositionKnowledgeProfile {
+  const sorted = [...biometrics].sort((a, b) => a.date.localeCompare(b.date));
+  const athleteHeightCm = profile.measuredHeightCm || profile.heightCm;
+  const heightM =
+    typeof athleteHeightCm === 'number' && athleteHeightCm >= 100 && athleteHeightCm <= 250
+      ? athleteHeightCm / 100
+      : undefined;
+
+  const scaleTrends: KgMetricTrend[] = RENPHO_SCALE_METRICS.map((meta) => {
+    const points: Array<{ date: string; value: number }> = [];
+    for (const b of sorted) {
+      let val = b[meta.field] as number | undefined;
+      if (meta.id === 'bmi' && !(val && val > 0)) {
+        const entryHeightM =
+          b.heightCm && b.heightCm >= 100 && b.heightCm <= 250 ? b.heightCm / 100 : heightM;
+        if (entryHeightM && b.bodyweightKg > 0) {
+          val = Math.round((b.bodyweightKg / (entryHeightM * entryHeightM)) * 10) / 10;
+        }
+      } else if (meta.id === 'fat_free_mass' && !(val && val > 0)) {
+        if (b.bodyweightKg > 0 && b.bodyFatPct && b.bodyFatPct > 0 && b.bodyFatPct < 70) {
+          val = Math.round(b.bodyweightKg * (1 - b.bodyFatPct / 100) * 10) / 10;
+        }
+      } else if (meta.id === 'bmr' && !(val && val > 0)) {
+        const ffm =
+          b.fatFreeMassKg && b.fatFreeMassKg > 0
+            ? b.fatFreeMassKg
+            : b.bodyweightKg > 0 && b.bodyFatPct && b.bodyFatPct > 0 && b.bodyFatPct < 70
+            ? b.bodyweightKg * (1 - b.bodyFatPct / 100)
+            : undefined;
+        if (ffm && ffm > 15) {
+          val = Math.round(370 + 21.6 * ffm);
+        }
+      }
+      if (typeof val === 'number' && Number.isFinite(val) && val > 0) {
+        points.push({ date: b.date, value: val });
+      }
+    }
+
+    const first = points[0];
+    const last = points[points.length - 1];
+    const delta =
+      first && last && points.length >= 2
+        ? Math.round((last.value - first.value) * 100) / 100
+        : undefined;
+    const deltaPct =
+      first && last && points.length >= 2 && first.value !== 0
+        ? Math.round(((last.value - first.value) / first.value) * 1000) / 10
+        : undefined;
+
+    let ema7d: number | undefined;
+    if (meta.id === 'weight' && points.length > 0) {
+      let running = points[0].value;
+      for (let i = 1; i < points.length; i++) {
+        running = points[i].value * 0.25 + running * 0.75;
+      }
+      ema7d = Math.round(running * 10) / 10;
+    }
+
+    const direction: KgMetricTrend['direction'] =
+      points.length === 0
+        ? 'empty'
+        : delta === undefined || Math.abs(delta) < 0.05
+        ? 'flat'
+        : delta > 0
+        ? 'up'
+        : 'down';
+
+    return {
+      id: meta.id,
+      field: meta.field,
+      label: meta.label,
+      shortLabel: meta.shortLabel,
+      category: 'scale',
+      unitKind: meta.unitKind,
+      latest: last?.value,
+      latestDate: last?.date,
+      baseline: first?.value,
+      baselineDate: first?.date,
+      delta,
+      deltaPct,
+      ema7d,
+      sampleCount: points.length,
+      direction,
+      points,
+    };
+  });
+
+  const tapeTrends: KgMetricTrend[] = BODY_MEASUREMENT_SITES.map((meta) => {
+    const points: Array<{ date: string; value: number }> = [];
+    for (const b of sorted) {
+      let val = b[meta.field] as number | undefined;
+      if (!(val && val > 0)) {
+        if (meta.id === 'bicep_right' && b.armCm && b.armCm > 0) val = b.armCm;
+        else if (meta.id === 'thigh_right' && b.thighCm && b.thighCm > 0) val = b.thighCm;
+        else if (meta.id === 'calf_right' && b.calfCm && b.calfCm > 0) val = b.calfCm;
+      }
+      if (typeof val === 'number' && Number.isFinite(val) && val > 0) {
+        points.push({ date: b.date, value: Math.round(val * 10) / 10 });
+      }
+    }
+
+    const first = points[0];
+    const last = points[points.length - 1];
+    const delta =
+      first && last && points.length >= 2
+        ? Math.round((last.value - first.value) * 10) / 10
+        : undefined;
+    const deltaPct =
+      first && last && points.length >= 2 && first.value !== 0
+        ? Math.round(((last.value - first.value) / first.value) * 1000) / 10
+        : undefined;
+
+    const direction: KgMetricTrend['direction'] =
+      points.length === 0
+        ? 'empty'
+        : delta === undefined || Math.abs(delta) < 0.05
+        ? 'flat'
+        : delta > 0
+        ? 'up'
+        : 'down';
+
+    return {
+      id: meta.id,
+      field: meta.field,
+      label: meta.label,
+      shortLabel: meta.shortLabel,
+      category: 'tape',
+      unitKind: 'length',
+      latest: last?.value,
+      latestDate: last?.date,
+      baseline: first?.value,
+      baselineDate: first?.date,
+      delta,
+      deltaPct,
+      sampleCount: points.length,
+      direction,
+      points,
+    };
+  });
+
+  const trendBySite = new Map(tapeTrends.map((t) => [t.id, t]));
+  const bilateralPairsConfig: Array<{
+    id: 'bicep' | 'thigh' | 'calf';
+    label: string;
+    leftSite: BodyMeasurementSite;
+    rightSite: BodyMeasurementSite;
+  }> = [
+    { id: 'bicep', label: 'Biceps (Left vs Right)', leftSite: 'bicep_left', rightSite: 'bicep_right' },
+    { id: 'thigh', label: 'Thighs (Left vs Right)', leftSite: 'thigh_left', rightSite: 'thigh_right' },
+    { id: 'calf', label: 'Calves (Left vs Right)', leftSite: 'calf_left', rightSite: 'calf_right' },
+  ];
+
+  const bilateralSymmetry: KgBilateralPair[] = bilateralPairsConfig.map((cfg) => {
+    const leftCm = trendBySite.get(cfg.leftSite)?.latest;
+    const rightCm = trendBySite.get(cfg.rightSite)?.latest;
+    if (leftCm === undefined || rightCm === undefined) {
+      return {
+        ...cfg,
+        leftCm,
+        rightCm,
+        status: 'insufficient_data',
+        summary: `Log both left and right ${cfg.id} circumferences to evaluate bilateral muscular symmetry.`,
+      };
+    }
+    const diffCm = Math.round((rightCm - leftCm) * 10) / 10;
+    const absDiff = Math.abs(diffCm);
+    const maxSide = Math.max(leftCm, rightCm);
+    const asymmetryPct = maxSide > 0 ? Math.round((absDiff / maxSide) * 1000) / 10 : 0;
+    const dominantSide: 'left' | 'right' | 'balanced' =
+      absDiff <= 0.4 ? 'balanced' : diffCm > 0 ? 'right' : 'left';
+    const status: KgBilateralPair['status'] =
+      absDiff <= 0.5 || asymmetryPct <= 1.5
+        ? 'balanced'
+        : asymmetryPct <= 4.0
+        ? 'mild_asymmetry'
+        : 'notable_asymmetry';
+
+    const summary =
+      status === 'balanced'
+        ? `Left (${leftCm} cm) and Right (${rightCm} cm) ${cfg.id}s are well balanced (Δ ${absDiff.toFixed(1)} cm).`
+        : `${dominantSide === 'right' ? 'Right' : 'Left'} ${cfg.id} is +${absDiff.toFixed(1)} cm larger (${asymmetryPct}% difference). Start unilateral sets with your ${dominantSide === 'right' ? 'left' : 'right'} side and match reps.`;
+
+    return {
+      ...cfg,
+      leftCm,
+      rightCm,
+      diffCm,
+      asymmetryPct,
+      dominantSide,
+      status,
+      summary,
+    };
+  });
+
+  const weightTrend = scaleTrends.find((t) => t.id === 'weight');
+  const bfTrend = scaleTrends.find((t) => t.id === 'body_fat');
+  const ffmTrend = scaleTrends.find((t) => t.id === 'fat_free_mass');
+  const waistTrend = tapeTrends.find((t) => t.id === 'waist');
+
+  let recompositionStatus: BodyCompositionKnowledgeProfile['recompositionStatus'] = 'insufficient_data';
+  let recompositionSummary =
+    'Log weight, body fat %, or tape measurements to track body recomposition trends over time.';
+
+  const ffmDelta = ffmTrend?.delta;
+  const bfDelta = bfTrend?.delta;
+  const waistDelta = waistTrend?.delta;
+  const weightDelta = weightTrend?.delta;
+
+  if (
+    (ffmDelta !== undefined && ffmDelta >= 0.2 && bfDelta !== undefined && bfDelta <= -0.2) ||
+    (waistDelta !== undefined && waistDelta <= -0.4 && weightDelta !== undefined && weightDelta >= -0.5)
+  ) {
+    recompositionStatus = 'recomp_positive';
+    const parts: string[] = [];
+    if (ffmDelta !== undefined && ffmDelta > 0) parts.push(`fat-free mass +${ffmDelta.toFixed(1)} kg`);
+    if (bfDelta !== undefined && bfDelta < 0) parts.push(`body fat ${bfDelta.toFixed(1)}%`);
+    if (waistDelta !== undefined && waistDelta < 0) parts.push(`waist ${waistDelta.toFixed(1)} cm`);
+    recompositionSummary = `Body recomposition underway: ${parts.join(', ')}.`;
+  } else if (ffmDelta !== undefined && ffmDelta > 0.2) {
+    recompositionStatus = 'lean_gain';
+    recompositionSummary = `Lean tissue accretion: fat-free mass is up +${ffmDelta.toFixed(1)} kg since baseline.`;
+  } else if (
+    (bfDelta !== undefined && bfDelta < -0.2) ||
+    (waistDelta !== undefined && waistDelta < -0.4)
+  ) {
+    recompositionStatus = 'fat_loss';
+    recompositionSummary = `Adipose reduction trend active${bfDelta !== undefined ? ` (${bfDelta.toFixed(1)}% body fat)` : ''}${waistDelta !== undefined ? ` (${waistDelta.toFixed(1)} cm waist)` : ''}.`;
+  } else if (weightTrend && weightTrend.sampleCount >= 1) {
+    recompositionStatus = 'holding';
+    recompositionSummary = `Latest weight ${weightTrend.latest} kg${weightTrend.ema7d ? ` (7-day EMA ${weightTrend.ema7d} kg)` : ''}. Add follow-up weigh-ins or tape checks to measure change.`;
+  }
+
+  const populatedScaleCount = scaleTrends.filter((t) => t.sampleCount > 0).length;
+  const populatedTapeCount = tapeTrends.filter((t) => t.sampleCount > 0).length;
+
+  let latestScaleDate: string | undefined;
+  for (const t of scaleTrends) {
+    if (t.latestDate && (!latestScaleDate || t.latestDate > latestScaleDate)) {
+      latestScaleDate = t.latestDate;
+    }
+  }
+  let latestTapeDate: string | undefined;
+  for (const t of tapeTrends) {
+    if (t.latestDate && (!latestTapeDate || t.latestDate > latestTapeDate)) {
+      latestTapeDate = t.latestDate;
+    }
+  }
+
+  return {
+    scaleTrends,
+    tapeTrends,
+    bilateralSymmetry,
+    recompositionStatus,
+    recompositionSummary,
+    populatedScaleCount,
+    populatedTapeCount,
+    latestScaleDate,
+    latestTapeDate,
+  };
+}
+
+/**
  * Builds the complete Athlete Personal Knowledge Graph from longitudinal history
  */
 export function buildAthleteKnowledgeGraph(
@@ -1371,7 +1709,10 @@ export function buildAthleteKnowledgeGraph(
     };
   });
 
-  // 4. Compute Biometric & Autonomic Correlations
+  // 4. Compute Body Composition & Anthropometry Knowledge Profile (13 Scale Metrics + 12 Tape Sites)
+  const bodyComposition = buildBodyCompositionKnowledgeGraph(biometrics, profile);
+
+  // 5. Compute Biometric & Autonomic Correlations
   // Only days with real watch data count; zeros mean "not measured".
   const recentBiometrics = biometrics.slice(-14);
   const hrvDays = recentBiometrics.filter((b) => (b.hrvRmssd || 0) > 0);
@@ -1405,7 +1746,7 @@ export function buildAthleteKnowledgeGraph(
       ? Math.min(99, Math.max(1, Math.round(70 + (avgHrv - 55) * 0.8 + ((avgSleep || 7) - 7.0) * 8)))
       : 0; // 0 = no recovery data
 
-  // 5. Generate Plain-English Coaching Insights
+  // 6. Generate Plain-English Coaching Insights
   const highestStrainJoint = [...joints].sort((a, b) => b.strainScore - a.strainScore)[0];
   const fastestMuscle = [...muscleProfiles].sort((a, b) => b.e1rmVelocityPct - a.e1rmVelocityPct)[0];
   const underVolumeHighResponder =
@@ -1492,6 +1833,43 @@ export function buildAthleteKnowledgeGraph(
     });
   }
 
+  // Body Composition & Tape Anthropometry Insight (when body fat, scale composition, or tape sites are logged)
+  const hasExplicitCompositionOrTape = biometrics.some(
+    (b) =>
+      (b.bodyFatPct && b.bodyFatPct > 0) ||
+      (b.skeletalMuscleMassKg && b.skeletalMuscleMassKg > 0) ||
+      (b.waistCm && b.waistCm > 0) ||
+      (b.chestCm && b.chestCm > 0) ||
+      (b.bicepLeftCm && b.bicepLeftCm > 0) ||
+      (b.bicepRightCm && b.bicepRightCm > 0) ||
+      (b.thighLeftCm && b.thighLeftCm > 0) ||
+      (b.thighRightCm && b.thighRightCm > 0)
+  );
+  if (hasExplicitCompositionOrTape) {
+    const bfTrend = bodyComposition.scaleTrends.find((t) => t.id === 'body_fat');
+    const ffmTrend = bodyComposition.scaleTrends.find((t) => t.id === 'fat_free_mass');
+    const waistTrend = bodyComposition.tapeTrends.find((t) => t.id === 'waist');
+    const asymPair = bodyComposition.bilateralSymmetry.find(
+      (p) => p.status === 'mild_asymmetry' || p.status === 'notable_asymmetry'
+    );
+    insights.push({
+      id: 'pkg-insight-body-composition',
+      category: 'Hypertrophy',
+      title: 'Body Composition & Tape Trends',
+      confidence: 95,
+      impactMetric:
+        bfTrend?.latest !== undefined
+          ? `${bfTrend.latest}% BF${ffmTrend?.latest ? ` • ${ffmTrend.latest}kg FFM` : ''}`
+          : waistTrend?.latest !== undefined
+          ? `${waistTrend.latest}cm Waist`
+          : `${bodyComposition.populatedTapeCount} Tape Sites`,
+      narrative: `${bodyComposition.recompositionSummary}${asymPair ? ` ${asymPair.summary}` : ''}`,
+      actionableStep: asymPair
+        ? `Begin unilateral arm/leg sets on your ${asymPair.dominantSide === 'right' ? 'left' : 'right'} side and match reps on the dominant side.`
+        : 'Log morning weigh-ins and tape measurements weekly under consistent conditions to track lean mass and circumferences.',
+    });
+  }
+
   const hasTravelOrBw =
     recentWorkouts.some(
       (w) => w.location === 'travel' || w.exercises.some((e) => e.equipment === 'bodyweight')
@@ -1511,7 +1889,11 @@ export function buildAthleteKnowledgeGraph(
     });
   }
 
-  // 6. Construct Graph Nodes & Edges for Interactive Visualization
+  const latestBf = bodyComposition.scaleTrends.find((t) => t.id === 'body_fat')?.latest;
+  const latestFfm = bodyComposition.scaleTrends.find((t) => t.id === 'fat_free_mass')?.latest;
+  const latestWaist = bodyComposition.tapeTrends.find((t) => t.id === 'waist')?.latest;
+
+  // 7. Construct Graph Nodes & Edges for Interactive Visualization
   const nodes: KgNode[] = [
     {
       id: 'node-athlete',
@@ -1556,6 +1938,9 @@ export function buildAthleteKnowledgeGraph(
         ...(hasRecoveryData ? { 'Avg HRV': `${avgHrv} ms` } : {}),
         ...(avgSleep ? { 'Avg Sleep': `${avgSleep} hrs` } : {}),
         ...((latestBio?.restingHr || 0) > 0 ? { 'Resting Pulse': `${latestBio?.restingHr} bpm` } : {}),
+        ...(latestBf !== undefined ? { 'Body Fat': `${latestBf}%` } : {}),
+        ...(latestFfm !== undefined ? { 'Fat-Free Mass': `${latestFfm} kg` } : {}),
+        ...(latestWaist !== undefined ? { 'Waist': `${latestWaist} cm` } : {}),
       },
       detailText: profile.whoopConnected
         ? `Your Whoop recovery${latestRecoveryScore !== undefined ? ` (${latestRecoveryScore}%)` : ''}${avgWorkoutStrain !== undefined ? ` and workout strain (${avgWorkoutStrain})` : ''} set how hard each day's workout should be.`
@@ -1685,6 +2070,7 @@ export function buildAthleteKnowledgeGraph(
     edges,
     joints,
     muscleProfiles,
+    bodyComposition,
     insights,
     scientificKnowledgeBase: EXERCISE_SCIENCE_KNOWLEDGE_BASE,
     designSystem: TREISE_DESIGN_SYSTEM,

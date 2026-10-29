@@ -130,6 +130,8 @@ export interface ProgramPhaseMeta {
   name: string;
   /** Plain-English phase summary shown on the Workout page, e.g. "Building foundations". */
   shortName: string;
+  /** One-sentence explanation shown on the Program page. */
+  planSummary: string;
   weeks: [number, number];
   description: string;
   intensityFocus: string;
@@ -139,6 +141,7 @@ export const PROGRAM_PHASES: ProgramPhaseMeta[] = [
   {
     phaseNumber: 1,
     shortName: 'Building foundations',
+    planSummary: '2 week cycle focusing on volume accumulation, controlled eccentric tempo, and structural work capacity.',
     name: 'Phase 1: Antagonist Supersets & Volume Foundation',
     weeks: [1, 2],
     description:
@@ -148,6 +151,7 @@ export const PROGRAM_PHASES: ProgramPhaseMeta[] = [
   {
     phaseNumber: 2,
     shortName: 'Pushing intensity',
+    planSummary: '2 week cycle focusing on high mechanical tension and motor unit recruitment past technical failure.',
     name: 'Phase 2: High-Intensity Overload (Rest-Pause & Drop-Sets)',
     weeks: [3, 4],
     description:
@@ -157,6 +161,7 @@ export const PROGRAM_PHASES: ProgramPhaseMeta[] = [
   {
     phaseNumber: 3,
     shortName: 'Building density',
+    planSummary: '2 week cycle focusing on muscular density, zero-rest intra-group transitions, and peak lactate tolerance.',
     name: 'Phase 3: High-Density Giant Sets & Tri-Sets',
     weeks: [5, 6],
     description:
@@ -809,7 +814,6 @@ export function generate6WeekMuscleBuildingWorkout(
     completed: false,
     readinessState: 'Normal',
     readinessZScore: 0.2,
-    xpEarned: 0,
     location: 'gym',
     programWorkoutNumber: tmpl.workoutNumber,
   };
@@ -833,4 +837,67 @@ export function getNextProgramWorkoutNumber(workouts: WorkoutSession[]): number 
   const last = done[0] ? getProgramWorkoutNumber(done[0]) : undefined;
   if (!last) return 1;
   return last >= WORKOUT_TEMPLATES_24.length ? 1 : last + 1;
+}
+
+/** Plain-English workout name for the Program page, e.g. "Shoulders and Arms". */
+export function planWorkoutLabel(title: string): string {
+  return title.replace(/\s*\(.*\)\s*$/, '').replace(/\bDelts\b/, 'Shoulders');
+}
+
+export type PlanWorkoutStatus = 'done' | 'next' | 'upcoming';
+
+export interface PlanWorkoutOverview {
+  workoutNumber: number;
+  phase: number;
+  label: string;
+  status: PlanWorkoutStatus;
+  /** The session logged for this workout in the current run of the plan, when done. */
+  session?: WorkoutSession;
+}
+
+export interface PlanOverview {
+  /** 1 for the athlete's first run through the 24 workouts, 2 for the next, ... */
+  cycleNumber: number;
+  completedCount: number;
+  nextWorkoutNumber: number;
+  activePhase: number;
+  workouts: PlanWorkoutOverview[];
+}
+
+/**
+ * Where the athlete is in the 6-Week plan. A run of the plan ends when Workout 24 is completed;
+ * sessions from earlier runs don't count as done in the current one.
+ */
+export function buildPlanOverview(history: WorkoutSession[]): PlanOverview {
+  const done = history
+    .filter((w) => w.completed && getProgramWorkoutNumber(w) !== undefined)
+    .sort((a, b) => (a.completedAt || a.date).localeCompare(b.completedAt || b.date));
+  let cycleNumber = 1;
+  let current = new Map<number, WorkoutSession>();
+  for (const w of done) {
+    const n = getProgramWorkoutNumber(w) as number;
+    current.set(n, w);
+    if (n >= WORKOUT_TEMPLATES_24.length) {
+      cycleNumber += 1;
+      current = new Map();
+    }
+  }
+  const nextWorkoutNumber = getNextProgramWorkoutNumber(history);
+  const workouts = WORKOUT_TEMPLATES_24.map((t): PlanWorkoutOverview => {
+    const session = current.get(t.workoutNumber);
+    return {
+      workoutNumber: t.workoutNumber,
+      phase: t.phase,
+      label: planWorkoutLabel(t.title),
+      status: t.workoutNumber === nextWorkoutNumber ? 'next' : session ? 'done' : 'upcoming',
+      session,
+    };
+  });
+  return {
+    cycleNumber,
+    completedCount: current.size,
+    nextWorkoutNumber,
+    activePhase: WORKOUT_TEMPLATES_24.find((t) => t.workoutNumber === nextWorkoutNumber)?.phase ?? 1,
+    workouts,
+  };
 }

@@ -186,7 +186,9 @@ export function loadProfile(): UserProfile {
   try {
     const raw = getItemWithFallback('PROFILE');
     if (raw) {
-      const parsed = JSON.parse(raw) as UserProfile;
+      // XP, levels and the leaderboard were removed; drop their old saved fields.
+      const { currentXp: _xp, level: _level, leaderboardOptIn: _opt, leaderboardDisplayName: _name, ...parsed } =
+        JSON.parse(raw) as UserProfile & Record<string, unknown>;
       return {
         ...NEW_USER_PROFILE,
         ...parsed,
@@ -551,6 +553,7 @@ export function permanentlyEraseAllUserData() {
   try {
     Object.values(KEYS).forEach((k) => localStorage.removeItem(k));
     Object.values(LEGACY_KEYS).forEach((k) => localStorage.removeItem(k));
+    localStorage.removeItem('treise_renpho_devices_v1');
     if (typeof sessionStorage !== 'undefined') {
       sessionStorage.removeItem('fitbit_code_verifier');
       sessionStorage.removeItem('fitbit_oauth_state');
@@ -569,8 +572,6 @@ export function permanentlyEraseAllUserData() {
     heightCm: 175,
     goalPhase: 'Lean Bulk',
     mesocycleWeek: 1,
-    level: 1,
-    currentXp: 0,
     streakDays: 0,
     lastWorkoutDate: todayStr,
     wearableSource: null,

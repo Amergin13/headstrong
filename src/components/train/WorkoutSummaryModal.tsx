@@ -1,15 +1,13 @@
 import React, { useMemo } from 'react';
-import { WorkoutSession, ReadinessState } from '../../engine/types';
+import { WorkoutSession } from '../../engine/types';
 import { WhoopWorkoutStrainSummary } from '../../services/whoopService';
 import { calculateSessionTonnage } from '../../engine/wci';
-import { calculateWorkoutCompletionXp } from '../../engine/xp';
 import { useUnits } from '../../utils/unitsContext';
-import { Trophy, Zap, ArrowRight, Activity, RefreshCw } from 'lucide-react';
+import { Trophy, ArrowRight, Activity, RefreshCw } from 'lucide-react';
 import { triggerHaptic } from '../../utils/haptics';
 
 interface WorkoutSummaryModalProps {
   workout: WorkoutSession;
-  readinessState: ReadinessState;
   onClose: () => void;
   whoopTelemetry?: WhoopWorkoutStrainSummary | null;
   isWhoopConnected?: boolean;
@@ -19,7 +17,6 @@ interface WorkoutSummaryModalProps {
 
 export const WorkoutSummaryModal: React.FC<WorkoutSummaryModalProps> = ({
   workout,
-  readinessState,
   onClose,
   whoopTelemetry,
   isWhoopConnected = false,
@@ -49,12 +46,6 @@ export const WorkoutSummaryModal: React.FC<WorkoutSummaryModalProps> = ({
   const measuredPeakHr = whoopTelemetry?.maxHeartRate;
   const measuredKj =
     whoopTelemetry?.kilojoules && whoopTelemetry.kilojoules < 3500 ? whoopTelemetry.kilojoules : undefined;
-
-  const completionXp = calculateWorkoutCompletionXp(
-    workout,
-    readinessState,
-    readinessState === 'Primed' ? 1.15 : 1
-  ).amount;
 
   const handleDone = () => {
     triggerHaptic('success');
@@ -215,21 +206,6 @@ export const WorkoutSummaryModal: React.FC<WorkoutSummaryModalProps> = ({
             )}
           </div>
         )}
-
-        {/* Gamified XP Earned */}
-        <div className="wk-raised flex items-center justify-between">
-          <div className="flex items-center space-x-2.5">
-            <Zap className="w-5 h-5 stroke-[2]" style={{ color: 'var(--wk-accent)' }} />
-            <div>
-              <span className="wk-label normal-case block">
-                +{completionXp} XP for finishing
-              </span>
-              <span className="wk-caption" style={{ color: 'var(--wk-accent)' }}>
-                {readinessState === 'Primed' ? 'Includes +15% recovery bonus' : 'Progress saved'}
-              </span>
-            </div>
-          </div>
-        </div>
 
         {/* Done / Continue Button */}
         <button

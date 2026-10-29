@@ -33,6 +33,7 @@ import {
   TREISE_DESIGN_SYSTEM,
   queryDesignSystemComponents,
   getDesignSystemComponentById,
+  buildBodyCompositionKnowledgeGraph,
 } from '../knowledgeGraph';
 import { SEED_EXERCISES } from '../../services/seedData';
 import { processAssistantMessage, buildSafetyResponse, buildProgressSummary } from '../../services/aiAssistantService';
@@ -42,12 +43,12 @@ import { buildExerciseInsight } from '../../services/exerciseInsight';
 import { acceptExerciseNote, buildExerciseNoteFacts, generateExerciseNote } from '../../services/exerciseCoachNote';
 import { buildSessionProgressReport } from '../../services/sessionReport';
 import { personalizeSessionLoads } from '../loadPersonalization';
-import { getNextProgramWorkoutNumber } from '../muscleBuildingProgram';
+import { buildPlanOverview, getNextProgramWorkoutNumber, planWorkoutLabel } from '../muscleBuildingProgram';
 import { getTemplateDefaultWeight } from '../../services/workoutGenerator';
 import { snapLoadKg, formatWeight } from '../../utils/units';
 import { localDateString } from '../../utils/date';
 import { calculateBestPillarE1rms } from '../../services/storage';
-import { evaluateSetProgressAward, planRestAfterSet } from '../../services/setCompletion';
+import { evaluateSetPersonalBest, planRestAfterSet } from '../../services/setCompletion';
 import { completeWorkout } from '../../services/workoutCompletion';
 import { prepareSessionForAthlete } from '../../services/sessionPreparation';
 import { buildCompositionCharts, buildStrengthCharts } from '../../services/progressSeries';
@@ -55,10 +56,19 @@ import {
   BODY_MEASUREMENT_SITES,
   buildQnScaleConfigPayload,
   buildQnScaleTimePayload,
+  clearSavedRenphoDevices,
+  computeRenphoScaleMetrics,
+  connectRenphoScale,
   decodeRenphoScalePacket,
   decodeRenphoTapePacket,
+  forgetPairedRenphoDevice,
+  loadSavedRenphoDevices,
+  recordRenphoDeviceSync,
+  RENPHO_SCALE_METRICS,
   RENPHO_SCALE_UUIDS,
   RENPHO_TAPE_UUIDS,
+  resolveRememberedBleDevice,
+  savePairedRenphoDevice,
 } from '../../services/renphoBluetooth';
 
 import { onWearableTokensRefreshed } from '../../services/wearableTokens';
@@ -159,7 +169,6 @@ const primedLog: BiometricLog = {
 };
 const primedEval = calculateDailyReadiness(primedLog, baselineLogs);
 assert(primedEval.state === 'Primed', `Primed day evaluates to Primed (got ${primedEval.state})`);
-assert(primedEval.xpMultiplier === 1.15, `Primed grants +15% XP bonus`);
 
 // Amber Shield day: HRV drops > 15%
 const amberLog: BiometricLog = {
@@ -215,7 +224,6 @@ const wciWorkout = {
   completed: true,
   readinessState: 'Normal' as const,
   readinessZScore: 0.1,
-  xpEarned: 400,
   avgHeartRate: 145,
   durationMinutes: 60,
   exercises: [sampleSession],
@@ -308,8 +316,6 @@ const pkg = buildAthleteKnowledgeGraph(
     heightCm: 178,
     goalPhase: 'Lean Bulk',
     mesocycleWeek: 3,
-    level: 14,
-    currentXp: 4850,
     streakDays: 19,
     fitbitConnected: true,
     maxHr: 192,
@@ -464,18 +470,7 @@ import {
   NEW_USER_PROFILE,
   SAMPLE_DEMO_PROFILE,
 } from '../../services/seedData';
-import {
-  FORBIDDEN_XP_ACTIONS,
-  isForbiddenXpAction,
-  calculateWorkoutCompletionXp,
-  calculateProgramMilestoneXp,
-  evaluateExerciseProgressXp,
-  evaluateStrengthStandardAdvanceXp,
-} from '../xp';
-import {
-  buildLeaderboardSummary,
-  DIVISION_THRESHOLDS,
-} from '../leaderboard';
+import { programMilestone, evaluateExerciseProgress, evaluateStrengthStandardAdvance } from '../milestones';
 import {
   adaptWorkoutSessionToLocation,
   generateSmartWorkoutSession,
@@ -632,8 +627,8 @@ assert(
 // Permanently erase all user data (Google Play User Data Deletion requirement)
 const erased = permanentlyEraseAllUserData();
 assert(
-  erased.workouts.length === 0 && loadWorkouts().length === 0 && loadProfile().level === 1,
-  `permanentlyEraseAllUserData wipes all workout history and resets profile to Level 1`
+  erased.workouts.length === 0 && loadWorkouts().length === 0 && loadProfile().streakDays === 0,
+  `permanentlyEraseAllUserData wipes all workout history and resets the profile`
 );
 
 // Restore from JSON backup
@@ -861,7 +856,7 @@ const auditedFiles = [
   'src/components/train/ExerciseSwapModal.tsx',
   'src/components/train/PlateCalculatorModal.tsx',
   'src/components/common/Header.tsx',
-  'src/components/common/XPNotification.tsx',
+  'src/components/common/Toast.tsx',
   'src/components/program/ProgramTab.tsx',
   'src/components/program/MesocycleManager.tsx',
   'src/components/onboarding/OnboardingModal.tsx',
@@ -1423,21 +1418,20 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
   setTensorSimulationOverride(false);
 
   // ============================================================================
-  // SUITE 20: CLEAN SLATE FOR NEW USERS, LEGITIMATE XP ECONOMY & OPT-IN LEADERBOARD
+  // SUITE 20: CLEAN SLATE FOR NEW USERS, NO POINTS, REAL MILESTONES
   // ============================================================================
-  console.log('\n--- SUITE 20: CLEAN SLATE FOR NEW USERS, LEGITIMATE XP ECONOMY & OPT-IN LEADERBOARD ---');
+  console.log('\n--- SUITE 20: CLEAN SLATE FOR NEW USERS, NO POINTS, REAL MILESTONES ---');
 
-  // A. Clean Slate Invariants: Fresh launch must start at Level 1, 0 XP, 0 completed workouts/biometrics
+  // A. Clean Slate Invariants: fresh launch has no workouts, biometrics, streak or points
   memStore.clear(); // Simulate a completely fresh user install with empty localStorage
   const freshProfile = loadProfile();
   assert(
-    freshProfile.level === 1 &&
-      freshProfile.currentXp === 0 &&
-      freshProfile.streakDays === 0 &&
+    freshProfile.streakDays === 0 &&
       freshProfile.name === 'Athlete' &&
       freshProfile.onboardingCompleted === false &&
-      freshProfile.leaderboardOptIn === false,
-    `Fresh user profile starts cleanly at Level 1, 0 XP, 0 streak, 'Athlete', and onboarding uncompleted (got Lv.${freshProfile.level}, ${freshProfile.currentXp} XP)`
+      !('currentXp' in freshProfile) &&
+      !('level' in freshProfile),
+    `Fresh user profile starts cleanly with 0 streak, 'Athlete', onboarding uncompleted and no XP or level`
   );
 
   const freshBiometrics = loadBiometrics();
@@ -1453,134 +1447,36 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
   );
 
   assert(
-    SAMPLE_DEMO_PROFILE.level === 14 &&
-      SAMPLE_DEMO_PROFILE.currentXp === 4850 &&
-      SAMPLE_DEMO_PROFILE.name === 'Alex Vance',
-    `SAMPLE_DEMO_PROFILE preserves 6-week demonstration state for explicit demo preview mode`
+    SAMPLE_DEMO_PROFILE.name === 'Alex Vance' && !('currentXp' in SAMPLE_DEMO_PROFILE),
+    `SAMPLE_DEMO_PROFILE preserves the 6-week demonstration state for explicit demo mode, with no XP`
   );
 
   // Restore seed dataset for subsequent tests
   resetAllToSeedData();
 
-  // B. Forbidden XP Actions (Must NEVER award XP)
-  assert(
-    FORBIDDEN_XP_ACTIONS.length === 13,
-    `All 13 unauthorized UI actions are registered in FORBIDDEN_XP_ACTIONS (got ${FORBIDDEN_XP_ACTIONS.length})`
-  );
-  for (const action of FORBIDDEN_XP_ACTIONS) {
-    assert(isForbiddenXpAction(action) === true, `Action '${action}' is strictly forbidden from awarding XP`);
-  }
-  assert(isForbiddenXpAction('finish_workout') === false, `Legitimate action 'finish_workout' is allowed`);
+  // B. Finished weeks and blocks are celebrated (no points)
+  const weekDone = programMilestone(3, 'PPL Upper');
+  assert(weekDone.title === 'Week 3 complete' && !('amount' in weekDone), `A finished week is celebrated without points`);
+  const blockDone = programMilestone(6, 'PPL Upper');
+  assert(blockDone.title === 'Block complete', `Finishing the 6-week block is celebrated`);
 
-  // C. Legitimate XP Economy: Workout Completion
-  const mockWorkoutToFinish = JSON.parse(JSON.stringify(pushW3));
-  mockWorkoutToFinish.exercises.forEach((ex: any) =>
-    ex.sets.forEach((s: any) => {
-      s.completed = true;
-    })
-  );
-  const primedCompletionAward = calculateWorkoutCompletionXp(mockWorkoutToFinish, 'Primed', 1.15);
-  assert(
-    primedCompletionAward.category === 'workout_completion' &&
-      primedCompletionAward.amount === Math.round(300 * 1.15) &&
-      Boolean(primedCompletionAward.bonusTag?.includes('Primed')),
-    `Workout completion awards legitimate base + set bonus with Primed multiplier: ${primedCompletionAward.amount} XP`
-  );
+  // C. Personal bests on a set
+  const loadPr = evaluateExerciseProgress('Barbell Bench Press', 95, 8, 92.5, 8);
+  assert(loadPr !== null && loadPr.title === 'Weight PR', `More weight (+2.5 kg) is a Weight PR`);
+  const repPr = evaluateExerciseProgress('Barbell Bench Press', 92.5, 10, 92.5, 8);
+  assert(repPr !== null && repPr.title === 'Rep PR', `More reps at the same weight is a Rep PR`);
+  const topRep = evaluateExerciseProgress('Barbell Bench Press', 92.5, 12, 92.5, 10, 12);
+  assert(topRep !== null && topRep.title === 'Top of the range', `Reaching the top of the rep range says to add weight next time`);
+  const nonPr = evaluateExerciseProgress('Barbell Bench Press', 90, 8, 92.5, 8);
+  assert(nonPr === null, `An ordinary set is not celebrated`);
+  assert(evaluateExerciseProgress('Barbell Bench Press', 60, 10) === null, `A first-ever log is a starting point, not a personal best`);
 
-  const normalCompletionAward = calculateWorkoutCompletionXp(mockWorkoutToFinish, 'Normal', 1.0);
-  assert(
-    normalCompletionAward.amount === 300,
-    `Normal workout completion awards exact 300 XP (250 base + 50 all working sets completed bonus)`
-  );
-
-  // D. Legitimate XP Economy: Program Milestones
-  const weekMilestone = calculateProgramMilestoneXp(3, 'PPL Upper');
-  assert(
-    weekMilestone.amount === 200 && weekMilestone.category === 'program_milestone',
-    `Mesocycle week milestone awards +200 XP`
-  );
-  const cycleMilestone = calculateProgramMilestoneXp(6, 'PPL Upper');
-  assert(
-    cycleMilestone.amount === 500 && cycleMilestone.title === 'Mesocycle Cycle Complete',
-    `6-week cycle graduation awards +500 XP`
-  );
-
-  // E. Legitimate XP Economy: Progressive Overload Evaluation
-  // Case 1: Load breakthrough (+2.5kg PR)
-  const loadPr = evaluateExerciseProgressXp('Barbell Bench Press', 95, 8, 92.5, 8);
-  assert(
-    loadPr !== null && loadPr.amount === 60 && loadPr.title === 'Load Breakthrough',
-    `Weight increase (+2.5kg) awards +60 XP for Load Breakthrough`
-  );
-
-  // Case 2: Rep breakthrough (+2 reps at same load)
-  const repPr = evaluateExerciseProgressXp('Barbell Bench Press', 92.5, 10, 92.5, 8);
-  assert(
-    repPr !== null && repPr.amount === 40 && repPr.title === 'Rep Breakthrough',
-    `Rep increase (+2 reps) awards +40 XP for Rep Breakthrough`
-  );
-
-  // Case 3: Top of rep range hit (12 reps hit for double progression)
-  const topRep = evaluateExerciseProgressXp('Barbell Bench Press', 92.5, 12, 92.5, 10, 12);
-  assert(
-    topRep !== null && topRep.amount === 50 && topRep.title === 'Progression Earned',
-    `Top of rep range (12 reps) awards +50 XP for Progression Earned`
-  );
-
-  // Case 4: Ordinary non-PR working set
-  const nonPr = evaluateExerciseProgressXp('Barbell Bench Press', 90, 8, 92.5, 8);
-  assert(
-    nonPr === null,
-    `Regular non-PR set produces null XP award (zero phantom XP inflation)`
-  );
-
-  // F. Legitimate XP Economy: Strength Standards Advancement
-  const subDivAdvance = evaluateStrengthStandardAdvanceXp('Horizontal Push', 'Novice', 'I', 'Novice', 'II');
-  assert(
-    subDivAdvance !== null && subDivAdvance.amount === 100 && subDivAdvance.title === 'Strength Standard Advanced',
-    `Advancing sub-division (Novice I -> II) awards +100 XP`
-  );
-
-  const majorTierAdvance = evaluateStrengthStandardAdvanceXp('Horizontal Push', 'Novice', 'IV', 'Intermediate', 'I');
-  assert(
-    majorTierAdvance !== null && majorTierAdvance.amount === 350 && majorTierAdvance.title === 'Major Tier Breakthrough',
-    `Advancing major tier (Novice IV -> Intermediate I) awards +350 XP`
-  );
-
-  const noTierAdvance = evaluateStrengthStandardAdvanceXp('Horizontal Push', 'Novice', 'II', 'Novice', 'II');
-  assert(
-    noTierAdvance === null,
-    `Equal or lower tier produces null award (zero duplicate XP)`
-  );
-
-  // G. Community XP Leaderboard Engine
-  const optedOutSummary = buildLeaderboardSummary(freshProfile);
-  assert(
-    optedOutSummary.isOptedIn === false && optedOutSummary.currentUserEntry === null,
-    `New athlete starts opted OUT of community leaderboard with privacy preserved`
-  );
-
-  const optedInAthlete = {
-    ...freshProfile,
-    currentXp: 1850,
-    leaderboardOptIn: true,
-    leaderboardDisplayName: 'Marcus Vance',
-  };
-  const optedInSummary = buildLeaderboardSummary(optedInAthlete);
-  assert(
-    optedInSummary.isOptedIn === true &&
-      optedInSummary.currentUserEntry !== null &&
-      optedInSummary.currentUserEntry.division === 'Gold' &&
-      optedInSummary.currentUserEntry.rank > 0 &&
-      optedInSummary.currentUserEntry.xp === 1850,
-    `Opted-in athlete with 1,850 XP is dynamically placed into Gold Division at rank #${optedInSummary.currentUserEntry?.rank}`
-  );
-
-  assert(
-    DIVISION_THRESHOLDS.length === 6 &&
-      optedInSummary.entries.every((e) => e.isCurrentUser),
-    `Leaderboard has 6 divisions and never contains fabricated athletes`
-  );
+  // D. Strength standard level ups
+  const subDivAdvance = evaluateStrengthStandardAdvance('Horizontal Push', 'Novice', 'I', 'Novice', 'II');
+  assert(subDivAdvance !== null && subDivAdvance.title === 'Strength level up', `Novice I → II is a strength level up`);
+  const majorTierAdvance = evaluateStrengthStandardAdvance('Horizontal Push', 'Novice', 'IV', 'Intermediate', 'I');
+  assert(majorTierAdvance !== null && majorTierAdvance.tag === 'Intermediate', `Novice IV → Intermediate I celebrates the new tier`);
+  assert(evaluateStrengthStandardAdvance('Horizontal Push', 'Novice', 'II', 'Novice', 'II') === null, `No change is not celebrated`);
 
   // ============================================================================
   // 21. Location Adaptation, Pure Bodyweight Load Fractions & Hypertrophy Rep Cues
@@ -1645,7 +1541,6 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
     completed: false,
     readinessState: 'Normal',
     readinessZScore: 0.2,
-    xpEarned: 0,
     location: 'gym',
     exercises: [
       {
@@ -2543,10 +2438,6 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
     `Whoop 49% recovery score maps to Normal baseline (not Amber Shield) (got ${readinessWhoop49.state})`
   );
   assert(
-    readinessWhoop49.xpMultiplier === 1.0,
-    `Whoop 49% recovery score provides standard 1.0x XP multiplier`
-  );
-  assert(
     readinessWhoop49.reason.includes('49%') && readinessWhoop49.reason.includes('Yellow'),
     `Whoop 49% recovery reason indicates 49% Yellow recovery (${readinessWhoop49.reason})`
   );
@@ -2603,9 +2494,8 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
     fitbitHighEval.state === 'Primed' &&
       fitbitHighEval.provider === 'fitbit' &&
       fitbitHighEval.scoreLabel === 'Daily Readiness' &&
-      fitbitHighEval.xpMultiplier === 1.15 &&
       fitbitHighEval.readinessScore === 88,
-    `Pixel Watch High Readiness (88 >= 65) evaluates to Primed (+15% XP) with Daily Readiness label`
+    `Pixel Watch High Readiness (88 >= 65) evaluates to Primed with Daily Readiness label`
   );
 
   const fitbitTargetLog: BiometricLog = {
@@ -2624,9 +2514,8 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
     fitbitTargetEval.state === 'Normal' &&
       fitbitTargetEval.provider === 'fitbit' &&
       fitbitTargetEval.scoreLabel === 'Daily Readiness' &&
-      fitbitTargetEval.xpMultiplier === 1.0 &&
       fitbitTargetEval.readinessScore === 54,
-    `Pixel Watch Target Readiness (54, 30-64) evaluates to Normal (1.0x XP) with Daily Readiness label`
+    `Pixel Watch Target Readiness (54, 30-64) evaluates to Normal with Daily Readiness label`
   );
 
   const fitbitLowLog: BiometricLog = {
@@ -2831,7 +2720,6 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
     completedAt: '2026-10-21T10:30:00Z',
     readinessState: 'Normal',
     readinessZScore: -0.04,
-    xpEarned: 460,
     avgHeartRate: 142,
     maxHeartRate: 168,
     durationMinutes: 58,
@@ -3274,6 +3162,27 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
     assert(getNextProgramWorkoutNumber([day1]) === 2, 'Next 6-week plan workout follows the last completed one');
     assert(getNextProgramWorkoutNumber([mkDone(24, 1)]) === 1, 'The plan wraps from workout 24 back to 1');
 
+    // Program page overview: done, up next and upcoming workouts, active phase and run of the plan.
+    const ov1 = buildPlanOverview([day1]);
+    assert(
+      ov1.cycleNumber === 1 && ov1.completedCount === 1 && ov1.nextWorkoutNumber === 2 && ov1.activePhase === 1,
+      'Program page: after Workout 1 the athlete is on their first run, 1 done, Workout 2 next in Phase 1'
+    );
+    assert(
+      ov1.workouts[0].status === 'done' && ov1.workouts[0].session === day1 &&
+        ov1.workouts[1].status === 'next' && ov1.workouts[1].label === 'Shoulders and Arms' &&
+        ov1.workouts[2].status === 'upcoming' && ov1.workouts.length === 24,
+      'Program page: Workout 1 links to its logged session, Workout 2 is up next, the rest are upcoming'
+    );
+    const ovNew = buildPlanOverview([]);
+    assert(ovNew.completedCount === 0 && ovNew.workouts[0].status === 'next', 'Program page: a new athlete starts with Workout 1 up next');
+    const ov2 = buildPlanOverview([mkDone(24, 30), mkDone(1, 2)]);
+    assert(
+      ov2.cycleNumber === 2 && ov2.completedCount === 1 && ov2.workouts[23].status === 'upcoming',
+      'Program page: finishing Workout 24 starts a new run, and earlier runs do not count as done'
+    );
+    assert(planWorkoutLabel('Delts and Arms (Tri-Sets)') === 'Shoulders and Arms', 'Program page: workout names are plain English');
+
     // B. Exact weight carry-over: same exercise next time uses what was actually lifted.
     const liftedDay1 = mkDone(1, 72, (w) => {
       const g = w.exercises.find((e) => e.exerciseId === 'ex-guillotine-press')!;
@@ -3408,33 +3317,33 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
       `Rest timer is labelled with the exercise and next set (${b2Rest.context.nextLabel})`
     );
 
-    // Per-set XP: a PR pays once, and re-ticking the same set pays nothing.
+    // Per-set personal bests: celebrated once, and re-ticking the same set is not celebrated again.
     const prev = mkHistoryWith('ex-guillotine-press', 40, 12);
     const live = generate6WeekMuscleBuildingWorkout(3, 80);
     const g = live.exercises.find((e) => e.exerciseId === 'ex-guillotine-press')!;
     const prSet = { ...g.sets[0], completed: true, actualWeightKg: 42.5, actualReps: 12 };
     const liveWithSet = { ...live, exercises: live.exercises.map((e) => (e.id === g.id ? { ...e, sets: [prSet, ...e.sets.slice(1)] } : e)) };
-    const award = evaluateSetProgressAward(liveWithSet, [prev], g, prSet);
-    assert(Boolean(award && award.amount > 0), 'A heavier set than last session earns progress XP');
-    const again = evaluateSetProgressAward({ ...liveWithSet, xpAwardedSetIds: [prSet.id] }, [prev], g, prSet);
-    assert(again === null, 'Unticking and re-ticking the same set does not pay XP twice');
+    const award = evaluateSetPersonalBest(liveWithSet, [prev], g, prSet);
+    assert(award?.title === 'Weight PR', 'A heavier set than last session is celebrated as a Weight PR');
+    const again = evaluateSetPersonalBest({ ...liveWithSet, celebratedSetIds: [prSet.id] }, [prev], g, prSet);
+    assert(again === null, 'Unticking and re-ticking the same set is not celebrated twice');
     const secondSet = { ...g.sets[1], completed: true, actualWeightKg: 42.5, actualReps: 12 };
     const both = { ...live, exercises: live.exercises.map((e) => (e.id === g.id ? { ...e, sets: [prSet, secondSet, ...e.sets.slice(2)] } : e)) };
-    assert(evaluateSetProgressAward(both, [prev], g, secondSet) === null, 'Repeating the same PR on the next set pays nothing');
+    assert(evaluateSetPersonalBest(both, [prev], g, secondSet) === null, 'Repeating the same PR on the next set is not celebrated again');
 
     // Workout completion: measured values only, plan week follows the workout number.
     const done = completeWorkout({
       activeWorkout: { ...plan, exercises: plan.exercises.map((e) => ({ ...e, sets: e.sets.map((st) => ({ ...st, completed: true })) })) },
       history: [],
       profile: { ...NEW_USER_PROFILE, programType: 'muscle_building_6wk', mesocycleWeek: 1 },
-      readiness: { state: 'Normal', score: 0, xpMultiplier: 1 },
+      readiness: { state: 'Normal', score: 0 },
       bodyweightKg: 80,
     });
     assert(
       done.completedSession.avgHeartRate === undefined && done.completedSession.kilojoules === undefined,
       'Completed workouts store no estimated heart rate or energy'
     );
-    assert(done.completionAward.amount === 300 && done.strengthAdvanceAward === null, 'Day 1 earns 300 XP and no first-log rank-up');
+    assert(done.strengthMilestone === null && !('xpEarned' in done.completedSession), 'Day 1 stores no XP and a first log is not a strength level up');
     assert(done.nextMesocycleWeek === 1 && getNextProgramWorkoutNumber(done.nextHistory) === 2, 'After plan workout 1 the plan moves to workout 2 in week 1');
 
     // Wearable token rotation: refreshed tokens from the proxy reach the app.
@@ -3813,12 +3722,12 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
         activeWorkout: session,
         history: history6,
         profile: profile6,
-        readiness: { state: 'Normal', score: 0, xpMultiplier: 1 } as any,
+        readiness: { state: 'Normal', score: 0 },
         bodyweightKg: 80,
         now: new Date(t),
       });
       if (result.completedSession.programWorkoutNumber !== n) issues.push(`workout ${n}: completed session lost its plan number`);
-      if (result.milestoneAward) awards.push(`${n}:${result.milestoneAward.amount}`);
+      if (result.weekMilestone) awards.push(`${n}:${result.weekMilestone.title}`);
       history6 = result.nextHistory;
       profile6 = { ...profile6, mesocycleWeek: result.nextMesocycleWeek };
       if (n < 24 && result.nextMesocycleWeek !== Math.ceil((n + 1) / 4)) issues.push(`after workout ${n}: week ${result.nextMesocycleWeek}, expected ${Math.ceil((n + 1) / 4)}`);
@@ -3840,7 +3749,10 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
     console.log(`   24 workouts over ${days.toFixed(1)} days; longest recovery wait ${maxWaitDays.toFixed(1)} days; milestones ${awards.join(', ')}`);
     issues.slice(0, 25).forEach((i) => console.log(`   ISSUE: ${i}`));
     assert(issues.length === 0, `All 24 plan workouts prepare, wait for recovery, complete and report without issues (${issues.length} issues)`);
-    assert(awards.length === 6 && awards[5] === '24:500' && awards.slice(0, 5).every((a) => a.endsWith(':200')), 'Five week milestones and the 6-week graduation award are earned');
+    assert(
+      awards.length === 6 && awards[5] === '24:Block complete' && awards.slice(0, 5).every((a) => / complete$/.test(a) && a.includes(':Week ')),
+      'Five finished weeks and the finished 6-week block are celebrated'
+    );
     assert(getNextProgramWorkoutNumber(history6) === 1 && profile6.mesocycleWeek === 1, 'After graduation the plan starts again at workout 1, week 1');
     assert(days <= 49 && maxWaitDays <= 4, `The plan fits in about 6 weeks (${days.toFixed(1)} days) and no session waits more than 4 days`);
   }
@@ -3859,8 +3771,36 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
     const charts = buildCompositionCharts({ biometrics: logs, profile: bulker, fmt: fmtP });
     const byId = (id: string) => charts.find((c) => c.id === id)!;
     assert(
-      ['bodyweight', 'body-fat', 'lean-mass', 'ffmi', 'waist', 'waist-to-height', 'chest', 'arms'].every((id) => charts.some((c) => c.id === id)),
-      'Composition charts: bodyweight, body fat, lean mass, FFMI, waist, waist-to-height, chest and arms'
+      [
+        'bodyweight',
+        'bmi',
+        'body-fat',
+        'lean-mass',
+        'ffmi',
+        'subcutaneous-fat',
+        'visceral-fat',
+        'body-water',
+        'skeletal-muscle-mass',
+        'muscle-mass',
+        'bone-mass',
+        'protein-mass',
+        'bmr',
+        'metabolic-age',
+        'neck',
+        'shoulders',
+        'chest',
+        'waist',
+        'waist-to-height',
+        'abdomen',
+        'hips',
+        'bicep-left',
+        'bicep-right',
+        'thigh-left',
+        'thigh-right',
+        'calf-left',
+        'calf-right',
+      ].every((id) => charts.some((c) => c.id === id)),
+      'Composition charts cover all 13 RENPHO scale metrics and all 12 RENPHO tape measure sites'
     );
     assert(
       byId('bodyweight').points.length === 22 && byId('bodyweight').secondary!.length === 22 && /a week/.test(byId('bodyweight').summary) && /lean bulk/.test(byId('bodyweight').summary),
@@ -3900,21 +3840,52 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
     assert(buildStrengthCharts({ workouts: [], profile: bulker, bodyweightKg: 80, fmt: fmtP }).length === 1, 'With no workouts, only the weekly sets card (as an example) shows');
   }
 
-  console.log('\n[38. RENPHO Bluetooth Scale & Smart Tape Measure Integration + Multi-Site Body Circumference Charts]');
+  console.log('\n[38. RENPHO Bluetooth Scale (13 Metrics) & Smart Tape Measure (12 Sites) + Knowledge Graph Trends]');
   {
     assert(
-      BODY_MEASUREMENT_SITES.length === 9 &&
-        ['waist', 'chest', 'arm', 'shoulders', 'hips', 'thigh', 'calf', 'forearm', 'neck'].every((id) =>
-          BODY_MEASUREMENT_SITES.some((s) => s.id === id)
-        ),
-      'BODY_MEASUREMENT_SITES covers all 9 body circumference areas (waist, chest, arm, shoulders, hips, thigh, calf, forearm, neck)'
+      BODY_MEASUREMENT_SITES.length === 12 &&
+        [
+          'neck',
+          'shoulder',
+          'chest',
+          'waist',
+          'abdomen',
+          'hip',
+          'bicep_left',
+          'bicep_right',
+          'thigh_left',
+          'thigh_right',
+          'calf_left',
+          'calf_right',
+        ].every((id, idx) => BODY_MEASUREMENT_SITES[idx]?.id === id),
+      'BODY_MEASUREMENT_SITES covers all 12 RENPHO Smart Tape Measure sites in exact canonical order'
     );
 
-    // 1. QN-Scale / Yolanda (0xFFE1/0xFFE2) live & locked packets
-    // 82.45 kg = 8245 = 0x2035; divisor byte[2]=0x00 (100); state byte[5]=0x00 (live) vs 0x01 (locked); impedance 512 ohms = 0x0200
+    assert(
+      RENPHO_SCALE_METRICS.length === 13 &&
+        [
+          'weight',
+          'bmi',
+          'body_fat',
+          'fat_free_mass',
+          'subcutaneous_fat',
+          'visceral_fat',
+          'body_water',
+          'skeletal_muscle_mass',
+          'muscle_mass',
+          'bone_mass',
+          'protein_mass',
+          'bmr',
+          'metabolic_age',
+        ].every((id, idx) => RENPHO_SCALE_METRICS[idx]?.id === id),
+      'RENPHO_SCALE_METRICS covers all 13 RENPHO Health Scale metrics in exact canonical order'
+    );
+
+    // 1. QN-Scale / Yolanda (0xFFE1/0xFFE2) live & locked packets + 13-metric BIA computation
     const qnLive = decodeRenphoScalePacket(
       new Uint8Array([0x10, 0x0b, 0x00, 0x20, 0x35, 0x00, 0x00, 0x00]),
-      RENPHO_SCALE_UUIDS.QN_NOTIFY_FFE1
+      RENPHO_SCALE_UUIDS.QN_NOTIFY_FFE1,
+      { heightCm: 180, age: 28, gender: 'male' }
     );
     assert(
       qnLive !== null && qnLive.weightKg === 82.45 && qnLive.stabilized === false && qnLive.sourceProtocol === 'qn_scale',
@@ -3923,28 +3894,42 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
 
     const qnLocked = decodeRenphoScalePacket(
       new Uint8Array([0x10, 0x0b, 0x00, 0x20, 0x35, 0x01, 0x02, 0x00]),
-      RENPHO_SCALE_UUIDS.QN_NOTIFY_FFE1
+      RENPHO_SCALE_UUIDS.QN_NOTIFY_FFE1,
+      { heightCm: 180, age: 28, gender: 'male' }
     );
     assert(
       qnLocked !== null &&
         qnLocked.weightKg === 82.45 &&
         qnLocked.stabilized === true &&
-        qnLocked.impedanceOhms === 512,
-      `QN-Scale locked packet decodes 82.45 kg stabilized reading with 512Ω bio-impedance`
+        qnLocked.impedanceOhms === 512 &&
+        qnLocked.metrics !== undefined &&
+        qnLocked.metrics.bodyweightKg === 82.5 &&
+        qnLocked.metrics.bodyFatPct === undefined &&
+        qnLocked.metrics.visceralFat === undefined &&
+        qnLocked.metrics.metabolicAge === undefined &&
+        qnLocked.metrics.bmi === undefined,
+      `QN-Scale locked packet decodes 82.45 kg with 512Ω impedance and invents no body composition (no age/sex/height entered)`
+    );
+    const qnWithHeight = decodeRenphoScalePacket(
+      new Uint8Array([0x10, 0x0b, 0x00, 0x20, 0x35, 0x01, 0x02, 0x00]),
+      RENPHO_SCALE_UUIDS.QN_NOTIFY_FFE1,
+      { measuredHeightCm: 180 }
+    );
+    assert(
+      qnWithHeight?.metrics?.bmi === 25.4 && qnWithHeight.metrics.bodyFatPct === undefined,
+      `BMI comes from the athlete's entered height (got ${qnWithHeight?.metrics?.bmi}); body fat stays empty`
     );
 
     // 2. Standard Bluetooth SIG Weight Measurement (0x2A9D) SI & Imperial packets
-    // SI: 80.00 kg -> 80 / 0.005 = 16000 = 0x3E80 LE -> [0x00, 0x80, 0x3E]
     const bleSi = decodeRenphoScalePacket(
       new Uint8Array([0x00, 0x80, 0x3e]),
       RENPHO_SCALE_UUIDS.BLE_WEIGHT_MEASUREMENT_CHAR
     );
     assert(
-      bleSi !== null && bleSi.weightKg === 80 && bleSi.stabilized === true && bleSi.sourceProtocol === 'ble_weight_scale',
+      bleSi !== null && bleSi.weightKg === 80 && bleSi.stabilized === true && bleSi.sourceProtocol === 'ble_weight_scale' && bleSi.metrics?.bodyweightKg === 80,
       `Standard BLE 0x2A9D SI packet decodes 80.0 kg (got ${bleSi?.weightKg} kg)`
     );
 
-    // Imperial: 176.40 lb -> 17640 = 0x44E8 LE -> [0x01, 0xE8, 0x44] -> ~80.01 kg
     const bleImp = decodeRenphoScalePacket(
       new Uint8Array([0x01, 0xe8, 0x44]),
       RENPHO_SCALE_UUIDS.BLE_WEIGHT_MEASUREMENT_CHAR
@@ -3955,7 +3940,6 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
     );
 
     // 3. Standard Bluetooth SIG Body Composition (0x2A9C) packet
-    // Body fat 14.8% -> 148 = 0x0094 LE -> [0x00, 0x00, 0x94, 0x00]
     const bleBf = decodeRenphoScalePacket(
       new Uint8Array([0x00, 0x00, 0x94, 0x00]),
       RENPHO_SCALE_UUIDS.BLE_BODY_COMPOSITION_CHAR
@@ -4020,53 +4004,100 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
       'RENPHO Smart Tape GATT service and notification characteristic UUIDs are configured'
     );
 
-    // 6. Multi-site body circumference charts in both cm and inches over time
+    // 6. All 13 Scale Metrics & 12 Tape Measure Sites in Knowledge Graph & Progress Charts
     const day = (n: number) => localDateString(new Date(2026, 9, n));
     const blank = { hrvRmssd: 0, restingHr: 0, sleepHours: 0, steps: 0, activeZoneMinutes: 0 };
+    const m1 = computeRenphoScaleMetrics({ weightKg: 80.0, bodyFatPct: 16.2, subcutaneousFatPct: 14.1, visceralFat: 8, bodyWaterPct: 57.5, skeletalMuscleMassKg: 38.2, muscleMassKg: 63.6, boneMassKg: 3.4, proteinMassKg: 13.1, bmrKcal: 1760, metabolicAge: 27 }, { measuredHeightCm: 180 })!;
+    const m2 = computeRenphoScaleMetrics({ weightKg: 80.8, bodyFatPct: 15.6, subcutaneousFatPct: 13.6, visceralFat: 8, bodyWaterPct: 58.0, skeletalMuscleMassKg: 38.9, muscleMassKg: 64.6, boneMassKg: 3.4, proteinMassKg: 13.4, bmrKcal: 1785, metabolicAge: 26 }, { measuredHeightCm: 180 })!;
     const multiSiteLogs: BiometricLog[] = [
       {
         date: day(1),
-        bodyweightKg: 80,
-        waistCm: 84,
-        chestCm: 104,
-        armCm: 38,
-        shouldersCm: 122,
-        hipsCm: 98,
-        thighCm: 58,
-        calfCm: 39,
-        forearmCm: 31,
-        neckCm: 40,
+        ...m1,
+        neckCm: 40.0,
+        shouldersCm: 122.0,
+        chestCm: 104.0,
+        waistCm: 84.0,
+        abdomenCm: 86.0,
+        hipsCm: 98.0,
+        bicepLeftCm: 37.8,
+        bicepRightCm: 38.0,
+        thighLeftCm: 57.8,
+        thighRightCm: 58.0,
+        calfLeftCm: 38.9,
+        calfRightCm: 39.0,
         ...blank,
       },
       {
         date: day(15),
-        bodyweightKg: 80.5,
-        waistCm: 82.5,
-        chestCm: 105.5,
-        armCm: 38.6,
-        shouldersCm: 123.5,
-        hipsCm: 97.5,
-        thighCm: 59,
-        calfCm: 39.4,
-        forearmCm: 31.4,
+        ...m2,
         neckCm: 40.2,
+        shouldersCm: 123.5,
+        chestCm: 105.5,
+        waistCm: 82.5,
+        abdomenCm: 84.2,
+        hipsCm: 97.5,
+        bicepLeftCm: 38.4,
+        bicepRightCm: 38.6,
+        thighLeftCm: 58.8,
+        thighRightCm: 59.0,
+        calfLeftCm: 39.3,
+        calfRightCm: 39.4,
         ...blank,
       },
     ];
     const fmtCm = { weight: (kg: number) => `${kg} kg`, length: (cm: number) => `${Math.round(cm * 10) / 10} cm` };
     const fmtIn = { weight: (kg: number) => `${Math.round(kg * 2.20462 * 10) / 10} lb`, length: (cm: number) => `${Math.round((cm / 2.54) * 10) / 10} in` };
-    const bulker = { ...NEW_USER_PROFILE, goalPhase: 'Lean Bulk' } as UserProfile;
+    const bulker = { ...NEW_USER_PROFILE, goalPhase: 'Lean Bulk', measuredHeightCm: 180 } as UserProfile;
+
+    const kgComp = buildBodyCompositionKnowledgeGraph(multiSiteLogs, bulker);
+    assert(
+      kgComp.populatedScaleCount === 13 &&
+        kgComp.populatedTapeCount === 12 &&
+        kgComp.scaleTrends.every((t) => t.sampleCount === 2) &&
+        kgComp.tapeTrends.every((t) => t.sampleCount === 2) &&
+        kgComp.bilateralSymmetry.length === 3 &&
+        kgComp.bilateralSymmetry.every((p) => p.status === 'balanced'),
+      `Knowledge Graph tracks all 13 scale trends (${kgComp.populatedScaleCount}/13), all 12 tape trends (${kgComp.populatedTapeCount}/12), and 3 bilateral symmetry pairs`
+    );
 
     const chartsCm = buildCompositionCharts({ biometrics: multiSiteLogs, profile: bulker, fmt: fmtCm });
     const chartsIn = buildCompositionCharts({ biometrics: multiSiteLogs, profile: bulker, fmt: fmtIn });
 
-    const allSiteChartIds = ['waist', 'chest', 'arms', 'shoulders', 'hips', 'thighs', 'calves', 'forearms', 'neck'];
+    const allScaleAndTapeChartIds = [
+      'bodyweight',
+      'bmi',
+      'body-fat',
+      'lean-mass',
+      'ffmi',
+      'subcutaneous-fat',
+      'visceral-fat',
+      'body-water',
+      'skeletal-muscle-mass',
+      'muscle-mass',
+      'bone-mass',
+      'protein-mass',
+      'bmr',
+      'metabolic-age',
+      'neck',
+      'shoulders',
+      'chest',
+      'waist',
+      'waist-to-height',
+      'abdomen',
+      'hips',
+      'bicep-left',
+      'bicep-right',
+      'thigh-left',
+      'thigh-right',
+      'calf-left',
+      'calf-right',
+    ];
     assert(
-      allSiteChartIds.every((id) => {
+      allScaleAndTapeChartIds.every((id) => {
         const c = chartsCm.find((ch) => ch.id === id);
         return c !== undefined && c.points.length === 2;
       }),
-      'All 9 body circumference charts populate 2-point time series when logged'
+      'All 13 scale metric charts and 12 tape circumference charts populate 2-point time series when logged'
     );
     const shouldersCmChart = chartsCm.find((c) => c.id === 'shoulders')!;
     const shouldersInChart = chartsIn.find((c) => c.id === 'shoulders')!;
@@ -4075,6 +4106,148 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
         shouldersCmChart.summary.includes('up 1.5 cm') &&
         shouldersInChart.summary.includes('48.6 in'),
       `Shoulders chart formats summary in cm ("${shouldersCmChart.summary}") and inches ("${shouldersInChart.summary}")`
+    );
+
+    // 7. Persistent Paired Device Memory & Silent Reconnection (Never forgets paired scale/tape)
+    clearSavedRenphoDevices();
+    assert(
+      loadSavedRenphoDevices().scale === undefined && loadSavedRenphoDevices().tape === undefined,
+      'clearSavedRenphoDevices starts with clean state'
+    );
+    savePairedRenphoDevice({
+      id: 'scale-ble-01',
+      name: 'QN-Scale ES-26M',
+      kind: 'scale',
+      pairedAt: '2026-10-26',
+    });
+    savePairedRenphoDevice({
+      id: 'tape-ble-01',
+      name: 'ES_TAPE RF-BMF01',
+      kind: 'tape',
+      pairedAt: '2026-10-26',
+    });
+    recordRenphoDeviceSync('scale', '82.5 kg · 14.8% BF');
+    const savedDevs = loadSavedRenphoDevices();
+    assert(
+      savedDevs.scale?.id === 'scale-ble-01' &&
+        savedDevs.scale?.name === 'QN-Scale ES-26M' &&
+        savedDevs.scale?.lastSummary === '82.5 kg · 14.8% BF' &&
+        savedDevs.tape?.id === 'tape-ble-01' &&
+        savedDevs.tape?.name === 'ES_TAPE RF-BMF01',
+      'Paired RENPHO Scale and Smart Tape persist across sessions in localStorage'
+    );
+
+    // Simulate Web Bluetooth getDevices() returning the already-permitted scale so connectRenphoScale reconnects WITHOUT calling requestDevice
+    let requestDeviceCalled = false;
+    const mockCharListenerMap = new Map<string, (ev: any) => void>();
+    const mockScaleDevice = {
+      id: 'scale-ble-01',
+      name: 'QN-Scale ES-26M',
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+      gatt: {
+        connected: false,
+        connect: async function () {
+          this.connected = true;
+          return this;
+        },
+        disconnect: function () {
+          this.connected = false;
+        },
+        getPrimaryServices: async () => [
+          {
+            uuid: '0000ffe0-0000-1000-8000-00805f9b34fb',
+            getCharacteristics: async () => [
+              {
+                uuid: '0000ffe1-0000-1000-8000-00805f9b34fb',
+                properties: { notify: true },
+                startNotifications: async function () {
+                  return this;
+                },
+                addEventListener: (type: string, fn: (ev: any) => void) => {
+                  mockCharListenerMap.set(type, fn);
+                },
+                removeEventListener: (type: string) => {
+                  mockCharListenerMap.delete(type);
+                },
+              },
+            ],
+          },
+        ],
+      },
+    };
+    const prevNavigator = (globalThis as any).navigator;
+    Object.defineProperty(globalThis, 'navigator', {
+      configurable: true,
+      value: {
+        bluetooth: {
+          requestDevice: async () => {
+            requestDeviceCalled = true;
+            return mockScaleDevice;
+          },
+          getDevices: async () => [mockScaleDevice],
+        },
+      },
+    });
+
+    const resolvedDevice = await resolveRememberedBleDevice('scale');
+    assert(
+      resolvedDevice !== null && resolvedDevice.id === 'scale-ble-01',
+      'resolveRememberedBleDevice retrieves remembered scale from navigator.bluetooth.getDevices() without manual pairing dialog'
+    );
+
+    let streamedReadingWeight = 0;
+    const reconnectedScale = await connectRenphoScale({
+      onReading: (r) => {
+        streamedReadingWeight = r.weightKg;
+      },
+    });
+    const notifyHandler = mockCharListenerMap.get('characteristicvaluechanged');
+    notifyHandler?.({
+      target: {
+        value: new DataView(new Uint8Array([0x10, 0x0b, 0x00, 0x20, 0x35, 0x01, 0x02, 0x00]).buffer),
+      },
+    });
+    assert(
+      reconnectedScale.reconnectedFromMemory === true &&
+        requestDeviceCalled === false &&
+        streamedReadingWeight === 82.45,
+      'connectRenphoScale reconnects to remembered scale and streams locked 82.45 kg reading without opening Bluetooth pairing prompt'
+    );
+    reconnectedScale.disconnect();
+
+    forgetPairedRenphoDevice('scale');
+    assert(
+      loadSavedRenphoDevices().scale === undefined && loadSavedRenphoDevices().tape?.id === 'tape-ble-01',
+      'forgetPairedRenphoDevice removes only the specified device kind'
+    );
+    clearSavedRenphoDevices();
+    if (prevNavigator !== undefined) {
+      Object.defineProperty(globalThis, 'navigator', { configurable: true, value: prevNavigator });
+    }
+
+    // 8. Verify Separated Weight vs Measurements UX in AnalyticsTab & WeightLogModal
+    const analyticsTabSrc = fs.readFileSync(
+      path.resolve(process.cwd(), 'src/components/analytics/AnalyticsTab.tsx'),
+      'utf-8'
+    );
+    const weightLogModalSrc = fs.readFileSync(
+      path.resolve(process.cwd(), 'src/components/analytics/WeightLogModal.tsx'),
+      'utf-8'
+    );
+    assert(
+      analyticsTabSrc.includes('openLogWeight') &&
+        analyticsTabSrc.includes('openLogMeasurements') &&
+        analyticsTabSrc.includes('Log weight') &&
+        analyticsTabSrc.includes('Log measurements'),
+      'AnalyticsTab separates the choice between "Log weight" and "Log measurements"'
+    );
+    assert(
+      weightLogModalSrc.includes('Option 1: Enter weight manually') &&
+        weightLogModalSrc.includes('Option 2: Step on RENPHO Scale') &&
+        weightLogModalSrc.includes('How scale data is pulled into the app:') &&
+        weightLogModalSrc.includes('How tape measurements are pulled into the app:'),
+      'WeightLogModal clearly separates Weight (manual or step on RENPHO scale) from Tape Measurements and explains how data is pulled into the app'
     );
   }
 

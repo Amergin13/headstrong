@@ -47,15 +47,18 @@ export type ReadinessState = 'Primed' | 'Normal' | 'Amber Shield';
 export type Gender = 'male' | 'female';
 
 export type BodyMeasurementSite =
-  | 'waist'
-  | 'chest'
-  | 'shoulders'
-  | 'arm'
-  | 'forearm'
   | 'neck'
-  | 'hips'
-  | 'thigh'
-  | 'calf';
+  | 'shoulder'
+  | 'chest'
+  | 'waist'
+  | 'abdomen'
+  | 'hip'
+  | 'bicep_left'
+  | 'bicep_right'
+  | 'thigh_left'
+  | 'thigh_right'
+  | 'calf_left'
+  | 'calf_right';
 
 export interface BiometricLog {
   date: string; // ISO date 'YYYY-MM-DD'
@@ -77,17 +80,44 @@ export interface BiometricLog {
   maxWorkoutHr?: number;
   workoutDurationMin?: number;
   source?: WearableProvider;
-  /** Body composition the athlete measured (RENPHO Bluetooth scale, smart tape, calipers or manual). Undefined = not measured. */
+  /**
+   * RENPHO Bluetooth Health Scale (13 metrics) & Smart Body Tape Measure (12 sites),
+   * or manual entry. Undefined = not measured.
+   */
+  bmi?: number;
   bodyFatPct?: number;
-  waistCm?: number;
-  chestCm?: number;
+  fatFreeMassKg?: number;
+  subcutaneousFatPct?: number;
+  visceralFat?: number;
+  bodyWaterPct?: number;
+  skeletalMuscleMassKg?: number;
+  muscleMassKg?: number;
+  boneMassKg?: number;
+  proteinMassKg?: number;
+  bmrKcal?: number;
+  metabolicAge?: number;
+  impedanceOhms?: number;
+
+  // 12 RENPHO Smart Tape Measure circumference sites (stored in cm):
+  neckCm?: number;
   shouldersCm?: number;
+  chestCm?: number;
+  waistCm?: number;
+  abdomenCm?: number;
+  hipsCm?: number;
+  bicepLeftCm?: number;
+  bicepRightCm?: number;
+  thighLeftCm?: number;
+  thighRightCm?: number;
+  calfLeftCm?: number;
+  calfRightCm?: number;
+
+  // Legacy single-site circumference fields retained for backwards compatibility:
   armCm?: number;
   forearmCm?: number;
-  neckCm?: number;
-  hipsCm?: number;
   thighCm?: number;
   calfCm?: number;
+  heightCm?: number;
 }
 
 export type SetType = 'working' | 'warmup' | 'drop' | 'myo';
@@ -212,7 +242,6 @@ export interface WorkoutSession {
   completedAt?: string;
   readinessState: ReadinessState;
   readinessZScore: number;
-  xpEarned: number;
   avgHeartRate?: number;
   maxHeartRate?: number;
   durationMinutes?: number;
@@ -228,8 +257,8 @@ export interface WorkoutSession {
   programWorkoutNumber?: number;
   /** Athlete chose to train before the queued session's muscles were recovered. */
   recoveryOverride?: boolean;
-  /** Working-set IDs that have already earned progressive-overload XP this session. */
-  xpAwardedSetIds?: string[];
+  /** Working-set IDs already celebrated as a personal best this session. */
+  celebratedSetIds?: string[];
 }
 
 export interface SubTierQuest {
@@ -310,8 +339,6 @@ export interface UserProfile {
   goalPhase: GoalPhase;
   programType?: ProgramSplitType;
   mesocycleWeek?: number; // 1 to 6
-  level: number;
-  currentXp: number;
   streakDays: number;
   lastWorkoutDate?: string;
   wearableSource?: WearableProvider | null;
@@ -335,8 +362,6 @@ export interface UserProfile {
   availableLocations?: TrainingLocation[];
   homeEquipment?: HomeEquipmentTag[];
   scheduledWeekLocations?: Record<number, TrainingLocation>; // Planned locations for future mesocycle weeks (e.g. week 5 -> 'travel')
-  leaderboardOptIn?: boolean;
-  leaderboardDisplayName?: string;
   authUserId?: string;
   email?: string;
   avatarUrl?: string;

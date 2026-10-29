@@ -10,6 +10,9 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       workbox: {
+        skipWaiting: true,
+        clientsClaim: true,
+        cleanupOutdatedCaches: true,
         // The on-device coach model library (~6 MB) loads only after the athlete opts in,
         // so it is not part of the app's offline pre-cache.
         globIgnores: ['**/vendor-webllm-*.js', '**/coachModel.worker-*.js'],

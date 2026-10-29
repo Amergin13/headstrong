@@ -1150,7 +1150,6 @@ export const TrainTab: React.FC<TrainTabProps> = ({
       {showSummaryModal && (
         <WorkoutSummaryModal
           workout={activeWorkout}
-          readinessState={readiness.state}
           onClose={handleCloseSummary}
           whoopTelemetry={whoopStrainSummary}
           isWhoopConnected={Boolean(profile.whoopConnected)}
@@ -1175,12 +1174,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
                 Close
               </button>
             </div>
-            <div className="wk-body">
-              {previewPastWorkout.name} •{' '}
-              <span className="font-bold tabular-numbers" style={{ color: 'var(--wk-accent)' }}>
-                +{previewPastWorkout.xpEarned} XP
-              </span>
-            </div>
+            <div className="wk-body">{previewPastWorkout.name}</div>
             <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
               {previewPastWorkout.exercises.map((ex) => (
                 <div

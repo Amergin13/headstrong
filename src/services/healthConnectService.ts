@@ -96,13 +96,7 @@ export function parseHealthConnectExport(rawInput: string | Record<string, any>)
     data.forEach((item) => {
       if (item && item.date) {
         const entry = getOrCreate(item.date);
-        if (typeof item.bodyweightKg === 'number') entry.bodyweightKg = item.bodyweightKg;
-        if (typeof item.hrvRmssd === 'number') entry.hrvRmssd = item.hrvRmssd;
-        if (typeof item.restingHr === 'number') entry.restingHr = item.restingHr;
-        if (typeof item.sleepHours === 'number') entry.sleepHours = item.sleepHours;
-        if (typeof item.steps === 'number') entry.steps = item.steps;
-        if (typeof item.activeZoneMinutes === 'number') entry.activeZoneMinutes = item.activeZoneMinutes;
-        if (typeof item.vo2Max === 'number') entry.vo2Max = item.vo2Max;
+        Object.assign(entry, item);
       }
     });
   }
@@ -157,6 +151,38 @@ export function parseHealthConnectExport(rawInput: string | Record<string, any>)
         if (typeof val === 'number') entry.bodyweightKg = Math.round(val * 10) / 10;
       }
 
+      // Body Fat Record
+      if (rec.type === 'BodyFatRecord' || rec.percentage !== undefined || rec.bodyFatPct !== undefined) {
+        const val = rec.percentage ?? rec.bodyFatPct;
+        if (typeof val === 'number' && val > 0 && val < 75) {
+          entry.bodyFatPct = Math.round(val * 10) / 10;
+        }
+      }
+
+      // Lean Body Mass Record
+      if (rec.type === 'LeanBodyMassRecord' || rec.leanMassKg !== undefined || rec.fatFreeMassKg !== undefined) {
+        const val = rec.leanMassKg ?? rec.fatFreeMassKg ?? rec.mass?.inKilograms;
+        if (typeof val === 'number' && val > 10) {
+          entry.fatFreeMassKg = Math.round(val * 10) / 10;
+        }
+      }
+
+      // Bone Mass Record
+      if (rec.type === 'BoneMassRecord' || rec.boneMassKg !== undefined) {
+        const val = rec.boneMassKg ?? rec.mass?.inKilograms;
+        if (typeof val === 'number' && val > 0.5) {
+          entry.boneMassKg = Math.round(val * 100) / 100;
+        }
+      }
+
+      // Basal Metabolic Rate Record
+      if (rec.type === 'BasalMetabolicRateRecord' || rec.bmrKcal !== undefined || rec.basalMetabolicRate !== undefined) {
+        const val = rec.bmrKcal ?? rec.basalMetabolicRate?.inKilocaloriesPerDay;
+        if (typeof val === 'number' && val > 500) {
+          entry.bmrKcal = Math.round(val);
+        }
+      }
+
       // VO2 Max Record
       if (rec.type === 'Vo2MaxRecord' || rec.vo2MillilitersPerMinuteKilogram !== undefined) {
         const val = rec.vo2MillilitersPerMinuteKilogram || rec.vo2Max;
@@ -166,6 +192,7 @@ export function parseHealthConnectExport(rawInput: string | Record<string, any>)
   }
 
   const parsedLogs: BiometricLog[] = Array.from(logsByDate.values()).map((p) => ({
+    ...p,
     date: p.date || localDateString(),
     bodyweightKg: p.bodyweightKg || 80.0,
     hrvRmssd: p.hrvRmssd || 58,

@@ -740,14 +740,14 @@ async function processAssistantMessageCore(
           }
         } else if (recScore !== undefined) {
           if (recScore >= 67) {
-            answerText = `Your Whoop recovery is at ${recScore}% (${zoneLabel} zone) with an HRV of ${hrv} ms and ${sleep} hours of sleep. Your parasympathetic tone is elevated (+15% workout XP multiplier), giving you a green light to push load on your working sets.`;
+            answerText = `Your Whoop recovery is at ${recScore}% (${zoneLabel} zone) with an HRV of ${hrv} ms and ${sleep} hours of sleep. You're well recovered, so it's a good day to push the weight on your working sets.`;
           } else if (recScore >= 34) {
             answerText = `Your Whoop recovery is at ${recScore}% (${zoneLabel} zone) with an HRV of ${hrv} ms and ${sleep} hours of sleep. Your autonomic nervous system is in a balanced baseline. Follow your standard 1–2 RIR double progression targets.`;
           } else {
             answerText = `Your Whoop recovery is at ${recScore}% (${zoneLabel} zone, Amber Shield active) with an HRV of ${hrv} ms and ${sleep} hours of sleep. Systemic fatigue has accumulated. Working weights are held steady with 2–3 reps left in reserve to prevent joint burnout and protect your streak.`;
           }
         } else if (readinessState === 'Primed') {
-          answerText = `Your recovery is Primed today with a strong ${hrv} ms HRV and ${sleep} hours of sleep. Your parasympathetic tone is elevated, granting a +15% workout XP multiplier and a green light to push load on your first working sets.`;
+          answerText = `Your recovery is Primed today with a strong ${hrv} ms HRV and ${sleep} hours of sleep. You're well recovered, so it's a good day to push the weight on your first working sets.`;
         } else if (readinessState === 'Amber Shield') {
           answerText = `Your recovery is in Amber Shield mode (HRV: ${hrv} ms, Sleep: ${sleep}h). Your central nervous system needs lighter effort today. Working weights are held steady with 2–3 reps left in reserve to prevent joint burnout and protect your streak.`;
         } else if (kg.recoveryEfficiencyScore > 0) {
@@ -868,7 +868,7 @@ async function processAssistantMessageCore(
           `• **Life-Proof Schedule:** An asynchronous queue means missed workouts wait without guilt or streak penalties, adapting to your location in 1 tap.\n\n` +
           `You don't need to carry a gym notebook or calculate progression math—**you just need to show up and lift.**`;
       } else if (
-        /\b(smart\s*scale|smart\s*scales|measuring\s*devices?|smart\s*measuring|smart\s*tape|friction\s*free\s*track)\b/i.test(
+        /\b(smart\s*scale|smart\s*scales|measuring\s*devices?|smart\s*measuring|smart\s*tape|renpho|friction\s*free\s*track)\b/i.test(
           lowerMsg
         )
       ) {
@@ -884,10 +884,11 @@ async function processAssistantMessageCore(
           });
         }
         answerText =
-          `Treise is built to make progress tracking completely friction-free!\n\n` +
-          `• **Smart Scales:** A scale that syncs to Fitbit (such as Fitbit Aria) brings your morning weight in automatically once Fitbit is connected.\n` +
-          `• **Wearable Telemetry:** Integrates with Google Pixel Watch, Fitbit, Whoop, and Android Health Connect to feed your 7-day average weight and daily recovery readiness directly into your training plan.\n\n` +
-          `Automating your data input eliminates tracking fatigue so you can focus 100% on execution.`;
+          `Treise is built to make progress tracking completely friction-free—with or without smart hardware!\n\n` +
+          `• **RENPHO Health Scale (13 Metrics):** Connect over Bluetooth in **Progress → Composition → Log measurements** to automatically capture Weight, BMI, Body Fat %, Fat-Free Mass, Subcutaneous Fat, Visceral Fat, Body Water, Skeletal Muscle Mass, Muscle Mass, Bone Mass, Protein Mass, Basal Metabolic Rate (BMR), and Metabolic Age.\n` +
+          `• **RENPHO Smart Tape Measure (12 Sites):** Stream and lock Neck, Shoulder, Chest, Waist, Abdomen, Hip, Bicep Left, Bicep Right, Thigh Left, Thigh Right, Calf Left, and Calf Right circumferences.\n` +
+          `• **Manual Entry Anytime:** You can also type body weight, body fat %, or any of the 12 tape measurements manually at any time with zero reliance on owning the devices.\n` +
+          `• **Wearable Telemetry:** Integrates with Google Pixel Watch, Fitbit, Whoop, and Android Health Connect to feed your 7-day average weight and daily recovery readiness directly into your training plan.`;
       } else if (
         /^(hi|hello|hey|heya|howdy|greetings|good\s*(morning|afternoon|evening)|help|who\s*are\s*you|what\s*can\s*you\s*do)\b/i.test(
           lowerMsg
@@ -1177,7 +1178,7 @@ async function processAssistantMessageCore(
 
             answerText = `Today's session is **${activeWorkout?.name || 'Workout'}** (**${activeWorkout?.splitDay || 'Scheduled'} Day**) in **Week ${profile.mesocycleWeek || 3} of 6** (${activeWorkout?.location === 'travel' ? 'Bodyweight' : activeWorkout?.location === 'home' ? 'At Home' : 'Full Gym'} mode).\n\nPlanned Movements:\n${plannedList}\n\n${
               readinessState === 'Primed'
-                ? `⚡ Autonomic recovery is **Primed** (HRV: ${latestBio?.hrvRmssd ?? 58}ms, Sleep: ${latestBio?.sleepHours ?? 7.5}h). You have an active +15% XP multiplier—attack Set 1 with high concentric intent!`
+                ? `⚡ Autonomic recovery is **Primed** (HRV: ${latestBio?.hrvRmssd ?? 58}ms, Sleep: ${latestBio?.sleepHours ?? 7.5}h). It's a good day to push: attack Set 1 with intent!`
                 : readinessState === 'Amber Shield'
                 ? `🛡️ **Amber Shield** is active today (HRV: ${latestBio?.hrvRmssd ?? 58}ms, Sleep: ${latestBio?.sleepHours ?? 7.5}h). Hold working weights steady, maintain 2–3 reps in reserve, and protect your joints.`
                 : `🎯 ${kg.recoveryEfficiencyScore > 0 ? `Recovery looks normal (${kg.recoveryEfficiencyScore}/100). ` : ''}Focus on clean 2-second eccentrics, hit 1–2 RIR, and lock in progressive overload.`

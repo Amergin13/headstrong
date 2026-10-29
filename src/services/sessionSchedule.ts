@@ -61,7 +61,6 @@ function splitDaySession(split: SplitDayType, catalog: ExerciseDefinition[]): Wo
     completed: false,
     readinessState: 'Normal',
     readinessZScore: 0,
-    xpEarned: 0,
   };
 }
 

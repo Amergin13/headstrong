@@ -275,7 +275,7 @@ export function formatPreviousSetGhost(
  * 1. If Amber Shield is active:
  *    - Hold load static (translated to current implement if switched).
  *    - Shift target effort to 2–3 RIR.
- *    - Protect user's streak and XP.
+ *    - Protect the athlete's streak.
  *
  * 2. If all completed working sets hit the top of the rep range (e.g. 12/12/12) at 1–2 RIR:
  *    - Barbell: +2.5 kg.

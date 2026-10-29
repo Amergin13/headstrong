@@ -5,12 +5,7 @@ import {
   UserProfile,
   WorkoutSession,
 } from '../engine/types';
-import {
-  XpAward,
-  calculateProgramMilestoneXp,
-  calculateWorkoutCompletionXp,
-  evaluateStrengthStandardAdvanceXp,
-} from '../engine/xp';
+import { Milestone, evaluateStrengthStandardAdvance, programMilestone } from '../engine/milestones';
 import { evaluateStrengthStandard } from '../engine/strengthStandards';
 import { getNextProgramWorkoutNumber } from '../engine/muscleBuildingProgram';
 import { calculateBestPillarE1rms } from './storage';
@@ -46,7 +41,7 @@ export interface WorkoutCompletionInput {
   activeWorkout: WorkoutSession;
   history: WorkoutSession[];
   profile: UserProfile;
-  readiness: { state: ReadinessState; score: number; xpMultiplier: number };
+  readiness: { state: ReadinessState; score: number };
   bodyweightKg: number;
   whoopTelemetry?: WhoopWorkoutStrainSummary;
   now?: Date;
@@ -57,13 +52,14 @@ export interface WorkoutCompletionResult {
   /** History including the just-completed session (newest first). */
   nextHistory: WorkoutSession[];
   nextMesocycleWeek: number;
-  completionAward: XpAward;
-  strengthAdvanceAward: XpAward | null;
-  milestoneAward: XpAward | null;
+  /** First strength standard the athlete moved up in, if any. */
+  strengthMilestone: Milestone | null;
+  /** Finished training week or block, if this session completed one. */
+  weekMilestone: Milestone | null;
 }
 
 /**
- * Pure: turns the active workout into a completed record and works out the XP awards and the
+ * Pure: turns the active workout into a completed record and works out what to celebrate and the
  * next training week. Only measured values are stored (no estimated heart rate or energy).
  */
 export function completeWorkout(input: WorkoutCompletionInput): WorkoutCompletionResult {
@@ -79,7 +75,6 @@ export function completeWorkout(input: WorkoutCompletionInput): WorkoutCompletio
   // Real duration from the first logged set, plus a few minutes of warm-up.
   const measuredDuration = firstSetAt ? Math.max(5, Math.round((now.getTime() - firstSetAt) / 60000) + 5) : undefined;
 
-  const completionAward = calculateWorkoutCompletionXp(activeWorkout, readiness.state, readiness.xpMultiplier);
   const isWhoopActive = Boolean(profile.whoopConnected || profile.wearableSource === 'whoop');
 
   const completedSession: WorkoutSession = {
@@ -90,7 +85,6 @@ export function completeWorkout(input: WorkoutCompletionInput): WorkoutCompletio
     startedAt: firstSetAt ? new Date(firstSetAt).toISOString() : activeWorkout.startedAt,
     readinessState: readiness.state,
     readinessZScore: readiness.score,
-    xpEarned: completionAward.amount,
     avgHeartRate: whoopTelemetry?.avgHeartRate,
     maxHeartRate: whoopTelemetry?.maxHeartRate,
     hasMeasuredHeartRate: whoopTelemetry?.avgHeartRate !== undefined,
@@ -102,17 +96,17 @@ export function completeWorkout(input: WorkoutCompletionInput): WorkoutCompletio
 
   const nextHistory = [completedSession, ...history];
 
-  // Strength rank-ups: only for lifts that were already logged before (a first log is a baseline).
+  // Strength rank-ups: only for lifts that were already logged before (a first log is a starting point).
   const prevPillars = calculateBestPillarE1rms(history, bodyweightKg);
   const nextPillars = calculateBestPillarE1rms(nextHistory, bodyweightKg);
-  let strengthAdvanceAward: XpAward | null = null;
+  let strengthMilestone: Milestone | null = null;
   for (const p of STRENGTH_PILLARS) {
     if (!prevPillars[p]) continue;
     const oldStd = evaluateStrengthStandard(p, prevPillars[p], bodyweightKg, profile.gender);
     const newStd = evaluateStrengthStandard(p, nextPillars[p], bodyweightKg, profile.gender);
-    const adv = evaluateStrengthStandardAdvanceXp(p, oldStd.tier, oldStd.subDivision, newStd.tier, newStd.subDivision);
+    const adv = evaluateStrengthStandardAdvance(p, oldStd.tier, oldStd.subDivision, newStd.tier, newStd.subDivision);
     if (adv) {
-      strengthAdvanceAward = adv;
+      strengthMilestone = adv;
       break;
     }
   }
@@ -125,11 +119,11 @@ export function completeWorkout(input: WorkoutCompletionInput): WorkoutCompletio
     ? planNumber > 0 && planNumber % 4 === 0
     : nextHistory.filter((w) => w.completed).length % (SESSIONS_PER_WEEK[programType] || 4) === 0;
 
-  let milestoneAward: XpAward | null = null;
+  let weekMilestone: Milestone | null = null;
   let nextMesocycleWeek = profile.mesocycleWeek || 1;
   if (isWeekMilestone) {
     const completedWeek = profile.mesocycleWeek || 1;
-    milestoneAward = calculateProgramMilestoneXp(completedWeek, PROGRAM_LABELS[programType] || 'Hypertrophy Split');
+    weekMilestone = programMilestone(completedWeek, PROGRAM_LABELS[programType] || 'Hypertrophy Split');
     nextMesocycleWeek = completedWeek >= 6 ? 1 : completedWeek + 1;
   }
   if (isPlan && planNumber) {
@@ -137,5 +131,5 @@ export function completeWorkout(input: WorkoutCompletionInput): WorkoutCompletio
     nextMesocycleWeek = Math.ceil(getNextProgramWorkoutNumber(nextHistory) / 4);
   }
 
-  return { completedSession, nextHistory, nextMesocycleWeek, completionAward, strengthAdvanceAward, milestoneAward };
+  return { completedSession, nextHistory, nextMesocycleWeek, strengthMilestone, weekMilestone };
 }

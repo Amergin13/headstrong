@@ -231,6 +231,15 @@ select:focus-visible {
   text-transform: uppercase;
   color: #C9CDD0;
 }
+/* Keeps a 44 px touch target on rows drawn shorter than that (the gap between rows takes the rest). */
+.wk-hit {
+  position: relative;
+}
+.wk-hit::before {
+  content: '';
+  position: absolute;
+  inset: min(0px, calc((100% - 44px) / 2)) 0;
+}
 .wk-bar {
   height: calc(10 * var(--f));
   border-radius: calc(30 * var(--f));
@@ -313,4 +322,90 @@ select:focus-visible {
 }
 .wk input[type='number'] {
   -moz-appearance: textfield;
+}
+
+/* ------------------------------------------------------------------------------------------
+ * Motion: set completion and progress charts. Reduced motion (above) skips straight to the end
+ * state, because every animation here fills "both".
+ * ------------------------------------------------------------------------------------------ */
+@keyframes wk-tick-pop {
+  0% { transform: scale(1); }
+  30% { transform: scale(0.84); }
+  65% { transform: scale(1.14); }
+  100% { transform: scale(1); }
+}
+@keyframes wk-check-draw {
+  from { stroke-dashoffset: 1; }
+  to { stroke-dashoffset: 0; }
+}
+@keyframes wk-ripple {
+  from { transform: scale(1); opacity: 0.6; }
+  to { transform: scale(1.9, 2.3); opacity: 0; }
+}
+@keyframes wk-row-flash {
+  0% { opacity: 0; }
+  20% { opacity: 1; }
+  100% { opacity: 0; }
+}
+@keyframes wk-chart-reveal {
+  from { clip-path: inset(0 100% 0 0); }
+  to { clip-path: inset(0 0 0 0); }
+}
+@keyframes wk-fade-in {
+  from { opacity: 0; transform: translateY(calc(6 * var(--f))); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes wk-dot-pop {
+  0% { transform: scale(0); }
+  70% { transform: scale(1.3); }
+  100% { transform: scale(1); }
+}
+@keyframes wk-dot-pulse {
+  from { transform: scale(1); opacity: 0.7; }
+  to { transform: scale(2.8); opacity: 0; }
+}
+.wk-tick-pop {
+  animation: wk-tick-pop 420ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+.wk-check-draw {
+  stroke-dasharray: 1;
+  animation: wk-check-draw 320ms 120ms cubic-bezier(0.65, 0, 0.35, 1) both;
+}
+.wk-tick-ripple {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  border: 2px solid var(--wk-accent);
+  pointer-events: none;
+  animation: wk-ripple 600ms 60ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.wk-row-flash {
+  position: absolute;
+  inset: calc(-8 * var(--f)) calc(-16 * var(--f));
+  border-radius: calc(15 * var(--f));
+  background: linear-gradient(90deg, rgba(0, 241, 159, 0) 0%, rgba(0, 241, 159, 0.14) 60%, rgba(0, 241, 159, 0.22) 100%);
+  pointer-events: none;
+  animation: wk-row-flash 900ms ease-out both;
+}
+.wk-chart-idle .wk-chart-line,
+.wk-chart-idle .wk-chart-fade,
+.wk-chart-idle .wk-chart-dot {
+  visibility: hidden;
+}
+.wk-chart-play .wk-chart-line {
+  animation: wk-chart-reveal 1100ms cubic-bezier(0.65, 0, 0.35, 1) both;
+}
+.wk-chart-play .wk-chart-fade {
+  animation: wk-fade-in 500ms ease-out both;
+}
+.wk-chart-play .wk-chart-dot {
+  animation: wk-dot-pop 420ms 1000ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+.wk-chart-play .wk-chart-dot::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  background: #fff;
+  animation: wk-dot-pulse 900ms 1250ms ease-out both;
 }

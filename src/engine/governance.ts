@@ -209,7 +209,7 @@ export const INITIAL_GOVERNANCE_ITEMS: GovernanceChangeItem[] = [
     rationale:
       'Uses 14-day rolling HRV, RHR, and Sleep Z-scores to auto-regulate daily effort—holding weights steady and protecting streaks on poor-recovery days ("Amber Shield").',
     whatWorkedWell:
-      'Prevents CNS burnout and streak anxiety when sleep or HRV drops, while boosting XP (+15%) on Primed days.',
+      'Prevents CNS burnout and streak anxiety when sleep or HRV drops, while flagging Primed days as good days to push.',
     critiqueAndRisks:
       'Readiness simulator pill was previously too prominent on the main screen; now tucked cleanly into a collapsible status bar.',
     lockedInvariant:
@@ -283,23 +283,21 @@ export const INITIAL_GOVERNANCE_ITEMS: GovernanceChangeItem[] = [
     ],
   },
   {
-    id: 'gov-clean-slate-and-legitimate-xp-leaderboard',
-    title: 'Clean Slate for New Users, Authoritative XP Economy & Opt-In Leaderboard',
+    id: 'gov-clean-slate-no-points',
+    title: 'Clean Slate for New Users & No Points System',
     category: 'Biometrics & Gamification',
     status: 'locked',
     versionIntroduced: 'v1.8',
     rationale:
-      'New lifters must never be seeded with dummy workouts, 42 days of someone else’s biometrics, or pre-filled Level 14 / 4,850 XP. Furthermore, UI actions (switching splits, changing locations, switching mesocycles, exporting/importing data, syncing watch) must never grant illegitimate XP points. XP is awarded strictly on completing full workouts, program milestones, progressive overload breakthroughs, and international strength standards rank-ups.',
+      'New lifters must never be seeded with dummy workouts or 42 days of someone else’s biometrics. XP, levels and divisions were removed: progress is shown by real training (personal bests, strength levels, the plan and the identity form), not points.',
     whatWorkedWell:
-      'Clean NEW_USER_PROFILE starts at Level 1, 0 XP, 0 streak, and fresh starter workout. Forbidden XP action list strictly prevents UI click-farming. Opt-in Community XP Leaderboard provides privacy-preserving competition across 6 tiers.',
+      'Clean NEW_USER_PROFILE starts with a 0 streak and a fresh starter workout. Personal bests, strength level ups and finished weeks are celebrated with a short message (src/engine/milestones.ts).',
     critiqueAndRisks:
-      'Never re-introduce automatic dummy data generation in storage loaders or award XP for non-workout actions.',
+      'Never re-introduce automatic dummy data generation in storage loaders, or points, levels or leaderboards.',
     lockedInvariant:
-      'loadProfile() starts new users at Level 1 / 0 XP / 0 workouts; XP is awarded strictly for workouts, progressive overload PRs, and strength standard advances; leaderboard is 100% opt-in.',
+      'loadProfile() starts new users with no workouts and a 0 streak; there is no XP, level or division anywhere in the app.',
     files: [
-      'src/engine/xp.ts',
-      'src/engine/leaderboard.ts',
-      'src/components/character/XPLeaderboardCard.tsx',
+      'src/engine/milestones.ts',
       'src/services/seedData.ts',
       'src/services/storage.ts',
       'src/App.tsx',
@@ -608,7 +606,7 @@ export const COMPETITOR_COMPARISON_MATRIX: CompetitorMatrixRow[] = [
     headstrong: {
       rating: 'leader',
       summary:
-        '14-day HRV/RHR/Sleep Z-score triggers Recovery Shield (holds load, 2–3 RIR, streak safe) or +15% Primed XP.',
+        '14-day HRV/RHR/Sleep Z-score triggers Recovery Shield (holds load, 2–3 RIR, streak safe) or a Primed day to push.',
     },
     rpHypertrophy: {
       rating: 'partial',

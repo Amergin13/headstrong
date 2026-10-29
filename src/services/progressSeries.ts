@@ -19,6 +19,7 @@ export interface ProgressPoint {
 export interface ProgressChart {
   id: string;
   title: string;
+  category?: 'scale' | 'tape';
   /** Main line, oldest first. */
   points: ProgressPoint[];
   /** Faint line underneath, e.g. daily weigh-ins under the 7-day average. */
@@ -75,8 +76,9 @@ export function buildCompositionCharts(input: {
   const { biometrics, profile, fmt } = input;
   const charts: ProgressChart[] = [];
   const pct = (v: number) => `${round1(v)}%`;
+  const heightM = profile.measuredHeightCm ? profile.measuredHeightCm / 100 : 0;
 
-  // Bodyweight: 7-day average with daily weigh-ins underneath.
+  // 1. Weight: 7-day average with daily weigh-ins underneath.
   const ema = calculateEmaSeries(biometrics);
   const emaPoints = ema.map((e) => ({ date: e.date, value: e.ema }));
   let weightSummary = 'Log your weight each morning, after the toilet and before eating, to start this chart.';
@@ -102,7 +104,8 @@ export function buildCompositionCharts(input: {
   }
   charts.push({
     id: 'bodyweight',
-    title: 'Bodyweight',
+    title: 'Weight',
+    category: 'scale',
     points: emaPoints,
     secondary: ema.map((e) => ({ date: e.date, value: e.weight })),
     lastUpdated: emaPoints[emaPoints.length - 1]?.date,
@@ -110,11 +113,33 @@ export function buildCompositionCharts(input: {
     format: fmt.weight,
   });
 
-  // Body fat and the lean mass it implies.
+  // 2. BMI (from RENPHO scale or calculated from weight + entered height)
+  const bmiPoints = measured(biometrics, (l) => {
+    if (l.bmi && l.bmi > 0) return round1(l.bmi);
+    const entryHeightM = l.heightCm && l.heightCm > 0 ? l.heightCm / 100 : heightM;
+    if (entryHeightM > 0 && l.bodyweightKg > 0) {
+      return round1(l.bodyweightKg / (entryHeightM * entryHeightM));
+    }
+    return undefined;
+  });
+  charts.push({
+    id: 'bmi',
+    title: 'BMI',
+    category: 'scale',
+    points: bmiPoints,
+    lastUpdated: bmiPoints[bmiPoints.length - 1]?.date,
+    summary:
+      changeSummary('BMI', bmiPoints, (v) => `${round1(v)}`, (d) => `${round1(d)}`) ||
+      'Connect your RENPHO scale or enter your weight and height to track Body Mass Index (BMI) over time.',
+    format: (v) => `${round1(v)}`,
+  });
+
+  // 3. Body fat percentage
   const bodyFat = measured(biometrics, (l) => l.bodyFatPct);
   charts.push({
     id: 'body-fat',
     title: 'Body fat',
+    category: 'scale',
     points: bodyFat,
     lastUpdated: bodyFat[bodyFat.length - 1]?.date,
     summary:
@@ -123,28 +148,36 @@ export function buildCompositionCharts(input: {
     format: pct,
   });
 
+  // 4. Fat free mass (Lean mass)
   const lean = biometrics
-    .filter((l) => (l.bodyFatPct ?? 0) > 0 && l.bodyweightKg > 0)
-    .map((l) => ({ date: l.date, value: round1(l.bodyweightKg * (1 - (l.bodyFatPct as number) / 100)) }))
+    .filter((l) => (l.fatFreeMassKg ?? 0) > 0 || ((l.bodyFatPct ?? 0) > 0 && l.bodyweightKg > 0))
+    .map((l) => ({
+      date: l.date,
+      value:
+        (l.fatFreeMassKg ?? 0) > 0
+          ? round1(l.fatFreeMassKg as number)
+          : round1(l.bodyweightKg * (1 - (l.bodyFatPct as number) / 100)),
+    }))
     .sort((a, b) => a.date.localeCompare(b.date));
   charts.push({
     id: 'lean-mass',
-    title: 'Lean mass',
+    title: 'Fat free mass',
+    category: 'scale',
     points: lean,
     lastUpdated: lean[lean.length - 1]?.date,
     summary:
-      changeSummary('Lean mass (everything but fat)', lean, fmt.weight, fmt.weight) ||
-      'Log your weight and body fat on the same day to see your lean mass: everything that isn\'t fat, mostly muscle and water.',
+      changeSummary('Fat free mass (everything but fat)', lean, fmt.weight, fmt.weight) ||
+      "Log your weight and body fat on the same day or step onto your RENPHO scale to see your fat-free mass: everything that isn't fat.",
     format: fmt.weight,
   });
 
   // Fat-free mass index: lean mass for your height (Kouri et al., 1995). Needs a real height.
-  const heightM = profile.measuredHeightCm ? profile.measuredHeightCm / 100 : 0;
   const ffmi = heightM > 0 ? lean.map((p) => ({ date: p.date, value: round1(p.value / (heightM * heightM) + 6.1 * (1.8 - heightM)) })) : [];
   const typical = profile.gender === 'female' ? 15 : 19;
   charts.push({
     id: 'ffmi',
     title: 'Muscle for your height',
+    category: 'scale',
     points: ffmi,
     lastUpdated: ffmi[ffmi.length - 1]?.date,
     summary: !heightM
@@ -155,16 +188,180 @@ export function buildCompositionCharts(input: {
     format: (v) => `${round1(v)}`,
   });
 
-  // Tape measurements.
+  // 5. Subcutaneous fat
+  const subcutaneousFat = measured(biometrics, (l) => l.subcutaneousFatPct);
+  charts.push({
+    id: 'subcutaneous-fat',
+    title: 'Subcutaneous fat',
+    category: 'scale',
+    points: subcutaneousFat,
+    lastUpdated: subcutaneousFat[subcutaneousFat.length - 1]?.date,
+    summary:
+      changeSummary('Subcutaneous fat', subcutaneousFat, pct, (d) => `${round1(d)} ${round1(d) === 1 ? 'point' : 'points'}`) ||
+      'Step onto your RENPHO scale or enter subcutaneous fat % to track fat stored directly beneath the skin.',
+    format: pct,
+  });
+
+  // 6. Visceral fat
+  const visceralFat = measured(biometrics, (l) => l.visceralFat);
+  charts.push({
+    id: 'visceral-fat',
+    title: 'Visceral fat',
+    category: 'scale',
+    points: visceralFat,
+    lastUpdated: visceralFat[visceralFat.length - 1]?.date,
+    summary:
+      changeSummary('Visceral fat index', visceralFat, (v) => `${round1(v)}`, (d) => `${round1(d)}`) ||
+      'Step onto your RENPHO scale or enter your visceral fat rating (healthy range is 1–12) to track deep abdominal fat.',
+    format: (v) => `${round1(v)}`,
+  });
+
+  // 7. Body water
+  const bodyWater = measured(biometrics, (l) => l.bodyWaterPct);
+  charts.push({
+    id: 'body-water',
+    title: 'Body water',
+    category: 'scale',
+    points: bodyWater,
+    lastUpdated: bodyWater[bodyWater.length - 1]?.date,
+    summary:
+      changeSummary('Body water', bodyWater, pct, (d) => `${round1(d)} ${round1(d) === 1 ? 'point' : 'points'}`) ||
+      'Step onto your RENPHO scale or enter body water % to track total cellular hydration over time.',
+    format: pct,
+  });
+
+  // 8. Skeletal muscle mass
+  const skeletalMuscle = measured(biometrics, (l) => l.skeletalMuscleMassKg);
+  charts.push({
+    id: 'skeletal-muscle-mass',
+    title: 'Skeletal muscle mass',
+    category: 'scale',
+    points: skeletalMuscle,
+    lastUpdated: skeletalMuscle[skeletalMuscle.length - 1]?.date,
+    summary:
+      changeSummary('Skeletal muscle mass', skeletalMuscle, fmt.weight, fmt.weight) ||
+      'Step onto your RENPHO scale or log skeletal muscle mass to track contractile muscle tissue attached to your skeleton.',
+    format: fmt.weight,
+  });
+
+  // 9. Muscle mass
+  const muscleMass = measured(biometrics, (l) => l.muscleMassKg);
+  charts.push({
+    id: 'muscle-mass',
+    title: 'Muscle mass',
+    category: 'scale',
+    points: muscleMass,
+    lastUpdated: muscleMass[muscleMass.length - 1]?.date,
+    summary:
+      changeSummary('Total muscle mass', muscleMass, fmt.weight, fmt.weight) ||
+      'Step onto your RENPHO scale or log total muscle mass (skeletal and smooth muscle combined) to track long-term growth.',
+    format: fmt.weight,
+  });
+
+  // 10. Bone mass
+  const boneMass = measured(biometrics, (l) => l.boneMassKg);
+  charts.push({
+    id: 'bone-mass',
+    title: 'Bone mass',
+    category: 'scale',
+    points: boneMass,
+    lastUpdated: boneMass[boneMass.length - 1]?.date,
+    summary:
+      changeSummary('Bone mass', boneMass, (fmt.weightPrecise ?? fmt.weight), (fmt.weightPrecise ?? fmt.weight)) ||
+      'Step onto your RENPHO scale or log bone mineral mass to track skeletal mineral density over time.',
+    format: fmt.weightPrecise ?? fmt.weight,
+  });
+
+  // 11. Protein mass
+  const proteinMass = measured(biometrics, (l) => l.proteinMassKg);
+  charts.push({
+    id: 'protein-mass',
+    title: 'Protein mass',
+    category: 'scale',
+    points: proteinMass,
+    lastUpdated: proteinMass[proteinMass.length - 1]?.date,
+    summary:
+      changeSummary('Protein mass', proteinMass, fmt.weight, fmt.weight) ||
+      'Step onto your RENPHO scale or log protein mass to track structural and contractile cellular protein.',
+    format: fmt.weight,
+  });
+
+  // 12. Basal metabolic rate (BMR)
+  const bmrPoints = measured(biometrics, (l) => l.bmrKcal);
+  charts.push({
+    id: 'bmr',
+    title: 'Basal metabolic rate',
+    category: 'scale',
+    points: bmrPoints,
+    lastUpdated: bmrPoints[bmrPoints.length - 1]?.date,
+    summary:
+      changeSummary('Basal metabolic rate', bmrPoints, (v) => `${Math.round(v)} kcal`, (d) => `${Math.round(d)} kcal`) ||
+      'Step onto your RENPHO scale or log BMR to track daily resting energy expenditure in kcal/day.',
+    format: (v) => `${Math.round(v)} kcal`,
+  });
+
+  // 13. Metabolic age
+  const metabolicAge = measured(biometrics, (l) => l.metabolicAge);
+  charts.push({
+    id: 'metabolic-age',
+    title: 'Metabolic age',
+    category: 'scale',
+    points: metabolicAge,
+    lastUpdated: metabolicAge[metabolicAge.length - 1]?.date,
+    summary:
+      changeSummary('Metabolic age', metabolicAge, (v) => `${Math.round(v)} yrs`, (d) => `${Math.round(d)} yrs`) ||
+      'Step onto your RENPHO scale or log metabolic age to compare your basal metabolic efficiency against age norms.',
+    format: (v) => `${Math.round(v)} yrs`,
+  });
+
+  // 12 Tape Measure Sites (in canonical RENPHO order: neck, shoulder, chest, waist, abdomen, hip, bicep left/right, thigh left/right, calf left/right)
+  const neck = measured(biometrics, (l) => l.neckCm);
+  charts.push({
+    id: 'neck',
+    title: 'Neck',
+    category: 'tape',
+    points: neck,
+    lastUpdated: neck[neck.length - 1]?.date,
+    summary:
+      changeSummary('Your neck', neck, fmt.length, fmt.length) ||
+      'Measure just below the larynx with your shoulders relaxed to track neck circumference over time.',
+    format: fmt.length,
+  });
+
+  const shoulders = measured(biometrics, (l) => l.shouldersCm);
+  charts.push({
+    id: 'shoulders',
+    title: 'Shoulder',
+    category: 'tape',
+    points: shoulders,
+    lastUpdated: shoulders[shoulders.length - 1]?.date,
+    summary:
+      changeSummary('Your shoulders', shoulders, fmt.length, fmt.length) ||
+      'Measure around the widest point of both deltoids, relaxed, to track shoulder width over time.',
+    format: fmt.length,
+  });
+
+  const chest = measured(biometrics, (l) => l.chestCm);
+  charts.push({
+    id: 'chest',
+    title: 'Chest',
+    category: 'tape',
+    points: chest,
+    lastUpdated: chest[chest.length - 1]?.date,
+    summary: changeSummary('Your chest', chest, fmt.length, fmt.length) || 'Measure around the fullest part of your chest, relaxed, to track upper-body growth.',
+    format: fmt.length,
+  });
+
   const waist = measured(biometrics, (l) => l.waistCm);
   charts.push({
     id: 'waist',
     title: 'Waist',
+    category: 'tape',
     points: waist,
     lastUpdated: waist[waist.length - 1]?.date,
     summary:
       changeSummary('Your waist', waist, fmt.length, fmt.length) ||
-      'Measure your waist at the belly button, relaxed, after breathing out. A shrinking waist with steady weight means you\'re losing fat and building muscle.',
+      "Measure your waist at the narrowest part of your torso, relaxed, after breathing out. A shrinking waist with steady weight means you're losing fat and building muscle.",
     format: fmt.length,
   });
 
@@ -173,6 +370,7 @@ export function buildCompositionCharts(input: {
   charts.push({
     id: 'waist-to-height',
     title: 'Waist-to-height',
+    category: 'tape',
     points: whtr,
     lastUpdated: whtr[whtr.length - 1]?.date,
     summary: !heightM
@@ -183,95 +381,107 @@ export function buildCompositionCharts(input: {
     format: (v) => v.toFixed(2),
   });
 
-  const chest = measured(biometrics, (l) => l.chestCm);
+  const abdomen = measured(biometrics, (l) => l.abdomenCm);
   charts.push({
-    id: 'chest',
-    title: 'Chest',
-    points: chest,
-    lastUpdated: chest[chest.length - 1]?.date,
-    summary: changeSummary('Your chest', chest, fmt.length, fmt.length) || 'Measure around the fullest part of your chest, relaxed, to track upper-body growth.',
-    format: fmt.length,
-  });
-
-  const arms = measured(biometrics, (l) => l.armCm);
-  charts.push({
-    id: 'arms',
-    title: 'Arms',
-    points: arms,
-    lastUpdated: arms[arms.length - 1]?.date,
-    summary: changeSummary('Your arm', arms, fmt.length, fmt.length) || 'Measure your upper arm at its widest, flexed, to track arm growth.',
-    format: fmt.length,
-  });
-
-  const shoulders = measured(biometrics, (l) => l.shouldersCm);
-  charts.push({
-    id: 'shoulders',
-    title: 'Shoulders',
-    points: shoulders,
-    lastUpdated: shoulders[shoulders.length - 1]?.date,
+    id: 'abdomen',
+    title: 'Abdomen',
+    category: 'tape',
+    points: abdomen,
+    lastUpdated: abdomen[abdomen.length - 1]?.date,
     summary:
-      changeSummary('Your shoulders', shoulders, fmt.length, fmt.length) ||
-      'Measure around the widest point of both deltoids, relaxed, to track shoulder width over time.',
+      changeSummary('Your abdomen', abdomen, fmt.length, fmt.length) ||
+      'Measure horizontally across the navel (belly button), relaxed after exhaling, to track midsection reduction.',
     format: fmt.length,
   });
 
   const hips = measured(biometrics, (l) => l.hipsCm);
   charts.push({
     id: 'hips',
-    title: 'Hips / Glutes',
+    title: 'Hip',
+    category: 'tape',
     points: hips,
     lastUpdated: hips[hips.length - 1]?.date,
     summary:
       changeSummary('Your hips', hips, fmt.length, fmt.length) ||
-      'Measure around the fullest part of your glutes with your feet together to track lower-body changes.',
+      'Measure around the fullest part of your hips and glutes with your feet together to track lower-body changes.',
     format: fmt.length,
   });
 
-  const thighs = measured(biometrics, (l) => l.thighCm);
+  const bicepLeft = measured(biometrics, (l) => l.bicepLeftCm);
   charts.push({
-    id: 'thighs',
-    title: 'Thighs',
-    points: thighs,
-    lastUpdated: thighs[thighs.length - 1]?.date,
+    id: 'bicep-left',
+    title: 'Bicep left',
+    category: 'tape',
+    points: bicepLeft,
+    lastUpdated: bicepLeft[bicepLeft.length - 1]?.date,
     summary:
-      changeSummary('Your thigh', thighs, fmt.length, fmt.length) ||
-      'Measure midway between your hip crease and kneecap to track quad and hamstring growth.',
+      changeSummary('Your left bicep', bicepLeft, fmt.length, fmt.length) ||
+      'Measure around the peak of your flexed left bicep to track left upper-arm growth and left-right symmetry.',
     format: fmt.length,
   });
 
-  const calves = measured(biometrics, (l) => l.calfCm);
+  const bicepRight = measured(biometrics, (l) => l.bicepRightCm ?? l.armCm);
   charts.push({
-    id: 'calves',
-    title: 'Calves',
-    points: calves,
-    lastUpdated: calves[calves.length - 1]?.date,
+    id: 'bicep-right',
+    title: 'Bicep right',
+    category: 'tape',
+    points: bicepRight,
+    lastUpdated: bicepRight[bicepRight.length - 1]?.date,
     summary:
-      changeSummary('Your calf', calves, fmt.length, fmt.length) ||
-      'Measure around the widest point of your calf while standing to track lower-leg hypertrophy.',
+      changeSummary('Your right bicep', bicepRight, fmt.length, fmt.length) ||
+      'Measure around the peak of your flexed right bicep to track right upper-arm growth and left-right symmetry.',
     format: fmt.length,
   });
 
-  const forearms = measured(biometrics, (l) => l.forearmCm);
+  const thighLeft = measured(biometrics, (l) => l.thighLeftCm);
   charts.push({
-    id: 'forearms',
-    title: 'Forearms',
-    points: forearms,
-    lastUpdated: forearms[forearms.length - 1]?.date,
+    id: 'thigh-left',
+    title: 'Thigh left',
+    category: 'tape',
+    points: thighLeft,
+    lastUpdated: thighLeft[thighLeft.length - 1]?.date,
     summary:
-      changeSummary('Your forearm', forearms, fmt.length, fmt.length) ||
-      'Measure around the thickest part of your forearm below the elbow to track forearm development.',
+      changeSummary('Your left thigh', thighLeft, fmt.length, fmt.length) ||
+      'Measure midway between your left hip crease and kneecap while standing to track left quad and hamstring growth.',
     format: fmt.length,
   });
 
-  const neck = measured(biometrics, (l) => l.neckCm);
+  const thighRight = measured(biometrics, (l) => l.thighRightCm ?? l.thighCm);
   charts.push({
-    id: 'neck',
-    title: 'Neck',
-    points: neck,
-    lastUpdated: neck[neck.length - 1]?.date,
+    id: 'thigh-right',
+    title: 'Thigh right',
+    category: 'tape',
+    points: thighRight,
+    lastUpdated: thighRight[thighRight.length - 1]?.date,
     summary:
-      changeSummary('Your neck', neck, fmt.length, fmt.length) ||
-      'Measure just below the larynx with your shoulders relaxed to track neck circumference over time.',
+      changeSummary('Your right thigh', thighRight, fmt.length, fmt.length) ||
+      'Measure midway between your right hip crease and kneecap while standing to track right quad and hamstring growth.',
+    format: fmt.length,
+  });
+
+  const calfLeft = measured(biometrics, (l) => l.calfLeftCm);
+  charts.push({
+    id: 'calf-left',
+    title: 'Calf left',
+    category: 'tape',
+    points: calfLeft,
+    lastUpdated: calfLeft[calfLeft.length - 1]?.date,
+    summary:
+      changeSummary('Your left calf', calfLeft, fmt.length, fmt.length) ||
+      'Measure around the widest point of your left calf while standing to track left lower-leg hypertrophy.',
+    format: fmt.length,
+  });
+
+  const calfRight = measured(biometrics, (l) => l.calfRightCm ?? l.calfCm);
+  charts.push({
+    id: 'calf-right',
+    title: 'Calf right',
+    category: 'tape',
+    points: calfRight,
+    lastUpdated: calfRight[calfRight.length - 1]?.date,
+    summary:
+      changeSummary('Your right calf', calfRight, fmt.length, fmt.length) ||
+      'Measure around the widest point of your right calf while standing to track right lower-leg hypertrophy.',
     format: fmt.length,
   });
 

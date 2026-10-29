@@ -50,7 +50,8 @@ import {
 } from './engine/muscleBuildingProgram';
 import { prepareSessionForAthlete } from './services/sessionPreparation';
 import { completeWorkout } from './services/workoutCompletion';
-import { evaluateSetProgressAward, planRestAfterSet } from './services/setCompletion';
+import { evaluateSetPersonalBest, planRestAfterSet } from './services/setCompletion';
+import { Milestone } from './engine/milestones';
 import { usePersistedState } from './hooks/usePersistedState';
 import { useWearableSync } from './hooks/useWearableSync';
 import { useLaunchLinks } from './hooks/useLaunchLinks';
@@ -61,7 +62,7 @@ import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { Header } from './components/common/Header';
 import { NavigationBar, TabId } from './components/common/NavigationBar';
 import { RestTimerModal } from './components/common/RestTimerModal';
-import { XPNotification } from './components/common/XPNotification';
+import { Toast } from './components/common/Toast';
 import { TrainTab } from './components/train/TrainTab';
 import { WatchSyncModal } from './components/program/WatchSyncModal';
 import { OnboardingModal } from './components/onboarding/OnboardingModal';
@@ -96,11 +97,7 @@ export const App: React.FC = () => {
   const [onboardingOpen, setOnboardingOpen] = useState(!profile.onboardingCompleted);
   const [onboardingInitialStep, setOnboardingInitialStep] = useState<1 | 2 | 3 | 4>(1);
   const [deferredInstallPrompt, setDeferredInstallPrompt] = useState<any>(null);
-  const [xpNotification, setXpNotification] = useState<{
-    amount: number;
-    message: string;
-    bonusTag?: string;
-  } | null>(null);
+  const [toast, setToast] = useState<{ title?: string; message: string; tag?: string } | null>(null);
 
   // Listen for PWA beforeinstallprompt event
   useEffect(() => {
@@ -128,10 +125,8 @@ export const App: React.FC = () => {
       };
       return updated;
     });
-    setXpNotification({
-      amount: 0,
-      message: `Welcome, ${user.name || 'Athlete'}! Account connected.`,
-      bonusTag: 'Google Account',
+    setToast({ message: `Welcome, ${user.name || 'Athlete'}! Account connected.`,
+      tag: 'Google Account',
     });
   };
 
@@ -149,14 +144,12 @@ export const App: React.FC = () => {
       };
       return updated;
     });
-    setXpNotification({
-      amount: 0,
-      message: 'Signed out. Your workout history remains saved locally.',
-      bonusTag: 'Account',
+    setToast({ message: 'Signed out. Your workout history remains saved locally.',
+      tag: 'Account',
     });
   };
 
-  const notify = (message: string, bonusTag: string) => setXpNotification({ amount: 0, message, bonusTag });
+  const notify = (message: string, tag: string) => setToast({ message, tag });
 
   const { handleSyncCompleted, completeWearableConnection } = useWearableSync({
     profile,
@@ -198,27 +191,8 @@ export const App: React.FC = () => {
   const pillarBestE1rm = calculateBestPillarE1rms(workouts, bodyweightEmaKg);
   const weeklyVolume = calculateWeeklyMuscleVolume(workouts, exercises, activeWorkout);
 
-  // Handler: Award XP & update level
-  // Amounts arrive final (the Primed bonus is applied only to workout completion, inside
-  // calculateWorkoutCompletionXp). Uses a functional update so delayed awards never overwrite
-  // each other with a stale XP total.
-  const addXp = (amount: number, message: string, bonusTag?: string) => {
-    const finalAmount = Math.round(amount);
-    setProfile((prev) => {
-      const newTotalXp = prev.currentXp + finalAmount;
-      return {
-        ...prev,
-        currentXp: newTotalXp,
-        level: Math.floor(newTotalXp / 500) + 1,
-      };
-    });
-
-    setXpNotification({
-      amount: finalAmount,
-      message,
-      bonusTag,
-    });
-  };
+  /** Celebrates a personal best, strength level up or finished week. */
+  const celebrate = (m: Milestone) => setToast({ title: m.title, message: m.description, tag: m.tag });
 
   const weightUnit: WeightUnit = profile.weightUnit || 'kg';
 
@@ -266,7 +240,7 @@ export const App: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Handler: a set was ticked off. Starts the labelled rest timer and awards progress XP once per set.
+  // Handler: a set was ticked off. Starts the labelled rest timer and celebrates a personal best once per set.
   const handleSetCompleted = (
     _exerciseName: string,
     _setNumber: number,
@@ -285,17 +259,17 @@ export const App: React.FC = () => {
       setRestTimerOpen(true);
     }
 
-    const award = evaluateSetProgressAward(activeWorkout, workouts, exercise, completedSet);
-    if (award) {
+    const best = evaluateSetPersonalBest(activeWorkout, workouts, exercise, completedSet);
+    if (best) {
       setActiveWorkout((prev) => ({
         ...prev,
-        xpAwardedSetIds: [...(prev.xpAwardedSetIds || []), completedSet.id],
+        celebratedSetIds: [...(prev.celebratedSetIds || []), completedSet.id],
       }));
-      addXp(award.amount, award.description, award.bonusTag);
+      celebrate(best);
     }
   };
 
-  // Handler: Switch Split Day dynamically (No illegitimate XP)
+  // Handler: Switch Split Day dynamically
   const handleSwitchSplitDay = (split: SplitDayType, navigateToTrain = false) => {
     const smartSession = generateSmartWorkoutSession(
       split,
@@ -328,7 +302,7 @@ export const App: React.FC = () => {
     }
   };
 
-  // Handler: Switch Training Location ('gym' | 'home' | 'travel') in 1 tap (No illegitimate XP)
+  // Handler: Switch Training Location ('gym' | 'home' | 'travel') in 1 tap
   const handleSwitchTrainingLocation = (location: TrainingLocation) => {
     setProfile((prev) => ({
       ...prev,
@@ -347,7 +321,7 @@ export const App: React.FC = () => {
     setActiveWorkout(adapted);
   };
 
-  // Handler: Complete Onboarding / Goals & Equipment Setup (No illegitimate XP)
+  // Handler: Complete Onboarding / Goals & Equipment Setup
   const handleCompleteOnboarding = (setup: {
     goalPhase: GoalPhase;
     programType: ProgramSplitType;
@@ -452,10 +426,8 @@ export const App: React.FC = () => {
     });
     setActiveWorkout(session);
     setActiveTab('train');
-    setXpNotification({
-      amount: 0,
-      message: `Loaded Workout #${workoutNum} (${session.name}). Ready to train!`,
-      bonusTag: 'Workout Loaded',
+    setToast({ message: `Loaded Workout #${workoutNum} (${session.name}). Ready to train!`,
+      tag: 'Workout Loaded',
     });
   };
 
@@ -483,7 +455,7 @@ export const App: React.FC = () => {
     }
   };
 
-  // Handler: Change Mesocycle Week (1 to 6) (No illegitimate XP)
+  // Handler: Change Mesocycle Week (1 to 6)
   const handleSelectMesocycleWeek = (week: number) => {
     setProfile((prev) => ({ ...prev, mesocycleWeek: week }));
     const currentSplit = (activeWorkout.splitDay as SplitDayType) || 'Push';
@@ -502,7 +474,7 @@ export const App: React.FC = () => {
     setActiveWorkout(prepareSession(recalibrated));
   };
 
-  // Handler: Complete the workout, advance the queue, award XP (see services/workoutCompletion.ts)
+  // Handler: Complete the workout and advance the queue (see services/workoutCompletion.ts)
   const handleFinishWorkout = (whoopTelemetry?: WhoopWorkoutStrainSummary) => {
     const result = completeWorkout({
       activeWorkout,
@@ -566,22 +538,17 @@ export const App: React.FC = () => {
     setActiveTab('train');
     if (typeof window !== 'undefined') window.scrollTo({ top: 0 });
 
-    // addXp uses functional updates, so these never overwrite each other.
-    const { completionAward, strengthAdvanceAward, milestoneAward } = result;
-    addXp(completionAward.amount, completionAward.description, completionAward.bonusTag);
-    if (strengthAdvanceAward) {
-      setTimeout(() => addXp(strengthAdvanceAward.amount, strengthAdvanceAward.description, strengthAdvanceAward.bonusTag), 1500);
-    }
-    if (milestoneAward) {
-      setTimeout(() => addXp(milestoneAward.amount, milestoneAward.description, milestoneAward.bonusTag), 3000);
-    }
+    const { strengthMilestone, weekMilestone } = result;
+    if (strengthMilestone) celebrate(strengthMilestone);
+    if (weekMilestone) setTimeout(() => celebrate(weekMilestone), strengthMilestone ? 2600 : 0);
   };
 
-  // Handler: today's weight and body measurements (No illegitimate XP)
+  // Handler: today's weight and body measurements
   const handleSaveMeasurements = (entry: MeasurementEntry) => {
-    const { heightCm, ...measures } = entry;
-    if (heightCm) setProfile((prev) => ({ ...prev, measuredHeightCm: heightCm, heightCm }));
-    const values = Object.fromEntries(Object.entries(measures).filter(([, v]) => typeof v === 'number' && v > 0));
+    if (entry.heightCm) {
+      setProfile((prev) => ({ ...prev, measuredHeightCm: entry.heightCm, heightCm: entry.heightCm! }));
+    }
+    const values = Object.fromEntries(Object.entries(entry).filter(([, v]) => typeof v === 'number' && v > 0));
     if (Object.keys(values).length === 0) return;
     const todayStr = localDateString();
     setBiometrics((prev) => {
@@ -614,14 +581,12 @@ export const App: React.FC = () => {
     setWorkouts(reset.workouts);
     setActiveWorkout(reset.activeWorkout);
     setExercises(reset.exercises);
-    setXpNotification({
-      amount: 0,
-      message: 'Restored 6-week sample workout and biometric history.',
-      bonusTag: 'Demo Loaded',
+    setToast({ message: 'Restored 6-week sample workout and biometric history.',
+      tag: 'Demo Loaded',
     });
   };
 
-  // Handler: Export JSON Backup (Google Play Data Portability - No illegitimate XP)
+  // Handler: Export JSON Backup (Google Play Data Portability)
   const handleExportData = () => {
     const json = exportAllUserDataJSON();
     const blob = new Blob([json], { type: 'application/json' });
@@ -636,7 +601,7 @@ export const App: React.FC = () => {
     URL.revokeObjectURL(url);
   };
 
-  // Handler: Import JSON Backup (No illegitimate XP)
+  // Handler: Import JSON Backup
   const handleImportData = (rawJson: string) => {
     try {
       const restored = importUserDataJSON(rawJson);
@@ -645,16 +610,12 @@ export const App: React.FC = () => {
       setWorkouts(restored.workouts);
       setActiveWorkout(restored.activeWorkout);
       setExercises(restored.exercises);
-      setXpNotification({
-        amount: 0,
-        message: 'Workout and biometric backup restored successfully!',
-        bonusTag: 'Restored',
+      setToast({ message: 'Workout and biometric backup restored successfully!',
+        tag: 'Restored',
       });
     } catch (e) {
-      setXpNotification({
-        amount: 0,
-        message: 'Could not restore backup: invalid JSON file.',
-        bonusTag: 'Import Error',
+      setToast({ message: 'Could not restore backup: invalid JSON file.',
+        tag: 'Import Error',
       });
     }
   };
@@ -667,10 +628,8 @@ export const App: React.FC = () => {
     setWorkouts(wiped.workouts);
     setActiveWorkout(wiped.activeWorkout);
     setExercises(wiped.exercises);
-    setXpNotification({
-      amount: 0,
-      message: 'All personal workout and biometric data permanently erased from device.',
-      bonusTag: 'Data Erased',
+    setToast({ message: 'All personal workout and biometric data permanently erased from device.',
+      tag: 'Data Erased',
     });
   };
 
@@ -682,7 +641,7 @@ export const App: React.FC = () => {
     setDeferredInstallPrompt(null);
   };
 
-  // Handler: Shift Workout Date (No illegitimate XP)
+  // Handler: Shift Workout Date
   const handleShiftWorkout = () => {
     const today = new Date();
     const tomorrow = new Date(today);
@@ -766,6 +725,7 @@ export const App: React.FC = () => {
         {activeTab === 'program' && (
           <ProgramTab
             profile={profile}
+            workouts={workouts}
             latestBiometrics={latestBiometrics}
             exerciseCatalog={exercises}
             activeSplitDay={activeWorkout.splitDay}
@@ -857,10 +817,8 @@ export const App: React.FC = () => {
             setActiveWorkout(reset.activeWorkout);
             setExercises(reset.exercises);
             setOnboardingOpen(false);
-            setXpNotification({
-              amount: 0,
-              message: 'Sample 6-week workout and biometric history loaded.',
-              bonusTag: 'Demo Mode',
+            setToast({ message: 'Sample 6-week workout and biometric history loaded.',
+              tag: 'Demo Mode',
             });
           }}
         />
@@ -901,13 +859,12 @@ export const App: React.FC = () => {
         onSignOut={handleSignOut}
       />
 
-      {/* XP Toast Notification */}
-      {xpNotification && (
-        <XPNotification
-          amount={xpNotification.amount}
-          message={xpNotification.message}
-          bonusTag={xpNotification.bonusTag}
-          onClose={() => setXpNotification(null)}
+      {toast && (
+        <Toast
+          title={toast.title}
+          message={toast.message}
+          tag={toast.tag}
+          onClose={() => setToast(null)}
         />
       )}
 

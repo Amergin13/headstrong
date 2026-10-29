@@ -8,7 +8,6 @@ import {
 } from '../../engine/types';
 import { SevenPillarRadar } from './SevenPillarRadar';
 import { VolumeTracker } from './VolumeTracker';
-import { XPLeaderboardCard } from './XPLeaderboardCard';
 import { calculateDotsScore } from '../../engine/dots';
 import { useUnits } from '../../utils/unitsContext';
 import { triggerHaptic } from '../../utils/haptics';
@@ -34,7 +33,7 @@ const GOAL_FRIENDLY_NAME: Record<GoalPhase, string> = {
   Maingain: 'Stay Lean',
 };
 
-type AthleteSubView = 'volume' | 'balance' | 'leaderboard';
+type AthleteSubView = 'volume' | 'balance';
 
 /** Score ring matching RecoveryScoreCard on the Workout page. */
 const ScoreRing: React.FC<{ value: number | null; max?: number; avatarUrl?: string; name?: string }> = ({
@@ -149,7 +148,7 @@ export const CharacterTab: React.FC<CharacterTabProps> = ({
         <div
           role="group"
           aria-label="Athlete view"
-          className="grid grid-cols-3"
+          className="grid grid-cols-2"
           style={{
             marginTop: fig(40),
             padding: fig(8),
@@ -160,7 +159,6 @@ export const CharacterTab: React.FC<CharacterTabProps> = ({
         >
           {segment('volume', 'Weekly Sets')}
           {segment('balance', 'Strength')}
-          {segment('leaderboard', 'XP Division')}
         </div>
       </header>
 
@@ -173,7 +171,7 @@ export const CharacterTab: React.FC<CharacterTabProps> = ({
             triggerHaptic('light');
             onOpenAuth?.();
           }}
-          aria-label={`${profile.name}, Level ${profile.level}, Goal ${friendlyGoal}. ${
+          aria-label={`${profile.name}, Goal ${friendlyGoal}. ${
             hasBig3Data ? `DOTS score ${dotsScore}.` : 'Log a squat, bench or deadlift to score.'
           }`}
           className="wk-card w-full text-left flex items-center"
@@ -188,7 +186,7 @@ export const CharacterTab: React.FC<CharacterTabProps> = ({
           <div className="flex-1 min-w-0">
             <div className="flex items-start justify-between" style={{ gap: fig(16) }}>
               <span className="wk-pill">
-                LV. {profile.level} • {friendlyGoal}
+                {friendlyGoal}
               </span>
               {onOpenAuth && (
                 <ChevronRight className="wk-chevron" strokeWidth={2} aria-hidden="true" />
@@ -261,7 +259,7 @@ export const CharacterTab: React.FC<CharacterTabProps> = ({
             mesoWeek={profile.mesocycleWeek || 1}
             goalPhase={profile.goalPhase}
           />
-        ) : subView === 'balance' ? (
+        ) : (
           <>
             <SevenPillarRadar
               pillarBestE1rm={pillarBestE1rm}
@@ -321,11 +319,6 @@ export const CharacterTab: React.FC<CharacterTabProps> = ({
               </div>
             </div>
           </>
-        ) : (
-          <XPLeaderboardCard
-            profile={profile}
-            onUpdateProfile={onUpdateProfile || (() => {})}
-          />
         )}
       </div>
     </div>

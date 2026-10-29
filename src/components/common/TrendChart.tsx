@@ -1,4 +1,4 @@
-import React, { useId } from 'react';
+import React, { useEffect, useId, useRef, useState } from 'react';
 import { parseLocalDate } from '../../utils/date';
 
 const fig = (px: number) => `calc(${px} * var(--f))`;
@@ -38,6 +38,28 @@ const dayMonth = (date: string) => {
  */
 export const TrendChart: React.FC<TrendChartProps> = ({ points, secondary, format, label, height = 300 }) => {
   const gradientId = useId();
+  // The line draws itself the first time the chart scrolls into view.
+  const boxRef = useRef<HTMLDivElement>(null);
+  const [play, setPlay] = useState(false);
+  useEffect(() => {
+    const el = boxRef.current;
+    if (!el || play) return;
+    if (typeof IntersectionObserver === 'undefined') {
+      setPlay(true);
+      return;
+    }
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setPlay(true);
+          observer.disconnect();
+        }
+      },
+      { threshold: 0.4 }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [play]);
   const example = points.length < 2;
   const values = example ? EXAMPLE_SERIES : points.map((p) => p.value);
   const all = example ? values : [...values, ...(secondary ?? []).map((p) => p.value)];
@@ -71,7 +93,7 @@ export const TrendChart: React.FC<TrendChartProps> = ({ points, secondary, forma
   const muted: React.CSSProperties = { fontSize: fig(20), color: 'rgba(255,255,255,0.45)', lineHeight: 1 };
 
   return (
-    <div>
+    <div ref={boxRef} className={play ? 'wk-chart-play' : 'wk-chart-idle'}>
       <div
         className="relative w-full overflow-hidden"
         style={{
@@ -82,6 +104,19 @@ export const TrendChart: React.FC<TrendChartProps> = ({ points, secondary, forma
         }}
       >
         <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="absolute inset-0 w-full h-full" role="img" aria-label={label}>
+          {grid.map((g) => (
+            <line key={g.y} x1={0} x2={W} y1={g.y} y2={g.y} stroke="rgba(255,255,255,0.07)" strokeWidth={1.5} vectorEffect="non-scaling-stroke" />
+          ))}
+          {secondaryPts.length > 1 && (
+            <path d={path(secondaryPts)} fill="none" stroke="rgba(255,255,255,0.18)" strokeWidth={1.5} strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+          )}
+        </svg>
+        <svg
+          viewBox={`0 0 ${W} ${H}`}
+          preserveAspectRatio="none"
+          className="wk-chart-line absolute inset-0 w-full h-full"
+          aria-hidden="true"
+        >
           <defs>
             <linearGradient id={gradientId} x1="0" x2="1" y1="0" y2="0">
               <stop offset="0%" stopColor="#3FA7C9" stopOpacity="0.55" />
@@ -89,18 +124,12 @@ export const TrendChart: React.FC<TrendChartProps> = ({ points, secondary, forma
               <stop offset="100%" stopColor="#00F19F" />
             </linearGradient>
           </defs>
-          {grid.map((g) => (
-            <line key={g.y} x1={0} x2={W} y1={g.y} y2={g.y} stroke="rgba(255,255,255,0.07)" strokeWidth={1.5} vectorEffect="non-scaling-stroke" />
-          ))}
-          {secondaryPts.length > 1 && (
-            <path d={path(secondaryPts)} fill="none" stroke="rgba(255,255,255,0.18)" strokeWidth={1.5} strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
-          )}
           <line x1={last.x} x2={last.x} y1={8} y2={H - 8} stroke="rgba(255,255,255,0.45)" strokeWidth={2} strokeDasharray="3 5" vectorEffect="non-scaling-stroke" />
           <path d={path(main)} fill="none" stroke={`url(#${gradientId})`} strokeWidth={3} strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
         </svg>
         {/* Latest point: kept round regardless of the chart's aspect ratio. */}
         <span
-          className="absolute rounded-full bg-white"
+          className="wk-chart-dot absolute rounded-full bg-white"
           style={{
             width: fig(26),
             height: fig(26),
@@ -112,7 +141,7 @@ export const TrendChart: React.FC<TrendChartProps> = ({ points, secondary, forma
         />
         {!example &&
           grid.map((g) => (
-            <span key={g.y} className="absolute" style={{ ...muted, left: fig(12), top: `calc(${(g.y / H) * 100}% - ${fig(24)})` }} aria-hidden="true">
+            <span key={g.y} className="wk-chart-fade absolute" style={{ ...muted, left: fig(12), top: `calc(${(g.y / H) * 100}% - ${fig(24)})` }} aria-hidden="true">
               {format(g.value)}
             </span>
           ))}
@@ -123,7 +152,7 @@ export const TrendChart: React.FC<TrendChartProps> = ({ points, secondary, forma
         )}
       </div>
       {!example && (
-        <div className="flex justify-between" style={{ ...muted, marginTop: fig(12) }} aria-hidden="true">
+        <div className="wk-chart-fade flex justify-between" style={{ ...muted, marginTop: fig(12) }} aria-hidden="true">
           <span>{dayMonth(points[0].date)}</span>
           <span>
             {dayMonth(points[points.length - 1].date)} · {format(points[points.length - 1].value)}

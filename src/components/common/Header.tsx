@@ -13,36 +13,10 @@ export const Header: React.FC<HeaderProps> = ({
   profile,
   onOpenAuth,
 }) => {
-  const currentLevelXp = profile.currentXp % 500;
-  const xpPercent = Math.min(100, Math.round((currentLevelXp / 500) * 100));
-
   return (
     <header className="sticky top-0 z-30 bg-[#13181C]/95 backdrop-blur-2xl border-b border-white/[0.06] px-4 py-2.5">
       <div className="max-w-md mx-auto flex items-center justify-between">
-        {/* Brand & Level Progress */}
-        <div>
-          <div className="flex items-center space-x-2">
-            <span className="wk-h1 tracking-tight">
-              TREISE
-            </span>
-            <span className="wk-pill" style={{ color: 'var(--wk-accent)' }}>
-              Lv.{profile.level}
-            </span>
-          </div>
-
-          {/* Subtle XP progress bar */}
-          <div className="flex items-center space-x-2 mt-1">
-            <div className="wk-bar w-20">
-              <div
-                className="transition-all duration-300"
-                style={{ width: `${xpPercent}%` }}
-              />
-            </div>
-            <span className="wk-caption tabular-numbers">
-              {currentLevelXp}/500 XP
-            </span>
-          </div>
-        </div>
+        <span className="wk-h1 tracking-tight">TREISE</span>
 
         {/* Right Status Actions */}
         <div className="flex items-center space-x-2">

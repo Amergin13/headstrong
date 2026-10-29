@@ -1,6 +1,5 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { SetType, WorkoutSet } from '../../engine/types';
-import { Check } from 'lucide-react';
 import { triggerHaptic } from '../../utils/haptics';
 import { useUnits } from '../../utils/unitsContext';
 
@@ -46,8 +45,12 @@ export const SetRow: React.FC<SetRowProps> = ({
   const weightStep = units.unit === 'lb' ? 5 : isDumbbell ? 2.0 : 2.5;
   const label = displayLabel || `Set ${set.setNumber}`;
 
+  // Bumped each time the athlete ticks the set, to replay the completion animation (not on load).
+  const [celebration, setCelebration] = useState(0);
+
   const handleToggleComplete = () => {
     const nextCompleted = !set.completed;
+    if (nextCompleted) setCelebration((n) => n + 1);
     triggerHaptic(nextCompleted ? 'success' : 'light');
     onUpdate({
       actualWeightKg: currentWeight,
@@ -75,10 +78,13 @@ export const SetRow: React.FC<SetRowProps> = ({
 
   return (
     <div
-      className="grid items-center"
+      className="grid items-center relative"
       style={{ gridTemplateColumns: SET_TABLE_COLUMNS, columnGap: SET_TABLE_GAP }}
       aria-label={label}
     >
+      {celebration > 0 && set.completed && (
+        <span key={`flash-${celebration}`} className="wk-row-flash" aria-hidden="true" />
+      )}
       <span className="text-center" style={{ ...greyText, color: currentSetType === 'warmup' ? '#F5B94A' : greyText.color }} title={label}>
         {badge}
       </span>
@@ -151,14 +157,30 @@ export const SetRow: React.FC<SetRowProps> = ({
         onClick={handleToggleComplete}
         aria-label={set.completed ? `Mark ${label.toLowerCase()} not done` : `Complete ${label.toLowerCase()}`}
         aria-pressed={set.completed}
-        className="flex items-center justify-center transition-colors active:scale-95"
+        className={`relative flex items-center justify-center transition-colors active:scale-95 ${
+          celebration > 0 && set.completed ? 'wk-tick-pop' : ''
+        }`}
         style={{
           height: fig(74),
           borderRadius: fig(15),
           background: set.completed ? 'var(--wk-accent)' : 'var(--wk-pill)',
         }}
       >
-        {set.completed && <Check style={{ width: fig(34), height: fig(34), color: '#13181C' }} strokeWidth={3} aria-hidden="true" />}
+        {set.completed && (
+          <svg
+            viewBox="0 0 24 24"
+            style={{ width: fig(34), height: fig(34) }}
+            fill="none"
+            stroke="#13181C"
+            strokeWidth={3}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M5 12.5l4.5 4.5L19 7.5" pathLength={1} className={celebration > 0 ? 'wk-check-draw' : undefined} />
+          </svg>
+        )}
+        {celebration > 0 && set.completed && <span className="wk-tick-ripple" aria-hidden="true" />}
       </button>
     </div>
   );

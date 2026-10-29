@@ -1286,8 +1286,6 @@ export const NEW_USER_PROFILE: UserProfile = {
   goalPhase: 'Lean Bulk',
   programType: 'ppl_upper',
   mesocycleWeek: 1,
-  level: 1,
-  currentXp: 0,
   streakDays: 0,
   lastWorkoutDate: undefined,
   wearableSource: null,
@@ -1301,8 +1299,6 @@ export const NEW_USER_PROFILE: UserProfile = {
   activeLocation: 'gym',
   availableLocations: ['gym', 'home', 'travel'],
   homeEquipment: [],
-  leaderboardOptIn: false,
-  leaderboardDisplayName: 'Athlete',
 };
 
 export const SAMPLE_DEMO_PROFILE: UserProfile = {
@@ -1313,8 +1309,6 @@ export const SAMPLE_DEMO_PROFILE: UserProfile = {
   goalPhase: 'Lean Bulk',
   programType: 'ppl_upper',
   mesocycleWeek: 3,
-  level: 14,
-  currentXp: 4850,
   streakDays: 19,
   lastWorkoutDate: '2026-10-13',
   wearableSource: 'fitbit',
@@ -1328,8 +1322,6 @@ export const SAMPLE_DEMO_PROFILE: UserProfile = {
   activeLocation: 'gym',
   availableLocations: ['gym', 'home', 'travel'],
   homeEquipment: ['bench', 'dumbbells', 'trx', 'pullup_bar'],
-  leaderboardOptIn: true,
-  leaderboardDisplayName: 'Alex Vance',
 };
 
 export const INITIAL_USER_PROFILE: UserProfile = NEW_USER_PROFILE;
@@ -1433,7 +1425,6 @@ export function generateSeedWorkouts(): WorkoutSession[] {
           completedAt: `${dateStr}T18:45:00Z`,
           readinessState: day % 11 === 0 ? 'Amber Shield' : day % 5 === 0 ? 'Primed' : 'Normal',
           readinessZScore: day % 11 === 0 ? -1.1 : day % 5 === 0 ? 1.2 : 0.3,
-          xpEarned: day % 5 === 0 ? 460 : 400,
           avgHeartRate: 142,
           durationMinutes: 62,
           exercises: [
@@ -1519,7 +1510,6 @@ export function generateSeedWorkouts(): WorkoutSession[] {
           completedAt: `${dateStr}T19:15:00Z`,
           readinessState: 'Normal',
           readinessZScore: 0.25,
-          xpEarned: 420,
           avgHeartRate: 139,
           durationMinutes: 58,
           exercises: [
@@ -1593,7 +1583,6 @@ export function generateSeedWorkouts(): WorkoutSession[] {
           completedAt: `${dateStr}T17:50:00Z`,
           readinessState: 'Primed',
           readinessZScore: 1.05,
-          xpEarned: 480,
           avgHeartRate: 151,
           durationMinutes: 67,
           exercises: [
@@ -1666,7 +1655,6 @@ export function generateSeedWorkouts(): WorkoutSession[] {
           completedAt: `${dateStr}T18:10:00Z`,
           readinessState: 'Normal',
           readinessZScore: 0.1,
-          xpEarned: 390,
           avgHeartRate: 137,
           durationMinutes: 55,
           exercises: [
@@ -1750,7 +1738,6 @@ export function createTodaysActiveWorkout(): WorkoutSession {
     completed: false,
     readinessState: 'Primed',
     readinessZScore: 1.15,
-    xpEarned: 0,
     exercises: [
       {
         id: 'active-ex-1',

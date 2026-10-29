@@ -8,12 +8,11 @@ import { runStorageMigrations } from './services/storage';
 // Upgrade saved data from older versions before the app reads it.
 runStorageMigrations();
 
-// Register PWA service worker with auto-update
+// Register PWA service worker with immediate auto-update
 const updateSW = registerSW({
+  immediate: true,
   onNeedRefresh() {
-    if (confirm('New version available. Refresh?')) {
-      updateSW(true);
-    }
+    updateSW(true);
   },
   onOfflineReady() {
     console.log('Treise is ready to work offline.');

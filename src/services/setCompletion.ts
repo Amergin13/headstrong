@@ -1,5 +1,5 @@
 import { ExerciseSession, WorkoutSession, WorkoutSet } from '../engine/types';
-import { evaluateExerciseProgressXp, XpAward } from '../engine/xp';
+import { evaluateExerciseProgress, Milestone } from '../engine/milestones';
 import { isPillarBenchmarkExercise } from '../engine/strengthStandards';
 
 /** What the rest timer shows: the exercise just done, what's next, and why this rest length. */
@@ -55,17 +55,17 @@ export function planRestAfterSet(
 }
 
 /**
- * Progress XP for a just-completed working set, compared with the best set of this exercise in
- * past workouts and earlier in this session. Each set can earn XP at most once.
+ * Personal best on a just-completed working set, compared with the best set of this exercise in
+ * past workouts and earlier in this session. Each set is celebrated at most once.
  */
-export function evaluateSetProgressAward(
+export function evaluateSetPersonalBest(
   workout: WorkoutSession,
   history: WorkoutSession[],
   exercise: ExerciseSession,
   completedSet: WorkoutSet
-): XpAward | null {
+): Milestone | null {
   if (!isWorking(completedSet)) return null;
-  if ((workout.xpAwardedSetIds || []).includes(completedSet.id)) return null;
+  if ((workout.celebratedSetIds || []).includes(completedSet.id)) return null;
 
   const thisSession = workout.exercises.find((e) => e.id === exercise.id);
   const earlierThisSession = thisSession ? thisSession.sets.filter((s) => s.id !== completedSet.id) : [];
@@ -87,7 +87,7 @@ export function evaluateSetProgressAward(
     }
   }
 
-  return evaluateExerciseProgressXp(
+  return evaluateExerciseProgress(
     exercise.name,
     completedSet.actualWeightKg ?? completedSet.targetWeightKg ?? 0,
     completedSet.actualReps ?? completedSet.targetReps ?? 0,

@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import {
   BiometricLog,
   ExerciseDefinition,
+  WorkoutSession,
   GoalPhase,
   ProgramSplitType,
   UserProfile,
@@ -11,16 +12,20 @@ import {
 import { SplitDayType } from '../../services/workoutGenerator';
 import { WEARABLE_PROVIDERS } from '../../services/wearableSyncService';
 import { SplitEditor } from './SplitEditor';
+import { ProgramPlanView } from './ProgramPlanView';
+import { ProgramPickerModal } from './ProgramPickerModal';
 import { CustomExerciseModal } from './CustomExerciseModal';
 import { MesocycleManager } from './MesocycleManager';
 import { ProductGovernanceModal } from './ProductGovernanceModal';
 import { GoalPhaseSwitcher } from '../character/GoalPhaseSwitcher';
-import { ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { triggerHaptic } from '../../utils/haptics';
 import { GPU_MODEL_DOWNLOAD_LABEL, isGpuModelReady, removeGpuModel } from '../../services/gpuModel';
 
 interface ProgramTabProps {
   profile: UserProfile;
+  /** Completed and saved sessions, newest first. */
+  workouts: WorkoutSession[];
   latestBiometrics?: BiometricLog;
   exerciseCatalog: ExerciseDefinition[];
   activeSplitDay?: string;
@@ -58,6 +63,7 @@ const fig = (px: number) => `calc(${px} * var(--f))`;
 
 export const ProgramTab: React.FC<ProgramTabProps> = ({
   profile,
+  workouts,
   latestBiometrics,
   exerciseCatalog,
   activeSplitDay,
@@ -87,6 +93,21 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
   const [showPrivacyDetails, setShowPrivacyDetails] = useState(false);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [deviceCoachReady, setDeviceCoachReady] = useState(false);
+  const [showProgramPicker, setShowProgramPicker] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const openSettings = (open: boolean) => {
+    triggerHaptic('light');
+    setShowSettings(open);
+    window.scrollTo({ top: 0 });
+  };
+  const isPlan = profile.programType === 'muscle_building_6wk';
+  const changeProgram = (newProg: ProgramSplitType) => {
+    if (onUpdateProgram) {
+      onUpdateProgram(newProg);
+    } else {
+      onUpdateProfile({ programType: newProg });
+    }
+  };
 
   useEffect(() => {
     isGpuModelReady().then(setDeviceCoachReady).catch(() => setDeviceCoachReady(false));
@@ -124,12 +145,48 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
       className="wk -mx-3.5"
       style={{ paddingLeft: fig(38), paddingRight: fig(38), paddingBottom: 112 }}
     >
-      <header style={{ paddingTop: fig(20) }}>
-        <h1 className="wk-page-title">Program</h1>
-      </header>
+      {isPlan && !showSettings && (
+        <>
+          <ProgramPlanView
+            workouts={workouts}
+            activeProgramWorkoutNumber={activeProgramWorkoutNumber}
+            onLaunchWorkoutNumber={onLaunchWorkoutNumber}
+            onBackToWorkout={onBackToWorkout}
+          />
+          <button
+            type="button"
+            onClick={() => openSettings(true)}
+            className="wk-button flex items-center justify-between"
+            style={{ marginTop: fig(120), background: 'var(--wk-card)', color: '#fff', paddingLeft: fig(38), paddingRight: fig(31) }}
+          >
+            <span>Settings</span>
+            <ChevronRight className="wk-chevron" strokeWidth={2} aria-hidden="true" />
+          </button>
+        </>
+      )}
+      {isPlan && showSettings && (
+        <header className="relative flex items-center justify-center" style={{ paddingTop: fig(20) }}>
+          <button
+            type="button"
+            onClick={() => openSettings(false)}
+            aria-label="Back to your program"
+            className="absolute left-0 flex items-center justify-center rounded-full"
+            style={{ width: 44, height: 44, background: 'var(--wk-card)' }}
+          >
+            <ChevronLeft className="text-white" style={{ width: 20, height: 20 }} strokeWidth={2} aria-hidden="true" />
+          </button>
+          <h1 className="wk-page-title">Settings</h1>
+        </header>
+      )}
+      {!isPlan && (
+        <header style={{ paddingTop: fig(20) }}>
+          <h1 className="wk-page-title">Program</h1>
+        </header>
+      )}
 
+      {(!isPlan || showSettings) && (
       <div className="flex flex-col" style={{ gap: fig(22), marginTop: fig(40) }}>
-        {onBackToWorkout && (
+        {!isPlan && onBackToWorkout && (
           <button
             type="button"
             onClick={() => {
@@ -228,32 +285,42 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
           }}
         />
 
+        {isPlan && (
+          <button
+            type="button"
+            onClick={() => {
+              triggerHaptic('light');
+              setShowProgramPicker(true);
+            }}
+            className="wk-button"
+            style={{ background: 'var(--wk-card)', color: '#fff' }}
+          >
+            Change program
+          </button>
+        )}
+
         {/* 3. 6-Week Training Plan (Mesocycle Periodization) */}
-        <MesocycleManager
+        {!isPlan && <MesocycleManager
           currentWeek={profile.mesocycleWeek || 1}
           totalWeeks={6}
           scheduledWeekLocations={profile.scheduledWeekLocations}
           onSelectWeek={onSelectMesocycleWeek}
           onTriggerDeload={() => onSelectMesocycleWeek(6)}
-        />
+        />}
 
         {/* 4. Workout Split & Exercises */}
-        <SplitEditor
-          exerciseCatalog={exerciseCatalog}
-          activeSplitDay={activeSplitDay}
-          activeProgramWorkoutNumber={activeProgramWorkoutNumber}
-          programType={profile.programType}
-          onOpenCreateExercise={() => setShowCreateExercise(true)}
-          onLaunchSplitDay={onLaunchSplitDay}
-          onLaunchWorkoutNumber={onLaunchWorkoutNumber}
-          onChangeProgram={(newProg) => {
-            if (onUpdateProgram) {
-              onUpdateProgram(newProg);
-            } else {
-              onUpdateProfile({ programType: newProg });
-            }
-          }}
-        />
+        {!isPlan && (
+          <SplitEditor
+            exerciseCatalog={exerciseCatalog}
+            activeSplitDay={activeSplitDay}
+            activeProgramWorkoutNumber={activeProgramWorkoutNumber}
+            programType={profile.programType}
+            onOpenCreateExercise={() => setShowCreateExercise(true)}
+            onLaunchSplitDay={onLaunchSplitDay}
+            onLaunchWorkoutNumber={onLaunchWorkoutNumber}
+            onChangeProgram={changeProgram}
+          />
+        )}
 
         {/* 5. Account & Sync Card */}
         <div className="wk-card w-full text-left block">
@@ -892,6 +959,7 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
           </div>
         )}
       </div>
+      )}
 
       {/* Custom Exercise Modal */}
       {showCreateExercise && (
@@ -902,6 +970,14 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
       )}
 
       {/* Product Governance & Competitor Matrix Modal */}
+      {showProgramPicker && (
+        <ProgramPickerModal
+          programType={profile.programType || 'ppl_upper'}
+          onChangeProgram={changeProgram}
+          onClose={() => setShowProgramPicker(false)}
+        />
+      )}
+
       {showGovernanceModal && (
         <ProductGovernanceModal onClose={() => setShowGovernanceModal(false)} />
       )}

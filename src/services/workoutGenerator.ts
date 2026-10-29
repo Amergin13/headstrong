@@ -969,7 +969,6 @@ export function generateSmartWorkoutSession(
     completed: false,
     readinessState,
     readinessZScore: readinessState === 'Primed' ? 1.15 : readinessState === 'Amber Shield' ? -1.1 : 0.25,
-    xpEarned: 0,
     location: 'gym',
     exercises,
   };
