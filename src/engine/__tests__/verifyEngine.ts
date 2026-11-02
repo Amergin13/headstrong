@@ -918,17 +918,15 @@ const onboardingModalSrc = fs.readFileSync(
 );
 
 assert(
-  onboardingModalSrc.includes('Welcome to Treise') &&
-    onboardingModalSrc.includes("Train when you're recovered") &&
-    onboardingModalSrc.includes('We work out what to lift next') &&
-    onboardingModalSrc.includes('Switch between gym, home and travel in one tap') &&
-    onboardingModalSrc.includes('Choose your training split') &&
-    onboardingModalSrc.includes('What is your main goal right now?') &&
-    onboardingModalSrc.includes('About you') &&
-    onboardingModalSrc.includes('Where do you train') &&
-    onboardingModalSrc.includes('what gear do you have') &&
-    onboardingModalSrc.includes('Start Day 1 Workout'),
-  `Onboarding introduces the app, explains the 3 core principles, prompts split selection, sets goals and gear, and delivers instant Day 1 value`
+  onboardingModalSrc.includes("title: 'Identity'") &&
+    onboardingModalSrc.includes("title: '24 sessions'") &&
+    onboardingModalSrc.includes("title: 'Your superpower is restarting'") &&
+    onboardingModalSrc.includes('Choose your plan') &&
+    onboardingModalSrc.includes('Where will you train?') &&
+    onboardingModalSrc.includes('What do you have at home?') &&
+    onboardingModalSrc.includes('Start my first workout') &&
+    onboardingModalSrc.includes('aria-valuemax={3}'),
+  `Onboarding is 3 illustrated screens (identity, 24 sessions, restarting); the last one picks the plan and place, then delivers workout 1`
 );
 
 const appSrc = fs.readFileSync(
@@ -3067,12 +3065,35 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
     'utf-8'
   );
   assert(
-    freshOnboardingModalSrc.includes('what to lift next') &&
-      freshOnboardingModalSrc.includes('Track real progress') &&
-      freshOnboardingModalSrc.includes('7-day average') &&
-      freshOnboardingModalSrc.includes('waist shrinks') &&
-      !freshOnboardingModalSrc.includes('Bluetooth smart scales'),
-    'OnboardingModal Step 1 briefly covers automated planning, morning weigh-ins and body recomposition, with no unbuilt smart-scale claims'
+    !freshOnboardingModalSrc.includes('Bluetooth') &&
+      !freshOnboardingModalSrc.includes('takes 4 sessions a week') &&
+      freshOnboardingModalSrc.includes("experienceLevel: returning ? profile.experienceLevel || 'intermediate' : 'new'") &&
+      !/bodyweightKg:\s*\d/.test(freshOnboardingModalSrc),
+    'Onboarding makes no unbuilt device or unsupported science claims, starts new athletes light and never invents a bodyweight'
+  );
+
+  // E. Choosing Home in onboarding: plan workout 1 is swapped to home gear, then personalized,
+  // so every loaded exercise has a starting weight and none carries a barbell number unconverted.
+  const homePlanW1 = prepareSessionForAthlete(
+    adaptWorkoutSessionToLocation(
+      generate6WeekMuscleBuildingWorkout(1, 80),
+      'home',
+      ['dumbbells', 'bench'],
+      SEED_EXERCISES,
+      [],
+      'Normal',
+      80
+    ),
+    { history: [], bodyweightKg: 80, readinessState: 'Normal', experienceLevel: 'new', gender: 'male', unit: 'kg', isProgramPlan: true }
+  );
+  const homeLoaded = homePlanW1.exercises.filter((ex) => !(ex.equipment === 'bodyweight' && !ex.isWeightedCalisthenic));
+  const homeWeights = homeLoaded.map((ex) => ex.sets.find((st) => !st.isWarmup)?.targetWeightKg ?? 0);
+  assert(
+    homePlanW1.location === 'home' &&
+      homeLoaded.length > 0 &&
+      homePlanW1.exercises.every((ex) => ex.equipment !== 'barbell' && ex.equipment !== 'cable' && ex.equipment !== 'machine') &&
+      homeWeights.every((w) => w > 0 && w <= 50),
+    `Plan workout 1 at home with dumbbells and a bench uses home gear with real starting weights (${homePlanW1.exercises.map((ex, i) => `${ex.name} ${ex.equipment === 'bodyweight' ? 'BW' : homeWeights[homeLoaded.indexOf(ex)] + ' kg'}`).join(', ')})`
   );
 
   // 30. 6-Week Muscle Building Program, Wave Sets, Warm-Up Calculator, Giant Sets & Knowledge Base

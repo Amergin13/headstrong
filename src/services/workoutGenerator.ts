@@ -199,12 +199,16 @@ export function getTemplateDefaultWeight(exerciseId: string): number | undefined
   const def = SEED_EXERCISES.find((e) => e.id === exerciseId);
   if (!def || def.equipment === 'bodyweight' || def.isWeightedCalisthenic) return undefined;
   const vector = getMovementVectorId(def);
-  const source = SEED_EXERCISES.filter(
-    (e) => e.id !== exerciseId && e.equipment !== 'bodyweight' && !e.isWeightedCalisthenic && getMovementVectorId(e) === vector
-  )
-    .map((e) => ({ e, weight: getDirectTemplateDefaultWeight(e.id) }))
-    .filter((x): x is { e: ExerciseDefinition; weight: number } => x.weight !== undefined)
-    .sort((a, b) => Number(b.e.equipment === def.equipment) - Number(a.e.equipment === def.equipment))[0];
+  const withDefaults = (match: (e: ExerciseDefinition) => boolean) =>
+    SEED_EXERCISES.filter((e) => e.id !== exerciseId && e.equipment !== 'bodyweight' && !e.isWeightedCalisthenic && match(e))
+      .map((e) => ({ e, weight: getDirectTemplateDefaultWeight(e.id) }))
+      .filter((x): x is { e: ExerciseDefinition; weight: number } => x.weight !== undefined)
+      .sort((a, b) => Number(b.e.equipment === def.equipment) - Number(a.e.equipment === def.equipment));
+  // Same movement first; otherwise the lightest default for the same pillar on the same implement,
+  // so a rare exercise starts conservatively rather than with no weight at all.
+  const source =
+    withDefaults((e) => getMovementVectorId(e) === vector)[0] ??
+    withDefaults((e) => e.pillar === def.pillar && e.equipment === def.equipment).sort((a, b) => a.weight - b.weight)[0];
   if (!source) return undefined;
   const converted = translateWeightBetweenImplements(
     source.weight,
@@ -620,7 +624,10 @@ export function adaptWorkoutSessionToLocation(
       ex.sets.find((s) => !s.isWarmup && s.setType !== 'warmup') ?? ex.sets[0];
     const sourceWeight = firstWorkingSet?.actualWeightKg ?? firstWorkingSet?.targetWeightKg ?? 40;
 
-    const translatedWeight = isPureBw
+    // A bodyweight move says nothing about what the athlete can lift with weights: the new exercise
+    // starts weightless and gets the athlete's starting weight when the session is prepared.
+    const sourceIsPureBw = ex.equipment === 'bodyweight' && !ex.isWeightedCalisthenic;
+    const translatedWeight = isPureBw || sourceIsPureBw
       ? 0
       : translateWeightBetweenImplements(
           sourceWeight,
@@ -657,7 +664,12 @@ export function adaptWorkoutSessionToLocation(
       minReps: targetDef.defaultRepRange[0],
       maxReps: targetDef.defaultRepRange[1],
       notes: targetDef.whyItWorks || ex.notes,
-      sets: ex.sets,
+      // Unstarted sets carry the load converted to the new implement, not the old exercise's raw number.
+      sets: ex.sets.map((s) =>
+        s.completed || s.isWarmup || s.setType === 'warmup'
+          ? s
+          : { ...s, targetWeightKg: translatedWeight, actualWeightKg: translatedWeight }
+      ),
     };
 
     const prescription = prescribeDoubleProgression(

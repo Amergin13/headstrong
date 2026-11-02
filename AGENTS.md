@@ -383,29 +383,14 @@ Every UI component, layout, copy change, and new flow MUST be designed and evalu
 
 ## 7. Onboarding & First-Time-to-Value Specification (Mandatory Flow)
 
-New users must be guided along the **quickest path to value** in under 60 seconds:
-1. **Step 1: Welcome & How Treise Works (Introduction)**
-   - Welcomes the athlete with a friendly, motivating, and clear product voice.
-   - **What Treise Does for You:** Explains that the app automatically tracks your weights, sets, reps, tempo, and rest intervals, and handles all weekly progressive overload planning (+1 rep or +2.5 kg). It completely replaces the tedious, error-prone manual paper training diary—the athlete just needs to show up and lift.
-   - **How to Measure Real Progress:** Explains morning weigh-ins on the same scale under consistent conditions, taking body circumference measurements (waist, chest, arms), and the physiological reality of **body recomposition** (since muscle is ~18% denser than fat, the scale may stay flat or move slowly while fat is burned and muscle built, yet you look radically different with your shirt off; smoothed via a 7-day rolling average).
-   - **Friction-Free Smart Devices:** Explains automated ingestion from Bluetooth smart scales, digital measuring devices, and wearable telemetry (Google Pixel Watch, Fitbit, Whoop, Android Health Connect) to remove manual data-entry fatigue.
-   - **Life-Proof Schedule & Anywhere Gear:** Explains the Asynchronous Hypertrophy Queue (train when muscles recover with zero missed-day guilt) and multi-location adaptability across Full Gym, Home Gear, and Travel Bodyweight.
-   - Provides a clear primary CTA (`Choose My Goal`) and a subtle exit (`Skip to Demo`).
-2. **Step 2: Primary Goal & Phase (Goal Selection)**
-   - Anchors the athlete's motivation and intent first. Calibrates volume landmarks and rules for `Lean Bulk`, `Cut / Recomp` (with Retention Shield), or `Maingain`.
-   - Provides a clear primary CTA (`Continue to Split`).
-3. **Step 3: Choose Training Split (Program Type)**
-   - Presents the 4 evidence-based hypertrophy splits calibrated to their selected goal:
-     - `Push / Pull / Legs + Upper (4-Day)` *(Recommended for Hypertrophy)*
-     - `Push / Pull / Legs (3-Day Classic)`
-     - `Upper / Lower (4-Day Power & Mass)`
-     - `Full Body (3-Day High Frequency)`
-   - Clearly displays session rotation, weekly frequency, and Day 1 starter workout.
-   - Provides a clear primary CTA (`Set Up Equipment`).
-4. **Step 4: Training Locations & Available Equipment**
-   - Configures places (`Full Gym`, `At Home`, `Travel`), home gear (`Bench`, `Dumbbells`, `TRX`, `Pull-Up Bar`, `Bands`), and today's location.
-5. **First-Time-to-Value Delivery:**
-   - Instantly generates the calibrated Day 1 workout and directs the athlete straight to the Workout tab with Exercise #1, target weight, and reps ready to train in 1 tap.
+Onboarding sells one idea: Treise helps you become someone who trains. It is three full-screen pages (`OnboardingModal.tsx`), each with one idea, one animated illustration (`OnboardingIllustrations.tsx`, motion in `src/index.css` `ob-*`, final frame with reduced motion), a 1-of-3 progress indicator, Back, Skip (to page 3) and swipe:
+1. **Identity:** people who stay active for life build an identity, not willpower. Illustration: the identity sphere's rings forming (same motif and phase colours as the Program page).
+2. **24 sessions:** the 6-week plan is 24 sessions, 4 a week, and Treise sets every weight and rep. Illustration: 6 weeks × 4 dots filling in by phase. No unsupported science claims (e.g. "it takes 4 sessions a week for 6 weeks"); habit research (Lally et al., 2010) found a median of ~66 days and wide variation.
+3. **Your superpower is restarting:** missing a workout doesn't ruin progress; workouts match recovery and place, with a home swap in one tap. Illustration: a progress line that dips and climbs back. Then the only two decisions: **plan** (6-week plan, Recommended; the 4 splits under "Other programs") and **where** (Gym, Home, Bodyweight; Home shows the home-gear chips, nothing pre-ticked).
+- Primary CTA: "Continue", then "Start my first workout", which lands on the Workout tab with workout 1 ready. "See a demo with sample data" sits under page 1's CTA.
+- Nothing else is asked. Goal stays Build Muscle (changeable in Settings), units default from the phone's language, and new athletes start at the "new" experience level (lighter weights; the first logged sets teach the app their strength). Bodyweight is never assumed: it is logged later in Progress → Body.
+- A plan workout away from the gym is swapped with `adaptWorkoutSessionToLocation` before `personalizeSessionLoads`, so swapped exercises get the athlete's starting weight (a move swapped in for a bodyweight one starts from its default, never 0 kg or an unconverted barbell number).
+- Settings → Edit Equipment reopens page 3 alone as "Your plan and gear" with Close and "Save changes".
 
 ---
 
@@ -459,7 +444,7 @@ When running on Google Pixel hardware (Pixel 6, 7, 8, 9, Fold), Treise routes AI
 
 ### 10.1 Zero Dummy Data Exposure Invariant
 - **First-Time Visitors:** Fresh installs start with `NEW_USER_PROFILE`: 0 streak, 'Athlete', fresh starter workout, and clean empty arrays `[]` for biometrics and completed workouts.
-- **Preview & Demo Mode:** Sample 6-week demonstration data (`SAMPLE_DEMO_PROFILE`, 42 days biometrics, 24 workouts for Alex Vance) is available strictly on explicit opt-in via "Load Sample Demo History" or the Onboarding "Explore Demo Mode" trigger.
+- **Preview & Demo Mode:** Sample 6-week demonstration data (`SAMPLE_DEMO_PROFILE`, 42 days biometrics, 24 workouts for Alex Vance) is available strictly on explicit opt-in via "Load Sample Demo History" or onboarding's "See a demo with sample data" link.
 
 ### 10.2 No XP, Levels or Leaderboards
 - XP, levels, XP divisions and the leaderboard were removed and must not return. Progress is shown by real training: personal bests, strength levels, the plan's n/24 and the identity sphere.

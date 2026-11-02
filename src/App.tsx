@@ -99,7 +99,7 @@ export const App: React.FC = () => {
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [authUser, setAuthUser] = useState<AuthUser | null>(loadAuthUser);
   const [onboardingOpen, setOnboardingOpen] = useState(!profile.onboardingCompleted);
-  const [onboardingInitialStep, setOnboardingInitialStep] = useState<1 | 2 | 3 | 4>(1);
+  const [onboardingInitialStep, setOnboardingInitialStep] = useState<1 | 2 | 3>(1);
   const [deferredInstallPrompt, setDeferredInstallPrompt] = useState<any>(null);
   const [toast, setToast] = useState<{ title?: string; message: string; tag?: string } | null>(null);
 
@@ -210,9 +210,26 @@ export const App: React.FC = () => {
       isProgramPlan?: boolean;
       history?: WorkoutSession[];
       overrides?: Partial<Pick<UserProfile, 'experienceLevel' | 'gender' | 'weightUnit'>> & { bodyweightKg?: number };
+      /** Plan workouts are written for the gym; away from it they get the same movements with the gear at hand. */
+      location?: TrainingLocation;
+      homeEquipment?: HomeEquipmentTag[];
     } = {}
-  ): WorkoutSession =>
-    prepareSessionForAthlete(session, {
+  ): WorkoutSession => {
+    const location = opts.location ?? profile.activeLocation ?? 'gym';
+    // Same swap as the one-tap place switch on the Workout tab, before weights are personalized.
+    const placed =
+      opts.isProgramPlan && location !== 'gym'
+        ? adaptWorkoutSessionToLocation(
+            session,
+            location,
+            opts.homeEquipment ?? profile.homeEquipment ?? [],
+            exercises,
+            opts.history ?? workouts,
+            readiness.state,
+            opts.overrides?.bodyweightKg ?? bodyweightEmaKg
+          )
+        : session;
+    return prepareSessionForAthlete(placed, {
       history: opts.history ?? workouts,
       bodyweightKg: opts.overrides?.bodyweightKg ?? bodyweightEmaKg,
       readinessState: readiness.state,
@@ -221,6 +238,24 @@ export const App: React.FC = () => {
       unit: opts.overrides?.weightUnit || weightUnit,
       isProgramPlan: opts.isProgramPlan,
     });
+  };
+
+  /** Gives loaded exercises that have no weight yet (e.g. swapped in for a bodyweight move) a starting weight. */
+  const isWeightless = (ex: ExerciseSession) =>
+    !(ex.equipment === 'bodyweight' && !ex.isWeightedCalisthenic) &&
+    !ex.sets.some((s) => s.completed) &&
+    ex.sets.filter((s) => !s.isWarmup).every((s) => (s.targetWeightKg ?? 0) <= 0);
+  const fillWeightless = (session: WorkoutSession): WorkoutSession => {
+    const weightless = session.exercises.filter(isWeightless);
+    if (weightless.length === 0) return session;
+    const filled = prepareSession(
+      { ...session, exercises: weightless },
+      // Only fills in weights: 'gym' keeps the exercises exactly as they are.
+      { isProgramPlan: Boolean(session.programWorkoutNumber), location: 'gym' }
+    );
+    const byId = new Map(filled.exercises.map((ex) => [ex.id, ex]));
+    return { ...session, exercises: session.exercises.map((ex) => (isWeightless(ex) && byId.get(ex.id)) || ex) };
+  };
 
   // Saved workouts from older versions can hold loaded exercises with no weight (e.g. after a swap).
   // Fill only those exercises once on open, so already-personalized weights aren't scaled twice.
@@ -228,22 +263,8 @@ export const App: React.FC = () => {
   useEffect(() => {
     if (repairedWeightlessRef.current) return;
     repairedWeightlessRef.current = true;
-    if (activeWorkout.completed) return;
-    const isWeightless = (ex: ExerciseSession) =>
-      !(ex.equipment === 'bodyweight' && !ex.isWeightedCalisthenic) &&
-      !ex.sets.some((s) => s.completed) &&
-      ex.sets.filter((s) => !s.isWarmup).every((s) => (s.targetWeightKg ?? 0) <= 0);
-    const weightless = activeWorkout.exercises.filter(isWeightless);
-    if (weightless.length === 0) return;
-    const repaired = prepareSession(
-      { ...activeWorkout, exercises: weightless },
-      { isProgramPlan: Boolean(activeWorkout.programWorkoutNumber) }
-    );
-    const byId = new Map(repaired.exercises.map((ex) => [ex.id, ex]));
-    setActiveWorkout((prev) => ({
-      ...prev,
-      exercises: prev.exercises.map((ex) => (isWeightless(ex) && byId.has(ex.id) ? byId.get(ex.id)! : ex)),
-    }));
+    if (activeWorkout.completed || !activeWorkout.exercises.some(isWeightless)) return;
+    setActiveWorkout((prev) => fillWeightless(prev));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -390,7 +411,7 @@ export const App: React.FC = () => {
       readiness.state,
       bodyweightEmaKg
     );
-    setActiveWorkout(adapted);
+    setActiveWorkout(fillWeightless(adapted));
   };
 
   // Handler: Complete Onboarding / Goals & Equipment Setup
@@ -478,6 +499,8 @@ export const App: React.FC = () => {
     setActiveWorkout(
       prepareSession(starterSession, {
         isProgramPlan: isPlan,
+        location: setup.activeLocation,
+        homeEquipment: setup.homeEquipment,
         overrides: athlete
           ? {
               experienceLevel: athlete.experienceLevel,
@@ -844,7 +867,7 @@ export const App: React.FC = () => {
             onImportData={handleImportData}
             onDeleteAllData={handleDeleteAllData}
             onOpenOnboarding={() => {
-              setOnboardingInitialStep(4);
+              setOnboardingInitialStep(3);
               setOnboardingOpen(true);
             }}
             activeWorkoutName={activeWorkout.name}
@@ -875,7 +898,7 @@ export const App: React.FC = () => {
           onApplyAction={handleApplyAssistantAction}
           onViewAllEquipment={() => {
             setAiCoachOpen(false);
-            setOnboardingInitialStep(4);
+            setOnboardingInitialStep(3);
             setOnboardingOpen(true);
           }}
         />
