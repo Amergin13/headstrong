@@ -80,6 +80,8 @@ export interface BiometricLog {
   maxWorkoutHr?: number;
   workoutDurationMin?: number;
   source?: WearableProvider;
+  /** Weight typed in by the athlete (onboarding or Log weight). */
+  isManualEntry?: boolean;
   /**
    * RENPHO Bluetooth Health Scale (13 metrics) & Smart Body Tape Measure (12 sites),
    * or manual entry. Undefined = not measured.

@@ -71,7 +71,7 @@ export const SetRow: React.FC<SetRowProps> = ({
     : '—';
   const badge =
     displayBadge || (currentSetType === 'warmup' ? 'W' : currentSetType === 'drop' ? 'D' : currentSetType === 'myo' ? '+' : `${set.setNumber}`);
-  const greyText: React.CSSProperties = { fontSize: fig(26), fontWeight: 600, color: '#A7ACAF' };
+  const greyText: React.CSSProperties = { fontSize: `max(12px, ${fig(26)})`, fontWeight: 600, color: '#A7ACAF' };
 
   return (
     <div
@@ -110,7 +110,7 @@ export const SetRow: React.FC<SetRowProps> = ({
           style={{ width: `${Math.max(1, String(displayWeight).length)}ch`, fontSize: 'inherit' }}
         />
         {displayWeight > 0 && (
-          <span aria-hidden="true" style={{ fontSize: '0.8em', marginLeft: '0.1em' }}>
+          <span aria-hidden="true" style={{ fontSize: 'max(12px, 0.8em)', marginLeft: '0.1em' }}>
             {units.unit.toUpperCase()}
           </span>
         )}
@@ -129,7 +129,7 @@ export const SetRow: React.FC<SetRowProps> = ({
         {(set.isFormFailure || set.repDisplay === 'F*') && (
           <span
             className="absolute rounded pointer-events-none font-bold"
-            style={{ top: fig(-12), right: fig(-6), fontSize: fig(18), padding: `0 ${fig(6)}`, background: '#5B2A33', color: '#FFB3BF' }}
+            style={{ top: fig(-12), right: fig(-6), fontSize: `max(12px, ${fig(18)})`, padding: `0 ${fig(6)}`, background: '#5B2A33', color: '#FFB3BF' }}
             title="Do as many reps as you can with good form"
           >
             F*

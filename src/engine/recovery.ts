@@ -259,3 +259,31 @@ export function formatReadyTime(rawReadyAt: number, now: number = Date.now()): s
   if (dayDiff === 1) return `tomorrow at ${timeLabel}`;
   return `${target.toLocaleDateString([], { weekday: 'long' })} at ${timeLabel}`;
 }
+
+/** Longest rest between training days that keeps a streak going (recovery waits run up to about 4 days). */
+export const STREAK_MAX_REST_DAYS = 4;
+
+/**
+ * Training-day streak from the saved workouts: distinct days trained, counting back from the most
+ * recent, as long as no rest gap is longer than STREAK_MAX_REST_DAYS. Rest days the recovery queue
+ * asks for never break it. 0 when the last workout was too long ago.
+ */
+export function computeTrainingStreak(workouts: WorkoutSession[], now: number = Date.now()): number {
+  const days = [...new Set(workouts.filter((w) => w.completed).map((w) => w.date))].sort().reverse();
+  if (!days.length) return 0;
+  const dayMs = 24 * 60 * 60 * 1000;
+  const toTime = (d: string) => {
+    const [y, m, dd] = d.split('-').map(Number);
+    return new Date(y, m - 1, dd).getTime();
+  };
+  const today = new Date(now);
+  const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+  if (Math.round((todayStart - toTime(days[0])) / dayMs) > STREAK_MAX_REST_DAYS + 1) return 0;
+  let streak = 1;
+  for (let i = 1; i < days.length; i++) {
+    const gap = Math.round((toTime(days[i - 1]) - toTime(days[i])) / dayMs);
+    if (gap > STREAK_MAX_REST_DAYS + 1) break;
+    streak++;
+  }
+  return streak;
+}

@@ -4,7 +4,7 @@ import { MuscleProgress } from '../../services/muscleProgress';
 
 /** One Figma pixel (1344 px frame) in screen pixels; see .wk in index.css. */
 const fig = (px: number) => `calc(${px} * var(--f))`;
-const muted: React.CSSProperties = { fontSize: fig(20), color: 'rgba(255,255,255,0.45)', lineHeight: 1 };
+const muted: React.CSSProperties = { fontSize: `max(12px, ${fig(24)})`, color: 'rgba(255,255,255,0.5)', lineHeight: 1 };
 
 const dayMonth = (date: string) => {
   const [, m, d] = date.split('-');

@@ -1,3 +1,4 @@
+import { GOAL_DISPLAY_NAME } from '../../utils/goalNames';
 import React, { useState } from 'react';
 import {
   ExperienceLevel,
@@ -291,14 +292,14 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                 {
                   icon: <BookOpen className="w-4 h-4 stroke-[2]" aria-hidden="true" />,
                   tone: 'bg-[#13181C] text-[#00F19F]',
-                  title: 'Guaranteed Overload: we do the math',
+                  title: 'We work out what to lift next',
                   body: 'Log your sets and Treise tells you exactly what to lift next time: one more rep, or a little more weight.',
                 },
                 {
                   icon: <Clock className="w-4 h-4 stroke-[2]" aria-hidden="true" />,
                   tone: 'bg-[#13181C] text-amber-400',
                   title: "Train when you're recovered",
-                  body: 'Your next workout waits until your muscles are ready, with no missed-day guilt. Adapts Across Any Gear: gym, home or travel in one tap.',
+                  body: 'Your next workout waits until your muscles are ready, with no missed-day guilt. Switch between gym, home and travel in one tap.',
                 },
                 {
                   icon: <Scale className="w-4 h-4 stroke-[2]" aria-hidden="true" />,
@@ -332,7 +333,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
             <div>
               <div className="wk-pill inline-flex items-center space-x-1.5 px-2.5 py-1 text-[#00F19F] text-xs font-bold mb-2">
                 <Target className="w-3.5 h-3.5 stroke-[2]" />
-                <span>Intent &amp; Recovery Strategy</span>
+                <span>Your goal</span>
               </div>
               <h2
                 id="onboarding-modal-title"
@@ -478,8 +479,8 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
             <div>
               <div className="wk-pill inline-flex items-center space-x-1.5 px-3 py-1 text-[#C6C6C6] text-xs font-semibold mb-2">
                 <Target className="w-3.5 h-3.5 text-[#00F19F] stroke-[2]" />
-                <span>Selected Goal:</span>
-                <span className="text-[#00F19F] font-bold">{selectedGoal}</span>
+                <span>Your goal:</span>
+                <span className="text-[#00F19F] font-bold">{GOAL_DISPLAY_NAME[selectedGoal]}</span>
               </div>
               <h2
                 id="onboarding-modal-title"

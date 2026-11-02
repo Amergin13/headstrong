@@ -19,6 +19,7 @@ import { calculateE1RM } from '../engine/e1rm';
 import { isPillarBenchmarkExercise } from '../engine/strengthStandards';
 import { getLatestBodyweightEma } from '../engine/ema';
 import { localDateString } from '../utils/date';
+import { withPlanWorkoutName } from '../engine/muscleBuildingProgram';
 
 const KEYS = {
   PROFILE: 'treise_profile_v3',
@@ -237,7 +238,7 @@ export function saveBiometrics(logs: BiometricLog[]): void {
 export function loadWorkouts(): WorkoutSession[] {
   try {
     const raw = getItemWithFallback('WORKOUTS');
-    if (raw) return JSON.parse(raw);
+    if (raw) return (JSON.parse(raw) as WorkoutSession[]).map(withPlanWorkoutName);
   } catch (e) {
     console.error('Failed to load workouts:', e);
   }
@@ -255,7 +256,7 @@ export function saveWorkouts(workouts: WorkoutSession[]): void {
 export function loadActiveWorkout(): WorkoutSession {
   try {
     const raw = getItemWithFallback('ACTIVE_WORKOUT');
-    if (raw) return JSON.parse(raw);
+    if (raw) return withPlanWorkoutName(JSON.parse(raw));
   } catch (e) {
     console.error('Failed to load active workout:', e);
   }
@@ -363,6 +364,7 @@ export function calculateBestPillarE1rms(
         }
         const weight = s.actualWeightKg ?? s.targetWeightKg ?? 0;
         const rir = s.actualRir ?? 2;
+        // Same formula and inputs as the Progress tab's strength charts.
         const e1rm = calculateE1RM(
           weight,
           s.actualReps,
@@ -370,7 +372,9 @@ export function calculateBestPillarE1rms(
           ex.equipment,
           ex.isRdl,
           ex.isWeightedCalisthenic,
-          bodyweightEmaKg
+          bodyweightEmaKg,
+          ex.exerciseId,
+          ex.pillar
         );
         if (e1rm > best[ex.pillar]) {
           best[ex.pillar] = e1rm;
@@ -532,10 +536,13 @@ export function importUserDataJSON(rawJson: string): TreiseDataBackup {
     throw new Error('Invalid Treise backup file format.');
   }
 
-  const profile = parsed.profile;
+  // XP, levels and the leaderboard were removed; old backups may still carry them.
+  const { currentXp: _xp, level: _level, leaderboardOptIn: _opt, leaderboardDisplayName: _name, ...profile } =
+    parsed.profile as UserProfile & Record<string, unknown>;
   const biometrics = Array.isArray(parsed.biometrics) ? parsed.biometrics : loadBiometrics();
-  const workouts = parsed.workouts;
-  const activeWorkout = parsed.activeWorkout || createTodaysActiveWorkout();
+  // Same clean-up as loading from storage, so imported data shows the same everywhere.
+  const workouts = (parsed.workouts as WorkoutSession[]).map(withPlanWorkoutName);
+  const activeWorkout = withPlanWorkoutName(parsed.activeWorkout || createTodaysActiveWorkout());
   const exercises = Array.isArray(parsed.exercises) ? parsed.exercises : SEED_EXERCISES;
 
   saveProfile(profile);

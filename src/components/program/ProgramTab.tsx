@@ -504,7 +504,7 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
                         className="h-full px-3 font-bold uppercase transition-colors"
                         style={{
                           borderRadius: fig(14),
-                          fontSize: fig(22),
+                          fontSize: `max(12px, ${fig(22)})`,
                           background: isSelected ? 'var(--wk-pill)' : 'transparent',
                           color: isSelected ? '#fff' : 'var(--wk-muted)',
                         }}
@@ -540,7 +540,7 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
                         className="h-full px-3 font-bold uppercase transition-colors"
                         style={{
                           borderRadius: fig(14),
-                          fontSize: fig(22),
+                          fontSize: `max(12px, ${fig(22)})`,
                           background: isSelected ? 'var(--wk-pill)' : 'transparent',
                           color: isSelected ? '#fff' : 'var(--wk-muted)',
                         }}
@@ -580,7 +580,7 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
                         className="h-full px-2.5 font-bold uppercase transition-colors"
                         style={{
                           borderRadius: fig(14),
-                          fontSize: fig(22),
+                          fontSize: `max(12px, ${fig(22)})`,
                           background: isSelected ? 'var(--wk-pill)' : 'transparent',
                           color: isSelected ? '#fff' : 'var(--wk-muted)',
                         }}

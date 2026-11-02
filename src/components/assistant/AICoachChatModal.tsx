@@ -267,12 +267,12 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
       text: "I can't train today, take a rest day",
     },
     {
-      label: 'Why 1.18x DB Multiplier?',
-      text: 'Why does Treise use a 1.18x Dumbbell Multiplier?',
+      label: 'Why do dumbbells count more?',
+      text: 'Why does Treise use a 1.18x dumbbell multiplier?',
     },
     {
-      label: 'How Does DOTS Work?',
-      text: 'How does the official DOTS formula work?',
+      label: 'How is my strength score worked out?',
+      text: 'How is my strength score (DOTS) worked out?',
     },
   ];
 

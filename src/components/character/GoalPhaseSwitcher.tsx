@@ -86,7 +86,7 @@ export const GoalPhaseSwitcher: React.FC<GoalPhaseSwitcherProps> = ({
                 minHeight: 44,
                 height: fig(84),
                 borderRadius: fig(18),
-                fontSize: fig(22),
+                fontSize: `max(12px, ${fig(22)})`,
                 background: isSelected ? 'var(--wk-pill)' : 'transparent',
                 color: isSelected ? '#fff' : 'var(--wk-muted)',
               }}

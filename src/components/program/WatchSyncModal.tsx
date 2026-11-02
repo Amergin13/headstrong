@@ -134,7 +134,7 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
         setSyncProgress({
           stage: 'connecting',
           percent: 25,
-          message: 'Connecting to Whoop 4.0...',
+          message: 'Connecting to Whoop...',
           provider: 'whoop',
         });
         const effectiveId = profile.whoopClientId || WHOOP_CONFIG.CLIENT_ID;
@@ -316,7 +316,7 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
           const isSelected = selectedProvider === prov;
           const shortLabels: Record<WearableProvider, string> = {
             fitbit: 'Pixel / Fitbit',
-            whoop: 'Whoop 4.0',
+            whoop: 'Whoop',
             health_connect: 'Health Connect',
           };
 
@@ -333,7 +333,7 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
               className="h-full flex items-center justify-center font-bold uppercase transition-colors px-1 min-h-[44px]"
               style={{
                 borderRadius: fig(16),
-                fontSize: fig(22),
+                fontSize: `max(12px, ${fig(22)})`,
                 letterSpacing: '0.02em',
                 background: isSelected ? 'var(--wk-pill)' : 'transparent',
                 color: isSelected ? '#fff' : 'var(--wk-muted)',
@@ -400,19 +400,19 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
             )}
           <div className="flex items-center justify-between" style={{ gap: fig(16) }}>
             <span className="wk-label">Last Night&apos;s HRV</span>
-            <span className="wk-pill">{latestBiometrics.hrvRmssd} ms</span>
+            <span className="wk-pill">{latestBiometrics.hrvRmssd > 0 ? `${latestBiometrics.hrvRmssd} ms` : '—'}</span>
           </div>
           <div className="flex items-center justify-between" style={{ gap: fig(16) }}>
             <span className="wk-label">Resting Heart Rate</span>
-            <span className="wk-pill">{latestBiometrics.restingHr} bpm</span>
+            <span className="wk-pill">{latestBiometrics.restingHr > 0 ? `${latestBiometrics.restingHr} bpm` : '—'}</span>
           </div>
           <div className="flex items-center justify-between" style={{ gap: fig(16) }}>
             <span className="wk-label">Sleep Duration</span>
-            <span className="wk-pill">{latestBiometrics.sleepHours} hrs</span>
+            <span className="wk-pill">{latestBiometrics.sleepHours > 0 ? `${latestBiometrics.sleepHours} hrs` : '—'}</span>
           </div>
           <div className="flex items-center justify-between" style={{ gap: fig(16) }}>
             <span className="wk-label">Daily Steps</span>
-            <span className="wk-pill">{latestBiometrics.steps.toLocaleString()}</span>
+            <span className="wk-pill">{latestBiometrics.steps > 0 ? latestBiometrics.steps.toLocaleString() : '—'}</span>
           </div>
         </div>
       ) : (
@@ -518,7 +518,7 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
       </div>
 
       <p className="wk-caption" style={{ marginTop: fig(24) }}>
-        Wearable metrics are evaluated locally on your phone.
+        Treise fetches your wearable data through its own server, which doesn't store it. Your history stays on this phone.
       </p>
     </div>
   );

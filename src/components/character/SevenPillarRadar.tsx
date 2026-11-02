@@ -86,6 +86,20 @@ export const SevenPillarRadar: React.FC<SevenPillarRadarProps> = ({
   const subDivisionLabel = ['I', 'II', 'III', 'IV'][subDivisionIndex] || 'I';
   const overallBadgeText = overallTierName === 'Elite' ? 'Elite' : `${overallTierName} ${subDivisionLabel}`;
 
+  // No lifts logged: no level to show yet (never a placeholder rank).
+  if (!Object.values(pillarBestE1rm).some((v) => v > 0)) {
+    return (
+      <section aria-label="Strength and Fitness Balance" className="wk-card w-full text-left block">
+        <h2 className="wk-h1" style={{ lineHeight: 1.21 }}>
+          Strength &amp; Fitness Balance
+        </h2>
+        <p className="wk-body" style={{ marginTop: fig(24) }}>
+          Finish a workout to see your strength level for each movement, compared with your bodyweight.
+        </p>
+      </section>
+    );
+  }
+
   return (
     <section aria-label="Strength and Fitness Balance" className="wk-card w-full text-left block">
       <div className="flex items-start justify-between" style={{ gap: fig(20) }}>

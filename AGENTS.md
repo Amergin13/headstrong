@@ -12,7 +12,16 @@ These rules exist because earlier sessions broke them. Any change that violates 
 6. **Weights come from the athlete.** Every generated session goes through `personalizeSessionLoads` (history carry-over, learned strength ratios, onboarding calibration). Never show template weights to a new athlete unscaled.
 7. **Store kg, display the athlete's unit.** Use `useUnits()` for every weight shown or typed.
 8. **Use local dates** (`localDateString`), never `toISOString().split('T')[0]`.
-9. **Run `npm run test:engine`, `npm run test:api` and `npx tsc --noEmit -p .` before finishing.** Update tests when behaviour intentionally changes; never weaken a test to hide a regression.
+9. **One source per number.** Every number shown on more than one page comes from the same function with the same inputs (engine suite 36e checks this):
+   - Weekly hard sets: `calculateWeeklyMuscleVolume` over saved workouts only (cards, Program, Muscles view, Athlete tab, knowledge graph).
+   - Estimated max per movement: `calculateE1RM` with the exercise id and movement type (Athlete tab and Progress charts).
+   - Plan position and workout names: `getNextProgramWorkoutNumber` / `buildPlanOverview`; plan sessions are named with `planWorkoutLabel` (e.g. "Shoulders and Arms"), and older saves are renamed on load and import. An unstarted session that isn't the plan's next workout is replaced.
+   - Streak: `computeTrainingStreak` from saved workouts (rest gaps up to 4 days keep it).
+   - Workout time: measured, first logged set to finish (or the watch's time), saved with the session and reused by the summary and session card. Nothing is added for warm-ups.
+   - Bodyweight: shown only after the athlete logs one; the 80 kg fallback only seeds starting loads. Weekly weight pace needs a week of weigh-ins.
+   - Goal names: `GOAL_DISPLAY_NAME` (Build Muscle, Lose Fat, Stay Lean); internal phase names never appear in the UI.
+   - Switching kg/lb snaps an unstarted session's weights to real sizes in the new unit.
+10. **Run `npm run test:engine`, `npm run test:api` and `npx tsc --noEmit -p .` before finishing.** Update tests when behaviour intentionally changes; never weaken a test to hide a regression.
 
 ---
 
@@ -404,7 +413,7 @@ New users must be guided along the **quickest path to value** in under 60 second
 All future sessions, developers, and AI agents must strictly adhere to the structure defined in `PRODUCT_REQUIREMENTS_SPEC.md` and `INTERACTION_DESIGN_MASTER_TEMPLATE.md`. **Do not iterate on, rearrange, or redesign what has been agreed as complete and final.**
 
 ### 8.1 4-Page Information Architecture & Canonical Focal Points
-1. **Workout Tab (`TrainTab.tsx`):** built from the Figma design (1344 px frame; every size is `calc(<figma px> * var(--f))`, see `.wk` in `src/index.css`; --f is 0.45 on a 448 px phone, tuned side by side against Whoop: ~12 px body, 33 px inputs). Inter font, page gradient #283339 → #13181C, cards #2C3034 with radius 30 / padding 38, accent #00F19F.
+1. **Workout Tab (`TrainTab.tsx`):** built from the Figma design (1344 px frame; every size is `calc(<figma px> * var(--f))`, see `.wk` in `src/index.css`; font sizes are written `max(12px, calc(<figma px> * var(--f)))` so no text is ever under the 12 px floor; --f is 0.45 on a 448 px phone, tuned side by side against Whoop: ~12 px body, 33 px inputs). Inter font, page gradient #283339 → #13181C, cards #2C3034 with radius 30 / padding 38, accent #00F19F.
    - *Header:* program name, "⋯" menu (location, log rest day, last workout), and a 7-day strip (3 days back, today in the middle, 3 ahead): tick = trained, ring = today (pops in with two soft halos when the page opens), filled = next sessions expected from recovery (`buildWeekStrip`).
    - *Program card:* phase (or mesocycle week), plain-English phase name, "Today/Next: <session>", "n/24" and progress bar; opens the Program tab.
    - *Recovery card:* wearable score ring, provider tag, what today's plan does; opens watch sync.

@@ -72,8 +72,8 @@ export function completeWorkout(input: WorkoutCompletionInput): WorkoutCompletio
     .map((st) => new Date(st.completedAt as string).getTime())
     .filter((t) => !Number.isNaN(t));
   const firstSetAt = setTimes.length > 0 ? Math.min(...setTimes) : undefined;
-  // Real duration from the first logged set, plus a few minutes of warm-up.
-  const measuredDuration = firstSetAt ? Math.max(5, Math.round((now.getTime() - firstSetAt) / 60000) + 5) : undefined;
+  // Measured duration only: first logged set to finish (nothing added for warm-ups).
+  const measuredDuration = firstSetAt ? Math.max(1, Math.round((now.getTime() - firstSetAt) / 60000)) : undefined;
 
   const isWhoopActive = Boolean(profile.whoopConnected || profile.wearableSource === 'whoop');
 

@@ -269,10 +269,13 @@ export function buildSessionProgressReport(input: {
         totalSessions: completed.length,
       };
 
+  // The duration saved with the session (watch-measured, or first set to finish), so the summary,
+  // this card and history all show the same time.
   const durationMin =
-    session.startedAt && session.completedAt
-      ? Math.round((new Date(session.completedAt).getTime() - new Date(session.startedAt).getTime()) / 60000)
-      : undefined;
+    session.durationMinutes ??
+    (session.startedAt && session.completedAt
+      ? Math.max(1, Math.round((new Date(session.completedAt).getTime() - new Date(session.startedAt).getTime()) / 60000))
+      : undefined);
 
   return {
     session: {

@@ -117,7 +117,15 @@ export function buildExerciseNoteFacts(input: ExerciseNoteInput): ExerciseNoteFa
   const working = exercise.sets.filter(isWorking);
   const planned = working[0];
   let todaySentence = '';
-  if (planned) {
+  const timedWork = Boolean(exercise.durationSeconds || exercise.durationMinutesRange);
+  if (planned && timedWork) {
+    // Timed holds and intervals are described in time, never as reps with reps in reserve.
+    facts.push(
+      exercise.durationSeconds
+        ? `Today's plan: ${working.length} holds of ${exercise.durationSeconds} seconds each, with good form for the whole hold.`
+        : `Today's plan: ${exercise.durationMinutesRange![0]}–${exercise.durationMinutesRange![1]} minutes of intervals.`
+    );
+  } else if (planned) {
     const tempo = exercise.tempo && /^\d{4}$/.test(exercise.tempo) ? `, taking ${exercise.tempo[0]} seconds to lower each rep` : '';
     const rir = planned.targetRir ?? 2;
     facts.push(
@@ -201,14 +209,21 @@ export function acceptExerciseNote(answer: string | null, facts: ExerciseNoteFac
   const allowed = new Set(allFacts.match(NUMBER) || []);
   const used = text.match(NUMBER) || [];
   if (used.some((n) => !allowed.has(n))) return null;
+  // A first-ever session has no history to talk about.
+  if (/first time you have logged/i.test(allFacts) && /\b(last time|last session|previous|before|once|again|progress|improv\w*|increas\w*|risen|up \d|consistent\w*|building strength|stronger|so far)/i.test(text)) return null;
+  // Timed holds have no reps in reserve.
+  if (/\bholds? of\b/i.test(allFacts) && /reps? (in reserve|left|to spare)/i.test(text)) return null;
   // A weekly target may only be mentioned when the facts include one, and described the same way.
   const targetStatus = /\((below target|on target|above target)\)/.exec(allFacts)?.[1];
   if (/\btarget\b/i.test(text)) {
     if (!targetStatus) return null;
+    // Judge only the sentences about the target, so "lower each rep over 3 seconds" isn't read
+    // as "over target".
+    const aboutTarget = (text.match(/[^.!?]*\btarget\b[^.!?]*/gi) || []).join(' ');
     const claims = {
-      'below target': /\b(below|under|short of|behind)\b/i.test(text),
-      'above target': /\b(above|over|beyond|exceed)/i.test(text),
-      'on target': /\b(on target|on track|within|hit(ting)? (the|your) target|meeting)\b/i.test(text),
+      'below target': /\b(below|under|short of|behind)\b/i.test(aboutTarget),
+      'above target': /\b(above|over|beyond|exceed)/i.test(aboutTarget),
+      'on target': /\b(on target|on track|within|hit(ting)? (the|your) target|meeting)\b/i.test(aboutTarget),
     } as Record<string, boolean>;
     if (Object.entries(claims).some(([status, said]) => said && status !== targetStatus)) return null;
   }

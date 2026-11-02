@@ -84,6 +84,10 @@ export function buildCompositionCharts(input: {
   let weightSummary = 'Log your weight each morning, after the toilet and before eating, to start this chart.';
   if (emaPoints.length === 1) {
     weightSummary = `First weigh-in: ${fmt.weight(emaPoints[0].value)}. Weigh in each morning to see your 7-day average.`;
+  } else if (emaPoints.length >= 2 && daysBetweenLocalDates(emaPoints[0].date, emaPoints[emaPoints.length - 1].date) < 7) {
+    // A weekly pace from less than a week of weigh-ins is noise (water, food, timing).
+    const last = emaPoints[emaPoints.length - 1];
+    weightSummary = `Your 7-day average is ${fmt.weight(round1(last.value))}. Keep weighing in each morning; your weekly pace appears after a week.`;
   } else if (emaPoints.length >= 2) {
     const last = emaPoints[emaPoints.length - 1];
     // Rate over the last 2–4 weeks of averages.

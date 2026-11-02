@@ -178,7 +178,7 @@ select:focus-visible {
   padding-bottom: 112px;
 }
 .wk-page-title {
-  font-size: calc(26 * var(--f));
+  font-size: max(12px, calc(26 * var(--f)));
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.02em;
@@ -203,19 +203,19 @@ select:focus-visible {
   color: #fff;
 }
 .wk-body {
-  font-size: calc(26 * var(--f));
+  font-size: max(12px, calc(26 * var(--f)));
   line-height: calc(34 * var(--f));
   color: var(--wk-body);
 }
 .wk-label {
-  font-size: calc(24 * var(--f));
+  font-size: max(12px, calc(24 * var(--f)));
   line-height: 1.2;
   font-weight: 700;
   text-transform: uppercase;
   color: #fff;
 }
 .wk-caption {
-  font-size: calc(22 * var(--f));
+  font-size: max(12px, calc(22 * var(--f)));
   line-height: 1.2;
   font-weight: 600;
   color: var(--wk-muted);
@@ -226,7 +226,7 @@ select:focus-visible {
   background: var(--wk-pill);
   border-radius: calc(8 * var(--f));
   padding: calc(6 * var(--f)) calc(22 * var(--f));
-  font-size: calc(24 * var(--f));
+  font-size: max(12px, calc(24 * var(--f)));
   font-weight: 700;
   text-transform: uppercase;
   color: #C9CDD0;
@@ -261,7 +261,7 @@ select:focus-visible {
   background: var(--wk-raised);
   border-radius: calc(15 * var(--f));
   height: calc(74 * var(--f));
-  font-size: calc(26 * var(--f));
+  font-size: max(12px, calc(26 * var(--f)));
   font-weight: 700;
   color: #fff;
   text-align: center;
@@ -277,7 +277,7 @@ select:focus-visible {
   min-height: 44px;
   height: calc(84 * var(--f));
   padding: 0 calc(24 * var(--f));
-  font-size: calc(26 * var(--f));
+  font-size: max(12px, calc(26 * var(--f)));
   font-weight: 600;
   color: #fff;
   width: 100%;
@@ -297,7 +297,7 @@ select:focus-visible {
   min-height: 44px;
   height: calc(84 * var(--f));
   border-radius: calc(22 * var(--f));
-  font-size: calc(24 * var(--f));
+  font-size: max(12px, calc(24 * var(--f)));
   font-weight: 700;
   text-transform: uppercase;
   display: flex;

@@ -208,7 +208,7 @@ export const EXERCISE_SCIENCE_KNOWLEDGE_BASE: ScientificPrinciple[] = [
     academicCitation: 'International Powerlifting Federation (IPF) Scientific Commission (2019)',
     practicalApplication:
       'Provides an unbiased score comparing relative strength between lifters of different body masses, and powers the Community Leaderboard divisions.',
-    keywords: ['dots', 'polynomial', 'relative strength', 'ipf', 'powerlifting', 'formula', 'allometric', 'coefficient', 'dots score'],
+    keywords: ['dots', 'polynomial', 'relative strength', 'ipf', 'powerlifting', 'formula', 'allometric', 'coefficient', 'dots score', 'strength score', 'strength-to-weight'],
   },
   {
     id: 'sp-6-pillars',
@@ -257,7 +257,7 @@ export const EXERCISE_SCIENCE_KNOWLEDGE_BASE: ScientificPrinciple[] = [
     academicCitation: 'Schoenfeld, Ogborn & Krieger (2017); Baz-Valle et al. (2022); Pelland et al. (2024)',
     practicalApplication:
       "The Progress tab's Muscles view shows, for each muscle, this week's hard sets against your target, a strength index that starts at 100, and its tape measurement when you log one. Each exercise card shows this week's sets for its main muscle.",
-    keywords: ['muscle', 'muscle group', 'weekly sets', 'strength index', 'progress', 'chest', 'back', 'arms', 'legs', 'hypertrophy tracking'],
+    keywords: ['muscle progress', 'progress per muscle', 'muscle', 'muscle group', 'weekly sets', 'strength index', 'progress', 'chest', 'back', 'arms', 'legs', 'hypertrophy tracking'],
   },
   {
     id: 'sp-hypertrophy-landmarks',
@@ -1230,7 +1230,12 @@ export function getExerciseBiomechanicalMeta(ex: ExerciseDefinition): {
  */
 export function buildBodyCompositionKnowledgeGraph(
   biometrics: BiometricLog[],
-  profile: UserProfile
+  profile: UserProfile,
+  /** Formats kilograms and centimetres in the athlete's units for the summary. */
+  fmt: { weight: (kg: number) => string; length: (cm: number) => string } = {
+    weight: (kg) => `${Math.round(kg * 10) / 10} kg`,
+    length: (cm) => `${Math.round(cm * 10) / 10} cm`,
+  }
 ): BodyCompositionKnowledgeProfile {
   const sorted = [...biometrics].sort((a, b) => a.date.localeCompare(b.date));
   const athleteHeightCm = profile.measuredHeightCm || profile.heightCm;
@@ -1432,7 +1437,7 @@ export function buildBodyCompositionKnowledgeGraph(
 
   let recompositionStatus: BodyCompositionKnowledgeProfile['recompositionStatus'] = 'insufficient_data';
   let recompositionSummary =
-    'Log weight, body fat %, or tape measurements to track body recomposition trends over time.';
+    'Log your weight, body fat or tape measurements to see how your body is changing.';
 
   const ffmDelta = ffmTrend?.delta;
   const bfDelta = bfTrend?.delta;
@@ -1445,22 +1450,25 @@ export function buildBodyCompositionKnowledgeGraph(
   ) {
     recompositionStatus = 'recomp_positive';
     const parts: string[] = [];
-    if (ffmDelta !== undefined && ffmDelta > 0) parts.push(`fat-free mass +${ffmDelta.toFixed(1)} kg`);
-    if (bfDelta !== undefined && bfDelta < 0) parts.push(`body fat ${bfDelta.toFixed(1)}%`);
-    if (waistDelta !== undefined && waistDelta < 0) parts.push(`waist ${waistDelta.toFixed(1)} cm`);
-    recompositionSummary = `Body recomposition underway: ${parts.join(', ')}.`;
+    if (ffmDelta !== undefined && ffmDelta > 0) parts.push(`lean mass up ${fmt.weight(ffmDelta)}`);
+    if (bfDelta !== undefined && bfDelta < 0) parts.push(`body fat down ${Math.abs(bfDelta).toFixed(1)}%`);
+    if (waistDelta !== undefined && waistDelta < 0) parts.push(`waist down ${fmt.length(Math.abs(waistDelta))}`);
+    recompositionSummary = `You're building muscle and losing fat at the same time: ${parts.join(', ')}.`;
   } else if (ffmDelta !== undefined && ffmDelta > 0.2) {
     recompositionStatus = 'lean_gain';
-    recompositionSummary = `Lean tissue accretion: fat-free mass is up +${ffmDelta.toFixed(1)} kg since baseline.`;
+    recompositionSummary = `Your lean mass is up ${fmt.weight(ffmDelta)} since your first measurement.`;
   } else if (
     (bfDelta !== undefined && bfDelta < -0.2) ||
     (waistDelta !== undefined && waistDelta < -0.4)
   ) {
     recompositionStatus = 'fat_loss';
-    recompositionSummary = `Adipose reduction trend active${bfDelta !== undefined ? ` (${bfDelta.toFixed(1)}% body fat)` : ''}${waistDelta !== undefined ? ` (${waistDelta.toFixed(1)} cm waist)` : ''}.`;
+    const lost: string[] = [];
+    if (bfDelta !== undefined && bfDelta < 0) lost.push(`body fat down ${Math.abs(bfDelta).toFixed(1)}%`);
+    if (waistDelta !== undefined && waistDelta < 0) lost.push(`waist down ${fmt.length(Math.abs(waistDelta))}`);
+    recompositionSummary = `You're losing fat: ${lost.join(', ')}.`;
   } else if (weightTrend && weightTrend.sampleCount >= 1) {
     recompositionStatus = 'holding';
-    recompositionSummary = `Latest weight ${weightTrend.latest} kg${weightTrend.ema7d ? ` (7-day EMA ${weightTrend.ema7d} kg)` : ''}. Add follow-up weigh-ins or tape checks to measure change.`;
+    recompositionSummary = `Latest weight ${fmt.weight(weightTrend.latest ?? 0)}${weightTrend.ema7d && Math.abs(weightTrend.ema7d - (weightTrend.latest ?? 0)) >= 0.05 ? ` (7-day average ${fmt.weight(weightTrend.ema7d)})` : ''}. Keep logging your weight and measurements to see your trend.`;
   }
 
   const populatedScaleCount = scaleTrends.filter((t) => t.sampleCount > 0).length;
@@ -1784,19 +1792,19 @@ export function buildAthleteKnowledgeGraph(
     insights.push({
       id: 'pkg-insight-whoop-strain',
       category: 'Autonomic',
-      title: 'Whoop Workout Strain & Autonomic Recovery',
+      title: 'Recovery and Workout Strain',
       confidence: 97,
       impactMetric: `${recVal}% Recovery • ${strainVal} Strain`,
       narrative: isGreen
-        ? `With ${recVal}% Green recovery and ${strainVal} workout strain, your autonomic nervous system is in peak parasympathetic tone. Your body has full capacity to drive progressive overload on your working sets.`
+        ? `Your recovery is ${recVal}% (green) after ${strainVal} workout strain. You're well recovered, so it's a good day to push for more reps or weight.`
         : isYellow
-        ? `With ${recVal}% Yellow recovery and ${strainVal} workout strain, your stimulus-to-fatigue ratio is balanced. Standard progressive double progression at 1–2 RIR matches your recovery capacity.`
-        : `With ${recVal}% Red recovery and ${strainVal} workout strain, systemic fatigue has accumulated. Holding weights steady today with 2–3 RIR protects connective tissue while preserving muscle mass.`,
+        ? `Your recovery is ${recVal}% (yellow) after ${strainVal} workout strain. Train as planned, stopping 1–2 reps short of failure.`
+        : `Your recovery is ${recVal}% (red) after ${strainVal} workout strain. Keep today's weights steady and stop 2–3 reps short of failure so your body can catch up.`,
       actionableStep: isGreen
         ? 'Push for the upper boundary of your rep targets to earn progressive load jumps.'
         : isYellow
-        ? 'Maintain consistent lifting cadence and standard 1–2 RIR on all working sets.'
-        : 'Use conservative 2–3 RIR targets on heavy compounds to prevent overtraining.',
+        ? 'Keep your usual pace and stop 1–2 reps short of failure on every working set.'
+        : 'On the big lifts, stop 2–3 reps short of failure today.',
     });
   }
 
@@ -1897,7 +1905,7 @@ export function buildAthleteKnowledgeGraph(
       confidence: 94,
       impactMetric: 'Effective Tension',
       narrative:
-        'When training without gym weights, muscle hypertrophy is driven by higher rep targets (up to 30 reps at 1–2 RIR) and 3-second lowering tempos that maximize mechanical tension at long muscle lengths.',
+        'Without gym weights, muscles still grow from higher rep targets (up to 30 reps, stopping 1–2 reps short of failure) and slow 3-second lowering, which keeps tension on the muscle at its longest.',
       actionableStep:
         'Focus on full range of motion with a 2-second paused stretch at the bottom of each bodyweight rep.',
     });

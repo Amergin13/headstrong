@@ -151,7 +151,7 @@ export const VolumeTracker: React.FC<VolumeTrackerProps> = ({
                   minHeight: 44,
                   height: fig(84),
                   borderRadius: fig(22),
-                  fontSize: fig(20),
+                  fontSize: `max(12px, ${fig(24)})`,
                   background: active ? 'var(--wk-pill)' : 'transparent',
                   color: active ? '#fff' : 'var(--wk-muted)',
                 }}

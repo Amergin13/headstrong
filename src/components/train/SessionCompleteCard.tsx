@@ -43,10 +43,10 @@ const Section: React.FC<{ title: string; children: React.ReactNode }> = ({ title
 /** Label on the left, value on the right, one line per item. */
 const Row: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
   <li className="flex items-baseline justify-between" style={{ gap: fig(24) }}>
-    <span className="font-semibold text-white" style={{ fontSize: fig(26) }}>
+    <span className="font-semibold text-white" style={{ fontSize: `max(12px, ${fig(26)})` }}>
       {label}
     </span>
-    <span className="text-right" style={{ fontSize: fig(26), color: 'var(--wk-body)' }}>
+    <span className="text-right" style={{ fontSize: `max(12px, ${fig(26)})`, color: 'var(--wk-body)' }}>
       {children}
     </span>
   </li>

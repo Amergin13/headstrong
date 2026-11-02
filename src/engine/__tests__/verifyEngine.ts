@@ -46,7 +46,8 @@ import { acceptExerciseNote, buildExerciseNoteFacts, generateExerciseNote } from
 import { acceptIdentityMessage, buildIdentityFacts, generateIdentityMessage } from '../../services/identityMessage';
 import { buildSessionProgressReport } from '../../services/sessionReport';
 import { personalizeSessionLoads } from '../loadPersonalization';
-import { buildPlanOverview, getNextProgramWorkoutNumber, planWorkoutLabel } from '../muscleBuildingProgram';
+import { buildPlanOverview, getNextProgramWorkoutNumber, planWorkoutLabel, withPlanWorkoutName } from '../muscleBuildingProgram';
+import { computeTrainingStreak } from '../recovery';
 import { getTemplateDefaultWeight } from '../../services/workoutGenerator';
 import { snapLoadKg, formatWeight } from '../../utils/units';
 import { localDateString } from '../../utils/date';
@@ -504,6 +505,7 @@ import {
 } from '../../services/healthConnectService';
 import {
   WEARABLE_PROVIDERS,
+  mergeWearableLog,
   syncWearableBiometrics,
   disconnectWearable,
   setActiveTracker,
@@ -915,8 +917,8 @@ const onboardingModalSrc = fs.readFileSync(
 assert(
   onboardingModalSrc.includes('Welcome to Treise') &&
     onboardingModalSrc.includes("Train when you're recovered") &&
-    onboardingModalSrc.includes('Guaranteed Overload') &&
-    onboardingModalSrc.includes('Adapts Across Any Gear') &&
+    onboardingModalSrc.includes('We work out what to lift next') &&
+    onboardingModalSrc.includes('Switch between gym, home and travel in one tap') &&
     onboardingModalSrc.includes('Choose your training split') &&
     onboardingModalSrc.includes('What is your main goal right now?') &&
     onboardingModalSrc.includes('About you') &&
@@ -2362,7 +2364,7 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
   // 4. Universal Wearable Sync Coordinator & Multi-Provider State
   assert(
     WEARABLE_PROVIDERS.fitbit.name.includes('Pixel Watch') &&
-      WEARABLE_PROVIDERS.whoop.name.includes('Whoop 4.0') &&
+      WEARABLE_PROVIDERS.whoop.name === 'Whoop' &&
       WEARABLE_PROVIDERS.health_connect.name.includes('Health Connect'),
     `Universal coordinator exposes metadata for Fitbit, Whoop, and Android Health Connect`
   );
@@ -2823,8 +2825,9 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
   );
   assert(
     Boolean(
-      autonomicInsight?.narrative.includes('Yellow recovery') &&
-        autonomicInsight?.narrative.includes('11.4 workout strain')
+      autonomicInsight?.narrative.includes('49% (yellow)') &&
+        autonomicInsight?.narrative.includes('11.4 workout strain') &&
+        !/parasympathetic|autonomic|RIR/.test(autonomicInsight?.narrative ?? '')
     ),
     `Causal insight narrative accurately evaluates Yellow recovery and 11.4 workout strain`
   );
@@ -3061,7 +3064,7 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
     'utf-8'
   );
   assert(
-    freshOnboardingModalSrc.includes('we do the math') &&
+    freshOnboardingModalSrc.includes('what to lift next') &&
       freshOnboardingModalSrc.includes('Track real progress') &&
       freshOnboardingModalSrc.includes('7-day average') &&
       freshOnboardingModalSrc.includes('waist shrinks') &&
@@ -3604,6 +3607,32 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
       acceptExerciseNote("You're hitting your target for side shoulders this week. Today, lift 10 kg for 4 sets of 15 with 2 reps in reserve.", facts) === null,
       'A note that contradicts the knowledge graph (on target vs below target) is rejected'
     );
+    const onTargetFacts = { ...facts, facts: facts.facts.map((f) => f.replace('(below target)', '(on target)')) };
+    const liveNanoAnswer = "You're on target for side shoulders this week. Today, do 4 sets of 15 at 10 kg, lowering each rep over 2 seconds.";
+    assert(
+      acceptExerciseNote(liveNanoAnswer, onTargetFacts) === liveNanoAnswer,
+      'A correct note is not rejected because "over" appears outside the target sentence (seen live from Gemini Nano)'
+    );
+    const plank = generate6WeekMuscleBuildingWorkout(4, 80).exercises.find((e) => e.durationSeconds)!;
+    const plankFacts = buildExerciseNoteFacts({ exercise: plank, insight: buildExerciseInsight(plank, [], 'Normal'), workouts: [], readinessState: 'Normal', knowledgeGraph: kgForNotes, formatWeight: (kg) => `${kg} kg` });
+    assert(
+      plankFacts.facts.some((f) => new RegExp(`holds of ${plank.durationSeconds} seconds`).test(f)) && !plankFacts.facts.some((f) => /reps in reserve/.test(f)),
+      `Timed holds are described as holds in seconds, not reps with reps in reserve (${plank.name})`
+    );
+    assert(
+      acceptExerciseNote(`Focus on 4 sets of 1 rep at bodyweight, ensuring you have 2 reps left in reserve for each set.`, plankFacts) === null,
+      'A note that gives a timed hold reps in reserve is rejected (seen live from Gemini Nano)'
+    );
+    const squatFirst = generate6WeekMuscleBuildingWorkout(4, 80).exercises.find((e) => e.exerciseId.includes('squat'))!;
+    const squatFacts = buildExerciseNoteFacts({ exercise: squatFirst, insight: buildExerciseInsight(squatFirst, [], 'Normal'), workouts: [], readinessState: 'Normal', knowledgeGraph: kgForNotes, formatWeight: (kg) => `${kg} kg` });
+    assert(
+      acceptExerciseNote("You've only logged the squat once this week. Today, focus on clean reps with 2 reps in reserve.", squatFacts) === null,
+      'A note may not invent history for an exercise logged for the first time (seen live from Gemini Nano)'
+    );
+    assert(
+      acceptExerciseNote("You have been consistently building strength in your quads this week. Focus on clean reps with 2 reps in reserve.", squatFacts) === null,
+      'A first-time note may not claim consistent strength building (seen live from Gemini Nano)'
+    );
     const noTargetFacts = { ...facts, facts: facts.facts.filter((f) => !/hard sets against a target/.test(f)) };
     assert(
       acceptExerciseNote("You've shown good progress, hitting the target of 4 sets. Today lift 10 kg for 4 sets of 15 with 2 reps in reserve.", noTargetFacts) === null,
@@ -4047,6 +4076,105 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
     assert(Math.abs(chestSwap.strengthIndex[chestSwap.strengthIndex.length - 1].value - chest.strengthIndex[2].value) < 6, 'A newly swapped-in exercise starts at its own baseline, so the index does not jump');
     assert(buildMuscleProgress({ workouts: [], exerciseCatalog: SEED_EXERCISES, biometrics: [], bodyweightKg: 80, now: mNow }).length === 0, 'No workouts: no muscle cards (the view shows an empty state)');
     assert(EXERCISE_SCIENCE_KNOWLEDGE_BASE.some((p) => p.id === 'sp-muscle-progress'), 'The knowledge graph explains how muscle progress is measured');
+  }
+
+  console.log('\n[36e. Cross-Page Consistency: Same History, Same Numbers on Every Page]');
+  {
+    const DAYC = 24 * 60 * 60 * 1000;
+    const cNow = Date.now();
+    let cHist: WorkoutSession[] = [];
+    const gaps = [20, 18, 16, 13, 11, 9, 6, 4, 2]; // days ago for plan workouts 1-9
+    gaps.forEach((ago, i) => {
+      const n = i + 1;
+      const w = generate6WeekMuscleBuildingWorkout(n, 80);
+      const at = cNow - ago * DAYC;
+      w.completed = true;
+      w.completedAt = new Date(at).toISOString();
+      w.date = localDateString(new Date(at));
+      w.exercises.forEach((ex) => ex.sets.forEach((st) => { st.completed = true; st.actualReps = st.targetReps; st.actualRir = 2; st.actualWeightKg = st.targetWeightKg + (n > 4 ? 2.5 : 0); }));
+      cHist = [w, ...cHist];
+    });
+    const weekly = calculateWeeklyMuscleVolume(cHist, SEED_EXERCISES);
+    const kgC = buildAthleteKnowledgeGraph(cHist, [], SEED_EXERCISES, NEW_USER_PROFILE, weekly);
+    const musclesC = buildMuscleProgress({ workouts: cHist, exerciseCatalog: SEED_EXERCISES, biometrics: [], knowledgeGraph: kgC, bodyweightKg: 80, now: cNow });
+    const setMismatch = musclesC.filter((m) => {
+      const kgProfile = kgC.muscleProfiles.find((p) => p.muscleKey === m.key);
+      return m.weeklySets !== (weekly[m.key] ?? 0) || (kgProfile && kgProfile.weeklySets !== m.weeklySets);
+    });
+    assert(setMismatch.length === 0 && musclesC.length > 3, `Weekly hard sets are identical on cards, Program, Muscles view, Athlete tab and the knowledge graph (${musclesC.map((m) => `${m.key} ${m.weeklySets}`).join(', ')})`);
+
+    const athletePillars = calculateBestPillarE1rms(cHist, 80);
+    const progressCharts = buildStrengthCharts({ workouts: cHist, profile: NEW_USER_PROFILE, bodyweightKg: 80, fmt: { weight: (kg) => `${kg} kg`, length: (cm) => `${cm} cm` } });
+    const pillarMismatch = progressCharts
+      .filter((c) => c.id.startsWith('strength-'))
+      .filter((c) => {
+        const pillar = c.id.replace('strength-', '') as keyof typeof athletePillars;
+        const best = Math.max(...c.points.map((p) => p.value));
+        return Math.abs(best - Math.round(athletePillars[pillar] * 10) / 10) > 0.1;
+      });
+    assert(pillarMismatch.length === 0, `Athlete tab strength and Progress tab charts give the same best estimated max per movement (${pillarMismatch.map((c) => c.title).join(', ') || 'all match'})`);
+
+    const planC = buildPlanOverview(cHist);
+    assert(planC.nextWorkoutNumber === getNextProgramWorkoutNumber(cHist) && planC.completedCount === 9, 'Program page and Workout page agree on plan position (10 of 24 next, 9 done)');
+    assert(
+      generate6WeekMuscleBuildingWorkout(2, 80).name === 'Shoulders and Arms' && planC.workouts[1].label === 'Shoulders and Arms',
+      'A plan workout has the same plain name on the Workout page, Program page, summary and coach'
+    );
+    const oldSave = { ...generate6WeekMuscleBuildingWorkout(1, 80), name: 'W1D1 • Chest and Back (Phase 1)' };
+    assert(withPlanWorkoutName(oldSave).name === 'Chest and Back', 'Older saved plan workouts are renamed to the plain name when loaded');
+
+    const streakAt = (agos: number[]) =>
+      computeTrainingStreak(agos.map((ago) => ({ ...generate6WeekMuscleBuildingWorkout(1, 80), completed: true, date: localDateString(new Date(cNow - ago * DAYC)) })), cNow);
+    assert(streakAt([1, 4, 7, 9]) === 4, 'Recovery rest days (gaps up to 4 days) keep the streak going');
+    assert(streakAt([1, 3, 12, 14]) === 2, 'A longer break starts the streak again');
+    assert(streakAt([10, 12]) === 0 && streakAt([]) === 0, 'No training for over 5 days, or none at all, is a 0 streak');
+    assert(computeTrainingStreak(cHist, cNow) === 9, 'The streak shown everywhere comes from the saved workouts');
+
+    const coachArgs = { profile: NEW_USER_PROFILE, activeWorkout: generate6WeekMuscleBuildingWorkout(10, 80), workouts: cHist, biometrics: [], exerciseCatalog: SEED_EXERCISES, bodyweightEmaKg: 80, readinessState: 'Normal' as const };
+    const progressReply = await processAssistantMessage({ ...coachArgs, userMessage: 'How is my progress?' });
+    assert(
+      progressReply.message.text === buildProgressSummary(cHist, 'kg') && !/Scientific Formula/.test(progressReply.message.text),
+      'Coach: "How is my progress?" answers from the athlete\'s own workouts, not a science card'
+    );
+    const scienceReply = await processAssistantMessage({ ...coachArgs, userMessage: 'How is muscle progress calculated?' });
+    assert(/Measuring Progress per Muscle/.test(scienceReply.message.text), 'Coach: asking how muscle progress is calculated still gets the knowledge-graph explanation');
+
+    const dotsReply = await processAssistantMessage({ ...coachArgs, userMessage: 'How is my strength score (DOTS) worked out?' });
+    assert(/DOTS/.test(dotsReply.message.text) && /Scientific Formula/.test(dotsReply.message.text), 'Coach: the "strength score" chip reaches the DOTS explanation');
+    const timed = generate6WeekMuscleBuildingWorkout(10, 80);
+    const startT = cNow - 47 * 60 * 1000;
+    timed.exercises.forEach((ex) => ex.sets.forEach((st, i) => { st.completed = true; st.actualReps = st.targetReps; st.actualRir = 2; st.completedAt = new Date(startT + i * 60000).toISOString(); }));
+    const finished = completeWorkout({ activeWorkout: timed, history: cHist, profile: { ...NEW_USER_PROFILE, programType: 'muscle_building_6wk' }, readiness: { state: 'Normal', score: 0 }, bodyweightKg: 80, now: new Date(cNow) });
+    const kgT = buildAthleteKnowledgeGraph(finished.nextHistory, [], SEED_EXERCISES, NEW_USER_PROFILE, calculateWeeklyMuscleVolume(finished.nextHistory, SEED_EXERCISES));
+    const reportT = buildSessionProgressReport({ workouts: finished.nextHistory, exerciseCatalog: SEED_EXERCISES, knowledgeGraph: kgT, bodyweightKg: 80, now: cNow });
+    assert(
+      finished.completedSession.durationMinutes === 47 && reportT?.session.durationMin === 47,
+      `Workout time is measured (first set to finish, nothing added) and the same on the summary, session card and history (${finished.completedSession.durationMinutes} / ${reportT?.session.durationMin} min)`
+    );
+
+    const blankBio = { hrvRmssd: 0, restingHr: 0, sleepHours: 0, steps: 0, activeZoneMinutes: 0 };
+    const todayStr = localDateString(new Date(cNow));
+    const merged = mergeWearableLog(
+      [{ ...blankBio, date: todayStr, bodyweightKg: 82.4, isManualEntry: true }],
+      { ...blankBio, date: todayStr, bodyweightKg: 81.6, hrvRmssd: 62, restingHr: 52, sleepHours: 7.1, recoveryScore: 71, source: 'whoop' },
+      'whoop'
+    );
+    assert(
+      merged.length === 1 && merged[0].bodyweightKg === 82.4 && merged[0].hrvRmssd === 62 && merged[0].recoveryScore === 71 && merged[0].sleepHours === 7.1,
+      'A wearable sync adds recovery data to today without replacing the athlete\'s own weigh-in'
+    );
+    const twoDays = buildCompositionCharts({
+      biometrics: [
+        { ...blankBio, date: localDateString(new Date(cNow - DAYC)), bodyweightKg: 51.2 },
+        { ...blankBio, date: localDateString(new Date(cNow)), bodyweightKg: 82.4 },
+      ],
+      profile: NEW_USER_PROFILE,
+      fmt: { weight: (kg) => `${kg} kg`, length: (cm) => `${cm} cm` },
+    }).find((c) => c.id === 'bodyweight')!;
+    assert(!/a week \(/.test(twoDays.summary) && /weekly pace appears after a week/.test(twoDays.summary), `No weekly pace from less than a week of weigh-ins: "${twoDays.summary}"`);
+
+    const noWeight = buildCompositionCharts({ biometrics: [], profile: NEW_USER_PROFILE, fmt: { weight: (kg) => `${kg} kg`, length: (cm) => `${cm} cm` } });
+    assert(noWeight.every((c) => c.points.length === 0), 'With no weigh-ins, no bodyweight value is shown anywhere (no 80 kg placeholder)');
   }
 
   console.log('\n[37. Progress Tab: Strength & Composition Charts]');

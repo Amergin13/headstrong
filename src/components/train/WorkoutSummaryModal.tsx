@@ -27,7 +27,8 @@ export const WorkoutSummaryModal: React.FC<WorkoutSummaryModalProps> = ({
 
   const units = useUnits();
 
-  // Real duration only: Whoop's measured workout, or first logged set → now (+5 min warm-up).
+  // Real duration only: Whoop's measured workout, or first logged set → now (the same figure saved
+  // with the session and shown on the session card).
   const resolvedDurationMinutes = useMemo(() => {
     if (whoopTelemetry?.workoutDurationMin && whoopTelemetry.workoutDurationMin > 5) {
       return whoopTelemetry.workoutDurationMin;
@@ -37,7 +38,7 @@ export const WorkoutSummaryModal: React.FC<WorkoutSummaryModalProps> = ({
       .map((s) => new Date(s.completedAt as string).getTime())
       .filter((t) => !Number.isNaN(t));
     if (timestamps.length === 0) return undefined;
-    const elapsed = Math.round((Date.now() - Math.min(...timestamps)) / 60000) + 5;
+    const elapsed = Math.max(1, Math.round((Date.now() - Math.min(...timestamps)) / 60000));
     return elapsed <= 240 ? elapsed : undefined;
   }, [whoopTelemetry?.workoutDurationMin, workout]);
 
@@ -70,7 +71,9 @@ export const WorkoutSummaryModal: React.FC<WorkoutSummaryModalProps> = ({
               Session Completed!
             </h3>
             <p className="wk-caption mt-0.5">
-              {workout.name} • {workout.splitDay} Split
+              {workout.programWorkoutNumber
+                ? `${workout.name} • Workout ${workout.programWorkoutNumber} of 24`
+                : `${workout.name} • ${workout.splitDay} day`}
             </p>
           </div>
         </div>

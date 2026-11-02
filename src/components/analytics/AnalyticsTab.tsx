@@ -98,8 +98,8 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
     });
   }, [workouts, exerciseCatalog, biometrics, profile, hasBodyweight, bodyweightEmaKg, fmt]);
   const bodyComposition = useMemo(
-    () => buildBodyCompositionKnowledgeGraph(biometrics, profile),
-    [biometrics, profile]
+    () => buildBodyCompositionKnowledgeGraph(biometrics, profile, fmt),
+    [biometrics, profile, fmt]
   );
   const filteredCompositionCharts = useMemo(() => {
     if (compositionFilter === 'all') return compositionCharts;
@@ -138,7 +138,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
         minHeight: 44,
         height: fig(96),
         borderRadius: fig(22),
-        fontSize: fig(24),
+        fontSize: `max(12px, ${fig(24)})`,
         background: activeView === view ? 'var(--wk-pill)' : 'transparent',
         color: activeView === view ? '#fff' : 'var(--wk-muted)',
       }}
@@ -178,7 +178,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
   return (
     <div className="wk -mx-3.5" style={{ paddingLeft: fig(PAGE_GUTTER), paddingRight: fig(PAGE_GUTTER), paddingBottom: 112 }}>
       <header style={{ paddingTop: fig(20) }}>
-        <h1 className="font-bold text-white uppercase text-center" style={{ fontSize: fig(26), letterSpacing: '0.02em' }}>
+        <h1 className="font-bold text-white uppercase text-center" style={{ fontSize: `max(12px, ${fig(26)})`, letterSpacing: '0.02em' }}>
           Progress
         </h1>
         <div
@@ -283,9 +283,16 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
             {(bodyComposition.populatedScaleCount > 0 || bodyComposition.populatedTapeCount > 0) && (
               <div className="wk-card space-y-3">
                 <div className="flex items-center justify-between gap-2">
-                  <h2 className="wk-h2 text-white">Body Composition & Symmetry</h2>
+                  <h2 className="wk-h2 text-white">Body composition and symmetry</h2>
                   <span className="text-xs font-bold text-[#00F19F]">
-                    {bodyComposition.populatedScaleCount}/13 Scale · {bodyComposition.populatedTapeCount}/12 Tape
+                    {[
+                      bodyComposition.populatedScaleCount > 0 &&
+                        `${bodyComposition.populatedScaleCount} scale ${bodyComposition.populatedScaleCount === 1 ? 'measure' : 'measures'}`,
+                      bodyComposition.populatedTapeCount > 0 &&
+                        `${bodyComposition.populatedTapeCount} tape ${bodyComposition.populatedTapeCount === 1 ? 'site' : 'sites'}`,
+                    ]
+                      .filter(Boolean)
+                      .join(' · ')}
                   </span>
                 </div>
                 <p className="wk-body text-[#C6C6C6]">{bodyComposition.recompositionSummary}</p>

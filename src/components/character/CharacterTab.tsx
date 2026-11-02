@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { GOAL_DISPLAY_NAME } from '../../utils/goalNames';
 import { ChevronRight } from 'lucide-react';
 import {
   BiometricLog,
@@ -21,17 +22,14 @@ interface CharacterTabProps {
   /** Best maxes from loaded lifts only (barbell, dumbbell, cable, machine) for the Big 3 card. */
   big3BestE1rm?: Record<StrengthPillar, number>;
   bodyweightEmaKg: number;
+  /** False until the athlete logs a weight; scores relative to bodyweight are hidden until then. */
+  hasBodyweight?: boolean;
   latestBiometrics: BiometricLog;
   weeklyVolume: Record<string, number>;
   onUpdateProfile?: (updated: Partial<UserProfile>) => void;
   onOpenAuth?: () => void;
 }
 
-const GOAL_FRIENDLY_NAME: Record<GoalPhase, string> = {
-  'Lean Bulk': 'Build Muscle',
-  'Cut / Recomp': 'Lose Fat',
-  Maingain: 'Stay Lean',
-};
 
 type AthleteSubView = 'volume' | 'balance';
 
@@ -86,6 +84,7 @@ export const CharacterTab: React.FC<CharacterTabProps> = ({
   pillarBestE1rm,
   big3BestE1rm,
   bodyweightEmaKg,
+  hasBodyweight = true,
   latestBiometrics,
   weeklyVolume,
   onUpdateProfile,
@@ -101,13 +100,13 @@ export const CharacterTab: React.FC<CharacterTabProps> = ({
   const powerliftingTotalE1rm = Math.round((squat + bench + deadlift) * 10) / 10;
   const hasBig3Data = powerliftingTotalE1rm > 0;
 
-  const dotsScore = hasBig3Data
-    ? calculateDotsScore(powerliftingTotalE1rm, bodyweightEmaKg, profile.gender)
+  const dotsScore = hasBig3Data && hasBodyweight
+    ? Math.round(calculateDotsScore(powerliftingTotalE1rm, bodyweightEmaKg, profile.gender))
     : 0;
 
-  const friendlyGoal = GOAL_FRIENDLY_NAME[profile.goalPhase] || profile.goalPhase;
+  const friendlyGoal = GOAL_DISPLAY_NAME[profile.goalPhase] || profile.goalPhase;
   const bwMultiple =
-    hasBig3Data && bodyweightEmaKg > 0
+    hasBig3Data && hasBodyweight && bodyweightEmaKg > 0
       ? Math.round((powerliftingTotalE1rm / bodyweightEmaKg) * 10) / 10
       : 0;
 
@@ -124,7 +123,7 @@ export const CharacterTab: React.FC<CharacterTabProps> = ({
         minHeight: 44,
         height: fig(96),
         borderRadius: fig(22),
-        fontSize: fig(24),
+        fontSize: `max(12px, ${fig(24)})`,
         background: subView === view ? 'var(--wk-pill)' : 'transparent',
         color: subView === view ? '#fff' : 'var(--wk-muted)',
       }}
@@ -141,7 +140,7 @@ export const CharacterTab: React.FC<CharacterTabProps> = ({
       <header style={{ paddingTop: fig(20) }}>
         <h1
           className="font-bold text-white uppercase text-center"
-          style={{ fontSize: fig(26), letterSpacing: '0.02em' }}
+          style={{ fontSize: `max(12px, ${fig(26)})`, letterSpacing: '0.02em' }}
         >
           Athlete
         </h1>
@@ -172,13 +171,13 @@ export const CharacterTab: React.FC<CharacterTabProps> = ({
             onOpenAuth?.();
           }}
           aria-label={`${profile.name}, Goal ${friendlyGoal}. ${
-            hasBig3Data ? `DOTS score ${dotsScore}.` : 'Log a squat, bench or deadlift to score.'
+            !hasBodyweight ? 'Log your weight to score.' : hasBig3Data ? `Strength score ${dotsScore}.` : 'Log a squat, bench or deadlift to score.'
           }`}
           className="wk-card w-full text-left flex items-center"
           style={{ gap: fig(52) }}
         >
           <ScoreRing
-            value={hasBig3Data ? dotsScore : null}
+            value={hasBig3Data && hasBodyweight ? dotsScore : null}
             max={500}
             avatarUrl={profile.avatarUrl}
             name={profile.name}
@@ -196,7 +195,9 @@ export const CharacterTab: React.FC<CharacterTabProps> = ({
               {profile.name}
             </h2>
             <p className="wk-body" style={{ marginTop: fig(12) }}>
-              {hasBig3Data
+              {!hasBodyweight
+                ? 'Log your weight on the Progress tab to see your strength-to-weight score.'
+                : hasBig3Data
                 ? `Strength-to-weight score ${dotsScore} pts at ${units.format(bodyweightEmaKg)} (7-day average).`
                 : `${units.format(bodyweightEmaKg)} 7-day average. Log a squat, bench or deadlift to calculate your strength score.`}
             </p>
@@ -261,12 +262,21 @@ export const CharacterTab: React.FC<CharacterTabProps> = ({
           />
         ) : (
           <>
-            <SevenPillarRadar
-              pillarBestE1rm={pillarBestE1rm}
-              bodyweightEmaKg={bodyweightEmaKg}
-              latestBiometrics={latestBiometrics}
-              gender={profile.gender}
-            />
+            {hasBodyweight ? (
+              <SevenPillarRadar
+                pillarBestE1rm={pillarBestE1rm}
+                bodyweightEmaKg={bodyweightEmaKg}
+                latestBiometrics={latestBiometrics}
+                gender={profile.gender}
+              />
+            ) : (
+              <div className="wk-card">
+                <h2 className="wk-h1">Strength levels</h2>
+                <p className="wk-body" style={{ marginTop: fig(24) }}>
+                  Strength levels compare what you lift with your bodyweight. Log your weight on the Progress tab to see them.
+                </p>
+              </div>
+            )}
 
             {/* Consistency & Activity Card — ProgramProgressCard anatomy */}
             <div className="wk-card w-full text-left block">

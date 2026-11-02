@@ -6,7 +6,7 @@ import {
   WorkoutSession,
   getActiveWearableProvider,
 } from '../engine/types';
-import { setActiveTracker, syncWearableBiometrics } from '../services/wearableSyncService';
+import { mergeWearableLog, setActiveTracker, syncWearableBiometrics } from '../services/wearableSyncService';
 import {
   exchangeWhoopCodeForToken,
   fetchWhoopWorkoutStrain,
@@ -39,16 +39,7 @@ export function useWearableSync({ profile, setProfile, workouts, setWorkouts, se
   // Merge a synced day into the log. 0 / undefined mean "not measured" and never overwrite data.
   const handleSyncCompleted = useCallback(
     (newLog: BiometricLog, provider?: WearableProvider) => {
-      setBiometrics((prev) => {
-        const idx = prev.findIndex((b) => b.date === newLog.date);
-        if (idx < 0) return [...prev, newLog];
-        const measured = Object.fromEntries(
-          Object.entries(newLog).filter(([, v]) => v !== undefined && v !== 0)
-        ) as Partial<BiometricLog>;
-        const updated = [...prev];
-        updated[idx] = { ...prev[idx], ...measured };
-        return updated;
-      });
+      setBiometrics((prev) => mergeWearableLog(prev, newLog, provider));
       if (provider) {
         setProfile((prev) => ({ ...prev, ...setActiveTracker(provider, prev) }));
       }

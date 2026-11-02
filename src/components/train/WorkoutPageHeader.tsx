@@ -66,7 +66,7 @@ export const WorkoutPageHeader: React.FC<WorkoutPageHeaderProps> = ({ title, day
   return (
     <header className="relative" style={{ paddingTop: fig(20) }}>
       <div className="relative flex items-center justify-center">
-        <h1 className="font-bold text-white uppercase text-center" style={{ fontSize: fig(26), letterSpacing: '0.02em' }}>
+        <h1 className="font-bold text-white uppercase text-center" style={{ fontSize: `max(12px, ${fig(26)})`, letterSpacing: '0.02em' }}>
           {title}
         </h1>
         {renderMenu && (
@@ -108,7 +108,7 @@ export const WorkoutPageHeader: React.FC<WorkoutPageHeaderProps> = ({ title, day
             <span
               aria-hidden="true"
               style={{
-                fontSize: fig(22),
+                fontSize: `max(12px, ${fig(22)})`,
                 fontWeight: day.isToday ? 700 : 600,
                 color: day.isToday ? '#fff' : 'var(--wk-muted)',
               }}

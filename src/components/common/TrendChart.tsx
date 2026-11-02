@@ -96,7 +96,7 @@ export const TrendChart: React.FC<TrendChartProps> = ({ points, secondary, forma
       : [];
   const last = main[main.length - 1];
   const grid = [0.25, 0.5, 0.75].map((f) => ({ y: PAD_Y + f * (H - PAD_Y * 2), value: max - pad - f * (max - min - pad * 2) }));
-  const muted: React.CSSProperties = { fontSize: fig(20), color: 'rgba(255,255,255,0.45)', lineHeight: 1 };
+  const muted: React.CSSProperties = { fontSize: `max(12px, ${fig(24)})`, color: 'rgba(255,255,255,0.5)', lineHeight: 1 };
 
   return (
     <div ref={boxRef} className={play ? 'wk-chart-play' : 'wk-chart-idle'}>

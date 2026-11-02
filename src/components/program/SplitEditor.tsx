@@ -195,7 +195,7 @@ export const SplitEditor: React.FC<SplitEditorProps> = ({
                     className="h-full flex items-center justify-center font-bold uppercase transition-colors"
                     style={{
                       borderRadius: fig(16),
-                      fontSize: fig(24),
+                      fontSize: `max(12px, ${fig(24)})`,
                       letterSpacing: '0.02em',
                       background: isSelected ? 'var(--wk-pill)' : 'transparent',
                       color: isSelected ? '#fff' : 'var(--wk-muted)',
@@ -404,7 +404,7 @@ export const SplitEditor: React.FC<SplitEditorProps> = ({
                 className="h-full flex items-center justify-center font-bold uppercase transition-colors"
                 style={{
                   borderRadius: fig(16),
-                  fontSize: fig(24),
+                  fontSize: `max(12px, ${fig(24)})`,
                   letterSpacing: '0.02em',
                   background: isSelected ? 'var(--wk-pill)' : 'transparent',
                   color: isSelected ? '#fff' : 'var(--wk-muted)',

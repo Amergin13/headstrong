@@ -460,7 +460,7 @@ export const ProgramPlanView: React.FC<ProgramPlanViewProps> = ({
             style={{
               marginTop: fig(28),
               maxWidth: fig(790),
-              fontSize: fig(26),
+              fontSize: `max(12px, ${fig(26)})`,
               lineHeight: fig(34),
               color: 'var(--wk-muted)',
             }}
@@ -518,7 +518,7 @@ export const ProgramPlanView: React.FC<ProgramPlanViewProps> = ({
                 <h2 className="wk-h1" style={{ lineHeight: 1.21 }}>
                   Phase {phase.phaseNumber}
                 </h2>
-                <p style={{ marginTop: fig(12), fontSize: fig(26), lineHeight: fig(34), color: 'var(--wk-muted)' }}>
+                <p style={{ marginTop: fig(12), fontSize: `max(12px, ${fig(26)})`, lineHeight: fig(34), color: 'var(--wk-muted)' }}>
                   {phase.planSummary}
                 </p>
               </button>

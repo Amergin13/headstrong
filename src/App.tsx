@@ -15,6 +15,8 @@ import {
 } from './engine/types';
 import { calculateDailyReadiness } from './engine/readiness';
 import { getLatestBodyweightEma } from './engine/ema';
+import { snapLoadKg } from './utils/units';
+import { computeTrainingStreak } from './engine/recovery';
 import {
   calculateBestPillarE1rms,
   calculateWeeklyMuscleVolume,
@@ -173,6 +175,8 @@ export const App: React.FC = () => {
 
   // Derived calculations
   const bodyweightEmaKg = getLatestBodyweightEma(biometrics, 80.0);
+  // The 80 kg fallback only seeds internal estimates (starting loads); it is never shown as the athlete's weight.
+  const hasBodyweight = biometrics.some((b) => b.bodyweightKg > 0);
   // Zeros mean "no data" — never fabricate recovery metrics for athletes without a wearable.
   const latestBiometrics: BiometricLog = biometrics[biometrics.length - 1] || {
     date: localDateString(),
@@ -189,7 +193,8 @@ export const App: React.FC = () => {
   const readiness = calculateDailyReadiness(latestBiometrics, biometrics, activeWearable);
 
   const pillarBestE1rm = calculateBestPillarE1rms(workouts, bodyweightEmaKg);
-  const weeklyVolume = calculateWeeklyMuscleVolume(workouts, exercises, activeWorkout);
+  // Saved workouts only, so every page (cards, Program, Progress, Athlete, knowledge graph) shows the same count.
+  const weeklyVolume = calculateWeeklyMuscleVolume(workouts, exercises);
 
   /** Celebrates a personal best, strength level up or finished week. */
   const celebrate = (m: Milestone) => setToast({ title: m.title, message: m.description, tag: m.tag });
@@ -240,18 +245,51 @@ export const App: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Switching kg/lb re-plans an unstarted session so its weights snap to real plates and dumbbells
+  // in the new unit (not 26.5 lb converted from 12 kg).
+  const unitRef = useRef(profile.weightUnit);
+  useEffect(() => {
+    if (unitRef.current === profile.weightUnit) return;
+    unitRef.current = profile.weightUnit;
+    if (activeWorkout.exercises.some((ex) => ex.sets.some((s) => s.completed))) return;
+    const unit = profile.weightUnit || 'kg';
+    setActiveWorkout((prev) => ({
+      ...prev,
+      exercises: prev.exercises.map((ex) => ({
+        ...ex,
+        sets: ex.sets.map((st) =>
+          st.targetWeightKg > 0
+            ? { ...st, targetWeightKg: snapLoadKg(st.targetWeightKg, unit, ex.equipment), actualWeightKg: snapLoadKg(st.targetWeightKg, unit, ex.equipment) }
+            : st
+        ),
+      })),
+    }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile.weightUnit]);
+
+  // The streak always follows the saved workouts (after imports, demo loads, deletions or a long break).
+  useEffect(() => {
+    const streak = computeTrainingStreak(workouts);
+    if (streak !== profile.streakDays) setProfile((p) => ({ ...p, streakDays: streak }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workouts]);
+
   // On the 6-week plan, today's session must be the plan's next workout (with the athlete's own
   // weights). A fresh install or cleared session otherwise starts on a generic split day.
+  // An unstarted session that isn't the plan's next workout is out of date (e.g. from an older save),
+  // so the Workout page always matches the Program page.
   useEffect(() => {
-    if (profile.programType !== 'muscle_building_6wk' || activeWorkout.programWorkoutNumber) return;
+    if (profile.programType !== 'muscle_building_6wk') return;
     if (activeWorkout.exercises.some((ex) => ex.sets.some((s) => s.completed))) return;
+    const next = getNextProgramWorkoutNumber(workouts);
+    if (activeWorkout.programWorkoutNumber === next) return;
     setActiveWorkout(
-      prepareSession(generate6WeekMuscleBuildingWorkout(getNextProgramWorkoutNumber(workouts), bodyweightEmaKg), {
+      prepareSession(generate6WeekMuscleBuildingWorkout(next, bodyweightEmaKg), {
         isProgramPlan: true,
       })
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profile.programType]);
+  }, [profile.programType, workouts]);
 
   // Handler: a set was ticked off. Starts the labelled rest timer and celebrates a personal best once per set.
   const handleSetCompleted = (
@@ -470,7 +508,10 @@ export const App: React.FC = () => {
 
   // Handler: Change Mesocycle Week (1 to 6)
   const handleSelectMesocycleWeek = (week: number) => {
+    // On the 6-week plan the week follows the workout number, and a started session is kept.
+    if (profile.programType === 'muscle_building_6wk') return;
     setProfile((prev) => ({ ...prev, mesocycleWeek: week }));
+    if (activeWorkout.exercises.some((ex) => ex.sets.some((s) => s.completed))) return;
     const currentSplit = (activeWorkout.splitDay as SplitDayType) || 'Push';
     const recalibrated = generateSmartWorkoutSession(
       currentSplit,
@@ -520,7 +561,7 @@ export const App: React.FC = () => {
     setWorkouts(nextHistory);
     setProfile((prev) => ({
       ...prev,
-      streakDays: prev.lastWorkoutDate === todayStr ? prev.streakDays : prev.streakDays + 1,
+      streakDays: computeTrainingStreak(nextHistory),
       lastWorkoutDate: todayStr,
       mesocycleWeek: nextMesocycleWeek,
     }));
@@ -716,6 +757,7 @@ export const App: React.FC = () => {
             pillarBestE1rm={pillarBestE1rm}
             big3BestE1rm={calculateBestPillarE1rms(workouts, bodyweightEmaKg, { loadedLiftsOnly: true })}
             bodyweightEmaKg={bodyweightEmaKg}
+            hasBodyweight={hasBodyweight}
             latestBiometrics={latestBiometrics}
             weeklyVolume={weeklyVolume}
             onUpdateProfile={(up) => setProfile((p) => ({ ...p, ...up }))}
@@ -753,6 +795,10 @@ export const App: React.FC = () => {
             onSelectMesocycleWeek={handleSelectMesocycleWeek}
             onUpdateGoalPhase={(phase: GoalPhase) => {
               setProfile((p) => ({ ...p, goalPhase: phase }));
+              // The 6-week plan's workouts don't change with the goal, and a session already
+              // under way keeps what's been logged.
+              if (profile.programType === 'muscle_building_6wk') return;
+              if (activeWorkout.exercises.some((ex) => ex.sets.some((s) => s.completed))) return;
               const currentSplit = (activeWorkout.splitDay as SplitDayType) || 'Push';
               const recalibrated = generateSmartWorkoutSession(
                 currentSplit,

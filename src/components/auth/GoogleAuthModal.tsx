@@ -38,6 +38,8 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({
   const googleBtnContainerRef = useRef<HTMLDivElement>(null);
 
   const isClientValid = isGoogleClientConfigured(clientId);
+  const isLocalDevelopment =
+    typeof window !== 'undefined' && /^(localhost|127\.0\.0\.1|\[::1\])$/.test(window.location.hostname);
 
   useEffect(() => {
     if (!isOpen || currentUser || !isClientValid) return;
@@ -70,23 +72,6 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({
   if (!isOpen) return null;
 
   // Real Google sign-in only. If Google's sign-in can't be shown, say so; never fake an account.
-  const handleGoogleSignInClick = () => {
-    triggerHaptic('medium');
-    if (isClientValid && typeof window !== 'undefined' && (window as any).google?.accounts?.id) {
-      try {
-        (window as any).google.accounts.id.prompt((notification: any) => {
-          if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
-            setStatusMessage('Google sign-in was closed or blocked. Use the Google button above, or try again.');
-          }
-        });
-        return;
-      } catch (e) {
-        console.warn('GIS prompt error:', e);
-      }
-    }
-    setStatusMessage("Google sign-in isn't available right now. You can keep using Treise without an account.");
-  };
-
   const handleApplyCustomClient = () => {
     if (!customClientIdInput.trim()) return;
     setClientId(customClientIdInput.trim());
@@ -192,14 +177,11 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({
               <div ref={googleBtnContainerRef} className="flex justify-center min-h-[44px]" />
             )}
 
-            <button
-              type="button"
-              onClick={handleGoogleSignInClick}
-              className="wk-button min-h-[44px]"
-              style={{ background: 'var(--wk-accent)', color: '#13181C' }}
-            >
-              {isClientValid ? 'Sign In with Google' : 'Sign In as Athlete'}
-            </button>
+            {!isClientValid && (
+              <p className="wk-body" style={{ color: 'var(--wk-muted)' }}>
+                Google sign-in isn't available right now. You can keep using Treise without an account.
+              </p>
+            )}
 
             {supabaseUrl && (
               <a
@@ -211,6 +193,8 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({
               </a>
             )}
 
+            {/* Developer setting: only on a local build, never shown to athletes. */}
+            {isLocalDevelopment && (
             <button
               type="button"
               onClick={() => setShowConfig(!showConfig)}
@@ -218,8 +202,9 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({
             >
               {showConfig ? 'Hide Cloud Config' : 'Link Google Cloud Client ID (Optional)'}
             </button>
+            )}
 
-            {showConfig && (
+            {isLocalDevelopment && showConfig && (
               <div className="flex flex-col" style={{ gap: fig(16) }}>
                 <label className="wk-label block">Google OAuth Web Client ID</label>
                 <div className="flex" style={{ gap: fig(12) }}>

@@ -537,7 +537,7 @@ export async function simulateWhoopSync(
     if (onProgress) onProgress({ stage, percent, message, provider: 'whoop' });
   };
 
-  update('connecting', 15, 'Connecting to Whoop 4.0 strap...');
+  update('connecting', 15, 'Connecting to your Whoop...');
   await new Promise((r) => setTimeout(r, 380));
 
   update('hrv', 45, 'Syncing overnight Whoop HRV RMSSD & resting heart rate...');
@@ -582,7 +582,7 @@ export async function simulateWhoopSync(
     workoutDurationMin: 60,
   };
 
-  update('complete', 100, 'Whoop 4.0 recovery synced!');
+  update('complete', 100, 'Whoop recovery synced');
   return syncedLog;
 }
 

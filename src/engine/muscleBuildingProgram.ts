@@ -808,7 +808,8 @@ export function generate6WeekMuscleBuildingWorkout(
   return {
     id: `workout-6wk-${tmpl.workoutNumber}-${today}`,
     date: today,
-    name: `W${tmpl.week}D${((tmpl.workoutNumber - 1) % 4) + 1} • ${tmpl.title} (Phase ${tmpl.phase})`,
+    // Plain name, the same one the Program page and Workout page show.
+    name: planWorkoutLabel(tmpl.title),
     splitDay: tmpl.splitDay,
     exercises,
     completed: false,
@@ -900,4 +901,13 @@ export function buildPlanOverview(history: WorkoutSession[]): PlanOverview {
     activePhase: WORKOUT_TEMPLATES_24.find((t) => t.workoutNumber === nextWorkoutNumber)?.phase ?? 1,
     workouts,
   };
+}
+
+/** Renames a saved plan session to its plain name (older saves used "W1D1 • Chest and Back (Phase 1)"). */
+export function withPlanWorkoutName(w: WorkoutSession): WorkoutSession {
+  const n = getProgramWorkoutNumber(w);
+  const tmpl = n ? WORKOUT_TEMPLATES_24.find((t) => t.workoutNumber === n) : undefined;
+  if (!tmpl) return w;
+  const name = planWorkoutLabel(tmpl.title);
+  return w.name === name ? w : { ...w, name };
 }

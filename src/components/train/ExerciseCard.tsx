@@ -154,7 +154,7 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
           )}
           {muscleWeek && (
             <div aria-label={`${muscleWeek.label} this week: ${muscleWeek.sets} of ${muscleWeek.target[0]} to ${muscleWeek.target[1]} hard sets`}>
-              <div className="flex justify-between" style={{ fontSize: fig(22), color: 'var(--wk-muted)' }} aria-hidden="true">
+              <div className="flex justify-between" style={{ fontSize: `max(12px, ${fig(22)})`, color: 'var(--wk-muted)' }} aria-hidden="true">
                 <span>{muscleWeek.label} this week</span>
                 <span>
                   {muscleWeek.sets} of {muscleWeek.target[0]}–{muscleWeek.target[1]} hard sets
@@ -265,7 +265,7 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
           style={{
             gridTemplateColumns: SET_TABLE_COLUMNS,
             columnGap: SET_TABLE_GAP,
-            fontSize: fig(24),
+            fontSize: `max(12px, ${fig(24)})`,
             fontWeight: 600,
             color: 'var(--wk-muted)',
             marginBottom: fig(30),

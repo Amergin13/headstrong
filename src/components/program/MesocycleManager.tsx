@@ -139,7 +139,7 @@ export const MesocycleManager: React.FC<MesocycleManagerProps> = ({
               className="h-full flex flex-col items-center justify-center font-bold uppercase transition-colors"
               style={{
                 borderRadius: fig(16),
-                fontSize: fig(24),
+                fontSize: `max(12px, ${fig(24)})`,
                 letterSpacing: '0.02em',
                 background: isSelected ? 'var(--wk-pill)' : 'transparent',
                 color: isSelected ? '#fff' : 'var(--wk-muted)',

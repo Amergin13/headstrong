@@ -38,10 +38,10 @@ export const WEARABLE_PROVIDERS: Record<WearableProvider, WearableProviderMeta> 
   },
   whoop: {
     id: 'whoop',
-    name: 'Whoop 4.0',
+    name: 'Whoop',
     tagline: 'Whoop Developer Platform API v1',
     description: 'Syncs Whoop recovery score (Green/Yellow/Red), HRV RMSSD, sleep performance, and day strain.',
-    hardwareFocus: 'Whoop 4.0 Strap & Bicep Band',
+    hardwareFocus: 'Whoop strap or band',
     accentColor: '#E2F952', // Brand Primary Volt
   },
   health_connect: {
@@ -222,4 +222,20 @@ export function disconnectWearable(
   }
 
   return updates;
+}
+
+/**
+ * Adds a synced day to the log. Only measured (non-zero) values replace what's there, and a weigh-in
+ * the athlete logged themselves beats a wearable's profile weight.
+ */
+export function mergeWearableLog(prev: BiometricLog[], newLog: BiometricLog, provider?: WearableProvider): BiometricLog[] {
+  const idx = prev.findIndex((b) => b.date === newLog.date);
+  if (idx < 0) return [...prev, newLog];
+  const measured = Object.fromEntries(
+    Object.entries(newLog).filter(([, v]) => v !== undefined && v !== 0)
+  ) as Partial<BiometricLog>;
+  if (prev[idx].bodyweightKg > 0 && prev[idx].source !== provider) delete measured.bodyweightKg;
+  const updated = [...prev];
+  updated[idx] = { ...prev[idx], ...measured };
+  return updated;
 }

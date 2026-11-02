@@ -28,7 +28,7 @@ import {
   MUSCLE_FRIENDLY_NAMES,
   READY_THRESHOLD,
 } from '../../engine/recovery';
-import { PROGRAM_PHASES, WORKOUT_TEMPLATES_24 } from '../../engine/muscleBuildingProgram';
+import { PROGRAM_PHASES, WORKOUT_TEMPLATES_24, planWorkoutLabel } from '../../engine/muscleBuildingProgram';
 import { useUnits } from '../../utils/unitsContext';
 import {
   prescribeDoubleProgression,
@@ -649,7 +649,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
     ? {
         title: `Phase ${planPhase?.phaseNumber ?? 1}`,
         subtitle: planPhase?.shortName ?? '',
-        sessionLabel: `${sessionWord}: ${planTemplate?.title ?? activeWorkout.name}`,
+        sessionLabel: `${sessionWord}: ${planTemplate ? planWorkoutLabel(planTemplate.title) : activeWorkout.name}`,
         current: planWorkoutNumber,
         total: WORKOUT_TEMPLATES_24.length,
       }
@@ -1043,7 +1043,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
       >
         Finish workout
         {completedSets > 0 && (
-          <span className="block normal-case font-semibold" style={{ fontSize: fig(22), opacity: 0.75 }}>
+          <span className="block normal-case font-semibold" style={{ fontSize: `max(12px, ${fig(22)})`, opacity: 0.75 }}>
             {completedSets} of {totalSets} sets logged
             {liveTonnageKg > 0 ? ` • ${Math.round(units.toDisplay(liveTonnageKg)).toLocaleString()} ${units.unit}` : ''}
           </span>

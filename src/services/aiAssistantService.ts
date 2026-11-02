@@ -207,8 +207,14 @@ export function buildProgressSummary(workouts: WorkoutSession[], unit: 'kg' | 'l
     if (sets.length < 2) continue;
     const first = sets[0];
     const last = sets[sets.length - 1];
+    // Bodyweight lifts read "bodyweight" (and "bodyweight + 2.5 kg" once loaded), never "0 kg".
+    const load = (kg: number) => (kg > 0 ? formatWeight(kg, unit) : 'bodyweight');
     if (last.weightKg > first.weightKg) {
-      changes.push(`${name}: ${formatWeight(first.weightKg, unit)} → ${formatWeight(last.weightKg, unit)}`);
+      changes.push(
+        first.weightKg > 0
+          ? `${name}: ${load(first.weightKg)} → ${load(last.weightKg)}`
+          : `${name}: bodyweight → bodyweight + ${formatWeight(last.weightKg, unit)}`
+      );
     } else if (last.weightKg === first.weightKg && last.reps > first.reps) {
       changes.push(`${name}: ${first.reps} → ${last.reps} reps at ${last.weightKg > 0 ? formatWeight(last.weightKg, unit) : 'bodyweight'}`);
     }
@@ -663,10 +669,14 @@ async function processAssistantMessageCore(
       // Explicit "why / how does / formula" questions get the full science card. Other open
       // questions go to the on-device model when it's available (grounded in the same facts).
       const isExplicitScienceQuestion =
-        /\b(why|how does|how do|formula|what is|what's|explain|science|research|studies|study|calculate|citation)\b/.test(lowerMsg);
+        /\b(why|how does|how do|formula|what is|what's|explain|science|research|studies|study|calculat\w*|worked out|measured|citation)\b/.test(lowerMsg);
       const modelReady = await isOnDeviceModelReady();
+      // "How is my progress?" is about the athlete's own data, not a science card.
+      const isOwnProgressQuestion = /\b(progress|progressing|improv\w*|stronger|getting better|gains?|prs?|personal (best|record)s?)\b/i.test(lowerMsg);
       const scientificPrinciple =
-        !isTacticalWorkoutQuery && !isPersonalTelemetryQuery && (isExplicitScienceQuestion || !modelReady)
+        !isTacticalWorkoutQuery &&
+        !isPersonalTelemetryQuery &&
+        (isExplicitScienceQuestion || (!modelReady && !isOwnProgressQuestion))
           ? queryExerciseScienceKnowledgeBase(lowerMsg)
           : null;
 
