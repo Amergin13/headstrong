@@ -152,6 +152,48 @@ export function runStorageMigrations(): void {
   }
 }
 
+
+/** Fired on `window` when data couldn't be saved even after clearing caches (e.g. storage full). */
+export const SAVE_FAILED_EVENT = 'treise-save-failed';
+/** Caches that can be rebuilt (written AI notes); cleared first when storage is full. */
+const REBUILDABLE_CACHE_KEYS = ['treise_exercise_notes_v1', 'treise_identity_message_v1'];
+
+/**
+ * Saves one key. If storage is full, clears the rebuildable caches and tries once more; if it still
+ * fails, tells the app so the athlete can be warned instead of losing data silently.
+ */
+function persist(key: string, value: string): boolean {
+  if (typeof localStorage === 'undefined') return false;
+  try {
+    localStorage.setItem(key, value);
+    return true;
+  } catch {
+    try {
+      REBUILDABLE_CACHE_KEYS.forEach((k) => localStorage.removeItem(k));
+      localStorage.setItem(key, value);
+      return true;
+    } catch (e) {
+      console.error(`Failed to save ${key}:`, e);
+      if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(SAVE_FAILED_EVENT, { detail: { key } }));
+      return false;
+    }
+  }
+}
+
+/**
+ * Asks the browser to keep Treise's data even when the device is low on space or the site
+ * hasn't been opened for a while. Safe to call repeatedly; returns whether storage is persistent.
+ */
+export async function requestPersistentStorage(): Promise<boolean> {
+  try {
+    if (typeof navigator === 'undefined' || !navigator.storage?.persist) return false;
+    if (await navigator.storage.persisted()) return true;
+    return await navigator.storage.persist();
+  } catch {
+    return false;
+  }
+}
+
 function getItemWithFallback(key: keyof typeof KEYS): string | null {
   if (typeof localStorage === 'undefined') return null;
   return localStorage.getItem(KEYS[key]) || localStorage.getItem(LEGACY_KEYS[key]);
@@ -210,11 +252,7 @@ export function loadProfile(): UserProfile {
 }
 
 export function saveProfile(profile: UserProfile): void {
-  try {
-    localStorage.setItem(KEYS.PROFILE, JSON.stringify(profile));
-  } catch (e) {
-    console.error('Failed to save profile:', e);
-  }
+  persist(KEYS.PROFILE, JSON.stringify(profile));
 }
 
 export function loadBiometrics(): BiometricLog[] {
@@ -228,11 +266,7 @@ export function loadBiometrics(): BiometricLog[] {
 }
 
 export function saveBiometrics(logs: BiometricLog[]): void {
-  try {
-    localStorage.setItem(KEYS.BIOMETRICS, JSON.stringify(logs));
-  } catch (e) {
-    console.error('Failed to save biometrics:', e);
-  }
+  persist(KEYS.BIOMETRICS, JSON.stringify(logs));
 }
 
 export function loadWorkouts(): WorkoutSession[] {
@@ -246,11 +280,7 @@ export function loadWorkouts(): WorkoutSession[] {
 }
 
 export function saveWorkouts(workouts: WorkoutSession[]): void {
-  try {
-    localStorage.setItem(KEYS.WORKOUTS, JSON.stringify(workouts));
-  } catch (e) {
-    console.error('Failed to save workouts:', e);
-  }
+  persist(KEYS.WORKOUTS, JSON.stringify(workouts));
 }
 
 export function loadActiveWorkout(): WorkoutSession {
@@ -266,11 +296,7 @@ export function loadActiveWorkout(): WorkoutSession {
 }
 
 export function saveActiveWorkout(workout: WorkoutSession): void {
-  try {
-    localStorage.setItem(KEYS.ACTIVE_WORKOUT, JSON.stringify(workout));
-  } catch (e) {
-    console.error('Failed to save active workout:', e);
-  }
+  persist(KEYS.ACTIVE_WORKOUT, JSON.stringify(workout));
 }
 
 export function loadExercises(): ExerciseDefinition[] {
@@ -301,11 +327,7 @@ export function loadExercises(): ExerciseDefinition[] {
 }
 
 export function saveExercises(exercises: ExerciseDefinition[]): void {
-  try {
-    localStorage.setItem(KEYS.EXERCISES, JSON.stringify(exercises));
-  } catch (e) {
-    console.error('Failed to save exercises:', e);
-  }
+  persist(KEYS.EXERCISES, JSON.stringify(exercises));
 }
 
 export function resetAllToSeedData(): {

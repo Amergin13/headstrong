@@ -22,6 +22,9 @@ import { useUnits } from '../../utils/unitsContext';
 
 export type LogModalMode = 'weight' | 'measurements';
 
+/** Unit words read out by screen readers ("Waist in inches", not "Waist in in"). */
+const UNIT_WORDS: Record<string, string> = { kg: 'kilograms', lb: 'pounds', cm: 'centimetres', in: 'inches', '%': 'percent' };
+
 export interface MeasurementEntry {
   // 13 RENPHO Scale metrics
   bodyweightKg?: number;
@@ -142,9 +145,8 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
   const initialWeightKg =
     todayLog?.bodyweightKg && todayLog.bodyweightKg > 0 ? todayLog.bodyweightKg : currentWeight;
 
-  const [weightInput, setWeightInput] = useState(
-    initialWeightKg > 0 ? `${units.toDisplay(initialWeightKg)}` : ''
-  );
+  const initialWeightInput = initialWeightKg > 0 ? `${units.toDisplay(initialWeightKg)}` : '';
+  const [weightInput, setWeightInput] = useState(initialWeightInput);
   const [bodyFat, setBodyFat] = useState(
     todayLog?.bodyFatPct && todayLog.bodyFatPct > 0 ? `${todayLog.bodyFatPct}` : ''
   );
@@ -543,7 +545,16 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
         if (site.id === 'calf_right') sitePayload.calfCm = cmVal;
       }
     }
-    const finalWeightKg = weightKg > 0 ? Math.round(weightKg * 100) / 100 : undefined;
+    // The weight is saved only when it's a real reading: typed or confirmed on the weight tab, or
+    // sent by the scale. Saving measurements never re-saves a pre-filled weight, which would copy an
+    // earlier weigh-in onto today and drift through kg/lb rounding.
+    const prefilledUnchanged = weightInput === initialWeightInput;
+    const sendWeight = weightKg > 0 && (mode === 'weight' || !prefilledUnchanged);
+    const finalWeightKg = sendWeight
+      ? prefilledUnchanged && initialWeightKg > 0
+        ? initialWeightKg
+        : Math.round(weightKg * 100) / 100
+      : undefined;
     const finalBfPct = num(bodyFat) ? round(num(bodyFat)) : capturedScaleMetrics.bodyFatPct;
     const finalHeightCm = num(height) ? round(toCm(num(height))) : undefined;
     const effectiveHeightCm = finalHeightCm ?? heightCm;
@@ -603,7 +614,7 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
           value={value}
           onFocus={onFocus}
           onChange={(e) => set(e.target.value)}
-          aria-label={`${label} in ${unit}`}
+          aria-label={`${label}${UNIT_WORDS[unit] ? ` in ${UNIT_WORDS[unit]}` : ''}`}
           aria-invalid={!ok}
           className={`wk-field w-full py-2.5 px-3 pr-12 font-bold text-base focus:outline-none ${
             ok ? '' : 'ring-1 ring-rose-400'

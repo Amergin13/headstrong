@@ -21,7 +21,8 @@ These rules exist because earlier sessions broke them. Any change that violates 
    - Bodyweight: shown only after the athlete logs one; the 80 kg fallback only seeds starting loads. Weekly weight pace needs a week of weigh-ins.
    - Goal names: `GOAL_DISPLAY_NAME` (Build Muscle, Lose Fat, Stay Lean); internal phase names never appear in the UI.
    - Switching kg/lb snaps an unstarted session's weights to real sizes in the new unit.
-10. **Run `npm run test:engine`, `npm run test:api` and `npx tsc --noEmit -p .` before finishing.** Update tests when behaviour intentionally changes; never weaken a test to hide a regression.
+10. **Never lose saved data.** Every change is saved straight away (`usePersistedState`), a change in another tab reloads the data, and older saves are upgraded on launch (`runStorageMigrations`, legacy `headstrong_*` keys still load). Saves go through `persist` in `storage.ts`: if storage is full it clears rebuildable caches and retries, and if that fails the athlete is warned (`SAVE_FAILED_EVENT`) instead of losing data silently. Once there's history, the app asks the browser to keep its storage (`requestPersistentStorage`). A form never re-saves a pre-filled value the athlete didn't enter (e.g. logging only a waist measurement doesn't copy an earlier weight onto today). Engine suite 36f covers this.
+11. **Run `npm run test:engine`, `npm run test:api` and `npx tsc --noEmit -p .` before finishing.** Update tests when behaviour intentionally changes; never weaken a test to hide a regression.
 
 ---
 

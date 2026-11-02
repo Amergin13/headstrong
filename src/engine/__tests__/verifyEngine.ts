@@ -466,6 +466,9 @@ import {
   permanentlyEraseAllUserData,
   loadProfile,
   loadWorkouts,
+  saveWorkouts,
+  saveActiveWorkout,
+  loadActiveWorkout,
   loadBiometrics,
   removeFabricatedBiometrics,
   removeDayHeartRateFromWorkouts,
@@ -4175,6 +4178,46 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
 
     const noWeight = buildCompositionCharts({ biometrics: [], profile: NEW_USER_PROFILE, fmt: { weight: (kg) => `${kg} kg`, length: (cm) => `${cm} cm` } });
     assert(noWeight.every((c) => c.points.length === 0), 'With no weigh-ins, no bodyweight value is shown anywhere (no 80 kg placeholder)');
+  }
+
+  console.log('\n[36f. Persistence: Saves Survive a Full Phone, Reloads and Old Data]');
+  {
+    const ls = (globalThis as any).localStorage;
+    const realSet = ls.setItem;
+    // Storage full until the rebuildable caches are cleared.
+    memStore.set('treise_exercise_notes_v1', 'x'.repeat(1000));
+    let attempts = 0;
+    ls.setItem = (k: string, v: string) => {
+      attempts++;
+      if (memStore.has('treise_exercise_notes_v1')) throw new Error('QuotaExceededError');
+      return realSet(k, v);
+    };
+    const toSave = [generate6WeekMuscleBuildingWorkout(1, 80)];
+    saveWorkouts(toSave);
+    assert(
+      attempts === 2 && !memStore.has('treise_exercise_notes_v1') && loadWorkouts().length === 1,
+      'When storage is full, rebuildable caches are cleared and the workout is still saved'
+    );
+    // Still full after clearing caches: the app is told, nothing throws.
+    let warned = false;
+    const prevWindow = (globalThis as any).window;
+    (globalThis as any).window = { dispatchEvent: (e: { type: string }) => { warned = e.type === 'treise-save-failed'; return true; } };
+    (globalThis as any).CustomEvent = (globalThis as any).CustomEvent ?? class { type: string; constructor(t: string) { this.type = t; } };
+    ls.setItem = () => { throw new Error('QuotaExceededError'); };
+    saveWorkouts(toSave);
+    assert(warned, 'If a save still fails, the app is told so it can warn the athlete (no silent loss)');
+    ls.setItem = realSet;
+    (globalThis as any).window = prevWindow;
+
+    // Round trip: what's saved is exactly what loads, including in-progress sets.
+    const live = generate6WeekMuscleBuildingWorkout(3, 80);
+    live.exercises[0].sets[0] = { ...live.exercises[0].sets[0], completed: true, actualWeightKg: 57.5, actualReps: 11, actualRir: 1, completedAt: new Date().toISOString() };
+    saveActiveWorkout(live);
+    const back = loadActiveWorkout();
+    assert(
+      JSON.stringify(back.exercises[0].sets[0]) === JSON.stringify(live.exercises[0].sets[0]) && back.programWorkoutNumber === 3,
+      'An in-progress workout loads back exactly as saved (ticked set, edited weight, reps, RIR, time)'
+    );
   }
 
   console.log('\n[37. Progress Tab: Strength & Composition Charts]');

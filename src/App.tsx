@@ -34,6 +34,8 @@ import {
   saveActiveWorkout,
   saveAuthUser,
   saveBiometrics,
+  SAVE_FAILED_EVENT,
+  requestPersistentStorage,
   saveExercises,
   saveProfile,
   saveWorkouts,
@@ -266,6 +268,25 @@ export const App: React.FC = () => {
     }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile.weightUnit]);
+
+  // If the phone's storage is full, say so instead of losing data silently.
+  useEffect(() => {
+    const onSaveFailed = () =>
+      setToast({
+        title: "Couldn't save",
+        message: "This phone's storage is full. Export a backup in Program → Settings, then free up some space.",
+        tag: 'Storage full',
+      });
+    window.addEventListener(SAVE_FAILED_EVENT, onSaveFailed);
+    return () => window.removeEventListener(SAVE_FAILED_EVENT, onSaveFailed);
+  }, []);
+
+  // Once there's history worth keeping, ask the browser not to clear it when space is low or the
+  // app hasn't been opened for a while.
+  const hasHistory = workouts.length > 0 || biometrics.length > 0;
+  useEffect(() => {
+    if (hasHistory) void requestPersistentStorage();
+  }, [hasHistory]);
 
   // The streak always follows the saved workouts (after imports, demo loads, deletions or a long break).
   useEffect(() => {
