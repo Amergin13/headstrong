@@ -3,7 +3,8 @@
  * are expected to fall on. Expected days come from the recovery model (each session waits until
  * its muscles recover), never from a fixed calendar.
  */
-import { generate6WeekMuscleBuildingWorkout, getProgramWorkoutNumber, WORKOUT_TEMPLATES_24 } from '../engine/muscleBuildingProgram';
+import { TrainingPlan, generatePlanWorkout, getProgramWorkoutNumber, getSessionPlanId } from '../engine/muscleBuildingProgram';
+import { getPlanById } from '../engine/trainingPlans';
 import { evaluateSessionRecovery, getTrainableReadyAt, getWorkoutCompletedAt } from '../engine/recovery';
 import { ExerciseDefinition, ExerciseSession, ProgramSplitType, WorkoutSession } from '../engine/types';
 import { localDateOffset, localDateString, parseLocalDate } from '../utils/date';
@@ -68,11 +69,14 @@ function splitDaySession(split: SplitDayType, catalog: ExerciseDefinition[]): Wo
 export function getFollowingSession(
   session: WorkoutSession,
   programType: ProgramSplitType | undefined,
-  catalog: ExerciseDefinition[]
+  catalog: ExerciseDefinition[],
+  plan?: TrainingPlan
 ): WorkoutSession {
   const planNumber = getProgramWorkoutNumber(session);
-  if (planNumber) {
-    return generate6WeekMuscleBuildingWorkout(planNumber >= WORKOUT_TEMPLATES_24.length ? 1 : planNumber + 1);
+  const planId = getSessionPlanId(session);
+  if (planNumber && planId) {
+    const p = plan && plan.id === planId ? plan : getPlanById(planId);
+    return generatePlanWorkout(p, planNumber >= p.templates.length ? 1 : planNumber + 1);
   }
   return splitDaySession(getNextSplitDay(session.splitDay, programType), catalog);
 }
@@ -82,6 +86,8 @@ export function buildWeekStrip(input: {
   /** The queued session (today's or the next one). */
   nextSession: WorkoutSession;
   programType?: ProgramSplitType;
+  /** The athlete's plan, so projected plan sessions use their goal's sets. */
+  plan?: TrainingPlan;
   exerciseCatalog: ExerciseDefinition[];
   now?: number;
   daysBefore?: number;
@@ -112,7 +118,7 @@ export function buildWeekStrip(input: {
     const trainAt = new Date(readyAt);
     if (trainAt.getHours() < PROJECTED_TRAINING_HOUR) trainAt.setHours(PROJECTED_TRAINING_HOUR, 0, 0, 0);
     simulated.push(asCompleted(session, trainAt.getTime(), i));
-    session = getFollowingSession(session, input.programType, input.exerciseCatalog);
+    session = getFollowingSession(session, input.programType, input.exerciseCatalog, input.plan);
     cursor = trainAt.getTime() + 60 * 1000;
   }
 

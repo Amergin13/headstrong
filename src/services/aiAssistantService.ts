@@ -1,3 +1,4 @@
+import { GOAL_DISPLAY_NAME } from '../utils/goalNames';
 import {
   AssistantActionPayload,
   AssistantChatMessage,
@@ -443,49 +444,14 @@ async function processAssistantMessageCore(
     /\b(switch|change|set)\b.*\b(program|split|ppl|upper\s*lower|full\s*body)\b/i.test(lowerMsg) ||
     /\b(upper\s*lower\s*split|push\s*pull\s*legs)\b/i.test(lowerMsg)
   ) {
-    let targetSplit: ProgramSplitType = 'upper_lower';
-    let splitTitle = 'Upper / Lower (4-Day)';
-
-    if (/\b(ppl\s*\+\s*upper|ppl\s*upper|4[\s-]?day\s*ppl)\b/i.test(lowerMsg)) {
-      targetSplit = 'ppl_upper';
-      splitTitle = 'Push / Pull / Legs + Upper (4-Day)';
-    } else if (/\b(ppl|push\s*pull\s*legs|3[\s-]?day\s*ppl)\b/i.test(lowerMsg)) {
-      targetSplit = 'ppl';
-      splitTitle = 'Push / Pull / Legs (3-Day Classic)';
-    } else if (/\b(full\s*body|3[\s-]?day\s*full)\b/i.test(lowerMsg)) {
-      targetSplit = 'full_body';
-      splitTitle = 'Full Body (3-Day High Frequency)';
-    }
-
-    const starterSplit = getFirstSplitDayForProgram(targetSplit);
-    const newSession = generateSmartWorkoutSession(
-      starterSplit,
-      workouts,
-      exerciseCatalog,
-      readinessState,
-      profile.mesocycleWeek || 1,
-      profile.activeLocation || 'gym',
-      profile.homeEquipment || ['bench', 'dumbbells', 'trx', 'pullup_bar'],
-      profile.goalPhase,
-      bodyweightEmaKg,
-      profile.scheduledWeekLocations
-    );
-
-    updatedProfile = { programType: targetSplit };
-    updatedWorkout = newSession;
+    // One plan, shaped by the goal: there are no splits to switch between.
     actionTaken = {
       type: 'SWITCH_PROGRAM_SPLIT',
-      summary: `Switched split to ${splitTitle}`,
-      details: { programType: targetSplit, starterSplit },
+      summary: 'Explained that the plan follows your goal',
+      details: { programType: profile.programType },
     };
-
-    answerText = `Program updated! Switched your training split to ${splitTitle}. Your next queued workout is ${newSession.name} (${starterSplit} Day), scheduled at the front of your queue.`;
-
-    citations.push({
-      label: 'Program Split',
-      metric: 'Active Split',
-      value: splitTitle,
-    });
+    answerText =
+      "Your 6-week plan is set for your goal, so there's no split to pick. Tell me if your goal changes (build muscle, lose fat or stay lean) and your sets and reps will change with it. Can't make the gym? Switch to home or bodyweight from the Workout tab.";
   }
 
   // ============================================================================
@@ -505,22 +471,22 @@ async function processAssistantMessageCore(
     updatedProfile = { goalPhase: targetGoal };
     actionTaken = {
       type: 'SWITCH_GOAL_PHASE',
-      summary: `Switched goal phase to ${targetGoal}`,
+      summary: `Switched goal to ${GOAL_DISPLAY_NAME[targetGoal]}`,
       details: { goalPhase: targetGoal },
     };
 
     if (targetGoal === 'Cut / Recomp') {
-      answerText = `Switched your goal to Cut / Recomp! Retention Shield is now active: training volume is capped to ~85% to protect systemic recovery in a caloric deficit, and holding your weights steady preserves 100% of your muscle mass while body fat drops.`;
+      answerText = `Your goal is now ${GOAL_DISPLAY_NAME[targetGoal]}. From your next workout the big lifts stay heavy, with no extra sets, so you keep your strength and muscle while you eat a little less.`;
     } else if (targetGoal === 'Lean Bulk') {
-      answerText = `Switched your goal to Lean Bulk! Your volume targets will progressively scale from Minimum Effective Volume (MEV) up to Maximum Adaptive Volume (MAV) across your 6-week mesocycle, fueled by a caloric surplus.`;
+      answerText = `Your goal is now ${GOAL_DISPLAY_NAME[targetGoal]}. From your next workout your sets build across the 6 weeks, with an extra set on smaller muscles in the last two weeks.`;
     } else {
-      answerText = `Switched your goal to Maingain! Work Capacity Index (WCI) and recovery density are emphasized to steadily improve body composition.`;
+      answerText = `Your goal is now ${GOAL_DISPLAY_NAME[targetGoal]}. From your next workout you'll keep a steady 3 sets per exercise to get stronger without wearing yourself down.`;
     }
 
     citations.push({
       label: 'Training Goal',
-      metric: 'Goal Phase',
-      value: targetGoal,
+      metric: 'Goal',
+      value: GOAL_DISPLAY_NAME[targetGoal],
     });
   }
 
@@ -542,16 +508,16 @@ async function processAssistantMessageCore(
 
     actionTaken = {
       type: 'SHIFT_WORKOUT',
-      summary: `Logged Rest Day: ${activeWorkout.splitDay} Day held for tomorrow`,
+      summary: `Logged Rest Day: ${activeWorkout.name} held for tomorrow`,
       details: { date: tomorrowStr },
     };
 
-    answerText = `Rest day logged! Your ${activeWorkout.splitDay} Day session has been held at the front of your queue for tomorrow. Because Treise uses an asynchronous hypertrophy queue, skipping a calendar day carries zero penalty, preserves your ${profile.streakDays}-day streak, and lets your nervous system recover.`;
+    answerText = `Rest day logged. ${activeWorkout.name} will be waiting for you tomorrow. Missing a day doesn't set your plan back, and your ${profile.streakDays}-day streak is safe.`;
 
     citations.push({
       label: 'Schedule',
       metric: 'Next Session',
-      value: `Tomorrow (${activeWorkout.splitDay} Day)`,
+      value: `Tomorrow (${activeWorkout.name})`,
     });
   }
 

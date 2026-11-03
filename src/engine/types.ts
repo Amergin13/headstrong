@@ -255,8 +255,10 @@ export interface WorkoutSession {
   hasMeasuredHeartRate?: boolean;
   /** When the first set of the session was logged (ISO), used for real session duration. */
   startedAt?: string;
-  /** 1-24 position in the 6-Week Muscle Building Plan, when the session belongs to it. */
+  /** Position in the athlete's 6-week plan (1-24 muscle plan, 1-18 starter plan), when the session belongs to one. */
   programWorkoutNumber?: number;
+  /** Which plan the session belongs to; older saves without it are muscle-plan sessions. */
+  planId?: PlanId;
   /** Athlete chose to train before the queued session's muscles were recovered. */
   recoveryOverride?: boolean;
   /** Working-set IDs already celebrated as a personal best this session. */
@@ -323,7 +325,10 @@ export interface WearableSyncProgress {
   provider?: WearableProvider;
 }
 
-export type ProgramSplitType = 'ppl_upper' | 'ppl' | 'upper_lower' | 'full_body' | 'muscle_building_6wk';
+export type ProgramSplitType = 'ppl_upper' | 'ppl' | 'upper_lower' | 'full_body' | 'muscle_building_6wk' | 'starter_6wk';
+
+/** The two 6-week plans: the goal-based starter plan (everyone) and the 24-workout muscle plan (owner only). */
+export type PlanId = 'muscle_building_6wk' | 'starter_6wk';
 
 export type ExperienceLevel = 'new' | 'intermediate' | 'experienced';
 

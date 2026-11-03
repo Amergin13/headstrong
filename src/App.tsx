@@ -49,9 +49,11 @@ import {
 } from './services/workoutGenerator';
 import { WhoopWorkoutStrainSummary } from './services/whoopService';
 import {
-  generate6WeekMuscleBuildingWorkout,
+  generatePlanWorkout,
   getNextProgramWorkoutNumber,
+  getSessionPlanId,
 } from './engine/muscleBuildingProgram';
+import { isPlanProgram, resolveActivePlan } from './engine/trainingPlans';
 import { prepareSessionForAthlete } from './services/sessionPreparation';
 import { completeWorkout } from './services/workoutCompletion';
 import { evaluateSetPersonalBest, planRestAfterSet } from './services/setCompletion';
@@ -196,6 +198,8 @@ export const App: React.FC = () => {
   const activeWearable = getActiveWearableProvider(profile);
 
   const readiness = calculateDailyReadiness(latestBiometrics, biometrics, activeWearable);
+  // Everyone is on a 6-week plan: the starter plan for their goal, or the muscle plan on the owner's account.
+  const activePlan = resolveActivePlan(profile);
 
   const pillarBestE1rm = calculateBestPillarE1rms(workouts, bodyweightEmaKg);
   // Saved workouts only, so every page (cards, Program, Progress, Athlete, knowledge graph) shows the same count.
@@ -324,17 +328,13 @@ export const App: React.FC = () => {
   // An unstarted session that isn't the plan's next workout is out of date (e.g. from an older save),
   // so the Workout page always matches the Program page.
   useEffect(() => {
-    if (profile.programType !== 'muscle_building_6wk') return;
+    if (!isPlanProgram(profile.programType)) return;
     if (activeWorkout.exercises.some((ex) => ex.sets.some((s) => s.completed))) return;
-    const next = getNextProgramWorkoutNumber(workouts);
-    if (activeWorkout.programWorkoutNumber === next) return;
-    setActiveWorkout(
-      prepareSession(generate6WeekMuscleBuildingWorkout(next, bodyweightEmaKg), {
-        isProgramPlan: true,
-      })
-    );
+    const next = getNextProgramWorkoutNumber(workouts, activePlan);
+    if (activeWorkout.programWorkoutNumber === next && getSessionPlanId(activeWorkout) === activePlan.id) return;
+    setActiveWorkout(prepareSession(generatePlanWorkout(activePlan, next), { isProgramPlan: true }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profile.programType, workouts]);
+  }, [profile.programType, activePlan.id, workouts]);
 
   // Handler: a set was ticked off. Starts the labelled rest timer and celebrates a personal best once per set.
   const handleSetCompleted = (
@@ -485,9 +485,10 @@ export const App: React.FC = () => {
 
     // Quickest path to value: Generate Day 1 workout for the chosen split and take user to Workout tab
     const starterSplit = getFirstSplitDayForProgram(setup.programType);
-    const isPlan = setup.programType === 'muscle_building_6wk';
+    const isPlan = isPlanProgram(setup.programType);
+    const setupPlan = resolveActivePlan({ programType: setup.programType, goalPhase: setup.goalPhase, email: profile.email });
     const starterSession = isPlan
-      ? generate6WeekMuscleBuildingWorkout(getNextProgramWorkoutNumber(workouts), bodyweightEmaKg)
+      ? generatePlanWorkout(setupPlan, getNextProgramWorkoutNumber(workouts, setupPlan))
       : generateSmartWorkoutSession(
           starterSplit,
           workouts,
@@ -519,7 +520,7 @@ export const App: React.FC = () => {
 
   // Handler: Launch specific workout number from 6-Week Muscle Building Plan
   const handleLaunchWorkoutNumber = (workoutNum: number) => {
-    const session = prepareSession(generate6WeekMuscleBuildingWorkout(workoutNum, bodyweightEmaKg), {
+    const session = prepareSession(generatePlanWorkout(activePlan, workoutNum), {
       isProgramPlan: true,
     });
     setActiveWorkout(session);
@@ -532,8 +533,11 @@ export const App: React.FC = () => {
   // Handler: Switch Program Type (Standard Splits or 6-Week Muscle Building Plan)
   const handleUpdateProgram = (newProgramType: ProgramSplitType) => {
     setProfile((prev) => ({ ...prev, programType: newProgramType }));
-    if (newProgramType === 'muscle_building_6wk') {
-      const session = generate6WeekMuscleBuildingWorkout(getNextProgramWorkoutNumber(workouts), bodyweightEmaKg);
+    if (isPlanProgram(newProgramType)) {
+      // A started session is kept; the plan switch applies from the next workout.
+      if (activeWorkout.exercises.some((ex) => ex.sets.some((s) => s.completed))) return;
+      const plan = resolveActivePlan({ ...profile, programType: newProgramType });
+      const session = generatePlanWorkout(plan, getNextProgramWorkoutNumber(workouts, plan));
       setActiveWorkout(prepareSession(session, { isProgramPlan: true }));
     } else {
       const starterSplit = getFirstSplitDayForProgram(newProgramType);
@@ -555,8 +559,8 @@ export const App: React.FC = () => {
 
   // Handler: Change Mesocycle Week (1 to 6)
   const handleSelectMesocycleWeek = (week: number) => {
-    // On the 6-week plan the week follows the workout number, and a started session is kept.
-    if (profile.programType === 'muscle_building_6wk') return;
+    // On a 6-week plan the week follows the workout number, and a started session is kept.
+    if (isPlanProgram(profile.programType)) return;
     setProfile((prev) => ({ ...prev, mesocycleWeek: week }));
     if (activeWorkout.exercises.some((ex) => ex.sets.some((s) => s.completed))) return;
     const currentSplit = (activeWorkout.splitDay as SplitDayType) || 'Push';
@@ -614,9 +618,9 @@ export const App: React.FC = () => {
     }));
 
     const nextSession =
-      profile.programType === 'muscle_building_6wk'
+      isPlanProgram(profile.programType)
         ? prepareSession(
-            generate6WeekMuscleBuildingWorkout(getNextProgramWorkoutNumber(nextHistory), bodyweightEmaKg),
+            generatePlanWorkout(activePlan, getNextProgramWorkoutNumber(nextHistory, activePlan)),
             { isProgramPlan: true, history: nextHistory }
           )
         : prepareSession(
@@ -775,6 +779,7 @@ export const App: React.FC = () => {
         <ErrorBoundary key={activeTab} area={activeTab === 'train' ? 'Workout' : activeTab === 'analytics' ? 'Progress' : activeTab === 'program' ? 'Program' : 'Athlete'}>
         {activeTab === 'train' && (
           <TrainTab
+            trainingPlan={activePlan}
             activeWorkout={activeWorkout}
             workouts={workouts}
             readiness={readiness}
@@ -794,7 +799,7 @@ export const App: React.FC = () => {
               window.scrollTo({ top: 0 });
             }}
             onSwitchSplitDay={
-              profile.programType === 'muscle_building_6wk'
+              isPlanProgram(profile.programType)
                 ? undefined
                 : (split) => handleSwitchSplitDay(split)
             }
@@ -831,6 +836,7 @@ export const App: React.FC = () => {
 
         {activeTab === 'program' && (
           <ProgramTab
+            trainingPlan={activePlan}
             profile={profile}
             workouts={workouts}
             biometrics={biometrics}
@@ -847,10 +853,17 @@ export const App: React.FC = () => {
             onSelectMesocycleWeek={handleSelectMesocycleWeek}
             onUpdateGoalPhase={(phase: GoalPhase) => {
               setProfile((p) => ({ ...p, goalPhase: phase }));
-              // The 6-week plan's workouts don't change with the goal, and a session already
-              // under way keeps what's been logged.
-              if (profile.programType === 'muscle_building_6wk') return;
+              // A session already under way keeps what's been logged.
               if (activeWorkout.exercises.some((ex) => ex.sets.some((s) => s.completed))) return;
+              if (isPlanProgram(profile.programType)) {
+                // The starter plan's sets and reps follow the goal; the muscle plan's don't change.
+                const plan = resolveActivePlan({ ...profile, goalPhase: phase });
+                if (plan.id !== 'starter_6wk') return;
+                setActiveWorkout(
+                  prepareSession(generatePlanWorkout(plan, getNextProgramWorkoutNumber(workouts, plan)), { isProgramPlan: true })
+                );
+                return;
+              }
               const currentSplit = (activeWorkout.splitDay as SplitDayType) || 'Push';
               const recalibrated = generateSmartWorkoutSession(
                 currentSplit,

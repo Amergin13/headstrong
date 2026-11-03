@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Check, ChevronDown, ChevronLeft, X } from 'lucide-react';
+import { Check, ChevronLeft, X } from 'lucide-react';
 import {
   ExperienceLevel,
   Gender,
@@ -11,17 +11,14 @@ import {
 } from '../../engine/types';
 import { triggerHaptic } from '../../utils/haptics';
 import { WeightUnit } from '../../utils/units';
-import { PROGRAM_OPTIONS, FEATURED_PROGRAM_OPTIONS, ProgramSplitOption } from '../../services/workoutGenerator';
+import { canUseMusclePlan, resolveActivePlan } from '../../engine/trainingPlans';
 import { IdentityIllustration, RestartIllustration, SessionsIllustration } from './OnboardingIllustrations';
-
-export { PROGRAM_OPTIONS, FEATURED_PROGRAM_OPTIONS };
-export type { ProgramSplitOption };
 
 export type OnboardingStep = 1 | 2 | 3;
 
 export interface OnboardingModalProps {
   profile: UserProfile;
-  /** 3 opens straight on the plan and place choice (used to edit equipment later). */
+  /** 3 opens straight on the goal and place choice (used to edit equipment later). */
   initialStep?: OnboardingStep;
   onCompleteOnboarding: (updated: {
     goalPhase: GoalPhase;
@@ -43,7 +40,14 @@ export interface OnboardingModalProps {
 /** One Figma pixel (1344 px frame) in screen pixels; see .wk in index.css. */
 const fig = (px: number) => `calc(${px} * var(--f))`;
 
-const SCREENS: { title: string; body: string[]; Illustration: React.FC }[] = [
+interface ScreenCopy {
+  title: string;
+  body: string[];
+  Illustration: React.FC<{ weeks?: number; perWeek?: number }>;
+}
+
+/** Screen copy; screen 2 states the athlete's own plan (18 workouts, 3 a week, or 24, 4 a week). */
+const buildScreens = (total: number, perWeek: number): ScreenCopy[] => [
   {
     title: 'Identity',
     body: [
@@ -52,9 +56,9 @@ const SCREENS: { title: string; body: string[]; Illustration: React.FC }[] = [
     Illustration: IdentityIllustration,
   },
   {
-    title: '24 sessions',
+    title: `${total} sessions`,
     body: [
-      'Repeating something is how it becomes part of who you are. Our 6-week plan gives you 24 sessions, 4 a week, to build the start of your journey.',
+      `Repeating something is how it becomes part of who you are. Our 6-week plan gives you ${total} sessions, ${perWeek} a week, to build the start of your journey.`,
       'We set your weights and reps for every session, so you just show up and lift.',
     ],
     Illustration: SessionsIllustration,
@@ -83,7 +87,18 @@ const HOME_EQUIPMENT_OPTIONS: { id: HomeEquipmentTag; label: string }[] = [
   { id: 'bands', label: 'Bands' },
 ];
 
-const PLAN_ID: ProgramSplitType = 'muscle_building_6wk';
+/** The goal shapes the plan's sets, reps and effort (see starterPlan.ts). Names match GOAL_DISPLAY_NAME. */
+const GOALS: { id: GoalPhase; label: string; detail: string }[] = [
+  { id: 'Lean Bulk', label: 'Build Muscle', detail: 'Add size and strength' },
+  { id: 'Cut / Recomp', label: 'Lose Fat', detail: 'Keep your muscle while you lean out' },
+  { id: 'Maingain', label: 'Stay Lean', detail: 'Get stronger at the weight you are' },
+];
+
+/** Only on the account that can use the muscle plan: the two 6-week plans. */
+const PLAN_CHOICES: { id: ProgramSplitType; label: string; detail: string }[] = [
+  { id: 'starter_6wk', label: 'Starter plan', detail: '18 full-body workouts, 3 a week, set for your goal' },
+  { id: 'muscle_building_6wk', label: 'Muscle plan', detail: '24 workouts, 4 a week: supersets, drop sets, giant sets' },
+];
 
 /** Pounds where gyms use them; everyone else starts in kilograms (changeable in Settings). */
 const defaultUnit = (): WeightUnit => {
@@ -130,9 +145,13 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
 }) => {
   const returning = !!profile.onboardingCompleted;
   const [step, setStep] = useState<OnboardingStep>(initialStep);
-  // New athletes are pointed at the 6-week plan: it is what the three screens describe.
-  const [program, setProgram] = useState<ProgramSplitType>(returning ? profile.programType || PLAN_ID : PLAN_ID);
-  const [showOtherPrograms, setShowOtherPrograms] = useState(returning && profile.programType !== PLAN_ID);
+  const showPlanChoice = canUseMusclePlan(profile.email);
+  const [program, setProgram] = useState<ProgramSplitType>(
+    profile.programType === 'muscle_building_6wk' && showPlanChoice ? 'muscle_building_6wk' : 'starter_6wk'
+  );
+  const [goal, setGoal] = useState<GoalPhase>(profile.goalPhase || 'Lean Bulk');
+  const plan = resolveActivePlan({ programType: program, goalPhase: goal, email: profile.email });
+  const SCREENS = buildScreens(plan.templates.length, plan.workoutsPerWeek);
   const [location, setLocation] = useState<TrainingLocation>(profile.activeLocation || 'gym');
   // Nothing ticked for new athletes: we never assume gear they may not own.
   const [homeEquipment, setHomeEquipment] = useState<HomeEquipmentTag[]>(returning ? profile.homeEquipment || [] : []);
@@ -144,6 +163,9 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
     headingRef.current?.focus({ preventScroll: true });
   }, [step]);
 
+  // Opened from Settings to change gear: just where you train, no introduction (the goal has its own control in Settings).
+  const editing = returning && initialStep === 3;
+
   const goTo = (next: OnboardingStep) => {
     triggerHaptic('light');
     setStep(next);
@@ -154,7 +176,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
     const known: TrainingLocation[] = profile.availableLocations?.length ? profile.availableLocations : ['gym', 'home', 'travel'];
     const availableLocations = known.includes(location) ? known : [...known, location];
     onCompleteOnboarding({
-      goalPhase: profile.goalPhase || 'Lean Bulk',
+      goalPhase: editing ? profile.goalPhase || goal : goal,
       programType: program,
       activeLocation: location,
       availableLocations,
@@ -173,8 +195,6 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
   const screen = SCREENS[step - 1];
   const Illustration = screen.Illustration;
   const isLast = step === 3;
-  // Opened from Settings to change plan or gear: just the choices, no introduction.
-  const editing = returning && initialStep === 3;
   const ctaLabel = !isLast ? 'Continue' : returning ? 'Save changes' : 'Start my first workout';
 
   return (
@@ -260,7 +280,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
         <div key={step} className="ob-enter flex flex-col flex-1">
           {!editing && (
             <div style={{ height: isLast ? fig(330) : fig(620), marginTop: fig(isLast ? 8 : 60) }}>
-              <Illustration />
+              <Illustration weeks={6} perWeek={plan.workoutsPerWeek} />
             </div>
           )}
 
@@ -271,7 +291,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
             className="outline-none"
             style={{ ...titleStyle, marginTop: fig(isLast ? 24 : 56) }}
           >
-            {editing ? 'Your plan and gear' : screen.title}
+            {editing ? 'Where you train' : screen.title}
           </h1>
           {!editing &&
             screen.body.map((p) => (
@@ -282,45 +302,43 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
 
           {isLast && (
             <div style={{ marginTop: fig(editing ? 40 : 56) }}>
-              <fieldset>
-                <legend style={sectionLabel}>Choose your plan</legend>
-                <button
-                  type="button"
-                  aria-pressed={program === PLAN_ID}
-                  onClick={() => {
-                    triggerHaptic('light');
-                    setProgram(PLAN_ID);
-                  }}
-                  className="w-full text-left flex items-center"
-                  style={{ ...choiceStyle(program === PLAN_ID), padding: fig(30), gap: fig(24) }}
-                >
-                  <span className="flex-1">
-                    <span className="flex items-center flex-wrap" style={{ gap: fig(14) }}>
-                      <span style={optionText}>6-week plan</span>
-                      <span className="wk-pill" style={{ color: 'var(--wk-accent)', background: 'rgba(0,241,159,0.12)' }}>
-                        Recommended
-                      </span>
-                    </span>
-                    <span className="block" style={optionDetail}>
-                      24 workouts, 4 a week, in three 2-week phases that build muscle.
-                    </span>
-                  </span>
-                  <RadioDot selected={program === PLAN_ID} />
-                </button>
+              {!editing && (
+                <fieldset>
+                  <legend style={sectionLabel}>What's your goal?</legend>
+                  <div className="flex flex-col" style={{ gap: fig(14) }}>
+                    {GOALS.map((g) => (
+                      <button
+                        key={g.id}
+                        type="button"
+                        aria-pressed={goal === g.id}
+                        onClick={() => {
+                          triggerHaptic('light');
+                          setGoal(g.id);
+                        }}
+                        className="w-full text-left flex items-center"
+                        style={{ ...choiceStyle(goal === g.id), padding: `${fig(22)} ${fig(30)}`, gap: fig(24) }}
+                      >
+                        <span className="flex-1">
+                          <span className="block" style={optionText}>
+                            {g.label}
+                          </span>
+                          <span className="block" style={optionDetail}>
+                            {g.detail}
+                          </span>
+                        </span>
+                        <RadioDot selected={goal === g.id} />
+                      </button>
+                    ))}
+                  </div>
+                  <p style={{ ...optionDetail, marginTop: fig(16) }}>Your plan's sets and reps are set for this goal.</p>
+                </fieldset>
+              )}
 
-                <button
-                  type="button"
-                  aria-expanded={showOtherPrograms}
-                  onClick={() => setShowOtherPrograms((v) => !v)}
-                  className="w-full flex items-center justify-between font-semibold text-white/70 hover:text-white"
-                  style={{ minHeight: 44, marginTop: fig(12), fontSize: `max(13px, ${fig(28)})` }}
-                >
-                  Other programs
-                  <ChevronDown className={`w-5 h-5 stroke-[2] transition-transform ${showOtherPrograms ? 'rotate-180' : ''}`} />
-                </button>
-                {showOtherPrograms && (
-                  <div className="flex flex-col" style={{ gap: fig(14), marginTop: fig(8) }}>
-                    {PROGRAM_OPTIONS.map((opt) => (
+              {!editing && showPlanChoice && (
+                <fieldset style={{ marginTop: fig(48) }}>
+                  <legend style={sectionLabel}>Your plan</legend>
+                  <div className="flex flex-col" style={{ gap: fig(14) }}>
+                    {PLAN_CHOICES.map((opt) => (
                       <button
                         key={opt.id}
                         type="button"
@@ -334,20 +352,20 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                       >
                         <span className="flex-1">
                           <span className="block" style={optionText}>
-                            {opt.title}
+                            {opt.label}
                           </span>
                           <span className="block" style={optionDetail}>
-                            {opt.frequency}
+                            {opt.detail}
                           </span>
                         </span>
                         <RadioDot selected={program === opt.id} />
                       </button>
                     ))}
                   </div>
-                )}
-              </fieldset>
+                </fieldset>
+              )}
 
-              <fieldset style={{ marginTop: fig(48) }}>
+              <fieldset style={{ marginTop: editing ? 0 : fig(48) }}>
                 <legend style={sectionLabel}>Where will you train?</legend>
                 <div className="grid grid-cols-3" style={{ gap: fig(14) }}>
                   {LOCATIONS.map((loc) => (

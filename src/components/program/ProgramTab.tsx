@@ -15,6 +15,8 @@ import { WEARABLE_PROVIDERS } from '../../services/wearableSyncService';
 import { SplitEditor } from './SplitEditor';
 import { ProgramPlanView } from './ProgramPlanView';
 import { ProgramPickerModal } from './ProgramPickerModal';
+import { TrainingPlan } from '../../engine/muscleBuildingProgram';
+import { canUseMusclePlan, isPlanProgram } from '../../engine/trainingPlans';
 import { CustomExerciseModal } from './CustomExerciseModal';
 import { MesocycleManager } from './MesocycleManager';
 import { ProductGovernanceModal } from './ProductGovernanceModal';
@@ -25,6 +27,8 @@ import { GPU_MODEL_DOWNLOAD_LABEL, isGpuModelReady, removeGpuModel } from '../..
 
 interface ProgramTabProps {
   profile: UserProfile;
+  /** The athlete's 6-week plan (see resolveActivePlan). */
+  trainingPlan: TrainingPlan;
   /** Completed and saved sessions, newest first. */
   workouts: WorkoutSession[];
   biometrics: BiometricLog[];
@@ -67,6 +71,7 @@ const fig = (px: number) => `calc(${px} * var(--f))`;
 
 export const ProgramTab: React.FC<ProgramTabProps> = ({
   profile,
+  trainingPlan,
   workouts,
   biometrics,
   readinessState,
@@ -107,7 +112,9 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
     setShowSettings(open);
     window.scrollTo({ top: 0 });
   };
-  const isPlan = profile.programType === 'muscle_building_6wk';
+  const isPlan = isPlanProgram(profile.programType);
+  // Only the account that can use the muscle plan has a second plan to choose.
+  const canChangePlan = canUseMusclePlan(profile.email);
   const changeProgram = (newProg: ProgramSplitType) => {
     if (onUpdateProgram) {
       onUpdateProgram(newProg);
@@ -155,6 +162,7 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
       {isPlan && !showSettings && (
         <>
           <ProgramPlanView
+            trainingPlan={trainingPlan}
             workouts={workouts}
             biometrics={biometrics}
             profile={profile}
@@ -297,7 +305,7 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
           }}
         />
 
-        {isPlan && (
+        {isPlan && canChangePlan && (
           <button
             type="button"
             onClick={() => {
@@ -307,7 +315,7 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
             className="wk-button"
             style={{ background: 'var(--wk-card)', color: '#fff' }}
           >
-            Change program
+            Change plan
           </button>
         )}
 
@@ -984,7 +992,7 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
       {/* Product Governance & Competitor Matrix Modal */}
       {showProgramPicker && (
         <ProgramPickerModal
-          programType={profile.programType || 'ppl_upper'}
+          programType={profile.programType || 'starter_6wk'}
           onChangeProgram={changeProgram}
           onClose={() => setShowProgramPicker(false)}
         />

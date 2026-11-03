@@ -17,20 +17,20 @@ export const GoalPhaseSwitcher: React.FC<GoalPhaseSwitcherProps> = ({
     {
       id: 'Lean Bulk',
       label: 'Build Muscle',
-      subtitle: 'Progressive volume wave',
-      desc: 'Caloric surplus fuels a progressive volume wave from base volume up to peak growth across the 6-week block.',
+      subtitle: 'Sets build across the 6 weeks',
+      desc: 'Your sets build from 2 to 3 per exercise, with an extra set on smaller muscles in the last two weeks. Eating a little more than you burn helps you grow.',
     },
     {
       id: 'Cut / Recomp',
       label: 'Lose Fat',
-      subtitle: 'Retention Shield active • 85% volume',
-      desc: 'Caloric deficit activates Retention Shield. Volume is scaled to ~85% to match reduced recovery, while heavy mechanical tension signals your body to retain 100% of your muscle while burning fat.',
+      subtitle: 'Heavy lifts, no extra sets',
+      desc: 'The big lifts stay heavy (5–8 reps) and the number of sets stays steady, so you keep your strength and muscle while eating a little less.',
     },
     {
       id: 'Maingain',
       label: 'Stay Lean',
-      subtitle: 'Density & work capacity focus',
-      desc: 'Caloric balance. Optimizes muscle density, stamina (Work Capacity Index), and post-set heart rate recovery without adding fat.',
+      subtitle: 'Steady sets, a little in reserve',
+      desc: 'A steady 3 sets per exercise, stopping about 2 reps short, so you get stronger at the weight you are without wearing yourself down.',
     },
   ];
 

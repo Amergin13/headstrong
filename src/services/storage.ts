@@ -2,6 +2,7 @@ import {
   AuthUser,
   BiometricLog,
   ExerciseDefinition,
+  ProgramSplitType,
   StrengthPillar,
   UserProfile,
   WorkoutSession,
@@ -256,7 +257,7 @@ export function loadProfile(): UserProfile {
         ...NEW_USER_PROFILE,
         ...parsed,
         whoopClientId: parsed.whoopClientId || NEW_USER_PROFILE.whoopClientId,
-        programType: parsed.programType || 'ppl_upper',
+        programType: normalizeProgramType(parsed.programType),
         activeLocation: parsed.activeLocation || 'gym',
         availableLocations: parsed.availableLocations || ['gym', 'home', 'travel'],
         homeEquipment: parsed.homeEquipment || [],
@@ -269,6 +270,14 @@ export function loadProfile(): UserProfile {
     ...NEW_USER_PROFILE,
     onboardingCompleted: false,
   };
+}
+
+/**
+ * Only the two 6-week plans are offered now. Profiles on an older split (PPL, Upper/Lower, Full Body)
+ * move to the starter plan; their saved workouts are kept.
+ */
+export function normalizeProgramType(programType?: ProgramSplitType): ProgramSplitType {
+  return programType === 'muscle_building_6wk' ? 'muscle_building_6wk' : 'starter_6wk';
 }
 
 export function saveProfile(profile: UserProfile): void {
@@ -292,7 +301,7 @@ export function saveBiometrics(logs: BiometricLog[]): void {
 export function loadWorkouts(): WorkoutSession[] {
   try {
     const raw = getItemWithFallback('WORKOUTS');
-    if (raw) return (JSON.parse(raw) as WorkoutSession[]).map(withPlanWorkoutName);
+    if (raw) return (JSON.parse(raw) as WorkoutSession[]).map((w) => withPlanWorkoutName(w));
   } catch (e) {
     console.error('Failed to load workouts:', e);
   }
@@ -583,9 +592,10 @@ export function importUserDataJSON(rawJson: string): TreiseDataBackup {
     parsed.profile as UserProfile & Record<string, unknown>;
   const biometrics = Array.isArray(parsed.biometrics) ? parsed.biometrics : loadBiometrics();
   // Same clean-up as loading from storage, so imported data shows the same everywhere.
-  const workouts = (parsed.workouts as WorkoutSession[]).map(withPlanWorkoutName);
+  const workouts = (parsed.workouts as WorkoutSession[]).map((w) => withPlanWorkoutName(w));
   const activeWorkout = withPlanWorkoutName(parsed.activeWorkout || createTodaysActiveWorkout());
   const exercises = Array.isArray(parsed.exercises) ? parsed.exercises : SEED_EXERCISES;
+  profile.programType = normalizeProgramType(profile.programType);
 
   saveProfile(profile);
   saveBiometrics(biometrics);

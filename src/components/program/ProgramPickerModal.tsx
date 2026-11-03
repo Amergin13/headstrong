@@ -2,7 +2,6 @@ import React from 'react';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { ProgramSplitType } from '../../engine/types';
-import { FEATURED_PROGRAM_OPTIONS, PROGRAM_OPTIONS } from '../../services/workoutGenerator';
 import { triggerHaptic } from '../../utils/haptics';
 
 const fig = (px: number) => `calc(${px} * var(--f))`;
@@ -13,13 +12,29 @@ interface ProgramPickerModalProps {
   onClose: () => void;
 }
 
-/** Lets the athlete switch between the 6-Week plan and the standard splits. */
+/** The plans this account can choose: shown only to the account that can use the muscle plan. */
+const PLAN_OPTIONS: { id: ProgramSplitType; title: string; frequency: string; detail: string }[] = [
+  {
+    id: 'starter_6wk',
+    title: '6-week starter plan',
+    frequency: '3 full-body workouts a week • 18 workouts',
+    detail: 'Sets, reps and effort are set for your goal and build over three 2-week phases.',
+  },
+  {
+    id: 'muscle_building_6wk',
+    title: '6-week muscle plan',
+    frequency: '4 workouts a week • 24 workouts',
+    detail: 'Supersets, then rest-pause and drop sets, then giant sets, with a weekly leg day.',
+  },
+];
+
+/** Lets the owner's account switch between the starter plan and the muscle plan. */
 export const ProgramPickerModal: React.FC<ProgramPickerModalProps> = ({ programType, onChangeProgram, onClose }) =>
   createPortal(
     <div
       role="dialog"
       aria-modal="true"
-      aria-label="Select Training Program"
+      aria-label="Change plan"
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
     >
       <div
@@ -29,7 +44,7 @@ export const ProgramPickerModal: React.FC<ProgramPickerModalProps> = ({ programT
         <div className="flex items-start justify-between" style={{ gap: fig(24) }}>
           <div>
             <h3 className="wk-h1" style={{ lineHeight: 1.21 }}>
-              Select Training Program
+              Change plan
             </h3>
             <p
               style={{
@@ -39,7 +54,7 @@ export const ProgramPickerModal: React.FC<ProgramPickerModalProps> = ({ programT
                 marginTop: fig(16),
               }}
             >
-              Choose your hypertrophy split or periodized 6-week plan
+              Your workout history stays with you
             </p>
           </div>
           <button
@@ -48,7 +63,7 @@ export const ProgramPickerModal: React.FC<ProgramPickerModalProps> = ({ programT
               triggerHaptic('light');
               onClose();
             }}
-            aria-label="Close program selector"
+            aria-label="Close plan picker"
             className="w-11 h-11 rounded-full text-white/70 hover:text-white flex items-center justify-center transition-colors min-h-[44px] shrink-0"
             style={{ background: 'var(--wk-raised)' }}
           >
@@ -57,7 +72,7 @@ export const ProgramPickerModal: React.FC<ProgramPickerModalProps> = ({ programT
         </div>
 
         <div className="flex flex-col" style={{ gap: fig(22) }}>
-          {[...FEATURED_PROGRAM_OPTIONS, ...PROGRAM_OPTIONS].map((opt) => {
+          {PLAN_OPTIONS.map((opt) => {
             const isCurrent = programType === opt.id;
             return (
               <div
@@ -84,7 +99,7 @@ export const ProgramPickerModal: React.FC<ProgramPickerModalProps> = ({ programT
                     </p>
                   </div>
                   <span className="wk-pill shrink-0">
-                    {isCurrent ? 'ACTIVE' : opt.badge || 'SPLIT'}
+                    {isCurrent ? 'Current' : '6 weeks'}
                   </span>
                 </div>
 
@@ -107,7 +122,7 @@ export const ProgramPickerModal: React.FC<ProgramPickerModalProps> = ({ programT
                       color: '#13181C',
                     }}
                   >
-                    Switch to {opt.title}
+                    Switch to the {opt.title}
                   </button>
                 )}
               </div>

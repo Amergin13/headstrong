@@ -1,6 +1,7 @@
 import {
   ExerciseSession,
   IntensityProtocol,
+  PlanId,
   WarmupProtocol,
   WorkoutSession,
   WorkoutSet,
@@ -711,15 +712,27 @@ export function calculate5StepWarmupRamp(targetWorkingWeightKg: number) {
 }
 
 /**
- * Hydrates a WorkoutSession from a 6-Week Muscle Building Program workout template.
+ * A 6-week plan: its workouts, its three phases and how hard each phase is.
+ * The muscle plan is fixed; the starter plan's workouts are written for the athlete's goal.
  */
-export function generate6WeekMuscleBuildingWorkout(
-  workoutNumber: number,
-  bodyweightEmaKg: number = 80
-): WorkoutSession {
-  const tmpl =
-    WORKOUT_TEMPLATES_24.find((w) => w.workoutNumber === workoutNumber) ||
-    WORKOUT_TEMPLATES_24[0];
+export interface TrainingPlan {
+  id: PlanId;
+  /** Shown as the page title, e.g. "6 Week Muscle Plan". */
+  name: string;
+  workoutsPerWeek: number;
+  templates: ProgramWorkoutTemplate[];
+  phases: ProgramPhaseMeta[];
+  /** Reps in reserve to aim for on a working set in this phase. */
+  targetRirForPhase: (phase: number) => number;
+}
+
+/**
+ * Hydrates a WorkoutSession from one of a plan's workout templates.
+ * Reps written as a range ("8-12") give the double-progression range; loaded exercises without a
+ * template weight start at 0 and get the athlete's own starting weight when the session is prepared.
+ */
+export function generatePlanWorkout(plan: TrainingPlan, workoutNumber: number): WorkoutSession {
+  const tmpl = plan.templates.find((w) => w.workoutNumber === workoutNumber) || plan.templates[0];
 
   const today = localDateString();
 
@@ -727,6 +740,7 @@ export function generate6WeekMuscleBuildingWorkout(
     const notesArray = EXERCISE_NOTES_MAP[e.name] || [];
     const exerciseNotesCombined = e.notes || notesArray.join(' ');
 
+    const range = /^(\d+)-(\d+)$/.exec(e.reps);
     const isTimed = e.durationSeconds !== undefined || e.tempo.includes('sec') || e.tempo.includes('min');
     let repTargetType: 'reps' | 'wave' | 'form_failure' | 'duration' = 'reps';
     if (isTimed) {
@@ -741,7 +755,10 @@ export function generate6WeekMuscleBuildingWorkout(
       let targetReps = 10;
       let repDisplay = e.reps;
 
-      if (e.reps === '12/8') {
+      if (range) {
+        targetReps = parseInt(range[1], 10);
+        repDisplay = `${targetReps}`;
+      } else if (e.reps === '12/8') {
         targetReps = sIdx === 0 ? 12 : 8;
         repDisplay = sIdx === 0 ? '12' : '8';
       } else if (e.reps === '12/6') {
@@ -759,14 +776,15 @@ export function generate6WeekMuscleBuildingWorkout(
         repDisplay = `${targetReps}`;
       }
 
+      const weight = e.defaultWeightKg ?? (e.equipment === 'bodyweight' ? 0 : range ? 0 : 20);
       return {
         id: `set-${tmpl.workoutNumber}-${idx}-${sIdx + 1}`,
         setNumber: sIdx + 1,
-        targetWeightKg: e.defaultWeightKg ?? 20,
-        actualWeightKg: e.defaultWeightKg ?? 20,
+        targetWeightKg: weight,
+        actualWeightKg: weight,
         targetReps,
         actualReps: targetReps,
-        targetRir: tmpl.phase === 1 ? 2 : tmpl.phase === 2 ? 0 : 1,
+        targetRir: plan.targetRirForPhase(tmpl.phase),
         completed: false,
         isWarmup: false,
         setType: 'working',
@@ -789,8 +807,20 @@ export function generate6WeekMuscleBuildingWorkout(
       name: e.name,
       pillar: e.pillar,
       equipment: e.equipment,
-      minReps: repTargetType === 'wave' ? 6 : repTargetType === 'form_failure' ? 15 : sets[0].targetReps,
-      maxReps: repTargetType === 'wave' ? 12 : repTargetType === 'form_failure' ? 25 : sets[0].targetReps,
+      minReps: range
+        ? parseInt(range[1], 10)
+        : repTargetType === 'wave'
+        ? 6
+        : repTargetType === 'form_failure'
+        ? 15
+        : sets[0].targetReps,
+      maxReps: range
+        ? parseInt(range[2], 10)
+        : repTargetType === 'wave'
+        ? 12
+        : repTargetType === 'form_failure'
+        ? 25
+        : sets[0].targetReps,
       sets,
       notes: exerciseNotesCombined,
       orderCode: e.order,
@@ -806,7 +836,7 @@ export function generate6WeekMuscleBuildingWorkout(
   });
 
   return {
-    id: `workout-6wk-${tmpl.workoutNumber}-${today}`,
+    id: `${plan.id === 'muscle_building_6wk' ? 'workout-6wk' : 'workout-starter'}-${tmpl.workoutNumber}-${today}`,
     date: today,
     // Plain name, the same one the Program page and Workout page show.
     name: planWorkoutLabel(tmpl.title),
@@ -817,27 +847,60 @@ export function generate6WeekMuscleBuildingWorkout(
     readinessZScore: 0.2,
     location: 'gym',
     programWorkoutNumber: tmpl.workoutNumber,
+    planId: plan.id,
   };
 }
 
-/** Plan position of a session (1-24), including sessions saved before the field existed. */
+/** The 24-workout muscle plan (shown only to the owner's account; see planAccess.ts). */
+export const MUSCLE_BUILDING_PLAN: TrainingPlan = {
+  id: 'muscle_building_6wk',
+  name: '6 Week Muscle Plan',
+  workoutsPerWeek: 4,
+  get templates() {
+    return WORKOUT_TEMPLATES_24;
+  },
+  get phases() {
+    return PROGRAM_PHASES;
+  },
+  targetRirForPhase: (phase) => (phase === 1 ? 2 : phase === 2 ? 0 : 1),
+};
+
+/** Hydrates a 6-Week Muscle Building Plan workout. */
+export function generate6WeekMuscleBuildingWorkout(workoutNumber: number, _bodyweightEmaKg: number = 80): WorkoutSession {
+  return generatePlanWorkout(MUSCLE_BUILDING_PLAN, workoutNumber);
+}
+
+/** Plan position of a session, including sessions saved before the field existed. */
 export function getProgramWorkoutNumber(w: WorkoutSession): number | undefined {
   if (w.programWorkoutNumber) return w.programWorkoutNumber;
   const match = /^workout-6wk-(\d+)-/.exec(w.id);
   return match ? parseInt(match[1], 10) : undefined;
 }
 
+/** Which plan a session belongs to. Plan sessions saved before plans had ids are muscle-plan sessions. */
+export function getSessionPlanId(w: WorkoutSession): PlanId | undefined {
+  if (w.planId) return w.planId;
+  return getProgramWorkoutNumber(w) !== undefined ? 'muscle_building_6wk' : undefined;
+}
+
+function isPlanSession(w: WorkoutSession, plan: TrainingPlan): boolean {
+  return getSessionPlanId(w) === plan.id && getProgramWorkoutNumber(w) !== undefined;
+}
+
 /**
- * Next workout in the 6-Week plan: the one after the most recently completed plan workout,
- * wrapping back to Workout 1 after Workout 24. Non-plan sessions are ignored.
+ * Next workout in a plan: the one after the most recently completed workout of that plan,
+ * wrapping back to Workout 1 after the last one. Other sessions are ignored.
  */
-export function getNextProgramWorkoutNumber(workouts: WorkoutSession[]): number {
+export function getNextProgramWorkoutNumber(
+  workouts: WorkoutSession[],
+  plan: TrainingPlan = MUSCLE_BUILDING_PLAN
+): number {
   const done = workouts
-    .filter((w) => w.completed && getProgramWorkoutNumber(w) !== undefined)
+    .filter((w) => w.completed && isPlanSession(w, plan))
     .sort((a, b) => (b.completedAt || b.date).localeCompare(a.completedAt || a.date));
   const last = done[0] ? getProgramWorkoutNumber(done[0]) : undefined;
   if (!last) return 1;
-  return last >= WORKOUT_TEMPLATES_24.length ? 1 : last + 1;
+  return last >= plan.templates.length ? 1 : last + 1;
 }
 
 /** Plain-English workout name for the Program page, e.g. "Shoulders and Arms". */
@@ -857,7 +920,7 @@ export interface PlanWorkoutOverview {
 }
 
 export interface PlanOverview {
-  /** 1 for the athlete's first run through the 24 workouts, 2 for the next, ... */
+  /** 1 for the athlete's first run through the plan, 2 for the next, ... */
   cycleNumber: number;
   completedCount: number;
   nextWorkoutNumber: number;
@@ -866,25 +929,25 @@ export interface PlanOverview {
 }
 
 /**
- * Where the athlete is in the 6-Week plan. A run of the plan ends when Workout 24 is completed;
- * sessions from earlier runs don't count as done in the current one.
+ * Where the athlete is in a plan. A run of the plan ends when its last workout is completed;
+ * sessions from earlier runs (or the other plan) don't count as done in the current one.
  */
-export function buildPlanOverview(history: WorkoutSession[]): PlanOverview {
+export function buildPlanOverview(history: WorkoutSession[], plan: TrainingPlan = MUSCLE_BUILDING_PLAN): PlanOverview {
   const done = history
-    .filter((w) => w.completed && getProgramWorkoutNumber(w) !== undefined)
+    .filter((w) => w.completed && isPlanSession(w, plan))
     .sort((a, b) => (a.completedAt || a.date).localeCompare(b.completedAt || b.date));
   let cycleNumber = 1;
   let current = new Map<number, WorkoutSession>();
   for (const w of done) {
     const n = getProgramWorkoutNumber(w) as number;
     current.set(n, w);
-    if (n >= WORKOUT_TEMPLATES_24.length) {
+    if (n >= plan.templates.length) {
       cycleNumber += 1;
       current = new Map();
     }
   }
-  const nextWorkoutNumber = getNextProgramWorkoutNumber(history);
-  const workouts = WORKOUT_TEMPLATES_24.map((t): PlanWorkoutOverview => {
+  const nextWorkoutNumber = getNextProgramWorkoutNumber(history, plan);
+  const workouts = plan.templates.map((t): PlanWorkoutOverview => {
     const session = current.get(t.workoutNumber);
     return {
       workoutNumber: t.workoutNumber,
@@ -898,15 +961,16 @@ export function buildPlanOverview(history: WorkoutSession[]): PlanOverview {
     cycleNumber,
     completedCount: current.size,
     nextWorkoutNumber,
-    activePhase: WORKOUT_TEMPLATES_24.find((t) => t.workoutNumber === nextWorkoutNumber)?.phase ?? 1,
+    activePhase: plan.templates.find((t) => t.workoutNumber === nextWorkoutNumber)?.phase ?? 1,
     workouts,
   };
 }
 
 /** Renames a saved plan session to its plain name (older saves used "W1D1 • Chest and Back (Phase 1)"). */
-export function withPlanWorkoutName(w: WorkoutSession): WorkoutSession {
+export function withPlanWorkoutName(w: WorkoutSession, plan: TrainingPlan = MUSCLE_BUILDING_PLAN): WorkoutSession {
+  if (getSessionPlanId(w) !== plan.id) return w;
   const n = getProgramWorkoutNumber(w);
-  const tmpl = n ? WORKOUT_TEMPLATES_24.find((t) => t.workoutNumber === n) : undefined;
+  const tmpl = n ? plan.templates.find((t) => t.workoutNumber === n) : undefined;
   if (!tmpl) return w;
   const name = planWorkoutLabel(tmpl.title);
   return w.name === name ? w : { ...w, name };

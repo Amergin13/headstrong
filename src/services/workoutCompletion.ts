@@ -7,7 +7,8 @@ import {
 } from '../engine/types';
 import { Milestone, evaluateStrengthStandardAdvance, programMilestone } from '../engine/milestones';
 import { evaluateStrengthStandard } from '../engine/strengthStandards';
-import { getNextProgramWorkoutNumber } from '../engine/muscleBuildingProgram';
+import { getNextProgramWorkoutNumber, getSessionPlanId } from '../engine/muscleBuildingProgram';
+import { getPlanById, getSessionPlanShape } from '../engine/trainingPlans';
 import { calculateBestPillarE1rms } from './storage';
 import { WhoopWorkoutStrainSummary } from './whoopService';
 import { localDateString } from '../utils/date';
@@ -18,6 +19,7 @@ const SESSIONS_PER_WEEK: Record<ProgramSplitType, number> = {
   upper_lower: 4,
   full_body: 3,
   muscle_building_6wk: 4,
+  starter_6wk: 3,
 };
 
 const PROGRAM_LABELS: Record<ProgramSplitType, string> = {
@@ -26,6 +28,7 @@ const PROGRAM_LABELS: Record<ProgramSplitType, string> = {
   upper_lower: 'Upper / Lower',
   full_body: 'Full Body',
   muscle_building_6wk: '6-Week Muscle Building Plan',
+  starter_6wk: '6-Week Starter Plan',
 };
 
 const STRENGTH_PILLARS: StrengthPillar[] = [
@@ -111,24 +114,28 @@ export function completeWorkout(input: WorkoutCompletionInput): WorkoutCompletio
     }
   }
 
-  // Week milestone: every N sessions of the program (6-week plan: every 4th plan workout).
-  const programType = profile.programType || 'ppl_upper';
-  const isPlan = programType === 'muscle_building_6wk';
+  // Week milestone: every N sessions of the program (a plan: every workoutsPerWeek-th plan workout).
+  const programType = profile.programType || 'starter_6wk';
+  const planShape = getSessionPlanShape(completedSession);
+  const isPlan = Boolean(planShape);
   const planNumber = completedSession.programWorkoutNumber || 0;
-  const isWeekMilestone = isPlan
-    ? planNumber > 0 && planNumber % 4 === 0
+  const isWeekMilestone = planShape
+    ? planNumber > 0 && planNumber % planShape.perWeek === 0
     : nextHistory.filter((w) => w.completed).length % (SESSIONS_PER_WEEK[programType] || 4) === 0;
 
   let weekMilestone: Milestone | null = null;
   let nextMesocycleWeek = profile.mesocycleWeek || 1;
   if (isWeekMilestone) {
     const completedWeek = profile.mesocycleWeek || 1;
-    weekMilestone = programMilestone(completedWeek, PROGRAM_LABELS[programType] || 'Hypertrophy Split');
+    const planId = getSessionPlanId(completedSession);
+    weekMilestone = programMilestone(completedWeek, PROGRAM_LABELS[planId ?? programType] || 'Hypertrophy Split');
     nextMesocycleWeek = completedWeek >= 6 ? 1 : completedWeek + 1;
   }
-  if (isPlan && planNumber) {
-    // The plan's week always follows its workout number (4 workouts per week).
-    nextMesocycleWeek = Math.ceil(getNextProgramWorkoutNumber(nextHistory) / 4);
+  if (isPlan && planNumber && planShape) {
+    // The plan's week always follows its workout number.
+    // The week follows the plan this workout belongs to.
+    const plan = getPlanById(getSessionPlanId(completedSession) ?? 'starter_6wk', profile.goalPhase);
+    nextMesocycleWeek = Math.ceil(getNextProgramWorkoutNumber(nextHistory, plan) / plan.workoutsPerWeek);
   }
 
   return { completedSession, nextHistory, nextMesocycleWeek, strengthMilestone, weekMilestone };

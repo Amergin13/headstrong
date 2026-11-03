@@ -948,14 +948,15 @@ const onboardingModalSrc = fs.readFileSync(
 
 assert(
   onboardingModalSrc.includes("title: 'Identity'") &&
-    onboardingModalSrc.includes("title: '24 sessions'") &&
+    onboardingModalSrc.includes('title: `${total} sessions`') &&
     onboardingModalSrc.includes("title: 'Your superpower is restarting'") &&
-    onboardingModalSrc.includes('Choose your plan') &&
+    onboardingModalSrc.includes("What's your goal?") &&
+    !onboardingModalSrc.includes('Other programs') &&
     onboardingModalSrc.includes('Where will you train?') &&
     onboardingModalSrc.includes('What do you have at home?') &&
     onboardingModalSrc.includes('Start my first workout') &&
     onboardingModalSrc.includes('aria-valuemax={3}'),
-  `Onboarding is 3 illustrated screens (identity, 24 sessions, restarting); the last one picks the plan and place, then delivers workout 1`
+  `Onboarding is 3 illustrated screens (identity, the plan's sessions, restarting); the last one picks the goal and place (no program list), then delivers workout 1`
 );
 
 const appSrc = fs.readFileSync(
@@ -1765,13 +1766,10 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
     splitResult.actionTaken?.type === 'SWITCH_PROGRAM_SPLIT',
     'AI Assistant classifies split change intent (type: SWITCH_PROGRAM_SPLIT)'
   );
+  // Only the 6-week plans are offered: asking for a split explains that the plan follows the goal.
   assert(
-    splitResult.updatedProfile?.programType === 'upper_lower',
-    'AI Assistant mutates profile.programType to upper_lower'
-  );
-  assert(
-    splitResult.updatedWorkout?.splitDay === 'Upper',
-    'AI Assistant queues starter Upper Day session'
+    !splitResult.updatedProfile?.programType && !splitResult.updatedWorkout && /goal/.test(splitResult.message.text),
+    'AI Assistant does not switch to an old split; it explains the plan follows your goal'
   );
 
   // E. Intent: Query Joint Strain & Biomechanical Grounding
@@ -4760,6 +4758,140 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
         weightLogModalSrc.includes('How scale data is pulled into the app:') &&
         weightLogModalSrc.includes('How tape measurements are pulled into the app:'),
       'WeightLogModal clearly separates Weight (manual or step on RENPHO scale) from Tape Measurements and explains how data is pulled into the app'
+    );
+  }
+
+  // ==========================================================================
+  // 39. One plan per athlete: goal-based starter plan, muscle plan only on the owner's account
+  // ==========================================================================
+  console.log('\n[39. Starter plan for everyone, muscle plan only on the owner account]');
+  {
+    const { canUseMusclePlan, resolveActivePlan, getPlanById, hashAccountEmail } = await import('../trainingPlans');
+    const { buildStarterPlan, STARTER_WORKOUT_COUNT } = await import('../starterPlan');
+    const mbp = await import('../muscleBuildingProgram');
+    const { normalizeProgramType } = await import('../../services/storage');
+
+    // Access: only the owner's signed-in account sees the muscle plan; the address isn't in the code.
+    const plansSrc = fs.readFileSync(path.resolve(process.cwd(), 'src/engine/trainingPlans.ts'), 'utf-8');
+    assert(
+      canUseMusclePlan('benentaylor@gmail.com') &&
+        canUseMusclePlan('  BenenTaylor@Gmail.com ') &&
+        !canUseMusclePlan('someone@gmail.com') &&
+        !canUseMusclePlan(undefined) &&
+        !plansSrc.includes('benentaylor@') &&
+        hashAccountEmail('a@b.c') !== hashAccountEmail('a@b.d'),
+      'Muscle plan access: only the owner account (by hash, not the plain address)'
+    );
+    assert(
+      resolveActivePlan({ programType: 'muscle_building_6wk', goalPhase: 'Lean Bulk', email: 'benentaylor@gmail.com' }).id ===
+        'muscle_building_6wk' &&
+        resolveActivePlan({ programType: 'muscle_building_6wk', goalPhase: 'Lean Bulk', email: 'tester@example.com' }).id ===
+          'starter_6wk' &&
+        resolveActivePlan({ programType: 'muscle_building_6wk', goalPhase: 'Lean Bulk' }).id === 'starter_6wk' &&
+        resolveActivePlan({ programType: 'starter_6wk', goalPhase: 'Cut / Recomp', email: 'benentaylor@gmail.com' }).id ===
+          'starter_6wk',
+      'Everyone else (and the owner when signed out) gets the starter plan, even with the muscle plan saved'
+    );
+    assert(
+      normalizeProgramType('ppl_upper') === 'starter_6wk' &&
+        normalizeProgramType('full_body') === 'starter_6wk' &&
+        normalizeProgramType(undefined) === 'starter_6wk' &&
+        normalizeProgramType('muscle_building_6wk') === 'muscle_building_6wk',
+      'Older split programs move to the starter plan on load; no program list is offered'
+    );
+
+    // Science: 3 full-body days a week, each muscle about twice a week, 6-20 reps, 1-3 reps in reserve.
+    const catalogById = new Map(SEED_EXERCISES.map((e) => [e.id, e]));
+    const issues: string[] = [];
+    const weeklySets: Record<string, Record<string, Record<number, number>>> = {};
+    for (const goal of ['Lean Bulk', 'Cut / Recomp', 'Maingain'] as const) {
+      const plan = buildStarterPlan(goal);
+      weeklySets[goal] = {};
+      if (plan.templates.length !== STARTER_WORKOUT_COUNT || STARTER_WORKOUT_COUNT !== 18) issues.push(`${goal}: not 18 workouts`);
+      if (plan.workoutsPerWeek !== 3) issues.push(`${goal}: not 3 a week`);
+      plan.templates.forEach((t, i) => {
+        if (t.week !== Math.floor(i / 3) + 1) issues.push(`${goal} #${t.workoutNumber}: week ${t.week}`);
+        if (t.phase !== Math.ceil(t.week / 2)) issues.push(`${goal} #${t.workoutNumber}: phase ${t.phase}`);
+        if (i > 0 && plan.templates[i - 1].title === t.title) issues.push(`${goal} #${t.workoutNumber}: same workout twice in a row`);
+        if (t.exercises.length < 5 || t.exercises.length > 7) issues.push(`${goal} #${t.workoutNumber}: ${t.exercises.length} exercises`);
+        const rir = plan.targetRirForPhase(t.phase);
+        if (rir < 1 || rir > 3) issues.push(`${goal} phase ${t.phase}: RIR ${rir}`);
+        for (const e of t.exercises) {
+          const def = catalogById.get(e.exerciseId);
+          if (!def) {
+            issues.push(`${goal}: unknown exercise ${e.exerciseId}`);
+            continue;
+          }
+          const m = /^(\d+)-(\d+)$/.exec(e.reps);
+          if (!m || +m[1] < 5 || +m[2] > 20 || +m[1] >= +m[2]) issues.push(`${goal} ${e.name}: reps ${e.reps}`);
+          if (e.sets < 2 || e.sets > 4) issues.push(`${goal} ${e.name}: ${e.sets} sets`);
+          const wk = (weeklySets[goal][def.primaryMuscle] ||= {});
+          wk[t.week] = (wk[t.week] || 0) + e.sets;
+        }
+      });
+      // Every major muscle trained in every week, about twice a week (once in A and once in B, or a lift in each).
+      const sessionsPerMuscle: Record<string, Set<string>> = {};
+      plan.templates.slice(0, 3).forEach((t, i) =>
+        t.exercises.forEach((e) => {
+          const muscle = catalogById.get(e.exerciseId)?.primaryMuscle as string;
+          (sessionsPerMuscle[muscle] ||= new Set()).add(String(i));
+        })
+      );
+      for (const muscle of ['Chest', 'Back', 'Quads', 'Hamstrings']) {
+        if ((sessionsPerMuscle[muscle]?.size ?? 0) < 2) issues.push(`${goal}: ${muscle} trained ${sessionsPerMuscle[muscle]?.size ?? 0}x in week 1`);
+        // Phase 2 lands in a sensible weekly range for a starting block (direct sets).
+        const wk3 = weeklySets[goal][muscle]?.[3] ?? 0;
+        if (wk3 < 6 || wk3 > 14) issues.push(`${goal}: ${muscle} ${wk3} sets in week 3`);
+      }
+    }
+    // Goals differ the way the evidence says: losing fat keeps the big lifts heavier and adds no volume.
+    const bulk = buildStarterPlan('Lean Bulk');
+    const cut = buildStarterPlan('Cut / Recomp');
+    const sumSets = (p: typeof bulk) => p.templates.reduce((n, t) => n + t.exercises.reduce((m, e) => m + e.sets, 0), 0);
+    const squatReps = (p: typeof cut) => p.templates[0].exercises.find((e) => e.exerciseId === 'ex-barbell-squat')!.reps;
+    if (!(sumSets(cut) < sumSets(bulk))) issues.push('Lose Fat should not have more sets than Build Muscle');
+    if (!(parseInt(squatReps(cut), 10) < parseInt(squatReps(bulk), 10))) issues.push('Lose Fat squat reps should be heavier');
+    if (!(bulk.templates[0].exercises[0].sets < bulk.templates[17].exercises[0].sets)) issues.push('Sets should build across the block');
+    assert(issues.length === 0, `Starter plan follows the evidence for every goal (${issues.length ? issues.join('; ') : '18 workouts, 3 full-body a week'})`);
+
+    // Workouts: real weights for a new athlete, a rep range for double progression, own plan numbering.
+    const starter = buildStarterPlan('Lean Bulk');
+    const w1 = prepareSessionForAthlete(mbp.generatePlanWorkout(starter, 1), {
+      history: [],
+      bodyweightKg: 80,
+      readinessState: 'Normal',
+      experienceLevel: 'new',
+      isProgramPlan: true,
+    });
+    const loaded = w1.exercises.filter((e) => e.equipment !== 'bodyweight');
+    assert(
+      w1.planId === 'starter_6wk' &&
+        w1.programWorkoutNumber === 1 &&
+        loaded.length > 0 &&
+        loaded.every((e) => e.sets.every((st) => st.targetWeightKg > 0 && st.targetWeightKg < 120)) &&
+        w1.exercises.every((e) => (e.maxReps ?? 0) > (e.minReps ?? 0)),
+      `Starter workout 1 has personalised starting weights and rep ranges (${loaded.map((e) => `${e.name} ${e.sets[0].targetWeightKg}`).join(', ')})`
+    );
+    // The two plans keep separate positions: muscle-plan history doesn't move the starter plan on.
+    const doneMuscle = { ...mbp.generate6WeekMuscleBuildingWorkout(5), completed: true, completedAt: '2026-10-01T10:00:00.000Z' };
+    const doneStarter = { ...mbp.generatePlanWorkout(starter, 2), completed: true, completedAt: '2026-10-02T10:00:00.000Z' };
+    const legacyMuscle = { ...doneMuscle, planId: undefined, completedAt: '2026-09-30T10:00:00.000Z' };
+    assert(
+      mbp.getNextProgramWorkoutNumber([doneMuscle, doneStarter], starter) === 3 &&
+        mbp.getNextProgramWorkoutNumber([doneMuscle, doneStarter]) === 6 &&
+        mbp.getNextProgramWorkoutNumber([legacyMuscle], starter) === 1 &&
+        mbp.buildPlanOverview([doneMuscle, doneStarter], starter).completedCount === 1 &&
+        getPlanById('starter_6wk').templates.length === 18,
+      'Starter and muscle plans keep their own progress (older plan saves count as the muscle plan)'
+    );
+    const report = buildSessionProgressReport({
+      workouts: [doneStarter],
+      exerciseCatalog: SEED_EXERCISES,
+      knowledgeGraph: buildAthleteKnowledgeGraph([doneStarter], [], SEED_EXERCISES, NEW_USER_PROFILE, {}),
+    });
+    assert(
+      report?.program.kind === 'plan' && report.program.totalWorkouts === 18 && report.program.totalWeeks === 6,
+      'The session report counts the starter plan as 18 workouts over 6 weeks'
     );
   }
 

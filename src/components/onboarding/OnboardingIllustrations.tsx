@@ -57,16 +57,16 @@ export const IdentityIllustration: React.FC = () => {
   );
 };
 
-/** 24 sessions: six weeks of four workouts fill in one by one, coloured by phase. */
-export const SessionsIllustration: React.FC = () => {
-  const cols = 6;
-  const rows = 4;
+/** The plan's sessions: each week's workouts fill in one by one, coloured by phase. */
+export const SessionsIllustration: React.FC<{ weeks?: number; perWeek?: number }> = ({ weeks = 6, perWeek = 4 }) => {
+  const cols = weeks;
+  const rows = perWeek;
   const gapX = 44;
   const gapY = 40;
   const x0 = 160 - ((cols - 1) * gapX) / 2;
   const y0 = 112 - ((rows - 1) * gapY) / 2;
   return (
-    <svg viewBox="0 0 320 224" className="w-full h-full" role="img" aria-label="Six weeks of four workouts filling in one by one">
+    <svg viewBox="0 0 320 224" className="w-full h-full" role="img" aria-label={`${cols} weeks of ${rows} workouts filling in one by one`}>
       {Array.from({ length: cols }, (_, week) =>
         Array.from({ length: rows }, (_, session) => {
           const n = week * rows + session;
@@ -81,7 +81,7 @@ export const SessionsIllustration: React.FC = () => {
                 cy={y}
                 r={13}
                 fill={PHASE[Math.floor(week / 2)]}
-                fillOpacity={0.35 + (n / 23) * 0.65}
+                fillOpacity={0.35 + (n / (cols * rows - 1)) * 0.65}
                 style={{ animationDelay: `${150 + n * 55}ms` }}
               />
             </g>
@@ -96,7 +96,7 @@ export const SessionsIllustration: React.FC = () => {
         fill="none"
         stroke="#00F19F"
         strokeWidth="2.5"
-        style={{ animationDelay: `${150 + 24 * 55}ms` }}
+        style={{ animationDelay: `${150 + cols * rows * 55}ms` }}
       />
     </svg>
   );

@@ -13,18 +13,16 @@ import {
   getCachedIdentityMessage,
 } from '../../services/identityMessage';
 import {
-  PROGRAM_PHASES,
-  WORKOUT_TEMPLATES_24,
   PlanWorkoutOverview,
+  TrainingPlan,
   buildPlanOverview,
-  generate6WeekMuscleBuildingWorkout,
+  generatePlanWorkout,
 } from '../../engine/muscleBuildingProgram';
 import { triggerHaptic } from '../../utils/haptics';
 import { PastWorkoutModal } from './PastWorkoutModal';
 
 /** One Figma pixel (1344 px frame) in screen pixels; see .wk in index.css. */
 const fig = (px: number) => `calc(${px} * var(--f))`;
-const TOTAL = WORKOUT_TEMPLATES_24.length;
 
 /** One contour of the identity form: a finished workout, or the outline of the next one. */
 interface IdentityRing {
@@ -71,7 +69,7 @@ function seededRandom(seedText: string) {
  * plan goes on, and the next workout shows as a faint dotted ring. A slow pulse travels through the
  * rings in the order they were earned. Still frame with reduced motion.
  */
-const IdentityForm: React.FC<{ rings: IdentityRing[]; seed: string }> = ({ rings, seed }) => {
+const IdentityForm: React.FC<{ rings: IdentityRing[]; seed: string; total: number }> = ({ rings, seed, total }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const completed = rings.filter((r) => r.done).length;
   const key = rings.map((r) => `${r.done ? 1 : 0}${r.next ? 1 : 0}${r.sets}`).join('') + seed;
@@ -100,7 +98,7 @@ const IdentityForm: React.FC<{ rings: IdentityRing[]; seed: string }> = ({ rings
         harmonics: coeffs.map((c, i) => ({ order: ORDERS[i], amp: Math.hypot(c.re, c.im), phase: Math.atan2(c.im, c.re) })),
       };
     });
-    const progress = completed / TOTAL;
+    const progress = completed / total;
     let width = 0;
     let height = 0;
     let frame = 0;
@@ -120,7 +118,7 @@ const IdentityForm: React.FC<{ rings: IdentityRing[]; seed: string }> = ({ rings
     // with the near side brighter and thicker than the far side.
     const tiltOf = (t: number) => 0.38 + 0.06 * Math.sin(t * 0.25);
     // Rings fill from the equator outwards, alternating above and below, so the first is the widest.
-    const latitudeOf = (k: number) => (k % 2 === 0 ? 1 : -1) * (Math.floor(k / 2) + 0.5) * (Math.PI / TOTAL);
+    const latitudeOf = (k: number) => (k % 2 === 0 ? 1 : -1) * (Math.floor(k / 2) + 0.5) * (Math.PI / total);
     const contour = (
       cx: number,
       cy: number,
@@ -293,7 +291,7 @@ const IdentityForm: React.FC<{ rings: IdentityRing[]; seed: string }> = ({ rings
     <canvas
       ref={canvasRef}
       role="img"
-      aria-label={`Your athlete identity: ${completed} of ${TOTAL} workouts complete`}
+      aria-label={`Your athlete identity: ${completed} of ${total} workouts complete`}
       className="block w-full"
       style={{ height: fig(552) }}
     />
@@ -301,6 +299,8 @@ const IdentityForm: React.FC<{ rings: IdentityRing[]; seed: string }> = ({ rings
 };
 
 interface ProgramPlanViewProps {
+  /** The athlete's plan: the goal-based starter plan, or the muscle plan on the owner's account. */
+  trainingPlan: TrainingPlan;
   workouts: WorkoutSession[];
   biometrics: BiometricLog[];
   profile: UserProfile;
@@ -315,6 +315,7 @@ interface ProgramPlanViewProps {
 
 /** Program page for the 6-Week Muscle Building Plan: identity, progress, then the three phases. */
 export const ProgramPlanView: React.FC<ProgramPlanViewProps> = ({
+  trainingPlan,
   workouts,
   biometrics,
   profile,
@@ -325,7 +326,8 @@ export const ProgramPlanView: React.FC<ProgramPlanViewProps> = ({
   onLaunchWorkoutNumber,
   onBackToWorkout,
 }) => {
-  const plan = useMemo(() => buildPlanOverview(workouts), [workouts]);
+  const plan = useMemo(() => buildPlanOverview(workouts, trainingPlan), [workouts, trainingPlan]);
+  const TOTAL = trainingPlan.templates.length;
   const [openPhases, setOpenPhases] = useState<number[]>([plan.activePhase]);
   const [viewing, setViewing] = useState<PlanWorkoutOverview | null>(null);
   const next = plan.workouts.find((w) => w.workoutNumber === plan.nextWorkoutNumber)!;
@@ -343,8 +345,9 @@ export const ProgramPlanView: React.FC<ProgramPlanViewProps> = ({
     );
     return buildIdentityFacts({
       plan,
+      trainingPlan,
       workouts,
-      nextSession: generate6WeekMuscleBuildingWorkout(plan.nextWorkoutNumber, bodyweightKg),
+      nextSession: generatePlanWorkout(trainingPlan, plan.nextWorkoutNumber),
       exerciseCatalog,
       knowledgeGraph,
       readinessState,
@@ -352,7 +355,7 @@ export const ProgramPlanView: React.FC<ProgramPlanViewProps> = ({
     });
     // Facts change with history and readiness, not with every profile edit.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [plan, workouts, biometrics, exerciseCatalog, readinessState, bodyweightKg]);
+  }, [plan, trainingPlan, workouts, biometrics, exerciseCatalog, readinessState, bodyweightKg]);
   const [identityMessage, setIdentityMessage] = useState<string | null>(null);
   useEffect(() => {
     if (!isFirstRun) return;
@@ -444,14 +447,14 @@ export const ProgramPlanView: React.FC<ProgramPlanViewProps> = ({
         )}
       <header style={{ paddingTop: fig(20) }}>
         <h1 className="wk-page-title" style={{ fontSize: fig(28) }}>
-          6 Week Muscle Plan
+          {trainingPlan.name}
         </h1>
       </header>
 
       {isFirstRun && (
         <section aria-label="Your progress as an athlete" className="flex flex-col items-center text-center">
           <div className="self-stretch" style={{ marginLeft: fig(-38), marginRight: fig(-38), marginTop: fig(-11) }}>
-            <IdentityForm rings={identityRings} seed={identitySeed} />
+            <IdentityForm rings={identityRings} seed={identitySeed} total={TOTAL} />
           </div>
           <h2 className="wk-h1" style={{ marginTop: fig(-30), lineHeight: 1.21 }}>
             Your new identity as an athlete is forming
@@ -499,7 +502,7 @@ export const ProgramPlanView: React.FC<ProgramPlanViewProps> = ({
       </section>
 
       <div className="flex flex-col" style={{ marginTop: fig(75), gap: fig(34) }}>
-        {PROGRAM_PHASES.map((phase) => {
+        {trainingPlan.phases.map((phase) => {
           const isOpen = openPhases.includes(phase.phaseNumber);
           const phaseWorkouts = plan.workouts.filter((w) => w.phase === phase.phaseNumber);
           return (

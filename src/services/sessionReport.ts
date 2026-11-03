@@ -5,7 +5,8 @@
  */
 import { calculateE1RM } from '../engine/e1rm';
 import { AthleteKnowledgeGraph } from '../engine/knowledgeGraph';
-import { getProgramWorkoutNumber, WORKOUT_TEMPLATES_24 } from '../engine/muscleBuildingProgram';
+import { getProgramWorkoutNumber } from '../engine/muscleBuildingProgram';
+import { getSessionPlanShape } from '../engine/trainingPlans';
 import { getDaysUntilReady, getWorkoutCompletedAt } from '../engine/recovery';
 import { evaluateStrengthStandard, isPillarBenchmarkExercise } from '../engine/strengthStandards';
 import {
@@ -254,14 +255,15 @@ export function buildSessionProgressReport(input: {
   const previousVolume = previousSame ? sessionVolume(previousSame) : 0;
 
   const workoutNumber = getProgramWorkoutNumber(session);
+  const planShape = getSessionPlanShape(session);
   const sevenDaysAgo = now - 7 * 24 * 60 * 60 * 1000;
-  const program: SessionProgressReport['program'] = workoutNumber
+  const program: SessionProgressReport['program'] = workoutNumber && planShape
     ? {
         kind: 'plan',
         workoutNumber,
-        totalWorkouts: WORKOUT_TEMPLATES_24.length,
-        week: Math.ceil(workoutNumber / 4),
-        totalWeeks: Math.ceil(WORKOUT_TEMPLATES_24.length / 4),
+        totalWorkouts: planShape.total,
+        week: Math.ceil(workoutNumber / planShape.perWeek),
+        totalWeeks: Math.ceil(planShape.total / planShape.perWeek),
       }
     : {
         kind: 'split',

@@ -8,7 +8,7 @@
  */
 import { AthleteKnowledgeGraph } from '../engine/knowledgeGraph';
 import { evaluateExerciseProgress } from '../engine/milestones';
-import { PROGRAM_PHASES, PlanOverview } from '../engine/muscleBuildingProgram';
+import { MUSCLE_BUILDING_PLAN, PlanOverview, TrainingPlan } from '../engine/muscleBuildingProgram';
 import { MUSCLE_FRIENDLY_NAMES, getWorkoutCompletedAt } from '../engine/recovery';
 import { calculateE1RM } from '../engine/e1rm';
 import { ExerciseDefinition, ReadinessState, WorkoutSession, WorkoutSet } from '../engine/types';
@@ -17,6 +17,8 @@ import { MUSCLE_TO_GRAPH_KEY } from './sessionReport';
 
 export interface IdentityMessageInput {
   plan: PlanOverview;
+  /** The plan the overview is for (phases, workouts per week). Defaults to the muscle plan. */
+  trainingPlan?: TrainingPlan;
   /** All saved workouts. */
   workouts: WorkoutSession[];
   /** The next plan workout as it will be trained. */
@@ -115,11 +117,12 @@ export function buildIdentityFacts(input: IdentityMessageInput): IdentityMessage
   const now = input.now ?? Date.now();
   const facts: string[] = [];
   const next = plan.workouts.find((w) => w.workoutNumber === plan.nextWorkoutNumber)!;
-  const phase = PROGRAM_PHASES.find((p) => p.phaseNumber === plan.activePhase) ?? PROGRAM_PHASES[0];
-  const week = Math.ceil(plan.nextWorkoutNumber / 4);
+  const trainingPlan = input.trainingPlan ?? MUSCLE_BUILDING_PLAN;
+  const phase = trainingPlan.phases.find((p) => p.phaseNumber === plan.activePhase) ?? trainingPlan.phases[0];
+  const week = Math.ceil(plan.nextWorkoutNumber / trainingPlan.workoutsPerWeek);
   const completed = plan.completedCount;
 
-  facts.push(`Workouts finished in this plan: ${completed} of 24.`);
+  facts.push(`Workouts finished in this plan: ${completed} of ${trainingPlan.templates.length}.`);
   facts.push(`Current phase: Phase ${phase.phaseNumber} (${phase.shortName.toLowerCase()}), week ${week} of 6.`);
 
   // History in this run of the plan, oldest first.
@@ -192,7 +195,8 @@ export function buildIdentityFacts(input: IdentityMessageInput): IdentityMessage
     );
   }
 
-  const nextName = next.label.toLowerCase();
+  // "Full Body A" keeps its capitals; "Chest and Back" reads as "chest and back" mid-sentence.
+  const nextName = /\s[A-Z]$/.test(next.label) ? next.label : next.label.toLowerCase();
   const focus = trains.length ? `your ${listWords(trains.slice(0, 2))}` : nextName;
   let nextSentence: string;
   if (completed === 0) {

@@ -28,7 +28,7 @@ import {
   MUSCLE_FRIENDLY_NAMES,
   READY_THRESHOLD,
 } from '../../engine/recovery';
-import { PROGRAM_PHASES, WORKOUT_TEMPLATES_24, planWorkoutLabel } from '../../engine/muscleBuildingProgram';
+import { TrainingPlan, getSessionPlanId, planWorkoutLabel } from '../../engine/muscleBuildingProgram';
 import { useUnits } from '../../utils/unitsContext';
 import {
   prescribeDoubleProgression,
@@ -84,6 +84,8 @@ import {
 import { triggerHaptic } from '../../utils/haptics';
 
 interface TrainTabProps {
+  /** The athlete's 6-week plan (see resolveActivePlan). */
+  trainingPlan: TrainingPlan;
   activeWorkout: WorkoutSession;
   workouts: WorkoutSession[];
   readiness: ReadinessEvaluation;
@@ -140,6 +142,7 @@ const MESO_WEEK_PHASE_NAMES: Record<number, { name: string; rule: string }> = {
 };
 
 export const TrainTab: React.FC<TrainTabProps> = ({
+  trainingPlan,
   activeWorkout,
   workouts,
   readiness,
@@ -621,9 +624,12 @@ export const TrainTab: React.FC<TrainTabProps> = ({
     : null;
 
   // 6-Week plan sessions show their own week and phase.
-  const planWorkoutNumber = activeWorkout.programWorkoutNumber;
-  const planWeek = planWorkoutNumber ? Math.ceil(planWorkoutNumber / 4) : undefined;
-  const planPhase = planWeek ? PROGRAM_PHASES.find((p) => planWeek >= p.weeks[0] && planWeek <= p.weeks[1]) : undefined;
+  const planWorkoutNumber =
+    getSessionPlanId(activeWorkout) === trainingPlan.id ? activeWorkout.programWorkoutNumber : undefined;
+  const planWeek = planWorkoutNumber ? Math.ceil(planWorkoutNumber / trainingPlan.workoutsPerWeek) : undefined;
+  const planPhase = planWeek
+    ? trainingPlan.phases.find((p) => planWeek >= p.weeks[0] && planWeek <= p.weeks[1])
+    : undefined;
   const weekPillLabel = planWeek
     ? `Week ${planWeek} of 6 • Phase ${planPhase?.phaseNumber ?? 1}`
     : `Week ${mesoWeek} of 6 • ${phaseMeta.name}`;
@@ -643,7 +649,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
   );
 
   // Program card: plan phase and position, or the mesocycle week for standard splits.
-  const planTemplate = planWorkoutNumber ? WORKOUT_TEMPLATES_24.find((t) => t.workoutNumber === planWorkoutNumber) : undefined;
+  const planTemplate = planWorkoutNumber ? trainingPlan.templates.find((t) => t.workoutNumber === planWorkoutNumber) : undefined;
   const sessionWord = showRecoveryGate ? 'Next' : 'Today';
   const programCard = planWorkoutNumber
     ? {
@@ -651,7 +657,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
         subtitle: planPhase?.shortName ?? '',
         sessionLabel: `${sessionWord}: ${planTemplate ? planWorkoutLabel(planTemplate.title) : activeWorkout.name}`,
         current: planWorkoutNumber,
-        total: WORKOUT_TEMPLATES_24.length,
+        total: trainingPlan.templates.length,
       }
     : {
         title: `Week ${mesoWeek}`,
@@ -660,7 +666,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
         current: mesoWeek,
         total: 6,
       };
-  const pageTitle = planWorkoutNumber ? '6 Week Muscle Plan' : PROGRAM_TITLES[profile.programType || 'ppl_upper'] || 'Your Program';
+  const pageTitle = planWorkoutNumber ? trainingPlan.name : PROGRAM_TITLES[profile.programType || 'starter_6wk'] || 'Your Program';
 
   const stripDays = useMemo(
     () =>
@@ -668,10 +674,11 @@ export const TrainTab: React.FC<TrainTabProps> = ({
         workouts,
         nextSession: activeWorkout,
         programType: profile.programType,
+        plan: trainingPlan,
         exerciseCatalog,
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [workouts, activeWorkout.id, activeWorkout.programWorkoutNumber, profile.programType, exerciseCatalog]
+    [workouts, activeWorkout.id, activeWorkout.programWorkoutNumber, profile.programType, trainingPlan, exerciseCatalog]
   );
 
   // Exercise overviews: personal notes written on the device from the athlete's knowledge graph.

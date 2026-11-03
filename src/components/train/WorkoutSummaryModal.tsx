@@ -5,6 +5,7 @@ import { calculateSessionTonnage } from '../../engine/wci';
 import { useUnits } from '../../utils/unitsContext';
 import { Trophy, ArrowRight, Activity, RefreshCw } from 'lucide-react';
 import { triggerHaptic } from '../../utils/haptics';
+import { getSessionPlanShape } from '../../engine/trainingPlans';
 
 interface WorkoutSummaryModalProps {
   workout: WorkoutSession;
@@ -72,7 +73,7 @@ export const WorkoutSummaryModal: React.FC<WorkoutSummaryModalProps> = ({
             </h3>
             <p className="wk-caption mt-0.5">
               {workout.programWorkoutNumber
-                ? `${workout.name} • Workout ${workout.programWorkoutNumber} of 24`
+                ? `${workout.name} • Workout ${workout.programWorkoutNumber} of ${getSessionPlanShape(workout)?.total ?? 24}`
                 : `${workout.name} • ${workout.splitDay} day`}
             </p>
           </div>
