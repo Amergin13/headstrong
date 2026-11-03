@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Scale, Ruler, Bluetooth } from 'lucide-react';
 import { BiometricLog, BodyMeasurementSite, ExerciseDefinition, UserProfile, WorkoutSession } from '../../engine/types';
 import { buildBodyCompositionKnowledgeGraph } from '../../engine/knowledgeGraph';
@@ -43,6 +43,9 @@ interface AnalyticsTabProps {
   exerciseCatalog: ExerciseDefinition[];
   weeklyVolume: Record<string, number>;
   onSaveMeasurements: (entry: MeasurementEntry) => void;
+  /** Changes when the "Log Weight" shortcut is used; opens the weigh-in form. */
+  openLogWeightRequest?: number;
+  onLogWeightRequestHandled?: () => void;
 }
 
 type ProgressView = 'strength' | 'muscles' | 'composition';
@@ -56,6 +59,8 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
   exerciseCatalog,
   weeklyVolume,
   onSaveMeasurements,
+  openLogWeightRequest = 0,
+  onLogWeightRequestHandled,
 }) => {
   const [activeView, setActiveView] = useState<ProgressView>('strength');
   const [compositionFilter, setCompositionFilter] = useState<CompositionFilter>('all');
@@ -110,6 +115,14 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
     setLogModalMode('weight');
     setShowLogModal(true);
   };
+
+  useEffect(() => {
+    if (openLogWeightRequest > 0) {
+      setActiveView('composition');
+      openLogWeight();
+      onLogWeightRequestHandled?.();
+    }
+  }, [openLogWeightRequest]);
 
   const openLogMeasurements = (site: BodyMeasurementSite = 'waist') => {
     setLogModalMode('measurements');

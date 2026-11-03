@@ -69,11 +69,10 @@ Run the complete automated verification pipeline:
 npm run verify:all
 ```
 This single command executes:
-1. `npm run generate:assets`: Generates all validated PNG binaries (192x192, 512x512, maskable, screenshots, feature graphic).
-2. `npm run test:engine`: Runs all 17 core exercise science and governance test suites.
-3. `npm run qa:full`: Runs the autonomous 5-branch Tree of Thoughts evaluation engine (`scripts/runComprehensiveQA.mjs`).
-4. `npm run build`: Compiles production TypeScript and Vite bundles with service worker precache.
-5. `npm run verify:playstore`: Audits Android 15 SDK 35 compliance, digital asset links, and Play Store policies.
+1. `npm run test:engine`: Runs the engine, governance and design test suites (`src/engine/__tests__/verifyEngine.ts`).
+2. `npm run test:api`: Tests the Vercel API proxies in `api/`.
+3. `npm run build`: Compiles production TypeScript and Vite bundles with service worker precache.
+4. `npm run verify:playstore`: Audits Android 16 SDK 36 compliance, digital asset links, and Play Store policies.
 
 ---
 

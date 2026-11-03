@@ -156,7 +156,7 @@ assert(
 const privacyHtml = fs.readFileSync(path.join(distDir, 'privacy.html'), 'utf8');
 assert(
   privacyHtml.includes('Google Play Data Safety') &&
-    privacyHtml.includes('Delete All My Data') &&
+    privacyHtml.includes('Delete All Data') &&
     privacyHtml.includes('Non-Medical Fitness Disclaimer'),
   'privacy.html contains Data Safety summary, Data Deletion instructions, and Non-Medical Fitness Disclaimer'
 );

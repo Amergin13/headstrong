@@ -226,27 +226,6 @@ export function signInWithGoogleCredential(jwtCredential: string): AuthUser {
 }
 
 /**
- * Mock / Preview Google Sign-In helper.
- * Allows testing full account login, profile synchronization, and logout without immediate Google Cloud Console API credentials.
- */
-export function signInWithDemoGoogleAccount(
-  customEmail: string = 'athlete@treise.app',
-  customName: string = 'Benen Taylor'
-): AuthUser {
-  const demoUser: AuthUser = {
-    id: 'demo-google-' + Math.random().toString(36).substring(2, 9),
-    email: customEmail,
-    name: customName,
-    avatarUrl: `https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=160&q=80`,
-    provider: 'google',
-    createdAt: new Date().toISOString(),
-  };
-
-  saveAuthUser(demoUser);
-  return demoUser;
-}
-
-/**
  * Signs out the current user, clears local auth state, and disables GIS auto-select.
  */
 export function signOutUser(): void {

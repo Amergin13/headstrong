@@ -664,7 +664,7 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
             >
               {activeWearableMeta
                 ? `${activeWearableMeta.name} • Connected`
-                : 'Connect Fitbit, Whoop, or Health Connect'}
+                : 'Connect Fitbit or Whoop'}
             </p>
           </button>
 

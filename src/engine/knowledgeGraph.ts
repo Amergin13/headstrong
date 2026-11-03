@@ -1760,7 +1760,7 @@ export function buildAthleteKnowledgeGraph(
 
   const systemicAxialLoadScore = Math.min(100, Math.round((totalWeeklyAxialUnits / 16) * 100));
   const lengthenedStimulusRatio =
-    totalHardSetsWeek > 0 ? Math.round((lengthenedSetsCount / totalHardSetsWeek) * 100) : 62;
+    totalHardSetsWeek > 0 ? Math.round((lengthenedSetsCount / totalHardSetsWeek) * 100) : 0;
   const recoveryEfficiencyScore =
     typeof latestRecoveryScore === 'number'
       ? latestRecoveryScore
@@ -2093,7 +2093,8 @@ export function buildAthleteKnowledgeGraph(
     joints,
     muscleProfiles,
     bodyComposition,
-    insights,
+    // The full-stretch share only means something once there are sets this week.
+    insights: totalHardSetsWeek > 0 ? insights : insights.filter((i) => i.id !== 'pkg-insight-2'),
     scientificKnowledgeBase: EXERCISE_SCIENCE_KNOWLEDGE_BASE,
     designSystem: TREISE_DESIGN_SYSTEM,
     systemicAxialLoadScore,

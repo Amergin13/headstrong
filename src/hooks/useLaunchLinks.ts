@@ -7,6 +7,7 @@ interface LaunchLinkHandlers {
   onOpenTab: (tab: TabId) => void;
   onOpenCoach: () => void;
   onOpenWatchSync: () => void;
+  onOpenLogWeight: () => void;
   onOpenAuth: () => void;
   onAuthSuccess: (user: AuthUser) => void;
   onWearableOAuthCode: (code: string, provider: WearableProvider) => void;
@@ -48,6 +49,7 @@ export function useLaunchLinks(handlers: LaunchLinkHandlers) {
       handlers.onOpenAuth();
     } else if (actionParam === 'log-weight') {
       handlers.onOpenTab('analytics');
+      handlers.onOpenLogWeight();
     }
 
     if (oauthCode) {

@@ -99,6 +99,8 @@ export const App: React.FC = () => {
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [authUser, setAuthUser] = useState<AuthUser | null>(loadAuthUser);
   const [onboardingOpen, setOnboardingOpen] = useState(!profile.onboardingCompleted);
+  // Bumped by the "Log Weight" home-screen shortcut; the Progress tab opens its weigh-in form.
+  const [logWeightRequest, setLogWeightRequest] = useState(0);
   const [onboardingInitialStep, setOnboardingInitialStep] = useState<1 | 2 | 3>(1);
   const [deferredInstallPrompt, setDeferredInstallPrompt] = useState<any>(null);
   const [toast, setToast] = useState<{ title?: string; message: string; tag?: string } | null>(null);
@@ -168,6 +170,7 @@ export const App: React.FC = () => {
     onOpenTab: (tab) => setActiveTab(tab),
     onOpenCoach: () => setAiCoachOpen(true),
     onOpenWatchSync: () => setWatchModalOpen(true),
+    onOpenLogWeight: () => setLogWeightRequest((n) => n + 1),
     onOpenAuth: () => setAuthModalOpen(true),
     onAuthSuccess: handleAuthSuccess,
     onWearableOAuthCode: (code, provider) => {
@@ -726,6 +729,9 @@ export const App: React.FC = () => {
     setWorkouts(wiped.workouts);
     setActiveWorkout(wiped.activeWorkout);
     setExercises(wiped.exercises);
+    // Start over like a fresh install, so no unpersonalised template workout is shown.
+    setOnboardingInitialStep(1);
+    setOnboardingOpen(true);
     setToast({ message: 'All personal workout and biometric data permanently erased from device.',
       tag: 'Data Erased',
     });
@@ -818,6 +824,8 @@ export const App: React.FC = () => {
             exerciseCatalog={exercises}
             weeklyVolume={weeklyVolume}
             onSaveMeasurements={handleSaveMeasurements}
+            openLogWeightRequest={logWeightRequest}
+            onLogWeightRequestHandled={() => setLogWeightRequest(0)}
           />
         )}
 

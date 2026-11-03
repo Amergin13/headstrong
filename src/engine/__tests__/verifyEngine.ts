@@ -292,7 +292,8 @@ console.log('\n[10. Personal Knowledge Graph (PKG) & Historical Progression]');
 import { buildAthleteKnowledgeGraph } from '../knowledgeGraph';
 
 const pkg = buildAthleteKnowledgeGraph(
-  [wciWorkout],
+  // Dated this week, so the weekly insights (full-stretch share) have real sets to measure.
+  [{ ...wciWorkout, date: localDateString() }],
   baselineLogs,
   [
     {
@@ -472,6 +473,7 @@ import {
   loadBiometrics,
   removeFabricatedBiometrics,
   removeDayHeartRateFromWorkouts,
+  runStorageMigrations,
 } from '../../services/storage';
 import {
   NEW_USER_PROFILE,
@@ -517,7 +519,6 @@ import {
   GOOGLE_AUTH_CONFIG,
   decodeGoogleIdToken,
   signInWithGoogleCredential,
-  signInWithDemoGoogleAccount,
   signOutUser,
   isSupabaseConfigured,
   getSupabaseGoogleAuthUrl,
@@ -638,6 +639,34 @@ assert(
   erased.workouts.length === 0 && loadWorkouts().length === 0 && loadProfile().streakDays === 0,
   `permanentlyEraseAllUserData wipes all workout history and resets the profile`
 );
+assert(
+  erased.biometrics.length === 0 && loadBiometrics().length === 0,
+  `permanentlyEraseAllUserData leaves no readings behind (no placeholder weight, heart rate or sleep)`
+);
+// Older erases left a placeholder day; the v8 migration removes it and keeps real readings.
+localStorage.setItem(
+  'treise_biometrics_v3',
+  JSON.stringify([
+    { date: '2026-10-01', bodyweightKg: 80, hrvRmssd: 58, restingHr: 58, sleepHours: 7.5, steps: 0, activeZoneMinutes: 0, vo2Max: 44 },
+    { date: '2026-10-02', bodyweightKg: 80, hrvRmssd: 0, restingHr: 0, sleepHours: 0, steps: 0, activeZoneMinutes: 0, vo2Max: 0 },
+  ])
+);
+localStorage.setItem('treise_schema_version', '7');
+runStorageMigrations();
+assert(
+  loadBiometrics().length === 1 && loadBiometrics()[0].date === '2026-10-02',
+  `Migration v8 removes the old erase placeholder day and keeps a real 80 kg weigh-in`
+);
+localStorage.setItem('treise_biometrics_v3', '[]');
+{
+  const emptyGraph = buildAthleteKnowledgeGraph([], [], SEED_EXERCISES, NEW_USER_PROFILE, {});
+  assert(
+    emptyGraph.lengthenedStimulusRatio === 0 &&
+      emptyGraph.recoveryEfficiencyScore === 0 &&
+      !emptyGraph.insights.some((i) => i.id === 'pkg-insight-2'),
+    `With no workouts or watch data, insights show no full-stretch share or recovery score`
+  );
+}
 
 // Restore from JSON backup
 const restored = importUserDataJSON(backupJson);
@@ -2270,22 +2299,22 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
     records: [
       {
         type: 'HeartRateVariabilityRmssdRecord',
-        startTime: '2026-10-18T06:00:00Z',
+        startTime: '2026-10-18T06:00:00',
         heartRateVariabilityMillis: 68.5,
       },
       {
         type: 'RestingHeartRateRecord',
-        startTime: '2026-10-18T06:00:00Z',
+        startTime: '2026-10-18T06:00:00',
         beatsPerMinute: 52,
       },
       {
         type: 'SleepSessionRecord',
-        startTime: '2026-10-17T22:30:00Z',
-        endTime: '2026-10-18T06:30:00Z',
+        startTime: '2026-10-17T22:30:00',
+        endTime: '2026-10-18T06:30:00',
       },
       {
         type: 'StepsRecord',
-        startTime: '2026-10-18T18:00:00Z',
+        startTime: '2026-10-18T18:00:00',
         count: 10450,
       },
     ],
@@ -2299,6 +2328,10 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
       parsedHcLogs[0].sleepHours === 8.0 &&
       parsedHcLogs[0].steps === 10450,
     `Health Connect JSON export parser extracts HRV, Resting HR, Sleep duration (8.0h), and Steps correctly`
+  );
+  assert(
+    parsedHcLogs[0].bodyweightKg === 0 && parsedHcLogs[0].vo2Max === 0 && parsedHcLogs[0].activeZoneMinutes === 0,
+    `Health Connect import leaves values the file doesn't have at 0 (no 80 kg or VO2 max 45 placeholders)`
   );
   const hcSyncedLog = await simulateHealthConnectSync(undefined, 'Amber Shield');
   assert(
@@ -2652,15 +2685,10 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
     `signInWithGoogleCredential normalizes Google JWT into verified AuthUser`
   );
 
-  // 4. Demo Account Sign-In (Instant Verification & Dev Testing)
-  const demoUser = signInWithDemoGoogleAccount();
+  // 4. There is no demo sign-in: only a real Google credential signs in.
   assert(
-    demoUser.provider === 'google' &&
-      demoUser.email.includes('@') &&
-      demoUser.name.length > 0 &&
-      demoUser.avatarUrl !== undefined &&
-      demoUser.avatarUrl.length > 0,
-    `signInWithDemoGoogleAccount creates fully hydrated demo Google account`
+    !fs.readFileSync(path.resolve(process.cwd(), 'src/services/googleAuthService.ts'), 'utf-8').includes('signInWithDemoGoogleAccount'),
+    `No demo or mock Google sign-in exists in the app`
   );
 
   // 5. Auth User Local Storage Persistence & Google Play Data Isolation

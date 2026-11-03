@@ -78,13 +78,14 @@ export function parseHealthConnectExport(rawInput: string | Record<string, any>)
     if (!entry) {
       entry = {
         date: dateStr,
-        bodyweightKg: 80.0,
-        hrvRmssd: 58,
-        restingHr: 58,
-        sleepHours: 7.5,
+        // Not in the file = not measured (0), never a typical-looking default.
+        bodyweightKg: 0,
+        hrvRmssd: 0,
+        restingHr: 0,
+        sleepHours: 0,
         steps: 0,
         activeZoneMinutes: 0,
-        vo2Max: 45.0,
+        vo2Max: 0,
       };
       logsByDate.set(dateStr, entry);
     }
@@ -112,7 +113,9 @@ export function parseHealthConnectExport(rawInput: string | Record<string, any>)
         ? rec.endTime || rec.startTime || rec.time || rec.date
         : rec.time || rec.startTime || rec.endTime || rec.date;
       if (!timeStr) return;
-      const dateStr = String(timeStr).split('T')[0];
+      const raw = String(timeStr);
+      const parsedTime = new Date(raw);
+      const dateStr = raw.includes('T') && !Number.isNaN(parsedTime.getTime()) ? localDateString(parsedTime) : raw.slice(0, 10);
       const entry = getOrCreate(dateStr);
 
       // HRV RMSSD Record
@@ -194,13 +197,13 @@ export function parseHealthConnectExport(rawInput: string | Record<string, any>)
   const parsedLogs: BiometricLog[] = Array.from(logsByDate.values()).map((p) => ({
     ...p,
     date: p.date || localDateString(),
-    bodyweightKg: p.bodyweightKg || 80.0,
-    hrvRmssd: p.hrvRmssd || 58,
-    restingHr: p.restingHr || 58,
-    sleepHours: p.sleepHours || 7.5,
-    steps: p.steps || 8500,
-    activeZoneMinutes: p.activeZoneMinutes || 40,
-    vo2Max: p.vo2Max || 45.0,
+    bodyweightKg: p.bodyweightKg || 0,
+    hrvRmssd: p.hrvRmssd || 0,
+    restingHr: p.restingHr || 0,
+    sleepHours: p.sleepHours || 0,
+    steps: p.steps || 0,
+    activeZoneMinutes: p.activeZoneMinutes || 0,
+    vo2Max: p.vo2Max || 0,
   }));
 
   parsedLogs.sort((a, b) => a.date.localeCompare(b.date));

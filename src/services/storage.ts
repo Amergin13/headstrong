@@ -43,7 +43,7 @@ const LEGACY_KEYS = {
  * Version of the saved-data format. Bump it and add a step to runStorageMigrations whenever
  * the shape of stored data changes, so existing athletes' history keeps loading.
  */
-export const STORAGE_SCHEMA_VERSION = 7;
+export const STORAGE_SCHEMA_VERSION = 8;
 const SCHEMA_VERSION_KEY = 'treise_schema_version';
 
 /**
@@ -61,6 +61,19 @@ const SIMULATED_SYNC_FINGERPRINTS = [
   { bodyweightKg: 82.1, vo2Max: 46.2, avgWorkoutHr: 144, workoutDurationMin: 65 }, // Pixel Watch simulator
   { bodyweightKg: 82.0, vo2Max: 46.5, avgWorkoutHr: 143, workoutDurationMin: 62 }, // Health Connect simulator
 ];
+
+/** Older "Delete All Data" left this placeholder day behind (80 kg, HRV 58, RHR 58, 7.5 h, VO2 max 44). */
+function isErasePlaceholder(l: BiometricLog): boolean {
+  return (
+    l.bodyweightKg === 80 &&
+    l.hrvRmssd === 58 &&
+    l.restingHr === 58 &&
+    l.sleepHours === 7.5 &&
+    l.vo2Max === 44 &&
+    !l.steps &&
+    !l.source
+  );
+}
 
 export function removeFabricatedBiometrics(): void {
   const raw = localStorage.getItem(KEYS.BIOMETRICS);
@@ -143,6 +156,13 @@ export function runStorageMigrations(): void {
     if (current < 7) {
       // v6 ran before the daily sync stopped writing all-day heart rate; v7 runs it again.
       removeDayHeartRateFromWorkouts();
+    }
+    if (current < 8) {
+      const raw = localStorage.getItem(KEYS.BIOMETRICS);
+      const logs: BiometricLog[] = raw ? JSON.parse(raw) : [];
+      if (Array.isArray(logs) && logs.some(isErasePlaceholder)) {
+        localStorage.setItem(KEYS.BIOMETRICS, JSON.stringify(logs.filter((l) => !isErasePlaceholder(l))));
+      }
     }
     if (current < STORAGE_SCHEMA_VERSION) {
       localStorage.setItem(SCHEMA_VERSION_KEY, String(STORAGE_SCHEMA_VERSION));
@@ -621,18 +641,8 @@ export function permanentlyEraseAllUserData() {
     restingHrBaseline: 58,
   };
 
-  const cleanBiometrics: BiometricLog[] = [
-    {
-      date: todayStr,
-      bodyweightKg: 80.0,
-      hrvRmssd: 58,
-      restingHr: 58,
-      sleepHours: 7.5,
-      steps: 0,
-      activeZoneMinutes: 0,
-      vo2Max: 44.0,
-    },
-  ];
+  // Erased means empty: no placeholder weight, heart rate or sleep (same as a fresh install).
+  const cleanBiometrics: BiometricLog[] = [];
 
   const cleanWorkouts: WorkoutSession[] = [];
   const cleanActive = createTodaysActiveWorkout();

@@ -20,11 +20,7 @@ import {
   WHOOP_CONFIG,
   parseWhoopCsvExport,
 } from '../../services/whoopService';
-import {
-  openHealthConnectSettings,
-  parseHealthConnectExport,
-  isAndroidPlatform,
-} from '../../services/healthConnectService';
+import { parseHealthConnectExport } from '../../services/healthConnectService';
 import { X } from 'lucide-react';
 import { triggerHaptic } from '../../utils/haptics';
 
@@ -197,21 +193,12 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
     setSyncProgress(null);
   };
 
+  // A web app can't read Health Connect directly, so it only counts as connected after a real file import.
   const handleHealthConnectSettings = () => {
     triggerHaptic('light');
-    const result = openHealthConnectSettings();
-    if (!result.launched) {
-      setImportStatus('Health Connect is available on Android 14+ devices. You can also import data files below.');
-    } else {
-      if (onUpdateProfile) {
-        onUpdateProfile({
-          ...setActiveTracker('health_connect', profile),
-          healthConnectConnected: true,
-          healthConnectLastSync: new Date().toISOString(),
-        });
-      }
-    }
+    fileInputRef.current?.click();
   };
+
 
   const handleFileImport = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -422,7 +409,7 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
           {selectedProvider === 'fitbit' &&
             'Sync your daily readiness score, resting heart rate, and sleep staging directly from your Google Pixel Watch or Fitbit tracker.'}
           {selectedProvider === 'health_connect' &&
-            'Sync unified biometric records directly from Android Health Connect on your phone.'}
+            "Treise can't read Health Connect directly yet. If you have a JSON export of your health data, import it here."}
         </p>
       )}
 
@@ -460,16 +447,7 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
               className="wk-button min-h-[44px]"
               style={{ background: 'var(--wk-accent)', color: '#13181C' }}
             >
-              {isAndroidPlatform() ? 'Open Health Connect Settings' : 'Connect Android Health'}
-            </button>
-
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              className="wk-button min-h-[44px]"
-              style={{ background: 'var(--wk-pill)', color: '#fff' }}
-            >
-              Import Health Export (JSON)
+              Import health data file (JSON)
             </button>
           </>
         ) : isProviderConnected ? (

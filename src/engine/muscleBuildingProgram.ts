@@ -141,7 +141,7 @@ export const PROGRAM_PHASES: ProgramPhaseMeta[] = [
   {
     phaseNumber: 1,
     shortName: 'Building foundations',
-    planSummary: '2 week cycle focusing on volume accumulation, controlled eccentric tempo, and structural work capacity.',
+    planSummary: 'Two weeks of paired exercises and plenty of sets, lowering each rep slowly to build a solid base.',
     name: 'Phase 1: Antagonist Supersets & Volume Foundation',
     weeks: [1, 2],
     description:
@@ -151,7 +151,7 @@ export const PROGRAM_PHASES: ProgramPhaseMeta[] = [
   {
     phaseNumber: 2,
     shortName: 'Pushing intensity',
-    planSummary: '2 week cycle focusing on high mechanical tension and motor unit recruitment past technical failure.',
+    planSummary: 'Two weeks of fewer, harder sets: heavy weights, rest-pause and drop sets that take you past the point where reps get tough.',
     name: 'Phase 2: High-Intensity Overload (Rest-Pause & Drop-Sets)',
     weeks: [3, 4],
     description:
@@ -161,7 +161,7 @@ export const PROGRAM_PHASES: ProgramPhaseMeta[] = [
   {
     phaseNumber: 3,
     shortName: 'Building density',
-    planSummary: '2 week cycle focusing on muscular density, zero-rest intra-group transitions, and peak lactate tolerance.',
+    planSummary: 'Two weeks of back-to-back exercises with no rest between them, for a big pump and more work in less time.',
     name: 'Phase 3: High-Density Giant Sets & Tri-Sets',
     weeks: [5, 6],
     description:

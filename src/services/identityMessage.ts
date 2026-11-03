@@ -171,7 +171,8 @@ export function buildIdentityFacts(input: IdentityMessageInput): IdentityMessage
     const key = MUSCLE_TO_GRAPH_KEY[def.primaryMuscle];
     if (key && !graphKeys.includes(key)) graphKeys.push(key);
   }
-  const trains = muscles.slice(0, 3);
+  // "side shoulders" already covers "shoulders"; listing both reads as a repeat.
+  const trains = muscles.filter((m) => !muscles.some((o) => o !== m && o.endsWith(` ${m}`))).slice(0, 3);
   facts.push(`Next workout: ${next.label} (workout ${next.workoutNumber})${trains.length ? `, training your ${listWords(trains)}` : ''}.`);
   const behind = knowledgeGraph?.muscleProfiles.find(
     (m) => graphKeys.includes(m.muscleKey) && m.weeklySets < m.personalizedMav[0]
