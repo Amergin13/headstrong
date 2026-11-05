@@ -13,8 +13,8 @@ These rules exist because earlier sessions broke them. Any change that violates 
 7. **Store kg, display the athlete's unit.** Use `useUnits()` for every weight shown or typed.
 8. **Use local dates** (`localDateString`), never `toISOString().split('T')[0]`.
 9. **One source per number.** Every number shown on more than one page comes from the same function with the same inputs (engine suite 36e checks this):
-   - Weekly hard sets: `calculateWeeklyMuscleVolume` over saved workouts only (cards, Program, Muscles view, Athlete tab, knowledge graph).
-   - Estimated max per movement: `calculateE1RM` with the exercise id and movement type (Athlete tab and Progress charts).
+   - Weekly hard sets: `calculateWeeklyMuscleVolume` over saved workouts only (cards, Program, Progress muscle cards, knowledge graph).
+   - Estimated max per movement: `calculateE1RM` with the exercise id and movement type (strength levels and Progress charts).
    - Plan position and workout names: `getNextProgramWorkoutNumber` / `buildPlanOverview` with the athlete's plan (`resolveActivePlan`); each plan keeps its own position (`planId` on the session; older plan saves are the muscle plan). Plan sessions are named with `planWorkoutLabel` (e.g. "Shoulders and Arms"), and older saves are renamed on load and import. An unstarted session that isn't the plan's next workout is replaced.
    - Streak: `computeTrainingStreak` from saved workouts (rest gaps up to 4 days keep it).
    - Workout time: measured, first logged set to finish (or the watch's time), saved with the session and reused by the summary and session card. Nothing is added for warm-ups.
@@ -97,6 +97,9 @@ The 6 foundational movement pillars benchmark a lifter's strength relative to bo
 
 #### Female Proportional Thresholds:
 Derived from international powerlifting and strength databases (approximately ~65-72% of male absolute bodyweight multipliers).
+
+#### Tier ranges:
+Each tier runs from its own threshold up to the next tier's (male squat: Untrained 0.75–1.20, Novice 1.20–1.50, Intermediate 1.50–2.00, Advanced 2.00–2.50, Elite 2.50+); below the Untrained threshold is Untrained I. Engine suite 4 pins every boundary. Strength levels on Progress and the radar both come from `evaluateStrengthStandard`; the card's overall level averages logged movements only, and an unlogged movement scores 0 on the radar.
 
 #### Sub-Division Calculation:
 Each major tier is segmented into 4 granular sub-divisions: `I, II, III, IV`:
@@ -400,7 +403,7 @@ Onboarding sells one idea: Treise helps you become someone who trains. It is thr
 2. **24 sessions**: "Research with new gym members found that exercising at least 4 times a week for 6 weeks was what it took to build the habit" (Kaushal & Rhodes, 2015; observational, so stated as a finding), then what each week holds for the chosen layout. Illustration: 6 weeks × 4 dots filling in by phase.
 3. **Your superpower is restarting:** missing a workout doesn't ruin progress; workouts match recovery and place, with a home swap in one tap. Illustration: a progress line that dips and climbs back. Then the only decisions: **goal** (Build Muscle, Lose Fat, Stay Lean: it shapes the starter plan), **how to fit in 4 sessions a week** ("3 workouts + 1 active day", Recommended, or "4 workouts"; the owner's account also sees the muscle plan) and **where** (Gym, Home, Bodyweight; Home shows the home-gear chips, nothing pre-ticked).
 - Primary CTA: "Continue", then "Start my first workout", which lands on the Workout tab with workout 1 ready. "See a demo with sample data" sits under page 1's CTA.
-- Nothing else is asked. Goal stays Build Muscle (changeable in Settings), units default from the phone's language, and new athletes start at the "new" experience level (lighter weights; the first logged sets teach the app their strength). Bodyweight is never assumed: it is logged later in Progress → Body.
+- Nothing else is asked. Goal stays Build Muscle (changeable in Settings), units default from the phone's language, and new athletes start at the "new" experience level (lighter weights; the first logged sets teach the app their strength). Bodyweight is never assumed: it is logged later in Progress → Composition → Weight.
 - A plan workout away from the gym is swapped with `adaptWorkoutSessionToLocation` before `personalizeSessionLoads`, so swapped exercises get the athlete's starting weight (a move swapped in for a bodyweight one starts from its default, never 0 kg or an unconverted barbell number).
 - Settings → Edit Equipment reopens page 3 alone as "Where you train" (place and gear only; the goal has its own control in Settings) with Close and "Save changes".
 
@@ -425,15 +428,10 @@ All future sessions, developers, and AI agents must strictly adhere to the struc
    - *Split Editor:* Routine preview, `[+ Custom Exercise]`, and `[Start This Workout]` triggers.
    - *Profile & Data Drawers:* Collapsible accordions for Athlete Profile, Data Backup (export/restore/erase), and Product Governance Matrix.
 3. **Progress Tab (`AnalyticsTab.tsx`):** same `.wk` card style as the Workout tab. Every chart is a `ProgressChartCard` (title, "Last updated", plain-English summary, `TrendChart` with gridline values and first/last dates; "Example" until two points). Series come from `services/progressSeries.ts`.
-   - *Switcher:* `Strength` | `Muscles` | `Body` (composition).
-   - *Muscles:* one card per trained muscle (`buildMuscleProgress`, `src/services/muscleProgress.ts`, knowledge-graph principle `sp-muscle-progress`): weekly hard sets for the last 8 weeks as bars against the personal target band (same count as the knowledge graph and cards: main muscle 1, helper 0.5), a strength index (100 = first week; chain-linked weekly change in each exercise's best estimated max, so swaps don't jump it; sets over 15 reps excluded), the muscle's tape measurement when logged, and the exercises that feed it.
-   - *Strength:* estimated one-rep max per movement type, weekly hard sets, work capacity (only with measured heart rate), then the knowledge-graph card (joint load, recovery, Science & Logic).
-   - *Composition:* "Log measurements" (weight, optional body fat, waist, chest, arm; height asked once and stored as `measuredHeightCm`), then bodyweight (7-day average over daily weigh-ins, weekly pace vs the goal), body fat, lean mass, FFMI, waist, waist-to-height, chest and arms. FFMI and waist-to-height only use a height the athlete entered, never the placeholder `heightCm`.
-4. **Athlete Tab (`CharacterTab.tsx`):**
-   - *Focal Point:* Athlete Scorecard (Avatar, goal, 7-day EMA weight, DOTS score, Big 3 total).
-   - *Sub-View Switcher:* `Weekly Muscle Sets` vs. `Strength Balance & Bonuses`.
-   - *Sub-View A:* Israetel/Schoenfeld Hypertrophy Volume Landmarks horizontal bar gauges across 12 muscles.
-   - *Sub-View B:* 7-Pillar Strength Balance Radar.
+   - *Switcher:* `Strength` | `Composition`.
+   - *Strength:* strength levels first (`StrengthLevelsCard`: 6 movement patterns vs bodyweight, a row per movement with its level and progress to the next, "Not logged yet" when unlogged, cardio from watch data; before a weigh-in, a prompt to log weight), then estimated one-rep max per movement type, weekly hard sets, work capacity (only with measured heart rate); then one card per trained muscle (`buildMuscleProgress`, `src/services/muscleProgress.ts`, knowledge-graph principle `sp-muscle-progress`): weekly hard sets for the last 8 weeks as bars against the personal target band (same count as the knowledge graph and cards: main muscle 1, helper 0.5), a strength index (100 = first week; chain-linked weekly change in each exercise's best estimated max, so swaps don't jump it; sets over 15 reps excluded), the muscle's tape measurement when logged, and the exercises that feed it; then the knowledge-graph card (joint load, recovery, Science & Logic).
+   - *Composition:* a `Weight` | `Measurements` switch and **one log button that logs what the switch shows** ("Log weight" or "Log measurements"; the log form has no switch of its own). Weight: weigh-in (optional body fat and other scale readings; height asked once and stored as `measuredHeightCm`), the body composition summary, then bodyweight (7-day average over daily weigh-ins, weekly pace vs the goal), body fat, lean mass and FFMI. Measurements: tape sites, left/right symmetry, waist, waist-to-height, chest, arms and the rest. FFMI and waist-to-height only use a height the athlete entered, never the placeholder `heightCm`.
+4. **No Athlete tab.** It was folded into Progress (bottom nav: Workout, Program, AI Coach, Progress; old `?tab=character` links open Progress). Strength levels are the first card in Progress → Strength. Removed on purpose, don't bring back: the combined Big 3 total and strength-to-weight (DOTS) score (the plans don't train the competition lifts, so it stayed empty or mixed in other lifts), the consistency/steps card (the streak is in the header, active days on the Workout tab, n/24 on Program), and the weekly-sets gauges (weekly sets are a training input: shown on each exercise card and the plan; Progress keeps the 8-week per-muscle cards).
 
 ---
 

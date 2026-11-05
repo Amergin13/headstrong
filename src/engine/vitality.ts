@@ -46,6 +46,8 @@ export function calculateEngineVitalityScore(latestBiometrics?: BiometricLog): n
  * Computes the complete 7-Pillar Radar profile:
  * 6 Strength Movement Pillars + 7th Engine/Vitality Pillar
  */
+const TIER_ORDER = ['Untrained', 'Novice', 'Intermediate', 'Advanced', 'Elite'] as const;
+
 export function generate7PillarRadarData(
   pillarBestE1rm: Record<StrengthPillar, number>,
   bodyweightEmaKg: number,
@@ -65,22 +67,13 @@ export function generate7PillarRadarData(
     const e1rm = pillarBestE1rm[pillar] || 0;
     const std = evaluateStrengthStandard(pillar, e1rm, bodyweightEmaKg, gender);
 
-    // Map tier + subdivision to 0-100 scale:
-    // Untrained: 0 - 25
-    // Novice: 25 - 50
-    // Intermediate: 50 - 75
-    // Advanced: 75 - 90
-    // Elite: 90 - 100
-    const tierOffsets: Record<string, number> = {
-      Untrained: 0,
-      Novice: 25,
-      Intermediate: 50,
-      Advanced: 75,
-      Elite: 90,
-    };
-    const tierBase = tierOffsets[std.tier] ?? 0;
-    const subOffset = (['I', 'II', 'III', 'IV'].indexOf(std.subDivision) / 4) * 20;
-    const pillarScore = Math.min(100, Math.max(15, Math.round(tierBase + subOffset + std.percentageProgress * 0.05)));
+    // Map tier + sub-division onto 0–100 in equal steps: each of the 5 tiers is 20 points wide,
+    // each sub-division 5, plus progress within it. A movement never logged scores 0 (no shape
+    // is drawn for it), never a placeholder.
+    const tierIndex = TIER_ORDER.indexOf(std.tier);
+    const subIndex = (['I', 'II', 'III', 'IV'] as const).indexOf(std.subDivision);
+    const pillarScore =
+      e1rm > 0 ? Math.min(100, Math.round(tierIndex * 20 + subIndex * 5 + (std.percentageProgress / 100) * 5)) : 0;
 
     return {
       pillar,

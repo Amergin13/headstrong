@@ -10,17 +10,23 @@ import {
 } from 'recharts';
 import { BiometricLog, StrengthPillar } from '../../engine/types';
 import { generate7PillarRadarData } from '../../engine/vitality';
+import { evaluateStrengthStandard } from '../../engine/strengthStandards';
 
 const fig = (px: number) => `calc(${px} * var(--f))`;
 
-interface SevenPillarRadarProps {
+interface StrengthLevelsCardProps {
   pillarBestE1rm: Record<StrengthPillar, number>;
   bodyweightEmaKg: number;
   latestBiometrics: BiometricLog;
   gender?: 'male' | 'female';
 }
 
-export const SevenPillarRadar: React.FC<SevenPillarRadarProps> = ({
+/**
+ * Strength levels (Progress → Strength): each of the 6 movement patterns compared with bodyweight
+ * (international strength standards, AGENTS.md §1.4), plus cardio from real watch data. A movement
+ * the athlete hasn't logged shows "Not logged yet", never a level.
+ */
+export const StrengthLevelsCard: React.FC<StrengthLevelsCardProps> = ({
   pillarBestE1rm,
   bodyweightEmaKg,
   latestBiometrics,
@@ -68,30 +74,42 @@ export const SevenPillarRadar: React.FC<SevenPillarRadarProps> = ({
       tier: ps.tier,
       subDivision: ps.subDivision,
       fullMark: 100,
+      key: ps.pillar,
+      logged: ps.pillar === 'Engine / Vitality' ? ps.score > 0 : (pillarBestE1rm[ps.pillar as StrengthPillar] || 0) > 0,
     };
   });
+  const movementRows = chartData
+    .filter((d) => d.pillar !== 'Cardio')
+    .map((d) => {
+      const pillar = d.key as StrengthPillar;
+      const std = evaluateStrengthStandard(pillar, pillarBestE1rm[pillar] || 0, bodyweightEmaKg, gender);
+      return {
+        ...d,
+        progress: std.percentageProgress,
+        next: std.tier === 'Elite' && std.nextTier === 'Elite' ? null : `${std.nextTier} ${std.nextSubDivision}`,
+      };
+    });
 
   const engineScore = pillarScores.find((p) => p.pillar === 'Engine / Vitality')?.score ?? 0;
 
-  const strengthPillars = pillarScores.filter((p) => p.pillar !== 'Engine / Vitality');
-  const avgStrengthScore =
-    strengthPillars.reduce((acc, p) => acc + p.score, 0) / (strengthPillars.length || 1);
-  let overallTierName = 'Untrained';
-  if (avgStrengthScore >= 90) overallTierName = 'Elite';
-  else if (avgStrengthScore >= 75) overallTierName = 'Advanced';
-  else if (avgStrengthScore >= 50) overallTierName = 'Intermediate';
-  else if (avgStrengthScore >= 25) overallTierName = 'Novice';
-
-  const subDivisionIndex = Math.min(3, Math.floor(((avgStrengthScore % 25) / 25) * 4));
-  const subDivisionLabel = ['I', 'II', 'III', 'IV'][subDivisionIndex] || 'I';
-  const overallBadgeText = overallTierName === 'Elite' ? 'Elite' : `${overallTierName} ${subDivisionLabel}`;
+  // Overall level: the average of the movements actually logged, on the same tier and
+  // sub-division scale as each row (never counts an unlogged movement as a low level).
+  const LEVELS = ['Untrained', 'Novice', 'Intermediate', 'Advanced', 'Elite'] as const;
+  const loggedRows = movementRows.filter((r) => r.logged);
+  const overallStep = loggedRows.length
+    ? Math.round(
+        loggedRows.reduce((acc, r) => acc + LEVELS.indexOf(r.tier as (typeof LEVELS)[number]) * 4 + ['I', 'II', 'III', 'IV'].indexOf(r.subDivision ?? 'I'), 0) /
+          loggedRows.length
+      )
+    : 0;
+  const overallBadgeText = `${LEVELS[Math.floor(overallStep / 4)]} ${['I', 'II', 'III', 'IV'][overallStep % 4]}`;
 
   // No lifts logged: no level to show yet (never a placeholder rank).
   if (!Object.values(pillarBestE1rm).some((v) => v > 0)) {
     return (
-      <section aria-label="Strength and Fitness Balance" className="wk-card w-full text-left block">
+      <section aria-label="Strength levels" className="wk-card w-full text-left block">
         <h2 className="wk-h1" style={{ lineHeight: 1.21 }}>
-          Strength &amp; Fitness Balance
+          Strength levels
         </h2>
         <p className="wk-body" style={{ marginTop: fig(24) }}>
           Finish a workout to see your strength level for each movement, compared with your bodyweight.
@@ -101,10 +119,10 @@ export const SevenPillarRadar: React.FC<SevenPillarRadarProps> = ({
   }
 
   return (
-    <section aria-label="Strength and Fitness Balance" className="wk-card w-full text-left block">
+    <section aria-label="Strength levels" className="wk-card w-full text-left block">
       <div className="flex items-start justify-between" style={{ gap: fig(20) }}>
         <h2 className="wk-h1" style={{ lineHeight: 1.21 }}>
-          Strength &amp; Fitness Balance
+          Strength levels
         </h2>
         <span className="wk-pill">{overallBadgeText}</span>
       </div>
@@ -116,7 +134,7 @@ export const SevenPillarRadar: React.FC<SevenPillarRadarProps> = ({
           marginTop: fig(20),
         }}
       >
-        How your 6 movement pillars and cardio compare
+        Your best estimated max on each movement, compared with your bodyweight
       </p>
 
       {/* Radar Chart */}
@@ -166,6 +184,42 @@ export const SevenPillarRadar: React.FC<SevenPillarRadarProps> = ({
           </RadarChart>
         </ResponsiveContainer>
       </div>
+
+      {/* One row per movement: its level and how close the next one is. */}
+      <ul className="flex flex-col" style={{ marginTop: fig(32), gap: fig(28) }} aria-label="Level for each movement">
+        {movementRows.map((row) => (
+          <li key={row.pillar}>
+            <div className="flex items-baseline justify-between" style={{ gap: fig(16) }}>
+              <span className="wk-label" style={{ lineHeight: 1.21 }}>
+                {row.fullName}
+              </span>
+              <span className="font-bold shrink-0" style={{ fontSize: `max(12px, ${fig(26)})`, color: row.logged ? '#fff' : 'var(--wk-muted)' }}>
+                {row.logged ? `${row.tier} ${row.subDivision}` : 'Not logged yet'}
+              </span>
+            </div>
+            {row.logged && (
+              <>
+                <div
+                  className="wk-bar"
+                  style={{ marginTop: fig(14) }}
+                  role="progressbar"
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={row.progress}
+                  aria-label={row.next ? `${row.fullName}: ${row.progress}% of the way to ${row.next}` : `${row.fullName}: top level`}
+                >
+                  <div style={{ width: `${row.next ? row.progress : 100}%` }} />
+                </div>
+                {row.next && (
+                  <span className="block" style={{ marginTop: fig(10), fontSize: `max(12px, ${fig(24)})`, color: 'var(--wk-muted)' }}>
+                    Next: {row.next}
+                  </span>
+                )}
+              </>
+            )}
+          </li>
+        ))}
+      </ul>
 
       {/* Cardio & Recovery Bar Row — ProgramProgressCard anatomy */}
       <div

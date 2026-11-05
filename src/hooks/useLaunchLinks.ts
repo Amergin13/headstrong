@@ -41,7 +41,10 @@ export function useLaunchLinks(handlers: LaunchLinkHandlers) {
 
     if (tabParam === 'chat') {
       handlers.onOpenCoach();
-    } else if (tabParam && ['train', 'character', 'analytics', 'program'].includes(tabParam)) {
+    } else if (tabParam === 'character') {
+      // The Athlete tab is now part of Progress; old links and shortcuts land there.
+      handlers.onOpenTab('analytics');
+    } else if (tabParam && ['train', 'analytics', 'program'].includes(tabParam)) {
       handlers.onOpenTab(tabParam as TabId);
     }
 

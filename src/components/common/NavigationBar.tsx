@@ -1,8 +1,8 @@
 import React from 'react';
-import { Dumbbell, CalendarDays, TrendingUp, Shield, MessageSquare } from 'lucide-react';
+import { Dumbbell, CalendarDays, TrendingUp, MessageSquare } from 'lucide-react';
 import { triggerHaptic } from '../../utils/haptics';
 
-export type TabId = 'train' | 'program' | 'chat' | 'analytics' | 'character';
+export type TabId = 'train' | 'program' | 'chat' | 'analytics';
 
 interface NavigationBarProps {
   activeTab: TabId;
@@ -22,7 +22,6 @@ export const NavigationBar: React.FC<NavigationBarProps> = ({
     { id: 'program', label: 'Program', icon: CalendarDays },
     { id: 'chat', label: 'AI Coach', icon: MessageSquare },
     { id: 'analytics', label: 'Progress', icon: TrendingUp },
-    { id: 'character', label: 'Athlete', icon: Shield },
   ] as const;
 
   return (
@@ -30,7 +29,7 @@ export const NavigationBar: React.FC<NavigationBarProps> = ({
       aria-label="Primary Bottom Navigation"
       className="fixed bottom-0 left-0 right-0 z-40 bg-[#13181C]/95 backdrop-blur-2xl border-t border-white/[0.06] px-2 pt-1 pb-safe shadow-[0_-4px_24px_rgba(0,0,0,0.6)]"
     >
-      <div className="max-w-md mx-auto grid grid-cols-5 h-14">
+      <div className="max-w-md mx-auto grid grid-cols-4 h-14">
         {tabs.map((tab) => {
           const Icon = tab.icon;
           const isActive = tab.id === 'chat' ? isChatOpen : (!isChatOpen && activeTab === tab.id);

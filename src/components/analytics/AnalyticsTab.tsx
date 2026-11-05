@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Scale, Ruler, Bluetooth } from 'lucide-react';
-import { BiometricLog, BodyMeasurementSite, ExerciseDefinition, UserProfile, WorkoutSession } from '../../engine/types';
+import { BiometricLog, BodyMeasurementSite, ExerciseDefinition, StrengthPillar, UserProfile, WorkoutSession } from '../../engine/types';
+import { StrengthLevelsCard } from './StrengthLevelsCard';
 import { buildBodyCompositionKnowledgeGraph } from '../../engine/knowledgeGraph';
 import { LogModalMode, MeasurementEntry, WeightLogModal } from './WeightLogModal';
 import { KnowledgeGraphCard } from './KnowledgeGraphCard';
@@ -40,6 +41,9 @@ interface AnalyticsTabProps {
   biometrics: BiometricLog[];
   profile: UserProfile;
   bodyweightEmaKg: number;
+  /** Best estimated max per movement pattern (same numbers the Workout tab's milestones use). */
+  pillarBestE1rm: Record<StrengthPillar, number>;
+  latestBiometrics: BiometricLog;
   exerciseCatalog: ExerciseDefinition[];
   weeklyVolume: Record<string, number>;
   onSaveMeasurements: (entry: MeasurementEntry) => void;
@@ -48,14 +52,17 @@ interface AnalyticsTabProps {
   onLogWeightRequestHandled?: () => void;
 }
 
-type ProgressView = 'strength' | 'muscles' | 'composition';
-type CompositionFilter = 'all' | 'scale' | 'tape';
+/** Strength (lifts and each muscle) or Composition (weight and tape measurements). */
+type ProgressView = 'strength' | 'composition';
+type CompositionView = 'weight' | 'measurements';
 
 export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
   workouts,
   biometrics,
   profile,
   bodyweightEmaKg,
+  pillarBestE1rm,
+  latestBiometrics,
   exerciseCatalog,
   weeklyVolume,
   onSaveMeasurements,
@@ -63,7 +70,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
   onLogWeightRequestHandled,
 }) => {
   const [activeView, setActiveView] = useState<ProgressView>('strength');
-  const [compositionFilter, setCompositionFilter] = useState<CompositionFilter>('all');
+  const [compositionView, setCompositionView] = useState<CompositionView>('weight');
   const [showLogModal, setShowLogModal] = useState(false);
   const [logModalMode, setLogModalMode] = useState<LogModalMode>('weight');
   const [logModalSite, setLogModalSite] = useState<BodyMeasurementSite>('waist');
@@ -106,12 +113,13 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
     () => buildBodyCompositionKnowledgeGraph(biometrics, profile, fmt),
     [biometrics, profile, fmt]
   );
-  const filteredCompositionCharts = useMemo(() => {
-    if (compositionFilter === 'all') return compositionCharts;
-    return compositionCharts.filter((c) => c.category === compositionFilter);
-  }, [compositionCharts, compositionFilter]);
+  const visibleCompositionCharts = useMemo(
+    () => compositionCharts.filter((c) => c.category === (compositionView === 'weight' ? 'scale' : 'tape')),
+    [compositionCharts, compositionView]
+  );
 
   const openLogWeight = () => {
+    setCompositionView('weight');
     setLogModalMode('weight');
     setShowLogModal(true);
   };
@@ -125,6 +133,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
   }, [openLogWeightRequest]);
 
   const openLogMeasurements = (site: BodyMeasurementSite = 'waist') => {
+    setCompositionView('measurements');
     setLogModalMode('measurements');
     setLogModalSite(site);
     setShowLogModal(true);
@@ -138,40 +147,23 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
     }
   };
 
-  const segment = (view: ProgressView, label: string) => (
+  /** One button of a two-way switch (top: Strength / Composition; inside Composition: Weight / Measurements). */
+  const segment = (selected: boolean, label: string, onSelect: () => void, size: 'page' | 'sub' = 'page') => (
     <button
       type="button"
-      aria-pressed={activeView === view}
+      aria-pressed={selected}
       onClick={() => {
         triggerHaptic('light');
-        setActiveView(view);
+        onSelect();
       }}
       className="flex items-center justify-center font-bold uppercase transition-colors"
       style={{
         minHeight: 44,
-        height: fig(96),
+        height: fig(size === 'page' ? 96 : 84),
         borderRadius: fig(22),
         fontSize: `max(12px, ${fig(24)})`,
-        background: activeView === view ? 'var(--wk-pill)' : 'transparent',
-        color: activeView === view ? '#fff' : 'var(--wk-muted)',
-      }}
-    >
-      {label}
-    </button>
-  );
-
-  const filterPill = (filter: CompositionFilter, label: string) => (
-    <button
-      type="button"
-      aria-pressed={compositionFilter === filter}
-      onClick={() => {
-        triggerHaptic('light');
-        setCompositionFilter(filter);
-      }}
-      className="px-3.5 py-2 rounded-full text-xs font-bold transition-colors min-h-[44px]"
-      style={{
-        background: compositionFilter === filter ? 'var(--wk-pill)' : 'var(--wk-card)',
-        color: compositionFilter === filter ? '#fff' : 'var(--wk-muted)',
+        background: selected ? 'var(--wk-pill)' : 'transparent',
+        color: selected ? '#fff' : 'var(--wk-muted)',
       }}
     >
       {label}
@@ -186,6 +178,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
   const handleSaveAndShowComposition = (entry: MeasurementEntry) => {
     onSaveMeasurements(entry);
     setActiveView('composition');
+    setCompositionView(logModalMode === 'weight' ? 'weight' : 'measurements');
   };
 
   return (
@@ -197,81 +190,57 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
         <div
           role="group"
           aria-label="Progress category"
-          className="grid grid-cols-3"
+          className="grid grid-cols-2"
           style={{ marginTop: fig(40), padding: fig(8), gap: fig(8), borderRadius: fig(30), background: 'var(--wk-card)' }}
         >
-          {segment('strength', 'Strength')}
-          {segment('muscles', 'Muscles')}
-          {segment('composition', 'Body')}
+          {segment(activeView === 'strength', 'Strength', () => setActiveView('strength'))}
+          {segment(activeView === 'composition', 'Composition', () => setActiveView('composition'))}
         </div>
       </header>
 
       <div className="flex flex-col" style={{ gap: fig(22), marginTop: fig(40) }}>
-        {/* Separated Weight vs Measurements Actions — Always visible at the top of Progress */}
-        <div className="space-y-2">
-          <div className="grid grid-cols-2 gap-2.5">
-            <button
-              type="button"
-              onClick={() => {
-                triggerHaptic('light');
-                openLogWeight();
-              }}
-              aria-label="Log weight manually or step on RENPHO scale"
-              className="wk-button gap-2"
-              style={{ background: 'var(--wk-accent)', color: '#13181C' }}
-            >
-              <Scale className="w-4 h-4 stroke-[2]" />
-              <span>Log weight</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                triggerHaptic('light');
-                openLogMeasurements('waist');
-              }}
-              aria-label="Log body tape measurements"
-              className="wk-button gap-2"
-              style={{ background: 'var(--wk-card)', color: '#fff' }}
-            >
-              <Ruler className="w-4 h-4 stroke-[2]" />
-              <span>Log measurements</span>
-            </button>
-          </div>
-
-          {(savedRenpho.scale || savedRenpho.tape) && (
-            <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 rounded-xl" style={{ background: 'var(--wk-card)' }}>
-              <div className="flex items-center gap-1.5 text-xs font-semibold text-[#00F19F]">
-                <Bluetooth className="w-3.5 h-3.5 stroke-[2]" />
-                <span>
-                  Remembered:{' '}
-                  {[savedRenpho.scale?.name, savedRenpho.tape?.name].filter(Boolean).join(' · ')}
-                </span>
-              </div>
-              {(savedRenpho.scale?.lastSummary || savedRenpho.tape?.lastSummary) && (
-                <span className="text-xs text-[#C6C6C6]">
-                  Last: {savedRenpho.scale?.lastSummary ?? savedRenpho.tape?.lastSummary}
-                </span>
-              )}
-            </div>
-          )}
-        </div>
-
-        {activeView === 'muscles' ? (
-          muscleProgress.length > 0 ? (
-            muscleProgress.map((m) => <MuscleProgressCard key={m.key} progress={m} formatLength={fmt.length} />)
-          ) : (
-            <div className="wk-card">
-              <h2 className="wk-h1">Muscles</h2>
-              <p className="wk-body" style={{ marginTop: fig(24) }}>
-                Finish a workout to see each muscle's weekly sets, strength and size here.
-              </p>
-            </div>
-          )
-        ) : activeView === 'strength' ? (
+        {activeView === 'strength' ? (
           <>
+            {hasBodyweight ? (
+              <StrengthLevelsCard
+                pillarBestE1rm={pillarBestE1rm}
+                bodyweightEmaKg={bodyweightEmaKg}
+                latestBiometrics={latestBiometrics}
+                gender={profile.gender}
+              />
+            ) : (
+              <div className="wk-card">
+                <h2 className="wk-h1">Strength levels</h2>
+                <p className="wk-body" style={{ marginTop: fig(24) }}>
+                  Strength levels compare what you lift with your bodyweight. Log your weight in Composition to see them.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    triggerHaptic('light');
+                    setActiveView('composition');
+                    openLogWeight();
+                  }}
+                  className="wk-button"
+                  style={{ marginTop: fig(28), background: 'var(--wk-raised)', color: '#fff' }}
+                >
+                  Log weight
+                </button>
+              </div>
+            )}
             {strengthCharts.map((chart) => (
               <ProgressChartCard key={chart.id} chart={chart} />
             ))}
+            {muscleProgress.length > 0 ? (
+              muscleProgress.map((m) => <MuscleProgressCard key={m.key} progress={m} formatLength={fmt.length} />)
+            ) : (
+              <div className="wk-card">
+                <h2 className="wk-h1">Muscles</h2>
+                <p className="wk-body" style={{ marginTop: fig(24) }}>
+                  Finish a workout to see each muscle's weekly sets, strength and size here.
+                </p>
+              </div>
+            )}
             {/* How progress is worked out, joint load and recovery insights. */}
             <KnowledgeGraphCard
               workouts={workouts}
@@ -285,65 +254,74 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
           <>
             <div
               role="group"
-              aria-label="Filter composition metrics"
-              className="grid grid-cols-3 gap-2"
+              aria-label="Weight or measurements"
+              className="grid grid-cols-2"
+              style={{ padding: fig(8), gap: fig(8), borderRadius: fig(30), background: 'var(--wk-card)' }}
             >
-              {filterPill('all', 'All Metrics')}
-              {filterPill('scale', 'Scale')}
-              {filterPill('tape', 'Tape')}
+              {segment(compositionView === 'weight', 'Weight', () => setCompositionView('weight'), 'sub')}
+              {segment(compositionView === 'measurements', 'Measurements', () => setCompositionView('measurements'), 'sub')}
             </div>
 
-            {(bodyComposition.populatedScaleCount > 0 || bodyComposition.populatedTapeCount > 0) && (
-              <div className="wk-card space-y-3">
-                <div className="flex items-center justify-between gap-2">
-                  <h2 className="wk-h2 text-white">Body composition and symmetry</h2>
-                  <span className="text-xs font-bold text-[#00F19F]">
-                    {[
-                      bodyComposition.populatedScaleCount > 0 &&
-                        `${bodyComposition.populatedScaleCount} scale ${bodyComposition.populatedScaleCount === 1 ? 'measure' : 'measures'}`,
-                      bodyComposition.populatedTapeCount > 0 &&
-                        `${bodyComposition.populatedTapeCount} tape ${bodyComposition.populatedTapeCount === 1 ? 'site' : 'sites'}`,
-                    ]
-                      .filter(Boolean)
-                      .join(' · ')}
-                  </span>
-                </div>
-                <p className="wk-body text-[#C6C6C6]">{bodyComposition.recompositionSummary}</p>
+            {/* One log button: it logs whatever the tab above shows. */}
+            <button
+              type="button"
+              onClick={() => {
+                triggerHaptic('light');
+                if (compositionView === 'weight') openLogWeight();
+                else openLogMeasurements('waist');
+              }}
+              className="wk-button gap-2"
+              style={{ background: 'var(--wk-accent)', color: '#13181C' }}
+            >
+              {compositionView === 'weight' ? <Scale className="w-4 h-4 stroke-[2]" /> : <Ruler className="w-4 h-4 stroke-[2]" />}
+              <span>{compositionView === 'weight' ? 'Log weight' : 'Log measurements'}</span>
+            </button>
 
-                {measuredSymmetryPairs.length > 0 && (
+            {(compositionView === 'weight' ? savedRenpho.scale : savedRenpho.tape) && (
+              <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 rounded-xl" style={{ background: 'var(--wk-card)' }}>
+                <div className="flex items-center gap-1.5 text-xs font-semibold text-[#00F19F]">
+                  <Bluetooth className="w-3.5 h-3.5 stroke-[2]" />
+                  <span>Remembered: {(compositionView === 'weight' ? savedRenpho.scale : savedRenpho.tape)?.name}</span>
+                </div>
+                {(compositionView === 'weight' ? savedRenpho.scale : savedRenpho.tape)?.lastSummary && (
+                  <span className="text-xs text-[#C6C6C6]">
+                    Last: {(compositionView === 'weight' ? savedRenpho.scale : savedRenpho.tape)?.lastSummary}
+                  </span>
+                )}
+              </div>
+            )}
+
+            {(compositionView === 'weight'
+              ? bodyComposition.populatedScaleCount > 0
+              : bodyComposition.populatedTapeCount > 0) && (
+              <div className="wk-card space-y-3">
+                <h2 className="wk-h2 text-white">{compositionView === 'weight' ? 'Body composition' : 'Symmetry'}</h2>
+                {compositionView === 'weight' ? (
+                  <p className="wk-body text-[#C6C6C6]">{bodyComposition.recompositionSummary}</p>
+                ) : measuredSymmetryPairs.length > 0 ? (
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1">
                     {measuredSymmetryPairs.map((pair) => (
-                      <div
-                        key={pair.id}
-                        className="rounded-xl p-2.5"
-                        style={{ background: 'var(--wk-surface)' }}
-                      >
-                        <span className="block text-xs text-[#AAABAD] font-semibold">
-                          {pair.label}
-                        </span>
+                      <div key={pair.id} className="rounded-xl p-2.5" style={{ background: 'var(--wk-surface)' }}>
+                        <span className="block text-xs text-[#AAABAD] font-semibold">{pair.label}</span>
                         <span className="block text-sm font-bold text-white font-mono mt-0.5">
                           L {fmt.length(pair.leftCm!)} · R {fmt.length(pair.rightCm!)}
                         </span>
                         <span className="block text-xs text-[#00F19F] mt-0.5">
                           {pair.status === 'balanced'
                             ? 'Balanced'
-                            : `${pair.dominantSide === 'right' ? 'Right' : 'Left'} +${fmt.length(
-                                Math.abs(pair.diffCm ?? 0)
-                              )}`}
+                            : `${pair.dominantSide === 'right' ? 'Right' : 'Left'} +${fmt.length(Math.abs(pair.diffCm ?? 0))}`}
                         </span>
                       </div>
                     ))}
                   </div>
+                ) : (
+                  <p className="wk-body text-[#C6C6C6]">Measure both arms, thighs or calves to compare your left and right sides.</p>
                 )}
               </div>
             )}
 
-            {filteredCompositionCharts.map((chart) => (
-              <ProgressChartCard
-                key={chart.id}
-                chart={chart}
-                onOpen={() => openLogForChart(chart)}
-              />
+            {visibleCompositionCharts.map((chart) => (
+              <ProgressChartCard key={chart.id} chart={chart} onOpen={() => openLogForChart(chart)} />
             ))}
           </>
         )}

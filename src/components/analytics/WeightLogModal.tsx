@@ -108,7 +108,8 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
   const fromCmToDisplay = (cm: number) =>
     Math.round((imperial ? cm / CM_PER_IN : cm) * 10) / 10;
 
-  const [mode, setMode] = useState<LogModalMode>(initialMode);
+  // The Progress tab's Weight / Measurements tab decides what this form logs.
+  const mode: LogModalMode = initialMode;
 
   const todayStr = localDateString();
   const todayLog = useMemo(
@@ -672,47 +673,6 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
             className="w-11 h-11 rounded-full bg-[#3B4044] hover:bg-[#474D50] flex items-center justify-center text-[#C6C6C6] hover:text-white"
           >
             <X className="w-4 h-4 stroke-[2]" />
-          </button>
-        </div>
-
-        {/* Separated Mode Switcher: Weight & Scale vs Body Measurements */}
-        <div
-          role="group"
-          aria-label="Choose what to log"
-          className="grid grid-cols-2 gap-2 p-1 rounded-2xl"
-          style={{ background: 'var(--wk-surface)' }}
-        >
-          <button
-            type="button"
-            aria-pressed={mode === 'weight'}
-            onClick={() => {
-              setBleError(null);
-              setMode('weight');
-            }}
-            className="flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-xs font-bold transition-colors min-h-[44px]"
-            style={{
-              background: mode === 'weight' ? 'var(--wk-pill)' : 'transparent',
-              color: mode === 'weight' ? '#fff' : 'var(--wk-muted)',
-            }}
-          >
-            <Scale className="w-4 h-4 stroke-[2]" />
-            <span>Weight & Scale</span>
-          </button>
-          <button
-            type="button"
-            aria-pressed={mode === 'measurements'}
-            onClick={() => {
-              setBleError(null);
-              setMode('measurements');
-            }}
-            className="flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-xs font-bold transition-colors min-h-[44px]"
-            style={{
-              background: mode === 'measurements' ? 'var(--wk-pill)' : 'transparent',
-              color: mode === 'measurements' ? '#fff' : 'var(--wk-muted)',
-            }}
-          >
-            <Ruler className="w-4 h-4 stroke-[2]" />
-            <span>Tape Measurements (12)</span>
           </button>
         </div>
 

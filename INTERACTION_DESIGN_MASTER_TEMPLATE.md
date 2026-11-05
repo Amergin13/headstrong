@@ -39,11 +39,11 @@ Every screen, card, modal, and control in Treise is governed by three non-negoti
 ├───────────────────────────────────────────────────────────────────────────┤
 │                                                                           │
 │                            ACTIVE TAB CONTENT                             │
-│       (Workout [train] | Program [program] | Progress [analytics] |       │
-│                             Athlete [character])                          │
+│       (Workout [train] | Program [program] | AI Coach [chat] |            │
+│                         Progress [analytics])                             │
 │                                                                           │
 ├───────────────────────────────────────────────────────────────────────────┤
-│   🏋️ Workout       📅 Program          📈 Progress         🛡️ Athlete     │ <- Bottom Nav
+│   🏋️ Workout       📅 Program          💬 AI Coach         📈 Progress    │ <- Bottom Nav
 └───────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -63,8 +63,9 @@ Every screen, card, modal, and control in Treise is governed by three non-negoti
 - **Grid Layout:** Strict 4-column balanced grid (`grid-cols-4`).
   1. `train` &rarr; **Workout** (Icon: `Dumbbell`, stroke `[2]`).
   2. `program` &rarr; **Program** (Icon: `CalendarDays`, stroke `[2]`).
-  3. `analytics` &rarr; **Progress** (Icon: `TrendingUp`, stroke `[2]`).
-  4. `character` &rarr; **Athlete** (Icon: `Shield`, stroke `[2]`).
+  3. `chat` &rarr; **AI Coach** (Icon: `MessageSquare`, stroke `[2]`).
+  4. `analytics` &rarr; **Progress** (Icon: `TrendingUp`, stroke `[2]`).
+  - The Athlete tab (`character`) was folded into Progress: strength levels live in Progress → Strength; the Big 3 total, strength-to-weight score, consistency card and weekly-sets gauges were removed. Old `?tab=character` links open Progress.
 - **Interactive State:**
   - Active: Text and icon highlight in `text-brand-primary` / `text-white` with bold label.
   - Inactive: Subdued `text-slate-400`.
@@ -248,52 +249,14 @@ Every screen, card, modal, and control in Treise is governed by three non-negoti
 
 ---
 
-## 6. Page 4: Athlete Tab (`CharacterTab.tsx`)
+## 6. Page 4: Athlete Tab (removed)
 
-**Primary Purpose:** Celebrate athlete mastery, relative strength standards (DOTS), and muscle balance.  
-**Focal Point:** Athlete Scorecard & Big 3 Strength Benchmarks.
-
-```
-┌───────────────────────────────────────────────────────────────────────────┐
-│ 1. ATHLETE SCORECARD & BENCHMARKS                                         │
-│    (B) Benen Taylor  Lv.4                                 Goal: Build     │
-│        82.4 kg bodyweight (7-day average)                                 │
-│    ┌──────────────────────────────────┐  ┌───────────────────────────┐    │
-│    │ Strength-to-Weight Score         │  │ Combined Big 3 Max        │    │
-│    │ 364 pts                          │  │ 412 kg (5.0x BW)          │    │
-│    │ Adjusted for 82.4 kg weight      │  │ Squat 140 • Bench 112 • DL│    │
-│    └──────────────────────────────────┘  └───────────────────────────┘    │
-├───────────────────────────────────────────────────────────────────────────┤
-│ 2. SUB-VIEW SWITCHER                                                      │
-│    [   Weekly Muscle Sets (Active)    |    Strength Balance & Bonuses    ]│
-├───────────────────────────────────────────────────────────────────────────┤
-│ SUB-VIEW A: WEEKLY MUSCLE SETS                                            │
-│ • Israetel & Schoenfeld Hypertrophy Volume Landmarks Tracker              │
-│   Horizontal bar charts tracking 12 muscle groups against MV/MEV/MAV/MRV  │
-│   Includes 0.5x synergist credits and excludes warmup sets.               │
-├───────────────────────────────────────────────────────────────────────────┤
-│ SUB-VIEW B: STRENGTH BALANCE & BONUSES (When toggled)                      │
-│ 1. 7-Pillar Strength Balance Radar (6 Strength Pillars + Vitality Engine) │
-│ 2. Active Gamification Bonuses (Streak Safe & 1.25x Active Bonus)         │
-└───────────────────────────────────────────────────────────────────────────┘
-```
-
-### Section-by-Section Anatomy & Layout Order:
-1. **Section 4.1: Athlete Scorecard Header**
-   - Athlete Avatar initial container, Name, Level badge (`Lv.X`), 7-day EMA bodyweight, and active Goal badge.
-2. **Section 4.2: Key Strength Benchmarks (2-Column Grid)**
-   - *Left Tile:* **Strength-to-Weight Score (DOTS):** Official DOTS polynomial score adjusted for 7-day EMA bodyweight.
-   - *Right Tile:* **Combined Big 3 Max:** Sum of Squat + Bench + Deadlift E1RM with bodyweight multiplier ratio (e.g., $5.0\times\text{ BW}$).
-3. **Section 4.3: 2-Way Sub-View Switcher**
-   - `[ Weekly Muscle Sets ]` vs. `[ Strength Balance & Bonuses ]`.
-4. **Section 4.4 (Sub-View A): Weekly Muscle Volume Landmarks (`VolumeTracker.tsx`)**
-   - Horizontal volume gauge for all 12 muscle groups.
-   - Color-coded zones for Maintenance (MV), Minimum Effective (MEV), Optimal Hypertrophy (MAV), and Overreaching (MRV).
-5. **Section 4.5 (Sub-View B): 7-Pillar Strength Balance Radar (`SevenPillarRadar.tsx`)**
-   - Radar chart mapping: Squat, Hinge, Horizontal Push, Vertical Push, Horizontal Pull, Vertical Pull, and Vitality Engine.
-6. **Section 4.6 (Sub-View B): Active Gamification Bonuses Card**
-   - *Streak Safe:* Confirms streak protection on rest and recovery days.
-   - *1.25x Metabolic Momentum Bonus:* Displays qualification status ($\ge 30\text{ AZM} + \ge 8{,}500\text{ steps}$).
+The Athlete tab was folded into Progress. What it showed, and where it went:
+- **Strength levels** (6 movement patterns compared with bodyweight, plus cardio from watch data): Progress → Strength, first card (`StrengthLevelsCard.tsx`), with one row per movement (level, progress to the next, "Not logged yet" when unlogged).
+- **Weekly sets per muscle:** removed here. Weekly sets are a training input, tracked where training happens: each exercise card on the Workout tab (this week's sets vs target) and the plan on the Program tab. Progress keeps the per-muscle cards because they show change over 8 weeks next to strength and size.
+- **Combined Big 3 total and strength-to-weight (DOTS) score:** removed. The starter plans don't train the competition squat, bench and deadlift, so the total stayed empty or mixed in other lifts; strength levels cover each movement instead.
+- **Consistency & activity:** removed. The streak is in the header, active days on the Workout tab, and the plan's n/24 on the Program tab.
+- **Name, photo and goal:** the header avatar (sign-in) and Program → Settings (goal).
 
 ---
 

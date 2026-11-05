@@ -21,7 +21,7 @@ import { ActivityLog } from '../../engine/activeDays';
 import { CustomExerciseModal } from './CustomExerciseModal';
 import { MesocycleManager } from './MesocycleManager';
 import { ProductGovernanceModal } from './ProductGovernanceModal';
-import { GoalPhaseSwitcher } from '../character/GoalPhaseSwitcher';
+import { GoalPhaseSwitcher } from './GoalPhaseSwitcher';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { triggerHaptic } from '../../utils/haptics';
 import { GPU_MODEL_DOWNLOAD_LABEL, isGpuModelReady, removeGpuModel } from '../../services/gpuModel';

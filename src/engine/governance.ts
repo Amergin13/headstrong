@@ -266,7 +266,7 @@ export const INITIAL_GOVERNANCE_ITEMS: GovernanceChangeItem[] = [
     rationale:
       'Customer needs dictate zero-guesswork progression and cross-environment continuity. The Interaction Design Master Template (INTERACTION_DESIGN_MASTER_TEMPLATE.md) and Product Requirements Spec (PRODUCT_REQUIREMENTS_SPEC.md) codify the exact page layouts, focal points, and section hierarchies.',
     whatWorkedWell:
-      'Provides an immutable structural contract for the 4 primary tabs (Workout, Program, Progress, Athlete) and all modal flows. Prevents regressions, duplicate controls, or calendar-bound day tabs.',
+      'Provides an immutable structural contract for the 4 primary tabs (Workout, Program, AI Coach, Progress) and all modal flows. Prevents regressions, duplicate controls, or calendar-bound day tabs.',
     critiqueAndRisks:
       'Sessions must not iterate on, rearrange, or redesign what has been agreed as complete and final.',
     lockedInvariant:
@@ -279,7 +279,7 @@ export const INITIAL_GOVERNANCE_ITEMS: GovernanceChangeItem[] = [
       'src/components/train/TrainTab.tsx',
       'src/components/program/ProgramTab.tsx',
       'src/components/analytics/AnalyticsTab.tsx',
-      'src/components/character/CharacterTab.tsx',
+      'src/components/analytics/StrengthLevelsCard.tsx',
     ],
   },
   {

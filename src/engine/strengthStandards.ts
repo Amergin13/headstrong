@@ -70,64 +70,32 @@ export function evaluateStrengthStandard(
   const thresholds = getThresholds(pillar, gender);
   const [untrained, novice, intermediate, advanced, elite] = thresholds;
 
-  // Define tier segments:
-  // Below untrained:
-  if (ratio < untrained) {
-    const step = untrained / 4;
-    const subIdx = Math.min(3, Math.floor(ratio / step));
-    const nextSubIdx = (subIdx + 1) as 1 | 2 | 3 | 4;
-    const targetRatio = nextSubIdx === 4 ? untrained : (subIdx + 1) * step;
-    const prevRatio = subIdx * step;
-    const progress = Math.min(100, Math.max(0, ((ratio - prevRatio) / step) * 100));
-
-    return {
-      ratio,
-      tier: 'Untrained',
-      subDivision: SUB_DIVISIONS[subIdx],
-      nextTier: nextSubIdx === 4 ? 'Novice' : 'Untrained',
-      nextSubDivision: nextSubIdx === 4 ? 'I' : SUB_DIVISIONS[subIdx + 1],
-      targetRatio,
-      percentageProgress: Math.round(progress),
-    };
-  }
-
-  // Segment helper:
-  const checkTierRange = (
-    currentTier: StrengthTier,
-    nextTierName: StrengthTier,
-    lower: number,
-    upper: number
-  ) => {
+  // Each tier runs from its own threshold up to the next tier's, in 4 equal sub-divisions
+  // (AGENTS.md §1.4: Δ = (Threshold_{T+1} − Threshold_T) / 4). On the male squat: Untrained 0.75–1.20,
+  // Novice 1.20–1.50, Intermediate 1.50–2.00, Advanced 2.00–2.50, Elite 2.50+.
+  const tierRange = (currentTier: StrengthTier, nextTierName: StrengthTier, lower: number, upper: number) => {
     const step = (upper - lower) / 4;
-    const offset = ratio - lower;
-    const subIdx = Math.min(3, Math.floor(offset / step));
-    const prevRatio = lower + subIdx * step;
+    const subIdx = Math.max(0, Math.min(3, Math.floor((ratio - lower) / step)));
+    // Below the Untrained threshold there is no lower tier: it is all Untrained I, measured from 0.
+    const prevRatio = ratio < lower ? 0 : lower + subIdx * step;
     const nextTargetRatio = subIdx === 3 ? upper : lower + (subIdx + 1) * step;
-    const progress = Math.min(100, Math.max(0, ((ratio - prevRatio) / step) * 100));
+    const progress = Math.min(100, Math.max(0, ((ratio - prevRatio) / (nextTargetRatio - prevRatio)) * 100));
 
     return {
       ratio,
       tier: currentTier,
       subDivision: SUB_DIVISIONS[subIdx],
       nextTier: subIdx === 3 ? nextTierName : currentTier,
-      nextSubDivision: subIdx === 3 ? 'I' : SUB_DIVISIONS[subIdx + 1],
+      nextSubDivision: subIdx === 3 ? ('I' as SubDivision) : SUB_DIVISIONS[subIdx + 1],
       targetRatio: nextTargetRatio,
       percentageProgress: Math.round(progress),
     };
   };
 
-  if (ratio < novice) {
-    return checkTierRange('Novice', 'Intermediate', untrained, novice);
-  }
-  if (ratio < intermediate) {
-    return checkTierRange('Intermediate', 'Advanced', novice, intermediate);
-  }
-  if (ratio < advanced) {
-    return checkTierRange('Intermediate', 'Advanced', intermediate, advanced);
-  }
-  if (ratio < elite) {
-    return checkTierRange('Advanced', 'Elite', advanced, elite);
-  }
+  if (ratio < novice) return tierRange('Untrained', 'Novice', untrained, novice);
+  if (ratio < intermediate) return tierRange('Novice', 'Intermediate', novice, intermediate);
+  if (ratio < advanced) return tierRange('Intermediate', 'Advanced', intermediate, advanced);
+  if (ratio < elite) return tierRange('Advanced', 'Elite', advanced, elite);
 
   // Elite and beyond
   const eliteStep = (elite * 0.25) / 4;

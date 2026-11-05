@@ -146,6 +146,27 @@ const squatStd = evaluateStrengthStandard('Squat', 120, 80, 'male');
 assert(squatStd.tier === 'Intermediate', `120kg squat @ 80kg BW is Intermediate (got ${squatStd.tier})`);
 assert(squatStd.subDivision === 'I', `120kg squat @ 80kg BW is Sub-division I (got ${squatStd.subDivision})`);
 
+// Each tier runs from its own threshold to the next one (no tier is used twice, none is skipped).
+{
+  const lvl = (ratio: number) => {
+    const r = evaluateStrengthStandard('Squat', ratio * 100, 100, 'male');
+    return `${r.tier} ${r.subDivision}`;
+  };
+  const cases: [number, string][] = [
+    [0.3, 'Untrained I'], [0.75, 'Untrained I'], [0.87, 'Untrained II'], [1.19, 'Untrained IV'],
+    [1.2, 'Novice I'], [1.49, 'Novice IV'],
+    [1.5, 'Intermediate I'], [1.99, 'Intermediate IV'],
+    [2.0, 'Advanced I'], [2.49, 'Advanced IV'],
+    [2.5, 'Elite I'],
+  ];
+  const wrong = cases.filter(([ratio, want]) => lvl(ratio) !== want).map(([ratio, want]) => `${ratio}x: ${lvl(ratio)} (want ${want})`);
+  assert(wrong.length === 0, `Squat levels follow the standards table: Untrained 0.75–1.20, Novice 1.20–1.50, Intermediate 1.50–2.00, Advanced 2.00–2.50, Elite 2.50+ (${wrong.join('; ') || 'all match'})`);
+  const below = evaluateStrengthStandard('Squat', 30, 100, 'male');
+  const top = evaluateStrengthStandard('Squat', 119, 100, 'male');
+  assert(below.nextTier === 'Untrained' && below.nextSubDivision === 'II' && below.percentageProgress > 0 && below.percentageProgress < 100, 'Below the Untrained standard: Untrained I, working towards Untrained II');
+  assert(top.nextTier === 'Novice' && top.nextSubDivision === 'I' && Math.abs(top.targetRatio - 1.2) < 1e-9, 'Untrained IV leads to Novice I at the Novice threshold');
+}
+
 const quest = calculateSubTierQuest('Squat', 120, 80, 100, 8, 'barbell', false, false, 'male');
 assert(quest.displayText.includes('reach Intermediate II'), `Quest points to next sub-division (got ${quest.displayText})`);
 
@@ -252,6 +273,12 @@ const radar = generate7PillarRadarData(
 );
 assert(radar.length === 7, `Radar contains 7 pillars (got ${radar.length})`);
 assert(radar.some((p) => p.pillar === 'Engine / Vitality'), `Radar includes 7th Pillar Engine / Vitality`);
+{
+  const partial = generate7PillarRadarData({ Squat: 160, Hinge: 0, 'Horizontal Push': 0, 'Vertical Push': 0, 'Horizontal Pull': 0, 'Vertical Pull': 0 }, 80, undefined, 'male');
+  const squatScore = partial.find((p) => p.pillar === 'Squat')!.score;
+  assert(partial.filter((p) => p.pillar !== 'Squat' && p.pillar !== 'Engine / Vitality').every((p) => p.score === 0), 'A movement never logged scores 0 on the radar (no placeholder level)');
+  assert(squatScore === 60, `Radar steps are equal: Advanced I (2.0x squat) scores 60 (got ${squatScore})`);
+}
 
 // 9. Hypertrophy Volume Landmarks Engine
 console.log('\n[9. Authoritative Hypertrophy Volume Landmarks (RP & Schoenfeld)]');
@@ -4040,7 +4067,7 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
         if (truth.has(ex.exerciseId)) truth.set(ex.exerciseId, truth.get(ex.exerciseId)! * (quality ? 1.015 : 1.005));
       }
 
-      // What the Progress and Athlete tabs show after each workout.
+      // What the Progress tab shows after each workout.
       const kgNow = buildAthleteKnowledgeGraph(hist, [], SEED_EXERCISES, prof, calculateWeeklyMuscleVolume(hist, SEED_EXERCISES));
       const report = buildSessionProgressReport({ workouts: hist, exerciseCatalog: SEED_EXERCISES, knowledgeGraph: kgNow, bodyweightKg: 80, now: t });
       if (!report) issues.push(`workout ${n}: no session report`);
@@ -4065,9 +4092,9 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
       'The knowledge graph records weekly sets per muscle and a rising strength trend from the same workouts'
     );
     const pillarsEnd = calculateBestPillarE1rms(hist, 80);
-    assert((pillarsEnd['Horizontal Push'] ?? 0) > 0 && (pillarsEnd['Horizontal Pull'] ?? 0) > 0, 'Athlete tab strength scores fill from the logged workouts');
+    assert((pillarsEnd['Horizontal Push'] ?? 0) > 0 && (pillarsEnd['Horizontal Pull'] ?? 0) > 0, 'Strength levels fill from the logged workouts');
     const volumeEnd = calculateWeeklyMuscleVolume(hist, SEED_EXERCISES);
-    assert(Object.values(volumeEnd).some((v) => v > 0), 'Athlete tab weekly sets fill from the logged workouts');
+    assert(Object.values(volumeEnd).some((v) => v > 0), 'Weekly sets fill from the logged workouts');
   }
 
   console.log('\n[36c. Exercise Card Charts Show Real Data From the First Session]');
@@ -4151,7 +4178,7 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
       const kgProfile = kgC.muscleProfiles.find((p) => p.muscleKey === m.key);
       return m.weeklySets !== (weekly[m.key] ?? 0) || (kgProfile && kgProfile.weeklySets !== m.weeklySets);
     });
-    assert(setMismatch.length === 0 && musclesC.length > 3, `Weekly hard sets are identical on cards, Program, Muscles view, Athlete tab and the knowledge graph (${musclesC.map((m) => `${m.key} ${m.weeklySets}`).join(', ')})`);
+    assert(setMismatch.length === 0 && musclesC.length > 3, `Weekly hard sets are identical on cards, Program, the Progress muscle cards and the knowledge graph (${musclesC.map((m) => `${m.key} ${m.weeklySets}`).join(', ')})`);
 
     const athletePillars = calculateBestPillarE1rms(cHist, 80);
     const progressCharts = buildStrengthCharts({ workouts: cHist, profile: NEW_USER_PROFILE, bodyweightKg: 80, fmt: { weight: (kg) => `${kg} kg`, length: (cm) => `${cm} cm` } });
@@ -4162,7 +4189,7 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
         const best = Math.max(...c.points.map((p) => p.value));
         return Math.abs(best - Math.round(athletePillars[pillar] * 10) / 10) > 0.1;
       });
-    assert(pillarMismatch.length === 0, `Athlete tab strength and Progress tab charts give the same best estimated max per movement (${pillarMismatch.map((c) => c.title).join(', ') || 'all match'})`);
+    assert(pillarMismatch.length === 0, `Strength levels and the Progress charts give the same best estimated max per movement (${pillarMismatch.map((c) => c.title).join(', ') || 'all match'})`);
 
     const planC = buildPlanOverview(cHist);
     assert(planC.nextWorkoutNumber === getNextProgramWorkoutNumber(cHist) && planC.completedCount === 9, 'Program page and Workout page agree on plan position (10 of 24 next, 9 done)');

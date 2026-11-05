@@ -84,7 +84,6 @@ import { GoogleAuthModal } from './components/auth/GoogleAuthModal';
 import { localDateString } from './utils/date';
 
 // Secondary tabs and the coach load on demand, keeping the first download small.
-const CharacterTab = lazy(() => import('./components/character/CharacterTab').then((m) => ({ default: m.CharacterTab })));
 import type { MeasurementEntry } from './components/analytics/WeightLogModal';
 const AnalyticsTab = lazy(() => import('./components/analytics/AnalyticsTab').then((m) => ({ default: m.AnalyticsTab })));
 const ProgramTab = lazy(() => import('./components/program/ProgramTab').then((m) => ({ default: m.ProgramTab })));
@@ -798,7 +797,7 @@ export const App: React.FC = () => {
       {/* Main Mobile Container */}
       <main className="flex-1 max-w-md mx-auto w-full px-3.5 pt-3">
         <Suspense fallback={<div className="wk-card wk-body" role="status">Loading…</div>}>
-        <ErrorBoundary key={activeTab} area={activeTab === 'train' ? 'Workout' : activeTab === 'analytics' ? 'Progress' : activeTab === 'program' ? 'Program' : 'Athlete'}>
+        <ErrorBoundary key={activeTab} area={activeTab === 'train' ? 'Workout' : activeTab === 'analytics' ? 'Progress' : activeTab === 'program' ? 'Program' : 'Treise'}>
         {activeTab === 'train' && (
           <TrainTab
             trainingPlan={activePlan}
@@ -832,26 +831,14 @@ export const App: React.FC = () => {
           />
         )}
 
-        {activeTab === 'character' && (
-          <CharacterTab
-            profile={profile}
-            pillarBestE1rm={pillarBestE1rm}
-            big3BestE1rm={calculateBestPillarE1rms(workouts, bodyweightEmaKg, { loadedLiftsOnly: true })}
-            bodyweightEmaKg={bodyweightEmaKg}
-            hasBodyweight={hasBodyweight}
-            latestBiometrics={latestBiometrics}
-            weeklyVolume={weeklyVolume}
-            onUpdateProfile={(up) => setProfile((p) => ({ ...p, ...up }))}
-            onOpenAuth={() => setAuthModalOpen(true)}
-          />
-        )}
-
         {activeTab === 'analytics' && (
           <AnalyticsTab
             workouts={workouts}
             biometrics={biometrics}
             profile={profile}
             bodyweightEmaKg={bodyweightEmaKg}
+            pillarBestE1rm={pillarBestE1rm}
+            latestBiometrics={latestBiometrics}
             exerciseCatalog={exercises}
             weeklyVolume={weeklyVolume}
             onSaveMeasurements={handleSaveMeasurements}
@@ -1040,7 +1027,7 @@ export const App: React.FC = () => {
         />
       )}
 
-      {/* Bottom 5-Tab Navigation with Dedicated Chat */}
+      {/* Bottom 4-tab navigation with dedicated chat */}
       <NavigationBar
         activeTab={activeTab}
         onTabChange={(tab) => {
