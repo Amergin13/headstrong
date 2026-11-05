@@ -27,6 +27,16 @@
     <!-- Health Connect: read exercise sessions only (active days). -->
     <uses-permission android:name="android.permission.health.READ_EXERCISE"/>
 
+    <!-- Renpho scale: find it and talk to it directly, so it only has to be paired once. Readings
+         stay on the phone. Bluetooth is never used to work out where the athlete is. -->
+    <uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" android:usesPermissionFlags="neverForLocation" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <!-- Android 11 and lower: a Bluetooth scan requires these. -->
+    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" android:maxSdkVersion="30" />
+
     <queries>
         <package android:name="com.google.android.apps.healthdata" />
     </queries>
@@ -175,6 +185,13 @@
         <!-- Shows Health Connect's permission screen when the athlete turns it on in the web app. -->
         <activity
             android:name=".HealthPermissionActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+
+ <!-- Asks for Bluetooth access (Nearby devices) when the athlete pairs a scale. -->
+        <activity
+            android:name=".BlePermissionActivity"
             android:exported="false"
             android:excludeFromRecents="true"
             android:theme="@android:style/Theme.Translucent.NoTitleBar" />

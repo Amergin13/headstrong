@@ -4806,11 +4806,11 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
       'AnalyticsTab separates the choice between "Log weight" and "Log measurements"'
     );
     assert(
-      weightLogModalSrc.includes('Option 1: Enter weight manually') &&
-        weightLogModalSrc.includes('Option 2: Step on RENPHO Scale') &&
-        weightLogModalSrc.includes('How scale data is pulled into the app:') &&
+      weightLogModalSrc.includes('Listening for your scale') &&
+        weightLogModalSrc.includes('Reconnect your scale') &&
+        !weightLogModalSrc.includes('Option 2: Step on RENPHO Scale') &&
         weightLogModalSrc.includes('How tape measurements are pulled into the app:'),
-      'WeightLogModal clearly separates Weight (manual or step on RENPHO scale) from Tape Measurements and explains how data is pulled into the app'
+      'WeightLogModal keeps manual weight entry first, with one scale alert (pair, connected, listening, reconnect), and keeps tape measurements separate'
     );
   }
 
@@ -5133,7 +5133,82 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
     assert(t.includes('Your levels') && t.includes('Bulgarian Split Squat') && t.includes('75%') && t.includes('Kilgore'), `Coach answers level and balance questions from the athlete's data (got "${t.slice(0, 120)}")`);
   }
 
-  console.log('\nALL 39 ENGINE, GOVERNANCE, DESIGN HEURISTICS, TYPOGRAPHY, WEARABLES, WHOOP STRAIN, GOOGLE AUTH, ONBOARDING CONTEXT, 6-WEEK PROGRAM, TENSOR AI, SESSION REPORT, WORKOUT PAGE, EXERCISE OVERVIEW & RENPHO BLUETOOTH SUITES PASSED SUCCESSFULLY! 🎯');
+  console.log('\n[42. Renpho scale through the Android app: pair once]');
+  {
+    const bridge = await import('../../services/healthConnectBridge');
+    const rb = await import('../../services/renphoBluetooth');
+    const native = await import('../../services/nativeScale');
+    const wait = (ms = 0) => new Promise((r) => setTimeout(r, ms));
+    rb.clearSavedRenphoDevices();
+    // A stand-in for ScaleBridge.kt, speaking the real messages over a fake port.
+    const SERVICE = '0000ffe0-0000-1000-8000-00805f9b34fb';
+    const NOTIFY = '0000ffe1-0000-1000-8000-00805f9b34fb';
+    const WRITE = '0000ffe3-0000-1000-8000-00805f9b34fb';
+    const sent: any[] = [];
+    const fromApp = (m: Record<string, unknown>) => port.onmessage?.({ data: JSON.stringify(m) } as MessageEvent);
+    const port: any = {
+      onmessage: null,
+      postMessage(raw: string) {
+        const m = JSON.parse(raw);
+        sent.push(m);
+        if (m.type === 'ble-status') setTimeout(() => fromApp({ type: 'ble-status', supported: true, granted: true, enabled: true }));
+        if (m.type === 'ble-listen') {
+          setTimeout(() =>
+            fromApp({
+              type: 'ble-connected', id: m.id, name: 'QN-Scale',
+              services: [{ uuid: SERVICE, chars: [
+                { uuid: NOTIFY, notify: true },
+                { uuid: WRITE, write: true },
+              ] }],
+            })
+          );
+        }
+        if (m.type === 'ble-notify' || m.type === 'ble-write') setTimeout(() => fromApp({ type: 'ble-op', requestId: m.requestId, ok: true }));
+      },
+    };
+    bridge.attachAppPort(port, 1);
+    assert(!native.isNativeScaleAvailable(), 'An older installed app keeps using Web Bluetooth for the scale');
+    bridge.attachAppPort(port, 2);
+    assert(native.isNativeScaleAvailable(), 'An app that announces it reaches the scale itself');
+    assert((await native.getNativeScaleStatus()).granted, 'Status comes from the app');
+    assert((await rb.resolveRememberedBleDevice('scale')) === null, 'Nothing is reachable before pairing');
+
+    const readings: any[] = [];
+    let disconnects = 0;
+    const callbacks = { onReading: (r: any) => readings.push(r), onDisconnect: () => { disconnects++; } };
+    const paired = await rb.connectRenphoScale(callbacks, { silentOnly: false, nativeScale: { id: 'AA:BB:CC:DD:EE:FF', name: 'QN-Scale' } });
+    assert(sent.some((m) => m.type === 'ble-listen' && m.id === 'AA:BB:CC:DD:EE:FF'), 'Pairing connects to the chosen scale by address, with no browser prompt');
+    assert(sent.some((m) => m.type === 'ble-notify' && m.char === NOTIFY), 'The page subscribes to the scale through the app');
+    const handshake = sent.find((m) => m.type === 'ble-write' && m.char === WRITE);
+    assert(handshake && handshake.hex.length > 0, 'The scale handshake is written through the app');
+    assert(rb.loadSavedRenphoDevices().scale?.id === 'AA:BB:CC:DD:EE:FF', 'The paired scale is saved');
+    fromApp({ type: 'ble-value', service: SERVICE, char: NOTIFY, hex: '100b002035010200' });
+    assert(readings.length === 1 && readings[0].weightKg === 82.45 && readings[0].stabilized, `A packet from the app decodes like Web Bluetooth (got ${JSON.stringify(readings[0]?.weightKg)})`);
+    fromApp({ type: 'ble-disconnected' });
+    await wait();
+    assert(disconnects === 1, 'The scale sleeping reaches the page');
+    paired.disconnect();
+
+    // "Restart": the page has only its saved scale, and still needs no prompt.
+    const remembered = await rb.resolveRememberedBleDevice('scale');
+    assert(remembered?.id === 'AA:BB:CC:DD:EE:FF', 'After pairing the saved scale is reachable with no prompt');
+    const before = sent.filter((m) => m.type === 'ble-listen').length;
+    const again = await rb.connectRenphoScale(callbacks, { silentOnly: true });
+    assert(sent.filter((m) => m.type === 'ble-listen').length === before + 1, 'Listening again needs no pairing');
+    again.disconnect();
+    // A wait for a sleeping scale is cancelled when the form closes.
+    port.postMessage = (raw: string) => { sent.push(JSON.parse(raw)); };
+    let rejected = false;
+    const waiting = rb.connectRenphoScale(callbacks, { silentOnly: true }).catch(() => { rejected = true; });
+    await wait();
+    native.stopNativeScale();
+    await waiting;
+    assert(rejected && sent[sent.length - 1].type === 'ble-stop', 'Closing the form stops listening');
+    rb.clearSavedRenphoDevices();
+    assert((await rb.resolveRememberedBleDevice('scale')) === null, 'Forgetting the scale clears it');
+  }
+
+  console.log('\nALL 40 ENGINE, GOVERNANCE, DESIGN HEURISTICS, TYPOGRAPHY, WEARABLES, WHOOP STRAIN, GOOGLE AUTH, ONBOARDING CONTEXT, 6-WEEK PROGRAM, TENSOR AI, SESSION REPORT, WORKOUT PAGE, EXERCISE OVERVIEW & RENPHO BLUETOOTH SUITES PASSED SUCCESSFULLY! 🎯');
 })().catch((err) => {
   console.error('Test Suite Failed:', err);
   if (typeof process !== 'undefined' && process.exit) {

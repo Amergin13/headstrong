@@ -10,6 +10,7 @@ import {
   isWebBluetoothSupported,
   loadSavedRenphoDevices,
   recordRenphoDeviceSync,
+  resolveRememberedBleDevice,
   RENPHO_SCALE_METRICS,
   RenphoBleConnection,
   RenphoScaleMetrics,
@@ -17,8 +18,19 @@ import {
   RenphoTapeReading,
   SavedRenphoDevices,
 } from '../../services/renphoBluetooth';
+import {
+  getNativeScaleStatus,
+  isNativeScaleAvailable,
+  NativeScaleFound,
+  NativeScaleStatus,
+  openNativeScaleSettings,
+  requestNativeScalePermission,
+  startNativeScaleScan,
+  stopNativeScale,
+} from '../../services/nativeScale';
 import { localDateString } from '../../utils/date';
 import { useUnits } from '../../utils/unitsContext';
+import { triggerHaptic } from '../../utils/haptics';
 
 export type LogModalMode = 'weight' | 'measurements';
 
@@ -85,7 +97,8 @@ const CM_PER_IN = 2.54;
 
 /**
  * Separated modal for logging either:
- * 1. Weight & Body Scale (`mode === 'weight'`): Enter weight manually OR step on the RENPHO scale to save weight and any other readings it sends.
+ * 1. Weight (`mode === 'weight'`): the manual fields, plus one inline alert for the Renpho scale
+ *    (offer to pair → confirmed → listening each time; reconnect when the browser needs a tap).
  * 2. Body Measurements (`mode === 'measurements'`): Enter any of the 12 tape sites manually OR use the RENPHO smart tape.
  */
 export const WeightLogModal: React.FC<WeightLogModalProps> = ({
@@ -202,7 +215,6 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
     loadSavedRenphoDevices()
   );
   const [activeSite, setActiveSite] = useState<BodyMeasurementSite>(initialSite);
-  const [acceptAllBleDevices, setAcceptAllBleDevices] = useState(false);
   const [bleDeviceKind, setBleDeviceKind] = useState<'scale' | 'tape' | null>(null);
   const [bleDeviceName, setBleDeviceName] = useState<string | null>(null);
   const [bleStatus, setBleStatus] = useState<string | null>(null);
@@ -210,6 +222,23 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
   const [liveScaleReading, setLiveScaleReading] = useState<RenphoScaleReading | null>(null);
   const [liveTapeReading, setLiveTapeReading] = useState<RenphoTapeReading | null>(null);
   const [autoSavedBanner, setAutoSavedBanner] = useState<string | null>(null);
+  /** Can the page reach the paired scale without a tap? null until checked. */
+  const [scaleReachable, setScaleReachable] = useState<boolean | null>(null);
+  const [scaleBusy, setScaleBusy] = useState(false);
+  const [justPaired, setJustPaired] = useState(false);
+  const mountedRef = useRef(true);
+  // In the Android app the app itself reaches the scale, so pairing happens once.
+  const nativeScale = isNativeScaleAvailable();
+  const [nativeScanning, setNativeScanning] = useState(false);
+  const [nativeFound, setNativeFound] = useState<NativeScaleFound[]>([]);
+  const [nativeIssue, setNativeIssue] = useState<'permission' | 'bluetooth-off' | null>(null);
+  const stopNativeScanRef = useRef<(() => void) | null>(null);
+  /** A pair attempt ended without a scale: offer the full device list. */
+  const [offerAllDevices, setOfferAllDevices] = useState(false);
+  /** The form as the scale left it, so "Done" doesn't re-save a rounded copy of the reading. */
+  const [capturedForm, setCapturedForm] = useState<string | null>(null);
+  /** A weigh-in was saved: ignore the falling readings as the athlete steps off. */
+  const weighInSavedRef = useRef(false);
 
   const bleConnectionRef = useRef<RenphoBleConnection | null>(null);
   const lastScaleSaveKeyRef = useRef<string | null>(null);
@@ -228,9 +257,13 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
   );
 
   useEffect(() => {
+    mountedRef.current = true;
     return () => {
+      mountedRef.current = false;
+      stopNativeScanRef.current?.();
       bleConnectionRef.current?.disconnect();
       bleConnectionRef.current = null;
+      if (isNativeScaleAvailable()) stopNativeScale();
     };
   }, []);
 
@@ -281,6 +314,11 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
   };
 
   const handleScaleReading = (reading: RenphoScaleReading) => {
+    if (reading.weightKg < 20) {
+      weighInSavedRef.current = false; // stepped off: the next weigh-in can start
+      return;
+    }
+    if (!reading.stabilized && weighInSavedRef.current) return;
     const fullMetrics = reading.metrics ?? computeRenphoScaleMetrics(reading, athleteContext);
     const enrichedReading: RenphoScaleReading = fullMetrics
       ? { ...reading, ...fullMetrics, metrics: fullMetrics }
@@ -336,11 +374,11 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
         (m) => m.field !== 'bodyweightKg' && typeof autoEntry[m.field] === 'number'
       ).length;
       setAutoSavedBanner(
-        `Saved to app: ${summary}${extraCount > 0 ? ` and ${extraCount} more scale reading${extraCount === 1 ? '' : 's'}` : ''}.`
+        `${summary}${extraCount > 0 ? ` and ${extraCount} more ${extraCount === 1 ? 'metric' : 'metrics'}` : ''}`
       );
-      setBleStatus(`Reading locked & saved (${summary}).`);
-    } else {
-      setBleStatus('Measuring on RENPHO scale… Keep standing barefoot until the weight locks.');
+      setJustPaired(false);
+      weighInSavedRef.current = true;
+      setCapturedForm('pending');
     }
   };
 
@@ -361,48 +399,118 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
     }
   };
 
-  const handleConnectScale = async (forceNewPairing = false, silentOnly = false) => {
+  const noteNativeStatus = (status: NativeScaleStatus): boolean => {
+    setNativeIssue(!status.granted ? 'permission' : !status.enabled ? 'bluetooth-off' : null);
+    return status.granted && status.enabled;
+  };
+
+  /** Android app: ask for access if needed, then look for nearby scales to choose from. */
+  const startNativePairing = async (showAll = false) => {
+    setBleError(null);
+    setOfferAllDevices(false);
+    setNativeFound([]);
+    let status = await getNativeScaleStatus();
+    if (status.supported && !status.granted) status = await requestNativeScalePermission();
+    if (!mountedRef.current) return;
+    if (!status.supported) {
+      setBleError("This phone doesn't support Bluetooth scales.");
+      return;
+    }
+    if (!noteNativeStatus(status)) return;
+    setNativeScanning(true);
+    let found = 0;
+    stopNativeScanRef.current = startNativeScaleScan(
+      {
+        onFound: (scale) => {
+          found++;
+          setNativeFound((prev) => (prev.some((d) => d.id === scale.id) ? prev : [...prev, scale]));
+        },
+        onEnded: () => {
+          stopNativeScanRef.current = null;
+          setNativeScanning(false);
+          if (!found) {
+            setBleError("Couldn't find a scale. Step on it to wake it, then try again.");
+            setOfferAllDevices(true);
+          }
+        },
+      },
+      { showAll }
+    );
+  };
+
+  const handleChooseNativeScale = (scale: NativeScaleFound) => {
+    stopNativeScanRef.current?.();
+    stopNativeScanRef.current = null;
+    setNativeScanning(false);
+    setNativeFound([]);
+    handleConnectScale(false, false, false, scale);
+  };
+
+  const handleConnectScale = async (
+    forceNewPairing = false,
+    silentOnly = false,
+    showAllDevices = false,
+    chosenNativeScale?: NativeScaleFound
+  ) => {
+    const known = loadSavedRenphoDevices().scale;
     if (!silentOnly) {
       setBleError(null);
+      setScaleBusy(true);
     }
     disconnectBle();
     lastScaleSaveKeyRef.current = null;
     try {
       const conn = await connectRenphoScale(
         {
-          onStatus: (msg) => setBleStatus(msg),
           onReading: handleScaleReading,
           onDisconnect: () => {
+            // The scale sleeps soon after a weigh-in; the loop below listens for it again.
+            bleConnectionRef.current?.disconnect();
+            bleConnectionRef.current = null;
+            weighInSavedRef.current = false;
             setBleDeviceKind(null);
             setBleDeviceName(null);
-            const remembered = loadSavedRenphoDevices().scale;
-            setBleStatus(
-              remembered
-                ? `${remembered.name} went to sleep. Step onto the scale to wake it and sync.`
-                : 'Scale disconnected.'
-            );
+            setLiveScaleReading(null);
           },
         },
         {
-          acceptAllDevices: acceptAllBleDevices,
+          acceptAllDevices: showAllDevices,
           unit: units.unit,
           athlete: athleteContext,
           forceNewPairing,
           silentOnly,
+          // A nameless scale was saved under the fallback name, which no device advertises.
+          onlyDeviceName: known?.name && known.name !== 'RENPHO Scale' ? known.name : undefined,
+          nativeScale: chosenNativeScale,
         }
       );
+      // The form closed while this was connecting: don't leave the scale connected.
+      if (!mountedRef.current) {
+        conn.disconnect();
+        return;
+      }
       bleConnectionRef.current = conn;
       setBleDeviceKind('scale');
       setBleDeviceName(conn.deviceName);
       setSavedDevices(loadSavedRenphoDevices());
-    } catch (err) {
-      if (silentOnly) return;
-      const msg = err instanceof Error ? err.message : 'Could not connect to RENPHO scale.';
-      if (!/cancelled|canceled|User cancelled/i.test(msg)) {
-        setBleError(msg);
-      } else {
-        setBleStatus(null);
+      setScaleReachable(true);
+      if (!silentOnly) {
+        setJustPaired(!known);
+        setOfferAllDevices(false);
       }
+    } catch (err) {
+      if (silentOnly || !mountedRef.current) return;
+      setOfferAllDevices(true);
+      const msg = err instanceof Error ? err.message : '';
+      if (!/cancelled|canceled/i.test(msg)) {
+        setBleError(
+          /no scale weight stream/i.test(msg)
+            ? msg
+            : "Couldn't reach your scale. Step on it to wake it, then try again."
+        );
+      }
+    } finally {
+      if (!silentOnly && mountedRef.current) setScaleBusy(false);
     }
   };
 
@@ -417,6 +525,8 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
           onStatus: (msg) => setBleStatus(msg),
           onReading: handleTapeReading,
           onDisconnect: () => {
+            bleConnectionRef.current?.disconnect();
+            bleConnectionRef.current = null;
             setBleDeviceKind(null);
             setBleDeviceName(null);
             const remembered = loadSavedRenphoDevices().tape;
@@ -428,11 +538,14 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
           },
         },
         {
-          acceptAllDevices: acceptAllBleDevices,
           forceNewPairing,
           silentOnly,
         }
       );
+      if (!mountedRef.current) {
+        conn.disconnect();
+        return;
+      }
       bleConnectionRef.current = conn;
       setBleDeviceKind('tape');
       setBleDeviceName(conn.deviceName);
@@ -451,9 +564,16 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
   // Automatically attempt silent reconnection to a remembered RENPHO device when opening or switching modes,
   // and poll every 3s while in standby so waking the scale/tape by stepping on it connects automatically.
   useEffect(() => {
-    if (!isWebBluetoothSupported()) return;
+    if (!isWebBluetoothSupported() && !isNativeScaleAvailable()) return;
     let cancelled = false;
     const remembered = loadSavedRenphoDevices();
+
+    // Only claim to be listening when the page really can reach the paired scale.
+    if (mode === 'weight' && remembered.scale) {
+      resolveRememberedBleDevice('scale').then((device) => {
+        if (!cancelled) setScaleReachable(Boolean(device));
+      });
+    }
 
     const tryAutoConnect = async () => {
       // A reconnect to a sleeping device can take a while; never stack attempts.
@@ -470,19 +590,30 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
       }
     };
 
-    tryAutoConnect();
-    const timer = setInterval(() => {
-      if (!bleConnectionRef.current) {
-        tryAutoConnect();
+    const tick = async () => {
+      if (bleConnectionRef.current) return;
+      // Android app: Bluetooth may be off or its permission removed, even mid-wait. Never keep
+      // saying "listening" then: stop, say why, and start again once it's sorted.
+      if (mode === 'weight' && remembered.scale && isNativeScaleAvailable()) {
+        const status = await getNativeScaleStatus();
+        if (!mountedRef.current) return;
+        if (!noteNativeStatus(status)) {
+          stopNativeScale();
+          return;
+        }
       }
-    }, 3000);
+      tryAutoConnect();
+    };
+
+    tick();
+    const timer = setInterval(tick, 3000);
 
     return () => {
       cancelled = true;
       clearInterval(timer);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, bleDeviceKind]);
+  }, [mode, bleDeviceKind, savedDevices.scale?.id, savedDevices.tape?.id]);
 
   const handleForgetDevice = (kind: 'scale' | 'tape') => {
     if (bleDeviceKind === kind) {
@@ -492,6 +623,14 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
     setSavedDevices(updated);
     setBleStatus(null);
     setBleError(null);
+    if (kind === 'scale') {
+      if (isNativeScaleAvailable()) stopNativeScale();
+      setNativeIssue(null);
+      setScaleReachable(null);
+      setJustPaired(false);
+      setAutoSavedBanner(null);
+      setLiveScaleReading(null);
+    }
   };
 
   const num = (s: string) => {
@@ -527,9 +666,20 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
       ? weightKg * 0.25 + currentEma * 0.75
       : weightKg;
 
+  const formSnapshot = JSON.stringify([weightInput, bodyFat, height, capturedScaleMetrics]);
+  useEffect(() => {
+    if (capturedForm === 'pending') setCapturedForm(formSnapshot);
+  }, [capturedForm, formSnapshot]);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!valid) {
+      disconnectBle();
+      onClose();
+      return;
+    }
+    // The scale already saved this reading; "Done" only saves what the athlete changed afterwards.
+    if (mode === 'weight' && capturedForm === formSnapshot) {
       disconnectBle();
       onClose();
       return;
@@ -628,25 +778,147 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
     </label>
   );
 
-  const formatScaleMetricValue = (
-    metricId: (typeof RENPHO_SCALE_METRICS)[number]['id'],
-    val: number | undefined
-  ): string => {
-    if (val === undefined || !Number.isFinite(val) || val <= 0) return '—';
-    const meta = RENPHO_SCALE_METRICS.find((m) => m.id === metricId);
-    if (!meta) return `${val}`;
-    if (meta.unitKind === 'weight') return units.format(val);
-    if (meta.unitKind === 'percent') return `${val}%`;
-    if (meta.unitKind === 'kcal') return `${Math.round(val)} kcal`;
-    if (meta.unitKind === 'years') return `${Math.round(val)} yrs`;
-    return `${val}`;
-  };
-
   const activeSiteDef =
     BODY_MEASUREMENT_SITES.find((s) => s.id === activeSite) ?? BODY_MEASUREMENT_SITES[0];
-  const bluetoothAvailable = isWebBluetoothSupported();
+  const bluetoothAvailable = nativeScale || isWebBluetoothSupported();
   const rememberedScale = savedDevices.scale;
   const rememberedTape = savedDevices.tape;
+
+  // The one place the scale appears: what's happening now, and at most one action.
+  const measuring = bleDeviceKind === 'scale' && liveScaleReading && !liveScaleReading.stabilized && liveScaleReading.weightKg > 0;
+  const scaleConnected = bleDeviceKind === 'scale';
+  const needsReconnect = Boolean(rememberedScale) && !scaleConnected && scaleReachable === false;
+  let alertTitle: string | null = null;
+  let alertBody: string;
+  let alertTone: 'info' | 'live' | 'success' = 'info';
+  if (nativeIssue === 'permission') {
+    alertTitle = 'Allow Bluetooth access';
+    alertBody = 'Treise needs Nearby devices access to connect to your scale. Nothing else uses it.';
+  } else if (nativeIssue === 'bluetooth-off') {
+    alertTitle = 'Bluetooth is off';
+    alertBody = 'Turn it on to capture from your scale. Or type your weight above.';
+  } else if (nativeScanning) {
+    alertTitle = 'Looking for your scale';
+    alertBody = nativeFound.length ? 'Tap your scale to pair it.' : 'Step on your scale to wake it.';
+    alertTone = 'live';
+  } else if (scaleBusy) {
+    alertTitle = nativeScale ? 'Connecting to your scale' : rememberedScale ? 'Reconnecting your scale' : 'Pairing your scale';
+    alertBody = nativeScale ? 'Stay on the scale until it connects.' : 'Step on your scale to wake it, then choose it from the list.';
+  } else if (measuring) {
+    alertTitle = `Measuring: ${units.format(liveScaleReading!.weightKg)}`;
+    alertBody = 'Stand still until it settles.';
+    alertTone = 'live';
+  } else if (autoSavedBanner) {
+    alertTitle = 'Saved from your scale';
+    alertBody = `${autoSavedBanner}. See it in Progress.`;
+    alertTone = 'success';
+  } else if (justPaired && scaleConnected) {
+    alertTitle = 'Scale connected';
+    alertBody = 'Step on it now and your weight and other metrics save automatically.';
+    alertTone = 'success';
+  } else if (needsReconnect) {
+    alertTitle = 'Reconnect your scale';
+    alertBody = 'Your browser asks again after the app restarts. Step on your scale, then tap Reconnect.';
+  } else if (rememberedScale) {
+    alertTitle = 'Listening for your scale';
+    alertBody = 'Step on it and your weight and other metrics save automatically. Or type your weight above.';
+    alertTone = 'live';
+  } else {
+    alertBody = 'Treise can connect to a Renpho scale to capture your weight and body metrics automatically over time.';
+  }
+  const alertAction =
+    nativeIssue === 'permission'
+      ? 'Allow'
+      : nativeIssue === 'bluetooth-off' || nativeScanning || scaleBusy || (rememberedScale && !needsReconnect)
+      ? null
+      : rememberedScale
+      ? 'Reconnect'
+      : 'Pair';
+  const handleAlertAction = async () => {
+    triggerHaptic('light');
+    if (nativeIssue === 'permission') {
+      const status = await requestNativeScalePermission();
+      if (!mountedRef.current) return;
+      // Android stops showing its prompt after a refusal: the setting is the only way left.
+      if (!status.granted) openNativeScaleSettings();
+      noteNativeStatus(status);
+    } else if (nativeScale) {
+      startNativePairing();
+    } else {
+      handleConnectScale(false, false);
+    }
+  };
+
+  const scaleAlert = (
+    <div
+      role="status"
+      aria-live="polite"
+      className="rounded-xl p-3 space-y-2"
+      style={{
+        background: alertTone === 'success' ? 'rgba(0, 241, 159, 0.14)' : 'var(--wk-raised)',
+        border: alertTone === 'success' ? '1px solid rgba(0, 241, 159, 0.45)' : '1px solid transparent',
+      }}
+    >
+      <div className="flex items-center gap-3">
+        {alertTone === 'success' ? (
+          <Check className="w-5 h-5 text-[#00F19F] shrink-0 stroke-[2]" aria-hidden="true" />
+        ) : alertTone === 'live' ? (
+          <span className="w-2.5 h-2.5 mx-1 rounded-full bg-[#00F19F] shrink-0 animate-pulse motion-reduce:animate-none" aria-hidden="true" />
+        ) : (
+          <Bluetooth className="w-5 h-5 text-[#C6C6C6] shrink-0 stroke-[2]" aria-hidden="true" />
+        )}
+        <div className="flex-1 min-w-0">
+          {alertTitle && <span className="block text-xs font-bold text-white">{alertTitle}</span>}
+          <span className="block text-xs text-[#C6C6C6]">{alertBody}</span>
+        </div>
+        {alertAction && (
+          <button
+            type="button"
+            onClick={handleAlertAction}
+            className="shrink-0 px-4 rounded-xl text-xs font-bold min-h-[44px]"
+            style={{ background: 'var(--wk-accent)', color: '#13181C' }}
+          >
+            {alertAction}
+          </button>
+        )}
+      </div>
+      {nativeFound.length > 0 && (
+        <ul className="space-y-2" aria-label="Scales nearby">
+          {nativeFound.map((scale) => (
+            <li key={scale.id}>
+              <button
+                type="button"
+                onClick={() => handleChooseNativeScale(scale)}
+                className="w-full px-3 rounded-xl text-xs font-bold text-left min-h-[44px]"
+                style={{ background: 'var(--wk-accent)', color: '#13181C' }}
+              >
+                Pair {scale.name}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {bleError && <p className="text-xs text-rose-300">{bleError}</p>}
+      {offerAllDevices && !scaleBusy && !nativeScanning && !scaleConnected && (
+        <button
+          type="button"
+          onClick={() => (nativeScale ? startNativePairing(true) : handleConnectScale(true, false, true))}
+          className="text-xs text-[#C6C6C6] hover:text-white underline min-h-[44px]"
+        >
+          Can't find your scale? Show all devices
+        </button>
+      )}
+      {rememberedScale && !scaleBusy && !nativeScanning && (
+        <button
+          type="button"
+          onClick={() => handleForgetDevice('scale')}
+          className="text-xs text-[#AAABAD] hover:text-white underline min-h-[44px]"
+        >
+          Forget this scale
+        </button>
+      )}
+    </div>
+  );
 
   return (
     <div className="wk fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/85 backdrop-blur-md">
@@ -677,7 +949,7 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
         </div>
 
         {/* Auto-Saved Confirmation Banner */}
-        {autoSavedBanner && (
+        {autoSavedBanner && mode === 'measurements' && (
           <div
             role="status"
             className="rounded-xl p-3 flex items-center gap-2.5"
@@ -694,301 +966,62 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
         <form onSubmit={handleSubmit} className="space-y-4">
           {mode === 'weight' ? (
             <>
-              {/* OPTION 1: Enter Weight Manually */}
-              <div
-                className="rounded-2xl p-3.5 space-y-3"
-                style={{ background: 'var(--wk-surface)', border: '1px solid var(--wk-line)' }}
-              >
-                <div className="flex items-center justify-between">
-                  <h4 className="wk-label text-white">Option 1: Enter weight manually</h4>
-                  <span className="wk-caption">No scale needed</span>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {field(
-                    "Today's weight",
-                    weightInput,
-                    setWeightInput,
-                    units.unit,
-                    'Morning, before eating',
-                    weightValid
-                  )}
-                  {field(
-                    'Body fat (optional)',
-                    bodyFat,
-                    setBodyFat,
-                    '%',
-                    'Manual or smart scale',
-                    bfValid
-                  )}
-                </div>
-                {weightKg > 0 && weightValid && (
-                  <p className="wk-caption">
-                    New 7-day average:{' '}
-                    <strong className="text-white">{units.format(previewEmaKg)}</strong>. The
-                    average smooths out normal daily water changes.
-                  </p>
-                )}
-                {!heightCm &&
-                  field(
-                    'Height',
-                    height,
-                    setHeight,
-                    lengthUnit,
-                    'Asked once, for BMI, lean mass, and waist ratios',
-                    lengthValid(height, 120, 230)
-                  )}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {field("Today's weight", weightInput, setWeightInput, units.unit, 'Morning, before eating', weightValid)}
+                {field('Body fat', bodyFat, setBodyFat, '%', 'Optional', bfValid)}
               </div>
+              {weightKg > 0 && weightValid && (
+                <p className="wk-caption">
+                  New 7-day average: <strong className="text-white">{units.format(previewEmaKg)}</strong>
+                </p>
+              )}
+              {!heightCm &&
+                field('Height', height, setHeight, lengthUnit, 'Asked once, for BMI and lean mass', lengthValid(height, 120, 230))}
 
-              {/* OPTION 2: Step on RENPHO Scale to Pull in Data Automatically */}
-              <div
-                className="rounded-2xl p-3.5 space-y-3"
-                style={{ background: 'var(--wk-surface)', border: '1px solid var(--wk-line)' }}
+              {bluetoothAvailable && !(rememberedScale && scaleReachable === null) && scaleAlert}
+
+              <button
+                type="button"
+                onClick={() => setShowAdvancedScaleMetrics((prev) => !prev)}
+                aria-expanded={showAdvancedScaleMetrics}
+                className="w-full flex items-center justify-between text-xs font-bold text-[#C6C6C6] hover:text-white min-h-[44px]"
               >
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <Bluetooth className="w-4 h-4 text-[#00F19F] stroke-[2]" />
-                    <span className="wk-label text-white">
-                      Option 2: Step on RENPHO Scale
-                    </span>
-                  </div>
-                  {rememberedScale && (
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-bold text-[#00F19F]">
-                        {bleDeviceKind === 'scale'
-                          ? `${bleDeviceName ?? rememberedScale.name} · Live`
-                          : `${rememberedScale.name} · Paired`}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => handleForgetDevice('scale')}
-                        className="text-xs text-[#AAABAD] hover:text-white underline"
-                      >
-                        Forget
-                      </button>
-                    </div>
-                  )}
-                </div>
+                <span>Add other readings</span>
+                {showAdvancedScaleMetrics ? <ChevronUp className="w-4 h-4 stroke-[2]" /> : <ChevronDown className="w-4 h-4 stroke-[2]" />}
+              </button>
 
-                {/* Clear 3-Step Instructions so the user always knows how data enters the app */}
-                <div
-                  className="rounded-xl p-3 space-y-1.5"
-                  style={{ background: 'var(--wk-raised)' }}
-                >
-                  <span className="block text-xs font-bold text-white">
-                    How scale data is pulled into the app:
-                  </span>
-                  <ol className="text-xs text-[#C6C6C6] space-y-1 list-decimal list-inside">
-                    <li>
-                      <strong className="text-white">Wake the scale:</strong> Step barefoot onto your
-                      RENPHO scale so its screen lights up.
-                    </li>
-                    <li>
-                      <strong className="text-white">Tap below & stand still (~5s):</strong>{' '}
-                      {rememberedScale
-                        ? `Tap Weigh in. If Chrome shows a list, pick ${rememberedScale.name}.`
-                        : 'The first time, pick your scale in Chrome’s list. Treise remembers it.'}
-                    </li>
-                    <li>
-                      <strong className="text-white">Automatic save:</strong> As soon as the reading
-                      locks, your weight and anything else your scale measures save to your Progress log.
-                    </li>
-                  </ol>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => handleConnectScale(false, false)}
-                    aria-label="Connect RENPHO Scale"
-                    className="wk-button flex-1 text-xs py-2.5 px-3 gap-1.5 min-h-[44px]"
-                    style={{
-                      background:
-                        bleDeviceKind === 'scale' ? 'var(--wk-accent)' : 'var(--wk-raised)',
-                      color: bleDeviceKind === 'scale' ? '#13181C' : '#fff',
-                    }}
-                  >
-                    <Scale className="w-4 h-4 stroke-[2]" />
-                    <span>
-                      {bleDeviceKind === 'scale'
-                        ? liveScaleReading && !liveScaleReading.stabilized
-                          ? 'Measuring… stand still'
-                          : 'Connected. Step on the scale'
-                        : rememberedScale
-                        ? `Weigh in with ${rememberedScale.name}`
-                        : 'Pair RENPHO scale'}
-                    </span>
-                  </button>
-
-                  {rememberedScale && (
-                    <button
-                      type="button"
-                      onClick={() => handleConnectScale(true, false)}
-                      className="px-3 py-2.5 rounded-xl text-xs font-semibold text-[#C6C6C6] hover:text-white min-h-[44px]"
-                      style={{ background: 'var(--wk-raised)' }}
-                    >
-                      Switch scale
-                    </button>
-                  )}
-                </div>
-
-                {bluetoothAvailable ? (
-                  <label className="flex items-center gap-2 text-xs text-[#AAABAD] cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={acceptAllBleDevices}
-                      onChange={(e) => setAcceptAllBleDevices(e.target.checked)}
-                      className="rounded"
-                    />
-                    <span>
-                      Show all nearby Bluetooth devices if your RENPHO model isn&apos;t listed
-                    </span>
-                  </label>
-                ) : (
-                  <p className="wk-caption">
-                    Direct Bluetooth scale sync is available in Chrome on Android and desktop. You
-                    can always enter weight manually in Option 1 above.
-                  </p>
-                )}
-
-                {liveScaleReading && (
-                  <div
-                    className="rounded-xl p-3 space-y-2"
-                    style={{ background: 'var(--wk-raised)' }}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <span className="block text-xs text-[#AAABAD]">
-                          {liveScaleReading.stabilized
-                            ? 'Weight settled and saved'
-                            : 'Measuring. Stand still until it settles'}
-                        </span>
-                        <span className="text-base font-bold text-white">
-                          {units.format(liveScaleReading.weightKg)}
-                          {liveScaleReading.bodyFatPct
-                            ? ` · ${liveScaleReading.bodyFatPct}% BF`
-                            : ''}
-                        </span>
+              {showAdvancedScaleMetrics && (
+                <div className="grid grid-cols-2 gap-2.5">
+                  {RENPHO_SCALE_METRICS.filter((m) => !m.manualPrimary).map((m) => {
+                    const rawMetricVal = capturedScaleMetrics[m.field as keyof RenphoScaleMetrics];
+                    const displayVal =
+                      rawMetricVal !== undefined && rawMetricVal > 0
+                        ? m.unitKind === 'weight'
+                          ? `${units.toDisplay(rawMetricVal)}`
+                          : `${rawMetricVal}`
+                        : '';
+                    const unitLabel =
+                      m.unitKind === 'weight' ? units.unit : m.unitKind === 'percent' ? '%' : m.unitKind === 'kcal' ? 'kcal' : m.unitKind === 'years' ? 'yrs' : '';
+                    return (
+                      <div key={m.id}>
+                        {field(
+                          m.label,
+                          displayVal,
+                          (v) => {
+                            const parsed = parseFloat(v);
+                            setCapturedScaleMetrics((prev) => ({
+                              ...prev,
+                              [m.field]:
+                                Number.isFinite(parsed) && parsed > 0 ? (m.unitKind === 'weight' ? units.fromDisplay(parsed) : parsed) : undefined,
+                            }));
+                          },
+                          unitLabel
+                        )}
                       </div>
-                      <span
-                        className="text-xs font-bold px-2.5 py-1 rounded-full"
-                        style={{
-                          background: liveScaleReading.stabilized
-                            ? 'var(--wk-accent)'
-                            : 'var(--wk-pill)',
-                          color: liveScaleReading.stabilized ? '#13181C' : '#fff',
-                        }}
-                      >
-                        {liveScaleReading.stabilized ? 'Saved' : 'Measuring…'}
-                      </span>
-                    </div>
-
-                    {!liveScaleReading.stabilized && liveScaleReading.weightKg > 0 && (
-                      <button
-                        type="button"
-                        onClick={() =>
-                          handleScaleReading({ ...liveScaleReading, stabilized: true })
-                        }
-                        className="w-full py-2 px-3 rounded-xl text-xs font-bold min-h-[44px]"
-                        style={{ background: 'var(--wk-accent)', color: '#13181C' }}
-                      >
-                        Save {units.format(liveScaleReading.weightKg)} to App Now
-                      </button>
-                    )}
-
-                    {liveScaleReading.metrics && (
-                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 pt-1">
-                        {RENPHO_SCALE_METRICS.filter(
-                          (m) =>
-                            typeof liveScaleReading.metrics?.[m.field as keyof RenphoScaleMetrics] ===
-                            'number'
-                        ).map((m) => {
-                          const val =
-                            liveScaleReading.metrics?.[m.field as keyof RenphoScaleMetrics];
-                          return (
-                            <div
-                              key={m.id}
-                              className="rounded-lg px-2.5 py-1.5"
-                              style={{ background: 'var(--wk-surface)' }}
-                            >
-                              <span className="block text-xs text-[#AAABAD]">{m.shortLabel}</span>
-                              <span className="text-xs font-bold text-white font-mono">
-                                {formatScaleMetricValue(m.id, val)}
-                              </span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {bleStatus && <p className="wk-caption text-[#00F19F]">{bleStatus}</p>}
-                {bleError && <p className="wk-caption text-rose-400">{bleError}</p>}
-
-                {/* Optional collapsible manual entry for the other 11 RENPHO scale metrics */}
-                <button
-                  type="button"
-                  onClick={() => setShowAdvancedScaleMetrics((prev) => !prev)}
-                  aria-expanded={showAdvancedScaleMetrics}
-                  className="w-full py-2.5 px-3 rounded-xl flex items-center justify-between text-xs font-bold text-white min-h-[44px]"
-                  style={{ background: 'var(--wk-raised)' }}
-                >
-                  <span>
-                    Enter other scale readings (muscle, water, visceral fat, BMR…)
-                  </span>
-                  {showAdvancedScaleMetrics ? (
-                    <ChevronUp className="w-4 h-4 stroke-[2]" />
-                  ) : (
-                    <ChevronDown className="w-4 h-4 stroke-[2]" />
-                  )}
-                </button>
-
-                {showAdvancedScaleMetrics && (
-                  <div className="grid grid-cols-2 gap-2.5 pt-1">
-                    {RENPHO_SCALE_METRICS.filter((m) => !m.manualPrimary).map((m) => {
-                      const rawMetricVal =
-                        capturedScaleMetrics[m.field as keyof RenphoScaleMetrics];
-                      const displayVal =
-                        rawMetricVal !== undefined && rawMetricVal > 0
-                          ? m.unitKind === 'weight'
-                            ? `${units.toDisplay(rawMetricVal)}`
-                            : `${rawMetricVal}`
-                          : '';
-                      const unitLabel =
-                        m.unitKind === 'weight'
-                          ? units.unit
-                          : m.unitKind === 'percent'
-                          ? '%'
-                          : m.unitKind === 'kcal'
-                          ? 'kcal'
-                          : m.unitKind === 'years'
-                          ? 'yrs'
-                          : '';
-                      return (
-                        <div key={m.id}>
-                          {field(
-                            m.label,
-                            displayVal,
-                            (v) => {
-                              const parsed = parseFloat(v);
-                              setCapturedScaleMetrics((prev) => ({
-                                ...prev,
-                                [m.field]:
-                                  Number.isFinite(parsed) && parsed > 0
-                                    ? m.unitKind === 'weight'
-                                      ? units.fromDisplay(parsed)
-                                      : parsed
-                                    : undefined,
-                              }));
-                            },
-                            unitLabel
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
+                    );
+                  })}
+                </div>
+              )}
             </>
           ) : (
             <>
@@ -1211,7 +1244,7 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
             >
               <Check className="w-4 h-4 stroke-[2.5]" />
               <span>
-                {autoSavedBanner
+                {autoSavedBanner && (mode === 'measurements' || capturedForm === formSnapshot)
                   ? 'Done'
                   : mode === 'weight'
                   ? 'Save weight'

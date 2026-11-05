@@ -1,3 +1,4 @@
+import { createNativeScaleDevice, isNativeScaleAvailable } from './nativeScale';
 import { BiometricLog, BodyMeasurementSite, Gender } from '../engine/types';
 import { localDateString } from '../utils/date';
 
@@ -983,7 +984,7 @@ export function decodeRenphoTapePacket(input: Uint8Array | DataView): RenphoTape
 }
 
 // Minimal Web Bluetooth navigator typings so we don't require external @types/web-bluetooth
-interface WebBluetoothCharacteristic {
+export interface WebBluetoothCharacteristic {
   uuid: string;
   properties?: {
     notify?: boolean;
@@ -1001,13 +1002,13 @@ interface WebBluetoothCharacteristic {
   value?: DataView;
 }
 
-interface WebBluetoothService {
+export interface WebBluetoothService {
   uuid: string;
   getCharacteristics: () => Promise<WebBluetoothCharacteristic[]>;
   getCharacteristic: (uuid: number | string) => Promise<WebBluetoothCharacteristic>;
 }
 
-interface WebBluetoothGattServer {
+export interface WebBluetoothGattServer {
   connected: boolean;
   connect: () => Promise<WebBluetoothGattServer>;
   disconnect: () => void;
@@ -1015,7 +1016,7 @@ interface WebBluetoothGattServer {
   getPrimaryService: (uuid: number | string) => Promise<WebBluetoothService>;
 }
 
-interface WebBluetoothDevice {
+export interface WebBluetoothDevice {
   id: string;
   name?: string;
   gatt?: WebBluetoothGattServer;
@@ -1097,6 +1098,10 @@ function matchesDeviceKind(device: WebBluetoothDevice, kind: 'scale' | 'tape', s
  * Resolves a previously paired WebBluetoothDevice from in-memory session cache or
  * the browser's `navigator.bluetooth.getDevices()` permission store without opening
  * the manual pairing picker dialog.
+ *
+ * On stable Chrome getDevices() is still behind a flag (chromestatus: developer trial), so after
+ * the app restarts this returns null and the page may only reach the scale from a tap (the
+ * browser's device list). The saved name then lets that list show just the athlete's scale.
  */
 export async function resolveRememberedBleDevice(
   kind: 'scale' | 'tape'
@@ -1104,6 +1109,14 @@ export async function resolveRememberedBleDevice(
   const cached = kind === 'scale' ? cachedScaleDevice : cachedTapeDevice;
   if (cached && cached.gatt) {
     return cached;
+  }
+  // In the Android app the saved scale is always reachable: the app connects to it by address.
+  if (kind === 'scale' && isNativeScaleAvailable()) {
+    const saved = loadSavedRenphoDevices().scale;
+    if (!saved) return null;
+    const device = createNativeScaleDevice(saved.id, saved.name);
+    cachedScaleDevice = device;
+    return device;
   }
   if (typeof navigator === 'undefined') return null;
   const nav = navigator as unknown as NavigatorWithBluetooth;
@@ -1339,9 +1352,17 @@ export async function connectRenphoScale(
     athlete?: RenphoAthleteContext;
     forceNewPairing?: boolean;
     silentOnly?: boolean;
+    /** Reconnecting after a restart: the browser's list shows only this device name. */
+    onlyDeviceName?: string;
+    /** Pairing in the Android app: the scale the athlete chose from the app's list. */
+    nativeScale?: { id: string; name: string };
   }
 ): Promise<RenphoBleConnection> {
-  if (!isWebBluetoothSupported()) {
+  if (options?.nativeScale) {
+    return openScaleGattStream(createNativeScaleDevice(options.nativeScale.id, options.nativeScale.name), callbacks, options, false);
+  }
+
+  if (!isNativeScaleAvailable() && !isWebBluetoothSupported()) {
     throw new Error(
       'Web Bluetooth is not supported in this browser. Open Treise in Chrome on Android or desktop.'
     );
@@ -1379,6 +1400,11 @@ export async function connectRenphoScale(
   const requestOptions: Record<string, unknown> = options?.acceptAllDevices
     ? {
         acceptAllDevices: true,
+        optionalServices,
+      }
+    : options?.onlyDeviceName
+    ? {
+        filters: [{ name: options.onlyDeviceName }],
         optionalServices,
       }
     : {

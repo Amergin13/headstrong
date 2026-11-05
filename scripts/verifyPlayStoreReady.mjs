@@ -143,6 +143,12 @@ assert(
     !/android\.permission\.health\.(WRITE|READ_(?!EXERCISE"))/.test(androidManifest),
   'Android app asks only for READ_EXERCISE and has the Health Connect privacy screens'
 );
+assert(
+  /BLUETOOTH_SCAN"\s+android:usesPermissionFlags="neverForLocation"/.test(androidManifest) &&
+    /ACCESS_FINE_LOCATION"\s+android:maxSdkVersion="30"/.test(androidManifest) &&
+    !androidManifest.includes('ACCESS_BACKGROUND_LOCATION'),
+  'Scale Bluetooth never asks for location on Android 12+ and never for background location'
+);
 const appGradle = fs.readFileSync(path.resolve(process.cwd(), 'app/build.gradle'), 'utf8');
 assert(!/storePassword\s+"[^"]+"|keyPassword\s+"[^"]+"/.test(appGradle), 'No signing passwords written in app/build.gradle');
 

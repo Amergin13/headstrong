@@ -77,6 +77,7 @@ This produces `app/build/outputs/bundle/release/app-release.aab`. Upload it to t
 Change `versionCode` / `versionName` in `app/build.gradle` (and `twa-manifest.json` to match) for each new upload.
 
 ### 3.4 Health Connect before release
+- Renpho scale (1.2.0): the app declares `BLUETOOTH_SCAN` (`neverForLocation`), `BLUETOOTH_CONNECT`, and for Android 11 and lower `ACCESS_FINE_LOCATION` (`maxSdkVersion 30`, required by Android for a Bluetooth scan). Location isn't read or stored; see PLAY_CONSOLE_BETA_ANSWERS.md for what to say if Play asks.
 - Play Console → App content → **Health apps** declaration, and the **Health Connect** permissions form for `READ_EXERCISE` ("count the athlete's workouts as weekly active days"). Google reviews this. Until the declaration is in place, Health Connect may show testers an error instead of the permission screen.
 - Strava is switched off for the beta (`STRAVA_ENABLED` in `src/services/activitySources.ts`). Nothing to set up.
 

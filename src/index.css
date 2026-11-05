@@ -307,6 +307,9 @@ select:focus-visible {
   transition: background-color 0.15s ease, color 0.15s ease;
 }
 .wk-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   width: 100%;
   min-height: 48px;
   height: calc(130 * var(--f));

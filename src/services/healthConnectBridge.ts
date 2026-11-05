@@ -9,12 +9,13 @@ import { RawSourceSession } from './activitySources';
  * for requests. In a normal browser no port ever arrives and Health Connect simply isn't offered.
  *
  * Messages (JSON strings):
- *   app -> page  {type:'hello', version}                      bridge is ready
+ *   app -> page  {type:'hello', version}                      bridge is ready (older installed apps send 1)
  *   page -> app  {type:'status'}                              ask for availability and permission
  *   app -> page  {type:'status', available, granted}
  *   page -> app  {type:'request-permission'}                  show Health Connect's permission screen
  *   page -> app  {type:'read-sessions', requestId, since}     read ExerciseSessionRecords since ISO time
  *   app -> page  {type:'sessions', requestId, sessions|error}
+ * Scale messages (type 'ble-…') share this channel; see nativeScale.ts.
  */
 
 export interface HealthConnectStatus {
@@ -29,6 +30,7 @@ export interface HealthConnectStatus {
 type StatusListener = (status: HealthConnectStatus) => void;
 
 let port: MessagePort | null = null;
+let appVersion = 0;
 let status: HealthConnectStatus = { bridge: false, available: false, granted: false };
 const statusListeners = new Set<StatusListener>();
 const pending = new Map<string, { resolve: (s: RawSourceSession[]) => void; reject: (e: Error) => void }>();
@@ -43,6 +45,39 @@ function send(message: Record<string, unknown>) {
   port?.postMessage(JSON.stringify(message));
 }
 
+type AppMessageListener = (msg: any) => void;
+const appMessageListeners = new Set<AppMessageListener>();
+
+/** Sends a message to the Android app. Does nothing outside the app. */
+export const sendAppMessage = send;
+
+/** Every message from the Android app (other features share this channel). */
+export function onAppMessage(listener: AppMessageListener): () => void {
+  appMessageListeners.add(listener);
+  return () => {
+    appMessageListeners.delete(listener);
+  };
+}
+
+/** True when this page is running in the Treise Android app and can talk to it. */
+export function isAppBridgeReady(): boolean {
+  return port !== null;
+}
+
+/** The bridge version the installed app announced: 1 = Health Connect, 2 = also the scale. */
+export function getAppBridgeVersion(): number {
+  return port ? appVersion : 0;
+}
+
+/** Takes the channel the app opened. Exported so engine tests can stand in for the app. */
+export function attachAppPort(appPort: MessagePort, version = 1): void {
+  port = appPort;
+  appVersion = version;
+  port.onmessage = (e) => handleAppMessage(e.data);
+  setStatus({ bridge: true });
+  send({ type: 'status' });
+}
+
 function handleAppMessage(data: unknown) {
   let msg: any;
   try {
@@ -51,6 +86,7 @@ function handleAppMessage(data: unknown) {
     return;
   }
   if (!msg || typeof msg.type !== 'string') return;
+  appMessageListeners.forEach((l) => l(msg));
   if (msg.type === 'status') {
     setStatus({ bridge: true, available: Boolean(msg.available), granted: Boolean(msg.granted) });
   } else if (msg.type === 'sessions' && typeof msg.requestId === 'string') {
@@ -78,10 +114,7 @@ export function startHealthConnectBridge(): void {
       return;
     }
     if (hello?.type !== 'hello') return;
-    port = p;
-    port.onmessage = (e) => handleAppMessage(e.data);
-    setStatus({ bridge: true });
-    send({ type: 'status' });
+    attachAppPort(p, Number(hello.version) || 1);
   });
 }
 

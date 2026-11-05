@@ -1,6 +1,6 @@
 # Play Console answers for the Treise private beta
 
-Worked out from the code (version 1.1.0: active days, Health Connect; Strava is switched off). If the code changes what leaves the phone, update this and `public/privacy.html` together.
+Worked out from the code (version 1.2.0: active days, Health Connect, native Renpho scale connection; Strava is switched off). If the code changes what leaves the phone, update this and `public/privacy.html` together.
 
 ## What actually leaves the phone
 
@@ -11,6 +11,7 @@ Worked out from the code (version 1.1.0: active days, Health Connect; Strava is 
 | Google sign-in: name, email, photo | Comes from Google straight to the phone (Google Identity Services in the page). Never sent to Treise's servers. | No |
 | Active days logged by hand | Nowhere. Saved on the phone. | No |
 | Health Connect exercise sessions (type, title, start and end time) | Read on the phone by the Treise Android app and passed to the web app on the same phone. Never sent to a server. | No |
+| Renpho scale readings (weight, body composition) | From the scale to the phone over Bluetooth; saved on the phone. Never sent to a server. | No |
 | Optional coach model download | Phone downloads files from huggingface.co. Sends none of the athlete's data. | No |
 
 ## Data safety form
@@ -30,6 +31,8 @@ Do **not** declare:
 
 - Workout logs, bodyweight and measurements: they never leave the device, so they aren't "collected" under Play's definition.
 - Name, email and photo from Google sign-in: they stay on the device.
+- Scale readings: they never leave the device.
+- Location: not collected. `ACCESS_FINE_LOCATION` (Android 11 and lower only, `maxSdkVersion 30`) exists because Android requires it for any Bluetooth scan. On Android 12+ `BLUETOOTH_SCAN` is declared `neverForLocation`. If Play asks why: "Only to find and connect to the athlete's Renpho Bluetooth scale. Location is never read or stored."
 
 **Shared with third parties:** No. Fitbit and Whoop are where the athlete's own data comes from, at their request. Play's guidance treats that as not sharing.
 
@@ -51,7 +54,7 @@ Do **not** declare:
 ## Closed testing track
 
 1. Testing → Closed testing → Create track (or use "Alpha").
-2. Build and upload version 1.1.0 (code 13) with `./gradlew bundleRelease` (see PLAY_STORE_RELEASE_GUIDE.md §3.3). It adds the Health Connect bridge and needs Android 8 or later.
+2. Build and upload version 1.2.0 (code 14) with `./gradlew bundleRelease` (see PLAY_STORE_RELEASE_GUIDE.md §3.3). It adds the Health Connect bridge and the native scale connection, and needs Android 8 or later.
 3. Testers: add an email list, then share the opt-in link with testers.
 4. A new personal developer account must run a closed test with at least 12 testers for 14 days before it can apply for production.
 
@@ -61,6 +64,6 @@ Do **not** declare:
 - [ ] Whoop sign-in and sync on the Pixel
 - [ ] Fitbit sign-in and sync on the Pixel
 - [ ] AI coach answers on the Pixel (Download, then ask a question)
-- [ ] RENPHO scale pairing (optional for the beta)
+- [ ] Renpho scale on the Pixel, in the Play app: tap Pair and allow Nearby devices; step on the scale and tap it in the list; check "Scale connected"; weigh in and check it saves. Then force-stop the app, reopen it, tap Log weight: it should say "Listening for your scale" with no prompt, and stepping on should save.
 - [ ] Fitbit / Pixel Watch: record a 20+ minute walk or ride on the watch, open Treise, and check it appears as the active day (and only once if Health Connect is on too)
-- [ ] Health Connect: submit the declaration, install 1.1.0 from the testing track, turn it on in Activity apps, log a ride in Health Connect (or Google Fit / Samsung Health) and check it appears
+- [ ] Health Connect: submit the declaration, install 1.2.0 from the testing track, turn it on in Activity apps, log a ride in Health Connect (or Google Fit / Samsung Health) and check it appears

@@ -53,6 +53,7 @@ object HealthConnectBridge {
 
     fun init(context: Context) {
         appContext = context.applicationContext
+        ScaleBridge.init(context) { post(it) }
     }
 
     /** Called with the launcher's session once the TWA is showing. */
@@ -72,6 +73,7 @@ object HealthConnectBridge {
     fun onPageLoaded() {
         // Each page load needs a fresh channel (a reload drops the old one).
         channelRequested = false
+        ScaleBridge.reset()
         if (originValidated) requestChannel()
     }
 
@@ -92,13 +94,17 @@ object HealthConnectBridge {
     }
 
     fun onChannelReady() {
-        post(JSONObject().put("type", "hello").put("version", 1))
+        post(JSONObject().put("type", "hello").put("version", 2)) // 2: the app can reach the scale
     }
 
     fun onMessage(message: String) {
         val msg = try {
             JSONObject(message)
         } catch (e: Exception) {
+            return
+        }
+        if (msg.optString("type").startsWith("ble-")) {
+            ScaleBridge.onMessage(msg)
             return
         }
         when (msg.optString("type")) {
