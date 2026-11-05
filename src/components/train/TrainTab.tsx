@@ -32,9 +32,11 @@ import { TrainingPlan, buildPlanOverview, getSessionPlanId, isActiveSlot, planWo
 import { ActivityLog, activeDayDates } from '../../engine/activeDays';
 import { ActiveDayCard } from './ActiveDayCard';
 import { localDateOffset } from '../../utils/date';
+import { startingWeightForNewExercise } from '../../services/sessionPreparation';
 import { useUnits } from '../../utils/unitsContext';
 import {
   prescribeDoubleProgression,
+  findLastCompletedExerciseSession,
   getSessionProgressNarrative,
 } from '../../engine/progression';
 import { calculateSubTierQuest, standardsAge } from '../../engine/strengthStandards';
@@ -360,7 +362,19 @@ export const TrainTab: React.FC<TrainTabProps> = ({
       bodyweightEmaKg,
       profile.goalPhase
     );
-    const nextWeight = isPureBw ? 0 : prescription.nextWeightKg;
+    // Never done before: its own default scaled to the athlete, not a number from a similar movement.
+    const ownHistory = findLastCompletedExerciseSession(def.id, workouts);
+    const startingWeight = ownHistory
+      ? null
+      : startingWeightForNewExercise(activeWorkout, seedEx, {
+          history: workouts,
+          bodyweightKg: bodyweightEmaKg,
+          readinessState: readiness.state,
+          gender: profile.gender,
+          experienceLevel: profile.experienceLevel,
+          unit: units.unit,
+        });
+    const nextWeight = isPureBw ? 0 : startingWeight ?? prescription.nextWeightKg;
     const baseHydratedEx: ExerciseSession = {
       ...seedEx,
       sets: seedEx.sets.map((s, idx) => ({

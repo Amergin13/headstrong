@@ -8,6 +8,7 @@ import {
 import { kilgoreAgeGroup } from '../engine/kilgoreStandards';
 import { calculateBestPillarDetails, isTestedBest } from './storage';
 import { localDateString } from '../utils/date';
+import { isUnilateralExercise } from '../engine/e1rm';
 
 /**
  * Movement standards: each movement's level (Kilgore / Poliquin, see strengthStandards.ts), how it
@@ -106,11 +107,7 @@ function bodyweightOn(biometrics: BiometricLog[], date: string, fallback: number
 
 export const SYMMETRY_FLAG_PCT = 90;
 
-/** Single-arm or single-leg exercises, where each side can be logged. */
-export function isUnilateralExercise(ex: { exerciseId: string; name?: string }): boolean {
-  const s = `${ex.exerciseId} ${ex.name || ''}`.toLowerCase();
-  return /(single[- ]?(arm|leg)|one[- ]arm|1[- ]arm|\bsa[- ]|split[- ]squat|bulgarian|lunge|pistol|step[- ]?up|unilateral|copenhagen|suitcase)/.test(s);
-}
+export { isUnilateralExercise };
 /** Poliquin's chin-up ratio is flagged when the athlete is more than 10% below it. */
 const RATIO_FLAG_FRACTION = 0.9;
 

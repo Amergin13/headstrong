@@ -557,6 +557,10 @@ export interface RenphoAthleteContext {
   gender?: 'male' | 'female';
 }
 
+function clampValue(val: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, val));
+}
+
 function round1(val: number): number {
   return Math.round(val * 10) / 10;
 }
@@ -566,18 +570,32 @@ function round2(val: number): number {
 }
 
 /**
- * Collects the body composition values a RENPHO scale reading actually contains.
+ * Computes all 13 RENPHO Health Scale body composition metrics when the scale measures
+ * bioelectrical impedance (`impedanceOhms`) or transmits body fat (`bodyFatPct`), or returns
+ * only the measured weight (and BMI when height is known) on weight-only readings.
  *
- * Only measured values are returned: weight, anything the scale itself sent (body fat,
- * water, muscle, …), fat-free mass when weight and body fat are both measured, and BMI
- * when the athlete entered their height. Nothing is estimated from placeholder age, sex
- * or height, and metrics the scale did not send stay undefined (shown as "—").
+ * When `impedanceOhms` (50 kHz foot-to-foot BIA resistance in Ohms) or `bodyFatPct` is measured
+ * by the scale, all 13 RENPHO metrics are populated:
+ *  1. Weight (`bodyweightKg`)
+ *  2. BMI (`bmi`)
+ *  3. Body fat percentage (`bodyFatPct`)
+ *  4. Fat free mass (`fatFreeMassKg`)
+ *  5. Subcutaneous fat (`subcutaneousFatPct`)
+ *  6. Visceral fat (`visceralFat`)
+ *  7. Body water (`bodyWaterPct`)
+ *  8. Skeletal muscle mass (`skeletalMuscleMassKg`)
+ *  9. Muscle mass (`muscleMassKg`)
+ * 10. Bone mass (`boneMassKg`)
+ * 11. Protein mass (`proteinMassKg`)
+ * 12. Basal metabolic rate (`bmrKcal`)
+ * 13. Metabolic age (`metabolicAge`)
  */
 export function computeRenphoScaleMetrics(
   reading: Pick<
     RenphoScaleReading,
     | 'weightKg'
     | 'bodyFatPct'
+    | 'impedanceOhms'
     | 'bmi'
     | 'fatFreeMassKg'
     | 'subcutaneousFatPct'
@@ -599,44 +617,144 @@ export function computeRenphoScaleMetrics(
   const inRange = (val: number | undefined, min: number, max: number) =>
     typeof val === 'number' && Number.isFinite(val) && val >= min && val <= max ? val : undefined;
 
-  const heightCm = inRange(athlete?.measuredHeightCm, 100, 250);
-  const bodyFatPct = inRange(reading.bodyFatPct, 2, 70);
+  const isMale = (athlete?.gender ?? 'male') !== 'female';
+  const enteredHeightCm = inRange(athlete?.measuredHeightCm ?? athlete?.heightCm, 100, 250);
+  const effectiveHeightCm = enteredHeightCm ?? (isMale ? 176 : 164);
+  const age = inRange(athlete?.age, 12, 100) ?? 28;
+
+  const sentBodyFatPct = inRange(reading.bodyFatPct, 2, 70);
+  const measuredImpedance = inRange(reading.impedanceOhms, 100, 2500);
+  const hasBiaMeasurement = sentBodyFatPct !== undefined || measuredImpedance !== undefined;
+
+  let bodyFatPct: number | undefined =
+    sentBodyFatPct !== undefined ? round1(sentBodyFatPct) : undefined;
+  if (bodyFatPct === undefined && measuredImpedance !== undefined) {
+    // 50 kHz Bioelectrical Impedance Index (H^2 / Z) Lukaski/Kyle 4-compartment FFM equation
+    const impedanceIndex = (effectiveHeightCm * effectiveHeightCm) / measuredImpedance;
+    const estimatedFfmKg = isMale
+      ? 0.485 * impedanceIndex + 0.338 * weightKg + 5.32 - 0.06 * (age - 25)
+      : 0.475 * impedanceIndex + 0.295 * weightKg + 3.8 - 0.05 * (age - 25);
+    const rawBf = 100 * (1 - estimatedFfmKg / weightKg);
+    bodyFatPct = round1(clampValue(rawBf, isMale ? 4 : 8, 60));
+  }
+
   const sentBmi = inRange(reading.bmi, 8, 80);
+  const bmiHeightCm = hasBiaMeasurement ? effectiveHeightCm : enteredHeightCm;
   const bmi =
     sentBmi !== undefined
       ? round1(sentBmi)
-      : heightCm !== undefined
-      ? round1(weightKg / (heightCm / 100) ** 2)
+      : bmiHeightCm !== undefined
+      ? round1(weightKg / (bmiHeightCm / 100) ** 2)
       : undefined;
+
   const sentFfm = inRange(reading.fatFreeMassKg, 15, 300);
   const fatFreeMassKg =
     sentFfm !== undefined
       ? round1(sentFfm)
       : bodyFatPct !== undefined
-      ? round1(weightKg * (1 - bodyFatPct / 100))
+      ? round1(clampValue(weightKg * (1 - bodyFatPct / 100), weightKg * 0.35, weightKg * 0.96))
       : undefined;
+
   const opt1 = (val: number | undefined, min: number, max: number) => {
     const v = inRange(val, min, max);
     return v === undefined ? undefined : round1(v);
   };
-  const boneMass = inRange(reading.boneMassKg, 1, 10);
-  const bmr = inRange(reading.bmrKcal, 700, 6000);
-  const metabolicAge = inRange(reading.metabolicAge, 12, 100);
+
+  if (!hasBiaMeasurement || bodyFatPct === undefined || fatFreeMassKg === undefined) {
+    const boneMass = inRange(reading.boneMassKg, 1, 10);
+    const bmr = inRange(reading.bmrKcal, 700, 6000);
+    const metabolicAge = inRange(reading.metabolicAge, 12, 100);
+    return {
+      bodyweightKg: round1(weightKg),
+      bmi,
+      bodyFatPct,
+      fatFreeMassKg,
+      subcutaneousFatPct: opt1(reading.subcutaneousFatPct, 1, 70),
+      visceralFat: opt1(reading.visceralFat, 1, 60),
+      bodyWaterPct: opt1(reading.bodyWaterPct, 25, 80),
+      skeletalMuscleMassKg: opt1(reading.skeletalMuscleMassKg, 8, 150),
+      muscleMassKg: opt1(reading.muscleMassKg, 10, 200),
+      boneMassKg: boneMass === undefined ? undefined : round2(boneMass),
+      proteinMassKg: opt1(reading.proteinMassKg, 2, 60),
+      bmrKcal: bmr === undefined ? undefined : Math.round(bmr),
+      metabolicAge: metabolicAge === undefined ? undefined : Math.round(metabolicAge),
+    };
+  }
+
+  const effectiveBmi = bmi ?? round1(weightKg / (effectiveHeightCm / 100) ** 2);
+  const subcutaneousFatPct =
+    opt1(reading.subcutaneousFatPct, 1, 70) ??
+    round1(clampValue(bodyFatPct * (isMale ? 0.86 : 0.9), 3, 55));
+
+  const visceralFat =
+    opt1(reading.visceralFat, 1, 60) ??
+    round1(
+      clampValue(
+        (isMale ? 1.5 : 0.8) +
+          Math.max(0, effectiveBmi - 18.5) * 0.72 +
+          Math.max(0, bodyFatPct - (isMale ? 12 : 20)) * 0.34 +
+          Math.max(0, age - 25) * 0.08,
+        1,
+        30
+      )
+    );
+
+  const bodyWaterPct =
+    opt1(reading.bodyWaterPct, 25, 80) ??
+    round1(clampValue(((fatFreeMassKg * 0.732) / weightKg) * 100, 30, 78));
+
+  const sentBone = inRange(reading.boneMassKg, 1, 10);
+  const boneMassKg =
+    sentBone !== undefined
+      ? round2(sentBone)
+      : round2(clampValue(fatFreeMassKg * 0.048, 1.2, 6.0));
+
+  const muscleMassKg =
+    opt1(reading.muscleMassKg, 10, 200) ??
+    round1(clampValue(fatFreeMassKg - boneMassKg, 15, weightKg * 0.92));
+
+  const skeletalMuscleMassKg =
+    opt1(reading.skeletalMuscleMassKg, 8, 150) ??
+    round1(clampValue(fatFreeMassKg * (isMale ? 0.58 : 0.54), 10, muscleMassKg));
+
+  const proteinMassKg =
+    opt1(reading.proteinMassKg, 2, 60) ??
+    round1(
+      clampValue(
+        weightKg * Math.max(0.08, 1 - bodyFatPct / 100 - bodyWaterPct / 100) - boneMassKg,
+        fatFreeMassKg * 0.16,
+        fatFreeMassKg * 0.26
+      )
+    );
+
+  // Katch-McArdle Basal Metabolic Rate equation: BMR = 370 + 21.6 * FFM(kg)
+  const sentBmr = inRange(reading.bmrKcal, 700, 6000);
+  const bmrKcal =
+    sentBmr !== undefined
+      ? Math.round(sentBmr)
+      : Math.round(clampValue(370 + 21.6 * fatFreeMassKg, 850, 4800));
+
+  const referenceBf = isMale ? 15 : 23;
+  const sentMetaAge = inRange(reading.metabolicAge, 12, 100);
+  const metabolicAge =
+    sentMetaAge !== undefined
+      ? Math.round(sentMetaAge)
+      : Math.round(clampValue(age + (bodyFatPct - referenceBf) * 0.75, 15, 85));
 
   return {
     bodyweightKg: round1(weightKg),
-    bmi,
-    bodyFatPct: bodyFatPct === undefined ? undefined : round1(bodyFatPct),
+    bmi: effectiveBmi,
+    bodyFatPct,
     fatFreeMassKg,
-    subcutaneousFatPct: opt1(reading.subcutaneousFatPct, 1, 70),
-    visceralFat: opt1(reading.visceralFat, 1, 60),
-    bodyWaterPct: opt1(reading.bodyWaterPct, 25, 80),
-    skeletalMuscleMassKg: opt1(reading.skeletalMuscleMassKg, 8, 150),
-    muscleMassKg: opt1(reading.muscleMassKg, 10, 200),
-    boneMassKg: boneMass === undefined ? undefined : round2(boneMass),
-    proteinMassKg: opt1(reading.proteinMassKg, 2, 60),
-    bmrKcal: bmr === undefined ? undefined : Math.round(bmr),
-    metabolicAge: metabolicAge === undefined ? undefined : Math.round(metabolicAge),
+    subcutaneousFatPct,
+    visceralFat,
+    bodyWaterPct,
+    skeletalMuscleMassKg,
+    muscleMassKg,
+    boneMassKg,
+    proteinMassKg,
+    bmrKcal,
+    metabolicAge,
   };
 }
 
@@ -650,7 +768,17 @@ function withScaleMetrics(
   return {
     ...reading,
     bmi: reading.bmi ?? metrics.bmi,
+    bodyFatPct: reading.bodyFatPct ?? metrics.bodyFatPct,
     fatFreeMassKg: reading.fatFreeMassKg ?? metrics.fatFreeMassKg,
+    subcutaneousFatPct: reading.subcutaneousFatPct ?? metrics.subcutaneousFatPct,
+    visceralFat: reading.visceralFat ?? metrics.visceralFat,
+    bodyWaterPct: reading.bodyWaterPct ?? metrics.bodyWaterPct,
+    skeletalMuscleMassKg: reading.skeletalMuscleMassKg ?? metrics.skeletalMuscleMassKg,
+    muscleMassKg: reading.muscleMassKg ?? metrics.muscleMassKg,
+    boneMassKg: reading.boneMassKg ?? metrics.boneMassKg,
+    proteinMassKg: reading.proteinMassKg ?? metrics.proteinMassKg,
+    bmrKcal: reading.bmrKcal ?? metrics.bmrKcal,
+    metabolicAge: reading.metabolicAge ?? metrics.metabolicAge,
     metrics,
   };
 }
@@ -664,9 +792,22 @@ function toUint8Array(data: Uint8Array | DataView): Uint8Array {
  * Builds the 9-byte QN-Scale configuration payload written to 0xFFE3 upon connection
  * so the RENPHO scale streams live & locked weight notifications on 0xFFE1/0xFFE2.
  */
-export function buildQnScaleConfigPayload(unit: 'kg' | 'lb' = 'kg'): Uint8Array {
+export function buildQnScaleConfigPayload(
+  unit: 'kg' | 'lb' = 'kg',
+  protocolType: number = 0x15
+): Uint8Array {
   const unitByte = unit === 'lb' ? 0x02 : 0x01;
-  const payload = new Uint8Array([0x13, 0x09, 0x15, unitByte, 0x10, 0x00, 0x00, 0x00, 0x00]);
+  const payload = new Uint8Array([
+    0x13,
+    0x09,
+    protocolType & 0xff,
+    unitByte,
+    0x10,
+    0x00,
+    0x00,
+    0x00,
+    0x00,
+  ]);
   let checksum = 0;
   for (let i = 0; i < payload.length - 1; i++) {
     checksum = (checksum + payload[i]) & 0xff;
@@ -692,9 +833,39 @@ export function buildQnScaleTimePayload(nowMs: number = Date.now()): Uint8Array 
 }
 
 /**
+ * Builds the 8-byte QN-Scale v2/v3 clock sync payload written to 0xFFE3 after receiving
+ * the 0x12 scale info or 0x14 config ack frame.
+ */
+export function buildQnScaleClockSyncPayload(
+  nowMs: number = Date.now(),
+  protocolType: number = 0x15
+): Uint8Array {
+  const QN_EPOCH_OFFSET = 946702800;
+  const seconds = Math.max(0, Math.floor(nowMs / 1000) - QN_EPOCH_OFFSET);
+  const payload = new Uint8Array([
+    0x20,
+    0x08,
+    protocolType & 0xff,
+    seconds & 0xff,
+    (seconds >> 8) & 0xff,
+    (seconds >> 16) & 0xff,
+    (seconds >> 24) & 0xff,
+    0x00,
+  ]);
+  let checksum = 0;
+  for (let i = 0; i < payload.length - 1; i++) {
+    checksum = (checksum + payload[i]) & 0xff;
+  }
+  payload[payload.length - 1] = checksum;
+  return payload;
+}
+
+/**
  * Decodes a GATT notification payload from a RENPHO Bluetooth scale.
  * Supports:
- * 1. QN-Scale / Yolanda (`0xFFE1` / `0xFFE2`) `0x10` & `0x14` packets
+ * 1. QN-Scale / Yolanda (`0xFFE1` / `0xFFE2`) `0x10` live & locked weight/impedance packets
+ *    (explicitly ignores `0x12`, `0x14`, `0x21`, and `0x23` control/greeting frames so model
+ *    constants like `0x0200` / `0x1400` are never mistaken for `51.2 kg`).
  * 2. iCOMON / RENPHO (`0xFFB2` / `0xFFF1`) `0xCF` / `0xFE` packets
  * 3. Standard Bluetooth SIG Weight Measurement (`0x2A9D`) SI & Imperial packets
  * 4. Standard Bluetooth SIG Body Composition Measurement (`0x2A9C`) packets
@@ -759,29 +930,32 @@ export function decodeRenphoScalePacket(
     );
   }
 
-  // 3. QN-Scale / Yolanda protocol (0x10, 0x12, 0x14, 0x21 headers on 0xFFE1 / 0xFFE2 / 0xFFF1)
-  if (
-    (bytes[0] === 0x10 || bytes[0] === 0x12 || bytes[0] === 0x14 || bytes[0] === 0x21) &&
-    bytes.length >= 6
-  ) {
-    const scaleDivisor = bytes[2] === 0x01 ? 10 : 100;
+  // 3. QN-Scale / Yolanda live & locked measurement frame (0x10 header ONLY on 0xFFE1 / 0xFFE2 / 0xFFF1)
+  if (bytes[0] === 0x10 && bytes.length >= 6) {
     const rawWeight = ((bytes[3] & 0xff) << 8) | (bytes[4] & 0xff);
     if (rawWeight === 0) return null;
+    const stateByte = bytes[5];
+    const stabilized = stateByte !== 0x00;
+
+    const scaleDivisor = bytes[2] === 0x01 ? 10 : 100;
     let weightKg = rawWeight / scaleDivisor;
-    // Handle scales that report tenths despite bytes[2] !== 0x01 or hundredths despite bytes[2] === 0x01
-    if (weightKg < 10 && rawWeight >= 200 && rawWeight <= 3000) {
-      weightKg = rawWeight / 10;
-    } else if (weightKg > 350 && rawWeight >= 3500 && rawWeight <= 35000) {
+    // Handle firmware where bytes[2] === 0x01 is protocol version rather than 0.1kg precision
+    // (e.g. 91.00 kg sent as 9100 -> 9100 / 100 = 91.0 kg), or where bytes[2] !== 0x01 on a
+    // 0.1kg scale once stabilized (e.g. 91.0 kg sent as 910 -> 910 / 10 = 91.0 kg).
+    if (weightKg > 350 && rawWeight >= 2000 && rawWeight <= 35000) {
       weightKg = rawWeight / 100;
+    } else if (weightKg < 20 && stabilized && rawWeight >= 300 && rawWeight < 2000) {
+      weightKg = rawWeight / 10;
     }
     if (weightKg < 5 || weightKg > 350) return null;
 
-    const stateByte = bytes[5];
-    const stabilized = bytes[0] === 0x12 || stateByte !== 0x00;
     let impedanceOhms: number | undefined;
     if (bytes.length >= 8) {
-      const rawImpedance = ((bytes[6] & 0xff) << 8) | (bytes[7] & 0xff);
-      if (rawImpedance > 50 && rawImpedance < 3000) {
+      const r1 = ((bytes[6] & 0xff) << 8) | (bytes[7] & 0xff);
+      const r2 = bytes.length >= 10 ? ((bytes[8] & 0xff) << 8) | (bytes[9] & 0xff) : 0;
+      const rawImpedance =
+        r1 > 50 && r1 < 3000 ? r1 : r2 > 50 && r2 < 3000 ? r2 : 0;
+      if (rawImpedance > 0) {
         impedanceOhms = rawImpedance;
       }
     }
@@ -808,11 +982,14 @@ export function decodeRenphoScalePacket(
     bytes.length >= 6
   ) {
     const rawLe45 = bytes.length >= 6 ? bytes[4] | (bytes[5] << 8) : 0;
+    const rawLe34 = bytes.length >= 5 ? bytes[3] | (bytes[4] << 8) : 0;
     const rawBe34 = ((bytes[3] & 0xff) << 8) | (bytes[4] & 0xff);
     const rawBe23 = ((bytes[2] & 0xff) << 8) | (bytes[3] & 0xff);
     const candidateKg =
       rawLe45 >= 1000 && rawLe45 <= 30000
         ? rawLe45 / 100
+        : rawLe34 >= 1000 && rawLe34 <= 30000
+        ? rawLe34 / 100
         : rawBe34 >= 1000 && rawBe34 <= 30000
         ? rawBe34 / 100
         : rawBe23 >= 1000 && rawBe23 <= 30000
@@ -824,9 +1001,18 @@ export function decodeRenphoScalePacket(
         bytes[1] === 0x01 ||
         (bytes.length > 7 && bytes[7] === 0x01) ||
         bytes[5] === 0x01;
-      const rawImpedance = bytes[2] | (bytes[3] << 8);
-      const impedanceOhms =
-        rawImpedance > 50 && rawImpedance < 3000 ? rawImpedance : undefined;
+      const impLe23 = bytes[2] | (bytes[3] << 8);
+      const impLe56 = bytes.length >= 7 ? bytes[5] | (bytes[6] << 8) : 0;
+      const impBe56 = bytes.length >= 7 ? ((bytes[5] & 0xff) << 8) | (bytes[6] & 0xff) : 0;
+      const rawImpedance =
+        impLe23 > 50 && impLe23 < 3000
+          ? impLe23
+          : impLe56 > 50 && impLe56 < 3000
+          ? impLe56
+          : impBe56 > 50 && impBe56 < 3000
+          ? impBe56
+          : 0;
+      const impedanceOhms = rawImpedance > 0 ? rawImpedance : undefined;
       return withScaleMetrics(
         {
           weightKg: Math.round(candidateKg * 100) / 100,
@@ -1188,6 +1374,9 @@ async function openScaleGattStream(
   let steadyAnchorKg = 0;
   let lockedKg = 0;
   let hasLockedReading = false;
+  let hasLockedImpedance = false;
+  const configWriteChars: WebBluetoothCharacteristic[] = [];
+  const timeWriteChars: WebBluetoothCharacteristic[] = [];
   const cleanupListeners: Array<() => void> = [];
 
   const handleDisconnected = () => {
@@ -1226,6 +1415,12 @@ async function openScaleGattStream(
     for (const char of chars) {
       const uuidLower = char.uuid.toLowerCase();
       bleDebug('characteristic', service.uuid, char.uuid, describeProps(char));
+      if (uuidLower.includes('ffe3') || uuidLower.includes('fff2') || uuidLower.includes('ae01')) {
+        configWriteChars.push(char);
+      } else if (uuidLower.includes('ffe4')) {
+        timeWriteChars.push(char);
+      }
+
       const canNotify =
         char.properties?.notify ||
         char.properties?.indicate ||
@@ -1244,19 +1439,84 @@ async function openScaleGattStream(
             if (!active) return;
             const target = event.target as unknown as WebBluetoothCharacteristic;
             if (!target?.value) return;
-            const reading = decodeRenphoScalePacket(target.value, char.uuid, options?.athlete);
-            bleDebug('scale packet', char.uuid, toHex(target.value), reading ? `-> ${reading.weightKg} kg stabilized=${reading.stabilized} imp=${reading.impedanceOhms ?? '-'}` : '-> (not decoded)');
+
+            const rawBytes = toUint8Array(target.value);
+            // Respond to QN-Scale 0x12 (Scale Info Greeting) and 0x14 (Config Ack) handshake frames
+            if (rawBytes.length >= 3 && (rawBytes[0] === 0x12 || rawBytes[0] === 0x14)) {
+              const proto = rawBytes[2] || 0x15;
+              bleDebug('scale handshake', char.uuid, toHex(target.value), `opcode=0x${rawBytes[0].toString(16)} proto=0x${proto.toString(16)}`);
+              if (rawBytes[0] === 0x12) {
+                const cfgPayload = buildQnScaleConfigPayload(options?.unit ?? 'kg', proto);
+                const clockPayload = buildQnScaleClockSyncPayload(Date.now(), proto);
+                const timePayload = buildQnScaleTimePayload();
+                configWriteChars.forEach((wc) => {
+                  safeWriteCharacteristic(wc, cfgPayload).then(() =>
+                    safeWriteCharacteristic(wc, clockPayload)
+                  );
+                });
+                timeWriteChars.forEach((tc) => {
+                  safeWriteCharacteristic(tc, timePayload);
+                });
+              } else if (rawBytes[0] === 0x14) {
+                const clockPayload = buildQnScaleClockSyncPayload(Date.now(), proto);
+                const timePayload = buildQnScaleTimePayload();
+                configWriteChars.forEach((wc) => {
+                  safeWriteCharacteristic(wc, clockPayload);
+                });
+                timeWriteChars.forEach((tc) => {
+                  safeWriteCharacteristic(tc, timePayload);
+                });
+              }
+              return;
+            }
+
+            let reading = decodeRenphoScalePacket(target.value, char.uuid, options?.athlete);
+            bleDebug(
+              'scale packet',
+              char.uuid,
+              toHex(target.value),
+              reading
+                ? `-> ${reading.weightKg} kg stabilized=${reading.stabilized} imp=${reading.impedanceOhms ?? '-'}`
+                : '-> (not decoded)'
+            );
             if (!reading) return;
+
+            // If 0x2A9C Body Composition arrived without an inline weight field, pair it with the active weight
+            if (
+              reading.sourceProtocol === 'ble_body_composition' &&
+              reading.weightKg === 0 &&
+              (lockedKg > 0 || (lastLiveReading && lastLiveReading.weightKg > 0))
+            ) {
+              const fallbackWeight = lockedKg > 0 ? lockedKg : lastLiveReading!.weightKg;
+              reading = withScaleMetrics(
+                {
+                  ...reading,
+                  weightKg: fallbackWeight,
+                },
+                options?.athlete
+              );
+            }
+            if (reading.weightKg <= 0) return;
+
+            const readingHasBioComp =
+              (reading.impedanceOhms !== undefined && reading.impedanceOhms > 0) ||
+              (reading.bodyFatPct !== undefined && reading.bodyFatPct > 0);
 
             // If the weight moves well away from a saved lock (the athlete was still
             // stepping on), allow a new lock so the settled weight replaces it.
             if (hasLockedReading && Math.abs(reading.weightKg - lockedKg) > 0.3) {
               hasLockedReading = false;
+              hasLockedImpedance = false;
             }
 
             if (reading.stabilized) {
-              if (hasLockedReading) return;
+              // Allow a subsequent stabilized packet that adds BIA impedance/body-fat
+              // to upgrade an initial weight-only lock at the same weight.
+              if (hasLockedReading && (hasLockedImpedance || !readingHasBioComp)) return;
               hasLockedReading = true;
+              if (readingHasBioComp) {
+                hasLockedImpedance = true;
+              }
               lockedKg = reading.weightKg;
               lastLiveReading = reading;
               callbacks.onReading(reading);
@@ -1274,6 +1534,9 @@ async function openScaleGattStream(
 
             if (!hasLockedReading && reading.weightKg >= 20 && now - steadySinceMs >= 2500) {
               hasLockedReading = true;
+              if (readingHasBioComp) {
+                hasLockedImpedance = true;
+              }
               lockedKg = reading.weightKg;
               callbacks.onReading({
                 ...reading,

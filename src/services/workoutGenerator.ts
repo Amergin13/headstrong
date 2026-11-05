@@ -636,6 +636,7 @@ export function adaptWorkoutSessionToLocation(
             isRdl: ex.isRdl,
             isWeightedCalisthenic: ex.isWeightedCalisthenic,
             exerciseId: ex.exerciseId,
+            name: ex.name,
             pillar: ex.pillar,
           },
           {
@@ -643,6 +644,7 @@ export function adaptWorkoutSessionToLocation(
             isRdl: targetDef.isRdl,
             isWeightedCalisthenic: targetDef.isWeightedCalisthenic,
             exerciseId: targetDef.id,
+            name: targetDef.name,
             pillar: targetDef.pillar,
           },
           bodyweightEmaKg

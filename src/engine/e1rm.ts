@@ -9,6 +9,21 @@ export const EQUIPMENT_MULTIPLIERS = {
 };
 
 /**
+ * Load on a single-arm or single-leg variation compared with the two-sided lift of the same
+ * movement. One side does the work, so it starts from half. This is a conservative starting
+ * approximation, not a published ratio (no study found gives a split squat to back squat conversion);
+ * the athlete's first logged sets replace it. It only converts starting weights: estimated maxes
+ * and strength levels never use it.
+ */
+export const UNILATERAL_LOAD_FRACTION = 0.5;
+
+/** Single-arm or single-leg exercises, where each side works on its own. */
+export function isUnilateralExercise(ex: { exerciseId?: string; name?: string }): boolean {
+  const s = `${ex.exerciseId || ''} ${ex.name || ''}`.toLowerCase();
+  return /(single[- ]?(arm|leg)|one[- ]arm|1[- ]arm|\bsa[- ]|split[- ]squat|bulgarian|lunge|pistol|step[- ]?up|unilateral|copenhagen|suitcase)/.test(s);
+}
+
+/**
  * Biomechanical Bodyweight Load Fractions (percentage of body mass supported/lifted):
  * Based on published exercise biomechanics (Ebben et al., 2011; Suprak et al., 2011; Vigotsky et al., 2019):
  * - Push-Up (standard): ~64% BW
@@ -187,6 +202,7 @@ export function translateWeightBetweenImplements(
     isRdl?: boolean;
     isWeightedCalisthenic?: boolean;
     exerciseId?: string;
+    name?: string;
     pillar?: string;
   },
   targetMeta: {
@@ -194,6 +210,7 @@ export function translateWeightBetweenImplements(
     isRdl?: boolean;
     isWeightedCalisthenic?: boolean;
     exerciseId?: string;
+    name?: string;
     pillar?: string;
   },
   bodyweightEmaKg: number = 80
@@ -212,8 +229,17 @@ export function translateWeightBetweenImplements(
     sourceMeta.pillar
   );
 
+  const sourceUnilateral = isUnilateralExercise(sourceMeta);
+  const targetUnilateral = isUnilateralExercise(targetMeta);
+  const sideFactor =
+    targetUnilateral && !sourceUnilateral
+      ? UNILATERAL_LOAD_FRACTION
+      : sourceUnilateral && !targetUnilateral
+      ? 1 / UNILATERAL_LOAD_FRACTION
+      : 1;
+
   return convertEffectiveToExternalLoad(
-    canonicalLoad,
+    canonicalLoad * sideFactor,
     targetMeta.equipment,
     targetMeta.isRdl,
     targetMeta.isWeightedCalisthenic,

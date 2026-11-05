@@ -37,7 +37,7 @@ import {
   getDesignSystemComponentById,
   buildBodyCompositionKnowledgeGraph,
 } from '../knowledgeGraph';
-import { SEED_EXERCISES } from '../../services/seedData';
+import { SEED_EXERCISES, generateSeedWorkouts } from '../../services/seedData';
 import { processAssistantMessage, buildSafetyResponse, buildProgressSummary } from '../../services/aiAssistantService';
 import { evaluateSessionRecovery, getDaysUntilReady, getDisplayReadyAt } from '../recovery';
 import { buildWeekStrip } from '../../services/sessionSchedule';
@@ -56,7 +56,7 @@ import { localDateString } from '../../utils/date';
 import { calculateBestPillarE1rms } from '../../services/storage';
 import { evaluateSetPersonalBest, planRestAfterSet } from '../../services/setCompletion';
 import { completeWorkout } from '../../services/workoutCompletion';
-import { prepareSessionForAthlete } from '../../services/sessionPreparation';
+import { prepareSessionForAthlete, startingWeightForNewExercise } from '../../services/sessionPreparation';
 import { buildCompositionCharts, buildStrengthCharts } from '../../services/progressSeries';
 import {
   BODY_MEASUREMENT_SITES,
@@ -4445,6 +4445,43 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
     );
 
     // 1. QN-Scale / Yolanda (0xFFE1/0xFFE2) live & locked packets + 13-metric BIA computation
+    const qnGreeting5120 = decodeRenphoScalePacket(
+      new Uint8Array([0x12, 0x0b, 0x15, 0x14, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x3b]),
+      RENPHO_SCALE_UUIDS.QN_NOTIFY_FFE1
+    );
+    const qnGreeting512 = decodeRenphoScalePacket(
+      new Uint8Array([0x12, 0x0b, 0x01, 0x02, 0x00, 0x00, 0x00, 0x00]),
+      RENPHO_SCALE_UUIDS.QN_NOTIFY_FFE1
+    );
+    const qnConfigAck = decodeRenphoScalePacket(
+      new Uint8Array([0x14, 0x0b, 0x15, 0x14, 0x00, 0x01, 0x00, 0x00]),
+      RENPHO_SCALE_UUIDS.QN_NOTIFY_FFE1
+    );
+    assert(
+      qnGreeting5120 === null && qnGreeting512 === null && qnConfigAck === null,
+      'QN-Scale 0x12 / 0x14 greeting and ack frames are ignored and never misdecoded as 51.2 kg'
+    );
+
+    const qn91Hundredths = decodeRenphoScalePacket(
+      new Uint8Array([0x10, 0x0b, 0x15, 0x23, 0x8c, 0x02, 0x01, 0xf4, 0x00, 0x00, 0x00]),
+      RENPHO_SCALE_UUIDS.QN_NOTIFY_FFE1,
+      { heightCm: 180, age: 30, gender: 'male' }
+    );
+    const qn91Tenths = decodeRenphoScalePacket(
+      new Uint8Array([0x10, 0x0b, 0x01, 0x03, 0x8e, 0x01, 0x01, 0xf4]),
+      RENPHO_SCALE_UUIDS.QN_NOTIFY_FFE1,
+      { heightCm: 180, age: 30, gender: 'male' }
+    );
+    assert(
+      qn91Hundredths !== null &&
+        qn91Hundredths.weightKg === 91 &&
+        qn91Hundredths.stabilized === true &&
+        qn91Tenths !== null &&
+        qn91Tenths.weightKg === 91 &&
+        qn91Tenths.stabilized === true,
+      `QN-Scale 91.0 kg packet decodes accurately in both 0.01 kg (9100 -> ${qn91Hundredths?.weightKg}) and 0.1 kg (910 -> ${qn91Tenths?.weightKg}) precision`
+    );
+
     const qnLive = decodeRenphoScalePacket(
       new Uint8Array([0x10, 0x0b, 0x00, 0x20, 0x35, 0x00, 0x00, 0x00]),
       RENPHO_SCALE_UUIDS.QN_NOTIFY_FFE1,
@@ -4467,20 +4504,31 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
         qnLocked.impedanceOhms === 512 &&
         qnLocked.metrics !== undefined &&
         qnLocked.metrics.bodyweightKg === 82.5 &&
-        qnLocked.metrics.bodyFatPct === undefined &&
-        qnLocked.metrics.visceralFat === undefined &&
-        qnLocked.metrics.metabolicAge === undefined &&
-        qnLocked.metrics.bmi === undefined,
-      `QN-Scale locked packet decodes 82.45 kg with 512Ω impedance and invents no body composition (no age/sex/height entered)`
+        typeof qnLocked.metrics.bmi === 'number' &&
+        typeof qnLocked.metrics.bodyFatPct === 'number' &&
+        typeof qnLocked.metrics.fatFreeMassKg === 'number' &&
+        typeof qnLocked.metrics.subcutaneousFatPct === 'number' &&
+        typeof qnLocked.metrics.visceralFat === 'number' &&
+        typeof qnLocked.metrics.bodyWaterPct === 'number' &&
+        typeof qnLocked.metrics.skeletalMuscleMassKg === 'number' &&
+        typeof qnLocked.metrics.muscleMassKg === 'number' &&
+        typeof qnLocked.metrics.boneMassKg === 'number' &&
+        typeof qnLocked.metrics.proteinMassKg === 'number' &&
+        typeof qnLocked.metrics.bmrKcal === 'number' &&
+        typeof qnLocked.metrics.metabolicAge === 'number',
+      `QN-Scale locked packet with 512Ω impedance computes all 13 RENPHO scale metrics (BF=${qnLocked?.metrics?.bodyFatPct}%, SMM=${qnLocked?.metrics?.skeletalMuscleMassKg}kg)`
     );
-    const qnWithHeight = decodeRenphoScalePacket(
-      new Uint8Array([0x10, 0x0b, 0x00, 0x20, 0x35, 0x01, 0x02, 0x00]),
+    const qnWeightOnlyWithHeight = decodeRenphoScalePacket(
+      new Uint8Array([0x10, 0x0b, 0x00, 0x20, 0x35, 0x01, 0x00, 0x00]),
       RENPHO_SCALE_UUIDS.QN_NOTIFY_FFE1,
       { measuredHeightCm: 180 }
     );
     assert(
-      qnWithHeight?.metrics?.bmi === 25.4 && qnWithHeight.metrics.bodyFatPct === undefined,
-      `BMI comes from the athlete's entered height (got ${qnWithHeight?.metrics?.bmi}); body fat stays empty`
+      qnWeightOnlyWithHeight?.metrics?.bmi === 25.4 &&
+        qnWeightOnlyWithHeight.metrics.bodyFatPct === undefined &&
+        qnWeightOnlyWithHeight.metrics.visceralFat === undefined &&
+        qnWeightOnlyWithHeight.metrics.metabolicAge === undefined,
+      `Weight-only packet (0Ω impedance) computes BMI from entered height (${qnWeightOnlyWithHeight?.metrics?.bmi}) and leaves BIA body composition empty`
     );
 
     // 2. Standard Bluetooth SIG Weight Measurement (0x2A9D) SI & Imperial packets
@@ -5131,6 +5179,52 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
     });
     const t = coach.message.text;
     assert(t.includes('Your levels') && t.includes('Bulgarian Split Squat') && t.includes('75%') && t.includes('Kilgore'), `Coach answers level and balance questions from the athlete's data (got "${t.slice(0, 120)}")`);
+  }
+
+  // ==========================================
+  // Suite 42: a never-done exercise never takes another lift's number
+  // ==========================================
+  console.log('\n--- Suite 42: Starting weight for a never-done exercise ---');
+  {
+    // Sample data: barbell back squat at 117.5 kg, Dumbbell Bulgarian Split Squat never done.
+    const demo = generateSeedWorkouts();
+    const bss = SEED_EXERCISES.find((e) => e.id === 'ex-bulgarian-split-squat')!;
+    const seed: ExerciseSession = {
+      id: 'added',
+      exerciseId: bss.id,
+      name: bss.name,
+      pillar: bss.pillar,
+      equipment: bss.equipment,
+      minReps: 8,
+      maxReps: 12,
+      sets: [1, 2, 3].map((n) => ({ id: `s${n}`, setNumber: n, targetWeightKg: 16, targetReps: 8, targetRir: 2, completed: false, setType: 'working' as const })),
+    };
+    const squatKg = 117.5;
+    const ctx = { history: demo, bodyweightKg: 81, readinessState: 'Normal' as const, gender: 'male' as const, experienceLevel: 'experienced' as const, unit: 'kg' as const };
+    const started = startingWeightForNewExercise(demo[demo.length - 1], seed, ctx);
+    assert(started !== null && started >= 30 && started <= 60, `Added split squat starts from a scaled weight, not the 100 kg it used to (got ${started} kg with a ${squatKg} kg squat)`);
+
+    const newAthlete = startingWeightForNewExercise(demo[demo.length - 1], seed, { ...ctx, history: [], experienceLevel: 'new' });
+    assert(newAthlete !== null && newAthlete > 0 && newAthlete < (started as number), `A new athlete starts lighter than the sample athlete (got ${newAthlete} kg)`);
+
+    const prescribed = prescribeDoubleProgression(seed, 'Normal', demo, 81, 'Lean Bulk');
+    assert(prescribed.nextWeightKg <= 52, `Falling back on the squat halves it for one working leg and converts it to dumbbells (got ${prescribed.nextWeightKg} kg)`);
+
+    const barbell = { equipment: 'barbell' as const, exerciseId: 'ex-barbell-squat', pillar: 'Squat' };
+    const single = { equipment: 'dumbbell' as const, exerciseId: bss.id, name: bss.name, pillar: 'Squat' };
+    assert(translateWeightBetweenImplements(100, barbell, single, 80) === 42, 'Barbell to single-leg dumbbell: 100 kg becomes 42 kg combined');
+    assert(translateWeightBetweenImplements(42, single, barbell, 80) === 100, 'Single-leg dumbbell back to barbell: 42 kg combined becomes 100 kg');
+    assert(
+      translateWeightBetweenImplements(90, { equipment: 'barbell', exerciseId: 'ex-bench-press' }, { equipment: 'dumbbell', exerciseId: 'ex-db-bench-press' }, 80) === 76,
+      'Two-sided lifts keep the plain dumbbell conversion (90 kg barbell = 76 kg combined)'
+    );
+    assert(
+      translateWeightBetweenImplements(20, { equipment: 'dumbbell', exerciseId: 'ex-walking-lunge' }, single, 80) === 20,
+      'Two single-sided lifts on the same equipment convert one to one'
+    );
+    // Estimated max is not touched by the starting-weight factor.
+    const e1rmPlain = calculateE1RM(40, 8, 2, 'dumbbell', false, false, 80, bss.id, 'Squat');
+    assert(e1rmPlain === Math.round(40 * 1.18 * (1 + 10 / 30) * 10) / 10, 'Estimated max for a split squat is unchanged by the starting-weight factor');
   }
 
   console.log('\n[42. Renpho scale through the Android app: pair once]');

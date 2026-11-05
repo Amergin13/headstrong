@@ -246,14 +246,21 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
   const activeSiteRef = useRef<BodyMeasurementSite>(activeSite);
   activeSiteRef.current = activeSite;
 
+  const typedHeightCm = useMemo(() => {
+    const parsed = parseFloat(height);
+    if (!Number.isFinite(parsed) || parsed <= 0) return undefined;
+    const cm = imperial ? parsed * CM_PER_IN : parsed;
+    return cm >= 120 && cm <= 230 ? cm : undefined;
+  }, [height, imperial]);
+
   const athleteContext = useMemo(
     () => ({
-      measuredHeightCm: heightCm,
-      heightCm,
+      measuredHeightCm: heightCm ?? typedHeightCm,
+      heightCm: heightCm ?? typedHeightCm,
       age: athleteAge,
       gender: athleteGender,
     }),
-    [heightCm, athleteAge, athleteGender]
+    [heightCm, typedHeightCm, athleteAge, athleteGender]
   );
 
   useEffect(() => {
@@ -319,7 +326,7 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
       return;
     }
     if (!reading.stabilized && weighInSavedRef.current) return;
-    const fullMetrics = reading.metrics ?? computeRenphoScaleMetrics(reading, athleteContext);
+    const fullMetrics = computeRenphoScaleMetrics(reading, athleteContext) ?? reading.metrics;
     const enrichedReading: RenphoScaleReading = fullMetrics
       ? { ...reading, ...fullMetrics, metrics: fullMetrics }
       : reading;
@@ -343,8 +350,14 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
     }
 
     if (enrichedReading.stabilized && enrichedReading.weightKg > 0) {
-      // Scales repeat the locked packet several times; save each weigh-in once.
-      const saveKey = `${Math.round(enrichedReading.weightKg * 10)}`;
+      // Scales repeat the locked packet several times; save each weigh-in once,
+      // but allow a subsequent BIA packet (with impedance/body fat) to upgrade a weight-only lock.
+      const hasBioComp = Boolean(
+        (fullMetrics?.bodyFatPct && fullMetrics.bodyFatPct > 0) ||
+          (enrichedReading.bodyFatPct && enrichedReading.bodyFatPct > 0) ||
+          (enrichedReading.impedanceOhms && enrichedReading.impedanceOhms > 0)
+      );
+      const saveKey = `${Math.round(enrichedReading.weightKg * 10)}:${hasBioComp ? 1 : 0}`;
       if (lastScaleSaveKeyRef.current === saveKey) return;
       lastScaleSaveKeyRef.current = saveKey;
       const autoEntry: MeasurementEntry = {
@@ -373,6 +386,9 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
       const extraCount = RENPHO_SCALE_METRICS.filter(
         (m) => m.field !== 'bodyweightKg' && typeof autoEntry[m.field] === 'number'
       ).length;
+      if (extraCount > 0) {
+        setShowAdvancedScaleMetrics(true);
+      }
       setAutoSavedBanner(
         `${summary}${extraCount > 0 ? ` and ${extraCount} more ${extraCount === 1 ? 'metric' : 'metrics'}` : ''}`
       );

@@ -345,6 +345,7 @@ export function prescribeDoubleProgression(
           isRdl: sourceSession.isRdl,
           isWeightedCalisthenic: sourceSession.isWeightedCalisthenic,
           exerciseId: sourceSession.exerciseId,
+          name: sourceSession.name,
           pillar: sourceSession.pillar,
         },
         {
@@ -352,6 +353,7 @@ export function prescribeDoubleProgression(
           isRdl: session.isRdl,
           isWeightedCalisthenic: session.isWeightedCalisthenic,
           exerciseId: session.exerciseId,
+          name: session.name,
           pillar: session.pillar,
         },
         bodyweightEmaKg
@@ -390,6 +392,7 @@ export function prescribeDoubleProgression(
             isRdl: sourceSession.isRdl,
             isWeightedCalisthenic: sourceSession.isWeightedCalisthenic,
             exerciseId: sourceSession.exerciseId,
+            name: sourceSession.name,
             pillar: sourceSession.pillar,
           },
           {
@@ -397,6 +400,7 @@ export function prescribeDoubleProgression(
             isRdl: session.isRdl,
             isWeightedCalisthenic: session.isWeightedCalisthenic,
             exerciseId: session.exerciseId,
+            name: session.name,
             pillar: session.pillar,
           },
           bodyweightEmaKg

@@ -1,4 +1,4 @@
-import { ReadinessState, UserProfile, WorkoutSession } from '../engine/types';
+import { ExerciseSession, ReadinessState, UserProfile, WorkoutSession } from '../engine/types';
 import { personalizeSessionLoads } from '../engine/loadPersonalization';
 import { getTemplateDefaultWeight } from './workoutGenerator';
 import { snapLoadKg, WeightUnit } from '../utils/units';
@@ -47,4 +47,24 @@ export function prepareSessionForAthlete(session: WorkoutSession, ctx: SessionPr
       ),
     })),
   };
+}
+
+/**
+ * Starting weight for an exercise the athlete has never done, added to a session by hand. It comes
+ * from the exercise's own default scaled by what the athlete lifts relative to the defaults (like
+ * every generated session), never from another exercise's number. Null when the exercise has no
+ * known default (a custom exercise or a weighted bodyweight move).
+ */
+export function startingWeightForNewExercise(
+  session: WorkoutSession,
+  exercise: ExerciseSession,
+  ctx: SessionPreparationContext
+): number | null {
+  const unloaded = {
+    ...exercise,
+    sets: exercise.sets.map((s) => ({ ...s, targetWeightKg: 0, actualWeightKg: 0 })),
+  };
+  const prepared = prepareSessionForAthlete({ ...session, exercises: [unloaded] }, { ...ctx, isProgramPlan: true });
+  const weight = prepared.exercises[0].sets.find((s) => !s.isWarmup && s.setType !== 'warmup')?.targetWeightKg ?? 0;
+  return weight > 0 ? weight : null;
 }
