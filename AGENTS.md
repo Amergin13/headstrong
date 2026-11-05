@@ -76,30 +76,25 @@ where $w$ is the 7-day EMA bodyweight in kg.
 
 ---
 
-### 1.4 6-Pillar International Strength Standards
-The 6 foundational movement pillars benchmark a lifter's strength relative to bodyweight ratio ($\frac{\text{E1RM}}{\text{EMA}_{BW}}$):
-1. **Squat** (Quads, Glutes)
-2. **Hinge** (Hamstrings, Posterior Chain, Conventional Deadlift)
-3. **Horizontal Push** (Bench Press, Chest Press)
-4. **Vertical Push** (Overhead Press)
-5. **Horizontal Pull** (Barbell Row, Cable Row)
-6. **Vertical Pull** (Pull-Up, Lat Pulldown; uses Total Mass = $\text{EMA}_{BW} + \text{Load}$)
+### 1.4 Strength Standards, Balance and Symmetry (authoritative sources only)
+Levels come only from published, authoritative standards (never a made-up table, and never a gym's own chart). Code: `src/engine/kilgoreStandards.ts`, `src/engine/strengthStandards.ts`, `src/services/movementStandards.ts`; knowledge graph `sp-6-pillars`.
 
-#### Tier Thresholds (Male E1RM / BW):
-| Movement Pillar | Untrained | Novice | Intermediate | Advanced | Elite |
-| :--- | :---: | :---: | :---: | :---: | :---: |
-| **Squat** | 0.75 | 1.20 | 1.50 | 2.00 | 2.50 |
-| **Hinge** | 0.95 | 1.45 | 1.80 | 2.40 | 3.00 |
-| **Horizontal Push** | 0.60 | 0.90 | 1.20 | 1.55 | 1.90 |
-| **Vertical Push** | 0.40 | 0.60 | 0.80 | 1.05 | 1.30 |
-| **Horizontal Pull** | 0.50 | 0.75 | 1.00 | 1.30 | 1.60 |
-| **Vertical Pull (Total)** | 0.85 | 1.10 | 1.35 | 1.65 | 1.95 |
+| Movement | Source | How |
+| :--- | :--- | :--- |
+| **Squat** (back squat, below parallel) | Kilgore, ExRx.net | 1RM tables by sex, bodyweight class and age group |
+| **Hinge** (deadlift) | Kilgore, ExRx.net | same |
+| **Horizontal Push** (bench press) | Kilgore, ExRx.net | same |
+| **Vertical Push** (standing press) | Kilgore, ExRx.net | same |
+| **Vertical Pull** (chin-up, total mass = bodyweight + load) | Poliquin, *Achieving Structural Balance* (1999) | 81% of the close-grip bench 1RM; applied to Kilgore's bench levels |
+| **Horizontal Pull** (rows) | none published | no level; never celebrated |
 
-#### Female Proportional Thresholds:
-Derived from international powerlifting and strength databases (approximately ~65-72% of male absolute bodyweight multipliers).
-
-#### Tier ranges:
-Each tier runs from its own threshold up to the next tier's (male squat: Untrained 0.75–1.20, Novice 1.20–1.50, Intermediate 1.50–2.00, Advanced 2.00–2.50, Elite 2.50+); below the Untrained threshold is Untrained I. Engine suite 4 pins every boundary. Strength levels on Progress and the radar both come from `evaluateStrengthStandard`; the card's overall level averages logged movements only, and an unlogged movement scores 0 on the radar.
+- **Kilgore tables:** copied as published (ExRx, read Nov 2026) for 18–39, 40–49, 50–59 and 60–69, men and women. Classes are upper limits (76 kg uses the 82 kg class); heavier than the last class uses the open class. One source typo (women 40–49 deadlift, 60 kg, Untrained 60.0) is kept but clamped so levels never go backwards. The age group uses only an age the athlete entered (`ageEntered`, Settings → Age); otherwise 18–39. Sex comes from Settings → Strength Standard Category.
+- **Levels:** each runs from its own threshold up to the next, in 4 sub-levels; below Untrained is Untrained I; a lift exactly on a boundary reaches it. **Tested** = best set on the standard lift (`STANDARD_TEST_EXERCISE`) for 5 reps or fewer; anything else is **Estimated** from the estimated max (multipliers in §1.1) and says which exercise it came from.
+- **Over time:** each movement's level when first logged (at that week's bodyweight) is kept and shown when it has changed.
+- **Imbalances:** chin-up under 90% of Poliquin's 81% of bench → "pull behind push"; a full level (4 sub-levels) between two Kilgore lifts → flagged, with "this is an estimate" advice when the weaker lift wasn't tested.
+- **Left/right:** single-arm and single-leg exercises (`isUnilateralExercise`) offer "Log each side"; the set's reps become the weaker side's. Over the last 3 sessions, a side under 90% of the other is flagged (90% symmetry: Grindem et al., Br J Sports Med 2016).
+- **Shown in:** Progress → Strength (Strength levels card, Balance card) and the coach (`buildStandardsAnswer`, deterministic, never the model). Engine suites 4 and 41 pin all of this.
+- **Not covered (no authoritative standard found):** rows, lunges/split squats (except as estimates for squat symmetry), core and conditioning tests. Don't invent levels for them.
 
 #### Sub-Division Calculation:
 Each major tier is segmented into 4 granular sub-divisions: `I, II, III, IV`:
@@ -429,7 +424,7 @@ All future sessions, developers, and AI agents must strictly adhere to the struc
    - *Profile & Data Drawers:* Collapsible accordions for Athlete Profile, Data Backup (export/restore/erase), and Product Governance Matrix.
 3. **Progress Tab (`AnalyticsTab.tsx`):** same `.wk` card style as the Workout tab. Every chart is a `ProgressChartCard` (title, "Last updated", plain-English summary, `TrendChart` with gridline values and first/last dates; "Example" until two points). Series come from `services/progressSeries.ts`.
    - *Switcher:* `Strength` | `Composition`.
-   - *Strength:* strength levels first (`StrengthLevelsCard`: 6 movement patterns vs bodyweight, a row per movement with its level and progress to the next, "Not logged yet" when unlogged, cardio from watch data; before a weigh-in, a prompt to log weight), then estimated one-rep max per movement type, weekly hard sets, work capacity (only with measured heart rate); then one card per trained muscle (`buildMuscleProgress`, `src/services/muscleProgress.ts`, knowledge-graph principle `sp-muscle-progress`): weekly hard sets for the last 8 weeks as bars against the personal target band (same count as the knowledge graph and cards: main muscle 1, helper 0.5), a strength index (100 = first week; chain-linked weekly change in each exercise's best estimated max, so swaps don't jump it; sets over 15 reps excluded), the muscle's tape measurement when logged, and the exercises that feed it; then the knowledge-graph card (joint load, recovery, Science & Logic).
+   - *Strength:* strength levels first (`StrengthLevelsCard`, §1.4: a row per movement with its level, Tested/Estimated, progress to the next and the level when first logged; rows say they have no published standard; cardio only from measured watch data; before a weigh-in, a prompt to log weight), then the Balance card (`BalanceCard`: imbalances between lifts and weaker sides), then estimated one-rep max per movement type, weekly hard sets, work capacity (only with measured heart rate); then one card per trained muscle (`buildMuscleProgress`, `src/services/muscleProgress.ts`, knowledge-graph principle `sp-muscle-progress`): weekly hard sets for the last 8 weeks as bars against the personal target band (same count as the knowledge graph and cards: main muscle 1, helper 0.5), a strength index (100 = first week; chain-linked weekly change in each exercise's best estimated max, so swaps don't jump it; sets over 15 reps excluded), the muscle's tape measurement when logged, and the exercises that feed it; then the knowledge-graph card (joint load, recovery, Science & Logic).
    - *Composition:* a `Weight` | `Measurements` switch and **one log button that logs what the switch shows** ("Log weight" or "Log measurements"; the log form has no switch of its own). Weight: weigh-in (optional body fat and other scale readings; height asked once and stored as `measuredHeightCm`), the body composition summary, then bodyweight (7-day average over daily weigh-ins, weekly pace vs the goal), body fat, lean mass and FFMI. Measurements: tape sites, left/right symmetry, waist, waist-to-height, chest, arms and the rest. FFMI and waist-to-height only use a height the athlete entered, never the placeholder `heightCm`.
 4. **No Athlete tab.** It was folded into Progress (bottom nav: Workout, Program, AI Coach, Progress; old `?tab=character` links open Progress). Strength levels are the first card in Progress → Strength. Removed on purpose, don't bring back: the combined Big 3 total and strength-to-weight (DOTS) score (the plans don't train the competition lifts, so it stayed empty or mixed in other lifts), the consistency/steps card (the streak is in the header, active days on the Workout tab, n/24 on Program), and the weekly-sets gauges (weekly sets are a training input: shown on each exercise card and the plan; Progress keeps the 8-week per-muscle cards).
 
@@ -477,7 +472,7 @@ To eliminate all model hallucinations, ungrounded approximations, and conflictin
 4. **Weighted Calisthenics Total Gravitational Mass (`sp-weighted-calisthenics-total-load`):** Total Mass = $\text{EMA}_{BW} + \text{External Load}$.
 5. **7-Day Exponential Moving Average Bodyweight (`sp-ema-bodyweight`):** Smoothing daily glycogen/water shifts ($0.25 \times \text{Today} + 0.75 \times \text{Yesterday}$).
 6. **Official IPF DOTS Strength Polynomial (`sp-dots-polynomial`):** 4th-degree polynomial normalizing relative strength across bodyweights.
-7. **6-Pillar International Relative Strength Standards (`sp-6-pillar-standards`):** Squat, Hinge, Horizontal Push, Vertical Push, Horizontal Pull, Vertical Pull standards.
+7. **Strength Levels, Balance and Left/Right Symmetry (`sp-6-pillars`):** Kilgore (ExRx) levels by sex, bodyweight and age; Poliquin's chin-up ratio; 90% limb symmetry (Grindem 2016).
 8. **Autonomic Readiness Z-Score Auto-Regulation (`sp-autonomic-readiness`):** 14-day rolling baseline HRV, RHR, and sleep score driving Amber Shield / Primed states.
 9. **Double Progression Auto-Regulation Logic (`sp-double-progression`):** Top-of-rep-range load step (+2.5kg BB, +2.0kg DB) vs. within-range rep accretion.
 10. **Israetel & Schoenfeld Muscle-Specific Hypertrophy Volume Landmarks (`sp-volume-landmarks`):** Divergent MV/MEV/MAV/MRV based on fiber type and eccentric stretch.

@@ -837,7 +837,6 @@ export const App: React.FC = () => {
             biometrics={biometrics}
             profile={profile}
             bodyweightEmaKg={bodyweightEmaKg}
-            pillarBestE1rm={pillarBestE1rm}
             latestBiometrics={latestBiometrics}
             exerciseCatalog={exercises}
             weeklyVolume={weeklyVolume}

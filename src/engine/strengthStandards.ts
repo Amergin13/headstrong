@@ -7,6 +7,7 @@ import {
   EquipmentType,
 } from './types';
 import { calculateRepsNeededForTargetE1RM } from './e1rm';
+import { KilgoreLift, kilgoreThresholdsKg } from './kilgoreStandards';
 
 export const TIERS: StrengthTier[] = ['Untrained', 'Novice', 'Intermediate', 'Advanced', 'Elite'];
 export const SUB_DIVISIONS: SubDivision[] = ['I', 'II', 'III', 'IV'];
@@ -19,34 +20,59 @@ export interface TierThresholds {
   Elite: number;
 }
 
-// Prompt: Male E1RM/BW thresholds:
-// Squat: [0.75, 1.20, 1.50, 2.00, 2.50]
-// Hinge: [0.95, 1.45, 1.80, 2.40, 3.00]
-// Horizontal Push: [0.60, 0.90, 1.20, 1.55, 1.90]
-// Vertical Push: [0.40, 0.60, 0.80, 1.05, 1.30]
-// Horizontal Pull: [0.50, 0.75, 1.00, 1.30, 1.60]
-// Vertical Pull (Total Mass): [0.85, 1.10, 1.35, 1.65, 1.95]
-export const STRENGTH_STANDARDS_MALE: Record<StrengthPillar, [number, number, number, number, number]> = {
-  Squat: [0.75, 1.20, 1.50, 2.00, 2.50],
-  Hinge: [0.95, 1.45, 1.80, 2.40, 3.00],
-  'Horizontal Push': [0.60, 0.90, 1.20, 1.55, 1.90],
-  'Vertical Push': [0.40, 0.60, 0.80, 1.05, 1.30],
-  'Horizontal Pull': [0.50, 0.75, 1.00, 1.30, 1.60],
-  'Vertical Pull': [0.85, 1.10, 1.35, 1.65, 1.95],
+/**
+ * Where each movement's levels come from (see kilgoreStandards.ts for the tables):
+ * - Squat, Hinge (deadlift), Horizontal Push (bench), Vertical Push (standing press): Dr Lon Kilgore's
+ *   performance standards (ExRx.net), by sex, bodyweight class and age group.
+ * - Vertical Pull: Poliquin's structural balance ratio (Achieving Structural Balance, 1999): a
+ *   supinated chin-up 1RM, bodyweight included, of 81% of the close-grip bench 1RM. Treise applies
+ *   it to Kilgore's bench levels, because the app logs the bench press, not the close-grip bench.
+ * - Horizontal Pull (rows): no published standard, so no level is given.
+ */
+export type StandardSource = 'kilgore' | 'poliquin' | 'none';
+
+export const PILLAR_STANDARD_SOURCE: Record<StrengthPillar, StandardSource> = {
+  Squat: 'kilgore',
+  Hinge: 'kilgore',
+  'Horizontal Push': 'kilgore',
+  'Vertical Push': 'kilgore',
+  'Vertical Pull': 'poliquin',
+  'Horizontal Pull': 'none',
 };
 
-// Female standards (~68% average relative scaling)
-export const STRENGTH_STANDARDS_FEMALE: Record<StrengthPillar, [number, number, number, number, number]> = {
-  Squat: [0.50, 0.85, 1.10, 1.45, 1.80],
-  Hinge: [0.65, 1.00, 1.30, 1.75, 2.20],
-  'Horizontal Push': [0.40, 0.60, 0.80, 1.05, 1.35],
-  'Vertical Push': [0.25, 0.40, 0.55, 0.75, 0.95],
-  'Horizontal Pull': [0.35, 0.50, 0.70, 0.90, 1.15],
-  'Vertical Pull': [0.65, 0.85, 1.05, 1.25, 1.50],
+const KILGORE_LIFT: Partial<Record<StrengthPillar, KilgoreLift>> = {
+  Squat: 'squat',
+  Hinge: 'deadlift',
+  'Horizontal Push': 'bench',
+  'Vertical Push': 'press',
 };
 
-export function getThresholds(pillar: StrengthPillar, gender: Gender = 'male'): [number, number, number, number, number] {
-  return gender === 'female' ? STRENGTH_STANDARDS_FEMALE[pillar] : STRENGTH_STANDARDS_MALE[pillar];
+/** The age to pick a standards table by: only an age the athlete entered (else the 18–39 adult table). */
+export function standardsAge(profile: { age?: number; ageEntered?: boolean }): number | undefined {
+  return profile.ageEntered ? profile.age : undefined;
+}
+
+/** Poliquin (1999): supinated chin-up 81% of the close-grip bench press 1RM. */
+export const POLIQUIN_CHIN_UP_TO_BENCH = 0.81;
+
+/**
+ * The 5 level thresholds as a ratio of bodyweight (Untrained, Novice, Intermediate, Advanced, Elite),
+ * or null when the movement has no published standard.
+ */
+export function getThresholds(
+  pillar: StrengthPillar,
+  gender: Gender = 'male',
+  bodyweightKg: number = 80,
+  age?: number
+): [number, number, number, number, number] | null {
+  const bw = bodyweightKg > 0 ? bodyweightKg : 80;
+  const sex = gender === 'female' ? 'female' : 'male';
+  const lift = KILGORE_LIFT[pillar];
+  if (lift) return kilgoreThresholdsKg(lift, sex, bw, age).map((kg) => kg / bw) as [number, number, number, number, number];
+  if (pillar === 'Vertical Pull') {
+    return kilgoreThresholdsKg('bench', sex, bw, age).map((kg) => (kg * POLIQUIN_CHIN_UP_TO_BENCH) / bw) as [number, number, number, number, number];
+  }
+  return null;
 }
 
 /**
@@ -56,7 +82,8 @@ export function evaluateStrengthStandard(
   pillar: StrengthPillar,
   e1rmKg: number,
   bodyweightEmaKg: number,
-  gender: Gender = 'male'
+  gender: Gender = 'male',
+  age?: number
 ): {
   ratio: number;
   tier: StrengthTier;
@@ -65,9 +92,15 @@ export function evaluateStrengthStandard(
   nextSubDivision: SubDivision;
   targetRatio: number;
   percentageProgress: number;
+  /** Where the level comes from; 'none' means no published standard (no level is shown). */
+  source: StandardSource;
 } {
   const ratio = bodyweightEmaKg > 0 ? e1rmKg / bodyweightEmaKg : 0;
-  const thresholds = getThresholds(pillar, gender);
+  const source = PILLAR_STANDARD_SOURCE[pillar];
+  const thresholds = getThresholds(pillar, gender, bodyweightEmaKg, age);
+  if (!thresholds) {
+    return { ratio, tier: 'Untrained', subDivision: 'I', nextTier: 'Untrained', nextSubDivision: 'I', targetRatio: 0, percentageProgress: 0, source };
+  }
   const [untrained, novice, intermediate, advanced, elite] = thresholds;
 
   // Each tier runs from its own threshold up to the next tier's, in 4 equal sub-divisions
@@ -75,7 +108,8 @@ export function evaluateStrengthStandard(
   // Novice 1.20–1.50, Intermediate 1.50–2.00, Advanced 2.00–2.50, Elite 2.50+.
   const tierRange = (currentTier: StrengthTier, nextTierName: StrengthTier, lower: number, upper: number) => {
     const step = (upper - lower) / 4;
-    const subIdx = Math.max(0, Math.min(3, Math.floor((ratio - lower) / step)));
+    // A lift exactly on a boundary reaches it (tolerance for floating-point division).
+    const subIdx = Math.max(0, Math.min(3, Math.floor((ratio - lower) / step + 1e-9)));
     // Below the Untrained threshold there is no lower tier: it is all Untrained I, measured from 0.
     const prevRatio = ratio < lower ? 0 : lower + subIdx * step;
     const nextTargetRatio = subIdx === 3 ? upper : lower + (subIdx + 1) * step;
@@ -89,17 +123,19 @@ export function evaluateStrengthStandard(
       nextSubDivision: subIdx === 3 ? ('I' as SubDivision) : SUB_DIVISIONS[subIdx + 1],
       targetRatio: nextTargetRatio,
       percentageProgress: Math.round(progress),
+      source,
     };
   };
 
-  if (ratio < novice) return tierRange('Untrained', 'Novice', untrained, novice);
-  if (ratio < intermediate) return tierRange('Novice', 'Intermediate', novice, intermediate);
-  if (ratio < advanced) return tierRange('Intermediate', 'Advanced', intermediate, advanced);
-  if (ratio < elite) return tierRange('Advanced', 'Elite', advanced, elite);
+  const EPS = 1e-9;
+  if (ratio < novice - EPS) return tierRange('Untrained', 'Novice', untrained, novice);
+  if (ratio < intermediate - EPS) return tierRange('Novice', 'Intermediate', novice, intermediate);
+  if (ratio < advanced - EPS) return tierRange('Intermediate', 'Advanced', intermediate, advanced);
+  if (ratio < elite - EPS) return tierRange('Advanced', 'Elite', advanced, elite);
 
   // Elite and beyond
   const eliteStep = (elite * 0.25) / 4;
-  const eliteOffset = ratio - elite;
+  const eliteOffset = Math.max(0, ratio - elite);
   const subIdx = Math.min(3, Math.floor(eliteOffset / eliteStep));
   const progress = Math.min(100, (eliteOffset / (eliteStep * 4)) * 100);
 
@@ -111,6 +147,7 @@ export function evaluateStrengthStandard(
     nextSubDivision: subIdx < 3 ? SUB_DIVISIONS[subIdx + 1] : 'IV',
     targetRatio: elite + (subIdx + 1) * eliteStep,
     percentageProgress: Math.round(progress),
+    source,
   };
 }
 

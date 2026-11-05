@@ -171,6 +171,12 @@ export interface WorkoutSet {
   actualWeightKg?: number;
   targetReps: number;
   actualReps?: number;
+  /**
+   * Single-arm / single-leg sets logged per side. actualReps is then the weaker side's reps (what
+   * both sides managed), so progression and estimated maxes never count the stronger side alone.
+   */
+  actualRepsLeft?: number;
+  actualRepsRight?: number;
   targetRir: number; // 0, 1, 2, 3+
   actualRir?: number;
   completed: boolean;
@@ -342,7 +348,10 @@ export interface UserProfile {
   experienceLevel?: ExperienceLevel;
   /** Display/input unit for weights. Data is always stored in kg. */
   weightUnit?: 'kg' | 'lb';
+  /** Placeholder (25) until the athlete enters it; see ageEntered. */
   age: number;
+  /** True once the athlete entered their age (Settings); strength standards use the 18–39 table until then. */
+  ageEntered?: boolean;
   heightCm: number;
   /** Height the athlete entered themselves; heightCm is only a placeholder until then. */
   measuredHeightCm?: number;

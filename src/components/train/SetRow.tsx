@@ -19,6 +19,8 @@ interface SetRowProps {
   isDumbbell?: boolean;
   displayBadge?: string;
   displayLabel?: string;
+  /** Single-arm / single-leg: show left and right reps under the row. */
+  perSide?: boolean;
   onUpdate: (updated: Partial<WorkoutSet>) => void;
   onComplete: () => void;
 }
@@ -30,6 +32,7 @@ export const SetRow: React.FC<SetRowProps> = ({
   isDumbbell = false,
   displayBadge,
   displayLabel,
+  perSide = false,
   onUpdate,
   onComplete,
 }) => {
@@ -73,7 +76,30 @@ export const SetRow: React.FC<SetRowProps> = ({
     displayBadge || (currentSetType === 'warmup' ? 'W' : currentSetType === 'drop' ? 'D' : currentSetType === 'myo' ? '+' : `${set.setNumber}`);
   const greyText: React.CSSProperties = { fontSize: `max(12px, ${fig(26)})`, fontWeight: 600, color: '#A7ACAF' };
 
+  // Per side: the set's reps are what both sides managed (the weaker side).
+  const updateSide = (side: 'left' | 'right', reps: number) => {
+    const left = side === 'left' ? reps : set.actualRepsLeft ?? currentReps;
+    const right = side === 'right' ? reps : set.actualRepsRight ?? currentReps;
+    onUpdate({ actualRepsLeft: left, actualRepsRight: right, actualReps: Math.min(left, right) });
+  };
+  const sideInput = (side: 'left' | 'right') => (
+    <label className="flex items-center" style={{ gap: fig(12) }}>
+      <span style={greyText}>{side === 'left' ? 'Left' : 'Right'}</span>
+      <input
+        type="number"
+        inputMode="numeric"
+        value={(side === 'left' ? set.actualRepsLeft : set.actualRepsRight) ?? currentReps}
+        aria-label={`${label} ${side} side repetitions`}
+        onFocus={(e) => e.target.select()}
+        onChange={(e) => updateSide(side, Math.max(0, parseInt(e.target.value, 10) || 0))}
+        className="wk-input outline-none block"
+        style={{ width: fig(110) }}
+      />
+    </label>
+  );
+
   return (
+    <div className="flex flex-col" style={{ gap: fig(14) }}>
     <div
       className="grid items-center relative"
       style={{ gridTemplateColumns: SET_TABLE_COLUMNS, columnGap: SET_TABLE_GAP }}
@@ -179,6 +205,13 @@ export const SetRow: React.FC<SetRowProps> = ({
         )}
         {celebration > 0 && set.completed && <span className="wk-tick-ripple" aria-hidden="true" />}
       </button>
+    </div>
+    {perSide && (
+      <div className="flex justify-end" style={{ gap: fig(28) }} role="group" aria-label={`${label} reps for each side`}>
+        {sideInput('left')}
+        {sideInput('right')}
+      </div>
+    )}
     </div>
   );
 };

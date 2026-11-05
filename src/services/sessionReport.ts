@@ -146,6 +146,8 @@ export function buildSessionProgressReport(input: {
   /** Smoothed bodyweight; omit when the athlete has never logged a weight. */
   bodyweightKg?: number;
   gender?: Gender;
+  /** For age-group strength standards (Kilgore). */
+  age?: number;
   now?: number;
 }): SessionProgressReport | null {
   const now = input.now ?? Date.now();
@@ -211,9 +213,10 @@ export function buildSessionProgressReport(input: {
     const after = calculateBestPillarE1rms(completed, input.bodyweightKg, { loadedLiftsOnly: true });
     for (const pillar of pillars) {
       if (after[pillar] <= 0) continue;
-      const nowLevel = evaluateStrengthStandard(pillar, after[pillar], input.bodyweightKg, input.gender);
+      const nowLevel = evaluateStrengthStandard(pillar, after[pillar], input.bodyweightKg, input.gender, input.age);
+      if (nowLevel.source === 'none') continue; // no published standard (rows)
       const prevLevel =
-        before[pillar] > 0 ? evaluateStrengthStandard(pillar, before[pillar], input.bodyweightKg, input.gender) : undefined;
+        before[pillar] > 0 ? evaluateStrengthStandard(pillar, before[pillar], input.bodyweightKg, input.gender, input.age) : undefined;
       strengthLevels.push({
         pillar,
         tier: nowLevel.tier,

@@ -17,6 +17,8 @@ import {
 import { calculateDailyReadiness } from '../readiness';
 import { findLastCompletedExerciseSession, prescribeDoubleProgression } from '../progression';
 import { calculateWci, calculateHrrPercentage } from '../wci';
+import { kilgoreThresholdsKg, KILGORE_STANDARDS } from '../kilgoreStandards';
+import { getThresholds, POLIQUIN_CHIN_UP_TO_BENCH, standardsAge } from '../strengthStandards';
 import { calculateEngineVitalityScore, generate7PillarRadarData } from '../vitality';
 import { BiometricLog, ExerciseSession, WorkoutSession } from '../types';
 import {
@@ -138,37 +140,61 @@ assert(dotsMale > 250 && dotsMale < 350, `Male DOTS for 400kg total @ 80kg BW is
 const dotsFemale = calculateDotsScore(300, 60, 'female');
 assert(dotsFemale > 250 && dotsFemale < 400, `Female DOTS for 300kg total @ 60kg BW is valid (got ${dotsFemale})`);
 
-// 4. 6-Pillar Strength Standards & Sub-Divisions
-console.log('\n[4. 6-Pillar Standards & 4 Sub-Divisions]');
-// Squat standard thresholds male: [0.75, 1.20, 1.50, 2.00, 2.50]
-// 120kg squat @ 80kg BW = 1.50 ratio -> Intermediate I
-const squatStd = evaluateStrengthStandard('Squat', 120, 80, 'male');
-assert(squatStd.tier === 'Intermediate', `120kg squat @ 80kg BW is Intermediate (got ${squatStd.tier})`);
-assert(squatStd.subDivision === 'I', `120kg squat @ 80kg BW is Sub-division I (got ${squatStd.subDivision})`);
-
-// Each tier runs from its own threshold to the next one (no tier is used twice, none is skipped).
+// 4. Strength standards: Kilgore (ExRx) tables by sex, bodyweight class and age; Poliquin for chin-ups.
+console.log('\n[4. Strength Standards (Kilgore / Poliquin) & 4 Sub-Divisions]');
 {
-  const lvl = (ratio: number) => {
-    const r = evaluateStrengthStandard('Squat', ratio * 100, 100, 'male');
+  // Published values (ExRx, men 18–39, 75 kg class squat): 50 / 92.5 / 112.5 / 155 / 202.5.
+  const t75 = kilgoreThresholdsKg('squat', 'male', 75);
+  assert(t75.join() === '50,92.5,112.5,155,202.5', `Kilgore men 18–39 squat, 75 kg class matches ExRx (got ${t75.join()})`);
+  // Classes are upper limits: 76 kg uses the 82 kg class; 200 kg uses the open class.
+  assert(kilgoreThresholdsKg('squat', 'male', 76)[2] === 122.5 && kilgoreThresholdsKg('squat', 'male', 200)[4] === 270, 'Bodyweight picks the right class (76 kg → 82 class; 200 kg → open class)');
+  // Age groups: men 50–59 at 75 kg need less for each level than 18–39.
+  assert(kilgoreThresholdsKg('bench', 'male', 75, 55)[2] === 65 && kilgoreThresholdsKg('bench', 'male', 75, 30)[2] === 85, 'Age group changes the table (bench, 75 kg: Intermediate 85 kg at 30, 65 kg at 55)');
+  assert(kilgoreThresholdsKg('deadlift', 'female', 60)[4] === 125, 'Women have their own tables (deadlift, 60 kg: Elite 125 kg)');
+  // The one source typo (women 40–49 deadlift 60 kg, Untrained 60 > Novice 52.5) is clamped.
+  const typo = kilgoreThresholdsKg('deadlift', 'female', 60, 45);
+  assert(KILGORE_STANDARDS.deadlift['40-49'].female.find((r) => r[0] === 60)![1] === 60 && typo[0] <= typo[1], 'Source typo kept as published but clamped so levels never go backwards');
+  // Every table: levels rise from Untrained to Elite after the clamp.
+  const lifts = ['squat', 'bench', 'deadlift', 'press'] as const;
+  const bad: string[] = [];
+  for (const lift of lifts) for (const sex of ['male', 'female'] as const) for (const age of [25, 45, 55, 65]) for (const bw of [50, 60, 75, 90, 110, 150]) {
+    const t = kilgoreThresholdsKg(lift, sex, bw, age);
+    if (!t.every((v, i) => i === 0 || v >= t[i - 1])) bad.push(`${lift} ${sex} ${age} ${bw}`);
+  }
+  assert(bad.length === 0, `All Kilgore tables rise from Untrained to Elite (${bad.join('; ') || 'all'})`);
+  // Chin-ups: Poliquin 81% of the bench levels; rows have no standard.
+  const bench = getThresholds('Horizontal Push', 'male', 80)!;
+  const chin = getThresholds('Vertical Pull', 'male', 80)!;
+  assert(chin.every((v, i) => Math.abs(v - bench[i] * POLIQUIN_CHIN_UP_TO_BENCH) < 1e-9), 'Chin-up levels are 81% of the bench levels (Poliquin)');
+  assert(getThresholds('Horizontal Pull', 'male', 80) === null && evaluateStrengthStandard('Horizontal Pull', 100, 80).source === 'none', 'Rows have no published standard, so no level');
+  assert(standardsAge({ age: 25 }) === undefined && standardsAge({ age: 52, ageEntered: true }) === 52, 'Only an age the athlete entered picks an age group');
+
+  // 120 kg squat at 80 kg (82 kg class: Novice 100, Intermediate 122.5): Novice IV.
+  const squatStd = evaluateStrengthStandard('Squat', 120, 80, 'male');
+  assert(`${squatStd.tier} ${squatStd.subDivision}` === 'Novice IV' && squatStd.source === 'kilgore', `120 kg squat at 80 kg is Novice IV on Kilgore (got ${squatStd.tier} ${squatStd.subDivision})`);
+
+  // Each level runs from its own threshold to the next (100 kg class: 60 / 110 / 135 / 185 / 240).
+  const lvl = (kg: number) => {
+    const r = evaluateStrengthStandard('Squat', kg, 100, 'male');
     return `${r.tier} ${r.subDivision}`;
   };
   const cases: [number, string][] = [
-    [0.3, 'Untrained I'], [0.75, 'Untrained I'], [0.87, 'Untrained II'], [1.19, 'Untrained IV'],
-    [1.2, 'Novice I'], [1.49, 'Novice IV'],
-    [1.5, 'Intermediate I'], [1.99, 'Intermediate IV'],
-    [2.0, 'Advanced I'], [2.49, 'Advanced IV'],
-    [2.5, 'Elite I'],
+    [30, 'Untrained I'], [60, 'Untrained I'], [72.5, 'Untrained II'], [109, 'Untrained IV'],
+    [110, 'Novice I'], [134, 'Novice IV'],
+    [135, 'Intermediate I'], [184, 'Intermediate IV'],
+    [185, 'Advanced I'], [239, 'Advanced IV'],
+    [240, 'Elite I'],
   ];
-  const wrong = cases.filter(([ratio, want]) => lvl(ratio) !== want).map(([ratio, want]) => `${ratio}x: ${lvl(ratio)} (want ${want})`);
-  assert(wrong.length === 0, `Squat levels follow the standards table: Untrained 0.75–1.20, Novice 1.20–1.50, Intermediate 1.50–2.00, Advanced 2.00–2.50, Elite 2.50+ (${wrong.join('; ') || 'all match'})`);
+  const wrong = cases.filter(([kg, want]) => lvl(kg) !== want).map(([kg, want]) => `${kg} kg: ${lvl(kg)} (want ${want})`);
+  assert(wrong.length === 0, `Squat levels follow Kilgore's 100 kg class: Untrained 60–110, Novice 110–135, Intermediate 135–185, Advanced 185–240, Elite 240+ (${wrong.join('; ') || 'all match'})`);
   const below = evaluateStrengthStandard('Squat', 30, 100, 'male');
-  const top = evaluateStrengthStandard('Squat', 119, 100, 'male');
+  const top = evaluateStrengthStandard('Squat', 109, 100, 'male');
   assert(below.nextTier === 'Untrained' && below.nextSubDivision === 'II' && below.percentageProgress > 0 && below.percentageProgress < 100, 'Below the Untrained standard: Untrained I, working towards Untrained II');
-  assert(top.nextTier === 'Novice' && top.nextSubDivision === 'I' && Math.abs(top.targetRatio - 1.2) < 1e-9, 'Untrained IV leads to Novice I at the Novice threshold');
+  assert(top.nextTier === 'Novice' && top.nextSubDivision === 'I' && Math.abs(top.targetRatio - 1.1) < 1e-9, 'Untrained IV leads to Novice I at the Novice threshold');
 }
 
 const quest = calculateSubTierQuest('Squat', 120, 80, 100, 8, 'barbell', false, false, 'male');
-assert(quest.displayText.includes('reach Intermediate II'), `Quest points to next sub-division (got ${quest.displayText})`);
+assert(quest.displayText.includes('reach Intermediate I'), `Quest points to the next sub-division (got ${quest.displayText})`);
 
 // 5. Pixel Watch Readiness & Amber Shield
 console.log('\n[5. Pixel Watch Readiness & Amber Shield Auto-Regulation]');
@@ -274,10 +300,10 @@ const radar = generate7PillarRadarData(
 assert(radar.length === 7, `Radar contains 7 pillars (got ${radar.length})`);
 assert(radar.some((p) => p.pillar === 'Engine / Vitality'), `Radar includes 7th Pillar Engine / Vitality`);
 {
-  const partial = generate7PillarRadarData({ Squat: 160, Hinge: 0, 'Horizontal Push': 0, 'Vertical Push': 0, 'Horizontal Pull': 0, 'Vertical Pull': 0 }, 80, undefined, 'male');
+  const partial = generate7PillarRadarData({ Squat: 167.5, Hinge: 0, 'Horizontal Push': 0, 'Vertical Push': 0, 'Horizontal Pull': 0, 'Vertical Pull': 0 }, 80, undefined, 'male');
   const squatScore = partial.find((p) => p.pillar === 'Squat')!.score;
   assert(partial.filter((p) => p.pillar !== 'Squat' && p.pillar !== 'Engine / Vitality').every((p) => p.score === 0), 'A movement never logged scores 0 on the radar (no placeholder level)');
-  assert(squatScore === 60, `Radar steps are equal: Advanced I (2.0x squat) scores 60 (got ${squatScore})`);
+  assert(squatScore === 60, `Radar steps are equal: Advanced I (167.5 kg squat at 80 kg) scores 60 (got ${squatScore})`);
 }
 
 // 9. Hypertrophy Volume Landmarks Engine
@@ -5043,7 +5069,71 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
     assert(JSON.stringify(withRide) === JSON.stringify(calculateWeeklyMuscleVolume([done(1, localDateString())], SEED_EXERCISES)), 'Activities never change weekly hard sets');
   }
 
-  console.log('\nALL 38 ENGINE, GOVERNANCE, DESIGN HEURISTICS, TYPOGRAPHY, WEARABLES, WHOOP STRAIN, GOOGLE AUTH, ONBOARDING CONTEXT, 6-WEEK PROGRAM, TENSOR AI, SESSION REPORT, WORKOUT PAGE, EXERCISE OVERVIEW & RENPHO BLUETOOTH SUITES PASSED SUCCESSFULLY! 🎯');
+  console.log('\n[41. Movement standards: levels, balance, sides]');
+  {
+    const ms = await import('../../services/movementStandards');
+    const { calculateEngineVitalityScore: cardio } = await import('../vitality');
+    let n = 0;
+    const set = (kg: number, reps: number, extra: Record<string, unknown> = {}) => ({
+      id: `s${n++}`, setNumber: 1, targetWeightKg: kg, targetReps: reps, actualWeightKg: kg, actualReps: reps, actualRir: 1, completed: true, ...extra,
+    });
+    const ex = (exerciseId: string, name: string, pillar: string, equipment: string, sets: any[]) => ({
+      id: `e${n++}`, exerciseId, name, pillar, equipment, sets, minReps: 5, maxReps: 8,
+    });
+    const workout = (at: string, exercises: any[]): any => ({
+      id: `w${n++}`, date: at.slice(0, 10), name: 'Test', splitDay: 'Push', exercises, completed: true, completedAt: at, readinessState: 'Normal', readinessZScore: 0,
+    });
+    const bw = 80;
+    const history = [
+      workout('2026-09-01T18:00:00.000Z', [
+        ex('ex-barbell-squat', 'Back Squat', 'Squat', 'barbell', [set(100, 5)]),
+        ex('ex-bench-press', 'Bench Press', 'Horizontal Push', 'barbell', [set(80, 5)]),
+      ]),
+      workout('2026-10-20T18:00:00.000Z', [
+        ex('ex-barbell-squat', 'Back Squat', 'Squat', 'barbell', [set(140, 3)]),
+        ex('ex-bench-press', 'Bench Press', 'Horizontal Push', 'barbell', [set(100, 3)]),
+        ex('ex-db-rdl', 'DB Romanian Deadlift', 'Hinge', 'dumbbell', [set(30, 10)]),
+        ex('ex-chinup', 'Chin-Up', 'Vertical Pull', 'bodyweight', [set(0, 4, { actualWeightKg: 0 })]),
+        ex('ex-bulgarian-split-squat', 'Bulgarian Split Squat', 'Squat', 'dumbbell', [set(16, 8, { actualRepsLeft: 6, actualRepsRight: 8, actualReps: 6 })]),
+      ]),
+    ];
+    const r = ms.buildMovementStandards({ workouts: history, biometrics: [], bodyweightKg: bw, gender: 'male' });
+    const L = (p: string) => r.levels.find((l) => l.pillar === p)!;
+    assert(r.tableLabel === 'men, 18–39', `Card names the table it uses (got ${r.tableLabel})`);
+    assert(L('Squat').tested && !L('Hinge').tested, 'Tested = the standard lift for 5 reps or fewer; a dumbbell RDL is Estimated');
+    assert(!L('Vertical Push').logged && L('Horizontal Pull').source === 'none', 'Unlogged movements have no level; rows have no published standard');
+    assert(L('Squat').firstLevel !== undefined && L('Squat').firstLoggedOn === localDateString(new Date('2026-09-01T18:00:00.000Z')), `Level history: the squat's level when first logged is kept (${L('Squat').firstLevel} on ${L('Squat').firstLoggedOn})`);
+    // Chin-up 4 reps at bodyweight ≈ 80 × (1 + (4+1)/30) = 93 kg vs bench ~113 kg: 82%, balanced (Poliquin 81%).
+    assert(!r.imbalances.some((i) => i.kind === 'pull-vs-push'), `Chin-up near 81% of bench is balanced (${r.imbalances.map((i) => i.message).join(' ')})`);
+    const weakPull = ms.buildMovementStandards({
+      workouts: [...history, workout('2026-10-22T18:00:00.000Z', [ex('ex-bench-press', 'Bench Press', 'Horizontal Push', 'barbell', [set(130, 3)])])],
+      biometrics: [], bodyweightKg: bw, gender: 'male',
+    });
+    assert(weakPull.imbalances.some((i) => i.kind === 'pull-vs-push' && i.weaker === 'Vertical Pull'), 'Chin-up well under 81% of bench is flagged as pull behind push');
+    assert(r.imbalances.some((i) => i.kind === 'level-gap' && i.weaker === 'Hinge'), `A lift a full level behind another on the same standards is flagged (${r.levels.map((l) => `${l.pillar} ${l.tier ?? '-'} ${l.subDivision ?? ''}`).join(', ')})`);
+    // Sides: 6 vs 8 reps = 75% symmetry, under 90%.
+    assert(r.sideDifferences.length === 1 && r.sideDifferences[0].weakerSide === 'left' && r.sideDifferences[0].symmetryPct === 75, `Left side at 75% of right is flagged (got ${JSON.stringify(r.sideDifferences)})`);
+    const even = ms.buildSideDifferences([workout('2026-10-20T18:00:00.000Z', [ex('ex-bulgarian-split-squat', 'Bulgarian Split Squat', 'Squat', 'dumbbell', [set(16, 9, { actualRepsLeft: 9, actualRepsRight: 10 })])])]);
+    assert(even.length === 0, 'Sides at 90% (9 vs 10 reps) are not flagged; only under 90% is');
+    assert(ms.isUnilateralExercise({ exerciseId: 'ex-bulgarian-split-squat' }) && ms.isUnilateralExercise({ exerciseId: 'ex-x', name: 'Single-Arm DB Row' }) && !ms.isUnilateralExercise({ exerciseId: 'ex-bench-press', name: 'Bench Press' }), 'Single-arm and single-leg exercises are recognised; bilateral lifts are not');
+    assert(cardio(undefined) === 0 && cardio({ date: '2026-10-01', bodyweightKg: 0, hrvRmssd: 0, restingHr: 0, sleepHours: 0, steps: 0, activeZoneMinutes: 0 } as any) === 0, 'Cardio score is 0 with no watch data (never a default)');
+    const stepsOnly = cardio({ date: '2026-10-01', bodyweightKg: 0, hrvRmssd: 0, restingHr: 0, sleepHours: 0, steps: 10000, activeZoneMinutes: 0 } as any);
+    assert(stepsOnly > 0, 'Cardio score uses only what the watch measured (steps only still scores)');
+    const coach = await processAssistantMessage({
+      userMessage: 'Am I balanced or is one side weaker?',
+      profile: { ...SAMPLE_DEMO_PROFILE, gender: 'male', ageEntered: false },
+      activeWorkout: history[1],
+      workouts: history,
+      biometrics: [{ date: '2026-10-20', bodyweightKg: 80, hrvRmssd: 0, restingHr: 0, sleepHours: 0, steps: 0, activeZoneMinutes: 0 }],
+      exerciseCatalog: SEED_EXERCISES,
+      bodyweightEmaKg: 80,
+      readinessState: 'Normal',
+    });
+    const t = coach.message.text;
+    assert(t.includes('Your levels') && t.includes('Bulgarian Split Squat') && t.includes('75%') && t.includes('Kilgore'), `Coach answers level and balance questions from the athlete's data (got "${t.slice(0, 120)}")`);
+  }
+
+  console.log('\nALL 39 ENGINE, GOVERNANCE, DESIGN HEURISTICS, TYPOGRAPHY, WEARABLES, WHOOP STRAIN, GOOGLE AUTH, ONBOARDING CONTEXT, 6-WEEK PROGRAM, TENSOR AI, SESSION REPORT, WORKOUT PAGE, EXERCISE OVERVIEW & RENPHO BLUETOOTH SUITES PASSED SUCCESSFULLY! 🎯');
 })().catch((err) => {
   console.error('Test Suite Failed:', err);
   if (typeof process !== 'undefined' && process.exit) {

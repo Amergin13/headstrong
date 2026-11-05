@@ -549,6 +549,32 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
               </div>
 
               <div className="flex items-center justify-between" style={{ gap: fig(16) }}>
+                <label htmlFor="athlete-age-input" className="wk-label">
+                  Age
+                </label>
+                <input
+                  id="athlete-age-input"
+                  type="number"
+                  inputMode="numeric"
+                  min={16}
+                  max={99}
+                  value={profile.ageEntered ? profile.age : ''}
+                  placeholder="—"
+                  aria-describedby="athlete-age-help"
+                  onChange={(e) => {
+                    const v = Math.round(Number(e.target.value));
+                    if (!e.target.value) onUpdateProfile({ ageEntered: false });
+                    else if (v >= 16 && v <= 99) onUpdateProfile({ age: v, ageEntered: true });
+                  }}
+                  className="wk-field"
+                  style={{ width: fig(160) }}
+                />
+              </div>
+              <p id="athlete-age-help" className="wk-body" style={{ marginTop: fig(-12) }}>
+                Strength levels compare you with lifters of your sex, bodyweight and age group.
+              </p>
+
+              <div className="flex items-center justify-between" style={{ gap: fig(16) }}>
                 <span className="wk-label">Weight Units</span>
                 <div
                   className="grid grid-cols-2 items-center"

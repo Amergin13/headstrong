@@ -6,7 +6,7 @@ import {
   WorkoutSession,
 } from '../engine/types';
 import { Milestone, evaluateStrengthStandardAdvance, programMilestone } from '../engine/milestones';
-import { evaluateStrengthStandard } from '../engine/strengthStandards';
+import { evaluateStrengthStandard, standardsAge } from '../engine/strengthStandards';
 import { getNextProgramWorkoutNumber, getSessionPlanId, isActiveSlot } from '../engine/muscleBuildingProgram';
 import { getPlanById } from '../engine/trainingPlans';
 import { calculateBestPillarE1rms } from './storage';
@@ -107,8 +107,9 @@ export function completeWorkout(input: WorkoutCompletionInput): WorkoutCompletio
   let strengthMilestone: Milestone | null = null;
   for (const p of STRENGTH_PILLARS) {
     if (!prevPillars[p]) continue;
-    const oldStd = evaluateStrengthStandard(p, prevPillars[p], bodyweightKg, profile.gender);
-    const newStd = evaluateStrengthStandard(p, nextPillars[p], bodyweightKg, profile.gender);
+    const oldStd = evaluateStrengthStandard(p, prevPillars[p], bodyweightKg, profile.gender, standardsAge(profile));
+    const newStd = evaluateStrengthStandard(p, nextPillars[p], bodyweightKg, profile.gender, standardsAge(profile));
+    if (newStd.source === 'none') continue; // no published standard (rows): no level to celebrate
     const adv = evaluateStrengthStandardAdvance(p, oldStd.tier, oldStd.subDivision, newStd.tier, newStd.subDivision);
     if (adv) {
       strengthMilestone = adv;

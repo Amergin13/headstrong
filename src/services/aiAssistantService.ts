@@ -1,3 +1,5 @@
+import { buildMovementStandards, buildStandardsAnswer } from './movementStandards';
+import { standardsAge } from '../engine/strengthStandards';
 import { GOAL_DISPLAY_NAME } from '../utils/goalNames';
 import {
   AssistantActionPayload,
@@ -646,7 +648,20 @@ async function processAssistantMessageCore(
           ? queryExerciseScienceKnowledgeBase(lowerMsg)
           : null;
 
-      if (scientificPrinciple) {
+      // Levels, balance and left/right questions about the athlete's own lifts: answered from their
+      // data (movement standards), never by the model. "Why / how is it worked out" still gets the card.
+      const isStandardsQuestion =
+        /\b(my level|levels?|strength standards?|how strong|imbalanc\w*|balanced?|asymmetr\w*|weaker side|weak side|left side|right side|one side|weak link|lagging)\b/i.test(lowerMsg);
+      if (isStandardsQuestion && !isExplicitScienceQuestion && !isTacticalWorkoutQuery) {
+        const report = buildMovementStandards({
+          workouts,
+          biometrics,
+          bodyweightKg: bodyweightEmaKg,
+          gender: profile.gender,
+          age: standardsAge(profile),
+        });
+        answerText = buildStandardsAnswer(report, biometrics.some((b) => (b.bodyweightKg || 0) > 0));
+      } else if (scientificPrinciple) {
         scientificPrinciplesCited.push(scientificPrinciple);
         answerText = `${scientificPrinciple.title}\n\n${scientificPrinciple.scientificRationale}\n\n`;
         if (scientificPrinciple.formula) {

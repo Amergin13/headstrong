@@ -213,14 +213,16 @@ export const EXERCISE_SCIENCE_KNOWLEDGE_BASE: ScientificPrinciple[] = [
   {
     id: 'sp-6-pillars',
     topic: 'Relative Strength Standards',
-    title: '6-Pillar International Strength Standards',
-    formula: 'Ratio = E1RM / EMA_BW (Squat, Hinge, Horizontal Push, Vertical Push, Horizontal Pull, Vertical Pull)',
+    title: 'Strength Levels, Balance and Left/Right Symmetry',
+    formula:
+      'Level: best estimated max vs Kilgore standard for sex, bodyweight class and age (Untrained → Elite, I–IV each). Chin-up (bodyweight included) ≈ 81% of bench (Poliquin). Symmetry = weaker side ÷ stronger side, flagged under 90%.',
     scientificRationale:
-      'Human movement requires balanced force production across 6 fundamental planes. Uneven strength (e.g. overdeveloped horizontal push vs weak horizontal pull) elevates shoulder impingement and postural degradation risks.',
-    academicCitation: 'Rippetoe & Kilgore (2006); ExRx International Benchmarks',
+      "Squat, deadlift, bench press and standing press levels use Dr Lon Kilgore's performance standards (ExRx.net), built from nearly 70 years of weightlifting and powerlifting performance data for adults, by sex, bodyweight class and age group (18–39, 40–49, 50–59, 60–69). Chin-ups are judged with Charles Poliquin's structural balance ratio: a supinated chin-up 1RM, bodyweight included, of about 81% of the close-grip bench press (elite male athletes, 1999); Treise applies it to the bench press it logs. Rows have no published standard, so they get no level. Large gaps between movements and left/right differences under 90% are flagged: 90% limb symmetry is the line used in return-to-sport criteria (Grindem et al., 2016).",
+    academicCitation:
+      'Kilgore L. Strength performance standards, ExRx.net; Poliquin C. Achieving Structural Balance, T-Nation (1999); Grindem H et al., Br J Sports Med 2016;50:804–808; van den Hoek DJ et al., J Sci Med Sport 2024;27(10):734–742 (normative powerlifting data, 809,986 entries).',
     practicalApplication:
-      'Maps your strength to Untrained, Novice, Intermediate, Advanced, and Elite tiers with 4 granular sub-divisions (I, II, III, IV) and exact reps needed to level up.',
-    keywords: ['6 pillars', 'pillars', 'standards', 'novice', 'intermediate', 'advanced', 'elite', 'strength standards', 'squat standard', 'bench standard', 'deadlift standard'],
+      'Progress → Strength shows your level on each lift (Tested when it came from the standard lift for 5 reps or fewer, otherwise Estimated), how it has changed since you started, and a Balance card for imbalances between lifts and weaker sides. Log single-arm and single-leg sets with "Log each side".',
+    keywords: ['6 pillars', 'pillars', 'standards', 'novice', 'intermediate', 'advanced', 'elite', 'strength standards', 'squat standard', 'bench standard', 'deadlift standard', 'kilgore', 'poliquin', 'structural balance', 'imbalance', 'asymmetry', 'symmetry', 'left side', 'right side', 'level'],
   },
   {
     id: 'sp-autonomic-readiness',

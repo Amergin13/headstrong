@@ -1,7 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Scale, Ruler, Bluetooth } from 'lucide-react';
-import { BiometricLog, BodyMeasurementSite, ExerciseDefinition, StrengthPillar, UserProfile, WorkoutSession } from '../../engine/types';
+import { BiometricLog, BodyMeasurementSite, ExerciseDefinition, UserProfile, WorkoutSession } from '../../engine/types';
 import { StrengthLevelsCard } from './StrengthLevelsCard';
+import { BalanceCard } from './BalanceCard';
+import { buildMovementStandards } from '../../services/movementStandards';
+import { standardsAge } from '../../engine/strengthStandards';
 import { buildBodyCompositionKnowledgeGraph } from '../../engine/knowledgeGraph';
 import { LogModalMode, MeasurementEntry, WeightLogModal } from './WeightLogModal';
 import { KnowledgeGraphCard } from './KnowledgeGraphCard';
@@ -41,8 +44,6 @@ interface AnalyticsTabProps {
   biometrics: BiometricLog[];
   profile: UserProfile;
   bodyweightEmaKg: number;
-  /** Best estimated max per movement pattern (same numbers the Workout tab's milestones use). */
-  pillarBestE1rm: Record<StrengthPillar, number>;
   latestBiometrics: BiometricLog;
   exerciseCatalog: ExerciseDefinition[];
   weeklyVolume: Record<string, number>;
@@ -61,7 +62,6 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
   biometrics,
   profile,
   bodyweightEmaKg,
-  pillarBestE1rm,
   latestBiometrics,
   exerciseCatalog,
   weeklyVolume,
@@ -90,6 +90,17 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
   const strengthCharts = useMemo(
     () => buildStrengthCharts({ workouts, profile, bodyweightKg: hasBodyweight ? bodyweightEmaKg : 80, fmt }),
     [workouts, profile, bodyweightEmaKg, hasBodyweight, fmt]
+  );
+  const movementStandards = useMemo(
+    () =>
+      buildMovementStandards({
+        workouts,
+        biometrics,
+        bodyweightKg: bodyweightEmaKg,
+        gender: profile.gender,
+        age: standardsAge(profile),
+      }),
+    [workouts, biometrics, bodyweightEmaKg, profile]
   );
   const compositionCharts = useMemo(() => buildCompositionCharts({ biometrics, profile, fmt }), [biometrics, profile, fmt]);
   const muscleProgress = useMemo(() => {
@@ -202,12 +213,10 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
         {activeView === 'strength' ? (
           <>
             {hasBodyweight ? (
-              <StrengthLevelsCard
-                pillarBestE1rm={pillarBestE1rm}
-                bodyweightEmaKg={bodyweightEmaKg}
-                latestBiometrics={latestBiometrics}
-                gender={profile.gender}
-              />
+              <>
+                <StrengthLevelsCard report={movementStandards} latestBiometrics={latestBiometrics} />
+                <BalanceCard report={movementStandards} />
+              </>
             ) : (
               <div className="wk-card">
                 <h2 className="wk-h1">Strength levels</h2>

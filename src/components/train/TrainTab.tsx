@@ -37,7 +37,7 @@ import {
   prescribeDoubleProgression,
   getSessionProgressNarrative,
 } from '../../engine/progression';
-import { calculateSubTierQuest } from '../../engine/strengthStandards';
+import { calculateSubTierQuest, standardsAge } from '../../engine/strengthStandards';
 import {
   calculateE1RM,
   calculateHypertrophyBodyweightReps,
@@ -627,6 +627,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
       knowledgeGraph,
       bodyweightKg: biometrics.some((b) => (b.bodyweightKg || 0) > 0) ? bodyweightEmaKg : undefined,
       gender: profile.gender,
+      age: standardsAge(profile),
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showRecoveryGate, recoveryGate.trainedToday, recoveryGate.readyAt, workouts, biometrics, exerciseCatalog, profile, activeWorkout, bodyweightEmaKg]);

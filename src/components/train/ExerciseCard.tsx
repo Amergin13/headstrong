@@ -9,6 +9,7 @@ import { triggerHaptic } from '../../utils/haptics';
 import { ExerciseInsight } from '../../services/exerciseInsight';
 import { TrendChart } from '../common/TrendChart';
 import { localDateString } from '../../utils/date';
+import { isUnilateralExercise } from '../../services/movementStandards';
 
 const fig = (px: number) => `calc(${px} * var(--f))`;
 
@@ -64,6 +65,8 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
 }) => {
   const units = useUnits();
   const [showDetails, setShowDetails] = useState(false);
+  const unilateral = isUnilateralExercise(exercise);
+  const [perSide, setPerSide] = useState(() => exercise.sets.some((s) => s.actualRepsLeft !== undefined));
   const detailsId = useId();
 
   const firstWorkingSet = exercise.sets.find((s) => !s.isWarmup && s.setType !== 'warmup');
@@ -312,6 +315,7 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
                   previous={previous}
                   isBodyweight={isBodyweightOnly}
                   isDumbbell={exercise.equipment === 'dumbbell'}
+                  perSide={unilateral && perSide && !isWarm}
                   onUpdate={(updated) => onUpdateSet(s.id, updated)}
                   onComplete={() => onCompleteSet(s.id)}
                 />
@@ -319,6 +323,20 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
             });
           })()}
         </div>
+        {unilateral && (
+          <button
+            type="button"
+            aria-pressed={perSide}
+            onClick={() => {
+              triggerHaptic('light');
+              setPerSide((v) => !v);
+            }}
+            className={secondaryButton}
+            style={{ marginTop: fig(28) }}
+          >
+            {perSide ? 'Log both sides together' : 'Log each side'}
+          </button>
+        )}
       </div>
     </section>
   );

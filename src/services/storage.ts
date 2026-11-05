@@ -392,26 +392,54 @@ export function resetAllToSeedData(): {
  * Computes all-time best E1RM per strength pillar from completed workouts history
  * Strictly filters to compound benchmark pillar lifts and excludes warmup sets.
  */
-export function calculateBestPillarE1rms(
+/** The best estimated max for one movement, and the set it came from. */
+export interface PillarBest {
+  e1rmKg: number;
+  exerciseId?: string;
+  exerciseName?: string;
+  reps?: number;
+  /** ISO time of the workout. */
+  at?: string;
+}
+
+/**
+ * The lift each strength standard is defined on (Kilgore: back squat below parallel, deadlift,
+ * bench press, standing press; Poliquin: supinated chin-up). A best set on one of these, for 5 reps
+ * or fewer, is "Tested"; anything else (other variations, higher reps) is "Estimated".
+ */
+export const STANDARD_TEST_EXERCISE: Partial<Record<StrengthPillar, string>> = {
+  Squat: 'ex-barbell-squat',
+  Hinge: 'ex-deadlift',
+  'Horizontal Push': 'ex-bench-press',
+  'Vertical Push': 'ex-ohp',
+  'Vertical Pull': 'ex-chinup',
+};
+
+export function isTestedBest(pillar: StrengthPillar, best: PillarBest): boolean {
+  return Boolean(best.exerciseId) && best.exerciseId === STANDARD_TEST_EXERCISE[pillar] && (best.reps ?? 99) <= 5;
+}
+
+/** Best estimated max per movement with the set it came from (same formula as the charts). */
+export function calculateBestPillarDetails(
   workouts: WorkoutSession[],
   bodyweightEmaKg: number,
-  options: { loadedLiftsOnly?: boolean } = {}
-): Record<StrengthPillar, number> {
-  const best: Record<StrengthPillar, number> = {
-    Squat: 0,
-    Hinge: 0,
-    'Horizontal Push': 0,
-    'Vertical Push': 0,
-    'Horizontal Pull': 0,
-    'Vertical Pull': 0,
+  options: { loadedLiftsOnly?: boolean; before?: string } = {}
+): Record<StrengthPillar, PillarBest> {
+  const best: Record<StrengthPillar, PillarBest> = {
+    Squat: { e1rmKg: 0 },
+    Hinge: { e1rmKg: 0 },
+    'Horizontal Push': { e1rmKg: 0 },
+    'Vertical Push': { e1rmKg: 0 },
+    'Horizontal Pull': { e1rmKg: 0 },
+    'Vertical Pull': { e1rmKg: 0 },
   };
 
   for (const w of workouts) {
     if (!w.completed) continue;
+    const at = w.completedAt || w.date;
+    if (options.before && at && at >= options.before) continue;
     for (const ex of w.exercises) {
-      const isIsolation = !isPillarBenchmarkExercise(ex);
-
-      if (isIsolation) continue;
+      if (!isPillarBenchmarkExercise(ex)) continue;
       // "Big 3" style numbers should come from loaded lifts, not push-ups or chin-ups.
       if (options.loadedLiftsOnly && ex.equipment === 'bodyweight') continue;
 
@@ -433,15 +461,22 @@ export function calculateBestPillarE1rms(
           ex.exerciseId,
           ex.pillar
         );
-        if (e1rm > best[ex.pillar]) {
-          best[ex.pillar] = e1rm;
+        if (e1rm > best[ex.pillar].e1rmKg) {
+          best[ex.pillar] = { e1rmKg: e1rm, exerciseId: ex.exerciseId, exerciseName: ex.name, reps: s.actualReps, at };
         }
       }
     }
   }
-
-  // Pillars with no logged sets stay at 0 ("no data"); never substitute estimates.
   return best;
+}
+
+export function calculateBestPillarE1rms(
+  workouts: WorkoutSession[],
+  bodyweightEmaKg: number,
+  options: { loadedLiftsOnly?: boolean } = {}
+): Record<StrengthPillar, number> {
+  const details = calculateBestPillarDetails(workouts, bodyweightEmaKg, options);
+  return Object.fromEntries(Object.entries(details).map(([k, v]) => [k, v.e1rmKg])) as Record<StrengthPillar, number>;
 }
 
 /**

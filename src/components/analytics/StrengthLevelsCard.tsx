@@ -1,122 +1,59 @@
 import React from 'react';
-import {
-  Radar,
-  RadarChart,
-  PolarGrid,
-  PolarAngleAxis,
-  PolarRadiusAxis,
-  ResponsiveContainer,
-  Tooltip,
-} from 'recharts';
-import { BiometricLog, StrengthPillar } from '../../engine/types';
-import { generate7PillarRadarData } from '../../engine/vitality';
-import { evaluateStrengthStandard } from '../../engine/strengthStandards';
+import { PolarAngleAxis, PolarGrid, PolarRadiusAxis, Radar, RadarChart, ResponsiveContainer } from 'recharts';
+import { BiometricLog } from '../../engine/types';
+import { calculateEngineVitalityScore } from '../../engine/vitality';
+import { MovementStandardsReport, levelLabel } from '../../services/movementStandards';
 
 const fig = (px: number) => `calc(${px} * var(--f))`;
 
+const SHORT_NAME: Record<string, string> = {
+  Squat: 'Squat',
+  Hinge: 'Deadlift',
+  'Horizontal Push': 'Bench',
+  'Vertical Push': 'Press',
+  'Vertical Pull': 'Chin-up',
+};
+
 interface StrengthLevelsCardProps {
-  pillarBestE1rm: Record<StrengthPillar, number>;
-  bodyweightEmaKg: number;
+  report: MovementStandardsReport;
   latestBiometrics: BiometricLog;
-  gender?: 'male' | 'female';
 }
 
+const muted: React.CSSProperties = { fontSize: `max(12px, ${fig(24)})`, color: 'var(--wk-muted)' };
+
 /**
- * Strength levels (Progress → Strength): each of the 6 movement patterns compared with bodyweight
- * (international strength standards, AGENTS.md §1.4), plus cardio from real watch data. A movement
- * the athlete hasn't logged shows "Not logged yet", never a level.
+ * Strength levels (Progress → Strength). Each movement against published standards: Kilgore (ExRx)
+ * for squat, deadlift, bench and press by sex, bodyweight and age; Poliquin's chin-up ratio for
+ * pulling. Rows have no published standard, so no level. A movement never logged shows
+ * "Not logged yet", never a level. Built by buildMovementStandards (services/movementStandards.ts).
  */
-export const StrengthLevelsCard: React.FC<StrengthLevelsCardProps> = ({
-  pillarBestE1rm,
-  bodyweightEmaKg,
-  latestBiometrics,
-  gender = 'male',
-}) => {
-  const pillarScores = generate7PillarRadarData(
-    pillarBestE1rm,
-    bodyweightEmaKg,
-    latestBiometrics,
-    gender
-  );
+export const StrengthLevelsCard: React.FC<StrengthLevelsCardProps> = ({ report, latestBiometrics }) => {
+  const rated = report.levels.filter((l) => l.source !== 'none');
+  const loggedRated = rated.filter((l) => l.logged && l.step !== undefined);
 
-  const chartData = pillarScores.map((ps) => {
-    let shortLabel: string = ps.pillar;
-    let friendlyName: string = ps.pillar;
-    if (ps.pillar === 'Horizontal Push') {
-      shortLabel = 'Chest';
-      friendlyName = 'Chest Press';
-    }
-    if (ps.pillar === 'Vertical Push') {
-      shortLabel = 'Shoulders';
-      friendlyName = 'Shoulder Press';
-    }
-    if (ps.pillar === 'Horizontal Pull') {
-      shortLabel = 'Row';
-      friendlyName = 'Back Row';
-    }
-    if (ps.pillar === 'Vertical Pull') {
-      shortLabel = 'Pull-Up';
-      friendlyName = 'Pull-Ups & Pulldowns';
-    }
-    if (ps.pillar === 'Hinge') {
-      shortLabel = 'Deadlift';
-      friendlyName = 'Deadlift & Hinge';
-    }
-    if (ps.pillar === 'Engine / Vitality') {
-      shortLabel = 'Cardio';
-      friendlyName = 'Cardio & Recovery';
-    }
-
-    return {
-      pillar: shortLabel,
-      fullName: friendlyName,
-      score: ps.score,
-      tier: ps.tier,
-      subDivision: ps.subDivision,
-      fullMark: 100,
-      key: ps.pillar,
-      logged: ps.pillar === 'Engine / Vitality' ? ps.score > 0 : (pillarBestE1rm[ps.pillar as StrengthPillar] || 0) > 0,
-    };
-  });
-  const movementRows = chartData
-    .filter((d) => d.pillar !== 'Cardio')
-    .map((d) => {
-      const pillar = d.key as StrengthPillar;
-      const std = evaluateStrengthStandard(pillar, pillarBestE1rm[pillar] || 0, bodyweightEmaKg, gender);
-      return {
-        ...d,
-        progress: std.percentageProgress,
-        next: std.tier === 'Elite' && std.nextTier === 'Elite' ? null : `${std.nextTier} ${std.nextSubDivision}`,
-      };
-    });
-
-  const engineScore = pillarScores.find((p) => p.pillar === 'Engine / Vitality')?.score ?? 0;
-
-  // Overall level: the average of the movements actually logged, on the same tier and
-  // sub-division scale as each row (never counts an unlogged movement as a low level).
-  const LEVELS = ['Untrained', 'Novice', 'Intermediate', 'Advanced', 'Elite'] as const;
-  const loggedRows = movementRows.filter((r) => r.logged);
-  const overallStep = loggedRows.length
-    ? Math.round(
-        loggedRows.reduce((acc, r) => acc + LEVELS.indexOf(r.tier as (typeof LEVELS)[number]) * 4 + ['I', 'II', 'III', 'IV'].indexOf(r.subDivision ?? 'I'), 0) /
-          loggedRows.length
-      )
-    : 0;
-  const overallBadgeText = `${LEVELS[Math.floor(overallStep / 4)]} ${['I', 'II', 'III', 'IV'][overallStep % 4]}`;
-
-  // No lifts logged: no level to show yet (never a placeholder rank).
-  if (!Object.values(pillarBestE1rm).some((v) => v > 0)) {
+  if (!report.levels.some((l) => l.logged)) {
     return (
       <section aria-label="Strength levels" className="wk-card w-full text-left block">
         <h2 className="wk-h1" style={{ lineHeight: 1.21 }}>
           Strength levels
         </h2>
         <p className="wk-body" style={{ marginTop: fig(24) }}>
-          Finish a workout to see your strength level for each movement, compared with your bodyweight.
+          Finish a workout to see your level on each movement, compared with lifters of your sex, bodyweight and age.
         </p>
       </section>
     );
   }
+
+  const overall = loggedRated.length
+    ? levelLabel(loggedRated.reduce((t, l) => t + (l.step ?? 0), 0) / loggedRated.length)
+    : null;
+  // Equal steps: each level is 20 points, each sub-level 5. Unlogged movements sit at 0.
+  const radarData = rated.map((l) => ({
+    axis: SHORT_NAME[l.pillar] ?? l.name,
+    score: l.logged && l.step !== undefined ? Math.round(l.step * 5 + ((l.progress ?? 0) / 100) * 5) : 0,
+  }));
+  const cardio = calculateEngineVitalityScore(latestBiometrics);
+  const rows = report.levels.find((l) => l.pillar === 'Horizontal Pull');
 
   return (
     <section aria-label="Strength levels" className="wk-card w-full text-left block">
@@ -124,80 +61,35 @@ export const StrengthLevelsCard: React.FC<StrengthLevelsCardProps> = ({
         <h2 className="wk-h1" style={{ lineHeight: 1.21 }}>
           Strength levels
         </h2>
-        <span className="wk-pill">{overallBadgeText}</span>
+        {overall && <span className="wk-pill">{overall}</span>}
       </div>
-      <p
-        style={{
-          fontSize: fig(28),
-          lineHeight: 1.21,
-          color: 'var(--wk-muted)',
-          marginTop: fig(20),
-        }}
-      >
-        Your best estimated max on each movement, compared with your bodyweight
+      <p className="wk-body" style={{ marginTop: fig(20) }}>
+        Your best estimated max on each lift, compared with standards for {report.tableLabel} at your bodyweight.
       </p>
 
-      {/* Radar Chart */}
-      <div className="w-full h-56" style={{ marginTop: fig(28) }}>
+      <div className="w-full h-56" style={{ marginTop: fig(28) }} aria-hidden="true">
         <ResponsiveContainer width="100%" height="100%">
-          <RadarChart cx="50%" cy="50%" outerRadius="72%" data={chartData}>
+          <RadarChart cx="50%" cy="50%" outerRadius="72%" data={radarData}>
             <PolarGrid stroke="#474D50" strokeDasharray="2 2" />
-            <PolarAngleAxis
-              dataKey="pillar"
-              tick={{ fill: 'rgba(255,255,255,0.65)', fontSize: 12, fontWeight: 700 }}
-            />
-            <PolarRadiusAxis
-              angle={90}
-              domain={[0, 100]}
-              tick={false}
-              axisLine={false}
-            />
-            <Radar
-              name="Strength & Fitness"
-              dataKey="score"
-              stroke="#00F19F"
-              strokeWidth={2}
-              fill="#00F19F"
-              fillOpacity={0.2}
-              dot={{ r: 3, fill: '#00F19F', stroke: '#2C3034', strokeWidth: 1.5 }}
-            />
-            <Tooltip
-              content={({ active, payload }) => {
-                if (active && payload && payload.length) {
-                  const data = payload[0].payload;
-                  return (
-                    <div
-                      className="wk-card shadow-2xl"
-                      style={{ padding: fig(24), borderRadius: fig(20) }}
-                    >
-                      <div className="wk-label">{data.fullName}</div>
-                      <div className="wk-body" style={{ marginTop: fig(8) }}>
-                        Score: <strong className="text-white">{data.score}/100</strong> • {data.tier}{' '}
-                        {data.subDivision || ''}
-                      </div>
-                    </div>
-                  );
-                }
-                return null;
-              }}
-            />
+            <PolarAngleAxis dataKey="axis" tick={{ fill: 'rgba(255,255,255,0.65)', fontSize: 12, fontWeight: 700 }} />
+            <PolarRadiusAxis angle={90} domain={[0, 100]} tick={false} axisLine={false} />
+            <Radar dataKey="score" stroke="#00F19F" strokeWidth={2} fill="#00F19F" fillOpacity={0.2} dot={{ r: 3, fill: '#00F19F' }} />
           </RadarChart>
         </ResponsiveContainer>
       </div>
 
-      {/* One row per movement: its level and how close the next one is. */}
-      <ul className="flex flex-col" style={{ marginTop: fig(32), gap: fig(28) }} aria-label="Level for each movement">
-        {movementRows.map((row) => (
-          <li key={row.pillar}>
+      <ul className="flex flex-col" style={{ marginTop: fig(32), gap: fig(30) }} aria-label="Level for each movement">
+        {rated.map((l) => (
+          <li key={l.pillar}>
             <div className="flex items-baseline justify-between" style={{ gap: fig(16) }}>
               <span className="wk-label" style={{ lineHeight: 1.21 }}>
-                {row.fullName}
+                {l.name}
               </span>
-              <span className="font-bold shrink-0" style={{ fontSize: `max(12px, ${fig(26)})`, color: row.logged ? '#fff' : 'var(--wk-muted)' }}>
-                {row.logged ? `${row.tier} ${row.subDivision}` : 'Not logged yet'}
+              <span className="font-bold shrink-0" style={{ fontSize: `max(12px, ${fig(26)})`, color: l.logged ? '#fff' : 'var(--wk-muted)' }}>
+                {l.logged ? `${l.tier} ${l.subDivision}` : 'Not logged yet'}
               </span>
             </div>
-            {row.logged && (
+            {l.logged && (
               <>
                 <div
                   className="wk-bar"
@@ -205,14 +97,18 @@ export const StrengthLevelsCard: React.FC<StrengthLevelsCardProps> = ({
                   role="progressbar"
                   aria-valuemin={0}
                   aria-valuemax={100}
-                  aria-valuenow={row.progress}
-                  aria-label={row.next ? `${row.fullName}: ${row.progress}% of the way to ${row.next}` : `${row.fullName}: top level`}
+                  aria-valuenow={l.progress ?? 0}
+                  aria-label={l.next ? `${l.name}: ${l.progress}% of the way to ${l.next}` : `${l.name}: top level`}
                 >
-                  <div style={{ width: `${row.next ? row.progress : 100}%` }} />
+                  <div style={{ width: `${l.next ? l.progress ?? 0 : 100}%` }} />
                 </div>
-                {row.next && (
-                  <span className="block" style={{ marginTop: fig(10), fontSize: `max(12px, ${fig(24)})`, color: 'var(--wk-muted)' }}>
-                    Next: {row.next}
+                <div className="flex justify-between" style={{ ...muted, marginTop: fig(10), gap: fig(16) }}>
+                  <span>{l.next ? `Next: ${l.next}` : 'Top level'}</span>
+                  <span>{l.tested ? 'Tested' : 'Estimated'}</span>
+                </div>
+                {l.firstLevel && l.firstLoggedOn && (
+                  <span className="block" style={{ ...muted, marginTop: fig(6) }}>
+                    {l.firstLevel} when you started ({new Date(`${l.firstLoggedOn}T12:00:00`).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })})
                   </span>
                 )}
               </>
@@ -221,35 +117,29 @@ export const StrengthLevelsCard: React.FC<StrengthLevelsCardProps> = ({
         ))}
       </ul>
 
-      {/* Cardio & Recovery Bar Row — ProgramProgressCard anatomy */}
-      <div
-        className="flex items-end justify-between"
-        style={{ marginTop: fig(40), gap: fig(20) }}
-      >
+      {rows?.logged && (
+        <p style={{ ...muted, marginTop: fig(28) }}>
+          Rows have no published strength standard, so they have no level.
+        </p>
+      )}
+
+      <div className="flex items-end justify-between" style={{ marginTop: fig(40), gap: fig(20) }}>
         <span className="wk-label" style={{ lineHeight: 1.21 }}>
-          CARDIO &amp; RECOVERY
-          {engineScore > 0 && (latestBiometrics?.restingHr || 0) > 0
-            ? ` • ${latestBiometrics.restingHr} BPM RHR`
-            : ''}
+          Cardio &amp; recovery
+          {cardio > 0 && (latestBiometrics?.restingHr || 0) > 0 ? ` • ${latestBiometrics.restingHr} bpm resting` : ''}
         </span>
-        <span
-          className="font-bold text-white shrink-0"
-          style={{ fontSize: fig(40), lineHeight: 1 }}
-        >
-          {engineScore > 0 ? `${engineScore}/100` : '—'}
+        <span className="font-bold text-white shrink-0" style={{ fontSize: fig(40), lineHeight: 1 }}>
+          {cardio > 0 ? `${cardio}/100` : '—'}
         </span>
       </div>
-      <div
-        className="wk-bar"
-        style={{ marginTop: fig(30) }}
-        role="progressbar"
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-valuenow={engineScore}
-        aria-label="Cardio and recovery score"
-      >
-        <div style={{ width: `${Math.max(0, Math.min(100, engineScore))}%` }} />
+      <div className="wk-bar" style={{ marginTop: fig(30) }} role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={cardio} aria-label="Cardio and recovery score">
+        <div style={{ width: `${Math.max(0, Math.min(100, cardio))}%` }} />
       </div>
+
+      <p style={{ ...muted, marginTop: fig(32) }}>
+        "Tested" means your best came from the standard lift (back squat, deadlift, bench press, standing press or chin-up) for 5 reps or fewer.
+        Other lifts and higher reps give an estimate. Standards: Dr Lon Kilgore (ExRx); chin-ups from Charles Poliquin's strength ratios.
+      </p>
     </section>
   );
 };

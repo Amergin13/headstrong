@@ -33,13 +33,16 @@ export function scoreDailySteps(steps: number = 8500): number {
  * Vitality = 0.40 * VO2 + 0.30 * RHR + 0.30 * Steps
  */
 export function calculateEngineVitalityScore(latestBiometrics?: BiometricLog): number {
-  if (!latestBiometrics) return 72; // default healthy baseline
-  const vo2Score = scoreVo2Max(latestBiometrics.vo2Max ?? 45);
-  const rhrScore = scoreRestingHr(latestBiometrics.restingHr ?? 58);
-  const stepsScore = scoreDailySteps(latestBiometrics.steps ?? 9200);
-
-  const composite = 0.40 * vo2Score + 0.30 * rhrScore + 0.30 * stepsScore;
-  return Math.round(composite);
+  // Only measured values count (AGENTS.md rule 1): the weights are shared among the measures the
+  // watch actually reported, and with none the score is 0 ("no data"), never a default.
+  if (!latestBiometrics) return 0;
+  const parts: [number, number][] = [];
+  if ((latestBiometrics.vo2Max || 0) > 0) parts.push([0.4, scoreVo2Max(latestBiometrics.vo2Max as number)]);
+  if ((latestBiometrics.restingHr || 0) > 0) parts.push([0.3, scoreRestingHr(latestBiometrics.restingHr)]);
+  if ((latestBiometrics.steps || 0) > 0) parts.push([0.3, scoreDailySteps(latestBiometrics.steps)]);
+  const weight = parts.reduce((t, [w]) => t + w, 0);
+  if (!weight) return 0;
+  return Math.round(parts.reduce((t, [w, v]) => t + w * v, 0) / weight);
 }
 
 /**
@@ -52,7 +55,8 @@ export function generate7PillarRadarData(
   pillarBestE1rm: Record<StrengthPillar, number>,
   bodyweightEmaKg: number,
   latestBiometrics?: BiometricLog,
-  gender: 'male' | 'female' = 'male'
+  gender: 'male' | 'female' = 'male',
+  age?: number
 ): PillarScore[] {
   const strengthPillars: StrengthPillar[] = [
     'Squat',
@@ -65,7 +69,7 @@ export function generate7PillarRadarData(
 
   const results: PillarScore[] = strengthPillars.map((pillar) => {
     const e1rm = pillarBestE1rm[pillar] || 0;
-    const std = evaluateStrengthStandard(pillar, e1rm, bodyweightEmaKg, gender);
+    const std = evaluateStrengthStandard(pillar, e1rm, bodyweightEmaKg, gender, age);
 
     // Map tier + sub-division onto 0–100 in equal steps: each of the 5 tiers is 20 points wide,
     // each sub-division 5, plus progress within it. A movement never logged scores 0 (no shape
@@ -73,7 +77,7 @@ export function generate7PillarRadarData(
     const tierIndex = TIER_ORDER.indexOf(std.tier);
     const subIndex = (['I', 'II', 'III', 'IV'] as const).indexOf(std.subDivision);
     const pillarScore =
-      e1rm > 0 ? Math.min(100, Math.round(tierIndex * 20 + subIndex * 5 + (std.percentageProgress / 100) * 5)) : 0;
+      e1rm > 0 && std.source !== 'none' ? Math.min(100, Math.round(tierIndex * 20 + subIndex * 5 + (std.percentageProgress / 100) * 5)) : 0;
 
     return {
       pillar,
