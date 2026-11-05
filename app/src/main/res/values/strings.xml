@@ -31,15 +31,17 @@
   -->
   <string name="assetStatements">
     [{
-        \"relation\": [
-            \"delegate_permission/common.handle_all_urls\",
-            \"delegate_permission/common.use_as_origin\"
-        ],
+        \"relation\": [\"delegate_permission/common.handle_all_urls\"],
+        \"target\": {
+            \"namespace\": \"web\",
+            \"site\": \"https://treise.vercel.app\"
+        }
+    }, {
+        \"relation\": [\"delegate_permission/common.use_as_origin\"],
         \"target\": {
             \"namespace\": \"web\",
             \"site\": \"https://treise.vercel.app\"
         }
     }]
-    
   </string>  
 </resources>
