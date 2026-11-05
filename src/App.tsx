@@ -672,7 +672,11 @@ export const App: React.FC = () => {
     if (entry.heightCm) {
       setProfile((prev) => ({ ...prev, measuredHeightCm: entry.heightCm, heightCm: entry.heightCm! }));
     }
-    const values = Object.fromEntries(Object.entries(entry).filter(([, v]) => typeof v === 'number' && v > 0));
+    // Asked once on the weight form: these belong to the profile, not to the day's log.
+    const { ageYears, sex, ...logFields } = entry;
+    if (ageYears) setProfile((prev) => ({ ...prev, age: ageYears, ageEntered: true }));
+    if (sex) setProfile((prev) => ({ ...prev, gender: sex, sexEntered: true }));
+    const values = Object.fromEntries(Object.entries(logFields).filter(([, v]) => typeof v === 'number' && v > 0));
     if (Object.keys(values).length === 0) return;
     const todayStr = localDateString();
     setBiometrics((prev) => {

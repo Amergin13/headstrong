@@ -72,6 +72,9 @@ export interface MeasurementEntry {
   thighCm?: number;
   calfCm?: number;
   heightCm?: number;
+  /** Asked once on the weight form; saved to the profile, never to the day's log. */
+  ageYears?: number;
+  sex?: Gender;
 }
 
 interface WeightLogModalProps {
@@ -85,7 +88,9 @@ interface WeightLogModalProps {
   initialSite?: BodyMeasurementSite;
   /** Height the athlete already entered (asked once). */
   heightCm?: number;
+  /** Only an age the athlete entered (never the placeholder). */
   athleteAge?: number;
+  /** Only a sex the athlete chose (never the default). */
   athleteGender?: Gender;
   onSave: (entry: MeasurementEntry) => void;
   /** Called automatically when a RENPHO Bluetooth scale or smart tape locks a reading so data is persisted immediately. */
@@ -222,6 +227,16 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
   const [liveScaleReading, setLiveScaleReading] = useState<RenphoScaleReading | null>(null);
   const [liveTapeReading, setLiveTapeReading] = useState<RenphoTapeReading | null>(null);
   const [autoSavedBanner, setAutoSavedBanner] = useState<string | null>(null);
+  /** Where this weigh-in is: reading the weight, then measuring body composition, then finished. */
+  const [capturePhase, setCapturePhase] = useState<'idle' | 'measuring' | 'analysing' | 'complete' | 'no-body-reading' | 'partial' | 'cut-short'>('idle');
+  // The scale normally ends this by finishing or sleeping. If neither arrives, don't hold the form.
+  useEffect(() => {
+    if (capturePhase !== 'analysing') return;
+    const timer = window.setTimeout(() => setCapturePhase('cut-short'), 30000);
+    return () => window.clearTimeout(timer);
+  }, [capturePhase]);
+  /** A low reading the scale settled on (one foot, a hand), so its repeats can be told from a real step. */
+  const partialKgRef = useRef<number | null>(null);
   /** Can the page reach the paired scale without a tap? null until checked. */
   const [scaleReachable, setScaleReachable] = useState<boolean | null>(null);
   const [scaleBusy, setScaleBusy] = useState(false);
@@ -253,15 +268,31 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
     return cm >= 120 && cm <= 230 ? cm : undefined;
   }, [height, imperial]);
 
+  const typedAgeRef = useRef<number | undefined>(undefined);
+  const sexInputRef = useRef<Gender | undefined>(undefined);
+  const [ageInput, setAgeInput] = useState('');
+  const [sexInput, setSexInput] = useState<Gender | undefined>(undefined);
+  const typedAge = useMemo(() => {
+    const parsed = Math.round(parseFloat(ageInput));
+    return parsed >= 16 && parsed <= 99 ? parsed : undefined;
+  }, [ageInput]);
+
   const athleteContext = useMemo(
     () => ({
       measuredHeightCm: heightCm ?? typedHeightCm,
-      heightCm: heightCm ?? typedHeightCm,
-      age: athleteAge,
-      gender: athleteGender,
+      age: athleteAge ?? typedAge,
+      gender: athleteGender ?? sexInput,
+      lastWeightKg: currentWeight > 0 ? currentWeight : undefined,
     }),
-    [heightCm, typedHeightCm, athleteAge, athleteGender]
+    [heightCm, typedHeightCm, athleteAge, typedAge, athleteGender, sexInput, currentWeight]
   );
+  typedAgeRef.current = typedAge;
+  sexInputRef.current = sexInput;
+  /** Everything body metrics need. Without it the scale weighs only, and the form says why. */
+  const canCaptureMetrics = Boolean(athleteContext.measuredHeightCm && athleteContext.age && athleteContext.gender);
+  // The reading handler lives as long as the connection, so it reads the latest answers from here.
+  const athleteContextRef = useRef(athleteContext);
+  athleteContextRef.current = athleteContext;
 
   useEffect(() => {
     mountedRef.current = true;
@@ -326,13 +357,27 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
       return;
     }
     if (!reading.stabilized && weighInSavedRef.current) return;
-    const fullMetrics = computeRenphoScaleMetrics(reading, athleteContext) ?? reading.metrics;
+    // The scale echoes a low reading it locked onto; only a real change means someone stepped on.
+    if (partialKgRef.current !== null && Math.abs(reading.weightKg - partialKgRef.current) < 1) return;
+    partialKgRef.current = null;
+    if (!reading.stabilized) setCapturePhase('measuring');
+    // A hand or one foot can hold a low weight steady long enough to look settled. Well under the
+    // athlete's last weight, it's not a weigh-in: show it as measuring, but never save it.
+    if (reading.stabilized && currentWeight > 0 && reading.weightKg < currentWeight * 0.6) {
+      partialKgRef.current = reading.weightKg;
+      setLiveScaleReading({ ...reading, stabilized: false });
+      setCapturePhase('partial');
+      return;
+    }
+    const fullMetrics = computeRenphoScaleMetrics(reading, athleteContextRef.current) ?? reading.metrics;
     const enrichedReading: RenphoScaleReading = fullMetrics
       ? { ...reading, ...fullMetrics, metrics: fullMetrics }
       : reading;
     setLiveScaleReading(enrichedReading);
 
-    if (enrichedReading.weightKg > 0) {
+    // Only a settled weight goes in the form: tapping Done mid-step must never save a partial reading.
+    // The alert shows the live number meanwhile.
+    if (enrichedReading.stabilized && enrichedReading.weightKg > 0) {
       const displayWeight =
         Math.round(
           (imperial ? enrichedReading.weightKg * 2.2046226218 : enrichedReading.weightKg) * 10
@@ -350,6 +395,18 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
     }
 
     if (enrichedReading.stabilized && enrichedReading.weightKg > 0) {
+      // Only a 0x55AA scale says when it has finished; a weight that settled first is still in progress.
+      // A final with no resistance: the scale finished, but its body reading found nothing.
+      const { measuredHeightCm, age, gender } = athleteContextRef.current;
+      const noBodyReading =
+        enrichedReading.isFinal && !enrichedReading.impedanceOhms && Boolean(measuredHeightCm && age && gender);
+      setCapturePhase(
+        noBodyReading
+          ? 'no-body-reading'
+          : enrichedReading.isFinal || enrichedReading.sourceProtocol !== 'lefu_55aa'
+            ? 'complete'
+            : 'analysing'
+      );
       // Scales repeat the locked packet several times; save each weigh-in once,
       // but allow a subsequent BIA packet (with impedance/body fat) to upgrade a weight-only lock.
       const hasBioComp = Boolean(
@@ -361,6 +418,10 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
       if (lastScaleSaveKeyRef.current === saveKey) return;
       lastScaleSaveKeyRef.current = saveKey;
       const autoEntry: MeasurementEntry = {
+        // Answers typed on this form belong with the reading they made possible.
+        heightCm: !heightCm ? typedHeightCm : undefined,
+        ageYears: !athleteAge ? typedAgeRef.current : undefined,
+        sex: !athleteGender ? sexInputRef.current : undefined,
         bodyweightKg: Math.round(enrichedReading.weightKg * 100) / 100,
         bmi: fullMetrics?.bmi ?? enrichedReading.bmi,
         bodyFatPct: fullMetrics?.bodyFatPct ?? enrichedReading.bodyFatPct,
@@ -483,6 +544,15 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
             // The scale sleeps soon after a weigh-in; the loop below listens for it again.
             bleConnectionRef.current?.disconnect();
             bleConnectionRef.current = null;
+            // The scale slept before settling: don't leave a partial reading ready to be saved.
+            if (!weighInSavedRef.current) {
+              setWeightInput(initialWeightInput);
+              setCapturedForm(null);
+              setCapturePhase('idle');
+              partialKgRef.current = null;
+            } else {
+              setCapturePhase((phase) => (phase === 'analysing' ? 'cut-short' : phase));
+            }
             weighInSavedRef.current = false;
             setBleDeviceKind(null);
             setBleDeviceName(null);
@@ -493,6 +563,7 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
           acceptAllDevices: showAllDevices,
           unit: units.unit,
           athlete: athleteContext,
+          getAthlete: () => athleteContextRef.current,
           forceNewPairing,
           silentOnly,
           // A nameless scale was saved under the fallback name, which no device advertises.
@@ -757,6 +828,8 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
       impedanceOhms: capturedImpedanceOhms,
       ...sitePayload,
       heightCm: finalHeightCm,
+      ageYears: !athleteAge ? typedAge : undefined,
+      sex: !athleteGender ? sexInput : undefined,
     });
     onClose();
   };
@@ -820,14 +893,32 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
   } else if (scaleBusy) {
     alertTitle = nativeScale ? 'Connecting to your scale' : rememberedScale ? 'Reconnecting your scale' : 'Pairing your scale';
     alertBody = nativeScale ? 'Stay on the scale until it connects.' : 'Step on your scale to wake it, then choose it from the list.';
+  } else if (capturePhase === 'partial' && liveScaleReading) {
+    alertTitle = 'Step on with both feet';
+    alertBody = `Your scale read ${units.format(liveScaleReading.weightKg)}, which looks like a partial reading. Nothing was saved.`;
+    alertTone = 'live';
+  } else if (capturePhase === 'analysing') {
+    alertTitle = `Weight saved: ${autoSavedBanner?.split(' ·')[0].split(' and ')[0] ?? ''}`;
+    alertBody = canCaptureMetrics ? 'Stay on the scale. Measuring your body composition.' : 'Stay on for a moment while the scale finishes.';
+    alertTone = 'live';
+  } else if (capturePhase === 'no-body-reading' && autoSavedBanner) {
+    alertTitle = 'Weight saved';
+    alertBody = `${autoSavedBanner.split(' and ')[0]}. Your scale couldn't read your body composition. Next time, step on with bare, dry feet on the metal pads.`;
+    alertTone = 'success';
+  } else if (capturePhase === 'complete' && autoSavedBanner) {
+    alertTitle = 'Measurement complete';
+    alertBody = `${autoSavedBanner}. You can step off.`;
+    alertTone = 'success';
+  } else if (capturePhase === 'cut-short' && autoSavedBanner) {
+    alertTitle = 'Weight saved';
+    alertBody = canCaptureMetrics
+      ? `${autoSavedBanner}. Body metrics weren't captured this time. Stay on until it says complete, about 15 seconds.`
+      : `${autoSavedBanner}.`;
+    alertTone = 'success';
   } else if (measuring) {
     alertTitle = `Measuring: ${units.format(liveScaleReading!.weightKg)}`;
     alertBody = 'Stand still until it settles.';
     alertTone = 'live';
-  } else if (autoSavedBanner) {
-    alertTitle = 'Saved from your scale';
-    alertBody = `${autoSavedBanner}. See it in Progress.`;
-    alertTone = 'success';
   } else if (justPaired && scaleConnected) {
     alertTitle = 'Scale connected';
     alertBody = 'Step on it now and your weight and other metrics save automatically.';
@@ -914,6 +1005,12 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
           ))}
         </ul>
       )}
+      {capturePhase === 'complete' && !canCaptureMetrics && (
+        <p className="text-xs text-[#C6C6C6]">Add your height, age and sex here and your next weigh-in includes body metrics.</p>
+      )}
+      <p className="text-xs text-[#C6C6C6]">
+        Your scale measures body composition with a small electrical current. Don't use a scale like this if you're pregnant or have a pacemaker or other implant.
+      </p>
       {bleError && <p className="text-xs text-rose-300">{bleError}</p>}
       {offerAllDevices && !scaleBusy && !nativeScanning && !scaleConnected && (
         <button
@@ -992,7 +1089,31 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
                 </p>
               )}
               {!heightCm &&
-                field('Height', height, setHeight, lengthUnit, 'Asked once, for BMI and lean mass', lengthValid(height, 120, 230))}
+                field('Height', height, setHeight, lengthUnit, 'Asked once, for BMI and body metrics', lengthValid(height, 120, 230))}
+              {!athleteAge && field('Age', ageInput, setAgeInput, 'yrs', 'Asked once, for body metrics', !ageInput || typedAge !== undefined)}
+              {!athleteGender && (
+                <div role="group" aria-label="Sex, asked once for body metrics">
+                  <span className="wk-label">Sex</span>
+                  <span className="block wk-caption mt-0.5">Asked once, for body metrics</span>
+                  <div className="grid grid-cols-2 gap-2 mt-1">
+                    {(['male', 'female'] as const).map((option) => (
+                      <button
+                        key={option}
+                        type="button"
+                        aria-pressed={sexInput === option}
+                        onClick={() => setSexInput(option)}
+                        className="rounded-xl text-xs font-bold uppercase min-h-[44px]"
+                        style={{
+                          background: sexInput === option ? 'var(--wk-pill)' : 'var(--wk-raised)',
+                          color: sexInput === option ? '#fff' : 'var(--wk-muted)',
+                        }}
+                      >
+                        {option}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {bluetoothAvailable && !(rememberedScale && scaleReachable === null) && scaleAlert}
 
@@ -1253,14 +1374,16 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
             </button>
             <button
               type="submit"
-              disabled={!valid && !autoSavedBanner}
+              disabled={(!valid && !autoSavedBanner) || capturePhase === 'analysing'}
               aria-label={mode === 'weight' ? 'Save weight' : 'Save measurements'}
               className="wk-button disabled:opacity-50 gap-1.5"
               style={{ background: 'var(--wk-accent)', color: '#13181C' }}
             >
               <Check className="w-4 h-4 stroke-[2.5]" />
               <span>
-                {autoSavedBanner && (mode === 'measurements' || capturedForm === formSnapshot)
+                {capturePhase === 'analysing'
+                  ? 'Measuring…'
+                  : autoSavedBanner && (mode === 'measurements' || capturedForm === formSnapshot)
                   ? 'Done'
                   : mode === 'weight'
                   ? 'Save weight'

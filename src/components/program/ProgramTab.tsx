@@ -532,7 +532,7 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
                         key={g}
                         type="button"
                         aria-pressed={isSelected}
-                        onClick={() => onUpdateProfile({ gender: g })}
+                        onClick={() => onUpdateProfile({ gender: g, sexEntered: true })}
                         className="h-full px-3 font-bold uppercase transition-colors"
                         style={{
                           borderRadius: fig(14),

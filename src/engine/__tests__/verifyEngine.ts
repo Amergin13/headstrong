@@ -65,7 +65,7 @@ import {
   clearSavedRenphoDevices,
   computeRenphoScaleMetrics,
   connectRenphoScale,
-  decodeRenphoScalePacket,
+  decodeRenphoScalePacket, build55AaGuestProfile, build55AaSetClock, build55AaDisplayUnit, scaleFinalKey,
   decodeRenphoTapePacket,
   forgetPairedRenphoDevice,
   loadSavedRenphoDevices,
@@ -4504,32 +4504,107 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
         qnLocked.impedanceOhms === 512 &&
         qnLocked.metrics !== undefined &&
         qnLocked.metrics.bodyweightKg === 82.5 &&
-        typeof qnLocked.metrics.bmi === 'number' &&
-        typeof qnLocked.metrics.bodyFatPct === 'number' &&
-        typeof qnLocked.metrics.fatFreeMassKg === 'number' &&
-        typeof qnLocked.metrics.subcutaneousFatPct === 'number' &&
-        typeof qnLocked.metrics.visceralFat === 'number' &&
-        typeof qnLocked.metrics.bodyWaterPct === 'number' &&
-        typeof qnLocked.metrics.skeletalMuscleMassKg === 'number' &&
-        typeof qnLocked.metrics.muscleMassKg === 'number' &&
-        typeof qnLocked.metrics.boneMassKg === 'number' &&
-        typeof qnLocked.metrics.proteinMassKg === 'number' &&
-        typeof qnLocked.metrics.bmrKcal === 'number' &&
-        typeof qnLocked.metrics.metabolicAge === 'number',
-      `QN-Scale locked packet with 512Ω impedance computes all 13 RENPHO scale metrics (BF=${qnLocked?.metrics?.bodyFatPct}%, SMM=${qnLocked?.metrics?.skeletalMuscleMassKg}kg)`
+        qnLocked.metrics.bodyFatPct === undefined &&
+        qnLocked.metrics.visceralFat === undefined &&
+        qnLocked.metrics.muscleMassKg === undefined &&
+        qnLocked.metrics.bmrKcal === undefined &&
+        qnLocked.metrics.metabolicAge === undefined,
+      `QN-Scale locked packet decodes 82.45 kg with 512Ω impedance and invents no body composition, even when placeholder age/height are passed`
     );
-    const qnWeightOnlyWithHeight = decodeRenphoScalePacket(
-      new Uint8Array([0x10, 0x0b, 0x00, 0x20, 0x35, 0x01, 0x00, 0x00]),
+    const qnWithHeight = decodeRenphoScalePacket(
+      new Uint8Array([0x10, 0x0b, 0x00, 0x20, 0x35, 0x01, 0x02, 0x00]),
       RENPHO_SCALE_UUIDS.QN_NOTIFY_FFE1,
       { measuredHeightCm: 180 }
     );
     assert(
-      qnWeightOnlyWithHeight?.metrics?.bmi === 25.4 &&
-        qnWeightOnlyWithHeight.metrics.bodyFatPct === undefined &&
-        qnWeightOnlyWithHeight.metrics.visceralFat === undefined &&
-        qnWeightOnlyWithHeight.metrics.metabolicAge === undefined,
-      `Weight-only packet (0Ω impedance) computes BMI from entered height (${qnWeightOnlyWithHeight?.metrics?.bmi}) and leaves BIA body composition empty`
+      qnWithHeight?.metrics?.bmi === 25.4 && qnWithHeight.metrics.bodyFatPct === undefined,
+      `BMI comes from the athlete's entered height (got ${qnWithHeight?.metrics?.bmi}); body fat stays empty`
     );
+
+    // 1b. 0x55AA protocol: frames captured from a real ES-CS20M (athlete 91.4 kg, 5 Nov 2026).
+    const hex55 = (h: string) => new Uint8Array(h.split(' ').map((b) => parseInt(b, 16)));
+    const CHAR_2A10 = '00002a10-0000-1000-8000-00805f9b34fb';
+    assert(
+      decodeRenphoScalePacket(hex55('55 aa 11 00 0a 01 01 01 00 00 64 00 00 00 00 81'), CHAR_2A10) === null,
+      'The 0x55AA device-status frame is never read as a weight (it once saved 25.6 kg, impedance 257)'
+    );
+    const settling55 = decodeRenphoScalePacket(hex55('55 aa 14 00 07 00 00 00 23 b4 00 00 f1'), CHAR_2A10);
+    assert(
+      settling55?.weightKg === 91.4 && settling55.stabilized === false && settling55.impedanceOhms === undefined && settling55.sourceProtocol === 'lefu_55aa',
+      `A real settling frame decodes to 91.4 kg, not yet final (got ${settling55?.weightKg})`
+    );
+    const frame55 = (cmd: number, payload: number[]) => {
+      const body = [0x55, 0xaa, cmd, 0, payload.length, ...payload];
+      return new Uint8Array([...body, body.reduce((a, b) => a + b, 0) & 0xff]);
+    };
+    const final55 = decodeRenphoScalePacket(frame55(0x14, [0x01, 0, 0, 0x23, 0xb4, 0x01, 0xf4]), CHAR_2A10, { gender: 'male', age: 28, heightCm: 176 });
+    assert(
+      final55?.weightKg === 91.4 && final55.stabilized === true && final55.impedanceOhms === 500 && final55.metrics?.bodyFatPct === undefined && final55.metrics?.bmi === undefined,
+      'A 0x55AA final frame gives weight and impedance, and invents nothing from placeholder age or height'
+    );
+    const ext55 = decodeRenphoScalePacket(frame55(0x18, [0x01, 0x01, 0x09, 0, 0, 0x23, 0xb4, 0x01, 0xf4, 0x01, 0x1f, 0x00, 0xc8]), CHAR_2A10);
+    assert(ext55?.weightKg === 91.4 && ext55.stabilized === true && ext55.impedanceOhms === 500 && ext55.bodyFatPct === undefined, "An extended final frame gives weight and impedance, and ignores the scale's own body fat (from an unknown profile)");
+    assert(decodeRenphoScalePacket(hex55('55 aa 14 00 07 00 00 00 23 b4 00 00 f0'), CHAR_2A10) === null, 'A 0x55AA frame with a bad checksum is rejected');
+    // Captured from the real scale: it finished, but its body reading found nothing (resistance 0, body fat 0).
+    const noBodyReading55 = decodeRenphoScalePacket(hex55('55 aa 18 00 0d 01 01 09 00 00 23 46 00 00 01 85 00 00 1e'), CHAR_2A10);
+    assert(
+      noBodyReading55?.weightKg === 90.3 && noBodyReading55.isFinal === true && noBodyReading55.impedanceOhms === undefined && noBodyReading55.bodyFatPct === undefined,
+      'A real 0x55AA final with no body reading gives the weight and no impedance or body fat'
+    );
+    // Body metrics: only from a measured impedance plus the athlete's own height, age and sex.
+    const real = computeRenphoScaleMetrics({ weightKg: 91.05, impedanceOhms: 500 }, { measuredHeightCm: 180, age: 40, gender: 'male' });
+    assert(
+      real?.bodyFatPct === 29.2 && real.bmi === 28.1 && real.bodyWaterPct === 51.1 && real.fatFreeMassKg === 64.5 && typeof real.boneMassKg === 'number' && typeof real.muscleMassKg === 'number' && typeof real.bmrKcal === 'number',
+      `Impedance with real height, age and sex gives the published formulas (body fat ${real?.bodyFatPct}, BMI ${real?.bmi}, water ${real?.bodyWaterPct})`
+    );
+    assert(real?.visceralFat === undefined && real?.subcutaneousFatPct === undefined && real?.metabolicAge === undefined, 'Metrics with no published formula stay empty');
+    for (const missing of [{ age: 40, gender: 'male' as const }, { measuredHeightCm: 180, gender: 'male' as const }, { measuredHeightCm: 180, age: 40 }]) {
+      assert(computeRenphoScaleMetrics({ weightKg: 91.05, impedanceOhms: 500 }, missing)?.bodyFatPct === undefined, `No body fat without all of height, age and sex (${Object.keys(missing).join(', ')})`);
+    }
+    const noImpedance = computeRenphoScaleMetrics({ weightKg: 91.05 }, { measuredHeightCm: 180, age: 40, gender: 'male' });
+    assert(noImpedance?.bodyFatPct === undefined && noImpedance?.bmi === 28.1, 'No impedance, no body fat; BMI still comes from the entered height');
+    // Captured from the real scale: a foot woke it (8.2 kg, then 12.9 kg finals), then the real weigh-in
+    // finished with a body reading. The early finals must not stop the real one reaching the form.
+    const footFinal55 = decodeRenphoScalePacket(hex55('55 aa 18 00 0d 01 01 09 00 00 05 0a 00 00 00 38 00 00 76'), CHAR_2A10);
+    const realFinal55 = decodeRenphoScalePacket(hex55('55 aa 18 00 0d 01 01 09 00 00 23 5f 02 0d 01 86 01 7e c6'), CHAR_2A10);
+    assert(realFinal55?.weightKg === 90.55 && realFinal55.impedanceOhms === 525 && realFinal55.isFinal === true, 'A real 0x55AA final with a body reading gives 90.55 kg and 525 ohms');
+    assert(
+      footFinal55 !== null && realFinal55 !== null && scaleFinalKey(footFinal55) !== scaleFinalKey(realFinal55) && scaleFinalKey(realFinal55) === scaleFinalKey({ weightKg: 90.55, impedanceOhms: 525 }),
+      'A low final from waking the scale does not block the real final, and a repeat of the same final is ignored'
+    );
+    const realMetrics55 = computeRenphoScaleMetrics(realFinal55!, { measuredHeightCm: 152.4, age: 39, gender: 'male' });
+    // The scale's own body fat on that frame was 38.2% (0x017E).
+    assert(Math.abs((realMetrics55?.bodyFatPct ?? 0) - 38.2) <= 0.5, `Body fat from the real resistance agrees with the scale's own 38.2% (got ${realMetrics55?.bodyFatPct})`);
+    // One source per number: a weigh-in after a gap gives the summary card and the Weight chart the same average.
+    const gapLogs = [
+      { date: '2026-10-23', bodyweightKg: 81.6, hrvRmssd: 0, restingHr: 0, sleepHours: 0, steps: 0, activeZoneMinutes: 0 },
+      { date: '2026-11-05', bodyweightKg: 90.4, hrvRmssd: 0, restingHr: 0, sleepHours: 0, steps: 0, activeZoneMinutes: 0 },
+    ];
+    const gapEma = calculateEmaSeries(gapLogs);
+    const gapTrend = buildBodyCompositionKnowledgeGraph(gapLogs, NEW_USER_PROFILE).scaleTrends.find((t) => t.id === 'weight');
+    assert(gapTrend?.ema7d === gapEma[gapEma.length - 1].ema, `The summary card and Weight chart share one 7-day average (${gapTrend?.ema7d} vs ${gapEma[gapEma.length - 1].ema})`);
+    // The clock goes first: 1700000000 = 0x6553F100, sent as 6 bytes, then time-zone sign and hours.
+    const clock55 = build55AaSetClock(new Date(1700000000 * 1000));
+    assert(
+      [...clock55.slice(0, 12)].join() === [0x55, 0xaa, 0x97, 0, 9, 1, 0, 0, 0x65, 0x53, 0xf1, 0].join() &&
+        clock55[clock55.length - 1] === ([...clock55.slice(0, -1)].reduce((t, b) => t + b, 0) & 0xff),
+      'The 0x55AA set-clock frame has the right layout and checksum'
+    );
+    const withWeight55 = build55AaGuestProfile({ measuredHeightCm: 180, age: 40, gender: 'male', lastWeightKg: 90.3 }, new Date(2026, 10, 5));
+    assert(((withWeight55[12] << 24) | (withWeight55[13] << 16) | (withWeight55[14] << 8) | withWeight55[15]) === 9030, 'The guest profile carries the last known weight');
+    assert(
+      [...build55AaDisplayUnit('lb')].join() === [0x55, 0xaa, 0x90, 0, 4, 2, 0, 0, 0, 0x95].join() && build55AaDisplayUnit('kg')[5] === 1,
+      'The 0x55AA display-unit frame sets the unit and leaves the scale mode alone'
+    );
+    // The guest profile: slot 9 (never stored on the scale), valid checksum.
+    const sum55 = (f: Uint8Array) => f.slice(0, -1).reduce((t, b) => t + b, 0) & 0xff;
+    const guest = build55AaGuestProfile({ measuredHeightCm: 180, age: 40, gender: 'female' }, new Date(2026, 10, 5));
+    assert(
+      guest.length === 20 && guest[0] === 0x55 && guest[1] === 0xaa && guest[2] === 0x96 && guest[4] === 14 && guest[5] === ((2 << 4) | 9) && ((guest[6] << 8) | guest[7]) === 1986 && ((guest[10] << 8) | guest[11]) === 1800 && guest[17] === 0xff && guest[18] === 0x05 && guest[19] === sum55(guest),
+      'Guest profile: guest slot 9, female, born 1986, 180.0 cm, impedance on, valid checksum'
+    );
+    const anon = build55AaGuestProfile({ measuredHeightCm: 180, age: 40 }, new Date(2026, 10, 5));
+    assert(anon[5] === ((1 << 4) | 9) && anon[18] === 0x06 && anon[19] === sum55(anon), 'Missing any answer: the impedance pass is off, so nothing is measured from values that are not the athlete\'s');
 
     // 2. Standard Bluetooth SIG Weight Measurement (0x2A9D) SI & Imperial packets
     const bleSi = decodeRenphoScalePacket(

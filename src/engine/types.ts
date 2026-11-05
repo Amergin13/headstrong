@@ -344,6 +344,8 @@ export type ExperienceLevel = 'new' | 'intermediate' | 'experienced';
 export interface UserProfile {
   name: string;
   gender: Gender;
+  /** True once the athlete chose it (Settings or the weight form); until then gender is a default. */
+  sexEntered?: boolean;
   /** Training experience chosen in onboarding; calibrates starting weights. */
   experienceLevel?: ExperienceLevel;
   /** Display/input unit for weights. Data is always stored in kg. */

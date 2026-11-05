@@ -12,6 +12,7 @@ import {
   WorkoutSession,
 } from './types';
 import { localDateString } from '../utils/date';
+import { calculateEmaSeries } from './ema';
 export type { ScientificPrinciple, DesignSystemComponent, DesignSystemComponentCategory };
 import { HYPERTROPHY_VOLUME_LANDMARKS, evaluateVolumeStatus } from './hypertrophyVolume';
 import { calculateE1RM } from './e1rm';
@@ -1303,11 +1304,9 @@ export function buildBodyCompositionKnowledgeGraph(
 
     let ema7d: number | undefined;
     if (meta.id === 'weight' && points.length > 0) {
-      let running = points[0].value;
-      for (let i = 1; i < points.length; i++) {
-        running = points[i].value * 0.25 + running * 0.75;
-      }
-      ema7d = Math.round(running * 10) / 10;
+      // The same average as the Weight chart: one source per number.
+      const series = calculateEmaSeries(points.map((p) => ({ date: p.date, bodyweightKg: p.value })));
+      ema7d = series[series.length - 1].ema;
     }
 
     const direction: KgMetricTrend['direction'] =

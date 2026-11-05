@@ -306,7 +306,22 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
               <div className="wk-card space-y-3">
                 <h2 className="wk-h2 text-white">{compositionView === 'weight' ? 'Body composition' : 'Symmetry'}</h2>
                 {compositionView === 'weight' ? (
-                  <p className="wk-body text-[#C6C6C6]">{bodyComposition.recompositionSummary}</p>
+                  <>
+                    <p className="wk-body text-[#C6C6C6]">{bodyComposition.recompositionSummary}</p>
+                    {/* The latest reading of each metric, from the same series as the charts below. */}
+                    {visibleCompositionCharts.some((c) => c.id !== 'bodyweight' && c.points.length > 0) && (
+                      <dl className="grid grid-cols-2 gap-x-4 gap-y-3 pt-1">
+                        {visibleCompositionCharts
+                          .filter((c) => c.id !== 'bodyweight' && c.points.length > 0)
+                          .map((c) => (
+                            <div key={c.id} className="min-w-0">
+                              <dt className="text-xs text-[#AAABAD]">{c.title}</dt>
+                              <dd className="text-sm font-bold text-white">{c.format(c.points[c.points.length - 1].value)}</dd>
+                            </div>
+                          ))}
+                      </dl>
+                    )}
+                  </>
                 ) : measuredSymmetryPairs.length > 0 ? (
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1">
                     {measuredSymmetryPairs.map((pair) => (
@@ -344,8 +359,8 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
           initialMode={logModalMode}
           initialSite={logModalSite}
           heightCm={profile.measuredHeightCm}
-          athleteAge={profile.age}
-          athleteGender={profile.gender}
+          athleteAge={profile.ageEntered ? profile.age : undefined}
+          athleteGender={profile.sexEntered ? profile.gender : undefined}
           onSave={handleSaveAndShowComposition}
           onAutoCapture={handleSaveAndShowComposition}
           onClose={() => setShowLogModal(false)}

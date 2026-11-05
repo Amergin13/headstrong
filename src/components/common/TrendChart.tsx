@@ -145,6 +145,16 @@ export const TrendChart: React.FC<TrendChartProps> = ({ points, secondary, forma
           }}
           aria-hidden="true"
         />
+        {single && (
+          // One reading has no line yet, so the number itself is the chart.
+          <span
+            className="wk-chart-fade absolute font-bold text-white"
+            style={{ fontSize: `max(12px, ${fig(40)})`, lineHeight: 1, left: `calc(${(last.x / W) * 100}% + ${fig(30)})`, top: `calc(${(last.y / H) * 100}% - ${fig(52)})` }}
+            aria-hidden="true"
+          >
+            {format(points[0].value)}
+          </span>
+        )}
         {!example &&
           !single &&
           grid.map((g) => (
@@ -161,9 +171,7 @@ export const TrendChart: React.FC<TrendChartProps> = ({ points, secondary, forma
       {single && (
         <div className="wk-chart-fade flex justify-between" style={{ ...muted, marginTop: fig(12) }} aria-hidden="true">
           <span>Starting point</span>
-          <span>
-            {dayMonth(points[0].date)} · {format(points[0].value)}
-          </span>
+          <span>{dayMonth(points[0].date)}</span>
         </div>
       )}
       {!example && !single && (

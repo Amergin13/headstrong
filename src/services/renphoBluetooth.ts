@@ -383,7 +383,9 @@ export interface RenphoScaleReading {
   metabolicAge?: number;
   metrics?: RenphoScaleMetrics;
   stabilized: boolean;
-  sourceProtocol: 'qn_scale' | 'icomon_scale' | 'ble_weight_scale' | 'ble_body_composition';
+  /** The scale itself says this weigh-in is finished (0x55AA final frame). Nothing more will come. */
+  isFinal?: boolean;
+  sourceProtocol: 'qn_scale' | 'icomon_scale' | 'lefu_55aa' | 'ble_weight_scale' | 'ble_body_composition';
 }
 
 export interface RenphoTapeReading {
@@ -555,10 +557,8 @@ export interface RenphoAthleteContext {
   measuredHeightCm?: number;
   age?: number;
   gender?: 'male' | 'female';
-}
-
-function clampValue(val: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, val));
+  /** Last known bodyweight: a 0x55AA scale's profile carries it. */
+  lastWeightKg?: number;
 }
 
 function round1(val: number): number {
@@ -570,32 +570,120 @@ function round2(val: number): number {
 }
 
 /**
- * Computes all 13 RENPHO Health Scale body composition metrics when the scale measures
- * bioelectrical impedance (`impedanceOhms`) or transmits body fat (`bodyFatPct`), or returns
- * only the measured weight (and BMI when height is known) on weight-only readings.
+ * Body composition from a measured impedance, using the QingNiu formulas published in the
+ * renpho-escs20m library (MIT License, Copyright (c) 2026 Ron). Returns nothing unless the impedance
+ * is measured and the athlete entered their own height, age and sex: never from a placeholder. These
+ * are bioimpedance estimates. Subcutaneous fat, visceral fat and metabolic age have no published
+ * formula, so they are left out rather than invented.
+ */
+function estimateBodyComposition(
+  weightKg: number,
+  impedanceOhms: number | undefined,
+  heightCm: number | undefined,
+  athlete?: RenphoAthleteContext
+) {
+  const age = athlete?.age;
+  const sex = athlete?.gender;
+  if (!impedanceOhms || impedanceOhms <= 0 || !heightCm || !age || !sex) return undefined;
+  const male = sex === 'male';
+  const leanMass =
+    (male ? 0.0009 : 0.00089) * heightCm * heightCm +
+    (male ? 0.392 : 0.39) * weightKg +
+    (male ? -0.00095 : -0.001) * impedanceOhms +
+    (male ? -0.0693 : -0.08) * age +
+    (male ? 2.877 : -3.3 + 1.662);
+  const bodyFatPct = round1(((weightKg - leanMass) / weightKg) * 100);
+  const clamp = (val: number, min: number, max: number) => Math.min(max, Math.max(min, val));
+  const softLeanPct = round1((male ? 94.992 : 93.988) + (male ? -0.94969 : -0.9396) * bodyFatPct);
+  const softLeanKg = clamp(round2((weightKg * softLeanPct) / 100), 3.75, 110);
+  const fatKg = (bodyFatPct * weightKg) / 100;
+  const boneMassKg = clamp(round2(weightKg - softLeanKg - fatKg), 1, 7);
+  const skeletalPct = clamp(round1((male ? 64.713 : 58.39) + (male ? -0.65508 : -0.58654) * bodyFatPct), 17.5, 70);
+  const proteinPct = clamp(round1((male ? 22.787 : 25.34) + (male ? -0.22735 : -0.30245) * bodyFatPct), 5, 24);
+  return {
+    bodyFatPct,
+    bodyWaterPct: clamp(round1((male ? 72.202 : 68.651) + (male ? -0.72223 : -0.68725) * bodyFatPct), 20, 80),
+    skeletalMuscleMassKg: (skeletalPct * weightKg) / 100,
+    muscleMassKg: round2(weightKg - boneMassKg - fatKg),
+    boneMassKg,
+    proteinMassKg: (proteinPct * weightKg) / 100,
+    bmrKcal: clamp(Math.round((male ? 372.7023 : 370.5818) + (male ? 430.9015 : 359.6167) * boneMassKg), 900, 2500),
+  };
+}
+
+/**
+ * The guest profile (command 0x96, slot 9) a 0x55AA scale needs before it will send its final
+ * reading. Slot 9 is never stored on the scale, so this can't create or overwrite a user. With the
+ * athlete's own height, age and sex it asks for the impedance pass. Without them it sends neutral
+ * values and turns that pass off (last byte 0x06): the scale still finishes, with weight only, and
+ * nothing is measured or shown from values that aren't the athlete's.
+ */
+export function build55AaGuestProfile(athlete: RenphoAthleteContext | undefined, now: Date = new Date()): Uint8Array {
+  const heightCm = athlete?.measuredHeightCm;
+  const known = Boolean(heightCm && athlete?.age && athlete?.gender);
+  const birthYear = now.getFullYear() - (known ? (athlete!.age as number) : 40);
+  const height = Math.round((known ? (heightCm as number) : 170) * 10);
+  // The official app sends the athlete's previous reading; a plausible default if there is none.
+  const lastWeightCg = Math.round((athlete?.lastWeightKg && athlete.lastWeightKg > 0 ? athlete.lastWeightKg : 70) * 100);
+  const payload = [
+    ((athlete?.gender === 'female' && known ? 2 : 1) << 4) | 9,
+    (birthYear >> 8) & 0xff,
+    birthYear & 0xff,
+    1,
+    1,
+    (height >> 8) & 0xff,
+    height & 0xff,
+    0,
+    0,
+    (lastWeightCg >> 8) & 0xff,
+    lastWeightCg & 0xff,
+    0xa9,
+    0xff,
+    known ? 0x05 : 0x06,
+  ];
+  const body = [0x55, 0xaa, 0x96, 0x00, payload.length, ...payload];
+  return new Uint8Array([...body, body.reduce((sum, b) => sum + b, 0) & 0xff]);
+}
+
+/** 0x97 set-clock frame (sub-op 1): unix seconds UTC, then the time-zone sign and whole hours. */
+export function build55AaSetClock(now: Date = new Date()): Uint8Array {
+  const seconds = Math.floor(now.getTime() / 1000);
+  const offsetMinutes = -now.getTimezoneOffset();
+  const payload = [
+    1,
+    ...[5, 4, 3, 2, 1, 0].map((i) => Math.floor(seconds / 2 ** (8 * i)) & 0xff),
+    offsetMinutes >= 0 ? 0 : 1,
+    Math.floor(Math.abs(offsetMinutes) / 60),
+  ];
+  const body = [0x55, 0xaa, 0x97, 0x00, payload.length, ...payload];
+  return new Uint8Array([...body, body.reduce((sum, b) => sum + b, 0) & 0xff]);
+}
+
+/** Identifies one finished reading, so a repeat of it is ignored but a new one on the same connection isn't. */
+export function scaleFinalKey(reading: Pick<RenphoScaleReading, 'weightKg' | 'impedanceOhms'>): string {
+  return `${reading.weightKg}:${reading.impedanceOhms ?? 0}`;
+}
+
+/** 0x90 display unit, 1 kg or 2 lb. Mode 0 leaves the scale's other stored settings alone. */
+export function build55AaDisplayUnit(unit: 'kg' | 'lb' = 'kg'): Uint8Array {
+  const body = [0x55, 0xaa, 0x90, 0x00, 0x04, unit === 'lb' ? 2 : 1, 0, 0, 0];
+  return new Uint8Array([...body, body.reduce((sum, b) => sum + b, 0) & 0xff]);
+}
+
+/**
+ * Collects the body composition values a RENPHO scale reading actually contains.
  *
- * When `impedanceOhms` (50 kHz foot-to-foot BIA resistance in Ohms) or `bodyFatPct` is measured
- * by the scale, all 13 RENPHO metrics are populated:
- *  1. Weight (`bodyweightKg`)
- *  2. BMI (`bmi`)
- *  3. Body fat percentage (`bodyFatPct`)
- *  4. Fat free mass (`fatFreeMassKg`)
- *  5. Subcutaneous fat (`subcutaneousFatPct`)
- *  6. Visceral fat (`visceralFat`)
- *  7. Body water (`bodyWaterPct`)
- *  8. Skeletal muscle mass (`skeletalMuscleMassKg`)
- *  9. Muscle mass (`muscleMassKg`)
- * 10. Bone mass (`boneMassKg`)
- * 11. Protein mass (`proteinMassKg`)
- * 12. Basal metabolic rate (`bmrKcal`)
- * 13. Metabolic age (`metabolicAge`)
+ * Returned: weight, anything the scale itself sent (body fat, water, muscle, …), estimates from a
+ * measured impedance when the athlete entered height, age and sex (estimateBodyComposition),
+ * fat-free mass when body fat is known, and BMI when the athlete entered their height. Nothing comes
+ * from a placeholder age, sex or height, and anything else stays undefined (shown as "—").
  */
 export function computeRenphoScaleMetrics(
   reading: Pick<
     RenphoScaleReading,
     | 'weightKg'
-    | 'bodyFatPct'
     | 'impedanceOhms'
+    | 'bodyFatPct'
     | 'bmi'
     | 'fatFreeMassKg'
     | 'subcutaneousFatPct'
@@ -617,144 +705,45 @@ export function computeRenphoScaleMetrics(
   const inRange = (val: number | undefined, min: number, max: number) =>
     typeof val === 'number' && Number.isFinite(val) && val >= min && val <= max ? val : undefined;
 
-  const isMale = (athlete?.gender ?? 'male') !== 'female';
-  const enteredHeightCm = inRange(athlete?.measuredHeightCm ?? athlete?.heightCm, 100, 250);
-  const effectiveHeightCm = enteredHeightCm ?? (isMale ? 176 : 164);
-  const age = inRange(athlete?.age, 12, 100) ?? 28;
-
-  const sentBodyFatPct = inRange(reading.bodyFatPct, 2, 70);
-  const measuredImpedance = inRange(reading.impedanceOhms, 100, 2500);
-  const hasBiaMeasurement = sentBodyFatPct !== undefined || measuredImpedance !== undefined;
-
-  let bodyFatPct: number | undefined =
-    sentBodyFatPct !== undefined ? round1(sentBodyFatPct) : undefined;
-  if (bodyFatPct === undefined && measuredImpedance !== undefined) {
-    // 50 kHz Bioelectrical Impedance Index (H^2 / Z) Lukaski/Kyle 4-compartment FFM equation
-    const impedanceIndex = (effectiveHeightCm * effectiveHeightCm) / measuredImpedance;
-    const estimatedFfmKg = isMale
-      ? 0.485 * impedanceIndex + 0.338 * weightKg + 5.32 - 0.06 * (age - 25)
-      : 0.475 * impedanceIndex + 0.295 * weightKg + 3.8 - 0.05 * (age - 25);
-    const rawBf = 100 * (1 - estimatedFfmKg / weightKg);
-    bodyFatPct = round1(clampValue(rawBf, isMale ? 4 : 8, 60));
-  }
-
+  const heightCm = inRange(athlete?.measuredHeightCm, 100, 250);
+  const estimated = estimateBodyComposition(weightKg, reading.impedanceOhms, heightCm, athlete);
+  const bodyFatPct = inRange(reading.bodyFatPct ?? estimated?.bodyFatPct, 2, 70);
   const sentBmi = inRange(reading.bmi, 8, 80);
-  const bmiHeightCm = hasBiaMeasurement ? effectiveHeightCm : enteredHeightCm;
   const bmi =
     sentBmi !== undefined
       ? round1(sentBmi)
-      : bmiHeightCm !== undefined
-      ? round1(weightKg / (bmiHeightCm / 100) ** 2)
+      : heightCm !== undefined
+      ? round1(weightKg / (heightCm / 100) ** 2)
       : undefined;
-
   const sentFfm = inRange(reading.fatFreeMassKg, 15, 300);
   const fatFreeMassKg =
     sentFfm !== undefined
       ? round1(sentFfm)
       : bodyFatPct !== undefined
-      ? round1(clampValue(weightKg * (1 - bodyFatPct / 100), weightKg * 0.35, weightKg * 0.96))
+      ? round1(weightKg * (1 - bodyFatPct / 100))
       : undefined;
-
   const opt1 = (val: number | undefined, min: number, max: number) => {
     const v = inRange(val, min, max);
     return v === undefined ? undefined : round1(v);
   };
-
-  if (!hasBiaMeasurement || bodyFatPct === undefined || fatFreeMassKg === undefined) {
-    const boneMass = inRange(reading.boneMassKg, 1, 10);
-    const bmr = inRange(reading.bmrKcal, 700, 6000);
-    const metabolicAge = inRange(reading.metabolicAge, 12, 100);
-    return {
-      bodyweightKg: round1(weightKg),
-      bmi,
-      bodyFatPct,
-      fatFreeMassKg,
-      subcutaneousFatPct: opt1(reading.subcutaneousFatPct, 1, 70),
-      visceralFat: opt1(reading.visceralFat, 1, 60),
-      bodyWaterPct: opt1(reading.bodyWaterPct, 25, 80),
-      skeletalMuscleMassKg: opt1(reading.skeletalMuscleMassKg, 8, 150),
-      muscleMassKg: opt1(reading.muscleMassKg, 10, 200),
-      boneMassKg: boneMass === undefined ? undefined : round2(boneMass),
-      proteinMassKg: opt1(reading.proteinMassKg, 2, 60),
-      bmrKcal: bmr === undefined ? undefined : Math.round(bmr),
-      metabolicAge: metabolicAge === undefined ? undefined : Math.round(metabolicAge),
-    };
-  }
-
-  const effectiveBmi = bmi ?? round1(weightKg / (effectiveHeightCm / 100) ** 2);
-  const subcutaneousFatPct =
-    opt1(reading.subcutaneousFatPct, 1, 70) ??
-    round1(clampValue(bodyFatPct * (isMale ? 0.86 : 0.9), 3, 55));
-
-  const visceralFat =
-    opt1(reading.visceralFat, 1, 60) ??
-    round1(
-      clampValue(
-        (isMale ? 1.5 : 0.8) +
-          Math.max(0, effectiveBmi - 18.5) * 0.72 +
-          Math.max(0, bodyFatPct - (isMale ? 12 : 20)) * 0.34 +
-          Math.max(0, age - 25) * 0.08,
-        1,
-        30
-      )
-    );
-
-  const bodyWaterPct =
-    opt1(reading.bodyWaterPct, 25, 80) ??
-    round1(clampValue(((fatFreeMassKg * 0.732) / weightKg) * 100, 30, 78));
-
-  const sentBone = inRange(reading.boneMassKg, 1, 10);
-  const boneMassKg =
-    sentBone !== undefined
-      ? round2(sentBone)
-      : round2(clampValue(fatFreeMassKg * 0.048, 1.2, 6.0));
-
-  const muscleMassKg =
-    opt1(reading.muscleMassKg, 10, 200) ??
-    round1(clampValue(fatFreeMassKg - boneMassKg, 15, weightKg * 0.92));
-
-  const skeletalMuscleMassKg =
-    opt1(reading.skeletalMuscleMassKg, 8, 150) ??
-    round1(clampValue(fatFreeMassKg * (isMale ? 0.58 : 0.54), 10, muscleMassKg));
-
-  const proteinMassKg =
-    opt1(reading.proteinMassKg, 2, 60) ??
-    round1(
-      clampValue(
-        weightKg * Math.max(0.08, 1 - bodyFatPct / 100 - bodyWaterPct / 100) - boneMassKg,
-        fatFreeMassKg * 0.16,
-        fatFreeMassKg * 0.26
-      )
-    );
-
-  // Katch-McArdle Basal Metabolic Rate equation: BMR = 370 + 21.6 * FFM(kg)
-  const sentBmr = inRange(reading.bmrKcal, 700, 6000);
-  const bmrKcal =
-    sentBmr !== undefined
-      ? Math.round(sentBmr)
-      : Math.round(clampValue(370 + 21.6 * fatFreeMassKg, 850, 4800));
-
-  const referenceBf = isMale ? 15 : 23;
-  const sentMetaAge = inRange(reading.metabolicAge, 12, 100);
-  const metabolicAge =
-    sentMetaAge !== undefined
-      ? Math.round(sentMetaAge)
-      : Math.round(clampValue(age + (bodyFatPct - referenceBf) * 0.75, 15, 85));
+  const boneMass = inRange(reading.boneMassKg ?? estimated?.boneMassKg, 1, 10);
+  const bmr = inRange(reading.bmrKcal ?? estimated?.bmrKcal, 700, 6000);
+  const metabolicAge = inRange(reading.metabolicAge, 12, 100);
 
   return {
     bodyweightKg: round1(weightKg),
-    bmi: effectiveBmi,
-    bodyFatPct,
+    bmi,
+    bodyFatPct: bodyFatPct === undefined ? undefined : round1(bodyFatPct),
     fatFreeMassKg,
-    subcutaneousFatPct,
-    visceralFat,
-    bodyWaterPct,
-    skeletalMuscleMassKg,
-    muscleMassKg,
-    boneMassKg,
-    proteinMassKg,
-    bmrKcal,
-    metabolicAge,
+    subcutaneousFatPct: opt1(reading.subcutaneousFatPct, 1, 70),
+    visceralFat: opt1(reading.visceralFat, 1, 60),
+    bodyWaterPct: opt1(reading.bodyWaterPct ?? estimated?.bodyWaterPct, 25, 80),
+    skeletalMuscleMassKg: opt1(reading.skeletalMuscleMassKg ?? estimated?.skeletalMuscleMassKg, 8, 150),
+    muscleMassKg: opt1(reading.muscleMassKg ?? estimated?.muscleMassKg, 10, 200),
+    boneMassKg: boneMass === undefined ? undefined : round2(boneMass),
+    proteinMassKg: opt1(reading.proteinMassKg ?? estimated?.proteinMassKg, 2, 60),
+    bmrKcal: bmr === undefined ? undefined : Math.round(bmr),
+    metabolicAge: metabolicAge === undefined ? undefined : Math.round(metabolicAge),
   };
 }
 
@@ -861,6 +850,50 @@ export function buildQnScaleClockSyncPayload(
 }
 
 /**
+ * The 0x55AA protocol: 55 AA | command | length (uint16 BE) | payload | checksum (low byte of the sum
+ * of every earlier byte). Confirmed on a real ES-CS20M; layout from the MIT-licensed renpho-escs20m
+ * library. 0x14: [status, weight uint32 BE in 0.01 kg, resistance uint16 BE]; status low nibble 0 is
+ * settling, 1 final. 0x18 (final, extended models): [status, ?, slot, weight uint32, resistance
+ * uint16, BMI, body fat]; the scale's own BMI and body fat are ignored, because they come from
+ * whatever profile it holds. Every other command (0x11 device status, stored records, acks) has no
+ * current weight in it: reading those as a weight is what saved 25.6 kg for a 91 kg athlete.
+ */
+function decode55AaFrame(bytes: Uint8Array, athlete?: RenphoAthleteContext): RenphoScaleReading | null {
+  if (bytes.length < 6) return null;
+  const length = (bytes[3] << 8) | bytes[4];
+  const total = 6 + length;
+  if (bytes.length < total) return null;
+  let sum = 0;
+  for (let i = 0; i < total - 1; i++) sum = (sum + bytes[i]) & 0xff;
+  if (sum !== bytes[total - 1]) return null;
+
+  const command = bytes[2];
+  let weightOffset: number;
+  if (command === 0x14 && length >= 7) weightOffset = 6;
+  else if (command === 0x18 && length >= 13) weightOffset = 8;
+  else return null;
+
+  const phase = bytes[5] & 0x0f;
+  if (phase !== 0 && phase !== 1) return null;
+  const rawWeight =
+    bytes[weightOffset] * 0x1000000 + (bytes[weightOffset + 1] << 16) + (bytes[weightOffset + 2] << 8) + bytes[weightOffset + 3];
+  const weightKg = rawWeight / 100;
+  if (weightKg < 5 || weightKg > 350) return null;
+  const resistance = (bytes[weightOffset + 4] << 8) | bytes[weightOffset + 5];
+
+  return withScaleMetrics(
+    {
+      weightKg: Math.round(weightKg * 100) / 100,
+      impedanceOhms: resistance > 0 ? resistance : undefined,
+      stabilized: phase === 1,
+      isFinal: phase === 1,
+      sourceProtocol: 'lefu_55aa',
+    },
+    athlete
+  );
+}
+
+/**
  * Decodes a GATT notification payload from a RENPHO Bluetooth scale.
  * Supports:
  * 1. QN-Scale / Yolanda (`0xFFE1` / `0xFFE2`) `0x10` live & locked weight/impedance packets
@@ -885,6 +918,12 @@ export function decodeRenphoScalePacket(
   const isStandardBodyCompChar =
     characteristicUuid === RENPHO_SCALE_UUIDS.BLE_BODY_COMPOSITION_CHAR ||
     uuidStr.includes('2a9c');
+
+  // 0x55AA frames (service 0x1A10, e.g. ES-CS20M hardware revisions): self-describing, so nothing
+  // else may guess at them. Only measurement frames carry a weight.
+  if (bytes[0] === 0x55 && bytes[1] === 0xaa) {
+    return decode55AaFrame(bytes, athlete);
+  }
 
   // 1. Standard Bluetooth SIG Body Composition Measurement (0x2A9C)
   if (isStandardBodyCompChar && bytes.length >= 4) {
@@ -970,15 +1009,14 @@ export function decodeRenphoScalePacket(
     );
   }
 
-  // 4. iCOMON / alternate RENPHO scale frame (0xCF, 0xFE, 0xFD, 0xAC, 0xA5, 0xAA, 0x55 header)
+  // 4. iCOMON / alternate RENPHO scale frame (0xCF, 0xFE, 0xFD, 0xAC, 0xA5, 0xAA header)
   if (
     (bytes[0] === 0xcf ||
       bytes[0] === 0xfe ||
       bytes[0] === 0xfd ||
       bytes[0] === 0xac ||
       bytes[0] === 0xa5 ||
-      bytes[0] === 0xaa ||
-      bytes[0] === 0x55) &&
+      bytes[0] === 0xaa) &&
     bytes.length >= 6
   ) {
     const rawLe45 = bytes.length >= 6 ? bytes[4] | (bytes[5] << 8) : 0;
@@ -1358,7 +1396,7 @@ async function openScaleGattStream(
     onStatus?: (status: string) => void;
     onDisconnect?: () => void;
   },
-  options: { unit?: 'kg' | 'lb'; athlete?: RenphoAthleteContext } | undefined,
+  options: { unit?: 'kg' | 'lb'; athlete?: RenphoAthleteContext; getAthlete?: () => RenphoAthleteContext } | undefined,
   reconnectedFromMemory: boolean
 ): Promise<RenphoBleConnection> {
   const deviceName = device.name || loadSavedRenphoDevices().scale?.name || 'RENPHO Scale';
@@ -1375,12 +1413,14 @@ async function openScaleGattStream(
   let lockedKg = 0;
   let hasLockedReading = false;
   let hasLockedImpedance = false;
+  let lastFinalKey: string | null = null;
   const configWriteChars: WebBluetoothCharacteristic[] = [];
   const timeWriteChars: WebBluetoothCharacteristic[] = [];
   const cleanupListeners: Array<() => void> = [];
 
   const handleDisconnected = () => {
     if (!active) return;
+    bleDebug('scale disconnected', deviceName);
     // An unlocked reading is never saved: the scale switched off before it settled.
     callbacks.onDisconnect?.();
   };
@@ -1403,8 +1443,13 @@ async function openScaleGattStream(
   const services = await server.getPrimaryServices();
   bleDebug('connected', device.name, device.id, 'services', services.map((sv) => sv.uuid));
 
+  // A 0x55AA scale streams on service 0x1A10 and needs no handshake. It may also expose 0xFFF0, but
+  // QN commands written there aren't its protocol, so that service is left alone.
+  const speaks55Aa = services.some((sv) => sv.uuid.toLowerCase().includes('1a10'));
+
   let subscribedCount = 0;
   for (const service of services) {
+    if (speaks55Aa && !service.uuid.toLowerCase().includes('1a10')) continue;
     let chars: WebBluetoothCharacteristic[] = [];
     try {
       chars = await service.getCharacteristics();
@@ -1512,7 +1557,15 @@ async function openScaleGattStream(
             if (reading.stabilized) {
               // Allow a subsequent stabilized packet that adds BIA impedance/body-fat
               // to upgrade an initial weight-only lock at the same weight.
-              if (hasLockedReading && (hasLockedImpedance || !readingHasBioComp)) return;
+              if (reading.isFinal) {
+                // Scales repeat a final, but one connection can hold several: a foot waking the
+                // scale gives its own low final before the real weigh-in.
+                const finalKey = scaleFinalKey(reading);
+                if (finalKey === lastFinalKey) return;
+                lastFinalKey = finalKey;
+              } else if (hasLockedReading && (hasLockedImpedance || !readingHasBioComp)) {
+                return;
+              }
               hasLockedReading = true;
               if (readingHasBioComp) {
                 hasLockedImpedance = true;
@@ -1565,6 +1618,27 @@ async function openScaleGattStream(
     }
   }
 
+  // A 0x55AA scale holds back its final reading until it has a profile for this weigh-in.
+  if (speaks55Aa && subscribedCount > 0) {
+    for (const service of services) {
+      if (!service.uuid.toLowerCase().includes('1a10')) continue;
+      const chars = await service.getCharacteristics().catch(() => [] as WebBluetoothCharacteristic[]);
+      const command = chars.find((c) => c.uuid.toLowerCase().includes('2a11'));
+      if (command) {
+        // The official app's order: the clock first (the scale works out age from it), then the profile.
+        const clock = build55AaSetClock();
+        bleDebug('scale set clock', toHex(new DataView(clock.buffer)));
+        await safeWriteCharacteristic(command, clock);
+        const profile = build55AaGuestProfile(options?.getAthlete?.() ?? options?.athlete);
+        bleDebug('scale guest profile', toHex(new DataView(profile.buffer)));
+        await safeWriteCharacteristic(command, profile);
+        const displayUnit = build55AaDisplayUnit(options?.unit);
+        bleDebug('scale display unit', toHex(new DataView(displayUnit.buffer)));
+        await safeWriteCharacteristic(command, displayUnit);
+      }
+    }
+  }
+
   if (subscribedCount === 0) {
     cleanupListeners.forEach((fn) => fn());
     server.disconnect();
@@ -1613,6 +1687,8 @@ export async function connectRenphoScale(
     acceptAllDevices?: boolean;
     unit?: 'kg' | 'lb';
     athlete?: RenphoAthleteContext;
+    /** The latest answers: a connection can wait a long time for the scale to wake. */
+    getAthlete?: () => RenphoAthleteContext;
     forceNewPairing?: boolean;
     silentOnly?: boolean;
     /** Reconnecting after a restart: the browser's list shows only this device name. */

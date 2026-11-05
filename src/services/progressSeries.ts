@@ -87,7 +87,7 @@ export function buildCompositionCharts(input: {
   } else if (emaPoints.length >= 2 && daysBetweenLocalDates(emaPoints[0].date, emaPoints[emaPoints.length - 1].date) < 7) {
     // A weekly pace from less than a week of weigh-ins is noise (water, food, timing).
     const last = emaPoints[emaPoints.length - 1];
-    weightSummary = `Your 7-day average is ${fmt.weight(round1(last.value))}. Keep weighing in each morning; your weekly pace appears after a week.`;
+    weightSummary = `Your 7-day average is ${fmt.weight(last.value)}. Keep weighing in each morning; your weekly pace appears after a week.`;
   } else if (emaPoints.length >= 2) {
     const last = emaPoints[emaPoints.length - 1];
     // Rate over the last 2–4 weeks of averages.
@@ -99,7 +99,7 @@ export function buildCompositionCharts(input: {
     const direction = Math.abs(perWeekKg) < 0.05 ? 'holding steady' : `${perWeekKg > 0 ? 'up' : 'down'} ${(fmt.weightPrecise ?? fmt.weight)(Math.abs(perWeekKg))} a week`;
     const onPace = perWeekPct >= goal.min && perWeekPct <= goal.max;
     weightSummary =
-      `Your 7-day average is ${fmt.weight(round1(last.value))}, ${direction} (${round1(Math.abs(perWeekPct))}% of your weight). ` +
+      `Your 7-day average is ${fmt.weight(last.value)}, ${direction} (${round1(Math.abs(perWeekPct))}% of your weight). ` +
       (onPace
         ? `That's on pace for ${goal.label}.`
         : perWeekPct > goal.max
