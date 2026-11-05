@@ -76,9 +76,9 @@ export TREISE_KEY_PASSWORD=...        # the key password
 This produces `app/build/outputs/bundle/release/app-release.aab`. Upload it to the Play Console track (version 1.1.0, code 13).
 Change `versionCode` / `versionName` in `app/build.gradle` (and `twa-manifest.json` to match) for each new upload.
 
-### 3.4 Health Connect and Strava before release
+### 3.4 Health Connect before release
 - Play Console → App content → **Health apps** declaration, and the **Health Connect** permissions form for `READ_EXERCISE` ("count the athlete's workouts as weekly active days"). Google reviews this. Until the declaration is in place, Health Connect may show testers an error instead of the permission screen.
-- Strava: create an API application at strava.com/settings/api with Authorization Callback Domain `treise.vercel.app`, then add `STRAVA_CLIENT_ID` and `STRAVA_CLIENT_SECRET` to the Vercel project's environment variables. A new Strava app can connect only its owner's account; raise the athlete capacity to 10 in the Strava API dashboard, and submit Strava's developer program form for more.
+- Strava is switched off for the beta (`STRAVA_ENABLED` in `src/services/activitySources.ts`). Nothing to set up.
 
 ## 4. Configuring Digital Asset Links (`assetlinks.json`)
 

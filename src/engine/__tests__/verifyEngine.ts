@@ -4100,14 +4100,14 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
     };
     // Chest and Back three weeks running, 2.5 kg heavier each week.
     const mHist = [session(1, mNow - 15 * DAYM, (k) => k), session(1, mNow - 8 * DAYM, (k) => k + 2.5), session(1, mNow - DAYM, (k) => k + 5)];
-    const kgM = buildAthleteKnowledgeGraph(mHist, [], SEED_EXERCISES, NEW_USER_PROFILE, calculateWeeklyMuscleVolume(mHist, SEED_EXERCISES));
+    const kgM = buildAthleteKnowledgeGraph(mHist, [], SEED_EXERCISES, NEW_USER_PROFILE, calculateWeeklyMuscleVolume(mHist, SEED_EXERCISES, undefined, new Date(mNow)));
     const tape: BiometricLog[] = [
       { date: localDateString(new Date(mNow - 14 * DAYM)), bodyweightKg: 80, hrvRmssd: 0, restingHr: 0, sleepHours: 0, steps: 0, activeZoneMinutes: 0, chestCm: 100 },
       { date: localDateString(new Date(mNow - DAYM)), bodyweightKg: 80, hrvRmssd: 0, restingHr: 0, sleepHours: 0, steps: 0, activeZoneMinutes: 0, chestCm: 101.5 },
     ];
     const muscles = buildMuscleProgress({ workouts: mHist, exerciseCatalog: SEED_EXERCISES, biometrics: tape, knowledgeGraph: kgM, bodyweightKg: 80, now: mNow });
     const chest = muscles.find((m) => m.key === 'Chest')!;
-    const weekly = calculateWeeklyMuscleVolume(mHist, SEED_EXERCISES);
+    const weekly = calculateWeeklyMuscleVolume(mHist, SEED_EXERCISES, undefined, new Date(mNow));
     assert(Boolean(chest) && chest.weeklySets === weekly.Chest, `Muscle view weekly sets match the knowledge graph and cards (${chest?.weeklySets} = ${weekly.Chest})`);
     assert(chest.setsByWeek.length === 8 && chest.setsByWeek[7].sets === chest.weeklySets && chest.setsByWeek.filter((w) => w.sets > 0).length >= 3, 'Weekly sets history covers 8 weeks and includes each trained week');
     assert(
@@ -4922,7 +4922,7 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
   console.log('\n[40. Active days]');
   {
     const ad = await import('../activeDays');
-    const { toDetectedActivities } = await import('../../services/activitySources');
+    const { toDetectedActivities, fetchStravaActivities, startStravaConnect, STRAVA_ENABLED } = await import('../../services/activitySources');
     const { buildStarterPlan } = await import('../starterPlan');
     const mbp = await import('../muscleBuildingProgram');
     const { completeWorkout } = await import('../../services/workoutCompletion');
@@ -4939,25 +4939,29 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
         ad.classifyActivity('Weightlifting') === 'strength' &&
         ad.classifyActivity('Spinning') === 'cycle' &&
         ad.classifyActivity('HIIT') === 'class',
-      'Activity names from Strava, Health Connect, Fitbit and Whoop map to plain types; lifting is recognised'
+      'Activity names from Health Connect, Fitbit, Whoop and Strava map to plain types; lifting is recognised'
     );
     const raw = [
       { externalId: 'a', sportType: 'Ride', startedAt: '2026-10-20T07:00:00.000Z', minutes: 32 },
       { externalId: 'b', sportType: 'WeightTraining', startedAt: '2026-10-20T17:00:00.000Z', minutes: 50 },
     ];
-    const det = toDetectedActivities('strava', raw);
-    assert(det.length === 1 && det[0].type === 'cycle' && det[0].source === 'strava', 'Lifting from an app never becomes an active day');
+    const det = toDetectedActivities('fitbit', raw);
+    assert(det.length === 1 && det[0].type === 'cycle' && det[0].source === 'fitbit', 'Lifting from an app never becomes an active day');
+    // Strava is off for the beta: even a profile saved as connected never reaches it.
+    const stravaFound = await fetchStravaActivities({ stravaConnected: true, stravaAccessToken: 'test' } as any);
+    const stravaStarted = await startStravaConnect();
+    assert(!STRAVA_ENABLED && stravaFound.length === 0 && !stravaStarted, 'Strava is switched off: it is never offered, connected or read');
     assert(
       ad.qualifiesAsActiveDay({ minutes: 20 }) && !ad.qualifiesAsActiveDay({ minutes: 12 }),
       'An active day is at least 20 minutes (a 12-minute walk is saved but does not count)'
     );
 
     // Same ride from two apps counts once; a removed one doesn't come back; re-sync adds nothing.
-    const ride = { externalId: 'r1', startedAt: '2026-10-21T06:00:00.000Z', minutes: 40, type: 'cycle' as const, source: 'strava' as const };
+    const ride = { externalId: 'r1', startedAt: '2026-10-21T06:00:00.000Z', minutes: 40, type: 'cycle' as const, source: 'fitbit' as const };
     const sameRideHc = { ...ride, externalId: 'hc-9', source: 'health_connect' as const, startedAt: '2026-10-21T06:03:00.000Z', minutes: 38 };
     const first = ad.mergeDetectedActivities([], [ride, sameRideHc]);
     const again = ad.mergeDetectedActivities(first.merged, [ride]);
-    const dismissed = ad.mergeDetectedActivities([], [ride], ['strava:r1']);
+    const dismissed = ad.mergeDetectedActivities([], [ride], ['fitbit:r1']);
     assert(
       first.added.length === 1 && again.added.length === 0 && dismissed.added.length === 0 && first.added[0].date === localDateString(new Date(ride.startedAt)),
       'Found workouts: one per real session, never duplicated, and a removed one stays removed'

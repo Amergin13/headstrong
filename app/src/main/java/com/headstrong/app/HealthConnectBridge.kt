@@ -46,6 +46,9 @@ object HealthConnectBridge {
 
     private lateinit var appContext: Context
     private var session: CustomTabsSession? = null
+    /** True once Chrome has confirmed (Digital Asset Links) that the app may speak as ORIGIN. */
+    private var originValidated = false
+    private var channelRequested = false
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     fun init(context: Context) {
@@ -56,15 +59,36 @@ object HealthConnectBridge {
     fun attachSession(newSession: CustomTabsSession) {
         if (session === newSession) return
         session = newSession
+        originValidated = false
+        channelRequested = false
         // The message channel needs the app to be allowed to use the site's origin.
         newSession.validateRelationship(CustomTabsService.RELATION_USE_AS_ORIGIN, ORIGIN, null)
     }
 
-    /** Opens the message channel after each page load (a reload gives the page a new channel). */
+    /**
+     * Opens the message channel once the page has loaded and the origin is validated. Validation is
+     * asynchronous, so whichever of the two happens last makes the request.
+     */
     fun onPageLoaded() {
+        // Each page load needs a fresh channel (a reload drops the old one).
+        channelRequested = false
+        if (originValidated) requestChannel()
+    }
+
+    fun onOriginValidated(ok: Boolean) {
+        originValidated = ok
+        if (!ok) {
+            Log.w(TAG, "Origin not validated; check use_as_origin in assetlinks.json")
+            return
+        }
+        requestChannel()
+    }
+
+    private fun requestChannel() {
         val s = session ?: return
-        val ok = s.requestPostMessageChannel(ORIGIN, ORIGIN, Bundle())
-        if (!ok) Log.w(TAG, "Could not request the message channel")
+        if (channelRequested) return
+        channelRequested = s.requestPostMessageChannel(ORIGIN, ORIGIN, Bundle())
+        if (!channelRequested) Log.w(TAG, "Could not request the message channel")
     }
 
     fun onChannelReady() {
@@ -174,7 +198,8 @@ object HealthConnectBridge {
         ExerciseSessionRecord.EXERCISE_TYPE_ROWING, ExerciseSessionRecord.EXERCISE_TYPE_ROWING_MACHINE -> "rowing"
         ExerciseSessionRecord.EXERCISE_TYPE_ELLIPTICAL, ExerciseSessionRecord.EXERCISE_TYPE_STAIR_CLIMBING,
         ExerciseSessionRecord.EXERCISE_TYPE_STAIR_CLIMBING_MACHINE -> "elliptical"
-        ExerciseSessionRecord.EXERCISE_TYPE_STRENGTH_TRAINING, ExerciseSessionRecord.EXERCISE_TYPE_WEIGHTLIFTING -> "strength"
+        ExerciseSessionRecord.EXERCISE_TYPE_STRENGTH_TRAINING, ExerciseSessionRecord.EXERCISE_TYPE_WEIGHTLIFTING,
+        ExerciseSessionRecord.EXERCISE_TYPE_CALISTHENICS -> "strength"
         ExerciseSessionRecord.EXERCISE_TYPE_YOGA, ExerciseSessionRecord.EXERCISE_TYPE_PILATES,
         ExerciseSessionRecord.EXERCISE_TYPE_DANCING, ExerciseSessionRecord.EXERCISE_TYPE_HIGH_INTENSITY_INTERVAL_TRAINING,
         ExerciseSessionRecord.EXERCISE_TYPE_BOXING, ExerciseSessionRecord.EXERCISE_TYPE_EXERCISE_CLASS -> "class"
@@ -199,6 +224,11 @@ object HealthConnectBridge {
                 onSessionNeeded()?.let { attachSession(it) }
                 onPageLoaded()
             }
+        }
+
+        override fun onRelationshipValidationResult(relation: Int, requestedOrigin: Uri, result: Boolean, extras: Bundle?) {
+            super.onRelationshipValidationResult(relation, requestedOrigin, result, extras)
+            if (relation == CustomTabsService.RELATION_USE_AS_ORIGIN) onOriginValidated(result)
         }
 
         override fun onMessageChannelReady(extras: Bundle?) {

@@ -270,7 +270,7 @@ export const EXERCISE_SCIENCE_KNOWLEDGE_BASE: ScientificPrinciple[] = [
     academicCitation:
       'Kaushal & Rhodes (2015); ACSM Progression Models (2009); Schoenfeld, Ogborn & Krieger (2016, 2017); Schoenfeld et al. (2017, 2019); Helms et al. (2014); Murphy & Koehler (2022); Refalo et al. (2023)',
     practicalApplication:
-      'Each week has 4 sessions. By default that is 3 lifting workouts we set for you plus 1 active day of anything you enjoy; a watch, Strava or Health Connect can add the active day automatically. If you can lift 4 days, choose 4 shorter upper and lower body workouts instead. The first two weeks are easier while you learn the lifts, then sets and effort build. Missing a day never resets the plan.',
+      'Each week has 4 sessions. By default that is 3 lifting workouts we set for you plus 1 active day of anything you enjoy; a watch or Health Connect can add the active day automatically. If you can lift 4 days, choose 4 shorter upper and lower body workouts instead. The first two weeks are easier while you learn the lifts, then sets and effort build. Missing a day never resets the plan.',
     keywords: ['starter plan', 'plan', 'program', 'full body', '3 days', 'three days', '4 days', 'four days', 'active day', 'habit', 'cardio', 'cycling', 'beginner', 'frequency', 'how often', 'split', 'lose fat', 'build muscle', 'stay lean', 'goal'],
   },
   {

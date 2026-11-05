@@ -548,9 +548,11 @@ export function muscleSetsBetween(
 export function calculateWeeklyMuscleVolume(
   workouts: WorkoutSession[],
   exerciseCatalog: ExerciseDefinition[],
-  activeWorkout?: WorkoutSession
+  activeWorkout?: WorkoutSession,
+  /** The moment "this week" is counted back from; defaults to now (tests pass a fixed time). */
+  now: Date = new Date()
 ): Record<string, number> {
-  const weekStart = new Date();
+  const weekStart = new Date(now.getTime());
   weekStart.setDate(weekStart.getDate() - 7);
   const sessionsToScan = activeWorkout ? [activeWorkout, ...workouts] : workouts;
   return muscleSetsBetween(sessionsToScan, exerciseCatalog, localDateString(weekStart));

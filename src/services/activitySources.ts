@@ -81,6 +81,12 @@ export async function fetchWhoopActivities(profile: UserProfile, now: Date = new
 
 // ---------------------------------------------------------------- Strava
 
+/**
+ * Strava is switched off for the beta: its API needs a paid plan. The server functions stay in
+ * `api/strava`, but nothing in the app offers, connects to or reads Strava while this is false.
+ */
+export const STRAVA_ENABLED = false;
+
 export interface StravaTokens {
   accessToken: string;
   refreshToken: string;
@@ -118,6 +124,7 @@ export async function getStravaConfig(): Promise<{ configured: boolean; clientId
 
 /** Sends the athlete to Strava's sign-in. Returns false when Strava isn't set up yet. */
 export async function startStravaConnect(): Promise<boolean> {
+  if (!STRAVA_ENABLED) return false;
   const config = await getStravaConfig();
   if (!config.configured || !config.clientId) return false;
   const state = `strava_${Math.random().toString(36).slice(2, 12)}`;
@@ -159,7 +166,7 @@ export async function exchangeStravaCode(code: string, grantedScope?: string | n
 }
 
 export async function fetchStravaActivities(profile: UserProfile, now: Date = new Date()): Promise<DetectedActivity[]> {
-  if (!profile.stravaConnected || !(profile.stravaAccessToken || profile.stravaRefreshToken)) return [];
+  if (!STRAVA_ENABLED || !profile.stravaConnected || !(profile.stravaAccessToken || profile.stravaRefreshToken)) return [];
   const data = await postJson('/api/strava/activities', {
     accessToken: profile.stravaAccessToken,
     refreshToken: profile.stravaRefreshToken,

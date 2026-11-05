@@ -1,6 +1,6 @@
 # Play Console answers for the Treise private beta
 
-Worked out from the code (version 1.1.0: active days, Strava, Health Connect). If the code changes what leaves the phone, update this and `public/privacy.html` together.
+Worked out from the code (version 1.1.0: active days, Health Connect; Strava is switched off). If the code changes what leaves the phone, update this and `public/privacy.html` together.
 
 ## What actually leaves the phone
 
@@ -10,7 +10,6 @@ Worked out from the code (version 1.1.0: active days, Strava, Health Connect). I
 | Fitbit / Whoop access token, then HRV, resting HR, sleep, steps, recovery, workout strain | Phone → Treise's Vercel functions (`api/fitbit`, `api/whoop`) → Fitbit / Whoop → back to the phone. Only if the athlete connects a wearable. | No (functions keep nothing; Vercel request logs hold IP addresses) |
 | Google sign-in: name, email, photo | Comes from Google straight to the phone (Google Identity Services in the page). Never sent to Treise's servers. | No |
 | Active days logged by hand | Nowhere. Saved on the phone. | No |
-| Strava activities (type, name, start time, moving time, distance, average heart rate) | Phone → Treise's Vercel functions (`api/strava`) → Strava → back to the phone. Only if the athlete connects Strava. | No |
 | Health Connect exercise sessions (type, title, start and end time) | Read on the phone by the Treise Android app and passed to the web app on the same phone. Never sent to a server. | No |
 | Optional coach model download | Phone downloads files from huggingface.co. Sends none of the athlete's data. | No |
 
@@ -22,9 +21,9 @@ Worked out from the code (version 1.1.0: active days, Strava, Health Connect). I
 
 Declare as **collected** (not shared):
 
-- **Health and fitness → Health info** and **Fitness info** (HRV, resting heart rate, sleep, steps, recovery, workout strain, and workouts from Fitbit, Whoop and Strava: type, time, length, distance, average heart rate)
+- **Health and fitness → Health info** and **Fitness info** (HRV, resting heart rate, sleep, steps, recovery, workout strain, and workouts from Fitbit and Whoop: type, time, length, distance, average heart rate)
   - Processed ephemerally: **Yes**
-  - Required or optional: **Optional** (only when a wearable or Strava is connected)
+  - Required or optional: **Optional** (only when a wearable is connected)
   - Purpose: **App functionality**
 
 Do **not** declare:
@@ -63,5 +62,5 @@ Do **not** declare:
 - [ ] Fitbit sign-in and sync on the Pixel
 - [ ] AI coach answers on the Pixel (Download, then ask a question)
 - [ ] RENPHO scale pairing (optional for the beta)
-- [ ] Strava: create the API app, set `STRAVA_CLIENT_ID` / `STRAVA_CLIENT_SECRET` in Vercel, raise athlete capacity to 10, connect on the Pixel
+- [ ] Fitbit / Pixel Watch: record a 20+ minute walk or ride on the watch, open Treise, and check it appears as the active day (and only once if Health Connect is on too)
 - [ ] Health Connect: submit the declaration, install 1.1.0 from the testing track, turn it on in Activity apps, log a ride in Health Connect (or Google Fit / Samsung Health) and check it appears

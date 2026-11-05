@@ -31,7 +31,7 @@ export const ActiveDayCard: React.FC<ActiveDayCardProps> = ({ thisWeek, recent, 
     <p className="wk-body" style={{ marginTop: fig(16) }}>
       {thisWeek
         ? `${describeActivity(thisWeek)[0].toUpperCase()}${describeActivity(thisWeek).slice(1)} counts as this week's active day.`
-        : `One ${MIN_ACTIVE_MINUTES}+ minute ride, run, walk, swim or class each week. Your watch, Strava or Health Connect can add it for you.`}
+        : `One ${MIN_ACTIVE_MINUTES}+ minute ride, run, walk, swim or class each week. Your watch or Health Connect can add it for you.`}
     </p>
 
     {recent.length > 0 && (
