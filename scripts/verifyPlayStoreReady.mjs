@@ -134,6 +134,25 @@ assert(
   ),
   'assetlinks.json grants delegate_permission/common.use_as_origin (Health Connect message channel)'
 );
+const headstrongAssetLink = assetLinks.find((al) => al?.target?.package_name === 'com.headstrong.app');
+assert(
+  headstrongAssetLink?.target?.sha256_cert_fingerprints?.includes(
+    '85:EC:5C:62:89:E8:6C:14:77:8A:34:C0:A4:76:1A:7A:AE:68:9E:49:91:99:07:05:98:B1:43:AF:7A:6D:EC:D5'
+  ) &&
+    headstrongAssetLink?.target?.sha256_cert_fingerprints?.includes(
+      'CD:A0:FA:8B:DE:45:50:1E:A7:BF:E4:C6:9C:B5:F8:F5:A2:81:5E:84:02:D1:C1:BA:57:83:DA:8E:BF:64:55:30'
+    ),
+  'assetlinks.json includes both Google Play Console App Signing SHA-256 and Upload Key SHA-256 fingerprints'
+);
+const androidStringsXml = fs.readFileSync(
+  path.resolve(process.cwd(), 'app/src/main/res/values/strings.xml'),
+  'utf8'
+);
+assert(
+  androidStringsXml.includes('delegate_permission/common.handle_all_urls') &&
+    androidStringsXml.includes('delegate_permission/common.use_as_origin'),
+  'Android strings.xml assetStatements declares both handle_all_urls and use_as_origin'
+);
 const androidManifest = fs.readFileSync(path.resolve(process.cwd(), 'app/src/main/AndroidManifest.xml'), 'utf8');
 assert(
   androidManifest.includes('android.permission.health.READ_EXERCISE') &&
@@ -163,6 +182,34 @@ assert(
   twaManifest.packageId === 'com.headstrong.app',
   `twa-manifest.json packageId is "com.headstrong.app"`
 );
+const gradleVersionCode = Number((appGradle.match(/versionCode\s+(\d+)/) || [])[1]);
+const gradleVersionName = (appGradle.match(/versionName\s+"([^"]+)"/) || [])[1];
+assert(
+  gradleVersionCode === twaManifest.appVersionCode &&
+    gradleVersionName === twaManifest.appVersionName &&
+    gradleVersionCode >= 16,
+  `app/build.gradle and twa-manifest.json version match (${gradleVersionName}, versionCode ${gradleVersionCode})`
+);
+const shortcutsXml = fs.readFileSync(
+  path.resolve(process.cwd(), 'app/src/main/res/xml/shortcuts.xml'),
+  'utf8'
+);
+assert(
+  shortcutsXml.includes('https://treise.vercel.app/?tab=train') &&
+    shortcutsXml.includes('https://treise.vercel.app/?tab=program&amp;action=watch-sync') &&
+    shortcutsXml.includes('https://treise.vercel.app/?tab=analytics&amp;action=log-weight'),
+  'Android shortcuts.xml uses full https://treise.vercel.app URLs for all 3 launcher shortcuts'
+);
+const aabPath = path.resolve(process.cwd(), 'app-release-bundle.aab');
+const apkPath = path.resolve(process.cwd(), 'app-release-signed.apk');
+assert(
+  fs.existsSync(aabPath) && fs.statSync(aabPath).size > 500_000,
+  `Signed Play Store bundle app-release-bundle.aab exists (${fs.existsSync(aabPath) ? fs.statSync(aabPath).size : 0} bytes)`
+);
+assert(
+  fs.existsSync(apkPath) && fs.statSync(apkPath).size > 500_000,
+  `Signed release APK app-release-signed.apk exists (${fs.existsSync(apkPath) ? fs.statSync(apkPath).size : 0} bytes)`
+);
 
 // 5. Google Play Policy & Accessibility Checks
 console.log('\n[5. Google Play User Data Policy, Health Disclaimer & WCAG Checks]');
@@ -177,11 +224,22 @@ assert(
 );
 
 const privacyHtml = fs.readFileSync(path.join(distDir, 'privacy.html'), 'utf8');
+const privacySubdirHtml = fs.readFileSync(path.join(distDir, 'privacy/index.html'), 'utf8');
 assert(
   privacyHtml.includes('Google Play Data Safety') &&
     privacyHtml.includes('Delete All Data') &&
     privacyHtml.includes('Non-Medical Fitness Disclaimer'),
   'privacy.html contains Data Safety summary, Data Deletion instructions, and Non-Medical Fitness Disclaimer'
+);
+assert(
+  privacyHtml === privacySubdirHtml,
+  'privacy/index.html is in exact sync with privacy.html'
+);
+const termsHtml = fs.readFileSync(path.join(distDir, 'terms.html'), 'utf8');
+const termsSubdirHtml = fs.readFileSync(path.join(distDir, 'terms/index.html'), 'utf8');
+assert(
+  termsHtml === termsSubdirHtml,
+  'terms/index.html is in exact sync with terms.html'
 );
 
 console.log('\nALL GOOGLE PLAY STORE & TWA READINESS CHECKS PASSED! 🚀');

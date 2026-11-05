@@ -77,7 +77,10 @@ public class LauncherActivity
     protected Uri getLaunchingUrl() {
         // Get the original launch url.
         Uri uri = super.getLaunchingUrl();
-
+        if (uri != null && uri.getScheme() == null) {
+            String path = uri.toString();
+            return Uri.parse("https://treise.vercel.app" + (path.startsWith("/") ? path : "/" + path));
+        }
         return uri;
     }
 }

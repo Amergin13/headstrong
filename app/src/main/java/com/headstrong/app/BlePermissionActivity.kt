@@ -14,6 +14,12 @@ class BlePermissionActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        request.launch(ScaleBridge.requiredPermissions())
+        HealthConnectBridge.init(this)
+        try {
+            request.launch(ScaleBridge.requiredPermissions())
+        } catch (_: Exception) {
+            ScaleBridge.sendStatus()
+            finish()
+        }
     }
 }

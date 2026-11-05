@@ -15,6 +15,12 @@ class HealthPermissionActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        requestPermissions.launch(HealthConnectBridge.READ_PERMISSIONS)
+        HealthConnectBridge.init(this)
+        try {
+            requestPermissions.launch(HealthConnectBridge.READ_PERMISSIONS)
+        } catch (_: Exception) {
+            HealthConnectBridge.sendStatus()
+            finish()
+        }
     }
 }

@@ -1,6 +1,6 @@
 # Treise — Google Play Store & Android TWA Release Runbook
 
-This guide outlines the exact end-to-end engineering, cryptographic signing, and Google Play Console compliance procedures required to publish **Treise** (`com.treise.app`) as a native Android App Bundle (`.aab`) using Google's official **Bubblewrap / Trusted Web Activity (TWA)** pipeline.
+This guide outlines the exact end-to-end engineering, cryptographic signing, and Google Play Console compliance procedures required to publish **Treise** (`com.headstrong.app`) as a native Android App Bundle (`.aab`) using Google's official **Bubblewrap / Trusted Web Activity (TWA)** pipeline.
 
 ---
 
@@ -73,7 +73,7 @@ export TREISE_KEY_PASSWORD=...        # the key password
 ./gradlew bundleRelease
 ```
 
-This produces `app/build/outputs/bundle/release/app-release.aab`. Upload it to the Play Console track (version 1.1.0, code 13).
+This produces `app/build/outputs/bundle/release/app-release.aab` (also copied to `app-release-bundle.aab` in the repository root). Upload it to the Play Console Open Testing or Closed Testing track (version 1.2.2, code 16).
 Change `versionCode` / `versionName` in `app/build.gradle` (and `twa-manifest.json` to match) for each new upload.
 
 ### 3.4 Health Connect before release
@@ -91,13 +91,18 @@ For Chrome on Android to hide the URL address bar and render Treise in full-scre
    ```json
    [
      {
-       "relation": ["delegate_permission/common.handle_all_urls"],
+       "relation": [
+         "delegate_permission/common.handle_all_urls",
+         "delegate_permission/common.get_login_creds",
+         "delegate_permission/common.use_as_origin"
+       ],
        "target": {
          "namespace": "android_app",
-         "package_name": "com.treise.app",
+         "package_name": "com.headstrong.app",
          "sha256_cert_fingerprints": [
-           "YOUR_PLAY_APP_SIGNING_SHA256_FINGERPRINT",
-           "YOUR_LOCAL_UPLOAD_KEY_SHA256_FINGERPRINT"
+           "14:6D:E9:83:C5:73:06:50:D8:EE:B9:95:2F:34:FC:64:16:A0:83:42:E6:1D:BE:A8:8A:04:96:B2:3F:CF:44:E5",
+           "CD:A0:FA:8B:DE:45:50:1E:A7:BF:E4:C6:9C:B5:F8:F5:A2:81:5E:84:02:D1:C1:BA:57:83:DA:8E:BF:64:55:30",
+           "85:EC:5C:62:89:E8:6C:14:77:8A:34:C0:A4:76:1A:7A:AE:68:9E:49:91:99:07:05:98:B1:43:AF:7A:6D:EC:D5"
          ]
        }
      }
@@ -106,7 +111,7 @@ For Chrome on Android to hide the URL address bar and render Treise in full-scre
 4. Re-run `npm run build` and redeploy `dist/`.
 5. Verify verification on a connected Android device:
    ```bash
-   adb shell pm get-app-links com.treise.app
+   adb shell pm get-app-links com.headstrong.app
    ```
 
 ---

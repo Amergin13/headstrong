@@ -12,7 +12,11 @@ import android.os.Bundle
 class PermissionsRationaleActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://treise.vercel.app/privacy.html")))
+        val uri = Uri.parse("https://treise.vercel.app/privacy.html")
+        try {
+            startActivity(Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        } catch (_: Exception) {
+        }
         finish()
     }
 }

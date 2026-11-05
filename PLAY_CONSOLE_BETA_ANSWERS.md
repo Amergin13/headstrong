@@ -1,6 +1,6 @@
-# Play Console answers for the Treise private beta
+# Play Console answers for Treise Open & Closed Testing
 
-Worked out from the code (version 1.2.0: active days, Health Connect, native Renpho scale connection; Strava is switched off). If the code changes what leaves the phone, update this and `public/privacy.html` together.
+Worked out from the code (version 1.2.2, version code 16: active days, Health Connect, native Renpho scale & body-composition connection; Strava is switched off). If the code changes what leaves the phone, update this and `public/privacy.html` together.
 
 ## What actually leaves the phone
 
@@ -11,7 +11,7 @@ Worked out from the code (version 1.2.0: active days, Health Connect, native Ren
 | Google sign-in: name, email, photo | Comes from Google straight to the phone (Google Identity Services in the page). Never sent to Treise's servers. | No |
 | Active days logged by hand | Nowhere. Saved on the phone. | No |
 | Health Connect exercise sessions (type, title, start and end time) | Read on the phone by the Treise Android app and passed to the web app on the same phone. Never sent to a server. | No |
-| Renpho scale readings (weight, body composition) | From the scale to the phone over Bluetooth; saved on the phone. Never sent to a server. | No |
+| Renpho scale readings (weight, body composition) & guest profile (height, age, sex, last weight) | Sent directly between the scale and the phone over Bluetooth; saved on the phone. Never sent to a server. | No |
 | Optional coach model download | Phone downloads files from huggingface.co. Sends none of the athlete's data. | No |
 
 ## Data safety form
@@ -46,17 +46,27 @@ Do **not** declare:
 
 ## App content (other sections)
 
+- **App access:** All functionality is available without special access (no login is required to use Treise; onboarding runs on-device, and Google sign-in / wearable connections are optional).
 - **Ads:** No ads.
+- **Content rating (IARC):** Complete questionnaire as a Utility / Fitness & Exercise app with no user-generated content, no violence, no gambling, and no location sharing.
 - **Target audience:** 18+ (strength training loads; avoids the Families policy).
-- **Account creation:** None in Treise's backend. Google sign-in only personalises the profile on the device, so no account deletion URL is needed. If Play asks anyway, give the privacy policy URL.
-- **Government, financial, news:** No.
+- **Account creation:** None in Treise's backend. Google sign-in only personalises the profile on the device, so no account deletion URL is needed. If Play asks anyway, give `https://treise.vercel.app/privacy.html`.
+- **Government, financial, news, COVID-19:** No.
+- **Data safety & Privacy policy URL:** `https://treise.vercel.app/privacy.html`
 
-## Closed testing track
+## Open testing track (`Testing → Open testing`)
+
+1. In Play Console, go to **Test and release → Testing → Open testing** and click **Create new release**.
+2. Upload **`app-release-bundle.aab`** (version `1.2.2`, version code `16`, built with `./gradlew bundleRelease`).
+3. Under **Testers**, set your feedback channel (e.g. `privacy@treise.app`) and optionally set a maximum number of testers or leave unlimited.
+4. Submit the release for Google Play review. Once approved, anyone can join via the public **Join on the Web** / **Join on Android** link or find the beta on Google Play.
+
+## Closed testing track (`Testing → Closed testing`)
 
 1. Testing → Closed testing → Create track (or use "Alpha").
-2. Build and upload version 1.2.0 (code 14) with `./gradlew bundleRelease` (see PLAY_STORE_RELEASE_GUIDE.md §3.3). It adds the Health Connect bridge and the native scale connection, and needs Android 8 or later.
+2. Upload **`app-release-bundle.aab`** (version `1.2.2`, version code `16`). It includes the Health Connect bridge and the native scale connection, and needs Android 8 (API 26) or later.
 3. Testers: add an email list, then share the opt-in link with testers.
-4. A new personal developer account must run a closed test with at least 12 testers for 14 days before it can apply for production.
+4. A new personal developer account must run a closed test with at least 12 testers for 14 days before it can apply for full Production access.
 
 ## Still to check before inviting testers
 

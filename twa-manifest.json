@@ -21,8 +21,8 @@
     "path": "./android.keystore",
     "alias": "headstrong-release-key"
   },
-  "appVersionName": "1.2.1",
-  "appVersionCode": 15,
+  "appVersionName": "1.2.2",
+  "appVersionCode": 16,
   "shortcuts": [
     {
       "name": "Start Workout",
@@ -72,10 +72,14 @@
     {
       "name": "Upload Key",
       "value": "CD:A0:FA:8B:DE:45:50:1E:A7:BF:E4:C6:9C:B5:F8:F5:A2:81:5E:84:02:D1:C1:BA:57:83:DA:8E:BF:64:55:30"
+    },
+    {
+      "name": "Google Play Console App Signing Key",
+      "value": "85:EC:5C:62:89:E8:6C:14:77:8A:34:C0:A4:76:1A:7A:AE:68:9E:49:91:99:07:05:98:B1:43:AF:7A:6D:EC:D5"
     }
   ],
   "additionalTrustedOrigins": [],
   "retainedBundles": [],
   "displayOverride": [],
-  "appVersion": "1.2.1"
+  "appVersion": "1.2.2"
 }
