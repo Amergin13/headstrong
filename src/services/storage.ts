@@ -21,6 +21,7 @@ import { isPillarBenchmarkExercise } from '../engine/strengthStandards';
 import { getLatestBodyweightEma } from '../engine/ema';
 import { localDateString } from '../utils/date';
 import { withPlanWorkoutName } from '../engine/muscleBuildingProgram';
+import { ActivityLog } from '../engine/activeDays';
 
 const KEYS = {
   PROFILE: 'treise_profile_v3',
@@ -29,6 +30,10 @@ const KEYS = {
   ACTIVE_WORKOUT: 'treise_active_workout_v3',
   EXERCISES: 'treise_exercises_v3',
   AUTH_USER: 'treise_auth_user_v1',
+  /** Active-day sessions (rides, runs, walks, classes), kept apart from lifting workouts. */
+  ACTIVITIES: 'treise_activities_v1',
+  /** Source ids of found workouts the athlete removed, so they aren't imported again. */
+  DISMISSED_ACTIVITIES: 'treise_activities_dismissed_v1',
 };
 
 const LEGACY_KEYS = {
@@ -215,7 +220,7 @@ export async function requestPersistentStorage(): Promise<boolean> {
   }
 }
 
-function getItemWithFallback(key: keyof typeof KEYS): string | null {
+function getItemWithFallback(key: keyof typeof LEGACY_KEYS): string | null {
   if (typeof localStorage === 'undefined') return null;
   return localStorage.getItem(KEYS[key]) || localStorage.getItem(LEGACY_KEYS[key]);
 }
@@ -277,7 +282,8 @@ export function loadProfile(): UserProfile {
  * move to the starter plan; their saved workouts are kept.
  */
 export function normalizeProgramType(programType?: ProgramSplitType): ProgramSplitType {
-  return programType === 'muscle_building_6wk' ? 'muscle_building_6wk' : 'starter_6wk';
+  if (programType === 'muscle_building_6wk' || programType === 'starter_4day') return programType;
+  return 'starter_6wk';
 }
 
 export function saveProfile(profile: UserProfile): void {
@@ -558,9 +564,40 @@ export interface TreiseDataBackup {
   workouts: WorkoutSession[];
   activeWorkout: WorkoutSession;
   exercises: ExerciseDefinition[];
+  /** Added with active days; older backups don't have it. */
+  activities?: ActivityLog[];
 }
 
 export type HeadStrongDataBackup = TreiseDataBackup;
+
+export function loadActivities(): ActivityLog[] {
+  try {
+    const raw = localStorage.getItem(KEYS.ACTIVITIES);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (e) {
+    console.error('Failed to load activities:', e);
+    return [];
+  }
+}
+
+export function saveActivities(logs: ActivityLog[]): void {
+  persist(KEYS.ACTIVITIES, JSON.stringify(logs));
+}
+
+export function loadDismissedActivityIds(): string[] {
+  try {
+    const raw = localStorage.getItem(KEYS.DISMISSED_ACTIVITIES);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveDismissedActivityIds(ids: string[]): void {
+  persist(KEYS.DISMISSED_ACTIVITIES, JSON.stringify(ids.slice(-500)));
+}
 
 /**
  * Exports all user data as a portable JSON backup (Google Play Data Portability)
@@ -574,6 +611,7 @@ export function exportAllUserDataJSON(): string {
     workouts: loadWorkouts(),
     activeWorkout: loadActiveWorkout(),
     exercises: loadExercises(),
+    activities: loadActivities(),
   };
   return JSON.stringify(payload, null, 2);
 }
@@ -602,6 +640,8 @@ export function importUserDataJSON(rawJson: string): TreiseDataBackup {
   saveWorkouts(workouts);
   saveActiveWorkout(activeWorkout);
   saveExercises(exercises);
+  const activities = Array.isArray(parsed.activities) ? (parsed.activities as ActivityLog[]) : loadActivities();
+  saveActivities(activities);
 
   return {
     appVersion: parsed.appVersion || '1.0.0',
@@ -611,6 +651,7 @@ export function importUserDataJSON(rawJson: string): TreiseDataBackup {
     workouts,
     activeWorkout,
     exercises,
+    activities,
   };
 }
 

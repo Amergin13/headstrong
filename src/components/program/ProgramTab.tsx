@@ -17,6 +17,7 @@ import { ProgramPlanView } from './ProgramPlanView';
 import { ProgramPickerModal } from './ProgramPickerModal';
 import { TrainingPlan } from '../../engine/muscleBuildingProgram';
 import { canUseMusclePlan, isPlanProgram } from '../../engine/trainingPlans';
+import { ActivityLog } from '../../engine/activeDays';
 import { CustomExerciseModal } from './CustomExerciseModal';
 import { MesocycleManager } from './MesocycleManager';
 import { ProductGovernanceModal } from './ProductGovernanceModal';
@@ -29,6 +30,10 @@ interface ProgramTabProps {
   profile: UserProfile;
   /** The athlete's 6-week plan (see resolveActivePlan). */
   trainingPlan: TrainingPlan;
+  /** Active days (rides, runs, walks, classes) for the plan's weekly active day. */
+  activities?: ActivityLog[];
+  onOpenActivityApps?: () => void;
+  onLogActivity?: () => void;
   /** Completed and saved sessions, newest first. */
   workouts: WorkoutSession[];
   biometrics: BiometricLog[];
@@ -72,6 +77,9 @@ const fig = (px: number) => `calc(${px} * var(--f))`;
 export const ProgramTab: React.FC<ProgramTabProps> = ({
   profile,
   trainingPlan,
+  activities = [],
+  onOpenActivityApps,
+  onLogActivity,
   workouts,
   biometrics,
   readinessState,
@@ -113,8 +121,8 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
     window.scrollTo({ top: 0 });
   };
   const isPlan = isPlanProgram(profile.programType);
-  // Only the account that can use the muscle plan has a second plan to choose.
-  const canChangePlan = canUseMusclePlan(profile.email);
+  // Everyone can choose how many days they lift; only the owner's account also sees the muscle plan.
+  const canUseMuscle = canUseMusclePlan(profile.email);
   const changeProgram = (newProg: ProgramSplitType) => {
     if (onUpdateProgram) {
       onUpdateProgram(newProg);
@@ -163,6 +171,8 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
         <>
           <ProgramPlanView
             trainingPlan={trainingPlan}
+            activities={activities}
+            onLogActivity={onLogActivity}
             workouts={workouts}
             biometrics={biometrics}
             profile={profile}
@@ -305,7 +315,21 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
           }}
         />
 
-        {isPlan && canChangePlan && (
+        {isPlan && onOpenActivityApps && (
+          <button
+            type="button"
+            onClick={() => {
+              triggerHaptic('light');
+              onOpenActivityApps();
+            }}
+            className="wk-button"
+            style={{ background: 'var(--wk-card)', color: '#fff' }}
+          >
+            Activity apps
+          </button>
+        )}
+
+        {isPlan && (
           <button
             type="button"
             onClick={() => {
@@ -993,6 +1017,7 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
       {showProgramPicker && (
         <ProgramPickerModal
           programType={profile.programType || 'starter_6wk'}
+          includeMusclePlan={canUseMuscle}
           onChangeProgram={changeProgram}
           onClose={() => setShowProgramPicker(false)}
         />

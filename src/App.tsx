@@ -27,6 +27,7 @@ import {
   loadAuthUser,
   loadBiometrics,
   loadExercises,
+  loadActivities,
   loadProfile,
   loadWorkouts,
   permanentlyEraseAllUserData,
@@ -37,6 +38,7 @@ import {
   SAVE_FAILED_EVENT,
   requestPersistentStorage,
   saveExercises,
+  saveActivities,
   saveProfile,
   saveWorkouts,
 } from './services/storage';
@@ -54,6 +56,12 @@ import {
   getSessionPlanId,
 } from './engine/muscleBuildingProgram';
 import { isPlanProgram, resolveActivePlan } from './engine/trainingPlans';
+import { ActivityLog, activeDayDates } from './engine/activeDays';
+import { useActivitySync } from './hooks/useActivitySync';
+import { LogActivityModal } from './components/activity/LogActivityModal';
+import { ActivityConnectionsModal } from './components/activity/ActivityConnectionsModal';
+import { startStravaConnect } from './services/activitySources';
+import { requestHealthConnectPermission } from './services/healthConnectBridge';
 import { prepareSessionForAthlete } from './services/sessionPreparation';
 import { completeWorkout } from './services/workoutCompletion';
 import { evaluateSetPersonalBest, planRestAfterSet } from './services/setCompletion';
@@ -90,6 +98,8 @@ export const App: React.FC = () => {
   const [workouts, setWorkouts] = usePersistedState<WorkoutSession[]>(loadWorkouts, saveWorkouts);
   const [activeWorkout, setActiveWorkout] = usePersistedState<WorkoutSession>(loadActiveWorkout, saveActiveWorkout);
   const [exercises, setExercises] = usePersistedState<ExerciseDefinition[]>(loadExercises, saveExercises);
+  // Active days (rides, runs, walks, classes), kept apart from lifting workouts.
+  const [activities, setActivities] = usePersistedState<ActivityLog[]>(loadActivities, saveActivities);
 
   // Modals & Floating Overlays
   const [restTimerOpen, setRestTimerOpen] = useState(false);
@@ -103,6 +113,8 @@ export const App: React.FC = () => {
   const [onboardingOpen, setOnboardingOpen] = useState(!profile.onboardingCompleted);
   // Bumped by the "Log Weight" home-screen shortcut; the Progress tab opens its weigh-in form.
   const [logWeightRequest, setLogWeightRequest] = useState(0);
+  const [logActivityOpen, setLogActivityOpen] = useState(false);
+  const [activityAppsOpen, setActivityAppsOpen] = useState(false);
   const [onboardingInitialStep, setOnboardingInitialStep] = useState<1 | 2 | 3>(1);
   const [deferredInstallPrompt, setDeferredInstallPrompt] = useState<any>(null);
   const [toast, setToast] = useState<{ title?: string; message: string; tag?: string } | null>(null);
@@ -168,6 +180,9 @@ export const App: React.FC = () => {
     notify,
   });
 
+  const activitySync = useActivitySync({ profile, setProfile, activities, setActivities, workouts, notify });
+  const activeDates = activeDayDates(activities);
+
   useLaunchLinks({
     onOpenTab: (tab) => setActiveTab(tab),
     onOpenCoach: () => setAiCoachOpen(true),
@@ -177,6 +192,9 @@ export const App: React.FC = () => {
     onAuthSuccess: handleAuthSuccess,
     onWearableOAuthCode: (code, provider) => {
       completeWearableConnection(code, provider);
+    },
+    onStravaOAuthCode: (code, scope) => {
+      activitySync.completeStravaConnection(code, scope);
     },
   });
 
@@ -316,12 +334,14 @@ export const App: React.FC = () => {
     if (hasHistory) void requestPersistentStorage();
   }, [hasHistory]);
 
-  // The streak always follows the saved workouts (after imports, demo loads, deletions or a long break).
+  // The streak always follows the saved workouts and active days (after imports, demo loads,
+  // deletions or a long break).
+  const activeDatesKey = activeDates.join(',');
   useEffect(() => {
-    const streak = computeTrainingStreak(workouts);
+    const streak = computeTrainingStreak(workouts, Date.now(), activeDates);
     if (streak !== profile.streakDays) setProfile((p) => ({ ...p, streakDays: streak }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [workouts]);
+  }, [workouts, activeDatesKey]);
 
   // On the 6-week plan, today's session must be the plan's next workout (with the athlete's own
   // weights). A fresh install or cleared session otherwise starts on a generic split day.
@@ -612,7 +632,7 @@ export const App: React.FC = () => {
     setWorkouts(nextHistory);
     setProfile((prev) => ({
       ...prev,
-      streakDays: computeTrainingStreak(nextHistory),
+      streakDays: computeTrainingStreak(nextHistory, Date.now(), activeDates),
       lastWorkoutDate: todayStr,
       mesocycleWeek: nextMesocycleWeek,
     }));
@@ -715,6 +735,7 @@ export const App: React.FC = () => {
       setWorkouts(restored.workouts);
       setActiveWorkout(restored.activeWorkout);
       setExercises(restored.exercises);
+      setActivities(restored.activities || []);
       setToast({ message: 'Workout and biometric backup restored successfully!',
         tag: 'Restored',
       });
@@ -733,6 +754,7 @@ export const App: React.FC = () => {
     setWorkouts(wiped.workouts);
     setActiveWorkout(wiped.activeWorkout);
     setExercises(wiped.exercises);
+    setActivities([]);
     // Start over like a fresh install, so no unpersonalised template workout is shown.
     setOnboardingInitialStep(1);
     setOnboardingOpen(true);
@@ -798,6 +820,10 @@ export const App: React.FC = () => {
               setActiveTab('program');
               window.scrollTo({ top: 0 });
             }}
+            activities={activities}
+            onLogActivity={() => setLogActivityOpen(true)}
+            onRemoveActivity={activitySync.removeActivity}
+            onOpenActivityApps={() => setActivityAppsOpen(true)}
             onSwitchSplitDay={
               isPlanProgram(profile.programType)
                 ? undefined
@@ -887,6 +913,9 @@ export const App: React.FC = () => {
             onExportData={handleExportData}
             onImportData={handleImportData}
             onDeleteAllData={handleDeleteAllData}
+            activities={activities}
+            onOpenActivityApps={() => setActivityAppsOpen(true)}
+            onLogActivity={() => setLogActivityOpen(true)}
             onOpenOnboarding={() => {
               setOnboardingInitialStep(3);
               setOnboardingOpen(true);
@@ -902,6 +931,22 @@ export const App: React.FC = () => {
         </ErrorBoundary>
         </Suspense>
       </main>
+
+      {logActivityOpen && (
+        <LogActivityModal onLog={activitySync.logManualActivity} onClose={() => setLogActivityOpen(false)} />
+      )}
+      {activityAppsOpen && (
+        <ActivityConnectionsModal
+          profile={profile}
+          hcStatus={activitySync.hcStatus}
+          onConnectStrava={startStravaConnect}
+          onDisconnectStrava={activitySync.disconnectStrava}
+          onSetHealthConnect={(on) => setProfile((p) => ({ ...p, healthConnectActivities: on }))}
+          onRequestHealthConnectPermission={requestHealthConnectPermission}
+          onOpenWatchSync={() => setWatchModalOpen(true)}
+          onClose={() => setActivityAppsOpen(false)}
+        />
+      )}
 
       {/* AI Assistant Conversational Chat Modal */}
       {aiCoachOpen && (

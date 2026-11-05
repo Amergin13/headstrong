@@ -5,7 +5,10 @@ import { ProgramExerciseTemplate, ProgramPhaseMeta, ProgramWorkoutTemplate, Trai
  * The 6-week starter plan everyone gets: one plan, written for the athlete's goal.
  *
  * Evidence it follows (knowledge graph principle `sp-starter-plan`):
- * - Full body, 3 days a week, so each muscle is trained about twice a week. Novices do best on
+ * - 4 sessions a week for 6 weeks: the minimum linked to forming an exercise habit in new gym
+ *   members (Kaushal & Rhodes, 2015). By default 3 lifting workouts plus 1 active day (any exercise
+ *   counts toward the habit); or 4 lifting days (upper/lower) for people who can lift 4 times.
+ * - Full body, 3 days a week (or upper/lower over 4), so each muscle is trained about twice a week. Novices do best on
  *   2–3 full-body days (ACSM progression models, 2009), and training a muscle twice a week grows
  *   it more than once (Schoenfeld, Ogborn & Krieger, 2016).
  * - About 9–12 hard sets per muscle per week by the end: more sets give more growth up to a point
@@ -89,9 +92,10 @@ const PRESCRIPTIONS: Record<GoalPhase, GoalPrescription> = {
 
 const REST_SECONDS: Record<Role, number> = { main: 150, compound: 120, isolation: 75, small: 60 };
 
-export const STARTER_WORKOUTS_PER_WEEK = 3;
+/** Sessions a week: 4, because exercising at least 4 times a week for 6 weeks is linked to forming the habit (Kaushal & Rhodes, 2015). */
+export const STARTER_SESSIONS_PER_WEEK = 4;
 export const STARTER_WEEKS = 6;
-export const STARTER_WORKOUT_COUNT = STARTER_WORKOUTS_PER_WEEK * STARTER_WEEKS;
+export const STARTER_WORKOUT_COUNT = STARTER_SESSIONS_PER_WEEK * STARTER_WEEKS;
 
 const GOAL_PHASE3_SUMMARY: Record<GoalPhase, string> = {
   'Lean Bulk': 'Two weeks of your hardest sets, stopping about 1 rep short, with an extra set on the smaller muscles.',
@@ -148,44 +152,131 @@ function toTemplate(ex: StarterExercise, index: number, phase: number, rx: GoalP
   };
 }
 
-const DAYS: ProgramWorkoutTemplate['dayOfWeek'][] = ['Monday', 'Wednesday', 'Friday'];
+/** The two ways to run the starter plan. Both are 24 sessions, 4 a week. */
+export type StarterLayout = 'lift3_active1' | 'lift4';
 
-/** The 18 workouts for a goal: A and B alternate (A B A, then B A B), so nothing is trained two days running. */
-export function buildStarterTemplates(goal: GoalPhase): ProgramWorkoutTemplate[] {
-  const rx = PRESCRIPTIONS[goal] ?? PRESCRIPTIONS['Lean Bulk'];
-  return Array.from({ length: STARTER_WORKOUT_COUNT }, (_, i) => {
-    const workoutNumber = i + 1;
-    const week = Math.floor(i / STARTER_WORKOUTS_PER_WEEK) + 1;
-    const phase = Math.ceil(week / 2);
-    const isA = i % 2 === 0;
-    return {
-      workoutNumber,
-      week,
-      dayOfWeek: DAYS[i % STARTER_WORKOUTS_PER_WEEK],
-      phase,
-      title: isA ? 'Full Body A' : 'Full Body B',
-      // Not used for full-body sessions; recovery follows each exercise's muscles.
-      splitDay: isA ? 'Push' : 'Pull',
-      exercises: (isA ? WORKOUT_A : WORKOUT_B).map((ex, idx) => toTemplate(ex, idx, phase, rx)),
-    };
-  });
+/**
+ * Upper/lower days for the 4-day layout. Weekly hard sets per muscle match the 3-day full-body
+ * layout (about 9 for chest, back, quads and hamstrings in phase 2): spreading the same weekly sets
+ * over more days gives similar growth (Schoenfeld et al., 2019), and each session is shorter.
+ */
+const UPPER_A: StarterExercise[] = [
+  WORKOUT_A[1], // Bench press
+  WORKOUT_A[2], // Lat pulldown
+  WORKOUT_B[1], // Seated DB shoulder press
+  WORKOUT_B[2], // Seated cable row
+  WORKOUT_A[4], // DB lateral raise
+  WORKOUT_A[5], // Triceps pushdown
+];
+const UPPER_B: StarterExercise[] = [
+  WORKOUT_B[3], // Incline DB press
+  { name: 'Chest-Supported Dumbbell Row', exerciseId: 'ex-chest-supported-db-row', pillar: 'Horizontal Pull', equipment: 'dumbbell', role: 'compound' },
+  { name: 'Cable Chest Press', exerciseId: 'ex-cable-chest-press', pillar: 'Horizontal Push', equipment: 'cable', role: 'compound' },
+  { name: 'Cable Lateral Raise', exerciseId: 'ex-cable-lateral-raise', pillar: 'Vertical Push', equipment: 'cable', role: 'small' },
+  { name: 'Cable Face Pull', exerciseId: 'ex-face-pull', pillar: 'Horizontal Pull', equipment: 'cable', role: 'small' },
+  WORKOUT_B[5], // Dumbbell incline curl
+];
+const LOWER_A: StarterExercise[] = [
+  WORKOUT_A[0], // Back squat
+  WORKOUT_A[3], // Romanian deadlift
+  WORKOUT_B[4], // Seated leg curl
+  { name: 'Standing Calf Raise', exerciseId: 'ex-standing-calf-raise', pillar: 'Squat', equipment: 'machine', role: 'isolation' },
+  { name: 'Cable Kneeling Crunch', exerciseId: 'ex-cable-crunch', pillar: 'Horizontal Push', equipment: 'cable', role: 'small' },
+];
+const LOWER_B: StarterExercise[] = [
+  WORKOUT_B[0], // Leg press
+  { name: 'Dumbbell Bulgarian Split Squat', exerciseId: 'ex-bulgarian-split-squat', pillar: 'Squat', equipment: 'dumbbell', role: 'compound' },
+  { name: 'Dumbbell Romanian Deadlift', exerciseId: 'ex-db-rdl', pillar: 'Hinge', equipment: 'dumbbell', role: 'compound' },
+  WORKOUT_B[4], // Seated leg curl
+  { name: 'Seated Calf Raise', exerciseId: 'ex-seated-calf-raise', pillar: 'Squat', equipment: 'machine', role: 'isolation' },
+];
+
+const DAYS: ProgramWorkoutTemplate['dayOfWeek'][] = ['Monday', 'Wednesday', 'Friday', 'Saturday'];
+
+function liftTemplate(
+  workoutNumber: number,
+  week: number,
+  dayIdx: number,
+  title: string,
+  splitDay: ProgramWorkoutTemplate['splitDay'],
+  exercises: StarterExercise[],
+  rx: GoalPrescription
+): ProgramWorkoutTemplate {
+  const phase = Math.ceil(week / 2);
+  return {
+    workoutNumber,
+    week,
+    dayOfWeek: DAYS[dayIdx],
+    phase,
+    title,
+    splitDay,
+    kind: 'lift',
+    exercises: exercises.map((ex, idx) => toTemplate(ex, idx, phase, rx)),
+  };
 }
 
-const planCache = new Map<GoalPhase, TrainingPlan>();
+/**
+ * The 24 sessions for a goal and layout.
+ * - 'lift3_active1': each week is 3 full-body workouts (A B A, then B A B, so nothing is trained two
+ *   days running) and 1 active day.
+ * - 'lift4': each week is Upper A, Lower A, Upper B, Lower B.
+ */
+export function buildStarterTemplates(goal: GoalPhase, layout: StarterLayout = 'lift3_active1'): ProgramWorkoutTemplate[] {
+  const rx = PRESCRIPTIONS[goal] ?? PRESCRIPTIONS['Lean Bulk'];
+  const templates: ProgramWorkoutTemplate[] = [];
+  let liftIndex = 0;
+  for (let week = 1; week <= STARTER_WEEKS; week++) {
+    for (let slot = 0; slot < STARTER_SESSIONS_PER_WEEK; slot++) {
+      const workoutNumber = (week - 1) * STARTER_SESSIONS_PER_WEEK + slot + 1;
+      if (layout === 'lift4') {
+        const days: [string, ProgramWorkoutTemplate['splitDay'], StarterExercise[]][] = [
+          ['Upper Body A', 'Upper', UPPER_A],
+          ['Lower Body A', 'Legs', LOWER_A],
+          ['Upper Body B', 'Upper', UPPER_B],
+          ['Lower Body B', 'Legs', LOWER_B],
+        ];
+        const [title, split, exercises] = days[slot];
+        templates.push(liftTemplate(workoutNumber, week, slot, title, split, exercises, rx));
+      } else if (slot === 3) {
+        templates.push({
+          workoutNumber,
+          week,
+          dayOfWeek: 'Saturday',
+          phase: Math.ceil(week / 2),
+          title: 'Active Day',
+          splitDay: 'Legs',
+          kind: 'active',
+          exercises: [],
+        });
+      } else {
+        const isA = liftIndex % 2 === 0;
+        liftIndex++;
+        templates.push(
+          // splitDay isn't used for full-body sessions; recovery follows each exercise's muscles.
+          liftTemplate(workoutNumber, week, slot, isA ? 'Full Body A' : 'Full Body B', isA ? 'Push' : 'Pull', isA ? WORKOUT_A : WORKOUT_B, rx)
+        );
+      }
+    }
+  }
+  return templates;
+}
 
-/** The starter plan written for the athlete's goal (one shared object per goal). */
-export function buildStarterPlan(goal: GoalPhase): TrainingPlan {
-  const cached = planCache.get(goal);
+const planCache = new Map<string, TrainingPlan>();
+
+/** The starter plan for the athlete's goal and layout (one shared object per combination). */
+export function buildStarterPlan(goal: GoalPhase, layout: StarterLayout = 'lift3_active1'): TrainingPlan {
+  const cacheKey = `${goal}|${layout}`;
+  const cached = planCache.get(cacheKey);
   if (cached) return cached;
   const rx = PRESCRIPTIONS[goal] ?? PRESCRIPTIONS['Lean Bulk'];
   const plan: TrainingPlan = {
-    id: 'starter_6wk',
+    id: layout === 'lift4' ? 'starter_4day' : 'starter_6wk',
     name: '6 Week Starter Plan',
-    workoutsPerWeek: STARTER_WORKOUTS_PER_WEEK,
-    templates: buildStarterTemplates(goal),
+    workoutsPerWeek: STARTER_SESSIONS_PER_WEEK,
+    templates: buildStarterTemplates(goal, layout),
     phases: starterPhases(goal),
     targetRirForPhase: (phase) => rx.rir[Math.min(3, Math.max(1, phase)) - 1],
   };
-  planCache.set(goal, plan);
+  planCache.set(cacheKey, plan);
   return plan;
 }

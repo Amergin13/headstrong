@@ -1,6 +1,6 @@
 import { GoalPhase, PlanId, ProgramSplitType, UserProfile, WorkoutSession } from './types';
 import { MUSCLE_BUILDING_PLAN, TrainingPlan, getSessionPlanId } from './muscleBuildingProgram';
-import { STARTER_WORKOUT_COUNT, STARTER_WORKOUTS_PER_WEEK, buildStarterPlan } from './starterPlan';
+import { STARTER_SESSIONS_PER_WEEK, STARTER_WORKOUT_COUNT, buildStarterPlan } from './starterPlan';
 
 /**
  * Which 6-week plan an athlete is on.
@@ -33,9 +33,9 @@ export function canUseMusclePlan(email?: string): boolean {
   return Boolean(email) && MUSCLE_PLAN_ACCOUNT_HASHES.includes(hashAccountEmail(email as string));
 }
 
-/** Both plans are 6-week plans; the older split programs are no longer offered. */
+/** All three are 6-week plans; the older split programs are no longer offered. */
 export function isPlanProgram(programType?: ProgramSplitType): boolean {
-  return programType === 'muscle_building_6wk' || programType === 'starter_6wk';
+  return programType === 'muscle_building_6wk' || programType === 'starter_6wk' || programType === 'starter_4day';
 }
 
 /**
@@ -45,12 +45,13 @@ export function isPlanProgram(programType?: ProgramSplitType): boolean {
  */
 export function resolveActivePlan(profile: Pick<UserProfile, 'programType' | 'goalPhase' | 'email'>): TrainingPlan {
   if (profile.programType === 'muscle_building_6wk' && canUseMusclePlan(profile.email)) return MUSCLE_BUILDING_PLAN;
-  return buildStarterPlan(profile.goalPhase || 'Lean Bulk');
+  return buildStarterPlan(profile.goalPhase || 'Lean Bulk', profile.programType === 'starter_4day' ? 'lift4' : 'lift3_active1');
 }
 
 /** A plan by id (the starter plan's workout names and counts don't depend on the goal). */
 export function getPlanById(id: PlanId, goal: GoalPhase = 'Lean Bulk'): TrainingPlan {
-  return id === 'muscle_building_6wk' ? MUSCLE_BUILDING_PLAN : buildStarterPlan(goal);
+  if (id === 'muscle_building_6wk') return MUSCLE_BUILDING_PLAN;
+  return buildStarterPlan(goal, id === 'starter_4day' ? 'lift4' : 'lift3_active1');
 }
 
 /** Workouts in the plan a session belongs to, and how many per week (for "Workout 3 of 18"). */
@@ -59,5 +60,5 @@ export function getSessionPlanShape(w: WorkoutSession): { total: number; perWeek
   if (!id) return undefined;
   return id === 'muscle_building_6wk'
     ? { total: MUSCLE_BUILDING_PLAN.templates.length, perWeek: MUSCLE_BUILDING_PLAN.workoutsPerWeek }
-    : { total: STARTER_WORKOUT_COUNT, perWeek: STARTER_WORKOUTS_PER_WEEK };
+    : { total: STARTER_WORKOUT_COUNT, perWeek: STARTER_SESSIONS_PER_WEEK };
 }

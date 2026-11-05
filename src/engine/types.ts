@@ -325,10 +325,13 @@ export interface WearableSyncProgress {
   provider?: WearableProvider;
 }
 
-export type ProgramSplitType = 'ppl_upper' | 'ppl' | 'upper_lower' | 'full_body' | 'muscle_building_6wk' | 'starter_6wk';
+export type ProgramSplitType = 'ppl_upper' | 'ppl' | 'upper_lower' | 'full_body' | 'muscle_building_6wk' | 'starter_6wk' | 'starter_4day';
 
-/** The two 6-week plans: the goal-based starter plan (everyone) and the 24-workout muscle plan (owner only). */
-export type PlanId = 'muscle_building_6wk' | 'starter_6wk';
+/**
+ * The 6-week plans. Everyone gets a goal-based starter plan: 'starter_6wk' (lift 3 days + 1 active day,
+ * the default) or 'starter_4day' (lift 4 days). The 24-workout muscle plan is the owner's only.
+ */
+export type PlanId = 'muscle_building_6wk' | 'starter_6wk' | 'starter_4day';
 
 export type ExperienceLevel = 'new' | 'intermediate' | 'experienced';
 
@@ -360,6 +363,15 @@ export interface UserProfile {
   whoopAccessToken?: string;
   whoopRefreshToken?: string;
   whoopTokenExpiresAt?: number;
+  /** Strava, used only to count rides, runs and other activities as active days. */
+  stravaConnected?: boolean;
+  stravaAccessToken?: string;
+  stravaRefreshToken?: string;
+  /** Unix seconds, as Strava reports it. */
+  stravaTokenExpiresAt?: number;
+  stravaAthleteFirstName?: string;
+  /** Athlete turned on reading workouts from Health Connect (Android app only). */
+  healthConnectActivities?: boolean;
   healthConnectConnected?: boolean;
   healthConnectLastSync?: string;
   maxHr: number; // e.g. 220 - age or measured

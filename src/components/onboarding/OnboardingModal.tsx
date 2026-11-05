@@ -47,7 +47,13 @@ interface ScreenCopy {
 }
 
 /** Screen copy; screen 2 states the athlete's own plan (18 workouts, 3 a week, or 24, 4 a week). */
-const buildScreens = (total: number, perWeek: number): ScreenCopy[] => [
+const WEEK_DETAIL: Record<string, string> = {
+  starter_6wk: 'Each week is 3 workouts we set for you, plus 1 active day of anything you enjoy: a ride, run, walk or class.',
+  starter_4day: 'Each week is 4 workouts. We set your weights and reps, so you just show up and lift.',
+  muscle_building_6wk: 'Each week is 4 workouts. We set your weights and reps, so you just show up and lift.',
+};
+
+const buildScreens = (total: number, perWeek: number, program: ProgramSplitType): ScreenCopy[] => [
   {
     title: 'Identity',
     body: [
@@ -58,8 +64,8 @@ const buildScreens = (total: number, perWeek: number): ScreenCopy[] => [
   {
     title: `${total} sessions`,
     body: [
-      `Repeating something is how it becomes part of who you are. Our 6-week plan gives you ${total} sessions, ${perWeek} a week, to build the start of your journey.`,
-      'We set your weights and reps for every session, so you just show up and lift.',
+      `Research with new gym members found that exercising at least ${perWeek} times a week for 6 weeks was what it took to build the habit. Your plan gives you ${total} sessions to get there.`,
+      WEEK_DETAIL[program] ?? WEEK_DETAIL.starter_4day,
     ],
     Illustration: SessionsIllustration,
   },
@@ -94,10 +100,16 @@ const GOALS: { id: GoalPhase; label: string; detail: string }[] = [
   { id: 'Maingain', label: 'Stay Lean', detail: 'Get stronger at the weight you are' },
 ];
 
-/** Only on the account that can use the muscle plan: the two 6-week plans. */
-const PLAN_CHOICES: { id: ProgramSplitType; label: string; detail: string }[] = [
-  { id: 'starter_6wk', label: 'Starter plan', detail: '18 full-body workouts, 3 a week, set for your goal' },
-  { id: 'muscle_building_6wk', label: 'Muscle plan', detail: '24 workouts, 4 a week: supersets, drop sets, giant sets' },
+/** How to fit in 4 sessions a week. The muscle plan is shown only on the owner's account. */
+const PLAN_CHOICES: { id: ProgramSplitType; label: string; detail: string; recommended?: boolean; ownerOnly?: boolean }[] = [
+  {
+    id: 'starter_6wk',
+    label: '3 workouts + 1 active day',
+    detail: 'Lift 3 days, and do any ride, run, walk or class on a 4th',
+    recommended: true,
+  },
+  { id: 'starter_4day', label: '4 workouts', detail: 'Lift 4 days, with shorter upper and lower body workouts' },
+  { id: 'muscle_building_6wk', label: 'Muscle plan', detail: '4 workouts a week: supersets, drop sets, giant sets', ownerOnly: true },
 ];
 
 /** Pounds where gyms use them; everyone else starts in kilograms (changeable in Settings). */
@@ -145,13 +157,15 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
 }) => {
   const returning = !!profile.onboardingCompleted;
   const [step, setStep] = useState<OnboardingStep>(initialStep);
-  const showPlanChoice = canUseMusclePlan(profile.email);
+  const canUseMuscle = canUseMusclePlan(profile.email);
   const [program, setProgram] = useState<ProgramSplitType>(
-    profile.programType === 'muscle_building_6wk' && showPlanChoice ? 'muscle_building_6wk' : 'starter_6wk'
+    profile.programType === 'starter_4day' || (profile.programType === 'muscle_building_6wk' && canUseMuscle)
+      ? profile.programType
+      : 'starter_6wk'
   );
   const [goal, setGoal] = useState<GoalPhase>(profile.goalPhase || 'Lean Bulk');
   const plan = resolveActivePlan({ programType: program, goalPhase: goal, email: profile.email });
-  const SCREENS = buildScreens(plan.templates.length, plan.workoutsPerWeek);
+  const SCREENS = buildScreens(plan.templates.length, plan.workoutsPerWeek, program);
   const [location, setLocation] = useState<TrainingLocation>(profile.activeLocation || 'gym');
   // Nothing ticked for new athletes: we never assume gear they may not own.
   const [homeEquipment, setHomeEquipment] = useState<HomeEquipmentTag[]>(returning ? profile.homeEquipment || [] : []);
@@ -334,11 +348,11 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                 </fieldset>
               )}
 
-              {!editing && showPlanChoice && (
+              {!editing && (
                 <fieldset style={{ marginTop: fig(48) }}>
-                  <legend style={sectionLabel}>Your plan</legend>
+                  <legend style={sectionLabel}>How do you want to fit in 4 sessions a week?</legend>
                   <div className="flex flex-col" style={{ gap: fig(14) }}>
-                    {PLAN_CHOICES.map((opt) => (
+                    {PLAN_CHOICES.filter((opt) => canUseMuscle || !opt.ownerOnly).map((opt) => (
                       <button
                         key={opt.id}
                         type="button"
@@ -351,8 +365,13 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                         style={{ ...choiceStyle(program === opt.id), padding: `${fig(22)} ${fig(30)}`, gap: fig(24) }}
                       >
                         <span className="flex-1">
-                          <span className="block" style={optionText}>
-                            {opt.label}
+                          <span className="flex items-center flex-wrap" style={{ gap: fig(14) }}>
+                            <span style={optionText}>{opt.label}</span>
+                            {opt.recommended && (
+                              <span className="wk-pill" style={{ color: 'var(--wk-accent)', background: 'rgba(0,241,159,0.12)' }}>
+                                Recommended
+                              </span>
+                            )}
                           </span>
                           <span className="block" style={optionDetail}>
                             {opt.detail}

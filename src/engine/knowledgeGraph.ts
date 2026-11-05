@@ -262,16 +262,16 @@ export const EXERCISE_SCIENCE_KNOWLEDGE_BASE: ScientificPrinciple[] = [
   {
     id: 'sp-starter-plan',
     topic: 'Program Design',
-    title: 'The 6-Week Starter Plan: Full Body, 3 Days a Week, Set for Your Goal',
+    title: 'The 6-Week Starter Plan: 4 Sessions a Week, Set for Your Goal',
     formula:
-      '18 workouts = 6 weeks x 3 full-body workouts (A and B alternating). Sets per exercise: weeks 1-2 = 2, weeks 3-4 = 3, weeks 5-6 = 3 (+1 on smaller muscles for Build Muscle). Reps in reserve: 3 -> 2 -> 1 (Stay Lean ends at 2). Reps: big lifts 6-10 (Lose Fat 5-8), other compounds 8-12 (Lose Fat 6-10), isolation 10-15, side shoulders 12-20.',
+      '24 sessions = 6 weeks x 4. Default: 3 full-body workouts (A and B alternating) + 1 active day (any ride, run, walk, swim or class of 20+ minutes). Or: 4 upper/lower workouts with the same weekly sets per muscle. Sets per exercise: weeks 1-2 = 2, weeks 3-4 = 3, weeks 5-6 = 3 (+1 on smaller muscles for Build Muscle). Reps in reserve: 3 -> 2 -> 1 (Stay Lean ends at 2). Reps: big lifts 6-10 (Lose Fat 5-8), other compounds 8-12 (Lose Fat 6-10), isolation 10-15, side shoulders 12-20.',
     scientificRationale:
-      'New lifters progress best on 2-3 full-body days a week, and training each muscle about twice a week builds more muscle than once. Weekly hard sets drive growth, and beginners grow well at the lower end, so sets build over the block. Loads from about 6 to 20 reps build muscle when sets finish close to failure. When losing fat, keeping the weights heavy without adding volume holds on to strength and muscle while eating less.',
+      'In new gym members, exercising at least 4 times a week for 6 weeks was the minimum linked to forming an exercise habit, and any exercise counted. Muscle growth depends on hard sets per muscle and training each muscle about twice a week, which 3 full-body days provide; spreading the same weekly sets over 4 days gives similar growth. New lifters progress well on 2-3 lifting days. Loads from about 6 to 20 reps build muscle when sets finish close to failure. When losing fat, keeping the weights heavy without adding volume holds on to strength and muscle while eating less.',
     academicCitation:
-      'ACSM Progression Models (2009); Schoenfeld, Ogborn & Krieger (2016, 2017); Schoenfeld et al. (2017); Helms et al. (2014); Murphy & Koehler (2022); Refalo et al. (2023)',
+      'Kaushal & Rhodes (2015); ACSM Progression Models (2009); Schoenfeld, Ogborn & Krieger (2016, 2017); Schoenfeld et al. (2017, 2019); Helms et al. (2014); Murphy & Koehler (2022); Refalo et al. (2023)',
     practicalApplication:
-      'Your plan alternates two full-body workouts three times a week. The first two weeks are easier while you learn the lifts, then sets and effort build. When you reach the top of the rep range, the weight goes up next time. Changing your goal changes your sets and reps from the next workout.',
-    keywords: ['starter plan', 'plan', 'program', 'full body', '3 days', 'three days', 'beginner', 'frequency', 'how often', 'split', 'lose fat', 'build muscle', 'stay lean', 'goal'],
+      'Each week has 4 sessions. By default that is 3 lifting workouts we set for you plus 1 active day of anything you enjoy; a watch, Strava or Health Connect can add the active day automatically. If you can lift 4 days, choose 4 shorter upper and lower body workouts instead. The first two weeks are easier while you learn the lifts, then sets and effort build. Missing a day never resets the plan.',
+    keywords: ['starter plan', 'plan', 'program', 'full body', '3 days', 'three days', '4 days', 'four days', 'active day', 'habit', 'cardio', 'cycling', 'beginner', 'frequency', 'how often', 'split', 'lose fat', 'build muscle', 'stay lean', 'goal'],
   },
   {
     id: 'sp-hypertrophy-landmarks',

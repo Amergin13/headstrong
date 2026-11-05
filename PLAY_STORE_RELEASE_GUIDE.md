@@ -62,18 +62,23 @@ keytool -genkeypair -v \
   -validity 10000
 ```
 
-### 3.3 Build the `.aab` & `.apk`
-Using the repository's pre-configured [`twa-manifest.json`](twa-manifest.json):
+### 3.3 Build the `.aab` (from version 1.1.0, with Gradle, not Bubblewrap)
+The Android project now contains native code (the Health Connect bridge in `app/src/main/java/com/headstrong/app/`).
+`bubblewrap build` and `bubblewrap update` regenerate the project from `twa-manifest.json` and would delete it, so build with Gradle:
 
 ```bash
-bubblewrap build
+export JAVA_HOME=~/.bubblewrap/jdk17/Contents/Home ANDROID_HOME=~/.bubblewrap/android_sdk
+export TREISE_KEYSTORE_PASSWORD=...   # your upload keystore password (never written in a file in this repo)
+export TREISE_KEY_PASSWORD=...        # the key password
+./gradlew bundleRelease
 ```
 
-This produces:
-- **`app-release-bundle.aab`**: Upload this file directly to Google Play Console (Production / Closed Testing / Internal Testing track).
-- **`app-release-signed.apk`**: Install directly onto a physical Pixel / Android device via `adb install app-release-signed.apk` for local hardware testing.
+This produces `app/build/outputs/bundle/release/app-release.aab`. Upload it to the Play Console track (version 1.1.0, code 13).
+Change `versionCode` / `versionName` in `app/build.gradle` (and `twa-manifest.json` to match) for each new upload.
 
----
+### 3.4 Health Connect and Strava before release
+- Play Console → App content → **Health apps** declaration, and the **Health Connect** permissions form for `READ_EXERCISE` ("count the athlete's workouts as weekly active days"). Google reviews this. Until the declaration is in place, Health Connect may show testers an error instead of the permission screen.
+- Strava: create an API application at strava.com/settings/api with Authorization Callback Domain `treise.vercel.app`, then add `STRAVA_CLIENT_ID` and `STRAVA_CLIENT_SECRET` to the Vercel project's environment variables. A new Strava app can connect only its owner's account; raise the athlete capacity to 10 in the Strava API dashboard, and submit Strava's developer program form for more.
 
 ## 4. Configuring Digital Asset Links (`assetlinks.json`)
 

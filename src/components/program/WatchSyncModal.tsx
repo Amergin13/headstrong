@@ -409,7 +409,7 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
           {selectedProvider === 'fitbit' &&
             'Sync your daily readiness score, resting heart rate, and sleep staging directly from your Google Pixel Watch or Fitbit tracker.'}
           {selectedProvider === 'health_connect' &&
-            "Treise can't read Health Connect directly yet. If you have a JSON export of your health data, import it here."}
+            "In the Treise app from Google Play, Health Connect workouts count as active days (turn it on in Activity apps). Recovery data from Health Connect isn't read yet; if you have a JSON export of it, import it here."}
         </p>
       )}
 

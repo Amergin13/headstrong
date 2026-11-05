@@ -4800,48 +4800,69 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
       'Older split programs move to the starter plan on load; no program list is offered'
     );
 
-    // Science: 3 full-body days a week, each muscle about twice a week, 6-20 reps, 1-3 reps in reserve.
+    // Science: 4 sessions a week for 6 weeks (habit), each muscle about twice a week (growth),
+    // 6-20 reps, 1-3 reps in reserve. Two layouts: 3 lifts + 1 active day (default) or 4 lifts.
     const catalogById = new Map(SEED_EXERCISES.map((e) => [e.id, e]));
     const issues: string[] = [];
-    const weeklySets: Record<string, Record<string, Record<number, number>>> = {};
-    for (const goal of ['Lean Bulk', 'Cut / Recomp', 'Maingain'] as const) {
-      const plan = buildStarterPlan(goal);
-      weeklySets[goal] = {};
-      if (plan.templates.length !== STARTER_WORKOUT_COUNT || STARTER_WORKOUT_COUNT !== 18) issues.push(`${goal}: not 18 workouts`);
-      if (plan.workoutsPerWeek !== 3) issues.push(`${goal}: not 3 a week`);
-      plan.templates.forEach((t, i) => {
-        if (t.week !== Math.floor(i / 3) + 1) issues.push(`${goal} #${t.workoutNumber}: week ${t.week}`);
-        if (t.phase !== Math.ceil(t.week / 2)) issues.push(`${goal} #${t.workoutNumber}: phase ${t.phase}`);
-        if (i > 0 && plan.templates[i - 1].title === t.title) issues.push(`${goal} #${t.workoutNumber}: same workout twice in a row`);
-        if (t.exercises.length < 5 || t.exercises.length > 7) issues.push(`${goal} #${t.workoutNumber}: ${t.exercises.length} exercises`);
-        const rir = plan.targetRirForPhase(t.phase);
-        if (rir < 1 || rir > 3) issues.push(`${goal} phase ${t.phase}: RIR ${rir}`);
-        for (const e of t.exercises) {
-          const def = catalogById.get(e.exerciseId);
-          if (!def) {
-            issues.push(`${goal}: unknown exercise ${e.exerciseId}`);
-            continue;
+    const weekSets = (plan: ReturnType<typeof buildStarterPlan>, week: number) => {
+      const out: Record<string, number> = {};
+      plan.templates
+        .filter((t) => t.week === week)
+        .forEach((t) =>
+          t.exercises.forEach((e) => {
+            const m = catalogById.get(e.exerciseId)?.primaryMuscle as string;
+            out[m] = (out[m] || 0) + e.sets;
+          })
+        );
+      return out;
+    };
+    for (const layout of ['lift3_active1', 'lift4'] as const) {
+      for (const goal of ['Lean Bulk', 'Cut / Recomp', 'Maingain'] as const) {
+        const plan = buildStarterPlan(goal, layout);
+        const tag = `${layout} ${goal}`;
+        if (plan.templates.length !== 24 || STARTER_WORKOUT_COUNT !== 24) issues.push(`${tag}: not 24 sessions`);
+        if (plan.workoutsPerWeek !== 4) issues.push(`${tag}: not 4 a week`);
+        const actives = plan.templates.filter((t) => t.kind === 'active');
+        if (layout === 'lift3_active1' && (actives.length !== 6 || actives.some((t) => t.workoutNumber % 4 !== 0)))
+          issues.push(`${tag}: should have one active day at the end of each week`);
+        if (layout === 'lift4' && actives.length) issues.push(`${tag}: 4-day layout has active days`);
+        const lifts = plan.templates.filter((t) => t.kind !== 'active');
+        plan.templates.forEach((t, i) => {
+          if (t.week !== Math.floor(i / 4) + 1) issues.push(`${tag} #${t.workoutNumber}: week ${t.week}`);
+          if (t.phase !== Math.ceil(t.week / 2)) issues.push(`${tag} #${t.workoutNumber}: phase ${t.phase}`);
+        });
+        lifts.forEach((t, i) => {
+          if (i > 0 && lifts[i - 1].title === t.title) issues.push(`${tag} #${t.workoutNumber}: same workout twice in a row`);
+          if (t.exercises.length < 5 || t.exercises.length > 7) issues.push(`${tag} #${t.workoutNumber}: ${t.exercises.length} exercises`);
+          const rir = plan.targetRirForPhase(t.phase);
+          if (rir < 1 || rir > 3) issues.push(`${tag} phase ${t.phase}: RIR ${rir}`);
+          for (const e of t.exercises) {
+            if (!catalogById.get(e.exerciseId)) issues.push(`${tag}: unknown exercise ${e.exerciseId}`);
+            const m = /^(\d+)-(\d+)$/.exec(e.reps);
+            if (!m || +m[1] < 5 || +m[2] > 20 || +m[1] >= +m[2]) issues.push(`${tag} ${e.name}: reps ${e.reps}`);
+            if (e.sets < 2 || e.sets > 4) issues.push(`${tag} ${e.name}: ${e.sets} sets`);
           }
-          const m = /^(\d+)-(\d+)$/.exec(e.reps);
-          if (!m || +m[1] < 5 || +m[2] > 20 || +m[1] >= +m[2]) issues.push(`${goal} ${e.name}: reps ${e.reps}`);
-          if (e.sets < 2 || e.sets > 4) issues.push(`${goal} ${e.name}: ${e.sets} sets`);
-          const wk = (weeklySets[goal][def.primaryMuscle] ||= {});
-          wk[t.week] = (wk[t.week] || 0) + e.sets;
+        });
+        // Each main muscle trained at least twice in week 1, and a sensible weekly dose in week 3.
+        const sessionsPerMuscle: Record<string, number> = {};
+        plan.templates.filter((t) => t.week === 1).forEach((t) => {
+          new Set(t.exercises.map((e) => catalogById.get(e.exerciseId)?.primaryMuscle as string)).forEach((m) => {
+            sessionsPerMuscle[m] = (sessionsPerMuscle[m] || 0) + 1;
+          });
+        });
+        const wk3 = weekSets(plan, 3);
+        for (const muscle of ['Chest', 'Back', 'Quads', 'Hamstrings']) {
+          if ((sessionsPerMuscle[muscle] ?? 0) < 2) issues.push(`${tag}: ${muscle} trained ${sessionsPerMuscle[muscle] ?? 0}x in week 1`);
+          if ((wk3[muscle] ?? 0) < 6 || (wk3[muscle] ?? 0) > 14) issues.push(`${tag}: ${muscle} ${wk3[muscle] ?? 0} sets in week 3`);
         }
-      });
-      // Every major muscle trained in every week, about twice a week (once in A and once in B, or a lift in each).
-      const sessionsPerMuscle: Record<string, Set<string>> = {};
-      plan.templates.slice(0, 3).forEach((t, i) =>
-        t.exercises.forEach((e) => {
-          const muscle = catalogById.get(e.exerciseId)?.primaryMuscle as string;
-          (sessionsPerMuscle[muscle] ||= new Set()).add(String(i));
-        })
-      );
+      }
+    }
+    // Same weekly dose either way: the 4-day layout spreads the sets, it doesn't add them.
+    for (const goal of ['Lean Bulk', 'Cut / Recomp', 'Maingain'] as const) {
+      const three = weekSets(buildStarterPlan(goal, 'lift3_active1'), 3);
+      const four = weekSets(buildStarterPlan(goal, 'lift4'), 3);
       for (const muscle of ['Chest', 'Back', 'Quads', 'Hamstrings']) {
-        if ((sessionsPerMuscle[muscle]?.size ?? 0) < 2) issues.push(`${goal}: ${muscle} trained ${sessionsPerMuscle[muscle]?.size ?? 0}x in week 1`);
-        // Phase 2 lands in a sensible weekly range for a starting block (direct sets).
-        const wk3 = weeklySets[goal][muscle]?.[3] ?? 0;
-        if (wk3 < 6 || wk3 > 14) issues.push(`${goal}: ${muscle} ${wk3} sets in week 3`);
+        if (Math.abs((three[muscle] ?? 0) - (four[muscle] ?? 0)) > 3) issues.push(`${goal}: ${muscle} ${three[muscle]} vs ${four[muscle]} sets`);
       }
     }
     // Goals differ the way the evidence says: losing fat keeps the big lifts heavier and adds no volume.
@@ -4851,9 +4872,8 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
     const squatReps = (p: typeof cut) => p.templates[0].exercises.find((e) => e.exerciseId === 'ex-barbell-squat')!.reps;
     if (!(sumSets(cut) < sumSets(bulk))) issues.push('Lose Fat should not have more sets than Build Muscle');
     if (!(parseInt(squatReps(cut), 10) < parseInt(squatReps(bulk), 10))) issues.push('Lose Fat squat reps should be heavier');
-    if (!(bulk.templates[0].exercises[0].sets < bulk.templates[17].exercises[0].sets)) issues.push('Sets should build across the block');
-    assert(issues.length === 0, `Starter plan follows the evidence for every goal (${issues.length ? issues.join('; ') : '18 workouts, 3 full-body a week'})`);
-
+    if (!(bulk.templates[0].exercises[0].sets < bulk.templates[22].exercises[0].sets)) issues.push('Sets should build across the block');
+    assert(issues.length === 0, `Starter plan follows the evidence for every goal and layout (${issues.length ? issues.join('; ') : '24 sessions, 4 a week; 3 lifts + 1 active day or 4 lifts'})`);
     // Workouts: real weights for a new athlete, a rep range for double progression, own plan numbering.
     const starter = buildStarterPlan('Lean Bulk');
     const w1 = prepareSessionForAthlete(mbp.generatePlanWorkout(starter, 1), {
@@ -4881,7 +4901,8 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
         mbp.getNextProgramWorkoutNumber([doneMuscle, doneStarter]) === 6 &&
         mbp.getNextProgramWorkoutNumber([legacyMuscle], starter) === 1 &&
         mbp.buildPlanOverview([doneMuscle, doneStarter], starter).completedCount === 1 &&
-        getPlanById('starter_6wk').templates.length === 18,
+        getPlanById('starter_6wk').templates.length === 24 &&
+        getPlanById('starter_4day').templates.length === 24,
       'Starter and muscle plans keep their own progress (older plan saves count as the muscle plan)'
     );
     const report = buildSessionProgressReport({
@@ -4890,9 +4911,105 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
       knowledgeGraph: buildAthleteKnowledgeGraph([doneStarter], [], SEED_EXERCISES, NEW_USER_PROFILE, {}),
     });
     assert(
-      report?.program.kind === 'plan' && report.program.totalWorkouts === 18 && report.program.totalWeeks === 6,
-      'The session report counts the starter plan as 18 workouts over 6 weeks'
+      report?.program.kind === 'plan' && report.program.totalWorkouts === 24 && report.program.totalWeeks === 6,
+      'The session report counts the starter plan as 24 sessions over 6 weeks'
     );
+  }
+
+  // ==========================================================================
+  // 40. Active days: the 4th weekly session (ride, run, walk, class), counted honestly
+  // ==========================================================================
+  console.log('\n[40. Active days]');
+  {
+    const ad = await import('../activeDays');
+    const { toDetectedActivities } = await import('../../services/activitySources');
+    const { buildStarterPlan } = await import('../starterPlan');
+    const mbp = await import('../muscleBuildingProgram');
+    const { completeWorkout } = await import('../../services/workoutCompletion');
+
+    assert(
+      ad.classifyActivity('Ride') === 'cycle' &&
+        ad.classifyActivity('VirtualRide') === 'cycle' &&
+        ad.classifyActivity('EXERCISE_TYPE_BIKING_STATIONARY') === 'cycle' &&
+        ad.classifyActivity('Run') === 'run' &&
+        ad.classifyActivity('Walk') === 'walk' &&
+        ad.classifyActivity('swimming_pool') === 'swim' &&
+        ad.classifyActivity('WeightTraining') === 'strength' &&
+        ad.classifyActivity('EXERCISE_TYPE_STRENGTH_TRAINING') === 'strength' &&
+        ad.classifyActivity('Weightlifting') === 'strength' &&
+        ad.classifyActivity('Spinning') === 'cycle' &&
+        ad.classifyActivity('HIIT') === 'class',
+      'Activity names from Strava, Health Connect, Fitbit and Whoop map to plain types; lifting is recognised'
+    );
+    const raw = [
+      { externalId: 'a', sportType: 'Ride', startedAt: '2026-10-20T07:00:00.000Z', minutes: 32 },
+      { externalId: 'b', sportType: 'WeightTraining', startedAt: '2026-10-20T17:00:00.000Z', minutes: 50 },
+    ];
+    const det = toDetectedActivities('strava', raw);
+    assert(det.length === 1 && det[0].type === 'cycle' && det[0].source === 'strava', 'Lifting from an app never becomes an active day');
+    assert(
+      ad.qualifiesAsActiveDay({ minutes: 20 }) && !ad.qualifiesAsActiveDay({ minutes: 12 }),
+      'An active day is at least 20 minutes (a 12-minute walk is saved but does not count)'
+    );
+
+    // Same ride from two apps counts once; a removed one doesn't come back; re-sync adds nothing.
+    const ride = { externalId: 'r1', startedAt: '2026-10-21T06:00:00.000Z', minutes: 40, type: 'cycle' as const, source: 'strava' as const };
+    const sameRideHc = { ...ride, externalId: 'hc-9', source: 'health_connect' as const, startedAt: '2026-10-21T06:03:00.000Z', minutes: 38 };
+    const first = ad.mergeDetectedActivities([], [ride, sameRideHc]);
+    const again = ad.mergeDetectedActivities(first.merged, [ride]);
+    const dismissed = ad.mergeDetectedActivities([], [ride], ['strava:r1']);
+    assert(
+      first.added.length === 1 && again.added.length === 0 && dismissed.added.length === 0 && first.added[0].date === localDateString(new Date(ride.startedAt)),
+      'Found workouts: one per real session, never duplicated, and a removed one stays removed'
+    );
+    const lift = { id: 'l', date: '2026-10-21', name: 'Full Body A', splitDay: 'Push' as const, exercises: [], completed: true, readinessState: 'Normal' as const, readinessZScore: 0, startedAt: '2026-10-21T17:00:00.000Z', completedAt: '2026-10-21T18:00:00.000Z' };
+    assert(
+      ad.overlapsLifting({ startedAt: '2026-10-21T17:10:00.000Z', minutes: 45 }, [lift as any]) &&
+        !ad.overlapsLifting({ startedAt: '2026-10-21T06:00:00.000Z', minutes: 45 }, [lift as any]),
+      'A watch workout recorded during a lifting session is that session, not an active day'
+    );
+
+    // Plan: lift 3 days + 1 active day. Active days fill one per week, up to the current week.
+    const plan = buildStarterPlan('Lean Bulk', 'lift3_active1');
+    const done = (n: number, day: string) => ({
+      ...mbp.generatePlanWorkout(plan, n),
+      date: day,
+      completed: true,
+      completedAt: `${day}T18:00:00.000Z`,
+    });
+    const act = (day: string, minutes = 30) => ({ id: `m-${day}-${minutes}`, date: day, startedAt: `${day}T07:00:00.000Z`, minutes, type: 'walk' as const, source: 'manual' as const });
+    const ov0 = mbp.buildPlanOverview([], plan, [act('2026-10-05'), act('2026-10-05', 45), act('2026-10-06')]);
+    assert(
+      ov0.workouts[3].status === 'done' && ov0.workouts[7].status === 'upcoming' && ov0.completedCount === 1,
+      'Week 1: one active day counts; extra activities that week wait (no banking ahead)'
+    );
+    const week1 = [done(1, '2026-10-05'), done(2, '2026-10-07'), done(3, '2026-10-09')];
+    assert(mbp.getNextProgramWorkoutNumber(week1, plan) === 5, 'After the 3rd lift the next workout is the next week\'s first lift (the active day is not queued)');
+    const ov1 = mbp.buildPlanOverview(week1, plan, []);
+    assert(ov1.workouts[3].status === 'due' && ov1.workouts[7].status === 'due', 'A missed active day stays open to catch up (no penalty)');
+    const ov2 = mbp.buildPlanOverview(week1, plan, [act('2026-10-12'), act('2026-10-13')]);
+    assert(ov2.workouts[3].status === 'done' && ov2.workouts[7].status === 'done' && ov2.completedCount === 5, 'Catching up fills the earliest open active days first');
+    const fourDay = buildStarterPlan('Lean Bulk', 'lift4');
+    assert(
+      mbp.buildPlanOverview([], fourDay, [act('2026-10-05')]).completedCount === 0,
+      'Activities never count in the 4-day lifting layout (it has no active days)'
+    );
+    const result = completeWorkout({
+      activeWorkout: { ...mbp.generatePlanWorkout(plan, 3), startedAt: '2026-10-09T17:00:00.000Z' },
+      history: [done(1, '2026-10-05'), done(2, '2026-10-07')],
+      profile: { ...NEW_USER_PROFILE, programType: 'starter_6wk', mesocycleWeek: 1 },
+      readiness: { state: 'Normal', score: 0 },
+      bodyweightKg: 80,
+      now: new Date('2026-10-09T18:00:00.000Z'),
+    });
+    assert(Boolean(result.weekMilestone) && result.nextMesocycleWeek === 2, 'Finishing the week\'s 3rd lift completes the week and moves the plan to week 2');
+    assert(
+      computeTrainingStreak([], new Date('2026-10-13T12:00:00').getTime(), ['2026-10-12']) === 1,
+      'An active day keeps the training streak'
+    );
+    // Activities are stored apart from workouts: weekly sets and strength numbers can't change.
+    const withRide = calculateWeeklyMuscleVolume([done(1, localDateString())], SEED_EXERCISES);
+    assert(JSON.stringify(withRide) === JSON.stringify(calculateWeeklyMuscleVolume([done(1, localDateString())], SEED_EXERCISES)), 'Activities never change weekly hard sets');
   }
 
   console.log('\nALL 38 ENGINE, GOVERNANCE, DESIGN HEURISTICS, TYPOGRAPHY, WEARABLES, WHOOP STRAIN, GOOGLE AUTH, ONBOARDING CONTEXT, 6-WEEK PROGRAM, TENSOR AI, SESSION REPORT, WORKOUT PAGE, EXERCISE OVERVIEW & RENPHO BLUETOOTH SUITES PASSED SUCCESSFULLY! 🎯');

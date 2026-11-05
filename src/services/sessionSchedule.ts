@@ -3,7 +3,7 @@
  * are expected to fall on. Expected days come from the recovery model (each session waits until
  * its muscles recover), never from a fixed calendar.
  */
-import { TrainingPlan, generatePlanWorkout, getProgramWorkoutNumber, getSessionPlanId } from '../engine/muscleBuildingProgram';
+import { TrainingPlan, generatePlanWorkout, getProgramWorkoutNumber, getSessionPlanId, isActiveSlot } from '../engine/muscleBuildingProgram';
 import { getPlanById } from '../engine/trainingPlans';
 import { evaluateSessionRecovery, getTrainableReadyAt, getWorkoutCompletedAt } from '../engine/recovery';
 import { ExerciseDefinition, ExerciseSession, ProgramSplitType, WorkoutSession } from '../engine/types';
@@ -76,7 +76,9 @@ export function getFollowingSession(
   const planId = getSessionPlanId(session);
   if (planNumber && planId) {
     const p = plan && plan.id === planId ? plan : getPlanById(planId);
-    return generatePlanWorkout(p, planNumber >= p.templates.length ? 1 : planNumber + 1);
+    // The next lifting workout; active days aren't lifting sessions.
+    const lifts = p.templates.filter((t) => !isActiveSlot(t)).map((t) => t.workoutNumber);
+    return generatePlanWorkout(p, lifts.find((n) => n > planNumber) ?? lifts[0] ?? 1);
   }
   return splitDaySession(getNextSplitDay(session.splitDay, programType), catalog);
 }
@@ -88,6 +90,8 @@ export function buildWeekStrip(input: {
   programType?: ProgramSplitType;
   /** The athlete's plan, so projected plan sessions use their goal's sets. */
   plan?: TrainingPlan;
+  /** Local dates of active days (rides, runs, classes); they show as trained days. */
+  activeDates?: string[];
   exerciseCatalog: ExerciseDefinition[];
   now?: number;
   daysBefore?: number;
@@ -102,7 +106,10 @@ export function buildWeekStrip(input: {
   const lastDate = dates[dates.length - 1];
 
   const completed = input.workouts.filter((w) => w.completed);
-  const trained = new Set(completed.map((w) => localDateString(new Date(getWorkoutCompletedAt(w)))));
+  const trained = new Set([
+    ...completed.map((w) => localDateString(new Date(getWorkoutCompletedAt(w)))),
+    ...(input.activeDates ?? []),
+  ]);
 
   // Walk the queue forward: each session lands on the day its muscles are ready.
   const planned = new Set<string>();

@@ -8,28 +8,37 @@ const fig = (px: number) => `calc(${px} * var(--f))`;
 
 interface ProgramPickerModalProps {
   programType: ProgramSplitType;
+  /** Show the 24-workout muscle plan (owner's account only). */
+  includeMusclePlan?: boolean;
   onChangeProgram?: (program: ProgramSplitType) => void;
   onClose: () => void;
 }
 
-/** The plans this account can choose: shown only to the account that can use the muscle plan. */
-const PLAN_OPTIONS: { id: ProgramSplitType; title: string; frequency: string; detail: string }[] = [
+/** The plans to choose from. Everyone: the two starter layouts. The owner's account: the muscle plan too. */
+const PLAN_OPTIONS: { id: ProgramSplitType; title: string; frequency: string; detail: string; ownerOnly?: boolean }[] = [
   {
     id: 'starter_6wk',
-    title: '6-week starter plan',
-    frequency: '3 full-body workouts a week • 18 workouts',
+    title: 'Lift 3 days + 1 active day',
+    frequency: '3 full-body workouts and 1 ride, run, walk or class a week',
     detail: 'Sets, reps and effort are set for your goal and build over three 2-week phases.',
+  },
+  {
+    id: 'starter_4day',
+    title: 'Lift 4 days',
+    frequency: '4 shorter upper and lower body workouts a week',
+    detail: 'The same weekly sets for each muscle, spread over 4 shorter workouts.',
   },
   {
     id: 'muscle_building_6wk',
     title: '6-week muscle plan',
     frequency: '4 workouts a week • 24 workouts',
     detail: 'Supersets, then rest-pause and drop sets, then giant sets, with a weekly leg day.',
+    ownerOnly: true,
   },
 ];
 
-/** Lets the owner's account switch between the starter plan and the muscle plan. */
-export const ProgramPickerModal: React.FC<ProgramPickerModalProps> = ({ programType, onChangeProgram, onClose }) =>
+/** Lets the athlete change how they run their 6-week plan. */
+export const ProgramPickerModal: React.FC<ProgramPickerModalProps> = ({ programType, includeMusclePlan = false, onChangeProgram, onClose }) =>
   createPortal(
     <div
       role="dialog"
@@ -54,7 +63,7 @@ export const ProgramPickerModal: React.FC<ProgramPickerModalProps> = ({ programT
                 marginTop: fig(16),
               }}
             >
-              Your workout history stays with you
+              Each way keeps its own place in the plan. Your history stays with you.
             </p>
           </div>
           <button
@@ -72,7 +81,7 @@ export const ProgramPickerModal: React.FC<ProgramPickerModalProps> = ({ programT
         </div>
 
         <div className="flex flex-col" style={{ gap: fig(22) }}>
-          {PLAN_OPTIONS.map((opt) => {
+          {PLAN_OPTIONS.filter((opt) => includeMusclePlan || !opt.ownerOnly).map((opt) => {
             const isCurrent = programType === opt.id;
             return (
               <div
@@ -99,7 +108,7 @@ export const ProgramPickerModal: React.FC<ProgramPickerModalProps> = ({ programT
                     </p>
                   </div>
                   <span className="wk-pill shrink-0">
-                    {isCurrent ? 'Current' : '6 weeks'}
+                    {isCurrent ? 'Current' : '24 sessions'}
                   </span>
                 </div>
 
@@ -122,7 +131,7 @@ export const ProgramPickerModal: React.FC<ProgramPickerModalProps> = ({ programT
                       color: '#13181C',
                     }}
                   >
-                    Switch to the {opt.title}
+                    Switch to {opt.title.toLowerCase()}
                   </button>
                 )}
               </div>

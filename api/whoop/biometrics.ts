@@ -128,6 +128,45 @@ export default async function handler(req: any, res: any) {
     return null;
   };
 
+  // Active days: the athlete's recent Whoop workouts (any sport), for the app to count rides,
+  // runs and classes. Nothing is stored here; the list goes straight back to the athlete's phone.
+  if (body.mode === 'sessions') {
+    const since = body.since ? new Date(body.since) : new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
+    const url = `https://api.prod.whoop.com/developer/v2/activity/workout?limit=25&start=${encodeURIComponent(since.toISOString())}`;
+    try {
+      let result = await fetchWithFallback(currentToken, url);
+      if (result.status === 401 && refreshToken) {
+        const newTokens = await tryTokenRefresh();
+        if (newTokens?.access_token) {
+          currentToken = newTokens.access_token;
+          refreshedTokens = {
+            accessToken: newTokens.access_token,
+            refreshToken: newTokens.refresh_token,
+            expiresIn: newTokens.expires_in,
+          };
+          result = await fetchWithFallback(currentToken, url);
+        }
+      }
+      if (!result.ok) {
+        return res.status(result.status || 502).json({ success: false, error: 'Could not read Whoop workouts', refreshedTokens });
+      }
+      const records: any[] = Array.isArray(result.data?.records) ? result.data.records : [];
+      const sessions = records
+        .filter((r) => r && r.start && r.end)
+        .map((r) => ({
+          externalId: String(r.id),
+          name: r.sport_name || undefined,
+          startedAt: new Date(r.start).toISOString(),
+          minutes: Math.round((new Date(r.end).getTime() - new Date(r.start).getTime()) / 60000),
+          avgHeartRate: typeof r.score?.average_heart_rate === 'number' ? Math.round(r.score.average_heart_rate) : undefined,
+          distanceKm: typeof r.score?.distance_meter === 'number' ? Math.round(r.score.distance_meter / 100) / 10 : undefined,
+        }));
+      return res.status(200).json({ success: true, sessions, refreshedTokens, provider: 'whoop' });
+    } catch (error: any) {
+      return res.status(500).json({ success: false, error: error?.message || 'Whoop workouts proxy error' });
+    }
+  }
+
   try {
     // 1. Initial attempt to fetch recovery (prioritizing official v1)
     let recResult = await fetchWithFallback(

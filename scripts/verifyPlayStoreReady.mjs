@@ -128,6 +128,23 @@ assert(
   assetLinks[0]?.relation?.includes('delegate_permission/common.handle_all_urls'),
   'assetlinks.json grants delegate_permission/common.handle_all_urls'
 );
+assert(
+  assetLinks.some(
+    (al) => al?.target?.package_name === 'com.headstrong.app' && al?.relation?.includes('delegate_permission/common.use_as_origin')
+  ),
+  'assetlinks.json grants delegate_permission/common.use_as_origin (Health Connect message channel)'
+);
+const androidManifest = fs.readFileSync(path.resolve(process.cwd(), 'app/src/main/AndroidManifest.xml'), 'utf8');
+assert(
+  androidManifest.includes('android.permission.health.READ_EXERCISE') &&
+    androidManifest.includes('ACTION_SHOW_PERMISSIONS_RATIONALE') &&
+    androidManifest.includes('VIEW_PERMISSION_USAGE') &&
+    androidManifest.includes('androidx.browser.customtabs.PostMessageService') &&
+    !/android\.permission\.health\.(WRITE|READ_(?!EXERCISE"))/.test(androidManifest),
+  'Android app asks only for READ_EXERCISE and has the Health Connect privacy screens'
+);
+const appGradle = fs.readFileSync(path.resolve(process.cwd(), 'app/build.gradle'), 'utf8');
+assert(!/storePassword\s+"[^"]+"|keyPassword\s+"[^"]+"/.test(appGradle), 'No signing passwords written in app/build.gradle');
 
 const twaManifest = JSON.parse(
   fs.readFileSync(path.resolve(process.cwd(), 'twa-manifest.json'), 'utf8')

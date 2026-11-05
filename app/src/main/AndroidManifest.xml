@@ -23,6 +23,13 @@
 
     
         <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+
+    <!-- Health Connect: read exercise sessions only (active days). -->
+    <uses-permission android:name="android.permission.health.READ_EXERCISE"/>
+
+    <queries>
+        <package android:name="com.google.android.apps.healthdata" />
+    </queries>
     
 
     
@@ -159,6 +166,41 @@
         </activity>
 
         <activity android:name="com.google.androidbrowserhelper.trusted.FocusActivity" />
+
+        <!-- Lets the app and the web page talk over the TWA message channel (Chrome 115+). -->
+        <service
+            android:name="androidx.browser.customtabs.PostMessageService"
+            android:exported="true" />
+
+        <!-- Shows Health Connect's permission screen when the athlete turns it on in the web app. -->
+        <activity
+            android:name=".HealthPermissionActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+
+        <!-- Health Connect: "why does this app need access" (Android 13 and lower). Shows the privacy policy. -->
+        <activity
+            android:name=".PermissionsRationaleActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar">
+            <intent-filter>
+                <action android:name="androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE" />
+            </intent-filter>
+        </activity>
+
+        <!-- Health Connect: privacy policy link on Android 14 and later. -->
+        <activity-alias
+            android:name="ViewPermissionUsageActivity"
+            android:exported="true"
+            android:targetActivity=".PermissionsRationaleActivity"
+            android:permission="android.permission.START_VIEW_PERMISSION_USAGE">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW_PERMISSION_USAGE" />
+                <category android:name="android.intent.category.HEALTH_PERMISSIONS" />
+            </intent-filter>
+        </activity-alias>
 
         <activity android:name="com.google.androidbrowserhelper.trusted.WebViewFallbackActivity"
             android:configChanges="orientation|screenSize" />

@@ -7,6 +7,7 @@ import {
   WorkoutSet,
 } from './types';
 import { localDateString } from '../utils/date';
+import { ActivityLog, activeDayDates } from './activeDays';
 
 export const WARMUP_PROTOCOL: WarmupProtocol = {
   description:
@@ -197,7 +198,12 @@ export interface ProgramWorkoutTemplate {
   title: string;
   splitDay: ExerciseSession['pillar'] extends any ? 'Push' | 'Pull' | 'Legs' | 'Upper' : never;
   exercises: ProgramExerciseTemplate[];
+  /** 'active' = the week's active day (a ride, run, walk or class of 20+ minutes), not a lifting workout. */
+  kind?: 'lift' | 'active';
 }
+
+/** True for a plan slot that is an active day rather than a lifting workout. */
+export const isActiveSlot = (t: Pick<ProgramWorkoutTemplate, 'kind'>): boolean => t.kind === 'active';
 
 export const MUSCLE_BUILDING_PROGRAM_META = {
   id: '6-week-muscle-building-plan',
@@ -887,9 +893,22 @@ function isPlanSession(w: WorkoutSession, plan: TrainingPlan): boolean {
   return getSessionPlanId(w) === plan.id && getProgramWorkoutNumber(w) !== undefined;
 }
 
+/** Number of the plan's last lifting workout (a run of the plan ends when it is done). */
+export function lastLiftNumber(plan: TrainingPlan): number {
+  const lifts = plan.templates.filter((t) => !isActiveSlot(t));
+  return lifts.length ? lifts[lifts.length - 1].workoutNumber : plan.templates.length;
+}
+
+/** The first lifting workout after `n` (wrapping to the start), skipping active days. */
+function nextLiftAfter(plan: TrainingPlan, n: number): number {
+  const lifts = plan.templates.filter((t) => !isActiveSlot(t)).map((t) => t.workoutNumber);
+  if (!lifts.length) return 1;
+  return lifts.find((x) => x > n) ?? lifts[0];
+}
+
 /**
- * Next workout in a plan: the one after the most recently completed workout of that plan,
- * wrapping back to Workout 1 after the last one. Other sessions are ignored.
+ * Next lifting workout in a plan: the one after the most recently completed workout of that plan,
+ * wrapping back to the first after the last one. Active days and other sessions are skipped.
  */
 export function getNextProgramWorkoutNumber(
   workouts: WorkoutSession[],
@@ -899,8 +918,8 @@ export function getNextProgramWorkoutNumber(
     .filter((w) => w.completed && isPlanSession(w, plan))
     .sort((a, b) => (b.completedAt || b.date).localeCompare(a.completedAt || a.date));
   const last = done[0] ? getProgramWorkoutNumber(done[0]) : undefined;
-  if (!last) return 1;
-  return last >= plan.templates.length ? 1 : last + 1;
+  if (!last) return nextLiftAfter(plan, 0);
+  return last >= lastLiftNumber(plan) ? nextLiftAfter(plan, 0) : nextLiftAfter(plan, last);
 }
 
 /** Plain-English workout name for the Program page, e.g. "Shoulders and Arms". */
@@ -908,7 +927,8 @@ export function planWorkoutLabel(title: string): string {
   return title.replace(/\s*\(.*\)\s*$/, '').replace(/\bDelts\b/, 'Shoulders');
 }
 
-export type PlanWorkoutStatus = 'done' | 'next' | 'upcoming';
+/** 'due' = an active day for this week (or an earlier one) that hasn't been done yet. */
+export type PlanWorkoutStatus = 'done' | 'next' | 'due' | 'upcoming';
 
 export interface PlanWorkoutOverview {
   workoutNumber: number;
@@ -917,6 +937,10 @@ export interface PlanWorkoutOverview {
   status: PlanWorkoutStatus;
   /** The session logged for this workout in the current run of the plan, when done. */
   session?: WorkoutSession;
+  /** True for an active day (not a lifting workout). */
+  isActive?: boolean;
+  /** The activity that counted as this active day, when done. */
+  activity?: ActivityLog;
 }
 
 export interface PlanOverview {
@@ -929,25 +953,68 @@ export interface PlanOverview {
 }
 
 /**
- * Where the athlete is in a plan. A run of the plan ends when its last workout is completed;
- * sessions from earlier runs (or the other plan) don't count as done in the current one.
+ * Where the athlete is in a plan. A run of the plan ends when its last lifting workout is completed;
+ * sessions from earlier runs (or another plan) don't count as done in the current one.
+ * Active days are filled in date order from qualifying activities since the run started, one per
+ * week, up to the week of the next lifting workout (a missed week can be caught up later).
  */
-export function buildPlanOverview(history: WorkoutSession[], plan: TrainingPlan = MUSCLE_BUILDING_PLAN): PlanOverview {
+export function buildPlanOverview(
+  history: WorkoutSession[],
+  plan: TrainingPlan = MUSCLE_BUILDING_PLAN,
+  activities: ActivityLog[] = []
+): PlanOverview {
   const done = history
     .filter((w) => w.completed && isPlanSession(w, plan))
     .sort((a, b) => (a.completedAt || a.date).localeCompare(b.completedAt || b.date));
+  const finalLift = lastLiftNumber(plan);
   let cycleNumber = 1;
   let current = new Map<number, WorkoutSession>();
+  // Active days count from the start (first run) or from the day after the previous run ended.
+  let runStartDate = '';
   for (const w of done) {
     const n = getProgramWorkoutNumber(w) as number;
     current.set(n, w);
-    if (n >= plan.templates.length) {
+    if (n >= finalLift) {
       cycleNumber += 1;
       current = new Map();
+      const end = new Date(w.completedAt || `${w.date}T12:00:00`);
+      end.setDate(end.getDate() + 1);
+      runStartDate = localDateString(end);
     }
   }
   const nextWorkoutNumber = getNextProgramWorkoutNumber(history, plan);
+  const nextWeek = plan.templates.find((t) => t.workoutNumber === nextWorkoutNumber)?.week ?? 1;
+
+  // Active days: qualifying activities since the run started, one per open week, in order.
+  const activeSlots = plan.templates.filter(isActiveSlot);
+  const assigned = new Map<number, ActivityLog>();
+  if (activeSlots.length) {
+    const dates = activeDayDates(activities).filter((d) => !runStartDate || d >= runStartDate);
+    const firstByDate = new Map<string, ActivityLog>();
+    for (const a of [...activities].sort((x, y) => y.minutes - x.minutes)) {
+      if (dates.includes(a.date) && !firstByDate.has(a.date)) firstByDate.set(a.date, a);
+    }
+    let slotIdx = 0;
+    for (const d of dates) {
+      const slot = activeSlots[slotIdx];
+      if (!slot || slot.week > nextWeek) break;
+      assigned.set(slot.workoutNumber, firstByDate.get(d) as ActivityLog);
+      slotIdx++;
+    }
+  }
+
   const workouts = plan.templates.map((t): PlanWorkoutOverview => {
+    if (isActiveSlot(t)) {
+      const activity = assigned.get(t.workoutNumber);
+      return {
+        workoutNumber: t.workoutNumber,
+        phase: t.phase,
+        label: planWorkoutLabel(t.title),
+        status: activity ? 'done' : t.week <= nextWeek ? 'due' : 'upcoming',
+        isActive: true,
+        activity,
+      };
+    }
     const session = current.get(t.workoutNumber);
     return {
       workoutNumber: t.workoutNumber,
@@ -959,7 +1026,7 @@ export function buildPlanOverview(history: WorkoutSession[], plan: TrainingPlan 
   });
   return {
     cycleNumber,
-    completedCount: current.size,
+    completedCount: current.size + assigned.size,
     nextWorkoutNumber,
     activePhase: plan.templates.find((t) => t.workoutNumber === nextWorkoutNumber)?.phase ?? 1,
     workouts,

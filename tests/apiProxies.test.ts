@@ -5,6 +5,8 @@
 import whoopToken from '../api/whoop/token';
 import whoopBiometrics from '../api/whoop/biometrics';
 import fitbitBiometrics from '../api/fitbit/biometrics';
+import stravaToken from '../api/strava/token';
+import stravaActivities from '../api/strava/activities';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -195,6 +197,101 @@ const iso = (msAgo: number) => new Date(Date.now() - msAgo).toISOString();
   assert(f.maxWorkoutHr === undefined, 'Does not invent a workout peak heart rate from zone boundaries');
   assert(f.fitbitReadinessScore === undefined, "Does not label its own estimate as Fitbit's readiness score");
   assert(calls.every((c) => !c.url.includes('/date/') || c.url.includes('2026-10-22')), "Uses the athlete's local date sent by the app");
+
+  // ---------------------------------------------------------------- Workout lists for active days
+  console.log('\n[Fitbit / Whoop workout lists]');
+  installFetch((url) => {
+    if (url.includes('/activities/list.json'))
+      return {
+        status: 200,
+        body: {
+          activities: [
+            { logId: 111, activityName: 'Bike', startTime: '2026-10-21T07:30:00.000+01:00', activeDuration: 32 * 60000, distance: 10, distanceUnit: 'Mile', averageHeartRate: 131 },
+            { logId: 112, activityName: 'Walk', startTime: '2026-10-22T12:00:00.000+01:00', duration: 25 * 60000 },
+          ],
+        },
+      };
+    return undefined;
+  });
+  res = mockRes();
+  await fitbitBiometrics({ method: 'POST', headers: {}, body: { mode: 'sessions', accessToken: 'tok', afterDate: '2026-10-08' }, query: {} }, res);
+  const fs1 = res.body?.sessions || [];
+  assert(
+    res.body?.success && fs1.length === 2 && fs1[0].externalId === '111' && fs1[0].minutes === 32 && fs1[0].distanceKm === 16.1 && fs1[0].avgHeartRate === 131,
+    'Fitbit exercise log: id, minutes, distance (miles to km) and heart rate'
+  );
+  assert(calls.length === 1 && calls[0].url.includes('afterDate=2026-10-08'), 'Fitbit sessions mode reads only the exercise log, from the date the app sends');
+
+  installFetch((url) => {
+    if (url.includes('/activity/workout'))
+      return {
+        status: 200,
+        body: { records: [{ id: 'w-9', sport_name: 'cycling', start: '2026-10-21T06:00:00Z', end: '2026-10-21T06:45:00Z', score: { average_heart_rate: 140.4, distance_meter: 18234 } }] },
+      };
+    return undefined;
+  });
+  res = mockRes();
+  await whoopBiometrics({ method: 'POST', headers: {}, body: { mode: 'sessions', accessToken: 'tok' } }, res);
+  const ws1 = res.body?.sessions || [];
+  assert(
+    res.body?.success && ws1.length === 1 && ws1[0].minutes === 45 && ws1[0].name === 'cycling' && ws1[0].distanceKm === 18.2 && ws1[0].avgHeartRate === 140,
+    'Whoop workouts: sport, minutes, distance and heart rate'
+  );
+
+  // ---------------------------------------------------------------- Strava
+  console.log('\n[Strava]');
+  delete process.env.STRAVA_CLIENT_ID;
+  delete process.env.STRAVA_CLIENT_SECRET;
+  installFetch(() => ({ status: 200, body: {} }));
+  res = mockRes();
+  await stravaToken({ method: 'GET', headers: {} }, res);
+  assert(res.body?.configured === false, 'Strava reports "not set up" until the server has its client id and secret');
+  res = mockRes();
+  await stravaToken({ method: 'POST', headers: {}, body: { code: 'c' } }, res);
+  assert(res.statusCode === 503 && calls.length === 0, 'Without STRAVA_CLIENT_SECRET the token proxy refuses and calls nothing');
+
+  process.env.STRAVA_CLIENT_ID = '12345';
+  process.env.STRAVA_CLIENT_SECRET = 'server-only-secret';
+  installFetch((url) =>
+    url.includes('/oauth/token')
+      ? { status: 200, body: { access_token: 'acc', refresh_token: 'ref', expires_at: 1900000000, athlete: { firstname: 'Sam', lastname: 'X', city: 'Leeds' } } }
+      : undefined
+  );
+  res = mockRes();
+  await stravaToken({ method: 'GET', headers: {} }, res);
+  assert(res.body?.configured === true && res.body?.clientId === '12345' && !JSON.stringify(res.body).includes('secret'), 'Config returns the public client id only');
+  res = mockRes();
+  await stravaToken({ method: 'POST', headers: {}, body: { code: 'c', scope: 'read,activity:read_all' } }, res);
+  const sentBody = String(calls[0]?.init?.body || '');
+  assert(
+    res.statusCode === 200 && res.body.accessToken === 'acc' && res.body.refreshToken === 'ref' && res.body.athleteFirstName === 'Sam' &&
+      res.body.athlete === undefined && sentBody.includes('client_secret=server-only-secret') && sentBody.includes('grant_type=authorization_code'),
+    'Code exchange uses the server secret and returns only tokens and first name'
+  );
+
+  installFetch((url) => {
+    if (url.includes('/oauth/token')) return { status: 200, body: { access_token: 'new-acc', refresh_token: 'new-ref', expires_at: 1900003600 } };
+    if (url.includes('/athlete/activities'))
+      return {
+        status: 200,
+        body: [
+          { id: 777, name: 'Morning Ride', sport_type: 'Ride', start_date: '2026-10-21T06:10:00Z', moving_time: 1980, elapsed_time: 2100, distance: 15400, average_heartrate: 128.6 },
+          { id: 778, name: 'Lifting', sport_type: 'WeightTraining', start_date: '2026-10-22T17:00:00Z', moving_time: 3000 },
+        ],
+      };
+    return undefined;
+  });
+  res = mockRes();
+  await stravaActivities({ method: 'POST', headers: {}, body: { accessToken: 'old', refreshToken: 'ref', expiresAt: 1000 } }, res);
+  const st = res.body?.sessions || [];
+  assert(calls[0]?.url.includes('/oauth/token') && calls[1]?.init?.headers?.Authorization === 'Bearer new-acc', 'An expired Strava token is refreshed before reading activities');
+  assert(res.body?.refreshedTokens?.refreshToken === 'new-ref', 'The rotated refresh token goes back to the app to save');
+  assert(
+    st.length === 2 && st[0].externalId === '777' && st[0].sportType === 'Ride' && st[0].minutes === 33 && st[0].distanceKm === 15.4 && st[0].avgHeartRate === 129,
+    'Strava activities: id, sport type, moving minutes, distance and heart rate'
+  );
+  delete process.env.STRAVA_CLIENT_ID;
+  delete process.env.STRAVA_CLIENT_SECRET;
 
   // ---------------------------------------------------------------- Deployability
   // package.json is "type": "module", so Vercel runs api/ as ES modules, which need explicit

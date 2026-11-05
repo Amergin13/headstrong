@@ -11,6 +11,8 @@ interface LaunchLinkHandlers {
   onOpenAuth: () => void;
   onAuthSuccess: (user: AuthUser) => void;
   onWearableOAuthCode: (code: string, provider: WearableProvider) => void;
+  /** Strava sign-in returned (state starts with "strava_"); scope is what the athlete allowed. */
+  onStravaOAuthCode: (code: string, scope: string | null) => void;
 }
 
 /**
@@ -52,13 +54,15 @@ export function useLaunchLinks(handlers: LaunchLinkHandlers) {
       handlers.onOpenLogWeight();
     }
 
-    if (oauthCode) {
-      const stateParam = params.get('state') || '';
+    const stateParam = params.get('state') || '';
+    if (oauthCode && stateParam.startsWith('strava_')) {
+      handlers.onStravaOAuthCode(oauthCode, params.get('scope'));
+    } else if (oauthCode) {
       const isWhoop = stateParam.startsWith('whoop_') || window.location.pathname.includes('/whoop');
       handlers.onWearableOAuthCode(oauthCode, isWhoop ? 'whoop' : 'fitbit');
     }
 
-    if (tabParam || actionParam || oauthCode || idToken || hash || window.location.pathname.includes('/oauth')) {
+    if (tabParam || actionParam || oauthCode || stateParam || idToken || hash || window.location.pathname.includes('/oauth')) {
       const cleanPath = window.location.pathname.includes('/oauth') ? '/' : window.location.pathname;
       window.history.replaceState({}, document.title, cleanPath);
     }

@@ -202,8 +202,11 @@ export function buildIdentityFacts(input: IdentityMessageInput): IdentityMessage
   if (completed === 0) {
     nextSentence = `Every workout you finish shapes the athlete you're becoming. Your first workout, ${nextName}, is ready when you are.`;
   } else {
+    // Name the muscle the set count belongs to (it may not be one of the first ones listed).
     nextSentence = `Next up is ${nextName}, a chance to build ${focus}${
-      behind ? `, where you're at ${behind.weeklySets} of ${behind.personalizedMav[0]}–${behind.personalizedMav[1]} sets this week` : ''
+      behind
+        ? `. You're at ${behind.weeklySets} of ${behind.personalizedMav[0]}–${behind.personalizedMav[1]} sets for ${behind.displayName.toLowerCase()} this week`
+        : ''
     }.`;
     if (readiness === 'Amber Shield') nextSentence += ' Recovery is low today, so a steady session still counts.';
     else if (readiness === 'Primed') nextSentence += " You're well recovered, so it's a good day to push.";

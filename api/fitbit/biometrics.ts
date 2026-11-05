@@ -87,6 +87,49 @@ export default async function handler(req: any, res: any) {
     }
   };
 
+  // Active days: the athlete's recent Fitbit / Pixel Watch exercise log (auto-recognised and
+  // recorded workouts), for the app to count rides, runs and classes. Nothing is stored here.
+  if (body.mode === 'sessions') {
+    const afterDate = /^\d{4}-\d{2}-\d{2}$/.test(String(body.afterDate || '')) ? String(body.afterDate) : targetDate;
+    const url = `https://api.fitbit.com/1/user/-/activities/list.json?afterDate=${afterDate}&sort=asc&offset=0&limit=50`;
+    try {
+      let result = await fetchFitbit(url, currentToken);
+      if (result.status === 401 && refreshToken) {
+        const newTokens = await tryTokenRefresh();
+        if (newTokens?.access_token) {
+          currentToken = newTokens.access_token;
+          refreshedTokens = {
+            accessToken: newTokens.access_token,
+            refreshToken: newTokens.refresh_token,
+            expiresIn: newTokens.expires_in,
+          };
+          result = await fetchFitbit(url, currentToken);
+        }
+      }
+      if (!result.ok) {
+        return res.status(result.status || 502).json({ success: false, error: 'Could not read Fitbit exercise log', refreshedTokens });
+      }
+      const list: any[] = Array.isArray(result.data?.activities) ? result.data.activities : [];
+      const sessions = list
+        .filter((a) => a && a.startTime && (a.activeDuration || a.duration))
+        .map((a) => {
+          const distance = typeof a.distance === 'number' ? a.distance : undefined;
+          const km = distance === undefined ? undefined : a.distanceUnit === 'Mile' ? distance * 1.609344 : distance;
+          return {
+            externalId: String(a.logId),
+            name: a.activityName || undefined,
+            startedAt: new Date(a.startTime).toISOString(),
+            minutes: Math.round((a.activeDuration || a.duration) / 60000),
+            avgHeartRate: typeof a.averageHeartRate === 'number' ? Math.round(a.averageHeartRate) : undefined,
+            distanceKm: km === undefined ? undefined : Math.round(km * 10) / 10,
+          };
+        });
+      return res.status(200).json({ success: true, sessions, refreshedTokens, provider: 'fitbit' });
+    } catch (error: any) {
+      return res.status(500).json({ success: false, error: error?.message || 'Fitbit exercise log proxy error' });
+    }
+  }
+
   try {
     // 1. Initial check with heart rate endpoint
     let heartRes = await fetchFitbit(

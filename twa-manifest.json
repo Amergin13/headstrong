@@ -21,8 +21,8 @@
     "path": "./android.keystore",
     "alias": "headstrong-release-key"
   },
-  "appVersionName": "1.0.5",
-  "appVersionCode": 12,
+  "appVersionName": "1.1.0",
+  "appVersionCode": 13,
   "shortcuts": [
     {
       "name": "Start Workout",
@@ -61,7 +61,7 @@
   "isChromeOSOnly": false,
   "isMetaQuest": false,
   "fullScopeUrl": "https://treise.vercel.app/",
-  "minSdkVersion": 24,
+  "minSdkVersion": 26,
   "targetSdkVersion": 36,
   "orientation": "portrait",
   "fingerprints": [
@@ -77,5 +77,5 @@
   "additionalTrustedOrigins": [],
   "retainedBundles": [],
   "displayOverride": [],
-  "appVersion": "1.0.4"
+  "appVersion": "1.1.0"
 }

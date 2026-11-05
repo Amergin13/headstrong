@@ -18,6 +18,7 @@ import groovy.xml.MarkupBuilder
 
 plugins {
     id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
 }
 
 def twaManifest = [
@@ -55,10 +56,11 @@ android {
     namespace "com.headstrong.app"
     defaultConfig {
         applicationId "com.headstrong.app"
-        minSdkVersion 24
+        // Health Connect's SDK needs Android 8 (API 26) or later.
+        minSdkVersion 26
         targetSdkVersion 36
-        versionCode 12
-        versionName "1.0.5"
+        versionCode 13
+        versionName "1.1.0"
 
         // The name for the application
         resValue "string", "appName", twaManifest.name
@@ -152,21 +154,27 @@ android {
 
     signingConfigs {
         release {
+            // Passwords come from the environment or ~/.gradle/gradle.properties, never this file
+            // (the repository is public). Set TREISE_KEYSTORE_PASSWORD and TREISE_KEY_PASSWORD.
             storeFile file("${project.rootDir}/android.keystore")
-            storePassword "headstrong2026"
+            storePassword System.getenv('TREISE_KEYSTORE_PASSWORD') ?: (project.findProperty('TREISE_KEYSTORE_PASSWORD') ?: '')
             keyAlias "headstrong-release-key"
-            keyPassword "headstrong2026"
+            keyPassword System.getenv('TREISE_KEY_PASSWORD') ?: (project.findProperty('TREISE_KEY_PASSWORD') ?: '')
         }
     }
     buildTypes {
         release {
             minifyEnabled true
+            proguardFiles 'proguard-rules.pro'
             signingConfig signingConfigs.release
         }
     }
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_1_8
-        targetCompatibility JavaVersion.VERSION_1_8
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    kotlinOptions {
+        jvmTarget = '17'
     }
     lintOptions {
         checkReleaseBuilds false
@@ -218,5 +226,9 @@ dependencies {
     implementation fileTree(include: ['*.jar'], dir: 'libs')
     
         implementation 'com.google.androidbrowserhelper:androidbrowserhelper:2.7.4'
-    
+
+    // Health Connect bridge: read exercise sessions and hand them to the web app.
+    implementation 'androidx.health.connect:connect-client:1.1.0'
+    implementation 'androidx.activity:activity-ktx:1.10.1'
+    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0'
 }

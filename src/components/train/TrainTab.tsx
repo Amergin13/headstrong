@@ -28,7 +28,10 @@ import {
   MUSCLE_FRIENDLY_NAMES,
   READY_THRESHOLD,
 } from '../../engine/recovery';
-import { TrainingPlan, getSessionPlanId, planWorkoutLabel } from '../../engine/muscleBuildingProgram';
+import { TrainingPlan, buildPlanOverview, getSessionPlanId, isActiveSlot, planWorkoutLabel } from '../../engine/muscleBuildingProgram';
+import { ActivityLog, activeDayDates } from '../../engine/activeDays';
+import { ActiveDayCard } from './ActiveDayCard';
+import { localDateOffset } from '../../utils/date';
 import { useUnits } from '../../utils/unitsContext';
 import {
   prescribeDoubleProgression,
@@ -110,6 +113,11 @@ interface TrainTabProps {
   onOpenProgram?: () => void;
   /** Swap today's queued session for another split day (standard splits only). */
   onSwitchSplitDay?: (split: SplitDayType) => void;
+  /** Active days (rides, runs, walks, classes), for plans with a weekly active day. */
+  activities?: ActivityLog[];
+  onLogActivity?: () => void;
+  onRemoveActivity?: (id: string) => void;
+  onOpenActivityApps?: () => void;
 }
 
 /** Primary muscles each split day trains, used to suggest a recovered alternative. */
@@ -143,6 +151,10 @@ const MESO_WEEK_PHASE_NAMES: Record<number, { name: string; rule: string }> = {
 
 export const TrainTab: React.FC<TrainTabProps> = ({
   trainingPlan,
+  activities = [],
+  onLogActivity,
+  onRemoveActivity,
+  onOpenActivityApps,
   activeWorkout,
   workouts,
   readiness,
@@ -668,6 +680,31 @@ export const TrainTab: React.FC<TrainTabProps> = ({
       };
   const pageTitle = planWorkoutNumber ? trainingPlan.name : PROGRAM_TITLES[profile.programType || 'starter_6wk'] || 'Your Program';
 
+  // The plan's weekly active day (only in the "lift 3 days + 1 active day" layout).
+  const hasActiveDays = trainingPlan.templates.some(isActiveSlot);
+  const planOverview = useMemo(
+    () => (hasActiveDays ? buildPlanOverview(workouts, trainingPlan, activities) : undefined),
+    [hasActiveDays, workouts, trainingPlan, activities]
+  );
+  const currentWeek = planOverview
+    ? trainingPlan.templates.find((t) => t.workoutNumber === planOverview.nextWorkoutNumber)?.week ?? 1
+    : 1;
+  const thisWeekActive = planOverview?.workouts.find(
+    (w) => w.isActive && trainingPlan.templates.find((t) => t.workoutNumber === w.workoutNumber)?.week === currentWeek
+  )?.activity;
+  const weekAgo = localDateOffset(-6, new Date());
+  const recentActivities = activities.filter((a) => a.date >= weekAgo).sort((a, b) => b.startedAt.localeCompare(a.startedAt));
+  const activeDayCard =
+    hasActiveDays && onLogActivity && onRemoveActivity && onOpenActivityApps ? (
+      <ActiveDayCard
+        thisWeek={thisWeekActive}
+        recent={recentActivities}
+        onLog={onLogActivity}
+        onRemove={onRemoveActivity}
+        onOpenApps={onOpenActivityApps}
+      />
+    ) : null;
+
   const stripDays = useMemo(
     () =>
       buildWeekStrip({
@@ -675,10 +712,11 @@ export const TrainTab: React.FC<TrainTabProps> = ({
         nextSession: activeWorkout,
         programType: profile.programType,
         plan: trainingPlan,
+        activeDates: activeDayDates(activities),
         exerciseCatalog,
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [workouts, activeWorkout.id, activeWorkout.programWorkoutNumber, profile.programType, trainingPlan, exerciseCatalog]
+    [workouts, activeWorkout.id, activeWorkout.programWorkoutNumber, profile.programType, trainingPlan, exerciseCatalog, activities]
   );
 
   // Exercise overviews: personal notes written on the device from the athlete's knowledge graph.
@@ -940,6 +978,9 @@ export const TrainTab: React.FC<TrainTabProps> = ({
         </section>
       )}
 
+      {/* On a rest day the active day is the natural next step, so it sits right under the rest card. */}
+      {(showRecoveryGate || sessionReport) && activeDayCard}
+
       {!showRecoveryGate && (<>
       {/* Exercise cards (the page gradient ends where the first one starts) */}
       <div ref={exercisesTopRef} className="flex flex-col" style={{ gap: fig(22) }}>
@@ -1057,6 +1098,8 @@ export const TrainTab: React.FC<TrainTabProps> = ({
         )}
       </button>
 
+      {/* On a training day the workout leads; the week's active day follows it. */}
+      {activeDayCard}
       </>)}
       </div>
 

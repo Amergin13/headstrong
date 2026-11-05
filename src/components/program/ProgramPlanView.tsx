@@ -18,6 +18,7 @@ import {
   buildPlanOverview,
   generatePlanWorkout,
 } from '../../engine/muscleBuildingProgram';
+import { ActivityLog, describeActivity } from '../../engine/activeDays';
 import { triggerHaptic } from '../../utils/haptics';
 import { PastWorkoutModal } from './PastWorkoutModal';
 
@@ -301,6 +302,9 @@ const IdentityForm: React.FC<{ rings: IdentityRing[]; seed: string; total: numbe
 interface ProgramPlanViewProps {
   /** The athlete's plan: the goal-based starter plan, or the muscle plan on the owner's account. */
   trainingPlan: TrainingPlan;
+  /** Active days, for plans with a weekly active day. */
+  activities?: ActivityLog[];
+  onLogActivity?: () => void;
   workouts: WorkoutSession[];
   biometrics: BiometricLog[];
   profile: UserProfile;
@@ -316,6 +320,8 @@ interface ProgramPlanViewProps {
 /** Program page for the 6-Week Muscle Building Plan: identity, progress, then the three phases. */
 export const ProgramPlanView: React.FC<ProgramPlanViewProps> = ({
   trainingPlan,
+  activities = [],
+  onLogActivity,
   workouts,
   biometrics,
   profile,
@@ -326,7 +332,7 @@ export const ProgramPlanView: React.FC<ProgramPlanViewProps> = ({
   onLaunchWorkoutNumber,
   onBackToWorkout,
 }) => {
-  const plan = useMemo(() => buildPlanOverview(workouts, trainingPlan), [workouts, trainingPlan]);
+  const plan = useMemo(() => buildPlanOverview(workouts, trainingPlan, activities), [workouts, trainingPlan, activities]);
   const TOTAL = trainingPlan.templates.length;
   const [openPhases, setOpenPhases] = useState<number[]>([plan.activePhase]);
   const [viewing, setViewing] = useState<PlanWorkoutOverview | null>(null);
@@ -381,8 +387,11 @@ export const ProgramPlanView: React.FC<ProgramPlanViewProps> = ({
         next: w.status === 'next',
         phase: w.phase,
         lobes: lobesFor(w.label),
+        // An active day draws a light ring (no lifting sets); a lifting workout is bolder with more sets.
         sets: w.session
           ? w.session.exercises.reduce((n, ex) => n + ex.sets.filter((st) => st.completed && !st.isWarmup).length, 0)
+          : w.activity
+          ? 4
           : 0,
       })),
     [plan]
@@ -409,6 +418,10 @@ export const ProgramPlanView: React.FC<ProgramPlanViewProps> = ({
 
   const openWorkout = (w: PlanWorkoutOverview) => {
     triggerHaptic('light');
+    if (w.isActive) {
+      if (w.status === 'due') onLogActivity?.();
+      return;
+    }
     if (w.status === 'done' && w.session) {
       setViewing(w);
     } else if (w.status === 'next') {
@@ -534,6 +547,7 @@ export const ProgramPlanView: React.FC<ProgramPlanViewProps> = ({
                   {phaseWorkouts.map((w) => {
                     const done = w.status === 'done';
                     const isNext = w.status === 'next';
+                    const isDue = w.status === 'due' && Boolean(onLogActivity);
                     const name = `${w.workoutNumber}. ${w.label}`;
                     const content = (
                       <>
@@ -543,7 +557,17 @@ export const ProgramPlanView: React.FC<ProgramPlanViewProps> = ({
                             Up next
                           </span>
                         )}
-                        {done && (
+                        {w.isActive && w.activity && (
+                          <span className="ml-auto shrink-0 text-white" style={{ fontSize: `max(12px, ${fig(24)})` }}>
+                            {describeActivity(w.activity)}
+                          </span>
+                        )}
+                        {isDue && (
+                          <span className="uppercase shrink-0" style={{ color: 'var(--wk-muted)' }}>
+                            This week
+                          </span>
+                        )}
+                        {done && !w.isActive && (
                           <ChevronRight
                             className="ml-auto shrink-0 text-white"
                             style={{ width: fig(36), height: fig(36) }}
@@ -555,18 +579,24 @@ export const ProgramPlanView: React.FC<ProgramPlanViewProps> = ({
                     );
                     return (
                       <li key={w.workoutNumber}>
-                        {done || isNext ? (
+                        {(done && !w.isActive) || isNext || isDue ? (
                           <button
                             type="button"
                             onClick={() => openWorkout(w)}
-                            aria-label={done ? `${name}, completed. View workout` : `${name}, up next. Open workout`}
+                            aria-label={
+                              isDue
+                                ? `${name}, this week. Log an active session`
+                                : done
+                                ? `${name}, completed. View workout`
+                                : `${name}, up next. Open workout`
+                            }
                             className="wk-hit w-full flex items-center text-left"
                             style={{ ...rowStyle, background: done ? '#05A670' : 'var(--wk-card)' }}
                           >
                             {content}
                           </button>
                         ) : (
-                          <div className="flex items-center" style={{ ...rowStyle, background: 'var(--wk-card)' }}>
+                          <div className="flex items-center" style={{ ...rowStyle, background: done ? '#05A670' : 'var(--wk-card)' }}>
                             {content}
                           </div>
                         )}

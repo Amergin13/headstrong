@@ -268,8 +268,13 @@ export const STREAK_MAX_REST_DAYS = 4;
  * recent, as long as no rest gap is longer than STREAK_MAX_REST_DAYS. Rest days the recovery queue
  * asks for never break it. 0 when the last workout was too long ago.
  */
-export function computeTrainingStreak(workouts: WorkoutSession[], now: number = Date.now()): number {
-  const days = [...new Set(workouts.filter((w) => w.completed).map((w) => w.date))].sort().reverse();
+export function computeTrainingStreak(
+  workouts: WorkoutSession[],
+  now: number = Date.now(),
+  /** Local dates of active days (rides, runs, classes of 20+ minutes); they keep the streak too. */
+  activeDates: string[] = []
+): number {
+  const days = [...new Set([...workouts.filter((w) => w.completed).map((w) => w.date), ...activeDates])].sort().reverse();
   if (!days.length) return 0;
   const dayMs = 24 * 60 * 60 * 1000;
   const toTime = (d: string) => {

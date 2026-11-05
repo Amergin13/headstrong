@@ -19,12 +19,21 @@ import android.content.pm.ActivityInfo;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.util.Log;
+
+import androidx.browser.customtabs.CustomTabsCallback;
+import androidx.browser.customtabs.CustomTabsSession;
+
+import com.google.androidbrowserhelper.trusted.TwaLauncher;
+
+import java.lang.reflect.Field;
 
 public class LauncherActivity
         extends com.google.androidbrowserhelper.trusted.LauncherActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        HealthConnectBridge.INSTANCE.init(this);
         super.onCreate(savedInstanceState);
         // Setting an orientation crashes the app due to the transparent background on Android 8.0
         // Oreo and below. We only set the orientation on Oreo and above. This only affects the
@@ -34,6 +43,33 @@ public class LauncherActivity
             setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_USER_PORTRAIT);
         } else {
             setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
+        }
+    }
+
+    /**
+     * Same checks as the library's default callback, plus the Health Connect message channel.
+     */
+    @Override
+    protected CustomTabsCallback getCustomTabsCallback() {
+        return new HealthConnectBridge.Callback(this::findSession);
+    }
+
+    /**
+     * The launcher keeps its Custom Tabs session in private fields with no getter, so it is read by
+     * reflection (field names are kept in release builds by proguard-rules.pro).
+     */
+    private CustomTabsSession findSession() {
+        try {
+            Field launcherField = com.google.androidbrowserhelper.trusted.LauncherActivity.class.getDeclaredField("mTwaLauncher");
+            launcherField.setAccessible(true);
+            Object launcher = launcherField.get(this);
+            if (launcher == null) return null;
+            Field sessionField = TwaLauncher.class.getDeclaredField("mSession");
+            sessionField.setAccessible(true);
+            return (CustomTabsSession) sessionField.get(launcher);
+        } catch (Exception e) {
+            Log.w("TreiseHealthConnect", "Could not find the TWA session", e);
+            return null;
         }
     }
 
