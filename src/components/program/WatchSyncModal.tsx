@@ -21,6 +21,7 @@ import {
 } from '../../services/fitbitService';
 import {
   initiateWhoopOAuth,
+  WhoopReconnectNeededError,
   getWhoopRedirectUri,
   WHOOP_CONFIG,
   parseWhoopCsvExport,
@@ -65,6 +66,7 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
   const [isSyncing, setIsSyncing] = useState(false);
   const [importStatus, setImportStatus] = useState<string | null>(null);
   const [fitbitConfig, setFitbitConfig] = useState<FitbitServerConfig | null>(null);
+  const [whoopReconnectNeeded, setWhoopReconnectNeeded] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -156,6 +158,7 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
         onUpdateProfile(setActiveTracker(selectedProvider, profile));
       }
     } catch (err: any) {
+      if (err instanceof WhoopReconnectNeededError) setWhoopReconnectNeeded(true);
       setSyncProgress({
         stage: 'error',
         percent: 0,
@@ -592,11 +595,11 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
               <button
                 type="button"
                 disabled={isSyncing}
-                onClick={() => handleStartSync()}
+                onClick={() => (selectedProvider === 'whoop' && whoopReconnectNeeded ? handleConnectProvider() : handleStartSync())}
                 className="wk-button min-h-[44px] disabled:opacity-50"
                 style={{ background: 'var(--wk-accent)', color: '#13181C' }}
               >
-                Sync {providerMeta.name} Now
+                {selectedProvider === 'whoop' && whoopReconnectNeeded ? 'Reconnect Whoop' : `Sync ${providerMeta.name} Now`}
               </button>
             )}
 

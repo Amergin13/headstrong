@@ -258,6 +258,16 @@ const iso = (msAgo: number) => new Date(Date.now() - msAgo).toISOString();
   assert(f.fitbitReadinessScore === undefined, "Does not label its own estimate as Fitbit's readiness score");
   assert(calls.every((c) => !c.url.includes('/date/') || c.url.includes('2026-10-22')), "Uses the athlete's local date sent by the app");
 
+  // A dead Whoop sign-in is reported as that, not as "no data yet".
+  installFetch((url) => {
+    if (url.includes('api.prod.whoop.com/oauth')) return { status: 400, body: { error: 'invalid_grant' } };
+    if (url.includes('api.prod.whoop.com')) return { status: 401, body: {} };
+    return undefined;
+  });
+  res = mockRes();
+  await whoopBiometrics({ method: 'POST', headers: { authorization: 'Bearer dead' }, body: { refreshToken: 'dead' }, query: {} }, res);
+  assert(res.statusCode === 401 && res.body?.error === 'whoop_reconnect_needed', 'A Whoop sign-in that can no longer refresh says so');
+
   // Google Health API v4 biometrics & sessions
   installFetch((url) => {
     if (url.includes('/dataTypes/daily-resting-heart-rate/dataPoints')) {

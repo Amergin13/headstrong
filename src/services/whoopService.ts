@@ -3,6 +3,14 @@ import { generateCodeChallenge, generateRandomString } from './fitbitService';
 import { localDateString } from '../utils/date';
 import { publishRefreshedTokens } from './wearableTokens';
 
+/** Whoop refused the saved sign-in, and refreshing it failed. Only signing in again fixes this. */
+export class WhoopReconnectNeededError extends Error {
+  constructor() {
+    super('Your Whoop sign-in has expired. Reconnect Whoop to start syncing again.');
+    this.name = 'WhoopReconnectNeededError';
+  }
+}
+
 export function getWhoopRedirectUri(customUri?: string): string {
   if (customUri && customUri.trim()) {
     return customUri.trim();
@@ -217,6 +225,7 @@ export async function fetchWhoopDailyBiometrics(
     (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('whoop_refresh_token')) ||
     undefined;
 
+  let signInExpired = false;
   // 1. Primary: Serverless Aggregator Proxy (zero CORS, server-to-server)
   try {
     const proxyRes = await fetch('/api/whoop/biometrics', {
@@ -248,11 +257,14 @@ export async function fetchWhoopDailyBiometrics(
       }
     } else {
       const errJson = await proxyRes.json().catch(() => ({}));
-      console.warn('Whoop biometrics proxy response error:', proxyRes.status, errJson);
+      if (errJson?.error === 'whoop_reconnect_needed') signInExpired = true;
+      else console.warn('Whoop biometrics proxy response error:', proxyRes.status, errJson);
     }
   } catch (proxyErr) {
     console.warn('Whoop biometrics proxy connection error:', proxyErr);
   }
+
+  if (signInExpired) throw new WhoopReconnectNeededError();
 
   // 2. Direct Fallback
   const headers = {

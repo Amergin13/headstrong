@@ -201,6 +201,11 @@ export default async function handler(req: any, res: any) {
       }
     }
 
+    // Still refused after trying to refresh: the sign-in is gone, which is not the same as no data yet.
+    if (recResult.status === 401) {
+      return res.status(401).json({ success: false, error: 'whoop_reconnect_needed' });
+    }
+
     // 2. Fetch Sleep, Cycle, Body, Workout in parallel (prioritizing official v1)
     const [sleepResult, cycleResult, bodyResult, workoutResult] = await Promise.all([
       fetchWithFallback(

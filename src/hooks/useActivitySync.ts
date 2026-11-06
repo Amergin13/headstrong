@@ -51,6 +51,11 @@ export function useActivitySync({ profile, setProfile, activities, setActivities
   const lastSyncRef = useRef(0);
   const latest = useRef({ profile, workouts, activities });
   latest.current = { profile, workouts, activities };
+  // App passes a new notify each render. Held here so a render can't restart the sync: repeated syncs
+  // waste requests, and a burst of refreshes can break a Whoop sign-in (each refresh token works once).
+  const notifyRef = useRef(notify);
+  notifyRef.current = notify;
+  const syncInFlight = useRef(false);
 
   useEffect(() => {
     startHealthConnectBridge();
@@ -73,7 +78,9 @@ export function useActivitySync({ profile, setProfile, activities, setActivities
 
   const syncActivities = useCallback(
     async (force = false) => {
+      if (syncInFlight.current) return;
       if (!force && Date.now() - lastSyncRef.current < RESYNC_MS) return;
+      syncInFlight.current = true;
       lastSyncRef.current = Date.now();
       const { profile: p, workouts: w } = latest.current;
       const hc = getHealthConnectStatus();
@@ -88,6 +95,7 @@ export function useActivitySync({ profile, setProfile, activities, setActivities
       setSyncing(true);
       const results = await Promise.allSettled(jobs);
       setSyncing(false);
+      syncInFlight.current = false;
       const detected = results
         .flatMap((r) => (r.status === 'fulfilled' ? r.value : []))
         .filter((a) => !overlapsLifting(a, w));
@@ -100,12 +108,12 @@ export function useActivitySync({ profile, setProfile, activities, setActivities
       setActivities(merged);
       const counted = added.filter(qualifiesAsActiveDay);
       if (counted.length === 1) {
-        notify(`Found a ${describeActivity(counted[0])} (${SOURCE_LABELS[counted[0].source].replace('From ', '')}). It counts as an active day.`, 'Active day');
+        notifyRef.current(`Found a ${describeActivity(counted[0])} (${SOURCE_LABELS[counted[0].source].replace('From ', '')}). It counts as an active day.`, 'Active day');
       } else if (counted.length > 1) {
-        notify(`Found ${counted.length} workouts from your apps. They count as active days.`, 'Active days');
+        notifyRef.current(`Found ${counted.length} workouts from your apps. They count as active days.`, 'Active days');
       }
     },
-    [setActivities, notify]
+    [setActivities]
   );
 
   // On launch, when Health Connect becomes readable, and whenever the app comes back to the front.
