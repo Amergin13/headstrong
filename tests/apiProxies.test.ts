@@ -4,6 +4,7 @@
  */
 import whoopToken from '../api/whoop/token';
 import whoopBiometrics from '../api/whoop/biometrics';
+import fitbitToken from '../api/fitbit/token';
 import fitbitBiometrics from '../api/fitbit/biometrics';
 import stravaToken from '../api/strava/token';
 import stravaActivities from '../api/strava/activities';
@@ -178,6 +179,65 @@ const iso = (msAgo: number) => new Date(Date.now() - msAgo).toISOString();
   );
   assert(res.body.biometrics.workoutStrain === undefined, 'No Whoop workout in the session window means no strain is attached');
 
+  // ---------------------------------------------------------------- Fitbit / Google Health token proxy
+  console.log('\n[Fitbit / Google Health token proxy]');
+  delete process.env.FITBIT_CLIENT_ID;
+  delete process.env.FITBIT_CLIENT_SECRET;
+  delete process.env.GOOGLE_HEALTH_CLIENT_ID;
+  delete process.env.GOOGLE_HEALTH_CLIENT_SECRET;
+  installFetch(() => ({ status: 200, body: { access_token: 'a' } }));
+  res = mockRes();
+  await fitbitToken({ method: 'GET', headers: {} }, res);
+  assert(
+    res.body?.configured === false && !res.body?.clientId,
+    'Fitbit token proxy reports configured: false when no server client ID and secret are set'
+  );
+  res = mockRes();
+  await fitbitToken({ method: 'POST', headers: { origin: 'https://treise.vercel.app' }, body: 'code=abc&client_id=23QW89' }, res);
+  assert(
+    res.statusCode === 503 && calls.length === 0,
+    'Without FITBIT_CLIENT_SECRET or GOOGLE_HEALTH_CLIENT_SECRET the proxy refuses instead of calling a decommissioned endpoint'
+  );
+
+  process.env.GOOGLE_HEALTH_CLIENT_ID = '123456-gh.apps.googleusercontent.com';
+  process.env.GOOGLE_HEALTH_CLIENT_SECRET = 'gh-server-secret';
+  installFetch((url) =>
+    url.includes('oauth2.googleapis.com/token')
+      ? { status: 200, body: { access_token: 'ya29.test_tok', refresh_token: '1//gh_ref', expires_in: 3599 } }
+      : undefined
+  );
+  res = mockRes();
+  await fitbitToken({ method: 'GET', headers: {} }, res);
+  assert(
+    res.body?.configured === true &&
+      res.body?.mode === 'google_health' &&
+      res.body?.clientId === '123456-gh.apps.googleusercontent.com' &&
+      !JSON.stringify(res.body).includes('gh-server-secret'),
+    'Fitbit token GET exposes Google Health clientId and mode without leaking client secret'
+  );
+  res = mockRes();
+  await fitbitToken(
+    {
+      method: 'POST',
+      headers: { origin: 'https://treise.vercel.app' },
+      body: 'code=authcode&code_verifier=pkce123&client_secret=attacker&redirect_uri=https://evil.example',
+    },
+    res
+  );
+  const sentGh = new URLSearchParams(calls[0]?.init?.body || '');
+  assert(
+    res.statusCode === 200 && res.body?.access_token === 'ya29.test_tok',
+    'Google Health token exchange succeeds via oauth2.googleapis.com/token'
+  );
+  assert(
+    sentGh.get('client_id') === '123456-gh.apps.googleusercontent.com' &&
+      sentGh.get('client_secret') === 'gh-server-secret' &&
+      sentGh.get('redirect_uri') === 'https://treise.vercel.app/oauth/callback',
+    'Google Health token proxy pins client_id, client_secret and redirect_uri server-side'
+  );
+  delete process.env.GOOGLE_HEALTH_CLIENT_ID;
+  delete process.env.GOOGLE_HEALTH_CLIENT_SECRET;
+
   // ---------------------------------------------------------------- Fitbit biometrics proxy
   console.log('\n[Fitbit biometrics proxy]');
   installFetch((url) => {
@@ -197,6 +257,88 @@ const iso = (msAgo: number) => new Date(Date.now() - msAgo).toISOString();
   assert(f.maxWorkoutHr === undefined, 'Does not invent a workout peak heart rate from zone boundaries');
   assert(f.fitbitReadinessScore === undefined, "Does not label its own estimate as Fitbit's readiness score");
   assert(calls.every((c) => !c.url.includes('/date/') || c.url.includes('2026-10-22')), "Uses the athlete's local date sent by the app");
+
+  // Google Health API v4 biometrics & sessions
+  installFetch((url) => {
+    if (url.includes('/dataTypes/daily-resting-heart-rate/dataPoints')) {
+      return { status: 200, body: { dataPoints: [{ beatsPerMinute: 54 }] } };
+    }
+    if (url.includes('/dataTypes/daily-heart-rate-variability/dataPoints')) {
+      return { status: 200, body: { dataPoints: [{ rootMeanSquareOfSuccessiveDifferencesMillis: 63.4 }] } };
+    }
+    if (url.includes('/dataTypes/sleep/dataPoints')) {
+      return {
+        status: 200,
+        body: {
+          dataPoints: [
+            {
+              interval: { startTime: '2026-10-21T23:00:00Z', endTime: '2026-10-22T06:45:00Z' },
+              summary: { totalSleepMinutes: 450 },
+            },
+          ],
+        },
+      };
+    }
+    if (url.includes('/dataTypes/steps/dataPoints')) {
+      return { status: 200, body: { dataPoints: [{ count: 6200 }, { count: 3100 }] } };
+    }
+    if (url.includes('/dataTypes/active-zone-minutes/dataPoints')) {
+      return { status: 200, body: { dataPoints: [{ activeZoneMinutes: 28 }, { activeZoneMinutes: 14 }] } };
+    }
+    if (url.includes('/dataTypes/weight/dataPoints')) {
+      return { status: 200, body: { dataPoints: [{ weightKilograms: 80.64 }] } };
+    }
+    return undefined;
+  });
+  res = mockRes();
+  await fitbitBiometrics(
+    { method: 'POST', headers: { authorization: 'Bearer ya29.google_health_tok' }, body: {}, query: { date: '2026-10-22' } },
+    res
+  );
+  const ghBio = res.body?.biometrics || {};
+  assert(
+    ghBio.restingHr === 54 &&
+      ghBio.hrvRmssd === 63 &&
+      ghBio.sleepHours === 7.5 &&
+      ghBio.steps === 9300 &&
+      ghBio.activeZoneMinutes === 42 &&
+      ghBio.bodyweightKg === 80.6,
+    'Google Health API v4 biometrics: maps RHR, HRV RMSSD, sleep, steps, active zone minutes and weight'
+  );
+
+  installFetch((url) => {
+    if (url.includes('/dataTypes/exercise/dataPoints')) {
+      return {
+        status: 200,
+        body: {
+          dataPoints: [
+            {
+              id: 'gh-ex-1',
+              exerciseType: 'RUNNING',
+              interval: { startTime: '2026-10-22T07:00:00Z', endTime: '2026-10-22T07:35:00Z' },
+              metricsSummary: { distanceMeters: 6400, averageHeartRateBpm: 148.2, activeEnergyKilocalories: 410 },
+            },
+          ],
+        },
+      };
+    }
+    return undefined;
+  });
+  res = mockRes();
+  await fitbitBiometrics(
+    { method: 'POST', headers: {}, body: { mode: 'sessions', accessToken: 'ya29.google_health_tok', afterDate: '2026-10-08' }, query: {} },
+    res
+  );
+  const ghSessions = res.body?.sessions || [];
+  assert(
+    res.body?.success &&
+      ghSessions.length === 1 &&
+      ghSessions[0].externalId === 'gh-ex-1' &&
+      ghSessions[0].minutes === 35 &&
+      ghSessions[0].distanceKm === 6.4 &&
+      ghSessions[0].avgHeartRate === 148,
+    'Google Health API v4 exercise sessions: maps id, duration, distance and average heart rate'
+  );
 
   // ---------------------------------------------------------------- Workout lists for active days
   console.log('\n[Fitbit / Whoop workout lists]');

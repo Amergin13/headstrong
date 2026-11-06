@@ -545,6 +545,7 @@ import {
 import {
   generateRandomString,
   initiateFitbitOAuth,
+  parseFitbitExport,
   simulatePixelWatchSync,
   FITBIT_CONFIG,
 } from '../../services/fitbitService';
@@ -2288,6 +2289,31 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
       fitbitAuthUrl.includes('code_challenge') &&
       fitbitAuthUrl.includes('response_type=code'),
     `Fitbit OAuth 2.0 PKCE generates valid authorization URL with code_challenge`
+  );
+  const googleHealthAuthUrl = await initiateFitbitOAuth('12345-gh.apps.googleusercontent.com');
+  assert(
+    googleHealthAuthUrl.includes('accounts.google.com/o/oauth2/v2/auth') &&
+      googleHealthAuthUrl.includes('googlehealth') &&
+      googleHealthAuthUrl.includes('code_challenge') &&
+      googleHealthAuthUrl.includes('access_type=offline') &&
+      localStorage.getItem('fitbit_code_verifier') !== null &&
+      sessionStorage.getItem('fitbit_code_verifier') !== null,
+    `Google Health API OAuth 2.0 PKCE generates Google authorization URL and persists verifier in localStorage and sessionStorage`
+  );
+  const sampleFitbitCsv = `date,resting_heart_rate,rmssd,minutesAsleep,steps,activeZoneMinutes,weight
+2026-10-20,53,64.8,465,9840,44,80.4`;
+  const parsedFitbitCsv = parseFitbitExport(sampleFitbitCsv);
+  assert(
+    parsedFitbitCsv.length === 1 &&
+      parsedFitbitCsv[0].date === '2026-10-20' &&
+      parsedFitbitCsv[0].restingHr === 53 &&
+      parsedFitbitCsv[0].hrvRmssd === 65 &&
+      parsedFitbitCsv[0].sleepHours === 7.8 &&
+      parsedFitbitCsv[0].steps === 9840 &&
+      parsedFitbitCsv[0].activeZoneMinutes === 44 &&
+      parsedFitbitCsv[0].bodyweightKg === 80.4 &&
+      parsedFitbitCsv[0].source === 'fitbit',
+    `parseFitbitExport parses Fitbit / Google Takeout CSV with RHR, HRV RMSSD, sleep minutes, steps, active zone minutes and weight`
   );
   const fitbitLog = await simulatePixelWatchSync(undefined, 'Primed');
   assert(

@@ -1001,6 +1001,9 @@ export const App: React.FC = () => {
         <WatchSyncModal
           profile={profile}
           latestBiometrics={latestBiometrics}
+          hcStatus={activitySync.hcStatus}
+          onSetHealthConnect={(on) => setProfile((p) => ({ ...p, healthConnectActivities: on }))}
+          onRequestHealthConnectPermission={requestHealthConnectPermission}
           onSyncCompleted={(log, provider) => {
             handleSyncCompleted(log, provider);
             setWatchModalOpen(false);

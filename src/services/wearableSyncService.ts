@@ -198,9 +198,25 @@ export function disconnectWearable(
     updates.fitbitAccessToken = undefined;
     updates.fitbitRefreshToken = undefined;
     updates.fitbitTokenExpiresAt = undefined;
+    if (typeof localStorage !== 'undefined') {
+      try {
+        localStorage.removeItem('fitbit_code_verifier');
+        localStorage.removeItem('fitbit_oauth_state');
+        localStorage.removeItem('fitbit_client_id');
+        localStorage.removeItem('fitbit_redirect_uri');
+      } catch {
+        // Ignore if blocked
+      }
+    }
     if (typeof sessionStorage !== 'undefined') {
-      sessionStorage.removeItem('fitbit_code_verifier');
-      sessionStorage.removeItem('fitbit_oauth_state');
+      try {
+        sessionStorage.removeItem('fitbit_code_verifier');
+        sessionStorage.removeItem('fitbit_oauth_state');
+        sessionStorage.removeItem('fitbit_client_id');
+        sessionStorage.removeItem('fitbit_redirect_uri');
+      } catch {
+        // Ignore if blocked
+      }
     }
   } else if (provider === 'whoop') {
     updates.whoopConnected = false;

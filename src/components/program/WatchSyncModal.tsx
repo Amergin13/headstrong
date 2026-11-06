@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   BiometricLog,
   ReadinessState,
@@ -13,7 +13,12 @@ import {
   disconnectWearable,
   setActiveTracker,
 } from '../../services/wearableSyncService';
-import { initiateFitbitOAuth } from '../../services/fitbitService';
+import {
+  FitbitServerConfig,
+  getFitbitConfig,
+  initiateFitbitOAuth,
+  parseFitbitExport,
+} from '../../services/fitbitService';
 import {
   initiateWhoopOAuth,
   getWhoopRedirectUri,
@@ -21,6 +26,7 @@ import {
   parseWhoopCsvExport,
 } from '../../services/whoopService';
 import { parseHealthConnectExport } from '../../services/healthConnectService';
+import { HealthConnectStatus } from '../../services/healthConnectBridge';
 import { X } from 'lucide-react';
 import { triggerHaptic } from '../../utils/haptics';
 
@@ -29,6 +35,9 @@ interface WatchSyncModalProps {
   latestBiometrics: BiometricLog;
   onSyncCompleted: (newLog: BiometricLog, provider: WearableProvider) => void;
   onUpdateProfile?: (updated: Partial<UserProfile>) => void;
+  hcStatus?: HealthConnectStatus;
+  onSetHealthConnect?: (on: boolean) => void;
+  onRequestHealthConnectPermission?: () => void;
   onClose?: () => void;
   isModal?: boolean;
 }
@@ -40,6 +49,9 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
   latestBiometrics,
   onSyncCompleted,
   onUpdateProfile,
+  hcStatus,
+  onSetHealthConnect,
+  onRequestHealthConnectPermission,
   onClose,
   isModal = false,
 }) => {
@@ -48,17 +60,30 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
   const [syncProgress, setSyncProgress] = useState<WearableSyncProgress | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
   const [importStatus, setImportStatus] = useState<string | null>(null);
+  const [fitbitConfig, setFitbitConfig] = useState<FitbitServerConfig | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  useEffect(() => {
+    let active = true;
+    getFitbitConfig().then((cfg) => {
+      if (active) setFitbitConfig(cfg);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
+
   const providerMeta = WEARABLE_PROVIDERS[selectedProvider];
+  const hcBridgeAvailable = Boolean(hcStatus?.bridge && hcStatus?.available);
+  const hcWorkoutsOn = Boolean(profile.healthConnectActivities && hcStatus?.granted);
 
   const isProviderConnected =
     selectedProvider === 'fitbit'
       ? Boolean(profile.fitbitConnected)
       : selectedProvider === 'whoop'
       ? Boolean(profile.whoopConnected)
-      : Boolean(profile.healthConnectConnected);
+      : Boolean(profile.healthConnectConnected || hcWorkoutsOn);
 
   const isCurrentActive = profile.wearableSource === selectedProvider;
 
@@ -69,6 +94,26 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
       onUpdateProfile(updates);
       setImportStatus(`${providerMeta.name} is now your active tracker.`);
       setTimeout(() => setImportStatus(null), 4000);
+    }
+  };
+
+  const handleToggleHealthConnectWorkouts = () => {
+    triggerHaptic('medium');
+    if (!onSetHealthConnect) return;
+    if (hcWorkoutsOn) {
+      onSetHealthConnect(false);
+      setImportStatus('Health Connect workout sync turned off.');
+    } else {
+      onSetHealthConnect(true);
+      if (onUpdateProfile) {
+        const targetProvider: WearableProvider = selectedProvider === 'fitbit' ? 'fitbit' : 'health_connect';
+        onUpdateProfile(setActiveTracker(targetProvider, profile));
+      }
+      if (!hcStatus?.granted && onRequestHealthConnectPermission) {
+        onRequestHealthConnectPermission();
+      } else {
+        setImportStatus('Health Connect is on. Pixel Watch and Fitbit workouts will count as active days.');
+      }
     }
   };
 
@@ -154,16 +199,46 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
 
     if (selectedProvider === 'fitbit') {
       try {
-        setSyncProgress({
-          stage: 'connecting',
-          percent: 25,
-          message: 'Connecting to Pixel Watch / Fitbit...',
-          provider: 'fitbit',
-        });
-        const url = await initiateFitbitOAuth();
-        if (typeof window !== 'undefined') {
-          window.location.href = url;
+        const cfg = fitbitConfig ?? (await getFitbitConfig());
+        setFitbitConfig(cfg);
+
+        if (cfg.configured && cfg.clientId) {
+          setSyncProgress({
+            stage: 'connecting',
+            percent: 25,
+            message: 'Connecting to Pixel Watch / Fitbit...',
+            provider: 'fitbit',
+          });
+          const url = await initiateFitbitOAuth(cfg.clientId, cfg.redirectUri);
+          if (typeof window !== 'undefined') {
+            window.location.href = url;
+          }
+          return;
         }
+
+        // In the Android app, Pixel Watch and Fitbit sync on-device through Health Connect.
+        if (hcBridgeAvailable && onSetHealthConnect) {
+          onSetHealthConnect(true);
+          if (onUpdateProfile) {
+            onUpdateProfile(setActiveTracker('fitbit', profile));
+          }
+          if (!hcStatus?.granted && onRequestHealthConnectPermission) {
+            onRequestHealthConnectPermission();
+          }
+          setSyncProgress(null);
+          setImportStatus(
+            hcStatus?.granted
+              ? 'Health Connect is on. Your Pixel Watch and Fitbit workouts count as active days automatically.'
+              : 'Allow Treise in Health Connect so your Pixel Watch and Fitbit workouts sync automatically.'
+          );
+          setIsSyncing(false);
+          return;
+        }
+
+        // Otherwise open the Fitbit / Health Connect file import
+        setSyncProgress(null);
+        setIsSyncing(false);
+        fileInputRef.current?.click();
       } catch (err) {
         console.error('Failed to initiate Fitbit OAuth:', err);
         setSyncProgress({
@@ -190,25 +265,26 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
       const updates = disconnectWearable(selectedProvider, profile);
       onUpdateProfile(updates);
     }
+    if ((selectedProvider === 'health_connect' || selectedProvider === 'fitbit') && hcWorkoutsOn && onSetHealthConnect) {
+      onSetHealthConnect(false);
+    }
     setSyncProgress(null);
   };
 
-  // A web app can't read Health Connect directly, so it only counts as connected after a real file import.
   const handleHealthConnectSettings = () => {
     triggerHaptic('light');
     fileInputRef.current?.click();
   };
 
-
   const handleFileImport = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
+    const lowerName = file.name.toLowerCase();
     const isWhoopCsv =
       selectedProvider === 'whoop' ||
-      file.name.toLowerCase().endsWith('.csv') ||
-      file.name.toLowerCase().includes('cycles') ||
-      file.name.toLowerCase().includes('sleep');
+      lowerName.includes('cycles') ||
+      lowerName.includes('whoop');
 
     const reader = new FileReader();
     reader.onload = (e) => {
@@ -232,24 +308,49 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
           }
         }
 
+        if (selectedProvider === 'fitbit') {
+          const parsed = parseFitbitExport(text);
+          if (parsed.length > 0) {
+            const latest = parsed[parsed.length - 1];
+            onSyncCompleted(latest, 'fitbit');
+            if (onUpdateProfile) {
+              onUpdateProfile({
+                ...setActiveTracker('fitbit', profile),
+                fitbitConnected: true,
+              });
+            }
+            setImportStatus(`Imported ${parsed.length} recovery records from your Pixel Watch / Fitbit file.`);
+            triggerHaptic('success');
+            return;
+          }
+        }
+
         const parsed = parseHealthConnectExport(text);
         if (parsed.length > 0) {
           const latest = parsed[parsed.length - 1];
-          onSyncCompleted(latest, 'health_connect');
+          const targetProvider: WearableProvider = selectedProvider === 'fitbit' ? 'fitbit' : 'health_connect';
+          onSyncCompleted(latest, targetProvider);
           if (onUpdateProfile) {
-            onUpdateProfile({
-              ...setActiveTracker('health_connect', profile),
-              healthConnectConnected: true,
-              healthConnectLastSync: new Date().toISOString(),
-            });
+            onUpdateProfile(
+              targetProvider === 'fitbit'
+                ? {
+                    ...setActiveTracker('fitbit', profile),
+                    fitbitConnected: true,
+                  }
+                : {
+                    ...setActiveTracker('health_connect', profile),
+                    healthConnectConnected: true,
+                    healthConnectLastSync: new Date().toISOString(),
+                  }
+            );
           }
-          setImportStatus(`Imported ${parsed.length} biometric records from Health Connect.`);
+          setImportStatus(`Imported ${parsed.length} biometric records.`);
           triggerHaptic('success');
         } else {
           setImportStatus('No biometric records found in file.');
         }
       } catch {
-        setImportStatus('Failed to read file. Please ensure it is a valid Whoop CSV or Health Connect JSON export.');
+        setImportStatus('Failed to read file. Please ensure it is a valid Fitbit, Whoop CSV, or Health Connect JSON export.');
       }
     };
     reader.readAsText(file);
@@ -350,13 +451,22 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
           >
             Set as Active
           </button>
+        ) : selectedProvider === 'fitbit' && hcWorkoutsOn ? (
+          <span className="wk-pill shrink-0">HEALTH CONNECT ON</span>
         ) : (
           <span className="wk-pill shrink-0">NOT CONNECTED</span>
         )}
       </div>
 
       <div className="wk-bar" style={{ marginTop: fig(24) }}>
-        <div style={{ width: isProviderConnected ? '100%' : '0%' }} />
+        <div
+          style={{
+            width:
+              isProviderConnected || (selectedProvider === 'fitbit' && hcWorkoutsOn)
+                ? '100%'
+                : '0%',
+          }}
+        />
       </div>
 
       {isProviderConnected ? (
@@ -407,9 +517,15 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
           {selectedProvider === 'whoop' &&
             'Sync your overnight recovery score, HRV, resting heart rate, and sleep duration automatically to calibrate your daily training volume and RIR targets.'}
           {selectedProvider === 'fitbit' &&
-            'Sync your daily readiness score, resting heart rate, and sleep staging directly from your Google Pixel Watch or Fitbit tracker.'}
+            (fitbitConfig?.configured
+              ? 'Sync your daily readiness score, resting heart rate, and sleep staging directly from your Google Pixel Watch or Fitbit tracker.'
+              : hcBridgeAvailable
+              ? 'On Android, the Fitbit app and Pixel Watch sync workouts through Health Connect on this phone. Turn on Health Connect below so your rides, runs and walks count as active days, or import a Fitbit / Health Connect file for recovery data.'
+              : 'Sync your Pixel Watch or Fitbit workouts automatically in the Treise Android app through Health Connect, or import a Fitbit / Health Connect export file below.')}
           {selectedProvider === 'health_connect' &&
-            "In the Treise app from Google Play, Health Connect workouts count as active days (turn it on in Activity apps). Recovery data from Health Connect isn't read yet; if you have a JSON export of it, import it here."}
+            (hcBridgeAvailable
+              ? 'Allow Health Connect below so workouts from Fitbit, Pixel Watch, Samsung Health and Garmin count as active days automatically. You can also import a JSON export file for recovery metrics.'
+              : "In the Treise app from Google Play, Health Connect workouts count as active days (turn it on in Activity apps). Recovery data from Health Connect isn't read yet; if you have a JSON export of it, import it here.")}
         </p>
       )}
 
@@ -441,11 +557,31 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
 
         {selectedProvider === 'health_connect' ? (
           <>
+            {hcBridgeAvailable && onSetHealthConnect && (
+              <button
+                type="button"
+                onClick={handleToggleHealthConnectWorkouts}
+                className="wk-button min-h-[44px]"
+                style={{
+                  background: hcWorkoutsOn ? 'var(--wk-raised)' : 'var(--wk-accent)',
+                  color: hcWorkoutsOn ? '#fff' : '#13181C',
+                }}
+              >
+                {hcWorkoutsOn
+                  ? 'Turn off Health Connect workouts'
+                  : hcStatus?.granted
+                  ? 'Turn on Health Connect workouts'
+                  : 'Allow access in Health Connect'}
+              </button>
+            )}
             <button
               type="button"
               onClick={handleHealthConnectSettings}
               className="wk-button min-h-[44px]"
-              style={{ background: 'var(--wk-accent)', color: '#13181C' }}
+              style={{
+                background: hcBridgeAvailable ? 'var(--wk-raised)' : 'var(--wk-accent)',
+                color: hcBridgeAvailable ? '#fff' : '#13181C',
+              }}
             >
               Import health data file (JSON)
             </button>
@@ -463,14 +599,41 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
               </button>
             )}
 
+            {((selectedProvider === 'whoop' && profile.whoopAccessToken) ||
+              (selectedProvider === 'fitbit' && profile.fitbitAccessToken)) && (
+              <button
+                type="button"
+                disabled={isSyncing}
+                onClick={() => handleStartSync()}
+                className="wk-button min-h-[44px] disabled:opacity-50"
+                style={{ background: 'var(--wk-accent)', color: '#13181C' }}
+              >
+                Sync {providerMeta.name} Now
+              </button>
+            )}
+
+            {selectedProvider === 'fitbit' && hcBridgeAvailable && onSetHealthConnect && (
+              <button
+                type="button"
+                onClick={handleToggleHealthConnectWorkouts}
+                className="wk-button min-h-[44px]"
+                style={{ background: 'var(--wk-raised)', color: '#fff' }}
+              >
+                {hcWorkoutsOn
+                  ? 'Turn off Health Connect workouts'
+                  : hcStatus?.granted
+                  ? 'Turn on Health Connect workouts'
+                  : 'Allow access in Health Connect'}
+              </button>
+            )}
+
             <button
               type="button"
-              disabled={isSyncing}
-              onClick={() => handleStartSync()}
-              className="wk-button min-h-[44px] disabled:opacity-50"
-              style={{ background: 'var(--wk-accent)', color: '#13181C' }}
+              onClick={handleHealthConnectSettings}
+              className="wk-button min-h-[44px]"
+              style={{ background: 'var(--wk-raised)', color: '#fff' }}
             >
-              Sync {providerMeta.name} Now
+              Import {selectedProvider === 'whoop' ? 'Whoop CSV' : 'Fitbit / Health Connect'} file
             </button>
 
             <button
@@ -482,21 +645,62 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
               Disconnect {providerMeta.name}
             </button>
           </>
+        ) : selectedProvider === 'fitbit' && fitbitConfig && !fitbitConfig.configured ? (
+          <>
+            {hcBridgeAvailable && onSetHealthConnect && (
+              <button
+                type="button"
+                onClick={handleToggleHealthConnectWorkouts}
+                className="wk-button min-h-[44px]"
+                style={{
+                  background: hcWorkoutsOn ? 'var(--wk-raised)' : 'var(--wk-accent)',
+                  color: hcWorkoutsOn ? '#fff' : '#13181C',
+                }}
+              >
+                {hcWorkoutsOn
+                  ? 'Turn off Health Connect workouts'
+                  : hcStatus?.granted
+                  ? 'Turn on Health Connect workouts'
+                  : 'Connect Pixel Watch / Fitbit via Health Connect'}
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={handleHealthConnectSettings}
+              className="wk-button min-h-[44px]"
+              style={{
+                background: hcBridgeAvailable ? 'var(--wk-raised)' : 'var(--wk-accent)',
+                color: hcBridgeAvailable ? '#fff' : '#13181C',
+              }}
+            >
+              Import Fitbit or Health Connect file (.json / .csv)
+            </button>
+          </>
         ) : (
-          <button
-            type="button"
-            disabled={isSyncing}
-            onClick={handleConnectProvider}
-            className="wk-button min-h-[44px] disabled:opacity-50"
-            style={{ background: 'var(--wk-accent)', color: '#13181C' }}
-          >
-            {isSyncing ? `Connecting to ${providerMeta.name}...` : `Connect ${providerMeta.name}`}
-          </button>
+          <>
+            <button
+              type="button"
+              disabled={isSyncing}
+              onClick={handleConnectProvider}
+              className="wk-button min-h-[44px] disabled:opacity-50"
+              style={{ background: 'var(--wk-accent)', color: '#13181C' }}
+            >
+              {isSyncing ? `Connecting to ${providerMeta.name}...` : `Connect ${providerMeta.name}`}
+            </button>
+            <button
+              type="button"
+              onClick={handleHealthConnectSettings}
+              className="wk-button min-h-[44px]"
+              style={{ background: 'var(--wk-raised)', color: '#fff' }}
+            >
+              Import {selectedProvider === 'whoop' ? 'Whoop CSV' : 'Fitbit / Health Connect'} file
+            </button>
+          </>
         )}
       </div>
 
       <p className="wk-caption" style={{ marginTop: fig(24) }}>
-        Treise fetches your wearable data through its own server, which doesn't store it. Your history stays on this phone.
+        Treise fetches your wearable data through its own server, which doesn&apos;t store it. Your history stays on this phone.
       </p>
     </div>
   );
