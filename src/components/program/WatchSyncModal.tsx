@@ -87,7 +87,7 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
       ? Boolean(profile.fitbitConnected)
       : selectedProvider === 'whoop'
       ? Boolean(profile.whoopConnected)
-      : Boolean(profile.healthConnectConnected || hcWorkoutsOn);
+      : Boolean(profile.healthConnectConnected);
 
   const isCurrentActive = profile.wearableSource === selectedProvider;
 
@@ -439,8 +439,8 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
           >
             Set as Active
           </button>
-        ) : selectedProvider === 'fitbit' && hcWorkoutsOn ? (
-          <span className="wk-pill shrink-0">HEALTH CONNECT ON</span>
+        ) : (selectedProvider === 'fitbit' || selectedProvider === 'health_connect') && hcWorkoutsOn ? (
+          <span className="wk-pill shrink-0">WORKOUTS ON</span>
         ) : (
           <span className="wk-pill shrink-0">NOT CONNECTED</span>
         )}
@@ -450,7 +450,7 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
         <div
           style={{
             width:
-              isProviderConnected || (selectedProvider === 'fitbit' && hcWorkoutsOn)
+              isProviderConnected || ((selectedProvider === 'fitbit' || selectedProvider === 'health_connect') && hcWorkoutsOn)
                 ? '100%'
                 : '0%',
           }}

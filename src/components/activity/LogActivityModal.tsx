@@ -6,7 +6,7 @@ import { triggerHaptic } from '../../utils/haptics';
 
 const fig = (px: number) => `calc(${px} * var(--f))`;
 
-const TYPES: ActivityType[] = ['walk', 'run', 'cycle', 'swim', 'class', 'sport', 'row', 'elliptical', 'hike', 'other'];
+const TYPES: ActivityType[] = ['walk', 'run', 'cycle', 'swim', 'class', 'sport', 'row', 'elliptical', 'hike', 'strength', 'other'];
 const MINUTES = [20, 30, 45, 60];
 
 interface LogActivityModalProps {

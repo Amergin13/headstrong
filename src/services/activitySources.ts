@@ -5,8 +5,8 @@ import { publishRefreshedTokens } from './wearableTokens';
 
 /**
  * Reads recent workouts from the sources the athlete connected (Fitbit / Pixel Watch, Whoop,
- * Strava) through Treise's serverless functions, and turns them into activities. Lifting is left
- * out (it is the lifting session itself). Nothing is invented: each activity carries its source's id.
+ * Strava) through Treise's serverless functions, and turns them into activities. Every kind of
+ * workout is kept. Nothing is invented: each activity carries its source's id.
  */
 
 /** A workout as a source reports it, before classification. */
@@ -21,12 +21,12 @@ export interface RawSourceSession {
   avgHeartRate?: number;
 }
 
-/** Classifies raw sessions; lifting and empty ones are dropped. */
+/** Classifies raw sessions; only empty ones are dropped. */
 export function toDetectedActivities(source: ActivitySource, raw: RawSourceSession[]): DetectedActivity[] {
   const out: DetectedActivity[] = [];
   for (const r of raw) {
     const type = classifyActivity(r.sportType || r.name);
-    if (type === 'strength' || !(r.minutes > 0)) continue;
+    if (!(r.minutes > 0)) continue;
     out.push({
       externalId: String(r.externalId),
       startedAt: r.startedAt,
@@ -41,7 +41,8 @@ export function toDetectedActivities(source: ActivitySource, raw: RawSourceSessi
   return out;
 }
 
-const LOOKBACK_DAYS = 14;
+/** Health Connect only allows 30 days back without its history permission. */
+export const LOOKBACK_DAYS = 29;
 
 async function postJson(url: string, body: unknown): Promise<any> {
   const res = await fetch(url, {

@@ -2558,7 +2558,7 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
     `Whoop 49% recovery reason indicates 49% Yellow recovery (${readinessWhoop49.reason})`
   );
 
-  // 7. Single Tracker Exclusivity (setActiveTracker)
+  // 7. One recovery tracker; other connections stay connected (setActiveTracker)
   const multiProfile: UserProfile = {
     ...testProfile,
     fitbitConnected: true,
@@ -2570,18 +2570,18 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
   assert(
     activeFitbitUpdates.wearableSource === 'fitbit' &&
       activeFitbitUpdates.fitbitConnected === true &&
-      activeFitbitUpdates.whoopConnected === false &&
-      activeFitbitUpdates.healthConnectConnected === false,
-    'setActiveTracker(fitbit) activates only Fitbit and deactivates Whoop and Health Connect'
+      activeFitbitUpdates.whoopConnected === undefined &&
+      activeFitbitUpdates.healthConnectConnected === undefined,
+    'setActiveTracker(fitbit) makes Fitbit the recovery tracker and leaves Whoop and Health Connect connected'
   );
 
   const activeWhoopUpdates = setActiveTracker('whoop', multiProfile);
   assert(
     activeWhoopUpdates.wearableSource === 'whoop' &&
       activeWhoopUpdates.whoopConnected === true &&
-      activeWhoopUpdates.fitbitConnected === false &&
-      activeWhoopUpdates.healthConnectConnected === false,
-    'setActiveTracker(whoop) activates only Whoop and deactivates Fitbit and Health Connect'
+      activeWhoopUpdates.fitbitConnected === undefined &&
+      activeWhoopUpdates.healthConnectConnected === undefined,
+    'setActiveTracker(whoop) makes Whoop the recovery tracker and leaves Fitbit and Health Connect connected'
   );
 
   const activeNoneUpdates = setActiveTracker(null, multiProfile);
@@ -5148,7 +5148,7 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
       { externalId: 'b', sportType: 'WeightTraining', startedAt: '2026-10-20T17:00:00.000Z', minutes: 50 },
     ];
     const det = toDetectedActivities('fitbit', raw);
-    assert(det.length === 1 && det[0].type === 'cycle' && det[0].source === 'fitbit', 'Lifting from an app never becomes an active day');
+    assert(det.length === 2 && det[0].type === 'cycle' && det[1].type === 'strength' && det[1].source === 'fitbit', 'A workout from any app is captured, including strength done outside Treise');
     // Strava is off for the beta: even a profile saved as connected never reaches it.
     const stravaFound = await fetchStravaActivities({ stravaConnected: true, stravaAccessToken: 'test' } as any);
     const stravaStarted = await startStravaConnect();
@@ -5168,11 +5168,22 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
       first.added.length === 1 && again.added.length === 0 && dismissed.added.length === 0 && first.added[0].date === localDateString(new Date(ride.startedAt)),
       'Found workouts: one per real session, never duplicated, and a removed one stays removed'
     );
+    const shortCopyFirst = ad.mergeDetectedActivities([], [{ ...ride, externalId: 'stub', source: 'health_connect' as const, minutes: 1 }, ride]);
+    assert(shortCopyFirst.added.length === 1 && shortCopyFirst.added[0].minutes === 40, 'When two apps recorded one workout, the longest recording is kept');
+    const backToBack = ad.mergeDetectedActivities([], [
+      { ...ride, externalId: 'w', type: 'walk' as const, startedAt: '2026-10-21T06:00:00.000Z', minutes: 20 },
+      { ...ride, externalId: 'c', startedAt: '2026-10-21T06:25:00.000Z', minutes: 30 },
+    ]);
+    assert(backToBack.added.length === 2, 'A walk and a ride straight after it are two workouts');
     const lift = { id: 'l', date: '2026-10-21', name: 'Full Body A', splitDay: 'Push' as const, exercises: [], completed: true, readinessState: 'Normal' as const, readinessZScore: 0, startedAt: '2026-10-21T17:00:00.000Z', completedAt: '2026-10-21T18:00:00.000Z' };
     assert(
       ad.overlapsLifting({ startedAt: '2026-10-21T17:10:00.000Z', minutes: 45 }, [lift as any]) &&
         !ad.overlapsLifting({ startedAt: '2026-10-21T06:00:00.000Z', minutes: 45 }, [lift as any]),
       'A watch workout recorded during a lifting session is that session, not an active day'
+    );
+    assert(
+      !ad.overlapsLifting({ startedAt: new Date(new Date((lift as any).startedAt).getTime() - 40 * 60000).toISOString(), minutes: 42 }, [lift as any]),
+      'A ride that ends as a logged session starts is still its own workout'
     );
 
     // Plan: lift 3 days + 1 active day. Active days fill one per week, up to the current week.

@@ -12,6 +12,7 @@ import {
   qualifiesAsActiveDay,
 } from '../engine/activeDays';
 import {
+  LOOKBACK_DAYS,
   exchangeStravaCode,
   fetchFitbitActivities,
   fetchStravaActivities,
@@ -29,7 +30,7 @@ import {
 import { loadDismissedActivityIds, saveDismissedActivityIds } from '../services/storage';
 
 const RESYNC_MS = 10 * 60 * 1000;
-const LOOKBACK_MS = 14 * 24 * 60 * 60 * 1000;
+const LOOKBACK_MS = LOOKBACK_DAYS * 24 * 60 * 60 * 1000;
 
 interface ActivitySyncDeps {
   profile: UserProfile;

@@ -172,11 +172,13 @@ export function setActiveTracker(
     };
   }
 
+  // One tracker feeds recovery, because scores and baselines from two devices can't be mixed. Other
+  // connections stay connected: their workouts still count.
   return {
     wearableSource: provider,
-    fitbitConnected: provider === 'fitbit',
-    whoopConnected: provider === 'whoop',
-    healthConnectConnected: provider === 'health_connect',
+    ...(provider === 'fitbit' ? { fitbitConnected: true } : {}),
+    ...(provider === 'whoop' ? { whoopConnected: true } : {}),
+    ...(provider === 'health_connect' ? { healthConnectConnected: true } : {}),
     healthConnectLastSync:
       provider === 'health_connect'
         ? new Date().toISOString()

@@ -150,7 +150,15 @@ export default async function handler(req: any, res: any) {
       if (!result.ok) {
         return res.status(result.status || 502).json({ success: false, error: 'Could not read Whoop workouts', refreshedTokens });
       }
-      const records: any[] = Array.isArray(result.data?.records) ? result.data.records : [];
+      const records: any[] = Array.isArray(result.data?.records) ? [...result.data.records] : [];
+      // Whoop returns at most 25 at a time; a busy month can run past that.
+      let nextToken = result.data?.next_token;
+      for (let page = 0; nextToken && page < 4; page++) {
+        const next = await fetchWithFallback(currentToken, `${url}&nextToken=${encodeURIComponent(nextToken)}`);
+        if (!next.ok || !Array.isArray(next.data?.records)) break;
+        records.push(...next.data.records);
+        nextToken = next.data.next_token;
+      }
       const sessions = records
         .filter((r) => r && r.start && r.end)
         .map((r) => ({
