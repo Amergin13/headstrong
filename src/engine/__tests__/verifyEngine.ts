@@ -5401,6 +5401,20 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
     assert(rejected && sent[sent.length - 1].type === 'ble-stop', 'Closing the form stops listening');
     rb.clearSavedRenphoDevices();
     assert((await rb.resolveRememberedBleDevice('scale')) === null, 'Forgetting the scale clears it');
+    // Captured on a real Pixel: Chrome hands the page the channel with empty data, from android-app://<site>,
+    // and the app's hello arrives on the channel. The page must keep it, or the app can't reach anything.
+    {
+      const { receiveAppChannel, isAppBridgeReady, getAppBridgeVersion, canOpenAppScreens } = await import('../../services/healthConnectBridge');
+      const trusted = new MessageChannel();
+      const accepted = receiveAppChannel({ origin: 'android-app://treise.vercel.app', data: '', ports: [trusted.port1] as any }, 'https://treise.vercel.app', 'treise.vercel.app');
+      const stranger = new MessageChannel();
+      const rejected = receiveAppChannel({ origin: 'https://evil.example', data: '', ports: [stranger.port1] as any }, 'https://treise.vercel.app', 'treise.vercel.app');
+      trusted.port2.postMessage(JSON.stringify({ type: 'hello', version: 3 }));
+      await new Promise((r) => setTimeout(r, 20));
+      assert(accepted && !rejected && isAppBridgeReady() && getAppBridgeVersion() === 3 && canOpenAppScreens(), 'The page keeps the channel Chrome hands it from the verified app, reads the hello on it, and ignores other senders');
+      trusted.port1.close();
+      stranger.port1.close();
+    }
   }
 
   console.log('\nALL 40 ENGINE, GOVERNANCE, DESIGN HEURISTICS, TYPOGRAPHY, WEARABLES, WHOOP STRAIN, GOOGLE AUTH, ONBOARDING CONTEXT, 6-WEEK PROGRAM, TENSOR AI, SESSION REPORT, WORKOUT PAGE, EXERCISE OVERVIEW & RENPHO BLUETOOTH SUITES PASSED SUCCESSFULLY! 🎯');

@@ -59,8 +59,8 @@ android {
         // Health Connect's SDK needs Android 8 (API 26) or later.
         minSdkVersion 26
         targetSdkVersion 36
-        versionCode 17
-        versionName "1.2.3"
+        versionCode 18
+        versionName "1.2.4"
 
         // The name for the application
         resValue "string", "appName", twaManifest.name

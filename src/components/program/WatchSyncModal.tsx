@@ -37,12 +37,16 @@ interface WatchSyncModalProps {
   onUpdateProfile?: (updated: Partial<UserProfile>) => void;
   hcStatus?: HealthConnectStatus;
   onSetHealthConnect?: (on: boolean) => void;
-  onRequestHealthConnectPermission?: () => void;
+  /** False when the installed app is too old to open the permission screen. */
+  onRequestHealthConnectPermission?: () => boolean | void;
   onClose?: () => void;
   isModal?: boolean;
 }
 
 const fig = (px: number) => `calc(${px} * var(--f))`;
+
+const UPDATE_APP_FOR_PERMISSION =
+  'Update Treise from Google Play to allow this here. Or open Android Settings, then Health Connect, then App permissions, and allow Treise.';
 
 export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
   profile,
@@ -104,13 +108,10 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
       onSetHealthConnect(false);
       setImportStatus('Health Connect workout sync turned off.');
     } else {
+      // Health Connect only adds workouts here, so the recovery tracker (and its connection) stays as it is.
       onSetHealthConnect(true);
-      if (onUpdateProfile) {
-        const targetProvider: WearableProvider = selectedProvider === 'fitbit' ? 'fitbit' : 'health_connect';
-        onUpdateProfile(setActiveTracker(targetProvider, profile));
-      }
       if (!hcStatus?.granted && onRequestHealthConnectPermission) {
-        onRequestHealthConnectPermission();
+        if (onRequestHealthConnectPermission() === false) setImportStatus(UPDATE_APP_FOR_PERMISSION);
       } else {
         setImportStatus('Health Connect is on. Pixel Watch and Fitbit workouts will count as active days.');
       }
@@ -219,15 +220,12 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
         // In the Android app, Pixel Watch and Fitbit sync on-device through Health Connect.
         if (hcBridgeAvailable && onSetHealthConnect) {
           onSetHealthConnect(true);
-          if (onUpdateProfile) {
-            onUpdateProfile(setActiveTracker('fitbit', profile));
-          }
-          if (!hcStatus?.granted && onRequestHealthConnectPermission) {
-            onRequestHealthConnectPermission();
-          }
+          const opened = !hcStatus?.granted && onRequestHealthConnectPermission ? onRequestHealthConnectPermission() : true;
           setSyncProgress(null);
           setImportStatus(
-            hcStatus?.granted
+            opened === false
+              ? UPDATE_APP_FOR_PERMISSION
+              : hcStatus?.granted
               ? 'Health Connect is on. Your Pixel Watch and Fitbit workouts count as active days automatically.'
               : 'Allow Treise in Health Connect so your Pixel Watch and Fitbit workouts sync automatically.'
           );
@@ -312,14 +310,9 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
           const parsed = parseFitbitExport(text);
           if (parsed.length > 0) {
             const latest = parsed[parsed.length - 1];
+            // A file is a one-off: it doesn't connect Fitbit. Only the latest day is saved.
             onSyncCompleted(latest, 'fitbit');
-            if (onUpdateProfile) {
-              onUpdateProfile({
-                ...setActiveTracker('fitbit', profile),
-                fitbitConnected: true,
-              });
-            }
-            setImportStatus(`Imported ${parsed.length} recovery records from your Pixel Watch / Fitbit file.`);
+            setImportStatus(`Saved your latest day from this file (${latest.date}).`);
             triggerHaptic('success');
             return;
           }
@@ -331,20 +324,15 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
           const targetProvider: WearableProvider = selectedProvider === 'fitbit' ? 'fitbit' : 'health_connect';
           onSyncCompleted(latest, targetProvider);
           if (onUpdateProfile) {
-            onUpdateProfile(
-              targetProvider === 'fitbit'
-                ? {
-                    ...setActiveTracker('fitbit', profile),
-                    fitbitConnected: true,
-                  }
-                : {
-                    ...setActiveTracker('health_connect', profile),
-                    healthConnectConnected: true,
-                    healthConnectLastSync: new Date().toISOString(),
-                  }
-            );
+            if (targetProvider === 'health_connect') {
+              onUpdateProfile({
+                ...setActiveTracker('health_connect', profile),
+                healthConnectConnected: true,
+                healthConnectLastSync: new Date().toISOString(),
+              });
+            }
           }
-          setImportStatus(`Imported ${parsed.length} biometric records.`);
+          setImportStatus(`Saved your latest day from this file (${latest.date}).`);
           triggerHaptic('success');
         } else {
           setImportStatus('No biometric records found in file.');

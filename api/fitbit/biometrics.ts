@@ -24,17 +24,39 @@ function isGoogleHealthTokenOrClient(token: string, apiMode?: string, clientId?:
   return false;
 }
 
-function matchesTargetDate(dateObj: any, isoTimestamp: string | undefined, targetDate: string): boolean {
-  if (dateObj && typeof dateObj.year === 'number') {
-    const y = String(dateObj.year).padStart(4, '0');
-    const m = String(dateObj.month || 1).padStart(2, '0');
-    const d = String(dateObj.day || 1).padStart(2, '0');
-    return `${y}-${m}-${d}` === targetDate;
-  }
-  if (typeof isoTimestamp === 'string' && isoTimestamp.length >= 10) {
-    return isoTimestamp.slice(0, 10) === targetDate;
-  }
-  return true;
+function dateFromObject(dateObj: any): string | undefined {
+  if (!dateObj || typeof dateObj.year !== 'number') return undefined;
+  const y = String(dateObj.year).padStart(4, '0');
+  const m = String(dateObj.month || 1).padStart(2, '0');
+  const d = String(dateObj.day || 1).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+/** The athlete's own calendar date for a Google Health time: its civil time, else UTC plus its offset. */
+function localDateOf(civil: any, iso: unknown, utcOffset: unknown): string | undefined {
+  if (typeof civil === 'string' && civil.length >= 10) return civil.slice(0, 10);
+  const fromCivil = dateFromObject(civil?.date ?? civil);
+  if (fromCivil) return fromCivil;
+  if (typeof iso !== 'string') return undefined;
+  const ms = new Date(iso).getTime();
+  if (Number.isNaN(ms)) return undefined;
+  const offsetSeconds = typeof utcOffset === 'string' ? parseFloat(utcOffset) || 0 : 0;
+  return new Date(ms + offsetSeconds * 1000).toISOString().slice(0, 10);
+}
+
+function intervalEndDate(interval: any): string | undefined {
+  return localDateOf(interval?.civilEndTime, interval?.endTime, interval?.endUtcOffset);
+}
+
+function intervalStartDate(interval: any): string | undefined {
+  return localDateOf(interval?.civilStartTime, interval?.startTime, interval?.startUtcOffset);
+}
+
+/** Google's durations are strings such as "3.5s". */
+function durationMs(value: unknown): number {
+  if (typeof value !== 'string') return 0;
+  const seconds = parseFloat(value);
+  return value.endsWith('s') && seconds > 0 ? seconds * 1000 : 0;
 }
 
 /**
@@ -137,7 +159,7 @@ export default async function handler(req: any, res: any) {
 
     if (body.mode === 'sessions') {
       const afterDate = /^\d{4}-\d{2}-\d{2}$/.test(String(body.afterDate || '')) ? String(body.afterDate) : targetDate;
-      const url = `${ghBase}/exercise/dataPoints:reconcile?pageSize=50`;
+      const url = `${ghBase}/exercise/dataPoints:reconcile?pageSize=25`;
       try {
         let result = await fetchJson(url, currentToken);
         if (result.status === 401 && refreshToken) {
@@ -161,20 +183,16 @@ export default async function handler(req: any, res: any) {
         }
         const points: any[] = Array.isArray(result.data?.dataPoints) ? result.data.dataPoints : [];
         const sessions = points
-          .map((dp, idx) => {
-            const ex = dp?.exercise || dp;
-            const startTime = ex?.interval?.startTime || dp?.startTime;
-            const endTime = ex?.interval?.endTime || dp?.endTime;
+          .map((dp) => {
+            const ex = dp?.exercise;
+            const startTime = ex?.interval?.startTime;
+            const endTime = ex?.interval?.endTime;
             if (!startTime) return null;
             const startIso = new Date(startTime).toISOString();
-            if (startIso.slice(0, 10) < afterDate) return null;
-            const activeMs = Number(ex?.activeDurationMillis ?? ex?.durationMillis ?? 0);
-            const spanMs =
-              activeMs > 0
-                ? activeMs
-                : endTime
-                ? new Date(endTime).getTime() - new Date(startTime).getTime()
-                : 0;
+            if ((intervalStartDate(ex.interval) ?? startIso.slice(0, 10)) < afterDate) return null;
+            // Time spent moving where the watch reports it, else the session's length.
+            const activeMs = durationMs(ex?.activeDuration);
+            const spanMs = activeMs > 0 ? activeMs : endTime ? new Date(endTime).getTime() - new Date(startTime).getTime() : 0;
             const minutes = Math.round(spanMs / 60000);
             if (!(minutes > 0)) return null;
             const distMeters = Number(
@@ -190,10 +208,11 @@ export default async function handler(req: any, res: any) {
                 ex?.averageHeartRateBpm ??
                 0
             );
-            const rawId = dp?.id || (dp?.name ? String(dp.name).split('/').pop() : `gh-${idx}-${startIso}`);
+            // Stable across syncs, so the same workout is never added twice.
+            const rawId = dp?.dataPointName ? String(dp.dataPointName).split('/').pop() : `gh-${startIso}`;
             return {
               externalId: String(rawId),
-              name: ex?.title || ex?.exerciseType || undefined,
+              name: ex?.displayName || ex?.exerciseType || undefined,
               sportType: ex?.exerciseType || undefined,
               startedAt: startIso,
               minutes,
@@ -229,8 +248,8 @@ export default async function handler(req: any, res: any) {
       const [hrvRes, sleepRes, stepsRes, azmRes, weightRes] = await Promise.all([
         fetchJson(`${ghBase}/daily-heart-rate-variability/dataPoints:reconcile?pageSize=14`, currentToken),
         fetchJson(`${ghBase}/sleep/dataPoints:reconcile?pageSize=14`, currentToken),
-        fetchJson(`${ghBase}/steps/dataPoints:reconcile?pageSize=100`, currentToken),
-        fetchJson(`${ghBase}/active-zone-minutes/dataPoints:reconcile?pageSize=100`, currentToken),
+        fetchJson(`${ghBase}/steps/dataPoints:reconcile?pageSize=10000`, currentToken),
+        fetchJson(`${ghBase}/active-zone-minutes/dataPoints:reconcile?pageSize=10000`, currentToken),
         fetchJson(`${ghBase}/weight/dataPoints:reconcile?pageSize=14`, currentToken),
       ]);
 
@@ -239,58 +258,45 @@ export default async function handler(req: any, res: any) {
         source: 'fitbit',
       };
 
+      // Only readings for the requested day: another day's number is never shown as today's.
       if (rhrRes.ok && Array.isArray(rhrRes.data?.dataPoints)) {
-        const pts = rhrRes.data.dataPoints;
-        const match =
-          pts.find((p: any) => matchesTargetDate(p?.dailyRestingHeartRate?.date || p?.date, p?.startTime, targetDate)) ||
-          pts[pts.length - 1];
-        const bpm = Number(match?.dailyRestingHeartRate?.beatsPerMinute ?? match?.beatsPerMinute ?? 0);
+        const match = rhrRes.data.dataPoints.find(
+          (p: any) => dateFromObject(p?.dailyRestingHeartRate?.date) === targetDate
+        );
+        const bpm = Number(match?.dailyRestingHeartRate?.beatsPerMinute ?? 0);
         if (bpm > 0) biometrics.restingHr = Math.round(bpm);
       }
 
       if (hrvRes.ok && Array.isArray(hrvRes.data?.dataPoints)) {
-        const pts = hrvRes.data.dataPoints;
-        const match =
-          pts.find((p: any) => matchesTargetDate(p?.dailyHeartRateVariability?.date || p?.date, p?.startTime, targetDate)) ||
-          pts[pts.length - 1];
-        const hrvObj = match?.dailyHeartRateVariability || match;
+        const match = hrvRes.data.dataPoints.find(
+          (p: any) => dateFromObject(p?.dailyHeartRateVariability?.date) === targetDate
+        );
+        const hrv = match?.dailyHeartRateVariability;
         const rmssd = Number(
-          hrvObj?.deepSleepRootMeanSquareOfSuccessiveDifferencesMilliseconds ??
-            hrvObj?.rootMeanSquareOfSuccessiveDifferencesMillis ??
-            hrvObj?.averageHeartRateVariabilityMilliseconds ??
+          hrv?.averageHeartRateVariabilityMilliseconds ??
+            hrv?.deepSleepRootMeanSquareOfSuccessiveDifferencesMilliseconds ??
             0
         );
         if (rmssd > 0) biometrics.hrvRmssd = Math.round(rmssd);
       }
 
       if (sleepRes.ok && Array.isArray(sleepRes.data?.dataPoints)) {
-        const pts = sleepRes.data.dataPoints;
-        let asleepMs = 0;
-        for (const p of pts) {
-          const sl = p?.sleep || p;
-          const endStr = sl?.interval?.endTime || p?.endTime;
-          const startStr = sl?.interval?.startTime || p?.startTime;
-          if (!startStr || !endStr) continue;
-          if (String(endStr).slice(0, 10) !== targetDate && pts.length > 1) continue;
-          const summaryMins = Number(sl?.summary?.totalSleepMinutes ?? p?.summary?.totalSleepMinutes ?? 0);
-          const dur =
-            Number(sl?.asleepDurationMillis ?? 0) ||
-            (summaryMins > 0 ? summaryMins * 60000 : new Date(endStr).getTime() - new Date(startStr).getTime());
-          if (dur > 0) asleepMs += dur;
+        let asleepMinutes = 0;
+        for (const p of sleepRes.data.dataPoints) {
+          if (intervalEndDate(p?.sleep?.interval) !== targetDate) continue;
+          // Time asleep only: the interval's length also counts time awake in bed.
+          const minutes = Number(p?.sleep?.summary?.minutesAsleep ?? 0);
+          if (minutes > 0) asleepMinutes += minutes;
         }
-        if (asleepMs > 0) {
-          biometrics.sleepHours = Math.round((asleepMs / 3600000) * 10) / 10;
-        }
+        if (asleepMinutes > 0) biometrics.sleepHours = Math.round((asleepMinutes / 60) * 10) / 10;
       }
 
       if (stepsRes.ok && Array.isArray(stepsRes.data?.dataPoints)) {
         let totalSteps = 0;
         for (const p of stepsRes.data.dataPoints) {
-          const st = p?.steps || p;
-          const endStr = st?.interval?.endTime || st?.interval?.startTime || p?.startTime;
-          if (endStr && String(endStr).slice(0, 10) !== targetDate) continue;
-          const c = Number(st?.count ?? 0);
-          if (c > 0) totalSteps += c;
+          if (intervalStartDate(p?.steps?.interval) !== targetDate) continue;
+          const count = Number(p?.steps?.count ?? 0);
+          if (count > 0) totalSteps += count;
         }
         if (totalSteps > 0) biometrics.steps = Math.round(totalSteps);
       }
@@ -298,29 +304,20 @@ export default async function handler(req: any, res: any) {
       if (azmRes.ok && Array.isArray(azmRes.data?.dataPoints)) {
         let totalAzm = 0;
         for (const p of azmRes.data.dataPoints) {
-          const az = p?.activeZoneMinutes && typeof p.activeZoneMinutes === 'object' ? p.activeZoneMinutes : p;
-          const endStr = az?.interval?.endTime || az?.interval?.startTime || p?.startTime;
-          if (endStr && String(endStr).slice(0, 10) !== targetDate) continue;
-          const m = Number(az?.activeZoneMinutes ?? az?.totalMinutes ?? 0);
-          if (m > 0) totalAzm += m;
+          if (intervalStartDate(p?.activeZoneMinutes?.interval) !== targetDate) continue;
+          const minutes = Number(p?.activeZoneMinutes?.activeZoneMinutes ?? 0);
+          if (minutes > 0) totalAzm += minutes;
         }
         if (totalAzm > 0) biometrics.activeZoneMinutes = Math.round(totalAzm);
       }
 
       if (weightRes.ok && Array.isArray(weightRes.data?.dataPoints)) {
-        const pts = weightRes.data.dataPoints;
-        const match =
-          pts.find((p: any) =>
-            matchesTargetDate(undefined, p?.weight?.time || p?.weight?.interval?.startTime || p?.startTime, targetDate)
-          ) || pts[pts.length - 1];
-        const kg = Number(
-          match?.weight?.weightKilograms ??
-            match?.weight?.massKilograms ??
-            match?.weightKilograms ??
-            match?.massKilograms ??
-            0
-        );
-        if (kg > 0) biometrics.bodyweightKg = Math.round(kg * 10) / 10;
+        const match = weightRes.data.dataPoints.find((p: any) => {
+          const t = p?.weight?.sampleTime;
+          return localDateOf(t?.civilTime, typeof t === 'string' ? t : t?.physicalTime, t?.utcOffset) === targetDate;
+        });
+        const grams = Number(match?.weight?.weightGrams ?? 0);
+        if (grams > 0) biometrics.bodyweightKg = Math.round(grams / 100) / 10;
       }
 
       const hasCoreMetrics = typeof biometrics.restingHr === 'number' || typeof biometrics.hrvRmssd === 'number';

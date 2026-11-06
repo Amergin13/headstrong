@@ -261,10 +261,10 @@ const iso = (msAgo: number) => new Date(Date.now() - msAgo).toISOString();
   // Google Health API v4 biometrics & sessions
   installFetch((url) => {
     if (url.includes('/dataTypes/daily-resting-heart-rate/dataPoints')) {
-      return { status: 200, body: { dataPoints: [{ beatsPerMinute: 54 }] } };
+      return { status: 200, body: { dataPoints: [{ dailyRestingHeartRate: { date: { year: 2026, month: 10, day: 21 }, beatsPerMinute: '61' } }, { dailyRestingHeartRate: { date: { year: 2026, month: 10, day: 22 }, beatsPerMinute: '54' } }] } };
     }
     if (url.includes('/dataTypes/daily-heart-rate-variability/dataPoints')) {
-      return { status: 200, body: { dataPoints: [{ rootMeanSquareOfSuccessiveDifferencesMillis: 63.4 }] } };
+      return { status: 200, body: { dataPoints: [{ dailyHeartRateVariability: { date: { year: 2026, month: 10, day: 22 }, averageHeartRateVariabilityMilliseconds: 63.4 } }] } };
     }
     if (url.includes('/dataTypes/sleep/dataPoints')) {
       return {
@@ -272,21 +272,23 @@ const iso = (msAgo: number) => new Date(Date.now() - msAgo).toISOString();
         body: {
           dataPoints: [
             {
-              interval: { startTime: '2026-10-21T23:00:00Z', endTime: '2026-10-22T06:45:00Z' },
-              summary: { totalSleepMinutes: 450 },
+              sleep: {
+                interval: { startTime: '2026-10-21T23:00:00Z', endTime: '2026-10-22T06:45:00Z' },
+                summary: { minutesAsleep: '450', minutesInSleepPeriod: '465' },
+              },
             },
           ],
         },
       };
     }
     if (url.includes('/dataTypes/steps/dataPoints')) {
-      return { status: 200, body: { dataPoints: [{ count: 6200 }, { count: 3100 }] } };
+      return { status: 200, body: { dataPoints: [{ steps: { count: '6200', interval: { startTime: '2026-10-22T08:00:00Z', endTime: '2026-10-22T08:01:00Z' } } }, { steps: { count: '3100', interval: { startTime: '2026-10-22T08:00:00Z', endTime: '2026-10-22T08:01:00Z' } } }, { steps: { count: '999', interval: { startTime: '2026-10-21T08:00:00Z', endTime: '2026-10-21T08:01:00Z' } } }] } };
     }
     if (url.includes('/dataTypes/active-zone-minutes/dataPoints')) {
-      return { status: 200, body: { dataPoints: [{ activeZoneMinutes: 28 }, { activeZoneMinutes: 14 }] } };
+      return { status: 200, body: { dataPoints: [{ activeZoneMinutes: { activeZoneMinutes: '28', interval: { startTime: '2026-10-22T08:00:00Z', endTime: '2026-10-22T08:01:00Z' } } }, { activeZoneMinutes: { activeZoneMinutes: '14', interval: { startTime: '2026-10-22T08:00:00Z', endTime: '2026-10-22T08:01:00Z' } } }] } };
     }
     if (url.includes('/dataTypes/weight/dataPoints')) {
-      return { status: 200, body: { dataPoints: [{ weightKilograms: 80.64 }] } };
+      return { status: 200, body: { dataPoints: [{ weight: { weightGrams: 80640, sampleTime: { physicalTime: '2026-10-22T07:00:00Z' } } }] } };
     }
     return undefined;
   });
@@ -303,7 +305,31 @@ const iso = (msAgo: number) => new Date(Date.now() - msAgo).toISOString();
       ghBio.steps === 9300 &&
       ghBio.activeZoneMinutes === 42 &&
       ghBio.bodyweightKg === 80.6,
-    'Google Health API v4 biometrics: maps RHR, HRV RMSSD, sleep, steps, active zone minutes and weight'
+    'Google Health API v4 biometrics: maps RHR, HRV RMSSD, time asleep, steps, active zone minutes and weight'
+  );
+
+  // A day with no readings stays empty: another day's number is never shown as today's.
+  installFetch((url) => {
+    if (url.includes('/dataTypes/daily-resting-heart-rate/dataPoints')) {
+      return { status: 200, body: { dataPoints: [{ dailyRestingHeartRate: { date: { year: 2026, month: 10, day: 21 }, beatsPerMinute: '61' } }] } };
+    }
+    if (url.includes('/dataTypes/daily-heart-rate-variability/dataPoints')) {
+      return { status: 200, body: { dataPoints: [{ dailyHeartRateVariability: { date: { year: 2026, month: 10, day: 21 }, averageHeartRateVariabilityMilliseconds: 70 } }] } };
+    }
+    if (url.includes('/dataTypes/sleep/dataPoints')) {
+      return { status: 200, body: { dataPoints: [{ sleep: { interval: { startTime: '2026-10-20T23:00:00Z', endTime: '2026-10-21T06:00:00Z' }, summary: { minutesAsleep: '400' } } }] } };
+    }
+    return undefined;
+  });
+  res = mockRes();
+  await fitbitBiometrics(
+    { method: 'POST', headers: { authorization: 'Bearer ya29.google_health_tok' }, body: {}, query: { date: '2026-10-22' } },
+    res
+  );
+  const ghStale = res.body?.biometrics || {};
+  assert(
+    ghStale.restingHr === undefined && ghStale.hrvRmssd === undefined && ghStale.sleepHours === undefined,
+    "Google Health API v4 biometrics: yesterday's readings are never reported as today's"
   );
 
   installFetch((url) => {
@@ -313,10 +339,14 @@ const iso = (msAgo: number) => new Date(Date.now() - msAgo).toISOString();
         body: {
           dataPoints: [
             {
-              id: 'gh-ex-1',
-              exerciseType: 'RUNNING',
-              interval: { startTime: '2026-10-22T07:00:00Z', endTime: '2026-10-22T07:35:00Z' },
-              metricsSummary: { distanceMeters: 6400, averageHeartRateBpm: 148.2, activeEnergyKilocalories: 410 },
+              dataPointName: 'users/me/dataTypes/exercise/dataPoints/gh-ex-1',
+              exercise: {
+                exerciseType: 'RUNNING',
+                displayName: 'Morning run',
+                activeDuration: '2100s',
+                interval: { startTime: '2026-10-22T07:00:00Z', endTime: '2026-10-22T07:40:00Z' },
+                metricsSummary: { distanceMeters: 6400, averageHeartRateBpm: 148.2, activeEnergyKilocalories: 410 },
+              },
             },
           ],
         },
@@ -334,6 +364,7 @@ const iso = (msAgo: number) => new Date(Date.now() - msAgo).toISOString();
     res.body?.success &&
       ghSessions.length === 1 &&
       ghSessions[0].externalId === 'gh-ex-1' &&
+      ghSessions[0].name === 'Morning run' &&
       ghSessions[0].minutes === 35 &&
       ghSessions[0].distanceKm === 6.4 &&
       ghSessions[0].avgHeartRate === 148,

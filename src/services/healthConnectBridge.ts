@@ -98,23 +98,41 @@ function handleAppMessage(data: unknown) {
   }
 }
 
+/**
+ * Takes the channel Chrome hands the page. Chrome sends it in a window message with empty data, from
+ * `android-app://<site>` once Digital Asset Links has verified the app; the app's hello then arrives
+ * on the channel itself. Other senders are ignored. Returns whether the channel was accepted.
+ */
+export function receiveAppChannel(
+  event: Pick<MessageEvent, 'origin' | 'data' | 'ports'>,
+  pageOrigin: string,
+  pageHost: string
+): boolean {
+  if (event.origin !== pageOrigin && event.origin !== `android-app://${pageHost}`) return false;
+  const channel = event.ports?.[0];
+  if (!channel) return false;
+  const readHello = (data: unknown): boolean => {
+    let hello: any;
+    try {
+      hello = typeof data === 'string' ? JSON.parse(data) : data;
+    } catch {
+      return false;
+    }
+    if (hello?.type !== 'hello') return false;
+    attachAppPort(channel, Number(hello.version) || 1);
+    return true;
+  };
+  if (!readHello(event.data)) channel.onmessage = (e) => void readHello(e.data);
+  return true;
+}
+
 /** Starts listening for the Android app's first message. Safe to call more than once. */
 export function startHealthConnectBridge(): void {
   if (started || typeof window === 'undefined') return;
   started = true;
   window.addEventListener('message', (event: MessageEvent) => {
-    // The app uses this site's own origin (verified by Digital Asset Links), so other senders are ignored.
-    if (event.origin !== window.location.origin || port) return;
-    const p = event.ports?.[0];
-    if (!p) return;
-    let hello: any;
-    try {
-      hello = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
-    } catch {
-      return;
-    }
-    if (hello?.type !== 'hello') return;
-    attachAppPort(p, Number(hello.version) || 1);
+    if (port) return;
+    receiveAppChannel(event, window.location.origin, window.location.hostname);
   });
 }
 
@@ -130,8 +148,27 @@ export function onHealthConnectStatus(listener: StatusListener): () => void {
 }
 
 /** Opens Health Connect's own permission screen (the athlete chooses there). */
-export function requestHealthConnectPermission(): void {
-  send({ type: 'request-permission' });
+export function requestHealthConnectPermission(): boolean {
+  if (!canOpenAppScreens()) {
+    send({ type: 'request-permission' });
+    return false;
+  }
+  openAppScreen('health');
+  return true;
+}
+
+/** Bridge version 3 and up: the page opens the app's permission screens itself. */
+export function canOpenAppScreens(): boolean {
+  return getAppBridgeVersion() >= 3;
+}
+
+/**
+ * Opens one of the app's screens from a tap on the page. Android blocks the app from opening its
+ * own screen while Chrome is in front ("background activity launch"), but Chrome may open one for
+ * the page, so these go through the browser.
+ */
+export function openAppScreen(screen: 'health' | 'nearby' | 'app-settings'): void {
+  window.location.href = `intent://${screen}#Intent;scheme=treise;package=com.headstrong.app;end`;
 }
 
 /** Exercise sessions since `since`, as the app read them from Health Connect. */

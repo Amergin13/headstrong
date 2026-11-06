@@ -94,7 +94,7 @@ object HealthConnectBridge {
     }
 
     fun onChannelReady() {
-        post(JSONObject().put("type", "hello").put("version", 2)) // 2: the app can reach the scale
+        post(JSONObject().put("type", "hello").put("version", 3)) // 2: the app can reach the scale; 3: the page opens permission screens
     }
 
     fun onMessage(message: String) {

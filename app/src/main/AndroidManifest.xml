@@ -185,16 +185,32 @@
         <!-- Shows Health Connect's permission screen when the athlete turns it on in the web app. -->
         <activity
             android:name=".HealthPermissionActivity"
-            android:exported="false"
+            android:exported="true"
             android:excludeFromRecents="true"
-            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+            android:theme="@android:style/Theme.Translucent.NoTitleBar">
+            <!-- Opened by the page from a tap: Android blocks the app opening it while Chrome is in front. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="treise" android:host="health" />
+            </intent-filter>
+        </activity>
 
  <!-- Asks for Bluetooth access (Nearby devices) when the athlete pairs a scale. -->
         <activity
             android:name=".BlePermissionActivity"
-            android:exported="false"
+            android:exported="true"
             android:excludeFromRecents="true"
-            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+            android:theme="@android:style/Theme.Translucent.NoTitleBar">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="treise" android:host="nearby" />
+                <data android:scheme="treise" android:host="app-settings" />
+            </intent-filter>
+        </activity>
 
         <!-- Health Connect: "why does this app need access" (Android 13 and lower). Shows the privacy policy. -->
         <activity

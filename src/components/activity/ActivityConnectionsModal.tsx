@@ -19,7 +19,8 @@ interface ActivityConnectionsModalProps {
   onConnectStrava: () => Promise<boolean>;
   onDisconnectStrava: () => void;
   onSetHealthConnect: (on: boolean) => void;
-  onRequestHealthConnectPermission: () => void;
+  /** False when the installed app is too old to open the permission screen. */
+  onRequestHealthConnectPermission: () => boolean | void;
   onOpenWatchSync: () => void;
   onClose: () => void;
 }
@@ -42,6 +43,7 @@ export const ActivityConnectionsModal: React.FC<
 }) => {
   const [stravaAvailable, setStravaAvailable] = useState<boolean | null>(null);
   const [stravaError, setStravaError] = useState<string | null>(null);
+  const [needsAppUpdate, setNeedsAppUpdate] = useState(false);
   useEffect(() => {
     if (STRAVA_ENABLED)
       getStravaConfig().then((c) => setStravaAvailable(c.configured));
@@ -209,7 +211,7 @@ export const ActivityConnectionsModal: React.FC<
                     onSetHealthConnect(false);
                   } else {
                     onSetHealthConnect(true);
-                    if (!hcStatus.granted) onRequestHealthConnectPermission();
+                    if (!hcStatus.granted && onRequestHealthConnectPermission() === false) setNeedsAppUpdate(true);
                   }
                 }}
                 className="wk-button"
@@ -225,6 +227,11 @@ export const ActivityConnectionsModal: React.FC<
                     ? "Turn on Health Connect"
                     : "Allow access in Health Connect"}
               </button>
+              {needsAppUpdate && (
+                <p className="wk-body" style={{ marginTop: fig(16) }}>
+                  Update Treise from Google Play to allow this here. Or open Android Settings, then Health Connect, then App permissions, and allow Treise.
+                </p>
+              )}
             </>
           )}
         </section>

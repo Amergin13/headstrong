@@ -4,7 +4,7 @@ import type {
   WebBluetoothGattServer,
   WebBluetoothService,
 } from './renphoBluetooth';
-import { getAppBridgeVersion, onAppMessage, sendAppMessage } from './healthConnectBridge';
+import { canOpenAppScreens, getAppBridgeVersion, onAppMessage, openAppScreen, sendAppMessage } from './healthConnectBridge';
 
 /**
  * The Renpho scale through the Treise Android app.
@@ -74,12 +74,14 @@ export function getNativeScaleStatus(): Promise<NativeScaleStatus> {
 /** Shows Android's permission prompt and resolves with the status after the athlete answers. */
 export function requestNativeScalePermission(): Promise<NativeScaleStatus> {
   const answer = nextMessage('ble-status', 120000, NO_STATUS);
-  sendAppMessage({ type: 'ble-request-permission' });
+  if (canOpenAppScreens()) openAppScreen('nearby');
+  else sendAppMessage({ type: 'ble-request-permission' });
   return answer;
 }
 
 export function openNativeScaleSettings(): void {
-  sendAppMessage({ type: 'ble-open-settings' });
+  if (canOpenAppScreens()) openAppScreen('app-settings');
+  else sendAppMessage({ type: 'ble-open-settings' });
 }
 
 /** Looks for nearby scales. Returns a function that stops looking. */
