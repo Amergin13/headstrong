@@ -14,7 +14,6 @@ import {
 import {
   LOOKBACK_DAYS,
   exchangeStravaCode,
-  fetchFitbitActivities,
   fetchStravaActivities,
   fetchWhoopActivities,
   onStravaTokensRefreshed,
@@ -85,7 +84,6 @@ export function useActivitySync({ profile, setProfile, activities, setActivities
       const { profile: p, workouts: w } = latest.current;
       const hc = getHealthConnectStatus();
       const jobs: Promise<DetectedActivity[]>[] = [
-        fetchFitbitActivities(p),
         fetchWhoopActivities(p),
         fetchStravaActivities(p),
         p.healthConnectActivities && hc.granted

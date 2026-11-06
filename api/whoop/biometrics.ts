@@ -147,6 +147,9 @@ export default async function handler(req: any, res: any) {
           result = await fetchWithFallback(currentToken, url);
         }
       }
+      if (result.status === 401) {
+        return res.status(401).json({ success: false, error: 'whoop_reconnect_needed' });
+      }
       if (!result.ok) {
         return res.status(result.status || 502).json({ success: false, error: 'Could not read Whoop workouts', refreshedTokens });
       }

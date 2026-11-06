@@ -722,7 +722,9 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
             >
               {activeWearableMeta
                 ? `${activeWearableMeta.name} • Connected`
-                : 'Connect Fitbit or Whoop'}
+                : profile.healthConnectActivities
+                ? 'Android Health Connect • Workouts on'
+                : 'Connect Whoop or Health Connect'}
             </p>
           </button>
 
@@ -975,7 +977,7 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
                 {showPrivacyDetails && (
                   <div className="wk-body" style={{ marginTop: fig(16) }}>
                     <p>
-                      <strong className="text-white">Privacy:</strong> Your workouts, bodyweight and recovery logs are stored on this device. When you connect Fitbit or Whoop, their data passes through our server only to fetch it and is not stored there. Health data is never sold or shared.
+                      <strong className="text-white">Privacy:</strong> Your workouts, bodyweight and recovery logs are stored on this device. When you connect Whoop, data passes through our server only to fetch it and is not stored there. Health data is never sold or shared.
                     </p>
                     <p style={{ marginTop: fig(12) }}>
                       <strong className="text-white">Fitness Disclaimer:</strong> Recovery scores and target weights are for informational fitness tracking only and are not medical advice.

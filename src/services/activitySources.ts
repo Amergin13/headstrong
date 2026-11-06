@@ -1,10 +1,9 @@
 import { ActivitySource, DetectedActivity, classifyActivity } from '../engine/activeDays';
 import { UserProfile } from '../engine/types';
-import { localDateString } from '../utils/date';
-import { publishRefreshedTokens } from './wearableTokens';
+import { getLatestWearableTokens, publishRefreshedTokens, serializeWhoopCall } from './wearableTokens';
 
 /**
- * Reads recent workouts from the sources the athlete connected (Fitbit / Pixel Watch, Whoop,
+ * Reads recent workouts from the sources the athlete connected (Whoop, Health Connect,
  * Strava) through Treise's serverless functions, and turns them into activities. Every kind of
  * workout is kept. Nothing is invented: each activity carries its source's id.
  */
@@ -44,40 +43,42 @@ export function toDetectedActivities(source: ActivitySource, raw: RawSourceSessi
 /** Health Connect only allows 30 days back without its history permission. */
 export const LOOKBACK_DAYS = 29;
 
-async function postJson(url: string, body: unknown): Promise<any> {
+async function postJson(
+  url: string,
+  body: unknown,
+  tokenMeta?: { provider: 'whoop' | 'fitbit'; previousAccessToken?: string }
+): Promise<any> {
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
   const data = await res.json().catch(() => null);
+  if (tokenMeta && data?.refreshedTokens) {
+    publishRefreshedTokens(tokenMeta.provider, data.refreshedTokens, tokenMeta.previousAccessToken);
+  }
   if (!res.ok || !data?.success) throw new Error(data?.error || `Request failed (${res.status})`);
   return data;
 }
 
-export async function fetchFitbitActivities(profile: UserProfile, now: Date = new Date()): Promise<DetectedActivity[]> {
-  if (!profile.fitbitConnected || !profile.fitbitAccessToken) return [];
-  const after = new Date(now.getTime() - LOOKBACK_DAYS * 86400000);
-  const data = await postJson('/api/fitbit/biometrics', {
-    mode: 'sessions',
-    accessToken: profile.fitbitAccessToken,
-    refreshToken: profile.fitbitRefreshToken,
-    afterDate: localDateString(after),
-  });
-  publishRefreshedTokens('fitbit', data.refreshedTokens);
-  return toDetectedActivities('fitbit', data.sessions || []);
-}
-
 export async function fetchWhoopActivities(profile: UserProfile, now: Date = new Date()): Promise<DetectedActivity[]> {
   if (!profile.whoopConnected || !profile.whoopAccessToken) return [];
-  const data = await postJson('/api/whoop/biometrics', {
-    mode: 'sessions',
-    accessToken: profile.whoopAccessToken,
-    refreshToken: profile.whoopRefreshToken,
-    since: new Date(now.getTime() - LOOKBACK_DAYS * 86400000).toISOString(),
+  return serializeWhoopCall(async () => {
+    const latest = getLatestWearableTokens('whoop', profile.whoopAccessToken, profile.whoopRefreshToken);
+    const accessToken = latest.accessToken || profile.whoopAccessToken;
+    const refreshToken = latest.refreshToken;
+    const data = await postJson(
+      '/api/whoop/biometrics',
+      {
+        mode: 'sessions',
+        accessToken,
+        refreshToken,
+        since: new Date(now.getTime() - LOOKBACK_DAYS * 86400000).toISOString(),
+      },
+      { provider: 'whoop', previousAccessToken: accessToken }
+    );
+    return toDetectedActivities('whoop', data.sessions || []);
   });
-  publishRefreshedTokens('whoop', data.refreshedTokens);
-  return toDetectedActivities('whoop', data.sessions || []);
 }
 
 // ---------------------------------------------------------------- Strava

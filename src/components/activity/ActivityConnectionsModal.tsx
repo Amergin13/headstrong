@@ -26,8 +26,9 @@ interface ActivityConnectionsModalProps {
 }
 
 /**
- * Where active days come from automatically: Health Connect (in the Android app) and a connected
- * Fitbit / Pixel Watch or Whoop. (Strava is off for the beta.) Each row says plainly whether it is on.
+ * Where active days come from automatically: Health Connect (in the Android app, covering
+ * Fitbit, Pixel Watch, Samsung Health, Google Fit and Garmin) and a connected Whoop.
+ * (Strava is off for the beta.) Each row says plainly whether it is on.
  */
 export const ActivityConnectionsModal: React.FC<
   ActivityConnectionsModalProps
@@ -49,11 +50,7 @@ export const ActivityConnectionsModal: React.FC<
       getStravaConfig().then((c) => setStravaAvailable(c.configured));
   }, []);
 
-  const watchName = profile.whoopConnected
-    ? "Whoop"
-    : profile.fitbitConnected
-      ? "Fitbit / Pixel Watch"
-      : null;
+  const watchName = profile.whoopConnected ? "Whoop" : null;
   const hcOn = Boolean(profile.healthConnectActivities && hcStatus.granted);
 
   const row: React.CSSProperties = {
@@ -190,7 +187,7 @@ export const ActivityConnectionsModal: React.FC<
           {!hcStatus.bridge ? (
             <p className="wk-body" style={{ marginTop: fig(12) }}>
               Available in the Treise app from Google Play on Android. It reads
-              workouts from apps like Samsung Health, Google Fit and Garmin.
+              workouts from Google Pixel Watch, Fitbit, Samsung Health, Google Fit and Garmin.
             </p>
           ) : !hcStatus.available ? (
             <p className="wk-body" style={{ marginTop: fig(12) }}>
@@ -201,7 +198,7 @@ export const ActivityConnectionsModal: React.FC<
             <>
               <p className="wk-body" style={{ marginTop: fig(12) }}>
                 Treise reads your exercise sessions (type, start time and
-                length) from Health Connect. Nothing else.
+                length) from Health Connect, including workouts from Fitbit, Pixel Watch, Samsung Health and Garmin. Nothing else.
               </p>
               <button
                 type="button"
@@ -252,7 +249,7 @@ export const ActivityConnectionsModal: React.FC<
           <p className="wk-body" style={{ marginTop: fig(12) }}>
             {watchName
               ? `Workouts recorded on your ${watchName} count as active days.`
-              : "Connect a Fitbit, Pixel Watch or Whoop and its recorded workouts count as active days."}
+              : "Connect a Whoop and its recorded workouts count as active days."}
           </p>
           {!watchName && (
             <button

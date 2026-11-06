@@ -13,7 +13,6 @@ import {
   WhoopWorkoutStrainSummary,
   WHOOP_CONFIG,
 } from '../services/whoopService';
-import { exchangeFitbitCodeForToken } from '../services/fitbitService';
 import { onWearableTokensRefreshed } from '../services/wearableTokens';
 
 type Notify = (message: string, tag: string) => void;
@@ -47,7 +46,7 @@ export function useWearableSync({ profile, setProfile, workouts, setWorkouts, se
     [setBiometrics, setProfile]
   );
 
-  // Whoop and Fitbit rotate refresh tokens; save new pairs as soon as a proxy refreshes them.
+  // Whoop rotates refresh tokens; save new pairs as soon as a proxy refreshes them.
   useEffect(
     () =>
       onWearableTokensRefreshed((update) => {
@@ -60,12 +59,7 @@ export function useWearableSync({ profile, setProfile, workouts, setWorkouts, se
                 whoopRefreshToken: update.refreshToken ?? prev.whoopRefreshToken,
                 whoopTokenExpiresAt: expiresAt ?? prev.whoopTokenExpiresAt,
               }
-            : {
-                ...prev,
-                fitbitAccessToken: update.accessToken,
-                fitbitRefreshToken: update.refreshToken ?? prev.fitbitRefreshToken,
-                fitbitTokenExpiresAt: expiresAt ?? prev.fitbitTokenExpiresAt,
-              }
+            : prev
         );
       }),
     [setProfile]
@@ -74,8 +68,8 @@ export function useWearableSync({ profile, setProfile, workouts, setWorkouts, se
   // Sync the active tracker once on launch.
   useEffect(() => {
     const provider = getActiveWearableProvider(profile);
-    const accessToken = provider === 'whoop' ? profile.whoopAccessToken : provider === 'fitbit' ? profile.fitbitAccessToken : undefined;
-    const refreshToken = provider === 'whoop' ? profile.whoopRefreshToken : provider === 'fitbit' ? profile.fitbitRefreshToken : undefined;
+    const accessToken = provider === 'whoop' ? profile.whoopAccessToken : undefined;
+    const refreshToken = provider === 'whoop' ? profile.whoopRefreshToken : undefined;
     if (!provider || !accessToken) return;
     syncWearableBiometrics(provider, { accessToken, refreshToken })
       .then((log) => handleSyncCompleted(log, provider))
@@ -83,47 +77,35 @@ export function useWearableSync({ profile, setProfile, workouts, setWorkouts, se
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /** Finishes an OAuth redirect (`?code=...`) for Whoop or Fitbit, then syncs today. */
+  /** Finishes an OAuth redirect (`?code=...`) for Whoop, then syncs today. */
   const completeWearableConnection = useCallback(
     async (oauthCode: string, provider: WearableProvider) => {
+      if (provider !== 'whoop') return;
       let accessToken: string | undefined;
       let refreshToken: string | undefined;
       try {
-        if (provider === 'whoop') {
-          const tokenRes = await exchangeWhoopCodeForToken(
-            oauthCode,
-            profile.whoopClientId || WHOOP_CONFIG.CLIENT_ID,
-            undefined,
-            profile.whoopRedirectUri
-          );
-          accessToken = tokenRes.accessToken;
-          refreshToken = tokenRes.refreshToken;
-          setProfile((prev) => ({
-            ...prev,
-            ...setActiveTracker('whoop', prev),
-            whoopAccessToken: tokenRes.accessToken,
-            whoopRefreshToken: tokenRes.refreshToken,
-            whoopTokenExpiresAt: Date.now() + tokenRes.expiresIn * 1000,
-          }));
-        } else {
-          const tokenRes = await exchangeFitbitCodeForToken(oauthCode);
-          accessToken = tokenRes.accessToken;
-          refreshToken = tokenRes.refreshToken;
-          setProfile((prev) => ({
-            ...prev,
-            ...setActiveTracker('fitbit', prev),
-            fitbitAccessToken: tokenRes.accessToken,
-            fitbitRefreshToken: tokenRes.refreshToken,
-            fitbitTokenExpiresAt: Date.now() + tokenRes.expiresIn * 1000,
-          }));
-        }
+        const tokenRes = await exchangeWhoopCodeForToken(
+          oauthCode,
+          profile.whoopClientId || WHOOP_CONFIG.CLIENT_ID,
+          undefined,
+          profile.whoopRedirectUri
+        );
+        accessToken = tokenRes.accessToken;
+        refreshToken = tokenRes.refreshToken;
+        setProfile((prev) => ({
+          ...prev,
+          ...setActiveTracker('whoop', prev),
+          whoopAccessToken: tokenRes.accessToken,
+          whoopRefreshToken: tokenRes.refreshToken,
+          whoopTokenExpiresAt: Date.now() + tokenRes.expiresIn * 1000,
+        }));
       } catch (err) {
         console.error(`${provider} connection error:`, err);
-        notify(`Could not connect to ${provider === 'whoop' ? 'Whoop' : 'Fitbit'}. Please try again.`, 'Connection Failed');
+        notify('Could not connect to Whoop. Please try again.', 'Connection Failed');
         return;
       }
 
-      const deviceName = provider === 'whoop' ? 'Whoop' : 'Pixel Watch / Fitbit';
+      const deviceName = 'Whoop';
       try {
         const syncedLog = await syncWearableBiometrics(provider, { accessToken, refreshToken });
         handleSyncCompleted(syncedLog, provider);

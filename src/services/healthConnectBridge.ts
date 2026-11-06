@@ -131,9 +131,17 @@ export function startHealthConnectBridge(): void {
   if (started || typeof window === 'undefined') return;
   started = true;
   window.addEventListener('message', (event: MessageEvent) => {
-    if (port) return;
     receiveAppChannel(event, window.location.origin, window.location.hostname);
   });
+  const refreshStatus = () => {
+    if (port) send({ type: 'status' });
+  };
+  window.addEventListener('focus', refreshStatus);
+  if (typeof document !== 'undefined') {
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') refreshStatus();
+    });
+  }
 }
 
 export function getHealthConnectStatus(): HealthConnectStatus {

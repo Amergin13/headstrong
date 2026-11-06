@@ -61,8 +61,7 @@ export function useLaunchLinks(handlers: LaunchLinkHandlers) {
     if (oauthCode && stateParam.startsWith('strava_')) {
       handlers.onStravaOAuthCode(oauthCode, params.get('scope'));
     } else if (oauthCode) {
-      const isWhoop = stateParam.startsWith('whoop_') || window.location.pathname.includes('/whoop');
-      handlers.onWearableOAuthCode(oauthCode, isWhoop ? 'whoop' : 'fitbit');
+      handlers.onWearableOAuthCode(oauthCode, 'whoop');
     }
 
     if (tabParam || actionParam || oauthCode || stateParam || idToken || hash || window.location.pathname.includes('/oauth')) {

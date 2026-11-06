@@ -1,7 +1,7 @@
 import { BiometricLog, ReadinessState, WearableSyncProgress } from '../engine/types';
 import { generateCodeChallenge, generateRandomString } from './fitbitService';
 import { localDateString } from '../utils/date';
-import { publishRefreshedTokens } from './wearableTokens';
+import { getLatestWearableTokens, publishRefreshedTokens, serializeWhoopCall } from './wearableTokens';
 
 /** Whoop refused the saved sign-in, and refreshing it failed. Only signing in again fixes this. */
 export class WhoopReconnectNeededError extends Error {
@@ -218,60 +218,65 @@ export async function fetchWhoopDailyBiometrics(
   refreshToken?: string,
   workoutWindow?: { start: string; end: string }
 ): Promise<Partial<BiometricLog>> {
-  const date = dateStr || localDateString();
-  const effectiveRefreshToken =
-    refreshToken ||
-    (typeof localStorage !== 'undefined' && localStorage.getItem('whoop_refresh_token')) ||
-    (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('whoop_refresh_token')) ||
-    undefined;
+  return serializeWhoopCall(async () => {
+    const date = dateStr || localDateString();
+    const rawRefreshToken =
+      refreshToken ||
+      (typeof localStorage !== 'undefined' && localStorage.getItem('whoop_refresh_token')) ||
+      (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('whoop_refresh_token')) ||
+      undefined;
+    const latest = getLatestWearableTokens('whoop', accessToken, rawRefreshToken);
+    const currentAccessToken = latest.accessToken || accessToken;
+    const effectiveRefreshToken = latest.refreshToken;
 
-  let signInExpired = false;
-  // 1. Primary: Serverless Aggregator Proxy (zero CORS, server-to-server)
-  try {
-    const proxyRes = await fetch('/api/whoop/biometrics', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${accessToken}`,
-      },
-      body: JSON.stringify({
-        accessToken,
-        refreshToken: effectiveRefreshToken,
-        workoutWindowStart: workoutWindow?.start,
-        workoutWindowEnd: workoutWindow?.end,
-      }),
-    });
+    let signInExpired = false;
+    // 1. Primary: Serverless Aggregator Proxy (zero CORS, server-to-server)
+    try {
+      const proxyRes = await fetch('/api/whoop/biometrics', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${currentAccessToken}`,
+        },
+        body: JSON.stringify({
+          accessToken: currentAccessToken,
+          refreshToken: effectiveRefreshToken,
+          workoutWindowStart: workoutWindow?.start,
+          workoutWindowEnd: workoutWindow?.end,
+        }),
+      });
 
-    if (proxyRes.ok) {
-      const data = await proxyRes.json();
-      if (data.success && data.biometrics) {
+      if (proxyRes.ok) {
+        const data = await proxyRes.json();
         // Save rotated tokens to the profile (Whoop refresh tokens are single-use).
-        publishRefreshedTokens('whoop', data.refreshedTokens);
-        return {
-          ...data.biometrics,
-          // Workout heart rate only comes from a Whoop workout; the all-day average is not a workout.
-          avgWorkoutHr: data.biometrics.avgWorkoutHr ?? data.biometrics.workoutAvgHr,
-          maxWorkoutHr: data.biometrics.maxWorkoutHr ?? data.biometrics.workoutMaxHr,
-          date,
-        };
+        publishRefreshedTokens('whoop', data?.refreshedTokens, currentAccessToken);
+        if (data.success && data.biometrics) {
+          return {
+            ...data.biometrics,
+            // Workout heart rate only comes from a Whoop workout; the all-day average is not a workout.
+            avgWorkoutHr: data.biometrics.avgWorkoutHr ?? data.biometrics.workoutAvgHr,
+            maxWorkoutHr: data.biometrics.maxWorkoutHr ?? data.biometrics.workoutMaxHr,
+            date,
+          };
+        }
+      } else {
+        const errJson = await proxyRes.json().catch(() => ({}));
+        publishRefreshedTokens('whoop', errJson?.refreshedTokens, currentAccessToken);
+        if (errJson?.error === 'whoop_reconnect_needed') signInExpired = true;
+        else console.warn('Whoop biometrics proxy response error:', proxyRes.status, errJson);
       }
-    } else {
-      const errJson = await proxyRes.json().catch(() => ({}));
-      if (errJson?.error === 'whoop_reconnect_needed') signInExpired = true;
-      else console.warn('Whoop biometrics proxy response error:', proxyRes.status, errJson);
+    } catch (proxyErr) {
+      console.warn('Whoop biometrics proxy connection error:', proxyErr);
     }
-  } catch (proxyErr) {
-    console.warn('Whoop biometrics proxy connection error:', proxyErr);
-  }
 
-  if (signInExpired) throw new WhoopReconnectNeededError();
+    if (signInExpired) throw new WhoopReconnectNeededError();
 
-  // 2. Direct Fallback
-  const headers = {
-    Authorization: `Bearer ${accessToken}`,
-  };
+    // 2. Direct Fallback
+    const headers = {
+      Authorization: `Bearer ${currentAccessToken}`,
+    };
 
-  const results: Partial<BiometricLog> = { date };
+    const results: Partial<BiometricLog> = { date };
 
   const getLatestRecord = (recordsData: any) => {
     if (!recordsData) return null;
@@ -481,6 +486,7 @@ export async function fetchWhoopDailyBiometrics(
   }
 
   return results;
+  });
 }
 
 export interface WhoopWorkoutStrainSummary {
