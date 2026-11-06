@@ -137,8 +137,11 @@ assert(
 const headstrongAssetLink = assetLinks.find((al) => al?.target?.package_name === 'com.headstrong.app');
 assert(
   headstrongAssetLink?.target?.sha256_cert_fingerprints?.includes(
-    '85:EC:5C:62:89:E8:6C:14:77:8A:34:C0:A4:76:1A:7A:AE:68:9E:49:91:99:07:05:98:B1:43:AF:7A:6D:EC:D5'
+    '96:C5:04:2F:F2:B6:0C:85:4B:38:91:86:E0:47:96:8D:95:96:86:16:25:C4:8E:1C:9A:51:42:FA:10:93:99:BD'
   ) &&
+    headstrongAssetLink?.target?.sha256_cert_fingerprints?.includes(
+      '85:EC:5C:62:89:E8:6C:14:77:8A:34:C0:A4:76:1A:7A:AE:68:9E:49:91:99:07:05:98:B1:43:AF:7A:6D:EC:D5'
+    ) &&
     headstrongAssetLink?.target?.sha256_cert_fingerprints?.includes(
       'CD:A0:FA:8B:DE:45:50:1E:A7:BF:E4:C6:9C:B5:F8:F5:A2:81:5E:84:02:D1:C1:BA:57:83:DA:8E:BF:64:55:30'
     ),
