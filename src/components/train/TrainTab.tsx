@@ -31,7 +31,7 @@ import {
 import { TrainingPlan, buildPlanOverview, getSessionPlanId, isActiveSlot, planWorkoutLabel } from '../../engine/muscleBuildingProgram';
 import { ActivityLog, activeDayDates } from '../../engine/activeDays';
 import { ActiveDayCard } from './ActiveDayCard';
-import { localDateOffset } from '../../utils/date';
+import { localDateOffset, localDateString } from '../../utils/date';
 import { startingWeightForNewExercise } from '../../services/sessionPreparation';
 import { useUnits } from '../../utils/unitsContext';
 import {
@@ -450,10 +450,15 @@ export const TrainTab: React.FC<TrainTabProps> = ({
       }
     }
 
-    const nextExercises = activeWorkout.exercises.map((ex, exIdx) => {
-      if (ex.id !== swappingExercise.id) return ex;
+    const nextExercises = activeWorkout.exercises.flatMap((ex, exIdx) => {
+      if (ex.id !== swappingExercise.id) return [ex];
 
-      const workingSetsOnly = ex.sets.filter((s) => !s.isWarmup && s.setType !== 'warmup');
+      // Logged sets stay on the exercise that was done; only the sets still to do move to the new one.
+      const loggedSets = ex.sets.filter((s) => s.completed);
+      const setsToDo = ex.sets.filter((s) => !s.completed);
+      const workingSetsOnly = setsToDo.filter((s) => !s.isWarmup && s.setType !== 'warmup');
+      if (workingSetsOnly.length === 0) return [ex];
+
       const calibratedWorkingSets: WorkoutSet[] = workingSetsOnly.map((s, sIdx) => ({
         ...s,
         setNumber: sIdx + 1,
@@ -467,7 +472,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
 
       // Keep the same structure as before the swap: only re-create warm-ups if the original
       // exercise had them, and never add more than it had.
-      const originalWarmupCount = ex.sets.filter((st) => st.isWarmup || st.setType === 'warmup').length;
+      const originalWarmupCount = setsToDo.filter((st) => st.isWarmup || st.setType === 'warmup').length;
       let calibratedSets: WorkoutSet[] = calibratedWorkingSets;
       if (originalWarmupCount > 0 && !isPureBw && !meta.isIsolation) {
         const isFirstCompound = isFirstCompoundForPillar(
@@ -498,7 +503,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
         calibratedSets = [...warmupSets, ...calibratedWorkingSets].map((st, i) => ({ ...st, setNumber: i + 1 }));
       }
 
-      return {
+      const replacement: ExerciseSession = {
         ...ex,
         exerciseId: newDef.id,
         name: newDef.name,
@@ -513,6 +518,8 @@ export const TrainTab: React.FC<TrainTabProps> = ({
         notes: customNotes,
         sets: calibratedSets,
       };
+      if (loggedSets.length === 0) return [replacement];
+      return [{ ...ex, sets: loggedSets }, { ...replacement, id: `${ex.id}-swap-${Date.now()}` }];
     });
 
     onUpdateWorkout({ ...activeWorkout, exercises: nextExercises });
@@ -677,7 +684,8 @@ export const TrainTab: React.FC<TrainTabProps> = ({
 
   // Program card: plan phase and position, or the mesocycle week for standard splits.
   const planTemplate = planWorkoutNumber ? trainingPlan.templates.find((t) => t.workoutNumber === planWorkoutNumber) : undefined;
-  const sessionWord = showRecoveryGate ? 'Next' : 'Today';
+  // After a logged rest day the session is held for tomorrow, so it isn't today's.
+  const sessionWord = showRecoveryGate || activeWorkout.date > localDateString() ? 'Next' : 'Today';
   const programCard = planWorkoutNumber
     ? {
         title: `Phase ${planPhase?.phaseNumber ?? 1}`,
@@ -1120,7 +1128,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
 
       {/* Add Exercise Picker Modal */}
       {showAddExerciseModal && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/85 backdrop-blur-md">
+        <div role="dialog" aria-modal="true" aria-label="Add exercise" className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/85 backdrop-blur-md">
           <div className="wk-card w-full max-w-md shadow-2xl space-y-4 max-h-[80vh] flex flex-col">
             <div className="flex items-center justify-between pb-1">
               <div>
@@ -1212,7 +1220,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
 
       {/* Past Workout Preview Modal */}
       {previewPastWorkout && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md">
+        <div role="dialog" aria-modal="true" aria-label="Last workout" className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md">
           <div className="wk-card w-full max-w-sm shadow-2xl space-y-4">
             <div className="flex justify-between items-center">
               <h3 className="wk-h1">

@@ -435,7 +435,7 @@ export const ProgramPlanView: React.FC<ProgramPlanViewProps> = ({
     borderRadius: fig(16),
     paddingLeft: fig(35),
     paddingRight: fig(31),
-    fontSize: fig(28),
+    fontSize: `max(12px, ${fig(28)})`,
     gap: fig(22),
   };
 
@@ -459,7 +459,7 @@ export const ProgramPlanView: React.FC<ProgramPlanViewProps> = ({
           document.body
         )}
       <header style={{ paddingTop: fig(20) }}>
-        <h1 className="wk-page-title" style={{ fontSize: fig(28) }}>
+        <h1 className="wk-page-title" style={{ fontSize: `max(12px, ${fig(28)})` }}>
           {trainingPlan.name}
         </h1>
       </header>
@@ -497,7 +497,7 @@ export const ProgramPlanView: React.FC<ProgramPlanViewProps> = ({
           <span className="wk-label" style={{ lineHeight: 1.21 }}>
             Next: {next.label}
           </span>
-          <span className="font-bold text-white shrink-0" style={{ fontSize: fig(40), lineHeight: 1 }}>
+          <span className="font-bold text-white shrink-0" style={{ fontSize: `max(12px, ${fig(40)})`, lineHeight: 1 }}>
             {plan.nextWorkoutNumber}/{TOTAL}
           </span>
         </div>
@@ -591,12 +591,12 @@ export const ProgramPlanView: React.FC<ProgramPlanViewProps> = ({
                                 : `${name}, up next. Open workout`
                             }
                             className="wk-hit w-full flex items-center text-left"
-                            style={{ ...rowStyle, background: done ? '#05A670' : 'var(--wk-card)' }}
+                            style={{ ...rowStyle, background: done ? '#047857' : 'var(--wk-card)' }}
                           >
                             {content}
                           </button>
                         ) : (
-                          <div className="flex items-center" style={{ ...rowStyle, background: done ? '#05A670' : 'var(--wk-card)' }}>
+                          <div className="flex items-center" style={{ ...rowStyle, background: done ? '#047857' : 'var(--wk-card)' }}>
                             {content}
                           </div>
                         )}

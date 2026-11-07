@@ -13,6 +13,7 @@ import {
   canPerformExerciseInLocation,
   getMovementFamilyLabel,
   getMovementVectorId,
+  findLastCompletedExerciseSession,
   prescribeDoubleProgression,
 } from '../engine/progression';
 import {
@@ -215,7 +216,9 @@ export function getTemplateDefaultWeight(exerciseId: string): number | undefined
     { ...source.e, exerciseId: source.e.id },
     { ...def, exerciseId: def.id }
   );
-  return converted > 0 ? converted : undefined;
+  if (converted <= 0) return undefined;
+  // A default borrowed from a barbell or machine lift assumes a pair of dumbbells; a goblet squat holds one.
+  return /goblet/.test(`${def.id} ${def.name}`.toLowerCase()) ? converted / 2 : converted;
 }
 
 function getDirectTemplateDefaultWeight(exerciseId: string): number | undefined {
@@ -515,9 +518,15 @@ export function adaptWorkoutSessionToLocation(
   const exMap = new Map(exerciseCatalog.map((e) => [e.id, e]));
   const splitKey = (session.splitDay as SplitDayType) || 'Push';
   const gymTemplate = SPLIT_TEMPLATES[splitKey] || SPLIT_TEMPLATES.Push;
-  const usedIds = new Set<string>();
+  const isStarted = (ex: ExerciseSession) => ex.sets.some((s) => s.completed);
+  // Plan sessions get their weights, reps and warm-ups when they are prepared for the athlete.
+  const isPlanSession = session.programWorkoutNumber !== undefined;
+  const usedIds = new Set<string>(session.exercises.filter(isStarted).map((ex) => ex.exerciseId));
 
   const adaptedExercises: ExerciseSession[] = session.exercises.map((ex, idx) => {
+    // Logged sets belong to the exercise that was done: never relabel them as another movement.
+    if (isStarted(ex)) return ex;
+
     const currentDef = exMap.get(ex.exerciseId);
     const movementVector = getMovementVectorId(currentDef || ex);
     const familyLabel = getMovementFamilyLabel(currentDef || ex);
@@ -627,7 +636,14 @@ export function adaptWorkoutSessionToLocation(
     // A bodyweight move says nothing about what the athlete can lift with weights: the new exercise
     // starts weightless and gets the athlete's starting weight when the session is prepared.
     const sourceIsPureBw = ex.equipment === 'bodyweight' && !ex.isWeightedCalisthenic;
-    const translatedWeight = isPureBw || sourceIsPureBw
+    // In a plan, a move the athlete hasn't done starts from its own default scaled to them, not a
+    // number converted from another movement. A source with no weight yet has nothing to convert.
+    const startsFromOwnDefault =
+      isPlanSession &&
+      !isPureBw &&
+      !findLastCompletedExerciseSession(targetDef.id, historicalWorkouts) &&
+      getTemplateDefaultWeight(targetDef.id) !== undefined;
+    const translatedWeight = isPureBw || sourceIsPureBw || startsFromOwnDefault || sourceWeight <= 0
       ? 0
       : translateWeightBetweenImplements(
           sourceWeight,
@@ -745,7 +761,7 @@ export function adaptWorkoutSessionToLocation(
         session.exercises
       );
       let warmupSets: WorkoutSet[] = [];
-      if (!meta.isIsolation) {
+      if (!meta.isIsolation && !isPlanSession) {
         const warmupPrescription = calculateWarmupPrescription(
           candidateSession,
           prescription.nextWeightKg,
@@ -757,12 +773,19 @@ export function adaptWorkoutSessionToLocation(
       calibratedSets = [
         ...warmupSets,
         ...workingSetsOnly.map((s, workingIdx) => {
-          const nextReps = prescription.nextTargetReps[workingIdx] ?? targetDef.defaultRepRange[0];
+          const prescribedReps = prescription.nextTargetReps[workingIdx] ?? targetDef.defaultRepRange[0];
+          // A plan's reps were written for the old exercise: keep them inside the new one's range.
+          const nextReps = startsFromOwnDefault
+            ? targetDef.defaultRepRange[0]
+            : isPlanSession
+            ? Math.min(targetDef.defaultRepRange[1], Math.max(targetDef.defaultRepRange[0], prescribedReps))
+            : prescribedReps;
+          const nextWeight = startsFromOwnDefault ? 0 : prescription.nextWeightKg;
           return {
             ...s,
             setNumber: workingIdx + 1,
-            targetWeightKg: prescription.nextWeightKg,
-            actualWeightKg: s.completed ? s.actualWeightKg : prescription.nextWeightKg,
+            targetWeightKg: nextWeight,
+            actualWeightKg: s.completed ? s.actualWeightKg : nextWeight,
             targetReps: nextReps,
             actualReps: s.completed ? s.actualReps : nextReps,
           };

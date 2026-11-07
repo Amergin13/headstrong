@@ -43,12 +43,12 @@ export const ProgramProgressCard: React.FC<ProgramProgressCardProps> = ({
         </h2>
         {onOpen && <ChevronRight className="wk-chevron" strokeWidth={2} aria-hidden="true" />}
       </div>
-      <p style={{ fontSize: fig(28), lineHeight: 1.21, color: 'var(--wk-muted)', marginTop: fig(20) }}>{subtitle}</p>
+      <p style={{ fontSize: `max(12px, ${fig(28)})`, lineHeight: 1.21, color: 'var(--wk-muted)', marginTop: fig(20) }}>{subtitle}</p>
       <div className="flex items-end justify-between" style={{ marginTop: fig(60), gap: fig(20) }}>
         <span className="wk-label" style={{ lineHeight: 1.21 }}>
           {sessionLabel}
         </span>
-        <span className="font-bold text-white shrink-0" style={{ fontSize: fig(40), lineHeight: 1 }}>
+        <span className="font-bold text-white shrink-0" style={{ fontSize: `max(12px, ${fig(40)})`, lineHeight: 1 }}>
           {current}/{total}
         </span>
       </div>

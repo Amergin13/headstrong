@@ -23,6 +23,11 @@ export function isUnilateralExercise(ex: { exerciseId?: string; name?: string })
   return /(single[- ]?(arm|leg)|one[- ]arm|1[- ]arm|\bsa[- ]|split[- ]squat|bulgarian|lunge|pistol|step[- ]?up|unilateral|copenhagen|suitcase)/.test(s);
 }
 
+/** Moves done holding one dumbbell, so their weight is that dumbbell, not a pair. */
+export function usesOneDumbbell(ex: { exerciseId?: string; id?: string; name?: string }): boolean {
+  return /(goblet|pullover)/.test(`${ex.exerciseId || ex.id || ''} ${ex.name || ''}`.toLowerCase());
+}
+
 /**
  * Biomechanical Bodyweight Load Fractions (percentage of body mass supported/lifted):
  * Based on published exercise biomechanics (Ebben et al., 2011; Suprak et al., 2011; Vigotsky et al., 2019):

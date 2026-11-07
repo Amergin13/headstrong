@@ -8,6 +8,7 @@ import {
 import {
   translateWeightBetweenImplements,
   formatImplementWeightLabel,
+  usesOneDumbbell,
 } from '../../engine/e1rm';
 import {
   canPerformExerciseInLocation,
@@ -275,7 +276,7 @@ export const ExerciseSwapModal: React.FC<ExerciseSwapModalProps> = ({
                           ? 'Bodyweight'
                           : alt.isWeightedCalisthenic || alt.equipment === 'weighted_bodyweight'
                           ? `BW + ${units.format(convertedKg)}`
-                          : alt.equipment === 'dumbbell'
+                          : alt.equipment === 'dumbbell' && !usesOneDumbbell(alt)
                           ? `${units.format(convertedKg / 2)} each`
                           : units.format(convertedKg)}
                       </span>

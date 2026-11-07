@@ -164,7 +164,7 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
   const initialWeightKg =
     todayLog?.bodyweightKg && todayLog.bodyweightKg > 0 ? todayLog.bodyweightKg : currentWeight;
 
-  const initialWeightInput = initialWeightKg > 0 ? `${units.toDisplay(initialWeightKg)}` : '';
+  const initialWeightInput = initialWeightKg > 0 ? `${units.toDisplayPrecise(initialWeightKg)}` : '';
   const [weightInput, setWeightInput] = useState(initialWeightInput);
   const [bodyFat, setBodyFat] = useState(
     todayLog?.bodyFatPct && todayLog.bodyFatPct > 0 ? `${todayLog.bodyFatPct}` : ''
@@ -440,7 +440,7 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
         impedanceOhms: enrichedReading.impedanceOhms,
       };
       (onAutoCapture ?? onSave)(autoEntry);
-      const summary = `${units.format(enrichedReading.weightKg)}${
+      const summary = `${units.formatPrecise(enrichedReading.weightKg)}${
         autoEntry.bodyFatPct ? ` · ${autoEntry.bodyFatPct}% BF` : ''
       }`;
       setSavedDevices(recordRenphoDeviceSync('scale', summary));
@@ -895,7 +895,7 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
     alertBody = nativeScale ? 'Stay on the scale until it connects.' : 'Step on your scale to wake it, then choose it from the list.';
   } else if (capturePhase === 'partial' && liveScaleReading) {
     alertTitle = 'Step on with both feet';
-    alertBody = `Your scale read ${units.format(liveScaleReading.weightKg)}, which looks like a partial reading. Nothing was saved.`;
+    alertBody = `Your scale read ${units.formatPrecise(liveScaleReading.weightKg)}, which looks like a partial reading. Nothing was saved.`;
     alertTone = 'live';
   } else if (capturePhase === 'analysing') {
     alertTitle = `Weight saved: ${autoSavedBanner?.split(' ·')[0].split(' and ')[0] ?? ''}`;
@@ -916,7 +916,7 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
       : `${autoSavedBanner}.`;
     alertTone = 'success';
   } else if (measuring) {
-    alertTitle = `Measuring: ${units.format(liveScaleReading!.weightKg)}`;
+    alertTitle = `Measuring: ${units.formatPrecise(liveScaleReading!.weightKg)}`;
     alertBody = 'Stand still until it settles.';
     alertTone = 'live';
   } else if (justPaired && scaleConnected) {
@@ -1034,7 +1034,7 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
   );
 
   return (
-    <div className="wk fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/85 backdrop-blur-md">
+    <div role="dialog" aria-modal="true" aria-label="Log weight or measurements" className="wk fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/85 backdrop-blur-md">
       <div className="wk-card w-full max-w-lg shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
         {/* Header */}
         <div className="flex items-center justify-between">
@@ -1085,7 +1085,7 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
               </div>
               {weightKg > 0 && weightValid && (
                 <p className="wk-caption">
-                  New 7-day average: <strong className="text-white">{units.format(previewEmaKg)}</strong>
+                  New 7-day average: <strong className="text-white">{units.formatPrecise(previewEmaKg)}</strong>
                 </p>
               )}
               {!heightCm &&
@@ -1134,7 +1134,7 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
                     const displayVal =
                       rawMetricVal !== undefined && rawMetricVal > 0
                         ? m.unitKind === 'weight'
-                          ? `${units.toDisplay(rawMetricVal)}`
+                          ? `${units.toDisplayPrecise(rawMetricVal)}`
                           : `${rawMetricVal}`
                         : '';
                     const unitLabel =

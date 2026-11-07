@@ -31,9 +31,11 @@ export function prepareSessionForAthlete(session: WorkoutSession, ctx: SessionPr
     templateReferenceLevel: ctx.isProgramPlan ? 'intermediate' : 'experienced',
     carryOverExactHistory: Boolean(ctx.isProgramPlan),
   });
-  if (unit !== 'lb') return personalized;
+  // What the weights were prepared for, so a later change in recovery can be noticed.
+  const prepared = { ...personalized, readinessState: ctx.readinessState };
+  if (unit !== 'lb') return prepared;
   return {
-    ...personalized,
+    ...prepared,
     exercises: personalized.exercises.map((ex) => ({
       ...ex,
       sets: ex.sets.map((s) =>

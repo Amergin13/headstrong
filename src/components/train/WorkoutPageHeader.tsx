@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Check, MoreHorizontal } from 'lucide-react';
 import { StripDay } from '../../services/sessionSchedule';
 import { triggerHaptic } from '../../utils/haptics';
@@ -63,6 +63,15 @@ export const WorkoutPageHeader: React.FC<WorkoutPageHeaderProps> = ({ title, day
   const [menuOpen, setMenuOpen] = useState(false);
   const close = () => setMenuOpen(false);
 
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setMenuOpen(false);
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [menuOpen]);
+
   return (
     <header className="relative" style={{ paddingTop: fig(20) }}>
       <div className="relative flex items-center justify-center">
@@ -87,7 +96,7 @@ export const WorkoutPageHeader: React.FC<WorkoutPageHeaderProps> = ({ title, day
         )}
         {menuOpen && renderMenu && (
           <>
-            <div className="fixed inset-0 z-20" onClick={close} />
+            <div className="fixed inset-0 z-20" onClick={close} aria-hidden="true" />
             <div className="absolute right-0 top-full mt-2 z-30">{renderMenu(close)}</div>
           </>
         )}

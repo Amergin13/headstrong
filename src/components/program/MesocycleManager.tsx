@@ -89,7 +89,7 @@ export const MesocycleManager: React.FC<MesocycleManagerProps> = ({
 
       <p
         style={{
-          fontSize: fig(28),
+          fontSize: `max(12px, ${fig(28)})`,
           lineHeight: 1.21,
           color: 'var(--wk-muted)',
           marginTop: fig(20),
@@ -107,7 +107,7 @@ export const MesocycleManager: React.FC<MesocycleManagerProps> = ({
         </span>
         <span
           className="font-bold text-white shrink-0"
-          style={{ fontSize: fig(40), lineHeight: 1 }}
+          style={{ fontSize: `max(12px, ${fig(40)})`, lineHeight: 1 }}
         >
           {currentWeek}/{totalWeeks}
         </span>

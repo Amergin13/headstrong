@@ -15,6 +15,7 @@ import {
   TrainingLocation,
   UserProfile,
   WorkoutSession,
+  WorkoutSet,
 } from '../engine/types';
 import {
   AthleteKnowledgeGraph,
@@ -30,7 +31,9 @@ import {
   getFirstSplitDayForProgram,
 } from './workoutGenerator';
 import { localDateString } from '../utils/date';
-import { formatWeight, snapLoadKg } from '../utils/units';
+import { formatPreciseWeight, formatWeight, snapLoadKg } from '../utils/units';
+import { calculateE1RM } from '../engine/e1rm';
+import { findLastCompletedExerciseSession } from '../engine/progression';
 
 export interface AssistantProcessInput {
   userMessage: string;
@@ -273,6 +276,59 @@ function detectEquipmentChange(
   return null;
 }
 
+/**
+ * A small model invents numbers, so a chat answer is only shown if every weight, percentage or larger
+ * number in it came from what the model was given. Otherwise the rule-based coach answers.
+ */
+export function acceptCoachAnswer(answer: string, grounding: string): boolean {
+  if (/\b(as an ai|language model)\b/i.test(answer)) return false;
+  const known = new Set(grounding.match(/\d+(?:\.\d+)?/g) || []);
+  for (const m of answer.matchAll(/(\d+(?:\.\d+)?)\s*(kg|kilos?|lbs?|pounds?|%)?/gi)) {
+    const value = m[1];
+    if (m[2]) {
+      // A weight or percentage has to appear as that same figure, not just as any matching number.
+      const unit = m[2].toLowerCase().startsWith('kilo') ? 'kg' : m[2].toLowerCase().startsWith('p') ? 'lb' : m[2].toLowerCase().replace(/^lbs$/, 'lb');
+      if (!new RegExp(`(^|[^\\d.])${value.replace('.', '\\.')}\\s*${unit === '%' ? '%' : `${unit}s?\\b`}`, 'i').test(grounding)) return false;
+    } else if (!known.has(value) && parseFloat(value) > 3) {
+      return false;
+    }
+  }
+  return true;
+}
+
+const LIFT_WORDS = ['bench', 'squat', 'deadlift', 'rdl', 'overhead', 'shoulder press', 'pulldown', 'pull-up', 'pull up', 'chin', 'row', 'curl', 'leg press'];
+
+/** The best estimated max logged for the lift named in the message, from the same formula as Progress. */
+function buildEstimatedMaxAnswer(lowerMsg: string, workouts: WorkoutSession[], bodyweightKg: number, unit: 'kg' | 'lb'): string {
+  const lift = LIFT_WORDS.find((word) => lowerMsg.includes(word));
+  if (!lift) return 'Which lift do you mean? Ask me for your bench, squat or deadlift, for example.';
+  const spelled = lift.replace(' ', '-');
+  let best: { name: string; kg: number } | null = null;
+  for (const w of workouts.filter((session) => session.completed)) {
+    for (const ex of w.exercises) {
+      const name = ex.name.toLowerCase();
+      if (!name.includes(lift) && !name.includes(spelled)) continue;
+      for (const st of ex.sets) {
+        if (!st.completed || st.isWarmup || st.setType === 'warmup') continue;
+        const kg = calculateE1RM(
+          st.actualWeightKg ?? st.targetWeightKg,
+          st.actualReps ?? st.targetReps,
+          st.actualRir ?? st.targetRir ?? 2,
+          ex.equipment,
+          ex.isRdl,
+          ex.isWeightedCalisthenic,
+          bodyweightKg,
+          ex.exerciseId,
+          ex.pillar
+        );
+        if (!best || kg > best.kg) best = { name: ex.name, kg };
+      }
+    }
+  }
+  if (!best) return `You haven't logged a ${lift} yet, so there's no estimated max to give. Your first session will set your starting point.`;
+  return `Your best estimated one-rep max is ${formatPreciseWeight(best.kg, unit)} on ${best.name}. It's worked out from your best logged set, not a tested max.`;
+}
+
 /** The athlete's real recovery readings for a sentence, e.g. ", with HRV 58 ms, 7 h sleep"; empty without any. */
 function recoveryReadingsClause(log?: BiometricLog): string {
   const readings = [
@@ -448,7 +504,7 @@ async function processAssistantMessageCore(
   // ============================================================================
   else if (
     /\b(switch|change|set|turn)\b.*\b(travel|bodyweight|home|gym)\b/i.test(lowerMsg) ||
-    /\b(train\s*at\s*home|in\s*a\s*hotel|no\s*weights?\s*today|bodyweight\s*today)\b/i.test(lowerMsg)
+    /\b(train\s*at\s*home|at\s*home\s*today|in\s*a\s*hotel|no\s*weights?\s*today|bodyweight\s*today|back\s*(?:to|at|in)\s*(?:the\s*)?gym|at\s*the\s*gym\s*today|train\s*at\s*the\s*gym)\b/i.test(lowerMsg)
   ) {
     let targetLoc: TrainingLocation = 'travel';
     if (/\b(home|house)\b/i.test(lowerMsg)) targetLoc = 'home';
@@ -700,7 +756,15 @@ async function processAssistantMessageCore(
       // data (movement standards), never by the model. "Why / how is it worked out" still gets the card.
       const isStandardsQuestion =
         /\b(my level|levels?|strength standards?|how strong|imbalanc\w*|balanced?|asymmetr\w*|weaker side|weak side|left side|right side|one side|weak link|lagging)\b/i.test(lowerMsg);
-      if (isStandardsQuestion && !isExplicitScienceQuestion && !isTacticalWorkoutQuery) {
+      // "What's my bench 1RM?" and "what's my DOTS score?" ask for the athlete's own number, not a formula.
+      const asksHowItWorks = /\b(why|how|formula|explain|science|research|calculat\w*|worked out)\b/.test(lowerMsg);
+      const asksForOwnMax = /\bmy\b.*\b(e?1\s?rm|one[\s-]rep\s*max|estimated\s*max)\b/.test(lowerMsg) && !asksHowItWorks;
+      const asksForOwnScore = /\bmy\b.*\b(dots|strength\s*score)\b/.test(lowerMsg) && !asksHowItWorks;
+      if (asksForOwnMax) {
+        answerText = buildEstimatedMaxAnswer(lowerMsg, workouts, bodyweightEmaKg, profile.weightUnit || 'kg');
+      } else if (asksForOwnScore) {
+        answerText = `Treise compares each lift with published strength standards instead of giving one score.\n\n${strengthLevelsAnswer()}`;
+      } else if (isStandardsQuestion && !isExplicitScienceQuestion && !isTacticalWorkoutQuery) {
         answerText = strengthLevelsAnswer();
       } else if (scientificPrinciple) {
         scientificPrinciplesCited.push(scientificPrinciple);
@@ -958,7 +1022,7 @@ async function processAssistantMessageCore(
             onPartial: input.onPartial,
             onDownloadProgress: input.onDownloadProgress,
           });
-          if (nanoAnswer) {
+          if (nanoAnswer && acceptCoachAnswer(nanoAnswer, `${systemPrompt} ${questionWithFacts}`)) {
             answerText = nanoAnswer;
             nanoHandled = true;
 
@@ -1145,6 +1209,28 @@ async function processAssistantMessageCore(
             // Exact Exercise Target Load, Reps & Double Progression
             const isWorkoutEx = 'sets' in targetEx;
             const unit = profile.weightUnit || 'kg';
+            if (!isWorkoutEx) {
+              // Not in today's workout, so there's no target to give: say so, with what was last lifted.
+              const last = findLastCompletedExerciseSession(targetEx.id, workouts);
+              const lastSets = last?.session.sets.filter((st) => st.completed && !st.isWarmup && st.setType !== 'warmup') ?? [];
+              const bestSet = lastSets.reduce<WorkoutSet | undefined>(
+                (best, st) => (!best || (st.actualWeightKg ?? 0) > (best.actualWeightKg ?? 0) ? st : best),
+                undefined
+              );
+              answerText = `**${targetEx.name}** isn't in today's workout (${activeWorkout.name}). ${
+                bestSet
+                  ? `Last time you did ${formatWeight(bestSet.actualWeightKg ?? bestSet.targetWeightKg, unit)} × ${bestSet.actualReps ?? bestSet.targetReps}.`
+                  : "You haven't logged it yet, so the first session will set your starting point."
+              } Your plan sets the weight when it comes up.`;
+              return {
+                message: {
+                  id: `msg-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+                  sender: 'assistant',
+                  text: answerText,
+                  timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                },
+              };
+            }
             const workingSets = isWorkoutEx
               ? (targetEx as ExerciseSession).sets.filter((st) => !st.isWarmup && st.setType !== 'warmup')
               : [];
@@ -1160,11 +1246,22 @@ async function processAssistantMessageCore(
               ? (targetEx as ExerciseSession).maxReps
               : (targetEx as ExerciseDefinition).defaultRepRange[1];
             const setCount = isWorkoutEx ? workingSets.length : 3;
-            const targetRir = readinessState === 'Amber Shield' ? '2–3 reps in reserve' : '1–2 reps in reserve';
-            const repLabel = minReps === maxReps ? `${minReps}` : `${minReps}–${maxReps}`;
+            // The same effort the workout card shows for this exercise.
+            const plannedRir = workingSets[0]?.targetRir;
+            const targetRir =
+              readinessState === 'Amber Shield'
+                ? '2–3 reps in reserve'
+                : plannedRir === undefined
+                ? '1–2 reps in reserve'
+                : plannedRir === 1
+                ? '1 rep in reserve'
+                : `${plannedRir} reps in reserve`;
+            const todayReps = workingSets[0]?.targetReps;
+            const repLabel =
+              minReps === maxReps ? `${minReps}` : todayReps ? `${todayReps} (range ${minReps}–${maxReps})` : `${minReps}–${maxReps}`;
             const inc = unit === 'lb' ? '5 lb' : targetEx.equipment === 'dumbbell' ? '2 kg' : '2.5 kg';
 
-            answerText = `For **${targetEx.name}** today, your target is **${targetWeightLabel}** for **${setCount} working sets** of **${repLabel} reps**, leaving **${targetRir}**.\n\n${
+            answerText = `For **${targetEx.name}** today, your target is **${targetWeightLabel}** for **${setCount} working sets** of **${repLabel}** reps, leaving **${targetRir}**.\n\n${
               readinessState === 'Primed'
                 ? '⚡ Recovery is Primed: If your warmup feels explosive, aim for the top of the rep range on your first working set.'
                 : readinessState === 'Amber Shield'
@@ -1190,7 +1287,7 @@ async function processAssistantMessageCore(
 
             const latestBio = biometrics[biometrics.length - 1];
 
-            answerText = `Today's session is **${activeWorkout?.name || 'Workout'}** (**${activeWorkout?.splitDay || 'Scheduled'} Day**) in **Week ${profile.mesocycleWeek || 1} of 6** (${activeWorkout?.location === 'travel' ? 'Bodyweight' : activeWorkout?.location === 'home' ? 'At Home' : 'Full Gym'} mode).\n\nPlanned Movements:\n${plannedList}\n\n${
+            answerText = `Today's session is **${activeWorkout?.name || 'Workout'}**${activeWorkout?.programWorkoutNumber ? '' : ` (**${activeWorkout?.splitDay || 'Scheduled'} Day**)`} in **Week ${profile.mesocycleWeek || 1} of 6** (${activeWorkout?.location === 'travel' ? 'Bodyweight' : activeWorkout?.location === 'home' ? 'At Home' : 'Full Gym'} mode).\n\nPlanned Movements:\n${plannedList}\n\n${
               readinessState === 'Primed'
                 ? `⚡ Autonomic recovery is **Primed**${recoveryReadingsClause(latestBio)}. It's a good day to push: attack Set 1 with intent!`
                 : readinessState === 'Amber Shield'
@@ -1201,7 +1298,7 @@ async function processAssistantMessageCore(
             citations.push({
               label: activeWorkout?.name || 'Session Briefing',
               metric: 'Today\'s Session',
-              value: `${activeWorkout?.splitDay || 'Active'} Day (${workoutExercises.length} Exercises Planned)`,
+              value: `${workoutExercises.length} Exercises Planned`,
             });
           }
         }

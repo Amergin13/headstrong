@@ -57,7 +57,7 @@ export const WorkoutSummaryModal: React.FC<WorkoutSummaryModalProps> = ({
   const hasWhoopData = isWhoopConnected || whoopTelemetry || workout.whoopStrain !== undefined;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md">
+    <div role="dialog" aria-modal="true" aria-label="Workout summary" className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md">
       <div className="wk-card w-full max-w-sm shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-200">
         {/* Trophy Header */}
         <div className="text-center space-y-2 pt-2">

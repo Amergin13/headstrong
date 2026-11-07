@@ -128,7 +128,7 @@ export const StrengthLevelsCard: React.FC<StrengthLevelsCardProps> = ({ report, 
           Cardio &amp; recovery
           {cardio > 0 && (latestBiometrics?.restingHr || 0) > 0 ? ` • ${latestBiometrics.restingHr} bpm resting` : ''}
         </span>
-        <span className="font-bold text-white shrink-0" style={{ fontSize: fig(40), lineHeight: 1 }}>
+        <span className="font-bold text-white shrink-0" style={{ fontSize: `max(12px, ${fig(40)})`, lineHeight: 1 }}>
           {cardio > 0 ? `${cardio}/100` : '—'}
         </span>
       </div>

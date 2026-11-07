@@ -144,13 +144,13 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
           {!(exercise.durationSeconds || exercise.durationMinutesRange) && (
             <TrendChart
               points={history.map((h) => ({ date: localDateString(new Date(h.at)), value: h.e1rmKg }))}
-              format={(kg) => units.format(kg)}
+              format={(kg) => units.formatPrecise(kg)}
               height={240}
               label={
                 history.length >= 2
-                  ? `Estimated one-rep max over your last ${history.length} sessions: ${units.format(history[0].e1rmKg)} to ${units.format(history[history.length - 1].e1rmKg)}`
+                  ? `Estimated one-rep max over your last ${history.length} sessions: ${units.formatPrecise(history[0].e1rmKg)} to ${units.formatPrecise(history[history.length - 1].e1rmKg)}`
                   : history.length === 1
-                  ? `Starting point: estimated one-rep max ${units.format(history[0].e1rmKg)}. The trend line starts after your next session.`
+                  ? `Starting point: estimated one-rep max ${units.formatPrecise(history[0].e1rmKg)}. The trend line starts after your next session.`
                   : 'Example chart. Your estimated one-rep max for this exercise appears here after your first session.'
               }
             />
@@ -281,7 +281,8 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
           <span role="columnheader" title="Reps in reserve">RIR</span>
           <span role="columnheader" className="sr-only">Done</span>
         </div>
-        <div className="flex flex-col" style={{ gap: fig(27) }}>
+        {/* At least 16 px apart, so the 44 px touch areas of neighbouring rows don't overlap. */}
+        <div className="flex flex-col" style={{ gap: `max(${fig(27)}, 16px)` }}>
           {(() => {
             let warmupIndex = 0;
             let workingIndex = 0;

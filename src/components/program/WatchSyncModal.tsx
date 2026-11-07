@@ -263,7 +263,7 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
           </h3>
           <p
             style={{
-              fontSize: fig(28),
+              fontSize: `max(12px, ${fig(28)})`,
               lineHeight: 1.21,
               color: 'var(--wk-muted)',
               marginTop: fig(16),
@@ -550,7 +550,7 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
 
   if (isModal) {
     return (
-      <div className="wk fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
+      <div role="dialog" aria-modal="true" aria-label="Wearable and recovery sync" className="wk fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
         <div className="w-full max-w-md">{content}</div>
       </div>
     );

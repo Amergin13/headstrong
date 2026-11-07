@@ -22,7 +22,7 @@ export const ProgressChartCard: React.FC<{ chart: ProgressChart; onOpen?: () => 
     <div className="flex items-start justify-between" style={{ gap: fig(20) }}>
       <div className="min-w-0">
         <h2 className="wk-h1">{chart.title}</h2>
-        <p style={{ fontSize: fig(28), color: 'var(--wk-muted)', marginTop: fig(10) }}>
+        <p style={{ fontSize: `max(12px, ${fig(28)})`, color: 'var(--wk-muted)', marginTop: fig(10) }}>
           {chart.lastUpdated ? `Last updated ${fullDate(chart.lastUpdated)}` : 'No data yet'}
         </p>
       </div>

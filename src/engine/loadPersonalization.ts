@@ -232,7 +232,8 @@ function progressThroughRepRange(
 
   if (previous.minReps !== minReps || previous.maxReps !== maxReps) {
     const matched = equivalentWeight(prevWeight, bestReps, bestRir, minReps, newRir);
-    return finish(minReps >= bestReps ? Math.min(matched, prevWeight) : matched, atBottom);
+    const neverHeavier = minReps >= bestReps || readinessState === 'Amber Shield';
+    return finish(neverHeavier ? Math.min(matched, prevWeight) : matched, atBottom);
   }
 
   // Reps for each set if the weight holds: last time's, on the same set at the same weight.

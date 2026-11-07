@@ -69,6 +69,7 @@ import { Milestone } from './engine/milestones';
 import { usePersistedState } from './hooks/usePersistedState';
 import { useWearableSync } from './hooks/useWearableSync';
 import { useLaunchLinks } from './hooks/useLaunchLinks';
+import { useDialogKeyboard } from './hooks/useDialogKeyboard';
 import { UnitsProvider } from './utils/unitsContext';
 import { WeightUnit } from './utils/units';
 import { RestTimerContext } from './components/common/RestTimerModal';
@@ -189,6 +190,7 @@ export const App: React.FC = () => {
     onOpenLogWeight: () => setLogWeightRequest((n) => n + 1),
     onOpenAuth: () => setAuthModalOpen(true),
     onAuthSuccess: handleAuthSuccess,
+    onWearableOAuthFailed: (message) => notify(message, 'Not connected'),
     onWearableOAuthCode: (code, provider) => {
       completeWearableConnection(code, provider);
     },
@@ -217,6 +219,7 @@ export const App: React.FC = () => {
   const readiness = calculateDailyReadiness(latestBiometrics, biometrics, activeWearable);
   // Everyone is on a 6-week plan: the starter plan for their goal, or the muscle plan on the owner's account.
   const activePlan = resolveActivePlan(profile);
+  useDialogKeyboard();
 
   const pillarBestE1rm = calculateBestPillarE1rms(workouts, bodyweightEmaKg);
   // Saved workouts only, so every page (cards, Program, Progress, Athlete, knowledge graph) shows the same count.
@@ -355,6 +358,29 @@ export const App: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile.programType, activePlan.id, workouts]);
 
+  // Recovery data usually arrives after the next workout was prepared. If low recovery starts or ends,
+  // an unstarted plan workout is prepared again, so it does what the recovery card says. Exercises the
+  // athlete changed by hand stay as they are.
+  useEffect(() => {
+    if (!isPlanProgram(profile.programType) || !activeWorkout.programWorkoutNumber) return;
+    if (activeWorkout.exercises.some((ex) => ex.sets.some((s) => s.completed))) return;
+    const wasLow = activeWorkout.readinessState === 'Amber Shield';
+    const isLow = readiness.state === 'Amber Shield';
+    if (wasLow === isLow) return;
+    const rebuilt = prepareSession(generatePlanWorkout(activePlan, activeWorkout.programWorkoutNumber), {
+      isProgramPlan: true,
+      location: activeWorkout.location,
+    });
+    setActiveWorkout({
+      ...activeWorkout,
+      readinessState: readiness.state,
+      exercises: activeWorkout.exercises.map((ex, idx) =>
+        rebuilt.exercises[idx]?.exerciseId === ex.exerciseId ? rebuilt.exercises[idx] : ex
+      ),
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [readiness.state, activeWorkout.programWorkoutNumber]);
+
   // Handler: a set was ticked off. Starts the labelled rest timer and celebrates a personal best once per set.
   const handleSetCompleted = (
     _exerciseName: string,
@@ -412,8 +438,11 @@ export const App: React.FC = () => {
     if (updatedProfile) {
       setProfile((prev) => ({ ...prev, ...updatedProfile }));
     }
-    if (updatedWorkout) {
-      setActiveWorkout(updatedWorkout);
+    if (updatedWorkout?.location && updatedWorkout.location !== activeWorkout.location && activeWorkout.programWorkoutNumber) {
+      // Same path as the Workout tab's place switch, so the plan and the athlete's weights are kept.
+      handleSwitchTrainingLocation(updatedWorkout.location);
+    } else if (updatedWorkout) {
+      setActiveWorkout(fillWeightless(updatedWorkout));
     }
   };
 
@@ -423,6 +452,27 @@ export const App: React.FC = () => {
       ...prev,
       activeLocation: location,
     }));
+
+    // A plan workout is rebuilt from the plan for the new place, so going back to the gym restores
+    // the plan's own exercises. Anything already logged stays exactly as it was done.
+    if (activeWorkout.programWorkoutNumber) {
+      const rebuilt = prepareSession(generatePlanWorkout(activePlan, activeWorkout.programWorkoutNumber), {
+        isProgramPlan: true,
+        location,
+      });
+      const startedIds = new Set(
+        activeWorkout.exercises.filter((ex) => ex.sets.some((s) => s.completed)).map((ex) => ex.exerciseId)
+      );
+      setActiveWorkout({
+        ...activeWorkout,
+        location,
+        exercises: activeWorkout.exercises.map((ex, idx) => {
+          const planned = rebuilt.exercises[idx];
+          return ex.sets.some((s) => s.completed) || !planned || startedIds.has(planned.exerciseId) ? ex : planned;
+        }),
+      });
+      return;
+    }
 
     const adapted = adaptWorkoutSessionToLocation(
       activeWorkout,
@@ -709,6 +759,7 @@ export const App: React.FC = () => {
     setWorkouts(reset.workouts);
     setActiveWorkout(reset.activeWorkout);
     setExercises(reset.exercises);
+    setActivities([]);
     setToast({ message: 'Restored 6-week sample workout and biometric history.',
       tag: 'Demo Loaded',
     });
@@ -722,7 +773,7 @@ export const App: React.FC = () => {
     const a = document.createElement('a');
     const todayStr = localDateString();
     a.href = url;
-    a.download = `headstrong-backup-${todayStr}.json`;
+    a.download = `treise-backup-${todayStr}.json`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -785,6 +836,10 @@ export const App: React.FC = () => {
       ...prev,
       date: tomorrowStr,
     }));
+    setToast({
+      message: `${activeWorkout.name} will be ready tomorrow. Missing a day doesn't set your plan back.`,
+      tag: 'Rest day',
+    });
   };
 
   return (
@@ -978,6 +1033,7 @@ export const App: React.FC = () => {
             setWorkouts(reset.workouts);
             setActiveWorkout(reset.activeWorkout);
             setExercises(reset.exercises);
+            setActivities([]);
             setOnboardingOpen(false);
             setToast({ message: 'Sample 6-week workout and biometric history loaded.',
               tag: 'Demo Mode',

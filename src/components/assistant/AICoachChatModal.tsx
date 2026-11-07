@@ -530,6 +530,7 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
               onChange={(e) => setInputMessage(e.target.value)}
               ref={inputRef}
               placeholder="Ask anything or modify your plan..."
+              aria-label="Message your coach"
               disabled={isProcessing}
               autoComplete="off"
               autoCorrect="off"
