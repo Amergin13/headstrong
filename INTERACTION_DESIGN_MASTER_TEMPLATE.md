@@ -167,7 +167,6 @@ Every screen, card, modal, and control in Treise is governed by three non-negoti
 │ 5. PROFILE & DATA SETTINGS (Collapsible Drawers)                          │
 │    ▸ 👤 Athlete Profile & Heart Rate Zones                                │
 │    ▸ 🛡️ Data Backup, Privacy & Permanent Erase                            │
-│    ▸ 📋 Product Governance Ledger & Competitor Matrix                     │
 └───────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -194,8 +193,6 @@ Every screen, card, modal, and control in Treise is governed by three non-negoti
    - Data Portability: `[Export Backup]` (JSON) and `[Restore Backup]` (schema-validated JSON).
    - Data Reset: `[Load 6-Wk Sample]` and `[Delete All Data]` with 2-step confirmation.
    - In-app Privacy Summary & link to `privacy.html`.
-8. **Section 2.8: Product Governance & Competitor Matrix Launcher**
-   - Launches in-app modal benchmark against RP Hypertrophy, Fitbod, Hevy, and Whoop.
 
 ---
 

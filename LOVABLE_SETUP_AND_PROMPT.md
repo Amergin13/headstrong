@@ -66,7 +66,7 @@ Build 4 bottom navigation tabs (`Workout`, `Program`, `Progress`, `Athlete`) plu
    - **Training Goal Switcher:** `Build Muscle` (`Lean Bulk`), `Lose Fat` (`Cut / Recomp` with Streak & XP Protection), `Stay Lean` (`Maingain`).
    - **6-Week Training Plan (`MesocycleManager`):** Weeks 1–5 progressive volume wave (MEV to MRV) + Week 6 Light Recovery Deload.
    - **Workout Splits & Exercises (`SplitEditor`):** Browse exercises across `Push`, `Pull`, `Legs`, and `Upper`, launch any split, or add a custom exercise.
-   - **Profile & Data Settings + Product Governance & Competitor Matrix Modal:** Export/Import JSON backup, Reset 6-week sample data, Delete all data, and inspect Locked vs. Progressing governance items and competitor benchmarks (vs. RP Hypertrophy, Fitbod, Hevy/Strong, Whoop).
+   - **Profile & Data Settings:** Export/Import JSON backup, Reset 6-week sample data and Delete all data.
 
 3. **Progress Tab (`AnalyticsTab`):**
    - 2-way segmented switcher:

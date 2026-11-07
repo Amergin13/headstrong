@@ -20,7 +20,6 @@ import { canUseMusclePlan, isPlanProgram } from '../../engine/trainingPlans';
 import { ActivityLog } from '../../engine/activeDays';
 import { CustomExerciseModal } from './CustomExerciseModal';
 import { MesocycleManager } from './MesocycleManager';
-import { ProductGovernanceModal } from './ProductGovernanceModal';
 import { GoalPhaseSwitcher } from './GoalPhaseSwitcher';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { triggerHaptic } from '../../utils/haptics';
@@ -112,7 +111,6 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
   onBackToWorkout,
 }) => {
   const [showCreateExercise, setShowCreateExercise] = useState(false);
-  const [showGovernanceModal, setShowGovernanceModal] = useState(false);
   const [openSettingsSection, setOpenSettingsSection] = useState<'account' | 'profile' | 'wearable' | 'data' | null>(null);
   const [showPrivacyDetails, setShowPrivacyDetails] = useState(false);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
@@ -1017,36 +1015,6 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
           )}
         </div>
 
-        {/* D. Product Governance & Competitor Comparison Matrix (internal tool: development builds only) */}
-        {import.meta.env.DEV && (
-          <div className="wk-card w-full text-left block">
-            <div className="flex items-start justify-between" style={{ gap: fig(24) }}>
-              <h2 className="wk-h1" style={{ lineHeight: 1.21 }}>
-                Product Governance &amp; Competitor Matrix
-              </h2>
-              <button
-                type="button"
-                onClick={() => {
-                  triggerHaptic('light');
-                  setShowGovernanceModal(true);
-                }}
-                className="wk-pill shrink-0"
-              >
-                Open Matrix
-              </button>
-            </div>
-            <p
-              style={{
-                fontSize: `max(12px, ${fig(28)})`,
-                lineHeight: 1.21,
-                color: 'var(--wk-muted)',
-                marginTop: fig(20),
-              }}
-            >
-              Review Locked vs. Progressing features, rationale &amp; competitor benchmarks
-            </p>
-          </div>
-        )}
       </div>
       )}
 
@@ -1058,7 +1026,6 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
         />
       )}
 
-      {/* Product Governance & Competitor Matrix Modal */}
       {showProgramPicker && (
         <ProgramPickerModal
           programType={profile.programType || 'starter_6wk'}
@@ -1068,9 +1035,6 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
         />
       )}
 
-      {showGovernanceModal && (
-        <ProductGovernanceModal onClose={() => setShowGovernanceModal(false)} />
-      )}
     </div>
   );
 };
