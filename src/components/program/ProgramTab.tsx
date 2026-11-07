@@ -20,7 +20,6 @@ import { canUseMusclePlan, isPlanProgram } from '../../engine/trainingPlans';
 import { ActivityLog } from '../../engine/activeDays';
 import { CustomExerciseModal } from './CustomExerciseModal';
 import { MesocycleManager } from './MesocycleManager';
-import { ProductGovernanceModal } from './ProductGovernanceModal';
 import { GoalPhaseSwitcher } from './GoalPhaseSwitcher';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { triggerHaptic } from '../../utils/haptics';
@@ -74,6 +73,10 @@ const HOME_EQUIP_LABELS: Record<string, string> = {
 
 const fig = (px: number) => `calc(${px} * var(--f))`;
 
+/** Starting values until the athlete enters their own (used only with measured heart-rate data). */
+const PLACEHOLDER_MAX_HR = 190;
+const PLACEHOLDER_RESTING_HR = 60;
+
 export const ProgramTab: React.FC<ProgramTabProps> = ({
   profile,
   trainingPlan,
@@ -108,7 +111,6 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
   onBackToWorkout,
 }) => {
   const [showCreateExercise, setShowCreateExercise] = useState(false);
-  const [showGovernanceModal, setShowGovernanceModal] = useState(false);
   const [openSettingsSection, setOpenSettingsSection] = useState<'account' | 'profile' | 'wearable' | 'data' | null>(null);
   const [showPrivacyDetails, setShowPrivacyDetails] = useState(false);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
@@ -123,6 +125,9 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
   const isPlan = isPlanProgram(profile.programType);
   // Everyone can choose how many days they lift; only the owner's account also sees the muscle plan.
   const canUseMuscle = canUseMusclePlan(profile.email);
+  // A value other than the placeholder was typed in before the flags existed (or by the sample athlete).
+  const maxHrKnown = profile.maxHrEntered ?? profile.maxHr !== PLACEHOLDER_MAX_HR;
+  const restingHrKnown = profile.restingHrEntered ?? profile.restingHrBaseline !== PLACEHOLDER_RESTING_HR;
   const changeProgram = (newProg: ProgramSplitType) => {
     if (onUpdateProgram) {
       onUpdateProgram(newProg);
@@ -251,7 +256,7 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
 
           <p
             style={{
-              fontSize: fig(28),
+              fontSize: `max(12px, ${fig(28)})`,
               lineHeight: 1.21,
               color: 'var(--wk-muted)',
               marginTop: fig(20),
@@ -269,7 +274,7 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
             </span>
             <span
               className="font-bold text-white shrink-0"
-              style={{ fontSize: fig(40), lineHeight: 1 }}
+              style={{ fontSize: `max(12px, ${fig(40)})`, lineHeight: 1 }}
             >
               3 LOCATIONS
             </span>
@@ -395,7 +400,7 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
 
             <p
               style={{
-                fontSize: fig(28),
+                fontSize: `max(12px, ${fig(28)})`,
                 lineHeight: 1.21,
                 color: 'var(--wk-muted)',
                 marginTop: fig(20),
@@ -480,13 +485,15 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
 
             <p
               style={{
-                fontSize: fig(28),
+                fontSize: `max(12px, ${fig(28)})`,
                 lineHeight: 1.21,
                 color: 'var(--wk-muted)',
                 marginTop: fig(20),
               }}
             >
-              {profile.name} • Max HR {profile.maxHr} bpm • Resting {profile.restingHrBaseline} bpm
+              {[profile.name, maxHrKnown && `Max HR ${profile.maxHr} bpm`, restingHrKnown && `Resting ${profile.restingHrBaseline} bpm`]
+                .filter(Boolean)
+                .join(' • ')}
             </p>
           </button>
 
@@ -533,7 +540,7 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
                         type="button"
                         aria-pressed={isSelected}
                         onClick={() => onUpdateProfile({ gender: g, sexEntered: true })}
-                        className="h-full px-3 font-bold uppercase transition-colors"
+                        className="wk-tap h-full px-3 font-bold uppercase transition-colors"
                         style={{
                           borderRadius: fig(14),
                           fontSize: `max(12px, ${fig(22)})`,
@@ -595,7 +602,7 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
                         type="button"
                         aria-pressed={isSelected}
                         onClick={() => onUpdateProfile({ weightUnit: u })}
-                        className="h-full px-3 font-bold uppercase transition-colors"
+                        className="wk-tap h-full px-3 font-bold uppercase transition-colors"
                         style={{
                           borderRadius: fig(14),
                           fontSize: `max(12px, ${fig(22)})`,
@@ -635,7 +642,7 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
                         type="button"
                         aria-pressed={isSelected}
                         onClick={() => onUpdateProfile({ experienceLevel: opt.id })}
-                        className="h-full px-2.5 font-bold uppercase transition-colors"
+                        className="wk-tap h-full px-2.5 font-bold uppercase transition-colors"
                         style={{
                           borderRadius: fig(14),
                           fontSize: `max(12px, ${fig(22)})`,
@@ -657,10 +664,12 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
                 <input
                   id="max-hr-input"
                   type="number"
-                  value={profile.maxHr}
-                  onChange={(e) =>
-                    onUpdateProfile({ maxHr: parseInt(e.target.value, 10) || 190 })
-                  }
+                  value={maxHrKnown ? profile.maxHr : ''}
+                  placeholder="—"
+                  onChange={(e) => {
+                    const bpm = parseInt(e.target.value, 10);
+                    onUpdateProfile(bpm > 0 ? { maxHr: bpm, maxHrEntered: true } : { maxHr: PLACEHOLDER_MAX_HR, maxHrEntered: false });
+                  }}
                   className="wk-field"
                   style={{ width: fig(180) }}
                 />
@@ -673,10 +682,16 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
                 <input
                   id="resting-hr-input"
                   type="number"
-                  value={profile.restingHrBaseline}
-                  onChange={(e) =>
-                    onUpdateProfile({ restingHrBaseline: parseInt(e.target.value, 10) || 56 })
-                  }
+                  value={restingHrKnown ? profile.restingHrBaseline : ''}
+                  placeholder="—"
+                  onChange={(e) => {
+                    const bpm = parseInt(e.target.value, 10);
+                    onUpdateProfile(
+                      bpm > 0
+                        ? { restingHrBaseline: bpm, restingHrEntered: true }
+                        : { restingHrBaseline: PLACEHOLDER_RESTING_HR, restingHrEntered: false }
+                    );
+                  }}
                   className="wk-field"
                   style={{ width: fig(180) }}
                 />
@@ -714,7 +729,7 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
 
             <p
               style={{
-                fontSize: fig(28),
+                fontSize: `max(12px, ${fig(28)})`,
                 lineHeight: 1.21,
                 color: 'var(--wk-muted)',
                 marginTop: fig(20),
@@ -795,7 +810,7 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
 
             <p
               style={{
-                fontSize: fig(28),
+                fontSize: `max(12px, ${fig(28)})`,
                 lineHeight: 1.21,
                 color: 'var(--wk-muted)',
                 marginTop: fig(20),
@@ -895,7 +910,7 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
                     setConfirmDeleteOpen(!confirmDeleteOpen);
                   }}
                   className="wk-button"
-                  style={{ background: 'var(--wk-raised)', color: '#FF3B4E' }}
+                  style={{ background: 'var(--wk-raised)', color: '#FF8A94' }}
                 >
                   Delete All Data
                 </button>
@@ -964,7 +979,7 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
                   type="button"
                   onClick={() => setShowPrivacyDetails(!showPrivacyDetails)}
                   aria-expanded={showPrivacyDetails}
-                  className="w-full flex items-center justify-between wk-label"
+                  className="wk-tap w-full flex items-center justify-between wk-label"
                 >
                   <span>Privacy Policy &amp; Fitness Disclaimer</span>
                   <ChevronRight
@@ -986,10 +1001,10 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
                       className="flex items-center font-bold"
                       style={{ marginTop: fig(16), gap: fig(24), color: 'var(--wk-accent)' }}
                     >
-                      <a href="/privacy.html" target="_blank" rel="noreferrer" className="hover:underline">
+                      <a href="/privacy.html" target="_blank" rel="noreferrer" className="wk-tap hover:underline">
                         Full Privacy Policy &rarr;
                       </a>
-                      <a href="/terms.html" target="_blank" rel="noreferrer" className="hover:underline">
+                      <a href="/terms.html" target="_blank" rel="noreferrer" className="wk-tap hover:underline">
                         Terms of Service &rarr;
                       </a>
                     </div>
@@ -1000,36 +1015,6 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
           )}
         </div>
 
-        {/* D. Product Governance & Competitor Comparison Matrix (internal tool: development builds only) */}
-        {import.meta.env.DEV && (
-          <div className="wk-card w-full text-left block">
-            <div className="flex items-start justify-between" style={{ gap: fig(24) }}>
-              <h2 className="wk-h1" style={{ lineHeight: 1.21 }}>
-                Product Governance &amp; Competitor Matrix
-              </h2>
-              <button
-                type="button"
-                onClick={() => {
-                  triggerHaptic('light');
-                  setShowGovernanceModal(true);
-                }}
-                className="wk-pill shrink-0"
-              >
-                Open Matrix
-              </button>
-            </div>
-            <p
-              style={{
-                fontSize: fig(28),
-                lineHeight: 1.21,
-                color: 'var(--wk-muted)',
-                marginTop: fig(20),
-              }}
-            >
-              Review Locked vs. Progressing features, rationale &amp; competitor benchmarks
-            </p>
-          </div>
-        )}
       </div>
       )}
 
@@ -1041,7 +1026,6 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
         />
       )}
 
-      {/* Product Governance & Competitor Matrix Modal */}
       {showProgramPicker && (
         <ProgramPickerModal
           programType={profile.programType || 'starter_6wk'}
@@ -1051,9 +1035,6 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
         />
       )}
 
-      {showGovernanceModal && (
-        <ProductGovernanceModal onClose={() => setShowGovernanceModal(false)} />
-      )}
     </div>
   );
 };

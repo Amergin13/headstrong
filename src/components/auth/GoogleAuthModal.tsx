@@ -9,6 +9,7 @@ import {
   isSupabaseConfigured,
   getSupabaseGoogleAuthUrl,
   GOOGLE_AUTH_CONFIG,
+  markLinkSignInStarted,
 } from '../../services/googleAuthService';
 import { X } from 'lucide-react';
 import { triggerHaptic } from '../../utils/haptics';
@@ -103,7 +104,7 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({
             </h2>
             <p
               style={{
-                fontSize: fig(28),
+                fontSize: `max(12px, ${fig(28)})`,
                 lineHeight: 1.21,
                 color: 'var(--wk-muted)',
                 marginTop: fig(16),
@@ -186,6 +187,7 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({
             {supabaseUrl && (
               <a
                 href={supabaseUrl}
+                onClick={markLinkSignInStarted}
                 className="wk-button min-h-[44px]"
                 style={{ background: 'var(--wk-pill)', color: '#fff' }}
               >

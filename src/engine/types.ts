@@ -386,7 +386,11 @@ export interface UserProfile {
   healthConnectConnected?: boolean;
   healthConnectLastSync?: string;
   maxHr: number; // e.g. 220 - age or measured
+  /** True once the athlete typed it; maxHr is only a placeholder until then. */
+  maxHrEntered?: boolean;
   restingHrBaseline: number;
+  /** True once the athlete typed it; restingHrBaseline is only a placeholder until then. */
+  restingHrEntered?: boolean;
   onboardingCompleted?: boolean;
   activeLocation?: TrainingLocation;
   availableLocations?: TrainingLocation[];

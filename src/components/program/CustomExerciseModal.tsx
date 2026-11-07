@@ -76,7 +76,7 @@ export const CustomExerciseModal: React.FC<CustomExerciseModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md">
+    <div role="dialog" aria-modal="true" aria-label="Add custom exercise" className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md">
       <div className="wk-card w-full max-w-sm shadow-2xl max-h-[90vh] overflow-y-auto space-y-5">
         <div className="flex items-center justify-between">
           <h3 className="wk-h1">Add Custom Exercise</h3>

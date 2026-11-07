@@ -255,7 +255,11 @@ export function formatReadyTime(rawReadyAt: number, now: number = Date.now()): s
       new Date(new Date(now).getFullYear(), new Date(now).getMonth(), new Date(now).getDate()).getTime()) /
       (24 * HOUR_MS)
   );
-  if (dayDiff === 0) return diffHours < 6 ? `in ${Math.round(diffHours)} hours` : `today at ${timeLabel}`;
+  if (dayDiff === 0) {
+    if (diffHours >= 6) return `today at ${timeLabel}`;
+    const hours = Math.max(1, Math.round(diffHours));
+    return hours === 1 ? 'in 1 hour' : `in ${hours} hours`;
+  }
   if (dayDiff === 1) return `tomorrow at ${timeLabel}`;
   return `${target.toLocaleDateString([], { weekday: 'long' })} at ${timeLabel}`;
 }

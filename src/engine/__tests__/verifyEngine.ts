@@ -20,11 +20,10 @@ import { calculateWci, calculateHrrPercentage } from '../wci';
 import { kilgoreThresholdsKg, KILGORE_STANDARDS } from '../kilgoreStandards';
 import { getThresholds, POLIQUIN_CHIN_UP_TO_BENCH, standardsAge } from '../strengthStandards';
 import { calculateEngineVitalityScore, generate7PillarRadarData } from '../vitality';
-import { BiometricLog, ExerciseSession, WorkoutSession } from '../types';
+import { BiometricLog, ExerciseSession, HomeEquipmentTag, WorkoutSession } from '../types';
 import {
   detectPixelTensorHardware,
   generateTensorCoachingInsight,
-  evaluateTensorBiomechanicalMatch,
   setTensorSimulationOverride,
 } from '../tensorAI';
 import {
@@ -1272,15 +1271,6 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
     `Tensor G4 correctly auto-regulates Amber Shield + Cut with Recovery Shield cues`
   );
 
-  // H. Biomechanical Neural Matcher
-  const matchResult = evaluateTensorBiomechanicalMatch('ex-bench-press', 'ex-db-bench-press', 0.4, pixel9);
-  assert(
-    matchResult.compatibilityScore >= 80 &&
-      matchResult.rationale.includes('Tensor Google Tensor G4 Biomechanical Matcher') &&
-      matchResult.hypertrophyStimulusRating === 'Optimal',
-    `Tensor Biomechanical Matcher scores DB Bench Press at ${matchResult.compatibilityScore}% with optimal stimulus`
-  );
-
   // I. Client Hints & High-Entropy Model Detection
   const chPixel9 = await detectPixelTensorHardware(undefined, 'Pixel 9 Pro');
   assert(
@@ -1872,7 +1862,7 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
     'AI Assistant returns exact exercise-specific targets and citations instead of canned stock response'
   );
 
-  // H. Exercise Substitution Grounding via Biomechanical Neural Matcher
+  // H. Exercise Substitution: a real alternative, with no invented match score
   const swapResult = await processAssistantMessage({
     userMessage: 'Can I swap barbell bench press for dumbbell bench press?',
     profile: testProfile,
@@ -1885,9 +1875,10 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
   });
 
   assert(
-    swapResult.message.text.includes('Biomechanical Match') &&
-      Boolean(swapResult.message.knowledgeGraphCitations?.some((c) => c.metric === 'Biomechanical Match')),
-    'AI Assistant evaluates exercise substitution compatibility and joint shear from Knowledge Graph'
+    /You can swap \*\*.+\*\* for \*\*.+\*\*/.test(swapResult.message.text) &&
+      !/\d+%|Biomechanical Match|joint shear/i.test(swapResult.message.text) &&
+      Boolean(swapResult.message.knowledgeGraphCitations?.some((c) => c.metric === 'Swap Option')),
+    'Coach names a real swap and points to the swap button, with no invented match percentage or joint rating'
   );
 
   // I. Dynamic Tactical Session Briefing
@@ -5116,6 +5107,366 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
       report?.program.kind === 'plan' && report.program.totalWorkouts === 24 && report.program.totalWeeks === 6,
       'The session report counts the starter plan as 24 sessions over 6 weeks'
     );
+  }
+
+  // ==========================================================================
+  // 39b. Rep ranges on the 6-week plan: reps build first, the weight rises only at the top of the range
+  // ==========================================================================
+  console.log('\n[39b. Starter plan double progression through the rep range]');
+  {
+    const { buildStarterPlan } = await import('../starterPlan');
+    const mbp = await import('../muscleBuildingProgram');
+    const { prepareSessionForAthlete } = await import('../../services/sessionPreparation');
+    const BENCH = 'ex-bench-press'; // "6-10" in the Build Muscle starter plan
+
+    type Logged = { reps: number; rir?: number };
+    const runBench = (
+      logSet: (setIndex: number, target: number) => Logged,
+      opts: { goal?: 'Lean Bulk' | 'Cut / Recomp'; readiness?: (session: number) => 'Normal' | 'Amber Shield'; sessions?: number } = {}
+    ) => {
+      const plan = buildStarterPlan(opts.goal ?? 'Lean Bulk');
+      const benchWorkouts = plan.templates.filter((t) => t.kind !== 'active' && t.exercises.some((e) => e.exerciseId === BENCH));
+      let history: WorkoutSession[] = [];
+      const seen: { weight: number; targets: number[] }[] = [];
+      let day = new Date(2026, 0, 5, 18).getTime();
+      for (const tmpl of benchWorkouts.slice(0, opts.sessions ?? benchWorkouts.length)) {
+        const prepared = prepareSessionForAthlete(mbp.generatePlanWorkout(plan, tmpl.workoutNumber), {
+          history,
+          bodyweightKg: 80,
+          readinessState: opts.readiness?.(seen.length) ?? 'Normal',
+          gender: 'male',
+          experienceLevel: 'intermediate',
+          unit: 'kg',
+          isProgramPlan: true,
+        });
+        const at = new Date(day);
+        const done: WorkoutSession = {
+          ...prepared,
+          completed: true,
+          date: localDateString(at),
+          completedAt: at.toISOString(),
+          exercises: prepared.exercises.map((ex) => ({
+            ...ex,
+            sets: ex.sets.map((s, i) => {
+              const logged = ex.exerciseId === BENCH ? logSet(i, s.targetReps) : { reps: s.targetReps };
+              return { ...s, completed: true, actualWeightKg: s.targetWeightKg, actualReps: logged.reps, actualRir: logged.rir ?? s.targetRir };
+            }),
+          })),
+        };
+        const bench = prepared.exercises.find((e) => e.exerciseId === BENCH)!;
+        seen.push({ weight: bench.sets[0].targetWeightKg, targets: bench.sets.map((s) => s.targetReps) });
+        history = [...history, done];
+        day += 2 * 24 * 60 * 60 * 1000;
+      }
+      return seen;
+    };
+
+    // Only ticking the pre-filled sets adds reps, then one load step at the top, then back to the bottom.
+    const ticks = runBench((_i, target) => ({ reps: target }));
+    const firstStep = ticks.findIndex((s) => s.weight > ticks[0].weight);
+    assert(ticks[0].targets.every((r) => r === 6), `Starter bench starts at the bottom of 6-10 (got ${ticks[0].targets.join()})`);
+    assert(
+      ticks[1].weight === ticks[0].weight && ticks[1].targets.join() === '7,7' && ticks[2].targets.join() === '8,8',
+      `Within the range the weight holds and the first two sets aim for +1 rep (got ${JSON.stringify(ticks.slice(0, 3))})`
+    );
+    assert(
+      firstStep > 0 && ticks[firstStep - 1].targets.every((r) => r === 10) && ticks[firstStep].weight === ticks[0].weight + 2.5 && ticks[firstStep].targets.every((r) => r === 6),
+      `The weight rises by one step only after every set reaches 10, and reps return to 6 (got ${JSON.stringify(ticks)})`
+    );
+    assert(ticks.every((s, i) => i === 0 || s.weight - ticks[i - 1].weight <= 2.5), `Ticking through 6 weeks never adds more than one step at a time (got ${ticks.map((s) => s.weight).join()})`);
+
+    // Staying inside the range never earns weight, however long it lasts.
+    const inRange = runBench((i) => ({ reps: i === 0 ? 8 : 7, rir: 2 }));
+    assert(inRange.every((s) => s.weight === inRange[0].weight), `Reps inside the range never raise the weight (got ${inRange.map((s) => s.weight).join()})`);
+    const oneShort = runBench((i) => ({ reps: i === 0 ? 10 : 9, rir: 2 }), { sessions: 4 });
+    assert(oneShort.every((s) => s.weight === oneShort[0].weight), 'Only some sets at the top of the range holds the weight');
+
+    // Effort and missed reps.
+    const groundOut = runBench(() => ({ reps: 10, rir: 0 }), { sessions: 4 });
+    assert(groundOut.every((s) => s.weight === groundOut[0].weight), `The top of the range ground out to failure holds the weight (got ${groundOut.map((s) => s.weight).join()})`);
+    const missed = runBench(() => ({ reps: 3, rir: 2 }), { sessions: 3 });
+    assert(missed[1].weight < missed[0].weight && missed[1].targets.every((r) => r === 6), `The best set well under the range lowers the weight to match (got ${JSON.stringify(missed)})`);
+    const dropOff = runBench((i) => ({ reps: i === 0 ? 7 : 5, rir: 2 }), { sessions: 3 });
+    assert(dropOff[1].weight === dropOff[0].weight, 'A later set dropping under the range is normal fatigue: the weight holds');
+
+    // Far more reps than the range: the starting weight was too light, so it can move faster (still capped).
+    const tooLight = runBench(() => ({ reps: 20, rir: 2 }), { sessions: 2 });
+    const tooLightCap = tooLight[0].weight * 1.1 + 2.5;
+    assert(tooLight[1].weight > tooLight[0].weight + 2.5 && tooLight[1].weight <= tooLightCap, `Reps far past the range catch up quickly, within the jump cap (got ${tooLight.map((s) => s.weight).join()})`);
+
+    // Low recovery holds weight and reps.
+    const amber = runBench((_i, target) => ({ reps: target }), { sessions: 3, readiness: (n) => (n === 1 ? 'Amber Shield' : 'Normal') });
+    assert(amber[1].weight === amber[0].weight && amber[1].targets.join() === amber[0].targets.join(), `Low recovery holds weight and reps (got ${JSON.stringify(amber)})`);
+
+    // A new goal changes the range: the weight matches it, and reps start at its bottom.
+    const buildPlan = buildStarterPlan('Lean Bulk');
+    const cutPlan = buildStarterPlan('Cut / Recomp');
+    const bulkFirst = prepareSessionForAthlete(mbp.generatePlanWorkout(buildPlan, 1), { history: [], bodyweightKg: 80, readinessState: 'Normal', gender: 'male', experienceLevel: 'intermediate', unit: 'kg', isProgramPlan: true });
+    const bulkDone: WorkoutSession = {
+      ...bulkFirst,
+      completed: true,
+      completedAt: new Date(2026, 0, 5, 18).toISOString(),
+      exercises: bulkFirst.exercises.map((ex) => ({ ...ex, sets: ex.sets.map((s) => ({ ...s, completed: true, actualWeightKg: s.targetWeightKg, actualReps: 8, actualRir: 2 })) })),
+    };
+    const cutNext = prepareSessionForAthlete(mbp.generatePlanWorkout(cutPlan, 3), { history: [bulkDone], bodyweightKg: 80, readinessState: 'Normal', gender: 'male', experienceLevel: 'intermediate', unit: 'kg', isProgramPlan: true });
+    const cutBench = cutNext.exercises.find((e) => e.exerciseId === BENCH);
+    assert(
+      Boolean(cutBench) && cutBench!.minReps === 5 && cutBench!.sets.every((s) => s.targetReps === 5) && cutBench!.sets[0].targetWeightKg >= bulkFirst.exercises.find((e) => e.exerciseId === BENCH)!.sets[0].targetWeightKg,
+      'Changing goal moves to the new range: reps at its bottom, weight matched to what was lifted'
+    );
+  }
+
+  // ==========================================================================
+  // 39c. The coach changes equipment only when asked, and never invents numbers
+  // ==========================================================================
+  console.log('\n[39c. Coach: equipment changes and honest numbers]');
+  {
+    const baseArgs = {
+      profile: { ...NEW_USER_PROFILE, homeEquipment: ['dumbbells'] as HomeEquipmentTag[] },
+      activeWorkout: generate6WeekMuscleBuildingWorkout(1, 80),
+      workouts: [] as WorkoutSession[],
+      biometrics: [] as BiometricLog[],
+      exerciseCatalog: SEED_EXERCISES,
+      bodyweightEmaKg: 80,
+      readinessState: 'Normal' as const,
+    };
+    const ask = (userMessage: string) => processAssistantMessage({ ...baseArgs, userMessage });
+
+    for (const msg of [
+      'my bench felt heavy today',
+      'whats my bench 1rm',
+      'log 80kg x 8 on bench',
+      'i did 8 reps on the bench today',
+      'set a goal of 100 kg bench',
+      'I got 8 reps on bench',
+      'I got a new bench PR',
+      'I have bench press today',
+      'I have dumbbell rows next',
+      'do I have dumbbells',
+      'can I use a bench?',
+    ]) {
+      const reply = await ask(msg);
+      assert(!reply.updatedProfile?.homeEquipment && reply.actionTaken?.type !== 'UPDATE_EQUIPMENT', `Coach: "${msg}" doesn't change equipment`);
+    }
+    for (const [msg, tag] of [
+      ['I got a new pull-up bar for my home setup', 'pullup_bar'],
+      ['I bought an adjustable bench', 'bench'],
+      ['I have resistance bands', 'bands'],
+      ['just picked up a trx', 'trx'],
+      ['add a bench', 'bench'],
+    ] as const) {
+      const reply = await ask(msg);
+      assert(Boolean(reply.updatedProfile?.homeEquipment?.includes(tag)), `Coach: "${msg}" adds ${tag}`);
+    }
+    for (const msg of ['I sold my dumbbells', "I don't have dumbbells", 'I no longer have dumbbells', 'remove the dumbbells']) {
+      const reply = await ask(msg);
+      assert(reply.updatedProfile?.homeEquipment?.length === 0, `Coach: "${msg}" removes the dumbbells`);
+    }
+
+    for (const msg of ['what tier am i', 'how close am i to the next tier']) {
+      const reply = await ask(msg);
+      assert(!/DOTS|\b280\b/.test(reply.message.text) && /log your weight first/.test(reply.message.text), `Coach: "${msg}" answers from real levels, with no invented score`);
+    }
+    const loggedBench = generate6WeekMuscleBuildingWorkout(1, 80);
+    const twoLifts: WorkoutSession = {
+      ...loggedBench,
+      completed: true,
+      completedAt: '2026-10-01T18:00:00.000Z',
+      date: '2026-10-01',
+      exercises: [
+        { id: 'a', exerciseId: 'ex-barbell-squat', name: 'Barbell Back Squat', pillar: 'Squat', equipment: 'barbell', minReps: 5, maxReps: 5, sets: [{ id: 'a1', setNumber: 1, targetWeightKg: 100, actualWeightKg: 100, targetReps: 5, actualReps: 5, targetRir: 1, actualRir: 1, completed: true }] },
+        { id: 'b', exerciseId: 'ex-bench-press', name: 'Barbell Bench Press', pillar: 'Horizontal Push', equipment: 'barbell', minReps: 5, maxReps: 5, sets: [{ id: 'b1', setNumber: 1, targetWeightKg: 70, actualWeightKg: 70, targetReps: 5, actualReps: 5, targetRir: 1, actualRir: 1, completed: true }] },
+      ],
+    };
+    const noWeighIn = await processAssistantMessage({ ...baseArgs, workouts: [twoLifts], userMessage: 'what tier am i' });
+    assert(!/your lifts are in proportion/.test(noWeighIn.message.text), 'Coach: without a weigh-in it makes no claim that lifts are in proportion');
+    const oneRepMax = await ask('whats my bench 1rm');
+    assert(!/\b280\b|DOTS score is/.test(oneRepMax.message.text), 'Coach: asking for a one-rep max never returns an invented score');
+
+    // Readiness can be set with no readings saved: the coach must not fill them in.
+    for (const state of ['Primed', 'Amber Shield'] as const) {
+      const recovery = await processAssistantMessage({ ...baseArgs, readinessState: state, userMessage: 'how is my recovery' });
+      const briefing = await processAssistantMessage({ ...baseArgs, readinessState: state, userMessage: 'what is my workout today' });
+      assert(!/\b58\b|\b7\.5\b|\bHRV\b/.test(recovery.message.text) && !/\b58\b|\b7\.5\b|\bHRV\b/.test(briefing.message.text), `Coach: with no watch data, a ${state} answer shows no invented readings`);
+    }
+    const withReadings = await processAssistantMessage({
+      ...baseArgs,
+      readinessState: 'Primed',
+      biometrics: [{ date: '2026-11-01', bodyweightKg: 80, hrvRmssd: 71, restingHr: 49, sleepHours: 6.5, steps: 0, activeZoneMinutes: 0 }],
+      userMessage: 'how is my recovery',
+    });
+    assert(/HRV 71 ms/.test(withReadings.message.text) && /6\.5 h sleep/.test(withReadings.message.text), 'Coach: real readings are still shown');
+  }
+
+  // ==========================================================================
+  // 39d. Plans away from the gym, logged sets and the sample athlete
+  // ==========================================================================
+  console.log('\n[39d. Plans away from the gym, logged sets and the sample athlete]');
+  {
+    const { buildStarterPlan } = await import('../starterPlan');
+    const mbp = await import('../muscleBuildingProgram');
+    const { prepareSessionForAthlete } = await import('../../services/sessionPreparation');
+    const { usesOneDumbbell } = await import('../e1rm');
+    const { formatReadyTime } = await import('../recovery');
+    const prep = { bodyweightKg: 80, readinessState: 'Normal' as const, gender: 'male' as const, experienceLevel: 'new' as const, unit: 'kg' as const, isProgramPlan: true };
+
+    for (const goal of ['Lean Bulk', 'Cut / Recomp', 'Maingain'] as const) {
+      for (const layout of ['lift3_active1', 'lift4'] as const) {
+        const plan = buildStarterPlan(goal, layout);
+        const home = prepareSessionForAthlete(
+          adaptWorkoutSessionToLocation(mbp.generatePlanWorkout(plan, 1), 'home', ['dumbbells', 'bench'], SEED_EXERCISES, [], 'Normal', 80),
+          { ...prep, history: [] }
+        );
+        const loaded = home.exercises.filter((e) => !(e.equipment === 'bodyweight' && !e.isWeightedCalisthenic));
+        assert(
+          loaded.length > 0 &&
+            loaded.every((e) => e.sets.every((st) => !st.isWarmup && st.targetWeightKg >= 4 && st.targetReps >= e.minReps && st.targetReps <= e.maxReps)),
+          `${goal} ${layout} at home: real starting weights, reps inside each exercise's range, no added warm-ups (${loaded.map((e) => `${e.name} ${e.sets[0].targetWeightKg}x${e.sets[0].targetReps}`).join(', ')})`
+        );
+      }
+    }
+
+    // Logged sets belong to the exercise that was done, wherever the athlete goes next.
+    const plan = buildStarterPlan('Lean Bulk');
+    const fresh = prepareSessionForAthlete(mbp.generatePlanWorkout(plan, 1), { ...prep, history: [] });
+    const started: WorkoutSession = {
+      ...fresh,
+      exercises: fresh.exercises.map((e, i) =>
+        i === 0 ? { ...e, sets: e.sets.map((st, j) => (j === 0 ? { ...st, completed: true, actualWeightKg: 52.5, actualReps: 9 } : st)) } : e
+      ),
+    };
+    const movedHome = adaptWorkoutSessionToLocation(started, 'home', ['dumbbells', 'bench'], SEED_EXERCISES, [], 'Normal', 80);
+    assert(
+      movedHome.exercises[0].exerciseId === fresh.exercises[0].exerciseId &&
+        movedHome.exercises[0].sets[0].actualWeightKg === 52.5 &&
+        movedHome.exercises[1].exerciseId !== fresh.exercises[1].exerciseId,
+      'Switching place mid-workout never relabels logged sets; only exercises not started change'
+    );
+
+    // Low recovery with a new rep range never raises the weight.
+    const bench = fresh.exercises.find((e) => e.exerciseId === 'ex-bench-press')!;
+    const lastBench: WorkoutSession = {
+      ...fresh,
+      completed: true,
+      completedAt: new Date(2026, 0, 5, 18).toISOString(),
+      exercises: [{ ...bench, sets: bench.sets.map((st) => ({ ...st, completed: true, actualWeightKg: 60, actualReps: 10, actualRir: 2 })) }],
+    };
+    const cutPlan = buildStarterPlan('Cut / Recomp');
+    const amberCut = prepareSessionForAthlete(mbp.generatePlanWorkout(cutPlan, 3), { ...prep, history: [lastBench], readinessState: 'Amber Shield' });
+    const amberBench = amberCut.exercises.find((e) => e.exerciseId === 'ex-bench-press')!;
+    assert(amberBench.sets[0].targetWeightKg <= 60 && amberCut.readinessState === 'Amber Shield', `Low recovery holds the weight even when the goal's range changes (got ${amberBench.sets[0].targetWeightKg})`);
+
+    // One-dumbbell moves.
+    const goblet = getTemplateDefaultWeight('ex-goblet-squat')!;
+    assert(usesOneDumbbell({ exerciseId: 'ex-goblet-squat' }) && usesOneDumbbell({ name: 'Bench Dumbbell Lat Pullover' }) && !usesOneDumbbell({ name: 'Incline Dumbbell Press' }), 'Goblet squats and pullovers are recognised as one dumbbell');
+    assert(goblet > 0 && goblet <= 60, `A goblet squat's borrowed default assumes one dumbbell (got ${goblet} kg)`);
+    const toPullover = translateWeightBetweenImplements(
+      37.5,
+      { equipment: 'cable', exerciseId: 'ex-lat-pulldown', name: 'Lat Pulldown', pillar: 'Vertical Pull' },
+      { equipment: 'dumbbell', exerciseId: 'ex-db-pullover', name: 'Bench Dumbbell Lat Pullover', pillar: 'Vertical Pull' },
+      80
+    );
+    assert(toPullover <= 20, `Swapping to a one-dumbbell move halves the converted weight (37.5 kg pulldown gives ${toPullover} kg)`);
+    const onboardingSrc = fs.readFileSync(path.resolve(process.cwd(), 'src/App.tsx'), 'utf-8');
+    assert(onboardingSrc.includes('isOpen={authModalOpen && !onboardingOpen}') && onboardingSrc.includes('if (!isEditingSetup) setActiveTab'), 'Sign-in waits for onboarding, and saving equipment stays in Settings');
+
+    // Coach: place changes, and no internal day labels for plan workouts.
+    const coachArgs = { profile: { ...NEW_USER_PROFILE, programType: 'starter_6wk' as const }, activeWorkout: fresh, workouts: [] as WorkoutSession[], biometrics: [] as BiometricLog[], exerciseCatalog: SEED_EXERCISES, bodyweightEmaKg: 80, readinessState: 'Normal' as const };
+    const backToGym = await processAssistantMessage({ ...coachArgs, userMessage: 'back to the gym' });
+    assert(backToGym.actionTaken?.type === 'SWITCH_LOCATION' && backToGym.updatedProfile?.activeLocation === 'gym', 'Coach: "back to the gym" switches place, not an answer about back muscles');
+    const planBriefing = await processAssistantMessage({ ...coachArgs, userMessage: "give me today's briefing" });
+    assert(/Full Body A/.test(planBriefing.message.text) && !/Push Day|Pull Day/.test(planBriefing.message.text), 'Coach: a plan briefing uses the plan name, never an internal day label');
+
+    // Wording and backups.
+    const morning = new Date(2026, 5, 10, 9, 0).getTime();
+    const oneHour = formatReadyTime(morning + 60 * 60 * 1000, morning);
+    const threeHours = formatReadyTime(morning + 3 * 60 * 60 * 1000, morning);
+    assert(oneHour === 'in 1 hour' && threeHours === 'in 3 hours', `Ready times read correctly for one hour and several (got "${oneHour}", "${threeHours}")`);
+    const appSrc = fs.readFileSync(path.resolve(process.cwd(), 'src/App.tsx'), 'utf-8');
+    assert(appSrc.includes('treise-backup-') && !appSrc.includes('headstrong-backup-'), 'Backups are named after Treise');
+
+    // The sample athlete is partway through the plan, with names and exercises that agree.
+    const demo = resetAllToSeedData();
+    const demoPlan = buildStarterPlan(demo.profile.goalPhase, 'lift4');
+    const demoRun = demo.workouts.filter((w) => w.planId === 'starter_4day');
+    assert(
+      demo.profile.programType === 'starter_4day' &&
+        demoRun.length === 10 &&
+        mbp.getNextProgramWorkoutNumber(demo.workouts, demoPlan) === 11 &&
+        demo.workouts.length === generateSeedWorkouts().length &&
+        demoRun.every((w) => {
+          const tmpl = demoPlan.templates.find((t) => t.workoutNumber === w.programWorkoutNumber)!;
+          return w.name === mbp.planWorkoutLabel(tmpl.title) && w.exercises.map((e) => e.exerciseId).join() === tmpl.exercises.map((e) => e.exerciseId).join() && w.exercises.every((e) => e.sets.every((st) => st.completed && (st.actualWeightKg ?? 0) >= 0));
+        }),
+      'Sample data shows a plan athlete on workout 11 of 24, with sessions that match their names'
+    );
+  }
+
+  // ==========================================================================
+  // 39e. Honest coach answers, one rounding per number, accessibility floors and safe sign-in links
+  // ==========================================================================
+  console.log('\n[39e. Honest coach answers, rounding, accessibility floors and sign-in links]');
+  {
+    const { acceptCoachAnswer } = await import('../../services/aiAssistantService');
+    const { isExpectedOAuthState } = await import('../../services/whoopService');
+    const { formatPreciseWeight } = await import('../../utils/units');
+    const { buildStarterPlan } = await import('../starterPlan');
+    const mbp = await import('../muscleBuildingProgram');
+    const { prepareSessionForAthlete } = await import('../../services/sessionPreparation');
+
+    const grounding = 'Today: Back Squat 2x6 @ 60 kg. Goal: 15 sets. Recovery 72%.';
+    assert(acceptCoachAnswer('Keep your form tight and stop a rep or two short.', grounding), 'Coach: an answer with no numbers is shown');
+    assert(acceptCoachAnswer('Start with 60 kg and warm up with 1 or 2 easy sets.', grounding), 'Coach: numbers the model was given are shown');
+    assert(!acceptCoachAnswer('I recommend exactly 137 kg on every lift.', grounding), 'Coach: an invented weight is rejected');
+    assert(!acceptCoachAnswer('Aim for 15% more volume.', grounding), 'Coach: an invented percentage is rejected, even if the number appears elsewhere');
+    assert(!acceptCoachAnswer('Do 40 reps today.', grounding), 'Coach: an invented larger number is rejected');
+    assert(!acceptCoachAnswer('As an AI language model I cannot say.', grounding), 'Coach: talk about being an AI is rejected');
+
+    const plan = buildStarterPlan('Lean Bulk');
+    const active = prepareSessionForAthlete(mbp.generatePlanWorkout(plan, 1), { history: [], bodyweightKg: 80, readinessState: 'Normal', gender: 'male', experienceLevel: 'new', unit: 'kg', isProgramPlan: true });
+    const bench = active.exercises.find((e) => e.exerciseId === 'ex-bench-press')!;
+    const logged: WorkoutSession = { ...active, completed: true, completedAt: '2026-10-01T18:00:00.000Z', date: '2026-10-01', exercises: [{ ...bench, sets: [{ ...bench.sets[0], completed: true, actualWeightKg: 47.5, actualReps: 7, actualRir: 3 }] }] };
+    const args = { profile: { ...NEW_USER_PROFILE, programType: 'starter_6wk' as const }, activeWorkout: active, workouts: [logged], biometrics: [] as BiometricLog[], exerciseCatalog: SEED_EXERCISES, bodyweightEmaKg: 80, readinessState: 'Normal' as const };
+    const maxReply = await processAssistantMessage({ ...args, userMessage: 'whats my bench 1rm' });
+    assert(/63\.3 kg on Barbell Bench Press/.test(maxReply.message.text) && !/Scientific Formula/.test(maxReply.message.text), `Coach: "my bench 1rm" gives the athlete's own estimated max (${maxReply.message.text.slice(0, 80)})`);
+    const noLift = await processAssistantMessage({ ...args, workouts: [], userMessage: 'whats my squat 1rm' });
+    assert(/haven't logged a squat/.test(noLift.message.text), 'Coach: with no history there is no estimated max, and it says so');
+    const scoreReply = await processAssistantMessage({ ...args, userMessage: 'what is my dots score' });
+    assert(/instead of giving one score/.test(scoreReply.message.text) && !/\b280\b/.test(scoreReply.message.text), 'Coach: "my DOTS score" explains levels and never gives a stock score');
+    const workoutWithoutBench: WorkoutSession = { ...active, exercises: active.exercises.filter((e) => e.exerciseId !== 'ex-bench-press') };
+    const absent = await processAssistantMessage({ ...args, activeWorkout: workoutWithoutBench, userMessage: 'how much should I bench today' });
+    assert(/isn't in today's workout/.test(absent.message.text) && /47\.5 kg × 7/.test(absent.message.text), `Coach: a lift not in today's workout says so, with what was last lifted (${absent.message.text.slice(0, 90)})`);
+    const present = await processAssistantMessage({ ...args, userMessage: 'how much should I bench today' });
+    assert(new RegExp(`leaving \\*\\*${bench.sets[0].targetRir} reps in reserve`).test(present.message.text), 'Coach: the effort it gives matches the workout card');
+
+    assert(isExpectedOAuthState('whoop_abc', 'whoop_abc') && !isExpectedOAuthState('evil', 'whoop_abc') && !isExpectedOAuthState('whoop_abc', null) && !isExpectedOAuthState('', null), 'A Whoop return link is only accepted with the state saved on this device');
+    assert(formatPreciseWeight(63.333, 'kg') === '63.3 kg' && formatPreciseWeight(91.4, 'kg') === '91.4 kg', 'Calculated and measured weights show to 0.1, not rounded to plate sizes');
+
+    // Accessibility floors, checked in the source so they can't quietly return.
+    const walk = (dir: string): string[] =>
+      fs.readdirSync(dir, { withFileTypes: true }).flatMap((d: any) => (d.isDirectory() ? walk(path.join(dir, d.name)) : d.name.endsWith('.tsx') ? [path.join(dir, d.name)] : []));
+    const uiFiles = walk(path.resolve(process.cwd(), 'src/components'));
+    const unfloored = uiFiles.filter((f) => /fontSize: fig\(/.test(fs.readFileSync(f, 'utf-8')));
+    const css = fs.readFileSync(path.resolve(process.cwd(), 'src/index.css'), 'utf-8');
+    assert(unfloored.length === 0 && !/font-size: calc\(/.test(css), `No text can render under 12 px on a small phone (${unfloored.join(', ')})`);
+    const modalsWithoutRole = uiFiles.filter((f) => {
+      const src = fs.readFileSync(f, 'utf-8');
+      return /className="(wk )?fixed inset-0 z-50/.test(src) && !/role="dialog"/.test(src);
+    });
+    assert(modalsWithoutRole.length === 0, `Every modal is announced as a dialog (${modalsWithoutRole.join(', ')})`);
+    const setRowSrc = fs.readFileSync(path.resolve(process.cwd(), 'src/components/train/SetRow.tsx'), 'utf-8');
+    assert((setRowSrc.match(/wk-tap/g) || []).length >= 5 && /\.wk-tap::after[\s\S]*height: 44px/.test(css), 'Every control in a set row has a 44 px touch area');
+    const { markLinkSignInStarted, consumeLinkSignIn } = await import('../../services/googleAuthService');
+    assert(!consumeLinkSignIn(), 'A sign-in link this device did not start is ignored');
+    markLinkSignInStarted();
+    assert(consumeLinkSignIn() && !consumeLinkSignIn(), 'A sign-in this device started is accepted once');
+    const persistSrc = fs.readFileSync(path.resolve(process.cwd(), 'src/hooks/usePersistedState.ts'), 'utf-8');
+    assert(
+      persistSrc.includes('useLayoutEffect') && /hasUnsavedChange\.current\) return/.test(persistSrc),
+      "A change is saved as soon as it's shown, and another tab's message can't replace one not saved yet"
+    );
+    const coachSrc = fs.readFileSync(path.resolve(process.cwd(), 'src/components/assistant/AICoachChatModal.tsx'), 'utf-8');
+    assert(coachSrc.includes('aria-label="Message your coach"'), "The coach's message box has a label");
   }
 
   // ==========================================================================

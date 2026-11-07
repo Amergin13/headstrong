@@ -117,7 +117,7 @@ export const SessionCompleteCard: React.FC<SessionCompleteCardProps> = ({
         {stats.map((s) => (
           <div key={s.label} style={{ background: 'var(--wk-raised)', borderRadius: fig(15), padding: `${fig(20)} ${fig(24)}` }}>
             <dt className="wk-caption">{s.label}</dt>
-            <dd className="font-bold text-white" style={{ fontSize: fig(36), marginTop: fig(6) }}>
+            <dd className="font-bold text-white" style={{ fontSize: `max(12px, ${fig(36)})`, marginTop: fig(6) }}>
               {s.value}
             </dd>
           </div>
@@ -174,7 +174,9 @@ export const SessionCompleteCard: React.FC<SessionCompleteCardProps> = ({
                     ? `Most reps yet: ${r.newKg}`
                     : r.kind === 'heavier' && r.isBodyweight
                     ? `Most added weight: +${units.format(r.newKg)}`
-                    : `${r.kind === 'heavier' ? 'Heaviest yet' : 'Estimated max up'}: ${units.format(r.newKg)}`}
+                    : r.kind === 'heavier'
+                    ? `Heaviest yet: ${units.format(r.newKg)}`
+                    : `Estimated max up: ${units.formatPrecise(r.newKg)}`}
                 </strong>{' '}
                 (was{' '}
                 {r.kind === 'reps'
@@ -183,7 +185,9 @@ export const SessionCompleteCard: React.FC<SessionCompleteCardProps> = ({
                   ? r.previousKg > 0
                     ? `+${units.format(r.previousKg)}`
                     : 'bodyweight only'
-                  : units.format(r.previousKg)}
+                  : r.kind === 'heavier'
+                  ? units.format(r.previousKg)
+                  : units.formatPrecise(r.previousKg)}
                 )
               </Row>
             ))}

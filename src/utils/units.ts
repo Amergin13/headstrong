@@ -25,6 +25,11 @@ export function formatWeight(kg: number, unit: WeightUnit, withUnit = true): str
   return withUnit ? `${text} ${unit}` : text;
 }
 
+/** A calculated value to 0.1, e.g. an estimated max of "63.3 kg": never rounded to plate sizes. */
+export function formatPreciseWeight(kg: number, unit: WeightUnit): string {
+  return `${Math.round(kgToUnit(kg, unit) * 10) / 10} ${unit}`;
+}
+
 /**
  * Snaps a kg load to the nearest loadable increment in the athlete's unit so prescriptions
  * match real plates and dumbbells (2.5 kg / 5 lb for barbells & cables, 2 kg / 5 lb per pair of dumbbells).

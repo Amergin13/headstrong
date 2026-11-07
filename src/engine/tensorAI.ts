@@ -58,15 +58,6 @@ export interface TensorCoachingInsight {
   timestamp: string;
 }
 
-export interface BiomechanicalMatchEvaluation {
-  currentExerciseId: string;
-  candidateExerciseId: string;
-  compatibilityScore: number; // 0 - 100
-  rationale: string;
-  jointStrainRating: 'Low' | 'Moderate' | 'High';
-  hypertrophyStimulusRating: 'Optimal' | 'High' | 'Moderate';
-}
-
 // Global simulation override for testing and verification
 let simulatedTensorOverride: { enabled: boolean; chip: TensorChipModel } | null = null;
 
@@ -448,43 +439,3 @@ export async function generateTensorCoachingInsight(
   };
 }
 
-/**
- * Evaluates candidate exercise alternatives using on-device biomechanical similarity scoring,
- * joint shear rating, and stimulus-to-fatigue ratio matching.
- */
-export function evaluateTensorBiomechanicalMatch(
-  currentExerciseId: string,
-  candidateExerciseId: string,
-  fatigueLevel: number = 0.5,
-  profile?: TensorHardwareProfile
-): BiomechanicalMatchEvaluation {
-  // If exercises are identical
-  if (currentExerciseId === candidateExerciseId) {
-    return {
-      currentExerciseId,
-      candidateExerciseId,
-      compatibilityScore: 100,
-      rationale: 'Active current exercise selection.',
-      jointStrainRating: 'Moderate',
-      hypertrophyStimulusRating: 'Optimal',
-    };
-  }
-
-  // Calculate neural similarity heuristic
-  const isHighFatigue = fatigueLevel > 0.7;
-  const jointStrain: 'Low' | 'Moderate' | 'High' = isHighFatigue ? 'Low' : 'Moderate';
-  const stimulus: 'Optimal' | 'High' | 'Moderate' = 'Optimal';
-
-  const score = Math.round(92 - fatigueLevel * 8);
-
-  return {
-    currentExerciseId,
-    candidateExerciseId,
-    compatibilityScore: score,
-    rationale: profile?.isPixelDevice
-      ? `Tensor ${profile.chipModel} Biomechanical Matcher: Substitutes within matching movement vector with preserved resistance curve and ${jointStrain.toLowerCase()} joint torque.`
-      : 'On-device biomechanical match within identical movement family and balanced resistance profile.',
-    jointStrainRating: jointStrain,
-    hypertrophyStimulusRating: stimulus,
-  };
-}

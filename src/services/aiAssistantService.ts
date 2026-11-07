@@ -15,6 +15,7 @@ import {
   TrainingLocation,
   UserProfile,
   WorkoutSession,
+  WorkoutSet,
 } from '../engine/types';
 import {
   AthleteKnowledgeGraph,
@@ -24,14 +25,15 @@ import {
   queryExerciseScienceKnowledgeBase,
 } from '../engine/knowledgeGraph';
 import { isOnDeviceModelReady, promptOnDeviceModel } from './onDeviceModel';
-import { evaluateTensorBiomechanicalMatch } from '../engine/tensorAI';
 import {
   adaptWorkoutSessionToLocation,
   generateSmartWorkoutSession,
   getFirstSplitDayForProgram,
 } from './workoutGenerator';
 import { localDateString } from '../utils/date';
-import { formatWeight, snapLoadKg } from '../utils/units';
+import { formatPreciseWeight, formatWeight, snapLoadKg } from '../utils/units';
+import { calculateE1RM } from '../engine/e1rm';
+import { findLastCompletedExerciseSession } from '../engine/progression';
 
 export interface AssistantProcessInput {
   userMessage: string;
@@ -235,6 +237,108 @@ export function buildProgressSummary(workouts: WorkoutSession[], unit: 'kg' | 'l
     : `${sessions} Each exercise has only been done once so far, so there's nothing to compare yet. Your next sessions will show your gains here and on the Progress tab.`;
 }
 
+const EQUIPMENT_KEYWORDS: { tag: HomeEquipmentTag; pattern: string; name: string }[] = [
+  { tag: 'pullup_bar', pattern: 'pull[\\s-]?up\\s*bar|chin[\\s-]?up\\s*bar', name: 'Pull-Up Bar' },
+  { tag: 'dumbbells', pattern: 'dumbbells?|dbs?', name: 'Dumbbells' },
+  { tag: 'bench', pattern: 'bench', name: 'Exercise Bench' },
+  { tag: 'trx', pattern: 'trx|suspension\\s*trainer|(?:gymnastic\\s*)?rings', name: 'TRX Suspension Trainer' },
+  { tag: 'bands', pattern: '(?:resistance\\s*)?bands?', name: 'Resistance Bands' },
+];
+/** Only these words may sit between the verb and the gear, so "got 8 reps on bench" isn't a purchase. */
+const EQUIPMENT_FILLER =
+  '(?:\\s+(?:a|an|some|new|the|my|me|myself|our|this|that|adjustable|flat|incline|workout|home|pair|set|of|second|spare|old|own))*';
+/** "Bench" is also a lift: "got a new bench PR" and "have bench today" are about training, not gear. */
+const NOT_EQUIPMENT_AFTER =
+  '(?!\\s+(?:press|presses|pressing|row|rows|curl|curls|fly|flies|flyes|squat|squats|raise|raises|extension|extensions|lunge|lunges|rdl|deadlift|deadlifts|pull|pulls|pr|prs|pb|pbs|max|1rm|e1rm|record|best|rep|reps|set|sets|today|tonight|tomorrow|day|session|workout|next)\\b)';
+const EQUIPMENT_ADD_VERBS = 'bought|got|have|has|own|new|add|added|purchased|acquired|picked\\s*up|equipped\\s*with|can\\s*use';
+const EQUIPMENT_REMOVE_VERBS =
+  'remove|removed|delete|deleted|lost|sold|don[\'’]?t\\s*have|do\\s*not\\s*have|no\\s*longer\\s*(?:have|own|use)|got\\s*rid\\s*of';
+
+/**
+ * A change to the athlete's gear, only when the message says so directly ("I got a pull-up bar",
+ * "I sold my dumbbells"). Mentioning gear, or a lift named after it, never changes anything, and
+ * neither does a question.
+ */
+function detectEquipmentChange(
+  lowerMsg: string
+): { equipment: (typeof EQUIPMENT_KEYWORDS)[number]; action: 'add' | 'remove' } | null {
+  if (/\?\s*$/.test(lowerMsg) || /^(do|does|did|can|could|should|would|will|what|what['’]?s|whats|which|how|why|when|where|is|are)\b/.test(lowerMsg)) {
+    return null;
+  }
+  const mentions = (verbs: string, pattern: string) =>
+    new RegExp(`\\b(?:${verbs})${EQUIPMENT_FILLER}\\s+(?:${pattern})\\b${NOT_EQUIPMENT_AFTER}`, 'i').test(lowerMsg);
+  for (const equipment of EQUIPMENT_KEYWORDS) {
+    if (mentions(EQUIPMENT_REMOVE_VERBS, equipment.pattern)) return { equipment, action: 'remove' };
+  }
+  for (const equipment of EQUIPMENT_KEYWORDS) {
+    if (mentions(EQUIPMENT_ADD_VERBS, equipment.pattern)) return { equipment, action: 'add' };
+  }
+  return null;
+}
+
+/**
+ * A small model invents numbers, so a chat answer is only shown if every weight, percentage or larger
+ * number in it came from what the model was given. Otherwise the rule-based coach answers.
+ */
+export function acceptCoachAnswer(answer: string, grounding: string): boolean {
+  if (/\b(as an ai|language model)\b/i.test(answer)) return false;
+  const known = new Set(grounding.match(/\d+(?:\.\d+)?/g) || []);
+  for (const m of answer.matchAll(/(\d+(?:\.\d+)?)\s*(kg|kilos?|lbs?|pounds?|%)?/gi)) {
+    const value = m[1];
+    if (m[2]) {
+      // A weight or percentage has to appear as that same figure, not just as any matching number.
+      const unit = m[2].toLowerCase().startsWith('kilo') ? 'kg' : m[2].toLowerCase().startsWith('p') ? 'lb' : m[2].toLowerCase().replace(/^lbs$/, 'lb');
+      if (!new RegExp(`(^|[^\\d.])${value.replace('.', '\\.')}\\s*${unit === '%' ? '%' : `${unit}s?\\b`}`, 'i').test(grounding)) return false;
+    } else if (!known.has(value) && parseFloat(value) > 3) {
+      return false;
+    }
+  }
+  return true;
+}
+
+const LIFT_WORDS = ['bench', 'squat', 'deadlift', 'rdl', 'overhead', 'shoulder press', 'pulldown', 'pull-up', 'pull up', 'chin', 'row', 'curl', 'leg press'];
+
+/** The best estimated max logged for the lift named in the message, from the same formula as Progress. */
+function buildEstimatedMaxAnswer(lowerMsg: string, workouts: WorkoutSession[], bodyweightKg: number, unit: 'kg' | 'lb'): string {
+  const lift = LIFT_WORDS.find((word) => lowerMsg.includes(word));
+  if (!lift) return 'Which lift do you mean? Ask me for your bench, squat or deadlift, for example.';
+  const spelled = lift.replace(' ', '-');
+  let best: { name: string; kg: number } | null = null;
+  for (const w of workouts.filter((session) => session.completed)) {
+    for (const ex of w.exercises) {
+      const name = ex.name.toLowerCase();
+      if (!name.includes(lift) && !name.includes(spelled)) continue;
+      for (const st of ex.sets) {
+        if (!st.completed || st.isWarmup || st.setType === 'warmup') continue;
+        const kg = calculateE1RM(
+          st.actualWeightKg ?? st.targetWeightKg,
+          st.actualReps ?? st.targetReps,
+          st.actualRir ?? st.targetRir ?? 2,
+          ex.equipment,
+          ex.isRdl,
+          ex.isWeightedCalisthenic,
+          bodyweightKg,
+          ex.exerciseId,
+          ex.pillar
+        );
+        if (!best || kg > best.kg) best = { name: ex.name, kg };
+      }
+    }
+  }
+  if (!best) return `You haven't logged a ${lift} yet, so there's no estimated max to give. Your first session will set your starting point.`;
+  return `Your best estimated one-rep max is ${formatPreciseWeight(best.kg, unit)} on ${best.name}. It's worked out from your best logged set, not a tested max.`;
+}
+
+/** The athlete's real recovery readings for a sentence, e.g. ", with HRV 58 ms, 7 h sleep"; empty without any. */
+function recoveryReadingsClause(log?: BiometricLog): string {
+  const readings = [
+    log?.hrvRmssd ? `HRV ${log.hrvRmssd} ms` : '',
+    log?.sleepHours ? `${log.sleepHours} h sleep` : '',
+    log?.restingHr ? `resting heart rate ${log.restingHr} bpm` : '',
+  ].filter(Boolean);
+  return readings.length ? `, with ${readings.join(', ')}` : '';
+}
+
 async function processAssistantMessageCore(
   input: AssistantProcessInput
 ): Promise<AssistantProcessResult> {
@@ -267,28 +371,28 @@ async function processAssistantMessageCore(
   let updatedWorkout: WorkoutSession | undefined;
   const citations: { label: string; metric: string; value: string }[] = [];
   const scientificPrinciplesCited: ScientificPrinciple[] = [];
+  const strengthLevelsAnswer = () =>
+    buildStandardsAnswer(
+      buildMovementStandards({
+        workouts,
+        biometrics,
+        bodyweightKg: bodyweightEmaKg,
+        gender: profile.gender,
+        age: standardsAge(profile),
+      }),
+      biometrics.some((b) => (b.bodyweightKg || 0) > 0)
+    );
 
   // ============================================================================
   // 1. INTENT: UPDATE HOME EQUIPMENT (e.g. "I got a pull up bar", "I bought dumbbells")
   // ============================================================================
-  const equipmentKeywords: { tag: HomeEquipmentTag; regex: RegExp; name: string }[] = [
-    { tag: 'pullup_bar', regex: /\b(pull[\s-]?up\s*bar|chin[\s-]?up\s*bar)\b/i, name: 'Pull-Up Bar' },
-    { tag: 'dumbbells', regex: /\b(dumbbell|dumbbells|db|dbs)\b/i, name: 'Dumbbells' },
-    { tag: 'bench', regex: /\b(bench|workout\s*bench|incline\s*bench|flat\s*bench)\b/i, name: 'Exercise Bench' },
-    { tag: 'trx', regex: /\b(trx|suspension\s*trainer|rings|gymnastic\s*rings)\b/i, name: 'TRX Suspension Trainer' },
-    { tag: 'bands', regex: /\b(band|bands|resistance\s*bands?)\b/i, name: 'Resistance Bands' },
-  ];
+  const equipmentChange = detectEquipmentChange(lowerMsg);
+  const matchedEquip = equipmentChange?.equipment;
 
-  const matchedEquip = equipmentKeywords.find((e) => e.regex.test(lowerMsg));
-  const isEquipRemoval = /\b(remove|don['’]t\s*have|lost|sold|no\s*longer|deleted?)\b/i.test(lowerMsg);
-  const isEquipAddition =
-    /\b(bought|got|have|new|added?|equipped?|purchased|acquired|can\s*use)\b/i.test(lowerMsg) ||
-    (!isEquipRemoval && matchedEquip && lowerMsg.length < 35);
-
-  if (matchedEquip && (isEquipAddition || isEquipRemoval)) {
+  if (matchedEquip) {
     const currentList = new Set<HomeEquipmentTag>(profile.homeEquipment || []);
 
-    if (isEquipRemoval) {
+    if (equipmentChange.action === 'remove') {
       currentList.delete(matchedEquip.tag);
       const nextEquip = Array.from(currentList);
       updatedProfile = { homeEquipment: nextEquip };
@@ -350,7 +454,7 @@ async function processAssistantMessageCore(
     /\b(week\s*[1-6]|next\s*week)\b/i.test(lowerMsg)
   ) {
     // Extract week number
-    let targetWeek = profile.mesocycleWeek || 3;
+    let targetWeek = profile.mesocycleWeek || 1;
     const weekMatch = lowerMsg.match(/week\s*([1-6])/i);
     if (weekMatch) {
       targetWeek = parseInt(weekMatch[1], 10);
@@ -400,7 +504,7 @@ async function processAssistantMessageCore(
   // ============================================================================
   else if (
     /\b(switch|change|set|turn)\b.*\b(travel|bodyweight|home|gym)\b/i.test(lowerMsg) ||
-    /\b(train\s*at\s*home|in\s*a\s*hotel|no\s*weights?\s*today|bodyweight\s*today)\b/i.test(lowerMsg)
+    /\b(train\s*at\s*home|at\s*home\s*today|in\s*a\s*hotel|no\s*weights?\s*today|bodyweight\s*today|back\s*(?:to|at|in)\s*(?:the\s*)?gym|at\s*the\s*gym\s*today|train\s*at\s*the\s*gym)\b/i.test(lowerMsg)
   ) {
     let targetLoc: TrainingLocation = 'travel';
     if (/\b(home|house)\b/i.test(lowerMsg)) targetLoc = 'home';
@@ -652,15 +756,16 @@ async function processAssistantMessageCore(
       // data (movement standards), never by the model. "Why / how is it worked out" still gets the card.
       const isStandardsQuestion =
         /\b(my level|levels?|strength standards?|how strong|imbalanc\w*|balanced?|asymmetr\w*|weaker side|weak side|left side|right side|one side|weak link|lagging)\b/i.test(lowerMsg);
-      if (isStandardsQuestion && !isExplicitScienceQuestion && !isTacticalWorkoutQuery) {
-        const report = buildMovementStandards({
-          workouts,
-          biometrics,
-          bodyweightKg: bodyweightEmaKg,
-          gender: profile.gender,
-          age: standardsAge(profile),
-        });
-        answerText = buildStandardsAnswer(report, biometrics.some((b) => (b.bodyweightKg || 0) > 0));
+      // "What's my bench 1RM?" and "what's my DOTS score?" ask for the athlete's own number, not a formula.
+      const asksHowItWorks = /\b(why|how|formula|explain|science|research|calculat\w*|worked out)\b/.test(lowerMsg);
+      const asksForOwnMax = /\bmy\b.*\b(e?1\s?rm|one[\s-]rep\s*max|estimated\s*max)\b/.test(lowerMsg) && !asksHowItWorks;
+      const asksForOwnScore = /\bmy\b.*\b(dots|strength\s*score)\b/.test(lowerMsg) && !asksHowItWorks;
+      if (asksForOwnMax) {
+        answerText = buildEstimatedMaxAnswer(lowerMsg, workouts, bodyweightEmaKg, profile.weightUnit || 'kg');
+      } else if (asksForOwnScore) {
+        answerText = `Treise compares each lift with published strength standards instead of giving one score.\n\n${strengthLevelsAnswer()}`;
+      } else if (isStandardsQuestion && !isExplicitScienceQuestion && !isTacticalWorkoutQuery) {
+        answerText = strengthLevelsAnswer();
       } else if (scientificPrinciple) {
         scientificPrinciplesCited.push(scientificPrinciple);
         answerText = `${scientificPrinciple.title}\n\n${scientificPrinciple.scientificRationale}\n\n`;
@@ -699,9 +804,7 @@ async function processAssistantMessageCore(
         lowerMsg.includes('watch')
       ) {
         const latest = biometrics[biometrics.length - 1];
-        const hrv = latest?.hrvRmssd || 58;
-        const sleep = latest?.sleepHours || 7.5;
-        const rhr = latest?.restingHr || 58;
+        const readings = recoveryReadingsClause(latest);
         const recScore = latest?.recoveryScore;
         const workoutStrain = latest?.workoutStrain;
         const dayStrain = latest?.strain;
@@ -731,18 +834,18 @@ async function processAssistantMessageCore(
           }
         } else if (recScore !== undefined) {
           if (recScore >= 67) {
-            answerText = `Your Whoop recovery is at ${recScore}% (${zoneLabel} zone) with an HRV of ${hrv} ms and ${sleep} hours of sleep. You're well recovered, so it's a good day to push the weight on your working sets.`;
+            answerText = `Your Whoop recovery is at ${recScore}% (${zoneLabel} zone)${readings}. You're well recovered, so it's a good day to push the weight on your working sets.`;
           } else if (recScore >= 34) {
-            answerText = `Your Whoop recovery is at ${recScore}% (${zoneLabel} zone) with an HRV of ${hrv} ms and ${sleep} hours of sleep. Your autonomic nervous system is in a balanced baseline. Follow your standard 1–2 RIR double progression targets.`;
+            answerText = `Your Whoop recovery is at ${recScore}% (${zoneLabel} zone)${readings}. Your autonomic nervous system is in a balanced baseline. Follow your standard 1–2 RIR double progression targets.`;
           } else {
-            answerText = `Your Whoop recovery is at ${recScore}% (${zoneLabel} zone, Amber Shield active) with an HRV of ${hrv} ms and ${sleep} hours of sleep. Systemic fatigue has accumulated. Working weights are held steady with 2–3 reps left in reserve to prevent joint burnout and protect your streak.`;
+            answerText = `Your Whoop recovery is at ${recScore}% (${zoneLabel} zone, Amber Shield active)${readings}. Systemic fatigue has accumulated. Working weights are held steady with 2–3 reps left in reserve to prevent joint burnout and protect your streak.`;
           }
         } else if (readinessState === 'Primed') {
-          answerText = `Your recovery is Primed today with a strong ${hrv} ms HRV and ${sleep} hours of sleep. You're well recovered, so it's a good day to push the weight on your first working sets.`;
+          answerText = `Your recovery is Primed today${readings}. You're well recovered, so it's a good day to push the weight on your first working sets.`;
         } else if (readinessState === 'Amber Shield') {
-          answerText = `Your recovery is in Amber Shield mode (HRV: ${hrv} ms, Sleep: ${sleep}h). Your central nervous system needs lighter effort today. Working weights are held steady with 2–3 reps left in reserve to prevent joint burnout and protect your streak.`;
+          answerText = `Your recovery is in Amber Shield mode${readings}. Your central nervous system needs lighter effort today. Working weights are held steady with 2–3 reps left in reserve to prevent joint burnout and protect your streak.`;
         } else if (kg.recoveryEfficiencyScore > 0) {
-          answerText = `Your recovery looks normal (HRV ${hrv} ms, ${sleep} h sleep, resting heart rate ${rhr} bpm). Follow today's targets as planned.`;
+          answerText = `Your recovery looks normal${readings}. Follow today's targets as planned.`;
         } else {
           answerText = `I don't have any recovery data from a watch yet, so your plan runs at normal effort. Connect a Pixel Watch, Fitbit or Whoop in Program → Wearable & Recovery and I'll adjust each day to your sleep and heart rate. Meanwhile, your workout page shows when each muscle group has recovered from your last session.`;
         }
@@ -919,7 +1022,7 @@ async function processAssistantMessageCore(
             onPartial: input.onPartial,
             onDownloadProgress: input.onDownloadProgress,
           });
-          if (nanoAnswer) {
+          if (nanoAnswer && acceptCoachAnswer(nanoAnswer, `${systemPrompt} ${questionWithFacts}`)) {
             answerText = nanoAnswer;
             nanoHandled = true;
 
@@ -1011,7 +1114,7 @@ async function processAssistantMessageCore(
             lowerMsg.includes('time between') ||
             lowerMsg.includes('how long');
 
-          const isDotsQuery =
+          const isStrengthLevelQuery =
             lowerMsg.includes('dots') ||
             lowerMsg.includes('tier') ||
             lowerMsg.includes('level up') ||
@@ -1049,19 +1152,13 @@ async function processAssistantMessageCore(
               ) || exerciseCatalog.find((e) => e.pillar === sourcePillar && (!sourceEx || e.id !== sourceEx.exerciseId));
 
             if (candidateEx && sourceEx) {
-              const fatigue = readinessState === 'Amber Shield' ? 0.75 : 0.4;
-              const match = evaluateTensorBiomechanicalMatch(
-                sourceEx.exerciseId,
-                candidateEx.id,
-                fatigue
-              );
-
-              answerText = `You can substitute **${sourceEx.name}** with **${candidateEx.name}** (${match.compatibilityScore}% Biomechanical Match).\n\nBoth movements stimulate the same movement vector (${candidateEx.pillar}) with ${match.jointStrainRating.toLowerCase()} joint shear. Use standard progressive double progression (${candidateEx.defaultRepRange[0]}–${candidateEx.defaultRepRange[1]} reps) at 1–2 RIR.`;
+              const reps = `${candidateEx.defaultRepRange[0]}–${candidateEx.defaultRepRange[1]}`;
+              answerText = `You can swap **${sourceEx.name}** for **${candidateEx.name}**. Both are ${candidateEx.pillar} movements. Aim for ${reps} reps, stopping 1–2 reps short of failure. To make the swap, tap the swap button on the exercise in your workout.`;
 
               citations.push({
                 label: candidateEx.name,
-                metric: 'Biomechanical Match',
-                value: `${match.compatibilityScore}% Compatibility (${match.jointStrainRating} Joint Shear)`,
+                metric: 'Swap Option',
+                value: `${reps} reps`,
               });
             } else if (candidateEx) {
               answerText = `A great alternative is **${candidateEx.name}** (${candidateEx.equipment}, ${candidateEx.pillar}). It targets ${candidateEx.primaryMuscle} with a standard hypertrophy rep range of ${candidateEx.defaultRepRange[0]}–${candidateEx.defaultRepRange[1]} reps at 1–2 RIR.`;
@@ -1096,19 +1193,9 @@ async function processAssistantMessageCore(
               metric: 'Rest Time',
               value: '2.5–3.5 min (Compounds) / 60–90 sec (Accessories)',
             });
-          } else if (isDotsQuery) {
-            // International DOTS & Strength Standards
-            const dotsNode = kg.nodes.find((n) => n.id === 'dots-score');
-            const dots = dotsNode?.score ?? 280;
-            const pillarNodes = kg.nodes.filter((n) => n.category === 'pillar');
-
-            answerText = `Your current International DOTS score is **${dots}** based on your 7-day EMA bodyweight (${bodyweightEmaKg.toFixed(1)} kg).\n\nStrength Standards Overview:\n${pillarNodes.map((p) => `• **${p.label}:** ${p.subtitle}`).join('\n')}\n\nTo reach the next sub-tier, aim to add +1 rep across your current working sets or advance load by +2.5 kg once all sets reach the top of their rep range.`;
-
-            citations.push({
-              label: 'International DOTS',
-              metric: 'Relative Score',
-              value: `${dots} DOTS Points`,
-            });
+          } else if (isStrengthLevelQuery) {
+            // From the athlete's own lifts and bodyweight, never a stock score.
+            answerText = strengthLevelsAnswer();
           } else if (isTempoQuery) {
             // Hypertrophy Lifting Cadence
             answerText = `Optimal hypertrophy tempo for today's workout:\n\n• **Eccentric (Lowering):** 2–3 seconds controlled descent under active tension.\n• **Paused Stretch:** 1 full second at the lengthened position to maximize stretch-mediated hypertrophy.\n• **Concentric (Lifting):** Explosive intent while maintaining strict path.\n• **Lockout:** 0.5 second squeeze without resting on joints.`;
@@ -1122,6 +1209,28 @@ async function processAssistantMessageCore(
             // Exact Exercise Target Load, Reps & Double Progression
             const isWorkoutEx = 'sets' in targetEx;
             const unit = profile.weightUnit || 'kg';
+            if (!isWorkoutEx) {
+              // Not in today's workout, so there's no target to give: say so, with what was last lifted.
+              const last = findLastCompletedExerciseSession(targetEx.id, workouts);
+              const lastSets = last?.session.sets.filter((st) => st.completed && !st.isWarmup && st.setType !== 'warmup') ?? [];
+              const bestSet = lastSets.reduce<WorkoutSet | undefined>(
+                (best, st) => (!best || (st.actualWeightKg ?? 0) > (best.actualWeightKg ?? 0) ? st : best),
+                undefined
+              );
+              answerText = `**${targetEx.name}** isn't in today's workout (${activeWorkout.name}). ${
+                bestSet
+                  ? `Last time you did ${formatWeight(bestSet.actualWeightKg ?? bestSet.targetWeightKg, unit)} × ${bestSet.actualReps ?? bestSet.targetReps}.`
+                  : "You haven't logged it yet, so the first session will set your starting point."
+              } Your plan sets the weight when it comes up.`;
+              return {
+                message: {
+                  id: `msg-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+                  sender: 'assistant',
+                  text: answerText,
+                  timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                },
+              };
+            }
             const workingSets = isWorkoutEx
               ? (targetEx as ExerciseSession).sets.filter((st) => !st.isWarmup && st.setType !== 'warmup')
               : [];
@@ -1137,11 +1246,22 @@ async function processAssistantMessageCore(
               ? (targetEx as ExerciseSession).maxReps
               : (targetEx as ExerciseDefinition).defaultRepRange[1];
             const setCount = isWorkoutEx ? workingSets.length : 3;
-            const targetRir = readinessState === 'Amber Shield' ? '2–3 reps in reserve' : '1–2 reps in reserve';
-            const repLabel = minReps === maxReps ? `${minReps}` : `${minReps}–${maxReps}`;
+            // The same effort the workout card shows for this exercise.
+            const plannedRir = workingSets[0]?.targetRir;
+            const targetRir =
+              readinessState === 'Amber Shield'
+                ? '2–3 reps in reserve'
+                : plannedRir === undefined
+                ? '1–2 reps in reserve'
+                : plannedRir === 1
+                ? '1 rep in reserve'
+                : `${plannedRir} reps in reserve`;
+            const todayReps = workingSets[0]?.targetReps;
+            const repLabel =
+              minReps === maxReps ? `${minReps}` : todayReps ? `${todayReps} (range ${minReps}–${maxReps})` : `${minReps}–${maxReps}`;
             const inc = unit === 'lb' ? '5 lb' : targetEx.equipment === 'dumbbell' ? '2 kg' : '2.5 kg';
 
-            answerText = `For **${targetEx.name}** today, your target is **${targetWeightLabel}** for **${setCount} working sets** of **${repLabel} reps**, leaving **${targetRir}**.\n\n${
+            answerText = `For **${targetEx.name}** today, your target is **${targetWeightLabel}** for **${setCount} working sets** of **${repLabel}** reps, leaving **${targetRir}**.\n\n${
               readinessState === 'Primed'
                 ? '⚡ Recovery is Primed: If your warmup feels explosive, aim for the top of the rep range on your first working set.'
                 : readinessState === 'Amber Shield'
@@ -1167,18 +1287,18 @@ async function processAssistantMessageCore(
 
             const latestBio = biometrics[biometrics.length - 1];
 
-            answerText = `Today's session is **${activeWorkout?.name || 'Workout'}** (**${activeWorkout?.splitDay || 'Scheduled'} Day**) in **Week ${profile.mesocycleWeek || 3} of 6** (${activeWorkout?.location === 'travel' ? 'Bodyweight' : activeWorkout?.location === 'home' ? 'At Home' : 'Full Gym'} mode).\n\nPlanned Movements:\n${plannedList}\n\n${
+            answerText = `Today's session is **${activeWorkout?.name || 'Workout'}**${activeWorkout?.programWorkoutNumber ? '' : ` (**${activeWorkout?.splitDay || 'Scheduled'} Day**)`} in **Week ${profile.mesocycleWeek || 1} of 6** (${activeWorkout?.location === 'travel' ? 'Bodyweight' : activeWorkout?.location === 'home' ? 'At Home' : 'Full Gym'} mode).\n\nPlanned Movements:\n${plannedList}\n\n${
               readinessState === 'Primed'
-                ? `⚡ Autonomic recovery is **Primed** (HRV: ${latestBio?.hrvRmssd ?? 58}ms, Sleep: ${latestBio?.sleepHours ?? 7.5}h). It's a good day to push: attack Set 1 with intent!`
+                ? `⚡ Autonomic recovery is **Primed**${recoveryReadingsClause(latestBio)}. It's a good day to push: attack Set 1 with intent!`
                 : readinessState === 'Amber Shield'
-                ? `🛡️ **Amber Shield** is active today (HRV: ${latestBio?.hrvRmssd ?? 58}ms, Sleep: ${latestBio?.sleepHours ?? 7.5}h). Hold working weights steady, maintain 2–3 reps in reserve, and protect your joints.`
+                ? `🛡️ **Amber Shield** is active today${recoveryReadingsClause(latestBio)}. Hold working weights steady, maintain 2–3 reps in reserve, and protect your joints.`
                 : `🎯 ${kg.recoveryEfficiencyScore > 0 ? `Recovery looks normal (${kg.recoveryEfficiencyScore}/100). ` : ''}Focus on clean 2-second eccentrics, hit 1–2 RIR, and lock in progressive overload.`
             }\n\nFeel free to ask about specific targets, warm-up sets, tempo, or exercise substitutions!`;
 
             citations.push({
               label: activeWorkout?.name || 'Session Briefing',
               metric: 'Today\'s Session',
-              value: `${activeWorkout?.splitDay || 'Active'} Day (${workoutExercises.length} Exercises Planned)`,
+              value: `${workoutExercises.length} Exercises Planned`,
             });
           }
         }

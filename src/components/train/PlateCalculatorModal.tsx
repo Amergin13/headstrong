@@ -60,7 +60,7 @@ export const PlateCalculatorModal: React.FC<PlateCalculatorModalProps> = ({
   const { platesPerSide, remainderKg } = calculatePlatesPerSide(targetWeight, barWeight, availablePlates);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md">
+    <div role="dialog" aria-modal="true" aria-label="Plate calculator" className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md">
       <div className="wk-card w-full max-w-sm shadow-2xl space-y-5">
         {/* Header */}
         <div className="flex items-center justify-between">

@@ -141,7 +141,7 @@ export const SplitEditor: React.FC<SplitEditorProps> = ({
 
             <p
               style={{
-                fontSize: fig(28),
+                fontSize: `max(12px, ${fig(28)})`,
                 lineHeight: 1.21,
                 color: 'var(--wk-muted)',
                 marginTop: fig(20),
@@ -159,7 +159,7 @@ export const SplitEditor: React.FC<SplitEditorProps> = ({
               </span>
               <span
                 className="font-bold text-white shrink-0"
-                style={{ fontSize: fig(40), lineHeight: 1 }}
+                style={{ fontSize: `max(12px, ${fig(40)})`, lineHeight: 1 }}
               >
                 Phase {selectedPhase}/3
               </span>
@@ -240,7 +240,7 @@ export const SplitEditor: React.FC<SplitEditorProps> = ({
 
                   <p
                     style={{
-                      fontSize: fig(28),
+                      fontSize: `max(12px, ${fig(28)})`,
                       lineHeight: 1.21,
                       color: 'var(--wk-muted)',
                       marginTop: fig(20),
@@ -258,7 +258,7 @@ export const SplitEditor: React.FC<SplitEditorProps> = ({
                     </span>
                     <span
                       className="font-bold text-white shrink-0"
-                      style={{ fontSize: fig(40), lineHeight: 1 }}
+                      style={{ fontSize: `max(12px, ${fig(40)})`, lineHeight: 1 }}
                     >
                       {workout.workoutNumber}/24
                     </span>
@@ -350,7 +350,7 @@ export const SplitEditor: React.FC<SplitEditorProps> = ({
 
         <p
           style={{
-            fontSize: fig(28),
+            fontSize: `max(12px, ${fig(28)})`,
             lineHeight: 1.21,
             color: 'var(--wk-muted)',
             marginTop: fig(20),
@@ -368,7 +368,7 @@ export const SplitEditor: React.FC<SplitEditorProps> = ({
           </span>
           <span
             className="font-bold text-white shrink-0"
-            style={{ fontSize: fig(40), lineHeight: 1 }}
+            style={{ fontSize: `max(12px, ${fig(40)})`, lineHeight: 1 }}
           >
             {routineExercises.length} EXERCISES
           </span>

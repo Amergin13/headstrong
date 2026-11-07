@@ -25,6 +25,11 @@ export function getWhoopRedirectUri(customUri?: string): string {
   return 'https://treise.vercel.app/oauth/whoop/callback';
 }
 
+/** True only for the exact state saved when this device started connecting. */
+export function isExpectedOAuthState(returned: string, saved: string | null): boolean {
+  return Boolean(saved) && returned === saved;
+}
+
 export function generateAlphanumericString(length: number = 24): string {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
   let result = '';

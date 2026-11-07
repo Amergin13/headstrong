@@ -117,13 +117,13 @@ export const SetRow: React.FC<SetRowProps> = ({
         onClick={handleCopyPrevious}
         disabled={!previous}
         aria-label={previous ? `Last time ${prevDisplay}. Tap to copy` : 'No previous set for this exercise'}
-        className="text-center truncate disabled:pointer-events-none"
+        className="wk-tap text-center truncate disabled:pointer-events-none"
         style={greyText}
       >
         {prevDisplay}
       </button>
 
-      <label className="wk-input flex items-center justify-center cursor-text">
+      <label className="wk-tap wk-input flex items-center justify-center cursor-text">
         <input
           type="number"
           step={weightStep}
@@ -142,7 +142,7 @@ export const SetRow: React.FC<SetRowProps> = ({
         )}
       </label>
 
-      <span className="relative block">
+      <label className="wk-tap block">
         <input
           type="number"
           inputMode="numeric"
@@ -161,26 +161,28 @@ export const SetRow: React.FC<SetRowProps> = ({
             F*
           </span>
         )}
-      </span>
+      </label>
 
-      <input
-        type="number"
-        inputMode="numeric"
-        min={0}
-        max={5}
-        value={currentRir}
-        aria-label={`${label} reps in reserve`}
-        onFocus={(e) => e.target.select()}
-        onChange={(e) => onUpdate({ actualRir: Math.max(0, Math.min(5, parseInt(e.target.value, 10) || 0)) })}
-        className="wk-input outline-none block"
-      />
+      <label className="wk-tap block">
+        <input
+          type="number"
+          inputMode="numeric"
+          min={0}
+          max={5}
+          value={currentRir}
+          aria-label={`${label} reps in reserve`}
+          onFocus={(e) => e.target.select()}
+          onChange={(e) => onUpdate({ actualRir: Math.max(0, Math.min(5, parseInt(e.target.value, 10) || 0)) })}
+          className="wk-input outline-none block"
+        />
+      </label>
 
       <button
         type="button"
         onClick={handleToggleComplete}
         aria-label={set.completed ? `Mark ${label.toLowerCase()} not done` : `Complete ${label.toLowerCase()}`}
         aria-pressed={set.completed}
-        className={`relative flex items-center justify-center transition-colors active:scale-95 ${
+        className={`wk-tap flex items-center justify-center transition-colors active:scale-95 ${
           celebration > 0 && set.completed ? 'wk-tick-pop' : ''
         }`}
         style={{

@@ -72,7 +72,7 @@ export const MuscleProgressCard: React.FC<{ progress: MuscleProgress; formatLeng
   return (
     <section aria-label={progress.label} className="wk-card">
       <h2 className="wk-h1">{progress.label}</h2>
-      <p style={{ fontSize: fig(28), color: 'var(--wk-muted)', marginTop: fig(10) }}>
+      <p style={{ fontSize: `max(12px, ${fig(28)})`, color: 'var(--wk-muted)', marginTop: fig(10) }}>
         {progress.lastTrained ? `Last trained ${dayMonth(progress.lastTrained)}` : 'Not trained yet'}
       </p>
       <p className="wk-body" style={{ marginTop: fig(40) }}>

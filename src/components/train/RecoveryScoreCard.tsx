@@ -49,11 +49,11 @@ const Ring: React.FC<{ value: number | null }> = ({ value }) => {
       </svg>
       <span className="absolute inset-0 flex items-center justify-center font-bold text-white">
         {value === null ? (
-          <span style={{ fontSize: fig(48), color: 'var(--wk-muted)' }}>—</span>
+          <span style={{ fontSize: `max(12px, ${fig(48)})`, color: 'var(--wk-muted)' }}>—</span>
         ) : (
           <>
-            <span style={{ fontSize: fig(64), lineHeight: 1 }}>{Math.round(value)}</span>
-            <span style={{ fontSize: fig(36), lineHeight: 1, alignSelf: 'flex-end', marginBottom: fig(62) }}>%</span>
+            <span style={{ fontSize: `max(12px, ${fig(64)})`, lineHeight: 1 }}>{Math.round(value)}</span>
+            <span style={{ fontSize: `max(12px, ${fig(36)})`, lineHeight: 1, alignSelf: 'flex-end', marginBottom: fig(62) }}>%</span>
           </>
         )}
       </span>

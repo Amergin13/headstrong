@@ -20,7 +20,9 @@ import { calculateE1RM } from '../engine/e1rm';
 import { isPillarBenchmarkExercise } from '../engine/strengthStandards';
 import { getLatestBodyweightEma } from '../engine/ema';
 import { localDateString } from '../utils/date';
-import { withPlanWorkoutName } from '../engine/muscleBuildingProgram';
+import { generatePlanWorkout, withPlanWorkoutName } from '../engine/muscleBuildingProgram';
+import { prepareSessionForAthlete } from './sessionPreparation';
+import { buildStarterPlan } from '../engine/starterPlan';
 import { ActivityLog } from '../engine/activeDays';
 
 const KEYS = {
@@ -365,6 +367,10 @@ export function saveExercises(exercises: ExerciseDefinition[]): void {
   persist(KEYS.EXERCISES, JSON.stringify(exercises));
 }
 
+/** How many of the sample athlete's workouts count towards the plan: 10 of 24 puts them in week 3. */
+const DEMO_PLAN_WORKOUTS_DONE = 10;
+const DEMO_BODYWEIGHT_KG = 82;
+
 export function resetAllToSeedData(): {
   profile: UserProfile;
   biometrics: BiometricLog[];
@@ -373,9 +379,49 @@ export function resetAllToSeedData(): {
   exercises: ExerciseDefinition[];
 } {
   localStorage.clear();
-  const profile = SAMPLE_DEMO_PROFILE;
+  // The sample athlete is partway through the plan: their latest workouts fill its first sessions,
+  // so the Workout and Program pages show the same mid-plan story as Progress.
+  const profile: UserProfile = { ...SAMPLE_DEMO_PROFILE, programType: 'starter_4day' };
   const biometrics = generateSeedBiometrics();
-  const workouts = generateSeedWorkouts();
+  const plan = buildStarterPlan(profile.goalPhase, 'lift4');
+  const seedWorkouts = generateSeedWorkouts();
+  const byDate = [...seedWorkouts].sort((a, b) => (a.completedAt || a.date).localeCompare(b.completedAt || b.date));
+  // Replaced with the plan's own workouts, logged as prescribed, so names, exercises and recovery agree.
+  const replaced = byDate.slice(-DEMO_PLAN_WORKOUTS_DONE);
+  const earlier = seedWorkouts.filter((w) => !replaced.includes(w));
+  const planDone: WorkoutSession[] = [];
+  replaced.forEach((seed, idx) => {
+    const prepared = prepareSessionForAthlete(generatePlanWorkout(plan, plan.templates[idx].workoutNumber), {
+      history: [...earlier, ...planDone],
+      bodyweightKg: DEMO_BODYWEIGHT_KG,
+      readinessState: 'Normal',
+      gender: profile.gender,
+      experienceLevel: 'intermediate',
+      unit: 'kg',
+      isProgramPlan: true,
+    });
+    planDone.push({
+      ...prepared,
+      id: seed.id,
+      date: seed.date,
+      completed: true,
+      completedAt: seed.completedAt,
+      startedAt: seed.startedAt,
+      durationMinutes: seed.durationMinutes,
+      exercises: prepared.exercises.map((ex) => ({
+        ...ex,
+        sets: ex.sets.map((s) => ({
+          ...s,
+          completed: true,
+          completedAt: seed.completedAt,
+          actualWeightKg: s.targetWeightKg,
+          actualReps: s.targetReps,
+          actualRir: s.targetRir,
+        })),
+      })),
+    });
+  });
+  const workouts = [...earlier, ...planDone];
   const activeWorkout = createTodaysActiveWorkout();
   const exercises = SEED_EXERCISES;
 

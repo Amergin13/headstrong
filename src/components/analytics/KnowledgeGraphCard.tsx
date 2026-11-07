@@ -70,7 +70,7 @@ export const KnowledgeGraphCard: React.FC<KnowledgeGraphCardProps> = ({
 
         <p
           style={{
-            fontSize: fig(28),
+            fontSize: `max(12px, ${fig(28)})`,
             lineHeight: 1.21,
             color: 'var(--wk-muted)',
             marginTop: fig(20),
@@ -88,7 +88,7 @@ export const KnowledgeGraphCard: React.FC<KnowledgeGraphCardProps> = ({
           </span>
           <span
             className="font-bold text-white shrink-0"
-            style={{ fontSize: fig(40), lineHeight: 1 }}
+            style={{ fontSize: `max(12px, ${fig(40)})`, lineHeight: 1 }}
           >
             {pkg.lengthenedStimulusRatio}%
           </span>
@@ -107,7 +107,7 @@ export const KnowledgeGraphCard: React.FC<KnowledgeGraphCardProps> = ({
           </span>
           <span
             className="font-bold text-white shrink-0"
-            style={{ fontSize: fig(40), lineHeight: 1 }}
+            style={{ fontSize: `max(12px, ${fig(40)})`, lineHeight: 1 }}
           >
             {pkg.systemicAxialLoadScore}%
           </span>
@@ -145,7 +145,7 @@ export const KnowledgeGraphCard: React.FC<KnowledgeGraphCardProps> = ({
                   triggerHaptic('light');
                   setViewMode(tab.id);
                 }}
-                className="h-full flex items-center justify-center font-bold uppercase transition-colors"
+                className="wk-tap h-full flex items-center justify-center font-bold uppercase transition-colors"
                 style={{
                   borderRadius: fig(16),
                   fontSize: `max(12px, ${fig(24)})`,
@@ -176,7 +176,7 @@ export const KnowledgeGraphCard: React.FC<KnowledgeGraphCardProps> = ({
 
             <p
               style={{
-                fontSize: fig(28),
+                fontSize: `max(12px, ${fig(28)})`,
                 lineHeight: 1.21,
                 color: 'var(--wk-muted)',
                 marginTop: fig(20),
@@ -206,7 +206,7 @@ export const KnowledgeGraphCard: React.FC<KnowledgeGraphCardProps> = ({
 
             <p
               style={{
-                fontSize: fig(28),
+                fontSize: `max(12px, ${fig(28)})`,
                 lineHeight: 1.21,
                 color: 'var(--wk-muted)',
                 marginTop: fig(20),
@@ -224,7 +224,7 @@ export const KnowledgeGraphCard: React.FC<KnowledgeGraphCardProps> = ({
               </span>
               <span
                 className="font-bold text-white shrink-0"
-                style={{ fontSize: fig(40), lineHeight: 1 }}
+                style={{ fontSize: `max(12px, ${fig(40)})`, lineHeight: 1 }}
               >
                 {j.strainScore}%
               </span>
@@ -248,7 +248,7 @@ export const KnowledgeGraphCard: React.FC<KnowledgeGraphCardProps> = ({
             </div>
             <p
               style={{
-                fontSize: fig(28),
+                fontSize: `max(12px, ${fig(28)})`,
                 lineHeight: 1.21,
                 color: 'var(--wk-muted)',
                 marginTop: fig(20),
@@ -291,7 +291,7 @@ export const KnowledgeGraphCard: React.FC<KnowledgeGraphCardProps> = ({
 
                 <p
                   style={{
-                    fontSize: fig(28),
+                    fontSize: `max(12px, ${fig(28)})`,
                     lineHeight: 1.21,
                     color: 'var(--wk-muted)',
                     marginTop: fig(20),

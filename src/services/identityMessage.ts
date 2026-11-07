@@ -122,7 +122,7 @@ export function buildIdentityFacts(input: IdentityMessageInput): IdentityMessage
   const week = Math.ceil(plan.nextWorkoutNumber / trainingPlan.workoutsPerWeek);
   const completed = plan.completedCount;
 
-  facts.push(`Workouts finished in this plan: ${completed} of ${trainingPlan.templates.length}.`);
+  facts.push(`Sessions finished in this plan: ${completed} of ${trainingPlan.templates.length}.`);
   facts.push(`Current phase: Phase ${phase.phaseNumber} (${phase.shortName.toLowerCase()}), week ${week} of 6.`);
 
   // History in this run of the plan, oldest first.
@@ -154,7 +154,15 @@ export function buildIdentityFacts(input: IdentityMessageInput): IdentityMessage
     const recent = workouts.filter((w) => w.completed && now - getWorkoutCompletedAt(w) <= 14 * DAY).length;
     facts.push(`Workouts in the last 14 days: ${recent}.`);
 
-    const doneText = completed === 1 ? 'Your first workout is done' : `${completed} workouts done`;
+    // Active days fill plan sessions too, but they aren't workouts.
+    const activeDaysDone = completed - runSessions.length;
+    if (activeDaysDone > 0) facts.push(`Workouts finished: ${runSessions.length}. Active days finished: ${activeDaysDone}.`);
+    const doneText =
+      activeDaysDone > 0
+        ? `${plural(runSessions.length, 'workout')} and ${plural(activeDaysDone, 'active day')} done`
+        : completed === 1
+        ? 'Your first workout is done'
+        : `${completed} workouts done`;
     progressSentence = `${doneText}${totalPbs > 0 ? `, with ${plural(totalPbs, 'personal best')} along the way` : ''}.`;
     if (trend.improved > 0) {
       progressSentence += ` Your estimated strength is already up on ${trend.improved} of the ${plural(trend.repeated, 'lift')} you've repeated.`;

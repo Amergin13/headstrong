@@ -121,7 +121,6 @@ flowchart TD
 | **FR-PROG-03** | Program | 6-Week Mesocycle Periodization | Week 1 Base Intro $\to$ Week 2 Accumulation $\to$ Week 3 Core $\to$ Week 4 Accretion $\to$ Week 5 Peak $\to$ Week 6 Deload. 1-tap Deload trigger. |
 | **FR-PROG-04** | Program | Locations & Home Equipment Setup | Configures available home gear (Bench, Dumbbells, TRX, Pull-Up Bar, Bands) and updates exercise generation matrix. |
 | **FR-PROG-05** | Program | Data Portability & Privacy | 1-tap JSON export, schema-validated JSON import, and 1-tap permanent data erasure (GDPR Right-to-be-Forgotten). |
-| **FR-PROG-06** | Program | Competitor & Governance Matrix | In-app modal displaying locked vs. progressing features and benchmarks against RP, Fitbod, Hevy, and Whoop. |
 | **FR-PROG-07** | Program | Custom Exercise Builder | Allows adding custom exercises locked to one of 13 canonical movement families. |
 | **FR-PROG-08** | Program | Wearable Telemetry Sync Modal | Simulates or syncs Google Pixel Watch HRV, RHR, Sleep, AZM, and Steps. Evaluates daily readiness Z-score. |
 | **FR-ANLY-01** | Progress | 2-Way Segmented View | Toggles between "Strength & Stamina" and "Recovery, Joints & Steps" to maintain visual hierarchy without scrolling fatigue. |

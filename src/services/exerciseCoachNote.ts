@@ -84,7 +84,7 @@ export function buildExerciseNoteFacts(input: ExerciseNoteInput): ExerciseNoteFa
     .map((w) => w.exercises.find((e) => e.exerciseId === exercise.exerciseId && e.sets.some(done)))
     .find(Boolean);
   const isBodyweight = exercise.equipment === 'bodyweight' && !exercise.isWeightedCalisthenic;
-  const load = (kg: number) => (kg > 0 ? formatWeight(kg) : isBodyweight ? 'bodyweight' : formatWeight(0));
+  const load = (kg: number) => (kg > 0 ? formatWeight(kg) : isBodyweight || exercise.isWeightedCalisthenic ? 'bodyweight' : formatWeight(0));
   let historySentence = `First time on ${exercise.name}, so today sets your starting point.`;
   if (!lastSession) {
     facts.push('This is the first time you have logged this exercise.');

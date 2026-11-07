@@ -57,7 +57,7 @@ export const ProgramPickerModal: React.FC<ProgramPickerModalProps> = ({ programT
             </h3>
             <p
               style={{
-                fontSize: fig(28),
+                fontSize: `max(12px, ${fig(28)})`,
                 lineHeight: 1.21,
                 color: 'var(--wk-muted)',
                 marginTop: fig(16),

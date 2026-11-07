@@ -288,7 +288,7 @@ export function buildStandardsAnswer(report: MovementStandardsReport, hasBodywei
         `• ${d.exerciseName}: your ${d.weakerSide} side is doing ${d.symmetryPct}% of the other. Start each set with your ${d.weakerSide} side and match its reps on the other side.`
       );
     }
-  } else if (logged.length >= 2) {
+  } else if (hasBodyweight && logged.length >= 2) {
     parts.push('', 'No imbalances: your lifts are in proportion with each other.');
   }
   parts.push('', 'Levels use Dr Lon Kilgore\'s strength standards; pulling against pressing uses Charles Poliquin\'s ratios. Log single-arm and single-leg sets with "Log each side" to check left against right.');
