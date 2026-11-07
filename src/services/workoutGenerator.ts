@@ -216,9 +216,7 @@ export function getTemplateDefaultWeight(exerciseId: string): number | undefined
     { ...source.e, exerciseId: source.e.id },
     { ...def, exerciseId: def.id }
   );
-  if (converted <= 0) return undefined;
-  // A default borrowed from a barbell or machine lift assumes a pair of dumbbells; a goblet squat holds one.
-  return /goblet/.test(`${def.id} ${def.name}`.toLowerCase()) ? converted / 2 : converted;
+  return converted > 0 ? converted : undefined;
 }
 
 function getDirectTemplateDefaultWeight(exerciseId: string): number | undefined {

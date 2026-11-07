@@ -547,10 +547,10 @@ export const App: React.FC = () => {
 
     // Re-running setup (e.g. to edit equipment) must not throw away a workout in progress.
     const hasProgress = activeWorkout.exercises.some((ex) => ex.sets.some((st) => st.completed));
-    if (profile.onboardingCompleted && hasProgress) {
-      setActiveTab('train');
-      return;
-    }
+    // Editing from Settings stays in Settings; only finishing first-time setup goes to the workout.
+    const isEditingSetup = Boolean(profile.onboardingCompleted);
+    if (isEditingSetup) setToast({ message: 'Where you train is saved.', tag: 'Saved' });
+    if (isEditingSetup && hasProgress) return;
 
     // Quickest path to value: Generate Day 1 workout for the chosen split and take user to Workout tab
     const starterSplit = getFirstSplitDayForProgram(setup.programType);
@@ -584,7 +584,7 @@ export const App: React.FC = () => {
           : undefined,
       })
     );
-    setActiveTab('train');
+    if (!isEditingSetup) setActiveTab('train');
   };
 
   // Handler: Launch specific workout number from 6-Week Muscle Building Plan
@@ -1074,7 +1074,8 @@ export const App: React.FC = () => {
       <GoogleAuthModal
         currentUser={authUser}
         profile={profile}
-        isOpen={authModalOpen}
+        // Onboarding comes first on a fresh install; sign-in opens once it's finished.
+        isOpen={authModalOpen && !onboardingOpen}
         onClose={() => setAuthModalOpen(false)}
         onAuthSuccess={handleAuthSuccess}
         onSignOut={handleSignOut}

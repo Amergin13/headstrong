@@ -5360,6 +5360,15 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
     const goblet = getTemplateDefaultWeight('ex-goblet-squat')!;
     assert(usesOneDumbbell({ exerciseId: 'ex-goblet-squat' }) && usesOneDumbbell({ name: 'Bench Dumbbell Lat Pullover' }) && !usesOneDumbbell({ name: 'Incline Dumbbell Press' }), 'Goblet squats and pullovers are recognised as one dumbbell');
     assert(goblet > 0 && goblet <= 60, `A goblet squat's borrowed default assumes one dumbbell (got ${goblet} kg)`);
+    const toPullover = translateWeightBetweenImplements(
+      37.5,
+      { equipment: 'cable', exerciseId: 'ex-lat-pulldown', name: 'Lat Pulldown', pillar: 'Vertical Pull' },
+      { equipment: 'dumbbell', exerciseId: 'ex-db-pullover', name: 'Bench Dumbbell Lat Pullover', pillar: 'Vertical Pull' },
+      80
+    );
+    assert(toPullover <= 20, `Swapping to a one-dumbbell move halves the converted weight (37.5 kg pulldown gives ${toPullover} kg)`);
+    const onboardingSrc = fs.readFileSync(path.resolve(process.cwd(), 'src/App.tsx'), 'utf-8');
+    assert(onboardingSrc.includes('isOpen={authModalOpen && !onboardingOpen}') && onboardingSrc.includes('if (!isEditingSetup) setActiveTab'), 'Sign-in waits for onboarding, and saving equipment stays in Settings');
 
     // Coach: place changes, and no internal day labels for plan workouts.
     const coachArgs = { profile: { ...NEW_USER_PROFILE, programType: 'starter_6wk' as const }, activeWorkout: fresh, workouts: [] as WorkoutSession[], biometrics: [] as BiometricLog[], exerciseCatalog: SEED_EXERCISES, bodyweightEmaKg: 80, readinessState: 'Normal' as const };

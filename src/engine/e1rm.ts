@@ -236,6 +236,13 @@ export function translateWeightBetweenImplements(
 
   const sourceUnilateral = isUnilateralExercise(sourceMeta);
   const targetUnilateral = isUnilateralExercise(targetMeta);
+  // A pair of dumbbells or a bar shares the load between two hands; a goblet squat or pullover holds one.
+  const oneDumbbellFactor =
+    targetMeta.equipment === 'dumbbell' && usesOneDumbbell(targetMeta) && !usesOneDumbbell(sourceMeta)
+      ? 0.5
+      : sourceMeta.equipment === 'dumbbell' && usesOneDumbbell(sourceMeta) && !usesOneDumbbell(targetMeta)
+      ? 2
+      : 1;
   const sideFactor =
     targetUnilateral && !sourceUnilateral
       ? UNILATERAL_LOAD_FRACTION
@@ -244,7 +251,7 @@ export function translateWeightBetweenImplements(
       : 1;
 
   return convertEffectiveToExternalLoad(
-    canonicalLoad * sideFactor,
+    canonicalLoad * sideFactor * oneDumbbellFactor,
     targetMeta.equipment,
     targetMeta.isRdl,
     targetMeta.isWeightedCalisthenic,
