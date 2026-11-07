@@ -253,6 +253,31 @@ export function isSupabaseConfigured(): boolean {
   return Boolean(GOOGLE_AUTH_CONFIG.SUPABASE_URL && GOOGLE_AUTH_CONFIG.SUPABASE_ANON_KEY);
 }
 
+const PENDING_LINK_SIGN_IN_KEY = 'treise_link_sign_in_pending';
+
+/** Call when this device leaves to sign in through a redirect that returns with a token in the link. */
+export function markLinkSignInStarted(): void {
+  try {
+    localStorage.setItem(PENDING_LINK_SIGN_IN_KEY, '1');
+  } catch {
+    // Storage is blocked: the returning link just won't sign in.
+  }
+}
+
+/**
+ * A sign-in token in a link only counts if this device started that sign-in, so a crafted link can't
+ * put someone else's name and email on this profile. One use only.
+ */
+export function consumeLinkSignIn(): boolean {
+  try {
+    const started = localStorage.getItem(PENDING_LINK_SIGN_IN_KEY) === '1';
+    localStorage.removeItem(PENDING_LINK_SIGN_IN_KEY);
+    return started;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Initiates Supabase Google OAuth redirect flow (if migrating from a Lovable Supabase project).
  */

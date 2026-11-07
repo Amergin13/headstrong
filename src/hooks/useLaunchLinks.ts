@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { AuthUser, WearableProvider } from '../engine/types';
-import { signInWithGoogleCredential } from '../services/googleAuthService';
+import { consumeLinkSignIn, signInWithGoogleCredential } from '../services/googleAuthService';
 import { isExpectedOAuthState } from '../services/whoopService';
 import type { TabId } from '../components/common/NavigationBar';
 
@@ -50,7 +50,7 @@ export function useLaunchLinks(handlers: LaunchLinkHandlers) {
     const oauthCode = params.get('code');
     const idToken = hashParams.get('id_token') || params.get('id_token');
 
-    if (idToken) {
+    if (idToken && consumeLinkSignIn()) {
       try {
         handlers.onAuthSuccess(signInWithGoogleCredential(idToken));
       } catch (err) {

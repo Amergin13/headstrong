@@ -5447,6 +5447,10 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
     assert(modalsWithoutRole.length === 0, `Every modal is announced as a dialog (${modalsWithoutRole.join(', ')})`);
     const setRowSrc = fs.readFileSync(path.resolve(process.cwd(), 'src/components/train/SetRow.tsx'), 'utf-8');
     assert((setRowSrc.match(/wk-tap/g) || []).length >= 5 && /\.wk-tap::after[\s\S]*height: 44px/.test(css), 'Every control in a set row has a 44 px touch area');
+    const { markLinkSignInStarted, consumeLinkSignIn } = await import('../../services/googleAuthService');
+    assert(!consumeLinkSignIn(), 'A sign-in link this device did not start is ignored');
+    markLinkSignInStarted();
+    assert(consumeLinkSignIn() && !consumeLinkSignIn(), 'A sign-in this device started is accepted once');
     const persistSrc = fs.readFileSync(path.resolve(process.cwd(), 'src/hooks/usePersistedState.ts'), 'utf-8');
     assert(
       persistSrc.includes('useLayoutEffect') && /hasUnsavedChange\.current\) return/.test(persistSrc),
