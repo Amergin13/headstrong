@@ -43,6 +43,19 @@ export function calculateMeanAndStdDev(values: number[]): { mean: number; stdDev
  * BASELINE ISOLATION:
  * 14-day rolling baseline filters by active tracker to guarantee zero cross-contamination.
  */
+/**
+ * The one recovery score shown anywhere (recovery card, knowledge graph, coach): the wearable's own
+ * score when it has one, otherwise today's readiness against the 14-day baseline. Null when nothing
+ * was measured today, so no number is shown.
+ */
+export function displayRecoveryScore(readiness: ReadinessEvaluation, latest?: BiometricLog): number | null {
+  if (readiness.hasRecoveryData === false) return null;
+  const provider = readiness.provider || latest?.source;
+  const providerScore =
+    provider === 'whoop' ? latest?.recoveryScore : provider === 'fitbit' ? latest?.fitbitReadinessScore : undefined;
+  return providerScore ?? readiness.readinessScore ?? Math.max(1, Math.min(99, Math.round(60 + readiness.score * 20)));
+}
+
 export function calculateDailyReadiness(
   todayLog: BiometricLog,
   historyLogs: BiometricLog[], // past logs up to 14 days

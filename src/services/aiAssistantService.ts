@@ -34,6 +34,17 @@ import { localDateString } from '../utils/date';
 import { formatPreciseWeight, formatWeight, snapLoadKg } from '../utils/units';
 import { calculateE1RM } from '../engine/e1rm';
 import { findLastCompletedExerciseSession } from '../engine/progression';
+import { ActivityLog } from '../engine/activeDays';
+import {
+  answerPlanPosition,
+  answerRestTimes,
+  answerShouldTrain,
+  answerStreak,
+  answerWeeklySets,
+  answerWeightChange,
+  asksAboutVolume,
+  planPosition,
+} from './coachAnswers';
 
 export interface AssistantProcessInput {
   userMessage: string;
@@ -45,6 +56,8 @@ export interface AssistantProcessInput {
   bodyweightEmaKg: number;
   readinessState: ReadinessState;
   weeklyVolume?: Record<string, number>;
+  /** Logged active days, so plan position and streak match the Program page and header. */
+  activities?: ActivityLog[];
   /** Streams the on-device model's answer as it is generated. */
   onPartial?: (textSoFar: string) => void;
   /** Reports first-time model download progress (0-1). */
@@ -161,7 +174,7 @@ export function buildCoachSystemPrompt(input: AssistantProcessInput): string {
     .join('; ');
   const musclesDesc = kg.muscleProfiles
     .slice(0, 3)
-    .map((m) => `${m.displayName} ${m.weeklySets}/${m.personalizedMav[0]}`)
+    .map((m) => `${m.displayName} ${m.weeklySets} of ${m.personalizedMav[0]}-${m.personalizedMav[1]}`)
     .join(', ');
   const athleteName = profile.name && profile.name !== 'Athlete' ? profile.name.split(' ')[0] : '';
   const goalLabel =
@@ -169,11 +182,11 @@ export function buildCoachSystemPrompt(input: AssistantProcessInput): string {
   const recovery = readinessState === 'Amber Shield' ? 'low' : readinessState === 'Primed' ? 'high' : 'normal';
 
   return `You are a friendly strength coach speaking to ${athleteName || 'the athlete'} as "you". Answer in 2-4 short plain sentences, no greeting. Use only the facts given; if unsure, say so. For pain, say stop and see a professional. No technical terms.
-Athlete: ${formatWeight(bodyweightEmaKg, unit)}, goal ${goalLabel}, week ${profile.mesocycleWeek || 1}/6, recovery ${recovery}${
+Athlete: ${formatWeight(bodyweightEmaKg, unit)}, goal ${goalLabel}, week ${planPosition(profile, workouts, input.activities ?? []).week}/6, recovery ${recovery}${
     latestBio && latestBio.hrvRmssd > 0 ? `, slept ${latestBio.sleepHours} h` : ''
   }.
 Today: ${activeWorkout?.name || 'rest'}: ${exercisesDesc || 'nothing planned'}.
-Weekly sets (done/target): ${musclesDesc || 'none yet'}.`;
+Weekly hard sets (done of target): ${musclesDesc || 'none yet'}.`;
 }
 
 /**
@@ -225,7 +238,7 @@ export function buildProgressSummary(workouts: WorkoutSession[], unit: 'kg' | 'l
     }
   }
 
-  const sessions = `You've finished ${completed.length} workout${completed.length === 1 ? '' : 's'}${
+  const sessions = `You've finished ${completed.length} workout${completed.length === 1 ? '' : 's'} in total${
     lastWeek > 0 ? ` (${lastWeek} in the last 7 days)` : ''
   }.`;
   if (changes.length > 0) {
@@ -628,6 +641,30 @@ async function processAssistantMessageCore(
   }
 
   // ============================================================================
+  // 6b. INTENTS ABOUT THE ATHLETE'S OWN PLAN AND DATA (same figures as the pages)
+  // ============================================================================
+  else if (/\bstreak\b/.test(lowerMsg)) {
+    answerText = answerStreak(workouts, input.activities ?? []);
+  } else if (
+    /\b(what|which) week\b|\bweek am i\b|\b(sessions?|workouts?) (are )?left\b|\bhow far (am i|through)\b|\bwhere am i in\b|\bwhat'?s next\b|\bwhat is next\b|\bnext workout\b|\bafter this (workout|session)\b|\bwhich phase\b|\bwhat phase\b/.test(lowerMsg)
+  ) {
+    answerText = answerPlanPosition(profile, workouts, input.activities ?? []);
+  } else if (
+    /\bshould i (train|work ?out|lift|go to the gym|skip)\b|\b(am i|are my muscles) (ready|recovered)\b|\b(ok|okay|fine) to train\b|\bcan i train\b/.test(lowerMsg)
+  ) {
+    answerText = answerShouldTrain(activeWorkout, workouts, exerciseCatalog, readinessState);
+  } else if (
+    /\bwhy\b.*\b(weights?|heavier|lighter|reps?|load)\b/.test(lowerMsg) &&
+    /\b(go|goes|went|gone|change[ds]?|up|down|drop(ped)?|increase[ds]?|same|heavier|lighter|more|less|higher|lower)\b/.test(lowerMsg)
+  ) {
+    answerText = answerWeightChange(lowerMsg, activeWorkout, workouts, readinessState, profile.weightUnit || 'kg');
+  } else if (/\b(how long|how much|how many (minutes|seconds))\b.*\brest\b|\brest (times?|between|periods?)\b/.test(lowerMsg)) {
+    answerText = answerRestTimes(activeWorkout);
+  } else if (asksAboutVolume(lowerMsg)) {
+    answerText = answerWeeklySets(lowerMsg, kg);
+  }
+
+  // ============================================================================
   // 7. INTENT: KNOWLEDGE GRAPH QUERIES (Joints, Recovery, Muscles, Science)
   // ============================================================================
   // 7. INTENT: KNOWLEDGE GRAPH QUERIES (Joints, Science, Recovery, Muscles)
@@ -805,6 +842,8 @@ async function processAssistantMessageCore(
       ) {
         const latest = biometrics[biometrics.length - 1];
         const readings = recoveryReadingsClause(latest);
+        // The same score as the recovery card on the Workout page.
+        const scoreText = kg.recoveryEfficiencyScore > 0 ? ` (recovery score ${kg.recoveryEfficiencyScore}%)` : '';
         const recScore = latest?.recoveryScore;
         const workoutStrain = latest?.workoutStrain;
         const dayStrain = latest?.strain;
@@ -841,11 +880,11 @@ async function processAssistantMessageCore(
             answerText = `Your Whoop recovery is at ${recScore}% (${zoneLabel} zone, Amber Shield active)${readings}. Systemic fatigue has accumulated. Working weights are held steady with 2–3 reps left in reserve to prevent joint burnout and protect your streak.`;
           }
         } else if (readinessState === 'Primed') {
-          answerText = `Your recovery is Primed today${readings}. You're well recovered, so it's a good day to push the weight on your first working sets.`;
+          answerText = `Your recovery is high today${scoreText}${readings}. You're well recovered, so it's a good day to push the weight on your first working sets.`;
         } else if (readinessState === 'Amber Shield') {
-          answerText = `Your recovery is in Amber Shield mode${readings}. Your central nervous system needs lighter effort today. Working weights are held steady with 2–3 reps left in reserve to prevent joint burnout and protect your streak.`;
+          answerText = `Your recovery is low today${scoreText}${readings}. Your central nervous system needs lighter effort today. Working weights are held steady with 2–3 reps left in reserve to prevent joint burnout and protect your streak.`;
         } else if (kg.recoveryEfficiencyScore > 0) {
-          answerText = `Your recovery looks normal${readings}. Follow today's targets as planned.`;
+          answerText = `Your recovery looks normal${scoreText}${readings}. Follow today's targets as planned.`;
         } else {
           answerText = `I don't have any recovery data from a watch yet, so your plan runs at normal effort. Connect a Pixel Watch, Fitbit or Whoop in Program → Wearable & Recovery and I'll adjust each day to your sleep and heart rate. Meanwhile, your workout page shows when each muscle group has recovered from your last session.`;
         }
@@ -865,8 +904,8 @@ async function processAssistantMessageCore(
         if (kg.recoveryEfficiencyScore > 0) {
           citations.push({
             label: 'Recovery Score',
-            metric: 'Efficiency',
-            value: `${kg.recoveryEfficiencyScore}/100`,
+            metric: 'Today',
+            value: `${kg.recoveryEfficiencyScore}%`,
           });
         }
       }
@@ -886,19 +925,23 @@ async function processAssistantMessageCore(
         const matchedMuscle = kg.muscleProfiles.find((m) =>
           lowerMsg.includes(m.displayName.toLowerCase()) || lowerMsg.includes(m.muscleKey.toLowerCase())
         ) || kg.muscleProfiles[0];
+        if (!matchedMuscle) {
+          answerText = answerWeeklySets(lowerMsg, kg);
+        } else {
 
-        answerText = `${matchedMuscle.displayName} has ${matchedMuscle.weeklySets} sets logged this week against a personalized target sweet spot of ${matchedMuscle.personalizedMav[0]}–${matchedMuscle.personalizedMav[1]} sets. ${matchedMuscle.recommendation}`;
+        answerText = answerWeeklySets(lowerMsg, kg);
 
         citations.push({
           label: matchedMuscle.displayName,
-          metric: 'Weekly Volume',
-          value: `${matchedMuscle.weeklySets} / ${matchedMuscle.personalizedMav[1]} sets`,
+          metric: 'This week',
+          value: `${matchedMuscle.weeklySets} of ${matchedMuscle.personalizedMav[0]}–${matchedMuscle.personalizedMav[1]} hard sets`,
         });
         citations.push({
           label: 'Full Stretch Stimulus',
           metric: 'Lengthened Ratio',
           value: `${kg.lengthenedStimulusRatio}% of sets`,
         });
+        }
       } else if (lowerMsg.includes('protein') || lowerMsg.includes('eat') || lowerMsg.includes('nutrition') || lowerMsg.includes('food')) {
         const isPreWorkout = /\b(before|pre[\s-]?workout|pre[\s-]?training|prior to)\b/.test(lowerMsg);
         const isPostWorkout = /\b(after|post[\s-]?workout|post[\s-]?training)\b/.test(lowerMsg);
@@ -1182,17 +1225,8 @@ async function processAssistantMessageCore(
               value: `10 reps @ bar → 5 reps @ ${w50} → 2 reps @ ${w75}`,
             });
           } else if (isRestQuery) {
-            // Evidence-Based Rest Intervals
-            const compoundLifts = workoutExercises.filter((e) => e.equipment === 'barbell' || e.pillar === 'Squat' || e.pillar === 'Hinge' || e.pillar === 'Horizontal Push');
-            const isolationLifts = workoutExercises.filter((e) => !compoundLifts.includes(e));
-
-            answerText = `Optimal rest intervals for today's **${activeWorkout?.name || 'Workout'}**:\n\n• **Heavy Compound Movements** (${compoundLifts.map((e) => e.name).slice(0, 2).join(', ') || 'primary lifts'}): 2.5 to 3.5 minutes. Full phosphocreatine and central nervous system resynthesis is essential for maintaining mechanical tension.\n• **Accessory Movements** (${isolationLifts.map((e) => e.name).slice(0, 2).join(', ') || 'isolation exercises'}): 60 to 90 seconds. Sustains metabolic stress and localized cellular swelling.\n\n${readinessState === 'Amber Shield' ? '🛡️ Amber Shield is active: take a full 3–4 minutes on compounds to protect technique.' : ''}`;
-
-            citations.push({
-              label: 'Rest Intervals',
-              metric: 'Rest Time',
-              value: '2.5–3.5 min (Compounds) / 60–90 sec (Accessories)',
-            });
+            // The same rest the timer counts for each of today's exercises.
+            answerText = answerRestTimes(activeWorkout);
           } else if (isStrengthLevelQuery) {
             // From the athlete's own lifts and bodyweight, never a stock score.
             answerText = strengthLevelsAnswer();
@@ -1287,7 +1321,7 @@ async function processAssistantMessageCore(
 
             const latestBio = biometrics[biometrics.length - 1];
 
-            answerText = `Today's session is **${activeWorkout?.name || 'Workout'}**${activeWorkout?.programWorkoutNumber ? '' : ` (**${activeWorkout?.splitDay || 'Scheduled'} Day**)`} in **Week ${profile.mesocycleWeek || 1} of 6** (${activeWorkout?.location === 'travel' ? 'Bodyweight' : activeWorkout?.location === 'home' ? 'At Home' : 'Full Gym'} mode).\n\nPlanned Movements:\n${plannedList}\n\n${
+            answerText = `Today's session is **${activeWorkout?.name || 'Workout'}**${activeWorkout?.programWorkoutNumber ? '' : ` (**${activeWorkout?.splitDay || 'Scheduled'} Day**)`} in **Week ${planPosition(profile, workouts, input.activities ?? []).week} of 6** (${activeWorkout?.location === 'travel' ? 'Bodyweight' : activeWorkout?.location === 'home' ? 'At Home' : 'Full Gym'} mode).\n\nPlanned Movements:\n${plannedList}\n\n${
               readinessState === 'Primed'
                 ? `⚡ Autonomic recovery is **Primed**${recoveryReadingsClause(latestBio)}. It's a good day to push: attack Set 1 with intent!`
                 : readinessState === 'Amber Shield'

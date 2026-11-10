@@ -16,6 +16,7 @@ import { calculateEmaSeries } from './ema';
 export type { ScientificPrinciple, DesignSystemComponent, DesignSystemComponentCategory };
 import { HYPERTROPHY_VOLUME_LANDMARKS, evaluateVolumeStatus } from './hypertrophyVolume';
 import { calculateE1RM } from './e1rm';
+import { calculateDailyReadiness, displayRecoveryScore } from './readiness';
 import {
   BODY_MEASUREMENT_SITES,
   RENPHO_SCALE_METRICS,
@@ -316,12 +317,12 @@ export const EXERCISE_SCIENCE_KNOWLEDGE_BASE: ScientificPrinciple[] = [
     id: 'sp-rest-intervals',
     topic: 'Physiology & Recovery',
     title: 'Rest Interval Physiology & Neuromuscular Recovery',
-    formula: '2.5–3.0 min for Heavy Compound Lifts; 60–90 sec for Isolation Accessories',
+    formula: 'About 2–3 min for heavy compound lifts; 60–90 sec for smaller muscles',
     scientificRationale:
       'Resynthesis of cellular phosphocreatine (PCr) follows a biphasic recovery curve: ~70% in 30 seconds, ~90% in 90 seconds, and >98% by 3 minutes. Truncating rest on compound squats or bench presses impairs subsequent set volume load and motor unit recruitment.',
     academicCitation: 'Henselmans & Schoenfeld (2014); Schoenfeld et al. (2016)',
     practicalApplication:
-      'The Rest Timer presets 2.5 minutes for compound lifts and 90 seconds for isolation accessories, with a simulated 60% max HR ready indicator.',
+      'The rest timer counts each exercise\'s planned rest: about 2.5 minutes for the main lifts, 2 minutes for other compound lifts, and 60–75 seconds for smaller muscles. Ask the coach "how long should I rest" for today\'s exact times.',
     keywords: ['rest', 'rest time', 'rest interval', 'between sets', 'how long to rest', 'pcr', 'phosphocreatine', 'timer', 'rest duration'],
   },
   {
@@ -1776,12 +1777,10 @@ export function buildAthleteKnowledgeGraph(
   const systemicAxialLoadScore = Math.min(100, Math.round((totalWeeklyAxialUnits / 16) * 100));
   const lengthenedStimulusRatio =
     totalHardSetsWeek > 0 ? Math.round((lengthenedSetsCount / totalHardSetsWeek) * 100) : 0;
-  const recoveryEfficiencyScore =
-    typeof latestRecoveryScore === 'number'
-      ? latestRecoveryScore
-      : hasRecoveryData
-      ? Math.min(99, Math.max(1, Math.round(70 + (avgHrv - 55) * 0.8 + ((avgSleep || 7) - 7.0) * 8)))
-      : 0; // 0 = no recovery data
+  // The same score as the recovery card (0 = nothing measured today).
+  const recoveryEfficiencyScore = latestBio
+    ? displayRecoveryScore(calculateDailyReadiness(latestBio, biometrics, profile.wearableSource), latestBio) ?? 0
+    : 0;
 
   // 6. Generate Plain-English Coaching Insights
   const highestStrainJoint = [...joints].sort((a, b) => b.strainScore - a.strainScore)[0];

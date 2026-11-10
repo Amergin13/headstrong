@@ -1005,6 +1005,7 @@ export const App: React.FC = () => {
           bodyweightEmaKg={bodyweightEmaKg}
           readinessState={readiness.state}
           weeklyVolume={weeklyVolume}
+          activities={activities}
           onClose={() => setAiCoachOpen(false)}
           onApplyAction={handleApplyAssistantAction}
           onViewAllEquipment={() => {

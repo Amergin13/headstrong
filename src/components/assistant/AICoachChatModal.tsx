@@ -1,3 +1,4 @@
+import type { ActivityLog } from '../../engine/activeDays';
 import React, { useState, useRef, useEffect } from 'react';
 import {
   AssistantChatMessage,
@@ -52,6 +53,8 @@ interface AICoachChatModalProps {
   bodyweightEmaKg: number;
   readinessState: ReadinessState;
   weeklyVolume?: Record<string, number>;
+  /** Logged active days, so the coach's plan position and streak match the app. */
+  activities?: ActivityLog[];
   onClose: () => void;
   onApplyAction: (updatedProfile?: Partial<UserProfile>, updatedWorkout?: WorkoutSession) => void;
   onViewAllEquipment?: () => void;
@@ -79,6 +82,7 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
   bodyweightEmaKg,
   readinessState,
   weeklyVolume,
+  activities,
   onClose,
   onApplyAction,
   onViewAllEquipment,
@@ -100,6 +104,7 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
     bodyweightEmaKg,
     readinessState,
     weeklyVolume,
+    activities,
   });
   const [deviceCoachProgress, setDeviceCoachProgress] = useState(0);
 
@@ -205,6 +210,7 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
         bodyweightEmaKg,
         readinessState,
         weeklyVolume,
+        activities,
         onPartial: (textSoFar) => setStreamingText(textSoFar),
       });
 

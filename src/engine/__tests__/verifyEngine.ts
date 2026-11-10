@@ -5470,6 +5470,83 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
   }
 
   // ==========================================================================
+  // 39f. One story everywhere: coach answers use the same figures as the app's pages
+  // ==========================================================================
+  console.log('\n[39f. Coach answers match the pages, the knowledge graph and the athlete\'s data]');
+  {
+    const storage = await import('../../services/storage');
+    const { buildCoachSystemPrompt } = await import('../../services/aiAssistantService');
+    const { planPosition } = await import('../../services/coachAnswers');
+    const { calculateDailyReadiness, displayRecoveryScore } = await import('../readiness');
+    const { buildAthleteKnowledgeGraph } = await import('../knowledgeGraph');
+    const { resolveActivePlan } = await import('../trainingPlans');
+    const mbp = await import('../muscleBuildingProgram');
+    const { prepareSessionForAthlete } = await import('../../services/sessionPreparation');
+    const { planRestAfterSet } = await import('../../services/setCompletion');
+    const { computeTrainingStreak } = await import('../recovery');
+
+    const demo = storage.resetAllToSeedData();
+    const { profile, biometrics, workouts, exercises } = demo;
+    const plan = resolveActivePlan(profile);
+    const bw = (await import("../ema")).getLatestBodyweightEma(biometrics);
+    const readiness = calculateDailyReadiness(biometrics[biometrics.length - 1], biometrics, profile.wearableSource);
+    const overview = mbp.buildPlanOverview(workouts, plan);
+    const nextNumber = mbp.getNextProgramWorkoutNumber(workouts, plan);
+    const active = prepareSessionForAthlete(mbp.generatePlanWorkout(plan, nextNumber), { history: workouts, bodyweightKg: bw, readinessState: readiness.state, gender: profile.gender, experienceLevel: 'intermediate', unit: 'kg', isProgramPlan: true });
+    const volume = storage.calculateWeeklyMuscleVolume(workouts, exercises);
+    const kg = buildAthleteKnowledgeGraph(workouts, biometrics, exercises, profile, volume);
+    const args = { profile, activeWorkout: active, workouts, biometrics, exerciseCatalog: exercises, bodyweightEmaKg: bw, readinessState: readiness.state, weeklyVolume: volume };
+    const ask = async (userMessage: string) => (await processAssistantMessage({ ...args, userMessage })).message.text;
+    const week = plan.templates.find((t) => t.workoutNumber === nextNumber)!.week;
+
+    const position = await ask('what week am i in');
+    assert(
+      position.includes(`week ${week} of 6`) && position.includes(`${overview.completedCount} of ${plan.templates.length} sessions`) && planPosition(profile, workouts).week === week,
+      `Coach: plan position is the Program page's (${position.slice(0, 90)})`
+    );
+    assert(/Week \d of 6/.test(await ask("give me today's briefing")) && (await ask("give me today's briefing")).includes(`Week ${week} of 6`), "Coach: the briefing's week follows the plan, not a stored counter");
+    assert(buildCoachSystemPrompt(args as any).includes(`week ${week}/6`), "The model is told the plan's week");
+
+    const streak = computeTrainingStreak(workouts);
+    assert((await ask('how is my streak')).includes(`${streak} day`), `Coach: the streak is the header's (${streak} days)`);
+
+    for (const [question, key] of [['how many sets for chest this week', 'Chest'], ['how many sets for back this week', 'Back'], ['how many sets for rear delts', 'RearDelts']] as const) {
+      const m = kg.muscleProfiles.find((p) => p.muscleKey === key)!;
+      const reply = await ask(question);
+      assert(
+        reply.includes(`${m.weeklySets} of ${m.personalizedMav[0]}–${m.personalizedMav[1]} hard sets`) && !/Lumbar|Strain Score|Shoulder Capsule/.test(reply),
+        `Coach: "${question}" gives the exercise card's figure (${m.displayName} ${m.weeklySets} of ${m.personalizedMav[0]}–${m.personalizedMav[1]})`
+      );
+    }
+    assert(!/Side Shoulders/.test(await ask('how many sets for rear delts')), 'Coach: naming rear delts gives only rear delts');
+    const shoulders = await ask('am i doing enough for my shoulders');
+    assert(/Side Shoulders/.test(shoulders) && !/Strain Score|load \(/.test(shoulders), 'Coach: "enough for my shoulders" is about training, not joint strain');
+    assert(/Knee/.test(await ask('how is my knee doing')), 'Coach: a joint question still gets the joint answer');
+
+    const rest = await ask('how long should i rest between sets');
+    const restSeconds = active.exercises.map((ex) => planRestAfterSet(active, ex, ex.sets[0].id).seconds);
+    assert(
+      rest.includes(active.name) && (Math.max(...restSeconds) % 60 === 0 ? rest.includes(`${Math.max(...restSeconds) / 60} minute`) : true) && !/2\.5 to 3\.5/.test(rest),
+      `Coach: rest times are the rest timer's (${restSeconds.join(', ')} s)`
+    );
+
+    const score = displayRecoveryScore(readiness, biometrics[biometrics.length - 1]);
+    assert(score !== null && kg.recoveryEfficiencyScore === score, `The knowledge graph's recovery score is the recovery card's (${kg.recoveryEfficiencyScore} vs ${score})`);
+    assert((await ask('how is my recovery')).includes(`${score}%`), 'Coach: the recovery answer gives the card\'s score');
+
+    const train = await ask('should i train today');
+    assert(/^(Yes|Not yet|You've already trained)/.test(train), `Coach: "should I train" uses the Workout page's recovery check (${train.slice(0, 60)})`);
+
+    const incline = active.exercises.find((e) => /Incline Dumbbell Press/.test(e.name))!;
+    const why = await ask('why is incline press heavier today');
+    assert(why.includes(incline.name) && !why.includes('Cable Chest Press') && /every set reached the top|same|matched/.test(why), `Coach: "why is it heavier" explains that exercise from its logged sets (${why.slice(0, 100)})`);
+
+    const kbRest = EXERCISE_SCIENCE_KNOWLEDGE_BASE.find((p) => p.id === 'sp-rest-intervals');
+    assert(!kbRest || !/simulated|2\.5 minutes for compound lifts and 90 seconds/.test(kbRest.practicalApplication), 'The science card describes the rest timer as it really works');
+    storage.resetAllToSeedData();
+  }
+
+  // ==========================================================================
   // 40. Active days: the 4th weekly session (ride, run, walk, class), counted honestly
   // ==========================================================================
   console.log('\n[40. Active days]');

@@ -1,6 +1,6 @@
 import React from 'react';
 import { ChevronRight } from 'lucide-react';
-import { ReadinessEvaluation } from '../../engine/readiness';
+import { ReadinessEvaluation, displayRecoveryScore } from '../../engine/readiness';
 import { BiometricLog } from '../../engine/types';
 import { triggerHaptic } from '../../utils/haptics';
 
@@ -64,16 +64,8 @@ const Ring: React.FC<{ value: number | null }> = ({ value }) => {
 export const RecoveryScoreCard: React.FC<RecoveryScoreCardProps> = ({ readiness, latestBiometrics, isConnected, onOpen }) => {
   const provider = readiness.provider || latestBiometrics?.source;
   const hasData = isConnected && readiness.hasRecoveryData !== false;
-  const providerScore =
-    provider === 'whoop'
-      ? latestBiometrics?.recoveryScore
-      : provider === 'fitbit'
-      ? latestBiometrics?.fitbitReadinessScore
-      : undefined;
   // The wearable's own score when it has one; otherwise today's readiness against your baseline.
-  const score = hasData
-    ? providerScore ?? readiness.readinessScore ?? Math.max(1, Math.min(99, Math.round(60 + readiness.score * 20)))
-    : null;
+  const score = hasData ? displayRecoveryScore(readiness, latestBiometrics ?? undefined) : null;
 
   let tag = provider ? PROVIDER_LABELS[provider] || provider : 'Recovery';
   let heading: string;
