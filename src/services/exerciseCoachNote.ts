@@ -43,6 +43,7 @@ export const EXERCISE_NOTE_SYSTEM_PROMPT =
   "Write exactly two sentences, speaking to the athlete as \"you\": the first says what their recent progress or " +
   'this week\'s training on this muscle shows (mention the weekly set target if the muscle is below or above it); ' +
   'the second tells them exactly how to approach today\'s sets. ' +
+  "The weekly sets are for the whole muscle across all of this week's exercises, never for this exercise alone. " +
   'Plain English, no lists, no greetings, no headings. Do not use any number that is not in the facts.';
 
 const isWorking = (s: WorkoutSet) => !s.isWarmup && s.setType !== 'warmup';
@@ -68,7 +69,9 @@ export function buildExerciseNoteFacts(input: ExerciseNoteInput): ExerciseNoteFa
   if (profile) {
     const [min, max] = profile.personalizedMav;
     const status = profile.weeklySets < min ? 'below target' : profile.weeklySets > max ? 'above target' : 'on target';
-    facts.push(`${profile.displayName} this week: ${profile.weeklySets} hard sets against a target of ${min}–${max} (${status}).`);
+    facts.push(
+      `${profile.displayName} this week (the whole muscle, from all exercises): ${profile.weeklySets} hard sets against a target of ${min}–${max} (${status}).`
+    );
     weekSentence =
       status === 'below target'
         ? ` You're at ${profile.weeklySets} of ${min}–${max} sets for ${profile.displayName.toLowerCase()} this week, so make every set count.`
@@ -211,6 +214,28 @@ export function acceptExerciseNote(answer: string | null, facts: ExerciseNoteFac
   if (used.some((n) => !allowed.has(n))) return null;
   // A first-ever session has no history to talk about.
   if (/first time you have logged/i.test(allFacts) && /\b(last time|last session|previous|before|once|again|progress|improv\w*|increas\w*|risen|up \d|consistent\w*|building strength|stronger|so far)/i.test(text)) return null;
+  // The weekly set count belongs to the muscle, not this exercise ("7 sets of incline press" is wrong).
+  const exerciseName = /^Exercise: (.+?) \(/m.exec(facts.facts.join('\n'))?.[1];
+  const weekly = /this week \(the whole muscle, from all exercises\): (\d+(?:\.\d+)?) hard sets/.exec(allFacts)?.[1];
+  const muscleName = /- ?([^\n]+?) this week \(the whole muscle|(?:^|\. |\n)([^\n.]+?) this week \(the whole muscle/.exec(facts.facts.join('\n'))?.slice(1).find(Boolean) ?? '';
+  if (exerciseName && weekly) {
+    const nameWords = exerciseName
+      .toLowerCase()
+      .split(/[\s()/-]+/)
+      .filter((w) => w.length > 3 && !['dumbbell', 'barbell', 'cable', 'machine', 'seated', 'standing'].includes(w))
+      // A muscle word in the exercise name ("Cable Chest Press") is fine to say about the muscle.
+      .filter((w) => !muscleName.toLowerCase().includes(w.replace(/s$/, '')));
+    // Every sentence about this week's sets: the muscle's weekly figure, never this exercise's name.
+    const weekSentences = (text.match(/[^.!?]+/g) || []).filter((sentence) => /\b(this week|so far)\b/i.test(sentence) && /\bsets?\b/i.test(sentence));
+    for (const sentence of weekSentences) {
+      if (nameWords.some((w) => sentence.toLowerCase().includes(w.replace(/s$/, '')))) return null;
+      const counts = [...sentence.matchAll(/(\d+(?:\.\d+)?)\s*(?:hard\s+)?sets?\b/gi)].map((m) => m[1]);
+      const rangeEnds = [...sentence.matchAll(/(\d+)\s*[–-]\s*(\d+)/g)].flatMap((m) => [m[1], m[2]]);
+      if (counts.some((n) => n !== weekly && !rangeEnds.includes(n))) return null;
+    }
+  }
+  // No praise the facts don't show.
+  if (/\b(consistent\w*|dedicat\w*|never miss\w*)\b/i.test(text)) return null;
   // Timed holds have no reps in reserve.
   if (/\bholds? of\b/i.test(allFacts) && /reps? (in reserve|left|to spare)/i.test(text)) return null;
   // A weekly target may only be mentioned when the facts include one, and described the same way.

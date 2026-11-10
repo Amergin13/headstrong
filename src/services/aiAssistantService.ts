@@ -35,6 +35,7 @@ import { formatPreciseWeight, formatWeight, snapLoadKg } from '../utils/units';
 import { calculateE1RM } from '../engine/e1rm';
 import { findLastCompletedExerciseSession } from '../engine/progression';
 import { ActivityLog } from '../engine/activeDays';
+import { MUSCLE_TO_GRAPH_KEY } from './sessionReport';
 import {
   answerPlanPosition,
   answerRestTimes,
@@ -168,25 +169,87 @@ export function buildCoachSystemPrompt(input: AssistantProcessInput): string {
   const exercisesDesc = (activeWorkout?.exercises || [])
     .map((e) => {
       const working = e.sets.filter((st) => !st.isWarmup && st.setType !== 'warmup');
-      const reps = e.minReps === e.maxReps ? `${e.minReps}` : `${e.minReps}-${e.maxReps}`;
-      return `${e.name} ${working.length}x${reps} @ ${formatWeight(working[0]?.targetWeightKg ?? 0, unit)}`;
+      // Today's own rep targets (what the workout card shows), then the range they progress through.
+      const range = e.minReps === e.maxReps ? '' : ` (range ${e.minReps}-${e.maxReps})`;
+      return `${e.name} ${working.length} sets aiming for ${working[0]?.targetReps ?? e.minReps} reps${range} @ ${formatWeight(working[0]?.targetWeightKg ?? 0, unit)}`;
     })
     .join('; ');
-  const musclesDesc = kg.muscleProfiles
-    .slice(0, 3)
-    .map((m) => `${m.displayName} ${m.weeklySets} of ${m.personalizedMav[0]}-${m.personalizedMav[1]}`)
+  // The muscles today's exercises train, with the same status the exercise cards show.
+  const todaysMuscleKeys = [
+    ...new Set(
+      (activeWorkout?.exercises || [])
+        .map((e) => exerciseCatalog.find((d) => d.id === e.exerciseId)?.primaryMuscle)
+        .map((m) => (m ? MUSCLE_TO_GRAPH_KEY[m] : undefined))
+        .filter((k): k is string => Boolean(k))
+    ),
+  ];
+  const musclesDesc = (todaysMuscleKeys.length ? kg.muscleProfiles.filter((m) => todaysMuscleKeys.includes(m.muscleKey)) : kg.muscleProfiles.slice(0, 3))
+    .map((m) => `${m.displayName} ${m.weeklySets} of ${m.personalizedMav[0]}-${m.personalizedMav[1]} (${muscleTargetStatus(m)})`)
     .join(', ');
   const athleteName = profile.name && profile.name !== 'Athlete' ? profile.name.split(' ')[0] : '';
   const goalLabel =
     profile.goalPhase === 'Cut / Recomp' ? 'lose fat, keep muscle' : profile.goalPhase === 'Maingain' ? 'stay lean' : 'build muscle';
   const recovery = readinessState === 'Amber Shield' ? 'low' : readinessState === 'Primed' ? 'high' : 'normal';
 
-  return `You are a friendly strength coach speaking to ${athleteName || 'the athlete'} as "you". Answer in 2-4 short plain sentences, no greeting. Use only the facts given; if unsure, say so. For pain, say stop and see a professional. No technical terms.
+  return `You are a friendly strength coach speaking to ${athleteName || 'the athlete'} as "you". Answer in 2-4 short plain sentences, no greeting. Use only the facts given; if unsure, say so. Never call a muscle's sets enough unless it is on target. High recovery means today's targets stand. Don't praise effort the facts don't show. You don't know how past sessions went. The plan sets weights and raises them itself when every set reaches the top of the range; never tell them to change the weight. No technical terms.
 Athlete: ${formatWeight(bodyweightEmaKg, unit)}, goal ${goalLabel}, week ${planPosition(profile, workouts, input.activities ?? []).week}/6, recovery ${recovery}${
     latestBio && latestBio.hrvRmssd > 0 ? `, slept ${latestBio.sleepHours} h` : ''
   }.
-Today: ${activeWorkout?.name || 'rest'}: ${exercisesDesc || 'nothing planned'}.
+Today's plan (not done yet): ${activeWorkout?.name || 'rest'}: ${exercisesDesc || 'nothing planned'}.
 Weekly hard sets (done of target): ${musclesDesc || 'none yet'}.`;
+}
+
+/**
+ * The model is given today's plan but no history, so anything it says about how past sessions went
+ * is invented. Questions about history are answered from the logged sessions instead.
+ */
+/** An answer that calls an exercise by the wrong kit ("lift the dumbbells" for a cable raise). */
+export function misnamesEquipment(answer: string, exercises: { name: string; equipment: string }[]): boolean {
+  const text = answer.toLowerCase();
+  const said = (['dumbbell', 'barbell', 'cable', 'machine'] as const).filter((k) => new RegExp(`\\b${k}s?\\b`).test(text));
+  if (!said.length) return false;
+  const mentioned = exercises.filter((ex) => {
+    const core = ex.name.toLowerCase().replace(/\b(dumbbell|db|barbell|cable|machine|seated|standing)\b/g, '').replace(/\s+/g, ' ').trim().replace(/s$/, '');
+    return core.length > 0 && text.includes(core.split(' ').slice(-2).join(' '));
+  });
+  if (!mentioned.length) return false;
+  return said.some((k) => !mentioned.some((ex) => ex.equipment === k));
+}
+
+/** The plan sets every weight (double progression), so the coach never tells the athlete to change it. */
+export function changesPlanWeight(answer: string): boolean {
+  return /\b(increas\w*|rais\w*|add\w*|bump\w*|lower\w*|reduc\w*|decreas\w*|drop\w*|go up in|go heavier|go lighter)\b[^.!?]{0,20}\b(the |your )?(weight|load|kg)\b|\b(heavier|lighter) weight\b/i.test(answer);
+}
+
+export function claimsPastResults(answer: string): boolean {
+  return /\b(you(?:'ve| have)? (performed|did|done|completed|managed|reached|missed|failed|lifted|logged|hit)|you did not|you didn'?t (reach|hit|manage|complete)|last (time|session|week)|previous(ly)? (session|workout))\b/i.test(answer);
+}
+
+function muscleTargetStatus(m: { weeklySets: number; personalizedMav: [number, number] | number[] }): 'below target' | 'on target' | 'above target' {
+  return m.weeklySets < m.personalizedMav[0] ? 'below target' : m.weeklySets > m.personalizedMav[1] ? 'above target' : 'on target';
+}
+
+/**
+ * Rejects a model answer that says a muscle (or an exercise for it) has enough, a good amount or too
+ * much training when the knowledge graph says otherwise.
+ */
+export function contradictsMuscleTargets(
+  answer: string,
+  muscles: { names: string[]; status: 'below target' | 'on target' | 'above target' }[]
+): boolean {
+  const sentences = answer.toLowerCase().match(/[^.!?]+/g) || [];
+  const saysEnough = /\b(good amount|enough|plenty|solid (amount|volume)|on (track|target)|hitting (your|the) target|great volume)\b/;
+  const saysTooMuch = /\b(too (much|many)|over (your|the) target|above (your|the) target|back off|cut back)\b/;
+  const saysTooLittle = /\b(below|under|short of|behind|not enough|more sets)\b/;
+  for (const sentence of sentences) {
+    for (const m of muscles) {
+      if (!m.names.some((n) => sentence.includes(n))) continue;
+      if (saysEnough.test(sentence) && m.status !== 'on target') return true;
+      if (saysTooMuch.test(sentence) && m.status !== 'above target') return true;
+      if (saysTooLittle.test(sentence) && !/\bnot (below|behind)\b/.test(sentence) && m.status !== 'below target' && /\bsets?|volume|training\b/.test(sentence)) return true;
+    }
+  }
+  return false;
 }
 
 /**
@@ -911,17 +974,7 @@ async function processAssistantMessageCore(
       }
 
       // D. Hypertrophy Muscle Volume Query
-      else if (
-        lowerMsg.includes('volume') ||
-        lowerMsg.includes('sets') ||
-        lowerMsg.includes('mav') ||
-        lowerMsg.includes('delts') ||
-        lowerMsg.includes('calves') ||
-        lowerMsg.includes('chest') ||
-        lowerMsg.includes('back') ||
-        lowerMsg.includes('quads') ||
-        lowerMsg.includes('hams')
-      ) {
+      else if (/\b(volume|sets|mav)\b/.test(lowerMsg)) {
         const matchedMuscle = kg.muscleProfiles.find((m) =>
           lowerMsg.includes(m.displayName.toLowerCase()) || lowerMsg.includes(m.muscleKey.toLowerCase())
         ) || kg.muscleProfiles[0];
@@ -1065,7 +1118,27 @@ async function processAssistantMessageCore(
             onPartial: input.onPartial,
             onDownloadProgress: input.onDownloadProgress,
           });
-          if (nanoAnswer && acceptCoachAnswer(nanoAnswer, `${systemPrompt} ${questionWithFacts}`)) {
+          // Each muscle trained today, named by itself and by today's exercises for it.
+          const muscleClaims = kg.muscleProfiles.map((m) => ({
+            status: muscleTargetStatus(m),
+            names: [
+              m.displayName.toLowerCase(),
+              ...workoutExercises
+                .filter((e) => {
+                  const pm = exerciseCatalog.find((d) => d.id === e.exerciseId)?.primaryMuscle;
+                  return pm ? MUSCLE_TO_GRAPH_KEY[pm] === m.muscleKey : false;
+                })
+                .flatMap((e) => [e.name.toLowerCase(), e.name.toLowerCase().replace(/^(dumbbell|db|cable|barbell|machine|seated)\s+/, '').replace(/s$/, '')]),
+            ],
+          }));
+          if (
+            nanoAnswer &&
+            acceptCoachAnswer(nanoAnswer, `${systemPrompt} ${questionWithFacts}`) &&
+            !contradictsMuscleTargets(nanoAnswer, muscleClaims) &&
+            !claimsPastResults(nanoAnswer) &&
+            !misnamesEquipment(nanoAnswer, workoutExercises) &&
+            !changesPlanWeight(nanoAnswer)
+          ) {
             answerText = nanoAnswer;
             nanoHandled = true;
 
@@ -1089,8 +1162,12 @@ async function processAssistantMessageCore(
         // B. On-Device Semantic Athletic Engine Fallback (Zero Latency, 100% Deterministic)
         if (!nanoHandled) {
           // B1. Exercise-Specific Targets & Progression Rules
+          // "my chest press" names Cable Chest Press: match on the name without the kit.
+          const nameCore = (name: string) =>
+            name.toLowerCase().replace(/\b(dumbbell|db|barbell|cable|machine|seated|standing)\b/g, '').replace(/\s+/g, ' ').trim().replace(/s$/, '');
           const matchedWorkoutEx = workoutExercises.find((e) =>
             lowerMsg.includes(e.name.toLowerCase()) ||
+            (nameCore(e.name).split(' ').length >= 2 && lowerMsg.includes(nameCore(e.name).split(' ').slice(-2).join(' '))) ||
             (lowerMsg.includes('bench') && e.name.toLowerCase().includes('bench')) ||
             (lowerMsg.includes('incline') && e.name.toLowerCase().includes('incline')) ||
             (lowerMsg.includes('squat') && e.name.toLowerCase().includes('squat')) ||
@@ -1133,6 +1210,8 @@ async function processAssistantMessageCore(
               lowerMsg.includes('load') ||
               lowerMsg.includes('should i') ||
               lowerMsg.includes('progress') ||
+              // "How should I approach my chest press today?" is about that exercise's targets.
+              (Boolean(matchedWorkoutEx) && /\b(approach|today|do for|go about)\b/.test(lowerMsg)) ||
               !matchedWorkoutEx);
 
           const isSwapQuery =

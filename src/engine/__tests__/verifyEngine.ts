@@ -3710,7 +3710,7 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
       formatWeight: (kg) => `${kg} kg`,
     });
     assert(
-      facts.facts.some((f) => /this week: .* hard sets against a target of \d+–\d+/.test(f)) &&
+      facts.facts.some((f) => /this week \(the whole muscle, from all exercises\): .* hard sets against a target of \d+–\d+/.test(f)) &&
         facts.facts.some((f) => /^Last time: 4 sets/.test(f)) &&
         facts.facts.some((f) => /^Today's plan: 4 sets of 15 reps at 10 kg/.test(f)) &&
         facts.facts.some((f) => /heavier than last time/.test(f)),
@@ -5541,6 +5541,23 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
     const why = await ask('why is incline press heavier today');
     assert(why.includes(incline.name) && !why.includes('Cable Chest Press') && /every set reached the top|same|matched/.test(why), `Coach: "why is it heavier" explains that exercise from its logged sets (${why.slice(0, 100)})`);
 
+    // Checks written from the real on-device model's own answers (Gemini Nano, Chrome 153).
+    const coach = await import('../../services/aiAssistantService');
+    const notes = await import('../../services/exerciseCoachNote');
+    const identity = await import('../../services/identityMessage');
+    const sideShoulders = [{ names: ['side shoulders', 'cable lateral raise', 'lateral raise'], status: 'below target' as const }];
+    assert(coach.contradictsMuscleTargets("You're performing a good amount of sets for lateral raises.", sideShoulders), 'Model check: "a good amount of sets" for a muscle below target is rejected');
+    assert(!coach.contradictsMuscleTargets('Your side shoulders are below target this week, so every set counts.', sideShoulders), 'Model check: an accurate target statement is kept');
+    assert(coach.claimsPastResults("You've completed 18/17 reps per set.") && coach.claimsPastResults('You did not reach the target reps.') && !coach.claimsPastResults("You're aiming for 18 reps today."), 'Model check: invented past results are rejected, today\'s plan is fine');
+    assert(coach.misnamesEquipment('Focus on slowly lifting the dumbbells. Your lateral raises should be smooth.', [{ name: 'Cable Lateral Raise', equipment: 'cable' }]), 'Model check: calling a cable exercise a dumbbell one is rejected');
+    assert(coach.changesPlanWeight('Since you are below target, you may need to increase the weight.') && !coach.changesPlanWeight('The weight will go up once every set reaches the top of the range.'), "Model check: the plan decides weights, the coach doesn't");
+    const noteFacts = (ex: string, muscle: string, n: number) => ({ exerciseId: 'x', key: 'k', fallback: 'f', facts: [`Exercise: ${ex} (trains your ${muscle.toLowerCase()}).`, `${muscle} this week (the whole muscle, from all exercises): ${n} hard sets against a target of 13–19 (below target).`, 'Last time: 2 sets, best set 95 kg for 9 reps with 3 reps in reserve.', "Today's plan: 3 sets of 10 reps at 95 kg, leaving 2 reps in reserve, taking 2 seconds to lower each rep."] } as any);
+    assert(notes.acceptExerciseNote("You've completed 7 hard sets of cable chest press this week, below the target of 13–19. Today, do 3 sets of 10 reps at 95 kg, leaving 2 reps in reserve.", noteFacts('Cable Chest Press', 'Chest', 7)) === null, "Note check: the muscle's weekly sets can't be pinned on one exercise");
+    assert(notes.acceptExerciseNote("You've completed 2 sets of cable chest press so far this week, below the target of 13–19. Today, do 3 sets of 10 reps at 95 kg, leaving 2 reps in reserve.", noteFacts('Cable Chest Press', 'Chest', 7)) === null, "Note check: last session's set count can't pass as this week's");
+    assert(notes.acceptExerciseNote('Your chest has had 7 hard sets this week, below its target of 13–19. Today, do 3 sets of 10 reps at 95 kg, leaving 2 reps in reserve.', noteFacts('Cable Chest Press', 'Chest', 7)) !== null, "Note check: the muscle's own weekly figure is accepted");
+    const idFacts = { key: 'k', fallback: 'f', facts: ['Sessions finished in this plan: 10 of 24.', 'Estimated strength is up on 11 of 21 lifts done more than once in this plan.', 'Personal bests in this plan so far: 45.', 'Workouts in the last 14 days: 8.'] } as any;
+    assert(identity.acceptIdentityMessage("You've built up your strength significantly, improving on most of your lifts across 10 of 24 sessions so far.", idFacts) === null, 'Program message check: "significantly" and "most" need figures behind them (11 of 21 is not most)');
+    assert(identity.acceptIdentityMessage("You're building a solid foundation, with strength up on many lifts. You've logged 10 of 24 sessions and 45 personal bests.", idFacts) !== null, 'Program message check: an accurate message is kept');
     const kbRest = EXERCISE_SCIENCE_KNOWLEDGE_BASE.find((p) => p.id === 'sp-rest-intervals');
     assert(!kbRest || !/simulated|2\.5 minutes for compound lifts and 90 seconds/.test(kbRest.practicalApplication), 'The science card describes the rest timer as it really works');
     storage.resetAllToSeedData();

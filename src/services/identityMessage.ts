@@ -256,6 +256,15 @@ export function acceptIdentityMessage(answer: string | null, facts: IdentityMess
   if ((text.match(NUMBER) || []).some((n) => !allowed.has(n))) return null;
   if (/\btarget\b/i.test(text) && !/below target/.test(allFacts)) return null;
   if (/\b(personal best|PR)s?\b/i.test(text) && !/personal best/i.test(allFacts)) return null;
+  // Size words must match the figures: "most" needs more than half the repeated lifts up, and the
+  // facts never measure how big a change was, so "significantly" or "huge" can't be said.
+  const trend = /Estimated strength is up on (\d+) of (\d+) lifts/.exec(allFacts);
+  const share = trend ? Number(trend[1]) / Number(trend[2]) : 0;
+  if (/\b(most|majority|nearly all|almost all|every|all of)\b/i.test(text) && share <= 0.5) return null;
+  if (/\b(significant\w*|dramatic\w*|huge|massive|substantial\w*|enormous|remarkabl\w*|incredibl\w*)\b/i.test(text)) return null;
+  // No praise for consistency unless the facts show regular training.
+  const recent = Number(/Workouts in the last 14 days: (\d+)/.exec(allFacts)?.[1] ?? 0);
+  if (/\b(consistent\w*|dedicat\w*)\b/i.test(text) && recent < 6) return null;
   return text;
 }
 
