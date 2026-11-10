@@ -203,26 +203,73 @@ Weekly hard sets (done of target): ${musclesDesc || 'none yet'}.`;
  * The model is given today's plan but no history, so anything it says about how past sessions went
  * is invented. Questions about history are answered from the logged sessions instead.
  */
+/** The exercise's name without its kit, e.g. "Cable Chest Press" → "chest press". */
+function exerciseCore(name: string): string {
+  return name.toLowerCase().replace(/\b(dumbbell|db|barbell|cable|machine|seated|standing)\b/g, '').replace(/\s+/g, ' ').trim().replace(/s$/, '');
+}
+
+/** True when a message names this exercise: its last two words ("chest press") or its last word ("rows"). */
+export function exerciseNamedIn(text: string, name: string): boolean {
+  const words = exerciseCore(name).split(' ').filter(Boolean);
+  if (!words.length) return false;
+  if (words.length >= 2 && text.includes(words.slice(-2).join(' '))) return true;
+  const last = words[words.length - 1].replace(/s$/, '');
+  return last.length >= 3 && new RegExp(`\\b${last.replace(/[^a-z]/g, '')}s?\\b`).test(text);
+}
+
 /** An answer that calls an exercise by the wrong kit ("lift the dumbbells" for a cable raise). */
 export function misnamesEquipment(answer: string, exercises: { name: string; equipment: string }[]): boolean {
   const text = answer.toLowerCase();
-  const said = (['dumbbell', 'barbell', 'cable', 'machine'] as const).filter((k) => new RegExp(`\\b${k}s?\\b`).test(text));
-  if (!said.length) return false;
-  const mentioned = exercises.filter((ex) => {
-    const core = ex.name.toLowerCase().replace(/\b(dumbbell|db|barbell|cable|machine|seated|standing)\b/g, '').replace(/\s+/g, ' ').trim().replace(/s$/, '');
-    return core.length > 0 && text.includes(core.split(' ').slice(-2).join(' '));
-  });
+  const said = new Set<string>();
+  if (/\bdumbbells?\b/.test(text)) said.add('dumbbell');
+  if (/\b(barbells?|the bar|a bar)\b/.test(text)) said.add('barbell');
+  if (/\bcables?\b/.test(text)) said.add('cable');
+  if (/\bmachines?\b/.test(text)) said.add('machine');
+  if (!said.size) return false;
+  const mentioned = exercises.filter((ex) => exerciseNamedIn(text, ex.name));
   if (!mentioned.length) return false;
-  return said.some((k) => !mentioned.some((ex) => ex.equipment === k));
+  return [...said].some((k) => !mentioned.some((ex) => ex.equipment === k));
 }
 
 /** The plan sets every weight (double progression), so the coach never tells the athlete to change it. */
 export function changesPlanWeight(answer: string): boolean {
+  if (/\b(adjust\w*|chang\w*|pick|choose|select|use|start with|begin with|go with|find) (a |the |your )?(\w+ )?(weight|load)\b/i.test(answer)) return true;
   return /\b(increas\w*|rais\w*|add\w*|bump\w*|lower\w*|reduc\w*|decreas\w*|drop\w*|go up in|go heavier|go lighter)\b[^.!?]{0,20}\b(the |your )?(weight|load|kg)\b|\b(heavier|lighter) weight\b/i.test(answer);
 }
 
+/** Advice must agree with today's recovery: no "you need more rest" on a good day, no "push hard" on a low one. */
+export function contradictsRecovery(answer: string, readinessState: ReadinessState): boolean {
+  const saysRest = /\b(need(s)? (more )?rest|take (it )?easy|take a rest|skip (today|the workout)|back off|go easy|rest instead|too hard|don'?t push|not push(ing)? (yourself )?(too )?hard|ease off|hold back)\b/i.test(answer);
+  const saysPush = /\b(push (hard|harder|it)|go heavy|max out|all out)\b/i.test(answer) && !/\bnot\b[^.!?]{0,15}\bpush/i.test(answer);
+  if (readinessState === 'Amber Shield') return saysPush;
+  return saysRest;
+}
+
+/**
+ * "Aim for 8–12 reps per set" with no exercise named, when today's exercises have different targets,
+ * contradicts the workout card. A rep target has to belong to a named exercise.
+ */
+export function genericRepTarget(answer: string, exercises: { name: string; minReps: number; maxReps: number }[]): boolean {
+  for (const sentence of answer.toLowerCase().match(/[^.!?]+/g) || []) {
+    const range = /\b(\d+)\s*(?:-|–|to)\s*(\d+)\s*reps?\b/.exec(sentence) || /\b(\d+)\s*reps?\b/.exec(sentence);
+    if (!range) continue;
+    const namesOne = exercises.some((ex) => exerciseNamedIn(sentence, ex.name));
+    if (namesOne) continue;
+    const lo = Number(range[1]);
+    const hi = Number(range[2] ?? range[1]);
+    const fitsAll = exercises.every((ex) => lo >= ex.minReps && hi <= ex.maxReps);
+    if (!fitsAll) return true;
+  }
+  return false;
+}
+
+/** The plan is 4 sessions a week with recovery between them, so "train every day" contradicts it. */
+export function contradictsPlanSchedule(answer: string): boolean {
+  return /\b(train\w*|lift\w*|work ?outs?|exercis\w*|gym)\b[^.!?]{0,40}\b(every|each) (single )?day\b|\b(every|each) day\b[^.!?]{0,40}\b(train\w*|lift\w*|work ?outs?)\b|\bdaily (training|workouts?|lifting)\b/i.test(answer);
+}
+
 export function claimsPastResults(answer: string): boolean {
-  return /\b(you(?:'ve| have)? (performed|did|done|completed|managed|reached|missed|failed|lifted|logged|hit)|you did not|you didn'?t (reach|hit|manage|complete)|last (time|session|week)|previous(ly)? (session|workout))\b/i.test(answer);
+  return /\b(you(?:'re| are) new|if you'?re new|new to (the|this)|you(?:'ve| have)? (performed|did|done|completed|managed|reached|missed|failed|lifted|logged|hit)|you did not|you didn'?t (reach|hit|manage|complete)|last (time|session|week)|previous(ly)? (session|workout))\b/i.test(answer);
 }
 
 function muscleTargetStatus(m: { weeklySets: number; personalizedMav: [number, number] | number[] }): 'below target' | 'on target' | 'above target' {
@@ -1112,7 +1159,15 @@ async function processAssistantMessageCore(
             : '';
 
           const systemPrompt = buildCoachSystemPrompt(input);
-          const questionWithFacts = groundingFacts ? `${userMessage}\n(Useful fact: ${groundingFacts.replace(/^- /, '')})` : userMessage;
+          // When the question names one of today's exercises, give the model that exercise's own cue,
+          // so technique advice comes from the exercise library rather than the model's guess.
+          const namedToday = workoutExercises.find((e) => exerciseNamedIn(lowerMsg, e.name));
+          const namedDef = namedToday ? exerciseCatalog.find((d) => d.id === namedToday.exerciseId) : undefined;
+          const cue = namedToday ? [namedDef?.whyItWorks, namedToday.notes].filter(Boolean).join(' ').slice(0, 220) : '';
+          const factsForQuestion = [groundingFacts.replace(/^- /, ''), cue ? `${namedToday!.name} (${namedToday!.equipment}): ${cue}` : '']
+            .filter(Boolean)
+            .join(' ');
+          const questionWithFacts = factsForQuestion ? `${userMessage}\n(Useful fact: ${factsForQuestion})` : userMessage;
 
           const nanoAnswer = await promptOnDeviceModel(systemPrompt, questionWithFacts, {
             onPartial: input.onPartial,
@@ -1137,7 +1192,10 @@ async function processAssistantMessageCore(
             !contradictsMuscleTargets(nanoAnswer, muscleClaims) &&
             !claimsPastResults(nanoAnswer) &&
             !misnamesEquipment(nanoAnswer, workoutExercises) &&
-            !changesPlanWeight(nanoAnswer)
+            !changesPlanWeight(nanoAnswer) &&
+            !contradictsRecovery(nanoAnswer, readinessState) &&
+            !genericRepTarget(nanoAnswer, workoutExercises) &&
+            !contradictsPlanSchedule(nanoAnswer)
           ) {
             answerText = nanoAnswer;
             nanoHandled = true;
@@ -1159,15 +1217,35 @@ async function processAssistantMessageCore(
           }
         }
 
+        // B0. Open questions the model couldn't answer well: a fact-based answer on the same topic,
+        // rather than the general briefing.
+        if (!nanoHandled && !isTacticalWorkoutQuery) {
+          const named = workoutExercises.find((e) => exerciseNamedIn(lowerMsg, e.name));
+          if (named) {
+            const working = named.sets.filter((st) => !st.isWarmup && st.setType !== 'warmup');
+            const def = exerciseCatalog.find((d) => d.id === named.exerciseId);
+            const first = working[0];
+            const rir = readinessState === 'Amber Shield' ? '2–3' : `${first?.targetRir ?? 2}`;
+            answerText = first
+              ? `For ${named.name} today: ${working.length} sets of ${first.targetReps} reps at ${formatWeight(first.targetWeightKg, profile.weightUnit || 'kg')}, stopping with ${rir} reps to spare and lowering each rep under control. ${def?.whyItWorks ?? ''} The weight goes up by itself once every set reaches ${named.maxReps} reps.`.replace(/\s+/g, ' ').trim()
+              : `${named.name} is in today's workout. ${def?.whyItWorks ?? ''}`.trim();
+            nanoHandled = true;
+          } else if (/\b(flat|tired|exhausted|drained|no energy|low energy|push (hard|it)|go hard|sluggish)\b/.test(lowerMsg)) {
+            answerText = `${answerShouldTrain(activeWorkout, workouts, exerciseCatalog, readinessState)} If you feel off once you start, keep the planned weight and stop with an extra rep or two to spare; the plan adjusts from what you log.`;
+            nanoHandled = true;
+          } else if (/\b(motivat\w*|consisten\w*|habit|keep going|stick with)\b/.test(lowerMsg)) {
+            answerText = `${answerStreak(workouts, input.activities ?? [])} ${answerPlanPosition(profile, workouts, input.activities ?? [])}`;
+            nanoHandled = true;
+          }
+        }
+
         // B. On-Device Semantic Athletic Engine Fallback (Zero Latency, 100% Deterministic)
         if (!nanoHandled) {
           // B1. Exercise-Specific Targets & Progression Rules
           // "my chest press" names Cable Chest Press: match on the name without the kit.
-          const nameCore = (name: string) =>
-            name.toLowerCase().replace(/\b(dumbbell|db|barbell|cable|machine|seated|standing)\b/g, '').replace(/\s+/g, ' ').trim().replace(/s$/, '');
           const matchedWorkoutEx = workoutExercises.find((e) =>
             lowerMsg.includes(e.name.toLowerCase()) ||
-            (nameCore(e.name).split(' ').length >= 2 && lowerMsg.includes(nameCore(e.name).split(' ').slice(-2).join(' '))) ||
+            exerciseNamedIn(lowerMsg, e.name) ||
             (lowerMsg.includes('bench') && e.name.toLowerCase().includes('bench')) ||
             (lowerMsg.includes('incline') && e.name.toLowerCase().includes('incline')) ||
             (lowerMsg.includes('squat') && e.name.toLowerCase().includes('squat')) ||
@@ -1211,7 +1289,7 @@ async function processAssistantMessageCore(
               lowerMsg.includes('should i') ||
               lowerMsg.includes('progress') ||
               // "How should I approach my chest press today?" is about that exercise's targets.
-              (Boolean(matchedWorkoutEx) && /\b(approach|today|do for|go about)\b/.test(lowerMsg)) ||
+              (Boolean(matchedWorkoutEx) && /\b(approach|today|do for|go about|tips?|advice|get more|better|improve|help)\b/.test(lowerMsg)) ||
               !matchedWorkoutEx);
 
           const isSwapQuery =
