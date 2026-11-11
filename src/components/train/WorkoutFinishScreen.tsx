@@ -1,6 +1,7 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo } from 'react';
 import { GoalProgress } from '../../services/athleteGoals';
-import { FinishPersonalBest, WorkoutFinish, generateWorkoutSummary } from '../../services/workoutFinish';
+import { FinishPersonalBest, WorkoutFinish } from '../../services/workoutFinish';
+import { useWorkoutSummaryText } from './useWorkoutSummaryText';
 import { triggerHaptic } from '../../utils/haptics';
 import { useUnits } from '../../utils/unitsContext';
 
@@ -95,23 +96,8 @@ const BigNumber: React.FC<{ value: string; unit?: string }> = ({ value, unit }) 
 
 export const WorkoutFinishScreen: React.FC<WorkoutFinishScreenProps> = ({ finish, onDone }) => {
   const units = useUnits();
-  const { report, personalBests, goalProgress, headline, fallback } = finish;
-  const [written, setWritten] = useState<string | null>(null);
-
-  // The on-device model may rewrite the summary from the same facts; the fact-based text shows meanwhile.
-  useEffect(() => {
-    let cancelled = false;
-    generateWorkoutSummary(finish)
-      .then((answer) => {
-        if (!cancelled && answer) setWritten(answer);
-      })
-      .catch(() => undefined);
-    return () => {
-      cancelled = true;
-    };
-    // The facts identify the summary; a re-render with the same facts must not ask again.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [finish.facts.join('|')]);
+  const { report, personalBests, goalProgress, headline } = finish;
+  const summary = useWorkoutSummaryText(finish);
 
   const plan = report.program.kind === 'plan' ? report.program : null;
   const planPct = plan ? Math.max(0, Math.min(100, (plan.workoutNumber / Math.max(1, plan.totalWorkouts)) * 100)) : 0;
@@ -189,8 +175,8 @@ export const WorkoutFinishScreen: React.FC<WorkoutFinishScreenProps> = ({ finish
         <section className="wk-card" style={{ marginTop: fig(40) }} aria-label="Workout summary">
           <CardTitle>{headline}</CardTitle>
           <p className="wk-body" style={{ marginTop: fig(12) }} aria-live="polite">
-            <span key={written ?? fallback} className="wk-text-swap">
-              {written ?? fallback}
+            <span key={summary} className="wk-text-swap">
+              {summary}
             </span>
           </p>
           <div className="flex" style={{ gap: fig(126), marginTop: fig(60) }}>

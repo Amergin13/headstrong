@@ -18,6 +18,7 @@ import { AthleteGoal, GoalProgress, buildAthleteGoals, goalsProgressedBy } from 
 import { promptOnDeviceModel } from './onDeviceModel';
 import { SessionProgressReport, buildSessionProgressReport } from './sessionReport';
 import { calculateWeeklyMuscleVolume } from './storage';
+import { ExerciseInsight, buildExerciseInsight } from './exerciseInsight';
 
 export interface WorkoutFinishInput {
   profile: UserProfile;
@@ -251,4 +252,131 @@ export async function generateWorkoutSummary(
     problem = checked.problem;
   }
   return null;
+}
+
+// A written summary is kept on the device, keyed by its facts, so the finish screen and the
+// Workout tab show the same words and the model writes each one once.
+const SUMMARY_CACHE_KEY = 'treise_workout_summary_v1';
+const MAX_CACHED_SUMMARIES = 8;
+
+function summaryKey(finish: Pick<WorkoutFinish, 'facts'>): string {
+  const text = `${WORKOUT_SUMMARY_SYSTEM_PROMPT}\n${finish.facts.join('\n')}`;
+  let h = 5381;
+  for (let i = 0; i < text.length; i++) h = ((h << 5) + h + text.charCodeAt(i)) | 0;
+  return (h >>> 0).toString(36);
+}
+
+function readSummaryCache(): Record<string, string> {
+  try {
+    const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(SUMMARY_CACHE_KEY) : null;
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+/** The written summary saved for these facts, if it still passes the checks. */
+export function getCachedWorkoutSummary(finish: Pick<WorkoutFinish, 'facts'>): string | null {
+  const hit = readSummaryCache()[summaryKey(finish)];
+  const checked = hit ? checkWorkoutSummary(hit, finish) : null;
+  return checked && checked.problem === undefined ? checked.text : null;
+}
+
+export function cacheWorkoutSummary(finish: Pick<WorkoutFinish, 'facts'>, summary: string): void {
+  try {
+    const key = summaryKey(finish);
+    const entries = Object.entries(readSummaryCache()).filter(([k]) => k !== key);
+    entries.push([key, summary]);
+    localStorage.setItem(SUMMARY_CACHE_KEY, JSON.stringify(Object.fromEntries(entries.slice(-MAX_CACHED_SUMMARIES))));
+  } catch {
+    // Storage unavailable: the summary is simply written again next time.
+  }
+}
+
+/** One exercise from a finished workout, as the Workout tab shows it afterwards. */
+export interface CompletedExerciseSummary {
+  /** The exercise's id within the session (unique on the page). */
+  id: string;
+  exerciseName: string;
+  /** Order chip, e.g. "A1". */
+  chip?: string;
+  isPersonalBest: boolean;
+  /** [where this lift now stands, what today's session did]. */
+  lines: [string, string];
+  /** Estimated max per session, oldest first, ending with today's. Empty for timed work. */
+  history: ExerciseInsight['history'];
+  /** Planks, carries and conditioning have no estimated max to chart. */
+  timed: boolean;
+}
+
+/**
+ * A written summary and progress history for each exercise done in a finished workout.
+ * Line 1 is the same trajectory sentence the exercise card uses, now including today. Line 2 says
+ * what today did against the previous session, in concrete load, never a percentage.
+ */
+export function buildCompletedExerciseSummaries(input: {
+  finished: WorkoutSession;
+  /** Saved workouts including the finished one. */
+  workouts: WorkoutSession[];
+  bodyweightKg?: number;
+  formatWeight: (kg: number) => string;
+}): CompletedExerciseSummary[] {
+  const { finished, formatWeight } = input;
+  const bests = new Set(personalBestsIn(finished).map((b) => b.exerciseName));
+  const isDone = (st: WorkoutSession['exercises'][number]['sets'][number]) =>
+    st.completed && !st.isWarmup && st.setType !== 'warmup' && (st.actualReps ?? 0) > 0;
+  const summaries: CompletedExerciseSummary[] = [];
+  finished.exercises.forEach((ex, index) => {
+    const sets = ex.sets.filter(isDone);
+    if (!sets.length) return;
+    const timed = Boolean(ex.durationSeconds || ex.durationMinutesRange);
+    const insight = buildExerciseInsight(ex, input.workouts, 'Normal', input.bodyweightKg ?? 80, 12, formatWeight);
+    const history = insight.history;
+    const weight = (st: (typeof sets)[number]) => st.actualWeightKg ?? st.targetWeightKg ?? 0;
+    const top = sets.reduce((a, b) => (weight(b) > weight(a) || (weight(b) === weight(a) && (b.actualReps ?? 0) > (a.actualReps ?? 0)) ? b : a));
+    const topSet = weight(top) > 0 ? `${formatWeight(weight(top))} × ${top.actualReps}` : `${top.actualReps} reps`;
+    const isPersonalBest = bests.has(ex.name);
+
+    let line2: string;
+    if (timed) {
+      line2 = `Today's ${sets.length === 1 ? 'round is' : `${sets.length} rounds are`} logged and count toward your work capacity.`;
+    } else if (history.length <= 1) {
+      line2 = `Your starting point is ${topSet}; the next session has something to beat.`;
+    } else {
+      const change = Math.round((history[history.length - 1].e1rmKg - history[history.length - 2].e1rmKg) * 10) / 10;
+      // The heaviest working set the last time this exercise was done.
+      const previous = input.workouts
+        .filter((w) => w.completed && w.id !== finished.id)
+        .sort((x, y) => (x.completedAt || x.date).localeCompare(y.completedAt || y.date))
+        .map((w) => w.exercises.find((e) => e.exerciseId === ex.exerciseId && e.sets.some(isDone)))
+        .filter((e): e is NonNullable<typeof e> => Boolean(e))
+        .pop();
+      const previousTop = previous ? Math.max(...previous.sets.filter(isDone).map(weight)) : 0;
+      if (isPersonalBest) {
+        line2 =
+          change > 0
+            ? `Today set a new best at ${topSet}, adding +${formatWeight(change)} to your estimated max since last session.`
+            : `Today set a new best at ${topSet}.`;
+      } else if (previousTop > 0 && weight(top) > previousTop + 0.01) {
+        // A heavier weight starts again at the bottom of the rep range: that is the plan working.
+        line2 = `Today moved up to ${formatWeight(weight(top))} for ${top.actualReps} reps; the reps build back up from here.`;
+      } else if (change > 0) {
+        line2 = `Today added +${formatWeight(change)} to your estimated max since last session, with a top set of ${topSet}.`;
+      } else if (change < 0) {
+        line2 = `Today's top set was ${topSet}, under last session; your next targets are set from what you logged.`;
+      } else {
+        line2 = `Today matched last session with a top set of ${topSet}, holding the load your next increase builds on.`;
+      }
+    }
+    summaries.push({
+      id: ex.id,
+      exerciseName: ex.name,
+      chip: ex.orderCode || String(index + 1),
+      isPersonalBest,
+      lines: [insight.lines[0], line2],
+      history: timed ? [] : history,
+      timed,
+    });
+  });
+  return summaries;
 }

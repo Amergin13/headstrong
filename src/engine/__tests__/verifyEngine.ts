@@ -6088,6 +6088,42 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
         const written = await finishMod.generateWorkoutSummary(finish, async (_s: string, u: string) => { summaryPrompts.push(u); return summaryReplies.shift() ?? null; });
         assert(/building steadily/.test(written ?? '') && /could not be used because it mentioned volume/.test(summaryPrompts[1] ?? ''), 'A rejected summary is retried once with the reason');
 
+        // Back on the Workout tab the same day: each exercise done, with a written summary and its history.
+        {
+          const savedSession: WorkoutSession = { ...logged, completed: true, completedAt: new Date().toISOString(), date: localDateString(new Date()) };
+          const afterSave = [...workouts, savedSession];
+          const done = finishMod.buildCompletedExerciseSummaries({ finished: savedSession, workouts: afterSave, bodyweightKg: bw, formatWeight: precise1 });
+          const pbCard = done.find((d) => d.exerciseName === logged.exercises[1].name)!;
+          const earlierCount = (id: string) => workouts.filter((w) => w.completed && w.exercises.some((e) => e.exerciseId === id && e.sets.some((st) => st.completed && (st.actualReps ?? 0) > 0))).length;
+          assert(
+            done.length === savedSession.exercises.length && done.every((d, i) => d.exerciseName === savedSession.exercises[i].name && d.lines.length === 2 && d.lines.every((l) => l.length > 20)),
+            'After a workout, every exercise done has its own two-line summary, in workout order'
+          );
+          assert(
+            pbCard.isPersonalBest && /new best/.test(pbCard.lines[1]) && done.filter((d) => d.isPersonalBest).length === 1,
+            `Only the exercise with a celebrated set is marked "Personal best" ("${pbCard.lines[1]}")`
+          );
+          assert(
+            done.every((d) => d.timed || d.history.length === Math.min(12, earlierCount(savedSession.exercises.find((e) => e.id === d.id)!.exerciseId) + 1)),
+            "Each completed exercise's chart ends with today's session"
+          );
+          assert(
+            done.every((d) => gate(d.lines.join(' ')).passed && !/%|percent/i.test(d.lines.join(' ')) && !/\bfail|\bweak|\bbad\b/i.test(d.lines.join(' '))),
+            'Completed exercise summaries use concrete load, no percentages, and pass the read-aloud gate'
+          );
+          const heavier = done.find((d) => /moved up to/.test(d.lines[1]));
+          assert(!done.some((d) => /under last session/.test(d.lines[1]) && d === heavier), 'A planned weight increase is described as moving up, never as falling short');
+          const savedFinish = finishMod.buildWorkoutFinish({ profile, workouts: afterSave, finished: savedSession, biometrics, exerciseCatalog: exercises, bodyweightKg: bw, formatWeight: precise1 })!;
+          assert(
+            savedFinish.fallback === finish.fallback && savedFinish.report.session.volumeKg === finish.report.session.volumeKg,
+            'The Workout tab after saving shows the same summary, volume and sets as the finish screen'
+          );
+          finishMod.cacheWorkoutSummary(savedFinish, `${logged.exercises[1].name} beat its previous best today. Your week is building steadily.`);
+          assert(/building steadily/.test(finishMod.getCachedWorkoutSummary(finish) ?? ''), 'A written summary is saved by its facts, so both screens show the same words');
+          finishMod.cacheWorkoutSummary(savedFinish, 'You crushed 999 kg today!');
+          assert(finishMod.getCachedWorkoutSummary(finish) === null, 'A saved summary that fails the checks is never shown');
+        }
+
         // Reaching the goal: the session that completes the plan week.
         const weekSlots = plan.templates.filter((t) => t.week === weekOfSlot(nextNumber));
         const lastOfWeek = weekSlots[weekSlots.length - 1].workoutNumber === nextNumber;

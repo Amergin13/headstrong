@@ -124,7 +124,9 @@ export const TrendChart: React.FC<TrendChartProps> = ({ points, secondary, forma
           aria-hidden="true"
         >
           <defs>
-            <linearGradient id={gradientId} x1="0" x2="1" y1="0" y2="0">
+            {/* In chart units, not the line's own box: a level line has a box with no height, and a
+                gradient sized to that box is not drawn at all. */}
+            <linearGradient id={gradientId} gradientUnits="userSpaceOnUse" x1={0} x2={W} y1={0} y2={0}>
               <stop offset="0%" stopColor="#3FA7C9" stopOpacity="0.55" />
               <stop offset="45%" stopColor="#4FC3D9" />
               <stop offset="100%" stopColor="#00F19F" />

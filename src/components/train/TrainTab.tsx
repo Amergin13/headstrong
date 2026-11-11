@@ -17,7 +17,7 @@ import { ExerciseCard } from './ExerciseCard';
 import { ExerciseSwapModal } from './ExerciseSwapModal';
 import { PlateCalculatorModal } from './PlateCalculatorModal';
 import { WorkoutFinishScreen } from './WorkoutFinishScreen';
-import { buildWorkoutFinish } from '../../services/workoutFinish';
+import { buildCompletedExerciseSummaries, buildWorkoutFinish } from '../../services/workoutFinish';
 import {
   WhoopWorkoutStrainSummary,
   fetchWhoopWorkoutStrain,
@@ -27,8 +27,7 @@ import {
   evaluateSessionRecovery,
   formatReadyTime,
   MUSCLE_FRIENDLY_NAMES,
-  READY_THRESHOLD,
-} from '../../engine/recovery';
+  READY_THRESHOLD, getWorkoutCompletedAt } from '../../engine/recovery';
 import { TrainingPlan, buildPlanOverview, getSessionPlanId, isActiveSlot, planWorkoutLabel } from '../../engine/muscleBuildingProgram';
 import { ActivityLog, activeDayDates } from '../../engine/activeDays';
 import { ActiveDayCard } from './ActiveDayCard';
@@ -47,8 +46,7 @@ import {
 } from '../../engine/e1rm';
 import { buildAthleteKnowledgeGraph, getExerciseBiomechanicalMeta } from '../../engine/knowledgeGraph';
 import { calculateWeeklyMuscleVolume } from '../../services/storage';
-import { buildSessionProgressReport } from '../../services/sessionReport';
-import { SessionCompleteCard } from './SessionCompleteCard';
+import { CompletedExerciseCard, FinishedWorkoutSummaryCard, NextWorkoutCard } from './FinishedWorkoutCards';
 import { WorkoutPageHeader } from './WorkoutPageHeader';
 import { ProgramProgressCard } from './ProgramProgressCard';
 import { RecoveryScoreCard } from './RecoveryScoreCard';
@@ -650,29 +648,34 @@ export const TrainTab: React.FC<TrainTabProps> = ({
       ) || null
     );
   })();
-  // Progress report for a session finished today, grounded in the athlete's knowledge graph.
-  const sessionReport = useMemo(() => {
+  // After today's workout: its summary and each exercise done, from the saved session (the same
+  // data and words as the finish screen).
+  const todayFinished = useMemo(() => {
     if (!showRecoveryGate || !recoveryGate.trainedToday) return null;
-    const knowledgeGraph = buildAthleteKnowledgeGraph(
+    const finished = workouts
+      .filter((w) => w.completed)
+      .sort((x, y) => getWorkoutCompletedAt(x) - getWorkoutCompletedAt(y))
+      .pop();
+    if (!finished) return null;
+    const hasWeighIn = biometrics.some((b) => (b.bodyweightKg || 0) > 0);
+    const finish = buildWorkoutFinish({
+      profile,
       workouts,
+      finished,
+      activities,
       biometrics,
       exerciseCatalog,
-      profile,
-      calculateWeeklyMuscleVolume(workouts, exerciseCatalog),
-      activities
-    );
-    return buildSessionProgressReport({
-      workouts,
-      nextSession: activeWorkout,
-      nextReadyAt: recoveryGate.readyAt,
-      exerciseCatalog,
-      knowledgeGraph,
-      bodyweightKg: biometrics.some((b) => (b.bodyweightKg || 0) > 0) ? bodyweightEmaKg : undefined,
-      gender: profile.gender,
-      age: standardsAge(profile),
+      bodyweightKg: hasWeighIn ? bodyweightEmaKg : undefined,
+      formatWeight: (kg) => units.formatPrecise(kg),
     });
+    if (!finish) return null;
+    return {
+      finish,
+      exercises: buildCompletedExerciseSummaries({ finished, workouts, bodyweightKg: bodyweightEmaKg, formatWeight: (kg) => units.formatPrecise(kg) }),
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showRecoveryGate, recoveryGate.trainedToday, recoveryGate.readyAt, workouts, biometrics, exerciseCatalog, profile, activeWorkout, bodyweightEmaKg]);
+  }, [showRecoveryGate, recoveryGate.trainedToday, workouts, biometrics, exerciseCatalog, profile, activities, bodyweightEmaKg, units.unit]);
+  const sessionReport = todayFinished?.finish.report ?? null;
 
   const lastWorkoutAgoHours = recoveryGate.lastWorkoutAt
     ? Math.max(0, Math.round((Date.now() - recoveryGate.lastWorkoutAt) / (60 * 60 * 1000)))
@@ -930,13 +933,20 @@ export const TrainTab: React.FC<TrainTabProps> = ({
 
       <div ref={cardsTopRef} className="flex flex-col" style={{ gap: fig(22), marginTop: fig(64) }}>
       {/* After today's session: lead with "complete" and the progress breakdown. */}
-      {sessionReport ? (
-        <SessionCompleteCard
-          report={sessionReport}
-          limitingMuscles={recoveryGate.limitingMuscles}
-          onOpenProgram={onOpenProgram}
-          onTrainAnyway={() => onUpdateWorkout({ ...activeWorkout, recoveryOverride: true })}
-        />
+      {todayFinished ? (
+        <>
+          <ProgramProgressCard {...programCard} onOpen={onOpenProgram} />
+          <FinishedWorkoutSummaryCard finish={todayFinished.finish} />
+          {todayFinished.exercises.map((ex) => (
+            <CompletedExerciseCard key={ex.id} summary={ex} />
+          ))}
+          <NextWorkoutCard
+            name={activeWorkout.name}
+            readyAt={recoveryGate.readyAt ?? Date.now()}
+            limitingMuscles={recoveryGate.limitingMuscles}
+            onTrainAnyway={() => onUpdateWorkout({ ...activeWorkout, recoveryOverride: true })}
+          />
+        </>
       ) : (
         <>
           <ProgramProgressCard {...programCard} onOpen={onOpenProgram} />
