@@ -12,3 +12,4 @@ export * from './knowledgeGraph';
 export * from './tensorAI';
 export * from './milestones';
 export * from './warmup';
+export * from './contentStrategy';

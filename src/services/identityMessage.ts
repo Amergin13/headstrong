@@ -11,6 +11,7 @@ import { evaluateExerciseProgress } from '../engine/milestones';
 import { MUSCLE_BUILDING_PLAN, PlanOverview, TrainingPlan } from '../engine/muscleBuildingProgram';
 import { MUSCLE_FRIENDLY_NAMES, getWorkoutCompletedAt } from '../engine/recovery';
 import { calculateE1RM } from '../engine/e1rm';
+import { runReadAloudQaGate } from '../engine/contentStrategy';
 import { ExerciseDefinition, ReadinessState, WorkoutSession, WorkoutSet } from '../engine/types';
 import { promptOnDeviceModel } from './onDeviceModel';
 import { MUSCLE_TO_GRAPH_KEY } from './sessionReport';
@@ -41,7 +42,7 @@ export interface IdentityMessageFacts {
 export const IDENTITY_SYSTEM_PROMPT =
   'You write the short message at the top of an athlete\'s training plan, under the heading "Your new identity as an athlete is forming". ' +
   'Use only the facts given. Write two or three sentences to the athlete as "you": first, what their training so far shows about the athlete ' +
-  'they are becoming, using their real progress; then, how their next workout moves them forward. Warm, plain English. No greetings, lists ' +
+  'they are becoming, using their real progress; then, how their next workout moves them forward. Grounded and plain, like a pragmatic coach: no hype, no greetings, lists ' +
   'or headings. Never say how they felt. Do not use any number that is not in the facts.';
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -119,7 +120,10 @@ export function buildIdentityFacts(input: IdentityMessageInput): IdentityMessage
   const next = plan.workouts.find((w) => w.workoutNumber === plan.nextWorkoutNumber)!;
   const trainingPlan = input.trainingPlan ?? MUSCLE_BUILDING_PLAN;
   const phase = trainingPlan.phases.find((p) => p.phaseNumber === plan.activePhase) ?? trainingPlan.phases[0];
-  const week = Math.ceil(plan.nextWorkoutNumber / trainingPlan.workoutsPerWeek);
+  // The same week the Program page and the coach give (the plan's own, never past week 6).
+  const week =
+    trainingPlan.templates.find((t) => t.workoutNumber === plan.nextWorkoutNumber)?.week ??
+    Math.min(6, Math.ceil(plan.nextWorkoutNumber / trainingPlan.workoutsPerWeek));
   const completed = plan.completedCount;
 
   facts.push(`Sessions finished in this plan: ${completed} of ${trainingPlan.templates.length}.`);
@@ -239,33 +243,44 @@ const NUMBER = /\d+(?:\.\d+)?/g;
  * fallback.
  */
 export function acceptIdentityMessage(answer: string | null, facts: IdentityMessageFacts): string | null {
-  if (!answer) return null;
+  const checked = checkIdentityMessage(answer, facts);
+  return checked.problem !== undefined ? null : checked.text;
+}
+
+/** The cleaned message, or why it can't be shown (in words the model can act on in a second try). */
+export function checkIdentityMessage(answer: string | null, facts: IdentityMessageFacts): { text: string; problem?: undefined } | { text?: undefined; problem: string } {
+  if (!answer) return { problem: 'it was empty' };
   const text = answer
     .replace(/[*#_`]/g, '')
     .replace(/^\s*(message|note)\s*:\s*/i, '')
     .replace(/^["']|["']$/g, '')
     .replace(/\s+/g, ' ')
     .trim();
-  if (text.length < 60 || text.length > 420) return null;
-  if (/\b(as an ai|language model|the facts|facts provided|i am an?|i'm an?)\b/i.test(text)) return null;
+  if (text.length < 60) return { problem: 'it was too short' };
+  if (text.length > 420) return { problem: 'it was too long; write two or three sentences' };
+  if (/\b(as an ai|language model|the facts|facts provided|i am an?|i'm an?)\b/i.test(text)) return { problem: 'it talked about itself or "the facts" instead of the athlete' };
   // The app never asks how a workout felt, so the message can't say.
-  if (/\b(felt|feel|feeling|enjoy(ed)?|loved)\b/i.test(text)) return null;
-  if ((text.match(/[.!?](\s|$)/g) || []).length > 4) return null;
+  if (/\b(felt|feel|feeling|enjoy(ed)?|loved)\b/i.test(text)) return { problem: 'it said how the athlete felt, which is not known' };
+  if ((text.match(/[.!?](\s|$)/g) || []).length > 4) return { problem: 'it had too many sentences; write two or three' };
+  // The content strategy's read-aloud gate: no hype, clichés, judgmental wording or error leaks.
+  if (!runReadAloudQaGate(text).passed) return { problem: 'it used hype, a cliché or judgmental wording' };
+  if (/\d\s*%|\bpercent/i.test(text)) return { problem: 'it used a percentage; use the figures as given' };
   const allFacts = facts.facts.join(' ');
   const allowed = new Set(allFacts.match(NUMBER) || []);
-  if ((text.match(NUMBER) || []).some((n) => !allowed.has(n))) return null;
-  if (/\btarget\b/i.test(text) && !/below target/.test(allFacts)) return null;
-  if (/\b(personal best|PR)s?\b/i.test(text) && !/personal best/i.test(allFacts)) return null;
+  const strange = (text.match(NUMBER) || []).find((n) => !allowed.has(n));
+  if (strange) return { problem: `it used the number ${strange}, which is not in the facts` };
+  if (/\btarget\b/i.test(text) && !/below target/.test(allFacts)) return { problem: 'it mentioned a target the facts do not give' };
+  if (/\b(personal best|PR)s?\b/i.test(text) && !/personal best/i.test(allFacts)) return { problem: 'it mentioned personal bests the facts do not show' };
   // Size words must match the figures: "most" needs more than half the repeated lifts up, and the
   // facts never measure how big a change was, so "significantly" or "huge" can't be said.
   const trend = /Estimated strength is up on (\d+) of (\d+) lifts/.exec(allFacts);
   const share = trend ? Number(trend[1]) / Number(trend[2]) : 0;
-  if (/\b(most|majority|nearly all|almost all|every|all of)\b/i.test(text) && share <= 0.5) return null;
-  if (/\b(significant\w*|dramatic\w*|huge|massive|substantial\w*|enormous|remarkabl\w*|incredibl\w*)\b/i.test(text)) return null;
+  if (/\b(most|majority|nearly all|almost all|every|all of)\b/i.test(text) && share <= 0.5) return { problem: 'it said "most" or "all" where the facts show half or fewer' };
+  if (/\b(significant\w*|dramatic\w*|huge|massive|substantial\w*|enormous|remarkabl\w*|incredibl\w*)\b/i.test(text)) return { problem: 'it used a size word like "significant" or "huge" that the facts do not measure' };
   // No praise for consistency unless the facts show regular training.
   const recent = Number(/Workouts in the last 14 days: (\d+)/.exec(allFacts)?.[1] ?? 0);
-  if (/\b(consistent\w*|dedicat\w*)\b/i.test(text) && recent < 6) return null;
-  return text;
+  if (/\b(consistent\w*|dedicat\w*)\b/i.test(text) && recent < 6) return { problem: 'it praised consistency the facts do not show' };
+  return { text };
 }
 
 /** Asks the on-device model for the message. Null when no model is ready or its answer fails the checks. */
@@ -274,11 +289,17 @@ export async function generateIdentityMessage(
   prompt: typeof promptOnDeviceModel = promptOnDeviceModel,
   attempts = 2
 ): Promise<string | null> {
+  let problem: string | undefined;
   for (let i = 0; i < attempts; i++) {
-    const answer = await prompt(IDENTITY_SYSTEM_PROMPT, buildIdentityPrompt(facts), { stateless: true, timeoutMs: 45_000 });
+    // A second try is told what was wrong with the first, so it isn't the same mistake again.
+    const request = problem
+      ? `${buildIdentityPrompt(facts)}\n(Your last message could not be used because ${problem}. Write it again.)`
+      : buildIdentityPrompt(facts);
+    const answer = await prompt(IDENTITY_SYSTEM_PROMPT, request, { stateless: true, timeoutMs: 45_000 });
     if (answer === null) return null; // no model, or it failed: don't retry
-    const accepted = acceptIdentityMessage(answer, facts);
-    if (accepted) return accepted;
+    const checked = checkIdentityMessage(answer, facts);
+    if (checked.problem === undefined) return checked.text;
+    problem = checked.problem;
   }
   return null;
 }

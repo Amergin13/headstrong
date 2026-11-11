@@ -24,7 +24,7 @@ import {
   queryDesignSystemComponents,
   queryExerciseScienceKnowledgeBase,
 } from '../engine/knowledgeGraph';
-import { isOnDeviceModelReady, promptOnDeviceModel } from './onDeviceModel';
+import { forgetOnDeviceExchange, isOnDeviceModelReady, promptOnDeviceModel } from './onDeviceModel';
 import {
   adaptWorkoutSessionToLocation,
   generateSmartWorkoutSession,
@@ -33,19 +33,31 @@ import {
 import { localDateString } from '../utils/date';
 import { formatPreciseWeight, formatWeight, snapLoadKg } from '../utils/units';
 import { calculateE1RM } from '../engine/e1rm';
+import { runReadAloudQaGate, VOICE_TONE_MATRIX } from '../engine/contentStrategy';
+import { buildExerciseInsight } from './exerciseInsight';
+import { buildExerciseNoteFacts } from './exerciseCoachNote';
+import { MUSCLE_FRIENDLY_NAMES } from '../engine/recovery';
 import { findLastCompletedExerciseSession } from '../engine/progression';
-import { ActivityLog } from '../engine/activeDays';
+import { ActivityLog, activeDayDates } from '../engine/activeDays';
+import { computeTrainingStreak } from '../engine/recovery';
 import { MUSCLE_TO_GRAPH_KEY } from './sessionReport';
 import {
+  answerEverydayQuestion,
   answerPlanPosition,
   answerRestTimes,
   answerShouldTrain,
   answerStreak,
+  answerSwap,
+  findExerciseNamed,
+  answerSwapWithOptions,
   answerWeeklySets,
   answerWeightChange,
   asksAboutVolume,
+  exerciseNamedIn,
   planPosition,
 } from './coachAnswers';
+
+export { exerciseNamedIn };
 
 export interface AssistantProcessInput {
   userMessage: string;
@@ -190,9 +202,12 @@ export function buildCoachSystemPrompt(input: AssistantProcessInput): string {
   const goalLabel =
     profile.goalPhase === 'Cut / Recomp' ? 'lose fat, keep muscle' : profile.goalPhase === 'Maingain' ? 'stay lean' : 'build muscle';
   const recovery = readinessState === 'Amber Shield' ? 'low' : readinessState === 'Primed' ? 'high' : 'normal';
+  // Bodyweight is only given once the athlete has logged one (never the starting-load placeholder).
+  const hasWeighIn = biometrics.some((b) => (b.bodyweightKg || 0) > 0);
 
-  return `You are a friendly strength coach speaking to ${athleteName || 'the athlete'} as "you". Answer in 2-4 short plain sentences, no greeting. Use only the facts given; if unsure, say so. Never call a muscle's sets enough unless it is on target. High recovery means today's targets stand. Don't praise effort the facts don't show. You don't know how past sessions went. The plan sets weights and raises them itself when every set reaches the top of the range; never tell them to change the weight. No technical terms.
-Athlete: ${formatWeight(bodyweightEmaKg, unit)}, goal ${goalLabel}, week ${planPosition(profile, workouts, input.activities ?? []).week}/6, recovery ${recovery}${
+  // Voice from the content strategy: pragmatic and observant, grounded in logged facts, no hype.
+  return `You are ${VOICE_TONE_MATRIX.steadyVoice.replace(/^The /, 'the ').replace(/\.$/, '')}, speaking to ${athleteName || 'the athlete'} as "you". Answer the question directly in 2-4 short plain sentences, no greeting. For anything about their plan, weights, sets or progress, use only the facts below. For general training questions (timing, motivation, habits, technique, food), give practical, widely accepted advice in your own words, without numbers. Never say the plan or the facts don't cover something. Never call a muscle's sets enough unless it is on target. High recovery means today's targets stand. Don't praise effort the facts don't show. You don't know how past sessions went. The plan sets weights and raises them itself when every set reaches the top of the range; never tell them to change the weight. No hype, cheerleading or percentages; say why something works in one plain clause.
+Athlete: ${hasWeighIn ? `${formatWeight(bodyweightEmaKg, unit)}, ` : ''}goal ${goalLabel}, week ${planPosition(profile, workouts, input.activities ?? []).week}/6, recovery ${recovery}${
     latestBio && latestBio.hrvRmssd > 0 ? `, slept ${latestBio.sleepHours} h` : ''
   }.
 Today's plan (not done yet): ${activeWorkout?.name || 'rest'}: ${exercisesDesc || 'nothing planned'}.
@@ -203,20 +218,6 @@ Weekly hard sets (done of target): ${musclesDesc || 'none yet'}.`;
  * The model is given today's plan but no history, so anything it says about how past sessions went
  * is invented. Questions about history are answered from the logged sessions instead.
  */
-/** The exercise's name without its kit, e.g. "Cable Chest Press" → "chest press". */
-function exerciseCore(name: string): string {
-  return name.toLowerCase().replace(/\b(dumbbell|db|barbell|cable|machine|seated|standing)\b/g, '').replace(/\s+/g, ' ').trim().replace(/s$/, '');
-}
-
-/** True when a message names this exercise: its last two words ("chest press") or its last word ("rows"). */
-export function exerciseNamedIn(text: string, name: string): boolean {
-  const words = exerciseCore(name).split(' ').filter(Boolean);
-  if (!words.length) return false;
-  if (words.length >= 2 && text.includes(words.slice(-2).join(' '))) return true;
-  const last = words[words.length - 1].replace(/s$/, '');
-  return last.length >= 3 && new RegExp(`\\b${last.replace(/[^a-z]/g, '')}s?\\b`).test(text);
-}
-
 /** An answer that calls an exercise by the wrong kit ("lift the dumbbells" for a cable raise). */
 export function misnamesEquipment(answer: string, exercises: { name: string; equipment: string }[]): boolean {
   const text = answer.toLowerCase();
@@ -419,6 +420,9 @@ export function acceptCoachAnswer(answer: string, grounding: string): boolean {
   return true;
 }
 
+/** A rejected chat answer is retried only when the first one came back this quickly. */
+const RETRY_IF_FASTER_THAN_MS = 6000;
+
 const LIFT_WORDS = ['bench', 'squat', 'deadlift', 'rdl', 'overhead', 'shoulder press', 'pulldown', 'pull-up', 'pull up', 'chin', 'row', 'curl', 'leg press'];
 
 /** The best estimated max logged for the lift named in the message, from the same formula as Progress. */
@@ -509,7 +513,48 @@ async function processAssistantMessageCore(
   // ============================================================================
   // 1. INTENT: UPDATE HOME EQUIPMENT (e.g. "I got a pull up bar", "I bought dumbbells")
   // ============================================================================
-  const equipmentChange = detectEquipmentChange(lowerMsg);
+  // The exercise card's own two lines (built exactly as the Workout page builds them), so the coach
+  // and the card never word the same thing differently.
+  const cardLines = (ex: ExerciseSession): [string, string] => {
+    const precise = (kgValue: number) => formatPreciseWeight(kgValue, profile.weightUnit || 'kg');
+    const def = exerciseCatalog.find((d) => d.id === ex.exerciseId);
+    return buildExerciseNoteFacts({
+      exercise: ex,
+      insight: buildExerciseInsight(ex, workouts, readinessState, bodyweightEmaKg, 12, precise),
+      workouts,
+      readinessState,
+      knowledgeGraph: kg,
+      primaryMuscle: def?.primaryMuscle,
+      muscleLabel: def ? MUSCLE_FRIENDLY_NAMES[def.primaryMuscle] : undefined,
+      formatWeight: precise,
+    }).lines;
+  };
+
+  // Everyday questions answered from the athlete's plan and log ("I only have 30 minutes").
+  const everydayAnswer = answerEverydayQuestion({
+    lowerMsg,
+    profile,
+    activeWorkout,
+    workouts,
+    activities: input.activities,
+    biometrics,
+    exerciseCatalog,
+    readinessState,
+    bodyweightEmaKg,
+    progressSummary: () => buildProgressSummary(workouts, profile.weightUnit || 'kg'),
+    strengthLevels: strengthLevelsAnswer,
+    weeklySets: (message) => answerWeeklySets(message, kg),
+  });
+
+  const detectedEquipmentChange = detectEquipmentChange(lowerMsg);
+  // At the gym, "I don't have dumbbells" is about today's workout, not the gear kept at home:
+  // it gets swap options and never deletes home equipment. "I sold my dumbbells" still does.
+  const kitMissingToday =
+    detectedEquipmentChange?.action === 'remove' &&
+    (activeWorkout.location ?? 'gym') === 'gym' &&
+    /\b(don['’]?t|do not) have\b/.test(lowerMsg) &&
+    !/\b(any ?more|any longer|at home)\b/.test(lowerMsg);
+  const equipmentChange = kitMissingToday ? null : detectedEquipmentChange;
   const matchedEquip = equipmentChange?.equipment;
 
   if (matchedEquip) {
@@ -524,7 +569,7 @@ async function processAssistantMessageCore(
         summary: `Removed ${matchedEquip.name} from Home Equipment`,
         details: { equipment: nextEquip, removed: matchedEquip.tag },
       };
-      answerText = `I have updated your Home Equipment profile and removed the ${matchedEquip.name}. Your home workouts and exercise substitution choices will no longer include exercises requiring this gear.`;
+      answerText = `Done. I've removed the ${matchedEquip.name} from your home equipment, so your home workouts and swap options won't use it.`;
     } else {
       currentList.add(matchedEquip.tag);
       const nextEquip = Array.from(currentList);
@@ -536,15 +581,15 @@ async function processAssistantMessageCore(
       };
 
       if (matchedEquip.tag === 'pullup_bar') {
-        answerText = `Awesome addition! I've added the Pull-Up Bar to your Home Equipment. Your home workouts now have full access to Bodyweight Pull-Ups and Chin-Ups, unlocking authoritative vertical pulling hypertrophy without needing gym lat-pulldown cables.`;
+        answerText = `Nice addition. I've added the Pull-Up Bar to your home equipment, so your home workouts can now include pull-ups and chin-ups.`;
       } else if (matchedEquip.tag === 'dumbbells') {
-        answerText = `Great upgrade! I've added Dumbbells to your Home Equipment profile. Your home sessions can now program Incline Dumbbell Presses, Dumbbell Rows, and Romanian Deadlifts with seamless progressive overload.`;
+        answerText = `Great. I've added Dumbbells to your home equipment, so your home workouts can now include dumbbell presses, rows and Romanian deadlifts.`;
       } else if (matchedEquip.tag === 'bench') {
-        answerText = `Perfect! Added an Exercise Bench to your Home Equipment. This allows you to perform flat and incline presses with full thoracic stabilization and deep stretch at the bottom of each rep.`;
+        answerText = `Added an Exercise Bench to your home equipment. Your home workouts can now include flat and incline presses with proper back support.`;
       } else if (matchedEquip.tag === 'trx') {
-        answerText = `Logged! Added TRX Suspension Trainer to your Home Equipment profile. Your home workouts can now leverage TRX Inverted Rows, TRX Push-Ups, and Pistol Squats.`;
+        answerText = `Added the TRX Suspension Trainer to your home equipment. Your home workouts can now include TRX rows, push-ups and single-leg squats.`;
       } else {
-        answerText = `I have added ${matchedEquip.name} to your Home Equipment profile. Your home exercise suggestions have been updated to incorporate your new gear.`;
+        answerText = `Added ${matchedEquip.name} to your home equipment. Your home workouts and swap options can now use it.`;
       }
     }
 
@@ -598,7 +643,7 @@ async function processAssistantMessageCore(
       details: { week: targetWeek, location: 'travel' },
     };
 
-    answerText = `Planned! I have scheduled Week ${targetWeek} of your mesocycle for Bodyweight training. When you reach Week ${targetWeek}, all workout sessions will automatically calibrate to pure bodyweight exercises (like Feet-Elevated Deficit Push-Ups, Bulgarian Split Squats, and Inverted Rows). Target reps are matched to your strength level with 3-second eccentric tempo cues, requiring zero gym weights.`;
+    answerText = `Done. Week ${targetWeek} of your plan is set to bodyweight training. When you reach it, each workout switches to exercises that need no equipment, like push-ups, split squats and inverted rows, with reps matched to your strength. Back early? Switch to the gym from the Workout tab.`;
 
     // If athlete is already in that week, adapt current workout too
     if ((profile.mesocycleWeek || 1) === targetWeek && activeWorkout.location !== 'travel') {
@@ -652,11 +697,11 @@ async function processAssistantMessageCore(
     };
 
     if (targetLoc === 'travel') {
-      answerText = `Switched today's session to Bodyweight mode. All exercises have been converted to pure bodyweight movements with 0 kg external load and calibrated reps matching your strength level.`;
+      answerText = `Switched today's workout to bodyweight. Every exercise now needs no equipment, with reps matched to your strength.`;
     } else if (targetLoc === 'home') {
-      answerText = `Switched today's session to At Home mode. Workouts are calibrated around your home equipment setup (${(profile.homeEquipment || []).map((t) => EQUIPMENT_NAMES[t] || t).join(', ')}).`;
+      answerText = `Switched today's workout to home. It now uses ${(profile.homeEquipment || []).map((t) => EQUIPMENT_NAMES[t] || t).join(', ') || 'your bodyweight'}.`;
     } else {
-      answerText = `Switched today's session to Full Gym. All compound barbells, cables, and machines are now active in your workout queue.`;
+      answerText = `Switched today's workout back to the gym, with barbells, cables and machines available again.`;
     }
 
     citations.push({
@@ -723,9 +768,20 @@ async function processAssistantMessageCore(
   // 6. INTENT: LOG REST DAY / SHIFT WORKOUT (e.g. "I can't train today", "take a rest day")
   // ============================================================================
   else if (
+    /\b(rest\s*day|can['’]?t\s*train|skip\s*today|shift\s*(workout|session|today)|day\s*off)\b/i.test(lowerMsg) &&
+    (/\?\s*$/.test(lowerMsg) || /^(should|can|could|do|does|is|would|what|when|how|why)\b/.test(lowerMsg)) &&
+    !/\b(log|take|make|give me|i need|i want|i'?m taking)\b/.test(lowerMsg)
+  ) {
+    // "Should I skip today?" is a question: answer it from recovery and change nothing.
+    const check = answerShouldTrain(activeWorkout, workouts, exerciseCatalog, readinessState);
+    const lead = /^Not yet\. /.test(check) ? 'Yes, rest today. ' : /^Yes\. /.test(check) ? "You don't need to. " : '';
+    answerText = `${lead}${check.replace(/^(Not yet|Yes)\. /, '')} ${lead.startsWith('Yes') ? 'Say' : "If you'd rather rest, say"} "take a rest day" and ${activeWorkout.name} moves to tomorrow; missing a day doesn't set your plan back.`;
+  } else if (
     /\b(rest\s*day|can['’]?t\s*train|skip\s*today|shift\s*(workout|session|today)|day\s*off)\b/i.test(lowerMsg)
   ) {
     const today = new Date();
+    // The header's streak (saved workouts and active days), never a stored counter.
+    const restDayStreak = computeTrainingStreak(workouts, Date.now(), activeDayDates(input.activities ?? []));
     const tomorrow = new Date(today);
     tomorrow.setDate(today.getDate() + 1);
     const tomorrowStr = localDateString(tomorrow);
@@ -741,7 +797,7 @@ async function processAssistantMessageCore(
       details: { date: tomorrowStr },
     };
 
-    answerText = `Rest day logged. ${activeWorkout.name} will be waiting for you tomorrow. Missing a day doesn't set your plan back, and your ${profile.streakDays}-day streak is safe.`;
+    answerText = `Rest day logged. ${activeWorkout.name} will be waiting for you tomorrow. Missing a day doesn't set your plan back${restDayStreak > 0 ? `, and your ${restDayStreak}-day streak is safe` : ''}.`;
 
     citations.push({
       label: 'Schedule',
@@ -756,11 +812,18 @@ async function processAssistantMessageCore(
   else if (/\bstreak\b/.test(lowerMsg)) {
     answerText = answerStreak(workouts, input.activities ?? []);
   } else if (
+    kitMissingToday ||
+    /\b(no|without) (a |an |the |any )?(free )?(barbells?|dumbbells?|cables?|machines?)\b|\b(barbells?|dumbbells?|cables?|machines?) (is|are|were|was) (all )?(taken|busy|in use|broken|full|occupied)\b/.test(lowerMsg)
+  ) {
+    answerText = `${answerSwap(lowerMsg, activeWorkout, exerciseCatalog)}${kitMissingToday ? `\n\nIf you meant your home equipment, say "remove the ${detectedEquipmentChange!.equipment.name.toLowerCase()}".` : ''}`;
+  } else if (everydayAnswer) {
+    answerText = everydayAnswer;
+  } else if (
     /\b(what|which) week\b|\bweek am i\b|\b(sessions?|workouts?) (are )?left\b|\bhow far (am i|through)\b|\bwhere am i in\b|\bwhat'?s next\b|\bwhat is next\b|\bnext workout\b|\bafter this (workout|session)\b|\bwhich phase\b|\bwhat phase\b/.test(lowerMsg)
   ) {
     answerText = answerPlanPosition(profile, workouts, input.activities ?? []);
   } else if (
-    /\bshould i (train|work ?out|lift|go to the gym|skip)\b|\b(am i|are my muscles) (ready|recovered)\b|\b(ok|okay|fine) to train\b|\bcan i train\b/.test(lowerMsg)
+    /\bshould i (train|work ?out|lift|go to the gym|skip)\b(?! (to|till|until) failure)|\b(am i|are my muscles) (ready|recovered)\b|\b(ok|okay|fine) to train\b|\bcan i train\b/.test(lowerMsg)
   ) {
     answerText = answerShouldTrain(activeWorkout, workouts, exerciseCatalog, readinessState);
   } else if (
@@ -902,7 +965,7 @@ async function processAssistantMessageCore(
       // Levels, balance and left/right questions about the athlete's own lifts: answered from their
       // data (movement standards), never by the model. "Why / how is it worked out" still gets the card.
       const isStandardsQuestion =
-        /\b(my level|levels?|strength standards?|how strong|imbalanc\w*|balanced?|asymmetr\w*|weaker side|weak side|left side|right side|one side|weak link|lagging)\b/i.test(lowerMsg);
+        /\b(my level|levels?|strength standards?|how strong|imbalanc\w*|balanced?|asymmetr\w*|weaker side|weak side|left side|right side|one side|weak link|lagging|(weakest|strongest|best|worst) (lift|lifts|exercise|movement)|weak points?)\b/i.test(lowerMsg);
       // "What's my bench 1RM?" and "what's my DOTS score?" ask for the athlete's own number, not a formula.
       const asksHowItWorks = /\b(why|how|formula|explain|science|research|calculat\w*|worked out)\b/.test(lowerMsg);
       const asksForOwnMax = /\bmy\b.*\b(e?1\s?rm|one[\s-]rep\s*max|estimated\s*max)\b/.test(lowerMsg) && !asksHowItWorks;
@@ -1042,21 +1105,24 @@ async function processAssistantMessageCore(
           value: `${kg.lengthenedStimulusRatio}% of sets`,
         });
         }
-      } else if (lowerMsg.includes('protein') || lowerMsg.includes('eat') || lowerMsg.includes('nutrition') || lowerMsg.includes('food')) {
+      } else if (/\b(protein|eat|eating|ate|meals?|diet|nutrition|food|snack)\b/.test(lowerMsg)) {
         const isPreWorkout = /\b(before|pre[\s-]?workout|pre[\s-]?training|prior to)\b/.test(lowerMsg);
         const isPostWorkout = /\b(after|post[\s-]?workout|post[\s-]?training)\b/.test(lowerMsg);
+        // A gram figure needs a logged bodyweight; without one, only the per-kg guidance is given.
+        const hasWeighIn = biometrics.some((b) => (b.bodyweightKg || 0) > 0);
         const dailyProtein = Math.round(bodyweightEmaKg * (profile.goalPhase === 'Cut / Recomp' ? 2.2 : 2.0));
+        const gramsNote = hasWeighIn ? ` (about ${dailyProtein} g)` : '';
         if (isPreWorkout) {
           answerText =
             '1–2 hours before training, eat a normal meal with carbs and some protein, like rice and chicken, oats with yogurt, or a sandwich. ' +
             'If you only have 30–60 minutes, keep it small and easy to digest, like a banana or toast. Go light on fat and fibre right before so your stomach feels settled.';
         } else if (isPostWorkout) {
-          answerText = `After training, have a meal with 20–40 g of protein and some carbs within a few hours, like eggs on toast or a chicken and rice bowl. Your total for the day matters most: about ${dailyProtein} g of protein.`;
+          answerText = `After training, have a meal with 20–40 g of protein and some carbs within a few hours, like eggs on toast or a chicken and rice bowl. Your total for the day matters most: ${hasWeighIn ? `about ${dailyProtein} g of protein` : 'about 2 g of protein per kg of bodyweight (log your weight in Progress for a figure in grams)'}.`;
         } else {
           answerText =
             profile.goalPhase === 'Cut / Recomp'
-              ? `While losing fat, aim for about 2.0–2.4 g of protein per kg of bodyweight a day (about ${dailyProtein} g) to keep your muscle.`
-              : `To build muscle, aim for about 1.8–2.2 g of protein per kg of bodyweight a day (about ${dailyProtein} g), with carbs around your workouts.`;
+              ? `While losing fat, aim for about 2.0–2.4 g of protein per kg of bodyweight a day${gramsNote} to keep your muscle.`
+              : `To build muscle, aim for about 1.8–2.2 g of protein per kg of bodyweight a day${gramsNote}, with carbs around your workouts.`;
         }
       } else if (
         /\b(scale\s*weight|scale\s*flat|scale\s*not\s*moving|why\s*isn'?t\s*(my|the)\s*scale|measure\s*progress|weigh\s*myself|weigh\s*in|take\s*measurements|body\s*recomp|recomposition|shirt\s*off|measuring\s*progress)\b/i.test(
@@ -1133,7 +1199,8 @@ async function processAssistantMessageCore(
       ) {
         // Conversational Welcome & Capabilities Intent
         const firstName = profile.name?.trim().split(/\s+/)[0] || 'Athlete';
-        answerText = `Hey ${firstName}! I'm your AI Coach. I'm here to optimize your training, auto-regulate your loads, and adapt your plan.\n\nHere are some things you can ask me:\n• **Workout Briefing:** "Give me today's tactical briefing"\n• **Exercise Targets:** "What should I bench press today?"\n• **Substitutions:** "Substitute incline dumbbell press"\n• **Equipment Updates:** "I got a pull-up bar" or "I bought dumbbells"\n• **Travel & Location:** "I'll be away in week 5" or "Switch to bodyweight today"\n• **Recovery & Science:** "How is my shoulder strain?" or "Why the 1.18x dumbbell multiplier?"\n\nWhat would you like to focus on?`;
+        const workoutNameForGreeting = (activeWorkout?.exercises[0]?.name ?? 'a squat').toLowerCase();
+        answerText = `Hey ${firstName}! I'm your coach. I know your plan, your logged workouts and your recovery.\n\nThings you can ask me:\n• "What am I doing today?"\n• "Should I train today?"\n• "How do I do ${workoutNameForGreeting}?"\n• "I only have 30 minutes"\n• "Am I getting stronger?"\n• "I don't have a barbell" or "Switch to bodyweight today"\n• "How much protein do I need?"\n\nWhat would you like to know?`;
       } else {
         // ============================================================================
         // 8. ATHLETIC COACHING & TACTICAL GUIDANCE (TENSOR TPU + KNOWLEDGE GRAPH)
@@ -1161,7 +1228,7 @@ async function processAssistantMessageCore(
           const systemPrompt = buildCoachSystemPrompt(input);
           // When the question names one of today's exercises, give the model that exercise's own cue,
           // so technique advice comes from the exercise library rather than the model's guess.
-          const namedToday = workoutExercises.find((e) => exerciseNamedIn(lowerMsg, e.name));
+          const namedToday = findExerciseNamed(lowerMsg, activeWorkout, exerciseCatalog)?.session;
           const namedDef = namedToday ? exerciseCatalog.find((d) => d.id === namedToday.exerciseId) : undefined;
           const cue = namedToday ? [namedDef?.whyItWorks, namedToday.notes].filter(Boolean).join(' ').slice(0, 220) : '';
           const factsForQuestion = [groundingFacts.replace(/^- /, ''), cue ? `${namedToday!.name} (${namedToday!.equipment}): ${cue}` : '']
@@ -1169,10 +1236,6 @@ async function processAssistantMessageCore(
             .join(' ');
           const questionWithFacts = factsForQuestion ? `${userMessage}\n(Useful fact: ${factsForQuestion})` : userMessage;
 
-          const nanoAnswer = await promptOnDeviceModel(systemPrompt, questionWithFacts, {
-            onPartial: input.onPartial,
-            onDownloadProgress: input.onDownloadProgress,
-          });
           // Each muscle trained today, named by itself and by today's exercises for it.
           const muscleClaims = kg.muscleProfiles.map((m) => ({
             status: muscleTargetStatus(m),
@@ -1186,17 +1249,48 @@ async function processAssistantMessageCore(
                 .flatMap((e) => [e.name.toLowerCase(), e.name.toLowerCase().replace(/^(dumbbell|db|cable|barbell|machine|seated)\s+/, '').replace(/s$/, '')]),
             ],
           }));
-          if (
-            nanoAnswer &&
-            acceptCoachAnswer(nanoAnswer, `${systemPrompt} ${questionWithFacts}`) &&
-            !contradictsMuscleTargets(nanoAnswer, muscleClaims) &&
-            !claimsPastResults(nanoAnswer) &&
-            !misnamesEquipment(nanoAnswer, workoutExercises) &&
-            !changesPlanWeight(nanoAnswer) &&
-            !contradictsRecovery(nanoAnswer, readinessState) &&
-            !genericRepTarget(nanoAnswer, workoutExercises) &&
-            !contradictsPlanSchedule(nanoAnswer)
-          ) {
+          // Why an answer can't be shown, in words the model can act on.
+          const problemWith = (answer: string): string | null =>
+            !runReadAloudQaGate(answer).passed
+              ? 'it used hype, a cliché or judgmental wording; write like a pragmatic coach'
+              : !acceptCoachAnswer(answer, `${systemPrompt} ${questionWithFacts}`)
+              ? 'it used a number, weight or percentage that is not in the facts'
+              : contradictsMuscleTargets(answer, muscleClaims)
+              ? "it described a muscle's weekly sets differently from the status given"
+              : claimsPastResults(answer)
+              ? 'it said how past sessions went, which is not known'
+              : misnamesEquipment(answer, workoutExercises)
+              ? 'it named the wrong equipment for an exercise'
+              : changesPlanWeight(answer)
+              ? 'it told the athlete to choose or change a weight, but the plan sets every weight'
+              : contradictsRecovery(answer, readinessState)
+              ? `it went against today's recovery, which is ${readinessState === 'Amber Shield' ? 'low' : readinessState === 'Primed' ? 'high' : 'normal'}`
+              : genericRepTarget(answer, workoutExercises)
+              ? 'it gave a rep target without naming the exercise it belongs to'
+              : contradictsPlanSchedule(answer)
+              ? 'it suggested training every day, but the plan is 4 sessions a week'
+              : null;
+          const startedAt = Date.now();
+          let nanoAnswer = await promptOnDeviceModel(systemPrompt, questionWithFacts, {
+            onPartial: input.onPartial,
+            onDownloadProgress: input.onDownloadProgress,
+          });
+          let problem = nanoAnswer ? problemWith(nanoAnswer) : null;
+          if (nanoAnswer && problem) {
+            // A rejected answer is never remembered. A fast model gets one more try, told what was
+            // wrong; a slow one (a phone GPU) goes straight to the data-based answer.
+            forgetOnDeviceExchange();
+            if (Date.now() - startedAt < RETRY_IF_FASTER_THAN_MS) {
+              nanoAnswer = await promptOnDeviceModel(
+                systemPrompt,
+                `${questionWithFacts}\n(Your last answer could not be used because ${problem}. Answer again in 2-4 short sentences, using only the facts given.)`,
+                { onPartial: input.onPartial }
+              );
+              problem = nanoAnswer ? problemWith(nanoAnswer) : null;
+              if (nanoAnswer && problem) forgetOnDeviceExchange();
+            }
+          }
+          if (nanoAnswer && !problem) {
             answerText = nanoAnswer;
             nanoHandled = true;
 
@@ -1220,14 +1314,15 @@ async function processAssistantMessageCore(
         // B0. Open questions the model couldn't answer well: a fact-based answer on the same topic,
         // rather than the general briefing.
         if (!nanoHandled && !isTacticalWorkoutQuery) {
-          const named = workoutExercises.find((e) => exerciseNamedIn(lowerMsg, e.name));
+          const named = findExerciseNamed(lowerMsg, activeWorkout, exerciseCatalog)?.session;
           if (named) {
             const working = named.sets.filter((st) => !st.isWarmup && st.setType !== 'warmup');
             const def = exerciseCatalog.find((d) => d.id === named.exerciseId);
             const first = working[0];
             const rir = readinessState === 'Amber Shield' ? '2–3' : `${first?.targetRir ?? 2}`;
+            const namedBrief = cardLines(named);
             answerText = first
-              ? `For ${named.name} today: ${working.length} sets of ${first.targetReps} reps at ${formatWeight(first.targetWeightKg, profile.weightUnit || 'kg')}, stopping with ${rir} reps to spare and lowering each rep under control. ${def?.whyItWorks ?? ''} The weight goes up by itself once every set reaches ${named.maxReps} reps.`.replace(/\s+/g, ' ').trim()
+              ? `For ${named.name} today: ${working.length} sets of ${first.targetReps} reps at ${formatWeight(first.targetWeightKg, profile.weightUnit || 'kg')}, stopping with ${rir} reps to spare. ${namedBrief[1]} ${def?.whyItWorks ?? ''} The weight goes up by itself once every set reaches ${named.maxReps} reps.`.replace(/\s+/g, ' ').trim()
               : `${named.name} is in today's workout. ${def?.whyItWorks ?? ''}`.trim();
             nanoHandled = true;
           } else if (/\b(flat|tired|exhausted|drained|no energy|low energy|push (hard|it)|go hard|sluggish)\b/.test(lowerMsg)) {
@@ -1243,7 +1338,8 @@ async function processAssistantMessageCore(
         if (!nanoHandled) {
           // B1. Exercise-Specific Targets & Progression Rules
           // "my chest press" names Cable Chest Press: match on the name without the kit.
-          const matchedWorkoutEx = workoutExercises.find((e) =>
+          // The exercise named most exactly ("chest press" is the chest press, not the first press).
+          const matchedWorkoutEx = findExerciseNamed(lowerMsg, activeWorkout, exerciseCatalog)?.session ?? workoutExercises.find((e) =>
             lowerMsg.includes(e.name.toLowerCase()) ||
             exerciseNamedIn(lowerMsg, e.name) ||
             (lowerMsg.includes('bench') && e.name.toLowerCase().includes('bench')) ||
@@ -1333,37 +1429,11 @@ async function processAssistantMessageCore(
             lowerMsg.includes('technique');
 
           if (isSwapQuery) {
-            // Exercise Substitution Biomechanical Match
-            const sourceEx = matchedWorkoutEx || workoutExercises[0];
-            const sourceDef = sourceEx
-              ? exerciseCatalog.find((c) => c.id === sourceEx.exerciseId)
-              : exerciseCatalog[0];
-            const sourceMuscle = sourceDef?.primaryMuscle || 'target muscles';
-            const sourcePillar = sourceEx?.pillar || sourceDef?.pillar || 'Horizontal Push';
-            const candidateEx =
-              exerciseCatalog.find(
-                (e) =>
-                  (!sourceEx || e.id !== sourceEx.exerciseId) &&
-                  (lowerMsg.includes(e.name.toLowerCase()) ||
-                    (lowerMsg.includes('dumbbell') && e.equipment === 'dumbbell' && e.pillar === sourcePillar) ||
-                    (lowerMsg.includes('cable') && e.equipment === 'cable' && e.pillar === sourcePillar) ||
-                    (lowerMsg.includes('machine') && e.equipment === 'machine' && e.pillar === sourcePillar) ||
-                    (e.pillar === sourcePillar && e.primaryMuscle === sourceMuscle))
-              ) || exerciseCatalog.find((e) => e.pillar === sourcePillar && (!sourceEx || e.id !== sourceEx.exerciseId));
-
-            if (candidateEx && sourceEx) {
-              const reps = `${candidateEx.defaultRepRange[0]}–${candidateEx.defaultRepRange[1]}`;
-              answerText = `You can swap **${sourceEx.name}** for **${candidateEx.name}**. Both are ${candidateEx.pillar} movements. Aim for ${reps} reps, stopping 1–2 reps short of failure. To make the swap, tap the swap button on the exercise in your workout.`;
-
-              citations.push({
-                label: candidateEx.name,
-                metric: 'Swap Option',
-                value: `${reps} reps`,
-              });
-            } else if (candidateEx) {
-              answerText = `A great alternative is **${candidateEx.name}** (${candidateEx.equipment}, ${candidateEx.pillar}). It targets ${candidateEx.primaryMuscle} with a standard hypertrophy rep range of ${candidateEx.defaultRepRange[0]}–${candidateEx.defaultRepRange[1]} reps at 1–2 RIR.`;
-            } else {
-              answerText = `To swap exercises, choose a movement targeting ${sourceMuscle} within the ${sourcePillar} movement pillar using your available equipment (${(profile.homeEquipment || []).map((t) => EQUIPMENT_NAMES[t] || t).join(', ') || 'gym gear'}).`;
+            // From today's workout: never an exercise that isn't in it, never kit the athlete lacks.
+            const swap = answerSwapWithOptions(lowerMsg, activeWorkout, exerciseCatalog);
+            answerText = swap.text;
+            for (const option of swap.options.slice(0, 3)) {
+              citations.push({ label: option.name, metric: 'Swap Option', value: `${option.defaultRepRange[0]}–${option.defaultRepRange[1]} reps` });
             }
           } else if (isWarmupQuery) {
             // Ramp-Up Warm-Up Protocol
@@ -1452,13 +1522,10 @@ async function processAssistantMessageCore(
               minReps === maxReps ? `${minReps}` : todayReps ? `${todayReps} (range ${minReps}–${maxReps})` : `${minReps}–${maxReps}`;
             const inc = unit === 'lb' ? '5 lb' : targetEx.equipment === 'dumbbell' ? '2 kg' : '2.5 kg';
 
-            answerText = `For **${targetEx.name}** today, your target is **${targetWeightLabel}** for **${setCount} working sets** of **${repLabel}** reps, leaving **${targetRir}**.\n\n${
-              readinessState === 'Primed'
-                ? '⚡ Recovery is Primed: If your warmup feels explosive, aim for the top of the rep range on your first working set.'
-                : readinessState === 'Amber Shield'
-                ? '🛡️ Amber Shield active: Hold working weights constant and keep 2–3 reps in reserve to protect your joints.'
-                : '🎯 Focus on a controlled 2-second eccentric phase to maximize mechanical tension.'
-            }\n\nOnce all ${setCount} sets reach ${maxReps} reps, increment weight by +${inc} next session.`;
+            // The exercise card's own two lines (where this lift has been, what today is for), so the
+            // coach and the card say the same thing.
+            const brief = cardLines(targetEx as ExerciseSession);
+            answerText = `For **${targetEx.name}** today, your target is **${targetWeightLabel}** for **${setCount} working sets** of **${repLabel}** reps, leaving **${targetRir}**.\n\n${brief[0]}\n${brief[1]}\n\nOnce all ${setCount} sets reach ${maxReps} reps, the weight goes up by ${inc} next session.`;
 
             citations.push({
               label: targetEx.name,
@@ -1466,6 +1533,12 @@ async function processAssistantMessageCore(
               value: `${targetWeightLabel} × ${setCount} sets (${minReps}–${maxReps} reps)`,
             });
           } else {
+            // The briefing answers questions about today's workout. Anything else gets an honest
+            // "here's what I can help with", not a workout list that ignores the question.
+            const asksAboutToday = /\b(today|tonight|workout|session|briefing|plan|training|train|exercises?|doing|lifting|gym)\b/.test(lowerMsg);
+            if (!asksAboutToday) {
+              answerText = `I don't have a good answer to that one. I can help with today's workout and targets, how to do an exercise, whether to train today, your progress and plan, rest times, swapping an exercise, and food basics. Next up is ${activeWorkout?.name || 'your next workout'}.`;
+            } else {
             // Dynamic Tactical Session Briefing for Today's Workout
             const plannedList = workoutExercises.length > 0
               ? workoutExercises
@@ -1477,20 +1550,24 @@ async function processAssistantMessageCore(
               : '  No movements scheduled.';
 
             const latestBio = biometrics[biometrics.length - 1];
+            // Today's planned reps to spare, as the workout cards show them.
+            const plannedRirs = [...new Set(workoutExercises.flatMap((e) => e.sets.filter((st) => !st.isWarmup && st.setType !== 'warmup').map((st) => st.targetRir)).filter((r): r is number => typeof r === 'number'))].sort((a, b) => a - b);
+            const effortForBriefing = plannedRirs.length === 0 ? '1–2 reps to spare' : plannedRirs.length === 1 ? `${plannedRirs[0]} ${plannedRirs[0] === 1 ? 'rep' : 'reps'} to spare` : `${plannedRirs[0]}–${plannedRirs[plannedRirs.length - 1]} reps to spare`;
 
             answerText = `Today's session is **${activeWorkout?.name || 'Workout'}**${activeWorkout?.programWorkoutNumber ? '' : ` (**${activeWorkout?.splitDay || 'Scheduled'} Day**)`} in **Week ${planPosition(profile, workouts, input.activities ?? []).week} of 6** (${activeWorkout?.location === 'travel' ? 'Bodyweight' : activeWorkout?.location === 'home' ? 'At Home' : 'Full Gym'} mode).\n\nPlanned Movements:\n${plannedList}\n\n${
               readinessState === 'Primed'
-                ? `⚡ Autonomic recovery is **Primed**${recoveryReadingsClause(latestBio)}. It's a good day to push: attack Set 1 with intent!`
+                ? `Your recovery is high today${recoveryReadingsClause(latestBio)}, so it's a good day to push your first working sets.`
                 : readinessState === 'Amber Shield'
-                ? `🛡️ **Amber Shield** is active today${recoveryReadingsClause(latestBio)}. Hold working weights steady, maintain 2–3 reps in reserve, and protect your joints.`
-                : `🎯 ${kg.recoveryEfficiencyScore > 0 ? `Recovery looks normal (${kg.recoveryEfficiencyScore}/100). ` : ''}Focus on clean 2-second eccentrics, hit 1–2 RIR, and lock in progressive overload.`
-            }\n\nFeel free to ask about specific targets, warm-up sets, tempo, or exercise substitutions!`;
+                ? `Your recovery is low today${recoveryReadingsClause(latestBio)}. Keep the planned weights and stop each set with 2–3 reps to spare.`
+                : `${kg.recoveryEfficiencyScore > 0 ? `Recovery looks normal (${kg.recoveryEfficiencyScore}/100). ` : ''}Lower each rep under control and stop each set with ${effortForBriefing}.`
+            }\n\nAsk me about any exercise's targets, warm-up sets, rest times or swaps.`;
 
             citations.push({
               label: activeWorkout?.name || 'Session Briefing',
               metric: 'Today\'s Session',
               value: `${workoutExercises.length} Exercises Planned`,
             });
+            }
           }
         }
       }

@@ -757,14 +757,14 @@ export const TrainTab: React.FC<TrainTabProps> = ({
         const def = exMap.get(ex.exerciseId);
         return buildExerciseNoteFacts({
           exercise: ex,
-          insight: buildExerciseInsight(ex, workouts, readiness.state, bodyweightEmaKg),
+          insight: buildExerciseInsight(ex, workouts, readiness.state, bodyweightEmaKg, 12, (kg) => units.formatPrecise(kg)),
           workouts,
           readinessState: readiness.state,
           knowledgeGraph,
           primaryMuscle: def?.primaryMuscle,
           muscleLabel: def ? MUSCLE_FRIENDLY_NAMES[def.primaryMuscle] : undefined,
           programLabel,
-          formatWeight: (kg) => units.format(kg),
+          formatWeight: (kg) => units.formatPrecise(kg),
         });
       }),
     // Facts use planned targets and history only, so ticking sets doesn't rewrite the notes.
@@ -1071,7 +1071,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
               onOpenPlateCalc={(kg) => setPlateCalcWeight(kg)}
               muscleLabel={def ? MUSCLE_FRIENDLY_NAMES[def.primaryMuscle] : undefined}
               previousSets={getPreviousWorkingSets(ex.exerciseId, workouts)}
-              insight={buildExerciseInsight(ex, workouts, readiness.state, bodyweightEmaKg)}
+              insight={buildExerciseInsight(ex, workouts, readiness.state, bodyweightEmaKg, 12, (kg) => units.formatPrecise(kg))}
               note={(() => {
                 const n = exerciseNotes[index];
                 return n ? generatedNotes[n.key] ?? n.fallback : undefined;

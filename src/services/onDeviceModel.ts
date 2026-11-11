@@ -145,10 +145,61 @@ interface FallbackModel {
     onPartial?: (t: string) => void,
     options?: { stateless?: boolean }
   ) => Promise<string | null>;
+  /** Drops the last question and answer from the chat (the answer was rejected). */
+  forgetLast?: () => void;
 }
 let fallbackModel: FallbackModel | null = null;
 export function registerFallbackOnDeviceModel(model: FallbackModel | null): void {
   fallbackModel = model;
+}
+
+/**
+ * The chat conversation with Chrome's model. Questions with the same instructions continue it, so a
+ * follow-up ("and after that?") is understood. Each question is asked on a copy of the conversation;
+ * the copy only becomes the conversation when the next question arrives without the answer having
+ * been rejected (forgetOnDeviceExchange), so a rejected answer is never remembered.
+ */
+let chat: { base: any; pending: any | null; systemPrompt: string; exchanges: number } | null = null;
+const MAX_REMEMBERED_EXCHANGES = 4;
+const destroy = (session: any) => {
+  try {
+    session?.destroy?.();
+  } catch {
+    // ignore
+  }
+};
+function endChat(): void {
+  if (!chat) return;
+  destroy(chat.pending);
+  destroy(chat.base);
+  chat = null;
+}
+
+/** A chat without its last question and answer (unchanged if it doesn't end with an answer). */
+export function withoutLastExchange<T extends { role: string }>(turns: T[]): T[] {
+  return turns.length >= 3 && turns[turns.length - 1].role === 'assistant' && turns[turns.length - 2].role === 'user' ? turns.slice(0, -2) : turns;
+}
+
+/** Call when a chat answer was rejected: the model must not build on it in later answers. */
+export function forgetOnDeviceExchange(): void {
+  if (chat) {
+    if (chat.pending) {
+      destroy(chat.pending);
+      chat.pending = null;
+    } else {
+      endChat();
+    }
+  }
+  try {
+    fallbackModel?.forgetLast?.();
+  } catch {
+    // ignore
+  }
+}
+
+/** Ends the remembered chat (e.g. when the coach is closed). */
+export function resetOnDeviceConversation(): void {
+  endChat();
 }
 
 /** True when some on-device model (Gemini Nano, or the downloaded GPU model) can answer now. */
@@ -193,34 +244,69 @@ export async function promptOnDeviceModel(
     }
   }
 
+  const ask = async (session: any): Promise<string | null> => {
+    if (typeof session.promptStreaming === 'function') {
+      let text = '';
+      let shown = false;
+      const stream = session.promptStreaming(userPrompt);
+      for await (const chunk of stream as AsyncIterable<string>) {
+        // Older Chrome builds stream the cumulative text; newer builds stream deltas.
+        text = chunk.startsWith(text) ? chunk : text + chunk;
+        // Only start showing once the opening text looks like a genuine answer.
+        if (shown || (text.length > 40 && isUsableModelAnswer(text, systemPrompt, userPrompt))) {
+          shown = true;
+          options.onPartial?.(text);
+        }
+      }
+      return isUsableModelAnswer(text, systemPrompt, userPrompt) ? text.trim() : null;
+    }
+    const answer = await session.prompt(userPrompt);
+    return typeof answer === 'string' && isUsableModelAnswer(answer, systemPrompt, userPrompt) ? answer.trim() : null;
+  };
+
   const run = async (): Promise<string | null> => {
     if (warmUpPromise) await warmUpPromise;
-    const session = await createSession(systemPrompt, options.onDownloadProgress);
-    if (!session) return null;
-    try {
-      if (typeof session.promptStreaming === 'function') {
-        let text = '';
-        let shown = false;
-        const stream = session.promptStreaming(userPrompt);
-        for await (const chunk of stream as AsyncIterable<string>) {
-          // Older Chrome builds stream the cumulative text; newer builds stream deltas.
-          text = chunk.startsWith(text) ? chunk : text + chunk;
-          // Only start showing once the opening text looks like a genuine answer.
-          if (shown || (text.length > 40 && isUsableModelAnswer(text, systemPrompt, userPrompt))) {
-            shown = true;
-            options.onPartial?.(text);
-          }
-        }
-        return isUsableModelAnswer(text, systemPrompt, userPrompt) ? text.trim() : null;
-      }
-      const answer = await session.prompt(userPrompt);
-      return typeof answer === 'string' && isUsableModelAnswer(answer, systemPrompt, userPrompt) ? answer.trim() : null;
-    } finally {
+    if (options.stateless) {
+      const session = await createSession(systemPrompt, options.onDownloadProgress);
+      if (!session) return null;
       try {
-        session.destroy?.();
-      } catch {
-        // ignore
+        return await ask(session);
+      } finally {
+        destroy(session);
       }
+    }
+    // Chat: continue the conversation while the instructions are the same and it is still short.
+    if (chat?.pending) {
+      destroy(chat.base);
+      chat = { ...chat, base: chat.pending, pending: null, exchanges: chat.exchanges + 1 };
+    }
+    if (chat && (chat.systemPrompt !== systemPrompt || chat.exchanges >= MAX_REMEMBERED_EXCHANGES)) endChat();
+    if (!chat) {
+      const base = await createSession(systemPrompt, options.onDownloadProgress);
+      if (!base) return null;
+      chat = { base, pending: null, systemPrompt, exchanges: 0 };
+    }
+    const current = chat;
+    try {
+      const canCopy = typeof current.base.clone === 'function';
+      const session = canCopy ? await current.base.clone() : current.base;
+      const answer = await ask(session);
+      if (answer === null) {
+        // Not a real answer (or nothing came back): start clean next time.
+        if (canCopy) destroy(session);
+        if (chat === current) endChat();
+        return null;
+      }
+      if (chat === current) {
+        if (canCopy) current.pending = session;
+        else current.exchanges += 1;
+      } else if (canCopy) {
+        destroy(session);
+      }
+      return answer;
+    } catch (err) {
+      if (chat === current) endChat();
+      throw err;
     }
   };
 

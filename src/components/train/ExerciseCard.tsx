@@ -132,15 +132,24 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
         </div>
       )}
 
-      {/* Progress summary and history chart */}
+      {/* 2-line dynamic summary (Line 1: Historical Trajectory Anchor, Line 2: Session Stimulus Directive) and history chart */}
       {insight && (
         <div className="flex flex-col" style={{ gap: fig(28), marginTop: fig(36) }}>
-          <p className="wk-body" aria-live="polite">
+          <div className="wk-body" aria-live="polite">
             {/* Re-keyed on change so a written note replacing its placeholder fades in. */}
-            <span key={note ?? insight.summary} className="wk-text-swap">
-              {note ?? insight.summary}
-            </span>
-          </p>
+            <div key={note ?? insight.summary} className="wk-text-swap flex flex-col" style={{ gap: fig(6) }}>
+              {(note ?? insight.summary)
+                .split('\n')
+                .map((l) => l.trim())
+                .filter(Boolean)
+                .slice(0, 2)
+                .map((line, lineIdx) => (
+                  <p key={lineIdx} className="m-0">
+                    {line}
+                  </p>
+                ))}
+            </div>
+          </div>
           {!(exercise.durationSeconds || exercise.durationMinutesRange) && (
             <TrendChart
               points={history.map((h) => ({ date: localDateString(new Date(h.at)), value: h.e1rmKg }))}

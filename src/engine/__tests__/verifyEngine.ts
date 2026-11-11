@@ -1374,8 +1374,23 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
     capturedSystemPrompt.includes(pushW3.name) && !/Tensor|TPU|Knowledge Graph/.test(capturedSystemPrompt),
     'On-device model prompt is grounded in today\'s workout without technical jargon'
   );
-  const cardioReply = await processAssistantMessage({
+  // Cardio is a plan fact (active days), so it is answered from the plan even with a model available.
+  const cardioFromPlan = await processAssistantMessage({
     userMessage: 'Should I do cardio on my rest days?',
+    profile: SAMPLE_DEMO_PROFILE,
+    activeWorkout: pushW3,
+    workouts: [pushW3],
+    biometrics: [],
+    exerciseCatalog: SEED_EXERCISES,
+    bodyweightEmaKg: 80,
+    readinessState: 'Normal',
+  });
+  assert(
+    /active day/.test(cardioFromPlan.message.text) && /20 minutes/.test(cardioFromPlan.message.text),
+    `Cardio questions are answered from the plan's active days, not the model (got "${cardioFromPlan.message.text.slice(0, 60)}")`
+  );
+  const cardioReply = await processAssistantMessage({
+    userMessage: 'Is it better to lift in the morning or the evening?',
     profile: SAMPLE_DEMO_PROFILE,
     activeWorkout: pushW3,
     workouts: [pushW3],
@@ -3651,8 +3666,8 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
     assert(
       insight.history.length === 2 &&
         insight.history[1].e1rmKg > insight.history[0].e1rmKg &&
-        /strength on this lift rising/.test(insight.summary) &&
-        /increase the weight/.test(insight.summary),
+        /Strength on this lift is rising/.test(insight.summary) &&
+        /increases the weight/.test(insight.summary),
       `Exercise summary describes the trend and today's change: "${insight.summary}"`
     );
     assert(/holds the weight steady/.test(buildExerciseInsight(plan2.exercises[0], [same], 'Amber Shield').summary), 'Low recovery days say the weight is held');
@@ -3675,7 +3690,7 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
     );
   }
 
-  console.log('\n[35. Personal Exercise Overviews (On-Device, Knowledge-Graph Grounded)]');
+  console.log('\n[35. Dynamic Exercise Card 2-Line Summary (Strict 2-Line, Concrete Load, Zero Duplication)]');
   {
     const HOUR = 60 * 60 * 1000;
     const done = (num: number, hoursAgo: number, bump: number): WorkoutSession => {
@@ -3698,9 +3713,10 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
     const today = generate6WeekMuscleBuildingWorkout(2, 80);
     const lateral = today.exercises[0];
     const kgForNotes = buildAthleteKnowledgeGraph(history, [], SEED_EXERCISES, NEW_USER_PROFILE, calculateWeeklyMuscleVolume(history, SEED_EXERCISES));
+    const lateralInsight = buildExerciseInsight(lateral, history, 'Normal');
     const facts = buildExerciseNoteFacts({
       exercise: lateral,
-      insight: buildExerciseInsight(lateral, history, 'Normal'),
+      insight: lateralInsight,
       workouts: history,
       readinessState: 'Normal',
       knowledgeGraph: kgForNotes,
@@ -3709,54 +3725,174 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
       programLabel: 'Phase 1 (Building foundations), week 1 of 6',
       formatWeight: (kg) => `${kg} kg`,
     });
-    assert(
-      facts.facts.some((f) => /this week \(the whole muscle, from all exercises\): .* hard sets against a target of \d+–\d+/.test(f)) &&
-        facts.facts.some((f) => /^Last time: 4 sets/.test(f)) &&
-        facts.facts.some((f) => /^Today's plan: 4 sets of 15 reps at 10 kg/.test(f)) &&
-        facts.facts.some((f) => /heavier than last time/.test(f)),
-      "Exercise facts combine history, today's plan and the knowledge graph's weekly target for the muscle"
-    );
-    assert(/12 of 17–27 sets for side shoulders this week/.test(facts.fallback) && facts.fallback.length > 60, `Fallback overview is personal: "${facts.fallback}"`);
 
-    const good = 'Your strength on this lift has been climbing and your side shoulders still need sets this week. Today, lift 10 kg for all 4 sets of 15 with 2 reps in reserve and lower each rep slowly.';
-    assert(acceptExerciseNote(good, facts) === good, 'A note that only uses numbers from the facts is accepted');
-    assert(acceptExerciseNote('Great work! Today lift 12 kg for 4 sets of 15 and you will add 3 kg next week.', facts) === null, 'A note with invented numbers is rejected');
-    assert(acceptExerciseNote('As an AI language model, I think you should lift the weight today with good form.', facts) === null, 'Notes that talk about being an AI are rejected');
+    // Rule 1: Strict 2-line limit & zero section headers.
+    const fallbackLines = facts.fallback.split('\n');
+    const insightLines = lateralInsight.summary.split('\n');
+    assert(
+      fallbackLines.length === 2 &&
+        facts.lines.length === 2 &&
+        insightLines.length === 2 &&
+        lateralInsight.lines.length === 2 &&
+        !/^(?:progress|goal|summary|focus)\s*:/im.test(facts.fallback) &&
+        !/^(?:progress|goal|summary|focus)\s*:/im.test(lateralInsight.summary),
+      `Exercise summary is strictly 2 headerless lines: "${facts.fallback}"`
+    );
+
+    // Rule 4: Concrete absolute load (+1.7 kg, 15.9 kg) over abstract percentages.
+    assert(
+      facts.facts.some((f) => /risen by \+1\.7 kg across 2 sessions \(from 14\.2 kg to 15\.9 kg\)/.test(f)) &&
+        /\+1\.7 kg/.test(fallbackLines[0]) &&
+        /15\.9 kg/.test(fallbackLines[0]) &&
+        !/%/.test(facts.fallback) &&
+        !/%/.test(facts.facts.join(' ')),
+      `Line 1 uses concrete absolute load rounded to 0.1 kg, never percentages: "${fallbackLines[0]}"`
+    );
+
+    // Rules 2, 3, 5: Zero table duplication, no movement execution cues, no macro volume leakage.
+    assert(
+      !/\b(?:4 sets|15 reps|10 kg|2 reps in reserve|rir|seconds|tempo|12 of 17–27|hard sets)\b/i.test(facts.fallback) &&
+        !facts.facts.some((f) => /hard sets against a target|\b4 sets\b|\b15 reps\b|reps in reserve|seconds to lower/i.test(f)),
+      'Facts and fallback never duplicate set/rep/weight/RIR table mechanics, tempo cues, or weekly muscle sets'
+    );
+
+    const good =
+      'Strength on this lift is rising, up +1.7 kg across 2 sessions to a 15.9 kg estimated max.\nToday increases the weight to drive progressive mechanical tension for your side shoulders.';
+    assert(acceptExerciseNote(good, facts) === good, 'A valid 2-line summary with concrete load and stimulus directive is accepted');
+    assert(
+      acceptExerciseNote(good.replace('\n', ' '), facts) === good,
+      'Two valid sentences on a single line are normalized into the strict 2-line format'
+    );
     assert(acceptExerciseNote('**Note:** ' + good, facts) === good, 'Markdown and "Note:" prefixes are stripped');
+
+    // Reject section headers (Progress:, Goal:, Summary:, Focus:).
     assert(
-      acceptExerciseNote("You're hitting your target for side shoulders this week. Today, lift 10 kg for 4 sets of 15 with 2 reps in reserve.", facts) === null,
-      'A note that contradicts the knowledge graph (on target vs below target) is rejected'
+      acceptExerciseNote(`Progress: ${fallbackLines[0]}\nGoal: ${fallbackLines[1]}`, facts) === null &&
+        acceptExerciseNote(`Summary: ${fallbackLines[0]}\nFocus: ${fallbackLines[1]}`, facts) === null,
+      'Section headers like Progress:, Goal:, Summary:, or Focus: are rejected'
     );
-    const onTargetFacts = { ...facts, facts: facts.facts.map((f) => f.replace('(below target)', '(on target)')) };
-    const liveNanoAnswer = "You're on target for side shoulders this week. Today, do 4 sets of 15 at 10 kg, lowering each rep over 2 seconds.";
+
+    // Reject 1-line or 3-line summaries.
     assert(
-      acceptExerciseNote(liveNanoAnswer, onTargetFacts) === liveNanoAnswer,
-      'A correct note is not rejected because "over" appears outside the target sentence (seen live from Gemini Nano)'
+      acceptExerciseNote(fallbackLines[0], facts) === null &&
+        acceptExerciseNote(`${fallbackLines[0]}\n${fallbackLines[1]}\nKeep your core braced throughout.`, facts) === null,
+      'Single-line and 3-line summaries are rejected'
     );
+
+    // Reject abstract percentages (Rule 4).
+    assert(
+      acceptExerciseNote(
+        'Your strength on this lift is up +19% across 2 sessions.\nToday increases the weight to drive progressive mechanical tension.',
+        facts
+      ) === null,
+      'Abstract strength percentages (+19%) are rejected in favor of concrete absolute load'
+    );
+
+    // Reject table/grid duplication (Rule 2: target weight, target reps, target sets, target RIR).
+    assert(
+      acceptExerciseNote(
+        `${fallbackLines[0]}\nToday lift 10 kg for 4 sets of 15 to build your side shoulders.`,
+        facts
+      ) === null &&
+        acceptExerciseNote(
+          `${fallbackLines[0]}\nComplete 4 sets today to build volume accumulation for hypertrophy.`,
+          facts
+        ) === null &&
+        acceptExerciseNote(
+          `${fallbackLines[0]}\nAim for 15 reps per set to expand hypertrophy capacity.`,
+          facts
+        ) === null,
+      'Summaries that duplicate table weight, sets, or reps are rejected'
+    );
+
+    // Reject movement execution cues (Rule 3: tempo/cadence, rest intervals, RIR).
+    assert(
+      acceptExerciseNote(
+        `${fallbackLines[0]}\nToday increases the weight while lowering each rep over 2 seconds.`,
+        facts
+      ) === null &&
+        acceptExerciseNote(
+          `${fallbackLines[0]}\nToday increases the weight, stopping with 2 reps in reserve.`,
+          facts
+        ) === null &&
+        acceptExerciseNote(
+          `${fallbackLines[0]}\nToday increases the weight with 60 seconds rest between efforts.`,
+          facts
+        ) === null,
+      'Summaries with tempo, RIR, or rest interval cues are rejected'
+    );
+
+    // Reject macro volume leakage (Rule 5: weekly muscle sets).
+    assert(
+      acceptExerciseNote(
+        `You are at 12 of 17–27 hard sets for side shoulders this week.\n${fallbackLines[1]}`,
+        facts
+      ) === null &&
+        acceptExerciseNote(
+          `${fallbackLines[0]}\nToday adds toward your weekly set target for side shoulders.`,
+          facts
+        ) === null,
+      'Summaries that leak weekly muscle set benchmarks are rejected'
+    );
+
+    // Reject invented numbers and AI self-reference.
+    assert(
+      acceptExerciseNote(
+        'Strength on this lift is rising, up +12.9 kg across 6 sessions to a 99.5 kg estimated max.\nToday increases the weight to drive progressive mechanical tension.',
+        facts
+      ) === null,
+      'A summary with numbers not in the facts is rejected'
+    );
+    assert(
+      acceptExerciseNote(
+        'As an AI language model, your strength is up +1.7 kg across 2 sessions.\nToday increases the weight for hypertrophy.',
+        facts
+      ) === null,
+      'Summaries that talk about being an AI are rejected'
+    );
+
     const plank = generate6WeekMuscleBuildingWorkout(4, 80).exercises.find((e) => e.durationSeconds)!;
-    const plankFacts = buildExerciseNoteFacts({ exercise: plank, insight: buildExerciseInsight(plank, [], 'Normal'), workouts: [], readinessState: 'Normal', knowledgeGraph: kgForNotes, formatWeight: (kg) => `${kg} kg` });
+    const plankFacts = buildExerciseNoteFacts({
+      exercise: plank,
+      insight: buildExerciseInsight(plank, [], 'Normal'),
+      workouts: [],
+      readinessState: 'Normal',
+      knowledgeGraph: kgForNotes,
+      formatWeight: (kg) => `${kg} kg`,
+    });
     assert(
-      plankFacts.facts.some((f) => new RegExp(`holds of ${plank.durationSeconds} seconds`).test(f)) && !plankFacts.facts.some((f) => /reps in reserve/.test(f)),
-      `Timed holds are described as holds in seconds, not reps with reps in reserve (${plank.name})`
+      plankFacts.fallback.split('\n').length === 2 &&
+        /isometric trunk stability/.test(plankFacts.fallback) &&
+        !plankFacts.facts.some((f) => /reps in reserve|seconds/.test(f)),
+      `Timed holds use a 2-line stability directive without seconds or RIR (${plank.name})`
     );
     assert(
-      acceptExerciseNote(`Focus on 4 sets of 1 rep at bodyweight, ensuring you have 2 reps left in reserve for each set.`, plankFacts) === null,
-      'A note that gives a timed hold reps in reserve is rejected (seen live from Gemini Nano)'
+      acceptExerciseNote(
+        `First time on ${plank.name}—today sets your starting point.\nHold for 60 seconds with 2 reps left in reserve.`,
+        plankFacts
+      ) === null,
+      'A timed hold summary with seconds or reps in reserve is rejected'
     );
+
     const squatFirst = generate6WeekMuscleBuildingWorkout(4, 80).exercises.find((e) => e.exerciseId.includes('squat'))!;
-    const squatFacts = buildExerciseNoteFacts({ exercise: squatFirst, insight: buildExerciseInsight(squatFirst, [], 'Normal'), workouts: [], readinessState: 'Normal', knowledgeGraph: kgForNotes, formatWeight: (kg) => `${kg} kg` });
+    const squatFacts = buildExerciseNoteFacts({
+      exercise: squatFirst,
+      insight: buildExerciseInsight(squatFirst, [], 'Normal'),
+      workouts: [],
+      readinessState: 'Normal',
+      knowledgeGraph: kgForNotes,
+      formatWeight: (kg) => `${kg} kg`,
+    });
     assert(
-      acceptExerciseNote("You've only logged the squat once this week. Today, focus on clean reps with 2 reps in reserve.", squatFacts) === null,
-      'A note may not invent history for an exercise logged for the first time (seen live from Gemini Nano)'
-    );
-    assert(
-      acceptExerciseNote("You have been consistently building strength in your quads this week. Focus on clean reps with 2 reps in reserve.", squatFacts) === null,
-      'A first-time note may not claim consistent strength building (seen live from Gemini Nano)'
-    );
-    const noTargetFacts = { ...facts, facts: facts.facts.filter((f) => !/hard sets against a target/.test(f)) };
-    assert(
-      acceptExerciseNote("You've shown good progress, hitting the target of 4 sets. Today lift 10 kg for 4 sets of 15 with 2 reps in reserve.", noTargetFacts) === null,
-      'A note may not mention a weekly target when the knowledge graph has none for that muscle'
+      acceptExerciseNote(
+        "You've only logged the squat once before.\nToday focuses on clean mechanical tension for hypertrophy.",
+        squatFacts
+      ) === null &&
+        acceptExerciseNote(
+          'You have been consistently building strength in your quads.\nToday focuses on clean mechanical tension for hypertrophy.',
+          squatFacts
+        ) === null,
+      'A first-time summary may not invent prior history or claim consistent strength building'
     );
 
     let seenSystem = '';
@@ -3766,22 +3902,29 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
       seenUser = user;
       return good;
     });
-    assert(fromModel === good && /Use only the facts/.test(seenSystem) && seenUser.includes('hard sets against a target'), 'The on-device model is prompted with the knowledge-graph facts and its checked note is used');
-    assert((await generateExerciseNote(facts, async () => null)) === null, 'Without an on-device model the card keeps the fact-based overview');
+    assert(
+      fromModel === good && /Use only the facts/.test(seenSystem) && seenUser.includes('+1.7 kg'),
+      'The on-device model is prompted with the concrete load facts and its checked 2-line summary is used'
+    );
+    assert((await generateExerciseNote(facts, async () => null)) === null, 'Without an on-device model the card keeps the fact-based 2-line fallback');
     let calls = 0;
-    const retried = await generateExerciseNote(facts, async () => (++calls === 1 ? 'Lift 99 kg today for 7 sets and you will set a record this week.' : good));
-    assert(retried === good && calls === 2, 'A rejected note gets one retry before falling back');
-    assert(facts.key === buildExerciseNoteFacts({
-      exercise: lateral,
-      insight: buildExerciseInsight(lateral, history, 'Normal'),
-      workouts: history,
-      readinessState: 'Normal',
-      knowledgeGraph: kgForNotes,
-      primaryMuscle: 'Side Delts',
-      muscleLabel: 'Side shoulders',
-      programLabel: 'Phase 1 (Building foundations), week 1 of 6',
-      formatWeight: (kg) => `${kg} kg`,
-    }).key, 'Notes are cached by their facts, so the same facts reuse the same note');
+    const retried = await generateExerciseNote(facts, async () => (++calls === 1 ? 'Progress: +19% strength.\nGoal: Lift 10 kg for 4 sets of 15.' : good));
+    assert(retried === good && calls === 2, 'A rejected summary gets one retry before falling back');
+    assert(
+      facts.key ===
+        buildExerciseNoteFacts({
+          exercise: lateral,
+          insight: buildExerciseInsight(lateral, history, 'Normal'),
+          workouts: history,
+          readinessState: 'Normal',
+          knowledgeGraph: kgForNotes,
+          primaryMuscle: 'Side Delts',
+          muscleLabel: 'Side shoulders',
+          programLabel: 'Phase 1 (Building foundations), week 1 of 6',
+          formatWeight: (kg) => `${kg} kg`,
+        }).key,
+      'Summaries are cached by their facts, so the same facts reuse the same summary'
+    );
   }
 
   console.log('\n[35b. Program Page Identity Message (facts, AI checks, fallback)]');
@@ -5258,9 +5401,19 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
       const reply = await ask(msg);
       assert(Boolean(reply.updatedProfile?.homeEquipment?.includes(tag)), `Coach: "${msg}" adds ${tag}`);
     }
-    for (const msg of ['I sold my dumbbells', "I don't have dumbbells", 'I no longer have dumbbells', 'remove the dumbbells']) {
+    for (const msg of ['I sold my dumbbells', "I don't have dumbbells any more", 'I no longer have dumbbells', 'remove the dumbbells']) {
       const reply = await ask(msg);
       assert(reply.updatedProfile?.homeEquipment?.length === 0, `Coach: "${msg}" removes the dumbbells`);
+    }
+    // At the gym, "I don't have dumbbells" is about today's workout: swap options, home gear untouched.
+    {
+      const atGym = await ask("I don't have dumbbells");
+      assert(
+        !atGym.updatedProfile?.homeEquipment && atGym.actionTaken?.type !== 'UPDATE_EQUIPMENT' && /today's (workout|exercises)/.test(atGym.message.text),
+        `Coach: "I don't have dumbbells" at the gym is about today's workout and never deletes home equipment (got "${atGym.message.text.slice(0, 80)}")`
+      );
+      const atHome = await processAssistantMessage({ ...baseArgs, activeWorkout: { ...baseArgs.activeWorkout, location: 'home' }, userMessage: "I don't have dumbbells" });
+      assert(atHome.updatedProfile?.homeEquipment?.length === 0, 'Coach: "I don\'t have dumbbells" while training at home removes them from home equipment');
     }
 
     for (const msg of ['what tier am i', 'how close am i to the next tier']) {
@@ -5564,13 +5717,326 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
     const raise = active.exercises.find((e) => /Lateral Raise/.test(e.name))!;
     assert(tipsReply.includes(`${raise.sets[0].targetReps} reps`) && /goes up by itself/.test(tipsReply), `Coach without a model: exercise tips come from that exercise's card (${tipsReply.slice(0, 90)})`);
     assert(/streak/i.test(await ask('how do i stay consistent')), 'Coach without a model: staying consistent answers from the streak and plan');
-    const noteFacts = (ex: string, muscle: string, n: number) => ({ exerciseId: 'x', key: 'k', fallback: 'f', facts: [`Exercise: ${ex} (trains your ${muscle.toLowerCase()}).`, `${muscle} this week (the whole muscle, from all exercises): ${n} hard sets against a target of 13–19 (below target).`, 'Last time: 2 sets, best set 95 kg for 9 reps with 3 reps in reserve.', "Today's plan: 3 sets of 10 reps at 95 kg, leaving 2 reps in reserve, taking 2 seconds to lower each rep."] } as any);
-    assert(notes.acceptExerciseNote("You've completed 7 hard sets of cable chest press this week, below the target of 13–19. Today, do 3 sets of 10 reps at 95 kg, leaving 2 reps in reserve.", noteFacts('Cable Chest Press', 'Chest', 7)) === null, "Note check: the muscle's weekly sets can't be pinned on one exercise");
-    assert(notes.acceptExerciseNote("You've completed 2 sets of cable chest press so far this week, below the target of 13–19. Today, do 3 sets of 10 reps at 95 kg, leaving 2 reps in reserve.", noteFacts('Cable Chest Press', 'Chest', 7)) === null, "Note check: last session's set count can't pass as this week's");
-    assert(notes.acceptExerciseNote('Your chest has had 7 hard sets this week, below its target of 13–19. Today, do 3 sets of 10 reps at 95 kg, leaving 2 reps in reserve.', noteFacts('Cable Chest Press', 'Chest', 7)) !== null, "Note check: the muscle's own weekly figure is accepted");
+    const noteFacts = (ex: string, muscle: string) => ({
+      exerciseId: 'x',
+      key: 'k',
+      fallback: 'f',
+      lines: ['a', 'b'],
+      facts: [
+        `Exercise: ${ex} (trains your ${muscle.toLowerCase()}).`,
+        'Estimated 1RM on this exercise has risen by +12.9 kg across 4 sessions (from 95.5 kg to 108.4 kg).',
+        `Today consolidates volume accumulation at the current load for your ${muscle.toLowerCase()}.`,
+      ],
+    } as any);
+    assert(
+      notes.acceptExerciseNote(
+        "You've completed 7 of 13–19 hard sets for chest this week.\nToday consolidates volume accumulation for chest hypertrophy.",
+        noteFacts('Cable Chest Press', 'Chest')
+      ) === null,
+      'Note check: weekly muscle set benchmarks never leak into the 2-line exercise summary'
+    );
+    assert(
+      notes.acceptExerciseNote(
+        'Strength on this lift is up +19% across 4 sessions.\nToday consolidates volume accumulation for chest hypertrophy.',
+        noteFacts('Cable Chest Press', 'Chest')
+      ) === null,
+      'Note check: abstract percentages (+19%) are rejected in favor of concrete load'
+    );
+    assert(
+      notes.acceptExerciseNote(
+        'Strength on this lift is rising, up +12.9 kg across 4 sessions to a 108.4 kg estimated max.\nToday consolidates volume accumulation at your current load to deepen chest hypertrophy.',
+        noteFacts('Cable Chest Press', 'Chest')
+      ) !== null,
+      'Note check: a headerless 2-line summary with +12.9 kg concrete load and stimulus directive is accepted'
+    );
     const idFacts = { key: 'k', fallback: 'f', facts: ['Sessions finished in this plan: 10 of 24.', 'Estimated strength is up on 11 of 21 lifts done more than once in this plan.', 'Personal bests in this plan so far: 45.', 'Workouts in the last 14 days: 8.'] } as any;
     assert(identity.acceptIdentityMessage("You've built up your strength significantly, improving on most of your lifts across 10 of 24 sessions so far.", idFacts) === null, 'Program message check: "significantly" and "most" need figures behind them (11 of 21 is not most)');
     assert(identity.acceptIdentityMessage("You're building a solid foundation, with strength up on many lifts. You've logged 10 of 24 sessions and 45 personal bests.", idFacts) !== null, 'Program message check: an accurate message is kept');
+    // Everyday questions: answered from the plan and the log, on topic, with nothing invented.
+    {
+      const { answerEverydayQuestion, answerSwap, findExerciseNamed } = await import('../../services/coachAnswers');
+      const { MUSCLE_FRIENDLY_NAMES } = await import('../recovery');
+      const friendlyMuscle = (m: string) => ((MUSCLE_FRIENDLY_NAMES as Record<string, string>)[m] ?? m).toLowerCase();
+      const firstEx = active.exercises[0];
+      const firstDef = exercises.find((d) => d.id === firstEx.exerciseId)!;
+      const planRir = firstEx.sets.find((st) => !st.isWarmup)?.targetRir;
+      const failure = await ask('should i train to failure');
+      assert(
+        /reps in reserve/i.test(failure) && (planRir === undefined || failure.includes(`${planRir} rep`)) && !/^Yes\. Your muscles/.test(failure),
+        `"Should I train to failure" explains reps to spare from today's plan, not whether to train (got "${failure.slice(0, 70)}")`
+      );
+      const twice = await ask('can i train twice today');
+      assert(/one workout a day/i.test(twice) && !/^Yes/.test(twice), '"Can I train twice today" is not answered with "Yes"');
+      const great = await ask('i feel great today');
+      assert(!/protein/i.test(great), '"I feel great" is not a food question ("eat" inside "great")');
+      const short = await ask('i only have 30 minutes');
+      assert(short.includes(firstEx.name) && !/Planned Movements/.test(short), 'Short on time: keep the first exercises, in order');
+      const timed = workouts.filter((w) => w.completed && (w.durationMinutes ?? 0) > 0 && w.name === active.name);
+      const howLong = await ask('how long will today take');
+      assert(
+        !/rest timer/.test(howLong) && (timed.length ? howLong.includes(`${Math.round(timed[timed.length - 1].durationMinutes!)}`) : /don't have a measured time/.test(howLong)),
+        `Workout length comes from measured sessions only (got "${howLong.slice(0, 80)}")`
+      );
+      const neverTimed = answerEverydayQuestion({ lowerMsg: 'how long will today take', profile: NEW_USER_PROFILE, activeWorkout: active, workouts: [], biometrics: [], exerciseCatalog: exercises, readinessState: 'Normal', bodyweightEmaKg: 80, progressSummary: () => '', strengthLevels: () => '' });
+      assert(/don't have a measured time/.test(neverTimed ?? '') && !/\d+ minutes/.test(neverTimed ?? ''), 'With no finished workout, no workout length is invented');
+      const missed = await ask('i missed a week, what now');
+      assert(/nothing to make up/.test(missed) && missed.includes(`${nextNumber} of ${plan.templates.length}`), 'Missed sessions: the plan waits at the same session, nothing to make up');
+      const sore = await ask("i'm sore from yesterday");
+      assert(/soreness/i.test(sore) && /normal/.test(sore) && !/Planned Movements/.test(sore), 'Soreness gets a soreness answer with the recovery check');
+      const cardio = await ask('should i do cardio');
+      assert(/active day/.test(cardio) && !/Kaushal|Academic Citation/.test(cardio), 'Cardio is answered from the plan, not a science card');
+      const how = await ask(`how do i do the ${firstEx.name.toLowerCase()}`);
+      assert(how.includes(firstEx.name) && how.includes(friendlyMuscle(firstDef.primaryMuscle)) && !/Scientific Formula/.test(how), `"How do I do X" uses the exercise's own library entry (got "${how.slice(0, 80)}")`);
+      const rdl = await ask('how do i do a romanian deadlift');
+      assert(/Romanian Deadlift/.test(rdl) && /hamstrings/.test(rdl) && !/1\.2|multiplier/i.test(rdl), 'An exercise outside today\'s workout is still explained from the library, not the RDL multiplier card');
+      const muscles = await ask(`what muscles does the ${firstEx.name.toLowerCase()} work`);
+      assert(muscles.includes(friendlyMuscle(firstDef.primaryMuscle)) && !/Academic Citation/.test(muscles), 'Muscles trained come from the exercise library');
+      const rir = await ask('what is rir');
+      assert(/how many more good reps/.test(rir) && !/Epley|Formula/.test(rir), '"What is RIR" gets a plain definition');
+      const deload = await ask('should i deload');
+      assert(!/\b(MEV|MAV|MRV|mesocycle)\b/i.test(deload) && /easy week/.test(deload), 'Deload is answered from the athlete\'s plan with no jargon');
+      const last = [...workouts].filter((w) => w.completed).sort((a, b) => (a.completedAt || a.date).localeCompare(b.completedAt || b.date)).pop()!;
+      const lastAnswer = await ask('what did i do last workout');
+      assert(lastAnswer.includes(last.name) && lastAnswer.includes(last.exercises[0].name), 'Last workout is read from the log');
+      const count = await ask('how many workouts have i done');
+      assert(count.includes(`${workouts.filter((w) => w.completed).length} workouts`) && count.includes(`${overview.completedCount} of ${plan.templates.length}`), 'Workout count matches the log and the Program page');
+      const doing = await ask('how am i doing');
+      assert(doing.includes(`${overview.completedCount} of ${plan.templates.length}`) && !/Planned Movements/.test(doing), '"How am I doing" is plan position, streak and progress');
+      const weight = await ask("what's my bodyweight");
+      const latestWeighIn = [...biometrics].filter((b) => b.bodyweightKg > 0).pop()!;
+      assert(weight.includes(`${latestWeighIn.bodyweightKg} kg`), 'Bodyweight is the logged weigh-in');
+      const noWeighIn = answerEverydayQuestion({ lowerMsg: "what's my bodyweight", profile: NEW_USER_PROFILE, activeWorkout: active, workouts: [], biometrics: [], exerciseCatalog: exercises, readinessState: 'Normal', bodyweightEmaKg: 80, progressSummary: () => '', strengthLevels: () => '' });
+      assert(/haven't logged a weigh-in/.test(noWeighIn ?? '') && !/80/.test(noWeighIn ?? ''), 'Without a weigh-in, the placeholder bodyweight is never shown');
+      const newProtein = await processAssistantMessage({ ...args, biometrics: [], bodyweightEmaKg: 80, userMessage: 'how much protein do i need' });
+      assert(!/\b1[0-9]{2} g\b/.test(newProtein.message.text) && /per kg/.test(newProtein.message.text), 'Protein in grams needs a logged bodyweight; otherwise only per-kg guidance');
+      const calories = await ask('how many calories should i eat');
+      assert(/can't give you a calorie number/.test(calories) && !/\d{3,4}/.test(calories), 'No calorie figure is invented');
+      const thanks = await ask('thanks');
+      assert(thanks.length < 80 && !/Planned Movements/.test(thanks), '"Thanks" gets a short reply, not a briefing');
+      const offTopic = await ask("what's the capital of france");
+      assert(/don't have a good answer/.test(offTopic) && !/Planned Movements/.test(offTopic), 'An unrelated question gets an honest reply, not the workout list');
+      const briefing = await ask('what am i doing today');
+      assert(/Planned Movements/.test(briefing), 'Questions about today still get the briefing');
+      const hello = await ask('hi');
+      assert(!/auto-regulate|tactical|optimi[sz]e/i.test(hello), 'The greeting has no jargon');
+      const travel = (await processAssistantMessage({ ...args, userMessage: "i'll be away in week 5" })).message.text;
+      assert(!/mesocycle|calibrate|eccentric/i.test(travel), 'The travel reply has no jargon');
+
+      // Swaps: only today's exercises, never the kit the athlete lacks.
+      const notToday = exercises.find((d) => !active.exercises.some((e) => e.exerciseId === d.id) && d.name === 'Barbell Back Squat')!;
+      const swapAbsent = answerSwap(`swap the ${notToday.name.toLowerCase()}`, active, exercises);
+      assert(/isn't in today's workout/.test(swapAbsent) && !/You can swap/.test(swapAbsent), 'An exercise that isn\'t in today\'s workout is never offered for a swap');
+      const kit = active.exercises.find((e) => ['dumbbell', 'cable', 'barbell', 'machine'].includes(e.equipment))!.equipment;
+      const kitWord = kit === 'dumbbell' ? 'dumbbells' : kit === 'cable' ? 'cables' : kit === 'barbell' ? 'a barbell' : 'machines';
+      const noKit = answerSwap(`i don't have ${kitWord}`, active, exercises);
+      const offered = noKit.split('\n').filter((l) => l.includes('→')).map((l) => l.split('→')[1].trim());
+      assert(
+        offered.length > 0 && offered.every((name) => exercises.find((d) => d.name === name)?.equipment !== kit),
+        `Swaps for missing kit never use that kit (got "${noKit.slice(0, 120)}")`
+      );
+      const unusedKit = (['barbell', 'machine'] as const).find((k) => !active.exercises.some((e) => e.equipment === k));
+      if (unusedKit) {
+        assert(/None of today's exercises need/.test(answerSwap(`i don't have a ${unusedKit}`, active, exercises)), 'Missing kit that today doesn\'t use: the workout goes ahead as planned');
+      }
+      assert(findExerciseNamed('i love rdls', active, exercises)?.def?.isRdl === true, 'Common short names (RDL) find the exercise');
+      // The on-device model: follow-ups continue the chat, rejected answers are forgotten and retried
+      // with the reason, and the instructions never carry a bodyweight the athlete didn't log.
+      {
+        const onDevice = await import('../../services/onDeviceModel');
+        const savedModel = (globalThis as any).LanguageModel;
+        (globalThis as any).window = globalThis;
+        let created = 0;
+        const asked: string[] = [];
+        const replies: string[] = [];
+        const makeSession = (history: string[]): any => ({
+          history,
+          clone: async () => makeSession([...history]),
+          prompt: async (q: string) => {
+            asked.push(q);
+            history.push(q);
+            return replies.shift() ?? 'Keep each rep smooth and controlled, and breathe out as you lift.';
+          },
+          destroy: () => undefined,
+        });
+        (globalThis as any).LanguageModel = {
+          availability: async () => 'available',
+          create: async () => {
+            created++;
+            return makeSession([]);
+          },
+        };
+        onDevice.resetOnDeviceConversation();
+        const open1 = await ask('is it better to lift in the morning or the evening');
+        const open2 = await ask('and what about late at night');
+        assert(created === 1 && /smooth and controlled/.test(open1) && /smooth and controlled/.test(open2), `Follow-up questions continue one chat with the model instead of starting again (sessions created: ${created})`);
+
+        // A rejected answer (an invented weight) is retried once with the reason, and not remembered.
+        asked.length = 0;
+        replies.push('Try 137.5 kg for a few sets and see how it goes in the evening.', 'Either works: pick the time you can keep to each week.');
+        const retried = await ask('is the evening really fine for lifting');
+        assert(
+          /Either works/.test(retried) && asked.length === 2 && /could not be used because it used a number, weight or percentage/.test(asked[1]),
+          `A rejected model answer gets one retry that says what was wrong (got "${retried.slice(0, 60)}")`
+        );
+        replies.push('Use 137.5 kg.', 'Go with 212.5 kg today.');
+        const twiceBad = await ask('is the evening really fine for lifting then');
+        assert(!/137\.5|212\.5/.test(twiceBad), 'Two rejected answers fall back to the data-based coach');
+
+        const newPrompt = buildCoachSystemPrompt({ ...args, biometrics: [], bodyweightEmaKg: 80, userMessage: '' });
+        const loggedPrompt = buildCoachSystemPrompt({ ...args, userMessage: '' });
+        assert(!/\b80 kg\b/.test(newPrompt.split('\n')[1]) && /Athlete: \d/.test(loggedPrompt), "The model's instructions carry a bodyweight only once the athlete has logged one");
+        onDevice.resetOnDeviceConversation();
+        (globalThis as any).LanguageModel = savedModel;
+
+        // The downloaded phone model (used where Chrome has no built-in model): a rejected answer is
+        // forgotten there too, and a slow model is never asked twice.
+        {
+          const { withoutLastExchange } = onDevice;
+          const turns = [{ role: 'system', content: 's' }, { role: 'user', content: 'q1' }, { role: 'assistant', content: 'a1' }, { role: 'user', content: 'q2' }, { role: 'assistant', content: 'a2' }];
+          const trimmed = withoutLastExchange(turns);
+          assert(
+            trimmed.length === 3 && trimmed[2].content === 'a1' && withoutLastExchange(trimmed.slice(0, 1)).length === 1 && withoutLastExchange(turns.slice(0, 4)).length === 4,
+            'Phone model: forgetting drops exactly the last question and answer, and only when the chat ends with an answer'
+          );
+          delete (globalThis as any).LanguageModel;
+          let forgotten = 0;
+          const gpuAsked: string[] = [];
+          const gpuReplies = ['Load 137.5 kg and go for it.', 'Either time works: pick the one you can keep to.'];
+          let delayMs = 0;
+          onDevice.registerFallbackOnDeviceModel({
+            isReady: async () => true,
+            prompt: async (_s: string, q: string) => {
+              gpuAsked.push(q);
+              if (delayMs) await new Promise((r) => setTimeout(r, delayMs));
+              return gpuReplies.shift() ?? null;
+            },
+            forgetLast: () => { forgotten++; },
+          });
+          const fastRetry = await ask('is the evening a fine time for lifting');
+          assert(forgotten === 1 && gpuAsked.length === 2 && /Either time works/.test(fastRetry), `Phone model: a rejected answer is forgotten, then retried with the reason (forgotten ${forgotten}, asked ${gpuAsked.length})`);
+          gpuAsked.length = 0;
+          forgotten = 0;
+          gpuReplies.push('Load 137.5 kg and go for it.', 'This second answer must never be requested.');
+          delayMs = 6200;
+          const slow = await ask('is the evening a fine time for lifting really');
+          assert(forgotten === 1 && gpuAsked.length === 1 && !/137\.5|second answer/.test(slow), 'Phone model: a slow rejected answer is forgotten and not asked again; the data-based coach answers');
+          onDevice.registerFallbackOnDeviceModel(null);
+          (globalThis as any).LanguageModel = savedModel;
+        }
+
+        // Program message: the second try is told why the first was rejected.
+        const idFacts2 = { key: 'k', fallback: 'f', facts: ['Sessions finished in this plan: 10 of 24.', 'Workouts in the last 14 days: 8.'] } as any;
+        const idPrompts: string[] = [];
+        const idReplies = ["You have made huge progress across 10 of 24 sessions, and your next workout builds on it again.", "You've finished 10 of 24 sessions and trained 8 times in the last 14 days. Your next workout carries that forward."];
+        const idMessage = await identity.generateIdentityMessage(idFacts2, async (_s: string, u: string) => { idPrompts.push(u); return idReplies.shift() ?? null; });
+        assert(/10 of 24 sessions and trained 8 times/.test(idMessage ?? '') && /could not be used because it used a size word/.test(idPrompts[1] ?? ''), 'Program message: a rejected first try is retried with the reason');
+        assert(identity.checkIdentityMessage('Short.', idFacts2).problem === 'it was too short', 'Program message checks say why a message was rejected');
+      }
+
+      // Content strategy (src/engine/contentStrategy.ts) governs the coach too.
+      {
+        const { runReadAloudQaGate } = await import('../contentStrategy');
+        const { buildExerciseInsight } = await import('../../services/exerciseInsight');
+        const everyday = [
+          'should i train to failure', 'can i train twice today', 'i feel great today', 'i only have 30 minutes', 'how long will today take',
+          'i missed a week, what now', 'can i skip leg day', "i'm sore from yesterday", 'i slept badly', 'should i do cardio', 'should i deload',
+          'how am i doing', 'what should i focus on', "what's my bodyweight", 'am i losing fat', 'how many calories should i eat', 'creatine?',
+          'thanks', 'hi', 'what am i doing today', 'should i train today', 'how long should i rest', 'swap something', "i don't have a barbell",
+          'what did i do last workout', 'how do i get bigger arms', 'should i skip today', "what's the capital of france",
+        ];
+        const failures: string[] = [];
+        for (const q of everyday) {
+          const qa = runReadAloudQaGate(await ask(q));
+          if (!qa.passed) failures.push(`${q}: ${qa.violations.join('; ')}`);
+        }
+        assert(failures.length === 0, `Every coach answer passes the content strategy's read-aloud gate${failures.length ? ` (${failures.join(' | ')})` : ''}`);
+
+        // Create once, publish everywhere: the coach's answer about an exercise carries the card's own two lines.
+        const cardEx = active.exercises[0];
+        const { buildExerciseNoteFacts: noteFacts } = await import('../../services/exerciseCoachNote');
+        const precise = (v: number) => `${Math.round(v * 10) / 10} kg`;
+        const cardDef = exercises.find((d) => d.id === cardEx.exerciseId)!;
+        const cardInsight = buildExerciseInsight(cardEx, workouts, readiness.state, bw, 12, precise);
+        // Exactly what the Workout page shows on the card when no model has written a note.
+        const cardLines = noteFacts({ exercise: cardEx, insight: cardInsight, workouts, readinessState: readiness.state, knowledgeGraph: kg, primaryMuscle: cardDef.primaryMuscle, muscleLabel: (MUSCLE_FRIENDLY_NAMES as Record<string, string>)[cardDef.primaryMuscle], formatWeight: precise }).lines;
+        assert(cardInsight.lines[0] === cardLines[0], `The two card-line builders word line 1 identically ("${cardInsight.lines[0]}" vs "${cardLines[0]}")`);
+        assert(!/for your [a-z ]+ for hypertrophy/.test(cardLines[1]), `Line 2 doesn't say "for" twice ("${cardLines[1]}")`);
+
+        // Every card in every plan, for a logged athlete and a new one, in every recovery state, passes
+        // the content strategy's own audit and the note validator, and both builders agree on line 1.
+        {
+          const { runRotContentAudit } = await import('../contentStrategy');
+          const { acceptExerciseNote: acceptNote } = await import('../../services/exerciseCoachNote');
+          const { getPlanById } = await import('../trainingPlans');
+          const problems: string[] = [];
+          let checked = 0;
+          for (const hist of [workouts, [] as WorkoutSession[]]) {
+            const histKg = buildAthleteKnowledgeGraph(hist, biometrics, exercises, profile, storage.calculateWeeklyMuscleVolume(hist, exercises));
+            for (const planId of ['starter_6wk', 'starter_4day', 'muscle_building_6wk'] as const) {
+              const auditPlan = getPlanById(planId, 'Lean Bulk');
+              for (const t of auditPlan.templates) {
+                if (mbp.isActiveSlot(t)) continue;
+                for (const rs of ['Normal', 'Amber Shield'] as const) {
+                  const session = prepareSessionForAthlete(mbp.generatePlanWorkout(auditPlan, t.workoutNumber), { history: hist, bodyweightKg: bw, readinessState: rs, gender: profile.gender, experienceLevel: 'intermediate', unit: 'kg', isProgramPlan: true });
+                  for (const ex of session.exercises) {
+                    const def = exercises.find((d) => d.id === ex.exerciseId);
+                    const ins = buildExerciseInsight(ex, hist, rs, bw, 12, precise);
+                    const f = noteFacts({ exercise: ex, insight: ins, workouts: hist, readinessState: rs, knowledgeGraph: histKg, primaryMuscle: def?.primaryMuscle, muscleLabel: def ? (MUSCLE_FRIENDLY_NAMES as Record<string, string>)[def.primaryMuscle] : undefined, formatWeight: precise });
+                    checked++;
+                    const timed = Boolean(ex.durationSeconds || ex.durationMinutesRange);
+                    if (!runRotContentAudit([{ exerciseName: ex.name, summary: f.fallback }, { exerciseName: ex.name, summary: ins.summary }]).passed) problems.push(`${ex.name}: fails the audit`);
+                    else if (acceptNote(f.fallback, f) === null) problems.push(`${ex.name}: rejected by the note validator`);
+                    else if (!timed && ins.lines[0] !== f.lines[0]) problems.push(`${ex.name}: line 1 worded two ways`);
+                  }
+                }
+              }
+            }
+          }
+          assert(checked > 1000 && problems.length === 0, `All ${checked} exercise cards across the plans pass the content strategy audit${problems.length ? ` (${[...new Set(problems)].slice(0, 4).join(' | ')})` : ''}`);
+        }
+        const targets = await ask(`what are my targets for the ${cardEx.name.toLowerCase()} today`);
+        assert(targets.includes(cardLines[0]) && targets.includes(cardLines[1]), `The coach's exercise answer uses the exercise card's two lines (got "${targets.slice(0, 160)}")`);
+
+        // Model answers with hype are rejected by the same gate, in chat and in the Program message.
+        const savedLm = (globalThis as any).LanguageModel;
+        (globalThis as any).window = globalThis;
+        (globalThis as any).LanguageModel = {
+          availability: async () => 'available',
+          create: async () => ({ prompt: async () => 'Evenings are fine. Just crush it and make every set count!', destroy: () => undefined }),
+        };
+        (await import('../../services/onDeviceModel')).resetOnDeviceConversation();
+        const hype = await ask('is the evening a good time to lift');
+        assert(!/crush it|make every set count/i.test(hype), 'A model answer with hype or clichés is rejected by the read-aloud gate');
+        (await import('../../services/onDeviceModel')).resetOnDeviceConversation();
+        (globalThis as any).LanguageModel = savedLm;
+        const hypeFacts = { key: 'k', fallback: 'f', facts: ['Sessions finished in this plan: 10 of 24.'] } as any;
+        assert(/hype/.test(identity.checkIdentityMessage("You've finished 10 of 24 sessions, so go and crush it in your next workout and keep building.", hypeFacts).problem ?? ''), 'Program message: hype is rejected by the read-aloud gate');
+        assert(/pragmatic, observant strength coach/.test(buildCoachSystemPrompt({ ...args, userMessage: '' })), "The model's instructions use the content strategy's voice");
+      }
+
+      // A question never changes the plan, and the streak it quotes is the header's.
+      const skipQuestion = await processAssistantMessage({ ...args, userMessage: 'should i skip today' });
+      assert(!skipQuestion.updatedWorkout && !skipQuestion.actionTaken, '"Should I skip today?" is answered from recovery and moves nothing');
+      const restDay = await processAssistantMessage({ ...args, userMessage: 'take a rest day' });
+      const headerStreak = computeTrainingStreak(workouts, Date.now(), []);
+      assert(
+        restDay.actionTaken?.type === 'SHIFT_WORKOUT' && (headerStreak > 0 ? restDay.message.text.includes(`${headerStreak}-day streak`) : !/streak/.test(restDay.message.text)),
+        `"Take a rest day" still logs it, quoting the header's streak (${headerStreak}) and not a stored counter`
+      );
+      const twoPresses = active.exercises.filter((e) => /press/i.test(e.name));
+      if (twoPresses.length >= 2) {
+        const second = twoPresses[1];
+        const core = second.name.toLowerCase().replace(/\b(dumbbell|cable|barbell|machine)\b/g, '').replace(/\s+/g, ' ').trim();
+        const target = await ask(`what are my targets for the ${core} today`);
+        assert(target.includes(second.name) && !target.includes(`**${twoPresses[0].name}**`), `A named exercise is matched exactly: "${core}" is ${second.name}, not the first press in the list`);
+      }
+      const walked = await ask('i walked 40 minutes today');
+      assert(/active day/.test(walked) && !/Planned Movements/.test(walked), 'Reporting a walk explains how it counts as an active day');
+      const arms = await ask('how do i get bigger arms');
+      const bi = kg.muscleProfiles.find((m) => m.muscleKey === 'Biceps')!;
+      assert(arms.includes(`Biceps: ${bi.weeklySets} of ${bi.personalizedMav[0]}–${bi.personalizedMav[1]}`), 'Growing a muscle is answered with its weekly sets against target, the exercise cards\' count');
+      assert(answerEverydayQuestion({ lowerMsg: 'why does the formula use 30', profile, activeWorkout: active, workouts, biometrics, exerciseCatalog: exercises, readinessState: 'Normal', bodyweightEmaKg: bw, progressSummary: () => '', strengthLevels: () => '' }) === null, 'Formula questions still go to the science cards');
+    }
     const kbRest = EXERCISE_SCIENCE_KNOWLEDGE_BASE.find((p) => p.id === 'sp-rest-intervals');
     assert(!kbRest || !/simulated|2\.5 minutes for compound lifts and 90 seconds/.test(kbRest.practicalApplication), 'The science card describes the rest timer as it really works');
     storage.resetAllToSeedData();
@@ -5884,6 +6350,141 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
       trusted.port1.close();
       stranger.port1.close();
     }
+  }
+
+  console.log('\n[43. Content Strategy Quad, Message Architecture, COPE Domain Model, Poka-Yoke & ROT Governance]');
+  {
+    const cs = await import('../contentStrategy');
+
+    // 1. Core Content Vision & Winning Aspiration (Halvorson Quad + Playing to Win)
+    assert(
+      cs.CORE_CONTENT_VISION.coreStrategyStatement ===
+        'Translate empirical training data into concise, identity-affirming coaching that guides athletes from effort to mastery.' &&
+        cs.CORE_CONTENT_VISION.quadPillars.length === 4 &&
+        Boolean(cs.CORE_CONTENT_VISION.winningAspiration.achieve) &&
+        Boolean(cs.CORE_CONTENT_VISION.winningAspiration.be) &&
+        Boolean(cs.CORE_CONTENT_VISION.winningAspiration.do),
+      'Core Content Vision codifies Halvorson Quad and Playing to Win aspiration'
+    );
+
+    // 2. User Context & Conversational Design Principles (Pre-Session, Intra-Session, Post-Session)
+    assert(
+      cs.WORKOUT_LIFECYCLE_CONTEXT_MATRIX.length === 3 &&
+        cs.WORKOUT_LIFECYCLE_CONTEXT_MATRIX[0].id === 'pre_session' &&
+        cs.WORKOUT_LIFECYCLE_CONTEXT_MATRIX[1].id === 'intra_session' &&
+        cs.WORKOUT_LIFECYCLE_CONTEXT_MATRIX[2].id === 'post_session',
+      'Workout lifecycle context matrix maps Doing, Feeling, and Gricean execution across all 3 phases'
+    );
+
+    // 3. Message Architecture & Voice/Tone Matrix
+    assert(
+      cs.TREISE_MESSAGE_ARCHITECTURE.length === 3 &&
+        cs.TREISE_MESSAGE_ARCHITECTURE[0].id === 'empirical_verifiable' &&
+        cs.TREISE_MESSAGE_ARCHITECTURE[0].priority === 1 &&
+        cs.VOICE_TONE_MATRIX.tones.prs_and_milestones.sampleCopy === 'New 8RM baseline established.',
+      'Message Architecture prioritizes Empirical & Verifiable first and defines lifecycle Voice/Tone matrix'
+    );
+
+    // 4. COPE Domain Model & Channel Reuse (Mobile/PWA vs. Pixel Watch Companion)
+    assert(cs.COPE_DOMAIN_RELATIONSHIPS.length === 4, 'COPE OOUX domain relationships link Athlete, Goal, Program, Workout, and Exercise');
+    const sampleW = generate6WeekMuscleBuildingWorkout(1, 80);
+    const sampleEx = sampleW.exercises[2]; // Guillotine press
+    const goalChunk = cs.buildCopeGoalChunk({
+      baselineValue: 95.5,
+      currentValue: 108.4,
+      targetValue: 105.0,
+      sessionCount: 4,
+    });
+    assert(goalChunk.Historical_Delta_kg === 12.9, `Goal chunk computes Historical_Delta_kg (+12.9 kg, got ${goalChunk.Historical_Delta_kg})`);
+    const exChunk = cs.buildCopeExerciseChunk({
+      exercise: sampleEx,
+      goal: goalChunk,
+      prevBestSet: { weightKg: 68, reps: 12 },
+      sessionStimulusRule: 'Today consolidates volume accumulation at your current load to deepen chest hypertrophy.',
+    });
+    const progChunk = {
+      Program_Title: '6-Week Muscle Building Plan',
+      Block_Stimulus: 'Hypertrophy' as const,
+      Duration_Weeks: 6,
+      Weekly_Volume_Landmarks: {
+        muscleLabel: 'Chest',
+        currentSets: 7,
+        mevMrvRange: [13, 19] as [number, number],
+        formattedBarLabel: '7 of 13–19 hard sets',
+      },
+    };
+    const mobileView = cs.projectExerciseToMobileCard({
+      exerciseChunk: exChunk,
+      goalChunk,
+      programChunk: progChunk,
+    });
+    const watchView = cs.projectExerciseToPixelWatch({
+      workoutChunk: {
+        Workout_ID: sampleW.id,
+        Session_Focus: sampleW.name,
+        Estimated_Duration: 45,
+        Readiness_Adjustment_Note: null,
+      },
+      exerciseChunk: exChunk,
+      goalChunk,
+    });
+    assert(
+      mobileView.twoLineBrief.length === 2 &&
+        /\+12\.9 kg/.test(mobileView.twoLineBrief[0]) &&
+        mobileView.weeklyVolumeProgressBar?.visible === true &&
+        mobileView.weeklyVolumeProgressBar.label === '7 of 13–19 hard sets' &&
+        watchView.activeSetScreen.weeklyVolumeVisible === false &&
+        watchView.postSetHapticMilestoneAlert === true,
+      'COPE channel projections separate Mobile Card (with Weekly Volume bar) from Pixel Watch Companion (hides Weekly Volume during active set, triggers haptic milestone)'
+    );
+
+    // 5. UI Microcopy, Action-Oriented Controls, Poka-Yoke & Graceful Empty States
+    assert(
+      cs.formatRestActionLabel(120) === 'Start 2:00 Rest' &&
+        cs.CONTENT_SCHEMA_DICTIONARY.controls.logSet === 'Log Set' &&
+        cs.CONTENT_SCHEMA_DICTIONARY.controls.swapExercise === 'Swap Exercise',
+      'Action-oriented controls use explicit verbs (Log Set, Start 2:00 Rest, Swap Exercise)'
+    );
+    const baselineBrief = cs.buildGracefulBaselineBrief(2);
+    assert(
+      baselineBrief[0] === 'Establishing your baseline strength on this lift today.' &&
+        baselineBrief[1] === 'Leave 2 reps in reserve on your final set to calibrate your starting e1RM.',
+      'Graceful empty state provides baseline framing for new exercises (n < 2 sessions)'
+    );
+    const pokaTypo = cs.evaluateWeightPokaYoke(700, 70, 'kg');
+    const pokaNormal = cs.evaluateWeightPokaYoke(72.5, 70, 'kg');
+    assert(
+      pokaTypo.isSuspiciousJump &&
+        pokaTypo.message === '700 kg is a 630 kg jump from your last set. Did you mean 70 kg?' &&
+        pokaTypo.actionLabel === 'Change to 70 kg' &&
+        !pokaNormal.isSuspiciousJump,
+      `Poka-yoke fat-finger validation catches 70 kg -> 700 kg jump ("${pokaTypo.message}")`
+    );
+
+    // 6. Content Intelligence, Read-Aloud QA Gate & ROT Audit
+    assert(
+      cs.CONTENT_EVALUATION_MATRIX.length === 3 &&
+        cs.runReadAloudQaGate(mobileView.twoLineBrief.join('\n')).passed &&
+        !cs.runReadAloudQaGate('Make every set count! Unicorns high-fiving T-Rexes!').passed &&
+        !cs.runReadAloudQaGate('Weight: NaN kg').passed,
+      'Read-Aloud QA gate passes grounded coaching and rejects cheerleading clichés, hyperbole, and NaN leaks'
+    );
+    const rotClean = cs.runRotContentAudit([
+      { exerciseName: exChunk.Exercise_Name, summary: mobileView.twoLineBrief.join('\n') },
+    ]);
+    const rotDirty = cs.runRotContentAudit([
+      {
+        exerciseName: 'Bench Press',
+        summary: 'Progress: Your strength is up +19% (7 of 13–19 hard sets).\nGoal: Lift 70 kg for 3 sets of 8 reps at 2 RIR.',
+      },
+    ]);
+    assert(
+      rotClean.passed &&
+        !rotDirty.passed &&
+        rotDirty.redundant.length > 0 &&
+        rotDirty.outdated.length > 0,
+      'ROT audit passes clean 2-line briefs and flags redundant table/volume duplication and outdated percentages'
+    );
   }
 
   console.log('\nALL 40 ENGINE, GOVERNANCE, DESIGN HEURISTICS, TYPOGRAPHY, WEARABLES, WHOOP STRAIN, GOOGLE AUTH, ONBOARDING CONTEXT, 6-WEEK PROGRAM, TENSOR AI, SESSION REPORT, WORKOUT PAGE, EXERCISE OVERVIEW & RENPHO BLUETOOTH SUITES PASSED SUCCESSFULLY! 🎯');

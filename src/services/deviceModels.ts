@@ -4,6 +4,6 @@
  * screen that asks the on-device model something.
  */
 import { registerFallbackOnDeviceModel } from './onDeviceModel';
-import { isGpuModelReady, promptGpuModel } from './gpuModel';
+import { forgetLastGpuExchange, isGpuModelReady, promptGpuModel } from './gpuModel';
 
-registerFallbackOnDeviceModel({ isReady: isGpuModelReady, prompt: promptGpuModel });
+registerFallbackOnDeviceModel({ isReady: isGpuModelReady, prompt: promptGpuModel, forgetLast: forgetLastGpuExchange });

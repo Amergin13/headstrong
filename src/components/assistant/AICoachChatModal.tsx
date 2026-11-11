@@ -1,3 +1,4 @@
+import { planPosition } from '../../services/coachAnswers';
 import type { ActivityLog } from '../../engine/activeDays';
 import React, { useState, useRef, useEffect } from 'react';
 import {
@@ -151,15 +152,16 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
     warmUpOnDeviceModel().catch(() => undefined);
 
     // Initial contextual welcome message
-    const welcomeText = `Hey! I'm your AI Coach. You're on week ${
-      profile.mesocycleWeek || 1
+    // The same week the Program page shows (from the plan, never the old week counter).
+    const welcomeText = `Hey! I'm your coach. You're in week ${
+      planPosition(profile, workouts, activities ?? []).week
     } of 6, and up next is ${activeWorkout?.name || 'your workout'} (${
       activeWorkout?.location === 'travel'
-        ? 'Bodyweight mode'
+        ? 'bodyweight'
         : activeWorkout?.location === 'home'
-        ? 'At Home'
+        ? 'at home'
         : 'gym'
-    }). Ask me about today's weights, swapping an exercise, travelling, new home equipment, or how your recovery looks.`;
+    }). Ask me about today's targets, how to do an exercise, whether to train today, a short session, or how you're progressing.`;
 
     const starterMessage: AssistantChatMessage = {
       id: 'msg-welcome',
@@ -257,24 +259,28 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
       text: 'How should I warm up today?',
     },
     {
-      label: "I'm travelling",
-      text: "I'll be away travelling next week",
+      label: 'Should I train today?',
+      text: 'Should I train today?',
     },
     {
-      label: 'Got a pull-up bar',
-      text: 'I got a new pull-up bar for my home setup',
+      label: 'Short on time',
+      text: "I'm short on time today",
+    },
+    {
+      label: 'How am I doing?',
+      text: 'How am I doing?',
     },
     {
       label: 'How is my recovery?',
       text: 'How is my recovery looking?',
     },
     {
-      label: 'Take a rest day',
-      text: "I can't train today, take a rest day",
+      label: "I'm travelling",
+      text: "I'll be away travelling next week",
     },
     {
-      label: 'Why do dumbbells count more?',
-      text: 'Why does Treise use a 1.18x dumbbell multiplier?',
+      label: 'Take a rest day',
+      text: "I can't train today, take a rest day",
     },
     {
       label: 'How is my strength score worked out?',

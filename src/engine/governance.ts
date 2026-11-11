@@ -324,6 +324,28 @@ export const INITIAL_GOVERNANCE_ITEMS: GovernanceChangeItem[] = [
       'src/components/assistant/AICoachChatModal.tsx',
     ],
   },
+  {
+    id: 'gov-content-strategy-cope',
+    title: 'Core Content Strategy Quad, Message Architecture & COPE Domain Modeling',
+    category: 'UX & Information Architecture',
+    status: 'locked',
+    versionIntroduced: 'v2.0',
+    rationale:
+      'Turns raw workout telemetry into structured, identity-affirming coaching across mobile and Pixel Watch interfaces by combining Halvorson’s Core Strategy Quad, Bloomstein’s Message Architecture, Eizans/Kissane Personal-Behavioral Context, Gricean Maxims, and Atherton/Hane Domain-Driven COPE Modeling.',
+    whatWorkedWell:
+      'Separates operational logging inputs from the 2-line exercise brief, enforces concrete physical increments (+12.9 kg e1RM) over abstract percentages, provides poka-yoke fat-finger weight validation in SetRow, and enforces Read-Aloud and ROT QA gates.',
+    critiqueAndRisks:
+      'Dynamic generators must never duplicate table mechanics (Weight, Reps, Sets, RIR) or weekly muscle volume bars inside the 2-line exercise brief, and must strip out generic cheerleading ("make every set count").',
+    lockedInvariant:
+      'All exercise summaries, COPE channel projections, and poka-yoke weight validations must pass runReadAloudQaGate() and runRotContentAudit() with zero table/volume duplication.',
+    files: [
+      'src/engine/contentStrategy.ts',
+      'src/services/exerciseInsight.ts',
+      'src/services/exerciseCoachNote.ts',
+      'src/components/train/ExerciseCard.tsx',
+      'src/components/train/SetRow.tsx',
+    ],
+  },
 ];
 
 export interface DesignHeuristicRule {

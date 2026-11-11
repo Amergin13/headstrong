@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { SetType, WorkoutSet } from '../../engine/types';
+import { evaluateWeightPokaYoke } from '../../engine/contentStrategy';
 import { triggerHaptic } from '../../utils/haptics';
 import { useUnits } from '../../utils/unitsContext';
 import type { PreviousSet } from '../../services/exerciseInsight';
@@ -47,6 +48,12 @@ export const SetRow: React.FC<SetRowProps> = ({
 
   // Bumped each time the athlete ticks the set, to replay the completion animation (not on load).
   const [celebration, setCelebration] = useState(0);
+  const [dismissedPokaYokeKg, setDismissedPokaYokeKg] = useState<number | null>(null);
+
+  const referenceWeightKg = previous && previous.weightKg > 0 ? previous.weightKg : set.targetWeightKg;
+  const pokaYoke =
+    !isBodyweight && !set.completed ? evaluateWeightPokaYoke(currentWeight, referenceWeightKg, units.unit) : null;
+  const showPokaYoke = Boolean(pokaYoke?.isSuspiciousJump && dismissedPokaYokeKg !== currentWeight);
 
   const handleToggleComplete = () => {
     const nextCompleted = !set.completed;
@@ -181,6 +188,7 @@ export const SetRow: React.FC<SetRowProps> = ({
         type="button"
         onClick={handleToggleComplete}
         aria-label={set.completed ? `Mark ${label.toLowerCase()} not done` : `Complete ${label.toLowerCase()}`}
+        title={set.completed ? `${label} logged` : `Log ${label.toLowerCase()}`}
         aria-pressed={set.completed}
         className={`wk-tap flex items-center justify-center transition-colors active:scale-95 ${
           celebration > 0 && set.completed ? 'wk-tick-pop' : ''
@@ -212,6 +220,37 @@ export const SetRow: React.FC<SetRowProps> = ({
       <div className="flex justify-end" style={{ gap: fig(28) }} role="group" aria-label={`${label} reps for each side`}>
         {sideInput('left')}
         {sideInput('right')}
+      </div>
+    )}
+    {showPokaYoke && pokaYoke?.message && pokaYoke.actionLabel && (
+      <div
+        role="status"
+        aria-live="polite"
+        className="wk-raised flex items-center justify-between flex-wrap"
+        style={{ gap: fig(16), fontSize: `max(12px, ${fig(22)})` }}
+      >
+        <span className="text-white/90">{pokaYoke.message}</span>
+        <div className="flex items-center" style={{ gap: fig(12) }}>
+          <button
+            type="button"
+            onClick={() => {
+              triggerHaptic('light');
+              onUpdate({ actualWeightKg: pokaYoke.referenceWeightKg });
+              setDismissedPokaYokeKg(null);
+            }}
+            className="wk-pill min-h-[44px] font-semibold"
+            style={{ background: 'var(--wk-accent)', color: '#13181C' }}
+          >
+            {pokaYoke.actionLabel}
+          </button>
+          <button
+            type="button"
+            onClick={() => setDismissedPokaYokeKg(currentWeight)}
+            className="wk-pill min-h-[44px] text-white/70"
+          >
+            Keep {pokaYoke.enteredDisplay}
+          </button>
+        </div>
       </div>
     )}
     </div>

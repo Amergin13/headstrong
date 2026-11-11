@@ -7,6 +7,7 @@
  *
  * The heavy WebLLM library is loaded lazily, only when this feature is used.
  */
+import { withoutLastExchange } from './onDeviceModel';
 import type { MLCEngineInterface } from '@mlc-ai/web-llm';
 
 /** Qwen2.5 1.5B Instruct (Apache-2.0). The f16 build needs the GPU's shader-f16 feature. */
@@ -194,6 +195,11 @@ async function runGpuPrompt(
     console.warn('On-device coach model failed:', err);
     return null;
   }
+}
+
+/** Drops the last question and answer from the chat, so a rejected answer isn't built on. */
+export function forgetLastGpuExchange(): void {
+  conversation = withoutLastExchange(conversation);
 }
 
 /**
