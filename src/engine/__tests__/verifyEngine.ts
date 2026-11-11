@@ -6014,6 +6014,93 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
         assert(/pragmatic, observant strength coach/.test(buildCoachSystemPrompt({ ...args, userMessage: '' })), "The model's instructions use the content strategy's voice");
       }
 
+      // Goals in the knowledge graph, and the "Workout finished" screen built from them.
+      {
+        const goalsMod = await import('../../services/athleteGoals');
+        const finishMod = await import('../../services/workoutFinish');
+        const { runReadAloudQaGate: gate } = await import('../contentStrategy');
+        const { calculateSessionTonnage } = await import('../wci');
+        const processGoal = kg.goals.find((g) => g.kind === 'process')!;
+        const weekOfSlot = (n: number) => plan.templates.find((t) => t.workoutNumber === n)!.week;
+        const doneSlots = overview.workouts.filter((w) => w.status === 'done');
+        const latestWeek = Math.max(...doneSlots.map((w) => weekOfSlot(w.workoutNumber)));
+        assert(
+          processGoal.title === `Train ${plan.workoutsPerWeek} times a week` &&
+            processGoal.target === plan.workoutsPerWeek &&
+            processGoal.current === doneSlots.filter((w) => weekOfSlot(w.workoutNumber) === latestWeek).length,
+          `Knowledge graph has a process goal counted from the plan (${processGoal.detail})`
+        );
+        const outcomeGoals = kg.goals.filter((g) => g.kind === 'outcome');
+        assert(
+          outcomeGoals.length > 0 && outcomeGoals.every((g) => g.unit === 'kg' && g.target > g.current && g.progressPct >= 0 && g.progressPct <= 100 && /: /.test(g.title)),
+          `Knowledge graph has outcome goals: each standard movement's next strength level (${outcomeGoals.map((g) => g.title).join(', ')})`
+        );
+        const noWeighInGoals = goalsMod.buildAthleteGoals({ profile, workouts, biometrics: [], bodyweightKg: 80 });
+        assert(noWeighInGoals.length === 1 && noWeighInGoals[0].kind === 'process', 'Without a logged bodyweight there are no strength-level goals (none is guessed from the placeholder)');
+        const freshGoals = goalsMod.buildAthleteGoals({ profile: NEW_USER_PROFILE, workouts: [], biometrics: [] });
+        assert(freshGoals[0].current === 0 && freshGoals[0].progressPct === 0 && !freshGoals[0].achieved, 'A new athlete starts the weekly goal at 0');
+
+        // Finish today's workout with one set celebrated as a personal best.
+        const logged: WorkoutSession = {
+          ...active,
+          exercises: active.exercises.map((ex) => ({
+            ...ex,
+            sets: ex.sets.map((st) => ({ ...st, completed: true, actualWeightKg: st.targetWeightKg, actualReps: st.targetReps, actualRir: st.targetRir })),
+          })),
+        };
+        const pbSet = logged.exercises[1].sets.find((st) => !st.isWarmup)!;
+        logged.celebratedSetIds = [pbSet.id];
+        const precise1 = (v: number) => `${Math.round(v * 10) / 10} kg`;
+        const finish = finishMod.buildWorkoutFinish({ profile, workouts, finished: logged, biometrics, exerciseCatalog: exercises, bodyweightKg: bw, formatWeight: precise1 })!;
+        const tonnage = calculateSessionTonnage({ ...logged, completed: true });
+        assert(
+          finish.report.session.volumeKg === Math.round(tonnage.tonnageKg) && finish.report.session.workingSets === tonnage.completedSetsCount,
+          `Finish screen volume and sets match the session's logged sets (${finish.report.session.volumeKg} kg, ${finish.report.session.workingSets} sets)`
+        );
+        assert(
+          finish.personalBests.length === 1 &&
+            finish.personalBests[0].exerciseName === logged.exercises[1].name &&
+            finish.personalBests[0].weightKg === pbSet.targetWeightKg &&
+            finish.personalBests[0].reps === pbSet.targetReps &&
+            finish.headline === '1 personal best',
+          'Finish screen personal bests are the sets celebrated during the workout, one card per exercise'
+        );
+        assert(finishMod.personalBestsIn({ ...logged, celebratedSetIds: [] }).length === 0, 'No celebrated set, no personal best card');
+        const moved = finish.goalProgress.find((g) => g.kind === 'process')!;
+        const sameWeek = weekOfSlot(nextNumber) === latestWeek;
+        assert(
+          moved && moved.current === (sameWeek ? processGoal.current + 1 : 1) && moved.status === (moved.current >= plan.workoutsPerWeek ? 'reached' : 'progressed'),
+          `Finishing a workout moves the weekly sessions goal (${moved?.detail})`
+        );
+        assert(
+          gate(finish.fallback).passed && !/%|percent/i.test(finish.fallback) && !/\bvolume\b|\b\d+ sets\b/i.test(finish.fallback) && finish.fallback.includes(logged.exercises[1].name),
+          `Finish summary names the lift that moved, passes the read-aloud gate and doesn't repeat volume or sets ("${finish.fallback}")`
+        );
+        assert(finishMod.checkWorkoutSummary(finish.fallback, finish).problem === undefined, 'The fact-based summary passes its own check');
+        assert(
+          /number 137\.5/.test(finishMod.checkWorkoutSummary(`${logged.exercises[1].name} beat its previous best today with 137.5 kg, and the week is moving along well.`, finish).problem ?? '') &&
+            /volume/.test(finishMod.checkWorkoutSummary(`${logged.exercises[1].name} beat its previous best today, and your volume was strong across the session.`, finish).problem ?? '') &&
+            /hype/.test(finishMod.checkWorkoutSummary(`${logged.exercises[1].name} beat its previous best today, so crush it again next time you train.`, finish).problem ?? ''),
+          'A written summary with an invented number, a volume mention or hype is rejected'
+        );
+        const summaryPrompts: string[] = [];
+        const summaryReplies = [`Great work, your volume was strong and ${logged.exercises[1].name} improved today.`, `${logged.exercises[1].name} beat its previous best today. Your week is building steadily.`];
+        const written = await finishMod.generateWorkoutSummary(finish, async (_s: string, u: string) => { summaryPrompts.push(u); return summaryReplies.shift() ?? null; });
+        assert(/building steadily/.test(written ?? '') && /could not be used because it mentioned volume/.test(summaryPrompts[1] ?? ''), 'A rejected summary is retried once with the reason');
+
+        // Reaching the goal: the session that completes the plan week.
+        const weekSlots = plan.templates.filter((t) => t.week === weekOfSlot(nextNumber));
+        const lastOfWeek = weekSlots[weekSlots.length - 1].workoutNumber === nextNumber;
+        if (lastOfWeek) assert(moved.status === 'reached', 'The last session of the plan week reaches the weekly goal');
+        const before = [{ ...processGoal, current: 3, week: 2 }];
+        const afterGoals = [{ ...processGoal, current: 4, week: 2, achieved: true, progressPct: 100 }];
+        assert(goalsMod.goalsProgressedBy(before, afterGoals)[0].status === 'reached' && goalsMod.goalsProgressedBy(afterGoals, afterGoals).length === 0, 'A goal is "reached" when the workout completes it, and unchanged goals are not shown');
+        const strength = outcomeGoals[0];
+        const leveled = goalsMod.goalsProgressedBy([strength], [{ ...strength, levelStep: (strength.levelStep ?? 0) + 1, current: strength.target + 1, title: `${strength.title.split(': ')[0]}: next` }]);
+        const firstLog = goalsMod.goalsProgressedBy([], [strength]);
+        assert(leveled[0].status === 'reached' && leveled[0].title === strength.title && firstLog.length === 0, 'A strength level reached is shown as the goal that was being chased; a first log is a starting point, not progress');
+      }
+
       // A question never changes the plan, and the streak it quotes is the header's.
       const skipQuestion = await processAssistantMessage({ ...args, userMessage: 'should i skip today' });
       assert(!skipQuestion.updatedWorkout && !skipQuestion.actionTaken, '"Should I skip today?" is answered from recovery and moves nothing');

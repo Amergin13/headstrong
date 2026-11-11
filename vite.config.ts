@@ -27,6 +27,7 @@ export default defineConfig({
         'maskable-icon-512x512.png',
         'screenshot-mobile-1.png',
         'screenshot-mobile-2.png',
+        'illustrations/workout-medal.png',
         'privacy.html',
         'terms.html',
         '.well-known/assetlinks.json',

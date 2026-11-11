@@ -175,7 +175,7 @@ export function buildSafetyResponse(message: string, activeWorkout?: WorkoutSess
  */
 export function buildCoachSystemPrompt(input: AssistantProcessInput): string {
   const { profile, activeWorkout, workouts, biometrics, exerciseCatalog, bodyweightEmaKg, readinessState, weeklyVolume = {} } = input;
-  const kg = buildAthleteKnowledgeGraph(workouts, biometrics, exerciseCatalog, profile, weeklyVolume);
+  const kg = buildAthleteKnowledgeGraph(workouts, biometrics, exerciseCatalog, profile, weeklyVolume, input.activities ?? []);
   const latestBio = biometrics[biometrics.length - 1];
   const unit = profile.weightUnit || 'kg';
   const exercisesDesc = (activeWorkout?.exercises || [])
@@ -489,7 +489,8 @@ async function processAssistantMessageCore(
     biometrics,
     exerciseCatalog,
     profile,
-    weeklyVolume
+    weeklyVolume,
+    input.activities ?? []
   );
 
   let answerText = '';

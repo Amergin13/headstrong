@@ -12,7 +12,9 @@ import {
   WorkoutSession,
 } from './types';
 import { localDateString } from '../utils/date';
-import { calculateEmaSeries } from './ema';
+import { calculateEmaSeries, getLatestBodyweightEma } from './ema';
+import { ActivityLog } from './activeDays';
+import { AthleteGoal, buildAthleteGoals } from '../services/athleteGoals';
 export type { ScientificPrinciple, DesignSystemComponent, DesignSystemComponentCategory };
 import { HYPERTROPHY_VOLUME_LANDMARKS, evaluateVolumeStatus } from './hypertrophyVolume';
 import { calculateE1RM } from './e1rm';
@@ -125,6 +127,11 @@ export interface AthleteKnowledgeGraph {
   edges: KgEdge[];
   joints: JointStrainProfile[];
   muscleProfiles: MuscleAdaptationProfile[];
+  /**
+   * What the athlete is working towards: process goals (train 4 times a week) and outcome goals
+   * (each movement's next strength level). See services/athleteGoals.ts.
+   */
+  goals: AthleteGoal[];
   bodyComposition: BodyCompositionKnowledgeProfile;
   insights: CausalInsight[];
   scientificKnowledgeBase: ScientificPrinciple[];
@@ -1524,7 +1531,9 @@ export function buildAthleteKnowledgeGraph(
   biometrics: BiometricLog[],
   exerciseCatalog: ExerciseDefinition[],
   profile: UserProfile,
-  weeklyVolume: Record<string, number>
+  weeklyVolume: Record<string, number>,
+  /** Active days (rides, runs…), which count toward the weekly sessions goal. */
+  activities: ActivityLog[] = []
 ): AthleteKnowledgeGraph {
   const exMap = new Map<string, ExerciseDefinition>(
     exerciseCatalog.map((e) => [e.id, e])
@@ -2106,6 +2115,13 @@ export function buildAthleteKnowledgeGraph(
     edges,
     joints,
     muscleProfiles,
+    goals: buildAthleteGoals({
+      profile,
+      workouts,
+      activities,
+      biometrics,
+      bodyweightKg: biometrics.some((b) => (b.bodyweightKg || 0) > 0) ? getLatestBodyweightEma(biometrics) : undefined,
+    }),
     bodyComposition,
     // The full-stretch share only means something once there are sets this week.
     insights: totalHardSetsWeek > 0 ? insights : insights.filter((i) => i.id !== 'pkg-insight-2'),

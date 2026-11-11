@@ -16,7 +16,8 @@ import { ReadinessBanner } from './ReadinessBanner';
 import { ExerciseCard } from './ExerciseCard';
 import { ExerciseSwapModal } from './ExerciseSwapModal';
 import { PlateCalculatorModal } from './PlateCalculatorModal';
-import { WorkoutSummaryModal } from './WorkoutSummaryModal';
+import { WorkoutFinishScreen } from './WorkoutFinishScreen';
+import { buildWorkoutFinish } from '../../services/workoutFinish';
 import {
   WhoopWorkoutStrainSummary,
   fetchWhoopWorkoutStrain,
@@ -607,6 +608,25 @@ export const TrainTab: React.FC<TrainTabProps> = ({
     onFinishWorkout(whoopStrainSummary || undefined);
   };
 
+  // What the finish screen shows, built once when it opens (the workout is saved when it closes).
+  const workoutFinish = useMemo(
+    () =>
+      showSummaryModal
+        ? buildWorkoutFinish({
+            profile,
+            workouts,
+            finished: activeWorkout,
+            activities,
+            biometrics,
+            exerciseCatalog,
+            bodyweightKg: biometrics.some((b) => (b.bodyweightKg || 0) > 0) ? bodyweightEmaKg : undefined,
+            formatWeight: (kg) => units.formatPrecise(kg),
+          })
+        : null,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [showSummaryModal]
+  );
+
   const phaseMeta = MESO_WEEK_PHASE_NAMES[mesoWeek] || MESO_WEEK_PHASE_NAMES[3];
   const recentCompletedWorkouts = workouts.filter((w) => w.completed).slice(0, 4);
   const currentLoc = activeWorkout.location || profile.activeLocation || 'gym';
@@ -638,7 +658,8 @@ export const TrainTab: React.FC<TrainTabProps> = ({
       biometrics,
       exerciseCatalog,
       profile,
-      calculateWeeklyMuscleVolume(workouts, exerciseCatalog)
+      calculateWeeklyMuscleVolume(workouts, exerciseCatalog),
+      activities
     );
     return buildSessionProgressReport({
       workouts,
@@ -745,7 +766,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
   // Exercise overviews: personal notes written on the device from the athlete's knowledge graph.
   const knowledgeGraph = useMemo(
     () =>
-      buildAthleteKnowledgeGraph(workouts, biometrics, exerciseCatalog, profile, calculateWeeklyMuscleVolume(workouts, exerciseCatalog)),
+      buildAthleteKnowledgeGraph(workouts, biometrics, exerciseCatalog, profile, calculateWeeklyMuscleVolume(workouts, exerciseCatalog), activities),
     [workouts, biometrics, exerciseCatalog, profile]
   );
   const programLabel = planWorkoutNumber
@@ -1206,17 +1227,8 @@ export const TrainTab: React.FC<TrainTabProps> = ({
         />
       )}
 
-      {/* Post-Workout Summary Modal */}
-      {showSummaryModal && (
-        <WorkoutSummaryModal
-          workout={activeWorkout}
-          onClose={handleCloseSummary}
-          whoopTelemetry={whoopStrainSummary}
-          isWhoopConnected={Boolean(profile.whoopConnected)}
-          isSyncingWhoop={isSyncingWhoopStrain}
-          onRefreshWhoop={syncWhoopWorkoutTelemetry}
-        />
-      )}
+      {/* Workout finished: summary, personal bests and goals moved */}
+      {showSummaryModal && workoutFinish && <WorkoutFinishScreen finish={workoutFinish} onDone={handleCloseSummary} />}
 
       {/* Past Workout Preview Modal */}
       {previewPastWorkout && (
