@@ -314,7 +314,7 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
                 setImportStatus(null);
                 setSyncProgress(null);
               }}
-              className="h-full flex items-center justify-center font-bold uppercase transition-colors px-1 min-h-[44px]"
+              className="h-full flex items-center justify-center font-bold uppercase transition-colors px-[calc(8*var(--f))] min-h-[44px]"
               style={{
                 borderRadius: fig(16),
                 fontSize: `max(12px, ${fig(22)})`,
@@ -550,7 +550,7 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
 
   if (isModal) {
     return (
-      <div role="dialog" aria-modal="true" aria-label="Wearable and recovery sync" className="wk fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
+      <div role="dialog" aria-modal="true" aria-label="Wearable and recovery sync" className="wk fixed inset-0 z-50 flex items-center justify-center p-[calc(38*var(--f))] bg-black/80 backdrop-blur-md">
         <div className="w-full max-w-md">{content}</div>
       </div>
     );

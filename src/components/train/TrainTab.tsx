@@ -809,9 +809,10 @@ export const TrainTab: React.FC<TrainTabProps> = ({
     (async () => {
       if (!(await isOnDeviceModelReady())) return;
       // One at a time, top to bottom: the model answers one request at a time.
+      // First-time exercises (hasHistory === false) already have an exact 2-line baseline fallback.
       for (const n of exerciseNotes) {
         if (cancelled) return;
-        if (cached[n.key]) continue;
+        if (cached[n.key] || !n.hasHistory) continue;
         const note = await generateExerciseNote(n);
         if (cancelled || !note) continue;
         cacheExerciseNote(n.key, note);

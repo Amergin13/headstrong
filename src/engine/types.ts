@@ -341,7 +341,36 @@ export type PlanId = 'muscle_building_6wk' | 'starter_6wk' | 'starter_4day';
 
 export type ExperienceLevel = 'new' | 'intermediate' | 'experienced';
 
+/**
+ * Goals the athlete changed on the Progress page. Anything left out follows the plan: its sessions
+ * a week, and the strength level closest to being reached.
+ */
+export interface GoalSettings {
+  /** Sessions a week to aim for, when different from the plan's. */
+  sessionsPerWeek?: number;
+  /** The movement whose strength level leads the Progress page, instead of the closest one. */
+  strengthFocus?: StrengthPillar;
+  /** Up to two targets the athlete set themselves, e.g. "12 chin-ups" or "100 kg bench press". */
+  customGoals?: CustomGoal[];
+  /** No longer used (every goal of the athlete's own now has its own ring); kept so older saves load. */
+  followCustomGoalId?: string;
+}
+
+/** A target the athlete set on one exercise: a weight to lift, or reps to do in one set. */
+export interface CustomGoal {
+  id: string;
+  exerciseId: string;
+  exerciseName: string;
+  /** 'weight' = heaviest logged set reaches `target` kg; 'reps' = most reps in one set reaches `target`. */
+  metric: 'weight' | 'reps';
+  target: number;
+  /** When it was set (YYYY-MM-DD). */
+  createdOn: string;
+}
+
 export interface UserProfile {
+  /** Goals changed on the Progress page; see GoalSettings. */
+  goalSettings?: GoalSettings;
   name: string;
   gender: Gender;
   /** True once the athlete chose it (Settings or the weight form); until then gender is a default. */
@@ -446,7 +475,8 @@ export type AssistantActionType =
   | 'SWITCH_PROGRAM_SPLIT'
   | 'SWITCH_GOAL_PHASE'
   | 'SWITCH_LOCATION'
-  | 'SHIFT_WORKOUT';
+  | 'SHIFT_WORKOUT'
+  | 'UPDATE_GOALS';
 
 export interface AssistantActionPayload {
   type: AssistantActionType;

@@ -13,9 +13,6 @@ export default defineConfig({
         skipWaiting: true,
         clientsClaim: true,
         cleanupOutdatedCaches: true,
-        // The on-device coach model library (~6 MB) loads only after the athlete opts in,
-        // so it is not part of the app's offline pre-cache.
-        globIgnores: ['**/vendor-webllm-*.js', '**/coachModel.worker-*.js'],
       },
       includeAssets: [
         'favicon.ico',
@@ -130,7 +127,6 @@ export default defineConfig({
             return 'vendor-charts';
           }
           if (id.includes('node_modules/lucide-react')) return 'vendor-icons';
-          if (id.includes('node_modules/@mlc-ai/web-llm')) return 'vendor-webllm';
           return undefined;
         },
       },

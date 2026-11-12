@@ -44,7 +44,7 @@ export const ProgramPickerModal: React.FC<ProgramPickerModalProps> = ({ programT
       role="dialog"
       aria-modal="true"
       aria-label="Change plan"
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center p-[calc(38*var(--f))] bg-black/80 backdrop-blur-sm"
     >
       <div
         className="wk-card w-full max-w-lg max-h-[90vh] overflow-y-auto shadow-2xl"

@@ -1,9 +1,19 @@
 /**
- * Connects the downloadable phone-GPU model as the fallback on-device model (used where Chrome
- * doesn't expose Gemini Nano, e.g. Chrome on Android). Imported for its side effect by every
- * screen that asks the on-device model something.
+ * Connects the stateless Gemini 2.5 Flash-Lite proxy (`/api/coach/generate`) as the fallback
+ * model wherever Chrome does not expose a built-in on-device `LanguageModel` (Gemini Nano).
+ * Imported for its side effect by screens that ask the coach or summary model.
  */
 import { registerFallbackOnDeviceModel } from './onDeviceModel';
-import { forgetLastGpuExchange, isGpuModelReady, promptGpuModel } from './gpuModel';
+import {
+  forgetLastFlashLiteExchange,
+  isFlashLiteReady,
+  promptFlashLite,
+  resetFlashLiteConversation,
+} from './geminiFlashLite';
 
-registerFallbackOnDeviceModel({ isReady: isGpuModelReady, prompt: promptGpuModel, forgetLast: forgetLastGpuExchange });
+registerFallbackOnDeviceModel({
+  isReady: isFlashLiteReady,
+  prompt: promptFlashLite,
+  forgetLast: forgetLastFlashLiteExchange,
+  resetConversation: resetFlashLiteConversation,
+});

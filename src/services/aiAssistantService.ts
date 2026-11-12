@@ -36,6 +36,7 @@ import { calculateE1RM } from '../engine/e1rm';
 import { runReadAloudQaGate, VOICE_TONE_MATRIX } from '../engine/contentStrategy';
 import { buildExerciseInsight } from './exerciseInsight';
 import { spelledNumberNotInFacts } from './factChecks';
+import { detectGoalChange } from './coachGoals';
 import { buildExerciseNoteFacts } from './exerciseCoachNote';
 import { MUSCLE_FRIENDLY_NAMES } from '../engine/recovery';
 import { findLastCompletedExerciseSession } from '../engine/progression';
@@ -561,7 +562,17 @@ async function processAssistantMessageCore(
   const equipmentChange = kitMissingToday ? null : detectedEquipmentChange;
   const matchedEquip = equipmentChange?.equipment;
 
-  if (matchedEquip) {
+  // ============================================================================
+  // 0. INTENT: CHANGE GOALS (sessions a week, own targets, the lift to follow, back to the plan's)
+  // ============================================================================
+  const goalChange = detectGoalChange(lowerMsg, profile, activeWorkout, workouts, exerciseCatalog);
+  if (goalChange) {
+    answerText = goalChange.reply;
+    if (goalChange.changed) {
+      updatedProfile = { goalSettings: goalChange.goalSettings };
+      actionTaken = { type: 'UPDATE_GOALS', summary: goalChange.summary ?? 'Goals updated' };
+    }
+  } else if (matchedEquip) {
     const currentList = new Set<HomeEquipmentTag>(profile.homeEquipment || []);
 
     if (equipmentChange.action === 'remove') {
@@ -736,11 +747,11 @@ async function processAssistantMessageCore(
   // 5. INTENT: SWITCH GOAL PHASE (e.g. "switch my goal to Cut / Recomp", "start a bulk")
   // ============================================================================
   else if (
-    /\b(cut|cutting|recomp|lose\s*fat|lean\s*bulk|bulk|bulking|build\s*muscle|maingain|stay\s*lean)\b/i.test(lowerMsg) &&
+    /\b(cut|cutting|recomp|lose\s*fat|fat\s*loss|lean\s*bulk|bulk|bulking|build\s*muscle|muscle\s*gain|gain\s*muscle|maingain|stay\s*lean)\b/i.test(lowerMsg) &&
     /\b(goal|phase|switch|change|want\s*to|start)\b/i.test(lowerMsg)
   ) {
     let targetGoal: GoalPhase = 'Cut / Recomp';
-    if (/\b(bulk|bulking|build\s*muscle|lean\s*bulk)\b/i.test(lowerMsg)) {
+    if (/\b(bulk|bulking|build\s*muscle|muscle\s*gain|gain\s*muscle|lean\s*bulk)\b/i.test(lowerMsg)) {
       targetGoal = 'Lean Bulk';
     } else if (/\b(maingain|stay\s*lean|maintain)\b/i.test(lowerMsg)) {
       targetGoal = 'Maingain';

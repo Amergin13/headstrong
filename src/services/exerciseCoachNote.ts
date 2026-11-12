@@ -17,6 +17,7 @@ import { runReadAloudQaGate } from '../engine/contentStrategy';
 import { getWorkoutCompletedAt } from '../engine/recovery';
 import { ExerciseSession, ReadinessState, WorkoutSession, WorkoutSet } from '../engine/types';
 import { ExerciseInsight } from './exerciseInsight';
+import { markPromptRejected, wasPromptRejected } from './factChecks';
 import { promptOnDeviceModel } from './onDeviceModel';
 
 export interface ExerciseNoteInput {
@@ -39,6 +40,8 @@ export interface ExerciseNoteFacts {
   exerciseId: string;
   /** Changes whenever any fact changes; used to cache the generated note. */
   key: string;
+  /** False on a first-ever session for this movement (uses the zero-cost baseline fallback). */
+  hasHistory: boolean;
   facts: string[];
   /** Strict 2-line summary built directly from the facts, shown until (or instead of) the model's. */
   fallback: string;
@@ -171,10 +174,12 @@ export function buildExerciseNoteFacts(input: ExerciseNoteInput): ExerciseNoteFa
   if (joint) facts.push(`${joint.joint} load this week: ${joint.status.toLowerCase()}, partly from this exercise.`);
   if (input.programLabel) facts.push(`Program context: ${input.programLabel}.`);
 
+  const hasHistory = timedWork ? completedSessions.length > 0 : Boolean(lastSession && insight.history.length > 0);
   const lines: [string, string] = [line1, line2];
   return {
     exerciseId: exercise.id,
     key: hash(`${EXERCISE_NOTE_SYSTEM_PROMPT}\n${facts.join('\n')}`),
+    hasHistory,
     facts,
     lines,
     fallback: `${line1}\n${line2}`,
@@ -188,22 +193,22 @@ export function buildExerciseNotePrompt(facts: ExerciseNoteFacts): string {
 const NUMBER = /\d+(?:\.\d+)?/g;
 
 /**
- * Cleans a model answer and accepts it only if it obeys all 5 Hard Architectural Rules:
- * 1. Strict 2-line limit & zero section headers (Progress:, Goal:, Summary:, Focus:, etc.).
- * 2. Zero table/grid duplication (no target weight, target reps, target sets, target RIR).
- * 3. No movement execution cues (no tempo/cadence, rest intervals, or RIR).
- * 4. Concrete absolute load over abstract percentages (no % or percent).
- * 5. No macro volume leakage (no weekly muscle set benchmarks).
- * Returns null to use the deterministic 2-line fallback.
+ * Validates a model note against all 5 Hard Architectural Rules, returning the cleaned note or a
+ * plain-English problem description for a retry.
  */
-export function acceptExerciseNote(answer: string | null, facts: ExerciseNoteFacts): string | null {
-  if (!answer) return null;
+export function checkExerciseNote(
+  answer: string | null,
+  facts: ExerciseNoteFacts
+): { text: string; problem?: undefined } | { text?: undefined; problem: string } {
+  if (!answer) return { problem: 'it was empty' };
   const cleaned = answer
     .replace(/[*#_`]/g, '')
     .replace(/^\s*(?:coaching\s+note|note)\s*:\s*/i, '')
     .replace(/^["']|["']$/g, '')
     .trim();
-  if (cleaned.length < 30 || cleaned.length > 340) return null;
+  if (cleaned.length < 30 || cleaned.length > 340) {
+    return { problem: 'it must be two concise sentences between 30 and 340 characters' };
+  }
 
   // Rule 1: Zero section headers or line prefixes (e.g., Progress:, Goal:, Summary:, Focus:, Line 1:).
   if (
@@ -211,7 +216,7 @@ export function acceptExerciseNote(answer: string | null, facts: ExerciseNoteFac
       cleaned
     )
   ) {
-    return null;
+    return { problem: 'it included a section header or label like Progress: or Goal:' };
   }
 
   // Split into lines (if newline-delimited) or sentences (if two sentences on a single line).
@@ -226,38 +231,64 @@ export function acceptExerciseNote(answer: string | null, facts: ExerciseNoteFac
         .filter(Boolean);
 
   // Rule 1: Strict 2-line limit (exactly 2 lines, 1 sentence per line).
-  if (rawLines.length !== 2) return null;
+  if (rawLines.length !== 2) {
+    return { problem: 'it must be exactly 2 lines separated by a newline, with one sentence per line' };
+  }
   for (const line of rawLines) {
     const sentenceCount = (line.match(/[.!?](\s|$)/g) || []).length;
-    if (sentenceCount !== 1) return null;
+    if (sentenceCount !== 1) {
+      return { problem: 'each of the 2 lines must have exactly one sentence' };
+    }
     if (/^(?:progress|goal|summary|focus|line\s*\d+|history|trajectory|stimulus|directive|note)\s*[:\-–—]/i.test(line)) {
-      return null;
+      return { problem: 'a line began with a label prefix' };
     }
   }
 
   const text = `${rawLines[0]}\n${rawLines[1]}`;
 
-  if (/\b(as an ai|language model|the facts|facts provided|i am an?|i'm an?)\b/i.test(text)) return null;
+  if (/\b(as an ai|language model|the facts|facts provided|i am an?|i'm an?)\b/i.test(text)) {
+    return { problem: 'it talked about itself or the facts' };
+  }
 
   // Rule 2: Zero Table/Grid Duplication (no set counts, rep counts, weight×rep notation, or target weight/reps/sets/RIR).
-  if (/\b\d+\s*(?:working\s+|hard\s+|warmup\s+|warm-up\s+)?sets?\b/i.test(text)) return null;
-  if (/\bsets?\s+of\s+\d+/i.test(text)) return null;
-  if (/\b\d+(?:\s*[–-]\s*\d+)?\s*reps?\b/i.test(text)) return null;
-  if (/\b\d+(?:\.\d+)?\s*(?:kg|lbs?)?\s*[x×]\s*\d+/i.test(text)) return null;
-  if (/\btarget\s+(?:weight|load|reps?|sets?|rir)\b/i.test(text)) return null;
+  if (/\b\d+\s*(?:working\s+|hard\s+|warmup\s+|warm-up\s+)?sets?\b/i.test(text)) {
+    return { problem: 'it mentioned a number of sets' };
+  }
+  if (/\bsets?\s+of\s+\d+/i.test(text)) {
+    return { problem: 'it mentioned sets and reps' };
+  }
+  if (/\b\d+(?:\s*[–-]\s*\d+)?\s*reps?\b/i.test(text)) {
+    return { problem: 'it mentioned a number of reps' };
+  }
+  if (/\b\d+(?:\.\d+)?\s*(?:kg|lbs?)?\s*[x×]\s*\d+/i.test(text)) {
+    return { problem: 'it used weight×rep notation' };
+  }
+  if (/\btarget\s+(?:weight|load|reps?|sets?|rir)\b/i.test(text)) {
+    return { problem: 'it mentioned target weight, reps, sets, or RIR' };
+  }
   // Line 2 is the Session Stimulus Directive and must never output operational target weights.
-  if (/\b\d+(?:\.\d+)?\s*(?:kg|lbs?)\b/i.test(rawLines[1])) return null;
+  if (/\b\d+(?:\.\d+)?\s*(?:kg|lbs?)\b/i.test(rawLines[1])) {
+    return { problem: 'Line 2 included a weight in kg/lb; keep weights only in Line 1' };
+  }
 
   // Rule 3: No Movement Execution Cues (no tempo/cadence, rest intervals, or proximity to failure / RIR).
-  if (/\b(?:tempo|cadence|eccentric|concentric)\b/i.test(text)) return null;
-  if (/\b\d+\s*(?:s|sec|seconds?)\b/i.test(text)) return null;
-  if (/\b(?:rest\s+interval|rest\s+\d+|\d+\s*(?:min|minutes?)\s+(?:of\s+)?rest)\b/i.test(text)) return null;
+  if (/\b(?:tempo|cadence|eccentric|concentric)\b/i.test(text)) {
+    return { problem: 'it mentioned tempo or cadence' };
+  }
+  if (/\b\d+\s*(?:s|sec|seconds?)\b/i.test(text)) {
+    return { problem: 'it mentioned seconds' };
+  }
+  if (/\b(?:rest\s+interval|rest\s+\d+|\d+\s*(?:min|minutes?)\s+(?:of\s+)?rest)\b/i.test(text)) {
+    return { problem: 'it mentioned rest time' };
+  }
   if (/\b(?:rir|reps?\s+(?:in\s+reserve|to\s+spare|left|shy\s+of\s+failure)|proximity\s+to\s+failure|to\s+failure)\b/i.test(text)) {
-    return null;
+    return { problem: 'it mentioned RIR or failure' };
   }
 
   // Rule 4: Concrete Absolute Load Over Abstract Percentages (ban % and percent/percentage).
-  if (/\d+(?:\.\d+)?\s*%|\bpercent(?:age)?\b/i.test(text)) return null;
+  if (/\d+(?:\.\d+)?\s*%|\bpercent(?:age)?\b/i.test(text)) {
+    return { problem: 'it used a percentage; use only exact kg/lb figures from the facts' };
+  }
 
   // Rule 5: No Macro Volume Leakage (ban weekly muscle set counts/benchmarks).
   if (
@@ -265,17 +296,18 @@ export function acceptExerciseNote(answer: string | null, facts: ExerciseNoteFac
       text
     )
   ) {
-    return null;
+    return { problem: 'it mentioned weekly sets or hard sets' };
   }
 
   const allFacts = facts.facts.join(' ');
   const allowed = new Set(allFacts.match(NUMBER) || []);
   const used = text.match(NUMBER) || [];
-  if (used.some((n) => !allowed.has(n))) return null;
+  const strange = used.find((n) => !allowed.has(n));
+  if (strange) return { problem: `it used the number ${strange}, which is not in the facts` };
 
   // When historical load figures exist in the facts, Line 1 must anchor on a concrete load metric (kg/lb).
   if (/\b\d+(?:\.\d+)?\s*(?:kg|lbs?)\b/i.test(allFacts) && !/\b\d+(?:\.\d+)?\s*(?:kg|lbs?)\b/i.test(rawLines[0])) {
-    return null;
+    return { problem: 'Line 1 must include the exact estimated max kg/lb figure from the facts' };
   }
 
   // A first-ever session has no history to talk about.
@@ -285,21 +317,40 @@ export function acceptExerciseNote(answer: string | null, facts: ExerciseNoteFac
       text
     )
   ) {
-    return null;
+    return { problem: 'this is a first-ever session, so do not claim prior history' };
   }
 
   // Errors the real on-device model made when rewording these facts. Every load figure in the
   // facts is an estimated max, so it must be called an estimate and never a weight that was lifted,
   // and the facts never describe the last session.
-  if (/\byou (lifted|pressed|rowed|pulled|curled|squatted|benched|hit|moved)\b/i.test(text)) return null;
-  if (/\b(last|previous|prior) (session|workout|time)\b/i.test(text) && !/\b(last|previous) (session|workout|time)\b/i.test(allFacts)) return null;
-  if (/\b(kg|lbs?)\b/i.test(rawLines[0]) && /estimated/i.test(allFacts) && !/\bestimat/i.test(rawLines[0])) return null;
+  if (/\byou (lifted|pressed|rowed|pulled|curled|squatted|benched|hit|moved)\b/i.test(text)) {
+    return { problem: 'it treated an estimated max as a weight lifted' };
+  }
+  if (/\b(last|previous|prior) (session|workout|time)\b/i.test(text) && !/\b(last|previous) (session|workout|time)\b/i.test(allFacts)) {
+    return { problem: 'it mentioned a previous session not described in the facts' };
+  }
+  if (/\b(kg|lbs?)\b/i.test(rawLines[0]) && /estimated/i.test(allFacts) && !/\bestimat/i.test(rawLines[0])) {
+    return { problem: 'Line 1 gave the load without calling it an estimated max' };
+  }
 
   // No praise the facts don't show, and must pass the Read-Aloud QA Gate (no hollow cheerleading or error leaks).
-  if (/\b(consistent\w*|dedicat\w*|never miss\w*)\b/i.test(text)) return null;
-  if (!runReadAloudQaGate(text).passed) return null;
+  if (/\b(consistent\w*|dedicat\w*|never miss\w*)\b/i.test(text)) {
+    return { problem: 'it praised consistency not shown in the facts' };
+  }
+  if (!runReadAloudQaGate(text).passed) {
+    return { problem: 'it used hype, a cliché, or judgmental wording' };
+  }
 
-  return text;
+  return { text };
+}
+
+/**
+ * Cleans a model answer and accepts it only if it obeys all 5 Hard Architectural Rules.
+ * Returns null to use the deterministic 2-line fallback.
+ */
+export function acceptExerciseNote(answer: string | null, facts: ExerciseNoteFacts): string | null {
+  const checked = checkExerciseNote(answer, facts);
+  return checked.problem !== undefined ? null : checked.text;
 }
 
 /** Asks the on-device model for the note. Null when no model is ready or its answer fails the checks. */
@@ -308,16 +359,29 @@ export async function generateExerciseNote(
   prompt: typeof promptOnDeviceModel = promptOnDeviceModel,
   attempts = 2
 ): Promise<string | null> {
+  const rejectKey = `note:${facts.key}`;
+  if (prompt === promptOnDeviceModel && wasPromptRejected(rejectKey)) return null;
+  let problem: string | undefined;
+  let sawModelAnswer = false;
   // A model that throws is the same as no model: the fact-based text stays.
   try {
     for (let i = 0; i < attempts; i++) {
-      const answer = await prompt(EXERCISE_NOTE_SYSTEM_PROMPT, buildExerciseNotePrompt(facts), {
+      const request = problem
+        ? `${buildExerciseNotePrompt(facts)}\n(Your last 2-line summary could not be used because ${problem}. Write it again.)`
+        : buildExerciseNotePrompt(facts);
+      const answer = await prompt(EXERCISE_NOTE_SYSTEM_PROMPT, request, {
         stateless: true,
+        maxTokens: 110,
         timeoutMs: 45_000,
       });
-      if (answer === null) return null; // no model, or it failed: don't retry
-      const accepted = acceptExerciseNote(answer, facts);
-      if (accepted) return accepted;
+      if (answer === null) return null; // no model, or it failed: don't retry or poison cache
+      sawModelAnswer = true;
+      const checked = checkExerciseNote(answer, facts);
+      if (checked.problem === undefined) return checked.text;
+      problem = checked.problem;
+    }
+    if (prompt === promptOnDeviceModel && sawModelAnswer) {
+      markPromptRejected(rejectKey);
     }
   } catch {
     return null;

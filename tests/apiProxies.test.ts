@@ -8,6 +8,7 @@ import fitbitToken from '../api/fitbit/token';
 import fitbitBiometrics from '../api/fitbit/biometrics';
 import stravaToken from '../api/strava/token';
 import stravaActivities from '../api/strava/activities';
+import coachGenerate from '../api/coach/generate';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -475,6 +476,72 @@ const iso = (msAgo: number) => new Date(Date.now() - msAgo).toISOString();
   );
   delete process.env.STRAVA_CLIENT_ID;
   delete process.env.STRAVA_CLIENT_SECRET;
+
+  // ---------------------------------------------------------------- Coach (Gemini 2.5 Flash-Lite)
+  console.log('\n[Coach Gemini 2.5 Flash-Lite]');
+  delete process.env.GEMINI_API_KEY;
+  installFetch(() => ({ status: 200, body: {} }));
+  res = mockRes();
+  await coachGenerate({ method: 'GET', headers: {} }, res);
+  assert(res.body?.configured === false && res.body?.model === 'gemini-2.5-flash-lite', 'Coach proxy reports configured=false until GEMINI_API_KEY is set');
+  res = mockRes();
+  await coachGenerate({ method: 'POST', headers: {}, body: { systemPrompt: 'sys', messages: [{ role: 'user', content: 'hi' }] } }, res);
+  assert(res.statusCode === 503 && calls.length === 0, 'Without GEMINI_API_KEY the coach proxy refuses with 503 and makes no upstream calls');
+
+  process.env.GEMINI_API_KEY = 'server-only-gemini-key';
+  installFetch((url) =>
+    url.includes('gemini-2.5-flash-lite:generateContent')
+      ? {
+          status: 200,
+          body: {
+            candidates: [
+              {
+                content: {
+                  parts: [{ text: 'Keep 2 reps in reserve on your working sets today.' }],
+                },
+              },
+            ],
+          },
+        }
+      : undefined
+  );
+  res = mockRes();
+  await coachGenerate({ method: 'GET', headers: {} }, res);
+  assert(
+    res.body?.configured === true && !JSON.stringify(res.body).includes('server-only-gemini-key'),
+    'Coach GET config returns configured=true and never exposes GEMINI_API_KEY'
+  );
+  res = mockRes();
+  await coachGenerate(
+    {
+      method: 'POST',
+      headers: {},
+      body: {
+        systemPrompt: 'Coach instructions.',
+        messages: [
+          { role: 'user', content: 'First question' },
+          { role: 'assistant', content: 'First answer' },
+          { role: 'user', content: 'Follow-up question' },
+        ],
+        maxOutputTokens: 9999,
+      },
+    },
+    res
+  );
+  const geminiCall = calls[0];
+  const geminiPayload = JSON.parse(String(geminiCall?.init?.body || '{}'));
+  assert(
+    res.statusCode === 200 &&
+      res.body?.text === 'Keep 2 reps in reserve on your working sets today.' &&
+      geminiCall?.init?.headers?.['x-goog-api-key'] === 'server-only-gemini-key' &&
+      !geminiCall?.url.includes('server-only-gemini-key') &&
+      geminiPayload.systemInstruction?.parts?.[0]?.text === 'Coach instructions.' &&
+      geminiPayload.contents?.length === 3 &&
+      geminiPayload.contents[1].role === 'model' &&
+      geminiPayload.generationConfig?.maxOutputTokens === 250,
+    'Coach POST sends x-goog-api-key header, maps assistant->model turns, clamps maxOutputTokens, and returns clean text'
+  );
+  delete process.env.GEMINI_API_KEY;
 
   // ---------------------------------------------------------------- Deployability
   // package.json is "type": "module", so Vercel runs api/ as ES modules, which need explicit

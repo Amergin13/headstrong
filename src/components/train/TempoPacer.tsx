@@ -72,7 +72,7 @@ export const TempoPacer: React.FC<TempoPacerProps> = ({ tempo }) => {
   const phase = phases[phaseIdx];
 
   return (
-    <div className="wk-raised flex items-center justify-between gap-2">
+    <div className="wk-raised flex items-center justify-between gap-[calc(16*var(--f))]">
       <div className="wk-body min-w-0" aria-live="polite">
         {running ? (
           <span>
@@ -89,7 +89,7 @@ export const TempoPacer: React.FC<TempoPacerProps> = ({ tempo }) => {
         type="button"
         onClick={() => setRunning((r) => !r)}
         aria-pressed={running}
-        className="wk-pill shrink-0 min-h-[44px] gap-1.5 transition-colors"
+        className="wk-pill shrink-0 min-h-[44px] gap-[calc(12*var(--f))] transition-colors"
         style={
           running
             ? { background: 'var(--wk-accent)', color: '#13181C' }

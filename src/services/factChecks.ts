@@ -46,3 +46,44 @@ export function spelledNumberNotInFacts(text: string, facts: string[]): string |
   }
   return undefined;
 }
+
+/**
+ * Remembers fact keys whose model output failed validation checks twice so switching tabs or
+ * reopening the app does not repeatedly burn API calls on the same prompt. Network/offline misses
+ * are never recorded here so they can retry once connectivity returns.
+ */
+const REJECTED_CACHE_KEY = 'treise_ai_rejected_v1';
+const MAX_REJECTED_KEYS = 120;
+
+function readRejectedKeys(): string[] {
+  try {
+    const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(REJECTED_CACHE_KEY) : null;
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+export function wasPromptRejected(key: string): boolean {
+  return readRejectedKeys().includes(key);
+}
+
+export function markPromptRejected(key: string): void {
+  try {
+    if (typeof localStorage === 'undefined') return;
+    const next = readRejectedKeys().filter((k) => k !== key);
+    next.push(key);
+    localStorage.setItem(REJECTED_CACHE_KEY, JSON.stringify(next.slice(-MAX_REJECTED_KEYS)));
+  } catch {
+    // Storage unavailable: safe to ignore.
+  }
+}
+
+export function clearRejectedPromptCache(): void {
+  try {
+    if (typeof localStorage !== 'undefined') localStorage.removeItem(REJECTED_CACHE_KEY);
+  } catch {
+    // ignore
+  }
+}

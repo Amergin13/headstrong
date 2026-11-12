@@ -139,6 +139,8 @@ export interface OnDevicePromptOptions {
   timeoutMs?: number;
   /** A one-off request that must not join an ongoing chat conversation. */
   stateless?: boolean;
+  /** Tight cap on generated tokens for short summaries/notes. */
+  maxTokens?: number;
 }
 
 async function createSession(systemPrompt: string, onDownloadProgress?: (f: number) => void): Promise<any | null> {
@@ -173,9 +175,9 @@ async function createSession(systemPrompt: string, onDownloadProgress?: (f: numb
  * errors, or runs past the time limit, so the caller can fall back.
  */
 /**
- * A second on-device model used when Chrome's Gemini Nano isn't exposed (e.g. Chrome on Android).
- * Registered by the UI (services/gpuModel.ts runs a model on the phone's GPU via WebGPU), so this
- * module stays free of browser-only worker code.
+ * A fallback model used when Chrome's Gemini Nano isn't exposed (e.g. Chrome on Android).
+ * Registered by the UI (services/deviceModels.ts connects services/geminiFlashLite.ts), so this
+ * module stays decoupled in pure engine unit tests unless registered.
  */
 interface FallbackModel {
   isReady: () => Promise<boolean>;
@@ -183,10 +185,12 @@ interface FallbackModel {
     systemPrompt: string,
     userPrompt: string,
     onPartial?: (t: string) => void,
-    options?: { stateless?: boolean }
+    options?: { stateless?: boolean; maxTokens?: number }
   ) => Promise<string | null>;
   /** Drops the last question and answer from the chat (the answer was rejected). */
   forgetLast?: () => void;
+  /** Clears chat conversation memory (e.g. when the coach closes). */
+  resetConversation?: () => void;
 }
 let fallbackModel: FallbackModel | null = null;
 export function registerFallbackOnDeviceModel(model: FallbackModel | null): void {
@@ -240,6 +244,11 @@ export function forgetOnDeviceExchange(): void {
 /** Ends the remembered chat (e.g. when the coach is closed). */
 export function resetOnDeviceConversation(): void {
   endChat();
+  try {
+    fallbackModel?.resetConversation?.();
+  } catch {
+    // ignore
+  }
 }
 
 /** True when some on-device model (Gemini Nano, or the downloaded GPU model) can answer now. */
@@ -285,7 +294,7 @@ export async function promptOnDeviceModel(
               options.onPartial?.(text);
             }
           },
-          { stateless: options.stateless }
+          { stateless: options.stateless, maxTokens: options.maxTokens }
         ),
         options.timeoutMs ?? 60_000
       );

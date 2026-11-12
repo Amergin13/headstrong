@@ -230,7 +230,7 @@ export function answerWeightChange(
   return `${named.length ? '' : `Here's how today's ${activeWorkout.name} compares with last time:\n`}${lines.map((l) => `• ${l}`).join('\n')}\n\n${rule}`;
 }
 
-const KIT_NAME_WORDS = /\b(dumbbells?|dbs?|barbells?|cables?|machines?|seated|standing)\b/g;
+const KIT_NAME_WORDS = /\b(dumbbells?|dbs?|barbells?|cables?|machines?|seated|standing|heels-elevated)\b/g;
 /** A plural "s" off the end, but never the "ss" of "press". */
 const singular = (word: string) => word.replace(/(?<!s)s$/, '');
 
@@ -261,17 +261,36 @@ export function findExerciseNamed(
   activeWorkout: WorkoutSession,
   exerciseCatalog: ExerciseDefinition[]
 ): { session?: ExerciseSession; def?: ExerciseDefinition } | null {
-  const text = lowerMsg.replace(/\brdls?\b/g, 'romanian deadlift').replace(/\bohp\b/g, 'overhead press').replace(/\bpull ?ups?\b/g, 'pull-up').replace(/\bpush ?ups?\b/g, 'push-up');
+  const text = lowerMsg
+    .replace(/\brdls?\b/g, 'romanian deadlift')
+    .replace(/\bohp\b/g, 'overhead press')
+    .replace(/\bincline (?:dumbbell |db |barbell )?bench press\b/g, 'incline press')
+    .replace(/\bpull ?ups?\b/g, 'pull-up')
+    .replace(/\bpush ?ups?\b/g, 'push-up');
   const plain = text.replace(KIT_NAME_WORDS, '').replace(/\s+/g, ' ');
-  // The full name first, so "incline press" finds the incline press and not the first press in the list.
-  const session =
-    activeWorkout.exercises.find((e) => plain.includes(exerciseCore(e.name))) ?? activeWorkout.exercises.find((e) => exerciseNamedIn(text, e.name));
-  if (session) return { session, def: exerciseCatalog.find((d) => d.id === session.exerciseId) };
-  const def = exerciseCatalog
+  // The full name first, so "incline press" or "leg press" finds that exercise and not a generic "press" in today's list.
+  const activeMatch = activeWorkout.exercises
+    .map((e) => ({ e, core: exerciseCore(e.name) }))
+    .filter(({ core }) => core.length >= 4 && plain.includes(core))
+    .sort((a, b) => b.core.length - a.core.length)[0];
+  const kitNamed = (d: ExerciseDefinition) =>
+    (d.equipment === 'dumbbell' && /\b(dumbbells?|dbs?)\b/.test(text)) ||
+    (d.equipment === 'cable' && /\bcables?\b/.test(text)) ||
+    (d.equipment === 'barbell' && /\bbarbells?\b/.test(text)) ||
+    (d.equipment === 'machine' && /\bmachines?\b/.test(text));
+  const catalogMatch = exerciseCatalog
     .map((d) => ({ d, core: exerciseCore(d.name) }))
     .filter(({ core }) => core.length >= 4 && plain.includes(core))
-    .sort((a, b) => b.core.length - a.core.length || (a.d.equipment === 'barbell' ? -1 : 1))[0]?.d;
-  if (def) return { def };
+    .sort((a, b) => b.core.length - a.core.length || Number(kitNamed(b.d)) - Number(kitNamed(a.d)) || (a.d.equipment === 'barbell' ? -1 : 1))[0];
+  if (activeMatch && activeMatch.core.length >= (catalogMatch?.core.length ?? 0)) {
+    return { session: activeMatch.e, def: exerciseCatalog.find((d) => d.id === activeMatch.e.exerciseId) };
+  }
+  if (catalogMatch) {
+    const inSession = activeWorkout.exercises.find((e) => e.exerciseId === catalogMatch.d.id);
+    return { session: inSession, def: catalogMatch.d };
+  }
+  const session = activeWorkout.exercises.find((e) => exerciseNamedIn(text, e.name));
+  if (session) return { session, def: exerciseCatalog.find((d) => d.id === session.exerciseId) };
   // A distinctive last word on its own ("lunges", "pulldowns"), but not one shared by many lifts.
   const byWord = exerciseCatalog.find((d) => {
     const last = exerciseCore(d.name).split(' ').pop() ?? '';
@@ -491,6 +510,11 @@ export function answerEverydayQuestion(ctx: EverydayContext): string | null {
     return readyToTrain()
       ? `Good. ${shouldTrain()} Use it to reach the top of today's rep targets with clean reps; the weight goes up by itself once every set gets there.`
       : `Good to hear. ${shouldTrain()}`;
+  }
+
+  // What counts toward the weekly sessions goal.
+  if (/\bwhat counts\b|\bcounts? as (a|an) (session|active day|workout)\b|\bdoes (a |an |my )?[a-z ]+ count\b/.test(msg)) {
+    return 'A session is a day with a finished workout, or an active day: 20 minutes or more of something you set out to do, like a ride, run, walk, swim, class or sport. Two workouts on one day count once, and steps on their own don\'t count. Weeks run Monday to Sunday.';
   }
 
   // Cardio and active days.

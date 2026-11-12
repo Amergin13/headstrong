@@ -14,9 +14,9 @@ import { runReadAloudQaGate } from '../engine/contentStrategy';
 import { buildAthleteKnowledgeGraph } from '../engine/knowledgeGraph';
 import { BiometricLog, ExerciseDefinition, UserProfile, WorkoutSession } from '../engine/types';
 import { standardsAge } from '../engine/strengthStandards';
-import { AthleteGoal, GoalProgress, buildAthleteGoals, goalsProgressedBy } from './athleteGoals';
+import { AthleteGoal, GoalProgress, buildAthleteGoals, describeGoalStanding, goalsProgressedBy } from './athleteGoals';
 import { promptOnDeviceModel } from './onDeviceModel';
-import { mislabelledFigure, spelledNumberNotInFacts } from './factChecks';
+import { mislabelledFigure, markPromptRejected, spelledNumberNotInFacts, wasPromptRejected } from './factChecks';
 import { SessionProgressReport, buildSessionProgressReport } from './sessionReport';
 import { calculateWeeklyMuscleVolume } from './storage';
 import { ExerciseInsight, buildExerciseInsight } from './exerciseInsight';
@@ -91,15 +91,15 @@ export function personalBestsIn(finished: WorkoutSession): FinishPersonalBest[] 
 }
 
 function describeGoal(g: GoalProgress, formatWeight: (kg: number) => string): string {
-  if (g.kind === 'process') {
-    return g.status === 'reached'
-      ? `${g.title}: done, ${g.current} of ${g.target} sessions this week`
-      : `${g.title}: ${g.current} of ${g.target} sessions this week`;
+  const standing = describeGoalStanding(g.goal, formatWeight);
+  if (g.kind === 'process') return g.status === 'reached' ? `${g.title}: done, ${standing}` : `${g.title}: ${standing}`;
+  if (g.goal.measure.type === 'target') {
+    const m = g.goal.measure;
+    const target = m.metric === 'weight' ? formatWeight(m.target) : `${m.target} reps`;
+    return g.status === 'reached' ? `${m.exerciseName} reached ${target}` : `${m.exerciseName} is at ${standing}`;
   }
   const [movement, level] = g.title.split(': ');
-  return g.status === 'reached'
-    ? `${movement} reached ${level}`
-    : `${movement} estimated max is ${formatWeight(g.current)} of the ${formatWeight(g.target)} needed for ${level}`;
+  return g.status === 'reached' ? `${movement} reached ${level}` : `${movement} is at ${standing} for ${level}`;
 }
 
 export function buildWorkoutFinish(input: WorkoutFinishInput): WorkoutFinish | null {
@@ -133,9 +133,10 @@ export function buildWorkoutFinish(input: WorkoutFinishInput): WorkoutFinish | n
   });
   if (!report) return null;
 
-  const goalsInput = { profile: input.profile, activities: input.activities, biometrics: input.biometrics, bodyweightKg };
+  const goalsInput = { profile: input.profile, activities: input.activities, biometrics: input.biometrics, bodyweightKg, now };
   const goalsBefore = buildAthleteGoals({ ...goalsInput, workouts: before });
-  const goals = knowledgeGraph.goals;
+  // Before and after are built the same way and at the same moment, so only the workout differs.
+  const goals = buildAthleteGoals({ ...goalsInput, workouts: after });
   const goalProgress = goalsProgressedBy(goalsBefore, goals);
 
   const { firstTimeExercises } = report;
@@ -145,12 +146,19 @@ export function buildWorkoutFinish(input: WorkoutFinishInput): WorkoutFinish | n
   const outcomeReached = goalProgress.find((g) => g.kind === 'outcome' && g.status === 'reached');
   const processGoal = goalProgress.find((g) => g.kind === 'process');
 
+  const reachedLabel =
+    outcomeReached?.goal.measure.type === 'target'
+      ? outcomeReached.goal.measure.metric === 'weight'
+        ? input.formatWeight(outcomeReached.goal.measure.target)
+        : `${outcomeReached.goal.measure.target} reps`
+      : outcomeReached?.title.split(': ')[1] ?? outcomeReached?.title;
+
   const headline = outcomeReached
-    ? `${outcomeReached.title.split(': ')[1]} reached`
+    ? `${reachedLabel} reached`
     : records.length > 0
     ? plural(records.length, 'personal best')
     : processGoal?.status === 'reached'
-    ? `Week ${goals.find((g) => g.kind === 'process')?.week ?? 1} complete`
+    ? `${processGoal.goal.target} sessions this week`
     : allNew
     ? 'Starting point set'
     : 'Session logged';
@@ -188,13 +196,13 @@ export function buildWorkoutFinish(input: WorkoutFinishInput): WorkoutFinish | n
   }
   for (const g of goalProgress) facts.push(`Goal ${g.status}: ${describeGoal(g, input.formatWeight)}.`);
   const outcomes = goalProgress.filter((g) => g.kind === 'outcome');
-  if (outcomes.length > 0) sentences.push(`${describeGoal(outcomes[0], input.formatWeight)}.`);
+  if (outcomes.length > 0) sentences.push(`${describeGoal(outcomeReached ?? outcomes[0], input.formatWeight)}.`);
   else if (trendSentence) sentences.push(trendSentence);
   if (processGoal) {
     sentences.push(
       processGoal.status === 'reached'
-        ? `That's all ${processGoal.target} sessions done this week.`
-        : `That's ${processGoal.current} of ${processGoal.target} sessions this week.`
+        ? `That's all ${processGoal.goal.target} sessions done this week.`
+        : `That's ${processGoal.goal.current} of ${processGoal.goal.target} sessions this week.`
     );
   }
 
@@ -268,7 +276,7 @@ export function checkWorkoutSummary(
  * only made the athlete wait. The fact-based summary is accurate and is what shows. The checks stay
  * for when a model can do this.
  */
-export const WORKOUT_SUMMARY_USES_MODEL = false;
+export const WORKOUT_SUMMARY_USES_MODEL = true;
 
 /** Asks the on-device model for the summary. Null when no model is ready or its answers fail the checks. */
 export async function generateWorkoutSummary(
@@ -277,19 +285,24 @@ export async function generateWorkoutSummary(
   attempts = 2
 ): Promise<string | null> {
   if (!WORKOUT_SUMMARY_USES_MODEL && prompt === promptOnDeviceModel) return null;
+  const rejectKey = `workout:${summaryKey(finish)}`;
+  if (prompt === promptOnDeviceModel && wasPromptRejected(rejectKey)) return null;
   let problem: string | undefined;
+  let sawModelAnswer = false;
   // A model that throws is the same as no model: the fact-based text stays.
   try {
     for (let i = 0; i < attempts; i++) {
       const request = problem
         ? `${buildWorkoutSummaryPrompt(finish)}\n(Your last summary could not be used because ${problem}. Write it again.)`
         : buildWorkoutSummaryPrompt(finish);
-      const answer = await prompt(WORKOUT_SUMMARY_SYSTEM_PROMPT, request, { stateless: true, timeoutMs: 30_000 });
+      const answer = await prompt(WORKOUT_SUMMARY_SYSTEM_PROMPT, request, { stateless: true, maxTokens: 120, timeoutMs: 30_000 });
       if (answer === null) return null;
+      sawModelAnswer = true;
       const checked = checkWorkoutSummary(answer, finish);
       if (checked.problem === undefined) return checked.text;
       problem = checked.problem;
     }
+    if (prompt === promptOnDeviceModel && sawModelAnswer) markPromptRejected(rejectKey);
   } catch {
     return null;
   }

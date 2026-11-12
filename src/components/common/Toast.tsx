@@ -22,19 +22,19 @@ export const Toast: React.FC<ToastProps> = ({ title, message, tag, onClose }) =>
       className="fixed top-14 left-4 right-4 z-50 max-w-sm mx-auto pointer-events-none transition-all duration-300"
     >
       <div className="wk-card shadow-2xl border border-white/[0.08] flex items-center justify-between">
-        <div className="flex items-center space-x-3">
+        <div className="flex items-center space-x-[calc(26*var(--f))]">
           <div
-            className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
+            className="w-9 h-9 rounded-[calc(22*var(--f))] flex items-center justify-center shrink-0"
             style={{ background: 'var(--wk-raised)', color: 'var(--wk-accent)' }}
           >
-            <Zap className="w-4 h-4 fill-[#00F19F]" />
+            <Zap className="w-4 h-4 fill-[var(--wk-accent)]" />
           </div>
           <div>
-            <div className="flex items-center space-x-2">
+            <div className="flex items-center space-x-[calc(16*var(--f))]">
               <span className="wk-h1">{title || 'TREISE'}</span>
               {tag && <span className="wk-pill">{tag}</span>}
             </div>
-            <p className="wk-body mt-0.5">{message}</p>
+            <p className="wk-body mt-[calc(4*var(--f))]">{message}</p>
           </div>
         </div>
       </div>

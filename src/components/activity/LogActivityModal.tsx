@@ -38,7 +38,7 @@ export const LogActivityModal: React.FC<LogActivityModalProps> = ({ onLog, onClo
       role="dialog"
       aria-modal="true"
       aria-labelledby="log-activity-title"
-      className="wk fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
+      className="wk fixed inset-0 z-50 flex items-end sm:items-center justify-center p-[calc(38*var(--f))] bg-black/80 backdrop-blur-sm"
     >
       <div className="wk-card w-full max-w-lg max-h-[90vh] overflow-y-auto shadow-2xl">
         <div className="flex items-start justify-between" style={{ gap: fig(24) }}>

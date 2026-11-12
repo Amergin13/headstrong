@@ -485,6 +485,15 @@ select:focus-visible {
   animation: wk-bar-grow 800ms cubic-bezier(0.22, 1, 0.36, 1) 350ms both;
 }
 
+/* The coach flies up from the bottom of the screen. */
+@keyframes wk-sheet-up {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+.wk-sheet-up {
+  animation: wk-sheet-up 320ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
 /* Progress page goal rings: an arc draws round, and the segments of a counted goal pop in one by one. */
 @keyframes wk-ring-draw {
   from { stroke-dashoffset: var(--ring-length); }

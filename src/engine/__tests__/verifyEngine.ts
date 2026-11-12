@@ -6021,19 +6021,29 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
         const { runReadAloudQaGate: gate } = await import('../contentStrategy');
         const { calculateSessionTonnage } = await import('../wci');
         const processGoal = kg.goals.find((g) => g.kind === 'process')!;
-        const weekOfSlot = (n: number) => plan.templates.find((t) => t.workoutNumber === n)!.week;
-        const doneSlots = overview.workouts.filter((w) => w.status === 'done');
-        const latestWeek = Math.max(...doneSlots.map((w) => weekOfSlot(w.workoutNumber)));
+        const dayOf = (w: WorkoutSession) => (w.completedAt ? localDateString(new Date(w.completedAt)) : w.date);
+        const thisMonday = goalsMod.weekStart(localDateString(new Date()));
+        const daysThisWeek = new Set(workouts.filter((w) => w.completed && goalsMod.weekStart(dayOf(w)) === thisMonday).map(dayOf)).size;
         assert(
           processGoal.title === `Train ${plan.workoutsPerWeek} times a week` &&
             processGoal.target === plan.workoutsPerWeek &&
-            processGoal.current === doneSlots.filter((w) => weekOfSlot(w.workoutNumber) === latestWeek).length,
-          `Knowledge graph has a process goal counted from the plan (${processGoal.detail})`
+            processGoal.current === daysThisWeek &&
+            processGoal.measure.type === 'frequency' &&
+            processGoal.measure.weeks[processGoal.measure.weeks.length - 1].current,
+          `Knowledge graph has a process goal: days trained this calendar week against the plan's sessions a week (${processGoal.detail})`
         );
         const outcomeGoals = kg.goals.filter((g) => g.kind === 'outcome' && g.id.startsWith('strength-'));
         assert(
-          outcomeGoals.length > 0 && outcomeGoals.every((g) => g.unit === 'kg' && g.target > g.current && g.progressPct >= 0 && g.progressPct <= 100 && /: /.test(g.title)),
-          `Knowledge graph has outcome goals: each standard movement's next strength level (${outcomeGoals.map((g) => g.title).join(', ')})`
+          outcomeGoals.length > 0 &&
+            outcomeGoals.every(
+              (g) =>
+                /: /.test(g.title) &&
+                !/%/.test(g.detail) &&
+                g.target > g.current &&
+                ((g.measure.type === 'reps' && g.unit === 'reps' && g.measure.targetReps <= goalsMod.MAX_REP_TARGET && g.measure.targetReps > g.measure.currentReps) ||
+                  (g.measure.type === 'load' && g.unit === 'kg'))
+            ),
+          `Knowledge graph has outcome goals: each standard movement's next level, counted in reps or by estimated max, never a percentage (${outcomeGoals.map((g) => g.detail).join(' | ')})`
         );
         const noWeighInGoals = goalsMod.buildAthleteGoals({ profile, workouts, biometrics: [], bodyweightKg: 80 });
         assert(!noWeighInGoals.some((g) => g.id.startsWith('strength-')) && noWeighInGoals[0].kind === 'process', 'Without a logged bodyweight there are no strength-level goals (none is guessed from the placeholder)');
@@ -6066,12 +6076,18 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
           'Finish screen personal bests are the sets celebrated during the workout, one card per exercise'
         );
         assert(finishMod.personalBestsIn({ ...logged, celebratedSetIds: [] }).length === 0, 'No celebrated set, no personal best card');
-        const moved = finish.goalProgress.find((g) => g.kind === 'process')!;
-        const sameWeek = weekOfSlot(nextNumber) === latestWeek;
+        // Finishing a workout on a day not yet trained moves the weekly goal by one.
+        const tomorrow = Date.now() + 24 * 60 * 60 * 1000;
+        const tomorrowDay = localDateString(new Date(tomorrow));
+        const alreadyThatWeek = new Set(workouts.filter((w) => w.completed && goalsMod.weekStart(dayOf(w)) === goalsMod.weekStart(tomorrowDay)).map(dayOf)).size;
+        const finishTomorrow = finishMod.buildWorkoutFinish({ profile, workouts, finished: { ...logged, date: tomorrowDay, completedAt: new Date(tomorrow).toISOString() }, biometrics, exerciseCatalog: exercises, bodyweightKg: bw, formatWeight: precise1, now: tomorrow })!;
+        const moved = finishTomorrow.goalProgress.find((g) => g.kind === 'process')!;
         assert(
-          moved && moved.current === (sameWeek ? processGoal.current + 1 : 1) && moved.status === (moved.current >= plan.workoutsPerWeek ? 'reached' : 'progressed'),
-          `Finishing a workout moves the weekly sessions goal (${moved?.detail})`
+          moved && moved.goal.current === alreadyThatWeek + 1 && moved.status === (moved.goal.current === plan.workoutsPerWeek ? 'reached' : 'progressed'),
+          `Finishing a workout on a new day moves the weekly sessions goal (${moved?.goal.detail})`
         );
+        const sameDay = finishMod.buildWorkoutFinish({ profile, workouts: [...workouts, { ...logged, id: 'earlier-today', completed: true, completedAt: new Date().toISOString(), date: localDateString(new Date()) }], finished: { ...logged, id: 'second-today' }, biometrics, exerciseCatalog: exercises, bodyweightKg: bw, formatWeight: precise1 })!;
+        assert(!sameDay.goalProgress.some((g) => g.kind === 'process'), 'A second workout on the same day does not count as another session toward the week');
         assert(
           gate(finish.fallback).passed && !/%|percent/i.test(finish.fallback) && !/\bvolume\b|\b\d+ sets\b/i.test(finish.fallback) && finish.fallback.includes(logged.exercises[1].name),
           `Finish summary names the lift that moved, passes the read-aloud gate and doesn't repeat volume or sets ("${finish.fallback}")`
@@ -6124,12 +6140,9 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
           assert(finishMod.getCachedWorkoutSummary(finish) === null, 'A saved summary that fails the checks is never shown');
         }
 
-        // Reaching the goal: the session that completes the plan week.
-        const weekSlots = plan.templates.filter((t) => t.week === weekOfSlot(nextNumber));
-        const lastOfWeek = weekSlots[weekSlots.length - 1].workoutNumber === nextNumber;
-        if (lastOfWeek) assert(moved.status === 'reached', 'The last session of the plan week reaches the weekly goal');
-        const before = [{ ...processGoal, current: 3, week: 2 }];
-        const afterGoals = [{ ...processGoal, current: 4, week: 2, achieved: true, progressPct: 100 }];
+        // Reaching the goal: the session that completes the week.
+        const before = [{ ...processGoal, current: 3, achieved: false }];
+        const afterGoals = [{ ...processGoal, current: 4, achieved: true, progressPct: 100 }];
         assert(goalsMod.goalsProgressedBy(before, afterGoals)[0].status === 'reached' && goalsMod.goalsProgressedBy(afterGoals, afterGoals).length === 0, 'A goal is "reached" when the workout completes it, and unchanged goals are not shown');
         const strength = outcomeGoals[0];
         const leveled = goalsMod.goalsProgressedBy([strength], [{ ...strength, levelStep: (strength.levelStep ?? 0) + 1, current: strength.target + 1, title: `${strength.title.split(': ')[0]}: next` }]);
@@ -6148,26 +6161,190 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
         const fmtKg = (v: number) => `${Math.round(v * 10) / 10} kg`;
         const completedAll = workouts.filter((w) => w.completed);
 
-        const rings = ov.buildGoalRings(kg.goals);
+        const rings = ov.buildGoalRings(kg.goals, fmtKg);
         const weekly = kg.goals.find((g) => g.kind === 'process')!;
         const chosen = kg.goals.find((g) => g.id === goalsMod2.CHOSEN_GOAL_ID)!;
         const trendNow = strengthTrend(workouts, bw);
+        const closest = ov.closestStrengthGoal(kg.goals)!;
         assert(
-          rings.length === 3 && rings[0].value === `${weekly.current}/${weekly.target}` && rings[0].segments === weekly.target && rings[2].value === `${trendNow.improved}/${trendNow.repeated}`,
-          `Progress rings: weekly sessions in segments, the closest strength level, and the chosen goal (${rings.map((r) => `${r.title} ${r.value}`).join(' | ')})`
+          rings.length === 3 &&
+            rings[0].value === `${weekly.current}/${weekly.target}` &&
+            rings[0].segments.length === weekly.target &&
+            rings[0].segments.filter((x) => x === 'on').length === Math.min(weekly.current, weekly.target) &&
+            rings[0].inner?.length === ov.HABIT_WEEKS &&
+            rings.every((r) => !/%/.test(r.value) && !/%/.test(r.caption)),
+          `Progress rings count whole things and never show a percentage (${rings.map((r) => `${r.title} ${r.value} ${r.caption}`).join(' | ')})`
         );
-        assert(chosen.title === 'Build Muscle' && chosen.current === trendNow.improved && chosen.target === trendNow.repeated, 'The chosen goal is measured by repeated lifts that are stronger, from the same count as the Program message');
+        assert(
+          rings[1].id === closest.id &&
+            (closest.measure.type === 'reps'
+              ? rings[1].value === `${closest.measure.currentReps}/${closest.measure.targetReps}` && /^reps (at|with) /.test(rings[1].caption) && rings[1].segments.length === closest.measure.targetReps
+              : /to go on your estimated max/.test(rings[1].caption)),
+          `The strength ring is the closest level, as reps against the reps needed (${rings[1].value} ${rings[1].caption})`
+        );
+        const body = chosen.measure.type === 'body' ? chosen.measure : null;
+        assert(
+          chosen.title === 'Build Muscle' &&
+            body !== null &&
+            body.signs.length === 3 &&
+            body.signs[0].met === (trendNow.improved * 2 >= trendNow.repeated) &&
+            rings[2].value === `${body.signsMet}/3` &&
+            rings[2].segments.length === 3 &&
+            rings[2].segments.filter((x) => x === 'on').length === body.signsMet,
+          `The chosen goal is judged on three signs: strength, bodyweight pace and size (${body?.signs.map((x) => `${x.id}:${x.met}`).join(', ')}; ${body?.evidenceLabel})`
+        );
         const cutGoal = goalsMod2.buildAthleteGoals({ profile: { ...profile, goalPhase: 'Cut / Recomp' }, workouts, biometrics, bodyweightKg: bw }).find((g) => g.id === goalsMod2.CHOSEN_GOAL_ID)!;
-        assert(cutGoal.title === 'Lose Fat' && cutGoal.current === trendNow.heldOrImproved && cutGoal.current >= chosen.current, 'For Lose Fat, a lift that has held its strength counts');
+        assert(
+          cutGoal.title === 'Lose Fat' && cutGoal.measure.type === 'body' && cutGoal.measure.signs[0].label === 'Strength held' && cutGoal.measure.signs[0].met === (trendNow.heldOrImproved * 5 >= trendNow.repeated * 4),
+          'For Lose Fat, the strength sign is strength held, not strength gained'
+        );
         const newRings = ov.buildGoalRings(goalsMod2.buildAthleteGoals({ profile: NEW_USER_PROFILE, workouts: [], biometrics: [] }));
         assert(
-          newRings[0].value.startsWith('0/') && newRings[1].empty && newRings[1].value === '—' && newRings[2].empty && newRings[2].value === '—',
+          newRings[0].value.startsWith('0/') && newRings[1].empty && newRings[1].value === '—' && newRings[2].empty && newRings[2].value === '—' && newRings[2].segments.every((x) => x === 'unknown'),
           'A new athlete sees empty rings with what to do, never a made-up figure'
         );
 
+        // Goals on fixed dates: the weekly habit's two loops, reps goals and the evidence behind the chosen goal.
+        {
+          const at = (date: string, sets: { id: string; name: string; pillar: any; equipment: any; kg: number; reps: number; calisthenic?: boolean }[]): WorkoutSession => ({
+            id: `w-${date}`,
+            date,
+            name: 'Session',
+            splitDay: 'Upper',
+            completed: true,
+            completedAt: `${date}T10:00:00`,
+            readinessState: 'Normal',
+            readinessZScore: 0,
+            exercises: sets.map((x, i) => ({
+              id: `e-${date}-${i}`,
+              exerciseId: x.id,
+              name: x.name,
+              pillar: x.pillar,
+              equipment: x.equipment,
+              isWeightedCalisthenic: x.calisthenic,
+              minReps: 5,
+              maxReps: 12,
+              sets: [{ id: `s-${date}-${i}`, targetReps: x.reps, targetWeightKg: x.kg, targetRir: 1, completed: true, actualReps: x.reps, actualWeightKg: x.kg, actualRir: 1 } as any],
+            })),
+          });
+          const chin = (reps: number) => ({ id: 'ex-chinup', name: 'Chin-Up', pillar: 'Vertical Pull', equipment: 'bodyweight', kg: 0, reps, calisthenic: true });
+          const bench = (kg: number, reps: number) => ({ id: 'ex-bench-press', name: 'Barbell Bench Press', pillar: 'Horizontal Push', equipment: 'barbell', kg, reps });
+          // Monday 5 Oct 2026 is week 1. Weeks: 4, 4, 2, 4, then this week 3 (now = Fri 6 Nov).
+          const days = ['2026-10-05', '2026-10-06', '2026-10-08', '2026-10-10', '2026-10-12', '2026-10-13', '2026-10-15', '2026-10-17', '2026-10-19', '2026-10-21', '2026-10-26', '2026-10-27', '2026-10-29', '2026-10-31', '2026-11-02', '2026-11-03', '2026-11-05'];
+          const history = days.map((d, i) => at(d, [chin(5 + Math.floor(i / 4)), bench(60 + Math.floor(i / 3) * 2.5, 8)]));
+          const now = new Date('2026-11-06T18:00:00').getTime();
+          const weighIns = ['2026-10-05', '2026-10-12', '2026-10-19', '2026-10-26', '2026-11-02', '2026-11-05'].map((date, i) => ({ date, bodyweightKg: 80 + i * 0.3, hrvRmssd: 0, restingHr: 0, sleepHours: 0, steps: 0, activeZoneMinutes: 0 }));
+          const fixed = goalsMod2.buildAthleteGoals({ profile: NEW_USER_PROFILE, workouts: history, biometrics: weighIns, bodyweightKg: 81.5, now });
+          const freq = fixed[0].measure.type === 'frequency' ? fixed[0].measure : null;
+          assert(
+            freq !== null &&
+              freq.thisWeek === 3 &&
+              freq.weeks.map((w) => w.sessions).join(',') === '4,4,2,4,3' &&
+              freq.weeks.map((w) => w.hit).join(',') === 'true,true,false,true,false' &&
+              freq.streakWeeks === 1 &&
+              freq.weeksHit === 3 &&
+              freq.weeksTracked === 5 &&
+              freq.weeks[0].start === '2026-10-05',
+            `Weekly goal: this week's sessions (small loop) and the weeks (long loop); a missed week ends the run, the current week doesn't until it's over (${JSON.stringify(freq && { weeks: freq.weeks.map((w) => w.sessions), streak: freq.streakWeeks })})`
+          );
+          const withFourth = goalsMod2.buildAthleteGoals({ profile: NEW_USER_PROFILE, workouts: [...history, at('2026-11-06', [chin(9)])], biometrics: weighIns, bodyweightKg: 81.5, now });
+          assert(withFourth[0].achieved && withFourth[0].measure.type === 'frequency' && withFourth[0].measure.streakWeeks === 2, 'Reaching 4 this week adds the week to the run');
+          const withWalk = goalsMod2.buildAthleteGoals({ profile: NEW_USER_PROFILE, workouts: history, activities: [{ id: 'a1', date: '2026-11-06', startedAt: '2026-11-06T07:00:00', minutes: 30, type: 'walk', source: 'manual' } as any], biometrics: weighIns, bodyweightKg: 81.5, now });
+          const withStroll = goalsMod2.buildAthleteGoals({ profile: NEW_USER_PROFILE, workouts: history, activities: [{ id: 'a2', date: '2026-11-06', startedAt: '2026-11-06T07:00:00', minutes: 10, type: 'walk', source: 'manual' } as any], biometrics: weighIns, bodyweightKg: 81.5, now });
+          assert(withWalk[0].current === 4 && withStroll[0].current === 3, 'An active day of 20+ minutes counts as a session; a shorter one does not');
+          const ringsFixed = ov.buildGoalRings(fixed, fmtKg);
+          assert(
+            ringsFixed[0].inner!.join(',') === 'unknown,on,on,off,on,off' && ringsFixed[0].caption === '1 week in a row',
+            `The weekly ring's inner ring is the last six weeks, open before the athlete started (${ringsFixed[0].inner!.join(',')})`
+          );
+
+          // Changing goals: the plan's goals are the defaults, and the athlete's changes are saved.
+          {
+            const planDefault = goalsMod2.sessionsPerWeekTarget(NEW_USER_PROFILE);
+            assert(planDefault.fromPlan && planDefault.perWeek === resolveActivePlan(NEW_USER_PROFILE).workoutsPerWeek && fixed[0].fromPlan && /what your plan is built on/.test(fixed[0].method), 'By default the weekly goal is the plan\'s sessions a week');
+            const three = goalsMod2.buildAthleteGoals({ profile: { ...NEW_USER_PROFILE, goalSettings: { sessionsPerWeek: 3 } }, workouts: history, biometrics: weighIns, bodyweightKg: 81.5, now });
+            const threeFreq = three[0].measure as any;
+            assert(
+              three[0].title === 'Train 3 times a week' && !three[0].fromPlan && three[0].achieved && threeFreq.weeks.map((w: any) => w.hit).join(',') === 'true,true,false,true,true' && threeFreq.streakWeeks === 2 && /You set 3 a week; your plan is built on 4/.test(three[0].method),
+              `The athlete can set their own sessions a week; every week is counted against it (${three[0].detail})`
+            );
+            for (const bad of [0, 1, 8, 2.5, NaN]) {
+              assert(goalsMod2.sessionsPerWeekTarget({ ...NEW_USER_PROFILE, goalSettings: { sessionsPerWeek: bad } }).perWeek === planDefault.perWeek, `A sessions-a-week value of ${bad} is ignored and the plan's is used`);
+            }
+            const focused = goalsMod2.buildAthleteGoals({ profile: { ...NEW_USER_PROFILE, goalSettings: { strengthFocus: 'Horizontal Push' } }, workouts: history, biometrics: weighIns, bodyweightKg: 81.5, now });
+            assert(
+              ov.closestStrengthGoal(focused)!.pillar === 'Horizontal Push' && ov.buildGoalRings(focused, fmtKg)[1].id === 'strength-Horizontal Push' && focused.filter((g) => g.featured).length === 1,
+              'The athlete can choose which lift\'s strength level leads the Progress page'
+            );
+            const unloggedFocus = goalsMod2.buildAthleteGoals({ profile: { ...NEW_USER_PROFILE, goalSettings: { strengthFocus: 'Squat' } }, workouts: history, biometrics: weighIns, bodyweightKg: 81.5, now });
+            assert(ov.closestStrengthGoal(unloggedFocus)!.id === ov.closestStrengthGoal(fixed)!.id, 'A chosen lift that has not been logged falls back to the closest level until it has');
+            const cut = goalsMod2.buildAthleteGoals({ profile: { ...NEW_USER_PROFILE, goalPhase: 'Cut / Recomp' }, workouts: history, biometrics: weighIns, bodyweightKg: 81.5, now });
+            assert(cut.find((g) => g.id === goalsMod2.CHOSEN_GOAL_ID)!.title === 'Lose Fat', 'Changing the main goal changes the goal that is judged');
+            // Saved with the profile and still there after a reload.
+            const savedProfile = { ...NEW_USER_PROFILE, goalSettings: { sessionsPerWeek: 5, strengthFocus: 'Vertical Pull' as const } };
+            storage.saveProfile(savedProfile);
+            const reloaded = storage.loadProfile();
+            assert(reloaded.goalSettings?.sessionsPerWeek === 5 && reloaded.goalSettings?.strengthFocus === 'Vertical Pull', 'Changed goals are saved with the profile and load again');
+            storage.saveProfile({ ...savedProfile, goalSettings: undefined });
+            assert(storage.loadProfile().goalSettings === undefined && goalsMod2.sessionsPerWeekTarget(storage.loadProfile()).fromPlan, '"Use my plan\'s goals" puts the plan\'s goals back');
+            storage.resetAllToSeedData();
+          }
+
+          const chinGoal = fixed.find((g) => g.id === 'strength-Vertical Pull');
+          const benchGoal = fixed.find((g) => g.id === 'strength-Horizontal Push');
+          assert(
+            chinGoal?.measure.type === 'reps' && chinGoal.measure.atBodyweight && chinGoal.measure.currentReps === 9 && chinGoal.measure.targetReps > 9 && /reps at bodyweight/.test(chinGoal.detail) && !/%/.test(chinGoal.detail),
+            `Chin-ups are counted in reps at bodyweight against the reps the next level needs (${chinGoal?.detail})`
+          );
+          assert(
+            benchGoal?.measure.type === 'reps' && benchGoal.measure.weightKg === 72.5 && benchGoal.measure.currentReps === 8 && benchGoal.measure.targetReps > 8,
+            `A loaded lift is counted in reps at the weight of its best set (${benchGoal?.detail})`
+          );
+          if (chinGoal?.measure.type === 'reps') {
+            const { calculateE1RM } = await import('../e1rm');
+            const needs = (r: number) => calculateE1RM(0, r, 1, 'bodyweight', false, true, 81.5, 'ex-chinup', 'Vertical Pull');
+            assert(
+              needs(chinGoal.measure.targetReps) >= chinGoal.measure.targetE1rmKg && needs(chinGoal.measure.targetReps - 1) < chinGoal.measure.targetE1rmKg,
+              'The rep target is the fewest reps whose estimated max reaches the level (the same formula as the strength levels)'
+            );
+          }
+          assert(goalsMod2.describeGoalStanding(chinGoal!, fmtKg) === `9 of ${(chinGoal!.measure as any).targetReps} reps at bodyweight`, 'A goal is described as a count against its target');
+
+          // The chosen goal says how good its evidence is.
+          const chosenOf = (bio: any[], w = history) => goalsMod2.buildAthleteGoals({ profile: NEW_USER_PROFILE, workouts: w, biometrics: bio, bodyweightKg: 81.5, now }).find((g) => g.id === goalsMod2.CHOSEN_GOAL_ID)!.measure as any;
+          const none = chosenOf([], []);
+          const strengthOnly = chosenOf([]);
+          const proxy = chosenOf(weighIns);
+          const taped = chosenOf(weighIns.map((b, i) => (i === 0 ? { ...b, bicepRightCm: 36, waistCm: 86 } : i === 5 ? { ...b, bicepRightCm: 37, waistCm: 86 } : b)));
+          const scanned = chosenOf(weighIns.map((b, i) => (i === 0 ? { ...b, bodyFatPct: 20 } : i === 5 ? { ...b, bodyFatPct: 19 } : b)));
+          assert(
+            none.evidence === 'none' && none.signsMeasured === 0 && strengthOnly.evidence === 'strength-only' && proxy.evidence === 'weight-and-strength' && /estimate/i.test(proxy.evidenceLabel) && proxy.signs[2].met === null,
+            'Build Muscle with only weight and strength is labelled an estimate, and its size sign is "not measured" rather than guessed'
+          );
+          assert(
+            taped.evidence === 'tape' && taped.signs[2].met === true && scanned.evidence === 'fat-free-mass' && scanned.signs[2].met === true && scanned.fatFreeMassChangeKg > 0 && scanned.nextStep === '',
+            `Tape, then fat-free mass from body-fat readings, are the better evidence when logged (${scanned.signs[2].detail})`
+          );
+          const fatter = chosenOf(weighIns.map((b, i) => (i === 0 ? { ...b, bodyFatPct: 20 } : i === 5 ? { ...b, bodyFatPct: 22 } : b)));
+          assert(fatter.signs[2].met === false, 'Weight gained as fat does not count as muscle built');
+
+          const index = (await import('../../services/strengthTrend')).strengthIndexSeries(history, 81.5);
+          assert(index[0].value === 100 && index.length === 5 && index[index.length - 1].value > 100 && index.every((pt, i2) => i2 === 0 || pt.date > index[i2 - 1].date), `Strength index starts at 100 and moves with each week's lifts (${index.map((pt) => pt.value).join(', ')})`);
+          {
+            const { alignStrengthAndWeight } = await import('../../services/strengthTrend');
+            const { calculateEmaSeries } = await import('../ema');
+            const aligned = alignStrengthAndWeight(index, calculateEmaSeries(weighIns));
+            assert(
+              aligned.strength.length === aligned.weight.length && aligned.strength.every((pt, k) => pt.date === aligned.weight[k].date) && aligned.strength[0].value === 100 && aligned.weight[0].value === 100 && aligned.weight[aligned.weight.length - 1].value > 100,
+              `Weight and strength are charted on the same weeks, both starting at 100 (weight ${aligned.weight.map((pt) => pt.value).join(', ')})`
+            );
+            assert(alignStrengthAndWeight(index, []).weight.length === 0 && alignStrengthAndWeight(index, []).strength === index, 'With no weigh-ins, the chart shows strength alone');
+          }
+        }
+
         const goalsText = ov.buildGoalsSummary(kg.goals, fmtKg);
         assert(
-          gate2(goalsText.fallback).passed && goalsText.fallback.includes(`${weekly.current} of ${weekly.target}`) && ov.checkGoalsSummary(goalsText.fallback, goalsText).problem === undefined,
+          gate2(goalsText.fallback).passed && (weekly.current === 0 || weekly.achieved || goalsText.fallback.includes(`${weekly.current} of ${weekly.target}`)) && !/%/.test(goalsText.fallback) && ov.checkGoalsSummary(goalsText.fallback, goalsText).problem === undefined,
           `Goals summary is built from the goals and passes its own check ("${goalsText.fallback}")`
         );
         assert(
@@ -6448,6 +6625,363 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
 
         install(savedLM);
         if (savedLM === undefined) delete (globalThis as any).LanguageModel;
+
+        // 8. Stateless Gemini 2.5 Flash-Lite fallback (services/geminiFlashLite.ts)
+        {
+          const flash = await import('../../services/geminiFlashLite');
+          const savedFetch = globalThis.fetch;
+          const fetchBodies: any[] = [];
+          (globalThis as any).fetch = async (url: string, init?: any) => {
+            if (url === '/api/coach/generate' && (!init?.method || init.method === 'GET')) {
+              return { ok: true, json: async () => ({ configured: true, model: 'gemini-2.5-flash-lite' }) } as any;
+            }
+            if (url === '/api/coach/generate' && init?.method === 'POST') {
+              const body = JSON.parse(String(init.body || '{}'));
+              fetchBodies.push(body);
+              return { ok: true, json: async () => ({ text: 'Lift at your normal time so you can stay consistent.' }) } as any;
+            }
+            throw new Error(`unexpected url ${url}`);
+          };
+          flash.resetFlashLiteState();
+          const ready = await flash.isFlashLiteReady();
+          const partials: string[] = [];
+          const reply1 = await flash.promptFlashLite('Coach sys', 'First question', (t) => partials.push(t), { stateless: false });
+          const reply2 = await flash.promptFlashLite('Coach sys', 'Second question', undefined, { stateless: false });
+          assert(
+            ready &&
+              reply1 === 'Lift at your normal time so you can stay consistent.' &&
+              partials[0] === reply1 &&
+              fetchBodies.length === 2 &&
+              fetchBodies[1].messages.length === 3 &&
+              fetchBodies[1].messages[1].role === 'assistant',
+            'Gemini Flash-Lite fallback checks readiness, streams partial callback, and retains up to 4 multi-turn chat exchanges in memory'
+          );
+          flash.forgetLastFlashLiteExchange();
+          await flash.promptFlashLite('Coach sys', 'Retry question', undefined, { stateless: false });
+          assert(
+            fetchBodies[2].messages.length === 3 && fetchBodies[2].messages[2].content === 'Retry question',
+            'forgetLastFlashLiteExchange drops a rejected turn so subsequent prompts do not build on it'
+          );
+          flash.resetFlashLiteConversation();
+          await flash.promptFlashLite('Coach sys', 'Fresh session', undefined, { stateless: false });
+          assert(
+            fetchBodies[3].messages.length === 1 && fetchBodies[3].messages[0].content === 'Fresh session',
+            'resetFlashLiteConversation clears chat history without clearing cached readiness'
+          );
+          (globalThis as any).fetch = async (_url: string, init?: any) =>
+            init?.method === 'POST'
+              ? ({ ok: false, status: 503, json: async () => ({}) } as any)
+              : ({ ok: true, json: async () => ({ configured: false }) } as any);
+          const on503 = await flash.promptFlashLite('Coach sys', 'After 503', undefined, { stateless: true });
+          assert(
+            on503 === null && !(await flash.isFlashLiteReady()),
+            'A 503 from the proxy returns null and caches configured=false'
+          );
+
+          // Concurrent readiness checks and stateless prompts share a single HTTP request (React StrictMode / tab remount safety).
+          flash.resetFlashLiteState();
+          let getCount = 0;
+          let postCount = 0;
+          (globalThis as any).fetch = async (_url: string, init?: any) => {
+            await new Promise((r) => setTimeout(r, 15));
+            if (init?.method === 'POST') {
+              postCount++;
+              return { ok: true, headers: { get: () => 'application/json' }, json: async () => ({ text: 'Concise stateless note.' }) } as any;
+            }
+            getCount++;
+            return { ok: true, headers: { get: () => 'application/json' }, json: async () => ({ configured: true }) } as any;
+          };
+          const [rA, rB] = await Promise.all([flash.isFlashLiteReady(), flash.isFlashLiteReady()]);
+          const [pA, pB] = await Promise.all([
+            flash.promptFlashLite('Note sys', 'Same facts', undefined, { stateless: true, maxTokens: 110 }),
+            flash.promptFlashLite('Note sys', 'Same facts', undefined, { stateless: true, maxTokens: 110 }),
+          ]);
+          assert(
+            rA && rB && getCount === 1 && pA === 'Concise stateless note.' && pB === 'Concise stateless note.' && postCount === 1,
+            'Concurrent readiness checks and identical stateless prompts share one network request'
+          );
+
+          // HTML fallback pages (e.g. before a backend deploy or offline app shell) are rejected cleanly.
+          flash.resetFlashLiteState();
+          (globalThis as any).fetch = async () =>
+            ({ ok: true, headers: { get: () => 'text/html; charset=utf-8' }, json: async () => { throw new Error('must not parse HTML'); } }) as any;
+          assert(!(await flash.isFlashLiteReady()), 'A non-JSON HTML response is treated as unavailable without throwing');
+
+          // Validation rejections are remembered per fact key so tab switches never re-burn tokens; network misses are not.
+          const { clearRejectedPromptCache, wasPromptRejected } = await import('../../services/factChecks');
+          clearRejectedPromptCache();
+          flash.resetFlashLiteState();
+          onDev.resetOnDeviceModelHealth();
+          onDev.registerFallbackOnDeviceModel({
+            isReady: flash.isFlashLiteReady,
+            prompt: flash.promptFlashLite,
+            forgetLast: flash.forgetLastFlashLiteExchange,
+            resetConversation: flash.resetFlashLiteConversation,
+          });
+          let badPosts = 0;
+          (globalThis as any).fetch = async (_url: string, init?: any) => {
+            if (init?.method === 'POST') {
+              badPosts++;
+              return { ok: true, headers: { get: () => 'application/json' }, json: async () => ({ text: 'Too short' }) } as any;
+            }
+            return { ok: true, headers: { get: () => 'application/json' }, json: async () => ({ configured: true }) } as any;
+          };
+          const firstReject = await notes.generateExerciseNote(noteFacts3);
+          const postsAfterFirst = badPosts;
+          const secondSkip = await notes.generateExerciseNote(noteFacts3);
+          assert(
+            firstReject === null &&
+              postsAfterFirst === 2 &&
+              secondSkip === null &&
+              badPosts === postsAfterFirst &&
+              wasPromptRejected(`note:${noteFacts3.key}`),
+            'When model output fails validation twice, that fact key is remembered so later mounts make 0 extra API calls'
+          );
+          clearRejectedPromptCache();
+          flash.resetFlashLiteState();
+          onDev.registerFallbackOnDeviceModel(null);
+
+          // Exercise note retries carry the exact rejection reason, and first-time exercises flag hasHistory=false.
+          const noteRetryPrompts: string[] = [];
+          await notes.generateExerciseNote(noteFacts3, async (_s: string, u: string) => {
+            noteRetryPrompts.push(u);
+            return 'This single sentence is longer than thirty characters for testing.';
+          });
+          const freshNote = notes.buildExerciseNoteFacts({
+            exercise: freshActive.exercises[0],
+            insight: insightOf(freshActive.exercises[0], [], 'Normal', 80, 12, fmtKg2),
+            workouts: [],
+            readinessState: 'Normal',
+            knowledgeGraph: freshKg,
+            formatWeight: fmtKg2,
+          });
+          assert(
+            /could not be used because it must be exactly 2 lines/.test(noteRetryPrompts[1] ?? '') && !freshNote.hasHistory && noteFacts3.hasHistory,
+            'Exercise note retries explain why attempt 1 failed, and fresh exercises mark hasHistory=false'
+          );
+
+          flash.resetFlashLiteState();
+          globalThis.fetch = savedFetch;
+        }
+      }
+
+      // The coach opens with what is on screen, and its suggestions are answered from data.
+      {
+        const ctx = await import('../../services/coachContext');
+        const goalsMod3 = await import('../../services/athleteGoals');
+        const ov3 = await import('../../services/progressOverview');
+        const base = { profile, activeWorkout: active, workouts, biometrics, exerciseCatalog: exercises, readinessState: readiness.state, bodyweightEmaKg: bw };
+        const fmt3 = (v: number) => `${Math.round(v * 10) / 10} kg`;
+        const notHelp = (t: string) => !/don't have a good answer/.test(t) && t.length > 20;
+        const tick = (n: number): WorkoutSession => {
+          let left = n;
+          return { ...active, exercises: active.exercises.map((ex) => ({ ...ex, sets: ex.sets.map((st) => (left > 0 && !st.isWarmup ? (left--, { ...st, completed: true, actualReps: st.targetReps, actualWeightKg: st.targetWeightKg }) : st)) })) };
+        };
+        const inSession = tick(4);
+        const current = inSession.exercises.find((ex) => ex.sets.some((st) => !st.isWarmup && !st.completed))!;
+        const openActive = ctx.buildCoachOpening({ ...base, activeWorkout: inSession, place: { tab: 'train' } });
+        assert(
+          openActive.id === 'workout-active' && openActive.line.includes(current.name) && /4 of \d+ sets/.test(openActive.line) && openActive.hooks.some((h) => h.text === `I want to swap ${current.name}`),
+          `In a workout the coach opens on the exercise in hand and offers to swap it (${openActive.line})`
+        );
+        const swapHook = await processAssistantMessage({ ...args, activeWorkout: inSession, userMessage: `I want to swap ${current.name}` });
+        assert(swapHook.message.text.includes(current.name) && /swap/i.test(swapHook.message.text), 'The swap suggestion gets a swap for that exercise');
+        const kitHook = openActive.hooks.find((h) => / taken$/.test(h.text));
+        if (kitHook) {
+          const kitAnswer = await processAssistantMessage({ ...args, activeWorkout: inSession, userMessage: kitHook.text });
+          assert(/need a swap|None of today's exercises need/.test(kitAnswer.message.text) && !kitAnswer.updatedProfile, 'The "kit is taken" suggestion gets swaps for today and changes no saved equipment');
+        }
+
+        const places: [string, any, any][] = [
+          ['workout-ready', { tab: 'train' }, { activeWorkout: { ...active, recoveryOverride: true } }],
+          ['program', { tab: 'program' }, {}],
+          ['progress', { tab: 'analytics' }, {}],
+          ['goals-settings', { tab: 'analytics', detail: 'goals' }, {}],
+          ['progress-weight', { tab: 'analytics', detail: 'weight' }, {}],
+          ['progress-standards', { tab: 'analytics', detail: 'standards' }, {}],
+          ['progress-bests', { tab: 'analytics', detail: 'bests' }, {}],
+          ['goal-weekly', { tab: 'analytics', goalId: goalsMod3.WEEKLY_GOAL_ID }, {}],
+          ['goal-chosen', { tab: 'analytics', goalId: goalsMod3.CHOSEN_GOAL_ID }, {}],
+          ['goal-strength', { tab: 'analytics', goalId: ov3.closestStrengthGoal(kg.goals)!.id }, {}],
+        ];
+        const lines = new Set<string>();
+        for (const [id, place, extra] of places) {
+          const opening = ctx.buildCoachOpening({ ...base, ...extra, place });
+          lines.add(opening.line);
+          assert(opening.id === id && opening.line.length > 20 && !/undefined|NaN/.test(opening.line) && opening.hooks.length >= 2 && opening.hooks.length <= 5, `Coach opening for ${id}: "${opening.line}" (${opening.hooks.map((h) => h.label).join(', ')})`);
+          for (const hook of opening.hooks.filter((h) => !h.fill && !/goal|times a week|follow/i.test(h.text))) {
+            const answer = await processAssistantMessage({ ...args, ...extra, userMessage: hook.text });
+            assert(notHelp(answer.message.text), `Suggestion "${hook.label}" on ${id} is answered from data (got "${answer.message.text.slice(0, 60)}")`);
+          }
+        }
+        assert(lines.size === places.length, 'Each place gets its own opening line');
+        const pos = planPosition(profile, workouts);
+        assert(ctx.buildCoachOpening({ ...base, place: { tab: 'program' } }).line.includes(`week ${pos.week} of 6`), 'The Program opening gives the same week as the Program page');
+        const weeklyGoal = kg.goals.find((g) => g.id === goalsMod3.WEEKLY_GOAL_ID)!;
+        assert(ctx.buildCoachOpening({ ...base, place: { tab: 'analytics', goalId: weeklyGoal.id } }).line.includes(goalsMod3.describeGoalStanding(weeklyGoal, fmt3)), 'A goal\'s opening line states where that goal stands, as its screen does');
+        const freshOpen = ctx.buildCoachOpening({ profile: NEW_USER_PROFILE, activeWorkout: generate6WeekMuscleBuildingWorkout(1, 80), workouts: [], biometrics: [], exerciseCatalog: exercises, readinessState: 'Normal', bodyweightEmaKg: 80, place: { tab: 'analytics' } });
+        assert(freshOpen.line.length > 10 && !/\b80\b/.test(freshOpen.line), 'A new athlete gets an opening line with no invented figures');
+
+        // Goals changed by talking to the coach, and the athlete's own goals.
+        const say = async (userMessage: string, p = profile) => processAssistantMessage({ ...args, profile: p, userMessage });
+        const three = await say('change my goal to 3 times a week');
+        assert(three.actionTaken?.type === 'UPDATE_GOALS' && three.updatedProfile?.goalSettings?.sessionsPerWeek === 3, 'Coach: "change my goal to 3 times a week" sets the weekly goal');
+        const backToPlan = await say('I want to train 4 times a week', { ...profile, goalSettings: { sessionsPerWeek: 3 } });
+        assert('goalSettings' in (backToPlan.updatedProfile ?? {}) && backToPlan.updatedProfile!.goalSettings === undefined, 'Coach: setting the plan\'s own number clears the change');
+        for (const q of ['should i train 3 times a week?', 'can i train 3 times a week', 'what counts as a session']) {
+          const r = await say(q);
+          assert(!r.updatedProfile && r.actionTaken?.type !== 'UPDATE_GOALS', `Coach: the question "${q}" changes no goal`);
+        }
+        assert(/day with a finished workout/.test((await say('what counts as a session')).message.text), 'Coach: "what counts as a session" is answered');
+        const nine = await say('change my goal to 9 times a week');
+        assert(!nine.updatedProfile && /from 2 to 7/.test(nine.message.text), 'Coach: a weekly goal outside 2 to 7 is refused');
+
+        const chins = await say('my goal is 30 chin-ups');
+        const chinGoalSaved = chins.updatedProfile?.goalSettings?.customGoals?.[0];
+        assert(
+          chins.actionTaken?.type === 'UPDATE_GOALS' && chinGoalSaved?.exerciseId === 'ex-chinup' && chinGoalSaved.metric === 'reps' && chinGoalSaved.target === 30 && chinGoalSaved.exerciseName === 'Chin-ups' && /30 reps on Chin-ups/.test(chins.message.text),
+          `Coach: "my goal is 30 chin-ups" sets a reps goal under its everyday name (${chins.message.text.slice(0, 80)})`
+        );
+        const benchKg = await say('set a goal of 140 kg on bench press');
+        const benchSaved = benchKg.updatedProfile?.goalSettings?.customGoals?.[0];
+        assert(benchSaved?.exerciseId === 'ex-bench-press' && benchSaved.metric === 'weight' && benchSaved.target === 140, 'Coach: "set a goal of 140 kg on bench press" sets a weight goal');
+        const benchLb = await say('my goal is a 300 lb bench', { ...profile, weightUnit: 'lb' });
+        assert(Math.abs((benchLb.updatedProfile?.goalSettings?.customGoals?.[0]?.target ?? 0) - 136.1) < 0.1 && /300 lb/.test(benchLb.message.text), 'Coach: a goal given in lb is stored in kg and read back in lb');
+        const already = await say('set a goal of 40 kg on bench press');
+        assert(!already.updatedProfile && /already done/.test(already.message.text), 'Coach: a target the athlete has already passed is not set');
+        const noLift = await say('set a goal of 100 kg');
+        assert(!noLift.updatedProfile && /Which exercise/.test(noLift.message.text), 'Coach: a goal with no exercise asks which one');
+        const tooBig = await say('my goal is a 900 kg bench');
+        assert(!tooBig.updatedProfile, 'Coach: an impossible target is not set');
+
+        const withOwn = { ...profile, goalSettings: benchKg.updatedProfile!.goalSettings };
+        const ownGoals = goalsMod3.buildAthleteGoals({ profile: withOwn, workouts, biometrics, bodyweightKg: bw });
+        const own = ownGoals.find((g) => g.id.startsWith(goalsMod3.CUSTOM_GOAL_PREFIX))!;
+        const benchBest = goalsMod3.bestOnExercise(workouts, 'ex-bench-press');
+        assert(
+          own.measure.type === 'target' && own.measure.best === Math.round(benchBest.weightKg * 10) / 10 && own.target === 140 && !own.achieved,
+          `An own goal is counted from the heaviest logged set, whatever the reps (${own.detail})`
+        );
+        // Three to five goals: the plan's three, plus up to two of the athlete's own, each with a ring.
+        const planOnly = goalsMod3.activeGoals(kg.goals);
+        assert(
+          planOnly.length === 3 && planOnly[0].id === goalsMod3.WEEKLY_GOAL_ID && planOnly[1].id.startsWith('strength-') && planOnly[2].id === goalsMod3.CHOSEN_GOAL_ID && ov3.buildGoalRings(kg.goals, fmt3).length === 3,
+          'By default an athlete has the plan\'s three goals: sessions a week, a strength level and their chosen goal'
+        );
+        const four = goalsMod3.activeGoals(ownGoals);
+        const fourRings = ov3.buildGoalRings(ownGoals, fmt3);
+        assert(
+          four.length === 4 && four[3].id === own.id && fourRings.length === 4 && fourRings[3].value === `${benchBest.weightKg}/140` && fourRings[1].id.startsWith('strength-') && fourRings.every((r) => !/%/.test(r.value + r.caption)),
+          `A goal of the athlete's own is a fourth goal with its own ring; the strength level keeps its place (${fourRings.map((r) => r.value).join(' | ')})`
+        );
+        const second = await say('my goal is 30 chin-ups', withOwn);
+        const withTwo = { ...profile, goalSettings: second.updatedProfile!.goalSettings };
+        const five = goalsMod3.activeGoals(goalsMod3.buildAthleteGoals({ profile: withTwo, workouts, biometrics, bodyweightKg: bw }));
+        assert(five.length === goalsMod3.MAX_GOALS && withTwo.goalSettings?.customGoals?.length === goalsMod3.MAX_CUSTOM_GOALS, 'Two goals of the athlete\'s own make five in total');
+        const sixth = await say('set a goal of 200 kg on deadlift', withTwo);
+        assert(!sixth.updatedProfile && /5 goals/.test(sixth.message.text) && /which of yours to remove/.test(sixth.message.text), `A sixth goal is refused, naming the two that can be removed (${sixth.message.text.slice(0, 90)})`);
+        const retarget = await say('set a goal of 150 kg on bench press', withTwo);
+        assert(retarget.updatedProfile?.goalSettings?.customGoals?.length === 2 && retarget.updatedProfile.goalSettings.customGoals.some((g) => g.exerciseId === 'ex-bench-press' && g.target === 150), 'Changing the target of an own goal replaces it; it does not add another');
+        const tooMany = goalsMod3.activeGoals(goalsMod3.buildAthleteGoals({ profile: { ...profile, goalSettings: { customGoals: [...withTwo.goalSettings!.customGoals!, { id: 'ex-deadlift-weight', exerciseId: 'ex-deadlift', exerciseName: 'Deadlift', metric: 'weight', target: 200, createdOn: '2026-11-01' }] } }, workouts, biometrics, bodyweightKg: bw }));
+        assert(tooMany.length === goalsMod3.MAX_GOALS, 'A saved profile with more than two own goals still shows five goals');
+        const newAthlete = goalsMod3.activeGoals(goalsMod3.buildAthleteGoals({ profile: NEW_USER_PROFILE, workouts: [], biometrics: [] }));
+        assert(newAthlete.length === 2 && ov3.buildGoalRings(goalsMod3.buildAthleteGoals({ profile: NEW_USER_PROFILE, workouts: [], biometrics: [] })).length === 3, 'Before a strength level can be worked out, its ring is an empty placeholder, so there are still three');
+        // Onboarding: a goal of the athlete's own is checked the same way.
+        const fromOnboarding = goalsMod3.makeCustomGoal('ex-chinup', goalsMod3.ownGoalName('ex-chinup', 'Pull-Up Bar Chin-Up / Pull-Up'), 'reps', 12, '2026-11-12');
+        assert(
+          fromOnboarding?.id === 'ex-chinup-reps' && fromOnboarding.exerciseName === 'Chin-ups' && goalsMod3.makeCustomGoal('ex-bench-press', 'Bench press', 'weight', 900, '') === null && goalsMod3.makeCustomGoal('ex-chinup', 'Chin-ups', 'reps', 0, '') === null && goalsMod3.OWN_GOAL_LIFTS.every((l) => exercises.some((e) => e.id === l.exerciseId)),
+          'A goal set in onboarding is a valid own goal on a real exercise; impossible targets are refused'
+        );
+        const onboarded = goalsMod3.activeGoals(goalsMod3.buildAthleteGoals({ profile: { ...NEW_USER_PROFILE, goalSettings: { customGoals: [fromOnboarding!] } }, workouts: [], biometrics: [] }));
+        assert(onboarded.some((g) => g.measure.type === 'target' && g.measure.best === 0 && /not logged yet/.test(g.detail)), 'A goal set in onboarding shows from day one as "not logged yet"');
+        const ownOpening = ctx.buildCoachOpening({ ...base, profile: withOwn, place: { tab: 'analytics', goalId: own.id } });
+        assert(ownOpening.id === 'goal-custom' && ownOpening.hooks.some((h) => h.fill) && ownOpening.hooks.some((h) => /^Remove my /.test(h.text)), 'On an own goal the coach offers to change the target or remove it');
+        const removed = await say(ownOpening.hooks.find((h) => /^Remove my /.test(h.text))!.text, withOwn);
+        assert('goalSettings' in (removed.updatedProfile ?? {}) && !removed.updatedProfile!.goalSettings?.customGoals?.length, 'Coach: "remove my … goal" removes it');
+        const follow = await say('follow my bench press strength level');
+        assert(follow.updatedProfile?.goalSettings?.strengthFocus === 'Horizontal Push', 'Coach: "follow my bench press strength level" changes the lift that leads');
+        const reset = await say("use my plan's goals", withOwn);
+        assert('goalSettings' in (reset.updatedProfile ?? {}) && reset.updatedProfile!.goalSettings === undefined, 'Coach: "use my plan\'s goals" puts the plan\'s goals back');
+        const damaged = goalsMod3.buildAthleteGoals({ profile: { ...profile, goalSettings: { customGoals: [{ id: 'x', exerciseId: 'ex-bench-press', exerciseName: 'Bench', metric: 'weight', target: -5, createdOn: '2026-11-01' }, null as any, { id: 'y' } as any] } }, workouts, biometrics, bodyweightKg: bw });
+        assert(!damaged.some((g) => g.id.startsWith(goalsMod3.CUSTOM_GOAL_PREFIX)), 'Damaged saved goals are ignored');
+        const reached = goalsMod3.goalsProgressedBy(
+          [{ ...own, current: 135, achieved: false }],
+          [{ ...own, current: 140, achieved: true, progressPct: 100 }]
+        );
+        assert(reached[0]?.status === 'reached', 'Reaching an own goal in a workout shows as a goal reached');
+        const finishMod3 = await import('../../services/workoutFinish');
+        const with100Goal = { ...profile, goalSettings: (await say('set a goal of 100 kg on bench press')).updatedProfile!.goalSettings };
+        const finishOwnReached = finishMod3.buildWorkoutFinish({
+          profile: with100Goal,
+          workouts,
+          finished: {
+            ...active,
+            id: 'w-own-reached',
+            exercises: active.exercises.map((ex, idx) =>
+              idx === 0
+                ? { ...ex, exerciseId: 'ex-bench-press', name: 'Barbell Bench Press', sets: ex.sets.map((st) => ({ ...st, completed: true, actualWeightKg: 100, actualReps: 3 })) }
+                : { ...ex, sets: ex.sets.map((st) => ({ ...st, completed: true, actualWeightKg: st.targetWeightKg, actualReps: st.targetReps })) }
+            ),
+          },
+          biometrics,
+          exerciseCatalog: exercises,
+          bodyweightKg: bw,
+          formatWeight: fmt3,
+        })!;
+        assert(
+          !/undefined|NaN/.test(`${finishOwnReached.headline} ${finishOwnReached.fallback} ${finishOwnReached.facts.join(' ')}`) &&
+            finishOwnReached.headline === '100 kg reached' &&
+            /Bench press reached 100 kg/.test(finishOwnReached.fallback) &&
+            finishMod3.checkWorkoutSummary(finishOwnReached.fallback, finishOwnReached).problem === undefined,
+          `Workout finish for a reached own goal has a clean headline and summary ("${finishOwnReached.headline}": "${finishOwnReached.fallback}")`
+        );
+        const legPressHow = await processAssistantMessage({ ...args, userMessage: 'How do I do the leg press?' });
+        const cableChestGoal = await say('My goal on cable chest press is 105 kg');
+        const rdlGoal = await say('set a goal of 180 kg on romanian deadlift');
+        const bssGoal = await say('set a goal of 60 kg on bulgarian split squat');
+        assert(
+          /Leg Press/.test(legPressHow.message.text) &&
+            cableChestGoal.updatedProfile?.goalSettings?.customGoals?.[0]?.exerciseId === 'ex-cable-chest-press' &&
+            rdlGoal.updatedProfile?.goalSettings?.customGoals?.[0]?.exerciseId === 'ex-rdl' &&
+            bssGoal.updatedProfile?.goalSettings?.customGoals?.[0]?.exerciseId === 'ex-bulgarian-split-squat',
+          'Specific library exercises are matched over generic last words when asking how to do a lift or setting an own goal'
+        );
+        const almostRing = ov3.buildGoalRings([{ ...own, current: 135, target: 140, achieved: false, measure: { ...(own.measure as any), best: 135, target: 140 } }], fmt3)[0];
+        assert(almostRing.segments.filter((s) => s === 'on').length === 9, 'A goal at 96% lights 9 of 10 ring segments; the 10th waits until the target is reached');
+      }
+
+      // Secondary screens use the design system: its tokens and classes exist, and nothing is hand-written.
+      {
+        const fsMod = await import('fs');
+        const pathMod = await import('path');
+        const root = pathMod.resolve(process.cwd(), 'src');
+        const css = fsMod.readFileSync(pathMod.join(root, 'index.css'), 'utf-8');
+        const walk = (dir: string): string[] => fsMod.readdirSync(dir, { withFileTypes: true }).flatMap((e: any) => (e.isDirectory() ? walk(pathMod.join(dir, e.name)) : e.name.endsWith('.tsx') ? [pathMod.join(dir, e.name)] : []));
+        const components = walk(pathMod.join(root, 'components'));
+        const missing: string[] = [];
+        for (const file of components) {
+          const src = fsMod.readFileSync(file, 'utf-8');
+          for (const token of new Set(src.match(/var\((--wk-[a-z0-9-]+)/g) || [])) {
+            const name = token.replace('var(', '');
+            if (!css.includes(`${name}:`)) missing.push(`${pathMod.basename(file)} uses ${name}`);
+          }
+          for (const cls of new Set(src.match(/(?<![\w-])wk-[a-z0-9-]+/g) || [])) {
+            if (!css.includes(`.${cls}`)) missing.push(`${pathMod.basename(file)} uses .${cls}`);
+          }
+        }
+        assert(missing.length === 0, `Every design-system token and class used by a component exists${missing.length ? ` (${[...new Set(missing)].slice(0, 5).join('; ')})` : ''}`);
+        const secondary = [
+          'assistant/AICoachChatModal.tsx', 'analytics/WeightLogModal.tsx', 'analytics/GoalDetailScreen.tsx', 'analytics/GoalSettingsScreen.tsx', 'train/PlateCalculatorModal.tsx',
+          'train/ExerciseSwapModal.tsx', 'train/WorkoutFinishScreen.tsx', 'program/CustomExerciseModal.tsx', 'program/PastWorkoutModal.tsx', 'program/WatchSyncModal.tsx', 'program/ProgramPickerModal.tsx',
+          'common/RestTimerModal.tsx', 'common/Toast.tsx', 'onboarding/OnboardingModal.tsx', 'auth/GoogleAuthModal.tsx', 'activity/ActivityConnectionsModal.tsx', 'activity/LogActivityModal.tsx',
+        ];
+        const offSystem: string[] = [];
+        for (const rel of secondary) {
+          const src = fsMod.readFileSync(pathMod.join(root, 'components', rel), 'utf-8');
+          const hits = src.match(/(?<=[\s"'`])(?:[a-z-]+:)*(?:text-(?:xs|sm|base|lg|xl|2xl|3xl)|(?:bg|text|border)-\[#[0-9A-Fa-f]{6}\]|rounded(?:-[tblr]{1,2})?-(?:lg|xl|2xl|3xl)|-?(?:p|px|py|pt|pb|pl|pr|m|mx|my|mt|mb|ml|mr|gap|gap-x|gap-y|space-x|space-y)-\d+(?:\.\d)?)(?=[\s"'`])/g) || [];
+          if (hits.length) offSystem.push(`${rel}: ${[...new Set(hits)].slice(0, 4).join(' ')}`);
+        }
+        assert(offSystem.length === 0, `Secondary screens use the design system's sizes, colours, radii and spacing${offSystem.length ? ` (${offSystem.slice(0, 4).join(' | ')})` : ''}`);
       }
 
       // A question never changes the plan, and the streak it quotes is the header's.

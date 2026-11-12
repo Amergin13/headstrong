@@ -23,7 +23,7 @@ import { MesocycleManager } from './MesocycleManager';
 import { GoalPhaseSwitcher } from './GoalPhaseSwitcher';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { triggerHaptic } from '../../utils/haptics';
-import { GPU_MODEL_DOWNLOAD_LABEL, isGpuModelReady, removeGpuModel } from '../../services/gpuModel';
+import '../../services/deviceModels';
 
 interface ProgramTabProps {
   profile: UserProfile;
@@ -114,7 +114,6 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
   const [openSettingsSection, setOpenSettingsSection] = useState<'account' | 'profile' | 'wearable' | 'data' | null>(null);
   const [showPrivacyDetails, setShowPrivacyDetails] = useState(false);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
-  const [deviceCoachReady, setDeviceCoachReady] = useState(false);
   const [showProgramPicker, setShowProgramPicker] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const openSettings = (open: boolean) => {
@@ -135,10 +134,6 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
       onUpdateProfile({ programType: newProg });
     }
   };
-
-  useEffect(() => {
-    isGpuModelReady().then(setDeviceCoachReady).catch(() => setDeviceCoachReady(false));
-  }, []);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const activeWearableKey = getActiveWearableProvider(profile);
@@ -915,21 +910,6 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
                   Delete All Data
                 </button>
               </div>
-
-              {deviceCoachReady && (
-                <button
-                  type="button"
-                  onClick={async () => {
-                    triggerHaptic('light');
-                    await removeGpuModel();
-                    setDeviceCoachReady(false);
-                  }}
-                  className="wk-button"
-                  style={{ background: 'var(--wk-raised)', color: '#fff' }}
-                >
-                  Remove on-phone coach download (frees {GPU_MODEL_DOWNLOAD_LABEL})
-                </button>
-              )}
 
               {confirmDeleteOpen && onDeleteAllData && (
                 <div

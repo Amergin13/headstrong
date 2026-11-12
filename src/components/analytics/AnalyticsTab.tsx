@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Scale, Ruler, Bluetooth } from 'lucide-react';
-import { BiometricLog, BodyMeasurementSite, ExerciseDefinition, UserProfile, WorkoutSession } from '../../engine/types';
+import { BiometricLog, BodyMeasurementSite, ExerciseDefinition, GoalPhase, UserProfile, WorkoutSession } from '../../engine/types';
 import { StrengthLevelsCard } from './StrengthLevelsCard';
 import { BalanceCard } from './BalanceCard';
 import { buildMovementStandards } from '../../services/movementStandards';
@@ -28,7 +28,12 @@ import {
 import { weightPace } from '../../services/progressSeries';
 import { parseLocalDate } from '../../utils/date';
 import { DetailHeader, GoalsHero, OverviewCard, Sparkline, StandardsRadar, StatRow } from './ProgressOverviewCards';
+import { GoalDetailScreen } from './GoalDetailScreen';
+import { GoalSettingsScreen } from './GoalSettingsScreen';
+import { alignStrengthAndWeight, strengthIndexSeries } from '../../services/strengthTrend';
+import { calculateEmaSeries } from '../../engine/ema';
 import { triggerHaptic } from '../../utils/haptics';
+import '../../services/deviceModels';
 import { useUnits } from '../../utils/unitsContext';
 import { kgToUnit } from '../../utils/units';
 
@@ -52,6 +57,9 @@ const CHART_ID_TO_TAPE_SITE: Partial<Record<string, BodyMeasurementSite>> = {
   'calf-right': 'calf_right',
 };
 
+/** The overview, or one of the screens its cards open. */
+type ProgressDetail = 'bests' | 'lifetime' | 'recent' | 'weight' | 'measurements' | 'standards' | 'goals';
+
 interface AnalyticsTabProps {
   workouts: WorkoutSession[];
   biometrics: BiometricLog[];
@@ -62,14 +70,18 @@ interface AnalyticsTabProps {
   weeklyVolume: Record<string, number>;
   /** Active days (rides, runs…), which count toward the weekly sessions goal. */
   activities?: ActivityLog[];
+  /** Saves a change to the athlete's goals. */
+  onUpdateProfile: (update: Partial<UserProfile>) => void;
+  /** Changes the main goal (Build Muscle, Lose Fat, Stay Lean), which also reshapes the plan. */
+  onUpdateGoalPhase: (phase: GoalPhase) => void;
+  /** Tells the app which goal or screen is open, so the coach can open with what is on screen. */
+  onContextChange?: (context: { goalId?: string; detail?: ProgressDetail }) => void;
   onSaveMeasurements: (entry: MeasurementEntry) => void;
   /** Changes when the "Log Weight" shortcut is used; opens the weigh-in form. */
   openLogWeightRequest?: number;
   onLogWeightRequestHandled?: () => void;
 }
 
-/** The overview, or one of the screens its cards open. */
-type ProgressDetail = 'bests' | 'lifetime' | 'recent' | 'weight' | 'measurements' | 'standards';
 type CompositionView = 'weight' | 'measurements';
 
 const DETAIL_TITLE: Record<ProgressDetail, string> = {
@@ -79,6 +91,7 @@ const DETAIL_TITLE: Record<ProgressDetail, string> = {
   weight: 'Body weight',
   measurements: 'Measurements',
   standards: 'Strength standards',
+  goals: 'Change goals',
 };
 
 /** A lift's name without its kit, for the three-across card: "Barbell Bench Press" → "Bench Press". */
@@ -98,11 +111,16 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
   exerciseCatalog,
   weeklyVolume,
   activities = [],
+  onUpdateProfile,
+  onUpdateGoalPhase,
+  onContextChange,
   onSaveMeasurements,
   openLogWeightRequest = 0,
   onLogWeightRequestHandled,
 }) => {
   const [detail, setDetail] = useState<ProgressDetail | null>(null);
+  /** The goal whose detail is open (a ring was tapped). */
+  const [openGoalId, setOpenGoalId] = useState<string | null>(null);
   const compositionView: CompositionView = detail === 'measurements' ? 'measurements' : 'weight';
   const [showLogModal, setShowLogModal] = useState(false);
   const [logModalMode, setLogModalMode] = useState<LogModalMode>('weight');
@@ -166,7 +184,13 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
   );
 
   // The overview: goals, personal bests, totals, and the lean weight and measurement views.
-  const goalRings = useMemo(() => buildGoalRings(knowledgeGraph.goals), [knowledgeGraph]);
+  const goalRings = useMemo(() => buildGoalRings(knowledgeGraph.goals, (kg) => units.format(kg)), [knowledgeGraph, units]);
+  const openGoal = openGoalId ? knowledgeGraph.goals.find((g) => g.id === openGoalId) : undefined;
+  // Strength and bodyweight on one scale (both start at 100), for the chosen goal's chart.
+  const { strength: strengthIndex, weight: weightIndex } = useMemo(
+    () => alignStrengthAndWeight(strengthIndexSeries(workouts, hasBodyweight ? bodyweightEmaKg : 80), calculateEmaSeries(biometrics)),
+    [workouts, biometrics, hasBodyweight, bodyweightEmaKg]
+  );
   const goalsSummary = useMemo(() => buildGoalsSummary(knowledgeGraph.goals, (kg) => units.formatPrecise(kg)), [knowledgeGraph, units]);
   const personalBests = useMemo(() => buildPersonalBests(workouts, hasBodyweight ? bodyweightEmaKg : undefined), [workouts, hasBodyweight, bodyweightEmaKg]);
   const trophies = useMemo(() => trophyCase(personalBests), [personalBests]);
@@ -181,6 +205,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
   const whole = (kg: number) => Math.round(units.toDisplay(kg)).toLocaleString();
 
   const openLogWeight = () => {
+    setOpenGoalId(null);
     setDetail('weight');
     setLogModalMode('weight');
     setShowLogModal(true);
@@ -193,12 +218,20 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
     }
   }, [openLogWeightRequest]);
 
+  useEffect(() => {
+    onContextChange?.({ goalId: openGoalId ?? undefined, detail: openGoalId ? undefined : detail ?? undefined });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [detail, openGoalId]);
+  // Leaving the Progress page clears it.
+  useEffect(() => () => onContextChange?.({}), []); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Each screen opens at its top, not where the last one was scrolled to.
   useEffect(() => {
     if (typeof window !== 'undefined') window.scrollTo(0, 0);
-  }, [detail]);
+  }, [detail, openGoalId]);
 
   const openLogMeasurements = (site: BodyMeasurementSite = 'waist') => {
+    setOpenGoalId(null);
     setDetail('measurements');
     setLogModalMode('measurements');
     setLogModalSite(site);
@@ -329,6 +362,10 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
           </>
         )}
 
+        {detail === 'goals' && (
+          <GoalSettingsScreen profile={profile} goals={knowledgeGraph.goals} onUpdateProfile={onUpdateProfile} onUpdateGoalPhase={onUpdateGoalPhase} />
+        )}
+
         {detail === 'standards' && (
           <>
             {hasBodyweight ? (
@@ -354,7 +391,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
               if (compositionView === 'weight') openLogWeight();
               else openLogMeasurements('waist');
             }}
-            className="wk-button gap-2"
+            className="wk-button gap-[calc(16*var(--f))]"
             style={{ background: 'var(--wk-accent)', color: '#13181C' }}
           >
             {compositionView === 'weight' ? <Scale className="w-4 h-4 stroke-[2]" /> : <Ruler className="w-4 h-4 stroke-[2]" />}
@@ -362,13 +399,13 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
           </button>
 
           {(compositionView === 'weight' ? savedRenpho.scale : savedRenpho.tape) && (
-            <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 rounded-xl" style={{ background: 'var(--wk-card)' }}>
-              <div className="flex items-center gap-1.5 text-xs font-semibold text-[#00F19F]">
+            <div className="flex flex-wrap items-center justify-between gap-[calc(16*var(--f))] px-[calc(26*var(--f))] py-[calc(16*var(--f))] rounded-[calc(22*var(--f))]" style={{ background: 'var(--wk-card)' }}>
+              <div className="flex items-center gap-[calc(12*var(--f))] text-[length:max(12px,calc(26*var(--f)))] font-semibold text-[color:var(--wk-accent)]">
                 <Bluetooth className="w-3.5 h-3.5 stroke-[2]" />
                 <span>Remembered: {(compositionView === 'weight' ? savedRenpho.scale : savedRenpho.tape)?.name}</span>
               </div>
               {(compositionView === 'weight' ? savedRenpho.scale : savedRenpho.tape)?.lastSummary && (
-                <span className="text-xs text-[#C6C6C6]">
+                <span className="text-[length:max(12px,calc(26*var(--f)))] text-[color:var(--wk-body)]">
                   Last: {(compositionView === 'weight' ? savedRenpho.scale : savedRenpho.tape)?.lastSummary}
                 </span>
               )}
@@ -378,34 +415,34 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
           {(compositionView === 'weight'
             ? bodyComposition.populatedScaleCount > 0
             : bodyComposition.populatedTapeCount > 0) && (
-            <div className="wk-card space-y-3">
-              <h2 className="wk-h2 text-white">{compositionView === 'weight' ? 'Body composition' : 'Symmetry'}</h2>
+            <div className="wk-card space-y-[calc(26*var(--f))]">
+              <h2 className="wk-label">{compositionView === 'weight' ? 'Body composition' : 'Symmetry'}</h2>
               {compositionView === 'weight' ? (
                 <>
-                  <p className="wk-body text-[#C6C6C6]">{bodyComposition.recompositionSummary}</p>
+                  <p className="wk-body text-[color:var(--wk-body)]">{bodyComposition.recompositionSummary}</p>
                   {/* The latest reading of each metric, from the same series as the charts below. */}
                   {visibleCompositionCharts.some((c) => c.id !== 'bodyweight' && c.points.length > 0) && (
-                    <dl className="grid grid-cols-2 gap-x-4 gap-y-3 pt-1">
+                    <dl className="grid grid-cols-2 gap-x-[calc(38*var(--f))] gap-y-[calc(26*var(--f))] pt-[calc(8*var(--f))]">
                       {visibleCompositionCharts
                         .filter((c) => c.id !== 'bodyweight' && c.points.length > 0)
                         .map((c) => (
                           <div key={c.id} className="min-w-0">
-                            <dt className="text-xs text-[#AAABAD]">{c.title}</dt>
-                            <dd className="text-sm font-bold text-white">{c.format(c.points[c.points.length - 1].value)}</dd>
+                            <dt className="text-[length:max(12px,calc(26*var(--f)))] text-[color:var(--wk-muted)]">{c.title}</dt>
+                            <dd className="text-[length:max(12px,calc(30*var(--f)))] font-bold text-white">{c.format(c.points[c.points.length - 1].value)}</dd>
                           </div>
                         ))}
                     </dl>
                   )}
                 </>
               ) : measuredSymmetryPairs.length > 0 ? (
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-[calc(16*var(--f))] pt-[calc(8*var(--f))]">
                   {measuredSymmetryPairs.map((pair) => (
-                    <div key={pair.id} className="rounded-xl p-2.5" style={{ background: 'var(--wk-surface)' }}>
-                      <span className="block text-xs text-[#AAABAD] font-semibold">{pair.label}</span>
-                      <span className="block text-sm font-bold text-white font-mono mt-0.5">
+                    <div key={pair.id} className="rounded-[calc(22*var(--f))] p-[calc(22*var(--f))]" style={{ background: 'var(--wk-raised)' }}>
+                      <span className="block text-[length:max(12px,calc(26*var(--f)))] text-[color:var(--wk-muted)] font-semibold">{pair.label}</span>
+                      <span className="block text-[length:max(12px,calc(30*var(--f)))] font-bold text-white font-mono mt-[calc(4*var(--f))]">
                         L {fmt.length(pair.leftCm!)} · R {fmt.length(pair.rightCm!)}
                       </span>
-                      <span className="block text-xs text-[#00F19F] mt-0.5">
+                      <span className="block text-[length:max(12px,calc(26*var(--f)))] text-[color:var(--wk-accent)] mt-[calc(4*var(--f))]">
                         {pair.status === 'balanced'
                           ? 'Balanced'
                           : `${pair.dominantSide === 'right' ? 'Right' : 'Left'} +${fmt.length(Math.abs(pair.diffCm ?? 0))}`}
@@ -414,7 +451,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
                   ))}
                 </div>
               ) : (
-                <p className="wk-body text-[#C6C6C6]">Measure both arms, thighs or calves to compare your left and right sides.</p>
+                <p className="wk-body text-[color:var(--wk-body)]">Measure both arms, thighs or calves to compare your left and right sides.</p>
               )}
             </div>
           )}
@@ -436,7 +473,18 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
         </h1>
       </header>
 
-      <GoalsHero rings={goalRings} summary={goalsSummary} />
+      <GoalsHero
+        rings={goalRings}
+        summary={goalsSummary}
+        onOpenGoal={(id) => {
+          if (id.startsWith('strength-none')) {
+            openLogWeight();
+            return;
+          }
+          setOpenGoalId(id);
+        }}
+        onChangeGoals={() => setDetail('goals')}
+      />
 
       <div className="flex flex-col" style={{ gap: fig(22), marginTop: fig(70) }}>
         <OverviewCard title="Trophy case" opens="all personal bests" onOpen={() => setDetail('bests')}>
@@ -551,9 +599,39 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
     </>
   );
 
+  const goalScreen = openGoal && (
+    <>
+      <DetailHeader title={openGoal.title} onBack={() => setOpenGoalId(null)} />
+      <div className="flex flex-col" style={{ gap: fig(22), marginTop: fig(32) }}>
+        <GoalDetailScreen
+          goal={openGoal}
+          goals={knowledgeGraph.goals}
+          strengthIndex={strengthIndex}
+          weightIndex={weightIndex}
+          supporting={compositionCharts.filter((c) => (c.id === 'lean-mass' || c.id === 'waist') && c.points.length > 0)}
+          onOpenGoal={setOpenGoalId}
+          onLogWeight={openLogWeight}
+          onLogMeasurements={() => openLogMeasurements('waist')}
+        />
+        <button
+          type="button"
+          onClick={() => {
+            triggerHaptic('light');
+            setOpenGoalId(null);
+            setDetail('goals');
+          }}
+          className="wk-button"
+          style={{ background: 'var(--wk-raised)', color: '#fff' }}
+        >
+          Change goals
+        </button>
+      </div>
+    </>
+  );
+
   return (
     <div className="wk -mx-3.5" style={{ paddingLeft: fig(PAGE_GUTTER), paddingRight: fig(PAGE_GUTTER), paddingBottom: 112 }}>
-      {detailScreen || overview}
+      {goalScreen || detailScreen || overview}
 
       {showLogModal && (
         <WeightLogModal

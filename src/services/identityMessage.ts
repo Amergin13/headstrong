@@ -15,7 +15,7 @@ import { runReadAloudQaGate } from '../engine/contentStrategy';
 import { ExerciseDefinition, ReadinessState, WorkoutSession, WorkoutSet } from '../engine/types';
 import { promptOnDeviceModel } from './onDeviceModel';
 import { strengthTrend } from './strengthTrend';
-import { mislabelledFigure, spelledNumberNotInFacts } from './factChecks';
+import { mislabelledFigure, markPromptRejected, spelledNumberNotInFacts, wasPromptRejected } from './factChecks';
 import { MUSCLE_TO_GRAPH_KEY } from './sessionReport';
 
 export interface IdentityMessageInput {
@@ -285,7 +285,10 @@ export async function generateIdentityMessage(
   // Before the first finished session there is no progress to write about; the fact-based
   // welcome is the message.
   if (facts.facts.some((f) => /^Sessions finished in this plan: 0 of /.test(f))) return null;
+  const rejectKey = `identity:${facts.key}`;
+  if (prompt === promptOnDeviceModel && wasPromptRejected(rejectKey)) return null;
   let problem: string | undefined;
+  let sawModelAnswer = false;
   // A model that throws is the same as no model: the fact-based text stays.
   try {
     for (let i = 0; i < attempts; i++) {
@@ -293,12 +296,14 @@ export async function generateIdentityMessage(
       const request = problem
         ? `${buildIdentityPrompt(facts)}\n(Your last message could not be used because ${problem}. Write it again.)`
         : buildIdentityPrompt(facts);
-      const answer = await prompt(IDENTITY_SYSTEM_PROMPT, request, { stateless: true, timeoutMs: 45_000 });
+      const answer = await prompt(IDENTITY_SYSTEM_PROMPT, request, { stateless: true, maxTokens: 130, timeoutMs: 45_000 });
       if (answer === null) return null; // no model, or it failed: don't retry
+      sawModelAnswer = true;
       const checked = checkIdentityMessage(answer, facts);
       if (checked.problem === undefined) return checked.text;
       problem = checked.problem;
     }
+    if (prompt === promptOnDeviceModel && sawModelAnswer) markPromptRejected(rejectKey);
   } catch {
     return null;
   }

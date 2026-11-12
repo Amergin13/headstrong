@@ -1,4 +1,4 @@
-import { planPosition } from '../../services/coachAnswers';
+import { CoachPlace, buildCoachOpening } from '../../services/coachContext';
 import type { ActivityLog } from '../../engine/activeDays';
 import React, { useState, useRef, useEffect } from 'react';
 import {
@@ -9,29 +9,22 @@ import {
   UserProfile,
   WorkoutSession,
 } from '../../engine/types';
-import { buildCoachSystemPrompt, processAssistantMessage } from '../../services/aiAssistantService';
+import { processAssistantMessage } from '../../services/aiAssistantService';
 import {
-  getOnDeviceModelStatus,
   prepareOnDeviceModel,
-  warmUpOnDeviceModel, resetOnDeviceModelHealth } from '../../services/onDeviceModel';
-import {
-  dismissGpuModelOffer,
-  getGpuModelId,
-  GPU_MODEL_DOWNLOAD_LABEL,
-  isGpuModelOfferDismissed,
-  isGpuModelReady,
-  loadGpuModel,
-  primeGpuModel,
-} from '../../services/gpuModel';
+  resetOnDeviceConversation,
+  warmUpOnDeviceModel,
+} from '../../services/onDeviceModel';
 
-// Where Chrome doesn't expose Gemini Nano (Chrome on Android), the coach can use a model that
-// runs on the phone's GPU once the athlete has chosen to download it.
+// Where Chrome doesn't expose Gemini Nano (e.g. Chrome on Android), the coach uses the
+// stateless Gemini 2.5 Flash-Lite proxy (/api/coach/generate) with zero download required.
 import '../../services/deviceModels';
 
-type DeviceCoachOffer = 'hidden' | 'offer' | 'downloading' | 'ready' | 'error';
 import { triggerHaptic } from '../../utils/haptics';
 import {
   ShieldCheck,
+  Maximize2,
+  Minimize2,
   X,
   Send,
   Sparkles,
@@ -55,6 +48,8 @@ interface AICoachChatModalProps {
   weeklyVolume?: Record<string, number>;
   /** Logged active days, so the coach's plan position and streak match the app. */
   activities?: ActivityLog[];
+  /** Where the coach was opened, so its first line and suggestions fit what is on screen. */
+  place: CoachPlace;
   onClose: () => void;
   onApplyAction: (updatedProfile?: Partial<UserProfile>, updatedWorkout?: WorkoutSession) => void;
   onViewAllEquipment?: () => void;
@@ -83,6 +78,7 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
   readinessState,
   weeklyVolume,
   activities,
+  place,
   onClose,
   onApplyAction,
   onViewAllEquipment,
@@ -91,61 +87,12 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
   const [isProcessing, setIsProcessing] = useState(false);
   const [messages, setMessages] = useState<AssistantChatMessage[]>([]);
   const [streamingText, setStreamingText] = useState<string | null>(null);
+  /** A fly-up sheet for quick questions; expanded, it is a full-screen conversation. */
+  const [expanded, setExpanded] = useState(false);
+  // The line and suggestions for the screen the coach was opened on, updated as changes are made.
+  const opening = buildCoachOpening({ place, profile, activeWorkout, workouts, activities, biometrics, exerciseCatalog, readinessState, bodyweightEmaKg });
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const [deviceCoach, setDeviceCoach] = useState<DeviceCoachOffer>('hidden');
-  const coachContext = () => ({
-    userMessage: '',
-    profile,
-    activeWorkout,
-    workouts,
-    biometrics,
-    exerciseCatalog,
-    bodyweightEmaKg,
-    readinessState,
-    weeklyVolume,
-    activities,
-  });
-  const [deviceCoachProgress, setDeviceCoachProgress] = useState(0);
-
-  // Offer the on-device GPU model only where Gemini Nano isn't available and the phone can run it.
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      if ((await getOnDeviceModelStatus()) === 'available') return;
-      if (await isGpuModelReady()) {
-        // Load the model and read the coach instructions while the athlete reads and types.
-        loadGpuModel()
-          .then(() => primeGpuModel(buildCoachSystemPrompt(coachContext())))
-          .catch(() => undefined);
-        return;
-      }
-      if (isGpuModelOfferDismissed() || !(await getGpuModelId())) return;
-      if (!cancelled) setDeviceCoach('offer');
-      // If the check fails, the offer simply isn't shown; the coach still answers from data.
-    })().catch(() => undefined);
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  const handleDownloadDeviceCoach = () => {
-    triggerHaptic('medium');
-    setDeviceCoach('downloading');
-    setDeviceCoachProgress(0);
-    loadGpuModel((fraction) => setDeviceCoachProgress(fraction))
-      .then(() => {
-        // A fresh download starts with a clean record, even if the model failed earlier.
-        resetOnDeviceModelHealth();
-        setDeviceCoach('ready');
-        triggerHaptic('success');
-        primeGpuModel(buildCoachSystemPrompt(coachContext())).catch(() => undefined);
-      })
-      .catch((err) => {
-        console.warn('On-device coach download failed:', err);
-        setDeviceCoach('error');
-      });
-  };
 
   // Starter greeting
   useEffect(() => {
@@ -153,17 +100,8 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
     // Load the on-device model while the athlete reads the greeting (no-op if unsupported).
     warmUpOnDeviceModel().catch(() => undefined);
 
-    // Initial contextual welcome message
-    // The same week the Program page shows (from the plan, never the old week counter).
-    const welcomeText = `Hey! I'm your coach. You're in week ${
-      planPosition(profile, workouts, activities ?? []).week
-    } of 6, and up next is ${activeWorkout?.name || 'your workout'} (${
-      activeWorkout?.location === 'travel'
-        ? 'bodyweight'
-        : activeWorkout?.location === 'home'
-        ? 'at home'
-        : 'gym'
-    }). Ask me about today's targets, how to do an exercise, whether to train today, a short session, or how you're progressing.`;
+    // The opening line is about the screen the coach was opened on.
+    const welcomeText = opening.line;
 
     const starterMessage: AssistantChatMessage = {
       id: 'msg-welcome',
@@ -176,6 +114,7 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
 
     return () => {
       isMounted = false;
+      resetOnDeviceConversation();
     };
   }, []);
 
@@ -241,172 +180,94 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
     }
   };
 
-  // Athlete-focused shortcuts, built from today's actual workout.
-  const firstLoadedExercise = activeWorkout?.exercises.find((e) => e.equipment !== 'bodyweight')?.name;
-  const quickPrompts = [
-    {
-      label: "Today's briefing",
-      text: "Give me a briefing for today's workout and targets",
-    },
-    ...(firstLoadedExercise
-      ? [
-          {
-            label: `${firstLoadedExercise.split(' ').slice(0, 2).join(' ')} target`,
-            text: `What is my target weight and reps on ${firstLoadedExercise} today?`,
-          },
-        ]
-      : []),
-    {
-      label: 'Warm-up plan',
-      text: 'How should I warm up today?',
-    },
-    {
-      label: 'Should I train today?',
-      text: 'Should I train today?',
-    },
-    {
-      label: 'Short on time',
-      text: "I'm short on time today",
-    },
-    {
-      label: 'How am I doing?',
-      text: 'How am I doing?',
-    },
-    {
-      label: 'How is my recovery?',
-      text: 'How is my recovery looking?',
-    },
-    {
-      label: "I'm travelling",
-      text: "I'll be away travelling next week",
-    },
-    {
-      label: 'Take a rest day',
-      text: "I can't train today, take a rest day",
-    },
-    {
-      label: 'How is my strength score worked out?',
-      text: 'How is my strength score (DOTS) worked out?',
-    },
-  ];
+  // Suggestions for the screen the coach was opened on. One that needs finishing ("Set a goal of …")
+  // goes into the message box instead of being sent.
+  const quickPrompts = opening.hooks;
+  const useHook = (hook: (typeof quickPrompts)[number]) => {
+    if (!hook.fill) {
+      handleSendMessage(hook.text);
+      return;
+    }
+    triggerHaptic('light');
+    setInputMessage(hook.text);
+    setTimeout(() => {
+      const input = inputRef.current;
+      if (!input) return;
+      input.focus();
+      input.setSelectionRange(hook.text.length, hook.text.length);
+    }, 0);
+  };
+  const conversationStarted = messages.length > 1 || isProcessing;
 
   return (
     <div
       role="dialog"
       aria-modal="true"
       aria-labelledby="ai-coach-title"
-      className="wk fixed inset-0 z-50 flex flex-col sm:items-center sm:justify-center sm:p-4 bg-black/90 sm:backdrop-blur-md animate-in fade-in duration-200"
+      className="wk fixed inset-0 z-50 flex flex-col justify-end sm:items-center"
     >
-      <div className="w-full sm:max-w-md h-full sm:h-[92vh] sm:max-h-[820px] rounded-none sm:rounded-3xl bg-[#13181C] shadow-2xl flex flex-col overflow-hidden">
-        {/* Header */}
-        <div className="p-5 bg-[#2C3034] flex items-start justify-between">
-          <div>
-            <h3 id="ai-coach-title" className="wk-h1 text-white">
+      {/* Tapping the page behind closes the sheet. */}
+      <button
+        type="button"
+        tabIndex={-1}
+        aria-hidden="true"
+        onClick={onClose}
+        className={`absolute inset-0 w-full h-full cursor-default ${expanded ? 'bg-black/90' : 'bg-black/45'}`}
+      />
+      <div
+        className={`wk-sheet-up relative w-full sm:max-w-md bg-[var(--wk-bg)] border-t border-white/10 shadow-[0_-12px_40px_rgba(0,0,0,0.5)] flex flex-col overflow-hidden transition-[height,border-radius] duration-300 ${
+          expanded ? 'h-full rounded-none' : 'rounded-t-[28px]'
+        }`}
+        style={expanded ? undefined : { height: conversationStarted ? 'min(72dvh, 620px)' : 'auto', maxHeight: '86dvh' }}
+      >
+        {/* Header: grab bar, title, expand and close */}
+        <div className="relative px-[calc(38*var(--f))] pt-[calc(26*var(--f))] pb-[calc(16*var(--f))] flex items-center justify-between shrink-0">
+          <span aria-hidden="true" className="absolute left-1/2 -translate-x-1/2 top-2 w-10 h-1 rounded-full bg-white/25" />
+          <div className="pt-[calc(16*var(--f))]">
+            <h3 id="ai-coach-title" className="wk-label text-white">
               AI Coach
             </h3>
-            <p className="wk-caption mt-1">
-              Your chats stay on this phone
-            </p>
+            <p className="wk-caption mt-[calc(4*var(--f))]">No chat history saved on any server</p>
           </div>
-
-          <button
-            type="button"
-            onClick={() => {
-              triggerHaptic('light');
-              onClose();
-            }}
-            aria-label="Close AI Coach modal"
-            className="w-11 h-11 min-h-[44px] rounded-full bg-[#3B4044] hover:bg-[#474D50] flex items-center justify-center text-[#C6C6C6] hover:text-white transition-colors"
-          >
-            <X className="w-5 h-5 stroke-[2]" />
-          </button>
-        </div>
-
-        {/* Quick Suggestion Chips Carousel */}
-        <div className="px-4 py-3 bg-[#13181C] border-b border-white/[0.06] overflow-x-auto no-scrollbar flex items-center gap-2">
-          {quickPrompts.map((q) => (
+          <div className="flex items-center gap-[calc(8*var(--f))] pt-[calc(16*var(--f))]">
             <button
-              key={q.label}
               type="button"
-              onClick={() => handleSendMessage(q.text)}
-              disabled={isProcessing}
-              className="wk-pill shrink-0 min-h-[44px] transition-all disabled:opacity-50"
+              onClick={() => {
+                triggerHaptic('light');
+                setExpanded((v) => !v);
+              }}
+              aria-label={expanded ? 'Shrink the coach to a sheet' : 'Expand the coach to full screen'}
+              aria-pressed={expanded}
+              className="w-11 h-11 min-h-[44px] rounded-full flex items-center justify-center text-[color:var(--wk-body)] hover:text-white transition-colors"
             >
-              <span>{q.label}</span>
+              {expanded ? <Minimize2 className="w-5 h-5 stroke-[2]" /> : <Maximize2 className="w-5 h-5 stroke-[2]" />}
             </button>
-          ))}
+            <button
+              type="button"
+              onClick={() => {
+                triggerHaptic('light');
+                onClose();
+              }}
+              aria-label="Close AI Coach"
+              className="w-11 h-11 min-h-[44px] rounded-full flex items-center justify-center text-[color:var(--wk-body)] hover:text-white transition-colors"
+            >
+              <X className="w-5 h-5 stroke-[2]" />
+            </button>
+          </div>
         </div>
 
         {/* Message Thread */}
-        <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3.5 no-scrollbar overscroll-contain">
-          {deviceCoach !== 'hidden' && (
-            <div className="wk-card space-y-2.5" aria-live="polite">
-              {deviceCoach === 'offer' && (
-                <>
-                  <p className="wk-h1 text-white">Get smarter answers on this phone</p>
-                  <p className="wk-body leading-relaxed">
-                    A one-time download ({GPU_MODEL_DOWNLOAD_LABEL}) lets your coach write full answers right on your
-                    phone, even offline. Your chats never leave it. Use Wi-Fi.
-                  </p>
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      onClick={handleDownloadDeviceCoach}
-                      className="wk-button flex-1 text-xs"
-                      style={{ background: 'var(--wk-accent)', color: '#13181C' }}
-                    >
-                      Download
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        dismissGpuModelOffer();
-                        setDeviceCoach('hidden');
-                      }}
-                      className="min-h-[44px] px-4 rounded-xl bg-[#3B4044] text-[#C6C6C6] text-xs font-semibold"
-                    >
-                      Not now
-                    </button>
-                  </div>
-                </>
-              )}
-              {deviceCoach === 'downloading' && (
-                <>
-                  <p className="text-xs font-bold text-white">
-                    Downloading… {Math.round(deviceCoachProgress * 100)}%
-                  </p>
-                  <div
-                    className="wk-bar bg-[#3B4044]"
-                    role="progressbar"
-                    aria-valuemin={0}
-                    aria-valuemax={100}
-                    aria-valuenow={Math.round(deviceCoachProgress * 100)}
-                    aria-label="Coach download progress"
-                  >
-                    <span style={{ width: `${Math.round(deviceCoachProgress * 100)}%` }} />
-                  </div>
-                  <p className="wk-caption">You can keep chatting while this finishes.</p>
-                </>
-              )}
-              {deviceCoach === 'ready' && (
-                <p className="text-xs text-[#00F19F] font-semibold">Done. Your coach now answers fully on this phone.</p>
-              )}
-              {deviceCoach === 'error' && (
-                <div className="flex items-center justify-between gap-2">
-                  <p className="wk-body">The download didn't finish. Check your connection and try again.</p>
-                  <button
-                    type="button"
-                    onClick={handleDownloadDeviceCoach}
-                    className="min-h-[44px] px-3 rounded-xl bg-[#3B4044] text-white text-xs font-bold shrink-0"
-                  >
-                    Retry
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
+        <div className={`${expanded || conversationStarted ? 'flex-1' : ''} min-h-0 overflow-y-auto px-[calc(38*var(--f))] pt-[calc(8*var(--f))] pb-[calc(26*var(--f))] space-y-[calc(30*var(--f))] no-scrollbar overscroll-contain`}>
           {messages.map((msg) => {
             const isUser = msg.sender === 'user';
+            // Before anything is asked, the opening line stands on its own, large, like a headline.
+            if (msg.id === 'msg-welcome' && !conversationStarted) {
+              return (
+                <p key={msg.id} className="text-white leading-snug px-[calc(8*var(--f))] pt-[calc(8*var(--f))]" style={{ fontSize: 'max(17px, calc(40 * var(--f)))' }}>
+                  {renderBold(msg.text)}
+                </p>
+              );
+            }
 
             return (
               <div
@@ -414,35 +275,32 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
                 className={`flex flex-col ${isUser ? 'items-end' : 'items-start'}`}
               >
                 <div
-                  className={`max-w-[88%] rounded-2xl p-4 text-xs leading-relaxed ${
+                  className={`max-w-[88%] rounded-[calc(30*var(--f))] p-[calc(38*var(--f))] text-[length:max(12px,calc(26*var(--f)))] leading-relaxed ${
                     isUser
-                      ? 'bg-[#3B4044] text-white font-medium rounded-br-sm ring-1 ring-[#00F19F]/40'
-                      : 'bg-[#2C3034] text-[#C6C6C6] rounded-bl-sm space-y-2.5'
+                      ? 'bg-[var(--wk-raised)] text-white font-medium rounded-br-sm ring-1 ring-[#00F19F]/40'
+                      : 'bg-[var(--wk-card)] text-[color:var(--wk-body)] rounded-bl-sm space-y-[calc(22*var(--f))]'
                   }`}
                 >
                   <p className="whitespace-pre-wrap">{renderBold(msg.text)}</p>
 
                   {/* Assistant Action Badge if an action was taken */}
                   {!isUser && msg.actionApplied && (
-                    <div className="mt-2 p-3.5 wk-raised space-y-2">
-                      <div className="flex items-start gap-2">
-                        <CheckCircle2 className="w-4 h-4 text-[#00F19F] stroke-[2] shrink-0 mt-0.5" />
+                    <div className="mt-[calc(16*var(--f))] p-[calc(30*var(--f))] wk-raised space-y-[calc(16*var(--f))]">
+                      <div className="flex items-start gap-[calc(16*var(--f))]">
+                        <CheckCircle2 className="w-4 h-4 text-[color:var(--wk-accent)] stroke-[2] shrink-0 mt-[calc(4*var(--f))]" />
                         <div>
-                          <div className="font-bold text-xs text-white">
-                            Plan Updated
+                          <div className="font-bold text-[length:max(12px,calc(26*var(--f)))] text-white">
+                            {msg.actionApplied.type === 'UPDATE_GOALS' ? 'Goals updated' : 'Plan Updated'}
                           </div>
-                          <div className="text-xs text-[#00F19F] font-medium mt-0.5">
+                          <div className="text-[length:max(12px,calc(26*var(--f)))] text-[color:var(--wk-accent)] font-medium mt-[calc(4*var(--f))]">
                             {msg.actionApplied.summary}
                           </div>
                         </div>
                       </div>
 
                       {/* Actionable CTA when equipment is added or updated */}
-                      {(msg.actionApplied.type === 'UPDATE_EQUIPMENT' ||
-                        msg.actionApplied.summary?.toLowerCase().includes('equipment') ||
-                        msg.actionApplied.summary?.toLowerCase().includes('bar') ||
-                        msg.actionApplied.summary?.toLowerCase().includes('pullup') ||
-                        msg.actionApplied.summary?.toLowerCase().includes('pull_up')) && (
+                      {/* Only an equipment change offers the equipment screen ("Barbell Bench Press" in a goal is not one). */}
+                      {msg.actionApplied.type === 'UPDATE_EQUIPMENT' && (
                         <button
                           type="button"
                           onClick={() => {
@@ -451,7 +309,7 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
                               onViewAllEquipment();
                             }
                           }}
-                          className="wk-button w-full mt-1 px-3 py-2.5 text-xs gap-1.5"
+                          className="wk-button w-full mt-[calc(8*var(--f))] px-[calc(26*var(--f))] py-[calc(22*var(--f))] text-[length:max(12px,calc(26*var(--f)))] gap-[calc(12*var(--f))]"
                           style={{ background: 'var(--wk-accent)', color: '#13181C' }}
                         >
                           <Dumbbell className="w-3.5 h-3.5 stroke-[2]" />
@@ -464,23 +322,23 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
 
                   {/* Scientific Principles & Academic Citations */}
                   {!isUser && msg.scientificPrinciplesCited && msg.scientificPrinciplesCited.length > 0 && (
-                    <div className="pt-2 space-y-1.5">
-                      <span className="text-xs font-semibold text-[#00F19F] flex items-center gap-1">
-                        <FlaskConical className="w-3 h-3 text-[#00F19F] stroke-[2]" />
+                    <div className="pt-[calc(16*var(--f))] space-y-[calc(12*var(--f))]">
+                      <span className="text-[length:max(12px,calc(26*var(--f)))] font-semibold text-[color:var(--wk-accent)] flex items-center gap-[calc(8*var(--f))]">
+                        <FlaskConical className="w-3 h-3 text-[color:var(--wk-accent)] stroke-[2]" />
                         Scientific Rationale
                       </span>
-                      <div className="space-y-1">
+                      <div className="space-y-[calc(8*var(--f))]">
                         {msg.scientificPrinciplesCited.map((sp) => (
                           <div
                             key={sp.id}
-                            className="wk-raised p-3 text-xs space-y-1"
+                            className="wk-raised p-[calc(26*var(--f))] text-[length:max(12px,calc(26*var(--f)))] space-y-[calc(8*var(--f))]"
                           >
                             <div className="font-bold text-white flex items-center justify-between">
                               <span>{sp.title}</span>
-                              <span className="text-xs font-mono text-[#00F19F] font-normal">{sp.topic}</span>
+                              <span className="text-[length:max(12px,calc(26*var(--f)))] font-mono text-[color:var(--wk-accent)] font-normal">{sp.topic}</span>
                             </div>
                             {sp.formula && (
-                              <div className="text-[#00F19F] font-mono text-xs overflow-x-auto no-scrollbar">
+                              <div className="text-[color:var(--wk-accent)] font-mono text-[length:max(12px,calc(26*var(--f)))] overflow-x-auto no-scrollbar">
                                 {sp.formula}
                               </div>
                             )}
@@ -494,14 +352,14 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
                   )}
 
                   {!isUser && (
-                    <div className="wk-caption pt-1">
+                    <div className="wk-caption pt-[calc(8*var(--f))]">
                       <span>{msg.timestamp}</span>
                     </div>
                   )}
                 </div>
 
                 {isUser && (
-                  <span className="wk-caption mt-1 px-1">
+                  <span className="wk-caption mt-[calc(8*var(--f))] px-[calc(8*var(--f))]">
                     {msg.timestamp}
                   </span>
                 )}
@@ -512,13 +370,13 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
           {isProcessing && (
             <div className="flex items-start">
               {streamingText ? (
-                <div className="max-w-[85%] rounded-2xl p-4 bg-[#2C3034] text-[#C6C6C6] rounded-bl-sm text-xs leading-relaxed whitespace-pre-wrap" aria-live="polite">
+                <div className="max-w-[85%] rounded-[calc(30*var(--f))] p-[calc(38*var(--f))] bg-[var(--wk-card)] text-[color:var(--wk-body)] rounded-bl-sm text-[length:max(12px,calc(26*var(--f)))] leading-relaxed whitespace-pre-wrap" aria-live="polite">
                   {renderBold(streamingText)}
                 </div>
               ) : (
-                <div className="max-w-[85%] rounded-2xl p-4 bg-[#2C3034] text-[#C6C6C6] rounded-bl-sm flex items-center space-x-2.5" aria-live="polite">
-                  <div className="w-2 h-2 rounded-full bg-[#00F19F] animate-ping" />
-                  <span className="text-xs font-medium text-[#C6C6C6]">
+                <div className="max-w-[85%] rounded-[calc(30*var(--f))] p-[calc(38*var(--f))] bg-[var(--wk-card)] text-[color:var(--wk-body)] rounded-bl-sm flex items-center space-x-[calc(22*var(--f))]" aria-live="polite">
+                  <div className="w-2 h-2 rounded-full bg-[var(--wk-accent)] animate-ping" />
+                  <span className="text-[length:max(12px,calc(26*var(--f)))] font-medium text-[color:var(--wk-body)]">
                     Thinking…
                   </span>
                 </div>
@@ -529,26 +387,42 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
           <div ref={messagesEndRef} />
         </div>
 
+        {/* Suggestions for this screen */}
+        <div className="px-[calc(38*var(--f))] pt-[calc(8*var(--f))] pb-[calc(26*var(--f))] overflow-x-auto no-scrollbar flex items-center gap-[calc(16*var(--f))] shrink-0" role="group" aria-label="Suggestions">
+          {quickPrompts.map((q) => (
+            <button
+              key={q.label}
+              type="button"
+              onClick={() => useHook(q)}
+              disabled={isProcessing}
+              className="wk-pill shrink-0 min-h-[44px] transition-all active:scale-95 disabled:opacity-50"
+              style={{ textTransform: 'none', color: '#fff' }}
+            >
+              {q.label}
+            </button>
+          ))}
+        </div>
+
         {/* Input Bar */}
-        <div className="p-3.5 sm:p-4 bg-[#2C3034] border-t border-white/[0.06] shrink-0 pb-safe sm:pb-4">
+        <div className="px-[calc(30*var(--f))] pt-[calc(8*var(--f))] pb-[calc(30*var(--f))] sm:p-[calc(38*var(--f))] shrink-0 pb-safe sm:pb-[calc(38*var(--f))]">
           <form
             onSubmit={(e) => {
               e.preventDefault();
               handleSendMessage();
             }}
-            className="flex items-center space-x-2"
+            className="flex items-center space-x-[calc(16*var(--f))]"
           >
             <input
               type="text"
               value={inputMessage}
               onChange={(e) => setInputMessage(e.target.value)}
               ref={inputRef}
-              placeholder="Ask anything or modify your plan..."
+              placeholder="Ask a question…"
               aria-label="Message your coach"
               disabled={isProcessing}
               autoComplete="off"
               autoCorrect="off"
-              className="wk-field flex-1 min-h-[44px] px-4 py-2.5 text-xs placeholder-[#AAABAD]"
+              className="wk-field flex-1 min-h-[44px] px-[calc(38*var(--f))] py-[calc(22*var(--f))] text-[length:max(12px,calc(26*var(--f)))] placeholder-[#AAABAD]"
             />
 
             <button
@@ -556,7 +430,7 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
               disabled={!inputMessage.trim() || isProcessing}
               onMouseDown={(e) => e.preventDefault()}
               aria-label="Send message"
-              className="min-h-[44px] min-w-[44px] w-11 h-11 rounded-xl bg-[#00F19F] hover:opacity-90 disabled:opacity-30 text-[#13181C] flex items-center justify-center transition-all active:scale-95 shrink-0"
+              className="min-h-[44px] min-w-[44px] w-11 h-11 rounded-[calc(22*var(--f))] bg-[var(--wk-accent)] hover:opacity-90 disabled:opacity-30 text-[color:var(--wk-bg)] flex items-center justify-center transition-all active:scale-95 shrink-0"
             >
               <Send className="w-4 h-4 stroke-[2.2]" />
             </button>

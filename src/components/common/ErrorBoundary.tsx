@@ -28,7 +28,7 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
   render() {
     if (!this.state.error) return this.props.children;
     return (
-      <div role="alert" className="wk-card space-y-3 text-center">
+      <div role="alert" className="wk-card space-y-[calc(26*var(--f))] text-center">
         <h2 className="wk-h1">
           {this.props.area ? `${this.props.area} couldn't load` : "Something didn't load"}
         </h2>

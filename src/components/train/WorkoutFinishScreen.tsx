@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { GoalProgress } from '../../services/athleteGoals';
+import { GoalProgress, describeGoalStanding } from '../../services/athleteGoals';
 import { FinishPersonalBest, WorkoutFinish } from '../../services/workoutFinish';
 import { useWorkoutSummaryText } from './useWorkoutSummaryText';
 import { triggerHaptic } from '../../utils/haptics';
@@ -113,10 +113,7 @@ export const WorkoutFinishScreen: React.FC<WorkoutFinishScreenProps> = ({ finish
   // A card on its own in the last row takes the full width.
   const span = (index: number) => (cardCount % 2 === 1 && index === cardCount - 1 ? 'col-span-2' : '');
 
-  const goalLabel = (g: GoalProgress) =>
-    g.unit === 'kg'
-      ? `${units.formatPrecise(g.current)} of ${units.formatPrecise(g.target)} estimated max`
-      : `${g.current} of ${g.target} sessions this week`;
+  const goalLabel = (g: GoalProgress) => describeGoalStanding(g.goal, (kg) => units.formatPrecise(kg));
 
   const handleDone = () => {
     triggerHaptic('success');
@@ -212,7 +209,7 @@ export const WorkoutFinishScreen: React.FC<WorkoutFinishScreenProps> = ({ finish
               <section key={`goal-${g.title}`} className={`wk-card flex flex-col ${span(personalBests.length + i)}`} aria-label={`Goal ${g.status}: ${g.title}, ${goalLabel(g)}`}>
                 <CardTitle>{g.status === 'reached' ? 'Goal reached' : 'Goal progressed'}</CardTitle>
                 <CardSubject>{g.title}</CardSubject>
-                {g.unit === 'kg' && (
+                {g.kind === 'outcome' && (
                   <p className="wk-caption" style={{ marginTop: fig(12) }}>
                     {goalLabel(g)}
                   </p>

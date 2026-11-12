@@ -845,8 +845,8 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
   ) => (
     <label className="block">
       <span className="wk-label">{label}</span>
-      {hint && <span className="block wk-caption mt-0.5">{hint}</span>}
-      <div className="relative mt-1">
+      {hint && <span className="block wk-caption mt-[calc(4*var(--f))]">{hint}</span>}
+      <div className="relative mt-[calc(8*var(--f))]">
         <input
           type="number"
           inputMode="decimal"
@@ -856,11 +856,11 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
           onChange={(e) => set(e.target.value)}
           aria-label={`${label}${UNIT_WORDS[unit] ? ` in ${UNIT_WORDS[unit]}` : ''}`}
           aria-invalid={!ok}
-          className={`wk-field w-full py-2.5 px-3 pr-12 font-bold text-base focus:outline-none ${
+          className={`wk-field w-full py-[calc(22*var(--f))] px-[calc(26*var(--f))] pr-[calc(106*var(--f))] font-bold text-[length:max(12px,calc(34*var(--f)))] focus:outline-none ${
             ok ? '' : 'ring-1 ring-rose-400'
           }`}
         />
-        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[#AAABAD] text-sm font-semibold">
+        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[color:var(--wk-muted)] text-[length:max(12px,calc(30*var(--f)))] font-semibold">
           {unit}
         </span>
       </div>
@@ -960,29 +960,29 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
     <div
       role="status"
       aria-live="polite"
-      className="rounded-xl p-3 space-y-2"
+      className="rounded-[calc(22*var(--f))] p-[calc(26*var(--f))] space-y-[calc(16*var(--f))]"
       style={{
         background: alertTone === 'success' ? 'rgba(0, 241, 159, 0.14)' : 'var(--wk-raised)',
         border: alertTone === 'success' ? '1px solid rgba(0, 241, 159, 0.45)' : '1px solid transparent',
       }}
     >
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-[calc(26*var(--f))]">
         {alertTone === 'success' ? (
-          <Check className="w-5 h-5 text-[#00F19F] shrink-0 stroke-[2]" aria-hidden="true" />
+          <Check className="w-5 h-5 text-[color:var(--wk-accent)] shrink-0 stroke-[2]" aria-hidden="true" />
         ) : alertTone === 'live' ? (
-          <span className="w-2.5 h-2.5 mx-1 rounded-full bg-[#00F19F] shrink-0 animate-pulse motion-reduce:animate-none" aria-hidden="true" />
+          <span className="w-2.5 h-2.5 mx-[calc(8*var(--f))] rounded-full bg-[var(--wk-accent)] shrink-0 animate-pulse motion-reduce:animate-none" aria-hidden="true" />
         ) : (
-          <Bluetooth className="w-5 h-5 text-[#C6C6C6] shrink-0 stroke-[2]" aria-hidden="true" />
+          <Bluetooth className="w-5 h-5 text-[color:var(--wk-body)] shrink-0 stroke-[2]" aria-hidden="true" />
         )}
         <div className="flex-1 min-w-0">
-          {alertTitle && <span className="block text-xs font-bold text-white">{alertTitle}</span>}
-          <span className="block text-xs text-[#C6C6C6]">{alertBody}</span>
+          {alertTitle && <span className="block text-[length:max(12px,calc(26*var(--f)))] font-bold text-white">{alertTitle}</span>}
+          <span className="block text-[length:max(12px,calc(26*var(--f)))] text-[color:var(--wk-body)]">{alertBody}</span>
         </div>
         {alertAction && (
           <button
             type="button"
             onClick={handleAlertAction}
-            className="shrink-0 px-4 rounded-xl text-xs font-bold min-h-[44px]"
+            className="shrink-0 px-[calc(38*var(--f))] rounded-[calc(22*var(--f))] text-[length:max(12px,calc(26*var(--f)))] font-bold min-h-[44px]"
             style={{ background: 'var(--wk-accent)', color: '#13181C' }}
           >
             {alertAction}
@@ -990,13 +990,13 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
         )}
       </div>
       {nativeFound.length > 0 && (
-        <ul className="space-y-2" aria-label="Scales nearby">
+        <ul className="space-y-[calc(16*var(--f))]" aria-label="Scales nearby">
           {nativeFound.map((scale) => (
             <li key={scale.id}>
               <button
                 type="button"
                 onClick={() => handleChooseNativeScale(scale)}
-                className="w-full px-3 rounded-xl text-xs font-bold text-left min-h-[44px]"
+                className="w-full px-[calc(26*var(--f))] rounded-[calc(22*var(--f))] text-[length:max(12px,calc(26*var(--f)))] font-bold text-left min-h-[44px]"
                 style={{ background: 'var(--wk-accent)', color: '#13181C' }}
               >
                 Pair {scale.name}
@@ -1006,17 +1006,17 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
         </ul>
       )}
       {capturePhase === 'complete' && !canCaptureMetrics && (
-        <p className="text-xs text-[#C6C6C6]">Add your height, age and sex here and your next weigh-in includes body metrics.</p>
+        <p className="text-[length:max(12px,calc(26*var(--f)))] text-[color:var(--wk-body)]">Add your height, age and sex here and your next weigh-in includes body metrics.</p>
       )}
-      <p className="text-xs text-[#C6C6C6]">
+      <p className="text-[length:max(12px,calc(26*var(--f)))] text-[color:var(--wk-body)]">
         Your scale measures body composition with a small electrical current. Don't use a scale like this if you're pregnant or have a pacemaker or other implant.
       </p>
-      {bleError && <p className="text-xs text-rose-300">{bleError}</p>}
+      {bleError && <p className="text-[length:max(12px,calc(26*var(--f)))] text-rose-300">{bleError}</p>}
       {offerAllDevices && !scaleBusy && !nativeScanning && !scaleConnected && (
         <button
           type="button"
           onClick={() => (nativeScale ? startNativePairing(true) : handleConnectScale(true, false, true))}
-          className="text-xs text-[#C6C6C6] hover:text-white underline min-h-[44px]"
+          className="text-[length:max(12px,calc(26*var(--f)))] text-[color:var(--wk-body)] hover:text-white underline min-h-[44px]"
         >
           Can't find your scale? Show all devices
         </button>
@@ -1025,7 +1025,7 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
         <button
           type="button"
           onClick={() => handleForgetDevice('scale')}
-          className="text-xs text-[#AAABAD] hover:text-white underline min-h-[44px]"
+          className="text-[length:max(12px,calc(26*var(--f)))] text-[color:var(--wk-muted)] hover:text-white underline min-h-[44px]"
         >
           Forget this scale
         </button>
@@ -1034,15 +1034,15 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
   );
 
   return (
-    <div role="dialog" aria-modal="true" aria-label="Log weight or measurements" className="wk fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/85 backdrop-blur-md">
-      <div className="wk-card w-full max-w-lg shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+    <div role="dialog" aria-modal="true" aria-label="Log weight or measurements" className="wk fixed inset-0 z-50 flex items-end sm:items-center justify-center p-[calc(38*var(--f))] bg-black/85 backdrop-blur-md">
+      <div className="wk-card w-full max-w-lg shadow-2xl space-y-[calc(38*var(--f))] max-h-[90vh] overflow-y-auto">
         {/* Header */}
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-[calc(16*var(--f))]">
             {mode === 'weight' ? (
-              <Scale className="w-5 h-5 text-[#00F19F] stroke-[2]" />
+              <Scale className="w-5 h-5 text-[color:var(--wk-accent)] stroke-[2]" />
             ) : (
-              <Ruler className="w-5 h-5 text-[#00F19F] stroke-[2]" />
+              <Ruler className="w-5 h-5 text-[color:var(--wk-accent)] stroke-[2]" />
             )}
             <h3 className="wk-h1 text-white">
               {mode === 'weight' ? 'Log weight' : 'Log measurements'}
@@ -1055,7 +1055,7 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
               onClose();
             }}
             aria-label="Close modal"
-            className="w-11 h-11 rounded-full bg-[#3B4044] hover:bg-[#474D50] flex items-center justify-center text-[#C6C6C6] hover:text-white"
+            className="w-11 h-11 rounded-full bg-[var(--wk-raised)] hover:bg-[var(--wk-pill)] flex items-center justify-center text-[color:var(--wk-body)] hover:text-white"
           >
             <X className="w-4 h-4 stroke-[2]" />
           </button>
@@ -1065,21 +1065,21 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
         {autoSavedBanner && mode === 'measurements' && (
           <div
             role="status"
-            className="rounded-xl p-3 flex items-center gap-2.5"
+            className="rounded-[calc(22*var(--f))] p-[calc(26*var(--f))] flex items-center gap-[calc(22*var(--f))]"
             style={{
               background: 'rgba(0, 241, 159, 0.14)',
               border: '1px solid rgba(0, 241, 159, 0.45)',
             }}
           >
-            <Check className="w-5 h-5 text-[#00F19F] shrink-0 stroke-[2.5]" />
-            <span className="text-xs font-bold text-white">{autoSavedBanner}</span>
+            <Check className="w-5 h-5 text-[color:var(--wk-accent)] shrink-0 stroke-[2.5]" />
+            <span className="text-[length:max(12px,calc(26*var(--f)))] font-bold text-white">{autoSavedBanner}</span>
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-[calc(38*var(--f))]">
           {mode === 'weight' ? (
             <>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-[calc(26*var(--f))]">
                 {field("Today's weight", weightInput, setWeightInput, units.unit, 'Morning, before eating', weightValid)}
                 {field('Body fat', bodyFat, setBodyFat, '%', 'Optional', bfValid)}
               </div>
@@ -1094,15 +1094,15 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
               {!athleteGender && (
                 <div role="group" aria-label="Sex, asked once for body metrics">
                   <span className="wk-label">Sex</span>
-                  <span className="block wk-caption mt-0.5">Asked once, for body metrics</span>
-                  <div className="grid grid-cols-2 gap-2 mt-1">
+                  <span className="block wk-caption mt-[calc(4*var(--f))]">Asked once, for body metrics</span>
+                  <div className="grid grid-cols-2 gap-[calc(16*var(--f))] mt-[calc(8*var(--f))]">
                     {(['male', 'female'] as const).map((option) => (
                       <button
                         key={option}
                         type="button"
                         aria-pressed={sexInput === option}
                         onClick={() => setSexInput(option)}
-                        className="rounded-xl text-xs font-bold uppercase min-h-[44px]"
+                        className="rounded-[calc(22*var(--f))] text-[length:max(12px,calc(26*var(--f)))] font-bold uppercase min-h-[44px]"
                         style={{
                           background: sexInput === option ? 'var(--wk-pill)' : 'var(--wk-raised)',
                           color: sexInput === option ? '#fff' : 'var(--wk-muted)',
@@ -1121,14 +1121,14 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
                 type="button"
                 onClick={() => setShowAdvancedScaleMetrics((prev) => !prev)}
                 aria-expanded={showAdvancedScaleMetrics}
-                className="w-full flex items-center justify-between text-xs font-bold text-[#C6C6C6] hover:text-white min-h-[44px]"
+                className="w-full flex items-center justify-between text-[length:max(12px,calc(26*var(--f)))] font-bold text-[color:var(--wk-body)] hover:text-white min-h-[44px]"
               >
                 <span>Add other readings</span>
                 {showAdvancedScaleMetrics ? <ChevronUp className="w-4 h-4 stroke-[2]" /> : <ChevronDown className="w-4 h-4 stroke-[2]" />}
               </button>
 
               {showAdvancedScaleMetrics && (
-                <div className="grid grid-cols-2 gap-2.5">
+                <div className="grid grid-cols-2 gap-[calc(22*var(--f))]">
                   {RENPHO_SCALE_METRICS.filter((m) => !m.manualPrimary).map((m) => {
                     const rawMetricVal = capturedScaleMetrics[m.field as keyof RenphoScaleMetrics];
                     const displayVal =
@@ -1164,19 +1164,19 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
             <>
               {/* MEASUREMENTS MODE: 12 Body Tape Sites (RENPHO Smart Tape or Manual) */}
               <div
-                className="rounded-2xl p-3.5 space-y-3"
-                style={{ background: 'var(--wk-surface)', border: '1px solid var(--wk-line)' }}
+                className="rounded-[calc(30*var(--f))] p-[calc(30*var(--f))] space-y-[calc(26*var(--f))]"
+                style={{ background: 'var(--wk-raised)', border: '1px solid rgba(255,255,255,0.08)' }}
               >
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <Bluetooth className="w-4 h-4 text-[#00F19F] stroke-[2]" />
+                <div className="flex items-center justify-between gap-[calc(16*var(--f))]">
+                  <div className="flex items-center gap-[calc(16*var(--f))]">
+                    <Bluetooth className="w-4 h-4 text-[color:var(--wk-accent)] stroke-[2]" />
                     <span className="wk-label text-white">
                       Option 1: Pull from RENPHO Smart Tape (12 Sites)
                     </span>
                   </div>
                   {rememberedTape && (
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-bold text-[#00F19F]">
+                    <div className="flex items-center gap-[calc(16*var(--f))]">
+                      <span className="text-[length:max(12px,calc(26*var(--f)))] font-bold text-[color:var(--wk-accent)]">
                         {bleDeviceKind === 'tape'
                           ? `${bleDeviceName ?? rememberedTape.name} · Live`
                           : `${rememberedTape.name} · Paired`}
@@ -1184,7 +1184,7 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
                       <button
                         type="button"
                         onClick={() => handleForgetDevice('tape')}
-                        className="text-xs text-[#AAABAD] hover:text-white underline"
+                        className="text-[length:max(12px,calc(26*var(--f)))] text-[color:var(--wk-muted)] hover:text-white underline"
                       >
                         Forget
                       </button>
@@ -1194,13 +1194,13 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
 
                 {/* Clear 3-Step Instructions for the Smart Tape */}
                 <div
-                  className="rounded-xl p-3 space-y-1.5"
+                  className="rounded-[calc(22*var(--f))] p-[calc(26*var(--f))] space-y-[calc(12*var(--f))]"
                   style={{ background: 'var(--wk-raised)' }}
                 >
-                  <span className="block text-xs font-bold text-white">
+                  <span className="block text-[length:max(12px,calc(26*var(--f)))] font-bold text-white">
                     How tape measurements are pulled into the app:
                   </span>
-                  <ol className="text-xs text-[#C6C6C6] space-y-1 list-decimal list-inside">
+                  <ol className="text-[length:max(12px,calc(26*var(--f)))] text-[color:var(--wk-body)] space-y-[calc(8*var(--f))] list-decimal list-inside">
                     <li>
                       <strong className="text-white">Select body site:</strong> Tap the area you are
                       measuring below (currently <strong className="text-white">{activeSiteDef.label}</strong>).
@@ -1217,12 +1217,12 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
                   </ol>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-2">
+                <div className="flex flex-wrap items-center gap-[calc(16*var(--f))]">
                   <button
                     type="button"
                     onClick={() => handleConnectTape(false, false)}
                     aria-label="Connect RENPHO Smart Tape"
-                    className="wk-button flex-1 text-xs py-2.5 px-3 gap-1.5 min-h-[44px]"
+                    className="wk-button flex-1 text-[length:max(12px,calc(26*var(--f)))] py-[calc(22*var(--f))] px-[calc(26*var(--f))] gap-[calc(12*var(--f))] min-h-[44px]"
                     style={{
                       background:
                         bleDeviceKind === 'tape' ? 'var(--wk-accent)' : 'var(--wk-raised)',
@@ -1243,7 +1243,7 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
                     <button
                       type="button"
                       onClick={() => handleConnectTape(true, false)}
-                      className="px-3 py-2.5 rounded-xl text-xs font-semibold text-[#C6C6C6] hover:text-white min-h-[44px]"
+                      className="px-[calc(26*var(--f))] py-[calc(22*var(--f))] rounded-[calc(22*var(--f))] text-[length:max(12px,calc(26*var(--f)))] font-semibold text-[color:var(--wk-body)] hover:text-white min-h-[44px]"
                       style={{ background: 'var(--wk-raised)' }}
                     >
                       Switch tape
@@ -1251,14 +1251,14 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
                   )}
                 </div>
 
-                <div className="space-y-2 pt-1">
+                <div className="space-y-[calc(16*var(--f))] pt-[calc(8*var(--f))]">
                   <span className="block wk-caption text-white font-semibold">
                     Active body site for smart tape (tap to change):
                   </span>
                   <div
                     role="group"
                     aria-label="Body measurement area for smart tape"
-                    className="flex flex-wrap gap-1.5"
+                    className="flex flex-wrap gap-[calc(12*var(--f))]"
                   >
                     {BODY_MEASUREMENT_SITES.map((site) => {
                       const isSelected = activeSite === site.id;
@@ -1269,7 +1269,7 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
                           type="button"
                           aria-pressed={isSelected}
                           onClick={() => setActiveSite(site.id)}
-                          className="px-2.5 py-1.5 rounded-full text-xs font-bold transition-colors min-h-[36px]"
+                          className="px-[calc(22*var(--f))] py-[calc(12*var(--f))] rounded-full text-[length:max(12px,calc(26*var(--f)))] font-bold transition-colors min-h-[36px]"
                           style={{
                             background: isSelected
                               ? 'var(--wk-accent)'
@@ -1293,16 +1293,16 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
 
                 {liveTapeReading && (
                   <div
-                    className="rounded-xl p-2.5 flex items-center justify-between gap-2"
+                    className="rounded-[calc(22*var(--f))] p-[calc(22*var(--f))] flex items-center justify-between gap-[calc(16*var(--f))]"
                     style={{ background: 'var(--wk-raised)' }}
                   >
                     <div>
-                      <span className="block text-xs text-[#AAABAD]">
+                      <span className="block text-[length:max(12px,calc(26*var(--f)))] text-[color:var(--wk-muted)]">
                         {liveTapeReading.stabilized
                           ? 'Locked & auto-saved tape measurement'
                           : `Live tape → ${activeSiteDef.label}`}
                       </span>
-                      <span className="text-base font-bold text-white">
+                      <span className="text-[length:max(12px,calc(34*var(--f)))] font-bold text-white">
                         {fromCmToDisplay(liveTapeReading.lengthCm)} {lengthUnit}
                       </span>
                     </div>
@@ -1311,7 +1311,7 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
                       onClick={() =>
                         applyTapeReadingToSite(liveTapeReading.lengthCm, activeSite, true, true)
                       }
-                      className="px-3 py-2 rounded-full text-xs font-bold min-h-[44px]"
+                      className="px-[calc(26*var(--f))] py-[calc(16*var(--f))] rounded-full text-[length:max(12px,calc(26*var(--f)))] font-bold min-h-[44px]"
                       style={{ background: 'var(--wk-accent)', color: '#13181C' }}
                     >
                       Save to {activeSiteDef.shortLabel} & Next →
@@ -1319,14 +1319,14 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
                   </div>
                 )}
 
-                {bleStatus && <p className="wk-caption text-[#00F19F]">{bleStatus}</p>}
+                {bleStatus && <p className="wk-caption text-[color:var(--wk-accent)]">{bleStatus}</p>}
                 {bleError && <p className="wk-caption text-rose-400">{bleError}</p>}
               </div>
 
               {/* OPTION 2: Manual 12-Site Tape Circumferences */}
               <div
-                className="rounded-2xl p-3.5 space-y-3"
-                style={{ background: 'var(--wk-surface)', border: '1px solid var(--wk-line)' }}
+                className="rounded-[calc(30*var(--f))] p-[calc(30*var(--f))] space-y-[calc(26*var(--f))]"
+                style={{ background: 'var(--wk-raised)', border: '1px solid rgba(255,255,255,0.08)' }}
               >
                 <div className="flex items-center justify-between">
                   <h4 className="wk-label text-white">
@@ -1334,7 +1334,7 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
                   </h4>
                   <span className="wk-caption">12 body sites</span>
                 </div>
-                <div className="grid grid-cols-2 gap-2.5">
+                <div className="grid grid-cols-2 gap-[calc(22*var(--f))]">
                   {BODY_MEASUREMENT_SITES.map((site) => {
                     const prevCm = latestSiteCmByField[site.id];
                     const prevHint =
@@ -1360,7 +1360,7 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
             </>
           )}
 
-          <div className="grid grid-cols-2 gap-3 pt-1">
+          <div className="grid grid-cols-2 gap-[calc(26*var(--f))] pt-[calc(8*var(--f))]">
             <button
               type="button"
               onClick={() => {
@@ -1376,7 +1376,7 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
               type="submit"
               disabled={(!valid && !autoSavedBanner) || capturePhase === 'analysing'}
               aria-label={mode === 'weight' ? 'Save weight' : 'Save measurements'}
-              className="wk-button disabled:opacity-50 gap-1.5"
+              className="wk-button disabled:opacity-50 gap-[calc(12*var(--f))]"
               style={{ background: 'var(--wk-accent)', color: '#13181C' }}
             >
               <Check className="w-4 h-4 stroke-[2.5]" />

@@ -184,7 +184,14 @@ export function runStorageMigrations(): void {
 /** Fired on `window` when data couldn't be saved even after clearing caches (e.g. storage full). */
 export const SAVE_FAILED_EVENT = 'treise-save-failed';
 /** Caches that can be rebuilt (written AI notes); cleared first when storage is full. */
-const REBUILDABLE_CACHE_KEYS = ['treise_exercise_notes_v1', 'treise_identity_message_v1'];
+const REBUILDABLE_CACHE_KEYS = [
+  'treise_exercise_notes_v1',
+  'treise_exercise_notes_v2',
+  'treise_identity_message_v1',
+  'treise_workout_summary_v1',
+  'treise_goals_summary_v1',
+  'treise_ai_rejected_v1',
+];
 
 /**
  * Saves one key. If storage is full, clears the rebuildable caches and tries once more; if it still

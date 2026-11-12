@@ -1,3 +1,5 @@
+import { MAX_CUSTOM_GOALS, makeCustomGoal, ownGoalName } from './services/athleteGoals';
+import type { CoachPlace } from './services/coachContext';
 import React, { useState, useEffect, useRef, Suspense, lazy } from 'react';
 import {
   BiometricLog,
@@ -108,6 +110,8 @@ export const App: React.FC = () => {
   const [restTimerContext, setRestTimerContext] = useState<RestTimerContext | undefined>(undefined);
   const [watchModalOpen, setWatchModalOpen] = useState(false);
   const [aiCoachOpen, setAiCoachOpen] = useState(false);
+  /** What is open on the Progress page (a goal, or one of its screens), for the coach's opening line. */
+  const [progressContext, setProgressContext] = useState<Pick<CoachPlace, 'goalId' | 'detail'>>({});
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [authUser, setAuthUser] = useState<AuthUser | null>(loadAuthUser);
   const [onboardingOpen, setOnboardingOpen] = useState(!profile.onboardingCompleted);
@@ -435,6 +439,9 @@ export const App: React.FC = () => {
     updatedProfile?: Partial<UserProfile>,
     updatedWorkout?: WorkoutSession
   ) => {
+    if (updatedProfile?.goalPhase && !updatedWorkout) {
+      handleUpdateGoalPhase(updatedProfile.goalPhase);
+    }
     if (updatedProfile) {
       setProfile((prev) => ({ ...prev, ...updatedProfile }));
     }
@@ -499,9 +506,12 @@ export const App: React.FC = () => {
       weightUnit: NonNullable<UserProfile['weightUnit']>;
       bodyweightKg?: number;
     };
+    ownGoal?: { exerciseId: string; metric: 'weight' | 'reps'; target: number };
   }) => {
     const athlete = setup.athlete;
     const startingBodyweight = athlete?.bodyweightKg && athlete.bodyweightKg > 0 ? athlete.bodyweightKg : undefined;
+    const ownLiftDef = setup.ownGoal ? exercises.find((e) => e.id === setup.ownGoal!.exerciseId) : undefined;
+    const ownGoalFromSetup = setup.ownGoal && ownLiftDef ? makeCustomGoal(ownLiftDef.id, ownGoalName(ownLiftDef.id, ownLiftDef.name), setup.ownGoal.metric, setup.ownGoal.target, localDateString()) : null;
 
     setProfile((prev) => ({
       ...prev,
@@ -519,6 +529,8 @@ export const App: React.FC = () => {
           }
         : {}),
       mesocycleWeek: prev.onboardingCompleted ? prev.mesocycleWeek : 1,
+      // A goal of the athlete's own, set in onboarding, joins the plan's three.
+      ...(ownGoalFromSetup ? { goalSettings: { ...prev.goalSettings, customGoals: [...(prev.goalSettings?.customGoals ?? []).filter((g) => g.id !== ownGoalFromSetup.id), ownGoalFromSetup].slice(-MAX_CUSTOM_GOALS) } } : {}),
     }));
 
     // Record the starting bodyweight so DOTS and calibration use the real number from day one.
@@ -842,6 +854,36 @@ export const App: React.FC = () => {
     });
   };
 
+  // Changing the goal (Settings or the Progress page) re-writes an unstarted workout to match it.
+  const handleUpdateGoalPhase = (phase: GoalPhase) => {
+              setProfile((p) => ({ ...p, goalPhase: phase }));
+              // A session already under way keeps what's been logged.
+              if (activeWorkout.exercises.some((ex) => ex.sets.some((s) => s.completed))) return;
+              if (isPlanProgram(profile.programType)) {
+                // The starter plan's sets and reps follow the goal; the muscle plan's don't change.
+                const plan = resolveActivePlan({ ...profile, goalPhase: phase });
+                if (plan.id === 'muscle_building_6wk') return;
+                setActiveWorkout(
+                  prepareSession(generatePlanWorkout(plan, getNextProgramWorkoutNumber(workouts, plan)), { isProgramPlan: true })
+                );
+                return;
+              }
+              const currentSplit = (activeWorkout.splitDay as SplitDayType) || 'Push';
+              const recalibrated = generateSmartWorkoutSession(
+                currentSplit,
+                workouts,
+                exercises,
+                readiness.state,
+                profile.mesocycleWeek || 1,
+                profile.activeLocation || 'gym',
+                profile.homeEquipment || ['bench', 'dumbbells', 'trx', 'pullup_bar'],
+                phase,
+                bodyweightEmaKg,
+                profile.scheduledWeekLocations
+              );
+              setActiveWorkout(prepareSession(recalibrated));
+            };
+
   return (
     <UnitsProvider unit={weightUnit}>
     <div className="wk min-h-screen text-slate-100 flex flex-col font-sans">
@@ -900,6 +942,9 @@ export const App: React.FC = () => {
             exerciseCatalog={exercises}
             weeklyVolume={weeklyVolume}
             activities={activities}
+            onUpdateProfile={(up) => setProfile((p) => ({ ...p, ...up }))}
+            onUpdateGoalPhase={handleUpdateGoalPhase}
+            onContextChange={setProgressContext}
             onSaveMeasurements={handleSaveMeasurements}
             openLogWeightRequest={logWeightRequest}
             onLogWeightRequestHandled={() => setLogWeightRequest(0)}
@@ -923,34 +968,7 @@ export const App: React.FC = () => {
             onOpenWatchSync={() => setWatchModalOpen(true)}
             onOpenAuth={() => setAuthModalOpen(true)}
             onSelectMesocycleWeek={handleSelectMesocycleWeek}
-            onUpdateGoalPhase={(phase: GoalPhase) => {
-              setProfile((p) => ({ ...p, goalPhase: phase }));
-              // A session already under way keeps what's been logged.
-              if (activeWorkout.exercises.some((ex) => ex.sets.some((s) => s.completed))) return;
-              if (isPlanProgram(profile.programType)) {
-                // The starter plan's sets and reps follow the goal; the muscle plan's don't change.
-                const plan = resolveActivePlan({ ...profile, goalPhase: phase });
-                if (plan.id !== 'starter_6wk') return;
-                setActiveWorkout(
-                  prepareSession(generatePlanWorkout(plan, getNextProgramWorkoutNumber(workouts, plan)), { isProgramPlan: true })
-                );
-                return;
-              }
-              const currentSplit = (activeWorkout.splitDay as SplitDayType) || 'Push';
-              const recalibrated = generateSmartWorkoutSession(
-                currentSplit,
-                workouts,
-                exercises,
-                readiness.state,
-                profile.mesocycleWeek || 1,
-                profile.activeLocation || 'gym',
-                profile.homeEquipment || ['bench', 'dumbbells', 'trx', 'pullup_bar'],
-                phase,
-                bodyweightEmaKg,
-                profile.scheduledWeekLocations
-              );
-              setActiveWorkout(prepareSession(recalibrated));
-            }}
+            onUpdateGoalPhase={handleUpdateGoalPhase}
             onLaunchSplitDay={(sp) => handleSwitchSplitDay(sp, true)}
             onLaunchWorkoutNumber={handleLaunchWorkoutNumber}
             onUpdateProgram={handleUpdateProgram}
@@ -1007,6 +1025,7 @@ export const App: React.FC = () => {
           readinessState={readiness.state}
           weeklyVolume={weeklyVolume}
           activities={activities}
+          place={{ tab: activeTab === 'program' ? 'program' : activeTab === 'analytics' ? 'analytics' : 'train', ...(activeTab === 'analytics' ? progressContext : {}) }}
           onClose={() => setAiCoachOpen(false)}
           onApplyAction={handleApplyAssistantAction}
           onViewAllEquipment={() => {

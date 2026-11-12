@@ -4,6 +4,7 @@ import { MovementStandardsReport } from '../../services/movementStandards';
 import {
   GoalRing,
   GoalsSummary,
+  RingSegment,
   cacheGoalsSummary,
   generateGoalsSummary,
   getCachedGoalsSummary,
@@ -15,73 +16,58 @@ const fig = (px: number) => `calc(${px} * var(--f))`;
 const text = (px: number) => `max(12px, ${fig(px)})`;
 
 /** Process goal, strength level, chosen goal: the same order as the rings. */
-const RING_COLOURS = ['#8FD3FF', '#00F19F', '#3FA7C9'];
-const RING_RADIUS = 42;
-const RING_LENGTH = 2 * Math.PI * RING_RADIUS;
+const RING_COLOURS = ['#8FD3FF', '#00F19F', '#3FA7C9', '#B8FBE3', '#4FC3D9'];
+const TRACK = 'rgba(255,255,255,0.12)';
 
-/**
- * One goal as a ring. A goal counted in whole things (sessions) is drawn as that many segments;
- * anything else as one arc. The figure is in the centre and in the label, so the ring itself is
- * decorative for screen readers.
- */
-const Ring: React.FC<{ ring: GoalRing; colour: string }> = ({ ring, colour }) => {
-  const track = 'rgba(255,255,255,0.12)';
-  const segments = ring.segments && ring.segments > 1 && ring.segments <= 12 ? ring.segments : 0;
-  const filledSegments = segments ? Math.round((ring.progressPct / 100) * segments) : 0;
-  const gap = 20; // degrees between segments (the round ends take up about half of it)
+/** One ring of equal segments. 'unknown' (not measured yet) is drawn as a thin line, not as a miss. */
+const SegmentRing: React.FC<{ segments: RingSegment[]; radius: number; width: number; colour: string; delay?: number }> = ({ segments, radius, width, colour, delay = 0 }) => {
+  const length = 2 * Math.PI * radius;
+  const count = segments.length;
+  // The round ends take up part of the gap, so it is sized from the stroke.
+  const gapDeg = count === 1 ? 0 : Math.min(360 / count / 2, (width / radius) * 57.3 + (count > 12 ? 3 : 8));
+  const sweep = ((360 / count - gapDeg) / 360) * length;
   return (
-    <div className="relative" style={{ width: fig(206), height: fig(206) }}>
-      <svg viewBox="0 0 100 100" className="w-full h-full" style={{ transform: 'rotate(-90deg)' }} aria-hidden="true">
-        {segments ? (
-          Array.from({ length: segments }, (_, i) => {
-            const sweep = 360 / segments - gap;
-            const length = (sweep / 360) * RING_LENGTH;
-            return (
-              <circle
-                key={i}
-                cx={50}
-                cy={50}
-                r={RING_RADIUS}
-                fill="none"
-                stroke={i < filledSegments ? colour : track}
-                strokeWidth={7}
-                strokeLinecap="round"
-                strokeDasharray={`${length} ${RING_LENGTH - length}`}
-                strokeDashoffset={-((i * 360) / segments + gap / 2) * (RING_LENGTH / 360)}
-                className={i < filledSegments ? 'wk-ring-pop' : undefined}
-                style={i < filledSegments ? { animationDelay: `${200 + i * 110}ms` } : undefined}
-              />
-            );
-          })
-        ) : (
-          <>
-            <circle cx={50} cy={50} r={RING_RADIUS} fill="none" stroke={track} strokeWidth={7} />
-            {ring.progressPct > 0 && (
-              <circle
-                cx={50}
-                cy={50}
-                r={RING_RADIUS}
-                fill="none"
-                stroke={colour}
-                strokeWidth={7}
-                strokeLinecap="round"
-                strokeDasharray={`${(ring.progressPct / 100) * RING_LENGTH} ${RING_LENGTH}`}
-                className="wk-ring-draw"
-                style={{ '--ring-length': `${(ring.progressPct / 100) * RING_LENGTH}` } as React.CSSProperties}
-              />
-            )}
-          </>
-        )}
-      </svg>
-      <span
-        className="absolute inset-0 flex items-center justify-center font-bold tabular-numbers"
-        style={{ fontSize: text(ring.value.length > 4 ? 44 : 56), color: ring.empty ? 'var(--wk-muted)' : '#fff' }}
-      >
-        {ring.value}
-      </span>
-    </div>
+    <>
+      {segments.map((state, i) => (
+        <circle
+          key={i}
+          cx={50}
+          cy={50}
+          r={radius}
+          fill="none"
+          stroke={state === 'on' ? colour : TRACK}
+          // Not measured yet: a thin line, so it doesn't read as a miss.
+          strokeWidth={state === 'unknown' ? width * 0.3 : width}
+          strokeLinecap="round"
+          strokeDasharray={`${sweep} ${length - sweep}`}
+          strokeDashoffset={-((i * 360) / count + gapDeg / 2) * (length / 360)}
+          className={state === 'on' ? 'wk-ring-pop' : undefined}
+          style={state === 'on' ? { animationDelay: `${delay + i * (count > 8 ? 45 : 110)}ms` } : undefined}
+        />
+      ))}
+    </>
   );
 };
+
+/**
+ * One goal as a ring of segments, one per thing counted (sessions, reps, signs). A process goal has
+ * a second ring inside for its long loop: one segment per recent week. The count is in the centre
+ * and in the label, so the drawing itself is decorative for screen readers.
+ */
+const Ring: React.FC<{ ring: GoalRing; colour: string }> = ({ ring, colour }) => (
+  <div className="relative" style={{ width: fig(206), height: fig(206) }}>
+    <svg viewBox="0 0 100 100" className="w-full h-full" style={{ transform: 'rotate(-90deg)' }} aria-hidden="true">
+      <SegmentRing segments={ring.segments} radius={43} width={7} colour={colour} delay={200} />
+      {ring.inner && <SegmentRing segments={ring.inner} radius={33.5} width={3.6} colour="#FFFFFF" delay={500} />}
+    </svg>
+    <span
+      className="absolute inset-0 flex items-center justify-center font-bold tabular-numbers"
+      style={{ fontSize: text(ring.value.length > 4 ? 40 : ring.inner ? 48 : 56), color: ring.empty ? 'var(--wk-muted)' : '#fff' }}
+    >
+      {ring.value}
+    </span>
+  </div>
+);
 
 /** The fact-based goals summary straight away, replaced by the on-device model's version when one is saved or written. */
 function useGoalsSummaryText(summary: GoalsSummary): string {
@@ -107,25 +93,52 @@ function useGoalsSummaryText(summary: GoalsSummary): string {
   return written ?? summary.fallback;
 }
 
-/** The hero: the athlete's goals as rings, then a short summary of where they stand. */
-export const GoalsHero: React.FC<{ rings: GoalRing[]; summary: GoalsSummary }> = ({ rings, summary }) => {
+/** The snapshot: the athlete's goals as rings (each opens its goal), then a short summary of where they stand. */
+export const GoalsHero: React.FC<{ rings: GoalRing[]; summary: GoalsSummary; onOpenGoal: (id: string) => void; onChangeGoals: () => void }> = ({ rings, summary, onOpenGoal, onChangeGoals }) => {
   const summaryText = useGoalsSummaryText(summary);
   return (
     <section aria-labelledby="goals-title" style={{ paddingTop: fig(90) }}>
-      <ul className="grid grid-cols-3" style={{ gap: fig(16) }}>
+      {/* Three to a row; a fourth and fifth goal sit centred beneath. */}
+      <ul className="flex flex-wrap justify-center" style={{ rowGap: fig(48) }}>
         {rings.map((ring, i) => (
-          <li key={ring.id} className="flex flex-col items-center min-w-0" aria-label={`${ring.title}: ${ring.empty ? ring.detail : `${ring.value}. ${ring.detail}`}`}>
-            <Ring ring={ring} colour={RING_COLOURS[i % RING_COLOURS.length]} />
-            <span className="wk-label text-center" style={{ marginTop: fig(26), lineHeight: 1.21 }} aria-hidden="true">
-              {ring.title}
-            </span>
+          <li key={ring.id} className="min-w-0" style={{ width: '33.333%', padding: `0 ${fig(8)}` }}>
+            <button
+              type="button"
+              onClick={() => {
+                triggerHaptic('light');
+                onOpenGoal(ring.id);
+              }}
+              aria-label={`${ring.title}: ${ring.empty ? ring.detail : `${ring.value.replace('/', ' of ')} ${ring.caption}`}. Open this goal`}
+              className="flex flex-col items-center w-full"
+            >
+              <Ring ring={ring} colour={RING_COLOURS[i % RING_COLOURS.length]} />
+              <span className="wk-label text-center" style={{ marginTop: fig(26), lineHeight: 1.21 }} aria-hidden="true">
+                {ring.title}
+              </span>
+              <span className="wk-caption text-center" style={{ marginTop: fig(8) }} aria-hidden="true">
+                {ring.caption}
+              </span>
+            </button>
           </li>
         ))}
       </ul>
-      <div style={{ marginTop: fig(64), padding: `0 ${fig(28)}` }}>
-        <h2 id="goals-title" className="wk-label" style={{ lineHeight: 1.21 }}>
-          Goals
-        </h2>
+      <div style={{ marginTop: fig(56), padding: `0 ${fig(28)}` }}>
+        <div className="flex items-center justify-between" style={{ gap: fig(20) }}>
+          <h2 id="goals-title" className="wk-label" style={{ lineHeight: 1.21 }}>
+            Goals
+          </h2>
+          <button
+            type="button"
+            onClick={() => {
+              triggerHaptic('light');
+              onChangeGoals();
+            }}
+            aria-label="Change goals"
+            className="wk-pill wk-tap"
+          >
+            Change
+          </button>
+        </div>
         <p className="wk-body" style={{ marginTop: fig(12) }} aria-live="polite">
           <span key={summaryText} className="wk-text-swap">
             {summaryText}

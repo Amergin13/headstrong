@@ -9,9 +9,9 @@ import { calculateE1RM } from '../engine/e1rm';
 import { getWorkoutCompletedAt } from '../engine/recovery';
 import { calculateSessionTonnage } from '../engine/wci';
 import { WorkoutSession, WorkoutSet } from '../engine/types';
-import { AthleteGoal, CHOSEN_GOAL_ID } from './athleteGoals';
+import { AthleteGoal, CHOSEN_GOAL_ID, WEEKLY_GOAL_ID, activeGoals, repsAt } from './athleteGoals';
 import { promptOnDeviceModel } from './onDeviceModel';
-import { mislabelledFigure, spelledNumberNotInFacts } from './factChecks';
+import { mislabelledFigure, markPromptRejected, spelledNumberNotInFacts, wasPromptRejected } from './factChecks';
 import { ProgressChart } from './progressSeries';
 import { STANDARD_TEST_EXERCISE } from './storage';
 
@@ -133,55 +133,94 @@ export function buildTrainingTotals(workouts: WorkoutSession[], days?: number, n
 // Goals: the three rings and their summary
 // ---------------------------------------------------------------------------------------------
 
+export type RingSegment = 'on' | 'off' | 'unknown';
+
 export interface GoalRing {
   id: string;
   title: string;
-  /** What the ring's centre shows, e.g. "3/4", "86%", "11/21"; "—" when there is nothing to show yet. */
+  /** What the ring's centre shows: a count against its target ("3/4", "8/10"), never a percentage. */
   value: string;
-  /** 0–100 of the ring filled. */
-  progressPct: number;
-  /** When the goal counts whole things (sessions), the ring is drawn in that many segments. */
-  segments?: number;
-  detail: string;
+  /** What the count is of, under the title: "reps at 80 kg", "5 weeks in a row". */
+  caption: string;
+  /** The goal counted in whole things, one segment each ('unknown' = not measured yet). */
+  segments: RingSegment[];
+  /** A second, inner ring for the long loop of a process goal: one segment per recent week. */
+  inner?: RingSegment[];
   /** Nothing logged for this goal yet: the ring is drawn dimmed. */
   empty: boolean;
+  detail: string;
+}
+
+/** A count drawn as segments reads well up to about this many; beyond it, segments stand for equal shares. */
+const MAX_SEGMENTS = 20;
+/** The inner ring shows this many recent weeks: the six weeks the habit research counts. */
+export const HABIT_WEEKS = 6;
+
+function countSegments(current: number, target: number): RingSegment[] {
+  const total = Math.max(1, Math.min(MAX_SEGMENTS, Math.round(target)));
+  const raw = Math.round((current / Math.max(1, target)) * total);
+  const filled = current >= target ? total : Math.max(0, Math.min(total - 1, raw));
+  return Array.from({ length: total }, (_, i) => (i < filled ? 'on' : 'off'));
+}
+
+/** The strength level among the athlete's goals: the lift they follow, else the one nearest its next level. */
+export function closestStrengthGoal(goals: AthleteGoal[]): AthleteGoal | undefined {
+  return activeGoals(goals).find((g) => g.id.startsWith('strength-'));
+}
+
+/** One goal as a ring: a count against its target in the centre, and what it counts beneath. */
+function ringFor(goal: AthleteGoal, formatWeight: (kg: number) => string): GoalRing {
+  const m = goal.measure;
+  const base = { id: goal.id, title: goal.title, detail: goal.detail, empty: false };
+  if (m.type === 'frequency') {
+    const recent = m.weeks.slice(-HABIT_WEEKS);
+    return {
+      ...base,
+      value: `${m.thisWeek}/${m.perWeek}`,
+      caption: m.streakWeeks > 0 ? `${m.streakWeeks} ${m.streakWeeks === 1 ? 'week' : 'weeks'} in a row` : 'this week',
+      segments: countSegments(m.thisWeek, m.perWeek),
+      // Weeks before the athlete started are left open.
+      inner: [...Array.from({ length: HABIT_WEEKS - recent.length }, () => 'unknown' as RingSegment), ...recent.map((w): RingSegment => (w.hit ? 'on' : 'off'))],
+    };
+  }
+  if (m.type === 'reps') {
+    return { ...base, value: `${m.currentReps}/${m.targetReps}`, caption: `reps ${repsAt(m, formatWeight)}`, segments: countSegments(m.currentReps, m.targetReps) };
+  }
+  if (m.type === 'load') {
+    const [value, unit] = formatWeight(Math.max(0, m.targetE1rmKg - m.e1rmKg)).split(' ');
+    // Ten equal shares of the way from the level held to the level being chased.
+    return { ...base, value, caption: `${unit ?? 'kg'} to go on your estimated max`, segments: countSegments(goal.achieved ? 10 : Math.min(9.4, goal.progressPct / 10), 10) };
+  }
+  if (m.type === 'target') {
+    const byWeight = m.metric === 'weight';
+    const [targetValue, unit] = byWeight ? formatWeight(m.target).split(' ') : [`${m.target}`, 'reps'];
+    return {
+      ...base,
+      value: `${byWeight ? formatWeight(m.best).split(' ')[0] : m.best}/${targetValue}`,
+      caption: m.best > 0 ? `${byWeight ? unit ?? 'kg' : 'reps'}, your goal` : 'your goal, not logged yet',
+      segments: byWeight ? countSegments(m.best >= m.target ? 10 : Math.min(9.4, (m.best / m.target) * 10), 10) : countSegments(m.best, m.target),
+    };
+  }
+  return {
+    ...base,
+    value: m.signsMeasured > 0 ? `${m.signsMet}/${m.signs.length}` : '—',
+    caption: m.signsMeasured > 0 ? 'signs showing' : 'nothing measured yet',
+    segments: m.signs.map((sign): RingSegment => (sign.met === null ? 'unknown' : sign.met ? 'on' : 'off')),
+    empty: m.signsMeasured === 0,
+  };
 }
 
 /**
- * The hero rings: the weekly sessions goal, the strength level closest to being reached, and the
- * athlete's chosen goal. A goal with nothing logged shows an empty ring and what to do, never a
- * made-up figure.
+ * The snapshot rings, one for each of the athlete's 3 to 5 goals (`activeGoals`): sessions a week
+ * (this week outside, the last six weeks inside), a strength level, the chosen goal, then any goals
+ * of their own. Before a strength level can be worked out, its place holds an empty ring that says
+ * what to log, never a made-up figure.
  */
-export function buildGoalRings(goals: AthleteGoal[]): GoalRing[] {
-  const rings: GoalRing[] = [];
-  const process = goals.find((g) => g.kind === 'process');
-  if (process) {
-    rings.push({
-      id: process.id,
-      title: process.title,
-      value: `${process.current}/${process.target}`,
-      progressPct: process.progressPct,
-      segments: process.target,
-      detail: process.detail,
-      empty: false,
-    });
-  }
-  const strength = goals.filter((g) => g.id.startsWith('strength-')).sort((a, b) => b.progressPct - a.progressPct)[0];
-  rings.push(
-    strength
-      ? { id: strength.id, title: strength.title, value: `${strength.progressPct}%`, progressPct: strength.progressPct, detail: strength.detail, empty: false }
-      : { id: 'strength-none', title: 'Next strength level', value: '—', progressPct: 0, detail: 'Log your weight and a standard lift to see this', empty: true }
-  );
-  const chosen = goals.find((g) => g.id === CHOSEN_GOAL_ID);
-  if (chosen) {
-    rings.push({
-      id: chosen.id,
-      title: chosen.title,
-      value: chosen.target > 0 ? `${chosen.current}/${chosen.target}` : '—',
-      progressPct: chosen.progressPct,
-      detail: chosen.detail,
-      empty: chosen.target === 0,
-    });
+export function buildGoalRings(goals: AthleteGoal[], formatWeight: (kg: number) => string = (kg) => `${kg} kg`): GoalRing[] {
+  const active = activeGoals(goals);
+  const rings = active.map((g) => ringFor(g, formatWeight));
+  if (!active.some((g) => g.id.startsWith('strength-'))) {
+    rings.splice(Math.min(1, rings.length), 0, { id: 'strength-none', title: 'Next strength level', value: '—', caption: 'log your weight to start', segments: countSegments(0, 10), empty: true, detail: 'Log your weight and a standard lift to see this' });
   }
   return rings;
 }
@@ -191,9 +230,8 @@ export interface GoalsSummary {
   /** Built directly from the facts; shown until (or instead of) the model's version. */
   fallback: string;
   /**
-   * Nothing has been logged to summarise yet (no session this week and no repeated lift). The
-   * fact-based text is the whole message, and the model is not asked: with nothing to report it
-   * fills the gap with judgments the facts don't support.
+   * Nothing has been logged to summarise yet. The fact-based text is the whole message, and the
+   * model is not asked: with nothing to report it fills the gap with judgments the facts don't support.
    */
   sparse: boolean;
 }
@@ -208,40 +246,72 @@ export const GOALS_SUMMARY_SYSTEM_PROMPT =
 export function buildGoalsSummary(goals: AthleteGoal[], formatWeight: (kg: number) => string): GoalsSummary {
   const facts: string[] = [];
   const sentences: string[] = [];
-  const process = goals.find((g) => g.kind === 'process');
-  if (process) {
-    facts.push(`${process.title}: ${process.current} of ${process.target} sessions done in week ${process.week ?? 1} of the plan.`);
-    const left = process.target - process.current;
+  const weekly = goals.find((g) => g.id === WEEKLY_GOAL_ID);
+  const frequency = weekly?.measure.type === 'frequency' ? weekly.measure : undefined;
+  if (weekly && frequency) {
+    const left = frequency.perWeek - frequency.thisWeek;
+    facts.push(`${weekly.title}: ${frequency.thisWeek} of ${frequency.perWeek} sessions done this week.`);
+    if (frequency.streakWeeks > 0) facts.push(`Weeks in a row at ${frequency.perWeek} sessions: ${frequency.streakWeeks}.`);
+    const run = frequency.streakWeeks > 0 ? ` That's ${frequency.streakWeeks} ${frequency.streakWeeks === 1 ? 'week' : 'weeks'} in a row at ${frequency.perWeek}.` : '';
     sentences.push(
-      process.achieved
-        ? `You've done all ${process.target} sessions this week.`
-        : process.current === 0
-        ? `This week's ${process.target} sessions are still ahead of you.`
-        : `You've done ${process.current} of ${process.target} sessions this week, with ${left} to go.`
+      (frequency.thisWeek >= frequency.perWeek
+        ? `You've done all ${frequency.perWeek} sessions this week.`
+        : frequency.thisWeek === 0
+        ? `This week's ${frequency.perWeek} sessions are still ahead of you.`
+        : `You've done ${frequency.thisWeek} of ${frequency.perWeek} sessions this week, with ${left} to go.`) + (frequency.thisWeek >= frequency.perWeek ? run : '')
     );
   }
   const chosen = goals.find((g) => g.id === CHOSEN_GOAL_ID);
-  if (chosen) {
-    if (chosen.target > 0) {
-      const what = /held/.test(chosen.detail) ? 'have held or gained strength' : 'are stronger than when you first logged them';
-      facts.push(`${chosen.title}: ${chosen.current} of ${chosen.target} repeated lifts ${what}.`);
-      sentences.push(`For ${chosen.title}, ${chosen.current} of your ${plural(chosen.target, 'repeated lift')} ${what}.`);
+  const body = chosen?.measure.type === 'body' ? chosen.measure : undefined;
+  if (chosen && body) {
+    if (body.signsMeasured > 0) {
+      const showing = body.signs.filter((sign) => sign.met === true).map((sign) => sign.label.toLowerCase());
+      const missing = body.signs.filter((sign) => sign.met === false).map((sign) => sign.label.toLowerCase());
+      facts.push(`${chosen.title}: ${body.signsMet} of ${body.signsMeasured} measured signs are showing${showing.length ? ` (${showing.join('; ')})` : ''}.`);
+      if (missing.length) facts.push(`${chosen.title}, not showing yet: ${missing.join('; ')}.`);
+      facts.push(`How ${chosen.title} is judged: ${body.evidenceLabel}`);
+      sentences.push(
+        `For ${chosen.title}, ${body.signsMet} of ${body.signsMeasured} measured ${body.signsMeasured === 1 ? 'sign is' : 'signs are'} showing${
+          showing.length ? `: ${showing.join(' and ')}` : ''
+        }.${body.nextStep ? ` ${body.nextStep}` : ''}`
+      );
     } else {
-      facts.push(`${chosen.title}: no lift has been done twice yet, so there is nothing to compare.`);
-      sentences.push(`${chosen.title} is measured by your lifts getting stronger, which shows once you repeat a workout.`);
+      facts.push(`${chosen.title}: nothing has been measured for it yet.`);
+      sentences.push(`${chosen.title} is judged on your strength, your weight and your measurements, which show once you've repeated a workout and logged your weight.`);
     }
   }
-  const strength = goals.filter((g) => g.id.startsWith('strength-')).sort((a, b) => b.progressPct - a.progressPct)[0];
-  if (strength) {
-    const [movement, level] = strength.title.split(': ');
-    const gap = Math.max(0, Math.round((strength.target - strength.current) * 10) / 10);
-    facts.push(`Closest strength level: ${movement} needs ${formatWeight(gap)} more on its estimated max (${formatWeight(strength.current)} of ${formatWeight(strength.target)}) to reach ${level}.`);
-    sentences.push(`Your closest strength level is ${movement}: ${formatWeight(gap)} more on your estimated max reaches ${level}.`);
+  const strength = closestStrengthGoal(goals);
+  if (strength && strength.measure.type === 'reps') {
+    const m = strength.measure;
+    const [movement] = strength.title.split(': ');
+    const at = repsAt(m, formatWeight);
+    facts.push(`Closest strength level: ${movement} reaches ${m.level} with ${m.targetReps} reps ${at} on ${m.exerciseName}; the best so far is ${m.currentReps} reps.`);
+    sentences.push(`Your closest strength level is ${movement}: ${m.targetReps} reps ${at} reaches ${m.level}, and your best is ${m.currentReps}.`);
+  } else if (strength && strength.measure.type === 'load') {
+    const m = strength.measure;
+    const [movement] = strength.title.split(': ');
+    const gap = Math.max(0, Math.round((m.targetE1rmKg - m.e1rmKg) * 10) / 10);
+    facts.push(`Closest strength level: ${movement} needs ${formatWeight(gap)} more on its estimated max (${formatWeight(m.e1rmKg)} of ${formatWeight(m.targetE1rmKg)}) to reach ${m.level}.`);
+    sentences.push(`Your closest strength level is ${movement}: ${formatWeight(gap)} more on your estimated max reaches ${m.level}.`);
   } else {
     facts.push('Strength levels need a logged bodyweight and a logged standard lift; neither is available yet.');
     sentences.push('Log your weight to see how your lifts compare with strength standards.');
   }
-  const sparse = (process?.current ?? 0) === 0 && (chosen?.target ?? 0) === 0 && !strength;
+  // Goals of the athlete's own.
+  for (const own of activeGoals(goals).filter((g) => g.measure.type === 'target')) {
+    const m = own.measure as Extract<AthleteGoal['measure'], { type: 'target' }>;
+    const goalText = m.metric === 'weight' ? formatWeight(m.target) : `${m.target} reps`;
+    const bestText = m.metric === 'weight' ? formatWeight(m.best) : `${m.best} reps`;
+    facts.push(`Your own goal: ${goalText} on ${m.exerciseName}. ${m.best > 0 ? `Best so far: ${bestText}.` : 'It has not been logged yet.'}`);
+    sentences.push(
+      own.achieved
+        ? `You've reached your goal of ${goalText} on ${m.exerciseName}.`
+        : m.best > 0
+        ? `Your own goal is ${goalText} on ${m.exerciseName}, and your best is ${bestText}.`
+        : `Your own goal is ${goalText} on ${m.exerciseName}; log it to start counting.`
+    );
+  }
+  const sparse = (frequency?.thisWeek ?? 0) === 0 && (frequency?.streakWeeks ?? 0) === 0 && (body?.signsMeasured ?? 0) === 0 && !strength;
   return { facts, fallback: sentences.join(' '), sparse };
 }
 
@@ -282,18 +352,23 @@ export async function generateGoalsSummary(
   attempts = 2
 ): Promise<string | null> {
   if (summary.sparse) return null;
+  const rejectKey = `goals:${goalsKey(summary)}`;
+  if (prompt === promptOnDeviceModel && wasPromptRejected(rejectKey)) return null;
   let problem: string | undefined;
+  let sawModelAnswer = false;
   const base = `Facts:\n${summary.facts.map((f) => `- ${f}`).join('\n')}\n\nWrite the summary.`;
   // A model that throws is the same as no model: the fact-based text stays.
   try {
     for (let i = 0; i < attempts; i++) {
       const request = problem ? `${base}\n(Your last summary could not be used because ${problem}. Write it again.)` : base;
-      const answer = await prompt(GOALS_SUMMARY_SYSTEM_PROMPT, request, { stateless: true, timeoutMs: 30_000 });
+      const answer = await prompt(GOALS_SUMMARY_SYSTEM_PROMPT, request, { stateless: true, maxTokens: 120, timeoutMs: 30_000 });
       if (answer === null) return null;
+      sawModelAnswer = true;
       const checked = checkGoalsSummary(answer, summary);
       if (checked.problem === undefined) return checked.text;
       problem = checked.problem;
     }
+    if (prompt === promptOnDeviceModel && sawModelAnswer) markPromptRejected(rejectKey);
   } catch {
     return null;
   }
