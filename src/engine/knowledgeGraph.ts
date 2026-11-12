@@ -395,13 +395,13 @@ export const EXERCISE_SCIENCE_KNOWLEDGE_BASE: ScientificPrinciple[] = [
   {
     id: 'sp-ai-coach-single-entry-invariant',
     topic: 'Product Architecture & Interface Governance',
-    title: 'AI Coach Single Entry Point & Interface Invariant',
-    formula: 'AI Coach Entry = Bottom Navigation Bar ONLY; Zero Dedicated Cards; Zero Header Icons',
+    title: 'Treise Coach Single Entry Point & Interface Invariant',
+    formula: 'Treise Coach Entry = Detached Bottom Dock Button ONLY; Zero Dedicated Cards; Zero Header Icons',
     scientificRationale:
-      'Cognitive load research proves that attention span and executive function degrade under heavy neuromuscular strain. Displaying dedicated AI Coach cards across training sessions or placing repetitive AI Coach icons/pills in the app header fragments focus, creates visual clutter, and competes with immediate workout execution and telemetry. Maintaining exactly one canonical entry point in the bottom navigation bar preserves visual hierarchy and intentional engagement.',
+      'Cognitive load research proves that attention span and executive function degrade under heavy neuromuscular strain. Displaying dedicated coach cards across training sessions or placing repetitive coach icons/pills in the app header fragments focus, creates visual clutter, and competes with immediate workout execution and telemetry. Separating Treise as a single invoked button to the right of the connected destination bar preserves visual hierarchy and clarifies that Treise is an invoked layer rather than a page.',
     academicCitation: 'Hick-Hyman Law of Decision Latency; Treise Product Governance Framework 2026',
     practicalApplication:
-      'The athlete accesses the conversational AI Coach exclusively via the dedicated bottom navigation bar tab ("AI Coach"). The active training workout contains zero dedicated AI Coach cards, and the top app header contains zero AI Coach icons or pill buttons.',
+      'The athlete invokes Treise exclusively via the detached button to the right of the connected bottom navigation pill (Workout, Program, Progress). The active training workout contains zero dedicated coach cards, and the top app header contains zero coach icons or pill buttons.',
     keywords: ['ai coach entry', 'bottom nav', 'no cards', 'no header icon', 'ai coach card', 'header coach icon', 'single entry point', 'coach navigation'],
   },
   {
@@ -960,33 +960,33 @@ export const TREISE_DESIGN_SYSTEM: DesignSystemComponent[] = [
   },
   {
     id: 'ds-ai-coach-navigation-rule',
-    name: 'AI Coach Single Entry Navigation Rule',
+    name: 'Treise Single Entry Invoked-Layer Rule',
     category: 'navigation',
     anatomy: {
-      container: 'NavigationBar.tsx 5-column bottom navigation grid (tab id: "chat")',
-      typography: 'Label: text-xs font-medium / font-bold',
-      colors: 'Active: text-brand-primary | Inactive: text-slate-400',
+      container: 'NavigationBar.tsx connected 3-tab destination pill + separate right-hand Treise button',
+      typography: 'Destination labels: text-xs font-medium / font-semibold',
+      colors: 'Active destination: text-white + bottom ambient glow | Inactive: text-white/55 | Treise button: white T + brand orange (#FB923C) AI sparkles',
       states: {
-        active: 'text-brand-primary stroke-[2.2]',
-        inactive: 'text-slate-400 group-hover:text-slate-200 stroke-[1.8]',
+        active: 'text-white stroke-[2.1]',
+        inactive: 'text-white/55 group-hover:text-white/80 stroke-[1.85]',
       },
-      touchTarget: 'Min 44px vertical height (min-h-[44px]) in bottom navigation bar',
-      iconSpec: 'MessageSquare w-5 h-5 stroke-[2]',
+      touchTarget: 'Min 44px vertical height (h-16 segmented pill and 64x64 squircle button)',
+      iconSpec: 'Dumbbell, CalendarDays, TrendingUp in pill; Treise T + brand-orange AI sparkles in detached button',
     },
     logic: {
       rules: [
-        'MANDATORY INVARIANT: The ONLY entry point to the AI Coach is the dedicated "AI Coach" tab in the bottom navigation bar.',
-        'Zero dedicated AI Coach cards are permitted on the workout/training tab or any other screen.',
-        'Zero AI Coach buttons, pills, sparkles, or icons are permitted in the top application header.',
-        'Tapping "AI Coach" in the bottom navigation opens the assistant modal or switches to the conversational view.',
+        'MANDATORY INVARIANT: The ONLY entry point to Treise is the detached right-hand button in the bottom navigation dock.',
+        'Zero dedicated coach cards are permitted on the workout/training tab or any other screen.',
+        'Zero coach buttons, pills, sparkles, or icons are permitted in the top application header.',
+        'Tapping Treise opens the invoked assistant sheet over the current screen.',
       ],
       variants: {
-        bottomNavTab: 'Central item in NavigationBar.tsx with MessageSquare icon',
+        bottomNavTab: 'Detached squircle button to the right of the connected 3-tab segmented pill in NavigationBar.tsx',
       },
-      accessibility: 'ARIA role="tab" with aria-label="AI Coach tab" and min-h-[44px] touch target',
+      accessibility: 'aria-label="Open Treise" with aria-haspopup="dialog" and min-h-[44px] touch target',
     },
-    tailwindTokens: 'fixed bottom-0 left-0 right-0 z-40 bg-[#060709]/95 border-t border-white/[0.04] h-14',
-    rationale: 'Eliminating redundant header buttons and dedicated cards prevents clutter and ensures lifters stay 100% focused on their current exercise and set progression.',
+    tailwindTokens: 'fixed bottom-0 left-0 right-0 z-40 px-3; flex-1 h-16 rounded-full + shrink-0 w-16 h-16 rounded-[24px]',
+    rationale: 'Separating Treise from the destination tabs signals that Treise is an invoked layer while keeping athletes 100% focused on their workout.',
   },
 ];
 export const HEADSTRONG_DESIGN_SYSTEM = TREISE_DESIGN_SYSTEM;

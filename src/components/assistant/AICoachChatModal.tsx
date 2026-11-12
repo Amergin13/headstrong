@@ -224,8 +224,18 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
         <div className="relative px-[calc(38*var(--f))] pt-[calc(26*var(--f))] pb-[calc(16*var(--f))] flex items-center justify-between shrink-0">
           <span aria-hidden="true" className="absolute left-1/2 -translate-x-1/2 top-2 w-10 h-1 rounded-full bg-white/25" />
           <div className="pt-[calc(16*var(--f))]">
-            <h3 id="ai-coach-title" className="wk-label text-white">
-              AI Coach
+            <h3 id="ai-coach-title" className="wk-label text-white flex items-center gap-[calc(10*var(--f))]">
+              <span>Treise</span>
+              <svg viewBox="0 0 16 16" className="w-3.5 h-3.5 shrink-0" aria-hidden="true">
+                <path
+                  d="M7.5 1.5L8.75 5.25L12.5 6.5L8.75 7.75L7.5 11.5L6.25 7.75L2.5 6.5L6.25 5.25L7.5 1.5Z"
+                  fill="#FB923C"
+                />
+                <path
+                  d="M12.5 10.5L13.1 12.15L14.75 12.75L13.1 13.35L12.5 15L11.9 13.35L10.25 12.75L11.9 12.15L12.5 10.5Z"
+                  fill="#FF9E6D"
+                />
+              </svg>
             </h3>
             <p className="wk-caption mt-[calc(4*var(--f))]">No chat history saved on any server</p>
           </div>
@@ -236,7 +246,7 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
                 triggerHaptic('light');
                 setExpanded((v) => !v);
               }}
-              aria-label={expanded ? 'Shrink the coach to a sheet' : 'Expand the coach to full screen'}
+              aria-label={expanded ? 'Shrink Treise to a sheet' : 'Expand Treise to full screen'}
               aria-pressed={expanded}
               className="w-11 h-11 min-h-[44px] rounded-full flex items-center justify-center text-[color:var(--wk-body)] hover:text-white transition-colors"
             >
@@ -248,7 +258,7 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
                 triggerHaptic('light');
                 onClose();
               }}
-              aria-label="Close AI Coach"
+              aria-label="Close Treise"
               className="w-11 h-11 min-h-[44px] rounded-full flex items-center justify-center text-[color:var(--wk-body)] hover:text-white transition-colors"
             >
               <X className="w-5 h-5 stroke-[2]" />
@@ -417,7 +427,7 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
               value={inputMessage}
               onChange={(e) => setInputMessage(e.target.value)}
               ref={inputRef}
-              placeholder="Ask a question…"
+              placeholder="Ask Treise…"
               aria-label="Message your coach"
               disabled={isProcessing}
               autoComplete="off"

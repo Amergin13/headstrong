@@ -206,7 +206,7 @@ const TargetDetail: React.FC<{ goal: AthleteGoal }> = ({ goal }) => {
         )}
         <p className="wk-body" style={{ marginTop: fig(36) }}>
           {goal.achieved
-            ? `You've reached it: ${byWeight ? best : `${best} reps`}${m.bestOn ? ` on ${dayMonth(m.bestOn)}` : ''}. Tell the coach a new target to keep going.`
+            ? `You've reached it: ${byWeight ? best : `${best} reps`}${m.bestOn ? ` on ${dayMonth(m.bestOn)}` : ''}. Tell Treise a new target to keep going.`
             : m.best > 0
             ? `Your best is ${byWeight ? best : `${best} reps`}${m.bestOn ? `, on ${dayMonth(m.bestOn)}` : ''}: ${left} to go.`
             : "You haven't logged this exercise yet. It starts counting with your first set."}

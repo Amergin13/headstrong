@@ -190,7 +190,7 @@ export const GoalSettingsScreen: React.FC<GoalSettingsScreenProps> = ({ profile,
           </span>
         </div>
         <p className="wk-body" style={{ marginTop: fig(12) }}>
-          You have 3 goals from your plan and can add up to {MAX_CUSTOM_GOALS} of your own. To add one, open AI Coach and say it, for example "my goal is 12 chin-ups" or "set a goal of 100 kg on bench press".
+          You have 3 goals from your plan and can add up to {MAX_CUSTOM_GOALS} of your own. To add one, open Treise and say it, for example "my goal is 12 chin-ups" or "set a goal of 100 kg on bench press".
         </p>
         {ownGoals.length > 0 && (
           <ul className="flex flex-col" style={{ marginTop: fig(20) }}>
