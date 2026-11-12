@@ -1,14 +1,29 @@
 import { applyCors } from '../_lib/cors.js';
 
 /**
- * Stateless serverless proxy for the AI Coach (Gemini 2.5 Flash-Lite).
+ * Stateless serverless proxy for the AI Coach (Gemini Flash-Lite).
  *
  * Keeps GEMINI_API_KEY on the server only (never in client code or query strings), enforces
  * strict input and output token bounds, and stores no user data or conversation history.
  */
 
-const GEMINI_MODEL = 'gemini-2.5-flash-lite';
-const GEMINI_ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
+const DEFAULT_GEMINI_MODEL = 'gemini-3.5-flash-lite';
+const FALLBACK_GEMINI_MODELS = [
+  'gemini-3.5-flash-lite',
+  'gemini-3.1-flash-lite',
+  'gemini-3.1-flash-lite-preview',
+  'gemini-2.5-flash-lite',
+] as const;
+
+function geminiEndpoint(model: string): string {
+  return `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
+}
+
+function getCandidateModels(): string[] {
+  const configuredModel = (process.env.GEMINI_MODEL || '').trim();
+  const list = configuredModel ? [configuredModel, ...FALLBACK_GEMINI_MODELS] : [...FALLBACK_GEMINI_MODELS];
+  return [...new Set(list)];
+}
 
 const MAX_SYSTEM_CHARS = 4000;
 const MAX_MESSAGE_CHARS = 2000;
@@ -39,9 +54,10 @@ export default async function handler(req: any, res: any) {
   const apiKey = (process.env.GEMINI_API_KEY || '').trim();
 
   if (req.method === 'GET') {
+    const models = getCandidateModels();
     return res.status(200).json({
       configured: Boolean(apiKey),
-      model: GEMINI_MODEL,
+      model: models[0] || DEFAULT_GEMINI_MODEL,
     });
   }
 
@@ -99,18 +115,28 @@ export default async function handler(req: any, res: any) {
   const timeout = controller ? setTimeout(() => controller.abort(), 15_000) : null;
 
   try {
-    const upstream = await fetch(GEMINI_ENDPOINT, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-goog-api-key': apiKey,
-      },
-      body: JSON.stringify(payload),
-      ...(controller ? { signal: controller.signal } : {}),
-    });
+    const candidateModels = getCandidateModels();
+    let activeModel = candidateModels[0] || DEFAULT_GEMINI_MODEL;
+    let upstream: Response | null = null;
 
-    if (!upstream.ok) {
-      return res.status(502).json({ error: `Upstream model returned ${upstream.status}` });
+    for (let i = 0; i < candidateModels.length; i += 1) {
+      activeModel = candidateModels[i];
+      upstream = await fetch(geminiEndpoint(activeModel), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-goog-api-key': apiKey,
+        },
+        body: JSON.stringify(payload),
+        ...(controller ? { signal: controller.signal } : {}),
+      });
+      if (upstream.status !== 404 || i === candidateModels.length - 1) {
+        break;
+      }
+    }
+
+    if (!upstream || !upstream.ok) {
+      return res.status(502).json({ error: `Upstream model returned ${upstream ? upstream.status : 'error'}` });
     }
 
     const data: any = await upstream.json();
@@ -126,7 +152,7 @@ export default async function handler(req: any, res: any) {
       return res.status(502).json({ error: 'Model returned an empty answer.' });
     }
 
-    return res.status(200).json({ text, model: GEMINI_MODEL });
+    return res.status(200).json({ text, model: activeModel });
   } catch {
     return res.status(502).json({ error: 'Failed to reach the coach model.' });
   } finally {

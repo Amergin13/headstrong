@@ -155,11 +155,11 @@ A high vitality score expands the lifter's 7-Pillar Radar profile.
 
 ---
 
-### 2.5 AI Coach (Gemini Nano on-device + Stateless Gemini 2.5 Flash-Lite Fallback)
+### 2.5 AI Coach (Gemini Nano on-device + Stateless Gemini Flash-Lite Fallback)
 Implementation: `src/services/onDeviceModel.ts` + `src/services/geminiFlashLite.ts` + `src/services/deviceModels.ts` + `api/coach/generate.ts` + `src/services/aiAssistantService.ts`.
 - Free-form questions are answered by Chrome's built-in Prompt API (`LanguageModel`) **when the model is already `available`** on the device. On Pixel phones where exposed or desktop Chrome, it runs locally.
 - On Pixel phones with status `downloadable`, `prepareOnDeviceModel()` starts the one-time model download in the background from a user gesture. Other devices never auto-download.
-- **Chrome on Android does not expose Gemini Nano to web apps** (verified on a Pixel 11 Pro XL, Chrome 155). Instead of requiring a 1 GB WebGPU model download, the coach registers a zero-download stateless fallback (`src/services/geminiFlashLite.ts` via `src/services/deviceModels.ts` and `registerFallbackOnDeviceModel`) backed by `/api/coach/generate` (`gemini-2.5-flash-lite` using `GEMINI_API_KEY` on the server). It sends only anonymized training facts and the current prompt, stores nothing server-side, and falls back to the deterministic rule-based coach when offline or unconfigured.
+- **Chrome on Android does not expose Gemini Nano to web apps** (verified on a Pixel 11 Pro XL, Chrome 155). Instead of requiring a 1 GB WebGPU model download, the coach registers a zero-download stateless fallback (`src/services/geminiFlashLite.ts` via `src/services/deviceModels.ts` and `registerFallbackOnDeviceModel`) backed by `/api/coach/generate` (`gemini-3.5-flash-lite` with 404 fallback using `GEMINI_API_KEY` on the server). It sends only anonymized training facts and the current prompt, stores nothing server-side, and falls back to the deterministic rule-based coach when offline or unconfigured.
 - Plan changes (equipment, travel, split, rest day, goals) are always deterministic intents, never model output.
 - The system prompt is compact (`buildCoachSystemPrompt`, ~180 tokens) and grounded in the athlete's workout, recovery and one matching knowledge-base fact.
 - Open questions go to the model when it is available; explicit "why / how does / formula" questions get the knowledge-base card. Answers are rejected (and the rule-based coach answers) if they echo the prompt, which is what Chromium builds without Gemini Nano do.

@@ -6626,14 +6626,14 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
         install(savedLM);
         if (savedLM === undefined) delete (globalThis as any).LanguageModel;
 
-        // 8. Stateless Gemini 2.5 Flash-Lite fallback (services/geminiFlashLite.ts)
+        // 8. Stateless Gemini Flash-Lite fallback (services/geminiFlashLite.ts)
         {
           const flash = await import('../../services/geminiFlashLite');
           const savedFetch = globalThis.fetch;
           const fetchBodies: any[] = [];
           (globalThis as any).fetch = async (url: string, init?: any) => {
             if (url === '/api/coach/generate' && (!init?.method || init.method === 'GET')) {
-              return { ok: true, json: async () => ({ configured: true, model: 'gemini-2.5-flash-lite' }) } as any;
+              return { ok: true, json: async () => ({ configured: true, model: 'gemini-3.5-flash-lite' }) } as any;
             }
             if (url === '/api/coach/generate' && init?.method === 'POST') {
               const body = JSON.parse(String(init.body || '{}'));
