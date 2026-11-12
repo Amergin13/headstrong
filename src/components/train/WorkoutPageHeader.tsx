@@ -75,9 +75,7 @@ export const WorkoutPageHeader: React.FC<WorkoutPageHeaderProps> = ({ title, day
   return (
     <header className="relative" style={{ paddingTop: fig(20) }}>
       <div className="relative flex items-center justify-center">
-        <h1 className="font-bold text-white uppercase text-center" style={{ fontSize: `max(12px, ${fig(26)})`, letterSpacing: '0.02em' }}>
-          {title}
-        </h1>
+        <h1 className="wk-page-title">{title}</h1>
         {renderMenu && (
           <button
             type="button"

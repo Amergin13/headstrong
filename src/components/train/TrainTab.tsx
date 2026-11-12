@@ -1,5 +1,5 @@
-import React, { useState, useCallback, useMemo, useLayoutEffect, useRef, useEffect } from 'react';
-import { createPortal } from 'react-dom';
+import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
+import { PageTopGradient } from '../common/PageTopGradient';
 import {
   BiometricLog,
   ExerciseDefinition,
@@ -829,22 +829,6 @@ export const TrainTab: React.FC<TrainTabProps> = ({
   // Page background: #283339 at the top fading to #13181C exactly where the first workout card starts.
   const cardsTopRef = useRef<HTMLDivElement>(null);
   const exercisesTopRef = useRef<HTMLDivElement>(null);
-  const [gradientEnd, setGradientEnd] = useState<number | null>(null);
-  useLayoutEffect(() => {
-    const measure = () => {
-      const marker = exercisesTopRef.current ?? cardsTopRef.current;
-      if (!marker) return;
-      setGradientEnd(Math.round(marker.getBoundingClientRect().top + window.scrollY));
-    };
-    measure();
-    const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(measure) : null;
-    if (observer && cardsTopRef.current) observer.observe(cardsTopRef.current);
-    window.addEventListener('resize', measure);
-    return () => {
-      observer?.disconnect();
-      window.removeEventListener('resize', measure);
-    };
-  }, [showRecoveryGate, sessionReport]);
 
   const renderOptionsMenu = (close: () => void) => (
     <div
@@ -914,23 +898,12 @@ export const TrainTab: React.FC<TrainTabProps> = ({
 
   return (
     <div className="wk -mx-3.5" style={{ paddingLeft: fig(PAGE_GUTTER), paddingRight: fig(PAGE_GUTTER), paddingBottom: 112 }}>
-      {gradientEnd !== null &&
-        createPortal(
-          <div
-            aria-hidden="true"
-            style={{
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              right: 0,
-              height: gradientEnd,
-              background: 'linear-gradient(180deg, #283339 0%, #13181C 100%)',
-              zIndex: -1,
-              pointerEvents: 'none',
-            }}
-          />,
-          document.body
-        )}
+      <PageTopGradient
+        markerRef={exercisesTopRef}
+        fallbackRef={cardsTopRef}
+        observeRef={cardsTopRef}
+        deps={[showRecoveryGate, sessionReport]}
+      />
       <WorkoutPageHeader title={pageTitle} days={stripDays} renderMenu={renderOptionsMenu} />
 
       <div ref={cardsTopRef} className="flex flex-col" style={{ gap: fig(22), marginTop: fig(64) }}>

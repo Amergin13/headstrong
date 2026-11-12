@@ -11,7 +11,7 @@ interface NavigationBarProps {
   onOpenAICoach?: () => void;
 }
 
-/** Treise geometric "T" paired with brand-orange AI sparkles (#FB923C / #FF9E6D). */
+/** Treise geometric "T" paired with brand-orange AI sparkles (#DC8748 / #FF9E6D). */
 const TreiseCoachMark: React.FC<{ active: boolean }> = ({ active }) => (
   <svg
     viewBox="0 0 36 36"
@@ -21,7 +21,7 @@ const TreiseCoachMark: React.FC<{ active: boolean }> = ({ active }) => (
     <defs>
       <linearGradient id="treise-coach-sparkle-grad" x1="0%" y1="0%" x2="100%" y2="100%">
         <stop offset="0%" stopColor="#FF9E6D" />
-        <stop offset="100%" stopColor="#FB923C" />
+        <stop offset="100%" stopColor="#DC8748" />
       </linearGradient>
     </defs>
     {/* Subtle outer emblem ring */}
@@ -30,13 +30,13 @@ const TreiseCoachMark: React.FC<{ active: boolean }> = ({ active }) => (
       cy="18"
       r="16.25"
       fill="rgba(16, 20, 25, 0.72)"
-      stroke={active ? 'rgba(251, 146, 60, 0.85)' : 'rgba(255, 255, 255, 0.24)'}
+      stroke={active ? 'rgba(220, 135, 72, 0.85)' : 'rgba(255, 255, 255, 0.24)'}
       strokeWidth={active ? '1.5' : '1.15'}
     />
     {/* Crisp geometric Treise "T" */}
     <path
       d="M10 12.6H21.6V15.1H17.1V25.8H14.5V15.1H10V12.6Z"
-      fill="#FFFFFF"
+      fill="#F3EEE3"
     />
     {/* Primary brand-orange 4-point AI sparkle */}
     <path
@@ -46,7 +46,7 @@ const TreiseCoachMark: React.FC<{ active: boolean }> = ({ active }) => (
     {/* Secondary smaller brand-orange AI sparkle */}
     <path
       d="M28.1 14.2L28.56 15.54L29.9 16L28.56 16.46L28.1 17.8L27.64 16.46L26.3 16L27.64 15.54L28.1 14.2Z"
-      fill="#FB923C"
+      fill="#DC8748"
     />
   </svg>
 );
@@ -84,8 +84,9 @@ export const NavigationBar: React.FC<NavigationBarProps> = ({
       <div className="max-w-md mx-auto flex items-center gap-2.5 pointer-events-auto">
         {/* Connected segmented menu for primary app destinations */}
         <div
-          className="flex-1 h-16 rounded-full grid grid-cols-3 px-1 overflow-hidden backdrop-blur-2xl"
+          className="flex-1 h-16 grid grid-cols-3 px-1 overflow-hidden backdrop-blur-2xl"
           style={{
+            borderRadius: 60,
             background: 'linear-gradient(180deg, rgba(35, 41, 48, 0.90) 0%, rgba(22, 26, 31, 0.94) 100%)',
             border: '1px solid rgba(255, 255, 255, 0.11)',
             boxShadow: 'inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 12px 32px rgba(0, 0, 0, 0.58)',
@@ -140,16 +141,17 @@ export const NavigationBar: React.FC<NavigationBarProps> = ({
           aria-haspopup="dialog"
           aria-expanded={isChatOpen}
           title="Treise"
-          className="relative shrink-0 w-16 h-16 min-h-[44px] min-w-[44px] rounded-[24px] flex items-center justify-center backdrop-blur-2xl transition-all duration-200 group active:scale-95 overflow-hidden"
+          className="relative shrink-0 w-16 h-16 min-h-[44px] min-w-[44px] flex items-center justify-center backdrop-blur-2xl transition-all duration-200 group active:scale-95 overflow-hidden"
           style={{
+            borderRadius: 60,
             background: isChatOpen
-              ? 'radial-gradient(circle at 60% 35%, rgba(251, 146, 60, 0.24) 0%, rgba(26, 31, 37, 0.96) 72%)'
-              : 'radial-gradient(circle at 62% 32%, rgba(251, 146, 60, 0.14) 0%, rgba(33, 39, 46, 0.92) 55%, rgba(22, 26, 31, 0.95) 100%)',
+              ? 'radial-gradient(circle at 60% 35%, rgba(220, 135, 72, 0.24) 0%, rgba(26, 31, 37, 0.96) 72%)'
+              : 'radial-gradient(circle at 62% 32%, rgba(220, 135, 72, 0.14) 0%, rgba(33, 39, 46, 0.92) 55%, rgba(22, 26, 31, 0.95) 100%)',
             border: isChatOpen
-              ? '1px solid rgba(251, 146, 60, 0.65)'
+              ? '1px solid rgba(220, 135, 72, 0.65)'
               : '1px solid rgba(255, 255, 255, 0.13)',
             boxShadow: isChatOpen
-              ? 'inset 0 1px 0 rgba(255, 190, 140, 0.28), 0 0 22px rgba(251, 146, 60, 0.28), 0 12px 32px rgba(0, 0, 0, 0.58)'
+              ? 'inset 0 1px 0 rgba(255, 190, 140, 0.28), 0 0 22px rgba(220, 135, 72, 0.28), 0 12px 32px rgba(0, 0, 0, 0.58)'
               : 'inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 12px 32px rgba(0, 0, 0, 0.58)',
           }}
         >

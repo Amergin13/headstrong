@@ -1,5 +1,6 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Scale, Ruler, Bluetooth } from 'lucide-react';
+import { PageTopGradient } from '../common/PageTopGradient';
 import { BiometricLog, BodyMeasurementSite, ExerciseDefinition, GoalPhase, UserProfile, WorkoutSession } from '../../engine/types';
 import { StrengthLevelsCard } from './StrengthLevelsCard';
 import { BalanceCard } from './BalanceCard';
@@ -276,10 +277,12 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
     </div>
   );
 
+  const cardsTopRef = useRef<HTMLDivElement>(null);
+
   const detailScreen = detail && (
     <>
       <DetailHeader title={DETAIL_TITLE[detail]} onBack={() => setDetail(null)} />
-      <div className="flex flex-col" style={{ gap: fig(22), marginTop: fig(40) }}>
+      <div ref={cardsTopRef} className="flex flex-col" style={{ gap: fig(22), marginTop: fig(40) }}>
         {detail === 'bests' &&
           (personalBests.length > 0 ? (
             <section className="wk-card" aria-label="All personal bests">
@@ -468,9 +471,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
   const overview = (
     <>
       <header style={{ paddingTop: fig(20) }}>
-        <h1 className="font-bold text-white uppercase text-center" style={{ fontSize: `max(12px, ${fig(26)})`, letterSpacing: '0.02em' }}>
-          Progress
-        </h1>
+        <h1 className="wk-page-title">Progress</h1>
       </header>
 
       <GoalsHero
@@ -486,7 +487,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
         onChangeGoals={() => setDetail('goals')}
       />
 
-      <div className="flex flex-col" style={{ gap: fig(22), marginTop: fig(70) }}>
+      <div ref={cardsTopRef} className="flex flex-col" style={{ gap: fig(22), marginTop: fig(70) }}>
         <OverviewCard title="Trophy case" opens="all personal bests" onOpen={() => setDetail('bests')}>
           {trophies.length > 0 ? (
             <StatRow
@@ -602,7 +603,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
   const goalScreen = openGoal && (
     <>
       <DetailHeader title={openGoal.title} onBack={() => setOpenGoalId(null)} />
-      <div className="flex flex-col" style={{ gap: fig(22), marginTop: fig(32) }}>
+      <div ref={cardsTopRef} className="flex flex-col" style={{ gap: fig(22), marginTop: fig(32) }}>
         <GoalDetailScreen
           goal={openGoal}
           goals={knowledgeGraph.goals}
@@ -631,6 +632,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
 
   return (
     <div className="wk -mx-3.5" style={{ paddingLeft: fig(PAGE_GUTTER), paddingRight: fig(PAGE_GUTTER), paddingBottom: 112 }}>
+      <PageTopGradient markerRef={cardsTopRef} deps={[detail, openGoalId, workouts.length]} />
       {goalScreen || detailScreen || overview}
 
       {showLogModal && (

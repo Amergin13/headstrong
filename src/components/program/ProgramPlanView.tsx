@@ -1,6 +1,6 @@
-import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronRight } from 'lucide-react';
+import { PageTopGradient } from '../common/PageTopGradient';
 import { BiometricLog, ExerciseDefinition, ReadinessState, UserProfile, WorkoutSession } from '../../engine/types';
 import { buildAthleteKnowledgeGraph } from '../../engine/knowledgeGraph';
 import { calculateWeeklyMuscleVolume } from '../../services/storage';
@@ -402,15 +402,6 @@ export const ProgramPlanView: React.FC<ProgramPlanViewProps> = ({
 
   // Page background: #283339 at the top fading to #13181C where the plan progress starts (as on the Workout tab).
   const progressRef = useRef<HTMLElement>(null);
-  const [gradientEnd, setGradientEnd] = useState<number | null>(null);
-  useLayoutEffect(() => {
-    const measure = () => {
-      if (progressRef.current) setGradientEnd(progressRef.current.getBoundingClientRect().top + window.scrollY);
-    };
-    measure();
-    window.addEventListener('resize', measure);
-    return () => window.removeEventListener('resize', measure);
-  }, [isFirstRun]);
 
   const togglePhase = (phase: number) => {
     triggerHaptic('light');
@@ -442,27 +433,9 @@ export const ProgramPlanView: React.FC<ProgramPlanViewProps> = ({
 
   return (
     <>
-      {gradientEnd !== null &&
-        createPortal(
-          <div
-            aria-hidden="true"
-            style={{
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              right: 0,
-              height: gradientEnd,
-              background: 'linear-gradient(180deg, #283339 0%, #13181C 100%)',
-              zIndex: -1,
-              pointerEvents: 'none',
-            }}
-          />,
-          document.body
-        )}
+      <PageTopGradient markerRef={progressRef} deps={[isFirstRun]} />
       <header style={{ paddingTop: fig(20) }}>
-        <h1 className="wk-page-title" style={{ fontSize: `max(12px, ${fig(28)})` }}>
-          {trainingPlan.name}
-        </h1>
+        <h1 className="wk-page-title">{trainingPlan.name}</h1>
       </header>
 
       {isFirstRun && (

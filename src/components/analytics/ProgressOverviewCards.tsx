@@ -293,8 +293,6 @@ export const DetailHeader: React.FC<{ title: string; onBack: () => void }> = ({ 
     >
       <ChevronLeft style={{ width: fig(44), height: fig(44) }} strokeWidth={2} aria-hidden="true" />
     </button>
-    <h1 className="font-bold text-white uppercase text-center" style={{ fontSize: text(26), letterSpacing: '0.02em' }}>
-      {title}
-    </h1>
+    <h1 className="wk-page-title">{title}</h1>
   </header>
 );
