@@ -14,6 +14,8 @@ import { calculateE1RM } from '../engine/e1rm';
 import { runReadAloudQaGate } from '../engine/contentStrategy';
 import { ExerciseDefinition, ReadinessState, WorkoutSession, WorkoutSet } from '../engine/types';
 import { promptOnDeviceModel } from './onDeviceModel';
+import { strengthTrend } from './strengthTrend';
+import { mislabelledFigure, spelledNumberNotInFacts } from './factChecks';
 import { MUSCLE_TO_GRAPH_KEY } from './sessionReport';
 
 export interface IdentityMessageInput {
@@ -85,32 +87,6 @@ function personalBestsBySession(sessions: WorkoutSession[], earlier: WorkoutSess
     counts.set(w, n);
   }
   return counts;
-}
-
-/** Lifts done at least twice in these sessions, and how many of them have a higher estimated max now. */
-function strengthTrend(sessions: WorkoutSession[], bodyweightKg: number): { repeated: number; improved: number } {
-  const byExercise = new Map<string, number[]>();
-  for (const w of sessions) {
-    for (const ex of w.exercises) {
-      const top = ex.sets.filter(done).reduce((m, s) => {
-        const e = calculateE1RM(
-          weightOf(s),
-          s.actualReps ?? 0,
-          s.actualRir ?? s.targetRir ?? 2,
-          ex.equipment,
-          ex.isRdl,
-          ex.isWeightedCalisthenic,
-          bodyweightKg,
-          ex.exerciseId,
-          ex.pillar
-        );
-        return Math.max(m, e);
-      }, 0);
-      if (top > 0) byExercise.set(ex.exerciseId, [...(byExercise.get(ex.exerciseId) ?? []), top]);
-    }
-  }
-  const series = [...byExercise.values()].filter((v) => v.length >= 2);
-  return { repeated: series.length, improved: series.filter((v) => v[v.length - 1] > v[0] * 1.005).length };
 }
 
 export function buildIdentityFacts(input: IdentityMessageInput): IdentityMessageFacts {
@@ -193,8 +169,9 @@ export function buildIdentityFacts(input: IdentityMessageInput): IdentityMessage
     (m) => graphKeys.includes(m.muscleKey) && m.weeklySets < m.personalizedMav[0]
   );
   if (behind) {
-    const [min, max] = behind.personalizedMav;
-    facts.push(`${behind.displayName} this week: ${behind.weeklySets} hard sets against a target of ${min}–${max} (below target).`);
+    // No figures here: given the set counts, the real model read them as the next workout's sets
+    // ("you'll be performing 6.5 hard sets", "aiming for 17–27"). The fact-based message states them.
+    facts.push(`${behind.displayName} are below target for the week so far; the next workout adds to them.`);
   }
   const readiness = input.readinessState;
   if (readiness) {
@@ -269,6 +246,17 @@ export function checkIdentityMessage(answer: string | null, facts: IdentityMessa
   const allowed = new Set(allFacts.match(NUMBER) || []);
   const strange = (text.match(NUMBER) || []).find((n) => !allowed.has(n));
   if (strange) return { problem: `it used the number ${strange}, which is not in the facts` };
+  // Where the athlete is in a phase or the plan is only what the facts state ("week 3 of 6"); the
+  // real model turned that into "nearing the end of Phase 2".
+  if (/\b(near\w*|approach\w*|close to|reach\w*) the (end|start|middle|finish)\b|\b(half-?way|almost (done|finished|there|complete)|(final|last) (week|phase|stretch|session))\b/i.test(text)) {
+    return { problem: 'it described how far through a phase or the plan the athlete is, beyond what the facts state' };
+  }
+  // The plan's total is the whole plan's, not one phase's (an error the real model made).
+  if (/\b(of|out of)( the)? \d+( planned| total| sessions| workouts)*,? (in|for|of|during|planned for|planned in) (this |the |current )?phase\b/i.test(text)) return { problem: 'it gave the plan total as a phase total' };
+  const spelled = spelledNumberNotInFacts(text, facts.facts);
+  if (spelled) return { problem: `it used the number "${spelled}", which is not in the facts` };
+  const mislabelled = mislabelledFigure(text, facts.facts);
+  if (mislabelled) return { problem: `it said "${mislabelled}", but the facts count that figure in something else` };
   if (/\btarget\b/i.test(text) && !/below target/.test(allFacts)) return { problem: 'it mentioned a target the facts do not give' };
   if (/\b(personal best|PR)s?\b/i.test(text) && !/personal best/i.test(allFacts)) return { problem: 'it mentioned personal bests the facts do not show' };
   // Size words must match the figures: "most" needs more than half the repeated lifts up, and the
@@ -277,6 +265,11 @@ export function checkIdentityMessage(answer: string | null, facts: IdentityMessa
   const share = trend ? Number(trend[1]) / Number(trend[2]) : 0;
   if (/\b(most|majority|nearly all|almost all|every|all of)\b/i.test(text) && share <= 0.5) return { problem: 'it said "most" or "all" where the facts show half or fewer' };
   if (/\b(significant\w*|dramatic\w*|huge|massive|substantial\w*|enormous|remarkabl\w*|incredibl\w*)\b/i.test(text)) return { problem: 'it used a size word like "significant" or "huge" that the facts do not measure' };
+  // Sets for the next workout or the week are never in the facts, so no set count for them can be said.
+  if (/\b(aim\w*|perform\w*|do|doing|complete|completing|target\w*)\b[^.!?]{0,40}\b\d+(?:\.\d+)?(?:\s*[–-]\s*\d+)?\s*(hard\s+)?sets\b/i.test(text)) return { problem: 'it gave a number of sets to do, which the facts do not give' };
+  // The facts give how many sets were logged, never that sets, reps or volume went up (an error the
+  // real model made).
+  if (/\b(increas\w*|more|add\w*|rais\w*|grow\w*)\b[^.!?]{0,30}\b(sets?|volume|reps)\b/i.test(text)) return { problem: 'it said sets, reps or volume went up, which the facts do not show' };
   // No praise for consistency unless the facts show regular training.
   const recent = Number(/Workouts in the last 14 days: (\d+)/.exec(allFacts)?.[1] ?? 0);
   if (/\b(consistent\w*|dedicat\w*)\b/i.test(text) && recent < 6) return { problem: 'it praised consistency the facts do not show' };
@@ -289,17 +282,25 @@ export async function generateIdentityMessage(
   prompt: typeof promptOnDeviceModel = promptOnDeviceModel,
   attempts = 2
 ): Promise<string | null> {
+  // Before the first finished session there is no progress to write about; the fact-based
+  // welcome is the message.
+  if (facts.facts.some((f) => /^Sessions finished in this plan: 0 of /.test(f))) return null;
   let problem: string | undefined;
-  for (let i = 0; i < attempts; i++) {
-    // A second try is told what was wrong with the first, so it isn't the same mistake again.
-    const request = problem
-      ? `${buildIdentityPrompt(facts)}\n(Your last message could not be used because ${problem}. Write it again.)`
-      : buildIdentityPrompt(facts);
-    const answer = await prompt(IDENTITY_SYSTEM_PROMPT, request, { stateless: true, timeoutMs: 45_000 });
-    if (answer === null) return null; // no model, or it failed: don't retry
-    const checked = checkIdentityMessage(answer, facts);
-    if (checked.problem === undefined) return checked.text;
-    problem = checked.problem;
+  // A model that throws is the same as no model: the fact-based text stays.
+  try {
+    for (let i = 0; i < attempts; i++) {
+      // A second try is told what was wrong with the first, so it isn't the same mistake again.
+      const request = problem
+        ? `${buildIdentityPrompt(facts)}\n(Your last message could not be used because ${problem}. Write it again.)`
+        : buildIdentityPrompt(facts);
+      const answer = await prompt(IDENTITY_SYSTEM_PROMPT, request, { stateless: true, timeoutMs: 45_000 });
+      if (answer === null) return null; // no model, or it failed: don't retry
+      const checked = checkIdentityMessage(answer, facts);
+      if (checked.problem === undefined) return checked.text;
+      problem = checked.problem;
+    }
+  } catch {
+    return null;
   }
   return null;
 }
@@ -311,14 +312,17 @@ const MAX_CACHED = 12;
 function readCache(): Record<string, string> {
   try {
     const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(CACHE_KEY) : null;
-    return raw ? JSON.parse(raw) : {};
+    // Anything that isn't a saved map of texts (a damaged or foreign value) counts as empty.
+    const parsed = raw ? JSON.parse(raw) : {};
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
   } catch {
     return {};
   }
 }
 
 export function getCachedIdentityMessage(key: string): string | undefined {
-  return readCache()[key];
+  const hit = readCache()[key];
+  return typeof hit === 'string' ? hit : undefined;
 }
 
 export function cacheIdentityMessage(key: string, message: string): void {

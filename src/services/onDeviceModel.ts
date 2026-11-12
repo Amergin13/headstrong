@@ -26,6 +26,41 @@ let cachedStatus: { value: OnDeviceModelStatus; at: number } | null = null;
 /** In-flight model warm-up, so a question asked meanwhile doesn't load the model a second time. */
 let warmUpPromise: Promise<void> | null = null;
 
+/** A model that doesn't say whether it is ready within this time is treated as not ready. */
+const STATUS_TIMEOUT_MS = 2500;
+
+/**
+ * Health of the on-device model. A model that errors or runs out of time twice in a row is left
+ * alone for a few minutes, so the fact-based answer shows straight away instead of after another
+ * long wait. One good answer clears it. (An answer the checks reject is still an answer.)
+ */
+const FAILURES_BEFORE_PAUSE = 2;
+const PAUSE_MS = 5 * 60 * 1000;
+let consecutiveFailures = 0;
+let pausedUntil = 0;
+
+function recordModelResult(ok: boolean, now = Date.now()): void {
+  if (ok) {
+    consecutiveFailures = 0;
+    pausedUntil = 0;
+    return;
+  }
+  consecutiveFailures += 1;
+  if (consecutiveFailures >= FAILURES_BEFORE_PAUSE) pausedUntil = now + PAUSE_MS;
+}
+
+/** True while the model is being left alone after repeated failures. */
+export function isOnDeviceModelPaused(now = Date.now()): boolean {
+  return now < pausedUntil;
+}
+
+/** Clears the failure count and any pause (for tests, and when the athlete downloads the model again). */
+export function resetOnDeviceModelHealth(): void {
+  consecutiveFailures = 0;
+  pausedUntil = 0;
+  cachedStatus = null;
+}
+
 export async function getOnDeviceModelStatus(force = false): Promise<OnDeviceModelStatus> {
   const api = getLanguageModelApi();
   if (!api) {
@@ -34,12 +69,15 @@ export async function getOnDeviceModelStatus(force = false): Promise<OnDeviceMod
   }
   if (!force && cachedStatus && Date.now() - cachedStatus.at < 30_000) return cachedStatus.value;
   let value: OnDeviceModelStatus = 'unavailable';
+  let timedOut = false;
   try {
     if (api && typeof api.availability === 'function') {
-      const raw = await api.availability(MODEL_OPTIONS);
+      const raw = await withTimeout(Promise.resolve(api.availability(MODEL_OPTIONS)), STATUS_TIMEOUT_MS);
+      timedOut = raw === null;
       value = raw === 'available' || raw === 'downloadable' || raw === 'downloading' ? raw : 'unavailable';
     } else if (api && typeof api.capabilities === 'function') {
-      const caps = await api.capabilities();
+      const caps: any = await withTimeout(Promise.resolve(api.capabilities()), STATUS_TIMEOUT_MS);
+      timedOut = caps === null;
       value =
         caps?.available === 'readily'
           ? 'available'
@@ -52,7 +90,9 @@ export async function getOnDeviceModelStatus(force = false): Promise<OnDeviceMod
   }
   // Only cache positive answers; "unavailable" is re-checked so a model that finishes
   // downloading in the background is picked up right away.
-  cachedStatus = value === 'unavailable' ? null : { value, at: Date.now() };
+  // A model that didn't answer in time is not asked again for a while, so one slow check doesn't
+  // become a wait on every question.
+  cachedStatus = value === 'unavailable' && !timedOut ? null : { value, at: Date.now() };
   return value;
 }
 
@@ -204,9 +244,10 @@ export function resetOnDeviceConversation(): void {
 
 /** True when some on-device model (Gemini Nano, or the downloaded GPU model) can answer now. */
 export async function isOnDeviceModelReady(): Promise<boolean> {
+  if (isOnDeviceModelPaused()) return false;
   if ((await getOnDeviceModelStatus()) === 'available') return true;
   try {
-    return fallbackModel ? await fallbackModel.isReady() : false;
+    return fallbackModel ? (await withTimeout(Promise.resolve(fallbackModel.isReady()), STATUS_TIMEOUT_MS)) === true : false;
   } catch {
     return false;
   }
@@ -217,11 +258,21 @@ export async function promptOnDeviceModel(
   userPrompt: string,
   options: OnDevicePromptOptions = {}
 ): Promise<string | null> {
+  // A model that keeps failing is left alone for a while; the caller's fact-based text stands.
+  if (isOnDeviceModelPaused()) return null;
   // Only answer with a model that is already on the device. Downloading happens separately
   // (prepareOnDeviceModel, or the athlete's opt-in for the GPU model) and never blocks a reply.
   const status = await getOnDeviceModelStatus();
   if (status !== 'available') {
     if (!fallbackModel) return null;
+    let fallbackReady = false;
+    try {
+      fallbackReady = (await withTimeout(Promise.resolve(fallbackModel.isReady()), STATUS_TIMEOUT_MS)) === true;
+    } catch {
+      fallbackReady = false;
+    }
+    // Not on this device: nothing failed, there is simply no model to ask.
+    if (!fallbackReady) return null;
     try {
       let shown = false;
       const answer = await withTimeout(
@@ -238,8 +289,11 @@ export async function promptOnDeviceModel(
         ),
         options.timeoutMs ?? 60_000
       );
-      return answer && isUsableModelAnswer(answer, systemPrompt, userPrompt) ? answer.trim() : null;
+      const usable = answer && isUsableModelAnswer(answer, systemPrompt, userPrompt) ? answer.trim() : null;
+      recordModelResult(usable !== null);
+      return usable;
     } catch {
+      recordModelResult(false);
       return null;
     }
   }
@@ -312,9 +366,14 @@ export async function promptOnDeviceModel(
 
   const limit = options.timeoutMs ?? 30_000;
   try {
-    return await withTimeout(run(), limit);
+    const answer = await withTimeout(run(), limit);
+    // Timed out: the half-finished conversation can't be continued.
+    if (answer === null && !options.stateless) endChat();
+    recordModelResult(answer !== null);
+    return answer;
   } catch (err) {
     console.warn('On-device model prompt failed:', err);
+    recordModelResult(false);
     return null;
   }
 }

@@ -16,6 +16,7 @@ import { BiometricLog, ExerciseDefinition, UserProfile, WorkoutSession } from '.
 import { standardsAge } from '../engine/strengthStandards';
 import { AthleteGoal, GoalProgress, buildAthleteGoals, goalsProgressedBy } from './athleteGoals';
 import { promptOnDeviceModel } from './onDeviceModel';
+import { mislabelledFigure, spelledNumberNotInFacts } from './factChecks';
 import { SessionProgressReport, buildSessionProgressReport } from './sessionReport';
 import { calculateWeeklyMuscleVolume } from './storage';
 import { ExerciseInsight, buildExerciseInsight } from './exerciseInsight';
@@ -65,7 +66,8 @@ export const WORKOUT_SUMMARY_SYSTEM_PROMPT =
   'You are the pragmatic, observant strength coach in the athlete\'s pocket. They have just finished a workout. ' +
   'Write two or three short sentences to them as "you", using only the facts given: first what this session showed on their lifts, ' +
   'then what it did for their goals. Earned, understated pride. No hype, no greetings, no lists, no percentages. ' +
-  'Do not mention total volume or the number of sets. Never say how they felt. Do not use any number that is not in the facts.';
+  'Do not mention total volume or the number of sets. Never say how they felt. Do not praise or judge: state what happened. ' +
+  'Keep each figure tied to what its fact measures (a gain across several sessions is not a gain today). Do not use any number that is not in the facts.';
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 const listAnd = (items: string[]) => (items.length <= 1 ? items.join('') : `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`);
@@ -226,13 +228,47 @@ export function checkWorkoutSummary(
   if (/\b(felt|feel|feeling|enjoy(ed)?|loved)\b/i.test(text)) return { problem: 'it said how the athlete felt, which is not known' };
   if (/\b(volume|tonnage|\d+\s+(working\s+|hard\s+)?sets?)\b/i.test(text)) return { problem: 'it mentioned volume or a number of sets, which are shown beside it' };
   const allFacts = finish.facts.join(' ');
+  // A gain measured across several sessions must not be reported as today's gain.
+  const acrossSessions = /up \+(\d+(?:\.\d+)?) [a-z]+ across \d+ sessions/.exec(allFacts)?.[1];
+  if (acrossSessions) {
+    const sentence = text.split(/(?<=[.!?])\s+/).find((part) => part.includes(acrossSessions) && /\b(today|this session|this workout)\b/i.test(part) && !/\bacross\b|\bsessions\b|\bsince\b|\bover\b/i.test(part));
+    if (sentence) return { problem: `it said the ${acrossSessions} gain happened today, but it is across several sessions` };
+  }
+  // Errors the real on-device model made when rewording these facts.
+  // The facts never compare today with the session before it.
+  if (/\b(previous|last|prior) (session|workout|measurement|time|week)\b/i.test(text)) return { problem: 'it compared today with the previous session, which the facts do not do' };
+  // Only a goal the facts mark as reached may be called met.
+  if (!/Goal reached/.test(allFacts) && /\b(fulfil\w*|meets?|met|achiev\w*|maintain\w*|hit\w*|secur\w*|ensur\w*)\b[^.!?]*\b(target|goal|schedule|frequency|plan|week)\b|\b(target|goal|schedule|frequency)\b[^.!?]*\b(is|was|been) (met|reached|achieved|fulfilled|maintained)\b/i.test(text)) {
+    return { problem: 'it said a goal or the week was met, but the facts only show progress toward it' };
+  }
+  // An estimated max is an estimate, not a weight lifted today.
+  const estimate = /estimated max is now (\d+(?:\.\d+)?)/.exec(allFacts)?.[1];
+  if (estimate) {
+    const loose = text.split(/(?<=[.!?])\s+/).find((part) => part.includes(estimate) && !/\bestimat/i.test(part));
+    if (loose) return { problem: `it gave ${estimate} without saying it is an estimated max` };
+  }
   const allowed = new Set(allFacts.match(NUMBER) || []);
   const strange = (text.match(NUMBER) || []).find((n) => !allowed.has(n));
   if (strange) return { problem: `it used the number ${strange}, which is not in the facts` };
-  if (/\b(personal best|PR|record)s?\b/i.test(text) && !/beat their previous best/.test(allFacts)) return { problem: 'it mentioned a personal best the facts do not show' };
+  const spelled = spelledNumberNotInFacts(text, finish.facts);
+  if (spelled) return { problem: `it used the number "${spelled}", which is not in the facts` };
+  const mislabelled = mislabelledFigure(text, finish.facts);
+  if (mislabelled) return { problem: `it said "${mislabelled}", but the facts count that figure in something else` };
+  if (/\b(personal best|PR|record)s?\b/i.test(text) && !/beat their previous best|personal bests?/i.test(allFacts)) return { problem: 'it mentioned a personal best the facts do not show' };
   if (/\b(significant\w*|dramatic\w*|huge|massive|incredibl\w*|amazing|awesome)\b/i.test(text)) return { problem: 'it used a size or hype word the facts do not support' };
+  if (/\b(consistent\w*|dedicat\w*|progressing well|going well|great|excellent|impressive|solid|strong (work|effort|progress)|(good|nice) (work|job|session)|well done|keep it up|(on|staying on) (schedule|track))\b/i.test(text)) return { problem: 'it praised consistency or quality that the facts do not show; state the figures plainly' };
   return { text };
 }
+
+/**
+ * Whether the on-device model is asked to reword the workout summary. Off: tested on Gemini Nano
+ * (Chrome 153, Nov 2026), its rewordings changed what the figures meant (a gain across sessions
+ * became "since the previous session", 2 of 4 sessions became "the week's target is met", an
+ * estimated max became a weight lifted). With checks for those, none of 8 tries passed, so asking
+ * only made the athlete wait. The fact-based summary is accurate and is what shows. The checks stay
+ * for when a model can do this.
+ */
+export const WORKOUT_SUMMARY_USES_MODEL = false;
 
 /** Asks the on-device model for the summary. Null when no model is ready or its answers fail the checks. */
 export async function generateWorkoutSummary(
@@ -240,16 +276,22 @@ export async function generateWorkoutSummary(
   prompt: typeof promptOnDeviceModel = promptOnDeviceModel,
   attempts = 2
 ): Promise<string | null> {
+  if (!WORKOUT_SUMMARY_USES_MODEL && prompt === promptOnDeviceModel) return null;
   let problem: string | undefined;
-  for (let i = 0; i < attempts; i++) {
-    const request = problem
-      ? `${buildWorkoutSummaryPrompt(finish)}\n(Your last summary could not be used because ${problem}. Write it again.)`
-      : buildWorkoutSummaryPrompt(finish);
-    const answer = await prompt(WORKOUT_SUMMARY_SYSTEM_PROMPT, request, { stateless: true, timeoutMs: 30_000 });
-    if (answer === null) return null;
-    const checked = checkWorkoutSummary(answer, finish);
-    if (checked.problem === undefined) return checked.text;
-    problem = checked.problem;
+  // A model that throws is the same as no model: the fact-based text stays.
+  try {
+    for (let i = 0; i < attempts; i++) {
+      const request = problem
+        ? `${buildWorkoutSummaryPrompt(finish)}\n(Your last summary could not be used because ${problem}. Write it again.)`
+        : buildWorkoutSummaryPrompt(finish);
+      const answer = await prompt(WORKOUT_SUMMARY_SYSTEM_PROMPT, request, { stateless: true, timeoutMs: 30_000 });
+      if (answer === null) return null;
+      const checked = checkWorkoutSummary(answer, finish);
+      if (checked.problem === undefined) return checked.text;
+      problem = checked.problem;
+    }
+  } catch {
+    return null;
   }
   return null;
 }
@@ -269,7 +311,9 @@ function summaryKey(finish: Pick<WorkoutFinish, 'facts'>): string {
 function readSummaryCache(): Record<string, string> {
   try {
     const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(SUMMARY_CACHE_KEY) : null;
-    return raw ? JSON.parse(raw) : {};
+    // Anything that isn't a saved map of texts (a damaged or foreign value) counts as empty.
+    const parsed = raw ? JSON.parse(raw) : {};
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
   } catch {
     return {};
   }
@@ -278,7 +322,7 @@ function readSummaryCache(): Record<string, string> {
 /** The written summary saved for these facts, if it still passes the checks. */
 export function getCachedWorkoutSummary(finish: Pick<WorkoutFinish, 'facts'>): string | null {
   const hit = readSummaryCache()[summaryKey(finish)];
-  const checked = hit ? checkWorkoutSummary(hit, finish) : null;
+  const checked = typeof hit === 'string' ? checkWorkoutSummary(hit, finish) : null;
   return checked && checked.problem === undefined ? checked.text : null;
 }
 

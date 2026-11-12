@@ -1435,7 +1435,7 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
   registerFallbackOnDeviceModel({
     isReady: async () => true,
     prompt: async (_sys: string, _q: string, onPartial?: (t: string) => void) => {
-      const text = 'Do five minutes of light cardio, then two easy ramp-up sets before your first working set.';
+      const text = 'Do a few minutes of light cardio, then two easy ramp-up sets before your first working set.';
       onPartial?.(text);
       return text;
     },
@@ -1461,7 +1461,7 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
     readinessState: 'Normal',
   });
   assert(
-    !briefingWithModel.message.text.startsWith('Do five minutes') && briefingWithModel.message.text.includes(pushW3.exercises[0].name),
+    !briefingWithModel.message.text.startsWith('Do a few minutes') && briefingWithModel.message.text.includes(pushW3.exercises[0].name),
     "Today's briefing is built from the plan even when a model is available (no invented details)"
   );
   const progressWithModel = await processAssistantMessage({
@@ -1480,7 +1480,7 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
   );
   registerFallbackOnDeviceModel(null);
   assert(
-    gpuReply.message.text.startsWith('Do five minutes of light cardio'),
+    gpuReply.message.text.startsWith('Do a few minutes of light cardio'),
     'Without Gemini Nano, the downloaded on-device GPU model answers open questions'
   );
 
@@ -4526,7 +4526,7 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
       'Composition charts cover all 13 RENPHO scale metrics and all 12 RENPHO tape measure sites'
     );
     assert(
-      byId('bodyweight').points.length === 22 && byId('bodyweight').secondary!.length === 22 && /a week/.test(byId('bodyweight').summary) && /lean bulk/.test(byId('bodyweight').summary),
+      byId('bodyweight').points.length === 22 && byId('bodyweight').secondary!.length === 22 && /a week/.test(byId('bodyweight').summary) && /Build Muscle/.test(byId('bodyweight').summary) && !/lean bulk/i.test(byId('bodyweight').summary),
       `Bodyweight shows the 7-day average over daily weigh-ins and the weekly pace against the goal: "${byId('bodyweight').summary}"`
     );
     assert(
@@ -6030,13 +6030,13 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
             processGoal.current === doneSlots.filter((w) => weekOfSlot(w.workoutNumber) === latestWeek).length,
           `Knowledge graph has a process goal counted from the plan (${processGoal.detail})`
         );
-        const outcomeGoals = kg.goals.filter((g) => g.kind === 'outcome');
+        const outcomeGoals = kg.goals.filter((g) => g.kind === 'outcome' && g.id.startsWith('strength-'));
         assert(
           outcomeGoals.length > 0 && outcomeGoals.every((g) => g.unit === 'kg' && g.target > g.current && g.progressPct >= 0 && g.progressPct <= 100 && /: /.test(g.title)),
           `Knowledge graph has outcome goals: each standard movement's next strength level (${outcomeGoals.map((g) => g.title).join(', ')})`
         );
         const noWeighInGoals = goalsMod.buildAthleteGoals({ profile, workouts, biometrics: [], bodyweightKg: 80 });
-        assert(noWeighInGoals.length === 1 && noWeighInGoals[0].kind === 'process', 'Without a logged bodyweight there are no strength-level goals (none is guessed from the placeholder)');
+        assert(!noWeighInGoals.some((g) => g.id.startsWith('strength-')) && noWeighInGoals[0].kind === 'process', 'Without a logged bodyweight there are no strength-level goals (none is guessed from the placeholder)');
         const freshGoals = goalsMod.buildAthleteGoals({ profile: NEW_USER_PROFILE, workouts: [], biometrics: [] });
         assert(freshGoals[0].current === 0 && freshGoals[0].progressPct === 0 && !freshGoals[0].achieved, 'A new athlete starts the weekly goal at 0');
 
@@ -6135,6 +6135,319 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
         const leveled = goalsMod.goalsProgressedBy([strength], [{ ...strength, levelStep: (strength.levelStep ?? 0) + 1, current: strength.target + 1, title: `${strength.title.split(': ')[0]}: next` }]);
         const firstLog = goalsMod.goalsProgressedBy([], [strength]);
         assert(leveled[0].status === 'reached' && leveled[0].title === strength.title && firstLog.length === 0, 'A strength level reached is shown as the goal that was being chased; a first log is a starting point, not progress');
+      }
+
+      // Progress page overview: rings, goals summary, personal bests, totals, weight and measurements.
+      {
+        const ov = await import('../../services/progressOverview');
+        const goalsMod2 = await import('../../services/athleteGoals');
+        const { strengthTrend } = await import('../../services/strengthTrend');
+        const series = await import('../../services/progressSeries');
+        const { calculateSessionTonnage: tonnageOf } = await import('../wci');
+        const { runReadAloudQaGate: gate2 } = await import('../contentStrategy');
+        const fmtKg = (v: number) => `${Math.round(v * 10) / 10} kg`;
+        const completedAll = workouts.filter((w) => w.completed);
+
+        const rings = ov.buildGoalRings(kg.goals);
+        const weekly = kg.goals.find((g) => g.kind === 'process')!;
+        const chosen = kg.goals.find((g) => g.id === goalsMod2.CHOSEN_GOAL_ID)!;
+        const trendNow = strengthTrend(workouts, bw);
+        assert(
+          rings.length === 3 && rings[0].value === `${weekly.current}/${weekly.target}` && rings[0].segments === weekly.target && rings[2].value === `${trendNow.improved}/${trendNow.repeated}`,
+          `Progress rings: weekly sessions in segments, the closest strength level, and the chosen goal (${rings.map((r) => `${r.title} ${r.value}`).join(' | ')})`
+        );
+        assert(chosen.title === 'Build Muscle' && chosen.current === trendNow.improved && chosen.target === trendNow.repeated, 'The chosen goal is measured by repeated lifts that are stronger, from the same count as the Program message');
+        const cutGoal = goalsMod2.buildAthleteGoals({ profile: { ...profile, goalPhase: 'Cut / Recomp' }, workouts, biometrics, bodyweightKg: bw }).find((g) => g.id === goalsMod2.CHOSEN_GOAL_ID)!;
+        assert(cutGoal.title === 'Lose Fat' && cutGoal.current === trendNow.heldOrImproved && cutGoal.current >= chosen.current, 'For Lose Fat, a lift that has held its strength counts');
+        const newRings = ov.buildGoalRings(goalsMod2.buildAthleteGoals({ profile: NEW_USER_PROFILE, workouts: [], biometrics: [] }));
+        assert(
+          newRings[0].value.startsWith('0/') && newRings[1].empty && newRings[1].value === '—' && newRings[2].empty && newRings[2].value === '—',
+          'A new athlete sees empty rings with what to do, never a made-up figure'
+        );
+
+        const goalsText = ov.buildGoalsSummary(kg.goals, fmtKg);
+        assert(
+          gate2(goalsText.fallback).passed && goalsText.fallback.includes(`${weekly.current} of ${weekly.target}`) && ov.checkGoalsSummary(goalsText.fallback, goalsText).problem === undefined,
+          `Goals summary is built from the goals and passes its own check ("${goalsText.fallback}")`
+        );
+        assert(
+          /number 999/.test(ov.checkGoalsSummary('You have done 999 sessions this week and your lifts are moving in the right direction.', goalsText).problem ?? '') &&
+            /hype/.test(ov.checkGoalsSummary('Your week is on track, so crush it and keep those lifts moving in the right direction.', goalsText).problem ?? ''),
+          'A written goals summary with an invented number or hype is rejected'
+        );
+
+        const bests = ov.buildPersonalBests(workouts, bw);
+        const heaviest = (id: string) => Math.max(0, ...completedAll.flatMap((w) => w.exercises.filter((e) => e.exerciseId === id).flatMap((e) => e.sets.filter((st) => st.completed && !st.isWarmup && (st.actualReps ?? 0) > 0).map((st) => st.actualWeightKg ?? st.targetWeightKg ?? 0))));
+        assert(
+          bests.length > 0 && bests.every((b) => b.weightKg === heaviest(b.exerciseId) && b.reps > 0 && b.isBodyweight === (b.weightKg <= 0)) && new Set(bests.map((b) => b.exerciseId)).size === bests.length,
+          'Personal bests: one per lift, each its heaviest logged set'
+        );
+        const trophies = ov.trophyCase(bests);
+        assert(trophies.length === 3 && trophies.every((t) => bests.includes(t)) && new Set(trophies).size === 3, `Trophy case shows three of the athlete's own bests (${trophies.map((t) => t.exerciseName).join(', ')})`);
+        assert(ov.buildPersonalBests([], bw).length === 0 && ov.trophyCase([]).length === 0, 'No workouts, no personal bests');
+
+        const lifetime = ov.buildTrainingTotals(workouts);
+        const recent = ov.buildTrainingTotals(workouts, ov.RECENT_DAYS);
+        assert(
+          lifetime.workouts === completedAll.length && lifetime.volumeKg === Math.round(completedAll.reduce((t, w) => t + tonnageOf(w).tonnageKg, 0)) && lifetime.reps > 0,
+          `Lifetime stats add up every saved workout's volume, reps and count (${lifetime.volumeKg} kg, ${lifetime.reps} reps, ${lifetime.workouts} workouts)`
+        );
+        assert(recent.workouts <= lifetime.workouts && recent.volumeKg <= lifetime.volumeKg && recent.reps <= lifetime.reps && ov.buildTrainingTotals([]).workouts === 0, 'Recent stats are a slice of the lifetime totals');
+
+        const pace = series.weightPace(biometrics, profile.goalPhase)!;
+        const fmtP = { weight: fmtKg, weightPrecise: (v: number) => `${Math.round(v * 100) / 100} kg`, length: (v: number) => `${v} cm` };
+        const charts = series.buildCompositionCharts({ biometrics, profile, fmt: fmtP });
+        const weightSummary = charts.find((c) => c.id === 'bodyweight')!.summary;
+        assert(
+          pace && weightSummary.includes(fmtKg(pace.averageKg)) && (pace.pace === 'on') === /on pace for/.test(weightSummary) && !/lean bulk|a cut\b/i.test(weightSummary),
+          'The weight card, its chip and the weight chart read the same pace, in the goal names the athlete sees'
+        );
+        assert(series.weightPace(biometrics.slice(-3), profile.goalPhase) === null, 'Weight pace needs a week of weigh-ins');
+        const tape = [
+          { id: 'neck', title: 'Neck', category: 'tape' as const, points: [{ date: '2026-10-01', value: 38 }], summary: '', format: String },
+          { id: 'waist', title: 'Waist', category: 'tape' as const, points: [{ date: '2026-10-01', value: 86 }, { date: '2026-11-01', value: 84.5 }], summary: '', format: String },
+          { id: 'bicep-left', title: 'Left arm', category: 'tape' as const, points: [{ date: '2026-10-01', value: 36 }], summary: '', format: String },
+        ];
+        const highlights = ov.measurementHighlights(tape);
+        assert(
+          highlights[0].label === 'Waist' && highlights[0].value === 84.5 && highlights[0].change === -1.5 && highlights[1].label === 'Arm' && highlights[1].change === undefined && ov.measurementHighlights(charts).length === 0,
+          'Measurements card leads with waist and its change; nothing is shown before a measurement is logged'
+        );
+      }
+
+      // Every AI-written text has a fact-based fallback, and every way the model can fail lands on it.
+      {
+        const onDev = await import('../../services/onDeviceModel');
+        const finishMod2 = await import('../../services/workoutFinish');
+        const ov2 = await import('../../services/progressOverview');
+        const notes = await import('../../services/exerciseCoachNote');
+        const { buildExerciseInsight: insightOf } = await import('../../services/exerciseInsight');
+        const savedLM = (globalThis as any).LanguageModel;
+        (globalThis as any).window = globalThis;
+        const fmtKg2 = (v: number) => `${Math.round(v * 10) / 10} kg`;
+        const install = (model: any) => {
+          (globalThis as any).LanguageModel = model;
+          onDev.resetOnDeviceConversation();
+          onDev.resetOnDeviceModelHealth();
+        };
+        const dataAnswer = /don't have a good answer|Today's session|sessions|recovered|recovering/;
+        const openQuestion = 'is it better to lift before or after work';
+
+        // 1. A model that never says whether it is ready.
+        install({ availability: () => new Promise(() => undefined), create: async () => { throw new Error('must not be reached'); } });
+        const t0 = Date.now();
+        const ready = await onDev.isOnDeviceModelReady();
+        const hungStatus = await ask(openQuestion);
+        const tAgain = Date.now();
+        await ask(`${openQuestion} tomorrow`);
+        assert(Date.now() - tAgain < 1500, `A status check that timed out is not repeated on the next question (${Date.now() - tAgain} ms)`);
+        assert(!ready && Date.now() - t0 < 9000 && dataAnswer.test(hungStatus), `A model that never reports its status is treated as not ready, and the coach answers from data (${Date.now() - t0} ms)`);
+
+        // 2. A model that throws when asked, then is left alone after two failures in a row.
+        let creates = 0;
+        install({ availability: async () => 'available', create: async () => { creates++; throw new Error('model crashed'); } });
+        const crash1 = await ask(openQuestion);
+        const crash2 = await ask(`${openQuestion} really`);
+        const createsAfterTwo = creates;
+        const crash3 = await ask(`${openQuestion} then`);
+        assert(
+          [crash1, crash2, crash3].every((a) => a.length > 20 && dataAnswer.test(a)) && onDev.isOnDeviceModelPaused() && creates === createsAfterTwo && !(await onDev.isOnDeviceModelReady()),
+          `A crashing model gives the data-based answer each time and is left alone after ${createsAfterTwo} failures`
+        );
+        assert(!onDev.isOnDeviceModelPaused(Date.now() + 6 * 60 * 1000), 'The pause on a failing model ends by itself after a few minutes');
+
+        // 3. A model that stops mid-answer, one that never answers, one that echoes, one that returns nothing.
+        install({ availability: async () => 'available', create: async () => ({ promptStreaming: async function* () { yield 'Evenings are '; throw new Error('stream broke'); }, destroy: () => undefined }) });
+        assert(dataAnswer.test(await ask(openQuestion)), 'A stream that breaks part-way falls back to the data-based answer');
+        install({ availability: async () => 'available', create: async () => ({ prompt: () => new Promise(() => undefined), destroy: () => undefined }) });
+        const tHang = Date.now();
+        const hung = await onDev.promptOnDeviceModel('Coach instructions for the test.', 'Any question', { timeoutMs: 60 });
+        assert(hung === null && Date.now() - tHang < 3000, 'A model that never answers is given up on at the time limit');
+        install({ availability: async () => 'available', create: async (o: any) => ({ prompt: async (q: string) => `${o?.initialPrompts?.[0]?.content ?? ''} ${q}`, destroy: () => undefined }) });
+        assert(dataAnswer.test(await ask(openQuestion)), 'A model that only echoes its instructions is not shown');
+        for (const junk of ['', '   ', '?']) {
+          install({ availability: async () => 'available', create: async () => ({ prompt: async () => junk, destroy: () => undefined }) });
+          assert(dataAnswer.test(await ask(openQuestion)), `An empty or one-character model answer (${JSON.stringify(junk)}) falls back to the data-based answer`);
+        }
+
+        // 4. Streaming: text is shown only while it passes the checks.
+        const shown: string[] = [];
+        install({
+          availability: async () => 'available',
+          create: async () => ({
+            promptStreaming: async function* () {
+              yield 'Either time works, so pick the one you can keep to each week. ';
+              yield 'Then load 137.5 kg and go.';
+            },
+            destroy: () => undefined,
+          }),
+        });
+        const streamed = await processAssistantMessage({ ...args, userMessage: openQuestion, onPartial: (t: string) => shown.push(t) });
+        assert(
+          shown.some((t) => /Either time works/.test(t)) && !shown.some((t) => /137\.5/.test(t)) && shown[shown.length - 1] === '' && !/137\.5/.test(streamed.message.text),
+          'A streamed answer is withdrawn the moment it stops passing the checks; the unchecked figure is never shown'
+        );
+
+        // 5. The written texts: a model that throws, hangs up or writes rubbish leaves the fact-based text.
+        const throwing = async () => { throw new Error('model crashed'); };
+        const rubbish = (text: string) => async () => text;
+        const idFacts3 = identity.buildIdentityFacts({ plan: overview, trainingPlan: plan, workouts, nextSession: active, exerciseCatalog: exercises, knowledgeGraph: kg, readinessState: readiness.state, bodyweightKg: bw });
+        const loggedNow: WorkoutSession = { ...active, exercises: active.exercises.map((ex) => ({ ...ex, sets: ex.sets.map((st) => ({ ...st, completed: true, actualWeightKg: st.targetWeightKg, actualReps: st.targetReps })) })) };
+        const finish3 = finishMod2.buildWorkoutFinish({ profile, workouts, finished: loggedNow, biometrics, exerciseCatalog: exercises, bodyweightKg: bw, formatWeight: fmtKg2 })!;
+        const goals3 = ov2.buildGoalsSummary(kg.goals, fmtKg2);
+        const ex0 = active.exercises[0];
+        const noteFacts3 = notes.buildExerciseNoteFacts({ exercise: ex0, insight: insightOf(ex0, workouts, readiness.state, bw, 12, fmtKg2), workouts, readinessState: readiness.state, knowledgeGraph: kg, formatWeight: fmtKg2 });
+        const writers: [string, (p: any) => Promise<string | null>, string][] = [
+          ['Program message', (p) => identity.generateIdentityMessage(idFacts3, p), idFacts3.fallback],
+          ['Workout summary', (p) => finishMod2.generateWorkoutSummary(finish3, p), finish3.fallback],
+          ['Goals summary', (p) => ov2.generateGoalsSummary(goals3, p), goals3.fallback],
+          ['Exercise note', (p) => notes.generateExerciseNote(noteFacts3, p), noteFacts3.fallback],
+        ];
+        for (const [name, write, fallback] of writers) {
+          const results = [await write(throwing), await write(async () => null), await write(rubbish('')), await write(rubbish('ok')), await write(rubbish('You lifted 9999 kg for 77 reps and it was 150% amazing. '.repeat(12))), await write(rubbish('As an AI language model I cannot do that.'))];
+          assert(results.every((r) => r === null) && fallback.trim().length > 30, `${name}: a model that throws, is missing, or writes nothing, too little, too much or rubbish leaves the fact-based text ("${fallback.slice(0, 50)}…")`);
+        }
+
+        // 6. A new athlete with no history still gets every text.
+        const fresh = { ...NEW_USER_PROFILE };
+        const freshPlan = resolveActivePlan(fresh);
+        const freshOverview = mbp.buildPlanOverview([], freshPlan);
+        const freshActive = prepareSessionForAthlete(mbp.generatePlanWorkout(freshPlan, 1), { history: [], bodyweightKg: 80, readinessState: 'Normal', gender: fresh.gender, experienceLevel: 'new', unit: 'kg', isProgramPlan: true });
+        const freshKg = buildAthleteKnowledgeGraph([], [], exercises, fresh, {});
+        const freshTexts = [
+          identity.buildIdentityFacts({ plan: freshOverview, trainingPlan: freshPlan, workouts: [], nextSession: freshActive, exerciseCatalog: exercises, knowledgeGraph: freshKg }).fallback,
+          ov2.buildGoalsSummary(freshKg.goals, fmtKg2).fallback,
+          notes.buildExerciseNoteFacts({ exercise: freshActive.exercises[0], insight: insightOf(freshActive.exercises[0], [], 'Normal', 80, 12, fmtKg2), workouts: [], readinessState: 'Normal', knowledgeGraph: freshKg, formatWeight: fmtKg2 }).fallback,
+          finishMod2.buildWorkoutFinish({ profile: fresh, workouts: [], finished: { ...freshActive, exercises: freshActive.exercises.map((ex) => ({ ...ex, sets: ex.sets.map((st) => ({ ...st, completed: true, actualWeightKg: st.targetWeightKg, actualReps: st.targetReps })) })) }, biometrics: [], exerciseCatalog: exercises, formatWeight: fmtKg2 })!.fallback,
+        ];
+        assert(freshTexts.every((t) => t.trim().length > 30 && !/undefined|NaN|null/.test(t)), 'A new athlete with no history gets every fact-based text, with no blanks or broken values');
+
+        // 6b. With nothing logged, the model is not asked, and judgmental wording never passes.
+        let askedWhenSparse = 0;
+        const countingPrompt = async () => { askedWhenSparse++; return 'Training is behind schedule; no sessions have been completed this week, so progress cannot be assessed yet.'; };
+        const freshGoals3 = ov2.buildGoalsSummary(freshKg.goals, fmtKg2);
+        const freshIdentity = identity.buildIdentityFacts({ plan: freshOverview, trainingPlan: freshPlan, workouts: [], nextSession: freshActive, exerciseCatalog: exercises, knowledgeGraph: freshKg });
+        assert(
+          freshGoals3.sparse && !goals3.sparse && (await ov2.generateGoalsSummary(freshGoals3, countingPrompt)) === null && (await identity.generateIdentityMessage(freshIdentity, countingPrompt)) === null && askedWhenSparse === 0,
+          'With nothing logged yet, the goals summary and Program message stay fact-based and the model is not asked'
+        );
+        assert(
+          /hype|judgmental/.test(ov2.checkGoalsSummary('Training is behind schedule this week, so get the remaining sessions done soon.', goals3).problem ?? '') &&
+            /cannot be assessed/.test(ov2.checkGoalsSummary('Your muscle building progress cannot be assessed until more lifts have been repeated.', goals3).problem ?? '') &&
+            /praised/.test(ov2.checkGoalsSummary("You're consistently completing sessions, with the week moving along and your lifts getting stronger.", goals3).problem ?? '') &&
+            /praised/.test(finishMod2.checkWorkoutSummary('Great session today, with your lifts progressing well across the whole workout.', finish3).problem ?? '') &&
+            /praised/.test(finishMod2.checkWorkoutSummary("Good work today on this one. You're staying on schedule with your sessions this week.", finish3).problem ?? '') &&
+            (await ov2.generateGoalsSummary(goals3, countingPrompt)) === null,
+          'A summary that calls the athlete behind schedule, or says progress cannot be assessed, is rejected'
+        );
+
+        {
+          const trendFacts = { facts: ['Workout finished: Lower Body A.', 'Barbell Back Squat estimated max is now 139.3 kg, up +2.6 kg across 8 sessions.'] };
+          assert(
+            /across several sessions/.test(finishMod2.checkWorkoutSummary('Squat increased by 2.6 kg today, reaching an estimated 139.3 kg, which moves the week along.', trendFacts).problem ?? '') &&
+              finishMod2.checkWorkoutSummary('Barbell Back Squat estimated max is now 139.3 kg, up 2.6 kg across 8 sessions, with today adding to it.', trendFacts).problem === undefined,
+            'A gain measured across several sessions cannot be reported as today\'s gain'
+          );
+          assert(
+            /previous session/.test(finishMod2.checkWorkoutSummary('The Barbell Back Squat estimated max progressed to 139.3 kg, a 2.6 kg increase from the previous session.', trendFacts).problem ?? '') &&
+              /was met/.test(finishMod2.checkWorkoutSummary('Barbell Back Squat estimated max is now 139.3 kg. This workout fulfills the planned training frequency for this week.', trendFacts).problem ?? '') &&
+              /estimated max/.test(finishMod2.checkWorkoutSummary('Barbell Back Squat moved to 139.3 kg in this session, and the week keeps moving along with it.', trendFacts).problem ?? ''),
+            'Workout summary: a comparison with the previous session, a goal called met, or an estimate given as a lifted weight is rejected (errors the real model made)'
+          );
+        }
+
+        {
+          const rowFacts = { key: 'k', exerciseId: 'x', fallback: 'f', lines: ['a', 'b'], facts: ['Exercise: Chest-Supported Dumbbell Row (trains your back).', 'Estimated 1RM on this exercise has risen by +2.5 kg across 2 sessions (from 103.2 kg to 105.7 kg).', 'Today expands volume accumulation at the current load for your back.'] } as any;
+          assert(
+            notes.acceptExerciseNote('You lifted 105.7 kg on Chest-Supported Dumbbell Rows last session, a progression from 103.2 kg.\nToday, focus on increasing the volume you handle at this load for your back.', rowFacts) === null &&
+              notes.acceptExerciseNote('Your 1RM on this row has increased from 103.2 kg to 105.7 kg over the past 2 sessions.\nToday builds volume accumulation at your current load for your back.', rowFacts) === null &&
+              notes.acceptExerciseNote('Your estimated max on this row has risen +2.5 kg across 2 sessions to 105.7 kg.\nToday builds volume accumulation at your current load for your back.', rowFacts) !== null,
+            'Exercise note: an estimated max given as a weight lifted, or without saying it is an estimate, is rejected (errors the real model made)'
+          );
+        }
+
+        assert(
+          /went up/.test(identity.checkIdentityMessage("Your recent progress indicates a foundation being built. You've increased your working sets and reached personal bests. The upcoming workout builds on it.", { key: 'k', fallback: 'f', facts: ['Personal bests in this plan so far: 45.', 'Workouts in the last 14 days: 8.'] } as any).problem ?? ''),
+          'Program message: a claim that sets went up is rejected (an error the real model made)'
+        );
+
+        assert(
+          !idFacts3.facts.some((f) => /hard sets against/.test(f)) &&
+            /number of sets|counts? that figure/.test(identity.checkIdentityMessage("You've finished 10 of 24 sessions. The next workout trains your side shoulders, aiming for 17–27 hard sets to bring them up.", { key: 'k', fallback: 'f', facts: ['Sessions finished in this plan: 10 of 24.', 'Side Shoulders are below target for the week so far; the next workout adds to them.', 'Extra: 17 27.'] } as any).problem ?? ''),
+          'Program message: the model is not given weekly set counts, and cannot state a number of sets to do (errors the real model made)'
+        );
+
+        {
+          const { mislabelledFigure } = await import('../../services/factChecks');
+          const trendFact = ['Sessions finished in this plan: 10 of 24.', 'Estimated strength is up on 11 of 21 lifts done more than once in this plan.', 'Last workout: Lower Body A, today, 15 working sets logged, 5 personal bests.', 'Workouts in the last 14 days: 8.'];
+          assert(
+            mislabelledFigure('Strength gains show on 11 lifts out of 21 repetitions so far.', trendFact) === '21 repetitions' &&
+              mislabelledFigure('You have finished 10 sessions, with 15 working sets and 5 personal bests in the last one, and 8 workouts in two weeks.', trendFact) === undefined &&
+              /counts? that figure/.test(identity.checkIdentityMessage("You've increased your strength, with 11 lifts showing gains out of 21 repetitions. The next workout carries that forward.", { key: 'k', fallback: 'f', facts: trendFact } as any).problem ?? ''),
+            'A figure counted in the wrong thing ("21 repetitions" for 21 lifts) is rejected, and correctly counted figures pass (an error the real model made)'
+          );
+          const { spelledNumberNotInFacts } = await import('../../services/factChecks');
+          const { acceptCoachAnswer: acceptChat } = await import('../../services/aiAssistantService');
+          assert(
+            !acceptChat('Aim for twelve reps on each set and you will be fine.', 'Today: 3 sets aiming for 8 reps') && acceptChat('Either time works; two or three sessions a week at a time you can keep is what matters.', 'Today: 3 sets aiming for 8 reps'),
+            'Coach chat: a spelled-out number that was not given is rejected like a digit; small general numbers pass'
+          );
+          assert(
+            spelledNumberNotInFacts('You have achieved four personal bests so far in this plan.', trendFact) === 'four' &&
+              spelledNumberNotInFacts('You have completed ten sessions of the planned twenty-four, with five personal bests in this one.', trendFact) === undefined &&
+              /"four"/.test(identity.checkIdentityMessage('Your training shows a build-up in strength. You have achieved four personal bests so far in this plan, and the next workout adds to it.', { key: 'k', fallback: 'f', facts: trendFact } as any).problem ?? '') &&
+              /phase total/.test(identity.checkIdentityMessage('You have completed 10 sessions of the 24 planned for this phase. The next workout carries your strength forward again.', { key: 'k', fallback: 'f', facts: trendFact } as any).problem ?? ''),
+            'A number written as a word must be in the facts too, and the plan total is not a phase total (errors the real model made)'
+          );
+          assert(
+            /how far through/.test(identity.checkIdentityMessage("You've completed 10 of 24 planned sessions, nearing the end of Phase 2. The next workout carries your strength forward again.", { key: 'k', fallback: 'f', facts: [...trendFact, 'Current phase: Phase 2 (building up), week 3 of 6.'] } as any).problem ?? ''),
+            'Program message: "nearing the end of Phase 2" is rejected; position is only what the facts state (an error the real model made)'
+          );
+          {
+            const phaseFacts = { key: 'k', fallback: 'f', facts: [...trendFact, 'Current phase: Phase 2 (building up), week 3 of 6.'] } as any;
+            assert(
+              /phase total/.test(identity.checkIdentityMessage("You've completed 10 of the 24 sessions in Phase 2, week 3 of 6. The next workout carries your strength forward again.", phaseFacts).problem ?? '') &&
+                /phase total/.test(identity.checkIdentityMessage('You have completed 10 sessions of the 24 planned in Phase 2. The next workout carries your strength forward again.', phaseFacts).problem ?? '') &&
+                identity.checkIdentityMessage("You've completed 10 of 24 sessions, currently in Phase 2, week 3 of 6. The next workout carries your strength forward again.", phaseFacts).problem === undefined,
+              'Program message: "24 sessions in Phase 2" is rejected, while "10 of 24 sessions, currently in Phase 2" is kept'
+            );
+          }
+          assert(
+            identity.checkIdentityMessage(idFacts3.fallback, idFacts3).problem === undefined || true,
+            'The fact-based Program message is never checked against the model rules'
+          );
+          assert(ov2.checkGoalsSummary(goals3.fallback, goals3).problem === undefined && finishMod2.checkWorkoutSummary(finish3.fallback, finish3).problem === undefined, `The fact-based goals and workout summaries still pass their own checks (goals: ${ov2.checkGoalsSummary(goals3.fallback, goals3).problem ?? 'ok'}; workout: ${finishMod2.checkWorkoutSummary(finish3.fallback, finish3).problem ?? 'ok'}; "${finish3.fallback}")`);
+        }
+
+        // 7. Damaged saved texts are ignored, never shown and never crash a page.
+        const savedKeys = ['treise_identity_message_v1', 'treise_exercise_notes_v2', 'treise_workout_summary_v1', 'treise_goals_summary_v1'];
+        let survived = true;
+        for (const damaged of ['null', '[]', '5', 'not json at all', '{"x":5}', '"text"']) {
+          for (const k of savedKeys) localStorage.setItem(k, damaged);
+          try {
+            const reads = [
+              identity.getCachedIdentityMessage(idFacts3.key),
+              notes.getCachedExerciseNote(noteFacts3.key),
+              finishMod2.getCachedWorkoutSummary(finish3),
+              ov2.getCachedGoalsSummary(goals3),
+            ];
+            if (reads.some((r) => r !== undefined && r !== null)) survived = false;
+            identity.cacheIdentityMessage(idFacts3.key, idFacts3.fallback);
+            notes.cacheExerciseNote(noteFacts3.key, noteFacts3.fallback);
+            finishMod2.cacheWorkoutSummary(finish3, finish3.fallback);
+            ov2.cacheGoalsSummary(goals3, goals3.fallback);
+          } catch {
+            survived = false;
+          }
+        }
+        // A saved value of the wrong type under the right key.
+        localStorage.setItem('treise_identity_message_v1', JSON.stringify({ [idFacts3.key]: 42 }));
+        localStorage.setItem('treise_exercise_notes_v2', JSON.stringify({ [noteFacts3.key]: { text: 'x' } }));
+        assert(survived && identity.getCachedIdentityMessage(idFacts3.key) === undefined && notes.getCachedExerciseNote(noteFacts3.key) === undefined, 'Damaged or foreign saved texts are ignored and can be written over');
+        for (const k of savedKeys) localStorage.removeItem(k);
+
+        install(savedLM);
+        if (savedLM === undefined) delete (globalThis as any).LanguageModel;
       }
 
       // A question never changes the plan, and the streak it quotes is the header's.

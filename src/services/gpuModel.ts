@@ -48,7 +48,8 @@ export function getGpuModelId(): Promise<string | null> {
       try {
         const gpu = typeof navigator !== 'undefined' ? (navigator as any).gpu : undefined;
         if (!gpu) return null;
-        const adapter = await gpu.requestAdapter();
+        // A graphics driver that never answers must not leave the coach waiting.
+        const adapter = await Promise.race([gpu.requestAdapter(), new Promise<null>((resolve) => setTimeout(() => resolve(null), 4000))]);
         if (!adapter) return null;
         // Phones with little memory can't hold the model alongside the app.
         const memoryGb = (navigator as any).deviceMemory;

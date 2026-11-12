@@ -35,6 +35,7 @@ import { formatPreciseWeight, formatWeight, snapLoadKg } from '../utils/units';
 import { calculateE1RM } from '../engine/e1rm';
 import { runReadAloudQaGate, VOICE_TONE_MATRIX } from '../engine/contentStrategy';
 import { buildExerciseInsight } from './exerciseInsight';
+import { spelledNumberNotInFacts } from './factChecks';
 import { buildExerciseNoteFacts } from './exerciseCoachNote';
 import { MUSCLE_FRIENDLY_NAMES } from '../engine/recovery';
 import { findLastCompletedExerciseSession } from '../engine/progression';
@@ -251,7 +252,7 @@ export function contradictsRecovery(answer: string, readinessState: ReadinessSta
  * contradicts the workout card. A rep target has to belong to a named exercise.
  */
 export function genericRepTarget(answer: string, exercises: { name: string; minReps: number; maxReps: number }[]): boolean {
-  for (const sentence of answer.toLowerCase().match(/[^.!?]+/g) || []) {
+  for (const sentence of answer.toLowerCase().split(/(?<=[.!?])\s+/)) {
     const range = /\b(\d+)\s*(?:-|–|to)\s*(\d+)\s*reps?\b/.exec(sentence) || /\b(\d+)\s*reps?\b/.exec(sentence);
     if (!range) continue;
     const namesOne = exercises.some((ex) => exerciseNamedIn(sentence, ex.name));
@@ -285,7 +286,7 @@ export function contradictsMuscleTargets(
   answer: string,
   muscles: { names: string[]; status: 'below target' | 'on target' | 'above target' }[]
 ): boolean {
-  const sentences = answer.toLowerCase().match(/[^.!?]+/g) || [];
+  const sentences = answer.toLowerCase().split(/(?<=[.!?])\s+/);
   const saysEnough = /\b(good amount|enough|plenty|solid (amount|volume)|on (track|target)|hitting (your|the) target|great volume)\b/;
   const saysTooMuch = /\b(too (much|many)|over (your|the) target|above (your|the) target|back off|cut back)\b/;
   const saysTooLittle = /\b(below|under|short of|behind|not enough|more sets)\b/;
@@ -406,6 +407,8 @@ function detectEquipmentChange(
  */
 export function acceptCoachAnswer(answer: string, grounding: string): boolean {
   if (/\b(as an ai|language model)\b/i.test(answer)) return false;
+  // A number written as a word ("twelve reps") is held to the same rule as digits; up to three is general talk.
+  if (spelledNumberNotInFacts(answer, [grounding, '0 1 2 3'])) return false;
   const known = new Set(grounding.match(/\d+(?:\.\d+)?/g) || []);
   for (const m of answer.matchAll(/(\d+(?:\.\d+)?)\s*(kg|kilos?|lbs?|pounds?|%)?/gi)) {
     const value = m[1];
@@ -1189,7 +1192,7 @@ async function processAssistantMessageCore(
         }
         answerText =
           `Treise is built to make progress tracking completely friction-free—with or without smart hardware!\n\n` +
-          `• **RENPHO Health Scale (13 Metrics):** Connect over Bluetooth in **Progress → Composition → Log measurements** to automatically capture Weight, BMI, Body Fat %, Fat-Free Mass, Subcutaneous Fat, Visceral Fat, Body Water, Skeletal Muscle Mass, Muscle Mass, Bone Mass, Protein Mass, Basal Metabolic Rate (BMR), and Metabolic Age.\n` +
+          `• **RENPHO Health Scale (13 Metrics):** Connect over Bluetooth in **Progress → Measurements → Log measurements** to automatically capture Weight, BMI, Body Fat %, Fat-Free Mass, Subcutaneous Fat, Visceral Fat, Body Water, Skeletal Muscle Mass, Muscle Mass, Bone Mass, Protein Mass, Basal Metabolic Rate (BMR), and Metabolic Age.\n` +
           `• **RENPHO Smart Tape Measure (12 Sites):** Stream and lock Neck, Shoulder, Chest, Waist, Abdomen, Hip, Bicep Left, Bicep Right, Thigh Left, Thigh Right, Calf Left, and Calf Right circumferences.\n` +
           `• **Manual Entry Anytime:** You can also type body weight, body fat %, or any of the 12 tape measurements manually at any time with zero reliance on owning the devices.\n` +
           `• **Wearable Telemetry:** Integrates with Google Pixel Watch, Fitbit, Whoop, and Android Health Connect to feed your 7-day average weight and daily recovery readiness directly into your training plan.`;
@@ -1271,9 +1274,22 @@ async function processAssistantMessageCore(
               : contradictsPlanSchedule(answer)
               ? 'it suggested training every day, but the plan is 4 sessions a week'
               : null;
+          // The answer is shown as it is written, but only while it still passes the checks: the
+          // moment it stops passing, the stream is withdrawn (an empty partial) and "Thinking…" shows
+          // until the checked answer, or the data-based one, is ready.
+          let streamWithdrawn = false;
+          const showWhileSound = (textSoFar: string) => {
+            if (streamWithdrawn) return;
+            if (problemWith(textSoFar)) {
+              streamWithdrawn = true;
+              input.onPartial?.('');
+              return;
+            }
+            input.onPartial?.(textSoFar);
+          };
           const startedAt = Date.now();
           let nanoAnswer = await promptOnDeviceModel(systemPrompt, questionWithFacts, {
-            onPartial: input.onPartial,
+            onPartial: showWhileSound,
             onDownloadProgress: input.onDownloadProgress,
           });
           let problem = nanoAnswer ? problemWith(nanoAnswer) : null;
@@ -1281,14 +1297,19 @@ async function processAssistantMessageCore(
             // A rejected answer is never remembered. A fast model gets one more try, told what was
             // wrong; a slow one (a phone GPU) goes straight to the data-based answer.
             forgetOnDeviceExchange();
+            input.onPartial?.('');
+            streamWithdrawn = false;
             if (Date.now() - startedAt < RETRY_IF_FASTER_THAN_MS) {
               nanoAnswer = await promptOnDeviceModel(
                 systemPrompt,
                 `${questionWithFacts}\n(Your last answer could not be used because ${problem}. Answer again in 2-4 short sentences, using only the facts given.)`,
-                { onPartial: input.onPartial }
+                { onPartial: showWhileSound }
               );
               problem = nanoAnswer ? problemWith(nanoAnswer) : null;
-              if (nanoAnswer && problem) forgetOnDeviceExchange();
+              if (nanoAnswer && problem) {
+                forgetOnDeviceExchange();
+                input.onPartial?.('');
+              }
             }
           }
           if (nanoAnswer && !problem) {

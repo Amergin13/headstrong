@@ -622,6 +622,10 @@ const BANNED_CHEERLEADING_AND_JARGON: { pattern: RegExp; reason: string }[] = [
   { pattern: /\bunicorns high-fiving t-rexes\b/i, reason: 'Infantile hyperbole' },
   { pattern: /\b(?:crush it|beast mode|no pain no gain|smash this workout)\b/i, reason: 'Hollow hype/cheerleading' },
   { pattern: /\b(?:you failed|failure to hit|failed set)\b/i, reason: 'Judgmental failure framing' },
+  {
+    pattern: /\b(?:behind schedule|falling behind|fallen behind|off track|slacking|not good enough|disappointing|poor (?:effort|performance|progress))\b/i,
+    reason: 'Judgmental framing of missed or early training',
+  },
   { pattern: /\b(?:OOUX|Canonical Vector|SFR)\b/, reason: 'Internal architectural jargon leak' },
 ];
 

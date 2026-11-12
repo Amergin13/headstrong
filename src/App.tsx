@@ -899,6 +899,7 @@ export const App: React.FC = () => {
             latestBiometrics={latestBiometrics}
             exerciseCatalog={exercises}
             weeklyVolume={weeklyVolume}
+            activities={activities}
             onSaveMeasurements={handleSaveMeasurements}
             openLogWeightRequest={logWeightRequest}
             onLogWeightRequestHandled={() => setLogWeightRequest(0)}

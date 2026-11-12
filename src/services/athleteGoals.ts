@@ -5,9 +5,14 @@
  * - Process goals are things the athlete does. The plan's own commitment is one: train 4 times a
  *   week (workouts and active days, counted exactly as the Program page counts them).
  * - Outcome goals are results. Each movement with a published strength standard has one: reach its
- *   next level (Kilgore / Poliquin, the same levels as Progress → Strength). These need a logged
+ *   next level (Kilgore / Poliquin, the same levels as Progress → Strength standards). These need a logged
  *   bodyweight, because a level compares the lift with the athlete's weight; without one there are
  *   no outcome goals rather than a guessed one.
+ *
+ * - The goal the athlete chose (Build Muscle, Lose Fat, Stay Lean) is an outcome goal too, measured
+ *   by their lifts: how many repeated lifts are stronger than when first logged (Build Muscle), or
+ *   have held or gained (Lose Fat and Stay Lean, where keeping strength is the win). Bodyweight
+ *   itself is on the Progress page's weight card, which needs weigh-ins.
  *
  * The knowledge graph carries these as `goals`; the finish screen compares them before and after a
  * workout to show which ones moved.
@@ -18,6 +23,8 @@ import { evaluateStrengthStandard, standardsAge } from '../engine/strengthStanda
 import { resolveActivePlan } from '../engine/trainingPlans';
 import { BiometricLog, StrengthPillar, UserProfile, WorkoutSession } from '../engine/types';
 import { buildMovementStandards } from './movementStandards';
+import { strengthTrend } from './strengthTrend';
+import { GOAL_DISPLAY_NAME } from '../utils/goalNames';
 
 export type GoalKind = 'outcome' | 'process';
 
@@ -31,7 +38,7 @@ export interface AthleteGoal {
   detail: string;
   current: number;
   target: number;
-  unit: 'sessions' | 'kg';
+  unit: 'sessions' | 'kg' | 'lifts';
   /** 0–100 towards the target. */
   progressPct: number;
   achieved: boolean;
@@ -118,9 +125,32 @@ function strengthLevelGoals(input: AthleteGoalsInput): AthleteGoal[] {
   return goals;
 }
 
+export const CHOSEN_GOAL_ID = 'chosen-goal';
+
+/** The athlete's chosen goal, measured by the lifts they have done more than once. */
+function chosenGoal(input: AthleteGoalsInput): AthleteGoal {
+  const phase = input.profile.goalPhase || 'Lean Bulk';
+  const hasWeighIn = input.biometrics.some((b) => (b.bodyweightKg || 0) > 0);
+  const trend = strengthTrend(input.workouts, hasWeighIn && input.bodyweightKg ? input.bodyweightKg : 80);
+  const building = phase === 'Lean Bulk';
+  const current = building ? trend.improved : trend.heldOrImproved;
+  const what = building ? 'stronger than when first logged' : 'held or stronger than when first logged';
+  return {
+    id: CHOSEN_GOAL_ID,
+    kind: 'outcome',
+    title: GOAL_DISPLAY_NAME[phase],
+    detail: trend.repeated > 0 ? `${current} of ${trend.repeated} repeated lifts ${what}` : 'Repeat a lift to start measuring this',
+    current,
+    target: trend.repeated,
+    unit: 'lifts',
+    progressPct: trend.repeated > 0 ? clampPct((current / trend.repeated) * 100) : 0,
+    achieved: trend.repeated > 0 && current >= trend.repeated,
+  };
+}
+
 /** Every goal the athlete is working towards right now: process first, then outcomes. */
 export function buildAthleteGoals(input: AthleteGoalsInput): AthleteGoal[] {
-  return [sessionsPerWeekGoal(input), ...strengthLevelGoals(input)];
+  return [sessionsPerWeekGoal(input), chosenGoal(input), ...strengthLevelGoals(input)];
 }
 
 export interface GoalProgress {
@@ -156,11 +186,12 @@ export function goalsProgressedBy(before: AthleteGoal[], after: AthleteGoal[]): 
         progressPct: goal.progressPct,
         current: goal.current,
         target: goal.target,
-        unit: goal.unit,
+        unit: 'sessions',
       });
       continue;
     }
-    if (!was) continue;
+    // The chosen goal is a running count on the Progress page, not a per-workout card.
+    if (!was || goal.id === CHOSEN_GOAL_ID) continue;
     if ((goal.levelStep ?? 0) > (was.levelStep ?? 0)) {
       // The level they were chasing is the level they now hold.
       moved.push({

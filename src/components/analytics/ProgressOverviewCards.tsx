@@ -1,0 +1,287 @@
+import React, { useEffect, useState } from 'react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { MovementStandardsReport } from '../../services/movementStandards';
+import {
+  GoalRing,
+  GoalsSummary,
+  cacheGoalsSummary,
+  generateGoalsSummary,
+  getCachedGoalsSummary,
+} from '../../services/progressOverview';
+import { ProgressPoint } from '../../services/progressSeries';
+import { triggerHaptic } from '../../utils/haptics';
+
+const fig = (px: number) => `calc(${px} * var(--f))`;
+const text = (px: number) => `max(12px, ${fig(px)})`;
+
+/** Process goal, strength level, chosen goal: the same order as the rings. */
+const RING_COLOURS = ['#8FD3FF', '#00F19F', '#3FA7C9'];
+const RING_RADIUS = 42;
+const RING_LENGTH = 2 * Math.PI * RING_RADIUS;
+
+/**
+ * One goal as a ring. A goal counted in whole things (sessions) is drawn as that many segments;
+ * anything else as one arc. The figure is in the centre and in the label, so the ring itself is
+ * decorative for screen readers.
+ */
+const Ring: React.FC<{ ring: GoalRing; colour: string }> = ({ ring, colour }) => {
+  const track = 'rgba(255,255,255,0.12)';
+  const segments = ring.segments && ring.segments > 1 && ring.segments <= 12 ? ring.segments : 0;
+  const filledSegments = segments ? Math.round((ring.progressPct / 100) * segments) : 0;
+  const gap = 20; // degrees between segments (the round ends take up about half of it)
+  return (
+    <div className="relative" style={{ width: fig(206), height: fig(206) }}>
+      <svg viewBox="0 0 100 100" className="w-full h-full" style={{ transform: 'rotate(-90deg)' }} aria-hidden="true">
+        {segments ? (
+          Array.from({ length: segments }, (_, i) => {
+            const sweep = 360 / segments - gap;
+            const length = (sweep / 360) * RING_LENGTH;
+            return (
+              <circle
+                key={i}
+                cx={50}
+                cy={50}
+                r={RING_RADIUS}
+                fill="none"
+                stroke={i < filledSegments ? colour : track}
+                strokeWidth={7}
+                strokeLinecap="round"
+                strokeDasharray={`${length} ${RING_LENGTH - length}`}
+                strokeDashoffset={-((i * 360) / segments + gap / 2) * (RING_LENGTH / 360)}
+                className={i < filledSegments ? 'wk-ring-pop' : undefined}
+                style={i < filledSegments ? { animationDelay: `${200 + i * 110}ms` } : undefined}
+              />
+            );
+          })
+        ) : (
+          <>
+            <circle cx={50} cy={50} r={RING_RADIUS} fill="none" stroke={track} strokeWidth={7} />
+            {ring.progressPct > 0 && (
+              <circle
+                cx={50}
+                cy={50}
+                r={RING_RADIUS}
+                fill="none"
+                stroke={colour}
+                strokeWidth={7}
+                strokeLinecap="round"
+                strokeDasharray={`${(ring.progressPct / 100) * RING_LENGTH} ${RING_LENGTH}`}
+                className="wk-ring-draw"
+                style={{ '--ring-length': `${(ring.progressPct / 100) * RING_LENGTH}` } as React.CSSProperties}
+              />
+            )}
+          </>
+        )}
+      </svg>
+      <span
+        className="absolute inset-0 flex items-center justify-center font-bold tabular-numbers"
+        style={{ fontSize: text(ring.value.length > 4 ? 44 : 56), color: ring.empty ? 'var(--wk-muted)' : '#fff' }}
+      >
+        {ring.value}
+      </span>
+    </div>
+  );
+};
+
+/** The fact-based goals summary straight away, replaced by the on-device model's version when one is saved or written. */
+function useGoalsSummaryText(summary: GoalsSummary): string {
+  const key = summary.facts.join('|');
+  const [written, setWritten] = useState<string | null>(() => getCachedGoalsSummary(summary));
+  useEffect(() => {
+    const cached = getCachedGoalsSummary(summary);
+    setWritten(cached);
+    if (cached) return;
+    let cancelled = false;
+    generateGoalsSummary(summary)
+      .then((answer) => {
+        if (!answer) return;
+        cacheGoalsSummary(summary, answer);
+        if (!cancelled) setWritten(answer);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
+  return written ?? summary.fallback;
+}
+
+/** The hero: the athlete's goals as rings, then a short summary of where they stand. */
+export const GoalsHero: React.FC<{ rings: GoalRing[]; summary: GoalsSummary }> = ({ rings, summary }) => {
+  const summaryText = useGoalsSummaryText(summary);
+  return (
+    <section aria-labelledby="goals-title" style={{ paddingTop: fig(90) }}>
+      <ul className="grid grid-cols-3" style={{ gap: fig(16) }}>
+        {rings.map((ring, i) => (
+          <li key={ring.id} className="flex flex-col items-center min-w-0" aria-label={`${ring.title}: ${ring.empty ? ring.detail : `${ring.value}. ${ring.detail}`}`}>
+            <Ring ring={ring} colour={RING_COLOURS[i % RING_COLOURS.length]} />
+            <span className="wk-label text-center" style={{ marginTop: fig(26), lineHeight: 1.21 }} aria-hidden="true">
+              {ring.title}
+            </span>
+          </li>
+        ))}
+      </ul>
+      <div style={{ marginTop: fig(64), padding: `0 ${fig(28)}` }}>
+        <h2 id="goals-title" className="wk-label" style={{ lineHeight: 1.21 }}>
+          Goals
+        </h2>
+        <p className="wk-body" style={{ marginTop: fig(12) }} aria-live="polite">
+          <span key={summaryText} className="wk-text-swap">
+            {summaryText}
+          </span>
+        </p>
+      </div>
+    </section>
+  );
+};
+
+/** A card on the overview that opens its detail screen. */
+export const OverviewCard: React.FC<{
+  title: string;
+  /** What opening it shows, for screen readers: "all personal bests". */
+  opens: string;
+  onOpen: () => void;
+  children?: React.ReactNode;
+}> = ({ title, opens, onOpen, children }) => (
+  <button
+    type="button"
+    onClick={() => {
+      triggerHaptic('light');
+      onOpen();
+    }}
+    aria-label={`${title}. Open ${opens}`}
+    className="wk-card w-full text-left block"
+  >
+    <div className="flex items-start justify-between" style={{ gap: fig(20) }}>
+      <h2 className="wk-label" style={{ lineHeight: 1.21 }}>
+        {title}
+      </h2>
+      <ChevronRight className="wk-chevron" strokeWidth={2} aria-hidden="true" />
+    </div>
+    {children}
+  </button>
+);
+
+/** A row of up to three labelled figures, as on the workout summary. */
+export const StatRow: React.FC<{ stats: { label: string; value: string; unit?: string; note?: string }[] }> = ({ stats }) => (
+  <dl className="grid grid-cols-3" style={{ gap: fig(24), marginTop: fig(44) }}>
+    {stats.map((s) => (
+      <div key={s.label} className="min-w-0">
+        <dt className="uppercase" style={{ fontSize: text(24), lineHeight: 1.21, color: 'var(--wk-muted)', overflowWrap: 'anywhere' }}>
+          {s.label}
+        </dt>
+        <dd className="font-bold text-white tabular-numbers" style={{ fontSize: text(s.value.length > 6 ? 46 : 56), lineHeight: 1.05, marginTop: fig(10) }}>
+          {s.value}
+          {s.unit && (
+            <span className="font-semibold" style={{ fontSize: text(22), color: 'var(--wk-muted)', marginLeft: fig(6) }}>
+              {s.unit}
+            </span>
+          )}
+        </dd>
+        {s.note && (
+          <dd className="wk-caption" style={{ marginTop: fig(8) }}>
+            {s.note}
+          </dd>
+        )}
+      </div>
+    ))}
+  </dl>
+);
+
+/** A small trend line with its latest point marked; no axes, the card states the figure. */
+export const Sparkline: React.FC<{ points: ProgressPoint[]; label: string }> = ({ points, label }) => {
+  if (points.length < 2) return null;
+  const W = 300;
+  const H = 110;
+  const values = points.map((p) => p.value);
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const span = max - min || 1;
+  const x = (i: number) => 6 + (i / (points.length - 1)) * (W - 18);
+  const y = (v: number) => H - 12 - ((v - min) / span) * (H - 24);
+  const d = points.map((p, i) => `${i === 0 ? 'M' : 'L'}${x(i).toFixed(1)},${(max === min ? H / 2 : y(p.value)).toFixed(1)}`).join(' ');
+  const lastX = x(points.length - 1);
+  const lastY = max === min ? H / 2 : y(values[values.length - 1]);
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={label} style={{ width: fig(300), height: fig(110) }} className="shrink-0">
+      <line x1={lastX} x2={lastX} y1={4} y2={H - 4} stroke="rgba(255,255,255,0.35)" strokeWidth={1.5} strokeDasharray="3 5" />
+      <path d={d} fill="none" stroke="#00F19F" strokeOpacity={0.85} strokeWidth={3} strokeLinejoin="round" strokeLinecap="round" />
+      <circle cx={lastX} cy={lastY} r={6} fill="#fff" />
+    </svg>
+  );
+};
+
+const RADAR_SHORT_NAME: Record<string, string> = {
+  Squat: 'Squat',
+  Hinge: 'Deadlift',
+  'Horizontal Push': 'Bench',
+  'Vertical Push': 'Press',
+  'Vertical Pull': 'Chin-up',
+};
+
+/**
+ * Each standard lift's level on one shape: further out is a higher level. The same scale as the
+ * detail screen (each level 20 points, each sub-level 5); a lift not logged yet sits at the centre.
+ */
+export const StandardsRadar: React.FC<{ report: MovementStandardsReport }> = ({ report }) => {
+  const rated = report.levels.filter((l) => l.source !== 'none');
+  if (rated.length < 3) return null;
+  const size = 320;
+  const centre = size / 2;
+  const radius = 96;
+  const score = (l: (typeof rated)[number]) => (l.logged && l.step !== undefined ? Math.min(100, l.step * 5 + ((l.progress ?? 0) / 100) * 5) : 0);
+  const point = (i: number, r: number) => {
+    const angle = -Math.PI / 2 + (i / rated.length) * Math.PI * 2;
+    return [centre + Math.cos(angle) * r, centre + Math.sin(angle) * r] as const;
+  };
+  const polygon = (r: (i: number) => number) => rated.map((_, i) => point(i, r(i)).map((n) => n.toFixed(1)).join(',')).join(' ');
+  const described = rated
+    .map((l) => `${RADAR_SHORT_NAME[l.pillar] ?? l.name}: ${l.logged && l.tier ? `${l.tier} ${l.subDivision}` : 'not logged yet'}`)
+    .join('. ');
+  return (
+    <svg viewBox={`0 16 ${size} ${size - 40}`} role="img" aria-label={`Strength levels. ${described}`} style={{ width: fig(560), height: fig(490), maxWidth: '100%' }} className="shrink-0">
+      {[0.25, 0.5, 0.75, 1].map((f) => (
+        <polygon key={f} points={polygon(() => radius * f)} fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth={1} />
+      ))}
+      {rated.map((_, i) => {
+        const [px, py] = point(i, radius);
+        return <line key={i} x1={centre} y1={centre} x2={px} y2={py} stroke="rgba(255,255,255,0.08)" strokeWidth={1} />;
+      })}
+      <polygon points={polygon((i) => (score(rated[i]) / 100) * radius)} fill="rgba(0,241,159,0.2)" stroke="#00F19F" strokeWidth={2} strokeLinejoin="round" />
+      {rated.map((l, i) => {
+        const [px, py] = point(i, (score(l) / 100) * radius);
+        const [lx, ly] = point(i, radius + 30);
+        return (
+          <g key={l.pillar}>
+            {l.logged && <circle cx={px} cy={py} r={3.5} fill="#00F19F" />}
+            <text x={lx} y={ly} textAnchor="middle" dominantBaseline="middle" fill="rgba(255,255,255,0.6)" style={{ fontSize: 19.5, fontWeight: 600 }}>
+              {RADAR_SHORT_NAME[l.pillar] ?? l.name}
+            </text>
+          </g>
+        );
+      })}
+    </svg>
+  );
+};
+
+/** The header of a drill-in screen: back to the overview, and the screen's title. */
+export const DetailHeader: React.FC<{ title: string; onBack: () => void }> = ({ title, onBack }) => (
+  <header className="relative flex items-center justify-center" style={{ paddingTop: fig(20), minHeight: 44 }}>
+    <button
+      type="button"
+      onClick={() => {
+        triggerHaptic('light');
+        onBack();
+      }}
+      aria-label="Back to Progress"
+      className="absolute left-0 flex items-center justify-center"
+      style={{ width: 44, height: 44, marginLeft: -10, color: '#fff' }}
+    >
+      <ChevronLeft style={{ width: fig(44), height: fig(44) }} strokeWidth={2} aria-hidden="true" />
+    </button>
+    <h1 className="font-bold text-white uppercase text-center" style={{ fontSize: text(26), letterSpacing: '0.02em' }}>
+      {title}
+    </h1>
+  </header>
+);

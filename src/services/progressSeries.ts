@@ -62,10 +62,46 @@ const measured = (logs: BiometricLog[], pick: (l: BiometricLog) => number | unde
 
 /** Healthy weekly rate of weight change for each goal, as % of bodyweight (Helms et al.; Iraki et al., 2019). */
 const GOAL_RATE: Record<GoalPhase, { min: number; max: number; label: string }> = {
-  'Lean Bulk': { min: 0.25, max: 0.5, label: 'a lean bulk (gaining 0.25–0.5% a week)' },
-  'Cut / Recomp': { min: -1, max: -0.5, label: 'a cut (losing 0.5–1% a week)' },
-  Maingain: { min: -0.25, max: 0.25, label: 'maintaining (within 0.25% a week)' },
+  'Lean Bulk': { min: 0.25, max: 0.5, label: 'Build Muscle (gaining 0.25–0.5% a week)' },
+  'Cut / Recomp': { min: -1, max: -0.5, label: 'Lose Fat (losing 0.5–1% a week)' },
+  Maingain: { min: -0.25, max: 0.25, label: 'Stay Lean (within 0.25% a week)' },
 };
+
+export interface WeightPace {
+  /** The latest 7-day average. */
+  averageKg: number;
+  perWeekKg: number;
+  /** Weekly change as a share of bodyweight. */
+  perWeekPct: number;
+  direction: 'gaining' | 'losing' | 'steady';
+  /** Against the pace that suits the athlete's goal. */
+  pace: 'on' | 'faster' | 'slower';
+  goalLabel: string;
+}
+
+/**
+ * Weekly weight pace from the 7-day average over the last 2–4 weeks, against the athlete's goal.
+ * Null until there is a week of weigh-ins (a pace from less is water, food and timing).
+ */
+export function weightPace(biometrics: BiometricLog[], goalPhase: GoalPhase | undefined): WeightPace | null {
+  const points = calculateEmaSeries(biometrics).map((e) => ({ date: e.date, value: e.ema }));
+  if (points.length < 2) return null;
+  const last = points[points.length - 1];
+  if (daysBetweenLocalDates(points[0].date, last.date) < 7) return null;
+  const ref = [...points].reverse().find((p) => daysBetweenLocalDates(p.date, last.date) >= 14) ?? points[0];
+  const days = Math.max(1, daysBetweenLocalDates(ref.date, last.date));
+  const perWeekKg = ((last.value - ref.value) / days) * 7;
+  const perWeekPct = (perWeekKg / last.value) * 100;
+  const goal = GOAL_RATE[goalPhase ?? 'Maingain'] ?? GOAL_RATE.Maingain;
+  return {
+    averageKg: last.value,
+    perWeekKg,
+    perWeekPct,
+    direction: Math.abs(perWeekKg) < 0.05 ? 'steady' : perWeekKg > 0 ? 'gaining' : 'losing',
+    pace: perWeekPct >= goal.min && perWeekPct <= goal.max ? 'on' : perWeekPct > goal.max ? 'faster' : 'slower',
+    goalLabel: goal.label,
+  };
+}
 
 export function buildCompositionCharts(input: {
   biometrics: BiometricLog[];
@@ -89,22 +125,12 @@ export function buildCompositionCharts(input: {
     const last = emaPoints[emaPoints.length - 1];
     weightSummary = `Your 7-day average is ${fmt.weight(last.value)}. Keep weighing in each morning; your weekly pace appears after a week.`;
   } else if (emaPoints.length >= 2) {
-    const last = emaPoints[emaPoints.length - 1];
-    // Rate over the last 2–4 weeks of averages.
-    const ref = [...emaPoints].reverse().find((p) => daysBetweenLocalDates(p.date, last.date) >= 14) ?? emaPoints[0];
-    const days = Math.max(1, daysBetweenLocalDates(ref.date, last.date));
-    const perWeekKg = ((last.value - ref.value) / days) * 7;
-    const perWeekPct = (perWeekKg / last.value) * 100;
-    const goal = GOAL_RATE[profile.goalPhase] ?? GOAL_RATE.Maingain;
-    const direction = Math.abs(perWeekKg) < 0.05 ? 'holding steady' : `${perWeekKg > 0 ? 'up' : 'down'} ${(fmt.weightPrecise ?? fmt.weight)(Math.abs(perWeekKg))} a week`;
-    const onPace = perWeekPct >= goal.min && perWeekPct <= goal.max;
+    const pace = weightPace(biometrics, profile.goalPhase)!;
+    const direction =
+      pace.direction === 'steady' ? 'holding steady' : `${pace.perWeekKg > 0 ? 'up' : 'down'} ${(fmt.weightPrecise ?? fmt.weight)(Math.abs(pace.perWeekKg))} a week`;
     weightSummary =
-      `Your 7-day average is ${fmt.weight(last.value)}, ${direction} (${round1(Math.abs(perWeekPct))}% of your weight). ` +
-      (onPace
-        ? `That's on pace for ${goal.label}.`
-        : perWeekPct > goal.max
-        ? `That's faster than ${goal.label}.`
-        : `That's slower than ${goal.label}.`);
+      `Your 7-day average is ${fmt.weight(pace.averageKg)}, ${direction} (${round1(Math.abs(pace.perWeekPct))}% of your weight). ` +
+      (pace.pace === 'on' ? `That's on pace for ${pace.goalLabel}.` : pace.pace === 'faster' ? `That's faster than ${pace.goalLabel}.` : `That's slower than ${pace.goalLabel}.`);
   }
   charts.push({
     id: 'bodyweight',

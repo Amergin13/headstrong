@@ -5,7 +5,7 @@ const fig = (px: number) => `calc(${px} * var(--f))`;
 const muted: React.CSSProperties = { fontSize: `max(12px, ${fig(24)})`, color: 'var(--wk-muted)' };
 
 /**
- * Balance (Progress → Strength): imbalances between movements (Poliquin's chin-up to bench ratio,
+ * Balance (Progress → Strength standards): imbalances between movements (Poliquin's chin-up to bench ratio,
  * and full-level gaps between lifts on the same Kilgore standards) and left/right differences on
  * single-arm and single-leg lifts logged per side (flagged under 90% symmetry). Built only from the
  * athlete's own logs; with too little data it says what it needs instead of guessing.

@@ -375,7 +375,7 @@ export interface EverydayContext {
   readinessState: ReadinessState;
   /** 7-day average bodyweight; only shown when the athlete has logged a weigh-in. */
   bodyweightEmaKg: number;
-  /** The strength-levels answer (Progress → Strength), for "what's my weakest lift". */
+  /** The strength-levels answer (Progress → Strength standards), for "what's my weakest lift". */
   strengthLevels: () => string;
   /** This week's hard sets against target for the muscles a message names (the exercise cards' count). */
   weeklySets?: (message: string) => string;
@@ -601,7 +601,7 @@ export function answerEverydayQuestion(ctx: EverydayContext): string | null {
   const asksTrend = /\b(losing|lose|lost|gaining|gain|gained|putting on|dropping)\b.*\b(fat|weight|muscle|mass|size)\b/.test(msg) && !/\b(scale|recomp\w*|measure\w*)\b/.test(msg);
   if (asksOwnWeight || asksTrend) {
     if (!weighIns.length) {
-      return `You haven't logged a weigh-in yet, so I can't tell you. Log your weight in Progress → Composition → Weight, ideally each morning; after a week I can show you which way it's moving.`;
+      return `You haven't logged a weigh-in yet, so I can't tell you. Log your weight in Progress → Body weight, ideally each morning; after a week I can show you which way it's moving.`;
     }
     const latest = weighIns[weighIns.length - 1];
     const current = `Your latest weigh-in was ${formatPreciseWeight(latest.bodyweightKg, unit)} (${daysAgoText(Math.max(0, Math.floor((now - new Date(`${latest.date}T12:00:00`).getTime()) / DAY_MS)))}), and your 7-day average is ${formatPreciseWeight(ctx.bodyweightEmaKg, unit)}.`;
@@ -632,7 +632,7 @@ export function answerEverydayQuestion(ctx: EverydayContext): string | null {
         : profile.goalPhase === 'Maingain'
         ? 'To stay lean, eat about what you burn, with enough protein.'
         : 'To build muscle, eat a little more than you burn, with enough protein.';
-    return `I don't track food, so I can't give you a calorie number. ${goal} Your weekly average weight is the check: log it in Progress → Composition → Weight and adjust your portions by how it moves over two or three weeks. Ask me about protein for a daily target.`;
+    return `I don't track food, so I can't give you a calorie number. ${goal} Your weekly average weight is the check: log it in Progress → Body weight and adjust your portions by how it moves over two or three weeks. Ask me about protein for a daily target.`;
   }
   if (/\b(creatine|supplements?|bcaas?|pre-?workout (powder|drink|supplement))\b/.test(msg)) {
     return `Creatine monohydrate is the one supplement with strong evidence for strength and muscle: 3–5 g a day, at any time, every day. It's considered safe for healthy adults; check with your doctor first if you have a kidney condition or take regular medication. Everything else matters far less than training, protein and sleep.`;

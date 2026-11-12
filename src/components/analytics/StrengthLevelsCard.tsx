@@ -22,7 +22,7 @@ interface StrengthLevelsCardProps {
 const muted: React.CSSProperties = { fontSize: `max(12px, ${fig(24)})`, color: 'var(--wk-muted)' };
 
 /**
- * Strength levels (Progress → Strength). Each movement against published standards: Kilgore (ExRx)
+ * Strength levels (Progress → Strength standards). Each movement against published standards: Kilgore (ExRx)
  * for squat, deadlift, bench and press by sex, bodyweight and age; Poliquin's chin-up ratio for
  * pulling. Rows have no published standard, so no level. A movement never logged shows
  * "Not logged yet", never a level. Built by buildMovementStandards (services/movementStandards.ts).

@@ -13,8 +13,7 @@ import { buildCoachSystemPrompt, processAssistantMessage } from '../../services/
 import {
   getOnDeviceModelStatus,
   prepareOnDeviceModel,
-  warmUpOnDeviceModel,
-} from '../../services/onDeviceModel';
+  warmUpOnDeviceModel, resetOnDeviceModelHealth } from '../../services/onDeviceModel';
 import {
   dismissGpuModelOffer,
   getGpuModelId,
@@ -123,7 +122,8 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
       }
       if (isGpuModelOfferDismissed() || !(await getGpuModelId())) return;
       if (!cancelled) setDeviceCoach('offer');
-    })();
+      // If the check fails, the offer simply isn't shown; the coach still answers from data.
+    })().catch(() => undefined);
     return () => {
       cancelled = true;
     };
@@ -135,6 +135,8 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
     setDeviceCoachProgress(0);
     loadGpuModel((fraction) => setDeviceCoachProgress(fraction))
       .then(() => {
+        // A fresh download starts with a clean record, even if the model failed earlier.
+        resetOnDeviceModelHealth();
         setDeviceCoach('ready');
         triggerHaptic('success');
         primeGpuModel(buildCoachSystemPrompt(coachContext())).catch(() => undefined);

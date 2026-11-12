@@ -270,7 +270,7 @@ export function buildStandardsAnswer(report: MovementStandardsReport, hasBodywei
   const logged = report.levels.filter((l) => l.logged && l.source !== 'none' && l.tier);
   const parts: string[] = [];
   if (!hasBodyweight) {
-    parts.push('Strength levels compare what you lift with your bodyweight, so log your weight first (Progress → Composition → Weight).');
+    parts.push('Strength levels compare what you lift with your bodyweight, so log your weight first (Progress → Body weight).');
   } else if (!logged.length) {
     parts.push('Finish a workout with a squat, deadlift, bench, overhead press or chin-up and I can tell you your level on each.');
   } else {

@@ -52,6 +52,7 @@ export const EXERCISE_NOTE_SYSTEM_PROMPT =
   'Line 1 is the historical trajectory anchor using only the exact load or estimated 1RM figures in the facts (never use percentages). ' +
   "Line 2 is the session stimulus directive framing today's acute training goal (such as progressive mechanical tension or volume accumulation for hypertrophy). " +
   'Never mention target weight, target reps, target sets, RIR, reps in reserve, tempo, rest times, or weekly muscle set counts. ' +
+  'Every load figure in the facts is an estimated max: call it an estimated max, never a weight the athlete lifted, and do not mention the last session. ' +
   'Do not use any number that is not in the facts.';
 
 const isWorking = (s: WorkoutSet) => !s.isWarmup && s.setType !== 'warmup';
@@ -287,6 +288,13 @@ export function acceptExerciseNote(answer: string | null, facts: ExerciseNoteFac
     return null;
   }
 
+  // Errors the real on-device model made when rewording these facts. Every load figure in the
+  // facts is an estimated max, so it must be called an estimate and never a weight that was lifted,
+  // and the facts never describe the last session.
+  if (/\byou (lifted|pressed|rowed|pulled|curled|squatted|benched|hit|moved)\b/i.test(text)) return null;
+  if (/\b(last|previous|prior) (session|workout|time)\b/i.test(text) && !/\b(last|previous) (session|workout|time)\b/i.test(allFacts)) return null;
+  if (/\b(kg|lbs?)\b/i.test(rawLines[0]) && /estimated/i.test(allFacts) && !/\bestimat/i.test(rawLines[0])) return null;
+
   // No praise the facts don't show, and must pass the Read-Aloud QA Gate (no hollow cheerleading or error leaks).
   if (/\b(consistent\w*|dedicat\w*|never miss\w*)\b/i.test(text)) return null;
   if (!runReadAloudQaGate(text).passed) return null;
@@ -300,14 +308,19 @@ export async function generateExerciseNote(
   prompt: typeof promptOnDeviceModel = promptOnDeviceModel,
   attempts = 2
 ): Promise<string | null> {
-  for (let i = 0; i < attempts; i++) {
-    const answer = await prompt(EXERCISE_NOTE_SYSTEM_PROMPT, buildExerciseNotePrompt(facts), {
-      stateless: true,
-      timeoutMs: 45_000,
-    });
-    if (answer === null) return null; // no model, or it failed: don't retry
-    const accepted = acceptExerciseNote(answer, facts);
-    if (accepted) return accepted;
+  // A model that throws is the same as no model: the fact-based text stays.
+  try {
+    for (let i = 0; i < attempts; i++) {
+      const answer = await prompt(EXERCISE_NOTE_SYSTEM_PROMPT, buildExerciseNotePrompt(facts), {
+        stateless: true,
+        timeoutMs: 45_000,
+      });
+      if (answer === null) return null; // no model, or it failed: don't retry
+      const accepted = acceptExerciseNote(answer, facts);
+      if (accepted) return accepted;
+    }
+  } catch {
+    return null;
   }
   return null;
 }
@@ -319,14 +332,17 @@ const MAX_CACHED = 80;
 function readCache(): Record<string, string> {
   try {
     const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(CACHE_KEY) : null;
-    return raw ? JSON.parse(raw) : {};
+    // Anything that isn't a saved map of texts (a damaged or foreign value) counts as empty.
+    const parsed = raw ? JSON.parse(raw) : {};
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
   } catch {
     return {};
   }
 }
 
 export function getCachedExerciseNote(key: string): string | undefined {
-  return readCache()[key];
+  const hit = readCache()[key];
+  return typeof hit === 'string' ? hit : undefined;
 }
 
 export function cacheExerciseNote(key: string, note: string): void {

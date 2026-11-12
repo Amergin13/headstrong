@@ -817,7 +817,8 @@ export const TrainTab: React.FC<TrainTabProps> = ({
         cacheExerciseNote(n.key, note);
         setGeneratedNotes((prev) => ({ ...prev, [n.key]: note }));
       }
-    })();
+      // Any failure leaves the fact-based summaries in place.
+    })().catch(() => undefined);
     return () => {
       cancelled = true;
     };

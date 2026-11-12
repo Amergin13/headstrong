@@ -230,7 +230,7 @@ export const EXERCISE_SCIENCE_KNOWLEDGE_BASE: ScientificPrinciple[] = [
     academicCitation:
       'Kilgore L. Strength performance standards, ExRx.net; Poliquin C. Achieving Structural Balance, T-Nation (1999); Grindem H et al., Br J Sports Med 2016;50:804–808; van den Hoek DJ et al., J Sci Med Sport 2024;27(10):734–742 (normative powerlifting data, 809,986 entries).',
     practicalApplication:
-      'Progress → Strength shows your level on each lift (Tested when it came from the standard lift for 5 reps or fewer, otherwise Estimated), how it has changed since you started, and a Balance card for imbalances between lifts and weaker sides. Log single-arm and single-leg sets with "Log each side".',
+      'Progress → Strength standards shows your level on each lift (Tested when it came from the standard lift for 5 reps or fewer, otherwise Estimated), how it has changed since you started, and a Balance card for imbalances between lifts and weaker sides. Log single-arm and single-leg sets with "Log each side".',
     keywords: ['6 pillars', 'pillars', 'standards', 'novice', 'intermediate', 'advanced', 'elite', 'strength standards', 'squat standard', 'bench standard', 'deadlift standard', 'kilgore', 'poliquin', 'structural balance', 'imbalance', 'asymmetry', 'symmetry', 'left side', 'right side', 'level'],
   },
   {
@@ -529,7 +529,7 @@ export const EXERCISE_SCIENCE_KNOWLEDGE_BASE: ScientificPrinciple[] = [
       'Adherence is the single greatest determinant of long-term physique and athletic progress. Manual data entry creates cognitive friction and tracking abandonment. Connecting directly to RENPHO Bluetooth health scales (capturing Weight, BMI, Body Fat %, Fat-Free Mass, Subcutaneous Fat, Visceral Fat, Body Water, Skeletal Muscle Mass, Muscle Mass, Bone Mass, Protein Mass, BMR, and Metabolic Age) and RENPHO smart body tape measures (capturing Neck, Shoulder, Chest, Waist, Abdomen, Hip, Bicep Left, Bicep Right, Thigh Left, Thigh Right, Calf Left, and Calf Right) via Web Bluetooth—while always allowing full manual entry with zero hardware requirement—populates longitudinal trends and bilateral symmetry tracking.',
     academicCitation: 'Piwek et al. (2016); Hermsen et al. (2017); WCAG Cognitive Accessibility & Friction Reduction',
     practicalApplication:
-      'Pairs directly with RENPHO Bluetooth health scales and smart tape measures in Progress → Composition → Log measurements (or lets you type Weight, Body Fat %, and any of the 12 tape sites manually at any time), and syncs wearable recovery from Fitbit or Whoop.',
+      'Pairs directly with RENPHO Bluetooth health scales and smart tape measures in Progress → Measurements → Log measurements (or lets you type Weight, Body Fat %, and any of the 12 tape sites manually at any time), and syncs wearable recovery from Fitbit or Whoop.',
     keywords: [
       'smart scale',
       'smart scales',

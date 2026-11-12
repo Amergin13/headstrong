@@ -375,7 +375,8 @@ export const ProgramPlanView: React.FC<ProgramPlanViewProps> = ({
       if (cancelled || !message) return;
       cacheIdentityMessage(identityFacts.key, message);
       setIdentityMessage(message);
-    })();
+      // Any failure leaves the fact-based message in place.
+    })().catch(() => undefined);
     return () => {
       cancelled = true;
     };
