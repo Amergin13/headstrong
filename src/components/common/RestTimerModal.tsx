@@ -75,7 +75,7 @@ export const RestTimerModal: React.FC<RestTimerModalProps> = ({
   };
 
   return (
-    <aside aria-label="Rest timer" className="fixed bottom-20 left-3 right-3 z-40 max-w-md mx-auto">
+    <aside aria-label="Rest timer" className="fixed left-3 right-3 z-40 max-w-md mx-auto" style={{ bottom: 152 }}>
       <div
         className="wk-card transition-all duration-300 shadow-2xl border border-white/[0.08]"
         style={isDone ? { outline: '2px solid var(--wk-accent)' } : undefined}

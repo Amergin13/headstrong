@@ -175,7 +175,7 @@ select:focus-visible {
 .wk-page {
   padding-left: calc(38 * var(--f));
   padding-right: calc(38 * var(--f));
-  padding-bottom: 112px;
+  padding-bottom: 168px;
 }
 .wk-page-title {
   font-size: max(12px, calc(26 * var(--f)));

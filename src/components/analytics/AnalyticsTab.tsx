@@ -631,7 +631,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
   );
 
   return (
-    <div className="wk -mx-3.5" style={{ paddingLeft: fig(PAGE_GUTTER), paddingRight: fig(PAGE_GUTTER), paddingBottom: 112 }}>
+    <div className="wk -mx-3.5" style={{ paddingLeft: fig(PAGE_GUTTER), paddingRight: fig(PAGE_GUTTER), paddingBottom: 168 }}>
       <PageTopGradient markerRef={cardsTopRef} deps={[detail, openGoalId, workouts.length]} />
       {goalScreen || detailScreen || overview}
 

@@ -165,7 +165,7 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
   return (
     <div
       className="wk -mx-3.5"
-      style={{ paddingLeft: fig(38), paddingRight: fig(38), paddingBottom: 112 }}
+      style={{ paddingLeft: fig(38), paddingRight: fig(38), paddingBottom: 168 }}
     >
       {isPlan && !showSettings && (
         <>
