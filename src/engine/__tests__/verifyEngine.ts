@@ -8823,7 +8823,193 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
     );
   }
 
-  console.log('\nALL 47 ENGINE, GOVERNANCE, DESIGN SYSTEM, TYPOGRAPHY, WEARABLES, WHOOP STRAIN, GOOGLE AUTH, ONBOARDING CONTEXT, 6-WEEK PROGRAM, TENSOR AI, SESSION REPORT, WORKOUT PAGE, EXERCISE OVERVIEW & RENPHO BLUETOOTH SUITES PASSED SUCCESSFULLY! 🎯');
+  console.log('\n48. Testing Spreadsheet Program Import, 3-Dots Program Menu & Owner Phase 1 BT 2017 Backfill...');
+  {
+    const fsMod = await import('fs');
+    const pathMod = await import('path');
+    const repoRoot = pathMod.resolve(process.cwd());
+
+    const {
+      OWNER_PHASE_1_BT_ID,
+      PHASE_1_BT_SHEET_MARKER,
+      PHASE_1_BT_SPREADSHEET_CSV,
+      parseProgramSpreadsheet,
+      applySpreadsheetImportToState,
+      ensureOwnerPhase1BtSeeded,
+    } = await import('../../services/spreadsheetProgramImport');
+    const {
+      resolveActivePlan,
+      getPlanById,
+      isPlanProgram,
+      isCustomPlanId,
+    } = await import('../trainingPlans');
+    const { getNextProgramWorkoutNumber, getSessionPlanId } = await import('../muscleBuildingProgram');
+    const { buildPersonalBests, buildTrainingTotals } = await import('../../services/progressOverview');
+
+    const parsed = parseProgramSpreadsheet(PHASE_1_BT_SPREADSHEET_CSV, {
+      programName: 'Phase 1 BT',
+      programId: OWNER_PHASE_1_BT_ID,
+      exerciseCatalog: SEED_EXERCISES,
+      importHistory: true,
+      historicalStartDate: '2017-01-09',
+      preferHistoricalStartDate: true,
+      doubleTwoHandDumbbells: true,
+    });
+
+    assert(parsed.savedPlan.id === OWNER_PHASE_1_BT_ID, 'Phase 1 BT keeps custom:phase-1-bt id');
+    assert(parsed.savedPlan.name === 'Phase 1 BT', 'Phase 1 BT keeps custom plan name');
+    assert(parsed.savedPlan.phases.length === 2, `Phase 1 BT has 2 phases (got ${parsed.savedPlan.phases.length})`);
+    assert(
+      parsed.savedPlan.templates.length === 48,
+      `Phase 1 BT builds 48 workout templates across Phase 1 & Phase 2 (got ${parsed.savedPlan.templates.length})`
+    );
+    assert(isPlanProgram(OWNER_PHASE_1_BT_ID) && isCustomPlanId(OWNER_PHASE_1_BT_ID), 'Custom plan id recognized by plan helpers');
+
+    // Historical 2017 logs & inline swaps
+    assert(
+      parsed.historicalWorkouts.length >= 16,
+      `Extracts all logged 2017 Phase 1 BT workouts (got ${parsed.historicalWorkouts.length})`
+    );
+    assert(
+      parsed.historicalWorkouts.every((w) => w.date.startsWith('2017-') && w.completed),
+      'All imported historical Phase 1 BT sessions are marked completed and dated in 2017'
+    );
+    assert(
+      parsed.historicalBiometrics.some((b) => Math.abs((b.bodyweightKg ?? 0) - 83.9) < 0.05) &&
+        parsed.historicalBiometrics.some((b) => Math.abs((b.bodyweightKg ?? 0) - 84.3) < 0.05),
+      'Imports Week 1 (83.9 kg) and Week 2 (84.3 kg) check-in bodyweights'
+    );
+
+    const w2History = parsed.historicalWorkouts.find((w) => w.name.includes('Upper') || w.programWorkoutNumber === 2);
+    assert(Boolean(w2History), 'Found Workout 2 Upper historical log');
+    const allImportedSets = parsed.historicalWorkouts.flatMap((w) =>
+      w.exercises.map((ex) => ({ ex, sets: ex.sets }))
+    );
+    const hasPushdownSwap = allImportedSets.some(
+      (x) => x.ex.exerciseId === 'ex-tricep-pushdown' && x.sets.some((s) => (s.actualWeightKg ?? 0) >= 54)
+    );
+    const hasCurlSwap = allImportedSets.some(
+      (x) => x.ex.exerciseId === 'ex-bicep-curl' && x.sets.some((s) => (s.actualWeightKg ?? 0) >= 10)
+    );
+    const hasAsymmetricOneArmRow = allImportedSets.some((x) =>
+      x.sets.some((s) => (s.actualWeightKg ?? 0) === 40 && s.actualRepsRight === 8 && s.actualRepsLeft === 6 && s.actualReps === 6)
+    );
+    assert(hasPushdownSwap, 'Inline swap on Dips maps logged 54/59 kg sets to ex-tricep-pushdown');
+    assert(hasCurlSwap, 'Inline swap on Barbell Curls maps logged db curl sets to ex-bicep-curl');
+    assert(hasAsymmetricOneArmRow, 'Asymmetric single-arm set ("40 x 8 right, 6 left") keeps 40 kg and records weaker side as 6');
+
+    const totals = buildTrainingTotals(parsed.historicalWorkouts);
+    assert(totals.workouts === parsed.historicalWorkouts.length, 'Historical sessions contribute to total workouts');
+    assert(totals.volumeKg > 50000, `2017 Phase 1 BT sessions add lifetime volume (got ${Math.round(totals.volumeKg)} kg)`);
+
+    const pbs = buildPersonalBests(parsed.historicalWorkouts, 84, parsed.historicalBiometrics);
+    const deadliftPb = pbs.find((p) => p.exerciseId === 'ex-deadlift');
+    const benchPb = pbs.find((p) => p.exerciseId === 'ex-bench-press');
+    const squatPb = pbs.find((p) => p.exerciseId === 'ex-barbell-squat');
+    assert(
+      deadliftPb?.weightKg === 110,
+      `Trophy cabinet reflects 110 kg Deadlift from 2017 Phase 2 (got ${deadliftPb?.weightKg})`
+    );
+    assert(
+      benchPb?.weightKg === 75,
+      `Trophy cabinet reflects 75 kg Bench Press from 2017 Phase 2 (got ${benchPb?.weightKg})`
+    );
+    assert(
+      squatPb?.weightKg === 70,
+      `Trophy cabinet reflects 70 kg Back Squat from 2017 Phase 2 (got ${squatPb?.weightKg})`
+    );
+
+    // Owner seeding & non-owner isolation
+    const nonOwnerSeed = ensureOwnerPhase1BtSeeded({
+      profile: { ...NEW_USER_PROFILE, email: 'someoneelse@example.com' },
+      workouts: [],
+      biometrics: [],
+      exercises: SEED_EXERCISES,
+    });
+    assert(!nonOwnerSeed.didImport && nonOwnerSeed.workouts.length === 0, 'Non-owner accounts never get auto-seeded with Phase 1 BT');
+
+    const ownerSeed1 = ensureOwnerPhase1BtSeeded({
+      profile: {
+        ...NEW_USER_PROFILE,
+        email: 'benentaylor@gmail.com',
+        programType: 'muscle_building_6wk',
+      },
+      workouts: [],
+      biometrics: [],
+      exercises: SEED_EXERCISES,
+    });
+    assert(ownerSeed1.didImport, 'Owner account seeds Phase 1 BT once');
+    assert(
+      ownerSeed1.profile.programType === 'muscle_building_6wk' &&
+        ownerSeed1.profile.customPlans?.some((p) => p.id === OWNER_PHASE_1_BT_ID) === true &&
+        ownerSeed1.profile.importedSheetIds?.includes(PHASE_1_BT_SHEET_MARKER) === true,
+      'Owner seeding keeps 6-week muscle plan active while saving Phase 1 BT alongside it'
+    );
+    const ownerSeed2 = ensureOwnerPhase1BtSeeded({
+      profile: ownerSeed1.profile,
+      workouts: ownerSeed1.workouts,
+      biometrics: ownerSeed1.biometrics,
+      exercises: ownerSeed1.exercises,
+    });
+    assert(!ownerSeed2.didImport && ownerSeed2.workouts.length === ownerSeed1.workouts.length, 'Owner seeding is strictly idempotent');
+
+    // Swapping between 6-week muscle plan and Phase 1 BT keeps independent positions
+    const musclePlan = resolveActivePlan({ ...ownerSeed1.profile, programType: 'muscle_building_6wk' });
+    const phase1BtPlan = resolveActivePlan({ ...ownerSeed1.profile, programType: OWNER_PHASE_1_BT_ID });
+    assert(musclePlan.id === 'muscle_building_6wk' && phase1BtPlan.id === OWNER_PHASE_1_BT_ID, 'resolveActivePlan swaps cleanly between 6-week muscle plan and Phase 1 BT');
+    assert(
+      getPlanById(OWNER_PHASE_1_BT_ID, ownerSeed1.profile.goalPhase, ownerSeed1.profile.customPlans).name === 'Phase 1 BT',
+      'getPlanById resolves custom saved plan'
+    );
+    assert(
+      getNextProgramWorkoutNumber(ownerSeed1.workouts, musclePlan) === 1,
+      'Historical custom-plan 2017 workouts do not advance the 6-week muscle plan position'
+    );
+    assert(
+      ownerSeed1.workouts.every((w) => getSessionPlanId(w) === OWNER_PHASE_1_BT_ID),
+      'Every imported Phase 1 BT historical session belongs exclusively to custom:phase-1-bt'
+    );
+
+    // Manual re-import via applySpreadsheetImportToState with custom CSV
+    const customCsv = `WORKOUT 1: UPPER PUSH,,,,,,,,,,,,
+Exercise,,Date,Workout,Sets,Reps,Tempo,Rest,Notes,Set 1,Set 2,Set 3,Set 4
+1,Flat Bench Press,,1,3,6 to 8,3010,120,,60 x 8,60 x 8,60 x 8,`;
+    const manualParsed = parseProgramSpreadsheet(customCsv, {
+      programName: 'Custom Push Sheet',
+      exerciseCatalog: SEED_EXERCISES,
+      importHistory: false,
+    });
+    const manualMerged = applySpreadsheetImportToState(
+      { profile: NEW_USER_PROFILE, workouts: [], biometrics: [], exercises: SEED_EXERCISES },
+      manualParsed,
+      { activateProgram: true, importHistory: false }
+    );
+    assert(
+      manualMerged.profile.programType === manualParsed.savedPlan.id &&
+        manualMerged.workouts.length === 0 &&
+        resolveActivePlan(manualMerged.profile).name === 'Custom Push Sheet',
+      'Spreadsheet import without history creates an activatable custom plan cleanly'
+    );
+
+    // Static check: Program header 3-dots menu, import modal & program picker wiring
+    const programTabSrc = fsMod.readFileSync(pathMod.join(repoRoot, 'src/components/program/ProgramTab.tsx'), 'utf8');
+    const programPlanViewSrc = fsMod.readFileSync(pathMod.join(repoRoot, 'src/components/program/ProgramPlanView.tsx'), 'utf8');
+    const menuSrc = fsMod.readFileSync(pathMod.join(repoRoot, 'src/components/program/ProgramHeaderMenu.tsx'), 'utf8');
+    const importModalSrc = fsMod.readFileSync(pathMod.join(repoRoot, 'src/components/program/ImportProgramModal.tsx'), 'utf8');
+    assert(
+      programTabSrc.includes('ProgramHeaderMenu') &&
+        programTabSrc.includes('ImportProgramModal') &&
+        programTabSrc.includes('ProgramPickerModal') &&
+        programPlanViewSrc.includes('headerAction') &&
+        menuSrc.includes('MoreVertical') &&
+        menuSrc.includes('Import program from spreadsheet') &&
+        menuSrc.includes('Change program') &&
+        importModalSrc.includes('parseProgramSpreadsheet'),
+      'Program page wires 3-dots header menu to spreadsheet import and program switcher modals'
+    );
+  }
+
+  console.log('\nALL 48 ENGINE, GOVERNANCE, DESIGN SYSTEM, TYPOGRAPHY, WEARABLES, WHOOP STRAIN, GOOGLE AUTH, ONBOARDING CONTEXT, 6-WEEK PROGRAM, SPREADSHEET IMPORT, TENSOR AI, SESSION REPORT, WORKOUT PAGE, EXERCISE OVERVIEW & RENPHO BLUETOOTH SUITES PASSED SUCCESSFULLY! 🎯');
 })().catch((err) => {
   console.error('Test Suite Failed:', err);
   if (typeof process !== 'undefined' && process.exit) {

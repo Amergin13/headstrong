@@ -336,13 +336,65 @@ export interface WearableSyncProgress {
   provider?: WearableProvider;
 }
 
-export type ProgramSplitType = 'ppl_upper' | 'ppl' | 'upper_lower' | 'full_body' | 'muscle_building_6wk' | 'starter_6wk' | 'starter_4day';
+export interface SavedPlanPhase {
+  phaseNumber: number;
+  name: string;
+  shortName: string;
+  planSummary: string;
+  weeks: [number, number];
+  description: string;
+  intensityFocus: string;
+}
+
+export interface SavedPlanExercise {
+  order: string;
+  name: string;
+  exerciseId: string;
+  pillar: StrengthPillar;
+  equipment: EquipmentType;
+  sets: number;
+  reps: string;
+  tempo: string;
+  restSeconds: number;
+  notes?: string;
+  defaultWeightKg?: number;
+  durationSeconds?: number;
+  isRdl?: boolean;
+  isWeightedCalisthenic?: boolean;
+}
+
+export interface SavedPlanWorkout {
+  workoutNumber: number;
+  week: number;
+  dayOfWeek: 'Monday' | 'Wednesday' | 'Friday' | 'Saturday';
+  phase: number;
+  title: string;
+  splitDay: 'Push' | 'Pull' | 'Legs' | 'Upper';
+  exercises: SavedPlanExercise[];
+  kind?: 'lift' | 'active';
+}
+
+export interface SavedTrainingPlan {
+  id: `custom:${string}`;
+  name: string;
+  subtitle?: string;
+  workoutsPerWeek: number;
+  phases: SavedPlanPhase[];
+  templates: SavedPlanWorkout[];
+  createdAt: string;
+  source?: 'spreadsheet';
+}
+
+export type CustomPlanId = `custom:${string}`;
 
 /**
- * The 6-week plans. Everyone gets a goal-based starter plan: 'starter_6wk' (lift 3 days + 1 active day,
- * the default) or 'starter_4day' (lift 4 days). The 24-workout muscle plan is the owner's only.
+ * The structured plans. Built-in: 'starter_6wk' (lift 3 days + 1 active day, the default),
+ * 'starter_4day' (lift 4 days), 'muscle_building_6wk' (owner's 24-workout muscle plan),
+ * plus any saved/imported spreadsheet plan (`custom:${slug}`).
  */
-export type PlanId = 'muscle_building_6wk' | 'starter_6wk' | 'starter_4day';
+export type PlanId = 'muscle_building_6wk' | 'starter_6wk' | 'starter_4day' | CustomPlanId;
+
+export type ProgramSplitType = 'ppl_upper' | 'ppl' | 'upper_lower' | 'full_body' | PlanId;
 
 export type ExperienceLevel = 'new' | 'intermediate' | 'experienced';
 
@@ -413,6 +465,10 @@ export interface UserProfile {
   measuredHeightCm?: number;
   goalPhase: GoalPhase;
   programType?: ProgramSplitType;
+  /** User-imported or custom saved training plans selectable alongside Treise's built-in plans. */
+  customPlans?: SavedTrainingPlan[];
+  /** Seed/import markers applied to this profile so auto-imports remain idempotent across launches. */
+  importedSheetIds?: string[];
   mesocycleWeek?: number; // 1 to 6
   streakDays: number;
   lastWorkoutDate?: string;

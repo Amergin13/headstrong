@@ -2,6 +2,7 @@ import React, { useState, useRef } from 'react';
 import { PageTopGradient } from '../common/PageTopGradient';
 import {
   BiometricLog,
+  CustomPlanId,
   ExerciseDefinition,
   ReadinessState,
   WorkoutSession,
@@ -12,8 +13,12 @@ import {
 import { SplitDayType } from '../../services/workoutGenerator';
 import { SplitEditor } from './SplitEditor';
 import { ProgramPlanView } from './ProgramPlanView';
+import { ProgramHeaderMenu } from './ProgramHeaderMenu';
+import { ProgramPickerModal } from './ProgramPickerModal';
+import { ImportProgramModal } from './ImportProgramModal';
 import { TrainingPlan } from '../../engine/muscleBuildingProgram';
-import { isPlanProgram } from '../../engine/trainingPlans';
+import { isPlanProgram, canUseMusclePlan } from '../../engine/trainingPlans';
+import { ParsedProgramImport } from '../../services/spreadsheetProgramImport';
 import { ActivityLog } from '../../engine/activeDays';
 import { CustomExerciseModal } from './CustomExerciseModal';
 import { MesocycleManager } from './MesocycleManager';
@@ -41,6 +46,11 @@ interface ProgramTabProps {
   onLaunchSplitDay: (split: SplitDayType) => void;
   onLaunchWorkoutNumber?: (workoutNumber: number) => void;
   onUpdateProgram?: (program: ProgramSplitType) => void;
+  onImportProgram?: (
+    parsed: ParsedProgramImport,
+    opts: { activateProgram: boolean; importHistory: boolean }
+  ) => void;
+  onDeleteCustomPlan?: (planId: CustomPlanId) => void;
   onAddCustomExercise: (newEx: ExerciseDefinition) => void;
   onOpenOnboarding?: () => void;
   /** Name of the queued workout, shown on the "Back to workout" link. */
@@ -76,6 +86,8 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
   onLaunchSplitDay,
   onLaunchWorkoutNumber,
   onUpdateProgram,
+  onImportProgram,
+  onDeleteCustomPlan,
   onAddCustomExercise,
   onOpenOnboarding,
   activeWorkoutName,
@@ -83,6 +95,8 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
   onBackToWorkout,
 }) => {
   const [showCreateExercise, setShowCreateExercise] = useState(false);
+  const [showProgramPicker, setShowProgramPicker] = useState(false);
+  const [showImportSpreadsheet, setShowImportSpreadsheet] = useState(false);
   const isPlan = isPlanProgram(profile.programType);
   const changeProgram = (newProg: ProgramSplitType) => {
     if (onUpdateProgram) {
@@ -92,6 +106,13 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
     }
   };
   const programCardsTopRef = useRef<HTMLDivElement>(null);
+
+  const headerMenu = (
+    <ProgramHeaderMenu
+      onOpenImportSpreadsheet={() => setShowImportSpreadsheet(true)}
+      onOpenChangeProgram={() => setShowProgramPicker(true)}
+    />
+  );
 
   const homeEquipItems = profile.homeEquipment || ['bench', 'dumbbells', 'trx', 'pullup_bar'];
   const homeEquipList =
@@ -119,12 +140,14 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
           activeProgramWorkoutNumber={activeProgramWorkoutNumber}
           onLaunchWorkoutNumber={onLaunchWorkoutNumber}
           onBackToWorkout={onBackToWorkout}
+          headerAction={headerMenu}
         />
       )}
       {!isPlan && (
         <>
-          <header style={{ paddingTop: fig(20) }}>
-            <h1 className="wk-page-title">Program</h1>
+          <header className="flex items-start justify-between" style={{ paddingTop: fig(20), gap: fig(16) }}>
+            <h1 className="wk-page-title min-w-0 flex-1">Program</h1>
+            {headerMenu}
           </header>
 
           <div ref={programCardsTopRef} className="flex flex-col" style={{ gap: fig(22), marginTop: fig(40) }}>
@@ -256,6 +279,27 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
         <CustomExerciseModal
           onAddExercise={onAddCustomExercise}
           onClose={() => setShowCreateExercise(false)}
+        />
+      )}
+
+      {/* Switch Program Modal */}
+      {showProgramPicker && (
+        <ProgramPickerModal
+          programType={profile.programType || 'starter_6wk'}
+          includeMusclePlan={canUseMusclePlan(profile.email) || profile.programType === 'muscle_building_6wk'}
+          customPlans={profile.customPlans}
+          onChangeProgram={changeProgram}
+          onDeleteCustomPlan={onDeleteCustomPlan}
+          onClose={() => setShowProgramPicker(false)}
+        />
+      )}
+
+      {/* Import Program From Spreadsheet Modal */}
+      {showImportSpreadsheet && onImportProgram && (
+        <ImportProgramModal
+          exerciseCatalog={exerciseCatalog}
+          onImport={onImportProgram}
+          onClose={() => setShowImportSpreadsheet(false)}
         />
       )}
     </div>

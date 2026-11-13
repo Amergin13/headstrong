@@ -322,6 +322,7 @@ interface ProgramPlanViewProps {
   activeProgramWorkoutNumber?: number;
   onLaunchWorkoutNumber?: (workoutNumber: number) => void;
   onBackToWorkout?: () => void;
+  headerAction?: React.ReactNode;
 }
 
 /** Program page for the 6-Week Muscle Building Plan: identity, progress, then the three phases. */
@@ -338,6 +339,7 @@ export const ProgramPlanView: React.FC<ProgramPlanViewProps> = ({
   activeProgramWorkoutNumber,
   onLaunchWorkoutNumber,
   onBackToWorkout,
+  headerAction,
 }) => {
   const plan = useMemo(() => buildPlanOverview(workouts, trainingPlan, activities), [workouts, trainingPlan, activities]);
   const TOTAL = trainingPlan.templates.length;
@@ -446,8 +448,9 @@ export const ProgramPlanView: React.FC<ProgramPlanViewProps> = ({
         fallbackRef={progressRef}
         deps={[isFirstRun]}
       />
-      <header style={{ paddingTop: fig(20) }}>
-        <h1 className="wk-page-title">{trainingPlan.name}</h1>
+      <header className="flex items-start justify-between" style={{ paddingTop: fig(20), gap: fig(16) }}>
+        <h1 className="wk-page-title min-w-0 flex-1">{trainingPlan.name}</h1>
+        {headerAction}
       </header>
 
       {isFirstRun && (

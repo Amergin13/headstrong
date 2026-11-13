@@ -1,13 +1,13 @@
-import { GoalPhase, PlanId, ProgramSplitType, UserProfile, WorkoutSession } from './types';
+import { GoalPhase, PlanId, ProgramSplitType, SavedTrainingPlan, UserProfile, WorkoutSession } from './types';
 import { MUSCLE_BUILDING_PLAN, TrainingPlan, getSessionPlanId } from './muscleBuildingProgram';
 import { STARTER_SESSIONS_PER_WEEK, STARTER_WORKOUT_COUNT, buildStarterPlan } from './starterPlan';
 
 /**
- * Which 6-week plan an athlete is on.
+ * Which plan an athlete is on.
  *
- * Everyone gets the goal-based starter plan. The 24-workout muscle plan is shown only to the owner's
- * signed-in account. The email is compared by hash so the address itself isn't in the app's code.
- * This only controls what the app shows: it isn't security (sign-in is checked on the device).
+ * Everyone gets the goal-based starter plan, plus any programs imported into `profile.customPlans`.
+ * The 24-workout muscle plan is shown only to the owner's signed-in account. The email is compared by
+ * hash so the address itself isn't in the app's code.
  */
 const MUSCLE_PLAN_ACCOUNT_HASHES = ['2eu9ah3d4rj'];
 
@@ -33,31 +33,72 @@ export function canUseMusclePlan(email?: string): boolean {
   return Boolean(email) && MUSCLE_PLAN_ACCOUNT_HASHES.includes(hashAccountEmail(email as string));
 }
 
-/** All three are 6-week plans; the older split programs are no longer offered. */
+export function isCustomPlanId(id?: string): id is `custom:${string}` {
+  return typeof id === 'string' && id.startsWith('custom:');
+}
+
+/** Built-in 6-week plans and any saved custom spreadsheet plan. */
 export function isPlanProgram(programType?: ProgramSplitType): boolean {
-  return programType === 'muscle_building_6wk' || programType === 'starter_6wk' || programType === 'starter_4day';
+  return (
+    programType === 'muscle_building_6wk' ||
+    programType === 'starter_6wk' ||
+    programType === 'starter_4day' ||
+    isCustomPlanId(programType)
+  );
+}
+
+export function savedPlanToTrainingPlan(saved: SavedTrainingPlan): TrainingPlan {
+  return {
+    id: saved.id,
+    name: saved.name,
+    workoutsPerWeek: saved.workoutsPerWeek,
+    phases: saved.phases,
+    templates: saved.templates,
+    targetRirForPhase: (phase) => (phase === 2 ? 1 : 2),
+  };
 }
 
 /**
- * The plan to show. The muscle plan only when it's chosen and the owner is signed in; otherwise
- * the starter plan for the athlete's goal (so signing out keeps the muscle-plan history but shows
- * the starter plan, and signing back in brings the muscle plan back).
+ * The plan to show. A saved custom plan when chosen and present on the profile; the muscle plan
+ * only when it's chosen and the owner is signed in; otherwise the starter plan for the athlete's goal.
  */
-export function resolveActivePlan(profile: Pick<UserProfile, 'programType' | 'goalPhase' | 'email'>): TrainingPlan {
+export function resolveActivePlan(
+  profile: Pick<UserProfile, 'programType' | 'goalPhase' | 'email' | 'customPlans'>
+): TrainingPlan {
+  if (isCustomPlanId(profile.programType)) {
+    const custom = profile.customPlans?.find((p) => p.id === profile.programType);
+    if (custom) return savedPlanToTrainingPlan(custom);
+  }
   if (profile.programType === 'muscle_building_6wk' && canUseMusclePlan(profile.email)) return MUSCLE_BUILDING_PLAN;
   return buildStarterPlan(profile.goalPhase || 'Lean Bulk', profile.programType === 'starter_4day' ? 'lift4' : 'lift3_active1');
 }
 
-/** A plan by id (the starter plan's workout names and counts don't depend on the goal). */
-export function getPlanById(id: PlanId, goal: GoalPhase = 'Lean Bulk'): TrainingPlan {
+/** A plan by id (including custom saved plans when supplied). */
+export function getPlanById(
+  id: PlanId,
+  goal: GoalPhase = 'Lean Bulk',
+  customPlans?: SavedTrainingPlan[]
+): TrainingPlan {
+  if (isCustomPlanId(id)) {
+    const custom = customPlans?.find((p) => p.id === id);
+    if (custom) return savedPlanToTrainingPlan(custom);
+  }
   if (id === 'muscle_building_6wk') return MUSCLE_BUILDING_PLAN;
   return buildStarterPlan(goal, id === 'starter_4day' ? 'lift4' : 'lift3_active1');
 }
 
 /** Workouts in the plan a session belongs to, and how many per week (for "Workout 3 of 18"). */
-export function getSessionPlanShape(w: WorkoutSession): { total: number; perWeek: number } | undefined {
+export function getSessionPlanShape(
+  w: WorkoutSession,
+  customPlans?: SavedTrainingPlan[]
+): { total: number; perWeek: number } | undefined {
   const id = getSessionPlanId(w);
   if (!id) return undefined;
+  if (isCustomPlanId(id)) {
+    const custom = customPlans?.find((p) => p.id === id);
+    if (custom) return { total: custom.templates.length, perWeek: custom.workoutsPerWeek };
+    return undefined;
+  }
   return id === 'muscle_building_6wk'
     ? { total: MUSCLE_BUILDING_PLAN.templates.length, perWeek: MUSCLE_BUILDING_PLAN.workoutsPerWeek }
     : { total: STARTER_WORKOUT_COUNT, perWeek: STARTER_SESSIONS_PER_WEEK };

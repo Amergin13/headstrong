@@ -3,6 +3,7 @@ import type { CoachPlace } from './services/coachContext';
 import React, { useState, useEffect, useRef, Suspense, lazy } from 'react';
 import {
   BiometricLog,
+  CustomPlanId,
   ExerciseDefinition,
   ExerciseSession,
   GoalPhase,
@@ -58,7 +59,18 @@ import {
   getNextProgramWorkoutNumber,
   getSessionPlanId,
 } from './engine/muscleBuildingProgram';
-import { isPlanProgram, resolveActivePlan } from './engine/trainingPlans';
+import {
+  isPlanProgram,
+  resolveActivePlan,
+  canUseMusclePlan,
+  isCustomPlanId,
+} from './engine/trainingPlans';
+import {
+  ParsedProgramImport,
+  PHASE_1_BT_SHEET_MARKER,
+  applySpreadsheetImportToState,
+  ensureOwnerPhase1BtSeeded,
+} from './services/spreadsheetProgramImport';
 import { ActivityLog, activeDayDates } from './engine/activeDays';
 import { useActivitySync } from './hooks/useActivitySync';
 import { LogActivityModal } from './components/activity/LogActivityModal';
@@ -353,6 +365,25 @@ export const App: React.FC = () => {
     if (streak !== profile.streakDays) setProfile((p) => ({ ...p, streakDays: streak }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workouts, activeDatesKey]);
+
+  // Seed the owner's saved Phase 1 BT program and 2017 historical logs once on sign-in or launch.
+  const importedSheetsKey = profile.importedSheetIds?.join(',') || '';
+  useEffect(() => {
+    if (!canUseMusclePlan(profile.email)) return;
+    if (profile.importedSheetIds?.includes(PHASE_1_BT_SHEET_MARKER)) return;
+    const seeded = ensureOwnerPhase1BtSeeded({
+      profile,
+      workouts,
+      biometrics,
+      exercises,
+    });
+    if (!seeded.didImport) return;
+    setProfile(seeded.profile);
+    setWorkouts(seeded.workouts);
+    setBiometrics(seeded.biometrics);
+    setExercises(seeded.exercises);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile.email, importedSheetsKey]);
 
   // On the 6-week plan, today's session must be the plan's next workout (with the athlete's own
   // weights). A fresh install or cleared session otherwise starts on a generic split day.
@@ -649,6 +680,67 @@ export const App: React.FC = () => {
     }
   };
 
+  // Handler: Import a program and optional historical workouts/biometrics from a spreadsheet
+  const handleImportSpreadsheetProgram = (
+    parsed: ParsedProgramImport,
+    opts: { activateProgram: boolean; importHistory: boolean }
+  ) => {
+    const merged = applySpreadsheetImportToState(
+      { profile, workouts, biometrics, exercises },
+      parsed,
+      {
+        activateProgram: opts.activateProgram,
+        importHistory: opts.importHistory,
+      }
+    );
+    setProfile(merged.profile);
+    setWorkouts(merged.workouts);
+    setBiometrics(merged.biometrics);
+    setExercises(merged.exercises);
+
+    if (
+      opts.activateProgram &&
+      !activeWorkout.exercises.some((ex) => ex.sets.some((s) => s.completed))
+    ) {
+      const nextPlan = resolveActivePlan(merged.profile);
+      const nextNum = getNextProgramWorkoutNumber(merged.workouts, nextPlan);
+      setActiveWorkout(prepareSession(generatePlanWorkout(nextPlan, nextNum), { isProgramPlan: true }));
+    }
+
+    const addedWorkouts = merged.workouts.length - workouts.length;
+    setToast({
+      tag: 'Program imported',
+      message:
+        addedWorkouts > 0
+          ? `Saved ${parsed.savedPlan.name} (${parsed.savedPlan.templates.length} workouts) and added ${addedWorkouts} historical workouts.`
+          : `Saved ${parsed.savedPlan.name} (${parsed.savedPlan.templates.length} workouts).`,
+    });
+  };
+
+  // Handler: Remove a saved custom program (keeps all historical workouts intact)
+  const handleDeleteCustomPlan = (planId: CustomPlanId) => {
+    const fallbackType: ProgramSplitType =
+      profile.programType === planId ? 'starter_6wk' : profile.programType || 'starter_6wk';
+    const nextProfile: UserProfile = {
+      ...profile,
+      customPlans: (profile.customPlans ?? []).filter((p) => p.id !== planId),
+      programType: fallbackType,
+    };
+    setProfile(nextProfile);
+    if (
+      profile.programType === planId &&
+      !activeWorkout.exercises.some((ex) => ex.sets.some((s) => s.completed))
+    ) {
+      const nextPlan = resolveActivePlan(nextProfile);
+      setActiveWorkout(
+        prepareSession(
+          generatePlanWorkout(nextPlan, getNextProgramWorkoutNumber(workouts, nextPlan)),
+          { isProgramPlan: true }
+        )
+      );
+    }
+  };
+
   // Handler: Change Mesocycle Week (1 to 6)
   const handleSelectMesocycleWeek = (week: number) => {
     // On a 6-week plan the week follows the workout number, and a started session is kept.
@@ -858,9 +950,9 @@ export const App: React.FC = () => {
               // A session already under way keeps what's been logged.
               if (activeWorkout.exercises.some((ex) => ex.sets.some((s) => s.completed))) return;
               if (isPlanProgram(profile.programType)) {
-                // The starter plan's sets and reps follow the goal; the muscle plan's don't change.
+                // The starter plan's sets and reps follow the goal; fixed plans don't change.
                 const plan = resolveActivePlan({ ...profile, goalPhase: phase });
-                if (plan.id === 'muscle_building_6wk') return;
+                if (plan.id === 'muscle_building_6wk' || isCustomPlanId(plan.id)) return;
                 setActiveWorkout(
                   prepareSession(generatePlanWorkout(plan, getNextProgramWorkoutNumber(workouts, plan)), { isProgramPlan: true })
                 );
@@ -963,6 +1055,8 @@ export const App: React.FC = () => {
             onLaunchSplitDay={(sp) => handleSwitchSplitDay(sp, true)}
             onLaunchWorkoutNumber={handleLaunchWorkoutNumber}
             onUpdateProgram={handleUpdateProgram}
+            onImportProgram={handleImportSpreadsheetProgram}
+            onDeleteCustomPlan={handleDeleteCustomPlan}
             onAddCustomExercise={(newEx) => setExercises((prev) => [...prev, newEx])}
             activities={activities}
             onLogActivity={() => setLogActivityOpen(true)}

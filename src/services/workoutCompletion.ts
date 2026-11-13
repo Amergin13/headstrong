@@ -14,7 +14,7 @@ import { calculateBestPillarE1rms } from './storage';
 import { WhoopWorkoutStrainSummary } from './whoopService';
 import { localDateString } from '../utils/date';
 
-const SESSIONS_PER_WEEK: Record<ProgramSplitType, number> = {
+const SESSIONS_PER_WEEK: Record<string, number> = {
   ppl_upper: 4,
   ppl: 3,
   upper_lower: 4,
@@ -24,7 +24,7 @@ const SESSIONS_PER_WEEK: Record<ProgramSplitType, number> = {
   starter_4day: 4,
 };
 
-const PROGRAM_LABELS: Record<ProgramSplitType, string> = {
+const PROGRAM_LABELS: Record<string, string> = {
   ppl_upper: 'PPL + Upper',
   ppl: 'PPL Classic',
   upper_lower: 'Upper / Lower',
@@ -122,7 +122,7 @@ export function completeWorkout(input: WorkoutCompletionInput): WorkoutCompletio
   // any time that week); older split sessions finish a week every N sessions.
   const programType = profile.programType || 'starter_6wk';
   const planId = getSessionPlanId(completedSession);
-  const plan = planId ? getPlanById(planId, profile.goalPhase) : undefined;
+  const plan = planId ? getPlanById(planId, profile.goalPhase, profile.customPlans) : undefined;
   const planNumber = completedSession.programWorkoutNumber || 0;
   const tmpl = plan?.templates.find((t) => t.workoutNumber === planNumber);
   const isWeekMilestone = plan
@@ -132,10 +132,11 @@ export function completeWorkout(input: WorkoutCompletionInput): WorkoutCompletio
 
   let weekMilestone: Milestone | null = null;
   let nextMesocycleWeek = profile.mesocycleWeek || 1;
+  const totalWeeks = plan ? Math.max(6, ...plan.templates.map((t) => t.week)) : 6;
   if (isWeekMilestone) {
     const completedWeek = tmpl?.week ?? (profile.mesocycleWeek || 1);
-    weekMilestone = programMilestone(completedWeek, PROGRAM_LABELS[planId ?? programType] || 'Hypertrophy Split');
-    nextMesocycleWeek = completedWeek >= 6 ? 1 : completedWeek + 1;
+    weekMilestone = programMilestone(completedWeek, PROGRAM_LABELS[planId ?? programType] || plan?.name || 'Hypertrophy Split');
+    nextMesocycleWeek = completedWeek >= totalWeeks ? 1 : completedWeek + 1;
   }
   if (plan && planNumber) {
     // The plan's week always follows the plan's next workout.

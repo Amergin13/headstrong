@@ -188,6 +188,8 @@ export interface ProgramExerciseTemplate {
   intensityProtocol?: IntensityProtocol;
   notes?: string;
   defaultWeightKg?: number;
+  isRdl?: boolean;
+  isWeightedCalisthenic?: boolean;
 }
 
 export interface ProgramWorkoutTemplate {
@@ -813,6 +815,8 @@ export function generatePlanWorkout(plan: TrainingPlan, workoutNumber: number): 
       name: e.name,
       pillar: e.pillar,
       equipment: e.equipment,
+      ...(e.isRdl ? { isRdl: true } : {}),
+      ...(e.isWeightedCalisthenic ? { isWeightedCalisthenic: true } : {}),
       minReps: range
         ? parseInt(range[1], 10)
         : repTargetType === 'wave'
@@ -841,8 +845,15 @@ export function generatePlanWorkout(plan: TrainingPlan, workoutNumber: number): 
     };
   });
 
+  const idPrefix =
+    plan.id === 'muscle_building_6wk'
+      ? 'workout-6wk'
+      : plan.id.startsWith('custom:')
+      ? `workout-${plan.id.replace(/[^a-zA-Z0-9_-]+/g, '-')}`
+      : 'workout-starter';
+
   return {
-    id: `${plan.id === 'muscle_building_6wk' ? 'workout-6wk' : 'workout-starter'}-${tmpl.workoutNumber}-${today}`,
+    id: `${idPrefix}-${tmpl.workoutNumber}-${today}`,
     date: today,
     // Plain name, the same one the Program page and Workout page show.
     name: planWorkoutLabel(tmpl.title),

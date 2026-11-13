@@ -291,7 +291,13 @@ export function loadProfile(): UserProfile {
  * move to the starter plan; their saved workouts are kept.
  */
 export function normalizeProgramType(programType?: ProgramSplitType): ProgramSplitType {
-  if (programType === 'muscle_building_6wk' || programType === 'starter_4day') return programType;
+  if (
+    programType === 'muscle_building_6wk' ||
+    programType === 'starter_4day' ||
+    (typeof programType === 'string' && programType.startsWith('custom:'))
+  ) {
+    return programType;
+  }
   return 'starter_6wk';
 }
 
