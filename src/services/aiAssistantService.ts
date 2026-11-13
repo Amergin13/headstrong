@@ -33,6 +33,7 @@ import {
 import { localDateString } from '../utils/date';
 import { formatPreciseWeight, formatWeight, snapLoadKg } from '../utils/units';
 import { calculateE1RM } from '../engine/e1rm';
+import { buildBodyweightEmaLookup } from '../engine/ema';
 import { runReadAloudQaGate, VOICE_TONE_MATRIX } from '../engine/contentStrategy';
 import { buildExerciseInsight } from './exerciseInsight';
 import { spelledNumberNotInFacts } from './factChecks';
@@ -431,33 +432,59 @@ const RETRY_IF_FASTER_THAN_MS = 6000;
 const LIFT_WORDS = ['bench', 'squat', 'deadlift', 'rdl', 'overhead', 'shoulder press', 'pulldown', 'pull-up', 'pull up', 'chin', 'row', 'curl', 'leg press'];
 
 /** The best estimated max logged for the lift named in the message, from the same formula as Progress. */
-function buildEstimatedMaxAnswer(lowerMsg: string, workouts: WorkoutSession[], bodyweightKg: number, unit: 'kg' | 'lb'): string {
+function buildEstimatedMaxAnswer(
+  lowerMsg: string,
+  workouts: WorkoutSession[],
+  bodyweightKg: number,
+  unit: 'kg' | 'lb',
+  biometrics?: BiometricLog[]
+): string {
   const lift = LIFT_WORDS.find((word) => lowerMsg.includes(word));
   if (!lift) return 'Which lift do you mean? Ask me for your bench, squat or deadlift, for example.';
   const spelled = lift.replace(' ', '-');
-  let best: { name: string; kg: number } | null = null;
+  const emaLookup = biometrics ? buildBodyweightEmaLookup(biometrics) : undefined;
+  let best: { name: string; kg: number; includesBodyweight: boolean; bestReps: number; bestAddedKg: number } | null = null;
+  let needsBodyweight = false;
   for (const w of workouts.filter((session) => session.completed)) {
+    const sessionBw = emaLookup ? emaLookup(w.date, bodyweightKg) : bodyweightKg;
     for (const ex of w.exercises) {
       const name = ex.name.toLowerCase();
       if (!name.includes(lift) && !name.includes(spelled)) continue;
+      const isCalisthenic =
+        ex.equipment === 'bodyweight' || ex.equipment === 'weighted_bodyweight' || Boolean(ex.isWeightedCalisthenic);
+      if (isCalisthenic && sessionBw <= 0) {
+        if (ex.sets.some((st) => st.completed && !st.isWarmup && st.setType !== 'warmup')) needsBodyweight = true;
+        continue;
+      }
       for (const st of ex.sets) {
         if (!st.completed || st.isWarmup || st.setType === 'warmup') continue;
+        const added = st.actualWeightKg ?? st.targetWeightKg ?? 0;
+        const reps = st.actualReps ?? st.targetReps ?? 0;
         const kg = calculateE1RM(
-          st.actualWeightKg ?? st.targetWeightKg,
-          st.actualReps ?? st.targetReps,
+          added,
+          reps,
           st.actualRir ?? st.targetRir ?? 2,
           ex.equipment,
           ex.isRdl,
           ex.isWeightedCalisthenic,
-          bodyweightKg,
+          sessionBw,
           ex.exerciseId,
           ex.pillar
         );
-        if (!best || kg > best.kg) best = { name: ex.name, kg };
+        if (!best || kg > best.kg) {
+          best = { name: ex.name, kg, includesBodyweight: isCalisthenic, bestReps: reps, bestAddedKg: added };
+        }
       }
     }
   }
+  if (!best && needsBodyweight) {
+    return 'Log your bodyweight on Progress first so I can work out a total-load estimated max (bodyweight + added weight) for your bodyweight lifts.';
+  }
   if (!best) return `You haven't logged a ${lift} yet, so there's no estimated max to give. Your first session will set your starting point.`;
+  if (best.includesBodyweight) {
+    const loadDesc = best.bestAddedKg > 0 ? `${formatPreciseWeight(best.bestAddedKg, unit)} added × ${best.bestReps}` : `${best.bestReps} bodyweight reps`;
+    return `Your best estimated one-rep max is ${formatPreciseWeight(best.kg, unit)} on ${best.name} (total load: your bodyweight + added weight, from your best set of ${loadDesc}).`;
+  }
   return `Your best estimated one-rep max is ${formatPreciseWeight(best.kg, unit)} on ${best.name}. It's worked out from your best logged set, not a tested max.`;
 }
 
@@ -519,6 +546,8 @@ async function processAssistantMessageCore(
   // ============================================================================
   // 1. INTENT: UPDATE HOME EQUIPMENT (e.g. "I got a pull up bar", "I bought dumbbells")
   // ============================================================================
+  const hasMeasuredBw = biometrics.some((b) => (b.bodyweightKg || 0) > 0);
+  const measuredBodyweightKg = hasMeasuredBw ? bodyweightEmaKg : 0;
   // The exercise card's own two lines (built exactly as the Workout page builds them), so the coach
   // and the card never word the same thing differently.
   const cardLines = (ex: ExerciseSession): [string, string] => {
@@ -526,7 +555,7 @@ async function processAssistantMessageCore(
     const def = exerciseCatalog.find((d) => d.id === ex.exerciseId);
     return buildExerciseNoteFacts({
       exercise: ex,
-      insight: buildExerciseInsight(ex, workouts, readinessState, bodyweightEmaKg, 12, precise),
+      insight: buildExerciseInsight(ex, workouts, readinessState, measuredBodyweightKg, 12, precise, biometrics),
       workouts,
       readinessState,
       knowledgeGraph: kg,
@@ -997,7 +1026,7 @@ async function processAssistantMessageCore(
       const asksForOwnMax = /\bmy\b.*\b(e?1\s?rm|one[\s-]rep\s*max|estimated\s*max)\b/.test(lowerMsg) && !asksHowItWorks;
       const asksForOwnScore = /\bmy\b.*\b(dots|strength\s*score)\b/.test(lowerMsg) && !asksHowItWorks;
       if (asksForOwnMax) {
-        answerText = buildEstimatedMaxAnswer(lowerMsg, workouts, bodyweightEmaKg, profile.weightUnit || 'kg');
+        answerText = buildEstimatedMaxAnswer(lowerMsg, workouts, measuredBodyweightKg, profile.weightUnit || 'kg', biometrics);
       } else if (asksForOwnScore) {
         answerText = `Treise compares each lift with published strength standards instead of giving one score.\n\n${strengthLevelsAnswer()}`;
       } else if (isStandardsQuestion && !isExplicitScienceQuestion && !isTacticalWorkoutQuery) {

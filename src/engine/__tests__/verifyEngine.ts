@@ -7703,7 +7703,301 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
     );
   }
 
-  console.log('\nALL 40 ENGINE, GOVERNANCE, DESIGN HEURISTICS, TYPOGRAPHY, WEARABLES, WHOOP STRAIN, GOOGLE AUTH, ONBOARDING CONTEXT, 6-WEEK PROGRAM, TENSOR AI, SESSION REPORT, WORKOUT PAGE, EXERCISE OVERVIEW & RENPHO BLUETOOTH SUITES PASSED SUCCESSFULLY! 🎯');
+  console.log('\n--- Suite 44: Progress Calculations, Bodyweight E1RM Clarity & Historical Accuracy ---');
+  {
+    const fs44 = await import('fs');
+    const path44 = await import('path');
+    const cs44 = await import('../contentStrategy');
+    const emaMod44 = await import('../ema');
+    const seriesMod44 = await import('../../services/progressSeries');
+    const noteMod44 = await import('../../services/exerciseCoachNote');
+    const ovMod44 = await import('../../services/progressOverview');
+    const finishMod44 = await import('../../services/workoutFinish');
+    const reportMod44 = await import('../../services/sessionReport');
+    const stdMod44 = await import('../../services/movementStandards');
+    const trendMod44 = await import('../../services/strengthTrend');
+    const storageMod44 = await import('../../services/storage');
+    const kgMod44 = await import('../knowledgeGraph');
+    const fmtKg44 = (kg: number) => `${Math.round(kg * 10) / 10} kg`;
+    const pFmt44 = { weight: fmtKg44, weightPrecise: fmtKg44, length: (cm: number) => `${cm} cm` };
+    const profile44: any = {
+      id: 'u-calc-44',
+      name: 'Alex',
+      weightUnit: 'kg',
+      gender: 'male',
+      age: 30,
+      ageEntered: true,
+      experience: 'intermediate',
+      goalPhase: 'Lean Bulk',
+      daysPerWeek: 4,
+      splitType: 'muscle_building_6wk',
+      equipment: ['full_gym'],
+      streak: 0,
+      onboardingCompleted: true,
+    };
+
+    const mkChinWorkout = (
+      id: string,
+      date: string,
+      completedAt: string,
+      addedKg: number,
+      reps: number,
+      rir = 2
+    ): WorkoutSession => ({
+      id,
+      date,
+      name: 'Pull',
+      splitDay: 'Pull',
+      readinessState: 'Normal',
+      readinessZScore: 0,
+      completed: true,
+      completedAt,
+      exercises: [
+        {
+          id: `${id}-ex`,
+          exerciseId: 'ex-chinup',
+          name: 'Hammer-Grip Chin-Up',
+          pillar: 'Vertical Pull',
+          equipment: 'weighted_bodyweight',
+          isWeightedCalisthenic: true,
+          minReps: 6,
+          maxReps: 10,
+          sets: [
+            {
+              id: `${id}-s1`,
+              setNumber: 1,
+              targetReps: reps,
+              targetWeightKg: addedKg,
+              targetRir: rir,
+              actualReps: reps,
+              actualWeightKg: addedKg,
+              actualRir: rir,
+              completed: true,
+            },
+          ],
+        },
+      ],
+    });
+
+    // 1. Unloaded chin-ups (0 added kg) never report 107.6 kg estimated max — they track reps & pass ROT/QA gates.
+    const bioSame807: BiometricLog[] = [
+      { date: '2026-09-01', bodyweightKg: 81.2, hrvRmssd: 60, restingHr: 54, sleepHours: 7.5, steps: 0, activeZoneMinutes: 0 },
+      { date: '2026-09-01', bodyweightKg: 80.7, hrvRmssd: 62, restingHr: 53, sleepHours: 7.8, steps: 0, activeZoneMinutes: 0 },
+    ];
+    const unloadedWorkouts = [
+      mkChinWorkout('w-bw-1', '2026-09-01', '2026-09-01T10:00:00Z', 0, 8, 2),
+      mkChinWorkout('w-bw-2', '2026-09-08', '2026-09-08T10:00:00Z', 0, 10, 2),
+    ];
+    const unloadedEx = unloadedWorkouts[1].exercises[0];
+    const unloadedInsight = buildExerciseInsight(unloadedEx, unloadedWorkouts, 'Normal', 80.7, 12, fmtKg44, bioSame807);
+    const unloadedFacts = noteMod44.buildExerciseNoteFacts({
+      exercise: unloadedEx,
+      insight: unloadedInsight,
+      workouts: unloadedWorkouts,
+      readinessState: 'Normal',
+      knowledgeGraph: kgMod44.buildAthleteKnowledgeGraph(unloadedWorkouts, bioSame807, SEED_EXERCISES, profile44, {}, []),
+      muscleLabel: 'Upper back',
+      formatWeight: fmtKg44,
+    });
+    const unloadedChart = seriesMod44.buildExerciseProgressChart({
+      exercise: { id: 'ex-chinup', name: 'Hammer-Grip Chin-Up', equipment: 'weighted_bodyweight', isWeightedCalisthenic: true },
+      workouts: unloadedWorkouts,
+      bodyweightKg: 80.7,
+      biometrics: bioSame807,
+      fmt: pFmt44,
+    });
+    const unloadedSummaries = finishMod44.buildCompletedExerciseSummaries({
+      finished: unloadedWorkouts[1],
+      workouts: unloadedWorkouts,
+      bodyweightKg: 80.7,
+      biometrics: bioSame807,
+      formatWeight: fmtKg44,
+    });
+    const unloadedReport = reportMod44.buildSessionProgressReport({
+      workouts: unloadedWorkouts,
+      exerciseCatalog: SEED_EXERCISES,
+      knowledgeGraph: kgMod44.buildAthleteKnowledgeGraph(unloadedWorkouts, bioSame807, SEED_EXERCISES, profile44, {}, []),
+      bodyweightKg: 80.7,
+      biometrics: bioSame807,
+    });
+    const unloadedRot = cs44.runRotContentAudit([{ exerciseName: unloadedEx.name, summary: unloadedInsight.summary }]);
+    assert(
+      unloadedInsight.metric === 'reps' &&
+        unloadedInsight.history[1].value === 10 &&
+        !/107\.6|estimated max/i.test(unloadedInsight.summary) &&
+        unloadedFacts.lines[0] === unloadedInsight.lines[0] &&
+        noteMod44.checkExerciseNote(unloadedFacts.fallback, unloadedFacts).problem === undefined &&
+        unloadedRot.passed &&
+        unloadedChart.summary.includes('reps') &&
+        !/estimated one-rep max/i.test(unloadedChart.summary) &&
+        unloadedChart.points[1].value === 10 &&
+        unloadedSummaries[0].lines[1].includes('+2 reps') &&
+        unloadedReport?.trends.length === 0,
+      `Unloaded chin-ups track reps instead of 107.6 kg E1RM (got "${unloadedInsight.lines[0]}", "${unloadedSummaries[0]?.lines[1]}")`
+    );
+
+    // 2. When no bodyweight has been logged, weighted calisthenics use added weight (no 80 kg phantom E1RM).
+    const weightedNoBwWorkouts = [
+      mkChinWorkout('w-no-bw-1', '2026-09-01', '2026-09-01T10:00:00Z', 10, 6, 2),
+      mkChinWorkout('w-no-bw-2', '2026-09-08', '2026-09-08T10:00:00Z', 15, 6, 2),
+    ];
+    const weightedNoBwEx = weightedNoBwWorkouts[1].exercises[0];
+    const addedOnlyInsight = buildExerciseInsight(weightedNoBwEx, weightedNoBwWorkouts, 'Normal', 0, 12, fmtKg44, []);
+    const addedOnlyChart = seriesMod44.buildExerciseProgressChart({
+      exercise: { id: 'ex-chinup', name: 'Hammer-Grip Chin-Up', equipment: 'weighted_bodyweight', isWeightedCalisthenic: true },
+      workouts: weightedNoBwWorkouts,
+      bodyweightKg: 0,
+      biometrics: [],
+      fmt: pFmt44,
+    });
+    const addedOnlyPbs = ovMod44.buildPersonalBests(weightedNoBwWorkouts, 0, []);
+    const askChinNoBw = await processAssistantMessage({
+      userMessage: 'what is my chin up 1rm',
+      profile: profile44,
+      activeWorkout: weightedNoBwWorkouts[1],
+      workouts: weightedNoBwWorkouts,
+      biometrics: [],
+      exerciseCatalog: SEED_EXERCISES,
+      readinessState: 'Normal',
+      bodyweightEmaKg: 80,
+    });
+    assert(
+      addedOnlyInsight.metric === 'added_kg' &&
+        addedOnlyInsight.history[1].value === 15 &&
+        !/estimated max/i.test(addedOnlyInsight.summary) &&
+        addedOnlyChart.points[1].value === 15 &&
+        addedOnlyPbs[0].e1rmKg === 0 &&
+        /log your bodyweight/i.test(askChinNoBw.message.text),
+      'Weighted calisthenics never invent an 80 kg bodyweight E1RM when no weigh-in exists'
+    );
+
+    // 3. Weighted chin-ups with logged bodyweight compute total-mass E1RM using date-matched historical EMA & label (bodyweight + added weight).
+    const bioWeightShift: BiometricLog[] = [
+      { date: '2026-09-01', bodyweightKg: 90, hrvRmssd: 60, restingHr: 54, sleepHours: 7.5, steps: 0, activeZoneMinutes: 0 },
+      { date: '2026-09-15', bodyweightKg: 80, hrvRmssd: 60, restingHr: 54, sleepHours: 7.5, steps: 0, activeZoneMinutes: 0 },
+      { date: '2026-09-16', bodyweightKg: 80, hrvRmssd: 60, restingHr: 54, sleepHours: 7.5, steps: 0, activeZoneMinutes: 0 },
+      { date: '2026-09-17', bodyweightKg: 80, hrvRmssd: 60, restingHr: 54, sleepHours: 7.5, steps: 0, activeZoneMinutes: 0 },
+      { date: '2026-09-18', bodyweightKg: 80, hrvRmssd: 60, restingHr: 54, sleepHours: 7.5, steps: 0, activeZoneMinutes: 0 },
+    ];
+    const emaSameDay = emaMod44.calculateEmaSeries(bioSame807);
+    const bwLookupShift = emaMod44.buildBodyweightEmaLookup(bioWeightShift);
+    const weightedHistWorkouts = [
+      mkChinWorkout('w-wshift-1', '2026-09-01', '2026-09-01T10:00:00Z', 10, 6, 2),
+      mkChinWorkout('w-wshift-2', '2026-09-18', '2026-09-18T10:00:00Z', 30, 6, 2),
+    ];
+    const weightedInsight = buildExerciseInsight(
+      weightedHistWorkouts[1].exercises[0],
+      weightedHistWorkouts,
+      'Normal',
+      bwLookupShift('2026-09-18'),
+      12,
+      fmtKg44,
+      bioWeightShift
+    );
+    const pullCharts = seriesMod44.buildStrengthCharts({
+      workouts: weightedHistWorkouts,
+      profile: profile44,
+      bodyweightKg: bwLookupShift('2026-09-18'),
+      biometrics: bioWeightShift,
+      fmt: pFmt44,
+    });
+    const pullChart = pullCharts.find((c) => c.id === 'strength-Vertical Pull');
+    const weightedChart = seriesMod44.buildExerciseProgressChart({
+      exercise: { id: 'ex-chinup', name: 'Hammer-Grip Chin-Up', equipment: 'weighted_bodyweight', isWeightedCalisthenic: true },
+      workouts: weightedHistWorkouts,
+      bodyweightKg: bwLookupShift('2026-09-18'),
+      biometrics: bioWeightShift,
+      fmt: pFmt44,
+    });
+    const earlyStd = stdMod44.buildMovementStandards({
+      workouts: weightedHistWorkouts,
+      biometrics: bioWeightShift,
+      bodyweightKg: bwLookupShift('2026-09-18'),
+      gender: 'male',
+      age: 30,
+    });
+    const vPullStd = earlyStd.levels.find((l) => l.pillar === 'Vertical Pull');
+    // Sept 1 BW EMA = 90; 90 + 10 = 100 kg total @ 6 reps, 2 RIR -> 100 * (1 + 8/30) = 126.7 kg
+    const expectedSept1E1rm = Math.round((90 + 10) * (1 + 8 / 30) * 10) / 10;
+    const trendShift = trendMod44.strengthIndexSeries(weightedHistWorkouts, bwLookupShift('2026-09-18'), bioWeightShift);
+    const askChinWeighted = await processAssistantMessage({
+      userMessage: 'what is my chin up 1rm',
+      profile: profile44,
+      activeWorkout: weightedHistWorkouts[1],
+      workouts: weightedHistWorkouts,
+      biometrics: bioWeightShift,
+      exerciseCatalog: SEED_EXERCISES,
+      readinessState: 'Normal',
+      bodyweightEmaKg: bwLookupShift('2026-09-18'),
+    });
+    assert(emaSameDay.length === 1 && emaSameDay[0].weight === 80.7, 'Same-day weigh-ins deduplicate in EMA series');
+    assert(Math.abs(bwLookupShift('2026-09-01') - 90) < 0.05, 'Bodyweight EMA lookup uses historical date weigh-in');
+    assert(
+      Math.abs(weightedInsight.history[0].e1rmKg - expectedSept1E1rm) <= 0.1 &&
+        weightedInsight.includesBodyweight === true &&
+        weightedInsight.summary.includes('(bodyweight + added weight)'),
+      `Exercise insight uses Sept 1 BW EMA (${weightedInsight.history[0]?.e1rmKg} vs ${expectedSept1E1rm}) and clarifies bodyweight + added weight`
+    );
+    assert(
+      pullChart?.points[0]?.value === expectedSept1E1rm &&
+        Boolean(pullChart?.summary.includes('bodyweight + added weight')) &&
+        weightedChart.points[0]?.value === expectedSept1E1rm &&
+        weightedChart.summary.includes('bodyweight + added weight'),
+      `Strength & exercise progress charts match Sept 1 e1RM (${pullChart?.points[0]?.value}, ${weightedChart.points[0]?.value}) and clarify bodyweight + added weight`
+    );
+    assert(
+      trendShift.length === 2 && Boolean(vPullStd?.firstLevel) && askChinWeighted.message.text.includes('bodyweight + added weight'),
+      `Strength index, early standards (${vPullStd?.firstLevel}), and coach (${askChinWeighted.message.text.slice(0, 80)}) clarify bodyweight + added weight`
+    );
+
+    // 4. TrendChart gridline labels align with data bounds (max - f * (max - min)) and weekly-sets uses <= 3 RIR parity.
+    const trendChartSrc = fs44.readFileSync(path44.resolve(process.cwd(), 'src/components/common/TrendChart.tsx'), 'utf-8');
+    const rir4Workouts: WorkoutSession[] = [
+      {
+        id: 'w-rir4',
+        date: '2026-09-14',
+        name: 'Push',
+        splitDay: 'Push',
+        readinessState: 'Normal',
+        readinessZScore: 0,
+        completed: true,
+        completedAt: '2026-09-14T10:00:00Z',
+        exercises: [
+          {
+            id: 'e-bp-1',
+            exerciseId: 'ex-bench-press',
+            name: 'Barbell Bench Press',
+            pillar: 'Horizontal Push',
+            equipment: 'barbell',
+            minReps: 6,
+            maxReps: 10,
+            sets: [
+              { id: 's-hard', setNumber: 1, targetReps: 8, targetWeightKg: 80, targetRir: 2, actualReps: 8, actualWeightKg: 80, actualRir: 2, completed: true },
+              { id: 's-easy', setNumber: 2, targetReps: 8, targetWeightKg: 80, targetRir: 4, actualReps: 8, actualWeightKg: 80, actualRir: 4, completed: true },
+            ],
+          },
+        ],
+      },
+    ];
+    const weeklyVolRir4 = storageMod44.calculateWeeklyMuscleVolume(rir4Workouts, SEED_EXERCISES, undefined, new Date('2026-09-16T12:00:00'));
+    const setsChartsRir4 = seriesMod44.buildStrengthCharts({
+      workouts: rir4Workouts,
+      profile: profile44,
+      bodyweightKg: 80,
+      biometrics: [],
+      fmt: pFmt44,
+    });
+    const weeklySetsChart = setsChartsRir4.find((c) => c.id === 'weekly-sets');
+    assert(
+      trendChartSrc.includes('max - f * (max - min)') &&
+        !trendChartSrc.includes('max - pad - f') &&
+        weeklyVolRir4.Chest === 1 &&
+        weeklySetsChart?.points[0]?.value === 1,
+      `TrendChart gridlines match point scale and weekly-sets counts only hard sets (<= 3 RIR, got chart=${weeklySetsChart?.points[0]?.value}, vol=${weeklyVolRir4.Chest})`
+    );
+  }
+
+  console.log('\nALL 41 ENGINE, GOVERNANCE, DESIGN HEURISTICS, TYPOGRAPHY, WEARABLES, WHOOP STRAIN, GOOGLE AUTH, ONBOARDING CONTEXT, 6-WEEK PROGRAM, TENSOR AI, SESSION REPORT, WORKOUT PAGE, EXERCISE OVERVIEW & RENPHO BLUETOOTH SUITES PASSED SUCCESSFULLY! 🎯');
 })().catch((err) => {
   console.error('Test Suite Failed:', err);
   if (typeof process !== 'undefined' && process.exit) {

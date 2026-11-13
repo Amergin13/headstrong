@@ -114,7 +114,7 @@ export function buildIdentityFacts(input: IdentityMessageInput): IdentityMessage
   const earlier = workouts.filter((w) => w.completed && getWorkoutCompletedAt(w) < firstAt);
   const pbs = personalBestsBySession(runSessions, earlier);
   const totalPbs = [...pbs.values()].reduce((a, b) => a + b, 0);
-  const trend = strengthTrend(runSessions, input.bodyweightKg ?? 80);
+  const trend = strengthTrend(runSessions, input.bodyweightKg ?? 0);
 
   let progressSentence = '';
   if (runSessions.length > 0) {

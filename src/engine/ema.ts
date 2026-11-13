@@ -18,9 +18,13 @@ export function calculateNextEma(todayWeight: number, yesterdayEma: number): num
 export function calculateEmaSeries(
   rawLogs: { date: string; bodyweightKg: number }[]
 ): { date: string; weight: number; ema: number }[] {
-  // Days without a weigh-in (0 = not measured) are skipped, oldest first.
-  const logs = rawLogs
-    .filter((l) => l.bodyweightKg > 0)
+  // Days without a weigh-in (0 = not measured) are skipped; multiple entries on the same date take the latest one logged.
+  const byDate = new Map<string, number>();
+  for (const l of rawLogs) {
+    if (l.bodyweightKg > 0 && l.date) byDate.set(l.date, l.bodyweightKg);
+  }
+  const logs = [...byDate.entries()]
+    .map(([date, bodyweightKg]) => ({ date, bodyweightKg }))
     .sort((a, b) => a.date.localeCompare(b.date));
   if (logs.length === 0) return [];
 
@@ -46,6 +50,40 @@ export function calculateEmaSeries(
   }
 
   return result;
+}
+
+/**
+ * Builds a fast lookup returning the athlete's smoothed 7-day EMA bodyweight on or before `date`
+ * (or their earliest logged EMA if `date` precedes the first weigh-in), falling back only if no weigh-ins exist.
+ */
+export function buildBodyweightEmaLookup(
+  logs: { date: string; bodyweightKg: number }[]
+): (date: string, fallbackKg?: number) => number {
+  const series = calculateEmaSeries(logs);
+  return (date: string, fallbackKg: number = 0) => {
+    if (series.length === 0) return fallbackKg;
+    let best: number | undefined;
+    for (const pt of series) {
+      if (pt.date <= date) best = pt.ema;
+      else break;
+    }
+    return best ?? series[0].ema;
+  };
+}
+
+/** Most recent logged weigh-in by calendar date (tie-broken by latest array position). */
+export function latestBodyweightLog(logs: BiometricLog[]): BiometricLog | undefined {
+  let best: BiometricLog | undefined;
+  for (const log of logs) {
+    if (!(log.bodyweightKg > 0)) continue;
+    if (!best || log.date >= best.date) best = log;
+  }
+  return best;
+}
+
+/** True when at least one real weigh-in (> 0 kg) has been recorded. */
+export function hasMeasuredBodyweight(logs: BiometricLog[]): boolean {
+  return logs.some((l) => l.bodyweightKg > 0);
 }
 
 /**

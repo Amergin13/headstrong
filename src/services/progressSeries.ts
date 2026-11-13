@@ -4,7 +4,7 @@
  * only a chart with no points shows the labelled "Example" shape instead of numbers.
  */
 import { calculateE1RM } from '../engine/e1rm';
-import { calculateEmaSeries } from '../engine/ema';
+import { buildBodyweightEmaLookup, calculateEmaSeries } from '../engine/ema';
 import { getWorkoutCompletedAt } from '../engine/recovery';
 import { isPillarBenchmarkExercise } from '../engine/strengthStandards';
 import { BiometricLog, ExerciseDefinition, GoalPhase, StrengthPillar, UserProfile, WorkoutSession } from '../engine/types';
@@ -54,11 +54,16 @@ function changeSummary(label: string, points: ProgressPoint[], format: (v: numbe
   return `${label} is ${format(last.value)}, ${direction} since ${shortDate(first.date)} across ${points.length} measurements.`;
 }
 
-const measured = (logs: BiometricLog[], pick: (l: BiometricLog) => number | undefined): ProgressPoint[] =>
-  logs
-    .map((l) => ({ date: l.date, value: pick(l) ?? 0 }))
-    .filter((p) => p.value > 0)
+const measured = (logs: BiometricLog[], pick: (l: BiometricLog) => number | undefined): ProgressPoint[] => {
+  const byDate = new Map<string, number>();
+  for (const l of logs) {
+    const v = pick(l) ?? 0;
+    if (v > 0 && l.date) byDate.set(l.date, v);
+  }
+  return [...byDate.entries()]
+    .map(([date, value]) => ({ date, value }))
     .sort((a, b) => a.date.localeCompare(b.date));
+};
 
 /** Healthy weekly rate of weight change for each goal, as % of bodyweight (Helms et al.; Iraki et al., 2019). */
 const GOAL_RATE: Record<GoalPhase, { min: number; max: number; label: string }> = {
@@ -541,31 +546,41 @@ export function buildStrengthCharts(input: {
   workouts: WorkoutSession[];
   profile: UserProfile;
   bodyweightKg: number;
+  biometrics?: BiometricLog[];
   fmt: ProgressFormatters;
 }): ProgressChart[] {
-  const { profile, bodyweightKg, fmt } = input;
+  const { profile, bodyweightKg, biometrics, fmt } = input;
+  const emaLookup = biometrics ? buildBodyweightEmaLookup(biometrics) : undefined;
   const done = input.workouts.filter((w) => w.completed).sort((a, b) => getWorkoutCompletedAt(a) - getWorkoutCompletedAt(b));
   const charts: ProgressChart[] = [];
 
   // Estimated max per movement pattern (best benchmark lift each session).
   for (const { pillar, title } of PILLARS) {
     const byDate = new Map<string, number>();
+    let usedBodyweight = false;
     for (const w of done) {
+      const sessionBw = emaLookup ? emaLookup(w.date, 0) : bodyweightKg;
       for (const ex of w.exercises) {
         if (ex.pillar !== pillar || !isPillarBenchmarkExercise(ex)) continue;
+        const usesBw =
+          ex.equipment === 'bodyweight' || ex.equipment === 'weighted_bodyweight' || Boolean(ex.isWeightedCalisthenic);
+        if (usesBw && sessionBw <= 0) continue;
         for (const s of ex.sets.filter(isWorkingDone)) {
           const e1rm = calculateE1RM(
             s.actualWeightKg ?? s.targetWeightKg,
             s.actualReps ?? 0,
-            s.actualRir ?? 2,
+            s.actualRir ?? s.targetRir ?? 2,
             ex.equipment,
             ex.isRdl,
             ex.isWeightedCalisthenic,
-            bodyweightKg,
+            sessionBw,
             ex.exerciseId,
             ex.pillar
           );
-          if (e1rm > (byDate.get(w.date) ?? 0)) byDate.set(w.date, Math.round(e1rm * 10) / 10);
+          if (e1rm > (byDate.get(w.date) ?? 0)) {
+            byDate.set(w.date, Math.round(e1rm * 10) / 10);
+            if (usesBw) usedBodyweight = true;
+          }
         }
       }
     }
@@ -574,6 +589,7 @@ export function buildStrengthCharts(input: {
     const last = points[points.length - 1];
     const first = points[0];
     const change = first.value > 0 ? Math.round(((last.value - first.value) / first.value) * 1000) / 10 : 0;
+    const maxLabel = usedBodyweight ? 'estimated one-rep max (bodyweight + added weight)' : 'estimated one-rep max';
     charts.push({
       id: `strength-${pillar}`,
       title,
@@ -581,16 +597,16 @@ export function buildStrengthCharts(input: {
       lastUpdated: last.date,
       summary:
         points.length === 1
-          ? `Your estimated one-rep max is ${fmt.weight(last.value)}. This is your starting point.`
-          : `Your estimated one-rep max is ${fmt.weight(last.value)}, ${change >= 0 ? 'up' : 'down'} ${Math.abs(change)}% since ${shortDate(first.date)} across ${points.length} sessions.`,
+          ? `Your ${maxLabel} is ${fmt.weight(last.value)}. This is your starting point.`
+          : `Your ${maxLabel} is ${fmt.weight(last.value)}, ${change >= 0 ? 'up' : 'down'} ${Math.abs(change)}% since ${shortDate(first.date)} across ${points.length} sessions.`,
       format: fmt.weight,
     });
   }
 
-  // Weekly hard sets: the main driver of muscle growth (Schoenfeld et al., 2017).
+  // Weekly hard sets: completed working sets within 3 reps of failure (Schoenfeld et al., 2017; matches countHardSets).
   const weekly = new Map<string, number>();
   for (const w of done) {
-    const sets = w.exercises.reduce((n, ex) => n + ex.sets.filter((s) => isWorkingDone(s) && (s.actualRir ?? s.targetRir ?? 2) <= 4).length, 0);
+    const sets = w.exercises.reduce((n, ex) => n + ex.sets.filter((s) => isWorkingDone(s) && (s.actualRir ?? s.targetRir ?? 2) <= 3).length, 0);
     weekly.set(weekStart(w.date), (weekly.get(weekStart(w.date)) ?? 0) + sets);
   }
   const weeklyPoints = [...weekly.entries()].map(([date, value]) => ({ date, value })).sort((a, b) => a.date.localeCompare(b.date));
@@ -631,9 +647,11 @@ export function buildExerciseProgressChart(input: {
   exercise: Pick<ExerciseDefinition, 'id' | 'name' | 'equipment' | 'isRdl' | 'isWeightedCalisthenic'>;
   workouts: WorkoutSession[];
   bodyweightKg: number;
+  biometrics?: BiometricLog[];
   fmt: ProgressFormatters;
 }): ProgressChart {
-  const { exercise, workouts, bodyweightKg, fmt } = input;
+  const { exercise, workouts, bodyweightKg, biometrics, fmt } = input;
+  const emaLookup = biometrics ? buildBodyweightEmaLookup(biometrics) : undefined;
   const done = workouts.filter((w) => w.completed).sort((a, b) => getWorkoutCompletedAt(a) - getWorkoutCompletedAt(b));
   const timedEntry = done
     .flatMap((w) => w.exercises)
@@ -666,21 +684,25 @@ export function buildExerciseProgressChart(input: {
     };
   }
 
-  let hasAnyLoad = Boolean(exercise.isWeightedCalisthenic);
+  const isCalisthenic =
+    exercise.equipment === 'bodyweight' ||
+    exercise.equipment === 'weighted_bodyweight' ||
+    Boolean(exercise.isWeightedCalisthenic);
+  let hasExternalLoad = false;
   const matchingEntries: { date: string; ex: WorkoutSession['exercises'][number] }[] = [];
   for (const w of done) {
     for (const ex of w.exercises) {
       if (ex.exerciseId !== exercise.id) continue;
       const sets = ex.sets.filter(isWorkingDone);
       if (sets.length === 0) continue;
-      if (sets.some((s) => (s.actualWeightKg ?? s.targetWeightKg ?? 0) > 0) || ex.isWeightedCalisthenic) {
-        hasAnyLoad = true;
+      if (sets.some((s) => (s.actualWeightKg ?? s.targetWeightKg ?? 0) > 0)) {
+        hasExternalLoad = true;
       }
       matchingEntries.push({ date: w.date, ex });
     }
   }
 
-  if (!hasAnyLoad && exercise.equipment === 'bodyweight') {
+  if (isCalisthenic && !hasExternalLoad) {
     const byDate = new Map<string, number>();
     for (const { date, ex } of matchingEntries) {
       for (const s of ex.sets.filter(isWorkingDone)) {
@@ -707,17 +729,47 @@ export function buildExerciseProgressChart(input: {
     };
   }
 
+  // Calisthenic exercises with added external load but no logged bodyweight yet: chart added weight rather than fabricating an 80 kg bodyweight.
+  const hasRealBw = emaLookup ? matchingEntries.some(({ date }) => emaLookup(date, 0) > 0) : bodyweightKg > 0;
+  if (isCalisthenic && !hasRealBw) {
+    const byDate = new Map<string, number>();
+    for (const { date, ex } of matchingEntries) {
+      for (const s of ex.sets.filter(isWorkingDone)) {
+        const added = s.actualWeightKg ?? s.targetWeightKg ?? 0;
+        if (added > (byDate.get(date) ?? 0)) byDate.set(date, Math.round(added * 10) / 10);
+      }
+    }
+    const points = [...byDate.entries()].map(([date, value]) => ({ date, value })).sort((a, b) => a.date.localeCompare(b.date));
+    const last = points[points.length - 1];
+    const first = points[0];
+    const delta = last && first ? Math.round((last.value - first.value) * 10) / 10 : 0;
+    return {
+      id: exercise.id,
+      title: exercise.name,
+      points,
+      lastUpdated: last?.date,
+      summary:
+        points.length === 0
+          ? `Log ${exercise.name} in a workout to track your progress over time.`
+          : points.length === 1
+          ? `Best added weight is ${fmt.weight(last.value)}. Log your bodyweight to see total estimated one-rep max.`
+          : `Best added weight is ${fmt.weight(last.value)}, ${delta >= 0 ? 'up' : 'down'} ${(fmt.weightPrecise ?? fmt.weight)(Math.abs(delta))} since ${shortDate(first.date)}. Log your bodyweight to see total estimated one-rep max.`,
+      format: fmt.weight,
+    };
+  }
+
   const byDate = new Map<string, number>();
   for (const { date, ex } of matchingEntries) {
+    const sessionBw = emaLookup ? emaLookup(date, 0) : bodyweightKg;
     for (const s of ex.sets.filter(isWorkingDone)) {
       const e1rm = calculateE1RM(
         s.actualWeightKg ?? s.targetWeightKg,
         s.actualReps ?? 0,
-        s.actualRir ?? 2,
+        s.actualRir ?? s.targetRir ?? 2,
         ex.equipment,
         ex.isRdl,
         ex.isWeightedCalisthenic,
-        bodyweightKg,
+        sessionBw,
         ex.exerciseId,
         ex.pillar
       );
@@ -728,6 +780,7 @@ export function buildExerciseProgressChart(input: {
   const last = points[points.length - 1];
   const first = points[0];
   const delta = last && first ? Math.round((last.value - first.value) * 10) / 10 : 0;
+  const maxLabel = isCalisthenic ? 'Estimated one-rep max (bodyweight + added weight)' : 'Estimated one-rep max';
   return {
     id: exercise.id,
     title: exercise.name,
@@ -737,8 +790,8 @@ export function buildExerciseProgressChart(input: {
       points.length === 0
         ? `Log ${exercise.name} in a workout to track your estimated one-rep max over time.`
         : points.length === 1
-        ? `Estimated one-rep max is ${fmt.weight(last.value)}. This is your starting point.`
-        : `Estimated one-rep max is ${fmt.weight(last.value)}, ${delta >= 0 ? 'up' : 'down'} ${(fmt.weightPrecise ?? fmt.weight)(Math.abs(delta))} since ${shortDate(first.date)} across ${points.length} sessions.`,
+        ? `${maxLabel} is ${fmt.weight(last.value)}. This is your starting point.`
+        : `${maxLabel} is ${fmt.weight(last.value)}, ${delta >= 0 ? 'up' : 'down'} ${(fmt.weightPrecise ?? fmt.weight)(Math.abs(delta))} since ${shortDate(first.date)} across ${points.length} sessions.`,
     format: fmt.weight,
   };
 }

@@ -6,9 +6,10 @@
  */
 import { runReadAloudQaGate } from '../engine/contentStrategy';
 import { calculateE1RM } from '../engine/e1rm';
+import { buildBodyweightEmaLookup } from '../engine/ema';
 import { getWorkoutCompletedAt } from '../engine/recovery';
 import { calculateSessionTonnage } from '../engine/wci';
-import { WorkoutSession, WorkoutSet } from '../engine/types';
+import { BiometricLog, WorkoutSession, WorkoutSet } from '../engine/types';
 import { AthleteGoal, CHOSEN_GOAL_ID, WEEKLY_GOAL_ID, activeGoals, repsAt } from './athleteGoals';
 import { promptOnDeviceModel } from './onDeviceModel';
 import { mislabelledFigure, markPromptRejected, spelledNumberNotInFacts, wasPromptRejected } from './factChecks';
@@ -35,6 +36,8 @@ export interface PersonalBest {
   date: string;
   /** Best estimated one-rep max on this exercise; 0 for bodyweight-only work without a logged weight. */
   e1rmKg: number;
+  /** True when `e1rmKg` includes bodyweight (weighted calisthenics). */
+  includesBodyweight?: boolean;
   sessions: number;
 }
 
@@ -42,14 +45,23 @@ export interface PersonalBest {
  * Each exercise's personal best: its heaviest logged working set (most reps at that weight), or the
  * most reps in a set for bodyweight-only work. Timed work (planks, carries, conditioning) has none.
  */
-export function buildPersonalBests(workouts: WorkoutSession[], bodyweightKg?: number): PersonalBest[] {
+export function buildPersonalBests(
+  workouts: WorkoutSession[],
+  bodyweightKg?: number,
+  biometrics?: BiometricLog[]
+): PersonalBest[] {
   const bests = new Map<string, PersonalBest>();
   const ordered = workouts.filter((w) => w.completed).sort((a, b) => getWorkoutCompletedAt(a) - getWorkoutCompletedAt(b));
+  const emaLookup = biometrics ? buildBodyweightEmaLookup(biometrics) : undefined;
+  const fallbackBw = bodyweightKg ?? 0;
   for (const w of ordered) {
+    const sessionBw = emaLookup ? emaLookup(w.date, fallbackBw) : fallbackBw;
     for (const ex of w.exercises) {
       if (ex.durationSeconds || ex.durationMinutesRange) continue;
       const sets = ex.sets.filter(done);
       if (!sets.length) continue;
+      const isCalisthenic =
+        ex.equipment === 'bodyweight' || ex.equipment === 'weighted_bodyweight' || Boolean(ex.isWeightedCalisthenic);
       const entry: PersonalBest = bests.get(ex.exerciseId) ?? {
         exerciseId: ex.exerciseId,
         exerciseName: ex.name,
@@ -58,6 +70,7 @@ export function buildPersonalBests(workouts: WorkoutSession[], bodyweightKg?: nu
         isBodyweight: true,
         date: w.date,
         e1rmKg: 0,
+        ...(isCalisthenic ? { includesBodyweight: true } : {}),
         sessions: 0,
       };
       entry.sessions += 1;
@@ -70,10 +83,20 @@ export function buildPersonalBests(workouts: WorkoutSession[], bodyweightKg?: nu
           entry.reps = reps;
           entry.date = (w.completedAt || w.date).slice(0, 10);
         }
-        // A bodyweight move needs a logged bodyweight before it can be compared as a weight.
-        if (kg > 0 || (bodyweightKg ?? 0) > 0) {
-          const e = calculateE1RM(kg, reps, s.actualRir ?? s.targetRir ?? 2, ex.equipment, ex.isRdl, ex.isWeightedCalisthenic, bodyweightKg ?? 80, ex.exerciseId, ex.pillar);
-          if (kg > 0 && e > entry.e1rmKg) entry.e1rmKg = e;
+        // A calisthenic move needs both added load (so bodyweight-only stays reps) and a real logged bodyweight before calculating total-mass E1RM.
+        if (kg > 0 && (!isCalisthenic || sessionBw > 0)) {
+          const e = calculateE1RM(
+            kg,
+            reps,
+            s.actualRir ?? s.targetRir ?? 2,
+            ex.equipment,
+            ex.isRdl,
+            ex.isWeightedCalisthenic,
+            sessionBw,
+            ex.exerciseId,
+            ex.pillar
+          );
+          if (e > entry.e1rmKg) entry.e1rmKg = e;
         }
       }
       entry.isBodyweight = entry.weightKg <= 0;

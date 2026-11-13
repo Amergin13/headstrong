@@ -43,7 +43,7 @@ import { GoalSettingsScreen } from './GoalSettingsScreen';
 import { ProgressWidgetsScreen } from './ProgressWidgetsScreen';
 import { parseProgressWidgetId, resolveProgressWidgets, toggleProgressWidget } from '../../services/progressWidgets';
 import { alignStrengthAndWeight, strengthIndexSeries } from '../../services/strengthTrend';
-import { calculateEmaSeries } from '../../engine/ema';
+import { calculateEmaSeries, hasMeasuredBodyweight, latestBodyweightLog } from '../../engine/ema';
 import { triggerHaptic } from '../../utils/haptics';
 import '../../services/deviceModels';
 import { useUnits } from '../../utils/unitsContext';
@@ -141,8 +141,8 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
   const [logModalMode, setLogModalMode] = useState<LogModalMode>('weight');
   const [logModalSite, setLogModalSite] = useState<BodyMeasurementSite>('waist');
   const units = useUnits();
-  const latestWeight = [...biometrics].reverse().find((b) => b.bodyweightKg > 0)?.bodyweightKg || 0;
-  const hasBodyweight = latestWeight > 0;
+  const latestWeighIn = latestBodyweightLog(biometrics);
+  const hasBodyweight = hasMeasuredBodyweight(biometrics);
   const activeWidgets = useMemo(() => resolveProgressWidgets(profile.progressWidgets), [profile.progressWidgets]);
   const hasWidget = (id: ProgressWidgetId) => activeWidgets.includes(id);
 
@@ -165,8 +165,8 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
     [units]
   );
   const strengthCharts = useMemo(
-    () => buildStrengthCharts({ workouts, profile, bodyweightKg: hasBodyweight ? bodyweightEmaKg : 80, fmt }),
-    [workouts, profile, bodyweightEmaKg, hasBodyweight, fmt]
+    () => buildStrengthCharts({ workouts, profile, bodyweightKg: hasBodyweight ? bodyweightEmaKg : 0, biometrics, fmt }),
+    [workouts, profile, bodyweightEmaKg, hasBodyweight, biometrics, fmt]
   );
   const movementStandards = useMemo(
     () =>
@@ -190,7 +190,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
       exerciseCatalog,
       biometrics,
       knowledgeGraph,
-      bodyweightKg: hasBodyweight ? bodyweightEmaKg : 80,
+      bodyweightKg: hasBodyweight ? bodyweightEmaKg : 0,
       formatLength: fmt.length,
     });
   }, [workouts, exerciseCatalog, biometrics, knowledgeGraph, hasBodyweight, bodyweightEmaKg, fmt]);
@@ -214,11 +214,14 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
   const openGoal = openGoalId ? knowledgeGraph.goals.find((g) => g.id === openGoalId) : undefined;
   // Strength and bodyweight on one scale (both start at 100), for the chosen goal's chart.
   const { strength: strengthIndex, weight: weightIndex } = useMemo(
-    () => alignStrengthAndWeight(strengthIndexSeries(workouts, hasBodyweight ? bodyweightEmaKg : 80), calculateEmaSeries(biometrics)),
+    () => alignStrengthAndWeight(strengthIndexSeries(workouts, hasBodyweight ? bodyweightEmaKg : 0, biometrics), calculateEmaSeries(biometrics)),
     [workouts, biometrics, hasBodyweight, bodyweightEmaKg]
   );
   const goalsSummary = useMemo(() => buildGoalsSummary(knowledgeGraph.goals, (kg) => units.formatPrecise(kg)), [knowledgeGraph, units]);
-  const personalBests = useMemo(() => buildPersonalBests(workouts, hasBodyweight ? bodyweightEmaKg : undefined), [workouts, hasBodyweight, bodyweightEmaKg]);
+  const personalBests = useMemo(
+    () => buildPersonalBests(workouts, hasBodyweight ? bodyweightEmaKg : 0, biometrics),
+    [workouts, hasBodyweight, bodyweightEmaKg, biometrics]
+  );
   const trophies = useMemo(() => trophyCase(personalBests), [personalBests]);
   const lifetime = useMemo(() => buildTrainingTotals(workouts), [workouts]);
   const recent = useMemo(() => buildTrainingTotals(workouts, RECENT_DAYS), [workouts]);
@@ -230,7 +233,6 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
   const latestStepsEntry = stepsChart.points[stepsChart.points.length - 1];
   const stepsGoal = profile.goalSettings?.customGoals?.find((g) => g.metric === 'steps');
   const tapeHighlights = useMemo(() => measurementHighlights(compositionCharts), [compositionCharts]);
-  const latestWeighIn = [...biometrics].reverse().find((b) => b.bodyweightKg > 0);
   const bestValue = (b: (typeof personalBests)[number]) =>
     b.isBodyweight ? { value: `${b.reps}`, unit: 'reps' } : { value: units.format(b.weightKg, false), unit: `${units.unit} × ${b.reps}` };
   const whole = (kg: number) => Math.round(units.toDisplay(kg)).toLocaleString();
@@ -332,7 +334,9 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
                         </p>
                         <p className="wk-caption" style={{ marginTop: fig(8) }}>
                           {shortDate(b.date)}
-                          {b.e1rmKg > 0 ? ` • estimated max ${units.formatPrecise(b.e1rmKg)}` : ''}
+                          {b.e1rmKg > 0
+                            ? ` • estimated max ${units.formatPrecise(b.e1rmKg)}${b.includesBodyweight ? ' (bodyweight + added weight)' : ''}`
+                            : ''}
                         </p>
                       </div>
                       <p className="font-bold text-white tabular-numbers shrink-0 text-right" style={{ fontSize: `max(12px, ${fig(40)})`, lineHeight: 1 }}>
@@ -879,7 +883,8 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
             const chart = buildExerciseProgressChart({
               exercise: exDef,
               workouts,
-              bodyweightKg: hasBodyweight ? bodyweightEmaKg : 80,
+              bodyweightKg: hasBodyweight ? bodyweightEmaKg : 0,
+              biometrics,
               fmt,
             });
             return <ProgressChartCard key={wid} chart={chart} />;
@@ -947,7 +952,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
 
       {showLogModal && (
         <WeightLogModal
-          currentWeight={latestWeight}
+          currentWeight={latestWeighIn?.bodyweightKg ?? 0}
           currentEma={bodyweightEmaKg}
           biometrics={biometrics}
           initialMode={logModalMode}

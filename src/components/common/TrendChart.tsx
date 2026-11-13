@@ -92,10 +92,22 @@ export const TrendChart: React.FC<TrendChartProps> = ({ points, secondary, forma
   const path = (pts: { x: number; y: number }[]) => pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
   const secondaryPts =
     !example && secondary && secondary.length > 1
-      ? secondary.filter((p) => parseLocalDate(p.date).getTime() >= t0).map((p, i) => ({ x: xOf(p, i), y: y(p.value) }))
+      ? byIndex
+        ? secondary.map((p, i) => ({
+            x: PAD_X + (i / Math.max(1, secondary.length - 1)) * (W - PAD_X * 2),
+            y: y(p.value),
+          }))
+        : secondary
+            .filter((p) => {
+              const t = parseLocalDate(p.date).getTime();
+              return t >= t0 && t <= t1;
+            })
+            .map((p, i) => ({ x: xOf(p, i), y: y(p.value) }))
       : [];
   const last = main[main.length - 1];
-  const grid = [0.25, 0.5, 0.75].map((f) => ({ y: PAD_Y + f * (H - PAD_Y * 2), value: max - pad - f * (max - min - pad * 2) }));
+  // Gridlines sit at y = PAD_Y + f * (H - PAD_Y * 2), which inverts y(v) at v = max - f * (max - min)
+  // (where min and max already include `pad`).
+  const grid = [0.25, 0.5, 0.75].map((f) => ({ y: PAD_Y + f * (H - PAD_Y * 2), value: max - f * (max - min) }));
   const muted: React.CSSProperties = { fontSize: `max(12px, ${fig(24)})`, color: 'rgba(255,255,255,0.5)', lineHeight: 1 };
 
   return (

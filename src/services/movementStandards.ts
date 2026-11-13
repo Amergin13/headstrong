@@ -7,8 +7,9 @@ import {
 } from '../engine/strengthStandards';
 import { kilgoreAgeGroup } from '../engine/kilgoreStandards';
 import { calculateBestPillarDetails, isTestedBest } from './storage';
-import { localDateString } from '../utils/date';
+import { localDateString, parseLocalDate } from '../utils/date';
 import { isUnilateralExercise } from '../engine/e1rm';
+import { buildBodyweightEmaLookup } from '../engine/ema';
 
 /**
  * Movement standards: each movement's level (Kilgore / Poliquin, see strengthStandards.ts), how it
@@ -96,15 +97,6 @@ export interface MovementStandardsReport {
   sideDifferences: SideDifference[];
 }
 
-/** The bodyweight on or before a date (the latest logged), else the fallback. */
-function bodyweightOn(biometrics: BiometricLog[], date: string, fallback: number): number {
-  let bw = 0;
-  for (const b of biometrics) {
-    if (b.bodyweightKg > 0 && b.date <= date) bw = b.bodyweightKg;
-  }
-  return bw || fallback;
-}
-
 export const SYMMETRY_FLAG_PCT = 90;
 
 export { isUnilateralExercise };
@@ -119,7 +111,9 @@ export function buildMovementStandards(input: {
   age?: number;
 }): MovementStandardsReport {
   const { workouts, biometrics, bodyweightKg, gender, age } = input;
-  const best = calculateBestPillarDetails(workouts, bodyweightKg);
+  const bwLookup = buildBodyweightEmaLookup(biometrics);
+  const bwOnDate = (date: string) => bwLookup(date, bodyweightKg);
+  const best = calculateBestPillarDetails(workouts, bodyweightKg, { bodyweightOnDate: bwOnDate });
   const sexLabel = gender === 'female' ? 'women' : 'men';
   const tableLabel = `${sexLabel}, ${kilgoreAgeGroup(age).replace('-', '–')}`;
 
@@ -155,15 +149,15 @@ export function buildMovementStandards(input: {
       .filter(Boolean)
       .sort();
     if (dated.length) {
-      const firstDay = dated[0].slice(0, 10);
-      const weekLater = new Date(new Date(firstDay).getTime() + 7 * 86400000).toISOString();
-      const early = calculateBestPillarDetails(workouts, bodyweightKg, { before: weekLater })[pillar];
+      const firstDay = dated[0].includes('T') ? localDateString(new Date(dated[0])) : dated[0].slice(0, 10);
+      const weekLaterDate = localDateString(new Date(parseLocalDate(firstDay).getTime() + 7 * 86400000));
+      const bwThen = bwOnDate(firstDay);
+      const early = calculateBestPillarDetails(workouts, bwThen, { before: weekLaterDate, bodyweightOnDate: bwOnDate })[pillar];
       if (early.e1rmKg > 0) {
-        const bwThen = bodyweightOn(biometrics, firstDay, bodyweightKg);
         const then = evaluateStrengthStandard(pillar, early.e1rmKg, bwThen, gender, age);
         if (levelStep(then.tier, then.subDivision) !== step) {
           level.firstLevel = `${then.tier} ${then.subDivision}`;
-          level.firstLoggedOn = localDateString(new Date(dated[0]));
+          level.firstLoggedOn = firstDay;
         }
       }
     }

@@ -29,6 +29,7 @@
  */
 import { ActivityLog, activeDayDates } from '../engine/activeDays';
 import { calculateE1RM } from '../engine/e1rm';
+import { buildBodyweightEmaLookup } from '../engine/ema';
 import { evaluateStrengthStandard, standardsAge } from '../engine/strengthStandards';
 import { resolveActivePlan } from '../engine/trainingPlans';
 import { BiometricLog, CustomGoal, ExerciseSession, GoalPhase, StrengthPillar, UserProfile, WorkoutSession, WorkoutSet } from '../engine/types';
@@ -325,15 +326,17 @@ interface BestSet {
 }
 
 /** The set behind a movement's best estimated max (the same sets and formula as the strength levels). */
-function bestSetFor(workouts: WorkoutSession[], exerciseId: string | undefined, bodyweightKg: number): BestSet | null {
+function bestSetFor(workouts: WorkoutSession[], exerciseId: string | undefined, bodyweightKg: number, biometrics?: BiometricLog[]): BestSet | null {
   if (!exerciseId) return null;
+  const emaLookup = biometrics ? buildBodyweightEmaLookup(biometrics) : undefined;
   let best: BestSet | null = null;
   for (const w of workouts) {
     if (!w.completed) continue;
+    const sessionBw = emaLookup ? emaLookup(w.date, bodyweightKg) : bodyweightKg;
     for (const ex of w.exercises) {
       if (ex.exerciseId !== exerciseId) continue;
       for (const s of ex.sets.filter(isDone)) {
-        const e = calculateE1RM(weightOf(s), s.actualReps ?? 0, s.actualRir ?? 2, ex.equipment, ex.isRdl, ex.isWeightedCalisthenic, bodyweightKg, ex.exerciseId, ex.pillar);
+        const e = calculateE1RM(weightOf(s), s.actualReps ?? 0, s.actualRir ?? s.targetRir ?? 2, ex.equipment, ex.isRdl, ex.isWeightedCalisthenic, sessionBw, ex.exerciseId, ex.pillar);
         if (!best || e > best.e1rmKg) best = { exercise: ex, set: s, e1rmKg: e };
       }
     }
@@ -345,7 +348,7 @@ function bestSetFor(workouts: WorkoutSession[], exerciseId: string | undefined, 
 function repsToReach(best: BestSet, targetE1rmKg: number, bodyweightKg: number): number | null {
   const { exercise: ex, set } = best;
   for (let r = set.actualReps ?? 0; r <= MAX_REP_TARGET; r++) {
-    const e = calculateE1RM(weightOf(set), r, set.actualRir ?? 2, ex.equipment, ex.isRdl, ex.isWeightedCalisthenic, bodyweightKg, ex.exerciseId, ex.pillar);
+    const e = calculateE1RM(weightOf(set), r, set.actualRir ?? set.targetRir ?? 2, ex.equipment, ex.isRdl, ex.isWeightedCalisthenic, bodyweightKg, ex.exerciseId, ex.pillar);
     if (e >= targetE1rmKg) return r;
   }
   return null;
@@ -356,8 +359,9 @@ function strengthLevelGoals(input: AthleteGoalsInput): AthleteGoal[] {
   const bodyweightKg = input.bodyweightKg ?? 0;
   if (!hasWeighIn || bodyweightKg <= 0) return [];
   const age = standardsAge(input.profile);
+  const emaLookup = buildBodyweightEmaLookup(input.biometrics);
   const report = buildMovementStandards({ workouts: input.workouts, biometrics: input.biometrics, bodyweightKg, gender: input.profile.gender, age });
-  const bests = calculateBestPillarDetails(input.workouts, bodyweightKg);
+  const bests = calculateBestPillarDetails(input.workouts, bodyweightKg, { bodyweightOnDate: (d) => emaLookup(d, bodyweightKg) });
   const goals: AthleteGoal[] = [];
   for (const level of report.levels) {
     if (!level.logged || level.source === 'none' || !level.next || level.step === undefined) continue;
@@ -449,7 +453,7 @@ function chosenGoal(input: AthleteGoalsInput): AthleteGoal {
   const building = phase === 'Lean Bulk';
   const losing = phase === 'Cut / Recomp';
   const hasWeighIn = input.biometrics.some((b) => (b.bodyweightKg || 0) > 0);
-  const trend = strengthTrend(input.workouts, hasWeighIn && input.bodyweightKg ? input.bodyweightKg : 80);
+  const trend = strengthTrend(input.workouts, hasWeighIn && input.bodyweightKg ? input.bodyweightKg : 0, input.biometrics);
 
   // 1. Strength.
   const strongEnough = building ? trend.improved * 2 >= trend.repeated : trend.heldOrImproved * 5 >= trend.repeated * 4;

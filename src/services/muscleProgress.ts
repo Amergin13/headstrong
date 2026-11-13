@@ -14,6 +14,7 @@
  *    athlete has logged them.
  */
 import { calculateE1RM } from '../engine/e1rm';
+import { buildBodyweightEmaLookup } from '../engine/ema';
 import { AthleteKnowledgeGraph } from '../engine/knowledgeGraph';
 import { MUSCLE_FRIENDLY_NAMES, getWorkoutCompletedAt } from '../engine/recovery';
 import { BiometricLog, ExerciseDefinition, MuscleGroup, WorkoutSession, WorkoutSet } from '../engine/types';
@@ -147,6 +148,8 @@ export function buildMuscleProgress(input: {
   const formatLength = input.formatLength ?? ((cm: number) => `${cm} cm`);
   const done = input.workouts.filter((w) => w.completed).sort((a, b) => getWorkoutCompletedAt(a) - getWorkoutCompletedAt(b));
   const catalog = new Map(input.exerciseCatalog.map((e) => [e.id, e]));
+  const bwLookup = buildBodyweightEmaLookup(input.biometrics);
+  const bwForDate = (date: string) => (input.biometrics.length > 0 ? bwLookup(date, 0) : input.bodyweightKg);
 
   // 7-day windows ending today, matching the weekly count used everywhere else.
   const windows = Array.from({ length: weeks }, (_, i) => {
@@ -183,9 +186,13 @@ export function buildMuscleProgress(input: {
       const best = new Map<string, number>();
       let lastDate: string | undefined;
       for (const w of inWindow) {
+        const sessionBw = bwForDate(w.date);
         for (const ex of w.exercises) {
           if (weightOf(ex.exerciseId) === 0 || ex.durationSeconds || ex.durationMinutesRange) continue;
-          const e = bestE1rm(ex, input.bodyweightKg);
+          const usesBw =
+            ex.equipment === 'bodyweight' || ex.equipment === 'weighted_bodyweight' || Boolean(ex.isWeightedCalisthenic);
+          if (usesBw && sessionBw <= 0) continue;
+          const e = bestE1rm(ex, sessionBw);
           if (e <= 0) continue;
           best.set(ex.exerciseId, Math.max(best.get(ex.exerciseId) ?? 0, e));
           lastDate = w.date;

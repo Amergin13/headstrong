@@ -139,16 +139,32 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
           </div>
           {!(exercise.durationSeconds || exercise.durationMinutesRange) && (
             <TrendChart
-              points={history.map((h) => ({ date: localDateString(new Date(h.at)), value: h.e1rmKg }))}
-              format={(kg) => units.formatPrecise(kg)}
+              points={history.map((h) => ({ date: localDateString(new Date(h.at)), value: h.value ?? h.e1rmKg }))}
+              format={(v) => (insight.metric === 'reps' ? `${Math.round(v)} reps` : units.formatPrecise(v))}
               height={240}
-              label={
-                history.length >= 2
-                  ? `Estimated one-rep max over your last ${history.length} sessions: ${units.formatPrecise(history[0].e1rmKg)} to ${units.formatPrecise(history[history.length - 1].e1rmKg)}`
-                  : history.length === 1
-                  ? `Starting point: estimated one-rep max ${units.formatPrecise(history[0].e1rmKg)}. The trend line starts after your next session.`
-                  : 'Example chart. Your estimated one-rep max for this exercise appears here after your first session.'
-              }
+              label={(() => {
+                const fmtVal = (v: number) =>
+                  insight.metric === 'reps' ? `${Math.round(v)} reps` : units.formatPrecise(v);
+                const metricName =
+                  insight.metric === 'reps'
+                    ? 'best set'
+                    : insight.metric === 'added_kg'
+                    ? 'top added weight'
+                    : insight.includesBodyweight
+                    ? 'estimated one-rep max (bodyweight + added weight)'
+                    : 'estimated one-rep max';
+                const firstVal = history[0] ? fmtVal(history[0].value ?? history[0].e1rmKg) : '';
+                const lastVal = history[history.length - 1]
+                  ? fmtVal(history[history.length - 1].value ?? history[history.length - 1].e1rmKg)
+                  : '';
+                if (history.length >= 2) {
+                  return `${metricName.charAt(0).toUpperCase() + metricName.slice(1)} over your last ${history.length} sessions: ${firstVal} to ${lastVal}`;
+                }
+                if (history.length === 1) {
+                  return `Starting point: ${metricName} ${firstVal}. The trend line starts after your next session.`;
+                }
+                return `Example chart. Your ${metricName} for this exercise appears here after your first session.`;
+              })()}
             />
           )}
         </div>

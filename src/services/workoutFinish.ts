@@ -127,6 +127,7 @@ export function buildWorkoutFinish(input: WorkoutFinishInput): WorkoutFinish | n
     exerciseCatalog: input.exerciseCatalog,
     knowledgeGraph,
     bodyweightKg,
+    biometrics: input.biometrics,
     gender: input.profile.gender,
     age: standardsAge(input.profile),
     now,
@@ -188,7 +189,7 @@ export function buildWorkoutFinish(input: WorkoutFinishInput): WorkoutFinish | n
     .filter((t) => t.gainKg >= 0.1)
     .sort((x, y) => y.gainKg - x.gainKg)[0];
   const trendSentence = climbing
-    ? `${climbing.exerciseName} estimated max is now ${input.formatWeight(climbing.latestE1rmKg)}, up +${input.formatWeight(climbing.gainKg)} across ${climbing.sessions} sessions.`
+    ? `${climbing.exerciseName} estimated max${climbing.includesBodyweight ? ' (bodyweight + added weight)' : ''} is now ${input.formatWeight(climbing.latestE1rmKg)}, up +${input.formatWeight(climbing.gainKg)} across ${climbing.sessions} sessions.`
     : '';
   if (trendSentence) facts.push(trendSentence);
   if (firstTimeExercises.length > 0 && !allNew) {
@@ -376,6 +377,7 @@ export function buildCompletedExerciseSummaries(input: {
   /** Saved workouts including the finished one. */
   workouts: WorkoutSession[];
   bodyweightKg?: number;
+  biometrics?: BiometricLog[];
   formatWeight: (kg: number) => string;
 }): CompletedExerciseSummary[] {
   const { finished, formatWeight } = input;
@@ -387,7 +389,7 @@ export function buildCompletedExerciseSummaries(input: {
     const sets = ex.sets.filter(isDone);
     if (!sets.length) return;
     const timed = Boolean(ex.durationSeconds || ex.durationMinutesRange);
-    const insight = buildExerciseInsight(ex, input.workouts, 'Normal', input.bodyweightKg ?? 80, 12, formatWeight);
+    const insight = buildExerciseInsight(ex, input.workouts, 'Normal', input.bodyweightKg ?? 0, 12, formatWeight, input.biometrics);
     const history = insight.history;
     const weight = (st: (typeof sets)[number]) => st.actualWeightKg ?? st.targetWeightKg ?? 0;
     const top = sets.reduce((a, b) => (weight(b) > weight(a) || (weight(b) === weight(a) && (b.actualReps ?? 0) > (a.actualReps ?? 0)) ? b : a));
@@ -400,7 +402,8 @@ export function buildCompletedExerciseSummaries(input: {
     } else if (history.length <= 1) {
       line2 = `Your starting point is ${topSet}; the next session has something to beat.`;
     } else {
-      const change = Math.round((history[history.length - 1].e1rmKg - history[history.length - 2].e1rmKg) * 10) / 10;
+      const val = (h: ExerciseInsight['history'][number]) => h.value ?? h.e1rmKg;
+      const change = Math.round((val(history[history.length - 1]) - val(history[history.length - 2])) * 10) / 10;
       // The heaviest working set the last time this exercise was done.
       const previous = input.workouts
         .filter((w) => w.completed && w.id !== finished.id)
@@ -409,20 +412,50 @@ export function buildCompletedExerciseSummaries(input: {
         .filter((e): e is NonNullable<typeof e> => Boolean(e))
         .pop();
       const previousTop = previous ? Math.max(...previous.sets.filter(isDone).map(weight)) : 0;
-      if (isPersonalBest) {
-        line2 =
-          change > 0
-            ? `Today set a new best at ${topSet}, adding +${formatWeight(change)} to your estimated max since last session.`
-            : `Today set a new best at ${topSet}.`;
-      } else if (previousTop > 0 && weight(top) > previousTop + 0.01) {
-        // A heavier weight starts again at the bottom of the rep range: that is the plan working.
-        line2 = `Today moved up to ${formatWeight(weight(top))} for ${top.actualReps} reps; the reps build back up from here.`;
-      } else if (change > 0) {
-        line2 = `Today added +${formatWeight(change)} to your estimated max since last session, with a top set of ${topSet}.`;
-      } else if (change < 0) {
-        line2 = `Today's top set was ${topSet}, under last session; your next targets are set from what you logged.`;
+      if (insight.metric === 'reps') {
+        const repWord = Math.abs(change) === 1 ? 'rep' : 'reps';
+        if (isPersonalBest) {
+          line2 =
+            change > 0
+              ? `Today set a new best at ${topSet}, adding +${change} ${repWord} since last session.`
+              : `Today set a new best at ${topSet}.`;
+        } else if (change > 0) {
+          line2 = `Today added +${change} ${repWord} since last session, with a top set of ${topSet}.`;
+        } else if (change < 0) {
+          line2 = `Today's top set was ${topSet}, under last session; your next targets are set from what you logged.`;
+        } else {
+          line2 = `Today matched last session with a top set of ${topSet}, building capacity for your next rep increase.`;
+        }
+      } else if (insight.metric === 'added_kg') {
+        if (isPersonalBest) {
+          line2 =
+            change > 0
+              ? `Today set a new best at ${topSet}, adding +${formatWeight(change)} to your top added weight since last session.`
+              : `Today set a new best at ${topSet}.`;
+        } else if (change > 0) {
+          line2 = `Today added +${formatWeight(change)} to your top added weight since last session, with a top set of ${topSet}.`;
+        } else if (change < 0) {
+          line2 = `Today's top set was ${topSet}, under last session; your next targets are set from what you logged.`;
+        } else {
+          line2 = `Today matched last session with a top set of ${topSet}, holding the load your next increase builds on.`;
+        }
       } else {
-        line2 = `Today matched last session with a top set of ${topSet}, holding the load your next increase builds on.`;
+        const bwTag = insight.includesBodyweight ? ' (bodyweight + added weight)' : '';
+        if (isPersonalBest) {
+          line2 =
+            change > 0
+              ? `Today set a new best at ${topSet}, adding +${formatWeight(change)} to your estimated max${bwTag} since last session.`
+              : `Today set a new best at ${topSet}.`;
+        } else if (previousTop > 0 && weight(top) > previousTop + 0.01) {
+          // A heavier weight starts again at the bottom of the rep range: that is the plan working.
+          line2 = `Today moved up to ${formatWeight(weight(top))} for ${top.actualReps} reps; the reps build back up from here.`;
+        } else if (change > 0) {
+          line2 = `Today added +${formatWeight(change)} to your estimated max${bwTag} since last session, with a top set of ${topSet}.`;
+        } else if (change < 0) {
+          line2 = `Today's top set was ${topSet}, under last session; your next targets are set from what you logged.`;
+        } else {
+          line2 = `Today matched last session with a top set of ${topSet}, holding the load your next increase builds on.`;
+        }
       }
     }
     summaries.push({

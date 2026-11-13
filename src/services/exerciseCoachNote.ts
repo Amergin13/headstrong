@@ -102,28 +102,74 @@ export function buildExerciseNoteFacts(input: ExerciseNoteInput): ExerciseNoteFa
   } else if (!lastSession || insight.history.length === 0) {
     facts.push('This is the first time you have logged this exercise.');
     line1 = `First time on ${exercise.name}—today sets your starting point.`;
+  } else if (insight.metric === 'reps') {
+    const val = (h: (typeof insight.history)[number]) => h.value ?? h.e1rmKg;
+    if (insight.history.length === 1) {
+      const startReps = val(insight.history[0]);
+      facts.push(`Baseline bodyweight best set established at ${startReps} per set from your first session.`);
+      line1 = `Baseline bodyweight strength established at ${startReps} per set from your first session.`;
+    } else {
+      const first = val(insight.history[0]);
+      const last = val(insight.history[insight.history.length - 1]);
+      const delta = last - first;
+      const n = insight.history.length;
+      if (delta > 0) {
+        facts.push(`Best set on this bodyweight exercise has risen by +${delta} across ${n} sessions (from ${first} to ${last} per set).`);
+        line1 = `Bodyweight strength on this lift is rising, up +${delta} per set across ${n} sessions to a best of ${last}.`;
+      } else if (delta < 0) {
+        facts.push(`Best set on this bodyweight exercise shifted -${Math.abs(delta)} across ${n} sessions (from ${first} to ${last} per set).`);
+        line1 = `Best set on this bodyweight lift shifted -${Math.abs(delta)} across ${n} sessions and currently stands at ${last}.`;
+      } else {
+        facts.push(`Best set on this bodyweight exercise has held steady at ${last} per set across ${n} sessions.`);
+        line1 = `Bodyweight strength on this lift has held steady at ${last} per set across ${n} sessions.`;
+      }
+    }
+  } else if (insight.metric === 'added_kg') {
+    const val = (h: (typeof insight.history)[number]) => h.value ?? h.e1rmKg;
+    if (insight.history.length === 1) {
+      const startAdded = load(val(insight.history[0]));
+      facts.push(`Baseline added weight established at ${startAdded} from your first session.`);
+      line1 = `Baseline added weight established at ${startAdded} from your first session.`;
+    } else {
+      const first = round1(val(insight.history[0]));
+      const last = round1(val(insight.history[insight.history.length - 1]));
+      const delta = round1(last - first);
+      const n = insight.history.length;
+      if (delta > 0) {
+        facts.push(`Added weight on this exercise has risen by +${load(delta)} across ${n} sessions (from ${load(first)} to ${load(last)}).`);
+        line1 = `Added weight on this lift is rising, up +${load(delta)} across ${n} sessions to ${load(last)}.`;
+      } else if (delta < 0) {
+        facts.push(`Added weight on this exercise shifted -${load(Math.abs(delta))} across ${n} sessions (from ${load(first)} to ${load(last)}).`);
+        line1 = `Added weight on this lift shifted -${load(Math.abs(delta))} across ${n} sessions and sits at ${load(last)}.`;
+      } else {
+        facts.push(`Added weight on this exercise has held steady at ${load(last)} across ${n} sessions.`);
+        line1 = `Added weight on this lift has held steady at ${load(last)} across ${n} sessions.`;
+      }
+    }
   } else if (insight.history.length === 1) {
     const startE1rm = load(insight.history[0].e1rmKg);
-    facts.push(`Baseline estimated 1RM established at ${startE1rm} from your first session.`);
-    line1 = `Baseline strength established at a ${startE1rm} estimated max from your first session.`;
+    const bwQualifier = insight.includesBodyweight ? ' (bodyweight + added weight)' : '';
+    facts.push(`Baseline estimated 1RM${bwQualifier} established at ${startE1rm} from your first session.`);
+    line1 = `Baseline strength${bwQualifier} established at a ${startE1rm} estimated max from your first session.`;
   } else {
     const first = round1(insight.history[0].e1rmKg);
     const last = round1(insight.history[insight.history.length - 1].e1rmKg);
     const delta = round1(last - first);
     const n = insight.history.length;
+    const bwQualifier = insight.includesBodyweight ? ' (bodyweight + added weight)' : '';
     if (delta > 0) {
       facts.push(
-        `Estimated 1RM on this exercise has risen by +${load(delta)} across ${n} sessions (from ${load(first)} to ${load(last)}).`
+        `Estimated 1RM${bwQualifier} on this exercise has risen by +${load(delta)} across ${n} sessions (from ${load(first)} to ${load(last)}).`
       );
-      line1 = `Strength on this lift is rising, up +${load(delta)} across ${n} sessions to a ${load(last)} estimated max.`;
+      line1 = `Strength on this lift${bwQualifier} is rising, up +${load(delta)} across ${n} sessions to a ${load(last)} estimated max.`;
     } else if (delta < 0) {
       facts.push(
-        `Estimated 1RM on this exercise has shifted by -${load(Math.abs(delta))} across ${n} sessions (from ${load(first)} to ${load(last)}).`
+        `Estimated 1RM${bwQualifier} on this exercise has shifted by -${load(Math.abs(delta))} across ${n} sessions (from ${load(first)} to ${load(last)}).`
       );
-      line1 = `Estimated max on this lift shifted -${load(Math.abs(delta))} across ${n} sessions and currently stands at ${load(last)}.`;
+      line1 = `Estimated max${bwQualifier} on this lift shifted -${load(Math.abs(delta))} across ${n} sessions and currently stands at ${load(last)}.`;
     } else {
-      facts.push(`Estimated 1RM on this exercise has held steady at ${load(last)} across ${n} sessions.`);
-      line1 = `Strength on this lift has held steady at a ${load(last)} estimated max across ${n} sessions.`;
+      facts.push(`Estimated 1RM${bwQualifier} on this exercise has held steady at ${load(last)} across ${n} sessions.`);
+      line1 = `Strength on this lift${bwQualifier} has held steady at a ${load(last)} estimated max across ${n} sessions.`;
     }
   }
 
@@ -153,7 +199,15 @@ export function buildExerciseNoteFacts(input: ExerciseNoteInput): ExerciseNoteFa
     const prevSets = lastSession.sets.filter(done);
     const prevTop = prevSets.reduce((m, s) => Math.max(m, weightOf(s)), 0);
     const prevReps = prevSets.reduce((m, s) => Math.max(m, s.actualReps ?? 0), 0);
-    if (planned.targetWeightKg > prevTop + 0.01) {
+    if (insight.metric === 'reps') {
+      if (planned.targetReps > prevReps) {
+        facts.push(`Today expands volume accumulation with additional bodyweight output${musclePhrase}.`);
+        line2 = `Today expands volume accumulation with additional bodyweight output${musclePhrase || ' for hypertrophy'}${jointClause}.`;
+      } else {
+        facts.push(`Today consolidates volume accumulation at your bodyweight load${musclePhrase}.`);
+        line2 = `Today consolidates volume accumulation at your bodyweight load to deepen hypertrophy${musclePhrase}${jointClause}.`;
+      }
+    } else if (planned.targetWeightKg > prevTop + 0.01) {
       facts.push(`Today is heavier than last time: progressive mechanical tension stimulus${musclePhrase}.`);
       line2 = `Today increases the weight to drive progressive mechanical tension${musclePhrase}${jointClause || (musclePhrase ? '' : ' for hypertrophy')}.`;
     } else if (planned.targetWeightKg < prevTop - 0.01) {

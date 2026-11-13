@@ -4,12 +4,14 @@
  * athlete's knowledge graph; anything not measured is left out rather than estimated.
  */
 import { calculateE1RM } from '../engine/e1rm';
+import { buildBodyweightEmaLookup } from '../engine/ema';
 import { AthleteKnowledgeGraph } from '../engine/knowledgeGraph';
 import { getProgramWorkoutNumber } from '../engine/muscleBuildingProgram';
 import { getSessionPlanShape } from '../engine/trainingPlans';
 import { getDaysUntilReady, getWorkoutCompletedAt } from '../engine/recovery';
 import { evaluateStrengthStandard, isPillarBenchmarkExercise } from '../engine/strengthStandards';
 import {
+  BiometricLog,
   ExerciseDefinition,
   ExerciseSession,
   Gender,
@@ -58,6 +60,7 @@ export interface LiftTrend {
   firstE1rmKg: number;
   latestE1rmKg: number;
   changePct: number;
+  includesBodyweight?: boolean;
 }
 
 export interface SessionProgressReport {
@@ -145,6 +148,8 @@ export function buildSessionProgressReport(input: {
   knowledgeGraph: AthleteKnowledgeGraph;
   /** Smoothed bodyweight; omit when the athlete has never logged a weight. */
   bodyweightKg?: number;
+  /** Biometrics history so older sessions use their date-matched EMA bodyweight. */
+  biometrics?: BiometricLog[];
   gender?: Gender;
   /** For age-group strength standards (Kilgore). */
   age?: number;
@@ -157,7 +162,11 @@ export function buildSessionProgressReport(input: {
   const session = completed[completed.length - 1];
   if (!session) return null;
   const earlier = completed.slice(0, -1);
-  const bw = input.bodyweightKg && input.bodyweightKg > 0 ? input.bodyweightKg : 80;
+  const hasMeasuredBw = Boolean(input.bodyweightKg && input.bodyweightKg > 0);
+  const emaLookup = input.biometrics ? buildBodyweightEmaLookup(input.biometrics) : undefined;
+  const bwForDate = (date: string) =>
+    emaLookup ? emaLookup(date, hasMeasuredBw ? input.bodyweightKg! : 0) : hasMeasuredBw ? input.bodyweightKg! : 0;
+  const sessionBw = bwForDate(session.date);
   const catalog = new Map(input.exerciseCatalog.map((e) => [e.id, e]));
   const trained = session.exercises.filter((ex) => ex.sets.some(isWorkingSet));
 
@@ -167,38 +176,44 @@ export function buildSessionProgressReport(input: {
   const trends: LiftTrend[] = [];
   for (const ex of trained) {
     const history = earlier
-      .map((w) => w.exercises.find((e) => e.exerciseId === ex.exerciseId && e.sets.some(isWorkingSet)))
-      .filter((e): e is ExerciseSession => Boolean(e));
-    const nowE1rm = bestE1rm(ex, bw);
+      .map((w) => {
+        const found = w.exercises.find((e) => e.exerciseId === ex.exerciseId && e.sets.some(isWorkingSet));
+        return found ? { date: w.date, ex: found } : undefined;
+      })
+      .filter((x): x is { date: string; ex: ExerciseSession } => Boolean(x));
+    const isCalisthenic =
+      ex.equipment === 'bodyweight' || ex.equipment === 'weighted_bodyweight' || Boolean(ex.isWeightedCalisthenic);
+    const nowE1rm = bestE1rm(ex, sessionBw);
     if (history.length === 0) {
       firstTimeExercises.push(ex.name);
       continue;
     }
-    // Bodyweight moves can't be compared as weights without a logged bodyweight.
-    const canEstimate = ex.equipment !== 'bodyweight' || Boolean(input.bodyweightKg && input.bodyweightKg > 0);
+    // Bodyweight moves can't be compared as total-mass weights without a logged bodyweight.
+    const canEstimate = !isCalisthenic || sessionBw > 0;
     if (!canEstimate) continue;
-    const isBodyweight = ex.equipment === 'bodyweight';
-    const prevE1rm = Math.max(...history.map((e) => bestE1rm(e, bw)));
-    const prevHeaviest = Math.max(...history.map(heaviestSet));
+    const prevE1rm = Math.max(...history.map((h) => bestE1rm(h.ex, bwForDate(h.date))));
+    const prevHeaviest = Math.max(...history.map((h) => heaviestSet(h.ex)));
     const nowHeaviest = heaviestSet(ex);
-    const prevReps = Math.max(...history.map(mostReps));
+    const prevReps = Math.max(...history.map((h) => mostReps(h.ex)));
     const nowReps = mostReps(ex);
+    const isBodyweightOnly = isCalisthenic && nowHeaviest === 0 && prevHeaviest === 0;
     if (nowHeaviest > prevHeaviest + 0.01 && nowHeaviest > 0) {
-      records.push({ exerciseName: ex.name, kind: 'heavier', isBodyweight, newKg: nowHeaviest, previousKg: prevHeaviest });
-    } else if (isBodyweight && nowHeaviest === prevHeaviest && nowReps > prevReps) {
-      records.push({ exerciseName: ex.name, kind: 'reps', isBodyweight, newKg: nowReps, previousKg: prevReps });
-    } else if (!isBodyweight && nowE1rm > prevE1rm + 0.25) {
-      records.push({ exerciseName: ex.name, kind: 'stronger', isBodyweight, newKg: nowE1rm, previousKg: prevE1rm });
+      records.push({ exerciseName: ex.name, kind: 'heavier', isBodyweight: isCalisthenic, newKg: nowHeaviest, previousKg: prevHeaviest });
+    } else if (isBodyweightOnly && nowHeaviest === prevHeaviest && nowReps > prevReps) {
+      records.push({ exerciseName: ex.name, kind: 'reps', isBodyweight: true, newKg: nowReps, previousKg: prevReps });
+    } else if (!isBodyweightOnly && nowE1rm > prevE1rm + 0.25) {
+      records.push({ exerciseName: ex.name, kind: 'stronger', isBodyweight: isCalisthenic, newKg: nowE1rm, previousKg: prevE1rm });
     }
-    const firstE1rm = bestE1rm(history[0], bw);
-    // Only lifts that actually changed; "0% stronger" is noise.
-    if (firstE1rm > 0 && nowE1rm > 0 && Math.abs(nowE1rm - firstE1rm) / firstE1rm >= 0.005) {
+    const firstE1rm = bestE1rm(history[0].ex, bwForDate(history[0].date));
+    // Skip unloaded bodyweight exercises in E1RM load trends so chin-ups without added weight aren't framed as "107.6 kg max".
+    if (!isBodyweightOnly && firstE1rm > 0 && nowE1rm > 0 && Math.abs(nowE1rm - firstE1rm) / firstE1rm >= 0.005) {
       trends.push({
         exerciseName: ex.name,
         sessions: history.length + 1,
         firstE1rmKg: firstE1rm,
         latestE1rmKg: nowE1rm,
         changePct: Math.round(((nowE1rm - firstE1rm) / firstE1rm) * 1000) / 10,
+        ...(isCalisthenic ? { includesBodyweight: true } : {}),
       });
     }
   }

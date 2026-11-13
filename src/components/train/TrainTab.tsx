@@ -653,7 +653,13 @@ export const TrainTab: React.FC<TrainTabProps> = ({
     if (!finish) return null;
     return {
       finish,
-      exercises: buildCompletedExerciseSummaries({ finished, workouts, bodyweightKg: bodyweightEmaKg, formatWeight: (kg) => units.formatPrecise(kg) }),
+      exercises: buildCompletedExerciseSummaries({
+        finished,
+        workouts,
+        bodyweightKg: hasWeighIn ? bodyweightEmaKg : 0,
+        biometrics,
+        formatWeight: (kg) => units.formatPrecise(kg),
+      }),
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showRecoveryGate, recoveryGate.trainedToday, workouts, biometrics, exerciseCatalog, profile, activities, bodyweightEmaKg, units.unit]);
@@ -732,13 +738,15 @@ export const TrainTab: React.FC<TrainTabProps> = ({
   const programLabel = planWorkoutNumber
     ? `Phase ${planPhase?.phaseNumber ?? 1} (${planPhase?.shortName ?? ''}), week ${planWeek} of 6`
     : `week ${mesoWeek} of 6 (${phaseMeta.name})`;
+  const hasWeighIn = biometrics.some((b) => (b.bodyweightKg || 0) > 0);
+  const measuredBodyweightKg = hasWeighIn ? bodyweightEmaKg : 0;
   const exerciseNotes = useMemo(
     () =>
       activeWorkout.exercises.map((ex) => {
         const def = exMap.get(ex.exerciseId);
         return buildExerciseNoteFacts({
           exercise: ex,
-          insight: buildExerciseInsight(ex, workouts, readiness.state, bodyweightEmaKg, 12, (kg) => units.formatPrecise(kg)),
+          insight: buildExerciseInsight(ex, workouts, readiness.state, measuredBodyweightKg, 12, (kg) => units.formatPrecise(kg), biometrics),
           workouts,
           readinessState: readiness.state,
           knowledgeGraph,
@@ -750,7 +758,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
       }),
     // Facts use planned targets and history only, so ticking sets doesn't rewrite the notes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [activeWorkout.id, activeWorkout.exercises.map((e) => `${e.id}:${e.exerciseId}:${e.sets.length}`).join('|'), workouts, readiness.state, knowledgeGraph, programLabel, units.unit, bodyweightEmaKg]
+    [activeWorkout.id, activeWorkout.exercises.map((e) => `${e.id}:${e.exerciseId}:${e.sets.length}`).join('|'), workouts, readiness.state, knowledgeGraph, programLabel, units.unit, measuredBodyweightKg, biometrics]
   );
   const [generatedNotes, setGeneratedNotes] = useState<Record<string, string>>({});
   const noteKeys = exerciseNotes.map((n) => n.key).join('|');
@@ -1175,7 +1183,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
               onOpenPlateCalc={(kg) => setPlateCalcWeight(kg)}
               muscleLabel={def ? MUSCLE_FRIENDLY_NAMES[def.primaryMuscle] : undefined}
               previousSets={getPreviousWorkingSets(ex.exerciseId, workouts)}
-              insight={buildExerciseInsight(ex, workouts, readiness.state, bodyweightEmaKg, 12, (kg) => units.formatPrecise(kg))}
+              insight={buildExerciseInsight(ex, workouts, readiness.state, measuredBodyweightKg, 12, (kg) => units.formatPrecise(kg), biometrics)}
               note={(() => {
                 const n = exerciseNotes[index];
                 return n ? generatedNotes[n.key] ?? n.fallback : undefined;

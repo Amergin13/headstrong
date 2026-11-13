@@ -3,8 +3,9 @@
  * One function for the Program message, the goals and the Progress page, so they agree.
  */
 import { calculateE1RM } from '../engine/e1rm';
+import { buildBodyweightEmaLookup } from '../engine/ema';
 import { getWorkoutCompletedAt } from '../engine/recovery';
-import { WorkoutSession, WorkoutSet } from '../engine/types';
+import { BiometricLog, WorkoutSession, WorkoutSet } from '../engine/types';
 
 const done = (s: WorkoutSet) => s.completed && !s.isWarmup && s.setType !== 'warmup' && (s.actualReps ?? 0) > 0;
 const weightOf = (s: WorkoutSet) => s.actualWeightKg ?? s.targetWeightKg ?? 0;
@@ -19,11 +20,16 @@ export interface StrengthTrend {
 }
 
 /** Sessions are read oldest first, whatever order they are passed in. */
-export function strengthTrend(sessions: WorkoutSession[], bodyweightKg: number): StrengthTrend {
+export function strengthTrend(sessions: WorkoutSession[], bodyweightKg: number, biometrics?: BiometricLog[]): StrengthTrend {
+  const emaLookup = biometrics ? buildBodyweightEmaLookup(biometrics) : undefined;
   const byExercise = new Map<string, number[]>();
   const ordered = sessions.filter((w) => w.completed).sort((a, b) => getWorkoutCompletedAt(a) - getWorkoutCompletedAt(b));
   for (const w of ordered) {
+    const sessionBw = emaLookup ? emaLookup(w.date, bodyweightKg) : bodyweightKg;
     for (const ex of w.exercises) {
+      const usesBw =
+        ex.equipment === 'bodyweight' || ex.equipment === 'weighted_bodyweight' || Boolean(ex.isWeightedCalisthenic);
+      if (usesBw && sessionBw <= 0) continue;
       const top = ex.sets.filter(done).reduce((m, s) => {
         const e = calculateE1RM(
           weightOf(s),
@@ -32,7 +38,7 @@ export function strengthTrend(sessions: WorkoutSession[], bodyweightKg: number):
           ex.equipment,
           ex.isRdl,
           ex.isWeightedCalisthenic,
-          bodyweightKg,
+          sessionBw,
           ex.exerciseId,
           ex.pillar
         );
@@ -58,7 +64,8 @@ const MAX_INDEX_REPS = 15;
  * moves the index. Comparing each lift only with itself means a swapped exercise doesn't jump it.
  * Weeks start on Monday; `date` is that Monday.
  */
-export function strengthIndexSeries(sessions: WorkoutSession[], bodyweightKg: number): { date: string; value: number }[] {
+export function strengthIndexSeries(sessions: WorkoutSession[], bodyweightKg: number, biometrics?: BiometricLog[]): { date: string; value: number }[] {
+  const emaLookup = biometrics ? buildBodyweightEmaLookup(biometrics) : undefined;
   const mondayOf = (ms: number) => {
     const d = new Date(ms);
     d.setHours(12, 0, 0, 0);
@@ -69,12 +76,16 @@ export function strengthIndexSeries(sessions: WorkoutSession[], bodyweightKg: nu
   const weeks = new Map<string, Map<string, number>>();
   for (const w of sessions) {
     if (!w.completed) continue;
+    const sessionBw = emaLookup ? emaLookup(w.date, bodyweightKg) : bodyweightKg;
     const week = mondayOf(getWorkoutCompletedAt(w));
     for (const ex of w.exercises) {
+      const usesBw =
+        ex.equipment === 'bodyweight' || ex.equipment === 'weighted_bodyweight' || Boolean(ex.isWeightedCalisthenic);
+      if (usesBw && sessionBw <= 0) continue;
       const top = ex.sets
         .filter((s) => done(s) && (s.actualReps ?? 0) <= MAX_INDEX_REPS)
         .reduce(
-          (m, s) => Math.max(m, calculateE1RM(weightOf(s), s.actualReps ?? 0, s.actualRir ?? s.targetRir ?? 2, ex.equipment, ex.isRdl, ex.isWeightedCalisthenic, bodyweightKg, ex.exerciseId, ex.pillar)),
+          (m, s) => Math.max(m, calculateE1RM(weightOf(s), s.actualReps ?? 0, s.actualRir ?? s.targetRir ?? 2, ex.equipment, ex.isRdl, ex.isWeightedCalisthenic, sessionBw, ex.exerciseId, ex.pillar)),
           0
         );
       if (top <= 0) continue;

@@ -476,7 +476,7 @@ export function isTestedBest(pillar: StrengthPillar, best: PillarBest): boolean 
 export function calculateBestPillarDetails(
   workouts: WorkoutSession[],
   bodyweightEmaKg: number,
-  options: { loadedLiftsOnly?: boolean; before?: string } = {}
+  options: { loadedLiftsOnly?: boolean; before?: string; bodyweightOnDate?: (date: string) => number } = {}
 ): Record<StrengthPillar, PillarBest> {
   const best: Record<StrengthPillar, PillarBest> = {
     Squat: { e1rmKg: 0 },
@@ -491,6 +491,7 @@ export function calculateBestPillarDetails(
     if (!w.completed) continue;
     const at = w.completedAt || w.date;
     if (options.before && at && at >= options.before) continue;
+    const sessionBw = options.bodyweightOnDate ? options.bodyweightOnDate(w.date) : bodyweightEmaKg;
     for (const ex of w.exercises) {
       if (!isPillarBenchmarkExercise(ex)) continue;
       // "Big 3" style numbers should come from loaded lifts, not push-ups or chin-ups.
@@ -501,7 +502,7 @@ export function calculateBestPillarDetails(
           continue;
         }
         const weight = s.actualWeightKg ?? s.targetWeightKg ?? 0;
-        const rir = s.actualRir ?? 2;
+        const rir = s.actualRir ?? s.targetRir ?? 2;
         // Same formula and inputs as the Progress tab's strength charts.
         const e1rm = calculateE1RM(
           weight,
@@ -510,7 +511,7 @@ export function calculateBestPillarDetails(
           ex.equipment,
           ex.isRdl,
           ex.isWeightedCalisthenic,
-          bodyweightEmaKg,
+          sessionBw,
           ex.exerciseId,
           ex.pillar
         );

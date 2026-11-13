@@ -193,14 +193,18 @@ const StrengthDetail: React.FC<{ goal: AthleteGoal; others: AthleteGoal[]; onOpe
           </>
         ) : (
           <>
-            <Big value={precise(Math.max(0, m.targetE1rmKg - m.e1rmKg)).split(' ')[0]} unit={`${units.unit} to go on your estimated max`} />
+            <Big
+              value={precise(Math.max(0, m.targetE1rmKg - m.e1rmKg)).split(' ')[0]}
+              unit={`${units.unit} to go on your estimated max`}
+            />
             <p className="wk-body" style={{ marginTop: fig(36) }}>
-              {m.level} needs an estimated max of {precise(m.targetE1rmKg)}; yours is {precise(m.e1rmKg)}. You're {m.currentLevel} now.
+              {m.level} needs an estimated max{goal.pillar === 'Vertical Pull' ? ' (bodyweight + added weight)' : ''} of{' '}
+              {precise(m.targetE1rmKg)}; yours is {precise(m.e1rmKg)}. You're {m.currentLevel} now.
             </p>
           </>
         )}
         <p className="wk-caption" style={{ marginTop: fig(20) }}>
-          Estimated max {precise(m.e1rmKg)} of {precise(m.targetE1rmKg)}
+          Estimated max{goal.pillar === 'Vertical Pull' ? ' (bodyweight + added weight)' : ''} {precise(m.e1rmKg)} of {precise(m.targetE1rmKg)}
         </p>
       </section>
       <Method goal={goal} />
