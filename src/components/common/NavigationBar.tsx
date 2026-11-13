@@ -77,8 +77,8 @@ export const NavigationBar: React.FC<NavigationBarProps> = ({
       aria-label="Primary Bottom Navigation"
       className="fixed bottom-0 left-0 right-0 z-40 pointer-events-none px-3 pt-2"
       style={{
-        paddingBottom: 'max(75px, env(safe-area-inset-bottom))',
-        background: 'linear-gradient(to top, rgba(19, 24, 28, 0.94) 0%, rgba(19, 24, 28, 0.88) 55%, rgba(19, 24, 28, 0) 100%)',
+        paddingBottom: 'calc(20px + env(safe-area-inset-bottom, 0px))',
+        background: 'linear-gradient(to top, rgba(19, 24, 28, 0.94) 0%, rgba(19, 24, 28, 0.72) 55%, rgba(19, 24, 28, 0) 100%)',
       }}
     >
       <div className="max-w-md mx-auto flex items-center gap-2.5 pointer-events-auto">

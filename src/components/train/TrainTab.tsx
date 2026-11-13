@@ -917,7 +917,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
   );
 
   return (
-    <div className="wk -mx-3.5" style={{ paddingLeft: fig(PAGE_GUTTER), paddingRight: fig(PAGE_GUTTER), paddingBottom: 168 }}>
+    <div className="wk -mx-3.5" style={{ paddingLeft: fig(PAGE_GUTTER), paddingRight: fig(PAGE_GUTTER), paddingBottom: 120 }}>
       <PageTopGradient
         markerRef={exercisesTopRef}
         fallbackRef={cardsTopRef}
