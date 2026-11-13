@@ -12,6 +12,8 @@ interface PageTopGradientProps {
   deps?: readonly unknown[];
 }
 
+const MIN_GRADIENT_HEIGHT = 180;
+
 /** Shared top atmospheric background gradient used on Workout, Program, and Progress screens. */
 export const PageTopGradient: React.FC<PageTopGradientProps> = ({
   markerRef,
@@ -28,16 +30,20 @@ export const PageTopGradient: React.FC<PageTopGradientProps> = ({
         setGradientEnd(null);
         return;
       }
-      setGradientEnd(Math.round(marker.getBoundingClientRect().top + window.scrollY));
+      const measured = Math.round(marker.getBoundingClientRect().top + window.scrollY);
+      setGradientEnd(Math.max(MIN_GRADIENT_HEIGHT, measured));
     };
 
     measure();
+    const rafId = typeof requestAnimationFrame !== 'undefined' ? requestAnimationFrame(measure) : 0;
     const targetToObserve = markerRef.current ?? fallbackRef?.current;
     const resizeTarget = observeRef?.current ?? targetToObserve?.parentElement ?? targetToObserve;
     const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(measure) : null;
     if (observer && resizeTarget) observer.observe(resizeTarget);
     window.addEventListener('resize', measure);
+    document.fonts?.ready?.then(measure).catch(() => undefined);
     return () => {
+      if (rafId) cancelAnimationFrame(rafId);
       observer?.disconnect();
       window.removeEventListener('resize', measure);
     };
@@ -45,6 +51,8 @@ export const PageTopGradient: React.FC<PageTopGradientProps> = ({
   }, deps);
 
   if (gradientEnd === null || typeof document === 'undefined') return null;
+
+  const host = document.getElementById('page-top-gradient-host');
 
   return createPortal(
     <div
@@ -56,10 +64,10 @@ export const PageTopGradient: React.FC<PageTopGradientProps> = ({
         right: 0,
         height: gradientEnd,
         background: 'linear-gradient(180deg, #283339 0%, #13181C 100%)',
-        zIndex: -1,
+        zIndex: host ? undefined : -1,
         pointerEvents: 'none',
       }}
     />,
-    document.body
+    host ?? document.body
   );
 };

@@ -886,7 +886,8 @@ export const App: React.FC = () => {
 
   return (
     <UnitsProvider unit={weightUnit}>
-    <div className="wk min-h-screen text-slate-100 flex flex-col font-sans">
+    <div className="wk min-h-screen text-slate-100 flex flex-col font-sans relative">
+      <div id="page-top-gradient-host" className="pointer-events-none" />
       {/* App Header */}
       <Header
         profile={profile}
@@ -896,7 +897,7 @@ export const App: React.FC = () => {
       />
 
       {/* Main Mobile Container */}
-      <main className="flex-1 max-w-md mx-auto w-full px-3.5 pt-3">
+      <main className="flex-1 max-w-md mx-auto w-full px-3.5 pt-3 relative">
         <Suspense fallback={<div className="wk-card wk-body" role="status">Loading…</div>}>
         <ErrorBoundary key={activeTab} area={activeTab === 'train' ? 'Workout' : activeTab === 'analytics' ? 'Progress' : activeTab === 'program' ? 'Program' : 'Treise'}>
         {activeTab === 'train' && (
@@ -1120,6 +1121,7 @@ export const App: React.FC = () => {
           } else {
             setActiveTab(tab);
             setAiCoachOpen(false);
+            window.scrollTo({ top: 0 });
           }
         }}
         isChatOpen={aiCoachOpen}

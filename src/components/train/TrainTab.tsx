@@ -48,7 +48,7 @@ import { buildAthleteKnowledgeGraph, getExerciseBiomechanicalMeta } from '../../
 import { calculateWeeklyMuscleVolume } from '../../services/storage';
 import { CompletedExerciseCard, FinishedWorkoutSummaryCard, NextWorkoutCard } from './FinishedWorkoutCards';
 import { WorkoutPageHeader } from './WorkoutPageHeader';
-import { ProgramProgressCard } from './ProgramProgressCard';
+import { ProgramProgressCard, StickySessionHeader } from './ProgramProgressCard';
 import { RecoveryScoreCard } from './RecoveryScoreCard';
 import { buildWeekStrip } from '../../services/sessionSchedule';
 import { MUSCLE_TO_GRAPH_KEY } from '../../services/sessionReport';
@@ -829,6 +829,26 @@ export const TrainTab: React.FC<TrainTabProps> = ({
   // Page background: #283339 at the top fading to #13181C exactly where the first workout card starts.
   const cardsTopRef = useRef<HTMLDivElement>(null);
   const exercisesTopRef = useRef<HTMLDivElement>(null);
+  const programCardRef = useRef<HTMLDivElement>(null);
+  const [pastProgramCard, setPastProgramCard] = useState(false);
+
+  useEffect(() => {
+    const update = () => {
+      const el = programCardRef.current;
+      if (!el) {
+        setPastProgramCard(false);
+        return;
+      }
+      setPastProgramCard(el.getBoundingClientRect().bottom <= 4);
+    };
+    update();
+    window.addEventListener('scroll', update, { passive: true });
+    window.addEventListener('resize', update);
+    return () => {
+      window.removeEventListener('scroll', update);
+      window.removeEventListener('resize', update);
+    };
+  }, [todayFinished]);
 
   const renderOptionsMenu = (close: () => void) => (
     <div
@@ -904,13 +924,23 @@ export const TrainTab: React.FC<TrainTabProps> = ({
         observeRef={cardsTopRef}
         deps={[showRecoveryGate, sessionReport]}
       />
+      {pastProgramCard && (
+        <StickySessionHeader
+          sessionLabel={programCard.sessionLabel}
+          current={programCard.current}
+          total={programCard.total}
+          onOpen={onOpenProgram}
+        />
+      )}
       <WorkoutPageHeader title={pageTitle} days={stripDays} renderMenu={renderOptionsMenu} />
 
       <div ref={cardsTopRef} className="flex flex-col" style={{ gap: fig(22), marginTop: fig(64) }}>
       {/* After today's session: lead with "complete" and the progress breakdown. */}
       {todayFinished ? (
         <>
-          <ProgramProgressCard {...programCard} onOpen={onOpenProgram} />
+          <div ref={programCardRef}>
+            <ProgramProgressCard {...programCard} onOpen={onOpenProgram} />
+          </div>
           <FinishedWorkoutSummaryCard finish={todayFinished.finish} />
           {todayFinished.exercises.map((ex) => (
             <CompletedExerciseCard key={ex.id} summary={ex} />
@@ -924,7 +954,9 @@ export const TrainTab: React.FC<TrainTabProps> = ({
         </>
       ) : (
         <>
-          <ProgramProgressCard {...programCard} onOpen={onOpenProgram} />
+          <div ref={programCardRef}>
+            <ProgramProgressCard {...programCard} onOpen={onOpenProgram} />
+          </div>
           {!showRecoveryGate && (
             <RecoveryScoreCard
               readiness={readiness}

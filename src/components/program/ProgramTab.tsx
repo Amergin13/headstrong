@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { PageTopGradient } from '../common/PageTopGradient';
 import {
   BiometricLog,
   ExerciseDefinition,
@@ -135,6 +136,7 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
     }
   };
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const programCardsTopRef = useRef<HTMLDivElement>(null);
 
   const activeWearableKey = getActiveWearableProvider(profile);
   const activeWearableMeta = activeWearableKey ? WEARABLE_PROVIDERS[activeWearableKey] : null;
@@ -167,6 +169,9 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
       className="wk -mx-3.5"
       style={{ paddingLeft: fig(38), paddingRight: fig(38), paddingBottom: 168 }}
     >
+      {(!isPlan || showSettings) && (
+        <PageTopGradient markerRef={programCardsTopRef} deps={[isPlan, showSettings]} />
+      )}
       {isPlan && !showSettings && (
         <>
           <ProgramPlanView
@@ -215,7 +220,7 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
       )}
 
       {(!isPlan || showSettings) && (
-      <div className="flex flex-col" style={{ gap: fig(22), marginTop: fig(40) }}>
+      <div ref={programCardsTopRef} className="flex flex-col" style={{ gap: fig(22), marginTop: fig(40) }}>
         {!isPlan && onBackToWorkout && (
           <button
             type="button"

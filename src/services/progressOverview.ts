@@ -250,7 +250,9 @@ export function buildGoalsSummary(goals: AthleteGoal[], formatWeight: (kg: numbe
   const frequency = weekly?.measure.type === 'frequency' ? weekly.measure : undefined;
   if (weekly && frequency) {
     const left = frequency.perWeek - frequency.thisWeek;
-    facts.push(`${weekly.title}: ${frequency.thisWeek} of ${frequency.perWeek} sessions done this week.`);
+    facts.push(
+      `${weekly.title}: ${frequency.thisWeek} of ${frequency.perWeek} sessions done this week${frequency.thisWeek > 0 && left > 0 ? `, ${left} to go` : ''}.`
+    );
     if (frequency.streakWeeks > 0) facts.push(`Weeks in a row at ${frequency.perWeek} sessions: ${frequency.streakWeeks}.`);
     const run = frequency.streakWeeks > 0 ? ` That's ${frequency.streakWeeks} ${frequency.streakWeeks === 1 ? 'week' : 'weeks'} in a row at ${frequency.perWeek}.` : '';
     sentences.push(

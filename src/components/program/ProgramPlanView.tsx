@@ -400,8 +400,9 @@ export const ProgramPlanView: React.FC<ProgramPlanViewProps> = ({
   // The form is unique to the athlete: seeded by when they started the plan.
   const identitySeed = plan.workouts.find((w) => w.session)?.session?.completedAt ?? 'treise';
 
-  // Page background: #283339 at the top fading to #13181C where the plan progress starts (as on the Workout tab).
+  // Page background: #283339 at the top fading to #13181C where the plan progress (first run) or phase cards start.
   const progressRef = useRef<HTMLElement>(null);
+  const phasesTopRef = useRef<HTMLDivElement>(null);
 
   const togglePhase = (phase: number) => {
     triggerHaptic('light');
@@ -433,7 +434,11 @@ export const ProgramPlanView: React.FC<ProgramPlanViewProps> = ({
 
   return (
     <>
-      <PageTopGradient markerRef={progressRef} deps={[isFirstRun]} />
+      <PageTopGradient
+        markerRef={isFirstRun ? progressRef : phasesTopRef}
+        fallbackRef={progressRef}
+        deps={[isFirstRun]}
+      />
       <header style={{ paddingTop: fig(20) }}>
         <h1 className="wk-page-title">{trainingPlan.name}</h1>
       </header>
@@ -488,7 +493,7 @@ export const ProgramPlanView: React.FC<ProgramPlanViewProps> = ({
         </div>
       </section>
 
-      <div className="flex flex-col" style={{ marginTop: fig(75), gap: fig(34) }}>
+      <div ref={phasesTopRef} className="flex flex-col" style={{ marginTop: fig(75), gap: fig(34) }}>
         {trainingPlan.phases.map((phase) => {
           const isOpen = openPhases.includes(phase.phaseNumber);
           const phaseWorkouts = plan.workouts.filter((w) => w.phase === phase.phaseNumber);

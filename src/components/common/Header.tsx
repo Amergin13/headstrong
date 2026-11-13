@@ -14,7 +14,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenAuth,
 }) => {
   return (
-    <header className="sticky top-0 z-30 bg-[#13181C]/95 backdrop-blur-2xl border-b border-white/[0.06] px-4 py-2.5">
+    <header className="relative border-b border-white/[0.06] px-4 py-2.5">
       <div className="max-w-md mx-auto flex items-center justify-between">
         <span
           style={{
