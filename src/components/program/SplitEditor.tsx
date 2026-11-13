@@ -198,7 +198,7 @@ export const SplitEditor: React.FC<SplitEditorProps> = ({
                       fontSize: `max(12px, ${fig(24)})`,
                       letterSpacing: '0.02em',
                       background: isSelected ? 'var(--wk-pill)' : 'transparent',
-                      color: isSelected ? '#fff' : 'var(--wk-muted)',
+                      color: isSelected ? 'var(--color-text-primary)' : 'var(--wk-muted)',
                     }}
                   >
                     Phase {p.phaseNumber} (W{p.weeks[0]}–{p.weeks[1]})
@@ -310,7 +310,7 @@ export const SplitEditor: React.FC<SplitEditorProps> = ({
                         style={{
                           marginTop: fig(28),
                           background: 'var(--wk-accent)',
-                          color: '#13181C',
+                          color: 'var(--color-text-on-accent)',
                         }}
                       >
                         Start Workout #{workout.workoutNumber}
@@ -407,7 +407,7 @@ export const SplitEditor: React.FC<SplitEditorProps> = ({
                   fontSize: `max(12px, ${fig(24)})`,
                   letterSpacing: '0.02em',
                   background: isSelected ? 'var(--wk-pill)' : 'transparent',
-                  color: isSelected ? '#fff' : 'var(--wk-muted)',
+                  color: isSelected ? 'var(--color-text-primary)' : 'var(--wk-muted)',
                 }}
               >
                 {d.label}
@@ -467,7 +467,7 @@ export const SplitEditor: React.FC<SplitEditorProps> = ({
                 onLaunchSplitDay(activeDay);
               }}
               className="wk-button transition-all active:scale-95"
-              style={{ background: 'var(--wk-accent)', color: '#13181C' }}
+              style={{ background: 'var(--wk-accent)', color: 'var(--color-text-on-accent)' }}
             >
               Start {activeDay} Workout
             </button>

@@ -39,7 +39,7 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
           type="button"
           onClick={() => this.setState({ error: null })}
           className="wk-button"
-          style={{ background: 'var(--wk-accent)', color: '#13181C' }}
+          style={{ background: 'var(--wk-accent)', color: 'var(--color-text-on-accent)' }}
         >
           Try again
         </button>

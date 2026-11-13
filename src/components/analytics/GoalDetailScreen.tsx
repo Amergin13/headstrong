@@ -110,7 +110,7 @@ const FrequencyDetail: React.FC<{ goal: AthleteGoal; measure: FrequencyMeasure }
                 style={{
                   height: `${Math.max(w.sessions > 0 ? 6 : 2, (w.sessions / tallest) * 100)}%`,
                   borderRadius: fig(8),
-                  background: w.hit ? 'var(--wk-accent)' : w.current ? '#8FD3FF' : 'var(--wk-pill)',
+                  background: w.hit ? 'var(--wk-accent)' : w.current ? 'var(--color-viz-1)' : 'var(--wk-pill)',
                 }}
               />
             </div>
@@ -164,7 +164,7 @@ const FrequencyDetail: React.FC<{ goal: AthleteGoal; measure: FrequencyMeasure }
                 style={{
                   height: `${Math.max(mo.sessions > 0 ? 6 : 2, (mo.sessions / tallestMonth) * 100)}%`,
                   borderRadius: fig(8),
-                  background: mo.hit ? 'var(--wk-accent)' : mo.current ? '#8FD3FF' : 'var(--wk-pill)',
+                  background: mo.hit ? 'var(--wk-accent)' : mo.current ? 'var(--color-viz-1)' : 'var(--wk-pill)',
                 }}
               />
             </div>
@@ -349,9 +349,9 @@ const BodyDetail: React.FC<{
                 aria-hidden="true"
               >
                 {sign.met === true ? (
-                  <Check style={{ width: fig(30), height: fig(30), color: '#13181C' }} strokeWidth={3} />
+                  <Check style={{ width: fig(30), height: fig(30), color: 'var(--color-text-on-accent)' }} strokeWidth={3} />
                 ) : sign.met === false ? (
-                  <Minus style={{ width: fig(30), height: fig(30), color: '#fff' }} strokeWidth={3} />
+                  <Minus style={{ width: fig(30), height: fig(30), color: 'var(--color-text-primary)' }} strokeWidth={3} />
                 ) : null}
               </span>
               <div className="min-w-0">
@@ -376,10 +376,10 @@ const BodyDetail: React.FC<{
         </p>
         {measure.nextStep && (
           <div className="grid grid-cols-2" style={{ gap: fig(16), marginTop: fig(32) }}>
-            <button type="button" onClick={onLogWeight} className="wk-button" style={{ background: 'var(--wk-raised)', color: '#fff' }}>
+            <button type="button" onClick={onLogWeight} className="wk-button" style={{ background: 'var(--wk-raised)', color: 'var(--color-text-primary)' }}>
               Log weight
             </button>
-            <button type="button" onClick={onLogMeasurements} className="wk-button" style={{ background: 'var(--wk-raised)', color: '#fff' }}>
+            <button type="button" onClick={onLogMeasurements} className="wk-button" style={{ background: 'var(--wk-raised)', color: 'var(--color-text-primary)' }}>
               Log measurements
             </button>
           </div>

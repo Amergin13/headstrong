@@ -92,8 +92,8 @@ export const TempoPacer: React.FC<TempoPacerProps> = ({ tempo }) => {
         className="wk-pill shrink-0 min-h-[44px] gap-[calc(12*var(--f))] transition-colors"
         style={
           running
-            ? { background: 'var(--wk-accent)', color: '#13181C' }
-            : { background: 'var(--wk-pill)', color: '#fff' }
+            ? { background: 'var(--wk-accent)', color: 'var(--color-text-on-accent)' }
+            : { background: 'var(--wk-pill)', color: 'var(--color-text-primary)' }
         }
       >
         {running ? <Square className="w-3.5 h-3.5" aria-hidden="true" /> : <Activity className="w-3.5 h-3.5 stroke-[2]" aria-hidden="true" />}

@@ -100,12 +100,12 @@ export const WhoopStrainCard: React.FC<WhoopStrainCardProps> = ({
             onClick={onRetry}
             aria-label="Refresh Whoop workout strain"
             className="wk-pill wk-tap"
-            style={{ minHeight: 44, background: 'rgba(255,255,255,0.08)', color: '#FFFFFF' }}
+            style={{ minHeight: 44, background: 'var(--color-border-subtle)', color: 'var(--color-text-primary)' }}
           >
             Refresh
           </button>
         ) : hasWorkoutStrain ? (
-          <span className="wk-pill" style={{ background: 'rgba(0,241,159,0.16)', color: 'var(--wk-accent)' }}>
+          <span className="wk-pill" style={{ background: 'var(--color-status-positive-soft)', color: 'var(--wk-accent)' }}>
             Whoop
           </span>
         ) : null}
@@ -161,7 +161,7 @@ export const CompletedExerciseCard: React.FC<{ summary: CompletedExerciseSummary
       <div className="flex items-start justify-between" style={{ gap: fig(20) }}>
         <h3 className="wk-h1 min-w-0">{summary.exerciseName}</h3>
         {summary.isPersonalBest && (
-          <span className="wk-pill shrink-0" style={{ background: 'var(--wk-accent)', color: '#13181C' }}>
+          <span className="wk-pill shrink-0" style={{ background: 'var(--wk-accent)', color: 'var(--color-text-on-accent)' }}>
             Personal best
           </span>
         )}

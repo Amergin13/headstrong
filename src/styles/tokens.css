@@ -1,0 +1,188 @@
+/**
+ * Treise Codified Colour System — Canonical Dark Theme: Whoop Slate
+ *
+ * Architecture:
+ *   Tier 1: Core Primitives (--palette-*)  — raw colour ramp values, never referenced directly in JSX.
+ *   Tier 2: Semantic Tokens (--color-*)     — public design contract for CSS, Tailwind, SVGs, and TS.
+ *
+ * Contrast standard: Every foreground/background text pair on canvas (#13181C), surface (#2C3034),
+ * raised (#3B4044), and control (#474D50) targets WCAG 2.1 AA (>= 4.5:1 normal text, >= 3.0:1 UI).
+ */
+
+:root {
+  /* ------------------------------------------------------------------------
+   * Tier 1: Core Primitives (private)
+   * ------------------------------------------------------------------------ */
+  --palette-slate-950: #13181C;
+  --palette-slate-900: #1E2429;
+  --palette-slate-850: #283339;
+  --palette-slate-800: #2C3034;
+  --palette-slate-750: #3B4044;
+  --palette-slate-700: #474D50;
+  --palette-slate-300: #C9CDD0;
+  --palette-white: #FFFFFF;
+  --palette-black: #000000;
+
+  --palette-mint-400: #00F19F;
+  --palette-mint-300: #7CF7CF;
+  --palette-mint-200: #B8FBE3;
+  --palette-mint-500: #19C98A;
+  --palette-mint-900: #1D352B;
+
+  --palette-amber-400: #F5B94A;
+  --palette-amber-300: #FFC83D;
+
+  --palette-crimson-600: #B91C2E;
+  --palette-crimson-500: #FF3B4E;
+  --palette-crimson-300: #FF8A94;
+  --palette-crimson-200: #FFB3BF;
+  --palette-crimson-900: #5B2A33;
+
+  --palette-cyan-400: #4FC3D9;
+  --palette-cyan-300: #8FD3FF;
+  --palette-teal-500: #3FA7C9;
+
+  --palette-copper-500: #DC8748;
+  --palette-copper-400: #FF9B54;
+  --palette-copper-450: #E47E38;
+  --palette-copper-200: #FFD7B8;
+  --palette-cream-100: #F3EEE3;
+  --palette-cream-50: #FBF7EE;
+
+  --palette-violet-400: #8B7CF6;
+  --palette-violet-300: #B08CFF;
+  --palette-magenta-400: #E04FD0;
+  --palette-magenta-300: #FF8AD8;
+  --palette-peach-300: #FF9E6D;
+  --palette-peach-200: #FFD0A8;
+
+  /* External Wearable & Sport Hardware Primitives */
+  --palette-whoop-high: #16EC06;
+  --palette-whoop-mid: #FFDE00;
+  --palette-whoop-volt: #E2F952;
+  --palette-strava-orange: #FC5200;
+  --palette-fitbit-emerald: #10B981;
+  --palette-health-cyan: #38BDF8;
+
+  /* Olympic / Calibrated Weight Plate Primitives (IPF standard colours) */
+  --palette-plate-blue: #3B82F6;
+  --palette-plate-yellow: #EAB308;
+  --palette-plate-red: #EF4444;
+  --palette-plate-green: #22C55E;
+
+  /* ------------------------------------------------------------------------
+   * Tier 2: Semantic Tokens (Public Design Contract)
+   * ------------------------------------------------------------------------ */
+
+  /* Surfaces */
+  --color-bg-canvas: var(--palette-slate-950);
+  --color-bg-canvas-top: var(--palette-slate-850);
+  --color-bg-surface: var(--palette-slate-800);
+  --color-bg-surface-raised: var(--palette-slate-750);
+  --color-bg-surface-control: var(--palette-slate-700);
+  --color-bg-surface-subtle: var(--palette-slate-900);
+  --color-bg-scrim: rgba(0, 0, 0, 0.45);
+
+  /* RGB Channels (enables Tailwind opacity modifiers e.g. bg-brand-primary/15) */
+  --color-bg-canvas-rgb: 19 24 28;
+  --color-bg-surface-rgb: 44 48 52;
+  --color-bg-surface-raised-rgb: 59 64 68;
+  --color-bg-surface-control-rgb: 71 77 80;
+  --color-bg-surface-subtle-rgb: 30 36 41;
+  --color-accent-primary-rgb: 0 241 159;
+  --color-status-info-rgb: 79 195 217;
+  --color-status-warning-rgb: 245 185 74;
+  --color-status-warning-strong-rgb: 255 200 61;
+  --color-status-danger-rgb: 255 138 148;
+  --color-status-danger-fill-rgb: 255 59 78;
+  --color-phase-hypertrophy-rgb: 139 124 246;
+
+  /* Ink & Typography */
+  --color-text-primary: var(--palette-white);
+  --color-text-secondary: rgba(255, 255, 255, 0.75);
+  --color-text-muted: rgba(255, 255, 255, 0.60);
+  --color-text-subtle: rgba(255, 255, 255, 0.57);
+  --color-text-on-accent: var(--palette-slate-950);
+  --color-text-on-danger: var(--palette-white);
+
+  /* Borders & Hairlines */
+  --color-border-subtle: rgba(255, 255, 255, 0.08);
+  --color-border-strong: rgba(255, 255, 255, 0.18);
+  --color-border-track: rgba(255, 255, 255, 0.22);
+  --color-border-focus: var(--color-accent-primary);
+
+  /* Accent & Interactive Actions */
+  --color-accent-primary: var(--palette-mint-400);
+  --color-accent-primary-soft: rgba(0, 241, 159, 0.14);
+  --color-action-primary-bg: var(--color-accent-primary);
+  --color-action-primary-fg: var(--color-text-on-accent);
+  --color-action-secondary-bg: var(--color-bg-surface-raised);
+  --color-action-secondary-fg: var(--color-text-primary);
+  --color-action-destructive-bg: var(--palette-crimson-600);
+  --color-action-destructive-fg: var(--color-text-on-danger);
+  --color-action-disabled-bg: var(--color-bg-surface-raised);
+  --color-action-disabled-fg: var(--color-text-subtle);
+
+  /* Status & Telemetry Semantics */
+  --color-status-positive: var(--palette-mint-400);
+  --color-status-positive-soft: rgba(0, 241, 159, 0.14);
+  --color-status-warning: var(--palette-amber-400);
+  --color-status-warning-strong: var(--palette-amber-300);
+  --color-status-warning-soft: rgba(255, 200, 61, 0.14);
+  --color-status-danger: var(--palette-crimson-300);
+  --color-status-danger-fill: var(--palette-crimson-500);
+  --color-status-danger-soft: var(--palette-crimson-900);
+  --color-status-danger-fg: var(--palette-crimson-200);
+  --color-status-info: var(--palette-cyan-400);
+  --color-status-info-soft: rgba(79, 195, 217, 0.14);
+  --color-status-neutral: var(--palette-slate-300);
+
+  /* Biometric Recovery Bands (Whoop physiological fidelity inside RecoveryScoreCard) */
+  --color-recovery-high: var(--palette-whoop-high);
+  --color-recovery-mid: var(--palette-whoop-mid);
+  --color-recovery-low: var(--palette-crimson-500);
+
+  /* Treise AI Coach Brand Accent (distinct from status warnings) */
+  --color-coach-border: var(--palette-copper-500);
+  --color-coach-surface: var(--palette-cream-100);
+  --color-coach-surface-bright: var(--palette-cream-50);
+  --color-coach-ink: var(--palette-copper-200);
+  --color-coach-glow: var(--palette-copper-400);
+  --color-coach-sparkle: var(--palette-copper-450);
+
+  /* Data Visualisation Series */
+  --color-viz-1: var(--palette-cyan-300);
+  --color-viz-2: var(--palette-mint-400);
+  --color-viz-3: var(--palette-cyan-400);
+  --color-viz-4: var(--palette-mint-200);
+  --color-viz-5: var(--palette-teal-500);
+  --color-viz-highlight: var(--palette-mint-300);
+  --color-viz-deep: var(--palette-mint-500);
+  --color-viz-target-band-bg: rgba(0, 241, 159, 0.08);
+  --color-viz-target-band-border: rgba(0, 241, 159, 0.35);
+
+  /* Program Phase Accents */
+  --color-phase-hypertrophy: var(--palette-violet-400);
+  --color-phase-hypertrophy-soft: var(--palette-violet-300);
+  --color-phase-strength: var(--palette-magenta-400);
+  --color-phase-strength-soft: var(--palette-magenta-300);
+  --color-phase-peak: var(--palette-peach-300);
+  --color-phase-peak-soft: var(--palette-peach-200);
+
+  /* Workout Set Type Badges */
+  --color-set-warmup: var(--color-status-warning);
+  --color-set-failure-bg: var(--palette-crimson-900);
+  --color-set-failure-fg: var(--palette-crimson-200);
+  --color-set-completed-soft: var(--palette-mint-900);
+
+  /* External Partner & Equipment Tokens */
+  --color-partner-whoop: var(--palette-whoop-volt);
+  --color-partner-strava: var(--palette-strava-orange);
+  --color-partner-fitbit: var(--palette-fitbit-emerald);
+  --color-partner-health-connect: var(--palette-health-cyan);
+
+  --color-plate-blue: var(--palette-plate-blue);
+  --color-plate-yellow: var(--palette-plate-yellow);
+  --color-plate-red: var(--palette-plate-red);
+  --color-plate-green: var(--palette-plate-green);
+}

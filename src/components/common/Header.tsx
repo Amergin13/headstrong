@@ -26,10 +26,10 @@ export const Header: React.FC<HeaderProps> = ({
             fontWeight: 800,
             letterSpacing: '-0.025em',
             lineHeight: 1,
-            color: '#F3EEE3',
+            color: 'var(--color-coach-surface)',
           }}
         >
-          Treise<span style={{ color: '#DC8748' }}>.</span>
+          Treise<span style={{ color: 'var(--color-coach-border)' }}>.</span>
         </span>
 
         {/* Right Status Actions */}
@@ -37,10 +37,10 @@ export const Header: React.FC<HeaderProps> = ({
           {/* Streak Badge */}
           <div
             className="wk-pill gap-1.5"
-            style={{ color: '#FFC83D' }}
+            style={{ color: 'var(--color-status-warning-strong)' }}
             aria-label={`${profile.streakDays} day workout streak`}
           >
-            <Flame className="w-3.5 h-3.5 fill-[#FFC83D] stroke-[2]" />
+            <Flame className="w-3.5 h-3.5 fill-current stroke-[2]" />
             <span className="tabular-numbers">{profile.streakDays}d</span>
           </div>
 
@@ -66,7 +66,7 @@ export const Header: React.FC<HeaderProps> = ({
               )}
               {profile.email && (
                 <span
-                  className="absolute bottom-1 right-1 w-2 h-2 rounded-full ring-2 ring-[#13181C]"
+                  className="absolute bottom-1 right-1 w-2 h-2 rounded-full ring-2 ring-surface-canvas"
                   style={{ background: 'var(--wk-accent)' }}
                 />
               )}

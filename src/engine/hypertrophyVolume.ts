@@ -236,6 +236,8 @@ export const HYPERTROPHY_VOLUME_LANDMARKS: Record<string, MuscleVolumeLandmark> 
   },
 };
 
+export type VolumeSemanticTone = 'positive' | 'info' | 'warning' | 'danger' | 'neutral';
+
 /**
  * Evaluates the current weekly set volume against scientific landmarks for a given muscle
  */
@@ -246,7 +248,7 @@ export function evaluateVolumeStatus(
   status: VolumeStatus;
   landmark: MuscleVolumeLandmark;
   statusLabel: string;
-  statusColor: string;
+  tone: VolumeSemanticTone;
   advice: string;
   percentageOfMavMax: number;
 } {
@@ -274,7 +276,7 @@ export function evaluateVolumeStatus(
       status: 'below_mv',
       landmark,
       statusLabel: 'Needs More Sets',
-      statusColor: 'text-rose-400',
+      tone: 'danger',
       advice: `You have logged ${weeklySets} sets this week. Aim for at least ${landmark.mev} sets to start building muscle.`,
       percentageOfMavMax,
     };
@@ -285,7 +287,7 @@ export function evaluateVolumeStatus(
       status: 'maintenance',
       landmark,
       statusLabel: 'Maintaining',
-      statusColor: 'text-slate-400',
+      tone: 'neutral',
       advice: `Enough to maintain your current size, but add ${landmark.mev - weeklySets} more sets to trigger new growth.`,
       percentageOfMavMax,
     };
@@ -296,7 +298,7 @@ export function evaluateVolumeStatus(
       status: 'effective',
       landmark,
       statusLabel: 'Building',
-      statusColor: 'text-cyan-400',
+      tone: 'info',
       advice: `Making steady progress. Add ${landmark.mavMin - weeklySets} sets to reach the ideal ${landmark.mavMin}–${landmark.mavMax} set growth zone.`,
       percentageOfMavMax,
     };
@@ -307,7 +309,7 @@ export function evaluateVolumeStatus(
       status: 'optimal_mav',
       landmark,
       statusLabel: 'In Target Zone',
-      statusColor: 'text-brand-primary',
+      tone: 'positive',
       advice: `Right in the sweet spot (${landmark.mavMin}–${landmark.mavMax} sets) for maximum growth and healthy recovery.`,
       percentageOfMavMax,
     };
@@ -318,7 +320,7 @@ export function evaluateVolumeStatus(
       status: 'near_mrv',
       landmark,
       statusLabel: 'Near Weekly Limit',
-      statusColor: 'text-amber-400',
+      tone: 'warning',
       advice: `Approaching your weekly recovery limit (${landmark.mrv} sets). Avoid adding extra sets this week.`,
       percentageOfMavMax,
     };
@@ -328,7 +330,7 @@ export function evaluateVolumeStatus(
     status: 'above_mrv',
     landmark,
     statusLabel: 'Over Weekly Limit',
-    statusColor: 'text-rose-400',
+    tone: 'danger',
     advice: `Current volume (${weeklySets} sets) is above your safe recovery limit (${landmark.mrv} sets). Take extra rest so your joints can recover.`,
     percentageOfMavMax,
   };

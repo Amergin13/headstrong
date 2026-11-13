@@ -28,9 +28,9 @@ export const LogActivityModal: React.FC<LogActivityModalProps> = ({ onLog, onClo
     borderRadius: 999,
     fontWeight: 700,
     fontSize: `max(13px, ${fig(28)})`,
-    background: selected ? 'rgba(0,241,159,0.12)' : 'var(--wk-raised)',
+    background: selected ? 'var(--color-accent-primary-soft)' : 'var(--wk-raised)',
     border: `2px solid ${selected ? 'var(--wk-accent)' : 'transparent'}`,
-    color: '#fff',
+    color: 'var(--color-text-primary)',
   });
 
   return createPortal(
@@ -140,7 +140,7 @@ export const LogActivityModal: React.FC<LogActivityModalProps> = ({ onLog, onClo
           style={{
             marginTop: fig(40),
             background: valid ? 'var(--wk-accent)' : 'var(--wk-raised)',
-            color: valid ? '#13181C' : 'var(--wk-muted)',
+            color: valid ? 'var(--color-text-on-accent)' : 'var(--wk-muted)',
           }}
         >
           Save

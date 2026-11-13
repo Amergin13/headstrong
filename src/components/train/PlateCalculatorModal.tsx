@@ -116,7 +116,7 @@ export const PlateCalculatorModal: React.FC<PlateCalculatorModalProps> = ({
                   className="px-[calc(22*var(--f))] py-[calc(12*var(--f))] rounded-[calc(15*var(--f))] text-[length:max(12px,calc(26*var(--f)))] tabular-numbers font-bold transition-all"
                   style={{
                     background: barWeight === b ? 'var(--wk-pill)' : 'transparent',
-                    color: barWeight === b ? '#fff' : 'var(--wk-muted)',
+                    color: barWeight === b ? 'var(--color-text-primary)' : 'var(--wk-muted)',
                   }}
                 >
                   {b} {unit} bar
@@ -165,7 +165,7 @@ export const PlateCalculatorModal: React.FC<PlateCalculatorModalProps> = ({
           )}
 
           {remainderKg > 0 && (
-            <span className="wk-caption mt-[calc(16*var(--f))]" style={{ color: '#FFC83D' }}>
+            <span className="wk-caption mt-[calc(16*var(--f))]" style={{ color: 'var(--color-status-warning-strong)' }}>
               {remainderKg} {unit} can't be made with standard plates.
             </span>
           )}
@@ -204,7 +204,7 @@ export const PlateCalculatorModal: React.FC<PlateCalculatorModalProps> = ({
             onClose();
           }}
           className="wk-button transition-all active:scale-98"
-          style={{ background: 'var(--wk-pill)', color: '#fff' }}
+          style={{ background: 'var(--wk-pill)', color: 'var(--color-text-primary)' }}
         >
           Close Calculator
         </button>

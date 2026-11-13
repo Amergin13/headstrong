@@ -22,7 +22,7 @@ export const BalanceCard: React.FC<{ report: MovementStandardsReport }> = ({ rep
           Balance
         </h2>
         {loggedCount >= 2 && (
-          <span className="wk-pill" style={findings === 0 ? { color: 'var(--wk-accent)' } : { color: '#F5B94A' }}>
+          <span className="wk-pill" style={findings === 0 ? { color: 'var(--wk-accent)' } : { color: 'var(--color-status-warning)' }}>
             {findings === 0 ? 'Balanced' : `${findings} to work on`}
           </span>
         )}

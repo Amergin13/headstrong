@@ -16,7 +16,13 @@ const fig = (px: number) => `calc(${px} * var(--f))`;
 const text = (px: number) => `max(12px, ${fig(px)})`;
 
 /** Process goal, strength level, chosen goal: the same order as the rings. */
-const RING_COLOURS = ['#8FD3FF', '#00F19F', '#3FA7C9', '#B8FBE3', '#4FC3D9'];
+const RING_COLOURS = [
+  'var(--color-viz-1)',
+  'var(--color-viz-2)',
+  'var(--color-viz-5)',
+  'var(--color-viz-4)',
+  'var(--color-viz-3)',
+];
 const TRACK = 'rgba(255,255,255,0.12)';
 
 /** One ring of equal segments. 'unknown' (not measured yet) is drawn as a thin line, not as a miss. */
@@ -71,7 +77,7 @@ const Ring: React.FC<{ ring: GoalRing; colour: string }> = ({ ring, colour }) =>
             segments={ring.inner}
             radius={threeRing ? 35.5 : 33.5}
             width={threeRing ? 3.5 : 3.6}
-            colour="#FFFFFF"
+            colour="var(--color-text-primary)"
             delay={450}
           />
         )}
@@ -89,7 +95,7 @@ const Ring: React.FC<{ ring: GoalRing; colour: string }> = ({ ring, colour }) =>
         className="absolute inset-0 flex items-center justify-center font-bold tabular-numbers"
         style={{
           fontSize: text(ring.value.length > 4 || threeRing ? 40 : ring.inner ? 48 : 56),
-          color: ring.empty ? 'var(--wk-muted)' : '#fff',
+          color: ring.empty ? 'var(--wk-muted)' : 'var(--color-text-primary)',
         }}
       >
         {ring.value}
@@ -235,8 +241,8 @@ export const Sparkline: React.FC<{ points: ProgressPoint[]; label: string }> = (
   return (
     <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={label} style={{ width: fig(300), height: fig(110) }} className="shrink-0">
       <line x1={lastX} x2={lastX} y1={4} y2={H - 4} stroke="rgba(255,255,255,0.35)" strokeWidth={1.5} strokeDasharray="3 5" />
-      <path d={d} fill="none" stroke="#00F19F" strokeOpacity={0.85} strokeWidth={3} strokeLinejoin="round" strokeLinecap="round" />
-      <circle cx={lastX} cy={lastY} r={6} fill="#fff" />
+      <path d={d} fill="none" stroke="var(--color-accent-primary)" strokeOpacity={0.85} strokeWidth={3} strokeLinejoin="round" strokeLinecap="round" />
+      <circle cx={lastX} cy={lastY} r={6} fill="var(--color-text-primary)" />
     </svg>
   );
 };
@@ -277,13 +283,13 @@ export const StandardsRadar: React.FC<{ report: MovementStandardsReport }> = ({ 
         const [px, py] = point(i, radius);
         return <line key={i} x1={centre} y1={centre} x2={px} y2={py} stroke="rgba(255,255,255,0.08)" strokeWidth={1} />;
       })}
-      <polygon points={polygon((i) => (score(rated[i]) / 100) * radius)} fill="rgba(0,241,159,0.2)" stroke="#00F19F" strokeWidth={2} strokeLinejoin="round" />
+      <polygon points={polygon((i) => (score(rated[i]) / 100) * radius)} fill="rgb(var(--color-accent-primary-rgb) / 0.2)" stroke="var(--color-accent-primary)" strokeWidth={2} strokeLinejoin="round" />
       {rated.map((l, i) => {
         const [px, py] = point(i, (score(l) / 100) * radius);
         const [lx, ly] = point(i, radius + 30);
         return (
           <g key={l.pillar}>
-            {l.logged && <circle cx={px} cy={py} r={3.5} fill="#00F19F" />}
+            {l.logged && <circle cx={px} cy={py} r={3.5} fill="var(--color-accent-primary)" />}
             <text x={lx} y={ly} textAnchor="middle" dominantBaseline="middle" fill="rgba(255,255,255,0.6)" style={{ fontSize: 19.5, fontWeight: 600 }}>
               {RADAR_SHORT_NAME[l.pillar] ?? l.name}
             </text>
@@ -305,7 +311,7 @@ export const DetailHeader: React.FC<{ title: string; onBack: () => void }> = ({ 
       }}
       aria-label="Back to Progress"
       className="absolute left-0 flex items-center justify-center"
-      style={{ width: 44, height: 44, marginLeft: -10, color: '#fff' }}
+      style={{ width: 44, height: 44, marginLeft: -10, color: 'var(--color-text-primary)' }}
     >
       <ChevronLeft style={{ width: fig(44), height: fig(44) }} strokeWidth={2} aria-hidden="true" />
     </button>

@@ -209,7 +209,7 @@ export const ExerciseSwapModal: React.FC<ExerciseSwapModalProps> = ({
                 className="wk-segment px-[calc(8*var(--f))] text-center"
                 style={{
                   background: isSelected ? 'var(--wk-pill)' : 'transparent',
-                  color: isSelected ? '#fff' : 'var(--wk-muted)',
+                  color: isSelected ? 'var(--color-text-primary)' : 'var(--wk-muted)',
                 }}
               >
                 <span>{loc.label}</span>

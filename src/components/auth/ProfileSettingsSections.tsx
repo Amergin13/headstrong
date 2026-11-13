@@ -182,7 +182,7 @@ export const ProfileSettingsSections: React.FC<ProfileSettingsSectionsProps> = (
                         borderRadius: fig(14),
                         fontSize: `max(12px, ${fig(22)})`,
                         background: isSelected ? 'var(--wk-pill)' : 'transparent',
-                        color: isSelected ? '#fff' : 'var(--wk-muted)',
+                        color: isSelected ? 'var(--color-text-primary)' : 'var(--wk-muted)',
                       }}
                     >
                       {g}
@@ -246,7 +246,7 @@ export const ProfileSettingsSections: React.FC<ProfileSettingsSectionsProps> = (
                         borderRadius: fig(14),
                         fontSize: `max(12px, ${fig(22)})`,
                         background: isSelected ? 'var(--wk-pill)' : 'transparent',
-                        color: isSelected ? '#fff' : 'var(--wk-muted)',
+                        color: isSelected ? 'var(--color-text-primary)' : 'var(--wk-muted)',
                       }}
                     >
                       {u}
@@ -288,7 +288,7 @@ export const ProfileSettingsSections: React.FC<ProfileSettingsSectionsProps> = (
                         borderRadius: fig(14),
                         fontSize: `max(12px, ${fig(22)})`,
                         background: isSelected ? 'var(--wk-pill)' : 'transparent',
-                        color: isSelected ? '#fff' : 'var(--wk-muted)',
+                        color: isSelected ? 'var(--color-text-primary)' : 'var(--wk-muted)',
                       }}
                     >
                       {opt.label}
@@ -419,7 +419,7 @@ export const ProfileSettingsSections: React.FC<ProfileSettingsSectionsProps> = (
                   onOpenWatchSync();
                 }}
                 className="wk-button"
-                style={{ background: 'var(--wk-pill)', color: '#fff' }}
+                style={{ background: 'var(--wk-pill)', color: 'var(--color-text-primary)' }}
               >
                 Manage Wearables &amp; Sync Recovery
               </button>
@@ -437,7 +437,7 @@ export const ProfileSettingsSections: React.FC<ProfileSettingsSectionsProps> = (
             onOpenActivityApps();
           }}
           className="wk-button"
-          style={{ background: 'var(--wk-card)', color: '#fff' }}
+          style={{ background: 'var(--wk-card)', color: 'var(--color-text-primary)' }}
         >
           Activity apps
         </button>
@@ -498,7 +498,7 @@ export const ProfileSettingsSections: React.FC<ProfileSettingsSectionsProps> = (
                   onTriggerInstallPwa();
                 }}
                 className="wk-button"
-                style={{ background: 'var(--wk-accent)', color: '#13181C' }}
+                style={{ background: 'var(--wk-accent)', color: 'var(--color-text-on-accent)' }}
               >
                 Install App to Home Screen
               </button>
@@ -513,7 +513,7 @@ export const ProfileSettingsSections: React.FC<ProfileSettingsSectionsProps> = (
                     onExportData();
                   }}
                   className="wk-button"
-                  style={{ background: 'var(--wk-pill)', color: '#fff' }}
+                  style={{ background: 'var(--wk-pill)', color: 'var(--color-text-primary)' }}
                 >
                   Export Backup
                 </button>
@@ -536,7 +536,7 @@ export const ProfileSettingsSections: React.FC<ProfileSettingsSectionsProps> = (
                       fileInputRef.current?.click();
                     }}
                     className="wk-button"
-                    style={{ background: 'var(--wk-pill)', color: '#fff' }}
+                    style={{ background: 'var(--wk-pill)', color: 'var(--color-text-primary)' }}
                   >
                     Restore Backup
                   </button>
@@ -559,7 +559,7 @@ export const ProfileSettingsSections: React.FC<ProfileSettingsSectionsProps> = (
                     }
                   }}
                   className="wk-button"
-                  style={{ background: 'var(--wk-raised)', color: '#fff' }}
+                  style={{ background: 'var(--wk-raised)', color: 'var(--color-text-primary)' }}
                 >
                   Load Sample Data
                 </button>
@@ -573,7 +573,7 @@ export const ProfileSettingsSections: React.FC<ProfileSettingsSectionsProps> = (
                     setConfirmDeleteOpen(!confirmDeleteOpen);
                   }}
                   className="wk-button"
-                  style={{ background: 'var(--wk-raised)', color: '#FF8A94' }}
+                  style={{ background: 'var(--wk-raised)', color: 'var(--color-status-danger)' }}
                 >
                   Delete All Data
                 </button>
@@ -598,7 +598,7 @@ export const ProfileSettingsSections: React.FC<ProfileSettingsSectionsProps> = (
                     type="button"
                     onClick={() => setConfirmDeleteOpen(false)}
                     className="wk-button"
-                    style={{ background: 'var(--wk-pill)', color: '#fff' }}
+                    style={{ background: 'var(--wk-pill)', color: 'var(--color-text-primary)' }}
                   >
                     Cancel
                   </button>
@@ -610,7 +610,7 @@ export const ProfileSettingsSections: React.FC<ProfileSettingsSectionsProps> = (
                       setConfirmDeleteOpen(false);
                     }}
                     className="wk-button"
-                    style={{ background: '#FF3B4E', color: '#fff' }}
+                    style={{ background: 'var(--color-action-destructive-bg)', color: 'var(--color-action-destructive-fg)' }}
                   >
                     Confirm Erase
                   </button>

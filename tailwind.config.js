@@ -9,28 +9,28 @@ export default {
     extend: {
       colors: {
         surface: {
-          canvas: '#060709', // Obsidian Base Canvas
-          bg: '#060709',     // Alias for canvas
-          card: '#0E1219',   // Biometric Luxury Card (Whoop 4.0 dark slate)
-          elevated: '#141824', // Elevated Sub-Panel / Inset Group
-          well: '#090C12',   // Dark Inset Well / Mode Switcher Group
-          input: '#0B0E14',  // Stepper Input / Text Field Inset
-          hover: '#1A2030',  // Subtle surface hover
-          subtle: '#12151B',
-          track: '#171B24',  // Dark gauge & progress background track
-          border: 'rgba(255, 255, 255, 0.08)',
-          'border-subtle': 'rgba(255, 255, 255, 0.05)',
+          canvas: 'rgb(var(--color-bg-canvas-rgb) / <alpha-value>)', // Whoop Slate Base Canvas (#13181C)
+          bg: 'rgb(var(--color-bg-canvas-rgb) / <alpha-value>)',
+          card: 'rgb(var(--color-bg-surface-rgb) / <alpha-value>)', // Whoop Slate Card (#2C3034)
+          elevated: 'rgb(var(--color-bg-surface-raised-rgb) / <alpha-value>)', // Raised Surface (#3B4044)
+          well: 'rgb(var(--color-bg-surface-subtle-rgb) / <alpha-value>)', // Recessed Well (#1E2429)
+          input: 'rgb(var(--color-bg-surface-raised-rgb) / <alpha-value>)',
+          hover: 'rgb(var(--color-bg-surface-control-rgb) / <alpha-value>)',
+          subtle: 'rgb(var(--color-bg-surface-subtle-rgb) / <alpha-value>)',
+          track: 'rgb(var(--color-bg-surface-control-rgb) / <alpha-value>)', // Control / Track (#474D50)
+          border: 'var(--color-border-subtle)',
+          'border-subtle': 'var(--color-border-subtle)',
         },
         brand: {
-          primary: '#00F59B', // Kinetic Recovery Lime/Emerald
-          recovery: '#00F59B', // Whoop Electric Recovery Green
-          strain: '#00B2FF',   // Whoop Electric Strain Blue/Cyan
-          accent: '#00E5FF',   // Electric Cyan
-          amber: '#FFB800',    // Biometric Amber / Moderate
-          stress: '#FF5C5C',   // Stress Monitor Red / Elevated
-          rose: '#FF3366',     // Strain Rose
-          purple: '#A855F7',   // ECG / Hormonal Purple
-          darktrack: '#181E27', // Dark gauge background track
+          primary: 'rgb(var(--color-accent-primary-rgb) / <alpha-value>)', // Whoop Mint (#00F19F)
+          recovery: 'rgb(var(--color-accent-primary-rgb) / <alpha-value>)',
+          strain: 'rgb(var(--color-status-info-rgb) / <alpha-value>)', // Telemetry Cyan (#4FC3D9)
+          accent: 'rgb(var(--color-status-info-rgb) / <alpha-value>)',
+          amber: 'rgb(var(--color-status-warning-rgb) / <alpha-value>)', // Caution Amber (#F5B94A)
+          stress: 'rgb(var(--color-status-danger-rgb) / <alpha-value>)', // WCAG AA Danger Ink (#FF8A94)
+          rose: 'rgb(var(--color-status-danger-fill-rgb) / <alpha-value>)', // Danger Fill (#FF3B4E)
+          purple: 'rgb(var(--color-phase-hypertrophy-rgb) / <alpha-value>)', // Hypertrophy Violet (#8B7CF6)
+          darktrack: 'rgb(var(--color-bg-surface-control-rgb) / <alpha-value>)',
         },
       },
       fontFamily: {

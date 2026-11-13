@@ -8,10 +8,11 @@ import {
   getStravaConfig,
 } from "../../services/activitySources";
 import { triggerHaptic } from "../../utils/haptics";
+import { PARTNER_COLORS } from "../../styles/semanticTokens";
 
 const fig = (px: number) => `calc(${px} * var(--f))`;
 /** Strava's brand orange, as its guidelines require for "Connect with Strava". */
-const STRAVA_ORANGE = "#FC5200";
+const STRAVA_ORANGE = PARTNER_COLORS.strava;
 
 interface ActivityConnectionsModalProps {
   profile: UserProfile;
@@ -129,7 +130,7 @@ export const ActivityConnectionsModal: React.FC<
                   style={{
                     marginTop: fig(20),
                     background: "var(--wk-raised)",
-                    color: "#fff",
+                    color: "var(--color-text-primary)",
                   }}
                 >
                   Disconnect Strava
@@ -157,7 +158,7 @@ export const ActivityConnectionsModal: React.FC<
                     height: 48,
                     borderRadius: 6,
                     background: STRAVA_ORANGE,
-                    color: "#fff",
+                    color: "var(--color-text-primary)",
                     fontSize: 15,
                   }}
                 >
@@ -215,7 +216,7 @@ export const ActivityConnectionsModal: React.FC<
                 style={{
                   marginTop: fig(20),
                   background: hcOn ? "var(--wk-raised)" : "var(--wk-accent)",
-                  color: hcOn ? "#fff" : "#13181C",
+                  color: hcOn ? "var(--color-text-primary)" : "var(--color-text-on-accent)",
                 }}
               >
                 {hcOn
@@ -235,7 +236,7 @@ export const ActivityConnectionsModal: React.FC<
                   style={{
                     marginTop: fig(12),
                     background: "var(--wk-accent)",
-                    color: "#13181C",
+                    color: "var(--color-text-on-accent)",
                   }}
                 >
                   Allow daily steps in Health Connect
@@ -280,7 +281,7 @@ export const ActivityConnectionsModal: React.FC<
               style={{
                 marginTop: fig(20),
                 background: "var(--wk-raised)",
-                color: "#fff",
+                color: "var(--color-text-primary)",
               }}
             >
               Connect a watch

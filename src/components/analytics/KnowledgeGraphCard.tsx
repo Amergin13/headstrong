@@ -151,7 +151,7 @@ export const KnowledgeGraphCard: React.FC<KnowledgeGraphCardProps> = ({
                   fontSize: `max(12px, ${fig(24)})`,
                   letterSpacing: '0.02em',
                   background: isSelected ? 'var(--wk-pill)' : 'transparent',
-                  color: isSelected ? '#fff' : 'var(--wk-muted)',
+                  color: isSelected ? 'var(--color-text-primary)' : 'var(--wk-muted)',
                 }}
               >
                 {tab.label}

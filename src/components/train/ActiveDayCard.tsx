@@ -52,7 +52,7 @@ export const ActiveDayCard: React.FC<ActiveDayCardProps> = ({ thisWeek, recent, 
                       target="_blank"
                       rel="noopener noreferrer"
                       className="font-bold underline"
-                      style={{ color: '#FC5200' }}
+                      style={{ color: 'var(--color-partner-strava)' }}
                     >
                       View on Strava
                     </a>
@@ -85,7 +85,7 @@ export const ActiveDayCard: React.FC<ActiveDayCardProps> = ({ thisWeek, recent, 
           onLog();
         }}
         className="wk-button"
-        style={{ background: thisWeek ? 'var(--wk-raised)' : 'var(--wk-accent)', color: thisWeek ? '#fff' : '#13181C' }}
+        style={{ background: thisWeek ? 'var(--wk-raised)' : 'var(--wk-accent)', color: thisWeek ? 'var(--color-text-primary)' : 'var(--color-text-on-accent)' }}
       >
         Log a session
       </button>
@@ -96,7 +96,7 @@ export const ActiveDayCard: React.FC<ActiveDayCardProps> = ({ thisWeek, recent, 
           onOpenApps();
         }}
         className="wk-button"
-        style={{ background: 'var(--wk-raised)', color: '#fff' }}
+        style={{ background: 'var(--wk-raised)', color: 'var(--color-text-primary)' }}
       >
         Activity apps
       </button>

@@ -46,7 +46,7 @@ const WeeklySetsBars: React.FC<{ progress: MuscleProgress }> = ({ progress }) =>
               style={{
                 height: `${Math.max(w.sets > 0 ? 3 : 0, (w.sets / top) * 100)}%`,
                 borderRadius: `${fig(8)} ${fig(8)} 0 0`,
-                background: i === setsByWeek.length - 1 ? (inBand(w.sets) ? 'var(--wk-accent)' : '#4FC3D9') : 'rgba(255,255,255,0.22)',
+                background: i === setsByWeek.length - 1 ? (inBand(w.sets) ? 'var(--wk-accent)' : 'var(--color-status-info)') : 'var(--color-border-track)',
                 animationDelay: `${Math.min(i, 12) * 35}ms`,
               }}
             />

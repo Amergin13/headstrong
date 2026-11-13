@@ -21,9 +21,9 @@ const PROVIDER_LABELS: Record<string, string> = {
 
 /** Whoop-style colour bands: green 67+, yellow 34–66, red below 34. */
 function ringColor(score: number): string {
-  if (score >= 67) return '#16EC06';
-  if (score >= 34) return '#FFDE00';
-  return '#FF3B4E';
+  if (score >= 67) return 'var(--color-recovery-high)';
+  if (score >= 34) return 'var(--color-recovery-mid)';
+  return 'var(--color-recovery-low)';
 }
 
 const Ring: React.FC<{ value: number | null }> = ({ value }) => {
@@ -33,7 +33,7 @@ const Ring: React.FC<{ value: number | null }> = ({ value }) => {
   return (
     <div className="relative shrink-0" style={{ width: fig(200), height: fig(200) }}>
       <svg viewBox="0 0 200 200" className="w-full h-full -rotate-90" aria-hidden="true">
-        <circle cx="100" cy="100" r={r} fill="none" stroke="#474D50" strokeWidth="14" />
+        <circle cx="100" cy="100" r={r} fill="none" stroke="var(--color-bg-surface-control)" strokeWidth="14" />
         {value !== null && (
           <circle
             cx="100"

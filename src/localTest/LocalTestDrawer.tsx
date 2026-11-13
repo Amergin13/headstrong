@@ -197,14 +197,16 @@ export const LocalTestDrawer: React.FC<LocalTestDrawerProps> = ({
           type="button"
           onClick={() => setOpen(true)}
           aria-label="Open Local Test Lab"
-          className="flex items-center gap-2 rounded-full border border-[#DC8748]/50 bg-[#1B2228]/95 text-[#F3EEE3] shadow-lg backdrop-blur-md transition hover:border-[#DC8748]"
+          className="flex items-center gap-2 rounded-full border bg-surface-subtle/95 shadow-lg backdrop-blur-md transition"
           style={{
             padding: minimized ? '8px' : '7px 12px',
             fontSize: 12,
             minHeight: 36,
+            borderColor: 'var(--color-coach-border)',
+            color: 'var(--color-coach-surface)',
           }}
         >
-          <Beaker className="h-4 w-4 text-[#DC8748] shrink-0" />
+          <Beaker className="h-4 w-4 shrink-0" style={{ color: 'var(--color-coach-border)' }} />
           {!minimized && (
             <span className="font-semibold tracking-tight max-w-[160px] truncate">
               {activeMeta ? `Test: ${activeMeta.title}` : 'Local Test Lab'}
@@ -216,7 +218,7 @@ export const LocalTestDrawer: React.FC<LocalTestDrawerProps> = ({
             type="button"
             onClick={() => setMinimized(true)}
             aria-label="Minimize test pill"
-            className="flex h-7 w-7 items-center justify-center rounded-full border border-white/15 bg-[#1B2228]/90 text-white/70 hover:text-white"
+            className="flex h-7 w-7 items-center justify-center rounded-full border border-white/15 bg-surface-subtle/90 text-white/70 hover:text-white"
             style={{ fontSize: 12 }}
           >
             <ChevronDown className="h-3.5 w-3.5" />
@@ -235,12 +237,15 @@ export const LocalTestDrawer: React.FC<LocalTestDrawerProps> = ({
           }}
         >
           <div
-            className="w-full max-w-lg max-h-[86vh] flex flex-col overflow-hidden rounded-3xl border border-white/15 bg-[#161B20] text-[#F3EEE3] shadow-2xl"
-            style={{ fontSize: 13 }}
+            className="w-full max-w-lg max-h-[86vh] flex flex-col overflow-hidden rounded-3xl border border-white/15 bg-surface-canvas shadow-2xl"
+            style={{ fontSize: 13, color: 'var(--color-coach-surface)' }}
           >
             <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
               <div className="flex items-center gap-2.5">
-                <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-[#DC8748]/20 text-[#DC8748]">
+                <span
+                  className="flex h-8 w-8 items-center justify-center rounded-xl bg-white/10"
+                  style={{ color: 'var(--color-coach-border)' }}
+                >
                   <Beaker className="h-4 w-4" />
                 </span>
                 <div>
@@ -262,7 +267,7 @@ export const LocalTestDrawer: React.FC<LocalTestDrawerProps> = ({
               </button>
             </div>
 
-            <div className="grid grid-cols-3 gap-1 border-b border-white/10 bg-[#111519] p-1.5">
+            <div className="grid grid-cols-3 gap-1 border-b border-white/10 bg-surface-canvas p-1.5">
               {(
                 [
                   ['scenarios', 'Use Cases (13)', Sparkles],
@@ -277,7 +282,7 @@ export const LocalTestDrawer: React.FC<LocalTestDrawerProps> = ({
                     type="button"
                     onClick={() => setTab(id)}
                     className={`flex items-center justify-center gap-1.5 rounded-xl py-2 font-semibold transition ${
-                      active ? 'bg-[#262E36] text-white' : 'text-white/60 hover:text-white'
+                      active ? 'bg-surface-elevated text-white' : 'text-white/60 hover:text-white'
                     }`}
                     style={{ fontSize: 12 }}
                   >
@@ -293,7 +298,7 @@ export const LocalTestDrawer: React.FC<LocalTestDrawerProps> = ({
                 <div className="space-y-4">
                   {categories.map((cat) => (
                     <div key={cat} className="space-y-2">
-                      <div className="font-bold uppercase tracking-wider text-[#DC8748]" style={{ fontSize: 12 }}>
+                      <div className="font-bold uppercase tracking-wider" style={{ fontSize: 12, color: 'var(--color-coach-border)' }}>
                         {cat}
                       </div>
                       <div className="space-y-2">
@@ -306,8 +311,8 @@ export const LocalTestDrawer: React.FC<LocalTestDrawerProps> = ({
                               onClick={() => selectScenario(s.id)}
                               className={`w-full rounded-2xl border p-3 text-left transition ${
                                 isSelected
-                                  ? 'border-[#00F19F]/60 bg-[#00F19F]/10'
-                                  : 'border-white/10 bg-[#1E252B] hover:border-white/25'
+                                  ? 'border-brand-primary/60 bg-brand-primary/10'
+                                  : 'border-white/10 bg-surface-card hover:border-white/25'
                               }`}
                             >
                               <div className="flex items-center justify-between gap-2">
@@ -344,8 +349,8 @@ export const LocalTestDrawer: React.FC<LocalTestDrawerProps> = ({
                           onClick={() => onUpdateBiometrics(applyReadinessPresetToBiometrics(biometrics, preset, bodyweightEmaKg))}
                           className={`rounded-xl border py-2 font-semibold ${
                             readinessState === preset
-                              ? 'border-[#00F19F] bg-[#00F19F]/15 text-white'
-                              : 'border-white/10 bg-[#1E252B] text-white/75'
+                              ? 'border-brand-primary bg-brand-primary/15 text-white'
+                              : 'border-white/10 bg-surface-card text-white/75'
                           }`}
                           style={{ fontSize: 12 }}
                         >
@@ -367,8 +372,8 @@ export const LocalTestDrawer: React.FC<LocalTestDrawerProps> = ({
                           onClick={() => onSwitchLocation(loc)}
                           className={`rounded-xl border py-2 font-semibold capitalize ${
                             (profile.activeLocation || 'gym') === loc
-                              ? 'border-[#00F19F] bg-[#00F19F]/15 text-white'
-                              : 'border-white/10 bg-[#1E252B] text-white/75'
+                              ? 'border-brand-primary bg-brand-primary/15 text-white'
+                              : 'border-white/10 bg-surface-card text-white/75'
                           }`}
                           style={{ fontSize: 12 }}
                         >
@@ -391,8 +396,8 @@ export const LocalTestDrawer: React.FC<LocalTestDrawerProps> = ({
                             onClick={() => onUpdateProfile({ weightUnit: unit })}
                             className={`rounded-xl border py-2 font-semibold uppercase ${
                               (profile.weightUnit || 'kg') === unit
-                                ? 'border-[#00F19F] bg-[#00F19F]/15 text-white'
-                                : 'border-white/10 bg-[#1E252B] text-white/75'
+                                ? 'border-brand-primary bg-brand-primary/15 text-white'
+                                : 'border-white/10 bg-surface-card text-white/75'
                             }`}
                             style={{ fontSize: 12 }}
                           >
@@ -412,8 +417,8 @@ export const LocalTestDrawer: React.FC<LocalTestDrawerProps> = ({
                           onMarkAllActiveSetsDone();
                           setOpen(false);
                         }}
-                        className="w-full rounded-xl border border-[#DC8748]/50 bg-[#DC8748]/15 py-2 font-semibold text-[#F3EEE3]"
-                        style={{ fontSize: 12 }}
+                        className="w-full rounded-xl border bg-surface-elevated py-2 font-semibold"
+                        style={{ fontSize: 12, borderColor: 'var(--color-coach-border)', color: 'var(--color-coach-surface)' }}
                       >
                         Tick All Sets Done
                       </button>
@@ -432,8 +437,8 @@ export const LocalTestDrawer: React.FC<LocalTestDrawerProps> = ({
                           onClick={() => onUpdateGoalPhase(goal)}
                           className={`rounded-xl border py-2 font-semibold ${
                             profile.goalPhase === goal
-                              ? 'border-[#00F19F] bg-[#00F19F]/15 text-white'
-                              : 'border-white/10 bg-[#1E252B] text-white/75'
+                              ? 'border-brand-primary bg-brand-primary/15 text-white'
+                              : 'border-white/10 bg-surface-card text-white/75'
                           }`}
                           style={{ fontSize: 12 }}
                         >
@@ -465,7 +470,7 @@ export const LocalTestDrawer: React.FC<LocalTestDrawerProps> = ({
                             (fn as () => void)();
                             setOpen(false);
                           }}
-                          className="rounded-xl border border-white/10 bg-[#1E252B] px-3 py-2 text-left font-medium text-white/85 hover:border-white/25"
+                          className="rounded-xl border border-white/10 bg-surface-card px-3 py-2 text-left font-medium text-white/85 hover:border-white/25"
                           style={{ fontSize: 12 }}
                         >
                           {String(label)}
@@ -478,7 +483,7 @@ export const LocalTestDrawer: React.FC<LocalTestDrawerProps> = ({
 
               {tab === 'inspector' && (
                 <div className="space-y-4">
-                  <div className="rounded-2xl border border-white/10 bg-[#1E252B] p-3 space-y-1.5">
+                  <div className="rounded-2xl border border-white/10 bg-surface-card p-3 space-y-1.5">
                     <div className="font-bold text-white" style={{ fontSize: 13 }}>
                       Live Engine State
                     </div>
@@ -496,10 +501,10 @@ export const LocalTestDrawer: React.FC<LocalTestDrawerProps> = ({
                     </div>
                   </div>
 
-                  <div className="rounded-2xl border border-white/10 bg-[#1E252B] p-3 space-y-2">
+                  <div className="rounded-2xl border border-white/10 bg-surface-card p-3 space-y-2">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-1.5 font-bold text-white" style={{ fontSize: 13 }}>
-                        <Terminal className="h-4 w-4 text-[#DC8748]" />
+                        <Terminal className="h-4 w-4" style={{ color: 'var(--color-coach-border)' }} />
                         <span>Local /api/* Proxies</span>
                       </div>
                       <button
@@ -515,7 +520,7 @@ export const LocalTestDrawer: React.FC<LocalTestDrawerProps> = ({
                     <div className="space-y-1 text-white/75" style={{ fontSize: 12 }}>
                       {Object.entries(apiStatus).map(([route, status]) => (
                         <div key={route} className="flex items-center justify-between gap-2">
-                          <code className="text-[#8FD3FF]">{route}</code>
+                          <code style={{ color: 'var(--color-viz-1)' }}>{route}</code>
                           <span className="truncate text-right">{status}</span>
                         </div>
                       ))}
@@ -523,7 +528,7 @@ export const LocalTestDrawer: React.FC<LocalTestDrawerProps> = ({
                     <button
                       type="button"
                       onClick={() => void probeCoachPost()}
-                      className="mt-1 w-full rounded-xl border border-white/15 bg-[#252D35] py-2 font-semibold text-white hover:bg-[#2E3842]"
+                      className="mt-1 w-full rounded-xl border border-white/15 bg-surface-elevated py-2 font-semibold text-white hover:bg-surface-hover"
                       style={{ fontSize: 12 }}
                     >
                       Probe POST /api/coach/generate
@@ -539,16 +544,16 @@ export const LocalTestDrawer: React.FC<LocalTestDrawerProps> = ({
                     <button
                       type="button"
                       onClick={() => void handleCopyBackup()}
-                      className="flex items-center justify-center gap-1.5 rounded-xl border border-white/15 bg-[#1E252B] py-2.5 font-semibold text-white"
+                      className="flex items-center justify-center gap-1.5 rounded-xl border border-white/15 bg-surface-card py-2.5 font-semibold text-white"
                       style={{ fontSize: 12 }}
                     >
-                      {copiedJson && <CheckCircle2 className="h-3.5 w-3.5 text-[#00F19F]" />}
+                      {copiedJson && <CheckCircle2 className="h-3.5 w-3.5 text-brand-primary" />}
                       <span>{copiedJson ? 'Copied JSON' : 'Copy State JSON'}</span>
                     </button>
                     <button
                       type="button"
                       onClick={() => selectScenario('fresh-onboarding')}
-                      className="rounded-xl border border-[#FF8A94]/40 bg-[#FF8A94]/10 py-2.5 font-semibold text-[#FF8A94]"
+                      className="rounded-xl border border-brand-stress/40 bg-brand-stress/10 py-2.5 font-semibold text-brand-stress"
                       style={{ fontSize: 12 }}
                     >
                       Reset to Clean Install

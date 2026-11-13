@@ -22,7 +22,13 @@ interface WorkoutFinishScreenProps {
 }
 
 /** Mint, white and deeper green: the medal's own colours. */
-const CONFETTI_COLOURS = ['#00F19F', '#7CF7CF', '#FFFFFF', '#19C98A', '#B8FBE3'];
+const CONFETTI_COLOURS = [
+  'var(--color-accent-primary)',
+  'var(--color-viz-highlight)',
+  'var(--color-text-primary)',
+  'var(--color-viz-deep)',
+  'var(--color-viz-4)',
+];
 const CONFETTI_COUNT = 44;
 
 /**
@@ -143,7 +149,7 @@ export const WorkoutFinishScreen: React.FC<WorkoutFinishScreenProps> = ({
       aria-modal="true"
       aria-label={`Workout finished: ${report.session.name}`}
       className="wk fixed inset-0 z-50 overflow-y-auto"
-      style={{ background: 'linear-gradient(180deg, #283339 0%, #13181C 46%)' }}
+      style={{ background: 'linear-gradient(180deg, var(--color-bg-canvas-top) 0%, var(--color-bg-canvas) 46%)' }}
     >
       <div className="relative mx-auto w-full max-w-md overflow-hidden" style={{ minHeight: '100%', padding: `${fig(120)} ${fig(38)} ${fig(48)}` }}>
         {/* Medal and confetti */}
@@ -268,7 +274,7 @@ export const WorkoutFinishScreen: React.FC<WorkoutFinishScreenProps> = ({
           onClick={handleDone}
           aria-label="Close: done"
           className="wk-button transition-transform active:scale-95"
-          style={{ background: 'var(--wk-accent)', color: '#13181C', marginTop: fig(40) }}
+          style={{ background: 'var(--wk-accent)', color: 'var(--color-text-on-accent)', marginTop: fig(40) }}
         >
           Done
         </button>

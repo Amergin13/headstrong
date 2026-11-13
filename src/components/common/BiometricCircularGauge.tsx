@@ -23,32 +23,32 @@ const VARIANT_CONFIG: Record<
   }
 > = {
   recovery: {
-    stroke: '#00F59B',
+    stroke: 'var(--color-status-positive)',
     textClass: 'text-brand-primary',
     badgeBg: 'bg-brand-primary/15 text-brand-primary',
   },
   emerald: {
-    stroke: '#10B981',
+    stroke: 'var(--color-partner-fitbit)',
     textClass: 'text-emerald-400',
     badgeBg: 'bg-emerald-500/15 text-emerald-400',
   },
   strain: {
-    stroke: '#00B4D8',
+    stroke: 'var(--color-status-info)',
     textClass: 'text-brand-strain',
     badgeBg: 'bg-brand-strain/15 text-brand-strain',
   },
   sleep: {
-    stroke: '#00E5FF',
+    stroke: 'var(--color-viz-1)',
     textClass: 'text-cyan-400',
     badgeBg: 'bg-cyan-500/15 text-cyan-400',
   },
   amber: {
-    stroke: '#FFB800',
+    stroke: 'var(--color-status-warning)',
     textClass: 'text-amber-400',
     badgeBg: 'bg-amber-500/15 text-amber-400',
   },
   purple: {
-    stroke: '#A855F7',
+    stroke: 'var(--color-phase-hypertrophy)',
     textClass: 'text-purple-400',
     badgeBg: 'bg-purple-500/15 text-purple-400',
   },
@@ -103,7 +103,7 @@ export const BiometricCircularGauge: React.FC<BiometricCircularGaugeProps> = ({
             cy={dim / 2}
             r={radius}
             fill="none"
-            stroke="#181E27"
+            stroke="var(--color-bg-surface-control)"
             strokeWidth={strokeWidth}
           />
           {/* Active progress arc */}

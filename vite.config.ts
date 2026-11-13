@@ -44,8 +44,8 @@ export default defineConfig({
         display: 'standalone',
         display_override: ['standalone', 'minimal-ui'],
         orientation: 'portrait',
-        theme_color: '#060709',
-        background_color: '#060709',
+        theme_color: '#13181C',
+        background_color: '#13181C',
         categories: ['health', 'fitness', 'sports'],
         prefer_related_applications: false,
         icons: [

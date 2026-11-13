@@ -128,7 +128,7 @@ export const ProgramPickerModal: React.FC<ProgramPickerModalProps> = ({ programT
                     style={{
                       marginTop: fig(20),
                       background: 'var(--wk-accent)',
-                      color: '#13181C',
+                      color: 'var(--color-text-on-accent)',
                     }}
                   >
                     Switch to {opt.title.toLowerCase()}

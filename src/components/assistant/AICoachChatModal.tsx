@@ -305,7 +305,7 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
           expanded ? 'h-full' : ''
         }`}
         style={{
-          background: 'linear-gradient(180deg, #283339 0%, #13181C 180px)',
+          background: 'linear-gradient(180deg, var(--color-bg-canvas-top) 0%, var(--color-bg-canvas) 180px)',
           borderTopLeftRadius: expanded ? 0 : 30,
           borderTopRightRadius: expanded ? 0 : 30,
           boxShadow: 'inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 -12px 40px rgba(0, 0, 0, 0.58)',
@@ -336,19 +336,19 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
             <h3
               id="ai-coach-title"
               className="wk-h1 flex items-center"
-              style={{ gap: fig(12), color: '#F3EEE3', textTransform: 'none', fontWeight: 800, letterSpacing: '-0.02em' }}
+              style={{ gap: fig(12), color: 'var(--color-coach-surface)', textTransform: 'none', fontWeight: 800, letterSpacing: '-0.02em' }}
             >
               <span>
-                Treise<span style={{ color: '#DC8748' }}>.</span>
+                Treise<span style={{ color: 'var(--color-coach-border)' }}>.</span>
               </span>
               <svg viewBox="0 0 16 16" className="w-3.5 h-3.5 shrink-0" aria-hidden="true">
                 <path
                   d="M7.5 1.5L8.75 5.25L12.5 6.5L8.75 7.75L7.5 11.5L6.25 7.75L2.5 6.5L6.25 5.25L7.5 1.5Z"
-                  fill="#FF9E6D"
+                  fill="var(--color-coach-glow)"
                 />
                 <path
                   d="M12.5 10.5L13.1 12.15L14.75 12.75L13.1 13.35L12.5 15L11.9 13.35L10.25 12.75L11.9 12.15L12.5 10.5Z"
-                  fill="#DC8748"
+                  fill="var(--color-coach-border)"
                 />
               </svg>
             </h3>
@@ -473,7 +473,7 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
                             }
                           }}
                           className="wk-button"
-                          style={{ background: 'var(--wk-accent)', color: '#13181C', gap: fig(12) }}
+                          style={{ background: 'var(--wk-accent)', color: 'var(--color-text-on-accent)', gap: fig(12) }}
                         >
                           <Dumbbell className="w-4 h-4 stroke-[2]" />
                           <span>View All Equipment</span>
@@ -649,7 +649,7 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
               style={{
                 borderRadius: 60,
                 background: 'var(--wk-accent)',
-                color: '#13181C',
+                color: 'var(--color-text-on-accent)',
               }}
             >
               <Send className="w-4 h-4 stroke-[2.2]" />

@@ -320,7 +320,7 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
                 fontSize: `max(12px, ${fig(22)})`,
                 letterSpacing: '0.02em',
                 background: isSelected ? 'var(--wk-pill)' : 'transparent',
-                color: isSelected ? '#fff' : 'var(--wk-muted)',
+                color: isSelected ? 'var(--color-text-primary)' : 'var(--wk-muted)',
               }}
             >
               <span className="truncate">{shortLabels[prov]}</span>
@@ -444,7 +444,7 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
                 className="wk-button min-h-[44px]"
                 style={{
                   background: hcWorkoutsOn ? 'var(--wk-raised)' : 'var(--wk-accent)',
-                  color: hcWorkoutsOn ? '#fff' : '#13181C',
+                  color: hcWorkoutsOn ? 'var(--color-text-primary)' : 'var(--color-text-on-accent)',
                 }}
               >
                 {hcWorkoutsOn
@@ -460,7 +460,7 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
               className="wk-button min-h-[44px]"
               style={{
                 background: hcBridgeAvailable ? 'var(--wk-raised)' : 'var(--wk-accent)',
-                color: hcBridgeAvailable ? '#fff' : '#13181C',
+                color: hcBridgeAvailable ? 'var(--color-text-primary)' : 'var(--color-text-on-accent)',
               }}
             >
               Import health data file (.json / .csv)
@@ -470,7 +470,7 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
                 type="button"
                 onClick={handleDisconnectProvider}
                 className="wk-button min-h-[44px]"
-                style={{ background: 'var(--wk-raised)', color: '#FF3B4E' }}
+                style={{ background: 'var(--wk-raised)', color: 'var(--color-status-danger)' }}
               >
                 Disconnect {providerMeta.name}
               </button>
@@ -483,7 +483,7 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
                 type="button"
                 onClick={handleSetActiveTracker}
                 className="wk-button min-h-[44px]"
-                style={{ background: 'var(--wk-accent)', color: '#13181C' }}
+                style={{ background: 'var(--wk-accent)', color: 'var(--color-text-on-accent)' }}
               >
                 Use {providerMeta.name} as Active Tracker
               </button>
@@ -495,7 +495,7 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
                 disabled={isSyncing}
                 onClick={() => (whoopReconnectNeeded ? handleConnectProvider() : handleStartSync())}
                 className="wk-button min-h-[44px] disabled:opacity-50"
-                style={{ background: 'var(--wk-accent)', color: '#13181C' }}
+                style={{ background: 'var(--wk-accent)', color: 'var(--color-text-on-accent)' }}
               >
                 {whoopReconnectNeeded ? 'Reconnect Whoop' : `Sync ${providerMeta.name} Now`}
               </button>
@@ -505,7 +505,7 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
               type="button"
               onClick={handleHealthConnectSettings}
               className="wk-button min-h-[44px]"
-              style={{ background: 'var(--wk-raised)', color: '#fff' }}
+              style={{ background: 'var(--wk-raised)', color: 'var(--color-text-primary)' }}
             >
               Import Whoop CSV file
             </button>
@@ -514,7 +514,7 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
               type="button"
               onClick={handleDisconnectProvider}
               className="wk-button min-h-[44px]"
-              style={{ background: 'var(--wk-raised)', color: '#FF3B4E' }}
+              style={{ background: 'var(--wk-raised)', color: 'var(--color-status-danger)' }}
             >
               Disconnect {providerMeta.name}
             </button>
@@ -526,7 +526,7 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
               disabled={isSyncing}
               onClick={handleConnectProvider}
               className="wk-button min-h-[44px] disabled:opacity-50"
-              style={{ background: 'var(--wk-accent)', color: '#13181C' }}
+              style={{ background: 'var(--wk-accent)', color: 'var(--color-text-on-accent)' }}
             >
               {isSyncing ? `Connecting to ${providerMeta.name}...` : `Connect ${providerMeta.name}`}
             </button>
@@ -534,7 +534,7 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
               type="button"
               onClick={handleHealthConnectSettings}
               className="wk-button min-h-[44px]"
-              style={{ background: 'var(--wk-raised)', color: '#fff' }}
+              style={{ background: 'var(--wk-raised)', color: 'var(--color-text-primary)' }}
             >
               Import Whoop CSV file
             </button>

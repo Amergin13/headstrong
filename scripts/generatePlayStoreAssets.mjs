@@ -64,8 +64,8 @@ function encodePng(width, height, rgbaBuffer) {
 }
 
 /**
- * Renders the Treise brand emblem (Obsidian #060709 background,
- * Phosphor Green #00F59B barbell/pulse crest, Cyan #06B6D4 telemetry ring)
+ * Renders the Treise brand emblem (Whoop Slate #13181C background,
+ * Whoop Mint #00F19F barbell/pulse crest, Telemetry Cyan #4FC3D9 ring)
  */
 function renderAppIcon(size, isMaskable = false) {
   const buf = Buffer.alloc(size * size * 4);
@@ -81,19 +81,19 @@ function renderAppIcon(size, isMaskable = false) {
       const dy = y - center;
       const dist = Math.sqrt(dx * dx + dy * dy);
 
-      // Base Obsidian #060709 with subtle radial emerald/cyan glow
+      // Base Whoop Slate #13181C with subtle radial top slate/mint glow
       const glow = Math.max(0, 1 - dist / (size * 0.6));
-      let r = Math.round(6 + glow * 8);
-      let g = Math.round(7 + glow * 28);
-      let b = Math.round(9 + glow * 24);
+      let r = Math.round(19 + glow * 8);
+      let g = Math.round(24 + glow * 26);
+      let b = Math.round(28 + glow * 22);
       let a = 255;
 
-      // Outer Telemetry Ring (Phosphor Green #00F59B -> Cyan #06B6D4 gradient)
+      // Outer Telemetry Ring (Whoop Mint #00F19F -> Telemetry Cyan #4FC3D9 gradient)
       if (Math.abs(dist - ringRadius) <= ringThickness / 2) {
         const t = (x / size + y / size) / 2;
-        r = Math.round(0 * (1 - t) + 6 * t);
-        g = Math.round(245 * (1 - t) + 182 * t);
-        b = Math.round(155 * (1 - t) + 212 * t);
+        r = Math.round(0 * (1 - t) + 79 * t);
+        g = Math.round(241 * (1 - t) + 195 * t);
+        b = Math.round(159 * (1 - t) + 217 * t);
       }
 
       // Stylized Barbell & Strength Pillar Icon in Center
@@ -113,8 +113,8 @@ function renderAppIcon(size, isMaskable = false) {
 
       if (isBar || isInnerPlate || isOuterPlate) {
         r = 0;
-        g = 245;
-        b = 155;
+        g = 241;
+        b = 159;
       }
 
       buf[idx] = r;
@@ -137,10 +137,10 @@ function renderMarketingGraphic(width, height, variant = 1) {
     for (let x = 0; x < width; x++) {
       const idx = (y * width + x) * 4;
 
-      // Obsidian background #060709
-      let r = 6;
-      let g = 7;
-      let b = 9;
+      // Whoop Slate background #13181C
+      let r = 19;
+      let g = 24;
+      let b = 28;
 
       // Top ambient radial glow
       const dx = x - width * 0.5;

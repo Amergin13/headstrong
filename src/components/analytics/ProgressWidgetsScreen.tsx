@@ -64,7 +64,7 @@ const WidgetRow: React.FC<{
         }}
         aria-hidden="true"
       >
-        {enabled && <Check style={{ width: fig(30), height: fig(30), color: '#13181C' }} strokeWidth={3} />}
+        {enabled && <Check style={{ width: fig(30), height: fig(30), color: 'var(--color-text-on-accent)' }} strokeWidth={3} />}
       </span>
     </button>
   </li>
@@ -183,7 +183,7 @@ export const ProgressWidgetsScreen: React.FC<ProgressWidgetsScreenProps> = ({
               className="wk-segment"
               style={{
                 background: selected ? 'var(--wk-raised)' : 'transparent',
-                color: selected ? '#fff' : 'var(--wk-muted)',
+                color: selected ? 'var(--color-text-primary)' : 'var(--wk-muted)',
               }}
             >
               {label}
@@ -321,7 +321,7 @@ export const ProgressWidgetsScreen: React.FC<ProgressWidgetsScreenProps> = ({
             onReset();
           }}
           className="wk-button"
-          style={{ background: 'var(--wk-raised)', color: '#fff' }}
+          style={{ background: 'var(--wk-raised)', color: 'var(--color-text-primary)' }}
         >
           Reset to default widgets
         </button>

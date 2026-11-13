@@ -134,7 +134,7 @@ export const RestTimerModal: React.FC<RestTimerModalProps> = ({
             {isDone ? (
               <span
                 className="wk-pill gap-[calc(8*var(--f))]"
-                style={{ background: 'var(--wk-accent)', color: '#13181C' }}
+                style={{ background: 'var(--wk-accent)', color: 'var(--color-text-on-accent)' }}
               >
                 <CheckCircle2 className="w-3.5 h-3.5 stroke-[2.5]" aria-hidden="true" />
                 <span>Go</span>

@@ -2215,22 +2215,22 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
   const primaryBtnComp = getDesignSystemComponentById('ds-btn-primary');
   assert(
     primaryBtnComp !== undefined &&
-      primaryBtnComp.tailwindTokens.includes('bg-white') &&
-      primaryBtnComp.tailwindTokens.includes('text-slate-950') &&
+      primaryBtnComp.tailwindTokens.includes('--color-action-primary-bg') &&
+      primaryBtnComp.tailwindTokens.includes('--color-action-primary-fg') &&
       primaryBtnComp.tailwindTokens.includes('min-h-[44px]'),
-    `Primary CTA button is codified as luminous solid white with min-h-[44px] touch target`
+    `Primary CTA button is codified with Whoop Slate semantic tokens (--color-action-primary-bg / --color-action-primary-fg) and min-h-[44px] touch target`
   );
   assert(
-    Boolean(primaryBtnComp?.logic.rules.some((r) => r.includes('Never use neon green as button background'))),
-    `Primary CTA explicitly forbids using green as a button background fill`
+    Boolean(primaryBtnComp?.logic.rules.some((r) => r.includes('--color-action-primary-bg'))),
+    `Primary CTA explicitly enforces codified Whoop Slate semantic action token`
   );
 
   const setToggleComp = getDesignSystemComponentById('ds-set-toggle');
   assert(
     setToggleComp !== undefined &&
-      setToggleComp.tailwindTokens.includes('bg-brand-primary') &&
-      Boolean(setToggleComp?.logic.rules.some((r) => r.includes('Green is strictly reserved'))),
-    `Set completion checkmark is codified with semantic emerald green reserved for progressive overload celebration`
+      setToggleComp.tailwindTokens.includes('--color-status-positive') &&
+      Boolean(setToggleComp?.logic.rules.some((r) => r.includes('--color-status-positive'))),
+    `Set completion checkmark is codified with semantic positive token`
   );
 
   // D. Search and Lookup Helper Functions
@@ -7999,7 +7999,8 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
     });
     const weeklySetsChart = setsChartsRir4.find((c) => c.id === 'weekly-sets');
     assert(
-      trendChartSrc.includes('max - f * (max - min)') &&
+      trendChartSrc.includes('niceAxisTicks(') &&
+        trendChartSrc.includes('const tickY = y(tick)') &&
         !trendChartSrc.includes('max - pad - f') &&
         weeklyVolRir4.Chest === 1 &&
         weeklySetsChart?.points[0]?.value === 1,
@@ -8572,9 +8573,257 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
         !trainTabSrc.includes('TimelineToggle'),
       'TimelineToggle is wired into Progress views (ProgressChartCard, AnalyticsTab, GoalDetailScreen) and absent from Workout views'
     );
+
+    // Whoop Slate chart enhancements: period stepping, delta polarity, typical range guard, headline split
+    const rhrSeriesShort: { date: string; value: number }[] = [
+      { date: '2026-11-08', value: 79 },
+      { date: '2026-11-10', value: 71 },
+      { date: '2026-11-12', value: 73 },
+      { date: '2026-11-13', value: 67 },
+    ];
+    const rhrShortChart = {
+      id: 'whoop-rhr',
+      title: 'Resting Heart Rate',
+      lastUpdated: '2026-11-13',
+      summary: 'Your resting heart rate over time.',
+      points: rhrSeriesShort,
+      format: (v: number) => `${Math.round(v)} bpm`,
+    };
+    const rhrShort1W = filterChartByTimeline(rhrShortChart, '1W', '2026-11-13', 0);
+    assert(
+      rhrShort1W.chartTone === 'biometric' &&
+        rhrShort1W.typicalRange === undefined &&
+        rhrShort1W.windowRange?.isDailyCalendar === true &&
+        rhrShort1W.windowRange?.label === 'NOV 7 - NOV 13, 26' &&
+        rhrShort1W.windowRange?.canStepForward === false &&
+        rhrShort1W.windowRange?.canStepBack === false &&
+        rhrShort1W.headline?.eyebrow === 'AVERAGE' &&
+        rhrShort1W.headline?.valueText === '73' &&
+        rhrShort1W.headline?.unitText === 'bpm',
+      'Whoop RHR 1W formats KPI headline, calendar window label, cyan tone, and never fabricates typicalRange under 7 points'
+    );
+
+    const rhrMultiWeek = [
+      // Prior-2 baseline + prior week (~66 bpm avg -> current week ~73 bpm avg = uptick warning)
+      { date: '2026-10-18', value: 68 },
+      { date: '2026-10-22', value: 67 },
+      { date: '2026-10-27', value: 66 },
+      { date: '2026-11-01', value: 66 },
+      { date: '2026-11-03', value: 65 },
+      { date: '2026-11-05', value: 67 },
+      { date: '2026-11-06', value: 66 },
+      { date: '2026-11-07', value: 74 },
+      { date: '2026-11-09', value: 72 },
+      { date: '2026-11-11', value: 73 },
+      { date: '2026-11-13', value: 71 },
+    ];
+    const rhrFullChart = {
+      id: 'whoop-rhr',
+      title: 'Resting Heart Rate',
+      lastUpdated: '2026-11-13',
+      summary: 'Your resting heart rate over time.',
+      points: rhrMultiWeek,
+      format: (v: number) => `${Math.round(v)} bpm`,
+    };
+    const rhrCurr = filterChartByTimeline(rhrFullChart, '1W', '2026-11-13', 0);
+    const rhrPrev = filterChartByTimeline(rhrFullChart, '1W', '2026-11-13', 1);
+    assert(
+      rhrCurr.typicalRange !== undefined &&
+        rhrCurr.typicalRange.low <= rhrCurr.typicalRange.high &&
+        rhrCurr.delta?.direction === 'up' &&
+        rhrCurr.delta?.polarity === 'warning' &&
+        rhrCurr.windowRange?.canStepBack === true &&
+        rhrPrev.windowRange?.canStepForward === true &&
+        rhrPrev.windowRange?.label === 'OCT 31 - NOV 6, 26' &&
+        rhrPrev.points.length === 4,
+      'Whoop RHR computes 28-day typicalRange (>= 7 points), warning polarity on RHR uptick, and clean prior-week stepping'
+    );
+
+    const strengthDense = {
+      id: 'strength-squat',
+      title: 'Squat',
+      lastUpdated: '2026-11-13',
+      summary: 'Your Squat E1RM.',
+      points: [
+        { date: '2026-10-18', value: 110 },
+        { date: '2026-10-22', value: 112.5 },
+        { date: '2026-10-26', value: 115 },
+        { date: '2026-10-30', value: 115 },
+        { date: '2026-11-02', value: 117.5 },
+        { date: '2026-11-06', value: 120 },
+        { date: '2026-11-09', value: 122.5 },
+        { date: '2026-11-13', value: 125 },
+      ],
+      format: (v: number) => `${v.toFixed(1)} kg`,
+    };
+    const squat1W = filterChartByTimeline(strengthDense, '1W', '2026-11-13', 0);
+    assert(
+      squat1W.chartTone === 'strength' &&
+        squat1W.typicalRange === undefined &&
+        squat1W.headline?.eyebrow === 'EST. 1RM' &&
+        squat1W.headline?.valueText === '125.0' &&
+        squat1W.headline?.unitText === 'kg' &&
+        squat1W.delta?.direction === 'up' &&
+        squat1W.delta?.polarity === 'positive',
+      'Strength charts use EST. 1RM headline, positive upward delta, strength tone, and omit typicalRange'
+    );
   }
 
-  console.log('\nALL 42 ENGINE, GOVERNANCE, DESIGN HEURISTICS, TYPOGRAPHY, WEARABLES, WHOOP STRAIN, GOOGLE AUTH, ONBOARDING CONTEXT, 6-WEEK PROGRAM, TENSOR AI, SESSION REPORT, WORKOUT PAGE, EXERCISE OVERVIEW & RENPHO BLUETOOTH SUITES PASSED SUCCESSFULLY! 🎯');
+  // ── Suite 47: Whoop Slate Semantic Colour Governance & WCAG AA Contrast Gate ─
+  console.log('\n[Suite 47] Verifying Whoop Slate Tokens, WCAG AA Contrast & Zero Raw Hex Drift...');
+  {
+    const fsMod = require('fs');
+    const pathMod = require('path');
+    const repoRoot = process.cwd();
+    const tokensCss = fsMod.readFileSync(pathMod.join(repoRoot, 'src/styles/tokens.css'), 'utf8') as string;
+
+    const rawVars: Record<string, string> = {};
+    const propRegex = /(--(?:palette|color)-[a-z0-9-]+)\s*:\s*([^;]+);/gi;
+    let m: RegExpExecArray | null;
+    while ((m = propRegex.exec(tokensCss)) !== null) {
+      rawVars[m[1]] = m[2].trim();
+    }
+
+    const resolveVar = (val: string, depth = 0): string => {
+      if (depth > 8) return val;
+      const match = /^var\((--[a-z0-9-]+)\)$/i.exec(val.trim());
+      if (!match) return val.trim();
+      const target = rawVars[match[1]];
+      return target ? resolveVar(target, depth + 1) : val.trim();
+    };
+
+    const parseRgba = (color: string): [number, number, number, number] => {
+      const hex = /^#([0-9a-f]{6})$/i.exec(color);
+      if (hex) {
+        const n = parseInt(hex[1], 16);
+        return [(n >> 16) & 255, (n >> 8) & 255, n & 255, 1];
+      }
+      const rgba = /^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)(?:\s*,\s*([\d.]+))?\s*\)$/i.exec(color);
+      if (rgba) {
+        return [Number(rgba[1]), Number(rgba[2]), Number(rgba[3]), rgba[4] !== undefined ? Number(rgba[4]) : 1];
+      }
+      throw new Error(`Unsupported token colour format: ${color}`);
+    };
+
+    const compositeOver = (fgRaw: string, bgRaw: string): [number, number, number] => {
+      const [fr, fg, fb, fa] = parseRgba(resolveVar(fgRaw));
+      const [br, bg, bb] = parseRgba(resolveVar(bgRaw));
+      return [
+        Math.round(fr * fa + br * (1 - fa)),
+        Math.round(fg * fa + bg * (1 - fa)),
+        Math.round(fb * fa + bb * (1 - fa)),
+      ];
+    };
+
+    const relLuminance = ([r, g, b]: [number, number, number]): number => {
+      const channel = (c: number) => {
+        const s = c / 255;
+        return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+      };
+      return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b);
+    };
+
+    const contrastRatio = (fgToken: string, bgToken: string): number => {
+      const bg = compositeOver(rawVars[bgToken], '#13181C');
+      const fg = compositeOver(rawVars[fgToken], `rgb(${bg[0]}, ${bg[1]}, ${bg[2]})`);
+      const l1 = relLuminance(fg);
+      const l2 = relLuminance(bg);
+      return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
+    };
+
+    assert(
+      resolveVar(rawVars['--color-bg-canvas']).toUpperCase() === '#13181C' &&
+        resolveVar(rawVars['--color-bg-surface']).toUpperCase() === '#2C3034' &&
+        resolveVar(rawVars['--color-bg-surface-raised']).toUpperCase() === '#3B4044' &&
+        resolveVar(rawVars['--color-bg-surface-control']).toUpperCase() === '#474D50' &&
+        resolveVar(rawVars['--color-accent-primary']).toUpperCase() === '#00F19F',
+      'Whoop Slate Tier-2 canonical canvas/surface/accent hex values locked in tokens.css'
+    );
+
+    const textSurfacePairs: [string, string][] = [
+      ['--color-text-primary', '--color-bg-canvas'],
+      ['--color-text-primary', '--color-bg-surface'],
+      ['--color-text-primary', '--color-bg-surface-raised'],
+      ['--color-text-primary', '--color-bg-surface-control'],
+      ['--color-text-secondary', '--color-bg-surface'],
+      ['--color-text-secondary', '--color-bg-surface-raised'],
+      ['--color-text-muted', '--color-bg-canvas'],
+      ['--color-text-muted', '--color-bg-surface'],
+      ['--color-text-subtle', '--color-bg-surface'],
+      ['--color-action-primary-fg', '--color-action-primary-bg'],
+      ['--color-action-secondary-fg', '--color-action-secondary-bg'],
+      ['--color-action-destructive-fg', '--color-action-destructive-bg'],
+      ['--color-action-disabled-fg', '--color-action-disabled-bg'],
+      ['--color-status-positive', '--color-bg-surface'],
+      ['--color-status-warning', '--color-bg-surface'],
+      ['--color-status-danger', '--color-bg-surface'],
+      ['--color-status-danger', '--color-bg-surface-raised'],
+      ['--color-status-info', '--color-bg-surface'],
+      ['--color-status-neutral', '--color-bg-surface'],
+      ['--color-set-failure-fg', '--color-set-failure-bg'],
+    ];
+
+    for (const [fg, bg] of textSurfacePairs) {
+      const ratio = contrastRatio(fg, bg);
+      assert(
+        ratio >= 4.5,
+        `WCAG 2.1 AA text/CTA contrast (${fg} on ${bg} = ${ratio.toFixed(2)}:1 >= 4.5:1)`
+      );
+    }
+
+    const walkFiles = (dir: string, exts: string[], ignoreDirs: string[] = []): string[] => {
+      const out: string[] = [];
+      for (const entry of fsMod.readdirSync(dir, { withFileTypes: true })) {
+        if (entry.isDirectory()) {
+          if (!ignoreDirs.includes(entry.name)) {
+            out.push(...walkFiles(pathMod.join(dir, entry.name), exts, ignoreDirs));
+          }
+        } else if (exts.some((ext) => entry.name.endsWith(ext))) {
+          out.push(pathMod.join(dir, entry.name));
+        }
+      }
+      return out;
+    };
+
+    const hexRegex = /#[0-9a-fA-F]{3,8}\b/;
+    const tailwindColorRegex = /\b(?:text|bg|border)-(?:emerald|rose|amber|cyan|sky|slate|zinc|neutral|stone|red|green|blue|indigo|purple|violet|fuchsia|pink|teal|orange|yellow)-[0-9]{2,3}\b/;
+
+    const engineFiles = walkFiles(pathMod.join(repoRoot, 'src/engine'), ['.ts', '.tsx'], ['__tests__']);
+    const engineHexHits = engineFiles.filter((f) => hexRegex.test(fsMod.readFileSync(f, 'utf8')));
+    const engineTwHits = engineFiles.filter((f) => tailwindColorRegex.test(fsMod.readFileSync(f, 'utf8')));
+    assert(engineHexHits.length === 0, `src/engine has 0 raw hex literals (found in: ${engineHexHits.join(', ')})`);
+    assert(engineTwHits.length === 0, `src/engine has 0 Tailwind color utilities (found in: ${engineTwHits.join(', ')})`);
+
+    const uiFiles = [
+      ...walkFiles(pathMod.join(repoRoot, 'src/components'), ['.ts', '.tsx']),
+      ...walkFiles(pathMod.join(repoRoot, 'src/services'), ['.ts', '.tsx'], ['__tests__']),
+      ...walkFiles(pathMod.join(repoRoot, 'src/localTest'), ['.ts', '.tsx']),
+    ];
+    const uiHexHits = uiFiles.filter((f) => hexRegex.test(fsMod.readFileSync(f, 'utf8')));
+    assert(uiHexHits.length === 0, `UI/service modules have 0 raw hex literals (found in: ${uiHexHits.join(', ')})`);
+
+    const shellPaths = [
+      'index.html',
+      'vite.config.ts',
+      'public/manifest.webmanifest',
+      'public/privacy.html',
+      'public/privacy/index.html',
+      'public/terms.html',
+      'public/terms/index.html',
+      'public/download/index.html',
+      'scripts/verifyPlayStoreReady.mjs',
+      'scripts/generatePlayStoreAssets.mjs',
+    ];
+    const obsidianShellHits = shellPaths.filter((rel) =>
+      fsMod.readFileSync(pathMod.join(repoRoot, rel), 'utf8').toLowerCase().includes('#060709')
+    );
+    assert(
+      obsidianShellHits.length === 0,
+      `Shell/HTML/manifest/asset scripts have 0 legacy Obsidian #060709 literals (found in: ${obsidianShellHits.join(', ')})`
+    );
+  }
+
+  console.log('\nALL 47 ENGINE, GOVERNANCE, DESIGN SYSTEM, TYPOGRAPHY, WEARABLES, WHOOP STRAIN, GOOGLE AUTH, ONBOARDING CONTEXT, 6-WEEK PROGRAM, TENSOR AI, SESSION REPORT, WORKOUT PAGE, EXERCISE OVERVIEW & RENPHO BLUETOOTH SUITES PASSED SUCCESSFULLY! 🎯');
 })().catch((err) => {
   console.error('Test Suite Failed:', err);
   if (typeof process !== 'undefined' && process.exit) {

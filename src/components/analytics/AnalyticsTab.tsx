@@ -330,7 +330,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
           openLogWeight();
         }}
         className="wk-button"
-        style={{ marginTop: fig(28), background: 'var(--wk-raised)', color: '#fff' }}
+        style={{ marginTop: fig(28), background: 'var(--wk-raised)', color: 'var(--color-text-primary)' }}
       >
         Log weight
       </button>
@@ -635,7 +635,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
               else openLogMeasurements('waist');
             }}
             className="wk-button gap-[calc(16*var(--f))]"
-            style={{ background: 'var(--wk-accent)', color: '#13181C' }}
+            style={{ background: 'var(--wk-accent)', color: 'var(--color-text-on-accent)' }}
           >
             {compositionView === 'weight' ? <Scale className="w-4 h-4 stroke-[2]" /> : <Ruler className="w-4 h-4 stroke-[2]" />}
             <span>{compositionView === 'weight' ? 'Log weight' : 'Log measurements'}</span>
@@ -723,7 +723,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
     <div
       role="menu"
       aria-label="Progress options"
-      className="w-60 rounded-2xl bg-[#2C3034] border border-white/[0.08] shadow-2xl p-1.5 space-y-1 text-left"
+      className="w-60 rounded-2xl bg-surface-card border border-white/[0.08] shadow-2xl p-1.5 space-y-1 text-left"
     >
       <button
         type="button"
@@ -872,8 +872,8 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
                       style={{
                         textTransform: 'none',
                         marginTop: fig(14),
-                        background: todaySteps >= stepsGoal.target ? 'rgba(0,241,159,0.16)' : 'var(--wk-pill)',
-                        color: todaySteps >= stepsGoal.target ? 'var(--wk-accent)' : '#C9CDD0',
+                        background: todaySteps >= stepsGoal.target ? 'var(--color-status-positive-soft)' : 'var(--wk-pill)',
+                        color: todaySteps >= stepsGoal.target ? 'var(--wk-accent)' : 'var(--color-status-neutral)',
                       }}
                     >
                       {todaySteps >= stepsGoal.target
@@ -917,8 +917,8 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
                       style={{
                         textTransform: 'none',
                         marginTop: fig(16),
-                        background: pace.pace === 'on' ? 'rgba(0,241,159,0.16)' : 'var(--wk-pill)',
-                        color: pace.pace === 'on' ? 'var(--wk-accent)' : '#C9CDD0',
+                        background: pace.pace === 'on' ? 'var(--color-status-positive-soft)' : 'var(--wk-pill)',
+                        color: pace.pace === 'on' ? 'var(--wk-accent)' : 'var(--color-status-neutral)',
                       }}
                     >
                       {pace.direction === 'steady' ? 'Your weight is steady' : pace.direction === 'losing' ? "You're losing weight" : "You're gaining weight"}
@@ -1102,7 +1102,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
                 setDetail('widgets');
               }}
               className="wk-button"
-              style={{ marginTop: fig(28), background: 'var(--wk-raised)', color: '#fff' }}
+              style={{ marginTop: fig(28), background: 'var(--wk-raised)', color: 'var(--color-text-primary)' }}
             >
               Customize widgets
             </button>
@@ -1134,7 +1134,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
             setDetail('goals');
           }}
           className="wk-button"
-          style={{ background: 'var(--wk-raised)', color: '#fff' }}
+          style={{ background: 'var(--wk-raised)', color: 'var(--color-text-primary)' }}
         >
           Change goals
         </button>

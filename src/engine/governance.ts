@@ -384,7 +384,7 @@ export const CODIFIED_DESIGN_HEURISTICS: DesignHeuristicRule[] = [
     id: 'vd-5',
     pillar: 'Visual Design',
     principle: 'Emotional Resonance',
-    rule: 'Evoke trust and athletic authority through semantic colors (#10B981 Primed, #22D3EE Vector, #F59E0B Recovery Shield).',
+    rule: 'Evoke trust and athletic authority through codified semantic status roles (--color-status-positive Primed, --color-status-info Vector/Strain, --color-status-warning Recovery Shield).',
   },
   {
     id: 'vd-6',

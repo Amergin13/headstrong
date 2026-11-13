@@ -21,6 +21,7 @@ import {
 import { ActivityLog, describeActivity } from '../../engine/activeDays';
 import { triggerHaptic } from '../../utils/haptics';
 import { PastWorkoutModal } from './PastWorkoutModal';
+import { resolveCssToken } from '../../styles/semanticTokens';
 
 /** One Figma pixel (1344 px frame) in screen pixels; see .wk in index.css. */
 const fig = (px: number) => `calc(${px} * var(--f))`;
@@ -36,10 +37,10 @@ interface IdentityRing {
   sets: number;
 }
 
-const PHASE_COLORS: Record<number, [string, string]> = {
-  1: ['#7B5CFF', '#B08CFF'],
-  2: ['#E04FD0', '#FF8AD8'],
-  3: ['#FF9E6D', '#FFD0A8'],
+const PHASE_COLOR_TOKENS: Record<number, [string, string]> = {
+  1: ['--color-phase-hypertrophy', '--color-phase-hypertrophy-soft'],
+  2: ['--color-phase-strength', '--color-phase-strength-soft'],
+  3: ['--color-phase-peak', '--color-phase-peak-soft'],
 };
 
 function lobesFor(label: string): number {
@@ -100,6 +101,12 @@ const IdentityForm: React.FC<{ rings: IdentityRing[]; seed: string; total: numbe
       };
     });
     const progress = completed / total;
+    const resolvedPhaseColors: Record<number, [string, string]> = {
+      1: [resolveCssToken(PHASE_COLOR_TOKENS[1][0], 'rgb(139 124 246)'), resolveCssToken(PHASE_COLOR_TOKENS[1][1], 'rgb(176 140 255)')],
+      2: [resolveCssToken(PHASE_COLOR_TOKENS[2][0], 'rgb(224 79 208)'), resolveCssToken(PHASE_COLOR_TOKENS[2][1], 'rgb(255 138 216)')],
+      3: [resolveCssToken(PHASE_COLOR_TOKENS[3][0], 'rgb(255 158 109)'), resolveCssToken(PHASE_COLOR_TOKENS[3][1], 'rgb(255 208 168)')],
+    };
+    const nextContourStroke = resolveCssToken('--color-text-primary', 'white');
     let width = 0;
     let height = 0;
     let frame = 0;
@@ -234,13 +241,13 @@ const IdentityForm: React.FC<{ rings: IdentityRing[]; seed: string; total: numbe
       for (const s of shapes) {
         if (s.next) {
           ctx.setLineDash([2, 5]);
-          ctx.strokeStyle = '#FFFFFF';
+          ctx.strokeStyle = nextContourStroke;
           strokeDepth(contour(cx, formY, sphere, s, t, 0), 0.22 + 0.12 * Math.sin(t * 2.2), 1);
           ctx.setLineDash([]);
           continue;
         }
         if (!s.done) continue;
-        const [c1, c2] = PHASE_COLORS[s.phase] ?? PHASE_COLORS[1];
+        const [c1, c2] = resolvedPhaseColors[s.phase] ?? resolvedPhaseColors[1];
         const grad =
           typeof ctx.createConicGradient === 'function'
             ? ctx.createConicGradient(s.harmonics[0].phase + t * 0.2, cx, formY)
@@ -400,7 +407,7 @@ export const ProgramPlanView: React.FC<ProgramPlanViewProps> = ({
   // The form is unique to the athlete: seeded by when they started the plan.
   const identitySeed = plan.workouts.find((w) => w.session)?.session?.completedAt ?? 'treise';
 
-  // Page background: #283339 at the top fading to #13181C where the plan progress (first run) or phase cards start.
+  // Page background: canvas top tint fading to canvas base where the plan progress (first run) or phase cards start.
   const progressRef = useRef<HTMLElement>(null);
   const phasesTopRef = useRef<HTMLDivElement>(null);
 
@@ -570,12 +577,12 @@ export const ProgramPlanView: React.FC<ProgramPlanViewProps> = ({
                                 : `${name}, up next. Open workout`
                             }
                             className="wk-hit w-full flex items-center text-left"
-                            style={{ ...rowStyle, background: done ? '#047857' : 'var(--wk-card)' }}
+                            style={{ ...rowStyle, background: done ? 'var(--color-set-completed-soft)' : 'var(--wk-card)' }}
                           >
                             {content}
                           </button>
                         ) : (
-                          <div className="flex items-center" style={{ ...rowStyle, background: done ? '#047857' : 'var(--wk-card)' }}>
+                          <div className="flex items-center" style={{ ...rowStyle, background: done ? 'var(--color-set-completed-soft)' : 'var(--wk-card)' }}>
                             {content}
                           </div>
                         )}

@@ -32,10 +32,10 @@ const DayCircle: React.FC<{ day: StripDay }> = ({ day }) => {
           width: size,
           height: size,
           background: 'var(--wk-accent)',
-          boxShadow: day.isToday ? `0 0 0 ${fig(4)} #13181C, 0 0 0 ${fig(7)} #fff` : undefined,
+          boxShadow: day.isToday ? `0 0 0 ${fig(4)} var(--color-bg-canvas), 0 0 0 ${fig(7)} var(--color-text-primary)` : undefined,
         }}
       >
-        <Check style={{ width: fig(28), height: fig(28), color: '#13181C' }} strokeWidth={3.5} aria-hidden="true" />
+        <Check style={{ width: fig(28), height: fig(28), color: 'var(--color-text-on-accent)' }} strokeWidth={3.5} aria-hidden="true" />
       </span>
     );
   }
@@ -43,10 +43,10 @@ const DayCircle: React.FC<{ day: StripDay }> = ({ day }) => {
     return (
       <span
         className="wk-today rounded-full flex items-center justify-center"
-        style={{ width: size, height: size, border: `${stroke} solid #fff` }}
+        style={{ width: size, height: size, border: `${stroke} solid var(--color-text-primary)` }}
       >
         {day.status === 'planned' && (
-          <span className="rounded-full" style={{ width: fig(30), height: fig(30), background: '#8D9397' }} />
+          <span className="rounded-full" style={{ width: fig(30), height: fig(30), background: 'var(--color-text-secondary)' }} />
         )}
       </span>
     );
@@ -55,7 +55,7 @@ const DayCircle: React.FC<{ day: StripDay }> = ({ day }) => {
     return (
       <span
         className="rounded-full"
-        style={{ width: size, height: size, background: '#5A6064', border: `${stroke} solid #7C8286` }}
+        style={{ width: size, height: size, background: 'var(--color-bg-surface-control)', border: `${stroke} solid var(--color-text-subtle)` }}
       />
     );
   }
@@ -140,7 +140,7 @@ export const WorkoutPageHeader: React.FC<WorkoutPageHeaderProps> = ({ title, day
                     style={{
                       fontSize: `max(12px, ${fig(22)})`,
                       fontWeight: day.isToday || selected ? 700 : 600,
-                      color: selected ? 'var(--wk-accent)' : day.isToday ? '#fff' : 'var(--wk-muted)',
+                      color: selected ? 'var(--wk-accent)' : day.isToday ? 'var(--color-text-primary)' : 'var(--wk-muted)',
                     }}
                   >
                     {day.label}
@@ -154,7 +154,7 @@ export const WorkoutPageHeader: React.FC<WorkoutPageHeaderProps> = ({ title, day
                     style={{
                       fontSize: `max(12px, ${fig(22)})`,
                       fontWeight: day.isToday ? 700 : 600,
-                      color: day.isToday ? '#fff' : 'var(--wk-muted)',
+                      color: day.isToday ? 'var(--color-text-primary)' : 'var(--wk-muted)',
                     }}
                   >
                     {day.label}

@@ -20,13 +20,13 @@ const TreiseCoachMark: React.FC<{ active: boolean }> = ({ active }) => (
   >
     <defs>
       <linearGradient id="treise-coach-sparkle-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-        <stop offset="0%" stopColor="#FFD7B8" />
-        <stop offset="50%" stopColor="#FF9B54" />
-        <stop offset="100%" stopColor="#E47E38" />
+        <stop offset="0%" stopColor="var(--color-coach-ink)" />
+        <stop offset="50%" stopColor="var(--color-coach-glow)" />
+        <stop offset="100%" stopColor="var(--color-coach-sparkle)" />
       </linearGradient>
       <filter id="treise-t-glow" x="-60%" y="-60%" width="220%" height="220%">
         <feGaussianBlur in="SourceAlpha" stdDeviation={active ? '3.0' : '2.4'} result="blurOuter" />
-        <feFlood floodColor="#E97D32" floodOpacity={active ? '0.85' : '0.55'} result="colorOuter" />
+        <feFlood style={{ floodColor: 'var(--color-coach-sparkle)' }} floodOpacity={active ? '0.85' : '0.55'} result="colorOuter" />
         <feComposite in="colorOuter" in2="blurOuter" operator="in" result="glowOuter" />
         <feMerge>
           <feMergeNode in="glowOuter" />
@@ -37,7 +37,7 @@ const TreiseCoachMark: React.FC<{ active: boolean }> = ({ active }) => (
     {/* Centered geometric Treise "T" (~16.5x18px, 2.4px stroke) matching the visual weight of the nav segments */}
     <path
       d="M15.75 15H32.25V17.4H25.2V33H22.8V17.4H15.75V15Z"
-      fill={active ? '#FBF7EE' : '#DCD9D2'}
+      fill={active ? 'var(--color-coach-surface-bright)' : 'var(--color-coach-surface)'}
       filter="url(#treise-t-glow)"
     />
     {/* Crisp primary 4-point AI sparkle tucked cleanly at bottom right of the T */}
@@ -49,7 +49,7 @@ const TreiseCoachMark: React.FC<{ active: boolean }> = ({ active }) => (
     {/* Crisp secondary AI sparkle */}
     <path
       d="M34.2 22.8L34.74 24.26L36.2 24.8L34.74 25.34L34.2 26.8L33.66 25.34L32.2 24.8L33.66 24.26L34.2 22.8Z"
-      fill={active ? '#FFD7B8' : '#FFA668'}
+      fill={active ? 'var(--color-coach-ink)' : 'var(--color-coach-glow)'}
     />
   </svg>
 );

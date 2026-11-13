@@ -63,7 +63,7 @@ const Choice: React.FC<{ selected: boolean; title: string; note?: string; tag?: 
         style={{ width: fig(52), height: fig(52), background: selected ? 'var(--wk-accent)' : 'transparent', border: selected ? 'none' : `${fig(3)} solid var(--wk-pill)` }}
         aria-hidden="true"
       >
-        {selected && <Check style={{ width: fig(30), height: fig(30), color: '#13181C' }} strokeWidth={3} />}
+        {selected && <Check style={{ width: fig(30), height: fig(30), color: 'var(--color-text-on-accent)' }} strokeWidth={3} />}
       </span>
     </button>
   </li>
@@ -161,7 +161,7 @@ export const GoalSettingsScreen: React.FC<GoalSettingsScreenProps> = ({ profile,
                 borderRadius: fig(22),
                 fontSize: text(36),
                 background: perWeek === n ? 'var(--wk-accent)' : 'var(--wk-raised)',
-                color: perWeek === n ? '#13181C' : '#fff',
+                color: perWeek === n ? 'var(--color-text-on-accent)' : 'var(--color-text-primary)',
               }}
             >
               {n}
@@ -236,8 +236,8 @@ export const GoalSettingsScreen: React.FC<GoalSettingsScreenProps> = ({ profile,
                 }}
                 className="wk-pill wk-tap"
                 style={{
-                  background: active ? 'rgba(0,241,159,0.14)' : 'var(--wk-raised)',
-                  color: active ? 'var(--wk-accent)' : '#fff',
+                  background: active ? 'var(--color-accent-primary-soft)' : 'var(--wk-raised)',
+                  color: active ? 'var(--wk-accent)' : 'var(--color-text-primary)',
                   border: active ? `${fig(2)} solid var(--wk-accent)` : `${fig(2)} solid transparent`,
                   minHeight: 44,
                   padding: `0 ${fig(24)}`,
@@ -265,14 +265,14 @@ export const GoalSettingsScreen: React.FC<GoalSettingsScreenProps> = ({ profile,
                 onChange={(e) => setCustomTargetInput(e.target.value)}
                 aria-invalid={candidateInvalid}
                 className="wk-field tabular-numbers"
-                style={{ width: fig(220), minHeight: 44, padding: `0 ${fig(24)}`, fontSize: text(34), color: '#fff' }}
+                style={{ width: fig(220), minHeight: 44, padding: `0 ${fig(24)}`, fontSize: text(34), color: 'var(--color-text-primary)' }}
               />
               <span className="wk-body">
                 {pickedOption.metric === 'weight' ? units.unit : pickedOption.metric === 'steps' ? 'steps a day' : 'reps in one set'}
               </span>
             </div>
             {candidateInvalid && (
-              <p className="wk-caption" style={{ marginTop: fig(12), color: '#FFB4A2' }}>
+              <p className="wk-caption" style={{ marginTop: fig(12), color: 'var(--color-status-danger)' }}>
                 {pickedOption.metric === 'steps'
                   ? 'Enter a daily step target between 500 and 100,000.'
                   : pickedOption.metric === 'weight'
@@ -299,8 +299,8 @@ export const GoalSettingsScreen: React.FC<GoalSettingsScreenProps> = ({ profile,
               className="wk-button"
               style={{
                 marginTop: fig(20),
-                background: candidateGoal && !customSlotsFull ? 'var(--wk-accent)' : 'var(--wk-pill)',
-                color: candidateGoal && !customSlotsFull ? '#13181C' : 'rgba(255,255,255,0.5)',
+                background: candidateGoal && !customSlotsFull ? 'var(--color-action-primary-bg)' : 'var(--color-action-disabled-bg)',
+                color: candidateGoal && !customSlotsFull ? 'var(--color-action-primary-fg)' : 'var(--color-action-disabled-fg)',
                 cursor: candidateGoal && !customSlotsFull ? 'pointer' : 'not-allowed',
               }}
             >
@@ -350,7 +350,7 @@ export const GoalSettingsScreen: React.FC<GoalSettingsScreenProps> = ({ profile,
             onUpdateProfile({ goalSettings: undefined });
           }}
           className="wk-button"
-          style={{ background: 'var(--wk-raised)', color: '#fff' }}
+          style={{ background: 'var(--wk-raised)', color: 'var(--color-text-primary)' }}
         >
           Use my plan's goals
         </button>

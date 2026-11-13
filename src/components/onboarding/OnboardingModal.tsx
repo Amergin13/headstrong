@@ -127,7 +127,7 @@ const titleStyle: React.CSSProperties = {
   fontSize: `max(22px, ${fig(60)})`,
   lineHeight: 1.15,
   fontWeight: 700,
-  color: '#fff',
+  color: 'var(--color-text-primary)',
   letterSpacing: '-0.01em',
 };
 const bodyStyle: React.CSSProperties = {
@@ -138,10 +138,10 @@ const bodyStyle: React.CSSProperties = {
 const sectionLabel: React.CSSProperties = {
   fontSize: `max(12px, ${fig(26)})`,
   fontWeight: 700,
-  color: '#fff',
+  color: 'var(--color-text-primary)',
   marginBottom: fig(16),
 };
-const optionText: React.CSSProperties = { fontSize: `max(14px, ${fig(30)})`, fontWeight: 700, color: '#fff', lineHeight: 1.25 };
+const optionText: React.CSSProperties = { fontSize: `max(14px, ${fig(30)})`, fontWeight: 700, color: 'var(--color-text-primary)', lineHeight: 1.25 };
 const optionDetail: React.CSSProperties = { fontSize: `max(12px, ${fig(26)})`, color: 'var(--wk-muted)', lineHeight: 1.35, marginTop: fig(4) };
 
 /** A selectable row or tile: accent ring when chosen. */
@@ -234,7 +234,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
       aria-modal="true"
       aria-labelledby="onboarding-title"
       className="wk fixed inset-0 z-50 overflow-y-auto"
-      style={{ background: 'linear-gradient(180deg, #283339 0%, #13181C 70%)' }}
+      style={{ background: 'linear-gradient(180deg, var(--color-bg-canvas-top) 0%, var(--color-bg-canvas) 70%)' }}
       onTouchStart={(e) => {
         touchStartX.current = e.touches[0].clientX;
       }}
@@ -382,7 +382,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                             setOwnTarget(on ? '' : lift.metric === 'steps' ? '10000' : '');
                           }}
                           className="flex items-center font-semibold"
-                          style={{ ...choiceStyle(on), borderRadius: 999, padding: `0 ${fig(30)}`, minHeight: 44, fontSize: `max(12px, ${fig(26)})`, color: '#fff' }}
+                          style={{ ...choiceStyle(on), borderRadius: 999, padding: `0 ${fig(30)}`, minHeight: 44, fontSize: `max(12px, ${fig(26)})`, color: 'var(--color-text-primary)' }}
                         >
                           {lift.label}
                         </button>
@@ -405,7 +405,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                         aria-invalid={ownInvalid}
                         aria-describedby="own-goal-help"
                         className="wk-field tabular-numbers"
-                        style={{ width: fig(220), minHeight: 44, padding: `0 ${fig(24)}`, fontSize: `max(16px, ${fig(34)})`, color: '#fff' }}
+                        style={{ width: fig(220), minHeight: 44, padding: `0 ${fig(24)}`, fontSize: `max(16px, ${fig(34)})`, color: 'var(--color-text-primary)' }}
                       />
                       <span style={optionText}>
                         {ownChoice.metric === 'weight' ? unit : ownChoice.metric === 'steps' ? 'steps a day' : 'reps in one set'}
@@ -512,7 +512,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                             borderRadius: 999,
                             padding: `0 ${fig(30)}`,
                             gap: fig(10),
-                            color: on ? '#fff' : 'rgba(255,255,255,0.75)',
+                            color: on ? 'var(--color-text-primary)' : 'var(--color-text-secondary)',
                             fontSize: `max(13px, ${fig(28)})`,
                           }}
                         >
@@ -535,7 +535,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
             className="sticky bottom-0"
             style={{
               padding: `${fig(40)} 0 max(${fig(40)}, env(safe-area-inset-bottom))`,
-              background: isLast ? 'linear-gradient(180deg, rgba(19,24,28,0) 0%, #13181C 35%)' : undefined,
+              background: isLast ? 'linear-gradient(180deg, rgb(var(--color-bg-canvas-rgb) / 0) 0%, var(--color-bg-canvas) 35%)' : undefined,
             }}
           >
             <button
@@ -546,7 +546,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                 height: 54,
                 borderRadius: 999,
                 background: 'var(--wk-accent)',
-                color: '#13181C',
+                color: 'var(--color-text-on-accent)',
                 fontSize: `max(15px, ${fig(32)})`,
               }}
             >
@@ -583,6 +583,6 @@ const RadioDot: React.FC<{ selected: boolean }> = ({ selected }) => (
       background: selected ? 'var(--wk-accent)' : 'transparent',
     }}
   >
-    {selected && <Check className="w-3.5 h-3.5 stroke-[3]" style={{ color: '#13181C' }} />}
+    {selected && <Check className="w-3.5 h-3.5 stroke-[3]" style={{ color: 'var(--color-text-on-accent)' }} />}
   </span>
 );

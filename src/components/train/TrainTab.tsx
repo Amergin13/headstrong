@@ -799,7 +799,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [noteKeys, showRecoveryGate]);
 
-  // Page background: #283339 at the top fading to #13181C exactly where the first workout card starts.
+  // Page background: canvas top tint fading to canvas base exactly where the first workout card starts.
   const cardsTopRef = useRef<HTMLDivElement>(null);
   const exercisesTopRef = useRef<HTMLDivElement>(null);
   const sessionBlockRef = useRef<HTMLDivElement>(null);
@@ -841,7 +841,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
     <div
       role="menu"
       aria-label="Workout options"
-      className="w-60 rounded-2xl bg-[#2C3034] border border-white/[0.08] shadow-2xl p-1.5 space-y-1 text-left"
+      className="w-60 rounded-2xl bg-surface-card border border-white/[0.08] shadow-2xl p-1.5 space-y-1 text-left"
     >
       <div className="px-3 py-1.5 text-xs font-bold text-white/60 uppercase tracking-wider">Location</div>
       {LOCATION_CONFIG.map((loc) => {
@@ -867,7 +867,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
               <span className="text-sm font-bold block">{loc.label}</span>
               <span className="text-xs text-white/60">{loc.detail}</span>
             </div>
-            {isSelected && <Check className="w-4 h-4 text-[#00F19F] stroke-[2.5] shrink-0 ml-2" />}
+            {isSelected && <Check className="w-4 h-4 text-brand-primary stroke-[2.5] shrink-0 ml-2" />}
           </button>
         );
       })}
@@ -1101,7 +1101,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
                     aria-valuenow={m.recoveryPct}
                     aria-label={`${MUSCLE_FRIENDLY_NAMES[m.muscle]} recovery`}
                   >
-                    <div style={{ width: `${m.recoveryPct}%`, background: '#8FD3FF' }} />
+                    <div style={{ width: `${m.recoveryPct}%`, background: 'var(--color-viz-1)' }} />
                   </div>
                 </li>
               ))}
@@ -1121,7 +1121,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
                   onSwitchSplitDay(recoveredAlternative);
                 }}
                 className="wk-button"
-                style={{ background: 'var(--wk-accent)', color: '#13181C' }}
+                style={{ background: 'var(--wk-accent)', color: 'var(--color-text-on-accent)' }}
               >
                 Train {recoveredAlternative} instead
               </button>
@@ -1133,7 +1133,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
                 onUpdateWorkout({ ...activeWorkout, recoveryOverride: true });
               }}
               className="wk-button"
-              style={{ background: 'var(--wk-pill)', color: '#fff' }}
+              style={{ background: 'var(--wk-pill)', color: 'var(--color-text-primary)' }}
             >
               Train anyway
             </button>
@@ -1239,8 +1239,8 @@ export const TrainTab: React.FC<TrainTabProps> = ({
         className="wk-button transition-transform active:scale-[0.98]"
         style={
           completedSets > 0
-            ? { background: 'var(--wk-accent)', color: '#13181C' }
-            : { background: 'var(--wk-pill)', color: 'rgba(255,255,255,0.5)', cursor: 'not-allowed' }
+            ? { background: 'var(--wk-accent)', color: 'var(--color-text-on-accent)' }
+            : { background: 'var(--color-action-disabled-bg)', color: 'var(--color-action-disabled-fg)', cursor: 'not-allowed' }
         }
       >
         Finish workout

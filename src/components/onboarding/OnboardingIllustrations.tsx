@@ -6,7 +6,11 @@ import React from 'react';
  * (ob-draw, ob-pop, ob-glow) and collapses to the final frame with reduced motion.
  */
 
-const PHASE = ['#8B7CF6', '#F472B6', '#FB923C'];
+const PHASE = [
+  'var(--color-phase-hypertrophy)',
+  'var(--color-phase-strength)',
+  'var(--color-phase-peak)',
+];
 
 /** Identity: rings of a sphere appear from the equator outwards, like the Program page's identity sphere. */
 export const IdentityIllustration: React.FC = () => {
@@ -19,13 +23,13 @@ export const IdentityIllustration: React.FC = () => {
     <svg viewBox="0 0 320 224" className="w-full h-full" role="img" aria-label="A sphere of light forming ring by ring">
       <defs>
         <radialGradient id="ob-id-glow" cx="50%" cy="50%" r="50%">
-          <stop offset="0%" stopColor="#8B7CF6" stopOpacity="0.45" />
-          <stop offset="60%" stopColor="#F472B6" stopOpacity="0.12" />
-          <stop offset="100%" stopColor="#13181C" stopOpacity="0" />
+          <stop offset="0%" stopColor="var(--color-phase-hypertrophy)" stopOpacity="0.45" />
+          <stop offset="60%" stopColor="var(--color-phase-strength)" stopOpacity="0.12" />
+          <stop offset="100%" stopColor="var(--color-bg-canvas)" stopOpacity="0" />
         </radialGradient>
         <radialGradient id="ob-id-body" cx="38%" cy="32%" r="75%">
-          <stop offset="0%" stopColor="#ffffff" stopOpacity="0.14" />
-          <stop offset="100%" stopColor="#ffffff" stopOpacity="0.02" />
+          <stop offset="0%" stopColor="var(--color-text-primary)" stopOpacity="0.14" />
+          <stop offset="100%" stopColor="var(--color-text-primary)" stopOpacity="0.02" />
         </radialGradient>
       </defs>
       <circle className="ob-glow" cx={cx} cy={cy} r={110} fill="url(#ob-id-glow)" />
@@ -52,7 +56,7 @@ export const IdentityIllustration: React.FC = () => {
           />
         );
       })}
-      <circle className="ob-pop" cx={cx} cy={cy} r={5} fill="#00F19F" style={{ animationDelay: '1500ms' }} />
+      <circle className="ob-pop" cx={cx} cy={cy} r={5} fill="var(--color-accent-primary)" style={{ animationDelay: '1500ms' }} />
     </svg>
   );
 };
@@ -94,7 +98,7 @@ export const SessionsIllustration: React.FC<{ weeks?: number; perWeek?: number }
         cy={y0 + (rows - 1) * gapY}
         r={19}
         fill="none"
-        stroke="#00F19F"
+        stroke="var(--color-accent-primary)"
         strokeWidth="2.5"
         style={{ animationDelay: `${150 + cols * rows * 55}ms` }}
       />
@@ -107,9 +111,9 @@ export const RestartIllustration: React.FC = () => (
   <svg viewBox="0 0 320 224" className="w-full h-full" role="img" aria-label="A progress line that dips during a missed week and climbs back higher">
     <defs>
       <linearGradient id="ob-rs-line" x1="0" y1="0" x2="1" y2="0">
-        <stop offset="0%" stopColor="#8B7CF6" />
-        <stop offset="55%" stopColor="#F472B6" />
-        <stop offset="100%" stopColor="#00F19F" />
+        <stop offset="0%" stopColor="var(--color-phase-hypertrophy)" />
+        <stop offset="55%" stopColor="var(--color-phase-strength)" />
+        <stop offset="100%" stopColor="var(--color-accent-primary)" />
       </linearGradient>
     </defs>
     {[64, 112, 160].map((y) => (
@@ -133,7 +137,7 @@ export const RestartIllustration: React.FC = () => (
       strokeLinecap="round"
       strokeDasharray="2 8"
     />
-    <circle className="ob-pop" cx="158" cy="152" r="7" fill="#13181C" stroke="rgba(255,255,255,0.55)" strokeWidth="2.5" style={{ animationDelay: '700ms' }} />
+    <circle className="ob-pop" cx="158" cy="152" r="7" fill="var(--color-bg-canvas)" stroke="rgba(255,255,255,0.55)" strokeWidth="2.5" style={{ animationDelay: '700ms' }} />
     <path
       className="ob-draw"
       d="M158 152 C 196 152, 214 100, 246 82 S 284 52, 296 46"
@@ -144,7 +148,7 @@ export const RestartIllustration: React.FC = () => (
       pathLength={1}
       style={{ animationDelay: '900ms' }}
     />
-    <circle className="ob-glow" cx="296" cy="46" r="18" fill="#00F19F" fillOpacity="0.18" />
-    <circle className="ob-pop" cx="296" cy="46" r="7" fill="#00F19F" style={{ animationDelay: '1700ms' }} />
+    <circle className="ob-glow" cx="296" cy="46" r="18" fill="var(--color-accent-primary)" fillOpacity="0.18" />
+    <circle className="ob-pop" cx="296" cy="46" r="7" fill="var(--color-accent-primary)" style={{ animationDelay: '1700ms' }} />
   </svg>
 );

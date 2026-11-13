@@ -78,7 +78,7 @@ export const ReadinessBanner: React.FC<ReadinessBannerProps> = ({
   const bodyText = hasPrefix ? summary.slice(colonIndex + 1) : summary;
 
   return (
-    <div className="p-4 sm:p-5 rounded-2xl bg-[#141824] border border-white/[0.04] space-y-3.5">
+    <div className="p-4 sm:p-5 rounded-2xl bg-surface-elevated border border-white/[0.04] space-y-3.5">
       {/* 1. Recovery Telemetry Row (Image 1) */}
       {hasWatchData ? (
         <div className="flex items-center gap-4 sm:gap-5">

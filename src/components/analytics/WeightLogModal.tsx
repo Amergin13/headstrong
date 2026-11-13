@@ -983,7 +983,7 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
             type="button"
             onClick={handleAlertAction}
             className="shrink-0 px-[calc(38*var(--f))] rounded-[calc(22*var(--f))] text-[length:max(12px,calc(26*var(--f)))] font-bold min-h-[44px]"
-            style={{ background: 'var(--wk-accent)', color: '#13181C' }}
+            style={{ background: 'var(--wk-accent)', color: 'var(--color-text-on-accent)' }}
           >
             {alertAction}
           </button>
@@ -997,7 +997,7 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
                 type="button"
                 onClick={() => handleChooseNativeScale(scale)}
                 className="w-full px-[calc(26*var(--f))] rounded-[calc(22*var(--f))] text-[length:max(12px,calc(26*var(--f)))] font-bold text-left min-h-[44px]"
-                style={{ background: 'var(--wk-accent)', color: '#13181C' }}
+                style={{ background: 'var(--wk-accent)', color: 'var(--color-text-on-accent)' }}
               >
                 Pair {scale.name}
               </button>
@@ -1105,7 +1105,7 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
                         className="rounded-[calc(22*var(--f))] text-[length:max(12px,calc(26*var(--f)))] font-bold uppercase min-h-[44px]"
                         style={{
                           background: sexInput === option ? 'var(--wk-pill)' : 'var(--wk-raised)',
-                          color: sexInput === option ? '#fff' : 'var(--wk-muted)',
+                          color: sexInput === option ? 'var(--color-text-primary)' : 'var(--wk-muted)',
                         }}
                       >
                         {option}
@@ -1226,7 +1226,7 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
                     style={{
                       background:
                         bleDeviceKind === 'tape' ? 'var(--wk-accent)' : 'var(--wk-raised)',
-                      color: bleDeviceKind === 'tape' ? '#13181C' : '#fff',
+                      color: bleDeviceKind === 'tape' ? 'var(--color-text-on-accent)' : 'var(--color-text-primary)',
                     }}
                   >
                     <Ruler className="w-4 h-4 stroke-[2]" />
@@ -1276,7 +1276,7 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
                               : hasVal
                               ? 'var(--wk-pill)'
                               : 'var(--wk-raised)',
-                            color: isSelected ? '#13181C' : '#fff',
+                            color: isSelected ? 'var(--color-text-on-accent)' : 'var(--color-text-primary)',
                           }}
                         >
                           {site.shortLabel}
@@ -1312,7 +1312,7 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
                         applyTapeReadingToSite(liveTapeReading.lengthCm, activeSite, true, true)
                       }
                       className="px-[calc(26*var(--f))] py-[calc(16*var(--f))] rounded-full text-[length:max(12px,calc(26*var(--f)))] font-bold min-h-[44px]"
-                      style={{ background: 'var(--wk-accent)', color: '#13181C' }}
+                      style={{ background: 'var(--wk-accent)', color: 'var(--color-text-on-accent)' }}
                     >
                       Save to {activeSiteDef.shortLabel} & Next →
                     </button>
@@ -1368,7 +1368,7 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
                 onClose();
               }}
               className="wk-button"
-              style={{ background: 'var(--wk-raised)', color: '#fff' }}
+              style={{ background: 'var(--wk-raised)', color: 'var(--color-text-primary)' }}
             >
               Cancel
             </button>
@@ -1377,7 +1377,7 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
               disabled={(!valid && !autoSavedBanner) || capturePhase === 'analysing'}
               aria-label={mode === 'weight' ? 'Save weight' : 'Save measurements'}
               className="wk-button disabled:opacity-50 gap-[calc(12*var(--f))]"
-              style={{ background: 'var(--wk-accent)', color: '#13181C' }}
+              style={{ background: 'var(--wk-accent)', color: 'var(--color-text-on-accent)' }}
             >
               <Check className="w-4 h-4 stroke-[2.5]" />
               <span>

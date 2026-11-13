@@ -70,10 +70,10 @@ export const StrengthLevelsCard: React.FC<StrengthLevelsCardProps> = ({ report, 
       <div className="w-full h-56" style={{ marginTop: fig(28) }} aria-hidden="true">
         <ResponsiveContainer width="100%" height="100%">
           <RadarChart cx="50%" cy="50%" outerRadius="72%" data={radarData}>
-            <PolarGrid stroke="#474D50" strokeDasharray="2 2" />
-            <PolarAngleAxis dataKey="axis" tick={{ fill: 'rgba(255,255,255,0.65)', fontSize: 12, fontWeight: 700 }} />
+            <PolarGrid stroke="var(--color-bg-surface-control)" strokeDasharray="2 2" />
+            <PolarAngleAxis dataKey="axis" tick={{ fill: 'var(--color-text-secondary)', fontSize: 12, fontWeight: 700 }} />
             <PolarRadiusAxis angle={90} domain={[0, 100]} tick={false} axisLine={false} />
-            <Radar dataKey="score" stroke="#00F19F" strokeWidth={2} fill="#00F19F" fillOpacity={0.2} dot={{ r: 3, fill: '#00F19F' }} />
+            <Radar dataKey="score" stroke="var(--color-accent-primary)" strokeWidth={2} fill="var(--color-accent-primary)" fillOpacity={0.2} dot={{ r: 3, fill: 'var(--color-accent-primary)' }} />
           </RadarChart>
         </ResponsiveContainer>
       </div>
@@ -85,7 +85,7 @@ export const StrengthLevelsCard: React.FC<StrengthLevelsCardProps> = ({ report, 
               <span className="wk-label" style={{ lineHeight: 1.21 }}>
                 {l.name}
               </span>
-              <span className="font-bold shrink-0" style={{ fontSize: `max(12px, ${fig(26)})`, color: l.logged ? '#fff' : 'var(--wk-muted)' }}>
+              <span className="font-bold shrink-0" style={{ fontSize: `max(12px, ${fig(26)})`, color: l.logged ? 'var(--color-text-primary)' : 'var(--wk-muted)' }}>
                 {l.logged ? `${l.tier} ${l.subDivision}` : 'Not logged yet'}
               </span>
             </div>

@@ -16,10 +16,51 @@ export interface ProgressPoint {
   value: number;
 }
 
+export type ChartTone = 'biometric' | 'strength' | 'body';
+export type DeltaPolarity = 'positive' | 'warning' | 'danger' | 'neutral';
+
+export interface ChartHeadline {
+  eyebrow: string;
+  formatted: string;
+  valueText: string;
+  unitText?: string;
+}
+
+export interface ChartDeltaBadge {
+  direction: 'up' | 'down' | 'flat';
+  text: string;
+  polarity: DeltaPolarity;
+}
+
+export interface ChartTypicalRange {
+  low: number;
+  high: number;
+  label: string;
+}
+
+export interface ChartWindowMeta {
+  start: string;
+  end: string;
+  label: string;
+  isDailyCalendar?: boolean;
+  canStepBack: boolean;
+  canStepForward: boolean;
+  periodOffset: number;
+}
+
 export interface ProgressChart {
   id: string;
   title: string;
   category?: 'scale' | 'tape';
+  chartTone?: ChartTone;
+  /** Semantic direction preference for delta badges (false for RHR / body fat where down is favorable). */
+  higherIsBetter?: boolean | 'neutral';
+  /** Enables trailing 28-day personal baseline band (homeostatic daily biometrics only). */
+  supportsTypicalRange?: boolean;
+  /** Daily reading series (draws 7 calendar weekday/date slots in 1W mode). */
+  isDailySeries?: boolean;
+  /** Displays period mean in AVERAGE KPI mode rather than period endpoint. */
+  useWindowAverage?: boolean;
   /** Main line, oldest first. */
   points: ProgressPoint[];
   /** Faint line underneath, e.g. daily weigh-ins under the 7-day average. */
@@ -28,6 +69,10 @@ export interface ProgressChart {
   summary: string;
   /** Formats a value for axis labels, e.g. "81.2 kg". */
   format: (value: number) => string;
+  headline?: ChartHeadline;
+  delta?: ChartDeltaBadge;
+  typicalRange?: ChartTypicalRange;
+  windowRange?: ChartWindowMeta;
 }
 
 export type ChartTimeline = '1W' | '1M' | '3M' | '1Y';
@@ -41,13 +86,14 @@ export interface ChartTimelineOption {
   days: number;
   weeks: number;
   windowText: string;
+  periodNoun: string;
 }
 
 export const CHART_TIMELINES: readonly ChartTimelineOption[] = [
-  { id: '1W', label: '1W', ariaLabel: 'Last week', days: 7, weeks: 1, windowText: 'the last week' },
-  { id: '1M', label: '1M', ariaLabel: 'Last month', days: 30, weeks: 4, windowText: 'the last month' },
-  { id: '3M', label: '3M', ariaLabel: 'Last quarter', days: 90, weeks: 13, windowText: 'the last 3 months' },
-  { id: '1Y', label: '1Y', ariaLabel: 'Last year', days: 365, weeks: 52, windowText: 'the last year' },
+  { id: '1W', label: '1W', ariaLabel: 'Last week', days: 7, weeks: 1, windowText: 'the last week', periodNoun: 'week' },
+  { id: '1M', label: '1M', ariaLabel: 'Last month', days: 30, weeks: 4, windowText: 'the last month', periodNoun: 'month' },
+  { id: '3M', label: '3M', ariaLabel: 'Last quarter', days: 90, weeks: 13, windowText: 'the last 3 months', periodNoun: 'quarter' },
+  { id: '1Y', label: '1Y', ariaLabel: 'Last year', days: 365, weeks: 52, windowText: 'the last year', periodNoun: 'year' },
 ];
 
 export function getTimelineMeta(timeline: ChartTimeline): ChartTimelineOption {
@@ -62,43 +108,257 @@ export function timelineCutoffDate(timeline: ChartTimeline, today = localDateStr
   return localDateString(start);
 }
 
-/** Filters a ProgressChart to the chosen timeline and updates its summary to match the window. */
+const MONTH_SHORT = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+
+export function formatWindowRangeLabel(start: string, end: string): string {
+  const s = parseLocalDate(start);
+  const e = parseLocalDate(end);
+  const yr = String(e.getFullYear()).slice(-2);
+  if (s.getFullYear() !== e.getFullYear()) {
+    return `${MONTH_SHORT[s.getMonth()]} ${s.getDate()}, ${String(s.getFullYear()).slice(-2)} - ${MONTH_SHORT[e.getMonth()]} ${e.getDate()}, ${yr}`;
+  }
+  return `${MONTH_SHORT[s.getMonth()]} ${s.getDate()} - ${MONTH_SHORT[e.getMonth()]} ${e.getDate()}, ${yr}`;
+}
+
+export function splitFormattedValueUnit(formatted: string): { valueText: string; unitText?: string } {
+  const pctMatch = /^(-?[\d,.]+)\s*(%)$/.exec(formatted.trim());
+  if (pctMatch) return { valueText: pctMatch[1], unitText: pctMatch[2] };
+  const wordMatch = /^(-?[\d,.]+)\s+(.+)$/.exec(formatted.trim());
+  if (wordMatch) return { valueText: wordMatch[1], unitText: wordMatch[2] };
+  const suffixMatch = /^(-?[\d,.]+)([a-zA-Z]+)$/.exec(formatted.trim());
+  if (suffixMatch) return { valueText: suffixMatch[1], unitText: suffixMatch[2] };
+  return { valueText: formatted.trim() };
+}
+
+/** Trailing 28-day personal baseline band for homeostatic biometrics (requires >= 7 logged points). */
+export function computeTypicalRange(
+  allPoints: ProgressPoint[],
+  endDate: string,
+  useInteger: boolean
+): ChartTypicalRange | undefined {
+  if (allPoints.length < 7) return undefined;
+  const endMs = parseLocalDate(endDate).getTime();
+  const cutoff28 = endMs - 27 * 24 * 60 * 60 * 1000;
+  const trailing = allPoints.filter((p) => {
+    const t = parseLocalDate(p.date).getTime();
+    return t <= endMs && t >= cutoff28;
+  });
+  const sample = trailing.length >= 7 ? trailing : allPoints.filter((p) => p.date <= endDate);
+  if (sample.length < 7) return undefined;
+
+  const mean = sample.reduce((sum, p) => sum + p.value, 0) / sample.length;
+  const variance = sample.reduce((sum, p) => sum + (p.value - mean) ** 2, 0) / sample.length;
+  const sd = Math.sqrt(variance);
+  const spread = Math.max(useInteger ? 1 : 0.2, sd * 0.65);
+  const round = (v: number) => (useInteger ? Math.round(v) : Math.round(v * 10) / 10);
+  const low = Math.max(0, round(mean - spread));
+  const high = Math.max(low + (useInteger ? 1 : 0.2), round(mean + spread));
+  return { low, high, label: 'Typical range' };
+}
+
+function inferChartConfig(chart: ProgressChart) {
+  const isWhoop = chart.id.startsWith('whoop-');
+  const isSteps = chart.id === 'steps';
+  const chartTone: ChartTone =
+    chart.chartTone ?? (isWhoop || isSteps ? 'biometric' : chart.category ? 'body' : 'strength');
+  const supportsTypicalRange =
+    chart.supportsTypicalRange ??
+    (chart.id === 'whoop-rhr' ||
+      chart.id === 'whoop-hrv' ||
+      chart.id === 'whoop-sleep' ||
+      chart.id === 'whoop-recovery' ||
+      chart.id === 'whoop-strain' ||
+      chart.id === 'whoop-workout-strain');
+  const isDailySeries = chart.isDailySeries ?? (isWhoop && chart.id !== 'whoop-workout-strain' || isSteps || chart.id === 'bodyweight');
+  const useWindowAverage = chart.useWindowAverage ?? (isWhoop || isSteps);
+  const higherIsBetter: boolean | 'neutral' =
+    chart.higherIsBetter ??
+    (chart.id === 'whoop-rhr'
+      ? false
+      : chartTone === 'strength' || chart.id === 'whoop-hrv' || chart.id === 'whoop-recovery' || chart.id === 'whoop-sleep' || chart.id === 'steps'
+      ? true
+      : 'neutral');
+  const useInteger =
+    chart.id === 'whoop-rhr' ||
+    chart.id === 'whoop-hrv' ||
+    chart.id === 'whoop-recovery' ||
+    chart.id === 'steps' ||
+    chart.id === 'weekly-sets' ||
+    chart.id === 'work-capacity';
+  return { chartTone, supportsTypicalRange, isDailySeries, useWindowAverage, higherIsBetter, useInteger };
+}
+
+function buildDeltaBadge(
+  currentVal: number,
+  priorVal: number,
+  chart: ProgressChart,
+  meta: ChartTimelineOption,
+  usePercent: boolean,
+  higherIsBetter: boolean | 'neutral',
+  comparisonLabel?: string
+): ChartDeltaBadge {
+  const diff = currentVal - priorVal;
+  const pctChange = Math.abs(priorVal) > 1e-9 ? Math.round((Math.abs(diff) / Math.abs(priorVal)) * 100) : 0;
+  const flat = Math.abs(diff) < 1e-4 || (usePercent && pctChange === 0);
+  const direction: 'up' | 'down' | 'flat' = flat ? 'flat' : diff > 0 ? 'up' : 'down';
+
+  let polarity: DeltaPolarity = 'neutral';
+  if (!flat && higherIsBetter !== 'neutral') {
+    const favorable = (diff > 0 && higherIsBetter === true) || (diff < 0 && higherIsBetter === false);
+    polarity = favorable ? 'positive' : 'warning';
+  }
+
+  let amountText: string;
+  if (usePercent) {
+    amountText = `${pctChange}%`;
+  } else {
+    const formattedAbs = chart.format(Math.abs(diff));
+    const { valueText, unitText } = splitFormattedValueUnit(formattedAbs);
+    amountText = unitText ? `${valueText} ${unitText}` : valueText;
+  }
+
+  const suffix = comparisonLabel ?? `vs. prior ${meta.periodNoun}`;
+  return {
+    direction,
+    text: flat ? `0% ${suffix}` : `${amountText} ${suffix}`,
+    polarity,
+  };
+}
+
+/** Filters a ProgressChart to the chosen timeline + periodOffset, enriching KPI headline, delta pill, typical range, and window summary. */
 export function filterChartByTimeline(
   chart: ProgressChart,
   timeline: ChartTimeline,
   today = localDateString(),
+  periodOffset = 0,
 ): ProgressChart {
-  const cutoff = timelineCutoffDate(timeline, today);
-  const points = chart.points.filter((p) => p.date >= cutoff);
-  const secondary = chart.secondary?.filter((p) => p.date >= cutoff);
-  const unchanged =
-    points.length === chart.points.length &&
-    (!chart.secondary || (secondary?.length ?? 0) === chart.secondary.length);
-  if (chart.points.length === 0 || unchanged) {
-    return chart;
+  const meta = getTimelineMeta(timeline);
+  const safeOffset = Math.max(0, Math.floor(periodOffset));
+  const endObj = parseLocalDate(today);
+  endObj.setDate(endObj.getDate() - safeOffset * meta.days);
+  const end = localDateString(endObj);
+  const startObj = parseLocalDate(end);
+  startObj.setDate(startObj.getDate() - (meta.days - 1));
+  const start = localDateString(startObj);
+
+  const priorEndObj = parseLocalDate(start);
+  priorEndObj.setDate(priorEndObj.getDate() - 1);
+  const priorEnd = localDateString(priorEndObj);
+  const priorStartObj = parseLocalDate(priorEnd);
+  priorStartObj.setDate(priorStartObj.getDate() - (meta.days - 1));
+  const priorStart = localDateString(priorStartObj);
+
+  const points = chart.points.filter((p) => p.date >= start && p.date <= end);
+  const priorPoints = chart.points.filter((p) => p.date >= priorStart && p.date <= priorEnd);
+  const secondary = chart.secondary?.filter((p) => p.date >= start && p.date <= end);
+
+  const { chartTone, supportsTypicalRange, isDailySeries, useWindowAverage, higherIsBetter, useInteger } = inferChartConfig(chart);
+  const typicalRange = supportsTypicalRange ? computeTypicalRange(chart.points, end, useInteger) : undefined;
+
+  const hasEarlierData = chart.points.some((p) => p.date < start);
+  const windowRange: ChartWindowMeta = {
+    start,
+    end,
+    label: formatWindowRangeLabel(start, end),
+    isDailyCalendar: timeline === '1W' && isDailySeries,
+    canStepBack: hasEarlierData,
+    canStepForward: safeOffset > 0,
+    periodOffset: safeOffset,
+  };
+
+  let headline: ChartHeadline | undefined;
+  let delta: ChartDeltaBadge | undefined;
+  if (points.length > 0) {
+    const windowAvg = points.reduce((sum, p) => sum + p.value, 0) / points.length;
+    const latestPoint = points[points.length - 1];
+    const headlineVal = useWindowAverage ? windowAvg : latestPoint.value;
+    const formatted = chart.format(useInteger ? Math.round(headlineVal) : Math.round(headlineVal * 10) / 10);
+    const { valueText, unitText } = splitFormattedValueUnit(formatted);
+    const eyebrow = useWindowAverage
+      ? 'AVERAGE'
+      : chart.id === 'bodyweight'
+      ? '7-DAY AVG'
+      : chartTone === 'strength' && chart.id !== 'weekly-sets' && chart.id !== 'work-capacity'
+      ? 'EST. 1RM'
+      : 'LATEST';
+    headline = { eyebrow, formatted, valueText, unitText };
+
+    if (priorPoints.length > 0) {
+      const priorVal = useWindowAverage
+        ? priorPoints.reduce((sum, p) => sum + p.value, 0) / priorPoints.length
+        : priorPoints[priorPoints.length - 1].value;
+      const usePercent = useWindowAverage;
+      delta = buildDeltaBadge(headlineVal, priorVal, chart, meta, usePercent, higherIsBetter);
+    } else if (points.length >= 2 && !useWindowAverage) {
+      delta = buildDeltaBadge(
+        latestPoint.value,
+        points[0].value,
+        chart,
+        meta,
+        false,
+        higherIsBetter,
+        `in ${timeline}`
+      );
+    }
   }
 
-  const meta = getTimelineMeta(timeline);
+  const unchangedAtPresent =
+    safeOffset === 0 &&
+    points.length === chart.points.length &&
+    (!chart.secondary || (secondary?.length ?? 0) === chart.secondary.length);
+
+  if (chart.points.length === 0) {
+    return {
+      ...chart,
+      chartTone,
+      windowRange,
+      typicalRange,
+    };
+  }
+
   let summary: string;
-  if (points.length === 0) {
-    summary = `No ${chart.title.toLowerCase()} entries in ${meta.windowText}. Select a wider range to see earlier history.`;
+  if (unchangedAtPresent && !(supportsTypicalRange && typicalRange && timeline === '1W')) {
+    summary = chart.summary;
+  } else if (points.length === 0) {
+    summary =
+      safeOffset === 0
+        ? `No ${chart.title.toLowerCase()} entries in ${meta.windowText}. Select a wider range to see earlier history.`
+        : `No ${chart.title.toLowerCase()} entries between ${shortDate(start)} and ${shortDate(end)}.`;
+  } else if (supportsTypicalRange && typicalRange && useWindowAverage) {
+    const windowAvg = points.reduce((sum, p) => sum + p.value, 0) / points.length;
+    const roundedAvg = useInteger ? Math.round(windowAvg) : Math.round(windowAvg * 10) / 10;
+    const position =
+      roundedAvg < typicalRange.low
+        ? 'below'
+        : roundedAvg > typicalRange.high
+        ? 'above'
+        : 'within';
+    const rangeLowTxt = splitFormattedValueUnit(chart.format(typicalRange.low)).valueText;
+    const rangeHighTxt = splitFormattedValueUnit(chart.format(typicalRange.high)).valueText;
+    summary = `Your average ${chart.title.toLowerCase()} during this ${meta.days}-day period (${chart.format(roundedAvg)}) was ${position} its typical range (${rangeLowTxt}–${rangeHighTxt}).`;
   } else if (points.length === 1) {
-    summary = `${chart.title} in ${meta.windowText}: ${chart.format(points[0].value)} on ${shortDate(points[0].date)}.`;
+    summary = `${chart.title} in ${safeOffset === 0 ? meta.windowText : windowRange.label}: ${chart.format(points[0].value)} on ${shortDate(points[0].date)}.`;
   } else {
     const first = points[0];
     const last = points[points.length - 1];
+    const scope = safeOffset === 0 ? meta.windowText : windowRange.label;
     if (Math.abs(last.value - first.value) < 1e-9) {
-      summary = `${chart.title} stayed at ${chart.format(last.value)} across ${points.length} entries in ${meta.windowText}.`;
+      summary = `${chart.title} stayed at ${chart.format(last.value)} across ${points.length} entries in ${scope}.`;
     } else {
-      summary = `${chart.title}: ${chart.format(first.value)} on ${shortDate(first.date)} to ${chart.format(last.value)} on ${shortDate(last.date)} across ${points.length} entries in ${meta.windowText}.`;
+      summary = `${chart.title}: ${chart.format(first.value)} on ${shortDate(first.date)} to ${chart.format(last.value)} on ${shortDate(last.date)} across ${points.length} entries in ${scope}.`;
     }
   }
 
   return {
     ...chart,
+    chartTone,
     points,
     secondary,
     summary,
+    headline,
+    delta,
+    typicalRange,
+    windowRange,
   };
 }
 

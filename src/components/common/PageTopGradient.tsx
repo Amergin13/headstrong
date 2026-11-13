@@ -2,7 +2,7 @@ import React, { useLayoutEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 
 interface PageTopGradientProps {
-  /** Element whose top edge marks where #283339 finishes fading into #13181C. */
+  /** Element whose top edge marks where the canvas top tint fades into canvas base. */
   markerRef: React.RefObject<HTMLElement | null>;
   /** Optional fallback element when markerRef is not currently mounted. */
   fallbackRef?: React.RefObject<HTMLElement | null>;
@@ -63,7 +63,7 @@ export const PageTopGradient: React.FC<PageTopGradientProps> = ({
         left: 0,
         right: 0,
         height: gradientEnd,
-        background: 'linear-gradient(180deg, #283339 0%, #13181C 100%)',
+        background: 'linear-gradient(180deg, var(--color-bg-canvas-top) 0%, var(--color-bg-canvas) 100%)',
         zIndex: host ? undefined : -1,
         pointerEvents: 'none',
       }}

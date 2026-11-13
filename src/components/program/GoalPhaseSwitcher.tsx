@@ -88,7 +88,7 @@ export const GoalPhaseSwitcher: React.FC<GoalPhaseSwitcherProps> = ({
                 borderRadius: fig(18),
                 fontSize: `max(12px, ${fig(22)})`,
                 background: isSelected ? 'var(--wk-pill)' : 'transparent',
-                color: isSelected ? '#fff' : 'var(--wk-muted)',
+                color: isSelected ? 'var(--color-text-primary)' : 'var(--wk-muted)',
               }}
             >
               {p.label}

@@ -81,7 +81,7 @@ export const SetRow: React.FC<SetRowProps> = ({
     : '—';
   const badge =
     displayBadge || (currentSetType === 'warmup' ? 'W' : currentSetType === 'drop' ? 'D' : currentSetType === 'myo' ? '+' : `${set.setNumber}`);
-  const greyText: React.CSSProperties = { fontSize: `max(12px, ${fig(26)})`, fontWeight: 600, color: '#A7ACAF' };
+  const greyText: React.CSSProperties = { fontSize: `max(12px, ${fig(26)})`, fontWeight: 600, color: 'var(--wk-muted)' };
 
   // Per side: the set's reps are what both sides managed (the weaker side).
   const updateSide = (side: 'left' | 'right', reps: number) => {
@@ -115,7 +115,7 @@ export const SetRow: React.FC<SetRowProps> = ({
       {celebration > 0 && set.completed && (
         <span key={`flash-${celebration}`} className="wk-row-flash" aria-hidden="true" />
       )}
-      <span className="text-center" style={{ ...greyText, color: currentSetType === 'warmup' ? '#F5B94A' : greyText.color }} title={label}>
+      <span className="text-center" style={{ ...greyText, color: currentSetType === 'warmup' ? 'var(--color-set-warmup)' : greyText.color }} title={label}>
         {badge}
       </span>
 
@@ -162,7 +162,7 @@ export const SetRow: React.FC<SetRowProps> = ({
         {(set.isFormFailure || set.repDisplay === 'F*') && (
           <span
             className="absolute rounded pointer-events-none font-bold"
-            style={{ top: fig(-12), right: fig(-6), fontSize: `max(12px, ${fig(18)})`, padding: `0 ${fig(6)}`, background: '#5B2A33', color: '#FFB3BF' }}
+            style={{ top: fig(-12), right: fig(-6), fontSize: `max(12px, ${fig(18)})`, padding: `0 ${fig(6)}`, background: 'var(--color-set-failure-bg)', color: 'var(--color-set-failure-fg)' }}
             title="Do as many reps as you can with good form"
           >
             F*
@@ -204,7 +204,7 @@ export const SetRow: React.FC<SetRowProps> = ({
             viewBox="0 0 24 24"
             style={{ width: fig(34), height: fig(34) }}
             fill="none"
-            stroke="#13181C"
+            stroke="var(--color-text-on-accent)"
             strokeWidth={3}
             strokeLinecap="round"
             strokeLinejoin="round"
@@ -239,7 +239,7 @@ export const SetRow: React.FC<SetRowProps> = ({
               setDismissedPokaYokeKg(null);
             }}
             className="wk-pill min-h-[44px] font-semibold"
-            style={{ background: 'var(--wk-accent)', color: '#13181C' }}
+            style={{ background: 'var(--wk-accent)', color: 'var(--color-text-on-accent)' }}
           >
             {pokaYoke.actionLabel}
           </button>

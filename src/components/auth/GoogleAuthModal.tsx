@@ -116,7 +116,7 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({
   return (
     <div
       className="wk fixed inset-0 z-50 overflow-y-auto"
-      style={{ background: 'linear-gradient(180deg, #283339 0%, #13181C 70%)' }}
+      style={{ background: 'linear-gradient(180deg, var(--color-bg-canvas-top) 0%, var(--color-bg-canvas) 70%)' }}
       role="dialog"
       aria-modal="true"
       aria-labelledby="auth-modal-title"
@@ -222,7 +222,7 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({
                   type="button"
                   onClick={handleSignOutClick}
                   className="wk-button min-h-[44px]"
-                  style={{ background: 'var(--wk-raised)', color: '#FF3B4E' }}
+                  style={{ background: 'var(--wk-raised)', color: 'var(--color-status-danger)' }}
                 >
                   Sign Out
                 </button>
@@ -256,7 +256,7 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({
                     href={supabaseUrl}
                     onClick={markLinkSignInStarted}
                     className="wk-button min-h-[44px]"
-                    style={{ background: 'var(--wk-pill)', color: '#fff' }}
+                    style={{ background: 'var(--wk-pill)', color: 'var(--color-text-primary)' }}
                   >
                     Sign in via Supabase Auth
                   </a>
