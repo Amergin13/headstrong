@@ -22,12 +22,15 @@ import {
   UserProfile,
   WorkoutSession,
   WorkoutSet,
+  isWhoopConfigured,
 } from '../engine/types';
 import { BiometricLog } from '../engine/types';
 import { isActiveSlot } from '../engine/muscleBuildingProgram';
 import { formatPreciseWeight, formatWeight, WeightUnit } from '../utils/units';
-import { localDateString } from '../utils/date';
-import { stepsOnDate } from './athleteGoals';
+import { localDateString, parseLocalDate } from '../utils/date';
+import { STEPS_GOAL_EXERCISE_ID, stepsOnDate } from './athleteGoals';
+import type { CoachPlace } from './coachContext';
+import { buildWhoopSnapshot } from './progressSeries';
 import { planRestAfterSet } from './setCompletion';
 
 const isWorking = (s: WorkoutSet) => !s.isWarmup && s.setType !== 'warmup';
@@ -402,7 +405,144 @@ export interface EverydayContext {
   weeklySets?: (message: string) => string;
   /** The same progress summary the coach gives for "am I getting stronger". */
   progressSummary: () => string;
+  place?: CoachPlace;
+  knowledgeGraph?: AthleteKnowledgeGraph;
   now?: number;
+}
+
+export interface StepsCoachingSummary {
+  todaySteps: number;
+  latestSteps?: number;
+  latestDate?: string;
+  avg7d: number | null;
+  prev7d: number | null;
+  goalTarget?: number;
+  loggedDays: number;
+  progressText: string;
+  improveText: string;
+}
+
+/** Shared step-count progress over time + practical guidance (zero fabricated data). */
+export function buildStepsCoachingSummary(
+  biometrics: BiometricLog[],
+  profile: UserProfile,
+  now: number = Date.now()
+): StepsCoachingSummary {
+  const todayStr = localDateString(new Date(now));
+  const todayMs = parseLocalDate(todayStr).getTime();
+  const byDate = new Map<string, number>();
+  for (const b of biometrics) {
+    if ((b.steps || 0) > 0 && b.date && b.date <= todayStr) {
+      byDate.set(b.date, Math.max(byDate.get(b.date) ?? 0, Math.round(b.steps)));
+    }
+  }
+  const entries = [...byDate.entries()]
+    .map(([date, steps]) => ({ date, steps }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+  const todaySteps = byDate.get(todayStr) ?? 0;
+  const latest = entries[entries.length - 1];
+  const last7 = entries.filter((e) => {
+    const ms = parseLocalDate(e.date).getTime();
+    return ms >= todayMs - 6 * DAY_MS && ms <= todayMs;
+  });
+  const prior7 = entries.filter((e) => {
+    const ms = parseLocalDate(e.date).getTime();
+    return ms >= todayMs - 13 * DAY_MS && ms <= todayMs - 7 * DAY_MS;
+  });
+  const avg7d = last7.length ? Math.round(last7.reduce((s, e) => s + e.steps, 0) / last7.length) : null;
+  const prev7d = prior7.length ? Math.round(prior7.reduce((s, e) => s + e.steps, 0) / prior7.length) : null;
+  const goalTarget = profile.goalSettings?.customGoals?.find((g) => g.metric === 'steps')?.target;
+
+  let progressText: string;
+  if (entries.length === 0) {
+    progressText = goalTarget
+      ? `No steps are recorded yet toward your ${goalTarget.toLocaleString()} daily step goal. Connect Health Connect in Profile → Settings → Activity apps or sync your watch to track daily steps.`
+      : 'No steps are recorded yet. Connect Health Connect in Profile → Settings → Activity apps or sync your watch to track daily steps.';
+  } else if (entries.length === 1) {
+    const when = latest.date === todayStr ? 'today' : `on ${latest.date}`;
+    progressText = goalTarget
+      ? `So far you have ${latest.steps.toLocaleString()} steps logged ${when} toward your ${goalTarget.toLocaleString()} daily goal. Keep syncing for a few days to build a 7-day average.`
+      : `So far you have ${latest.steps.toLocaleString()} steps logged ${when}. Keep syncing for a few days to build a 7-day average.`;
+  } else {
+    const currentLine =
+      todaySteps > 0
+        ? `You have ${todaySteps.toLocaleString()} steps today`
+        : `Your latest logged day was ${latest.steps.toLocaleString()} steps (${latest.date})`;
+    const avgClause = avg7d !== null ? `, and your 7-day average is ${avg7d.toLocaleString()} steps/day across ${last7.length} logged ${last7.length === 1 ? 'day' : 'days'}` : '';
+    let trendClause = '';
+    if (avg7d !== null && prev7d !== null) {
+      const diff = avg7d - prev7d;
+      if (Math.abs(diff) < 250) {
+        trendClause = ` (steady vs ${prev7d.toLocaleString()} the week before)`;
+      } else {
+        trendClause = ` (${diff > 0 ? 'up' : 'down'} ${Math.abs(diff).toLocaleString()} from ${prev7d.toLocaleString()} the week before)`;
+      }
+    } else if (entries.length >= 2) {
+      const diff = latest.steps - entries[0].steps;
+      if (Math.abs(diff) >= 250) {
+        trendClause = `, ${diff > 0 ? 'up' : 'down'} ${Math.abs(diff).toLocaleString()} steps since ${entries[0].date}`;
+      }
+    }
+    let goalClause = '';
+    if (goalTarget) {
+      const base = avg7d ?? todaySteps;
+      const remaining = goalTarget - base;
+      goalClause =
+        remaining <= 0
+          ? ` — right on track for your ${goalTarget.toLocaleString()} daily goal.`
+          : ` — about ${remaining.toLocaleString()} steps/day shy of your ${goalTarget.toLocaleString()} daily goal.`;
+    } else {
+      goalClause = '.';
+    }
+    progressText = `${currentLine}${avgClause}${trendClause}${goalClause}`;
+  }
+
+  let improveText: string;
+  if (goalTarget && avg7d !== null && avg7d < goalTarget) {
+    const gap = goalTarget - avg7d;
+    const walksNeeded = Math.max(1, Math.round(gap / 1000));
+    improveText = `To close the ~${gap.toLocaleString()}-step gap consistently, add ${walksNeeded === 1 ? 'one 10-minute walk (~1,000 steps)' : `${Math.min(walksNeeded, 3)} short 10-minute walks`} anchored to meals or a 5-minute warm-up walk before lifting. Easy walking raises daily output without hurting leg recovery.`;
+  } else if (avg7d !== null) {
+    improveText = `To nudge your average up without burning out your legs for squats or deadlifts, aim for +1,000 steps/day for two weeks (a single 10-minute brisk walk after dinner adds roughly 1,000 steps) and park or take calls on foot.`;
+  } else {
+    improveText = `Start by syncing Health Connect or your watch so Treise tracks your baseline, then anchor a 10-minute walk (~1,000 steps) after one meal each day.`;
+  }
+
+  return {
+    todaySteps,
+    latestSteps: latest?.steps,
+    latestDate: latest?.date,
+    avg7d,
+    prev7d,
+    goalTarget,
+    loggedDays: entries.length,
+    progressText,
+    improveText,
+  };
+}
+
+/** Concise Whoop telemetry summary built strictly from recorded values. */
+export function buildWhoopCoachingSummary(
+  biometrics: BiometricLog[],
+  workouts: WorkoutSession[],
+  profile: UserProfile
+): string {
+  if (!isWhoopConfigured(profile)) {
+    return 'Whoop is not connected yet. Connect Whoop or import a Whoop export in Watch & telemetry to see recovery, strain, HRV and sleep here.';
+  }
+  const snap = buildWhoopSnapshot(biometrics, workouts);
+  const parts: string[] = [];
+  if (snap.recoveryScore !== undefined) parts.push(`Recovery ${Math.round(snap.recoveryScore)}%`);
+  if (snap.dayStrain !== undefined) parts.push(`Day strain ${snap.dayStrain.toFixed(1)}`);
+  if (snap.workoutStrain !== undefined) parts.push(`Latest workout strain ${snap.workoutStrain.toFixed(1)}`);
+  if (snap.hrvRmssd !== undefined) parts.push(`HRV ${Math.round(snap.hrvRmssd)} ms`);
+  if (snap.restingHr !== undefined) parts.push(`Resting HR ${Math.round(snap.restingHr)} bpm`);
+  if (snap.sleepHours !== undefined) parts.push(`Sleep ${snap.sleepHours.toFixed(1)} h`);
+  if (!parts.length) {
+    return 'Whoop is set up, but no synced recovery, strain or sleep readings are saved yet. Run a sync or import your Whoop CSV in Watch & telemetry.';
+  }
+  const suffix = snap.latestDate ? ` (latest ${snap.latestDate})` : '';
+  return `Your latest Whoop telemetry${suffix}: ${parts.join(' · ')}. Treise uses your recovery, HRV, resting HR and sleep to judge whether to push weights or keep 2–3 reps in reserve.`;
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -519,19 +659,64 @@ export function answerEverydayQuestion(ctx: EverydayContext): string | null {
     return 'A session is a day with a finished workout, or an active day: 20 minutes or more of something you set out to do, like a ride, run, walk, swim, class or sport. Two workouts on one day count once, and steps on their own don\'t count. Weeks run Monday to Sunday.';
   }
 
-  // Direct questions about today's step count.
-  if (/\bsteps\b/.test(msg) && /\b(how many|what('?s| are) my|step count|steps today|today'?s steps)\b/.test(msg)) {
-    const today = localDateString(new Date(now));
-    const count = stepsOnDate(biometrics, today);
-    const goal = profile.goalSettings?.customGoals?.find((g) => g.metric === 'steps')?.target;
-    if (count > 0) {
-      return goal
-        ? `You have ${count.toLocaleString()} steps today toward your ${goal.toLocaleString()} step goal.`
-        : `You have ${count.toLocaleString()} steps recorded today.`;
+  const onStepsScreen =
+    ctx.place?.detail === 'steps' ||
+    Boolean(
+      ctx.place?.goalId &&
+        (ctx.place.goalId.includes(STEPS_GOAL_EXERCISE_ID) ||
+          ctx.knowledgeGraph?.goals.some((g) => g.id === ctx.place?.goalId && g.measure.type === 'target' && g.measure.metric === 'steps'))
+    );
+  const onWhoopScreen = ctx.place?.detail === 'whoop';
+  const asksAboutStepsCardioFit =
+    /\bsteps\b/.test(msg) &&
+    /\b(count|active day|workout|cardio|fit|instead)\b/.test(msg) &&
+    !/\b(goal|target|trend|progress|improv\w*|increas\w*|raise|hit|reach|more steps|average|avg)\b/.test(msg);
+
+  // Steps: today's count, progress over time, trend, goal standing & how to improve
+  // (also handles open follow-ups like "how am I doing?" or "how can I improve?" when viewing the Steps screen or a Steps goal).
+  const asksStepsDirectly =
+    /\bsteps?\b/.test(msg) &&
+    !asksAboutStepsCardioFit &&
+    (/\b(how many|what('?s| are) my|step count|steps today|today'?s steps|average|avg|trend\w*|progress\w*|over time|improv\w*|increas\w*|raise|boost|hit|reach|more|better|tips?|advice|help|doing|going)\b/.test(
+      msg
+    ) ||
+      words <= 3);
+  const asksContextualSteps =
+    onStepsScreen &&
+    /\b(how am i (doing|getting on|going)|how'?s (it|my|this)|trend\w*|progress\w*|over time|improv\w*|increas\w*|raise|boost|hit|reach|more|better|tips?|advice|help)\b/.test(
+      msg
+    );
+  if (asksStepsDirectly || asksContextualSteps) {
+    const stepsInfo = buildStepsCoachingSummary(biometrics, profile, now);
+    const wantsImprove = /\b(improv\w*|increas\w*|raise|boost|more|better|tips?|advice|help|hit|reach)\b/.test(msg);
+    const wantsTrend = /\b(trend\w*|progress\w*|over time|how am i|how'?s)\b/.test(msg);
+    if (wantsImprove && (wantsTrend || onStepsScreen || stepsInfo.loggedDays > 0)) {
+      return `${stepsInfo.progressText}\n\n${stepsInfo.improveText}`;
     }
-    return goal
-      ? `No steps are recorded for today yet (your daily goal is ${goal.toLocaleString()} steps). Connect Health Connect or sync your watch to pull them in.`
-      : 'No steps are recorded for today yet. Connect Health Connect in Profile → Settings → Activity apps or sync your watch to track daily steps.';
+    if (wantsImprove) {
+      return `${stepsInfo.progressText} ${stepsInfo.improveText}`;
+    }
+    if (wantsTrend || onStepsScreen) {
+      return stepsInfo.loggedDays > 0
+        ? `${stepsInfo.progressText} Ask me if you want simple ways to raise your daily average without hurting lifting recovery.`
+        : stepsInfo.progressText;
+    }
+    return stepsInfo.progressText;
+  }
+
+  // Contextual open follow-ups when viewing Whoop metrics screen (specific recovery/strain queries continue to KG citations).
+  if (
+    onWhoopScreen &&
+    /\b(how am i (doing|looking)|how'?s (my|it)|improv\w*|tips?|advice|what do these|mean|explain)\b/.test(msg)
+  ) {
+    const whoopSummary = buildWhoopCoachingSummary(biometrics, workouts, profile);
+    const tip =
+      readinessState === 'Amber Shield'
+        ? ' Your recovery is low today, so keep weights steady and stop 2–3 reps short of failure, prioritizing sleep tonight.'
+        : readinessState === 'Primed'
+        ? ' Your recovery is high today—great window to push the top of your rep targets.'
+        : ' Consistent 7–9 hour sleep timing and keeping 1–2 reps in reserve on most sets keeps strain productive.';
+    return `${whoopSummary}${tip}`;
   }
 
   // Cardio and active days.

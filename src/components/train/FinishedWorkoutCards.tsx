@@ -42,6 +42,116 @@ export const FinishedWorkoutSummaryCard: React.FC<{ finish: WorkoutFinish }> = (
   );
 };
 
+export interface WhoopStrainCardProps {
+  workoutStrain?: number;
+  dayStrain?: number;
+  avgHr?: number;
+  maxHr?: number;
+  isSyncing?: boolean;
+  isPendingScore?: boolean;
+  hasLiveConnection?: boolean;
+  onRetry?: () => void;
+  className?: string;
+  style?: React.CSSProperties;
+}
+
+/** Whoop cardiovascular strain card shown on workout completion when Whoop is configured. */
+export const WhoopStrainCard: React.FC<WhoopStrainCardProps> = ({
+  workoutStrain,
+  dayStrain,
+  avgHr,
+  maxHr,
+  isSyncing = false,
+  isPendingScore = false,
+  hasLiveConnection = false,
+  onRetry,
+  className = '',
+  style,
+}) => {
+  const hasWorkoutStrain = typeof workoutStrain === 'number' && workoutStrain > 0;
+  const hasDayStrain = typeof dayStrain === 'number' && dayStrain > 0;
+  const hasAvgHr = typeof avgHr === 'number' && avgHr > 0;
+  const hasMaxHr = typeof maxHr === 'number' && maxHr > 0;
+
+  let note = 'Whoop strain from your imported export will appear here once recorded for this session.';
+  if (isSyncing) {
+    note = 'Checking Whoop for this workout’s cardiovascular strain…';
+  } else if (hasWorkoutStrain) {
+    note = 'Recorded from your Whoop band for this workout.';
+  } else if (isPendingScore) {
+    note = 'Whoop is still scoring this workout. Treise will pick it up automatically once scored.';
+  } else if (hasLiveConnection) {
+    note = 'Waiting on Whoop workout telemetry. Treise checks in the background for up to 12 hours.';
+  }
+
+  return (
+    <section className={`wk-card ${className}`.trim()} style={style} aria-label="Whoop strain summary">
+      <div className="flex items-center justify-between" style={{ gap: fig(20) }}>
+        <h3 className="wk-label" style={{ lineHeight: 1.21 }}>
+          Whoop strain
+        </h3>
+        {isSyncing ? (
+          <span className="wk-pill" style={{ background: 'rgba(0,241,159,0.16)', color: 'var(--wk-accent)' }}>
+            Syncing…
+          </span>
+        ) : hasLiveConnection && onRetry && !hasWorkoutStrain ? (
+          <button
+            type="button"
+            onClick={onRetry}
+            aria-label="Refresh Whoop workout strain"
+            className="wk-pill wk-tap"
+            style={{ minHeight: 44, background: 'rgba(255,255,255,0.08)', color: '#FFFFFF' }}
+          >
+            Refresh
+          </button>
+        ) : hasWorkoutStrain ? (
+          <span className="wk-pill" style={{ background: 'rgba(0,241,159,0.16)', color: 'var(--wk-accent)' }}>
+            Whoop
+          </span>
+        ) : null}
+      </div>
+
+      <dl className="flex flex-wrap" style={{ gap: fig(96), marginTop: fig(48) }}>
+        <div>
+          <dt className="uppercase" style={{ fontSize: text(26), lineHeight: 1.21, color: 'var(--wk-muted)' }}>
+            Workout strain
+          </dt>
+          <dd className="font-bold text-white tabular-numbers" style={{ fontSize: text(64), lineHeight: 1, marginTop: fig(12) }}>
+            {hasWorkoutStrain ? workoutStrain.toFixed(1) : '—'}
+            {hasWorkoutStrain && (
+              <span className="font-semibold" style={{ fontSize: text(26), color: 'var(--wk-muted)', marginLeft: fig(10) }}>
+                / 21
+              </span>
+            )}
+          </dd>
+        </div>
+        {hasDayStrain && (
+          <Stat label="Day strain" value={dayStrain.toFixed(1)} />
+        )}
+      </dl>
+
+      {(hasAvgHr || hasMaxHr) && (
+        <div className="flex flex-wrap" style={{ gap: fig(12), marginTop: fig(28) }}>
+          {hasAvgHr && (
+            <span className="wk-pill" style={{ textTransform: 'none' }}>
+              Avg HR {Math.round(avgHr)} bpm
+            </span>
+          )}
+          {hasMaxHr && (
+            <span className="wk-pill" style={{ textTransform: 'none' }}>
+              Peak HR {Math.round(maxHr)} bpm
+            </span>
+          )}
+        </div>
+      )}
+
+      <p className="wk-caption" style={{ marginTop: fig(24) }}>
+        {note}
+      </p>
+    </section>
+  );
+};
+
 /** One exercise from today's finished workout: what it did, and its progress over time. */
 export const CompletedExerciseCard: React.FC<{ summary: CompletedExerciseSummary }> = ({ summary }) => {
   const units = useUnits();

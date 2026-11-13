@@ -1,13 +1,21 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Check, Minus } from 'lucide-react';
 import { AthleteGoal, BodyMeasure, FrequencyMeasure, describeGoalStanding, repsAt } from '../../services/athleteGoals';
 import { HABIT_WEEKS } from '../../services/progressOverview';
-import { ProgressChart, ProgressPoint } from '../../services/progressSeries';
+import {
+  ChartTimeline,
+  DEFAULT_CHART_TIMELINE,
+  ProgressChart,
+  ProgressPoint,
+  rebaseIndexSeries,
+  timelineCutoffDate,
+} from '../../services/progressSeries';
 import { parseLocalDate } from '../../utils/date';
 import { triggerHaptic } from '../../utils/haptics';
 import { useUnits } from '../../utils/unitsContext';
 import { TrendChart } from '../common/TrendChart';
 import { ProgressChartCard } from './ProgressChartCard';
+import { TimelineToggle } from './TimelineToggle';
 
 const fig = (px: number) => `calc(${px} * var(--f))`;
 const text = (px: number) => `max(12px, ${fig(px)})`;
@@ -315,113 +323,128 @@ const BodyDetail: React.FC<{
   supporting: ProgressChart[];
   onLogWeight: () => void;
   onLogMeasurements: () => void;
-}> = ({ goal, measure, strengthIndex, weightIndex, supporting, onLogWeight, onLogMeasurements }) => (
-  <>
-    <section className="wk-card" aria-label={goal.title}>
-      <h2 className="wk-label">Signs it's working</h2>
-      <Big value={measure.signsMeasured > 0 ? `${measure.signsMet}/${measure.signs.length}` : '—'} unit={measure.signsMeasured > 0 ? 'signs showing' : 'nothing measured yet'} />
-      <ul className="flex flex-col" style={{ gap: fig(30), marginTop: fig(44) }}>
-        {measure.signs.map((sign) => (
-          <li key={sign.id} className="flex items-start" style={{ gap: fig(24) }}>
-            <span
-              className="rounded-full flex items-center justify-center shrink-0"
-              style={{
-                width: fig(52),
-                height: fig(52),
-                marginTop: fig(2),
-                background: sign.met === true ? 'var(--wk-accent)' : 'var(--wk-pill)',
-                opacity: sign.met === null ? 0.6 : 1,
-              }}
-              aria-hidden="true"
-            >
-              {sign.met === true ? (
-                <Check style={{ width: fig(30), height: fig(30), color: '#13181C' }} strokeWidth={3} />
-              ) : sign.met === false ? (
-                <Minus style={{ width: fig(30), height: fig(30), color: '#fff' }} strokeWidth={3} />
-              ) : null}
-            </span>
-            <div className="min-w-0">
-              <p className="wk-label" style={{ lineHeight: 1.21 }}>
-                {sign.label}
-                <span className="sr-only">: {sign.met === true ? 'showing' : sign.met === false ? 'not showing yet' : 'not measured yet'}</span>
-              </p>
-              <p className="wk-body" style={{ marginTop: fig(8) }}>
-                {sign.detail}
-              </p>
-            </div>
-          </li>
-        ))}
-      </ul>
-    </section>
+}> = ({ goal, measure, strengthIndex, weightIndex, supporting, onLogWeight, onLogMeasurements }) => {
+  const [timeline, setTimeline] = useState<ChartTimeline>(DEFAULT_CHART_TIMELINE);
+  const cutoff = timelineCutoffDate(timeline);
+  const visibleStrength = rebaseIndexSeries(strengthIndex.filter((p) => p.date >= cutoff));
+  const visibleWeight = rebaseIndexSeries(weightIndex.filter((p) => p.date >= cutoff));
 
-    <section className="wk-card" aria-label="How sure this is">
-      <h2 className="wk-label">How sure this is</h2>
-      <p className="wk-body" style={{ marginTop: fig(12) }}>
-        {measure.evidenceLabel}
-        {measure.nextStep ? ` ${measure.nextStep}` : ''}
-      </p>
-      {measure.nextStep && (
-        <div className="grid grid-cols-2" style={{ gap: fig(16), marginTop: fig(32) }}>
-          <button type="button" onClick={onLogWeight} className="wk-button" style={{ background: 'var(--wk-raised)', color: '#fff' }}>
-            Log weight
-          </button>
-          <button type="button" onClick={onLogMeasurements} className="wk-button" style={{ background: 'var(--wk-raised)', color: '#fff' }}>
-            Log measurements
-          </button>
-        </div>
-      )}
-    </section>
+  return (
+    <>
+      <section className="wk-card" aria-label={goal.title}>
+        <h2 className="wk-label">Signs it's working</h2>
+        <Big value={measure.signsMeasured > 0 ? `${measure.signsMet}/${measure.signs.length}` : '—'} unit={measure.signsMeasured > 0 ? 'signs showing' : 'nothing measured yet'} />
+        <ul className="flex flex-col" style={{ gap: fig(30), marginTop: fig(44) }}>
+          {measure.signs.map((sign) => (
+            <li key={sign.id} className="flex items-start" style={{ gap: fig(24) }}>
+              <span
+                className="rounded-full flex items-center justify-center shrink-0"
+                style={{
+                  width: fig(52),
+                  height: fig(52),
+                  marginTop: fig(2),
+                  background: sign.met === true ? 'var(--wk-accent)' : 'var(--wk-pill)',
+                  opacity: sign.met === null ? 0.6 : 1,
+                }}
+                aria-hidden="true"
+              >
+                {sign.met === true ? (
+                  <Check style={{ width: fig(30), height: fig(30), color: '#13181C' }} strokeWidth={3} />
+                ) : sign.met === false ? (
+                  <Minus style={{ width: fig(30), height: fig(30), color: '#fff' }} strokeWidth={3} />
+                ) : null}
+              </span>
+              <div className="min-w-0">
+                <p className="wk-label" style={{ lineHeight: 1.21 }}>
+                  {sign.label}
+                  <span className="sr-only">: {sign.met === true ? 'showing' : sign.met === false ? 'not showing yet' : 'not measured yet'}</span>
+                </p>
+                <p className="wk-body" style={{ marginTop: fig(8) }}>
+                  {sign.detail}
+                </p>
+              </div>
+            </li>
+          ))}
+        </ul>
+      </section>
 
-    <section className="wk-card" aria-label="Weight against strength">
-      <h2 className="wk-label">Weight against strength</h2>
-      <p className="wk-body" style={{ marginTop: fig(12) }}>
-        {strengthIndex.length >= 2 && weightIndex.length >= 2
-          ? measure.phase === 'Lean Bulk'
-            ? 'Both start at 100. Strength rising faster than weight is the pattern of muscle being built; weight rising faster than strength points to fat.'
-            : measure.phase === 'Cut / Recomp'
-            ? 'Both start at 100. Weight falling while strength holds is the pattern of fat being lost and muscle kept.'
-            : 'Both start at 100. Weight level while strength rises is the pattern of staying lean and getting stronger.'
-          : strengthIndex.length >= 2
-          ? 'Your strength so far, starting at 100. Log your weight to see the two together.'
-          : 'This fills in as you repeat workouts and log your weight.'}
-      </p>
-      <div style={{ marginTop: fig(36) }}>
-        <TrendChart
-          points={strengthIndex}
-          secondary={weightIndex.length >= 2 ? weightIndex : undefined}
-          format={(v) => `${Math.round(v)}`}
-          height={280}
-          label={
-            strengthIndex.length >= 2
-              ? `Strength index from 100 to ${Math.round(strengthIndex[strengthIndex.length - 1].value)}${
-                  weightIndex.length >= 2 ? `; bodyweight index from 100 to ${Math.round(weightIndex[weightIndex.length - 1].value)}` : ''
-                }`
-              : 'Example chart. Your strength and bodyweight appear here once you have repeated a workout.'
-          }
+      <section className="wk-card" aria-label="How sure this is">
+        <h2 className="wk-label">How sure this is</h2>
+        <p className="wk-body" style={{ marginTop: fig(12) }}>
+          {measure.evidenceLabel}
+          {measure.nextStep ? ` ${measure.nextStep}` : ''}
+        </p>
+        {measure.nextStep && (
+          <div className="grid grid-cols-2" style={{ gap: fig(16), marginTop: fig(32) }}>
+            <button type="button" onClick={onLogWeight} className="wk-button" style={{ background: 'var(--wk-raised)', color: '#fff' }}>
+              Log weight
+            </button>
+            <button type="button" onClick={onLogMeasurements} className="wk-button" style={{ background: 'var(--wk-raised)', color: '#fff' }}>
+              Log measurements
+            </button>
+          </div>
+        )}
+      </section>
+
+      <section className="wk-card" aria-label="Weight against strength">
+        <h2 className="wk-label">Weight against strength</h2>
+        <p className="wk-body" style={{ marginTop: fig(12) }}>
+          {visibleStrength.length >= 2 && visibleWeight.length >= 2
+            ? measure.phase === 'Lean Bulk'
+              ? 'Both start at 100. Strength rising faster than weight is the pattern of muscle being built; weight rising faster than strength points to fat.'
+              : measure.phase === 'Cut / Recomp'
+              ? 'Both start at 100. Weight falling while strength holds is the pattern of fat being lost and muscle kept.'
+              : 'Both start at 100. Weight level while strength rises is the pattern of staying lean and getting stronger.'
+            : visibleStrength.length >= 2
+            ? 'Your strength so far, starting at 100. Log your weight to see the two together.'
+            : strengthIndex.length >= 2
+            ? 'Not enough sessions in this range to show a trend. Select a wider range to see earlier history.'
+            : 'This fills in as you repeat workouts and log your weight.'}
+        </p>
+        <TimelineToggle
+          compact
+          value={timeline}
+          onChange={setTimeline}
+          ariaLabel="Weight against strength timeline"
         />
-      </div>
-      {strengthIndex.length >= 2 && (
-        <div className="flex flex-wrap wk-caption" style={{ gap: fig(32), marginTop: fig(20) }} aria-hidden="true">
-          <span className="flex items-center" style={{ gap: fig(12) }}>
-            <span style={{ width: fig(36), height: fig(6), borderRadius: fig(6), background: 'var(--wk-accent)' }} />
-            Strength
-          </span>
-          {weightIndex.length >= 2 && (
-            <span className="flex items-center" style={{ gap: fig(12) }}>
-              <span style={{ width: fig(36), height: fig(4), borderRadius: fig(4), background: 'rgba(255,255,255,0.35)' }} />
-              Bodyweight
-            </span>
-          )}
+        <div style={{ marginTop: fig(28) }}>
+          <TrendChart
+            points={visibleStrength}
+            secondary={visibleWeight.length >= 2 ? visibleWeight : undefined}
+            format={(v) => `${Math.round(v)}`}
+            height={280}
+            label={
+              visibleStrength.length >= 2
+                ? `Strength index from 100 to ${Math.round(visibleStrength[visibleStrength.length - 1].value)}${
+                    visibleWeight.length >= 2 ? `; bodyweight index from 100 to ${Math.round(visibleWeight[visibleWeight.length - 1].value)}` : ''
+                  }`
+                : 'Example chart. Your strength and bodyweight appear here once you have repeated a workout.'
+            }
+          />
         </div>
-      )}
-    </section>
+        {visibleStrength.length >= 2 && (
+          <div className="flex flex-wrap wk-caption" style={{ gap: fig(32), marginTop: fig(20) }} aria-hidden="true">
+            <span className="flex items-center" style={{ gap: fig(12) }}>
+              <span style={{ width: fig(36), height: fig(6), borderRadius: fig(6), background: 'var(--wk-accent)' }} />
+              Strength
+            </span>
+            {visibleWeight.length >= 2 && (
+              <span className="flex items-center" style={{ gap: fig(12) }}>
+                <span style={{ width: fig(36), height: fig(4), borderRadius: fig(4), background: 'rgba(255,255,255,0.35)' }} />
+                Bodyweight
+              </span>
+            )}
+          </div>
+        )}
+      </section>
 
-    {supporting.map((chart) => (
-      <ProgressChartCard key={chart.id} chart={chart} />
-    ))}
-    <Method goal={goal} />
-  </>
-);
+      {supporting.map((chart) => (
+        <ProgressChartCard key={chart.id} chart={chart} timeline={timeline} hideTimelineToggle />
+      ))}
+      <Method goal={goal} />
+    </>
+  );
+};
 
 export interface GoalDetailProps {
   goal: AthleteGoal;

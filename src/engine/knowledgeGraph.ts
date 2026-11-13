@@ -10,9 +10,10 @@ import {
   ScientificPrinciple,
   UserProfile,
   WorkoutSession,
+  isWhoopConfigured,
 } from './types';
-import { localDateString } from '../utils/date';
-import { calculateEmaSeries, getLatestBodyweightEma } from './ema';
+import { localDateString, parseLocalDate } from '../utils/date';
+import { buildBodyweightEmaLookup, calculateEmaSeries, getLatestBodyweightEma } from './ema';
 import { ActivityLog } from './activeDays';
 import { AthleteGoal, buildAthleteGoals } from '../services/athleteGoals';
 export type { ScientificPrinciple, DesignSystemComponent, DesignSystemComponentCategory };
@@ -122,6 +123,44 @@ export interface BodyCompositionKnowledgeProfile {
   latestTapeDate?: string;
 }
 
+export interface KgStepsSummary {
+  todaySteps?: number;
+  latestSteps?: number;
+  latestStepsDate?: string;
+  avg7d?: number;
+  previous7dAvg?: number;
+  avg14d?: number;
+  loggedDays: number;
+  goalTarget?: number;
+  trend: 'up' | 'down' | 'flat' | 'insufficient_data';
+  summary: string;
+}
+
+export interface KgWhoopSummary {
+  configured: boolean;
+  recoveryScore?: number;
+  dayStrain?: number;
+  workoutStrain?: number;
+  hrvRmssd?: number;
+  restingHr?: number;
+  sleepHours?: number;
+  sleepPerformance?: number;
+  sleepEfficiency?: number;
+  respiratoryRate?: number;
+  spo2?: number;
+  skinTemp?: number;
+  latestDate?: string;
+}
+
+export interface KgActivitySummary {
+  completedWorkouts: number;
+  lastWorkoutDate?: string;
+  lastWorkoutName?: string;
+  loggedActivities: number;
+  activitiesLast7d: number;
+  activeMinutesLast7d: number;
+}
+
 export interface AthleteKnowledgeGraph {
   nodes: KgNode[];
   edges: KgEdge[];
@@ -133,6 +172,9 @@ export interface AthleteKnowledgeGraph {
    */
   goals: AthleteGoal[];
   bodyComposition: BodyCompositionKnowledgeProfile;
+  stepsSummary: KgStepsSummary;
+  whoopSummary: KgWhoopSummary;
+  activitySummary: KgActivitySummary;
   insights: CausalInsight[];
   scientificKnowledgeBase: ScientificPrinciple[];
   designSystem: DesignSystemComponent[];
@@ -1660,24 +1702,33 @@ export function buildAthleteKnowledgeGraph(
 
   // 2. Calculate 6-Week E1RM Velocity per Movement / Muscle
   const sortedWorkouts = [...workouts].filter((w) => w.completed).sort((a, b) => a.date.localeCompare(b.date));
+  const bwEmaAt = buildBodyweightEmaLookup(biometrics);
   const firstHalf = sortedWorkouts.slice(0, Math.max(1, Math.floor(sortedWorkouts.length / 2)));
   const secondHalf = sortedWorkouts.slice(Math.floor(sortedWorkouts.length / 2));
 
   const getAvgE1rmForPillar = (subset: WorkoutSession[], pillar: string): number => {
     let best = 0;
     for (const w of subset) {
+      const sessionBw = bwEmaAt(w.date, 0);
       for (const ex of w.exercises) {
         if (ex.pillar === pillar) {
           for (const s of ex.sets) {
             if (s.completed && s.actualReps) {
+              const extLoad = s.actualWeightKg ?? s.targetWeightKg;
+              // Never fabricate bodyweight if no weigh-in has been recorded.
+              if ((ex.isWeightedCalisthenic || ex.equipment === 'bodyweight') && extLoad === 0 && sessionBw <= 0) {
+                continue;
+              }
               const e1rm = calculateE1RM(
-                s.actualWeightKg ?? s.targetWeightKg,
+                extLoad,
                 s.actualReps,
                 s.actualRir ?? 2,
                 ex.equipment,
                 ex.isRdl,
                 ex.isWeightedCalisthenic,
-                81.5
+                sessionBw,
+                ex.exerciseId,
+                ex.pillar
               );
               if (e1rm > best) best = e1rm;
             }
@@ -1759,9 +1810,10 @@ export function buildAthleteKnowledgeGraph(
   // 4. Compute Body Composition & Anthropometry Knowledge Profile (13 Scale Metrics + 12 Tape Sites)
   const bodyComposition = buildBodyCompositionKnowledgeGraph(biometrics, profile);
 
-  // 5. Compute Biometric & Autonomic Correlations
+  // 5. Compute Biometric, Steps, Whoop & Activity Correlations
   // Only days with real watch data count; zeros mean "not measured".
-  const recentBiometrics = biometrics.slice(-14);
+  const sortedBiometrics = [...biometrics].sort((a, b) => a.date.localeCompare(b.date));
+  const recentBiometrics = sortedBiometrics.slice(-14);
   const hrvDays = recentBiometrics.filter((b) => (b.hrvRmssd || 0) > 0);
   const sleepDays = recentBiometrics.filter((b) => (b.sleepHours || 0) > 0);
   const hasRecoveryData = hrvDays.length > 0;
@@ -1776,12 +1828,136 @@ export function buildAthleteKnowledgeGraph(
   const recentWhoopStrain = recentWorkouts
     .map((w) => w.whoopStrain)
     .filter((s): s is number => typeof s === 'number' && s > 0);
-  const latestBio = biometrics[biometrics.length - 1];
+  const latestBio = sortedBiometrics[sortedBiometrics.length - 1];
   const avgWorkoutStrain =
     recentWhoopStrain.length > 0
       ? Math.round((recentWhoopStrain.reduce((a, b) => a + b, 0) / recentWhoopStrain.length) * 10) / 10
       : latestBio?.workoutStrain || latestBio?.strain;
   const latestRecoveryScore = latestBio?.recoveryScore;
+
+  // Map daily steps telemetry chronologically.
+  const todayStr = localDateString();
+  const todayMs = parseLocalDate(todayStr).getTime();
+  const DAY_MS = 24 * 60 * 60 * 1000;
+  const stepByDate = new Map<string, number>();
+  for (const b of sortedBiometrics) {
+    if ((b.steps || 0) > 0 && b.date) {
+      stepByDate.set(b.date, Math.max(stepByDate.get(b.date) ?? 0, Math.round(b.steps)));
+    }
+  }
+  const stepEntries = [...stepByDate.entries()]
+    .map(([date, steps]) => ({ date, steps }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+  const todayStepsVal = stepByDate.get(todayStr);
+  const latestStepEntry = stepEntries[stepEntries.length - 1];
+  const last7Steps = stepEntries.filter((e) => {
+    const ms = parseLocalDate(e.date).getTime();
+    return ms >= todayMs - 6 * DAY_MS && ms <= todayMs;
+  });
+  const prev7Steps = stepEntries.filter((e) => {
+    const ms = parseLocalDate(e.date).getTime();
+    return ms >= todayMs - 13 * DAY_MS && ms <= todayMs - 7 * DAY_MS;
+  });
+  const last14Steps = stepEntries.filter((e) => {
+    const ms = parseLocalDate(e.date).getTime();
+    return ms >= todayMs - 13 * DAY_MS && ms <= todayMs;
+  });
+  const avg7dSteps = last7Steps.length > 0 ? Math.round(last7Steps.reduce((s, e) => s + e.steps, 0) / last7Steps.length) : undefined;
+  const prev7dSteps = prev7Steps.length > 0 ? Math.round(prev7Steps.reduce((s, e) => s + e.steps, 0) / prev7Steps.length) : undefined;
+  const avg14dSteps = last14Steps.length > 0 ? Math.round(last14Steps.reduce((s, e) => s + e.steps, 0) / last14Steps.length) : undefined;
+  const stepsGoalTarget = profile.goalSettings?.customGoals?.find((g) => g.metric === 'steps')?.target;
+  let stepsTrend: KgStepsSummary['trend'] = 'insufficient_data';
+  if (avg7dSteps !== undefined && prev7dSteps !== undefined && prev7dSteps > 0) {
+    const pctDiff = (avg7dSteps - prev7dSteps) / prev7dSteps;
+    stepsTrend = pctDiff >= 0.05 ? 'up' : pctDiff <= -0.05 ? 'down' : 'flat';
+  } else if (stepEntries.length >= 2) {
+    const firstVal = stepEntries[0].steps;
+    const lastVal = latestStepEntry.steps;
+    const pctDiff = firstVal > 0 ? (lastVal - firstVal) / firstVal : 0;
+    stepsTrend = pctDiff >= 0.05 ? 'up' : pctDiff <= -0.05 ? 'down' : 'flat';
+  }
+  const stepsSummaryText =
+    stepEntries.length === 0
+      ? stepsGoalTarget
+        ? `No step counts recorded yet toward your ${stepsGoalTarget.toLocaleString()} daily step goal.`
+        : 'No step counts recorded yet.'
+      : stepEntries.length === 1
+      ? `${latestStepEntry.steps.toLocaleString()} steps recorded on ${latestStepEntry.date}${stepsGoalTarget ? ` (goal ${stepsGoalTarget.toLocaleString()})` : ''}.`
+      : [
+          todayStepsVal !== undefined
+            ? `${todayStepsVal.toLocaleString()} steps today`
+            : `Latest ${latestStepEntry.steps.toLocaleString()} steps on ${latestStepEntry.date}`,
+          avg7dSteps !== undefined ? `7-day avg ${avg7dSteps.toLocaleString()}` : undefined,
+          prev7dSteps !== undefined ? `prior 7-day avg ${prev7dSteps.toLocaleString()}` : undefined,
+          stepsGoalTarget ? `goal ${stepsGoalTarget.toLocaleString()}` : undefined,
+        ]
+          .filter(Boolean)
+          .join(', ') + '.';
+  const stepsSummary: KgStepsSummary = {
+    todaySteps: todayStepsVal,
+    latestSteps: latestStepEntry?.steps,
+    latestStepsDate: latestStepEntry?.date,
+    avg7d: avg7dSteps,
+    previous7dAvg: prev7dSteps,
+    avg14d: avg14dSteps,
+    loggedDays: stepEntries.length,
+    goalTarget: stepsGoalTarget,
+    trend: stepsTrend,
+    summary: stepsSummaryText,
+  };
+
+  // Map Whoop vitals chronologically from recorded fields only.
+  const pickLatest = (fn: (b: BiometricLog) => number | undefined): { value?: number; date?: string } => {
+    for (let i = sortedBiometrics.length - 1; i >= 0; i--) {
+      const v = fn(sortedBiometrics[i]);
+      if (typeof v === 'number' && v > 0) return { value: v, date: sortedBiometrics[i].date };
+    }
+    return {};
+  };
+  const whoopConfigured = isWhoopConfigured(profile);
+  const latestRecEntry = pickLatest((b) => b.recoveryScore);
+  const latestDayStrainEntry = pickLatest((b) => b.strain);
+  const latestBioWoStrainEntry = pickLatest((b) => b.workoutStrain);
+  const latestWorkoutStrainWorkout = [...sortedWorkouts].reverse().find((w) => typeof w.whoopStrain === 'number' && w.whoopStrain > 0);
+  const whoopWorkoutStrain =
+    latestWorkoutStrainWorkout && latestBioWoStrainEntry.date
+      ? latestWorkoutStrainWorkout.date >= latestBioWoStrainEntry.date
+        ? latestWorkoutStrainWorkout.whoopStrain
+        : latestBioWoStrainEntry.value
+      : latestWorkoutStrainWorkout?.whoopStrain ?? latestBioWoStrainEntry.value;
+  const whoopLatestDates = [latestRecEntry.date, latestDayStrainEntry.date, latestBioWoStrainEntry.date, latestWorkoutStrainWorkout?.date].filter(
+    (d): d is string => Boolean(d)
+  );
+  const whoopSummary: KgWhoopSummary = {
+    configured: whoopConfigured,
+    recoveryScore: latestRecEntry.value,
+    dayStrain: latestDayStrainEntry.value,
+    workoutStrain: whoopWorkoutStrain,
+    hrvRmssd: pickLatest((b) => b.hrvRmssd).value,
+    restingHr: pickLatest((b) => b.restingHr).value,
+    sleepHours: pickLatest((b) => b.sleepHours).value,
+    sleepPerformance: pickLatest((b) => b.sleepPerformance).value,
+    sleepEfficiency: pickLatest((b) => b.sleepEfficiency).value,
+    respiratoryRate: pickLatest((b) => b.respiratoryRate).value,
+    spo2: pickLatest((b) => b.spo2).value,
+    skinTemp: pickLatest((b) => b.skinTemp).value,
+    latestDate: whoopLatestDates.sort().pop() ?? latestBio?.date,
+  };
+
+  // Map non-lifting active days & completed workouts.
+  const recentActivities7d = activities.filter((a) => {
+    const ms = parseLocalDate(a.date).getTime();
+    return ms >= todayMs - 6 * DAY_MS && ms <= todayMs;
+  });
+  const lastDoneWorkout = sortedWorkouts[sortedWorkouts.length - 1];
+  const activitySummary: KgActivitySummary = {
+    completedWorkouts: sortedWorkouts.length,
+    lastWorkoutDate: lastDoneWorkout?.date,
+    lastWorkoutName: lastDoneWorkout?.name,
+    loggedActivities: activities.length,
+    activitiesLast7d: recentActivities7d.length,
+    activeMinutesLast7d: Math.round(recentActivities7d.reduce((s, a) => s + (a.minutes || 0), 0)),
+  };
 
   const systemicAxialLoadScore = Math.min(100, Math.round((totalWeeklyAxialUnits / 16) * 100));
   const lengthenedStimulusRatio =
@@ -1951,12 +2127,14 @@ export function buildAthleteKnowledgeGraph(
         'Recovery': recoveryEfficiencyScore > 0 ? `${recoveryEfficiencyScore}/100` : 'No watch data',
         ...(avgWorkoutStrain ? { 'Workout Strain': `${avgWorkoutStrain}` } : { 'Back Load': `${systemicAxialLoadScore}%` }),
         'Full Stretch': `${lengthenedStimulusRatio}%`,
+        ...(stepsSummary.avg7d !== undefined ? { 'Steps (7d avg)': stepsSummary.avg7d.toLocaleString() } : {}),
+        ...(activitySummary.activitiesLast7d > 0 ? { 'Active Days (7d)': `${activitySummary.activitiesLast7d}` } : {}),
       },
-      detailText: `Your overall training balance across 6 weeks of workouts, sleep, and weekly set targets.`,
+      detailText: `Your overall training balance across 6 weeks of workouts, sleep, daily movement, and weekly set targets.`,
     },
     {
       id: 'node-biometrics',
-      label: profile.whoopConnected ? 'Whoop Recovery & Strain' : 'Sleep & Heart',
+      label: whoopConfigured ? 'Whoop Recovery & Strain' : 'Sleep & Heart',
       category: 'biometric',
       score: recoveryEfficiencyScore,
       status:
@@ -1970,25 +2148,34 @@ export function buildAthleteKnowledgeGraph(
           ? 'optimal'
           : 'elevated',
       subtitle:
-        profile.whoopConnected && latestRecoveryScore !== undefined
-          ? `${latestRecoveryScore}% Recovery${avgWorkoutStrain ? ` • ${avgWorkoutStrain} Strain` : avgSleep ? ` • ${avgSleep}h Sleep` : ''}`
+        whoopConfigured && (whoopSummary.recoveryScore !== undefined || latestRecoveryScore !== undefined)
+          ? `${whoopSummary.recoveryScore ?? latestRecoveryScore}% Recovery${avgWorkoutStrain ?? whoopSummary.dayStrain ? ` • ${avgWorkoutStrain ?? whoopSummary.dayStrain} Strain` : avgSleep ? ` • ${avgSleep}h Sleep` : ''}`
           : hasRecoveryData
           ? `${avgSleep ? `${avgSleep}h • ` : ''}${avgHrv}ms`
+          : stepsSummary.avg7d !== undefined
+          ? `${stepsSummary.avg7d.toLocaleString()} steps/day`
           : 'No watch data yet',
       metrics: {
-        ...(latestRecoveryScore !== undefined ? { 'Whoop Recovery': `${latestRecoveryScore}%` } : {}),
-        ...(avgWorkoutStrain !== undefined ? { 'Workout Strain': `${avgWorkoutStrain}` } : {}),
-        ...(latestBio?.strain !== undefined ? { 'Day Strain': `${latestBio.strain}` } : {}),
+        ...(whoopSummary.recoveryScore !== undefined ? { 'Whoop Recovery': `${whoopSummary.recoveryScore}%` } : {}),
+        ...(whoopSummary.workoutStrain !== undefined ? { 'Workout Strain': `${whoopSummary.workoutStrain}` } : avgWorkoutStrain !== undefined ? { 'Workout Strain': `${avgWorkoutStrain}` } : {}),
+        ...(whoopSummary.dayStrain !== undefined ? { 'Day Strain': `${whoopSummary.dayStrain}` } : {}),
         ...(latestBio?.kilojoules !== undefined ? { 'Energy': `${latestBio.kilojoules} kJ` } : {}),
         ...(hasRecoveryData ? { 'Avg HRV': `${avgHrv} ms` } : {}),
         ...(avgSleep ? { 'Avg Sleep': `${avgSleep} hrs` } : {}),
+        ...(whoopSummary.sleepPerformance !== undefined ? { 'Sleep Performance': `${Math.round(whoopSummary.sleepPerformance)}%` } : {}),
+        ...(whoopSummary.sleepEfficiency !== undefined ? { 'Sleep Efficiency': `${Math.round(whoopSummary.sleepEfficiency)}%` } : {}),
+        ...(whoopSummary.respiratoryRate !== undefined ? { 'Resp Rate': `${whoopSummary.respiratoryRate.toFixed(1)} brpm` } : {}),
+        ...(whoopSummary.spo2 !== undefined ? { 'SpO2': `${whoopSummary.spo2.toFixed(1)}%` } : {}),
+        ...(whoopSummary.skinTemp !== undefined ? { 'Skin Temp': `${whoopSummary.skinTemp.toFixed(1)} °C` } : {}),
         ...((latestBio?.restingHr || 0) > 0 ? { 'Resting Pulse': `${latestBio?.restingHr} bpm` } : {}),
+        ...(stepsSummary.todaySteps !== undefined ? { 'Steps Today': stepsSummary.todaySteps.toLocaleString() } : {}),
+        ...(stepsSummary.avg7d !== undefined ? { 'Steps (7d avg)': stepsSummary.avg7d.toLocaleString() } : {}),
         ...(latestBf !== undefined ? { 'Body Fat': `${latestBf}%` } : {}),
         ...(latestFfm !== undefined ? { 'Fat-Free Mass': `${latestFfm} kg` } : {}),
         ...(latestWaist !== undefined ? { 'Waist': `${latestWaist} cm` } : {}),
       },
-      detailText: profile.whoopConnected
-        ? `Your Whoop recovery${latestRecoveryScore !== undefined ? ` (${latestRecoveryScore}%)` : ''}${avgWorkoutStrain !== undefined ? ` and workout strain (${avgWorkoutStrain})` : ''} set how hard each day's workout should be.`
+      detailText: whoopConfigured
+        ? `Your Whoop recovery${(whoopSummary.recoveryScore ?? latestRecoveryScore) !== undefined ? ` (${whoopSummary.recoveryScore ?? latestRecoveryScore}%)` : ''}${avgWorkoutStrain !== undefined ? ` and workout strain (${avgWorkoutStrain})` : ''} set how hard each day's workout should be.`
         : hasRecoveryData
         ? `Your 14-day sleep and heart rate recovery trend. It adjusts your daily effort targets.`
         : `Connect a watch to see your sleep and heart rate recovery here.`,
@@ -2123,6 +2310,9 @@ export function buildAthleteKnowledgeGraph(
       bodyweightKg: biometrics.some((b) => (b.bodyweightKg || 0) > 0) ? getLatestBodyweightEma(biometrics) : undefined,
     }),
     bodyComposition,
+    stepsSummary,
+    whoopSummary,
+    activitySummary,
     // The full-stretch share only means something once there are sets this week.
     insights: totalHardSetsWeek > 0 ? insights : insights.filter((i) => i.id !== 'pkg-insight-2'),
     scientificKnowledgeBase: EXERCISE_SCIENCE_KNOWLEDGE_BASE,

@@ -4,6 +4,7 @@ import {
   StrengthPillar,
   UserProfile,
   WorkoutSession,
+  isWhoopConfigured,
 } from '../engine/types';
 import { Milestone, evaluateStrengthStandardAdvance, programMilestone } from '../engine/milestones';
 import { evaluateStrengthStandard, standardsAge } from '../engine/strengthStandards';
@@ -80,7 +81,7 @@ export function completeWorkout(input: WorkoutCompletionInput): WorkoutCompletio
   // Measured duration only: first logged set to finish (nothing added for warm-ups).
   const measuredDuration = firstSetAt ? Math.max(1, Math.round((now.getTime() - firstSetAt) / 60000)) : undefined;
 
-  const isWhoopActive = Boolean(profile.whoopConnected || profile.wearableSource === 'whoop');
+  const isWhoopActive = isWhoopConfigured(profile);
 
   const completedSession: WorkoutSession = {
     ...activeWorkout,

@@ -43,6 +43,7 @@ import { buildExerciseNoteFacts } from './exerciseCoachNote';
 import { MUSCLE_FRIENDLY_NAMES } from '../engine/recovery';
 import { findLastCompletedExerciseSession } from '../engine/progression';
 import { ActivityLog, activeDayDates } from '../engine/activeDays';
+import type { CoachPlace } from './coachContext';
 import { computeTrainingStreak } from '../engine/recovery';
 import { MUSCLE_TO_GRAPH_KEY } from './sessionReport';
 import {
@@ -75,6 +76,8 @@ export interface AssistantProcessInput {
   weeklyVolume?: Record<string, number>;
   /** Logged active days, so plan position and streak match the Program page and header. */
   activities?: ActivityLog[];
+  /** Screen / goal where the athlete opened the coach, used to contextualize advice and prompts. */
+  place?: CoachPlace;
   /** Streams the on-device model's answer as it is generated. */
   onPartial?: (textSoFar: string) => void;
   /** Reports first-time model download progress (0-1). */
@@ -208,12 +211,55 @@ export function buildCoachSystemPrompt(input: AssistantProcessInput): string {
   const recovery = readinessState === 'Amber Shield' ? 'low' : readinessState === 'Primed' ? 'high' : 'normal';
   // Bodyweight is only given once the athlete has logged one (never the starting-load placeholder).
   const hasWeighIn = biometrics.some((b) => (b.bodyweightKg || 0) > 0);
+  const placeFacts: string[] = [];
+  if (input.place) {
+    if (input.place.goalId) {
+      const openGoal = kg.goals.find((g) => g.id === input.place?.goalId);
+      if (openGoal) {
+        placeFacts.push(`Progress → Goal (${openGoal.title}: ${openGoal.detail})`);
+      } else {
+        placeFacts.push(`Progress → Goal (${input.place.goalId})`);
+      }
+    } else if (input.place.detail) {
+      placeFacts.push(`Progress → ${input.place.detail}`);
+    } else if (input.place.tab === 'program') {
+      placeFacts.push('Program tab');
+    } else if (input.place.tab === 'analytics') {
+      placeFacts.push('Progress tab');
+    } else {
+      placeFacts.push('Workout tab');
+    }
+  }
+  const kgFacts: string[] = [];
+  if (kg.stepsSummary.loggedDays > 0 || kg.stepsSummary.goalTarget) {
+    kgFacts.push(`Steps: ${kg.stepsSummary.summary}`);
+  }
+  if (kg.whoopSummary.configured) {
+    const wp: string[] = [];
+    if (kg.whoopSummary.recoveryScore !== undefined) wp.push(`recovery ${Math.round(kg.whoopSummary.recoveryScore)}%`);
+    if (kg.whoopSummary.dayStrain !== undefined) wp.push(`day strain ${kg.whoopSummary.dayStrain.toFixed(1)}`);
+    if (kg.whoopSummary.workoutStrain !== undefined) wp.push(`workout strain ${kg.whoopSummary.workoutStrain.toFixed(1)}`);
+    if (kg.whoopSummary.hrvRmssd !== undefined) wp.push(`HRV ${Math.round(kg.whoopSummary.hrvRmssd)} ms`);
+    if (kg.whoopSummary.restingHr !== undefined) wp.push(`resting HR ${Math.round(kg.whoopSummary.restingHr)} bpm`);
+    if (wp.length > 0) kgFacts.push(`Whoop telemetry: ${wp.join(', ')}.`);
+  }
+  const latestWaist = kg.bodyComposition.tapeTrends.find((t) => t.id === 'waist')?.latest;
+  const latestBf = kg.bodyComposition.scaleTrends.find((t) => t.id === 'body_fat')?.latest;
+  if (latestWaist !== undefined || latestBf !== undefined) {
+    const bc: string[] = [];
+    if (latestWaist !== undefined) bc.push(`waist ${latestWaist} cm`);
+    if (latestBf !== undefined) bc.push(`body fat ${latestBf}%`);
+    kgFacts.push(`Body composition: ${bc.join(', ')}.`);
+  }
+  if (kg.activitySummary.activitiesLast7d > 0) {
+    kgFacts.push(`Active days (7d): ${kg.activitySummary.activitiesLast7d} sessions (${kg.activitySummary.activeMinutesLast7d} min).`);
+  }
 
   // Voice from the content strategy: pragmatic and observant, grounded in logged facts, no hype.
   return `You are ${VOICE_TONE_MATRIX.steadyVoice.replace(/^The /, 'the ').replace(/\.$/, '')}, speaking to ${athleteName || 'the athlete'} as "you". Answer the question directly in 2-4 short plain sentences, no greeting. For anything about their plan, weights, sets or progress, use only the facts below. For general training questions (timing, motivation, habits, technique, food), give practical, widely accepted advice in your own words, without numbers. Never say the plan or the facts don't cover something. Never call a muscle's sets enough unless it is on target. High recovery means today's targets stand. Don't praise effort the facts don't show. You don't know how past sessions went. The plan sets weights and raises them itself when every set reaches the top of the range; never tell them to change the weight. No hype, cheerleading or percentages; say why something works in one plain clause.
 Athlete: ${hasWeighIn ? `${formatWeight(bodyweightEmaKg, unit)}, ` : ''}goal ${goalLabel}, week ${planPosition(profile, workouts, input.activities ?? []).week}/6, recovery ${recovery}${
     latestBio && latestBio.hrvRmssd > 0 ? `, slept ${latestBio.sleepHours} h` : ''
-  }.
+  }.${placeFacts.length ? `\nViewing: ${placeFacts.join(' ')}.` : ''}${kgFacts.length ? `\n${kgFacts.join('\n')}` : ''}
 Today's plan (not done yet): ${activeWorkout?.name || 'rest'}: ${exercisesDesc || 'nothing planned'}.
 Weekly hard sets (done of target): ${musclesDesc || 'none yet'}.`;
 }
@@ -579,6 +625,8 @@ async function processAssistantMessageCore(
     progressSummary: () => buildProgressSummary(workouts, profile.weightUnit || 'kg'),
     strengthLevels: strengthLevelsAnswer,
     weeklySets: (message) => answerWeeklySets(message, kg),
+    place: input.place,
+    knowledgeGraph: kg,
   });
 
   const detectedEquipmentChange = detectEquipmentChange(lowerMsg);

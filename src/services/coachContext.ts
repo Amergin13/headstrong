@@ -7,20 +7,20 @@
  */
 import { ActivityLog } from '../engine/activeDays';
 import { evaluateSessionRecovery, formatReadyTime, getWorkoutCompletedAt } from '../engine/recovery';
-import { BiometricLog, ExerciseDefinition, ExerciseSession, ReadinessState, UserProfile, WorkoutSession, WorkoutSet } from '../engine/types';
+import { BiometricLog, ExerciseDefinition, ExerciseSession, ReadinessState, UserProfile, WorkoutSession, WorkoutSet, isWhoopConfigured } from '../engine/types';
 import { GOAL_DISPLAY_NAME } from '../utils/goalNames';
 import { WeightUnit, formatPreciseWeight, formatWeight } from '../utils/units';
 import { AthleteGoal, CHOSEN_GOAL_ID, WEEKLY_GOAL_ID, buildAthleteGoals, describeGoalStanding } from './athleteGoals';
-import { planPosition } from './coachAnswers';
+import { buildStepsCoachingSummary, buildWhoopCoachingSummary, planPosition } from './coachAnswers';
 import { closestStrengthGoal } from './progressOverview';
-import { PROGRESS_WIDGETS, resolveProgressWidgets } from './progressWidgets';
+import { availableProgressWidgets, resolveVisibleProgressWidgets } from './progressWidgets';
 
 /** Where the coach was opened. */
 export interface CoachPlace {
   tab: 'train' | 'program' | 'analytics';
   /** On Progress: the goal whose detail is open, or the screen that is open. */
   goalId?: string;
-  detail?: 'bests' | 'lifetime' | 'recent' | 'steps' | 'weight' | 'measurements' | 'standards' | 'goals' | 'widgets';
+  detail?: 'bests' | 'lifetime' | 'recent' | 'steps' | 'whoop' | 'weight' | 'measurements' | 'standards' | 'goals' | 'widgets';
 }
 
 export interface CoachHook {
@@ -156,6 +156,19 @@ function goalOpening(goal: AthleteGoal, input: CoachOpeningInput, unit: WeightUn
     };
   }
   if (m.type === 'target') {
+    if (m.metric === 'steps') {
+      const stepsInfo = buildStepsCoachingSummary(input.biometrics, input.profile, input.now);
+      return {
+        id: 'goal-steps',
+        line: `${goal.title}: ${stepsInfo.progressText}`,
+        hooks: [
+          { label: 'How can I improve my steps?', text: 'How can I increase my daily steps?' },
+          { label: 'How are my steps trending?', text: 'How have my steps progressed over time?' },
+          { label: 'Change step target', text: 'Set a goal of ', fill: true },
+          { label: 'Remove step goal', text: 'Remove my steps goal' },
+        ],
+      };
+    }
     const name = m.exerciseName.toLowerCase();
     return {
       id: 'goal-custom',
@@ -209,14 +222,40 @@ export function buildCoachOpening(input: CoachOpeningInput): CoachOpening {
   const ownGoal: CoachHook = { label: 'Set my own goal', text: 'Set a goal of ', fill: true };
 
   if (place.detail === 'widgets') {
-    const activeCount = resolveProgressWidgets(profile.progressWidgets).length;
+    const activeCount = resolveVisibleProgressWidgets(profile.progressWidgets, profile).length;
+    const totalAvailable = availableProgressWidgets(profile).length;
     return {
       id: 'progress-widgets',
-      line: `You have ${activeCount} of ${PROGRESS_WIDGETS.length} widgets on Progress. Tell me what to add or remove, like "add balance to progress" or "remove measurements widget".`,
+      line: `You have ${activeCount} of ${totalAvailable} overview widgets on Progress. Tell me what to add or remove, like "add balance to progress" or "remove measurements widget".`,
       hooks: [
         { label: 'What widgets can I add?', text: 'What widgets can I add to progress?' },
         { label: 'Add balance widget', text: 'Add balance widget to progress' },
+        ...(isWhoopConfigured(profile) ? [{ label: 'Add Whoop widget', text: 'Add whoop metrics to progress' }] : []),
         { label: 'Reset to default', text: 'Reset my progress widgets' },
+      ],
+    };
+  }
+  if (place.detail === 'steps') {
+    const stepsInfo = buildStepsCoachingSummary(biometrics, profile, input.now);
+    return {
+      id: 'progress-steps',
+      line: stepsInfo.progressText,
+      hooks: [
+        { label: 'How can I improve my steps?', text: 'How can I increase my daily steps?' },
+        { label: 'How are my steps trending?', text: 'How have my steps progressed over time?' },
+        { label: 'Do steps count as workouts?', text: 'Do steps count toward workouts?' },
+        ...(stepsInfo.goalTarget ? [] : [{ label: 'Set a step goal', text: 'Set a goal of 8000 daily steps' }]),
+      ],
+    };
+  }
+  if (place.detail === 'whoop') {
+    return {
+      id: 'progress-whoop',
+      line: buildWhoopCoachingSummary(biometrics, workouts, profile),
+      hooks: [
+        { label: 'Should I train today?', text: 'Should I train today?' },
+        { label: 'How can I improve recovery?', text: 'How can I improve my Whoop recovery?' },
+        { label: 'Add Whoop charts', text: 'Add whoop recovery chart to progress' },
       ],
     };
   }

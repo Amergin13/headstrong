@@ -1,4 +1,4 @@
-import { CoreProgressWidgetId, ExerciseDefinition, ProgressWidgetId, UserProfile, WorkoutSession } from '../engine/types';
+import { CoreProgressWidgetId, ExerciseDefinition, ProgressWidgetId, UserProfile, WorkoutSession, isWhoopConfigured } from '../engine/types';
 import { findExerciseNamed } from './coachAnswers';
 
 export interface ProgressWidgetDefinition {
@@ -6,6 +6,7 @@ export interface ProgressWidgetDefinition {
   label: string;
   description: string;
   defaultEnabled: boolean;
+  requiresWhoop?: boolean;
   aliases: string[];
 }
 
@@ -13,8 +14,9 @@ export interface ProgressChartWidgetDefinition {
   id: `chart:${string}`;
   chartId: string;
   label: string;
-  group: 'tape' | 'body' | 'training';
+  group: 'tape' | 'body' | 'training' | 'whoop';
   description: string;
+  requiresWhoop?: boolean;
   aliases: string[];
 }
 
@@ -88,6 +90,14 @@ export const PROGRESS_WIDGETS: readonly ProgressWidgetDefinition[] = [
     description: 'Push/pull proportions and left vs right symmetry.',
     defaultEnabled: false,
     aliases: ['muscle balance', 'left right symmetry', 'left/right symmetry', 'imbalances', 'symmetry', 'balance'],
+  },
+  {
+    id: 'whoop-summary',
+    label: 'Whoop metrics',
+    description: 'Recovery score, day strain, workout strain, HRV and sleep from Whoop.',
+    defaultEnabled: false,
+    requiresWhoop: true,
+    aliases: ['whoop metrics', 'whoop overview', 'whoop summary', 'whoop card', 'whoop widget', 'whoop'],
   },
 ] as const;
 
@@ -260,6 +270,60 @@ export const PROGRESS_CHART_WIDGETS: readonly ProgressChartWidgetDefinition[] = 
     description: 'Weekly working sets completed across workouts.',
     aliases: ['weekly hard sets', 'weekly sets'],
   },
+  {
+    id: 'chart:whoop-recovery',
+    chartId: 'whoop-recovery',
+    label: 'Whoop recovery',
+    group: 'whoop',
+    description: 'Overnight Whoop recovery percentage over time.',
+    requiresWhoop: true,
+    aliases: ['whoop recovery score', 'whoop recovery', 'recovery score', 'recovery %'],
+  },
+  {
+    id: 'chart:whoop-strain',
+    chartId: 'whoop-strain',
+    label: 'Whoop day strain',
+    group: 'whoop',
+    description: 'Daily Whoop cardiovascular strain score (0–21) over time.',
+    requiresWhoop: true,
+    aliases: ['whoop day strain', 'whoop strain', 'day strain'],
+  },
+  {
+    id: 'chart:whoop-workout-strain',
+    chartId: 'whoop-workout-strain',
+    label: 'Whoop workout strain',
+    group: 'whoop',
+    description: 'Strain score recorded for each workout session.',
+    requiresWhoop: true,
+    aliases: ['whoop workout strain', 'workout strain', 'session strain'],
+  },
+  {
+    id: 'chart:whoop-hrv',
+    chartId: 'whoop-hrv',
+    label: 'Whoop HRV',
+    group: 'whoop',
+    description: 'Overnight heart rate variability (RMSSD) over time.',
+    requiresWhoop: true,
+    aliases: ['whoop hrv', 'heart rate variability', 'hrv rmssd', 'hrv'],
+  },
+  {
+    id: 'chart:whoop-rhr',
+    chartId: 'whoop-rhr',
+    label: 'Whoop resting HR',
+    group: 'whoop',
+    description: 'Overnight resting heart rate (bpm) over time.',
+    requiresWhoop: true,
+    aliases: ['whoop resting heart rate', 'whoop resting hr', 'whoop rhr', 'resting heart rate', 'resting hr', 'rhr'],
+  },
+  {
+    id: 'chart:whoop-sleep',
+    chartId: 'whoop-sleep',
+    label: 'Whoop sleep',
+    group: 'whoop',
+    description: 'Nightly sleep hours recorded by Whoop over time.',
+    requiresWhoop: true,
+    aliases: ['whoop sleep', 'sleep duration', 'sleep hours', 'sleep'],
+  },
 ] as const;
 
 const CHART_GROUP_ALIASES: { aliases: string[]; ids: `chart:${string}`[] }[] = [
@@ -296,6 +360,23 @@ export function isValidProgressWidgetId(id: ProgressWidgetId): boolean {
   return false;
 }
 
+export function isWhoopWidgetId(id: ProgressWidgetId): boolean {
+  const parsed = parseProgressWidgetId(id);
+  if (parsed.kind === 'core') return Boolean(CORE_MAP.get(parsed.coreId)?.requiresWhoop);
+  if (parsed.kind === 'chart') return Boolean(CHART_MAP.get(id)?.requiresWhoop);
+  return false;
+}
+
+export function availableProgressWidgets(profile?: UserProfile | null): readonly ProgressWidgetDefinition[] {
+  const whoopReady = isWhoopConfigured(profile);
+  return PROGRESS_WIDGETS.filter((w) => !w.requiresWhoop || whoopReady);
+}
+
+export function availableProgressChartWidgets(profile?: UserProfile | null): readonly ProgressChartWidgetDefinition[] {
+  const whoopReady = isWhoopConfigured(profile);
+  return PROGRESS_CHART_WIDGETS.filter((c) => !c.requiresWhoop || whoopReady);
+}
+
 /** Resolve the athlete's active widget IDs (core blocks in canonical order, plus custom pinned charts/exercises in saved order). */
 export function resolveProgressWidgets(saved?: ProgressWidgetId[]): ProgressWidgetId[] {
   if (saved === undefined) return [...DEFAULT_PROGRESS_WIDGETS];
@@ -309,6 +390,12 @@ export function resolveProgressWidgets(saved?: ProgressWidgetId[]): ProgressWidg
   const coreIds = PROGRESS_WIDGETS.filter((w) => seen.has(w.id)).map((w) => w.id);
   const customIds = validUnique.filter((id) => !VALID_CORE_IDS.has(id as CoreProgressWidgetId));
   return [...coreIds, ...customIds];
+}
+
+/** Resolve active Progress widgets visible for this profile (hiding Whoop widgets until Whoop is configured). */
+export function resolveVisibleProgressWidgets(saved?: ProgressWidgetId[], profile?: UserProfile | null): ProgressWidgetId[] {
+  const whoopReady = isWhoopConfigured(profile);
+  return resolveProgressWidgets(saved).filter((id) => whoopReady || !isWhoopWidgetId(id));
 }
 
 /** Return undefined when the selection matches defaults so unmodified profiles stay clean. */
@@ -482,10 +569,16 @@ function joinLabels(ids: ProgressWidgetId[], exerciseCatalog: ExerciseDefinition
   return `${labels.slice(0, -1).join(', ')} and ${labels[labels.length - 1]}`;
 }
 
-function describeCurrentWidgets(saved?: ProgressWidgetId[], exerciseCatalog: ExerciseDefinition[] = []): string {
-  const active = resolveProgressWidgets(saved);
+function describeCurrentWidgets(
+  saved?: ProgressWidgetId[],
+  exerciseCatalog: ExerciseDefinition[] = [],
+  whoopConfigured = false
+): string {
+  const active = resolveProgressWidgets(saved).filter((id) => whoopConfigured || !isWhoopWidgetId(id));
   const activeSet = new Set(active);
-  const availableCore = PROGRESS_WIDGETS.filter((w) => !activeSet.has(w.id)).map((w) => w.id);
+  const availableCore = PROGRESS_WIDGETS.filter(
+    (w) => (!w.requiresWhoop || whoopConfigured) && !activeSet.has(w.id)
+  ).map((w) => w.id);
   const parts: string[] = [];
   if (active.length > 0) {
     parts.push(`On Progress right now: ${joinLabels(active, exerciseCatalog)}.`);
@@ -495,7 +588,11 @@ function describeCurrentWidgets(saved?: ProgressWidgetId[], exerciseCatalog: Exe
   if (availableCore.length > 0) {
     parts.push(`Overview cards you can add: ${joinLabels(availableCore, exerciseCatalog)}.`);
   }
-  parts.push('You can also add any exercise progression (like Bench Press) or body measurement (like Left bicep, Right bicep, Waist or Chest).');
+  parts.push(
+    whoopConfigured
+      ? 'You can also add any exercise progression (like Bench Press), body measurement (like Left bicep, Waist or Chest), or Whoop trend chart (like Whoop recovery, Day strain or HRV).'
+      : 'You can also add any exercise progression (like Bench Press) or body measurement (like Left bicep, Right bicep, Waist or Chest).'
+  );
   return parts.join(' ');
 }
 
@@ -510,12 +607,16 @@ export function detectProgressWidgetChange(
   activeWorkout?: WorkoutSession
 ): ProgressWidgetChange | null {
   const msg = lowerMsg.trim();
+  const whoopConfigured = isWhoopConfigured(profile);
   const hasWidgetAnchor = WIDGET_ANCHOR_RE.test(msg);
   const isPoliteRequest = /^(can|could|would|will)\s+you\b/.test(msg);
   const isInquiry = /\bwhat|which\b/.test(msg) && /\b(widgets?|cards?|charts?)\b/.test(msg) && /\bprogress\b/.test(msg);
 
   if (isInquiry) {
-    return { changed: false, reply: describeCurrentWidgets(profile.progressWidgets, exerciseCatalog) };
+    return {
+      changed: false,
+      reply: describeCurrentWidgets(profile.progressWidgets, exerciseCatalog, whoopConfigured),
+    };
   }
 
   // Questions other than polite requests ("can you add balance to progress?") are never mutations.
@@ -530,7 +631,10 @@ export function detectProgressWidgetChange(
     findWidgetsInText(msg, exerciseCatalog, activeWorkout).length === 0 &&
     !/\b(all|every|default)\b/.test(msg)
   ) {
-    return { changed: false, reply: describeCurrentWidgets(profile.progressWidgets, exerciseCatalog) };
+    return {
+      changed: false,
+      reply: describeCurrentWidgets(profile.progressWidgets, exerciseCatalog, whoopConfigured),
+    };
   }
 
   // Reset widgets to defaults (explicitly requires widget/card/progress-screen wording; "reset goals" goes to goal settings).
@@ -556,7 +660,7 @@ export function detectProgressWidgetChange(
   const hasRemove = REMOVE_VERB_RE.test(msg);
 
   if (isAllWidgets && hasRemove && !hasAdd) {
-    const current = resolveProgressWidgets(profile.progressWidgets);
+    const current = resolveVisibleProgressWidgets(profile.progressWidgets, profile);
     if (current.length === 0) {
       return { changed: false, reply: 'All Progress widgets are already hidden.' };
     }
@@ -573,6 +677,13 @@ export function detectProgressWidgetChange(
   const mentionedAnywhere = findWidgetsInText(msg, exerciseCatalog, activeWorkout);
   if (mentionedAnywhere.length === 0) return null;
 
+  if (!whoopConfigured && hasAdd && !hasRemove && mentionedAnywhere.every(isWhoopWidgetId)) {
+    return {
+      changed: false,
+      reply: 'Whoop widgets only appear once Whoop is connected or imported. Set up Whoop in Watch & telemetry first.',
+    };
+  }
+
   // Guard: "change my goals on progress" belongs to GoalSettings, not hiding the widget.
   if (
     mentionedAnywhere.length === 1 &&
@@ -586,10 +697,15 @@ export function detectProgressWidgetChange(
   const nextList = [...resolveProgressWidgets(profile.progressWidgets)];
   const added: ProgressWidgetId[] = [];
   const removed: ProgressWidgetId[] = [];
+  const blockedWhoop: ProgressWidgetId[] = [];
   const alreadyInState: { id: ProgressWidgetId; op: 'add' | 'remove' }[] = [];
 
   const applyOp = (op: 'add' | 'remove', ids: ProgressWidgetId[]) => {
     for (const id of ids) {
+      if (op === 'add' && !whoopConfigured && isWhoopWidgetId(id)) {
+        if (!blockedWhoop.includes(id)) blockedWhoop.push(id);
+        continue;
+      }
       const idx = nextList.indexOf(id);
       if (op === 'add') {
         if (idx >= 0) {
@@ -625,7 +741,7 @@ export function detectProgressWidgetChange(
   }
 
   if (added.length === 0 && removed.length === 0) {
-    if (alreadyInState.length > 0) {
+    if (alreadyInState.length > 0 || blockedWhoop.length > 0) {
       const alreadyAdded = alreadyInState.filter((x) => x.op === 'add').map((x) => x.id);
       const alreadyRemoved = alreadyInState.filter((x) => x.op === 'remove').map((x) => x.id);
       const notes: string[] = [];
@@ -634,6 +750,9 @@ export function detectProgressWidgetChange(
       }
       if (alreadyRemoved.length) {
         notes.push(`${joinLabels(alreadyRemoved, exerciseCatalog)} ${alreadyRemoved.length === 1 ? 'is' : 'are'} already hidden from Progress.`);
+      }
+      if (blockedWhoop.length) {
+        notes.push(`${joinLabels(blockedWhoop, exerciseCatalog)} requires Whoop to be connected or imported first.`);
       }
       return { changed: false, reply: notes.join(' ') };
     }
@@ -644,6 +763,9 @@ export function detectProgressWidgetChange(
   const phrases: string[] = [];
   if (added.length > 0) phrases.push(`Added ${joinLabels(added, exerciseCatalog)} to your Progress screen.`);
   if (removed.length > 0) phrases.push(`Removed ${joinLabels(removed, exerciseCatalog)} from your Progress screen.`);
+  if (blockedWhoop.length > 0) {
+    phrases.push(`${joinLabels(blockedWhoop, exerciseCatalog)} requires Whoop to be connected or imported first.`);
+  }
 
   const summaryParts: string[] = [];
   if (added.length > 0) summaryParts.push(`Added ${joinLabels(added, exerciseCatalog)}`);

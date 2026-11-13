@@ -52,6 +52,7 @@ import {
   SplitDayType,
 } from './services/workoutGenerator';
 import { WhoopWorkoutStrainSummary } from './services/whoopService';
+import { mergeWhoopWorkoutTelemetryLog } from './services/wearableSyncService';
 import {
   generatePlanWorkout,
   getNextProgramWorkoutNumber,
@@ -684,20 +685,7 @@ export const App: React.FC = () => {
     const todayStr = completedSession.date;
 
     if (whoopTelemetry) {
-      setBiometrics((prev) => {
-        const idx = prev.findIndex((b) => b.date === todayStr);
-        if (idx < 0) return prev;
-        const updated = [...prev];
-        updated[idx] = {
-          ...updated[idx],
-          workoutStrain: whoopTelemetry.workoutStrain ?? updated[idx].workoutStrain,
-          strain: whoopTelemetry.dayStrain ?? updated[idx].strain,
-          avgWorkoutHr: whoopTelemetry.avgHeartRate ?? updated[idx].avgWorkoutHr,
-          maxWorkoutHr: whoopTelemetry.maxHeartRate ?? updated[idx].maxWorkoutHr,
-          recoveryScore: whoopTelemetry.recoveryScore ?? updated[idx].recoveryScore,
-        };
-        return updated;
-      });
+      setBiometrics((prev) => mergeWhoopWorkoutTelemetryLog(prev, todayStr, whoopTelemetry));
     }
 
     setWorkouts(nextHistory);

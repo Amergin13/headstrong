@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Scale, Ruler, Bluetooth, MoreHorizontal, SlidersHorizontal, Target } from 'lucide-react';
 import { PageTopGradient } from '../common/PageTopGradient';
-import { BiometricLog, BodyMeasurementSite, ExerciseDefinition, GoalPhase, ProgressWidgetId, UserProfile, WorkoutSession } from '../../engine/types';
+import { BiometricLog, BodyMeasurementSite, ExerciseDefinition, GoalPhase, ProgressWidgetId, UserProfile, WorkoutSession, isWhoopConfigured } from '../../engine/types';
 import { StrengthLevelsCard } from './StrengthLevelsCard';
 import { BalanceCard } from './BalanceCard';
 import { buildMovementStandards } from '../../services/movementStandards';
@@ -20,9 +20,15 @@ import {
   buildExerciseProgressChart,
   buildStepsChart,
   buildStrengthCharts,
+  buildWhoopCharts,
+  buildWhoopSnapshot,
+  ChartTimeline,
+  DEFAULT_CHART_TIMELINE,
+  getTimelineMeta,
   ProgressChart,
   ProgressFormatters,
 } from '../../services/progressSeries';
+import { TimelineToggle } from './TimelineToggle';
 import { stepsOnDate } from '../../services/athleteGoals';
 import { loadSavedRenphoDevices } from '../../services/renphoBluetooth';
 import { ActivityLog } from '../../engine/activeDays';
@@ -41,7 +47,7 @@ import { DetailHeader, GoalsHero, OverviewCard, Sparkline, StandardsRadar, StatR
 import { GoalDetailScreen } from './GoalDetailScreen';
 import { GoalSettingsScreen } from './GoalSettingsScreen';
 import { ProgressWidgetsScreen } from './ProgressWidgetsScreen';
-import { parseProgressWidgetId, resolveProgressWidgets, toggleProgressWidget } from '../../services/progressWidgets';
+import { parseProgressWidgetId, resolveVisibleProgressWidgets, toggleProgressWidget } from '../../services/progressWidgets';
 import { alignStrengthAndWeight, strengthIndexSeries } from '../../services/strengthTrend';
 import { calculateEmaSeries, hasMeasuredBodyweight, latestBodyweightLog } from '../../engine/ema';
 import { triggerHaptic } from '../../utils/haptics';
@@ -70,7 +76,7 @@ const CHART_ID_TO_TAPE_SITE: Partial<Record<string, BodyMeasurementSite>> = {
 };
 
 /** The overview, or one of the screens its cards open. */
-type ProgressDetail = 'bests' | 'lifetime' | 'recent' | 'steps' | 'weight' | 'measurements' | 'standards' | 'goals' | 'widgets';
+type ProgressDetail = 'bests' | 'lifetime' | 'recent' | 'steps' | 'whoop' | 'weight' | 'measurements' | 'standards' | 'goals' | 'widgets';
 
 interface AnalyticsTabProps {
   workouts: WorkoutSession[];
@@ -101,6 +107,7 @@ const DETAIL_TITLE: Record<ProgressDetail, string> = {
   lifetime: 'Lifetime stats',
   recent: 'Recent stats',
   steps: 'Steps',
+  whoop: 'Whoop metrics',
   weight: 'Body weight',
   measurements: 'Measurements',
   standards: 'Strength standards',
@@ -133,6 +140,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
   onLogWeightRequestHandled,
 }) => {
   const [detail, setDetail] = useState<ProgressDetail | null>(null);
+  const [detailTimeline, setDetailTimeline] = useState<ChartTimeline>(DEFAULT_CHART_TIMELINE);
   /** The goal whose detail is open (a ring was tapped). */
   const [openGoalId, setOpenGoalId] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -143,7 +151,11 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
   const units = useUnits();
   const latestWeighIn = latestBodyweightLog(biometrics);
   const hasBodyweight = hasMeasuredBodyweight(biometrics);
-  const activeWidgets = useMemo(() => resolveProgressWidgets(profile.progressWidgets), [profile.progressWidgets]);
+  const whoopConfigured = isWhoopConfigured(profile);
+  const activeWidgets = useMemo(
+    () => resolveVisibleProgressWidgets(profile.progressWidgets, profile),
+    [profile.progressWidgets, profile.whoopConnected, profile.wearableSource]
+  );
   const hasWidget = (id: ProgressWidgetId) => activeWidgets.includes(id);
 
   useEffect(() => {
@@ -184,6 +196,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
     () => buildAthleteKnowledgeGraph(workouts, biometrics, exerciseCatalog, profile, calculateWeeklyMuscleVolume(workouts, exerciseCatalog), activities),
     [workouts, biometrics, exerciseCatalog, profile, activities]
   );
+  const timelineMeta = useMemo(() => getTimelineMeta(detailTimeline), [detailTimeline]);
   const muscleProgress = useMemo(() => {
     return buildMuscleProgress({
       workouts,
@@ -192,8 +205,9 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
       knowledgeGraph,
       bodyweightKg: hasBodyweight ? bodyweightEmaKg : 0,
       formatLength: fmt.length,
+      weeks: timelineMeta.weeks,
     });
-  }, [workouts, exerciseCatalog, biometrics, knowledgeGraph, hasBodyweight, bodyweightEmaKg, fmt]);
+  }, [workouts, exerciseCatalog, biometrics, knowledgeGraph, hasBodyweight, bodyweightEmaKg, fmt, timelineMeta.weeks]);
   const bodyComposition = useMemo(
     () => buildBodyCompositionKnowledgeGraph(biometrics, profile, fmt),
     [biometrics, profile, fmt]
@@ -225,9 +239,22 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
   const trophies = useMemo(() => trophyCase(personalBests), [personalBests]);
   const lifetime = useMemo(() => buildTrainingTotals(workouts), [workouts]);
   const recent = useMemo(() => buildTrainingTotals(workouts, RECENT_DAYS), [workouts]);
+  const recentWindow = useMemo(
+    () => buildTrainingTotals(workouts, timelineMeta.days),
+    [workouts, timelineMeta.days]
+  );
   const pace = useMemo(() => weightPace(biometrics, profile.goalPhase), [biometrics, profile.goalPhase]);
   const weightChart = compositionCharts.find((c) => c.id === 'bodyweight');
   const stepsChart = useMemo(() => buildStepsChart(biometrics), [biometrics]);
+  const whoopCharts = useMemo(
+    () => (whoopConfigured ? buildWhoopCharts({ biometrics, workouts }) : []),
+    [whoopConfigured, biometrics, workouts]
+  );
+  const whoopSnapshot = useMemo(
+    () => (whoopConfigured ? buildWhoopSnapshot(biometrics, workouts) : {}),
+    [whoopConfigured, biometrics, workouts]
+  );
+  const whoopRecoveryChart = whoopCharts.find((c) => c.id === 'whoop-recovery');
   const todaySteps = stepsOnDate(biometrics);
   const avgSteps7d = useMemo(() => averageRecentSteps(biometrics, 7), [biometrics]);
   const latestStepsEntry = stepsChart.points[stepsChart.points.length - 1];
@@ -260,6 +287,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
 
   // Each screen opens at its top, not where the last one was scrolled to.
   useEffect(() => {
+    setDetailTimeline(DEFAULT_CHART_TIMELINE);
     if (typeof window !== 'undefined') window.scrollTo(0, 0);
   }, [detail, openGoalId]);
 
@@ -368,26 +396,43 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
                 ]}
               />
             </section>
+            <TimelineToggle
+              value={detailTimeline}
+              onChange={setDetailTimeline}
+              ariaLabel="Strength charts timeline"
+            />
             {strengthCharts.map((chart) => (
-              <ProgressChartCard key={chart.id} chart={chart} />
+              <ProgressChartCard key={chart.id} chart={chart} timeline={detailTimeline} hideTimelineToggle />
             ))}
           </>
         )}
 
         {detail === 'recent' && (
           <>
-            <section className="wk-card" aria-label={`Totals for the last ${RECENT_DAYS} days`}>
-              <h2 className="wk-label">Last {RECENT_DAYS} days</h2>
+            <TimelineToggle
+              value={detailTimeline}
+              onChange={setDetailTimeline}
+              ariaLabel="Recent training timeline"
+            />
+            <section className="wk-card" aria-label={`Totals for the last ${timelineMeta.days} days`}>
+              <h2 className="wk-label">Last {timelineMeta.days} days</h2>
               <StatRow
                 stats={[
-                  { label: `Volume (${units.unit})`, value: whole(recent.volumeKg) },
-                  { label: 'Reps', value: recent.reps.toLocaleString() },
-                  { label: 'Workouts', value: recent.workouts.toLocaleString() },
+                  { label: `Volume (${units.unit})`, value: whole(recentWindow.volumeKg) },
+                  { label: 'Reps', value: recentWindow.reps.toLocaleString() },
+                  { label: 'Workouts', value: recentWindow.workouts.toLocaleString() },
                 ]}
               />
             </section>
             {muscleProgress.length > 0 ? (
-              muscleProgress.map((m) => <MuscleProgressCard key={m.key} progress={m} formatLength={fmt.length} />)
+              muscleProgress.map((m) => (
+                <MuscleProgressCard
+                  key={m.key}
+                  progress={m}
+                  formatLength={fmt.length}
+                  timeline={detailTimeline}
+                />
+              ))
             ) : (
               <div className="wk-card">
                 <h2 className="wk-h1">Muscles</h2>
@@ -461,6 +506,93 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
           </>
         )}
 
+        {detail === 'whoop' && whoopConfigured && (
+          <>
+            <section className="wk-card" aria-label="Whoop metrics summary">
+              <div className="flex items-center justify-between" style={{ gap: fig(20) }}>
+                <h2 className="wk-label">Latest Whoop metrics</h2>
+                {whoopSnapshot.latestDate && <span className="wk-pill">{shortDate(whoopSnapshot.latestDate)}</span>}
+              </div>
+              <StatRow
+                stats={[
+                  {
+                    label: 'Recovery',
+                    value: whoopSnapshot.recoveryScore !== undefined ? `${Math.round(whoopSnapshot.recoveryScore)}%` : '—',
+                  },
+                  {
+                    label: 'Day strain',
+                    value: whoopSnapshot.dayStrain !== undefined ? whoopSnapshot.dayStrain.toFixed(1) : '—',
+                  },
+                  {
+                    label: 'Workout strain',
+                    value: whoopSnapshot.workoutStrain !== undefined ? whoopSnapshot.workoutStrain.toFixed(1) : '—',
+                  },
+                ]}
+              />
+              <StatRow
+                stats={[
+                  {
+                    label: 'HRV (RMSSD)',
+                    value: whoopSnapshot.hrvRmssd !== undefined ? `${Math.round(whoopSnapshot.hrvRmssd)}` : '—',
+                    unit: whoopSnapshot.hrvRmssd !== undefined ? 'ms' : undefined,
+                  },
+                  {
+                    label: 'Resting HR',
+                    value: whoopSnapshot.restingHr !== undefined ? `${Math.round(whoopSnapshot.restingHr)}` : '—',
+                    unit: whoopSnapshot.restingHr !== undefined ? 'bpm' : undefined,
+                  },
+                  {
+                    label: 'Sleep',
+                    value: whoopSnapshot.sleepHours !== undefined ? whoopSnapshot.sleepHours.toFixed(1) : '—',
+                    unit: whoopSnapshot.sleepHours !== undefined ? 'h' : undefined,
+                  },
+                ]}
+              />
+              {(whoopSnapshot.sleepPerformance !== undefined ||
+                whoopSnapshot.sleepEfficiency !== undefined ||
+                whoopSnapshot.respiratoryRate !== undefined ||
+                whoopSnapshot.spo2 !== undefined ||
+                whoopSnapshot.skinTemp !== undefined) && (
+                <div className="flex flex-wrap" style={{ gap: fig(14), marginTop: fig(28) }}>
+                  {whoopSnapshot.sleepPerformance !== undefined && (
+                    <span className="wk-pill" style={{ textTransform: 'none' }}>
+                      Sleep perf {Math.round(whoopSnapshot.sleepPerformance)}%
+                    </span>
+                  )}
+                  {whoopSnapshot.sleepEfficiency !== undefined && (
+                    <span className="wk-pill" style={{ textTransform: 'none' }}>
+                      Efficiency {Math.round(whoopSnapshot.sleepEfficiency)}%
+                    </span>
+                  )}
+                  {whoopSnapshot.respiratoryRate !== undefined && (
+                    <span className="wk-pill" style={{ textTransform: 'none' }}>
+                      Resp rate {whoopSnapshot.respiratoryRate.toFixed(1)} brpm
+                    </span>
+                  )}
+                  {whoopSnapshot.spo2 !== undefined && (
+                    <span className="wk-pill" style={{ textTransform: 'none' }}>
+                      SpO2 {whoopSnapshot.spo2.toFixed(1)}%
+                    </span>
+                  )}
+                  {whoopSnapshot.skinTemp !== undefined && (
+                    <span className="wk-pill" style={{ textTransform: 'none' }}>
+                      Skin temp {whoopSnapshot.skinTemp.toFixed(1)} °C
+                    </span>
+                  )}
+                </div>
+              )}
+            </section>
+            <TimelineToggle
+              value={detailTimeline}
+              onChange={setDetailTimeline}
+              ariaLabel="Whoop charts timeline"
+            />
+            {whoopCharts.map((chart) => (
+              <ProgressChartCard key={chart.id} chart={chart} timeline={detailTimeline} hideTimelineToggle />
+            ))}
+          </>
+        )}
+
         {detail === 'goals' && (
           <GoalSettingsScreen profile={profile} goals={knowledgeGraph.goals} onUpdateProfile={onUpdateProfile} onUpdateGoalPhase={onUpdateGoalPhase} />
         )}
@@ -470,6 +602,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
             activeWidgets={activeWidgets}
             exerciseCatalog={exerciseCatalog}
             workouts={workouts}
+            whoopConfigured={whoopConfigured}
             isDefault={profile.progressWidgets === undefined}
             onToggle={(id) => onUpdateProfile({ progressWidgets: toggleProgressWidget(profile.progressWidgets, id) })}
             onReset={() => onUpdateProfile({ progressWidgets: undefined })}
@@ -566,8 +699,19 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
             </div>
           )}
 
+          <TimelineToggle
+            value={detailTimeline}
+            onChange={setDetailTimeline}
+            ariaLabel={compositionView === 'weight' ? 'Body weight charts timeline' : 'Body measurements charts timeline'}
+          />
           {visibleCompositionCharts.map((chart) => (
-            <ProgressChartCard key={chart.id} chart={chart} onOpen={() => openLogForChart(chart)} />
+            <ProgressChartCard
+              key={chart.id}
+              chart={chart}
+              timeline={detailTimeline}
+              hideTimelineToggle
+              onOpen={() => openLogForChart(chart)}
+            />
           ))}
           </>
         )}
@@ -842,12 +986,65 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
 
         {hasWidget('balance') && <BalanceCard report={movementStandards} />}
 
+        {whoopConfigured && hasWidget('whoop-summary') && (
+          <OverviewCard title="Whoop metrics" opens="Whoop recovery, strain and sleep" onOpen={() => setDetail('whoop')}>
+            <StatRow
+              stats={[
+                {
+                  label: 'Recovery',
+                  value: whoopSnapshot.recoveryScore !== undefined ? `${Math.round(whoopSnapshot.recoveryScore)}%` : '—',
+                },
+                {
+                  label: 'Day strain',
+                  value: whoopSnapshot.dayStrain !== undefined ? whoopSnapshot.dayStrain.toFixed(1) : '—',
+                },
+                {
+                  label: 'Workout strain',
+                  value: whoopSnapshot.workoutStrain !== undefined ? whoopSnapshot.workoutStrain.toFixed(1) : '—',
+                },
+              ]}
+            />
+            {(whoopSnapshot.hrvRmssd !== undefined || whoopSnapshot.restingHr !== undefined || whoopSnapshot.sleepHours !== undefined || (whoopRecoveryChart?.points.length ?? 0) >= 2) ? (
+              <div className="flex items-end justify-between" style={{ gap: fig(24), marginTop: fig(32) }}>
+                <div className="flex flex-wrap" style={{ gap: fig(12) }}>
+                  {whoopSnapshot.hrvRmssd !== undefined && (
+                    <span className="wk-pill" style={{ textTransform: 'none' }}>
+                      HRV {Math.round(whoopSnapshot.hrvRmssd)} ms
+                    </span>
+                  )}
+                  {whoopSnapshot.restingHr !== undefined && (
+                    <span className="wk-pill" style={{ textTransform: 'none' }}>
+                      RHR {Math.round(whoopSnapshot.restingHr)} bpm
+                    </span>
+                  )}
+                  {whoopSnapshot.sleepHours !== undefined && (
+                    <span className="wk-pill" style={{ textTransform: 'none' }}>
+                      Sleep {whoopSnapshot.sleepHours.toFixed(1)} h
+                    </span>
+                  )}
+                </div>
+                {whoopRecoveryChart && whoopRecoveryChart.points.length >= 2 && (
+                  <Sparkline
+                    points={whoopRecoveryChart.points}
+                    label={`Whoop recovery from ${Math.round(whoopRecoveryChart.points[0].value)}% to ${Math.round(whoopRecoveryChart.points[whoopRecoveryChart.points.length - 1].value)}%`}
+                  />
+                )}
+              </div>
+            ) : (
+              <p className="wk-body" style={{ marginTop: fig(20) }}>
+                Sync or import Whoop telemetry to see overnight recovery, strain, HRV and sleep trends here.
+              </p>
+            )}
+          </OverviewCard>
+        )}
+
         {activeWidgets.map((wid) => {
           const parsed = parseProgressWidgetId(wid);
           if (parsed.kind === 'chart') {
             const chart =
               compositionCharts.find((c) => c.id === parsed.chartId) ??
-              strengthCharts.find((c) => c.id === parsed.chartId);
+              strengthCharts.find((c) => c.id === parsed.chartId) ??
+              whoopCharts.find((c) => c.id === parsed.chartId);
             if (!chart) return null;
             return (
               <ProgressChartCard

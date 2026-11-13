@@ -6,7 +6,7 @@ import {
   WorkoutSession,
   getActiveWearableProvider,
 } from '../engine/types';
-import { mergeWearableLog, setActiveTracker, syncWearableBiometrics } from '../services/wearableSyncService';
+import { mergeWearableLog, mergeWhoopWorkoutTelemetryLog, setActiveTracker, syncWearableBiometrics } from '../services/wearableSyncService';
 import {
   exchangeWhoopCodeForToken,
   fetchWhoopWorkoutStrain,
@@ -138,20 +138,7 @@ export function useWearableSync({ profile, setProfile, workouts, setWorkouts, se
             : w
         )
       );
-      setBiometrics((prev) => {
-        const idx = prev.findIndex((b) => b.date === workoutDate);
-        if (idx < 0) return prev;
-        const updated = [...prev];
-        updated[idx] = {
-          ...updated[idx],
-          workoutStrain: strain ?? updated[idx].workoutStrain,
-          strain: telemetry.dayStrain ?? updated[idx].strain,
-          avgWorkoutHr: telemetry.avgHeartRate ?? updated[idx].avgWorkoutHr,
-          maxWorkoutHr: telemetry.maxHeartRate ?? updated[idx].maxWorkoutHr,
-          recoveryScore: telemetry.recoveryScore ?? updated[idx].recoveryScore,
-        };
-        return updated;
-      });
+      setBiometrics((prev) => mergeWhoopWorkoutTelemetryLog(prev, workoutDate, telemetry));
       return strain !== undefined;
     },
     [setWorkouts, setBiometrics]

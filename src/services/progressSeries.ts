@@ -30,6 +30,89 @@ export interface ProgressChart {
   format: (value: number) => string;
 }
 
+export type ChartTimeline = '1W' | '1M' | '3M' | '1Y';
+
+export const DEFAULT_CHART_TIMELINE: ChartTimeline = '1Y';
+
+export interface ChartTimelineOption {
+  id: ChartTimeline;
+  label: string;
+  ariaLabel: string;
+  days: number;
+  weeks: number;
+  windowText: string;
+}
+
+export const CHART_TIMELINES: readonly ChartTimelineOption[] = [
+  { id: '1W', label: '1W', ariaLabel: 'Last week', days: 7, weeks: 1, windowText: 'the last week' },
+  { id: '1M', label: '1M', ariaLabel: 'Last month', days: 30, weeks: 4, windowText: 'the last month' },
+  { id: '3M', label: '3M', ariaLabel: 'Last quarter', days: 90, weeks: 13, windowText: 'the last 3 months' },
+  { id: '1Y', label: '1Y', ariaLabel: 'Last year', days: 365, weeks: 52, windowText: 'the last year' },
+];
+
+export function getTimelineMeta(timeline: ChartTimeline): ChartTimelineOption {
+  return CHART_TIMELINES.find((t) => t.id === timeline) ?? CHART_TIMELINES[3];
+}
+
+/** Local YYYY-MM-DD cutoff (inclusive) for a timeline ending on `today`. */
+export function timelineCutoffDate(timeline: ChartTimeline, today = localDateString()): string {
+  const meta = getTimelineMeta(timeline);
+  const start = parseLocalDate(today);
+  start.setDate(start.getDate() - (meta.days - 1));
+  return localDateString(start);
+}
+
+/** Filters a ProgressChart to the chosen timeline and updates its summary to match the window. */
+export function filterChartByTimeline(
+  chart: ProgressChart,
+  timeline: ChartTimeline,
+  today = localDateString(),
+): ProgressChart {
+  const cutoff = timelineCutoffDate(timeline, today);
+  const points = chart.points.filter((p) => p.date >= cutoff);
+  const secondary = chart.secondary?.filter((p) => p.date >= cutoff);
+  const unchanged =
+    points.length === chart.points.length &&
+    (!chart.secondary || (secondary?.length ?? 0) === chart.secondary.length);
+  if (chart.points.length === 0 || unchanged) {
+    return chart;
+  }
+
+  const meta = getTimelineMeta(timeline);
+  let summary: string;
+  if (points.length === 0) {
+    summary = `No ${chart.title.toLowerCase()} entries in ${meta.windowText}. Select a wider range to see earlier history.`;
+  } else if (points.length === 1) {
+    summary = `${chart.title} in ${meta.windowText}: ${chart.format(points[0].value)} on ${shortDate(points[0].date)}.`;
+  } else {
+    const first = points[0];
+    const last = points[points.length - 1];
+    if (Math.abs(last.value - first.value) < 1e-9) {
+      summary = `${chart.title} stayed at ${chart.format(last.value)} across ${points.length} entries in ${meta.windowText}.`;
+    } else {
+      summary = `${chart.title}: ${chart.format(first.value)} on ${shortDate(first.date)} to ${chart.format(last.value)} on ${shortDate(last.date)} across ${points.length} entries in ${meta.windowText}.`;
+    }
+  }
+
+  return {
+    ...chart,
+    points,
+    secondary,
+    summary,
+  };
+}
+
+/** Rebases a time-ordered index series so the first point inside a window starts at 100. */
+export function rebaseIndexSeries(points: ProgressPoint[]): ProgressPoint[] {
+  if (points.length < 2) return [];
+  const base = points[0].value;
+  if (!Number.isFinite(base) || base <= 0) return [];
+  return points.map((p) => ({
+    date: p.date,
+    value: round1((p.value / base) * 100),
+  }));
+}
+
 export interface ProgressFormatters {
   weight: (kg: number) => string;
   /** Small changes such as weekly pace, e.g. "0.25 kg". Falls back to weight. */
@@ -824,4 +907,160 @@ export function buildStepsChart(biometrics: BiometricLog[], today: string = loca
         : `${Math.round(last.value).toLocaleString()} steps on ${shortDate(last.date)}${avg7 !== null ? ` • 7-day average ${avg7.toLocaleString()} steps` : ''}.`,
     format: formatSteps,
   };
+}
+
+export interface WhoopSnapshot {
+  recoveryScore?: number;
+  recoveryDate?: string;
+  dayStrain?: number;
+  dayStrainDate?: string;
+  workoutStrain?: number;
+  workoutStrainDate?: string;
+  hrvRmssd?: number;
+  restingHr?: number;
+  sleepHours?: number;
+  sleepPerformance?: number;
+  sleepEfficiency?: number;
+  respiratoryRate?: number;
+  spo2?: number;
+  skinTemp?: number;
+  latestDate?: string;
+}
+
+function workoutStrainPoints(biometrics: BiometricLog[], workouts: WorkoutSession[]): ProgressPoint[] {
+  const byDate = new Map<string, number>();
+  for (const l of biometrics) {
+    if (typeof l.workoutStrain === 'number' && l.workoutStrain > 0 && l.date) {
+      byDate.set(l.date, Math.max(byDate.get(l.date) ?? 0, round1(l.workoutStrain)));
+    }
+  }
+  for (const w of workouts) {
+    if (!w.completed || typeof w.whoopStrain !== 'number' || w.whoopStrain <= 0 || !w.date) continue;
+    byDate.set(w.date, Math.max(byDate.get(w.date) ?? 0, round1(w.whoopStrain)));
+  }
+  return [...byDate.entries()]
+    .map(([date, value]) => ({ date, value }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+}
+
+/** Latest real Whoop measurements (shared by the Progress card and Whoop detail screen). */
+export function buildWhoopSnapshot(biometrics: BiometricLog[], workouts: WorkoutSession[]): WhoopSnapshot {
+  const recoveryPts = measured(biometrics, (l) => (typeof l.recoveryScore === 'number' && l.recoveryScore > 0 ? l.recoveryScore : undefined));
+  const strainPts = measured(biometrics, (l) => (typeof l.strain === 'number' && l.strain > 0 ? round1(l.strain) : undefined));
+  const wStrainPts = workoutStrainPoints(biometrics, workouts);
+  const hrvPts = measured(biometrics, (l) => l.hrvRmssd);
+  const rhrPts = measured(biometrics, (l) => l.restingHr);
+  const sleepPts = measured(biometrics, (l) => (l.sleepHours > 0 ? round1(l.sleepHours) : undefined));
+  const sleepPerfPts = measured(biometrics, (l) => (typeof l.sleepPerformance === 'number' && l.sleepPerformance > 0 ? l.sleepPerformance : undefined));
+  const sleepEffPts = measured(biometrics, (l) => (typeof l.sleepEfficiency === 'number' && l.sleepEfficiency > 0 ? l.sleepEfficiency : undefined));
+  const respPts = measured(biometrics, (l) => (typeof l.respiratoryRate === 'number' && l.respiratoryRate > 0 ? round1(l.respiratoryRate) : undefined));
+  const spo2Pts = measured(biometrics, (l) => (typeof l.spo2 === 'number' && l.spo2 > 0 ? round1(l.spo2) : undefined));
+  const skinPts = measured(biometrics, (l) => (typeof l.skinTemp === 'number' && l.skinTemp > 0 ? round1(l.skinTemp) : undefined));
+
+  const lastOf = (pts: ProgressPoint[]) => (pts.length > 0 ? pts[pts.length - 1] : undefined);
+  const rec = lastOf(recoveryPts);
+  const day = lastOf(strainPts);
+  const work = lastOf(wStrainPts);
+  const allDates = [rec?.date, day?.date, work?.date, lastOf(hrvPts)?.date, lastOf(rhrPts)?.date, lastOf(sleepPts)?.date].filter(
+    (d): d is string => Boolean(d)
+  );
+  allDates.sort();
+
+  return {
+    recoveryScore: rec !== undefined ? Math.round(rec.value) : undefined,
+    recoveryDate: rec?.date,
+    dayStrain: day?.value,
+    dayStrainDate: day?.date,
+    workoutStrain: work?.value,
+    workoutStrainDate: work?.date,
+    hrvRmssd: lastOf(hrvPts)?.value !== undefined ? Math.round(lastOf(hrvPts)!.value) : undefined,
+    restingHr: lastOf(rhrPts)?.value !== undefined ? Math.round(lastOf(rhrPts)!.value) : undefined,
+    sleepHours: lastOf(sleepPts)?.value,
+    sleepPerformance: lastOf(sleepPerfPts)?.value !== undefined ? Math.round(lastOf(sleepPerfPts)!.value) : undefined,
+    sleepEfficiency: lastOf(sleepEffPts)?.value !== undefined ? Math.round(lastOf(sleepEffPts)!.value) : undefined,
+    respiratoryRate: lastOf(respPts)?.value,
+    spo2: lastOf(spo2Pts)?.value,
+    skinTemp: lastOf(skinPts)?.value,
+    latestDate: allDates.length > 0 ? allDates[allDates.length - 1] : undefined,
+  };
+}
+
+/** Optional Whoop metric trend charts built strictly from synced Whoop biometrics and workouts. */
+export function buildWhoopCharts(input: { biometrics: BiometricLog[]; workouts: WorkoutSession[] }): ProgressChart[] {
+  const { biometrics, workouts } = input;
+  const pct = (v: number) => `${Math.round(v)}%`;
+  const strainFmt = (v: number) => `${round1(v)}`;
+  const hrvFmt = (v: number) => `${Math.round(v)} ms`;
+  const rhrFmt = (v: number) => `${Math.round(v)} bpm`;
+  const sleepFmt = (v: number) => `${round1(v)} h`;
+
+  const recovery = measured(biometrics, (l) => (typeof l.recoveryScore === 'number' && l.recoveryScore > 0 ? Math.round(l.recoveryScore) : undefined));
+  const dayStrain = measured(biometrics, (l) => (typeof l.strain === 'number' && l.strain > 0 ? round1(l.strain) : undefined));
+  const workStrain = workoutStrainPoints(biometrics, workouts);
+  const hrv = measured(biometrics, (l) => (l.hrvRmssd > 0 ? Math.round(l.hrvRmssd) : undefined));
+  const rhr = measured(biometrics, (l) => (l.restingHr > 0 ? Math.round(l.restingHr) : undefined));
+  const sleep = measured(biometrics, (l) => (l.sleepHours > 0 ? round1(l.sleepHours) : undefined));
+
+  return [
+    {
+      id: 'whoop-recovery',
+      title: 'Whoop recovery',
+      points: recovery,
+      lastUpdated: recovery[recovery.length - 1]?.date,
+      summary:
+        changeSummary('Recovery score', recovery, pct, (d) => `${Math.round(d)} ${Math.round(d) === 1 ? 'point' : 'points'}`) ||
+        'Sync your Whoop to track overnight recovery percentage over time.',
+      format: pct,
+    },
+    {
+      id: 'whoop-strain',
+      title: 'Whoop day strain',
+      points: dayStrain,
+      lastUpdated: dayStrain[dayStrain.length - 1]?.date,
+      summary:
+        changeSummary('Day strain', dayStrain, strainFmt, strainFmt) ||
+        'Sync your Whoop to track daily cardiovascular strain (0–21) over time.',
+      format: strainFmt,
+    },
+    {
+      id: 'whoop-workout-strain',
+      title: 'Whoop workout strain',
+      points: workStrain,
+      lastUpdated: workStrain[workStrain.length - 1]?.date,
+      summary:
+        changeSummary('Workout strain', workStrain, strainFmt, strainFmt) ||
+        'Finish a training session with Whoop connected to track session strain over time.',
+      format: strainFmt,
+    },
+    {
+      id: 'whoop-hrv',
+      title: 'Whoop HRV',
+      points: hrv,
+      lastUpdated: hrv[hrv.length - 1]?.date,
+      summary:
+        changeSummary('HRV (RMSSD)', hrv, hrvFmt, hrvFmt) ||
+        'Sync your Whoop to track overnight heart rate variability over time.',
+      format: hrvFmt,
+    },
+    {
+      id: 'whoop-rhr',
+      title: 'Whoop resting HR',
+      points: rhr,
+      lastUpdated: rhr[rhr.length - 1]?.date,
+      summary:
+        changeSummary('Resting heart rate', rhr, rhrFmt, rhrFmt) ||
+        'Sync your Whoop to track resting heart rate over time.',
+      format: rhrFmt,
+    },
+    {
+      id: 'whoop-sleep',
+      title: 'Whoop sleep',
+      points: sleep,
+      lastUpdated: sleep[sleep.length - 1]?.date,
+      summary:
+        changeSummary('Sleep duration', sleep, sleepFmt, sleepFmt) ||
+        'Sync your Whoop to track nightly sleep duration over time.',
+      format: sleepFmt,
+    },
+  ];
 }

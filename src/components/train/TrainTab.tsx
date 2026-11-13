@@ -10,6 +10,7 @@ import {
   WorkoutSet,
   MuscleGroup,
   isWearableConnected,
+  isWhoopConfigured,
 } from '../../engine/types';
 import { ReadinessEvaluation } from '../../engine/readiness';
 import { ReadinessBanner } from './ReadinessBanner';
@@ -46,7 +47,7 @@ import {
 } from '../../engine/e1rm';
 import { buildAthleteKnowledgeGraph, getExerciseBiomechanicalMeta } from '../../engine/knowledgeGraph';
 import { calculateWeeklyMuscleVolume } from '../../services/storage';
-import { CompletedExerciseCard, FinishedWorkoutSummaryCard } from './FinishedWorkoutCards';
+import { CompletedExerciseCard, FinishedWorkoutSummaryCard, WhoopStrainCard } from './FinishedWorkoutCards';
 import { WorkoutPageHeader } from './WorkoutPageHeader';
 import { ProgramProgressCard, StickySessionHeader } from './ProgramProgressCard';
 import { RecoveryScoreCard } from './RecoveryScoreCard';
@@ -551,10 +552,14 @@ export const TrainTab: React.FC<TrainTabProps> = ({
     [mesoWeek, profile.goalPhase, readiness.state]
   );
 
+  const activeWorkoutRef = useRef(activeWorkout);
+  activeWorkoutRef.current = activeWorkout;
+  const whoopConfigured = isWhoopConfigured(profile);
+
   const syncWhoopWorkoutTelemetry = useCallback(() => {
     if (!profile.whoopAccessToken) return;
     setIsSyncingWhoopStrain(true);
-    const setTimes = activeWorkout.exercises
+    const setTimes = activeWorkoutRef.current.exercises
       .flatMap((ex) => ex.sets)
       .filter((st) => st.completed && st.completedAt)
       .map((st) => new Date(st.completedAt as string).getTime())
@@ -571,21 +576,23 @@ export const TrainTab: React.FC<TrainTabProps> = ({
       .finally(() => {
         setIsSyncingWhoopStrain(false);
       });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profile.whoopAccessToken, profile.whoopRefreshToken, activeWorkout.id]);
+  }, [profile.whoopAccessToken, profile.whoopRefreshToken]);
 
   const handleFinishWorkoutClick = () => {
     triggerHaptic('success');
+    setWhoopStrainSummary(null);
     setShowSummaryModal(true);
 
-    if (profile.whoopConnected && profile.whoopAccessToken) {
+    if (whoopConfigured && profile.whoopAccessToken) {
       syncWhoopWorkoutTelemetry();
     }
   };
 
   const handleCloseSummary = () => {
     setShowSummaryModal(false);
-    onFinishWorkout(whoopStrainSummary || undefined);
+    const syncedTelemetry = whoopStrainSummary || undefined;
+    setWhoopStrainSummary(null);
+    onFinishWorkout(syncedTelemetry);
   };
 
   // What the finish screen shows, built once when it opens (the workout is saved when it closes).
@@ -652,6 +659,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
     });
     if (!finish) return null;
     return {
+      workout: finished,
       finish,
       exercises: buildCompletedExerciseSummaries({
         finished,
@@ -934,15 +942,31 @@ export const TrainTab: React.FC<TrainTabProps> = ({
 
       <div ref={cardsTopRef} className="flex flex-col" style={{ gap: fig(22), marginTop: fig(64) }}>
       {/* After today's session: lead with "complete" and the progress breakdown. */}
-      {todayFinished ? (
-        <>
-          <ProgramProgressCard {...programCard} onOpen={onOpenProgram} sessionRef={sessionBlockRef} />
-          <FinishedWorkoutSummaryCard finish={todayFinished.finish} />
-          {todayFinished.exercises.map((ex) => (
-            <CompletedExerciseCard key={ex.id} summary={ex} />
-          ))}
-        </>
-      ) : (
+      {todayFinished ? (() => {
+        const finishedDayBio = biometrics.find((b) => b.date === todayFinished.workout.date);
+        const dayStrainValue = finishedDayBio?.strain ?? (latestBiometrics.date === todayFinished.workout.date ? latestBiometrics.strain : undefined);
+        const finishedWorkoutStrain = todayFinished.workout.whoopStrain ?? finishedDayBio?.workoutStrain;
+        const finishedAvgHr = todayFinished.workout.avgHeartRate ?? finishedDayBio?.avgWorkoutHr;
+        const finishedMaxHr = todayFinished.workout.maxHeartRate ?? finishedDayBio?.maxWorkoutHr;
+        return (
+          <>
+            <ProgramProgressCard {...programCard} onOpen={onOpenProgram} sessionRef={sessionBlockRef} />
+            <FinishedWorkoutSummaryCard finish={todayFinished.finish} />
+            {whoopConfigured && (
+              <WhoopStrainCard
+                workoutStrain={finishedWorkoutStrain}
+                dayStrain={dayStrainValue}
+                avgHr={finishedAvgHr}
+                maxHr={finishedMaxHr}
+                hasLiveConnection={Boolean(profile.whoopAccessToken)}
+              />
+            )}
+            {todayFinished.exercises.map((ex) => (
+              <CompletedExerciseCard key={ex.id} summary={ex} />
+            ))}
+          </>
+        );
+      })() : (
         <>
           <ProgramProgressCard {...programCard} onOpen={onOpenProgram} sessionRef={sessionBlockRef} />
           {!showRecoveryGate && (
@@ -1311,7 +1335,18 @@ export const TrainTab: React.FC<TrainTabProps> = ({
       )}
 
       {/* Workout finished: summary, personal bests and goals moved */}
-      {showSummaryModal && workoutFinish && <WorkoutFinishScreen finish={workoutFinish} onDone={handleCloseSummary} />}
+      {showSummaryModal && workoutFinish && (
+        <WorkoutFinishScreen
+          finish={workoutFinish}
+          onDone={handleCloseSummary}
+          whoopConfigured={whoopConfigured}
+          whoopTelemetry={whoopStrainSummary}
+          dayStrain={latestBiometrics.strain}
+          hasLiveWhoopConnection={Boolean(profile.whoopAccessToken)}
+          isSyncingWhoop={isSyncingWhoopStrain}
+          onRefreshWhoop={profile.whoopAccessToken ? syncWhoopWorkoutTelemetry : undefined}
+        />
+      )}
 
       {/* Past Workout Preview Modal */}
       {previewPastWorkout && (

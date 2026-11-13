@@ -79,6 +79,11 @@ export interface BiometricLog {
   avgWorkoutHr?: number;
   maxWorkoutHr?: number;
   workoutDurationMin?: number;
+  sleepPerformance?: number; // % (0-100, Whoop sleep performance)
+  sleepEfficiency?: number; // % (0-100, Whoop sleep efficiency)
+  respiratoryRate?: number; // breaths/min (Whoop respiratory rate)
+  spo2?: number; // % blood oxygen saturation
+  skinTemp?: number; // °C skin temperature
   source?: WearableProvider;
   /** Weight typed in by the athlete (onboarding or Log weight). */
   isManualEntry?: boolean;
@@ -378,7 +383,8 @@ export type CoreProgressWidgetId =
   | 'measurements'
   | 'strength-standards'
   | 'strength-levels'
-  | 'balance';
+  | 'balance'
+  | 'whoop-summary';
 
 export type ProgressWidgetId =
   | CoreProgressWidgetId
@@ -486,6 +492,11 @@ export function getActiveWearableProvider(profile?: UserProfile | null): Wearabl
   if (profile.healthConnectConnected) return 'health_connect';
   if (profile.fitbitConnected) return 'fitbit';
   return null;
+}
+
+/** True when the athlete has Whoop configured (OAuth connected, CSV imported, or active wearable source). */
+export function isWhoopConfigured(profile?: UserProfile | null): boolean {
+  return Boolean(profile && (profile.whoopConnected || profile.wearableSource === 'whoop'));
 }
 
 export type AssistantActionType =

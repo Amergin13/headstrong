@@ -18,6 +18,7 @@ interface ProgressWidgetsScreenProps {
   activeWidgets: ProgressWidgetId[];
   exerciseCatalog: ExerciseDefinition[];
   workouts: WorkoutSession[];
+  whoopConfigured?: boolean;
   isDefault: boolean;
   onToggle: (id: ProgressWidgetId) => void;
   onReset: () => void;
@@ -77,6 +78,7 @@ export const ProgressWidgetsScreen: React.FC<ProgressWidgetsScreenProps> = ({
   activeWidgets,
   exerciseCatalog,
   workouts,
+  whoopConfigured = false,
   isDefault,
   onToggle,
   onReset,
@@ -124,7 +126,9 @@ export const ProgressWidgetsScreen: React.FC<ProgressWidgetsScreenProps> = ({
   }, [exerciseCatalog, workouts, query, activeWidgets]);
 
   const tapeCharts = PROGRESS_CHART_WIDGETS.filter((c) => c.group === 'tape');
-  const bodyAndTrainingCharts = PROGRESS_CHART_WIDGETS.filter((c) => c.group !== 'tape');
+  const bodyAndTrainingCharts = PROGRESS_CHART_WIDGETS.filter((c) => c.group === 'body' || c.group === 'training');
+  const whoopWidgets = whoopConfigured ? PROGRESS_CHART_WIDGETS.filter((c) => c.group === 'whoop') : [];
+  const overviewWidgets = PROGRESS_WIDGETS.filter((w) => !w.requiresWhoop || whoopConfigured);
 
   return (
     <>
@@ -189,21 +193,44 @@ export const ProgressWidgetsScreen: React.FC<ProgressWidgetsScreenProps> = ({
       </div>
 
       {tab === 'overview' && (
-        <section className="wk-card" aria-label="Overview cards">
-          <h2 className="wk-label">Overview cards</h2>
-          <ul className="flex flex-col" style={{ marginTop: fig(20) }}>
-            {PROGRESS_WIDGETS.map((widget) => (
-              <WidgetRow
-                key={widget.id}
-                title={widget.label}
-                description={widget.description}
-                tag={!widget.defaultEnabled ? 'Optional' : undefined}
-                enabled={activeSet.has(widget.id)}
-                onToggle={() => onToggle(widget.id)}
-              />
-            ))}
-          </ul>
-        </section>
+        <>
+          <section className="wk-card" aria-label="Overview cards">
+            <h2 className="wk-label">Overview cards</h2>
+            <ul className="flex flex-col" style={{ marginTop: fig(20) }}>
+              {overviewWidgets.map((widget) => (
+                <WidgetRow
+                  key={widget.id}
+                  title={widget.label}
+                  description={widget.description}
+                  tag={!widget.defaultEnabled ? 'Optional' : undefined}
+                  enabled={activeSet.has(widget.id)}
+                  onToggle={() => onToggle(widget.id)}
+                />
+              ))}
+            </ul>
+          </section>
+
+          {whoopWidgets.length > 0 && (
+            <section className="wk-card" aria-label="Whoop metric widgets">
+              <h2 className="wk-label">Whoop charts</h2>
+              <p className="wk-caption" style={{ marginTop: fig(8) }}>
+                Pin optional Whoop recovery, strain, HRV, resting HR and sleep trends onto Progress.
+              </p>
+              <ul className="flex flex-col" style={{ marginTop: fig(20) }}>
+                {whoopWidgets.map((chart) => (
+                  <WidgetRow
+                    key={chart.id}
+                    title={chart.label}
+                    description={chart.description}
+                    tag="Optional"
+                    enabled={activeSet.has(chart.id)}
+                    onToggle={() => onToggle(chart.id)}
+                  />
+                ))}
+              </ul>
+            </section>
+          )}
+        </>
       )}
 
       {tab === 'exercises' && (

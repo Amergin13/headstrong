@@ -41,7 +41,7 @@ import { processAssistantMessage, buildSafetyResponse, buildProgressSummary } fr
 import { evaluateSessionRecovery, getDaysUntilReady, getDisplayReadyAt } from '../recovery';
 import { buildWeekStrip } from '../../services/sessionSchedule';
 import { buildExerciseInsight, getPreviousWorkingSets } from '../../services/exerciseInsight';
-import { buildMuscleProgress } from '../../services/muscleProgress';
+import { buildMuscleProgress, filterMuscleProgressByTimeline } from '../../services/muscleProgress';
 import { PROGRESSION_RULES, hadQualityEffort, loadIncrementFor } from '../progressionRules';
 import { acceptExerciseNote, buildExerciseNoteFacts, generateExerciseNote } from '../../services/exerciseCoachNote';
 import { acceptIdentityMessage, buildIdentityFacts, generateIdentityMessage } from '../../services/identityMessage';
@@ -56,7 +56,17 @@ import { calculateBestPillarE1rms } from '../../services/storage';
 import { evaluateSetPersonalBest, planRestAfterSet } from '../../services/setCompletion';
 import { completeWorkout } from '../../services/workoutCompletion';
 import { prepareSessionForAthlete, startingWeightForNewExercise } from '../../services/sessionPreparation';
-import { buildCompositionCharts, buildStrengthCharts } from '../../services/progressSeries';
+import {
+  buildCompositionCharts,
+  buildStrengthCharts,
+  CHART_TIMELINES,
+  DEFAULT_CHART_TIMELINE,
+  filterChartByTimeline,
+  ProgressChart,
+  rebaseIndexSeries,
+  timelineCutoffDate,
+} from '../../services/progressSeries';
+import { buildTrainingTotals } from '../../services/progressOverview';
 import {
   BODY_MEASUREMENT_SITES,
   buildQnScaleConfigPayload,
@@ -7997,7 +8007,574 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
     );
   }
 
-  console.log('\nALL 41 ENGINE, GOVERNANCE, DESIGN HEURISTICS, TYPOGRAPHY, WEARABLES, WHOOP STRAIN, GOOGLE AUTH, ONBOARDING CONTEXT, 6-WEEK PROGRAM, TENSOR AI, SESSION REPORT, WORKOUT PAGE, EXERCISE OVERVIEW & RENPHO BLUETOOTH SUITES PASSED SUCCESSFULLY! 🎯');
+  // --- SUITE 45: OPTIONAL WHOOP WIDGETS, COMPLETION STRAIN CARD, KNOWLEDGE GRAPH TELEMETRY & CONTEXTUAL AI COACH ---
+  {
+    console.log('\n--- SUITE 45: OPTIONAL WHOOP WIDGETS, COMPLETION STRAIN CARD, KNOWLEDGE GRAPH TELEMETRY & CONTEXTUAL AI COACH ---');
+    const fs45 = require('fs');
+    const path45 = require('path');
+    const widgetsMod = await import('../../services/progressWidgets');
+    const seriesMod = await import('../../services/progressSeries');
+    const syncMod = await import('../../services/wearableSyncService');
+    const typesMod = await import('../types');
+    const goalsMod = await import('../../services/athleteGoals');
+    const coachCtxMod = await import('../../services/coachContext');
+    const aiMod = await import('../../services/aiAssistantService');
+
+    const baseProfile: any = {
+      name: 'Alex',
+      goalPhase: 'Lean Bulk',
+      programSplit: 'Upper / Lower',
+      programType: 'starter_6wk',
+      weightUnit: 'kg',
+      activeLocation: 'gym',
+      homeEquipment: [],
+      mesocycleWeek: 2,
+      recoveryScore: 0,
+      fitbitConnected: false,
+      whoopConnected: false,
+      wearableSource: undefined,
+    };
+    const whoopCsvProfile: any = { ...baseProfile, wearableSource: 'whoop' };
+    const whoopOAuthProfile: any = { ...baseProfile, whoopConnected: true, wearableSource: 'whoop' };
+
+    // 1. Whoop gating & optional widget visibility
+    assert(
+      !typesMod.isWhoopConfigured(baseProfile) &&
+        typesMod.isWhoopConfigured(whoopCsvProfile) &&
+        typesMod.isWhoopConfigured(whoopOAuthProfile),
+      'isWhoopConfigured detects OAuth connection or Whoop CSV source only'
+    );
+    assert(
+      !widgetsMod.DEFAULT_PROGRESS_WIDGETS.some((id: any) => widgetsMod.isWhoopWidgetId(id)) &&
+        !widgetsMod.availableProgressWidgets(baseProfile).some((w: any) => w.id === 'whoop-summary') &&
+        widgetsMod.availableProgressWidgets(whoopCsvProfile).some((w: any) => w.id === 'whoop-summary') &&
+        !widgetsMod.availableProgressChartWidgets(baseProfile).some((c: any) => c.group === 'whoop') &&
+        widgetsMod.availableProgressChartWidgets(whoopOAuthProfile).filter((c: any) => c.group === 'whoop').length === 6,
+      'Whoop widgets stay optional and are hidden unless Whoop is configured'
+    );
+    const savedWithWhoop = ['goals', 'whoop-summary', 'chart:whoop-recovery'] as any[];
+    assert(
+      !widgetsMod.resolveVisibleProgressWidgets(savedWithWhoop, baseProfile).includes('whoop-summary') &&
+        widgetsMod.resolveVisibleProgressWidgets(savedWithWhoop, whoopOAuthProfile).includes('chart:whoop-recovery'),
+      'resolveVisibleProgressWidgets hides saved Whoop widgets if Whoop is disconnected and shows them when configured'
+    );
+    const blockedCoachWidget = widgetsMod.detectProgressWidgetChange('add whoop metrics to progress', baseProfile, SEED_EXERCISES);
+    const addedCoachWidget = widgetsMod.detectProgressWidgetChange('add whoop metrics to progress', whoopOAuthProfile, SEED_EXERCISES);
+    assert(
+      blockedCoachWidget !== null &&
+        blockedCoachWidget.changed === false &&
+        blockedCoachWidget.reply.toLowerCase().includes('whoop') &&
+        addedCoachWidget !== null &&
+        addedCoachWidget.changed === true &&
+        Boolean(addedCoachWidget.progressWidgets?.includes('whoop-summary')),
+      'Coach widget picker blocks adding Whoop widgets until configured and allows them when configured'
+    );
+
+    // 2. Whoop chart series & finish telemetry merge (zero fabricated numbers)
+    const emptyWhoopCharts = seriesMod.buildWhoopCharts({ biometrics: [], workouts: [] });
+    assert(
+      emptyWhoopCharts.length === 6 && emptyWhoopCharts.every((c: any) => c.points.length === 0),
+      'buildWhoopCharts returns 0 points when no Whoop telemetry is recorded'
+    );
+    const mergedBios = syncMod.mergeWhoopWorkoutTelemetryLog([], '2026-11-12', {
+      workoutStrain: 12.6,
+      dayStrain: 15.1,
+      avgHeartRate: 136,
+      maxHeartRate: 169,
+      workoutDurationMin: 52,
+      recoveryScore: 74,
+    });
+    const whoopChartsPop = seriesMod.buildWhoopCharts({
+      biometrics: mergedBios,
+      workouts: [
+        {
+          id: 'w-whoop-45',
+          date: '2026-11-11',
+          name: 'Upper',
+          splitDay: 'Upper',
+          completed: true,
+          completedAt: '2026-11-11T10:00:00Z',
+          readinessState: 'Normal',
+          readinessZScore: 0,
+          whoopStrain: 10.4,
+          exercises: [],
+        },
+      ],
+    });
+    const woStrainChart = whoopChartsPop.find((c: any) => c.id === 'whoop-workout-strain');
+    assert(
+      mergedBios.length === 1 &&
+        mergedBios[0].source === 'whoop' &&
+        mergedBios[0].workoutStrain === 12.6 &&
+        woStrainChart?.points.length === 2 &&
+        woStrainChart.points[0].value === 10.4 &&
+        woStrainChart.points[1].value === 12.6,
+      'mergeWhoopWorkoutTelemetryLog creates Whoop log when missing and workout strain chart orders real points chronologically'
+    );
+
+    // 3. Static UI wiring checks for Whoop finish card & Progress Whoop view
+    const finishScreenSrc = fs45.readFileSync(path45.resolve(process.cwd(), 'src/components/train/WorkoutFinishScreen.tsx'), 'utf-8');
+    const trainTabSrc = fs45.readFileSync(path45.resolve(process.cwd(), 'src/components/train/TrainTab.tsx'), 'utf-8');
+    const analyticsSrc = fs45.readFileSync(path45.resolve(process.cwd(), 'src/components/analytics/AnalyticsTab.tsx'), 'utf-8');
+    const modalSrc = fs45.readFileSync(path45.resolve(process.cwd(), 'src/components/assistant/AICoachChatModal.tsx'), 'utf-8');
+    assert(
+      finishScreenSrc.includes('WhoopStrainCard') &&
+        trainTabSrc.includes('<WhoopStrainCard') &&
+        trainTabSrc.includes('whoopConfigured={whoopConfigured}') &&
+        analyticsSrc.includes("detail === 'whoop'") &&
+        analyticsSrc.includes("hasWidget('whoop-summary')") &&
+        modalSrc.includes('place,'),
+      'Finish screen, post-finish Train view, Progress detail view, and AI Coach modal wire Whoop cards & CoachPlace end to end'
+    );
+
+    // 4. Knowledge Graph maps steps, activities, extended Whoop vitals, and uses real bodyweight EMA (no 81.5 kg fallback)
+    const todayStr = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().split('T')[0];
+    const dayMs = 24 * 60 * 60 * 1000;
+    const localDay = (offsetDays: number) =>
+      new Date(Date.now() - offsetDays * dayMs - new Date().getTimezoneOffset() * 60000).toISOString().split('T')[0];
+    const stepsGoal = goalsMod.makeCustomGoal(goalsMod.STEPS_GOAL_EXERCISE_ID, 'Daily steps', 'steps', 9000, localDay(14))!;
+    const profileWithStepsGoal: any = {
+      ...whoopOAuthProfile,
+      goalSettings: { weeklySessions: 4, chosenGoal: 'muscle', customGoals: [stepsGoal] },
+    };
+    const multiBios: BiometricLog[] = [
+      // Deliberately out of order to verify chronological sorting in KG
+      {
+        date: localDay(0),
+        bodyweightKg: 74.0,
+        hrvRmssd: 68,
+        restingHr: 51,
+        sleepHours: 7.9,
+        sleepPerformance: 91,
+        sleepEfficiency: 94,
+        respiratoryRate: 15.2,
+        spo2: 98.4,
+        skinTemp: 33.8,
+        recoveryScore: 81,
+        strain: 14.2,
+        workoutStrain: 11.9,
+        steps: 8600,
+        activeZoneMinutes: 35,
+        source: 'whoop',
+      },
+      { date: localDay(2), bodyweightKg: 74.2, hrvRmssd: 64, restingHr: 52, sleepHours: 7.5, steps: 8200, activeZoneMinutes: 20, source: 'whoop' },
+      { date: localDay(9), bodyweightKg: 74.5, hrvRmssd: 60, restingHr: 54, sleepHours: 7.2, steps: 6100, activeZoneMinutes: 15, source: 'whoop' },
+      { date: localDay(10), bodyweightKg: 74.6, hrvRmssd: 59, restingHr: 54, sleepHours: 7.1, steps: 5900, activeZoneMinutes: 15, source: 'whoop' },
+    ];
+    const chinWorkouts: WorkoutSession[] = [
+      {
+        id: 'w-chin-1',
+        date: localDay(10),
+        name: 'Pull',
+        splitDay: 'Pull',
+        completed: true,
+        completedAt: `${localDay(10)}T10:00:00Z`,
+        readinessState: 'Normal',
+        readinessZScore: 0,
+        exercises: [
+          {
+            id: 'ex-c-1',
+            exerciseId: 'ex-chinup',
+            name: 'Chin-Up',
+            pillar: 'Vertical Pull',
+            equipment: 'bodyweight',
+            isWeightedCalisthenic: true,
+            minReps: 6,
+            maxReps: 10,
+            sets: [{ id: 's-c-1', setNumber: 1, targetReps: 8, targetWeightKg: 0, targetRir: 2, actualReps: 8, actualWeightKg: 0, actualRir: 2, completed: true }],
+          },
+        ],
+      },
+      {
+        id: 'w-chin-2',
+        date: localDay(2),
+        name: 'Pull',
+        splitDay: 'Pull',
+        completed: true,
+        completedAt: `${localDay(2)}T10:00:00Z`,
+        readinessState: 'Normal',
+        readinessZScore: 0,
+        exercises: [
+          {
+            id: 'ex-c-2',
+            exerciseId: 'ex-chinup',
+            name: 'Chin-Up',
+            pillar: 'Vertical Pull',
+            equipment: 'bodyweight',
+            isWeightedCalisthenic: true,
+            minReps: 6,
+            maxReps: 10,
+            sets: [{ id: 's-c-2', setNumber: 1, targetReps: 8, targetWeightKg: 10, targetRir: 2, actualReps: 8, actualWeightKg: 10, actualRir: 2, completed: true }],
+          },
+        ],
+      },
+    ];
+    const kgAll = buildAthleteKnowledgeGraph(
+      chinWorkouts,
+      multiBios,
+      SEED_EXERCISES,
+      profileWithStepsGoal,
+      { Back: 10 },
+      [{ id: 'act-1', date: localDay(1), startedAt: `${localDay(1)}T08:00:00Z`, minutes: 35, type: 'walk', source: 'whoop' }]
+    );
+    const kgSrc = fs45.readFileSync(path45.resolve(process.cwd(), 'src/engine/knowledgeGraph.ts'), 'utf-8');
+    const kgNoBw = buildAthleteKnowledgeGraph(chinWorkouts, [], SEED_EXERCISES, baseProfile, { Back: 10 });
+    const bioNodeAll = kgAll.nodes.find((n: any) => n.id === 'node-biometrics');
+    assert(
+      !kgSrc.includes(', 81.5') &&
+        kgAll.stepsSummary.todaySteps === 8600 &&
+        kgAll.stepsSummary.avg7d === 8400 &&
+        kgAll.stepsSummary.previous7dAvg === 6000 &&
+        kgAll.stepsSummary.trend === 'up' &&
+        kgAll.stepsSummary.goalTarget === 9000 &&
+        kgAll.whoopSummary.recoveryScore === 81 &&
+        kgAll.whoopSummary.spo2 === 98.4 &&
+        kgAll.activitySummary.activitiesLast7d === 1 &&
+        kgAll.activitySummary.activeMinutesLast7d === 35 &&
+        bioNodeAll?.metrics['Steps Today'] === '8,600' &&
+        bioNodeAll?.metrics['SpO2'] === '98.4%' &&
+        kgNoBw.muscleProfiles.every((m: any) => m.e1rmVelocityPct === 0),
+      'Knowledge Graph maps steps, activities, Whoop vitals chronologically and never uses hardcoded 81.5kg bodyweight'
+    );
+
+    // 5. Contextual AI Coach entry points (Steps detail, Steps goal, Whoop detail) + system prompt context
+    const sampleActiveWo: WorkoutSession = {
+      id: 'w-active-45',
+      date: todayStr,
+      name: 'Upper',
+      splitDay: 'Upper',
+      completed: false,
+      readinessState: 'Normal',
+      readinessZScore: 0,
+      exercises: [],
+    };
+    const stepsOpening = coachCtxMod.buildCoachOpening({
+      place: { tab: 'analytics', detail: 'steps' },
+      profile: profileWithStepsGoal,
+      activeWorkout: sampleActiveWo,
+      workouts: chinWorkouts,
+      biometrics: multiBios,
+      exerciseCatalog: SEED_EXERCISES,
+      readinessState: 'Normal',
+      bodyweightEmaKg: 74,
+    });
+    const stepsGoalEntity = kgAll.goals.find((g: any) => g.measure.type === 'target' && g.measure.metric === 'steps');
+    const stepsGoalOpening = coachCtxMod.buildCoachOpening({
+      place: { tab: 'analytics', goalId: stepsGoalEntity?.id },
+      profile: profileWithStepsGoal,
+      activeWorkout: sampleActiveWo,
+      workouts: chinWorkouts,
+      biometrics: multiBios,
+      exerciseCatalog: SEED_EXERCISES,
+      readinessState: 'Normal',
+      bodyweightEmaKg: 74,
+    });
+    const whoopOpening = coachCtxMod.buildCoachOpening({
+      place: { tab: 'analytics', detail: 'whoop' },
+      profile: profileWithStepsGoal,
+      activeWorkout: sampleActiveWo,
+      workouts: chinWorkouts,
+      biometrics: multiBios,
+      exerciseCatalog: SEED_EXERCISES,
+      readinessState: 'Primed',
+      bodyweightEmaKg: 74,
+    });
+    assert(
+      stepsOpening.id === 'progress-steps' &&
+        stepsOpening.line.includes('8,600') &&
+        stepsOpening.line.includes('8,400') &&
+        stepsGoalOpening.id === 'goal-steps' &&
+        stepsGoalOpening.line.includes('8,600') &&
+        !stepsGoalOpening.hooks.some((h: any) => h.text.includes('How do I do the daily steps')) &&
+        whoopOpening.id === 'progress-whoop' &&
+        whoopOpening.line.includes('81%'),
+      'buildCoachOpening contextualizes Steps detail, Steps goal, and Whoop detail with user data'
+    );
+
+    const stepsCoachReply = await aiMod.processAssistantMessage({
+      userMessage: 'How can I improve?',
+      profile: profileWithStepsGoal,
+      activeWorkout: sampleActiveWo,
+      workouts: chinWorkouts,
+      biometrics: multiBios,
+      exerciseCatalog: SEED_EXERCISES,
+      bodyweightEmaKg: 74,
+      readinessState: 'Normal',
+      place: { tab: 'analytics', goalId: stepsGoalEntity?.id },
+    });
+    const whoopCoachReply = await aiMod.processAssistantMessage({
+      userMessage: 'How am I doing?',
+      profile: profileWithStepsGoal,
+      activeWorkout: sampleActiveWo,
+      workouts: chinWorkouts,
+      biometrics: multiBios,
+      exerciseCatalog: SEED_EXERCISES,
+      bodyweightEmaKg: 74,
+      readinessState: 'Primed',
+      place: { tab: 'analytics', detail: 'whoop' },
+    });
+    const ctxPrompt = aiMod.buildCoachSystemPrompt({
+      userMessage: 'Any tips?',
+      profile: profileWithStepsGoal,
+      activeWorkout: sampleActiveWo,
+      workouts: chinWorkouts,
+      biometrics: multiBios,
+      exerciseCatalog: SEED_EXERCISES,
+      bodyweightEmaKg: 74,
+      readinessState: 'Normal',
+      activities: [{ id: 'act-1', date: localDay(1), startedAt: `${localDay(1)}T08:00:00Z`, minutes: 35, type: 'walk', source: 'whoop' }],
+      place: { tab: 'analytics', detail: 'steps' },
+    });
+    assert(
+      stepsCoachReply.message.text.includes('8,400') &&
+        stepsCoachReply.message.text.includes('6,000') &&
+        stepsCoachReply.message.text.includes('10-minute') &&
+        whoopCoachReply.message.text.includes('81%') &&
+        ctxPrompt.includes('Viewing: Progress → steps') &&
+        ctxPrompt.includes('Steps:') &&
+        ctxPrompt.includes('Whoop telemetry:') &&
+        ctxPrompt.includes('Active days (7d):'),
+      'processAssistantMessage & buildCoachSystemPrompt tailor answers and facts from Knowledge Graph and CoachPlace entry point'
+    );
+  }
+
+  // =========================================================================
+  // SUITE 46: PROGRESS CHART TIMELINE TOGGLES (1W / 1M / 3M / 1Y)
+  // =========================================================================
+  console.log('\n--- SUITE 46: PROGRESS CHART TIMELINE TOGGLES (1W / 1M / 3M / 1Y) ---');
+  {
+    assert(
+      DEFAULT_CHART_TIMELINE === '1Y' &&
+        CHART_TIMELINES.map((t) => `${t.id}:${t.days}:${t.weeks}`).join(',') === '1W:7:1,1M:30:4,3M:90:13,1Y:365:52',
+      'CHART_TIMELINES defines 1W (7d/1w), 1M (30d/4w), 3M (90d/13w), 1Y (365d/52w) with 1Y default'
+    );
+
+    const today = '2026-11-13';
+    assert(
+      timelineCutoffDate('1W', today) === '2026-11-07' &&
+        timelineCutoffDate('1M', today) === '2026-10-15' &&
+        timelineCutoffDate('3M', today) === '2026-08-16' &&
+        timelineCutoffDate('1Y', today) === '2025-11-14',
+      'timelineCutoffDate computes inclusive local date cutoffs without timezone drift'
+    );
+
+    const sampleChart: ProgressChart = {
+      id: 'bodyweight',
+      title: 'Body weight',
+      category: 'scale',
+      points: [
+        { date: '2025-12-01', value: 84.0 },
+        { date: '2026-09-01', value: 82.5 },
+        { date: '2026-10-20', value: 81.2 },
+        { date: '2026-11-10', value: 80.6 },
+      ],
+      secondary: [
+        { date: '2025-12-01', value: 84.2 },
+        { date: '2026-10-20', value: 81.0 },
+        { date: '2026-11-10', value: 80.4 },
+      ],
+      lastUpdated: '2026-11-10',
+      summary: 'Full-year summary.',
+      format: (v) => `${v.toFixed(1)} kg`,
+    };
+
+    const y1 = filterChartByTimeline(sampleChart, '1Y', today);
+    const m3 = filterChartByTimeline(sampleChart, '3M', today);
+    const m1 = filterChartByTimeline(sampleChart, '1M', today);
+    const w1 = filterChartByTimeline(sampleChart, '1W', today);
+
+    assert(
+      y1.points.length === 4 &&
+        y1.summary === 'Full-year summary.' &&
+        m3.points.length === 3 &&
+        m3.points[0].date === '2026-09-01' &&
+        m1.points.length === 2 &&
+        (m1.secondary?.length ?? 0) === 2 &&
+        m1.summary.includes('81.2 kg') &&
+        m1.summary.includes('80.6 kg') &&
+        w1.points.length === 1 &&
+        w1.summary.includes('80.6 kg'),
+      'filterChartByTimeline filters primary/secondary series cleanly and updates window summaries'
+    );
+
+    const emptyWindowChart: ProgressChart = {
+      ...sampleChart,
+      points: [{ date: '2026-01-15', value: 83.0 }],
+      secondary: undefined,
+    };
+    const w1Empty = filterChartByTimeline(emptyWindowChart, '1W', today);
+    assert(
+      w1Empty.points.length === 0 &&
+        w1Empty.summary.includes('No body weight entries in the last week'),
+      'filterChartByTimeline never fabricates points for an empty short timeline window'
+    );
+
+    const rebased = rebaseIndexSeries([
+      { date: '2026-10-15', value: 110 },
+      { date: '2026-11-01', value: 121 },
+    ]);
+    assert(
+      rebased.length === 2 &&
+        rebased[0].value === 100 &&
+        rebased[1].value === 110 &&
+        rebaseIndexSeries([{ date: '2026-11-01', value: 120 }]).length === 0,
+      'rebaseIndexSeries rebases sliced windows so start equals 100 and returns empty under 2 points'
+    );
+
+    const sampleMuscle = {
+      key: 'chest',
+      label: 'Chest',
+      weeklySets: 10,
+      target: [8, 16] as [number, number],
+      setsByWeek: [
+        { date: '2026-09-01', sets: 6 },
+        { date: '2026-10-20', sets: 8 },
+        { date: '2026-11-10', sets: 10 },
+      ],
+      strengthIndex: [
+        { date: '2026-09-01', value: 100 },
+        { date: '2026-10-20', value: 110 },
+        { date: '2026-11-10', value: 115.5 },
+      ],
+      exercises: ['Barbell Bench Press'],
+      measurement: {
+        label: 'Chest',
+        points: [
+          { date: '2026-09-01', value: 102.0 },
+          { date: '2026-10-20', value: 103.0 },
+          { date: '2026-11-10', value: 103.5 },
+        ],
+      },
+      lastTrained: '2026-11-10',
+      summary: 'Old summary.',
+    };
+    const filteredMuscle1m = filterMuscleProgressByTimeline(
+      sampleMuscle,
+      '1M',
+      (cm) => `${cm.toFixed(1)} cm`,
+      today
+    );
+    assert(
+      filteredMuscle1m.strengthIndex.length === 2 &&
+        filteredMuscle1m.strengthIndex[0].value === 100 &&
+        filteredMuscle1m.strengthIndex[1].value === 105 &&
+        (filteredMuscle1m.measurement?.points.length ?? 0) === 2 &&
+        filteredMuscle1m.summary.includes('up 5%'),
+      'filterMuscleProgressByTimeline rebases strength index, filters measurements, and recalculates summary'
+    );
+
+    const daysAgoDate = (offsetDays: number) => {
+      const d = new Date();
+      d.setDate(d.getDate() - offsetDays);
+      return localDateString(d);
+    };
+    const timelineWorkouts = [
+      {
+        id: 'tl-old',
+        date: daysAgoDate(45),
+        title: 'Old Session',
+        completed: true,
+        exercises: [
+          {
+            id: 'tl-e1',
+            exerciseId: 'ex-bench-press',
+            name: 'Barbell Bench Press',
+            pillar: 'horizontal_push' as const,
+            equipment: 'barbell' as const,
+            sets: [
+              {
+                id: 's1',
+                targetReps: 8,
+                targetWeightKg: 80,
+                actualWeightKg: 80,
+                actualReps: 8,
+                actualRir: 2,
+                completed: true,
+                isWarmup: false,
+              },
+            ],
+          },
+        ],
+      },
+      {
+        id: 'tl-recent',
+        date: daysAgoDate(3),
+        title: 'Recent Session',
+        completed: true,
+        exercises: [
+          {
+            id: 'tl-e2',
+            exerciseId: 'ex-bench-press',
+            name: 'Barbell Bench Press',
+            pillar: 'horizontal_push' as const,
+            equipment: 'barbell' as const,
+            sets: [
+              {
+                id: 's2',
+                targetReps: 8,
+                targetWeightKg: 82.5,
+                actualWeightKg: 82.5,
+                actualReps: 8,
+                actualRir: 2,
+                completed: true,
+                isWarmup: false,
+              },
+            ],
+          },
+        ],
+      },
+    ];
+    const totals1W = buildTrainingTotals(timelineWorkouts as any, 7);
+    const totals3M = buildTrainingTotals(timelineWorkouts as any, 90);
+    const chest1W = buildMuscleProgress({
+      workouts: timelineWorkouts as any,
+      exerciseCatalog: SEED_EXERCISES,
+      biometrics: [],
+      bodyweightKg: 80,
+      formatLength: (cm) => `${cm.toFixed(1)} cm`,
+      weeks: 1,
+    }).find((m) => m.key === 'Chest');
+    const chest1Y = buildMuscleProgress({
+      workouts: timelineWorkouts as any,
+      exerciseCatalog: SEED_EXERCISES,
+      biometrics: [],
+      bodyweightKg: 80,
+      formatLength: (cm) => `${cm.toFixed(1)} cm`,
+      weeks: 52,
+    }).find((m) => m.key === 'Chest');
+    assert(
+      totals1W.workouts === 1 &&
+        totals3M.workouts === 2 &&
+        chest1W?.setsByWeek.length === 1 &&
+        chest1Y?.setsByWeek.length === 52,
+      'buildTrainingTotals and buildMuscleProgress scale cleanly across 1W/1M/3M/1Y horizons'
+    );
+
+    const fsMod = require('fs');
+    const pathMod = require('path');
+    const srcRoot = pathMod.resolve(process.cwd(), 'src');
+    const readSrc = (rel: string) => fsMod.readFileSync(pathMod.join(srcRoot, rel), 'utf8') as string;
+    const toggleSrc = readSrc('components/analytics/TimelineToggle.tsx');
+    const chartCardSrc = readSrc('components/analytics/ProgressChartCard.tsx');
+    const analyticsSrc = readSrc('components/analytics/AnalyticsTab.tsx');
+    const goalDetailSrc = readSrc('components/analytics/GoalDetailScreen.tsx');
+    const exerciseCardSrc = readSrc('components/train/ExerciseCard.tsx');
+    const finishedCardSrc = readSrc('components/train/FinishedWorkoutCards.tsx');
+    const trainTabSrc = readSrc('components/train/TrainTab.tsx');
+    assert(
+      toggleSrc.includes('wk-segments grid-cols-4') &&
+        toggleSrc.includes('wk-segment') &&
+        chartCardSrc.includes('<TimelineToggle') &&
+        analyticsSrc.includes('<TimelineToggle') &&
+        goalDetailSrc.includes('<TimelineToggle') &&
+        !exerciseCardSrc.includes('TimelineToggle') &&
+        !finishedCardSrc.includes('TimelineToggle') &&
+        !trainTabSrc.includes('TimelineToggle'),
+      'TimelineToggle is wired into Progress views (ProgressChartCard, AnalyticsTab, GoalDetailScreen) and absent from Workout views'
+    );
+  }
+
+  console.log('\nALL 42 ENGINE, GOVERNANCE, DESIGN HEURISTICS, TYPOGRAPHY, WEARABLES, WHOOP STRAIN, GOOGLE AUTH, ONBOARDING CONTEXT, 6-WEEK PROGRAM, TENSOR AI, SESSION REPORT, WORKOUT PAGE, EXERCISE OVERVIEW & RENPHO BLUETOOTH SUITES PASSED SUCCESSFULLY! 🎯');
 })().catch((err) => {
   console.error('Test Suite Failed:', err);
   if (typeof process !== 'undefined' && process.exit) {

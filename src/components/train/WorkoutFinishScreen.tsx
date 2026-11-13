@@ -1,7 +1,9 @@
 import React, { useMemo } from 'react';
 import { GoalProgress, describeGoalStanding } from '../../services/athleteGoals';
+import { WhoopWorkoutStrainSummary } from '../../services/whoopService';
 import { FinishPersonalBest, WorkoutFinish } from '../../services/workoutFinish';
 import { useWorkoutSummaryText } from './useWorkoutSummaryText';
+import { WhoopStrainCard } from './FinishedWorkoutCards';
 import { triggerHaptic } from '../../utils/haptics';
 import { useUnits } from '../../utils/unitsContext';
 
@@ -11,6 +13,12 @@ const text = (px: number) => `max(12px, ${fig(px)})`;
 interface WorkoutFinishScreenProps {
   finish: WorkoutFinish;
   onDone: () => void;
+  whoopConfigured?: boolean;
+  whoopTelemetry?: WhoopWorkoutStrainSummary | null;
+  dayStrain?: number;
+  hasLiveWhoopConnection?: boolean;
+  isSyncingWhoop?: boolean;
+  onRefreshWhoop?: () => void;
 }
 
 /** Mint, white and deeper green: the medal's own colours. */
@@ -94,7 +102,16 @@ const BigNumber: React.FC<{ value: string; unit?: string }> = ({ value, unit }) 
   </p>
 );
 
-export const WorkoutFinishScreen: React.FC<WorkoutFinishScreenProps> = ({ finish, onDone }) => {
+export const WorkoutFinishScreen: React.FC<WorkoutFinishScreenProps> = ({
+  finish,
+  onDone,
+  whoopConfigured = false,
+  whoopTelemetry,
+  dayStrain,
+  hasLiveWhoopConnection = false,
+  isSyncingWhoop = false,
+  onRefreshWhoop,
+}) => {
   const units = useUnits();
   const { report, personalBests, goalProgress, headline } = finish;
   const summary = useWorkoutSummaryText(finish);
@@ -191,6 +208,21 @@ export const WorkoutFinishScreen: React.FC<WorkoutFinishScreenProps> = ({ finish
             </div>
           </div>
         </section>
+
+        {/* Whoop cardiovascular strain when configured */}
+        {whoopConfigured && (
+          <WhoopStrainCard
+            workoutStrain={whoopTelemetry?.workoutStrain}
+            dayStrain={whoopTelemetry?.dayStrain ?? dayStrain}
+            avgHr={whoopTelemetry?.avgHeartRate}
+            maxHr={whoopTelemetry?.maxHeartRate}
+            isSyncing={isSyncingWhoop}
+            isPendingScore={whoopTelemetry?.isPendingScore}
+            hasLiveConnection={hasLiveWhoopConnection}
+            onRetry={onRefreshWhoop}
+            style={{ marginTop: fig(20) }}
+          />
+        )}
 
         {/* Personal bests and goals moved by this workout */}
         {cardCount > 0 && (

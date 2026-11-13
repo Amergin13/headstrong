@@ -187,6 +187,7 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
         readinessState,
         weeklyVolume,
         activities,
+        place,
         onPartial: (textSoFar) => setStreamingText(textSoFar),
       });
 

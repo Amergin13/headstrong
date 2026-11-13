@@ -10,6 +10,7 @@ import {
   simulatePixelWatchSync,
 } from './fitbitService';
 import {
+  WhoopWorkoutStrainSummary,
   fetchWhoopDailyBiometrics,
   simulateWhoopSync,
 } from './whoopService';
@@ -112,6 +113,12 @@ export async function syncWearableBiometrics(
         // Workout heart rate only from a Whoop workout; the all-day average is not a workout.
         avgWorkoutHr: liveData.avgWorkoutHr ?? (liveData as any).workoutAvgHr,
         maxWorkoutHr: liveData.maxWorkoutHr ?? (liveData as any).workoutMaxHr,
+        workoutDurationMin: liveData.workoutDurationMin,
+        sleepPerformance: liveData.sleepPerformance,
+        sleepEfficiency: liveData.sleepEfficiency,
+        respiratoryRate: liveData.respiratoryRate,
+        spo2: liveData.spo2,
+        skinTemp: liveData.skinTemp,
         source: 'whoop',
       };
     }
@@ -255,6 +262,61 @@ export function mergeWearableLog(prev: BiometricLog[], newLog: BiometricLog, pro
   if (prev[idx].bodyweightKg > 0 && prev[idx].source !== provider) delete measured.bodyweightKg;
   const updated = [...prev];
   updated[idx] = { ...prev[idx], ...measured };
+  return updated;
+}
+
+/**
+ * Merges workout-completion Whoop telemetry (workout strain, day strain, HR, recovery) into a date's
+ * biometric log, creating an honest Whoop record for that date if none existed yet.
+ */
+export function mergeWhoopWorkoutTelemetryLog(
+  prev: BiometricLog[],
+  date: string,
+  telemetry: WhoopWorkoutStrainSummary
+): BiometricLog[] {
+  const hasMetric =
+    telemetry.workoutStrain !== undefined ||
+    telemetry.dayStrain !== undefined ||
+    telemetry.avgHeartRate !== undefined ||
+    telemetry.maxHeartRate !== undefined ||
+    telemetry.recoveryScore !== undefined;
+  if (!hasMetric) return prev;
+
+  const idx = prev.findIndex((b) => b.date === date);
+  if (idx < 0) {
+    const next: BiometricLog[] = [
+      ...prev,
+      {
+        date,
+        bodyweightKg: 0,
+        hrvRmssd: 0,
+        restingHr: 0,
+        sleepHours: 0,
+        steps: 0,
+        activeZoneMinutes: 0,
+        workoutStrain: telemetry.workoutStrain,
+        strain: telemetry.dayStrain,
+        avgWorkoutHr: telemetry.avgHeartRate,
+        maxWorkoutHr: telemetry.maxHeartRate,
+        workoutDurationMin: telemetry.workoutDurationMin,
+        recoveryScore: telemetry.recoveryScore,
+        source: 'whoop',
+      },
+    ];
+    return next.sort((a, b) => a.date.localeCompare(b.date));
+  }
+
+  const updated = [...prev];
+  updated[idx] = {
+    ...updated[idx],
+    workoutStrain: telemetry.workoutStrain ?? updated[idx].workoutStrain,
+    strain: telemetry.dayStrain ?? updated[idx].strain,
+    avgWorkoutHr: telemetry.avgHeartRate ?? updated[idx].avgWorkoutHr,
+    maxWorkoutHr: telemetry.maxHeartRate ?? updated[idx].maxWorkoutHr,
+    workoutDurationMin: telemetry.workoutDurationMin ?? updated[idx].workoutDurationMin,
+    recoveryScore: telemetry.recoveryScore ?? updated[idx].recoveryScore,
+    source: updated[idx].source ?? 'whoop',
+  };
   return updated;
 }
 

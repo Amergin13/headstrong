@@ -19,6 +19,12 @@ import { AthleteKnowledgeGraph } from '../engine/knowledgeGraph';
 import { MUSCLE_FRIENDLY_NAMES, getWorkoutCompletedAt } from '../engine/recovery';
 import { BiometricLog, ExerciseDefinition, MuscleGroup, WorkoutSession, WorkoutSet } from '../engine/types';
 import { localDateString } from '../utils/date';
+import {
+  ChartTimeline,
+  getTimelineMeta,
+  rebaseIndexSeries,
+  timelineCutoffDate,
+} from './progressSeries';
 import { muscleSetsBetween } from './storage';
 
 /** A dated value on a chart. */
@@ -229,36 +235,14 @@ export function buildMuscleProgress(input: {
       .sort((a, b) => b[1] - a[1])
       .map(([id]) => catalog.get(id)?.name ?? id);
 
-    // Plain-English summary from the same numbers.
-    const parts: string[] = [];
-    const setsText = Number.isInteger(weeklySets) ? `${weeklySets}` : weeklySets.toFixed(1);
-    if (target) {
-      const status = weeklySets < target[0] ? 'below' : weeklySets > target[1] ? 'above' : 'within';
-      parts.push(`${setsText} hard sets this week, ${status} your ${target[0]}–${target[1]} target.`);
-    } else {
-      parts.push(`${setsText} hard sets this week.`);
-    }
-    if (strengthIndex.length >= 2) {
-      const change = Math.round(strengthIndex[strengthIndex.length - 1].value - 100);
-      const from = fmtDate(strengthIndex[0].date);
-      parts.push(
-        change === 0
-          ? `Strength has held steady since ${from}.`
-          : `Strength is ${change > 0 ? 'up' : 'down'} ${Math.abs(change)}% since ${from}, across ${exercises.length} exercise${exercises.length === 1 ? '' : 's'}.`
-      );
-    } else if (strengthIndex.length === 1) {
-      parts.push('Strength starts here; your trend appears after another week of training it.');
-    }
-    if (measurement && measurement.points.length >= 2) {
-      const first = measurement.points[0].value;
-      const last = measurement.points[measurement.points.length - 1].value;
-      const diff = Math.round((last - first) * 10) / 10;
-      parts.push(
-        diff === 0
-          ? `${measurement.label} measurement unchanged at ${formatLength(last)}.`
-          : `${measurement.label} measurement ${diff > 0 ? 'up' : 'down'} ${formatLength(Math.abs(diff))}.`
-      );
-    }
+    const summary = buildMuscleSummary(
+      weeklySets,
+      target,
+      strengthIndex,
+      exercises,
+      measurement,
+      formatLength,
+    );
 
     return [
       {
@@ -271,8 +255,88 @@ export function buildMuscleProgress(input: {
         exercises,
         measurement,
         lastTrained,
-        summary: parts.join(' '),
+        summary,
       },
     ];
   });
+}
+
+function buildMuscleSummary(
+  weeklySets: number,
+  target: [number, number] | undefined,
+  strengthIndex: TrendPoint[],
+  exercises: string[],
+  measurement: MuscleProgress['measurement'] | undefined,
+  formatLength: (cm: number) => string,
+): string {
+  const parts: string[] = [];
+  const setsText = Number.isInteger(weeklySets) ? `${weeklySets}` : weeklySets.toFixed(1);
+  if (target) {
+    const status = weeklySets < target[0] ? 'below' : weeklySets > target[1] ? 'above' : 'within';
+    parts.push(`${setsText} hard sets this week, ${status} your ${target[0]}–${target[1]} target.`);
+  } else {
+    parts.push(`${setsText} hard sets this week.`);
+  }
+  if (strengthIndex.length >= 2) {
+    const change = Math.round(strengthIndex[strengthIndex.length - 1].value - 100);
+    const from = fmtDate(strengthIndex[0].date);
+    parts.push(
+      change === 0
+        ? `Strength has held steady since ${from}.`
+        : `Strength is ${change > 0 ? 'up' : 'down'} ${Math.abs(change)}% since ${from}, across ${exercises.length} exercise${exercises.length === 1 ? '' : 's'}.`
+    );
+  } else if (strengthIndex.length === 1) {
+    parts.push('Strength starts here; your trend appears after another week of training it.');
+  }
+  if (measurement && measurement.points.length >= 2) {
+    const first = measurement.points[0].value;
+    const last = measurement.points[measurement.points.length - 1].value;
+    const diff = Math.round((last - first) * 10) / 10;
+    parts.push(
+      diff === 0
+        ? `${measurement.label} measurement unchanged at ${formatLength(last)}.`
+        : `${measurement.label} measurement ${diff > 0 ? 'up' : 'down'} ${formatLength(Math.abs(diff))}.`
+    );
+  }
+  return parts.join(' ');
+}
+
+/** Filters a MuscleProgress card's series and summary to the chosen timeline without fabricating data. */
+export function filterMuscleProgressByTimeline(
+  progress: MuscleProgress,
+  timeline: ChartTimeline,
+  formatLength: (cm: number) => string,
+  today = localDateString(),
+): MuscleProgress {
+  const cutoff = timelineCutoffDate(timeline, today);
+  const meta = getTimelineMeta(timeline);
+  const setsByWeek = progress.setsByWeek.slice(-meta.weeks);
+  const rawStrength = progress.strengthIndex.filter((p) => p.date >= cutoff);
+  const strengthIndex =
+    rawStrength.length >= 2
+      ? rebaseIndexSeries(rawStrength)
+      : rawStrength.length === 1
+      ? [{ date: rawStrength[0].date, value: 100 }]
+      : [];
+  const measurement = progress.measurement
+    ? {
+        ...progress.measurement,
+        points: progress.measurement.points.filter((p) => p.date >= cutoff),
+      }
+    : undefined;
+
+  return {
+    ...progress,
+    setsByWeek,
+    strengthIndex,
+    measurement,
+    summary: buildMuscleSummary(
+      progress.weeklySets,
+      progress.target,
+      strengthIndex,
+      progress.exercises,
+      measurement,
+      formatLength,
+    ),
+  };
 }
