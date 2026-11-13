@@ -255,6 +255,10 @@ select:focus-visible {
   border-radius: inherit;
   background: var(--wk-accent);
 }
+.wk-sticky-dock {
+  opacity: var(--dock-active, 0);
+  pointer-events: var(--dock-pe, none);
+}
 .wk-chevron {
   width: calc(40 * var(--f));
   height: calc(40 * var(--f));

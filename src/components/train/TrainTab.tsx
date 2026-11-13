@@ -829,17 +829,31 @@ export const TrainTab: React.FC<TrainTabProps> = ({
   // Page background: #283339 at the top fading to #13181C exactly where the first workout card starts.
   const cardsTopRef = useRef<HTMLDivElement>(null);
   const exercisesTopRef = useRef<HTMLDivElement>(null);
-  const programCardRef = useRef<HTMLDivElement>(null);
-  const [pastProgramCard, setPastProgramCard] = useState(false);
+  const sessionBlockRef = useRef<HTMLDivElement>(null);
+  const stickyHeaderRef = useRef<HTMLDivElement>(null);
+  const stickyMeasureRef = useRef<HTMLDivElement>(null);
+  const [sessionDocked, setSessionDocked] = useState(false);
 
   useEffect(() => {
+    const MORPH_PX = 32;
     const update = () => {
-      const el = programCardRef.current;
-      if (!el) {
-        setPastProgramCard(false);
+      const sessionEl = sessionBlockRef.current;
+      const stickyEl = stickyHeaderRef.current;
+      const measureEl = stickyMeasureRef.current;
+      if (!sessionEl || !stickyEl || !measureEl) {
+        setSessionDocked(false);
         return;
       }
-      setPastProgramCard(el.getBoundingClientRect().bottom <= 4);
+      // Read both rects before writing styles so the hand-off locks to the exact top pixel of the session row.
+      const dockOffset = measureEl.getBoundingClientRect().top - sessionEl.getBoundingClientRect().top;
+      const isDocked = dockOffset >= 0;
+      const t = isDocked ? Math.min(1, dockOffset / MORPH_PX) : 0;
+
+      stickyEl.style.setProperty('--dock-active', isDocked ? '1' : '0');
+      stickyEl.style.setProperty('--dock-pe', isDocked ? 'auto' : 'none');
+      stickyEl.style.setProperty('--dock-t', t.toFixed(4));
+      sessionEl.style.opacity = isDocked ? '0' : '1';
+      setSessionDocked((prev) => (prev === isDocked ? prev : isDocked));
     };
     update();
     window.addEventListener('scroll', update, { passive: true });
@@ -924,23 +938,22 @@ export const TrainTab: React.FC<TrainTabProps> = ({
         observeRef={cardsTopRef}
         deps={[showRecoveryGate, sessionReport]}
       />
-      {pastProgramCard && (
-        <StickySessionHeader
-          sessionLabel={programCard.sessionLabel}
-          current={programCard.current}
-          total={programCard.total}
-          onOpen={onOpenProgram}
-        />
-      )}
+      <StickySessionHeader
+        sessionLabel={programCard.sessionLabel}
+        current={programCard.current}
+        total={programCard.total}
+        onOpen={onOpenProgram}
+        docked={sessionDocked}
+        headerRef={stickyHeaderRef}
+        measureRef={stickyMeasureRef}
+      />
       <WorkoutPageHeader title={pageTitle} days={stripDays} renderMenu={renderOptionsMenu} />
 
       <div ref={cardsTopRef} className="flex flex-col" style={{ gap: fig(22), marginTop: fig(64) }}>
       {/* After today's session: lead with "complete" and the progress breakdown. */}
       {todayFinished ? (
         <>
-          <div ref={programCardRef}>
-            <ProgramProgressCard {...programCard} onOpen={onOpenProgram} />
-          </div>
+          <ProgramProgressCard {...programCard} onOpen={onOpenProgram} sessionRef={sessionBlockRef} />
           <FinishedWorkoutSummaryCard finish={todayFinished.finish} />
           {todayFinished.exercises.map((ex) => (
             <CompletedExerciseCard key={ex.id} summary={ex} />
@@ -954,9 +967,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
         </>
       ) : (
         <>
-          <div ref={programCardRef}>
-            <ProgramProgressCard {...programCard} onOpen={onOpenProgram} />
-          </div>
+          <ProgramProgressCard {...programCard} onOpen={onOpenProgram} sessionRef={sessionBlockRef} />
           {!showRecoveryGate && (
             <RecoveryScoreCard
               readiness={readiness}
