@@ -8,6 +8,9 @@ const fig = (px: number) => `calc(${px} * var(--f))`;
 interface WorkoutPageHeaderProps {
   title: string;
   days: StripDay[];
+  /** Selected date in the week strip, when inspecting a day's overview. */
+  selectedDate?: string | null;
+  onSelectDay?: (day: StripDay) => void;
   /** Secondary actions (location, rest day, last workout), shown from the "more" button. */
   renderMenu?: (close: () => void) => React.ReactNode;
 }
@@ -59,7 +62,7 @@ const DayCircle: React.FC<{ day: StripDay }> = ({ day }) => {
   return <span className="rounded-full" style={{ width: size, height: size, border: `${stroke} solid rgba(255,255,255,0.45)` }} />;
 };
 
-export const WorkoutPageHeader: React.FC<WorkoutPageHeaderProps> = ({ title, days, renderMenu }) => {
+export const WorkoutPageHeader: React.FC<WorkoutPageHeaderProps> = ({ title, days, selectedDate, onSelectDay, renderMenu }) => {
   const [menuOpen, setMenuOpen] = useState(false);
   const close = () => setMenuOpen(false);
 
@@ -105,26 +108,63 @@ export const WorkoutPageHeader: React.FC<WorkoutPageHeaderProps> = ({ title, day
         style={{ width: `min(${fig(7 * 131)}, 100%)`, marginTop: fig(52) }}
         aria-label="This week"
       >
-        {days.map((day) => (
-          <li
-            key={day.date}
-            className="flex flex-col items-center"
-            style={{ gap: fig(26) }}
-            aria-label={`${day.label}${day.isToday ? ', today' : ''}: ${STATUS_TEXT[day.status]}`}
-          >
-            <span
-              aria-hidden="true"
-              style={{
-                fontSize: `max(12px, ${fig(22)})`,
-                fontWeight: day.isToday ? 700 : 600,
-                color: day.isToday ? '#fff' : 'var(--wk-muted)',
-              }}
+        {days.map((day) => {
+          const selected = selectedDate === day.date;
+          const label = `${day.label}${day.isToday ? ', today' : ''}: ${STATUS_TEXT[day.status]}`;
+          return (
+            <li
+              key={day.date}
+              className="flex flex-col items-center"
+              aria-label={onSelectDay ? undefined : label}
             >
-              {day.label}
-            </span>
-            <DayCircle day={day} />
-          </li>
-        ))}
+              {onSelectDay ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    triggerHaptic('light');
+                    onSelectDay(day);
+                  }}
+                  aria-label={label}
+                  aria-pressed={selected}
+                  className="flex flex-col items-center rounded-xl transition-opacity"
+                  style={{
+                    gap: fig(26),
+                    minWidth: 44,
+                    minHeight: 44,
+                    padding: `${fig(4)} ${fig(6)}`,
+                    opacity: selectedDate && !selected ? 0.65 : 1,
+                  }}
+                >
+                  <span
+                    aria-hidden="true"
+                    style={{
+                      fontSize: `max(12px, ${fig(22)})`,
+                      fontWeight: day.isToday || selected ? 700 : 600,
+                      color: selected ? 'var(--wk-accent)' : day.isToday ? '#fff' : 'var(--wk-muted)',
+                    }}
+                  >
+                    {day.label}
+                  </span>
+                  <DayCircle day={day} />
+                </button>
+              ) : (
+                <div className="flex flex-col items-center" style={{ gap: fig(26) }}>
+                  <span
+                    aria-hidden="true"
+                    style={{
+                      fontSize: `max(12px, ${fig(22)})`,
+                      fontWeight: day.isToday ? 700 : 600,
+                      color: day.isToday ? '#fff' : 'var(--wk-muted)',
+                    }}
+                  >
+                    {day.label}
+                  </span>
+                  <DayCircle day={day} />
+                </div>
+              )}
+            </li>
+          );
+        })}
       </ol>
     </header>
   );

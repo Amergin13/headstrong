@@ -28,10 +28,10 @@ import {
   formatReadyTime,
   MUSCLE_FRIENDLY_NAMES,
   READY_THRESHOLD, getWorkoutCompletedAt } from '../../engine/recovery';
-import { TrainingPlan, buildPlanOverview, getSessionPlanId, isActiveSlot, planWorkoutLabel } from '../../engine/muscleBuildingProgram';
+import { TrainingPlan, getSessionPlanId, planWorkoutLabel } from '../../engine/muscleBuildingProgram';
 import { ActivityLog, activeDayDates } from '../../engine/activeDays';
-import { ActiveDayCard } from './ActiveDayCard';
-import { localDateOffset, localDateString } from '../../utils/date';
+import { localDateString, parseLocalDate } from '../../utils/date';
+import { stepsOnDate } from '../../services/athleteGoals';
 import { startingWeightForNewExercise } from '../../services/sessionPreparation';
 import { useUnits } from '../../utils/unitsContext';
 import {
@@ -46,12 +46,11 @@ import {
 } from '../../engine/e1rm';
 import { buildAthleteKnowledgeGraph, getExerciseBiomechanicalMeta } from '../../engine/knowledgeGraph';
 import { calculateWeeklyMuscleVolume } from '../../services/storage';
-import { CompletedExerciseCard, FinishedWorkoutSummaryCard, NextWorkoutCard } from './FinishedWorkoutCards';
+import { CompletedExerciseCard, FinishedWorkoutSummaryCard } from './FinishedWorkoutCards';
 import { WorkoutPageHeader } from './WorkoutPageHeader';
 import { ProgramProgressCard, StickySessionHeader } from './ProgramProgressCard';
 import { RecoveryScoreCard } from './RecoveryScoreCard';
 import { buildWeekStrip } from '../../services/sessionSchedule';
-import { MUSCLE_TO_GRAPH_KEY } from '../../services/sessionReport';
 import { buildExerciseInsight, getPreviousWorkingSets } from '../../services/exerciseInsight';
 import {
   acceptExerciseNote,
@@ -82,6 +81,7 @@ import {
   Calendar,
   History,
   ChevronRight,
+  Footprints,
   Moon,
   BedDouble,
 } from 'lucide-react';
@@ -114,11 +114,8 @@ interface TrainTabProps {
   onOpenProgram?: () => void;
   /** Swap today's queued session for another split day (standard splits only). */
   onSwitchSplitDay?: (split: SplitDayType) => void;
-  /** Active days (rides, runs, walks, classes), for plans with a weekly active day. */
+  /** Active days (rides, runs, walks, classes), kept alongside lifting workouts. */
   activities?: ActivityLog[];
-  onLogActivity?: () => void;
-  onRemoveActivity?: (id: string) => void;
-  onOpenActivityApps?: () => void;
 }
 
 /** Primary muscles each split day trains, used to suggest a recovered alternative. */
@@ -153,9 +150,6 @@ const MESO_WEEK_PHASE_NAMES: Record<number, { name: string; rule: string }> = {
 export const TrainTab: React.FC<TrainTabProps> = ({
   trainingPlan,
   activities = [],
-  onLogActivity,
-  onRemoveActivity,
-  onOpenActivityApps,
   activeWorkout,
   workouts,
   readiness,
@@ -182,6 +176,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
   const [showLocationDropdown, setShowLocationDropdown] = useState(false);
   const [whoopStrainSummary, setWhoopStrainSummary] = useState<WhoopWorkoutStrainSummary | null>(null);
   const [isSyncingWhoopStrain, setIsSyncingWhoopStrain] = useState(false);
+  const [selectedStripDate, setSelectedStripDate] = useState<string | null>(null);
 
   const exMap = new Map(exerciseCatalog.map((e) => [e.id, e]));
 
@@ -282,19 +277,6 @@ export const TrainTab: React.FC<TrainTabProps> = ({
       return {
         ...ex,
         sets: [...ex.sets, newSet],
-      };
-    });
-    onUpdateWorkout({ ...activeWorkout, exercises: nextExercises });
-  };
-
-  const handleDeleteSet = (exerciseId: string, setId: string) => {
-    const nextExercises = activeWorkout.exercises.map((ex) => {
-      if (ex.id !== exerciseId) return ex;
-      const filtered = ex.sets.filter((s) => s.id !== setId);
-      const renumbered = filtered.map((s, idx) => ({ ...s, setNumber: idx + 1 }));
-      return {
-        ...ex,
-        sets: renumbered,
       };
     });
     onUpdateWorkout({ ...activeWorkout, exercises: nextExercises });
@@ -727,31 +709,6 @@ export const TrainTab: React.FC<TrainTabProps> = ({
       };
   const pageTitle = planWorkoutNumber ? trainingPlan.name : PROGRAM_TITLES[profile.programType || 'starter_6wk'] || 'Your Program';
 
-  // The plan's weekly active day (only in the "lift 3 days + 1 active day" layout).
-  const hasActiveDays = trainingPlan.templates.some(isActiveSlot);
-  const planOverview = useMemo(
-    () => (hasActiveDays ? buildPlanOverview(workouts, trainingPlan, activities) : undefined),
-    [hasActiveDays, workouts, trainingPlan, activities]
-  );
-  const currentWeek = planOverview
-    ? trainingPlan.templates.find((t) => t.workoutNumber === planOverview.nextWorkoutNumber)?.week ?? 1
-    : 1;
-  const thisWeekActive = planOverview?.workouts.find(
-    (w) => w.isActive && trainingPlan.templates.find((t) => t.workoutNumber === w.workoutNumber)?.week === currentWeek
-  )?.activity;
-  const weekAgo = localDateOffset(-6, new Date());
-  const recentActivities = activities.filter((a) => a.date >= weekAgo).sort((a, b) => b.startedAt.localeCompare(a.startedAt));
-  const activeDayCard =
-    hasActiveDays && onLogActivity && onRemoveActivity && onOpenActivityApps ? (
-      <ActiveDayCard
-        thisWeek={thisWeekActive}
-        recent={recentActivities}
-        onLog={onLogActivity}
-        onRemove={onRemoveActivity}
-        onOpenApps={onOpenActivityApps}
-      />
-    ) : null;
-
   const stripDays = useMemo(
     () =>
       buildWeekStrip({
@@ -930,6 +887,18 @@ export const TrainTab: React.FC<TrainTabProps> = ({
     </div>
   );
 
+  const todayDateStr = localDateString();
+  const isRestDayToday = activeWorkout.date > todayDateStr && completedSets === 0;
+  const isNonTrainingToday = !todayFinished && (showRecoveryGate || isRestDayToday);
+  const inspectedDay = selectedStripDate ? stripDays.find((d) => d.date === selectedStripDate) ?? null : null;
+  const overviewStepDay = inspectedDay ?? (isNonTrainingToday ? stripDays.find((d) => d.isToday) ?? { date: todayDateStr, label: 'TODAY', status: 'rest' as const, isToday: true } : null);
+  const overviewSteps = overviewStepDay ? stepsOnDate(biometrics, overviewStepDay.date) : 0;
+  const dailyStepsGoal = profile.goalSettings?.customGoals?.find((g) => g.metric === 'steps')?.target;
+  const formatDayShort = (date: string) => {
+    const d = parseLocalDate(date);
+    return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
+  };
+
   return (
     <div className="wk -mx-3.5" style={{ paddingLeft: fig(PAGE_GUTTER), paddingRight: fig(PAGE_GUTTER), paddingBottom: 120 }}>
       <PageTopGradient
@@ -947,7 +916,13 @@ export const TrainTab: React.FC<TrainTabProps> = ({
         headerRef={stickyHeaderRef}
         measureRef={stickyMeasureRef}
       />
-      <WorkoutPageHeader title={pageTitle} days={stripDays} renderMenu={renderOptionsMenu} />
+      <WorkoutPageHeader
+        title={pageTitle}
+        days={stripDays}
+        selectedDate={selectedStripDate}
+        onSelectDay={(day) => setSelectedStripDate((prev) => (prev === day.date ? null : day.date))}
+        renderMenu={renderOptionsMenu}
+      />
 
       <div ref={cardsTopRef} className="flex flex-col" style={{ gap: fig(22), marginTop: fig(64) }}>
       {/* After today's session: lead with "complete" and the progress breakdown. */}
@@ -958,12 +933,6 @@ export const TrainTab: React.FC<TrainTabProps> = ({
           {todayFinished.exercises.map((ex) => (
             <CompletedExerciseCard key={ex.id} summary={ex} />
           ))}
-          <NextWorkoutCard
-            name={activeWorkout.name}
-            readyAt={recoveryGate.readyAt ?? Date.now()}
-            limitingMuscles={recoveryGate.limitingMuscles}
-            onTrainAnyway={() => onUpdateWorkout({ ...activeWorkout, recoveryOverride: true })}
-          />
         </>
       ) : (
         <>
@@ -977,6 +946,96 @@ export const TrainTab: React.FC<TrainTabProps> = ({
             />
           )}
         </>
+      )}
+
+      {overviewStepDay && (inspectedDay || overviewStepDay.status !== 'trained') && (
+        <section
+          aria-label={overviewStepDay.isToday ? "Today's steps" : `${overviewStepDay.label} steps`}
+          className="wk-card"
+        >
+          <div className="flex items-start justify-between" style={{ gap: fig(16) }}>
+            <div>
+              <h2 className="wk-label flex items-center" style={{ gap: fig(10) }}>
+                <Footprints style={{ width: fig(30), height: fig(30), color: 'var(--wk-accent)' }} strokeWidth={2.2} aria-hidden="true" />
+                <span>
+                  {overviewStepDay.isToday
+                    ? "Today's steps"
+                    : `${overviewStepDay.label} (${formatDayShort(overviewStepDay.date)})`}
+                </span>
+              </h2>
+              <p className="wk-caption" style={{ marginTop: fig(6) }}>
+                {overviewStepDay.status === 'trained'
+                  ? 'Training day'
+                  : isRestDayToday && overviewStepDay.isToday
+                  ? 'Rest day'
+                  : 'Non-training day'}
+              </p>
+            </div>
+            {inspectedDay && (
+              <button
+                type="button"
+                onClick={() => setSelectedStripDate(null)}
+                className="wk-pill wk-tap"
+              >
+                Close
+              </button>
+            )}
+          </div>
+          <p
+            className="font-bold text-white tabular-numbers"
+            style={{ fontSize: `max(12px, ${fig(68)})`, lineHeight: 1.05, marginTop: fig(28) }}
+          >
+            {overviewSteps > 0 ? overviewSteps.toLocaleString() : '—'}
+            {overviewSteps > 0 && (
+              <span
+                className="font-semibold"
+                style={{ fontSize: `max(12px, ${fig(24)})`, color: 'var(--wk-muted)', marginLeft: fig(12) }}
+              >
+                steps
+              </span>
+            )}
+          </p>
+          {dailyStepsGoal && (
+            <>
+              <div
+                className="wk-bar"
+                style={{ marginTop: fig(24) }}
+                role="progressbar"
+                aria-valuemin={0}
+                aria-valuemax={dailyStepsGoal}
+                aria-valuenow={overviewSteps}
+                aria-label={`${overviewSteps.toLocaleString()} of ${dailyStepsGoal.toLocaleString()} steps`}
+              >
+                <div style={{ width: `${Math.min(100, (overviewSteps / dailyStepsGoal) * 100)}%` }} />
+              </div>
+              <p className="wk-caption" style={{ marginTop: fig(12) }}>
+                {overviewSteps >= dailyStepsGoal
+                  ? `Daily goal reached (${dailyStepsGoal.toLocaleString()} steps)`
+                  : `${overviewSteps.toLocaleString()} of ${dailyStepsGoal.toLocaleString()} daily step goal`}
+              </p>
+            </>
+          )}
+          {overviewSteps === 0 && (
+            <div className="flex items-center justify-between flex-wrap" style={{ gap: fig(16), marginTop: fig(18) }}>
+              <p className="wk-body">
+                No steps recorded {overviewStepDay.isToday ? 'today' : 'for this day'} yet.
+              </p>
+              {!profile.healthConnectActivities && !isWearableConnected(profile) && onOpenWatchSync && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    triggerHaptic('light');
+                    onOpenWatchSync();
+                  }}
+                  className="wk-pill wk-tap"
+                  style={{ color: 'var(--wk-accent)' }}
+                >
+                  Sync Health Connect
+                </button>
+              )}
+            </div>
+          )}
+        </section>
       )}
 
       {showRecoveryGate && !sessionReport && (
@@ -1050,9 +1109,6 @@ export const TrainTab: React.FC<TrainTabProps> = ({
         </section>
       )}
 
-      {/* On a rest day the active day is the natural next step, so it sits right under the rest card. */}
-      {(showRecoveryGate || sessionReport) && activeDayCard}
-
       {!showRecoveryGate && (<>
       {/* Exercise cards (the page gradient ends where the first one starts) */}
       <div ref={exercisesTopRef} className="flex flex-col" style={{ gap: fig(22) }}>
@@ -1115,7 +1171,6 @@ export const TrainTab: React.FC<TrainTabProps> = ({
                 onSetCompleted(ex.name, s?.setNumber || 1, s, ex);
               }}
               onAddSet={(isWarmup) => handleAddSet(ex.id, isWarmup)}
-              onDeleteSet={(setId) => handleDeleteSet(ex.id, setId)}
               onOpenSwap={() => setSwappingExercise(ex)}
               onOpenPlateCalc={(kg) => setPlateCalcWeight(kg)}
               muscleLabel={def ? MUSCLE_FRIENDLY_NAMES[def.primaryMuscle] : undefined}
@@ -1124,11 +1179,6 @@ export const TrainTab: React.FC<TrainTabProps> = ({
               note={(() => {
                 const n = exerciseNotes[index];
                 return n ? generatedNotes[n.key] ?? n.fallback : undefined;
-              })()}
-              muscleWeek={(() => {
-                const graphKey = def ? MUSCLE_TO_GRAPH_KEY[def.primaryMuscle] : undefined;
-                const m = graphKey ? knowledgeGraph.muscleProfiles.find((p) => p.muscleKey === graphKey) : undefined;
-                return m ? { label: m.displayName, sets: m.weeklySets, target: m.personalizedMav } : undefined;
               })()}
             />
           );
@@ -1169,9 +1219,6 @@ export const TrainTab: React.FC<TrainTabProps> = ({
           </span>
         )}
       </button>
-
-      {/* On a training day the workout leads; the week's active day follows it. */}
-      {activeDayCard}
       </>)}
       </div>
 

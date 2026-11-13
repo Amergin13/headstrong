@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Check } from 'lucide-react';
 import { GoalPhase, GoalSettings, StrengthPillar, UserProfile } from '../../engine/types';
 import {
@@ -8,14 +8,18 @@ import {
   MAX_GOALS,
   MAX_SESSIONS_PER_WEEK,
   MIN_SESSIONS_PER_WEEK,
+  OWN_GOAL_OPTIONS,
   PLAN_GOAL_COUNT,
   describeGoalStanding,
+  makeCustomGoal,
   sessionsPerWeekTarget,
 } from '../../services/athleteGoals';
 import { MOVEMENT_NAME, MOVEMENT_ORDER } from '../../services/movementStandards';
 import { PILLAR_STANDARD_SOURCE } from '../../engine/strengthStandards';
 import { GOAL_DISPLAY_NAME } from '../../utils/goalNames';
+import { localDateString } from '../../utils/date';
 import { triggerHaptic } from '../../utils/haptics';
+import { unitToKg } from '../../utils/units';
 import { useUnits } from '../../utils/unitsContext';
 
 const fig = (px: number) => `calc(${px} * var(--f))`;
@@ -95,6 +99,25 @@ export const GoalSettingsScreen: React.FC<GoalSettingsScreenProps> = ({ profile,
   const strengthGoal = (pillar: StrengthPillar) => goals.find((g) => g.pillar === pillar && g.id.startsWith('strength-'));
   const movements = MOVEMENT_ORDER.filter((p) => PILLAR_STANDARD_SOURCE[p] !== 'none');
   const phase = profile.goalPhase || 'Lean Bulk';
+
+  const [pickedOptionId, setPickedOptionId] = useState<string | null>(null);
+  const [customTargetInput, setCustomTargetInput] = useState('');
+  const pickedOption = OWN_GOAL_OPTIONS.find((o) => o.exerciseId === pickedOptionId);
+  const rawNumber = Number(customTargetInput);
+  const candidateGoal =
+    pickedOption && customTargetInput.trim() !== '' && Number.isFinite(rawNumber) && rawNumber > 0
+      ? makeCustomGoal(
+          pickedOption.exerciseId,
+          pickedOption.label,
+          pickedOption.metric,
+          pickedOption.metric === 'weight' ? unitToKg(rawNumber, units.unit) : rawNumber,
+          localDateString()
+        )
+      : null;
+  const candidateInvalid = Boolean(pickedOption) && customTargetInput.trim() !== '' && !candidateGoal;
+  const existingCustomList = settings.customGoals ?? [];
+  const replacingExisting = candidateGoal ? existingCustomList.some((g) => g.id === candidateGoal.id) : false;
+  const customSlotsFull = ownGoals.length >= MAX_CUSTOM_GOALS && !replacingExisting;
 
   return (
     <>
@@ -190,8 +213,102 @@ export const GoalSettingsScreen: React.FC<GoalSettingsScreenProps> = ({ profile,
           </span>
         </div>
         <p className="wk-body" style={{ marginTop: fig(12) }}>
-          You have 3 goals from your plan and can add up to {MAX_CUSTOM_GOALS} of your own. To add one, open Treise and say it, for example "my goal is 12 chin-ups" or "set a goal of 100 kg on bench press".
+          You have 3 goals from your plan and can add up to {MAX_CUSTOM_GOALS} of your own. Pick one below or open Treise and say it, for example &quot;my goal is 10,000 steps&quot; or &quot;set a goal of 100 kg on bench press&quot;.
         </p>
+
+        <div className="flex flex-wrap" style={{ gap: fig(12), marginTop: fig(24) }}>
+          {OWN_GOAL_OPTIONS.map((opt) => {
+            const active = pickedOptionId === opt.exerciseId;
+            return (
+              <button
+                key={opt.exerciseId}
+                type="button"
+                aria-pressed={active}
+                onClick={() => {
+                  triggerHaptic('light');
+                  if (active) {
+                    setPickedOptionId(null);
+                    setCustomTargetInput('');
+                  } else {
+                    setPickedOptionId(opt.exerciseId);
+                    setCustomTargetInput(opt.metric === 'steps' ? '10000' : '');
+                  }
+                }}
+                className="wk-pill wk-tap"
+                style={{
+                  background: active ? 'rgba(0,241,159,0.14)' : 'var(--wk-raised)',
+                  color: active ? 'var(--wk-accent)' : '#fff',
+                  border: active ? `${fig(2)} solid var(--wk-accent)` : `${fig(2)} solid transparent`,
+                  minHeight: 44,
+                  padding: `0 ${fig(24)}`,
+                }}
+              >
+                {opt.label}
+              </button>
+            );
+          })}
+        </div>
+
+        {pickedOption && (
+          <div style={{ marginTop: fig(24) }}>
+            <div className="flex items-center flex-wrap" style={{ gap: fig(16) }}>
+              <label htmlFor="custom-goal-target" className="wk-label" style={{ flexShrink: 0 }}>
+                {pickedOption.metric === 'weight' ? 'Lift' : pickedOption.metric === 'steps' ? 'Reach' : 'Do'}
+              </label>
+              <input
+                id="custom-goal-target"
+                type="number"
+                inputMode={pickedOption.metric === 'weight' ? 'decimal' : 'numeric'}
+                min={pickedOption.metric === 'steps' ? 500 : 1}
+                step={pickedOption.metric === 'steps' ? 500 : undefined}
+                value={customTargetInput}
+                onChange={(e) => setCustomTargetInput(e.target.value)}
+                aria-invalid={candidateInvalid}
+                className="wk-field tabular-numbers"
+                style={{ width: fig(220), minHeight: 44, padding: `0 ${fig(24)}`, fontSize: text(34), color: '#fff' }}
+              />
+              <span className="wk-body">
+                {pickedOption.metric === 'weight' ? units.unit : pickedOption.metric === 'steps' ? 'steps a day' : 'reps in one set'}
+              </span>
+            </div>
+            {candidateInvalid && (
+              <p className="wk-caption" style={{ marginTop: fig(12), color: '#FFB4A2' }}>
+                {pickedOption.metric === 'steps'
+                  ? 'Enter a daily step target between 500 and 100,000.'
+                  : pickedOption.metric === 'weight'
+                  ? 'Enter a weight target you could reach.'
+                  : 'Enter a number of reps up to 100.'}
+              </p>
+            )}
+            {customSlotsFull && (
+              <p className="wk-caption" style={{ marginTop: fig(12) }}>
+                Remove one of your {MAX_CUSTOM_GOALS} goals below before adding another.
+              </p>
+            )}
+            <button
+              type="button"
+              disabled={!candidateGoal || customSlotsFull}
+              onClick={() => {
+                if (!candidateGoal || customSlotsFull) return;
+                triggerHaptic('medium');
+                const others = existingCustomList.filter((g) => g.id !== candidateGoal.id);
+                save({ ...settings, customGoals: [...others, candidateGoal] });
+                setPickedOptionId(null);
+                setCustomTargetInput('');
+              }}
+              className="wk-button"
+              style={{
+                marginTop: fig(20),
+                background: candidateGoal && !customSlotsFull ? 'var(--wk-accent)' : 'var(--wk-pill)',
+                color: candidateGoal && !customSlotsFull ? '#13181C' : 'rgba(255,255,255,0.5)',
+                cursor: candidateGoal && !customSlotsFull ? 'pointer' : 'not-allowed',
+              }}
+            >
+              {replacingExisting ? `Update ${pickedOption.label} goal` : `Add ${pickedOption.label} goal`}
+            </button>
+          </div>
+        )}
+
         {ownGoals.length > 0 && (
           <ul className="flex flex-col" style={{ marginTop: fig(20) }}>
             {ownGoals.map((goal) => {

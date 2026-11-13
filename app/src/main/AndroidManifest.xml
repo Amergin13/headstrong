@@ -24,8 +24,9 @@
     
         <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
 
-    <!-- Health Connect: read exercise sessions only (active days). -->
+    <!-- Health Connect: read exercise sessions (active days) and daily steps only. -->
     <uses-permission android:name="android.permission.health.READ_EXERCISE"/>
+    <uses-permission android:name="android.permission.health.READ_STEPS"/>
 
     <!-- Renpho scale: find it and talk to it directly, so it only has to be paired once. Readings
          stay on the phone. Bluetooth is never used to work out where the athlete is. -->

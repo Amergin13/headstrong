@@ -5,6 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "local": "TREISE_LOCAL_TEST=1 VITE_LOCAL_TEST_COPY=true vite --port 5174 --host",
+    "test:local:e2e": "node scripts/verifyLocalTestCopy.mjs",
     "generate:assets": "node scripts/generatePlayStoreAssets.mjs",
     "build": "tsc && vite build",
     "preview": "vite preview",

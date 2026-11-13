@@ -493,13 +493,27 @@ select:focus-visible {
   animation: wk-bar-grow 800ms cubic-bezier(0.22, 1, 0.36, 1) 350ms both;
 }
 
-/* The coach flies up from the bottom of the screen. */
+/* The coach flies up from and slides back down to the bottom of the screen. */
 @keyframes wk-sheet-up {
   from { transform: translateY(100%); }
   to { transform: translateY(0); }
 }
 .wk-sheet-up {
   animation: wk-sheet-up 320ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@keyframes wk-sheet-down {
+  from { transform: translateY(0); }
+  to { transform: translateY(100%); }
+}
+.wk-sheet-down {
+  animation: wk-sheet-down 240ms cubic-bezier(0.4, 0, 1, 1) both;
+}
+@keyframes wk-backdrop-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.wk-backdrop-in {
+  animation: wk-backdrop-in 240ms ease-out both;
 }
 
 /* Progress page goal rings: an arc draws round, and the segments of a counted goal pop in one by one. */

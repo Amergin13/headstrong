@@ -11,6 +11,8 @@ import androidx.browser.customtabs.CustomTabsSession
 import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.permission.HealthPermission
 import androidx.health.connect.client.records.ExerciseSessionRecord
+import androidx.health.connect.client.records.StepsRecord
+import androidx.health.connect.client.request.AggregateGroupByPeriodRequest
 import androidx.health.connect.client.request.ReadRecordsRequest
 import androidx.health.connect.client.time.TimeRangeFilter
 import kotlinx.coroutines.CoroutineScope
@@ -22,16 +24,21 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.time.Duration
 import java.time.Instant
+import java.time.LocalDateTime
+import java.time.Period
+import java.time.ZoneId
 
 /**
  * Health Connect for the Treise web app.
  *
- * A web page can't read Health Connect, so this app reads exercise sessions natively and passes
- * them to the page over Chrome's Trusted Web Activity message channel (Chrome 115+). The page's
- * side is src/services/healthConnectBridge.ts; the message format is documented there.
+ * A web page can't read Health Connect, so this app reads exercise sessions and daily step counts
+ * natively and passes them to the page over Chrome's Trusted Web Activity message channel
+ * (Chrome 115+). The page's side is src/services/healthConnectBridge.ts; the message format is
+ * documented there.
  *
- * Only ExerciseSessionRecord is read (type, start, end, title), only after the athlete allows it in
- * Health Connect, and only when the page asks. Nothing is stored or sent anywhere else.
+ * Only ExerciseSessionRecord (type, start, end, title) and aggregated daily StepsRecord totals
+ * are read, only after the athlete allows it in Health Connect, and only when the page asks.
+ * Nothing is stored or sent anywhere else.
  */
 object HealthConnectBridge {
     private const val TAG = "TreiseHealthConnect"
@@ -39,7 +46,9 @@ object HealthConnectBridge {
     /** The web app's origin. Digital Asset Links (use_as_origin) lets the app speak as this origin. */
     val ORIGIN: Uri = Uri.parse("https://treise.vercel.app")
 
-    val READ_PERMISSIONS: Set<String> = setOf(HealthPermission.getReadPermission(ExerciseSessionRecord::class))
+    val EXERCISE_PERMISSION: String = HealthPermission.getReadPermission(ExerciseSessionRecord::class)
+    val STEPS_PERMISSION: String = HealthPermission.getReadPermission(StepsRecord::class)
+    val READ_PERMISSIONS: Set<String> = setOf(EXERCISE_PERMISSION, STEPS_PERMISSION)
 
     /** Health Connect only lets an app read 30 days back without the history permission. */
     private val MAX_LOOKBACK: Duration = Duration.ofDays(29)
@@ -94,7 +103,7 @@ object HealthConnectBridge {
     }
 
     fun onChannelReady() {
-        post(JSONObject().put("type", "hello").put("version", 3)) // 2: the app can reach the scale; 3: the page opens permission screens
+        post(JSONObject().put("type", "hello").put("version", 4)) // 2: scale; 3: permission screens; 4: read-steps
     }
 
     fun onMessage(message: String) {
@@ -123,29 +132,45 @@ object HealthConnectBridge {
                 }
                 scope.launch { readSessions(requestId, since) }
             }
+            "read-steps" -> {
+                val requestId = msg.optString("requestId")
+                val since = try {
+                    Instant.parse(msg.optString("since"))
+                } catch (e: Exception) {
+                    Instant.now().minus(Duration.ofDays(14))
+                }
+                scope.launch { readSteps(requestId, since) }
+            }
         }
     }
 
     private fun isAvailable(): Boolean =
         HealthConnectClient.getSdkStatus(appContext) == HealthConnectClient.SDK_AVAILABLE
 
-    /** Tells the page whether Health Connect is usable and whether Treise may read workouts. */
+    /** Tells the page whether Health Connect is usable and whether Treise may read workouts and daily steps. */
     fun sendStatus() {
         scope.launch {
             val available = isAvailable()
-            val granted = if (available) {
+            val (exerciseGranted, stepsGranted) = if (available) {
                 try {
                     val client = HealthConnectClient.getOrCreate(appContext)
-                    withContext(Dispatchers.IO) {
-                        client.permissionController.getGrantedPermissions().containsAll(READ_PERMISSIONS)
+                    val permissions = withContext(Dispatchers.IO) {
+                        client.permissionController.getGrantedPermissions()
                     }
+                    Pair(permissions.contains(EXERCISE_PERMISSION), permissions.contains(STEPS_PERMISSION))
                 } catch (e: Exception) {
-                    false
+                    Pair(false, false)
                 }
             } else {
-                false
+                Pair(false, false)
             }
-            post(JSONObject().put("type", "status").put("available", available).put("granted", granted))
+            post(
+                JSONObject()
+                    .put("type", "status")
+                    .put("available", available)
+                    .put("granted", exerciseGranted)
+                    .put("stepsGranted", stepsGranted)
+            )
         }
     }
 
@@ -190,6 +215,55 @@ object HealthConnectBridge {
             post(reply.put("error", "not-granted"))
         } catch (e: Exception) {
             Log.w(TAG, "Reading exercise sessions failed", e)
+            post(reply.put("error", "read-failed"))
+        }
+    }
+
+    /**
+     * Reads Health Connect aggregated daily step totals (deduplicated across watch and phone
+     * sources by Health Connect) from [since] until now, sliced by local calendar day.
+     */
+    private suspend fun readSteps(requestId: String, since: Instant) {
+        val reply = JSONObject().put("type", "steps").put("requestId", requestId)
+        if (!isAvailable()) {
+            post(reply.put("error", "Health Connect isn't available"))
+            return
+        }
+        try {
+            val client = HealthConnectClient.getOrCreate(appContext)
+            val zone = ZoneId.systemDefault()
+            val now = LocalDateTime.now(zone)
+            val earliest = now.toLocalDate().minusDays(29).atStartOfDay()
+            val requestedStart = since.atZone(zone).toLocalDate().atStartOfDay()
+            val start = when {
+                requestedStart.isAfter(now) -> now.toLocalDate().atStartOfDay()
+                requestedStart.isBefore(earliest) -> earliest
+                else -> requestedStart
+            }
+            val buckets = withContext(Dispatchers.IO) {
+                client.aggregateGroupByPeriod(
+                    AggregateGroupByPeriodRequest(
+                        metrics = setOf(StepsRecord.COUNT_TOTAL),
+                        timeRangeFilter = TimeRangeFilter.between(start, now),
+                        timeRangeSlicer = Period.ofDays(1)
+                    )
+                )
+            }
+            val days = JSONArray()
+            for (bucket in buckets) {
+                val count = bucket.result[StepsRecord.COUNT_TOTAL] ?: 0L
+                if (count <= 0L) continue
+                days.put(
+                    JSONObject()
+                        .put("date", bucket.startTime.toLocalDate().toString())
+                        .put("steps", count)
+                )
+            }
+            post(reply.put("days", days))
+        } catch (e: SecurityException) {
+            post(reply.put("error", "not-granted"))
+        } catch (e: Exception) {
+            Log.w(TAG, "Reading daily steps failed", e)
             post(reply.put("error", "read-failed"))
         }
     }

@@ -187,7 +187,7 @@ export const ActivityConnectionsModal: React.FC<
           {!hcStatus.bridge ? (
             <p className="wk-body" style={{ marginTop: fig(12) }}>
               Available in the Treise app from Google Play on Android. It reads
-              workouts from Google Pixel Watch, Fitbit, Samsung Health, Google Fit and Garmin.
+              workouts and daily step counts from Google Pixel Watch, Fitbit, Samsung Health, Google Fit and Garmin.
             </p>
           ) : !hcStatus.available ? (
             <p className="wk-body" style={{ marginTop: fig(12) }}>
@@ -198,7 +198,7 @@ export const ActivityConnectionsModal: React.FC<
             <>
               <p className="wk-body" style={{ marginTop: fig(12) }}>
                 Treise reads your exercise sessions (type, start time and
-                length) from Health Connect, including workouts from Fitbit, Pixel Watch, Samsung Health and Garmin. Nothing else.
+                length) and daily step counts from Health Connect, including data from Fitbit, Pixel Watch, Samsung Health and Garmin. Nothing else.
               </p>
               <button
                 type="button"
@@ -208,7 +208,7 @@ export const ActivityConnectionsModal: React.FC<
                     onSetHealthConnect(false);
                   } else {
                     onSetHealthConnect(true);
-                    if (!hcStatus.granted && onRequestHealthConnectPermission() === false) setNeedsAppUpdate(true);
+                    if ((!hcStatus.granted || !hcStatus.stepsGranted) && onRequestHealthConnectPermission() === false) setNeedsAppUpdate(true);
                   }
                 }}
                 className="wk-button"
@@ -220,10 +220,27 @@ export const ActivityConnectionsModal: React.FC<
               >
                 {hcOn
                   ? "Turn off Health Connect"
-                  : hcStatus.granted
+                  : hcStatus.granted && hcStatus.stepsGranted
                     ? "Turn on Health Connect"
                     : "Allow access in Health Connect"}
               </button>
+              {hcOn && !hcStatus.stepsGranted && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    triggerHaptic("light");
+                    if (onRequestHealthConnectPermission() === false) setNeedsAppUpdate(true);
+                  }}
+                  className="wk-button"
+                  style={{
+                    marginTop: fig(12),
+                    background: "var(--wk-accent)",
+                    color: "#13181C",
+                  }}
+                >
+                  Allow daily steps in Health Connect
+                </button>
+              )}
               {needsAppUpdate && (
                 <p className="wk-body" style={{ marginTop: fig(16) }}>
                   Update Treise from Google Play to allow this here. Or open Android Settings, then Health Connect, then App permissions, and allow Treise.

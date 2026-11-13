@@ -37,6 +37,7 @@ import { runReadAloudQaGate, VOICE_TONE_MATRIX } from '../engine/contentStrategy
 import { buildExerciseInsight } from './exerciseInsight';
 import { spelledNumberNotInFacts } from './factChecks';
 import { detectGoalChange } from './coachGoals';
+import { detectProgressWidgetChange } from './progressWidgets';
 import { buildExerciseNoteFacts } from './exerciseCoachNote';
 import { MUSCLE_FRIENDLY_NAMES } from '../engine/recovery';
 import { findLastCompletedExerciseSession } from '../engine/progression';
@@ -563,10 +564,20 @@ async function processAssistantMessageCore(
   const matchedEquip = equipmentChange?.equipment;
 
   // ============================================================================
-  // 0. INTENT: CHANGE GOALS (sessions a week, own targets, the lift to follow, back to the plan's)
+  // 0. INTENT: CUSTOMISE PROGRESS WIDGETS / CHANGE GOALS
   // ============================================================================
-  const goalChange = detectGoalChange(lowerMsg, profile, activeWorkout, workouts, exerciseCatalog);
-  if (goalChange) {
+  const progressWidgetChange = detectProgressWidgetChange(lowerMsg, profile, exerciseCatalog, activeWorkout);
+  const goalChange = progressWidgetChange ? null : detectGoalChange(lowerMsg, profile, activeWorkout, workouts, exerciseCatalog);
+  if (progressWidgetChange) {
+    answerText = progressWidgetChange.reply;
+    if (progressWidgetChange.changed) {
+      updatedProfile = { progressWidgets: progressWidgetChange.progressWidgets };
+      actionTaken = {
+        type: 'UPDATE_PROGRESS_WIDGETS',
+        summary: progressWidgetChange.summary ?? 'Progress widgets updated',
+      };
+    }
+  } else if (goalChange) {
     answerText = goalChange.reply;
     if (goalChange.changed) {
       updatedProfile = { goalSettings: goalChange.goalSettings };
@@ -1074,7 +1085,7 @@ async function processAssistantMessageCore(
         } else if (kg.recoveryEfficiencyScore > 0) {
           answerText = `Your recovery looks normal${scoreText}${readings}. Follow today's targets as planned.`;
         } else {
-          answerText = `I don't have any recovery data from a watch yet, so your plan runs at normal effort. Connect a Pixel Watch, Fitbit or Whoop in Program → Wearable & Recovery and I'll adjust each day to your sleep and heart rate. Meanwhile, your workout page shows when each muscle group has recovered from your last session.`;
+          answerText = `I don't have any recovery data from a watch yet, so your plan runs at normal effort. Connect a Pixel Watch, Fitbit or Whoop in Profile → Settings → Wearable & Recovery and I'll adjust each day to your sleep and heart rate. Meanwhile, your workout page shows when each muscle group has recovered from your last session.`;
         }
 
         citations.push({

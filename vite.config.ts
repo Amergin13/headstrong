@@ -2,11 +2,15 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 import path from 'path';
+import { localApiPlugin } from './scripts/localApiPlugin.mjs';
+
+const isLocalTestServer = process.env.TREISE_LOCAL_TEST === '1';
 
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [
     react(),
+    localApiPlugin({ enabled: isLocalTestServer }),
     VitePWA({
       registerType: 'autoUpdate',
       workbox: {

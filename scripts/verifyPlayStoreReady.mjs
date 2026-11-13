@@ -159,11 +159,12 @@ assert(
 const androidManifest = fs.readFileSync(path.resolve(process.cwd(), 'app/src/main/AndroidManifest.xml'), 'utf8');
 assert(
   androidManifest.includes('android.permission.health.READ_EXERCISE') &&
+    androidManifest.includes('android.permission.health.READ_STEPS') &&
     androidManifest.includes('ACTION_SHOW_PERMISSIONS_RATIONALE') &&
     androidManifest.includes('VIEW_PERMISSION_USAGE') &&
     androidManifest.includes('androidx.browser.customtabs.PostMessageService') &&
-    !/android\.permission\.health\.(WRITE|READ_(?!EXERCISE"))/.test(androidManifest),
-  'Android app asks only for READ_EXERCISE and has the Health Connect privacy screens'
+    !/android\.permission\.health\.(WRITE|READ_(?!(EXERCISE|STEPS)"))/.test(androidManifest),
+  'Android app asks only for READ_EXERCISE and READ_STEPS and has the Health Connect privacy screens'
 );
 assert(
   /BLUETOOTH_SCAN"\s+android:usesPermissionFlags="neverForLocation"/.test(androidManifest) &&

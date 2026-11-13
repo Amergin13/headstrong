@@ -1,8 +1,9 @@
-import { OWN_GOAL_LIFTS, makeCustomGoal } from '../../services/athleteGoals';
+import { OWN_GOAL_OPTIONS, makeCustomGoal } from '../../services/athleteGoals';
 import { unitToKg } from '../../utils/units';
 import React, { useEffect, useRef, useState } from 'react';
 import { Check, ChevronLeft, X } from 'lucide-react';
 import {
+  CustomGoal,
   ExperienceLevel,
   Gender,
   GoalPhase,
@@ -35,7 +36,7 @@ export interface OnboardingModalProps {
       bodyweightKg?: number;
     };
     /** A goal of the athlete's own, if they set one: a weight in kg, or reps in one set. */
-    ownGoal?: { exerciseId: string; metric: 'weight' | 'reps'; target: number };
+    ownGoal?: { exerciseId: string; metric: CustomGoal['metric']; target: number };
   }) => void;
   onClose: () => void;
   onExploreDemo?: () => void;
@@ -177,7 +178,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
   const [ownLift, setOwnLift] = useState<string | null>(null);
   const [ownTarget, setOwnTarget] = useState('');
   const unit: WeightUnit = returning ? profile.weightUnit || 'kg' : defaultUnit();
-  const ownChoice = OWN_GOAL_LIFTS.find((l) => l.exerciseId === ownLift);
+  const ownChoice = OWN_GOAL_OPTIONS.find((l) => l.exerciseId === ownLift);
   const ownNumber = Number(ownTarget);
   const ownGoal =
     ownChoice && ownTarget.trim() !== '' && Number.isFinite(ownNumber) && ownNumber > 0
@@ -368,7 +369,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                 <fieldset style={{ marginTop: fig(48) }}>
                   <legend style={sectionLabel}>A goal of your own (optional)</legend>
                   <div className="flex flex-wrap" style={{ gap: fig(14) }}>
-                    {OWN_GOAL_LIFTS.map((lift) => {
+                    {OWN_GOAL_OPTIONS.map((lift) => {
                       const on = ownLift === lift.exerciseId;
                       return (
                         <button
@@ -378,7 +379,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                           onClick={() => {
                             triggerHaptic('light');
                             setOwnLift(on ? null : lift.exerciseId);
-                            setOwnTarget('');
+                            setOwnTarget(on ? '' : lift.metric === 'steps' ? '10000' : '');
                           }}
                           className="flex items-center font-semibold"
                           style={{ ...choiceStyle(on), borderRadius: 999, padding: `0 ${fig(30)}`, minHeight: 44, fontSize: `max(12px, ${fig(26)})`, color: '#fff' }}
@@ -391,13 +392,14 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                   {ownChoice && (
                     <div className="flex items-center" style={{ gap: fig(16), marginTop: fig(20) }}>
                       <label htmlFor="own-goal-target" style={{ ...optionText, flexShrink: 0 }}>
-                        {ownChoice.metric === 'weight' ? 'Lift' : 'Do'}
+                        {ownChoice.metric === 'weight' ? 'Lift' : ownChoice.metric === 'steps' ? 'Reach' : 'Do'}
                       </label>
                       <input
                         id="own-goal-target"
                         type="number"
-                        inputMode="decimal"
-                        min={1}
+                        inputMode={ownChoice.metric === 'weight' ? 'decimal' : 'numeric'}
+                        min={ownChoice.metric === 'steps' ? 500 : 1}
+                        step={ownChoice.metric === 'steps' ? 500 : undefined}
                         value={ownTarget}
                         onChange={(e) => setOwnTarget(e.target.value)}
                         aria-invalid={ownInvalid}
@@ -405,15 +407,25 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                         className="wk-field tabular-numbers"
                         style={{ width: fig(220), minHeight: 44, padding: `0 ${fig(24)}`, fontSize: `max(16px, ${fig(34)})`, color: '#fff' }}
                       />
-                      <span style={optionText}>{ownChoice.metric === 'weight' ? unit : 'reps in one set'}</span>
+                      <span style={optionText}>
+                        {ownChoice.metric === 'weight' ? unit : ownChoice.metric === 'steps' ? 'steps a day' : 'reps in one set'}
+                      </span>
                     </div>
                   )}
                   <p id="own-goal-help" style={{ ...optionDetail, marginTop: fig(16) }}>
                     {ownInvalid
-                      ? `Enter ${ownChoice!.metric === 'weight' ? 'a weight' : 'a number of reps'} you could reach.`
+                      ? `Enter ${
+                          ownChoice!.metric === 'weight'
+                            ? 'a weight'
+                            : ownChoice!.metric === 'steps'
+                            ? 'between 500 and 100,000 steps'
+                            : 'a number of reps'
+                        } you could reach.`
                       : ownChoice
                       ? ownChoice.metric === 'weight'
                         ? 'Counted by your heaviest logged set, whatever the reps.'
+                        : ownChoice.metric === 'steps'
+                        ? 'Counted from Health Connect or your watch each day.'
                         : 'Counted by the most reps you log in one set.'
                       : 'Your plan gives you three goals. Add one of your own if you have a number in mind; you can add or change it later.'}
                   </p>

@@ -11,42 +11,45 @@ interface NavigationBarProps {
   onOpenAICoach?: () => void;
 }
 
-/** Treise geometric "T" paired with brand-orange AI sparkles (#DC8748 / #FF9E6D). */
+/** Treise geometric "T" sized and weighted to balance the nav segments, with a warm glow around the letter and bottom-right AI sparkles. */
 const TreiseCoachMark: React.FC<{ active: boolean }> = ({ active }) => (
   <svg
-    viewBox="0 0 36 36"
-    className="w-10 h-10 transition-transform duration-200 group-active:scale-90"
+    viewBox="0 0 48 48"
+    className="w-12 h-12 transition-transform duration-200 group-active:scale-90 overflow-visible"
     aria-hidden="true"
   >
     <defs>
       <linearGradient id="treise-coach-sparkle-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-        <stop offset="0%" stopColor="#FF9E6D" />
-        <stop offset="100%" stopColor="#DC8748" />
+        <stop offset="0%" stopColor="#FFD7B8" />
+        <stop offset="50%" stopColor="#FF9B54" />
+        <stop offset="100%" stopColor="#E47E38" />
       </linearGradient>
+      <filter id="treise-t-glow" x="-60%" y="-60%" width="220%" height="220%">
+        <feGaussianBlur in="SourceAlpha" stdDeviation={active ? '3.0' : '2.4'} result="blurOuter" />
+        <feFlood floodColor="#E97D32" floodOpacity={active ? '0.85' : '0.55'} result="colorOuter" />
+        <feComposite in="colorOuter" in2="blurOuter" operator="in" result="glowOuter" />
+        <feMerge>
+          <feMergeNode in="glowOuter" />
+          <feMergeNode in="SourceGraphic" />
+        </feMerge>
+      </filter>
     </defs>
-    {/* Subtle outer emblem ring */}
-    <circle
-      cx="18"
-      cy="18"
-      r="16.25"
-      fill="rgba(16, 20, 25, 0.72)"
-      stroke={active ? 'rgba(220, 135, 72, 0.85)' : 'rgba(255, 255, 255, 0.24)'}
-      strokeWidth={active ? '1.5' : '1.15'}
-    />
-    {/* Crisp geometric Treise "T" */}
+    {/* Centered geometric Treise "T" (~16.5x18px, 2.4px stroke) matching the visual weight of the nav segments */}
     <path
-      d="M10 12.6H21.6V15.1H17.1V25.8H14.5V15.1H10V12.6Z"
-      fill="#F3EEE3"
+      d="M15.75 15H32.25V17.4H25.2V33H22.8V17.4H15.75V15Z"
+      fill={active ? '#FBF7EE' : '#DCD9D2'}
+      filter="url(#treise-t-glow)"
     />
-    {/* Primary brand-orange 4-point AI sparkle */}
+    {/* Crisp primary 4-point AI sparkle tucked cleanly at bottom right of the T */}
     <path
-      d="M25.2 7.2L26.02 9.58L28.4 10.4L26.02 11.22L25.2 13.6L24.38 11.22L22 10.4L24.38 9.58L25.2 7.2Z"
+      d="M30.5 26.2L31.46 28.84L34.1 29.8L31.46 30.76L30.5 33.4L29.54 30.76L26.9 29.8L29.54 28.84L30.5 26.2Z"
       fill="url(#treise-coach-sparkle-grad)"
+      filter="url(#treise-t-glow)"
     />
-    {/* Secondary smaller brand-orange AI sparkle */}
+    {/* Crisp secondary AI sparkle */}
     <path
-      d="M28.1 14.2L28.56 15.54L29.9 16L28.56 16.46L28.1 17.8L27.64 16.46L26.3 16L27.64 15.54L28.1 14.2Z"
-      fill="#DC8748"
+      d="M34.2 22.8L34.74 24.26L36.2 24.8L34.74 25.34L34.2 26.8L33.66 25.34L32.2 24.8L33.66 24.26L34.2 22.8Z"
+      fill={active ? '#FFD7B8' : '#FFA668'}
     />
   </svg>
 );
@@ -143,16 +146,16 @@ export const NavigationBar: React.FC<NavigationBarProps> = ({
           title="Treise"
           className="relative shrink-0 w-16 h-16 min-h-[44px] min-w-[44px] flex items-center justify-center backdrop-blur-2xl transition-all duration-200 group active:scale-95 overflow-hidden"
           style={{
-            borderRadius: 60,
+            borderRadius: 18,
             background: isChatOpen
-              ? 'radial-gradient(circle at 60% 35%, rgba(220, 135, 72, 0.24) 0%, rgba(26, 31, 37, 0.96) 72%)'
-              : 'radial-gradient(circle at 62% 32%, rgba(220, 135, 72, 0.14) 0%, rgba(33, 39, 46, 0.92) 55%, rgba(22, 26, 31, 0.95) 100%)',
+              ? 'radial-gradient(circle at 50% 50%, rgba(235, 132, 62, 0.30) 0%, rgba(28, 33, 39, 0.96) 72%)'
+              : 'radial-gradient(circle at 55% 55%, rgba(235, 132, 62, 0.14) 0%, rgba(35, 41, 48, 0.90) 60%, rgba(22, 26, 31, 0.95) 100%)',
             border: isChatOpen
-              ? '1px solid rgba(220, 135, 72, 0.65)'
-              : '1px solid rgba(255, 255, 255, 0.13)',
+              ? '1px solid rgba(255, 158, 109, 0.65)'
+              : '1px solid rgba(255, 255, 255, 0.11)',
             boxShadow: isChatOpen
-              ? 'inset 0 1px 0 rgba(255, 190, 140, 0.28), 0 0 22px rgba(220, 135, 72, 0.28), 0 12px 32px rgba(0, 0, 0, 0.58)'
-              : 'inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 12px 32px rgba(0, 0, 0, 0.58)',
+              ? 'inset 0 1px 0 rgba(255, 196, 150, 0.28), 0 0 22px rgba(235, 132, 62, 0.32), 0 12px 32px rgba(0, 0, 0, 0.58)'
+              : 'inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 12px 32px rgba(0, 0, 0, 0.58)',
           }}
         >
           <TreiseCoachMark active={isChatOpen} />

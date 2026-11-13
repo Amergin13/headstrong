@@ -47,9 +47,11 @@ const Dots: React.FC<{ filled: number; total: number; label: string }> = ({ fill
   </div>
 );
 
-/** The weekly goal: this week (the small loop), then the weeks (the long loop). */
+/** The weekly goal: this week (days), the weeks in the month, and the months in the year. */
 const FrequencyDetail: React.FC<{ goal: AthleteGoal; measure: FrequencyMeasure }> = ({ goal, measure }) => {
   const tallest = Math.max(measure.perWeek, ...measure.weeks.map((w) => w.sessions));
+  const monthlyTarget = measure.perWeek * 4;
+  const tallestMonth = Math.max(monthlyTarget, ...measure.months.map((m) => m.sessions));
   const toHabit = Math.max(0, HABIT_WEEKS - measure.streakWeeks);
   return (
     <>
@@ -118,6 +120,53 @@ const FrequencyDetail: React.FC<{ goal: AthleteGoal; measure: FrequencyMeasure }
             : `Research with new gym members found ${HABIT_WEEKS} weeks in a row at ${measure.perWeek} sessions was what it took to build the habit. A missed week doesn't undo the ones before it: the count starts again with your next full week.`}
         </p>
       </section>
+
+      <section className="wk-card" aria-label="Month by month">
+        <h2 className="wk-label">Month by month</h2>
+        <dl className="grid grid-cols-3" style={{ gap: fig(24), marginTop: fig(36) }}>
+          {[
+            { label: `Months at ${monthlyTarget}`, value: measure.monthsHit },
+            { label: 'Months training', value: measure.monthsTracked },
+            { label: 'Monthly target', value: monthlyTarget },
+          ].map((s) => (
+            <div key={s.label}>
+              <dt className="uppercase" style={{ fontSize: text(24), lineHeight: 1.21, color: 'var(--wk-muted)' }}>
+                {s.label}
+              </dt>
+              <dd className="font-bold text-white tabular-numbers" style={{ fontSize: text(56), lineHeight: 1.05, marginTop: fig(10) }}>
+                {s.value}
+              </dd>
+            </div>
+          ))}
+        </dl>
+        <div
+          className="relative flex items-end"
+          style={{ gap: fig(10), height: fig(220), marginTop: fig(48) }}
+          role="img"
+          aria-label={`Sessions in each of the last ${measure.months.length} months: ${measure.months.map((m) => m.sessions).join(', ')}. The monthly target is ${monthlyTarget}.`}
+        >
+          <div
+            className="absolute left-0 right-0"
+            style={{ bottom: `${(monthlyTarget / tallestMonth) * 100}%`, borderTop: `${fig(2)} dashed rgba(255,255,255,0.35)` }}
+            aria-hidden="true"
+          />
+          {measure.months.map((mo) => (
+            <div key={mo.month} className="flex-1 flex flex-col justify-end h-full" aria-hidden="true">
+              <div
+                style={{
+                  height: `${Math.max(mo.sessions > 0 ? 6 : 2, (mo.sessions / tallestMonth) * 100)}%`,
+                  borderRadius: fig(8),
+                  background: mo.hit ? 'var(--wk-accent)' : mo.current ? '#8FD3FF' : 'var(--wk-pill)',
+                }}
+              />
+            </div>
+          ))}
+        </div>
+        <div className="flex justify-between wk-caption" style={{ marginTop: fig(12) }} aria-hidden="true">
+          <span>{measure.months[0].month}</span>
+          <span>This month</span>
+        </div>
+      </section>
       <Method goal={goal} />
     </>
   );
@@ -184,11 +233,44 @@ const StrengthDetail: React.FC<{ goal: AthleteGoal; others: AthleteGoal[]; onOpe
   );
 };
 
-/** A target the athlete set themselves on one exercise. */
+/** A target the athlete set themselves (on one exercise or daily steps). */
 const TargetDetail: React.FC<{ goal: AthleteGoal }> = ({ goal }) => {
   const units = useUnits();
   const m = goal.measure;
   if (m.type !== 'target') return null;
+  if (m.metric === 'steps') {
+    const remaining = Math.max(0, m.target - m.best);
+    return (
+      <>
+        <section className="wk-card" aria-label={goal.title}>
+          <h2 className="wk-label">{m.exerciseName}</h2>
+          <Big value={`${m.best.toLocaleString()}/${m.target.toLocaleString()}`} unit="steps today" />
+          <div
+            className="wk-bar"
+            style={{ marginTop: fig(36) }}
+            role="progressbar"
+            aria-valuemin={0}
+            aria-valuemax={m.target}
+            aria-valuenow={m.best}
+            aria-label={`${m.best.toLocaleString()} of ${m.target.toLocaleString()} steps`}
+          >
+            <div style={{ width: `${Math.min(100, (m.best / m.target) * 100)}%` }} />
+          </div>
+          <p className="wk-body" style={{ marginTop: fig(36) }}>
+            {goal.achieved
+              ? `You've reached today's target of ${m.target.toLocaleString()} steps.`
+              : m.best > 0
+              ? `${m.best.toLocaleString()} steps recorded today: ${remaining.toLocaleString()} to go.`
+              : 'No steps recorded today yet. Connect Health Connect or sync your watch to track your daily steps.'}
+          </p>
+          <p className="wk-caption" style={{ marginTop: fig(20) }}>
+            Set on {dayMonth(m.createdOn)}
+          </p>
+        </section>
+        <Method goal={goal} />
+      </>
+    );
+  }
   const byWeight = m.metric === 'weight';
   const best = byWeight ? units.format(m.best) : `${m.best}`;
   const target = byWeight ? units.format(m.target) : `${m.target}`;

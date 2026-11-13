@@ -1,9 +1,6 @@
 import React from 'react';
-import { formatReadyTime, MUSCLE_FRIENDLY_NAMES } from '../../engine/recovery';
-import { MuscleGroup } from '../../engine/types';
 import { CompletedExerciseSummary, WorkoutFinish } from '../../services/workoutFinish';
 import { localDateString } from '../../utils/date';
-import { triggerHaptic } from '../../utils/haptics';
 import { useUnits } from '../../utils/unitsContext';
 import { TrendChart } from '../common/TrendChart';
 import { useWorkoutSummaryText } from './useWorkoutSummaryText';
@@ -90,58 +87,3 @@ export const CompletedExerciseCard: React.FC<{ summary: CompletedExerciseSummary
     </section>
   );
 };
-
-/**
- * What comes next and when: the next workout waits until its muscles have recovered, with
- * "Train anyway" as the secondary choice.
- */
-export const NextWorkoutCard: React.FC<{
-  name: string;
-  readyAt: number;
-  limitingMuscles: { muscle: MuscleGroup; recoveryPct: number; readyAt: number }[];
-  onTrainAnyway: () => void;
-}> = ({ name, readyAt, limitingMuscles, onTrainAnyway }) => (
-  <section className="wk-card" aria-labelledby="next-workout-title">
-    <h2 id="next-workout-title" className="wk-label" style={{ lineHeight: 1.21 }}>
-      Next: {name}
-    </h2>
-    <p className="wk-body" style={{ marginTop: fig(12) }}>
-      Ready <strong className="text-white">{formatReadyTime(readyAt)}</strong>. Muscles grow while they recover.
-    </p>
-    {limitingMuscles.length > 0 && (
-      <ul className="flex flex-col" style={{ gap: fig(28), marginTop: fig(40) }} aria-label="Muscle recovery">
-        {limitingMuscles.slice(0, 4).map((m) => (
-          <li key={m.muscle}>
-            <div className="flex items-center justify-between" style={{ marginBottom: fig(12) }}>
-              <span className="wk-label">{MUSCLE_FRIENDLY_NAMES[m.muscle]}</span>
-              <span className="wk-caption">
-                {m.recoveryPct}% • ready {formatReadyTime(m.readyAt)}
-              </span>
-            </div>
-            <div
-              className="wk-bar"
-              role="progressbar"
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-valuenow={m.recoveryPct}
-              aria-label={`${MUSCLE_FRIENDLY_NAMES[m.muscle]} recovery`}
-            >
-              <div style={{ width: `${m.recoveryPct}%`, background: '#8FD3FF' }} />
-            </div>
-          </li>
-        ))}
-      </ul>
-    )}
-    <button
-      type="button"
-      onClick={() => {
-        triggerHaptic('warning');
-        onTrainAnyway();
-      }}
-      className="wk-button"
-      style={{ background: 'var(--wk-pill)', color: '#fff', marginTop: fig(40) }}
-    >
-      Train anyway
-    </button>
-  </section>
-);

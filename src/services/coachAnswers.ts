@@ -26,6 +26,8 @@ import {
 import { BiometricLog } from '../engine/types';
 import { isActiveSlot } from '../engine/muscleBuildingProgram';
 import { formatPreciseWeight, formatWeight, WeightUnit } from '../utils/units';
+import { localDateString } from '../utils/date';
+import { stepsOnDate } from './athleteGoals';
 import { planRestAfterSet } from './setCompletion';
 
 const isWorking = (s: WorkoutSet) => !s.isWarmup && s.setType !== 'warmup';
@@ -515,6 +517,21 @@ export function answerEverydayQuestion(ctx: EverydayContext): string | null {
   // What counts toward the weekly sessions goal.
   if (/\bwhat counts\b|\bcounts? as (a|an) (session|active day|workout)\b|\bdoes (a |an |my )?[a-z ]+ count\b/.test(msg)) {
     return 'A session is a day with a finished workout, or an active day: 20 minutes or more of something you set out to do, like a ride, run, walk, swim, class or sport. Two workouts on one day count once, and steps on their own don\'t count. Weeks run Monday to Sunday.';
+  }
+
+  // Direct questions about today's step count.
+  if (/\bsteps\b/.test(msg) && /\b(how many|what('?s| are) my|step count|steps today|today'?s steps)\b/.test(msg)) {
+    const today = localDateString(new Date(now));
+    const count = stepsOnDate(biometrics, today);
+    const goal = profile.goalSettings?.customGoals?.find((g) => g.metric === 'steps')?.target;
+    if (count > 0) {
+      return goal
+        ? `You have ${count.toLocaleString()} steps today toward your ${goal.toLocaleString()} step goal.`
+        : `You have ${count.toLocaleString()} steps recorded today.`;
+    }
+    return goal
+      ? `No steps are recorded for today yet (your daily goal is ${goal.toLocaleString()} steps). Connect Health Connect or sync your watch to pull them in.`
+      : 'No steps are recorded for today yet. Connect Health Connect in Profile → Settings → Activity apps or sync your watch to track daily steps.';
   }
 
   // Cardio and active days.

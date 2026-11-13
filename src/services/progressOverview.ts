@@ -142,10 +142,12 @@ export interface GoalRing {
   value: string;
   /** What the count is of, under the title: "reps at 80 kg", "5 weeks in a row". */
   caption: string;
-  /** The goal counted in whole things, one segment each ('unknown' = not measured yet). */
+  /** Outer ring: sessions in this week (or metric segments), one segment each ('unknown' = not measured yet). */
   segments: RingSegment[];
-  /** A second, inner ring for the long loop of a process goal: one segment per recent week. */
+  /** Middle ring on the weekly goal: 4 segments representing the weeks in the month. */
   inner?: RingSegment[];
+  /** Innermost ring on the weekly goal: 12 segments representing the months in the year. */
+  innermost?: RingSegment[];
   /** Nothing logged for this goal yet: the ring is drawn dimmed. */
   empty: boolean;
   detail: string;
@@ -153,8 +155,12 @@ export interface GoalRing {
 
 /** A count drawn as segments reads well up to about this many; beyond it, segments stand for equal shares. */
 const MAX_SEGMENTS = 20;
-/** The inner ring shows this many recent weeks: the six weeks the habit research counts. */
+/** Habit-formation benchmark referenced in the goal detail copy. */
 export const HABIT_WEEKS = 6;
+/** Middle ring on the weekly goal: the 4 weeks in the month. */
+export const MONTH_WEEKS = 4;
+/** Innermost ring on the weekly goal: the 12 months in the year. */
+export const YEAR_MONTHS = 12;
 
 function countSegments(current: number, target: number): RingSegment[] {
   const total = Math.max(1, Math.min(MAX_SEGMENTS, Math.round(target)));
@@ -168,19 +174,33 @@ export function closestStrengthGoal(goals: AthleteGoal[]): AthleteGoal | undefin
   return activeGoals(goals).find((g) => g.id.startsWith('strength-'));
 }
 
+const compactSteps = (steps: number): string => {
+  if (steps <= 0) return '0';
+  if (steps < 1000) return `${Math.round(steps)}`;
+  return `${Math.round(steps / 100) / 10}k`.replace(/\.0k$/, 'k');
+};
+
 /** One goal as a ring: a count against its target in the centre, and what it counts beneath. */
 function ringFor(goal: AthleteGoal, formatWeight: (kg: number) => string): GoalRing {
   const m = goal.measure;
   const base = { id: goal.id, title: goal.title, detail: goal.detail, empty: false };
   if (m.type === 'frequency') {
-    const recent = m.weeks.slice(-HABIT_WEEKS);
+    const recentWeeks = m.weeks.slice(-MONTH_WEEKS);
+    const recentMonths = m.months.slice(-YEAR_MONTHS);
     return {
       ...base,
       value: `${m.thisWeek}/${m.perWeek}`,
       caption: m.streakWeeks > 0 ? `${m.streakWeeks} ${m.streakWeeks === 1 ? 'week' : 'weeks'} in a row` : 'this week',
       segments: countSegments(m.thisWeek, m.perWeek),
-      // Weeks before the athlete started are left open.
-      inner: [...Array.from({ length: HABIT_WEEKS - recent.length }, () => 'unknown' as RingSegment), ...recent.map((w): RingSegment => (w.hit ? 'on' : 'off'))],
+      // Outer ring varies by goal (days/sessions in the week); the two inside it stay fixed at 4 weeks and 12 months.
+      inner: [
+        ...Array.from({ length: MONTH_WEEKS - recentWeeks.length }, () => 'unknown' as RingSegment),
+        ...recentWeeks.map((w): RingSegment => (w.hit ? 'on' : 'off')),
+      ],
+      innermost: [
+        ...Array.from({ length: YEAR_MONTHS - recentMonths.length }, () => 'unknown' as RingSegment),
+        ...recentMonths.map((mo): RingSegment => (mo.hit ? 'on' : 'off')),
+      ],
     };
   }
   if (m.type === 'reps') {
@@ -192,6 +212,14 @@ function ringFor(goal: AthleteGoal, formatWeight: (kg: number) => string): GoalR
     return { ...base, value, caption: `${unit ?? 'kg'} to go on your estimated max`, segments: countSegments(goal.achieved ? 10 : Math.min(9.4, goal.progressPct / 10), 10) };
   }
   if (m.type === 'target') {
+    if (m.metric === 'steps') {
+      return {
+        ...base,
+        value: `${compactSteps(m.best)}/${compactSteps(m.target)}`,
+        caption: m.best > 0 ? 'steps today' : 'steps today, none yet',
+        segments: countSegments(m.best >= m.target ? 10 : Math.min(9.4, (m.best / m.target) * 10), 10),
+      };
+    }
     const byWeight = m.metric === 'weight';
     const [targetValue, unit] = byWeight ? formatWeight(m.target).split(' ') : [`${m.target}`, 'reps'];
     return {
@@ -302,6 +330,19 @@ export function buildGoalsSummary(goals: AthleteGoal[], formatWeight: (kg: numbe
   // Goals of the athlete's own.
   for (const own of activeGoals(goals).filter((g) => g.measure.type === 'target')) {
     const m = own.measure as Extract<AthleteGoal['measure'], { type: 'target' }>;
+    if (m.metric === 'steps') {
+      facts.push(
+        `Your own goal: ${m.target} steps a day. ${m.best > 0 ? `Steps today: ${m.best} steps.` : 'No steps recorded today yet.'}`
+      );
+      sentences.push(
+        own.achieved
+          ? `You've reached your daily goal of ${m.target} steps today.`
+          : m.best > 0
+          ? `You have ${m.best} of ${m.target} steps today.`
+          : `Your daily goal is ${m.target} steps.`
+      );
+      continue;
+    }
     const goalText = m.metric === 'weight' ? formatWeight(m.target) : `${m.target} reps`;
     const bestText = m.metric === 'weight' ? formatWeight(m.best) : `${m.best} reps`;
     facts.push(`Your own goal: ${goalText} on ${m.exerciseName}. ${m.best > 0 ? `Best so far: ${bestText}.` : 'It has not been logged yet.'}`);
@@ -318,6 +359,7 @@ export function buildGoalsSummary(goals: AthleteGoal[], formatWeight: (kg: numbe
 }
 
 const NUMBER = /\d+(?:\.\d+)?/g;
+const stripCommas = (s: string) => s.replace(/(\d),(?=\d{3}\b)/g, '$1');
 
 /** The cleaned summary, or why it can't be shown (in words the model can act on in a second try). */
 export function checkGoalsSummary(answer: string | null, summary: Pick<GoalsSummary, 'facts'>): { text: string; problem?: undefined } | { text?: undefined; problem: string } {
@@ -337,8 +379,8 @@ export function checkGoalsSummary(answer: string | null, summary: Pick<GoalsSumm
   if (/\b(significant\w*|dramatic\w*|huge|massive|incredibl\w*|amazing|awesome)\b/i.test(text)) return { problem: 'it used a size or hype word the facts do not support' };
   if (/\b(consistent\w*|dedicat\w*|progressing well|going well|great|excellent|impressive|solid|strong (work|effort|progress)|(good|nice) (work|job|session)|well done|keep it up|(on|staying on) (schedule|track))\b/i.test(text)) return { problem: 'it praised consistency or quality that the facts do not show; state the figures plainly' };
   if (/\b(cannot be|can't be|unable to) (assessed|measured|determined|evaluated)\b|\binsufficient\b|\bno data\b/i.test(text)) return { problem: 'it said something cannot be assessed; say what to do next instead' };
-  const allowed = new Set(summary.facts.join(' ').match(NUMBER) || []);
-  const strange = (text.match(NUMBER) || []).find((n) => !allowed.has(n));
+  const allowed = new Set(stripCommas(summary.facts.join(' ')).match(NUMBER) || []);
+  const strange = (stripCommas(text).match(NUMBER) || []).find((n) => !allowed.has(n));
   if (strange) return { problem: `it used the number ${strange}, which is not in the facts` };
   const spelled = spelledNumberNotInFacts(text, summary.facts);
   if (spelled) return { problem: `it used the number "${spelled}", which is not in the facts` };

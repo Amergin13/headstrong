@@ -4,7 +4,8 @@
  * can't see.
  */
 
-const COUNTED = '(lifts?|sets?|reps?|repetitions?|sessions?|workouts?|personal bests?|exercises?|days?|weeks?)';
+const COUNTED = '(lifts?|sets?|reps?|repetitions?|sessions?|workouts?|personal bests?|exercises?|days?|weeks?|steps?)';
+const stripThousandsCommas = (s: string) => s.replace(/(\d),(?=\d{3}\b)/g, '$1');
 const stem = (noun: string) =>
   noun
     .toLowerCase()
@@ -16,11 +17,12 @@ const stem = (noun: string) =>
  * repetitions" when the facts say "21 lifts". Undefined when every counted figure matches a fact.
  */
 export function mislabelledFigure(text: string, facts: string[]): string | undefined {
-  const pattern = new RegExp(`\\b(\\d+(?:\\.\\d+)?)\\s+(?:working\\s+|hard\\s+|repeated\\s+|planned\\s+|training\\s+)?${COUNTED}\\b`, 'gi');
-  for (const match of text.matchAll(pattern)) {
+  const cleanFacts = facts.map(stripThousandsCommas);
+  const pattern = new RegExp(`\\b(\\d+(?:\\.\\d+)?)\\s+(?:working\\s+|hard\\s+|repeated\\s+|planned\\s+|training\\s+|daily\\s+)?${COUNTED}\\b`, 'gi');
+  for (const match of stripThousandsCommas(text).matchAll(pattern)) {
     const [whole, number, noun] = match;
     const unit = stem(noun);
-    const supported = facts.some((fact) => {
+    const supported = cleanFacts.some((fact) => {
       const lower = fact.toLowerCase();
       return new RegExp(`(?<![\\d.])${number.replace('.', '\\.')}(?!\\d|\\.\\d)`).test(lower) && new RegExp(`\\b${unit}`).test(lower.replace(/repetitions?/g, 'rep'));
     });
@@ -37,7 +39,7 @@ const TENS = ['', '', 'twenty', 'thirty', 'forty', 'fifty', 'sixty', 'seventy', 
  * "One" is skipped: it is usually a pronoun ("this one"). Undefined when every spelled number matches.
  */
 export function spelledNumberNotInFacts(text: string, facts: string[]): string | undefined {
-  const known = new Set((facts.join(' ').match(/\d+(?:\.\d+)?/g) || []).map(Number));
+  const known = new Set((stripThousandsCommas(facts.join(' ')).match(/\d+(?:\.\d+)?/g) || []).map(Number));
   const words = `(${TENS.filter(Boolean).join('|')})(?:[\\s-](${UNITS.slice(1, 10).join('|')}))?|(${UNITS.slice(2).join('|')})`;
   for (const match of text.toLowerCase().matchAll(new RegExp(`\\b(?:${words})\\b`, 'g'))) {
     const [whole, tens, unit, small] = match;

@@ -51,19 +51,36 @@ export interface GoalWeek {
   current: boolean;
 }
 
-/** Process: sessions a week. The small loop is `thisWeek` of `perWeek`; the long loop is the weeks. */
+/** One calendar month of the weekly sessions goal. */
+export interface GoalMonth {
+  /** Calendar month key in YYYY-MM (local date). */
+  month: string;
+  sessions: number;
+  target: number;
+  hit: boolean;
+  /** The month that is still running. */
+  current: boolean;
+}
+
+/** Process: sessions a week. The outer ring is `thisWeek` of `perWeek`, then 4 weeks in the month, then 12 months in the year. */
 export interface FrequencyMeasure {
   type: 'frequency';
   perWeek: number;
   thisWeek: number;
   /** Up to the last 12 weeks since the athlete's first session, oldest first, ending with this week. */
   weeks: GoalWeek[];
+  /** Up to the last 12 calendar months since the athlete's first session, oldest first, ending with this month. */
+  months: GoalMonth[];
   /** Weeks in a row at target, counting this week once it is reached. */
   streakWeeks: number;
   /** Every week at target since the athlete started. */
   weeksHit: number;
   /** Weeks since the first session, including this one. */
   weeksTracked: number;
+  /** Calendar months hitting `perWeek * 4` sessions since the athlete started. */
+  monthsHit: number;
+  /** Calendar months since the first session, including this one. */
+  monthsTracked: number;
 }
 
 /** Outcome: reps at a set weight to reach a strength level. */
@@ -121,16 +138,16 @@ export interface BodyMeasure {
   fatFreeMassChangeKg?: number;
 }
 
-/** Outcome: a target the athlete set on one exercise, counted from their logged sets. */
+/** Outcome: a target the athlete set themselves (on one exercise or daily steps). */
 export interface TargetMeasure {
   type: 'target';
-  metric: 'weight' | 'reps';
+  metric: 'weight' | 'reps' | 'steps';
   exerciseId: string;
   exerciseName: string;
-  /** Heaviest logged set in kg (weight), or most reps in one set (reps); 0 before the exercise is logged. */
+  /** Heaviest logged set in kg (weight), most reps in one set (reps), or today's steps (steps); 0 before logged. */
   best: number;
   target: number;
-  /** When the best was logged (YYYY-MM-DD). */
+  /** When the best/reading was logged (YYYY-MM-DD). */
   bestOn?: string;
   createdOn: string;
 }
@@ -148,10 +165,10 @@ export interface AthleteGoal {
   /** How it is measured, in one or two plain sentences. */
   method: string;
   measure: GoalMeasure;
-  /** The count the goal is tracked by, and its target (reps, sessions, signs, or kg for a load goal). */
+  /** The count the goal is tracked by, and its target (reps, sessions, signs, steps, or kg for a load goal). */
   current: number;
   target: number;
-  unit: 'sessions' | 'reps' | 'kg' | 'signs';
+  unit: 'sessions' | 'reps' | 'kg' | 'signs' | 'steps';
   /** 0–100, only for drawing; never shown as a figure for outcome goals. */
   progressPct: number;
   achieved: boolean;
@@ -190,6 +207,7 @@ export const CHOSEN_GOAL_ID = 'chosen-goal';
 /** Above this many reps, a rep target at that weight says little about strength. */
 export const MAX_REP_TARGET = 20;
 const WEEKS_SHOWN = 12;
+const MONTHS_SHOWN = 12;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 const clampPct = (n: number) => Math.round(Math.max(0, Math.min(100, n)));
@@ -225,10 +243,13 @@ function sessionsPerWeekGoal(input: AthleteGoalsInput): AthleteGoal {
   }
   for (const d of activeDayDates(input.activities ?? [])) days.add(d);
   const byWeek = new Map<string, number>();
+  const byMonth = new Map<string, number>();
   for (const d of days) {
     if (d > today) continue;
     const start = weekStart(d);
     byWeek.set(start, (byWeek.get(start) ?? 0) + 1);
+    const month = d.slice(0, 7);
+    byMonth.set(month, (byMonth.get(month) ?? 0) + 1);
   }
 
   // Every week from the athlete's first session to now, so a week off shows as a week off.
@@ -239,6 +260,22 @@ function sessionsPerWeekGoal(input: AthleteGoalsInput): AthleteGoal {
     const sessions = byWeek.get(start) ?? 0;
     all.push({ start, sessions, hit: sessions >= perWeek, current: start === thisWeekStart });
   }
+  const thisMonth = today.slice(0, 7);
+  const firstMonth = [...byMonth.keys()].sort()[0] ?? thisMonth;
+  const monthlyTarget = perWeek * 4;
+  const allMonths: GoalMonth[] = [];
+  const [startYear, startMonth] = firstMonth.split('-').map(Number);
+  const [endYear, endMonth] = thisMonth.split('-').map(Number);
+  for (let y = startYear, mo = startMonth; y < endYear || (y === endYear && mo <= endMonth); ) {
+    const month = `${y}-${String(mo).padStart(2, '0')}`;
+    const sessions = byMonth.get(month) ?? 0;
+    allMonths.push({ month, sessions, target: monthlyTarget, hit: sessions >= monthlyTarget, current: month === thisMonth });
+    mo += 1;
+    if (mo > 12) {
+      mo = 1;
+      y += 1;
+    }
+  }
   const thisWeek = all[all.length - 1].sessions;
   // The run of weeks at target. This week joins it once reached; until then it neither adds nor breaks it.
   let streakWeeks = 0;
@@ -248,21 +285,25 @@ function sessionsPerWeekGoal(input: AthleteGoalsInput): AthleteGoal {
     streakWeeks += 1;
   }
   const weeksHit = all.filter((w) => w.hit).length;
+  const monthsHit = allMonths.filter((m) => m.hit).length;
   const measure: FrequencyMeasure = {
     type: 'frequency',
     perWeek,
     thisWeek,
     weeks: all.slice(-WEEKS_SHOWN),
+    months: allMonths.slice(-MONTHS_SHOWN),
     streakWeeks,
     weeksHit,
     weeksTracked: all.length,
+    monthsHit,
+    monthsTracked: allMonths.length,
   };
   return {
     id: WEEKLY_GOAL_ID,
     kind: 'process',
     title: `Train ${perWeek} times a week`,
     detail: `${thisWeek} of ${perWeek} sessions this week${streakWeeks > 0 ? `, ${plural(streakWeeks, 'week')} in a row at ${perWeek}` : ''}`,
-    method: `A session is a day with a finished workout or an active day of 20 minutes or more. Weeks run Monday to Sunday. ${fromPlan ? `${perWeek} a week is what your plan is built on.` : `You set ${perWeek} a week; your plan is built on ${planPerWeek}.`}`,
+    method: `A session is a day with a finished workout or an active day of 20 minutes or more. Weeks run Monday to Sunday; a month counts toward the year ring at ${monthlyTarget} sessions (4 weeks at ${perWeek}). ${fromPlan ? `${perWeek} a week is what your plan is built on.` : `You set ${perWeek} a week; your plan is built on ${planPerWeek}.`}`,
     measure,
     current: thisWeek,
     target: perWeek,
@@ -541,6 +582,15 @@ export const MAX_CUSTOM_GOALS = MAX_GOALS - PLAN_GOAL_COUNT;
 /** Limits on a target, so a slip of the thumb can't set one that means nothing. */
 export const MAX_CUSTOM_WEIGHT_KG = 500;
 export const MAX_CUSTOM_REPS = 100;
+export const MIN_CUSTOM_STEPS = 500;
+export const MAX_CUSTOM_STEPS = 100000;
+export const STEPS_GOAL_EXERCISE_ID = 'daily-steps';
+
+export interface OwnGoalOption {
+  exerciseId: string;
+  label: string;
+  metric: CustomGoal['metric'];
+}
 
 /** The lifts offered when setting a goal of one's own in onboarding, each counted the way it is trained. */
 export const OWN_GOAL_LIFTS: { exerciseId: string; label: string; metric: CustomGoal['metric'] }[] = [
@@ -551,9 +601,25 @@ export const OWN_GOAL_LIFTS: { exerciseId: string; label: string; metric: Custom
   { exerciseId: 'ex-deadlift', label: 'Deadlift', metric: 'weight' },
 ];
 
-/** The everyday name for a goal's exercise ("Chin-ups"), where the library's is long ("Pull-Up Bar Chin-Up / Pull-Up"). */
+export const STEPS_GOAL_OPTION: OwnGoalOption = {
+  exerciseId: STEPS_GOAL_EXERCISE_ID,
+  label: 'Daily steps',
+  metric: 'steps',
+};
+
+/** Every preset custom goal offered when adding a goal of one's own (lifts + daily steps). */
+export const OWN_GOAL_OPTIONS: OwnGoalOption[] = [...OWN_GOAL_LIFTS, STEPS_GOAL_OPTION];
+
+/** The everyday name for a goal ("Chin-ups", "Daily steps"), where the library's name is long. */
 export function ownGoalName(exerciseId: string, libraryName: string): string {
-  return OWN_GOAL_LIFTS.find((l) => l.exerciseId === exerciseId)?.label ?? libraryName;
+  return OWN_GOAL_OPTIONS.find((l) => l.exerciseId === exerciseId)?.label ?? libraryName;
+}
+
+/** Steps recorded for `date` (defaults to today in local time). */
+export function stepsOnDate(biometrics: BiometricLog[], date: string = localDateString()): number {
+  const entry = [...biometrics].reverse().find((b) => b.date === date && (b.steps ?? 0) > 0)
+    ?? [...biometrics].reverse().find((b) => b.date === date);
+  return Math.max(0, Math.round(entry?.steps ?? 0));
 }
 
 const CHINUP_IDS = new Set(['ex-chinup', 'ex-weighted-pullup', 'ex-hammer-chinup']);
@@ -589,22 +655,36 @@ export function bestOnExercise(workouts: WorkoutSession[], exerciseId: string): 
 }
 
 function isValidCustomGoal(g: CustomGoal | undefined): g is CustomGoal {
-  return Boolean(
-    g &&
-      typeof g.id === 'string' &&
-      typeof g.exerciseId === 'string' &&
-      typeof g.exerciseName === 'string' &&
-      (g.metric === 'weight' || g.metric === 'reps') &&
-      Number.isFinite(g.target) &&
-      g.target > 0 &&
-      g.target <= (g.metric === 'weight' ? MAX_CUSTOM_WEIGHT_KG : MAX_CUSTOM_REPS)
-  );
+  if (!g || typeof g.id !== 'string' || typeof g.exerciseId !== 'string' || typeof g.exerciseName !== 'string') return false;
+  if (!Number.isFinite(g.target)) return false;
+  if (g.metric === 'steps') return g.target >= MIN_CUSTOM_STEPS && g.target <= MAX_CUSTOM_STEPS;
+  return (g.metric === 'weight' || g.metric === 'reps') && g.target > 0 && g.target <= (g.metric === 'weight' ? MAX_CUSTOM_WEIGHT_KG : MAX_CUSTOM_REPS);
 }
 
 function customGoals(input: AthleteGoalsInput): AthleteGoal[] {
   const saved = input.profile.goalSettings?.customGoals;
   if (!Array.isArray(saved)) return [];
+  const today = localDateString(new Date(input.now ?? Date.now()));
   return saved.filter(isValidCustomGoal).slice(0, MAX_CUSTOM_GOALS).map((g) => {
+    if (g.metric === 'steps') {
+      const current = stepsOnDate(input.biometrics, today);
+      const targetFmt = g.target.toLocaleString('en-US');
+      const currentFmt = current.toLocaleString('en-US');
+      return {
+        id: `${CUSTOM_GOAL_PREFIX}${g.id}`,
+        kind: 'outcome' as const,
+        title: g.exerciseName || 'Daily steps',
+        detail: current > 0 ? `${currentFmt} of ${targetFmt} steps today` : `${targetFmt} steps a day; no steps logged today`,
+        method: 'A goal you set. Counted by your steps today from Health Connect or your watch.',
+        measure: { type: 'target' as const, metric: 'steps', exerciseId: g.exerciseId, exerciseName: g.exerciseName || 'Daily steps', best: current, target: g.target, bestOn: current > 0 ? today : undefined, createdOn: g.createdOn },
+        current,
+        target: g.target,
+        unit: 'steps' as const,
+        progressPct: clampPct((current / g.target) * 100),
+        achieved: current >= g.target,
+        fromPlan: false,
+      };
+    }
     const best = bestOnExercise(input.workouts, g.exerciseId);
     const current = g.metric === 'weight' ? round1(best.weightKg) : best.reps;
     const what = g.metric === 'weight' ? `${g.target} kg on ${g.exerciseName}` : `${g.target} reps on ${g.exerciseName}`;
@@ -710,6 +790,10 @@ export function describeGoalStanding(goal: AthleteGoal, formatWeight: (kg: numbe
   if (m.type === 'reps') return `${m.currentReps} of ${m.targetReps} reps ${repsAt(m, formatWeight)}`;
   if (m.type === 'load') return `${formatWeight(m.e1rmKg)} of ${formatWeight(m.targetE1rmKg)} estimated max`;
   if (m.type === 'target') {
+    if (m.metric === 'steps') {
+      if (m.best <= 0) return `${m.target.toLocaleString()} steps today: none recorded yet`;
+      return `${m.best.toLocaleString()} of ${m.target.toLocaleString()} steps today`;
+    }
     if (m.best <= 0) return m.metric === 'weight' ? `${formatWeight(m.target)}: not logged yet` : `${m.target} reps: not logged yet`;
     return m.metric === 'weight' ? `${formatWeight(m.best)} of ${formatWeight(m.target)}` : `${m.best} of ${m.target} reps`;
   }

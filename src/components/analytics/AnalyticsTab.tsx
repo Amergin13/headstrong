@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Scale, Ruler, Bluetooth } from 'lucide-react';
+import { Scale, Ruler, Bluetooth, MoreHorizontal, SlidersHorizontal, Target } from 'lucide-react';
 import { PageTopGradient } from '../common/PageTopGradient';
-import { BiometricLog, BodyMeasurementSite, ExerciseDefinition, GoalPhase, UserProfile, WorkoutSession } from '../../engine/types';
+import { BiometricLog, BodyMeasurementSite, ExerciseDefinition, GoalPhase, ProgressWidgetId, UserProfile, WorkoutSession } from '../../engine/types';
 import { StrengthLevelsCard } from './StrengthLevelsCard';
 import { BalanceCard } from './BalanceCard';
 import { buildMovementStandards } from '../../services/movementStandards';
@@ -14,7 +14,16 @@ import { MuscleProgressCard } from './MuscleProgressCard';
 import { buildMuscleProgress } from '../../services/muscleProgress';
 import { buildAthleteKnowledgeGraph } from '../../engine/knowledgeGraph';
 import { calculateWeeklyMuscleVolume } from '../../services/storage';
-import { buildCompositionCharts, buildStrengthCharts, ProgressChart, ProgressFormatters } from '../../services/progressSeries';
+import {
+  averageRecentSteps,
+  buildCompositionCharts,
+  buildExerciseProgressChart,
+  buildStepsChart,
+  buildStrengthCharts,
+  ProgressChart,
+  ProgressFormatters,
+} from '../../services/progressSeries';
+import { stepsOnDate } from '../../services/athleteGoals';
 import { loadSavedRenphoDevices } from '../../services/renphoBluetooth';
 import { ActivityLog } from '../../engine/activeDays';
 import {
@@ -31,6 +40,8 @@ import { parseLocalDate } from '../../utils/date';
 import { DetailHeader, GoalsHero, OverviewCard, Sparkline, StandardsRadar, StatRow } from './ProgressOverviewCards';
 import { GoalDetailScreen } from './GoalDetailScreen';
 import { GoalSettingsScreen } from './GoalSettingsScreen';
+import { ProgressWidgetsScreen } from './ProgressWidgetsScreen';
+import { parseProgressWidgetId, resolveProgressWidgets, toggleProgressWidget } from '../../services/progressWidgets';
 import { alignStrengthAndWeight, strengthIndexSeries } from '../../services/strengthTrend';
 import { calculateEmaSeries } from '../../engine/ema';
 import { triggerHaptic } from '../../utils/haptics';
@@ -59,7 +70,7 @@ const CHART_ID_TO_TAPE_SITE: Partial<Record<string, BodyMeasurementSite>> = {
 };
 
 /** The overview, or one of the screens its cards open. */
-type ProgressDetail = 'bests' | 'lifetime' | 'recent' | 'weight' | 'measurements' | 'standards' | 'goals';
+type ProgressDetail = 'bests' | 'lifetime' | 'recent' | 'steps' | 'weight' | 'measurements' | 'standards' | 'goals' | 'widgets';
 
 interface AnalyticsTabProps {
   workouts: WorkoutSession[];
@@ -89,10 +100,12 @@ const DETAIL_TITLE: Record<ProgressDetail, string> = {
   bests: 'Trophy case',
   lifetime: 'Lifetime stats',
   recent: 'Recent stats',
+  steps: 'Steps',
   weight: 'Body weight',
   measurements: 'Measurements',
   standards: 'Strength standards',
   goals: 'Change goals',
+  widgets: 'Customize widgets',
 };
 
 /** A lift's name without its kit, for the three-across card: "Barbell Bench Press" → "Bench Press". */
@@ -122,6 +135,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
   const [detail, setDetail] = useState<ProgressDetail | null>(null);
   /** The goal whose detail is open (a ring was tapped). */
   const [openGoalId, setOpenGoalId] = useState<string | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
   const compositionView: CompositionView = detail === 'measurements' ? 'measurements' : 'weight';
   const [showLogModal, setShowLogModal] = useState(false);
   const [logModalMode, setLogModalMode] = useState<LogModalMode>('weight');
@@ -129,6 +143,17 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
   const units = useUnits();
   const latestWeight = [...biometrics].reverse().find((b) => b.bodyweightKg > 0)?.bodyweightKg || 0;
   const hasBodyweight = latestWeight > 0;
+  const activeWidgets = useMemo(() => resolveProgressWidgets(profile.progressWidgets), [profile.progressWidgets]);
+  const hasWidget = (id: ProgressWidgetId) => activeWidgets.includes(id);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setMenuOpen(false);
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [menuOpen]);
 
   const fmt: ProgressFormatters = useMemo(
     () => ({
@@ -199,6 +224,11 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
   const recent = useMemo(() => buildTrainingTotals(workouts, RECENT_DAYS), [workouts]);
   const pace = useMemo(() => weightPace(biometrics, profile.goalPhase), [biometrics, profile.goalPhase]);
   const weightChart = compositionCharts.find((c) => c.id === 'bodyweight');
+  const stepsChart = useMemo(() => buildStepsChart(biometrics), [biometrics]);
+  const todaySteps = stepsOnDate(biometrics);
+  const avgSteps7d = useMemo(() => averageRecentSteps(biometrics, 7), [biometrics]);
+  const latestStepsEntry = stepsChart.points[stepsChart.points.length - 1];
+  const stepsGoal = profile.goalSettings?.customGoals?.find((g) => g.metric === 'steps');
   const tapeHighlights = useMemo(() => measurementHighlights(compositionCharts), [compositionCharts]);
   const latestWeighIn = [...biometrics].reverse().find((b) => b.bodyweightKg > 0);
   const bestValue = (b: (typeof personalBests)[number]) =>
@@ -365,8 +395,81 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
           </>
         )}
 
+        {detail === 'steps' && (
+          <>
+            <section className="wk-card" aria-label="Daily step summary">
+              <h2 className="wk-label">Daily steps</h2>
+              <StatRow
+                stats={[
+                  {
+                    label: todaySteps > 0 ? 'Today' : latestStepsEntry ? shortDate(latestStepsEntry.date) : 'Today',
+                    value: (todaySteps > 0 ? todaySteps : latestStepsEntry?.value ?? 0) > 0
+                      ? Math.round(todaySteps > 0 ? todaySteps : latestStepsEntry!.value).toLocaleString()
+                      : '—',
+                  },
+                  {
+                    label: '7-day avg',
+                    value: avgSteps7d !== null ? avgSteps7d.toLocaleString() : '—',
+                  },
+                  {
+                    label: 'Goal',
+                    value: stepsGoal ? stepsGoal.target.toLocaleString() : '—',
+                  },
+                ]}
+              />
+              {stepsGoal && (
+                <div
+                  className="wk-bar"
+                  style={{ marginTop: fig(32) }}
+                  role="progressbar"
+                  aria-valuemin={0}
+                  aria-valuemax={stepsGoal.target}
+                  aria-valuenow={todaySteps}
+                  aria-label={`${todaySteps.toLocaleString()} of ${stepsGoal.target.toLocaleString()} steps today`}
+                >
+                  <div style={{ width: `${Math.min(100, (todaySteps / stepsGoal.target) * 100)}%` }} />
+                </div>
+              )}
+              <p className="wk-body" style={{ marginTop: fig(24) }}>
+                {stepsChart.summary}
+              </p>
+            </section>
+            <ProgressChartCard chart={stepsChart} />
+            {stepsChart.points.length > 0 && (
+              <section className="wk-card" aria-label="Recent daily step counts">
+                <h2 className="wk-label">Recent days</h2>
+                <ul className="flex flex-col" style={{ marginTop: fig(20) }}>
+                  {[...stepsChart.points].reverse().slice(0, 14).map((pt) => (
+                    <li
+                      key={pt.date}
+                      className="flex items-center justify-between"
+                      style={{ gap: fig(20), padding: `${fig(22)} 0`, borderTop: `${fig(2)} solid rgba(255,255,255,0.08)` }}
+                    >
+                      <span className="wk-body">{shortDate(pt.date)}</span>
+                      <span className="font-bold text-white tabular-numbers" style={{ fontSize: `max(12px, ${fig(36)})` }}>
+                        {Math.round(pt.value).toLocaleString()}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
+          </>
+        )}
+
         {detail === 'goals' && (
           <GoalSettingsScreen profile={profile} goals={knowledgeGraph.goals} onUpdateProfile={onUpdateProfile} onUpdateGoalPhase={onUpdateGoalPhase} />
+        )}
+
+        {detail === 'widgets' && (
+          <ProgressWidgetsScreen
+            activeWidgets={activeWidgets}
+            exerciseCatalog={exerciseCatalog}
+            workouts={workouts}
+            isDefault={profile.progressWidgets === undefined}
+            onToggle={(id) => onUpdateProfile({ progressWidgets: toggleProgressWidget(profile.progressWidgets, id) })}
+            onReset={() => onUpdateProfile({ progressWidgets: undefined })}
+          />
         )}
 
         {detail === 'standards' && (
@@ -468,134 +571,341 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
     </>
   );
 
+  const renderProgressMenu = (close: () => void) => (
+    <div
+      role="menu"
+      aria-label="Progress options"
+      className="w-60 rounded-2xl bg-[#2C3034] border border-white/[0.08] shadow-2xl p-1.5 space-y-1 text-left"
+    >
+      <button
+        type="button"
+        role="menuitem"
+        onClick={() => {
+          triggerHaptic('light');
+          close();
+          setDetail('goals');
+        }}
+        className="w-full text-left px-3 py-2 rounded-xl text-sm font-semibold text-white/85 hover:text-white hover:bg-white/[0.06] flex items-center gap-2.5 min-h-[44px]"
+      >
+        <Target className="w-4 h-4 stroke-[2] shrink-0" />
+        <span>Change goals</span>
+      </button>
+      <button
+        type="button"
+        role="menuitem"
+        onClick={() => {
+          triggerHaptic('light');
+          close();
+          setDetail('widgets');
+        }}
+        className="w-full text-left px-3 py-2 rounded-xl text-sm font-semibold text-white/85 hover:text-white hover:bg-white/[0.06] flex items-center justify-between gap-2 min-h-[44px]"
+      >
+        <span className="flex items-center gap-2.5">
+          <SlidersHorizontal className="w-4 h-4 stroke-[2] shrink-0" />
+          <span>Customize widgets</span>
+        </span>
+        <span className="text-xs font-semibold text-white/55 tabular-numbers">
+          {activeWidgets.length} active
+        </span>
+      </button>
+    </div>
+  );
+
   const overview = (
     <>
-      <header style={{ paddingTop: fig(20) }}>
-        <h1 className="wk-page-title">Progress</h1>
+      <header className="relative" style={{ paddingTop: fig(20) }}>
+        <div className="relative flex items-center justify-center">
+          <h1 className="wk-page-title">Progress</h1>
+          <button
+            type="button"
+            onClick={() => {
+              triggerHaptic('light');
+              setMenuOpen((o) => !o);
+            }}
+            aria-expanded={menuOpen}
+            aria-haspopup="menu"
+            aria-label="Progress options: change goals and customize widgets"
+            className="absolute right-0 top-1/2 -translate-y-1/2 flex items-center justify-center rounded-full"
+            style={{ width: 44, height: 44, color: 'var(--wk-muted)' }}
+          >
+            <MoreHorizontal style={{ width: fig(48), height: fig(48) }} strokeWidth={2} aria-hidden="true" />
+          </button>
+          {menuOpen && (
+            <>
+              <div className="fixed inset-0 z-20" onClick={() => setMenuOpen(false)} aria-hidden="true" />
+              <div className="absolute right-0 top-full mt-2 z-30">{renderProgressMenu(() => setMenuOpen(false))}</div>
+            </>
+          )}
+        </div>
       </header>
 
-      <GoalsHero
-        rings={goalRings}
-        summary={goalsSummary}
-        onOpenGoal={(id) => {
-          if (id.startsWith('strength-none')) {
-            openLogWeight();
-            return;
-          }
-          setOpenGoalId(id);
-        }}
-        onChangeGoals={() => setDetail('goals')}
-      />
+      {hasWidget('goals') && (
+        <GoalsHero
+          rings={goalRings}
+          summary={goalsSummary}
+          onOpenGoal={(id) => {
+            if (id.startsWith('strength-none')) {
+              openLogWeight();
+              return;
+            }
+            setOpenGoalId(id);
+          }}
+        />
+      )}
 
-      <div ref={cardsTopRef} className="flex flex-col" style={{ gap: fig(22), marginTop: fig(70) }}>
-        <OverviewCard title="Trophy case" opens="all personal bests" onOpen={() => setDetail('bests')}>
-          {trophies.length > 0 ? (
+      <div
+        ref={cardsTopRef}
+        className="flex flex-col"
+        style={{ gap: fig(22), marginTop: hasWidget('goals') ? fig(70) : fig(48) }}
+      >
+        {hasWidget('trophy-case') && (
+          <OverviewCard title="Trophy case" opens="all personal bests" onOpen={() => setDetail('bests')}>
+            {trophies.length > 0 ? (
+              <StatRow
+                stats={trophies.map((b) => {
+                  const shown = bestValue(b);
+                  return { label: shortLiftName(b.exerciseName), value: shown.value, unit: shown.unit };
+                })}
+              />
+            ) : (
+              <p className="wk-body" style={{ marginTop: fig(24) }}>
+                Your best set on each lift appears here after your first workout.
+              </p>
+            )}
+          </OverviewCard>
+        )}
+
+        {hasWidget('lifetime-stats') && (
+          <OverviewCard title="Lifetime stats" opens="your training over time" onOpen={() => setDetail('lifetime')}>
             <StatRow
-              stats={trophies.map((b) => {
-                const shown = bestValue(b);
-                return { label: shortLiftName(b.exerciseName), value: shown.value, unit: shown.unit };
-              })}
+              stats={[
+                { label: `Volume (${units.unit})`, value: whole(lifetime.volumeKg) },
+                { label: 'Reps', value: lifetime.reps.toLocaleString() },
+                { label: 'Workouts', value: lifetime.workouts.toLocaleString() },
+              ]}
             />
-          ) : (
-            <p className="wk-body" style={{ marginTop: fig(24) }}>
-              Your best set on each lift appears here after your first workout.
+          </OverviewCard>
+        )}
+
+        {hasWidget('recent-stats') && (
+          <OverviewCard title="Recent stats" opens={`the last ${RECENT_DAYS} days by muscle`} onOpen={() => setDetail('recent')}>
+            <p className="wk-caption" style={{ marginTop: fig(10) }}>
+              Last {RECENT_DAYS} days
             </p>
-          )}
-        </OverviewCard>
+            <StatRow
+              stats={[
+                { label: `Volume (${units.unit})`, value: whole(recent.volumeKg) },
+                { label: 'Reps', value: recent.reps.toLocaleString() },
+                { label: 'Workouts', value: recent.workouts.toLocaleString() },
+              ]}
+            />
+          </OverviewCard>
+        )}
 
-        <OverviewCard title="Lifetime stats" opens="your training over time" onOpen={() => setDetail('lifetime')}>
-          <StatRow
-            stats={[
-              { label: `Volume (${units.unit})`, value: whole(lifetime.volumeKg) },
-              { label: 'Reps', value: lifetime.reps.toLocaleString() },
-              { label: 'Workouts', value: lifetime.workouts.toLocaleString() },
-            ]}
-          />
-        </OverviewCard>
-
-        <OverviewCard title="Recent stats" opens={`the last ${RECENT_DAYS} days by muscle`} onOpen={() => setDetail('recent')}>
-          <p className="wk-caption" style={{ marginTop: fig(10) }}>
-            Last {RECENT_DAYS} days
-          </p>
-          <StatRow
-            stats={[
-              { label: `Volume (${units.unit})`, value: whole(recent.volumeKg) },
-              { label: 'Reps', value: recent.reps.toLocaleString() },
-              { label: 'Workouts', value: recent.workouts.toLocaleString() },
-            ]}
-          />
-        </OverviewCard>
-
-        <OverviewCard title="Body weight" opens="weight, body composition and logging" onOpen={() => setDetail('weight')}>
-          <p className="wk-body" style={{ marginTop: fig(12) }}>
-            {weightChart?.summary}
-          </p>
-          {latestWeighIn && (
-            <div className="flex items-end justify-between" style={{ gap: fig(24), marginTop: fig(44) }}>
-              <div className="min-w-0">
-                <p className="font-bold text-white tabular-numbers uppercase" style={{ fontSize: `max(12px, ${fig(64)})`, lineHeight: 1 }}>
-                  {units.formatPrecise(latestWeighIn.bodyweightKg)}
-                </p>
-                {pace && (
-                  <span
-                    className="wk-pill"
-                    style={{
-                      textTransform: 'none',
-                      marginTop: fig(16),
-                      background: pace.pace === 'on' ? 'rgba(0,241,159,0.16)' : 'var(--wk-pill)',
-                      color: pace.pace === 'on' ? 'var(--wk-accent)' : '#C9CDD0',
-                    }}
-                  >
-                    {pace.direction === 'steady' ? 'Your weight is steady' : pace.direction === 'losing' ? "You're losing weight" : "You're gaining weight"}
-                  </span>
+        {hasWidget('steps') && (
+          <OverviewCard title="Steps" opens="daily steps history" onOpen={() => setDetail('steps')}>
+            {latestStepsEntry || todaySteps > 0 ? (
+              <div className="flex items-end justify-between" style={{ gap: fig(24), marginTop: fig(36) }}>
+                <div className="min-w-0">
+                  <p className="wk-caption">
+                    {todaySteps > 0 ? 'Today' : `Latest (${shortDate(latestStepsEntry!.date)})`}
+                  </p>
+                  <p className="font-bold text-white tabular-numbers" style={{ fontSize: `max(12px, ${fig(64)})`, lineHeight: 1, marginTop: fig(10) }}>
+                    {Math.round(todaySteps > 0 ? todaySteps : latestStepsEntry!.value).toLocaleString()}
+                  </p>
+                  {avgSteps7d !== null && (
+                    <p className="wk-caption" style={{ marginTop: fig(12) }}>
+                      7-day avg {avgSteps7d.toLocaleString()}
+                    </p>
+                  )}
+                  {stepsGoal && (
+                    <span
+                      className="wk-pill"
+                      style={{
+                        textTransform: 'none',
+                        marginTop: fig(14),
+                        background: todaySteps >= stepsGoal.target ? 'rgba(0,241,159,0.16)' : 'var(--wk-pill)',
+                        color: todaySteps >= stepsGoal.target ? 'var(--wk-accent)' : '#C9CDD0',
+                      }}
+                    >
+                      {todaySteps >= stepsGoal.target
+                        ? `Goal met (${stepsGoal.target.toLocaleString()})`
+                        : `${todaySteps.toLocaleString()} / ${stepsGoal.target.toLocaleString()} goal`}
+                    </span>
+                  )}
+                </div>
+                {stepsChart.points.length >= 2 && (
+                  <Sparkline
+                    points={stepsChart.points}
+                    label={`Daily steps from ${Math.round(stepsChart.points[0].value).toLocaleString()} to ${Math.round(stepsChart.points[stepsChart.points.length - 1].value).toLocaleString()}`}
+                  />
                 )}
               </div>
-              <Sparkline
-                points={weightChart?.points ?? []}
-                label={`7-day average weight from ${units.formatPrecise(weightChart?.points[0]?.value ?? 0)} to ${units.formatPrecise(weightChart?.points[weightChart.points.length - 1]?.value ?? 0)}`}
-              />
-            </div>
-          )}
-        </OverviewCard>
+            ) : (
+              <>
+                <StatRow stats={[{ label: 'Today', value: '—' }, { label: '7-day avg', value: '—' }, { label: 'Goal', value: stepsGoal ? stepsGoal.target.toLocaleString() : '—' }]} />
+                <p className="wk-body" style={{ marginTop: fig(20) }}>
+                  {stepsChart.summary}
+                </p>
+              </>
+            )}
+          </OverviewCard>
+        )}
 
-        <OverviewCard title="Measurements" opens="all measurements and logging" onOpen={() => setDetail('measurements')}>
-          {tapeHighlights.length > 0 ? (
-            <StatRow
-              stats={tapeHighlights.map((m) => {
-                const [value, unit] = fmt.length(m.value).split(' ');
-                return {
-                  label: m.label,
-                  value,
-                  unit,
-                  note: m.change === undefined || m.change === 0 ? (m.change === 0 ? 'No change' : 'First reading') : `${m.change > 0 ? 'Up' : 'Down'} ${fmt.length(Math.abs(m.change))}`,
-                };
-              })}
-            />
-          ) : (
-            <p className="wk-body" style={{ marginTop: fig(24) }}>
-              Start with your waist: it says the most about your fitness. Measure at the navel, first thing in the morning.
+        {hasWidget('body-weight') && (
+          <OverviewCard title="Body weight" opens="weight, body composition and logging" onOpen={() => setDetail('weight')}>
+            <p className="wk-body" style={{ marginTop: fig(12) }}>
+              {weightChart?.summary}
             </p>
-          )}
-        </OverviewCard>
-
-        <OverviewCard title="Strength standards" opens="your level on each lift" onOpen={() => setDetail('standards')}>
-          {hasBodyweight && movementStandards.levels.some((l) => l.logged && l.source !== 'none') ? (
-            <>
-              <p className="wk-body" style={{ marginTop: fig(12) }}>
-                Your best estimated max on each lift against published standards for {movementStandards.tableLabel} at your bodyweight.
-              </p>
-              <div className="flex justify-center" style={{ marginTop: fig(20) }}>
-                <StandardsRadar report={movementStandards} />
+            {latestWeighIn && (
+              <div className="flex items-end justify-between" style={{ gap: fig(24), marginTop: fig(44) }}>
+                <div className="min-w-0">
+                  <p className="font-bold text-white tabular-numbers uppercase" style={{ fontSize: `max(12px, ${fig(64)})`, lineHeight: 1 }}>
+                    {units.formatPrecise(latestWeighIn.bodyweightKg)}
+                  </p>
+                  {pace && (
+                    <span
+                      className="wk-pill"
+                      style={{
+                        textTransform: 'none',
+                        marginTop: fig(16),
+                        background: pace.pace === 'on' ? 'rgba(0,241,159,0.16)' : 'var(--wk-pill)',
+                        color: pace.pace === 'on' ? 'var(--wk-accent)' : '#C9CDD0',
+                      }}
+                    >
+                      {pace.direction === 'steady' ? 'Your weight is steady' : pace.direction === 'losing' ? "You're losing weight" : "You're gaining weight"}
+                    </span>
+                  )}
+                </div>
+                <Sparkline
+                  points={weightChart?.points ?? []}
+                  label={`7-day average weight from ${units.formatPrecise(weightChart?.points[0]?.value ?? 0)} to ${units.formatPrecise(weightChart?.points[weightChart.points.length - 1]?.value ?? 0)}`}
+                />
               </div>
-            </>
+            )}
+          </OverviewCard>
+        )}
+
+        {hasWidget('measurements') && (
+          <OverviewCard title="Measurements" opens="all measurements and logging" onOpen={() => setDetail('measurements')}>
+            {tapeHighlights.length > 0 ? (
+              <StatRow
+                stats={tapeHighlights.map((m) => {
+                  const [value, unit] = fmt.length(m.value).split(' ');
+                  return {
+                    label: m.label,
+                    value,
+                    unit,
+                    note: m.change === undefined || m.change === 0 ? (m.change === 0 ? 'No change' : 'First reading') : `${m.change > 0 ? 'Up' : 'Down'} ${fmt.length(Math.abs(m.change))}`,
+                  };
+                })}
+              />
+            ) : (
+              <p className="wk-body" style={{ marginTop: fig(24) }}>
+                Start with your waist: it says the most about your fitness. Measure at the navel, first thing in the morning.
+              </p>
+            )}
+          </OverviewCard>
+        )}
+
+        {hasWidget('strength-standards') && (
+          <OverviewCard title="Strength standards" opens="your level on each lift" onOpen={() => setDetail('standards')}>
+            {hasBodyweight && movementStandards.levels.some((l) => l.logged && l.source !== 'none') ? (
+              <>
+                <p className="wk-body" style={{ marginTop: fig(12) }}>
+                  Your best estimated max on each lift against published standards for {movementStandards.tableLabel} at your bodyweight.
+                </p>
+                <div className="flex justify-center" style={{ marginTop: fig(20) }}>
+                  <StandardsRadar report={movementStandards} />
+                </div>
+              </>
+            ) : (
+              <p className="wk-body" style={{ marginTop: fig(24) }}>
+                {hasBodyweight
+                  ? 'Log a squat, deadlift, bench press, overhead press or chin-up to see your level.'
+                  : 'Strength levels compare what you lift with your bodyweight. Log your weight to see them.'}
+              </p>
+            )}
+          </OverviewCard>
+        )}
+
+        {hasWidget('strength-levels') &&
+          (hasBodyweight ? (
+            <StrengthLevelsCard report={movementStandards} latestBiometrics={latestBiometrics} />
           ) : (
-            <p className="wk-body" style={{ marginTop: fig(24) }}>
-              {hasBodyweight
-                ? 'Log a squat, deadlift, bench press, overhead press or chin-up to see your level.'
-                : 'Strength levels compare what you lift with your bodyweight. Log your weight to see them.'}
+            logWeightPrompt
+          ))}
+
+        {hasWidget('balance') && <BalanceCard report={movementStandards} />}
+
+        {activeWidgets.map((wid) => {
+          const parsed = parseProgressWidgetId(wid);
+          if (parsed.kind === 'chart') {
+            const chart =
+              compositionCharts.find((c) => c.id === parsed.chartId) ??
+              strengthCharts.find((c) => c.id === parsed.chartId);
+            if (!chart) return null;
+            return (
+              <ProgressChartCard
+                key={wid}
+                chart={chart}
+                onOpen={chart.category ? () => openLogForChart(chart) : undefined}
+              />
+            );
+          }
+          if (parsed.kind === 'exercise') {
+            const def = exerciseCatalog.find((e) => e.id === parsed.exerciseId);
+            const histEx = def
+              ? undefined
+              : workouts.flatMap((w) => w.exercises).find((e) => e.exerciseId === parsed.exerciseId);
+            const exDef = def
+              ? {
+                  id: def.id,
+                  name: def.name,
+                  equipment: def.equipment,
+                  isRdl: def.isRdl,
+                  isWeightedCalisthenic: def.isWeightedCalisthenic,
+                }
+              : histEx
+              ? {
+                  id: histEx.exerciseId,
+                  name: histEx.name,
+                  equipment: histEx.equipment,
+                  isRdl: histEx.isRdl,
+                  isWeightedCalisthenic: histEx.isWeightedCalisthenic,
+                }
+              : null;
+            if (!exDef) return null;
+            const chart = buildExerciseProgressChart({
+              exercise: exDef,
+              workouts,
+              bodyweightKg: hasBodyweight ? bodyweightEmaKg : 80,
+              fmt,
+            });
+            return <ProgressChartCard key={wid} chart={chart} />;
+          }
+          return null;
+        })}
+
+        {activeWidgets.length === 0 && (
+          <section className="wk-card" aria-label="No widgets selected">
+            <h2 className="wk-h1">Progress widgets hidden</h2>
+            <p className="wk-body" style={{ marginTop: fig(16) }}>
+              Choose what you want to track here, or ask Treise in chat to add widgets back.
             </p>
-          )}
-        </OverviewCard>
+            <button
+              type="button"
+              onClick={() => {
+                triggerHaptic('light');
+                setDetail('widgets');
+              }}
+              className="wk-button"
+              style={{ marginTop: fig(28), background: 'var(--wk-raised)', color: '#fff' }}
+            >
+              Customize widgets
+            </button>
+          </section>
+        )}
       </div>
     </>
   );
@@ -632,7 +942,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
 
   return (
     <div className="wk -mx-3.5" style={{ paddingLeft: fig(PAGE_GUTTER), paddingRight: fig(PAGE_GUTTER), paddingBottom: 120 }}>
-      <PageTopGradient markerRef={cardsTopRef} deps={[detail, openGoalId, workouts.length]} />
+      <PageTopGradient markerRef={cardsTopRef} deps={[detail, openGoalId, workouts.length, activeWidgets.join(',')]} />
       {goalScreen || detailScreen || overview}
 
       {showLogModal && (

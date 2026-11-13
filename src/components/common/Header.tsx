@@ -14,8 +14,11 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenAuth,
 }) => {
   return (
-    <header className="relative border-b border-white/[0.06] px-4 py-2.5">
-      <div className="max-w-md mx-auto flex items-center justify-between">
+    <header className="relative border-b border-white/[0.06] py-2.5">
+      <div
+        className="max-w-md mx-auto flex items-center justify-between"
+        style={{ paddingLeft: 'calc(38 * var(--f))', paddingRight: 'calc(38 * var(--f))' }}
+      >
         <span
           style={{
             fontFamily: 'Inter, sans-serif',
@@ -48,7 +51,7 @@ export const Header: React.FC<HeaderProps> = ({
               onClick={onOpenAuth}
               className="relative w-9 h-9 rounded-full flex items-center justify-center transition-colors min-h-[44px] min-w-[44px]"
               style={{ background: 'var(--wk-card)' }}
-              aria-label={profile.email ? `Account (${profile.email})` : 'Sign In with Google'}
+              aria-label={profile.email ? `Profile and settings (${profile.email})` : 'Profile and settings'}
             >
               {profile.avatarUrl ? (
                 <img

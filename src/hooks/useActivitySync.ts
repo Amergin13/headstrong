@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { UserProfile, WorkoutSession } from '../engine/types';
+import { BiometricLog, UserProfile, WorkoutSession } from '../engine/types';
 import {
   ActivityLog,
   ActivityType,
@@ -20,12 +20,15 @@ import {
   toDetectedActivities,
 } from '../services/activitySources';
 import {
+  DailyStepRecord,
   HealthConnectStatus,
   getHealthConnectStatus,
   onHealthConnectStatus,
   readHealthConnectSessions,
+  readHealthConnectSteps,
   startHealthConnectBridge,
 } from '../services/healthConnectBridge';
+import { mergeDailySteps } from '../services/wearableSyncService';
 import { loadDismissedActivityIds, saveDismissedActivityIds } from '../services/storage';
 
 const RESYNC_MS = 10 * 60 * 1000;
@@ -36,6 +39,7 @@ interface ActivitySyncDeps {
   setProfile: React.Dispatch<React.SetStateAction<UserProfile>>;
   activities: ActivityLog[];
   setActivities: React.Dispatch<React.SetStateAction<ActivityLog[]>>;
+  setBiometrics?: React.Dispatch<React.SetStateAction<BiometricLog[]>>;
   workouts: WorkoutSession[];
   notify: (message: string, tag: string) => void;
 }
@@ -44,7 +48,7 @@ interface ActivitySyncDeps {
  * Active days: manual logging, plus workouts found automatically on Fitbit / Pixel Watch, Whoop,
  * Strava and Health Connect. Runs when the app opens and when it comes back to the foreground.
  */
-export function useActivitySync({ profile, setProfile, activities, setActivities, workouts, notify }: ActivitySyncDeps) {
+export function useActivitySync({ profile, setProfile, activities, setActivities, setBiometrics, workouts, notify }: ActivitySyncDeps) {
   const [hcStatus, setHcStatus] = useState<HealthConnectStatus>(getHealthConnectStatus());
   const [syncing, setSyncing] = useState(false);
   const lastSyncRef = useRef(0);
@@ -90,10 +94,20 @@ export function useActivitySync({ profile, setProfile, activities, setActivities
           ? readHealthConnectSessions(new Date(Date.now() - LOOKBACK_MS)).then((raw) => toDetectedActivities('health_connect', raw))
           : Promise.resolve([]),
       ];
+      const stepsJob: Promise<DailyStepRecord[]> =
+        p.healthConnectActivities && hc.stepsGranted && setBiometrics
+          ? readHealthConnectSteps(new Date(Date.now() - LOOKBACK_MS))
+          : Promise.resolve([]);
       setSyncing(true);
-      const results = await Promise.allSettled(jobs);
+      const [results, stepsResult] = await Promise.all([Promise.allSettled(jobs), Promise.allSettled([stepsJob])]);
       setSyncing(false);
       syncInFlight.current = false;
+      const stepOutcome = stepsResult[0];
+      if (stepOutcome?.status === 'fulfilled' && stepOutcome.value.length > 0 && setBiometrics) {
+        setBiometrics((prev) => mergeDailySteps(prev, stepOutcome.value, 'health_connect'));
+      } else if (stepOutcome?.status === 'rejected') {
+        console.warn('Activity sync skipped Health Connect steps:', stepOutcome.reason);
+      }
       const detected = results
         .flatMap((r) => (r.status === 'fulfilled' ? r.value : []))
         .filter((a) => !overlapsLifting(a, w));
@@ -111,7 +125,7 @@ export function useActivitySync({ profile, setProfile, activities, setActivities
         notifyRef.current(`Found ${counted.length} workouts from your apps. They count as active days.`, 'Active days');
       }
     },
-    [setActivities]
+    [setActivities, setBiometrics]
   );
 
   // On launch, when Health Connect becomes readable, and whenever the app comes back to the front.
@@ -124,8 +138,8 @@ export function useActivitySync({ profile, setProfile, activities, setActivities
     return () => document.removeEventListener('visibilitychange', onVisible);
   }, [syncActivities]);
   useEffect(() => {
-    if (hcStatus.granted && profile.healthConnectActivities) syncActivities(true);
-  }, [hcStatus.granted, profile.healthConnectActivities, syncActivities]);
+    if ((hcStatus.granted || hcStatus.stepsGranted) && profile.healthConnectActivities) syncActivities(true);
+  }, [hcStatus.granted, hcStatus.stepsGranted, profile.healthConnectActivities, syncActivities]);
 
   const logManualActivity = useCallback(
     (type: ActivityType, minutes: number) => {

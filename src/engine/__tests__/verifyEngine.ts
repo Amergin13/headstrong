@@ -6171,7 +6171,8 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
             rings[0].value === `${weekly.current}/${weekly.target}` &&
             rings[0].segments.length === weekly.target &&
             rings[0].segments.filter((x) => x === 'on').length === Math.min(weekly.current, weekly.target) &&
-            rings[0].inner?.length === ov.HABIT_WEEKS &&
+            rings[0].inner?.length === ov.MONTH_WEEKS &&
+            rings[0].innermost?.length === ov.YEAR_MONTHS &&
             rings.every((r) => !/%/.test(r.value) && !/%/.test(r.caption)),
           `Progress rings count whole things and never show a percentage (${rings.map((r) => `${r.title} ${r.value} ${r.caption}`).join(' | ')})`
         );
@@ -6253,9 +6254,24 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
           const withStroll = goalsMod2.buildAthleteGoals({ profile: NEW_USER_PROFILE, workouts: history, activities: [{ id: 'a2', date: '2026-11-06', startedAt: '2026-11-06T07:00:00', minutes: 10, type: 'walk', source: 'manual' } as any], biometrics: weighIns, bodyweightKg: 81.5, now });
           assert(withWalk[0].current === 4 && withStroll[0].current === 3, 'An active day of 20+ minutes counts as a session; a shorter one does not');
           const ringsFixed = ov.buildGoalRings(fixed, fmtKg);
+          const withFullOct = goalsMod2.buildAthleteGoals({
+            profile: NEW_USER_PROFILE,
+            workouts: [...history, at('2026-10-20', [chin(7)]), at('2026-10-22', [chin(7)])],
+            biometrics: weighIns,
+            bodyweightKg: 81.5,
+            now,
+          });
+          const octHitRing = ov.buildGoalRings(withFullOct, fmtKg)[0];
           assert(
-            ringsFixed[0].inner!.join(',') === 'unknown,on,on,off,on,off' && ringsFixed[0].caption === '1 week in a row',
-            `The weekly ring's inner ring is the last six weeks, open before the athlete started (${ringsFixed[0].inner!.join(',')})`
+            ringsFixed[0].segments.length === 4 &&
+              ringsFixed[0].inner!.length === 4 &&
+              ringsFixed[0].inner!.join(',') === 'on,off,on,off' &&
+              ringsFixed[0].innermost!.length === 12 &&
+              ringsFixed[0].innermost!.slice(0, 10).every((s) => s === 'unknown') &&
+              ringsFixed[0].innermost!.slice(10).join(',') === 'off,off' &&
+              octHitRing.innermost!.slice(10).join(',') === 'on,off' &&
+              ringsFixed[0].caption === '1 week in a row',
+            `Weekly ring shows days (4), 4 weeks in the month (${ringsFixed[0].inner!.join(',')}) and 12 months in the year (${ringsFixed[0].innermost!.slice(9).join(',')})`
           );
 
           // Changing goals: the plan's goals are the defaults, and the athlete's changes are saved.
@@ -6264,9 +6280,19 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
             assert(planDefault.fromPlan && planDefault.perWeek === resolveActivePlan(NEW_USER_PROFILE).workoutsPerWeek && fixed[0].fromPlan && /what your plan is built on/.test(fixed[0].method), 'By default the weekly goal is the plan\'s sessions a week');
             const three = goalsMod2.buildAthleteGoals({ profile: { ...NEW_USER_PROFILE, goalSettings: { sessionsPerWeek: 3 } }, workouts: history, biometrics: weighIns, bodyweightKg: 81.5, now });
             const threeFreq = three[0].measure as any;
+            const threeRing = ov.buildGoalRings(three, fmtKg)[0];
             assert(
-              three[0].title === 'Train 3 times a week' && !three[0].fromPlan && three[0].achieved && threeFreq.weeks.map((w: any) => w.hit).join(',') === 'true,true,false,true,true' && threeFreq.streakWeeks === 2 && /You set 3 a week; your plan is built on 4/.test(three[0].method),
-              `The athlete can set their own sessions a week; every week is counted against it (${three[0].detail})`
+              three[0].title === 'Train 3 times a week' &&
+                !three[0].fromPlan &&
+                three[0].achieved &&
+                threeFreq.weeks.map((w: any) => w.hit).join(',') === 'true,true,false,true,true' &&
+                threeFreq.streakWeeks === 2 &&
+                threeRing.segments.length === 3 &&
+                threeRing.inner!.length === 4 &&
+                threeRing.innermost!.length === 12 &&
+                threeRing.innermost!.slice(10).join(',') === 'on,off' &&
+                /You set 3 a week; your plan is built on 4/.test(three[0].method),
+              `Only the outer day ring varies (${threeRing.segments.length}); inner rings stay 4 weeks and 12 months (${three[0].detail})`
             );
             for (const bad of [0, 1, 8, 2.5, NaN]) {
               assert(goalsMod2.sessionsPerWeekTarget({ ...NEW_USER_PROFILE, goalSettings: { sessionsPerWeek: bad } }).perWeek === planDefault.perWeek, `A sessions-a-week value of ${bad} is ignored and the plan's is used`);
@@ -6797,6 +6823,7 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
           ['program', { tab: 'program' }, {}],
           ['progress', { tab: 'analytics' }, {}],
           ['goals-settings', { tab: 'analytics', detail: 'goals' }, {}],
+          ['progress-widgets', { tab: 'analytics', detail: 'widgets' }, {}],
           ['progress-weight', { tab: 'analytics', detail: 'weight' }, {}],
           ['progress-standards', { tab: 'analytics', detail: 'standards' }, {}],
           ['progress-bests', { tab: 'analytics', detail: 'bests' }, {}],
@@ -6948,6 +6975,193 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
         );
         const almostRing = ov3.buildGoalRings([{ ...own, current: 135, target: 140, achieved: false, measure: { ...(own.measure as any), best: 135, target: 140 } }], fmt3)[0];
         assert(almostRing.segments.filter((s) => s === 'on').length === 9, 'A goal at 96% lights 9 of 10 ring segments; the 10th waits until the target is reached');
+
+        // Customisable Progress widgets (UI quick menu + AI chat + removed Change flag).
+        const pwMod = await import('../../services/progressWidgets');
+        assert(
+          pwMod.resolveProgressWidgets(undefined).length === pwMod.DEFAULT_PROGRESS_WIDGETS.length &&
+            !pwMod.resolveProgressWidgets(undefined).includes('balance'),
+          'Default Progress widgets include the 7 overview blocks and omit optional widgets'
+        );
+        const addBal = await say('add balance to my progress page');
+        assert(
+          addBal.actionTaken?.type === 'UPDATE_PROGRESS_WIDGETS' &&
+            Boolean(addBal.updatedProfile?.progressWidgets?.includes('balance')),
+          'Coach: "add balance to my progress page" adds the Balance widget'
+        );
+        const withBal = { ...profile, progressWidgets: addBal.updatedProfile!.progressWidgets };
+        const removeTwo = await say('remove body weight and measurements from progress', withBal);
+        assert(
+          removeTwo.actionTaken?.type === 'UPDATE_PROGRESS_WIDGETS' &&
+            !removeTwo.updatedProfile?.progressWidgets?.includes('body-weight') &&
+            !removeTwo.updatedProfile?.progressWidgets?.includes('measurements') &&
+            Boolean(removeTwo.updatedProfile?.progressWidgets?.includes('balance')),
+          'Coach: removing two widgets from progress updates profile.progressWidgets while keeping other widgets'
+        );
+        const removeGoalsWidget = await say('remove goals from my progress page', withBal);
+        assert(
+          removeGoalsWidget.actionTaken?.type === 'UPDATE_PROGRESS_WIDGETS' &&
+            !removeGoalsWidget.updatedProfile?.progressWidgets?.includes('goals'),
+          'Coach: removing goals from the progress page hides the Goals widget without tripping goal target removal'
+        );
+        const mixedClause = await say('hide trophy case and add strength levels widget', profile);
+        assert(
+          mixedClause.actionTaken?.type === 'UPDATE_PROGRESS_WIDGETS' &&
+            !mixedClause.updatedProfile?.progressWidgets?.includes('trophy-case') &&
+            Boolean(mixedClause.updatedProfile?.progressWidgets?.includes('strength-levels')),
+          'Coach: mixed add/remove widget request handles both clauses cleanly'
+        );
+        const askWidgets = await say('what widgets can I add to progress?', withBal);
+        assert(!askWidgets.actionTaken && /Strength levels/.test(askWidgets.message.text), 'Asking what widgets can be added lists available widgets without mutating');
+        const resetWidgets = await say('reset my progress widgets', withBal);
+        assert(
+          resetWidgets.actionTaken?.type === 'UPDATE_PROGRESS_WIDGETS' &&
+            'progressWidgets' in (resetWidgets.updatedProfile ?? {}) &&
+            resetWidgets.updatedProfile!.progressWidgets === undefined,
+          'Coach: resetting progress widgets puts defaults back'
+        );
+        const seriesMod = await import('../../services/progressSeries');
+        const benchDef = exercises.find((e) => e.id === 'ex-bench-press')!;
+        const benchChart = seriesMod.buildExerciseProgressChart({
+          exercise: benchDef,
+          workouts,
+          bodyweightKg: bw,
+          fmt: { weight: fmt3, length: (cm) => `${cm.toFixed(1)} cm` },
+        });
+        assert(
+          benchChart.id === 'ex-bench-press' && benchChart.points.length > 0,
+          'buildExerciseProgressChart builds E1RM points from logged sets for a weighted lift'
+        );
+        const addArms = await say('add arms measurements to my progress page', { ...profile, progressWidgets: ['goals'] });
+        assert(
+          addArms.actionTaken?.type === 'UPDATE_PROGRESS_WIDGETS' &&
+            Boolean(addArms.updatedProfile?.progressWidgets?.includes('chart:bicep-left')) &&
+            Boolean(addArms.updatedProfile?.progressWidgets?.includes('chart:bicep-right')) &&
+            !addArms.updatedProfile?.progressWidgets?.includes('measurements'),
+          'Coach: "add arms measurements to my progress page" adds both bicep charts without toggling the whole measurements overview'
+        );
+        const addGranular = await say(
+          'add seated cable chest press and waist measurement to progress',
+          { ...profile, progressWidgets: addArms.updatedProfile!.progressWidgets }
+        );
+        assert(
+          addGranular.actionTaken?.type === 'UPDATE_PROGRESS_WIDGETS' &&
+            Boolean(addGranular.updatedProfile?.progressWidgets?.includes('exercise:ex-cable-chest-press')) &&
+            Boolean(addGranular.updatedProfile?.progressWidgets?.includes('chart:waist')) &&
+            !addGranular.updatedProfile?.progressWidgets?.includes('chart:chest') &&
+            !addGranular.updatedProfile?.progressWidgets?.includes('measurements'),
+          'Coach: adding a specific chest exercise + waist measurement does not mis-trigger chest tape or all measurements'
+        );
+        const removeGranular = await say(
+          'remove left bicep and barbell bench press from progress',
+          {
+            ...profile,
+            progressWidgets: pwMod.normalizeProgressWidgets([
+              'goals',
+              'measurements',
+              ...(addGranular.updatedProfile!.progressWidgets ?? []),
+              'exercise:ex-bench-press',
+            ]),
+          }
+        );
+        assert(
+          removeGranular.actionTaken?.type === 'UPDATE_PROGRESS_WIDGETS' &&
+            !removeGranular.updatedProfile?.progressWidgets?.includes('chart:bicep-left') &&
+            !removeGranular.updatedProfile?.progressWidgets?.includes('exercise:ex-bench-press') &&
+            Boolean(removeGranular.updatedProfile?.progressWidgets?.includes('chart:bicep-right')) &&
+            Boolean(removeGranular.updatedProfile?.progressWidgets?.includes('measurements')),
+          'Coach: removing left bicep and bench press removes only those custom widgets'
+        );
+        const fsW = await import('fs');
+        const pathW = await import('path');
+        const analyticsSrc = fsW.readFileSync(pathW.resolve(process.cwd(), 'src/components/analytics/AnalyticsTab.tsx'), 'utf-8');
+        const overviewCardsSrc = fsW.readFileSync(pathW.resolve(process.cwd(), 'src/components/analytics/ProgressOverviewCards.tsx'), 'utf-8');
+        const trainTabSrc = fsW.readFileSync(pathW.resolve(process.cwd(), 'src/components/train/TrainTab.tsx'), 'utf-8');
+        const goalSettingsSrc = fsW.readFileSync(pathW.resolve(process.cwd(), 'src/components/analytics/GoalSettingsScreen.tsx'), 'utf-8');
+        assert(
+          analyticsSrc.includes('aria-label="Progress options"') &&
+            analyticsSrc.includes('Change goals') &&
+            analyticsSrc.includes('Customize widgets') &&
+            analyticsSrc.includes('MoreHorizontal') &&
+            !overviewCardsSrc.includes('>Change<') &&
+            !overviewCardsSrc.includes('aria-label="Change goals"'),
+          'Progress header exposes the 3-dots quick menu with Change goals & Customize widgets and removes the Change flag from GoalsHero'
+        );
+
+        // Steps card on Progress, daily steps custom goal, and non-training day step count on Workout overview.
+        assert(
+          pwMod.resolveProgressWidgets(undefined).includes('steps') &&
+            analyticsSrc.includes("hasWidget('steps')") &&
+            analyticsSrc.includes('title="Steps"') &&
+            trainTabSrc.includes("Today's steps") &&
+            trainTabSrc.includes('stepsOnDate('),
+          'Steps appears as a default Progress card and on non-training days in the day overview'
+        );
+        const toggleStepsOff = await say('hide steps from my progress page', profile);
+        const toggleStepsOn = await say('add steps to my progress page', { ...profile, progressWidgets: toggleStepsOff.updatedProfile!.progressWidgets });
+        assert(
+          toggleStepsOff.actionTaken?.type === 'UPDATE_PROGRESS_WIDGETS' &&
+            !pwMod.resolveProgressWidgets(toggleStepsOff.updatedProfile?.progressWidgets).includes('steps') &&
+            toggleStepsOn.actionTaken?.type === 'UPDATE_PROGRESS_WIDGETS' &&
+            pwMod.resolveProgressWidgets(toggleStepsOn.updatedProfile?.progressWidgets).includes('steps'),
+          'Coach: steps widget can be hidden and added back cleanly'
+        );
+        const todayDate = localDateString(new Date());
+        const stepBio = [
+          ...biometrics.filter((b) => b.date !== todayDate),
+          { date: todayDate, bodyweightKg: 81.2, hrvRmssd: 60, restingHr: 54, sleepHours: 7.5, steps: 8500, activeZoneMinutes: 0 },
+        ];
+        const stepsChart = seriesMod.buildStepsChart(stepBio, todayDate);
+        assert(
+          stepsChart.points.some((p) => p.date === todayDate && p.value === 8500) &&
+            seriesMod.buildStepsChart([]).points.length === 0 &&
+            (seriesMod.averageRecentSteps(stepBio, 7, todayDate) ?? 0) > 0,
+          'buildStepsChart and averageRecentSteps compute series directly from biometrics without fabricating zeros'
+        );
+        assert(
+          goalsMod3.OWN_GOAL_OPTIONS.some((o) => o.exerciseId === goalsMod3.STEPS_GOAL_EXERCISE_ID && o.metric === 'steps') &&
+            goalSettingsSrc.includes('OWN_GOAL_OPTIONS') &&
+            goalsMod3.makeCustomGoal('daily-steps', 'Daily steps', 'steps', 10000, todayDate)?.metric === 'steps' &&
+            goalsMod3.makeCustomGoal('daily-steps', 'Daily steps', 'steps', 100, todayDate) === null &&
+            goalsMod3.makeCustomGoal('daily-steps', 'Daily steps', 'steps', 200000, todayDate) === null,
+          'Daily steps is included in custom goal options with sensible bounds (500–100,000)'
+        );
+        const setStepsGoal = await say('my goal is 10,000 steps');
+        assert(
+          setStepsGoal.actionTaken?.type === 'UPDATE_GOALS' &&
+            setStepsGoal.updatedProfile?.goalSettings?.customGoals?.[0]?.metric === 'steps' &&
+            setStepsGoal.updatedProfile?.goalSettings?.customGoals?.[0]?.target === 10000,
+          'Coach: "my goal is 10,000 steps" adds a daily steps custom goal'
+        );
+        const withStepsGoal = { ...profile, goalSettings: setStepsGoal.updatedProfile!.goalSettings };
+        const stepsGoalsList = goalsMod3.buildAthleteGoals({ profile: withStepsGoal, workouts, biometrics: stepBio, bodyweightKg: bw });
+        const stepGoalObj = stepsGoalsList.find((g) => g.unit === 'steps')!;
+        const stepRing = ov3.buildGoalRings(stepsGoalsList, fmt3).find((r) => r.id === stepGoalObj.id)!;
+        const stepSummary = ov3.buildGoalsSummary(stepsGoalsList, fmt3);
+        const askStepsToday = await processAssistantMessage({ ...args, profile: withStepsGoal, biometrics: stepBio, userMessage: 'how many steps did i do today' });
+        const removeStepsGoal = await say('remove my steps goal', withStepsGoal);
+        const stepSummaryProblem = ov3.checkGoalsSummary(
+          "You've done 3 of 4 sessions this week, with 1 to go. You have 8,500 of 10,000 steps today.",
+          stepSummary
+        ).problem;
+        assert(
+          stepGoalObj.current === 8500 && stepGoalObj.target === 10000 && !stepGoalObj.achieved,
+          `Daily steps goal evaluates today steps (got ${stepGoalObj.current}/${stepGoalObj.target})`
+        );
+        assert(
+          stepRing.value === '8.5k/10k' && stepRing.segments.filter((s) => s === 'on').length === 9,
+          `Daily steps ring formats compactly and lights 9/10 segments at 85% (got ${stepRing.value}, ${stepRing.segments.filter((s) => s === 'on').length})`
+        );
+        assert(
+          stepSummary.fallback.includes('8500 of 10000 steps today') &&
+            stepSummary.facts.some((f) => f.includes('8500') && f.includes('10000')) &&
+            stepSummaryProblem === undefined,
+          `Goals summary includes daily steps fact & passes checkGoalsSummary (got problem: ${stepSummaryProblem ?? 'none'}, len=${stepSummary.fallback.length})`
+        );
+        assert(
+          /8,500 steps today/.test(askStepsToday.message.text) && removeStepsGoal.updatedProfile?.goalSettings?.customGoals === undefined,
+          `Coach answers today step count and removes steps goal cleanly (got "${askStepsToday.message.text}")`
+        );
       }
 
       // Secondary screens use the design system: its tokens and classes exist, and nothing is hand-written.
@@ -6971,7 +7185,7 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
         }
         assert(missing.length === 0, `Every design-system token and class used by a component exists${missing.length ? ` (${[...new Set(missing)].slice(0, 5).join('; ')})` : ''}`);
         const secondary = [
-          'assistant/AICoachChatModal.tsx', 'analytics/WeightLogModal.tsx', 'analytics/GoalDetailScreen.tsx', 'analytics/GoalSettingsScreen.tsx', 'train/PlateCalculatorModal.tsx',
+          'assistant/AICoachChatModal.tsx', 'analytics/WeightLogModal.tsx', 'analytics/GoalDetailScreen.tsx', 'analytics/GoalSettingsScreen.tsx', 'analytics/ProgressWidgetsScreen.tsx', 'train/PlateCalculatorModal.tsx',
           'train/ExerciseSwapModal.tsx', 'train/WorkoutFinishScreen.tsx', 'program/CustomExerciseModal.tsx', 'program/PastWorkoutModal.tsx', 'program/WatchSyncModal.tsx', 'program/ProgramPickerModal.tsx',
           'common/RestTimerModal.tsx', 'common/Toast.tsx', 'onboarding/OnboardingModal.tsx', 'auth/GoogleAuthModal.tsx', 'activity/ActivityConnectionsModal.tsx', 'activity/LogActivityModal.tsx',
         ];
@@ -7314,11 +7528,43 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
       const accepted = receiveAppChannel({ origin: 'android-app://treise.vercel.app', data: '', ports: [trusted.port1] as any }, 'https://treise.vercel.app', 'treise.vercel.app');
       const stranger = new MessageChannel();
       const rejected = receiveAppChannel({ origin: 'https://evil.example', data: '', ports: [stranger.port1] as any }, 'https://treise.vercel.app', 'treise.vercel.app');
-      trusted.port2.postMessage(JSON.stringify({ type: 'hello', version: 3 }));
+      trusted.port2.postMessage(JSON.stringify({ type: 'hello', version: 4 }));
       await new Promise((r) => setTimeout(r, 20));
-      assert(accepted && !rejected && isAppBridgeReady() && getAppBridgeVersion() === 3 && canOpenAppScreens(), 'The page keeps the channel Chrome hands it from the verified app, reads the hello on it, and ignores other senders');
+      assert(accepted && !rejected && isAppBridgeReady() && getAppBridgeVersion() === 4 && canOpenAppScreens(), 'The page keeps the channel Chrome hands it from the verified app, reads the hello on it, and ignores other senders');
+      const { readHealthConnectSteps } = await import('../../services/healthConnectBridge');
+      const { mergeDailySteps } = await import('../../services/wearableSyncService');
+      const hcSent: any[] = [];
+      trusted.port2.onmessage = (e: MessageEvent) => {
+        const msg = JSON.parse(String(e.data));
+        hcSent.push(msg);
+        if (msg.type === 'status') {
+          trusted.port2.postMessage(JSON.stringify({ type: 'status', available: true, granted: true, stepsGranted: true }));
+        } else if (msg.type === 'read-steps') {
+          trusted.port2.postMessage(JSON.stringify({ type: 'steps', requestId: msg.requestId, days: [{ date: '2026-11-12', steps: 9420 }, { date: '2026-11-13', steps: 6150 }] }));
+        }
+      };
+      trusted.port2.postMessage(JSON.stringify({ type: 'status', available: true, granted: true, stepsGranted: true }));
+      await new Promise((r) => setTimeout(r, 20));
+      const pulledSteps = await readHealthConnectSteps(new Date('2026-11-10T00:00:00Z'));
+      const existingLogs: BiometricLog[] = [
+        { date: '2026-11-12', bodyweightKg: 81.4, hrvRmssd: 62, restingHr: 52, sleepHours: 7.8, steps: 0, activeZoneMinutes: 0, source: 'whoop' },
+      ];
+      const mergedLogs = mergeDailySteps(existingLogs, [...pulledSteps, { date: '2026-11-11', steps: 0 }], 'health_connect');
+      assert(
+        pulledSteps.length === 2 &&
+          pulledSteps[1].steps === 6150 &&
+          mergedLogs.length === 2 &&
+          mergedLogs[0].steps === 9420 &&
+          mergedLogs[0].bodyweightKg === 81.4 &&
+          mergedLogs[0].hrvRmssd === 62 &&
+          mergedLogs[0].source === 'whoop' &&
+          mergeDailySteps(mergedLogs, pulledSteps, 'health_connect') === mergedLogs,
+        'Health Connect v4 bridge pulls daily steps and merges them into biometrics without overwriting weigh-ins or recovery metrics'
+      );
       trusted.port1.close();
+      trusted.port2.close();
       stranger.port1.close();
+      stranger.port2.close();
     }
   }
 

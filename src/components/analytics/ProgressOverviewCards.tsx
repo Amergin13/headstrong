@@ -37,7 +37,7 @@ const SegmentRing: React.FC<{ segments: RingSegment[]; radius: number; width: nu
           fill="none"
           stroke={state === 'on' ? colour : TRACK}
           // Not measured yet: a thin line, so it doesn't read as a miss.
-          strokeWidth={state === 'unknown' ? width * 0.3 : width}
+          strokeWidth={state === 'unknown' ? Math.max(width * 0.32, 1.05) : width}
           strokeLinecap="round"
           strokeDasharray={`${sweep} ${length - sweep}`}
           strokeDashoffset={-((i * 360) / count + gapDeg / 2) * (length / 360)}
@@ -50,24 +50,53 @@ const SegmentRing: React.FC<{ segments: RingSegment[]; radius: number; width: nu
 };
 
 /**
- * One goal as a ring of segments, one per thing counted (sessions, reps, signs). A process goal has
- * a second ring inside for its long loop: one segment per recent week. The count is in the centre
- * and in the label, so the drawing itself is decorative for screen readers.
+ * One goal as a ring of segments, one per thing counted (sessions, reps, signs). The weekly
+ * process goal draws three concentric rings: days in the week outside (`perWeek`, the only variable
+ * count), 4 weeks in the month inside that, and 12 months in the year inside that.
  */
-const Ring: React.FC<{ ring: GoalRing; colour: string }> = ({ ring, colour }) => (
-  <div className="relative" style={{ width: fig(206), height: fig(206) }}>
-    <svg viewBox="0 0 100 100" className="w-full h-full" style={{ transform: 'rotate(-90deg)' }} aria-hidden="true">
-      <SegmentRing segments={ring.segments} radius={43} width={7} colour={colour} delay={200} />
-      {ring.inner && <SegmentRing segments={ring.inner} radius={33.5} width={3.6} colour="#FFFFFF" delay={500} />}
-    </svg>
-    <span
-      className="absolute inset-0 flex items-center justify-center font-bold tabular-numbers"
-      style={{ fontSize: text(ring.value.length > 4 ? 40 : ring.inner ? 48 : 56), color: ring.empty ? 'var(--wk-muted)' : '#fff' }}
-    >
-      {ring.value}
-    </span>
-  </div>
-);
+const Ring: React.FC<{ ring: GoalRing; colour: string }> = ({ ring, colour }) => {
+  const threeRing = Boolean(ring.innermost?.length);
+  return (
+    <div className="relative" style={{ width: fig(206), height: fig(206) }}>
+      <svg viewBox="0 0 100 100" className="w-full h-full" style={{ transform: 'rotate(-90deg)' }} aria-hidden="true">
+        <SegmentRing
+          segments={ring.segments}
+          radius={threeRing ? 44 : 43}
+          width={threeRing ? 6 : 7}
+          colour={colour}
+          delay={200}
+        />
+        {ring.inner && (
+          <SegmentRing
+            segments={ring.inner}
+            radius={threeRing ? 35.5 : 33.5}
+            width={threeRing ? 3.5 : 3.6}
+            colour="#FFFFFF"
+            delay={450}
+          />
+        )}
+        {ring.innermost && (
+          <SegmentRing
+            segments={ring.innermost}
+            radius={28.5}
+            width={2.6}
+            colour={colour}
+            delay={650}
+          />
+        )}
+      </svg>
+      <span
+        className="absolute inset-0 flex items-center justify-center font-bold tabular-numbers"
+        style={{
+          fontSize: text(ring.value.length > 4 || threeRing ? 40 : ring.inner ? 48 : 56),
+          color: ring.empty ? 'var(--wk-muted)' : '#fff',
+        }}
+      >
+        {ring.value}
+      </span>
+    </div>
+  );
+};
 
 /** The fact-based goals summary straight away, replaced by the on-device model's version when one is saved or written. */
 function useGoalsSummaryText(summary: GoalsSummary): string {
@@ -94,7 +123,7 @@ function useGoalsSummaryText(summary: GoalsSummary): string {
 }
 
 /** The snapshot: the athlete's goals as rings (each opens its goal), then a short summary of where they stand. */
-export const GoalsHero: React.FC<{ rings: GoalRing[]; summary: GoalsSummary; onOpenGoal: (id: string) => void; onChangeGoals: () => void }> = ({ rings, summary, onOpenGoal, onChangeGoals }) => {
+export const GoalsHero: React.FC<{ rings: GoalRing[]; summary: GoalsSummary; onOpenGoal: (id: string) => void }> = ({ rings, summary, onOpenGoal }) => {
   const summaryText = useGoalsSummaryText(summary);
   return (
     <section aria-labelledby="goals-title" style={{ paddingTop: fig(90) }}>
@@ -123,22 +152,9 @@ export const GoalsHero: React.FC<{ rings: GoalRing[]; summary: GoalsSummary; onO
         ))}
       </ul>
       <div style={{ marginTop: fig(56), padding: `0 ${fig(28)}` }}>
-        <div className="flex items-center justify-between" style={{ gap: fig(20) }}>
-          <h2 id="goals-title" className="wk-label" style={{ lineHeight: 1.21 }}>
-            Goals
-          </h2>
-          <button
-            type="button"
-            onClick={() => {
-              triggerHaptic('light');
-              onChangeGoals();
-            }}
-            aria-label="Change goals"
-            className="wk-pill wk-tap"
-          >
-            Change
-          </button>
-        </div>
+        <h2 id="goals-title" className="wk-label" style={{ lineHeight: 1.21 }}>
+          Goals
+        </h2>
         <p className="wk-body" style={{ marginTop: fig(12) }} aria-live="polite">
           <span key={summaryText} className="wk-text-swap">
             {summaryText}

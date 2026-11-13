@@ -101,7 +101,7 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
       if (!hcStatus?.granted && onRequestHealthConnectPermission) {
         if (onRequestHealthConnectPermission() === false) setImportStatus(UPDATE_APP_FOR_PERMISSION);
       } else {
-        setImportStatus('Health Connect is on. Pixel Watch, Fitbit and other watch workouts will count as active days.');
+        setImportStatus('Health Connect is on. Pixel Watch, Fitbit and other watch workouts and daily steps will sync automatically.');
       }
     }
   };
@@ -404,8 +404,8 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
             'Sync your overnight recovery score, HRV, resting heart rate, and sleep duration automatically to calibrate your daily training volume and RIR targets.'}
           {selectedProvider === 'health_connect' &&
             (hcBridgeAvailable
-              ? 'Allow Health Connect below so workouts from Google Pixel Watch, Fitbit, Samsung Health, Garmin and Wear OS count as active days automatically. You can also import a JSON export file for recovery metrics.'
-              : "In the Treise app from Google Play, Health Connect workouts from Pixel Watch, Fitbit, Samsung Health and Garmin count as active days automatically. If you have a Health Connect export file, you can import it below.")}
+              ? 'Allow Health Connect below so workouts and daily step counts from Google Pixel Watch, Fitbit, Samsung Health, Garmin and Wear OS sync automatically. You can also import a JSON export file for recovery metrics.'
+              : "In the Treise app from Google Play, Health Connect workouts and daily step counts from Pixel Watch, Fitbit, Samsung Health and Garmin sync automatically. If you have a Health Connect export file, you can import it below.")}
         </p>
       )}
 

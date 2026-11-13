@@ -356,21 +356,40 @@ export interface GoalSettings {
   followCustomGoalId?: string;
 }
 
-/** A target the athlete set on one exercise: a weight to lift, or reps to do in one set. */
+/** A target the athlete set: a weight to lift, reps to do in one set, or a daily step count. */
 export interface CustomGoal {
   id: string;
   exerciseId: string;
   exerciseName: string;
-  /** 'weight' = heaviest logged set reaches `target` kg; 'reps' = most reps in one set reaches `target`. */
-  metric: 'weight' | 'reps';
+  /** 'weight' = heaviest logged set reaches `target` kg; 'reps' = most reps in one set reaches `target`; 'steps' = daily steps reaches `target`. */
+  metric: 'weight' | 'reps' | 'steps';
   target: number;
   /** When it was set (YYYY-MM-DD). */
   createdOn: string;
 }
 
+export type CoreProgressWidgetId =
+  | 'goals'
+  | 'trophy-case'
+  | 'lifetime-stats'
+  | 'recent-stats'
+  | 'steps'
+  | 'body-weight'
+  | 'measurements'
+  | 'strength-standards'
+  | 'strength-levels'
+  | 'balance';
+
+export type ProgressWidgetId =
+  | CoreProgressWidgetId
+  | `exercise:${string}`
+  | `chart:${string}`;
+
 export interface UserProfile {
   /** Goals changed on the Progress page; see GoalSettings. */
   goalSettings?: GoalSettings;
+  /** Customised widget selection for the Progress screen; undefined uses the defaults. */
+  progressWidgets?: ProgressWidgetId[];
   name: string;
   gender: Gender;
   /** True once the athlete chose it (Settings or the weight form); until then gender is a default. */
@@ -476,7 +495,8 @@ export type AssistantActionType =
   | 'SWITCH_GOAL_PHASE'
   | 'SWITCH_LOCATION'
   | 'SHIFT_WORKOUT'
-  | 'UPDATE_GOALS';
+  | 'UPDATE_GOALS'
+  | 'UPDATE_PROGRESS_WIDGETS';
 
 export interface AssistantActionPayload {
   type: AssistantActionType;

@@ -11,9 +11,12 @@ import {
   MAX_CUSTOM_GOALS,
   MAX_GOALS,
   MAX_CUSTOM_REPS,
+  MAX_CUSTOM_STEPS,
   MAX_CUSTOM_WEIGHT_KG,
   MAX_SESSIONS_PER_WEEK,
+  MIN_CUSTOM_STEPS,
   MIN_SESSIONS_PER_WEEK,
+  STEPS_GOAL_EXERCISE_ID,
   bestOnExercise,
   ownGoalName,
   sessionsPerWeekTarget,
@@ -111,12 +114,19 @@ export function detectGoalChange(
   }
 
   const mentionsGoal = /\b(goals?|targets?|aim(ing)?( for| to)?)\b/.test(msg);
-  const lift = exerciseFor(msg, activeWorkout, catalog);
+  const mentionsSteps = /\b(daily\s+)?steps?\b/.test(msg);
+  const lift = mentionsSteps ? null : exerciseFor(msg, activeWorkout, catalog);
 
   // Remove one of the athlete's own goals.
   if (/\b(remove|delete|drop|cancel|scrap)\b/.test(msg) && mentionsGoal) {
     const own = settings.customGoals ?? [];
-    const match = lift ? own.filter((g) => g.exerciseId === lift.def.id) : own.length === 1 ? own : [];
+    const match = mentionsSteps
+      ? own.filter((g) => g.metric === 'steps' || g.exerciseId === STEPS_GOAL_EXERCISE_ID)
+      : lift
+      ? own.filter((g) => g.exerciseId === lift.def.id)
+      : own.length === 1
+      ? own
+      : [];
     if (!match.length) return { changed: false, reply: own.length ? `Which goal? You have: ${own.map((g) => g.exerciseName).join(', ')}.` : "You haven't set a goal of your own to remove." };
     const left = own.filter((g) => !match.includes(g));
     return {
@@ -127,10 +137,46 @@ export function detectGoalChange(
     };
   }
 
+  // Daily step target ("my goal is 10,000 steps", "set a steps goal of 8000").
+  const stepsMatch = /(\d[\d,]*)\s*(?:daily\s+)?steps?\b|\b(?:daily\s+)?steps?\s*(?:goal|target)?\s*(?:of|to|at|:)?\s*(\d[\d,]*)\b/.exec(msg);
+  const wantsTo = /\b(i want to|i'?d like to|my goal is|goal of|aim(ing)? (for|to)|target (of|is)|set a(?: [\w-]+)? goal|working towards?)\b/.test(msg);
+  if ((mentionsGoal || wantsTo) && mentionsSteps && stepsMatch) {
+    const rawCount = (stepsMatch[1] ?? stepsMatch[2] ?? '').replace(/,/g, '');
+    const target = Math.round(Number(rawCount));
+    if (!Number.isFinite(target) || target < MIN_CUSTOM_STEPS || target > MAX_CUSTOM_STEPS) {
+      return {
+        changed: false,
+        reply: `Pick a daily step goal between ${MIN_CUSTOM_STEPS.toLocaleString()} and ${MAX_CUSTOM_STEPS.toLocaleString()} steps, for example "set a goal of 10,000 steps".`,
+      };
+    }
+    const id = `${STEPS_GOAL_EXERCISE_ID}-steps`;
+    const others = (settings.customGoals ?? []).filter((g) => g.id !== id);
+    if (others.length >= MAX_CUSTOM_GOALS) {
+      return {
+        changed: false,
+        reply: `You have ${MAX_GOALS} goals, which is the most you can keep in view: 3 from your plan and ${MAX_CUSTOM_GOALS} of your own (${others.map((g) => g.exerciseName).join(' and ')}). Tell me which of yours to remove and I'll add this one.`,
+      };
+    }
+    const goal: CustomGoal = {
+      id,
+      exerciseId: STEPS_GOAL_EXERCISE_ID,
+      exerciseName: 'Daily steps',
+      metric: 'steps',
+      target,
+      createdOn: localDateString(new Date()),
+    };
+    const formatted = target.toLocaleString();
+    return {
+      goalSettings: cleaned({ ...settings, customGoals: [...others, goal] }),
+      changed: true,
+      reply: `Done. Your goal is ${formatted} steps a day, tracked from Health Connect or your watch. It has its own ring on your Progress page.`,
+      summary: `Goal set: ${formatted} steps a day`,
+    };
+  }
+
   // The athlete's own target on a lift: a weight, or reps in one set.
   const weight = /(\d+(?:\.\d+)?)\s*(kg|kgs|kilos?|lbs?|pounds?)\b/.exec(msg);
   const reps = /(\d+)\s*(reps?|chin[\s-]?ups?|pull[\s-]?ups?|push[\s-]?ups?|press[\s-]?ups?|dips?)\b/.exec(msg);
-  const wantsTo = /\b(i want to|i'?d like to|my goal is|goal of|aim(ing)? (for|to)|target of|set a goal|working towards?)\b/.test(msg);
   if ((mentionsGoal || wantsTo) && (weight || reps)) {
     if (!lift) return { changed: false, reply: 'Which exercise is that goal for? For example: "set a goal of 100 kg on bench press" or "my goal is 12 chin-ups".' };
     const metric: CustomGoal['metric'] = weight ? 'weight' : 'reps';

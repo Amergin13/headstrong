@@ -13,13 +13,14 @@ import { WeightUnit, formatPreciseWeight, formatWeight } from '../utils/units';
 import { AthleteGoal, CHOSEN_GOAL_ID, WEEKLY_GOAL_ID, buildAthleteGoals, describeGoalStanding } from './athleteGoals';
 import { planPosition } from './coachAnswers';
 import { closestStrengthGoal } from './progressOverview';
+import { PROGRESS_WIDGETS, resolveProgressWidgets } from './progressWidgets';
 
 /** Where the coach was opened. */
 export interface CoachPlace {
   tab: 'train' | 'program' | 'analytics';
   /** On Progress: the goal whose detail is open, or the screen that is open. */
   goalId?: string;
-  detail?: 'bests' | 'lifetime' | 'recent' | 'weight' | 'measurements' | 'standards' | 'goals';
+  detail?: 'bests' | 'lifetime' | 'recent' | 'steps' | 'weight' | 'measurements' | 'standards' | 'goals' | 'widgets';
 }
 
 export interface CoachHook {
@@ -207,6 +208,18 @@ export function buildCoachOpening(input: CoachOpeningInput): CoachOpening {
   const precise = (kg: number) => formatPreciseWeight(kg, unit);
   const ownGoal: CoachHook = { label: 'Set my own goal', text: 'Set a goal of ', fill: true };
 
+  if (place.detail === 'widgets') {
+    const activeCount = resolveProgressWidgets(profile.progressWidgets).length;
+    return {
+      id: 'progress-widgets',
+      line: `You have ${activeCount} of ${PROGRESS_WIDGETS.length} widgets on Progress. Tell me what to add or remove, like "add balance to progress" or "remove measurements widget".`,
+      hooks: [
+        { label: 'What widgets can I add?', text: 'What widgets can I add to progress?' },
+        { label: 'Add balance widget', text: 'Add balance widget to progress' },
+        { label: 'Reset to default', text: 'Reset my progress widgets' },
+      ],
+    };
+  }
   if (place.detail === 'goals') {
     const customised = Boolean(profile.goalSettings);
     const hooks: CoachHook[] = [ownGoal, { label: 'Train 3 times a week', text: 'Change my goal to 3 times a week' }, { label: 'Follow my bench', text: 'Follow my bench press strength level' }];

@@ -11,12 +11,19 @@ import { RawSourceSession } from './activitySources';
  * Messages (JSON strings):
  *   app -> page  {type:'hello', version}                      bridge is ready (older installed apps send 1)
  *   page -> app  {type:'status'}                              ask for availability and permission
- *   app -> page  {type:'status', available, granted}
+ *   app -> page  {type:'status', available, granted, stepsGranted}
  *   page -> app  {type:'request-permission'}                  show Health Connect's permission screen
  *   page -> app  {type:'read-sessions', requestId, since}     read ExerciseSessionRecords since ISO time
  *   app -> page  {type:'sessions', requestId, sessions|error}
+ *   page -> app  {type:'read-steps', requestId, since}        read daily StepsRecord totals since ISO time
+ *   app -> page  {type:'steps', requestId, days|error}
  * Scale messages (type 'ble-…') share this channel; see nativeScale.ts.
  */
+
+export interface DailyStepRecord {
+  date: string;
+  steps: number;
+}
 
 export interface HealthConnectStatus {
   /** The Treise Android app is running this page and can reach Health Connect. */
@@ -25,15 +32,18 @@ export interface HealthConnectStatus {
   available: boolean;
   /** The athlete allowed Treise to read exercise sessions. */
   granted: boolean;
+  /** The athlete allowed Treise to read daily step counts. */
+  stepsGranted?: boolean;
 }
 
 type StatusListener = (status: HealthConnectStatus) => void;
 
 let port: MessagePort | null = null;
 let appVersion = 0;
-let status: HealthConnectStatus = { bridge: false, available: false, granted: false };
+let status: HealthConnectStatus = { bridge: false, available: false, granted: false, stepsGranted: false };
 const statusListeners = new Set<StatusListener>();
 const pending = new Map<string, { resolve: (s: RawSourceSession[]) => void; reject: (e: Error) => void }>();
+const pendingSteps = new Map<string, { resolve: (days: DailyStepRecord[]) => void; reject: (e: Error) => void }>();
 let started = false;
 
 function setStatus(next: Partial<HealthConnectStatus>) {
@@ -88,13 +98,24 @@ function handleAppMessage(data: unknown) {
   if (!msg || typeof msg.type !== 'string') return;
   appMessageListeners.forEach((l) => l(msg));
   if (msg.type === 'status') {
-    setStatus({ bridge: true, available: Boolean(msg.available), granted: Boolean(msg.granted) });
+    setStatus({
+      bridge: true,
+      available: Boolean(msg.available),
+      granted: Boolean(msg.granted),
+      stepsGranted: Boolean(msg.stepsGranted),
+    });
   } else if (msg.type === 'sessions' && typeof msg.requestId === 'string') {
     const p = pending.get(msg.requestId);
     if (!p) return;
     pending.delete(msg.requestId);
     if (msg.error) p.reject(new Error(String(msg.error)));
     else p.resolve(Array.isArray(msg.sessions) ? msg.sessions : []);
+  } else if (msg.type === 'steps' && typeof msg.requestId === 'string') {
+    const p = pendingSteps.get(msg.requestId);
+    if (!p) return;
+    pendingSteps.delete(msg.requestId);
+    if (msg.error) p.reject(new Error(String(msg.error)));
+    else p.resolve(Array.isArray(msg.days) ? msg.days : []);
   }
 }
 
@@ -188,6 +209,19 @@ export function readHealthConnectSessions(since: Date, timeoutMs = 20000): Promi
     send({ type: 'read-sessions', requestId, since: since.toISOString() });
     setTimeout(() => {
       if (pending.delete(requestId)) reject(new Error('Health Connect did not answer'));
+    }, timeoutMs);
+  });
+}
+
+/** Daily step counts since `since`, aggregated per local calendar day by Health Connect. */
+export function readHealthConnectSteps(since: Date, timeoutMs = 20000): Promise<DailyStepRecord[]> {
+  if (!port || appVersion < 4 || !status.stepsGranted) return Promise.resolve([]);
+  const requestId = `hc-steps-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  return new Promise((resolve, reject) => {
+    pendingSteps.set(requestId, { resolve, reject });
+    send({ type: 'read-steps', requestId, since: since.toISOString() });
+    setTimeout(() => {
+      if (pendingSteps.delete(requestId)) reject(new Error('Health Connect did not answer'));
     }, timeoutMs);
   });
 }

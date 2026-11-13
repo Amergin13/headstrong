@@ -23,7 +23,6 @@ interface ExerciseCardProps {
   onUpdateSet: (setId: string, updated: Partial<WorkoutSet>) => void;
   onCompleteSet: (setId: string) => void;
   onAddSet: (isWarmup?: boolean) => void;
-  onDeleteSet: (setId: string) => void;
   onOpenSwap?: () => void;
   onOpenPlateCalc?: (weightKg: number) => void;
   /** Plain-English primary muscle, e.g. "Triceps". */
@@ -34,17 +33,6 @@ interface ExerciseCardProps {
   insight?: ExerciseInsight;
   /** Personal overview for today (written on the device); replaces the plain summary. */
   note?: string;
-  /** This week's hard sets for the exercise's main muscle, from the knowledge graph. */
-  muscleWeek?: { label: string; sets: number; target: [number, number] };
-}
-
-function formatTempo(tempo?: string): string | null {
-  if (!tempo) return null;
-  if (/^\d{4}$/.test(tempo)) {
-    const [ecc, pauseBottom, con, pauseTop] = tempo.split('');
-    return `Tempo ${tempo}: ${ecc}s lower, ${pauseBottom}s pause, ${con}s lift, ${pauseTop}s at the top`;
-  }
-  return tempo;
 }
 
 export const ExerciseCard: React.FC<ExerciseCardProps> = ({
@@ -54,14 +42,12 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
   onUpdateSet,
   onCompleteSet,
   onAddSet,
-  onDeleteSet,
   onOpenSwap,
   onOpenPlateCalc,
   muscleLabel,
   previousSets = [],
   insight,
   note,
-  muscleWeek,
 }) => {
   const units = useUnits();
   const [showDetails, setShowDetails] = useState(false);
@@ -75,7 +61,8 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
   const isBodyweightOnly =
     exercise.equipment === 'bodyweight' && (!exercise.isWeightedCalisthenic || plannedWeightKg === 0);
   const warmupCount = exercise.sets.filter((s) => s.isWarmup || s.setType === 'warmup').length;
-  const tempoText = formatTempo(exercise.tempo);
+  const hasTempoPacer = Boolean(exercise.tempo && /^[\dXx]{4}$/.test(exercise.tempo));
+  const customTempoText = !hasTempoPacer && exercise.tempo ? exercise.tempo : null;
   const warmupSteps = exercise.useWarmupProtocol ? calculate5StepWarmupRamp(currentWeight) : [];
   const chip = exercise.orderCode || (exerciseIndex !== undefined ? String(exerciseIndex) : null);
   const history = insight?.history ?? [];
@@ -164,38 +151,20 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
               }
             />
           )}
-          {muscleWeek && (
-            <div aria-label={`${muscleWeek.label} this week: ${muscleWeek.sets} of ${muscleWeek.target[0]} to ${muscleWeek.target[1]} hard sets`}>
-              <div className="flex justify-between" style={{ fontSize: `max(12px, ${fig(22)})`, color: 'var(--wk-muted)' }} aria-hidden="true">
-                <span>{muscleWeek.label} this week</span>
-                <span>
-                  {muscleWeek.sets} of {muscleWeek.target[0]}–{muscleWeek.target[1]} hard sets
-                </span>
-              </div>
-              <div className="wk-bar" style={{ marginTop: fig(12) }} aria-hidden="true">
-                <div
-                  style={{
-                    width: `${Math.min(100, (muscleWeek.sets / muscleWeek.target[0]) * 100)}%`,
-                    background: muscleWeek.sets >= muscleWeek.target[0] ? 'var(--wk-accent)' : '#4FC3D9',
-                  }}
-                />
-              </div>
-            </div>
-          )}
         </div>
       )}
 
       {/* Details: tempo, warm-up ramp, technique, set options */}
       {showDetails && (
         <div id={detailsId} className="space-y-3" style={{ marginTop: fig(40) }}>
-          {(muscleLabel || tempoText) && (
+          {(muscleLabel || customTempoText || readinessState === 'Amber Shield') && (
             <p className="wk-body">
               {muscleLabel && <strong className="text-white font-semibold">{muscleLabel}. </strong>}
-              {tempoText}
+              {customTempoText}
               {readinessState === 'Amber Shield' ? ' Holding weight steady today.' : ''}
             </p>
           )}
-          {exercise.tempo && /^[\dXx]{4}$/.test(exercise.tempo) && <TempoPacer tempo={exercise.tempo} />}
+          {hasTempoPacer && exercise.tempo && <TempoPacer tempo={exercise.tempo} />}
           {exercise.intensityProtocol && <p className="wk-body">{exercise.intensityProtocol.instruction}</p>}
           {warmupSteps.length > 0 && (
             <div className="space-y-1">
@@ -251,20 +220,6 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
             >
               + Add set
             </button>
-            {exercise.sets.length > 1 && (
-              <button
-                type="button"
-                className={secondaryButton}
-                aria-label={`Remove set ${exercise.sets.length} from ${exercise.name}`}
-                onClick={() => {
-                  triggerHaptic('light');
-                  const lastSet = exercise.sets[exercise.sets.length - 1];
-                  if (lastSet) onDeleteSet(lastSet.id);
-                }}
-              >
-                − Remove set
-              </button>
-            )}
           </div>
         </div>
       )}

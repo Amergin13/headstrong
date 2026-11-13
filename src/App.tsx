@@ -1,4 +1,4 @@
-import { MAX_CUSTOM_GOALS, makeCustomGoal, ownGoalName } from './services/athleteGoals';
+import { MAX_CUSTOM_GOALS, STEPS_GOAL_EXERCISE_ID, makeCustomGoal, ownGoalName } from './services/athleteGoals';
 import type { CoachPlace } from './services/coachContext';
 import React, { useState, useEffect, useRef, Suspense, lazy } from 'react';
 import {
@@ -18,7 +18,7 @@ import {
 import { calculateDailyReadiness } from './engine/readiness';
 import { getLatestBodyweightEma } from './engine/ema';
 import { snapLoadKg } from './utils/units';
-import { computeTrainingStreak } from './engine/recovery';
+import { computeTrainingStreak, evaluateSessionRecovery } from './engine/recovery';
 import {
   calculateBestPillarE1rms,
   calculateWeeklyMuscleVolume,
@@ -91,6 +91,10 @@ import type { MeasurementEntry } from './components/analytics/WeightLogModal';
 const AnalyticsTab = lazy(() => import('./components/analytics/AnalyticsTab').then((m) => ({ default: m.AnalyticsTab })));
 const ProgramTab = lazy(() => import('./components/program/ProgramTab').then((m) => ({ default: m.ProgramTab })));
 const AICoachChatModal = lazy(() => import('./components/assistant/AICoachChatModal').then((m) => ({ default: m.AICoachChatModal })));
+const LocalTestDrawer =
+  import.meta.env.VITE_LOCAL_TEST_COPY === 'true'
+    ? lazy(() => import('./localTest/LocalTestDrawer').then((m) => ({ default: m.LocalTestDrawer })))
+    : null;
 
 export const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<TabId>('train');
@@ -184,7 +188,7 @@ export const App: React.FC = () => {
     notify,
   });
 
-  const activitySync = useActivitySync({ profile, setProfile, activities, setActivities, workouts, notify });
+  const activitySync = useActivitySync({ profile, setProfile, activities, setActivities, setBiometrics, workouts, notify });
   const activeDates = activeDayDates(activities);
 
   useLaunchLinks({
@@ -326,7 +330,7 @@ export const App: React.FC = () => {
     const onSaveFailed = () =>
       setToast({
         title: "Couldn't save",
-        message: "This phone's storage is full. Export a backup in Program → Settings, then free up some space.",
+        message: "This phone's storage is full. Export a backup in Profile → Settings, then free up some space.",
         tag: 'Storage full',
       });
     window.addEventListener(SAVE_FAILED_EVENT, onSaveFailed);
@@ -506,12 +510,18 @@ export const App: React.FC = () => {
       weightUnit: NonNullable<UserProfile['weightUnit']>;
       bodyweightKg?: number;
     };
-    ownGoal?: { exerciseId: string; metric: 'weight' | 'reps'; target: number };
+    ownGoal?: { exerciseId: string; metric: 'weight' | 'reps' | 'steps'; target: number };
   }) => {
     const athlete = setup.athlete;
     const startingBodyweight = athlete?.bodyweightKg && athlete.bodyweightKg > 0 ? athlete.bodyweightKg : undefined;
     const ownLiftDef = setup.ownGoal ? exercises.find((e) => e.id === setup.ownGoal!.exerciseId) : undefined;
-    const ownGoalFromSetup = setup.ownGoal && ownLiftDef ? makeCustomGoal(ownLiftDef.id, ownGoalName(ownLiftDef.id, ownLiftDef.name), setup.ownGoal.metric, setup.ownGoal.target, localDateString()) : null;
+    const ownGoalFromSetup = setup.ownGoal
+      ? setup.ownGoal.metric === 'steps'
+        ? makeCustomGoal(STEPS_GOAL_EXERCISE_ID, ownGoalName(STEPS_GOAL_EXERCISE_ID, 'Daily steps'), 'steps', setup.ownGoal.target, localDateString())
+        : ownLiftDef
+        ? makeCustomGoal(ownLiftDef.id, ownGoalName(ownLiftDef.id, ownLiftDef.name), setup.ownGoal.metric, setup.ownGoal.target, localDateString())
+        : null
+      : null;
 
     setProfile((prev) => ({
       ...prev,
@@ -922,9 +932,6 @@ export const App: React.FC = () => {
               window.scrollTo({ top: 0 });
             }}
             activities={activities}
-            onLogActivity={() => setLogActivityOpen(true)}
-            onRemoveActivity={activitySync.removeActivity}
-            onOpenActivityApps={() => setActivityAppsOpen(true)}
             onSwitchSplitDay={
               isPlanProgram(profile.programType)
                 ? undefined
@@ -960,26 +967,16 @@ export const App: React.FC = () => {
             biometrics={biometrics}
             readinessState={readiness.state}
             bodyweightKg={bodyweightEmaKg}
-            latestBiometrics={latestBiometrics}
             exerciseCatalog={exercises}
             activeSplitDay={activeWorkout.splitDay}
-            canInstallPwa={Boolean(deferredInstallPrompt)}
-            onTriggerInstallPwa={handleTriggerInstallPwa}
             onUpdateProfile={(up) => setProfile((p) => ({ ...p, ...up }))}
-            onOpenWatchSync={() => setWatchModalOpen(true)}
-            onOpenAuth={() => setAuthModalOpen(true)}
             onSelectMesocycleWeek={handleSelectMesocycleWeek}
             onUpdateGoalPhase={handleUpdateGoalPhase}
             onLaunchSplitDay={(sp) => handleSwitchSplitDay(sp, true)}
             onLaunchWorkoutNumber={handleLaunchWorkoutNumber}
             onUpdateProgram={handleUpdateProgram}
             onAddCustomExercise={(newEx) => setExercises((prev) => [...prev, newEx])}
-            onResetData={handleResetData}
-            onExportData={handleExportData}
-            onImportData={handleImportData}
-            onDeleteAllData={handleDeleteAllData}
             activities={activities}
-            onOpenActivityApps={() => setActivityAppsOpen(true)}
             onLogActivity={() => setLogActivityOpen(true)}
             onOpenOnboarding={() => {
               setOnboardingInitialStep(3);
@@ -1074,6 +1071,27 @@ export const App: React.FC = () => {
         />
       )}
 
+      {/* User Profile, Google Sign In & Settings Modal */}
+      <GoogleAuthModal
+        currentUser={authUser}
+        profile={profile}
+        latestBiometrics={latestBiometrics}
+        canInstallPwa={Boolean(deferredInstallPrompt)}
+        onTriggerInstallPwa={handleTriggerInstallPwa}
+        // Onboarding comes first on a fresh install; sign-in opens once it's finished.
+        isOpen={authModalOpen && !onboardingOpen}
+        onClose={() => setAuthModalOpen(false)}
+        onAuthSuccess={handleAuthSuccess}
+        onSignOut={handleSignOut}
+        onUpdateProfile={(up) => setProfile((p) => ({ ...p, ...up }))}
+        onOpenWatchSync={() => setWatchModalOpen(true)}
+        onOpenActivityApps={() => setActivityAppsOpen(true)}
+        onResetData={handleResetData}
+        onExportData={handleExportData}
+        onImportData={handleImportData}
+        onDeleteAllData={handleDeleteAllData}
+      />
+
       {/* Wearable & Recovery Sync Dialog Modal */}
       {watchModalOpen && (
         <WatchSyncModal
@@ -1091,17 +1109,6 @@ export const App: React.FC = () => {
           isModal={true}
         />
       )}
-
-      {/* Google Sign In & Account Modal */}
-      <GoogleAuthModal
-        currentUser={authUser}
-        profile={profile}
-        // Onboarding comes first on a fresh install; sign-in opens once it's finished.
-        isOpen={authModalOpen && !onboardingOpen}
-        onClose={() => setAuthModalOpen(false)}
-        onAuthSuccess={handleAuthSuccess}
-        onSignOut={handleSignOut}
-      />
 
       {toast && (
         <Toast
@@ -1127,6 +1134,81 @@ export const App: React.FC = () => {
         isChatOpen={aiCoachOpen}
         onOpenAICoach={() => setAiCoachOpen((prev) => !prev)}
       />
+
+      {import.meta.env.VITE_LOCAL_TEST_COPY === 'true' && LocalTestDrawer && (
+        <Suspense fallback={null}>
+          <LocalTestDrawer
+            profile={profile}
+            biometrics={biometrics}
+            workouts={workouts}
+            activeWorkout={activeWorkout}
+            activeTab={activeTab}
+            activePlan={activePlan}
+            nextWorkoutNumber={getNextProgramWorkoutNumber(workouts, activePlan)}
+            readinessState={readiness.state}
+            bodyweightEmaKg={bodyweightEmaKg}
+            recoveryReady={evaluateSessionRecovery(activeWorkout, workouts, exercises).isReady}
+            streakDays={profile.streakDays || 0}
+            onApplyScenario={(state) => {
+              setAuthUser(null);
+              setProfile(state.profile);
+              setBiometrics(state.biometrics);
+              setWorkouts(state.workouts);
+              setActiveWorkout(state.activeWorkout);
+              setExercises(state.exercises);
+              setActivities(state.activities);
+              setOnboardingInitialStep(1);
+              setOnboardingOpen(state.onboardingOpen);
+              setAiCoachOpen(false);
+              setActiveTab(state.activeTab);
+              setToast({
+                title: state.meta.title,
+                message: state.meta.summary,
+                tag: 'Test Scenario',
+              });
+              window.scrollTo({ top: 0 });
+            }}
+            onUpdateBiometrics={(next) => setBiometrics(next)}
+            onUpdateProfile={(up) => setProfile((prev) => ({ ...prev, ...up }))}
+            onSwitchLocation={(loc) => handleSwitchTrainingLocation(loc)}
+            onUpdateGoalPhase={(goal) => handleUpdateGoalPhase(goal)}
+            onMarkAllActiveSetsDone={() => {
+              const nowIso = new Date().toISOString();
+              setActiveWorkout((prev) => ({
+                ...prev,
+                startedAt: prev.startedAt || new Date(Date.now() - 35 * 60 * 1000).toISOString(),
+                exercises: prev.exercises.map((ex) => ({
+                  ...ex,
+                  sets: ex.sets.map((s) => ({
+                    ...s,
+                    completed: true,
+                    completedAt: nowIso,
+                    actualWeightKg: s.actualWeightKg || s.targetWeightKg,
+                    actualReps: s.actualReps || s.targetReps,
+                    actualRir: s.actualRir ?? s.targetRir ?? 2,
+                  })),
+                })),
+              }));
+            }}
+            onNavigateTab={(tab) => {
+              setActiveTab(tab);
+              setAiCoachOpen(false);
+              window.scrollTo({ top: 0 });
+            }}
+            onOpenCoach={() => setAiCoachOpen(true)}
+            onOpenOnboarding={() => {
+              setOnboardingInitialStep(1);
+              setOnboardingOpen(true);
+            }}
+            onOpenWeightLog={() => {
+              setActiveTab('analytics');
+              setLogWeightRequest((n) => n + 1);
+            }}
+            onOpenWatchSync={() => setWatchModalOpen(true)}
+            onOpenLogActivity={() => setLogActivityOpen(true)}
+          />
+        </Suspense>
+      )}
     </div>
     </UnitsProvider>
   );

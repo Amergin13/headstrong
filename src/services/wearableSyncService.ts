@@ -257,3 +257,42 @@ export function mergeWearableLog(prev: BiometricLog[], newLog: BiometricLog, pro
   updated[idx] = { ...prev[idx], ...measured };
   return updated;
 }
+
+/**
+ * Merges aggregated daily step totals (e.g. from Health Connect) into biometric logs without
+ * touching weigh-ins, heart rate, sleep, or tape measurements. Returns the original array when
+ * nothing changed.
+ */
+export function mergeDailySteps(
+  prev: BiometricLog[],
+  days: { date: string; steps: number }[],
+  source: WearableProvider = 'health_connect'
+): BiometricLog[] {
+  const clean = days
+    .map((d) => ({ date: d.date, steps: Math.round(Number(d.steps) || 0) }))
+    .filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d.date) && d.steps > 0);
+  if (!clean.length) return prev;
+
+  const updated = [...prev];
+  let changed = false;
+  for (const day of clean) {
+    const idx = updated.findIndex((b) => b.date === day.date);
+    if (idx < 0) {
+      updated.push({
+        date: day.date,
+        bodyweightKg: 0,
+        hrvRmssd: 0,
+        restingHr: 0,
+        sleepHours: 0,
+        steps: day.steps,
+        activeZoneMinutes: 0,
+        source,
+      });
+      changed = true;
+    } else if (updated[idx].steps !== day.steps) {
+      updated[idx] = { ...updated[idx], steps: day.steps };
+      changed = true;
+    }
+  }
+  return changed ? updated.sort((a, b) => a.date.localeCompare(b.date)) : prev;
+}

@@ -7,7 +7,7 @@ import { calculateE1RM } from '../engine/e1rm';
 import { calculateEmaSeries } from '../engine/ema';
 import { getWorkoutCompletedAt } from '../engine/recovery';
 import { isPillarBenchmarkExercise } from '../engine/strengthStandards';
-import { BiometricLog, GoalPhase, StrengthPillar, UserProfile, WorkoutSession } from '../engine/types';
+import { BiometricLog, ExerciseDefinition, GoalPhase, StrengthPillar, UserProfile, WorkoutSession } from '../engine/types';
 import { calculateWci } from '../engine/wci';
 import { daysBetweenLocalDates, localDateString, parseLocalDate } from '../utils/date';
 
@@ -624,4 +624,151 @@ export function buildStrengthCharts(input: {
     });
   }
   return charts;
+}
+
+/** Per-exercise progression chart for custom Progress widgets: E1RM for loaded/weighted lifts, best reps for unloaded bodyweight moves. */
+export function buildExerciseProgressChart(input: {
+  exercise: Pick<ExerciseDefinition, 'id' | 'name' | 'equipment' | 'isRdl' | 'isWeightedCalisthenic'>;
+  workouts: WorkoutSession[];
+  bodyweightKg: number;
+  fmt: ProgressFormatters;
+}): ProgressChart {
+  const { exercise, workouts, bodyweightKg, fmt } = input;
+  const done = workouts.filter((w) => w.completed).sort((a, b) => getWorkoutCompletedAt(a) - getWorkoutCompletedAt(b));
+  const timedEntry = done
+    .flatMap((w) => w.exercises)
+    .find((e) => e.exerciseId === exercise.id && (e.durationSeconds || e.durationMinutesRange));
+
+  if (timedEntry) {
+    const byDate = new Map<string, number>();
+    for (const w of done) {
+      const ex = w.exercises.find((e) => e.exerciseId === exercise.id && e.sets.some((s) => s.completed));
+      if (!ex) continue;
+      const secs = ex.sets.reduce(
+        (m, s) => Math.max(m, s.actualReps && ex.repTargetType === 'duration' ? s.actualReps : ex.durationSeconds ?? 0),
+        0
+      );
+      if (secs > 0) byDate.set(w.date, Math.max(byDate.get(w.date) ?? 0, secs));
+    }
+    const points = [...byDate.entries()].map(([date, value]) => ({ date, value })).sort((a, b) => a.date.localeCompare(b.date));
+    const formatSec = (v: number) => `${Math.round(v)}s`;
+    const last = points[points.length - 1];
+    return {
+      id: exercise.id,
+      title: exercise.name,
+      points,
+      lastUpdated: last?.date,
+      summary:
+        points.length === 0
+          ? `Log ${exercise.name} in a workout to track your hold or duration over time.`
+          : changeSummary(exercise.name, points, formatSec, formatSec),
+      format: formatSec,
+    };
+  }
+
+  let hasAnyLoad = Boolean(exercise.isWeightedCalisthenic);
+  const matchingEntries: { date: string; ex: WorkoutSession['exercises'][number] }[] = [];
+  for (const w of done) {
+    for (const ex of w.exercises) {
+      if (ex.exerciseId !== exercise.id) continue;
+      const sets = ex.sets.filter(isWorkingDone);
+      if (sets.length === 0) continue;
+      if (sets.some((s) => (s.actualWeightKg ?? s.targetWeightKg ?? 0) > 0) || ex.isWeightedCalisthenic) {
+        hasAnyLoad = true;
+      }
+      matchingEntries.push({ date: w.date, ex });
+    }
+  }
+
+  if (!hasAnyLoad && exercise.equipment === 'bodyweight') {
+    const byDate = new Map<string, number>();
+    for (const { date, ex } of matchingEntries) {
+      for (const s of ex.sets.filter(isWorkingDone)) {
+        const reps = s.actualReps ?? 0;
+        if (reps > (byDate.get(date) ?? 0)) byDate.set(date, reps);
+      }
+    }
+    const points = [...byDate.entries()].map(([date, value]) => ({ date, value })).sort((a, b) => a.date.localeCompare(b.date));
+    const last = points[points.length - 1];
+    const first = points[0];
+    const formatReps = (v: number) => `${Math.round(v)} reps`;
+    return {
+      id: exercise.id,
+      title: exercise.name,
+      points,
+      lastUpdated: last?.date,
+      summary:
+        points.length === 0
+          ? `Log ${exercise.name} in a workout to track your best set reps over time.`
+          : points.length === 1
+          ? `Best set is ${formatReps(last.value)}. This is your starting point.`
+          : `Best set is ${formatReps(last.value)}, ${last.value >= first.value ? 'up' : 'down'} ${Math.abs(Math.round(last.value - first.value))} reps since ${shortDate(first.date)} across ${points.length} sessions.`,
+      format: formatReps,
+    };
+  }
+
+  const byDate = new Map<string, number>();
+  for (const { date, ex } of matchingEntries) {
+    for (const s of ex.sets.filter(isWorkingDone)) {
+      const e1rm = calculateE1RM(
+        s.actualWeightKg ?? s.targetWeightKg,
+        s.actualReps ?? 0,
+        s.actualRir ?? 2,
+        ex.equipment,
+        ex.isRdl,
+        ex.isWeightedCalisthenic,
+        bodyweightKg,
+        ex.exerciseId,
+        ex.pillar
+      );
+      if (e1rm > (byDate.get(date) ?? 0)) byDate.set(date, Math.round(e1rm * 10) / 10);
+    }
+  }
+  const points = [...byDate.entries()].map(([date, value]) => ({ date, value })).sort((a, b) => a.date.localeCompare(b.date));
+  const last = points[points.length - 1];
+  const first = points[0];
+  const delta = last && first ? Math.round((last.value - first.value) * 10) / 10 : 0;
+  return {
+    id: exercise.id,
+    title: exercise.name,
+    points,
+    lastUpdated: last?.date,
+    summary:
+      points.length === 0
+        ? `Log ${exercise.name} in a workout to track your estimated one-rep max over time.`
+        : points.length === 1
+        ? `Estimated one-rep max is ${fmt.weight(last.value)}. This is your starting point.`
+        : `Estimated one-rep max is ${fmt.weight(last.value)}, ${delta >= 0 ? 'up' : 'down'} ${(fmt.weightPrecise ?? fmt.weight)(Math.abs(delta))} since ${shortDate(first.date)} across ${points.length} sessions.`,
+    format: fmt.weight,
+  };
+}
+
+/** Average daily step count across logged days in the last `days` calendar days (or all logged if within window). */
+export function averageRecentSteps(biometrics: BiometricLog[], days = 7, today: string = localDateString()): number | null {
+  const cutoffMs = parseLocalDate(today).getTime() - (days - 1) * 24 * 60 * 60 * 1000;
+  const recent = biometrics.filter((b) => (b.steps || 0) > 0 && parseLocalDate(b.date).getTime() >= cutoffMs && b.date <= today);
+  if (!recent.length) return null;
+  const total = recent.reduce((sum, b) => sum + b.steps, 0);
+  return Math.round(total / recent.length);
+}
+
+/** Daily steps progression chart built strictly from recorded biometric step entries. */
+export function buildStepsChart(biometrics: BiometricLog[], today: string = localDateString()): ProgressChart {
+  const points = measured(biometrics, (l) => l.steps);
+  const last = points[points.length - 1];
+  const avg7 = averageRecentSteps(biometrics, 7, today);
+  const formatSteps = (v: number) => `${Math.round(v).toLocaleString()} steps`;
+  return {
+    id: 'steps',
+    title: 'Daily steps',
+    points,
+    lastUpdated: last?.date,
+    summary:
+      points.length === 0
+        ? 'No step counts recorded yet. Connect Health Connect in Settings or sync your watch to see your daily steps.'
+        : points.length === 1
+        ? `${Math.round(last.value).toLocaleString()} steps recorded on ${shortDate(last.date)}.`
+        : `${Math.round(last.value).toLocaleString()} steps on ${shortDate(last.date)}${avg7 !== null ? ` • 7-day average ${avg7.toLocaleString()} steps` : ''}.`,
+    format: formatSteps,
+  };
 }
