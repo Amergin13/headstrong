@@ -274,7 +274,7 @@ export const WorkoutFinishScreen: React.FC<WorkoutFinishScreenProps> = ({
           onClick={handleDone}
           aria-label="Close: done"
           className="wk-button transition-transform active:scale-95"
-          style={{ background: 'var(--wk-accent)', color: 'var(--color-text-on-accent)', marginTop: fig(40) }}
+          style={{ background: 'var(--color-action-primary-bg)', color: 'var(--color-action-primary-fg)', marginTop: fig(40) }}
         >
           Done
         </button>

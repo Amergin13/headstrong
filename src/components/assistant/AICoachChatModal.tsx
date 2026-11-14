@@ -907,8 +907,8 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
                               disabled={isProcessing}
                               className="wk-button min-h-[44px] flex-1 font-semibold disabled:opacity-50"
                               style={{
-                                background: 'var(--wk-accent)',
-                                color: 'var(--color-text-on-accent)',
+                                background: 'var(--color-action-primary-bg)',
+                                color: 'var(--color-action-primary-fg)',
                               }}
                             >
                               {msg.pendingConfirmation.confirm_label}
@@ -972,8 +972,8 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
                                 }}
                                 className="wk-button min-h-[44px] flex-1 font-semibold"
                                 style={{
-                                  background: 'var(--wk-accent)',
-                                  color: 'var(--color-text-on-accent)',
+                                  background: 'var(--color-action-primary-bg)',
+                                  color: 'var(--color-action-primary-fg)',
                                   gap: fig(10),
                                 }}
                               >
@@ -1016,8 +1016,8 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
                                 }}
                                 className="wk-button min-h-[44px]"
                                 style={{
-                                  background: 'var(--wk-accent)',
-                                  color: 'var(--color-text-on-accent)',
+                                  background: 'var(--color-action-primary-bg)',
+                                  color: 'var(--color-action-primary-fg)',
                                   gap: fig(12),
                                 }}
                               >
@@ -1269,8 +1269,8 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
               className="w-11 h-11 min-h-[44px] min-w-[44px] rounded-full flex items-center justify-center transition-all active:scale-95 disabled:opacity-30 shrink-0"
               style={{
                 borderRadius: 60,
-                background: 'var(--wk-accent)',
-                color: 'var(--color-text-on-accent)',
+                background: 'var(--color-action-primary-bg)',
+                color: 'var(--color-action-primary-fg)',
               }}
             >
               <Send className="w-4 h-4 stroke-[2.2]" />

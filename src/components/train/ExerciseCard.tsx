@@ -33,6 +33,10 @@ interface ExerciseCardProps {
   insight?: ExerciseInsight;
   /** Personal overview for today (written on the device); replaces the plain summary. */
   note?: string;
+  /** Whether to display the 2-line written summary (default: true). */
+  showSummary?: boolean;
+  /** Whether to display the inline history TrendChart (default: true). */
+  showChart?: boolean;
 }
 
 export const ExerciseCard: React.FC<ExerciseCardProps> = ({
@@ -48,6 +52,8 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
   previousSets = [],
   insight,
   note,
+  showSummary = true,
+  showChart = true,
 }) => {
   const units = useUnits();
   const [showDetails, setShowDetails] = useState(false);
@@ -120,24 +126,26 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
       )}
 
       {/* 2-line dynamic summary (Line 1: Historical Trajectory Anchor, Line 2: Session Stimulus Directive) and history chart */}
-      {insight && (
+      {insight && (showSummary || (showChart && !(exercise.durationSeconds || exercise.durationMinutesRange))) && (
         <div className="flex flex-col" style={{ gap: fig(28), marginTop: fig(36) }}>
-          <div className="wk-body" aria-live="polite">
-            {/* Re-keyed on change so a written note replacing its placeholder fades in. */}
-            <div key={note ?? insight.summary} className="wk-text-swap flex flex-col" style={{ gap: fig(6) }}>
-              {(note ?? insight.summary)
-                .split('\n')
-                .map((l) => l.trim())
-                .filter(Boolean)
-                .slice(0, 2)
-                .map((line, lineIdx) => (
-                  <p key={lineIdx} className="m-0">
-                    {line}
-                  </p>
-                ))}
+          {showSummary && (
+            <div className="wk-body" aria-live="polite">
+              {/* Re-keyed on change so a written note replacing its placeholder fades in. */}
+              <div key={note ?? insight.summary} className="wk-text-swap flex flex-col" style={{ gap: fig(6) }}>
+                {(note ?? insight.summary)
+                  .split('\n')
+                  .map((l) => l.trim())
+                  .filter(Boolean)
+                  .slice(0, 2)
+                  .map((line, lineIdx) => (
+                    <p key={lineIdx} className="m-0">
+                      {line}
+                    </p>
+                  ))}
+              </div>
             </div>
-          </div>
-          {!(exercise.durationSeconds || exercise.durationMinutesRange) && (
+          )}
+          {showChart && !(exercise.durationSeconds || exercise.durationMinutesRange) && (
             <TrendChart
               points={history.map((h) => ({ date: localDateString(new Date(h.at)), value: h.value ?? h.e1rmKg }))}
               format={(v) => (insight.metric === 'reps' ? `${Math.round(v)} reps` : units.formatPrecise(v))}

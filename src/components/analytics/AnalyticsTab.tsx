@@ -330,7 +330,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
           openLogWeight();
         }}
         className="wk-button"
-        style={{ marginTop: fig(28), background: 'var(--wk-raised)', color: 'var(--color-text-primary)' }}
+        style={{ marginTop: fig(28), background: 'var(--color-action-primary-bg)', color: 'var(--color-action-primary-fg)' }}
       >
         Log weight
       </button>
@@ -635,7 +635,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
               else openLogMeasurements('waist');
             }}
             className="wk-button gap-[calc(16*var(--f))]"
-            style={{ background: 'var(--wk-accent)', color: 'var(--color-text-on-accent)' }}
+            style={{ background: 'var(--color-action-primary-bg)', color: 'var(--color-action-primary-fg)' }}
           >
             {compositionView === 'weight' ? <Scale className="w-4 h-4 stroke-[2]" /> : <Ruler className="w-4 h-4 stroke-[2]" />}
             <span>{compositionView === 'weight' ? 'Log weight' : 'Log measurements'}</span>
@@ -885,6 +885,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
                 {stepsChart.points.length >= 2 && (
                   <Sparkline
                     points={stepsChart.points}
+                    positiveProgress={Boolean(stepsGoal && todaySteps >= stepsGoal.target)}
                     label={`Daily steps from ${Math.round(stepsChart.points[0].value).toLocaleString()} to ${Math.round(stepsChart.points[stepsChart.points.length - 1].value).toLocaleString()}`}
                   />
                 )}
@@ -927,6 +928,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
                 </div>
                 <Sparkline
                   points={weightChart?.points ?? []}
+                  positiveProgress={pace?.pace === 'on'}
                   label={`7-day average weight from ${units.formatPrecise(weightChart?.points[0]?.value ?? 0)} to ${units.formatPrecise(weightChart?.points[weightChart.points.length - 1]?.value ?? 0)}`}
                 />
               </div>
@@ -1102,7 +1104,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
                 setDetail('widgets');
               }}
               className="wk-button"
-              style={{ marginTop: fig(28), background: 'var(--wk-raised)', color: 'var(--color-text-primary)' }}
+              style={{ marginTop: fig(28), background: 'var(--color-action-secondary-bg)', color: 'var(--color-action-secondary-fg)' }}
             >
               Customize widgets
             </button>
@@ -1134,7 +1136,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
             setDetail('goals');
           }}
           className="wk-button"
-          style={{ background: 'var(--wk-raised)', color: 'var(--color-text-primary)' }}
+          style={{ background: 'var(--color-action-secondary-bg)', color: 'var(--color-action-secondary-fg)' }}
         >
           Change goals
         </button>

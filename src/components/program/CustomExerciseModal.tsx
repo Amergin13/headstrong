@@ -208,14 +208,14 @@ export const CustomExerciseModal: React.FC<CustomExerciseModalProps> = ({
               type="button"
               onClick={onClose}
               className="wk-button"
-              style={{ background: 'var(--wk-pill)', color: 'var(--color-text-primary)' }}
+              style={{ background: 'var(--color-action-secondary-bg)', color: 'var(--color-action-secondary-fg)' }}
             >
               Cancel
             </button>
             <button
               type="submit"
               className="wk-button flex items-center justify-center space-x-[calc(12*var(--f))] active:scale-95"
-              style={{ background: 'var(--wk-accent)', color: 'var(--color-text-on-accent)' }}
+              style={{ background: 'var(--color-action-primary-bg)', color: 'var(--color-action-primary-fg)' }}
             >
               <Check className="w-4 h-4 stroke-[2]" />
               <span>Save Exercise</span>

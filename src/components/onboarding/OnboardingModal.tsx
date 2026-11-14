@@ -545,8 +545,8 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
               style={{
                 height: 54,
                 borderRadius: 999,
-                background: 'var(--wk-accent)',
-                color: 'var(--color-text-on-accent)',
+                background: 'var(--color-action-primary-bg)',
+                color: 'var(--color-action-primary-fg)',
                 fontSize: `max(15px, ${fig(32)})`,
               }}
             >

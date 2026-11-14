@@ -134,8 +134,8 @@ export const StickySessionHeader: React.FC<StickySessionHeaderProps> = ({
         aria-label={`${sessionLabel}. Workout ${current} of ${total}. Open your program`}
         className="w-full text-left block"
         style={{
-          paddingLeft: fig(76),
-          paddingRight: fig(76),
+          paddingLeft: fig(38),
+          paddingRight: fig(38),
           paddingTop: fig(26),
           paddingBottom: 'calc((38 - 14 * var(--dock-t, 0)) * var(--f))',
         }}

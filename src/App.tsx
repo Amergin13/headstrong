@@ -1043,6 +1043,7 @@ export const App: React.FC = () => {
               setActiveTab('program');
               window.scrollTo({ top: 0 });
             }}
+            onUpdateProfile={(up) => setProfile((p) => ({ ...p, ...up }))}
             activities={activities}
             onSwitchSplitDay={
               isPlanProgram(profile.programType)

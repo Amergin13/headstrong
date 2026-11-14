@@ -8731,13 +8731,37 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
       return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
     };
 
+    const { resolveWorkoutDisplaySettings } = await import('../types');
+    const defaultDisplay = resolveWorkoutDisplaySettings(undefined);
+    const customDisplay = resolveWorkoutDisplaySettings({
+      showExerciseCharts: false,
+      showExerciseSummaries: false,
+      showRecoveryCard: false,
+    });
+    assert(
+      defaultDisplay.showProgramCard === true &&
+        defaultDisplay.showRecoveryCard === true &&
+        defaultDisplay.showExerciseSummaries === true &&
+        defaultDisplay.showExerciseCharts === true &&
+        defaultDisplay.showStepsCard === true &&
+        customDisplay.showProgramCard === true &&
+        customDisplay.showRecoveryCard === false &&
+        customDisplay.showExerciseSummaries === false &&
+        customDisplay.showExerciseCharts === false &&
+        customDisplay.showStepsCard === true,
+      'Workout page display settings default to all enabled and respect personal card/chart/summary toggles'
+    );
+
     assert(
       resolveVar(rawVars['--color-bg-canvas']).toUpperCase() === '#13181C' &&
         resolveVar(rawVars['--color-bg-surface']).toUpperCase() === '#2C3034' &&
         resolveVar(rawVars['--color-bg-surface-raised']).toUpperCase() === '#3B4044' &&
         resolveVar(rawVars['--color-bg-surface-control']).toUpperCase() === '#474D50' &&
-        resolveVar(rawVars['--color-accent-primary']).toUpperCase() === '#00F19F',
-      'Whoop Slate Tier-2 canonical canvas/surface/accent hex values locked in tokens.css'
+        resolveVar(rawVars['--color-action-primary-bg']).toUpperCase() === '#FFFFFF' &&
+        resolveVar(rawVars['--color-action-secondary-bg']).toUpperCase() === '#44494C' &&
+        resolveVar(rawVars['--color-accent-primary']).toUpperCase() === '#00F19F' &&
+        resolveVar(rawVars['--color-data-telemetry']).toUpperCase() === '#8FD3FF',
+      'Whoop Slate Tier-2 canonical canvas/surface/action/accent/telemetry hex values locked in tokens.css'
     );
 
     const textSurfacePairs: [string, string][] = [

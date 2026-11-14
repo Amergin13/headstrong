@@ -1368,7 +1368,7 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
                 onClose();
               }}
               className="wk-button"
-              style={{ background: 'var(--wk-raised)', color: 'var(--color-text-primary)' }}
+              style={{ background: 'var(--color-action-secondary-bg)', color: 'var(--color-action-secondary-fg)' }}
             >
               Cancel
             </button>
@@ -1377,7 +1377,7 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
               disabled={(!valid && !autoSavedBanner) || capturePhase === 'analysing'}
               aria-label={mode === 'weight' ? 'Save weight' : 'Save measurements'}
               className="wk-button disabled:opacity-50 gap-[calc(12*var(--f))]"
-              style={{ background: 'var(--wk-accent)', color: 'var(--color-text-on-accent)' }}
+              style={{ background: 'var(--color-action-primary-bg)', color: 'var(--color-action-primary-fg)' }}
             >
               <Check className="w-4 h-4 stroke-[2.5]" />
               <span>

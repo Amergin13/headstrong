@@ -9,6 +9,8 @@ import {
   WorkoutSession,
   WorkoutSet,
   MuscleGroup,
+  WorkoutDisplaySettings,
+  resolveWorkoutDisplaySettings,
   isWearableConnected,
   isWhoopConfigured,
 } from '../../engine/types';
@@ -85,6 +87,7 @@ import {
   Footprints,
   Moon,
   BedDouble,
+  SlidersHorizontal,
 } from 'lucide-react';
 import { triggerHaptic } from '../../utils/haptics';
 
@@ -115,6 +118,8 @@ interface TrainTabProps {
   onOpenProgram?: () => void;
   /** Swap today's queued session for another split day (standard splits only). */
   onSwitchSplitDay?: (split: SplitDayType) => void;
+  /** Saves personal defaults (e.g. Workout page layout settings) to the athlete's profile. */
+  onUpdateProfile?: (update: Partial<UserProfile>) => void;
   /** Active days (rides, runs, walks, classes), kept alongside lifting workouts. */
   activities?: ActivityLog[];
 }
@@ -167,6 +172,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
   onOpenWatchSync,
   onOpenProgram,
   onSwitchSplitDay,
+  onUpdateProfile,
 }) => {
   const units = useUnits();
   const [swappingExercise, setSwappingExercise] = useState<ExerciseSession | null>(null);
@@ -174,10 +180,36 @@ export const TrainTab: React.FC<TrainTabProps> = ({
   const [showSummaryModal, setShowSummaryModal] = useState(false);
   const [previewPastWorkout, setPreviewPastWorkout] = useState<WorkoutSession | null>(null);
   const [showAddExerciseModal, setShowAddExerciseModal] = useState(false);
+  const [showWorkoutDisplayModal, setShowWorkoutDisplayModal] = useState(false);
   const [showLocationDropdown, setShowLocationDropdown] = useState(false);
   const [whoopStrainSummary, setWhoopStrainSummary] = useState<WhoopWorkoutStrainSummary | null>(null);
   const [isSyncingWhoopStrain, setIsSyncingWhoopStrain] = useState(false);
   const [selectedStripDate, setSelectedStripDate] = useState<string | null>(null);
+
+  const workoutDisplay = useMemo(
+    () => resolveWorkoutDisplaySettings(profile.workoutDisplay),
+    [profile.workoutDisplay]
+  );
+  const activeDisplayCount = [
+    workoutDisplay.showProgramCard,
+    workoutDisplay.showRecoveryCard,
+    workoutDisplay.showExerciseSummaries,
+    workoutDisplay.showExerciseCharts,
+    workoutDisplay.showStepsCard,
+  ].filter(Boolean).length;
+  const isDefaultWorkoutDisplay = activeDisplayCount === 5;
+
+  const handleToggleWorkoutDisplay = (key: keyof WorkoutDisplaySettings) => {
+    const next: WorkoutDisplaySettings = {
+      ...workoutDisplay,
+      [key]: !workoutDisplay[key],
+    };
+    onUpdateProfile?.({ workoutDisplay: next });
+  };
+
+  const handleResetWorkoutDisplay = () => {
+    onUpdateProfile?.({ workoutDisplay: undefined });
+  };
 
   const exMap = new Map(exerciseCatalog.map((e) => [e.id, e]));
 
@@ -880,6 +912,24 @@ export const TrainTab: React.FC<TrainTabProps> = ({
           type="button"
           role="menuitem"
           onClick={() => {
+            triggerHaptic('light');
+            setShowWorkoutDisplayModal(true);
+            close();
+          }}
+          className="w-full text-left px-3 py-2 rounded-xl text-sm font-semibold text-white/85 hover:text-white hover:bg-white/[0.06] flex items-center justify-between gap-2 min-h-[44px]"
+        >
+          <span className="flex items-center gap-2">
+            <SlidersHorizontal className="w-4 h-4 stroke-[2] shrink-0" />
+            <span>Customize workout page</span>
+          </span>
+          <span className="text-xs font-semibold text-white/55 tabular-numbers">
+            {activeDisplayCount}/5
+          </span>
+        </button>
+        <button
+          type="button"
+          role="menuitem"
+          onClick={() => {
             triggerHaptic('medium');
             onShiftWorkout();
             close();
@@ -927,15 +977,17 @@ export const TrainTab: React.FC<TrainTabProps> = ({
         observeRef={cardsTopRef}
         deps={[showRecoveryGate, sessionReport]}
       />
-      <StickySessionHeader
-        sessionLabel={programCard.sessionLabel}
-        current={programCard.current}
-        total={programCard.total}
-        onOpen={onOpenProgram}
-        docked={sessionDocked}
-        headerRef={stickyHeaderRef}
-        measureRef={stickyMeasureRef}
-      />
+      {workoutDisplay.showProgramCard && (
+        <StickySessionHeader
+          sessionLabel={programCard.sessionLabel}
+          current={programCard.current}
+          total={programCard.total}
+          onOpen={onOpenProgram}
+          docked={sessionDocked}
+          headerRef={stickyHeaderRef}
+          measureRef={stickyMeasureRef}
+        />
+      )}
       <WorkoutPageHeader
         title={pageTitle}
         days={stripDays}
@@ -954,7 +1006,9 @@ export const TrainTab: React.FC<TrainTabProps> = ({
         const finishedMaxHr = todayFinished.workout.maxHeartRate ?? finishedDayBio?.maxWorkoutHr;
         return (
           <>
-            <ProgramProgressCard {...programCard} onOpen={onOpenProgram} sessionRef={sessionBlockRef} />
+            {workoutDisplay.showProgramCard && (
+              <ProgramProgressCard {...programCard} onOpen={onOpenProgram} sessionRef={sessionBlockRef} />
+            )}
             <FinishedWorkoutSummaryCard finish={todayFinished.finish} />
             {whoopConfigured && (
               <WhoopStrainCard
@@ -972,8 +1026,10 @@ export const TrainTab: React.FC<TrainTabProps> = ({
         );
       })() : (
         <>
-          <ProgramProgressCard {...programCard} onOpen={onOpenProgram} sessionRef={sessionBlockRef} />
-          {!showRecoveryGate && (
+          {workoutDisplay.showProgramCard && (
+            <ProgramProgressCard {...programCard} onOpen={onOpenProgram} sessionRef={sessionBlockRef} />
+          )}
+          {!showRecoveryGate && workoutDisplay.showRecoveryCard && (
             <RecoveryScoreCard
               readiness={readiness}
               latestBiometrics={latestBiometrics}
@@ -984,7 +1040,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
         </>
       )}
 
-      {overviewStepDay && (inspectedDay || overviewStepDay.status !== 'trained') && (
+      {workoutDisplay.showStepsCard && overviewStepDay && (inspectedDay || overviewStepDay.status !== 'trained') && (
         <section
           aria-label={overviewStepDay.isToday ? "Today's steps" : `${overviewStepDay.label} steps`}
           className="wk-card"
@@ -992,7 +1048,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
           <div className="flex items-start justify-between" style={{ gap: fig(16) }}>
             <div>
               <h2 className="wk-label flex items-center" style={{ gap: fig(10) }}>
-                <Footprints style={{ width: fig(30), height: fig(30), color: 'var(--wk-accent)' }} strokeWidth={2.2} aria-hidden="true" />
+                <Footprints style={{ width: fig(30), height: fig(30), color: 'var(--color-data-telemetry)' }} strokeWidth={2.2} aria-hidden="true" />
                 <span>
                   {overviewStepDay.isToday
                     ? "Today's steps"
@@ -1064,7 +1120,6 @@ export const TrainTab: React.FC<TrainTabProps> = ({
                     onOpenWatchSync();
                   }}
                   className="wk-pill wk-tap"
-                  style={{ color: 'var(--wk-accent)' }}
                 >
                   Sync Health Connect
                 </button>
@@ -1125,7 +1180,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
                   onSwitchSplitDay(recoveredAlternative);
                 }}
                 className="wk-button"
-                style={{ background: 'var(--wk-accent)', color: 'var(--color-text-on-accent)' }}
+                style={{ background: 'var(--color-action-primary-bg)', color: 'var(--color-action-primary-fg)' }}
               >
                 Train {recoveredAlternative} instead
               </button>
@@ -1137,7 +1192,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
                 onUpdateWorkout({ ...activeWorkout, recoveryOverride: true });
               }}
               className="wk-button"
-              style={{ background: 'var(--wk-pill)', color: 'var(--color-text-primary)' }}
+              style={{ background: 'var(--color-action-secondary-bg)', color: 'var(--color-action-secondary-fg)' }}
             >
               Train anyway
             </button>
@@ -1216,26 +1271,34 @@ export const TrainTab: React.FC<TrainTabProps> = ({
                 const n = exerciseNotes[index];
                 return n ? generatedNotes[n.key] ?? n.fallback : undefined;
               })()}
+              showSummary={workoutDisplay.showExerciseSummaries}
+              showChart={workoutDisplay.showExerciseCharts}
             />
           );
         })}
       </div>
 
-      {/* Add an exercise */}
+      {/* Add an exercise (secondary action, compact height) */}
       <button
         type="button"
         onClick={() => {
           triggerHaptic('light');
           setShowAddExerciseModal(true);
         }}
-        className="wk-button flex items-center justify-center"
-        style={{ border: `${fig(3)} dashed rgba(255,255,255,0.25)`, color: 'var(--wk-muted)', gap: fig(12) }}
+        className="wk-button flex items-center justify-center transition-transform active:scale-[0.98]"
+        style={{
+          background: 'var(--color-action-secondary-bg)',
+          color: 'var(--color-action-secondary-fg)',
+          height: fig(96),
+          minHeight: 44,
+          gap: fig(12),
+        }}
       >
         <Plus style={{ width: fig(32), height: fig(32) }} strokeWidth={2.5} aria-hidden="true" />
         <span>Add exercise</span>
       </button>
 
-      {/* Finish */}
+      {/* Finish (primary action CTA) */}
       <button
         type="button"
         onClick={handleFinishWorkoutClick}
@@ -1243,7 +1306,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
         className="wk-button transition-transform active:scale-[0.98]"
         style={
           completedSets > 0
-            ? { background: 'var(--wk-accent)', color: 'var(--color-text-on-accent)' }
+            ? { background: 'var(--color-action-primary-bg)', color: 'var(--color-action-primary-fg)' }
             : { background: 'var(--color-action-disabled-bg)', color: 'var(--color-action-disabled-fg)', cursor: 'not-allowed' }
         }
       >
@@ -1275,8 +1338,8 @@ export const TrainTab: React.FC<TrainTabProps> = ({
                 type="button"
                 onClick={() => setShowAddExerciseModal(false)}
                 aria-label="Close add exercise modal"
-                className="w-10 h-10 rounded-full text-white/60 hover:text-white flex items-center justify-center text-xs font-bold transition-colors shrink-0"
-                style={{ background: 'var(--wk-raised)' }}
+                className="w-11 h-11 rounded-full text-white/60 hover:text-white flex items-center justify-center text-xs font-bold transition-colors shrink-0"
+                style={{ background: 'var(--color-action-secondary-bg)' }}
               >
                 ✕
               </button>
@@ -1307,10 +1370,144 @@ export const TrainTab: React.FC<TrainTabProps> = ({
                         {def.primaryMuscle} • {equipLabel} • {def.defaultRepRange[0]}–{def.defaultRepRange[1]} reps
                       </div>
                     </div>
-                    <Plus className="w-4 h-4 shrink-0 stroke-[2]" style={{ color: 'var(--wk-accent)' }} />
+                    <Plus className="w-4 h-4 shrink-0 stroke-[2]" style={{ color: 'var(--color-text-secondary)' }} />
                   </button>
                 );
               })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Customize Workout Page Defaults Modal */}
+      {showWorkoutDisplayModal && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Customize workout page"
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/85 backdrop-blur-md"
+        >
+          <div className="wk-card w-full max-w-md shadow-2xl flex flex-col" style={{ gap: fig(24), maxHeight: '85vh' }}>
+            <div className="flex items-start justify-between" style={{ gap: fig(16) }}>
+              <div>
+                <h3 className="wk-h1">Workout page defaults</h3>
+                <p className="wk-caption" style={{ marginTop: fig(8) }}>
+                  Choose which cards, summaries and charts appear on your Workout screen.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowWorkoutDisplayModal(false)}
+                aria-label="Close workout page settings"
+                className="wk-pill min-h-[44px]"
+              >
+                Close
+              </button>
+            </div>
+
+            <ul className="flex flex-col overflow-y-auto no-scrollbar" style={{ borderTop: `${fig(2)} solid var(--color-border-subtle)` }}>
+              {(
+                [
+                  {
+                    key: 'showProgramCard' as const,
+                    title: 'Program progress card',
+                    description: 'Phase, week and workout position at the top of Workout.',
+                  },
+                  {
+                    key: 'showRecoveryCard' as const,
+                    title: 'Recovery score card',
+                    description: 'Daily readiness and wearable recovery status.',
+                  },
+                  {
+                    key: 'showExerciseSummaries' as const,
+                    title: 'Exercise written summaries',
+                    description: '2-line weight history and session focus on each exercise card.',
+                  },
+                  {
+                    key: 'showExerciseCharts' as const,
+                    title: 'Exercise trend charts',
+                    description: 'Estimated 1-rep max or best-set chart inside each exercise card.',
+                  },
+                  {
+                    key: 'showStepsCard' as const,
+                    title: 'Daily steps card',
+                    description: 'Step count overview on rest days and selected week-strip days.',
+                  },
+                ]
+              ).map((item) => {
+                const enabled = workoutDisplay[item.key];
+                return (
+                  <li key={item.key} style={{ borderBottom: `${fig(2)} solid var(--color-border-subtle)` }}>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={enabled}
+                      onClick={() => {
+                        triggerHaptic('light');
+                        handleToggleWorkoutDisplay(item.key);
+                      }}
+                      className="w-full text-left flex items-center justify-between"
+                      style={{ gap: fig(24), padding: `${fig(26)} 0`, minHeight: 44 }}
+                    >
+                      <span className="min-w-0">
+                        <span className="wk-label block">{item.title}</span>
+                        <span className="wk-caption block" style={{ marginTop: fig(6) }}>
+                          {item.description}
+                        </span>
+                      </span>
+                      <span
+                        className="rounded-full flex items-center justify-center shrink-0"
+                        style={{
+                          width: fig(52),
+                          height: fig(52),
+                          background: enabled ? 'var(--wk-accent)' : 'transparent',
+                          border: enabled ? 'none' : `${fig(3)} solid var(--color-action-secondary-bg)`,
+                        }}
+                        aria-hidden="true"
+                      >
+                        {enabled && (
+                          <Check
+                            style={{ width: fig(30), height: fig(30), color: 'var(--color-text-on-accent)' }}
+                            strokeWidth={3}
+                          />
+                        )}
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+
+            <div className="flex flex-col" style={{ gap: fig(14) }}>
+              {!isDefaultWorkoutDisplay && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    triggerHaptic('light');
+                    handleResetWorkoutDisplay();
+                  }}
+                  className="wk-button"
+                  style={{
+                    background: 'var(--color-action-secondary-bg)',
+                    color: 'var(--color-action-secondary-fg)',
+                    height: fig(96),
+                    minHeight: 44,
+                  }}
+                >
+                  Reset to defaults
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setShowWorkoutDisplayModal(false)}
+                className="wk-button"
+                style={{
+                  background: 'var(--color-action-primary-bg)',
+                  color: 'var(--color-action-primary-fg)',
+                }}
+              >
+                Done
+              </button>
             </div>
           </div>
         </div>

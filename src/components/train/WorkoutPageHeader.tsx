@@ -88,7 +88,7 @@ export const WorkoutPageHeader: React.FC<WorkoutPageHeaderProps> = ({ title, day
             }}
             aria-expanded={menuOpen}
             aria-haspopup="menu"
-            aria-label="Workout options: location, rest day and last workout"
+            aria-label="Workout options: location, customize workout page, rest day and last workout"
             className="absolute right-0 top-1/2 -translate-y-1/2 flex items-center justify-center rounded-full"
             style={{ width: 44, height: 44, color: 'var(--wk-muted)' }}
           >
@@ -140,7 +140,7 @@ export const WorkoutPageHeader: React.FC<WorkoutPageHeaderProps> = ({ title, day
                     style={{
                       fontSize: `max(12px, ${fig(22)})`,
                       fontWeight: day.isToday || selected ? 700 : 600,
-                      color: selected ? 'var(--wk-accent)' : day.isToday ? 'var(--color-text-primary)' : 'var(--wk-muted)',
+                      color: selected || day.isToday ? 'var(--color-text-primary)' : 'var(--wk-muted)',
                     }}
                   >
                     {day.label}

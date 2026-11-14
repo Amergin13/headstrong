@@ -225,7 +225,11 @@ export const StatRow: React.FC<{ stats: { label: string; value: string; unit?: s
 );
 
 /** A small trend line with its latest point marked; no axes, the card states the figure. */
-export const Sparkline: React.FC<{ points: ProgressPoint[]; label: string }> = ({ points, label }) => {
+export const Sparkline: React.FC<{ points: ProgressPoint[]; label: string; positiveProgress?: boolean }> = ({
+  points,
+  label,
+  positiveProgress = false,
+}) => {
   if (points.length < 2) return null;
   const W = 300;
   const H = 110;
@@ -238,10 +242,11 @@ export const Sparkline: React.FC<{ points: ProgressPoint[]; label: string }> = (
   const d = points.map((p, i) => `${i === 0 ? 'M' : 'L'}${x(i).toFixed(1)},${(max === min ? H / 2 : y(p.value)).toFixed(1)}`).join(' ');
   const lastX = x(points.length - 1);
   const lastY = max === min ? H / 2 : y(values[values.length - 1]);
+  const strokeColor = positiveProgress ? 'var(--color-accent-primary)' : 'var(--color-data-telemetry)';
   return (
     <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={label} style={{ width: fig(300), height: fig(110) }} className="shrink-0">
       <line x1={lastX} x2={lastX} y1={4} y2={H - 4} stroke="rgba(255,255,255,0.35)" strokeWidth={1.5} strokeDasharray="3 5" />
-      <path d={d} fill="none" stroke="var(--color-accent-primary)" strokeOpacity={0.85} strokeWidth={3} strokeLinejoin="round" strokeLinecap="round" />
+      <path d={d} fill="none" stroke={strokeColor} strokeOpacity={0.85} strokeWidth={3} strokeLinejoin="round" strokeLinecap="round" />
       <circle cx={lastX} cy={lastY} r={6} fill="var(--color-text-primary)" />
     </svg>
   );

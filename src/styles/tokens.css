@@ -18,6 +18,7 @@
   --palette-slate-850: #283339;
   --palette-slate-800: #2C3034;
   --palette-slate-750: #3B4044;
+  --palette-slate-720: #44494C;
   --palette-slate-700: #474D50;
   --palette-slate-300: #C9CDD0;
   --palette-white: #FFFFFF;
@@ -114,14 +115,15 @@
   /* Accent & Interactive Actions */
   --color-accent-primary: var(--palette-mint-400);
   --color-accent-primary-soft: rgba(0, 241, 159, 0.14);
-  --color-action-primary-bg: var(--color-accent-primary);
-  --color-action-primary-fg: var(--color-text-on-accent);
-  --color-action-secondary-bg: var(--color-bg-surface-raised);
-  --color-action-secondary-fg: var(--color-text-primary);
+  --color-action-primary-bg: var(--palette-white);
+  --color-action-primary-fg: var(--palette-slate-950);
+  --color-action-secondary-bg: var(--palette-slate-720);
+  --color-action-secondary-fg: var(--palette-white);
   --color-action-destructive-bg: var(--palette-crimson-600);
   --color-action-destructive-fg: var(--color-text-on-danger);
   --color-action-disabled-bg: var(--color-bg-surface-raised);
   --color-action-disabled-fg: var(--color-text-subtle);
+  --color-data-telemetry: var(--palette-cyan-300);
 
   /* Status & Telemetry Semantics */
   --color-status-positive: var(--palette-mint-400);

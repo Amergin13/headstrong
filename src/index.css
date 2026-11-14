@@ -173,8 +173,13 @@ select:focus-visible {
   --wk-bg: var(--color-bg-canvas);
   --wk-card: var(--color-bg-surface);
   --wk-raised: var(--color-bg-surface-raised);
-  --wk-pill: var(--color-bg-surface-control);
+  --wk-pill: var(--color-action-secondary-bg);
   --wk-accent: var(--color-accent-primary);
+  --wk-action-primary: var(--color-action-primary-bg);
+  --wk-action-primary-fg: var(--color-action-primary-fg);
+  --wk-action-secondary: var(--color-action-secondary-bg);
+  --wk-action-secondary-fg: var(--color-action-secondary-fg);
+  --wk-telemetry: var(--color-data-telemetry);
   --wk-muted: var(--color-text-muted);
   --wk-body: var(--color-text-secondary);
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
@@ -186,10 +191,11 @@ select:focus-visible {
   padding-bottom: 120px;
 }
 .wk-page-title {
-  font-size: max(12px, calc(26 * var(--f)));
+  font-size: max(14px, calc(32 * var(--f)));
+  line-height: 1.2;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.05em;
   color: var(--color-text-primary);
   text-align: center;
 }
@@ -204,40 +210,48 @@ select:focus-visible {
   padding: calc(24 * var(--f));
 }
 .wk-h1 {
-  font-size: max(12px, calc(28 * var(--f)));
-  line-height: 1.2;
+  font-size: max(15px, calc(34 * var(--f)));
+  line-height: 1.25;
   font-weight: 700;
   text-transform: uppercase;
   color: var(--color-text-primary);
 }
 .wk-body {
-  font-size: max(12px, calc(26 * var(--f)));
-  line-height: calc(34 * var(--f));
+  font-size: max(14px, calc(30 * var(--f)));
+  line-height: 1.45;
   color: var(--wk-body);
 }
 .wk-label {
   font-size: max(12px, calc(24 * var(--f)));
-  line-height: 1.2;
+  line-height: 1.25;
   font-weight: 700;
   text-transform: uppercase;
   color: var(--color-text-primary);
 }
 .wk-caption {
   font-size: max(12px, calc(22 * var(--f)));
-  line-height: 1.2;
+  line-height: 1.3;
   font-weight: 600;
   color: var(--wk-muted);
 }
 .wk-pill {
   display: inline-flex;
   align-items: center;
-  background: var(--wk-pill);
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid var(--color-border-subtle);
   border-radius: calc(8 * var(--f));
   padding: calc(6 * var(--f)) calc(22 * var(--f));
   font-size: max(12px, calc(24 * var(--f)));
+  line-height: 1.2;
   font-weight: 700;
   text-transform: uppercase;
   color: var(--color-status-neutral);
+}
+.wk button.wk-pill,
+.wk a.wk-pill {
+  background: var(--color-action-secondary-bg);
+  border-color: transparent;
+  color: var(--color-action-secondary-fg);
 }
 /* Keeps a 44 px touch target on rows drawn shorter than that (the gap between rows takes the rest). */
 .wk-hit {
@@ -273,7 +287,7 @@ select:focus-visible {
   background: var(--wk-raised);
   border-radius: calc(15 * var(--f));
   height: calc(74 * var(--f));
-  font-size: max(12px, calc(26 * var(--f)));
+  font-size: max(16px, calc(32 * var(--f)));
   font-weight: 700;
   color: var(--color-text-primary);
   text-align: center;
@@ -281,7 +295,7 @@ select:focus-visible {
 }
 .wk-input:focus-within,
 .wk-input:focus {
-  outline: calc(3 * var(--f)) solid var(--wk-accent);
+  outline: calc(3 * var(--f)) solid var(--color-text-primary);
 }
 .wk-field {
   background: var(--wk-raised);
@@ -289,14 +303,14 @@ select:focus-visible {
   min-height: 44px;
   height: calc(84 * var(--f));
   padding: 0 calc(24 * var(--f));
-  font-size: max(12px, calc(26 * var(--f)));
+  font-size: max(16px, calc(32 * var(--f)));
   font-weight: 600;
   color: var(--color-text-primary);
   width: 100%;
 }
 .wk-field:focus-within,
 .wk-field:focus {
-  outline: calc(3 * var(--f)) solid var(--wk-accent);
+  outline: calc(3 * var(--f)) solid var(--color-text-primary);
 }
 .wk-segments {
   display: grid;
@@ -326,7 +340,7 @@ select:focus-visible {
   min-height: 48px;
   height: calc(130 * var(--f));
   border-radius: calc(30 * var(--f));
-  font-size: max(12px, calc(28 * var(--f)));
+  font-size: max(14px, calc(30 * var(--f)));
   font-weight: 700;
   text-transform: uppercase;
 }

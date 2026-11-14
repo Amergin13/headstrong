@@ -74,24 +74,17 @@ export const ProgressChartCard: React.FC<{
       <div className="flex items-start justify-between" style={{ gap: fig(16) }}>
         <div className="min-w-0 flex-1">
           <h2
-            className="font-semibold tracking-tight truncate"
-            style={{
-              fontSize: `max(14px, ${fig(32)})`,
-              color: 'var(--color-text-secondary)',
-              lineHeight: 1.2,
-            }}
+            className="wk-h1 normal-case tracking-tight truncate"
+            style={{ color: 'var(--color-text-secondary)' }}
           >
             {chart.title}
           </h2>
           {visibleChart.headline ? (
             <div style={{ marginTop: fig(14) }}>
               <div
-                className="uppercase font-semibold"
+                className="wk-caption uppercase"
                 style={{
-                  fontSize: `max(12px, ${fig(21)})`,
-                  color: 'var(--color-text-muted)',
                   letterSpacing: '0.07em',
-                  lineHeight: 1.1,
                 }}
               >
                 {visibleChart.headline.eyebrow}
@@ -100,7 +93,7 @@ export const ProgressChartCard: React.FC<{
                 <span
                   className="font-bold tracking-tight"
                   style={{
-                    fontSize: `max(12px, ${fig(64)})`,
+                    fontSize: `max(24px, ${fig(64)})`,
                     lineHeight: 1.02,
                     color: 'var(--color-text-primary)',
                     fontVariantNumeric: 'tabular-nums',
@@ -110,11 +103,9 @@ export const ProgressChartCard: React.FC<{
                 </span>
                 {visibleChart.headline.unitText && (
                   <span
-                    className="font-medium"
+                    className="wk-body font-medium"
                     style={{
-                      fontSize: `max(13px, ${fig(30)})`,
                       lineHeight: 1,
-                      color: 'var(--color-text-secondary)',
                     }}
                   >
                     {visibleChart.headline.unitText}
@@ -123,7 +114,7 @@ export const ProgressChartCard: React.FC<{
               </div>
             </div>
           ) : (
-            <p style={{ fontSize: `max(12px, ${fig(24)})`, color: 'var(--wk-muted)', marginTop: fig(10) }}>
+            <p className="wk-caption" style={{ marginTop: fig(10) }}>
               {chart.lastUpdated ? `Last updated ${fullDate(chart.lastUpdated)}` : 'No data yet'}
             </p>
           )}
@@ -242,6 +233,7 @@ export const ProgressChartCard: React.FC<{
           secondary={visibleChart.secondary}
           format={visibleChart.format}
           tone={visibleChart.chartTone}
+          positiveProgress={delta ? delta.polarity === 'positive' : undefined}
           typicalRange={visibleChart.typicalRange}
           windowRange={visibleChart.windowRange}
           label={

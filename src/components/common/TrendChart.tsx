@@ -18,8 +18,10 @@ interface TrendChartProps {
   label: string;
   /** Chart height in Figma px. */
   height?: number;
-  /** Semantic accent color: cyan for telemetry biometrics, mint for strength & body. */
+  /** Semantic accent color: cyan for telemetry biometrics, mint for positive progress. */
   tone?: ChartTone;
+  /** Explicit override: true when the series represents positive progress toward a goal, false when informational. */
+  positiveProgress?: boolean;
   /** Trailing 28-day typical range band (homeostatic daily biometrics only). */
   typicalRange?: ChartTypicalRange;
   /** Active calendar window for stepping & daily 1W X-axis ticks. */
@@ -107,6 +109,7 @@ export const TrendChart: React.FC<TrendChartProps> = ({
   label,
   height = 300,
   tone = 'strength',
+  positiveProgress,
   typicalRange,
   windowRange,
 }) => {
@@ -204,7 +207,10 @@ export const TrendChart: React.FC<TrendChartProps> = ({
       : [];
 
   const last = main[main.length - 1];
-  const accentColor = tone === 'biometric' ? 'var(--color-status-info)' : 'var(--color-accent-primary)';
+  const isPositiveTrend =
+    positiveProgress ??
+    (tone === 'strength' && !example && main.length >= 2 && main[main.length - 1].raw > main[0].raw);
+  const accentColor = isPositiveTrend ? 'var(--color-accent-primary)' : 'var(--color-data-telemetry)';
   const mutedStyle: React.CSSProperties = {
     fontSize: `max(12px, ${fig(22)})`,
     color: 'var(--color-text-muted)',

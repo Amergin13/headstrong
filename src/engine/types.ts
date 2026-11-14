@@ -462,11 +462,46 @@ export interface AthleteMemoryFact {
   relatedExerciseIds?: string[];
 }
 
+export interface WorkoutDisplaySettings {
+  /** Show the Program phase & progress card at the top of Workout (default: true). */
+  showProgramCard?: boolean;
+  /** Show the biometric Recovery / Readiness card at the top of Workout (default: true). */
+  showRecoveryCard?: boolean;
+  /** Show the 2-line written summary on each ExerciseCard (default: true). */
+  showExerciseSummaries?: boolean;
+  /** Show the E1RM / reps trend chart on each ExerciseCard (default: true). */
+  showExerciseCharts?: boolean;
+  /** Show the daily steps card on Workout overview / rest days (default: true). */
+  showStepsCard?: boolean;
+}
+
+export const DEFAULT_WORKOUT_DISPLAY_SETTINGS: Required<WorkoutDisplaySettings> = {
+  showProgramCard: true,
+  showRecoveryCard: true,
+  showExerciseSummaries: true,
+  showExerciseCharts: true,
+  showStepsCard: true,
+};
+
+export function resolveWorkoutDisplaySettings(
+  settings?: WorkoutDisplaySettings | null
+): Required<WorkoutDisplaySettings> {
+  return {
+    showProgramCard: settings?.showProgramCard ?? DEFAULT_WORKOUT_DISPLAY_SETTINGS.showProgramCard,
+    showRecoveryCard: settings?.showRecoveryCard ?? DEFAULT_WORKOUT_DISPLAY_SETTINGS.showRecoveryCard,
+    showExerciseSummaries: settings?.showExerciseSummaries ?? DEFAULT_WORKOUT_DISPLAY_SETTINGS.showExerciseSummaries,
+    showExerciseCharts: settings?.showExerciseCharts ?? DEFAULT_WORKOUT_DISPLAY_SETTINGS.showExerciseCharts,
+    showStepsCard: settings?.showStepsCard ?? DEFAULT_WORKOUT_DISPLAY_SETTINGS.showStepsCard,
+  };
+}
+
 export interface UserProfile {
   /** Goals changed on the Progress page; see GoalSettings. */
   goalSettings?: GoalSettings;
   /** Customised widget selection for the Progress screen; undefined uses the defaults. */
   progressWidgets?: ProgressWidgetId[];
+  /** Personal layout defaults for the Workout screen, configured from the Workout 3-dots menu. */
+  workoutDisplay?: WorkoutDisplaySettings;
   name: string;
   gender: Gender;
   /** True once the athlete chose it (Settings or the weight form); until then gender is a default. */

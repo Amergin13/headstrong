@@ -56,8 +56,8 @@ export const TimelineToggle: React.FC<TimelineToggleProps> = ({
               className="min-h-[44px] flex items-center justify-center rounded-[8px] transition-colors font-semibold uppercase tracking-wider"
               style={{
                 paddingInline: fig(20),
-                background: selected ? 'var(--color-bg-surface-raised)' : 'transparent',
-                color: selected ? 'var(--color-text-primary)' : 'var(--color-text-secondary)',
+                background: selected ? 'var(--color-action-secondary-bg)' : 'transparent',
+                color: selected ? 'var(--color-action-secondary-fg)' : 'var(--color-text-secondary)',
                 border: selected ? '1px solid var(--color-border-subtle)' : '1px solid transparent',
                 fontSize: 'max(12px, calc(24px * var(--f)))',
                 lineHeight: 1,
@@ -98,8 +98,8 @@ export const TimelineToggle: React.FC<TimelineToggleProps> = ({
             }}
             className="wk-segment"
             style={{
-              background: selected ? 'var(--wk-raised)' : 'transparent',
-              color: selected ? 'var(--color-text-primary)' : 'var(--wk-muted)',
+              background: selected ? 'var(--color-action-secondary-bg)' : 'transparent',
+              color: selected ? 'var(--color-action-secondary-fg)' : 'var(--wk-muted)',
             }}
           >
             {option.label}

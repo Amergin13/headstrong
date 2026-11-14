@@ -486,7 +486,7 @@ export const ProgramPlanView: React.FC<ProgramPlanViewProps> = ({
       <section
         ref={progressRef}
         aria-label="Plan progress"
-        style={{ marginTop: fig(isFirstRun ? 107 : 60), paddingLeft: fig(38), paddingRight: fig(38) }}
+        style={{ marginTop: fig(isFirstRun ? 107 : 60) }}
       >
         <div className="flex items-end justify-between" style={{ gap: fig(20) }}>
           <span className="wk-label" style={{ lineHeight: 1.21 }}>
@@ -548,7 +548,7 @@ export const ProgramPlanView: React.FC<ProgramPlanViewProps> = ({
                       <>
                         <span className="font-bold uppercase text-white truncate">{name}</span>
                         {isNext && (
-                          <span className="uppercase shrink-0" style={{ color: 'var(--wk-muted)' }}>
+                          <span className="uppercase shrink-0 font-bold" style={{ color: 'var(--color-text-primary)' }}>
                             Up next
                           </span>
                         )}
@@ -562,7 +562,7 @@ export const ProgramPlanView: React.FC<ProgramPlanViewProps> = ({
                             This week
                           </span>
                         )}
-                        {done && !w.isActive && (
+                        {((done && !w.isActive) || isNext || isDue) && (
                           <ChevronRight
                             className="ml-auto shrink-0 text-white"
                             style={{ width: fig(36), height: fig(36) }}
@@ -586,7 +586,15 @@ export const ProgramPlanView: React.FC<ProgramPlanViewProps> = ({
                                 : `${name}, up next. Open workout`
                             }
                             className="wk-hit w-full flex items-center text-left"
-                            style={{ ...rowStyle, background: done ? 'var(--color-set-completed-soft)' : 'var(--wk-card)' }}
+                            style={{
+                              ...rowStyle,
+                              background: done
+                                ? 'var(--color-set-completed-soft)'
+                                : isNext
+                                ? 'var(--color-action-secondary-bg)'
+                                : 'var(--wk-card)',
+                              border: isNext ? '1px solid var(--color-border-strong)' : undefined,
+                            }}
                           >
                             {content}
                           </button>

@@ -351,8 +351,8 @@ export const ImportProgramModal: React.FC<ImportProgramModalProps> = ({
             disabled={!parseResult.parsed}
             className="wk-button flex-1"
             style={{
-              background: parseResult.parsed ? 'var(--wk-accent)' : 'var(--color-bg-surface-control)',
-              color: parseResult.parsed ? 'var(--color-text-on-accent)' : 'var(--color-text-muted)',
+              background: parseResult.parsed ? 'var(--color-action-primary-bg)' : 'var(--color-bg-surface-control)',
+              color: parseResult.parsed ? 'var(--color-action-primary-fg)' : 'var(--color-text-muted)',
               opacity: parseResult.parsed ? 1 : 0.55,
             }}
           >

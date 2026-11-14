@@ -121,12 +121,12 @@ export const NavigationBar: React.FC<NavigationBarProps> = ({
               >
                 <Icon
                   className={`w-[21px] h-[21px] transition-all duration-200 group-active:scale-90 ${
-                    isActive ? 'text-white stroke-[2.1]' : 'text-white/55 group-hover:text-white/80 stroke-[1.85]'
+                    isActive ? 'text-white stroke-[2.1]' : 'text-white/65 group-hover:text-white/85 stroke-[1.85]'
                   }`}
                 />
                 <span
                   className={`text-xs mt-1 tracking-tight transition-colors ${
-                    isActive ? 'text-white font-semibold' : 'text-white/55 group-hover:text-white/80 font-medium'
+                    isActive ? 'text-white font-semibold' : 'text-white/65 group-hover:text-white/85 font-medium'
                   }`}
                 >
                   {tab.label}
