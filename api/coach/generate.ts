@@ -13,15 +13,19 @@ const FALLBACK_GEMINI_MODELS = [
   'gemini-3.1-flash-lite',
   'gemini-3.1-flash-lite-preview',
   'gemini-2.5-flash-lite',
+  'gemini-2.5-flash',
 ] as const;
+
+let cachedWorkingModel: string | null = null;
 
 function geminiEndpoint(model: string): string {
   return `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
 }
 
-function getCandidateModels(): string[] {
+function getCandidateModels(preferCached = false): string[] {
   const configuredModel = (process.env.GEMINI_MODEL || '').trim();
-  const list = configuredModel ? [configuredModel, ...FALLBACK_GEMINI_MODELS] : [...FALLBACK_GEMINI_MODELS];
+  const base = configuredModel ? [configuredModel, ...FALLBACK_GEMINI_MODELS] : [...FALLBACK_GEMINI_MODELS];
+  const list = preferCached && cachedWorkingModel && !configuredModel ? [cachedWorkingModel, ...base] : base;
   return [...new Set(list)];
 }
 
@@ -112,27 +116,46 @@ export default async function handler(req: any, res: any) {
   }
 
   const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
-  const timeout = controller ? setTimeout(() => controller.abort(), 15_000) : null;
+  const timeout = controller ? setTimeout(() => controller.abort(), 14_000) : null;
 
   try {
-    const candidateModels = getCandidateModels();
+    const candidateModels = getCandidateModels(true);
     let activeModel = candidateModels[0] || DEFAULT_GEMINI_MODEL;
     let upstream: Response | null = null;
 
     for (let i = 0; i < candidateModels.length; i += 1) {
       activeModel = candidateModels[i];
-      upstream = await fetch(geminiEndpoint(activeModel), {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-goog-api-key': apiKey,
-        },
-        body: JSON.stringify(payload),
-        ...(controller ? { signal: controller.signal } : {}),
-      });
-      if (upstream.status !== 404 || i === candidateModels.length - 1) {
-        break;
+      const attemptController = typeof AbortController !== 'undefined' ? new AbortController() : null;
+      const attemptTimer = attemptController ? setTimeout(() => attemptController.abort(), 5500) : null;
+      const onOuterAbort = () => attemptController?.abort();
+      if (controller && attemptController) {
+        if (controller.signal.aborted) attemptController.abort();
+        else controller.signal.addEventListener('abort', onOuterAbort, { once: true });
       }
+      try {
+        upstream = await fetch(geminiEndpoint(activeModel), {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-goog-api-key': apiKey,
+          },
+          body: JSON.stringify(payload),
+          ...(attemptController ? { signal: attemptController.signal } : {}),
+        });
+      } catch (err) {
+        if (attemptTimer) clearTimeout(attemptTimer);
+        if (controller && attemptController) controller.signal.removeEventListener('abort', onOuterAbort);
+        if (controller?.signal.aborted || i === candidateModels.length - 1) throw err;
+        continue;
+      }
+      if (attemptTimer) clearTimeout(attemptTimer);
+      if (controller && attemptController) controller.signal.removeEventListener('abort', onOuterAbort);
+      if (upstream.status === 404) {
+        if (cachedWorkingModel === activeModel) cachedWorkingModel = null;
+        if (i === candidateModels.length - 1) break;
+        continue;
+      }
+      break;
     }
 
     if (!upstream || !upstream.ok) {
@@ -152,6 +175,7 @@ export default async function handler(req: any, res: any) {
       return res.status(502).json({ error: 'Model returned an empty answer.' });
     }
 
+    cachedWorkingModel = activeModel;
     return res.status(200).json({ text, model: activeModel });
   } catch {
     return res.status(502).json({ error: 'Failed to reach the coach model.' });

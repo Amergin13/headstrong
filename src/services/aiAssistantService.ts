@@ -25,11 +25,19 @@ import {
   queryExerciseScienceKnowledgeBase,
 } from '../engine/knowledgeGraph';
 import { forgetOnDeviceExchange, isOnDeviceModelReady, promptOnDeviceModel } from './onDeviceModel';
+import { adaptWorkoutSessionToLocation, generateSmartWorkoutSession, getFirstSplitDayForProgram } from './workoutGenerator';
 import {
-  adaptWorkoutSessionToLocation,
-  generateSmartWorkoutSession,
-  getFirstSplitDayForProgram,
-} from './workoutGenerator';
+  canUseMusclePlan,
+  isPlanProgram,
+  resolveActivePlan,
+} from '../engine/trainingPlans';
+import {
+  generatePlanWorkout,
+  getNextProgramWorkoutNumber,
+  isActiveSlot,
+  planWorkoutLabel,
+} from '../engine/muscleBuildingProgram';
+import { prepareSessionForAthlete } from './sessionPreparation';
 import { localDateString } from '../utils/date';
 import { formatPreciseWeight, formatWeight, snapLoadKg } from '../utils/units';
 import { calculateE1RM } from '../engine/e1rm';
@@ -231,6 +239,11 @@ export function buildCoachSystemPrompt(input: AssistantProcessInput): string {
     }
   }
   const kgFacts: string[] = [];
+  const planPos = planPosition(profile, workouts, input.activities ?? []);
+  const streakDays = computeTrainingStreak(workouts, Date.now(), activeDayDates(input.activities ?? []));
+  kgFacts.push(
+    `Plan: ${planPos.plan.name}, week ${planPos.week} of ${planPos.totalWeeks}, Phase ${planPos.phase.phaseNumber} (${planPos.phase.shortName}), ${planPos.overview.completedCount} of ${planPos.total} workouts in current run (${workouts.filter((w) => w.completed).length} workouts saved overall)${streakDays > 0 ? `, ${streakDays}-day streak` : ''}.`
+  );
   if (kg.stepsSummary.loggedDays > 0 || kg.stepsSummary.goalTarget) {
     kgFacts.push(`Steps: ${kg.stepsSummary.summary}`);
   }
@@ -242,6 +255,32 @@ export function buildCoachSystemPrompt(input: AssistantProcessInput): string {
     if (kg.whoopSummary.hrvRmssd !== undefined) wp.push(`HRV ${Math.round(kg.whoopSummary.hrvRmssd)} ms`);
     if (kg.whoopSummary.restingHr !== undefined) wp.push(`resting HR ${Math.round(kg.whoopSummary.restingHr)} bpm`);
     if (wp.length > 0) kgFacts.push(`Whoop telemetry: ${wp.join(', ')}.`);
+  }
+  const topJoints = [...kg.joints]
+    .filter((j) => j.strainScore > 0)
+    .sort((a, b) => b.strainScore - a.strainScore)
+    .slice(0, 3);
+  if (topJoints.length > 0) {
+    kgFacts.push(
+      `Joint load: ${topJoints.map((j) => `${j.joint} ${j.strainScore}/100 (${j.status})`).join(', ')}; axial load ${kg.systemicAxialLoadScore}%.`
+    );
+  }
+  if (workouts.length > 0) {
+    const std = buildMovementStandards({
+      workouts,
+      biometrics,
+      bodyweightKg: bodyweightEmaKg,
+      gender: profile.gender,
+      age: standardsAge(profile),
+    });
+    const liftSummary = std.levels
+      .filter((l) => l.logged && l.source !== 'none' && l.e1rmKg > 0)
+      .map((l) => `${l.name} ${formatWeight(l.e1rmKg, unit)} E1RM (${l.tier}${l.subDivision ? ` ${l.subDivision}` : ''})`)
+      .join(', ');
+    if (liftSummary) kgFacts.push(`Strength levels: ${liftSummary}.`);
+  }
+  if (kg.insights.length > 0) {
+    kgFacts.push(`Insight: ${kg.insights[0].title} — ${kg.insights[0].narrative}`);
   }
   const latestWaist = kg.bodyComposition.tapeTrends.find((t) => t.id === 'waist')?.latest;
   const latestBf = kg.bodyComposition.scaleTrends.find((t) => t.id === 'body_fat')?.latest;
@@ -256,8 +295,8 @@ export function buildCoachSystemPrompt(input: AssistantProcessInput): string {
   }
 
   // Voice from the content strategy: pragmatic and observant, grounded in logged facts, no hype.
-  return `You are ${VOICE_TONE_MATRIX.steadyVoice.replace(/^The /, 'the ').replace(/\.$/, '')}, speaking to ${athleteName || 'the athlete'} as "you". Answer the question directly in 2-4 short plain sentences, no greeting. For anything about their plan, weights, sets or progress, use only the facts below. For general training questions (timing, motivation, habits, technique, food), give practical, widely accepted advice in your own words, without numbers. Never say the plan or the facts don't cover something. Never call a muscle's sets enough unless it is on target. High recovery means today's targets stand. Don't praise effort the facts don't show. You don't know how past sessions went. The plan sets weights and raises them itself when every set reaches the top of the range; never tell them to change the weight. No hype, cheerleading or percentages; say why something works in one plain clause.
-Athlete: ${hasWeighIn ? `${formatWeight(bodyweightEmaKg, unit)}, ` : ''}goal ${goalLabel}, week ${planPosition(profile, workouts, input.activities ?? []).week}/6, recovery ${recovery}${
+  return `You are ${VOICE_TONE_MATRIX.steadyVoice.replace(/^The /, 'the ').replace(/\.$/, '')}, speaking to ${athleteName || 'the athlete'} as "you". Answer the question directly in 2-4 short plain sentences, no greeting. For anything about their plan, weights, sets or progress, use only the facts below. For general training questions (timing, motivation, habits, technique, food), give practical, widely accepted advice in your own words, without numbers. Never say the plan or the facts don't cover something. Never call a muscle's sets enough unless it is on target. High recovery means today's targets stand. Don't praise effort the facts don't show. Never guess or invent how individual sets or reps went in past workouts. The plan sets weights and raises them itself when every set reaches the top of the range; never tell them to change the weight. No hype, cheerleading or percentages; say why something works in one plain clause.
+Athlete: ${hasWeighIn ? `${formatWeight(bodyweightEmaKg, unit)}, ` : ''}goal ${goalLabel}, week ${planPos.week}/${planPos.totalWeeks}, recovery ${recovery}${kg.recoveryEfficiencyScore > 0 ? ` (${kg.recoveryEfficiencyScore}%)` : ''}${
     latestBio && latestBio.hrvRmssd > 0 ? `, slept ${latestBio.sleepHours} h` : ''
   }.${placeFacts.length ? `\nViewing: ${placeFacts.join(' ')}.` : ''}${kgFacts.length ? `\n${kgFacts.join('\n')}` : ''}
 Today's plan (not done yet): ${activeWorkout?.name || 'rest'}: ${exercisesDesc || 'nothing planned'}.
@@ -321,6 +360,17 @@ export function contradictsPlanSchedule(answer: string): boolean {
 
 export function claimsPastResults(answer: string): boolean {
   return /\b(you(?:'re| are) new|if you'?re new|new to (the|this)|you(?:'ve| have)? (performed|did|done|completed|managed|reached|missed|failed|lifted|logged|hit)|you did not|you didn'?t (reach|hit|manage|complete)|last (time|session|week)|previous(ly)? (session|workout))\b/i.test(answer);
+}
+
+/**
+ * Strips exact Knowledge-Graph summary counts (e.g. "completed 4 of 24 workouts", "logged 8,500 steps")
+ * before checking for fabricated past-set results, so Gemini Flash can cite real KG telemetry.
+ */
+function claimsInventedPastResults(answer: string): boolean {
+  const scrubbed = answer
+    .replace(/\b(?:you(?:'ve| have)\s+)?(?:completed|done|logged|hit)\s+[\d,]+\s+(?:of\s+[\d,]+\s+)?(?:workouts?|sessions?|days?|steps)\b/gi, '')
+    .replace(/\b(?:last\s+(?:week|7\s+days))\b/gi, '');
+  return claimsPastResults(scrubbed);
 }
 
 function muscleTargetStatus(m: { weeklySets: number; personalizedMav: [number, number] | number[] }): 'below target' | 'on target' | 'above target' {
@@ -544,6 +594,63 @@ function recoveryReadingsClause(log?: BiometricLog): string {
   return readings.length ? `, with ${readings.join(', ')}` : '';
 }
 
+function buildPreparedPlanSession(
+  plan: ReturnType<typeof resolveActivePlan>,
+  workoutNumber: number,
+  input: AssistantProcessInput,
+  targetProfile: UserProfile
+): WorkoutSession {
+  const raw = generatePlanWorkout(plan, workoutNumber);
+  const loc = targetProfile.activeLocation || input.activeWorkout?.location || 'gym';
+  const placed =
+    loc !== 'gym'
+      ? adaptWorkoutSessionToLocation(
+          raw,
+          loc,
+          targetProfile.homeEquipment || [],
+          input.exerciseCatalog,
+          input.workouts,
+          input.readinessState,
+          input.bodyweightEmaKg
+        )
+      : raw;
+  return prepareSessionForAthlete(placed, {
+    history: input.workouts,
+    bodyweightKg: input.bodyweightEmaKg,
+    readinessState: input.readinessState,
+    gender: targetProfile.gender,
+    experienceLevel: targetProfile.experienceLevel,
+    unit: targetProfile.weightUnit || 'kg',
+    isProgramPlan: true,
+  });
+}
+
+function matchTargetProgramFromMessage(
+  lowerMsg: string,
+  profile: UserProfile
+): { id: ProgramSplitType; name: string } | null {
+  for (const custom of profile.customPlans ?? []) {
+    const cname = custom.name.toLowerCase();
+    if (
+      lowerMsg.includes(cname) ||
+      (cname.includes('phase 1') && /\bphase\s*1\b/i.test(lowerMsg)) ||
+      (cname.includes('bt') && /\bbt\b/i.test(lowerMsg))
+    ) {
+      return { id: custom.id, name: custom.name };
+    }
+  }
+  if (/\b(6[\s-]*week\s*muscle|muscle\s*building\s*plan|muscle\s*plan)\b/i.test(lowerMsg)) {
+    return { id: 'muscle_building_6wk', name: '6-Week Muscle Building Plan' };
+  }
+  if (/\b(4[\s-]*day|lift\s*4|four\s*day)\b/i.test(lowerMsg)) {
+    return { id: 'starter_4day', name: '6-Week Starter Plan' };
+  }
+  if (/\b(starter\s*plan|3[\s-]*day|three\s*day)\b/i.test(lowerMsg)) {
+    return { id: 'starter_6wk', name: '6-Week Starter Plan' };
+  }
+  return null;
+}
+
 async function processAssistantMessageCore(
   input: AssistantProcessInput
 ): Promise<AssistantProcessResult> {
@@ -643,6 +750,13 @@ async function processAssistantMessageCore(
   // ============================================================================
   // 0. INTENT: CUSTOMISE PROGRESS WIDGETS / CHANGE GOALS
   // ============================================================================
+  const resetProgramIntent =
+    /\b(reset|restart|re-start|start\s+over|go\s+back|back\s+to)\b.*\b(program|plan|cycle|day\s*(1|one)|workout\s*1|week\s*1|the\s+beginning|scratch)\b|\b(start|begin)\b.*\b(from\s+(day\s*(1|one)|workout\s*1|week\s*1|(the\s+)?(beginning|start|scratch)))\b/i.test(lowerMsg) &&
+    !/\b(weight|load|barbell|timer|streak|app|data|account|factory|everything)\b/i.test(lowerMsg);
+  const isResetQuestionOnly =
+    resetProgramIntent &&
+    /^(should\s+i|would\s+you|do\s+i\s+need\s+to|is\s+it\s+better\s+to)\b/i.test(lowerMsg);
+
   const progressWidgetChange = detectProgressWidgetChange(lowerMsg, profile, exerciseCatalog, activeWorkout);
   const goalChange = progressWidgetChange ? null : detectGoalChange(lowerMsg, profile, activeWorkout, workouts, exerciseCatalog);
   if (progressWidgetChange) {
@@ -660,6 +774,69 @@ async function processAssistantMessageCore(
       updatedProfile = { goalSettings: goalChange.goalSettings };
       actionTaken = { type: 'UPDATE_GOALS', summary: goalChange.summary ?? 'Goals updated' };
     }
+  } else if (isResetQuestionOnly) {
+    const currentPlan = resolveActivePlan(profile);
+    answerText = `You can reset **${currentPlan.name}** to Day 1 whenever you want a clean run from Week 1 without losing any logged workouts, total volume, or personal bests. Say "reset my program to day 1" and I'll queue Workout 1 for you right away.`;
+  } else if (resetProgramIntent) {
+    const activePlan = resolveActivePlan(profile);
+    const resetIso = new Date().toISOString();
+    const nextCycleStarts = { ...(profile.planCycleStarts ?? {}), [activePlan.id]: resetIso };
+    updatedProfile = {
+      planCycleStarts: nextCycleStarts,
+      mesocycleWeek: 1,
+    };
+    const nextProfile: UserProfile = { ...profile, ...updatedProfile };
+
+    if (isPlanProgram(profile.programType)) {
+      const firstLift = activePlan.templates.find((t) => !isActiveSlot(t))?.workoutNumber ?? 1;
+      updatedWorkout = buildPreparedPlanSession(activePlan, firstLift, input, nextProfile);
+    } else {
+      const firstSplit = getFirstSplitDayForProgram(profile.programType);
+      updatedWorkout = prepareSessionForAthlete(
+        generateSmartWorkoutSession(
+          firstSplit,
+          workouts,
+          exerciseCatalog,
+          readinessState,
+          1,
+          profile.activeLocation || 'gym',
+          profile.homeEquipment || [],
+          profile.goalPhase,
+          bodyweightEmaKg,
+          profile.scheduledWeekLocations
+        ),
+        {
+          history: workouts,
+          bodyweightKg: bodyweightEmaKg,
+          readinessState,
+          gender: profile.gender,
+          experienceLevel: profile.experienceLevel,
+          unit: profile.weightUnit || 'kg',
+          isProgramPlan: false,
+        }
+      );
+    }
+
+    const totalWeeks = Math.max(1, ...activePlan.templates.map((t) => t.week));
+    const workoutLabel = updatedWorkout.programWorkoutNumber
+      ? `Workout ${updatedWorkout.programWorkoutNumber}: ${planWorkoutLabel(updatedWorkout.name)}`
+      : updatedWorkout.name;
+
+    actionTaken = {
+      type: 'RESET_PROGRAM',
+      summary: `Reset ${activePlan.name} to Day 1 (${planWorkoutLabel(updatedWorkout.name)})`,
+      details: {
+        planId: activePlan.id,
+        resetAt: resetIso,
+        workoutNumber: updatedWorkout.programWorkoutNumber ?? 1,
+      },
+    };
+    answerText = `Done — I've reset **${activePlan.name}** to Day 1 (Week 1 of ${totalWeeks}).\n\nYour Workout tab is now queued on **${workoutLabel}**, and your Program progress for this run starts fresh at 0 of ${activePlan.templates.length}. All of your past logged sessions, total volume, and Trophy Cabinet personal bests remain saved in your history.`;
+    citations.push({
+      label: activePlan.name,
+      metric: 'Program Run',
+      value: `Workout ${updatedWorkout.programWorkoutNumber ?? 1} of ${activePlan.templates.length} (Week 1/${totalWeeks})`,
+    });
   } else if (matchedEquip) {
     const currentList = new Set<HomeEquipmentTag>(profile.homeEquipment || []);
 
@@ -815,13 +992,40 @@ async function processAssistantMessageCore(
   }
 
   // ============================================================================
-  // 4. INTENT: SWITCH PROGRAM SPLIT (e.g. "switch me to Upper / Lower", "switch to PPL")
+  // 4. INTENT: SWITCH PROGRAM OR SPLIT (supports saved/built-in plans; legacy split names explain the goal plan)
   // ============================================================================
   else if (
+    matchTargetProgramFromMessage(lowerMsg, profile) &&
+    /\b(switch|change|set|swap|use|start|load|move|go\s+to)\b/i.test(lowerMsg)
+  ) {
+    const matchedPlan = matchTargetProgramFromMessage(lowerMsg, profile)!;
+    if (matchedPlan.id === 'muscle_building_6wk' && !canUseMusclePlan(profile.email)) {
+      const currentPlan = resolveActivePlan(profile);
+      answerText = `The 6-Week Muscle Building Plan isn't enabled on this account, so I kept **${currentPlan.name}** active. You can switch between your saved programs from the Program tab's menu (⋯).`;
+    } else {
+      const nextProfile: UserProfile = { ...profile, programType: matchedPlan.id };
+      const targetPlan = resolveActivePlan(nextProfile);
+      const nextNum = getNextProgramWorkoutNumber(workouts, targetPlan, nextProfile.planCycleStarts);
+      const nextWeek = targetPlan.templates.find((t) => t.workoutNumber === nextNum)?.week ?? 1;
+      updatedProfile = { programType: matchedPlan.id, mesocycleWeek: nextWeek };
+      updatedWorkout = buildPreparedPlanSession(targetPlan, nextNum, input, nextProfile);
+      actionTaken = {
+        type: 'SWITCH_PROGRAM_SPLIT',
+        summary: `Switched to ${targetPlan.name}`,
+        details: { programType: matchedPlan.id, workoutNumber: nextNum },
+      };
+      answerText = `Switched your program to **${targetPlan.name}**. Your next session on the Workout tab is **Workout ${nextNum} of ${targetPlan.templates.length}: ${planWorkoutLabel(updatedWorkout.name)}** (Week ${nextWeek}).`;
+      citations.push({
+        label: 'Active Program',
+        metric: 'Program',
+        value: targetPlan.name,
+      });
+    }
+  } else if (
     /\b(switch|change|set)\b.*\b(program|split|ppl|upper\s*lower|full\s*body)\b/i.test(lowerMsg) ||
     /\b(upper\s*lower\s*split|push\s*pull\s*legs)\b/i.test(lowerMsg)
   ) {
-    // One plan, shaped by the goal: there are no splits to switch between.
+    // One plan, shaped by the goal: legacy split templates are not used directly.
     actionTaken = {
       type: 'SWITCH_PROGRAM_SPLIT',
       summary: 'Explained that the plan follows your goal',
@@ -1052,18 +1256,11 @@ async function processAssistantMessageCore(
           lowerMsg.includes('readiness'));
 
       // Explicit "why / how does / formula" questions get the full science card. Other open
-      // questions go to the on-device model when it's available (grounded in the same facts).
+      // questions go to Gemini Flash / the on-device model when ready (grounded in KG facts).
       const isExplicitScienceQuestion =
         /\b(why|how does|how do|formula|what is|what's|explain|science|research|studies|study|calculat\w*|worked out|measured|citation)\b/.test(lowerMsg);
-      const modelReady = await isOnDeviceModelReady();
       // "How is my progress?" is about the athlete's own data, not a science card.
       const isOwnProgressQuestion = /\b(progress|progressing|improv\w*|stronger|getting better|gains?|prs?|personal (best|record)s?)\b/i.test(lowerMsg);
-      const scientificPrinciple =
-        !isTacticalWorkoutQuery &&
-        !isPersonalTelemetryQuery &&
-        (isExplicitScienceQuestion || (!modelReady && !isOwnProgressQuestion))
-          ? queryExerciseScienceKnowledgeBase(lowerMsg)
-          : null;
 
       // Levels, balance and left/right questions about the athlete's own lifts: answered from their
       // data (movement standards), never by the model. "Why / how is it worked out" still gets the card.
@@ -1073,6 +1270,20 @@ async function processAssistantMessageCore(
       const asksHowItWorks = /\b(why|how|formula|explain|science|research|calculat\w*|worked out)\b/.test(lowerMsg);
       const asksForOwnMax = /\bmy\b.*\b(e?1\s?rm|one[\s-]rep\s*max|estimated\s*max)\b/.test(lowerMsg) && !asksHowItWorks;
       const asksForOwnScore = /\bmy\b.*\b(dots|strength\s*score)\b/.test(lowerMsg) && !asksHowItWorks;
+
+      const candidatePrinciple =
+        !asksForOwnMax &&
+        !asksForOwnScore &&
+        !(isStandardsQuestion && !isExplicitScienceQuestion && !isTacticalWorkoutQuery) &&
+        !isTacticalWorkoutQuery &&
+        !isPersonalTelemetryQuery
+          ? queryExerciseScienceKnowledgeBase(lowerMsg)
+          : null;
+      const scientificPrinciple =
+        candidatePrinciple &&
+        (isExplicitScienceQuestion || (!isOwnProgressQuestion && !(await isOnDeviceModelReady())))
+          ? candidatePrinciple
+          : null;
       if (asksForOwnMax) {
         answerText = buildEstimatedMaxAnswer(lowerMsg, workouts, measuredBodyweightKg, profile.weightUnit || 'kg', biometrics);
       } else if (asksForOwnScore) {
@@ -1360,8 +1571,8 @@ async function processAssistantMessageCore(
               ? 'it used a number, weight or percentage that is not in the facts'
               : contradictsMuscleTargets(answer, muscleClaims)
               ? "it described a muscle's weekly sets differently from the status given"
-              : claimsPastResults(answer)
-              ? 'it said how past sessions went, which is not known'
+              : claimsInventedPastResults(answer)
+              ? 'it said how past sets or reps went, which is not known'
               : misnamesEquipment(answer, workoutExercises)
               ? 'it named the wrong equipment for an exercise'
               : changesPlanWeight(answer)

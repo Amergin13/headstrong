@@ -392,11 +392,11 @@ export const App: React.FC = () => {
   useEffect(() => {
     if (!isPlanProgram(profile.programType)) return;
     if (activeWorkout.exercises.some((ex) => ex.sets.some((s) => s.completed))) return;
-    const next = getNextProgramWorkoutNumber(workouts, activePlan);
+    const next = getNextProgramWorkoutNumber(workouts, activePlan, profile.planCycleStarts);
     if (activeWorkout.programWorkoutNumber === next && getSessionPlanId(activeWorkout) === activePlan.id) return;
     setActiveWorkout(prepareSession(generatePlanWorkout(activePlan, next), { isProgramPlan: true }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profile.programType, activePlan.id, workouts]);
+  }, [profile.programType, activePlan.id, workouts, profile.planCycleStarts]);
 
   // Recovery data usually arrives after the next workout was prepared. If low recovery starts or ends,
   // an unstarted plan workout is prepared again, so it does what the recovery card says. Exercises the
@@ -475,17 +475,30 @@ export const App: React.FC = () => {
     updatedProfile?: Partial<UserProfile>,
     updatedWorkout?: WorkoutSession
   ) => {
+    const nextProfile = updatedProfile ? { ...profile, ...updatedProfile } : profile;
     if (updatedProfile?.goalPhase && !updatedWorkout) {
       handleUpdateGoalPhase(updatedProfile.goalPhase);
     }
     if (updatedProfile) {
       setProfile((prev) => ({ ...prev, ...updatedProfile }));
     }
-    if (updatedWorkout?.location && updatedWorkout.location !== activeWorkout.location && activeWorkout.programWorkoutNumber) {
+    const isPlanSwitchOrReset = Boolean(updatedProfile?.programType || updatedProfile?.planCycleStarts);
+    if (
+      updatedWorkout?.location &&
+      updatedWorkout.location !== activeWorkout.location &&
+      activeWorkout.programWorkoutNumber &&
+      !isPlanSwitchOrReset
+    ) {
       // Same path as the Workout tab's place switch, so the plan and the athlete's weights are kept.
       handleSwitchTrainingLocation(updatedWorkout.location);
     } else if (updatedWorkout) {
-      setActiveWorkout(fillWeightless(updatedWorkout));
+      if (isPlanSwitchOrReset) {
+        setActiveWorkout(
+          prepareSession(updatedWorkout, { isProgramPlan: isPlanProgram(nextProfile.programType) })
+        );
+      } else {
+        setActiveWorkout(fillWeightless(updatedWorkout));
+      }
     }
   };
 
@@ -611,7 +624,7 @@ export const App: React.FC = () => {
     const isPlan = isPlanProgram(setup.programType);
     const setupPlan = resolveActivePlan({ programType: setup.programType, goalPhase: setup.goalPhase, email: profile.email });
     const starterSession = isPlan
-      ? generatePlanWorkout(setupPlan, getNextProgramWorkoutNumber(workouts, setupPlan))
+      ? generatePlanWorkout(setupPlan, getNextProgramWorkoutNumber(workouts, setupPlan, profile.planCycleStarts))
       : generateSmartWorkoutSession(
           starterSplit,
           workouts,
@@ -660,7 +673,7 @@ export const App: React.FC = () => {
       // A started session is kept; the plan switch applies from the next workout.
       if (activeWorkout.exercises.some((ex) => ex.sets.some((s) => s.completed))) return;
       const plan = resolveActivePlan({ ...profile, programType: newProgramType });
-      const session = generatePlanWorkout(plan, getNextProgramWorkoutNumber(workouts, plan));
+      const session = generatePlanWorkout(plan, getNextProgramWorkoutNumber(workouts, plan, profile.planCycleStarts));
       setActiveWorkout(prepareSession(session, { isProgramPlan: true }));
     } else {
       const starterSplit = getFirstSplitDayForProgram(newProgramType);
@@ -703,7 +716,7 @@ export const App: React.FC = () => {
       !activeWorkout.exercises.some((ex) => ex.sets.some((s) => s.completed))
     ) {
       const nextPlan = resolveActivePlan(merged.profile);
-      const nextNum = getNextProgramWorkoutNumber(merged.workouts, nextPlan);
+      const nextNum = getNextProgramWorkoutNumber(merged.workouts, nextPlan, merged.profile.planCycleStarts);
       setActiveWorkout(prepareSession(generatePlanWorkout(nextPlan, nextNum), { isProgramPlan: true }));
     }
 
@@ -734,7 +747,7 @@ export const App: React.FC = () => {
       const nextPlan = resolveActivePlan(nextProfile);
       setActiveWorkout(
         prepareSession(
-          generatePlanWorkout(nextPlan, getNextProgramWorkoutNumber(workouts, nextPlan)),
+          generatePlanWorkout(nextPlan, getNextProgramWorkoutNumber(workouts, nextPlan, nextProfile.planCycleStarts)),
           { isProgramPlan: true }
         )
       );
@@ -791,7 +804,7 @@ export const App: React.FC = () => {
     const nextSession =
       isPlanProgram(profile.programType)
         ? prepareSession(
-            generatePlanWorkout(activePlan, getNextProgramWorkoutNumber(nextHistory, activePlan)),
+            generatePlanWorkout(activePlan, getNextProgramWorkoutNumber(nextHistory, activePlan, profile.planCycleStarts)),
             { isProgramPlan: true, history: nextHistory }
           )
         : prepareSession(
@@ -954,7 +967,7 @@ export const App: React.FC = () => {
                 const plan = resolveActivePlan({ ...profile, goalPhase: phase });
                 if (plan.id === 'muscle_building_6wk' || isCustomPlanId(plan.id)) return;
                 setActiveWorkout(
-                  prepareSession(generatePlanWorkout(plan, getNextProgramWorkoutNumber(workouts, plan)), { isProgramPlan: true })
+                  prepareSession(generatePlanWorkout(plan, getNextProgramWorkoutNumber(workouts, plan, profile.planCycleStarts)), { isProgramPlan: true })
                 );
                 return;
               }
@@ -1226,7 +1239,7 @@ export const App: React.FC = () => {
             activeWorkout={activeWorkout}
             activeTab={activeTab}
             activePlan={activePlan}
-            nextWorkoutNumber={getNextProgramWorkoutNumber(workouts, activePlan)}
+            nextWorkoutNumber={getNextProgramWorkoutNumber(workouts, activePlan, profile.planCycleStarts)}
             readinessState={readiness.state}
             bodyweightEmaKg={bodyweightEmaKg}
             recoveryReady={evaluateSessionRecovery(activeWorkout, workouts, exercises).isReady}

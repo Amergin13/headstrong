@@ -1,6 +1,6 @@
 import { CoachPlace, buildCoachOpening } from '../../services/coachContext';
 import type { ActivityLog } from '../../engine/activeDays';
-import React, { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import {
   AssistantChatMessage,
   BiometricLog,
@@ -92,14 +92,26 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
   /** A fly-up sheet for quick questions; expanded, it is a full-screen conversation. */
   const [expanded, setExpanded] = useState(false);
   const [closing, setClosing] = useState(false);
-  // The line and suggestions for the screen the coach was opened on, updated as changes are made.
-  const opening = buildCoachOpening({ place, profile, activeWorkout, workouts, activities, biometrics, exerciseCatalog, readinessState, bodyweightEmaKg });
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  // The line and suggestions for the screen the coach was opened on, memoized so typing never recomputes KG/history.
+  const opening = useMemo(
+    () =>
+      buildCoachOpening({
+        place,
+        profile,
+        activeWorkout,
+        workouts,
+        activities,
+        biometrics,
+        exerciseCatalog,
+        readinessState,
+        bodyweightEmaKg,
+      }),
+    [place, profile, activeWorkout, workouts, activities, biometrics, exerciseCatalog, readinessState, bodyweightEmaKg]
+  );
+  const threadRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const sheetRef = useRef<HTMLDivElement>(null);
-  const prevHeightRef = useRef<number | null>(null);
-  const heightAnimTimerRef = useRef<number | null>(null);
   const closeTimerRef = useRef<number | null>(null);
+  const isMountedRef = useRef(true);
 
   const requestClose = useCallback(() => {
     if (closing) return;
@@ -112,20 +124,20 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
   }, [closing, onClose]);
 
   useEffect(() => {
+    isMountedRef.current = true;
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') requestClose();
     };
     window.addEventListener('keydown', onKeyDown);
     return () => {
+      isMountedRef.current = false;
       window.removeEventListener('keydown', onKeyDown);
-      if (heightAnimTimerRef.current) window.clearTimeout(heightAnimTimerRef.current);
       if (closeTimerRef.current) window.clearTimeout(closeTimerRef.current);
     };
   }, [requestClose]);
 
   // Starter greeting
   useEffect(() => {
-    let isMounted = true;
     // Load the on-device model while the athlete reads the greeting (no-op if unsupported).
     warmUpOnDeviceModel().catch(() => undefined);
 
@@ -142,15 +154,20 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
     setMessages([starterMessage]);
 
     return () => {
-      isMounted = false;
       resetOnDeviceConversation();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Auto scroll to latest message
+  // Scroll only the message thread container (never scroll the outer document viewport on mobile).
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, isProcessing]);
+    const el = threadRef.current;
+    if (!el) return;
+    const raf = requestAnimationFrame(() => {
+      el.scrollTop = el.scrollHeight;
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [messages.length, streamingText, isProcessing]);
 
   const handleSendMessage = async (textToSend?: string) => {
     const text = (textToSend || inputMessage).trim();
@@ -165,32 +182,37 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     };
 
-    if (!expanded && !conversationStarted) {
-      prevHeightRef.current = sheetRef.current?.getBoundingClientRect().height ?? null;
-    }
-
     setMessages((prev) => [...prev, userMsg]);
     setInputMessage('');
     setIsProcessing(true);
     // On Pixel phones, quietly get the on-device model ready for future answers.
     prepareOnDeviceModel().catch(() => undefined);
 
+    let failsafeTimer: number | null = null;
     try {
-      const result = await processAssistantMessage({
-        userMessage: text,
-        profile,
-        activeWorkout,
-        workouts,
-        biometrics,
-        exerciseCatalog,
-        bodyweightEmaKg,
-        readinessState,
-        weeklyVolume,
-        activities,
-        place,
-        onPartial: (textSoFar) => setStreamingText(textSoFar),
-      });
+      const result = await Promise.race([
+        processAssistantMessage({
+          userMessage: text,
+          profile,
+          activeWorkout,
+          workouts,
+          biometrics,
+          exerciseCatalog,
+          bodyweightEmaKg,
+          readinessState,
+          weeklyVolume,
+          activities,
+          place,
+          onPartial: (textSoFar) => {
+            if (isMountedRef.current) setStreamingText(textSoFar);
+          },
+        }),
+        new Promise<never>((_, reject) => {
+          failsafeTimer = window.setTimeout(() => reject(new Error('Coach response timed out')), 18_000);
+        }),
+      ]);
 
+      if (!isMountedRef.current) return;
       setMessages((prev) => [...prev, result.message]);
 
       if (result.updatedProfile || result.updatedWorkout) {
@@ -199,6 +221,7 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
       }
     } catch (err) {
       console.error('Failed to process message with AI Coach:', err);
+      if (!isMountedRef.current) return;
       const errorMsg: AssistantChatMessage = {
         id: `err-${Date.now()}`,
         sender: 'assistant',
@@ -207,10 +230,11 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
       };
       setMessages((prev) => [...prev, errorMsg]);
     } finally {
-      setIsProcessing(false);
-      setStreamingText(null);
-      // Keep the message box ready for a follow-up (after it re-enables on the next render).
-      setTimeout(() => inputRef.current?.focus(), 0);
+      if (failsafeTimer !== null) window.clearTimeout(failsafeTimer);
+      if (isMountedRef.current) {
+        setIsProcessing(false);
+        setStreamingText(null);
+      }
     }
   };
 
@@ -233,52 +257,8 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
   };
   const conversationStarted = messages.length > 1 || isProcessing;
 
-  // Measure and animate sheet height seamlessly across auto <-> full-screen expand/contract
-  // (CSS transitions cannot interpolate height: auto directly).
-  useLayoutEffect(() => {
-    const el = sheetRef.current;
-    const fromHeight = prevHeightRef.current;
-    prevHeightRef.current = null;
-    if (!el || fromHeight === null) return;
-    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
-
-    if (heightAnimTimerRef.current) {
-      window.clearTimeout(heightAnimTimerRef.current);
-      heightAnimTimerRef.current = null;
-    }
-
-    el.style.transition = 'none';
-    el.style.height = expanded ? '100dvh' : conversationStarted ? 'min(72dvh, 620px)' : 'auto';
-    el.style.maxHeight = expanded ? '100dvh' : '86dvh';
-    const toHeight = el.getBoundingClientRect().height;
-
-    if (Math.abs(toHeight - fromHeight) < 2) {
-      el.style.transition = '';
-      el.style.height = '';
-      el.style.maxHeight = '';
-      return;
-    }
-
-    el.style.height = `${fromHeight}px`;
-    el.style.maxHeight = '100dvh';
-    void el.offsetHeight;
-
-    el.style.transition =
-      'height 360ms cubic-bezier(0.22, 1, 0.36, 1), border-radius 360ms cubic-bezier(0.22, 1, 0.36, 1)';
-    el.style.height = `${toHeight}px`;
-
-    heightAnimTimerRef.current = window.setTimeout(() => {
-      if (!sheetRef.current) return;
-      sheetRef.current.style.transition = '';
-      sheetRef.current.style.height = '';
-      sheetRef.current.style.maxHeight = '';
-      heightAnimTimerRef.current = null;
-    }, 380);
-  }, [expanded, conversationStarted]);
-
   const toggleExpanded = () => {
     triggerHaptic('light');
-    prevHeightRef.current = sheetRef.current?.getBoundingClientRect().height ?? null;
     setExpanded((v) => !v);
   };
 
@@ -287,7 +267,9 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
       role="dialog"
       aria-modal="true"
       aria-labelledby="ai-coach-title"
-      className="wk fixed inset-0 z-50 flex flex-col justify-end sm:items-center"
+      className={`wk fixed inset-0 z-50 flex flex-col justify-end sm:items-center ${
+        closing ? 'pointer-events-none' : ''
+      }`}
     >
       {/* Tapping the page behind closes the sheet. */}
       <button
@@ -300,16 +282,14 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
         }`}
       />
       <div
-        ref={sheetRef}
-        className={`${closing ? 'wk-sheet-down' : 'wk-sheet-up'} relative w-full sm:max-w-md border-t border-white/[0.11] flex flex-col overflow-hidden transition-[border-radius] duration-300 ease-out ${
-          expanded ? 'h-full' : ''
+        className={`${closing ? 'wk-sheet-down' : 'wk-sheet-up'} relative w-full sm:max-w-md border-t border-white/[0.11] flex flex-col overflow-hidden transition-[height,max-height,border-radius] duration-300 ease-out ${
+          expanded ? 'h-full' : conversationStarted ? 'h-[min(72dvh,620px)] max-h-[86dvh]' : 'max-h-[86dvh]'
         }`}
         style={{
           background: 'linear-gradient(180deg, var(--color-bg-canvas-top) 0%, var(--color-bg-canvas) 180px)',
           borderTopLeftRadius: expanded ? 0 : 30,
           borderTopRightRadius: expanded ? 0 : 30,
           boxShadow: 'inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 -12px 40px rgba(0, 0, 0, 0.58)',
-          ...(expanded ? {} : { height: conversationStarted ? 'min(72dvh, 620px)' : 'auto', maxHeight: '86dvh' }),
         }}
       >
         {/* Header: grab bar, Treise title, expand and close */}
@@ -384,6 +364,7 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
 
         {/* Message Thread */}
         <div
+          ref={threadRef}
           className={`${expanded || conversationStarted ? 'flex-1' : ''} min-h-0 overflow-y-auto no-scrollbar overscroll-contain flex flex-col`}
           style={{
             paddingLeft: fig(38),
@@ -453,7 +434,9 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
                               ? 'Goals updated'
                               : msg.actionApplied.type === 'UPDATE_PROGRESS_WIDGETS'
                                 ? 'Progress updated'
-                                : 'Plan updated'}
+                                : msg.actionApplied.type === 'RESET_PROGRAM'
+                                  ? 'Program reset'
+                                  : 'Plan updated'}
                           </div>
                           <div className="wk-body font-medium" style={{ color: 'var(--wk-accent)', marginTop: fig(6) }}>
                             {msg.actionApplied.summary}
@@ -565,7 +548,6 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
             </div>
           )}
 
-          <div ref={messagesEndRef} />
         </div>
 
         {/* Suggestions for this screen */}
@@ -634,7 +616,7 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
               ref={inputRef}
               placeholder="Ask Treise…"
               aria-label="Message your coach"
-              disabled={isProcessing}
+              readOnly={isProcessing}
               autoComplete="off"
               autoCorrect="off"
               className="flex-1 bg-transparent outline-none wk-body text-white placeholder:text-white/45 min-h-[44px]"

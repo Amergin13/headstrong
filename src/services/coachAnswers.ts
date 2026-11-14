@@ -39,15 +39,17 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 /** Where the athlete is in their plan, exactly as the Program page shows it. */
 export function planPosition(profile: UserProfile, workouts: WorkoutSession[], activities: ActivityLog[] = []) {
   const plan = resolveActivePlan(profile);
-  const overview = buildPlanOverview(workouts, plan, activities);
+  const overview = buildPlanOverview(workouts, plan, activities, profile.planCycleStarts);
   const total = plan.templates.length;
+  const totalWeeks = Math.max(1, ...plan.templates.map((t) => t.week));
   const next = plan.templates.find((t) => t.workoutNumber === overview.nextWorkoutNumber);
-  const week = next?.week ?? Math.min(6, Math.ceil(overview.nextWorkoutNumber / plan.workoutsPerWeek));
+  const week = next?.week ?? Math.min(totalWeeks, Math.ceil(overview.nextWorkoutNumber / plan.workoutsPerWeek));
   const phase = plan.phases.find((p) => p.phaseNumber === (next?.phase ?? overview.activePhase)) ?? plan.phases[0];
   return {
     plan,
     overview,
     total,
+    totalWeeks,
     week,
     phase,
     nextNumber: overview.nextWorkoutNumber,
@@ -60,7 +62,7 @@ export function answerPlanPosition(profile: UserProfile, workouts: WorkoutSessio
   const p = planPosition(profile, workouts, activities);
   const done = p.overview.completedCount;
   const parts = [
-    `You're in week ${p.week} of 6 of your ${p.plan.name}, in Phase ${p.phase.phaseNumber} (${p.phase.shortName.toLowerCase()}).`,
+    `You're in week ${p.week} of ${p.totalWeeks} of your ${p.plan.name}, in Phase ${p.phase.phaseNumber} (${p.phase.shortName.toLowerCase()}).`,
     `${done} of ${p.total} sessions are done, so ${plural(p.remaining, 'session')} ${p.remaining === 1 ? 'is' : 'are'} left.`,
   ];
   if (p.nextLabel) parts.push(`Next up is session ${p.nextNumber}: ${p.nextLabel}.`);
@@ -621,8 +623,13 @@ export function answerEverydayQuestion(ctx: EverydayContext): string | null {
     return `${same.length ? `Your last ${same.length === 1 ? '' : `${same.length} `}${activeWorkout.name} ${same.length === 1 ? 'workout' : 'workouts'}` : `Your last ${plural(pool.length, 'workout')}`} took ${span}, measured from your first logged set to finish. Today is ${plural(today.length, 'exercise')} and ${plural(working, 'working set')}.`;
   }
 
-  // Missed sessions and restarting.
-  if (/\b(missed|miss(ing)?|fell off|off track|haven'?t (trained|been)|been away|been (ill|sick)|took (a|some) (week|weeks|time|break)|time off|start(ing)? again|restart\w*|get(ting)? back (into|to)|skip(ped|ping)?)\b/.test(msg)) {
+  // Missed sessions and restarting (explicit reset-to-day-1 requests are handled as a plan action in aiAssistantService).
+  const isProgramResetRequest =
+    /\b(reset|restart|re-start|start\s+over|go\s+back|back\s+to)\b.*\b(program|plan|cycle|day\s*(1|one)|workout\s*1|week\s*1|the\s+beginning|scratch)\b|\b(start|begin)\b.*\b(from\s+(day\s*(1|one)|workout\s*1|week\s*1|(the\s+)?(beginning|start|scratch)))\b/.test(msg);
+  if (
+    !isProgramResetRequest &&
+    /\b(missed|miss(ing)?|fell off|off track|haven'?t (trained|been)|been away|been (ill|sick)|took (a|some) (week|weeks|time|break)|time off|start(ing)? again|restart\w*|get(ting)? back (into|to)|skip(ped|ping)?)\b/.test(msg)
+  ) {
     const p = planPosition(profile, workouts, activities);
     const last = done[done.length - 1];
     const gap = last ? Math.floor((now - new Date(last.completedAt || last.date).getTime()) / DAY_MS) : 0;

@@ -469,6 +469,8 @@ export interface UserProfile {
   customPlans?: SavedTrainingPlan[];
   /** Seed/import markers applied to this profile so auto-imports remain idempotent across launches. */
   importedSheetIds?: string[];
+  /** ISO timestamps when each plan was explicitly reset to Day 1 so prior logs stay in stats without blocking a fresh run. */
+  planCycleStarts?: Record<string, string>;
   mesocycleWeek?: number; // 1 to 6
   streakDays: number;
   lastWorkoutDate?: string;
@@ -559,6 +561,7 @@ export type AssistantActionType =
   | 'UPDATE_EQUIPMENT'
   | 'SCHEDULE_LOCATION_WEEK'
   | 'SWITCH_PROGRAM_SPLIT'
+  | 'RESET_PROGRAM'
   | 'SWITCH_GOAL_PHASE'
   | 'SWITCH_LOCATION'
   | 'SHIFT_WORKOUT'

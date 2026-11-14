@@ -296,13 +296,13 @@ export async function promptOnDeviceModel(
           },
           { stateless: options.stateless, maxTokens: options.maxTokens }
         ),
-        options.timeoutMs ?? 60_000
+        options.timeoutMs ?? 15_000
       );
       const usable = answer && isUsableModelAnswer(answer, systemPrompt, userPrompt) ? answer.trim() : null;
-      recordModelResult(usable !== null);
+      if (usable !== null || !options.stateless) recordModelResult(usable !== null);
       return usable;
     } catch {
-      recordModelResult(false);
+      if (!options.stateless) recordModelResult(false);
       return null;
     }
   }
@@ -378,11 +378,11 @@ export async function promptOnDeviceModel(
     const answer = await withTimeout(run(), limit);
     // Timed out: the half-finished conversation can't be continued.
     if (answer === null && !options.stateless) endChat();
-    recordModelResult(answer !== null);
+    if (answer !== null || !options.stateless) recordModelResult(answer !== null);
     return answer;
   } catch (err) {
     console.warn('On-device model prompt failed:', err);
-    recordModelResult(false);
+    if (!options.stateless) recordModelResult(false);
     return null;
   }
 }

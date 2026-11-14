@@ -145,9 +145,11 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
       )}
       {!isPlan && (
         <>
-          <header className="flex items-start justify-between" style={{ paddingTop: fig(20), gap: fig(16) }}>
-            <h1 className="wk-page-title min-w-0 flex-1">Program</h1>
-            {headerMenu}
+          <header className="relative" style={{ paddingTop: fig(20) }}>
+            <div className="relative flex items-center justify-center" style={{ paddingLeft: 44, paddingRight: 44 }}>
+              <h1 className="wk-page-title">Program</h1>
+              {headerMenu}
+            </div>
           </header>
 
           <div ref={programCardsTopRef} className="flex flex-col" style={{ gap: fig(22), marginTop: fig(40) }}>

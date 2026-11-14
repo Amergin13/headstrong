@@ -9001,15 +9001,267 @@ Exercise,,Date,Workout,Sets,Reps,Tempo,Rest,Notes,Set 1,Set 2,Set 3,Set 4
         programTabSrc.includes('ImportProgramModal') &&
         programTabSrc.includes('ProgramPickerModal') &&
         programPlanViewSrc.includes('headerAction') &&
-        menuSrc.includes('MoreVertical') &&
-        menuSrc.includes('Import program from spreadsheet') &&
+        menuSrc.includes('MoreHorizontal') &&
+        menuSrc.includes('w-60 rounded-2xl bg-surface-card') &&
+        menuSrc.includes('Import from spreadsheet') &&
         menuSrc.includes('Change program') &&
         importModalSrc.includes('parseProgramSpreadsheet'),
       'Program page wires 3-dots header menu to spreadsheet import and program switcher modals'
     );
   }
 
-  console.log('\nALL 48 ENGINE, GOVERNANCE, DESIGN SYSTEM, TYPOGRAPHY, WEARABLES, WHOOP STRAIN, GOOGLE AUTH, ONBOARDING CONTEXT, 6-WEEK PROGRAM, SPREADSHEET IMPORT, TENSOR AI, SESSION REPORT, WORKOUT PAGE, EXERCISE OVERVIEW & RENPHO BLUETOOTH SUITES PASSED SUCCESSFULLY! 🎯');
+  // SUITE 49: AI COACH SYSTEM ACTIONS (PROGRAM RESET TO DAY 1 & PLAN SWITCHING), GEMINI FLASH + KNOWLEDGE GRAPH & ZERO STALLS
+  console.log('\n[Suite 49] Testing AI Coach Program Reset to Day 1, Plan Switching, Gemini Flash + KG & Zero-Stall Chat...');
+  {
+    const fsMod = await import('fs');
+    const pathMod = await import('path');
+    const repoRoot = pathMod.resolve(process.cwd());
+    const { processAssistantMessage, buildCoachSystemPrompt } = await import('../../services/aiAssistantService');
+    const {
+      registerFallbackOnDeviceModel,
+      resetOnDeviceModelHealth,
+      isOnDeviceModelPaused,
+    } = await import('../../services/onDeviceModel');
+    const { MUSCLE_BUILDING_PLAN, generatePlanWorkout, buildPlanOverview, getNextProgramWorkoutNumber } = await import('../muscleBuildingProgram');
+    const { resolveActivePlan } = await import('../trainingPlans');
+    const { ensureOwnerPhase1BtSeeded, OWNER_PHASE_1_BT_ID } = await import('../../services/spreadsheetProgramImport');
+
+    // A. Owner account seeded with 2017 Phase 1 BT history + ongoing 6-week muscle plan workouts
+    const seeded = ensureOwnerPhase1BtSeeded({
+      profile: {
+        ...NEW_USER_PROFILE,
+        email: 'benentaylor@gmail.com',
+        name: 'Ben Taylor',
+        programType: 'muscle_building_6wk',
+        onboardingCompleted: true,
+      },
+      workouts: [],
+      biometrics: [],
+      exercises: SEED_EXERCISES,
+    });
+    const makeDoneMuscle = (n: number, daysAgo: number): WorkoutSession => {
+      const base = generatePlanWorkout(MUSCLE_BUILDING_PLAN, n);
+      const d = new Date(Date.now() - daysAgo * 86_400_000);
+      return {
+        ...base,
+        id: `done-muscle-${n}`,
+        date: localDateString(d),
+        completed: true,
+        completedAt: d.toISOString(),
+        exercises: base.exercises.map((ex, ei) => ({
+          ...ex,
+          sets: ex.sets.map((st) => ({
+            ...st,
+            completed: true,
+            actualWeightKg: st.targetWeightKg || (ei === 0 ? 80 : 40),
+            actualReps: st.targetReps || 8,
+            rir: 1,
+          })),
+        })),
+      };
+    };
+    const ongoingHistory = [makeDoneMuscle(3, 1), makeDoneMuscle(2, 3), makeDoneMuscle(1, 5), ...seeded.workouts];
+    const activeW4 = generatePlanWorkout(MUSCLE_BUILDING_PLAN, 4);
+
+    assert(
+      buildPlanOverview(ongoingHistory, MUSCLE_BUILDING_PLAN).completedCount === 3 &&
+        getNextProgramWorkoutNumber(ongoingHistory, MUSCLE_BUILDING_PLAN) === 4,
+      'Before reset, 6-week muscle plan sits at 3 done and Workout 4 next'
+    );
+
+    // A1. Reset current program to Day 1 via natural chat request
+    const resetRes = await processAssistantMessage({
+      userMessage: 'reset my current program to day one to start from the beginning',
+      profile: seeded.profile,
+      activeWorkout: activeW4,
+      workouts: ongoingHistory,
+      biometrics: [
+        {
+          date: localDateString(new Date()),
+          hrvRmssd: 68,
+          restingHr: 52,
+          sleepHours: 7.8,
+          steps: 8500,
+          activeZoneMinutes: 40,
+          bodyweightKg: 82.4,
+          recoveryScore: 81,
+          strain: 11.4,
+          workoutStrain: 12.6,
+        },
+      ],
+      exerciseCatalog: SEED_EXERCISES,
+      bodyweightEmaKg: 82.4,
+      readinessState: 'Primed',
+    });
+    assert(
+      resetRes.actionTaken?.type === 'RESET_PROGRAM' &&
+        Boolean(resetRes.updatedProfile?.planCycleStarts?.[MUSCLE_BUILDING_PLAN.id]) &&
+        resetRes.updatedProfile?.mesocycleWeek === 1 &&
+        resetRes.updatedWorkout?.programWorkoutNumber === 1,
+      'AI Coach executes RESET_PROGRAM: sets planCycleStarts for active plan, resets mesocycleWeek to 1, and queues Workout 1'
+    );
+    const postResetProfile = { ...seeded.profile, ...resetRes.updatedProfile };
+    assert(
+      buildPlanOverview(ongoingHistory, MUSCLE_BUILDING_PLAN, [], postResetProfile.planCycleStarts).completedCount === 0 &&
+        getNextProgramWorkoutNumber(ongoingHistory, MUSCLE_BUILDING_PLAN, postResetProfile.planCycleStarts) === 1 &&
+        ongoingHistory.filter((w) => w.completed).length === seeded.workouts.length + 3,
+      'After reset, Program page and Workout tab both start at Workout 1 (0 done) while all historical workouts and PBs remain intact'
+    );
+
+    // A2. Question-only "should I reset?" gives guidance without mutating state
+    const resetAdviceRes = await processAssistantMessage({
+      userMessage: 'Should I reset my program?',
+      profile: seeded.profile,
+      activeWorkout: activeW4,
+      workouts: ongoingHistory,
+      biometrics: [],
+      exerciseCatalog: SEED_EXERCISES,
+      bodyweightEmaKg: 82.4,
+      readinessState: 'Normal',
+    });
+    assert(
+      !resetAdviceRes.updatedProfile && !resetAdviceRes.updatedWorkout && /reset my program to day 1/i.test(resetAdviceRes.message.text),
+      'Question "Should I reset my program?" explains cleanly without mutating state'
+    );
+
+    // A3. Switch program via chat to Phase 1 BT and reset it to Day 1
+    const switchBtRes = await processAssistantMessage({
+      userMessage: 'Switch my program to Phase 1 BT',
+      profile: postResetProfile,
+      activeWorkout: activeW4,
+      workouts: ongoingHistory,
+      biometrics: [],
+      exerciseCatalog: SEED_EXERCISES,
+      bodyweightEmaKg: 82.4,
+      readinessState: 'Normal',
+    });
+    assert(
+      switchBtRes.actionTaken?.type === 'SWITCH_PROGRAM_SPLIT' &&
+        switchBtRes.updatedProfile?.programType === OWNER_PHASE_1_BT_ID &&
+        Boolean(switchBtRes.updatedWorkout),
+      'AI Coach switches to saved Phase 1 BT program and queues its next workout'
+    );
+    const btResetRes = await processAssistantMessage({
+      userMessage: 'Restart Phase 1 BT from day 1',
+      profile: { ...postResetProfile, ...switchBtRes.updatedProfile },
+      activeWorkout: switchBtRes.updatedWorkout!,
+      workouts: ongoingHistory,
+      biometrics: [],
+      exerciseCatalog: SEED_EXERCISES,
+      bodyweightEmaKg: 82.4,
+      readinessState: 'Normal',
+    });
+    const btResetProfile = { ...postResetProfile, ...switchBtRes.updatedProfile, ...btResetRes.updatedProfile };
+    const btPlan = resolveActivePlan(btResetProfile);
+    assert(
+      btResetRes.actionTaken?.type === 'RESET_PROGRAM' &&
+        btResetRes.updatedWorkout?.programWorkoutNumber === 1 &&
+        buildPlanOverview(ongoingHistory, btPlan, [], btResetProfile.planCycleStarts).completedCount === 0 &&
+        seeded.workouts.length > 0,
+      'Phase 1 BT resets cleanly to Workout 1 while preserving all 2017 historical logs'
+    );
+
+    // B. Gemini Flash + Knowledge Graph enrichment & non-false-positive fact checking
+    resetOnDeviceModelHealth();
+    try {
+      const kgPrompt = buildCoachSystemPrompt({
+        userMessage: 'How does my shoulder load affect training today?',
+        profile: { ...seeded.profile, programType: OWNER_PHASE_1_BT_ID, whoopConnected: true },
+        activeWorkout: switchBtRes.updatedWorkout!,
+        workouts: ongoingHistory,
+        biometrics: [
+          {
+            date: localDateString(new Date()),
+            hrvRmssd: 68,
+            restingHr: 52,
+            sleepHours: 7.8,
+            steps: 8500,
+            activeZoneMinutes: 40,
+            bodyweightKg: 82.4,
+            recoveryScore: 81,
+            strain: 11.4,
+            workoutStrain: 12.6,
+          },
+        ],
+        exerciseCatalog: SEED_EXERCISES,
+        bodyweightEmaKg: 82.4,
+        readinessState: 'Primed',
+      });
+      assert(
+        kgPrompt.includes('Phase 1 BT') &&
+          kgPrompt.includes('Joint load:') &&
+          kgPrompt.includes('Strength levels:') &&
+          kgPrompt.includes('Whoop telemetry:') &&
+          !kgPrompt.includes('of 6,'),
+        'buildCoachSystemPrompt grounds Gemini Flash with full Knowledge Graph telemetry and true plan weeks'
+      );
+
+      let flashCalled = false;
+      registerFallbackOnDeviceModel({
+        isReady: async () => true,
+        prompt: async (sys, _q, onPartial) => {
+          flashCalled = true;
+          assert(
+            sys.includes('Joint load:') && sys.includes('Strength levels:') && sys.includes('Whoop telemetry:'),
+            'Gemini Flash prompt receives full Knowledge Graph telemetry'
+          );
+          const reply = 'With recovery at 81% and HRV 68 ms, keep your shoulder blades tucked down and back on presses today so tension stays on your chest and triceps.';
+          onPartial?.(reply);
+          return reply;
+        },
+      });
+      const flashRes = await processAssistantMessage({
+        userMessage: 'Any technique cues for staying tight on upper-body presses?',
+        profile: { ...seeded.profile, whoopConnected: true },
+        activeWorkout: activeW4,
+        workouts: ongoingHistory,
+        biometrics: [
+          {
+            date: localDateString(new Date()),
+            hrvRmssd: 68,
+            restingHr: 52,
+            sleepHours: 7.8,
+            steps: 8500,
+            activeZoneMinutes: 40,
+            bodyweightKg: 82.4,
+            recoveryScore: 81,
+          },
+        ],
+        exerciseCatalog: SEED_EXERCISES,
+        bodyweightEmaKg: 82.4,
+        readinessState: 'Primed',
+      });
+      assert(
+        flashCalled && flashRes.message.text.includes('81%') && flashRes.message.text.includes('68 ms') && !isOnDeviceModelPaused(),
+        'Gemini Flash KG-grounded reply passes verification checks and does not trip pause state'
+      );
+    } finally {
+      registerFallbackOnDeviceModel(null);
+      resetOnDeviceModelHealth();
+    }
+
+    // C. Static verification: zero-stall AICoachChatModal, TrainTab debounce, and Flash model fallback
+    const modalSrc = fsMod.readFileSync(pathMod.join(repoRoot, 'src/components/assistant/AICoachChatModal.tsx'), 'utf8');
+    const trainTabSrc2 = fsMod.readFileSync(pathMod.join(repoRoot, 'src/components/train/TrainTab.tsx'), 'utf8');
+    const coachApiSrc = fsMod.readFileSync(pathMod.join(repoRoot, 'api/coach/generate.ts'), 'utf8');
+    assert(
+      modalSrc.includes('useMemo(') &&
+        modalSrc.includes('threadRef') &&
+        modalSrc.includes('el.scrollTop = el.scrollHeight') &&
+        modalSrc.includes('pointer-events-none') &&
+        modalSrc.includes('readOnly={isProcessing}') &&
+        !modalSrc.includes('useLayoutEffect') &&
+        !modalSrc.includes('scrollIntoView(') &&
+        !modalSrc.includes('offsetHeight') &&
+        trainTabSrc2.includes('planTotalWeeks') &&
+        trainTabSrc2.includes('setTimeout(') &&
+        coachApiSrc.includes('gemini-2.5-flash') &&
+        coachApiSrc.includes('cachedWorkingModel'),
+      'AICoachChatModal eliminates scroll/focus/reflow stalls, TrainTab debounces notes, and /api/coach/generate caches working Flash model'
+    );
+  }
+
+  console.log('\nALL 49 ENGINE, GOVERNANCE, DESIGN SYSTEM, TYPOGRAPHY, WEARABLES, WHOOP STRAIN, GOOGLE AUTH, ONBOARDING CONTEXT, 6-WEEK PROGRAM, SPREADSHEET IMPORT, AI COACH ACTIONS, GEMINI FLASH + KG & ZERO-STALL SUITES PASSED SUCCESSFULLY! 🎯');
 })().catch((err) => {
   console.error('Test Suite Failed:', err);
   if (typeof process !== 'undefined' && process.exit) {

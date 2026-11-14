@@ -12,9 +12,9 @@ import { withoutLastExchange } from './onDeviceModel';
 type ChatTurn = { role: 'user' | 'assistant'; content: string };
 
 const STATUS_TTL_MS = 5 * 60 * 1000;
-const FAILURE_STATUS_TTL_MS = 30 * 1000;
-const STATUS_TIMEOUT_MS = 2500;
-const REQUEST_TIMEOUT_MS = 25_000;
+const FAILURE_STATUS_TTL_MS = 15 * 1000;
+const STATUS_TIMEOUT_MS = 1800;
+const REQUEST_TIMEOUT_MS = 12_000;
 const MAX_REMEMBERED_EXCHANGES = 4;
 
 let cachedStatus: { configured: boolean; at: number; ttlMs: number } | null = null;

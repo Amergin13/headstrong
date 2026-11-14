@@ -743,8 +743,9 @@ export const TrainTab: React.FC<TrainTabProps> = ({
       buildAthleteKnowledgeGraph(workouts, biometrics, exerciseCatalog, profile, calculateWeeklyMuscleVolume(workouts, exerciseCatalog), activities),
     [workouts, biometrics, exerciseCatalog, profile]
   );
+  const planTotalWeeks = Math.max(1, ...trainingPlan.templates.map((t) => t.week));
   const programLabel = planWorkoutNumber
-    ? `Phase ${planPhase?.phaseNumber ?? 1} (${planPhase?.shortName ?? ''}), week ${planWeek} of 6`
+    ? `Phase ${planPhase?.phaseNumber ?? 1} (${planPhase?.shortName ?? ''}), week ${planWeek} of ${planTotalWeeks}`
     : `week ${mesoWeek} of 6 (${phaseMeta.name})`;
   const hasWeighIn = biometrics.some((b) => (b.bodyweightKg || 0) > 0);
   const measuredBodyweightKg = hasWeighIn ? bodyweightEmaKg : 0;
@@ -779,22 +780,25 @@ export const TrainTab: React.FC<TrainTabProps> = ({
       if (hit) cached[n.key] = hit;
     }
     setGeneratedNotes(cached);
-    (async () => {
-      if (!(await isOnDeviceModelReady())) return;
-      // One at a time, top to bottom: the model answers one request at a time.
-      // First-time exercises (hasHistory === false) already have an exact 2-line baseline fallback.
-      for (const n of exerciseNotes) {
-        if (cancelled) return;
-        if (cached[n.key] || !n.hasHistory) continue;
-        const note = await generateExerciseNote(n);
-        if (cancelled || !note) continue;
-        cacheExerciseNote(n.key, note);
-        setGeneratedNotes((prev) => ({ ...prev, [n.key]: note }));
-      }
-      // Any failure leaves the fact-based summaries in place.
-    })().catch(() => undefined);
+    const timer = setTimeout(() => {
+      (async () => {
+        if (cancelled || !(await isOnDeviceModelReady())) return;
+        // One at a time, top to bottom: the model answers one request at a time.
+        // First-time exercises (hasHistory === false) already have an exact 2-line baseline fallback.
+        for (const n of exerciseNotes) {
+          if (cancelled) return;
+          if (cached[n.key] || !n.hasHistory) continue;
+          const note = await generateExerciseNote(n);
+          if (cancelled || !note) continue;
+          cacheExerciseNote(n.key, note);
+          setGeneratedNotes((prev) => ({ ...prev, [n.key]: note }));
+        }
+        // Any failure leaves the fact-based summaries in place.
+      })().catch(() => undefined);
+    }, 400);
     return () => {
       cancelled = true;
+      clearTimeout(timer);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [noteKeys, showRecoveryGate]);

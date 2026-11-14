@@ -341,7 +341,10 @@ export const ProgramPlanView: React.FC<ProgramPlanViewProps> = ({
   onBackToWorkout,
   headerAction,
 }) => {
-  const plan = useMemo(() => buildPlanOverview(workouts, trainingPlan, activities), [workouts, trainingPlan, activities]);
+  const plan = useMemo(
+    () => buildPlanOverview(workouts, trainingPlan, activities, profile.planCycleStarts),
+    [workouts, trainingPlan, activities, profile.planCycleStarts]
+  );
   const TOTAL = trainingPlan.templates.length;
   const [openPhases, setOpenPhases] = useState<number[]>([plan.activePhase]);
   const [viewing, setViewing] = useState<PlanWorkoutOverview | null>(null);
@@ -448,9 +451,11 @@ export const ProgramPlanView: React.FC<ProgramPlanViewProps> = ({
         fallbackRef={progressRef}
         deps={[isFirstRun]}
       />
-      <header className="flex items-start justify-between" style={{ paddingTop: fig(20), gap: fig(16) }}>
-        <h1 className="wk-page-title min-w-0 flex-1">{trainingPlan.name}</h1>
-        {headerAction}
+      <header className="relative" style={{ paddingTop: fig(20) }}>
+        <div className="relative flex items-center justify-center" style={{ paddingLeft: 44, paddingRight: 44 }}>
+          <h1 className="wk-page-title">{trainingPlan.name}</h1>
+          {headerAction}
+        </div>
       </header>
 
       {isFirstRun && (

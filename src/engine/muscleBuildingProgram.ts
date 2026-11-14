@@ -921,12 +921,26 @@ function nextLiftAfter(plan: TrainingPlan, n: number): number {
  * Next lifting workout in a plan: the one after the most recently completed workout of that plan,
  * wrapping back to the first after the last one. Active days and other sessions are skipped.
  */
+function completedPlanSessions(
+  workouts: WorkoutSession[],
+  plan: TrainingPlan,
+  planCycleStarts?: Record<string, string>
+): WorkoutSession[] {
+  const cycleStart = planCycleStarts?.[plan.id];
+  return workouts.filter((w) => {
+    if (!w.completed || !isPlanSession(w, plan)) return false;
+    if (!cycleStart) return true;
+    const stamp = w.completedAt || `${w.date}T23:59:59.999Z`;
+    return stamp >= cycleStart;
+  });
+}
+
 export function getNextProgramWorkoutNumber(
   workouts: WorkoutSession[],
-  plan: TrainingPlan = MUSCLE_BUILDING_PLAN
+  plan: TrainingPlan = MUSCLE_BUILDING_PLAN,
+  planCycleStarts?: Record<string, string>
 ): number {
-  const done = workouts
-    .filter((w) => w.completed && isPlanSession(w, plan))
+  const done = completedPlanSessions(workouts, plan, planCycleStarts)
     .sort((a, b) => (b.completedAt || b.date).localeCompare(a.completedAt || a.date));
   const last = done[0] ? getProgramWorkoutNumber(done[0]) : undefined;
   if (!last) return nextLiftAfter(plan, 0);
@@ -972,16 +986,17 @@ export interface PlanOverview {
 export function buildPlanOverview(
   history: WorkoutSession[],
   plan: TrainingPlan = MUSCLE_BUILDING_PLAN,
-  activities: ActivityLog[] = []
+  activities: ActivityLog[] = [],
+  planCycleStarts?: Record<string, string>
 ): PlanOverview {
-  const done = history
-    .filter((w) => w.completed && isPlanSession(w, plan))
+  const done = completedPlanSessions(history, plan, planCycleStarts)
     .sort((a, b) => (a.completedAt || a.date).localeCompare(b.completedAt || b.date));
   const finalLift = lastLiftNumber(plan);
   let cycleNumber = 1;
   let current = new Map<number, WorkoutSession>();
-  // Active days count from the start (first run) or from the day after the previous run ended.
-  let runStartDate = '';
+  // Active days count from the start (first run), explicit reset date, or day after previous run ended.
+  const cycleStart = planCycleStarts?.[plan.id];
+  let runStartDate = cycleStart ? localDateString(new Date(cycleStart)) : '';
   for (const w of done) {
     const n = getProgramWorkoutNumber(w) as number;
     current.set(n, w);
@@ -993,7 +1008,7 @@ export function buildPlanOverview(
       runStartDate = localDateString(end);
     }
   }
-  const nextWorkoutNumber = getNextProgramWorkoutNumber(history, plan);
+  const nextWorkoutNumber = getNextProgramWorkoutNumber(history, plan, planCycleStarts);
   const nextWeek = plan.templates.find((t) => t.workoutNumber === nextWorkoutNumber)?.week ?? 1;
 
   // Active days: qualifying activities since the run started, one per open week, in order.
