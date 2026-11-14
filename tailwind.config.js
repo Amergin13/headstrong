@@ -35,7 +35,19 @@ export default {
       },
       fontFamily: {
         sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'SF Pro Display', 'sans-serif'],
-        mono: ['JetBrains Mono', 'SF Mono', 'ui-monospace', 'monospace'],
+        mono: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'SF Pro Display', 'sans-serif'],
+      },
+      fontWeight: {
+        normal: '400',
+        medium: '500',
+        semibold: '600',
+        bold: '600',
+        extrabold: '600',
+        black: '600',
+      },
+      letterSpacing: {
+        wider: '0.04em',
+        widest: '0.04em',
       },
       borderRadius: {
         sm: '6px',   // Concentric inner radius (3xl [26px] - p-5 [20px] = 6px)

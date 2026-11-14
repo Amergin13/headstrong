@@ -17,6 +17,7 @@ import {
 } from '../../engine/progression';
 import { X, ArrowRightLeft } from 'lucide-react';
 import { triggerHaptic } from '../../utils/haptics';
+import { formatSentenceCase } from '../../utils/typography';
 import { useUnits } from '../../utils/unitsContext';
 
 interface ExerciseSwapModalProps {
@@ -163,16 +164,16 @@ export const ExerciseSwapModal: React.FC<ExerciseSwapModalProps> = ({
         {/* Currently Selected Exercise */}
         <div className="wk-raised space-y-[calc(8*var(--f))]">
           <div className="flex items-center justify-between">
-            <span className="wk-caption uppercase">
+            <span className="wk-label" style={{ color: 'var(--wk-muted)' }}>
               Replacing
             </span>
-            <span className="wk-caption font-bold" style={{ color: 'var(--wk-accent)' }}>
+            <span className="wk-caption font-semibold" style={{ color: 'var(--wk-accent)' }}>
               {familyLabel}
             </span>
           </div>
           <div className="flex justify-between items-center">
-            <span className="wk-label normal-case">{currentExercise.name}</span>
-            <span className="wk-label tabular-numbers">
+            <span className="wk-title">{formatSentenceCase(currentExercise.name)}</span>
+            <span className="wk-title tabular-numbers">
               {formatImplementWeightLabel(
                 currentWeight,
                 currentExercise.equipment,
@@ -231,7 +232,7 @@ export const ExerciseSwapModal: React.FC<ExerciseSwapModalProps> = ({
 
           {alternatives.length === 0 ? (
             <div className="wk-raised text-center space-y-[calc(8*var(--f))]">
-              <p className="wk-label normal-case">
+              <p className="wk-title">
                 No {selectedLocation === 'travel' ? 'bodyweight' : selectedLocation === 'home' ? 'home' : 'gym'} exercises found
               </p>
               <p className="wk-caption">
@@ -258,8 +259,8 @@ export const ExerciseSwapModal: React.FC<ExerciseSwapModalProps> = ({
                 >
                   <div className="flex items-start justify-between gap-[calc(16*var(--f))]">
                     <div className="min-w-0">
-                      <div className="wk-label normal-case">
-                        {alt.name}
+                      <div className="wk-title">
+                        {formatSentenceCase(alt.name)}
                       </div>
                       <div className="wk-caption mt-[calc(4*var(--f))]">
                         {equipLabel} • {alt.defaultRepRange[0]}–{alt.defaultRepRange[1]} reps
@@ -269,7 +270,7 @@ export const ExerciseSwapModal: React.FC<ExerciseSwapModalProps> = ({
 
                     <div className="text-right shrink-0">
                       <span
-                        className="wk-label tabular-numbers block"
+                        className="wk-title tabular-numbers block"
                         style={{ color: 'var(--wk-accent)' }}
                       >
                         {isPureBw

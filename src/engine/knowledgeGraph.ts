@@ -726,35 +726,37 @@ export const EXERCISE_SCIENCE_KNOWLEDGE_BASE: ScientificPrinciple[] = [
 export const TREISE_DESIGN_SYSTEM: DesignSystemComponent[] = [
   {
     id: 'ds-typography-scale',
-    name: '4-Tier Strict Typography Scale',
+    name: '4-Role Inter Typography System (Label, Body, Title, Number)',
     category: 'typography',
     anatomy: {
       container: 'w-full space-y-1',
-      typography: 'Tier 1: text-xs (12px), Tier 2: text-sm (14px), Tier 3: text-base (16px), Tier 4: text-xl (20px)',
+      typography:
+        '4 Fixed Roles across 4 sizes — Role 1 Label: text-xs (12px/600 uppercase +0.04em tracking, or 13px/500 Workout caption floor), Role 2 Body: text-sm (14px/400), Role 3 Title: text-base (16px/600 sentence case), Role 4 Number: text-xl (20px/600 tabular-nums)',
       colors: 'var(--color-text-primary), var(--color-text-secondary), var(--color-text-muted), var(--color-accent-primary)',
       states: {
-        default: 'font-sans antialiased tracking-tight',
-        mono: 'font-mono tabular-numbers',
+        default: 'Inter font family only (400, 500, 600); JetBrains Mono and weights 700/800/900 removed',
+        numeric: 'wk-number / wk-input (20px/600 with Inter tabular-nums)',
       },
       touchTarget: 'N/A (Typography Scale)',
     },
     logic: {
       rules: [
-        'Maximum 4 distinct typography sizes allowed across the entire application: text-xs (12px), text-sm (14px), text-base (16px), and text-xl (20px).',
-        'Strict 12px (text-xs) minimum floor enforced across all surfaces; sub-12px micro-text is strictly prohibited.',
-        'Numeric values, telemetry, and loads must use font-mono tabular-numbers.',
-        'Single focal point per card with no more than 2-3 typography weights/styles per card.',
+        'Maximum 4 distinct typography roles and sizes allowed across the entire application: label (text-xs 12px/600 uppercase +0.04em tracking), body (text-sm 14px/400), title (text-base 16px/600 sentence case), and number (text-xl 20px/600 tabular-nums).',
+        'Strict 12px (text-xs) minimum floor across all surfaces and a 13px/500 caption floor on the Workout tab (SET, PREV, WEIGHT, REPS, RIR, DONE) with >= 4.5:1 AA contrast on card surfaces.',
+        'Inter is the sole font family across the application (JetBrains Mono is deleted); numeric values, weights, reps, RIR, and session counts (1/24) use 20px/600 with Inter tabular figures (tabular-nums).',
+        'Font weights are restricted to 400 (body and descriptions) and 600 (titles, labels, and numbers), plus 500 for 13px Workout tab captions; 700, 800, and 900 are dropped entirely.',
+        'Uppercase is reserved strictly for tiny labels, column headers, and status tags (SET, PREV, NO WATCH, .wk-label, .wk-pill) at 12px/600 with +0.04em tracking; exercise names, session titles, and buttons use sentence case.',
       ],
       variants: {
-        'caption-metadata': 'text-xs font-medium or font-semibold for labels, badges, time stamps, secondary descriptions',
-        'body-standard': 'text-sm font-medium or font-semibold for body copy, list titles, button labels',
-        'subheading-card': 'text-base font-bold or font-extrabold for modal titles, card headers, section titles',
-        'hero-metric': 'text-xl font-extrabold or font-mono for page titles, hero numbers, circular gauge readouts',
+        label: '.wk-label / .wk-pill (12px/600 uppercase +0.04em tracking) and .wk-workout-caption (13px/500 on Workout tab)',
+        body: '.wk-body (14px/400) and .wk-caption (12px/400) for descriptions and secondary copy',
+        title: '.wk-title / .wk-h1 / .wk-page-title (16px/600 sentence case) for exercise names, session titles, and card headers',
+        number: '.wk-number / .wk-input (20px/600 tabular-nums) for weights, reps, RIR, and session counts (1/24)',
       },
       accessibility: 'Passes WCAG 1.4.4 text scaling & WCAG 1.4.3 contrast ratio (>= 4.5:1 on Whoop Slate --color-bg-canvas & --color-bg-surface)',
     },
-    tailwindTokens: 'text-xs | text-sm | text-base | text-xl',
-    rationale: 'Human eye saccadic scanning on mobile requires ruthless hierarchy. Restricting the app to exactly 4 sizes eliminates visual cacophony while preserving clear focal distinctions.',
+    tailwindTokens: 'text-xs | text-sm | text-base | text-xl | wk-label | wk-body | wk-title | wk-number | tabular-numbers',
+    rationale: 'Four fixed roles (label, body, title, number) in a single font (Inter) with two primary weights (400 and 600) make every piece of text immediately recognisable by how it looks.',
   },
   {
     id: 'ds-btn-primary',
@@ -762,10 +764,10 @@ export const TREISE_DESIGN_SYSTEM: DesignSystemComponent[] = [
     category: 'button',
     anatomy: {
       container: 'wk-button w-full px-4 py-2.5 rounded-2xl min-h-[44px] flex items-center justify-center transition-all active:scale-[0.98]',
-      typography: 'text-xs font-bold sm:text-sm uppercase',
+      typography: 'text-sm font-semibold sm:text-base',
       colors: 'background: var(--color-action-primary-bg) | color: var(--color-action-primary-fg)',
       states: {
-        default: 'bg-[var(--color-action-primary-bg)] text-[var(--color-action-primary-fg)] font-bold',
+        default: 'bg-[var(--color-action-primary-bg)] text-[var(--color-action-primary-fg)] font-semibold',
         hover: 'opacity-95',
         active: 'active:scale-[0.98]',
         disabled: 'bg-[var(--color-action-disabled-bg)] text-[var(--color-action-disabled-fg)] cursor-not-allowed',
@@ -788,7 +790,7 @@ export const TREISE_DESIGN_SYSTEM: DesignSystemComponent[] = [
       },
       accessibility: 'Passes WCAG 2.5.5 Touch Target (>= 44x44px) and WCAG 1.4.3 Contrast (>= 4.5:1 AA)',
     },
-    tailwindTokens: 'wk-button bg-[var(--color-action-primary-bg)] text-[var(--color-action-primary-fg)] font-bold rounded-2xl min-h-[44px]',
+    tailwindTokens: 'wk-button bg-[var(--color-action-primary-bg)] text-[var(--color-action-primary-fg)] font-semibold rounded-2xl min-h-[44px]',
     rationale: 'Unifies live UI components onto high-contrast white-on-slate primary CTAs (--color-action-primary-bg) while keeping secondary actions calm.',
   },
   {
@@ -831,10 +833,10 @@ export const TREISE_DESIGN_SYSTEM: DesignSystemComponent[] = [
     category: 'pill',
     anatomy: {
       container: 'wk-segments grid gap-1.5 bg-[var(--color-bg-surface)] p-1.5 rounded-2xl',
-      typography: 'text-xs font-bold',
+      typography: 'text-xs font-semibold',
       colors: 'Active: var(--color-bg-surface-raised) + var(--color-text-primary) | Inactive: var(--color-text-muted)',
       states: {
-        active: 'bg-[var(--color-bg-surface-raised)] text-[var(--color-text-primary)] font-bold shadow-sm',
+        active: 'bg-[var(--color-bg-surface-raised)] text-[var(--color-text-primary)] font-semibold shadow-sm',
         inactive: 'text-[var(--color-text-muted)] font-medium',
       },
       touchTarget: 'Min 44px height (min-h-[44px]) per segment',
@@ -852,7 +854,7 @@ export const TREISE_DESIGN_SYSTEM: DesignSystemComponent[] = [
       },
       accessibility: 'ARIA role="group" or role="tablist" with aria-pressed or aria-selected',
     },
-    tailwindTokens: 'wk-segment bg-[var(--color-bg-surface-raised)] text-[var(--color-text-primary)] font-bold rounded-xl min-h-[44px]',
+    tailwindTokens: 'wk-segment bg-[var(--color-bg-surface-raised)] text-[var(--color-text-primary)] font-semibold rounded-xl min-h-[44px]',
     rationale: 'Prevents cognitive noise by keeping mode selection calm, allowing the actual workout or progress data below to hold primary visual interest.',
   },
   {
@@ -860,23 +862,23 @@ export const TREISE_DESIGN_SYSTEM: DesignSystemComponent[] = [
     name: 'Set Completion & Progression Checkmark',
     category: 'toggle',
     anatomy: {
-      container: 'w-8 h-8 rounded-xl flex items-center justify-center transition-all duration-200 active:scale-90',
+      container: 'min-h-[48px] min-w-[48px] rounded-xl flex items-center justify-center transition-colors active:scale-95',
       typography: 'N/A (Icon)',
-      colors: 'Completed: var(--color-status-positive) + var(--color-text-on-accent) | Incomplete: var(--color-bg-surface-raised) + var(--color-text-muted)',
+      colors: 'Completed: var(--color-status-positive) + var(--color-text-on-accent) | Incomplete: var(--color-action-secondary-bg) + var(--color-text-muted)',
       states: {
-        incomplete: 'bg-[var(--color-bg-surface-raised)] text-[var(--color-text-muted)]',
-        completed: 'bg-[var(--color-status-positive)] text-[var(--color-text-on-accent)] font-extrabold shadow-sm',
-        warmup: 'text-[var(--color-set-warmup)] font-mono font-bold',
-        failure: 'bg-[var(--color-set-failure-bg)] text-[var(--color-set-failure-fg)] font-mono font-bold',
+        incomplete: 'bg-[var(--color-action-secondary-bg)] text-[var(--color-text-muted)]',
+        completed: 'bg-[var(--color-status-positive)] text-[var(--color-text-on-accent)] shadow-sm',
+        warmup: 'text-[var(--color-set-warmup)] tabular-numbers font-medium',
+        failure: 'bg-[var(--color-set-failure-bg)] text-[var(--color-set-failure-fg)] tabular-numbers font-semibold',
       },
-      touchTarget: 'Parent flex column provides >= 44px touch target alignment',
-      iconSpec: 'Check icon w-4 h-4 stroke-[2.5]',
+      touchTarget: '>= 48px Android touch target height (minHeight: 48, minWidth: 48)',
+      iconSpec: 'Check SVG stroke-[2.2] incomplete / stroke-[3] completed',
     },
     logic: {
       rules: [
         'Positive status accent (--color-status-positive) celebrates completed sets and progressive overload.',
-        'The Done button always renders a visible checkmark icon even before completion (muted on upcoming sets, mint-accented on the active next set) and enforces a >= 48px Android touch target height.',
-        'The first uncompleted set in each exercise is highlighted as the active next set (isNextSet, NEXT badge, aria-current="step").',
+        'The Done button always renders a visible checkmark icon even before completion (muted on upcoming sets over --color-action-secondary-bg) and enforces a >= 48px Android touch target height.',
+        'Uncompleted set rows maintain uniform calm styling with no next-set row highlight borders or mint tints.',
         'Warmup sets display amber W indicator (--color-set-warmup) and failure sets display crimson soft badge (--color-set-failure-bg / --color-set-failure-fg).',
         'Completing a set triggers haptic feedback and real-time tonnage updates.',
       ],
@@ -886,8 +888,8 @@ export const TREISE_DESIGN_SYSTEM: DesignSystemComponent[] = [
       },
       accessibility: 'aria-label="Complete set N" / aria-pressed="true|false"',
     },
-    tailwindTokens: 'bg-[var(--color-status-positive)] text-[var(--color-text-on-accent)] font-extrabold shadow-sm rounded-xl w-8 h-8',
-    rationale: 'Delivers clear tactile feedback on completed sets while maintaining distinct set-type semantics.',
+    tailwindTokens: 'bg-[var(--color-status-positive)] text-[var(--color-text-on-accent)] shadow-sm rounded-xl min-h-[48px] min-w-[48px]',
+    rationale: 'Delivers clear tactile feedback on completed sets while maintaining distinct set-type semantics and calm uncompleted rows.',
   },
   {
     id: 'ds-card-biometric',
@@ -895,7 +897,7 @@ export const TREISE_DESIGN_SYSTEM: DesignSystemComponent[] = [
     category: 'card',
     anatomy: {
       container: 'wk-card rounded-3xl bg-[var(--color-bg-surface)] space-y-4',
-      typography: 'Headers: text-base font-extrabold text-[var(--color-text-primary)] tracking-tight; Body: text-xs text-[var(--color-text-secondary)]',
+      typography: 'Titles: wk-title (16px/600 sentence case) text-[var(--color-text-primary)]; Body: wk-body (14px/400) text-[var(--color-text-secondary)]',
       colors: 'Surface: var(--color-bg-surface), Raised child: var(--color-bg-surface-raised), Hairline: var(--color-border-subtle)',
       states: {
         default: 'Clean Whoop Slate elevation above var(--color-bg-canvas)',
@@ -923,7 +925,7 @@ export const TREISE_DESIGN_SYSTEM: DesignSystemComponent[] = [
     category: 'badge',
     anatomy: {
       container: 'wk-pill inline-flex items-center rounded-[calc(8*var(--f))] px-[calc(22*var(--f))] py-[calc(6*var(--f))]',
-      typography: 'max(12px, calc(24 * var(--f))) font-bold uppercase leading-[1.2]',
+      typography: 'max(12px, calc(24 * var(--f))) font-semibold uppercase tracking-[0.04em] leading-[1.2]',
       colors: 'Neutral: --color-bg-surface-control/--color-status-neutral | Positive: --color-status-positive-soft/--color-status-positive | Warning: --color-status-warning-soft/--color-status-warning | Danger: --color-status-danger-soft/--color-status-danger-fg | Info: --color-status-info-soft/--color-status-info',
       states: {
         default: 'Read-only informational badge surface (--wk-pill: var(--color-bg-surface-control)) with WCAG AA verified neutral ink (--color-status-neutral)',
@@ -932,7 +934,7 @@ export const TREISE_DESIGN_SYSTEM: DesignSystemComponent[] = [
     },
     logic: {
       rules: [
-        '.wk-pill (background: var(--wk-pill) / var(--color-bg-surface-control), border-radius: calc(8 * var(--f)), color: var(--color-status-neutral), uppercase bold) is reserved strictly for non-interactive informational badges (e.g. wearable source WHOOP, superset order A1, equipment tags) and must never be used on <button> elements.',
+        '.wk-pill (background: var(--wk-pill) / var(--color-bg-surface-control), border-radius: calc(8 * var(--f)), color: var(--color-status-neutral), 12px/600 uppercase +0.04em) is reserved strictly for non-interactive informational badges (e.g. wearable source WHOOP, superset order A1, equipment tags) and must never be used on <button> elements.',
         'Color semantics are strictly codified: Positive = --color-status-positive, Caution = --color-status-warning, Danger/Alert = --color-status-danger, Info/Telemetry = --color-status-info, Neutral = --color-status-neutral.',
         'Danger text/icons on dark slate surfaces use --color-status-danger (>= 4.65:1 AA) rather than low-contrast crimson fills.',
       ],
@@ -945,7 +947,7 @@ export const TREISE_DESIGN_SYSTEM: DesignSystemComponent[] = [
       },
       accessibility: 'Verified text-to-surface contrast ratio >= 4.5:1 AA',
     },
-    tailwindTokens: 'wk-pill text-xs font-bold',
+    tailwindTokens: 'wk-pill text-xs font-semibold',
     rationale: 'Allows athletes to scan physiological state and telemetry with accessible contrast across every surface.',
   },
   {
@@ -953,22 +955,22 @@ export const TREISE_DESIGN_SYSTEM: DesignSystemComponent[] = [
     name: 'Numeric Load & Reps Stepper Input',
     category: 'input',
     anatomy: {
-      container: 'wk-input flex items-center bg-[var(--color-bg-surface-raised)] rounded-xl min-h-[44px]',
-      typography: 'text-sm font-mono font-extrabold tabular-numbers text-center',
+      container: 'wk-input flex items-center bg-[var(--color-bg-surface-raised)] rounded-xl min-h-[48px]',
+      typography: 'wk-number (20px/600 Inter tabular-numbers) text-center',
       colors: 'var(--color-text-primary) with --color-border-focus focus ring',
       states: {
-        default: 'text-[var(--color-text-primary)] font-mono',
-        completed: 'text-[var(--color-status-positive)] font-mono',
+        default: 'text-[var(--color-text-primary)] tabular-numbers',
+        completed: 'text-[var(--color-status-positive)] tabular-numbers',
         focus: 'outline: 2px solid var(--color-border-focus)',
       },
-      touchTarget: 'Stepper buttons w-7 h-8 enclosed in min-h-[44px] row',
+      touchTarget: 'Min 48px vertical height (min-h-[48px])',
       iconSpec: 'Minus/Plus icons w-3.5 h-3.5 stroke-[2]',
     },
     logic: {
       rules: [
         'Always selects all text on focus for effortless 1-tap overwrite on mobile keyboards.',
         'Pre-fills with target load and target reps from progression engine or previous session.',
-        'Supports quick stepper taps for micro-adjustments (+/- 1 rep or +/- 2.5kg).',
+        'Uses 20px/600 with Inter tabular-nums so aligned numbers lead the set row cleanly.',
       ],
       variants: {
         weightInput: 'Displays weight unit with plate calculator quick-trigger',
@@ -976,8 +978,8 @@ export const TREISE_DESIGN_SYSTEM: DesignSystemComponent[] = [
       },
       accessibility: 'Accessible aria-label specifying exercise, set number, and metric',
     },
-    tailwindTokens: 'wk-input rounded-xl text-center font-mono text-sm font-extrabold tabular-numbers min-h-[44px]',
-    rationale: 'Gym fingers are sweaty and fatigued; inputs must be forgiving, pre-filled, and operable via steppers or keypad.',
+    tailwindTokens: 'wk-input rounded-xl text-center text-xl font-semibold tabular-numbers min-h-[48px]',
+    rationale: 'Gym fingers are sweaty and fatigued; inputs must be forgiving, pre-filled, and crystal clear at arms length.',
   },
   {
     id: 'ds-modal-dialog',
@@ -985,7 +987,7 @@ export const TREISE_DESIGN_SYSTEM: DesignSystemComponent[] = [
     category: 'modal',
     anatomy: {
       container: 'fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 backdrop-blur-md',
-      typography: 'Title: text-base font-extrabold text-[var(--color-text-primary)] tracking-tight; Subtitle: text-xs text-[var(--color-text-muted)]',
+      typography: 'Title: wk-h1 (16px/600 sentence case) text-[var(--color-text-primary)]; Subtitle: wk-caption (12px/400) text-[var(--color-text-muted)]',
       colors: 'Modal Box: bg-[var(--color-bg-surface)] border border-[var(--color-border-subtle)] shadow-2xl; Backdrop: var(--color-bg-scrim)',
       states: {
         default: 'Sliding up from bottom on mobile, centered on tablet/desktop',
@@ -1072,7 +1074,7 @@ export const TREISE_DESIGN_SYSTEM: DesignSystemComponent[] = [
     category: 'layout',
     anatomy: {
       container: 'Full viewport layout structure and visual weight distribution',
-      typography: 'Primary: text-base to text-xl font-bold; Secondary: var(--color-text-muted)',
+      typography: 'Primary: wk-title / wk-number (16px–20px font-semibold); Secondary: var(--color-text-muted)',
       colors: 'Primary CTA var(--color-action-primary-bg) and positive indicators var(--color-status-positive) over var(--color-bg-canvas)',
       states: {
         squintPass: 'When blurred, the primary action and active exercise card are unmistakably obvious in < 200ms',
@@ -1092,7 +1094,7 @@ export const TREISE_DESIGN_SYSTEM: DesignSystemComponent[] = [
       },
       accessibility: 'Guarantees immediate cognitive orientation for visually impaired or physically exhausted lifters',
     },
-    tailwindTokens: 'Primary CTA: wk-button bg-[var(--color-action-primary-bg)] text-[var(--color-action-primary-fg)] font-bold | Active Card: wk-card',
+    tailwindTokens: 'Primary CTA: wk-button bg-[var(--color-action-primary-bg)] text-[var(--color-action-primary-fg)] font-semibold | Active Card: wk-card',
     rationale: 'Athletes in the middle of a heavy compound set experience tunnel vision; visual hierarchy must be ruthless so orientation requires zero effort.',
   },
   {

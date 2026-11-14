@@ -8772,12 +8772,12 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
     assert(
       /\.wk-input\s*\{[\s\S]*?min-height:\s*48px;/.test(idxCssSrc) &&
         setRowSrc.includes('minHeight: 48') &&
-        setRowSrc.includes('isNextSet') &&
-        setRowSrc.includes('data-next-set') &&
-        exCardSrc.includes('nextSetId') &&
-        exCardSrc.includes('isNextSet={s.id === nextSetId}') &&
+        !setRowSrc.includes('isNextSet') &&
+        !setRowSrc.includes('data-next-set') &&
+        !setRowSrc.includes('rgba(0, 241, 159, 0.06)') &&
+        !exCardSrc.includes('isNextSet') &&
         !/\{set\.completed && \(\s*<svg/.test(setRowSrc),
-      'SetRow enforces >= 48px Android touch targets, always renders a visible checkmark in the Done button, and highlights the next set to do'
+      'SetRow enforces >= 48px Android touch targets, always renders a visible checkmark in the Done button, and keeps uncompleted rows free of next-set highlights'
     );
 
     assert(
@@ -8905,6 +8905,46 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
     assert(
       Boolean(badgeSpec?.logic.rules.some((r) => r.includes('.wk-pill') && r.includes('never be used on <button>'))),
       'TREISE_DESIGN_SYSTEM (ds-badge-status) explicitly codifies that .wk-pill is reserved for informational badges and never used on buttons'
+    );
+
+    // 4-Role Inter Typography System verification:
+    // - Only Inter (400, 500, 600) is loaded; JetBrains Mono and weights 700/800/900 are removed.
+    // - 4 fixed roles: label (12px/600 uppercase +0.04em tracking; 13px/500 Workout caption floor), body (14px/400), title (16px/600 sentence case), number (20px/600 tabular-nums).
+    const indexHtmlSrc = fsMod.readFileSync(pathMod.join(repoRoot, 'index.html'), 'utf8') as string;
+    const tailwindCfgSrc = fsMod.readFileSync(pathMod.join(repoRoot, 'tailwind.config.js'), 'utf8') as string;
+    assert(
+      indexHtmlSrc.includes('Inter:wght@400;500;600') &&
+        !indexHtmlSrc.includes('JetBrains') &&
+        !tailwindCfgSrc.includes('JetBrains'),
+      'Inter (400, 500, 600) is the sole font family in index.html and tailwind.config.js; JetBrains Mono is deleted'
+    );
+
+    const heavyWeightHits = componentFiles.filter((file) => {
+      const src = fsMod.readFileSync(file, 'utf8') as string;
+      return /\bfont-(?:bold|extrabold|black)\b|fontWeight:\s*[789]00/.test(src);
+    });
+    assert(
+      heavyWeightHits.length === 0 && !/font-weight:\s*[789]00/.test(indexCss),
+      `Zero 700/800/900 font weights remain in src/index.css or src/components (found in: ${heavyWeightHits.map((f) => pathMod.relative(repoRoot, f)).join(', ')})`
+    );
+
+    const { formatSentenceCase } = await import('../../utils/typography');
+    assert(
+      formatSentenceCase('Barbell Back Squat') === 'Barbell back squat' &&
+        formatSentenceCase('Full Body A') === 'Full body A' &&
+        formatSentenceCase('Today: Full Body A') === 'Today: Full body A' &&
+        formatSentenceCase('Romanian Deadlift (RDL)') === 'Romanian deadlift (RDL)',
+      'formatSentenceCase converts exercise names and session titles to calm sentence case while preserving single-letter identifiers and acronyms'
+    );
+
+    assert(
+      /\.wk-title,\s*\.wk-h1\s*\{[\s\S]*?font-size:\s*max\(16px,\s*calc\(36\s*\*\s*var\(--f\)\)\);[\s\S]*?font-weight:\s*600;[\s\S]*?text-transform:\s*none;/.test(indexCss) &&
+        /\.wk-body\s*\{[\s\S]*?font-size:\s*max\(14px,\s*calc\(30\s*\*\s*var\(--f\)\)\);[\s\S]*?font-weight:\s*400;/.test(indexCss) &&
+        /\.wk-label\s*\{[\s\S]*?font-size:\s*max\(12px,\s*calc\(24\s*\*\s*var\(--f\)\)\);[\s\S]*?font-weight:\s*600;[\s\S]*?text-transform:\s*uppercase;[\s\S]*?letter-spacing:\s*0\.04em;/.test(indexCss) &&
+        /\.wk-workout-caption\s*\{[\s\S]*?font-size:\s*max\(13px,\s*calc\(28\s*\*\s*var\(--f\)\)\);[\s\S]*?font-weight:\s*500;/.test(indexCss) &&
+        /\.wk-number\s*\{[\s\S]*?font-size:\s*max\(20px,\s*calc\(44\s*\*\s*var\(--f\)\)\);[\s\S]*?font-weight:\s*600;[\s\S]*?font-variant-numeric:\s*tabular-nums;/.test(indexCss) &&
+        /\.wk-input\s*\{[\s\S]*?font-size:\s*max\(20px,\s*calc\(44\s*\*\s*var\(--f\)\)\);[\s\S]*?font-weight:\s*600;[\s\S]*?font-variant-numeric:\s*tabular-nums;/.test(indexCss),
+      'src/index.css enforces the 4 fixed typography roles: label (12px/600 uppercase +0.04em, 13px/500 Workout caption floor), body (14px/400), title (16px/600 sentence case), and number (20px/600 tabular-nums)'
     );
   }
 

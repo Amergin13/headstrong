@@ -106,7 +106,7 @@ export const MesocycleManager: React.FC<MesocycleManagerProps> = ({
           6-WEEK TRAINING PLAN
         </span>
         <span
-          className="font-bold text-white shrink-0"
+          className="font-semibold text-white shrink-0"
           style={{ fontSize: `max(12px, ${fig(40)})`, lineHeight: 1 }}
         >
           {currentWeek}/{totalWeeks}
@@ -136,7 +136,7 @@ export const MesocycleManager: React.FC<MesocycleManagerProps> = ({
               key={m.week}
               type="button"
               onClick={() => handleSelectWeek(m.week)}
-              className="h-full flex flex-col items-center justify-center font-bold uppercase transition-colors"
+              className="h-full flex flex-col items-center justify-center font-semibold uppercase transition-colors"
               style={{
                 borderRadius: fig(16),
                 fontSize: `max(12px, ${fig(24)})`,

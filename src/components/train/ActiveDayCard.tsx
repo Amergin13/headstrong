@@ -39,7 +39,7 @@ export const ActiveDayCard: React.FC<ActiveDayCardProps> = ({ thisWeek, recent, 
         {recent.map((a) => (
           <li key={a.id} className="flex items-center justify-between" style={{ gap: fig(16) }}>
             <span className="min-w-0">
-              <span className="block font-bold text-white truncate" style={{ fontSize: `max(13px, ${fig(28)})` }}>
+              <span className="block font-semibold text-white truncate" style={{ fontSize: `max(13px, ${fig(28)})` }}>
                 {describeActivity(a)}
               </span>
               <span className="block" style={{ fontSize: `max(12px, ${fig(24)})`, color: 'var(--wk-muted)' }}>
@@ -51,7 +51,7 @@ export const ActiveDayCard: React.FC<ActiveDayCardProps> = ({ thisWeek, recent, 
                       href={`https://www.strava.com/activities/${a.externalId}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="font-bold underline"
+                      className="font-semibold underline"
                       style={{ color: 'var(--color-partner-strava)' }}
                     >
                       View on Strava

@@ -397,7 +397,7 @@ export const TrendChart: React.FC<TrendChartProps> = ({
                 />
                 {visibleNodeLabels.has(idx) && (
                   <span
-                    className="wk-chart-fade absolute font-bold pointer-events-none select-none whitespace-nowrap"
+                    className="wk-chart-fade absolute font-semibold pointer-events-none select-none whitespace-nowrap"
                     style={{
                       left: `${(pt.x / W) * 100}%`,
                       top: `${(pt.y / H) * 100}%`,
@@ -433,7 +433,7 @@ export const TrendChart: React.FC<TrendChartProps> = ({
 
           {single && (
             <span
-              className="wk-chart-fade absolute font-bold"
+              className="wk-chart-fade absolute font-semibold"
               style={{
                 color: 'var(--color-text-primary)',
                 fontSize: `max(12px, ${fig(38)})`,

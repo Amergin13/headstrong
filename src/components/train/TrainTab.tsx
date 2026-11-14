@@ -34,6 +34,7 @@ import {
 import { TrainingPlan, getSessionPlanId, planWorkoutLabel } from '../../engine/muscleBuildingProgram';
 import { ActivityLog, activeDayDates, qualifiesAsActiveDay } from '../../engine/activeDays';
 import { localDateOffset, localDateString, parseLocalDate } from '../../utils/date';
+import { formatSentenceCase } from '../../utils/typography';
 import { stepsOnDate } from '../../services/athleteGoals';
 import { ActiveDayCard } from './ActiveDayCard';
 import { startingWeightForNewExercise } from '../../services/sessionPreparation';
@@ -899,7 +900,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
       aria-label="Workout options"
       className="w-60 rounded-2xl bg-surface-card border border-white/[0.08] shadow-2xl p-1.5 space-y-1 text-left"
     >
-      <div className="px-3 py-1.5 text-xs font-bold text-white/60 uppercase tracking-wider">Location</div>
+      <div className="px-3 py-1.5 text-xs font-semibold text-white/60 uppercase tracking-wider">Location</div>
       {LOCATION_CONFIG.map((loc) => {
         const isSelected = currentLoc === loc.id;
         return (
@@ -920,7 +921,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
             }`}
           >
             <div>
-              <span className="text-sm font-bold block">{loc.label}</span>
+              <span className="text-sm font-semibold block">{loc.label}</span>
               <span className="text-xs text-white/60">{loc.detail}</span>
             </div>
             {isSelected && <Check className="w-4 h-4 text-brand-primary stroke-[2.5] shrink-0 ml-2" />}
@@ -1114,7 +1115,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
         >
           <div className="flex items-start justify-between" style={{ gap: fig(16) }}>
             <div>
-              <h2 className="wk-label flex items-center" style={{ gap: fig(10) }}>
+              <h2 className="wk-title flex items-center" style={{ gap: fig(10) }}>
                 <Footprints style={{ width: fig(30), height: fig(30), color: 'var(--color-data-telemetry)' }} strokeWidth={2.2} aria-hidden="true" />
                 <span>
                   {overviewStepDay.isToday
@@ -1141,7 +1142,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
             )}
           </div>
           <p
-            className="font-bold text-white tabular-numbers"
+            className="font-semibold text-white tabular-numbers"
             style={{ fontSize: `max(12px, ${fig(68)})`, lineHeight: 1.05, marginTop: fig(28) }}
           >
             {overviewSteps > 0 ? overviewSteps.toLocaleString() : '—'}
@@ -1248,7 +1249,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
               {recoveryGate.limitingMuscles.slice(0, 4).map((m) => (
                 <li key={m.muscle}>
                   <div className="flex items-center justify-between" style={{ marginBottom: fig(12) }}>
-                    <span className="wk-label">{MUSCLE_FRIENDLY_NAMES[m.muscle]}</span>
+                    <span className="wk-title">{MUSCLE_FRIENDLY_NAMES[m.muscle]}</span>
                     <span className="wk-caption">
                       {m.recoveryPct}% • ready {formatReadyTime(m.readyAt)}
                     </span>
@@ -1453,7 +1454,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
                 type="button"
                 onClick={() => setShowAddExerciseModal(false)}
                 aria-label="Close add exercise modal"
-                className="w-11 h-11 rounded-full text-white/60 hover:text-white flex items-center justify-center text-xs font-bold transition-colors shrink-0"
+                className="w-11 h-11 rounded-full text-white/60 hover:text-white flex items-center justify-center text-xs font-semibold transition-colors shrink-0"
                 style={{ background: 'var(--color-action-secondary-bg)' }}
               >
                 ✕
@@ -1478,7 +1479,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
                     className="wk-raised w-full flex items-center justify-between text-left transition-all active:scale-[0.99]"
                   >
                     <div>
-                      <div className="wk-label normal-case">
+                      <div className="wk-title">
                         {def.name}
                       </div>
                       <div className="wk-caption mt-1">
@@ -1565,7 +1566,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
                       style={{ gap: fig(24), padding: `${fig(26)} 0`, minHeight: 44 }}
                     >
                       <span className="min-w-0">
-                        <span className="wk-label block">{item.title}</span>
+                        <span className="wk-title block">{item.title}</span>
                         <span className="wk-caption block" style={{ marginTop: fig(6) }}>
                           {item.description}
                         </span>
@@ -1680,14 +1681,14 @@ export const TrainTab: React.FC<TrainTabProps> = ({
                 Close
               </button>
             </div>
-            <div className="wk-body">{previewPastWorkout.name}</div>
+            <div className="wk-body">{formatSentenceCase(previewPastWorkout.name)}</div>
             <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
               {previewPastWorkout.exercises.map((ex) => (
                 <div
                   key={ex.id}
                   className="wk-raised"
                 >
-                  <div className="wk-label normal-case">{ex.name}</div>
+                  <div className="wk-title">{formatSentenceCase(ex.name)}</div>
                   <div className="wk-caption tabular-numbers mt-1">
                     {ex.sets
                       .filter((s) => s.completed)

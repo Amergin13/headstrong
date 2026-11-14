@@ -111,14 +111,14 @@ export const RestTimerModal: React.FC<RestTimerModalProps> = ({
 
             <div className="min-w-0">
               <div
-                className="text-[length:max(12px,calc(44*var(--f)))] font-extrabold tracking-tight text-white tabular-numbers leading-none"
+                className="text-[length:max(12px,calc(44*var(--f)))] font-semibold tracking-tight text-white tabular-numbers leading-none"
                 aria-live="off"
               >
                 {formatTime(secondsRemaining)}
               </div>
               <div className="wk-caption mt-[calc(8*var(--f))] truncate" aria-live="polite">
                 {isDone ? (
-                  <span className="font-bold" style={{ color: 'var(--wk-accent)' }}>
+                  <span className="font-semibold" style={{ color: 'var(--wk-accent)' }}>
                     Ready{context ? ` for ${context.nextLabel}` : ''}
                   </span>
                 ) : (

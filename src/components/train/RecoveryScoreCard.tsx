@@ -47,7 +47,7 @@ const Ring: React.FC<{ value: number | null }> = ({ value }) => {
           />
         )}
       </svg>
-      <span className="absolute inset-0 flex items-center justify-center font-bold text-white">
+      <span className="absolute inset-0 flex items-center justify-center font-semibold text-white tabular-numbers">
         {value === null ? (
           <span style={{ fontSize: `max(12px, ${fig(48)})`, color: 'var(--wk-muted)' }}>—</span>
         ) : (
@@ -106,7 +106,7 @@ export const RecoveryScoreCard: React.FC<RecoveryScoreCardProps> = ({ readiness,
           <span className="wk-pill">{tag}</span>
           {onOpen && <ChevronRight className="wk-chevron" strokeWidth={2} aria-hidden="true" />}
         </div>
-        <h2 className="wk-label" style={{ marginTop: fig(28) }}>
+        <h2 className="wk-title" style={{ marginTop: fig(28) }}>
           {heading}
         </h2>
         <p className="wk-body" style={{ marginTop: fig(12) }}>

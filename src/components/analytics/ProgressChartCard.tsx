@@ -91,7 +91,7 @@ export const ProgressChartCard: React.FC<{
               </div>
               <div className="flex items-baseline gap-1.5" style={{ marginTop: fig(6) }}>
                 <span
-                  className="font-bold tracking-tight"
+                  className="font-semibold tracking-tight"
                   style={{
                     fontSize: `max(24px, ${fig(64)})`,
                     lineHeight: 1.02,

@@ -20,6 +20,7 @@ import {
 } from '../../engine/muscleBuildingProgram';
 import { ActivityLog, describeActivity } from '../../engine/activeDays';
 import { triggerHaptic } from '../../utils/haptics';
+import { formatSentenceCase } from '../../utils/typography';
 import { PastWorkoutModal } from './PastWorkoutModal';
 import { resolveCssToken } from '../../styles/semanticTokens';
 
@@ -489,10 +490,10 @@ export const ProgramPlanView: React.FC<ProgramPlanViewProps> = ({
         style={{ marginTop: fig(isFirstRun ? 107 : 60) }}
       >
         <div className="flex items-end justify-between" style={{ gap: fig(20) }}>
-          <span className="wk-label" style={{ lineHeight: 1.21 }}>
-            Next: {next.label}
+          <span className="wk-title">
+            Next: {formatSentenceCase(next.label)}
           </span>
-          <span className="font-bold text-white shrink-0" style={{ fontSize: `max(12px, ${fig(40)})`, lineHeight: 1 }}>
+          <span className="wk-number shrink-0 tabular-numbers" style={{ lineHeight: 1 }}>
             {plan.nextWorkoutNumber}/{TOTAL}
           </span>
         </div>
@@ -543,12 +544,12 @@ export const ProgramPlanView: React.FC<ProgramPlanViewProps> = ({
                     const done = w.status === 'done';
                     const isNext = w.status === 'next';
                     const isDue = w.status === 'due' && Boolean(onLogActivity);
-                    const name = `${w.workoutNumber}. ${w.label}`;
+                    const name = `${w.workoutNumber}. ${formatSentenceCase(w.label)}`;
                     const content = (
                       <>
-                        <span className="font-bold uppercase text-white truncate">{name}</span>
+                        <span className="font-semibold text-white truncate">{name}</span>
                         {isNext && (
-                          <span className="uppercase shrink-0 font-bold" style={{ color: 'var(--color-text-primary)' }}>
+                          <span className="wk-label shrink-0" style={{ color: 'var(--color-text-primary)' }}>
                             Up next
                           </span>
                         )}
@@ -558,7 +559,7 @@ export const ProgramPlanView: React.FC<ProgramPlanViewProps> = ({
                           </span>
                         )}
                         {isDue && (
-                          <span className="uppercase shrink-0" style={{ color: 'var(--wk-muted)' }}>
+                          <span className="wk-label shrink-0" style={{ color: 'var(--wk-muted)' }}>
                             This week
                           </span>
                         )}

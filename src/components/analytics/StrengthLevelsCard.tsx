@@ -3,6 +3,7 @@ import { PolarAngleAxis, PolarGrid, PolarRadiusAxis, Radar, RadarChart, Responsi
 import { BiometricLog } from '../../engine/types';
 import { calculateEngineVitalityScore } from '../../engine/vitality';
 import { MovementStandardsReport, levelLabel } from '../../services/movementStandards';
+import { formatSentenceCase } from '../../utils/typography';
 
 const fig = (px: number) => `calc(${px} * var(--f))`;
 
@@ -71,7 +72,7 @@ export const StrengthLevelsCard: React.FC<StrengthLevelsCardProps> = ({ report, 
         <ResponsiveContainer width="100%" height="100%">
           <RadarChart cx="50%" cy="50%" outerRadius="72%" data={radarData}>
             <PolarGrid stroke="var(--color-bg-surface-control)" strokeDasharray="2 2" />
-            <PolarAngleAxis dataKey="axis" tick={{ fill: 'var(--color-text-secondary)', fontSize: 12, fontWeight: 700 }} />
+            <PolarAngleAxis dataKey="axis" tick={{ fill: 'var(--color-text-secondary)', fontSize: 12, fontWeight: 600 }} />
             <PolarRadiusAxis angle={90} domain={[0, 100]} tick={false} axisLine={false} />
             <Radar dataKey="score" stroke="var(--color-accent-primary)" strokeWidth={2} fill="var(--color-accent-primary)" fillOpacity={0.2} dot={{ r: 3, fill: 'var(--color-accent-primary)' }} />
           </RadarChart>
@@ -82,10 +83,10 @@ export const StrengthLevelsCard: React.FC<StrengthLevelsCardProps> = ({ report, 
         {rated.map((l) => (
           <li key={l.pillar}>
             <div className="flex items-baseline justify-between" style={{ gap: fig(16) }}>
-              <span className="wk-label" style={{ lineHeight: 1.21 }}>
-                {l.name}
+              <span className="wk-title" style={{ lineHeight: 1.21 }}>
+                {formatSentenceCase(l.name)}
               </span>
-              <span className="font-bold shrink-0" style={{ fontSize: `max(12px, ${fig(26)})`, color: l.logged ? 'var(--color-text-primary)' : 'var(--wk-muted)' }}>
+              <span className="font-semibold shrink-0" style={{ fontSize: `max(12px, ${fig(26)})`, color: l.logged ? 'var(--color-text-primary)' : 'var(--wk-muted)' }}>
                 {l.logged ? `${l.tier} ${l.subDivision}` : 'Not logged yet'}
               </span>
             </div>
@@ -128,7 +129,7 @@ export const StrengthLevelsCard: React.FC<StrengthLevelsCardProps> = ({ report, 
           Cardio &amp; recovery
           {cardio > 0 && (latestBiometrics?.restingHr || 0) > 0 ? ` • ${latestBiometrics.restingHr} bpm resting` : ''}
         </span>
-        <span className="font-bold text-white shrink-0" style={{ fontSize: `max(12px, ${fig(40)})`, lineHeight: 1 }}>
+        <span className="font-semibold text-white shrink-0" style={{ fontSize: `max(12px, ${fig(40)})`, lineHeight: 1 }}>
           {cardio > 0 ? `${cardio}/100` : '—'}
         </span>
       </div>

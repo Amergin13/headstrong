@@ -103,7 +103,7 @@ export const ReadinessBanner: React.FC<ReadinessBannerProps> = ({
           {/* Description Text matching Image 1 */}
           <div className="flex-1 min-w-0">
             <p className="text-xs sm:text-sm text-slate-200 leading-relaxed font-medium">
-              {prefix && <strong className="text-white font-bold">{prefix} </strong>}
+              {prefix && <strong className="text-white font-semibold">{prefix} </strong>}
               {bodyText}
             </p>
             {((latestBiometrics?.restingHr || 0) > 0 || (latestBiometrics?.hrvRmssd || 0) > 0) && (
@@ -129,7 +129,7 @@ export const ReadinessBanner: React.FC<ReadinessBannerProps> = ({
               <Watch className="w-4 h-4 stroke-[2]" />
             </div>
             <div>
-              <p className="text-xs font-bold text-white">No Watch Connected</p>
+              <p className="text-xs font-semibold text-white">No Watch Connected</p>
               <p className="text-xs text-slate-400">
                 Connect your watch to auto-adjust daily training intensity based on recovery.
               </p>
@@ -142,7 +142,7 @@ export const ReadinessBanner: React.FC<ReadinessBannerProps> = ({
                 triggerHaptic('light');
                 onOpenWatchSync();
               }}
-              className="px-3 py-1.5 rounded-xl bg-white/[0.08] hover:bg-white/[0.12] text-xs font-bold text-white shrink-0 min-h-[36px] flex items-center space-x-1.5 transition-colors"
+              className="px-3 py-1.5 rounded-xl bg-white/[0.08] hover:bg-white/[0.12] text-xs font-semibold text-white shrink-0 min-h-[36px] flex items-center space-x-1.5 transition-colors"
             >
               <Watch className="w-3.5 h-3.5 stroke-[2]" />
               <span>Connect</span>

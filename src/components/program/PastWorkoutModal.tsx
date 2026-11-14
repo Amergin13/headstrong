@@ -5,6 +5,7 @@ import { WorkoutSession } from '../../engine/types';
 import { planWorkoutLabel } from '../../engine/muscleBuildingProgram';
 import { useUnits } from '../../utils/unitsContext';
 import { triggerHaptic } from '../../utils/haptics';
+import { formatSentenceCase } from '../../utils/typography';
 
 const fig = (px: number) => `calc(${px} * var(--f))`;
 
@@ -49,8 +50,8 @@ export const PastWorkoutModal: React.FC<PastWorkoutModalProps> = ({ workoutNumbe
       >
         <div className="flex items-start justify-between" style={{ gap: fig(24) }}>
           <div>
-            <h3 className="wk-h1 uppercase" style={{ lineHeight: 1.21 }}>
-              {workoutNumber}. {planWorkoutLabel(title)}
+            <h3 className="wk-h1">
+              {workoutNumber}. {formatSentenceCase(planWorkoutLabel(title))}
             </h3>
             <p className="wk-body" style={{ marginTop: fig(10), color: 'var(--wk-muted)' }}>
               {formatSessionDate(session.date)}
@@ -79,8 +80,8 @@ export const PastWorkoutModal: React.FC<PastWorkoutModalProps> = ({ workoutNumbe
               key={ex.id}
               style={{ paddingTop: fig(24), borderTop: '1px solid rgba(255,255,255,0.08)' }}
             >
-              <div className="wk-label" style={{ lineHeight: 1.21 }}>
-                {ex.name}
+              <div className="wk-title">
+                {formatSentenceCase(ex.name)}
               </div>
               <ol className="flex flex-col" style={{ marginTop: fig(14), gap: fig(8) }}>
                 {sets.map((st, i) => {
@@ -89,7 +90,7 @@ export const PastWorkoutModal: React.FC<PastWorkoutModalProps> = ({ workoutNumbe
                   return (
                     <li key={st.id} className="wk-body flex justify-between" style={{ gap: fig(16) }}>
                       <span style={{ color: 'var(--wk-muted)' }}>Set {i + 1}</span>
-                      <span className="text-white">
+                      <span className="text-white tabular-numbers">
                         {kg > 0 ? `${units.format(kg)} × ${reps}` : `${reps} reps`}
                         {st.actualRir !== undefined ? ` • ${st.actualRir} RIR` : ''}
                       </span>

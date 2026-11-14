@@ -43,6 +43,7 @@ import {
 } from '../../services/progressOverview';
 import { weightPace } from '../../services/progressSeries';
 import { parseLocalDate } from '../../utils/date';
+import { formatSentenceCase } from '../../utils/typography';
 import { DetailHeader, GoalsHero, OverviewCard, Sparkline, StandardsRadar, StatRow } from './ProgressOverviewCards';
 import { GoalDetailScreen } from './GoalDetailScreen';
 import { GoalSettingsScreen } from './GoalSettingsScreen';
@@ -357,8 +358,8 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
                       style={{ gap: fig(24), padding: `${fig(26)} 0`, borderTop: `${fig(2)} solid rgba(255,255,255,0.08)` }}
                     >
                       <div className="min-w-0">
-                        <p className="wk-label" style={{ lineHeight: 1.21 }}>
-                          {b.exerciseName}
+                        <p className="wk-title" style={{ lineHeight: 1.21 }}>
+                          {formatSentenceCase(b.exerciseName)}
                         </p>
                         <p className="wk-caption" style={{ marginTop: fig(8) }}>
                           {shortDate(b.date)}
@@ -367,7 +368,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
                             : ''}
                         </p>
                       </div>
-                      <p className="font-bold text-white tabular-numbers shrink-0 text-right" style={{ fontSize: `max(12px, ${fig(40)})`, lineHeight: 1 }}>
+                      <p className="font-semibold text-white tabular-numbers shrink-0 text-right" style={{ fontSize: `max(12px, ${fig(40)})`, lineHeight: 1 }}>
                         {shown.value}
                         <span className="font-semibold" style={{ fontSize: `max(12px, ${fig(22)})`, color: 'var(--wk-muted)', marginLeft: fig(8) }}>
                           {shown.unit}
@@ -387,7 +388,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
         {detail === 'lifetime' && (
           <>
             <section className="wk-card" aria-label="Lifetime totals">
-              <h2 className="wk-label">All time</h2>
+              <h2 className="wk-title">All time</h2>
               <StatRow
                 stats={[
                   { label: `Volume (${units.unit})`, value: whole(lifetime.volumeKg) },
@@ -415,7 +416,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
               ariaLabel="Recent training timeline"
             />
             <section className="wk-card" aria-label={`Totals for the last ${timelineMeta.days} days`}>
-              <h2 className="wk-label">Last {timelineMeta.days} days</h2>
+              <h2 className="wk-title">Last {timelineMeta.days} days</h2>
               <StatRow
                 stats={[
                   { label: `Volume (${units.unit})`, value: whole(recentWindow.volumeKg) },
@@ -447,7 +448,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
         {detail === 'steps' && (
           <>
             <section className="wk-card" aria-label="Daily step summary">
-              <h2 className="wk-label">Daily steps</h2>
+              <h2 className="wk-title">Daily steps</h2>
               <StatRow
                 stats={[
                   {
@@ -486,7 +487,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
             <ProgressChartCard chart={stepsChart} />
             {stepsChart.points.length > 0 && (
               <section className="wk-card" aria-label="Recent daily step counts">
-                <h2 className="wk-label">Recent days</h2>
+                <h2 className="wk-title">Recent days</h2>
                 <ul className="flex flex-col" style={{ marginTop: fig(20) }}>
                   {[...stepsChart.points].reverse().slice(0, 14).map((pt) => (
                     <li
@@ -495,7 +496,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
                       style={{ gap: fig(20), padding: `${fig(22)} 0`, borderTop: `${fig(2)} solid rgba(255,255,255,0.08)` }}
                     >
                       <span className="wk-body">{shortDate(pt.date)}</span>
-                      <span className="font-bold text-white tabular-numbers" style={{ fontSize: `max(12px, ${fig(36)})` }}>
+                      <span className="font-semibold text-white tabular-numbers" style={{ fontSize: `max(12px, ${fig(36)})` }}>
                         {Math.round(pt.value).toLocaleString()}
                       </span>
                     </li>
@@ -510,7 +511,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
           <>
             <section className="wk-card" aria-label="Whoop metrics summary">
               <div className="flex items-center justify-between" style={{ gap: fig(20) }}>
-                <h2 className="wk-label">Latest Whoop metrics</h2>
+                <h2 className="wk-title">Latest Whoop metrics</h2>
                 {whoopSnapshot.latestDate && <span className="wk-pill">{shortDate(whoopSnapshot.latestDate)}</span>}
               </div>
               <StatRow
@@ -659,7 +660,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
             ? bodyComposition.populatedScaleCount > 0
             : bodyComposition.populatedTapeCount > 0) && (
             <div className="wk-card space-y-[calc(26*var(--f))]">
-              <h2 className="wk-label">{compositionView === 'weight' ? 'Body composition' : 'Symmetry'}</h2>
+              <h2 className="wk-title">{compositionView === 'weight' ? 'Body composition' : 'Symmetry'}</h2>
               {compositionView === 'weight' ? (
                 <>
                   <p className="wk-body text-[color:var(--wk-body)]">{bodyComposition.recompositionSummary}</p>
@@ -671,7 +672,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
                         .map((c) => (
                           <div key={c.id} className="min-w-0">
                             <dt className="text-[length:max(12px,calc(26*var(--f)))] text-[color:var(--wk-muted)]">{c.title}</dt>
-                            <dd className="text-[length:max(12px,calc(30*var(--f)))] font-bold text-white">{c.format(c.points[c.points.length - 1].value)}</dd>
+                            <dd className="text-[length:max(12px,calc(30*var(--f)))] font-semibold text-white">{c.format(c.points[c.points.length - 1].value)}</dd>
                           </div>
                         ))}
                     </dl>
@@ -682,7 +683,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
                   {measuredSymmetryPairs.map((pair) => (
                     <div key={pair.id} className="rounded-[calc(22*var(--f))] p-[calc(22*var(--f))]" style={{ background: 'var(--wk-raised)' }}>
                       <span className="block text-[length:max(12px,calc(26*var(--f)))] text-[color:var(--wk-muted)] font-semibold">{pair.label}</span>
-                      <span className="block text-[length:max(12px,calc(30*var(--f)))] font-bold text-white font-mono mt-[calc(4*var(--f))]">
+                      <span className="block text-[length:max(12px,calc(30*var(--f)))] font-semibold text-white tabular-numbers mt-[calc(4*var(--f))]">
                         L {fmt.length(pair.leftCm!)} · R {fmt.length(pair.rightCm!)}
                       </span>
                       <span className="block text-[length:max(12px,calc(26*var(--f)))] text-[color:var(--wk-accent)] mt-[calc(4*var(--f))]">
@@ -858,7 +859,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
                   <p className="wk-caption">
                     {todaySteps > 0 ? 'Today' : `Latest (${shortDate(latestStepsEntry!.date)})`}
                   </p>
-                  <p className="font-bold text-white tabular-numbers" style={{ fontSize: `max(12px, ${fig(64)})`, lineHeight: 1, marginTop: fig(10) }}>
+                  <p className="font-semibold text-white tabular-numbers" style={{ fontSize: `max(12px, ${fig(64)})`, lineHeight: 1, marginTop: fig(10) }}>
                     {Math.round(todaySteps > 0 ? todaySteps : latestStepsEntry!.value).toLocaleString()}
                   </p>
                   {avgSteps7d !== null && (
@@ -909,7 +910,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
             {latestWeighIn && (
               <div className="flex items-end justify-between" style={{ gap: fig(24), marginTop: fig(44) }}>
                 <div className="min-w-0">
-                  <p className="font-bold text-white tabular-numbers uppercase" style={{ fontSize: `max(12px, ${fig(64)})`, lineHeight: 1 }}>
+                  <p className="font-semibold text-white tabular-numbers" style={{ fontSize: `max(12px, ${fig(64)})`, lineHeight: 1 }}>
                     {units.formatPrecise(latestWeighIn.bodyweightKg)}
                   </p>
                   {pace && (

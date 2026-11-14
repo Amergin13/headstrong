@@ -105,7 +105,7 @@ export const ActivityConnectionsModal: React.FC<
               className="flex items-center justify-between"
               style={{ gap: fig(16) }}
             >
-              <h4 id="strava-row" className="wk-label">
+              <h4 id="strava-row" className="wk-title">
                 Strava
               </h4>
               <span className="wk-pill">
@@ -152,7 +152,7 @@ export const ActivityConnectionsModal: React.FC<
                     const started = await onConnectStrava();
                     if (!started) setStravaError("Strava isn't available yet.");
                   }}
-                  className="w-full font-bold"
+                  className="w-full font-semibold"
                   style={{
                     marginTop: fig(20),
                     height: 48,
@@ -180,7 +180,7 @@ export const ActivityConnectionsModal: React.FC<
             className="flex items-center justify-between"
             style={{ gap: fig(16) }}
           >
-            <h4 id="hc-row" className="wk-label">
+            <h4 id="hc-row" className="wk-title">
               Health Connect
             </h4>
             <span className="wk-pill">{hcOn ? "On" : "Off"}</span>
@@ -257,7 +257,7 @@ export const ActivityConnectionsModal: React.FC<
             className="flex items-center justify-between"
             style={{ gap: fig(16) }}
           >
-            <h4 id="watch-row" className="wk-label">
+            <h4 id="watch-row" className="wk-title">
               Watch
             </h4>
             <span className="wk-pill">

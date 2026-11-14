@@ -693,7 +693,7 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
                 gap: fig(12),
                 color: 'var(--color-coach-surface)',
                 textTransform: 'none',
-                fontWeight: 800,
+                fontWeight: 600,
                 letterSpacing: '-0.02em',
               }}
             >
@@ -1054,7 +1054,7 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
                               </div>
                               {sp.formula && (
                                 <div
-                                  className="font-mono overflow-x-auto no-scrollbar"
+                                  className="tabular-numbers overflow-x-auto no-scrollbar"
                                   style={{ color: 'var(--wk-accent)', fontSize: `max(12px, ${fig(24)})` }}
                                 >
                                   {sp.formula}

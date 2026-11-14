@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Check, MoreHorizontal } from 'lucide-react';
 import { StripDay } from '../../services/sessionSchedule';
 import { triggerHaptic } from '../../utils/haptics';
+import { formatSentenceCase } from '../../utils/typography';
 
 const fig = (px: number) => `calc(${px} * var(--f))`;
 
@@ -78,7 +79,7 @@ export const WorkoutPageHeader: React.FC<WorkoutPageHeaderProps> = ({ title, day
   return (
     <header className="relative" style={{ paddingTop: fig(20) }}>
       <div className="relative flex items-center justify-center">
-        <h1 className="wk-page-title">{title}</h1>
+        <h1 className="wk-page-title">{formatSentenceCase(title)}</h1>
         {renderMenu && (
           <button
             type="button"
@@ -139,7 +140,8 @@ export const WorkoutPageHeader: React.FC<WorkoutPageHeaderProps> = ({ title, day
                     aria-hidden="true"
                     style={{
                       fontSize: `max(12px, ${fig(22)})`,
-                      fontWeight: day.isToday || selected ? 700 : 600,
+                      fontWeight: 600,
+                      letterSpacing: '0.04em',
                       color: selected || day.isToday ? 'var(--color-text-primary)' : 'var(--wk-muted)',
                     }}
                   >
@@ -153,7 +155,8 @@ export const WorkoutPageHeader: React.FC<WorkoutPageHeaderProps> = ({ title, day
                     aria-hidden="true"
                     style={{
                       fontSize: `max(12px, ${fig(22)})`,
-                      fontWeight: day.isToday ? 700 : 600,
+                      fontWeight: 600,
+                      letterSpacing: '0.04em',
                       color: day.isToday ? 'var(--color-text-primary)' : 'var(--wk-muted)',
                     }}
                   >

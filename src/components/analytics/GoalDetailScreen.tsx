@@ -11,6 +11,7 @@ import {
   timelineCutoffDate,
 } from '../../services/progressSeries';
 import { parseLocalDate } from '../../utils/date';
+import { formatSentenceCase } from '../../utils/typography';
 import { triggerHaptic } from '../../utils/haptics';
 import { useUnits } from '../../utils/unitsContext';
 import { TrendChart } from '../common/TrendChart';
@@ -25,7 +26,7 @@ const dayMonth = (date: string) => {
 };
 
 const Big: React.FC<{ value: string; unit: string }> = ({ value, unit }) => (
-  <p className="font-bold text-white tabular-numbers" style={{ fontSize: text(84), lineHeight: 1, marginTop: fig(28) }}>
+  <p className="font-semibold text-white tabular-numbers" style={{ fontSize: text(84), lineHeight: 1, marginTop: fig(28) }}>
     {value}
     <span className="font-semibold" style={{ fontSize: text(26), color: 'var(--wk-muted)', marginLeft: fig(14) }}>
       {unit}
@@ -35,7 +36,7 @@ const Big: React.FC<{ value: string; unit: string }> = ({ value, unit }) => (
 
 const Method: React.FC<{ goal: AthleteGoal }> = ({ goal }) => (
   <section className="wk-card" aria-label="How this goal is measured">
-    <h2 className="wk-label">How it's measured</h2>
+    <h2 className="wk-title">How it's measured</h2>
     <p className="wk-body" style={{ marginTop: fig(12) }}>
       {goal.method}
     </p>
@@ -64,7 +65,7 @@ const FrequencyDetail: React.FC<{ goal: AthleteGoal; measure: FrequencyMeasure }
   return (
     <>
       <section className="wk-card" aria-label="This week">
-        <h2 className="wk-label">This week</h2>
+        <h2 className="wk-title">This week</h2>
         <Big value={`${measure.thisWeek}/${measure.perWeek}`} unit="sessions" />
         <Dots filled={Math.min(measure.thisWeek, measure.perWeek)} total={measure.perWeek} label={`${measure.thisWeek} of ${measure.perWeek} sessions done this week`} />
         <p className="wk-body" style={{ marginTop: fig(36) }}>
@@ -75,7 +76,7 @@ const FrequencyDetail: React.FC<{ goal: AthleteGoal; measure: FrequencyMeasure }
       </section>
 
       <section className="wk-card" aria-label="Week by week">
-        <h2 className="wk-label">Week by week</h2>
+        <h2 className="wk-title">Week by week</h2>
         <dl className="grid grid-cols-3" style={{ gap: fig(24), marginTop: fig(36) }}>
           {[
             { label: 'In a row', value: measure.streakWeeks },
@@ -86,7 +87,7 @@ const FrequencyDetail: React.FC<{ goal: AthleteGoal; measure: FrequencyMeasure }
               <dt className="uppercase" style={{ fontSize: text(24), lineHeight: 1.21, color: 'var(--wk-muted)' }}>
                 {s.label}
               </dt>
-              <dd className="font-bold text-white tabular-numbers" style={{ fontSize: text(56), lineHeight: 1.05, marginTop: fig(10) }}>
+              <dd className="font-semibold text-white tabular-numbers" style={{ fontSize: text(56), lineHeight: 1.05, marginTop: fig(10) }}>
                 {s.value}
               </dd>
             </div>
@@ -130,7 +131,7 @@ const FrequencyDetail: React.FC<{ goal: AthleteGoal; measure: FrequencyMeasure }
       </section>
 
       <section className="wk-card" aria-label="Month by month">
-        <h2 className="wk-label">Month by month</h2>
+        <h2 className="wk-title">Month by month</h2>
         <dl className="grid grid-cols-3" style={{ gap: fig(24), marginTop: fig(36) }}>
           {[
             { label: `Months at ${monthlyTarget}`, value: measure.monthsHit },
@@ -141,7 +142,7 @@ const FrequencyDetail: React.FC<{ goal: AthleteGoal; measure: FrequencyMeasure }
               <dt className="uppercase" style={{ fontSize: text(24), lineHeight: 1.21, color: 'var(--wk-muted)' }}>
                 {s.label}
               </dt>
-              <dd className="font-bold text-white tabular-numbers" style={{ fontSize: text(56), lineHeight: 1.05, marginTop: fig(10) }}>
+              <dd className="font-semibold text-white tabular-numbers" style={{ fontSize: text(56), lineHeight: 1.05, marginTop: fig(10) }}>
                 {s.value}
               </dd>
             </div>
@@ -189,7 +190,7 @@ const StrengthDetail: React.FC<{ goal: AthleteGoal; others: AthleteGoal[]; onOpe
   return (
     <>
       <section className="wk-card" aria-label={goal.title}>
-        <h2 className="wk-label">{m.exerciseName}</h2>
+        <h2 className="wk-title">{m.exerciseName}</h2>
         {m.type === 'reps' ? (
           <>
             <Big value={`${m.currentReps}/${m.targetReps}`} unit={`reps ${repsAt(m, (kg) => units.format(kg))}`} />
@@ -218,7 +219,7 @@ const StrengthDetail: React.FC<{ goal: AthleteGoal; others: AthleteGoal[]; onOpe
       <Method goal={goal} />
       {others.length > 0 && (
         <section className="wk-card" aria-label="Your other strength levels">
-          <h2 className="wk-label">Your other strength levels</h2>
+          <h2 className="wk-title">Your other strength levels</h2>
           <ul className="flex flex-col" style={{ marginTop: fig(12) }}>
             {others.map((g) => (
               <li key={g.id} style={{ borderTop: `${fig(2)} solid rgba(255,255,255,0.08)` }}>
@@ -231,8 +232,8 @@ const StrengthDetail: React.FC<{ goal: AthleteGoal; others: AthleteGoal[]; onOpe
                   className="w-full text-left flex items-center justify-between"
                   style={{ gap: fig(24), padding: `${fig(26)} 0`, minHeight: 44 }}
                 >
-                  <span className="wk-label min-w-0" style={{ lineHeight: 1.21 }}>
-                    {g.title}
+                  <span className="wk-title min-w-0" style={{ lineHeight: 1.21 }}>
+                    {formatSentenceCase(g.title)}
                   </span>
                   <span className="wk-caption shrink-0 text-right">{describeGoalStanding(g, precise)}</span>
                 </button>
@@ -255,7 +256,7 @@ const TargetDetail: React.FC<{ goal: AthleteGoal }> = ({ goal }) => {
     return (
       <>
         <section className="wk-card" aria-label={goal.title}>
-          <h2 className="wk-label">{m.exerciseName}</h2>
+          <h2 className="wk-title">{m.exerciseName}</h2>
           <Big value={`${m.best.toLocaleString()}/${m.target.toLocaleString()}`} unit="steps today" />
           <div
             className="wk-bar"
@@ -290,7 +291,7 @@ const TargetDetail: React.FC<{ goal: AthleteGoal }> = ({ goal }) => {
   return (
     <>
       <section className="wk-card" aria-label={goal.title}>
-        <h2 className="wk-label">{m.exerciseName}</h2>
+        <h2 className="wk-title">{m.exerciseName}</h2>
         <Big value={`${byWeight ? best.split(' ')[0] : best}/${byWeight ? target.split(' ')[0] : target}`} unit={byWeight ? units.unit : 'reps in one set'} />
         {!byWeight && m.target <= 30 && <Dots filled={Math.min(m.best, m.target)} total={m.target} label={`${m.best} of ${m.target} reps`} />}
         {byWeight && (
@@ -332,7 +333,7 @@ const BodyDetail: React.FC<{
   return (
     <>
       <section className="wk-card" aria-label={goal.title}>
-        <h2 className="wk-label">Signs it's working</h2>
+        <h2 className="wk-title">Signs it's working</h2>
         <Big value={measure.signsMeasured > 0 ? `${measure.signsMet}/${measure.signs.length}` : '—'} unit={measure.signsMeasured > 0 ? 'signs showing' : 'nothing measured yet'} />
         <ul className="flex flex-col" style={{ gap: fig(30), marginTop: fig(44) }}>
           {measure.signs.map((sign) => (
@@ -355,8 +356,8 @@ const BodyDetail: React.FC<{
                 ) : null}
               </span>
               <div className="min-w-0">
-                <p className="wk-label" style={{ lineHeight: 1.21 }}>
-                  {sign.label}
+                <p className="wk-title" style={{ lineHeight: 1.21 }}>
+                  {formatSentenceCase(sign.label)}
                   <span className="sr-only">: {sign.met === true ? 'showing' : sign.met === false ? 'not showing yet' : 'not measured yet'}</span>
                 </p>
                 <p className="wk-body" style={{ marginTop: fig(8) }}>
@@ -369,7 +370,7 @@ const BodyDetail: React.FC<{
       </section>
 
       <section className="wk-card" aria-label="How sure this is">
-        <h2 className="wk-label">How sure this is</h2>
+        <h2 className="wk-title">How sure this is</h2>
         <p className="wk-body" style={{ marginTop: fig(12) }}>
           {measure.evidenceLabel}
           {measure.nextStep ? ` ${measure.nextStep}` : ''}
@@ -387,7 +388,7 @@ const BodyDetail: React.FC<{
       </section>
 
       <section className="wk-card" aria-label="Weight against strength">
-        <h2 className="wk-label">Weight against strength</h2>
+        <h2 className="wk-title">Weight against strength</h2>
         <p className="wk-body" style={{ marginTop: fig(12) }}>
           {visibleStrength.length >= 2 && visibleWeight.length >= 2
             ? measure.phase === 'Lean Bulk'

@@ -81,7 +81,7 @@ export const GoalPhaseSwitcher: React.FC<GoalPhaseSwitcherProps> = ({
               type="button"
               aria-pressed={isSelected}
               onClick={() => handleSelect(p.id)}
-              className="flex items-center justify-center font-bold uppercase transition-colors"
+              className="flex items-center justify-center font-semibold uppercase transition-colors"
               style={{
                 minHeight: 44,
                 height: fig(84),

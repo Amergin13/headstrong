@@ -23,7 +23,7 @@ export const Header: React.FC<HeaderProps> = ({
           style={{
             fontFamily: 'Inter, sans-serif',
             fontSize: 24,
-            fontWeight: 800,
+            fontWeight: 600,
             letterSpacing: '-0.025em',
             lineHeight: 1,
             color: 'var(--color-coach-surface)',

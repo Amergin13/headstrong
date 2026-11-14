@@ -126,7 +126,7 @@ const defaultUnit = (): WeightUnit => {
 const titleStyle: React.CSSProperties = {
   fontSize: `max(22px, ${fig(60)})`,
   lineHeight: 1.15,
-  fontWeight: 700,
+  fontWeight: 600,
   color: 'var(--color-text-primary)',
   letterSpacing: '-0.01em',
 };
@@ -137,11 +137,11 @@ const bodyStyle: React.CSSProperties = {
 };
 const sectionLabel: React.CSSProperties = {
   fontSize: `max(12px, ${fig(26)})`,
-  fontWeight: 700,
+  fontWeight: 600,
   color: 'var(--color-text-primary)',
   marginBottom: fig(16),
 };
-const optionText: React.CSSProperties = { fontSize: `max(14px, ${fig(30)})`, fontWeight: 700, color: 'var(--color-text-primary)', lineHeight: 1.25 };
+const optionText: React.CSSProperties = { fontSize: `max(14px, ${fig(30)})`, fontWeight: 600, color: 'var(--color-text-primary)', lineHeight: 1.25 };
 const optionDetail: React.CSSProperties = { fontSize: `max(12px, ${fig(26)})`, color: 'var(--wk-muted)', lineHeight: 1.35, marginTop: fig(4) };
 
 /** A selectable row or tile: accent ring when chosen. */
@@ -541,7 +541,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
             <button
               type="button"
               onClick={() => (isLast ? finish() : goTo((step + 1) as OnboardingStep))}
-              className="w-full font-bold active:scale-[0.98] transition-transform"
+              className="w-full font-semibold active:scale-[0.98] transition-transform"
               style={{
                 height: 54,
                 borderRadius: 999,

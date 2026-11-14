@@ -92,7 +92,7 @@ const Ring: React.FC<{ ring: GoalRing; colour: string }> = ({ ring, colour }) =>
         )}
       </svg>
       <span
-        className="absolute inset-0 flex items-center justify-center font-bold tabular-numbers"
+        className="absolute inset-0 flex items-center justify-center font-semibold tabular-numbers"
         style={{
           fontSize: text(ring.value.length > 4 || threeRing ? 40 : ring.inner ? 48 : 56),
           color: ring.empty ? 'var(--wk-muted)' : 'var(--color-text-primary)',
@@ -158,7 +158,7 @@ export const GoalsHero: React.FC<{ rings: GoalRing[]; summary: GoalsSummary; onO
         ))}
       </ul>
       <div style={{ marginTop: fig(56), padding: `0 ${fig(28)}` }}>
-        <h2 id="goals-title" className="wk-label" style={{ lineHeight: 1.21 }}>
+        <h2 id="goals-title" className="wk-title" style={{ lineHeight: 1.21 }}>
           Goals
         </h2>
         <p className="wk-body" style={{ marginTop: fig(12) }} aria-live="polite">
@@ -189,7 +189,7 @@ export const OverviewCard: React.FC<{
     className="wk-card w-full text-left block"
   >
     <div className="flex items-start justify-between" style={{ gap: fig(20) }}>
-      <h2 className="wk-label" style={{ lineHeight: 1.21 }}>
+      <h2 className="wk-title" style={{ lineHeight: 1.21 }}>
         {title}
       </h2>
       <ChevronRight className="wk-chevron" strokeWidth={2} aria-hidden="true" />
@@ -206,7 +206,7 @@ export const StatRow: React.FC<{ stats: { label: string; value: string; unit?: s
         <dt className="uppercase" style={{ fontSize: text(24), lineHeight: 1.21, color: 'var(--wk-muted)', overflowWrap: 'anywhere' }}>
           {s.label}
         </dt>
-        <dd className="font-bold text-white tabular-numbers" style={{ fontSize: text(s.value.length > 6 ? 46 : 56), lineHeight: 1.05, marginTop: fig(10) }}>
+        <dd className="font-semibold text-white tabular-numbers" style={{ fontSize: text(s.value.length > 6 ? 46 : 56), lineHeight: 1.05, marginTop: fig(10) }}>
           {s.value}
           {s.unit && (
             <span className="font-semibold" style={{ fontSize: text(22), color: 'var(--wk-muted)', marginLeft: fig(6) }}>

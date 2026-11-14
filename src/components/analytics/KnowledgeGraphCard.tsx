@@ -87,7 +87,7 @@ export const KnowledgeGraphCard: React.FC<KnowledgeGraphCardProps> = ({
             FULL-STRETCH SETS
           </span>
           <span
-            className="font-bold text-white shrink-0"
+            className="font-semibold text-white shrink-0"
             style={{ fontSize: `max(12px, ${fig(40)})`, lineHeight: 1 }}
           >
             {pkg.lengthenedStimulusRatio}%
@@ -106,7 +106,7 @@ export const KnowledgeGraphCard: React.FC<KnowledgeGraphCardProps> = ({
             LOWER BACK LOAD
           </span>
           <span
-            className="font-bold text-white shrink-0"
+            className="font-semibold text-white shrink-0"
             style={{ fontSize: `max(12px, ${fig(40)})`, lineHeight: 1 }}
           >
             {pkg.systemicAxialLoadScore}%
@@ -145,7 +145,7 @@ export const KnowledgeGraphCard: React.FC<KnowledgeGraphCardProps> = ({
                   triggerHaptic('light');
                   setViewMode(tab.id);
                 }}
-                className="wk-tap h-full flex items-center justify-center font-bold uppercase transition-colors"
+                className="wk-tap h-full flex items-center justify-center font-semibold uppercase transition-colors"
                 style={{
                   borderRadius: fig(16),
                   fontSize: `max(12px, ${fig(24)})`,
@@ -223,7 +223,7 @@ export const KnowledgeGraphCard: React.FC<KnowledgeGraphCardProps> = ({
                 MAIN EXERCISES: {j.topContributors.join(', ') || 'BALANCED'}
               </span>
               <span
-                className="font-bold text-white shrink-0"
+                className="font-semibold text-white shrink-0"
                 style={{ fontSize: `max(12px, ${fig(40)})`, lineHeight: 1 }}
               >
                 {j.strainScore}%

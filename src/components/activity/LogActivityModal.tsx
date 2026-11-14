@@ -26,7 +26,7 @@ export const LogActivityModal: React.FC<LogActivityModalProps> = ({ onLog, onClo
     minHeight: 44,
     padding: `0 ${fig(30)}`,
     borderRadius: 999,
-    fontWeight: 700,
+    fontWeight: 600,
     fontSize: `max(13px, ${fig(28)})`,
     background: selected ? 'var(--color-accent-primary-soft)' : 'var(--wk-raised)',
     border: `2px solid ${selected ? 'var(--wk-accent)' : 'transparent'}`,

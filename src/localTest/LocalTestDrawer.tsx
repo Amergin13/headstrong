@@ -249,7 +249,7 @@ export const LocalTestDrawer: React.FC<LocalTestDrawerProps> = ({
                   <Beaker className="h-4 w-4" />
                 </span>
                 <div>
-                  <div className="font-bold text-white" style={{ fontSize: 14 }}>
+                  <div className="font-semibold text-white" style={{ fontSize: 14 }}>
                     Treise Local Test Lab
                   </div>
                   <div className="text-white/60" style={{ fontSize: 12 }}>
@@ -298,7 +298,7 @@ export const LocalTestDrawer: React.FC<LocalTestDrawerProps> = ({
                 <div className="space-y-4">
                   {categories.map((cat) => (
                     <div key={cat} className="space-y-2">
-                      <div className="font-bold uppercase tracking-wider" style={{ fontSize: 12, color: 'var(--color-coach-border)' }}>
+                      <div className="font-semibold uppercase tracking-wider" style={{ fontSize: 12, color: 'var(--color-coach-border)' }}>
                         {cat}
                       </div>
                       <div className="space-y-2">
@@ -316,7 +316,7 @@ export const LocalTestDrawer: React.FC<LocalTestDrawerProps> = ({
                               }`}
                             >
                               <div className="flex items-center justify-between gap-2">
-                                <span className="font-bold text-white" style={{ fontSize: 13 }}>
+                                <span className="font-semibold text-white" style={{ fontSize: 13 }}>
                                   {s.title}
                                 </span>
                                 <span className="shrink-0 rounded-full bg-white/10 px-2 py-0.5 text-white/75" style={{ fontSize: 12 }}>
@@ -338,7 +338,7 @@ export const LocalTestDrawer: React.FC<LocalTestDrawerProps> = ({
               {tab === 'tweaks' && (
                 <div className="space-y-4">
                   <div>
-                    <div className="mb-1.5 font-bold text-white/80" style={{ fontSize: 12 }}>
+                    <div className="mb-1.5 font-semibold text-white/80" style={{ fontSize: 12 }}>
                       Today Readiness Override ({readinessState})
                     </div>
                     <div className="grid grid-cols-3 gap-2">
@@ -361,7 +361,7 @@ export const LocalTestDrawer: React.FC<LocalTestDrawerProps> = ({
                   </div>
 
                   <div>
-                    <div className="mb-1.5 font-bold text-white/80" style={{ fontSize: 12 }}>
+                    <div className="mb-1.5 font-semibold text-white/80" style={{ fontSize: 12 }}>
                       Training Place ({profile.activeLocation || 'gym'})
                     </div>
                     <div className="grid grid-cols-3 gap-2">
@@ -385,7 +385,7 @@ export const LocalTestDrawer: React.FC<LocalTestDrawerProps> = ({
 
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <div className="mb-1.5 font-bold text-white/80" style={{ fontSize: 12 }}>
+                      <div className="mb-1.5 font-semibold text-white/80" style={{ fontSize: 12 }}>
                         Weight Unit ({profile.weightUnit || 'kg'})
                       </div>
                       <div className="grid grid-cols-2 gap-2">
@@ -408,7 +408,7 @@ export const LocalTestDrawer: React.FC<LocalTestDrawerProps> = ({
                     </div>
 
                     <div>
-                      <div className="mb-1.5 font-bold text-white/80" style={{ fontSize: 12 }}>
+                      <div className="mb-1.5 font-semibold text-white/80" style={{ fontSize: 12 }}>
                         Active Workout Helper
                       </div>
                       <button
@@ -426,7 +426,7 @@ export const LocalTestDrawer: React.FC<LocalTestDrawerProps> = ({
                   </div>
 
                   <div>
-                    <div className="mb-1.5 font-bold text-white/80" style={{ fontSize: 12 }}>
+                    <div className="mb-1.5 font-semibold text-white/80" style={{ fontSize: 12 }}>
                       Goal Phase ({profile.goalPhase})
                     </div>
                     <div className="grid grid-cols-3 gap-2">
@@ -449,7 +449,7 @@ export const LocalTestDrawer: React.FC<LocalTestDrawerProps> = ({
                   </div>
 
                   <div>
-                    <div className="mb-1.5 font-bold text-white/80" style={{ fontSize: 12 }}>
+                    <div className="mb-1.5 font-semibold text-white/80" style={{ fontSize: 12 }}>
                       Jump To Screen / Modal
                     </div>
                     <div className="grid grid-cols-2 gap-2">
@@ -484,7 +484,7 @@ export const LocalTestDrawer: React.FC<LocalTestDrawerProps> = ({
               {tab === 'inspector' && (
                 <div className="space-y-4">
                   <div className="rounded-2xl border border-white/10 bg-surface-card p-3 space-y-1.5">
-                    <div className="font-bold text-white" style={{ fontSize: 13 }}>
+                    <div className="font-semibold text-white" style={{ fontSize: 13 }}>
                       Live Engine State
                     </div>
                     <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-white/75" style={{ fontSize: 12 }}>
@@ -503,7 +503,7 @@ export const LocalTestDrawer: React.FC<LocalTestDrawerProps> = ({
 
                   <div className="rounded-2xl border border-white/10 bg-surface-card p-3 space-y-2">
                     <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-1.5 font-bold text-white" style={{ fontSize: 13 }}>
+                      <div className="flex items-center gap-1.5 font-semibold text-white" style={{ fontSize: 13 }}>
                         <Terminal className="h-4 w-4" style={{ color: 'var(--color-coach-border)' }} />
                         <span>Local /api/* Proxies</span>
                       </div>

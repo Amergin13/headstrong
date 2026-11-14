@@ -97,7 +97,7 @@ export const PlateCalculatorModal: React.FC<PlateCalculatorModalProps> = ({
                   step="0.5"
                   value={targetWeight}
                   onChange={(e) => setTargetWeight(parseFloat(e.target.value) || barWeight)}
-                  className="w-24 bg-transparent tabular-numbers font-black text-[length:max(12px,calc(44*var(--f)))] text-white focus:outline-none"
+                  className="w-24 bg-transparent tabular-numbers font-semibold text-[length:max(12px,calc(44*var(--f)))] text-white focus:outline-none"
                 />
                 <span className="wk-caption">{unit}</span>
               </div>
@@ -113,7 +113,7 @@ export const PlateCalculatorModal: React.FC<PlateCalculatorModalProps> = ({
                     triggerHaptic('light');
                     setBarWeight(b);
                   }}
-                  className="px-[calc(22*var(--f))] py-[calc(12*var(--f))] rounded-[calc(15*var(--f))] text-[length:max(12px,calc(26*var(--f)))] tabular-numbers font-bold transition-all"
+                  className="px-[calc(22*var(--f))] py-[calc(12*var(--f))] rounded-[calc(15*var(--f))] text-[length:max(12px,calc(26*var(--f)))] tabular-numbers font-semibold transition-all"
                   style={{
                     background: barWeight === b ? 'var(--wk-pill)' : 'transparent',
                     color: barWeight === b ? 'var(--color-text-primary)' : 'var(--wk-muted)',
@@ -152,7 +152,7 @@ export const PlateCalculatorModal: React.FC<PlateCalculatorModalProps> = ({
                     key={`${weight}-${idx}`}
                     className={`w-7 ${conf.height} ${conf.bg} border ${conf.border} rounded-sm flex items-center justify-center shadow-lg transition-transform`}
                   >
-                    <span className={`text-[length:max(12px,calc(26*var(--f)))] font-mono font-bold rotate-90 ${conf.text}`}>
+                    <span className={`text-[length:max(12px,calc(26*var(--f)))] tabular-numbers font-semibold rotate-90 ${conf.text}`}>
                       {weight}
                     </span>
                   </div>

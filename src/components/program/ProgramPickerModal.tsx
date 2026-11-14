@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { CustomPlanId, ProgramSplitType, SavedTrainingPlan } from '../../engine/types';
 import { triggerHaptic } from '../../utils/haptics';
+import { formatSentenceCase } from '../../utils/typography';
 
 const fig = (px: number) => `calc(${px} * var(--f))`;
 
@@ -127,8 +128,8 @@ export const ProgramPickerModal: React.FC<ProgramPickerModalProps> = ({
               >
                 <div className="flex items-start justify-between" style={{ gap: fig(16) }}>
                   <div className="min-w-0">
-                    <div className="wk-label" style={{ lineHeight: 1.21 }}>
-                      {opt.title}
+                    <div className="wk-title" style={{ lineHeight: 1.21 }}>
+                      {formatSentenceCase(opt.title)}
                     </div>
                     <p
                       style={{

@@ -77,7 +77,7 @@ export const TempoPacer: React.FC<TempoPacerProps> = ({ tempo }) => {
         {running ? (
           <span>
             Rep {rep} • <strong className="text-white">{phase.label}</strong>{' '}
-            <span className="tabular-numbers font-bold">{phase.seconds - secondInPhase}s</span>
+            <span className="tabular-numbers font-semibold">{phase.seconds - secondInPhase}s</span>
           </span>
         ) : (
           <span>

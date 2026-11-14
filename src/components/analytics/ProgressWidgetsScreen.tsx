@@ -134,7 +134,7 @@ export const ProgressWidgetsScreen: React.FC<ProgressWidgetsScreenProps> = ({
     <>
       <section className="wk-card" aria-label="Progress widgets summary">
         <div className="flex items-center justify-between" style={{ gap: fig(20) }}>
-          <h2 className="wk-label">Shown on Progress</h2>
+          <h2 className="wk-title">Shown on Progress</h2>
           <span className="wk-pill">{activeWidgets.length} active</span>
         </div>
         <p className="wk-body" style={{ marginTop: fig(14) }}>
@@ -195,7 +195,7 @@ export const ProgressWidgetsScreen: React.FC<ProgressWidgetsScreenProps> = ({
       {tab === 'overview' && (
         <>
           <section className="wk-card" aria-label="Overview cards">
-            <h2 className="wk-label">Overview cards</h2>
+            <h2 className="wk-title">Overview cards</h2>
             <ul className="flex flex-col" style={{ marginTop: fig(20) }}>
               {overviewWidgets.map((widget) => (
                 <WidgetRow
@@ -212,7 +212,7 @@ export const ProgressWidgetsScreen: React.FC<ProgressWidgetsScreenProps> = ({
 
           {whoopWidgets.length > 0 && (
             <section className="wk-card" aria-label="Whoop metric widgets">
-              <h2 className="wk-label">Whoop charts</h2>
+              <h2 className="wk-title">Whoop charts</h2>
               <p className="wk-caption" style={{ marginTop: fig(8) }}>
                 Pin optional Whoop recovery, strain, HRV, resting HR and sleep trends onto Progress.
               </p>
@@ -235,7 +235,7 @@ export const ProgressWidgetsScreen: React.FC<ProgressWidgetsScreenProps> = ({
 
       {tab === 'exercises' && (
         <section className="wk-card" aria-label="Exercise progression widgets">
-          <h2 className="wk-label">Exercise progressions</h2>
+          <h2 className="wk-title">Exercise progressions</h2>
           <p className="wk-caption" style={{ marginTop: fig(8) }}>
             Track estimated max or reps over time for any specific lift.
           </p>
@@ -279,7 +279,7 @@ export const ProgressWidgetsScreen: React.FC<ProgressWidgetsScreenProps> = ({
       {tab === 'measurements' && (
         <>
           <section className="wk-card" aria-label="Tape measurement widgets">
-            <h2 className="wk-label">Tape measurements</h2>
+            <h2 className="wk-title">Tape measurements</h2>
             <p className="wk-caption" style={{ marginTop: fig(8) }}>
               Pin arms, waist, chest or any tape site straight onto Progress.
             </p>
@@ -297,7 +297,7 @@ export const ProgressWidgetsScreen: React.FC<ProgressWidgetsScreenProps> = ({
           </section>
 
           <section className="wk-card" aria-label="Body composition and volume widgets">
-            <h2 className="wk-label">Body composition and volume</h2>
+            <h2 className="wk-title">Body composition and volume</h2>
             <ul className="flex flex-col" style={{ marginTop: fig(20) }}>
               {bodyAndTrainingCharts.map((chart) => (
                 <WidgetRow

@@ -20,8 +20,6 @@ interface SetRowProps {
   isDumbbell?: boolean;
   displayBadge?: string;
   displayLabel?: string;
-  /** True for the first uncompleted set in the exercise so the athlete knows which set is up next. */
-  isNextSet?: boolean;
   /** Single-arm / single-leg: show left and right reps under the row. */
   perSide?: boolean;
   onUpdate: (updated: Partial<WorkoutSet>) => void;
@@ -35,7 +33,6 @@ export const SetRow: React.FC<SetRowProps> = ({
   isDumbbell = false,
   displayBadge,
   displayLabel,
-  isNextSet = false,
   perSide = false,
   onUpdate,
   onComplete,
@@ -84,7 +81,12 @@ export const SetRow: React.FC<SetRowProps> = ({
     : '—';
   const badge =
     displayBadge || (currentSetType === 'warmup' ? 'W' : currentSetType === 'drop' ? 'D' : currentSetType === 'myo' ? '+' : `${set.setNumber}`);
-  const greyText: React.CSSProperties = { fontSize: `max(12px, ${fig(26)})`, fontWeight: 600, color: 'var(--wk-muted)' };
+  const greyText: React.CSSProperties = {
+    fontSize: `max(13px, ${fig(28)})`,
+    fontWeight: 500,
+    fontVariantNumeric: 'tabular-nums',
+    color: 'var(--wk-muted)',
+  };
 
   // Per side: the set's reps are what both sides managed (the weaker side).
   const updateSide = (side: 'left' | 'right', reps: number) => {
@@ -102,58 +104,28 @@ export const SetRow: React.FC<SetRowProps> = ({
         aria-label={`${label} ${side} side repetitions`}
         onFocus={(e) => e.target.select()}
         onChange={(e) => updateSide(side, Math.max(0, parseInt(e.target.value, 10) || 0))}
-        className="wk-input outline-none block"
+        className="wk-input tabular-numbers outline-none block"
         style={{ width: fig(110) }}
       />
     </label>
   );
 
-  const activeNext = isNextSet && !set.completed;
-
   return (
     <div className="flex flex-col" style={{ gap: fig(14) }}>
     <div
-      className="grid items-center relative transition-colors"
-      data-next-set={activeNext ? 'true' : undefined}
-      aria-current={activeNext ? 'step' : undefined}
-      style={{
-        gridTemplateColumns: SET_TABLE_COLUMNS,
-        columnGap: SET_TABLE_GAP,
-        borderRadius: fig(20),
-        padding: `${fig(8)} ${fig(10)}`,
-        marginLeft: `calc(-1 * ${fig(10)})`,
-        marginRight: `calc(-1 * ${fig(10)})`,
-        background: activeNext ? 'rgba(0, 241, 159, 0.06)' : 'transparent',
-        boxShadow: activeNext ? 'inset 0 0 0 1px rgba(0, 241, 159, 0.28)' : 'none',
-        opacity: set.completed ? 0.86 : 1,
-      }}
-      aria-label={activeNext ? `${label} (next set)` : label}
+      className="grid items-center relative"
+      style={{ gridTemplateColumns: SET_TABLE_COLUMNS, columnGap: SET_TABLE_GAP }}
+      aria-label={label}
     >
       {celebration > 0 && set.completed && (
         <span key={`flash-${celebration}`} className="wk-row-flash" aria-hidden="true" />
       )}
       <span
-        className="flex flex-col items-center justify-center text-center leading-tight"
-        style={{
-          ...greyText,
-          color: activeNext
-            ? 'var(--wk-accent)'
-            : currentSetType === 'warmup'
-            ? 'var(--color-set-warmup)'
-            : greyText.color,
-          fontWeight: activeNext ? 800 : 600,
-        }}
-        title={activeNext ? `${label} — Next set` : label}
+        className="text-center tabular-numbers"
+        style={{ ...greyText, color: currentSetType === 'warmup' ? 'var(--color-set-warmup)' : greyText.color }}
+        title={label}
       >
-        <span>{badge}</span>
-        {activeNext && (
-          <span
-            className="uppercase tracking-wider font-extrabold"
-            style={{ fontSize: `max(12px, ${fig(18)})`, color: 'var(--wk-accent)', lineHeight: 1.05 }}
-          >
-            Next
-          </span>
-        )}
+        {badge}
       </span>
 
       <button
@@ -161,22 +133,13 @@ export const SetRow: React.FC<SetRowProps> = ({
         onClick={handleCopyPrevious}
         disabled={!previous}
         aria-label={previous ? `Last time ${prevDisplay}. Tap to copy` : 'No previous set for this exercise'}
-        className="wk-tap text-center truncate disabled:pointer-events-none"
+        className="wk-tap text-center truncate tabular-numbers disabled:pointer-events-none"
         style={greyText}
       >
         {prevDisplay}
       </button>
 
-      <label
-        className="wk-tap wk-input flex items-center justify-center cursor-text"
-        style={
-          activeNext
-            ? { boxShadow: 'inset 0 0 0 1px rgba(255, 255, 255, 0.16)' }
-            : !set.completed
-            ? { color: 'var(--color-text-secondary)' }
-            : undefined
-        }
-      >
+      <label className="wk-tap wk-input tabular-numbers flex items-center justify-center cursor-text">
         <input
           type="number"
           step={weightStep}
@@ -185,16 +148,12 @@ export const SetRow: React.FC<SetRowProps> = ({
           aria-label={`${label} weight in ${units.unit === 'lb' ? 'pounds' : 'kilograms'}`}
           onFocus={(e) => e.target.select()}
           onChange={(e) => onUpdate({ actualWeightKg: units.fromDisplay(parseFloat(e.target.value) || 0) })}
-          className="bg-transparent text-right font-bold outline-none p-0"
-          style={{
-            width: `${Math.max(1, String(displayWeight).length)}ch`,
-            fontSize: 'inherit',
-            color: activeNext || set.completed ? 'var(--color-text-primary)' : 'var(--color-text-secondary)',
-          }}
+          className="bg-transparent text-right font-semibold tabular-numbers outline-none p-0 text-white"
+          style={{ width: `${Math.max(1, String(displayWeight).length)}ch`, fontSize: 'inherit' }}
         />
         {displayWeight > 0 && (
-          <span aria-hidden="true" style={{ fontSize: 'max(12px, 0.8em)', marginLeft: '0.1em' }}>
-            {units.unit.toUpperCase()}
+          <span aria-hidden="true" style={{ fontSize: `max(12px, ${fig(24)})`, fontWeight: 500, marginLeft: '0.12em', color: 'var(--wk-muted)' }}>
+            {units.unit}
           </span>
         )}
       </label>
@@ -207,15 +166,11 @@ export const SetRow: React.FC<SetRowProps> = ({
           aria-label={`${label} repetitions`}
           onFocus={(e) => e.target.select()}
           onChange={(e) => onUpdate({ actualReps: parseInt(e.target.value, 10) || 0 })}
-          className="wk-input outline-none block"
-          style={{
-            color: activeNext || set.completed ? 'var(--color-text-primary)' : 'var(--color-text-secondary)',
-            boxShadow: activeNext ? 'inset 0 0 0 1px rgba(255, 255, 255, 0.16)' : undefined,
-          }}
+          className="wk-input tabular-numbers outline-none block"
         />
         {(set.isFormFailure || set.repDisplay === 'F*') && (
           <span
-            className="absolute rounded pointer-events-none font-bold"
+            className="absolute rounded pointer-events-none font-semibold"
             style={{ top: fig(-12), right: fig(-6), fontSize: `max(12px, ${fig(18)})`, padding: `0 ${fig(6)}`, background: 'var(--color-set-failure-bg)', color: 'var(--color-set-failure-fg)' }}
             title="Do as many reps as you can with good form"
           >
@@ -234,24 +189,14 @@ export const SetRow: React.FC<SetRowProps> = ({
           aria-label={`${label} reps in reserve`}
           onFocus={(e) => e.target.select()}
           onChange={(e) => onUpdate({ actualRir: Math.max(0, Math.min(5, parseInt(e.target.value, 10) || 0)) })}
-          className="wk-input outline-none block"
-          style={{
-            color: activeNext || set.completed ? 'var(--color-text-primary)' : 'var(--color-text-secondary)',
-            boxShadow: activeNext ? 'inset 0 0 0 1px rgba(255, 255, 255, 0.16)' : undefined,
-          }}
+          className="wk-input tabular-numbers outline-none block"
         />
       </label>
 
       <button
         type="button"
         onClick={handleToggleComplete}
-        aria-label={
-          set.completed
-            ? `Mark ${label.toLowerCase()} not done`
-            : activeNext
-            ? `Complete ${label.toLowerCase()} (next set)`
-            : `Complete ${label.toLowerCase()}`
-        }
+        aria-label={set.completed ? `Mark ${label.toLowerCase()} not done` : `Complete ${label.toLowerCase()}`}
         title={set.completed ? `${label} logged` : `Log ${label.toLowerCase()}`}
         aria-pressed={set.completed}
         className={`wk-tap flex items-center justify-center transition-colors active:scale-95 ${
@@ -262,30 +207,15 @@ export const SetRow: React.FC<SetRowProps> = ({
           minWidth: 48,
           height: `max(48px, ${fig(106)})`,
           borderRadius: fig(15),
-          background: set.completed
-            ? 'var(--wk-accent)'
-            : activeNext
-            ? 'var(--color-status-positive-soft)'
-            : 'var(--color-action-secondary-bg)',
-          border: set.completed
-            ? 'none'
-            : activeNext
-            ? '1.5px solid var(--wk-accent)'
-            : '1px solid var(--color-border-subtle)',
+          background: set.completed ? 'var(--wk-accent)' : 'var(--color-action-secondary-bg)',
         }}
       >
         <svg
           viewBox="0 0 24 24"
           style={{ width: `max(18px, ${fig(38)})`, height: `max(18px, ${fig(38)})` }}
           fill="none"
-          stroke={
-            set.completed
-              ? 'var(--color-text-on-accent)'
-              : activeNext
-              ? 'var(--wk-accent)'
-              : 'var(--wk-muted)'
-          }
-          strokeWidth={set.completed ? 3 : activeNext ? 2.75 : 2.2}
+          stroke={set.completed ? 'var(--color-text-on-accent)' : 'var(--wk-muted)'}
+          strokeWidth={set.completed ? 3 : 2.2}
           strokeLinecap="round"
           strokeLinejoin="round"
           aria-hidden="true"

@@ -88,12 +88,12 @@ export const MuscleProgressCard: React.FC<{
         {view.summary}
       </p>
 
-      <h3 className="wk-label" style={sectionTitle}>
+      <h3 className="wk-title" style={sectionTitle}>
         Weekly hard sets
       </h3>
       <WeeklySetsBars progress={view} />
 
-      <h3 className="wk-label" style={sectionTitle}>
+      <h3 className="wk-title" style={sectionTitle}>
         Strength (start = 100)
       </h3>
       <TrendChart
@@ -111,7 +111,7 @@ export const MuscleProgressCard: React.FC<{
 
       {view.measurement && (
         <>
-          <h3 className="wk-label" style={sectionTitle}>
+          <h3 className="wk-title" style={sectionTitle}>
             {view.measurement.label} measurement
           </h3>
           <TrendChart

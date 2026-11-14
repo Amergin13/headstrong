@@ -16,6 +16,7 @@ import {
 import { ChevronRight } from 'lucide-react';
 import { ProgramPickerModal } from './ProgramPickerModal';
 import { triggerHaptic } from '../../utils/haptics';
+import { formatSentenceCase } from '../../utils/typography';
 
 interface SplitEditorProps {
   /** 6-week plan position of the queued workout, so the plan opens there. */
@@ -158,7 +159,7 @@ export const SplitEditor: React.FC<SplitEditorProps> = ({
                 {activePhaseData.name}
               </span>
               <span
-                className="font-bold text-white shrink-0"
+                className="font-semibold text-white shrink-0"
                 style={{ fontSize: `max(12px, ${fig(40)})`, lineHeight: 1 }}
               >
                 Phase {selectedPhase}/3
@@ -192,7 +193,7 @@ export const SplitEditor: React.FC<SplitEditorProps> = ({
                       const firstW = WORKOUT_TEMPLATES_24.find((w) => w.phase === p.phaseNumber);
                       if (firstW) setExpandedWorkoutNum(firstW.workoutNumber);
                     }}
-                    className="h-full flex items-center justify-center font-bold uppercase transition-colors"
+                    className="h-full flex items-center justify-center font-semibold uppercase transition-colors"
                     style={{
                       borderRadius: fig(16),
                       fontSize: `max(12px, ${fig(24)})`,
@@ -257,7 +258,7 @@ export const SplitEditor: React.FC<SplitEditorProps> = ({
                       WORKOUT #{workout.workoutNumber} • {workout.exercises.length} EXERCISES
                     </span>
                     <span
-                      className="font-bold text-white shrink-0"
+                      className="font-semibold text-white shrink-0"
                       style={{ fontSize: `max(12px, ${fig(40)})`, lineHeight: 1 }}
                     >
                       {workout.workoutNumber}/24
@@ -367,7 +368,7 @@ export const SplitEditor: React.FC<SplitEditorProps> = ({
             {activeDay} WORKOUT ROUTINE
           </span>
           <span
-            className="font-bold text-white shrink-0"
+            className="font-semibold text-white shrink-0"
             style={{ fontSize: `max(12px, ${fig(40)})`, lineHeight: 1 }}
           >
             {routineExercises.length} EXERCISES
@@ -401,7 +402,7 @@ export const SplitEditor: React.FC<SplitEditorProps> = ({
                   triggerHaptic('light');
                   setActiveDay(d.id);
                 }}
-                className="h-full flex items-center justify-center font-bold uppercase transition-colors"
+                className="h-full flex items-center justify-center font-semibold uppercase transition-colors"
                 style={{
                   borderRadius: fig(16),
                   fontSize: `max(12px, ${fig(24)})`,
@@ -444,7 +445,7 @@ export const SplitEditor: React.FC<SplitEditorProps> = ({
                 style={{ gap: fig(16) }}
               >
                 <div className="min-w-0">
-                  <div className="wk-label">{idx + 1}. {ex.name}</div>
+                  <div className="wk-title">{idx + 1}. {formatSentenceCase(ex.name)}</div>
                   <div className="wk-caption" style={{ marginTop: fig(6) }}>
                     {ex.primaryMuscle} • {equipLabel}
                   </div>
@@ -511,7 +512,7 @@ export const SplitEditor: React.FC<SplitEditorProps> = ({
                   style={{ gap: fig(16) }}
                 >
                   <div>
-                    <div className="wk-label">{ex.name}</div>
+                    <div className="wk-title">{formatSentenceCase(ex.name)}</div>
                     <div className="wk-caption" style={{ marginTop: fig(6) }}>
                       {ex.primaryMuscle} • {ex.defaultRepRange[0]}–{ex.defaultRepRange[1]} reps
                     </div>

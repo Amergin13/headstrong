@@ -1,6 +1,7 @@
 import React from 'react';
 import { CompletedExerciseSummary, WorkoutFinish } from '../../services/workoutFinish';
 import { localDateString } from '../../utils/date';
+import { formatSentenceCase } from '../../utils/typography';
 import { useUnits } from '../../utils/unitsContext';
 import { TrendChart } from '../common/TrendChart';
 import { useWorkoutSummaryText } from './useWorkoutSummaryText';
@@ -10,10 +11,10 @@ const text = (px: number) => `max(12px, ${fig(px)})`;
 
 const Stat: React.FC<{ label: string; value: string }> = ({ label, value }) => (
   <div>
-    <dt className="uppercase" style={{ fontSize: text(26), lineHeight: 1.21, color: 'var(--wk-muted)' }}>
+    <dt className="wk-label" style={{ color: 'var(--wk-muted)' }}>
       {label}
     </dt>
-    <dd className="font-bold text-white tabular-numbers" style={{ fontSize: text(64), lineHeight: 1, marginTop: fig(12) }}>
+    <dd className="font-semibold text-white tabular-numbers" style={{ fontSize: text(64), lineHeight: 1, marginTop: fig(12) }}>
       {value}
     </dd>
   </div>
@@ -26,8 +27,8 @@ export const FinishedWorkoutSummaryCard: React.FC<{ finish: WorkoutFinish }> = (
   const { session } = finish.report;
   return (
     <section className="wk-card" aria-labelledby="finished-workout-title">
-      <h2 id="finished-workout-title" className="wk-label" style={{ lineHeight: 1.21 }}>
-        Today's workout finished
+      <h2 id="finished-workout-title" className="wk-title">
+        Today&apos;s workout finished
       </h2>
       <p className="wk-body" style={{ marginTop: fig(12) }} aria-live="polite">
         <span key={summary} className="wk-text-swap">
@@ -87,7 +88,7 @@ export const WhoopStrainCard: React.FC<WhoopStrainCardProps> = ({
   return (
     <section className={`wk-card ${className}`.trim()} style={style} aria-label="Whoop strain summary">
       <div className="flex items-center justify-between" style={{ gap: fig(20) }}>
-        <h3 className="wk-label" style={{ lineHeight: 1.21 }}>
+        <h3 className="wk-title">
           Whoop strain
         </h3>
         {isSyncing ? (
@@ -113,10 +114,10 @@ export const WhoopStrainCard: React.FC<WhoopStrainCardProps> = ({
 
       <dl className="flex flex-wrap" style={{ gap: fig(96), marginTop: fig(48) }}>
         <div>
-          <dt className="uppercase" style={{ fontSize: text(26), lineHeight: 1.21, color: 'var(--wk-muted)' }}>
+          <dt className="wk-label" style={{ color: 'var(--wk-muted)' }}>
             Workout strain
           </dt>
-          <dd className="font-bold text-white tabular-numbers" style={{ fontSize: text(64), lineHeight: 1, marginTop: fig(12) }}>
+          <dd className="font-semibold text-white tabular-numbers" style={{ fontSize: text(64), lineHeight: 1, marginTop: fig(12) }}>
             {hasWorkoutStrain ? workoutStrain.toFixed(1) : '—'}
             {hasWorkoutStrain && (
               <span className="font-semibold" style={{ fontSize: text(26), color: 'var(--wk-muted)', marginLeft: fig(10) }}>
@@ -159,7 +160,7 @@ export const CompletedExerciseCard: React.FC<{ summary: CompletedExerciseSummary
   return (
     <section aria-label={`${summary.exerciseName}${summary.isPersonalBest ? ', personal best' : ''}`} className="wk-card">
       <div className="flex items-start justify-between" style={{ gap: fig(20) }}>
-        <h3 className="wk-h1 min-w-0">{summary.exerciseName}</h3>
+        <h3 className="wk-h1 min-w-0">{formatSentenceCase(summary.exerciseName)}</h3>
         {summary.isPersonalBest && (
           <span className="wk-pill shrink-0" style={{ background: 'var(--wk-accent)', color: 'var(--color-text-on-accent)' }}>
             Personal best

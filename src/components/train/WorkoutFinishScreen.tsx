@@ -5,6 +5,7 @@ import { FinishPersonalBest, WorkoutFinish } from '../../services/workoutFinish'
 import { useWorkoutSummaryText } from './useWorkoutSummaryText';
 import { WhoopStrainCard } from './FinishedWorkoutCards';
 import { triggerHaptic } from '../../utils/haptics';
+import { formatSentenceCase } from '../../utils/typography';
 import { useUnits } from '../../utils/unitsContext';
 
 const fig = (px: number) => `calc(${px} * var(--f))`;
@@ -86,19 +87,19 @@ const Confetti: React.FC = () => {
 };
 
 const CardTitle: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-  <h3 className="wk-label" style={{ lineHeight: 1.21 }}>
+  <h3 className="wk-title">
     {children}
   </h3>
 );
 
 const CardSubject: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-  <p className="uppercase" style={{ fontSize: text(26), lineHeight: 1.21, color: 'var(--wk-muted)', marginTop: fig(26) }}>
+  <p className="wk-label" style={{ color: 'var(--wk-muted)', marginTop: fig(26) }}>
     {children}
   </p>
 );
 
 const BigNumber: React.FC<{ value: string; unit?: string }> = ({ value, unit }) => (
-  <p className="font-bold text-white tabular-numbers" style={{ fontSize: text(64), lineHeight: 1, marginTop: fig(12) }}>
+  <p className="font-semibold text-white tabular-numbers" style={{ fontSize: text(64), lineHeight: 1, marginTop: fig(12) }}>
     {value}
     {unit && (
       <span className="font-semibold" style={{ fontSize: text(26), color: 'var(--wk-muted)', marginLeft: fig(10) }}>
@@ -168,11 +169,11 @@ export const WorkoutFinishScreen: React.FC<WorkoutFinishScreenProps> = ({
 
         {/* Workout and plan position */}
         <div className="flex items-end justify-between" style={{ gap: fig(20) }}>
-          <h2 className="wk-label" style={{ lineHeight: 1.21 }}>
-            Workout finished: {report.session.name}
+          <h2 className="wk-title">
+            Workout finished: {formatSentenceCase(report.session.name)}
           </h2>
           {plan && (
-            <span className="font-bold text-white shrink-0 tabular-numbers" style={{ fontSize: text(40), lineHeight: 1 }}>
+            <span className="wk-number shrink-0 tabular-numbers" style={{ lineHeight: 1 }}>
               {plan.workoutNumber}/{plan.totalWorkouts}
             </span>
           )}
@@ -201,13 +202,13 @@ export const WorkoutFinishScreen: React.FC<WorkoutFinishScreenProps> = ({
           </p>
           <div className="flex" style={{ gap: fig(126), marginTop: fig(60) }}>
             <div>
-              <p className="uppercase" style={{ fontSize: text(26), lineHeight: 1.21, color: 'var(--wk-muted)' }}>
+              <p className="wk-label" style={{ color: 'var(--wk-muted)' }}>
                 Volume ({units.unit})
               </p>
               <BigNumber value={volume} />
             </div>
             <div>
-              <p className="uppercase" style={{ fontSize: text(26), lineHeight: 1.21, color: 'var(--wk-muted)' }}>
+              <p className="wk-label" style={{ color: 'var(--wk-muted)' }}>
                 Sets
               </p>
               <BigNumber value={`${report.session.workingSets}`} />

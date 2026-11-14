@@ -123,16 +123,16 @@ export const BiometricCircularGauge: React.FC<BiometricCircularGaugeProps> = ({
         {/* Centered Metric Content */}
         <div className="absolute inset-0 flex flex-col items-center justify-center text-center px-2">
           <div className="flex items-baseline justify-center">
-            <span className={`${sizeCfg.valueText} font-extrabold text-white tabular-numbers tracking-tight`}>
+            <span className={`${sizeCfg.valueText} font-semibold text-white tabular-numbers tracking-tight`}>
               {formattedValue}
             </span>
             {unit && (
-              <span className="text-xs font-bold text-slate-400 ml-0.5">
+              <span className="text-xs font-semibold text-slate-400 ml-0.5">
                 {unit}
               </span>
             )}
           </div>
-          <span className="text-xs font-bold tracking-widest uppercase text-slate-400 mt-0.5">
+          <span className="text-xs font-semibold tracking-widest uppercase text-slate-400 mt-0.5">
             {label}
           </span>
         </div>

@@ -205,7 +205,7 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
                   HOME SETUP • {homeEquipItems.length} ITEMS
                 </span>
                 <span
-                  className="font-bold text-white shrink-0"
+                  className="font-semibold text-white shrink-0"
                   style={{ fontSize: `max(12px, ${fig(40)})`, lineHeight: 1 }}
                 >
                   3 LOCATIONS

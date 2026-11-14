@@ -1,6 +1,7 @@
 import React from 'react';
 import { ChevronRight } from 'lucide-react';
 import { triggerHaptic } from '../../utils/haptics';
+import { formatSentenceCase } from '../../utils/typography';
 
 const fig = (px: number) => `calc(${px} * var(--f))`;
 
@@ -36,12 +37,12 @@ const SessionCountBar: React.FC<SessionCountProps & { topMargin: string; barMarg
   return (
     <>
       <div className="flex items-end justify-between" style={{ marginTop: topMargin, gap: fig(20) }}>
-        <span className="wk-label truncate" style={{ lineHeight: 1.21 }}>
-          {sessionLabel}
+        <span className="wk-title truncate" style={{ lineHeight: 1.25 }}>
+          {formatSentenceCase(sessionLabel)}
         </span>
-        <span className="font-bold text-white shrink-0 tabular-numbers" style={{ fontSize: `max(12px, ${fig(40)})`, lineHeight: 1 }}>
+        <span className="wk-number shrink-0 tabular-numbers" style={{ lineHeight: 1 }}>
           {current}/{total}{' '}
-          <span className="font-semibold uppercase" style={{ fontSize: `max(12px, ${fig(22)})`, color: 'var(--wk-muted)' }}>
+          <span className="wk-label" style={{ color: 'var(--wk-muted)' }}>
             sets
           </span>
         </span>
@@ -89,12 +90,12 @@ export const ProgramProgressCard: React.FC<ProgramProgressCardProps> = ({
       {!lean && (
         <>
           <div className="flex items-start justify-between" style={{ gap: fig(20) }}>
-            <h2 className="wk-h1" style={{ lineHeight: 1.21 }}>
-              {title}
+            <h2 className="wk-h1" style={{ lineHeight: 1.25 }}>
+              {formatSentenceCase(title)}
             </h2>
             {onOpen && <ChevronRight className="wk-chevron" strokeWidth={2} aria-hidden="true" />}
           </div>
-          <p style={{ fontSize: `max(12px, ${fig(28)})`, lineHeight: 1.21, color: 'var(--wk-muted)', marginTop: fig(20) }}>{subtitle}</p>
+          <p className="wk-body" style={{ color: 'var(--wk-muted)', marginTop: fig(20) }}>{subtitle}</p>
         </>
       )}
       <div ref={sessionRef} style={{ marginTop: lean ? '0px' : fig(60) }}>

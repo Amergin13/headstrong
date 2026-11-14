@@ -9,6 +9,7 @@ import { triggerHaptic } from '../../utils/haptics';
 import { ExerciseInsight } from '../../services/exerciseInsight';
 import { TrendChart } from '../common/TrendChart';
 import { localDateString } from '../../utils/date';
+import { formatSentenceCase } from '../../utils/typography';
 import { isUnilateralExercise } from '../../services/movementStandards';
 
 const fig = (px: number) => `calc(${px} * var(--f))`;
@@ -81,7 +82,7 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
       {/* Title, swap button, details toggle */}
       <div className="flex items-start justify-between" style={{ gap: fig(20) }}>
         <div className="flex items-center min-w-0 flex-wrap" style={{ columnGap: fig(16), rowGap: fig(8) }}>
-          <h3 className="wk-h1">{exercise.name}</h3>
+          <h3 className="wk-h1">{formatSentenceCase(exercise.name)}</h3>
           {onOpenSwap && (
             <button
               type="button"
@@ -252,12 +253,13 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
       <div role="table" aria-label={`${exercise.name} sets`} style={{ marginTop: fig(60) }}>
         <div
           role="row"
-          className="grid items-center text-center"
+          className="wk-workout-caption grid items-center text-center uppercase"
           style={{
             gridTemplateColumns: SET_TABLE_COLUMNS,
             columnGap: SET_TABLE_GAP,
-            fontSize: `max(12px, ${fig(24)})`,
-            fontWeight: 600,
+            fontSize: `max(13px, ${fig(28)})`,
+            fontWeight: 500,
+            letterSpacing: '0.04em',
             color: 'var(--wk-muted)',
             marginBottom: fig(30),
           }}
@@ -272,7 +274,6 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
         {/* At least 12 px apart between 48 px+ rows so touch areas never overlap. */}
         <div className="flex flex-col" style={{ gap: `max(${fig(24)}, 12px)` }}>
           {(() => {
-            const nextSetId = exercise.sets.find((st) => !st.completed)?.id ?? null;
             let warmupIndex = 0;
             let workingIndex = 0;
             return exercise.sets.map((s) => {
@@ -302,7 +303,6 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
                   set={s}
                   displayBadge={displayBadge}
                   displayLabel={displayLabel}
-                  isNextSet={s.id === nextSetId}
                   previous={previous}
                   isBodyweight={isBodyweightOnly}
                   isDumbbell={exercise.equipment === 'dumbbell'}

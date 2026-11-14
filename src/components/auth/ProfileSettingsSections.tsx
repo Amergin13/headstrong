@@ -175,7 +175,7 @@ export const ProfileSettingsSections: React.FC<ProfileSettingsSectionsProps> = (
                       type="button"
                       aria-pressed={isSelected}
                       onClick={() => onUpdateProfile({ gender: g, sexEntered: true })}
-                      className="wk-tap h-full font-bold uppercase transition-colors"
+                      className="wk-tap h-full font-semibold uppercase transition-colors"
                       style={{
                         paddingLeft: fig(20),
                         paddingRight: fig(20),
@@ -239,7 +239,7 @@ export const ProfileSettingsSections: React.FC<ProfileSettingsSectionsProps> = (
                       type="button"
                       aria-pressed={isSelected}
                       onClick={() => onUpdateProfile({ weightUnit: u })}
-                      className="wk-tap h-full font-bold uppercase transition-colors"
+                      className="wk-tap h-full font-semibold uppercase transition-colors"
                       style={{
                         paddingLeft: fig(20),
                         paddingRight: fig(20),
@@ -281,7 +281,7 @@ export const ProfileSettingsSections: React.FC<ProfileSettingsSectionsProps> = (
                       type="button"
                       aria-pressed={isSelected}
                       onClick={() => onUpdateProfile({ experienceLevel: opt.id })}
-                      className="wk-tap h-full font-bold uppercase transition-colors"
+                      className="wk-tap h-full font-semibold uppercase transition-colors"
                       style={{
                         paddingLeft: fig(16),
                         paddingRight: fig(16),
@@ -647,7 +647,7 @@ export const ProfileSettingsSections: React.FC<ProfileSettingsSectionsProps> = (
                     <strong className="text-white">Fitness Disclaimer:</strong> Recovery scores and target weights are for informational fitness tracking only and are not medical advice.
                   </p>
                   <div
-                    className="flex items-center font-bold"
+                    className="flex items-center font-semibold"
                     style={{ marginTop: fig(16), gap: fig(24), color: 'var(--wk-accent)' }}
                   >
                     <a href="/privacy.html" target="_blank" rel="noreferrer" className="wk-tap hover:underline">

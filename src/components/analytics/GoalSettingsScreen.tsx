@@ -122,7 +122,7 @@ export const GoalSettingsScreen: React.FC<GoalSettingsScreenProps> = ({ profile,
   return (
     <>
       <section className="wk-card" aria-labelledby="goal-main">
-        <h2 id="goal-main" className="wk-label">
+        <h2 id="goal-main" className="wk-title">
           Your main goal
         </h2>
         <p className="wk-body" style={{ marginTop: fig(12) }}>
@@ -136,7 +136,7 @@ export const GoalSettingsScreen: React.FC<GoalSettingsScreenProps> = ({ profile,
       </section>
 
       <section className="wk-card" aria-labelledby="goal-sessions">
-        <h2 id="goal-sessions" className="wk-label">
+        <h2 id="goal-sessions" className="wk-title">
           Sessions a week
         </h2>
         <p className="wk-body" style={{ marginTop: fig(12) }}>
@@ -154,7 +154,7 @@ export const GoalSettingsScreen: React.FC<GoalSettingsScreenProps> = ({ profile,
                 triggerHaptic('light');
                 save({ ...settings, sessionsPerWeek: n });
               }}
-              className="flex flex-col items-center justify-center font-bold tabular-numbers"
+              className="flex flex-col items-center justify-center font-semibold tabular-numbers"
               style={{
                 minHeight: 48,
                 height: fig(130),
@@ -174,7 +174,7 @@ export const GoalSettingsScreen: React.FC<GoalSettingsScreenProps> = ({ profile,
       </section>
 
       <section className="wk-card" aria-labelledby="goal-strength">
-        <h2 id="goal-strength" className="wk-label">
+        <h2 id="goal-strength" className="wk-title">
           Strength level to follow
         </h2>
         <p className="wk-body" style={{ marginTop: fig(12) }}>
@@ -205,7 +205,7 @@ export const GoalSettingsScreen: React.FC<GoalSettingsScreenProps> = ({ profile,
 
       <section className="wk-card" aria-labelledby="goal-own">
         <div className="flex items-start justify-between" style={{ gap: fig(20) }}>
-          <h2 id="goal-own" className="wk-label">
+          <h2 id="goal-own" className="wk-title">
             Goals of your own
           </h2>
           <span className="wk-pill">

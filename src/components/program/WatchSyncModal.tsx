@@ -314,7 +314,7 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
                 setImportStatus(null);
                 setSyncProgress(null);
               }}
-              className="h-full flex items-center justify-center font-bold uppercase transition-colors px-[calc(8*var(--f))] min-h-[44px]"
+              className="h-full flex items-center justify-center font-semibold uppercase transition-colors px-[calc(8*var(--f))] min-h-[44px]"
               style={{
                 borderRadius: fig(16),
                 fontSize: `max(12px, ${fig(22)})`,
