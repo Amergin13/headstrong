@@ -8734,12 +8734,13 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
     const { resolveWorkoutDisplaySettings } = await import('../types');
     const defaultDisplay = resolveWorkoutDisplaySettings(undefined);
     const customDisplay = resolveWorkoutDisplaySettings({
+      showProgramCard: true,
       showExerciseCharts: false,
       showExerciseSummaries: false,
       showRecoveryCard: false,
     });
     assert(
-      defaultDisplay.showProgramCard === true &&
+      defaultDisplay.showProgramCard === false &&
         defaultDisplay.showRecoveryCard === true &&
         defaultDisplay.showExerciseSummaries === true &&
         defaultDisplay.showExerciseCharts === true &&
@@ -8749,7 +8750,31 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
         customDisplay.showExerciseSummaries === false &&
         customDisplay.showExerciseCharts === false &&
         customDisplay.showStepsCard === true,
-      'Workout page display settings default to all enabled and respect personal card/chart/summary toggles'
+      'Workout page display settings default to showProgramCard: false (lean header card default) and respect personal widget toggles'
+    );
+
+    const trainTabSrc = fsMod.readFileSync(pathMod.join(repoRoot, 'src/components/train/TrainTab.tsx'), 'utf8') as string;
+    const progCardSrc = fsMod.readFileSync(pathMod.join(repoRoot, 'src/components/train/ProgramProgressCard.tsx'), 'utf8') as string;
+    const setRowSrc = fsMod.readFileSync(pathMod.join(repoRoot, 'src/components/train/SetRow.tsx'), 'utf8') as string;
+    const exCardSrc = fsMod.readFileSync(pathMod.join(repoRoot, 'src/components/train/ExerciseCard.tsx'), 'utf8') as string;
+    const idxCssSrc = fsMod.readFileSync(pathMod.join(repoRoot, 'src/index.css'), 'utf8') as string;
+    assert(
+      trainTabSrc.includes('lean={!workoutDisplay.showProgramCard}') &&
+        trainTabSrc.includes('current: sessionSetsCurrent') &&
+        trainTabSrc.includes('total: sessionSetsTotal') &&
+        trainTabSrc.includes('workoutDisplay.showRecoveryCard && hasRecoveryMechanism') &&
+        progCardSrc.includes('Workout sets completed'),
+      'Workout page renders lean session card + sticky header with workout set count by default and gates RecoveryScoreCard on wearable connection'
+    );
+    assert(
+      /\.wk-input\s*\{[\s\S]*?min-height:\s*48px;/.test(idxCssSrc) &&
+        setRowSrc.includes('minHeight: 48') &&
+        setRowSrc.includes('isNextSet') &&
+        setRowSrc.includes('data-next-set') &&
+        exCardSrc.includes('nextSetId') &&
+        exCardSrc.includes('isNextSet={s.id === nextSetId}') &&
+        !/\{set\.completed && \(\s*<svg/.test(setRowSrc),
+      'SetRow enforces >= 48px Android touch targets, always renders a visible checkmark in the Done button, and highlights the next set to do'
     );
 
     assert(

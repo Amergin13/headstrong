@@ -7,9 +7,9 @@ import type { PreviousSet } from '../../services/exerciseInsight';
 
 const fig = (px: number) => `calc(${px} * var(--f))`;
 
-/** SET | PREV | WEIGHT | REPS | RIR | ✓ — shared by the header and every row (Figma column widths). */
-export const SET_TABLE_COLUMNS = '36fr 92fr 130fr 100fr 90fr 74fr';
-export const SET_TABLE_GAP = fig(20);
+/** SET | PREV | WEIGHT | REPS | RIR | DONE — shared by the header and every row (48px+ Android touch targets). */
+export const SET_TABLE_COLUMNS = '44fr 84fr 122fr 92fr 82fr minmax(48px, 96fr)';
+export const SET_TABLE_GAP = fig(16);
 
 export type { PreviousSet } from '../../services/exerciseInsight';
 
@@ -20,6 +20,8 @@ interface SetRowProps {
   isDumbbell?: boolean;
   displayBadge?: string;
   displayLabel?: string;
+  /** True for the first uncompleted set in the exercise so the athlete knows which set is up next. */
+  isNextSet?: boolean;
   /** Single-arm / single-leg: show left and right reps under the row. */
   perSide?: boolean;
   onUpdate: (updated: Partial<WorkoutSet>) => void;
@@ -33,6 +35,7 @@ export const SetRow: React.FC<SetRowProps> = ({
   isDumbbell = false,
   displayBadge,
   displayLabel,
+  isNextSet = false,
   perSide = false,
   onUpdate,
   onComplete,
@@ -105,18 +108,52 @@ export const SetRow: React.FC<SetRowProps> = ({
     </label>
   );
 
+  const activeNext = isNextSet && !set.completed;
+
   return (
     <div className="flex flex-col" style={{ gap: fig(14) }}>
     <div
-      className="grid items-center relative"
-      style={{ gridTemplateColumns: SET_TABLE_COLUMNS, columnGap: SET_TABLE_GAP }}
-      aria-label={label}
+      className="grid items-center relative transition-colors"
+      data-next-set={activeNext ? 'true' : undefined}
+      aria-current={activeNext ? 'step' : undefined}
+      style={{
+        gridTemplateColumns: SET_TABLE_COLUMNS,
+        columnGap: SET_TABLE_GAP,
+        borderRadius: fig(20),
+        padding: `${fig(8)} ${fig(10)}`,
+        marginLeft: `calc(-1 * ${fig(10)})`,
+        marginRight: `calc(-1 * ${fig(10)})`,
+        background: activeNext ? 'rgba(0, 241, 159, 0.06)' : 'transparent',
+        boxShadow: activeNext ? 'inset 0 0 0 1px rgba(0, 241, 159, 0.28)' : 'none',
+        opacity: set.completed ? 0.86 : 1,
+      }}
+      aria-label={activeNext ? `${label} (next set)` : label}
     >
       {celebration > 0 && set.completed && (
         <span key={`flash-${celebration}`} className="wk-row-flash" aria-hidden="true" />
       )}
-      <span className="text-center" style={{ ...greyText, color: currentSetType === 'warmup' ? 'var(--color-set-warmup)' : greyText.color }} title={label}>
-        {badge}
+      <span
+        className="flex flex-col items-center justify-center text-center leading-tight"
+        style={{
+          ...greyText,
+          color: activeNext
+            ? 'var(--wk-accent)'
+            : currentSetType === 'warmup'
+            ? 'var(--color-set-warmup)'
+            : greyText.color,
+          fontWeight: activeNext ? 800 : 600,
+        }}
+        title={activeNext ? `${label} — Next set` : label}
+      >
+        <span>{badge}</span>
+        {activeNext && (
+          <span
+            className="uppercase tracking-wider font-extrabold"
+            style={{ fontSize: `max(12px, ${fig(18)})`, color: 'var(--wk-accent)', lineHeight: 1.05 }}
+          >
+            Next
+          </span>
+        )}
       </span>
 
       <button
@@ -130,7 +167,16 @@ export const SetRow: React.FC<SetRowProps> = ({
         {prevDisplay}
       </button>
 
-      <label className="wk-tap wk-input flex items-center justify-center cursor-text">
+      <label
+        className="wk-tap wk-input flex items-center justify-center cursor-text"
+        style={
+          activeNext
+            ? { boxShadow: 'inset 0 0 0 1px rgba(255, 255, 255, 0.16)' }
+            : !set.completed
+            ? { color: 'var(--color-text-secondary)' }
+            : undefined
+        }
+      >
         <input
           type="number"
           step={weightStep}
@@ -139,8 +185,12 @@ export const SetRow: React.FC<SetRowProps> = ({
           aria-label={`${label} weight in ${units.unit === 'lb' ? 'pounds' : 'kilograms'}`}
           onFocus={(e) => e.target.select()}
           onChange={(e) => onUpdate({ actualWeightKg: units.fromDisplay(parseFloat(e.target.value) || 0) })}
-          className="bg-transparent text-right font-bold text-white outline-none p-0"
-          style={{ width: `${Math.max(1, String(displayWeight).length)}ch`, fontSize: 'inherit' }}
+          className="bg-transparent text-right font-bold outline-none p-0"
+          style={{
+            width: `${Math.max(1, String(displayWeight).length)}ch`,
+            fontSize: 'inherit',
+            color: activeNext || set.completed ? 'var(--color-text-primary)' : 'var(--color-text-secondary)',
+          }}
         />
         {displayWeight > 0 && (
           <span aria-hidden="true" style={{ fontSize: 'max(12px, 0.8em)', marginLeft: '0.1em' }}>
@@ -149,7 +199,7 @@ export const SetRow: React.FC<SetRowProps> = ({
         )}
       </label>
 
-      <label className="wk-tap block">
+      <label className="wk-tap block relative">
         <input
           type="number"
           inputMode="numeric"
@@ -158,6 +208,10 @@ export const SetRow: React.FC<SetRowProps> = ({
           onFocus={(e) => e.target.select()}
           onChange={(e) => onUpdate({ actualReps: parseInt(e.target.value, 10) || 0 })}
           className="wk-input outline-none block"
+          style={{
+            color: activeNext || set.completed ? 'var(--color-text-primary)' : 'var(--color-text-secondary)',
+            boxShadow: activeNext ? 'inset 0 0 0 1px rgba(255, 255, 255, 0.16)' : undefined,
+          }}
         />
         {(set.isFormFailure || set.repDisplay === 'F*') && (
           <span
@@ -181,38 +235,63 @@ export const SetRow: React.FC<SetRowProps> = ({
           onFocus={(e) => e.target.select()}
           onChange={(e) => onUpdate({ actualRir: Math.max(0, Math.min(5, parseInt(e.target.value, 10) || 0)) })}
           className="wk-input outline-none block"
+          style={{
+            color: activeNext || set.completed ? 'var(--color-text-primary)' : 'var(--color-text-secondary)',
+            boxShadow: activeNext ? 'inset 0 0 0 1px rgba(255, 255, 255, 0.16)' : undefined,
+          }}
         />
       </label>
 
       <button
         type="button"
         onClick={handleToggleComplete}
-        aria-label={set.completed ? `Mark ${label.toLowerCase()} not done` : `Complete ${label.toLowerCase()}`}
+        aria-label={
+          set.completed
+            ? `Mark ${label.toLowerCase()} not done`
+            : activeNext
+            ? `Complete ${label.toLowerCase()} (next set)`
+            : `Complete ${label.toLowerCase()}`
+        }
         title={set.completed ? `${label} logged` : `Log ${label.toLowerCase()}`}
         aria-pressed={set.completed}
         className={`wk-tap flex items-center justify-center transition-colors active:scale-95 ${
           celebration > 0 && set.completed ? 'wk-tick-pop' : ''
         }`}
         style={{
-          height: fig(74),
+          minHeight: 48,
+          minWidth: 48,
+          height: `max(48px, ${fig(106)})`,
           borderRadius: fig(15),
-          background: set.completed ? 'var(--wk-accent)' : 'var(--wk-pill)',
+          background: set.completed
+            ? 'var(--wk-accent)'
+            : activeNext
+            ? 'var(--color-status-positive-soft)'
+            : 'var(--color-action-secondary-bg)',
+          border: set.completed
+            ? 'none'
+            : activeNext
+            ? '1.5px solid var(--wk-accent)'
+            : '1px solid var(--color-border-subtle)',
         }}
       >
-        {set.completed && (
-          <svg
-            viewBox="0 0 24 24"
-            style={{ width: fig(34), height: fig(34) }}
-            fill="none"
-            stroke="var(--color-text-on-accent)"
-            strokeWidth={3}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden="true"
-          >
-            <path d="M5 12.5l4.5 4.5L19 7.5" pathLength={1} className={celebration > 0 ? 'wk-check-draw' : undefined} />
-          </svg>
-        )}
+        <svg
+          viewBox="0 0 24 24"
+          style={{ width: `max(18px, ${fig(38)})`, height: `max(18px, ${fig(38)})` }}
+          fill="none"
+          stroke={
+            set.completed
+              ? 'var(--color-text-on-accent)'
+              : activeNext
+              ? 'var(--wk-accent)'
+              : 'var(--wk-muted)'
+          }
+          strokeWidth={set.completed ? 3 : activeNext ? 2.75 : 2.2}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M5 12.5l4.5 4.5L19 7.5" pathLength={1} className={celebration > 0 && set.completed ? 'wk-check-draw' : undefined} />
+        </svg>
         {celebration > 0 && set.completed && <span className="wk-tick-ripple" aria-hidden="true" />}
       </button>
     </div>

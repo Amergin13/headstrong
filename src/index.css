@@ -294,7 +294,8 @@ select:focus-visible {
 .wk-input {
   background: var(--wk-raised);
   border-radius: calc(15 * var(--f));
-  height: calc(74 * var(--f));
+  min-height: 48px;
+  height: max(48px, calc(106 * var(--f)));
   font-size: max(16px, calc(32 * var(--f)));
   font-weight: 700;
   color: var(--color-text-primary);

@@ -875,6 +875,8 @@ export const TREISE_DESIGN_SYSTEM: DesignSystemComponent[] = [
     logic: {
       rules: [
         'Positive status accent (--color-status-positive) celebrates completed sets and progressive overload.',
+        'The Done button always renders a visible checkmark icon even before completion (muted on upcoming sets, mint-accented on the active next set) and enforces a >= 48px Android touch target height.',
+        'The first uncompleted set in each exercise is highlighted as the active next set (isNextSet, NEXT badge, aria-current="step").',
         'Warmup sets display amber W indicator (--color-set-warmup) and failure sets display crimson soft badge (--color-set-failure-bg / --color-set-failure-fg).',
         'Completing a set triggers haptic feedback and real-time tonnage updates.',
       ],

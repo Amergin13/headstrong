@@ -267,11 +267,12 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
           <span role="columnheader">WEIGHT</span>
           <span role="columnheader">REPS</span>
           <span role="columnheader" title="Reps in reserve">RIR</span>
-          <span role="columnheader" className="sr-only">Done</span>
+          <span role="columnheader">DONE</span>
         </div>
-        {/* At least 16 px apart, so the 44 px touch areas of neighbouring rows don't overlap. */}
-        <div className="flex flex-col" style={{ gap: `max(${fig(27)}, 16px)` }}>
+        {/* At least 12 px apart between 48 px+ rows so touch areas never overlap. */}
+        <div className="flex flex-col" style={{ gap: `max(${fig(24)}, 12px)` }}>
           {(() => {
+            const nextSetId = exercise.sets.find((st) => !st.completed)?.id ?? null;
             let warmupIndex = 0;
             let workingIndex = 0;
             return exercise.sets.map((s) => {
@@ -301,6 +302,7 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
                   set={s}
                   displayBadge={displayBadge}
                   displayLabel={displayLabel}
+                  isNextSet={s.id === nextSetId}
                   previous={previous}
                   isBodyweight={isBodyweightOnly}
                   isDumbbell={exercise.equipment === 'dumbbell'}

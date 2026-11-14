@@ -728,30 +728,40 @@ export const TrainTab: React.FC<TrainTabProps> = ({
   const activeLocationOption =
     LOCATION_CONFIG.find((l) => l.id === currentLoc) || LOCATION_CONFIG[0];
 
+  const hasRecoveryMechanism = Boolean(
+    isWearableConnected(profile) || profile.whoopAccessToken || profile.fitbitAccessToken
+  );
   const hasWatchData = Boolean(
-    isWearableConnected(profile) &&
+    hasRecoveryMechanism &&
       latestBiometrics &&
       (latestBiometrics.hrvRmssd !== undefined || latestBiometrics.restingHr !== undefined)
   );
 
   // Program card: plan phase and position, or the mesocycle week for standard splits.
+  // The count in the workout card and sticky header tracks the sets in this workout.
   const planTemplate = planWorkoutNumber ? trainingPlan.templates.find((t) => t.workoutNumber === planWorkoutNumber) : undefined;
   // After a logged rest day the session is held for tomorrow, so it isn't today's.
   const sessionWord = showRecoveryGate || activeWorkout.date > localDateString() ? 'Next' : 'Today';
+  const sessionSetsTotal = todayFinished
+    ? todayFinished.workout.exercises.reduce((acc, ex) => acc + ex.sets.length, 0)
+    : totalSets;
+  const sessionSetsCurrent = todayFinished
+    ? todayFinished.workout.exercises.reduce((acc, ex) => acc + ex.sets.filter((s) => s.completed).length, 0)
+    : completedSets;
   const programCard = planWorkoutNumber
     ? {
         title: `Phase ${planPhase?.phaseNumber ?? 1}`,
         subtitle: planPhase?.shortName ?? '',
         sessionLabel: `${sessionWord}: ${planTemplate ? planWorkoutLabel(planTemplate.title) : activeWorkout.name}`,
-        current: planWorkoutNumber,
-        total: trainingPlan.templates.length,
+        current: sessionSetsCurrent,
+        total: sessionSetsTotal,
       }
     : {
         title: `Week ${mesoWeek}`,
         subtitle: phaseMeta.name,
         sessionLabel: `${sessionWord}: ${activeWorkout.name.split(' — ')[0]}`,
-        current: mesoWeek,
-        total: 6,
+        current: sessionSetsCurrent,
+        total: sessionSetsTotal,
       };
   const pageTitle = planWorkoutNumber ? trainingPlan.name : PROGRAM_TITLES[profile.programType || 'starter_6wk'] || 'Your Program';
 
@@ -871,7 +881,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
       window.removeEventListener('scroll', update);
       window.removeEventListener('resize', update);
     };
-  }, [todayFinished]);
+  }, [todayFinished, workoutDisplay.showProgramCard]);
 
   const renderOptionsMenu = (close: () => void) => (
     <div
@@ -977,17 +987,15 @@ export const TrainTab: React.FC<TrainTabProps> = ({
         observeRef={cardsTopRef}
         deps={[showRecoveryGate, sessionReport]}
       />
-      {workoutDisplay.showProgramCard && (
-        <StickySessionHeader
-          sessionLabel={programCard.sessionLabel}
-          current={programCard.current}
-          total={programCard.total}
-          onOpen={onOpenProgram}
-          docked={sessionDocked}
-          headerRef={stickyHeaderRef}
-          measureRef={stickyMeasureRef}
-        />
-      )}
+      <StickySessionHeader
+        sessionLabel={programCard.sessionLabel}
+        current={programCard.current}
+        total={programCard.total}
+        onOpen={onOpenProgram}
+        docked={sessionDocked}
+        headerRef={stickyHeaderRef}
+        measureRef={stickyMeasureRef}
+      />
       <WorkoutPageHeader
         title={pageTitle}
         days={stripDays}
@@ -1006,9 +1014,12 @@ export const TrainTab: React.FC<TrainTabProps> = ({
         const finishedMaxHr = todayFinished.workout.maxHeartRate ?? finishedDayBio?.maxWorkoutHr;
         return (
           <>
-            {workoutDisplay.showProgramCard && (
-              <ProgramProgressCard {...programCard} onOpen={onOpenProgram} sessionRef={sessionBlockRef} />
-            )}
+            <ProgramProgressCard
+              {...programCard}
+              lean={!workoutDisplay.showProgramCard}
+              onOpen={onOpenProgram}
+              sessionRef={sessionBlockRef}
+            />
             <FinishedWorkoutSummaryCard finish={todayFinished.finish} />
             {whoopConfigured && (
               <WhoopStrainCard
@@ -1026,10 +1037,13 @@ export const TrainTab: React.FC<TrainTabProps> = ({
         );
       })() : (
         <>
-          {workoutDisplay.showProgramCard && (
-            <ProgramProgressCard {...programCard} onOpen={onOpenProgram} sessionRef={sessionBlockRef} />
-          )}
-          {!showRecoveryGate && workoutDisplay.showRecoveryCard && (
+          <ProgramProgressCard
+            {...programCard}
+            lean={!workoutDisplay.showProgramCard}
+            onOpen={onOpenProgram}
+            sessionRef={sessionBlockRef}
+          />
+          {!showRecoveryGate && workoutDisplay.showRecoveryCard && hasRecoveryMechanism && (
             <RecoveryScoreCard
               readiness={readiness}
               latestBiometrics={latestBiometrics}
@@ -1411,12 +1425,12 @@ export const TrainTab: React.FC<TrainTabProps> = ({
                   {
                     key: 'showProgramCard' as const,
                     title: 'Program progress card',
-                    description: 'Phase, week and workout position at the top of Workout.',
+                    description: 'Show full phase and week details above the lean workout header card.',
                   },
                   {
                     key: 'showRecoveryCard' as const,
                     title: 'Recovery score card',
-                    description: 'Daily readiness and wearable recovery status.',
+                    description: 'Daily readiness from Whoop or your smart watch when connected.',
                   },
                   {
                     key: 'showExerciseSummaries' as const,

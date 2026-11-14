@@ -7,8 +7,9 @@ const fig = (px: number) => `calc(${px} * var(--f))`;
 interface SessionCountProps {
   /** e.g. "Today: Chest and Back" or "Next: Legs". */
   sessionLabel: string;
-  /** Position in the program, e.g. 2 of 24. */
+  /** Completed sets in the workout, e.g. 4 of 16. */
   current: number;
+  /** Total sets in the workout, e.g. 16. */
   total: number;
 }
 
@@ -17,6 +18,8 @@ interface ProgramProgressCardProps extends SessionCountProps {
   title: string;
   /** e.g. "Building foundations". */
   subtitle: string;
+  /** When true (default), renders only the lean workout name and set count bar without the program phase header. */
+  lean?: boolean;
   onOpen?: () => void;
   /** Ref attached to the session count block for seamless scroll-linked docking. */
   sessionRef?: React.RefObject<HTMLDivElement>;
@@ -37,7 +40,10 @@ const SessionCountBar: React.FC<SessionCountProps & { topMargin: string; barMarg
           {sessionLabel}
         </span>
         <span className="font-bold text-white shrink-0 tabular-numbers" style={{ fontSize: `max(12px, ${fig(40)})`, lineHeight: 1 }}>
-          {current}/{total}
+          {current}/{total}{' '}
+          <span className="font-semibold uppercase" style={{ fontSize: `max(12px, ${fig(22)})`, color: 'var(--wk-muted)' }}>
+            sets
+          </span>
         </span>
       </div>
       <div
@@ -47,7 +53,7 @@ const SessionCountBar: React.FC<SessionCountProps & { topMargin: string; barMarg
         aria-valuemin={0}
         aria-valuemax={total}
         aria-valuenow={current}
-        aria-label="Program progress"
+        aria-label="Workout sets completed"
       >
         <div style={{ width: `${pct}%` }} />
       </div>
@@ -61,9 +67,14 @@ export const ProgramProgressCard: React.FC<ProgramProgressCardProps> = ({
   sessionLabel,
   current,
   total,
+  lean = false,
   onOpen,
   sessionRef,
 }) => {
+  const ariaDescription = lean
+    ? `${sessionLabel}. ${current} of ${total} sets completed. Open your program`
+    : `${title}, ${subtitle}. ${sessionLabel}. ${current} of ${total} sets completed. Open your program`;
+
   return (
     <button
       type="button"
@@ -72,17 +83,21 @@ export const ProgramProgressCard: React.FC<ProgramProgressCardProps> = ({
         triggerHaptic('light');
         onOpen?.();
       }}
-      aria-label={`${title}, ${subtitle}. ${sessionLabel}. Workout ${current} of ${total}. Open your program`}
+      aria-label={ariaDescription}
       className="wk-card w-full text-left block"
     >
-      <div className="flex items-start justify-between" style={{ gap: fig(20) }}>
-        <h2 className="wk-h1" style={{ lineHeight: 1.21 }}>
-          {title}
-        </h2>
-        {onOpen && <ChevronRight className="wk-chevron" strokeWidth={2} aria-hidden="true" />}
-      </div>
-      <p style={{ fontSize: `max(12px, ${fig(28)})`, lineHeight: 1.21, color: 'var(--wk-muted)', marginTop: fig(20) }}>{subtitle}</p>
-      <div ref={sessionRef} style={{ marginTop: fig(60) }}>
+      {!lean && (
+        <>
+          <div className="flex items-start justify-between" style={{ gap: fig(20) }}>
+            <h2 className="wk-h1" style={{ lineHeight: 1.21 }}>
+              {title}
+            </h2>
+            {onOpen && <ChevronRight className="wk-chevron" strokeWidth={2} aria-hidden="true" />}
+          </div>
+          <p style={{ fontSize: `max(12px, ${fig(28)})`, lineHeight: 1.21, color: 'var(--wk-muted)', marginTop: fig(20) }}>{subtitle}</p>
+        </>
+      )}
+      <div ref={sessionRef} style={{ marginTop: lean ? '0px' : fig(60) }}>
         <SessionCountBar sessionLabel={sessionLabel} current={current} total={total} topMargin="0px" barMargin={fig(30)} />
       </div>
     </button>
@@ -131,7 +146,7 @@ export const StickySessionHeader: React.FC<StickySessionHeaderProps> = ({
           triggerHaptic('light');
           onOpen?.();
         }}
-        aria-label={`${sessionLabel}. Workout ${current} of ${total}. Open your program`}
+        aria-label={`${sessionLabel}. ${current} of ${total} sets completed. Open your program`}
         className="w-full text-left block"
         style={{
           paddingLeft: fig(38),
