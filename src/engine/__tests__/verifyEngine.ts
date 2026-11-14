@@ -9253,11 +9253,21 @@ Exercise,,Date,Workout,Sets,Reps,Tempo,Rest,Notes,Set 1,Set 2,Set 3,Set 4
         !modalSrc.includes('useLayoutEffect') &&
         !modalSrc.includes('scrollIntoView(') &&
         !modalSrc.includes('offsetHeight') &&
+        modalSrc.includes('100dvh') &&
+        modalSrc.includes('visualViewport') &&
+        modalSrc.includes('env(safe-area-inset-top, 0px)') &&
+        modalSrc.includes('env(safe-area-inset-bottom, 0px)') &&
+        modalSrc.includes('enterKeyHint="send"') &&
+        modalSrc.includes('max(16px,') &&
+        modalSrc.includes("maxWidth: '82%'") &&
+        modalSrc.includes('wk-typing-dot') &&
+        modalSrc.includes('showNewMsgPill') &&
+        modalSrc.includes('inferPendingStatus') &&
         trainTabSrc2.includes('planTotalWeeks') &&
         trainTabSrc2.includes('setTimeout(') &&
         coachApiSrc.includes('gemini-2.5-flash') &&
         coachApiSrc.includes('cachedWorkingModel'),
-      'AICoachChatModal eliminates scroll/focus/reflow stalls, TrainTab debounces notes, and /api/coach/generate caches working Flash model'
+      'AICoachChatModal enforces mobile viewport/keyboard ergonomics, 60fps typing reveal, smart scroll lock, and working Flash caching'
     );
   }
 

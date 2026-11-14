@@ -22,18 +22,14 @@ import '../../services/deviceModels';
 
 import { triggerHaptic } from '../../utils/haptics';
 import {
-  ShieldCheck,
   Maximize2,
   Minimize2,
   X,
   Send,
-  Sparkles,
   CheckCircle2,
-  Plane,
   Dumbbell,
-  Calendar,
-  Layers,
   ChevronRight,
+  ChevronDown,
   FlaskConical,
 } from 'lucide-react';
 
@@ -55,9 +51,11 @@ interface AICoachChatModalProps {
   onViewAllEquipment?: () => void;
 }
 
-/** Renders **bold** segments as <strong> (React text nodes only, never raw HTML). */
 const fig = (px: number) => `calc(${px} * var(--f))`;
+const WORD_REVEAL_INTERVAL_MS = 16;
+const COMPOSER_MAX_HEIGHT_PX = 96;
 
+/** Renders **bold** segments as <strong> (React text nodes only, never raw HTML). */
 function renderBold(text: string): React.ReactNode[] {
   return text.split(/(\*\*[^*]+\*\*)/g).map((part, i) =>
     part.startsWith('**') && part.endsWith('**') ? (
@@ -68,6 +66,33 @@ function renderBold(text: string): React.ReactNode[] {
       <React.Fragment key={i}>{part}</React.Fragment>
     )
   );
+}
+
+/** Infers a compact native status pill while waiting on a tool action or Knowledge Graph lookup. */
+function inferPendingStatus(message: string): string {
+  const lower = message.toLowerCase();
+  if (
+    /\b(reset|restart|re-start|start\s+over)\b/.test(lower) &&
+    /\b(program|plan|cycle|day\s*(1|one)|workout\s*1|beginning|scratch|over)\b/.test(lower)
+  ) {
+    return 'Resetting program…';
+  }
+  if (/\b(switch|change)\b.*\b(program|phase\s*1|muscle|starter|day)\b/.test(lower)) {
+    return 'Switching program…';
+  }
+  if (/\b(goal|target)\b/.test(lower) && /\b(set|change|update|make|add)\b/.test(lower)) {
+    return 'Updating goals…';
+  }
+  if (/\b(rest\s*day|can['’]?t\s*train|skip\s*today|shift)\b/.test(lower)) {
+    return 'Updating schedule…';
+  }
+  if (/\b(bought|got|sold|remove|equipment|travel|away|home|gym|bodyweight)\b/.test(lower)) {
+    return 'Updating workout…';
+  }
+  if (/\b(recovery|whoop|hrv|strain|sleep|joint|shoulder|knee|back|elbow|strength|level|steps)\b/.test(lower)) {
+    return 'Reviewing your data…';
+  }
+  return 'Thinking…';
 }
 
 export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
@@ -87,11 +112,24 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
 }) => {
   const [inputMessage, setInputMessage] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
+  const [pendingStatus, setPendingStatus] = useState<string>('Thinking…');
   const [messages, setMessages] = useState<AssistantChatMessage[]>([]);
   const [streamingText, setStreamingText] = useState<string | null>(null);
+  const [revealing, setRevealing] = useState<{
+    messageId: string;
+    fullText: string;
+    visibleText: string;
+  } | null>(null);
+  const [showNewMsgPill, setShowNewMsgPill] = useState(false);
+
   /** A fly-up sheet for quick questions; expanded, it is a full-screen conversation. */
   const [expanded, setExpanded] = useState(false);
   const [closing, setClosing] = useState(false);
+  const [viewportMetrics, setViewportMetrics] = useState<{
+    height: number | null;
+    keyboardOpen: boolean;
+  }>({ height: null, keyboardOpen: false });
+
   // The line and suggestions for the screen the coach was opened on, memoized so typing never recomputes KG/history.
   const opening = useMemo(
     () =>
@@ -108,71 +146,231 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
       }),
     [place, profile, activeWorkout, workouts, activities, biometrics, exerciseCatalog, readinessState, bodyweightEmaKg]
   );
+
   const threadRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const closeTimerRef = useRef<number | null>(null);
+  const revealRafRef = useRef<number | null>(null);
+  const autoScrollLockedRef = useRef(true);
+  const touchStartYRef = useRef<number | null>(null);
+  const latestStreamingRef = useRef<string | null>(null);
   const isMountedRef = useRef(true);
+
+  const stopReveal = useCallback(() => {
+    if (revealRafRef.current !== null) {
+      cancelAnimationFrame(revealRafRef.current);
+      revealRafRef.current = null;
+    }
+    setRevealing(null);
+  }, []);
+
+  const scrollThreadToBottom = useCallback((behavior: ScrollBehavior = 'auto') => {
+    if (!threadRef.current) return;
+    requestAnimationFrame(() => {
+      if (!autoScrollLockedRef.current) return;
+      const el = threadRef.current;
+      if (!el) return;
+      if (behavior === 'smooth' && typeof el.scrollTo === 'function') {
+        el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+      } else {
+        el.scrollTop = el.scrollHeight;
+      }
+    });
+  }, []);
 
   const requestClose = useCallback(() => {
     if (closing) return;
+    inputRef.current?.blur();
+    stopReveal();
     if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
       onClose();
       return;
     }
     setClosing(true);
     closeTimerRef.current = window.setTimeout(onClose, 240);
-  }, [closing, onClose]);
+  }, [closing, onClose, stopReveal]);
 
   useEffect(() => {
     isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      if (closeTimerRef.current) window.clearTimeout(closeTimerRef.current);
+      if (revealRafRef.current !== null) cancelAnimationFrame(revealRafRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') requestClose();
     };
     window.addEventListener('keydown', onKeyDown);
     return () => {
-      isMountedRef.current = false;
       window.removeEventListener('keydown', onKeyDown);
-      if (closeTimerRef.current) window.clearTimeout(closeTimerRef.current);
     };
   }, [requestClose]);
 
-  // Starter greeting
+  // Track visualViewport height so opening Android/iOS soft keyboards resizes cleanly inside 100dvh.
   useEffect(() => {
-    // Load the on-device model while the athlete reads the greeting (no-op if unsupported).
+    if (typeof window === 'undefined' || !window.visualViewport) return;
+    const vv = window.visualViewport;
+    const baselineHeight = Math.max(window.innerHeight, vv.height);
+    let wasKeyboardOpen = false;
+
+    const syncViewport = () => {
+      const currentHeight = Math.round(vv.height);
+      const keyboardOpen = baselineHeight - currentHeight > 120;
+      setViewportMetrics({ height: currentHeight, keyboardOpen });
+      if (keyboardOpen && !wasKeyboardOpen && autoScrollLockedRef.current) {
+        scrollThreadToBottom('smooth');
+      }
+      wasKeyboardOpen = keyboardOpen;
+    };
+
+    syncViewport();
+    vv.addEventListener('resize', syncViewport);
+    vv.addEventListener('scroll', syncViewport);
+    return () => {
+      vv.removeEventListener('resize', syncViewport);
+      vv.removeEventListener('scroll', syncViewport);
+    };
+  }, [scrollThreadToBottom]);
+
+  // Starter greeting + warm-up
+  useEffect(() => {
     warmUpOnDeviceModel().catch(() => undefined);
-
-    // The opening line is about the screen the coach was opened on.
-    const welcomeText = opening.line;
-
     const starterMessage: AssistantChatMessage = {
       id: 'msg-welcome',
       sender: 'assistant',
-      text: welcomeText,
+      text: opening.line,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     };
-
     setMessages([starterMessage]);
-
     return () => {
       resetOnDeviceConversation();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Scroll only the message thread container (never scroll the outer document viewport on mobile).
+  // Auto-grow multiline composer up to 4 lines cleanly.
+  const resizeComposer = useCallback(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    const nextHeight = Math.min(el.scrollHeight, COMPOSER_MAX_HEIGHT_PX);
+    el.style.height = `${Math.max(44, nextHeight)}px`;
+  }, []);
+
   useEffect(() => {
+    resizeComposer();
+  }, [inputMessage, resizeComposer]);
+
+  // Maintain auto-scroll inside thread when locked; offer "New message" pill if user scrolled up mid-stream.
+  useEffect(() => {
+    if (autoScrollLockedRef.current) {
+      scrollThreadToBottom('auto');
+      setShowNewMsgPill(false);
+    } else if (isProcessing || revealing !== null) {
+      setShowNewMsgPill(true);
+    }
+  }, [messages.length, streamingText, revealing?.visibleText, isProcessing, revealing, scrollThreadToBottom]);
+
+  // Progressive 60fps word-by-word reveal for arriving assistant replies.
+  const startProgressiveReveal = useCallback(
+    (messageId: string, fullText: string, alreadyShownPrefix: string) => {
+      if (revealRafRef.current !== null) {
+        cancelAnimationFrame(revealRafRef.current);
+        revealRafRef.current = null;
+      }
+
+      const prefersReducedMotion =
+        typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+      if (prefersReducedMotion || !fullText) {
+        setRevealing(null);
+        return;
+      }
+
+      const tokens = fullText.match(/\S+\s*/g) ?? [fullText];
+      if (tokens.length <= 2) {
+        setRevealing(null);
+        return;
+      }
+
+      let index = 0;
+      if (alreadyShownPrefix && fullText.startsWith(alreadyShownPrefix)) {
+        let len = 0;
+        while (index < tokens.length && len + tokens[index].length <= alreadyShownPrefix.length) {
+          len += tokens[index].length;
+          index += 1;
+        }
+      }
+
+      if (index === 0) {
+        index = 1;
+      }
+
+      if (index >= tokens.length) {
+        setRevealing(null);
+        return;
+      }
+
+      const initialVisible = tokens.slice(0, index).join('');
+      setRevealing({ messageId, fullText, visibleText: initialVisible });
+
+      let lastTick = performance.now();
+      const step = (now: number) => {
+        if (!isMountedRef.current) return;
+        const elapsed = now - lastTick;
+        if (elapsed + 1 >= WORD_REVEAL_INTERVAL_MS) {
+          const wordsToAdvance = Math.max(1, Math.min(4, Math.floor((elapsed + 1) / WORD_REVEAL_INTERVAL_MS)));
+          index = Math.min(tokens.length, index + wordsToAdvance);
+          lastTick = now - (elapsed % WORD_REVEAL_INTERVAL_MS);
+
+          if (index >= tokens.length) {
+            revealRafRef.current = null;
+            setRevealing(null);
+            return;
+          }
+          setRevealing({
+            messageId,
+            fullText,
+            visibleText: tokens.slice(0, index).join(''),
+          });
+        }
+        revealRafRef.current = requestAnimationFrame(step);
+      };
+
+      revealRafRef.current = requestAnimationFrame(step);
+    },
+    []
+  );
+
+  const handleThreadScroll = () => {
     const el = threadRef.current;
     if (!el) return;
-    const raf = requestAnimationFrame(() => {
-      el.scrollTop = el.scrollHeight;
-    });
-    return () => cancelAnimationFrame(raf);
-  }, [messages.length, streamingText, isProcessing]);
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    const atBottom = distanceFromBottom <= 28;
+    autoScrollLockedRef.current = atBottom;
+    if (atBottom) {
+      setShowNewMsgPill(false);
+    } else if (isProcessing || revealing !== null) {
+      setShowNewMsgPill(true);
+    }
+  };
+
+  const releaseAutoScrollOnUserGesture = () => {
+    const el = threadRef.current;
+    if (!el) return;
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    if (distanceFromBottom > 12) {
+      autoScrollLockedRef.current = false;
+    }
+  };
 
   const handleSendMessage = async (textToSend?: string) => {
     const text = (textToSend || inputMessage).trim();
     if (!text || isProcessing) return;
 
+    stopReveal();
     triggerHaptic('light');
 
     const userMsg: AssistantChatMessage = {
@@ -182,9 +380,16 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     };
 
+    autoScrollLockedRef.current = true;
+    setShowNewMsgPill(false);
+    setPendingStatus(inferPendingStatus(text));
     setMessages((prev) => [...prev, userMsg]);
     setInputMessage('');
     setIsProcessing(true);
+    latestStreamingRef.current = null;
+    setStreamingText(null);
+    scrollThreadToBottom('smooth');
+
     // On Pixel phones, quietly get the on-device model ready for future answers.
     prepareOnDeviceModel().catch(() => undefined);
 
@@ -204,7 +409,9 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
           activities,
           place,
           onPartial: (textSoFar) => {
-            if (isMountedRef.current) setStreamingText(textSoFar);
+            if (!isMountedRef.current) return;
+            latestStreamingRef.current = textSoFar || null;
+            setStreamingText(textSoFar || null);
           },
         }),
         new Promise<never>((_, reject) => {
@@ -213,15 +420,24 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
       ]);
 
       if (!isMountedRef.current) return;
+      const streamedPrefix = latestStreamingRef.current ?? '';
+      latestStreamingRef.current = null;
+      setStreamingText(null);
+      setIsProcessing(false);
       setMessages((prev) => [...prev, result.message]);
 
       if (result.updatedProfile || result.updatedWorkout) {
         triggerHaptic('success');
         onApplyAction(result.updatedProfile, result.updatedWorkout);
       }
+
+      startProgressiveReveal(result.message.id, result.message.text, streamedPrefix);
     } catch (err) {
       console.error('Failed to process message with AI Coach:', err);
       if (!isMountedRef.current) return;
+      latestStreamingRef.current = null;
+      setStreamingText(null);
+      setIsProcessing(false);
       const errorMsg: AssistantChatMessage = {
         id: `err-${Date.now()}`,
         sender: 'assistant',
@@ -231,15 +447,9 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
       setMessages((prev) => [...prev, errorMsg]);
     } finally {
       if (failsafeTimer !== null) window.clearTimeout(failsafeTimer);
-      if (isMountedRef.current) {
-        setIsProcessing(false);
-        setStreamingText(null);
-      }
     }
   };
 
-  // Suggestions for the screen the coach was opened on. One that needs finishing ("Set a goal of …")
-  // goes into the message box instead of being sent.
   const quickPrompts = opening.hooks;
   const useHook = (hook: (typeof quickPrompts)[number]) => {
     if (!hook.fill) {
@@ -255,12 +465,54 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
       input.setSelectionRange(hook.text.length, hook.text.length);
     }, 0);
   };
-  const conversationStarted = messages.length > 1 || isProcessing;
+
+  const conversationStarted = messages.length > 1 || isProcessing || revealing !== null;
 
   const toggleExpanded = () => {
     triggerHaptic('light');
     setExpanded((v) => !v);
   };
+
+  const actionCardLabel = (type: NonNullable<AssistantChatMessage['actionApplied']>['type']): string => {
+    switch (type) {
+      case 'RESET_PROGRAM':
+        return 'Program reset';
+      case 'SWITCH_PROGRAM_SPLIT':
+        return 'Program updated';
+      case 'UPDATE_GOALS':
+        return 'Goals updated';
+      case 'UPDATE_PROGRESS_WIDGETS':
+        return 'Progress updated';
+      case 'SHIFT_WORKOUT':
+        return 'Rest day logged';
+      case 'UPDATE_EQUIPMENT':
+        return 'Equipment updated';
+      case 'SWITCH_GOAL_PHASE':
+        return 'Goal updated';
+      default:
+        return 'Plan updated';
+    }
+  };
+
+  // Compute responsive viewport height using 100dvh capped by live visualViewport so keyboard never clips header or bar.
+  const vvHeightPx = viewportMetrics.height;
+  const sheetHeightStyle: React.CSSProperties = expanded
+    ? {
+        height: vvHeightPx ? `${vvHeightPx}px` : '100dvh',
+        maxHeight: '100dvh',
+      }
+    : conversationStarted
+      ? {
+          height: vvHeightPx
+            ? viewportMetrics.keyboardOpen
+              ? `${Math.round(vvHeightPx * 0.96)}px`
+              : `min(74dvh, ${Math.round(vvHeightPx * 0.88)}px, 640px)`
+            : 'min(74dvh, 640px)',
+          maxHeight: vvHeightPx ? `${Math.round(vvHeightPx * 0.96)}px` : '88dvh',
+        }
+      : {
+          maxHeight: vvHeightPx ? `${Math.round(vvHeightPx * 0.92)}px` : '88dvh',
+        };
 
   return (
     <div
@@ -270,6 +522,9 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
       className={`wk fixed inset-0 z-50 flex flex-col justify-end sm:items-center ${
         closing ? 'pointer-events-none' : ''
       }`}
+      style={{
+        height: vvHeightPx ? `${vvHeightPx}px` : '100dvh',
+      }}
     >
       {/* Tapping the page behind closes the sheet. */}
       <button
@@ -282,23 +537,22 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
         }`}
       />
       <div
-        className={`${closing ? 'wk-sheet-down' : 'wk-sheet-up'} relative w-full sm:max-w-md border-t border-white/[0.11] flex flex-col overflow-hidden transition-[height,max-height,border-radius] duration-300 ease-out ${
-          expanded ? 'h-full' : conversationStarted ? 'h-[min(72dvh,620px)] max-h-[86dvh]' : 'max-h-[86dvh]'
-        }`}
+        className={`${closing ? 'wk-sheet-down' : 'wk-sheet-up'} relative w-full sm:max-w-md border-t border-white/[0.11] flex flex-col overflow-hidden transition-[height,max-height,border-radius] duration-300 ease-out`}
         style={{
           background: 'linear-gradient(180deg, var(--color-bg-canvas-top) 0%, var(--color-bg-canvas) 180px)',
           borderTopLeftRadius: expanded ? 0 : 30,
           borderTopRightRadius: expanded ? 0 : 30,
           boxShadow: 'inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 -12px 40px rgba(0, 0, 0, 0.58)',
+          ...sheetHeightStyle,
         }}
       >
-        {/* Header: grab bar, Treise title, expand and close */}
+        {/* Header: safe-area top inset when full-screen, grab bar, Treise title, expand & close */}
         <div
           className="relative flex items-center justify-between shrink-0"
           style={{
             paddingLeft: fig(38),
             paddingRight: fig(38),
-            paddingTop: fig(44),
+            paddingTop: expanded ? `calc(${fig(44)} + env(safe-area-inset-top, 0px))` : fig(44),
             paddingBottom: fig(20),
           }}
         >
@@ -306,7 +560,7 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
             aria-hidden="true"
             className="absolute left-1/2 -translate-x-1/2 rounded-full"
             style={{
-              top: fig(14),
+              top: expanded ? `calc(${fig(14)} + env(safe-area-inset-top, 0px))` : fig(14),
               width: fig(72),
               height: fig(8),
               background: 'rgba(255, 255, 255, 0.22)',
@@ -316,7 +570,13 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
             <h3
               id="ai-coach-title"
               className="wk-h1 flex items-center"
-              style={{ gap: fig(12), color: 'var(--color-coach-surface)', textTransform: 'none', fontWeight: 800, letterSpacing: '-0.02em' }}
+              style={{
+                gap: fig(12),
+                color: 'var(--color-coach-surface)',
+                textTransform: 'none',
+                fontWeight: 800,
+                letterSpacing: '-0.02em',
+              }}
             >
               <span>
                 Treise<span style={{ color: 'var(--color-coach-border)' }}>.</span>
@@ -362,202 +622,275 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
           </div>
         </div>
 
-        {/* Message Thread */}
-        <div
-          ref={threadRef}
-          className={`${expanded || conversationStarted ? 'flex-1' : ''} min-h-0 overflow-y-auto no-scrollbar overscroll-contain flex flex-col`}
-          style={{
-            paddingLeft: fig(38),
-            paddingRight: fig(38),
-            paddingTop: fig(8),
-            paddingBottom: fig(28),
-            gap: fig(22),
-          }}
-        >
-          {messages.map((msg) => {
-            const isUser = msg.sender === 'user';
-            // Before anything is asked, the opening line stands on its own, large, like a headline.
-            if (msg.id === 'msg-welcome' && !conversationStarted) {
-              return (
-                <p
-                  key={msg.id}
-                  className="text-white font-semibold"
-                  style={{
-                    fontSize: `max(16px, ${fig(36)})`,
-                    lineHeight: 1.32,
-                    paddingTop: fig(8),
-                    paddingBottom: fig(8),
-                  }}
-                >
-                  {renderBold(msg.text)}
-                </p>
-              );
-            }
-
-            return (
-              <div
-                key={msg.id}
-                className={`flex flex-col ${isUser ? 'items-end' : 'items-start'}`}
-              >
-                <div
-                  className={isUser ? 'wk-body text-white font-medium' : 'wk-card wk-body flex flex-col'}
-                  style={
-                    isUser
-                      ? {
-                          maxWidth: '88%',
-                          background: 'var(--wk-raised)',
-                          border: '1px solid rgba(0, 241, 159, 0.35)',
-                          borderRadius: fig(30),
-                          padding: `${fig(24)} ${fig(32)}`,
-                        }
-                      : {
-                          maxWidth: '92%',
-                          padding: `${fig(32)} ${fig(38)}`,
-                          gap: fig(20),
-                        }
+        {/* Message Thread (wraps relative container so floating "New message" pill anchors cleanly) */}
+        <div className={`relative ${expanded || conversationStarted ? 'flex-1' : ''} min-h-0 flex flex-col`}>
+          <div
+            ref={threadRef}
+            onScroll={handleThreadScroll}
+            onTouchStart={(e) => {
+              touchStartYRef.current = e.touches[0]?.clientY ?? null;
+              releaseAutoScrollOnUserGesture();
+            }}
+            onTouchMove={(e) => {
+              const startY = touchStartYRef.current;
+              const currentY = e.touches[0]?.clientY;
+              if (startY !== null && currentY !== undefined) {
+                if (currentY > startY + 6) {
+                  autoScrollLockedRef.current = false;
+                  if (isProcessing || revealing !== null) {
+                    setShowNewMsgPill(true);
                   }
-                >
-                  <p className="whitespace-pre-wrap">{renderBold(msg.text)}</p>
+                }
+                if (Math.abs(currentY - startY) > 8) {
+                  inputRef.current?.blur();
+                }
+              }
+            }}
+            onWheel={(e) => {
+              if (e.deltaY < 0) autoScrollLockedRef.current = false;
+            }}
+            onClick={(e) => {
+              const target = e.target as HTMLElement;
+              if (!target.closest('button') && !target.closest('[data-streaming-bubble="true"]')) {
+                inputRef.current?.blur();
+              }
+            }}
+            className="flex-1 min-h-0 overflow-y-auto no-scrollbar overscroll-contain flex flex-col"
+            style={{
+              touchAction: 'pan-y',
+              paddingLeft: fig(38),
+              paddingRight: fig(38),
+              paddingTop: fig(8),
+              paddingBottom: fig(28),
+              gap: fig(22),
+            }}
+          >
+            {messages.map((msg) => {
+              const isUser = msg.sender === 'user';
+              const isBeingRevealed = revealing?.messageId === msg.id;
+              const displayText = isBeingRevealed ? revealing.visibleText : msg.text;
 
-                  {/* Assistant Action Badge if an action was taken */}
-                  {!isUser && msg.actionApplied && (
-                    <div className="wk-raised flex flex-col" style={{ gap: fig(16) }}>
-                      <div className="flex items-start" style={{ gap: fig(16) }}>
-                        <CheckCircle2
-                          className="w-4 h-4 shrink-0"
-                          style={{ color: 'var(--wk-accent)', marginTop: fig(4) }}
-                          strokeWidth={2}
-                        />
-                        <div>
-                          <div className="wk-label">
-                            {msg.actionApplied.type === 'UPDATE_GOALS'
-                              ? 'Goals updated'
-                              : msg.actionApplied.type === 'UPDATE_PROGRESS_WIDGETS'
-                                ? 'Progress updated'
-                                : msg.actionApplied.type === 'RESET_PROGRAM'
-                                  ? 'Program reset'
-                                  : 'Plan updated'}
-                          </div>
-                          <div className="wk-body font-medium" style={{ color: 'var(--wk-accent)', marginTop: fig(6) }}>
-                            {msg.actionApplied.summary}
-                          </div>
-                        </div>
-                      </div>
+              // Before anything is asked, the opening line stands on its own, large, like a headline.
+              if (msg.id === 'msg-welcome' && !conversationStarted) {
+                return (
+                  <p
+                    key={msg.id}
+                    className="text-white font-semibold"
+                    style={{
+                      fontSize: `max(16px, ${fig(36)})`,
+                      lineHeight: 1.32,
+                      paddingTop: fig(8),
+                      paddingBottom: fig(8),
+                    }}
+                  >
+                    {renderBold(displayText)}
+                  </p>
+                );
+              }
 
-                      {/* Actionable CTA when equipment is added or updated */}
-                      {/* Only an equipment change offers the equipment screen ("Barbell Bench Press" in a goal is not one). */}
-                      {msg.actionApplied.type === 'UPDATE_EQUIPMENT' && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            triggerHaptic('light');
-                            if (onViewAllEquipment) {
-                              onViewAllEquipment();
-                            }
-                          }}
-                          className="wk-button"
-                          style={{ background: 'var(--wk-accent)', color: 'var(--color-text-on-accent)', gap: fig(12) }}
-                        >
-                          <Dumbbell className="w-4 h-4 stroke-[2]" />
-                          <span>View All Equipment</span>
-                          <ChevronRight className="w-4 h-4 stroke-[2]" />
-                        </button>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Scientific Principles & Academic Citations */}
-                  {!isUser && msg.scientificPrinciplesCited && msg.scientificPrinciplesCited.length > 0 && (
-                    <div className="flex flex-col" style={{ paddingTop: fig(12), gap: fig(12) }}>
-                      <span
-                        className="wk-label flex items-center"
-                        style={{ color: 'var(--wk-accent)', gap: fig(8) }}
-                      >
-                        <FlaskConical className="w-3.5 h-3.5 stroke-[2]" style={{ color: 'var(--wk-accent)' }} />
-                        <span>Scientific Rationale</span>
-                      </span>
-                      <div className="flex flex-col" style={{ gap: fig(12) }}>
-                        {msg.scientificPrinciplesCited.map((sp) => (
-                          <div
-                            key={sp.id}
-                            className="wk-raised flex flex-col"
-                            style={{ gap: fig(10) }}
-                          >
-                            <div className="flex items-center justify-between" style={{ gap: fig(12) }}>
-                              <span className="wk-label">{sp.title}</span>
-                              <span className="wk-pill shrink-0">{sp.topic}</span>
-                            </div>
-                            {sp.formula && (
-                              <div
-                                className="font-mono overflow-x-auto no-scrollbar"
-                                style={{ color: 'var(--wk-accent)', fontSize: `max(12px, ${fig(24)})` }}
-                              >
-                                {sp.formula}
-                              </div>
-                            )}
-                            <div className="wk-caption italic">
-                              {sp.academicCitation}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {!isUser && (
-                    <div className="wk-caption">
-                      <span>{msg.timestamp}</span>
-                    </div>
-                  )}
-                </div>
-
-                {isUser && (
-                  <span className="wk-caption" style={{ marginTop: fig(8), paddingLeft: fig(8), paddingRight: fig(8) }}>
-                    {msg.timestamp}
-                  </span>
-                )}
-              </div>
-            );
-          })}
-
-          {isProcessing && (
-            <div className="flex items-start">
-              {streamingText ? (
+              return (
                 <div
-                  className="wk-card wk-body whitespace-pre-wrap"
-                  style={{ maxWidth: '90%', padding: `${fig(32)} ${fig(38)}` }}
-                  aria-live="polite"
-                >
-                  {renderBold(streamingText)}
-                </div>
-              ) : (
-                <div
-                  className="wk-card wk-body flex items-center"
-                  style={{ maxWidth: '90%', padding: `${fig(32)} ${fig(38)}`, gap: fig(20) }}
-                  aria-live="polite"
+                  key={msg.id}
+                  className={`flex flex-col ${isUser ? 'items-end' : 'items-start'}`}
                 >
                   <div
-                    className="w-2 h-2 rounded-full animate-ping"
-                    style={{ background: 'var(--wk-accent)' }}
-                  />
-                  <span className="wk-body font-medium">
-                    Thinking…
-                  </span>
-                </div>
-              )}
-            </div>
-          )}
+                    data-streaming-bubble={isBeingRevealed ? 'true' : undefined}
+                    onClick={
+                      isBeingRevealed
+                        ? () => {
+                            triggerHaptic('light');
+                            stopReveal();
+                          }
+                        : undefined
+                    }
+                    title={isBeingRevealed ? 'Tap to show full reply' : undefined}
+                    className={`${isUser ? 'wk-body text-white font-medium' : 'wk-card wk-body flex flex-col'} ${
+                      isBeingRevealed ? 'cursor-pointer' : ''
+                    }`}
+                    style={
+                      isUser
+                        ? {
+                            maxWidth: '82%',
+                            background: 'var(--wk-raised)',
+                            border: '1px solid rgba(0, 241, 159, 0.35)',
+                            borderRadius: fig(30),
+                            padding: `${fig(22)} ${fig(30)}`,
+                          }
+                        : {
+                            maxWidth: '82%',
+                            padding: `${fig(28)} ${fig(34)}`,
+                            gap: fig(18),
+                          }
+                    }
+                  >
+                    <p className="whitespace-pre-wrap">{renderBold(displayText)}</p>
 
+                    {/* Compact inline confirmation card once text finishes revealing */}
+                    {!isUser && !isBeingRevealed && msg.actionApplied && (
+                      <div className="wk-raised flex flex-col" style={{ gap: fig(14) }}>
+                        <div className="flex items-start" style={{ gap: fig(14) }}>
+                          <CheckCircle2
+                            className="w-4 h-4 shrink-0"
+                            style={{ color: 'var(--wk-accent)', marginTop: fig(4) }}
+                            strokeWidth={2}
+                          />
+                          <div>
+                            <div className="wk-label">{actionCardLabel(msg.actionApplied.type)}</div>
+                            <div className="wk-body font-medium" style={{ color: 'var(--wk-accent)', marginTop: fig(6) }}>
+                              {msg.actionApplied.summary}
+                            </div>
+                          </div>
+                        </div>
+
+                        {msg.actionApplied.type === 'UPDATE_EQUIPMENT' && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              triggerHaptic('light');
+                              onViewAllEquipment?.();
+                            }}
+                            className="wk-button min-h-[44px]"
+                            style={{
+                              background: 'var(--wk-accent)',
+                              color: 'var(--color-text-on-accent)',
+                              gap: fig(12),
+                            }}
+                          >
+                            <Dumbbell className="w-4 h-4 stroke-[2]" />
+                            <span>View All Equipment</span>
+                            <ChevronRight className="w-4 h-4 stroke-[2]" />
+                          </button>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Scientific Principles & Academic Citations */}
+                    {!isUser && !isBeingRevealed && msg.scientificPrinciplesCited && msg.scientificPrinciplesCited.length > 0 && (
+                      <div className="flex flex-col" style={{ paddingTop: fig(8), gap: fig(12) }}>
+                        <span
+                          className="wk-label flex items-center"
+                          style={{ color: 'var(--wk-accent)', gap: fig(8) }}
+                        >
+                          <FlaskConical className="w-3.5 h-3.5 stroke-[2]" style={{ color: 'var(--wk-accent)' }} />
+                          <span>Scientific Rationale</span>
+                        </span>
+                        <div className="flex flex-col" style={{ gap: fig(12) }}>
+                          {msg.scientificPrinciplesCited.map((sp) => (
+                            <div
+                              key={sp.id}
+                              className="wk-raised flex flex-col"
+                              style={{ gap: fig(10) }}
+                            >
+                              <div className="flex items-center justify-between" style={{ gap: fig(12) }}>
+                                <span className="wk-label">{sp.title}</span>
+                                <span className="wk-pill shrink-0">{sp.topic}</span>
+                              </div>
+                              {sp.formula && (
+                                <div
+                                  className="font-mono overflow-x-auto no-scrollbar"
+                                  style={{ color: 'var(--wk-accent)', fontSize: `max(12px, ${fig(24)})` }}
+                                >
+                                  {sp.formula}
+                                </div>
+                              )}
+                              <div className="wk-caption italic">{sp.academicCitation}</div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {!isUser && !isBeingRevealed && (
+                      <div className="wk-caption">
+                        <span>{msg.timestamp}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {isUser && (
+                    <span className="wk-caption" style={{ marginTop: fig(8), paddingLeft: fig(8), paddingRight: fig(8) }}>
+                      {msg.timestamp}
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+
+            {isProcessing && (
+              <div className="flex items-start">
+                {streamingText ? (
+                  <div
+                    data-streaming-bubble="true"
+                    className="wk-card wk-body whitespace-pre-wrap"
+                    style={{ maxWidth: '82%', padding: `${fig(28)} ${fig(34)}` }}
+                    aria-live="polite"
+                  >
+                    {renderBold(streamingText)}
+                  </div>
+                ) : (
+                  <div
+                    className="wk-card wk-body flex items-center"
+                    style={{ maxWidth: '82%', padding: `${fig(26)} ${fig(32)}`, gap: fig(18) }}
+                    aria-live="polite"
+                  >
+                    <div className="flex items-center shrink-0" style={{ gap: fig(10) }} aria-hidden="true">
+                      <span
+                        className="w-2 h-2 rounded-full wk-typing-dot"
+                        style={{ background: 'var(--wk-accent)', animationDelay: '0ms' }}
+                      />
+                      <span
+                        className="w-2 h-2 rounded-full wk-typing-dot"
+                        style={{ background: 'var(--wk-accent)', animationDelay: '160ms' }}
+                      />
+                      <span
+                        className="w-2 h-2 rounded-full wk-typing-dot"
+                        style={{ background: 'var(--wk-accent)', animationDelay: '320ms' }}
+                      />
+                    </div>
+                    <span className="wk-caption font-semibold">{pendingStatus}</span>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {showNewMsgPill && (
+            <button
+              type="button"
+              onClick={() => {
+                triggerHaptic('light');
+                autoScrollLockedRef.current = true;
+                setShowNewMsgPill(false);
+                scrollThreadToBottom('smooth');
+              }}
+              aria-label="Scroll to new message"
+              className="absolute right-0 bottom-0 min-h-[44px] flex items-center rounded-full font-semibold shadow-lg transition-transform active:scale-95"
+              style={{
+                right: fig(28),
+                bottom: fig(16),
+                background: 'var(--wk-raised)',
+                color: 'var(--wk-accent)',
+                border: '1px solid rgba(0, 241, 159, 0.35)',
+                paddingLeft: fig(24),
+                paddingRight: fig(24),
+                gap: fig(8),
+                fontSize: `max(12px, ${fig(24)})`,
+              }}
+            >
+              <ChevronDown className="w-4 h-4 stroke-[2.2]" />
+              <span>New message</span>
+            </button>
+          )}
         </div>
 
-        {/* Suggestions for this screen */}
+        {/* Single-row horizontal quick-reply chips (44px min touch target) */}
         <div
-          className="overflow-x-auto no-scrollbar flex items-center shrink-0"
+          className="overflow-x-auto no-scrollbar flex flex-nowrap items-center shrink-0"
           style={{
             paddingLeft: fig(38),
             paddingRight: fig(38),
             paddingTop: fig(6),
-            paddingBottom: fig(24),
+            paddingBottom: fig(18),
             gap: fig(14),
           }}
           role="group"
@@ -569,7 +902,7 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
               type="button"
               onClick={() => useHook(q)}
               disabled={isProcessing}
-              className="shrink-0 min-h-[44px] font-semibold text-white transition-all active:scale-95 disabled:opacity-50"
+              className="shrink-0 min-h-[44px] whitespace-nowrap font-semibold text-white transition-all active:scale-95 disabled:opacity-50"
               style={{
                 borderRadius: 60,
                 background: 'var(--wk-card)',
@@ -584,14 +917,16 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
           ))}
         </div>
 
-        {/* Input Bar */}
+        {/* Multiline Input Bar pinned cleanly above soft keyboard / gesture bar */}
         <div
           className="shrink-0"
           style={{
             paddingLeft: fig(38),
             paddingRight: fig(38),
             paddingTop: fig(4),
-            paddingBottom: 'calc(20px + env(safe-area-inset-bottom, 0px))',
+            paddingBottom: viewportMetrics.keyboardOpen
+              ? '12px'
+              : 'calc(18px + env(safe-area-inset-bottom, 0px))',
           }}
         >
           <form
@@ -599,9 +934,9 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
               e.preventDefault();
               handleSendMessage();
             }}
-            className="flex items-center"
+            className="flex items-end"
             style={{
-              borderRadius: 60,
+              borderRadius: fig(44),
               background: 'var(--wk-card)',
               border: '1px solid rgba(255, 255, 255, 0.11)',
               boxShadow: 'inset 0 1px 0 rgba(255, 255, 255, 0.06)',
@@ -609,17 +944,34 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
               gap: fig(12),
             }}
           >
-            <input
-              type="text"
+            <textarea
+              ref={inputRef}
+              rows={1}
               value={inputMessage}
               onChange={(e) => setInputMessage(e.target.value)}
-              ref={inputRef}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSendMessage();
+                }
+              }}
+              onFocus={() => {
+                if (autoScrollLockedRef.current) scrollThreadToBottom('smooth');
+              }}
               placeholder="Ask Treise…"
               aria-label="Message your coach"
+              enterKeyHint="send"
               readOnly={isProcessing}
               autoComplete="off"
               autoCorrect="off"
-              className="flex-1 bg-transparent outline-none wk-body text-white placeholder:text-white/45 min-h-[44px]"
+              className="flex-1 bg-transparent outline-none wk-body text-white placeholder:text-white/45 min-h-[44px] resize-none overflow-y-auto no-scrollbar"
+              style={{
+                fontSize: `max(16px, ${fig(28)})`,
+                lineHeight: '22px',
+                paddingTop: '11px',
+                paddingBottom: '11px',
+                maxHeight: `${COMPOSER_MAX_HEIGHT_PX}px`,
+              }}
             />
 
             <button
