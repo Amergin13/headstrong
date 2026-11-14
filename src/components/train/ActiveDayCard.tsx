@@ -7,11 +7,11 @@ const fig = (px: number) => `calc(${px} * var(--f))`;
 interface ActiveDayCardProps {
   /** This week's active day: the activity that counted, or undefined while it's still to do. */
   thisWeek?: ActivityLog;
-  /** Activities from the last 7 days, newest first. */
+  /** Activities from the viewed day or last 7 days, newest first. */
   recent: ActivityLog[];
-  onLog: () => void;
-  onRemove: (id: string) => void;
-  onOpenApps: () => void;
+  onLog?: () => void;
+  onRemove?: (id: string) => void;
+  onOpenApps?: () => void;
 }
 
 /**
@@ -22,16 +22,16 @@ export const ActiveDayCard: React.FC<ActiveDayCardProps> = ({ thisWeek, recent, 
   <section className="wk-card w-full text-left block" aria-labelledby="active-day-title">
     <div className="flex items-start justify-between" style={{ gap: fig(24) }}>
       <h2 id="active-day-title" className="wk-h1" style={{ lineHeight: 1.21 }}>
-        Active day
+        Activity
       </h2>
       <span className="wk-pill shrink-0" style={thisWeek ? { color: 'var(--wk-accent)' } : undefined}>
-        {thisWeek ? 'Done this week' : 'To do this week'}
+        {thisWeek ? 'Done this week' : 'Running, cycling & more'}
       </span>
     </div>
     <p className="wk-body" style={{ marginTop: fig(16) }}>
       {thisWeek
         ? `${describeActivity(thisWeek)[0].toUpperCase()}${describeActivity(thisWeek).slice(1)} counts as this week's active day.`
-        : `One ${MIN_ACTIVE_MINUTES}+ minute ride, run, walk, swim or class each week. Your watch or Health Connect can add it for you.`}
+        : `Log a ${MIN_ACTIVE_MINUTES}+ minute run, bike ride, walk, swim or class, or sync automatically from your watch, Strava or Health Connect.`}
     </p>
 
     {recent.length > 0 && (
@@ -60,46 +60,59 @@ export const ActiveDayCard: React.FC<ActiveDayCardProps> = ({ thisWeek, recent, 
                 )}
               </span>
             </span>
-            <button
-              type="button"
-              onClick={() => {
-                triggerHaptic('light');
-                onRemove(a.id);
-              }}
-              aria-label={`Remove ${describeActivity(a)}`}
-              className="shrink-0 font-semibold text-white/70 hover:text-white"
-              style={{ minHeight: 44, padding: `0 ${fig(16)}`, fontSize: `max(12px, ${fig(26)})` }}
-            >
-              Remove
-            </button>
+            {onRemove && (
+              <button
+                type="button"
+                onClick={() => {
+                  triggerHaptic('light');
+                  onRemove(a.id);
+                }}
+                aria-label={`Remove ${describeActivity(a)}`}
+                className="wk-btn-secondary shrink-0"
+              >
+                Remove
+              </button>
+            )}
           </li>
         ))}
       </ul>
     )}
 
-    <div className="grid grid-cols-2" style={{ marginTop: fig(28), gap: fig(16) }}>
-      <button
-        type="button"
-        onClick={() => {
-          triggerHaptic('light');
-          onLog();
-        }}
-        className="wk-button"
-        style={{ background: thisWeek ? 'var(--wk-raised)' : 'var(--wk-accent)', color: thisWeek ? 'var(--color-text-primary)' : 'var(--color-text-on-accent)' }}
-      >
-        Log a session
-      </button>
-      <button
-        type="button"
-        onClick={() => {
-          triggerHaptic('light');
-          onOpenApps();
-        }}
-        className="wk-button"
-        style={{ background: 'var(--wk-raised)', color: 'var(--color-text-primary)' }}
-      >
-        Activity apps
-      </button>
-    </div>
+    {(onLog || onOpenApps) && (
+      <div className="grid grid-cols-2" style={{ marginTop: fig(28), gap: fig(16) }}>
+        {onLog && (
+          <button
+            type="button"
+            onClick={() => {
+              triggerHaptic('light');
+              onLog();
+            }}
+            className="wk-button"
+            style={{
+              background: thisWeek ? 'var(--color-action-secondary-bg)' : 'var(--color-action-primary-bg)',
+              color: thisWeek ? 'var(--color-action-secondary-fg)' : 'var(--color-action-primary-fg)',
+            }}
+          >
+            Log a session
+          </button>
+        )}
+        {onOpenApps && (
+          <button
+            type="button"
+            onClick={() => {
+              triggerHaptic('light');
+              onOpenApps();
+            }}
+            className="wk-button"
+            style={{
+              background: 'var(--color-action-secondary-bg)',
+              color: 'var(--color-action-secondary-fg)',
+            }}
+          >
+            Activity apps
+          </button>
+        )}
+      </div>
+    )}
   </section>
 );

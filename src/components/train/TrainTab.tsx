@@ -32,9 +32,10 @@ import {
   MUSCLE_FRIENDLY_NAMES,
   READY_THRESHOLD, getWorkoutCompletedAt } from '../../engine/recovery';
 import { TrainingPlan, getSessionPlanId, planWorkoutLabel } from '../../engine/muscleBuildingProgram';
-import { ActivityLog, activeDayDates } from '../../engine/activeDays';
-import { localDateString, parseLocalDate } from '../../utils/date';
+import { ActivityLog, activeDayDates, qualifiesAsActiveDay } from '../../engine/activeDays';
+import { localDateOffset, localDateString, parseLocalDate } from '../../utils/date';
 import { stepsOnDate } from '../../services/athleteGoals';
+import { ActiveDayCard } from './ActiveDayCard';
 import { startingWeightForNewExercise } from '../../services/sessionPreparation';
 import { useUnits } from '../../utils/unitsContext';
 import {
@@ -122,6 +123,12 @@ interface TrainTabProps {
   onUpdateProfile?: (update: Partial<UserProfile>) => void;
   /** Active days (rides, runs, walks, classes), kept alongside lifting workouts. */
   activities?: ActivityLog[];
+  /** Opens the manual activity logger (running, cycling, walking, swimming, etc.). */
+  onLogActivity?: () => void;
+  /** Opens the Activity apps connections modal (Strava, Health Connect, Watch). */
+  onOpenActivityApps?: () => void;
+  /** Removes a logged activity by ID. */
+  onRemoveActivity?: (id: string) => void;
 }
 
 /** Primary muscles each split day trains, used to suggest a recovered alternative. */
@@ -173,6 +180,9 @@ export const TrainTab: React.FC<TrainTabProps> = ({
   onOpenProgram,
   onSwitchSplitDay,
   onUpdateProfile,
+  onLogActivity,
+  onOpenActivityApps,
+  onRemoveActivity,
 }) => {
   const units = useUnits();
   const [swappingExercise, setSwappingExercise] = useState<ExerciseSession | null>(null);
@@ -968,12 +978,53 @@ export const TrainTab: React.FC<TrainTabProps> = ({
   );
 
   const todayDateStr = localDateString();
+  const todayStripDay = stripDays.find((d) => d.isToday);
   const isRestDayToday = activeWorkout.date > todayDateStr && completedSets === 0;
-  const isNonTrainingToday = !todayFinished && (showRecoveryGate || isRestDayToday);
+  const isNonTrainingToday =
+    !todayFinished &&
+    (showRecoveryGate ||
+      isRestDayToday ||
+      (todayStripDay?.status === 'rest' && completedSets === 0 && !activeWorkout.recoveryOverride));
   const inspectedDay = selectedStripDate ? stripDays.find((d) => d.date === selectedStripDate) ?? null : null;
-  const overviewStepDay = inspectedDay ?? (isNonTrainingToday ? stripDays.find((d) => d.isToday) ?? { date: todayDateStr, label: 'TODAY', status: 'rest' as const, isToday: true } : null);
+  const inspectedLiftingWorkout = useMemo(() => {
+    if (!inspectedDay) return null;
+    return (
+      workouts
+        .filter((w) => w.completed && localDateString(new Date(getWorkoutCompletedAt(w))) === inspectedDay.date)
+        .sort((x, y) => getWorkoutCompletedAt(x) - getWorkoutCompletedAt(y))
+        .pop() ?? null
+    );
+  }, [inspectedDay, workouts]);
+  const isNonTrainingView = inspectedDay
+    ? inspectedDay.isToday
+      ? isNonTrainingToday
+      : !inspectedLiftingWorkout
+    : isNonTrainingToday;
+  const showActiveExercises = !isNonTrainingView && (!inspectedDay || inspectedDay.isToday) && !todayFinished;
+
+  const overviewStepDay =
+    inspectedDay ??
+    (isNonTrainingToday
+      ? todayStripDay ?? { date: todayDateStr, label: 'TODAY', status: 'rest' as const, isToday: true }
+      : null);
   const overviewSteps = overviewStepDay ? stepsOnDate(biometrics, overviewStepDay.date) : 0;
   const dailyStepsGoal = profile.goalSettings?.customGoals?.find((g) => g.metric === 'steps')?.target;
+  const sevenDaysAgoStr = localDateOffset(-6, parseLocalDate(todayDateStr));
+  const recentActivities = useMemo(() => {
+    const targetDate = inspectedDay?.date;
+    const filtered = targetDate
+      ? activities.filter((a) => a.date === targetDate)
+      : activities.filter((a) => a.date >= sevenDaysAgoStr);
+    const list = filtered.length > 0 ? filtered : activities.filter((a) => a.date >= sevenDaysAgoStr);
+    return [...list].sort((a, b) => b.startedAt.localeCompare(a.startedAt));
+  }, [activities, inspectedDay, sevenDaysAgoStr]);
+  const thisWeekActiveDay = useMemo(
+    () =>
+      [...activities]
+        .filter((a) => a.date >= sevenDaysAgoStr && qualifiesAsActiveDay(a))
+        .sort((a, b) => b.startedAt.localeCompare(a.startedAt))[0],
+    [activities, sevenDaysAgoStr]
+  );
   const formatDayShort = (date: string) => {
     const d = parseLocalDate(date);
     return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
@@ -985,17 +1036,19 @@ export const TrainTab: React.FC<TrainTabProps> = ({
         markerRef={exercisesTopRef}
         fallbackRef={cardsTopRef}
         observeRef={cardsTopRef}
-        deps={[showRecoveryGate, sessionReport]}
+        deps={[showRecoveryGate, sessionReport, isNonTrainingView]}
       />
-      <StickySessionHeader
-        sessionLabel={programCard.sessionLabel}
-        current={programCard.current}
-        total={programCard.total}
-        onOpen={onOpenProgram}
-        docked={sessionDocked}
-        headerRef={stickyHeaderRef}
-        measureRef={stickyMeasureRef}
-      />
+      {!isNonTrainingView && (
+        <StickySessionHeader
+          sessionLabel={programCard.sessionLabel}
+          current={programCard.current}
+          total={programCard.total}
+          onOpen={onOpenProgram}
+          docked={sessionDocked}
+          headerRef={stickyHeaderRef}
+          measureRef={stickyMeasureRef}
+        />
+      )}
       <WorkoutPageHeader
         title={pageTitle}
         days={stripDays}
@@ -1006,7 +1059,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
 
       <div ref={cardsTopRef} className="flex flex-col" style={{ gap: fig(22), marginTop: fig(64) }}>
       {/* After today's session: lead with "complete" and the progress breakdown. */}
-      {todayFinished ? (() => {
+      {todayFinished && (!inspectedDay || inspectedDay.isToday) ? (() => {
         const finishedDayBio = biometrics.find((b) => b.date === todayFinished.workout.date);
         const dayStrainValue = finishedDayBio?.strain ?? (latestBiometrics.date === todayFinished.workout.date ? latestBiometrics.strain : undefined);
         const finishedWorkoutStrain = todayFinished.workout.whoopStrain ?? finishedDayBio?.workoutStrain;
@@ -1035,7 +1088,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
             ))}
           </>
         );
-      })() : (
+      })() : !isNonTrainingView ? (
         <>
           <ProgramProgressCard
             {...programCard}
@@ -1052,9 +1105,9 @@ export const TrainTab: React.FC<TrainTabProps> = ({
             />
           )}
         </>
-      )}
+      ) : null}
 
-      {workoutDisplay.showStepsCard && overviewStepDay && (inspectedDay || overviewStepDay.status !== 'trained') && (
+      {workoutDisplay.showStepsCard && overviewStepDay && (isNonTrainingView || inspectedDay || overviewStepDay.status !== 'trained') && (
         <section
           aria-label={overviewStepDay.isToday ? "Today's steps" : `${overviewStepDay.label} steps`}
           className="wk-card"
@@ -1070,7 +1123,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
                 </span>
               </h2>
               <p className="wk-caption" style={{ marginTop: fig(6) }}>
-                {overviewStepDay.status === 'trained'
+                {!isNonTrainingView && overviewStepDay.status === 'trained'
                   ? 'Training day'
                   : isRestDayToday && overviewStepDay.isToday
                   ? 'Rest day'
@@ -1143,7 +1196,41 @@ export const TrainTab: React.FC<TrainTabProps> = ({
         </section>
       )}
 
-      {showRecoveryGate && !sessionReport && (
+      {isNonTrainingView && (
+        <ActiveDayCard
+          thisWeek={thisWeekActiveDay}
+          recent={recentActivities}
+          onLog={onLogActivity}
+          onRemove={onRemoveActivity}
+          onOpenApps={onOpenActivityApps}
+        />
+      )}
+
+      {isRestDayToday && (!inspectedDay || inspectedDay.isToday) && !showRecoveryGate && (
+        <section aria-label="Rest day status" className="wk-card">
+          <h2 className="wk-h1">Rest day logged</h2>
+          <p className="wk-body" style={{ marginTop: fig(16) }}>
+            {activeWorkout.name} is queued for your next training day. Focus on steps, active recovery or rest today.
+          </p>
+          <button
+            type="button"
+            onClick={() => {
+              triggerHaptic('light');
+              onUpdateWorkout({ ...activeWorkout, date: todayDateStr });
+            }}
+            className="wk-button"
+            style={{
+              marginTop: fig(28),
+              background: 'var(--color-action-secondary-bg)',
+              color: 'var(--color-action-secondary-fg)',
+            }}
+          >
+            Train today instead
+          </button>
+        </section>
+      )}
+
+      {showRecoveryGate && (!inspectedDay || inspectedDay.isToday) && !sessionReport && (
         <section aria-label="Recovery before next workout" className="wk-card">
           <h2 className="wk-h1">Your muscles are still recovering</h2>
           <p className="wk-body" style={{ marginTop: fig(20) }}>
@@ -1214,7 +1301,21 @@ export const TrainTab: React.FC<TrainTabProps> = ({
         </section>
       )}
 
-      {!showRecoveryGate && (<>
+      {inspectedDay && !inspectedDay.isToday && inspectedLiftingWorkout && (
+        <>
+          {buildCompletedExerciseSummaries({
+            finished: inspectedLiftingWorkout,
+            workouts,
+            bodyweightKg: hasWeighIn ? bodyweightEmaKg : 0,
+            biometrics,
+            formatWeight: (kg) => units.formatPrecise(kg),
+          }).map((ex) => (
+            <CompletedExerciseCard key={ex.id} summary={ex} />
+          ))}
+        </>
+      )}
+
+      {showActiveExercises && (<>
       {/* Exercise cards (the page gradient ends where the first one starts) */}
       <div ref={exercisesTopRef} className="flex flex-col" style={{ gap: fig(22) }}>
         {exercisePrescriptions.map(({ ex, prescription }, index) => {

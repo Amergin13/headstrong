@@ -8763,8 +8763,11 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
         trainTabSrc.includes('current: sessionSetsCurrent') &&
         trainTabSrc.includes('total: sessionSetsTotal') &&
         trainTabSrc.includes('workoutDisplay.showRecoveryCard && hasRecoveryMechanism') &&
+        trainTabSrc.includes('isNonTrainingView') &&
+        trainTabSrc.includes('showActiveExercises') &&
+        trainTabSrc.includes('<ActiveDayCard') &&
         progCardSrc.includes('Workout sets completed'),
-      'Workout page renders lean session card + sticky header with workout set count by default and gates RecoveryScoreCard on wearable connection'
+      'Workout page renders lean session card + sticky header with workout set count by default, gates RecoveryScoreCard on wearable connection, and hides exercises on non-training days in favor of steps and activities'
     );
     assert(
       /\.wk-input\s*\{[\s\S]*?min-height:\s*48px;/.test(idxCssSrc) &&

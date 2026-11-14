@@ -1045,6 +1045,9 @@ export const App: React.FC = () => {
             }}
             onUpdateProfile={(up) => setProfile((p) => ({ ...p, ...up }))}
             activities={activities}
+            onLogActivity={() => setLogActivityOpen(true)}
+            onOpenActivityApps={() => setActivityAppsOpen(true)}
+            onRemoveActivity={activitySync.removeActivity}
             onSwitchSplitDay={
               isPlanProgram(profile.programType)
                 ? undefined
