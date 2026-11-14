@@ -8,6 +8,7 @@ import {
 } from './types';
 import { calculateRepsNeededForTargetE1RM } from './e1rm';
 import { KilgoreLift, kilgoreThresholdsKg } from './kilgoreStandards';
+import { formatWeight, WeightUnit } from '../utils/units';
 
 export const TIERS: StrengthTier[] = ['Untrained', 'Novice', 'Intermediate', 'Advanced', 'Elite'];
 export const SUB_DIVISIONS: SubDivision[] = ['I', 'II', 'III', 'IV'];
@@ -170,10 +171,13 @@ export function calculateSubTierQuest(
     maxReps?: number;
     sfrScore?: number;
     resistanceProfile?: 'lengthened' | 'mid' | 'shortened';
-  }
+  },
+  unit: WeightUnit = 'kg',
+  age?: number
 ): SubTierQuest {
-  const evalResult = evaluateStrengthStandard(pillar, currentE1rmKg, bodyweightEmaKg, gender);
+  const evalResult = evaluateStrengthStandard(pillar, currentE1rmKg, bodyweightEmaKg, gender, age);
   const targetE1rm = Math.round(evalResult.targetRatio * bodyweightEmaKg * 10) / 10;
+  const loadLabel = unit === 'lb' ? formatWeight(workingWeightKg, 'lb') : `${workingWeightKg}kg`;
 
   if (isolationMeta?.isIsolation) {
     const repGoal = isolationMeta.maxReps || Math.max(12, targetReps + 2);
@@ -193,7 +197,7 @@ export function calculateSubTierQuest(
       targetWeightKg: workingWeightKg,
       repsNeededAtWeight: repGoal,
       percentageProgress: progress,
-      displayText: `Next rep goal: ${workingWeightKg} kg × ${repGoal} clean reps`,
+      displayText: `Next rep goal: ${unit === 'lb' ? loadLabel : `${workingWeightKg} kg`} × ${repGoal} clean reps`,
       isIsolationQuest: true,
       sfrScore: sfr,
       resistanceProfile: isolationMeta.resistanceProfile || 'lengthened',
@@ -212,7 +216,7 @@ export function calculateSubTierQuest(
   );
 
   const questTargetName = `${evalResult.nextTier} ${evalResult.nextSubDivision}`;
-  const displayText = `Hit ${workingWeightKg}kg × ${repsNeeded} reps to reach ${questTargetName}`;
+  const displayText = `Hit ${loadLabel} × ${repsNeeded} reps to reach ${questTargetName}`;
 
   return {
     pillar,

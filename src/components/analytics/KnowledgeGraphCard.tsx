@@ -8,13 +8,13 @@ import {
 import {
   buildAthleteKnowledgeGraph,
   EXERCISE_SCIENCE_KNOWLEDGE_BASE,
+  searchExerciseScienceKnowledgeBase,
 } from '../../engine/knowledgeGraph';
 import { triggerHaptic } from '../../utils/haptics';
 
 // Internal engineering and design-governance entries are not shown in the athlete's science browser.
 const INTERNAL_PRINCIPLE_IDS = [
   'sp-tensor-ai',
-  'sp-tensor-ai-acceleration',
   'sp-ai-coach-single-entry-invariant',
   'sp-design-system-4-tier-typography',
   'sp-design-system-semantic-colors',
@@ -266,18 +266,11 @@ export const KnowledgeGraphCard: React.FC<KnowledgeGraphCardProps> = ({
             />
           </div>
 
-          {(pkg.scientificKnowledgeBase || EXERCISE_SCIENCE_KNOWLEDGE_BASE)
+          {(scienceSearch.trim()
+            ? searchExerciseScienceKnowledgeBase(scienceSearch, EXERCISE_SCIENCE_KNOWLEDGE_BASE.length)
+            : (pkg.scientificKnowledgeBase || EXERCISE_SCIENCE_KNOWLEDGE_BASE)
+          )
             .filter((p) => !INTERNAL_PRINCIPLE_IDS.includes(p.id))
-            .filter((p) => {
-              if (!scienceSearch.trim()) return true;
-              const q = scienceSearch.toLowerCase();
-              return (
-                p.title.toLowerCase().includes(q) ||
-                p.topic.toLowerCase().includes(q) ||
-                p.scientificRationale.toLowerCase().includes(q) ||
-                p.keywords.some((k) => k.includes(q))
-              );
-            })
             .map((p) => (
               <div key={p.id} className="wk-card w-full text-left block">
                 <div className="flex items-start justify-between" style={{ gap: fig(24) }}>

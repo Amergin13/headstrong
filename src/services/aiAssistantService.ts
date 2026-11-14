@@ -39,7 +39,9 @@ import {
 } from '../engine/muscleBuildingProgram';
 import { prepareSessionForAthlete } from './sessionPreparation';
 import { localDateString } from '../utils/date';
-import { formatPreciseWeight, formatWeight, snapLoadKg } from '../utils/units';
+import { formatPreciseWeight, formatWeight } from '../utils/units';
+import { calculateWarmupPrescription } from '../engine/warmup';
+import { PROGRESSION_RULES } from '../engine/progressionRules';
 import { calculateE1RM } from '../engine/e1rm';
 import { buildBodyweightEmaLookup } from '../engine/ema';
 import { runReadAloudQaGate, VOICE_TONE_MATRIX } from '../engine/contentStrategy';
@@ -210,7 +212,13 @@ export function buildCoachSystemPrompt(input: AssistantProcessInput): string {
         .filter((k): k is string => Boolean(k))
     ),
   ];
-  const musclesDesc = (todaysMuscleKeys.length ? kg.muscleProfiles.filter((m) => todaysMuscleKeys.includes(m.muscleKey)) : kg.muscleProfiles.slice(0, 3))
+  const activeMuscles = kg.muscleProfiles.filter(
+    (m) => todaysMuscleKeys.includes(m.muscleKey) || m.weeklySets > 0
+  );
+  const selectedMuscles = activeMuscles.length
+    ? activeMuscles
+    : [...kg.muscleProfiles].sort((a, b) => a.weeklySets / a.personalizedMav[0] - b.weeklySets / b.personalizedMav[0]).slice(0, 4);
+  const musclesDesc = selectedMuscles
     .map((m) => `${m.displayName} ${m.weeklySets} of ${m.personalizedMav[0]}-${m.personalizedMav[1]} (${muscleTargetStatus(m)})`)
     .join(', ');
   const athleteName = profile.name && profile.name !== 'Athlete' ? profile.name.split(' ')[0] : '';
@@ -280,14 +288,24 @@ export function buildCoachSystemPrompt(input: AssistantProcessInput): string {
     if (liftSummary) kgFacts.push(`Strength levels: ${liftSummary}.`);
   }
   if (kg.insights.length > 0) {
-    kgFacts.push(`Insight: ${kg.insights[0].title} — ${kg.insights[0].narrative}`);
+    kgFacts.push(
+      ...kg.insights.slice(0, 2).map((ins) => `Insight: ${ins.title} — ${ins.narrative}`)
+    );
   }
   const latestWaist = kg.bodyComposition.tapeTrends.find((t) => t.id === 'waist')?.latest;
   const latestBf = kg.bodyComposition.scaleTrends.find((t) => t.id === 'body_fat')?.latest;
-  if (latestWaist !== undefined || latestBf !== undefined) {
+  const latestFfm = kg.bodyComposition.scaleTrends.find((t) => t.id === 'fat_free_mass')?.latest;
+  if (latestWaist !== undefined || latestBf !== undefined || latestFfm !== undefined) {
     const bc: string[] = [];
-    if (latestWaist !== undefined) bc.push(`waist ${latestWaist} cm`);
+    if (latestWaist !== undefined) {
+      bc.push(
+        unit === 'lb'
+          ? `waist ${Math.round((latestWaist / 2.54) * 10) / 10} in`
+          : `waist ${latestWaist} cm`
+      );
+    }
     if (latestBf !== undefined) bc.push(`body fat ${latestBf}%`);
+    if (latestFfm !== undefined) bc.push(`lean mass ${formatWeight(latestFfm, unit)}`);
     kgFacts.push(`Body composition: ${bc.join(', ')}.`);
   }
   if (kg.activitySummary.activitiesLast7d > 0) {
@@ -295,8 +313,9 @@ export function buildCoachSystemPrompt(input: AssistantProcessInput): string {
   }
 
   // Voice from the content strategy: pragmatic and observant, grounded in logged facts, no hype, formatted for mobile chat.
+  const athleteAge = standardsAge(profile);
   return `You are ${VOICE_TONE_MATRIX.steadyVoice.replace(/^The /, 'the ').replace(/\.$/, '')}, speaking to ${athleteName || 'the athlete'} as "you". Lead with one direct sentence answering the question or confirming the outcome (no greeting). Keep replies concise at 40-80 words unless they explicitly ask for a detailed breakdown. Keep each paragraph to 1-2 short sentences, and use concise bold-lead bullets (- **Topic:** detail) for multi-part guidance. For anything about their plan, weights, sets or progress, use only the facts below. For general training questions (timing, motivation, habits, technique, food), give practical, widely accepted advice in your own words, without numbers. Never say the plan or the facts don't cover something. Never call a muscle's sets enough unless it is on target. High recovery means today's targets stand. Don't praise effort the facts don't show. Never guess or invent how individual sets or reps went in past workouts. The plan sets weights and raises them itself when every set reaches the top of the range; never tell them to change the weight. No hype, cheerleading or percentages; say why something works in one plain clause.
-Athlete: ${hasWeighIn ? `${formatWeight(bodyweightEmaKg, unit)}, ` : ''}goal ${goalLabel}, week ${planPos.week}/${planPos.totalWeeks}, recovery ${recovery}${kg.recoveryEfficiencyScore > 0 ? ` (${kg.recoveryEfficiencyScore}%)` : ''}${
+Athlete: ${hasWeighIn ? `${formatWeight(bodyweightEmaKg, unit)}, ` : ''}${athleteAge ? `age ${athleteAge}, ` : ''}location ${profile.activeLocation || 'gym'}, goal ${goalLabel}, week ${planPos.week}/${planPos.totalWeeks}, recovery ${recovery}${kg.recoveryEfficiencyScore > 0 ? ` (${kg.recoveryEfficiencyScore}%)` : ''}${
     latestBio && latestBio.hrvRmssd > 0 ? `, slept ${latestBio.sleepHours} h` : ''
   }.${placeFacts.length ? `\nViewing: ${placeFacts.join(' ')}.` : ''}${kgFacts.length ? `\n${kgFacts.join('\n')}` : ''}
 Today's plan (not done yet): ${activeWorkout?.name || 'rest'}: ${exercisesDesc || 'nothing planned'}.
@@ -329,7 +348,8 @@ export function changesPlanWeight(answer: string): boolean {
 
 /** Advice must agree with today's recovery: no "you need more rest" on a good day, no "push hard" on a low one. */
 export function contradictsRecovery(answer: string, readinessState: ReadinessState): boolean {
-  const saysRest = /\b(need(s)? (more )?rest|take (it )?easy|take a rest|skip (today|the workout)|back off|go easy|rest instead|too hard|don'?t push|not push(ing)? (yourself )?(too )?hard|ease off|hold back)\b/i.test(answer);
+  const scrubbedRest = answer.replace(/\brest days? between\b/gi, '');
+  const saysRest = /\b(need(s)? (more )?rest|take (it )?easy|take a rest|skip (today|the workout)|back off|go easy|rest instead|too hard|don'?t push|not push(ing)? (yourself )?(too )?hard|ease off|hold back)\b/i.test(scrubbedRest);
   const saysPush = /\b(push (hard|harder|it)|go heavy|max out|all out)\b/i.test(answer) && !/\bnot\b[^.!?]{0,15}\bpush/i.test(answer);
   if (readinessState === 'Amber Shield') return saysPush;
   return saysRest;
@@ -390,6 +410,9 @@ export function contradictsMuscleTargets(
   const saysTooMuch = /\b(too (much|many)|over (your|the) target|above (your|the) target|back off|cut back)\b/;
   const saysTooLittle = /\b(below|under|short of|behind|not enough|more sets)\b/;
   for (const sentence of sentences) {
+    if (/\b(?:good amount of|enough) (?:sleep|protein|calories|food|water|recovery|rest|time)\b/.test(sentence) && !/\bsets?|volume\b/.test(sentence)) {
+      continue;
+    }
     for (const m of muscles) {
       if (!m.names.some((n) => sentence.includes(n))) continue;
       if (saysEnough.test(sentence) && m.status !== 'on target') return true;
@@ -533,9 +556,19 @@ function buildEstimatedMaxAnswer(
   workouts: WorkoutSession[],
   bodyweightKg: number,
   unit: 'kg' | 'lb',
-  biometrics?: BiometricLog[]
+  biometrics?: BiometricLog[],
+  activeWorkout?: WorkoutSession,
+  exerciseCatalog?: ExerciseDefinition[]
 ): string {
-  const lift = LIFT_WORDS.find((word) => lowerMsg.includes(word));
+  const liftWord = LIFT_WORDS.find((word) => lowerMsg.includes(word));
+  const namedMatch =
+    activeWorkout && exerciseCatalog ? findExerciseNamed(lowerMsg, activeWorkout, exerciseCatalog) : null;
+  const matchedFullName = namedMatch?.session?.name || namedMatch?.def?.name;
+  // Only scope to one exact exerciseId when the athlete named a specific exercise (not a generic word like "squat")
+  const explicitSpecificExercise =
+    Boolean(matchedFullName && lowerMsg.includes(matchedFullName.toLowerCase())) || !liftWord;
+  const namedId = explicitSpecificExercise ? namedMatch?.session?.exerciseId || namedMatch?.def?.id : undefined;
+  const lift = explicitSpecificExercise && matchedFullName ? matchedFullName.toLowerCase() : liftWord;
   if (!lift) return 'Which lift do you mean? Ask me for your bench, squat or deadlift, for example.';
   const spelled = lift.replace(' ', '-');
   const emaLookup = biometrics ? buildBodyweightEmaLookup(biometrics) : undefined;
@@ -545,7 +578,7 @@ function buildEstimatedMaxAnswer(
     const sessionBw = emaLookup ? emaLookup(w.date, bodyweightKg) : bodyweightKg;
     for (const ex of w.exercises) {
       const name = ex.name.toLowerCase();
-      if (!name.includes(lift) && !name.includes(spelled)) continue;
+      if (!(namedId && ex.exerciseId === namedId) && !name.includes(lift) && !name.includes(spelled)) continue;
       const isCalisthenic =
         ex.equipment === 'bodyweight' || ex.equipment === 'weighted_bodyweight' || Boolean(ex.isWeightedCalisthenic);
       if (isCalisthenic && sessionBw <= 0) {
@@ -1155,20 +1188,26 @@ async function processAssistantMessageCore(
 
     const dsMatches = isDesignQuery ? queryDesignSystemComponents(lowerMsg) : [];
 
-    // A. Joint Strain & Health Query
-    const jointQuery = kg.joints.find((j) => {
-      const lowerJ = j.joint.toLowerCase();
-      return (
-        lowerMsg.includes(lowerJ.split(' ')[0]) ||
-        (lowerMsg.includes('shoulder') && lowerJ.includes('shoulder')) ||
-        (lowerMsg.includes('elbow') && lowerJ.includes('elbow')) ||
-        (lowerMsg.includes('back') && lowerJ.includes('lumbar')) ||
-        (lowerMsg.includes('knee') && lowerJ.includes('knee')) ||
-        (lowerMsg.includes('ankle') && lowerJ.includes('ankle'))
-      );
-    });
+    // A. Joint Strain & Health Query (only when asking about joint/strain/load/pain, not lifts like shoulder press or back squat)
+    const asksAboutJointLoad =
+      /\b(joint|strain|stress|ache|pain|sore\w*|tight\w*|load on my)\b/.test(lowerMsg) ||
+      !/\b(press|squat|deadlift|rdl|row|extension|curl|raise|pulldown|e?1rm|estimated max|standard|tier|target|weight|reps?|formula|calculat\w*|how much|sets?)\b/.test(lowerMsg);
 
-    if (jointQuery || lowerMsg.includes('joint') || lowerMsg.includes('joint strain')) {
+    const jointQuery = asksAboutJointLoad
+      ? kg.joints.find((j) => {
+          const lowerJ = j.joint.toLowerCase();
+          return (
+            lowerMsg.includes(lowerJ.split(' ')[0]) ||
+            (lowerMsg.includes('shoulder') && lowerJ.includes('shoulder')) ||
+            (lowerMsg.includes('elbow') && lowerJ.includes('elbow')) ||
+            (lowerMsg.includes('back') && lowerJ.includes('lumbar')) ||
+            (lowerMsg.includes('knee') && lowerJ.includes('knee')) ||
+            (lowerMsg.includes('ankle') && lowerJ.includes('ankle'))
+          );
+        })
+      : undefined;
+
+    if (jointQuery || lowerMsg.includes('joint strain') || /\bjoints?\b/.test(lowerMsg)) {
       const targetJoint = jointQuery || kg.joints.sort((a, b) => b.strainScore - a.strainScore)[0];
       answerText = `Your ${targetJoint.joint} is currently at ${targetJoint.strainScore}/100 load (${targetJoint.status}). Most of the recent stress came from ${targetJoint.topContributors.slice(0, 2).join(' and ') || 'recent pressing movements'}. ${targetJoint.biomechanicalAdvice}`;
 
@@ -1223,6 +1262,11 @@ async function processAssistantMessageCore(
           lowerMsg.includes('tempo')) &&
         !lowerMsg.includes('why') &&
         !lowerMsg.includes('formula') &&
+        !lowerMsg.includes('calculat') &&
+        !lowerMsg.includes('worked out') &&
+        !lowerMsg.includes('how are') &&
+        !lowerMsg.includes('how does') &&
+        !lowerMsg.includes('hypertrophy') &&
         !lowerMsg.includes('multiplier') &&
         !lowerMsg.includes('citation') &&
         !lowerMsg.includes('academic') &&
@@ -1255,25 +1299,37 @@ async function processAssistantMessageCore(
           lowerMsg.includes('fitbit') ||
           lowerMsg.includes('readiness'));
 
-      // Explicit "why / how does / formula" questions get the full science card. Other open
+      // Explicit "why / how does / formula / framework" questions get the full science card. Other open
       // questions go to Gemini Flash / the on-device model when ready (grounded in KG facts).
       const isExplicitScienceQuestion =
-        /\b(why|how does|how do|formula|what is|what's|explain|science|research|studies|study|calculat\w*|worked out|measured|citation)\b/.test(lowerMsg);
+        /\b(why|how does|how do|formula|what is|what's|explain|science|research|studies|study|calculat\w*|worked out|measured|citation|framework\w*|behind the|kilgore|poliquin|exrx|grindem|acwr|gabbett|junk volume|cross-implement|movement vector)\b/.test(lowerMsg);
       // "How is my progress?" is about the athlete's own data, not a science card.
       const isOwnProgressQuestion = /\b(progress|progressing|improv\w*|stronger|getting better|gains?|prs?|personal (best|record)s?)\b/i.test(lowerMsg);
 
       // Levels, balance and left/right questions about the athlete's own lifts: answered from their
       // data (movement standards), never by the model. "Why / how is it worked out" still gets the card.
       const isStandardsQuestion =
-        /\b(my level|levels?|strength standards?|how strong|imbalanc\w*|balanced?|asymmetr\w*|weaker side|weak side|left side|right side|one side|weak link|lagging|(weakest|strongest|best|worst) (lift|lifts|exercise|movement)|weak points?)\b/i.test(lowerMsg);
+        /\b(my level|levels?|strength standards?|how strong|tier|tiers|untrained|novice|intermediate|advanced|elite|(?:squat|bench|deadlift|press|overhead press|ohp|chin-?up|pull-?up) standard|imbalanc\w*|balanced?|asymmetr\w*|left vs\.? right|unilateral|weaker side|weak side|left side|right side|one side|weak link|lagging|(weakest|strongest|best|worst) (lift|lifts|exercise|movement)|weak points?)\b/i.test(lowerMsg);
       // "What's my bench 1RM?" and "what's my DOTS score?" ask for the athlete's own number, not a formula.
-      const asksHowItWorks = /\b(why|how|formula|explain|science|research|calculat\w*|worked out)\b/.test(lowerMsg);
+      const asksHowItWorks = /\b(why|how|formula|explain|science|research|calculat\w*|worked out|framework\w*|behind)\b/.test(lowerMsg);
       const asksForOwnMax = /\bmy\b.*\b(e?1\s?rm|one[\s-]rep\s*max|estimated\s*max)\b/.test(lowerMsg) && !asksHowItWorks;
       const asksForOwnScore = /\bmy\b.*\b(dots|strength\s*score)\b/.test(lowerMsg) && !asksHowItWorks;
+      const asksOwnAttributes =
+        /\b(my|what are my)\b.*\b(attributes?|stats|profile|overview|metrics|numbers)\b/.test(lowerMsg) &&
+        !isExplicitScienceQuestion;
+      const isDedicatedDomainGuide =
+        /\b(scale\s*weight|scale\s*flat|scale\s*not\s*moving|why\s*isn'?t\s*(my|the)\s*scale|measure\s*progress|weigh\s*myself|weigh\s*in|take\s*measurements|body\s*recomp|recomposition|shirt\s*off|measuring\s*progress|training\s*diary|paper\s*diary|gym\s*notebook|what\s*(does\s*)?(the\s*)?app\s*(do|does)|plan(ning)?\s*(for\s*me|from\s*week\s*to\s*week)|just\s*show\s*up|paper\s*log|track(s)?\s*(my|your)?\s*weights|smart\s*scale|smart\s*scales|measuring\s*devices?|smart\s*measuring|smart\s*tape|renpho|friction\s*free\s*track)\b/i.test(
+          lowerMsg
+        );
+
+      const namesTodayExercise = (activeWorkout?.exercises ?? []).some((e) => exerciseNamedIn(lowerMsg, e.name));
 
       const candidatePrinciple =
         !asksForOwnMax &&
         !asksForOwnScore &&
+        !asksOwnAttributes &&
+        !isDedicatedDomainGuide &&
+        !(namesTodayExercise && !isExplicitScienceQuestion) &&
         !(isStandardsQuestion && !isExplicitScienceQuestion && !isTacticalWorkoutQuery) &&
         !isTacticalWorkoutQuery &&
         !isPersonalTelemetryQuery
@@ -1284,8 +1340,22 @@ async function processAssistantMessageCore(
         (isExplicitScienceQuestion || (!isOwnProgressQuestion && !(await isOnDeviceModelReady())))
           ? candidatePrinciple
           : null;
-      if (asksForOwnMax) {
-        answerText = buildEstimatedMaxAnswer(lowerMsg, workouts, measuredBodyweightKg, profile.weightUnit || 'kg', biometrics);
+      if (asksOwnAttributes) {
+        const unit = profile.weightUnit || 'kg';
+        const planPos = planPosition(profile, workouts, input.activities ?? []);
+        const hasBw = biometrics.some((b) => (b.bodyweightKg || 0) > 0);
+        const athleteAge = standardsAge(profile);
+        const parts = [
+          `Goal: ${GOAL_DISPLAY_NAME[profile.goalPhase] ?? profile.goalPhase}`,
+          `Plan: ${planPos.plan.name} (Week ${planPos.week} of ${planPos.totalWeeks})`,
+          hasBw ? `7-day avg weight: ${formatPreciseWeight(bodyweightEmaKg, unit)}` : 'Weight: not logged yet',
+          athleteAge ? `Age group: ${athleteAge} (${profile.gender === 'female' ? 'Female' : 'Male'} standards)` : `${profile.gender === 'female' ? 'Female' : 'Male'} standards`,
+          `Recovery: ${readinessState === 'Amber Shield' ? 'low' : readinessState === 'Primed' ? 'high' : 'normal'}${kg.recoveryEfficiencyScore > 0 ? ` (${kg.recoveryEfficiencyScore}%)` : ''}`,
+        ];
+        if (kg.stepsSummary.avg7d !== undefined) parts.push(`7-day steps avg: ${kg.stepsSummary.avg7d.toLocaleString()}/day`);
+        answerText = `Your current profile and metrics:\n• ${parts.join('\n• ')}`;
+      } else if (asksForOwnMax) {
+        answerText = buildEstimatedMaxAnswer(lowerMsg, workouts, measuredBodyweightKg, profile.weightUnit || 'kg', biometrics, activeWorkout, exerciseCatalog);
       } else if (asksForOwnScore) {
         answerText = `Treise compares each lift with published strength standards instead of giving one score.\n\n${strengthLevelsAnswer()}`;
       } else if (isStandardsQuestion && !isExplicitScienceQuestion && !isTacticalWorkoutQuery) {
@@ -1477,13 +1547,12 @@ async function processAssistantMessageCore(
             value: diaryPrinciple.academicCitation,
           });
         }
+        const stepLabel = formatWeight(PROGRESSION_RULES.barbellIncrementKg, profile.weightUnit || 'kg');
         answerText =
-          `Treise completely replaces the traditional paper training diary!\n\n` +
-          `**What Treise does for you:**\n` +
-          `• **Automated Tracking:** Automatically logs your weights, sets, reps, tempo, and rest intervals.\n` +
-          `• **Weekly Overload Planning:** Calculates your exact double progression from week to week (+1 rep or +2.5 kg load) so you never have to guess or manually calculate next week's weights.\n` +
-          `• **Life-Proof Schedule:** An asynchronous queue means missed workouts wait without guilt or streak penalties, adapting to your location in 1 tap.\n\n` +
-          `You don't need to carry a gym notebook or calculate progression math—**you just need to show up and lift.**`;
+          `Treise completely replaces the traditional paper training diary so you just need to show up and train:\n\n` +
+          `• **Automated Tracking:** Logs your weights, sets, reps, tempo, and rest intervals.\n` +
+          `• **Double Progression:** Advances reps inside your range or steps up weight (${stepLabel} on barbells) once all working sets hit the target.\n` +
+          `• **Life-Proof Queue:** Missed sessions wait without losing progress and adapt cleanly across Gym, Home, or Bodyweight workouts.`;
       } else if (
         /\b(smart\s*scale|smart\s*scales|measuring\s*devices?|smart\s*measuring|smart\s*tape|renpho|friction\s*free\s*track)\b/i.test(
           lowerMsg
@@ -1536,7 +1605,7 @@ async function processAssistantMessageCore(
 
           const groundingPrinciple = queryExerciseScienceKnowledgeBase(userMessage);
           const groundingFacts = groundingPrinciple
-            ? `- ${groundingPrinciple.title}: ${groundingPrinciple.practicalApplication}`
+            ? `- ${groundingPrinciple.title}${groundingPrinciple.formula ? ` (${groundingPrinciple.formula})` : ''}: ${groundingPrinciple.practicalApplication}${groundingPrinciple.academicCitation ? ` [Source: ${groundingPrinciple.academicCitation}]` : ''}`
             : '';
 
           const systemPrompt = buildCoachSystemPrompt(input);
@@ -1768,21 +1837,45 @@ async function processAssistantMessageCore(
               citations.push({ label: option.name, metric: 'Swap Option', value: `${option.defaultRepRange[0]}–${option.defaultRepRange[1]} reps` });
             }
           } else if (isWarmupQuery) {
-            // Ramp-Up Warm-Up Protocol
-            const primaryEx = workoutExercises[0];
+            // Computed warm-up ramp from warmup.ts for the named or primary exercise
+            const primaryEx = matchedWorkoutEx || workoutExercises[0];
+            const primaryDef = primaryEx ? exerciseCatalog.find((d) => d.id === primaryEx.exerciseId) : undefined;
             const unit = profile.weightUnit || 'kg';
             const targetWeight =
               primaryEx?.sets.find((st) => !st.isWarmup && st.setType !== 'warmup')?.targetWeightKg ?? 0;
-            const w50 = formatWeight(snapLoadKg(targetWeight * 0.5, unit, primaryEx?.equipment), unit);
-            const w75 = formatWeight(snapLoadKg(targetWeight * 0.75, unit, primaryEx?.equipment), unit);
+            const rx = primaryEx
+              ? calculateWarmupPrescription(
+                  {
+                    pillar: primaryEx.pillar,
+                    equipment: primaryEx.equipment,
+                    isIsolation: primaryDef?.isIsolation,
+                    isWeightedCalisthenic: primaryEx.isWeightedCalisthenic,
+                    name: primaryEx.name,
+                    exerciseId: primaryEx.exerciseId,
+                  },
+                  targetWeight,
+                  primaryEx.exerciseId === workoutExercises[0]?.exerciseId
+                )
+              : null;
 
-            answerText = `Warm-Up Protocol for **${primaryEx ? primaryEx.name : "today's primary compound lift"}**:\n\n1. **Set 1:** Empty bar or light weight × 10 reps.\n2. **Set 2:** ${w50} (about half your working weight) × 5 reps.\n3. **Set 3:** ${w75} (about three-quarters) × 2–3 easy reps.\n\nRest 2 minutes before starting your first heavy working set.`;
-
-            citations.push({
-              label: primaryEx ? primaryEx.name : 'Warmup Pyramid',
-              metric: 'Ramp-Up Targets',
-              value: `10 reps @ bar → 5 reps @ ${w50} → 2 reps @ ${w75}`,
-            });
+            if (rx && rx.sets.length > 0) {
+              const steps = rx.sets
+                .map(
+                  (s, idx) =>
+                    `${idx + 1}. **${s.label}:** ${s.weightKg > 0 ? formatWeight(s.weightKg, unit) : 'bodyweight'} × ${s.reps} reps`
+                )
+                .join('\n');
+              answerText = `Warm-up ramp for **${primaryEx!.name}**:\n\n${steps}\n\n${rx.rationale}`;
+              citations.push({
+                label: primaryEx!.name,
+                metric: 'Warm-up Ramp',
+                value: rx.sets.map((s) => `${s.weightKg > 0 ? formatWeight(s.weightKg, unit) : 'BW'}×${s.reps}`).join(' → '),
+              });
+            } else {
+              answerText = primaryEx
+                ? `**${primaryEx.name}** needs 0 dedicated warm-up sets${rx?.rationale ? ` — ${rx.rationale}` : ' (the muscles are warmed from your opening lifts).'}`
+                : 'Warm-up sets ramp smoothly up to your first heavy compound weight.';
+            }
           } else if (isRestQuery) {
             // The same rest the timer counts for each of today's exercises.
             answerText = answerRestTimes(activeWorkout);
@@ -1790,13 +1883,18 @@ async function processAssistantMessageCore(
             // From the athlete's own lifts and bodyweight, never a stock score.
             answerText = strengthLevelsAnswer();
           } else if (isTempoQuery) {
-            // Hypertrophy Lifting Cadence
-            answerText = `Optimal hypertrophy tempo for today's workout:\n\n• **Eccentric (Lowering):** 2–3 seconds controlled descent under active tension.\n• **Paused Stretch:** 1 full second at the lengthened position to maximize stretch-mediated hypertrophy.\n• **Concentric (Lifting):** Explosive intent while maintaining strict path.\n• **Lockout:** 0.5 second squeeze without resting on joints.`;
+            // Actual tempo from the exercise / catalog rather than a single canned cadence
+            const focusEx = matchedWorkoutEx || workoutExercises[0];
+            const focusDef = focusEx ? exerciseCatalog.find((d) => d.id === focusEx.exerciseId) : matchedCatalogEx ?? undefined;
+            const tempoCode = focusEx?.tempo || '3-0-1-0';
+            answerText = focusEx
+              ? `Prescribed cadence for **${focusEx.name}** is **${tempoCode}** (controlled eccentric lowering, brief pause, purposeful concentric lift).${focusDef?.whyItWorks ? ` ${focusDef.whyItWorks}` : ''}`
+              : `Prescribed lifting cadence is **${tempoCode}** (controlled lowering under tension with crisp concentric drive).`;
 
             citations.push({
-              label: 'Rep Cadence',
+              label: focusEx ? focusEx.name : 'Rep Cadence',
               metric: 'Prescribed Tempo',
-              value: '2-1-1-0 (2s eccentric, 1s stretch pause)',
+              value: tempoCode,
             });
           } else if (isExerciseQuery && targetEx) {
             // Exact Exercise Target Load, Reps & Double Progression
@@ -1886,7 +1984,8 @@ async function processAssistantMessageCore(
             const plannedRirs = [...new Set(workoutExercises.flatMap((e) => e.sets.filter((st) => !st.isWarmup && st.setType !== 'warmup').map((st) => st.targetRir)).filter((r): r is number => typeof r === 'number'))].sort((a, b) => a - b);
             const effortForBriefing = plannedRirs.length === 0 ? '1–2 reps to spare' : plannedRirs.length === 1 ? `${plannedRirs[0]} ${plannedRirs[0] === 1 ? 'rep' : 'reps'} to spare` : `${plannedRirs[0]}–${plannedRirs[plannedRirs.length - 1]} reps to spare`;
 
-            answerText = `Today's session is **${activeWorkout?.name || 'Workout'}**${activeWorkout?.programWorkoutNumber ? '' : ` (**${activeWorkout?.splitDay || 'Scheduled'} Day**)`} in **Week ${planPosition(profile, workouts, input.activities ?? []).week} of 6** (${activeWorkout?.location === 'travel' ? 'Bodyweight' : activeWorkout?.location === 'home' ? 'At Home' : 'Full Gym'} mode).\n\nPlanned Movements:\n${plannedList}\n\n${
+            const briefPos = planPosition(profile, workouts, input.activities ?? []);
+            answerText = `Today's session is **${activeWorkout?.name || 'Workout'}**${activeWorkout?.programWorkoutNumber ? '' : ` (**${activeWorkout?.splitDay || 'Scheduled'} Day**)`} in **Week ${briefPos.week} of ${briefPos.totalWeeks}** (${activeWorkout?.location === 'travel' ? 'Bodyweight' : activeWorkout?.location === 'home' ? 'At Home' : 'Full Gym'} mode).\n\nPlanned Movements:\n${plannedList}\n\n${
               readinessState === 'Primed'
                 ? `Your recovery is high today${recoveryReadingsClause(latestBio)}, so it's a good day to push your first working sets.`
                 : readinessState === 'Amber Shield'

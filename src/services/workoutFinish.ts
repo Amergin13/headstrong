@@ -270,12 +270,9 @@ export function checkWorkoutSummary(
 }
 
 /**
- * Whether the on-device model is asked to reword the workout summary. Off: tested on Gemini Nano
- * (Chrome 153, Nov 2026), its rewordings changed what the figures meant (a gain across sessions
- * became "since the previous session", 2 of 4 sessions became "the week's target is met", an
- * estimated max became a weight lifted). With checks for those, none of 8 tries passed, so asking
- * only made the athlete wait. The fact-based summary is accurate and is what shows. The checks stay
- * for when a model can do this.
+ * Whether the on-device / Flash model is asked to phrase the workout summary from checked facts.
+ * The deterministic fact-based fallback stays immediately ready if no model responds or a reply
+ * fails the numeric/factual checks.
  */
 export const WORKOUT_SUMMARY_USES_MODEL = true;
 

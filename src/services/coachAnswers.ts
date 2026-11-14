@@ -128,10 +128,11 @@ export function answerRestTimes(activeWorkout: WorkoutSession): string {
 /** Plain muscle words athletes use, mapped to the knowledge graph's muscles. */
 const MUSCLE_WORDS: { re: RegExp; keys: string[]; specific?: boolean }[] = [
   { re: /\bchest|pecs?\b/, keys: ['Chest'] },
-  { re: /\bback|lats?\b/, keys: ['Back'] },
+  { re: /\bback|lats?|traps?\b/, keys: ['Back'] },
   { re: /\bshoulders?|delts?\b/, keys: ['SideDelts', 'RearDelts', 'FrontDelts'] },
-  { re: /\bside (shoulders?|delts?)\b/, keys: ['SideDelts'], specific: true },
-  { re: /\brear (shoulders?|delts?)\b/, keys: ['RearDelts'], specific: true },
+  { re: /\b(side|lateral) (shoulders?|delts?)\b/, keys: ['SideDelts'], specific: true },
+  { re: /\b(front|anterior) (shoulders?|delts?)\b/, keys: ['FrontDelts'], specific: true },
+  { re: /\b(rear|posterior) (shoulders?|delts?)\b/, keys: ['RearDelts'], specific: true },
   { re: /\bquads?|front thighs?\b/, keys: ['Quads'] },
   { re: /\bhams?(trings?)?\b/, keys: ['Hamstrings'] },
   { re: /\bglutes?\b/, keys: ['Glutes'] },
@@ -173,11 +174,14 @@ export function answerWeeklySets(lowerMsg: string, kg: AthleteKnowledgeGraph): s
     return `• ${m.displayName}: ${m.weeklySets} of ${min}–${max} hard sets this week (${status}).`;
   });
   const intro = named.length ? '' : 'The muscles furthest from this week\'s target:\n';
-  return `${intro}${lines.join('\n')}\n\nA hard set is a working set taken within about 3 reps of failure; a muscle that only helps counts half. Your plan builds toward these targets across the 6 weeks.`;
+  return `${intro}${lines.join('\n')}\n\nA hard set is a working set taken within about 3 reps of failure; a muscle that only helps counts half. Your plan builds toward these targets across your plan.`;
 }
 
-/** True when a message asks about training volume rather than a joint or pain. */
+/** True when a message asks about personal weekly volume rather than volume formulas, MEV/MRV science, or joint load. */
 export function asksAboutVolume(lowerMsg: string): boolean {
+  if (/\b(formula|calculat\w*|worked out|mev|mav|mrv|landmark\w*|junk|wasted|excess|science|framework\w*|why does)\b/.test(lowerMsg)) {
+    return false;
+  }
   return /\b(sets?|volume|enough|target|how much (training|work)|training (enough|my))\b/.test(lowerMsg) && musclesNamed(lowerMsg).length + (/\bsets?\b/.test(lowerMsg) ? 1 : 0) > 0;
 }
 
@@ -271,8 +275,13 @@ export function findExerciseNamed(
   const text = lowerMsg
     .replace(/\brdls?\b/g, 'romanian deadlift')
     .replace(/\bohp\b/g, 'overhead press')
+    .replace(/\b(?:flat )?bp\b/g, 'bench press')
+    .replace(/\bdl\b/g, 'deadlift')
+    .replace(/\bbss\b/g, 'bulgarian split squat')
+    .replace(/\blats?\s+pulldowns?\b/g, 'lat pulldown')
     .replace(/\bincline (?:dumbbell |db |barbell )?bench press\b/g, 'incline press')
     .replace(/\bpull ?ups?\b/g, 'pull-up')
+    .replace(/\bchin ?ups?\b/g, 'chin-up')
     .replace(/\bpush ?ups?\b/g, 'push-up');
   const plain = text.replace(KIT_NAME_WORDS, '').replace(/\s+/g, ' ');
   // The full name first, so "incline press" or "leg press" finds that exercise and not a generic "press" in today's list.
@@ -597,7 +606,8 @@ export function answerEverydayQuestion(ctx: EverydayContext): string | null {
 
   // More than the plan: twice a day, every day.
   if (/\b(twice|two (workouts|sessions)|2 (workouts|sessions)|double session|(another|second|extra) (workout|session))\b/.test(msg) || /\b(train|lift|work ?out)\w* (every ?day|daily|7 days)\b/.test(msg)) {
-    return `Stick to one workout a day. Muscle is built while you recover, so a second session on the same day takes away from your next one instead of adding to it. Your plan is 4 sessions a week. If you want to do more today, an easy walk, ride or swim of 20 minutes or more counts as an active day.`;
+    const plan = resolveActivePlan(profile);
+    return `Stick to one workout a day. Muscle is built while you recover, so a second session on the same day takes away from your next one instead of adding to it. Your plan is ${plan.workoutsPerWeek} sessions a week. If you want to do more today, an easy walk, ride or swim of 20 minutes or more counts as an active day.`;
   }
 
   // Short on time.
@@ -736,8 +746,8 @@ export function answerEverydayQuestion(ctx: EverydayContext): string | null {
     const hasActiveDay = plan.templates.some(isActiveSlot);
     const steps = /\bsteps\b/.test(msg) ? ' Steps on their own don\'t count: it has to be a session you set out to do.' : '';
     return hasActiveDay
-      ? `Yes. Your plan has one active day each week: 20 minutes or more of anything that gets you moving, like a ride, run, walk, swim, class or sport. Log it on the Workout tab, or let your watch add it.${steps} It counts toward your 4 sessions a week and keeps your streak.`
-      : `Yes, cardio fits alongside your plan. Your 4 workouts come first; an easy session of 20 minutes or more on another day is saved as an active day and keeps your streak.${steps} Hard cardio just before a leg workout costs you reps, so do it after lifting or on a different day.`;
+      ? `Yes. Your plan has one active day each week: 20 minutes or more of anything that gets you moving, like a ride, run, walk, swim, class or sport. Log it on the Workout tab, or let your watch add it.${steps} It counts toward your ${plan.workoutsPerWeek} sessions a week and keeps your streak.`
+      : `Yes, cardio fits alongside your plan. Your ${plan.workoutsPerWeek} workouts come first; an easy session of 20 minutes or more on another day is saved as an active day and keeps your streak.${steps} Hard cardio just before a leg workout costs you reps, so do it after lifting or on a different day.`;
   }
 
   // Growing a particular muscle: this week's sets for it against its target.
@@ -818,7 +828,7 @@ export function answerEverydayQuestion(ctx: EverydayContext): string | null {
   if (/\bhow am i (doing|getting on|going)\b|\bhow'?s (it|my training) going\b/.test(msg)) {
     if (!done.length) return `You're just getting started: your first workout, ${activeWorkout.name}, is ready on the Workout tab. Once you've logged it, I'll track every lift and show you how it's moving.`;
     const p = planPosition(profile, workouts, activities);
-    return `${p.overview.completedCount} of ${p.total} sessions done in your ${p.plan.name} (week ${p.week} of 6). ${answerStreak(workouts, activities, now)}\n\n${ctx.progressSummary()}`;
+    return `${p.overview.completedCount} of ${p.total} sessions done in your ${p.plan.name} (week ${p.week} of ${p.totalWeeks}). ${answerStreak(workouts, activities, now)}\n\n${ctx.progressSummary()}`;
   }
 
   // What to focus on.
@@ -830,7 +840,7 @@ export function answerEverydayQuestion(ctx: EverydayContext): string | null {
 
   // Bodyweight and its trend: only from weigh-ins the athlete logged.
   const weighIns = biometrics.filter((b) => (b.bodyweightKg || 0) > 0).sort((a, b) => a.date.localeCompare(b.date));
-  const asksOwnWeight = /\b(what'?s|what is|how much is)\b.*\bmy (body ?weight|weight)\b|\b(do i|i) weigh\b/.test(msg) && !/\b(for|on|lift|bench|squat|press|curl|row)\b/.test(msg);
+  const asksOwnWeight = /\b(what'?s|what is|how much is)\b.*\b(my (body ?weight|weight|7[- ]?day average|ema|bodyweight ema)|7[- ]?day weight)\b|\b(do i|i) weigh\b/.test(msg) && !/\b(for|on|lift|bench|squat|press|curl|row)\b/.test(msg);
   const asksTrend = /\b(losing|lose|lost|gaining|gain|gained|putting on|dropping)\b.*\b(fat|weight|muscle|mass|size)\b/.test(msg) && !/\b(scale|recomp\w*|measure\w*)\b/.test(msg);
   if (asksOwnWeight || asksTrend) {
     if (!weighIns.length) {

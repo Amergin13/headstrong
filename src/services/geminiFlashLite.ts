@@ -14,7 +14,7 @@ type ChatTurn = { role: 'user' | 'assistant'; content: string };
 const STATUS_TTL_MS = 5 * 60 * 1000;
 const FAILURE_STATUS_TTL_MS = 15 * 1000;
 const STATUS_TIMEOUT_MS = 1800;
-const REQUEST_TIMEOUT_MS = 12_000;
+const REQUEST_TIMEOUT_MS = 15_000;
 const MAX_REMEMBERED_EXCHANGES = 4;
 
 let cachedStatus: { configured: boolean; at: number; ttlMs: number } | null = null;
@@ -139,9 +139,14 @@ export async function promptFlashLite(
     }
 
     const exchanges = conversation.length / 2;
-    if (lastSystemPrompt !== systemPrompt || exchanges >= MAX_REMEMBERED_EXCHANGES) {
+    if (lastSystemPrompt !== systemPrompt) {
       lastSystemPrompt = systemPrompt;
-      conversation = [];
+      if (conversation.length > 4) {
+        conversation = conversation.slice(-4);
+      }
+    }
+    if (exchanges >= MAX_REMEMBERED_EXCHANGES) {
+      conversation = conversation.slice(-(MAX_REMEMBERED_EXCHANGES - 1) * 2);
     }
 
     const messages: ChatTurn[] = [...conversation, { role: 'user', content: userPrompt }];

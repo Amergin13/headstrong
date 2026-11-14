@@ -55,7 +55,7 @@ export const EXERCISE_NOTE_SYSTEM_PROMPT =
   'Line 1 is the historical trajectory anchor using only the exact load or estimated 1RM figures in the facts (never use percentages). ' +
   "Line 2 is the session stimulus directive framing today's acute training goal (such as progressive mechanical tension or volume accumulation for hypertrophy). " +
   'Never mention target weight, target reps, target sets, RIR, reps in reserve, tempo, rest times, or weekly muscle set counts. ' +
-  'Every load figure in the facts is an estimated max: call it an estimated max, never a weight the athlete lifted, and do not mention the last session. ' +
+  'When the facts give an estimated 1RM or estimated max, call it an estimated max; when they give added weight or reps, state those plainly, and do not mention the last session. ' +
   'Do not use any number that is not in the facts.';
 
 const isWorking = (s: WorkoutSet) => !s.isWarmup && s.setType !== 'warmup';

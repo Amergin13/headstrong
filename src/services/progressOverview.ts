@@ -377,7 +377,15 @@ export function buildGoalsSummary(goals: AthleteGoal[], formatWeight: (kg: numbe
         : `Your own goal is ${goalText} on ${m.exerciseName}; log it to start counting.`
     );
   }
-  const sparse = (frequency?.thisWeek ?? 0) === 0 && (frequency?.streakWeeks ?? 0) === 0 && (body?.signsMeasured ?? 0) === 0 && !strength;
+  const hasActiveOwnProgress = activeGoals(goals).some(
+    (g) => g.measure.type === 'target' && (g.achieved || (g.measure as Extract<AthleteGoal['measure'], { type: 'target' }>).best > 0)
+  );
+  const sparse =
+    (frequency?.thisWeek ?? 0) === 0 &&
+    (frequency?.streakWeeks ?? 0) === 0 &&
+    (body?.signsMeasured ?? 0) === 0 &&
+    !strength &&
+    !hasActiveOwnProgress;
   return { facts, fallback: sentences.join(' '), sparse };
 }
 

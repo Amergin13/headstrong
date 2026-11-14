@@ -13,6 +13,7 @@ import {
   isWhoopConfigured,
 } from './types';
 import { localDateString, parseLocalDate } from '../utils/date';
+import { formatWeight } from '../utils/units';
 import { buildBodyweightEmaLookup, calculateEmaSeries, getLatestBodyweightEma } from './ema';
 import { ActivityLog } from './activeDays';
 import { AthleteGoal, buildAthleteGoals } from '../services/athleteGoals';
@@ -199,7 +200,7 @@ export const EXERCISE_SCIENCE_KNOWLEDGE_BASE: ScientificPrinciple[] = [
     academicCitation: 'Epley (1985); Lombardi (1989); Zourdos et al. (2016)',
     practicalApplication:
       'Calculates your working 1-rep maximum on every set, normalizes strength across different rep ranges, and benchmarks your progress against international strength standards.',
-    keywords: ['e1rm', '1rm', 'epley', 'lombardi', 'e1rm formula', 'reps in reserve', 'rir', 'one rep max', 'estimate max', 'calculate max', 'strength formula'],
+    keywords: ['e1rm', '1rm', 'epley', 'lombardi', 'e1rm formula', 'reps in reserve', 'rir', 'one rep max', 'one-rep max', 'rep max', 'estimate max', 'estimated max', 'estimated 1rm', 'estimated strength', 'calculate max', 'strength formula'],
   },
   {
     id: 'sp-db-multiplier',
@@ -211,7 +212,7 @@ export const EXERCISE_SCIENCE_KNOWLEDGE_BASE: ScientificPrinciple[] = [
     academicCitation: 'Saeterbakken, van den Tillaar & Fimland (2011), J Sports Sci: dumbbell bench 1RM ~17% below barbell, so 1.18x is an approximation',
     practicalApplication:
       'Allows seamless progressive overload when training with dumbbells at home. For example, pressing two 30 kg dumbbells (60 kg total) provides an authoritative 70.8 kg barbell bench press equivalent.',
-    keywords: ['dumbbell', 'dumbbells', 'db', 'multiplier', '1.18', 'stabilizer', 'bilateral deficit', 'barbell equivalent', 'dumbbell bench'],
+    keywords: ['dumbbell', 'dumbbells', 'db', 'dumbbell multiplier', '1.18', '1.18x', 'stabilizer', 'bilateral deficit', 'barbell equivalent', 'barbell vs dumbbell', 'single dumbbell', 'dumbbell bench'],
   },
   {
     id: 'sp-rdl-multiplier',
@@ -223,7 +224,7 @@ export const EXERCISE_SCIENCE_KNOWLEDGE_BASE: ScientificPrinciple[] = [
     academicCitation: 'Schoenfeld et al. (2020); Escamilla et al. (2000)',
     practicalApplication:
       'Normalizes posterior chain loading when performing RDLs at home or the gym against international hinge standards.',
-    keywords: ['rdl', 'romanian deadlift', 'deadlift multiplier', '1.20', 'hinge multiplier', 'posterior chain', 'deadlift equivalent'],
+    keywords: ['rdl', 'romanian deadlift', 'rdl multiplier', 'romanian deadlift multiplier', 'deadlift multiplier', '1.2', '1.20', '1.2x', '1.20x', 'hinge multiplier', 'posterior chain', 'deadlift equivalent'],
   },
   {
     id: 'sp-calisthenics-load',
@@ -258,7 +259,7 @@ export const EXERCISE_SCIENCE_KNOWLEDGE_BASE: ScientificPrinciple[] = [
       'Eliminates allometric scaling bias. Pure strength-to-weight ratios (e.g. 2x bodyweight) unfairly penalize heavier lifters due to the square-cube law (muscle cross-sectional area scales with length squared, but mass scales with length cubed). DOTS mathematically normalizes strength across all bodyweights.',
     academicCitation: 'International Powerlifting Federation (IPF) Scientific Commission (2019)',
     practicalApplication:
-      'Provides an unbiased score comparing relative strength between lifters of different body masses, and powers the Community Leaderboard divisions.',
+      'Provides an unbiased score normalizing strength across bodyweights so heavier and lighter lifters are evaluated fairly.',
     keywords: ['dots', 'polynomial', 'relative strength', 'ipf', 'powerlifting', 'formula', 'allometric', 'coefficient', 'dots score', 'strength score', 'strength-to-weight'],
   },
   {
@@ -273,19 +274,32 @@ export const EXERCISE_SCIENCE_KNOWLEDGE_BASE: ScientificPrinciple[] = [
       'Kilgore L. Strength performance standards, ExRx.net; Poliquin C. Achieving Structural Balance, T-Nation (1999); Grindem H et al., Br J Sports Med 2016;50:804–808; van den Hoek DJ et al., J Sci Med Sport 2024;27(10):734–742 (normative powerlifting data, 809,986 entries).',
     practicalApplication:
       'Progress → Strength standards shows your level on each lift (Tested when it came from the standard lift for 5 reps or fewer, otherwise Estimated), how it has changed since you started, and a Balance card for imbalances between lifts and weaker sides. Log single-arm and single-leg sets with "Log each side".',
-    keywords: ['6 pillars', 'pillars', 'standards', 'novice', 'intermediate', 'advanced', 'elite', 'strength standards', 'squat standard', 'bench standard', 'deadlift standard', 'kilgore', 'poliquin', 'structural balance', 'imbalance', 'asymmetry', 'symmetry', 'left side', 'right side', 'level'],
+    keywords: [
+      '6 pillars', 'pillars', 'standard', 'standards', 'tier', 'tiers', 'strength tier', 'strength tiers', 'sub-tier',
+      'untrained', 'novice', 'intermediate', 'advanced', 'elite', 'strength level', 'strength levels', 'strength standards',
+      'squat standard', 'bench standard', 'deadlift standard', 'press standard', 'overhead press standard', 'ohp standard',
+      'chin-up standard', 'pull-up standard', 'kilgore', 'poliquin', 'exrx', 'grindem', '81%', '90%', 'age group',
+      'bodyweight class', 'weight class', 'frameworks', 'structural balance', 'imbalance', 'asymmetry', 'symmetry',
+      'left vs right', 'left side', 'right side', 'unilateral', 'single-arm', 'single-leg', 'limb symmetry',
+      'tested', 'estimated', 'tested vs estimated', 'level',
+    ],
   },
   {
     id: 'sp-autonomic-readiness',
     topic: 'Biometric Auto-Regulation',
     title: 'Daily Readiness Z-Score & Wearable Telemetry (Fitbit, Whoop, Android Health Connect)',
-    formula: 'Readiness = 0.50·Z_HRV - 0.30·Z_RHR + 0.20·((Sleep - 7.5)/1.5)',
+    formula: 'Readiness = 0.50·Z_ln(HRV) - 0.30·Z_RHR + 0.20·((Sleep - 7.5)/1.5)',
     scientificRationale:
-      'Nighttime Heart Rate Variability (HRV RMSSD) and Resting Heart Rate (RHR) benchmarked against a 14-day rolling baseline reflect parasympathetic autonomic nervous system balance. Telemetry from Fitbit, Whoop 4.0, or Android Health Connect tracks systemic recovery. Suppressed HRV combined with elevated resting pulse signals central nervous system fatigue and incomplete microtrauma repair.',
+      'Nighttime Heart Rate Variability (log-transformed HRV RMSSD to normalize right-skewed autonomic distributions) and Resting Heart Rate (RHR) benchmarked against a 14-day rolling baseline reflect parasympathetic autonomic nervous system balance. Telemetry from Fitbit, Whoop 4.0, or Android Health Connect tracks systemic recovery. Suppressed HRV combined with elevated resting pulse signals central nervous system fatigue and incomplete microtrauma repair.',
     academicCitation: 'Plews et al. (2013); Buchheit (2014); Altini & Plews (2021); Whoop 4.0 Telemetry Validation (2022)',
     practicalApplication:
       'Auto-regulates daily training: Primed (Z >= +0.8, push for records), Normal (-0.8 < Z < +0.8), or Amber Shield (Z <= -0.8, holds working weight, 2–3 RIR, protects streak and joints). Seamlessly driven by Google Pixel Watch, Fitbit, Whoop, or Android Health Connect.',
-    keywords: ['readiness', 'z-score', 'hrv', 'resting hr', 'rhr', 'sleep', 'amber shield', 'primed', 'pixel watch', 'fitbit', 'whoop', 'health connect', 'android health connect', 'autonomic', 'parasympathetic', 'readiness score', 'wearable'],
+    keywords: [
+      'readiness', 'z-score', 'hrv', 'heart rate variability', 'hrv baseline', '14-day baseline', 'rmssd',
+      'resting hr', 'resting heart rate', 'rhr', 'sleep', 'amber shield', 'primed', 'recovery', 'recovery score',
+      'pixel watch', 'fitbit', 'whoop', 'health connect', 'android health connect', 'autonomic', 'parasympathetic',
+      'readiness score', 'wearable',
+    ],
   },
   {
     id: 'sp-double-progression',
@@ -330,13 +344,13 @@ export const EXERCISE_SCIENCE_KNOWLEDGE_BASE: ScientificPrinciple[] = [
     id: 'sp-hypertrophy-landmarks',
     topic: 'Hypertrophy Volume Landmarks',
     title: 'Israetel & Schoenfeld Muscle Volume Landmarks (MV/MEV/MAV/MRV)',
-    formula: 'Weekly Sets: Side Delts (16-26), Calves (16-24), Rear Delts (14-22), Back (14-22), Chest (12-18), Quads (12-18), Hamstrings (10-16)',
+    formula: 'Weekly Hard Sets MAV: Side Delts (16-26), Calves (16-24), Rear Delts (14-22), Back (14-22), Chest (12-18), Quads (12-18), Triceps (12-18), Biceps (12-20), Glutes (10-16), Hamstrings (10-16), Front Delts (8-14), Core (8-16); scaled ×0.85 while losing fat, ×1.05 lean bulking',
     scientificRationale:
-      'Different muscles possess radically divergent fiber type composition, eccentric stretch microtrauma, and axial CNS strain. Side delts (zero axial load, fatigue-resistant) thrive on 20+ weekly sets; hamstrings (fast-twitch dominant, severe stretch damage) exceed MRV past 16–18 sets.',
-    academicCitation: 'Schoenfeld, Ogborn & Krieger (2017); Israetel et al. (2019)',
+      'Different muscles possess radically divergent fiber type composition, eccentric stretch microtrauma, and axial CNS strain. Side delts (zero axial load, fatigue-resistant) thrive on 20+ weekly sets; hamstrings (fast-twitch dominant, severe stretch damage) exceed MRV past 16–18 sets. Primary muscles earn 1 hard set per working set at <= 3 RIR, while synergistic assisting muscles earn 0.5 sets.',
+    academicCitation: 'Schoenfeld, Ogborn & Krieger (2017); Israetel et al. (2019); Pelland et al. (2024)',
     practicalApplication:
-      'Calibrates set volume in your workouts so each muscle receives optimal growth stimulus without systemic fatigue accumulation.',
-    keywords: ['volume landmarks', 'mav', 'mev', 'mrv', 'mv', 'israetel', 'schoenfeld', 'sets per week', 'how many sets', 'optimal volume', 'hypertrophy landmarks', 'hamstrings', 'side delts', 'calves', 'muscle recovery'],
+      'Calibrates weekly set targets for all 12 tracked muscle groups so each receives optimal hypertrophy stimulus without crossing into wasted excess volume or systemic fatigue.',
+    keywords: ['volume landmarks', 'mav', 'mev', 'mrv', 'mv', 'minimum effective volume', 'maximum recoverable volume', 'israetel', 'schoenfeld', 'sets per week', 'how many sets', 'how are sets calculated', 'optimal volume', 'hypertrophy landmarks', 'hamstrings', 'side delts', 'calves', 'glutes', 'core', 'muscle recovery'],
   },
   {
     id: 'sp-retention-shield',
@@ -395,7 +409,7 @@ export const EXERCISE_SCIENCE_KNOWLEDGE_BASE: ScientificPrinciple[] = [
       'Periodizing volume across 6 weeks prevents the repeated bout effect and neuromuscular accommodation. A planned deload in Week 6 allows connective tissue recovery and resets muscle sensitivity to anabolic tension.',
     academicCitation: 'Israetel (2017); Plisk & Stone (2003)',
     practicalApplication:
-      'Automatically modulates target RIR and set counts across your 6-week training block, clearly displayed in MesocycleManager.tsx.',
+      'Automatically modulates target RIR and set counts across your 6-week training block on the Program tab (while dedicated transformation plans periodize intensity phases across 3 two-week waves).',
     keywords: ['mesocycle', 'periodization', 'deload', 'week 1', 'week 6', 'overreaching', 'volume wave', 'training block', 'periodize'],
   },
   {
@@ -419,7 +433,7 @@ export const EXERCISE_SCIENCE_KNOWLEDGE_BASE: ScientificPrinciple[] = [
       'Measures total localized mechanical work completed relative to cardiovascular cost (Heart Rate Reserve percentage) over time.',
     academicCitation: 'Banister et al. (1975); Foster et al. (2001)',
     practicalApplication:
-      'Displayed in the Progress tab to demonstrate cardiovascular work capacity and muscular endurance progression even during periods of held weight.',
+      'Quantifies cardiovascular and muscular endurance efficiency across sessions so held working weights still show work-capacity adaptation.',
     keywords: ['wci', 'work capacity', 'stamina', 'tonnage', 'hrr', 'heart rate reserve', 'cardiovascular', 'work capacity index'],
   },
   {
@@ -627,6 +641,80 @@ export const EXERCISE_SCIENCE_KNOWLEDGE_BASE: ScientificPrinciple[] = [
       '10x6 squats',
       'warmup ramp',
       'antagonist supersets',
+    ],
+  },
+  {
+    id: 'sp-joint-axial-load',
+    topic: 'Joint Stress & Workload Pacing',
+    title: 'Joint & Axial Load Accumulation vs Workload Pacing (ACWR)',
+    formula: 'Weekly Joint Strain = Σ(Working Sets × Axial Load Multiplier); Acute spikes moderated via RIR and low-stress swaps',
+    scientificRationale:
+      'Connective tissues (rotator cuff, patellar tendon, lumbar discs, elbow flexors) adapt slower than skeletal muscle. Monitoring weekly joint load accumulation alongside acute-to-chronic workload balance (Gabbett, 2016) flags sudden jumps in compressive or shear stress before overuse irritation develops.',
+    academicCitation: 'Gabbett TJ, Br J Sports Med 2016;50:273–280; Schoenfeld et al. (2017); Magnusson et al. (2010)',
+    practicalApplication:
+      'Tracks rolling 7-day load across your Shoulder, Elbow, Lumbar Spine, Knee, and Ankle in Progress and surfaces joint-friendly exercise alternatives before irritation builds.',
+    keywords: [
+      'joint load',
+      'joint strain',
+      'axial load',
+      'lumbar strain',
+      'lower back load',
+      'shoulder strain',
+      'elbow strain',
+      'knee strain',
+      'ankle strain',
+      'acwr',
+      'acute chronic',
+      'acute to chronic',
+      'workload ratio',
+      'gabbett',
+      'tendon recovery',
+    ],
+  },
+  {
+    id: 'sp-cross-implement',
+    topic: 'Cross-Implement Continuity',
+    title: 'Movement Vectors, Bodyweight Ratios & Implement Translation',
+    formula: 'Equivalence maps Bench ↔ Push-Up (64% BW) ↔ DB Bench (÷ 1.18); Hinge ↔ RDL (× 1.20) ↔ Deadlift; Single-limb = Unilateral Fraction',
+    scientificRationale:
+      'Muscles respond to mechanical tension along a biomechanical movement pattern rather than a specific brand of bar or machine. Grouping exercises by movement vector allows Treise to carry progression smoothly across barbell, dumbbell, cable, machine, and calisthenic variations when equipment or location changes.',
+    academicCitation: 'Saeterbakken et al. (2011); Suprak et al. (2011) [push-up 64% BW load]; Helms et al. (2019)',
+    practicalApplication:
+      'When you switch between Gym, Home, or Bodyweight workouts—or swap an occupied machine—your weights carry over automatically using equipment and bodyweight load ratios instead of resetting to guesses.',
+    keywords: [
+      'movement vector',
+      'movement family',
+      'cross-implement',
+      'carry-over',
+      'carryover',
+      'implement translation',
+      'swap weight',
+      'translate weight',
+      'bodyweight ratio',
+      'push-up load',
+      'pushup load',
+      '64%',
+    ],
+  },
+  {
+    id: 'sp-junk-volume',
+    topic: 'Hypertrophy Volume Landmarks',
+    title: 'Effective Stimulus vs Excess (Junk) Volume',
+    formula: 'Optimal stimulus <= ~8–10 hard sets per muscle per session inside weekly MAV; sets past MRV add fatigue without extra growth',
+    scientificRationale:
+      'Per-session protein synthesis saturates after roughly 6–10 quality hard sets for a muscle group. Adding excessive sets beyond your Maximum Recoverable Volume (MRV) or when recovery is suppressed creates prolonged muscle damage and CNS fatigue with diminishing hypertrophy return.',
+    academicCitation: 'Schoenfeld, Ogborn & Krieger (2017); Pelland et al. (2024); Baz-Valle et al. (2022)',
+    practicalApplication:
+      'Caps working sets cleanly inside your phase-adjusted target range so every set contributes productive growth stimulus without wasted effort.',
+    keywords: [
+      'junk volume',
+      'wasted sets',
+      'excess volume',
+      'too many sets',
+      'diminishing returns',
+      'per session cap',
+      'stimulus to fatigue',
+      'overtraining volume',
     ],
   },
 ];
@@ -1074,8 +1162,44 @@ export function getDesignSystemComponentById(id: string): DesignSystemComponent 
 /**
  * Searches and queries the Knowledge Graph's authoritative Exercise Science knowledge base.
  */
+function normalizeSearchText(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[?!.,'":;()[\]/]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function matchesKeyword(cleanQuery: string, normalizedQuery: string, kw: string): boolean {
+  const cleanKw = kw.toLowerCase().trim();
+  if (!cleanKw) return false;
+  // Multi-word phrases and symbol tokens match cleanly as phrase substrings; short words require word boundaries so
+  // "mv" never falsely matches "movement", "ema" never matches "systematic", and "cut" never matches "execute".
+  if (!cleanKw.includes(' ') && cleanKw.length <= 4 && /^[a-z0-9-]+$/.test(cleanKw)) {
+    const escaped = cleanKw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return new RegExp(`(?:^|\\b)${escaped}(?:\\b|$)`).test(normalizedQuery);
+  }
+  return cleanQuery.includes(cleanKw) || normalizedQuery.includes(normalizeSearchText(cleanKw));
+}
+
+const QUERY_STOPWORDS = new Set([
+  'about', 'all', 'also', 'and', 'any', 'are', 'because', 'been', 'before', 'behind', 'being', 'between',
+  'both', 'but', 'can', 'could', 'did', 'does', 'doing', 'done', 'during', 'each', 'for', 'from', 'get',
+  'getting', 'give', 'goes', 'good', 'got', 'had', 'has', 'have', 'help', 'here', 'his', 'her', 'how',
+  'into', 'its', 'just', 'keep', 'know', 'like', 'make', 'many', 'may', 'might', 'more', 'most', 'much',
+  'must', 'need', 'not', 'now', 'only', 'other', 'our', 'out', 'over', 'said', 'same', 'say', 'see',
+  'she', 'should', 'some', 'such', 'take', 'tell', 'than', 'that', 'the', 'their', 'them', 'then', 'there',
+  'these', 'they', 'this', 'those', 'through', 'tip', 'tips', 'too', 'try', 'use', 'used', 'using', 'very',
+  'want', 'was', 'way', 'ways', 'well', 'were', 'what', 'whats', 'when', 'where', 'which', 'while', 'who',
+  'why', 'will', 'with', 'work', 'worked', 'would', 'you', 'your', 'yours',
+]);
+
+/**
+ * Searches and queries the Knowledge Graph's authoritative Exercise Science knowledge base.
+ */
 export function queryExerciseScienceKnowledgeBase(query: string): ScientificPrinciple | null {
   const cleanQuery = query.toLowerCase().trim();
+  const normalizedQuery = normalizeSearchText(cleanQuery);
   if (!cleanQuery) return null;
 
   let bestMatch: ScientificPrinciple | null = null;
@@ -1085,14 +1209,14 @@ export function queryExerciseScienceKnowledgeBase(query: string): ScientificPrin
     let score = 0;
 
     // 1. Title match (highest weight)
-    if (cleanQuery.includes(principle.title.toLowerCase())) {
+    if (cleanQuery.includes(principle.title.toLowerCase()) || normalizedQuery.includes(normalizeSearchText(principle.title))) {
       score += 100;
     }
 
-    // 2. Keyword match (prefer longer/multi-word matches)
+    // 2. Keyword match (prefer longer/multi-word exact matches; guard short terms with word boundaries)
     for (const kw of principle.keywords) {
-      if (cleanQuery.includes(kw)) {
-        score += kw.includes(' ') ? kw.length * 4 : kw.length * 2;
+      if (matchesKeyword(cleanQuery, normalizedQuery, kw)) {
+        score += kw.includes(' ') ? kw.length * 5 : kw.length * 2.5;
       }
     }
 
@@ -1111,19 +1235,30 @@ export function queryExerciseScienceKnowledgeBase(query: string): ScientificPrin
     return bestMatch;
   }
 
-  // Fallback: Multi-word token overlap on title and keywords (requires strong overlap >= 12)
-  const tokens = cleanQuery.split(/\s+/).filter((t) => t.length > 3 && !['what', 'this', 'that', 'with', 'from', 'your', 'today'].includes(t));
+  // Fallback: Whole-word token overlap across title, keywords, and academic citations (require 2+ domain hits)
+  const tokens = normalizedQuery
+    .split(/\s+/)
+    .filter((t) => t.length >= 4 && !QUERY_STOPWORDS.has(t));
+  if (tokens.length === 0) return null;
   for (const principle of EXERCISE_SCIENCE_KNOWLEDGE_BASE) {
     let score = 0;
+    const titleWords = new Set(normalizeSearchText(principle.title).split(/\s+/));
+    const citationWords = new Set(normalizeSearchText(principle.academicCitation || '').split(/\s+/));
     for (const tok of tokens) {
-      if (principle.keywords.some((k) => k.toLowerCase() === tok || k.toLowerCase().split(/\s+/).includes(tok))) {
+      if (principle.keywords.some((k) => {
+        const nk = normalizeSearchText(k);
+        return nk === tok || nk.split(/\s+/).includes(tok);
+      })) {
         score += 4;
       }
-      if (principle.title.toLowerCase().split(/\s+/).includes(tok)) {
+      if (titleWords.has(tok)) {
+        score += 4;
+      }
+      if (citationWords.has(tok)) {
         score += 4;
       }
     }
-    if (score > maxScore && score >= 12) {
+    if (score > maxScore && score >= 8) {
       maxScore = score;
       bestMatch = principle;
     }
@@ -1133,24 +1268,32 @@ export function queryExerciseScienceKnowledgeBase(query: string): ScientificPrin
 }
 
 /**
- * Multi-result fuzzy search across scientific principles
+ * Multi-result fuzzy search across scientific principles (including formulas and academic citations)
  */
 export function searchExerciseScienceKnowledgeBase(query: string, maxResults: number = 6): ScientificPrinciple[] {
   const cleanQuery = query.toLowerCase().trim();
+  const normalizedQuery = normalizeSearchText(cleanQuery);
   if (!cleanQuery) return EXERCISE_SCIENCE_KNOWLEDGE_BASE.slice(0, maxResults);
 
-  const tokens = cleanQuery.split(/\s+/).filter((t) => t.length > 2);
+  const tokens = normalizedQuery.split(/\s+/).filter((t) => t.length > 2 && !QUERY_STOPWORDS.has(t));
   const scored = EXERCISE_SCIENCE_KNOWLEDGE_BASE.map((p) => {
     let score = 0;
     if (p.title.toLowerCase().includes(cleanQuery)) score += 10;
     if (p.topic.toLowerCase().includes(cleanQuery)) score += 8;
+    if (p.formula?.toLowerCase().includes(cleanQuery)) score += 6;
+    if (p.academicCitation?.toLowerCase().includes(cleanQuery)) score += 6;
     for (const kw of p.keywords) {
-      if (cleanQuery.includes(kw) || kw.includes(cleanQuery)) score += 6;
+      if (matchesKeyword(cleanQuery, normalizedQuery, kw) || kw.toLowerCase().includes(normalizedQuery)) {
+        score += kw.includes(' ') ? 8 : 6;
+      }
     }
     for (const tok of tokens) {
-      if (p.keywords.some((k) => k.includes(tok))) score += 3;
+      if (p.keywords.some((k) => normalizeSearchText(k).split(/\s+/).includes(tok) || normalizeSearchText(k).includes(tok))) score += 3;
       if (p.title.toLowerCase().includes(tok)) score += 3;
+      if (p.formula?.toLowerCase().includes(tok)) score += 2;
+      if (p.academicCitation?.toLowerCase().includes(tok)) score += 2;
       if (p.scientificRationale.toLowerCase().includes(tok)) score += 1;
+      if (p.practicalApplication.toLowerCase().includes(tok)) score += 1;
     }
     return { principle: p, score };
   })
@@ -1481,8 +1624,8 @@ export function buildBodyCompositionKnowledgeGraph(
 
     const summary =
       status === 'balanced'
-        ? `Left (${leftCm} cm) and Right (${rightCm} cm) ${cfg.id}s are well balanced (Δ ${absDiff.toFixed(1)} cm).`
-        : `${dominantSide === 'right' ? 'Right' : 'Left'} ${cfg.id} is +${absDiff.toFixed(1)} cm larger (${asymmetryPct}% difference). Start unilateral sets with your ${dominantSide === 'right' ? 'left' : 'right'} side and match reps.`;
+        ? `Left (${fmt.length(leftCm)}) and Right (${fmt.length(rightCm)}) ${cfg.id}s are well balanced (Δ ${fmt.length(absDiff)}).`
+        : `${dominantSide === 'right' ? 'Right' : 'Left'} ${cfg.id} is +${fmt.length(absDiff)} larger (${asymmetryPct}% difference). Start unilateral sets with your ${dominantSide === 'right' ? 'left' : 'right'} side and match reps.`;
 
     return {
       ...cfg,
@@ -1740,7 +1883,7 @@ export function buildAthleteKnowledgeGraph(
     return best;
   };
 
-  // 3. Build Muscle Adaptation Profiles with Personalized Landmarks
+  // 3. Build Muscle Adaptation Profiles with Personalized Landmarks across all 12 tracked muscles
   const trackedMuscles = [
     'SideDelts',
     'Calves',
@@ -1751,6 +1894,9 @@ export function buildAthleteKnowledgeGraph(
     'Hamstrings',
     'Triceps',
     'Biceps',
+    'Glutes',
+    'FrontDelts',
+    'Core',
   ];
 
   const muscleProfiles: MuscleAdaptationProfile[] = trackedMuscles.map((mKey) => {
@@ -1773,9 +1919,9 @@ export function buildAthleteKnowledgeGraph(
         ? 'Horizontal Push'
         : mKey === 'Back' || mKey === 'Biceps' || mKey === 'RearDelts'
         ? 'Vertical Pull'
-        : mKey === 'Quads' || mKey === 'Calves'
+        : mKey === 'Quads' || mKey === 'Calves' || mKey === 'Core'
         ? 'Squat'
-        : mKey === 'Hamstrings'
+        : mKey === 'Hamstrings' || mKey === 'Glutes'
         ? 'Hinge'
         : 'Vertical Push';
 
@@ -1809,7 +1955,15 @@ export function buildAthleteKnowledgeGraph(
   });
 
   // 4. Compute Body Composition & Anthropometry Knowledge Profile (13 Scale Metrics + 12 Tape Sites)
-  const bodyComposition = buildBodyCompositionKnowledgeGraph(biometrics, profile);
+  const athleteUnit = profile.weightUnit || 'kg';
+  const bodyFmt = {
+    weight: (kg: number) => formatWeight(kg, athleteUnit),
+    length: (cm: number) =>
+      athleteUnit === 'lb'
+        ? `${Math.round((cm / 2.54) * 10) / 10} in`
+        : `${Math.round(cm * 10) / 10} cm`,
+  };
+  const bodyComposition = buildBodyCompositionKnowledgeGraph(biometrics, profile, bodyFmt);
 
   // 5. Compute Biometric, Steps, Whoop & Activity Correlations
   // Only days with real watch data count; zeros mean "not measured".
@@ -2081,9 +2235,9 @@ export function buildAthleteKnowledgeGraph(
       confidence: 95,
       impactMetric:
         bfTrend?.latest !== undefined
-          ? `${bfTrend.latest}% BF${ffmTrend?.latest ? ` • ${ffmTrend.latest}kg FFM` : ''}`
+          ? `${bfTrend.latest}% BF${ffmTrend?.latest ? ` • ${bodyFmt.weight(ffmTrend.latest)} FFM` : ''}`
           : waistTrend?.latest !== undefined
-          ? `${waistTrend.latest}cm Waist`
+          ? `${bodyFmt.length(waistTrend.latest)} Waist`
           : `${bodyComposition.populatedTapeCount} Tape Sites`,
       narrative: `${bodyComposition.recompositionSummary}${asymPair ? ` ${asymPair.summary}` : ''}`,
       actionableStep: asymPair
@@ -2172,8 +2326,8 @@ export function buildAthleteKnowledgeGraph(
         ...(stepsSummary.todaySteps !== undefined ? { 'Steps Today': stepsSummary.todaySteps.toLocaleString() } : {}),
         ...(stepsSummary.avg7d !== undefined ? { 'Steps (7d avg)': stepsSummary.avg7d.toLocaleString() } : {}),
         ...(latestBf !== undefined ? { 'Body Fat': `${latestBf}%` } : {}),
-        ...(latestFfm !== undefined ? { 'Fat-Free Mass': `${latestFfm} kg` } : {}),
-        ...(latestWaist !== undefined ? { 'Waist': `${latestWaist} cm` } : {}),
+        ...(latestFfm !== undefined ? { 'Fat-Free Mass': bodyFmt.weight(latestFfm) } : {}),
+        ...(latestWaist !== undefined ? { 'Waist': bodyFmt.length(latestWaist) } : {}),
       },
       detailText: whoopConfigured
         ? `Your Whoop recovery${(whoopSummary.recoveryScore ?? latestRecoveryScore) !== undefined ? ` (${whoopSummary.recoveryScore ?? latestRecoveryScore}%)` : ''}${avgWorkoutStrain !== undefined ? ` and workout strain (${avgWorkoutStrain})` : ''} set how hard each day's workout should be.`

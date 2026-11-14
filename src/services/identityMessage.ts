@@ -96,14 +96,15 @@ export function buildIdentityFacts(input: IdentityMessageInput): IdentityMessage
   const next = plan.workouts.find((w) => w.workoutNumber === plan.nextWorkoutNumber)!;
   const trainingPlan = input.trainingPlan ?? MUSCLE_BUILDING_PLAN;
   const phase = trainingPlan.phases.find((p) => p.phaseNumber === plan.activePhase) ?? trainingPlan.phases[0];
-  // The same week the Program page and the coach give (the plan's own, never past week 6).
+  // The same week the Program page and the coach give (the plan's own, never past its final week).
+  const totalWeeks = Math.max(1, ...trainingPlan.templates.map((t) => t.week));
   const week =
     trainingPlan.templates.find((t) => t.workoutNumber === plan.nextWorkoutNumber)?.week ??
-    Math.min(6, Math.ceil(plan.nextWorkoutNumber / trainingPlan.workoutsPerWeek));
+    Math.min(totalWeeks, Math.ceil(plan.nextWorkoutNumber / trainingPlan.workoutsPerWeek));
   const completed = plan.completedCount;
 
   facts.push(`Sessions finished in this plan: ${completed} of ${trainingPlan.templates.length}.`);
-  facts.push(`Current phase: Phase ${phase.phaseNumber} (${phase.shortName.toLowerCase()}), week ${week} of 6.`);
+  facts.push(`Current phase: Phase ${phase.phaseNumber} (${phase.shortName.toLowerCase()}), week ${week} of ${totalWeeks}.`);
 
   // History in this run of the plan, oldest first.
   const runSessions = plan.workouts

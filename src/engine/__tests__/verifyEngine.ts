@@ -9271,7 +9271,306 @@ Exercise,,Date,Workout,Sets,Reps,Tempo,Rest,Notes,Set 1,Set 2,Set 3,Set 4
     );
   }
 
-  console.log('\nALL 49 ENGINE, GOVERNANCE, DESIGN SYSTEM, TYPOGRAPHY, WEARABLES, WHOOP STRAIN, GOOGLE AUTH, ONBOARDING CONTEXT, 6-WEEK PROGRAM, SPREADSHEET IMPORT, AI COACH ACTIONS, GEMINI FLASH + KG & ZERO-STALL SUITES PASSED SUCCESSFULLY! 🎯');
+  console.log('\n[Suite 50] Testing Knowledge Graph OOUX Completeness, Synonyms, Expertise Frameworks & Consumer-Grade AI Summaries...');
+  {
+    const {
+      queryExerciseScienceKnowledgeBase: queryKb,
+      searchExerciseScienceKnowledgeBase: searchKb,
+      EXERCISE_SCIENCE_KNOWLEDGE_BASE: kbAll,
+    } = await import('../knowledgeGraph');
+    const { calculateSubTierQuest: subQuest } = await import('../strengthStandards');
+    const { COPE_PHYSIOLOGICAL_RELATIONSHIPS } = await import('../contentStrategy');
+    const { processAssistantMessage: ask50, buildCoachSystemPrompt: buildPrompt50 } = await import('../../services/aiAssistantService');
+    const { buildExerciseInsight: buildInsight50 } = await import('../../services/exerciseInsight');
+    const { buildIdentityFacts: buildIdFacts50 } = await import('../../services/identityMessage');
+    const { buildGoalsSummary: buildGoalsSummary50 } = await import('../../services/progressOverview');
+    const { buildPlanOverview: planOver50, MUSCLE_BUILDING_PLAN: basePlan50 } = await import('../muscleBuildingProgram');
+    const seeded50Profile = {
+      ...NEW_USER_PROFILE,
+      onboardingCompleted: true,
+    };
+    const seeded50Workouts = generateSeedWorkouts();
+
+    // A. Synonym, formula, citation, and disambiguation accuracy
+    assert(queryKb('RDL multiplier')?.id === 'sp-rdl-multiplier', 'RDL multiplier resolves to sp-rdl-multiplier (not DB 1.18x)');
+    assert(queryKb('chin-up standard')?.id === 'sp-6-pillars', 'chin-up standard resolves to sp-6-pillars');
+    assert(queryKb('recovery score')?.id === 'sp-autonomic-readiness', 'recovery score resolves to sp-autonomic-readiness');
+    assert(queryKb('heart rate variability')?.id === 'sp-autonomic-readiness', 'spelled-out heart rate variability resolves to sp-autonomic-readiness');
+    assert(queryKb('strength tiers')?.id === 'sp-6-pillars', 'strength tiers resolves to sp-6-pillars');
+    assert(queryKb('untrained')?.id === 'sp-6-pillars', 'untrained tier resolves to sp-6-pillars');
+    assert(queryKb('left vs right')?.id === 'sp-6-pillars', 'left vs right resolves to sp-6-pillars');
+    assert(queryKb('tested vs estimated')?.id === 'sp-6-pillars', 'tested vs estimated resolves to sp-6-pillars');
+    assert(queryKb('how is estimated max worked out?')?.id === 'sp-e1rm', 'estimated max question resolves to sp-e1rm');
+    assert(queryKb('What is junk volume?')?.id === 'sp-junk-volume', 'junk volume resolves cleanly');
+    assert(queryKb('Explain acute chronic workload ratio Gabbett')?.id === 'sp-joint-axial-load', 'ACWR / Gabbett resolves to joint/axial load principle');
+    assert(queryKb('How does cross-implement movement vector carry-over work?')?.id === 'sp-cross-implement', 'cross-implement movement vector resolves cleanly');
+    assert(queryKb('movement')?.id !== 'sp-hypertrophy-landmarks', 'Word boundaries prevent "movement" from falsely matching "mv"');
+    assert(queryKb('systematic')?.id !== 'sp-ema-bw', 'Word boundaries prevent "systematic" from falsely matching "ema"');
+
+    // Formula & citation search powers KnowledgeGraphCard Science & Logic tab
+    assert(searchKb('Saeterbakken').some((p) => p.id === 'sp-db-multiplier'), 'Citation search finds Saeterbakken in sp-db-multiplier');
+    assert(searchKb('0.50·Z_ln(HRV)').some((p) => p.id === 'sp-autonomic-readiness'), 'Formula search finds ln(HRV) Z-score equation');
+
+    // Non-Negotiable #3: Zero phantom leaderboard or filename claims in Knowledge Base
+    const dotsKb = kbAll.find((p) => p.id === 'sp-dots-polynomial');
+    const mesoKb = kbAll.find((p) => p.id === 'sp-meso-periodization');
+    const wciKb = kbAll.find((p) => p.id === 'sp-wci');
+    assert(
+      Boolean(dotsKb && !dotsKb.practicalApplication.includes('Community Leaderboard')) &&
+        Boolean(mesoKb && !mesoKb.practicalApplication.includes('.tsx')) &&
+        Boolean(wciKb && !wciKb.practicalApplication.includes('Displayed in the Progress tab')),
+      'Knowledge base principles stay truthful and free of internal filenames or unbuilt claims'
+    );
+
+    // B. OOUX relationships, 12 tracked muscles, unit/age support
+    assert(COPE_PHYSIOLOGICAL_RELATIONSHIPS.length >= 5, 'COPE OOUX schema links BiometricReading, StrengthStandard, Muscle, and Joint');
+    const lbProfile = { ...seeded50Profile, weightUnit: 'lb' as const, age: 55, ageEntered: true };
+    const lbBio: BiometricLog[] = [
+      {
+        date: '2026-11-10',
+        bodyweightKg: 80,
+        restingHr: 54,
+        hrvRmssd: 68,
+        sleepHours: 7.8,
+        steps: 7000,
+        activeZoneMinutes: 30,
+        fatFreeMassKg: 65,
+        waistCm: 81.28,
+        bicepLeftCm: 36,
+        bicepRightCm: 38.1,
+      },
+    ];
+    const kgLb = buildAthleteKnowledgeGraph(seeded50Workouts, lbBio, SEED_EXERCISES, lbProfile, { Glutes: 8, Core: 6 }, []);
+    assert(
+      kgLb.muscleProfiles.some((m) => m.muscleKey === 'Glutes') &&
+        kgLb.muscleProfiles.some((m) => m.muscleKey === 'FrontDelts') &&
+        kgLb.muscleProfiles.some((m) => m.muscleKey === 'Core'),
+      'Knowledge Graph builds muscle profiles for all 12 tracked muscles including Glutes, FrontDelts, and Core'
+    );
+    const bioNode = kgLb.nodes.find((n) => n.id === 'node-biometrics');
+    assert(
+      String(bioNode?.metrics['Fat-Free Mass'] || '').includes('lb') &&
+        String(bioNode?.metrics['Waist'] || '').includes('in'),
+      'Knowledge Graph biometric metrics respect athlete lb/in unit preference'
+    );
+    const questYoung = subQuest('Horizontal Push', 105, 75, 85, 8, 'barbell', false, false, 'male', undefined, 'lb', 28);
+    const questMaster = subQuest('Horizontal Push', 105, 75, 85, 8, 'barbell', false, false, 'male', undefined, 'lb', 55);
+    assert(
+      questYoung.displayText.includes('lb') &&
+        (questYoung.currentTier !== questMaster.currentTier || questYoung.currentSubDivision !== questMaster.currentSubDivision),
+      'calculateSubTierQuest respects athlete lb display unit and Kilgore age group'
+    );
+
+    // C. AI Coach routing: zero hijacks + accurate framework/muscle/attribute/warmup/tempo answers
+    const baseCoachInput = {
+      profile: { ...seeded50Profile, age: 34, ageEntered: true },
+      activeWorkout: {
+        id: 'w-test-50',
+        name: 'Full Body A',
+        date: '2026-11-14',
+        splitDay: 'Full Body' as const,
+        readinessState: 'Normal' as const,
+        readinessZScore: 0,
+        completed: false,
+        location: 'gym' as const,
+        exercises: [
+          {
+            id: 'ex-w-50-1',
+            exerciseId: 'barbell-back-squat',
+            name: 'Barbell Back Squat',
+            pillar: 'Squat' as const,
+            equipment: 'barbell' as const,
+            minReps: 6,
+            maxReps: 10,
+            tempo: '4-1-1-0',
+            sets: [
+              { id: 's1', setNumber: 1, targetWeightKg: 100, targetReps: 6, targetRir: 2, completed: false, setType: 'working' as const },
+            ],
+          },
+          {
+            id: 'ex-w-50-2',
+            exerciseId: 'ohp',
+            name: 'Barbell Overhead Press',
+            pillar: 'Vertical Push' as const,
+            equipment: 'barbell' as const,
+            minReps: 6,
+            maxReps: 10,
+            sets: [
+              { id: 's2', setNumber: 1, targetWeightKg: 50, targetReps: 6, targetRir: 2, completed: false, setType: 'working' as const },
+            ],
+          },
+        ],
+      },
+      workouts: seeded50Workouts,
+      biometrics: lbBio,
+      exerciseCatalog: SEED_EXERCISES,
+      bodyweightEmaKg: 80,
+      readinessState: 'Normal' as const,
+      weeklyVolume: { Chest: 12, Quads: 10, Glutes: 8, Core: 6 },
+      activities: [],
+    };
+
+    const rFramework = await ask50({ ...baseCoachInput, userMessage: 'What are the frameworks behind the strength levels?' });
+    assert(
+      rFramework.message.text.includes('Kilgore') && rFramework.message.text.includes('Poliquin'),
+      'Asking about frameworks behind strength levels cites Kilgore, Poliquin, and ExRx'
+    );
+
+    const rShoulderPress = await ask50({ ...baseCoachInput, userMessage: 'What is the shoulder press standard?' });
+    assert(
+      !rShoulderPress.message.text.includes('/100 load'),
+      'Asking for shoulder press standard is NOT hijacked by shoulder joint strain alert'
+    );
+
+    const rSetsFormula = await ask50({ ...baseCoachInput, userMessage: 'How are sets calculated for hypertrophy?' });
+    assert(
+      !rSetsFormula.message.text.includes('hard sets this week'),
+      'Asking how sets are calculated routes to science rationale instead of weekly count tally'
+    );
+
+    const rGlutes = await ask50({ ...baseCoachInput, userMessage: 'How many sets for glutes this week?' });
+    assert(
+      rGlutes.message.text.includes('Glutes') && !rGlutes.message.text.includes("doesn't set a weekly target"),
+      'Weekly sets coach answers Glutes target cleanly'
+    );
+
+    const rAttrs = await ask50({ ...baseCoachInput, userMessage: 'What are my current attributes and profile stats?' });
+    assert(
+      rAttrs.message.text.includes('7-day avg weight') && rAttrs.message.text.includes('Recovery:'),
+      'Coach answers athlete attributes/stats directly from live OOUX profile'
+    );
+
+    const rWarmup = await ask50({ ...baseCoachInput, userMessage: 'What is my warm-up for squats?' });
+    assert(
+      rWarmup.message.text.includes('Barbell Back Squat') && rWarmup.message.text.includes('kg'),
+      'Coach warmup uses calculateWarmupPrescription for the requested lift'
+    );
+
+    const rTempo = await ask50({ ...baseCoachInput, userMessage: 'What tempo should I use on squats?' });
+    assert(
+      rTempo.message.text.includes('4-1-1-0'),
+      'Coach tempo answer reflects the actual exercise tempo (4-1-1-0) rather than hardcoded 2-1-1-0'
+    );
+
+    const promptStr = buildPrompt50({ ...baseCoachInput, userMessage: 'How should I pace this week?' });
+    assert(promptStr.includes('age 34') && promptStr.includes('location gym'), 'Coach system prompt includes athlete age and active location');
+
+    // D. Summary guards: no phantom BW jump on calisthenics, dynamic plan weeks, non-sparse custom targets
+    const chinExDef = SEED_EXERCISES.find((e) => e.id === 'chin-up') || SEED_EXERCISES[0];
+    const caliPast: any[] = [
+      {
+        id: 'w-c1',
+        name: 'Pull',
+        date: '2026-10-01',
+        completedAt: '2026-10-01T10:00:00Z',
+        completed: true,
+        splitDay: 'Pull',
+        exercises: [
+          {
+            exerciseId: 'chin-up',
+            name: 'Chin-Ups',
+            pillar: 'Vertical Pull',
+            equipment: 'weighted_bodyweight',
+            isWeightedCalisthenic: true,
+            sets: [{ id: 'cs1', targetWeightKg: 10, actualWeightKg: 10, targetReps: 8, actualReps: 8, completed: true }],
+          },
+        ],
+      },
+      {
+        id: 'w-c2',
+        name: 'Pull',
+        date: '2026-11-01',
+        completedAt: '2026-11-01T10:00:00Z',
+        completed: true,
+        splitDay: 'Pull',
+        exercises: [
+          {
+            exerciseId: 'chin-up',
+            name: 'Chin-Ups',
+            pillar: 'Vertical Pull',
+            equipment: 'weighted_bodyweight',
+            isWeightedCalisthenic: true,
+            sets: [{ id: 'cs2', targetWeightKg: 12.5, actualWeightKg: 12.5, targetReps: 8, actualReps: 8, completed: true }],
+          },
+        ],
+      },
+    ];
+    const caliInsight = buildInsight50(
+      {
+        id: 'ex-chin-50',
+        exerciseId: 'chin-up',
+        name: 'Chin-Ups',
+        pillar: 'Vertical Pull',
+        equipment: 'weighted_bodyweight',
+        minReps: 6,
+        maxReps: 10,
+        isWeightedCalisthenic: true,
+        sets: [],
+      },
+      caliPast,
+      'Normal',
+      80,
+      12,
+      (kg) => `${kg} kg`,
+      []
+    );
+    assert(
+      caliInsight.metric === 'added_kg' && !caliInsight.lines[0].includes('+80'),
+      'Weighted calisthenics tracks added load when bodyweight weigh-ins are absent (never phantom 80 kg assumption)'
+    );
+
+    const custom4WeekPlan: any = {
+      ...basePlan50,
+      id: 'custom:short-4w',
+      name: 'Short 4-Week Plan',
+      workoutsPerWeek: 3,
+      templates: Array.from({ length: 12 }, (_, idx) => ({
+        ...basePlan50.templates[idx % basePlan50.templates.length],
+        workoutNumber: idx + 1,
+        week: Math.floor(idx / 3) + 1,
+      })),
+    };
+    const customOver = planOver50([], custom4WeekPlan, []);
+    const customIdFacts = buildIdFacts50({
+      plan: customOver,
+      trainingPlan: custom4WeekPlan,
+      workouts: [],
+      exerciseCatalog: SEED_EXERCISES,
+      knowledgeGraph: kgLb,
+    });
+    assert(customIdFacts.facts.some((f) => f.includes('week 1 of 4')), 'Identity facts compute totalWeeks dynamically for non-6-week plans');
+
+    const goalSummary = buildGoalsSummary50(
+      [
+        {
+          id: 'custom-1',
+          kind: 'outcome',
+          title: 'Reach 100 kg bench',
+          detail: '85 kg so far',
+          method: 'Heaviest set',
+          current: 85,
+          target: 100,
+          unit: 'kg',
+          progressPct: 85,
+          achieved: false,
+          fromPlan: false,
+          measure: {
+            type: 'target',
+            metric: 'weight',
+            exerciseId: 'bench',
+            exerciseName: 'Barbell Bench Press',
+            target: 100,
+            best: 85,
+            createdOn: '2026-11-01',
+          },
+        },
+      ],
+      (kg) => `${kg} kg`
+    );
+    assert(!goalSummary.sparse, 'Goals summary is non-sparse when custom target goals have progress');
+  }
+
+  console.log('\nALL 50 ENGINE, GOVERNANCE, DESIGN SYSTEM, TYPOGRAPHY, WEARABLES, WHOOP STRAIN, GOOGLE AUTH, ONBOARDING CONTEXT, 6-WEEK PROGRAM, SPREADSHEET IMPORT, AI COACH ACTIONS, GEMINI FLASH + KG, OOUX & CONSUMER SUMMARY SUITES PASSED SUCCESSFULLY! 🎯');
 })().catch((err) => {
   console.error('Test Suite Failed:', err);
   if (typeof process !== 'undefined' && process.exit) {

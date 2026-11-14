@@ -141,8 +141,8 @@ export function buildExerciseInsight(
     return { metric: 'reps', history, lines: [line1, line2], summary: `${line1}\n${line2}` };
   }
 
-  // Calisthenic exercise with added external weight, when no bodyweight is logged yet: track added load instead of guessing 80 kg.
-  const hasRealBw = past.some(({ w }) => bwForDate(w.date) > 0);
+  // Calisthenic exercise with added external weight, when any past session lacks a real bodyweight: track added load instead of guessing 80 kg or showing an artificial +80 kg jump.
+  const hasRealBw = past.length > 0 && past.every(({ w }) => bwForDate(w.date) > 0);
   if (isCalisthenic && !hasRealBw) {
     const history = past
       .map(({ w, ex }) => {

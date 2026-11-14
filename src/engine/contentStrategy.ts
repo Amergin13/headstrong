@@ -204,9 +204,17 @@ export const VOICE_TONE_MATRIX: {
 // 4. Domain & Structured Content Model (COPE Architecture)
 // ============================================================================
 
+export type CopeCoreObject = 'Athlete' | 'Program' | 'Workout' | 'Exercise' | 'Goal';
+export type CopePhysiologicalObject =
+  | CopeCoreObject
+  | 'Muscle'
+  | 'Joint'
+  | 'BiometricReading'
+  | 'StrengthStandard';
+
 export interface CopeDomainRelationship {
-  from: 'Athlete' | 'Program' | 'Workout' | 'Exercise' | 'Goal';
-  to: 'Athlete' | 'Program' | 'Workout' | 'Exercise' | 'Goal';
+  from: CopeCoreObject;
+  to: CopeCoreObject;
   cardinality: '1:many' | 'many:many';
 }
 
@@ -215,6 +223,20 @@ export const COPE_DOMAIN_RELATIONSHIPS: CopeDomainRelationship[] = [
   { from: 'Athlete', to: 'Program', cardinality: '1:many' },
   { from: 'Program', to: 'Workout', cardinality: '1:many' },
   { from: 'Workout', to: 'Exercise', cardinality: 'many:many' },
+];
+
+export interface CopePhysiologicalRelationship {
+  from: CopePhysiologicalObject;
+  to: CopePhysiologicalObject;
+  cardinality: '1:many' | 'many:many';
+}
+
+export const COPE_PHYSIOLOGICAL_RELATIONSHIPS: CopePhysiologicalRelationship[] = [
+  { from: 'Athlete', to: 'BiometricReading', cardinality: '1:many' },
+  { from: 'Athlete', to: 'StrengthStandard', cardinality: '1:many' },
+  { from: 'Exercise', to: 'Muscle', cardinality: 'many:many' },
+  { from: 'Exercise', to: 'Joint', cardinality: 'many:many' },
+  { from: 'BiometricReading', to: 'Workout', cardinality: '1:many' },
 ];
 
 export interface CopeProgramChunk {
@@ -256,12 +278,13 @@ export interface CopeExerciseChunk {
 }
 
 export interface CopeGoalChunk {
-  Target_Metric: 'e1RM_kg' | 'volume_kg';
+  Target_Metric: 'e1RM_kg' | 'volume_kg' | 'frequency' | 'reps' | 'load' | 'body' | 'target';
   Baseline_Value: number;
   Current_Value: number;
   Target_Value: number;
   Session_Count: number;
   Historical_Delta_kg: number;
+  Label?: string;
 }
 
 export interface CopeAthleteChunk {
@@ -270,6 +293,33 @@ export interface CopeAthleteChunk {
   Unit_Preference: WeightUnit;
   Watch_Sync_State: 'connected' | 'disconnected';
   Gender?: Gender;
+  Age?: number;
+  Goal_Phase?: string;
+  Active_Location?: 'gym' | 'home' | 'travel';
+  Wearable_Source?: string;
+}
+
+export interface CopeMuscleChunk {
+  Muscle_Name: string;
+  Weekly_Hard_Sets: number;
+  Target_Range: [number, number];
+  Status: 'below target' | 'on target' | 'above target';
+  Velocity_Pct: number;
+}
+
+export interface CopeJointChunk {
+  Joint_Name: string;
+  Strain_Score: number;
+  Status: string;
+  Top_Contributors: string[];
+}
+
+export interface CopeStrengthStandardChunk {
+  Movement_Pattern: string;
+  Tier_Label: string;
+  Source_Framework: 'Kilgore (ExRx)' | 'Poliquin (81% bench)' | 'None';
+  Is_Tested: boolean;
+  E1RM_kg: number;
 }
 
 export interface MobileWorkoutCardView {

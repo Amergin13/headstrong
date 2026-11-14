@@ -359,7 +359,8 @@ export const ProgramPlanView: React.FC<ProgramPlanViewProps> = ({
       biometrics,
       exerciseCatalog,
       profile,
-      calculateWeeklyMuscleVolume(workouts, exerciseCatalog)
+      calculateWeeklyMuscleVolume(workouts, exerciseCatalog),
+      activities
     );
     return buildIdentityFacts({
       plan,
@@ -373,7 +374,7 @@ export const ProgramPlanView: React.FC<ProgramPlanViewProps> = ({
     });
     // Facts change with history and readiness, not with every profile edit.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [plan, trainingPlan, workouts, biometrics, exerciseCatalog, readinessState, bodyweightKg]);
+  }, [plan, trainingPlan, workouts, biometrics, exerciseCatalog, readinessState, bodyweightKg, activities]);
   const [identityMessage, setIdentityMessage] = useState<string | null>(null);
   useEffect(() => {
     if (!isFirstRun) return;
