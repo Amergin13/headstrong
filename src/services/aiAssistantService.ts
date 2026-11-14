@@ -4,7 +4,15 @@ import { GOAL_DISPLAY_NAME } from '../utils/goalNames';
 import {
   AssistantActionPayload,
   AssistantChatMessage,
+  AthleteMemoryCategory,
+  AthleteMemoryFact,
   BiometricLog,
+  CoachMutationStatus,
+  CoachPendingConfirmation,
+  CoachStateDiff,
+  CoachSuggestedAction,
+  CoachToolName,
+  CoachUndoSnapshot,
   ExerciseDefinition,
   ExerciseSession,
   GoalPhase,
@@ -72,6 +80,20 @@ import {
   planPosition,
 } from './coachAnswers';
 
+import { buildContextEnvelope, ContextEnvelope, serializeContextEnvelopeForPrompt } from './coachContextEnvelope';
+import {
+  buildSuggestedActions,
+  COACH_TOOL_DECLARATIONS,
+  CoachToolExecutionContext,
+  CoachToolOutcome,
+  enforceMutationTruthfulness,
+  executeCoachToolCall,
+  executePendingConfirmation,
+  formatStateDiffText,
+  SupabaseSyncHook,
+} from './coachTools';
+import { isFlashLiteReady, promptFlashLiteStructured } from './geminiFlashLite';
+
 export { exerciseNamedIn };
 
 export interface AssistantProcessInput {
@@ -88,6 +110,10 @@ export interface AssistantProcessInput {
   activities?: ActivityLog[];
   /** Screen / goal where the athlete opened the coach, used to contextualize advice and prompts. */
   place?: CoachPlace;
+  /** Current active app route / tab name for working-state grounding. */
+  routeName?: 'train' | 'program' | 'analytics';
+  /** Optional remote persistence verification hook (Supabase / test harness). */
+  supabaseSyncFn?: SupabaseSyncHook;
   /** Streams the on-device model's answer as it is generated. */
   onPartial?: (textSoFar: string) => void;
   /** Reports first-time model download progress (0-1). */
@@ -123,16 +149,106 @@ export async function processAssistantMessage(
   // Safety first: pain, injury and warning symptoms always get a fixed, conservative answer.
   const safety = buildSafetyResponse(input.userMessage, input.activeWorkout);
   if (safety) {
+    const envelope = buildContextEnvelope({
+      profile: input.profile,
+      activeWorkout: input.activeWorkout,
+      workouts: input.workouts,
+      biometrics: input.biometrics,
+      exerciseCatalog: input.exerciseCatalog,
+      bodyweightEmaKg: input.bodyweightEmaKg,
+      readinessState: input.readinessState,
+      weeklyVolume: input.weeklyVolume,
+      activities: input.activities,
+      place: input.place,
+      routeName: input.routeName,
+    });
     return {
       message: {
         id: `msg-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
         sender: 'assistant',
         text: safety,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        suggestedActions: buildSuggestedActions({ envelope, place: input.place }),
       },
     };
   }
   return processAssistantMessageCore(input);
+}
+
+/**
+ * Executes a pending destructive-action confirmation card (e.g. Confirm Reset to Day 1) in one tap.
+ */
+export async function confirmAssistantPendingAction(
+  pending: CoachPendingConfirmation,
+  context: Omit<AssistantProcessInput, 'userMessage'>
+): Promise<AssistantProcessResult> {
+  const envelope = buildContextEnvelope({
+    profile: context.profile,
+    activeWorkout: context.activeWorkout,
+    workouts: context.workouts,
+    biometrics: context.biometrics,
+    exerciseCatalog: context.exerciseCatalog,
+    bodyweightEmaKg: context.bodyweightEmaKg,
+    readinessState: context.readinessState,
+    weeklyVolume: context.weeklyVolume,
+    activities: context.activities,
+    place: context.place,
+    routeName: context.routeName,
+  });
+  const outcome = await executePendingConfirmation(pending, {
+    profile: context.profile,
+    activeWorkout: context.activeWorkout,
+    workouts: context.workouts,
+    activities: context.activities,
+    exerciseCatalog: context.exerciseCatalog,
+    bodyweightEmaKg: context.bodyweightEmaKg,
+    readinessState: context.readinessState,
+    place: context.place,
+    supabaseSyncFn: context.supabaseSyncFn,
+  });
+  const text = enforceMutationTruthfulness(outcome.summaryText, outcome.mutationStatus);
+  const actionTaken: AssistantActionPayload | undefined =
+    outcome.mutationStatus === 'success'
+      ? {
+          type:
+            outcome.toolName === 'reset_program'
+              ? 'RESET_PROGRAM'
+              : outcome.toolName === 'swap_exercise'
+                ? 'SWAP_EXERCISE'
+                : outcome.toolName === 'adjust_workout_volume'
+                  ? 'ADJUST_WORKOUT_VOLUME'
+                  : 'SAVE_ATHLETE_MEMORY',
+          summary: outcome.stateDiff ? `${outcome.stateDiff.label}: ${formatStateDiffText(outcome.stateDiff)}` : text,
+          toolName: outcome.toolName,
+          mutationStatus: outcome.mutationStatus,
+          stateDiff: outcome.stateDiff,
+        }
+      : undefined;
+
+  return {
+    message: {
+      id: `msg-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+      sender: 'assistant',
+      text,
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      actionApplied: actionTaken,
+      mutationStatus: outcome.mutationStatus,
+      stateDiff: outcome.stateDiff,
+      memorySaved: outcome.memorySaved,
+      undoSnapshot: outcome.undoSnapshot,
+      navigateTarget: outcome.navigateTarget,
+      navigateLabel: outcome.navigateLabel,
+      suggestedActions: buildSuggestedActions({
+        toolName: outcome.toolName,
+        mutationStatus: outcome.mutationStatus,
+        envelope,
+        place: context.place,
+      }),
+    },
+    updatedProfile: outcome.updatedProfile,
+    updatedWorkout: outcome.updatedWorkout,
+    actionTaken,
+  };
 }
 
 const URGENT_SYMPTOMS =
@@ -314,10 +430,25 @@ export function buildCoachSystemPrompt(input: AssistantProcessInput): string {
 
   // Voice from the content strategy: pragmatic and observant, grounded in logged facts, no hype, formatted for mobile chat.
   const athleteAge = standardsAge(profile);
-  return `You are ${VOICE_TONE_MATRIX.steadyVoice.replace(/^The /, 'the ').replace(/\.$/, '')}, speaking to ${athleteName || 'the athlete'} as "you". Lead with one direct sentence answering the question or confirming the outcome (no greeting). Keep replies concise at 40-80 words unless they explicitly ask for a detailed breakdown. Keep each paragraph to 1-2 short sentences, and use concise bold-lead bullets (- **Topic:** detail) for multi-part guidance. For anything about their plan, weights, sets or progress, use only the facts below. For general training questions (timing, motivation, habits, technique, food), give practical, widely accepted advice in your own words, without numbers. Never say the plan or the facts don't cover something. Never call a muscle's sets enough unless it is on target. High recovery means today's targets stand. Don't praise effort the facts don't show. Never guess or invent how individual sets or reps went in past workouts. The plan sets weights and raises them itself when every set reaches the top of the range; never tell them to change the weight. No hype, cheerleading or percentages; say why something works in one plain clause.
+  const contextEnvelope = buildContextEnvelope({
+    profile,
+    activeWorkout,
+    workouts,
+    biometrics,
+    exerciseCatalog,
+    bodyweightEmaKg,
+    readinessState,
+    weeklyVolume,
+    activities: input.activities,
+    place: input.place,
+    routeName: input.routeName,
+    knowledgeGraph: kg,
+  });
+  return `You are ${VOICE_TONE_MATRIX.steadyVoice.replace(/^The /, 'the ').replace(/\.$/, '')}, speaking to ${athleteName || 'the athlete'} as "you". Lead with one direct sentence answering the question or confirming the outcome (no greeting). Keep replies concise at 40-80 words unless they explicitly ask for a detailed breakdown. Keep each paragraph to 1-2 short sentences, and use concise bold-lead bullets (- **Topic:** detail) for multi-part guidance. For anything about their plan, weights, sets or progress, use only the facts below. Never claim a program reset, swap, volume edit, or memory save happened unless a tool call succeeded. For general training questions (timing, motivation, habits, technique, food), give practical, widely accepted advice in your own words, without numbers. Never say the plan or the facts don't cover something. Never call a muscle's sets enough unless it is on target. High recovery means today's targets stand. Don't praise effort the facts don't show. Never guess or invent how individual sets or reps went in past workouts. The plan sets weights and raises them itself when every set reaches the top of the range; never tell them to change the weight. No hype, cheerleading or percentages; say why something works in one plain clause.
 Athlete: ${hasWeighIn ? `${formatWeight(bodyweightEmaKg, unit)}, ` : ''}${athleteAge ? `age ${athleteAge}, ` : ''}location ${profile.activeLocation || 'gym'}, goal ${goalLabel}, week ${planPos.week}/${planPos.totalWeeks}, recovery ${recovery}${kg.recoveryEfficiencyScore > 0 ? ` (${kg.recoveryEfficiencyScore}%)` : ''}${
     latestBio && latestBio.hrvRmssd > 0 ? `, slept ${latestBio.sleepHours} h` : ''
   }.${placeFacts.length ? `\nViewing: ${placeFacts.join(' ')}.` : ''}${kgFacts.length ? `\n${kgFacts.join('\n')}` : ''}
+${serializeContextEnvelopeForPrompt(contextEnvelope)}
 Today's plan (not done yet): ${activeWorkout?.name || 'rest'}: ${exercisesDesc || 'nothing planned'}.
 Weekly hard sets (done of target): ${musclesDesc || 'none yet'}.`;
 }
@@ -711,10 +842,76 @@ async function processAssistantMessageCore(
     input.activities ?? []
   );
 
+  const envelope: ContextEnvelope = buildContextEnvelope({
+    profile,
+    activeWorkout,
+    workouts,
+    biometrics,
+    exerciseCatalog,
+    bodyweightEmaKg,
+    readinessState,
+    weeklyVolume,
+    activities: input.activities,
+    place: input.place,
+    routeName: input.routeName,
+    knowledgeGraph: kg,
+  });
+  const toolCtx: CoachToolExecutionContext = {
+    profile,
+    activeWorkout,
+    workouts,
+    activities: input.activities,
+    exerciseCatalog,
+    bodyweightEmaKg,
+    readinessState,
+    place: input.place,
+    supabaseSyncFn: input.supabaseSyncFn,
+  };
+
   let answerText = '';
   let actionTaken: AssistantActionPayload | undefined;
   let updatedProfile: Partial<UserProfile> | undefined;
   let updatedWorkout: WorkoutSession | undefined;
+  let mutationStatus: CoachMutationStatus | undefined;
+  let stateDiff: CoachStateDiff | undefined;
+  let pendingConfirmation: CoachPendingConfirmation | undefined;
+  let memorySaved: AthleteMemoryFact | undefined;
+  let undoSnapshot: CoachUndoSnapshot | undefined;
+  let navigateTarget: 'train' | 'program' | 'analytics' | undefined;
+  let navigateLabel: string | undefined;
+  let toolNameUsed: CoachToolName | undefined;
+  let modelSuggestedActions: CoachSuggestedAction[] | undefined;
+
+  const applyToolOutcome = (outcome: CoachToolOutcome) => {
+    toolNameUsed = outcome.toolName;
+    mutationStatus = outcome.mutationStatus;
+    stateDiff = outcome.stateDiff;
+    pendingConfirmation = outcome.pendingConfirmation;
+    memorySaved = outcome.memorySaved;
+    undoSnapshot = outcome.undoSnapshot;
+    navigateTarget = outcome.navigateTarget;
+    navigateLabel = outcome.navigateLabel;
+    answerText = enforceMutationTruthfulness(outcome.summaryText, outcome.mutationStatus);
+    if (outcome.mutationStatus === 'success') {
+      if (outcome.updatedProfile) updatedProfile = outcome.updatedProfile;
+      if (outcome.updatedWorkout) updatedWorkout = outcome.updatedWorkout;
+      actionTaken = {
+        type:
+          outcome.toolName === 'reset_program'
+            ? 'RESET_PROGRAM'
+            : outcome.toolName === 'swap_exercise'
+              ? 'SWAP_EXERCISE'
+              : outcome.toolName === 'adjust_workout_volume'
+                ? 'ADJUST_WORKOUT_VOLUME'
+                : 'SAVE_ATHLETE_MEMORY',
+        summary: outcome.stateDiff ? `${outcome.stateDiff.label}: ${formatStateDiffText(outcome.stateDiff)}` : outcome.summaryText,
+        toolName: outcome.toolName,
+        mutationStatus: outcome.mutationStatus,
+        stateDiff: outcome.stateDiff,
+      };
+    }
+  };
+
   const citations: { label: string; metric: string; value: string }[] = [];
   const scientificPrinciplesCited: ScientificPrinciple[] = [];
   const strengthLevelsAnswer = () =>
@@ -811,65 +1008,99 @@ async function processAssistantMessageCore(
     const currentPlan = resolveActivePlan(profile);
     answerText = `You can reset **${currentPlan.name}** to Day 1 whenever you want a clean run from Week 1 without losing any logged workouts, total volume, or personal bests. Say "reset my program to day 1" and I'll queue Workout 1 for you right away.`;
   } else if (resetProgramIntent) {
-    const activePlan = resolveActivePlan(profile);
-    const resetIso = new Date().toISOString();
-    const nextCycleStarts = { ...(profile.planCycleStarts ?? {}), [activePlan.id]: resetIso };
-    updatedProfile = {
-      planCycleStarts: nextCycleStarts,
-      mesocycleWeek: 1,
-    };
-    const nextProfile: UserProfile = { ...profile, ...updatedProfile };
-
-    if (isPlanProgram(profile.programType)) {
-      const firstLift = activePlan.templates.find((t) => !isActiveSlot(t))?.workoutNumber ?? 1;
-      updatedWorkout = buildPreparedPlanSession(activePlan, firstLift, input, nextProfile);
-    } else {
-      const firstSplit = getFirstSplitDayForProgram(profile.programType);
-      updatedWorkout = prepareSessionForAthlete(
-        generateSmartWorkoutSession(
-          firstSplit,
-          workouts,
-          exerciseCatalog,
-          readinessState,
-          1,
-          profile.activeLocation || 'gym',
-          profile.homeEquipment || [],
-          profile.goalPhase,
-          bodyweightEmaKg,
-          profile.scheduledWeekLocations
-        ),
-        {
-          history: workouts,
-          bodyweightKg: bodyweightEmaKg,
-          readinessState,
-          gender: profile.gender,
-          experienceLevel: profile.experienceLevel,
-          unit: profile.weightUnit || 'kg',
-          isProgramPlan: false,
-        }
-      );
-    }
-
-    const totalWeeks = Math.max(1, ...activePlan.templates.map((t) => t.week));
-    const workoutLabel = updatedWorkout.programWorkoutNumber
-      ? `Workout ${updatedWorkout.programWorkoutNumber}: ${planWorkoutLabel(updatedWorkout.name)}`
-      : updatedWorkout.name;
-
-    actionTaken = {
-      type: 'RESET_PROGRAM',
-      summary: `Reset ${activePlan.name} to Day 1 (${planWorkoutLabel(updatedWorkout.name)})`,
-      details: {
-        planId: activePlan.id,
-        resetAt: resetIso,
-        workoutNumber: updatedWorkout.programWorkoutNumber ?? 1,
+    const wantsConfirmationGate = /\b(wipe|discard|ask\s+me\s+first|confirm)\b/i.test(lowerMsg);
+    const outcome = await executeCoachToolCall(
+      'reset_program',
+      {
+        program_id: profile.programType,
+        target_week: 1,
+        target_day: 1,
+        confirmation_required: wantsConfirmationGate ? true : undefined,
       },
-    };
-    answerText = `Done — I've reset **${activePlan.name}** to Day 1 (Week 1 of ${totalWeeks}).\n\nYour Workout tab is now queued on **${workoutLabel}**, and your Program progress for this run starts fresh at 0 of ${activePlan.templates.length}. All of your past logged sessions, total volume, and Trophy Cabinet personal bests remain saved in your history.`;
-    citations.push({
-      label: activePlan.name,
-      metric: 'Program Run',
-      value: `Workout ${updatedWorkout.programWorkoutNumber ?? 1} of ${activePlan.templates.length} (Week 1/${totalWeeks})`,
-    });
+      toolCtx
+    );
+    applyToolOutcome(outcome);
+    if (outcome.mutationStatus === 'success') {
+      const activePlan = resolveActivePlan(profile);
+      const totalWeeks = Math.max(1, ...activePlan.templates.map((t) => t.week));
+      const workoutNum = updatedWorkout?.programWorkoutNumber ?? 1;
+      const workoutLabel = updatedWorkout?.programWorkoutNumber
+        ? `Workout ${updatedWorkout.programWorkoutNumber}: ${planWorkoutLabel(updatedWorkout.name)}`
+        : updatedWorkout?.name || 'Workout 1';
+      answerText = `Done — I've reset **${activePlan.name}** to Day 1 (Week 1 of ${totalWeeks}).\n\nYour Workout tab is now queued on **${workoutLabel}**, and your Program progress for this run starts fresh at 0 of ${activePlan.templates.length}. All of your past logged sessions, total volume, and Trophy Cabinet personal bests remain saved in your history.`;
+      if (actionTaken) {
+        actionTaken.details = {
+          planId: activePlan.id,
+          resetAt: outcome.updatedProfile?.planCycleStarts?.[activePlan.id],
+          workoutNumber: workoutNum,
+        };
+      }
+      citations.push({
+        label: activePlan.name,
+        metric: 'Program Run',
+        value: `Workout ${workoutNum} of ${activePlan.templates.length} (Week 1/${totalWeeks})`,
+      });
+    }
+  } else if (
+    /^(?:please\s+)?(?:swap|replace)\s+(?:out\s+)?(.+?)\s+(?:with|for|to)\s+(.+)$/i.test(lowerMsg) &&
+    !/^(can|should|would|could|what|how|why)\b/i.test(lowerMsg)
+  ) {
+    const swapMatch = /^(?:please\s+)?(?:swap|replace)\s+(?:out\s+)?(.+?)\s+(?:with|for|to)\s+(.+)$/i.exec(lowerMsg);
+    const oldPart = swapMatch?.[1]?.replace(/\s+(?:in\s+today'?s?\s+workout|today)\b/gi, '').trim() ?? '';
+    const newPart = swapMatch?.[2]?.replace(/\s+(?:because|since|due\s+to)\s+.*$/i, '').trim() ?? '';
+    const reasonMatch = /\b(?:because|since|due\s+to)\s+(.+)$/i.exec(lowerMsg);
+    const outcome = await executeCoachToolCall(
+      'swap_exercise',
+      {
+        workout_id: activeWorkout.id,
+        old_exercise_id: oldPart,
+        new_exercise_id: newPart,
+        reason: reasonMatch?.[1]?.trim() || 'athlete request',
+      },
+      toolCtx
+    );
+    applyToolOutcome(outcome);
+  } else if (
+    /\b(reduce|cut|drop|trim|lower|decrease|increase|add)\b.*\b(working\s+)?(sets?|volume)\b|\bdeload\s+(today'?s?\s+)?(workout|weights|loads|session)\b/i.test(
+      lowerMsg
+    ) &&
+    !/^(should|can|would|could|how|why|what|am\s+i|do\s+i|if\s+i)\b/i.test(lowerMsg)
+  ) {
+    const modifierType = /\b(increase|add)\b/i.test(lowerMsg)
+      ? 'increase_sets'
+      : /\bdeload\b/i.test(lowerMsg)
+        ? 'deload_load'
+        : 'reduce_sets';
+    const outcome = await executeCoachToolCall(
+      'adjust_workout_volume',
+      {
+        workout_id: activeWorkout.id,
+        modifier_type: modifierType,
+        details: userMessage.trim().slice(0, 80),
+      },
+      toolCtx
+    );
+    applyToolOutcome(outcome);
+  } else if (
+    /\b(remember\s+(that|this)?|save\s+(this|to\s+(?:my\s+)?memory)|keep\s+in\s+mind|note\s+that)\b/i.test(lowerMsg) &&
+    !/^(what|can|do\s+you)\b/i.test(lowerMsg)
+  ) {
+    const cleanedFact = userMessage
+      .replace(/^.*?\b(?:remember\s+(?:that|this)?|save\s+(?:this|to\s+(?:my\s+)?memory)|keep\s+in\s+mind|note\s+that)[:,\s-]*/i, '')
+      .trim();
+    const category: AthleteMemoryCategory = /\b(avoid|skip|sensitive|impingement|issue|knee|shoulder|back|elbow|wrist)\b/i.test(cleanedFact)
+      ? 'contraindication'
+      : /\b(dumbbell|barbell|cable|machine|rack|home|gym|equipment)\b/i.test(cleanedFact)
+        ? 'equipment'
+        : /\b(schedule|morning|evening|monday|tuesday|wednesday|thursday|friday|saturday|sunday|\d+\s*(am|pm))\b/i.test(cleanedFact)
+          ? 'schedule'
+          : 'preference';
+    const outcome = await executeCoachToolCall(
+      'save_athlete_memory',
+      { fact_category: category, fact_value: cleanedFact || userMessage.trim() },
+      toolCtx
+    );
+    applyToolOutcome(outcome);
   } else if (matchedEquip) {
     const currentList = new Set<HomeEquipmentTag>(profile.homeEquipment || []);
 
@@ -1666,47 +1897,73 @@ async function processAssistantMessageCore(
             }
             input.onPartial?.(textSoFar);
           };
-          const startedAt = Date.now();
-          let nanoAnswer = await promptOnDeviceModel(systemPrompt, questionWithFacts, {
-            onPartial: showWhileSound,
-            onDownloadProgress: input.onDownloadProgress,
-          });
-          let problem = nanoAnswer ? problemWith(nanoAnswer) : null;
-          if (nanoAnswer && problem) {
-            // A rejected answer is never remembered. A fast model gets one more try, told what was
-            // wrong; a slow one (a phone GPU) goes straight to the data-based answer.
-            forgetOnDeviceExchange();
-            input.onPartial?.('');
-            streamWithdrawn = false;
-            if (Date.now() - startedAt < RETRY_IF_FASTER_THAN_MS) {
-              nanoAnswer = await promptOnDeviceModel(
-                systemPrompt,
-                `${questionWithFacts}\n(Your last answer could not be used because ${problem}. Answer again in 2-4 short sentences, using only the facts given.)`,
-                { onPartial: showWhileSound }
+          let handledByStructuredFlash = false;
+          if (await isFlashLiteReady()) {
+            const structured = await promptFlashLiteStructured(questionWithFacts, {
+              systemPrompt,
+              tools: COACH_TOOL_DECLARATIONS,
+            });
+            if (structured?.functionCall) {
+              const toolOutcome = await executeCoachToolCall(
+                structured.functionCall.name,
+                structured.functionCall.args,
+                toolCtx
               );
-              problem = nanoAnswer ? problemWith(nanoAnswer) : null;
-              if (nanoAnswer && problem) {
-                forgetOnDeviceExchange();
-                input.onPartial?.('');
-              }
+              applyToolOutcome(toolOutcome);
+              modelSuggestedActions = structured.suggestedActions;
+              nanoHandled = true;
+              handledByStructuredFlash = true;
+            } else if (structured?.text && !problemWith(structured.text)) {
+              answerText = structured.text;
+              modelSuggestedActions = structured.suggestedActions;
+              nanoHandled = true;
+              handledByStructuredFlash = true;
             }
           }
-          if (nanoAnswer && !problem) {
-            answerText = nanoAnswer;
-            nanoHandled = true;
 
-            // Attach Knowledge Graph citations if an exercise or joint was discussed
-            for (const ex of workoutExercises) {
-              if (
-                lowerMsg.includes(ex.name.toLowerCase()) ||
-                nanoAnswer.toLowerCase().includes(ex.name.toLowerCase())
-              ) {
-                citations.push({
-                  label: ex.name,
-                  metric: 'Target Load & Reps',
-                  value: `${formatWeight(ex.sets.find((st) => !st.isWarmup && st.setType !== 'warmup')?.targetWeightKg ?? 0, profile.weightUnit || 'kg')} × ${ex.minReps}–${ex.maxReps} reps`,
-                });
-                break;
+          if (!handledByStructuredFlash) {
+            const startedAt = Date.now();
+            let nanoAnswer = await promptOnDeviceModel(systemPrompt, questionWithFacts, {
+              onPartial: showWhileSound,
+              onDownloadProgress: input.onDownloadProgress,
+            });
+            let problem = nanoAnswer ? problemWith(nanoAnswer) : null;
+            if (nanoAnswer && problem) {
+              // A rejected answer is never remembered. A fast model gets one more try, told what was
+              // wrong; a slow one (a phone GPU) goes straight to the data-based answer.
+              forgetOnDeviceExchange();
+              input.onPartial?.('');
+              streamWithdrawn = false;
+              if (Date.now() - startedAt < RETRY_IF_FASTER_THAN_MS) {
+                nanoAnswer = await promptOnDeviceModel(
+                  systemPrompt,
+                  `${questionWithFacts}\n(Your last answer could not be used because ${problem}. Answer again in 2-4 short sentences, using only the facts given.)`,
+                  { onPartial: showWhileSound }
+                );
+                problem = nanoAnswer ? problemWith(nanoAnswer) : null;
+                if (nanoAnswer && problem) {
+                  forgetOnDeviceExchange();
+                  input.onPartial?.('');
+                }
+              }
+            }
+            if (nanoAnswer && !problem) {
+              answerText = nanoAnswer;
+              nanoHandled = true;
+
+              // Attach Knowledge Graph citations if an exercise or joint was discussed
+              for (const ex of workoutExercises) {
+                if (
+                  lowerMsg.includes(ex.name.toLowerCase()) ||
+                  nanoAnswer.toLowerCase().includes(ex.name.toLowerCase())
+                ) {
+                  citations.push({
+                    label: ex.name,
+                    metric: 'Target Load & Reps',
+                    value: `${formatWeight(ex.sets.find((st) => !st.isWarmup && st.setType !== 'warmup')?.targetWeightKg ?? 0, profile.weightUnit || 'kg')} × ${ex.minReps}–${ex.maxReps} reps`,
+                  });
+                  break;
+                }
               }
             }
           }
@@ -1919,6 +2176,7 @@ async function processAssistantMessageCore(
                   sender: 'assistant',
                   text: answerText,
                   timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                  suggestedActions: buildSuggestedActions({ envelope, place: input.place }),
                 },
               };
             }
@@ -2005,12 +2263,31 @@ async function processAssistantMessageCore(
     }
   }
 
+  const effectiveStatus: CoachMutationStatus | undefined =
+    mutationStatus ?? (actionTaken ? 'success' : undefined);
+  const finalAnswerText = enforceMutationTruthfulness(answerText, effectiveStatus);
+  const suggestedActions = buildSuggestedActions({
+    toolName: toolNameUsed,
+    mutationStatus: effectiveStatus,
+    envelope,
+    place: input.place,
+    custom: modelSuggestedActions,
+  });
+
   const message: AssistantChatMessage = {
     id: `msg-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
     sender: 'assistant',
-    text: answerText,
+    text: finalAnswerText,
     timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     actionApplied: actionTaken,
+    mutationStatus: effectiveStatus,
+    stateDiff,
+    pendingConfirmation,
+    memorySaved,
+    undoSnapshot,
+    navigateTarget,
+    navigateLabel,
+    suggestedActions,
     knowledgeGraphCitations: citations.length > 0 ? citations : undefined,
     scientificPrinciplesCited:
       scientificPrinciplesCited.length > 0 ? scientificPrinciplesCited : undefined,

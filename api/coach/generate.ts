@@ -97,18 +97,45 @@ export default async function handler(req: any, res: any) {
     return res.status(400).json({ error: 'A user prompt is required.' });
   }
 
+  const rawTools = Array.isArray(body.tools) ? body.tools.slice(0, 8) : [];
+  const hasTools = rawTools.length > 0;
+  const responseSchema =
+    !hasTools && body.responseSchema && typeof body.responseSchema === 'object'
+      ? (body.responseSchema as Record<string, unknown>)
+      : undefined;
+  const responseMimeType =
+    !hasTools && typeof body.responseMimeType === 'string' && body.responseMimeType === 'application/json'
+      ? 'application/json'
+      : undefined;
+  const tokenCap = hasTools || responseSchema ? 450 : 250;
+
   const rawMaxTokens = Number(body.maxOutputTokens);
-  const maxOutputTokens = Number.isFinite(rawMaxTokens) ? Math.max(16, Math.min(250, Math.round(rawMaxTokens))) : 180;
+  const maxOutputTokens = Number.isFinite(rawMaxTokens) ? Math.max(16, Math.min(tokenCap, Math.round(rawMaxTokens))) : 180;
   const rawTemp = Number(body.temperature);
   const temperature = Number.isFinite(rawTemp) ? Math.max(0, Math.min(0.7, rawTemp)) : 0.3;
 
+  const generationConfig: Record<string, unknown> = {
+    temperature,
+    maxOutputTokens,
+  };
+  if (responseMimeType) {
+    generationConfig.responseMimeType = responseMimeType;
+  }
+  if (responseSchema) {
+    generationConfig.responseSchema = responseSchema;
+  }
+
   const payload: Record<string, unknown> = {
     contents,
-    generationConfig: {
-      temperature,
-      maxOutputTokens,
-    },
+    generationConfig,
   };
+  if (hasTools) {
+    const first = rawTools[0] as Record<string, unknown> | undefined;
+    payload.tools =
+      first && Array.isArray(first.functionDeclarations)
+        ? rawTools
+        : [{ functionDeclarations: rawTools }];
+  }
   if (systemPrompt) {
     payload.systemInstruction = {
       parts: [{ text: systemPrompt }],
@@ -170,13 +197,30 @@ export default async function handler(req: any, res: any) {
           .join('')
           .trim()
       : '';
+    const toolCalls = Array.isArray(parts)
+      ? parts
+          .map((p: any) => p?.functionCall)
+          .filter(
+            (fc: any): fc is { name: string; args: Record<string, unknown> } =>
+              Boolean(fc && typeof fc.name === 'string')
+          )
+          .map((fc) => ({
+            name: fc.name,
+            args: fc.args && typeof fc.args === 'object' ? fc.args : {},
+          }))
+      : [];
+    const functionCall = toolCalls[0];
 
-    if (!text) {
+    if (!text && !functionCall) {
       return res.status(502).json({ error: 'Model returned an empty answer.' });
     }
 
     cachedWorkingModel = activeModel;
-    return res.status(200).json({ text, model: activeModel });
+    return res.status(200).json({
+      text,
+      model: activeModel,
+      ...(functionCall ? { functionCall, toolCalls } : {}),
+    });
   } catch {
     return res.status(502).json({ error: 'Failed to reach the coach model.' });
   } finally {

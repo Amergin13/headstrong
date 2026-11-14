@@ -443,6 +443,25 @@ export type ProgressWidgetId =
   | `exercise:${string}`
   | `chart:${string}`;
 
+export type AthleteMemoryCategory =
+  | 'injury'
+  | 'contraindication'
+  | 'preference'
+  | 'equipment'
+  | 'schedule'
+  | 'training_max'
+  | 'goal'
+  | 'general';
+
+export interface AthleteMemoryFact {
+  id: string;
+  category: AthleteMemoryCategory;
+  value: string;
+  createdAt: string;
+  source?: 'coach' | 'user';
+  relatedExerciseIds?: string[];
+}
+
 export interface UserProfile {
   /** Goals changed on the Progress page; see GoalSettings. */
   goalSettings?: GoalSettings;
@@ -471,6 +490,8 @@ export interface UserProfile {
   importedSheetIds?: string[];
   /** ISO timestamps when each plan was explicitly reset to Day 1 so prior logs stay in stats without blocking a fresh run. */
   planCycleStarts?: Record<string, string>;
+  /** Persistent athlete memory facts saved via Treise Coach (injuries, contraindications, preferences, schedule). */
+  athleteMemories?: AthleteMemoryFact[];
   mesocycleWeek?: number; // 1 to 6
   streakDays: number;
   lastWorkoutDate?: string;
@@ -562,15 +583,66 @@ export type AssistantActionType =
   | 'SCHEDULE_LOCATION_WEEK'
   | 'SWITCH_PROGRAM_SPLIT'
   | 'RESET_PROGRAM'
+  | 'SWAP_EXERCISE'
+  | 'ADJUST_WORKOUT_VOLUME'
+  | 'SAVE_ATHLETE_MEMORY'
   | 'SWITCH_GOAL_PHASE'
   | 'SWITCH_LOCATION'
   | 'SHIFT_WORKOUT'
   | 'UPDATE_GOALS'
   | 'UPDATE_PROGRESS_WIDGETS';
 
+export type CoachToolName =
+  | 'reset_program'
+  | 'swap_exercise'
+  | 'adjust_workout_volume'
+  | 'save_athlete_memory';
+
+export type CoachMutationStatus =
+  | 'success'
+  | 'awaiting_confirmation'
+  | 'cancelled'
+  | 'error'
+  | 'noop';
+
+export interface CoachStateDiff {
+  object_type: 'Program' | 'Workout' | 'Exercise' | 'Athlete' | 'Goal';
+  object_id: string;
+  label: string;
+  previous_state: Record<string, unknown>;
+  new_state: Record<string, unknown>;
+}
+
+export interface CoachSuggestedAction {
+  label: string;
+  prompt: string;
+}
+
+export interface CoachPendingConfirmation {
+  tool_name: 'reset_program' | 'swap_exercise' | 'adjust_workout_volume';
+  args: Record<string, unknown>;
+  title: string;
+  summary: string;
+  warning: string;
+  confirm_label: string;
+  cancel_label: string;
+  preview_diff?: CoachStateDiff;
+  status?: 'pending' | 'confirmed' | 'cancelled';
+}
+
+export interface CoachUndoSnapshot {
+  label: string;
+  previousProfile?: Partial<UserProfile>;
+  previousWorkout?: WorkoutSession;
+  undone?: boolean;
+}
+
 export interface AssistantActionPayload {
   type: AssistantActionType;
   summary: string;
+  toolName?: CoachToolName;
+  mutationStatus?: CoachMutationStatus;
+  stateDiff?: CoachStateDiff;
   details?: Record<string, any>;
 }
 
@@ -591,6 +663,14 @@ export interface AssistantChatMessage {
   text: string;
   timestamp: string;
   actionApplied?: AssistantActionPayload;
+  mutationStatus?: CoachMutationStatus;
+  stateDiff?: CoachStateDiff;
+  pendingConfirmation?: CoachPendingConfirmation;
+  memorySaved?: AthleteMemoryFact;
+  undoSnapshot?: CoachUndoSnapshot;
+  suggestedActions?: CoachSuggestedAction[];
+  navigateTarget?: 'train' | 'program' | 'analytics';
+  navigateLabel?: string;
   knowledgeGraphCitations?: {
     label: string;
     metric: string;

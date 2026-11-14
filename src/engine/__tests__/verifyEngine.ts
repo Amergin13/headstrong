@@ -9570,7 +9570,309 @@ Exercise,,Date,Workout,Sets,Reps,Tempo,Rest,Notes,Set 1,Set 2,Set 3,Set 4
     assert(!goalSummary.sparse, 'Goals summary is non-sparse when custom target goals have progress');
   }
 
-  console.log('\nALL 50 ENGINE, GOVERNANCE, DESIGN SYSTEM, TYPOGRAPHY, WEARABLES, WHOOP STRAIN, GOOGLE AUTH, ONBOARDING CONTEXT, 6-WEEK PROGRAM, SPREADSHEET IMPORT, AI COACH ACTIONS, GEMINI FLASH + KG, OOUX & CONSUMER SUMMARY SUITES PASSED SUCCESSFULLY! 🎯');
+  console.log('\n[Suite 51] Testing OOUX Context Envelope, Deterministic Tool Calling, Destructive Confirmation Gate, Generative UI & Next-Action Value Loop...');
+  {
+    const {
+      OOUX_OBJECT_SCHEMAS,
+      buildContextEnvelope,
+      serializeContextEnvelopeForPrompt,
+    } = await import('../../services/coachContextEnvelope');
+    const {
+      COACH_TOOL_DECLARATIONS,
+      enforceMutationTruthfulness,
+      executeCoachToolCall,
+    } = await import('../../services/coachTools');
+    const {
+      processAssistantMessage: ask51,
+      confirmAssistantPendingAction: confirm51,
+      buildCoachSystemPrompt: buildPrompt51,
+    } = await import('../../services/aiAssistantService');
+    const { generatePlanWorkout: genPlan51 } = await import('../muscleBuildingProgram');
+    const { getPlanById: getPlan51 } = await import('../trainingPlans');
+    const { generateSmartWorkoutSession: genSmart51 } = await import('../../services/workoutGenerator');
+    const { resetFlashLiteState } = await import('../../services/geminiFlashLite');
+
+    // A. OOUX Schemas & 3-tier ContextEnvelope + KG injury/contraindication edges
+    assert(
+      Boolean(
+        OOUX_OBJECT_SCHEMAS.Athlete &&
+          OOUX_OBJECT_SCHEMAS.Program &&
+          OOUX_OBJECT_SCHEMAS.Workout &&
+          OOUX_OBJECT_SCHEMAS.Exercise &&
+          OOUX_OBJECT_SCHEMAS.Goal
+      ),
+      'All 5 core OOUX JSON Schemas (Athlete, Program, Workout, Exercise, Goal) are defined'
+    );
+    assert(
+      COACH_TOOL_DECLARATIONS.map((t) => t.name).join(',') ===
+        'reset_program,swap_exercise,adjust_workout_volume,save_athlete_memory',
+      'All 4 deterministic coach tool declarations are registered'
+    );
+
+    const s51Profile: UserProfile = {
+      ...NEW_USER_PROFILE,
+      name: 'Ben Taylor',
+      onboardingCompleted: true,
+      programType: 'starter_6wk',
+      mesocycleWeek: 2,
+      athleteMemories: [
+        {
+          id: 'mem-1',
+          category: 'contraindication',
+          value: 'Avoid overhead press due to sensitive left shoulder',
+          createdAt: '2026-11-10T09:00:00Z',
+          relatedExerciseIds: ['ex-ohp'],
+        },
+      ],
+    };
+    const plan51 = getPlan51('starter_6wk', s51Profile.goalPhase);
+    const s51Workouts = generateSeedWorkouts();
+    const s51Active = genPlan51(plan51, 1);
+    const envelope = buildContextEnvelope({
+      profile: s51Profile,
+      activeWorkout: s51Active,
+      workouts: s51Workouts,
+      biometrics: [],
+      exerciseCatalog: SEED_EXERCISES,
+      bodyweightEmaKg: 84,
+      readinessState: 'Normal',
+      routeName: 'program',
+    });
+    const serialized = serializeContextEnvelopeForPrompt(envelope);
+    const coachSysPrompt51 = buildPrompt51({
+      userMessage: 'test',
+      profile: s51Profile,
+      activeWorkout: s51Active,
+      workouts: s51Workouts,
+      biometrics: [],
+      exerciseCatalog: SEED_EXERCISES,
+      bodyweightEmaKg: 84,
+      readinessState: 'Normal',
+      routeName: 'program',
+    });
+    assert(envelope.working_state.app_route === '/program', `Envelope route expected /program, got ${envelope.working_state.app_route}`);
+    assert(envelope.working_state.program.id === 'starter_6wk', `Program id expected starter_6wk, got ${envelope.working_state.program.id}`);
+    assert(envelope.working_state.today_workout !== null, 'Envelope includes today_workout');
+    assert(envelope.episodic_memory.recent_workouts.length <= 5, `Recent workouts <= 5 (got ${envelope.episodic_memory.recent_workouts.length})`);
+    assert(envelope.working_state.athlete.contraindications.length > 0, `Contraindications > 0 (got ${envelope.working_state.athlete.contraindications.length})`);
+    assert(envelope.semantic_memory.knowledge_graph_edges.length > 0, `KG edges > 0 (got ${envelope.semantic_memory.knowledge_graph_edges.length})`);
+    assert(serialized.includes('Route: /program') && serialized.includes('Contraindications:'), `Serialized envelope format check: ${serialized}`);
+    assert(coachSysPrompt51.includes('Memory: [contraindication]'), 'buildCoachSystemPrompt injects ContextEnvelope memory & contraindications');
+
+    // B. Destructive Action Confirmation Gate -> 1-tap Confirm -> Mutation Receipt + Undo Snapshot
+    const inProgressWorkout: WorkoutSession = {
+      ...genPlan51(plan51, 3),
+      exercises: genPlan51(plan51, 3).exercises.map((ex, i) =>
+        i === 0
+          ? {
+              ...ex,
+              sets: ex.sets.map((st, sIdx) =>
+                sIdx === 0 && !st.isWarmup ? { ...st, completed: true, actualReps: 8, actualWeightKg: 60 } : st
+              ),
+            }
+          : ex
+      ),
+    };
+    const gatedReset = await ask51({
+      userMessage: 'Reset my program to Day 1',
+      profile: s51Profile,
+      activeWorkout: inProgressWorkout,
+      workouts: s51Workouts,
+      biometrics: [],
+      exerciseCatalog: SEED_EXERCISES,
+      bodyweightEmaKg: 84,
+      readinessState: 'Normal',
+      routeName: 'program',
+    });
+    assert(
+      gatedReset.message.mutationStatus === 'awaiting_confirmation' &&
+        gatedReset.message.pendingConfirmation?.tool_name === 'reset_program' &&
+        gatedReset.message.pendingConfirmation.status === 'pending' &&
+        !gatedReset.updatedProfile &&
+        !gatedReset.updatedWorkout,
+      'Resetting with logged sets in progress opens a 1-tap Confirmation Card without mutating state yet'
+    );
+
+    const confirmedReset = await confirm51(gatedReset.message.pendingConfirmation!, {
+      profile: s51Profile,
+      activeWorkout: inProgressWorkout,
+      workouts: s51Workouts,
+      biometrics: [],
+      exerciseCatalog: SEED_EXERCISES,
+      bodyweightEmaKg: 84,
+      readinessState: 'Normal',
+      routeName: 'program',
+    });
+    assert(
+      confirmedReset.message.mutationStatus === 'success',
+      `1-tap confirm status expected success, got ${confirmedReset.message.mutationStatus} (${confirmedReset.message.text})`
+    );
+    assert(
+      confirmedReset.updatedWorkout?.programWorkoutNumber === 1,
+      `1-tap confirm workoutNumber expected 1, got ${confirmedReset.updatedWorkout?.programWorkoutNumber}`
+    );
+    assert(
+      confirmedReset.updatedProfile?.mesocycleWeek === 1 &&
+        Boolean(confirmedReset.message.stateDiff) &&
+        Boolean(confirmedReset.message.undoSnapshot?.previousWorkout) &&
+        confirmedReset.message.navigateTarget === 'program' &&
+        (confirmedReset.message.suggestedActions?.length ?? 0) >= 1 &&
+        (confirmedReset.message.suggestedActions?.length ?? 0) <= 3,
+      '1-tap confirm attaches mesocycleWeek=1, state_diff, Undo snapshot, navigation target, and 1-3 value loop chips'
+    );
+
+    // C. Imperative swap_exercise + adjust_workout_volume + save_athlete_memory
+    const benchSession = genSmart51('Push', s51Workouts, SEED_EXERCISES, 'Normal', 1, 'gym', []);
+    const swapRes = await ask51({
+      userMessage: 'Swap barbell bench press for dumbbell bench press because of shoulder stiffness',
+      profile: s51Profile,
+      activeWorkout: benchSession,
+      workouts: s51Workouts,
+      biometrics: [],
+      exerciseCatalog: SEED_EXERCISES,
+      bodyweightEmaKg: 84,
+      readinessState: 'Normal',
+    });
+    assert(
+      swapRes.message.mutationStatus === 'success' &&
+        swapRes.actionTaken?.type === 'SWAP_EXERCISE' &&
+        Boolean(swapRes.updatedWorkout?.exercises.some((e) => e.name.toLowerCase().includes('dumbbell'))) &&
+        Boolean(swapRes.message.stateDiff && swapRes.message.undoSnapshot),
+      'Imperative swap_exercise updates active workout, records state_diff & Undo snapshot'
+    );
+
+    const beforeWorkingSets = benchSession.exercises.reduce(
+      (n: number, e) => n + e.sets.filter((s) => !s.isWarmup && s.setType !== 'warmup').length,
+      0
+    );
+    const volRes = await ask51({
+      userMessage: 'Reduce sets in today workout',
+      profile: s51Profile,
+      activeWorkout: benchSession,
+      workouts: s51Workouts,
+      biometrics: [],
+      exerciseCatalog: SEED_EXERCISES,
+      bodyweightEmaKg: 84,
+      readinessState: 'Normal',
+    });
+    const afterWorkingSets =
+      volRes.updatedWorkout?.exercises.reduce(
+        (n, e) => n + e.sets.filter((s) => !s.isWarmup && s.setType !== 'warmup').length,
+        0
+      ) ?? beforeWorkingSets;
+    assert(
+      volRes.message.mutationStatus === 'success' &&
+        volRes.actionTaken?.type === 'ADJUST_WORKOUT_VOLUME' &&
+        afterWorkingSets < beforeWorkingSets,
+      `adjust_workout_volume reduces working sets cleanly (${beforeWorkingSets} -> ${afterWorkingSets})`
+    );
+
+    const memRes = await ask51({
+      userMessage: 'Remember that I prefer 6am sessions and avoid lunges for my left knee',
+      profile: s51Profile,
+      activeWorkout: benchSession,
+      workouts: s51Workouts,
+      biometrics: [],
+      exerciseCatalog: SEED_EXERCISES,
+      bodyweightEmaKg: 84,
+      readinessState: 'Normal',
+    });
+    assert(
+      memRes.message.mutationStatus === 'success' &&
+        memRes.actionTaken?.type === 'SAVE_ATHLETE_MEMORY' &&
+        Boolean(memRes.message.memorySaved) &&
+        (memRes.updatedProfile?.athleteMemories?.length ?? 0) > (s51Profile.athleteMemories?.length ?? 0),
+      'save_athlete_memory persists memory fact and emits memorySaved badge payload'
+    );
+
+    // D. Transactional failure truthfulness guarantee
+    const failedOutcome = await executeCoachToolCall(
+      'reset_program',
+      { target_week: 1, target_day: 1, confirmation_required: false },
+      {
+        profile: s51Profile,
+        activeWorkout: s51Active,
+        workouts: s51Workouts,
+        exerciseCatalog: SEED_EXERCISES,
+        bodyweightEmaKg: 84,
+        readinessState: 'Normal',
+        supabaseSyncFn: async () => ({ ok: false, error: 'Database unavailable' }),
+      }
+    );
+    const guardedText = enforceMutationTruthfulness("I've reset your program to Week 1!", failedOutcome.mutationStatus);
+    assert(
+      failedOutcome.mutationStatus === 'error' &&
+        !failedOutcome.updatedProfile &&
+        !failedOutcome.updatedWorkout &&
+        !/i['’]?ve reset/i.test(guardedText),
+      'Failed mutation rejects write and Truthfulness Gate blocks false success claims'
+    );
+
+    // E. End-to-end Gemini Flash-Lite functionCall execution loop
+    resetFlashLiteState();
+    const prevWin = (globalThis as any).window;
+    const prevFetch51 = globalThis.fetch;
+    (globalThis as any).window = globalThis;
+    try {
+      globalThis.fetch = (async (url: string, init?: RequestInit) => {
+        if (init?.method === 'GET') {
+          return new Response(JSON.stringify({ configured: true }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        return new Response(
+          JSON.stringify({
+            text: '',
+            model: 'gemini-3.5-flash-lite',
+            functionCall: {
+              name: 'save_athlete_memory',
+              args: { fact_category: 'preference', fact_value: 'Likes 90 second rests on isolations' },
+            },
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } }
+        );
+      }) as typeof fetch;
+
+      const geminiToolReply = await ask51({
+        userMessage: 'What helps me stay locked in mentally tonight?',
+        profile: s51Profile,
+        activeWorkout: s51Active,
+        workouts: s51Workouts,
+        biometrics: [],
+        exerciseCatalog: SEED_EXERCISES,
+        bodyweightEmaKg: 84,
+        readinessState: 'Normal',
+      });
+      assert(
+        geminiToolReply.message.mutationStatus === 'success' &&
+          geminiToolReply.actionTaken?.type === 'SAVE_ATHLETE_MEMORY' &&
+          Boolean(geminiToolReply.message.memorySaved?.value.includes('90 second rests')) &&
+          (geminiToolReply.message.suggestedActions?.length ?? 0) >= 1,
+        `Gemini functionCall executes deterministic tool call end-to-end and attaches memorySaved + suggestedActions (got status=${geminiToolReply.message.mutationStatus}, action=${geminiToolReply.actionTaken?.type}, text=${geminiToolReply.message.text.slice(0, 120)})`
+      );
+    } finally {
+      resetFlashLiteState();
+      globalThis.fetch = prevFetch51;
+      if (prevWin === undefined) delete (globalThis as any).window;
+      else (globalThis as any).window = prevWin;
+    }
+
+    // F. Generative UI & App wiring static checks
+    const modalSrc51 = fs.readFileSync(path.resolve(process.cwd(), 'src/components/assistant/AICoachChatModal.tsx'), 'utf8');
+    const appSrc51 = fs.readFileSync(path.resolve(process.cwd(), 'src/App.tsx'), 'utf8');
+    assert(
+      modalSrc51.includes('Saved to Athlete Memory') &&
+        modalSrc51.includes('msg.pendingConfirmation') &&
+        modalSrc51.includes('handleUndoMutation') &&
+        modalSrc51.includes('latestSuggestedActions') &&
+        modalSrc51.includes('onNavigateTab') &&
+        appSrc51.includes('handleUndoAssistantAction'),
+      'AICoachChatModal and App wire Memory pill, Confirmation Card, Mutation Receipt + Undo, Navigation CTA, and dynamic suggested chips'
+    );
+  }
+
+  console.log('\nALL 51 ENGINE, GOVERNANCE, DESIGN SYSTEM, TYPOGRAPHY, WEARABLES, WHOOP STRAIN, GOOGLE AUTH, ONBOARDING CONTEXT, 6-WEEK PROGRAM, SPREADSHEET IMPORT, AI COACH ACTIONS, GEMINI FLASH + KG, OOUX & AGENTIC COACH SUITES PASSED SUCCESSFULLY! 🎯');
 })().catch((err) => {
   console.error('Test Suite Failed:', err);
   if (typeof process !== 'undefined' && process.exit) {

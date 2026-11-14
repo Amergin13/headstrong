@@ -557,6 +557,59 @@ const iso = (msAgo: number) => new Date(Date.now() - msAgo).toISOString();
     res.statusCode === 200 && res.body?.text === 'Fallback Flash-Lite answer.' && res.body?.model === 'gemini-3.1-flash-lite',
     'Coach POST falls back to gemini-3.1-flash-lite when the primary model returns 404'
   );
+
+  let toolPayload: any = null;
+  installFetch((_url, init) => {
+    toolPayload = JSON.parse(String(init?.body || '{}'));
+    return {
+      status: 200,
+      body: {
+        candidates: [
+          {
+            content: {
+              parts: [
+                {
+                  functionCall: {
+                    name: 'reset_program',
+                    args: { target_week: 1, target_day: 1, confirmation_required: false },
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      },
+    };
+  });
+  res = mockRes();
+  await coachGenerate(
+    {
+      method: 'POST',
+      headers: {},
+      body: {
+        systemPrompt: 'sys',
+        userPrompt: 'reset to day 1',
+        maxOutputTokens: 400,
+        tools: [
+          {
+            name: 'reset_program',
+            description: 'Reset active program',
+            parameters: { type: 'object', properties: {}, required: [] },
+          },
+        ],
+      },
+    },
+    res
+  );
+  assert(
+    res.statusCode === 200 &&
+      res.body?.functionCall?.name === 'reset_program' &&
+      res.body?.functionCall?.args?.target_day === 1 &&
+      toolPayload?.tools?.[0]?.functionDeclarations?.[0]?.name === 'reset_program' &&
+      toolPayload?.generationConfig?.maxOutputTokens === 400,
+    'Coach POST forwards tools declarations and returns parsed functionCall cleanly'
+  );
+
   delete process.env.GEMINI_API_KEY;
 
   // ---------------------------------------------------------------- Deployability

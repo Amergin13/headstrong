@@ -7,7 +7,20 @@
  * configured, `isFlashLiteReady()` returns false and every screen uses its deterministic
  * fact-based text immediately.
  */
+import { CoachSuggestedAction, CoachToolName } from '../engine/types';
+import { GeminiFunctionDeclaration } from './coachTools';
 import { withoutLastExchange } from './onDeviceModel';
+
+export interface FlashLiteFunctionCall {
+  name: CoachToolName;
+  args: Record<string, unknown>;
+}
+
+export interface FlashLiteStructuredResult {
+  text: string;
+  functionCall?: FlashLiteFunctionCall;
+  suggestedActions?: CoachSuggestedAction[];
+}
 
 type ChatTurn = { role: 'user' | 'assistant'; content: string };
 
@@ -176,6 +189,104 @@ export async function promptFlashLite(
     onPartial?.(answer);
     conversation = [...messages, { role: 'assistant', content: answer }];
     return answer;
+  } catch {
+    conversation = [];
+    return null;
+  }
+}
+
+export interface FlashLiteStructuredOptions {
+  systemPrompt?: string;
+  tools?: GeminiFunctionDeclaration[];
+  maxTokens?: number;
+  temperature?: number;
+  responseSchema?: Record<string, unknown>;
+}
+
+const VALID_TOOLS = new Set<string>([
+  'reset_program',
+  'swap_exercise',
+  'adjust_workout_volume',
+  'save_athlete_memory',
+]);
+
+/**
+ * Structured Gemini Flash-Lite request with optional tool declarations and JSON reply parsing.
+ */
+export async function promptFlashLiteStructured(
+  userPrompt: string,
+  options: FlashLiteStructuredOptions = {}
+): Promise<FlashLiteStructuredResult | null> {
+  if (!(await isFlashLiteReady())) return null;
+  const systemPrompt = options.systemPrompt?.trim() || '';
+  if (systemPrompt && systemPrompt !== lastSystemPrompt) {
+    conversation = [];
+    lastSystemPrompt = systemPrompt;
+  } else if (conversation.length / 2 >= MAX_REMEMBERED_EXCHANGES) {
+    conversation = [];
+  }
+
+  try {
+    const messages: ChatTurn[] = [...conversation, { role: 'user', content: userPrompt }];
+    const res = await fetchWithTimeout(
+      '/api/coach/generate',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          systemPrompt,
+          messages,
+          maxOutputTokens: options.maxTokens ?? 320,
+          temperature: options.temperature ?? 0.25,
+          ...(options.tools?.length ? { tools: options.tools } : {}),
+          ...(options.responseSchema && !options.tools?.length
+            ? { responseMimeType: 'application/json', responseSchema: options.responseSchema }
+            : {}),
+        }),
+      },
+      REQUEST_TIMEOUT_MS
+    );
+    if (!res || !res.ok || !isJsonResponse(res)) {
+      if (res?.status === 503) cachedStatus = { configured: false, at: Date.now(), ttlMs: FAILURE_STATUS_TTL_MS };
+      return null;
+    }
+
+    const data: any = await res.json();
+    const rawFc = data?.functionCall;
+    const functionCall: FlashLiteFunctionCall | undefined =
+      rawFc && typeof rawFc.name === 'string' && VALID_TOOLS.has(rawFc.name)
+        ? {
+            name: rawFc.name as CoachToolName,
+            args: rawFc.args && typeof rawFc.args === 'object' ? rawFc.args : {},
+          }
+        : undefined;
+
+    const rawText = typeof data?.text === 'string' ? data.text.trim() : '';
+    let text = rawText;
+    let suggestedActions: CoachSuggestedAction[] | undefined;
+
+    // Gracefully unwrap JSON payloads shaped like { reply, suggested_actions }.
+    if (rawText.startsWith('{') && rawText.endsWith('}')) {
+      try {
+        const parsed: any = JSON.parse(rawText);
+        if (typeof parsed?.reply === 'string' && parsed.reply.trim()) {
+          text = parsed.reply.trim();
+        }
+        if (Array.isArray(parsed?.suggested_actions)) {
+          suggestedActions = parsed.suggested_actions
+            .filter((s: any) => typeof s?.label === 'string' && typeof s?.prompt === 'string')
+            .slice(0, 3);
+        }
+      } catch {
+        // Keep raw text as-is when not JSON
+      }
+    }
+
+    if (!text && !functionCall) return null;
+    if (text) {
+      conversation = [...messages, { role: 'assistant', content: text }];
+    }
+    return { text, functionCall, suggestedActions };
   } catch {
     conversation = [];
     return null;

@@ -14,6 +14,7 @@ import {
   WorkoutSession,
   WorkoutSet,
   AuthUser,
+  CoachUndoSnapshot,
   getActiveWearableProvider,
 } from './engine/types';
 import { calculateDailyReadiness } from './engine/readiness';
@@ -499,6 +500,17 @@ export const App: React.FC = () => {
       } else {
         setActiveWorkout(fillWeightless(updatedWorkout));
       }
+    }
+  };
+
+  const handleUndoAssistantAction = (snapshot: CoachUndoSnapshot) => {
+    if (snapshot.previousProfile) {
+      saveProfile({ ...profile, ...snapshot.previousProfile });
+      setProfile((prev) => ({ ...prev, ...snapshot.previousProfile }));
+    }
+    if (snapshot.previousWorkout) {
+      saveActiveWorkout(snapshot.previousWorkout);
+      setActiveWorkout(snapshot.previousWorkout);
     }
   };
 
@@ -1121,6 +1133,11 @@ export const App: React.FC = () => {
           place={{ tab: activeTab === 'program' ? 'program' : activeTab === 'analytics' ? 'analytics' : 'train', ...(activeTab === 'analytics' ? progressContext : {}) }}
           onClose={() => setAiCoachOpen(false)}
           onApplyAction={handleApplyAssistantAction}
+          onUndoAction={handleUndoAssistantAction}
+          onNavigateTab={(tab) => {
+            setAiCoachOpen(false);
+            setActiveTab(tab);
+          }}
           onViewAllEquipment={() => {
             setAiCoachOpen(false);
             setOnboardingInitialStep(3);

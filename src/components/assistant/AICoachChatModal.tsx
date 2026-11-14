@@ -4,12 +4,18 @@ import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 import {
   AssistantChatMessage,
   BiometricLog,
+  CoachPendingConfirmation,
+  CoachUndoSnapshot,
   ExerciseDefinition,
   ReadinessState,
   UserProfile,
   WorkoutSession,
 } from '../../engine/types';
-import { processAssistantMessage } from '../../services/aiAssistantService';
+import {
+  confirmAssistantPendingAction,
+  processAssistantMessage,
+} from '../../services/aiAssistantService';
+import { formatStateDiffText } from '../../services/coachTools';
 import {
   prepareOnDeviceModel,
   resetOnDeviceConversation,
@@ -31,6 +37,9 @@ import {
   ChevronRight,
   ChevronDown,
   FlaskConical,
+  RotateCcw,
+  AlertTriangle,
+  Sparkles,
 } from 'lucide-react';
 
 interface AICoachChatModalProps {
@@ -48,6 +57,8 @@ interface AICoachChatModalProps {
   place: CoachPlace;
   onClose: () => void;
   onApplyAction: (updatedProfile?: Partial<UserProfile>, updatedWorkout?: WorkoutSession) => void;
+  onUndoAction?: (snapshot: CoachUndoSnapshot) => void;
+  onNavigateTab?: (tab: 'train' | 'program' | 'analytics') => void;
   onViewAllEquipment?: () => void;
 }
 
@@ -108,11 +119,14 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
   place,
   onClose,
   onApplyAction,
+  onUndoAction,
+  onNavigateTab,
   onViewAllEquipment,
 }) => {
   const [inputMessage, setInputMessage] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [pendingStatus, setPendingStatus] = useState<string>('Thinking…');
+  const [revertedMessageIds, setRevertedMessageIds] = useState<Record<string, boolean>>({});
   const [messages, setMessages] = useState<AssistantChatMessage[]>([]);
   const [streamingText, setStreamingText] = useState<string | null>(null);
   const [revealing, setRevealing] = useState<{
@@ -408,6 +422,7 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
           weeklyVolume,
           activities,
           place,
+          routeName: place.tab,
           onPartial: (textSoFar) => {
             if (!isMountedRef.current) return;
             latestStreamingRef.current = textSoFar || null;
@@ -450,6 +465,94 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
     }
   };
 
+  const handleConfirmPendingAction = async (
+    messageId: string,
+    pending: CoachPendingConfirmation
+  ) => {
+    if (isProcessing) return;
+    triggerHaptic('medium');
+    setIsProcessing(true);
+    setPendingStatus('Applying confirmed change…');
+    setMessages((prev) =>
+      prev.map((m) =>
+        m.id === messageId && m.pendingConfirmation
+          ? { ...m, pendingConfirmation: { ...m.pendingConfirmation, status: 'confirmed' } }
+          : m
+      )
+    );
+    try {
+      const result = await confirmAssistantPendingAction(pending, {
+        profile,
+        activeWorkout,
+        workouts,
+        biometrics,
+        exerciseCatalog,
+        bodyweightEmaKg,
+        readinessState,
+        weeklyVolume,
+        activities,
+        place,
+        routeName: place.tab,
+      });
+      if (!isMountedRef.current) return;
+      setIsProcessing(false);
+      setMessages((prev) => [...prev, result.message]);
+      if (result.updatedProfile || result.updatedWorkout) {
+        triggerHaptic('success');
+        onApplyAction(result.updatedProfile, result.updatedWorkout);
+      }
+      startProgressiveReveal(result.message.id, result.message.text, '');
+    } catch {
+      if (!isMountedRef.current) return;
+      setIsProcessing(false);
+    }
+  };
+
+  const handleCancelPendingAction = (messageId: string) => {
+    triggerHaptic('light');
+    setMessages((prev) => [
+      ...prev.map((m) =>
+        m.id === messageId && m.pendingConfirmation
+          ? { ...m, pendingConfirmation: { ...m.pendingConfirmation, status: 'cancelled' as const } }
+          : m
+      ),
+      {
+        id: `cancel-${Date.now()}`,
+        sender: 'assistant',
+        text: 'Reset cancelled — your current program progress stays untouched.',
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      },
+    ]);
+    scrollThreadToBottom('smooth');
+  };
+
+  const handleUndoMutation = (messageId: string, snapshot: CoachUndoSnapshot) => {
+    if (revertedMessageIds[messageId] || !onUndoAction) return;
+    triggerHaptic('medium');
+    onUndoAction(snapshot);
+    setRevertedMessageIds((prev) => ({ ...prev, [messageId]: true }));
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: `undo-${Date.now()}`,
+        sender: 'assistant',
+        text: `Reverted "${snapshot.label}". Your previous workout and profile state are restored.`,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      },
+    ]);
+    scrollThreadToBottom('smooth');
+  };
+
+  const latestSuggestedActions = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const item = messages[i];
+      if (item.sender === 'assistant' && item.suggestedActions?.length) {
+        return item.suggestedActions.slice(0, 3);
+      }
+    }
+    return null;
+  }, [messages]);
+
   const quickPrompts = opening.hooks;
   const useHook = (hook: (typeof quickPrompts)[number]) => {
     if (!hook.fill) {
@@ -473,10 +576,16 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
     setExpanded((v) => !v);
   };
 
-  const actionCardLabel = (type: NonNullable<AssistantChatMessage['actionApplied']>['type']): string => {
+  const actionCardLabel = (type?: NonNullable<AssistantChatMessage['actionApplied']>['type']): string => {
     switch (type) {
       case 'RESET_PROGRAM':
         return 'Program reset';
+      case 'SWAP_EXERCISE':
+        return 'Exercise swapped';
+      case 'ADJUST_WORKOUT_VOLUME':
+        return 'Workout volume adjusted';
+      case 'SAVE_ATHLETE_MEMORY':
+        return 'Memory updated';
       case 'SWITCH_PROGRAM_SPLIT':
         return 'Program updated';
       case 'UPDATE_GOALS':
@@ -723,9 +832,102 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
                           }
                     }
                   >
+                    {/* Saved to Athlete Memory pill */}
+                    {!isUser && msg.memorySaved && (
+                      <div
+                        className="inline-flex items-center self-start font-semibold"
+                        style={{
+                          borderRadius: 60,
+                          gap: fig(8),
+                          padding: `${fig(8)} ${fig(18)}`,
+                          background: 'rgba(0, 241, 159, 0.12)',
+                          border: '1px solid rgba(0, 241, 159, 0.28)',
+                          color: 'var(--wk-accent)',
+                          fontSize: `max(11px, ${fig(21)})`,
+                        }}
+                      >
+                        <Sparkles className="w-3 h-3 shrink-0" strokeWidth={2.2} />
+                        <span>Saved to Athlete Memory</span>
+                      </div>
+                    )}
+
                     <p className="whitespace-pre-wrap">{renderBold(displayText)}</p>
 
-                    {/* Compact inline confirmation card once text finishes revealing */}
+                    {/* Destructive Action Confirmation Card */}
+                    {!isUser && !isBeingRevealed && msg.pendingConfirmation && (
+                      <div
+                        className="wk-raised flex flex-col"
+                        style={{
+                          gap: fig(14),
+                          borderColor: 'rgba(245, 158, 11, 0.35)',
+                        }}
+                      >
+                        <div className="flex items-start" style={{ gap: fig(12) }}>
+                          <AlertTriangle
+                            className="w-4 h-4 shrink-0"
+                            style={{ color: 'var(--color-status-warning)', marginTop: fig(3) }}
+                            strokeWidth={2.2}
+                          />
+                          <div className="min-w-0">
+                            <div className="wk-label" style={{ color: 'var(--color-status-warning)' }}>
+                              {msg.pendingConfirmation.title}
+                            </div>
+                            <p
+                              className="wk-body"
+                              style={{ color: 'var(--wk-muted)', marginTop: fig(6) }}
+                            >
+                              {msg.pendingConfirmation.warning}
+                            </p>
+                            {msg.stateDiff && (
+                              <div
+                                className="wk-body font-medium text-white"
+                                style={{ marginTop: fig(8) }}
+                              >
+                                {formatStateDiffText(msg.stateDiff)}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {msg.pendingConfirmation.status === 'pending' ? (
+                          <div className="flex items-center" style={{ gap: fig(12) }}>
+                            <button
+                              type="button"
+                              onClick={() => handleConfirmPendingAction(msg.id, msg.pendingConfirmation!)}
+                              disabled={isProcessing}
+                              className="wk-button min-h-[44px] flex-1 font-semibold disabled:opacity-50"
+                              style={{
+                                background: 'var(--wk-accent)',
+                                color: 'var(--color-text-on-accent)',
+                              }}
+                            >
+                              {msg.pendingConfirmation.confirm_label}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleCancelPendingAction(msg.id)}
+                              disabled={isProcessing}
+                              className="wk-button min-h-[44px] font-medium disabled:opacity-50"
+                              style={{
+                                paddingLeft: fig(28),
+                                paddingRight: fig(28),
+                                background: 'var(--wk-pill)',
+                                color: 'var(--wk-muted)',
+                                border: '1px solid rgba(255,255,255,0.1)',
+                              }}
+                            >
+                              {msg.pendingConfirmation.cancel_label}
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="wk-label" style={{ color: 'var(--wk-muted)' }}>
+                            {msg.pendingConfirmation.status === 'confirmed' ? 'Confirmed' : 'Cancelled'}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Inline OOUX Mutation Receipt Card */}
                     {!isUser && !isBeingRevealed && msg.actionApplied && (
                       <div className="wk-raised flex flex-col" style={{ gap: fig(14) }}>
                         <div className="flex items-start" style={{ gap: fig(14) }}>
@@ -734,32 +936,81 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
                             style={{ color: 'var(--wk-accent)', marginTop: fig(4) }}
                             strokeWidth={2}
                           />
-                          <div>
-                            <div className="wk-label">{actionCardLabel(msg.actionApplied.type)}</div>
-                            <div className="wk-body font-medium" style={{ color: 'var(--wk-accent)', marginTop: fig(6) }}>
-                              {msg.actionApplied.summary}
+                          <div className="min-w-0 flex-1">
+                            <div className="wk-label">
+                              {msg.stateDiff?.label || actionCardLabel(msg.actionApplied.type)}
+                            </div>
+                            <div
+                              className="wk-body font-medium"
+                              style={{ color: 'var(--wk-accent)', marginTop: fig(6) }}
+                            >
+                              {msg.stateDiff
+                                ? formatStateDiffText(msg.stateDiff)
+                                : msg.actionApplied.summary}
                             </div>
                           </div>
                         </div>
 
-                        {msg.actionApplied.type === 'UPDATE_EQUIPMENT' && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              triggerHaptic('light');
-                              onViewAllEquipment?.();
-                            }}
-                            className="wk-button min-h-[44px]"
-                            style={{
-                              background: 'var(--wk-accent)',
-                              color: 'var(--color-text-on-accent)',
-                              gap: fig(12),
-                            }}
-                          >
-                            <Dumbbell className="w-4 h-4 stroke-[2]" />
-                            <span>View All Equipment</span>
-                            <ChevronRight className="w-4 h-4 stroke-[2]" />
-                          </button>
+                        {(msg.navigateTarget || msg.undoSnapshot || msg.actionApplied.type === 'UPDATE_EQUIPMENT') && (
+                          <div className="flex flex-wrap items-center" style={{ gap: fig(12) }}>
+                            {msg.navigateTarget && onNavigateTab && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  triggerHaptic('light');
+                                  onNavigateTab(msg.navigateTarget!);
+                                }}
+                                className="wk-button min-h-[44px] flex-1 font-semibold"
+                                style={{
+                                  background: 'var(--wk-accent)',
+                                  color: 'var(--color-text-on-accent)',
+                                  gap: fig(10),
+                                }}
+                              >
+                                <span>{msg.navigateLabel || 'View'}</span>
+                                <ChevronRight className="w-4 h-4 stroke-[2]" />
+                              </button>
+                            )}
+
+                            {msg.undoSnapshot && onUndoAction && (
+                              <button
+                                type="button"
+                                disabled={Boolean(revertedMessageIds[msg.id])}
+                                onClick={() => handleUndoMutation(msg.id, msg.undoSnapshot!)}
+                                className="wk-button min-h-[44px] font-medium text-white disabled:opacity-50"
+                                style={{
+                                  paddingLeft: fig(26),
+                                  paddingRight: fig(26),
+                                  background: 'var(--wk-pill)',
+                                  border: '1px solid rgba(255,255,255,0.12)',
+                                  gap: fig(8),
+                                }}
+                              >
+                                <RotateCcw className="w-3.5 h-3.5 stroke-[2]" />
+                                <span>{revertedMessageIds[msg.id] ? 'Reverted' : 'Undo'}</span>
+                              </button>
+                            )}
+
+                            {msg.actionApplied.type === 'UPDATE_EQUIPMENT' && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  triggerHaptic('light');
+                                  onViewAllEquipment?.();
+                                }}
+                                className="wk-button min-h-[44px]"
+                                style={{
+                                  background: 'var(--wk-accent)',
+                                  color: 'var(--color-text-on-accent)',
+                                  gap: fig(12),
+                                }}
+                              >
+                                <Dumbbell className="w-4 h-4 stroke-[2]" />
+                                <span>View All Equipment</span>
+                                <ChevronRight className="w-4 h-4 stroke-[2]" />
+                              </button>
+                            )}
+                          </div>
                         )}
                       </div>
                     )}
@@ -896,25 +1147,45 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
           role="group"
           aria-label="Suggestions"
         >
-          {quickPrompts.map((q) => (
-            <button
-              key={q.label}
-              type="button"
-              onClick={() => useHook(q)}
-              disabled={isProcessing}
-              className="shrink-0 min-h-[44px] whitespace-nowrap font-semibold text-white transition-all active:scale-95 disabled:opacity-50"
-              style={{
-                borderRadius: 60,
-                background: 'var(--wk-card)',
-                border: '1px solid rgba(255, 255, 255, 0.08)',
-                paddingLeft: fig(28),
-                paddingRight: fig(28),
-                fontSize: `max(12px, ${fig(24)})`,
-              }}
-            >
-              {q.label}
-            </button>
-          ))}
+          {latestSuggestedActions
+            ? latestSuggestedActions.map((chip) => (
+                <button
+                  key={chip.label}
+                  type="button"
+                  onClick={() => handleSendMessage(chip.prompt)}
+                  disabled={isProcessing}
+                  className="shrink-0 min-h-[44px] whitespace-nowrap font-semibold text-white transition-all active:scale-95 disabled:opacity-50"
+                  style={{
+                    borderRadius: 60,
+                    background: 'var(--wk-card)',
+                    border: '1px solid rgba(255, 255, 255, 0.08)',
+                    paddingLeft: fig(28),
+                    paddingRight: fig(28),
+                    fontSize: `max(12px, ${fig(24)})`,
+                  }}
+                >
+                  {chip.label}
+                </button>
+              ))
+            : quickPrompts.map((q) => (
+                <button
+                  key={q.label}
+                  type="button"
+                  onClick={() => useHook(q)}
+                  disabled={isProcessing}
+                  className="shrink-0 min-h-[44px] whitespace-nowrap font-semibold text-white transition-all active:scale-95 disabled:opacity-50"
+                  style={{
+                    borderRadius: 60,
+                    background: 'var(--wk-card)',
+                    border: '1px solid rgba(255, 255, 255, 0.08)',
+                    paddingLeft: fig(28),
+                    paddingRight: fig(28),
+                    fontSize: `max(12px, ${fig(24)})`,
+                  }}
+                >
+                  {q.label}
+                </button>
+              ))}
         </div>
 
         {/* Multiline Input Bar pinned cleanly above soft keyboard / gesture bar */}
