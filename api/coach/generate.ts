@@ -177,7 +177,7 @@ export default async function handler(req: any, res: any) {
       }
       if (attemptTimer) clearTimeout(attemptTimer);
       if (controller && attemptController) controller.signal.removeEventListener('abort', onOuterAbort);
-      if (upstream.status === 404) {
+      if (upstream.status === 404 || upstream.status === 429 || upstream.status === 503) {
         if (cachedWorkingModel === activeModel) cachedWorkingModel = null;
         if (i === candidateModels.length - 1) break;
         continue;

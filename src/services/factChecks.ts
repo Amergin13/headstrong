@@ -31,6 +31,22 @@ export function mislabelledFigure(text: string, facts: string[]): string | undef
   return undefined;
 }
 
+/**
+ * The first weight in the text whose unit (kg vs lb) does not match how that figure appears in the facts.
+ */
+export function mismatchedWeightUnit(text: string, facts: string[]): string | undefined {
+  const joined = stripThousandsCommas(facts.join(' '));
+  for (const match of stripThousandsCommas(text).matchAll(/(\d+(?:\.\d+)?)\s*(kg|kilos?|lbs?|pounds?)\b/gi)) {
+    const [, value, rawUnit] = match;
+    const unit = rawUnit.toLowerCase().startsWith('k') ? 'kg' : 'lb';
+    const unitPattern = unit === 'kg' ? '(?:kg|kilos?)' : '(?:lbs?|pounds?)';
+    if (!new RegExp(`(?<![\\d.])${value.replace('.', '\\.')}\\s*${unitPattern}\\b`, 'i').test(joined)) {
+      return `${value} ${unit}`;
+    }
+  }
+  return undefined;
+}
+
 const UNITS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen'];
 const TENS = ['', '', 'twenty', 'thirty', 'forty', 'fifty', 'sixty', 'seventy', 'eighty', 'ninety'];
 

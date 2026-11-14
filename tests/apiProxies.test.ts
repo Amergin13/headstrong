@@ -558,6 +558,25 @@ const iso = (msAgo: number) => new Date(Date.now() - msAgo).toISOString();
     'Coach POST falls back to gemini-3.1-flash-lite when the primary model returns 404'
   );
 
+  installFetch((url) =>
+    url.includes('gemini-3.1-flash-lite:generateContent')
+      ? { status: 429, body: { error: { code: 429, message: 'Rate limit exceeded' } } }
+      : url.includes('gemini-3.5-flash-lite:generateContent')
+      ? { status: 503, body: { error: { code: 503, message: 'Service unavailable' } } }
+      : url.includes('gemini-2.5-flash-lite:generateContent')
+      ? {
+          status: 200,
+          body: { candidates: [{ content: { parts: [{ text: 'Fallback after 429/503.' }] } }] },
+        }
+      : undefined
+  );
+  res = mockRes();
+  await coachGenerate({ method: 'POST', headers: {}, body: { systemPrompt: 'sys', userPrompt: 'hi' } }, res);
+  assert(
+    res.statusCode === 200 && res.body?.text === 'Fallback after 429/503.' && res.body?.model === 'gemini-2.5-flash-lite',
+    'Coach POST falls back across candidate models on 429 and 503 upstream statuses'
+  );
+
   let toolPayload: any = null;
   installFetch((_url, init) => {
     toolPayload = JSON.parse(String(init?.body || '{}'));

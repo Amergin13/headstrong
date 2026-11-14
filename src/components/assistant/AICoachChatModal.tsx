@@ -553,6 +553,16 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
     return null;
   }, [messages]);
 
+  const latestUndoableMessageId = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const item = messages[i];
+      if (item.sender === 'assistant' && item.undoSnapshot) {
+        return item.id;
+      }
+    }
+    return null;
+  }, [messages]);
+
   const quickPrompts = opening.hooks;
   const useHook = (hook: (typeof quickPrompts)[number]) => {
     if (!hook.fill) {
@@ -975,7 +985,7 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
                             {msg.undoSnapshot && onUndoAction && (
                               <button
                                 type="button"
-                                disabled={Boolean(revertedMessageIds[msg.id])}
+                                disabled={Boolean(revertedMessageIds[msg.id]) || msg.id !== latestUndoableMessageId}
                                 onClick={() => handleUndoMutation(msg.id, msg.undoSnapshot!)}
                                 className="wk-button min-h-[44px] font-medium text-white disabled:opacity-50"
                                 style={{
@@ -987,7 +997,13 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
                                 }}
                               >
                                 <RotateCcw className="w-3.5 h-3.5 stroke-[2]" />
-                                <span>{revertedMessageIds[msg.id] ? 'Reverted' : 'Undo'}</span>
+                                <span>
+                                  {revertedMessageIds[msg.id]
+                                    ? 'Reverted'
+                                    : msg.id !== latestUndoableMessageId
+                                      ? 'Superseded'
+                                      : 'Undo'}
+                                </span>
                               </button>
                             )}
 

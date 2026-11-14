@@ -110,11 +110,12 @@ export function evaluateStrengthStandard(
   const tierRange = (currentTier: StrengthTier, nextTierName: StrengthTier, lower: number, upper: number) => {
     const step = (upper - lower) / 4;
     // A lift exactly on a boundary reaches it (tolerance for floating-point division).
-    const subIdx = Math.max(0, Math.min(3, Math.floor((ratio - lower) / step + 1e-9)));
+    const subIdx = step > 0 ? Math.max(0, Math.min(3, Math.floor((ratio - lower) / step + 1e-9))) : 0;
     // Below the Untrained threshold there is no lower tier: it is all Untrained I, measured from 0.
     const prevRatio = ratio < lower ? 0 : lower + subIdx * step;
     const nextTargetRatio = subIdx === 3 ? upper : lower + (subIdx + 1) * step;
-    const progress = Math.min(100, Math.max(0, ((ratio - prevRatio) / (nextTargetRatio - prevRatio)) * 100));
+    const span = nextTargetRatio - prevRatio;
+    const progress = span > 0 ? Math.min(100, Math.max(0, ((ratio - prevRatio) / span) * 100)) : 0;
 
     return {
       ratio,

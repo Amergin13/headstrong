@@ -9872,7 +9872,426 @@ Exercise,,Date,Workout,Sets,Reps,Tempo,Rest,Notes,Set 1,Set 2,Set 3,Set 4
     );
   }
 
-  console.log('\nALL 51 ENGINE, GOVERNANCE, DESIGN SYSTEM, TYPOGRAPHY, WEARABLES, WHOOP STRAIN, GOOGLE AUTH, ONBOARDING CONTEXT, 6-WEEK PROGRAM, SPREADSHEET IMPORT, AI COACH ACTIONS, GEMINI FLASH + KG, OOUX & AGENTIC COACH SUITES PASSED SUCCESSFULLY! 🎯');
+  // ============================================================================
+  // SUITE 52: Consumer-Grade Launch Verification — AI Grounding, Units, Edge-Case Math & Timezone Safety
+  // ============================================================================
+  console.log('\n[Suite 52: Consumer-Grade Launch Verification — AI Grounding, Units, Edge-Case Math & Timezone Safety]');
+  {
+    const { buildContextEnvelope, serializeContextEnvelopeForPrompt } = await import('../../services/coachContextEnvelope');
+    const { executeCoachToolCall } = await import('../../services/coachTools');
+    const { processAssistantMessage: ask52, acceptCoachAnswer: accept52 } = await import('../../services/aiAssistantService');
+    const { resetFlashLiteState } = await import('../../services/geminiFlashLite');
+    const { mismatchedWeightUnit } = await import('../../services/factChecks');
+    const { checkExerciseNote } = await import('../../services/exerciseCoachNote');
+    const { checkIdentityMessage } = await import('../../services/identityMessage');
+    const { checkWorkoutSummary } = await import('../../services/workoutFinish');
+    const { checkGoalsSummary } = await import('../../services/progressOverview');
+    const { buildAthleteGoals } = await import('../../services/athleteGoals');
+    const { buildSideDifferences } = await import('../../services/movementStandards');
+    const {
+      getBodyweightLoadRatio,
+      calculateE1RM,
+      calculateWeightNeededForTargetE1RM,
+      calculateRepsNeededForTargetE1RM,
+    } = await import('../e1rm');
+    const { evaluateStrengthStandard } = await import('../strengthStandards');
+    const { calculateDailyReadiness } = await import('../readiness');
+    const { generate7PillarRadarData } = await import('../vitality');
+    const { getPlanById: getPlan52 } = await import('../trainingPlans');
+    const { generatePlanWorkout: genPlan52 } = await import('../muscleBuildingProgram');
+
+    // A. Imperial (lb) ContextEnvelope & Goals formatting + cross-surface unit gate
+    const s52Workouts = generateSeedWorkouts();
+    const s52Biometrics: BiometricLog[] = [
+      { date: '2026-11-10', bodyweightKg: 84, hrvRmssd: 58, restingHr: 56, sleepHours: 7.5, steps: 8500, activeZoneMinutes: 35 },
+      { date: '2026-11-11', bodyweightKg: 84, hrvRmssd: 60, restingHr: 55, sleepHours: 7.8, steps: 9000, activeZoneMinutes: 40 },
+      { date: '2026-11-12', bodyweightKg: 84, hrvRmssd: 57, restingHr: 57, sleepHours: 7.2, steps: 8200, activeZoneMinutes: 30 },
+    ];
+    const lbProfile: UserProfile = {
+      ...NEW_USER_PROFILE,
+      name: 'Ben Taylor',
+      onboardingCompleted: true,
+      weightUnit: 'lb',
+      programType: 'muscle_building_6wk',
+      mesocycleWeek: 2,
+    };
+    const plan52 = getPlan52('muscle_building_6wk', lbProfile.goalPhase);
+    const lbActive = genPlan52(plan52, 1);
+    const lbEnvelope = buildContextEnvelope({
+      profile: lbProfile,
+      activeWorkout: lbActive,
+      workouts: s52Workouts,
+      biometrics: s52Biometrics,
+      exerciseCatalog: SEED_EXERCISES,
+      bodyweightEmaKg: 84,
+      readinessState: 'Normal',
+    });
+    const lbPromptBlock = serializeContextEnvelopeForPrompt(lbEnvelope);
+    assert(
+      lbEnvelope.episodic_memory.recent_workouts.some((w) => w.top_lift?.includes('lb')) &&
+        !lbEnvelope.episodic_memory.recent_workouts.some((w) => w.top_lift?.includes('kg')) &&
+        !lbPromptBlock.includes(' kg'),
+      'ContextEnvelope formats top_lift, recent_prs, and stalled_lifts in the athlete weightUnit (lb)'
+    );
+
+    const lbGoals = buildAthleteGoals({
+      profile: lbProfile,
+      workouts: s52Workouts,
+      biometrics: s52Biometrics,
+      bodyweightKg: 84,
+    });
+    assert(
+      lbGoals.every((g) => !g.detail.includes(' kg')),
+      'buildAthleteGoals formats strength level and custom goal details in lb when profile.weightUnit === "lb"'
+    );
+
+    assert(
+      mismatchedWeightUnit('Top set moved to 185 kg last session.', ['Best set: 185 lb × 8 reps']) === '185 kg' &&
+        checkExerciseNote('You lifted 185 kg in your previous block.\nToday builds volume across the chest.', {
+          exerciseId: 'ex-bench-press',
+          key: 'k-test',
+          hasHistory: true,
+          facts: ['Estimated max is 185 lb'],
+          fallback: 'Your estimated max is 185 lb.\nToday builds chest volume.',
+          lines: ['Your estimated max is 185 lb.', 'Today builds chest volume.'],
+        }).problem !== undefined,
+      'mismatchedWeightUnit and checkExerciseNote reject kg claims when facts are in lb'
+    );
+
+    assert(
+      Boolean(
+        checkIdentityMessage(
+          'Your bench press reached 185 kg this week and your upper body pressing continues to move up steadily.',
+          {
+            key: 'id-test',
+            facts: [
+              'Personal best on Barbell Bench Press: 185 lb',
+              'Workouts in the last 14 days: 4',
+            ],
+            fallback: 'Your bench press reached 185 lb.',
+          }
+        ).problem?.includes('unit')
+      ) &&
+        Boolean(
+          checkWorkoutSummary('You finished strong today and moved Barbell Bench Press to 185 kg.', {
+            facts: ['Barbell Bench Press personal best: 185 lb'],
+          }).problem?.includes('unit')
+        ) &&
+        Boolean(
+          checkGoalsSummary('Your Barbell Bench Press is at 185 kg on the way to your goal.', {
+            facts: ['Barbell Bench Press: 185 lb toward 225 lb goal'],
+          }).problem?.includes('unit')
+        ),
+      'checkIdentityMessage, checkWorkoutSummary, and checkGoalsSummary reject mismatched weight units'
+    );
+
+    const sampleGrounding = 'Today: Back Squat 2x6 @ 60 kg. Goal: 15 sets. Recovery 72%.';
+    assert(
+      !accept52('Do 60 reps today on squats.', sampleGrounding) &&
+        !accept52('Finish 72 sets this week.', sampleGrounding),
+      'acceptCoachAnswer rejects repurposing a weight (60 kg) or percentage (72%) as reps or sets'
+    );
+
+    // B. Single-pass structured Flash-Lite retry & conversation hygiene
+    resetFlashLiteState();
+    const prevWin52 = (globalThis as any).window;
+    const prevFetch52 = globalThis.fetch;
+    (globalThis as any).window = globalThis;
+    try {
+      let postCallCount = 0;
+      let secondCallMessages: any[] = [];
+      globalThis.fetch = (async (_url: string, init?: RequestInit) => {
+        if (init?.method === 'GET') {
+          return new Response(JSON.stringify({ configured: true }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        postCallCount += 1;
+        const parsed = JSON.parse(String(init?.body || '{}'));
+        if (postCallCount === 1) {
+          return new Response(
+            JSON.stringify({
+              text: 'Load 195 kg on the bar and go all out.',
+              model: 'gemini-3.5-flash-lite',
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } }
+          );
+        }
+        secondCallMessages = parsed.messages || [];
+        return new Response(
+          JSON.stringify({
+            text: 'Keep 2 reps in reserve and focus on steady bar speed.',
+            model: 'gemini-3.5-flash-lite',
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } }
+        );
+      }) as typeof fetch;
+
+      const retryRes = await ask52({
+        userMessage: 'What helps me stay locked in mentally tonight?',
+        profile: NEW_USER_PROFILE,
+        activeWorkout: lbActive,
+        workouts: s52Workouts,
+        biometrics: s52Biometrics,
+        exerciseCatalog: SEED_EXERCISES,
+        bodyweightEmaKg: 84,
+        readinessState: 'Normal',
+      });
+      assert(
+        postCallCount === 2 &&
+          secondCallMessages.length === 1 &&
+          retryRes.message.text.includes('Keep 2 reps in reserve'),
+        `Structured Flash-Lite forgets rejected turn, retries once with feedback, and never double-calls on-device fallback (calls=${postCallCount}, msgs=${secondCallMessages.length})`
+      );
+    } finally {
+      resetFlashLiteState();
+      globalThis.fetch = prevFetch52;
+      if (prevWin52 === undefined) delete (globalThis as any).window;
+      else (globalThis as any).window = prevWin52;
+    }
+
+    // C. Question guards on deterministic intents, Amber Shield volume safety & smart swap preservation
+    const questionSwap = await ask52({
+      userMessage: 'Swap Barbell Bench Press for Incline Dumbbell Press?',
+      profile: NEW_USER_PROFILE,
+      activeWorkout: lbActive,
+      workouts: s52Workouts,
+      biometrics: s52Biometrics,
+      exerciseCatalog: SEED_EXERCISES,
+      bodyweightEmaKg: 84,
+      readinessState: 'Normal',
+    });
+    assert(
+      !questionSwap.actionTaken && !questionSwap.updatedWorkout,
+      'Questions ending in "?" never trigger deterministic swap mutations'
+    );
+
+    const amberIncrease = await executeCoachToolCall(
+      'adjust_workout_volume',
+      { workout_id: lbActive.id, modifier_type: 'increase_sets' },
+      {
+        profile: NEW_USER_PROFILE,
+        activeWorkout: lbActive,
+        workouts: s52Workouts,
+        exerciseCatalog: SEED_EXERCISES,
+        bodyweightEmaKg: 84,
+        readinessState: 'Amber Shield',
+      }
+    );
+    assert(
+      amberIncrease.mutationStatus === 'error' && !amberIncrease.updatedWorkout,
+      'adjust_workout_volume refuses to increase sets during Amber Shield low recovery'
+    );
+
+    const startedEx = lbActive.exercises[0];
+    const workoutWithOneLoggedSet: WorkoutSession = {
+      ...lbActive,
+      exercises: [
+        {
+          ...startedEx,
+          sets: startedEx.sets.map((s, idx) => (idx === 0 ? { ...s, completed: true, actualWeightKg: 60, actualReps: 8 } : s)),
+        },
+        ...lbActive.exercises.slice(1),
+      ],
+    };
+    const partialSwap = await executeCoachToolCall(
+      'swap_exercise',
+      {
+        workout_id: workoutWithOneLoggedSet.id,
+        old_exercise_id: startedEx.exerciseId,
+        new_exercise_id: 'ex-db-bench-press',
+      },
+      {
+        profile: NEW_USER_PROFILE,
+        activeWorkout: workoutWithOneLoggedSet,
+        workouts: s52Workouts,
+        exerciseCatalog: SEED_EXERCISES,
+        bodyweightEmaKg: 84,
+        readinessState: 'Normal',
+      }
+    );
+    assert(
+      partialSwap.mutationStatus === 'success' &&
+        partialSwap.updatedWorkout?.exercises[0]?.exerciseId === startedEx.exerciseId &&
+        partialSwap.updatedWorkout?.exercises[0]?.sets.length === 1 &&
+        partialSwap.updatedWorkout?.exercises[1]?.exerciseId === 'ex-db-bench-press',
+      'swap_exercise on an already-started exercise preserves completed sets under the original exercise and inserts the replacement after it'
+    );
+
+    const contraindicatedSwap = await executeCoachToolCall(
+      'swap_exercise',
+      {
+        workout_id: lbActive.id,
+        old_exercise_id: startedEx.exerciseId,
+      },
+      {
+        profile: {
+          ...NEW_USER_PROFILE,
+          athleteMemories: [
+            {
+              id: 'm-avoid-db',
+              category: 'contraindication',
+              value: 'Avoid Incline Dumbbell Press due to shoulder irritation',
+              createdAt: '2026-11-10T09:00:00Z',
+              relatedExerciseIds: ['ex-db-bench-press'],
+            },
+          ],
+        },
+        activeWorkout: lbActive,
+        workouts: s52Workouts,
+        exerciseCatalog: SEED_EXERCISES,
+        bodyweightEmaKg: 84,
+        readinessState: 'Normal',
+      }
+    );
+    assert(
+      contraindicatedSwap.mutationStatus === 'success' &&
+        contraindicatedSwap.updatedWorkout?.exercises[0]?.exerciseId !== 'ex-db-bench-press',
+      'swap_exercise skips exercises flagged as avoid in athleteMemories contraindications'
+    );
+
+    // D. Exercise Science & Biometric Edge Cases
+    assert(
+      getBodyweightLoadRatio('ex-triceps-dip') === 1.0 &&
+        Math.abs(calculateE1RM(20, 5, 0, 'barbell', false, true, 80, 'ex-triceps-dip', 'Horizontal Push') - 116.7) < 0.05,
+      'Dips use 1.00 full bodyweight + external load in E1RM per AGENTS.md §1.1'
+    );
+
+    const targetPushupWeight = calculateWeightNeededForTargetE1RM(
+      80,
+      20,
+      2,
+      'bodyweight',
+      false,
+      true,
+      80,
+      'ex-pushup',
+      'Horizontal Push'
+    );
+    const roundTripPushupE1rm = calculateE1RM(
+      targetPushupWeight,
+      20,
+      2,
+      'bodyweight',
+      false,
+      true,
+      80,
+      'ex-pushup',
+      'Horizontal Push'
+    );
+    const repsForPushup = calculateRepsNeededForTargetE1RM(
+      targetPushupWeight,
+      80,
+      2,
+      'bodyweight',
+      false,
+      true,
+      80,
+      'ex-pushup',
+      'Horizontal Push'
+    );
+    assert(
+      targetPushupWeight > 0 && Math.abs(roundTripPushupE1rm - 80) < 2.0 && repsForPushup <= 15,
+      'calculateWeightNeededForTargetE1RM and calculateRepsNeededForTargetE1RM honor exerciseId bodyweight ratio and 15-rep E1RM cap'
+    );
+
+    const typoClassEval = evaluateStrengthStandard('Hinge', 55, 60, 'female', 45);
+    assert(
+      Number.isFinite(typoClassEval.percentageProgress) &&
+        typoClassEval.subDivision !== undefined,
+      'evaluateStrengthStandard handles clamped zero-width tier (female 40-49 60kg deadlift) without NaN'
+    );
+
+    const partialReadiness = calculateDailyReadiness(
+      {
+        date: '2026-11-14',
+        bodyweightKg: 82,
+        hrvRmssd: 0,
+        restingHr: 0,
+        sleepHours: 0,
+        steps: 4000,
+        activeZoneMinutes: 20,
+        fitbitReadinessScore: 55,
+      },
+      s52Biometrics.slice(0, 5)
+    );
+    assert(
+      partialReadiness.state === 'Normal' && partialReadiness.hrvChangePercent === 0 && partialReadiness.sleepDeviation === 0,
+      'calculateDailyReadiness with partial wearable metrics (score=55, hrv=0, sleep=0) stays Normal without false Amber Shield'
+    );
+
+    const radarWithNoVo2 = generate7PillarRadarData(
+      {
+        Squat: 100,
+        Hinge: 120,
+        'Horizontal Push': 80,
+        'Vertical Push': 50,
+        'Horizontal Pull': 70,
+        'Vertical Pull': 80,
+      },
+      82,
+      {
+        date: '2026-11-14',
+        bodyweightKg: 82,
+        hrvRmssd: 50,
+        restingHr: 78,
+        sleepHours: 7,
+        steps: 2500,
+        activeZoneMinutes: 0,
+      },
+      'male',
+      30
+    );
+    const vitalityPillar = radarWithNoVo2.find((p) => p.pillar === 'Engine / Vitality')!;
+    assert(
+      vitalityPillar.rawRatioOrScore === 0 && (vitalityPillar.tier === 'Untrained' || vitalityPillar.tier === 'Novice'),
+      'generate7PillarRadarData stores 0 when vo2Max is missing (never fabricated 45) and assigns Untrained/Novice tiers'
+    );
+
+    const sideDiffs = buildSideDifferences([
+      {
+        id: 'w-uni-1',
+        date: '2026-11-10',
+        name: 'Arms',
+        splitDay: 'Push',
+        readinessState: 'Normal',
+        readinessZScore: 0,
+        completed: true,
+        exercises: [
+          {
+            id: 'eu-1',
+            exerciseId: 'ex-db-curl',
+            name: 'Single-Arm Dumbbell Curl',
+            pillar: 'Vertical Pull',
+            equipment: 'dumbbell',
+            minReps: 8,
+            maxReps: 12,
+            sets: [
+              {
+                id: 'su-1',
+                setNumber: 1,
+                targetWeightKg: 14,
+                actualWeightKg: 14,
+                targetReps: 10,
+                actualReps: 7,
+                actualRepsLeft: 7,
+                actualRepsRight: 10,
+                targetRir: 1,
+                completed: true,
+              },
+            ],
+          },
+        ],
+      },
+    ]);
+    assert(
+      sideDiffs.length === 1 && sideDiffs[0].lastLoggedOn === '2026-11-10',
+      'buildSideDifferences preserves plain YYYY-MM-DD date strings without UTC midnight timezone shift'
+    );
+  }
+
+  console.log('\nALL 52 ENGINE, GOVERNANCE, DESIGN SYSTEM, TYPOGRAPHY, WEARABLES, WHOOP STRAIN, GOOGLE AUTH, ONBOARDING CONTEXT, 6-WEEK PROGRAM, SPREADSHEET IMPORT, AI COACH ACTIONS, GEMINI FLASH + KG, OOUX, AGENTIC COACH & LAUNCH VERIFICATION SUITES PASSED SUCCESSFULLY! 🎯');
 })().catch((err) => {
   console.error('Test Suite Failed:', err);
   if (typeof process !== 'undefined' && process.exit) {

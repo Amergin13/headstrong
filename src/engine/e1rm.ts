@@ -50,6 +50,9 @@ export const BODYWEIGHT_LOAD_RATIOS: Record<string, number> = {
   'ex-incline-pushup': 0.45,
   'ex-diamond-pushup': 0.68,
   'ex-trx-pushup': 0.60,
+  'ex-triceps-dip': 1.00,
+  'ex-dip': 1.00,
+  'ex-weighted-dip': 1.00,
   // Overhead / Vertical Push
   'ex-pike-pushup': 0.65,
   'ex-elevated-pike-pushup': 0.75,
@@ -93,7 +96,7 @@ export function getBodyweightLoadRatio(exerciseId?: string, pillar?: string): nu
   if (id.includes('inverted-row') || id.includes('table')) return 0.60;
   if (id.includes('doorframe') || id.includes('towel')) return 0.45;
   if (id.includes('sliding') && id.includes('lat')) return 0.45;
-  if (id.includes('pullup') || id.includes('chinup')) return 1.00;
+  if (id.includes('pullup') || id.includes('chinup') || id.includes('dip')) return 1.00;
   if (id.includes('bulgarian') || id.includes('split-squat')) return 0.85;
   if (id.includes('pistol') || id.includes('single-leg-squat')) return 0.90;
   if (id.includes('lunge')) return 0.75;
@@ -129,7 +132,7 @@ export function calculateEffectiveLoad(
   exerciseId?: string,
   pillar?: string
 ): number {
-  let effectiveLoad = externalWeightKg;
+  let effectiveLoad = Math.max(0, externalWeightKg);
 
   if (isWeightedCalisthenic || equipment === 'weighted_bodyweight') {
     // Weighted calisthenics (e.g. Weighted Pull-Up) uses full bodyweight or specific ratio + plate load
@@ -388,7 +391,7 @@ export function calculateE1RM(
   );
 
   // Epley drifts high beyond ~15 reps from failure, so cap the rep term for estimation only.
-  const repsFromFailure = Math.min(reps + rir, MAX_E1RM_REPS_FROM_FAILURE);
+  const repsFromFailure = Math.min(reps + Math.max(0, rir), MAX_E1RM_REPS_FROM_FAILURE);
   const e1rm = effectiveWeight * (1 + repsFromFailure / 30);
   return Math.round(e1rm * 10) / 10;
 }
@@ -406,20 +409,25 @@ export function calculateRepsNeededForTargetE1RM(
   equipment: EquipmentType = 'barbell',
   isRdl?: boolean,
   isWeightedCalisthenic?: boolean,
-  bodyweightEmaKg: number = 80
+  bodyweightEmaKg: number = 80,
+  exerciseId?: string,
+  pillar?: string
 ): number {
   const effectiveWeight = calculateEffectiveLoad(
     externalWeightKg,
     equipment,
     isRdl,
     isWeightedCalisthenic,
-    bodyweightEmaKg
+    bodyweightEmaKg,
+    exerciseId,
+    pillar
   );
 
-  if (effectiveWeight <= 0) return 1;
+  if (targetE1rmKg <= 0 || effectiveWeight <= 0) return 1;
   if (effectiveWeight >= targetE1rmKg) return 1;
 
-  const rawReps = 30 * (targetE1rmKg / effectiveWeight - 1) - targetRir;
+  const safeRir = Math.max(0, targetRir);
+  const rawReps = 30 * (targetE1rmKg / effectiveWeight - 1) - safeRir;
   return Math.max(1, Math.ceil(rawReps));
 }
 
@@ -434,9 +442,13 @@ export function calculateWeightNeededForTargetE1RM(
   equipment: EquipmentType = 'barbell',
   isRdl?: boolean,
   isWeightedCalisthenic?: boolean,
-  bodyweightEmaKg: number = 80
+  bodyweightEmaKg: number = 80,
+  exerciseId?: string,
+  pillar?: string
 ): number {
-  const divisor = 1 + (targetReps + targetRir) / 30;
+  if (targetE1rmKg <= 0 || targetReps <= 0) return 0;
+  const repsFromFailure = Math.min(targetReps + Math.max(0, targetRir), MAX_E1RM_REPS_FROM_FAILURE);
+  const divisor = 1 + repsFromFailure / 30;
   const effectiveRequired = targetE1rmKg / divisor;
 
   return convertEffectiveToExternalLoad(
@@ -444,6 +456,8 @@ export function calculateWeightNeededForTargetE1RM(
     equipment,
     isRdl,
     isWeightedCalisthenic,
-    bodyweightEmaKg
+    bodyweightEmaKg,
+    exerciseId,
+    pillar
   );
 }

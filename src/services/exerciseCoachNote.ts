@@ -17,7 +17,7 @@ import { runReadAloudQaGate } from '../engine/contentStrategy';
 import { getWorkoutCompletedAt } from '../engine/recovery';
 import { ExerciseSession, ReadinessState, WorkoutSession, WorkoutSet } from '../engine/types';
 import { ExerciseInsight } from './exerciseInsight';
-import { markPromptRejected, wasPromptRejected } from './factChecks';
+import { markPromptRejected, mismatchedWeightUnit, spelledNumberNotInFacts, wasPromptRejected } from './factChecks';
 import { promptOnDeviceModel } from './onDeviceModel';
 
 export interface ExerciseNoteInput {
@@ -358,6 +358,10 @@ export function checkExerciseNote(
   const used = text.match(NUMBER) || [];
   const strange = used.find((n) => !allowed.has(n));
   if (strange) return { problem: `it used the number ${strange}, which is not in the facts` };
+  const spelled = spelledNumberNotInFacts(text, facts.facts);
+  if (spelled) return { problem: `it used the number "${spelled}", which is not in the facts` };
+  const wrongUnit = mismatchedWeightUnit(text, facts.facts);
+  if (wrongUnit) return { problem: `it used the weight unit "${wrongUnit}", which does not match the facts` };
 
   // When historical load figures exist in the facts, Line 1 must anchor on a concrete load metric (kg/lb).
   if (/\b\d+(?:\.\d+)?\s*(?:kg|lbs?)\b/i.test(allFacts) && !/\b\d+(?:\.\d+)?\s*(?:kg|lbs?)\b/i.test(rawLines[0])) {

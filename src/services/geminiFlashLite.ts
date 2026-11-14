@@ -219,11 +219,15 @@ export async function promptFlashLiteStructured(
 ): Promise<FlashLiteStructuredResult | null> {
   if (!(await isFlashLiteReady())) return null;
   const systemPrompt = options.systemPrompt?.trim() || '';
-  if (systemPrompt && systemPrompt !== lastSystemPrompt) {
-    conversation = [];
+  const exchanges = conversation.length / 2;
+  if (lastSystemPrompt !== systemPrompt) {
     lastSystemPrompt = systemPrompt;
-  } else if (conversation.length / 2 >= MAX_REMEMBERED_EXCHANGES) {
-    conversation = [];
+    if (conversation.length > 4) {
+      conversation = conversation.slice(-4);
+    }
+  }
+  if (exchanges >= MAX_REMEMBERED_EXCHANGES) {
+    conversation = conversation.slice(-(MAX_REMEMBERED_EXCHANGES - 1) * 2);
   }
 
   try {
@@ -283,7 +287,7 @@ export async function promptFlashLiteStructured(
     }
 
     if (!text && !functionCall) return null;
-    if (text) {
+    if (text && !functionCall) {
       conversation = [...messages, { role: 'assistant', content: text }];
     }
     return { text, functionCall, suggestedActions };

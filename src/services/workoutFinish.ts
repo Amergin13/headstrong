@@ -16,7 +16,7 @@ import { BiometricLog, ExerciseDefinition, UserProfile, WorkoutSession } from '.
 import { standardsAge } from '../engine/strengthStandards';
 import { AthleteGoal, GoalProgress, buildAthleteGoals, describeGoalStanding, goalsProgressedBy } from './athleteGoals';
 import { promptOnDeviceModel } from './onDeviceModel';
-import { mislabelledFigure, markPromptRejected, spelledNumberNotInFacts, wasPromptRejected } from './factChecks';
+import { mislabelledFigure, mismatchedWeightUnit, markPromptRejected, spelledNumberNotInFacts, wasPromptRejected } from './factChecks';
 import { SessionProgressReport, buildSessionProgressReport } from './sessionReport';
 import { calculateWeeklyMuscleVolume } from './storage';
 import { ExerciseInsight, buildExerciseInsight } from './exerciseInsight';
@@ -261,6 +261,8 @@ export function checkWorkoutSummary(
   if (strange) return { problem: `it used the number ${strange}, which is not in the facts` };
   const spelled = spelledNumberNotInFacts(text, finish.facts);
   if (spelled) return { problem: `it used the number "${spelled}", which is not in the facts` };
+  const wrongUnit = mismatchedWeightUnit(text, finish.facts);
+  if (wrongUnit) return { problem: `it used the weight unit "${wrongUnit}", which does not match the facts` };
   const mislabelled = mislabelledFigure(text, finish.facts);
   if (mislabelled) return { problem: `it said "${mislabelled}", but the facts count that figure in something else` };
   if (/\b(personal best|PR|record)s?\b/i.test(text) && !/beat their previous best|personal bests?/i.test(allFacts)) return { problem: 'it mentioned a personal best the facts do not show' };

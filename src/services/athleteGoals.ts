@@ -35,6 +35,7 @@ import { resolveActivePlan } from '../engine/trainingPlans';
 import { BiometricLog, CustomGoal, ExerciseSession, GoalPhase, StrengthPillar, UserProfile, WorkoutSession, WorkoutSet } from '../engine/types';
 import { localDateString, parseLocalDate } from '../utils/date';
 import { GOAL_DISPLAY_NAME } from '../utils/goalNames';
+import { formatWeight } from '../utils/units';
 import { buildMovementStandards } from './movementStandards';
 import { weightPace } from './progressSeries';
 import { calculateBestPillarDetails } from './storage';
@@ -359,6 +360,8 @@ function strengthLevelGoals(input: AthleteGoalsInput): AthleteGoal[] {
   const bodyweightKg = input.bodyweightKg ?? 0;
   if (!hasWeighIn || bodyweightKg <= 0) return [];
   const age = standardsAge(input.profile);
+  const unit = input.profile.weightUnit || 'kg';
+  const fmtLoad = (kg: number) => (unit === 'lb' ? formatWeight(kg, 'lb') : `${round1(kg)} kg`);
   const emaLookup = buildBodyweightEmaLookup(input.biometrics);
   const report = buildMovementStandards({ workouts: input.workouts, biometrics: input.biometrics, bodyweightKg, gender: input.profile.gender, age });
   const bests = calculateBestPillarDetails(input.workouts, bodyweightKg, { bodyweightOnDate: (d) => emaLookup(d, bodyweightKg) });
@@ -369,7 +372,7 @@ function strengthLevelGoals(input: AthleteGoalsInput): AthleteGoal[] {
     const targetE1rmKg = round1(standard.targetRatio * bodyweightKg);
     if (!(targetE1rmKg > 0)) continue;
     const currentLevel = `${level.tier} ${level.subDivision}`;
-    const best = bestSetFor(input.workouts, bests[level.pillar]?.exerciseId, bodyweightKg);
+    const best = bestSetFor(input.workouts, bests[level.pillar]?.exerciseId, bodyweightKg, input.biometrics);
     const targetReps = best ? repsToReach(best, targetE1rmKg, bodyweightKg) : null;
     const exerciseName = best?.exercise.name ?? level.bestFrom ?? level.name;
     const base = {
@@ -387,7 +390,7 @@ function strengthLevelGoals(input: AthleteGoalsInput): AthleteGoal[] {
       const weightKg = weightOf(best.set);
       const atBodyweight = weightKg <= 0;
       const addedToBodyweight = !atBodyweight && (best.exercise.isWeightedCalisthenic === true || best.exercise.equipment === 'bodyweight' || best.exercise.equipment === 'weighted_bodyweight');
-      const at = repsAt({ atBodyweight, addedToBodyweight, weightKg }, (kg) => `${round1(kg)} kg`);
+      const at = repsAt({ atBodyweight, addedToBodyweight, weightKg }, fmtLoad);
       goals.push({
         ...base,
         detail: `${currentReps} of ${targetReps} reps ${at} on ${exerciseName}`,
@@ -402,8 +405,8 @@ function strengthLevelGoals(input: AthleteGoalsInput): AthleteGoal[] {
     } else {
       goals.push({
         ...base,
-        detail: `${round1(level.e1rmKg)} of ${targetE1rmKg} kg estimated max on ${exerciseName}`,
-        method: `${level.next} needs an estimated max of ${targetE1rmKg} kg at your bodyweight. That is more than ${MAX_REP_TARGET} reps away at the weight of your best set, so it is tracked by the estimated max.`,
+        detail: unit === 'lb' ? `${fmtLoad(level.e1rmKg)} of ${fmtLoad(targetE1rmKg)} estimated max on ${exerciseName}` : `${round1(level.e1rmKg)} of ${targetE1rmKg} kg estimated max on ${exerciseName}`,
+        method: `${level.next} needs an estimated max of ${fmtLoad(targetE1rmKg)} at your bodyweight. That is more than ${MAX_REP_TARGET} reps away at the weight of your best set, so it is tracked by the estimated max.`,
         measure: { type: 'load', exerciseName, level: level.next, currentLevel, e1rmKg: round1(level.e1rmKg), targetE1rmKg },
         current: round1(level.e1rmKg),
         target: targetE1rmKg,
@@ -640,7 +643,7 @@ export function bestOnExercise(workouts: WorkoutSession[], exerciseId: string): 
   const best: { weightKg: number; weightOn?: string; reps: number; repsOn?: string } = { weightKg: 0, reps: 0 };
   for (const w of workouts) {
     if (!w.completed) continue;
-    const on = (w.completedAt || w.date).slice(0, 10);
+    const on = w.completedAt ? localDateString(new Date(w.completedAt)) : w.date;
     for (const ex of w.exercises) {
       if (ex.exerciseId !== exerciseId && !(exerciseId === 'ex-chinup' && CHINUP_IDS.has(ex.exerciseId))) continue;
       for (const st of ex.sets.filter(isDone)) {
@@ -669,6 +672,8 @@ function customGoals(input: AthleteGoalsInput): AthleteGoal[] {
   const saved = input.profile.goalSettings?.customGoals;
   if (!Array.isArray(saved)) return [];
   const today = localDateString(new Date(input.now ?? Date.now()));
+  const unit = input.profile.weightUnit || 'kg';
+  const fmtLoad = (kg: number) => (unit === 'lb' ? formatWeight(kg, 'lb') : `${kg} kg`);
   return saved.filter(isValidCustomGoal).slice(0, MAX_CUSTOM_GOALS).map((g) => {
     if (g.metric === 'steps') {
       const current = stepsOnDate(input.biometrics, today);
@@ -691,13 +696,14 @@ function customGoals(input: AthleteGoalsInput): AthleteGoal[] {
     }
     const best = bestOnExercise(input.workouts, g.exerciseId);
     const current = g.metric === 'weight' ? round1(best.weightKg) : best.reps;
-    const what = g.metric === 'weight' ? `${g.target} kg on ${g.exerciseName}` : `${g.target} reps on ${g.exerciseName}`;
+    const what = g.metric === 'weight' ? `${fmtLoad(g.target)} on ${g.exerciseName}` : `${g.target} reps on ${g.exerciseName}`;
+    const currentText = g.metric === 'weight' && unit === 'lb' ? formatWeight(current, 'lb') : String(current);
     return {
       id: `${CUSTOM_GOAL_PREFIX}${g.id}`,
       kind: 'outcome' as const,
       // A weight target is shown in the athlete's unit by the screen, so it stays out of the title.
       title: g.metric === 'weight' ? g.exerciseName : `${g.exerciseName}: ${g.target} reps`,
-      detail: current > 0 ? `${current} of ${what}` : `${what}; not logged yet`,
+      detail: current > 0 ? `${currentText} of ${what}` : `${what}; not logged yet`,
       method:
         g.metric === 'weight'
           ? 'A goal you set. Counted by the heaviest set you have logged on this exercise, whatever the reps.'

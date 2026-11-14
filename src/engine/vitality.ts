@@ -96,8 +96,18 @@ export function generate7PillarRadarData(
   results.push({
     pillar: 'Engine / Vitality',
     score: vitalityScore,
-    rawRatioOrScore: latestBiometrics?.vo2Max ?? 45,
-    tier: !hasCardioData ? 'Untrained' : vitalityScore >= 85 ? 'Elite' : vitalityScore >= 70 ? 'Advanced' : 'Intermediate',
+    rawRatioOrScore: latestBiometrics?.vo2Max ?? 0,
+    tier: !hasCardioData
+      ? 'Untrained'
+      : vitalityScore >= 85
+      ? 'Elite'
+      : vitalityScore >= 70
+      ? 'Advanced'
+      : vitalityScore >= 50
+      ? 'Intermediate'
+      : vitalityScore >= 30
+      ? 'Novice'
+      : 'Untrained',
   });
 
   return results;

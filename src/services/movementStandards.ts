@@ -243,13 +243,14 @@ export function buildSideDifferences(workouts: WorkoutSession[]): SideDifference
     const right = recent.reduce((t, s) => t + s.right, 0);
     const pct = Math.round((Math.min(left, right) / Math.max(left, right)) * 100);
     if (pct < SYMMETRY_FLAG_PCT) {
+      const lastAt = recent[recent.length - 1].at;
       out.push({
         exerciseId,
         exerciseName: name,
         weakerSide: left < right ? 'left' : 'right',
         symmetryPct: pct,
         sessions: recent.length,
-        lastLoggedOn: localDateString(new Date(recent[recent.length - 1].at)),
+        lastLoggedOn: lastAt.includes('T') ? localDateString(new Date(lastAt)) : lastAt.slice(0, 10),
       });
     }
   }

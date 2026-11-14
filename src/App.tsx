@@ -505,8 +505,15 @@ export const App: React.FC = () => {
 
   const handleUndoAssistantAction = (snapshot: CoachUndoSnapshot) => {
     if (snapshot.previousProfile) {
-      saveProfile({ ...profile, ...snapshot.previousProfile });
-      setProfile((prev) => ({ ...prev, ...snapshot.previousProfile }));
+      const restoredProfile = {
+        ...profile,
+        ...snapshot.previousProfile,
+        athleteMemories: snapshot.previousProfile.athleteMemories,
+        planCycleStarts: snapshot.previousProfile.planCycleStarts,
+        goalSettings: snapshot.previousProfile.goalSettings,
+      };
+      saveProfile(restoredProfile);
+      setProfile(restoredProfile);
     }
     if (snapshot.previousWorkout) {
       saveActiveWorkout(snapshot.previousWorkout);

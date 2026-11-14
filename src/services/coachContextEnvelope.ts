@@ -28,6 +28,7 @@ import {
   WorkoutSet,
 } from '../engine/types';
 import { GOAL_DISPLAY_NAME } from '../utils/goalNames';
+import { formatWeight } from '../utils/units';
 import { buildAthleteGoals } from './athleteGoals';
 import type { CoachPlace } from './coachContext';
 
@@ -530,6 +531,7 @@ export function buildContextEnvelope(input: {
     }
   }
 
+  const unit = profile.weightUnit || 'kg';
   const recentWorkouts: EpisodicWorkoutSummary[] = completedWorkouts.slice(0, 5).map((w) => {
     const doneSets = w.exercises.flatMap((ex) => ex.sets.filter(isDoneWorking));
     const totalVolumeKg = Math.round(
@@ -545,7 +547,7 @@ export function buildContextEnvelope(input: {
       split_day: w.splitDay,
       completed_sets: doneSets.length,
       total_volume_kg: totalVolumeKg,
-      top_lift: heaviest ? `${heaviest.name} ${heaviest.w}kg×${heaviest.r}` : null,
+      top_lift: heaviest ? `${heaviest.name} ${formatWeight(heaviest.w, unit)}×${heaviest.r}` : null,
     };
   });
 
@@ -699,6 +701,7 @@ export function buildContextEnvelope(input: {
 
 export function serializeContextEnvelopeForPrompt(env: ContextEnvelope): string {
   const { working_state: ws, episodic_memory: ep, semantic_memory: sm } = env;
+  const unit = ws.athlete.weight_unit || 'kg';
   const recentText =
     ep.recent_workouts.length > 0
       ? ep.recent_workouts
@@ -708,11 +711,11 @@ export function serializeContextEnvelopeForPrompt(env: ContextEnvelope): string 
       : 'none yet';
   const prsText =
     ep.recent_prs.length > 0
-      ? ep.recent_prs.map((p) => `${p.exercise_name} E1RM ${p.e1rm_kg} kg`).join(', ')
+      ? ep.recent_prs.map((p) => `${p.exercise_name} E1RM ${formatWeight(p.e1rm_kg, unit)}`).join(', ')
       : 'none';
   const stallText =
     ep.stalled_lifts.length > 0
-      ? ep.stalled_lifts.map((s) => `${s.exercise_name} (${s.last_weight_kg}kg×${s.last_reps})`).join(', ')
+      ? ep.stalled_lifts.map((s) => `${s.exercise_name} (${formatWeight(s.last_weight_kg, unit)}×${s.last_reps})`).join(', ')
       : 'none';
   const memoriesText =
     sm.saved_memories.length > 0

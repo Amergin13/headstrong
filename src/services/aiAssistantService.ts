@@ -32,7 +32,7 @@ import {
   queryDesignSystemComponents,
   queryExerciseScienceKnowledgeBase,
 } from '../engine/knowledgeGraph';
-import { forgetOnDeviceExchange, isOnDeviceModelReady, promptOnDeviceModel } from './onDeviceModel';
+import { forgetOnDeviceExchange, getOnDeviceModelStatus, isOnDeviceModelReady, promptOnDeviceModel } from './onDeviceModel';
 import { adaptWorkoutSessionToLocation, generateSmartWorkoutSession, getFirstSplitDayForProgram } from './workoutGenerator';
 import {
   canUseMusclePlan,
@@ -92,7 +92,7 @@ import {
   formatStateDiffText,
   SupabaseSyncHook,
 } from './coachTools';
-import { isFlashLiteReady, promptFlashLiteStructured } from './geminiFlashLite';
+import { forgetLastFlashLiteExchange, isFlashLiteReady, promptFlashLiteStructured } from './geminiFlashLite';
 
 export { exerciseNamedIn };
 
@@ -492,7 +492,11 @@ export function contradictsRecovery(answer: string, readinessState: ReadinessSta
  */
 export function genericRepTarget(answer: string, exercises: { name: string; minReps: number; maxReps: number }[]): boolean {
   for (const sentence of answer.toLowerCase().split(/(?<=[.!?])\s+/)) {
-    const range = /\b(\d+)\s*(?:-|–|to)\s*(\d+)\s*reps?\b/.exec(sentence) || /\b(\d+)\s*reps?\b/.exec(sentence);
+    const scrubbed = sentence.replace(
+      /\b\d+(?:\s*(?:-|–|to|or)\s*\d+)?\s*reps?\s+(?:in\s+reserve|to\s+spare|short(?:\s+of\s+failure)?|left)\b/g,
+      ''
+    );
+    const range = /\b(\d+)\s*(?:-|–|to)\s*(\d+)\s*reps?\b/.exec(scrubbed) || /\b(\d+)\s*reps?\b/.exec(scrubbed);
     if (!range) continue;
     const namesOne = exercises.some((ex) => exerciseNamedIn(sentence, ex.name));
     if (namesOne) continue;
@@ -670,6 +674,19 @@ export function acceptCoachAnswer(answer: string, grounding: string): boolean {
       const unit = m[2].toLowerCase().startsWith('kilo') ? 'kg' : m[2].toLowerCase().startsWith('p') ? 'lb' : m[2].toLowerCase().replace(/^lbs$/, 'lb');
       if (!new RegExp(`(^|[^\\d.])${value.replace('.', '\\.')}\\s*${unit === '%' ? '%' : `${unit}s?\\b`}`, 'i').test(grounding)) return false;
     } else if (!known.has(value) && parseFloat(value) > 3) {
+      return false;
+    }
+  }
+  // A figure (> 3) that only appears in grounding as a weight (kg/lb) or percentage (%) cannot be repurposed as reps, sets, workouts, days or weeks.
+  for (const cm of answer.matchAll(/\b(\d+(?:\.\d+)?)\s+(?:working\s+|hard\s+|planned\s+|daily\s+)?(sets?|reps?|repetitions?|workouts?|sessions?|weeks?|days?|steps?)\b/gi)) {
+    const value = cm[1];
+    if (parseFloat(value) <= 3) continue;
+    const escaped = value.replace('.', '\\.');
+    const nonWeightOccurrences = grounding.replace(
+      new RegExp(`(?<![\\d.])${escaped}\\s*(?:kg|kilos?|lbs?|pounds?|%)`, 'gi'),
+      ''
+    );
+    if (!new RegExp(`(?<![\\d.])${escaped}(?!\\d|\\.\\d)`).test(nonWeightOccurrences)) {
       return false;
     }
   }
@@ -1043,7 +1060,8 @@ async function processAssistantMessageCore(
     }
   } else if (
     /^(?:please\s+)?(?:swap|replace)\s+(?:out\s+)?(.+?)\s+(?:with|for|to)\s+(.+)$/i.test(lowerMsg) &&
-    !/^(can|should|would|could|what|how|why)\b/i.test(lowerMsg)
+    !/^(can|should|would|could|what|how|why)\b/i.test(lowerMsg) &&
+    !/\?\s*$/.test(lowerMsg)
   ) {
     const swapMatch = /^(?:please\s+)?(?:swap|replace)\s+(?:out\s+)?(.+?)\s+(?:with|for|to)\s+(.+)$/i.exec(lowerMsg);
     const oldPart = swapMatch?.[1]?.replace(/\s+(?:in\s+today'?s?\s+workout|today)\b/gi, '').trim() ?? '';
@@ -1061,16 +1079,19 @@ async function processAssistantMessageCore(
     );
     applyToolOutcome(outcome);
   } else if (
-    /\b(reduce|cut|drop|trim|lower|decrease|increase|add)\b.*\b(working\s+)?(sets?|volume)\b|\bdeload\s+(today'?s?\s+)?(workout|weights|loads|session)\b/i.test(
+    (/\b(reduce|cut|drop|trim|lower|decrease|increase|add)\b.*\b(working\s+)?(sets?|volume)\b|\bdeload\s+(today'?s?\s+)?(workout|weights|loads|session)\b|\b(shorten|trim)\s+(today'?s?\s+)?(workout|session)\b/i.test(
       lowerMsg
-    ) &&
-    !/^(should|can|would|could|how|why|what|am\s+i|do\s+i|if\s+i)\b/i.test(lowerMsg)
+    )) &&
+    !/^(should|can|would|could|how|why|what|am\s+i|do\s+i|if\s+i)\b/i.test(lowerMsg) &&
+    !/\?\s*$/.test(lowerMsg)
   ) {
     const modifierType = /\b(increase|add)\b/i.test(lowerMsg)
       ? 'increase_sets'
       : /\bdeload\b/i.test(lowerMsg)
         ? 'deload_load'
-        : 'reduce_sets';
+        : /\b(shorten|trim)\s+(today'?s?\s+)?(workout|session)\b/i.test(lowerMsg)
+          ? 'short_on_time'
+          : 'reduce_sets';
     const outcome = await executeCoachToolCall(
       'adjust_workout_volume',
       {
@@ -1083,7 +1104,8 @@ async function processAssistantMessageCore(
     applyToolOutcome(outcome);
   } else if (
     /\b(remember\s+(that|this)?|save\s+(this|to\s+(?:my\s+)?memory)|keep\s+in\s+mind|note\s+that)\b/i.test(lowerMsg) &&
-    !/^(what|can|do\s+you)\b/i.test(lowerMsg)
+    !/^(what|can|do\s+you)\b/i.test(lowerMsg) &&
+    !/\?\s*$/.test(lowerMsg)
   ) {
     const cleanedFact = userMessage
       .replace(/^.*?\b(?:remember\s+(?:that|this)?|save\s+(?:this|to\s+(?:my\s+)?memory)|keep\s+in\s+mind|note\s+that)[:,\s-]*/i, '')
@@ -1148,7 +1170,15 @@ async function processAssistantMessageCore(
         readinessState,
         bodyweightEmaKg
       );
-      updatedWorkout = adapted;
+      updatedWorkout = prepareSessionForAthlete(adapted, {
+        history: workouts,
+        bodyweightKg: bodyweightEmaKg,
+        readinessState,
+        gender: profile.gender,
+        experienceLevel: profile.experienceLevel,
+        unit: profile.weightUnit || 'kg',
+        isProgramPlan: isPlanProgram(profile.programType),
+      });
     }
 
     citations.push({
@@ -1225,14 +1255,22 @@ async function processAssistantMessageCore(
     const adapted = adaptWorkoutSessionToLocation(
       activeWorkout,
       targetLoc,
-      profile.homeEquipment || ['bench', 'dumbbells', 'trx', 'pullup_bar'],
+      profile.homeEquipment || [],
       exerciseCatalog,
       workouts,
       readinessState,
       bodyweightEmaKg
     );
 
-    updatedWorkout = adapted;
+    updatedWorkout = prepareSessionForAthlete(adapted, {
+      history: workouts,
+      bodyweightKg: bodyweightEmaKg,
+      readinessState,
+      gender: profile.gender,
+      experienceLevel: profile.experienceLevel,
+      unit: profile.weightUnit || 'kg',
+      isProgramPlan: isPlanProgram(profile.programType),
+    });
     updatedProfile = { activeLocation: targetLoc };
     actionTaken = {
       type: 'SWITCH_LOCATION',
@@ -1898,8 +1936,10 @@ async function processAssistantMessageCore(
             input.onPartial?.(textSoFar);
           };
           let handledByStructuredFlash = false;
-          if (await isFlashLiteReady()) {
-            const structured = await promptFlashLiteStructured(questionWithFacts, {
+          if ((await getOnDeviceModelStatus()) !== 'available' && (await isFlashLiteReady())) {
+            handledByStructuredFlash = true;
+            const startedAt = Date.now();
+            let structured = await promptFlashLiteStructured(questionWithFacts, {
               systemPrompt,
               tools: COACH_TOOL_DECLARATIONS,
             });
@@ -1912,12 +1952,54 @@ async function processAssistantMessageCore(
               applyToolOutcome(toolOutcome);
               modelSuggestedActions = structured.suggestedActions;
               nanoHandled = true;
-              handledByStructuredFlash = true;
-            } else if (structured?.text && !problemWith(structured.text)) {
-              answerText = structured.text;
-              modelSuggestedActions = structured.suggestedActions;
-              nanoHandled = true;
-              handledByStructuredFlash = true;
+            } else if (structured?.text) {
+              let problem = problemWith(structured.text);
+              if (problem) {
+                forgetLastFlashLiteExchange();
+                if (Date.now() - startedAt < RETRY_IF_FASTER_THAN_MS) {
+                  structured = await promptFlashLiteStructured(
+                    `${questionWithFacts}\n(Your last answer could not be used because ${problem}. Answer again in 2-4 short sentences, using only the facts given.)`,
+                    {
+                      systemPrompt,
+                      tools: COACH_TOOL_DECLARATIONS,
+                    }
+                  );
+                  if (structured?.functionCall) {
+                    const toolOutcome = await executeCoachToolCall(
+                      structured.functionCall.name,
+                      structured.functionCall.args,
+                      toolCtx
+                    );
+                    applyToolOutcome(toolOutcome);
+                    modelSuggestedActions = structured.suggestedActions;
+                    nanoHandled = true;
+                    problem = null;
+                  } else {
+                    problem = structured?.text ? problemWith(structured.text) : 'empty reply';
+                    if (problem && structured?.text) {
+                      forgetLastFlashLiteExchange();
+                    }
+                  }
+                }
+              }
+              if (!problem && !nanoHandled && structured?.text) {
+                answerText = structured.text;
+                modelSuggestedActions = structured.suggestedActions;
+                nanoHandled = true;
+                for (const ex of workoutExercises) {
+                  if (
+                    lowerMsg.includes(ex.name.toLowerCase()) ||
+                    structured.text.toLowerCase().includes(ex.name.toLowerCase())
+                  ) {
+                    citations.push({
+                      label: ex.name,
+                      metric: 'Target Load & Reps',
+                      value: `${formatWeight(ex.sets.find((st) => !st.isWarmup && st.setType !== 'warmup')?.targetWeightKg ?? 0, profile.weightUnit || 'kg')} × ${ex.minReps}–${ex.maxReps} reps`,
+                    });
+                    break;
+                  }
+                }
+              }
             }
           }
 

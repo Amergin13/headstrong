@@ -15,7 +15,7 @@ import { runReadAloudQaGate } from '../engine/contentStrategy';
 import { ExerciseDefinition, ReadinessState, WorkoutSession, WorkoutSet } from '../engine/types';
 import { promptOnDeviceModel } from './onDeviceModel';
 import { strengthTrend } from './strengthTrend';
-import { mislabelledFigure, markPromptRejected, spelledNumberNotInFacts, wasPromptRejected } from './factChecks';
+import { mislabelledFigure, mismatchedWeightUnit, markPromptRejected, spelledNumberNotInFacts, wasPromptRejected } from './factChecks';
 import { MUSCLE_TO_GRAPH_KEY } from './sessionReport';
 
 export interface IdentityMessageInput {
@@ -93,7 +93,8 @@ export function buildIdentityFacts(input: IdentityMessageInput): IdentityMessage
   const { plan, workouts, exerciseCatalog, knowledgeGraph } = input;
   const now = input.now ?? Date.now();
   const facts: string[] = [];
-  const next = plan.workouts.find((w) => w.workoutNumber === plan.nextWorkoutNumber)!;
+  const next = plan.workouts.find((w) => w.workoutNumber === plan.nextWorkoutNumber) ??
+    plan.workouts[0] ?? { workoutNumber: plan.nextWorkoutNumber || 1, label: 'Workout 1' };
   const trainingPlan = input.trainingPlan ?? MUSCLE_BUILDING_PLAN;
   const phase = trainingPlan.phases.find((p) => p.phaseNumber === plan.activePhase) ?? trainingPlan.phases[0];
   // The same week the Program page and the coach give (the plan's own, never past its final week).
@@ -256,6 +257,8 @@ export function checkIdentityMessage(answer: string | null, facts: IdentityMessa
   if (/\b(of|out of)( the)? \d+( planned| total| sessions| workouts)*,? (in|for|of|during|planned for|planned in) (this |the |current )?phase\b/i.test(text)) return { problem: 'it gave the plan total as a phase total' };
   const spelled = spelledNumberNotInFacts(text, facts.facts);
   if (spelled) return { problem: `it used the number "${spelled}", which is not in the facts` };
+  const wrongUnit = mismatchedWeightUnit(text, facts.facts);
+  if (wrongUnit) return { problem: `it used the weight unit "${wrongUnit}", which does not match the facts` };
   const mislabelled = mislabelledFigure(text, facts.facts);
   if (mislabelled) return { problem: `it said "${mislabelled}", but the facts count that figure in something else` };
   if (/\btarget\b/i.test(text) && !/below target/.test(allFacts)) return { problem: 'it mentioned a target the facts do not give' };

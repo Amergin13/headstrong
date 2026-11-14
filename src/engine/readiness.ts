@@ -132,9 +132,13 @@ export function calculateDailyReadiness(
     stdDevRhr = rhrStats.stdDev;
   }
 
-  const zHrv = (Math.log(Math.max(1, todayLog.hrvRmssd)) - lnMeanHrv) / lnStdDevHrv;
-  const zRhr = (todayLog.restingHr - meanRhr) / stdDevRhr;
-  const sleepNorm = (todayLog.sleepHours - 7.5) / 1.5;
+  const hrvVal = todayLog.hrvRmssd || 0;
+  const rhrVal = todayLog.restingHr || 0;
+  const sleepVal = todayLog.sleepHours || 0;
+
+  const zHrv = hrvVal > 0 ? (Math.log(Math.max(1, hrvVal)) - lnMeanHrv) / lnStdDevHrv : 0;
+  const zRhr = rhrVal > 0 ? (rhrVal - meanRhr) / stdDevRhr : 0;
+  const sleepNorm = sleepVal > 0 ? (sleepVal - 7.5) / 1.5 : 0;
 
   const score = 0.50 * zHrv - 0.30 * zRhr + 0.20 * sleepNorm;
   const roundedScore = Math.round(score * 100) / 100;
@@ -142,14 +146,14 @@ export function calculateDailyReadiness(
   const roundedZRhr = Math.round(zRhr * 100) / 100;
   const roundedSleep = Math.round(sleepNorm * 100) / 100;
 
-  // Percentage change in HRV vs baseline:
-  const hrvChangePercent = meanHrv > 0 ? ((todayLog.hrvRmssd - meanHrv) / meanHrv) * 100 : 0;
-  const rhrDeltaBpm = todayLog.restingHr - meanRhr;
+  // Percentage change in HRV vs baseline (only when measured today):
+  const hrvChangePercent = hrvVal > 0 && meanHrv > 0 ? ((hrvVal - meanHrv) / meanHrv) * 100 : 0;
+  const rhrDeltaBpm = rhrVal > 0 ? rhrVal - meanRhr : 0;
 
-  // Acute physiological strain flags:
-  const isHrvDepressed = hrvChangePercent < -15;
-  const isRhrElevated = rhrDeltaBpm >= 4;
-  const isSleepDeprived = todayLog.sleepHours < 6.0;
+  // Acute physiological strain flags (only when that metric was actually measured today):
+  const isHrvDepressed = hrvVal > 0 && hrvChangePercent < -15;
+  const isRhrElevated = rhrVal > 0 && rhrDeltaBpm >= 4;
+  const isSleepDeprived = sleepVal > 0 && sleepVal < 6.0;
 
   // =========================================================================
   // PIPELINE 1: WHOOP RECOVERY PIPELINE (0 - 100%)
@@ -168,7 +172,7 @@ export function calculateDailyReadiness(
         sleepDeviation: roundedSleep,
         hrvChangePercent: Math.round(hrvChangePercent * 10) / 10,
         rhrDeltaBpm: Math.round(rhrDeltaBpm * 10) / 10,
-        sleepHours: todayLog.sleepHours,
+        sleepHours: sleepVal,
         reason: `Great recovery (${recScore}% - Green). Peak parasympathetic tone—ready to push for PRs and progressive overload.`,
         streakProtected: false,
         provider: 'whoop',
@@ -187,7 +191,7 @@ export function calculateDailyReadiness(
         sleepDeviation: roundedSleep,
         hrvChangePercent: Math.round(hrvChangePercent * 10) / 10,
         rhrDeltaBpm: Math.round(rhrDeltaBpm * 10) / 10,
-        sleepHours: todayLog.sleepHours,
+        sleepHours: sleepVal,
         reason: `Steady recovery (${recScore}% - Yellow). Standard double progression targets (1–2 RIR) apply today.`,
         streakProtected: false,
         provider: 'whoop',
@@ -205,7 +209,7 @@ export function calculateDailyReadiness(
       sleepDeviation: roundedSleep,
       hrvChangePercent: Math.round(hrvChangePercent * 10) / 10,
       rhrDeltaBpm: Math.round(rhrDeltaBpm * 10) / 10,
-      sleepHours: todayLog.sleepHours,
+      sleepHours: sleepVal,
       reason: `Recovery Shield Active (${recScore}% - Red). Working loads are held steady today (2–3 RIR buffer) and your streak is protected.`,
       streakProtected: true,
       provider: 'whoop',
@@ -239,7 +243,7 @@ export function calculateDailyReadiness(
         sleepDeviation: roundedSleep,
         hrvChangePercent: Math.round(hrvChangePercent * 10) / 10,
         rhrDeltaBpm: Math.round(rhrDeltaBpm * 10) / 10,
-        sleepHours: todayLog.sleepHours,
+        sleepHours: sleepVal,
         reason: `High Readiness (${drs} - Pixel Watch). Autonomic recovery is primed—ready for peak training volume and PR attempts.`,
         streakProtected: false,
         provider: 'fitbit',
@@ -264,7 +268,7 @@ export function calculateDailyReadiness(
           sleepDeviation: roundedSleep,
           hrvChangePercent: Math.round(hrvChangePercent * 10) / 10,
           rhrDeltaBpm: Math.round(rhrDeltaBpm * 10) / 10,
-          sleepHours: todayLog.sleepHours,
+          sleepHours: sleepVal,
           reason: `Recovery Shield Active (${triggers.join(', ')}). Daily Readiness (${drs}) with elevated fatigue. Loads held steady and streak protected.`,
           streakProtected: true,
           provider: 'fitbit',
@@ -282,7 +286,7 @@ export function calculateDailyReadiness(
         sleepDeviation: roundedSleep,
         hrvChangePercent: Math.round(hrvChangePercent * 10) / 10,
         rhrDeltaBpm: Math.round(rhrDeltaBpm * 10) / 10,
-        sleepHours: todayLog.sleepHours,
+        sleepHours: sleepVal,
         reason: `Target Readiness (${drs} - Pixel Watch). Normal autonomic state. Standard double progression (1–2 RIR) applies today.`,
         streakProtected: false,
         provider: 'fitbit',
@@ -300,7 +304,7 @@ export function calculateDailyReadiness(
       sleepDeviation: roundedSleep,
       hrvChangePercent: Math.round(hrvChangePercent * 10) / 10,
       rhrDeltaBpm: Math.round(rhrDeltaBpm * 10) / 10,
-      sleepHours: todayLog.sleepHours,
+      sleepHours: sleepVal,
       reason: `Recovery Shield Active (${drs} Low Readiness - Pixel Watch). Body is carrying high fatigue. Loads held steady (2–3 RIR buffer) and streak protected.`,
       streakProtected: true,
       provider: 'fitbit',
@@ -330,7 +334,7 @@ export function calculateDailyReadiness(
       sleepDeviation: roundedSleep,
       hrvChangePercent: Math.round(hrvChangePercent * 10) / 10,
       rhrDeltaBpm: Math.round(rhrDeltaBpm * 10) / 10,
-      sleepHours: todayLog.sleepHours,
+      sleepHours: sleepVal,
       reason: `Recovery Mode (${triggers.join(', ')}). Weights are held steady today and your streak is protected.`,
       streakProtected: true,
       provider: effectiveProvider || undefined,
@@ -348,7 +352,7 @@ export function calculateDailyReadiness(
       sleepDeviation: roundedSleep,
       hrvChangePercent: Math.round(hrvChangePercent * 10) / 10,
       rhrDeltaBpm: Math.round(rhrDeltaBpm * 10) / 10,
-      sleepHours: todayLog.sleepHours,
+      sleepHours: sleepVal,
       reason: 'Great sleep and heart rate recovery! Ready to push for new records.',
       streakProtected: false,
       provider: effectiveProvider || undefined,

@@ -12,9 +12,10 @@ import { calculateSessionTonnage } from '../engine/wci';
 import { BiometricLog, WorkoutSession, WorkoutSet } from '../engine/types';
 import { AthleteGoal, CHOSEN_GOAL_ID, WEEKLY_GOAL_ID, activeGoals, repsAt } from './athleteGoals';
 import { promptOnDeviceModel } from './onDeviceModel';
-import { mislabelledFigure, markPromptRejected, spelledNumberNotInFacts, wasPromptRejected } from './factChecks';
+import { mislabelledFigure, mismatchedWeightUnit, markPromptRejected, spelledNumberNotInFacts, wasPromptRejected } from './factChecks';
 import { ProgressChart } from './progressSeries';
 import { STANDARD_TEST_EXERCISE } from './storage';
+import { localDateString } from '../utils/date';
 
 const done = (s: WorkoutSet) => s.completed && !s.isWarmup && s.setType !== 'warmup' && (s.actualReps ?? 0) > 0;
 const weightOf = (s: WorkoutSet) => s.actualWeightKg ?? s.targetWeightKg ?? 0;
@@ -81,7 +82,7 @@ export function buildPersonalBests(
         if (kg > entry.weightKg || (kg === entry.weightKg && reps > entry.reps)) {
           entry.weightKg = kg;
           entry.reps = reps;
-          entry.date = (w.completedAt || w.date).slice(0, 10);
+          entry.date = w.completedAt ? localDateString(new Date(w.completedAt)) : w.date;
         }
         // A calisthenic move needs both added load (so bodyweight-only stays reps) and a real logged bodyweight before calculating total-mass E1RM.
         if (kg > 0 && (!isCalisthenic || sessionBw > 0)) {
@@ -415,6 +416,8 @@ export function checkGoalsSummary(answer: string | null, summary: Pick<GoalsSumm
   if (strange) return { problem: `it used the number ${strange}, which is not in the facts` };
   const spelled = spelledNumberNotInFacts(text, summary.facts);
   if (spelled) return { problem: `it used the number "${spelled}", which is not in the facts` };
+  const wrongUnit = mismatchedWeightUnit(text, summary.facts);
+  if (wrongUnit) return { problem: `it used the weight unit "${wrongUnit}", which does not match the facts` };
   const mislabelled = mislabelledFigure(text, summary.facts);
   if (mislabelled) return { problem: `it said "${mislabelled}", but the facts count that figure in something else` };
   return { text };

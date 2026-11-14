@@ -27,7 +27,7 @@ import {
 import { snapLoadKg } from '../utils/units';
 import { findExerciseNamed } from './coachAnswers';
 import { CoachPlace } from './coachContext';
-import { ContextEnvelope, createMemoryFact } from './coachContextEnvelope';
+import { ContextEnvelope, createMemoryFact, deriveContraindicationEdges } from './coachContextEnvelope';
 import { GOOGLE_AUTH_CONFIG, isSupabaseConfigured } from './googleAuthService';
 import { prepareSessionForAthlete } from './sessionPreparation';
 import { loadAuthUser, saveActiveWorkout, saveProfile } from './storage';
@@ -290,7 +290,10 @@ async function commitMutationTransaction(args: {
     previousWorkout: updatedWorkout
       ? {
           ...context.activeWorkout,
-          exercises: context.activeWorkout.exercises.map((e) => ({ ...e, sets: [...e.sets] })),
+          exercises: context.activeWorkout.exercises.map((e) => ({
+            ...e,
+            sets: e.sets.map((s) => ({ ...s })),
+          })),
         }
       : undefined,
   };
@@ -550,28 +553,60 @@ function findBestReplacementExercise(
   currentEx: ExerciseSession,
   requestedNew: string | undefined,
   catalog: ExerciseDefinition[],
-  todayWorkout: WorkoutSession
+  todayWorkout: WorkoutSession,
+  context: CoachToolExecutionContext
 ): ExerciseDefinition | undefined {
+  const avoidedIds = new Set(
+    deriveContraindicationEdges(context.profile.athleteMemories ?? [], catalog)
+      .filter((edge) => edge.severity === 'avoid')
+      .map((edge) => edge.to_exercise_id)
+  );
+  const where = todayWorkout.location ?? 'gym';
+  const homeEquip = context.profile.homeEquipment ?? [];
+  const fitsHomeEquip = (d: ExerciseDefinition) =>
+    where !== 'home' ||
+    !d.requiredHomeEquipment?.length ||
+    d.requiredHomeEquipment.every((tag) => homeEquip.includes(tag));
+
   if (requestedNew) {
     const q = requestedNew.toLowerCase().trim();
     const byId = catalog.find((d) => d.id.toLowerCase() === q);
     if (byId) return byId;
     const byExact = catalog.find((d) => d.name.toLowerCase() === q);
     if (byExact) return byExact;
+    const bySafeSubstring = catalog.find(
+      (d) =>
+        !avoidedIds.has(d.id) &&
+        fitsHomeEquip(d) &&
+        (d.name.toLowerCase().includes(q) || q.includes(d.name.toLowerCase()))
+    );
+    if (bySafeSubstring) return bySafeSubstring;
     const bySubstring = catalog.find((d) => d.name.toLowerCase().includes(q) || q.includes(d.name.toLowerCase()));
     if (bySubstring) return bySubstring;
   }
 
   const currentDef = catalog.find((d) => d.id === currentEx.exerciseId);
-  const where = todayWorkout.location ?? 'gym';
   const existingIds = new Set(todayWorkout.exercises.map((e) => e.exerciseId));
-  return catalog.find(
-    (d) =>
-      d.id !== currentEx.exerciseId &&
-      !existingIds.has(d.id) &&
-      (!d.environments || d.environments.includes(where)) &&
-      d.pillar === currentEx.pillar &&
-      (!currentDef?.primaryMuscle || d.primaryMuscle === currentDef.primaryMuscle)
+  return (
+    catalog.find(
+      (d) =>
+        d.id !== currentEx.exerciseId &&
+        !existingIds.has(d.id) &&
+        !avoidedIds.has(d.id) &&
+        (!d.environments || d.environments.includes(where)) &&
+        fitsHomeEquip(d) &&
+        d.pillar === currentEx.pillar &&
+        (!currentDef?.primaryMuscle || d.primaryMuscle === currentDef.primaryMuscle)
+    ) ??
+    catalog.find(
+      (d) =>
+        d.id !== currentEx.exerciseId &&
+        !existingIds.has(d.id) &&
+        !avoidedIds.has(d.id) &&
+        (!d.environments || d.environments.includes(where)) &&
+        fitsHomeEquip(d) &&
+        d.pillar === currentEx.pillar
+    )
   );
 }
 
@@ -594,7 +629,7 @@ export async function executeSwapExercise(
     };
   }
 
-  const replacement = findBestReplacementExercise(targetEx, rawArgs.new_exercise_id, exerciseCatalog, activeWorkout);
+  const replacement = findBestReplacementExercise(targetEx, rawArgs.new_exercise_id, exerciseCatalog, activeWorkout, context);
   if (!replacement) {
     return {
       toolName: 'swap_exercise',
@@ -605,18 +640,22 @@ export async function executeSwapExercise(
   }
 
   const unit = context.profile.weightUnit || 'kg';
-  const workingCount = Math.max(1, targetEx.sets.filter((s) => !s.isWarmup && s.setType !== 'warmup').length);
+  const completedSets = targetEx.sets.filter((s) => s.completed);
+  const completedWorkingCount = completedSets.filter((s) => !s.isWarmup && s.setType !== 'warmup').length;
+  const totalWorkingCount = Math.max(1, targetEx.sets.filter((s) => !s.isWarmup && s.setType !== 'warmup').length);
+  const remainingWorkingCount = Math.max(1, totalWorkingCount - completedWorkingCount);
   const repTarget = targetEx.sets.find((s) => !s.isWarmup && s.setType !== 'warmup')?.targetReps ?? targetEx.minReps;
   const seedSession: WorkoutSession = {
     ...activeWorkout,
     exercises: [
       {
         ...targetEx,
+        id: completedSets.length > 0 ? `${targetEx.id}-swap-${Date.now()}` : targetEx.id,
         exerciseId: replacement.id,
         name: replacement.name,
         pillar: replacement.pillar,
         equipment: replacement.equipment,
-        sets: Array.from({ length: workingCount }, (_, idx) => ({
+        sets: Array.from({ length: remainingWorkingCount }, (_, idx) => ({
           id: `swap-${replacement.id}-${Date.now()}-${idx}`,
           setNumber: idx + 1,
           setType: 'working' as const,
@@ -642,18 +681,22 @@ export async function executeSwapExercise(
     isProgramPlan: isPlanProgram(context.profile.programType),
   }).exercises[0];
 
-  const completedSets = targetEx.sets.filter((s) => s.completed);
-  const finalReplacement: ExerciseSession = {
-    ...preparedSingle,
-    sets: [...completedSets, ...preparedSingle.sets.slice(completedSets.length)].map((st, idx) => ({
-      ...st,
-      setNumber: idx + 1,
-    })),
-  };
-
   const updatedWorkout: WorkoutSession = {
     ...activeWorkout,
-    exercises: activeWorkout.exercises.map((ex) => (ex.id === targetEx.id ? finalReplacement : ex)),
+    exercises:
+      completedSets.length === 0
+        ? activeWorkout.exercises.map((ex) => (ex.id === targetEx.id ? preparedSingle : ex))
+        : activeWorkout.exercises.flatMap((ex) =>
+            ex.id === targetEx.id
+              ? [
+                  {
+                    ...targetEx,
+                    sets: completedSets.map((st, idx) => ({ ...st, setNumber: idx + 1 })),
+                  },
+                  preparedSingle,
+                ]
+              : [ex]
+          ),
   };
 
   const reasonSuffix = rawArgs.reason ? ` (${rawArgs.reason})` : '';
@@ -695,6 +738,15 @@ export async function executeAdjustWorkoutVolume(
       mutationStatus: 'error',
       summaryText: `There are no working sets in **${activeWorkout.name}** to adjust.`,
       errorMessage: 'Empty workout.',
+    };
+  }
+
+  if (rawArgs.modifier_type === 'increase_sets' && context.readinessState === 'Amber Shield') {
+    return {
+      toolName: 'adjust_workout_volume',
+      mutationStatus: 'error',
+      summaryText: `Recovery is low today, so working sets in **${activeWorkout.name}** stay capped to protect your joints and recovery.`,
+      errorMessage: 'Cannot increase sets during Amber Shield recovery.',
     };
   }
 
