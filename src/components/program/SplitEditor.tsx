@@ -132,7 +132,7 @@ export const SplitEditor: React.FC<SplitEditorProps> = ({
                     triggerHaptic('light');
                     setShowProgramPicker(true);
                   }}
-                  className="wk-pill shrink-0"
+                  className="wk-btn-secondary shrink-0"
                 >
                   Change Split
                 </button>
@@ -341,7 +341,7 @@ export const SplitEditor: React.FC<SplitEditorProps> = ({
                 triggerHaptic('light');
                 setShowProgramPicker(true);
               }}
-              className="wk-pill shrink-0"
+              className="wk-btn-secondary shrink-0"
             >
               Change Split
             </button>
@@ -478,14 +478,14 @@ export const SplitEditor: React.FC<SplitEditorProps> = ({
               type="button"
               onClick={() => setShowAlternatives((v) => !v)}
               aria-expanded={showAlternatives}
-              className="wk-pill"
+              className="wk-btn-secondary"
             >
               {showAlternatives ? 'Hide' : 'Show'} {alternativeExercises.length} Alternatives
             </button>
             <button
               type="button"
               onClick={onOpenCreateExercise}
-              className="wk-pill"
+              className="wk-btn-secondary"
             >
               + Add Exercise
             </button>

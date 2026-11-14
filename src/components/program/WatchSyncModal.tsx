@@ -343,7 +343,7 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
           <button
             type="button"
             onClick={handleSetActiveTracker}
-            className="wk-pill shrink-0 min-h-[44px]"
+            className="wk-btn-secondary shrink-0 min-h-[44px]"
           >
             Set as Active
           </button>

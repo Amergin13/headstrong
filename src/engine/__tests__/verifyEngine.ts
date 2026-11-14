@@ -8845,6 +8845,39 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
       obsidianShellHits.length === 0,
       `Shell/HTML/manifest/asset scripts have 0 legacy Obsidian #060709 literals (found in: ${obsidianShellHits.join(', ')})`
     );
+
+    // .wk-pill is strictly reserved for non-interactive informational badges (e.g. WHOOP, A1) and never used on <button> elements.
+    const indexCss = fsMod.readFileSync(pathMod.join(repoRoot, 'src/index.css'), 'utf8') as string;
+    assert(
+      indexCss.includes('--wk-pill: var(--color-bg-surface-control);') &&
+        /\.wk-pill\s*\{[\s\S]*?background:\s*var\(--wk-pill\);[\s\S]*?border-radius:\s*calc\(8\s*\*\s*var\(--f\)\);/.test(indexCss) &&
+        /\.wk-btn-secondary\s*\{[\s\S]*?background:\s*var\(--color-action-secondary-bg\);/.test(indexCss) &&
+        !indexCss.includes('button.wk-pill'),
+      '.wk-pill uses --color-bg-surface-control (#474D50) and calc(8 * var(--f)) radius while .wk-btn-secondary handles compact secondary buttons'
+    );
+
+    const componentFiles = walkFiles(pathMod.join(repoRoot, 'src/components'), ['.tsx']);
+    const buttonPillViolations: string[] = [];
+    for (const file of componentFiles) {
+      const src = fsMod.readFileSync(file, 'utf8') as string;
+      const buttonTags = src.match(/<button\b[\s\S]*?>/g) || [];
+      for (const tag of buttonTags) {
+        if (/(?<![\w-])wk-pill(?![\w-])/.test(tag) && !tag.includes('var(--wk-pill)')) {
+          buttonPillViolations.push(pathMod.relative(repoRoot, file));
+          break;
+        }
+      }
+    }
+    assert(
+      buttonPillViolations.length === 0,
+      `Zero <button> elements use .wk-pill (reserved strictly for informational badges; violations: ${buttonPillViolations.join(', ')})`
+    );
+
+    const badgeSpec = getDesignSystemComponentById('ds-badge-status');
+    assert(
+      Boolean(badgeSpec?.logic.rules.some((r) => r.includes('.wk-pill') && r.includes('never be used on <button>'))),
+      'TREISE_DESIGN_SYSTEM (ds-badge-status) explicitly codifies that .wk-pill is reserved for informational badges and never used on buttons'
+    );
   }
 
   console.log('\n48. Testing Spreadsheet Program Import, 3-Dots Program Menu & Owner Phase 1 BT 2017 Backfill...');

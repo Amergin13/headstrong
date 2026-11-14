@@ -204,7 +204,7 @@ export const PlateCalculatorModal: React.FC<PlateCalculatorModalProps> = ({
             onClose();
           }}
           className="wk-button transition-all active:scale-98"
-          style={{ background: 'var(--wk-pill)', color: 'var(--color-text-primary)' }}
+          style={{ background: 'var(--color-action-secondary-bg)', color: 'var(--color-action-secondary-fg)' }}
         >
           Close Calculator
         </button>

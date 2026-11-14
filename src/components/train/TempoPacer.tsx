@@ -89,11 +89,11 @@ export const TempoPacer: React.FC<TempoPacerProps> = ({ tempo }) => {
         type="button"
         onClick={() => setRunning((r) => !r)}
         aria-pressed={running}
-        className="wk-pill shrink-0 min-h-[44px] gap-[calc(12*var(--f))] transition-colors"
+        className="wk-btn-secondary shrink-0 min-h-[44px] gap-[calc(12*var(--f))] transition-colors"
         style={
           running
             ? { background: 'var(--wk-accent)', color: 'var(--color-text-on-accent)' }
-            : { background: 'var(--wk-pill)', color: 'var(--color-text-primary)' }
+            : { background: 'var(--color-action-secondary-bg)', color: 'var(--color-action-secondary-fg)' }
         }
       >
         {running ? <Square className="w-3.5 h-3.5" aria-hidden="true" /> : <Activity className="w-3.5 h-3.5 stroke-[2]" aria-hidden="true" />}

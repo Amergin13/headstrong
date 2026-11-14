@@ -234,7 +234,7 @@ export const GoalSettingsScreen: React.FC<GoalSettingsScreenProps> = ({ profile,
                     setCustomTargetInput(opt.metric === 'steps' ? '10000' : '');
                   }
                 }}
-                className="wk-pill wk-tap"
+                className="wk-btn-secondary wk-tap"
                 style={{
                   background: active ? 'var(--color-accent-primary-soft)' : 'var(--wk-raised)',
                   color: active ? 'var(--wk-accent)' : 'var(--color-text-primary)',
@@ -331,7 +331,7 @@ export const GoalSettingsScreen: React.FC<GoalSettingsScreenProps> = ({ profile,
                       triggerHaptic('medium');
                       save({ ...settings, customGoals: (settings.customGoals ?? []).filter((g) => g.id !== id) });
                     }}
-                    className="wk-pill wk-tap shrink-0"
+                    className="wk-btn-secondary wk-tap shrink-0"
                   >
                     Remove
                   </button>

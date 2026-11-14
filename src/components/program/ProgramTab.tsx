@@ -160,7 +160,7 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
                   triggerHaptic('light');
                   onBackToWorkout();
                 }}
-                className="wk-pill self-start"
+                className="wk-btn-secondary self-start"
               >
                 Back to workout{activeWorkoutName ? `: ${activeWorkoutName}` : ''}
               </button>
@@ -179,7 +179,7 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
                       triggerHaptic('light');
                       onOpenOnboarding();
                     }}
-                    className="wk-pill shrink-0"
+                    className="wk-btn-secondary shrink-0"
                   >
                     Edit Equipment
                   </button>

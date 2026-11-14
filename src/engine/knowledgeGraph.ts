@@ -777,7 +777,8 @@ export const TREISE_DESIGN_SYSTEM: DesignSystemComponent[] = [
     logic: {
       rules: [
         'Exactly ONE primary CTA button per view, modal, or action card.',
-        'Uses Whoop Slate semantic accent token (--color-action-primary-bg) with high-contrast slate ink (--color-action-primary-fg, 11.98:1 contrast).',
+        'Uses Whoop Slate semantic primary action token (--color-action-primary-bg) with high-contrast slate ink (--color-action-primary-fg, 17.56:1 contrast).',
+        'Positive mint (--color-accent-primary / --color-status-positive) is reserved for positive progress and achievements (completed sets, positive trends) and is never used for primary system CTA fills.',
         'Disabled state uses --color-action-disabled-bg with --color-action-disabled-fg (>= 4.5:1 AA contrast).',
         'Must maintain min-h-[44px] touch target floor.',
       ],
@@ -788,14 +789,14 @@ export const TREISE_DESIGN_SYSTEM: DesignSystemComponent[] = [
       accessibility: 'Passes WCAG 2.5.5 Touch Target (>= 44x44px) and WCAG 1.4.3 Contrast (>= 4.5:1 AA)',
     },
     tailwindTokens: 'wk-button bg-[var(--color-action-primary-bg)] text-[var(--color-action-primary-fg)] font-bold rounded-2xl min-h-[44px]',
-    rationale: 'Unifies live UI components onto Whoop Slate mint-on-slate primary CTAs with verified 11.98:1 contrast while keeping secondary actions calm.',
+    rationale: 'Unifies live UI components onto high-contrast white-on-slate primary CTAs (--color-action-primary-bg) while keeping secondary actions calm.',
   },
   {
     id: 'ds-btn-secondary',
     name: 'Secondary Raised Slate Action Button',
     category: 'button',
     anatomy: {
-      container: 'wk-button px-3.5 py-2.5 rounded-xl min-h-[44px] flex items-center justify-center transition-colors active:scale-[0.98]',
+      container: 'wk-button or wk-btn-secondary px-3.5 py-2.5 rounded-xl min-h-[44px] flex items-center justify-center transition-colors active:scale-[0.98]',
       typography: 'text-xs font-semibold',
       colors: 'background: var(--color-action-secondary-bg) | color: var(--color-action-secondary-fg)',
       states: {
@@ -810,17 +811,19 @@ export const TREISE_DESIGN_SYSTEM: DesignSystemComponent[] = [
     logic: {
       rules: [
         'Used for secondary, auxiliary, or cancel actions alongside a primary CTA.',
-        'Uses raised Whoop Slate token (--color-action-secondary-bg) cleanly stepped above card surfaces.',
+        'Uses raised Whoop Slate token (--color-action-secondary-bg) with crisp white ink (--color-action-secondary-fg) via .wk-button or .wk-btn-secondary.',
+        'Never use the informational badge class (.wk-pill) on <button> elements; interactive compact buttons must use .wk-btn-secondary.',
         'Destructive solid confirmation buttons use --color-action-destructive-bg with --color-action-destructive-fg (>= 5.8:1 AA contrast).',
       ],
       variants: {
         cancel: 'bg-[var(--color-action-secondary-bg)] text-[var(--color-action-secondary-fg)]',
+        compactAction: 'wk-btn-secondary with var(--color-action-secondary-bg) and var(--color-action-secondary-fg)',
         destructive: 'bg-[var(--color-action-destructive-bg)] text-[var(--color-action-destructive-fg)]',
       },
       accessibility: 'Passes WCAG 2.5.5 touch target with >= 4.5:1 text-to-background contrast',
     },
-    tailwindTokens: 'wk-button bg-[var(--color-action-secondary-bg)] text-[var(--color-action-secondary-fg)] font-semibold rounded-xl min-h-[44px]',
-    rationale: 'Keeps secondary actions calm and legible within the Whoop Slate elevation ladder.',
+    tailwindTokens: 'wk-button wk-btn-secondary bg-[var(--color-action-secondary-bg)] text-[var(--color-action-secondary-fg)] font-semibold rounded-xl min-h-[44px]',
+    rationale: 'Keeps secondary actions calm and legible within the Whoop Slate elevation ladder while visually distinct from read-only .wk-pill badges.',
   },
   {
     id: 'ds-btn-segmented',
@@ -914,28 +917,29 @@ export const TREISE_DESIGN_SYSTEM: DesignSystemComponent[] = [
   },
   {
     id: 'ds-badge-status',
-    name: 'Semantic Status Badge / Indicator',
+    name: 'Semantic Status Badge / Indicator (.wk-pill)',
     category: 'badge',
     anatomy: {
-      container: 'inline-flex items-center space-x-1 px-3 py-1 rounded-full text-xs font-bold',
-      typography: 'text-xs font-bold font-mono or font-sans',
-      colors: 'Positive: --color-status-positive-soft/--color-status-positive | Warning: --color-status-warning-soft/--color-status-warning | Danger: --color-status-danger-soft/--color-status-danger-fg | Info: --color-status-info-soft/--color-status-info | Neutral: --color-bg-surface-control/--color-status-neutral',
+      container: 'wk-pill inline-flex items-center rounded-[calc(8*var(--f))] px-[calc(22*var(--f))] py-[calc(6*var(--f))]',
+      typography: 'max(12px, calc(24 * var(--f))) font-bold uppercase leading-[1.2]',
+      colors: 'Neutral: --color-bg-surface-control/--color-status-neutral | Positive: --color-status-positive-soft/--color-status-positive | Warning: --color-status-warning-soft/--color-status-warning | Danger: --color-status-danger-soft/--color-status-danger-fg | Info: --color-status-info-soft/--color-status-info',
       states: {
-        default: 'Soft tinted background with WCAG AA verified ink',
+        default: 'Read-only informational badge surface (--wk-pill: var(--color-bg-surface-control)) with WCAG AA verified neutral ink (--color-status-neutral)',
       },
-      touchTarget: 'N/A (Read-only badge) or min-h-[44px] when interactive',
+      touchTarget: 'N/A (Read-only informational badge only; never interactive)',
     },
     logic: {
       rules: [
-        'Color semantics are strictly codified: Positive = --color-status-positive, Caution = --color-status-warning, Danger/Alert = --color-status-danger, Info/Strain = --color-status-info, Neutral = --color-status-neutral.',
+        '.wk-pill (background: var(--wk-pill) / var(--color-bg-surface-control), border-radius: calc(8 * var(--f)), color: var(--color-status-neutral), uppercase bold) is reserved strictly for non-interactive informational badges (e.g. wearable source WHOOP, superset order A1, equipment tags) and must never be used on <button> elements.',
+        'Color semantics are strictly codified: Positive = --color-status-positive, Caution = --color-status-warning, Danger/Alert = --color-status-danger, Info/Telemetry = --color-status-info, Neutral = --color-status-neutral.',
         'Danger text/icons on dark slate surfaces use --color-status-danger (>= 4.65:1 AA) rather than low-contrast crimson fills.',
       ],
       variants: {
+        neutralInfo: 'wk-pill with var(--color-bg-surface-control) fill and var(--color-status-neutral) ink (e.g. WHOOP, A1)',
         primed: 'status-positive-soft with status-positive ink',
         amberShield: 'status-warning-soft with status-warning ink',
         jointStrain: 'status-danger-soft with status-danger-fg ink',
         strainMetric: 'status-info-soft with status-info ink',
-        neutralInfo: 'bg-surface-control with status-neutral ink',
       },
       accessibility: 'Verified text-to-surface contrast ratio >= 4.5:1 AA',
     },

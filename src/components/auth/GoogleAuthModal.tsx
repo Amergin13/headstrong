@@ -287,7 +287,7 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({
                       <button
                         type="button"
                         onClick={handleApplyCustomClient}
-                        className="wk-pill shrink-0 min-h-[44px]"
+                        className="wk-btn-secondary shrink-0 min-h-[44px]"
                       >
                         Apply
                       </button>

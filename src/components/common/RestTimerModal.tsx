@@ -144,7 +144,7 @@ export const RestTimerModal: React.FC<RestTimerModalProps> = ({
                 type="button"
                 onClick={handleAdd30s}
                 aria-label="Add 30 seconds"
-                className="wk-pill min-h-[44px] gap-[calc(8*var(--f))] text-white active:scale-95 transition-transform"
+                className="wk-btn-secondary min-h-[44px] gap-[calc(8*var(--f))] text-white active:scale-95 transition-transform"
               >
                 <Plus className="w-3 h-3" aria-hidden="true" />
                 <span>30s</span>

@@ -175,7 +175,7 @@ export const MesocycleManager: React.FC<MesocycleManagerProps> = ({
           <button
             type="button"
             onClick={handleDeloadClick}
-            className="wk-pill"
+            className="wk-btn-secondary"
           >
             Switch to Light Recovery Week
           </button>

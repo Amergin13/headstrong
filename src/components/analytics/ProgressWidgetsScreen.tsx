@@ -151,7 +151,7 @@ export const ProgressWidgetsScreen: React.FC<ProgressWidgetsScreenProps> = ({
                   onToggle(id);
                 }}
                 aria-label={`Remove ${labelForProgressWidget(id, exerciseCatalog)} from Progress`}
-                className="wk-pill wk-tap"
+                className="wk-btn-secondary wk-tap"
                 style={{ background: 'rgba(0,241,159,0.16)', color: 'var(--wk-accent)' }}
               >
                 {labelForProgressWidget(id, exerciseCatalog)} ×

@@ -1067,7 +1067,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
               <button
                 type="button"
                 onClick={() => setSelectedStripDate(null)}
-                className="wk-pill wk-tap"
+                className="wk-btn-secondary wk-tap"
               >
                 Close
               </button>
@@ -1119,7 +1119,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
                     triggerHaptic('light');
                     onOpenWatchSync();
                   }}
-                  className="wk-pill wk-tap"
+                  className="wk-btn-secondary wk-tap"
                 >
                   Sync Health Connect
                 </button>
@@ -1399,7 +1399,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
                 type="button"
                 onClick={() => setShowWorkoutDisplayModal(false)}
                 aria-label="Close workout page settings"
-                className="wk-pill min-h-[44px]"
+                className="wk-btn-secondary min-h-[44px]"
               >
                 Close
               </button>
@@ -1560,7 +1560,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
               <button
                 type="button"
                 onClick={() => setPreviewPastWorkout(null)}
-                className="wk-pill min-h-[36px] text-white"
+                className="wk-btn-secondary min-h-[36px] text-white"
               >
                 Close
               </button>

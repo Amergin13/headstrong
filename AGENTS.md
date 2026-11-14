@@ -530,6 +530,22 @@ To eliminate all model hallucinations, ungrounded approximations, and conflictin
 - **Searchable UI:** The Progress tab provides an interactive "Science & Logic" browser in `KnowledgeGraphCard.tsx` with a search bar and expandable cards.
 - **Visual Compliance:** Strictly adheres to the $\ge 12\text{px}$ typography floor and $\ge 44\text{px}$ touch targets.
 
+### 11.3 Design System, Typography & Badge/Button Governance (`src/styles/tokens.css`, `src/index.css`, `TREISE_DESIGN_SYSTEM`)
+- **Informational Badge (`.wk-pill`) vs. Action Button (`.wk-btn-secondary` / `.wk-button`):**
+  - `.wk-pill` (`--wk-pill: var(--color-bg-surface-control)` `#474D50`, `border-radius: calc(8 * var(--f))`, `padding: calc(6 * var(--f)) calc(22 * var(--f))`, `font-size: max(12px, calc(24 * var(--f)))`, `font-weight: 700`, `text-transform: uppercase`, `color: var(--color-status-neutral)` `#C9CDD0`, no border) is **reserved strictly for non-interactive informational badges** (such as wearable source `WHOOP`, superset order `A1`, equipment tags) and **must never be used on `<button>` elements**.
+  - Compact interactive secondary buttons must use `.wk-btn-secondary` (`background: var(--color-action-secondary-bg)` `#44494C`, `color: var(--color-action-secondary-fg)` `#FFFFFF`, `border-radius: calc(20 * var(--f))`), while full-width buttons use `.wk-button`.
+- **Semantic Colour Roles:**
+  - **Primary Action CTAs:** `--color-action-primary-bg` (`#FFFFFF`) with `--color-action-primary-fg` (`#13181C`).
+  - **Secondary Actions:** `--color-action-secondary-bg` (`#44494C`) with `--color-action-secondary-fg` (`#FFFFFF`).
+  - **Positive Progress & Achievements (Mint `#00F19F`):** `--color-accent-primary` / `--color-status-positive` is reserved for completed sets, positive weight/strength trends, and achievement indicators—never used for system action buttons.
+  - **Informational Telemetry Charts (Telemetry Blue `#8FD3FF`):** `--color-data-telemetry` (`--wk-telemetry`) is used for informational charts where direction isn't inherently positive progress (e.g., resting heart rate, sleep duration, bodyweight without goal pace).
+- **Consolidated 4-Step Typography Scale (`src/index.css`):**
+  - **Step 1 — Micro / Label / Badge (`12px`):** `.wk-label`, `.wk-pill`, `.wk-btn-secondary`, `.wk-segment` (`max(12px, calc(24 * var(--f)))`, `line-height: 1.2`–`1.25`), `.wk-caption` (`max(12px, calc(22 * var(--f)))`, `line-height: 1.3`).
+  - **Step 2 — Body & Page Title (`14px`):** `.wk-body` (`max(14px, calc(30 * var(--f)))`, `line-height: 1.45`), `.wk-page-title` (`max(14px, calc(32 * var(--f)))`, `line-height: 1.2`, uppercase, `letter-spacing: 0.05em`), `.wk-button` (`max(14px, calc(30 * var(--f)))`).
+  - **Step 3 — Card Heading (`15px`–`16px`):** `.wk-h1` (`max(15px, calc(34 * var(--f)))`, `line-height: 1.25`, uppercase).
+  - **Step 4 — Interactive Numeric Inputs (`16px` floor):** `.wk-input` and `.wk-field` (`max(16px, calc(32 * var(--f)))`), preventing mobile browser auto-zoom on focus.
+
+
 
 
 

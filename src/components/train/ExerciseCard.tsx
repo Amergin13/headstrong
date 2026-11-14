@@ -74,7 +74,7 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
   const history = insight?.history ?? [];
 
   const secondaryButton =
-    'wk-pill justify-center normal-case min-h-[44px] active:scale-95 transition-transform';
+    'wk-btn-secondary justify-center normal-case min-h-[44px] active:scale-95 transition-transform';
 
   return (
     <section aria-label={exercise.name} className="wk-card">

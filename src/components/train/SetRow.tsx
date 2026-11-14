@@ -238,7 +238,7 @@ export const SetRow: React.FC<SetRowProps> = ({
               onUpdate({ actualWeightKg: pokaYoke.referenceWeightKg });
               setDismissedPokaYokeKg(null);
             }}
-            className="wk-pill min-h-[44px] font-semibold"
+            className="wk-btn-secondary min-h-[44px] font-semibold"
             style={{ background: 'var(--wk-accent)', color: 'var(--color-text-on-accent)' }}
           >
             {pokaYoke.actionLabel}
@@ -246,7 +246,7 @@ export const SetRow: React.FC<SetRowProps> = ({
           <button
             type="button"
             onClick={() => setDismissedPokaYokeKg(currentWeight)}
-            className="wk-pill min-h-[44px] text-white/70"
+            className="wk-btn-secondary min-h-[44px] text-white/70"
           >
             Keep {pokaYoke.enteredDisplay}
           </button>

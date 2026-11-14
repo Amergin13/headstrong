@@ -99,8 +99,8 @@ export const WhoopStrainCard: React.FC<WhoopStrainCardProps> = ({
             type="button"
             onClick={onRetry}
             aria-label="Refresh Whoop workout strain"
-            className="wk-pill wk-tap"
-            style={{ minHeight: 44, background: 'var(--color-border-subtle)', color: 'var(--color-text-primary)' }}
+            className="wk-btn-secondary wk-tap"
+            style={{ minHeight: 44 }}
           >
             Refresh
           </button>

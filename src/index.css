@@ -173,7 +173,7 @@ select:focus-visible {
   --wk-bg: var(--color-bg-canvas);
   --wk-card: var(--color-bg-surface);
   --wk-raised: var(--color-bg-surface-raised);
-  --wk-pill: var(--color-action-secondary-bg);
+  --wk-pill: var(--color-bg-surface-control);
   --wk-accent: var(--color-accent-primary);
   --wk-action-primary: var(--color-action-primary-bg);
   --wk-action-primary-fg: var(--color-action-primary-fg);
@@ -234,11 +234,11 @@ select:focus-visible {
   font-weight: 600;
   color: var(--wk-muted);
 }
+/* Informational badge only (e.g., wearable source "WHOOP", superset order "A1"). Never use on <button> elements. */
 .wk-pill {
   display: inline-flex;
   align-items: center;
-  background: rgba(255, 255, 255, 0.07);
-  border: 1px solid var(--color-border-subtle);
+  background: var(--wk-pill);
   border-radius: calc(8 * var(--f));
   padding: calc(6 * var(--f)) calc(22 * var(--f));
   font-size: max(12px, calc(24 * var(--f)));
@@ -247,10 +247,18 @@ select:focus-visible {
   text-transform: uppercase;
   color: var(--color-status-neutral);
 }
-.wk button.wk-pill,
-.wk a.wk-pill {
+/* Compact secondary action button (#44494C surface, #FFFFFF label, pill-shaped interactive radius). */
+.wk-btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   background: var(--color-action-secondary-bg);
-  border-color: transparent;
+  border-radius: calc(20 * var(--f));
+  padding: calc(12 * var(--f)) calc(26 * var(--f));
+  min-height: 36px;
+  font-size: max(12px, calc(24 * var(--f)));
+  line-height: 1.2;
+  font-weight: 700;
   color: var(--color-action-secondary-fg);
 }
 /* Keeps a 44 px touch target on rows drawn shorter than that (the gap between rows takes the rest). */
@@ -618,13 +626,13 @@ select:focus-visible {
 
 /* An invisible 44 px touch area around small controls, so the design's sizes stay as they are. */
 .wk-tap,
-.wk button.wk-pill,
+.wk-btn-secondary,
 .wk-segment {
   position: relative;
   isolation: isolate;
 }
 .wk-tap::after,
-.wk button.wk-pill::after,
+.wk-btn-secondary::after,
 .wk-segment::after {
   content: '';
   position: absolute;
