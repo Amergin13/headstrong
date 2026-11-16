@@ -39,6 +39,7 @@ import {
 import { PlateCalculatorModal } from '../components/train/PlateCalculatorModal';
 import { ExerciseSwapModal } from '../components/train/ExerciseSwapModal';
 import { AICoachChatModal } from '../components/assistant/AICoachChatModal';
+import { OnboardingModal } from '../components/onboarding/OnboardingModal';
 import { TimelineToggle } from '../components/analytics/TimelineToggle';
 import { GoalPhaseSwitcher } from '../components/program/GoalPhaseSwitcher';
 import {
@@ -63,6 +64,7 @@ const SECTIONS = [
   { id: 'typography', label: 'Typography' },
   { id: 'primitives', label: 'Primitives' },
   { id: 'chrome', label: 'Chrome' },
+  { id: 'onboarding', label: 'Onboarding' },
   { id: 'workout', label: 'Workout' },
   { id: 'progress', label: 'Progress' },
   { id: 'coach', label: 'AI Coach' },
@@ -314,7 +316,7 @@ export const DesignSystemContent: React.FC<{
   const [timeline, setTimeline] = useState<ChartTimeline>('1M');
   const [goalPhase, setGoalPhase] = useState<'Lean Bulk' | 'Cut / Recomp' | 'Maingain'>('Lean Bulk');
   const [showToast, setShowToast] = useState(false);
-  const [openModal, setOpenModal] = useState<'rest' | 'plates' | 'swap' | 'coach' | null>(null);
+  const [openModal, setOpenModal] = useState<'rest' | 'plates' | 'swap' | 'coach' | 'onboarding' | 'onboarding-edit' | null>(null);
   const [runtimeMode, setRuntimeMode] = useState<'ssr' | 'http' | 'file'>('ssr');
   const [liveComputedVars, setLiveComputedVars] = useState<Record<string, string>>({});
 
@@ -1460,12 +1462,108 @@ export const DesignSystemContent: React.FC<{
         </section>
 
         {/* ================================================================
-            5. WORKOUT LOGGING COMPONENTS
+            5. ONBOARDING & LOCATION SETUP SCREENS
+        ================================================================ */}
+        <section id="onboarding" className="space-y-6 scroll-mt-32" style={stageScaleStyle}>
+          <div className="border-b pb-3" style={{ borderColor: 'var(--color-border-subtle)' }}>
+            <span className="wk-label">
+              05 · Onboarding Flow
+            </span>
+            <h2 className="wk-title mt-1">3-step onboarding, habit framing &amp; location setup</h2>
+            <p className="wk-body mt-1 max-w-prose">
+              Rendered from the live <code>OnboardingModal</code> component across Step 1 (Identity), Step 2 (18 sessions),
+              Step 3 (Restarting + Goal / Plan / Equipment setup), and the returning athlete &quot;Where you train&quot; editor.
+            </p>
+          </div>
+
+          <div className="grid lg:grid-cols-2 gap-6 items-start">
+            <PhoneStage className="space-y-5">
+              <StageHeader
+                title="Step 1 of 3 · Identity"
+                source="src/components/onboarding/OnboardingModal.tsx"
+                dsId="ds-onboarding-flow"
+                description="Identity framing with IdentityIllustration, Skip action, primary Continue CTA, and demo launcher."
+              />
+              <div className="rounded-[var(--radius-card)] overflow-hidden border" style={{ borderColor: 'var(--color-border-subtle)' }}>
+                <OnboardingModal
+                  inline
+                  initialStep={1}
+                  profile={fixtures.onboardingNewProfile}
+                  onCompleteOnboarding={() => setShowToast(true)}
+                  onExploreDemo={() => setShowToast(true)}
+                  onClose={() => undefined}
+                />
+              </div>
+
+              <StageHeader
+                title="Step 2 of 3 · Habit &amp; 18 sessions"
+                source="src/components/onboarding/OnboardingModal.tsx"
+                description="SessionsIllustration with Back / Skip controls and research-backed 6-week consistency copy."
+              />
+              <div className="rounded-[var(--radius-card)] overflow-hidden border" style={{ borderColor: 'var(--color-border-subtle)' }}>
+                <OnboardingModal
+                  inline
+                  initialStep={2}
+                  profile={fixtures.onboardingNewProfile}
+                  onCompleteOnboarding={() => setShowToast(true)}
+                  onClose={() => undefined}
+                />
+              </div>
+            </PhoneStage>
+
+            <PhoneStage className="space-y-5">
+              <StageHeader
+                title="Step 3 of 3 · Goal, plan &amp; kit setup"
+                source="src/components/onboarding/OnboardingModal.tsx"
+                description="RestartIllustration, Build Muscle / Lose Fat / Stay Lean choices, optional custom lift goal, cadence split, and place picker."
+              />
+              <div className="rounded-[var(--radius-card)] overflow-hidden border" style={{ borderColor: 'var(--color-border-subtle)' }}>
+                <OnboardingModal
+                  inline
+                  initialStep={3}
+                  profile={fixtures.onboardingNewProfile}
+                  onCompleteOnboarding={() => setShowToast(true)}
+                  onClose={() => undefined}
+                />
+              </div>
+
+              <StageHeader
+                title="Returning athlete · Where you train"
+                source="src/components/onboarding/OnboardingModal.tsx"
+                description="Quick location and home-equipment editor launched later from Settings or Workout menu."
+              />
+              <div className="rounded-[var(--radius-card)] overflow-hidden border" style={{ borderColor: 'var(--color-border-subtle)' }}>
+                <OnboardingModal
+                  inline
+                  initialStep={3}
+                  profile={fixtures.onboardingReturningProfile}
+                  onCompleteOnboarding={() => setShowToast(true)}
+                  onClose={() => setShowToast(true)}
+                />
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setOpenModal('onboarding')}
+                className="wk-button w-full"
+                style={{
+                  background: 'var(--color-action-primary-bg)',
+                  color: 'var(--color-action-primary-fg)',
+                }}
+              >
+                Open live onboarding flow
+              </button>
+            </PhoneStage>
+          </div>
+        </section>
+
+        {/* ================================================================
+            6. WORKOUT LOGGING COMPONENTS
         ================================================================ */}
         <section id="workout" className="space-y-6 scroll-mt-32" style={stageScaleStyle}>
           <div className="border-b pb-3" style={{ borderColor: 'var(--color-border-subtle)' }}>
             <span className="wk-label">
-              05 · Workout Tab Components
+              06 · Workout Tab Components
             </span>
             <h2 className="wk-title mt-1">Session cards, interactive set table, recovery &amp; completion</h2>
           </div>
@@ -1693,12 +1791,12 @@ export const DesignSystemContent: React.FC<{
         </section>
 
         {/* ================================================================
-            6. TELEMETRY, CHARTS & PROGRESS COMPONENTS
+            7. TELEMETRY, CHARTS & PROGRESS COMPONENTS
         ================================================================ */}
         <section id="progress" className="space-y-6 scroll-mt-32" style={stageScaleStyle}>
           <div className="border-b pb-3" style={{ borderColor: 'var(--color-border-subtle)' }}>
             <span className="wk-label">
-              06 · Progress &amp; Telemetry
+              07 · Progress &amp; Telemetry
             </span>
             <h2 className="wk-title mt-1">Gauges, TrendChart variants, Strength Standards &amp; Knowledge Graph</h2>
           </div>
@@ -1849,12 +1947,12 @@ export const DesignSystemContent: React.FC<{
         </section>
 
         {/* ================================================================
-            7. AI COACH & CHAT EXPERIENCE
+            8. AI COACH & CHAT EXPERIENCE
         ================================================================ */}
         <section id="coach" className="space-y-6 scroll-mt-32" style={stageScaleStyle}>
           <div className="border-b pb-3" style={{ borderColor: 'var(--color-border-subtle)' }}>
             <span className="wk-label">
-              07 · AI Coach &amp; Chat
+              08 · AI Coach &amp; Chat
             </span>
             <h2 className="wk-title mt-1">Treise sheet, structured reply cards &amp; composer</h2>
             <p className="wk-body mt-1">
@@ -1957,12 +2055,12 @@ export const DesignSystemContent: React.FC<{
         </section>
 
         {/* ================================================================
-            8. KNOWLEDGE GRAPH & AI OBJECT CONTEXT
+            9. KNOWLEDGE GRAPH & AI OBJECT CONTEXT
         ================================================================ */}
         <section id="ai-context" className="space-y-6 scroll-mt-32">
           <div className="border-b pb-3" style={{ borderColor: 'var(--color-border-subtle)' }}>
             <span className="wk-label">
-              08 · Knowledge Graph &amp; AI Object Context
+              09 · Knowledge Graph &amp; AI Object Context
             </span>
             <h2 className="wk-title mt-1">
               OOUX domain schemas, KG topology, 3-tier ContextEnvelope &amp; grounding gates
@@ -2577,12 +2675,12 @@ export const DesignSystemContent: React.FC<{
         </section>
 
         {/* ================================================================
-            9. INTERACTIVE MODALS LAUNCHER
+            10. INTERACTIVE MODALS LAUNCHER
         ================================================================ */}
         <section id="modals" className="space-y-6 scroll-mt-32" style={stageScaleStyle}>
           <div className="border-b pb-3" style={{ borderColor: 'var(--color-border-subtle)' }}>
             <span className="wk-label">
-              09 · Overlays &amp; Utility Modals
+              10 · Overlays &amp; Utility Modals
             </span>
             <h2 className="wk-title mt-1">Interactive workout &amp; coach modals</h2>
             <p className="wk-body mt-1">
@@ -2639,16 +2737,32 @@ export const DesignSystemContent: React.FC<{
                 Open AI Coach
               </button>
             </div>
+
+            <div className="wk-card space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="wk-title">OnboardingModal</h3>
+                <span className="wk-pill">ds-onboarding-flow</span>
+              </div>
+              <p className="wk-body">Opaque 3-step onboarding overlay and returning athlete location &amp; gear editor.</p>
+              <div className="flex flex-col gap-2">
+                <button type="button" onClick={() => setOpenModal('onboarding')} className="wk-btn-secondary w-full min-h-[44px]">
+                  Open onboarding
+                </button>
+                <button type="button" onClick={() => setOpenModal('onboarding-edit')} className="wk-btn-secondary w-full min-h-[44px]">
+                  Open place editor
+                </button>
+              </div>
+            </div>
           </div>
         </section>
 
         {/* ================================================================
-            10. CODIFIED DESIGN SYSTEM REGISTRY (TREISE_DESIGN_SYSTEM)
+            11. CODIFIED DESIGN SYSTEM REGISTRY (TREISE_DESIGN_SYSTEM)
         ================================================================ */}
         <section id="specs" className="space-y-6 scroll-mt-32">
           <div className="border-b pb-3" style={{ borderColor: 'var(--color-border-subtle)' }}>
             <span className="wk-label">
-              10 · Architectural Governance
+              11 · Architectural Governance
             </span>
             <h2 className="wk-title mt-1">
               Shift Nudge 3-Layer Translation &amp; Knowledge Graph Registry ({TREISE_DESIGN_SYSTEM.length} components)
@@ -2790,6 +2904,32 @@ export const DesignSystemContent: React.FC<{
           onUndoAction={() => setShowToast(true)}
           onNavigateTab={() => setOpenModal(null)}
           onViewAllEquipment={() => setOpenModal(null)}
+        />
+      )}
+      {openModal === 'onboarding' && (
+        <OnboardingModal
+          initialStep={1}
+          profile={fixtures.onboardingNewProfile}
+          onCompleteOnboarding={() => {
+            setOpenModal(null);
+            setShowToast(true);
+          }}
+          onExploreDemo={() => {
+            setOpenModal(null);
+            setShowToast(true);
+          }}
+          onClose={() => setOpenModal(null)}
+        />
+      )}
+      {openModal === 'onboarding-edit' && (
+        <OnboardingModal
+          initialStep={3}
+          profile={fixtures.onboardingReturningProfile}
+          onCompleteOnboarding={() => {
+            setOpenModal(null);
+            setShowToast(true);
+          }}
+          onClose={() => setOpenModal(null)}
         />
       )}
     </div>

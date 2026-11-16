@@ -498,9 +498,28 @@ export function buildShowcaseFixtures(unit: WeightUnit = 'kg') {
     jointPain: buildSafetyResponse('I have sharp knee pain when squatting down', activeSessionMidSet) || '',
   };
 
+  const onboardingNewProfile: UserProfile = {
+    ...profile,
+    name: 'Athlete',
+    onboardingCompleted: false,
+    programType: 'starter_6wk',
+    goalPhase: 'Lean Bulk',
+    activeLocation: 'gym',
+    homeEquipment: [],
+  };
+
+  const onboardingReturningProfile: UserProfile = {
+    ...profile,
+    onboardingCompleted: true,
+    activeLocation: 'home',
+    homeEquipment: ['dumbbells', 'pullup_bar', 'bench'],
+  };
+
   return {
     today,
     profile,
+    onboardingNewProfile,
+    onboardingReturningProfile,
     fmt,
     biometrics,
     latestBio,

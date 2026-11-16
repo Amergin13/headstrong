@@ -1253,6 +1253,38 @@ export const TREISE_DESIGN_SYSTEM: DesignSystemComponent[] = [
     tailwindTokens: 'wk-card wk-raised wk-pill wk-btn-secondary --color-status-positive --color-status-warning --color-status-danger --color-status-info',
     rationale: 'Holding every AI tool call and generated sentence to deterministic biomechanical and factual gates eliminates hallucinated loads, unconfirmed resets, and off-voice copy.',
   },
+  {
+    id: 'ds-onboarding-flow',
+    name: '3-Step Onboarding & Location Editor Flow',
+    category: 'layout',
+    anatomy: {
+      container: 'Opaque full-screen overlay (var(--color-bg-canvas) + 28% top surface gradient) constrained to max-w-448px, or inline PhoneStage specimen in catalog',
+      typography: 'Screen heading at 20px/600 (--color-text-primary); body guidance at 16px/400 (var(--wk-body), 65ch max); fieldset legends 12px/500 (--color-text-muted); option rows 16px/500 with 12px detail',
+      colors: 'Step progress bar & active selection ring use var(--wk-accent) over --color-status-positive-soft; primary Continue/Start CTA uses --color-action-primary-bg / --color-action-primary-fg; unselected choices sit on --wk-card + --color-border-subtle',
+      states: {
+        step1: 'Identity + IdentityIllustration + Continue CTA + optional "See a demo with sample data" action',
+        step2: 'Session cadence & habit rationale + SessionsIllustration + Back / Skip navigation',
+        step3: 'Restarting mindset + Goal / optional Custom Goal / Plan cadence / Location & Home Equipment picker + sticky primary CTA',
+        editing: 'Returning athlete "Where you train" sheet with Close button and location/equipment persistence',
+      },
+      touchTarget: '>= 44px on Back, Skip, Close, goal/location/equipment buttons, and custom target input; >= 48px primary sticky CTA',
+    },
+    logic: {
+      rules: [
+        'Full-screen overlay keeps solid backgroundColor: var(--color-bg-canvas) beneath the top gradient so underlying tabs never bleed through.',
+        'Steps 1 and 2 pair animated canvas-safe SVG illustrations with concise scannable copy and support horizontal swipe or Continue/Skip progression.',
+        'Goal choices always map to GOAL_DISPLAY_NAME (Build Muscle, Lose Fat, Stay Lean) and never expose internal phase names.',
+        'Home equipment pills default to empty for new athletes so unowned kit is never assumed.',
+      ],
+      variants: {
+        firstRun: 'Steps 1-3 full onboarding with demo mode entry on Step 1',
+        editPlace: 'Returning athlete Step 3 ("Where you train") launched from Workout menu or Settings',
+      },
+      accessibility: 'progressbar announces Step 1-3, heading receives focus on modal step change, custom goal input announces validation errors via aria-invalid and aria-describedby',
+    },
+    tailwindTokens: 'wk fixed inset-0 z-50 wk-button wk-field wk-pill --color-bg-canvas --wk-card --wk-accent --color-status-positive-soft --color-action-primary-bg',
+    rationale: 'Calm, progressive 3-step onboarding grounds habits first, keeps configuration concrete and reversible, and maintains strict opaque full-screen contrast.',
+  },
 ];
 export const HEADSTRONG_DESIGN_SYSTEM = TREISE_DESIGN_SYSTEM;
 

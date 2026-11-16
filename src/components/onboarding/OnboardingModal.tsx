@@ -1,6 +1,6 @@
 import { OWN_GOAL_OPTIONS, makeCustomGoal } from '../../services/athleteGoals';
 import { unitToKg } from '../../utils/units';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useId, useRef, useState } from 'react';
 import { Check, ChevronLeft, X } from 'lucide-react';
 import {
   CustomGoal,
@@ -40,6 +40,8 @@ export interface OnboardingModalProps {
   }) => void;
   onClose: () => void;
   onExploreDemo?: () => void;
+  /** Render inline inside a Design System showcase specimen frame instead of a full-screen dialog. */
+  inline?: boolean;
 }
 
 
@@ -158,7 +160,12 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
   onCompleteOnboarding,
   onClose,
   onExploreDemo,
+  inline = false,
 }) => {
+  const uid = useId();
+  const titleId = inline ? `${uid}-onboarding-title` : 'onboarding-title';
+  const targetInputId = inline ? `${uid}-own-goal-target` : 'own-goal-target';
+  const targetHelpId = inline ? `${uid}-own-goal-help` : 'own-goal-help';
   const returning = !!profile.onboardingCompleted;
   const [step, setStep] = useState<OnboardingStep>(initialStep);
   const canUseMuscle = canUseMusclePlan(profile.email);
@@ -187,10 +194,12 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
   const headingRef = useRef<HTMLHeadingElement>(null);
   const touchStartX = useRef<number | null>(null);
 
-  // Move focus to the new screen's heading so screen readers announce it.
+  // Move focus to the new screen's heading so screen readers announce it (disabled in inline specimens).
   useEffect(() => {
-    headingRef.current?.focus({ preventScroll: true });
-  }, [step]);
+    if (!inline) {
+      headingRef.current?.focus({ preventScroll: true });
+    }
+  }, [inline, step]);
 
   // Opened from Settings to change gear: just where you train, no introduction (the goal has its own control in Settings).
   const editing = returning && initialStep === 3;
@@ -219,19 +228,376 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
       ownGoal: !editing && ownGoal ? { exerciseId: ownGoal.exerciseId, metric: ownGoal.metric, target: ownGoal.target } : undefined,
     });
     onClose();
-    window.scrollTo({ top: 0 });
+    if (!inline) {
+      window.scrollTo({ top: 0 });
+    }
   };
 
   const screen = SCREENS[step - 1];
   const Illustration = screen.Illustration;
   const isLast = step === 3;
   const ctaLabel = !isLast ? 'Continue' : returning ? 'Save changes' : 'Start my first workout';
+  const HeadingTag = inline ? 'h4' : 'h1';
+
+  const bodyContent = (
+    <div
+      className="mx-auto flex flex-col"
+      style={
+        inline
+          ? { padding: '0 4px' }
+          : { maxWidth: 448, minHeight: '100%', padding: 'max(12px, env(safe-area-inset-top)) 16px 0' }
+      }
+    >
+      {/* Back · progress · skip */}
+      <div className="flex items-center justify-between" style={{ height: 52 }}>
+        <div style={{ width: 88 }}>
+          {step > 1 && !editing && (
+            <button
+              type="button"
+              onClick={() => goTo((step - 1) as OnboardingStep)}
+              aria-label="Back"
+              className="w-11 h-11 min-h-[44px] min-w-[44px] -ml-2 rounded-full flex items-center justify-center transition-colors"
+              style={{ color: 'var(--color-text-secondary)' }}
+            >
+              <ChevronLeft className="w-6 h-6 stroke-[2]" />
+            </button>
+          )}
+        </div>
+        <div
+          className={`flex items-center ${editing ? 'invisible' : ''}`}
+          style={{ gap: 8 }}
+          role="progressbar"
+          aria-valuemin={1}
+          aria-valuemax={3}
+          aria-valuenow={step}
+          aria-label={`Step ${step} of 3`}
+        >
+          {[1, 2, 3].map((s) => (
+            <span
+              key={s}
+              aria-hidden="true"
+              style={{
+                width: s === step ? 24 : 8,
+                height: 8,
+                borderRadius: 4,
+                background: s <= step ? 'var(--wk-accent)' : 'var(--color-border-strong)',
+                transition: 'width 250ms, background 250ms',
+              }}
+            />
+          ))}
+        </div>
+        <div className="flex justify-end" style={{ width: 88 }}>
+          {returning ? (
+            <button
+              type="button"
+              onClick={() => {
+                triggerHaptic('light');
+                onClose();
+              }}
+              aria-label="Close"
+              className="w-11 h-11 min-h-[44px] min-w-[44px] -mr-2 rounded-full flex items-center justify-center transition-colors"
+              style={{ color: 'var(--color-text-secondary)' }}
+            >
+              <X className="w-5 h-5 stroke-[2]" />
+            </button>
+          ) : (
+            !isLast && (
+              <button
+                type="button"
+                onClick={() => goTo(3)}
+                className="h-11 min-h-[44px] px-2 -mr-2 font-medium transition-colors"
+                style={{ fontSize: 16, color: 'var(--color-text-secondary)' }}
+              >
+                Skip
+              </button>
+            )
+          )}
+        </div>
+      </div>
+
+      <div key={step} className="ob-enter flex flex-col flex-1">
+        {!editing && (
+          <div style={{ height: isLast ? 112 : 200, marginTop: isLast ? 4 : 20 }}>
+            <Illustration weeks={6} perWeek={plan.workoutsPerWeek} />
+          </div>
+        )}
+
+        <HeadingTag
+          id={titleId}
+          ref={headingRef}
+          tabIndex={inline ? undefined : -1}
+          className="outline-none"
+          style={{ ...titleStyle, marginTop: isLast ? 8 : 20 }}
+        >
+          {editing ? 'Where you train' : screen.title}
+        </HeadingTag>
+        {!editing &&
+          screen.body.map((p) => (
+            <p key={p} style={{ ...bodyStyle, marginTop: 8 }}>
+              {p}
+            </p>
+          ))}
+
+        {isLast && (
+          <div style={{ marginTop: editing ? 16 : 20 }}>
+            {!editing && (
+              <fieldset>
+                <legend style={sectionLabel}>What's your goal?</legend>
+                <div className="flex flex-col" style={{ gap: 8 }}>
+                  {GOALS.map((g) => (
+                    <button
+                      key={g.id}
+                      type="button"
+                      aria-pressed={goal === g.id}
+                      onClick={() => {
+                        triggerHaptic('light');
+                        setGoal(g.id);
+                      }}
+                      className="w-full text-left flex items-center"
+                      style={{ ...choiceStyle(goal === g.id), padding: '12px 16px', gap: 12 }}
+                    >
+                      <span className="flex-1">
+                        <span className="block" style={optionText}>
+                          {g.label}
+                        </span>
+                        <span className="block" style={optionDetail}>
+                          {g.detail}
+                        </span>
+                      </span>
+                      <RadioDot selected={goal === g.id} />
+                    </button>
+                  ))}
+                </div>
+                <p style={{ ...optionDetail, marginTop: 8 }}>Your plan's sets and reps are set for this goal.</p>
+              </fieldset>
+            )}
+
+            {!editing && (
+              <fieldset style={{ marginTop: 20 }}>
+                <legend style={sectionLabel}>A goal of your own (optional)</legend>
+                <div className="flex flex-wrap" style={{ gap: 8 }}>
+                  {OWN_GOAL_OPTIONS.map((lift) => {
+                    const on = ownLift === lift.exerciseId;
+                    return (
+                      <button
+                        key={lift.exerciseId}
+                        type="button"
+                        aria-pressed={on}
+                        onClick={() => {
+                          triggerHaptic('light');
+                          setOwnLift(on ? null : lift.exerciseId);
+                          setOwnTarget(on ? '' : lift.metric === 'steps' ? '10000' : '');
+                        }}
+                        className="flex items-center font-medium"
+                        style={{ ...choiceStyle(on), borderRadius: 999, padding: '0 16px', minHeight: 44, fontSize: 16, color: 'var(--color-text-primary)' }}
+                      >
+                        {lift.label}
+                      </button>
+                    );
+                  })}
+                </div>
+                {ownChoice && (
+                  <div className="flex items-center" style={{ gap: 8, marginTop: 12 }}>
+                    <label htmlFor={targetInputId} style={{ ...optionText, flexShrink: 0 }}>
+                      {ownChoice.metric === 'weight' ? 'Lift' : ownChoice.metric === 'steps' ? 'Reach' : 'Do'}
+                    </label>
+                    <input
+                      id={targetInputId}
+                      type="number"
+                      inputMode={ownChoice.metric === 'weight' ? 'decimal' : 'numeric'}
+                      min={ownChoice.metric === 'steps' ? 500 : 1}
+                      step={ownChoice.metric === 'steps' ? 500 : undefined}
+                      value={ownTarget}
+                      onChange={(e) => setOwnTarget(e.target.value)}
+                      aria-invalid={ownInvalid}
+                      aria-describedby={targetHelpId}
+                      className="wk-field tabular-nums"
+                      style={{ width: 96, minHeight: 44, padding: '0 12px', fontSize: 16, color: 'var(--color-text-primary)' }}
+                    />
+                    <span style={optionText}>
+                      {ownChoice.metric === 'weight' ? unit : ownChoice.metric === 'steps' ? 'steps a day' : 'reps in one set'}
+                    </span>
+                  </div>
+                )}
+                <p id={targetHelpId} style={{ ...optionDetail, marginTop: 8, maxWidth: '65ch' }}>
+                  {ownInvalid
+                    ? `Enter ${
+                        ownChoice!.metric === 'weight'
+                          ? 'a weight'
+                          : ownChoice!.metric === 'steps'
+                          ? 'between 500 and 100,000 steps'
+                          : 'a number of reps'
+                      } you could reach.`
+                    : ownChoice
+                    ? ownChoice.metric === 'weight'
+                      ? 'Counted by your heaviest logged set, whatever the reps.'
+                      : ownChoice.metric === 'steps'
+                      ? 'Counted from Health Connect or your watch each day.'
+                      : 'Counted by the most reps you log in one set.'
+                    : 'Your plan gives you three goals. Add one of your own if you have a number in mind; you can add or change it later.'}
+                </p>
+              </fieldset>
+            )}
+
+            {!editing && (
+              <fieldset style={{ marginTop: 20 }}>
+                <legend style={sectionLabel}>How do you want to fit in 4 sessions a week?</legend>
+                <div className="flex flex-col" style={{ gap: 8 }}>
+                  {PLAN_CHOICES.filter((opt) => canUseMuscle || !opt.ownerOnly).map((opt) => (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      aria-pressed={program === opt.id}
+                      onClick={() => {
+                        triggerHaptic('light');
+                        setProgram(opt.id);
+                      }}
+                      className="w-full text-left flex items-center"
+                      style={{ ...choiceStyle(program === opt.id), padding: '12px 16px', gap: 12 }}
+                    >
+                      <span className="flex-1">
+                        <span className="flex items-center flex-wrap" style={{ gap: 8 }}>
+                          <span style={optionText}>{opt.label}</span>
+                          {opt.recommended && (
+                            <span className="wk-pill" style={{ color: 'var(--wk-accent)', background: 'var(--color-status-positive-soft)' }}>
+                              Recommended
+                            </span>
+                          )}
+                        </span>
+                        <span className="block" style={optionDetail}>
+                          {opt.detail}
+                        </span>
+                      </span>
+                      <RadioDot selected={program === opt.id} />
+                    </button>
+                  ))}
+                </div>
+              </fieldset>
+            )}
+
+            <fieldset style={{ marginTop: editing ? 0 : 20 }}>
+              <legend style={sectionLabel}>Where will you train?</legend>
+              <div className="grid grid-cols-3" style={{ gap: 8 }}>
+                {LOCATIONS.map((loc) => (
+                  <button
+                    key={loc.id}
+                    type="button"
+                    aria-pressed={location === loc.id}
+                    onClick={() => {
+                      triggerHaptic('light');
+                      setLocation(loc.id);
+                    }}
+                    className="text-center flex flex-col items-center justify-center"
+                    style={{ ...choiceStyle(location === loc.id), padding: '12px 8px' }}
+                  >
+                    <span style={optionText}>{loc.label}</span>
+                    <span style={optionDetail}>{loc.detail}</span>
+                  </button>
+                ))}
+              </div>
+              <p style={{ ...optionDetail, marginTop: 8 }}>You can switch place before any workout.</p>
+            </fieldset>
+
+            {(location === 'home' || initialStep === 3) && (
+              <fieldset style={{ marginTop: 16 }}>
+                <legend style={sectionLabel}>What do you have at home?</legend>
+                <div className="flex flex-wrap" style={{ gap: 8 }}>
+                  {HOME_EQUIPMENT_OPTIONS.map((eq) => {
+                    const on = homeEquipment.includes(eq.id);
+                    return (
+                      <button
+                        key={eq.id}
+                        type="button"
+                        aria-pressed={on}
+                        onClick={() => {
+                          triggerHaptic('light');
+                          setHomeEquipment((prev) => (on ? prev.filter((t) => t !== eq.id) : [...prev, eq.id]));
+                        }}
+                        className="flex items-center font-medium"
+                        style={{
+                          ...choiceStyle(on),
+                          borderRadius: 999,
+                          padding: '0 16px',
+                          gap: 8,
+                          color: on ? 'var(--color-text-primary)' : 'var(--color-text-secondary)',
+                          fontSize: 16,
+                        }}
+                      >
+                        {on && <Check className="w-4 h-4 stroke-[2]" style={{ color: 'var(--wk-accent)' }} aria-hidden="true" />}
+                        {eq.label}
+                      </button>
+                    );
+                  })}
+                </div>
+                <p style={{ ...optionDetail, marginTop: 8 }}>Nothing at home? Bodyweight workouts still work.</p>
+              </fieldset>
+            )}
+          </div>
+        )}
+
+        <div className="flex-1" />
+
+        {/* Primary action stays at the bottom of the screen */}
+        <div
+          className={inline ? 'pt-4' : 'sticky bottom-0'}
+          style={
+            inline
+              ? undefined
+              : {
+                  padding: '16px 0 max(16px, env(safe-area-inset-bottom))',
+                  background: isLast ? 'linear-gradient(180deg, rgb(var(--color-bg-canvas-rgb) / 0) 0%, var(--color-bg-canvas) 35%)' : undefined,
+                }
+          }
+        >
+          <button
+            type="button"
+            onClick={() => (isLast ? finish() : goTo((step + 1) as OnboardingStep))}
+            className="wk-button w-full font-semibold active:scale-[0.98] transition-transform"
+            style={{
+              background: 'var(--color-action-primary-bg)',
+              color: 'var(--color-action-primary-fg)',
+              fontSize: 16,
+            }}
+          >
+            {ctaLabel}
+          </button>
+          {step === 1 && !returning && onExploreDemo && (
+            <button
+              type="button"
+              onClick={() => {
+                triggerHaptic('light');
+                onExploreDemo();
+              }}
+              className="w-full font-medium transition-colors"
+              style={{ minHeight: 44, marginTop: 4, fontSize: 16, color: 'var(--color-text-muted)' }}
+            >
+              See a demo with sample data
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+
+  if (inline) {
+    return (
+      <div
+        className="wk w-full rounded-[var(--radius-card)] overflow-hidden"
+        style={{
+          backgroundColor: 'var(--color-bg-canvas)',
+          backgroundImage: 'linear-gradient(180deg, rgb(var(--color-bg-surface-rgb) / 0.28) 0%, transparent 70%)',
+        }}
+      >
+        {bodyContent}
+      </div>
+    );
+  }
 
   return (
     <div
       role="dialog"
       aria-modal="true"
-      aria-labelledby="onboarding-title"
+      aria-labelledby={titleId}
       className="wk fixed inset-0 z-50 overflow-y-auto"
       style={{
         backgroundColor: 'var(--color-bg-canvas)',
@@ -249,327 +615,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
         if (dx > 0 && step > 1) goTo((step - 1) as OnboardingStep);
       }}
     >
-      <div
-        className="mx-auto flex flex-col"
-        style={{ maxWidth: 448, minHeight: '100%', padding: 'max(12px, env(safe-area-inset-top)) 16px 0' }}
-      >
-        {/* Back · progress · skip */}
-        <div className="flex items-center justify-between" style={{ height: 52 }}>
-          <div style={{ width: 88 }}>
-            {step > 1 && !editing && (
-              <button
-                type="button"
-                onClick={() => goTo((step - 1) as OnboardingStep)}
-                aria-label="Back"
-                className="w-11 h-11 min-h-[44px] min-w-[44px] -ml-2 rounded-full flex items-center justify-center transition-colors"
-                style={{ color: 'var(--color-text-secondary)' }}
-              >
-                <ChevronLeft className="w-6 h-6 stroke-[2]" />
-              </button>
-            )}
-          </div>
-          <div className={`flex items-center ${editing ? 'invisible' : ''}`} style={{ gap: 8 }} role="progressbar" aria-valuemin={1} aria-valuemax={3} aria-valuenow={step} aria-label={`Step ${step} of 3`}>
-            {[1, 2, 3].map((s) => (
-              <span
-                key={s}
-                aria-hidden="true"
-                style={{
-                  width: s === step ? 24 : 8,
-                  height: 8,
-                  borderRadius: 4,
-                  background: s <= step ? 'var(--wk-accent)' : 'var(--color-border-strong)',
-                  transition: 'width 250ms, background 250ms',
-                }}
-              />
-            ))}
-          </div>
-          <div className="flex justify-end" style={{ width: 88 }}>
-            {returning ? (
-              <button
-                type="button"
-                onClick={() => {
-                  triggerHaptic('light');
-                  onClose();
-                }}
-                aria-label="Close"
-                className="w-11 h-11 min-h-[44px] min-w-[44px] -mr-2 rounded-full flex items-center justify-center transition-colors"
-                style={{ color: 'var(--color-text-secondary)' }}
-              >
-                <X className="w-5 h-5 stroke-[2]" />
-              </button>
-            ) : (
-              !isLast && (
-                <button
-                  type="button"
-                  onClick={() => goTo(3)}
-                  className="h-11 min-h-[44px] px-2 -mr-2 font-medium transition-colors"
-                  style={{ fontSize: 16, color: 'var(--color-text-secondary)' }}
-                >
-                  Skip
-                </button>
-              )
-            )}
-          </div>
-        </div>
-
-        <div key={step} className="ob-enter flex flex-col flex-1">
-          {!editing && (
-            <div style={{ height: isLast ? 112 : 200, marginTop: isLast ? 4 : 20 }}>
-              <Illustration weeks={6} perWeek={plan.workoutsPerWeek} />
-            </div>
-          )}
-
-          <h1
-            id="onboarding-title"
-            ref={headingRef}
-            tabIndex={-1}
-            className="outline-none"
-            style={{ ...titleStyle, marginTop: isLast ? 8 : 20 }}
-          >
-            {editing ? 'Where you train' : screen.title}
-          </h1>
-          {!editing &&
-            screen.body.map((p) => (
-              <p key={p} style={{ ...bodyStyle, marginTop: 8 }}>
-                {p}
-              </p>
-            ))}
-
-          {isLast && (
-            <div style={{ marginTop: editing ? 16 : 20 }}>
-              {!editing && (
-                <fieldset>
-                  <legend style={sectionLabel}>What's your goal?</legend>
-                  <div className="flex flex-col" style={{ gap: 8 }}>
-                    {GOALS.map((g) => (
-                      <button
-                        key={g.id}
-                        type="button"
-                        aria-pressed={goal === g.id}
-                        onClick={() => {
-                          triggerHaptic('light');
-                          setGoal(g.id);
-                        }}
-                        className="w-full text-left flex items-center"
-                        style={{ ...choiceStyle(goal === g.id), padding: '12px 16px', gap: 12 }}
-                      >
-                        <span className="flex-1">
-                          <span className="block" style={optionText}>
-                            {g.label}
-                          </span>
-                          <span className="block" style={optionDetail}>
-                            {g.detail}
-                          </span>
-                        </span>
-                        <RadioDot selected={goal === g.id} />
-                      </button>
-                    ))}
-                  </div>
-                  <p style={{ ...optionDetail, marginTop: 8 }}>Your plan's sets and reps are set for this goal.</p>
-                </fieldset>
-              )}
-
-              {!editing && (
-                <fieldset style={{ marginTop: 20 }}>
-                  <legend style={sectionLabel}>A goal of your own (optional)</legend>
-                  <div className="flex flex-wrap" style={{ gap: 8 }}>
-                    {OWN_GOAL_OPTIONS.map((lift) => {
-                      const on = ownLift === lift.exerciseId;
-                      return (
-                        <button
-                          key={lift.exerciseId}
-                          type="button"
-                          aria-pressed={on}
-                          onClick={() => {
-                            triggerHaptic('light');
-                            setOwnLift(on ? null : lift.exerciseId);
-                            setOwnTarget(on ? '' : lift.metric === 'steps' ? '10000' : '');
-                          }}
-                          className="flex items-center font-medium"
-                          style={{ ...choiceStyle(on), borderRadius: 999, padding: '0 16px', minHeight: 44, fontSize: 16, color: 'var(--color-text-primary)' }}
-                        >
-                          {lift.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                  {ownChoice && (
-                    <div className="flex items-center" style={{ gap: 8, marginTop: 12 }}>
-                      <label htmlFor="own-goal-target" style={{ ...optionText, flexShrink: 0 }}>
-                        {ownChoice.metric === 'weight' ? 'Lift' : ownChoice.metric === 'steps' ? 'Reach' : 'Do'}
-                      </label>
-                      <input
-                        id="own-goal-target"
-                        type="number"
-                        inputMode={ownChoice.metric === 'weight' ? 'decimal' : 'numeric'}
-                        min={ownChoice.metric === 'steps' ? 500 : 1}
-                        step={ownChoice.metric === 'steps' ? 500 : undefined}
-                        value={ownTarget}
-                        onChange={(e) => setOwnTarget(e.target.value)}
-                        aria-invalid={ownInvalid}
-                        aria-describedby="own-goal-help"
-                        className="wk-field tabular-nums"
-                        style={{ width: 96, minHeight: 44, padding: '0 12px', fontSize: 16, color: 'var(--color-text-primary)' }}
-                      />
-                      <span style={optionText}>
-                        {ownChoice.metric === 'weight' ? unit : ownChoice.metric === 'steps' ? 'steps a day' : 'reps in one set'}
-                      </span>
-                    </div>
-                  )}
-                  <p id="own-goal-help" style={{ ...optionDetail, marginTop: 8, maxWidth: '65ch' }}>
-                    {ownInvalid
-                      ? `Enter ${
-                          ownChoice!.metric === 'weight'
-                            ? 'a weight'
-                            : ownChoice!.metric === 'steps'
-                            ? 'between 500 and 100,000 steps'
-                            : 'a number of reps'
-                        } you could reach.`
-                      : ownChoice
-                      ? ownChoice.metric === 'weight'
-                        ? 'Counted by your heaviest logged set, whatever the reps.'
-                        : ownChoice.metric === 'steps'
-                        ? 'Counted from Health Connect or your watch each day.'
-                        : 'Counted by the most reps you log in one set.'
-                      : 'Your plan gives you three goals. Add one of your own if you have a number in mind; you can add or change it later.'}
-                  </p>
-                </fieldset>
-              )}
-
-              {!editing && (
-                <fieldset style={{ marginTop: 20 }}>
-                  <legend style={sectionLabel}>How do you want to fit in 4 sessions a week?</legend>
-                  <div className="flex flex-col" style={{ gap: 8 }}>
-                    {PLAN_CHOICES.filter((opt) => canUseMuscle || !opt.ownerOnly).map((opt) => (
-                      <button
-                        key={opt.id}
-                        type="button"
-                        aria-pressed={program === opt.id}
-                        onClick={() => {
-                          triggerHaptic('light');
-                          setProgram(opt.id);
-                        }}
-                        className="w-full text-left flex items-center"
-                        style={{ ...choiceStyle(program === opt.id), padding: '12px 16px', gap: 12 }}
-                      >
-                        <span className="flex-1">
-                          <span className="flex items-center flex-wrap" style={{ gap: 8 }}>
-                            <span style={optionText}>{opt.label}</span>
-                            {opt.recommended && (
-                              <span className="wk-pill" style={{ color: 'var(--wk-accent)', background: 'var(--color-status-positive-soft)' }}>
-                                Recommended
-                              </span>
-                            )}
-                          </span>
-                          <span className="block" style={optionDetail}>
-                            {opt.detail}
-                          </span>
-                        </span>
-                        <RadioDot selected={program === opt.id} />
-                      </button>
-                    ))}
-                  </div>
-                </fieldset>
-              )}
-
-              <fieldset style={{ marginTop: editing ? 0 : 20 }}>
-                <legend style={sectionLabel}>Where will you train?</legend>
-                <div className="grid grid-cols-3" style={{ gap: 8 }}>
-                  {LOCATIONS.map((loc) => (
-                    <button
-                      key={loc.id}
-                      type="button"
-                      aria-pressed={location === loc.id}
-                      onClick={() => {
-                        triggerHaptic('light');
-                        setLocation(loc.id);
-                      }}
-                      className="text-center flex flex-col items-center justify-center"
-                      style={{ ...choiceStyle(location === loc.id), padding: '12px 8px' }}
-                    >
-                      <span style={optionText}>{loc.label}</span>
-                      <span style={optionDetail}>{loc.detail}</span>
-                    </button>
-                  ))}
-                </div>
-                <p style={{ ...optionDetail, marginTop: 8 }}>You can switch place before any workout.</p>
-              </fieldset>
-
-              {(location === 'home' || initialStep === 3) && (
-                <fieldset style={{ marginTop: 16 }}>
-                  <legend style={sectionLabel}>What do you have at home?</legend>
-                  <div className="flex flex-wrap" style={{ gap: 8 }}>
-                    {HOME_EQUIPMENT_OPTIONS.map((eq) => {
-                      const on = homeEquipment.includes(eq.id);
-                      return (
-                        <button
-                          key={eq.id}
-                          type="button"
-                          aria-pressed={on}
-                          onClick={() => {
-                            triggerHaptic('light');
-                            setHomeEquipment((prev) => (on ? prev.filter((t) => t !== eq.id) : [...prev, eq.id]));
-                          }}
-                          className="flex items-center font-medium"
-                          style={{
-                            ...choiceStyle(on),
-                            borderRadius: 999,
-                            padding: '0 16px',
-                            gap: 8,
-                            color: on ? 'var(--color-text-primary)' : 'var(--color-text-secondary)',
-                            fontSize: 16,
-                          }}
-                        >
-                          {on && <Check className="w-4 h-4 stroke-[2]" style={{ color: 'var(--wk-accent)' }} aria-hidden="true" />}
-                          {eq.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                  <p style={{ ...optionDetail, marginTop: 8 }}>Nothing at home? Bodyweight workouts still work.</p>
-                </fieldset>
-              )}
-            </div>
-          )}
-
-          <div className="flex-1" />
-
-          {/* Primary action stays at the bottom of the screen */}
-          <div
-            className="sticky bottom-0"
-            style={{
-              padding: '16px 0 max(16px, env(safe-area-inset-bottom))',
-              background: isLast ? 'linear-gradient(180deg, rgb(var(--color-bg-canvas-rgb) / 0) 0%, var(--color-bg-canvas) 35%)' : undefined,
-            }}
-          >
-            <button
-              type="button"
-              onClick={() => (isLast ? finish() : goTo((step + 1) as OnboardingStep))}
-              className="wk-button w-full font-semibold active:scale-[0.98] transition-transform"
-              style={{
-                background: 'var(--color-action-primary-bg)',
-                color: 'var(--color-action-primary-fg)',
-                fontSize: 16,
-              }}
-            >
-              {ctaLabel}
-            </button>
-            {step === 1 && !returning && onExploreDemo && (
-              <button
-                type="button"
-                onClick={() => {
-                  triggerHaptic('light');
-                  onExploreDemo();
-                }}
-                className="w-full font-medium transition-colors"
-                style={{ minHeight: 44, marginTop: 4, fontSize: 16, color: 'var(--color-text-muted)' }}
-              >
-                See a demo with sample data
-              </button>
-            )}
-          </div>
-        </div>
-      </div>
+      {bodyContent}
     </div>
   );
 };
