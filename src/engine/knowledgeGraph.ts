@@ -1224,15 +1224,15 @@ export const TREISE_DESIGN_SYSTEM: DesignSystemComponent[] = [
       typography: 'Object and schema metadata in wk-label (12px/600), wk-body (16px/400), and wk-caption (12px/400) with tabular-nums telemetry',
       colors: 'Read-only live topology in var(--color-status-info); achieved progress edges in var(--color-status-positive); injuries and contraindications in var(--color-status-warning) / var(--color-status-danger)',
       states: {
-        working_state: 'Current app_route plus OouxAthlete, OouxProgram, OouxWorkout, OouxExercise[], and OouxGoal[]',
-        episodic_memory: 'Last 5 completed workouts, recent PRs, stalled lifts (>= 3 flat sessions), and adherence streak days',
+        working_state: 'Current app_route plus OouxAthlete, OouxProgram, OouxWorkout, OouxExercise[] (incl. timed holds & notes), and OouxGoal[]',
+        episodic_memory: 'Last 5 completed workouts, recent ActiveDay[] activities, ExerciseNote[] timeline, recent PRs, stalled lifts, and adherence streak days',
         semantic_memory: 'Persistent AthleteMemoryFact nodes (6 categories) + derived AthleteExerciseEdge contraindications + AthleteKnowledgeGraph edges',
       },
       touchTarget: 'N/A (AI Context Schema & Graph Topology Contract)',
     },
     logic: {
       rules: [
-        'Every AI request builds a live ContextEnvelope (schema_version 1.0) over the 5 OOUX objects (Athlete, Program, Workout, Exercise, Goal) from OOUX_OBJECT_SCHEMAS plus COPE core and physiological entities.',
+        'Every AI request builds a live ContextEnvelope (schema_version 1.0) over the 7 OOUX objects (Athlete, Program, Workout, Exercise, Goal, ActiveDay, ExerciseNote) from OOUX_OBJECT_SCHEMAS plus COPE core and physiological entities.',
         'Store weights internally in kg (OouxExercise.target_weight_kg, bodyweight_kg, training_maxes_kg) and project display strings in weight_unit using one canonical source per metric.',
         'Derive AthleteExerciseEdge (CONTRAINDICATED_WITH, AVOIDS, HIGH_JOINT_STRAIN) deterministically via deriveContraindicationEdges() from saved memories and elevated Knowledge Graph joint strain profiles.',
         'Enforce strict Read-Only vs Mutable boundaries: AI cannot alter historical workouts, completed sets, recovery biometrics, E1RM formulas, or progressive overload weights.',
@@ -1308,6 +1308,36 @@ export const TREISE_DESIGN_SYSTEM: DesignSystemComponent[] = [
     },
     tailwindTokens: 'wk fixed inset-0 z-50 wk-button wk-field wk-pill --color-bg-canvas --wk-card --wk-accent --color-status-positive-soft --color-action-primary-bg',
     rationale: 'Calm, progressive 3-step onboarding grounds habits first, keeps configuration concrete and reversible, and maintains strict opaque full-screen contrast.',
+  },
+  {
+    id: 'ds-info-experience',
+    name: 'Information Experience: Ontology (Objects vs Concepts) & Semiotics Contract',
+    category: 'layout',
+    anatomy: {
+      container: 'Two-layer Information Strategy (Ontology) -> Information Design (Semiotics) specification in Section 09 of DesignSystemApp and contentStrategy.ts',
+      typography: 'Ontology concepts, vocabulary rules, and visibility matrices styled with wk-label, wk-title, wk-body, and wk-caption tokens',
+      colors: 'Canonical terms highlighted with --color-accent-primary; deprecated terms flagged with --color-status-warning / --color-status-danger; suppressed surfaces muted on --wk-raised',
+      states: {
+        ontology: 'CORE_CONCEPTS vs CORE_OBJECT_DEFINITIONS, CONTROLLED_VOCABULARY, and IA_PROGRESS_TAXONOMY',
+        semiotics: 'PRAGMATIC_VISIBILITY_MATRIX across 6 training contexts, BW vs loaded set semantics, Syntactics card grammar, and cross-tab Choreography',
+      },
+      touchTarget: '>= 44px on cross-tab choreography links such as ExerciseCard note history -> Progress Training insights',
+    },
+    logic: {
+      rules: [
+        'Separate abstract organizing Concepts (Scheduled Day, Performance & Standards, Body & Recovery Insights, Plan & Progression) from data-backed Object instances (Workout, ActiveDay, RestDay, Exercise, Set, ExerciseNote, Goal).',
+        'Enforce a single Controlled Vocabulary across UI and AI Coach: locations are Full Gym / At Home / Bodyweight (never Travel); unlifted days read Rest day (never Non-training day); replacements use Swap exercise.',
+        'Separate Training insights (KnowledgeGraphCard + Session notes timeline) as its own top-level Progress surface rather than nesting it under Strength standards.',
+        'Bind Pragmatics visibility strictly per mode (Active Set Logging suppresses Steps card; Future Day Preview suppresses today session & Finish button) and display BW rather than misleading 0 on zero-added-load sets.',
+      ],
+      variants: {
+        strategy: 'Definitions, Relationships, Controlled Vocabulary & IA Taxonomy',
+        semiotics: 'Semantics, Pragmatics Visibility Matrix, Syntactics & Choreography',
+      },
+      accessibility: 'Direct 44px Choreography links connect ExerciseCard notes to Training insights without hiding notes inside Strength standards',
+    },
+    tailwindTokens: 'wk-card wk-raised wk-label wk-title wk-body wk-caption wk-pill --color-accent-primary --color-border-subtle',
+    rationale: 'Treating Ontology and Semiotics as an executable design-system contract prevents vocabulary drift, surface leaks, and disconnected AI mental models.',
   },
 ];
 export const HEADSTRONG_DESIGN_SYSTEM = TREISE_DESIGN_SYSTEM;

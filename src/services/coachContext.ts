@@ -20,7 +20,7 @@ export interface CoachPlace {
   tab: 'train' | 'program' | 'analytics';
   /** On Progress: the goal whose detail is open, or the screen that is open. */
   goalId?: string;
-  detail?: 'bests' | 'lifetime' | 'recent' | 'steps' | 'whoop' | 'weight' | 'measurements' | 'standards' | 'goals' | 'widgets';
+  detail?: 'bests' | 'lifetime' | 'recent' | 'steps' | 'whoop' | 'weight' | 'measurements' | 'insights' | 'standards' | 'goals' | 'widgets';
 }
 
 export interface CoachHook {
@@ -280,6 +280,17 @@ export function buildCoachOpening(input: CoachOpeningInput): CoachOpening {
         { label: direction, text: direction },
         { label: 'How much protein?', text: 'How much protein do I need?' },
         { label: 'How many calories?', text: 'How many calories should I eat?' },
+      ],
+    };
+  }
+  if (place.detail === 'insights') {
+    return {
+      id: 'progress-insights',
+      line: 'Your weekly muscle sets, joint load, recovery insights, and session notes are pulled together here.',
+      hooks: [
+        { label: 'How am I recovering?', text: 'How am I recovering?' },
+        { label: 'Which muscles need sets?', text: 'Which muscles need more sets this week?' },
+        ownGoal,
       ],
     };
   }

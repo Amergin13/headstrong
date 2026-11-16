@@ -161,7 +161,7 @@ export const ExerciseSwapModal: React.FC<ExerciseSwapModalProps> = ({
             </div>
             <div>
               <h3 id="change-exercise-title" className="wk-h1">
-                Change exercise
+                Swap exercise
               </h3>
               <p className="wk-caption mt-1">
                 Alternatives for <strong style={{ color: 'var(--color-text-primary)' }}>{familyLabel}</strong> • Target weight carries over

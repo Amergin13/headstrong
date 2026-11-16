@@ -74,7 +74,7 @@ const CHART_ID_TO_TAPE_SITE: Partial<Record<string, BodyMeasurementSite>> = {
 };
 
 /** The overview, or one of the screens its cards open. */
-type ProgressDetail = 'bests' | 'lifetime' | 'recent' | 'steps' | 'whoop' | 'weight' | 'measurements' | 'standards' | 'goals' | 'widgets';
+type ProgressDetail = 'bests' | 'lifetime' | 'recent' | 'steps' | 'whoop' | 'weight' | 'measurements' | 'insights' | 'standards' | 'goals' | 'widgets';
 
 interface AnalyticsTabProps {
   workouts: WorkoutSession[];
@@ -96,6 +96,9 @@ interface AnalyticsTabProps {
   /** Changes when the "Log Weight" shortcut is used; opens the weigh-in form. */
   openLogWeightRequest?: number;
   onLogWeightRequestHandled?: () => void;
+  /** Opens Training insights (e.g. from an exercise card's last session note). */
+  openInsightsRequest?: { nonce: number; exerciseId?: string } | null;
+  onInsightsRequestHandled?: () => void;
 }
 
 type CompositionView = 'weight' | 'measurements';
@@ -108,6 +111,7 @@ const DETAIL_TITLE: Record<ProgressDetail, string> = {
   whoop: 'Whoop metrics',
   weight: 'Body weight',
   measurements: 'Measurements',
+  insights: 'Training insights',
   standards: 'Strength standards',
   goals: 'Change goals',
   widgets: 'Customize widgets',
@@ -136,8 +140,11 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
   onSaveMeasurements,
   openLogWeightRequest = 0,
   onLogWeightRequestHandled,
+  openInsightsRequest = null,
+  onInsightsRequestHandled,
 }) => {
   const [detail, setDetail] = useState<ProgressDetail | null>(null);
+  const [focusedInsightExerciseId, setFocusedInsightExerciseId] = useState<string | undefined>(undefined);
   const [detailTimeline, setDetailTimeline] = useState<ChartTimeline>(DEFAULT_CHART_TIMELINE);
   /** The goal whose detail is open (a ring was tapped). */
   const [openGoalId, setOpenGoalId] = useState<string | null>(null);
@@ -276,6 +283,15 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
       onLogWeightRequestHandled?.();
     }
   }, [openLogWeightRequest]);
+
+  useEffect(() => {
+    if (openInsightsRequest && openInsightsRequest.nonce > 0) {
+      setOpenGoalId(null);
+      setFocusedInsightExerciseId(openInsightsRequest.exerciseId);
+      setDetail('insights');
+      onInsightsRequestHandled?.();
+    }
+  }, [openInsightsRequest]);
 
   useEffect(() => {
     onContextChange?.({ goalId: openGoalId ?? undefined, detail: openGoalId ? undefined : detail ?? undefined });
@@ -607,6 +623,17 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
           />
         )}
 
+        {detail === 'insights' && (
+          <KnowledgeGraphCard
+            workouts={workouts}
+            biometrics={biometrics}
+            exerciseCatalog={exerciseCatalog}
+            profile={profile}
+            weeklyVolume={weeklyVolume}
+            focusExerciseId={focusedInsightExerciseId}
+          />
+        )}
+
         {detail === 'standards' && (
           <>
             {hasBodyweight ? (
@@ -617,8 +644,17 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
             ) : (
               logWeightPrompt
             )}
-            {/* How progress is worked out, joint load and recovery insights. */}
-            <KnowledgeGraphCard workouts={workouts} biometrics={biometrics} exerciseCatalog={exerciseCatalog} profile={profile} weeklyVolume={weeklyVolume} />
+            <button
+              type="button"
+              onClick={() => {
+                triggerHaptic('light');
+                setFocusedInsightExerciseId(undefined);
+                setDetail('insights');
+              }}
+              className="wk-btn-secondary w-full"
+            >
+              Open training insights &amp; session notes
+            </button>
           </>
         )}
 
@@ -963,6 +999,40 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
                 Start with your waist: it says the most about your fitness. Measure at the navel, first thing in the morning.
               </p>
             )}
+          </OverviewCard>
+        )}
+
+        {hasWidget('insights') && (
+          <OverviewCard
+            title="Training insights"
+            opens="recovery, joint load and session notes"
+            onOpen={() => {
+              setFocusedInsightExerciseId(undefined);
+              setDetail('insights');
+            }}
+          >
+            <StatRow
+              stats={[
+                {
+                  label: 'Recovery',
+                  value: knowledgeGraph.recoveryEfficiencyScore > 0 ? `${knowledgeGraph.recoveryEfficiencyScore}` : 'Ready',
+                  unit: knowledgeGraph.recoveryEfficiencyScore > 0 ? '/100' : undefined,
+                },
+                {
+                  label: 'Full-stretch',
+                  value: `${knowledgeGraph.lengthenedStimulusRatio}%`,
+                },
+                {
+                  label: 'Notes',
+                  value: `${knowledgeGraph.exerciseNotesHistory.length}`,
+                },
+              ]}
+            />
+            <p className="wk-body mt-3 max-w-prose">
+              {knowledgeGraph.exerciseNotesHistory[0]
+                ? `Latest note (${knowledgeGraph.exerciseNotesHistory[0].exerciseName}): "${knowledgeGraph.exerciseNotesHistory[0].note}"`
+                : knowledgeGraph.insights[0]?.narrative || 'Weekly muscle sets, joint load and exercise cues pull together here as you train.'}
+            </p>
           </OverviewCard>
         )}
 

@@ -443,6 +443,7 @@ export type CoreProgressWidgetId =
   | 'steps'
   | 'body-weight'
   | 'measurements'
+  | 'insights'
   | 'strength-standards'
   | 'strength-levels'
   | 'balance'

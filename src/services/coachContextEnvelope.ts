@@ -7,13 +7,14 @@
  * 2. Episodic Memory: last 5 workout summaries, recent PRs, stalled lifts, adherence streak
  * 3. Semantic Memory & Knowledge Graph Edges: persistent athlete attributes & injury/contraindication edges
  */
-import { ActivityLog, activeDayDates } from '../engine/activeDays';
-import { calculateE1RM } from '../engine/e1rm';
+import { ActivityLog, activeDayDates, describeActivity } from '../engine/activeDays';
+import { calculateE1RM, isTimedExercise } from '../engine/e1rm';
 import { buildBodyweightEmaLookup } from '../engine/ema';
 import { AthleteKnowledgeGraph, buildAthleteKnowledgeGraph } from '../engine/knowledgeGraph';
 import { buildPlanOverview, getNextProgramWorkoutNumber, planWorkoutLabel } from '../engine/muscleBuildingProgram';
 import { computeTrainingStreak, getWorkoutCompletedAt } from '../engine/recovery';
 import { resolveActivePlan } from '../engine/trainingPlans';
+import { calculateSessionTonnage } from '../engine/wci';
 import {
   AthleteMemoryCategory,
   AthleteMemoryFact,
@@ -27,6 +28,7 @@ import {
   WorkoutSession,
   WorkoutSet,
 } from '../engine/types';
+import { localDateString } from '../utils/date';
 import { GOAL_DISPLAY_NAME } from '../utils/goalNames';
 import { formatWeight } from '../utils/units';
 import { buildAthleteGoals } from './athleteGoals';
@@ -43,14 +45,17 @@ export interface OouxExercise {
   pillar: string;
   primary_muscle: string;
   equipment: string;
+  is_timed: boolean;
   min_reps: number;
   max_reps: number;
   target_weight_kg: number;
   target_reps: number;
+  target_duration_seconds: number | null;
   target_rir: number;
   completed_sets: number;
   total_sets: number;
   estimated_1rm_kg: number | null;
+  athlete_notes: string | null;
   stalled: boolean;
 }
 
@@ -58,6 +63,7 @@ export interface OouxWorkout {
   id: string;
   name: string;
   split_day: string;
+  day_instance_kind: 'lifting_workout' | 'active_day' | 'rest_day';
   location: TrainingLocation;
   readiness_state: ReadinessState;
   program_workout_number: number | null;
@@ -65,6 +71,23 @@ export interface OouxWorkout {
   completed_sets: number;
   total_sets: number;
   exercises: OouxExercise[];
+}
+
+export interface OouxActiveDay {
+  id: string;
+  date: string;
+  activity_type: string;
+  duration_minutes: number;
+  distance_km: number | null;
+  source: string;
+  summary: string;
+}
+
+export interface OouxExerciseNote {
+  exercise_id: string;
+  exercise_name: string;
+  date: string;
+  note: string;
 }
 
 export interface OouxProgram {
@@ -156,6 +179,8 @@ export interface ContextEnvelope {
   };
   episodic_memory: {
     recent_workouts: EpisodicWorkoutSummary[];
+    recent_active_days: OouxActiveDay[];
+    exercise_notes: OouxExerciseNote[];
     recent_prs: EpisodicPrSummary[];
     stalled_lifts: EpisodicStallSummary[];
     adherence_streak_days: number;
@@ -226,11 +251,12 @@ export const OOUX_OBJECT_SCHEMAS = {
   Workout: {
     type: 'object',
     additionalProperties: false,
-    required: ['id', 'name', 'split_day', 'location', 'readiness_state', 'completed', 'completed_sets', 'total_sets', 'exercises'],
+    required: ['id', 'name', 'split_day', 'day_instance_kind', 'location', 'readiness_state', 'completed', 'completed_sets', 'total_sets', 'exercises'],
     properties: {
       id: { type: 'string' },
       name: { type: 'string' },
       split_day: { type: 'string' },
+      day_instance_kind: { type: 'string', enum: ['lifting_workout', 'active_day', 'rest_day'] },
       location: { type: 'string', enum: ['gym', 'home', 'travel'] },
       readiness_state: { type: 'string', enum: ['Primed', 'Normal', 'Amber Shield'] },
       program_workout_number: { type: ['number', 'null'] },
@@ -243,7 +269,7 @@ export const OOUX_OBJECT_SCHEMAS = {
   Exercise: {
     type: 'object',
     additionalProperties: false,
-    required: ['id', 'exercise_id', 'name', 'pillar', 'primary_muscle', 'equipment', 'min_reps', 'max_reps', 'target_weight_kg', 'target_reps', 'target_rir', 'completed_sets', 'total_sets', 'stalled'],
+    required: ['id', 'exercise_id', 'name', 'pillar', 'primary_muscle', 'equipment', 'is_timed', 'min_reps', 'max_reps', 'target_weight_kg', 'target_reps', 'target_duration_seconds', 'target_rir', 'completed_sets', 'total_sets', 'stalled'],
     properties: {
       id: { type: 'string' },
       exercise_id: { type: 'string' },
@@ -251,14 +277,17 @@ export const OOUX_OBJECT_SCHEMAS = {
       pillar: { type: 'string' },
       primary_muscle: { type: 'string' },
       equipment: { type: 'string' },
+      is_timed: { type: 'boolean' },
       min_reps: { type: 'number' },
       max_reps: { type: 'number' },
       target_weight_kg: { type: 'number' },
       target_reps: { type: 'number' },
+      target_duration_seconds: { type: ['number', 'null'] },
       target_rir: { type: 'number' },
       completed_sets: { type: 'number' },
       total_sets: { type: 'number' },
       estimated_1rm_kg: { type: ['number', 'null'] },
+      athlete_notes: { type: ['string', 'null'] },
       stalled: { type: 'boolean' },
     },
   },
@@ -276,6 +305,31 @@ export const OOUX_OBJECT_SCHEMAS = {
       unit: { type: 'string' },
       progress_pct: { type: 'number', minimum: 0, maximum: 100 },
       achieved: { type: 'boolean' },
+    },
+  },
+  ActiveDay: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['id', 'date', 'activity_type', 'duration_minutes', 'source', 'summary'],
+    properties: {
+      id: { type: 'string' },
+      date: { type: 'string' },
+      activity_type: { type: 'string' },
+      duration_minutes: { type: 'number' },
+      distance_km: { type: ['number', 'null'] },
+      source: { type: 'string' },
+      summary: { type: 'string' },
+    },
+  },
+  ExerciseNote: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['exercise_id', 'exercise_name', 'date', 'note'],
+    properties: {
+      exercise_id: { type: 'string' },
+      exercise_name: { type: 'string' },
+      date: { type: 'string' },
+      note: { type: 'string' },
     },
   },
 } as const;
@@ -456,8 +510,9 @@ export function buildContextEnvelope(input: {
   >();
 
   for (const w of completedWorkouts) {
-    const bw = emaLookup(w.date, bodyweightEmaKg);
+    const bw = hasRealBw ? emaLookup(w.date, bodyweightEmaKg) : 0;
     for (const ex of w.exercises) {
+      if (isTimedExercise(ex)) continue;
       const sets = ex.sets.filter(isDoneWorking);
       if (sets.length === 0) continue;
       let topE1rm = 0;
@@ -534,10 +589,10 @@ export function buildContextEnvelope(input: {
   const unit = profile.weightUnit || 'kg';
   const recentWorkouts: EpisodicWorkoutSummary[] = completedWorkouts.slice(0, 5).map((w) => {
     const doneSets = w.exercises.flatMap((ex) => ex.sets.filter(isDoneWorking));
-    const totalVolumeKg = Math.round(
-      doneSets.reduce((sum, s) => sum + (s.actualWeightKg ?? s.targetWeightKg ?? 0) * (s.actualReps ?? s.targetReps ?? 0), 0)
-    );
+    const bwForDay = hasRealBw ? emaLookup(w.date, bodyweightEmaKg) : 0;
+    const totalVolumeKg = Math.round(calculateSessionTonnage(w, bwForDay).tonnageKg);
     const heaviest = w.exercises
+      .filter((ex) => !isTimedExercise(ex))
       .flatMap((ex) => ex.sets.filter(isDoneWorking).map((s) => ({ name: ex.name, w: s.actualWeightKg ?? s.targetWeightKg ?? 0, r: s.actualReps ?? s.targetReps ?? 0 })))
       .sort((a, b) => b.w - a.w)[0];
     return {
@@ -550,6 +605,26 @@ export function buildContextEnvelope(input: {
       top_lift: heaviest ? `${heaviest.name} ${formatWeight(heaviest.w, unit)}×${heaviest.r}` : null,
     };
   });
+
+  const recentActiveDays: OouxActiveDay[] = [...activities]
+    .sort((a, b) => b.date.localeCompare(a.date))
+    .slice(0, 5)
+    .map((a) => ({
+      id: a.id,
+      date: a.date,
+      activity_type: a.type,
+      duration_minutes: a.minutes,
+      distance_km: a.distanceKm ?? null,
+      source: a.source,
+      summary: describeActivity(a),
+    }));
+
+  const exerciseNotes: OouxExerciseNote[] = (kg.exerciseNotesHistory ?? []).slice(0, 6).map((n) => ({
+    exercise_id: n.exerciseId,
+    exercise_name: n.exerciseName,
+    date: n.date,
+    note: n.note,
+  }));
 
   // Program state (1:1 with ProgramTab)
   const plan = resolveActivePlan(profile);
@@ -585,6 +660,10 @@ export function buildContextEnvelope(input: {
     const done = working.filter((s) => s.completed);
     const first = working[0];
     const def = exById.get(ex.exerciseId);
+    const timed = Boolean(isTimedExercise(ex) || (def && isTimedExercise(def)));
+    const targetDur = timed
+      ? first?.targetDurationSeconds ?? def?.defaultDurationSeconds ?? 45
+      : null;
     return {
       id: ex.id,
       exercise_id: ex.exerciseId,
@@ -592,27 +671,41 @@ export function buildContextEnvelope(input: {
       pillar: ex.pillar,
       primary_muscle: def?.primaryMuscle ?? ex.pillar,
       equipment: ex.equipment,
+      is_timed: timed,
       min_reps: ex.minReps,
       max_reps: ex.maxReps,
       target_weight_kg: first?.targetWeightKg ?? 0,
       target_reps: first?.targetReps ?? ex.minReps,
+      target_duration_seconds: targetDur,
       target_rir: first?.targetRir ?? 2,
       completed_sets: done.length,
       total_sets: working.length,
-      estimated_1rm_kg: trainingMaxesKg[ex.exerciseId] ?? null,
+      estimated_1rm_kg: timed ? null : trainingMaxesKg[ex.exerciseId] ?? null,
+      athlete_notes: ex.athleteNotes?.trim() ? ex.athleteNotes.trim() : null,
       stalled: stalledIds.has(ex.exerciseId),
     };
   });
+
+  const todayDateStr = localDateString();
+  const hasActiveDayToday = activities.some((a) => a.date === todayDateStr);
+  const totalDoneSets = oouxExercises.reduce((sum, e) => sum + e.completed_sets, 0);
+  const dayInstanceKind: OouxWorkout['day_instance_kind'] =
+    activeWorkout.date > todayDateStr && totalDoneSets === 0
+      ? hasActiveDayToday
+        ? 'active_day'
+        : 'rest_day'
+      : 'lifting_workout';
 
   const todayWorkoutObj: OouxWorkout = {
     id: activeWorkout.id,
     name: planWorkoutLabel(activeWorkout.name),
     split_day: activeWorkout.splitDay,
+    day_instance_kind: dayInstanceKind,
     location: activeWorkout.location ?? profile.activeLocation ?? 'gym',
     readiness_state: readinessState,
     program_workout_number: activeWorkout.programWorkoutNumber ?? null,
     completed: activeWorkout.completed,
-    completed_sets: oouxExercises.reduce((sum, e) => sum + e.completed_sets, 0),
+    completed_sets: totalDoneSets,
     total_sets: oouxExercises.reduce((sum, e) => sum + e.total_sets, 0),
     exercises: oouxExercises,
   };
@@ -680,6 +773,8 @@ export function buildContextEnvelope(input: {
     },
     episodic_memory: {
       recent_workouts: recentWorkouts,
+      recent_active_days: recentActiveDays,
+      exercise_notes: exerciseNotes,
       recent_prs: recentPrs.slice(0, 4),
       stalled_lifts: stalledLifts.slice(0, 4),
       adherence_streak_days: streakDays,
@@ -729,11 +824,24 @@ export function serializeContextEnvelopeForPrompt(env: ContextEnvelope): string 
           .join('; ')
       : 'none';
 
+  const activeDaysText =
+    ep.recent_active_days.length > 0
+      ? ep.recent_active_days.slice(0, 3).map((a) => `${a.date} ${a.summary}`).join('; ')
+      : 'none';
+  const notesText =
+    ep.exercise_notes.length > 0
+      ? ep.exercise_notes.slice(0, 4).map((n) => `${n.exercise_name} (${n.date}): "${n.note}"`).join('; ')
+      : 'none';
+  const timedToday = ws.today_workout.exercises
+    .filter((e) => e.is_timed)
+    .map((e) => `${e.name} (${e.target_duration_seconds ?? 45}s hold)`)
+    .join(', ');
+
   return [
-    `Route: ${ws.app_route} | Program completion: ${ws.program.completion_pct}% (${ws.program.completed_workouts}/${ws.program.total_workouts}, Wk ${ws.program.current_week}/${ws.program.total_weeks} Day ${ws.program.current_day_number}).`,
-    `Streak: ${ep.adherence_streak_days}d. Recent 5: ${recentText}.`,
-    `PRs: ${prsText}. Stalled: ${stallText}.`,
-    `Memory: ${memoriesText}. Contraindications: ${contraText}.`,
+    `Route: ${ws.app_route} | Day mode: ${ws.today_workout.day_instance_kind} | Program completion: ${ws.program.completion_pct}% (${ws.program.completed_workouts}/${ws.program.total_workouts}, Wk ${ws.program.current_week}/${ws.program.total_weeks} Day ${ws.program.current_day_number}).`,
+    `Streak: ${ep.adherence_streak_days}d. Recent 5: ${recentText}. Active days: ${activeDaysText}.`,
+    `PRs: ${prsText}. Stalled: ${stallText}.${timedToday ? ` Timed holds today: ${timedToday}.` : ''}`,
+    `Notes: ${notesText}. Memory: ${memoriesText}. Contraindications: ${contraText}.`,
   ].join('\n');
 }
 

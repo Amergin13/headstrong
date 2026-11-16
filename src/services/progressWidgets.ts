@@ -71,6 +71,13 @@ export const PROGRESS_WIDGETS: readonly ProgressWidgetDefinition[] = [
     aliases: ['body measurements', 'measurements', 'measurement', 'tape highlights'],
   },
   {
+    id: 'insights',
+    label: 'Training insights',
+    description: 'Recovery score, joint strain, muscle balance insights and session notes timeline.',
+    defaultEnabled: true,
+    aliases: ['training insights', 'insights', 'knowledge graph', 'session notes', 'joint load', 'recovery insights', 'muscle balance'],
+  },
+  {
     id: 'strength-standards',
     label: 'Strength standards',
     description: 'Strength level radar across your main lifts.',

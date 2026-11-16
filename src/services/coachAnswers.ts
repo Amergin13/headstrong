@@ -740,7 +740,7 @@ export function answerEverydayQuestion(ctx: EverydayContext): string | null {
   if (/\b(cardio|running|runs?|ran|jog\w*|cycling|cycled?|rode|bike|swim\w*|swam|walk(s|ed|ing)?|hik(e|ed|ing)|hiit|conditioning|steps|active days?)\b/.test(msg) && !/\b(lunge|carry|treadmill desk)\b/.test(msg)) {
     // Reporting a session already done: how it gets counted.
     if (/\b(i|we) (just )?(walked|ran|rode|cycled|swam|hiked|did|went)\b/.test(msg) && !/\b(should|can|could)\b/.test(msg)) {
-      return `Nice. A session you set out to do of 20 minutes or more counts as an active day and keeps your streak. If your watch recorded it, it's added by itself; otherwise add it on the Workout tab with "Log a session".`;
+      return `Nice. A session you set out to do of 20 minutes or more counts as an active day and keeps your streak. If your watch recorded it, it's added by itself; otherwise add it on the Workout tab with "Log active day".`;
     }
     const plan = resolveActivePlan(profile);
     const hasActiveDay = plan.templates.some(isActiveSlot);

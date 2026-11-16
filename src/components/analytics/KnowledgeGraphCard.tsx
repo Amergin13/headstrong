@@ -27,6 +27,7 @@ interface KnowledgeGraphCardProps {
   exerciseCatalog: ExerciseDefinition[];
   profile: UserProfile;
   weeklyVolume: Record<string, number>;
+  focusExerciseId?: string;
 }
 
 type InsightTabMode = 'overview' | 'joints' | 'science';
@@ -37,6 +38,7 @@ export const KnowledgeGraphCard: React.FC<KnowledgeGraphCardProps> = ({
   exerciseCatalog,
   profile,
   weeklyVolume,
+  focusExerciseId,
 }) => {
   const pkg = useMemo(
     () =>
@@ -160,25 +162,38 @@ export const KnowledgeGraphCard: React.FC<KnowledgeGraphCardProps> = ({
                 </span>
               </div>
               <ul className="mt-3 space-y-3">
-                {pkg.exerciseNotesHistory.slice(0, 6).map((entry) => (
-                  <li
-                    key={`${entry.workoutId}-${entry.exerciseId}`}
-                    className="pt-2 border-t"
-                    style={{ borderColor: 'var(--color-border-subtle)' }}
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="wk-subhead truncate">
-                        {entry.exerciseName}
-                      </span>
-                      <span className="wk-caption tabular-nums shrink-0">
-                        {entry.date}
-                      </span>
-                    </div>
-                    <p className="wk-body mt-1 max-w-prose">
-                      {entry.note}
-                    </p>
-                  </li>
-                ))}
+                {(() => {
+                  const sortedNotes = focusExerciseId
+                    ? [
+                        ...pkg.exerciseNotesHistory.filter((e) => e.exerciseId === focusExerciseId),
+                        ...pkg.exerciseNotesHistory.filter((e) => e.exerciseId !== focusExerciseId),
+                      ]
+                    : pkg.exerciseNotesHistory;
+                  return sortedNotes.slice(0, 8).map((entry) => {
+                    const isFocused = Boolean(focusExerciseId && entry.exerciseId === focusExerciseId);
+                    return (
+                      <li
+                        key={`${entry.workoutId}-${entry.exerciseId}`}
+                        className="pt-2 border-t"
+                        style={{
+                          borderColor: isFocused ? 'var(--color-accent-primary)' : 'var(--color-border-subtle)',
+                        }}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="wk-subhead truncate">
+                            {entry.exerciseName}
+                          </span>
+                          <span className="wk-caption tabular-nums shrink-0">
+                            {entry.date}
+                          </span>
+                        </div>
+                        <p className="wk-body mt-1 max-w-prose">
+                          {entry.note}
+                        </p>
+                      </li>
+                    );
+                  });
+                })()}
               </ul>
             </div>
           )}

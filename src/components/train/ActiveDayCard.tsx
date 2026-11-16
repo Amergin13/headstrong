@@ -20,7 +20,7 @@ export const ActiveDayCard: React.FC<ActiveDayCardProps> = ({ thisWeek, recent, 
   <section className="wk-card w-full text-left block" aria-labelledby="active-day-title">
     <div className="flex items-start justify-between gap-3">
       <h2 id="active-day-title" className="wk-h1">
-        Activity
+        Active day
       </h2>
       <span
         className="wk-pill shrink-0"
@@ -95,7 +95,7 @@ export const ActiveDayCard: React.FC<ActiveDayCardProps> = ({ thisWeek, recent, 
               border: thisWeek ? '1px solid var(--color-border-strong)' : undefined,
             }}
           >
-            Log a session
+            Log active day
           </button>
         )}
         {onOpenApps && (

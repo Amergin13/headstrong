@@ -136,6 +136,8 @@ interface TrainTabProps {
   onOpenActivityApps?: () => void;
   /** Removes a logged activity by ID. */
   onRemoveActivity?: (id: string) => void;
+  /** Opens Progress -> Training insights (optionally focused on an exercise's notes history). */
+  onOpenInsights?: (exerciseId?: string) => void;
 }
 
 /** Primary muscles each split day trains, used to suggest a recovered alternative. */
@@ -185,6 +187,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
   onLogActivity,
   onOpenActivityApps,
   onRemoveActivity,
+  onOpenInsights,
 }) => {
   const units = useUnits();
   const [swappingExercise, setSwappingExercise] = useState<ExerciseSession | null>(null);
@@ -764,7 +767,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
   const LOCATION_CONFIG: Array<{ id: TrainingLocation; label: string; detail: string }> = [
     { id: 'gym', label: 'Full Gym', detail: 'Barbell, dumbbells & machines' },
     { id: 'home', label: 'At Home', detail: 'Dumbbells, pull-up bar & bands' },
-    { id: 'travel', label: 'Travel', detail: 'Bodyweight only' },
+    { id: 'travel', label: 'Bodyweight', detail: 'No equipment, anywhere' },
   ];
   const activeLocationOption =
     LOCATION_CONFIG.find((l) => l.id === currentLoc) || LOCATION_CONFIG[0];
@@ -1196,9 +1199,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
               <p className="wk-caption mt-1">
                 {!isNonTrainingView && overviewStepDay.status === 'trained'
                   ? 'Training day'
-                  : isRestDayToday && overviewStepDay.isToday
-                  ? 'Rest day'
-                  : 'Non-training day'}
+                  : 'Rest day'}
               </p>
             </div>
             {inspectedDay && (
@@ -1545,6 +1546,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
               bodyweightKg={measuredBodyweightKg}
               lastAthleteNote={lastAthleteNote}
               onUpdateNotes={(notes) => handleUpdateExerciseNotes(ex.id, notes)}
+              onOpenNotesHistory={onOpenInsights ? () => onOpenInsights(ex.exerciseId) : undefined}
               onUpdateSet={(setId, updated) => handleUpdateSet(ex.id, setId, updated)}
               onCompleteSet={(setId) => {
                 const s = ex.sets.find((item) => item.id === setId);

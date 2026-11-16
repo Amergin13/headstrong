@@ -204,12 +204,20 @@ export const VOICE_TONE_MATRIX: {
 // 4. Domain & Structured Content Model (COPE Architecture)
 // ============================================================================
 
-export type CopeCoreObject = 'Athlete' | 'Program' | 'Workout' | 'Exercise' | 'Goal';
+export type CopeCoreObject =
+  | 'Athlete'
+  | 'Program'
+  | 'Workout'
+  | 'Exercise'
+  | 'Set'
+  | 'ExerciseNote'
+  | 'ActiveDay'
+  | 'BiometricReading'
+  | 'Goal';
 export type CopePhysiologicalObject =
   | CopeCoreObject
   | 'Muscle'
   | 'Joint'
-  | 'BiometricReading'
   | 'StrengthStandard';
 
 export interface CopeDomainRelationship {
@@ -223,6 +231,9 @@ export const COPE_DOMAIN_RELATIONSHIPS: CopeDomainRelationship[] = [
   { from: 'Athlete', to: 'Program', cardinality: '1:many' },
   { from: 'Program', to: 'Workout', cardinality: '1:many' },
   { from: 'Workout', to: 'Exercise', cardinality: 'many:many' },
+  { from: 'Athlete', to: 'ActiveDay', cardinality: '1:many' },
+  { from: 'Exercise', to: 'Set', cardinality: '1:many' },
+  { from: 'Exercise', to: 'ExerciseNote', cardinality: '1:many' },
 ];
 
 export interface CopePhysiologicalRelationship {
@@ -237,6 +248,229 @@ export const COPE_PHYSIOLOGICAL_RELATIONSHIPS: CopePhysiologicalRelationship[] =
   { from: 'Exercise', to: 'Muscle', cardinality: 'many:many' },
   { from: 'Exercise', to: 'Joint', cardinality: 'many:many' },
   { from: 'BiometricReading', to: 'Workout', cardinality: '1:many' },
+];
+
+/**
+ * Single Controlled Vocabulary across UI surfaces, AI Coach prompts, and Design System specs.
+ * Eliminates cross-screen drift (e.g. "Travel" vs "Bodyweight", "Non-training day" vs "Rest day",
+ * "Change exercise" vs "Swap exercise", "Log a session" vs "Log active day").
+ */
+export const CONTROLLED_VOCABULARY = {
+  locations: {
+    gym: { label: 'Full Gym', onboardingLabel: 'Gym', detail: 'Barbell, dumbbells & machines' },
+    home: { label: 'At Home', onboardingLabel: 'Home', detail: 'Dumbbells, pull-up bar & bands' },
+    travel: { label: 'Bodyweight', onboardingLabel: 'Bodyweight', detail: 'No equipment, anywhere' },
+  },
+  dayInstances: {
+    workout: 'Workout',
+    activeDay: 'Active day',
+    restDay: 'Rest day',
+    plannedRestDay: 'Planned rest day',
+    restDayLogged: 'Rest day logged',
+  },
+  actions: {
+    swapExercise: 'Swap exercise',
+    logActiveDay: 'Log active day',
+    finishWorkout: 'Finish workout',
+    trainTodayInstead: 'Train today instead',
+  },
+  deprecatedTerms: ['Travel', 'Non-training day', 'Log a session', 'Change exercise'] as const,
+} as const;
+
+export interface ConceptDefinitionSpec {
+  concept: string;
+  mentalModelRole: string;
+  objectInstances: string[];
+  navigationSurface: string;
+}
+
+/**
+ * Ontology Layer: Abstract organizing Concepts vs. Tangible Data Objects.
+ * Objects are concrete instances of Concepts; Concepts organize navigation and mental models.
+ */
+export const CORE_CONCEPTS: ConceptDefinitionSpec[] = [
+  {
+    concept: 'Scheduled Day',
+    mentalModelRole: 'What fills any calendar slot on the 7-day strip or Program cadence',
+    objectInstances: ['Workout (WorkoutSession)', 'ActiveDay (ActivityLog)', 'RestDay'],
+    navigationSurface: 'Workout 7-day strip & Program cadence',
+  },
+  {
+    concept: 'Performance & Standards',
+    mentalModelRole: 'Measured strength outputs, personal bests, and published benchmarks',
+    objectInstances: ['Workout', 'Exercise', 'Set', 'StrengthStandard'],
+    navigationSurface: 'Progress -> Performance & standards',
+  },
+  {
+    concept: 'Body & Recovery Insights',
+    mentalModelRole: 'Physiological readiness, muscle/joint load, body composition, and session cues',
+    objectInstances: ['BiometricReading', 'ExerciseNote', 'Muscle', 'Joint'],
+    navigationSurface: 'Progress -> Training insights & Body weight',
+  },
+  {
+    concept: 'Plan & Progression',
+    mentalModelRole: 'Structured mesocycle phases, exercise templates, and athlete targets',
+    objectInstances: ['Program', 'ExerciseDefinition', 'Goal'],
+    navigationSurface: 'Program & Onboarding setup',
+  },
+];
+
+export interface ObjectDefinitionSpec {
+  objectName: string;
+  backingType: string;
+  parentConcept: string;
+  summary: string;
+  keyAttributes: string[];
+}
+
+export const CORE_OBJECT_DEFINITIONS: ObjectDefinitionSpec[] = [
+  {
+    objectName: 'Athlete',
+    backingType: 'UserProfile + BiometricLog',
+    parentConcept: 'Body & Recovery Insights',
+    summary: 'Profile, unit preference, logged bodyweight EMA, home gear, and coach memories.',
+    keyAttributes: ['weightUnit', 'activeLocation', 'homeEquipment', 'goalPhase', 'athleteMemories'],
+  },
+  {
+    objectName: 'Program',
+    backingType: 'TrainingPlan / ProgramSplitType',
+    parentConcept: 'Plan & Progression',
+    summary: 'Multi-week hypertrophy plan or split with phase intent and weekly cadence.',
+    keyAttributes: ['id', 'workoutsPerWeek', 'weeks', 'phases', 'templates'],
+  },
+  {
+    objectName: 'Workout',
+    backingType: 'WorkoutSession',
+    parentConcept: 'Scheduled Day',
+    summary: 'Timestamped lifting session in Gym, Home, or Bodyweight mode.',
+    keyAttributes: ['date', 'location', 'completed', 'exercises', 'measuredDurationMinutes'],
+  },
+  {
+    objectName: 'ActiveDay',
+    backingType: 'ActivityLog',
+    parentConcept: 'Scheduled Day',
+    summary: 'Non-lifting activity >= 20 min (run, walk, ride, swim, class) counting toward cadence.',
+    keyAttributes: ['date', 'type', 'durationMinutes', 'distanceKm', 'source'],
+  },
+  {
+    objectName: 'RestDay',
+    backingType: 'StripDay (status: rest)',
+    parentConcept: 'Scheduled Day',
+    summary: 'Recovery day without lifting load—either planned in cadence or logged when deferred.',
+    keyAttributes: ['date', 'plannedSession', 'recoveryOverride'],
+  },
+  {
+    objectName: 'Exercise',
+    backingType: 'ExerciseDefinition + ExerciseSession',
+    parentConcept: 'Plan & Progression',
+    summary: 'Biomechanical movement pattern instantiated in a session with live progress chart & notes.',
+    keyAttributes: ['exerciseId', 'equipment', 'isTimed', 'sets', 'athleteNotes'],
+  },
+  {
+    objectName: 'Set',
+    backingType: 'WorkoutSet',
+    parentConcept: 'Performance & Standards',
+    summary: 'Single working or warmup bout recording external load + reps or timed hold seconds.',
+    keyAttributes: ['setType', 'weightKg (BW vs added)', 'reps / durationSeconds', 'rir', 'completed'],
+  },
+  {
+    objectName: 'ExerciseNote',
+    backingType: 'ExerciseSession.athleteNotes',
+    parentConcept: 'Body & Recovery Insights',
+    summary: 'Persistent setup cue or feel observation ingested longitudinally by the Knowledge Graph.',
+    keyAttributes: ['exerciseId', 'date', 'note', 'linkedInsight'],
+  },
+  {
+    objectName: 'Goal',
+    backingType: 'GoalSettings / CustomGoal',
+    parentConcept: 'Plan & Progression',
+    summary: 'Process or outcome target computed strictly from logged sessions and weigh-ins.',
+    keyAttributes: ['kind', 'metric', 'current', 'target', 'progressPct'],
+  },
+];
+
+export interface PragmaticContextSpec {
+  mode: 'active_workout' | 'recovery_wait' | 'rest_day' | 'future_preview' | 'past_inspection' | 'post_session';
+  label: string;
+  shownSurfaces: string[];
+  suppressedSurfaces: string[];
+  semioticNote: string;
+}
+
+/**
+ * Semiotics -> Pragmatics Visibility Matrix: defines what renders vs suppresses per training context.
+ */
+export const PRAGMATIC_VISIBILITY_MATRIX: PragmaticContextSpec[] = [
+  {
+    mode: 'active_workout',
+    label: 'Active Set Logging (Today)',
+    shownSurfaces: ['Session header card', 'Exercise cards (2-line brief, live chart, Set matrix, Session notes)', 'Finish workout CTA'],
+    suppressedSurfaces: ['Today step count card', 'ActiveDay cardio prompt', 'Example fake chart data'],
+    semioticNote: 'Pure bodyweight / timed zero-added-load sets display BW; completed blocks animate Starting point immediately.',
+  },
+  {
+    mode: 'recovery_wait',
+    label: 'Recovery Gate (Same-Day / Soreness)',
+    shownSurfaces: ['Recovery readiness card', 'Recovered alternative split CTA', 'Train anyway override', 'Active day & Steps card'],
+    suppressedSurfaces: ['Active set matrix until Train anyway or alternate split selected'],
+    semioticNote: 'Prevents premature tissue stress; Train anyway transitions directly into Active Logging.',
+  },
+  {
+    mode: 'rest_day',
+    label: 'Rest Day / Active Recovery Today',
+    shownSurfaces: ['Rest day logged / status card', 'Active day logger', 'Steps card'],
+    suppressedSurfaces: ['Empty exercise set inputs'],
+    semioticNote: 'Always labeled "Rest day" / "Rest day logged", never "Non-training day".',
+  },
+  {
+    mode: 'future_preview',
+    label: 'Future Day Toggle (7-Day Strip)',
+    shownSurfaces: ['Upcoming training day preview (read-only exercises & sets)' , 'Planned rest day card', 'Back to today CTA'],
+    suppressedSurfaces: ['Today active workout exercises', 'Finish workout button', 'Today step count', 'Active day logger'],
+    semioticNote: 'Strictly projects upcoming plan schedule rather than leaking today\'s active session.',
+  },
+  {
+    mode: 'past_inspection',
+    label: 'Past Day Toggle (7-Day Strip)',
+    shownSurfaces: ['Completed session summary & read-only exercise cards', 'Rest day card if unlifted', 'Steps on that date'],
+    suppressedSurfaces: ['Active logging inputs', 'Finish workout button'],
+    semioticNote: 'Unlifted past days read cleanly as "Rest day".',
+  },
+  {
+    mode: 'post_session',
+    label: 'Post-Session Reflection & Progress',
+    shownSurfaces: ['WorkoutFinishScreen highlights & notes', 'Progress -> Training insights (KnowledgeGraph & Session notes timeline)', 'Strength standards'],
+    suppressedSurfaces: ['Standards level claims without logged bodyweight or published tables'],
+    semioticNote: 'Tapping an exercise note links cleanly into Progress -> Training insights.',
+  },
+];
+
+export interface ProgressTaxonomyGroup {
+  id: 'performance' | 'body_recovery' | 'goals';
+  label: string;
+  widgetIds: string[];
+  description: string;
+}
+
+export const IA_PROGRESS_TAXONOMY: ProgressTaxonomyGroup[] = [
+  {
+    id: 'goals',
+    label: 'Goals & Adherence',
+    widgetIds: ['goals'],
+    description: 'Weekly session cadence, outcome targets, and pace against goal.',
+  },
+  {
+    id: 'performance',
+    label: 'Performance & Standards',
+    widgetIds: ['trophy-case', 'lifetime-stats', 'recent-stats', 'strength-standards', 'strength-levels', 'balance'],
+    description: 'Tested and estimated 1RM benchmarks, tonnage, and bilateral/structural balance.',
+  },
+  {
+    id: 'body_recovery',
+    label: 'Body, Recovery & Insights',
+    widgetIds: ['insights', 'body-weight', 'measurements', 'steps', 'whoop-summary'],
+    description: 'Weekly muscle set volume, joint load, Knowledge Graph causal insights, Session notes timeline, and biometrics.',
+  },
 ];
 
 export interface CopeProgramChunk {
@@ -263,6 +497,8 @@ export interface CopeSetMatrixRow {
   Weight: number;
   Reps: number;
   RIR: number;
+  mode?: 'reps' | 'timed';
+  durationSeconds?: number;
 }
 
 export interface CopeExerciseChunk {
@@ -274,6 +510,8 @@ export interface CopeExerciseChunk {
   Session_Stimulus_Rule: string;
   Tempo_Cue: string | null;
   Rest_Seconds: number;
+  Is_Timed?: boolean;
+  Athlete_Notes?: string | null;
   Set_Matrix: CopeSetMatrixRow[];
 }
 
@@ -677,6 +915,8 @@ const BANNED_CHEERLEADING_AND_JARGON: { pattern: RegExp; reason: string }[] = [
     reason: 'Judgmental framing of missed or early training',
   },
   { pattern: /\b(?:OOUX|Canonical Vector|SFR)\b/, reason: 'Internal architectural jargon leak' },
+  { pattern: /\bNon-training day\b/i, reason: 'Drifted rest-day terminology (use "Rest day")' },
+  { pattern: /\bTravel mode\b/i, reason: 'Drifted location terminology (use "Bodyweight mode")' },
 ];
 
 /**

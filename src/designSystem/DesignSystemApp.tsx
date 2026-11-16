@@ -74,7 +74,7 @@ const SECTIONS = [
 ] as const;
 
 const OOUX_MUTATION_RULES: Record<
-  'Athlete' | 'Program' | 'Workout' | 'Exercise' | 'Goal',
+  'Athlete' | 'Program' | 'Workout' | 'Exercise' | 'Goal' | 'ActiveDay' | 'ExerciseNote',
   {
     mutableVia: string;
     mutableFields: string;
@@ -94,17 +94,27 @@ const OOUX_MUTATION_RULES: Record<
   Workout: {
     mutableVia: 'swap_exercise & adjust_workout_volume (uncompleted sets only)',
     mutableFields: 'uncompleted exercises[], uncompleted set count/load modifiers',
-    readOnlyFields: 'completed, completed_sets, readiness_state, logged workout history',
+    readOnlyFields: 'completed, completed_sets, day_instance_kind, readiness_state, logged workout history',
   },
   Exercise: {
     mutableVia: 'swap_exercise & adjust_workout_volume (uncompleted sets)',
-    mutableFields: 'exercise swap target, uncompleted set count / deload modifier',
-    readOnlyFields: 'estimated_1rm_kg, stalled flag, double-progression weights (changesPlanWeight)',
+    mutableFields: 'exercise swap target, uncompleted set count / deload modifier, athleteNotes',
+    readOnlyFields: 'is_timed, target_duration_seconds, estimated_1rm_kg, stalled flag, double-progression weights',
   },
   Goal: {
     mutableVia: 'Explicit goal actions (CustomGoal, GoalSettings)',
     mutableFields: 'strengthFocus, customGoals[] (target & exercise selection)',
     readOnlyFields: 'current, progress_pct, achieved (buildAthleteGoals / describeGoalStanding)',
+  },
+  ActiveDay: {
+    mutableVia: 'Log active day / Strava / Fitbit / Health Connect sync',
+    mutableFields: 'activity_type, duration_minutes, distance_km, date',
+    readOnlyFields: 'source attribution, workoutsPerWeek adherence rollover',
+  },
+  ExerciseNote: {
+    mutableVia: 'ExerciseCard Session notes open input (immediately persisted)',
+    mutableFields: 'note text per active workout exercise',
+    readOnlyFields: 'historical dates, longitudinal Knowledge Graph fatigue/discomfort insight mining',
   },
 };
 
@@ -2062,19 +2072,164 @@ export const DesignSystemContent: React.FC<{
         <section id="ai-context" className="space-y-6 scroll-mt-32">
           <div className="border-b pb-3" style={{ borderColor: 'var(--color-border-subtle)' }}>
             <span className="wk-label">
-              09 · Knowledge Graph &amp; AI Object Context
+              09 · Information Experience, Knowledge Graph &amp; AI Object Context
             </span>
             <h2 className="wk-title mt-1">
-              OOUX domain schemas, KG topology, 3-tier ContextEnvelope &amp; grounding gates
+              Information Strategy (Ontology) → Information Design (Semiotics) &amp; AI Grounding
             </h2>
             <p className="wk-body mt-1 max-w-prose">
-              Live architectural contract governing what objects Treise can read, derive, explain, or mutate via{' '}
-              <code>coachContextEnvelope.ts</code>, <code>knowledgeGraph.ts</code>, <code>coachTools.ts</code>,{' '}
-              <code>coachContext.ts</code>, and the 5-surface verification filters.
+              Single architectural contract shared by Treise screens,{' '}
+              <code>contentStrategy.ts</code>, <code>coachContextEnvelope.ts</code>,{' '}
+              <code>knowledgeGraph.ts</code>, and <code>coachTools.ts</code>.
             </p>
           </div>
 
-          {/* 8A. COPE Ontology + OOUX Domain Schemas & Mutation Boundary */}
+          {/* 9A. Information Strategy (Ontology): Objects vs Concepts, Controlled Vocabulary & Taxonomy */}
+          <div className="space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <Layers className="w-4 h-4 shrink-0" style={{ color: 'var(--color-accent-primary)' }} aria-hidden="true" />
+                <h3 className="wk-title">09A · Information Strategy (Ontology: Concepts, Objects &amp; Vocabulary)</h3>
+              </div>
+              <span className="wk-pill">ds-info-experience</span>
+            </div>
+
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {/* Objects vs Concepts */}
+              <div className="wk-card space-y-3 min-w-0" style={{ border: '1px solid var(--color-border-subtle)' }}>
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <span className="wk-label" style={{ color: 'var(--color-accent-primary)' }}>
+                      Ontology
+                    </span>
+                    <h4 className="wk-title mt-1">Concepts → Object Instances</h4>
+                  </div>
+                  <span className="wk-pill">{fixtures.coreConcepts.length} concepts</span>
+                </div>
+                <p className="wk-caption max-w-prose">
+                  Concepts organize mental models and navigation; Objects are data-backed instances stored and acted upon.
+                </p>
+                <ul className="space-y-2 pt-2 border-t" style={{ borderColor: 'var(--color-border-subtle)' }}>
+                  {fixtures.coreConcepts.map((c) => (
+                    <li key={c.concept} className="wk-raised space-y-1">
+                      <div className="wk-subhead">{c.concept}</div>
+                      <div className="wk-caption" style={{ color: 'var(--color-text-muted)' }}>
+                        {c.navigationSurface}
+                      </div>
+                      <p className="wk-caption" style={{ color: 'var(--color-text-secondary)' }}>
+                        Instances: {c.objectInstances.join(' · ')}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+
+              {/* Controlled Vocabulary */}
+              <div className="wk-card space-y-3 min-w-0" style={{ border: '1px solid var(--color-border-subtle)' }}>
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <span className="wk-label" style={{ color: 'var(--color-status-info)' }}>
+                      Definitions
+                    </span>
+                    <h4 className="wk-title mt-1">Controlled Vocabulary</h4>
+                  </div>
+                  <span className="wk-pill">Single Source</span>
+                </div>
+                <p className="wk-caption max-w-prose">
+                  Canonical nouns and action labels enforced across Onboarding, Workout, Progress, and AI Coach replies.
+                </p>
+                <div className="space-y-2 pt-2 border-t wk-caption" style={{ borderColor: 'var(--color-border-subtle)' }}>
+                  <div>
+                    <span className="wk-label block mb-1">Locations</span>
+                    <span style={{ color: 'var(--color-text-primary)' }}>
+                      {fixtures.controlledVocabulary.locations.gym.label} · {fixtures.controlledVocabulary.locations.home.label} · {fixtures.controlledVocabulary.locations.travel.label}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="wk-label block mb-1">Scheduled Day Instances</span>
+                    <span style={{ color: 'var(--color-text-primary)' }}>
+                      {fixtures.controlledVocabulary.dayInstances.workout} · {fixtures.controlledVocabulary.dayInstances.activeDay} · {fixtures.controlledVocabulary.dayInstances.restDay}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="wk-label block mb-1">Canonical Actions</span>
+                    <span style={{ color: 'var(--color-text-primary)' }}>
+                      {fixtures.controlledVocabulary.actions.swapExercise} · {fixtures.controlledVocabulary.actions.logActiveDay} · {fixtures.controlledVocabulary.actions.finishWorkout}
+                    </span>
+                  </div>
+                  <div className="pt-1 border-t" style={{ borderColor: 'var(--color-border-subtle)', color: 'var(--color-status-warning)' }}>
+                    Retired drift: {fixtures.controlledVocabulary.deprecatedTerms.join(', ')}
+                  </div>
+                </div>
+              </div>
+
+              {/* Progress Taxonomy */}
+              <div className="wk-card space-y-3 min-w-0" style={{ border: '1px solid var(--color-border-subtle)' }}>
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <span className="wk-label" style={{ color: 'var(--color-status-positive)' }}>
+                      Taxonomy
+                    </span>
+                    <h4 className="wk-title mt-1">Progress IA Grouping</h4>
+                  </div>
+                  <span className="wk-pill">{fixtures.iaProgressTaxonomy.length} groups</span>
+                </div>
+                <p className="wk-caption max-w-prose">
+                  Separates Training insights (Knowledge Graph &amp; Session notes timeline) from Strength standards so mental models match destinations.
+                </p>
+                <ul className="space-y-2 pt-2 border-t" style={{ borderColor: 'var(--color-border-subtle)' }}>
+                  {fixtures.iaProgressTaxonomy.map((grp) => (
+                    <li key={grp.id} className="wk-raised space-y-1">
+                      <div className="wk-subhead">{grp.label}</div>
+                      <p className="wk-caption" style={{ color: 'var(--color-text-secondary)' }}>
+                        {grp.description}
+                      </p>
+                      <div className="wk-caption tabular-nums" style={{ color: 'var(--color-text-muted)' }}>
+                        Widgets: {grp.widgetIds.join(', ')}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          </div>
+
+          {/* 9B. Information Design (Semiotics): Pragmatics Matrix, Semantics & Choreography */}
+          <div className="space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <SlidersHorizontal className="w-4 h-4 shrink-0" style={{ color: 'var(--color-status-positive)' }} aria-hidden="true" />
+                <h3 className="wk-title">09B · Information Design (Semiotics: Pragmatics, Semantics &amp; Choreography)</h3>
+              </div>
+              <span className="wk-pill">{fixtures.pragmaticVisibilityMatrix.length} contexts</span>
+            </div>
+
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {fixtures.pragmaticVisibilityMatrix.map((ctx) => (
+                <article
+                  key={ctx.mode}
+                  className="wk-card space-y-2 min-w-0"
+                  style={{ border: '1px solid var(--color-border-subtle)' }}
+                >
+                  <span className="wk-label" style={{ color: 'var(--color-status-info)' }}>
+                    Pragmatics · {ctx.mode}
+                  </span>
+                  <h4 className="wk-title">{ctx.label}</h4>
+                  <div className="wk-caption" style={{ color: 'var(--color-text-primary)' }}>
+                    <span className="font-semibold">Shown:</span> {ctx.shownSurfaces.join(' · ')}
+                  </div>
+                  <div className="wk-caption" style={{ color: 'var(--color-text-muted)' }}>
+                    <span className="font-semibold">Suppressed:</span> {ctx.suppressedSurfaces.join(' · ')}
+                  </div>
+                  <p className="wk-caption pt-2 border-t" style={{ borderColor: 'var(--color-border-subtle)', color: 'var(--color-text-secondary)' }}>
+                    {ctx.semioticNote}
+                  </p>
+                </article>
+              ))}
+            </div>
+          </div>
+
+          {/* 9C. COPE Ontology + All OOUX Domain Schemas & Mutation Boundary */}
           <div className="space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-2">
@@ -2107,7 +2262,7 @@ export const DesignSystemContent: React.FC<{
                   <ul className="space-y-1">
                     {fixtures.copeDomainRelationships.map((rel) => (
                       <li key={`${rel.from}-${rel.to}`} className="flex items-center justify-between gap-2 wk-caption">
-                        <code className="text-white">
+                        <code style={{ color: 'var(--color-text-primary)' }}>
                           {rel.from} → {rel.to}
                         </code>
                         <span style={{ color: 'var(--color-text-muted)' }}>{rel.cardinality}</span>
@@ -2120,7 +2275,7 @@ export const DesignSystemContent: React.FC<{
                   <ul className="space-y-1">
                     {fixtures.copePhysiologicalRelationships.map((rel) => (
                       <li key={`${rel.from}-${rel.to}`} className="flex items-center justify-between gap-2 wk-caption">
-                        <code className="text-white">
+                        <code style={{ color: 'var(--color-text-primary)' }}>
                           {rel.from} → {rel.to}
                         </code>
                         <span style={{ color: 'var(--color-text-muted)' }}>{rel.cardinality}</span>
@@ -2133,7 +2288,10 @@ export const DesignSystemContent: React.FC<{
               {/* Dynamic OOUX_OBJECT_SCHEMAS cards */}
               {(
                 Object.entries(fixtures.oouxSchemas) as Array<
-                  ['Athlete' | 'Program' | 'Workout' | 'Exercise' | 'Goal', (typeof fixtures.oouxSchemas)['Athlete']]
+                  [
+                    'Athlete' | 'Program' | 'Workout' | 'Exercise' | 'Goal' | 'ActiveDay' | 'ExerciseNote',
+                    (typeof fixtures.oouxSchemas)['Athlete'],
+                  ]
                 >
               ).map(([objectName, schema]) => {
                 const boundary = OOUX_MUTATION_RULES[objectName];

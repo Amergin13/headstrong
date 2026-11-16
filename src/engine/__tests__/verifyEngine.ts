@@ -936,9 +936,9 @@ assert(
   !exerciseCardSrc.includes('implementOptions') &&
     !exerciseCardSrc.includes('onSwitchImplement') &&
     !exerciseCardSrc.includes('Equipment:') &&
-    (exerciseCardSrc.match(/Change exercise/gi) || []).length === 1 &&
-    swapModalSrc.includes('Change exercise'),
-  `ExerciseCard has 1 single "Change Exercise" entry point and zero duplicate inline Equipment carousels`
+    (exerciseCardSrc.match(/Swap exercise/gi) || []).length === 1 &&
+    swapModalSrc.includes('Swap exercise'),
+  `ExerciseCard has 1 single "Swap exercise" entry point and zero duplicate inline Equipment carousels`
 );
 
 assert(
@@ -946,7 +946,7 @@ assert(
     !trainTabSrc.includes('Adjust Gear / Split') &&
     trainTabSrc.includes('Full Gym') &&
     trainTabSrc.includes('At Home') &&
-    (trainTabSrc.includes('Bodyweight') || trainTabSrc.includes('Travel')),
+    trainTabSrc.includes('Bodyweight'),
   `TrainTab has 1 single canonical Equipment Location bar (Full Gym | At Home | Bodyweight) with no duplicate inline gear/split drawers`
 );
 
@@ -7676,7 +7676,13 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
     );
 
     // 4. COPE Domain Model & Channel Reuse (Mobile/PWA vs. Pixel Watch Companion)
-    assert(cs.COPE_DOMAIN_RELATIONSHIPS.length === 4, 'COPE OOUX domain relationships link Athlete, Goal, Program, Workout, and Exercise');
+    assert(
+      cs.COPE_DOMAIN_RELATIONSHIPS.length >= 7 &&
+        cs.COPE_DOMAIN_RELATIONSHIPS.some((r) => r.to === 'ActiveDay') &&
+        cs.COPE_DOMAIN_RELATIONSHIPS.some((r) => r.to === 'Set') &&
+        cs.COPE_DOMAIN_RELATIONSHIPS.some((r) => r.to === 'ExerciseNote'),
+      'COPE OOUX domain relationships link Athlete, Goal, Program, Workout, Exercise, Set, ExerciseNote, and ActiveDay'
+    );
     const sampleW = generate6WeekMuscleBuildingWorkout(1, 80);
     const sampleEx = sampleW.exercises[2]; // Guillotine press
     const goalChunk = cs.buildCopeGoalChunk({
@@ -9840,7 +9846,7 @@ Exercise,,Date,Workout,Sets,Reps,Tempo,Rest,Notes,Set 1,Set 2,Set 3,Set 4
     );
 
     const promptStr = buildPrompt50({ ...baseCoachInput, userMessage: 'How should I pace this week?' });
-    assert(promptStr.includes('age 34') && promptStr.includes('location gym'), 'Coach system prompt includes athlete age and active location');
+    assert(promptStr.includes('age 34') && promptStr.includes('location Full Gym'), 'Coach system prompt includes athlete age and canonical active location');
 
     // D. Summary guards: no phantom BW jump on calisthenics, dynamic plan weeks, non-sparse custom targets
     const chinExDef = SEED_EXERCISES.find((e) => e.id === 'chin-up') || SEED_EXERCISES[0];
@@ -11089,7 +11095,210 @@ Exercise,,Date,Workout,Sets,Reps,Tempo,Rest,Notes,Set 1,Set 2,Set 3,Set 4
     );
   }
 
-  console.log('\nALL 53 ENGINE, GOVERNANCE, DESIGN SYSTEM, TYPOGRAPHY, WEARABLES, WHOOP STRAIN, GOOGLE AUTH, ONBOARDING CONTEXT, 6-WEEK PROGRAM, SPREADSHEET IMPORT, AI COACH ACTIONS, GEMINI FLASH + KG, OOUX, AGENTIC COACH, PRODUCT UPGRADES & LAUNCH VERIFICATION SUITES PASSED SUCCESSFULLY! 🎯');
+  // Suite 54: Information Experience (Ontology -> Semiotics), Unified Vocabulary, Progress IA & AI Object Grounding
+  {
+    console.log('\n[Suite 54: Information Experience (Ontology -> Semiotics), Controlled Vocabulary & AI Object Continuity]');
+    const fs54 = await import('fs');
+    const path54 = await import('path');
+    const repo54 = process.cwd();
+    const cs54 = await import('../contentStrategy');
+    const {
+      OOUX_OBJECT_SCHEMAS: schemas54,
+      buildContextEnvelope: buildEnv54,
+      serializeContextEnvelopeForPrompt: serializeEnv54,
+    } = await import('../../services/coachContextEnvelope');
+    const { PROGRESS_WIDGETS: widgets54 } = await import('../../services/progressWidgets');
+    const { buildCoachOpening: opening54 } = await import('../../services/coachContext');
+    const { buildCoachSystemPrompt: buildSys54 } = await import('../../services/aiAssistantService');
+
+    // 1. Controlled Vocabulary & Ontology specs
+    assert(
+      cs54.CONTROLLED_VOCABULARY.locations.travel.label === 'Bodyweight' &&
+        cs54.CONTROLLED_VOCABULARY.actions.swapExercise === 'Swap exercise' &&
+        cs54.CONTROLLED_VOCABULARY.actions.logActiveDay === 'Log active day' &&
+        cs54.CORE_CONCEPTS.some((c) => c.concept === 'Scheduled Day' && c.objectInstances.length === 3) &&
+        cs54.CORE_OBJECT_DEFINITIONS.some((o) => o.objectName === 'ActiveDay') &&
+        cs54.CORE_OBJECT_DEFINITIONS.some((o) => o.objectName === 'ExerciseNote') &&
+        cs54.PRAGMATIC_VISIBILITY_MATRIX.length >= 6 &&
+        cs54.IA_PROGRESS_TAXONOMY.some((g) => g.widgetIds.includes('insights')),
+      'Information Strategy defines Controlled Vocabulary, Objects vs Concepts, IA Progress Taxonomy, and 6 Pragmatic contexts'
+    );
+    assert(
+      !cs54.runReadAloudQaGate('Sunday was a Non-training day').passed &&
+        !cs54.runReadAloudQaGate('Switch to Travel mode for push-ups').passed,
+      'Read-Aloud QA gate catches drifted Non-training day and Travel mode copy'
+    );
+
+    // 2. UI Controlled Vocabulary & Semiotics consistency (no Travel / Non-training day / Log a session drift)
+    const trainSrc54 = fs54.readFileSync(path54.join(repo54, 'src/components/train/TrainTab.tsx'), 'utf8');
+    const swapSrc54 = fs54.readFileSync(path54.join(repo54, 'src/components/train/ExerciseSwapModal.tsx'), 'utf8');
+    const cardSrc54 = fs54.readFileSync(path54.join(repo54, 'src/components/train/ExerciseCard.tsx'), 'utf8');
+    const setRowSrc54 = fs54.readFileSync(path54.join(repo54, 'src/components/train/SetRow.tsx'), 'utf8');
+    const activeDaySrc54 = fs54.readFileSync(path54.join(repo54, 'src/components/train/ActiveDayCard.tsx'), 'utf8');
+    const coachAnsSrc54 = fs54.readFileSync(path54.join(repo54, 'src/services/coachAnswers.ts'), 'utf8');
+    assert(
+      !trainSrc54.includes("label: 'Travel'") &&
+        !trainSrc54.includes('Non-training day') &&
+        swapSrc54.includes('Swap exercise') &&
+        !swapSrc54.includes('Change exercise') &&
+        cardSrc54.includes('Swap exercise from') &&
+        cardSrc54.includes('onOpenNotesHistory') &&
+        activeDaySrc54.includes('Active day') &&
+        activeDaySrc54.includes('Log active day') &&
+        !activeDaySrc54.includes('Log a session') &&
+        !coachAnsSrc54.includes('Log a session') &&
+        setRowSrc54.includes("placeholder={showBwToken ? 'BW' : undefined}"),
+      'UI components & Coach answers enforce single Controlled Vocabulary, BW set semiotics, and notes choreography link'
+    );
+
+    // 3. Expanded 7-Object OOUX schemas + ContextEnvelope grounding for timed holds, notes, and ActiveDay
+    assert(
+      Boolean(schemas54.Athlete) &&
+        Boolean(schemas54.Program) &&
+        Boolean(schemas54.Workout) &&
+        Boolean(schemas54.Exercise) &&
+        Boolean(schemas54.Goal) &&
+        Boolean(schemas54.ActiveDay) &&
+        Boolean(schemas54.ExerciseNote) &&
+        schemas54.Exercise.required.includes('is_timed') &&
+        schemas54.Workout.required.includes('day_instance_kind'),
+      'OOUX_OBJECT_SCHEMAS covers all 7 domain objects including ActiveDay, ExerciseNote, timed holds, and day instance kind'
+    );
+
+    const plankDef54 = SEED_EXERCISES.find((e) => e.id === 'ex-forearm-plank')!;
+    const timedWorkout54: any = {
+      id: 'w-info-exp-1',
+      name: 'Core & Upper',
+      date: '2026-11-16',
+      splitDay: 'Upper',
+      location: 'travel',
+      completed: false,
+      startedAt: '2026-11-16T08:00:00Z',
+      exercises: [
+        {
+          id: 'ex-block-plank',
+          exerciseId: plankDef54.id,
+          name: plankDef54.name,
+          pillar: plankDef54.pillar,
+          equipment: plankDef54.equipment,
+          isTimed: true,
+          minReps: 1,
+          maxReps: 1,
+          restSeconds: 60,
+          athleteNotes: 'Keep ribs tucked down cleanly',
+          sets: [
+            { id: 'ps1', setNumber: 1, targetWeightKg: 0, targetReps: 1, targetDurationSeconds: 60, targetRir: 2, completed: false },
+          ],
+        },
+      ],
+    };
+    const completedNoteWorkout54: any = {
+      ...timedWorkout54,
+      id: 'w-info-exp-prev',
+      date: '2026-11-12',
+      completed: true,
+      completedAt: '2026-11-12T08:40:00Z',
+      exercises: [
+        {
+          ...timedWorkout54.exercises[0],
+          athleteNotes: 'Held solid 60s before hip sag',
+          sets: [
+            { id: 'ps0', setNumber: 1, targetWeightKg: 0, actualWeightKg: 0, targetReps: 1, actualReps: 1, targetDurationSeconds: 60, actualDurationSeconds: 60, targetRir: 2, actualRir: 2, completed: true },
+          ],
+        },
+      ],
+    };
+    const activeDay54: any = {
+      id: 'act-54',
+      date: '2026-11-15',
+      startedAt: '2026-11-15T10:00:00Z',
+      minutes: 35,
+      type: 'run',
+      source: 'manual',
+    };
+    const env54 = buildEnv54({
+      profile: { ...NEW_USER_PROFILE, activeLocation: 'travel' },
+      activeWorkout: timedWorkout54,
+      workouts: [completedNoteWorkout54],
+      biometrics: [],
+      exerciseCatalog: SEED_EXERCISES,
+      bodyweightEmaKg: 80,
+      readinessState: 'Normal',
+      activities: [activeDay54],
+      place: { tab: 'analytics', detail: 'insights' },
+    });
+    const promptEnv54 = serializeEnv54(env54);
+    const sysPrompt54 = buildSys54({
+      userMessage: 'What am I doing today?',
+      profile: { ...NEW_USER_PROFILE, activeLocation: 'travel' },
+      activeWorkout: timedWorkout54,
+      workouts: [completedNoteWorkout54],
+      biometrics: [],
+      exerciseCatalog: SEED_EXERCISES,
+      bodyweightEmaKg: 80,
+      readinessState: 'Normal',
+      activities: [activeDay54],
+      place: { tab: 'analytics', detail: 'insights' },
+    });
+    assert(
+      env54.working_state.today_workout.exercises[0].is_timed === true &&
+        env54.working_state.today_workout.exercises[0].target_duration_seconds === 60 &&
+        env54.working_state.today_workout.exercises[0].athlete_notes === 'Keep ribs tucked down cleanly' &&
+        env54.episodic_memory.recent_active_days.length === 1 &&
+        env54.episodic_memory.exercise_notes.length === 1 &&
+        promptEnv54.includes('60s hold') &&
+        promptEnv54.includes('Active days:') &&
+        promptEnv54.includes('Notes:') &&
+        sysPrompt54.includes('location Bodyweight') &&
+        sysPrompt54.includes('60s hold'),
+      'ContextEnvelope & Coach prompt carry timed durations, athlete notes, ActiveDay records, and canonical Bodyweight location'
+    );
+
+    // 4. Progress IA Taxonomy: Training insights separated cleanly from Strength standards
+    const analyticsSrc54 = fs54.readFileSync(path54.join(repo54, 'src/components/analytics/AnalyticsTab.tsx'), 'utf8');
+    const appSrc54 = fs54.readFileSync(path54.join(repo54, 'src/App.tsx'), 'utf8');
+    const openingInsights = opening54({
+      place: { tab: 'analytics', detail: 'insights' },
+      profile: NEW_USER_PROFILE,
+      workouts: [completedNoteWorkout54],
+      biometrics: [],
+      bodyweightEmaKg: 0,
+      exerciseCatalog: SEED_EXERCISES,
+      readinessState: 'Normal',
+      activeWorkout: timedWorkout54,
+    });
+    const insightsCardIdx = analyticsSrc54.indexOf("{detail === 'insights' && (");
+    const standardsCardIdx = analyticsSrc54.indexOf("{detail === 'standards' && (");
+    const kgRenderIdx = analyticsSrc54.indexOf('<KnowledgeGraphCard');
+    assert(
+      widgets54.some((w) => w.id === 'insights' && w.defaultEnabled) &&
+        insightsCardIdx > 0 &&
+        standardsCardIdx > insightsCardIdx &&
+        kgRenderIdx > insightsCardIdx &&
+        kgRenderIdx < standardsCardIdx &&
+        analyticsSrc54.includes('title="Training insights"') &&
+        appSrc54.includes('onOpenInsights=') &&
+        openingInsights.id === 'progress-insights',
+      'Progress separates Training insights (KnowledgeGraph + Notes timeline) from Strength standards and wires Coach + ExerciseCard choreography'
+    );
+
+    // 5. Design System & synced HTML contract
+    const dsSrc54 = fs54.readFileSync(path54.join(repo54, 'src/designSystem/DesignSystemApp.tsx'), 'utf8');
+    const dsHtml54 = fs54.readFileSync(path54.join(repo54, 'design-system.html'), 'utf8');
+    const dsKg54 = TREISE_DESIGN_SYSTEM.find((c) => c.id === 'ds-info-experience');
+    assert(
+      Boolean(dsKg54) &&
+        dsSrc54.includes('09A · Information Strategy (Ontology:') &&
+        dsSrc54.includes('09B · Information Design (Semiotics:') &&
+        dsSrc54.includes('ActiveDay') &&
+        dsSrc54.includes('ExerciseNote') &&
+        dsHtml54.includes('ds-info-experience') &&
+        dsHtml54.includes('Controlled Vocabulary'),
+      'DesignSystemApp and design-system.html codify Information Strategy (Ontology) & Information Design (Semiotics)'
+    );
+  }
+
+  console.log('\nALL 54 ENGINE, GOVERNANCE, DESIGN SYSTEM, TYPOGRAPHY, WEARABLES, WHOOP STRAIN, GOOGLE AUTH, ONBOARDING CONTEXT, 6-WEEK PROGRAM, SPREADSHEET IMPORT, AI COACH ACTIONS, GEMINI FLASH + KG, OOUX, AGENTIC COACH, PRODUCT UPGRADES, INFO EXPERIENCE & LAUNCH VERIFICATION SUITES PASSED SUCCESSFULLY! 🎯');
 })().catch((err) => {
   console.error('Test Suite Failed:', err);
   if (typeof process !== 'undefined' && process.exit) {

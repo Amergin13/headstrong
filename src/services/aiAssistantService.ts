@@ -50,7 +50,7 @@ import { localDateString } from '../utils/date';
 import { formatPreciseWeight, formatWeight } from '../utils/units';
 import { calculateWarmupPrescription } from '../engine/warmup';
 import { PROGRESSION_RULES } from '../engine/progressionRules';
-import { calculateE1RM } from '../engine/e1rm';
+import { calculateE1RM, isTimedExercise } from '../engine/e1rm';
 import { buildBodyweightEmaLookup } from '../engine/ema';
 import { runReadAloudQaGate, VOICE_TONE_MATRIX } from '../engine/contentStrategy';
 import { buildExerciseInsight } from './exerciseInsight';
@@ -314,9 +314,16 @@ export function buildCoachSystemPrompt(input: AssistantProcessInput): string {
   const exercisesDesc = (activeWorkout?.exercises || [])
     .map((e) => {
       const working = e.sets.filter((st) => !st.isWarmup && st.setType !== 'warmup');
+      const def = exerciseCatalog.find((d) => d.id === e.exerciseId);
+      const wtKg = working[0]?.targetWeightKg ?? 0;
+      const loadLabel = wtKg > 0 ? formatWeight(wtKg, unit) : 'bodyweight';
+      if (isTimedExercise(e) || (def && isTimedExercise(def))) {
+        const secs = working[0]?.targetDurationSeconds ?? def?.defaultDurationSeconds ?? 45;
+        return `${e.name} ${working.length} sets aiming for ${secs}s hold @ ${loadLabel}`;
+      }
       // Today's own rep targets (what the workout card shows), then the range they progress through.
       const range = e.minReps === e.maxReps ? '' : ` (range ${e.minReps}-${e.maxReps})`;
-      return `${e.name} ${working.length} sets aiming for ${working[0]?.targetReps ?? e.minReps} reps${range} @ ${formatWeight(working[0]?.targetWeightKg ?? 0, unit)}`;
+      return `${e.name} ${working.length} sets aiming for ${working[0]?.targetReps ?? e.minReps} reps${range} @ ${loadLabel}`;
     })
     .join('; ');
   // The muscles today's exercises train, with the same status the exercise cards show.
@@ -452,7 +459,7 @@ export function buildCoachSystemPrompt(input: AssistantProcessInput): string {
     knowledgeGraph: kg,
   });
   return `You are ${VOICE_TONE_MATRIX.steadyVoice.replace(/^The /, 'the ').replace(/\.$/, '')}, speaking to ${athleteName || 'the athlete'} as "you". Lead with one direct sentence answering the question or confirming the outcome (no greeting). Keep replies concise at 40-80 words unless they explicitly ask for a detailed breakdown. Keep each paragraph to 1-2 short sentences, and use concise bold-lead bullets (- **Topic:** detail) for multi-part guidance. For anything about their plan, weights, sets or progress, use only the facts below. Never claim a program reset, swap, volume edit, or memory save happened unless a tool call succeeded. For general training questions (timing, motivation, habits, technique, recovery, sleep, food), give practical, widely accepted advice in your own words without inventing numbers (avoid ungrounded weights, reps, sets, percentages, minutes, seconds, or hours—say "a short rest" or "a focused session" instead). Never say the plan or the facts don't cover something. Never call a muscle's sets enough unless it is on target. High recovery means today's targets stand. Don't praise effort the facts don't show. Never guess or invent how individual sets or reps went in past workouts. The plan sets weights and raises them itself when every set reaches the top of the range; never tell them to change the weight. No hype, cheerleading or percentages; say why something works in one plain clause.
-Athlete: ${hasWeighIn ? `${formatWeight(bodyweightEmaKg, unit)}, ` : ''}${athleteAge ? `age ${athleteAge}, ` : ''}location ${profile.activeLocation || 'gym'}, goal ${goalLabel}, week ${planPos.week}/${planPos.totalWeeks}, recovery ${recovery}${kg.recoveryEfficiencyScore > 0 ? ` (${kg.recoveryEfficiencyScore}%)` : ''}${
+Athlete: ${hasWeighIn ? `${formatWeight(bodyweightEmaKg, unit)}, ` : ''}${athleteAge ? `age ${athleteAge}, ` : ''}location ${profile.activeLocation === 'travel' ? 'Bodyweight' : profile.activeLocation === 'home' ? 'At Home' : 'Full Gym'}, goal ${goalLabel}, week ${planPos.week}/${planPos.totalWeeks}, recovery ${recovery}${kg.recoveryEfficiencyScore > 0 ? ` (${kg.recoveryEfficiencyScore}%)` : ''}${
     latestBio && latestBio.hrvRmssd > 0 ? `, slept ${latestBio.sleepHours} h` : ''
   }.${placeFacts.length ? `\nViewing: ${placeFacts.join(' ')}.` : ''}${kgFacts.length ? `\n${kgFacts.join('\n')}` : ''}
 ${serializeContextEnvelopeForPrompt(contextEnvelope)}
@@ -2356,10 +2363,17 @@ async function processAssistantMessageCore(
             // Dynamic Tactical Session Briefing for Today's Workout
             const plannedList = workoutExercises.length > 0
               ? workoutExercises
-                  .map(
-                    (e, idx) =>
-                      `${idx + 1}. **${e.name}** — ${e.sets.filter((st) => !st.isWarmup && st.setType !== 'warmup').length} sets × ${e.minReps === e.maxReps ? e.minReps : `${e.minReps}–${e.maxReps}`} reps @ ${(() => { const w = e.sets.find((st) => !st.isWarmup && st.setType !== 'warmup')?.targetWeightKg ?? 0; return w > 0 ? formatWeight(w, profile.weightUnit || 'kg') : 'bodyweight'; })()}`
-                  )
+                  .map((e, idx) => {
+                    const working = e.sets.filter((st) => !st.isWarmup && st.setType !== 'warmup');
+                    const w = working[0]?.targetWeightKg ?? 0;
+                    const load = w > 0 ? formatWeight(w, profile.weightUnit || 'kg') : 'bodyweight';
+                    const def = exerciseCatalog.find((d) => d.id === e.exerciseId);
+                    const targetText =
+                      isTimedExercise(e) || (def && isTimedExercise(def))
+                        ? `${working[0]?.targetDurationSeconds ?? def?.defaultDurationSeconds ?? 45}s hold`
+                        : `${e.minReps === e.maxReps ? e.minReps : `${e.minReps}–${e.maxReps}`} reps`;
+                    return `${idx + 1}. **${e.name}** — ${working.length} sets × ${targetText} @ ${load}`;
+                  })
                   .join('\n')
               : '  No movements scheduled.';
 

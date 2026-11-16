@@ -23,6 +23,7 @@ interface ExerciseCardProps {
   bodyweightKg?: number;
   lastAthleteNote?: { date: string; text: string };
   onUpdateNotes?: (notes: string) => void;
+  onOpenNotesHistory?: () => void;
   onUpdateSet: (setId: string, updated: Partial<WorkoutSet>) => void;
   onCompleteSet: (setId: string) => void;
   onAddSet: (isWarmup?: boolean) => void;
@@ -49,6 +50,7 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
   bodyweightKg = 0,
   lastAthleteNote,
   onUpdateNotes,
+  onOpenNotesHistory,
   onUpdateSet,
   onCompleteSet,
   onAddSet,
@@ -110,7 +112,8 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
                 triggerHaptic('light');
                 onOpenSwap();
               }}
-              aria-label={`Change exercise from ${exercise.name}`}
+              aria-label={`Swap exercise from ${exercise.name}`}
+              title={`Swap ${formatSentenceCase(exercise.name)}`}
               className="w-11 h-11 min-w-[44px] min-h-[44px] rounded-xl border border-[var(--color-border-strong)] flex items-center justify-center shrink-0 transition-colors"
               style={{ background: 'var(--color-action-secondary-bg)', color: 'var(--color-action-secondary-fg)' }}
             >
@@ -390,11 +393,27 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
           <label htmlFor={notesId} className="wk-label" style={{ color: 'var(--wk-muted)' }}>
             Session notes
           </label>
-          {lastAthleteNote && (
-            <span className="wk-caption truncate max-w-[65%]" title={lastAthleteNote.text}>
-              Last ({lastAthleteNote.date}): &ldquo;{lastAthleteNote.text}&rdquo;
-            </span>
-          )}
+          {lastAthleteNote &&
+            (onOpenNotesHistory ? (
+              <button
+                type="button"
+                onClick={() => {
+                  triggerHaptic('light');
+                  onOpenNotesHistory();
+                }}
+                title={`${lastAthleteNote.text} — open Training insights notes timeline`}
+                className="wk-caption inline-flex items-center gap-1 min-h-[44px] max-w-[68%] truncate underline decoration-dotted underline-offset-2"
+                style={{ color: 'var(--color-text-secondary)' }}
+              >
+                <span className="truncate">
+                  Last ({lastAthleteNote.date}): &ldquo;{lastAthleteNote.text}&rdquo;
+                </span>
+              </button>
+            ) : (
+              <span className="wk-caption truncate max-w-[65%]" title={lastAthleteNote.text}>
+                Last ({lastAthleteNote.date}): &ldquo;{lastAthleteNote.text}&rdquo;
+              </span>
+            ))}
         </div>
         <textarea
           id={notesId}

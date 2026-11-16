@@ -1,5 +1,13 @@
 import { ActivityLog } from '../engine/activeDays';
-import { COPE_DOMAIN_RELATIONSHIPS, COPE_PHYSIOLOGICAL_RELATIONSHIPS } from '../engine/contentStrategy';
+import {
+  CONTROLLED_VOCABULARY,
+  COPE_DOMAIN_RELATIONSHIPS,
+  COPE_PHYSIOLOGICAL_RELATIONSHIPS,
+  CORE_CONCEPTS,
+  CORE_OBJECT_DEFINITIONS,
+  IA_PROGRESS_TAXONOMY,
+  PRAGMATIC_VISIBILITY_MATRIX,
+} from '../engine/contentStrategy';
 import { getLatestBodyweightEma } from '../engine/ema';
 import { calculateDailyReadiness, displayRecoveryScore, ReadinessEvaluation } from '../engine/readiness';
 import { prescribeDoubleProgression } from '../engine/progression';
@@ -564,5 +572,10 @@ export function buildShowcaseFixtures(unit: WeightUnit = 'kg') {
     toolDeclarations: COACH_TOOL_DECLARATIONS,
     copeDomainRelationships: COPE_DOMAIN_RELATIONSHIPS,
     copePhysiologicalRelationships: COPE_PHYSIOLOGICAL_RELATIONSHIPS,
+    controlledVocabulary: CONTROLLED_VOCABULARY,
+    coreConcepts: CORE_CONCEPTS,
+    coreObjectDefinitions: CORE_OBJECT_DEFINITIONS,
+    iaProgressTaxonomy: IA_PROGRESS_TAXONOMY,
+    pragmaticVisibilityMatrix: PRAGMATIC_VISIBILITY_MATRIX,
   };
 }

@@ -135,6 +135,7 @@ export const App: React.FC = () => {
   const [onboardingOpen, setOnboardingOpen] = useState(!profile.onboardingCompleted);
   // Bumped by the "Log Weight" home-screen shortcut; the Progress tab opens its weigh-in form.
   const [logWeightRequest, setLogWeightRequest] = useState(0);
+  const [openInsightsRequest, setOpenInsightsRequest] = useState<{ nonce: number; exerciseId?: string } | null>(null);
   const [logActivityOpen, setLogActivityOpen] = useState(false);
   const [activityAppsOpen, setActivityAppsOpen] = useState(false);
   const [onboardingInitialStep, setOnboardingInitialStep] = useState<1 | 2 | 3>(1);
@@ -1048,6 +1049,11 @@ export const App: React.FC = () => {
             onLogActivity={() => setLogActivityOpen(true)}
             onOpenActivityApps={() => setActivityAppsOpen(true)}
             onRemoveActivity={activitySync.removeActivity}
+            onOpenInsights={(exerciseId) => {
+              setOpenInsightsRequest({ nonce: Date.now(), exerciseId });
+              setActiveTab('analytics');
+              window.scrollTo({ top: 0 });
+            }}
             onSwitchSplitDay={
               isPlanProgram(profile.programType)
                 ? undefined
@@ -1072,6 +1078,8 @@ export const App: React.FC = () => {
             onSaveMeasurements={handleSaveMeasurements}
             openLogWeightRequest={logWeightRequest}
             onLogWeightRequestHandled={() => setLogWeightRequest(0)}
+            openInsightsRequest={openInsightsRequest}
+            onInsightsRequestHandled={() => setOpenInsightsRequest(null)}
           />
         )}
 

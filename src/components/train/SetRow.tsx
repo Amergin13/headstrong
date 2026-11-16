@@ -153,26 +153,34 @@ export const SetRow: React.FC<SetRowProps> = ({
       </button>
 
       <label className="wk-tap wk-input tabular-numbers flex items-center justify-center cursor-text">
-        <input
-          type="number"
-          step={weightStep}
-          inputMode="decimal"
-          value={displayWeight}
-          aria-label={`${label} weight in ${units.unit === 'lb' ? 'pounds' : 'kilograms'}`}
-          onFocus={(e) => e.target.select()}
-          onChange={(e) => onUpdate({ actualWeightKg: units.fromDisplay(parseFloat(e.target.value) || 0) })}
-          className="bg-transparent text-right font-semibold tabular-numbers outline-none p-0"
-          style={{
-            width: `${Math.max(1, String(displayWeight).length)}ch`,
-            fontSize: 'inherit',
-            color: set.completed ? 'var(--color-text-primary)' : 'var(--color-text-muted)',
-          }}
-        />
-        {displayWeight > 0 && (
-          <span aria-hidden="true" style={{ fontSize: 12, fontWeight: 500, marginLeft: '0.12em', color: 'var(--wk-muted)' }}>
-            {units.unit}
-          </span>
-        )}
+        {(() => {
+          const showBwToken = (isBodyweight || isTimed) && displayWeight === 0;
+          return (
+            <>
+              <input
+                type="number"
+                step={weightStep}
+                inputMode="decimal"
+                value={showBwToken ? '' : displayWeight}
+                placeholder={showBwToken ? 'BW' : undefined}
+                aria-label={`${label} weight in ${units.unit === 'lb' ? 'pounds' : 'kilograms'}`}
+                onFocus={(e) => e.target.select()}
+                onChange={(e) => onUpdate({ actualWeightKg: units.fromDisplay(parseFloat(e.target.value) || 0) })}
+                className={`bg-transparent font-semibold tabular-numbers outline-none p-0 ${showBwToken ? 'text-center' : 'text-right'}`}
+                style={{
+                  width: `${Math.max(showBwToken ? 3 : 1, String(showBwToken ? 'BW' : displayWeight).length)}ch`,
+                  fontSize: 'inherit',
+                  color: set.completed ? 'var(--color-text-primary)' : 'var(--color-text-muted)',
+                }}
+              />
+              {displayWeight > 0 && (
+                <span aria-hidden="true" style={{ fontSize: 12, fontWeight: 500, marginLeft: '0.12em', color: 'var(--wk-muted)' }}>
+                  {units.unit}
+                </span>
+              )}
+            </>
+          );
+        })()}
       </label>
 
       {isTimed ? (
