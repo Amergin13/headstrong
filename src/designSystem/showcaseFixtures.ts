@@ -32,7 +32,7 @@ import { COACH_TOOL_DECLARATIONS } from '../services/coachTools';
 import { buildExerciseInsight } from '../services/exerciseInsight';
 import { buildMovementStandards } from '../services/movementStandards';
 import { buildMuscleProgress } from '../services/muscleProgress';
-import { buildGoalRings, buildGoalsSummary, buildPersonalBests } from '../services/progressOverview';
+import { buildGoalCardSummaries, buildGoalRings, buildGoalsSummary, buildPersonalBests } from '../services/progressOverview';
 import {
   buildCompositionCharts,
   buildStrengthCharts,
@@ -281,6 +281,7 @@ export function buildShowcaseFixtures(unit: WeightUnit = 'kg') {
   });
   const goalRings = buildGoalRings(goals, (kg) => fmt.weightPrecise?.(kg) ?? fmt.weight(kg));
   const goalsSummary = buildGoalsSummary(goals, (kg) => fmt.weightPrecise?.(kg) ?? fmt.weight(kg));
+  const goalCardSummaries = buildGoalCardSummaries(goals, goalRings, (kg) => fmt.weightPrecise?.(kg) ?? fmt.weight(kg));
   const personalBests = buildPersonalBests(workouts, bodyweightKg, biometrics);
 
   const strengthCharts = buildStrengthCharts({
@@ -556,6 +557,7 @@ export function buildShowcaseFixtures(unit: WeightUnit = 'kg') {
     goals,
     goalRings,
     goalsSummary,
+    goalCardSummaries,
     personalBests,
     strengthCharts,
     compCharts,

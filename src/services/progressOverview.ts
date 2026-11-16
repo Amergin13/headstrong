@@ -304,6 +304,20 @@ export interface GoalsSummary {
    * model is not asked: with nothing to report it fills the gap with judgments the facts don't support.
    */
   sparse: boolean;
+  /** Optional prompt override when summarizing a single goal card instead of all goals together. */
+  systemPrompt?: string;
+}
+
+export interface SingleGoalSummary extends GoalsSummary {
+  goalId: string;
+  /** Short category eyebrow for the carousel card ('Habit', 'Strength level', 'Main goal', 'Personal goal'). */
+  categoryLabel: string;
+  /** Concise 1-line visual context shown beneath the hero ring caption (never a percentage). */
+  visContext?: string;
+  /** Structured signal statuses for body outcome goals (clockwise across the 3 arcs). */
+  signStatuses?: { label: string; state: 'on' | 'off' | 'unknown' }[];
+  /** Loop decode labels for the 3 concentric weekly/monthly/yearly habit rings. */
+  loopLabels?: string[];
 }
 
 export const GOALS_SUMMARY_SYSTEM_PROMPT =
@@ -311,6 +325,227 @@ export const GOALS_SUMMARY_SYSTEM_PROMPT =
   'speaking as "you", using only the facts given: first, weekly pace plus primary goal standing; second, the single clearest action that moves the closest goal forward. ' +
   'Never list every ring or repeat daily step counts one by one. No hype, greetings, lists, or technical jargon. Never praise, judge, or say how they felt. ' +
   'Do not use any number that is not in the facts.';
+
+export const SINGLE_GOAL_SUMMARY_SYSTEM_PROMPT =
+  "You are the pragmatic, observant strength coach in the athlete's pocket. In two concise sentences (under 200 characters total), speak as \"you\" " +
+  'using only the facts for this single goal: first, what the logged figures show about current standing; second, the clearest next step to move this goal forward. ' +
+  'No hype, greetings, lists, percentages, or technical jargon. Never praise, judge, or say how the athlete felt. Do not use any number that is not in the facts.';
+
+const capFirst = (s: string) => (s ? s[0].toUpperCase() + s.slice(1) : s);
+
+/** Focused coaching facts and deterministic summary for a single goal slide in the Progress carousel. */
+export function buildSingleGoalSummary(
+  goal: AthleteGoal | undefined,
+  ring: GoalRing,
+  formatWeight: (kg: number) => string
+): SingleGoalSummary {
+  if (!goal || ring.id === 'strength-none') {
+    const facts = ['Strength standards compare lifts against your bodyweight; no bodyweight has been logged yet.'];
+    return {
+      goalId: ring.id,
+      categoryLabel: 'Strength standard',
+      visContext: 'Kilgore & Poliquin levels',
+      facts,
+      fallback: 'Strength standards scale to bodyweight. Log one weigh-in on Progress to unlock your movement targets.',
+      sparse: true,
+      systemPrompt: SINGLE_GOAL_SUMMARY_SYSTEM_PROMPT,
+    };
+  }
+
+  const m = goal.measure;
+  if (m.type === 'frequency') {
+    const left = Math.max(0, m.perWeek - m.thisWeek);
+    const facts = [
+      `Goal: ${goal.title} (${m.thisWeek} of ${m.perWeek} sessions done this week${left > 0 ? `, ${left} to go` : ''}).`,
+      `Run: ${m.streakWeeks} weeks in a row at target; ${HABIT_WEEKS} weeks in a row builds the habit.`,
+    ];
+    if (m.weeksTracked > 0) facts.push(`History: ${m.weeksHit} of ${m.weeksTracked} weeks hit the ${m.perWeek}-session target.`);
+    let fallback: string;
+    const sparse = m.thisWeek === 0 && m.weeksTracked <= 1 && m.streakWeeks === 0;
+    if (sparse) {
+      fallback = `Log your first session to open your ${m.perWeek}-session weekly habit target. Both workouts and 20-minute active sessions count.`;
+      facts.push('Each logged workout or 20-minute active day counts toward your week.');
+    } else if (m.thisWeek >= m.perWeek) {
+      fallback = `All ${m.perWeek} sessions finished this week${m.streakWeeks >= 2 ? `, extending your run to ${m.streakWeeks} weeks in a row` : ''}. Space any extra sessions cleanly so muscle recovery stays ahead.`;
+    } else {
+      const weeksNote =
+        m.streakWeeks > 0
+          ? `${m.streakWeeks} ${m.streakWeeks === 1 ? 'week' : 'weeks'} in a row`
+          : `${m.weeksHit} of ${m.weeksTracked} weeks hit`;
+      fallback = `${left} ${left === 1 ? 'session' : 'sessions'} left before Sunday for your ${m.perWeek}-session target (${weeksNote}). ${
+        m.streakWeeks >= HABIT_WEEKS
+          ? 'Keep weekly spacing steady to maintain the habit.'
+          : `Hitting ${HABIT_WEEKS} weeks in a row builds the training habit.`
+      }`;
+    }
+    return {
+      goalId: goal.id,
+      categoryLabel: 'Process habit',
+      loopLabels: ['Outer: this week', 'Mid: 4 wks', 'Inner: 12 mos'],
+      facts,
+      fallback,
+      sparse,
+      systemPrompt: SINGLE_GOAL_SUMMARY_SYSTEM_PROMPT,
+    };
+  }
+
+  if (m.type === 'reps') {
+    const [movement] = goal.title.split(': ');
+    const at = repsAt(m, formatWeight);
+    const repDiff = Math.max(1, m.targetReps - m.currentReps);
+    const pullNote = goal.pillar === 'Vertical Pull' ? ' (bodyweight + added weight)' : '';
+    const facts = [
+      `Goal: ${movement} reaches ${m.level} (currently ${m.currentLevel}).`,
+      `Best set: ${m.currentReps} reps ${at} on ${m.exerciseName}; ${m.targetReps} reps unlocks ${m.level} (${repDiff} away).`,
+      `Estimated max${pullNote}: ${formatWeight(m.e1rmKg)} of ${formatWeight(m.targetE1rmKg)}.`,
+    ];
+    return {
+      goalId: goal.id,
+      categoryLabel: 'Strength standard',
+      visContext: `${m.currentLevel} → ${m.level}`,
+      facts,
+      fallback: `Hit ${m.targetReps} reps ${at} on ${m.exerciseName} to reach ${m.level} (${repDiff} away from your ${m.currentReps}-rep best). Currently ${m.currentLevel} at a ${formatWeight(m.e1rmKg)} estimated max.`,
+      sparse: false,
+      systemPrompt: SINGLE_GOAL_SUMMARY_SYSTEM_PROMPT,
+    };
+  }
+
+  if (m.type === 'load') {
+    const [movement] = goal.title.split(': ');
+    const gap = Math.max(0, Math.round((m.targetE1rmKg - m.e1rmKg) * 10) / 10);
+    const pullNote = goal.pillar === 'Vertical Pull' ? ' (bodyweight + added weight)' : '';
+    const facts = [
+      `Goal: ${movement} reaches ${m.level} (currently ${m.currentLevel}).`,
+      `Estimated max on ${m.exerciseName}${pullNote}: ${formatWeight(m.e1rmKg)} of ${formatWeight(m.targetE1rmKg)} (${formatWeight(gap)} needed).`,
+    ];
+    return {
+      goalId: goal.id,
+      categoryLabel: 'Strength standard',
+      visContext: `${m.currentLevel} → ${m.level}`,
+      facts,
+      fallback: `Build ${formatWeight(gap)} on your ${m.exerciseName} estimated max to reach ${m.level} (${formatWeight(m.e1rmKg)} of ${formatWeight(m.targetE1rmKg)}). Currently ${m.currentLevel} at your bodyweight.`,
+      sparse: false,
+      systemPrompt: SINGLE_GOAL_SUMMARY_SYSTEM_PROMPT,
+    };
+  }
+
+  if (m.type === 'target') {
+    if (m.metric === 'steps') {
+      const remaining = Math.max(0, m.target - m.best);
+      const facts = [
+        `Goal: ${m.target} steps a day.`,
+        m.best > 0 ? `Steps today: ${m.best} steps (${remaining} remaining).` : 'No steps recorded today yet.',
+      ];
+      let fallback: string;
+      const sparse = m.best <= 0;
+      if (goal.achieved) {
+        fallback = `Today's ${m.target.toLocaleString('en-US')}-step target is reached with ${m.best.toLocaleString('en-US')} steps logged. Daily walking supports recovery between lifting sessions.`;
+      } else if (m.best > 0) {
+        fallback = `${remaining.toLocaleString('en-US')} steps left today to reach ${m.target.toLocaleString('en-US')} (${m.best.toLocaleString('en-US')} logged). Steady walking adds daily output without lifting fatigue.`;
+      } else {
+        fallback = `No steps recorded today yet against your ${m.target.toLocaleString('en-US')}-step goal. Connect Health Connect or your watch to sync daily movement.`;
+      }
+      return {
+        goalId: goal.id,
+        categoryLabel: 'Personal goal',
+        visContext: 'Updated daily from watch or Health Connect',
+        facts,
+        fallback,
+        sparse,
+        systemPrompt: SINGLE_GOAL_SUMMARY_SYSTEM_PROMPT,
+      };
+    }
+
+    const byWeight = m.metric === 'weight';
+    const gapVal = Math.max(0, Math.round((m.target - m.best) * 10) / 10);
+    const goalText = byWeight ? formatWeight(m.target) : `${m.target} reps`;
+    const bestText = byWeight ? formatWeight(m.best) : `${m.best} reps`;
+    const gapText = byWeight ? formatWeight(gapVal) : `${gapVal} ${gapVal === 1 ? 'rep' : 'reps'}`;
+    const facts = [
+      `Goal: ${goalText} on ${m.exerciseName}.`,
+      m.best > 0 ? `Best logged set: ${bestText} (${gapText} short).` : 'It has not been logged yet.',
+    ];
+    let fallback: string;
+    const sparse = m.best <= 0;
+    if (goal.achieved) {
+      fallback = `${m.exerciseName} reached your ${goalText} target (best set ${bestText}). Set a higher target from Progress options or AI Coach when ready.`;
+    } else if (m.best > 0) {
+      fallback = `Best logged set is ${bestText}—${gapText} short of your ${goalText} goal on ${m.exerciseName}. Add quality reps across working sets before increasing weight.`;
+    } else {
+      fallback = `No sets logged yet on ${m.exerciseName} toward your ${goalText} goal. Your first logged working set puts a marker on this target.`;
+    }
+    return {
+      goalId: goal.id,
+      categoryLabel: 'Personal goal',
+      visContext: byWeight ? 'Heaviest logged working set' : 'Most reps in a single set',
+      facts,
+      fallback,
+      sparse,
+      systemPrompt: SINGLE_GOAL_SUMMARY_SYSTEM_PROMPT,
+    };
+  }
+
+  // Chosen outcome goal ('Build Muscle', 'Lose Fat', 'Stay Lean')
+  const signStatuses = m.signs.map((s) => ({
+    label: s.id === 'strength' ? 'Strength' : s.id === 'weight' ? 'Weight' : 'Size',
+    state: (s.met === true ? 'on' : s.met === false ? 'off' : 'unknown') as 'on' | 'off' | 'unknown',
+  }));
+  const facts: string[] = [
+    `${goal.title}: ${m.signsMet} of ${m.signsMeasured} measured signs are showing.`,
+    ...m.signs.map((s) => `${s.label}: ${s.met === true ? 'showing' : s.met === false ? 'not showing yet' : 'not measured yet'} (${s.detail}).`),
+    `Evidence level: ${m.evidenceLabel}`,
+  ];
+  if (m.nextStep) facts.push(`Next step: ${m.nextStep}`);
+
+  const sparse = m.signsMeasured === 0;
+  let fallback: string;
+  if (sparse) {
+    fallback = `${goal.title} watches lift strength, weight pace, and body size. Repeat lifts and log weekly weigh-ins to start tracking.`;
+  } else {
+    const metList = m.signs.filter((s) => s.met === true).map((s) => s.label.toLowerCase());
+    const missedSign = m.signs.find((s) => s.met === false);
+    const unmeasured = m.signs.find((s) => s.met === null);
+    const ratio = `(${m.signsMet} of ${m.signsMeasured} measured)`;
+    let lead: string;
+    if (metList.length > 0 && missedSign) {
+      lead = `${capFirst(metList.join(' and '))} ${metList.length === 1 ? 'matches' : 'match'} ${goal.title} ${ratio}; ${missedSign.label.toLowerCase()} is not showing yet.`;
+    } else if (metList.length > 0) {
+      lead = `${capFirst(metList.join(' and '))} ${metList.length === 1 ? 'supports' : 'support'} ${goal.title} across ${m.signsMet} of ${m.signsMeasured} measured signs.`;
+    } else if (missedSign) {
+      lead = `${missedSign.label} is not showing yet for ${goal.title} ${ratio}.`;
+    } else {
+      lead = `${goal.title} tracks ${m.signsMeasured} measured sign so far.`;
+    }
+    const step = m.nextStep
+      ? m.nextStep
+      : unmeasured
+      ? `Log ${unmeasured.label.toLowerCase()} to track all three signs.`
+      : m.evidence === 'fat-free-mass'
+      ? 'Tracked directly with fat-free mass, strength, and weight.'
+      : 'Keep repeating workouts and logging body metrics to verify progress.';
+    fallback = `${lead} ${step}`;
+  }
+
+  return {
+    goalId: goal.id,
+    categoryLabel: 'Main goal',
+    signStatuses,
+    facts,
+    fallback,
+    sparse,
+    systemPrompt: SINGLE_GOAL_SUMMARY_SYSTEM_PROMPT,
+  };
+}
+
+/** Builds per-slide coaching summaries aligned 1:1 with `buildGoalRings`. */
+export function buildGoalCardSummaries(
+  goals: AthleteGoal[],
+  rings: GoalRing[],
+  formatWeight: (kg: number) => string = (kg) => `${kg} kg`
+): SingleGoalSummary[] {
+  const byId = new Map(activeGoals(goals).map((g) => [g.id, g]));
+  return rings.map((ring) => buildSingleGoalSummary(byId.get(ring.id), ring, formatWeight));
+}
 
 /** Where the goals stand, synthesized cleanly rather than narrating every ring. */
 export function buildGoalsSummary(goals: AthleteGoal[], formatWeight: (kg: number) => string): GoalsSummary {
@@ -457,7 +692,7 @@ export function checkGoalsSummary(answer: string | null, summary: Pick<GoalsSumm
 
 /** Asks the on-device model for the goals summary. Null when no model is ready or its answers fail the checks. */
 export async function generateGoalsSummary(
-  summary: Pick<GoalsSummary, 'facts'> & Partial<Pick<GoalsSummary, 'sparse'>>,
+  summary: Pick<GoalsSummary, 'facts' | 'systemPrompt'> & Partial<Pick<GoalsSummary, 'sparse'>>,
   prompt: typeof promptOnDeviceModel = promptOnDeviceModel,
   attempts = 2
 ): Promise<string | null> {
@@ -466,12 +701,13 @@ export async function generateGoalsSummary(
   if (prompt === promptOnDeviceModel && wasPromptRejected(rejectKey)) return null;
   let problem: string | undefined;
   let sawModelAnswer = false;
+  const systemPrompt = summary.systemPrompt ?? GOALS_SUMMARY_SYSTEM_PROMPT;
   const base = `Facts:\n${summary.facts.map((f) => `- ${f}`).join('\n')}\n\nWrite the summary.`;
   // A model that throws is the same as no model: the fact-based text stays.
   try {
     for (let i = 0; i < attempts; i++) {
       const request = problem ? `${base}\n(Your last summary could not be used because ${problem}. Write it again.)` : base;
-      const answer = await prompt(GOALS_SUMMARY_SYSTEM_PROMPT, request, { stateless: true, maxTokens: 120, timeoutMs: 30_000 });
+      const answer = await prompt(systemPrompt, request, { stateless: true, maxTokens: 120, timeoutMs: 30_000 });
       if (answer === null) return null;
       sawModelAnswer = true;
       const checked = checkGoalsSummary(answer, summary);
@@ -487,15 +723,16 @@ export async function generateGoalsSummary(
 
 const GOALS_CACHE_KEY = 'treise_goals_summary_v1';
 
-function goalsKey(summary: Pick<GoalsSummary, 'facts'>): string {
-  const text = `${GOALS_SUMMARY_SYSTEM_PROMPT}\n${summary.facts.join('\n')}`;
+function goalsKey(summary: Pick<GoalsSummary, 'facts' | 'systemPrompt'>): string {
+  const systemPrompt = summary.systemPrompt ?? GOALS_SUMMARY_SYSTEM_PROMPT;
+  const text = `${systemPrompt}\n${summary.facts.join('\n')}`;
   let h = 5381;
   for (let i = 0; i < text.length; i++) h = ((h << 5) + h + text.charCodeAt(i)) | 0;
   return (h >>> 0).toString(36);
 }
 
 /** The written summary saved for these facts, if it still passes the checks. */
-export function getCachedGoalsSummary(summary: Pick<GoalsSummary, 'facts'>): string | null {
+export function getCachedGoalsSummary(summary: Pick<GoalsSummary, 'facts' | 'systemPrompt'>): string | null {
   try {
     const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(GOALS_CACHE_KEY) : null;
     const parsed = raw ? JSON.parse(raw) : null;
@@ -507,14 +744,14 @@ export function getCachedGoalsSummary(summary: Pick<GoalsSummary, 'facts'>): str
   }
 }
 
-export function cacheGoalsSummary(summary: Pick<GoalsSummary, 'facts'>, text: string): void {
+export function cacheGoalsSummary(summary: Pick<GoalsSummary, 'facts' | 'systemPrompt'>, text: string): void {
   try {
     const raw = localStorage.getItem(GOALS_CACHE_KEY);
     const parsed = raw ? JSON.parse(raw) : {};
     const saved: Record<string, string> = parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
     const entries = Object.entries(saved).filter(([k]) => k !== goalsKey(summary));
     entries.push([goalsKey(summary), text]);
-    localStorage.setItem(GOALS_CACHE_KEY, JSON.stringify(Object.fromEntries(entries.slice(-6))));
+    localStorage.setItem(GOALS_CACHE_KEY, JSON.stringify(Object.fromEntries(entries.slice(-16))));
   } catch {
     // Storage unavailable: the summary is simply written again next time.
   }

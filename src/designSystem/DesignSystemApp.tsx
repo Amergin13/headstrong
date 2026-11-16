@@ -210,15 +210,15 @@ const AI_SURFACE_QUALITY_GATES = [
     retryAndFallback: '1 retry + negative reject cache -> deterministic WorkoutFinish summary',
   },
   {
-    surface: 'Progress Goals Summary',
+    surface: 'Progress Goals Carousel Summary',
     source: 'src/services/progressOverview.ts',
     validator: 'checkGoalsSummary',
     checks: [
-      'Synthesized 2-sentence Goal takeaway card (<= 250 chars); never repeats step counts or every ring',
-      'Bans "insufficient data / cannot be assessed", hype words, and feeling claims',
+      'Per-goal carousel slide (<= 250 chars): 192px hero ring + directly paired 2-sentence Goal takeaway card',
+      'Bans "insufficient data / cannot be assessed", hype words, percentages on rings, and feeling claims',
       'Exact number, unit, and counted-noun check + runReadAloudQaGate',
     ],
-    retryAndFallback: '1 retry + negative reject cache (max 120 keys) -> synthesized buildGoalsSummary fallback',
+    retryAndFallback: '1 retry + negative reject cache -> buildSingleGoalSummary fallback (buildGoalsSummary kept for full overview)',
   },
 ] as const;
 
@@ -1833,9 +1833,13 @@ export const DesignSystemContent: React.FC<{
                 title="GoalsHero, OverviewCard, StatRow, Sparkline &amp; StandardsRadar"
                 source="src/components/analytics/ProgressOverviewCards.tsx"
               />
-              <div className="wk-card" style={{ paddingTop: 0 }}>
-                <GoalsHero rings={fixtures.goalRings} summary={fixtures.goalsSummary} onOpenGoal={() => undefined} />
-              </div>
+              <GoalsHero
+                rings={fixtures.goalRings}
+                summary={fixtures.goalsSummary}
+                goals={fixtures.goals}
+                cardSummaries={fixtures.goalCardSummaries}
+                onOpenGoal={() => undefined}
+              />
 
               <OverviewCard title="Workouts" opens="training totals" onOpen={() => undefined}>
                 <StatRow

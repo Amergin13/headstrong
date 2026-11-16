@@ -34,6 +34,7 @@ import { loadSavedRenphoDevices } from '../../services/renphoBluetooth';
 import { ActivityLog } from '../../engine/activeDays';
 import {
   RECENT_DAYS,
+  buildGoalCardSummaries,
   buildGoalRings,
   buildGoalsSummary,
   buildPersonalBests,
@@ -237,6 +238,10 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
     [workouts, biometrics, hasBodyweight, bodyweightEmaKg]
   );
   const goalsSummary = useMemo(() => buildGoalsSummary(knowledgeGraph.goals, (kg) => units.formatPrecise(kg)), [knowledgeGraph, units]);
+  const goalCardSummaries = useMemo(
+    () => buildGoalCardSummaries(knowledgeGraph.goals, goalRings, (kg) => units.formatPrecise(kg)),
+    [knowledgeGraph, goalRings, units]
+  );
   const personalBests = useMemo(
     () => buildPersonalBests(workouts, hasBodyweight ? bodyweightEmaKg : 0, biometrics),
     [workouts, hasBodyweight, bodyweightEmaKg, biometrics]
@@ -838,6 +843,8 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
         <GoalsHero
           rings={goalRings}
           summary={goalsSummary}
+          goals={knowledgeGraph.goals}
+          cardSummaries={goalCardSummaries}
           onOpenGoal={(id) => {
             if (id.startsWith('strength-none')) {
               openLogWeight();
@@ -850,7 +857,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
 
       <div
         ref={cardsTopRef}
-        className={`flex flex-col gap-3 ${hasWidget('goals') ? 'mt-6' : 'mt-5'}`}
+        className={`flex flex-col gap-3 ${hasWidget('goals') ? 'mt-4' : 'mt-5'}`}
       >
         {hasWidget('trophy-case') && (
           <OverviewCard title="Trophy case" opens="all personal bests" onOpen={() => setDetail('bests')}>

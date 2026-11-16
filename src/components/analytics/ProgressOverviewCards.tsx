@@ -1,14 +1,17 @@
-import React, { useEffect, useState } from 'react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Check, ChevronLeft, ChevronRight, Minus } from 'lucide-react';
 import { MovementStandardsReport } from '../../services/movementStandards';
 import {
   GoalRing,
   GoalsSummary,
   RingSegment,
+  SingleGoalSummary,
+  buildGoalCardSummaries,
   cacheGoalsSummary,
   generateGoalsSummary,
   getCachedGoalsSummary,
 } from '../../services/progressOverview';
+import { AthleteGoal } from '../../services/athleteGoals';
 import { ProgressPoint } from '../../services/progressSeries';
 import { CoachSummaryText } from '../common/CoachSummaryText';
 import { triggerHaptic } from '../../utils/haptics';
@@ -54,44 +57,45 @@ const SegmentRing: React.FC<{ segments: RingSegment[]; radius: number; width: nu
   );
 };
 
-const Ring: React.FC<{ ring: GoalRing; colour: string }> = ({ ring, colour }) => {
+const Ring: React.FC<{ ring: GoalRing; colour: string; size?: number }> = ({ ring, colour, size = 192 }) => {
   const threeRing = Boolean(ring.innermost?.length);
+  const compactValue = ring.value.length > 5;
+  const fontSize = compactValue ? 20 : 32;
   return (
-    <div className="relative" style={{ width: 104, height: 104 }}>
+    <div className="relative shrink-0" style={{ width: size, height: size }}>
       <svg viewBox="0 0 100 100" className="w-full h-full" style={{ transform: 'rotate(-90deg)' }} aria-hidden="true">
         <SegmentRing
           segments={ring.segments}
           radius={threeRing ? 44 : 43}
           width={threeRing ? 6 : 7}
           colour={colour}
-          delay={200}
+          delay={160}
         />
         {ring.inner && (
           <SegmentRing
             segments={ring.inner}
             radius={threeRing ? 35.5 : 33.5}
-            width={threeRing ? 3.5 : 3.6}
+            width={threeRing ? 3.8 : 4}
             colour="var(--color-text-primary)"
-            delay={450}
+            delay={360}
           />
         )}
         {ring.innermost && (
           <SegmentRing
             segments={ring.innermost}
-            radius={28.5}
-            width={2.6}
+            radius={28}
+            width={2.8}
             colour={colour}
-            delay={650}
+            delay={520}
           />
         )}
       </svg>
       <span
-        className={`absolute inset-0 flex items-center justify-center tabular-numbers px-3 text-center ${
-          ring.value.length > 4 || threeRing || ring.inner ? 'font-medium' : 'font-semibold'
-        }`}
+        className="absolute inset-0 flex items-center justify-center tabular-numbers px-6 text-center font-semibold"
         style={{
-          fontSize: ring.value.length > 4 || threeRing ? 12 : ring.inner ? 16 : 20,
-          lineHeight: 1.1,
+          fontSize,
+          lineHeight: 1.05,
+          letterSpacing: '-0.02em',
           color: ring.empty ? 'var(--wk-muted)' : 'var(--color-text-primary)',
         }}
       >
@@ -101,13 +105,13 @@ const Ring: React.FC<{ ring: GoalRing; colour: string }> = ({ ring, colour }) =>
   );
 };
 
-function useGoalsSummaryText(summary: GoalsSummary): string {
-  const key = summary.facts.join('|');
+function useGoalSummaryText(summary: GoalsSummary, active: boolean): string {
+  const key = `${summary.systemPrompt ?? ''}|${summary.facts.join('|')}`;
   const [written, setWritten] = useState<string | null>(() => getCachedGoalsSummary(summary));
   useEffect(() => {
     const cached = getCachedGoalsSummary(summary);
     setWritten(cached);
-    if (cached) return;
+    if (cached || !active || summary.sparse) return;
     let cancelled = false;
     generateGoalsSummary(summary)
       .then((answer) => {
@@ -120,51 +124,284 @@ function useGoalsSummaryText(summary: GoalsSummary): string {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key]);
+  }, [key, active]);
   return written ?? summary.fallback;
 }
 
-export const GoalsHero: React.FC<{ rings: GoalRing[]; summary: GoalsSummary; onOpenGoal: (id: string) => void }> = ({ rings, summary, onOpenGoal }) => {
-  const summaryText = useGoalsSummaryText(summary);
+const GoalSlideCard: React.FC<{
+  ring: GoalRing;
+  cardSummary: SingleGoalSummary;
+  active: boolean;
+  index: number;
+  total: number;
+  onOpenGoal: (id: string) => void;
+}> = ({ ring, cardSummary, active, index, total, onOpenGoal }) => {
+  const summaryText = useGoalSummaryText(cardSummary, active);
+  const colour = goalRingColour(ring);
   return (
-    <section aria-labelledby="goals-title" className="pt-8">
-      <ul className="flex flex-wrap justify-center gap-y-6">
-        {rings.map((ring) => (
-          <li key={ring.id} className="min-w-0 px-1" style={{ width: '33.333%' }}>
-            <button
-              type="button"
-              onClick={() => {
-                triggerHaptic('light');
-                onOpenGoal(ring.id);
-              }}
-              aria-label={`${ring.title}: ${ring.empty ? ring.detail : `${ring.value.replace('/', ' of ')} ${ring.caption}`}. Open this goal`}
-              className="flex flex-col items-center w-full"
-            >
-              <Ring ring={ring} colour={goalRingColour(ring)} />
-              <span className="wk-meta-title text-center mt-3" aria-hidden="true">
-                {ring.title}
-              </span>
-              <span className="wk-caption text-center mt-1" aria-hidden="true">
-                {ring.caption}
-              </span>
-            </button>
-          </li>
-        ))}
-      </ul>
-      <div className="wk-card mt-6">
-        <span className="wk-label block mb-1" style={{ color: 'var(--wk-muted)' }}>
+    <article
+      role="group"
+      aria-roledescription="slide"
+      aria-label={`Goal ${index + 1} of ${total}: ${ring.title}`}
+      className="wk-card shrink-0 w-full snap-center flex flex-col justify-between"
+    >
+      <button
+        type="button"
+        onClick={() => {
+          triggerHaptic('light');
+          onOpenGoal(ring.id);
+        }}
+        aria-label={`${ring.title}: ${ring.empty ? ring.detail : `${ring.value.replace('/', ' of ')} ${ring.caption}`}. Open this goal`}
+        className="w-full text-left flex flex-col items-center focus:outline-none"
+      >
+        <div className="flex items-start justify-between gap-3 w-full min-h-[44px]">
+          <div className="min-w-0">
+            <span className="wk-label block" style={{ color: 'var(--wk-muted)' }}>
+              {cardSummary.categoryLabel}
+            </span>
+            <span className="wk-title block mt-1">
+              {ring.title}
+            </span>
+          </div>
+          <ChevronRight className="wk-chevron shrink-0 mt-1" strokeWidth={2} aria-hidden="true" />
+        </div>
+
+        <div className="pt-4 pb-2 flex flex-col items-center w-full">
+          <Ring ring={ring} colour={colour} size={192} />
+          <span className="wk-meta-title text-center mt-3" aria-hidden="true">
+            {ring.caption}
+          </span>
+
+          {cardSummary.loopLabels && cardSummary.loopLabels.length > 0 && (
+            <div className="flex flex-wrap items-center justify-center gap-3 mt-2 wk-caption" aria-hidden="true">
+              {cardSummary.loopLabels.map((label, i) => (
+                <span key={label} className="inline-flex items-center gap-1">
+                  <span
+                    className="w-2 h-2 rounded-full"
+                    style={{
+                      background:
+                        i === 0 ? colour : i === 1 ? 'var(--color-text-secondary)' : 'var(--color-border-strong)',
+                    }}
+                  />
+                  {label}
+                </span>
+              ))}
+            </div>
+          )}
+
+          {cardSummary.signStatuses && cardSummary.signStatuses.length > 0 && (
+            <div className="flex flex-wrap items-center justify-center gap-3 mt-2 wk-caption" aria-hidden="true">
+              {cardSummary.signStatuses.map((sign) => (
+                <span key={sign.label} className="inline-flex items-center gap-1">
+                  <span
+                    className="w-4 h-4 rounded-full inline-flex items-center justify-center"
+                    style={{
+                      background:
+                        sign.state === 'on' ? 'var(--color-accent-primary)' : 'var(--color-bg-surface-control)',
+                      opacity: sign.state === 'unknown' ? 0.55 : 1,
+                    }}
+                  >
+                    {sign.state === 'on' ? (
+                      <Check className="w-3 h-3" style={{ color: 'var(--color-text-on-accent)' }} strokeWidth={3} />
+                    ) : sign.state === 'off' ? (
+                      <Minus className="w-3 h-3" style={{ color: 'var(--color-text-secondary)' }} strokeWidth={3} />
+                    ) : null}
+                  </span>
+                  <span style={{ color: sign.state === 'unknown' ? 'var(--wk-muted)' : 'var(--color-text-secondary)' }}>
+                    {sign.label}
+                  </span>
+                </span>
+              ))}
+            </div>
+          )}
+
+          {cardSummary.visContext && (
+            <span className="wk-caption text-center mt-2" aria-hidden="true">
+              {cardSummary.visContext}
+            </span>
+          )}
+        </div>
+      </button>
+
+      <div className="mt-4 pt-4 border-t text-left" style={{ borderColor: 'var(--color-border-subtle)' }}>
+        <span className="wk-label block mb-2" style={{ color: 'var(--wk-muted)' }}>
           Goal takeaway
         </span>
-        <h2 id="goals-title" className="wk-title">
-          Goals
-        </h2>
         <CoachSummaryText
           text={summaryText}
+          swapKey={`${ring.id}:${summaryText}`}
           splitBy="sentences"
           accentRail
-          className="mt-3"
         />
       </div>
+    </article>
+  );
+};
+
+export const GoalsHero: React.FC<{
+  rings: GoalRing[];
+  summary: GoalsSummary;
+  goals?: AthleteGoal[];
+  cardSummaries?: SingleGoalSummary[];
+  onOpenGoal: (id: string) => void;
+}> = ({ rings, goals, cardSummaries, onOpenGoal }) => {
+  const slides = useMemo(
+    () => cardSummaries ?? buildGoalCardSummaries(goals ?? [], rings),
+    [cardSummaries, goals, rings]
+  );
+  const [activeIndex, setActiveIndex] = useState(0);
+  const trackRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (activeIndex >= rings.length) {
+      setActiveIndex(Math.max(0, rings.length - 1));
+    }
+  }, [activeIndex, rings.length]);
+
+  const goTo = (index: number) => {
+    const clamped = Math.max(0, Math.min(rings.length - 1, index));
+    const track = trackRef.current;
+    if (track) {
+      const child = track.children[clamped] as HTMLElement | undefined;
+      if (child) track.scrollTo({ left: child.offsetLeft, behavior: 'smooth' });
+    }
+    setActiveIndex(clamped);
+    triggerHaptic('light');
+  };
+
+  const handleScroll = () => {
+    const track = trackRef.current;
+    if (!track || track.children.length === 0) return;
+    let nearest = 0;
+    let bestDist = Infinity;
+    for (let i = 0; i < track.children.length; i++) {
+      const child = track.children[i] as HTMLElement;
+      const dist = Math.abs(child.offsetLeft - track.scrollLeft);
+      if (dist < bestDist) {
+        bestDist = dist;
+        nearest = i;
+      }
+    }
+    if (nearest !== activeIndex) setActiveIndex(nearest);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'ArrowRight' && activeIndex < rings.length - 1) {
+      e.preventDefault();
+      goTo(activeIndex + 1);
+    } else if (e.key === 'ArrowLeft' && activeIndex > 0) {
+      e.preventDefault();
+      goTo(activeIndex - 1);
+    }
+  };
+
+  if (rings.length === 0) return null;
+
+  return (
+    <section
+      aria-labelledby="goals-title"
+      aria-roledescription="carousel"
+      className="pt-6"
+      onKeyDown={handleKeyDown}
+    >
+      <div className="flex items-center justify-between gap-3 mb-3">
+        <div className="flex items-baseline gap-2 min-w-0">
+          <h2 id="goals-title" className="wk-title">
+            Goals
+          </h2>
+          {rings.length > 1 && (
+            <span className="wk-caption tabular-nums" aria-live="polite">
+              {activeIndex + 1} of {rings.length}
+            </span>
+          )}
+        </div>
+        {rings.length > 1 && (
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={() => goTo(activeIndex - 1)}
+              disabled={activeIndex === 0}
+              aria-label="Previous goal"
+              className="w-11 h-11 min-w-[44px] min-h-[44px] rounded-full flex items-center justify-center transition-opacity disabled:opacity-35"
+              style={{
+                background: 'var(--color-bg-surface)',
+                border: '1px solid var(--color-border-subtle)',
+                color: 'var(--color-text-primary)',
+              }}
+            >
+              <ChevronLeft className="w-5 h-5" strokeWidth={2} aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              onClick={() => goTo(activeIndex + 1)}
+              disabled={activeIndex >= rings.length - 1}
+              aria-label="Next goal"
+              className="w-11 h-11 min-w-[44px] min-h-[44px] rounded-full flex items-center justify-center transition-opacity disabled:opacity-35"
+              style={{
+                background: 'var(--color-bg-surface)',
+                border: '1px solid var(--color-border-subtle)',
+                color: 'var(--color-text-primary)',
+              }}
+            >
+              <ChevronRight className="w-5 h-5" strokeWidth={2} aria-hidden="true" />
+            </button>
+          </div>
+        )}
+      </div>
+
+      <div
+        ref={trackRef}
+        onScroll={handleScroll}
+        tabIndex={0}
+        className="flex gap-3 overflow-x-auto snap-x snap-mandatory no-scrollbar focus:outline-none"
+      >
+        {rings.map((ring, idx) => (
+          <GoalSlideCard
+            key={ring.id}
+            ring={ring}
+            cardSummary={slides[idx]}
+            active={idx === activeIndex}
+            index={idx}
+            total={rings.length}
+            onOpenGoal={onOpenGoal}
+          />
+        ))}
+      </div>
+
+      {rings.length > 1 && (
+        <div className="flex items-center justify-center gap-1 mt-2" role="tablist" aria-label="Choose a goal">
+          {rings.map((ring, idx) => {
+            const isSelected = idx === activeIndex;
+            const isAchieved = !ring.empty && ring.segments.length > 0 && ring.segments.every((s) => s === 'on');
+            return (
+              <button
+                key={ring.id}
+                type="button"
+                role="tab"
+                aria-selected={isSelected}
+                aria-label={`Goal ${idx + 1}: ${ring.title}`}
+                onClick={() => goTo(idx)}
+                className="min-w-[28px] min-h-[44px] flex items-center justify-center focus:outline-none"
+              >
+                <span
+                  aria-hidden="true"
+                  className="transition-all"
+                  style={{
+                    width: isSelected ? 20 : 6,
+                    height: 6,
+                    borderRadius: 9999,
+                    background: isSelected
+                      ? isAchieved
+                        ? 'var(--color-status-positive)'
+                        : 'var(--color-text-primary)'
+                      : 'var(--color-border-track)',
+                  }}
+                />
+              </button>
+            );
+          })}
+        </div>
+      )}
     </section>
   );
 };

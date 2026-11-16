@@ -11553,7 +11553,154 @@ Exercise,,Date,Workout,Sets,Reps,Tempo,Rest,Notes,Set 1,Set 2,Set 3,Set 4
     );
   }
 
-  console.log('\nALL 55 ENGINE, GOVERNANCE, DESIGN SYSTEM, TYPOGRAPHY, WEARABLES, WHOOP STRAIN, GOOGLE AUTH, ONBOARDING CONTEXT, 6-WEEK PROGRAM, SPREADSHEET IMPORT, AI COACH ACTIONS, GEMINI FLASH + KG, OOUX, AGENTIC COACH, PRODUCT UPGRADES, INFO EXPERIENCE, CONTENT DESIGN & LAUNCH VERIFICATION SUITES PASSED SUCCESSFULLY! 🎯');
+  console.log('\n[Suite 56: Goal Carousel (Large Data Vis + Per-Goal Focused Summary)]');
+  {
+    const fs56 = await import('fs');
+    const path56 = await import('path');
+    const repo56 = process.cwd();
+    const {
+      SINGLE_GOAL_SUMMARY_SYSTEM_PROMPT,
+      buildGoalCardSummaries,
+      buildGoalRings,
+      checkGoalsSummary,
+      generateGoalsSummary,
+    } = await import('../../services/progressOverview');
+    const { CHOSEN_GOAL_ID, WEEKLY_GOAL_ID, buildAthleteGoals } = await import('../../services/athleteGoals');
+    const { generate6WeekMuscleBuildingWorkout } = await import('../muscleBuildingProgram');
+
+    const now56 = Date.now();
+    const DAY56 = 24 * 60 * 60 * 1000;
+    const today56 = localDateString(new Date(now56));
+    const mkWorkout56 = (num: number, daysAgo: number, extraKg: number): WorkoutSession => {
+      const base = generate6WeekMuscleBuildingWorkout(num, 80);
+      const ts = now56 - daysAgo * DAY56;
+      return {
+        ...base,
+        id: `s56-${num}-${daysAgo}`,
+        completed: true,
+        date: localDateString(new Date(ts)),
+        durationMinutes: 44,
+        completedAt: new Date(ts).toISOString(),
+        exercises: base.exercises.map((ex) => ({
+          ...ex,
+          sets: ex.sets.map((st) => ({
+            ...st,
+            completed: true,
+            actualWeightKg: st.targetWeightKg + extraKg,
+            actualReps: st.targetReps,
+            actualRir: 2,
+          })),
+        })),
+      };
+    };
+
+    const hist56 = [mkWorkout56(1, 14, 0), mkWorkout56(1, 7, 2.5), mkWorkout56(1, 1, 5)];
+    const bio56: BiometricLog[] = [
+      { date: localDateString(new Date(now56 - 14 * DAY56)), bodyweightKg: 80.0, hrvRmssd: 58, restingHr: 55, sleepHours: 7.4, steps: 7200, activeZoneMinutes: 25 },
+      { date: today56, bodyweightKg: 80.4, hrvRmssd: 62, restingHr: 53, sleepHours: 7.8, steps: 8500, activeZoneMinutes: 35 },
+    ];
+    const prof56: UserProfile = {
+      ...NEW_USER_PROFILE,
+      name: 'Athlete',
+      gender: 'male',
+      weightUnit: 'kg',
+      goalSettings: {
+        customGoals: [
+          { id: 'ex-bench-press-weight', exerciseId: 'ex-bench-press', exerciseName: 'Barbell Bench Press', metric: 'weight', target: 120, createdOn: today56 },
+          { id: 'daily-steps-steps', exerciseId: 'daily-steps', exerciseName: 'Daily steps', metric: 'steps', target: 10000, createdOn: today56 },
+        ],
+      },
+    };
+    const goals56 = buildAthleteGoals({ profile: prof56, workouts: hist56, biometrics: bio56, bodyweightKg: 80.4, now: now56 });
+    const rings56 = buildGoalRings(goals56, (kg) => `${Math.round(kg * 10) / 10} kg`);
+    const cards56 = buildGoalCardSummaries(goals56, rings56, (kg) => `${Math.round(kg * 10) / 10} kg`);
+
+    // 1. 1-to-1 card alignment & QA gate pass across all 5 carousel slides
+    const allPassKg = cards56.every((card, idx) => {
+      const checked = checkGoalsSummary(card.fallback, card);
+      return (
+        card.goalId === rings56[idx].id &&
+        card.systemPrompt === SINGLE_GOAL_SUMMARY_SYSTEM_PROMPT &&
+        card.fallback.length <= 230 &&
+        !/%/.test(card.fallback) &&
+        checked.problem === undefined
+      );
+    });
+    const weeklyCard56 = cards56.find((c) => c.goalId === WEEKLY_GOAL_ID)!;
+    const strengthCard56 = cards56.find((c) => c.goalId.startsWith('strength-'))!;
+    const bodyCard56 = cards56.find((c) => c.goalId === CHOSEN_GOAL_ID)!;
+    const benchCard56 = cards56.find((c) => c.goalId.includes('bench-press'))!;
+    const stepsCard56 = cards56.find((c) => c.goalId.includes('daily-steps'))!;
+    assert(
+      rings56.length === 5 &&
+        cards56.length === 5 &&
+        allPassKg &&
+        weeklyCard56.loopLabels?.length === 3 &&
+        !/steps|Bench Press/i.test(weeklyCard56.fallback) &&
+        Boolean(strengthCard56.visContext) &&
+        !/steps|sessions left/i.test(strengthCard56.fallback) &&
+        bodyCard56.signStatuses?.length === 3 &&
+        /Build Muscle/i.test(bodyCard56.fallback) &&
+        /Barbell Bench Press/i.test(benchCard56.fallback) &&
+        /1,500 steps left today/i.test(stepsCard56.fallback),
+      `Per-goal carousel summaries map 1:1 (${cards56.length} slides), stay focused on their own goal, and pass checkGoalsSummary`
+    );
+
+    // 2. Unit conversion parity (lb)
+    const fmtLb56 = (kg: number) => `${Math.round(kg * 2.20462 * 10) / 10} lb`;
+    const profLb56: UserProfile = { ...prof56, weightUnit: 'lb' };
+    const goalsLb56 = buildAthleteGoals({ profile: profLb56, workouts: hist56, biometrics: bio56, bodyweightKg: 80.4, now: now56 });
+    const ringsLb56 = buildGoalRings(goalsLb56, fmtLb56);
+    const cardsLb56 = buildGoalCardSummaries(goalsLb56, ringsLb56, fmtLb56);
+    assert(
+      cardsLb56.every((c) => checkGoalsSummary(c.fallback, c).problem === undefined && !/\bkg\b/i.test(c.fallback)),
+      'All per-goal carousel summaries respect lb display units without leaking kg'
+    );
+
+    // 3. New / sparse athlete slides (including strength-none placeholder) stay sparse & never invoke model
+    const freshGoals56 = buildAthleteGoals({ profile: NEW_USER_PROFILE, workouts: [], biometrics: [], now: now56 });
+    const freshRings56 = buildGoalRings(freshGoals56);
+    const freshCards56 = buildGoalCardSummaries(freshGoals56, freshRings56);
+    let modelCalls56 = 0;
+    const mockPrompt56 = async (_sys: string, _req: string) => {
+      modelCalls56++;
+      return '8500 steps recorded today with 1500 remaining toward 10000 steps. Keep your daily walking routine steady.';
+    };
+    const skippedSparse = await generateGoalsSummary(freshCards56[1], mockPrompt56 as any);
+    const acceptedSingle = await generateGoalsSummary(stepsCard56, mockPrompt56 as any);
+    assert(
+      freshCards56.some((c) => c.goalId === 'strength-none' && c.sparse && checkGoalsSummary(c.fallback, c).problem === undefined) &&
+        skippedSparse === null &&
+        modelCalls56 === 1 &&
+        Boolean(acceptedSingle?.includes('1500 remaining')),
+      'Sparse goal slides skip model calls cleanly while populated single-goal slides refine safely via generateGoalsSummary'
+    );
+
+    // 4. Carousel UI & Design System parity
+    const overviewSrc56 = fs56.readFileSync(path56.join(repo56, 'src/components/analytics/ProgressOverviewCards.tsx'), 'utf8');
+    const analyticsSrc56 = fs56.readFileSync(path56.join(repo56, 'src/components/analytics/AnalyticsTab.tsx'), 'utf8');
+    const dsSrc56 = fs56.readFileSync(path56.join(repo56, 'src/designSystem/DesignSystemApp.tsx'), 'utf8');
+    const dsHtml56 = fs56.readFileSync(path56.join(repo56, 'design-system.html'), 'utf8');
+    assert(
+      overviewSrc56.includes('aria-roledescription="carousel"') &&
+        overviewSrc56.includes('snap-x snap-mandatory') &&
+        overviewSrc56.includes('size={192}') &&
+        overviewSrc56.includes('Previous goal') &&
+        overviewSrc56.includes('Next goal') &&
+        overviewSrc56.includes('aria-label="Choose a goal"') &&
+        overviewSrc56.includes('min-h-[44px]') &&
+        overviewSrc56.includes('<CoachSummaryText') &&
+        overviewSrc56.includes('Goal takeaway') &&
+        !overviewSrc56.includes('>Change<') &&
+        analyticsSrc56.includes('buildGoalCardSummaries') &&
+        analyticsSrc56.includes('cardSummaries={goalCardSummaries}') &&
+        dsSrc56.includes('Progress Goals Carousel Summary') &&
+        dsHtml56.includes('Progress Goals Carousel Summary'),
+      'ProgressOverviewCards, AnalyticsTab, DesignSystemApp & design-system.html ship accessible 192px Goal Carousel + per-goal summaries'
+    );
+  }
+
+  console.log('\nALL 56 ENGINE, GOVERNANCE, DESIGN SYSTEM, TYPOGRAPHY, WEARABLES, WHOOP STRAIN, GOOGLE AUTH, ONBOARDING CONTEXT, 6-WEEK PROGRAM, SPREADSHEET IMPORT, AI COACH ACTIONS, GEMINI FLASH + KG, OOUX, AGENTIC COACH, PRODUCT UPGRADES, INFO EXPERIENCE, CONTENT DESIGN, GOAL CAROUSEL & LAUNCH VERIFICATION SUITES PASSED SUCCESSFULLY! 🎯');
 })().catch((err) => {
   console.error('Test Suite Failed:', err);
   if (typeof process !== 'undefined' && process.exit) {
