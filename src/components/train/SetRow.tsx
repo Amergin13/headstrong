@@ -5,11 +5,10 @@ import { triggerHaptic } from '../../utils/haptics';
 import { useUnits } from '../../utils/unitsContext';
 import type { PreviousSet } from '../../services/exerciseInsight';
 
-const fig = (px: number) => `calc(${px} * var(--f))`;
 
 /** SET | PREV | WEIGHT | REPS | RIR | DONE — shared by the header and every row (48px+ Android touch targets). */
 export const SET_TABLE_COLUMNS = '44fr 84fr 122fr 92fr 82fr minmax(48px, 96fr)';
-export const SET_TABLE_GAP = fig(16);
+export const SET_TABLE_GAP = '8px';
 
 export type { PreviousSet } from '../../services/exerciseInsight';
 
@@ -82,7 +81,8 @@ export const SetRow: React.FC<SetRowProps> = ({
   const badge =
     displayBadge || (currentSetType === 'warmup' ? 'W' : currentSetType === 'drop' ? 'D' : currentSetType === 'myo' ? '+' : `${set.setNumber}`);
   const greyText: React.CSSProperties = {
-    fontSize: `max(13px, ${fig(28)})`,
+    fontSize: 12,
+    lineHeight: '16px',
     fontWeight: 500,
     fontVariantNumeric: 'tabular-nums',
     color: 'var(--wk-muted)',
@@ -95,7 +95,7 @@ export const SetRow: React.FC<SetRowProps> = ({
     onUpdate({ actualRepsLeft: left, actualRepsRight: right, actualReps: Math.min(left, right) });
   };
   const sideInput = (side: 'left' | 'right') => (
-    <label className="flex items-center" style={{ gap: fig(12) }}>
+    <label className="flex items-center gap-2">
       <span style={greyText}>{side === 'left' ? 'Left' : 'Right'}</span>
       <input
         type="number"
@@ -105,13 +105,13 @@ export const SetRow: React.FC<SetRowProps> = ({
         onFocus={(e) => e.target.select()}
         onChange={(e) => updateSide(side, Math.max(0, parseInt(e.target.value, 10) || 0))}
         className="wk-input tabular-numbers outline-none block"
-        style={{ width: fig(110) }}
+        style={{ width: 52 }}
       />
     </label>
   );
 
   return (
-    <div className="flex flex-col" style={{ gap: fig(14) }}>
+    <div className="flex flex-col gap-2">
     <div
       className="grid items-center relative"
       style={{ gridTemplateColumns: SET_TABLE_COLUMNS, columnGap: SET_TABLE_GAP }}
@@ -148,11 +148,15 @@ export const SetRow: React.FC<SetRowProps> = ({
           aria-label={`${label} weight in ${units.unit === 'lb' ? 'pounds' : 'kilograms'}`}
           onFocus={(e) => e.target.select()}
           onChange={(e) => onUpdate({ actualWeightKg: units.fromDisplay(parseFloat(e.target.value) || 0) })}
-          className="bg-transparent text-right font-semibold tabular-numbers outline-none p-0 text-white"
-          style={{ width: `${Math.max(1, String(displayWeight).length)}ch`, fontSize: 'inherit' }}
+          className="bg-transparent text-right font-semibold tabular-numbers outline-none p-0"
+          style={{
+            width: `${Math.max(1, String(displayWeight).length)}ch`,
+            fontSize: 'inherit',
+            color: set.completed ? 'var(--color-text-primary)' : 'var(--color-text-muted)',
+          }}
         />
         {displayWeight > 0 && (
-          <span aria-hidden="true" style={{ fontSize: `max(12px, ${fig(24)})`, fontWeight: 500, marginLeft: '0.12em', color: 'var(--wk-muted)' }}>
+          <span aria-hidden="true" style={{ fontSize: 12, fontWeight: 500, marginLeft: '0.12em', color: 'var(--wk-muted)' }}>
             {units.unit}
           </span>
         )}
@@ -167,11 +171,12 @@ export const SetRow: React.FC<SetRowProps> = ({
           onFocus={(e) => e.target.select()}
           onChange={(e) => onUpdate({ actualReps: parseInt(e.target.value, 10) || 0 })}
           className="wk-input tabular-numbers outline-none block"
+          style={{ color: set.completed ? 'var(--color-text-primary)' : 'var(--color-text-muted)' }}
         />
         {(set.isFormFailure || set.repDisplay === 'F*') && (
           <span
-            className="absolute rounded pointer-events-none font-semibold"
-            style={{ top: fig(-12), right: fig(-6), fontSize: `max(12px, ${fig(18)})`, padding: `0 ${fig(6)}`, background: 'var(--color-set-failure-bg)', color: 'var(--color-set-failure-fg)' }}
+            className="absolute rounded pointer-events-none font-medium"
+            style={{ top: -4, right: -4, fontSize: 12, padding: '0 4px', background: 'var(--color-set-failure-bg)', color: 'var(--color-set-failure-fg)' }}
             title="Do as many reps as you can with good form"
           >
             F*
@@ -190,6 +195,7 @@ export const SetRow: React.FC<SetRowProps> = ({
           onFocus={(e) => e.target.select()}
           onChange={(e) => onUpdate({ actualRir: Math.max(0, Math.min(5, parseInt(e.target.value, 10) || 0)) })}
           className="wk-input tabular-numbers outline-none block"
+          style={{ color: set.completed ? 'var(--color-text-primary)' : 'var(--color-text-muted)' }}
         />
       </label>
 
@@ -199,22 +205,23 @@ export const SetRow: React.FC<SetRowProps> = ({
         aria-label={set.completed ? `Mark ${label.toLowerCase()} not done` : `Complete ${label.toLowerCase()}`}
         title={set.completed ? `${label} logged` : `Log ${label.toLowerCase()}`}
         aria-pressed={set.completed}
-        className={`wk-tap flex items-center justify-center transition-colors active:scale-95 ${
+        className={`wk-tap flex items-center justify-center transition-all active:scale-[0.98] ${
           celebration > 0 && set.completed ? 'wk-tick-pop' : ''
         }`}
         style={{
           minHeight: 48,
           minWidth: 48,
-          height: `max(48px, ${fig(106)})`,
-          borderRadius: fig(15),
-          background: set.completed ? 'var(--wk-accent)' : 'var(--color-action-secondary-bg)',
+          height: 48,
+          borderRadius: 8,
+          background: set.completed ? 'var(--color-status-positive)' : 'var(--color-action-secondary-bg)',
+          border: set.completed ? '1px solid transparent' : '1px solid var(--color-border-strong)',
         }}
       >
         <svg
           viewBox="0 0 24 24"
-          style={{ width: `max(18px, ${fig(38)})`, height: `max(18px, ${fig(38)})` }}
+          style={{ width: 20, height: 20 }}
           fill="none"
-          stroke={set.completed ? 'var(--color-text-on-accent)' : 'var(--wk-muted)'}
+          stroke={set.completed ? 'var(--color-text-on-accent)' : 'var(--color-text-secondary)'}
           strokeWidth={set.completed ? 3 : 2.2}
           strokeLinecap="round"
           strokeLinejoin="round"
@@ -226,7 +233,7 @@ export const SetRow: React.FC<SetRowProps> = ({
       </button>
     </div>
     {perSide && (
-      <div className="flex justify-end" style={{ gap: fig(28) }} role="group" aria-label={`${label} reps for each side`}>
+      <div className="flex justify-end gap-3" role="group" aria-label={`${label} reps for each side`}>
         {sideInput('left')}
         {sideInput('right')}
       </div>
@@ -235,11 +242,11 @@ export const SetRow: React.FC<SetRowProps> = ({
       <div
         role="status"
         aria-live="polite"
-        className="wk-raised flex items-center justify-between flex-wrap"
-        style={{ gap: fig(16), fontSize: `max(12px, ${fig(22)})` }}
+        className="wk-raised flex items-center justify-between flex-wrap gap-2"
+        style={{ fontSize: 12 }}
       >
-        <span className="text-white/90">{pokaYoke.message}</span>
-        <div className="flex items-center" style={{ gap: fig(12) }}>
+        <span style={{ color: 'var(--color-text-primary)' }}>{pokaYoke.message}</span>
+        <div className="flex items-center gap-2">
           <button
             type="button"
             onClick={() => {
@@ -247,15 +254,19 @@ export const SetRow: React.FC<SetRowProps> = ({
               onUpdate({ actualWeightKg: pokaYoke.referenceWeightKg });
               setDismissedPokaYokeKg(null);
             }}
-            className="wk-btn-secondary min-h-[44px] font-semibold"
-            style={{ background: 'var(--wk-accent)', color: 'var(--color-text-on-accent)' }}
+            className="wk-btn-secondary min-h-[44px]"
+            style={{
+              background: 'var(--color-action-primary-bg)',
+              color: 'var(--color-action-primary-fg)',
+              borderColor: 'var(--color-action-primary-bg)',
+            }}
           >
             {pokaYoke.actionLabel}
           </button>
           <button
             type="button"
             onClick={() => setDismissedPokaYokeKg(currentWeight)}
-            className="wk-btn-secondary min-h-[44px] text-white/70"
+            className="wk-btn-secondary min-h-[44px]"
           >
             Keep {pokaYoke.enteredDisplay}
           </button>

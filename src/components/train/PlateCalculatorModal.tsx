@@ -27,16 +27,16 @@ export const PlateCalculatorModal: React.FC<PlateCalculatorModalProps> = ({
   const availablePlates: number[] = [...plateSet.plates];
 
   // Color mapping for standard Olympic bumper / competition plates
-  const plateColors: Record<number, { bg: string; border: string; text: string; height: string }> = {
-    45: { bg: 'bg-blue-600', border: 'border-blue-400', text: 'text-white', height: 'h-24' },
-    35: { bg: 'bg-amber-500', border: 'border-amber-300', text: 'text-black', height: 'h-20' },
-    25: { bg: 'bg-rose-600', border: 'border-rose-400', text: 'text-white', height: 'h-24' },
-    20: { bg: 'bg-blue-600', border: 'border-blue-400', text: 'text-white', height: 'h-24' },
-    15: { bg: 'bg-amber-500', border: 'border-amber-300', text: 'text-black', height: 'h-20' },
-    10: { bg: 'bg-emerald-600', border: 'border-emerald-400', text: 'text-white', height: 'h-18' },
-    5: { bg: 'bg-slate-200', border: 'border-slate-400', text: 'text-black', height: 'h-14' },
-    2.5: { bg: 'bg-slate-800', border: 'border-slate-600', text: 'text-white', height: 'h-12' },
-    1.25: { bg: 'bg-slate-600', border: 'border-slate-400', text: 'text-white', height: 'h-10' },
+  const plateColors: Record<number, { bg: string; border: string; text: string; height: number }> = {
+    45: { bg: 'var(--color-bg-surface-control)', border: 'var(--color-border-strong)', text: 'var(--color-text-primary)', height: 96 },
+    35: { bg: 'var(--color-bg-surface-raised)', border: 'var(--color-border-strong)', text: 'var(--color-text-primary)', height: 84 },
+    25: { bg: 'var(--color-bg-surface-control)', border: 'var(--color-border-strong)', text: 'var(--color-text-primary)', height: 96 },
+    20: { bg: 'var(--color-bg-surface-raised)', border: 'var(--color-border-strong)', text: 'var(--color-text-primary)', height: 96 },
+    15: { bg: 'var(--color-bg-surface-raised)', border: 'var(--color-border-strong)', text: 'var(--color-text-primary)', height: 80 },
+    10: { bg: 'var(--color-bg-surface)', border: 'var(--color-border-strong)', text: 'var(--color-text-primary)', height: 68 },
+    5: { bg: 'var(--color-bg-surface-control)', border: 'var(--color-border-subtle)', text: 'var(--color-text-secondary)', height: 56 },
+    2.5: { bg: 'var(--color-bg-surface-raised)', border: 'var(--color-border-subtle)', text: 'var(--color-text-secondary)', height: 48 },
+    1.25: { bg: 'var(--color-bg-surface)', border: 'var(--color-border-subtle)', text: 'var(--color-text-muted)', height: 40 },
   };
 
   // Calculate plates per side (Greedy algorithm)
@@ -60,14 +60,20 @@ export const PlateCalculatorModal: React.FC<PlateCalculatorModalProps> = ({
   const { platesPerSide, remainderKg } = calculatePlatesPerSide(targetWeight, barWeight, availablePlates);
 
   return (
-    <div role="dialog" aria-modal="true" aria-label="Plate calculator" className="fixed inset-0 z-50 flex items-center justify-center p-[calc(38*var(--f))] bg-black/85 backdrop-blur-md">
-      <div className="wk-card w-full max-w-sm shadow-2xl space-y-[calc(44*var(--f))]">
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Plate calculator"
+      className="wk fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-md"
+      style={{ background: 'var(--color-bg-scrim)' }}
+    >
+      <div className="wk-card w-full max-w-sm shadow-2xl space-y-5">
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-[calc(16*var(--f))]">
-            <Disc className="w-5 h-5" style={{ color: 'var(--wk-accent)' }} />
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <Disc className="w-5 h-5" style={{ color: 'var(--color-text-secondary)' }} />
             <h3 className="wk-h1">
-              Barbell Plate Calculator
+              Barbell plate calculator
             </h3>
           </div>
           <button
@@ -77,47 +83,45 @@ export const PlateCalculatorModal: React.FC<PlateCalculatorModalProps> = ({
               onClose();
             }}
             aria-label="Close plate calculator"
-            className="w-9 h-9 rounded-full flex items-center justify-center text-white/60 hover:text-white transition-colors"
-            style={{ background: 'var(--wk-raised)' }}
+            className="w-11 h-11 min-w-[44px] min-h-[44px] rounded-full flex items-center justify-center transition-colors border border-[var(--color-border-strong)]"
+            style={{ background: 'var(--wk-raised)', color: 'var(--color-text-secondary)' }}
           >
             <X className="w-4 h-4 stroke-[2]" />
           </button>
         </div>
 
         {/* Target Weight & Bar Weight Selector */}
-        <div className="space-y-[calc(26*var(--f))]">
-          <div className="wk-raised flex items-center justify-between">
+        <div className="space-y-3">
+          <div className="wk-raised flex items-center justify-between gap-3">
             <div>
-              <span className="wk-caption uppercase block">
-                Total Bar Load
+              <span className="wk-label block">
+                Total bar load
               </span>
-              <div className="flex items-baseline space-x-[calc(12*var(--f))] mt-[calc(4*var(--f))]">
+              <div className="flex items-baseline gap-2 mt-1">
                 <input
                   type="number"
                   step="0.5"
                   value={targetWeight}
                   onChange={(e) => setTargetWeight(parseFloat(e.target.value) || barWeight)}
-                  className="w-24 bg-transparent tabular-numbers font-semibold text-[length:max(12px,calc(44*var(--f)))] text-white focus:outline-none"
+                  className="w-24 bg-transparent tabular-numbers font-semibold text-xl focus:outline-none"
+                  style={{ color: 'var(--color-text-primary)' }}
                 />
                 <span className="wk-caption">{unit}</span>
               </div>
             </div>
 
             {/* Bar weight toggle */}
-            <div className="flex p-[calc(8*var(--f))] rounded-[calc(22*var(--f))] gap-[calc(8*var(--f))]" style={{ background: 'var(--wk-card)' }}>
+            <div className="wk-segments grid-cols-2">
               {plateSet.bars.map((b) => (
                 <button
                   key={b}
                   type="button"
+                  aria-pressed={barWeight === b}
                   onClick={() => {
                     triggerHaptic('light');
                     setBarWeight(b);
                   }}
-                  className="px-[calc(22*var(--f))] py-[calc(12*var(--f))] rounded-[calc(15*var(--f))] text-[length:max(12px,calc(26*var(--f)))] tabular-numbers font-semibold transition-all"
-                  style={{
-                    background: barWeight === b ? 'var(--wk-pill)' : 'transparent',
-                    color: barWeight === b ? 'var(--color-text-primary)' : 'var(--wk-muted)',
-                  }}
+                  className={`wk-segment tabular-numbers ${barWeight === b ? 'is-active' : ''}`}
                 >
                   {b} {unit} bar
                 </button>
@@ -126,33 +130,37 @@ export const PlateCalculatorModal: React.FC<PlateCalculatorModalProps> = ({
           </div>
         </div>
 
-        {/* Visual Barbell Collar & Plates */}
-        <div className="wk-raised flex flex-col items-center justify-center min-h-[140px]">
-          <span className="wk-caption uppercase mb-[calc(16*var(--f))]">
+        {/* Visual Barbell Collar & Plates (Neutral Treise Slate + 4px steps) */}
+        <div className="wk-raised flex flex-col items-center justify-center min-h-[144px]">
+          <span className="wk-label mb-2">
             Plates per side ({Math.max(0, (targetWeight - barWeight) / 2)} {unit} each side)
           </span>
 
           {platesPerSide.length === 0 ? (
-            <span className="wk-caption tabular-numbers py-[calc(54*var(--f))]">Empty bar ({barWeight} {unit})</span>
+            <span className="wk-caption tabular-numbers py-6">Empty bar ({barWeight} {unit})</span>
           ) : (
-            <div className="flex items-center space-x-[calc(8*var(--f))] py-[calc(16*var(--f))] overflow-x-auto max-w-full">
+            <div className="flex items-center gap-1 py-2 overflow-x-auto max-w-full">
               {/* Barbell Sleeve */}
-              <div className="w-5 h-8 bg-slate-700 rounded-l-md border-r-2 border-slate-900 shrink-0" />
+              <div
+                className="w-5 h-8 rounded-l shrink-0"
+                style={{ background: 'var(--color-bg-surface-control)', borderRight: '2px solid var(--color-bg-canvas)' }}
+              />
 
               {/* Plates Loaded onto sleeve */}
               {platesPerSide.map((weight, idx) => {
                 const conf = plateColors[weight] || {
-                  bg: 'bg-slate-700',
-                  border: 'border-slate-500',
-                  text: 'text-white',
-                  height: 'h-16',
+                  bg: 'var(--color-bg-surface-control)',
+                  border: 'var(--color-border-strong)',
+                  text: 'var(--color-text-primary)',
+                  height: 64,
                 };
                 return (
                   <div
                     key={`${weight}-${idx}`}
-                    className={`w-7 ${conf.height} ${conf.bg} border ${conf.border} rounded-sm flex items-center justify-center shadow-lg transition-transform`}
+                    className="w-7 rounded flex items-center justify-center shadow-lg transition-transform border"
+                    style={{ height: conf.height, background: conf.bg, borderColor: conf.border, color: conf.text }}
                   >
-                    <span className={`text-[length:max(12px,calc(26*var(--f)))] tabular-numbers font-semibold rotate-90 ${conf.text}`}>
+                    <span className="text-xs tabular-numbers font-semibold rotate-90">
                       {weight}
                     </span>
                   </div>
@@ -160,24 +168,27 @@ export const PlateCalculatorModal: React.FC<PlateCalculatorModalProps> = ({
               })}
 
               {/* Barbell Collar Clamp */}
-              <div className="w-2.5 h-6 bg-amber-400 rounded-sm shrink-0 border border-amber-300" />
+              <div
+                className="w-3 h-6 rounded shrink-0 border"
+                style={{ background: 'var(--color-bg-surface-control)', borderColor: 'var(--color-text-secondary)' }}
+              />
             </div>
           )}
 
           {remainderKg > 0 && (
-            <span className="wk-caption mt-[calc(16*var(--f))]" style={{ color: 'var(--color-status-warning-strong)' }}>
-              {remainderKg} {unit} can't be made with standard plates.
+            <span className="wk-caption mt-2" style={{ color: 'var(--color-status-warning)' }}>
+              {remainderKg} {unit} can&apos;t be made with standard plates.
             </span>
           )}
         </div>
 
         {/* Plate Counts Summary Grid */}
-        <div className="space-y-[calc(16*var(--f))]">
-          <span className="wk-caption uppercase">
-            Plate Checklist Per Side:
+        <div className="space-y-2">
+          <span className="wk-label">
+            Plate checklist per side
           </span>
 
-          <div className="grid grid-cols-4 gap-[calc(16*var(--f))] text-[length:max(12px,calc(26*var(--f)))]">
+          <div className="grid grid-cols-4 gap-2 text-xs">
             {availablePlates.map((plate) => {
               const count = platesPerSide.filter((p) => p === plate).length;
               if (count === 0) return null;
@@ -187,7 +198,7 @@ export const PlateCalculatorModal: React.FC<PlateCalculatorModalProps> = ({
                   className="wk-raised text-center"
                 >
                   <span className="wk-caption block">{plate} {unit}</span>
-                  <span className="wk-label tabular-numbers block mt-[calc(4*var(--f))]" style={{ color: 'var(--wk-accent)' }}>
+                  <span className="wk-label tabular-numbers block mt-1" style={{ color: 'var(--color-text-primary)' }}>
                     × {count}
                   </span>
                 </div>
@@ -203,10 +214,14 @@ export const PlateCalculatorModal: React.FC<PlateCalculatorModalProps> = ({
             triggerHaptic('light');
             onClose();
           }}
-          className="wk-button transition-all active:scale-98"
-          style={{ background: 'var(--color-action-secondary-bg)', color: 'var(--color-action-secondary-fg)' }}
+          className="wk-button transition-all active:scale-[0.98]"
+          style={{
+            background: 'var(--color-action-secondary-bg)',
+            color: 'var(--color-action-secondary-fg)',
+            border: '1px solid var(--color-border-strong)',
+          }}
         >
-          Close Calculator
+          Close calculator
         </button>
       </div>
     </div>

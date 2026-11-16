@@ -2,7 +2,6 @@ import React, { useEffect, useId, useRef, useState } from 'react';
 import { localDateOffset, parseLocalDate } from '../../utils/date';
 import type { ChartTone, ChartTypicalRange } from '../../services/progressSeries';
 
-const fig = (px: number) => `calc(${px} * var(--f))`;
 
 export interface TrendPoint {
   date: string; // YYYY-MM-DD
@@ -210,9 +209,13 @@ export const TrendChart: React.FC<TrendChartProps> = ({
   const isPositiveTrend =
     positiveProgress ??
     (tone === 'strength' && !example && main.length >= 2 && main[main.length - 1].raw > main[0].raw);
-  const accentColor = isPositiveTrend ? 'var(--color-accent-primary)' : 'var(--color-data-telemetry)';
+  const accentColor = isPositiveTrend
+    ? 'var(--color-accent-primary)'
+    : !example && tone === 'biometric'
+    ? 'var(--color-data-telemetry)'
+    : 'var(--color-text-primary)';
   const mutedStyle: React.CSSProperties = {
-    fontSize: `max(12px, ${fig(22)})`,
+    fontSize: 12,
     color: 'var(--color-text-muted)',
     lineHeight: 1.15,
     fontVariantNumeric: 'tabular-nums',
@@ -242,20 +245,12 @@ export const TrendChart: React.FC<TrendChartProps> = ({
   return (
     <div ref={boxRef} className={play ? 'wk-chart-play' : 'wk-chart-idle'}>
       {showTypicalBand && typicalRange && (
-        <div className="flex items-center justify-end gap-1.5 mb-2" aria-hidden="true">
+        <div className="flex items-center justify-end gap-2 mb-2" aria-hidden="true">
           <span
             className="inline-block rounded-[2px]"
-            style={{ width: 10, height: 10, background: 'rgba(255, 255, 255, 0.16)' }}
+            style={{ width: 10, height: 10, background: 'var(--color-border-strong)' }}
           />
-          <span
-            className="uppercase font-semibold"
-            style={{
-              fontSize: `max(12px, ${fig(20)})`,
-              color: 'var(--color-text-secondary)',
-              letterSpacing: '0.07em',
-              lineHeight: 1,
-            }}
-          >
+          <span className="wk-caption" style={{ lineHeight: 1 }}>
             {typicalRange.label}
           </span>
         </div>
@@ -265,12 +260,16 @@ export const TrendChart: React.FC<TrendChartProps> = ({
         className="grid items-stretch"
         style={{
           gridTemplateColumns: example ? '1fr' : 'auto 1fr',
-          columnGap: example ? 0 : fig(16),
+          columnGap: example ? 0 : 8,
           opacity: example ? 0.5 : 1,
         }}
       >
         {!example && (
-          <div className="relative select-none" style={{ height: fig(height), minWidth: fig(58) }} aria-hidden="true">
+          <div
+            className="relative select-none"
+            style={{ height: Math.round((height * 0.45) / 4) * 4, minWidth: 28 }}
+            aria-hidden="true"
+          >
             {ticks.map((tick) => {
               const tickY = y(tick);
               return (
@@ -292,7 +291,7 @@ export const TrendChart: React.FC<TrendChartProps> = ({
           </div>
         )}
 
-        <div className="relative w-full" style={{ height: fig(height) }}>
+        <div className="relative w-full" style={{ height: Math.round((height * 0.45) / 4) * 4 }}>
           <svg
             viewBox={`0 0 ${W} ${H}`}
             preserveAspectRatio="none"
@@ -309,7 +308,7 @@ export const TrendChart: React.FC<TrendChartProps> = ({
                   x2={W}
                   y1={tickY}
                   y2={tickY}
-                  stroke="rgba(255,255,255,0.08)"
+                  stroke="var(--color-border-track)"
                   strokeWidth={1}
                   vectorEffect="non-scaling-stroke"
                 />
@@ -322,14 +321,14 @@ export const TrendChart: React.FC<TrendChartProps> = ({
                 width={W}
                 height={bandH}
                 rx={10}
-                fill="rgba(255,255,255,0.08)"
+                fill="var(--color-border-track)"
               />
             )}
             {secondaryPts.length > 1 && (
               <path
                 d={path(secondaryPts)}
                 fill="none"
-                stroke="rgba(255,255,255,0.18)"
+                stroke="var(--color-border-strong)"
                 strokeWidth={1.5}
                 strokeLinejoin="round"
                 vectorEffect="non-scaling-stroke"
@@ -354,14 +353,15 @@ export const TrendChart: React.FC<TrendChartProps> = ({
                 <stop offset="100%" stopColor={accentColor} stopOpacity="0" />
               </linearGradient>
             </defs>
-            {areaPath && <path d={areaPath} fill={`url(#${areaGradientId})`} />}
+            {!example && areaPath && <path d={areaPath} fill={`url(#${areaGradientId})`} />}
             {!showNodes && (
               <line
                 x1={last.x}
                 x2={last.x}
                 y1={PAD_TOP * 0.45}
                 y2={H - PAD_BOTTOM}
-                stroke="rgba(255,255,255,0.3)"
+                stroke="var(--color-text-muted)"
+                strokeOpacity={0.5}
                 strokeWidth={1.5}
                 strokeDasharray="3 5"
                 vectorEffect="non-scaling-stroke"
@@ -370,7 +370,9 @@ export const TrendChart: React.FC<TrendChartProps> = ({
             <path
               d={path(main)}
               fill="none"
-              stroke={`url(#${lineGradientId})`}
+              stroke={example ? accentColor : `url(#${lineGradientId})`}
+              strokeOpacity={example ? 0.4 : 1}
+              strokeDasharray={example ? '4 4' : undefined}
               strokeWidth={showNodes ? 2.25 : 3}
               strokeLinejoin="round"
               strokeLinecap="round"
@@ -385,25 +387,27 @@ export const TrendChart: React.FC<TrendChartProps> = ({
                 <span
                   className="wk-chart-fade absolute rounded-full pointer-events-none"
                   style={{
-                    width: fig(18),
-                    height: fig(18),
+                    width: 8,
+                    height: 8,
                     left: `${(pt.x / W) * 100}%`,
                     top: `${(pt.y / H) * 100}%`,
                     transform: 'translate(-50%, -50%)',
                     background: 'var(--color-bg-surface)',
-                    border: `2.5px solid ${accentColor}`,
+                    border: `2px solid ${accentColor}`,
                   }}
                   aria-hidden="true"
                 />
                 {visibleNodeLabels.has(idx) && (
                   <span
-                    className="wk-chart-fade absolute font-semibold pointer-events-none select-none whitespace-nowrap"
+                    className={`wk-chart-fade absolute pointer-events-none select-none whitespace-nowrap ${
+                      idx === main.length - 1 ? 'font-medium' : 'font-normal'
+                    }`}
                     style={{
                       left: `${(pt.x / W) * 100}%`,
                       top: `${(pt.y / H) * 100}%`,
                       transform: 'translate(-50%, calc(-100% - 8px))',
-                      color: accentColor,
-                      fontSize: `max(12px, ${fig(24)})`,
+                      color: idx === main.length - 1 ? 'var(--color-text-primary)' : 'var(--color-text-secondary)',
+                      fontSize: 12,
                       lineHeight: 1,
                       fontVariantNumeric: 'tabular-nums',
                     }}
@@ -420,12 +424,12 @@ export const TrendChart: React.FC<TrendChartProps> = ({
             <span
               className="wk-chart-dot absolute rounded-full"
               style={{
-                width: fig(22),
-                height: fig(22),
-                left: `calc(${(last.x / W) * 100}% - ${fig(11)})`,
-                top: `calc(${(last.y / H) * 100}% - ${fig(11)})`,
+                width: 12,
+                height: 12,
+                left: `calc(${(last.x / W) * 100}% - 6px)`,
+                top: `calc(${(last.y / H) * 100}% - 6px)`,
                 background: 'var(--color-text-primary)',
-                boxShadow: `0 0 0 ${fig(7)} rgba(16,21,28,0.8)`,
+                boxShadow: '0 0 0 4px rgb(var(--color-bg-canvas-rgb) / 0.8)',
               }}
               aria-hidden="true"
             />
@@ -433,13 +437,13 @@ export const TrendChart: React.FC<TrendChartProps> = ({
 
           {single && (
             <span
-              className="wk-chart-fade absolute font-semibold"
+              className="wk-chart-fade absolute font-medium tabular-nums"
               style={{
                 color: 'var(--color-text-primary)',
-                fontSize: `max(12px, ${fig(38)})`,
+                fontSize: 16,
                 lineHeight: 1,
-                left: `calc(${(last.x / W) * 100}% + ${fig(26)})`,
-                top: `calc(${(last.y / H) * 100}% - ${fig(46)})`,
+                left: `calc(${(last.x / W) * 100}% + 12px)`,
+                top: `calc(${(last.y / H) * 100}% - 20px)`,
               }}
               aria-hidden="true"
             >
@@ -448,7 +452,7 @@ export const TrendChart: React.FC<TrendChartProps> = ({
           )}
 
           {example && (
-            <span className="wk-pill absolute" style={{ top: fig(14), left: fig(14) }} aria-hidden="true">
+            <span className="wk-pill absolute" style={{ top: 8, left: 8 }} aria-hidden="true">
               Example
             </span>
           )}
@@ -458,7 +462,7 @@ export const TrendChart: React.FC<TrendChartProps> = ({
         {!example && <div aria-hidden="true" />}
 
         {single && (
-          <div className="wk-chart-fade flex justify-between" style={{ ...mutedStyle, marginTop: fig(12) }} aria-hidden="true">
+          <div className="wk-chart-fade flex justify-between" style={{ ...mutedStyle, marginTop: 8 }} aria-hidden="true">
             <span>Starting point</span>
             <span>{dayMonth(points[0].date)}</span>
           </div>
@@ -467,7 +471,7 @@ export const TrendChart: React.FC<TrendChartProps> = ({
         {!example && !single && calendarDays.length > 1 && (
           <div
             className="wk-chart-fade relative"
-            style={{ height: fig(58), marginTop: fig(10) }}
+            style={{ height: 28, marginTop: 4 }}
             aria-hidden="true"
           >
             {calendarDays.map((day, idx) => {
@@ -482,10 +486,10 @@ export const TrendChart: React.FC<TrendChartProps> = ({
                     ...mutedStyle,
                   }}
                 >
-                  <div className="font-medium" style={{ color: 'var(--color-text-muted)' }}>
+                  <div className="font-normal" style={{ color: 'var(--color-text-muted)' }}>
                     {day.weekday}
                   </div>
-                  <div className="font-semibold" style={{ color: 'var(--color-text-secondary)', marginTop: '2px' }}>
+                  <div className="font-medium" style={{ color: 'var(--color-text-secondary)', marginTop: '2px' }}>
                     {day.day}
                   </div>
                 </div>
@@ -495,7 +499,7 @@ export const TrendChart: React.FC<TrendChartProps> = ({
         )}
 
         {!example && !single && calendarDays.length <= 1 && (
-          <div className="wk-chart-fade flex justify-between" style={{ ...mutedStyle, marginTop: fig(12) }} aria-hidden="true">
+          <div className="wk-chart-fade flex justify-between" style={{ ...mutedStyle, marginTop: 8 }} aria-hidden="true">
             <span>{dayMonth(points[0].date)}</span>
             <span>
               {dayMonth(points[points.length - 1].date)} · {format(points[points.length - 1].value)}

@@ -444,7 +444,7 @@ export function buildCoachSystemPrompt(input: AssistantProcessInput): string {
     routeName: input.routeName,
     knowledgeGraph: kg,
   });
-  return `You are ${VOICE_TONE_MATRIX.steadyVoice.replace(/^The /, 'the ').replace(/\.$/, '')}, speaking to ${athleteName || 'the athlete'} as "you". Lead with one direct sentence answering the question or confirming the outcome (no greeting). Keep replies concise at 40-80 words unless they explicitly ask for a detailed breakdown. Keep each paragraph to 1-2 short sentences, and use concise bold-lead bullets (- **Topic:** detail) for multi-part guidance. For anything about their plan, weights, sets or progress, use only the facts below. Never claim a program reset, swap, volume edit, or memory save happened unless a tool call succeeded. For general training questions (timing, motivation, habits, technique, food), give practical, widely accepted advice in your own words, without numbers. Never say the plan or the facts don't cover something. Never call a muscle's sets enough unless it is on target. High recovery means today's targets stand. Don't praise effort the facts don't show. Never guess or invent how individual sets or reps went in past workouts. The plan sets weights and raises them itself when every set reaches the top of the range; never tell them to change the weight. No hype, cheerleading or percentages; say why something works in one plain clause.
+  return `You are ${VOICE_TONE_MATRIX.steadyVoice.replace(/^The /, 'the ').replace(/\.$/, '')}, speaking to ${athleteName || 'the athlete'} as "you". Lead with one direct sentence answering the question or confirming the outcome (no greeting). Keep replies concise at 40-80 words unless they explicitly ask for a detailed breakdown. Keep each paragraph to 1-2 short sentences, and use concise bold-lead bullets (- **Topic:** detail) for multi-part guidance. For anything about their plan, weights, sets or progress, use only the facts below. Never claim a program reset, swap, volume edit, or memory save happened unless a tool call succeeded. For general training questions (timing, motivation, habits, technique, recovery, sleep, food), give practical, widely accepted advice in your own words without inventing numbers (avoid ungrounded weights, reps, sets, percentages, minutes, seconds, or hours—say "a short rest" or "a focused session" instead). Never say the plan or the facts don't cover something. Never call a muscle's sets enough unless it is on target. High recovery means today's targets stand. Don't praise effort the facts don't show. Never guess or invent how individual sets or reps went in past workouts. The plan sets weights and raises them itself when every set reaches the top of the range; never tell them to change the weight. No hype, cheerleading or percentages; say why something works in one plain clause.
 Athlete: ${hasWeighIn ? `${formatWeight(bodyweightEmaKg, unit)}, ` : ''}${athleteAge ? `age ${athleteAge}, ` : ''}location ${profile.activeLocation || 'gym'}, goal ${goalLabel}, week ${planPos.week}/${planPos.totalWeeks}, recovery ${recovery}${kg.recoveryEfficiencyScore > 0 ? ` (${kg.recoveryEfficiencyScore}%)` : ''}${
     latestBio && latestBio.hrvRmssd > 0 ? `, slept ${latestBio.sleepHours} h` : ''
   }.${placeFacts.length ? `\nViewing: ${placeFacts.join(' ')}.` : ''}${kgFacts.length ? `\n${kgFacts.join('\n')}` : ''}
@@ -524,6 +524,7 @@ export function claimsPastResults(answer: string): boolean {
 function claimsInventedPastResults(answer: string): boolean {
   const scrubbed = answer
     .replace(/\b(?:you(?:'ve| have)\s+)?(?:completed|done|logged|hit)\s+[\d,]+\s+(?:of\s+[\d,]+\s+)?(?:workouts?|sessions?|days?|steps)\b/gi, '')
+    .replace(/\b(?:if|when|even if)\s+you(?:'ve| have)?\s+(?:missed|skipped|had|taken)\b/gi, '')
     .replace(/\b(?:last\s+(?:week|7\s+days))\b/gi, '');
   return claimsPastResults(scrubbed);
 }
@@ -1432,7 +1433,10 @@ async function processAssistantMessageCore(
   ) {
     answerText = answerPlanPosition(profile, workouts, input.activities ?? []);
   } else if (
-    /\bshould i (train|work ?out|lift|go to the gym|skip)\b(?! (to|till|until) failure)|\b(am i|are my muscles) (ready|recovered)\b|\b(ok|okay|fine) to train\b|\bcan i train\b/.test(lowerMsg)
+    (/\bshould i (train|work ?out|lift|go to the gym|skip)\b(?! (to|till|until) failure)/.test(lowerMsg) &&
+      !/\b(?:how|what way|why)\s+should\s+i\s+(?:train|lift|work ?out)\b/.test(lowerMsg) &&
+      !/\bshould i (?:train|lift|work ?out) (?:for|to|with|more|less|heavier|lighter|faster|after|when|while)\b/.test(lowerMsg)) ||
+    /\b(am i|are my muscles) (ready|recovered)\b|\b(ok|okay|fine) to train\b|\bcan i train\b/.test(lowerMsg)
   ) {
     answerText = answerShouldTrain(activeWorkout, workouts, exerciseCatalog, readinessState);
   } else if (
@@ -1457,10 +1461,15 @@ async function processAssistantMessageCore(
 
     const dsMatches = isDesignQuery ? queryDesignSystemComponents(lowerMsg) : [];
 
-    // A. Joint Strain & Health Query (only when asking about joint/strain/load/pain, not lifts like shoulder press or back squat)
+    // A. Joint Strain & Health Query (only when genuinely asking about joint load/strain/ache/stiffness, not hypertrophy or "get back")
+    const asksAboutMuscleBuildOrReturn =
+      /\b(build|grow|wider|bigger|broader|thickness|width|size|hypertrophy|come back|getting back|back on track|back to (?:training|lifting|the gym))\b/.test(
+        lowerMsg
+      );
     const asksAboutJointLoad =
-      /\b(joint|strain|stress|ache|pain|sore\w*|tight\w*|load on my)\b/.test(lowerMsg) ||
-      !/\b(press|squat|deadlift|rdl|row|extension|curl|raise|pulldown|e?1rm|estimated max|standard|tier|target|weight|reps?|formula|calculat\w*|how much|sets?)\b/.test(lowerMsg);
+      !asksAboutMuscleBuildOrReturn &&
+      (/\b(joint|joints|joint strain|strain|stress|ache|pain|sore\w*|tight\w*|load on my|capsule|tendon|stiff\w*)\b/.test(lowerMsg) ||
+        /\bhow(?:'?s| is| are) my (?:shoulder|elbow|back|lower back|knee|ankle)s?\b/.test(lowerMsg));
 
     const jointQuery = asksAboutJointLoad
       ? kg.joints.find((j) => {
@@ -1651,20 +1660,29 @@ async function processAssistantMessageCore(
         }
       }
 
-      // C. Recovery, Strain & Autonomic Telemetry Query
+      // C. Recovery, Strain & Autonomic Telemetry Query (direct telemetry checks; open sleep/recovery/motivation tips go to Gemini when available)
       else if (
-        lowerMsg.includes('recovery') ||
-        lowerMsg.includes('strain') ||
-        lowerMsg.includes('hrv') ||
-        lowerMsg.includes('sleep') ||
-        lowerMsg.includes('readiness') ||
-        lowerMsg.includes('pulse') ||
-        lowerMsg.includes('heart') ||
-        lowerMsg.includes('whoop') ||
-        lowerMsg.includes('fitbit') ||
-        lowerMsg.includes('health connect') ||
-        lowerMsg.includes('wearable') ||
-        lowerMsg.includes('watch')
+        (lowerMsg.includes('recovery') ||
+          lowerMsg.includes('strain') ||
+          lowerMsg.includes('hrv') ||
+          lowerMsg.includes('sleep') ||
+          lowerMsg.includes('readiness') ||
+          lowerMsg.includes('pulse') ||
+          lowerMsg.includes('heart') ||
+          lowerMsg.includes('whoop') ||
+          lowerMsg.includes('fitbit') ||
+          lowerMsg.includes('health connect') ||
+          lowerMsg.includes('wearable') ||
+          lowerMsg.includes('watch')) &&
+        (!(
+          /\b(tips?|advice|how (?:can|do|should) i (?:improve|get better|sleep|recover|boost|fix)|better sleep|sleep better|recover faster|why does|motivat\w*|routine|habits?|strategies)\b/.test(
+            lowerMsg
+          ) &&
+          !/\b(my recovery|how(?:'?s| is) my (?:recovery|sleep|hrv|strain|readiness|whoop|watch)|recovery score|strain score|did .* sync|what was my)\b/.test(
+            lowerMsg
+          )
+        ) ||
+          !(await isOnDeviceModelReady()))
       ) {
         const latest = biometrics[biometrics.length - 1];
         const readings = recoveryReadingsClause(latest);
@@ -1758,7 +1776,13 @@ async function processAssistantMessageCore(
           value: `${kg.lengthenedStimulusRatio}% of sets`,
         });
         }
-      } else if (/\b(protein|eat|eating|ate|meals?|diet|nutrition|food|snack)\b/.test(lowerMsg)) {
+      } else if (
+        /\b(protein|eat|eating|ate|meals?|diet|nutrition|food|snack)\b/.test(lowerMsg) &&
+        (!/\b(recipes?|meal prep|ideas?|breakfast|lunch|dinner|vegan|vegetarian|high[- ]?protein (?:meals?|foods?|snacks?))\b/.test(
+          lowerMsg
+        ) ||
+          !(await isOnDeviceModelReady()))
+      ) {
         const isPreWorkout = /\b(before|pre[\s-]?workout|pre[\s-]?training|prior to)\b/.test(lowerMsg);
         const isPostWorkout = /\b(after|post[\s-]?workout|post[\s-]?training)\b/.test(lowerMsg);
         // A gram figure needs a logged bodyweight; without one, only the per-kg guidance is given.
@@ -1860,9 +1884,14 @@ async function processAssistantMessageCore(
         let nanoHandled = false;
         const workoutExercises = activeWorkout?.exercises || [];
 
-        // Questions about the athlete's own plan or progress are answered from their data, never by
-        // a small model that can misread or invent numbers.
-        const isProgressQuery = /\b(progress|progressing|improv\w*|stronger|getting better|gains?|prs?|personal (best|record)s?)\b/i.test(lowerMsg);
+        // Questions explicitly about the athlete's own progress or PRs are answered from their logged
+        // history, while open coaching questions containing "improving" / "gains" still reach Gemini.
+        const isExplicitOwnProgressQuery =
+          /\b((?:am i|how(?:'?s| is| are)|check|show|summarize|tell me about)\s+(?:my\s+|i\s+)?(?:progress\w*|improv\w*|getting\s+(?:stronger|better)|gains?|prs?|personal\s+(?:best|record)s?)|(?:my|recent)\s+(?:prs?|personal\s+(?:best|record)s?|progress|gains?))\b/i.test(
+            lowerMsg
+          ) || /^(?:progress|prs?|personal\s+(?:best|record)s?)\??$/i.test(lowerMsg.trim());
+        const isLooseProgressQuery = /\b(progress|progressing|improv\w*|stronger|getting better|gains?|prs?|personal (best|record)s?)\b/i.test(lowerMsg);
+        const isProgressQuery = isExplicitOwnProgressQuery || (isLooseProgressQuery && !(await isOnDeviceModelReady()));
         if (isProgressQuery) {
           answerText = buildProgressSummary(workouts, profile.weightUnit || 'kg');
           nanoHandled = true;
@@ -1935,9 +1964,7 @@ async function processAssistantMessageCore(
             }
             input.onPartial?.(textSoFar);
           };
-          let handledByStructuredFlash = false;
-          if ((await getOnDeviceModelStatus()) !== 'available' && (await isFlashLiteReady())) {
-            handledByStructuredFlash = true;
+          const runStructuredFlashLite = async (): Promise<void> => {
             const startedAt = Date.now();
             let structured = await promptFlashLiteStructured(questionWithFacts, {
               systemPrompt,
@@ -1952,55 +1979,63 @@ async function processAssistantMessageCore(
               applyToolOutcome(toolOutcome);
               modelSuggestedActions = structured.suggestedActions;
               nanoHandled = true;
-            } else if (structured?.text) {
-              let problem = problemWith(structured.text);
-              if (problem) {
-                forgetLastFlashLiteExchange();
-                if (Date.now() - startedAt < RETRY_IF_FASTER_THAN_MS) {
-                  structured = await promptFlashLiteStructured(
-                    `${questionWithFacts}\n(Your last answer could not be used because ${problem}. Answer again in 2-4 short sentences, using only the facts given.)`,
-                    {
-                      systemPrompt,
-                      tools: COACH_TOOL_DECLARATIONS,
-                    }
+              return;
+            }
+            if (!structured?.text) return;
+
+            let problem = problemWith(structured.text);
+            if (problem) {
+              forgetLastFlashLiteExchange();
+              if (Date.now() - startedAt < RETRY_IF_FASTER_THAN_MS) {
+                structured = await promptFlashLiteStructured(
+                  `${questionWithFacts}\n(Your last answer could not be used because ${problem}. Answer again in 2-4 short sentences, using only the facts given.)`,
+                  {
+                    systemPrompt,
+                    tools: COACH_TOOL_DECLARATIONS,
+                  }
+                );
+                if (structured?.functionCall) {
+                  const toolOutcome = await executeCoachToolCall(
+                    structured.functionCall.name,
+                    structured.functionCall.args,
+                    toolCtx
                   );
-                  if (structured?.functionCall) {
-                    const toolOutcome = await executeCoachToolCall(
-                      structured.functionCall.name,
-                      structured.functionCall.args,
-                      toolCtx
-                    );
-                    applyToolOutcome(toolOutcome);
-                    modelSuggestedActions = structured.suggestedActions;
-                    nanoHandled = true;
-                    problem = null;
-                  } else {
-                    problem = structured?.text ? problemWith(structured.text) : 'empty reply';
-                    if (problem && structured?.text) {
-                      forgetLastFlashLiteExchange();
-                    }
-                  }
+                  applyToolOutcome(toolOutcome);
+                  modelSuggestedActions = structured.suggestedActions;
+                  nanoHandled = true;
+                  return;
                 }
-              }
-              if (!problem && !nanoHandled && structured?.text) {
-                answerText = structured.text;
-                modelSuggestedActions = structured.suggestedActions;
-                nanoHandled = true;
-                for (const ex of workoutExercises) {
-                  if (
-                    lowerMsg.includes(ex.name.toLowerCase()) ||
-                    structured.text.toLowerCase().includes(ex.name.toLowerCase())
-                  ) {
-                    citations.push({
-                      label: ex.name,
-                      metric: 'Target Load & Reps',
-                      value: `${formatWeight(ex.sets.find((st) => !st.isWarmup && st.setType !== 'warmup')?.targetWeightKg ?? 0, profile.weightUnit || 'kg')} × ${ex.minReps}–${ex.maxReps} reps`,
-                    });
-                    break;
-                  }
+                problem = structured?.text ? problemWith(structured.text) : 'empty reply';
+                if (problem && structured?.text) {
+                  forgetLastFlashLiteExchange();
                 }
               }
             }
+            if (!problem && !nanoHandled && structured?.text) {
+              answerText = structured.text;
+              modelSuggestedActions = structured.suggestedActions;
+              nanoHandled = true;
+              for (const ex of workoutExercises) {
+                if (
+                  lowerMsg.includes(ex.name.toLowerCase()) ||
+                  structured.text.toLowerCase().includes(ex.name.toLowerCase())
+                ) {
+                  citations.push({
+                    label: ex.name,
+                    metric: 'Target Load & Reps',
+                    value: `${formatWeight(ex.sets.find((st) => !st.isWarmup && st.setType !== 'warmup')?.targetWeightKg ?? 0, profile.weightUnit || 'kg')} × ${ex.minReps}–${ex.maxReps} reps`,
+                  });
+                  break;
+                }
+              }
+            }
+          };
+
+          const onDeviceStatus = await getOnDeviceModelStatus();
+          let handledByStructuredFlash = false;
+          if (onDeviceStatus !== 'available' && (await isFlashLiteReady())) {
+            handledByStructuredFlash = true;
+            await runStructuredFlashLite();
           }
 
           if (!handledByStructuredFlash) {
@@ -2047,6 +2082,8 @@ async function processAssistantMessageCore(
                   break;
                 }
               }
+            } else if (onDeviceStatus === 'available' && (await isFlashLiteReady())) {
+              await runStructuredFlashLite();
             }
           }
         }

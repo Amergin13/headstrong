@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 import path from 'path';
 import { localApiPlugin } from './scripts/localApiPlugin.mjs';
+import { designSystemSyncPlugin } from './scripts/designSystemSyncPlugin.mjs';
 
 const isLocalTestServer = process.env.TREISE_LOCAL_TEST === '1';
 
@@ -17,6 +18,7 @@ export default defineConfig({
         skipWaiting: true,
         clientsClaim: true,
         cleanupOutdatedCaches: true,
+        navigateFallbackDenylist: [/^\/api\//],
       },
       includeAssets: [
         'favicon.ico',
@@ -109,6 +111,7 @@ export default defineConfig({
         ],
       },
     }),
+    designSystemSyncPlugin(),
   ],
   resolve: {
     alias: {

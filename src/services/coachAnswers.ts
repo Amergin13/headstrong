@@ -831,8 +831,13 @@ export function answerEverydayQuestion(ctx: EverydayContext): string | null {
     return `${p.overview.completedCount} of ${p.total} sessions done in your ${p.plan.name} (week ${p.week} of ${p.totalWeeks}). ${answerStreak(workouts, activities, now)}\n\n${ctx.progressSummary()}`;
   }
 
-  // What to focus on.
-  if (/\b(focus on|priorit\w*|most important|concentrate on|work on most)\b/.test(msg)) {
+  // What to focus on (situational lifestyle/schedule/topic constraints go to the conversational model).
+  if (
+    /\b(focus on|priorit\w*|most important|concentrate on|work on most)\b/.test(msg) &&
+    !/\b(work|hectic|busy|stress|travel|sleep|motivat\w*|habit|diet|food|mindset|plateau|technique|form|mobility|recover\w*)\b/.test(
+      msg
+    )
+  ) {
     const p = planPosition(profile, workouts, activities);
     const recovery = readinessState === 'Amber Shield' ? ' Your recovery is low today, so sleep and an easier session come first.' : '';
     return `Two things move you forward, in this order:\n1. Turning up. ${p.overview.completedCount} of ${p.total} sessions are done${p.nextLabel ? `; next is ${p.nextLabel}` : ''}.\n2. Beating last time by one rep on your first sets, with clean form. The weight goes up by itself once every set reaches the top of its range.${recovery}`;

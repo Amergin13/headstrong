@@ -1,42 +1,62 @@
 import React, { useEffect } from 'react';
-import { Zap } from 'lucide-react';
+import { Zap, X } from 'lucide-react';
 
 interface ToastProps {
-  /** Short headline, e.g. "Weight PR". Defaults to the app name. */
-  title?: string;
   message: string;
-  tag?: string;
-  onClose: () => void;
+  subtitle?: string;
+  onDismiss: () => void;
+  duration?: number;
+  /** Render inline inside a specimen frame instead of a viewport-fixed portal bar. */
+  inline?: boolean;
 }
 
-/** Brief confirmation or celebration at the top of the screen. */
-export const Toast: React.FC<ToastProps> = ({ title, message, tag, onClose }) => {
+export const Toast: React.FC<ToastProps> = ({
+  message,
+  subtitle = 'Recovery telemetry updated',
+  onDismiss,
+  duration = 5000,
+  inline = false,
+}) => {
   useEffect(() => {
-    const timer = setTimeout(onClose, 2400);
+    if (inline) return;
+    const timer = setTimeout(onDismiss, duration);
     return () => clearTimeout(timer);
-  }, [onClose]);
+  }, [duration, inline, onDismiss]);
 
   return (
     <div
-      role="status"
-      className="fixed top-14 left-4 right-4 z-50 max-w-sm mx-auto pointer-events-none transition-all duration-300"
+      className={
+        inline
+          ? 'wk w-full pointer-events-auto'
+          : 'wk fixed top-14 inset-x-0 z-50 px-4 max-w-md mx-auto animate-in fade-in slide-in-from-top-4 duration-300 pointer-events-auto'
+      }
     >
-      <div className="wk-card shadow-2xl border border-white/[0.08] flex items-center justify-between">
-        <div className="flex items-center space-x-[calc(26*var(--f))]">
+      <div className="wk-card flex items-center justify-between gap-3 border border-[var(--color-border-strong)] shadow-2xl">
+        <div className="flex items-center gap-3 min-w-0">
           <div
-            className="w-9 h-9 rounded-[calc(22*var(--f))] flex items-center justify-center shrink-0"
+            className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0"
             style={{ background: 'var(--wk-raised)', color: 'var(--wk-accent)' }}
           >
             <Zap className="w-4 h-4 fill-[var(--wk-accent)]" />
           </div>
-          <div>
-            <div className="flex items-center space-x-[calc(16*var(--f))]">
-              <span className="wk-h1">{title || 'TREISE'}</span>
-              {tag && <span className="wk-pill">{tag}</span>}
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="wk-label whitespace-nowrap" style={{ color: 'var(--wk-accent)' }}>
+                {subtitle}
+              </span>
             </div>
-            <p className="wk-body mt-[calc(4*var(--f))]">{message}</p>
+            <p className="wk-body mt-1">{message}</p>
           </div>
         </div>
+        <button
+          type="button"
+          onClick={onDismiss}
+          className="min-w-[44px] min-h-[44px] rounded-full flex items-center justify-center shrink-0 transition-colors"
+          style={{ color: 'var(--color-text-muted)' }}
+          aria-label="Dismiss notification"
+        >
+          <X className="w-4 h-4" />
+        </button>
       </div>
     </div>
   );

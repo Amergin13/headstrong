@@ -22,9 +22,6 @@ import { triggerHaptic } from '../../utils/haptics';
 import { unitToKg } from '../../utils/units';
 import { useUnits } from '../../utils/unitsContext';
 
-const fig = (px: number) => `calc(${px} * var(--f))`;
-const text = (px: number) => `max(12px, ${fig(px)})`;
-
 const GOAL_NOTE: Record<GoalPhase, string> = {
   'Lean Bulk': 'Your sets build across the 6 weeks, with extra sets on smaller muscles at the end.',
   'Cut / Recomp': 'The big lifts stay heavy with no extra sets, so you keep strength while eating less.',
@@ -33,7 +30,7 @@ const GOAL_NOTE: Record<GoalPhase, string> = {
 
 /** One choice in a list: the selected one is ticked. */
 const Choice: React.FC<{ selected: boolean; title: string; note?: string; tag?: string; onSelect: () => void }> = ({ selected, title, note, tag, onSelect }) => (
-  <li style={{ borderTop: `${fig(2)} solid rgba(255,255,255,0.08)` }}>
+  <li style={{ borderTop: '1px solid var(--color-border-subtle)' }}>
     <button
       type="button"
       role="radio"
@@ -42,28 +39,30 @@ const Choice: React.FC<{ selected: boolean; title: string; note?: string; tag?: 
         triggerHaptic('light');
         onSelect();
       }}
-      className="w-full text-left flex items-center justify-between"
-      style={{ gap: fig(24), padding: `${fig(26)} 0`, minHeight: 44 }}
+      className="w-full text-left flex items-center justify-between gap-3 py-3 min-h-[44px]"
     >
       <span className="min-w-0">
-        <span className="flex items-center flex-wrap" style={{ gap: fig(14) }}>
-          <span className="wk-label" style={{ lineHeight: 1.21 }}>
+        <span className="flex items-center flex-wrap gap-2">
+          <span className="wk-subhead">
             {title}
           </span>
           {tag && <span className="wk-pill">{tag}</span>}
         </span>
         {note && (
-          <span className="wk-caption block" style={{ marginTop: fig(8) }}>
+          <span className="wk-caption block mt-1 max-w-prose">
             {note}
           </span>
         )}
       </span>
       <span
-        className="rounded-full flex items-center justify-center shrink-0"
-        style={{ width: fig(52), height: fig(52), background: selected ? 'var(--wk-accent)' : 'transparent', border: selected ? 'none' : `${fig(3)} solid var(--wk-pill)` }}
+        className="w-6 h-6 rounded-full flex items-center justify-center shrink-0"
+        style={{
+          background: selected ? 'var(--wk-accent)' : 'transparent',
+          border: selected ? 'none' : '2px solid var(--color-border-strong)',
+        }}
         aria-hidden="true"
       >
-        {selected && <Check style={{ width: fig(30), height: fig(30), color: 'var(--color-text-on-accent)' }} strokeWidth={3} />}
+        {selected && <Check className="w-3.5 h-3.5" style={{ color: 'var(--color-text-on-accent)' }} strokeWidth={3} />}
       </span>
     </button>
   </li>
@@ -125,10 +124,10 @@ export const GoalSettingsScreen: React.FC<GoalSettingsScreenProps> = ({ profile,
         <h2 id="goal-main" className="wk-title">
           Your main goal
         </h2>
-        <p className="wk-body" style={{ marginTop: fig(12) }}>
-          This shapes your plan's sets and reps, and how your progress is judged.
+        <p className="wk-body mt-2 max-w-prose">
+          This shapes your plan&apos;s sets and reps, and how your progress is judged.
         </p>
-        <ul role="radiogroup" aria-labelledby="goal-main" className="flex flex-col" style={{ marginTop: fig(20) }}>
+        <ul role="radiogroup" aria-labelledby="goal-main" className="flex flex-col mt-3">
           {(Object.keys(GOAL_DISPLAY_NAME) as GoalPhase[]).map((p) => (
             <Choice key={p} selected={phase === p} title={GOAL_DISPLAY_NAME[p]} note={GOAL_NOTE[p]} onSelect={() => phase !== p && onUpdateGoalPhase(p)} />
           ))}
@@ -139,10 +138,15 @@ export const GoalSettingsScreen: React.FC<GoalSettingsScreenProps> = ({ profile,
         <h2 id="goal-sessions" className="wk-title">
           Sessions a week
         </h2>
-        <p className="wk-body" style={{ marginTop: fig(12) }}>
+        <p className="wk-body mt-2 max-w-prose">
           Your plan is built on {planPerWeek} a week. Workouts and active days of 20 minutes or more both count.
         </p>
-        <div role="radiogroup" aria-labelledby="goal-sessions" className="grid" style={{ gridTemplateColumns: `repeat(${MAX_SESSIONS_PER_WEEK - MIN_SESSIONS_PER_WEEK + 1}, minmax(0, 1fr))`, gap: fig(12), marginTop: fig(32) }}>
+        <div
+          role="radiogroup"
+          aria-labelledby="goal-sessions"
+          className="grid gap-2 mt-4"
+          style={{ gridTemplateColumns: `repeat(${MAX_SESSIONS_PER_WEEK - MIN_SESSIONS_PER_WEEK + 1}, minmax(0, 1fr))` }}
+        >
           {Array.from({ length: MAX_SESSIONS_PER_WEEK - MIN_SESSIONS_PER_WEEK + 1 }, (_, i) => i + MIN_SESSIONS_PER_WEEK).map((n) => (
             <button
               key={n}
@@ -154,21 +158,20 @@ export const GoalSettingsScreen: React.FC<GoalSettingsScreenProps> = ({ profile,
                 triggerHaptic('light');
                 save({ ...settings, sessionsPerWeek: n });
               }}
-              className="flex flex-col items-center justify-center font-semibold tabular-numbers"
+              className={`flex flex-col items-center justify-center tabular-numbers min-h-[48px] h-12 rounded-xl text-base ${
+                perWeek === n ? 'font-semibold' : 'font-medium'
+              }`}
               style={{
-                minHeight: 48,
-                height: fig(130),
-                borderRadius: fig(22),
-                fontSize: text(36),
-                background: perWeek === n ? 'var(--wk-accent)' : 'var(--wk-raised)',
-                color: perWeek === n ? 'var(--color-text-on-accent)' : 'var(--color-text-primary)',
+                background: perWeek === n ? 'var(--color-action-primary-bg)' : 'var(--wk-raised)',
+                color: perWeek === n ? 'var(--color-action-primary-fg)' : 'var(--color-text-primary)',
+                border: perWeek === n ? 'none' : '1px solid var(--color-border-subtle)',
               }}
             >
               {n}
             </button>
           ))}
         </div>
-        <p className="wk-caption" style={{ marginTop: fig(20) }}>
+        <p className="wk-caption mt-3">
           {perWeek === planPerWeek ? `${planPerWeek} is your plan's number.` : `You've set ${perWeek}. Your plan's number is ${planPerWeek}. Earlier weeks are counted against ${perWeek} too.`}
         </p>
       </section>
@@ -177,10 +180,10 @@ export const GoalSettingsScreen: React.FC<GoalSettingsScreenProps> = ({ profile,
         <h2 id="goal-strength" className="wk-title">
           Strength level to follow
         </h2>
-        <p className="wk-body" style={{ marginTop: fig(12) }}>
-          The lift whose next level is one of your goals. Every lift's level is still tracked in Strength standards.
+        <p className="wk-body mt-2 max-w-prose">
+          The lift whose next level is one of your goals. Every lift&apos;s level is still tracked in Strength standards.
         </p>
-        <ul role="radiogroup" aria-labelledby="goal-strength" className="flex flex-col" style={{ marginTop: fig(20) }}>
+        <ul role="radiogroup" aria-labelledby="goal-strength" className="flex flex-col mt-3">
           <Choice
             selected={settings.strengthFocus === undefined}
             title="Closest to the next level"
@@ -204,7 +207,7 @@ export const GoalSettingsScreen: React.FC<GoalSettingsScreenProps> = ({ profile,
       </section>
 
       <section className="wk-card" aria-labelledby="goal-own">
-        <div className="flex items-start justify-between" style={{ gap: fig(20) }}>
+        <div className="flex items-start justify-between gap-2">
           <h2 id="goal-own" className="wk-title">
             Goals of your own
           </h2>
@@ -212,11 +215,11 @@ export const GoalSettingsScreen: React.FC<GoalSettingsScreenProps> = ({ profile,
             {goalCount} of {MAX_GOALS} goals
           </span>
         </div>
-        <p className="wk-body" style={{ marginTop: fig(12) }}>
+        <p className="wk-body mt-2 max-w-prose">
           You have 3 goals from your plan and can add up to {MAX_CUSTOM_GOALS} of your own. Pick one below or open Treise and say it, for example &quot;my goal is 10,000 steps&quot; or &quot;set a goal of 100 kg on bench press&quot;.
         </p>
 
-        <div className="flex flex-wrap" style={{ gap: fig(12), marginTop: fig(24) }}>
+        <div className="flex flex-wrap gap-2 mt-3">
           {OWN_GOAL_OPTIONS.map((opt) => {
             const active = pickedOptionId === opt.exerciseId;
             return (
@@ -236,11 +239,9 @@ export const GoalSettingsScreen: React.FC<GoalSettingsScreenProps> = ({ profile,
                 }}
                 className="wk-btn-secondary wk-tap"
                 style={{
-                  background: active ? 'var(--color-accent-primary-soft)' : 'var(--wk-raised)',
-                  color: active ? 'var(--wk-accent)' : 'var(--color-text-primary)',
-                  border: active ? `${fig(2)} solid var(--wk-accent)` : `${fig(2)} solid transparent`,
-                  minHeight: 44,
-                  padding: `0 ${fig(24)}`,
+                  background: active ? 'var(--color-action-primary-bg)' : 'var(--wk-raised)',
+                  color: active ? 'var(--color-action-primary-fg)' : 'var(--color-text-primary)',
+                  border: active ? '1px solid var(--color-action-primary-bg)' : '1px solid var(--color-border-strong)',
                 }}
               >
                 {opt.label}
@@ -250,9 +251,9 @@ export const GoalSettingsScreen: React.FC<GoalSettingsScreenProps> = ({ profile,
         </div>
 
         {pickedOption && (
-          <div style={{ marginTop: fig(24) }}>
-            <div className="flex items-center flex-wrap" style={{ gap: fig(16) }}>
-              <label htmlFor="custom-goal-target" className="wk-label" style={{ flexShrink: 0 }}>
+          <div className="mt-3">
+            <div className="flex items-center flex-wrap gap-2">
+              <label htmlFor="custom-goal-target" className="wk-meta-title shrink-0">
                 {pickedOption.metric === 'weight' ? 'Lift' : pickedOption.metric === 'steps' ? 'Reach' : 'Do'}
               </label>
               <input
@@ -264,15 +265,14 @@ export const GoalSettingsScreen: React.FC<GoalSettingsScreenProps> = ({ profile,
                 value={customTargetInput}
                 onChange={(e) => setCustomTargetInput(e.target.value)}
                 aria-invalid={candidateInvalid}
-                className="wk-field tabular-numbers"
-                style={{ width: fig(220), minHeight: 44, padding: `0 ${fig(24)}`, fontSize: text(34), color: 'var(--color-text-primary)' }}
+                className="wk-field tabular-numbers w-28"
               />
               <span className="wk-body">
                 {pickedOption.metric === 'weight' ? units.unit : pickedOption.metric === 'steps' ? 'steps a day' : 'reps in one set'}
               </span>
             </div>
             {candidateInvalid && (
-              <p className="wk-caption" style={{ marginTop: fig(12), color: 'var(--color-status-danger)' }}>
+              <p className="wk-caption mt-2" style={{ color: 'var(--color-status-danger)' }}>
                 {pickedOption.metric === 'steps'
                   ? 'Enter a daily step target between 500 and 100,000.'
                   : pickedOption.metric === 'weight'
@@ -281,7 +281,7 @@ export const GoalSettingsScreen: React.FC<GoalSettingsScreenProps> = ({ profile,
               </p>
             )}
             {customSlotsFull && (
-              <p className="wk-caption" style={{ marginTop: fig(12) }}>
+              <p className="wk-caption mt-2">
                 Remove one of your {MAX_CUSTOM_GOALS} goals below before adding another.
               </p>
             )}
@@ -296,9 +296,8 @@ export const GoalSettingsScreen: React.FC<GoalSettingsScreenProps> = ({ profile,
                 setPickedOptionId(null);
                 setCustomTargetInput('');
               }}
-              className="wk-button"
+              className="wk-button mt-3"
               style={{
-                marginTop: fig(20),
                 background: candidateGoal && !customSlotsFull ? 'var(--color-action-primary-bg)' : 'var(--color-action-disabled-bg)',
                 color: candidateGoal && !customSlotsFull ? 'var(--color-action-primary-fg)' : 'var(--color-action-disabled-fg)',
                 cursor: candidateGoal && !customSlotsFull ? 'pointer' : 'not-allowed',
@@ -310,17 +309,17 @@ export const GoalSettingsScreen: React.FC<GoalSettingsScreenProps> = ({ profile,
         )}
 
         {ownGoals.length > 0 && (
-          <ul className="flex flex-col" style={{ marginTop: fig(20) }}>
+          <ul className="flex flex-col mt-3">
             {ownGoals.map((goal) => {
               const id = goal.id.slice(CUSTOM_GOAL_PREFIX.length);
               const name = goal.measure.type === 'target' ? goal.measure.exerciseName : goal.title;
               return (
-                <li key={goal.id} className="flex items-center justify-between" style={{ gap: fig(24), padding: `${fig(26)} 0`, borderTop: `${fig(2)} solid rgba(255,255,255,0.08)` }}>
+                <li key={goal.id} className="flex items-center justify-between gap-3 py-3" style={{ borderTop: '1px solid var(--color-border-subtle)' }}>
                   <span className="min-w-0">
-                    <span className="wk-label block" style={{ lineHeight: 1.21 }}>
+                    <span className="wk-subhead block">
                       {name}
                     </span>
-                    <span className="wk-caption block" style={{ marginTop: fig(8) }}>
+                    <span className="wk-caption block mt-1">
                       {describeGoalStanding(goal, (kg) => units.format(kg))}
                     </span>
                   </span>
@@ -350,9 +349,13 @@ export const GoalSettingsScreen: React.FC<GoalSettingsScreenProps> = ({ profile,
             onUpdateProfile({ goalSettings: undefined });
           }}
           className="wk-button"
-          style={{ background: 'var(--wk-raised)', color: 'var(--color-text-primary)' }}
+          style={{
+            background: 'var(--color-action-secondary-bg)',
+            color: 'var(--color-action-secondary-fg)',
+            border: '1px solid var(--color-border-strong)',
+          }}
         >
-          Use my plan's goals
+          Use my plan&apos;s goals
         </button>
       )}
     </>

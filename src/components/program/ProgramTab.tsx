@@ -67,8 +67,6 @@ const HOME_EQUIP_LABELS: Record<string, string> = {
   bands: 'Bands',
 };
 
-const fig = (px: number) => `calc(${px} * var(--f))`;
-
 export const ProgramTab: React.FC<ProgramTabProps> = ({
   profile,
   trainingPlan,
@@ -119,10 +117,7 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
     homeEquipItems.map((item) => HOME_EQUIP_LABELS[item] || item).join(', ') || 'Bodyweight';
 
   return (
-    <div
-      className="wk -mx-3.5"
-      style={{ paddingLeft: fig(38), paddingRight: fig(38), paddingBottom: 120 }}
-    >
+    <div className="wk -mx-4 px-4 pb-28">
       {!isPlan && (
         <PageTopGradient markerRef={programCardsTopRef} deps={[isPlan]} />
       )}
@@ -145,14 +140,14 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
       )}
       {!isPlan && (
         <>
-          <header className="relative" style={{ paddingTop: fig(20) }}>
-            <div className="relative flex items-center justify-center" style={{ paddingLeft: 44, paddingRight: 44 }}>
+          <header className="relative pt-2">
+            <div className="relative flex items-center justify-start pr-12">
               <h1 className="wk-page-title">Program</h1>
               {headerMenu}
             </div>
           </header>
 
-          <div ref={programCardsTopRef} className="flex flex-col" style={{ gap: fig(22), marginTop: fig(40) }}>
+          <div ref={programCardsTopRef} className="flex flex-col gap-3 mt-5">
             {onBackToWorkout && (
               <button
                 type="button"
@@ -168,9 +163,9 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
 
             {/* 1. Training Locations & Equipment Summary Card */}
             <div className="wk-card w-full text-left block">
-              <div className="flex items-start justify-between" style={{ gap: fig(24) }}>
-                <h2 className="wk-h1" style={{ lineHeight: 1.21 }}>
-                  Training Locations &amp; Equipment
+              <div className="flex items-start justify-between gap-3">
+                <h2 className="wk-h1 leading-tight">
+                  Training locations &amp; equipment
                 </h2>
                 {onOpenOnboarding && (
                   <button
@@ -181,61 +176,43 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
                     }}
                     className="wk-btn-secondary shrink-0"
                   >
-                    Edit Equipment
+                    Edit equipment
                   </button>
                 )}
               </div>
 
-              <p
-                style={{
-                  fontSize: `max(12px, ${fig(28)})`,
-                  lineHeight: 1.21,
-                  color: 'var(--wk-muted)',
-                  marginTop: fig(20),
-                }}
-              >
+              <p className="wk-body mt-2 leading-tight">
                 Exercises adapt automatically when you switch location on the Workout tab
               </p>
 
-              <div
-                className="flex items-end justify-between"
-                style={{ marginTop: fig(60), gap: fig(20) }}
-              >
-                <span className="wk-label" style={{ lineHeight: 1.21 }}>
-                  HOME SETUP • {homeEquipItems.length} ITEMS
+              <div className="flex items-end justify-between gap-2 mt-6">
+                <span className="wk-meta-title leading-tight">
+                  Home setup · {homeEquipItems.length} items
                 </span>
-                <span
-                  className="font-semibold text-white shrink-0"
-                  style={{ fontSize: `max(12px, ${fig(40)})`, lineHeight: 1 }}
-                >
-                  3 LOCATIONS
+                <span className="wk-subhead shrink-0 leading-none">
+                  3 locations
                 </span>
               </div>
 
-              <div className="wk-bar" style={{ marginTop: fig(30) }}>
+              <div className="wk-bar mt-3">
                 <div style={{ width: '100%' }} />
               </div>
 
               <div
-                className="flex flex-col"
-                style={{
-                  marginTop: fig(28),
-                  paddingTop: fig(24),
-                  borderTop: '1px solid rgba(255,255,255,0.08)',
-                  gap: fig(18),
-                }}
+                className="flex flex-col mt-4 pt-3 gap-2"
+                style={{ borderTop: '1px solid var(--color-border-subtle)' }}
               >
-                <div className="flex items-center justify-between" style={{ gap: fig(16) }}>
-                  <span className="wk-label">Full Gym</span>
-                  <span className="wk-pill">Barbells, Cables &amp; Machines</span>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="wk-meta-title">Full gym</span>
+                  <span className="wk-pill">Barbells, cables &amp; machines</span>
                 </div>
-                <div className="flex items-center justify-between" style={{ gap: fig(16) }}>
-                  <span className="wk-label">At Home</span>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="wk-meta-title">At home</span>
                   <span className="wk-pill">{homeEquipList}</span>
                 </div>
-                <div className="flex items-center justify-between" style={{ gap: fig(16) }}>
-                  <span className="wk-label">Bodyweight</span>
-                  <span className="wk-pill">Zero-Equipment Variations</span>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="wk-meta-title">Bodyweight</span>
+                  <span className="wk-pill">Zero-equipment variations</span>
                 </div>
               </div>
             </div>

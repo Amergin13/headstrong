@@ -9,8 +9,6 @@ import {
 import { triggerHaptic } from '../../utils/haptics';
 import { useUnits } from '../../utils/unitsContext';
 
-const fig = (px: number) => `calc(${px} * var(--f))`;
-
 interface ImportProgramModalProps {
   exerciseCatalog: ExerciseDefinition[];
   onImport: (parsed: ParsedProgramImport, opts: { activateProgram: boolean; importHistory: boolean }) => void;
@@ -82,19 +80,19 @@ export const ImportProgramModal: React.FC<ImportProgramModalProps> = ({
   };
 
   const labelStyle: React.CSSProperties = {
-    fontSize: `max(12px, ${fig(24)})`,
+    fontSize: 12,
     color: 'var(--color-text-secondary)',
     fontWeight: 600,
-    lineHeight: 1.25,
+    lineHeight: '16px',
   };
 
   const inputStyle: React.CSSProperties = {
-    background: 'var(--color-bg-surface-subtle)',
-    border: '1px solid var(--color-border-subtle)',
+    background: 'var(--color-bg-canvas)',
+    border: '1px solid var(--color-border-strong)',
     color: 'var(--color-text-primary)',
-    borderRadius: fig(16),
-    padding: `${fig(18)} ${fig(22)}`,
-    fontSize: `max(13px, ${fig(26)})`,
+    borderRadius: 8,
+    padding: '8px 12px',
+    fontSize: 16,
     width: '100%',
   };
 
@@ -103,37 +101,30 @@ export const ImportProgramModal: React.FC<ImportProgramModalProps> = ({
       role="dialog"
       aria-modal="true"
       aria-label="Import program from spreadsheet"
-      className="fixed inset-0 z-50 flex items-center justify-center p-[calc(38*var(--f))] bg-black/80 backdrop-blur-sm"
+      className="wk fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-sm"
+      style={{ background: 'var(--color-bg-scrim)' }}
     >
       <form
         onSubmit={handleSubmit}
-        className="wk-card w-full max-w-lg max-h-[90vh] overflow-y-auto shadow-2xl"
-        style={{ display: 'flex', flexDirection: 'column', gap: fig(24) }}
+        className="wk-card w-full max-w-lg max-h-[90vh] overflow-y-auto shadow-2xl flex flex-col gap-3"
       >
-        <div className="flex items-start justify-between" style={{ gap: fig(20) }}>
-          <div className="flex items-start" style={{ gap: fig(16) }}>
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-start gap-2">
             <div
-              className="w-10 h-10 flex items-center justify-center shrink-0"
+              className="w-10 h-10 flex items-center justify-center shrink-0 rounded-lg"
               style={{
-                background: 'var(--color-status-info-soft)',
-                color: 'var(--color-status-info)',
-                borderRadius: fig(18),
+                background: 'var(--wk-pill)',
+                color: 'var(--color-status-neutral)',
+                border: '1px solid var(--color-border-subtle)',
               }}
             >
               <FileSpreadsheet className="w-5 h-5" aria-hidden="true" />
             </div>
             <div>
-              <h3 className="wk-h1" style={{ lineHeight: 1.21 }}>
+              <h3 className="wk-h1 leading-tight">
                 Import spreadsheet program
               </h3>
-              <p
-                style={{
-                  fontSize: `max(12px, ${fig(26)})`,
-                  lineHeight: 1.3,
-                  color: 'var(--wk-muted)',
-                  marginTop: fig(10),
-                }}
-              >
+              <p className="wk-body mt-1">
                 Upload a CSV / TSV export or paste your sheet. Treise builds your workout schedule and imports logged sets into your lifetime stats.
               </p>
             </div>
@@ -145,8 +136,12 @@ export const ImportProgramModal: React.FC<ImportProgramModalProps> = ({
               onClose();
             }}
             aria-label="Close spreadsheet importer"
-            className="w-11 h-11 rounded-full text-white/70 hover:text-white flex items-center justify-center transition-colors min-h-[44px] shrink-0"
-            style={{ background: 'var(--wk-raised)' }}
+            className="w-11 h-11 min-w-[44px] min-h-[44px] rounded-full border flex items-center justify-center transition-colors shrink-0"
+            style={{
+              background: 'var(--wk-raised)',
+              borderColor: 'var(--color-border-strong)',
+              color: 'var(--color-text-secondary)',
+            }}
           >
             <X className="w-5 h-5 stroke-[2]" />
           </button>
@@ -155,8 +150,8 @@ export const ImportProgramModal: React.FC<ImportProgramModalProps> = ({
         <div>
           <label
             htmlFor="import-program-name"
-            className="block"
-            style={{ ...labelStyle, marginBottom: fig(10) }}
+            className="block mb-1"
+            style={labelStyle}
           >
             Program name
           </label>
@@ -170,7 +165,7 @@ export const ImportProgramModal: React.FC<ImportProgramModalProps> = ({
           />
         </div>
 
-        <div className="flex flex-wrap items-center justify-between" style={{ gap: fig(12) }}>
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <span style={labelStyle}>Spreadsheet CSV / TSV</span>
           <input
             ref={fileInputRef}
@@ -185,16 +180,7 @@ export const ImportProgramModal: React.FC<ImportProgramModalProps> = ({
               triggerHaptic('light');
               fileInputRef.current?.click();
             }}
-            className="wk-button inline-flex items-center font-semibold"
-            style={{
-              background: 'var(--color-bg-surface-control)',
-              color: 'var(--color-text-primary)',
-              border: '1px solid var(--color-border-subtle)',
-              fontSize: `max(12px, ${fig(24)})`,
-              gap: fig(12),
-              paddingLeft: fig(24),
-              paddingRight: fig(24),
-            }}
+            className="wk-btn-secondary inline-flex items-center gap-2 px-3"
           >
             <Upload className="w-4 h-4" aria-hidden="true" />
             Choose CSV file
@@ -207,11 +193,11 @@ export const ImportProgramModal: React.FC<ImportProgramModalProps> = ({
           onChange={(e) => setSheetText(e.target.value)}
           rows={5}
           placeholder={'WORKOUT 1: LOWER BODY\nExercise,,Date,Workout,Sets,Reps,Tempo,Rest,Notes,Set 1,...'}
-          style={{ ...inputStyle, fontFamily: 'ui-monospace, SFMono-Regular, monospace', fontSize: 'max(12px, calc(21px * var(--f)))' }}
+          style={{ ...inputStyle, fontFamily: 'ui-monospace, SFMono-Regular, monospace' }}
         />
 
-        <div className="flex flex-col" style={{ gap: fig(14) }}>
-          <label className="flex items-center min-h-[44px] cursor-pointer" style={{ gap: fig(18) }}>
+        <div className="flex flex-col gap-2">
+          <label className="flex items-center min-h-[44px] gap-2 cursor-pointer">
             <input
               type="checkbox"
               checked={importHistory}
@@ -222,8 +208,8 @@ export const ImportProgramModal: React.FC<ImportProgramModalProps> = ({
           </label>
 
           {importHistory && (
-            <div className="flex flex-col" style={{ gap: fig(12), paddingLeft: fig(44) }}>
-              <label className="flex items-center min-h-[44px] cursor-pointer" style={{ gap: fig(18) }}>
+            <div className="flex flex-col gap-2 pl-5">
+              <label className="flex items-center min-h-[44px] gap-2 cursor-pointer">
                 <input
                   type="checkbox"
                   checked={preferHistoricalStartDate}
@@ -234,7 +220,7 @@ export const ImportProgramModal: React.FC<ImportProgramModalProps> = ({
                   Anchor schedule chronologically from start date
                 </span>
               </label>
-              <div className="flex items-center justify-between" style={{ gap: fig(12) }}>
+              <div className="flex items-center justify-between gap-2">
                 <label htmlFor="import-start-date" style={{ ...labelStyle, color: 'var(--wk-muted)' }}>
                   Historical start date
                 </label>
@@ -249,7 +235,7 @@ export const ImportProgramModal: React.FC<ImportProgramModalProps> = ({
             </div>
           )}
 
-          <label className="flex items-center min-h-[44px] cursor-pointer" style={{ gap: fig(18) }}>
+          <label className="flex items-center min-h-[44px] gap-2 cursor-pointer">
             <input
               type="checkbox"
               checked={doubleTwoHandDumbbells}
@@ -259,7 +245,7 @@ export const ImportProgramModal: React.FC<ImportProgramModalProps> = ({
             <span style={labelStyle}>Double two-hand dumbbell loads (sheet logs per dumbbell)</span>
           </label>
 
-          <label className="flex items-center min-h-[44px] cursor-pointer" style={{ gap: fig(18) }}>
+          <label className="flex items-center min-h-[44px] gap-2 cursor-pointer">
             <input
               type="checkbox"
               checked={activateProgram}
@@ -272,12 +258,10 @@ export const ImportProgramModal: React.FC<ImportProgramModalProps> = ({
 
         {(fileError || parseResult.error) && (
           <div
+            className="rounded-lg p-3 text-xs"
             style={{
               background: 'var(--color-status-danger-soft)',
               color: 'var(--color-status-danger)',
-              fontSize: `max(12px, ${fig(24)})`,
-              borderRadius: fig(18),
-              padding: fig(20),
             }}
           >
             {fileError || parseResult.error}
@@ -286,26 +270,21 @@ export const ImportProgramModal: React.FC<ImportProgramModalProps> = ({
 
         {parseResult.parsed && (
           <div
+            className="rounded-xl p-3"
             style={{
-              background: 'var(--color-bg-surface-subtle)',
+              background: 'var(--color-bg-canvas)',
               border: '1px solid var(--color-border-subtle)',
-              borderRadius: fig(24),
-              padding: fig(22),
             }}
           >
             <div
-              className="uppercase font-semibold tracking-wider"
-              style={{
-                fontSize: `max(12px, ${fig(20)})`,
-                color: 'var(--color-accent-primary)',
-                marginBottom: fig(12),
-              }}
+              className="wk-label mb-2"
+              style={{ color: 'var(--color-accent-primary)' }}
             >
               Ready to import
             </div>
             <ul
-              className="flex flex-col"
-              style={{ gap: fig(6), fontSize: `max(12px, ${fig(24)})`, color: 'var(--color-text-primary)' }}
+              className="flex flex-col gap-1 text-xs"
+              style={{ color: 'var(--color-text-primary)' }}
             >
               <li>
                 <strong>{parseResult.parsed.summary.templateCount}</strong> workouts across{' '}
@@ -331,18 +310,14 @@ export const ImportProgramModal: React.FC<ImportProgramModalProps> = ({
           </div>
         )}
 
-        <div className="flex items-center" style={{ gap: fig(14) }}>
+        <div className="flex items-center gap-2">
           <button
             type="button"
             onClick={() => {
               triggerHaptic('light');
               onClose();
             }}
-            className="wk-button flex-1"
-            style={{
-              background: 'var(--color-bg-surface-control)',
-              color: 'var(--color-text-primary)',
-            }}
+            className="wk-btn-secondary flex-1"
           >
             Cancel
           </button>
@@ -351,9 +326,9 @@ export const ImportProgramModal: React.FC<ImportProgramModalProps> = ({
             disabled={!parseResult.parsed}
             className="wk-button flex-1"
             style={{
-              background: parseResult.parsed ? 'var(--color-action-primary-bg)' : 'var(--color-bg-surface-control)',
-              color: parseResult.parsed ? 'var(--color-action-primary-fg)' : 'var(--color-text-muted)',
-              opacity: parseResult.parsed ? 1 : 0.55,
+              background: parseResult.parsed ? 'var(--color-action-primary-bg)' : 'var(--color-action-disabled-bg)',
+              color: parseResult.parsed ? 'var(--color-action-primary-fg)' : 'var(--color-action-disabled-fg)',
+              border: parseResult.parsed ? '1px solid transparent' : '1px solid var(--color-border-subtle)',
             }}
           >
             Save program

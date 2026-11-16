@@ -30,7 +30,6 @@ interface SplitEditorProps {
   onChangeProgram?: (program: ProgramSplitType) => void;
 }
 
-const fig = (px: number) => `calc(${px} * var(--f))`;
 
 export const SplitEditor: React.FC<SplitEditorProps> = ({
   exerciseCatalog,
@@ -119,11 +118,11 @@ export const SplitEditor: React.FC<SplitEditorProps> = ({
 
     return (
       <>
-        <div className="flex flex-col" style={{ gap: fig(22) }}>
+        <div className="flex flex-col gap-3">
           {/* Program Header Card */}
           <div className="wk-card w-full text-left block">
-            <div className="flex items-start justify-between" style={{ gap: fig(24) }}>
-              <h2 className="wk-h1" style={{ lineHeight: 1.21 }}>
+            <div className="flex items-start justify-between gap-3">
+              <h2 className="wk-h1 leading-tight">
                 {MUSCLE_BUILDING_PROGRAM_META.name}
               </h2>
               {onChangeProgram && (
@@ -135,52 +134,30 @@ export const SplitEditor: React.FC<SplitEditorProps> = ({
                   }}
                   className="wk-btn-secondary shrink-0"
                 >
-                  Change Split
+                  Change split
                 </button>
               )}
             </div>
 
-            <p
-              style={{
-                fontSize: `max(12px, ${fig(28)})`,
-                lineHeight: 1.21,
-                color: 'var(--wk-muted)',
-                marginTop: fig(20),
-              }}
-            >
+            <p className="wk-body mt-2 max-w-prose">
               {activePhaseData.description}
             </p>
 
-            <div
-              className="flex items-end justify-between"
-              style={{ marginTop: fig(60), gap: fig(20) }}
-            >
-              <span className="wk-label" style={{ lineHeight: 1.21 }}>
+            <div className="mt-5 flex items-end justify-between gap-2">
+              <span className="wk-label leading-tight">
                 {activePhaseData.name}
               </span>
-              <span
-                className="font-semibold text-white shrink-0"
-                style={{ fontSize: `max(12px, ${fig(40)})`, lineHeight: 1 }}
-              >
+              <span className="wk-subhead tabular-nums shrink-0 leading-none">
                 Phase {selectedPhase}/3
               </span>
             </div>
 
-            <div className="wk-bar" style={{ marginTop: fig(30) }}>
+            <div className="wk-bar mt-3">
               <div style={{ width: `${Math.round((selectedPhase / 3) * 100)}%` }} />
             </div>
 
             {/* Phase Switcher Tabs */}
-            <div
-              className="grid grid-cols-3 items-center"
-              style={{
-                marginTop: fig(30),
-                height: fig(84),
-                padding: fig(8),
-                borderRadius: fig(22),
-                background: 'var(--wk-raised)',
-              }}
-            >
+            <div className="wk-segments grid grid-cols-3 mt-4">
               {PROGRAM_PHASES.map((p) => {
                 const isSelected = selectedPhase === p.phaseNumber;
                 return (
@@ -193,14 +170,7 @@ export const SplitEditor: React.FC<SplitEditorProps> = ({
                       const firstW = WORKOUT_TEMPLATES_24.find((w) => w.phase === p.phaseNumber);
                       if (firstW) setExpandedWorkoutNum(firstW.workoutNumber);
                     }}
-                    className="h-full flex items-center justify-center font-semibold uppercase transition-colors"
-                    style={{
-                      borderRadius: fig(16),
-                      fontSize: `max(12px, ${fig(24)})`,
-                      letterSpacing: '0.02em',
-                      background: isSelected ? 'var(--wk-pill)' : 'transparent',
-                      color: isSelected ? 'var(--color-text-primary)' : 'var(--wk-muted)',
-                    }}
+                    className={`wk-segment text-center ${isSelected ? 'is-active' : ''}`}
                   >
                     Phase {p.phaseNumber} (W{p.weeks[0]}–{p.weeks[1]})
                   </button>
@@ -224,14 +194,13 @@ export const SplitEditor: React.FC<SplitEditorProps> = ({
                   aria-expanded={isExpanded}
                   className="w-full text-left block"
                 >
-                  <div className="flex items-start justify-between" style={{ gap: fig(24) }}>
-                    <h3 className="wk-h1" style={{ lineHeight: 1.21 }}>
+                  <div className="flex items-start justify-between gap-3">
+                    <h3 className="wk-h1 leading-tight">
                       {workout.title}
                     </h3>
                     <ChevronRight
-                      className="wk-chevron shrink-0 transition-transform"
+                      className="wk-chevron shrink-0 mt-1 transition-transform"
                       style={{
-                        marginTop: fig(4),
                         transform: isExpanded ? 'rotate(90deg)' : undefined,
                       }}
                       strokeWidth={2}
@@ -239,61 +208,41 @@ export const SplitEditor: React.FC<SplitEditorProps> = ({
                     />
                   </div>
 
-                  <p
-                    style={{
-                      fontSize: `max(12px, ${fig(28)})`,
-                      lineHeight: 1.21,
-                      color: 'var(--wk-muted)',
-                      marginTop: fig(20),
-                    }}
-                  >
+                  <p className="wk-caption mt-2">
                     Week {workout.week} • Session {((workout.workoutNumber - 1) % 4) + 1} of 4
                   </p>
 
-                  <div
-                    className="flex items-end justify-between"
-                    style={{ marginTop: fig(60), gap: fig(20) }}
-                  >
-                    <span className="wk-label" style={{ lineHeight: 1.21 }}>
-                      WORKOUT #{workout.workoutNumber} • {workout.exercises.length} EXERCISES
+                  <div className="mt-5 flex items-end justify-between gap-2">
+                    <span className="wk-meta-title leading-tight tabular-nums">
+                      Workout #{workout.workoutNumber} · {workout.exercises.length} exercises
                     </span>
-                    <span
-                      className="font-semibold text-white shrink-0"
-                      style={{ fontSize: `max(12px, ${fig(40)})`, lineHeight: 1 }}
-                    >
+                    <span className="wk-number shrink-0 leading-none">
                       {workout.workoutNumber}/24
                     </span>
                   </div>
 
-                  <div className="wk-bar" style={{ marginTop: fig(30) }}>
+                  <div className="wk-bar mt-3">
                     <div style={{ width: `${progressPct}%` }} />
                   </div>
                 </button>
 
                 {isExpanded && (
-                  <div
-                    style={{
-                      marginTop: fig(28),
-                      paddingTop: fig(24),
-                      borderTop: '1px solid rgba(255,255,255,0.08)',
-                    }}
-                  >
-                    <div className="flex flex-col" style={{ gap: fig(18) }}>
+                  <div className="mt-4 pt-4" style={{ borderTop: '1px solid var(--color-border-subtle)' }}>
+                    <div className="flex flex-col gap-3">
                       {workout.exercises.map((ex, exIdx) => (
                         <div
                           key={exIdx}
-                          className="flex items-center justify-between"
-                          style={{ gap: fig(16) }}
+                          className="flex items-center justify-between gap-2"
                         >
-                          <div className="flex items-center min-w-0" style={{ gap: fig(16) }}>
-                            <span className="wk-pill shrink-0">
+                          <div className="flex items-center min-w-0 gap-2">
+                            <span className="wk-pill shrink-0 tabular-nums">
                               {ex.order}
                             </span>
-                            <span className="wk-label truncate">
+                            <span className="wk-subhead truncate">
                               {ex.name}
                             </span>
                           </div>
-                          <span className="wk-pill shrink-0">
+                          <span className="wk-pill shrink-0 tabular-nums">
                             {ex.sets} × {ex.reps}
                           </span>
                         </div>
@@ -307,14 +256,13 @@ export const SplitEditor: React.FC<SplitEditorProps> = ({
                           triggerHaptic('medium');
                           onLaunchWorkoutNumber(workout.workoutNumber);
                         }}
-                        className="wk-button transition-all active:scale-95"
+                        className="wk-button mt-4 transition-all active:scale-[0.98]"
                         style={{
-                          marginTop: fig(28),
-                          background: 'var(--wk-accent)',
-                          color: 'var(--color-text-on-accent)',
+                          background: 'var(--color-action-primary-bg)',
+                          color: 'var(--color-action-primary-fg)',
                         }}
                       >
-                        Start Workout #{workout.workoutNumber}
+                        Start workout #{workout.workoutNumber}
                       </button>
                     )}
                   </div>
@@ -331,9 +279,9 @@ export const SplitEditor: React.FC<SplitEditorProps> = ({
   return (
     <>
       <div className="wk-card w-full text-left block">
-        <div className="flex items-start justify-between" style={{ gap: fig(24) }}>
-          <h2 className="wk-h1" style={{ lineHeight: 1.21 }}>
-            Workout Splits &amp; Exercises
+        <div className="flex items-start justify-between gap-3">
+          <h2 className="wk-h1 leading-tight">
+            Workout splits &amp; exercises
           </h2>
           {onChangeProgram && (
             <button
@@ -344,53 +292,33 @@ export const SplitEditor: React.FC<SplitEditorProps> = ({
               }}
               className="wk-btn-secondary shrink-0"
             >
-              Change Split
+              Change split
             </button>
           )}
         </div>
 
-        <p
-          style={{
-            fontSize: `max(12px, ${fig(28)})`,
-            lineHeight: 1.21,
-            color: 'var(--wk-muted)',
-            marginTop: fig(20),
-          }}
-        >
+        <p className="wk-body mt-2 max-w-prose">
           Browse exercises by workout day or add your own custom movement
         </p>
 
-        <div
-          className="flex items-end justify-between"
-          style={{ marginTop: fig(60), gap: fig(20) }}
-        >
-          <span className="wk-label" style={{ lineHeight: 1.21 }}>
-            {activeDay} WORKOUT ROUTINE
+        <div className="mt-5 flex items-end justify-between gap-2">
+          <span className="wk-meta-title leading-tight">
+            {activeDay} workout routine
           </span>
-          <span
-            className="font-semibold text-white shrink-0"
-            style={{ fontSize: `max(12px, ${fig(40)})`, lineHeight: 1 }}
-          >
-            {routineExercises.length} EXERCISES
+          <span className="wk-subhead tabular-numbers shrink-0 leading-none">
+            {routineExercises.length} exercises
           </span>
         </div>
 
-        <div className="wk-bar" style={{ marginTop: fig(30) }}>
+        <div className="wk-bar mt-3">
           <div style={{ width: '100%' }} />
         </div>
 
         {/* Segmented Control */}
         <div
-          className={`grid items-center ${
+          className={`wk-segments grid mt-4 ${
             days.length === 2 ? 'grid-cols-2' : days.length === 3 ? 'grid-cols-3' : 'grid-cols-4'
           }`}
-          style={{
-            marginTop: fig(30),
-            height: fig(84),
-            padding: fig(8),
-            borderRadius: fig(22),
-            background: 'var(--wk-raised)',
-          }}
         >
           {days.map((d) => {
             const isSelected = activeDay === d.id;
@@ -402,14 +330,7 @@ export const SplitEditor: React.FC<SplitEditorProps> = ({
                   triggerHaptic('light');
                   setActiveDay(d.id);
                 }}
-                className="h-full flex items-center justify-center font-semibold uppercase transition-colors"
-                style={{
-                  borderRadius: fig(16),
-                  fontSize: `max(12px, ${fig(24)})`,
-                  letterSpacing: '0.02em',
-                  background: isSelected ? 'var(--wk-pill)' : 'transparent',
-                  color: isSelected ? 'var(--color-text-primary)' : 'var(--wk-muted)',
-                }}
+                className={`wk-segment text-center ${isSelected ? 'is-active' : ''}`}
               >
                 {d.label}
               </button>
@@ -418,15 +339,7 @@ export const SplitEditor: React.FC<SplitEditorProps> = ({
         </div>
 
         {/* Routine Exercises */}
-        <div
-          className="flex flex-col"
-          style={{
-            marginTop: fig(28),
-            paddingTop: fig(24),
-            borderTop: '1px solid rgba(255,255,255,0.08)',
-            gap: fig(20),
-          }}
-        >
+        <div className="flex flex-col mt-4 pt-4 gap-3" style={{ borderTop: '1px solid var(--color-border-subtle)' }}>
           {routineExercises.map((ex, idx) => {
             const equipLabel =
               ex.equipment === 'barbell'
@@ -441,17 +354,16 @@ export const SplitEditor: React.FC<SplitEditorProps> = ({
             return (
               <div
                 key={ex.id}
-                className="flex items-center justify-between"
-                style={{ gap: fig(16) }}
+                className="flex items-center justify-between gap-2"
               >
                 <div className="min-w-0">
-                  <div className="wk-title">{idx + 1}. {formatSentenceCase(ex.name)}</div>
-                  <div className="wk-caption" style={{ marginTop: fig(6) }}>
+                  <div className="wk-subhead">{idx + 1}. {formatSentenceCase(ex.name)}</div>
+                  <div className="wk-caption mt-1">
                     {ex.primaryMuscle} • {equipLabel}
                   </div>
                 </div>
-                <span className="wk-pill shrink-0">
-                  {ex.defaultRepRange[0]}–{ex.defaultRepRange[1]} REPS
+                <span className="wk-pill shrink-0 tabular-numbers">
+                  {ex.defaultRepRange[0]}–{ex.defaultRepRange[1]} reps
                 </span>
               </div>
             );
@@ -459,7 +371,7 @@ export const SplitEditor: React.FC<SplitEditorProps> = ({
         </div>
 
         {/* Action Buttons */}
-        <div className="flex flex-col" style={{ marginTop: fig(28), gap: fig(16) }}>
+        <div className="flex flex-col mt-4 gap-2">
           {onLaunchSplitDay && (
             <button
               type="button"
@@ -467,58 +379,49 @@ export const SplitEditor: React.FC<SplitEditorProps> = ({
                 triggerHaptic('medium');
                 onLaunchSplitDay(activeDay);
               }}
-              className="wk-button transition-all active:scale-95"
-              style={{ background: 'var(--wk-accent)', color: 'var(--color-text-on-accent)' }}
+              className="wk-button transition-all active:scale-[0.98]"
+              style={{ background: 'var(--color-action-primary-bg)', color: 'var(--color-action-primary-fg)' }}
             >
               Start {activeDay} Workout
             </button>
           )}
 
-          <div className="flex items-center justify-between" style={{ gap: fig(16) }}>
+          <div className="flex items-center justify-between gap-2">
             <button
               type="button"
               onClick={() => setShowAlternatives((v) => !v)}
               aria-expanded={showAlternatives}
-              className="wk-btn-secondary"
+              className="wk-btn-secondary flex-1 justify-center"
             >
-              {showAlternatives ? 'Hide' : 'Show'} {alternativeExercises.length} Alternatives
+              {showAlternatives ? 'Hide' : 'Show'} {alternativeExercises.length} alternatives
             </button>
             <button
               type="button"
               onClick={onOpenCreateExercise}
-              className="wk-btn-secondary"
+              className="wk-btn-secondary flex-1 justify-center"
             >
-              + Add Exercise
+              + Add exercise
             </button>
           </div>
         </div>
 
         {showAlternatives && (
-          <div
-            className="flex flex-col"
-            style={{
-              marginTop: fig(24),
-              paddingTop: fig(24),
-              borderTop: '1px solid rgba(255,255,255,0.08)',
-              gap: fig(18),
-            }}
-          >
+          <div className="flex flex-col mt-4 pt-4 gap-3" style={{ borderTop: '1px solid var(--color-border-subtle)' }}>
             {alternativeExercises.map((ex) => {
               const meta = getExerciseBiomechanicalMeta(ex);
               return (
                 <div
                   key={ex.id}
-                  className="flex items-center justify-between"
-                  style={{ gap: fig(16) }}
+                  className="flex items-center justify-between gap-2"
                 >
-                  <div>
-                    <div className="wk-title">{formatSentenceCase(ex.name)}</div>
-                    <div className="wk-caption" style={{ marginTop: fig(6) }}>
+                  <div className="min-w-0">
+                    <div className="wk-subhead">{formatSentenceCase(ex.name)}</div>
+                    <div className="wk-caption mt-1 tabular-nums">
                       {ex.primaryMuscle} • {ex.defaultRepRange[0]}–{ex.defaultRepRange[1]} reps
                     </div>
                   </div>
-                  <span className="wk-pill shrink-0">
-                    {meta.isIsolation ? '3–4 SETS' : '3 SETS'}
+                  <span className="wk-pill shrink-0 tabular-nums">
+                    {meta.isIsolation ? '3–4 sets' : '3 sets'}
                   </span>
                 </div>
               );

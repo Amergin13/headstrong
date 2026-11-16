@@ -18,7 +18,7 @@ import {
   simulateHealthConnectSync,
 } from './healthConnectService';
 import { localDateString } from '../utils/date';
-import { PARTNER_COLORS } from '../styles/semanticTokens';
+import { SEMANTIC_COLOR } from '../styles/semanticTokens';
 
 export interface WearableProviderMeta {
   id: WearableProvider;
@@ -36,15 +36,15 @@ export const WEARABLE_PROVIDERS: Record<WearableProvider, WearableProviderMeta> 
     tagline: 'Fitbit Web API & Pixel Watch Telemetry',
     description: 'Syncs overnight heart rate recovery, resting pulse, sleep stages, and active zone minutes.',
     hardwareFocus: 'Google Pixel Watch 1, 2, 3 & Fitbit Sense/Charge',
-    accentColor: PARTNER_COLORS.fitbit,
+    accentColor: SEMANTIC_COLOR.statusInfo,
   },
   whoop: {
     id: 'whoop',
     name: 'Whoop',
     tagline: 'Whoop Developer Platform API v1',
-    description: 'Syncs Whoop recovery score (Green/Yellow/Red), HRV RMSSD, sleep performance, and day strain.',
+    description: 'Syncs recovery score, HRV RMSSD, sleep performance, and strain telemetry.',
     hardwareFocus: 'Whoop strap or band',
-    accentColor: PARTNER_COLORS.whoop,
+    accentColor: SEMANTIC_COLOR.statusInfo,
   },
   health_connect: {
     id: 'health_connect',
@@ -52,7 +52,7 @@ export const WEARABLE_PROVIDERS: Record<WearableProvider, WearableProviderMeta> 
     tagline: 'Android 14+ Unified Health Ecosystem',
     description: 'On-device health hub aggregating HeartRateVariability, RestingHeartRate, Sleep, and Steps.',
     hardwareFocus: 'Samsung Galaxy Watch, Wear OS, Pixel Watch & Garmin',
-    accentColor: PARTNER_COLORS.healthConnect,
+    accentColor: SEMANTIC_COLOR.statusInfo,
   },
 };
 

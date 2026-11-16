@@ -14,30 +14,33 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenAuth,
 }) => {
   return (
-    <header className="relative border-b border-white/[0.06] py-2.5">
+    <header
+      className="relative py-3"
+      style={{ borderBottom: '1px solid var(--color-border-subtle)' }}
+    >
       <div
         className="max-w-md mx-auto flex items-center justify-between"
-        style={{ paddingLeft: 'calc(38 * var(--f))', paddingRight: 'calc(38 * var(--f))' }}
+        style={{ paddingLeft: 'var(--space-4)', paddingRight: 'var(--space-4)' }}
       >
         <span
           style={{
             fontFamily: 'Inter, sans-serif',
-            fontSize: 24,
+            fontSize: 20,
             fontWeight: 600,
-            letterSpacing: '-0.025em',
-            lineHeight: 1,
+            letterSpacing: '-0.02em',
+            lineHeight: 1.2,
             color: 'var(--color-coach-surface)',
           }}
         >
-          Treise<span style={{ color: 'var(--color-coach-border)' }}>.</span>
+          Treise<span style={{ color: 'var(--color-coach-accent)' }}>.</span>
         </span>
 
         {/* Right Status Actions */}
-        <div className="flex items-center space-x-2">
+        <div className="flex items-center gap-2">
           {/* Streak Badge */}
           <div
-            className="wk-pill gap-1.5"
-            style={{ color: 'var(--color-status-warning-strong)' }}
+            className="wk-pill gap-1"
+            style={{ color: 'var(--color-text-primary)' }}
             aria-label={`${profile.streakDays} day workout streak`}
           >
             <Flame className="w-3.5 h-3.5 fill-current stroke-[2]" />
@@ -49,7 +52,7 @@ export const Header: React.FC<HeaderProps> = ({
             <button
               type="button"
               onClick={onOpenAuth}
-              className="relative w-9 h-9 rounded-full flex items-center justify-center transition-colors min-h-[44px] min-w-[44px]"
+              className="relative w-11 h-11 rounded-full flex items-center justify-center transition-colors min-h-[44px] min-w-[44px]"
               style={{ background: 'var(--wk-card)' }}
               aria-label={profile.email ? `Profile and settings (${profile.email})` : 'Profile and settings'}
             >
@@ -57,7 +60,8 @@ export const Header: React.FC<HeaderProps> = ({
                 <img
                   src={profile.avatarUrl}
                   alt={profile.name}
-                  className="w-7 h-7 rounded-full object-cover"
+                  className="w-8 h-8 rounded-full object-cover"
+                  style={{ border: '1px solid var(--color-border-strong)' }}
                 />
               ) : (
                 <span className="wk-label">

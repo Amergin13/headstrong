@@ -76,24 +76,34 @@ export const CustomExerciseModal: React.FC<CustomExerciseModalProps> = ({
   };
 
   return (
-    <div role="dialog" aria-modal="true" aria-label="Add custom exercise" className="fixed inset-0 z-50 flex items-center justify-center p-[calc(38*var(--f))] bg-black/85 backdrop-blur-md">
-      <div className="wk-card w-full max-w-sm shadow-2xl max-h-[90vh] overflow-y-auto space-y-[calc(44*var(--f))]">
-        <div className="flex items-center justify-between">
-          <h3 className="wk-h1">Add Custom Exercise</h3>
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Add custom exercise"
+      className="wk fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-md"
+      style={{ background: 'var(--color-bg-scrim)' }}
+    >
+      <div className="wk-card w-full max-w-sm shadow-2xl max-h-[90vh] overflow-y-auto space-y-5">
+        <div className="flex items-center justify-between gap-2">
+          <h3 className="wk-h1">Add custom exercise</h3>
           <button
             type="button"
             onClick={onClose}
             aria-label="Close custom exercise modal"
-            className="w-9 h-9 rounded-full flex items-center justify-center text-white/60 hover:text-white"
-            style={{ background: 'var(--wk-raised)' }}
+            className="w-11 h-11 min-h-[44px] min-w-[44px] rounded-full border flex items-center justify-center shrink-0"
+            style={{
+              background: 'var(--wk-raised)',
+              borderColor: 'var(--color-border-strong)',
+              color: 'var(--color-text-secondary)',
+            }}
           >
             <X className="w-4 h-4 stroke-[2]" />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-[calc(38*var(--f))] text-[length:max(12px,calc(26*var(--f)))]">
+        <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="wk-label block mb-[calc(12*var(--f))]">Exercise Name</label>
+            <label className="wk-meta-title block mb-2">Exercise name</label>
             <input
               type="text"
               required
@@ -105,7 +115,7 @@ export const CustomExerciseModal: React.FC<CustomExerciseModalProps> = ({
           </div>
 
           <div>
-            <label className="wk-label block mb-[calc(12*var(--f))]">Movement Group</label>
+            <label className="wk-meta-title block mb-2">Movement group</label>
             <select
               value={pillar}
               onChange={(e) => setPillar(e.target.value as StrengthPillar)}
@@ -120,7 +130,7 @@ export const CustomExerciseModal: React.FC<CustomExerciseModalProps> = ({
           </div>
 
           <div>
-            <label className="wk-label block mb-[calc(12*var(--f))]">Equipment</label>
+            <label className="wk-meta-title block mb-2">Equipment</label>
             <select
               value={equipment}
               onChange={(e) => setEquipment(e.target.value as EquipmentType)}
@@ -135,7 +145,7 @@ export const CustomExerciseModal: React.FC<CustomExerciseModalProps> = ({
           </div>
 
           <div>
-            <label className="wk-label block mb-[calc(12*var(--f))]">Main Muscle Worked</label>
+            <label className="wk-meta-title block mb-2">Main muscle worked</label>
             <select
               value={primaryMuscle}
               onChange={(e) => setPrimaryMuscle(e.target.value as MuscleGroup)}
@@ -149,9 +159,9 @@ export const CustomExerciseModal: React.FC<CustomExerciseModalProps> = ({
             </select>
           </div>
 
-          <div className="grid grid-cols-2 gap-[calc(26*var(--f))]">
+          <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="wk-label block mb-[calc(12*var(--f))]">Min Reps</label>
+              <label className="wk-meta-title block mb-2">Min reps</label>
               <input
                 type="number"
                 min="1"
@@ -162,7 +172,7 @@ export const CustomExerciseModal: React.FC<CustomExerciseModalProps> = ({
               />
             </div>
             <div>
-              <label className="wk-label block mb-[calc(12*var(--f))]">Max Reps</label>
+              <label className="wk-meta-title block mb-2">Max reps</label>
               <input
                 type="number"
                 min="1"
@@ -175,13 +185,13 @@ export const CustomExerciseModal: React.FC<CustomExerciseModalProps> = ({
           </div>
 
           {/* Exercise Options */}
-          <div className="space-y-[calc(22*var(--f))] pt-[calc(16*var(--f))] border-t border-white/[0.06]">
-            <label className="flex items-center space-x-[calc(22*var(--f))] cursor-pointer">
+          <div className="space-y-3 pt-2" style={{ borderTop: '1px solid var(--color-border-subtle)' }}>
+            <label className="flex items-center gap-3 cursor-pointer min-h-[44px]">
               <input
                 type="checkbox"
                 checked={isRdl}
                 onChange={(e) => setIsRdl(e.target.checked)}
-                className="rounded border-0 w-4 h-4"
+                className="rounded border-0 w-4 h-4 shrink-0"
                 style={{ background: 'var(--wk-raised)', accentColor: 'var(--wk-accent)' }}
               />
               <span className="wk-body">
@@ -189,12 +199,12 @@ export const CustomExerciseModal: React.FC<CustomExerciseModalProps> = ({
               </span>
             </label>
 
-            <label className="flex items-center space-x-[calc(22*var(--f))] cursor-pointer">
+            <label className="flex items-center gap-3 cursor-pointer min-h-[44px]">
               <input
                 type="checkbox"
                 checked={isWeightedCalisthenic || equipment === 'weighted_bodyweight'}
                 onChange={(e) => setIsWeightedCalisthenic(e.target.checked)}
-                className="rounded border-0 w-4 h-4"
+                className="rounded border-0 w-4 h-4 shrink-0"
                 style={{ background: 'var(--wk-raised)', accentColor: 'var(--wk-accent)' }}
               />
               <span className="wk-body">
@@ -203,22 +213,21 @@ export const CustomExerciseModal: React.FC<CustomExerciseModalProps> = ({
             </label>
           </div>
 
-          <div className="grid grid-cols-2 gap-[calc(26*var(--f))] pt-[calc(16*var(--f))]">
+          <div className="grid grid-cols-2 gap-3 pt-2">
             <button
               type="button"
               onClick={onClose}
-              className="wk-button"
-              style={{ background: 'var(--color-action-secondary-bg)', color: 'var(--color-action-secondary-fg)' }}
+              className="wk-btn-secondary w-full"
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="wk-button flex items-center justify-center space-x-[calc(12*var(--f))] active:scale-95"
+              className="wk-button flex items-center justify-center gap-2 active:scale-95"
               style={{ background: 'var(--color-action-primary-bg)', color: 'var(--color-action-primary-fg)' }}
             >
               <Check className="w-4 h-4 stroke-[2]" />
-              <span>Save Exercise</span>
+              <span>Save exercise</span>
             </button>
           </div>
         </form>

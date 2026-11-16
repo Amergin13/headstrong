@@ -3,10 +3,8 @@ import { ChevronRight } from 'lucide-react';
 import { triggerHaptic } from '../../utils/haptics';
 import { formatSentenceCase } from '../../utils/typography';
 
-const fig = (px: number) => `calc(${px} * var(--f))`;
-
 interface SessionCountProps {
-  /** e.g. "Today: Chest and Back" or "Next: Legs". */
+  /** e.g. "Chest and Back" or "Next: Legs". */
   sessionLabel: string;
   /** Completed sets in the workout, e.g. 4 of 16. */
   current: number;
@@ -14,14 +12,16 @@ interface SessionCountProps {
   total: number;
 }
 
-interface ProgramProgressCardProps extends SessionCountProps {
-  /** e.g. "Phase 1" or "Week 2". */
+interface ProgramProgressCardProps {
+  /** Phase heading, e.g. "Phase 1" or "Week 2". */
   title: string;
-  /** e.g. "Building foundations". */
-  subtitle: string;
-  /** When true (default), renders only the lean workout name and set count bar without the program phase header. */
-  lean?: boolean;
+  /** Full description of the current phase. */
+  description: string;
+  /** Navigates to the Program screen when the arrow button is pressed. */
   onOpen?: () => void;
+}
+
+interface CurrentSessionCardProps extends SessionCountProps {
   /** Ref attached to the session count block for seamless scroll-linked docking. */
   sessionRef?: React.RefObject<HTMLDivElement>;
 }
@@ -36,13 +36,13 @@ const SessionCountBar: React.FC<SessionCountProps & { topMargin: string; barMarg
   const pct = Math.max(0, Math.min(100, (current / Math.max(1, total)) * 100));
   return (
     <>
-      <div className="flex items-end justify-between" style={{ marginTop: topMargin, gap: fig(20) }}>
-        <span className="wk-title truncate" style={{ lineHeight: 1.25 }}>
+      <div className="flex items-end justify-between gap-3" style={{ marginTop: topMargin }}>
+        <span className="wk-subhead truncate leading-tight">
           {formatSentenceCase(sessionLabel)}
         </span>
-        <span className="wk-number shrink-0 tabular-numbers" style={{ lineHeight: 1 }}>
+        <span className="wk-number shrink-0 tabular-nums leading-none">
           {current}/{total}{' '}
-          <span className="wk-label" style={{ color: 'var(--wk-muted)' }}>
+          <span className="wk-caption">
             sets
           </span>
         </span>
@@ -64,46 +64,66 @@ const SessionCountBar: React.FC<SessionCountProps & { topMargin: string; barMarg
 
 export const ProgramProgressCard: React.FC<ProgramProgressCardProps> = ({
   title,
-  subtitle,
+  description,
+  onOpen,
+}) => {
+  const formattedTitle = formatSentenceCase(title);
+  return (
+    <section
+      aria-label={`${formattedTitle}. ${description}`}
+      className="wk-card"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <h2 className="wk-h1 leading-tight pt-1">
+          {formattedTitle}
+        </h2>
+        {onOpen && (
+          <button
+            type="button"
+            onClick={() => {
+              triggerHaptic('light');
+              onOpen();
+            }}
+            aria-label={`Open program (${formattedTitle})`}
+            className="w-11 h-11 min-w-[44px] min-h-[44px] rounded-xl border border-[var(--color-border-strong)] flex items-center justify-center shrink-0 transition-colors"
+            style={{ background: 'var(--color-action-secondary-bg)', color: 'var(--color-action-secondary-fg)' }}
+          >
+            <ChevronRight
+              className="wk-chevron"
+              style={{ color: 'var(--color-action-secondary-fg)' }}
+              strokeWidth={2}
+              aria-hidden="true"
+            />
+          </button>
+        )}
+      </div>
+      <p className="wk-body mt-2 max-w-prose">{description}</p>
+    </section>
+  );
+};
+
+/** Standalone current workout session card showing today's workout title and completed sets bar. */
+export const CurrentSessionCard: React.FC<CurrentSessionCardProps> = ({
   sessionLabel,
   current,
   total,
-  lean = false,
-  onOpen,
   sessionRef,
-}) => {
-  const ariaDescription = lean
-    ? `${sessionLabel}. ${current} of ${total} sets completed. Open your program`
-    : `${title}, ${subtitle}. ${sessionLabel}. ${current} of ${total} sets completed. Open your program`;
-
-  return (
-    <button
-      type="button"
-      disabled={!onOpen}
-      onClick={() => {
-        triggerHaptic('light');
-        onOpen?.();
-      }}
-      aria-label={ariaDescription}
-      className="wk-card w-full text-left block"
-    >
-      {!lean && (
-        <>
-          <div className="flex items-start justify-between" style={{ gap: fig(20) }}>
-            <h2 className="wk-h1" style={{ lineHeight: 1.25 }}>
-              {formatSentenceCase(title)}
-            </h2>
-            {onOpen && <ChevronRight className="wk-chevron" strokeWidth={2} aria-hidden="true" />}
-          </div>
-          <p className="wk-body" style={{ color: 'var(--wk-muted)', marginTop: fig(20) }}>{subtitle}</p>
-        </>
-      )}
-      <div ref={sessionRef} style={{ marginTop: lean ? '0px' : fig(60) }}>
-        <SessionCountBar sessionLabel={sessionLabel} current={current} total={total} topMargin="0px" barMargin={fig(30)} />
-      </div>
-    </button>
-  );
-};
+}) => (
+  <section
+    aria-label={`${formatSentenceCase(sessionLabel)}. ${current} of ${total} sets completed`}
+    className="wk-card"
+  >
+    <div ref={sessionRef}>
+      <SessionCountBar
+        sessionLabel={sessionLabel}
+        current={current}
+        total={total}
+        topMargin="0px"
+        barMargin="12px"
+      />
+    </div>
+  </section>
+);
 
 interface StickySessionHeaderProps extends SessionCountProps {
   onOpen?: () => void;
@@ -112,7 +132,7 @@ interface StickySessionHeaderProps extends SessionCountProps {
   measureRef: React.RefObject<HTMLDivElement>;
 }
 
-/** Lean sticky session bar shown seamlessly at the top of the Workout tab when scrolled to the session block. */
+/** Lean sticky session bar shown seamlessly at the top of the Workout tab when scrolled past the session card. */
 export const StickySessionHeader: React.FC<StickySessionHeaderProps> = ({
   sessionLabel,
   current,
@@ -130,42 +150,58 @@ export const StickySessionHeader: React.FC<StickySessionHeaderProps> = ({
   >
     <div
       aria-hidden="true"
-      className="absolute inset-0 border-b border-white/[0.06] pointer-events-none"
+      className="absolute inset-0 pointer-events-none"
       style={{
+        borderBottom: '1px solid var(--color-border-subtle)',
         opacity: 'var(--dock-t, 0)' as unknown as number,
-        background: 'rgba(19, 24, 28, 0.94)',
+        background: 'rgb(var(--color-bg-canvas-rgb) / 0.94)',
         backdropFilter: 'blur(16px)',
         WebkitBackdropFilter: 'blur(16px)',
       }}
     />
     <div className="relative max-w-md mx-auto">
-      <button
-        type="button"
-        disabled={!onOpen}
-        tabIndex={docked ? 0 : -1}
-        onClick={() => {
-          triggerHaptic('light');
-          onOpen?.();
-        }}
-        aria-label={`${sessionLabel}. ${current} of ${total} sets completed. Open your program`}
-        className="w-full text-left block"
-        style={{
-          paddingLeft: fig(38),
-          paddingRight: fig(38),
-          paddingTop: fig(26),
-          paddingBottom: 'calc((38 - 14 * var(--dock-t, 0)) * var(--f))',
-        }}
-      >
-        <div ref={measureRef}>
-          <SessionCountBar
-            sessionLabel={sessionLabel}
-            current={current}
-            total={total}
-            topMargin="0px"
-            barMargin="calc((30 - 10 * var(--dock-t, 0)) * var(--f))"
-          />
+      {onOpen ? (
+        <button
+          type="button"
+          tabIndex={docked ? 0 : -1}
+          onClick={() => {
+            triggerHaptic('light');
+            onOpen();
+          }}
+          aria-label={`${formatSentenceCase(sessionLabel)}. ${current} of ${total} sets completed`}
+          className="w-full text-left block px-4 pt-3"
+          style={{
+            paddingBottom: 'calc(16px - 4px * var(--dock-t, 0))',
+          }}
+        >
+          <div ref={measureRef}>
+            <SessionCountBar
+              sessionLabel={sessionLabel}
+              current={current}
+              total={total}
+              topMargin="0px"
+              barMargin="calc(12px - 4px * var(--dock-t, 0))"
+            />
+          </div>
+        </button>
+      ) : (
+        <div
+          className="w-full text-left px-4 pt-3"
+          style={{
+            paddingBottom: 'calc(16px - 4px * var(--dock-t, 0))',
+          }}
+        >
+          <div ref={measureRef}>
+            <SessionCountBar
+              sessionLabel={sessionLabel}
+              current={current}
+              total={total}
+              topMargin="0px"
+              barMargin="calc(12px - 4px * var(--dock-t, 0))"
+            />
+          </div>
         </div>
-      </button>
+      )}
     </div>
   </div>
 );

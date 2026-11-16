@@ -108,16 +108,16 @@ export function timelineCutoffDate(timeline: ChartTimeline, today = localDateStr
   return localDateString(start);
 }
 
-const MONTH_SHORT = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+const MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 export function formatWindowRangeLabel(start: string, end: string): string {
   const s = parseLocalDate(start);
   const e = parseLocalDate(end);
-  const yr = String(e.getFullYear()).slice(-2);
+  const yr = e.getFullYear();
   if (s.getFullYear() !== e.getFullYear()) {
-    return `${MONTH_SHORT[s.getMonth()]} ${s.getDate()}, ${String(s.getFullYear()).slice(-2)} - ${MONTH_SHORT[e.getMonth()]} ${e.getDate()}, ${yr}`;
+    return `${MONTH_SHORT[s.getMonth()]} ${s.getDate()}, ${s.getFullYear()} – ${MONTH_SHORT[e.getMonth()]} ${e.getDate()}, ${yr}`;
   }
-  return `${MONTH_SHORT[s.getMonth()]} ${s.getDate()} - ${MONTH_SHORT[e.getMonth()]} ${e.getDate()}, ${yr}`;
+  return `${MONTH_SHORT[s.getMonth()]} ${s.getDate()} – ${MONTH_SHORT[e.getMonth()]} ${e.getDate()}, ${yr}`;
 }
 
 export function splitFormattedValueUnit(formatted: string): { valueText: string; unitText?: string } {

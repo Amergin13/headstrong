@@ -463,8 +463,10 @@ export interface AthleteMemoryFact {
 }
 
 export interface WorkoutDisplaySettings {
-  /** Show the full Program phase & week header above the lean workout card (default: false). */
+  /** Show the Program & phase card (phase title, description, arrow button to Program tab; default: false). */
   showProgramCard?: boolean;
+  /** Show the standalone Current session card with workout title and set progress bar (default: true). */
+  showSessionCard?: boolean;
   /** Show the biometric Recovery / Readiness card when a wearable is connected (default: true). */
   showRecoveryCard?: boolean;
   /** Show the 2-line written summary on each ExerciseCard (default: true). */
@@ -477,6 +479,7 @@ export interface WorkoutDisplaySettings {
 
 export const DEFAULT_WORKOUT_DISPLAY_SETTINGS: Required<WorkoutDisplaySettings> = {
   showProgramCard: false,
+  showSessionCard: true,
   showRecoveryCard: true,
   showExerciseSummaries: true,
   showExerciseCharts: true,
@@ -488,6 +491,7 @@ export function resolveWorkoutDisplaySettings(
 ): Required<WorkoutDisplaySettings> {
   return {
     showProgramCard: settings?.showProgramCard ?? DEFAULT_WORKOUT_DISPLAY_SETTINGS.showProgramCard,
+    showSessionCard: settings?.showSessionCard ?? DEFAULT_WORKOUT_DISPLAY_SETTINGS.showSessionCard,
     showRecoveryCard: settings?.showRecoveryCard ?? DEFAULT_WORKOUT_DISPLAY_SETTINGS.showRecoveryCard,
     showExerciseSummaries: settings?.showExerciseSummaries ?? DEFAULT_WORKOUT_DISPLAY_SETTINGS.showExerciseSummaries,
     showExerciseCharts: settings?.showExerciseCharts ?? DEFAULT_WORKOUT_DISPLAY_SETTINGS.showExerciseCharts,

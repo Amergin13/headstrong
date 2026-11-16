@@ -24,9 +24,6 @@ import { formatSentenceCase } from '../../utils/typography';
 import { PastWorkoutModal } from './PastWorkoutModal';
 import { resolveCssToken } from '../../styles/semanticTokens';
 
-/** One Figma pixel (1344 px frame) in screen pixels; see .wk in index.css. */
-const fig = (px: number) => `calc(${px} * var(--f))`;
-
 /** One contour of the identity form: a finished workout, or the outline of the next one. */
 interface IdentityRing {
   done: boolean;
@@ -37,12 +34,6 @@ interface IdentityRing {
   /** Working sets logged (0 when not done), which makes the contour bolder. */
   sets: number;
 }
-
-const PHASE_COLOR_TOKENS: Record<number, [string, string]> = {
-  1: ['--color-phase-hypertrophy', '--color-phase-hypertrophy-soft'],
-  2: ['--color-phase-strength', '--color-phase-strength-soft'],
-  3: ['--color-phase-peak', '--color-phase-peak-soft'],
-};
 
 function lobesFor(label: string): number {
   if (/shoulder/i.test(label)) return 3;
@@ -102,12 +93,19 @@ const IdentityForm: React.FC<{ rings: IdentityRing[]; seed: string; total: numbe
       };
     });
     const progress = completed / total;
-    const resolvedPhaseColors: Record<number, [string, string]> = {
-      1: [resolveCssToken(PHASE_COLOR_TOKENS[1][0], 'rgb(139 124 246)'), resolveCssToken(PHASE_COLOR_TOKENS[1][1], 'rgb(176 140 255)')],
-      2: [resolveCssToken(PHASE_COLOR_TOKENS[2][0], 'rgb(224 79 208)'), resolveCssToken(PHASE_COLOR_TOKENS[2][1], 'rgb(255 138 216)')],
-      3: [resolveCssToken(PHASE_COLOR_TOKENS[3][0], 'rgb(255 158 109)'), resolveCssToken(PHASE_COLOR_TOKENS[3][1], 'rgb(255 208 168)')],
-    };
-    const nextContourStroke = resolveCssToken('--color-text-primary', 'white');
+    const progressStroke = resolveCssToken('--color-accent-primary', 'rgb(0, 241, 159)');
+    const accentRgbParts = resolveCssToken('--color-accent-primary-rgb', '0 241 159')
+      .trim()
+      .split(/\s+/)
+      .map((n) => Number(n));
+    const accentRgbTuple: [number, number, number] =
+      accentRgbParts.length === 3 && accentRgbParts.every(Number.isFinite)
+        ? [accentRgbParts[0], accentRgbParts[1], accentRgbParts[2]]
+        : [0, 241, 159];
+    const progressRgb = accentRgbTuple.join(', ');
+    const neutralRgb = '188, 195, 200';
+    const brightStroke = resolveCssToken('--color-text-primary', 'rgb(255, 255, 255)');
+    const nextContourStroke = brightStroke;
     let width = 0;
     let height = 0;
     let frame = 0;
@@ -191,12 +189,11 @@ const IdentityForm: React.FC<{ rings: IdentityRing[]; seed: string; total: numbe
       ctx.globalAlpha = 1;
       ctx.clearRect(0, 0, width, height);
 
-      // Ambient light: soft glows drifting behind the form, brighter and warmer as the plan goes on.
+      // Ambient light: neutral slate mist and subtle progression aura drifting behind the form.
       ctx.globalCompositeOperation = 'screen';
       const ambient: [number, number, number, number][] = [
-        [123, 92, 255, 0.42 + 0.16 * progress],
-        [224, 79, 208, 0.2 + 0.24 * progress],
-        [255, 158, 109, 0.06 + 0.28 * progress],
+        progress > 0 ? [...accentRgbTuple, 0.10 + 0.16 * progress] : [188, 195, 200, 0.18],
+        [255, 255, 255, 0.10 + 0.12 * progress],
       ];
       ambient.forEach(([r, g, b, alpha], i) => {
         const a = t * 0.12 + i * 2.1;
@@ -217,25 +214,26 @@ const IdentityForm: React.FC<{ rings: IdentityRing[]; seed: string; total: numbe
       });
       ctx.globalCompositeOperation = 'source-over';
 
-      // Core: grows and warms as the plan goes on.
+      // Core: grows cleanly with plan progress.
       const core = ctx.createRadialGradient(cx, formY, 0, cx, formY, formRadius * 0.7 + height * 0.08);
-      core.addColorStop(0, `rgba(255, 190, 240, ${0.06 + 0.12 * progress})`);
-      core.addColorStop(0.35, `rgba(166, 60, 255, ${0.08 + 0.14 * progress})`);
-      core.addColorStop(1, 'rgba(91, 71, 255, 0)');
+      const auraRgb = progress > 0 ? progressRgb : neutralRgb;
+      core.addColorStop(0, `rgba(255, 255, 255, ${0.06 + 0.12 * progress})`);
+      core.addColorStop(0.35, `rgba(${auraRgb}, ${0.07 + 0.12 * progress})`);
+      core.addColorStop(1, `rgba(${auraRgb}, 0)`);
       ctx.fillStyle = core;
       ctx.fillRect(0, 0, width, height);
 
       // Faint glass body and rim, so the sphere reads as a whole before its rings are filled in.
       const body = ctx.createRadialGradient(cx - sphere * 0.35, formY - sphere * 0.4, sphere * 0.05, cx, formY, sphere);
       body.addColorStop(0, 'rgba(255, 255, 255, 0.10)');
-      body.addColorStop(0.6, 'rgba(166, 60, 255, 0.05)');
-      body.addColorStop(1, 'rgba(166, 60, 255, 0.12)');
+      body.addColorStop(0.6, `rgba(${neutralRgb}, 0.05)`);
+      body.addColorStop(1, `rgba(${neutralRgb}, 0.12)`);
       ctx.fillStyle = body;
       ctx.beginPath();
       ctx.arc(cx, formY, sphere, 0, Math.PI * 2);
       ctx.fill();
       ctx.lineWidth = 1;
-      ctx.strokeStyle = 'rgba(200, 180, 255, 0.16)';
+      ctx.strokeStyle = `rgba(${neutralRgb}, 0.22)`;
       ctx.stroke();
 
       ctx.globalCompositeOperation = 'lighter';
@@ -248,17 +246,16 @@ const IdentityForm: React.FC<{ rings: IdentityRing[]; seed: string; total: numbe
           continue;
         }
         if (!s.done) continue;
-        const [c1, c2] = resolvedPhaseColors[s.phase] ?? resolvedPhaseColors[1];
         const grad =
           typeof ctx.createConicGradient === 'function'
             ? ctx.createConicGradient(s.harmonics[0].phase + t * 0.2, cx, formY)
             : null;
         if (grad) {
-          grad.addColorStop(0, c1);
-          grad.addColorStop(0.5, c2);
-          grad.addColorStop(1, c1);
+          grad.addColorStop(0, progressStroke);
+          grad.addColorStop(0.5, brightStroke);
+          grad.addColorStop(1, progressStroke);
         }
-        ctx.strokeStyle = grad ?? c1;
+        ctx.strokeStyle = grad ?? progressStroke;
         const lit = Math.exp(-(((s.k - pulseK) / 1.4) ** 2));
         const newest = s.k === completed - 1 ? 0.25 + 0.15 * Math.sin(t * 3) : 0;
         const weight = 0.55 + 0.45 * Math.min(1, s.sets / 20);
@@ -302,7 +299,7 @@ const IdentityForm: React.FC<{ rings: IdentityRing[]; seed: string; total: numbe
       role="img"
       aria-label={`Your athlete identity: ${completed} of ${total} workouts complete`}
       className="block w-full"
-      style={{ height: fig(552) }}
+      style={{ height: 248 }}
     />
   );
 };
@@ -438,12 +435,12 @@ export const ProgramPlanView: React.FC<ProgramPlanViewProps> = ({
   };
 
   const rowStyle: React.CSSProperties = {
-    height: fig(77),
-    borderRadius: fig(16),
-    paddingLeft: fig(35),
-    paddingRight: fig(31),
-    fontSize: `max(12px, ${fig(28)})`,
-    gap: fig(22),
+    minHeight: 44,
+    borderRadius: 12,
+    paddingLeft: 16,
+    paddingRight: 16,
+    fontSize: 16,
+    gap: 12,
   };
 
   return (
@@ -453,30 +450,22 @@ export const ProgramPlanView: React.FC<ProgramPlanViewProps> = ({
         fallbackRef={progressRef}
         deps={[isFirstRun]}
       />
-      <header className="relative" style={{ paddingTop: fig(20) }}>
-        <div className="relative flex items-center justify-center" style={{ paddingLeft: 44, paddingRight: 44 }}>
-          <h1 className="wk-page-title">{trainingPlan.name}</h1>
+      <header className="relative pt-2">
+        <div className="relative flex items-center justify-start pr-12">
+          <h1 className="wk-page-title">{formatSentenceCase(trainingPlan.name)}</h1>
           {headerAction}
         </div>
       </header>
 
       {isFirstRun && (
         <section aria-label="Your progress as an athlete" className="flex flex-col items-center text-center">
-          <div className="self-stretch" style={{ marginLeft: fig(-38), marginRight: fig(-38), marginTop: fig(-11) }}>
+          <div className="self-stretch -mx-4 -mt-1">
             <IdentityForm rings={identityRings} seed={identitySeed} total={TOTAL} />
           </div>
-          <h2 className="wk-h1" style={{ marginTop: fig(-30), lineHeight: 1.21 }}>
+          <h2 className="wk-h1 -mt-3">
             Your new identity as an athlete is forming
           </h2>
-          <p
-            style={{
-              marginTop: fig(28),
-              maxWidth: fig(790),
-              fontSize: `max(12px, ${fig(26)})`,
-              lineHeight: fig(34),
-              color: 'var(--wk-muted)',
-            }}
-          >
+          <p className="wk-body mt-3 max-w-prose">
             <span key={identityMessage ? 'model' : 'facts'} className="wk-text-swap">
               {identityMessage ?? identityFacts.fallback}
             </span>
@@ -487,9 +476,9 @@ export const ProgramPlanView: React.FC<ProgramPlanViewProps> = ({
       <section
         ref={progressRef}
         aria-label="Plan progress"
-        style={{ marginTop: fig(isFirstRun ? 107 : 60) }}
+        className={isFirstRun ? 'mt-12' : 'mt-6'}
       >
-        <div className="flex items-end justify-between" style={{ gap: fig(20) }}>
+        <div className="flex items-end justify-between gap-2">
           <span className="wk-title">
             Next: {formatSentenceCase(next.label)}
           </span>
@@ -498,8 +487,7 @@ export const ProgramPlanView: React.FC<ProgramPlanViewProps> = ({
           </span>
         </div>
         <div
-          className="wk-bar"
-          style={{ marginTop: fig(21) }}
+          className="wk-bar mt-2"
           role="progressbar"
           aria-valuemin={0}
           aria-valuemax={TOTAL}
@@ -510,7 +498,7 @@ export const ProgramPlanView: React.FC<ProgramPlanViewProps> = ({
         </div>
       </section>
 
-      <div ref={phasesTopRef} className="flex flex-col" style={{ marginTop: fig(75), gap: fig(34) }}>
+      <div ref={phasesTopRef} className="flex flex-col mt-8 gap-4">
         {trainingPlan.phases.map((phase) => {
           const isOpen = openPhases.includes(phase.phaseNumber);
           const phaseWorkouts = plan.workouts.filter((w) => w.phase === phase.phaseNumber);
@@ -520,26 +508,18 @@ export const ProgramPlanView: React.FC<ProgramPlanViewProps> = ({
                 type="button"
                 onClick={() => togglePhase(phase.phaseNumber)}
                 aria-expanded={isOpen}
-                className="w-full text-left block"
-                style={{
-                  background: 'var(--wk-card)',
-                  borderRadius: fig(30),
-                  padding: `${fig(34)} ${fig(38)} ${fig(51)}`,
-                }}
+                className="wk-card w-full text-left block"
               >
-                <h2 className="wk-h1" style={{ lineHeight: 1.21 }}>
+                <h2 className="wk-h1">
                   Phase {phase.phaseNumber}
                 </h2>
-                <p style={{ marginTop: fig(12), fontSize: `max(12px, ${fig(26)})`, lineHeight: fig(34), color: 'var(--wk-muted)' }}>
+                <p className="wk-body mt-2 max-w-prose">
                   {phase.planSummary}
                 </p>
               </button>
 
               {isOpen && (
-                <ol
-                  className="flex flex-col"
-                  style={{ marginTop: fig(46), marginBottom: fig(27), gap: fig(21), paddingLeft: fig(38), paddingRight: fig(38) }}
-                >
+                <ol className="flex flex-col mt-4 mb-3 gap-2 px-4">
                   {phaseWorkouts.map((w) => {
                     const done = w.status === 'done';
                     const isNext = w.status === 'next';
@@ -547,26 +527,26 @@ export const ProgramPlanView: React.FC<ProgramPlanViewProps> = ({
                     const name = `${w.workoutNumber}. ${formatSentenceCase(w.label)}`;
                     const content = (
                       <>
-                        <span className="font-semibold text-white truncate">{name}</span>
+                        <span className="wk-subhead truncate">{name}</span>
                         {isNext && (
-                          <span className="wk-label shrink-0" style={{ color: 'var(--color-text-primary)' }}>
+                          <span className="wk-pill shrink-0" style={{ color: 'var(--color-text-primary)' }}>
                             Up next
                           </span>
                         )}
                         {w.isActive && w.activity && (
-                          <span className="ml-auto shrink-0 text-white" style={{ fontSize: `max(12px, ${fig(24)})` }}>
+                          <span className="wk-caption ml-auto shrink-0" style={{ color: 'var(--color-text-primary)' }}>
                             {describeActivity(w.activity)}
                           </span>
                         )}
                         {isDue && (
-                          <span className="wk-label shrink-0" style={{ color: 'var(--wk-muted)' }}>
+                          <span className="wk-caption shrink-0">
                             This week
                           </span>
                         )}
                         {((done && !w.isActive) || isNext || isDue) && (
                           <ChevronRight
-                            className="ml-auto shrink-0 text-white"
-                            style={{ width: fig(36), height: fig(36) }}
+                            className="wk-chevron ml-auto"
+                            style={{ color: 'var(--color-text-primary)' }}
                             strokeWidth={2}
                             aria-hidden="true"
                           />
@@ -590,7 +570,7 @@ export const ProgramPlanView: React.FC<ProgramPlanViewProps> = ({
                             style={{
                               ...rowStyle,
                               background: done
-                                ? 'var(--color-set-completed-soft)'
+                                ? 'var(--color-status-positive-soft)'
                                 : isNext
                                 ? 'var(--color-action-secondary-bg)'
                                 : 'var(--wk-card)',
@@ -600,7 +580,7 @@ export const ProgramPlanView: React.FC<ProgramPlanViewProps> = ({
                             {content}
                           </button>
                         ) : (
-                          <div className="flex items-center" style={{ ...rowStyle, background: done ? 'var(--color-set-completed-soft)' : 'var(--wk-card)' }}>
+                          <div className="flex items-center" style={{ ...rowStyle, background: done ? 'var(--color-status-positive-soft)' : 'var(--wk-card)' }}>
                             {content}
                           </div>
                         )}

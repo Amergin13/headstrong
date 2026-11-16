@@ -56,9 +56,6 @@ import '../../services/deviceModels';
 import { useUnits } from '../../utils/unitsContext';
 import { kgToUnit } from '../../utils/units';
 
-/** One Figma pixel (1344 px frame) in screen pixels; see .wk in index.css. */
-const fig = (px: number) => `calc(${px} * var(--f))`;
-const PAGE_GUTTER = 38;
 
 const CHART_ID_TO_TAPE_SITE: Partial<Record<string, BodyMeasurementSite>> = {
   neck: 'neck',
@@ -321,7 +318,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
   const logWeightPrompt = (
     <div className="wk-card">
       <h2 className="wk-h1">Strength levels</h2>
-      <p className="wk-body" style={{ marginTop: fig(24) }}>
+      <p className="wk-body mt-3 max-w-prose">
         Strength levels compare what you lift with your bodyweight. Log your weight to see them.
       </p>
       <button
@@ -330,8 +327,8 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
           triggerHaptic('light');
           openLogWeight();
         }}
-        className="wk-button"
-        style={{ marginTop: fig(28), background: 'var(--color-action-primary-bg)', color: 'var(--color-action-primary-fg)' }}
+        className="wk-button mt-4 active:scale-[0.98] transition-transform"
+        style={{ background: 'var(--color-action-primary-bg)', color: 'var(--color-action-primary-fg)' }}
       >
         Log weight
       </button>
@@ -343,34 +340,34 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
   const detailScreen = detail && (
     <>
       <DetailHeader title={DETAIL_TITLE[detail]} onBack={() => setDetail(null)} />
-      <div ref={cardsTopRef} className="flex flex-col" style={{ gap: fig(22), marginTop: fig(40) }}>
+      <div ref={cardsTopRef} className="flex flex-col gap-3 mt-4">
         {detail === 'bests' &&
           (personalBests.length > 0 ? (
             <section className="wk-card" aria-label="All personal bests">
-              <p className="wk-body">Your heaviest logged set on each lift, or your most reps where there is no weight to add.</p>
-              <ul className="flex flex-col" style={{ marginTop: fig(20) }}>
+              <p className="wk-body max-w-prose">Your heaviest logged set on each lift, or your most reps where there is no weight to add.</p>
+              <ul className="flex flex-col mt-3">
                 {personalBests.map((b) => {
                   const shown = bestValue(b);
                   return (
                     <li
                       key={b.exerciseId}
-                      className="flex items-center justify-between"
-                      style={{ gap: fig(24), padding: `${fig(26)} 0`, borderTop: `${fig(2)} solid rgba(255,255,255,0.08)` }}
+                      className="flex items-center justify-between gap-3 py-3 border-t"
+                      style={{ borderColor: 'var(--color-border-subtle)' }}
                     >
                       <div className="min-w-0">
-                        <p className="wk-title" style={{ lineHeight: 1.21 }}>
+                        <p className="wk-subhead leading-tight">
                           {formatSentenceCase(b.exerciseName)}
                         </p>
-                        <p className="wk-caption" style={{ marginTop: fig(8) }}>
+                        <p className="wk-caption mt-1">
                           {shortDate(b.date)}
                           {b.e1rmKg > 0
                             ? ` • estimated max ${units.formatPrecise(b.e1rmKg)}${b.includesBodyweight ? ' (bodyweight + added weight)' : ''}`
                             : ''}
                         </p>
                       </div>
-                      <p className="font-semibold text-white tabular-numbers shrink-0 text-right" style={{ fontSize: `max(12px, ${fig(40)})`, lineHeight: 1 }}>
+                      <p className="text-base font-medium tabular-nums shrink-0 text-right leading-none" style={{ color: 'var(--color-text-primary)' }}>
                         {shown.value}
-                        <span className="font-semibold" style={{ fontSize: `max(12px, ${fig(22)})`, color: 'var(--wk-muted)', marginLeft: fig(8) }}>
+                        <span className="wk-caption ml-1">
                           {shown.unit}
                         </span>
                       </p>
@@ -437,7 +434,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
             ) : (
               <div className="wk-card">
                 <h2 className="wk-h1">Muscles</h2>
-                <p className="wk-body" style={{ marginTop: fig(24) }}>
+                <p className="wk-body mt-3 max-w-prose">
                   Finish a workout to see each muscle's weekly sets, strength and size here.
                 </p>
               </div>
@@ -469,8 +466,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
               />
               {stepsGoal && (
                 <div
-                  className="wk-bar"
-                  style={{ marginTop: fig(32) }}
+                  className="wk-bar mt-3"
                   role="progressbar"
                   aria-valuemin={0}
                   aria-valuemax={stepsGoal.target}
@@ -480,7 +476,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
                   <div style={{ width: `${Math.min(100, (todaySteps / stepsGoal.target) * 100)}%` }} />
                 </div>
               )}
-              <p className="wk-body" style={{ marginTop: fig(24) }}>
+              <p className="wk-body mt-3 max-w-prose">
                 {stepsChart.summary}
               </p>
             </section>
@@ -488,15 +484,15 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
             {stepsChart.points.length > 0 && (
               <section className="wk-card" aria-label="Recent daily step counts">
                 <h2 className="wk-title">Recent days</h2>
-                <ul className="flex flex-col" style={{ marginTop: fig(20) }}>
+                <ul className="flex flex-col mt-3">
                   {[...stepsChart.points].reverse().slice(0, 14).map((pt) => (
                     <li
                       key={pt.date}
-                      className="flex items-center justify-between"
-                      style={{ gap: fig(20), padding: `${fig(22)} 0`, borderTop: `${fig(2)} solid rgba(255,255,255,0.08)` }}
+                      className="flex items-center justify-between gap-3 py-3 border-t"
+                      style={{ borderColor: 'var(--color-border-subtle)' }}
                     >
                       <span className="wk-body">{shortDate(pt.date)}</span>
-                      <span className="font-semibold text-white tabular-numbers" style={{ fontSize: `max(12px, ${fig(36)})` }}>
+                      <span className="text-base font-medium tabular-nums" style={{ color: 'var(--color-text-primary)' }}>
                         {Math.round(pt.value).toLocaleString()}
                       </span>
                     </li>
@@ -510,7 +506,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
         {detail === 'whoop' && whoopConfigured && (
           <>
             <section className="wk-card" aria-label="Whoop metrics summary">
-              <div className="flex items-center justify-between" style={{ gap: fig(20) }}>
+              <div className="flex items-center justify-between gap-3">
                 <h2 className="wk-title">Latest Whoop metrics</h2>
                 {whoopSnapshot.latestDate && <span className="wk-pill">{shortDate(whoopSnapshot.latestDate)}</span>}
               </div>
@@ -554,29 +550,29 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
                 whoopSnapshot.respiratoryRate !== undefined ||
                 whoopSnapshot.spo2 !== undefined ||
                 whoopSnapshot.skinTemp !== undefined) && (
-                <div className="flex flex-wrap" style={{ gap: fig(14), marginTop: fig(28) }}>
+                <div className="flex flex-wrap gap-2 mt-4">
                   {whoopSnapshot.sleepPerformance !== undefined && (
-                    <span className="wk-pill" style={{ textTransform: 'none' }}>
+                    <span className="wk-pill">
                       Sleep perf {Math.round(whoopSnapshot.sleepPerformance)}%
                     </span>
                   )}
                   {whoopSnapshot.sleepEfficiency !== undefined && (
-                    <span className="wk-pill" style={{ textTransform: 'none' }}>
+                    <span className="wk-pill">
                       Efficiency {Math.round(whoopSnapshot.sleepEfficiency)}%
                     </span>
                   )}
                   {whoopSnapshot.respiratoryRate !== undefined && (
-                    <span className="wk-pill" style={{ textTransform: 'none' }}>
+                    <span className="wk-pill">
                       Resp rate {whoopSnapshot.respiratoryRate.toFixed(1)} brpm
                     </span>
                   )}
                   {whoopSnapshot.spo2 !== undefined && (
-                    <span className="wk-pill" style={{ textTransform: 'none' }}>
+                    <span className="wk-pill">
                       SpO2 {whoopSnapshot.spo2.toFixed(1)}%
                     </span>
                   )}
                   {whoopSnapshot.skinTemp !== undefined && (
-                    <span className="wk-pill" style={{ textTransform: 'none' }}>
+                    <span className="wk-pill">
                       Skin temp {whoopSnapshot.skinTemp.toFixed(1)} °C
                     </span>
                   )}
@@ -635,7 +631,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
               if (compositionView === 'weight') openLogWeight();
               else openLogMeasurements('waist');
             }}
-            className="wk-button gap-[calc(16*var(--f))]"
+            className="wk-button gap-2 active:scale-[0.98] transition-transform"
             style={{ background: 'var(--color-action-primary-bg)', color: 'var(--color-action-primary-fg)' }}
           >
             {compositionView === 'weight' ? <Scale className="w-4 h-4 stroke-[2]" /> : <Ruler className="w-4 h-4 stroke-[2]" />}
@@ -643,13 +639,16 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
           </button>
 
           {(compositionView === 'weight' ? savedRenpho.scale : savedRenpho.tape) && (
-            <div className="flex flex-wrap items-center justify-between gap-[calc(16*var(--f))] px-[calc(26*var(--f))] py-[calc(16*var(--f))] rounded-[calc(22*var(--f))]" style={{ background: 'var(--wk-card)' }}>
-              <div className="flex items-center gap-[calc(12*var(--f))] text-[length:max(12px,calc(26*var(--f)))] font-semibold text-[color:var(--wk-accent)]">
+            <div
+              className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 rounded-xl border"
+              style={{ background: 'var(--wk-card)', borderColor: 'var(--color-border-subtle)' }}
+            >
+              <div className="flex items-center gap-2 text-xs font-medium" style={{ color: 'var(--color-data-telemetry)' }}>
                 <Bluetooth className="w-3.5 h-3.5 stroke-[2]" />
                 <span>Remembered: {(compositionView === 'weight' ? savedRenpho.scale : savedRenpho.tape)?.name}</span>
               </div>
               {(compositionView === 'weight' ? savedRenpho.scale : savedRenpho.tape)?.lastSummary && (
-                <span className="text-[length:max(12px,calc(26*var(--f)))] text-[color:var(--wk-body)]">
+                <span className="text-xs text-[color:var(--wk-body)]">
                   Last: {(compositionView === 'weight' ? savedRenpho.scale : savedRenpho.tape)?.lastSummary}
                 </span>
               )}
@@ -659,34 +658,41 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
           {(compositionView === 'weight'
             ? bodyComposition.populatedScaleCount > 0
             : bodyComposition.populatedTapeCount > 0) && (
-            <div className="wk-card space-y-[calc(26*var(--f))]">
+            <div className="wk-card space-y-3">
               <h2 className="wk-title">{compositionView === 'weight' ? 'Body composition' : 'Symmetry'}</h2>
               {compositionView === 'weight' ? (
                 <>
-                  <p className="wk-body text-[color:var(--wk-body)]">{bodyComposition.recompositionSummary}</p>
+                  <p className="wk-body text-[color:var(--wk-body)] max-w-prose">{bodyComposition.recompositionSummary}</p>
                   {/* The latest reading of each metric, from the same series as the charts below. */}
                   {visibleCompositionCharts.some((c) => c.id !== 'bodyweight' && c.points.length > 0) && (
-                    <dl className="grid grid-cols-2 gap-x-[calc(38*var(--f))] gap-y-[calc(26*var(--f))] pt-[calc(8*var(--f))]">
+                    <dl className="grid grid-cols-2 gap-x-4 gap-y-3 pt-1">
                       {visibleCompositionCharts
                         .filter((c) => c.id !== 'bodyweight' && c.points.length > 0)
                         .map((c) => (
                           <div key={c.id} className="min-w-0">
-                            <dt className="text-[length:max(12px,calc(26*var(--f)))] text-[color:var(--wk-muted)]">{c.title}</dt>
-                            <dd className="text-[length:max(12px,calc(30*var(--f)))] font-semibold text-white">{c.format(c.points[c.points.length - 1].value)}</dd>
+                            <dt className="wk-caption">{c.title}</dt>
+                            <dd className="text-base font-medium tabular-nums" style={{ color: 'var(--color-text-primary)' }}>{c.format(c.points[c.points.length - 1].value)}</dd>
                           </div>
                         ))}
                     </dl>
                   )}
                 </>
               ) : measuredSymmetryPairs.length > 0 ? (
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-[calc(16*var(--f))] pt-[calc(8*var(--f))]">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1">
                   {measuredSymmetryPairs.map((pair) => (
-                    <div key={pair.id} className="rounded-[calc(22*var(--f))] p-[calc(22*var(--f))]" style={{ background: 'var(--wk-raised)' }}>
-                      <span className="block text-[length:max(12px,calc(26*var(--f)))] text-[color:var(--wk-muted)] font-semibold">{pair.label}</span>
-                      <span className="block text-[length:max(12px,calc(30*var(--f)))] font-semibold text-white tabular-numbers mt-[calc(4*var(--f))]">
+                    <div
+                      key={pair.id}
+                      className="rounded-xl p-3 border"
+                      style={{ background: 'var(--wk-raised)', borderColor: 'var(--color-border-subtle)' }}
+                    >
+                      <span className="block wk-meta-title">{pair.label}</span>
+                      <span className="block text-base font-medium tabular-nums mt-1" style={{ color: 'var(--color-text-primary)' }}>
                         L {fmt.length(pair.leftCm!)} · R {fmt.length(pair.rightCm!)}
                       </span>
-                      <span className="block text-[length:max(12px,calc(26*var(--f)))] text-[color:var(--wk-accent)] mt-[calc(4*var(--f))]">
+                      <span
+                        className="block text-xs font-medium mt-1 tabular-nums"
+                        style={{ color: pair.status === 'balanced' ? 'var(--wk-accent)' : 'var(--color-status-warning)' }}
+                      >
                         {pair.status === 'balanced'
                           ? 'Balanced'
                           : `${pair.dominantSide === 'right' ? 'Right' : 'Left'} +${fmt.length(Math.abs(pair.diffCm ?? 0))}`}
@@ -695,7 +701,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
                   ))}
                 </div>
               ) : (
-                <p className="wk-body text-[color:var(--wk-body)]">Measure both arms, thighs or calves to compare your left and right sides.</p>
+                <p className="wk-body text-[color:var(--wk-body)] max-w-prose">Measure both arms, thighs or calves to compare your left and right sides.</p>
               )}
             </div>
           )}
@@ -724,7 +730,8 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
     <div
       role="menu"
       aria-label="Progress options"
-      className="w-60 rounded-2xl bg-surface-card border border-white/[0.08] shadow-2xl p-1.5 space-y-1 text-left"
+      className="w-60 rounded-2xl bg-surface-card border shadow-2xl p-2 space-y-1 text-left"
+      style={{ borderColor: 'var(--color-border-subtle)' }}
     >
       <button
         type="button"
@@ -734,7 +741,8 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
           close();
           setDetail('goals');
         }}
-        className="w-full text-left px-3 py-2 rounded-xl text-sm font-semibold text-white/85 hover:text-white hover:bg-white/[0.06] flex items-center gap-2.5 min-h-[44px]"
+        className="w-full text-left px-3 py-2 rounded-xl text-base font-medium hover:bg-[var(--wk-raised)] flex items-center gap-2 min-h-[44px]"
+        style={{ color: 'var(--color-text-primary)' }}
       >
         <Target className="w-4 h-4 stroke-[2] shrink-0" />
         <span>Change goals</span>
@@ -747,13 +755,14 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
           close();
           setDetail('widgets');
         }}
-        className="w-full text-left px-3 py-2 rounded-xl text-sm font-semibold text-white/85 hover:text-white hover:bg-white/[0.06] flex items-center justify-between gap-2 min-h-[44px]"
+        className="w-full text-left px-3 py-2 rounded-xl text-base font-medium hover:bg-[var(--wk-raised)] flex items-center justify-between gap-2 min-h-[44px]"
+        style={{ color: 'var(--color-text-primary)' }}
       >
-        <span className="flex items-center gap-2.5">
+        <span className="flex items-center gap-2">
           <SlidersHorizontal className="w-4 h-4 stroke-[2] shrink-0" />
           <span>Customize widgets</span>
         </span>
-        <span className="text-xs font-semibold text-white/55 tabular-numbers">
+        <span className="text-xs font-normal tabular-numbers" style={{ color: 'var(--color-text-muted)' }}>
           {activeWidgets.length} active
         </span>
       </button>
@@ -762,8 +771,8 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
 
   const overview = (
     <>
-      <header className="relative" style={{ paddingTop: fig(20) }}>
-        <div className="relative flex items-center justify-center">
+      <header className="relative pt-2">
+        <div className="relative flex items-center justify-start pr-12">
           <h1 className="wk-page-title">Progress</h1>
           <button
             type="button"
@@ -777,7 +786,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
             className="absolute right-0 top-1/2 -translate-y-1/2 flex items-center justify-center rounded-full"
             style={{ width: 44, height: 44, color: 'var(--wk-muted)' }}
           >
-            <MoreHorizontal style={{ width: fig(48), height: fig(48) }} strokeWidth={2} aria-hidden="true" />
+            <MoreHorizontal className="w-5 h-5" strokeWidth={2} aria-hidden="true" />
           </button>
           {menuOpen && (
             <>
@@ -804,20 +813,20 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
 
       <div
         ref={cardsTopRef}
-        className="flex flex-col"
-        style={{ gap: fig(22), marginTop: hasWidget('goals') ? fig(70) : fig(48) }}
+        className={`flex flex-col gap-3 ${hasWidget('goals') ? 'mt-6' : 'mt-5'}`}
       >
         {hasWidget('trophy-case') && (
           <OverviewCard title="Trophy case" opens="all personal bests" onOpen={() => setDetail('bests')}>
             {trophies.length > 0 ? (
               <StatRow
+                sentenceLabels
                 stats={trophies.map((b) => {
                   const shown = bestValue(b);
-                  return { label: shortLiftName(b.exerciseName), value: shown.value, unit: shown.unit };
+                  return { label: formatSentenceCase(shortLiftName(b.exerciseName)), value: shown.value, unit: shown.unit };
                 })}
               />
             ) : (
-              <p className="wk-body" style={{ marginTop: fig(24) }}>
+              <p className="wk-body mt-3 max-w-prose">
                 Your best set on each lift appears here after your first workout.
               </p>
             )}
@@ -838,7 +847,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
 
         {hasWidget('recent-stats') && (
           <OverviewCard title="Recent stats" opens={`the last ${RECENT_DAYS} days by muscle`} onOpen={() => setDetail('recent')}>
-            <p className="wk-caption" style={{ marginTop: fig(10) }}>
+            <p className="wk-caption mt-1">
               Last {RECENT_DAYS} days
             </p>
             <StatRow
@@ -854,25 +863,23 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
         {hasWidget('steps') && (
           <OverviewCard title="Steps" opens="daily steps history" onOpen={() => setDetail('steps')}>
             {latestStepsEntry || todaySteps > 0 ? (
-              <div className="flex items-end justify-between" style={{ gap: fig(24), marginTop: fig(36) }}>
+              <div className="flex items-end justify-between gap-3 mt-4">
                 <div className="min-w-0">
                   <p className="wk-caption">
                     {todaySteps > 0 ? 'Today' : `Latest (${shortDate(latestStepsEntry!.date)})`}
                   </p>
-                  <p className="font-semibold text-white tabular-numbers" style={{ fontSize: `max(12px, ${fig(64)})`, lineHeight: 1, marginTop: fig(10) }}>
+                  <p className="wk-display leading-none mt-1">
                     {Math.round(todaySteps > 0 ? todaySteps : latestStepsEntry!.value).toLocaleString()}
                   </p>
                   {avgSteps7d !== null && (
-                    <p className="wk-caption" style={{ marginTop: fig(12) }}>
+                    <p className="wk-caption mt-2 tabular-nums">
                       7-day avg {avgSteps7d.toLocaleString()}
                     </p>
                   )}
                   {stepsGoal && (
                     <span
-                      className="wk-pill"
+                      className="wk-pill mt-2 tabular-nums"
                       style={{
-                        textTransform: 'none',
-                        marginTop: fig(14),
                         background: todaySteps >= stepsGoal.target ? 'var(--color-status-positive-soft)' : 'var(--wk-pill)',
                         color: todaySteps >= stepsGoal.target ? 'var(--wk-accent)' : 'var(--color-status-neutral)',
                       }}
@@ -886,6 +893,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
                 {stepsChart.points.length >= 2 && (
                   <Sparkline
                     points={stepsChart.points}
+                    tone="telemetry"
                     positiveProgress={Boolean(stepsGoal && todaySteps >= stepsGoal.target)}
                     label={`Daily steps from ${Math.round(stepsChart.points[0].value).toLocaleString()} to ${Math.round(stepsChart.points[stepsChart.points.length - 1].value).toLocaleString()}`}
                   />
@@ -894,7 +902,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
             ) : (
               <>
                 <StatRow stats={[{ label: 'Today', value: '—' }, { label: '7-day avg', value: '—' }, { label: 'Goal', value: stepsGoal ? stepsGoal.target.toLocaleString() : '—' }]} />
-                <p className="wk-body" style={{ marginTop: fig(20) }}>
+                <p className="wk-body mt-3 max-w-prose">
                   {stepsChart.summary}
                 </p>
               </>
@@ -904,21 +912,19 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
 
         {hasWidget('body-weight') && (
           <OverviewCard title="Body weight" opens="weight, body composition and logging" onOpen={() => setDetail('weight')}>
-            <p className="wk-body" style={{ marginTop: fig(12) }}>
+            <p className="wk-body mt-2 max-w-prose">
               {weightChart?.summary}
             </p>
             {latestWeighIn && (
-              <div className="flex items-end justify-between" style={{ gap: fig(24), marginTop: fig(44) }}>
+              <div className="flex items-end justify-between gap-3 mt-4">
                 <div className="min-w-0">
-                  <p className="font-semibold text-white tabular-numbers" style={{ fontSize: `max(12px, ${fig(64)})`, lineHeight: 1 }}>
+                  <p className="wk-display leading-none">
                     {units.formatPrecise(latestWeighIn.bodyweightKg)}
                   </p>
                   {pace && (
                     <span
-                      className="wk-pill"
+                      className="wk-pill mt-2"
                       style={{
-                        textTransform: 'none',
-                        marginTop: fig(16),
                         background: pace.pace === 'on' ? 'var(--color-status-positive-soft)' : 'var(--wk-pill)',
                         color: pace.pace === 'on' ? 'var(--wk-accent)' : 'var(--color-status-neutral)',
                       }}
@@ -952,7 +958,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
                 })}
               />
             ) : (
-              <p className="wk-body" style={{ marginTop: fig(24) }}>
+              <p className="wk-body mt-3 max-w-prose">
                 Start with your waist: it says the most about your fitness. Measure at the navel, first thing in the morning.
               </p>
             )}
@@ -963,15 +969,15 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
           <OverviewCard title="Strength standards" opens="your level on each lift" onOpen={() => setDetail('standards')}>
             {hasBodyweight && movementStandards.levels.some((l) => l.logged && l.source !== 'none') ? (
               <>
-                <p className="wk-body" style={{ marginTop: fig(12) }}>
+                <p className="wk-body mt-2 max-w-prose">
                   Your best estimated max on each lift against published standards for {movementStandards.tableLabel} at your bodyweight.
                 </p>
-                <div className="flex justify-center" style={{ marginTop: fig(20) }}>
+                <div className="flex justify-center mt-3">
                   <StandardsRadar report={movementStandards} />
                 </div>
               </>
             ) : (
-              <p className="wk-body" style={{ marginTop: fig(24) }}>
+              <p className="wk-body mt-3 max-w-prose">
                 {hasBodyweight
                   ? 'Log a squat, deadlift, bench press, overhead press or chin-up to see your level.'
                   : 'Strength levels compare what you lift with your bodyweight. Log your weight to see them.'}
@@ -1008,20 +1014,20 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
               ]}
             />
             {(whoopSnapshot.hrvRmssd !== undefined || whoopSnapshot.restingHr !== undefined || whoopSnapshot.sleepHours !== undefined || (whoopRecoveryChart?.points.length ?? 0) >= 2) ? (
-              <div className="flex items-end justify-between" style={{ gap: fig(24), marginTop: fig(32) }}>
-                <div className="flex flex-wrap" style={{ gap: fig(12) }}>
+              <div className="flex items-end justify-between gap-3 mt-4">
+                <div className="flex flex-wrap gap-2">
                   {whoopSnapshot.hrvRmssd !== undefined && (
-                    <span className="wk-pill" style={{ textTransform: 'none' }}>
+                    <span className="wk-pill tabular-nums">
                       HRV {Math.round(whoopSnapshot.hrvRmssd)} ms
                     </span>
                   )}
                   {whoopSnapshot.restingHr !== undefined && (
-                    <span className="wk-pill" style={{ textTransform: 'none' }}>
+                    <span className="wk-pill tabular-nums">
                       RHR {Math.round(whoopSnapshot.restingHr)} bpm
                     </span>
                   )}
                   {whoopSnapshot.sleepHours !== undefined && (
-                    <span className="wk-pill" style={{ textTransform: 'none' }}>
+                    <span className="wk-pill tabular-nums">
                       Sleep {whoopSnapshot.sleepHours.toFixed(1)} h
                     </span>
                   )}
@@ -1029,12 +1035,13 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
                 {whoopRecoveryChart && whoopRecoveryChart.points.length >= 2 && (
                   <Sparkline
                     points={whoopRecoveryChart.points}
+                    tone="telemetry"
                     label={`Whoop recovery from ${Math.round(whoopRecoveryChart.points[0].value)}% to ${Math.round(whoopRecoveryChart.points[whoopRecoveryChart.points.length - 1].value)}%`}
                   />
                 )}
               </div>
             ) : (
-              <p className="wk-body" style={{ marginTop: fig(20) }}>
+              <p className="wk-body mt-3 max-w-prose">
                 Sync or import Whoop telemetry to see overnight recovery, strain, HRV and sleep trends here.
               </p>
             )}
@@ -1095,7 +1102,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
         {activeWidgets.length === 0 && (
           <section className="wk-card" aria-label="No widgets selected">
             <h2 className="wk-h1">Progress widgets hidden</h2>
-            <p className="wk-body" style={{ marginTop: fig(16) }}>
+            <p className="wk-body mt-2 max-w-prose">
               Choose what you want to track here, or ask Treise in chat to add widgets back.
             </p>
             <button
@@ -1104,8 +1111,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
                 triggerHaptic('light');
                 setDetail('widgets');
               }}
-              className="wk-button"
-              style={{ marginTop: fig(28), background: 'var(--color-action-secondary-bg)', color: 'var(--color-action-secondary-fg)' }}
+              className="wk-btn-secondary w-full justify-center min-h-[48px] mt-4"
             >
               Customize widgets
             </button>
@@ -1118,7 +1124,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
   const goalScreen = openGoal && (
     <>
       <DetailHeader title={openGoal.title} onBack={() => setOpenGoalId(null)} />
-      <div ref={cardsTopRef} className="flex flex-col" style={{ gap: fig(22), marginTop: fig(32) }}>
+      <div ref={cardsTopRef} className="flex flex-col gap-3 mt-4">
         <GoalDetailScreen
           goal={openGoal}
           goals={knowledgeGraph.goals}
@@ -1136,8 +1142,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
             setOpenGoalId(null);
             setDetail('goals');
           }}
-          className="wk-button"
-          style={{ background: 'var(--color-action-secondary-bg)', color: 'var(--color-action-secondary-fg)' }}
+          className="wk-btn-secondary w-full justify-center min-h-[48px]"
         >
           Change goals
         </button>
@@ -1146,7 +1151,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
   );
 
   return (
-    <div className="wk -mx-3.5" style={{ paddingLeft: fig(PAGE_GUTTER), paddingRight: fig(PAGE_GUTTER), paddingBottom: 120 }}>
+    <div className="wk -mx-4 px-4 pb-28">
       <PageTopGradient markerRef={cardsTopRef} deps={[detail, openGoalId, workouts.length, activeWidgets.join(',')]} />
       {goalScreen || detailScreen || overview}
 

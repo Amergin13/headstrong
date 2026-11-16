@@ -31,8 +31,6 @@ interface KnowledgeGraphCardProps {
 
 type InsightTabMode = 'overview' | 'joints' | 'science';
 
-const fig = (px: number) => `calc(${px} * var(--f))`;
-
 export const KnowledgeGraphCard: React.FC<KnowledgeGraphCardProps> = ({
   workouts,
   biometrics,
@@ -56,83 +54,55 @@ export const KnowledgeGraphCard: React.FC<KnowledgeGraphCardProps> = ({
   const [scienceSearch, setScienceSearch] = useState('');
 
   return (
-    <div className="flex flex-col" style={{ gap: fig(22) }}>
+    <div className="flex flex-col gap-3">
       {/* Top Summary Card */}
       <div className="wk-card w-full text-left block">
-        <div className="flex items-start justify-between" style={{ gap: fig(24) }}>
-          <h2 className="wk-h1" style={{ lineHeight: 1.21 }}>
-            Recovery &amp; Body Insights
+        <div className="flex items-start justify-between gap-3">
+          <h2 className="wk-h1 leading-tight">
+            Recovery &amp; body insights
           </h2>
           <span className="wk-pill shrink-0">
-            {pkg.recoveryEfficiencyScore > 0 ? `${pkg.recoveryEfficiencyScore}/100` : 'READY'}
+            {pkg.recoveryEfficiencyScore > 0 ? `${pkg.recoveryEfficiencyScore}/100` : 'Ready'}
           </span>
         </div>
 
-        <p
-          style={{
-            fontSize: `max(12px, ${fig(28)})`,
-            lineHeight: 1.21,
-            color: 'var(--wk-muted)',
-            marginTop: fig(20),
-          }}
-        >
+        <p className="wk-body mt-2 max-w-prose">
           How your sleep, joints, and weekly workouts work together
         </p>
 
-        <div
-          className="flex items-end justify-between"
-          style={{ marginTop: fig(60), gap: fig(20) }}
-        >
-          <span className="wk-label" style={{ lineHeight: 1.21 }}>
-            FULL-STRETCH SETS
+        <div className="flex items-end justify-between gap-2 mt-6">
+          <span className="wk-meta-title leading-tight">
+            Full-stretch sets
           </span>
-          <span
-            className="font-semibold text-white shrink-0"
-            style={{ fontSize: `max(12px, ${fig(40)})`, lineHeight: 1 }}
-          >
+          <span className="wk-number shrink-0 leading-none">
             {pkg.lengthenedStimulusRatio}%
           </span>
         </div>
 
-        <div className="wk-bar" style={{ marginTop: fig(30) }}>
+        <div className="wk-bar mt-3">
           <div style={{ width: `${Math.min(100, pkg.lengthenedStimulusRatio)}%` }} />
         </div>
 
-        <div
-          className="flex items-end justify-between"
-          style={{ marginTop: fig(40), gap: fig(20) }}
-        >
-          <span className="wk-label" style={{ lineHeight: 1.21 }}>
-            LOWER BACK LOAD
+        <div className="flex items-end justify-between gap-2 mt-5">
+          <span className="wk-meta-title leading-tight">
+            Lower back load
           </span>
-          <span
-            className="font-semibold text-white shrink-0"
-            style={{ fontSize: `max(12px, ${fig(40)})`, lineHeight: 1 }}
-          >
+          <span className="wk-number shrink-0 leading-none">
             {pkg.systemicAxialLoadScore}%
           </span>
         </div>
 
-        <div className="wk-bar" style={{ marginTop: fig(30) }}>
+        <div className="wk-bar mt-3">
           <div style={{ width: `${Math.min(100, pkg.systemicAxialLoadScore)}%` }} />
         </div>
 
         {/* View Mode Switcher */}
-        <div
-          className="grid grid-cols-3 items-center"
-          style={{
-            marginTop: fig(30),
-            height: fig(84),
-            padding: fig(8),
-            borderRadius: fig(22),
-            background: 'var(--wk-raised)',
-          }}
-        >
+        <div className="wk-segments grid-cols-3 mt-4">
           {(
             [
               { id: 'overview', label: 'Recovery' },
               { id: 'joints', label: 'Joints' },
-              { id: 'science', label: 'Science & Logic' },
+              { id: 'science', label: 'Science & logic' },
             ] as const
           ).map((tab) => {
             const isSelected = viewMode === tab.id;
@@ -145,14 +115,7 @@ export const KnowledgeGraphCard: React.FC<KnowledgeGraphCardProps> = ({
                   triggerHaptic('light');
                   setViewMode(tab.id);
                 }}
-                className="wk-tap h-full flex items-center justify-center font-semibold uppercase transition-colors"
-                style={{
-                  borderRadius: fig(16),
-                  fontSize: `max(12px, ${fig(24)})`,
-                  letterSpacing: '0.02em',
-                  background: isSelected ? 'var(--wk-pill)' : 'transparent',
-                  color: isSelected ? 'var(--color-text-primary)' : 'var(--wk-muted)',
-                }}
+                className={`wk-tap wk-segment ${isSelected ? 'is-active' : ''}`}
               >
                 {tab.label}
               </button>
@@ -165,8 +128,8 @@ export const KnowledgeGraphCard: React.FC<KnowledgeGraphCardProps> = ({
       {viewMode === 'overview' &&
         pkg.insights.map((ins) => (
           <div key={ins.id} className="wk-card w-full text-left block">
-            <div className="flex items-start justify-between" style={{ gap: fig(24) }}>
-              <h3 className="wk-h1" style={{ lineHeight: 1.21 }}>
+            <div className="flex items-start justify-between gap-3">
+              <h3 className="wk-h1 leading-tight">
                 {ins.title}
               </h3>
               <span className="wk-pill shrink-0">
@@ -174,18 +137,11 @@ export const KnowledgeGraphCard: React.FC<KnowledgeGraphCardProps> = ({
               </span>
             </div>
 
-            <p
-              style={{
-                fontSize: `max(12px, ${fig(28)})`,
-                lineHeight: 1.21,
-                color: 'var(--wk-muted)',
-                marginTop: fig(20),
-              }}
-            >
+            <p className="wk-body mt-2 max-w-prose">
               {ins.narrative}
             </p>
 
-            <p className="wk-body" style={{ marginTop: fig(24) }}>
+            <p className="wk-body mt-3 max-w-prose" style={{ color: 'var(--color-text-primary)' }}>
               {ins.actionableStep}
             </p>
           </div>
@@ -195,8 +151,8 @@ export const KnowledgeGraphCard: React.FC<KnowledgeGraphCardProps> = ({
       {viewMode === 'joints' &&
         pkg.joints.map((j) => (
           <div key={j.joint} className="wk-card w-full text-left block">
-            <div className="flex items-start justify-between" style={{ gap: fig(24) }}>
-              <h3 className="wk-h1" style={{ lineHeight: 1.21 }}>
+            <div className="flex items-start justify-between gap-3">
+              <h3 className="wk-h1 leading-tight">
                 {j.joint}
               </h3>
               <span className="wk-pill shrink-0">
@@ -204,33 +160,20 @@ export const KnowledgeGraphCard: React.FC<KnowledgeGraphCardProps> = ({
               </span>
             </div>
 
-            <p
-              style={{
-                fontSize: `max(12px, ${fig(28)})`,
-                lineHeight: 1.21,
-                color: 'var(--wk-muted)',
-                marginTop: fig(20),
-              }}
-            >
+            <p className="wk-body mt-2 max-w-prose">
               {j.biomechanicalAdvice}
             </p>
 
-            <div
-              className="flex items-end justify-between"
-              style={{ marginTop: fig(60), gap: fig(20) }}
-            >
-              <span className="wk-label" style={{ lineHeight: 1.21 }}>
-                MAIN EXERCISES: {j.topContributors.join(', ') || 'BALANCED'}
+            <div className="flex items-end justify-between gap-2 mt-6">
+              <span className="wk-meta-title leading-tight">
+                Main exercises: {j.topContributors.join(', ') || 'Balanced'}
               </span>
-              <span
-                className="font-semibold text-white shrink-0"
-                style={{ fontSize: `max(12px, ${fig(40)})`, lineHeight: 1 }}
-              >
+              <span className="wk-number shrink-0 leading-none">
                 {j.strainScore}%
               </span>
             </div>
 
-            <div className="wk-bar" style={{ marginTop: fig(30) }}>
+            <div className="wk-bar mt-3">
               <div style={{ width: `${Math.min(100, j.strainScore)}%` }} />
             </div>
           </div>
@@ -240,20 +183,13 @@ export const KnowledgeGraphCard: React.FC<KnowledgeGraphCardProps> = ({
       {viewMode === 'science' && (
         <>
           <div className="wk-card w-full text-left block">
-            <div className="flex items-start justify-between" style={{ gap: fig(24) }}>
-              <h3 className="wk-h1" style={{ lineHeight: 1.21 }}>
-                Science &amp; Logic
+            <div className="flex items-start justify-between gap-3">
+              <h3 className="wk-h1 leading-tight">
+                Science &amp; logic
               </h3>
-              <span className="wk-pill shrink-0">FORMULAS</span>
+              <span className="wk-pill shrink-0">Formulas</span>
             </div>
-            <p
-              style={{
-                fontSize: `max(12px, ${fig(28)})`,
-                lineHeight: 1.21,
-                color: 'var(--wk-muted)',
-                marginTop: fig(20),
-              }}
-            >
+            <p className="wk-body mt-2 max-w-prose">
               Authoritative formulas, volume landmarks, and recovery rules driving Treise
             </p>
             <input
@@ -261,8 +197,7 @@ export const KnowledgeGraphCard: React.FC<KnowledgeGraphCardProps> = ({
               value={scienceSearch}
               onChange={(e) => setScienceSearch(e.target.value)}
               placeholder="Search principles, formulas, citations..."
-              className="wk-field w-full"
-              style={{ marginTop: fig(28) }}
+              className="wk-field w-full mt-3"
             />
           </div>
 
@@ -273,8 +208,8 @@ export const KnowledgeGraphCard: React.FC<KnowledgeGraphCardProps> = ({
             .filter((p) => !INTERNAL_PRINCIPLE_IDS.includes(p.id))
             .map((p) => (
               <div key={p.id} className="wk-card w-full text-left block">
-                <div className="flex items-start justify-between" style={{ gap: fig(24) }}>
-                  <h3 className="wk-h1" style={{ lineHeight: 1.21 }}>
+                <div className="flex items-start justify-between gap-3">
+                  <h3 className="wk-h1 leading-tight">
                     {p.title}
                   </h3>
                   <span className="wk-pill shrink-0">
@@ -282,28 +217,21 @@ export const KnowledgeGraphCard: React.FC<KnowledgeGraphCardProps> = ({
                   </span>
                 </div>
 
-                <p
-                  style={{
-                    fontSize: `max(12px, ${fig(28)})`,
-                    lineHeight: 1.21,
-                    color: 'var(--wk-muted)',
-                    marginTop: fig(20),
-                  }}
-                >
+                <p className="wk-body mt-2 max-w-prose">
                   {p.scientificRationale}
                 </p>
 
                 {p.formula && (
-                  <p className="wk-label" style={{ marginTop: fig(24) }}>
+                  <p className="wk-caption mt-3 tabular-nums" style={{ color: 'var(--color-text-secondary)' }}>
                     {p.formula}
                   </p>
                 )}
 
-                <p className="wk-body" style={{ marginTop: fig(16) }}>
+                <p className="wk-body mt-2 max-w-prose">
                   {p.practicalApplication}
                 </p>
 
-                <p className="wk-caption" style={{ marginTop: fig(16) }}>
+                <p className="wk-caption mt-2">
                   {p.academicCitation}
                 </p>
               </div>

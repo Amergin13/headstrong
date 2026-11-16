@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { Check, Minus } from 'lucide-react';
 import { AthleteGoal, BodyMeasure, FrequencyMeasure, describeGoalStanding, repsAt } from '../../services/athleteGoals';
 import { HABIT_WEEKS } from '../../services/progressOverview';
 import {
@@ -17,18 +16,17 @@ import { useUnits } from '../../utils/unitsContext';
 import { TrendChart } from '../common/TrendChart';
 import { ProgressChartCard } from './ProgressChartCard';
 import { TimelineToggle } from './TimelineToggle';
+import { Check, Minus } from 'lucide-react';
 
-const fig = (px: number) => `calc(${px} * var(--f))`;
-const text = (px: number) => `max(12px, ${fig(px)})`;
 const dayMonth = (date: string) => {
   const d = parseLocalDate(date);
   return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
 };
 
 const Big: React.FC<{ value: string; unit: string }> = ({ value, unit }) => (
-  <p className="font-semibold text-white tabular-numbers" style={{ fontSize: text(84), lineHeight: 1, marginTop: fig(28) }}>
+  <p className="wk-display leading-none mt-3">
     {value}
-    <span className="font-semibold" style={{ fontSize: text(26), color: 'var(--wk-muted)', marginLeft: fig(14) }}>
+    <span className="wk-caption ml-2">
       {unit}
     </span>
   </p>
@@ -36,27 +34,25 @@ const Big: React.FC<{ value: string; unit: string }> = ({ value, unit }) => (
 
 const Method: React.FC<{ goal: AthleteGoal }> = ({ goal }) => (
   <section className="wk-card" aria-label="How this goal is measured">
-    <h2 className="wk-title">How it's measured</h2>
-    <p className="wk-body" style={{ marginTop: fig(12) }}>
+    <h2 className="wk-title">How it&apos;s measured</h2>
+    <p className="wk-body mt-2 max-w-prose">
       {goal.method}
     </p>
   </section>
 );
 
-/** One dot per thing counted (a session, a rep): filled when done. */
 const Dots: React.FC<{ filled: number; total: number; label: string }> = ({ filled, total, label }) => (
-  <div className="flex flex-wrap" style={{ gap: fig(14), marginTop: fig(36) }} role="img" aria-label={label}>
+  <div className="flex flex-wrap gap-2 mt-4" role="img" aria-label={label}>
     {Array.from({ length: total }, (_, i) => (
       <span
         key={i}
-        className="rounded-full"
-        style={{ width: fig(34), height: fig(34), background: i < filled ? 'var(--wk-accent)' : 'var(--wk-pill)' }}
+        className="w-4 h-4 rounded-full"
+        style={{ background: i < filled ? 'var(--wk-accent)' : 'var(--wk-pill)' }}
       />
     ))}
   </div>
 );
 
-/** The weekly goal: this week (days), the weeks in the month, and the months in the year. */
 const FrequencyDetail: React.FC<{ goal: AthleteGoal; measure: FrequencyMeasure }> = ({ goal, measure }) => {
   const tallest = Math.max(measure.perWeek, ...measure.weeks.map((w) => w.sessions));
   const monthlyTarget = measure.perWeek * 4;
@@ -68,7 +64,7 @@ const FrequencyDetail: React.FC<{ goal: AthleteGoal; measure: FrequencyMeasure }
         <h2 className="wk-title">This week</h2>
         <Big value={`${measure.thisWeek}/${measure.perWeek}`} unit="sessions" />
         <Dots filled={Math.min(measure.thisWeek, measure.perWeek)} total={measure.perWeek} label={`${measure.thisWeek} of ${measure.perWeek} sessions done this week`} />
-        <p className="wk-body" style={{ marginTop: fig(36) }}>
+        <p className="wk-body mt-4 max-w-prose">
           {measure.thisWeek >= measure.perWeek
             ? 'This week is done. Anything more is a bonus.'
             : `${measure.perWeek - measure.thisWeek} to go before Sunday night.`}
@@ -77,51 +73,51 @@ const FrequencyDetail: React.FC<{ goal: AthleteGoal; measure: FrequencyMeasure }
 
       <section className="wk-card" aria-label="Week by week">
         <h2 className="wk-title">Week by week</h2>
-        <dl className="grid grid-cols-3" style={{ gap: fig(24), marginTop: fig(36) }}>
+        <dl className="grid grid-cols-3 gap-3 mt-4">
           {[
             { label: 'In a row', value: measure.streakWeeks },
             { label: `Weeks at ${measure.perWeek}`, value: measure.weeksHit },
             { label: 'Weeks training', value: measure.weeksTracked },
           ].map((s) => (
             <div key={s.label}>
-              <dt className="uppercase" style={{ fontSize: text(24), lineHeight: 1.21, color: 'var(--wk-muted)' }}>
+              <dt className="wk-label">
                 {s.label}
               </dt>
-              <dd className="font-semibold text-white tabular-numbers" style={{ fontSize: text(56), lineHeight: 1.05, marginTop: fig(10) }}>
+              <dd className="wk-number mt-1">
                 {s.value}
               </dd>
             </div>
           ))}
         </dl>
-        {/* Sessions in each week against the target line. */}
+        {/* Sessions in each week against the target line (current unfinished week in Info Blue). */}
         <div
-          className="relative flex items-end"
-          style={{ gap: fig(10), height: fig(260), marginTop: fig(48) }}
+          className="relative flex items-end gap-1 mt-6"
+          style={{ height: 116 }}
           role="img"
           aria-label={`Sessions in each of the last ${measure.weeks.length} weeks: ${measure.weeks.map((w) => w.sessions).join(', ')}. The target is ${measure.perWeek}.`}
         >
           <div
             className="absolute left-0 right-0"
-            style={{ bottom: `${(measure.perWeek / tallest) * 100}%`, borderTop: `${fig(2)} dashed rgba(255,255,255,0.35)` }}
+            style={{ bottom: `${(measure.perWeek / tallest) * 100}%`, borderTop: '1px dashed var(--color-border-strong)' }}
             aria-hidden="true"
           />
           {measure.weeks.map((w) => (
             <div key={w.start} className="flex-1 flex flex-col justify-end h-full" aria-hidden="true">
               <div
+                className="rounded"
                 style={{
                   height: `${Math.max(w.sessions > 0 ? 6 : 2, (w.sessions / tallest) * 100)}%`,
-                  borderRadius: fig(8),
-                  background: w.hit ? 'var(--wk-accent)' : w.current ? 'var(--color-viz-1)' : 'var(--wk-pill)',
+                  background: w.hit ? 'var(--wk-accent)' : w.current ? 'var(--color-text-primary)' : 'var(--wk-pill)',
                 }}
               />
             </div>
           ))}
         </div>
-        <div className="flex justify-between wk-caption" style={{ marginTop: fig(12) }} aria-hidden="true">
+        <div className="flex justify-between wk-caption mt-2" aria-hidden="true">
           <span>Week of {dayMonth(measure.weeks[0].start)}</span>
           <span>This week</span>
         </div>
-        <p className="wk-body" style={{ marginTop: fig(36) }}>
+        <p className="wk-body mt-4 max-w-prose">
           {measure.streakWeeks >= HABIT_WEEKS
             ? `${measure.streakWeeks} weeks in a row. Research with new gym members found ${HABIT_WEEKS} weeks at ${measure.perWeek} sessions was what it took to build the habit; from here the goal is to keep it going.`
             : measure.streakWeeks > 0
@@ -132,46 +128,46 @@ const FrequencyDetail: React.FC<{ goal: AthleteGoal; measure: FrequencyMeasure }
 
       <section className="wk-card" aria-label="Month by month">
         <h2 className="wk-title">Month by month</h2>
-        <dl className="grid grid-cols-3" style={{ gap: fig(24), marginTop: fig(36) }}>
+        <dl className="grid grid-cols-3 gap-3 mt-4">
           {[
             { label: `Months at ${monthlyTarget}`, value: measure.monthsHit },
             { label: 'Months training', value: measure.monthsTracked },
             { label: 'Monthly target', value: monthlyTarget },
           ].map((s) => (
             <div key={s.label}>
-              <dt className="uppercase" style={{ fontSize: text(24), lineHeight: 1.21, color: 'var(--wk-muted)' }}>
+              <dt className="wk-label">
                 {s.label}
               </dt>
-              <dd className="font-semibold text-white tabular-numbers" style={{ fontSize: text(56), lineHeight: 1.05, marginTop: fig(10) }}>
+              <dd className="wk-number mt-1">
                 {s.value}
               </dd>
             </div>
           ))}
         </dl>
         <div
-          className="relative flex items-end"
-          style={{ gap: fig(10), height: fig(220), marginTop: fig(48) }}
+          className="relative flex items-end gap-1 mt-6"
+          style={{ height: 100 }}
           role="img"
           aria-label={`Sessions in each of the last ${measure.months.length} months: ${measure.months.map((m) => m.sessions).join(', ')}. The monthly target is ${monthlyTarget}.`}
         >
           <div
             className="absolute left-0 right-0"
-            style={{ bottom: `${(monthlyTarget / tallestMonth) * 100}%`, borderTop: `${fig(2)} dashed rgba(255,255,255,0.35)` }}
+            style={{ bottom: `${(monthlyTarget / tallestMonth) * 100}%`, borderTop: '1px dashed var(--color-border-strong)' }}
             aria-hidden="true"
           />
           {measure.months.map((mo) => (
             <div key={mo.month} className="flex-1 flex flex-col justify-end h-full" aria-hidden="true">
               <div
+                className="rounded"
                 style={{
                   height: `${Math.max(mo.sessions > 0 ? 6 : 2, (mo.sessions / tallestMonth) * 100)}%`,
-                  borderRadius: fig(8),
-                  background: mo.hit ? 'var(--wk-accent)' : mo.current ? 'var(--color-viz-1)' : 'var(--wk-pill)',
+                  background: mo.hit ? 'var(--wk-accent)' : mo.current ? 'var(--color-text-primary)' : 'var(--wk-pill)',
                 }}
               />
             </div>
           ))}
         </div>
-        <div className="flex justify-between wk-caption" style={{ marginTop: fig(12) }} aria-hidden="true">
+        <div className="flex justify-between wk-caption mt-2" aria-hidden="true">
           <span>{measure.months[0].month}</span>
           <span>This month</span>
         </div>
@@ -181,7 +177,6 @@ const FrequencyDetail: React.FC<{ goal: AthleteGoal; measure: FrequencyMeasure }
   );
 };
 
-/** A strength level, counted in reps at a set weight (or by estimated max when reps aren't a sensible target). */
 const StrengthDetail: React.FC<{ goal: AthleteGoal; others: AthleteGoal[]; onOpenGoal: (id: string) => void }> = ({ goal, others, onOpenGoal }) => {
   const units = useUnits();
   const precise = (kg: number) => units.formatPrecise(kg);
@@ -195,9 +190,9 @@ const StrengthDetail: React.FC<{ goal: AthleteGoal; others: AthleteGoal[]; onOpe
           <>
             <Big value={`${m.currentReps}/${m.targetReps}`} unit={`reps ${repsAt(m, (kg) => units.format(kg))}`} />
             <Dots filled={m.currentReps} total={m.targetReps} label={`${m.currentReps} of ${m.targetReps} reps`} />
-            <p className="wk-body" style={{ marginTop: fig(36) }}>
+            <p className="wk-body mt-4 max-w-prose">
               {m.targetReps} reps {repsAt(m, (kg) => units.format(kg))} reaches {m.level}. Your best set is {m.currentReps}, so{' '}
-              {m.targetReps - m.currentReps === 1 ? 'one more rep does it' : `${m.targetReps - m.currentReps} more reps do it`}. You're {m.currentLevel} now.
+              {m.targetReps - m.currentReps === 1 ? 'one more rep does it' : `${m.targetReps - m.currentReps} more reps do it`}. You&apos;re {m.currentLevel} now.
             </p>
           </>
         ) : (
@@ -206,13 +201,13 @@ const StrengthDetail: React.FC<{ goal: AthleteGoal; others: AthleteGoal[]; onOpe
               value={precise(Math.max(0, m.targetE1rmKg - m.e1rmKg)).split(' ')[0]}
               unit={`${units.unit} to go on your estimated max`}
             />
-            <p className="wk-body" style={{ marginTop: fig(36) }}>
+            <p className="wk-body mt-4 max-w-prose">
               {m.level} needs an estimated max{goal.pillar === 'Vertical Pull' ? ' (bodyweight + added weight)' : ''} of{' '}
-              {precise(m.targetE1rmKg)}; yours is {precise(m.e1rmKg)}. You're {m.currentLevel} now.
+              {precise(m.targetE1rmKg)}; yours is {precise(m.e1rmKg)}. You&apos;re {m.currentLevel} now.
             </p>
           </>
         )}
-        <p className="wk-caption" style={{ marginTop: fig(20) }}>
+        <p className="wk-caption mt-3">
           Estimated max{goal.pillar === 'Vertical Pull' ? ' (bodyweight + added weight)' : ''} {precise(m.e1rmKg)} of {precise(m.targetE1rmKg)}
         </p>
       </section>
@@ -220,19 +215,18 @@ const StrengthDetail: React.FC<{ goal: AthleteGoal; others: AthleteGoal[]; onOpe
       {others.length > 0 && (
         <section className="wk-card" aria-label="Your other strength levels">
           <h2 className="wk-title">Your other strength levels</h2>
-          <ul className="flex flex-col" style={{ marginTop: fig(12) }}>
+          <ul className="flex flex-col mt-2">
             {others.map((g) => (
-              <li key={g.id} style={{ borderTop: `${fig(2)} solid rgba(255,255,255,0.08)` }}>
+              <li key={g.id} style={{ borderTop: '1px solid var(--color-border-subtle)' }}>
                 <button
                   type="button"
                   onClick={() => {
                     triggerHaptic('light');
                     onOpenGoal(g.id);
                   }}
-                  className="w-full text-left flex items-center justify-between"
-                  style={{ gap: fig(24), padding: `${fig(26)} 0`, minHeight: 44 }}
+                  className="w-full text-left flex items-center justify-between gap-3 py-3 min-h-[44px]"
                 >
-                  <span className="wk-title min-w-0" style={{ lineHeight: 1.21 }}>
+                  <span className="wk-subhead min-w-0">
                     {formatSentenceCase(g.title)}
                   </span>
                   <span className="wk-caption shrink-0 text-right">{describeGoalStanding(g, precise)}</span>
@@ -246,7 +240,6 @@ const StrengthDetail: React.FC<{ goal: AthleteGoal; others: AthleteGoal[]; onOpe
   );
 };
 
-/** A target the athlete set themselves (on one exercise or daily steps). */
 const TargetDetail: React.FC<{ goal: AthleteGoal }> = ({ goal }) => {
   const units = useUnits();
   const m = goal.measure;
@@ -259,8 +252,7 @@ const TargetDetail: React.FC<{ goal: AthleteGoal }> = ({ goal }) => {
           <h2 className="wk-title">{m.exerciseName}</h2>
           <Big value={`${m.best.toLocaleString()}/${m.target.toLocaleString()}`} unit="steps today" />
           <div
-            className="wk-bar"
-            style={{ marginTop: fig(36) }}
+            className="wk-bar mt-4"
             role="progressbar"
             aria-valuemin={0}
             aria-valuemax={m.target}
@@ -269,14 +261,14 @@ const TargetDetail: React.FC<{ goal: AthleteGoal }> = ({ goal }) => {
           >
             <div style={{ width: `${Math.min(100, (m.best / m.target) * 100)}%` }} />
           </div>
-          <p className="wk-body" style={{ marginTop: fig(36) }}>
+          <p className="wk-body mt-4 max-w-prose">
             {goal.achieved
               ? `You've reached today's target of ${m.target.toLocaleString()} steps.`
               : m.best > 0
               ? `${m.best.toLocaleString()} steps recorded today: ${remaining.toLocaleString()} to go.`
               : 'No steps recorded today yet. Connect Health Connect or sync your watch to track your daily steps.'}
           </p>
-          <p className="wk-caption" style={{ marginTop: fig(20) }}>
+          <p className="wk-caption mt-3">
             Set on {dayMonth(m.createdOn)}
           </p>
         </section>
@@ -295,18 +287,18 @@ const TargetDetail: React.FC<{ goal: AthleteGoal }> = ({ goal }) => {
         <Big value={`${byWeight ? best.split(' ')[0] : best}/${byWeight ? target.split(' ')[0] : target}`} unit={byWeight ? units.unit : 'reps in one set'} />
         {!byWeight && m.target <= 30 && <Dots filled={Math.min(m.best, m.target)} total={m.target} label={`${m.best} of ${m.target} reps`} />}
         {byWeight && (
-          <div className="wk-bar" style={{ marginTop: fig(36) }} role="progressbar" aria-valuemin={0} aria-valuemax={m.target} aria-valuenow={m.best} aria-label={`${best} of ${target}`}>
+          <div className="wk-bar mt-4" role="progressbar" aria-valuemin={0} aria-valuemax={m.target} aria-valuenow={m.best} aria-label={`${best} of ${target}`}>
             <div style={{ width: `${Math.min(100, (m.best / m.target) * 100)}%` }} />
           </div>
         )}
-        <p className="wk-body" style={{ marginTop: fig(36) }}>
+        <p className="wk-body mt-4 max-w-prose">
           {goal.achieved
             ? `You've reached it: ${byWeight ? best : `${best} reps`}${m.bestOn ? ` on ${dayMonth(m.bestOn)}` : ''}. Tell Treise a new target to keep going.`
             : m.best > 0
             ? `Your best is ${byWeight ? best : `${best} reps`}${m.bestOn ? `, on ${dayMonth(m.bestOn)}` : ''}: ${left} to go.`
             : "You haven't logged this exercise yet. It starts counting with your first set."}
         </p>
-        <p className="wk-caption" style={{ marginTop: fig(20) }}>
+        <p className="wk-caption mt-3">
           Set on {dayMonth(m.createdOn)}
         </p>
       </section>
@@ -315,7 +307,6 @@ const TargetDetail: React.FC<{ goal: AthleteGoal }> = ({ goal }) => {
   );
 };
 
-/** The chosen goal: its three signs, how good the evidence is, and weight against strength over time. */
 const BodyDetail: React.FC<{
   goal: AthleteGoal;
   measure: BodyMeasure;
@@ -333,34 +324,31 @@ const BodyDetail: React.FC<{
   return (
     <>
       <section className="wk-card" aria-label={goal.title}>
-        <h2 className="wk-title">Signs it's working</h2>
+        <h2 className="wk-title">Signs it&apos;s working</h2>
         <Big value={measure.signsMeasured > 0 ? `${measure.signsMet}/${measure.signs.length}` : '—'} unit={measure.signsMeasured > 0 ? 'signs showing' : 'nothing measured yet'} />
-        <ul className="flex flex-col" style={{ gap: fig(30), marginTop: fig(44) }}>
+        <ul className="flex flex-col gap-4 mt-5">
           {measure.signs.map((sign) => (
-            <li key={sign.id} className="flex items-start" style={{ gap: fig(24) }}>
+            <li key={sign.id} className="flex items-start gap-3">
               <span
-                className="rounded-full flex items-center justify-center shrink-0"
+                className="w-6 h-6 mt-1 rounded-full flex items-center justify-center shrink-0"
                 style={{
-                  width: fig(52),
-                  height: fig(52),
-                  marginTop: fig(2),
                   background: sign.met === true ? 'var(--wk-accent)' : 'var(--wk-pill)',
                   opacity: sign.met === null ? 0.6 : 1,
                 }}
                 aria-hidden="true"
               >
                 {sign.met === true ? (
-                  <Check style={{ width: fig(30), height: fig(30), color: 'var(--color-text-on-accent)' }} strokeWidth={3} />
+                  <Check className="w-3.5 h-3.5" style={{ color: 'var(--color-text-on-accent)' }} strokeWidth={3} />
                 ) : sign.met === false ? (
-                  <Minus style={{ width: fig(30), height: fig(30), color: 'var(--color-text-primary)' }} strokeWidth={3} />
+                  <Minus className="w-3.5 h-3.5" style={{ color: 'var(--color-text-primary)' }} strokeWidth={3} />
                 ) : null}
               </span>
               <div className="min-w-0">
-                <p className="wk-title" style={{ lineHeight: 1.21 }}>
+                <p className="wk-subhead">
                   {formatSentenceCase(sign.label)}
                   <span className="sr-only">: {sign.met === true ? 'showing' : sign.met === false ? 'not showing yet' : 'not measured yet'}</span>
                 </p>
-                <p className="wk-body" style={{ marginTop: fig(8) }}>
+                <p className="wk-body mt-1 max-w-prose">
                   {sign.detail}
                 </p>
               </div>
@@ -371,16 +359,24 @@ const BodyDetail: React.FC<{
 
       <section className="wk-card" aria-label="How sure this is">
         <h2 className="wk-title">How sure this is</h2>
-        <p className="wk-body" style={{ marginTop: fig(12) }}>
+        <p className="wk-body mt-2 max-w-prose">
           {measure.evidenceLabel}
           {measure.nextStep ? ` ${measure.nextStep}` : ''}
         </p>
         {measure.nextStep && (
-          <div className="grid grid-cols-2" style={{ gap: fig(16), marginTop: fig(32) }}>
-            <button type="button" onClick={onLogWeight} className="wk-button" style={{ background: 'var(--wk-raised)', color: 'var(--color-text-primary)' }}>
+          <div className="grid grid-cols-2 gap-2 mt-4">
+            <button
+              type="button"
+              onClick={onLogWeight}
+              className="wk-btn-secondary w-full"
+            >
               Log weight
             </button>
-            <button type="button" onClick={onLogMeasurements} className="wk-button" style={{ background: 'var(--wk-raised)', color: 'var(--color-text-primary)' }}>
+            <button
+              type="button"
+              onClick={onLogMeasurements}
+              className="wk-btn-secondary w-full"
+            >
               Log measurements
             </button>
           </div>
@@ -389,7 +385,7 @@ const BodyDetail: React.FC<{
 
       <section className="wk-card" aria-label="Weight against strength">
         <h2 className="wk-title">Weight against strength</h2>
-        <p className="wk-body" style={{ marginTop: fig(12) }}>
+        <p className="wk-body mt-2 max-w-prose">
           {visibleStrength.length >= 2 && visibleWeight.length >= 2
             ? measure.phase === 'Lean Bulk'
               ? 'Both start at 100. Strength rising faster than weight is the pattern of muscle being built; weight rising faster than strength points to fat.'
@@ -408,7 +404,7 @@ const BodyDetail: React.FC<{
           onChange={setTimeline}
           ariaLabel="Weight against strength timeline"
         />
-        <div style={{ marginTop: fig(28) }}>
+        <div className="mt-4">
           <TrendChart
             points={visibleStrength}
             secondary={visibleWeight.length >= 2 ? visibleWeight : undefined}
@@ -424,14 +420,14 @@ const BodyDetail: React.FC<{
           />
         </div>
         {visibleStrength.length >= 2 && (
-          <div className="flex flex-wrap wk-caption" style={{ gap: fig(32), marginTop: fig(20) }} aria-hidden="true">
-            <span className="flex items-center" style={{ gap: fig(12) }}>
-              <span style={{ width: fig(36), height: fig(6), borderRadius: fig(6), background: 'var(--wk-accent)' }} />
+          <div className="flex flex-wrap wk-caption gap-4 mt-3" aria-hidden="true">
+            <span className="flex items-center gap-2">
+              <span className="w-4 h-1 rounded-full" style={{ background: 'var(--wk-accent)' }} />
               Strength
             </span>
             {visibleWeight.length >= 2 && (
-              <span className="flex items-center" style={{ gap: fig(12) }}>
-                <span style={{ width: fig(36), height: fig(4), borderRadius: fig(4), background: 'rgba(255,255,255,0.35)' }} />
+              <span className="flex items-center gap-2">
+                <span className="w-4 h-0.5 rounded-full" style={{ background: 'var(--color-border-strong)' }} />
                 Bodyweight
               </span>
             )}
@@ -449,23 +445,20 @@ const BodyDetail: React.FC<{
 
 export interface GoalDetailProps {
   goal: AthleteGoal;
-  /** Every goal, for the list of other strength levels. */
   goals: AthleteGoal[];
   strengthIndex: ProgressPoint[];
   weightIndex: ProgressPoint[];
-  /** Charts that back the chosen goal when they have data (fat-free mass, waist). */
   supporting: ProgressChart[];
   onOpenGoal: (id: string) => void;
   onLogWeight: () => void;
   onLogMeasurements: () => void;
 }
 
-/** The detail behind a goal ring: where it stands, how it is tracked over time, and how it is measured. */
 export const GoalDetailScreen: React.FC<GoalDetailProps> = ({ goal, goals, strengthIndex, weightIndex, supporting, onOpenGoal, onLogWeight, onLogMeasurements }) => {
   const m = goal.measure;
   return (
     <>
-      <p className="wk-caption text-center uppercase" style={{ letterSpacing: '0.04em' }}>
+      <p className="wk-caption text-center">
         {goal.kind === 'process' ? 'Process goal: something you do' : 'Outcome goal: a result'}
       </p>
       {m.type === 'frequency' && <FrequencyDetail goal={goal} measure={m} />}

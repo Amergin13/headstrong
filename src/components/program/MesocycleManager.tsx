@@ -10,8 +10,6 @@ interface MesocycleManagerProps {
   onTriggerDeload: () => void;
 }
 
-const fig = (px: number) => `calc(${px} * var(--f))`;
-
 export const MesocycleManager: React.FC<MesocycleManagerProps> = ({
   currentWeek = 3,
   totalWeeks = 6,
@@ -22,44 +20,44 @@ export const MesocycleManager: React.FC<MesocycleManagerProps> = ({
   const mesocycleWeeks = [
     {
       week: 1,
-      title: 'Week 1: Smooth Start',
+      title: 'Week 1: Smooth start',
       shortEffort: '2–3 left',
-      volume: 'Base Sets',
+      volume: 'Base sets',
       desc: 'Start the 6-week plan with a comfortable number of sets and 2–3 reps left in the tank to build momentum.',
     },
     {
       week: 2,
-      title: 'Week 2: Building Up',
+      title: 'Week 2: Building up',
       shortEffort: '2 left',
-      volume: 'Adding Sets',
+      volume: 'Adding sets',
       desc: 'Add a set to key exercises and aim to beat last week’s reps or add 2.5 kg with clean form.',
     },
     {
       week: 3,
-      title: 'Week 3: Main Growth Zone',
+      title: 'Week 3: Main growth zone',
       shortEffort: '1–2 left',
-      volume: 'Target Zone',
+      volume: 'Target zone',
       desc: 'Your main muscle-building week. Push sets to 1–2 reps shy of failure while keeping your form strict.',
     },
     {
       week: 4,
-      title: 'Week 4: High Effort',
+      title: 'Week 4: High effort',
       shortEffort: '1 left',
-      volume: 'High Sets',
+      volume: 'High sets',
       desc: 'Higher weekly sets and harder effort. Focus on good sleep and nutrition to recover between workouts.',
     },
     {
       week: 5,
-      title: 'Week 5: All-Out Week',
+      title: 'Week 5: All-out week',
       shortEffort: '0–1 left',
-      volume: 'Peak Sets',
+      volume: 'Peak sets',
       desc: 'The hardest week of the plan before your recovery week. Push safely close to your limit on working sets.',
     },
     {
       week: 6,
-      title: 'Week 6: Light Recovery',
+      title: 'Week 6: Light recovery',
       shortEffort: 'Easy',
-      volume: 'Light Sets',
+      volume: 'Light sets',
       desc: 'Cut your sets in half and leave 3–4 easy reps in the tank so your muscles and joints come back stronger.',
     },
   ];
@@ -78,8 +76,8 @@ export const MesocycleManager: React.FC<MesocycleManagerProps> = ({
 
   return (
     <div className="wk-card w-full text-left block">
-      <div className="flex items-start justify-between" style={{ gap: fig(24) }}>
-        <h2 className="wk-h1" style={{ lineHeight: 1.21 }}>
+      <div className="flex items-start justify-between gap-3">
+        <h2 className="wk-h1 leading-tight">
           {currentStage.title}
         </h2>
         <span className="wk-pill shrink-0">
@@ -87,46 +85,24 @@ export const MesocycleManager: React.FC<MesocycleManagerProps> = ({
         </span>
       </div>
 
-      <p
-        style={{
-          fontSize: `max(12px, ${fig(28)})`,
-          lineHeight: 1.21,
-          color: 'var(--wk-muted)',
-          marginTop: fig(20),
-        }}
-      >
+      <p className="wk-body mt-2 max-w-prose">
         {currentStage.desc}
       </p>
 
-      <div
-        className="flex items-end justify-between"
-        style={{ marginTop: fig(60), gap: fig(20) }}
-      >
-        <span className="wk-label" style={{ lineHeight: 1.21 }}>
-          6-WEEK TRAINING PLAN
+      <div className="flex items-end justify-between gap-3 mt-5">
+        <span className="wk-label leading-tight">
+          6-week training plan
         </span>
-        <span
-          className="font-semibold text-white shrink-0"
-          style={{ fontSize: `max(12px, ${fig(40)})`, lineHeight: 1 }}
-        >
+        <span className="wk-number shrink-0 leading-none">
           {currentWeek}/{totalWeeks}
         </span>
       </div>
 
-      <div className="wk-bar" style={{ marginTop: fig(30) }}>
+      <div className="wk-bar mt-3">
         <div style={{ width: `${Math.round((currentWeek / totalWeeks) * 100)}%` }} />
       </div>
 
-      <div
-        className="grid grid-cols-6 items-center"
-        style={{
-          marginTop: fig(30),
-          height: fig(84),
-          padding: fig(8),
-          borderRadius: fig(22),
-          background: 'var(--wk-raised)',
-        }}
-      >
+      <div className="wk-segments grid-cols-6 mt-4">
         {mesocycleWeeks.map((m) => {
           const isSelected = currentWeek === m.week;
           const isScheduledTravel = scheduledWeekLocations?.[m.week] === 'travel';
@@ -136,14 +112,7 @@ export const MesocycleManager: React.FC<MesocycleManagerProps> = ({
               key={m.week}
               type="button"
               onClick={() => handleSelectWeek(m.week)}
-              className="h-full flex flex-col items-center justify-center font-semibold uppercase transition-colors"
-              style={{
-                borderRadius: fig(16),
-                fontSize: `max(12px, ${fig(24)})`,
-                letterSpacing: '0.02em',
-                background: isSelected ? 'var(--wk-pill)' : 'transparent',
-                color: isSelected ? 'var(--color-text-primary)' : 'var(--wk-muted)',
-              }}
+              className={`wk-segment ${isSelected ? 'is-active' : ''}`}
             >
               <span>W{m.week}{isScheduledTravel ? '•' : ''}</span>
             </button>
@@ -152,22 +121,17 @@ export const MesocycleManager: React.FC<MesocycleManagerProps> = ({
       </div>
 
       {scheduledWeekLocations?.[currentWeek] === 'travel' && (
-        <div style={{ marginTop: fig(24) }}>
+        <div className="mt-3">
           <span className="wk-pill">
-            Scheduled Travel Week (Calibrated Bodyweight Hypertrophy)
+            Scheduled travel week (bodyweight hypertrophy)
           </span>
         </div>
       )}
 
       {currentWeek !== 6 && (
         <div
-          className="flex items-center justify-between"
-          style={{
-            marginTop: fig(28),
-            paddingTop: fig(24),
-            borderTop: '1px solid rgba(255,255,255,0.08)',
-            gap: fig(16),
-          }}
+          className="flex items-center justify-between flex-wrap gap-2 mt-4 pt-3"
+          style={{ borderTop: '1px solid var(--color-border-subtle)' }}
         >
           <span className="wk-caption">
             Feeling sore or worn out?
@@ -177,7 +141,7 @@ export const MesocycleManager: React.FC<MesocycleManagerProps> = ({
             onClick={handleDeloadClick}
             className="wk-btn-secondary"
           >
-            Switch to Light Recovery Week
+            Switch to light recovery week
           </button>
         </div>
       )}

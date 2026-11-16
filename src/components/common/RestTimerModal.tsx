@@ -81,44 +81,48 @@ export const RestTimerModal: React.FC<RestTimerModalProps> = ({
       style={{ bottom: 'calc(96px + env(safe-area-inset-bottom, 0px))' }}
     >
       <div
-        className="wk-card transition-all duration-300 shadow-2xl border border-white/[0.08]"
-        style={isDone ? { outline: '2px solid var(--wk-accent)' } : undefined}
+        className="wk-card transition-all duration-300 shadow-2xl"
+        style={{
+          border: '1px solid var(--color-border-subtle)',
+          ...(isDone ? { outline: '2px solid var(--wk-accent)' } : {}),
+        }}
       >
         {context && (
-          <div className="flex items-center gap-[calc(12*var(--f))] wk-caption mb-[calc(16*var(--f))] min-w-0">
+          <div className="flex items-center gap-2 wk-caption mb-2 min-w-0">
             <Timer className="w-3.5 h-3.5 stroke-[2] shrink-0" aria-hidden="true" />
             <span className="truncate">
-              Rest after <strong className="text-white">{context.exerciseName}</strong>
+              Rest after <strong style={{ color: 'var(--color-text-primary)' }}>{context.exerciseName}</strong>
               {context.restReason ? ` • ${context.restReason}` : ''}
             </span>
           </div>
         )}
-        <div className="flex items-center justify-between gap-[calc(26*var(--f))]">
-          <div className="flex items-center space-x-[calc(26*var(--f))] min-w-0">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
             <button
               type="button"
               onClick={handleTogglePause}
               aria-label={isRunning ? 'Pause rest timer' : 'Resume rest timer'}
-              className="w-11 h-11 rounded-[calc(30*var(--f))] active:scale-95 flex items-center justify-center text-white transition-all shrink-0"
-              style={{ background: 'var(--wk-raised)' }}
+              className="w-11 h-11 min-h-[44px] min-w-[44px] rounded-xl active:scale-95 flex items-center justify-center transition-all shrink-0"
+              style={{ background: 'var(--wk-raised)', color: 'var(--color-text-primary)' }}
             >
               {isRunning ? (
-                <Pause className="w-4 h-4 fill-white" />
+                <Pause className="w-4 h-4 fill-current" />
               ) : (
-                <Play className="w-4 h-4 fill-white ml-[calc(4*var(--f))]" />
+                <Play className="w-4 h-4 fill-current translate-x-[1px]" />
               )}
             </button>
 
             <div className="min-w-0">
               <div
-                className="text-[length:max(12px,calc(44*var(--f)))] font-semibold tracking-tight text-white tabular-numbers leading-none"
+                className="text-xl font-semibold tracking-tight tabular-nums leading-none"
+                style={{ color: 'var(--color-text-primary)' }}
                 aria-live="off"
               >
                 {formatTime(secondsRemaining)}
               </div>
-              <div className="wk-caption mt-[calc(8*var(--f))] truncate" aria-live="polite">
+              <div className="wk-caption mt-1 truncate" aria-live="polite">
                 {isDone ? (
-                  <span className="font-semibold" style={{ color: 'var(--wk-accent)' }}>
+                  <span className="font-medium" style={{ color: 'var(--wk-accent)' }}>
                     Ready{context ? ` for ${context.nextLabel}` : ''}
                   </span>
                 ) : (
@@ -130,10 +134,10 @@ export const RestTimerModal: React.FC<RestTimerModalProps> = ({
             </div>
           </div>
 
-          <div className="flex items-center space-x-[calc(16*var(--f))] shrink-0">
+          <div className="flex items-center gap-2 shrink-0">
             {isDone ? (
               <span
-                className="wk-pill gap-[calc(8*var(--f))]"
+                className="wk-pill gap-2"
                 style={{ background: 'var(--wk-accent)', color: 'var(--color-text-on-accent)' }}
               >
                 <CheckCircle2 className="w-3.5 h-3.5 stroke-[2.5]" aria-hidden="true" />
@@ -144,7 +148,7 @@ export const RestTimerModal: React.FC<RestTimerModalProps> = ({
                 type="button"
                 onClick={handleAdd30s}
                 aria-label="Add 30 seconds"
-                className="wk-btn-secondary min-h-[44px] gap-[calc(8*var(--f))] text-white active:scale-95 transition-transform"
+                className="wk-btn-secondary min-h-[44px] gap-1 active:scale-95 transition-transform"
               >
                 <Plus className="w-3 h-3" aria-hidden="true" />
                 <span>30s</span>
@@ -158,8 +162,8 @@ export const RestTimerModal: React.FC<RestTimerModalProps> = ({
                 onDismiss();
               }}
               aria-label="Close rest timer"
-              className="w-11 h-11 flex items-center justify-center rounded-full text-white/60 hover:text-white transition-colors"
-              style={{ background: 'var(--wk-raised)' }}
+              className="w-11 h-11 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-full border border-[var(--color-border-strong)] transition-colors"
+              style={{ background: 'var(--wk-raised)', color: 'var(--color-text-secondary)' }}
             >
               <X className="w-4 h-4" />
             </button>

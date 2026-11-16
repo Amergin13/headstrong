@@ -1,30 +1,25 @@
 import React from 'react';
 
 /**
- * Onboarding illustrations, one per idea. Colours follow the plan's three phases (violet, pink, orange)
- * and the accent green, so they read as the same story the Program page tells. Motion is in index.css
- * (ob-draw, ob-pop, ob-glow) and collapses to the final frame with reduced motion.
+ * Onboarding illustrations using strictly Treise Slate (`--color-status-neutral` / `--color-text-primary`)
+ * for structural maps and Positive Mint (`--color-accent-primary`) for progression milestones.
+ * Info Blue (`--color-status-info`) remains reserved strictly for non-progress wearable telemetry.
+ * Motion is in index.css (ob-draw, ob-pop, ob-glow) and collapses to the final frame with reduced motion.
  */
-
-const PHASE = [
-  'var(--color-phase-hypertrophy)',
-  'var(--color-phase-strength)',
-  'var(--color-phase-peak)',
-];
 
 /** Identity: rings of a sphere appear from the equator outwards, like the Program page's identity sphere. */
 export const IdentityIllustration: React.FC = () => {
   const cx = 160;
   const cy = 112;
   const r = 84;
-  const tilt = 0.32; // how far the viewer looks down on the sphere
+  const tilt = 0.32;
   const latitudes = [0, 18, -18, 36, -36, 54, -54, 70, -70];
   return (
     <svg viewBox="0 0 320 224" className="w-full h-full" role="img" aria-label="A sphere of light forming ring by ring">
       <defs>
         <radialGradient id="ob-id-glow" cx="50%" cy="50%" r="50%">
-          <stop offset="0%" stopColor="var(--color-phase-hypertrophy)" stopOpacity="0.45" />
-          <stop offset="60%" stopColor="var(--color-phase-strength)" stopOpacity="0.12" />
+          <stop offset="0%" stopColor="var(--color-accent-primary)" stopOpacity="0.22" />
+          <stop offset="60%" stopColor="var(--color-text-primary)" stopOpacity="0.08" />
           <stop offset="100%" stopColor="var(--color-bg-canvas)" stopOpacity="0" />
         </radialGradient>
         <radialGradient id="ob-id-body" cx="38%" cy="32%" r="75%">
@@ -33,12 +28,12 @@ export const IdentityIllustration: React.FC = () => {
         </radialGradient>
       </defs>
       <circle className="ob-glow" cx={cx} cy={cy} r={110} fill="url(#ob-id-glow)" />
-      <circle cx={cx} cy={cy} r={r} fill="url(#ob-id-body)" stroke="rgba(255,255,255,0.14)" strokeWidth="1" />
+      <circle cx={cx} cy={cy} r={r} fill="url(#ob-id-body)" stroke="var(--color-border-strong)" strokeWidth="1" />
       {latitudes.map((lat, i) => {
         const rad = (lat * Math.PI) / 180;
         const rx = r * Math.cos(rad);
         const y = cy - r * Math.sin(rad) * Math.cos(Math.asin(tilt));
-        const colour = PHASE[Math.min(2, Math.floor(Math.abs(lat) / 25))];
+        const colour = lat === 0 ? 'var(--color-accent-primary)' : i % 2 === 0 ? 'var(--color-status-neutral)' : 'var(--color-text-primary)';
         return (
           <ellipse
             key={lat}
@@ -61,7 +56,7 @@ export const IdentityIllustration: React.FC = () => {
   );
 };
 
-/** The plan's sessions: each week's workouts fill in one by one, coloured by phase. */
+/** The plan's sessions: each week's workouts fill in one by one toward completion. */
 export const SessionsIllustration: React.FC<{ weeks?: number; perWeek?: number }> = ({ weeks = 6, perWeek = 4 }) => {
   const cols = weeks;
   const rows = perWeek;
@@ -76,15 +71,16 @@ export const SessionsIllustration: React.FC<{ weeks?: number; perWeek?: number }
           const n = week * rows + session;
           const x = x0 + week * gapX;
           const y = y0 + session * gapY;
+          const isLast = week === cols - 1 && session === rows - 1;
           return (
             <g key={n}>
-              <circle cx={x} cy={y} r={13} fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth="2" />
+              <circle cx={x} cy={y} r={13} fill="none" stroke="var(--color-border-track)" strokeWidth="2" />
               <circle
                 className="ob-pop"
                 cx={x}
                 cy={y}
                 r={13}
-                fill={PHASE[Math.floor(week / 2)]}
+                fill={isLast ? 'var(--color-accent-primary)' : 'var(--color-status-neutral)'}
                 fillOpacity={0.35 + (n / (cols * rows - 1)) * 0.65}
                 style={{ animationDelay: `${150 + n * 55}ms` }}
               />
@@ -111,13 +107,13 @@ export const RestartIllustration: React.FC = () => (
   <svg viewBox="0 0 320 224" className="w-full h-full" role="img" aria-label="A progress line that dips during a missed week and climbs back higher">
     <defs>
       <linearGradient id="ob-rs-line" x1="0" y1="0" x2="1" y2="0">
-        <stop offset="0%" stopColor="var(--color-phase-hypertrophy)" />
-        <stop offset="55%" stopColor="var(--color-phase-strength)" />
+        <stop offset="0%" stopColor="var(--color-status-neutral)" />
+        <stop offset="55%" stopColor="var(--color-text-primary)" />
         <stop offset="100%" stopColor="var(--color-accent-primary)" />
       </linearGradient>
     </defs>
     {[64, 112, 160].map((y) => (
-      <line key={y} x1="24" x2="296" y1={y} y2={y} stroke="rgba(255,255,255,0.06)" strokeWidth="1" />
+      <line key={y} x1="24" x2="296" y1={y} y2={y} stroke="var(--color-border-subtle)" strokeWidth="1" />
     ))}
     <path
       className="ob-draw"
@@ -132,12 +128,13 @@ export const RestartIllustration: React.FC = () => (
     <path
       d="M112 126 C 130 120, 140 150, 158 152"
       fill="none"
-      stroke="rgba(255,255,255,0.35)"
+      stroke="var(--color-text-muted)"
+      strokeOpacity="0.6"
       strokeWidth="3"
       strokeLinecap="round"
       strokeDasharray="2 8"
     />
-    <circle className="ob-pop" cx="158" cy="152" r="7" fill="var(--color-bg-canvas)" stroke="rgba(255,255,255,0.55)" strokeWidth="2.5" style={{ animationDelay: '700ms' }} />
+    <circle className="ob-pop" cx="158" cy="152" r="7" fill="var(--color-bg-canvas)" stroke="var(--color-text-muted)" strokeWidth="2.5" style={{ animationDelay: '700ms' }} />
     <path
       className="ob-draw"
       d="M158 152 C 196 152, 214 100, 246 82 S 284 52, 296 46"

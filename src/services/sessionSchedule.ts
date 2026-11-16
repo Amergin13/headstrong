@@ -14,13 +14,13 @@ export type StripDayStatus = 'trained' | 'planned' | 'rest';
 
 export interface StripDay {
   date: string;
-  /** 'SAT', 'SUN', ... */
+  /** 'Sat', 'Sun', ... */
   label: string;
   isToday: boolean;
   status: StripDayStatus;
 }
 
-const WEEKDAY_LABELS = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 /** Sessions are assumed to be trained in the early evening when projecting ahead. */
 const PROJECTED_TRAINING_HOUR = 18;
 

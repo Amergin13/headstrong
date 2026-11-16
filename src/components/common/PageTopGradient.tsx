@@ -63,7 +63,7 @@ export const PageTopGradient: React.FC<PageTopGradientProps> = ({
         left: 0,
         right: 0,
         height: gradientEnd,
-        background: 'linear-gradient(180deg, var(--color-bg-canvas-top) 0%, var(--color-bg-canvas) 100%)',
+        background: 'linear-gradient(180deg, rgb(var(--color-bg-surface-rgb) / 0.28) 0%, var(--color-bg-canvas) 100%)',
         zIndex: host ? undefined : -1,
         pointerEvents: 'none',
       }}

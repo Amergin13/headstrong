@@ -2,14 +2,12 @@ import React from 'react';
 import { CHART_TIMELINES, ChartTimeline } from '../../services/progressSeries';
 import { triggerHaptic } from '../../utils/haptics';
 
-const fig = (px: number) => `calc(${px} * var(--f))`;
-
 interface TimelineToggleProps {
   value: ChartTimeline;
   onChange: (timeline: ChartTimeline) => void;
   /** Compact variant sits inside a `.wk-card` over `--wk-card` rather than on `--wk-bg`. */
   compact?: boolean;
-  /** Header variant renders a compact top-right segmented pill like Whoop's W/M/6M switcher. */
+  /** Header variant renders a compact top-right segmented pill switcher. */
   variant?: 'default' | 'header';
   ariaLabel?: string;
 }
@@ -28,16 +26,9 @@ export const TimelineToggle: React.FC<TimelineToggleProps> = ({
   if (variant === 'header') {
     return (
       <div
-        className="inline-grid grid-cols-4 items-center shrink-0"
+        className="wk-segments inline-grid grid-cols-4 items-center shrink-0"
         role="tablist"
         aria-label={ariaLabel}
-        style={{
-          background: 'var(--color-bg-surface-subtle)',
-          border: '1px solid var(--color-border-subtle)',
-          borderRadius: '10px',
-          padding: '2px',
-          gap: '2px',
-        }}
       >
         {CHART_TIMELINES.map((option) => {
           const selected = value === option.id;
@@ -53,15 +44,7 @@ export const TimelineToggle: React.FC<TimelineToggleProps> = ({
                 triggerHaptic('light');
                 onChange(option.id);
               }}
-              className="min-h-[44px] flex items-center justify-center rounded-[8px] transition-colors font-semibold uppercase tracking-wider"
-              style={{
-                paddingInline: fig(20),
-                background: selected ? 'var(--color-action-secondary-bg)' : 'transparent',
-                color: selected ? 'var(--color-action-secondary-fg)' : 'var(--color-text-secondary)',
-                border: selected ? '1px solid var(--color-border-subtle)' : '1px solid transparent',
-                fontSize: 'max(12px, calc(24px * var(--f)))',
-                lineHeight: 1,
-              }}
+              className={`wk-segment px-3 ${selected ? 'is-active' : ''}`}
             >
               {option.label}
             </button>
@@ -78,7 +61,7 @@ export const TimelineToggle: React.FC<TimelineToggleProps> = ({
       aria-label={ariaLabel}
       style={
         compact
-          ? { background: 'var(--wk-bg)', marginTop: fig(28) }
+          ? { background: 'var(--wk-bg)', marginTop: 12 }
           : undefined
       }
     >
@@ -96,11 +79,7 @@ export const TimelineToggle: React.FC<TimelineToggleProps> = ({
               triggerHaptic('light');
               onChange(option.id);
             }}
-            className="wk-segment"
-            style={{
-              background: selected ? 'var(--color-action-secondary-bg)' : 'transparent',
-              color: selected ? 'var(--color-action-secondary-fg)' : 'var(--wk-muted)',
-            }}
+            className={`wk-segment ${selected ? 'is-active' : ''}`}
           >
             {option.label}
           </button>

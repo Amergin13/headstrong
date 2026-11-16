@@ -39,7 +39,6 @@ interface WatchSyncModalProps {
   isModal?: boolean;
 }
 
-const fig = (px: number) => `calc(${px} * var(--f))`;
 
 const UPDATE_APP_FOR_PERMISSION =
   'Update Treise from Google Play to allow this here. Or open Android Settings, then Health Connect, then App permissions, and allow Treise.';
@@ -256,19 +255,12 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
   const content = (
     <div className="wk-card w-full text-left block shadow-xl">
       {/* Header & Close */}
-      <div className="flex items-start justify-between" style={{ gap: fig(24) }}>
-        <div>
-          <h3 className="wk-h1" style={{ lineHeight: 1.21 }}>
-            Wearable &amp; Recovery Sync
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h3 className="wk-h1 leading-tight">
+            Wearable &amp; recovery sync
           </h3>
-          <p
-            style={{
-              fontSize: `max(12px, ${fig(28)})`,
-              lineHeight: 1.21,
-              color: 'var(--wk-muted)',
-              marginTop: fig(16),
-            }}
-          >
+          <p className="wk-body mt-2 max-w-prose">
             Auto-regulate daily training loads with biometric telemetry
           </p>
         </div>
@@ -278,8 +270,12 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
             type="button"
             onClick={onClose}
             aria-label="Close watch sync modal"
-            className="w-11 h-11 min-h-[44px] rounded-full flex items-center justify-center text-white/70 hover:text-white transition-colors shrink-0"
-            style={{ background: 'var(--wk-raised)' }}
+            className="w-11 h-11 min-h-[44px] min-w-[44px] rounded-full border flex items-center justify-center transition-colors shrink-0"
+            style={{
+              background: 'var(--wk-raised)',
+              borderColor: 'var(--color-border-strong)',
+              color: 'var(--color-text-secondary)',
+            }}
           >
             <X className="w-5 h-5 stroke-[2]" />
           </button>
@@ -287,16 +283,7 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
       </div>
 
       {/* Provider Selector Tabs */}
-      <div
-        className="grid grid-cols-2 items-center"
-        style={{
-          marginTop: fig(30),
-          height: fig(84),
-          padding: fig(8),
-          borderRadius: fig(22),
-          background: 'var(--wk-raised)',
-        }}
-      >
+      <div className="wk-segments grid grid-cols-2 mt-4">
         {(['whoop', 'health_connect'] as const).map((prov) => {
           const isSelected = selectedProvider === prov;
           const shortLabels: Record<'whoop' | 'health_connect', string> = {
@@ -314,14 +301,7 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
                 setImportStatus(null);
                 setSyncProgress(null);
               }}
-              className="h-full flex items-center justify-center font-semibold uppercase transition-colors px-[calc(8*var(--f))] min-h-[44px]"
-              style={{
-                borderRadius: fig(16),
-                fontSize: `max(12px, ${fig(22)})`,
-                letterSpacing: '0.02em',
-                background: isSelected ? 'var(--wk-pill)' : 'transparent',
-                color: isSelected ? 'var(--color-text-primary)' : 'var(--wk-muted)',
-              }}
+              className={`wk-segment text-center ${isSelected ? 'is-active' : ''}`}
             >
               <span className="truncate">{shortLabels[prov]}</span>
             </button>
@@ -330,31 +310,28 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
       </div>
 
       {/* Selected Provider Summary */}
-      <div
-        className="flex items-end justify-between"
-        style={{ marginTop: fig(44), gap: fig(20) }}
-      >
-        <span className="wk-label" style={{ lineHeight: 1.21 }}>
+      <div className="mt-5 flex items-end justify-between gap-2">
+        <span className="wk-subhead leading-tight">
           {providerMeta.name}
         </span>
         {isCurrentActive ? (
-          <span className="wk-pill shrink-0">ACTIVE TRACKER</span>
+          <span className="wk-pill shrink-0">Active tracker</span>
         ) : isProviderConnected ? (
           <button
             type="button"
             onClick={handleSetActiveTracker}
             className="wk-btn-secondary shrink-0 min-h-[44px]"
           >
-            Set as Active
+            Set as active
           </button>
         ) : selectedProvider === 'health_connect' && hcWorkoutsOn ? (
-          <span className="wk-pill shrink-0">WORKOUTS ON</span>
+          <span className="wk-pill shrink-0">Workouts on</span>
         ) : (
-          <span className="wk-pill shrink-0">NOT CONNECTED</span>
+          <span className="wk-pill shrink-0">Not connected</span>
         )}
       </div>
 
-      <div className="wk-bar" style={{ marginTop: fig(24) }}>
+      <div className="wk-bar mt-3">
         <div
           style={{
             width:
@@ -366,40 +343,32 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
       </div>
 
       {isProviderConnected ? (
-        <div
-          className="flex flex-col"
-          style={{
-            marginTop: fig(28),
-            paddingTop: fig(24),
-            borderTop: '1px solid rgba(255,255,255,0.08)',
-            gap: fig(18),
-          }}
-        >
+        <div className="flex flex-col mt-4 pt-4 gap-3" style={{ borderTop: '1px solid var(--color-border-subtle)' }}>
           {selectedProvider === 'whoop' && typeof latestBiometrics.recoveryScore === 'number' && (
-            <div className="flex items-center justify-between" style={{ gap: fig(16) }}>
-              <span className="wk-label">Whoop Recovery Score</span>
-              <span className="wk-pill">{latestBiometrics.recoveryScore}%</span>
+            <div className="flex items-center justify-between gap-2">
+              <span className="wk-meta-title">Whoop recovery score</span>
+              <span className="wk-pill tabular-nums">{latestBiometrics.recoveryScore}%</span>
             </div>
           )}
-          <div className="flex items-center justify-between" style={{ gap: fig(16) }}>
-            <span className="wk-label">Last Night&apos;s HRV</span>
-            <span className="wk-pill">{latestBiometrics.hrvRmssd > 0 ? `${latestBiometrics.hrvRmssd} ms` : '—'}</span>
+          <div className="flex items-center justify-between gap-2">
+            <span className="wk-meta-title">Last night&apos;s HRV</span>
+            <span className="wk-pill tabular-nums">{latestBiometrics.hrvRmssd > 0 ? `${latestBiometrics.hrvRmssd} ms` : '—'}</span>
           </div>
-          <div className="flex items-center justify-between" style={{ gap: fig(16) }}>
-            <span className="wk-label">Resting Heart Rate</span>
-            <span className="wk-pill">{latestBiometrics.restingHr > 0 ? `${latestBiometrics.restingHr} bpm` : '—'}</span>
+          <div className="flex items-center justify-between gap-2">
+            <span className="wk-meta-title">Resting heart rate</span>
+            <span className="wk-pill tabular-nums">{latestBiometrics.restingHr > 0 ? `${latestBiometrics.restingHr} bpm` : '—'}</span>
           </div>
-          <div className="flex items-center justify-between" style={{ gap: fig(16) }}>
-            <span className="wk-label">Sleep Duration</span>
-            <span className="wk-pill">{latestBiometrics.sleepHours > 0 ? `${latestBiometrics.sleepHours} hrs` : '—'}</span>
+          <div className="flex items-center justify-between gap-2">
+            <span className="wk-meta-title">Sleep duration</span>
+            <span className="wk-pill tabular-nums">{latestBiometrics.sleepHours > 0 ? `${latestBiometrics.sleepHours} hrs` : '—'}</span>
           </div>
-          <div className="flex items-center justify-between" style={{ gap: fig(16) }}>
-            <span className="wk-label">Daily Steps</span>
-            <span className="wk-pill">{latestBiometrics.steps > 0 ? latestBiometrics.steps.toLocaleString() : '—'}</span>
+          <div className="flex items-center justify-between gap-2">
+            <span className="wk-meta-title">Daily steps</span>
+            <span className="wk-pill tabular-nums">{latestBiometrics.steps > 0 ? latestBiometrics.steps.toLocaleString() : '—'}</span>
           </div>
         </div>
       ) : (
-        <p className="wk-body" style={{ marginTop: fig(24) }}>
+        <p className="wk-body mt-4 max-w-prose">
           {selectedProvider === 'whoop' &&
             'Sync your overnight recovery score, HRV, resting heart rate, and sleep duration automatically to calibrate your daily training volume and RIR targets.'}
           {selectedProvider === 'health_connect' &&
@@ -411,19 +380,19 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
 
       {/* Sync Progress Bar */}
       {syncProgress && (
-        <div style={{ marginTop: fig(24) }}>
-          <div className="flex justify-between items-center">
-            <span className="wk-label">{syncProgress.message}</span>
-            <span className="wk-pill">{syncProgress.percent}%</span>
+        <div className="mt-4">
+          <div className="flex justify-between items-center gap-2">
+            <span className="wk-meta-title">{syncProgress.message}</span>
+            <span className="wk-pill tabular-nums">{syncProgress.percent}%</span>
           </div>
-          <div className="wk-bar" style={{ marginTop: fig(16) }}>
+          <div className="wk-bar mt-2">
             <div style={{ width: `${syncProgress.percent}%` }} />
           </div>
         </div>
       )}
 
       {/* Action Buttons */}
-      <div className="flex flex-col" style={{ marginTop: fig(28), gap: fig(16) }}>
+      <div className="flex flex-col mt-4 gap-2">
         <input
           ref={fileInputRef}
           type="file"
@@ -433,7 +402,7 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
           aria-label="Upload biometric data export"
         />
 
-        {importStatus && <p className="wk-body">{importStatus}</p>}
+        {importStatus && <p className="wk-body max-w-prose">{importStatus}</p>}
 
         {selectedProvider === 'health_connect' ? (
           <>
@@ -441,11 +410,12 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
               <button
                 type="button"
                 onClick={handleToggleHealthConnectWorkouts}
-                className="wk-button min-h-[44px]"
-                style={{
-                  background: hcWorkoutsOn ? 'var(--wk-raised)' : 'var(--wk-accent)',
-                  color: hcWorkoutsOn ? 'var(--color-text-primary)' : 'var(--color-text-on-accent)',
-                }}
+                className={hcWorkoutsOn ? 'wk-btn-secondary w-full' : 'wk-button active:scale-[0.98] transition-transform'}
+                style={
+                  hcWorkoutsOn
+                    ? undefined
+                    : { background: 'var(--color-action-primary-bg)', color: 'var(--color-action-primary-fg)' }
+                }
               >
                 {hcWorkoutsOn
                   ? 'Turn off Health Connect workouts'
@@ -457,11 +427,12 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
             <button
               type="button"
               onClick={handleHealthConnectSettings}
-              className="wk-button min-h-[44px]"
-              style={{
-                background: hcBridgeAvailable ? 'var(--wk-raised)' : 'var(--wk-accent)',
-                color: hcBridgeAvailable ? 'var(--color-text-primary)' : 'var(--color-text-on-accent)',
-              }}
+              className={hcBridgeAvailable ? 'wk-btn-secondary w-full' : 'wk-button active:scale-[0.98] transition-transform'}
+              style={
+                hcBridgeAvailable
+                  ? undefined
+                  : { background: 'var(--color-action-primary-bg)', color: 'var(--color-action-primary-fg)' }
+              }
             >
               Import health data file (.json / .csv)
             </button>
@@ -469,8 +440,8 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
               <button
                 type="button"
                 onClick={handleDisconnectProvider}
-                className="wk-button min-h-[44px]"
-                style={{ background: 'var(--wk-raised)', color: 'var(--color-status-danger)' }}
+                className="wk-btn-secondary w-full"
+                style={{ color: 'var(--color-status-danger)' }}
               >
                 Disconnect {providerMeta.name}
               </button>
@@ -482,10 +453,10 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
               <button
                 type="button"
                 onClick={handleSetActiveTracker}
-                className="wk-button min-h-[44px]"
-                style={{ background: 'var(--wk-accent)', color: 'var(--color-text-on-accent)' }}
+                className="wk-button active:scale-[0.98] transition-transform"
+                style={{ background: 'var(--color-action-primary-bg)', color: 'var(--color-action-primary-fg)' }}
               >
-                Use {providerMeta.name} as Active Tracker
+                Use {providerMeta.name} as active tracker
               </button>
             )}
 
@@ -494,18 +465,20 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
                 type="button"
                 disabled={isSyncing}
                 onClick={() => (whoopReconnectNeeded ? handleConnectProvider() : handleStartSync())}
-                className="wk-button min-h-[44px] disabled:opacity-50"
-                style={{ background: 'var(--wk-accent)', color: 'var(--color-text-on-accent)' }}
+                className="wk-button active:scale-[0.98] transition-transform"
+                style={{
+                  background: isSyncing ? 'var(--color-action-disabled-bg)' : 'var(--color-action-primary-bg)',
+                  color: isSyncing ? 'var(--color-action-disabled-fg)' : 'var(--color-action-primary-fg)',
+                }}
               >
-                {whoopReconnectNeeded ? 'Reconnect Whoop' : `Sync ${providerMeta.name} Now`}
+                {whoopReconnectNeeded ? 'Reconnect Whoop' : `Sync ${providerMeta.name} now`}
               </button>
             )}
 
             <button
               type="button"
               onClick={handleHealthConnectSettings}
-              className="wk-button min-h-[44px]"
-              style={{ background: 'var(--wk-raised)', color: 'var(--color-text-primary)' }}
+              className="wk-btn-secondary w-full"
             >
               Import Whoop CSV file
             </button>
@@ -513,8 +486,8 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
             <button
               type="button"
               onClick={handleDisconnectProvider}
-              className="wk-button min-h-[44px]"
-              style={{ background: 'var(--wk-raised)', color: 'var(--color-status-danger)' }}
+              className="wk-btn-secondary w-full justify-center min-h-[48px]"
+              style={{ color: 'var(--color-status-danger)' }}
             >
               Disconnect {providerMeta.name}
             </button>
@@ -525,16 +498,18 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
               type="button"
               disabled={isSyncing}
               onClick={handleConnectProvider}
-              className="wk-button min-h-[44px] disabled:opacity-50"
-              style={{ background: 'var(--wk-accent)', color: 'var(--color-text-on-accent)' }}
+              className="wk-button active:scale-[0.98] transition-transform"
+              style={{
+                background: isSyncing ? 'var(--color-action-disabled-bg)' : 'var(--color-action-primary-bg)',
+                color: isSyncing ? 'var(--color-action-disabled-fg)' : 'var(--color-action-primary-fg)',
+              }}
             >
               {isSyncing ? `Connecting to ${providerMeta.name}...` : `Connect ${providerMeta.name}`}
             </button>
             <button
               type="button"
               onClick={handleHealthConnectSettings}
-              className="wk-button min-h-[44px]"
-              style={{ background: 'var(--wk-raised)', color: 'var(--color-text-primary)' }}
+              className="wk-btn-secondary w-full"
             >
               Import Whoop CSV file
             </button>
@@ -542,7 +517,7 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
         )}
       </div>
 
-      <p className="wk-caption" style={{ marginTop: fig(24) }}>
+      <p className="wk-caption mt-4 max-w-prose">
         Treise fetches your wearable data through its own server, which doesn&apos;t store it. Your history stays on this phone.
       </p>
     </div>
@@ -550,7 +525,13 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
 
   if (isModal) {
     return (
-      <div role="dialog" aria-modal="true" aria-label="Wearable and recovery sync" className="wk fixed inset-0 z-50 flex items-center justify-center p-[calc(38*var(--f))] bg-black/80 backdrop-blur-md">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Wearable and recovery sync"
+        className="wk fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-md"
+        style={{ background: 'var(--color-bg-scrim)' }}
+      >
         <div className="w-full max-w-md">{content}</div>
       </div>
     );

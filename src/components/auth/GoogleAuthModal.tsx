@@ -34,7 +34,6 @@ interface GoogleAuthModalProps {
   onDeleteAllData?: () => void;
 }
 
-const fig = (px: number) => `calc(${px} * var(--f))`;
 
 export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({
   currentUser,
@@ -116,21 +115,16 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({
   return (
     <div
       className="wk fixed inset-0 z-50 overflow-y-auto"
-      style={{ background: 'linear-gradient(180deg, var(--color-bg-canvas-top) 0%, var(--color-bg-canvas) 70%)' }}
+      style={{
+        backgroundColor: 'var(--color-bg-canvas)',
+        backgroundImage: 'linear-gradient(180deg, rgb(var(--color-bg-surface-rgb) / 0.28) 0%, transparent 180px)',
+      }}
       role="dialog"
       aria-modal="true"
       aria-labelledby="auth-modal-title"
     >
-      <div
-        className="max-w-md mx-auto"
-        style={{
-          paddingLeft: fig(38),
-          paddingRight: fig(38),
-          paddingTop: fig(38),
-          paddingBottom: fig(120),
-        }}
-      >
-        <header className="flex items-center justify-between" style={{ gap: fig(20) }}>
+      <div className="max-w-md mx-auto px-4 pt-4 pb-20">
+        <header className="flex items-center justify-between gap-3">
           <h1 id="auth-modal-title" className="wk-page-title">
             Profile
           </h1>
@@ -140,25 +134,28 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({
               triggerHaptic('light');
               onClose();
             }}
-            className="w-11 h-11 min-h-[44px] rounded-full flex items-center justify-center text-white/70 hover:text-white transition-colors shrink-0"
-            style={{ background: 'var(--wk-card)' }}
+            className="w-11 h-11 min-h-[44px] min-w-[44px] rounded-full border flex items-center justify-center transition-colors shrink-0"
+            style={{
+              background: 'var(--wk-card)',
+              borderColor: 'var(--color-border-strong)',
+              color: 'var(--color-text-secondary)',
+            }}
             aria-label="Close profile"
           >
             <X className="w-5 h-5 stroke-[2]" />
           </button>
         </header>
 
-        <div className="flex flex-col" style={{ marginTop: fig(40), gap: fig(22) }}>
+        <div className="flex flex-col mt-5 gap-3">
           {/* Account & Sign-In Card */}
           <div className="wk-card w-full text-left block">
-            <div className="flex items-start justify-between" style={{ gap: fig(20) }}>
-              <div className="flex items-center" style={{ gap: fig(20) }}>
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center gap-3">
                 <div
-                  className="rounded-full flex items-center justify-center shrink-0 overflow-hidden"
+                  className="rounded-full flex items-center justify-center shrink-0 overflow-hidden w-12 h-12 border"
                   style={{
-                    width: fig(84),
-                    height: fig(84),
                     background: 'var(--wk-raised)',
+                    borderColor: 'var(--color-border-subtle)',
                   }}
                 >
                   {profile.avatarUrl ? (
@@ -174,17 +171,10 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({
                   )}
                 </div>
                 <div>
-                  <h2 className="wk-h1" style={{ lineHeight: 1.21 }}>
-                    {currentUser ? 'Your Athlete Account' : 'Sign In to Treise'}
+                  <h2 className="wk-h1 leading-tight">
+                    {currentUser ? 'Your athlete account' : 'Sign in to Treise'}
                   </h2>
-                  <p
-                    style={{
-                      fontSize: `max(12px, ${fig(28)})`,
-                      lineHeight: 1.21,
-                      color: 'var(--wk-muted)',
-                      marginTop: fig(10),
-                    }}
-                  >
+                  <p className="wk-body mt-1">
                     {currentUser
                       ? 'Your workouts are saved on this device'
                       : 'Add your name and photo to your profile'}
@@ -192,53 +182,47 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({
                 </div>
               </div>
               <span className="wk-pill shrink-0">
-                {currentUser ? 'SIGNED IN' : 'LOCAL ONLY'}
+                {currentUser ? 'Signed in' : 'Local only'}
               </span>
             </div>
 
             {statusMessage && (
-              <p className="wk-body" style={{ marginTop: fig(24) }}>
+              <p className="wk-body mt-3">
                 {statusMessage}
               </p>
             )}
 
             {currentUser ? (
               <div
-                className="flex flex-col"
-                style={{
-                  marginTop: fig(28),
-                  paddingTop: fig(24),
-                  borderTop: '1px solid rgba(255,255,255,0.08)',
-                  gap: fig(20),
-                }}
+                className="flex flex-col mt-4 pt-3 gap-3"
+                style={{ borderTop: '1px solid var(--color-border-subtle)' }}
               >
-                <div className="flex items-center justify-between" style={{ gap: fig(16) }}>
-                  <span className="wk-label">{currentUser.name}</span>
-                  <span className="wk-pill">ACTIVE</span>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="wk-meta-title">{currentUser.name}</span>
+                  <span className="wk-pill">Active</span>
                 </div>
                 <p className="wk-body">{currentUser.email}</p>
 
                 <button
                   type="button"
                   onClick={handleSignOutClick}
-                  className="wk-button min-h-[44px]"
-                  style={{ background: 'var(--wk-raised)', color: 'var(--color-status-danger)' }}
+                  className="wk-button"
+                  style={{
+                    background: 'var(--wk-raised)',
+                    color: 'var(--color-status-danger)',
+                    border: '1px solid var(--color-border-subtle)',
+                  }}
                 >
-                  Sign Out
+                  Sign out
                 </button>
               </div>
             ) : (
               <div
-                className="flex flex-col"
-                style={{
-                  marginTop: fig(28),
-                  paddingTop: fig(24),
-                  borderTop: '1px solid rgba(255,255,255,0.08)',
-                  gap: fig(20),
-                }}
+                className="flex flex-col mt-4 pt-3 gap-3"
+                style={{ borderTop: '1px solid var(--color-border-subtle)' }}
               >
                 <p className="wk-body">
-                  Personalize your profile with your Google name and photo. Workouts stay on this device—use Export Backup below to keep a copy.
+                  Personalize your profile with your Google name and photo. Workouts stay on this device—use Export backup below to keep a copy.
                 </p>
 
                 {isClientValid && (
@@ -246,7 +230,7 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({
                 )}
 
                 {!isClientValid && (
-                  <p className="wk-body" style={{ color: 'var(--wk-muted)' }}>
+                  <p className="wk-body">
                     Google sign-in isn&apos;t available right now. You can keep using Treise without an account.
                   </p>
                 )}
@@ -255,7 +239,7 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({
                   <a
                     href={supabaseUrl}
                     onClick={markLinkSignInStarted}
-                    className="wk-button min-h-[44px]"
+                    className="wk-button min-h-[48px]"
                     style={{ background: 'var(--wk-pill)', color: 'var(--color-text-primary)' }}
                   >
                     Sign in via Supabase Auth
@@ -264,19 +248,19 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({
 
                 {/* Developer setting: only on a local build, never shown to athletes. */}
                 {isLocalDevelopment && (
-                  <button
-                    type="button"
-                    onClick={() => setShowConfig(!showConfig)}
-                    className="wk-caption hover:text-white min-h-[44px] flex items-center justify-center"
-                  >
-                    {showConfig ? 'Hide Cloud Config' : 'Link Google Cloud Client ID (Optional)'}
-                  </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowConfig(!showConfig)}
+                      className="wk-caption hover:underline min-h-[44px] flex items-center justify-center"
+                    >
+                      {showConfig ? 'Hide cloud config' : 'Link Google Cloud Client ID (optional)'}
+                    </button>
                 )}
 
                 {isLocalDevelopment && showConfig && (
-                  <div className="flex flex-col" style={{ gap: fig(16) }}>
-                    <label className="wk-label block">Google OAuth Web Client ID</label>
-                    <div className="flex" style={{ gap: fig(12) }}>
+                  <div className="flex flex-col gap-2">
+                    <label className="wk-meta-title block">Google OAuth client ID</label>
+                    <div className="flex gap-2">
                       <input
                         type="text"
                         value={customClientIdInput}

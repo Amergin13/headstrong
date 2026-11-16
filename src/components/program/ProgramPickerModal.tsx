@@ -5,8 +5,6 @@ import { CustomPlanId, ProgramSplitType, SavedTrainingPlan } from '../../engine/
 import { triggerHaptic } from '../../utils/haptics';
 import { formatSentenceCase } from '../../utils/typography';
 
-const fig = (px: number) => `calc(${px} * var(--f))`;
-
 interface ProgramPickerModalProps {
   programType: ProgramSplitType;
   /** Show the 24-workout muscle plan (owner's account only). */
@@ -79,25 +77,16 @@ export const ProgramPickerModal: React.FC<ProgramPickerModalProps> = ({
       role="dialog"
       aria-modal="true"
       aria-label="Change program"
-      className="fixed inset-0 z-50 flex items-center justify-center p-[calc(38*var(--f))] bg-black/80 backdrop-blur-sm"
+      className="wk fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-sm"
+      style={{ background: 'var(--color-bg-scrim)' }}
     >
-      <div
-        className="wk-card w-full max-w-lg max-h-[90vh] overflow-y-auto shadow-2xl"
-        style={{ display: 'flex', flexDirection: 'column', gap: fig(28) }}
-      >
-        <div className="flex items-start justify-between" style={{ gap: fig(24) }}>
+      <div className="wk-card w-full max-w-lg max-h-[90vh] overflow-y-auto shadow-2xl flex flex-col gap-3">
+        <div className="flex items-start justify-between gap-3">
           <div>
-            <h3 className="wk-h1" style={{ lineHeight: 1.21 }}>
+            <h3 className="wk-h1 leading-tight">
               Change program
             </h3>
-            <p
-              style={{
-                fontSize: `max(12px, ${fig(28)})`,
-                lineHeight: 1.21,
-                color: 'var(--wk-muted)',
-                marginTop: fig(16),
-              }}
-            >
+            <p className="wk-body mt-2">
               Each program keeps its own place. Your training history always stays with you.
             </p>
           </div>
@@ -108,37 +97,32 @@ export const ProgramPickerModal: React.FC<ProgramPickerModalProps> = ({
               onClose();
             }}
             aria-label="Close program picker"
-            className="w-11 h-11 rounded-full text-white/70 hover:text-white flex items-center justify-center transition-colors min-h-[44px] shrink-0"
-            style={{ background: 'var(--wk-raised)' }}
+            className="w-11 h-11 min-h-[44px] min-w-[44px] rounded-full border flex items-center justify-center transition-colors shrink-0"
+            style={{
+              background: 'var(--wk-raised)',
+              borderColor: 'var(--color-border-strong)',
+              color: 'var(--color-text-secondary)',
+            }}
           >
             <X className="w-5 h-5 stroke-[2]" />
           </button>
         </div>
 
-        <div className="flex flex-col" style={{ gap: fig(22) }}>
+        <div className="flex flex-col gap-3">
           {allOptions.map((opt) => {
             const isCurrent = programType === opt.id;
             return (
               <div
                 key={opt.id}
-                style={{
-                  paddingTop: fig(24),
-                  borderTop: '1px solid var(--color-border-subtle)',
-                }}
+                className="pt-3"
+                style={{ borderTop: '1px solid var(--color-border-subtle)' }}
               >
-                <div className="flex items-start justify-between" style={{ gap: fig(16) }}>
+                <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
-                    <div className="wk-title" style={{ lineHeight: 1.21 }}>
+                    <div className="wk-subhead leading-tight">
                       {formatSentenceCase(opt.title)}
                     </div>
-                    <p
-                      style={{
-                        fontSize: `max(12px, ${fig(26)})`,
-                        lineHeight: 1.21,
-                        color: 'var(--wk-muted)',
-                        marginTop: fig(8),
-                      }}
-                    >
+                    <p className="wk-caption mt-1">
                       {opt.frequency}
                     </p>
                   </div>
@@ -157,11 +141,11 @@ export const ProgramPickerModal: React.FC<ProgramPickerModalProps> = ({
                   </span>
                 </div>
 
-                <p className="wk-body" style={{ marginTop: fig(16) }}>
+                <p className="wk-body mt-2 max-w-prose">
                   {opt.detail}
                 </p>
 
-                <div className="flex flex-wrap items-center" style={{ gap: fig(14), marginTop: fig(20) }}>
+                <div className="flex flex-wrap items-center gap-2 mt-3">
                   {!isCurrent && onChangeProgram && (
                     <button
                       type="button"
@@ -172,8 +156,8 @@ export const ProgramPickerModal: React.FC<ProgramPickerModalProps> = ({
                       }}
                       className="wk-button flex-1"
                       style={{
-                        background: 'var(--wk-accent)',
-                        color: 'var(--color-text-on-accent)',
+                        background: 'var(--color-action-primary-bg)',
+                        color: 'var(--color-action-primary-fg)',
                       }}
                     >
                       Switch to {opt.title}
@@ -186,14 +170,7 @@ export const ProgramPickerModal: React.FC<ProgramPickerModalProps> = ({
                         triggerHaptic('light');
                         onDeleteCustomPlan(opt.customId!);
                       }}
-                      className="wk-button"
-                      style={{
-                        background: 'var(--color-bg-surface-control)',
-                        color: 'var(--color-text-secondary)',
-                        paddingLeft: fig(28),
-                        paddingRight: fig(28),
-                        fontSize: `max(12px, ${fig(24)})`,
-                      }}
+                      className="wk-btn-secondary"
                     >
                       Remove
                     </button>

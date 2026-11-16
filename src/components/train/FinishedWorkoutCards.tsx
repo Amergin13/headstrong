@@ -6,15 +6,12 @@ import { useUnits } from '../../utils/unitsContext';
 import { TrendChart } from '../common/TrendChart';
 import { useWorkoutSummaryText } from './useWorkoutSummaryText';
 
-const fig = (px: number) => `calc(${px} * var(--f))`;
-const text = (px: number) => `max(12px, ${fig(px)})`;
-
 const Stat: React.FC<{ label: string; value: string }> = ({ label, value }) => (
   <div>
     <dt className="wk-label" style={{ color: 'var(--wk-muted)' }}>
       {label}
     </dt>
-    <dd className="font-semibold text-white tabular-numbers" style={{ fontSize: text(64), lineHeight: 1, marginTop: fig(12) }}>
+    <dd className="wk-display leading-none mt-1">
       {value}
     </dd>
   </div>
@@ -30,12 +27,12 @@ export const FinishedWorkoutSummaryCard: React.FC<{ finish: WorkoutFinish }> = (
       <h2 id="finished-workout-title" className="wk-title">
         Today&apos;s workout finished
       </h2>
-      <p className="wk-body" style={{ marginTop: fig(12) }} aria-live="polite">
+      <p className="wk-body mt-2 max-w-prose" aria-live="polite">
         <span key={summary} className="wk-text-swap">
           {summary}
         </span>
       </p>
-      <dl className="flex" style={{ gap: fig(126), marginTop: fig(60) }}>
+      <dl className="flex flex-wrap gap-12 mt-5">
         <Stat label={`Volume (${units.unit})`} value={Math.round(units.toDisplay(session.volumeKg)).toLocaleString()} />
         <Stat label="Sets" value={`${session.workingSets}`} />
       </dl>
@@ -56,7 +53,7 @@ export interface WhoopStrainCardProps {
   style?: React.CSSProperties;
 }
 
-/** Whoop cardiovascular strain card shown on workout completion when Whoop is configured. */
+/** Cardio strain card shown on workout completion when external telemetry is configured. */
 export const WhoopStrainCard: React.FC<WhoopStrainCardProps> = ({
   workoutStrain,
   dayStrain,
@@ -87,12 +84,12 @@ export const WhoopStrainCard: React.FC<WhoopStrainCardProps> = ({
 
   return (
     <section className={`wk-card ${className}`.trim()} style={style} aria-label="Whoop strain summary">
-      <div className="flex items-center justify-between" style={{ gap: fig(20) }}>
+      <div className="flex items-center justify-between gap-3">
         <h3 className="wk-title">
           Whoop strain
         </h3>
         {isSyncing ? (
-          <span className="wk-pill" style={{ background: 'rgba(0,241,159,0.16)', color: 'var(--wk-accent)' }}>
+          <span className="wk-pill" style={{ background: 'var(--color-status-positive-soft)', color: 'var(--wk-accent)' }}>
             Syncing…
           </span>
         ) : hasLiveConnection && onRetry && !hasWorkoutStrain ? (
@@ -112,15 +109,15 @@ export const WhoopStrainCard: React.FC<WhoopStrainCardProps> = ({
         ) : null}
       </div>
 
-      <dl className="flex flex-wrap" style={{ gap: fig(96), marginTop: fig(48) }}>
+      <dl className="flex flex-wrap gap-8 mt-5">
         <div>
           <dt className="wk-label" style={{ color: 'var(--wk-muted)' }}>
             Workout strain
           </dt>
-          <dd className="font-semibold text-white tabular-numbers" style={{ fontSize: text(64), lineHeight: 1, marginTop: fig(12) }}>
+          <dd className="wk-display leading-none mt-1">
             {hasWorkoutStrain ? workoutStrain.toFixed(1) : '—'}
             {hasWorkoutStrain && (
-              <span className="font-semibold" style={{ fontSize: text(26), color: 'var(--wk-muted)', marginLeft: fig(10) }}>
+              <span className="wk-caption ml-2" style={{ color: 'var(--wk-muted)' }}>
                 / 21
               </span>
             )}
@@ -132,21 +129,21 @@ export const WhoopStrainCard: React.FC<WhoopStrainCardProps> = ({
       </dl>
 
       {(hasAvgHr || hasMaxHr) && (
-        <div className="flex flex-wrap" style={{ gap: fig(12), marginTop: fig(28) }}>
+        <div className="flex flex-wrap gap-2 mt-3">
           {hasAvgHr && (
-            <span className="wk-pill" style={{ textTransform: 'none' }}>
+            <span className="wk-pill">
               Avg HR {Math.round(avgHr)} bpm
             </span>
           )}
           {hasMaxHr && (
-            <span className="wk-pill" style={{ textTransform: 'none' }}>
+            <span className="wk-pill">
               Peak HR {Math.round(maxHr)} bpm
             </span>
           )}
         </div>
       )}
 
-      <p className="wk-caption" style={{ marginTop: fig(24) }}>
+      <p className="wk-caption mt-3">
         {note}
       </p>
     </section>
@@ -159,20 +156,23 @@ export const CompletedExerciseCard: React.FC<{ summary: CompletedExerciseSummary
   const { history } = summary;
   return (
     <section aria-label={`${summary.exerciseName}${summary.isPersonalBest ? ', personal best' : ''}`} className="wk-card">
-      <div className="flex items-start justify-between" style={{ gap: fig(20) }}>
+      <div className="flex items-start justify-between gap-3">
         <h3 className="wk-h1 min-w-0">{formatSentenceCase(summary.exerciseName)}</h3>
         {summary.isPersonalBest && (
-          <span className="wk-pill shrink-0" style={{ background: 'var(--wk-accent)', color: 'var(--color-text-on-accent)' }}>
+          <span
+            className="wk-pill shrink-0"
+            style={{ background: 'var(--color-status-positive-soft)', color: 'var(--wk-accent)' }}
+          >
             Personal best
           </span>
         )}
       </div>
       {summary.chip && (
-        <div style={{ marginTop: fig(16) }}>
+        <div className="mt-2">
           <span className="wk-pill">{summary.chip}</span>
         </div>
       )}
-      <div className="wk-body flex flex-col" style={{ gap: fig(6), marginTop: fig(36) }}>
+      <div className="wk-body flex flex-col gap-1 mt-4 max-w-prose">
         {summary.lines.map((line, i) => (
           <p key={i} className="m-0">
             {line}
@@ -180,7 +180,7 @@ export const CompletedExerciseCard: React.FC<{ summary: CompletedExerciseSummary
         ))}
       </div>
       {!summary.timed && (
-        <div style={{ marginTop: fig(28) }}>
+        <div className="mt-3">
           <TrendChart
             points={history.map((h) => ({ date: localDateString(new Date(h.at)), value: h.e1rmKg }))}
             format={(kg) => units.formatPrecise(kg)}

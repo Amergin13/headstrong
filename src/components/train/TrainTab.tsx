@@ -10,6 +10,7 @@ import {
   WorkoutSet,
   MuscleGroup,
   WorkoutDisplaySettings,
+  DEFAULT_WORKOUT_DISPLAY_SETTINGS,
   resolveWorkoutDisplaySettings,
   isWearableConnected,
   isWhoopConfigured,
@@ -53,7 +54,7 @@ import { buildAthleteKnowledgeGraph, getExerciseBiomechanicalMeta } from '../../
 import { calculateWeeklyMuscleVolume } from '../../services/storage';
 import { CompletedExerciseCard, FinishedWorkoutSummaryCard, WhoopStrainCard } from './FinishedWorkoutCards';
 import { WorkoutPageHeader } from './WorkoutPageHeader';
-import { ProgramProgressCard, StickySessionHeader } from './ProgramProgressCard';
+import { CurrentSessionCard, ProgramProgressCard, StickySessionHeader } from './ProgramProgressCard';
 import { RecoveryScoreCard } from './RecoveryScoreCard';
 import { buildWeekStrip } from '../../services/sessionSchedule';
 import { buildExerciseInsight, getPreviousWorkingSets } from '../../services/exerciseInsight';
@@ -140,11 +141,6 @@ const SPLIT_TARGET_MUSCLES: Record<SplitDayType, MuscleGroup[]> = {
   Upper: ['Chest', 'Back', 'Side Delts', 'Biceps'],
 };
 
-/** One Figma pixel (1344 px wide frame) in screen pixels; see .wk in index.css. */
-const fig = (px: number) => `calc(${px} * var(--f))`;
-/** Side margin of the Workout page in the Figma frame. */
-const PAGE_GUTTER = 38;
-
 const PROGRAM_TITLES: Record<string, string> = {
   ppl_upper: 'Push / Pull / Legs + Upper',
   ppl: 'Push / Pull / Legs',
@@ -152,13 +148,13 @@ const PROGRAM_TITLES: Record<string, string> = {
   full_body: 'Full Body',
 };
 
-const MESO_WEEK_PHASE_NAMES: Record<number, { name: string; rule: string }> = {
-  1: { name: 'Smooth Start', rule: 'Base sets • Leave 2–3 reps in the tank' },
-  2: { name: 'Building Up', rule: 'Adding sets • Leave 2 reps in the tank' },
-  3: { name: 'Main Growth Phase', rule: 'Target zone • Leave 1–2 reps in the tank' },
-  4: { name: 'High Effort Phase', rule: 'High sets • Leave 1 rep in the tank' },
-  5: { name: 'Peak Week', rule: 'Peak sets • Leave 0–1 reps in the tank' },
-  6: { name: 'Light Recovery Week', rule: 'Half sets • Leave 3–4 easy reps in the tank' },
+const MESO_WEEK_PHASE_NAMES: Record<number, { name: string; rule: string; description: string }> = {
+  1: { name: 'Smooth start', rule: 'Base sets • Leave 2–3 reps in the tank', description: 'Base sets across your lifts, leaving 2–3 reps in the tank to build momentum.' },
+  2: { name: 'Building up', rule: 'Adding sets • Leave 2 reps in the tank', description: 'Adding steady volume across movements while keeping 2 reps in reserve.' },
+  3: { name: 'Main growth phase', rule: 'Target zone • Leave 1–2 reps in the tank', description: 'Training in your main growth zone with 1–2 reps in reserve on working sets.' },
+  4: { name: 'High effort phase', rule: 'High sets • Leave 1 rep in the tank', description: 'Higher weekly sets and heavier effort, stopping about 1 rep short of failure.' },
+  5: { name: 'Peak week', rule: 'Peak sets • Leave 0–1 reps in the tank', description: 'Peak training volume and intensity before next week’s recovery deload.' },
+  6: { name: 'Light recovery week', rule: 'Half sets • Leave 3–4 easy reps in the tank', description: 'Reduced sets and lighter effort to shed fatigue and lock in progress.' },
 };
 
 export const TrainTab: React.FC<TrainTabProps> = ({
@@ -203,12 +199,19 @@ export const TrainTab: React.FC<TrainTabProps> = ({
   );
   const activeDisplayCount = [
     workoutDisplay.showProgramCard,
+    workoutDisplay.showSessionCard,
     workoutDisplay.showRecoveryCard,
     workoutDisplay.showExerciseSummaries,
     workoutDisplay.showExerciseCharts,
     workoutDisplay.showStepsCard,
   ].filter(Boolean).length;
-  const isDefaultWorkoutDisplay = activeDisplayCount === 5;
+  const isDefaultWorkoutDisplay =
+    workoutDisplay.showProgramCard === DEFAULT_WORKOUT_DISPLAY_SETTINGS.showProgramCard &&
+    workoutDisplay.showSessionCard === DEFAULT_WORKOUT_DISPLAY_SETTINGS.showSessionCard &&
+    workoutDisplay.showRecoveryCard === DEFAULT_WORKOUT_DISPLAY_SETTINGS.showRecoveryCard &&
+    workoutDisplay.showExerciseSummaries === DEFAULT_WORKOUT_DISPLAY_SETTINGS.showExerciseSummaries &&
+    workoutDisplay.showExerciseCharts === DEFAULT_WORKOUT_DISPLAY_SETTINGS.showExerciseCharts &&
+    workoutDisplay.showStepsCard === DEFAULT_WORKOUT_DISPLAY_SETTINGS.showStepsCard;
 
   const handleToggleWorkoutDisplay = (key: keyof WorkoutDisplaySettings) => {
     const next: WorkoutDisplaySettings = {
@@ -751,26 +754,36 @@ export const TrainTab: React.FC<TrainTabProps> = ({
   // Program card: plan phase and position, or the mesocycle week for standard splits.
   // The count in the workout card and sticky header tracks the sets in this workout.
   const planTemplate = planWorkoutNumber ? trainingPlan.templates.find((t) => t.workoutNumber === planWorkoutNumber) : undefined;
-  // After a logged rest day the session is held for tomorrow, so it isn't today's.
-  const sessionWord = showRecoveryGate || activeWorkout.date > localDateString() ? 'Next' : 'Today';
   const sessionSetsTotal = todayFinished
     ? todayFinished.workout.exercises.reduce((acc, ex) => acc + ex.sets.length, 0)
     : totalSets;
   const sessionSetsCurrent = todayFinished
     ? todayFinished.workout.exercises.reduce((acc, ex) => acc + ex.sets.filter((s) => s.completed).length, 0)
     : completedSets;
+  // After a logged rest day (or when holding for recovery) an unfinished session is queued as next rather than today's.
+  const isNextSession = !todayFinished && (showRecoveryGate || activeWorkout.date > localDateString());
+  const rawSessionName = todayFinished
+    ? getSessionPlanId(todayFinished.workout) === trainingPlan.id
+      ? planWorkoutLabel(todayFinished.workout.name)
+      : todayFinished.workout.name.split(' — ')[0]
+    : planWorkoutNumber
+      ? planTemplate
+        ? planWorkoutLabel(planTemplate.title)
+        : activeWorkout.name
+      : activeWorkout.name.split(' — ')[0];
+  const sessionLabel = isNextSession ? `Next: ${rawSessionName}` : rawSessionName;
   const programCard = planWorkoutNumber
     ? {
         title: `Phase ${planPhase?.phaseNumber ?? 1}`,
-        subtitle: planPhase?.shortName ?? '',
-        sessionLabel: `${sessionWord}: ${planTemplate ? planWorkoutLabel(planTemplate.title) : activeWorkout.name}`,
+        description: planPhase?.planSummary || planPhase?.description || planPhase?.shortName || '',
+        sessionLabel,
         current: sessionSetsCurrent,
         total: sessionSetsTotal,
       }
     : {
-        title: `Week ${mesoWeek}`,
-        subtitle: phaseMeta.name,
-        sessionLabel: `${sessionWord}: ${activeWorkout.name.split(' — ')[0]}`,
+        title: `Week ${mesoWeek}: ${phaseMeta.name}`,
+        description: phaseMeta.description,
+        sessionLabel,
         current: sessionSetsCurrent,
         total: sessionSetsTotal,
       };
@@ -892,15 +905,16 @@ export const TrainTab: React.FC<TrainTabProps> = ({
       window.removeEventListener('scroll', update);
       window.removeEventListener('resize', update);
     };
-  }, [todayFinished, workoutDisplay.showProgramCard]);
+  }, [todayFinished, workoutDisplay.showProgramCard, workoutDisplay.showSessionCard]);
 
   const renderOptionsMenu = (close: () => void) => (
     <div
       role="menu"
       aria-label="Workout options"
-      className="w-60 rounded-2xl bg-surface-card border border-white/[0.08] shadow-2xl p-1.5 space-y-1 text-left"
+      className="w-60 rounded-2xl shadow-2xl p-2 space-y-1 text-left border"
+      style={{ background: 'var(--wk-card)', borderColor: 'var(--color-border-subtle)' }}
     >
-      <div className="px-3 py-1.5 text-xs font-semibold text-white/60 uppercase tracking-wider">Location</div>
+      <div className="px-3 py-2 wk-label">Location</div>
       {LOCATION_CONFIG.map((loc) => {
         const isSelected = currentLoc === loc.id;
         return (
@@ -916,19 +930,21 @@ export const TrainTab: React.FC<TrainTabProps> = ({
               }
               close();
             }}
-            className={`w-full text-left px-3 py-2 rounded-xl min-h-[44px] flex items-center justify-between transition-colors ${
-              isSelected ? 'bg-white/[0.10] text-white' : 'text-white/80 hover:bg-white/[0.06]'
-            }`}
+            className="w-full text-left px-3 py-2 rounded-xl min-h-[44px] flex items-center justify-between transition-colors"
+            style={{
+              background: isSelected ? 'var(--wk-raised)' : 'transparent',
+              color: isSelected ? 'var(--color-text-primary)' : 'var(--color-text-secondary)',
+            }}
           >
             <div>
-              <span className="text-sm font-semibold block">{loc.label}</span>
-              <span className="text-xs text-white/60">{loc.detail}</span>
+              <span className="text-base font-medium block">{loc.label}</span>
+              <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>{loc.detail}</span>
             </div>
-            {isSelected && <Check className="w-4 h-4 text-brand-primary stroke-[2.5] shrink-0 ml-2" />}
+            {isSelected && <Check className="w-4 h-4 stroke-[2.5] shrink-0 ml-2" style={{ color: 'var(--color-text-primary)' }} />}
           </button>
         );
       })}
-      <div className="pt-1.5 border-t border-white/[0.08] space-y-1">
+      <div className="pt-2 space-y-1" style={{ borderTop: '1px solid var(--color-border-subtle)' }}>
         <button
           type="button"
           role="menuitem"
@@ -937,14 +953,15 @@ export const TrainTab: React.FC<TrainTabProps> = ({
             setShowWorkoutDisplayModal(true);
             close();
           }}
-          className="w-full text-left px-3 py-2 rounded-xl text-sm font-semibold text-white/85 hover:text-white hover:bg-white/[0.06] flex items-center justify-between gap-2 min-h-[44px]"
+          className="w-full text-left px-3 py-2 rounded-xl text-base font-medium hover:bg-[var(--wk-raised)] flex items-center justify-between gap-2 min-h-[44px]"
+          style={{ color: 'var(--color-text-primary)' }}
         >
           <span className="flex items-center gap-2">
             <SlidersHorizontal className="w-4 h-4 stroke-[2] shrink-0" />
             <span>Customize workout page</span>
           </span>
-          <span className="text-xs font-semibold text-white/55 tabular-numbers">
-            {activeDisplayCount}/5
+          <span className="text-xs font-normal tabular-numbers" style={{ color: 'var(--color-text-muted)' }}>
+            {activeDisplayCount}/6
           </span>
         </button>
         <button
@@ -955,7 +972,8 @@ export const TrainTab: React.FC<TrainTabProps> = ({
             onShiftWorkout();
             close();
           }}
-          className="w-full text-left px-3 py-2 rounded-xl text-sm font-semibold text-white/70 hover:text-white hover:bg-white/[0.06] flex items-center gap-2 min-h-[44px]"
+          className="w-full text-left px-3 py-2 rounded-xl text-base font-medium hover:bg-[var(--wk-raised)] flex items-center gap-2 min-h-[44px]"
+          style={{ color: 'var(--color-text-secondary)' }}
         >
           <Calendar className="w-4 h-4 stroke-[2]" />
           <span>Log rest day</span>
@@ -968,7 +986,8 @@ export const TrainTab: React.FC<TrainTabProps> = ({
               setPreviewPastWorkout(recentCompletedWorkouts[0]);
               close();
             }}
-            className="w-full text-left px-3 py-2 rounded-xl text-sm font-semibold text-white/70 hover:text-white hover:bg-white/[0.06] flex items-center gap-2 min-h-[44px]"
+            className="w-full text-left px-3 py-2 rounded-xl text-base font-medium hover:bg-[var(--wk-raised)] flex items-center gap-2 min-h-[44px]"
+            style={{ color: 'var(--color-text-secondary)' }}
           >
             <History className="w-4 h-4 stroke-[2]" />
             <span>Last workout</span>
@@ -1032,19 +1051,18 @@ export const TrainTab: React.FC<TrainTabProps> = ({
   };
 
   return (
-    <div className="wk -mx-3.5" style={{ paddingLeft: fig(PAGE_GUTTER), paddingRight: fig(PAGE_GUTTER), paddingBottom: 120 }}>
+    <div className="wk -mx-4 px-4 pb-28">
       <PageTopGradient
         markerRef={exercisesTopRef}
         fallbackRef={cardsTopRef}
         observeRef={cardsTopRef}
         deps={[showRecoveryGate, sessionReport, isNonTrainingView]}
       />
-      {!isNonTrainingView && (
+      {workoutDisplay.showSessionCard && !isNonTrainingView && (
         <StickySessionHeader
           sessionLabel={programCard.sessionLabel}
           current={programCard.current}
           total={programCard.total}
-          onOpen={onOpenProgram}
           docked={sessionDocked}
           headerRef={stickyHeaderRef}
           measureRef={stickyMeasureRef}
@@ -1058,7 +1076,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
         renderMenu={renderOptionsMenu}
       />
 
-      <div ref={cardsTopRef} className="flex flex-col" style={{ gap: fig(22), marginTop: fig(64) }}>
+      <div ref={cardsTopRef} className="flex flex-col gap-3 mt-6">
       {/* After today's session: lead with "complete" and the progress breakdown. */}
       {todayFinished && (!inspectedDay || inspectedDay.isToday) ? (() => {
         const finishedDayBio = biometrics.find((b) => b.date === todayFinished.workout.date);
@@ -1068,12 +1086,21 @@ export const TrainTab: React.FC<TrainTabProps> = ({
         const finishedMaxHr = todayFinished.workout.maxHeartRate ?? finishedDayBio?.maxWorkoutHr;
         return (
           <>
-            <ProgramProgressCard
-              {...programCard}
-              lean={!workoutDisplay.showProgramCard}
-              onOpen={onOpenProgram}
-              sessionRef={sessionBlockRef}
-            />
+            {workoutDisplay.showProgramCard && (
+              <ProgramProgressCard
+                title={programCard.title}
+                description={programCard.description}
+                onOpen={onOpenProgram}
+              />
+            )}
+            {workoutDisplay.showSessionCard && (
+              <CurrentSessionCard
+                sessionLabel={programCard.sessionLabel}
+                current={programCard.current}
+                total={programCard.total}
+                sessionRef={sessionBlockRef}
+              />
+            )}
             <FinishedWorkoutSummaryCard finish={todayFinished.finish} />
             {whoopConfigured && (
               <WhoopStrainCard
@@ -1091,12 +1118,21 @@ export const TrainTab: React.FC<TrainTabProps> = ({
         );
       })() : !isNonTrainingView ? (
         <>
-          <ProgramProgressCard
-            {...programCard}
-            lean={!workoutDisplay.showProgramCard}
-            onOpen={onOpenProgram}
-            sessionRef={sessionBlockRef}
-          />
+          {workoutDisplay.showProgramCard && (
+            <ProgramProgressCard
+              title={programCard.title}
+              description={programCard.description}
+              onOpen={onOpenProgram}
+            />
+          )}
+          {workoutDisplay.showSessionCard && (
+            <CurrentSessionCard
+              sessionLabel={programCard.sessionLabel}
+              current={programCard.current}
+              total={programCard.total}
+              sessionRef={sessionBlockRef}
+            />
+          )}
           {!showRecoveryGate && workoutDisplay.showRecoveryCard && hasRecoveryMechanism && (
             <RecoveryScoreCard
               readiness={readiness}
@@ -1113,17 +1149,17 @@ export const TrainTab: React.FC<TrainTabProps> = ({
           aria-label={overviewStepDay.isToday ? "Today's steps" : `${overviewStepDay.label} steps`}
           className="wk-card"
         >
-          <div className="flex items-start justify-between" style={{ gap: fig(16) }}>
+          <div className="flex items-start justify-between gap-2">
             <div>
-              <h2 className="wk-title flex items-center" style={{ gap: fig(10) }}>
-                <Footprints style={{ width: fig(30), height: fig(30), color: 'var(--color-data-telemetry)' }} strokeWidth={2.2} aria-hidden="true" />
+              <h2 className="wk-title flex items-center gap-2">
+                <Footprints className="w-4 h-4 shrink-0" style={{ color: 'var(--color-data-telemetry)' }} strokeWidth={2.2} aria-hidden="true" />
                 <span>
                   {overviewStepDay.isToday
                     ? "Today's steps"
                     : `${overviewStepDay.label} (${formatDayShort(overviewStepDay.date)})`}
                 </span>
               </h2>
-              <p className="wk-caption" style={{ marginTop: fig(6) }}>
+              <p className="wk-caption mt-1">
                 {!isNonTrainingView && overviewStepDay.status === 'trained'
                   ? 'Training day'
                   : isRestDayToday && overviewStepDay.isToday
@@ -1141,15 +1177,12 @@ export const TrainTab: React.FC<TrainTabProps> = ({
               </button>
             )}
           </div>
-          <p
-            className="font-semibold text-white tabular-numbers"
-            style={{ fontSize: `max(12px, ${fig(68)})`, lineHeight: 1.05, marginTop: fig(28) }}
-          >
+          <p className="wk-display leading-none mt-3">
             {overviewSteps > 0 ? overviewSteps.toLocaleString() : '—'}
             {overviewSteps > 0 && (
               <span
-                className="font-semibold"
-                style={{ fontSize: `max(12px, ${fig(24)})`, color: 'var(--wk-muted)', marginLeft: fig(12) }}
+                className="wk-caption ml-2"
+                style={{ color: 'var(--wk-muted)' }}
               >
                 steps
               </span>
@@ -1158,8 +1191,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
           {dailyStepsGoal && (
             <>
               <div
-                className="wk-bar"
-                style={{ marginTop: fig(24) }}
+                className="wk-bar mt-3"
                 role="progressbar"
                 aria-valuemin={0}
                 aria-valuemax={dailyStepsGoal}
@@ -1168,7 +1200,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
               >
                 <div style={{ width: `${Math.min(100, (overviewSteps / dailyStepsGoal) * 100)}%` }} />
               </div>
-              <p className="wk-caption" style={{ marginTop: fig(12) }}>
+              <p className="wk-caption mt-2">
                 {overviewSteps >= dailyStepsGoal
                   ? `Daily goal reached (${dailyStepsGoal.toLocaleString()} steps)`
                   : `${overviewSteps.toLocaleString()} of ${dailyStepsGoal.toLocaleString()} daily step goal`}
@@ -1176,7 +1208,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
             </>
           )}
           {overviewSteps === 0 && (
-            <div className="flex items-center justify-between flex-wrap" style={{ gap: fig(16), marginTop: fig(18) }}>
+            <div className="flex items-center justify-between flex-wrap gap-2 mt-2">
               <p className="wk-body">
                 No steps recorded {overviewStepDay.isToday ? 'today' : 'for this day'} yet.
               </p>
@@ -1210,7 +1242,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
       {isRestDayToday && (!inspectedDay || inspectedDay.isToday) && !showRecoveryGate && (
         <section aria-label="Rest day status" className="wk-card">
           <h2 className="wk-h1">Rest day logged</h2>
-          <p className="wk-body" style={{ marginTop: fig(16) }}>
+          <p className="wk-body mt-2 max-w-prose">
             {activeWorkout.name} is queued for your next training day. Focus on steps, active recovery or rest today.
           </p>
           <button
@@ -1219,12 +1251,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
               triggerHaptic('light');
               onUpdateWorkout({ ...activeWorkout, date: todayDateStr });
             }}
-            className="wk-button"
-            style={{
-              marginTop: fig(28),
-              background: 'var(--color-action-secondary-bg)',
-              color: 'var(--color-action-secondary-fg)',
-            }}
+            className="wk-btn-secondary w-full mt-3"
           >
             Train today instead
           </button>
@@ -1234,9 +1261,9 @@ export const TrainTab: React.FC<TrainTabProps> = ({
       {showRecoveryGate && (!inspectedDay || inspectedDay.isToday) && !sessionReport && (
         <section aria-label="Recovery before next workout" className="wk-card">
           <h2 className="wk-h1">Your muscles are still recovering</h2>
-          <p className="wk-body" style={{ marginTop: fig(20) }}>
+          <p className="wk-body mt-2 max-w-prose">
             {activeWorkout.name} will be ready{' '}
-            <strong className="text-white">{formatReadyTime(recoveryGate.readyAt ?? Date.now())}</strong>.
+            <strong style={{ color: 'var(--color-text-primary)' }}>{formatReadyTime(recoveryGate.readyAt ?? Date.now())}</strong>.
             {lastWorkoutAgoHours !== null && recoveryGate.lastWorkoutName
               ? ` You finished ${recoveryGate.lastWorkoutName} ${
                   lastWorkoutAgoHours < 1 ? 'less than an hour' : `${lastWorkoutAgoHours} hour${lastWorkoutAgoHours === 1 ? '' : 's'}`
@@ -1245,12 +1272,12 @@ export const TrainTab: React.FC<TrainTabProps> = ({
           </p>
 
           {recoveryGate.limitingMuscles.length > 0 && (
-            <ul className="flex flex-col" style={{ gap: fig(28), marginTop: fig(40) }} aria-label="Muscle recovery">
+            <ul className="flex flex-col gap-3 mt-5" aria-label="Muscle recovery">
               {recoveryGate.limitingMuscles.slice(0, 4).map((m) => (
                 <li key={m.muscle}>
-                  <div className="flex items-center justify-between" style={{ marginBottom: fig(12) }}>
-                    <span className="wk-title">{MUSCLE_FRIENDLY_NAMES[m.muscle]}</span>
-                    <span className="wk-caption">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="wk-subhead">{MUSCLE_FRIENDLY_NAMES[m.muscle]}</span>
+                    <span className="wk-caption tabular-nums">
                       {m.recoveryPct}% • ready {formatReadyTime(m.readyAt)}
                     </span>
                   </div>
@@ -1262,18 +1289,28 @@ export const TrainTab: React.FC<TrainTabProps> = ({
                     aria-valuenow={m.recoveryPct}
                     aria-label={`${MUSCLE_FRIENDLY_NAMES[m.muscle]} recovery`}
                   >
-                    <div style={{ width: `${m.recoveryPct}%`, background: 'var(--color-viz-1)' }} />
+                    <div
+                      style={{
+                        width: `${m.recoveryPct}%`,
+                        background:
+                          m.recoveryPct >= 67
+                            ? 'var(--color-status-positive)'
+                            : m.recoveryPct >= 34
+                            ? 'var(--color-status-warning)'
+                            : 'var(--color-status-danger)',
+                      }}
+                    />
                   </div>
                 </li>
               ))}
             </ul>
           )}
 
-          <p className="wk-body" style={{ marginTop: fig(40) }}>
+          <p className="wk-body mt-5 max-w-prose">
             Muscles grow while they recover. Training them again early means less growth, not more.
           </p>
 
-          <div className="flex flex-col" style={{ gap: fig(16), marginTop: fig(40) }}>
+          <div className="flex flex-col gap-2 mt-5">
             {recoveredAlternative && onSwitchSplitDay && (
               <button
                 type="button"
@@ -1293,8 +1330,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
                 triggerHaptic('warning');
                 onUpdateWorkout({ ...activeWorkout, recoveryOverride: true });
               }}
-              className="wk-button"
-              style={{ background: 'var(--color-action-secondary-bg)', color: 'var(--color-action-secondary-fg)' }}
+              className="wk-btn-secondary w-full"
             >
               Train anyway
             </button>
@@ -1318,7 +1354,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
 
       {showActiveExercises && (<>
       {/* Exercise cards (the page gradient ends where the first one starts) */}
-      <div ref={exercisesTopRef} className="flex flex-col" style={{ gap: fig(22) }}>
+      <div ref={exercisesTopRef} className="flex flex-col gap-3">
         {exercisePrescriptions.map(({ ex, prescription }, index) => {
           const def = exMap.get(ex.exerciseId);
           const meta = def
@@ -1394,23 +1430,16 @@ export const TrainTab: React.FC<TrainTabProps> = ({
         })}
       </div>
 
-      {/* Add an exercise (secondary action, compact height) */}
+      {/* Add an exercise (secondary action) */}
       <button
         type="button"
         onClick={() => {
           triggerHaptic('light');
           setShowAddExerciseModal(true);
         }}
-        className="wk-button flex items-center justify-center transition-transform active:scale-[0.98]"
-        style={{
-          background: 'var(--color-action-secondary-bg)',
-          color: 'var(--color-action-secondary-fg)',
-          height: fig(96),
-          minHeight: 44,
-          gap: fig(12),
-        }}
+        className="wk-btn-secondary w-full flex items-center justify-center gap-2 transition-transform active:scale-[0.98]"
       >
-        <Plus style={{ width: fig(32), height: fig(32) }} strokeWidth={2.5} aria-hidden="true" />
+        <Plus className="w-4 h-4" strokeWidth={2.5} aria-hidden="true" />
         <span>Add exercise</span>
       </button>
 
@@ -1428,7 +1457,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
       >
         Finish workout
         {completedSets > 0 && (
-          <span className="block normal-case font-semibold" style={{ fontSize: `max(12px, ${fig(22)})`, opacity: 0.75 }}>
+          <span className="block normal-case font-normal text-xs tabular-nums" style={{ opacity: 0.75 }}>
             {completedSets} of {totalSets} sets logged
             {liveTonnageKg > 0 ? ` • ${Math.round(units.toDisplay(liveTonnageKg)).toLocaleString()} ${units.unit}` : ''}
           </span>
@@ -1439,12 +1468,18 @@ export const TrainTab: React.FC<TrainTabProps> = ({
 
       {/* Add Exercise Picker Modal */}
       {showAddExerciseModal && (
-        <div role="dialog" aria-modal="true" aria-label="Add exercise" className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/85 backdrop-blur-md">
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Add exercise"
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 backdrop-blur-md"
+          style={{ background: 'var(--color-bg-scrim)' }}
+        >
           <div className="wk-card w-full max-w-md shadow-2xl space-y-4 max-h-[80vh] flex flex-col">
             <div className="flex items-center justify-between pb-1">
               <div>
                 <h3 className="wk-h1">
-                  Add Exercise
+                  Add exercise
                 </h3>
                 <p className="wk-caption mt-1">
                   Target weights and reps are pre-filled from your workout history
@@ -1454,8 +1489,12 @@ export const TrainTab: React.FC<TrainTabProps> = ({
                 type="button"
                 onClick={() => setShowAddExerciseModal(false)}
                 aria-label="Close add exercise modal"
-                className="w-11 h-11 rounded-full text-white/60 hover:text-white flex items-center justify-center text-xs font-semibold transition-colors shrink-0"
-                style={{ background: 'var(--color-action-secondary-bg)' }}
+                className="w-11 h-11 min-h-[44px] min-w-[44px] rounded-full border flex items-center justify-center text-xs font-medium transition-colors shrink-0"
+                style={{
+                  background: 'var(--color-action-secondary-bg)',
+                  borderColor: 'var(--color-border-strong)',
+                  color: 'var(--color-text-secondary)',
+                }}
               >
                 ✕
               </button>
@@ -1479,7 +1518,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
                     className="wk-raised w-full flex items-center justify-between text-left transition-all active:scale-[0.99]"
                   >
                     <div>
-                      <div className="wk-title">
+                      <div className="wk-subhead">
                         {def.name}
                       </div>
                       <div className="wk-caption mt-1">
@@ -1501,13 +1540,14 @@ export const TrainTab: React.FC<TrainTabProps> = ({
           role="dialog"
           aria-modal="true"
           aria-label="Customize workout page"
-          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/85 backdrop-blur-md"
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 backdrop-blur-md"
+          style={{ background: 'var(--color-bg-scrim)' }}
         >
-          <div className="wk-card w-full max-w-md shadow-2xl flex flex-col" style={{ gap: fig(24), maxHeight: '85vh' }}>
-            <div className="flex items-start justify-between" style={{ gap: fig(16) }}>
+          <div className="wk-card w-full max-w-md shadow-2xl flex flex-col gap-3" style={{ maxHeight: '85vh' }}>
+            <div className="flex items-start justify-between gap-2">
               <div>
                 <h3 className="wk-h1">Workout page defaults</h3>
-                <p className="wk-caption" style={{ marginTop: fig(8) }}>
+                <p className="wk-caption mt-1">
                   Choose which cards, summaries and charts appear on your Workout screen.
                 </p>
               </div>
@@ -1521,13 +1561,18 @@ export const TrainTab: React.FC<TrainTabProps> = ({
               </button>
             </div>
 
-            <ul className="flex flex-col overflow-y-auto no-scrollbar" style={{ borderTop: `${fig(2)} solid var(--color-border-subtle)` }}>
+            <ul className="flex flex-col overflow-y-auto no-scrollbar" style={{ borderTop: '1px solid var(--color-border-subtle)' }}>
               {(
                 [
                   {
                     key: 'showProgramCard' as const,
-                    title: 'Program progress card',
-                    description: 'Show full phase and week details above the lean workout header card.',
+                    title: 'Program & phase card',
+                    description: 'Show the current phase summary and link to your Program.',
+                  },
+                  {
+                    key: 'showSessionCard' as const,
+                    title: 'Current session card',
+                    description: "Show today's workout title and completed sets progress bar.",
                   },
                   {
                     key: 'showRecoveryCard' as const,
@@ -1553,7 +1598,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
               ).map((item) => {
                 const enabled = workoutDisplay[item.key];
                 return (
-                  <li key={item.key} style={{ borderBottom: `${fig(2)} solid var(--color-border-subtle)` }}>
+                  <li key={item.key} style={{ borderBottom: '1px solid var(--color-border-subtle)' }}>
                     <button
                       type="button"
                       role="switch"
@@ -1562,28 +1607,27 @@ export const TrainTab: React.FC<TrainTabProps> = ({
                         triggerHaptic('light');
                         handleToggleWorkoutDisplay(item.key);
                       }}
-                      className="w-full text-left flex items-center justify-between"
-                      style={{ gap: fig(24), padding: `${fig(26)} 0`, minHeight: 44 }}
+                      className="w-full text-left flex items-center justify-between gap-3 py-3"
+                      style={{ minHeight: 44 }}
                     >
                       <span className="min-w-0">
-                        <span className="wk-title block">{item.title}</span>
-                        <span className="wk-caption block" style={{ marginTop: fig(6) }}>
+                        <span className="wk-subhead block">{item.title}</span>
+                        <span className="wk-caption block mt-1">
                           {item.description}
                         </span>
                       </span>
                       <span
-                        className="rounded-full flex items-center justify-center shrink-0"
+                        className="rounded-full flex items-center justify-center shrink-0 w-6 h-6"
                         style={{
-                          width: fig(52),
-                          height: fig(52),
                           background: enabled ? 'var(--wk-accent)' : 'transparent',
-                          border: enabled ? 'none' : `${fig(3)} solid var(--color-action-secondary-bg)`,
+                          border: enabled ? 'none' : '1.5px solid var(--color-border-strong)',
                         }}
                         aria-hidden="true"
                       >
                         {enabled && (
                           <Check
-                            style={{ width: fig(30), height: fig(30), color: 'var(--color-text-on-accent)' }}
+                            className="w-3.5 h-3.5"
+                            style={{ color: 'var(--color-text-on-accent)' }}
                             strokeWidth={3}
                           />
                         )}
@@ -1594,7 +1638,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
               })}
             </ul>
 
-            <div className="flex flex-col" style={{ gap: fig(14) }}>
+            <div className="flex flex-col gap-2">
               {!isDefaultWorkoutDisplay && (
                 <button
                   type="button"
@@ -1602,13 +1646,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
                     triggerHaptic('light');
                     handleResetWorkoutDisplay();
                   }}
-                  className="wk-button"
-                  style={{
-                    background: 'var(--color-action-secondary-bg)',
-                    color: 'var(--color-action-secondary-fg)',
-                    height: fig(96),
-                    minHeight: 44,
-                  }}
+                  className="wk-btn-secondary w-full"
                 >
                   Reset to defaults
                 </button>
@@ -1667,16 +1705,22 @@ export const TrainTab: React.FC<TrainTabProps> = ({
 
       {/* Past Workout Preview Modal */}
       {previewPastWorkout && (
-        <div role="dialog" aria-modal="true" aria-label="Last workout" className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md">
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Last workout"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-md"
+          style={{ background: 'var(--color-bg-scrim)' }}
+        >
           <div className="wk-card w-full max-w-sm shadow-2xl space-y-4">
             <div className="flex justify-between items-center">
               <h3 className="wk-h1">
-                Completed Workout ({previewPastWorkout.date})
+                Completed workout ({previewPastWorkout.date})
               </h3>
               <button
                 type="button"
                 onClick={() => setPreviewPastWorkout(null)}
-                className="wk-btn-secondary min-h-[36px] text-white"
+                className="wk-btn-secondary min-h-[44px]"
               >
                 Close
               </button>
@@ -1688,8 +1732,8 @@ export const TrainTab: React.FC<TrainTabProps> = ({
                   key={ex.id}
                   className="wk-raised"
                 >
-                  <div className="wk-title">{formatSentenceCase(ex.name)}</div>
-                  <div className="wk-caption tabular-numbers mt-1">
+                  <div className="wk-subhead">{formatSentenceCase(ex.name)}</div>
+                  <div className="wk-caption tabular-nums mt-1">
                     {ex.sets
                       .filter((s) => s.completed)
                       .map(

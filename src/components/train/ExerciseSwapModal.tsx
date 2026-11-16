@@ -125,24 +125,29 @@ export const ExerciseSwapModal: React.FC<ExerciseSwapModalProps> = ({
       role="dialog"
       aria-modal="true"
       aria-labelledby="change-exercise-title"
-      className="fixed inset-0 z-50 flex items-center justify-center p-[calc(38*var(--f))] bg-black/85 backdrop-blur-md"
+      className="wk fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-md"
+      style={{ background: 'var(--color-bg-scrim)' }}
     >
-      <div className="wk-card w-full max-w-sm shadow-2xl max-h-[85vh] overflow-y-auto space-y-[calc(38*var(--f))]">
+      <div className="wk-card w-full max-w-sm shadow-2xl max-h-[85vh] overflow-y-auto space-y-5">
         {/* Header */}
-        <div className="flex items-start justify-between">
-          <div className="flex items-center space-x-[calc(22*var(--f))]">
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex items-center gap-3">
             <div
-              className="w-9 h-9 rounded-[calc(30*var(--f))] flex items-center justify-center shrink-0"
-              style={{ background: 'var(--wk-raised)', color: 'var(--wk-accent)' }}
+              className="w-10 h-10 rounded-lg border flex items-center justify-center shrink-0"
+              style={{
+                background: 'var(--wk-raised)',
+                color: 'var(--color-text-primary)',
+                borderColor: 'var(--color-border-subtle)',
+              }}
             >
               <ArrowRightLeft className="w-4 h-4 stroke-[2]" />
             </div>
             <div>
               <h3 id="change-exercise-title" className="wk-h1">
-                Change Exercise
+                Change exercise
               </h3>
-              <p className="wk-caption mt-[calc(4*var(--f))]">
-                Alternatives for <strong className="text-white">{familyLabel}</strong> • Target weight carries over
+              <p className="wk-caption mt-1">
+                Alternatives for <strong style={{ color: 'var(--color-text-primary)' }}>{familyLabel}</strong> • Target weight carries over
               </p>
             </div>
           </div>
@@ -154,26 +159,30 @@ export const ExerciseSwapModal: React.FC<ExerciseSwapModalProps> = ({
               onClose();
             }}
             aria-label="Close change exercise dialog"
-            className="w-9 h-9 rounded-full flex items-center justify-center text-white/60 hover:text-white transition-colors shrink-0"
-            style={{ background: 'var(--wk-raised)' }}
+            className="w-11 h-11 min-h-[44px] min-w-[44px] rounded-full border flex items-center justify-center transition-colors shrink-0"
+            style={{
+              background: 'var(--wk-raised)',
+              borderColor: 'var(--color-border-strong)',
+              color: 'var(--color-text-secondary)',
+            }}
           >
             <X className="w-4 h-4 stroke-[2]" />
           </button>
         </div>
 
         {/* Currently Selected Exercise */}
-        <div className="wk-raised space-y-[calc(8*var(--f))]">
+        <div className="wk-raised space-y-1">
           <div className="flex items-center justify-between">
             <span className="wk-label" style={{ color: 'var(--wk-muted)' }}>
               Replacing
             </span>
-            <span className="wk-caption font-semibold" style={{ color: 'var(--wk-accent)' }}>
+            <span className="wk-caption font-semibold" style={{ color: 'var(--color-text-primary)' }}>
               {familyLabel}
             </span>
           </div>
-          <div className="flex justify-between items-center">
-            <span className="wk-title">{formatSentenceCase(currentExercise.name)}</span>
-            <span className="wk-title tabular-numbers">
+          <div className="flex justify-between items-center gap-2">
+            <span className="wk-subhead">{formatSentenceCase(currentExercise.name)}</span>
+            <span className="wk-subhead tabular-nums">
               {formatImplementWeightLabel(
                 currentWeight,
                 currentExercise.equipment,
@@ -188,7 +197,6 @@ export const ExerciseSwapModal: React.FC<ExerciseSwapModalProps> = ({
           role="group"
           aria-label="Filter replacement exercises by environment"
           className="wk-segments grid-cols-3"
-          style={{ background: 'var(--wk-raised)' }}
         >
           {(
             [
@@ -207,11 +215,7 @@ export const ExerciseSwapModal: React.FC<ExerciseSwapModalProps> = ({
                   triggerHaptic('light');
                   setSelectedLocation(loc.id);
                 }}
-                className="wk-segment px-[calc(8*var(--f))] text-center"
-                style={{
-                  background: isSelected ? 'var(--wk-pill)' : 'transparent',
-                  color: isSelected ? 'var(--color-text-primary)' : 'var(--wk-muted)',
-                }}
+                className={`wk-segment px-2 text-center ${isSelected ? 'is-active' : ''}`}
               >
                 <span>{loc.label}</span>
               </button>
@@ -220,10 +224,10 @@ export const ExerciseSwapModal: React.FC<ExerciseSwapModalProps> = ({
         </div>
 
         {/* Matched Alternatives */}
-        <div className="space-y-[calc(16*var(--f))]">
-          <div className="flex items-center justify-between px-[calc(4*var(--f))]">
+        <div className="space-y-2">
+          <div className="flex items-center justify-between px-1">
             <span className="wk-label">
-              Select Replacement Exercise
+              Select replacement exercise
             </span>
             <span className="wk-caption">
               {alternatives.length} {alternatives.length === 1 ? 'option' : 'options'}
@@ -231,8 +235,8 @@ export const ExerciseSwapModal: React.FC<ExerciseSwapModalProps> = ({
           </div>
 
           {alternatives.length === 0 ? (
-            <div className="wk-raised text-center space-y-[calc(8*var(--f))]">
-              <p className="wk-title">
+            <div className="wk-raised text-center space-y-1">
+              <p className="wk-subhead">
                 No {selectedLocation === 'travel' ? 'bodyweight' : selectedLocation === 'home' ? 'home' : 'gym'} exercises found
               </p>
               <p className="wk-caption">
@@ -255,14 +259,14 @@ export const ExerciseSwapModal: React.FC<ExerciseSwapModalProps> = ({
                   key={alt.id}
                   type="button"
                   onClick={() => handleSelectAlternative(alt)}
-                  className="wk-raised w-full text-left transition-all space-y-[calc(16*var(--f))] min-h-[44px] active:scale-[0.99]"
+                  className="wk-raised w-full text-left transition-all space-y-2 min-h-[44px] active:scale-[0.99]"
                 >
-                  <div className="flex items-start justify-between gap-[calc(16*var(--f))]">
+                  <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
-                      <div className="wk-title">
+                      <div className="wk-subhead">
                         {formatSentenceCase(alt.name)}
                       </div>
-                      <div className="wk-caption mt-[calc(4*var(--f))]">
+                      <div className="wk-caption mt-1">
                         {equipLabel} • {alt.defaultRepRange[0]}–{alt.defaultRepRange[1]} reps
                         {selectedLocation === 'travel' ? ' • Zero Equipment' : ''}
                       </div>
@@ -270,8 +274,8 @@ export const ExerciseSwapModal: React.FC<ExerciseSwapModalProps> = ({
 
                     <div className="text-right shrink-0">
                       <span
-                        className="wk-title tabular-numbers block"
-                        style={{ color: 'var(--wk-accent)' }}
+                        className="wk-subhead tabular-numbers block"
+                        style={{ color: 'var(--color-text-primary)' }}
                       >
                         {isPureBw
                           ? 'Bodyweight'
@@ -288,7 +292,7 @@ export const ExerciseSwapModal: React.FC<ExerciseSwapModalProps> = ({
                   </div>
 
                   {alt.whyItWorks && (
-                    <p className="wk-body pt-[calc(8*var(--f))]">
+                    <p className="wk-body pt-1 max-w-prose">
                       {alt.whyItWorks}
                     </p>
                   )}

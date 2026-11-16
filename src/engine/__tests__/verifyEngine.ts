@@ -937,7 +937,7 @@ assert(
     !exerciseCardSrc.includes('onSwitchImplement') &&
     !exerciseCardSrc.includes('Equipment:') &&
     (exerciseCardSrc.match(/Change exercise/gi) || []).length === 1 &&
-    swapModalSrc.includes('Change Exercise'),
+    swapModalSrc.includes('Change exercise'),
   `ExerciseCard has 1 single "Change Exercise" entry point and zero duplicate inline Equipment carousels`
 );
 
@@ -2191,23 +2191,25 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
     );
   }
 
-  // B. 4-Tier Typography Scale Invariant Verification
+  // B. 4-Size Shift Nudge Typography Scale Invariant Verification
   const typoComp = getDesignSystemComponentById('ds-typography-scale');
   assert(
     typoComp !== undefined &&
       typoComp.category === 'typography' &&
       typoComp.anatomy.typography.includes('text-xs') &&
-      typoComp.anatomy.typography.includes('text-sm') &&
       typoComp.anatomy.typography.includes('text-base') &&
-      typoComp.anatomy.typography.includes('text-xl'),
-    `Design system strictly codifies the 4-tier typography scale (text-xs, text-sm, text-base, text-xl)`
+      typoComp.anatomy.typography.includes('text-xl') &&
+      typoComp.anatomy.typography.includes('text-3xl') &&
+      !typoComp.anatomy.typography.includes('text-sm') &&
+      !typoComp.tailwindTokens.includes('text-sm'),
+    `Design system strictly codifies the 4-size Shift Nudge typography scale (text-xs 12px, text-base 16px, text-xl 20px, text-3xl 32px)`
   );
   assert(
-    Boolean(typoComp?.logic.rules.some((r) => r.includes('Maximum 4 distinct typography') || r.includes('4 distinct typography sizes'))),
+    Boolean(typoComp?.logic.rules.some((r) => r.includes('Maximum 4 distinct font sizes') || r.includes('4 distinct font sizes'))),
     `Typography component rules enforce strict maximum of 4 font sizes across app`
   );
   assert(
-    Boolean(typoComp?.logic.rules.some((r) => r.includes('12px') || r.includes('text-xs') && r.includes('floor'))),
+    Boolean(typoComp?.logic.rules.some((r) => r.includes('12px') && r.includes('floor'))),
     `Typography component rules enforce strict 12px minimum floor`
   );
 
@@ -2217,12 +2219,13 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
     primaryBtnComp !== undefined &&
       primaryBtnComp.tailwindTokens.includes('--color-action-primary-bg') &&
       primaryBtnComp.tailwindTokens.includes('--color-action-primary-fg') &&
-      primaryBtnComp.tailwindTokens.includes('min-h-[44px]'),
-    `Primary CTA button is codified with Whoop Slate semantic tokens (--color-action-primary-bg / --color-action-primary-fg) and min-h-[44px] touch target`
+      (primaryBtnComp.tailwindTokens.includes('min-h-[48px]') ||
+        primaryBtnComp.tailwindTokens.includes('min-h-[44px]')),
+    `Primary CTA button is codified with Treise Slate semantic tokens (--color-action-primary-bg / --color-action-primary-fg) and >=44px touch target`
   );
   assert(
     Boolean(primaryBtnComp?.logic.rules.some((r) => r.includes('--color-action-primary-bg'))),
-    `Primary CTA explicitly enforces codified Whoop Slate semantic action token`
+    `Primary CTA explicitly enforces codified Treise Slate semantic action token`
   );
 
   const setToggleComp = getDesignSystemComponentById('ds-set-toggle');
@@ -2288,9 +2291,63 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
   assert(
     spatialGridComp !== undefined &&
       spatialGridComp.category === 'layout' &&
-      Boolean(spatialGridComp?.logic.rules.some((r) => r.includes('base-8'))),
-    `Design system codifies Shift Nudge 8pt spatial grid and proximity hierarchy`
+      Boolean(spatialGridComp?.logic.rules.some((r) => r.includes('4px multiples'))),
+    `Design system codifies Shift Nudge 4px implicit spatial grid and proximity hierarchy`
   );
+
+  // H. AI Knowledge Graph Object Context, Tool Contracts & Multi-Gate Quality Filter
+  const aiOouxComp = getDesignSystemComponentById('ds-ai-ooux-context');
+  const aiToolComp = getDesignSystemComponentById('ds-ai-tool-grounding');
+  assert(
+    aiOouxComp !== undefined &&
+      aiOouxComp.category === 'layout' &&
+      aiOouxComp.logic.rules.some((r) => r.includes('ContextEnvelope') && r.includes('OOUX_OBJECT_SCHEMAS')) &&
+      aiOouxComp.logic.rules.some((r) => r.includes('deriveContraindicationEdges')),
+    'Design system codifies OOUX domain schemas, ContextEnvelope, and Knowledge Graph contraindication derivation'
+  );
+  assert(
+    aiToolComp !== undefined &&
+      aiToolComp.category === 'modal' &&
+      aiToolComp.logic.rules.some((r) => r.includes('reset_program') && r.includes('swap_exercise') && r.includes('adjust_workout_volume') && r.includes('save_athlete_memory')) &&
+      aiToolComp.logic.rules.some((r) => r.includes('buildSafetyResponse')) &&
+      aiToolComp.logic.rules.some((r) => r.includes('runReadAloudQaGate')),
+    'Design system codifies the 4 declared AI tools, safety circuit-breaker, and 5-surface quality gates'
+  );
+
+  {
+    const fsMod = require('fs');
+    const pathMod = require('path');
+    const dsHtmlPath = pathMod.join(process.cwd(), 'design-system.html');
+    const dsHtml = fsMod.readFileSync(dsHtmlPath, 'utf8') as string;
+    const requiredAiContextTokens = [
+      'id="ai-context"',
+      'OOUX Domain Objects',
+      'Core &amp; Physiological Graph',
+      'Athlete',
+      'Program',
+      'Workout',
+      'Exercise',
+      'Goal',
+      '3-Tier ContextEnvelope',
+      'serializeContextEnvelopeForPrompt',
+      'buildCoachSystemPrompt',
+      'reset_program',
+      'swap_exercise',
+      'adjust_workout_volume',
+      'save_athlete_memory',
+      'buildSafetyResponse',
+      'acceptCoachAnswer',
+      'checkExerciseNote',
+      'checkIdentityMessage',
+      'checkWorkoutSummary',
+      'checkGoalsSummary',
+    ];
+    const missingDsTokens = requiredAiContextTokens.filter((token) => !dsHtml.includes(token));
+    assert(
+      missingDsTokens.length === 0,
+      `Synced design-system.html renders complete Knowledge Graph & AI interaction context (missing: ${missingDsTokens.join(', ')})`
+    );
+  }
 
   // --- SUITE 26: MULTI-WEARABLE BIOMETRIC TELEMETRY (FITBIT, WHOOP, HEALTH CONNECT) ---
   console.log('\n--- SUITE 26: MULTI-WEARABLE BIOMETRIC TELEMETRY (FITBIT, WHOOP, HEALTH CONNECT) ---');
@@ -3648,7 +3705,7 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
       now: stripNow,
     });
     assert(
-      strip.length === 7 && strip[3].isToday && strip[3].label === 'SAT' && strip[2].status === 'trained' && strip[1].status === 'rest',
+      strip.length === 7 && strip[3].isToday && strip[3].label === 'Sat' && strip[2].status === 'trained' && strip[1].status === 'rest',
       'Day strip shows three days back, today in the middle, and three days ahead, marking the day trained'
     );
     const plannedAhead = strip.filter((d) => d.status === 'planned');
@@ -7150,8 +7207,15 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
         const stepSummary = ov3.buildGoalsSummary(stepsGoalsList, fmt3);
         const askStepsToday = await processAssistantMessage({ ...args, profile: withStepsGoal, biometrics: stepBio, userMessage: 'how many steps did i do today' });
         const removeStepsGoal = await say('remove my steps goal', withStepsGoal);
+        const weeklyStepMeasure = stepsGoalsList.find((g) => g.measure.type === 'frequency')!.measure;
+        const stepWeeklySentence =
+          weeklyStepMeasure.type === 'frequency' && weeklyStepMeasure.thisWeek >= weeklyStepMeasure.perWeek
+            ? `You've done all ${weeklyStepMeasure.perWeek} sessions this week.`
+            : weeklyStepMeasure.type === 'frequency'
+            ? `You've done ${weeklyStepMeasure.thisWeek} of ${weeklyStepMeasure.perWeek} sessions this week.`
+            : '';
         const stepSummaryProblem = ov3.checkGoalsSummary(
-          "You've done 3 of 4 sessions this week, with 1 to go. You have 8,500 of 10,000 steps today.",
+          `${stepWeeklySentence} You have 8,500 of 10,000 steps today.`,
           stepSummary
         ).problem;
         assert(
@@ -7202,10 +7266,10 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
         const offSystem: string[] = [];
         for (const rel of secondary) {
           const src = fsMod.readFileSync(pathMod.join(root, 'components', rel), 'utf-8');
-          const hits = src.match(/(?<=[\s"'`])(?:[a-z-]+:)*(?:text-(?:xs|sm|base|lg|xl|2xl|3xl)|(?:bg|text|border)-\[#[0-9A-Fa-f]{6}\]|rounded(?:-[tblr]{1,2})?-(?:lg|xl|2xl|3xl)|-?(?:p|px|py|pt|pb|pl|pr|m|mx|my|mt|mb|ml|mr|gap|gap-x|gap-y|space-x|space-y)-\d+(?:\.\d)?)(?=[\s"'`])/g) || [];
+          const hits = src.match(/(?<=[\s"'`])(?:[a-z-]+:)*(?:(?:bg|text|border|ring)-\[#[0-9A-Fa-f]{3,8}\]|text-(?:lg|3xl|4xl|\[\d+px\])|rounded(?:-[tblr]{1,2})?-(?:xs|sm|md)|-?(?:p|px|py|pt|pb|pl|pr|m|mx|my|mt|mb|ml|mr|gap|gap-x|gap-y|space-x|space-y)-\d*\.5)(?=[\s"'`])/g) || [];
           if (hits.length) offSystem.push(`${rel}: ${[...new Set(hits)].slice(0, 4).join(' ')}`);
         }
-        assert(offSystem.length === 0, `Secondary screens use the design system's sizes, colours, radii and spacing${offSystem.length ? ` (${offSystem.slice(0, 4).join(' | ')})` : ''}`);
+        assert(offSystem.length === 0, `Secondary screens conform to the 4px implicit grid, 4-size type scale, 4px radius ladder, and semantic color tokens${offSystem.length ? ` (${offSystem.slice(0, 4).join(' | ')})` : ''}`);
       }
 
       // A question never changes the plan, and the streak it quotes is the header's.
@@ -8594,7 +8658,7 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
       rhrShort1W.chartTone === 'biometric' &&
         rhrShort1W.typicalRange === undefined &&
         rhrShort1W.windowRange?.isDailyCalendar === true &&
-        rhrShort1W.windowRange?.label === 'NOV 7 - NOV 13, 26' &&
+        rhrShort1W.windowRange?.label === 'Nov 7 – Nov 13, 2026' &&
         rhrShort1W.windowRange?.canStepForward === false &&
         rhrShort1W.windowRange?.canStepBack === false &&
         rhrShort1W.headline?.eyebrow === 'AVERAGE' &&
@@ -8634,7 +8698,7 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
         rhrCurr.delta?.polarity === 'warning' &&
         rhrCurr.windowRange?.canStepBack === true &&
         rhrPrev.windowRange?.canStepForward === true &&
-        rhrPrev.windowRange?.label === 'OCT 31 - NOV 6, 26' &&
+        rhrPrev.windowRange?.label === 'Oct 31 – Nov 6, 2026' &&
         rhrPrev.points.length === 4,
       'Whoop RHR computes 28-day typicalRange (>= 7 points), warning polarity on RHR uptick, and clean prior-week stepping'
     );
@@ -8735,22 +8799,25 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
     const defaultDisplay = resolveWorkoutDisplaySettings(undefined);
     const customDisplay = resolveWorkoutDisplaySettings({
       showProgramCard: true,
+      showSessionCard: false,
       showExerciseCharts: false,
       showExerciseSummaries: false,
       showRecoveryCard: false,
     });
     assert(
       defaultDisplay.showProgramCard === false &&
+        defaultDisplay.showSessionCard === true &&
         defaultDisplay.showRecoveryCard === true &&
         defaultDisplay.showExerciseSummaries === true &&
         defaultDisplay.showExerciseCharts === true &&
         defaultDisplay.showStepsCard === true &&
         customDisplay.showProgramCard === true &&
+        customDisplay.showSessionCard === false &&
         customDisplay.showRecoveryCard === false &&
         customDisplay.showExerciseSummaries === false &&
         customDisplay.showExerciseCharts === false &&
         customDisplay.showStepsCard === true,
-      'Workout page display settings default to showProgramCard: false (lean header card default) and respect personal widget toggles'
+      'Workout page display settings default to showSessionCard: true and showProgramCard: false, and respect independent toggles'
     );
 
     const trainTabSrc = fsMod.readFileSync(pathMod.join(repoRoot, 'src/components/train/TrainTab.tsx'), 'utf8') as string;
@@ -8759,15 +8826,27 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
     const exCardSrc = fsMod.readFileSync(pathMod.join(repoRoot, 'src/components/train/ExerciseCard.tsx'), 'utf8') as string;
     const idxCssSrc = fsMod.readFileSync(pathMod.join(repoRoot, 'src/index.css'), 'utf8') as string;
     assert(
-      trainTabSrc.includes('lean={!workoutDisplay.showProgramCard}') &&
+      trainTabSrc.includes('workoutDisplay.showProgramCard && (') &&
+        trainTabSrc.includes('workoutDisplay.showSessionCard && (') &&
+        trainTabSrc.includes('<ProgramProgressCard') &&
+        trainTabSrc.includes('<CurrentSessionCard') &&
+        trainTabSrc.includes('onOpen={onOpenProgram}') &&
+        trainTabSrc.includes("key: 'showProgramCard'") &&
+        trainTabSrc.includes("key: 'showSessionCard'") &&
         trainTabSrc.includes('current: sessionSetsCurrent') &&
         trainTabSrc.includes('total: sessionSetsTotal') &&
+        !trainTabSrc.includes("? 'Next' : 'Today'") &&
+        !trainTabSrc.includes("'Today: ") &&
+        !trainTabSrc.includes('Today: ${') &&
         trainTabSrc.includes('workoutDisplay.showRecoveryCard && hasRecoveryMechanism') &&
         trainTabSrc.includes('isNonTrainingView') &&
         trainTabSrc.includes('showActiveExercises') &&
         trainTabSrc.includes('<ActiveDayCard') &&
+        progCardSrc.includes('export const ProgramProgressCard') &&
+        progCardSrc.includes('export const CurrentSessionCard') &&
+        progCardSrc.includes('aria-label={`Open program (${formattedTitle})`}') &&
         progCardSrc.includes('Workout sets completed'),
-      'Workout page renders lean session card + sticky header with workout set count by default, gates RecoveryScoreCard on wearable connection, and hides exercises on non-training days in favor of steps and activities'
+      'Workout page separates ProgramProgressCard (phase + description + arrow link to Program) and CurrentSessionCard (workout title + sets bar), gates both in Workout options, gates RecoveryScoreCard on wearable connection, and hides workout cards on non-training days'
     );
     assert(
       /\.wk-input\s*\{[\s\S]*?min-height:\s*48px;/.test(idxCssSrc) &&
@@ -8781,15 +8860,17 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
     );
 
     assert(
-      resolveVar(rawVars['--color-bg-canvas']).toUpperCase() === '#13181C' &&
+      !rawVars['--palette-slate-720'] &&
+        Boolean(resolveVar(rawVars['--color-border-accent'])) &&
+        resolveVar(rawVars['--color-bg-canvas']).toUpperCase() === '#13181C' &&
         resolveVar(rawVars['--color-bg-surface']).toUpperCase() === '#2C3034' &&
         resolveVar(rawVars['--color-bg-surface-raised']).toUpperCase() === '#3B4044' &&
-        resolveVar(rawVars['--color-bg-surface-control']).toUpperCase() === '#474D50' &&
+        resolveVar(rawVars['--color-bg-surface-control']).toUpperCase() === '#3B4044' &&
         resolveVar(rawVars['--color-action-primary-bg']).toUpperCase() === '#FFFFFF' &&
-        resolveVar(rawVars['--color-action-secondary-bg']).toUpperCase() === '#44494C' &&
+        resolveVar(rawVars['--color-action-secondary-bg']).toUpperCase() === '#4B5156' &&
         resolveVar(rawVars['--color-accent-primary']).toUpperCase() === '#00F19F' &&
         resolveVar(rawVars['--color-data-telemetry']).toUpperCase() === '#8FD3FF',
-      'Whoop Slate Tier-2 canonical canvas/surface/action/accent/telemetry hex values locked in tokens.css'
+      'Treise Slate Tier-2 canonical canvas/surface/action/accent/telemetry hex values and --color-border-accent locked in tokens.css'
     );
 
     const textSurfacePairs: [string, string][] = [
@@ -8799,19 +8880,22 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
       ['--color-text-primary', '--color-bg-surface-control'],
       ['--color-text-secondary', '--color-bg-surface'],
       ['--color-text-secondary', '--color-bg-surface-raised'],
+      ['--color-text-secondary', '--color-action-secondary-bg'],
       ['--color-text-muted', '--color-bg-canvas'],
       ['--color-text-muted', '--color-bg-surface'],
-      ['--color-text-subtle', '--color-bg-surface'],
+      ['--color-text-muted', '--color-bg-surface-control'],
       ['--color-action-primary-fg', '--color-action-primary-bg'],
       ['--color-action-secondary-fg', '--color-action-secondary-bg'],
       ['--color-action-destructive-fg', '--color-action-destructive-bg'],
-      ['--color-action-disabled-fg', '--color-action-disabled-bg'],
+      ['--color-status-positive', '--color-bg-canvas'],
       ['--color-status-positive', '--color-bg-surface'],
       ['--color-status-warning', '--color-bg-surface'],
       ['--color-status-danger', '--color-bg-surface'],
       ['--color-status-danger', '--color-bg-surface-raised'],
+      ['--color-status-info', '--color-bg-canvas'],
       ['--color-status-info', '--color-bg-surface'],
       ['--color-status-neutral', '--color-bg-surface'],
+      ['--color-status-neutral', '--color-bg-surface-control'],
       ['--color-set-failure-fg', '--color-set-failure-bg'],
     ];
 
@@ -8822,6 +8906,46 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
         `WCAG 2.1 AA text/CTA contrast (${fg} on ${bg} = ${ratio.toFixed(2)}:1 >= 4.5:1)`
       );
     }
+
+    const disabledCardBg = compositeOver(rawVars['--color-action-disabled-bg'], '#2C3034');
+    const disabledCardFg = compositeOver(
+      rawVars['--color-action-disabled-fg'],
+      `rgb(${disabledCardBg[0]}, ${disabledCardBg[1]}, ${disabledCardBg[2]})`
+    );
+    const lDis1 = relLuminance(disabledCardFg);
+    const lDis2 = relLuminance(disabledCardBg);
+    const disabledOnCardRatio = (Math.max(lDis1, lDis2) + 0.05) / (Math.min(lDis1, lDis2) + 0.05);
+    const secondaryActionRatio = contrastRatio('--color-action-secondary-fg', '--color-action-secondary-bg');
+    assert(
+      disabledOnCardRatio >= 3.0 && disabledOnCardRatio < 4.5 && secondaryActionRatio >= 7.5,
+      `Disabled controls stay cleanly subordinate (${disabledOnCardRatio.toFixed(2)}:1 on card >= 3.0 & < 4.5 WCAG 1.4.3 exempt) while active secondary CTAs stay crisp (${secondaryActionRatio.toFixed(2)}:1 >= 7.5:1)`
+    );
+
+    // Semantic purity gate: Info Blue (#8FD3FF) strictly telemetry, Header streak flame not Amber, SetRow pending polarity >= 1.9x delta
+    const headerSrc = fsMod.readFileSync(pathMod.join(repoRoot, 'src/components/common/Header.tsx'), 'utf8') as string;
+    const finishSrc = fsMod.readFileSync(pathMod.join(repoRoot, 'src/components/train/WorkoutFinishScreen.tsx'), 'utf8') as string;
+    const muscleCardSrc = fsMod.readFileSync(pathMod.join(repoRoot, 'src/components/analytics/MuscleProgressCard.tsx'), 'utf8') as string;
+    const goalScreenSrc = fsMod.readFileSync(pathMod.join(repoRoot, 'src/components/analytics/GoalDetailScreen.tsx'), 'utf8') as string;
+    const planViewSrc = fsMod.readFileSync(pathMod.join(repoRoot, 'src/components/program/ProgramPlanView.tsx'), 'utf8') as string;
+    const importProgSrc = fsMod.readFileSync(pathMod.join(repoRoot, 'src/components/program/ImportProgramModal.tsx'), 'utf8') as string;
+    const activeDaySrc = fsMod.readFileSync(pathMod.join(repoRoot, 'src/components/train/ActiveDayCard.tsx'), 'utf8') as string;
+    const onbIllusSrc = fsMod.readFileSync(pathMod.join(repoRoot, 'src/components/onboarding/OnboardingIllustrations.tsx'), 'utf8') as string;
+    const sparklineSrc = fsMod.readFileSync(pathMod.join(repoRoot, 'src/components/analytics/ProgressOverviewCards.tsx'), 'utf8') as string;
+    assert(
+      !headerSrc.includes('--color-status-warning') &&
+        !finishSrc.includes('--color-status-info') &&
+        !muscleCardSrc.includes('--color-status-info') &&
+        !goalScreenSrc.includes('--color-status-info') &&
+        !planViewSrc.includes('--color-status-info') &&
+        !planViewSrc.includes('143, 211, 255') &&
+        !importProgSrc.includes('--color-status-info') &&
+        !activeDaySrc.includes('--color-status-info') &&
+        !onbIllusSrc.includes('stopColor="var(--color-status-info)"') &&
+        !sparklineSrc.includes('--color-status-info') &&
+        setRowSrc.includes("set.completed ? 'var(--color-text-primary)' : 'var(--color-text-muted)'") &&
+        setRowSrc.includes("set.completed ? 'var(--color-text-on-accent)' : 'var(--color-text-secondary)'"),
+      'Semantic color purity enforced: no Info Blue in progress/plan/onboarding/finish cards, Header streak flame avoids Caution Amber, and SetRow separates pending vs completed digits'
+    );
 
     const walkFiles = (dir: string, exts: string[], ignoreDirs: string[] = []): string[] => {
       const out: string[] = [];
@@ -8874,14 +8998,14 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
       `Shell/HTML/manifest/asset scripts have 0 legacy Obsidian #060709 literals (found in: ${obsidianShellHits.join(', ')})`
     );
 
-    // .wk-pill is strictly reserved for non-interactive informational badges (e.g. WHOOP, A1) and never used on <button> elements.
+    // .wk-pill is strictly reserved for non-interactive informational badges (e.g. WATCH, A1) and never used on <button> elements.
     const indexCss = fsMod.readFileSync(pathMod.join(repoRoot, 'src/index.css'), 'utf8') as string;
     assert(
       indexCss.includes('--wk-pill: var(--color-bg-surface-control);') &&
-        /\.wk-pill\s*\{[\s\S]*?background:\s*var\(--wk-pill\);[\s\S]*?border-radius:\s*calc\(8\s*\*\s*var\(--f\)\);/.test(indexCss) &&
-        /\.wk-btn-secondary\s*\{[\s\S]*?background:\s*var\(--color-action-secondary-bg\);/.test(indexCss) &&
+        /\.wk-pill\s*\{[^}]*?background:\s*var\(--wk-pill\);[^}]*?border-radius:\s*var\(--radius-inset\);/.test(indexCss) &&
+        /\.wk-btn-secondary\s*\{[^}]*?background:\s*var\(--color-action-secondary-bg\);[^}]*?border-radius:\s*var\(--radius-control\);[^}]*?min-height:\s*44px;/.test(indexCss) &&
         !indexCss.includes('button.wk-pill'),
-      '.wk-pill uses --color-bg-surface-control (#474D50) and calc(8 * var(--f)) radius while .wk-btn-secondary handles compact secondary buttons'
+      '.wk-pill uses --color-bg-surface-control and var(--radius-inset) (8px) while .wk-btn-secondary handles compact bordered 44px secondary buttons'
     );
 
     const componentFiles = walkFiles(pathMod.join(repoRoot, 'src/components'), ['.tsx']);
@@ -8907,25 +9031,33 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
       'TREISE_DESIGN_SYSTEM (ds-badge-status) explicitly codifies that .wk-pill is reserved for informational badges and never used on buttons'
     );
 
-    // 4-Role Inter Typography System verification:
-    // - Only Inter (400, 500, 600) is loaded; JetBrains Mono and weights 700/800/900 are removed.
-    // - 4 fixed roles: label (12px/600 uppercase +0.04em tracking; 13px/500 Workout caption floor), body (14px/400), title (16px/600 sentence case), number (20px/600 tabular-nums).
+    // Apple HIG × Shift Nudge 4-size × 4-weight × 3-ink Typography System verification:
+    // - Inter (400, 500, 600, 700) is loaded; JetBrains Mono and weights 800/900 are banned; 700 is reserved strictly for 32px Tier 4 (.wk-page-title & .wk-display).
     const indexHtmlSrc = fsMod.readFileSync(pathMod.join(repoRoot, 'index.html'), 'utf8') as string;
     const tailwindCfgSrc = fsMod.readFileSync(pathMod.join(repoRoot, 'tailwind.config.js'), 'utf8') as string;
     assert(
-      indexHtmlSrc.includes('Inter:wght@400;500;600') &&
+      indexHtmlSrc.includes('Inter:wght@400;500;600;700') &&
         !indexHtmlSrc.includes('JetBrains') &&
         !tailwindCfgSrc.includes('JetBrains'),
-      'Inter (400, 500, 600) is the sole font family in index.html and tailwind.config.js; JetBrains Mono is deleted'
+      'Inter (400, 500, 600, 700) is the sole font family in index.html and tailwind.config.js; JetBrains Mono is deleted'
     );
 
-    const heavyWeightHits = componentFiles.filter((file) => {
+    const componentHeavyHits = componentFiles.filter((file) => {
       const src = fsMod.readFileSync(file, 'utf8') as string;
       return /\bfont-(?:bold|extrabold|black)\b|fontWeight:\s*[789]00/.test(src);
     });
+    const indexCssNoComments = indexCss.replace(/\/\*[\s\S]*?\*\//g, '');
+    const css700Selectors = Array.from(
+      indexCssNoComments.matchAll(/([^{}]+)\{[^}]*font-weight:\s*700;[^}]*\}/g),
+      (m) => m[1].trim()
+    );
+    const bannedCssHeavy = /font-weight:\s*[89]00/.test(indexCss);
     assert(
-      heavyWeightHits.length === 0 && !/font-weight:\s*[789]00/.test(indexCss),
-      `Zero 700/800/900 font weights remain in src/index.css or src/components (found in: ${heavyWeightHits.map((f) => pathMod.relative(repoRoot, f)).join(', ')})`
+      componentHeavyHits.length === 0 &&
+        !bannedCssHeavy &&
+        css700Selectors.length === 2 &&
+        css700Selectors.every((s) => s === '.wk-page-title' || s === '.wk-display'),
+      `Weight 700 is reserved strictly for 32px Tier 4 (.wk-page-title & .wk-display) with zero 800/900 anywhere and zero font-bold in components (got css700=[${css700Selectors.join(', ')}], componentHits=[${componentHeavyHits.map((f) => pathMod.relative(repoRoot, f)).join(', ')}])`
     );
 
     const { formatSentenceCase } = await import('../../utils/typography');
@@ -8938,13 +9070,126 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
     );
 
     assert(
-      /\.wk-title,\s*\.wk-h1\s*\{[\s\S]*?font-size:\s*max\(16px,\s*calc\(36\s*\*\s*var\(--f\)\)\);[\s\S]*?font-weight:\s*600;[\s\S]*?text-transform:\s*none;/.test(indexCss) &&
-        /\.wk-body\s*\{[\s\S]*?font-size:\s*max\(14px,\s*calc\(30\s*\*\s*var\(--f\)\)\);[\s\S]*?font-weight:\s*400;/.test(indexCss) &&
-        /\.wk-label\s*\{[\s\S]*?font-size:\s*max\(12px,\s*calc\(24\s*\*\s*var\(--f\)\)\);[\s\S]*?font-weight:\s*600;[\s\S]*?text-transform:\s*uppercase;[\s\S]*?letter-spacing:\s*0\.04em;/.test(indexCss) &&
-        /\.wk-workout-caption\s*\{[\s\S]*?font-size:\s*max\(13px,\s*calc\(28\s*\*\s*var\(--f\)\)\);[\s\S]*?font-weight:\s*500;/.test(indexCss) &&
-        /\.wk-number\s*\{[\s\S]*?font-size:\s*max\(20px,\s*calc\(44\s*\*\s*var\(--f\)\)\);[\s\S]*?font-weight:\s*600;[\s\S]*?font-variant-numeric:\s*tabular-nums;/.test(indexCss) &&
-        /\.wk-input\s*\{[\s\S]*?font-size:\s*max\(20px,\s*calc\(44\s*\*\s*var\(--f\)\)\);[\s\S]*?font-weight:\s*600;[\s\S]*?font-variant-numeric:\s*tabular-nums;/.test(indexCss),
-      'src/index.css enforces the 4 fixed typography roles: label (12px/600 uppercase +0.04em, 13px/500 Workout caption floor), body (14px/400), title (16px/600 sentence case), and number (20px/600 tabular-nums)'
+      /\.wk-display\s*\{[^}]*?font-size:\s*32px;[^}]*?line-height:\s*36px;[^}]*?font-weight:\s*700;[^}]*?letter-spacing:\s*-0\.03em;[^}]*?font-variant-numeric:\s*tabular-nums;/.test(indexCss) &&
+        /\.wk-page-title\s*\{[^}]*?font-size:\s*32px;[^}]*?line-height:\s*36px;[^}]*?font-weight:\s*700;[^}]*?letter-spacing:\s*-0\.03em;[^}]*?text-align:\s*left;/.test(indexCss) &&
+        /\.wk-nav-title\s*\{[^}]*?font-size:\s*20px;[^}]*?line-height:\s*24px;[^}]*?font-weight:\s*600;[^}]*?letter-spacing:\s*-0\.02em;[^}]*?text-align:\s*center;/.test(indexCss) &&
+        /\.wk-title,\s*\.wk-h1\s*\{[^}]*?font-size:\s*20px;[^}]*?line-height:\s*24px;[^}]*?font-weight:\s*600;[^}]*?text-transform:\s*none;[^}]*?color:\s*var\(--color-text-primary\);/.test(indexCss) &&
+        /\.wk-subhead\s*\{[^}]*?font-size:\s*16px;[^}]*?line-height:\s*24px;[^}]*?font-weight:\s*500;[^}]*?color:\s*var\(--color-text-primary\);/.test(indexCss) &&
+        /\.wk-body\s*\{[^}]*?font-size:\s*16px;[^}]*?line-height:\s*24px;[^}]*?font-weight:\s*400;[^}]*?max-width:\s*65ch;/.test(indexCss) &&
+        /\.wk-label\s*\{[^}]*?font-size:\s*12px;[^}]*?line-height:\s*16px;[^}]*?font-weight:\s*500;[^}]*?text-transform:\s*uppercase;[^}]*?letter-spacing:\s*0\.06em;[^}]*?color:\s*var\(--color-text-muted\);/.test(indexCss) &&
+        /\.wk-meta-title\s*\{[^}]*?font-size:\s*12px;[^}]*?line-height:\s*16px;[^}]*?font-weight:\s*500;[^}]*?text-transform:\s*none;[^}]*?color:\s*var\(--color-text-secondary\);/.test(indexCss) &&
+        /\.wk-caption\s*\{[^}]*?font-size:\s*12px;[^}]*?line-height:\s*16px;[^}]*?font-weight:\s*400;/.test(indexCss) &&
+        /\.wk-pill\s*\{[^}]*?font-size:\s*12px;[^}]*?line-height:\s*16px;[^}]*?font-weight:\s*500;[^}]*?text-transform:\s*none;/.test(indexCss) &&
+        /\.wk-btn-secondary\s*\{[^}]*?font-size:\s*16px;[^}]*?line-height:\s*20px;[^}]*?font-weight:\s*500;/.test(indexCss) &&
+        /\.wk-segment\s*\{[^}]*?font-size:\s*12px;[^}]*?line-height:\s*16px;[^}]*?font-weight:\s*400;/.test(indexCss) &&
+        /\.wk-segment\[aria-pressed='true'\]\s*\{[^}]*?font-weight:\s*500;/.test(indexCss) &&
+        /\.wk-number\s*\{[^}]*?font-size:\s*20px;[^}]*?line-height:\s*24px;[^}]*?font-weight:\s*600;[^}]*?font-variant-numeric:\s*tabular-nums;/.test(indexCss) &&
+        /\.wk-input\s*\{[^}]*?font-size:\s*20px;[^}]*?line-height:\s*24px;[^}]*?font-weight:\s*600;[^}]*?font-variant-numeric:\s*tabular-nums;/.test(indexCss) &&
+        !indexCss.includes('.wk-workout-caption'),
+      'src/index.css enforces the 4-size × 4-weight × 3-ink Apple HIG Shift Nudge typography scale'
+    );
+
+    const chartCardTypographySrc = fsMod.readFileSync(
+      pathMod.join(repoRoot, 'src/components/analytics/ProgressChartCard.tsx'),
+      'utf8'
+    ) as string;
+    const trendChartTypoSrc = fsMod.readFileSync(
+      pathMod.join(repoRoot, 'src/components/common/TrendChart.tsx'),
+      'utf8'
+    ) as string;
+    const overviewCardsSrc = fsMod.readFileSync(
+      pathMod.join(repoRoot, 'src/components/analytics/ProgressOverviewCards.tsx'),
+      'utf8'
+    ) as string;
+    const analyticsTabSrc = fsMod.readFileSync(
+      pathMod.join(repoRoot, 'src/components/analytics/AnalyticsTab.tsx'),
+      'utf8'
+    ) as string;
+    const cardArchComp = getDesignSystemComponentById('ds-card-archetypes');
+    const dimmedCardHeaderHits = componentFiles.filter((file) => {
+      const src = fsMod.readFileSync(file, 'utf8') as string;
+      return /<h[123][^>]*className="[^"]*wk-(?:h1|title)[^"]*"[^>]*color:\s*'var\(--(?:color-text-secondary|wk-muted)\)'/.test(src);
+    });
+    assert(
+      dimmedCardHeaderHits.length === 0 &&
+        chartCardTypographySrc.indexOf('<TrendChart') < chartCardTypographySrc.indexOf('{visibleChart.summary}') &&
+        chartCardTypographySrc.includes('className="wk-caption"') &&
+        chartCardTypographySrc.includes('className="wk-meta-title whitespace-nowrap tabular-nums"') &&
+        !trendChartTypoSrc.includes('color: accentColor,') &&
+        overviewCardsSrc.includes('wk-meta-title text-center mt-3') &&
+        overviewCardsSrc.includes('sentenceLabels') &&
+        overviewCardsSrc.includes('<h1 className="wk-nav-title">') &&
+        analyticsTabSrc.includes('sentenceLabels') &&
+        Boolean(cardArchComp && cardArchComp.logic.rules.length >= 4),
+      `Card & case typography hierarchy enforced: zero dimmed card headers (${dimmedCardHeaderHits.length}), subdued unit + sentence-case date stepper, goal rings & Trophy lifts avoid wk-label uppercase shouting, and ds-card-archetypes is codified`
+    );
+
+    const dsFiles = walkFiles(pathMod.join(repoRoot, 'src/designSystem'), ['.ts', '.tsx']);
+    // Ensure zero off-scale Tailwind classes (text-sm, text-lg, text-2xl, etc.) or off-scale inline fontSize values slip into src/components or src/designSystem
+    const offScaleHits: string[] = [];
+    const allowedInlineSizes = new Set([12, 16, 20, 32]);
+    for (const file of [...componentFiles, ...dsFiles]) {
+      const src = fsMod.readFileSync(file, 'utf8') as string;
+      if (/\btext-(?:sm|lg|2xl|[4-9]xl)\b|text-\[\d+px\]/.test(src) || src.includes('wk-workout-caption')) {
+        offScaleHits.push(pathMod.relative(repoRoot, file));
+      }
+      for (const match of src.matchAll(/\bfontSize:\s*(\d+(?:\.\d+)?)\b/g)) {
+        const px = Number(match[1]);
+        if (!allowedInlineSizes.has(px)) {
+          offScaleHits.push(`${pathMod.relative(repoRoot, file)} (fontSize: ${px})`);
+        }
+      }
+    }
+    assert(
+      offScaleHits.length === 0,
+      `All components and designSystem strictly adhere to the 4 font sizes (12/16/20/32px) with zero off-scale classes or inline fontSize values (violations: ${offScaleHits.join(', ')})`
+    );
+
+    // 4px Spatial Grid & Pruned Token Hygiene: zero var(--f), fig(), or deprecated tokens remain.
+    const legacyPatterns =
+      /\bfig\(|var\(--f\)|--color-(?:phase|partner|viz|recovery|plate)-|--color-bg-(?:canvas-top|surface-subtle)|--color-text-subtle|--color-status-warning-strong|--color-set-completed-soft|--color-accent-primary-soft|--color-coach-(?:border|glow|ink|sparkle|surface-bright)/;
+    const legacyHits: string[] = [];
+    if (legacyPatterns.test(indexCss)) {
+      legacyHits.push('src/index.css');
+    }
+    for (const file of [...componentFiles, ...dsFiles]) {
+      const src = fsMod.readFileSync(file, 'utf8') as string;
+      if (legacyPatterns.test(src)) {
+        legacyHits.push(pathMod.relative(repoRoot, file));
+      }
+    }
+    assert(
+      legacyHits.length === 0,
+      `Zero var(--f), fig(), or pruned legacy tokens remain in src/index.css, src/components, or src/designSystem (found in: ${legacyHits.join(', ')})`
+    );
+
+    const rawSurfaceUtilityPattern = /\b(?:text-white(?:\/\d+)?|bg-black\/\d+|border-white\/\[?[0-9.]+\]?|bg-white\/\[?[0-9.]+\]?)\b/;
+    const halfStepSpacePattern = /\b(?:gap|p|px|py|pt|pb|pl|pr|m|mt|mb|ml|mr|mx|my)-\d+\.5\b/;
+    const sub44MinHeightPattern = /\bmin-h-\[(?:[123]\d|\d)px\]/;
+    const componentHygieneViolations: string[] = [];
+    for (const file of componentFiles) {
+      const src = fsMod.readFileSync(file, 'utf8') as string;
+      const rel = pathMod.relative(repoRoot, file);
+      if (rawSurfaceUtilityPattern.test(src)) componentHygieneViolations.push(`${rel} (raw text-white/bg-black/border-white/bg-white)`);
+      if (halfStepSpacePattern.test(src)) componentHygieneViolations.push(`${rel} (half-step spacing)`);
+      if (sub44MinHeightPattern.test(src)) componentHygieneViolations.push(`${rel} (sub-44px min-height)`);
+    }
+    assert(
+      componentHygieneViolations.length === 0,
+      `All components use semantic surface/ink tokens, 4px grid spacing, and >= 44px touch targets (violations: ${componentHygieneViolations.join(', ')})`
+    );
+
+    const opaqueOverlayFiles = [
+      'src/components/onboarding/OnboardingModal.tsx',
+      'src/components/auth/GoogleAuthModal.tsx',
+      'src/components/train/WorkoutFinishScreen.tsx',
+    ];
+    const translucentOverlayHits = opaqueOverlayFiles.filter(
+      (rel) => !fsMod.readFileSync(pathMod.join(repoRoot, rel), 'utf8').includes("backgroundColor: 'var(--color-bg-canvas)'")
+    );
+    assert(
+      translucentOverlayHits.length === 0,
+      `Full-screen overlays keep opaque var(--color-bg-canvas) backing beneath top gradients (missing in: ${translucentOverlayHits.join(', ')})`
     );
   }
 
@@ -9383,7 +9628,7 @@ Exercise,,Date,Workout,Sets,Reps,Tempo,Rest,Notes,Set 1,Set 2,Set 3,Set 4
         modalSrc.includes('env(safe-area-inset-top, 0px)') &&
         modalSrc.includes('env(safe-area-inset-bottom, 0px)') &&
         modalSrc.includes('enterKeyHint="send"') &&
-        modalSrc.includes('max(16px,') &&
+        (modalSrc.includes("fontSize: '16px'") || modalSrc.includes('text-base')) &&
         modalSrc.includes("maxWidth: '82%'") &&
         modalSrc.includes('wk-typing-dot') &&
         modalSrc.includes('showNewMsgPill') &&
@@ -10414,6 +10659,110 @@ Exercise,,Date,Workout,Sets,Reps,Tempo,Rest,Notes,Set 1,Set 2,Set 3,Set 4
       sideDiffs.length === 1 && sideDiffs[0].lastLoggedOn === '2026-11-10',
       'buildSideDifferences preserves plain YYYY-MM-DD date strings without UTC midnight timezone shift'
     );
+
+    // D. Phone Gemini routing, pre-warming, and Chrome stub fallback
+    const onDev52 = await import('../../services/onDeviceModel');
+    const flash52 = await import('../../services/geminiFlashLite');
+    const savedWin52D = (globalThis as any).window;
+    const savedFetch52D = globalThis.fetch;
+    const savedLm52D = (globalThis as any).LanguageModel;
+    (globalThis as any).window = globalThis;
+    try {
+      delete (globalThis as any).LanguageModel;
+      onDev52.resetOnDeviceModelHealth();
+      let warmed = 0;
+      onDev52.registerFallbackOnDeviceModel({
+        isReady: async () => {
+          warmed += 1;
+          return true;
+        },
+        prompt: flash52.promptFlashLite,
+        forgetLast: flash52.forgetLastFlashLiteExchange,
+        resetConversation: flash52.resetFlashLiteConversation,
+      });
+      await onDev52.warmUpOnDeviceModel();
+      assert(warmed === 1, 'warmUpOnDeviceModel pre-warms Flash-Lite fallback readiness on phones without Chrome LanguageModel');
+
+      let routedCalls = 0;
+      flash52.resetFlashLiteState();
+      onDev52.registerFallbackOnDeviceModel({
+        isReady: flash52.isFlashLiteReady,
+        prompt: flash52.promptFlashLite,
+        forgetLast: flash52.forgetLastFlashLiteExchange,
+        resetConversation: flash52.resetFlashLiteConversation,
+      });
+      globalThis.fetch = (async (_url: string, init?: RequestInit) => {
+        if (!init?.method || init.method === 'GET') {
+          return new Response(JSON.stringify({ configured: true }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        routedCalls += 1;
+        return new Response(
+          JSON.stringify({
+            text: 'Prioritise your main compound lifts early in the session and aim for calm consistency each week.',
+            model: 'gemini-3.5-flash-lite',
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } }
+        );
+      }) as typeof fetch;
+
+      for (const openPrompt of [
+        'What should I focus on to keep improving when work gets hectic?',
+        'Give me tips to stay motivated and get better sleep this month',
+        'How should I train to get back on track after travel?',
+      ]) {
+        const resOpen = await ask52({
+          userMessage: openPrompt,
+          profile: lbProfile,
+          activeWorkout: lbActive,
+          workouts: s52Workouts,
+          biometrics: s52Biometrics,
+          exerciseCatalog: SEED_EXERCISES,
+          bodyweightEmaKg: 84,
+          readinessState: 'Normal',
+        });
+        assert(
+          resOpen.message.text.includes('Prioritise your main compound lifts'),
+          `Open coaching prompt routes to Gemini instead of static trap ("${openPrompt}")`
+        );
+      }
+      assert(routedCalls === 3, `All 3 situational/advice prompts called Gemini Flash-Lite (got ${routedCalls})`);
+
+      // Broken/echoing Chrome LanguageModel on Android falls back to Gemini Flash-Lite instead of failing to canned rules
+      onDev52.resetOnDeviceModelHealth();
+      (globalThis as any).LanguageModel = {
+        availability: async () => 'available',
+        create: async () => ({
+          prompt: async () => 'On-device model is not available, just echoing back the input.',
+          destroy: () => undefined,
+        }),
+      };
+      const fallbackFromStub = await ask52({
+        userMessage: 'How do I keep a calm pace across long sessions?',
+        profile: lbProfile,
+        activeWorkout: lbActive,
+        workouts: s52Workouts,
+        biometrics: s52Biometrics,
+        exerciseCatalog: SEED_EXERCISES,
+        bodyweightEmaKg: 84,
+        readinessState: 'Normal',
+      });
+      assert(
+        fallbackFromStub.message.text.includes('Prioritise your main compound lifts') && routedCalls === 4,
+        'Unusable Chrome LanguageModel falls back cleanly to Gemini Flash-Lite (/api/coach/generate)'
+      );
+    } finally {
+      onDev52.registerFallbackOnDeviceModel(null);
+      onDev52.resetOnDeviceModelHealth();
+      flash52.resetFlashLiteState();
+      globalThis.fetch = savedFetch52D;
+      if (savedLm52D === undefined) delete (globalThis as any).LanguageModel;
+      else (globalThis as any).LanguageModel = savedLm52D;
+      if (savedWin52D === undefined) delete (globalThis as any).window;
+      else (globalThis as any).window = savedWin52D;
+    }
   }
 
   console.log('\nALL 52 ENGINE, GOVERNANCE, DESIGN SYSTEM, TYPOGRAPHY, WEARABLES, WHOOP STRAIN, GOOGLE AUTH, ONBOARDING CONTEXT, 6-WEEK PROGRAM, SPREADSHEET IMPORT, AI COACH ACTIONS, GEMINI FLASH + KG, OOUX, AGENTIC COACH & LAUNCH VERIFICATION SUITES PASSED SUCCESSFULLY! 🎯');

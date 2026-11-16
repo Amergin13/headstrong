@@ -2,8 +2,6 @@ import React, { useEffect, useState } from 'react';
 import { FileSpreadsheet, Layers, MoreHorizontal } from 'lucide-react';
 import { triggerHaptic } from '../../utils/haptics';
 
-const fig = (px: number) => `calc(${px} * var(--f))`;
-
 interface ProgramHeaderMenuProps {
   onOpenImportSpreadsheet: () => void;
   onOpenChangeProgram: () => void;
@@ -42,7 +40,7 @@ export const ProgramHeaderMenu: React.FC<ProgramHeaderMenuProps> = ({
         className="absolute right-0 top-1/2 -translate-y-1/2 flex items-center justify-center rounded-full"
         style={{ width: 44, height: 44, color: 'var(--wk-muted)' }}
       >
-        <MoreHorizontal style={{ width: fig(48), height: fig(48) }} strokeWidth={2} aria-hidden="true" />
+        <MoreHorizontal className="w-6 h-6" strokeWidth={2} aria-hidden="true" />
       </button>
 
       {open && (
@@ -52,7 +50,8 @@ export const ProgramHeaderMenu: React.FC<ProgramHeaderMenuProps> = ({
             <div
               role="menu"
               aria-label="Program options"
-              className="w-60 rounded-2xl bg-surface-card border border-white/[0.08] shadow-2xl p-1.5 space-y-1 text-left"
+              className="w-60 rounded-2xl bg-surface-card border shadow-2xl p-2 space-y-1 text-left"
+              style={{ borderColor: 'var(--color-border-subtle)' }}
             >
               <button
                 type="button"
@@ -62,7 +61,8 @@ export const ProgramHeaderMenu: React.FC<ProgramHeaderMenuProps> = ({
                   setOpen(false);
                   onOpenImportSpreadsheet();
                 }}
-                className="w-full text-left px-3 py-2 rounded-xl text-sm font-semibold text-white/85 hover:text-white hover:bg-white/[0.06] flex items-center gap-2.5 min-h-[44px]"
+                className="w-full text-left px-3 py-2 rounded-xl text-base font-medium hover:bg-[var(--wk-raised)] flex items-center gap-2 min-h-[44px]"
+                style={{ color: 'var(--color-text-primary)' }}
               >
                 <FileSpreadsheet className="w-4 h-4 stroke-[2] shrink-0" aria-hidden="true" />
                 <span>Import from spreadsheet</span>
@@ -76,7 +76,8 @@ export const ProgramHeaderMenu: React.FC<ProgramHeaderMenuProps> = ({
                   setOpen(false);
                   onOpenChangeProgram();
                 }}
-                className="w-full text-left px-3 py-2 rounded-xl text-sm font-semibold text-white/85 hover:text-white hover:bg-white/[0.06] flex items-center gap-2.5 min-h-[44px]"
+                className="w-full text-left px-3 py-2 rounded-xl text-base font-medium hover:bg-[var(--wk-raised)] flex items-center gap-2 min-h-[44px]"
+                style={{ color: 'var(--color-text-primary)' }}
               >
                 <Layers className="w-4 h-4 stroke-[2] shrink-0" aria-hidden="true" />
                 <span>Change program</span>

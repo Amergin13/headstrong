@@ -10,8 +10,6 @@ import {
 } from '../../services/progressWidgets';
 import { triggerHaptic } from '../../utils/haptics';
 
-const fig = (px: number) => `calc(${px} * var(--f))`;
-
 type PickerTab = 'overview' | 'exercises' | 'measurements';
 
 interface ProgressWidgetsScreenProps {
@@ -31,7 +29,7 @@ const WidgetRow: React.FC<{
   enabled: boolean;
   onToggle: () => void;
 }> = ({ title, description, tag, enabled, onToggle }) => (
-  <li style={{ borderTop: `${fig(2)} solid rgba(255,255,255,0.08)` }}>
+  <li style={{ borderTop: '1px solid var(--color-border-subtle)' }}>
     <button
       type="button"
       role="switch"
@@ -40,31 +38,29 @@ const WidgetRow: React.FC<{
         triggerHaptic('light');
         onToggle();
       }}
-      className="w-full text-left flex items-center justify-between"
-      style={{ gap: fig(24), padding: `${fig(26)} 0`, minHeight: 44 }}
+      className="w-full text-left flex items-center justify-between gap-3 py-3"
+      style={{ minHeight: 44 }}
     >
       <span className="min-w-0">
-        <span className="flex items-center flex-wrap" style={{ gap: fig(14) }}>
-          <span className="wk-label" style={{ lineHeight: 1.21 }}>
+        <span className="flex items-center flex-wrap gap-2">
+          <span className="wk-subhead leading-tight">
             {title}
           </span>
           {tag && <span className="wk-pill">{tag}</span>}
         </span>
-        <span className="wk-caption block" style={{ marginTop: fig(8) }}>
+        <span className="wk-caption block mt-1">
           {description}
         </span>
       </span>
       <span
-        className="rounded-full flex items-center justify-center shrink-0"
+        className="rounded-full flex items-center justify-center shrink-0 w-6 h-6"
         style={{
-          width: fig(52),
-          height: fig(52),
           background: enabled ? 'var(--wk-accent)' : 'transparent',
-          border: enabled ? 'none' : `${fig(3)} solid var(--wk-pill)`,
+          border: enabled ? 'none' : '1.5px solid var(--color-border-strong)',
         }}
         aria-hidden="true"
       >
-        {enabled && <Check style={{ width: fig(30), height: fig(30), color: 'var(--color-text-on-accent)' }} strokeWidth={3} />}
+        {enabled && <Check className="w-3.5 h-3.5" style={{ color: 'var(--color-text-on-accent)' }} strokeWidth={3} />}
       </span>
     </button>
   </li>
@@ -133,15 +129,15 @@ export const ProgressWidgetsScreen: React.FC<ProgressWidgetsScreenProps> = ({
   return (
     <>
       <section className="wk-card" aria-label="Progress widgets summary">
-        <div className="flex items-center justify-between" style={{ gap: fig(20) }}>
+        <div className="flex items-center justify-between gap-2">
           <h2 className="wk-title">Shown on Progress</h2>
-          <span className="wk-pill">{activeWidgets.length} active</span>
+          <span className="wk-pill shrink-0">{activeWidgets.length} active</span>
         </div>
-        <p className="wk-body" style={{ marginTop: fig(14) }}>
+        <p className="wk-body mt-2 max-w-prose">
           Pin individual exercise progressions, arm and waist measurements, or overview cards. You can also ask Treise in chat.
         </p>
         {customPinned.length > 0 && (
-          <div className="flex flex-wrap" style={{ gap: fig(12), marginTop: fig(24) }}>
+          <div className="flex flex-wrap gap-2 mt-3">
             {customPinned.map((id) => (
               <button
                 key={id}
@@ -152,7 +148,9 @@ export const ProgressWidgetsScreen: React.FC<ProgressWidgetsScreenProps> = ({
                 }}
                 aria-label={`Remove ${labelForProgressWidget(id, exerciseCatalog)} from Progress`}
                 className="wk-btn-secondary wk-tap"
-                style={{ background: 'rgba(0,241,159,0.16)', color: 'var(--wk-accent)' }}
+                style={{
+                  borderColor: 'var(--color-text-primary)',
+                }}
               >
                 {labelForProgressWidget(id, exerciseCatalog)} ×
               </button>
@@ -180,11 +178,7 @@ export const ProgressWidgetsScreen: React.FC<ProgressWidgetsScreenProps> = ({
                 triggerHaptic('light');
                 setTab(id);
               }}
-              className="wk-segment"
-              style={{
-                background: selected ? 'var(--wk-raised)' : 'transparent',
-                color: selected ? 'var(--color-text-primary)' : 'var(--wk-muted)',
-              }}
+              className={`wk-segment ${selected ? 'is-active' : ''}`}
             >
               {label}
             </button>
@@ -196,7 +190,7 @@ export const ProgressWidgetsScreen: React.FC<ProgressWidgetsScreenProps> = ({
         <>
           <section className="wk-card" aria-label="Overview cards">
             <h2 className="wk-title">Overview cards</h2>
-            <ul className="flex flex-col" style={{ marginTop: fig(20) }}>
+            <ul className="flex flex-col mt-3">
               {overviewWidgets.map((widget) => (
                 <WidgetRow
                   key={widget.id}
@@ -213,10 +207,10 @@ export const ProgressWidgetsScreen: React.FC<ProgressWidgetsScreenProps> = ({
           {whoopWidgets.length > 0 && (
             <section className="wk-card" aria-label="Whoop metric widgets">
               <h2 className="wk-title">Whoop charts</h2>
-              <p className="wk-caption" style={{ marginTop: fig(8) }}>
+              <p className="wk-caption mt-1">
                 Pin optional Whoop recovery, strain, HRV, resting HR and sleep trends onto Progress.
               </p>
-              <ul className="flex flex-col" style={{ marginTop: fig(20) }}>
+              <ul className="flex flex-col mt-3">
                 {whoopWidgets.map((chart) => (
                   <WidgetRow
                     key={chart.id}
@@ -236,7 +230,7 @@ export const ProgressWidgetsScreen: React.FC<ProgressWidgetsScreenProps> = ({
       {tab === 'exercises' && (
         <section className="wk-card" aria-label="Exercise progression widgets">
           <h2 className="wk-title">Exercise progressions</h2>
-          <p className="wk-caption" style={{ marginTop: fig(8) }}>
+          <p className="wk-caption mt-1">
             Track estimated max or reps over time for any specific lift.
           </p>
           <input
@@ -245,10 +239,9 @@ export const ProgressWidgetsScreen: React.FC<ProgressWidgetsScreenProps> = ({
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search exercises (e.g. bench, curl, squat)"
             aria-label="Search exercises to add"
-            className="wk-field"
-            style={{ marginTop: fig(20), textAlign: 'left', fontSize: `max(12px, ${fig(28)})` }}
+            className="wk-field mt-3 text-left text-base"
           />
-          <ul className="flex flex-col" style={{ marginTop: fig(16) }}>
+          <ul className="flex flex-col mt-2">
             {sortedExercises.length > 0 ? (
               sortedExercises.map(({ ex, sessionsLogged }) => {
                 const wid = exerciseWidgetId(ex.id);
@@ -268,8 +261,8 @@ export const ProgressWidgetsScreen: React.FC<ProgressWidgetsScreenProps> = ({
                 );
               })
             ) : (
-              <li style={{ padding: `${fig(26)} 0`, borderTop: `${fig(2)} solid rgba(255,255,255,0.08)` }}>
-                <p className="wk-body">No exercises match "{query}".</p>
+              <li className="py-3" style={{ borderTop: '1px solid var(--color-border-subtle)' }}>
+                <p className="wk-body">No exercises match &quot;{query}&quot;.</p>
               </li>
             )}
           </ul>
@@ -280,10 +273,10 @@ export const ProgressWidgetsScreen: React.FC<ProgressWidgetsScreenProps> = ({
         <>
           <section className="wk-card" aria-label="Tape measurement widgets">
             <h2 className="wk-title">Tape measurements</h2>
-            <p className="wk-caption" style={{ marginTop: fig(8) }}>
+            <p className="wk-caption mt-1">
               Pin arms, waist, chest or any tape site straight onto Progress.
             </p>
-            <ul className="flex flex-col" style={{ marginTop: fig(20) }}>
+            <ul className="flex flex-col mt-3">
               {tapeCharts.map((chart) => (
                 <WidgetRow
                   key={chart.id}
@@ -298,7 +291,7 @@ export const ProgressWidgetsScreen: React.FC<ProgressWidgetsScreenProps> = ({
 
           <section className="wk-card" aria-label="Body composition and volume widgets">
             <h2 className="wk-title">Body composition and volume</h2>
-            <ul className="flex flex-col" style={{ marginTop: fig(20) }}>
+            <ul className="flex flex-col mt-3">
               {bodyAndTrainingCharts.map((chart) => (
                 <WidgetRow
                   key={chart.id}
@@ -320,8 +313,7 @@ export const ProgressWidgetsScreen: React.FC<ProgressWidgetsScreenProps> = ({
             triggerHaptic('light');
             onReset();
           }}
-          className="wk-button"
-          style={{ background: 'var(--wk-raised)', color: 'var(--color-text-primary)' }}
+          className="wk-btn-secondary w-full"
         >
           Reset to default widgets
         </button>

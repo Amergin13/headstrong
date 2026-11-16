@@ -8,11 +8,6 @@ import {
   getStravaConfig,
 } from "../../services/activitySources";
 import { triggerHaptic } from "../../utils/haptics";
-import { PARTNER_COLORS } from "../../styles/semanticTokens";
-
-const fig = (px: number) => `calc(${px} * var(--f))`;
-/** Strava's brand orange, as its guidelines require for "Connect with Strava". */
-const STRAVA_ORANGE = PARTNER_COLORS.strava;
 
 interface ActivityConnectionsModalProps {
   profile: UserProfile;
@@ -55,8 +50,8 @@ export const ActivityConnectionsModal: React.FC<
   const hcOn = Boolean(profile.healthConnectActivities && hcStatus.granted);
 
   const row: React.CSSProperties = {
-    paddingTop: fig(28),
-    borderTop: "1px solid rgba(255,255,255,0.08)",
+    paddingTop: 16,
+    borderTop: "1px solid var(--color-border-subtle)",
   };
 
   return createPortal(
@@ -64,25 +59,19 @@ export const ActivityConnectionsModal: React.FC<
       role="dialog"
       aria-modal="true"
       aria-labelledby="activity-apps-title"
-      className="wk fixed inset-0 z-50 flex items-end sm:items-center justify-center p-[calc(38*var(--f))] bg-black/80 backdrop-blur-sm"
+      className="wk fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 backdrop-blur-sm"
+      style={{ background: "var(--color-bg-scrim)" }}
     >
-      <div
-        className="wk-card w-full max-w-lg max-h-[90vh] overflow-y-auto shadow-2xl flex flex-col"
-        style={{ gap: fig(28) }}
-      >
-        <div
-          className="flex items-start justify-between"
-          style={{ gap: fig(24) }}
-        >
+      <div className="wk-card w-full max-w-lg max-h-[90vh] overflow-y-auto shadow-2xl flex flex-col gap-4">
+        <div className="flex items-start justify-between gap-4">
           <div>
             <h3
               id="activity-apps-title"
               className="wk-h1"
-              style={{ lineHeight: 1.21 }}
             >
               Activity apps
             </h3>
-            <p className="wk-body" style={{ marginTop: fig(12) }}>
+            <p className="wk-body mt-2 max-w-prose">
               Rides, runs, walks and classes of 20 minutes or more are added as
               active days automatically.
             </p>
@@ -91,8 +80,8 @@ export const ActivityConnectionsModal: React.FC<
             type="button"
             onClick={onClose}
             aria-label="Close"
-            className="w-11 h-11 rounded-full flex items-center justify-center text-white/70 hover:text-white shrink-0"
-            style={{ background: "var(--wk-raised)" }}
+            className="w-11 h-11 rounded-full flex items-center justify-center shrink-0 border border-[var(--color-border-strong)]"
+            style={{ background: "var(--wk-raised)", color: "var(--color-text-secondary)" }}
           >
             <X className="w-5 h-5 stroke-[2]" />
           </button>
@@ -101,11 +90,8 @@ export const ActivityConnectionsModal: React.FC<
         {/* Strava: off for the beta (see STRAVA_ENABLED) */}
         {STRAVA_ENABLED && (
           <section style={row} aria-labelledby="strava-row">
-            <div
-              className="flex items-center justify-between"
-              style={{ gap: fig(16) }}
-            >
-              <h4 id="strava-row" className="wk-title">
+            <div className="flex items-center justify-between gap-3">
+              <h4 id="strava-row" className="wk-subhead">
                 Strava
               </h4>
               <span className="wk-pill">
@@ -114,7 +100,7 @@ export const ActivityConnectionsModal: React.FC<
             </div>
             {profile.stravaConnected ? (
               <>
-                <p className="wk-body" style={{ marginTop: fig(12) }}>
+                <p className="wk-body mt-2 max-w-prose">
                   {profile.stravaAthleteFirstName
                     ? `Connected as ${profile.stravaAthleteFirstName}. `
                     : ""}
@@ -126,18 +112,13 @@ export const ActivityConnectionsModal: React.FC<
                     triggerHaptic("light");
                     onDisconnectStrava();
                   }}
-                  className="wk-button"
-                  style={{
-                    marginTop: fig(20),
-                    background: "var(--wk-raised)",
-                    color: "var(--color-text-primary)",
-                  }}
+                  className="wk-btn-secondary w-full mt-3"
                 >
                   Disconnect Strava
                 </button>
               </>
             ) : stravaAvailable === false ? (
-              <p className="wk-body" style={{ marginTop: fig(12) }}>
+              <p className="wk-body mt-2 max-w-prose">
                 Strava isn't available yet. It will appear here once it's
                 switched on.
               </p>
@@ -152,20 +133,16 @@ export const ActivityConnectionsModal: React.FC<
                     const started = await onConnectStrava();
                     if (!started) setStravaError("Strava isn't available yet.");
                   }}
-                  className="w-full font-semibold"
+                  className="wk-button mt-3"
                   style={{
-                    marginTop: fig(20),
-                    height: 48,
-                    borderRadius: 6,
-                    background: STRAVA_ORANGE,
-                    color: "var(--color-text-primary)",
-                    fontSize: 15,
+                    background: "var(--color-action-primary-bg)",
+                    color: "var(--color-action-primary-fg)",
                   }}
                 >
                   Connect with Strava
                 </button>
                 {stravaError && (
-                  <p className="wk-body" style={{ marginTop: fig(12) }}>
+                  <p className="wk-body mt-2 max-w-prose">
                     {stravaError}
                   </p>
                 )}
@@ -176,28 +153,25 @@ export const ActivityConnectionsModal: React.FC<
 
         {/* Health Connect: only inside the Android app */}
         <section style={row} aria-labelledby="hc-row">
-          <div
-            className="flex items-center justify-between"
-            style={{ gap: fig(16) }}
-          >
-            <h4 id="hc-row" className="wk-title">
+          <div className="flex items-center justify-between gap-3">
+            <h4 id="hc-row" className="wk-subhead">
               Health Connect
             </h4>
             <span className="wk-pill">{hcOn ? "On" : "Off"}</span>
           </div>
           {!hcStatus.bridge ? (
-            <p className="wk-body" style={{ marginTop: fig(12) }}>
+            <p className="wk-body mt-2 max-w-prose">
               Available in the Treise app from Google Play on Android. It reads
               workouts and daily step counts from Google Pixel Watch, Fitbit, Samsung Health, Google Fit and Garmin.
             </p>
           ) : !hcStatus.available ? (
-            <p className="wk-body" style={{ marginTop: fig(12) }}>
+            <p className="wk-body mt-2 max-w-prose">
               Health Connect isn't set up on this phone. Install it from Google
               Play, then come back here.
             </p>
           ) : (
             <>
-              <p className="wk-body" style={{ marginTop: fig(12) }}>
+              <p className="wk-body mt-2 max-w-prose">
                 Treise reads your exercise sessions (type, start time and
                 length) and daily step counts from Health Connect, including data from Fitbit, Pixel Watch, Samsung Health and Garmin. Nothing else.
               </p>
@@ -212,11 +186,11 @@ export const ActivityConnectionsModal: React.FC<
                     if ((!hcStatus.granted || !hcStatus.stepsGranted) && onRequestHealthConnectPermission() === false) setNeedsAppUpdate(true);
                   }
                 }}
-                className="wk-button"
+                className="wk-button mt-3"
                 style={{
-                  marginTop: fig(20),
-                  background: hcOn ? "var(--wk-raised)" : "var(--wk-accent)",
-                  color: hcOn ? "var(--color-text-primary)" : "var(--color-text-on-accent)",
+                  background: hcOn ? "var(--color-action-secondary-bg)" : "var(--color-action-primary-bg)",
+                  color: hcOn ? "var(--color-action-secondary-fg)" : "var(--color-action-primary-fg)",
+                  border: hcOn ? "1px solid var(--color-border-strong)" : undefined,
                 }}
               >
                 {hcOn
@@ -232,18 +206,17 @@ export const ActivityConnectionsModal: React.FC<
                     triggerHaptic("light");
                     if (onRequestHealthConnectPermission() === false) setNeedsAppUpdate(true);
                   }}
-                  className="wk-button"
+                  className="wk-button mt-3"
                   style={{
-                    marginTop: fig(12),
-                    background: "var(--wk-accent)",
-                    color: "var(--color-text-on-accent)",
+                    background: "var(--color-action-primary-bg)",
+                    color: "var(--color-action-primary-fg)",
                   }}
                 >
                   Allow daily steps in Health Connect
                 </button>
               )}
               {needsAppUpdate && (
-                <p className="wk-body" style={{ marginTop: fig(16) }}>
+                <p className="wk-body mt-3 max-w-prose">
                   Update Treise from Google Play to allow this here. Or open Android Settings, then Health Connect, then App permissions, and allow Treise.
                 </p>
               )}
@@ -253,18 +226,15 @@ export const ActivityConnectionsModal: React.FC<
 
         {/* Watch */}
         <section style={row} aria-labelledby="watch-row">
-          <div
-            className="flex items-center justify-between"
-            style={{ gap: fig(16) }}
-          >
-            <h4 id="watch-row" className="wk-title">
+          <div className="flex items-center justify-between gap-3">
+            <h4 id="watch-row" className="wk-subhead">
               Watch
             </h4>
             <span className="wk-pill">
               {watchName ? "Connected" : "Not connected"}
             </span>
           </div>
-          <p className="wk-body" style={{ marginTop: fig(12) }}>
+          <p className="wk-body mt-2 max-w-prose">
             {watchName
               ? `Workouts recorded on your ${watchName} count as active days.`
               : "Connect a Whoop and its recorded workouts count as active days."}
@@ -277,12 +247,7 @@ export const ActivityConnectionsModal: React.FC<
                 onClose();
                 onOpenWatchSync();
               }}
-              className="wk-button"
-              style={{
-                marginTop: fig(20),
-                background: "var(--wk-raised)",
-                color: "var(--color-text-primary)",
-              }}
+              className="wk-btn-secondary w-full mt-3"
             >
               Connect a watch
             </button>

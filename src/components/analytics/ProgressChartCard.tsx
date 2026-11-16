@@ -12,8 +12,6 @@ import { parseLocalDate } from '../../utils/date';
 import { triggerHaptic } from '../../utils/haptics';
 import { TimelineToggle } from './TimelineToggle';
 
-const fig = (px: number) => `calc(${px} * var(--f))`;
-
 const fullDate = (date: string) => {
   const d = parseLocalDate(date);
   return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getFullYear()).slice(-2)}`;
@@ -29,7 +27,7 @@ function deltaBadgeStyle(polarity: DeltaPolarity): React.CSSProperties {
     case 'warning':
       return {
         background: 'var(--color-status-warning-soft)',
-        color: 'var(--color-status-warning-strong)',
+        color: 'var(--color-status-warning)',
       };
     case 'danger':
       return {
@@ -44,7 +42,7 @@ function deltaBadgeStyle(polarity: DeltaPolarity): React.CSSProperties {
   }
 }
 
-/** Progress chart in the Whoop Slate telemetry card layout: structured KPI header, compact
+/** Progress chart in the Treise Slate telemetry card layout: structured KPI header, compact
  * timeline toggle, period stepper, delta badge, and surface-integrated TrendChart. */
 export const ProgressChartCard: React.FC<{
   chart: ProgressChart;
@@ -71,92 +69,70 @@ export const ProgressChartCard: React.FC<{
 
   return (
     <section aria-label={chart.title} className="wk-card">
-      <div className="flex items-start justify-between" style={{ gap: fig(16) }}>
-        <div className="min-w-0 flex-1">
-          <h2
-            className="wk-h1 normal-case tracking-tight truncate"
-            style={{ color: 'var(--color-text-secondary)' }}
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="wk-h1 normal-case tracking-tight min-w-0">
+          {chart.title}
+        </h2>
+        {onOpen && (
+          <button
+            type="button"
+            onClick={() => {
+              triggerHaptic('light');
+              onOpen();
+            }}
+            aria-label={openLabel ?? `Update ${chart.title.toLowerCase()}`}
+            className="flex items-center justify-center shrink-0"
+            style={{ minWidth: 44, minHeight: 44, marginRight: -8 }}
           >
-            {chart.title}
-          </h2>
-          {visibleChart.headline ? (
-            <div style={{ marginTop: fig(14) }}>
-              <div
-                className="wk-caption uppercase"
-                style={{
-                  letterSpacing: '0.07em',
-                }}
-              >
-                {visibleChart.headline.eyebrow}
-              </div>
-              <div className="flex items-baseline gap-1.5" style={{ marginTop: fig(6) }}>
-                <span
-                  className="font-semibold tracking-tight"
-                  style={{
-                    fontSize: `max(24px, ${fig(64)})`,
-                    lineHeight: 1.02,
-                    color: 'var(--color-text-primary)',
-                    fontVariantNumeric: 'tabular-nums',
-                  }}
-                >
-                  {visibleChart.headline.valueText}
-                </span>
-                {visibleChart.headline.unitText && (
-                  <span
-                    className="wk-body font-medium"
-                    style={{
-                      lineHeight: 1,
-                    }}
-                  >
-                    {visibleChart.headline.unitText}
-                  </span>
-                )}
-              </div>
-            </div>
-          ) : (
-            <p className="wk-caption" style={{ marginTop: fig(10) }}>
-              {chart.lastUpdated ? `Last updated ${fullDate(chart.lastUpdated)}` : 'No data yet'}
-            </p>
-          )}
-        </div>
-
-        <div className="flex items-center shrink-0" style={{ gap: fig(8) }}>
-          {!hideTimelineToggle && (
-            <TimelineToggle
-              variant="header"
-              value={activeTimeline}
-              onChange={handleTimelineChange}
-              ariaLabel={`${chart.title} timeline`}
-            />
-          )}
-          {onOpen && (
-            <button
-              type="button"
-              onClick={() => {
-                triggerHaptic('light');
-                onOpen();
-              }}
-              aria-label={openLabel ?? `Update ${chart.title.toLowerCase()}`}
-              className="flex items-center justify-center"
-              style={{ minWidth: 44, minHeight: 44, marginRight: -10 }}
-            >
-              <ChevronRight className="wk-chevron" strokeWidth={2} aria-hidden="true" />
-            </button>
-          )}
-        </div>
+            <ChevronRight className="wk-chevron" strokeWidth={2} aria-hidden="true" />
+          </button>
+        )}
       </div>
 
+      {!hideTimelineToggle && (
+        <TimelineToggle
+          compact
+          value={activeTimeline}
+          onChange={handleTimelineChange}
+          ariaLabel={`${chart.title} timeline`}
+        />
+      )}
+
+      {visibleChart.headline ? (
+        <div className="mt-4">
+          <div className="wk-label">
+            {visibleChart.headline.eyebrow}
+          </div>
+          <div className="flex items-baseline gap-2 mt-1">
+            <span className="wk-display">
+              {visibleChart.headline.valueText}
+            </span>
+            {visibleChart.headline.unitText && (
+              <span
+                className="wk-caption"
+                style={{
+                  lineHeight: 1,
+                }}
+              >
+                {visibleChart.headline.unitText}
+              </span>
+            )}
+          </div>
+        </div>
+      ) : (
+        <p className="wk-caption mt-3">
+          {chart.lastUpdated ? `Last updated ${fullDate(chart.lastUpdated)}` : 'No data yet'}
+        </p>
+      )}
+
       {(delta || (windowRange && hasHistory)) && (
-        <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1" style={{ marginTop: fig(16) }}>
+        <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 mt-2">
           {delta ? (
             <span
-              className="inline-flex items-center gap-1 rounded-md font-semibold"
+              className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium tabular-nums"
               style={{
                 ...deltaBadgeStyle(delta.polarity),
-                padding: '4px 8px',
-                fontSize: `max(12px, ${fig(21)})`,
                 lineHeight: 1.15,
-                fontVariantNumeric: 'tabular-nums',
               }}
             >
               <span aria-hidden="true">{deltaGlyph}</span>
@@ -188,13 +164,7 @@ export const ProgressChartCard: React.FC<{
                 <ChevronLeft size={16} strokeWidth={2.25} aria-hidden="true" />
               </button>
               <span
-                className="uppercase font-semibold tracking-wider whitespace-nowrap"
-                style={{
-                  fontSize: `max(12px, ${fig(21)})`,
-                  color: 'var(--color-text-primary)',
-                  fontVariantNumeric: 'tabular-nums',
-                  letterSpacing: '0.05em',
-                }}
+                className="wk-meta-title whitespace-nowrap tabular-nums"
               >
                 {windowRange.label}
               </span>
@@ -210,7 +180,7 @@ export const ProgressChartCard: React.FC<{
                 style={{
                   minWidth: 44,
                   minHeight: 44,
-                  marginRight: -10,
+                  marginRight: -8,
                   color: 'var(--color-text-secondary)',
                   opacity: windowRange.canStepForward ? 1 : 0.3,
                   cursor: windowRange.canStepForward ? 'pointer' : 'default',
@@ -223,11 +193,7 @@ export const ProgressChartCard: React.FC<{
         </div>
       )}
 
-      <p className="wk-body" style={{ marginTop: fig(20) }}>
-        {visibleChart.summary}
-      </p>
-
-      <div style={{ marginTop: fig(24) }}>
+      <div className="mt-4">
         <TrendChart
           points={visibleChart.points}
           secondary={visibleChart.secondary}
@@ -245,6 +211,10 @@ export const ProgressChartCard: React.FC<{
           }
         />
       </div>
+
+      <p className="wk-body mt-4 max-w-prose">
+        {visibleChart.summary}
+      </p>
     </section>
   );
 };

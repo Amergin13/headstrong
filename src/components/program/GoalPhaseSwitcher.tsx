@@ -2,8 +2,6 @@ import React from 'react';
 import { GoalPhase } from '../../engine/types';
 import { triggerHaptic } from '../../utils/haptics';
 
-const fig = (px: number) => `calc(${px} * var(--f))`;
-
 interface GoalPhaseSwitcherProps {
   currentPhase: GoalPhase;
   onSelectPhase: (phase: GoalPhase) => void;
@@ -42,21 +40,14 @@ export const GoalPhaseSwitcher: React.FC<GoalPhaseSwitcherProps> = ({
   };
 
   return (
-    <section aria-label="Training Goal" className="wk-card w-full text-left block">
-      <div className="flex items-start justify-between" style={{ gap: fig(20) }}>
-        <h2 className="wk-h1" style={{ lineHeight: 1.21 }}>
-          Training Goal
+    <section aria-label="Training goal" className="wk-card w-full text-left block">
+      <div className="flex items-start justify-between gap-3">
+        <h2 className="wk-h1 leading-tight">
+          Training goal
         </h2>
-        <span className="wk-pill">{activePhase.label}</span>
+        <span className="wk-pill shrink-0">{activePhase.label}</span>
       </div>
-      <p
-        style={{
-          fontSize: `max(12px, ${fig(28)})`,
-          lineHeight: 1.21,
-          color: 'var(--wk-muted)',
-          marginTop: fig(20),
-        }}
-      >
+      <p className="wk-body mt-2 leading-tight">
         {activePhase.subtitle}
       </p>
 
@@ -64,14 +55,7 @@ export const GoalPhaseSwitcher: React.FC<GoalPhaseSwitcherProps> = ({
       <div
         role="group"
         aria-label="Select training goal"
-        className="grid grid-cols-3"
-        style={{
-          marginTop: fig(40),
-          padding: fig(8),
-          gap: fig(8),
-          borderRadius: fig(24),
-          background: 'var(--wk-raised)',
-        }}
+        className="wk-segments grid-cols-3 mt-5"
       >
         {phases.map((p) => {
           const isSelected = currentPhase === p.id;
@@ -81,15 +65,7 @@ export const GoalPhaseSwitcher: React.FC<GoalPhaseSwitcherProps> = ({
               type="button"
               aria-pressed={isSelected}
               onClick={() => handleSelect(p.id)}
-              className="flex items-center justify-center font-semibold uppercase transition-colors"
-              style={{
-                minHeight: 44,
-                height: fig(84),
-                borderRadius: fig(18),
-                fontSize: `max(12px, ${fig(22)})`,
-                background: isSelected ? 'var(--wk-pill)' : 'transparent',
-                color: isSelected ? 'var(--color-text-primary)' : 'var(--wk-muted)',
-              }}
+              className={`wk-segment ${isSelected ? 'is-active' : ''}`}
             >
               {p.label}
             </button>
@@ -97,7 +73,7 @@ export const GoalPhaseSwitcher: React.FC<GoalPhaseSwitcherProps> = ({
         })}
       </div>
 
-      <p className="wk-body" style={{ marginTop: fig(32) }}>
+      <p className="wk-body mt-4 max-w-prose">
         {activePhase.desc}
       </p>
     </section>

@@ -9,7 +9,6 @@ import {
 import { WEARABLE_PROVIDERS } from '../../services/wearableSyncService';
 import { triggerHaptic } from '../../utils/haptics';
 
-const fig = (px: number) => `calc(${px} * var(--f))`;
 
 /** Starting values until the athlete enters their own (used only with measured heart-rate data). */
 const PLACEHOLDER_MAX_HR = 190;
@@ -80,10 +79,9 @@ export const ProfileSettingsSections: React.FC<ProfileSettingsSectionsProps> = (
   return (
     <section
       aria-label="Settings"
-      className="flex flex-col"
-      style={{ marginTop: fig(36), gap: fig(22) }}
+      className="flex flex-col mt-6 gap-3"
     >
-      <h2 className="wk-h1" style={{ lineHeight: 1.21 }}>
+      <h2 className="wk-h1 leading-tight">
         Settings
       </h2>
 
@@ -95,11 +93,11 @@ export const ProfileSettingsSections: React.FC<ProfileSettingsSectionsProps> = (
           aria-expanded={openSection === 'profile'}
           className="w-full text-left block"
         >
-          <div className="flex items-start justify-between" style={{ gap: fig(24) }}>
-            <h3 className="wk-h1" style={{ lineHeight: 1.21 }}>
-              Athlete Profile &amp; Heart Rate
+          <div className="flex items-start justify-between gap-3">
+            <h3 className="wk-subhead leading-tight">
+              Athlete profile &amp; heart rate
             </h3>
-            <div className="flex items-center shrink-0" style={{ gap: fig(16) }}>
+            <div className="flex items-center shrink-0 gap-2">
               <span className="wk-pill">
                 {(profile.weightUnit || 'kg').toUpperCase()}
               </span>
@@ -114,14 +112,7 @@ export const ProfileSettingsSections: React.FC<ProfileSettingsSectionsProps> = (
             </div>
           </div>
 
-          <p
-            style={{
-              fontSize: `max(12px, ${fig(28)})`,
-              lineHeight: 1.21,
-              color: 'var(--wk-muted)',
-              marginTop: fig(20),
-            }}
-          >
+          <p className="wk-caption mt-2">
             {[
               profile.name,
               maxHrKnown && `Max HR ${profile.maxHr} bpm`,
@@ -133,17 +124,9 @@ export const ProfileSettingsSections: React.FC<ProfileSettingsSectionsProps> = (
         </button>
 
         {openSection === 'profile' && (
-          <div
-            className="flex flex-col"
-            style={{
-              marginTop: fig(28),
-              paddingTop: fig(24),
-              borderTop: '1px solid rgba(255,255,255,0.08)',
-              gap: fig(22),
-            }}
-          >
-            <div className="flex items-center justify-between" style={{ gap: fig(16) }}>
-              <label htmlFor="athlete-name-input" className="wk-label">
+          <div className="flex flex-col mt-4 pt-4 gap-4" style={{ borderTop: '1px solid var(--color-border-subtle)' }}>
+            <div className="flex items-center justify-between gap-3">
+              <label htmlFor="athlete-name-input" className="wk-meta-title">
                 Name
               </label>
               <input
@@ -151,22 +134,13 @@ export const ProfileSettingsSections: React.FC<ProfileSettingsSectionsProps> = (
                 type="text"
                 value={profile.name}
                 onChange={(e) => onUpdateProfile({ name: e.target.value })}
-                className="wk-field"
-                style={{ width: fig(320) }}
+                className="wk-field text-base w-40"
               />
             </div>
 
-            <div className="flex items-center justify-between" style={{ gap: fig(16) }}>
-              <span className="wk-label">Strength Standard Category</span>
-              <div
-                className="grid grid-cols-2 items-center"
-                style={{
-                  height: fig(76),
-                  padding: fig(6),
-                  borderRadius: fig(18),
-                  background: 'var(--wk-raised)',
-                }}
-              >
+            <div className="flex items-center justify-between gap-3">
+              <span className="wk-meta-title">Strength standard category</span>
+              <div className="wk-segments grid grid-cols-2 shrink-0">
                 {(['male', 'female'] as const).map((g) => {
                   const isSelected = profile.gender === g;
                   return (
@@ -175,15 +149,7 @@ export const ProfileSettingsSections: React.FC<ProfileSettingsSectionsProps> = (
                       type="button"
                       aria-pressed={isSelected}
                       onClick={() => onUpdateProfile({ gender: g, sexEntered: true })}
-                      className="wk-tap h-full font-semibold uppercase transition-colors"
-                      style={{
-                        paddingLeft: fig(20),
-                        paddingRight: fig(20),
-                        borderRadius: fig(14),
-                        fontSize: `max(12px, ${fig(22)})`,
-                        background: isSelected ? 'var(--wk-pill)' : 'transparent',
-                        color: isSelected ? 'var(--color-text-primary)' : 'var(--wk-muted)',
-                      }}
+                      className={`wk-segment px-3 capitalize ${isSelected ? 'is-active' : ''}`}
                     >
                       {g}
                     </button>
@@ -192,8 +158,8 @@ export const ProfileSettingsSections: React.FC<ProfileSettingsSectionsProps> = (
               </div>
             </div>
 
-            <div className="flex items-center justify-between" style={{ gap: fig(16) }}>
-              <label htmlFor="athlete-age-input" className="wk-label">
+            <div className="flex items-center justify-between gap-3">
+              <label htmlFor="athlete-age-input" className="wk-meta-title">
                 Age
               </label>
               <input
@@ -210,24 +176,17 @@ export const ProfileSettingsSections: React.FC<ProfileSettingsSectionsProps> = (
                   if (!e.target.value) onUpdateProfile({ ageEntered: false });
                   else if (v >= 16 && v <= 99) onUpdateProfile({ age: v, ageEntered: true });
                 }}
-                className="wk-field"
-                style={{ width: fig(160) }}
+                className="wk-field text-base tabular-nums w-20"
               />
             </div>
-            <p id="athlete-age-help" className="wk-body" style={{ marginTop: fig(-12) }}>
+            <p id="athlete-age-help" className="wk-body -mt-2 max-w-prose">
               Strength levels compare you with lifters of your sex, bodyweight and age group.
             </p>
 
-            <div className="flex items-center justify-between" style={{ gap: fig(16) }}>
-              <span className="wk-label">Weight Units</span>
+            <div className="flex items-center justify-between gap-3">
+              <span className="wk-meta-title">Weight units</span>
               <div
-                className="grid grid-cols-2 items-center"
-                style={{
-                  height: fig(76),
-                  padding: fig(6),
-                  borderRadius: fig(18),
-                  background: 'var(--wk-raised)',
-                }}
+                className="wk-segments grid grid-cols-2 shrink-0"
                 role="group"
                 aria-label="Weight units"
               >
@@ -239,15 +198,7 @@ export const ProfileSettingsSections: React.FC<ProfileSettingsSectionsProps> = (
                       type="button"
                       aria-pressed={isSelected}
                       onClick={() => onUpdateProfile({ weightUnit: u })}
-                      className="wk-tap h-full font-semibold uppercase transition-colors"
-                      style={{
-                        paddingLeft: fig(20),
-                        paddingRight: fig(20),
-                        borderRadius: fig(14),
-                        fontSize: `max(12px, ${fig(22)})`,
-                        background: isSelected ? 'var(--wk-pill)' : 'transparent',
-                        color: isSelected ? 'var(--color-text-primary)' : 'var(--wk-muted)',
-                      }}
+                      className={`wk-segment px-4 ${isSelected ? 'is-active' : ''}`}
                     >
                       {u}
                     </button>
@@ -256,16 +207,10 @@ export const ProfileSettingsSections: React.FC<ProfileSettingsSectionsProps> = (
               </div>
             </div>
 
-            <div className="flex items-center justify-between" style={{ gap: fig(16) }}>
-              <span className="wk-label">Training Experience</span>
+            <div className="flex items-center justify-between gap-3">
+              <span className="wk-meta-title">Training experience</span>
               <div
-                className="grid grid-cols-3 items-center"
-                style={{
-                  height: fig(76),
-                  padding: fig(6),
-                  borderRadius: fig(18),
-                  background: 'var(--wk-raised)',
-                }}
+                className="wk-segments grid grid-cols-3 shrink-0"
                 role="group"
                 aria-label="Training experience"
               >
@@ -281,15 +226,7 @@ export const ProfileSettingsSections: React.FC<ProfileSettingsSectionsProps> = (
                       type="button"
                       aria-pressed={isSelected}
                       onClick={() => onUpdateProfile({ experienceLevel: opt.id })}
-                      className="wk-tap h-full font-semibold uppercase transition-colors"
-                      style={{
-                        paddingLeft: fig(16),
-                        paddingRight: fig(16),
-                        borderRadius: fig(14),
-                        fontSize: `max(12px, ${fig(22)})`,
-                        background: isSelected ? 'var(--wk-pill)' : 'transparent',
-                        color: isSelected ? 'var(--color-text-primary)' : 'var(--wk-muted)',
-                      }}
+                      className={`wk-segment px-2 ${isSelected ? 'is-active' : ''}`}
                     >
                       {opt.label}
                     </button>
@@ -298,9 +235,9 @@ export const ProfileSettingsSections: React.FC<ProfileSettingsSectionsProps> = (
               </div>
             </div>
 
-            <div className="flex items-center justify-between" style={{ gap: fig(16) }}>
-              <label htmlFor="max-hr-input" className="wk-label">
-                Max Heart Rate (bpm)
+            <div className="flex items-center justify-between gap-3">
+              <label htmlFor="max-hr-input" className="wk-meta-title">
+                Max heart rate (bpm)
               </label>
               <input
                 id="max-hr-input"
@@ -315,14 +252,13 @@ export const ProfileSettingsSections: React.FC<ProfileSettingsSectionsProps> = (
                       : { maxHr: PLACEHOLDER_MAX_HR, maxHrEntered: false }
                   );
                 }}
-                className="wk-field"
-                style={{ width: fig(180) }}
+                className="wk-field text-base tabular-nums w-24"
               />
             </div>
 
-            <div className="flex items-center justify-between" style={{ gap: fig(16) }}>
-              <label htmlFor="resting-hr-input" className="wk-label">
-                Normal Resting HR (bpm)
+            <div className="flex items-center justify-between gap-3">
+              <label htmlFor="resting-hr-input" className="wk-meta-title">
+                Normal resting HR (bpm)
               </label>
               <input
                 id="resting-hr-input"
@@ -337,8 +273,7 @@ export const ProfileSettingsSections: React.FC<ProfileSettingsSectionsProps> = (
                       : { restingHrBaseline: PLACEHOLDER_RESTING_HR, restingHrEntered: false }
                   );
                 }}
-                className="wk-field"
-                style={{ width: fig(180) }}
+                className="wk-field text-base tabular-nums w-24"
               />
             </div>
           </div>
@@ -353,13 +288,13 @@ export const ProfileSettingsSections: React.FC<ProfileSettingsSectionsProps> = (
           aria-expanded={openSection === 'wearable'}
           className="w-full text-left block"
         >
-          <div className="flex items-start justify-between" style={{ gap: fig(24) }}>
-            <h3 className="wk-h1" style={{ lineHeight: 1.21 }}>
-              Wearable &amp; Recovery
+          <div className="flex items-start justify-between gap-3">
+            <h3 className="wk-subhead leading-tight">
+              Wearable &amp; recovery
             </h3>
-            <div className="flex items-center shrink-0" style={{ gap: fig(16) }}>
+            <div className="flex items-center shrink-0 gap-2">
               <span className="wk-pill">
-                {isWatchConnected ? 'CONNECTED' : 'OFFLINE'}
+                {isWatchConnected ? 'Connected' : 'Offline'}
               </span>
               <ChevronRight
                 className="wk-chevron transition-transform"
@@ -372,14 +307,7 @@ export const ProfileSettingsSections: React.FC<ProfileSettingsSectionsProps> = (
             </div>
           </div>
 
-          <p
-            style={{
-              fontSize: `max(12px, ${fig(28)})`,
-              lineHeight: 1.21,
-              color: 'var(--wk-muted)',
-              marginTop: fig(20),
-            }}
-          >
+          <p className="wk-caption mt-2">
             {activeWearableMeta
               ? `${activeWearableMeta.name} • Connected`
               : profile.healthConnectActivities
@@ -389,23 +317,15 @@ export const ProfileSettingsSections: React.FC<ProfileSettingsSectionsProps> = (
         </button>
 
         {openSection === 'wearable' && (
-          <div
-            className="flex flex-col"
-            style={{
-              marginTop: fig(28),
-              paddingTop: fig(24),
-              borderTop: '1px solid rgba(255,255,255,0.08)',
-              gap: fig(20),
-            }}
-          >
-            <div className="flex items-center justify-between" style={{ gap: fig(16) }}>
-              <span className="wk-label">Connected Device</span>
+          <div className="flex flex-col mt-4 pt-4 gap-3" style={{ borderTop: '1px solid var(--color-border-subtle)' }}>
+            <div className="flex items-center justify-between gap-2">
+              <span className="wk-meta-title">Connected device</span>
               <span className="wk-pill">{activeWearableMeta?.name || 'None'}</span>
             </div>
             {latestBiometrics && latestBiometrics.hrvRmssd > 0 && (
-              <div className="flex items-center justify-between" style={{ gap: fig(16) }}>
-                <span className="wk-label">Recent Recovery</span>
-                <span className="wk-pill">
+              <div className="flex items-center justify-between gap-2">
+                <span className="wk-meta-title">Recent recovery</span>
+                <span className="wk-pill tabular-nums">
                   HRV {latestBiometrics.hrvRmssd} ms • RHR {latestBiometrics.restingHr} bpm
                 </span>
               </div>
@@ -418,10 +338,9 @@ export const ProfileSettingsSections: React.FC<ProfileSettingsSectionsProps> = (
                   triggerHaptic('light');
                   onOpenWatchSync();
                 }}
-                className="wk-button"
-                style={{ background: 'var(--wk-pill)', color: 'var(--color-text-primary)' }}
+                className="wk-btn-secondary w-full mt-1"
               >
-                Manage Wearables &amp; Sync Recovery
+                Manage wearables &amp; sync recovery
               </button>
             )}
           </div>
@@ -436,8 +355,7 @@ export const ProfileSettingsSections: React.FC<ProfileSettingsSectionsProps> = (
             triggerHaptic('light');
             onOpenActivityApps();
           }}
-          className="wk-button"
-          style={{ background: 'var(--wk-card)', color: 'var(--color-text-primary)' }}
+          className="wk-btn-secondary w-full"
         >
           Activity apps
         </button>
@@ -451,12 +369,12 @@ export const ProfileSettingsSections: React.FC<ProfileSettingsSectionsProps> = (
           aria-expanded={openSection === 'data'}
           className="w-full text-left block"
         >
-          <div className="flex items-start justify-between" style={{ gap: fig(24) }}>
-            <h3 className="wk-h1" style={{ lineHeight: 1.21 }}>
-              Data Backup &amp; Privacy
+          <div className="flex items-start justify-between gap-3">
+            <h3 className="wk-subhead leading-tight">
+              Data backup &amp; privacy
             </h3>
-            <div className="flex items-center shrink-0" style={{ gap: fig(16) }}>
-              <span className="wk-pill">ON DEVICE</span>
+            <div className="flex items-center shrink-0 gap-2">
+              <span className="wk-pill">On device</span>
               <ChevronRight
                 className="wk-chevron transition-transform"
                 style={{
@@ -468,28 +386,13 @@ export const ProfileSettingsSections: React.FC<ProfileSettingsSectionsProps> = (
             </div>
           </div>
 
-          <p
-            style={{
-              fontSize: `max(12px, ${fig(28)})`,
-              lineHeight: 1.21,
-              color: 'var(--wk-muted)',
-              marginTop: fig(20),
-            }}
-          >
+          <p className="wk-caption mt-2">
             Stored privately on your device • Export or reset anytime
           </p>
         </button>
 
         {openSection === 'data' && (
-          <div
-            className="flex flex-col"
-            style={{
-              marginTop: fig(28),
-              paddingTop: fig(24),
-              borderTop: '1px solid rgba(255,255,255,0.08)',
-              gap: fig(20),
-            }}
-          >
+          <div className="flex flex-col mt-4 pt-4 gap-3" style={{ borderTop: '1px solid var(--color-border-subtle)' }}>
             {canInstallPwa && onTriggerInstallPwa && (
               <button
                 type="button"
@@ -497,14 +400,14 @@ export const ProfileSettingsSections: React.FC<ProfileSettingsSectionsProps> = (
                   triggerHaptic('medium');
                   onTriggerInstallPwa();
                 }}
-                className="wk-button"
-                style={{ background: 'var(--wk-accent)', color: 'var(--color-text-on-accent)' }}
+                className="wk-button active:scale-[0.98] transition-transform"
+                style={{ background: 'var(--color-action-primary-bg)', color: 'var(--color-action-primary-fg)' }}
               >
-                Install App to Home Screen
+                Install app to home screen
               </button>
             )}
 
-            <div className="grid grid-cols-2" style={{ gap: fig(16) }}>
+            <div className="grid grid-cols-2 gap-2">
               {onExportData && (
                 <button
                   type="button"
@@ -512,10 +415,9 @@ export const ProfileSettingsSections: React.FC<ProfileSettingsSectionsProps> = (
                     triggerHaptic('light');
                     onExportData();
                   }}
-                  className="wk-button"
-                  style={{ background: 'var(--wk-pill)', color: 'var(--color-text-primary)' }}
+                  className="wk-btn-secondary w-full"
                 >
-                  Export Backup
+                  Export backup
                 </button>
               )}
 
@@ -535,16 +437,15 @@ export const ProfileSettingsSections: React.FC<ProfileSettingsSectionsProps> = (
                       triggerHaptic('light');
                       fileInputRef.current?.click();
                     }}
-                    className="wk-button"
-                    style={{ background: 'var(--wk-pill)', color: 'var(--color-text-primary)' }}
+                    className="wk-btn-secondary w-full"
                   >
-                    Restore Backup
+                    Restore backup
                   </button>
                 </>
               )}
             </div>
 
-            <div className="grid grid-cols-2" style={{ gap: fig(16) }}>
+            <div className="grid grid-cols-2 gap-2">
               {onResetData && (
                 <button
                   type="button"
@@ -558,10 +459,9 @@ export const ProfileSettingsSections: React.FC<ProfileSettingsSectionsProps> = (
                       onResetData();
                     }
                   }}
-                  className="wk-button"
-                  style={{ background: 'var(--wk-raised)', color: 'var(--color-text-primary)' }}
+                  className="wk-btn-secondary w-full"
                 >
-                  Load Sample Data
+                  Load sample data
                 </button>
               )}
 
@@ -572,33 +472,27 @@ export const ProfileSettingsSections: React.FC<ProfileSettingsSectionsProps> = (
                     triggerHaptic('warning');
                     setConfirmDeleteOpen(!confirmDeleteOpen);
                   }}
-                  className="wk-button"
-                  style={{ background: 'var(--wk-raised)', color: 'var(--color-status-danger)' }}
+                  className="wk-btn-secondary w-full"
+                  style={{ color: 'var(--color-status-danger)' }}
                 >
-                  Delete All Data
+                  Delete all data
                 </button>
               )}
             </div>
 
             {confirmDeleteOpen && onDeleteAllData && (
-              <div
-                style={{
-                  paddingTop: fig(20),
-                  borderTop: '1px solid rgba(255,255,255,0.08)',
-                }}
-              >
-                <div className="wk-label">
+              <div className="pt-3" style={{ borderTop: '1px solid var(--color-border-subtle)' }}>
+                <div className="wk-subhead">
                   Permanently erase all workout &amp; recovery data?
                 </div>
-                <p className="wk-body" style={{ marginTop: fig(12) }}>
+                <p className="wk-body mt-2 max-w-prose">
                   This will wipe all workout history, bodyweight logs, custom exercises, and watch settings from this device.
                 </p>
-                <div className="grid grid-cols-2" style={{ marginTop: fig(20), gap: fig(16) }}>
+                <div className="grid grid-cols-2 mt-3 gap-2">
                   <button
                     type="button"
                     onClick={() => setConfirmDeleteOpen(false)}
-                    className="wk-button"
-                    style={{ background: 'var(--wk-pill)', color: 'var(--color-text-primary)' }}
+                    className="wk-btn-secondary w-full"
                   >
                     Cancel
                   </button>
@@ -612,25 +506,20 @@ export const ProfileSettingsSections: React.FC<ProfileSettingsSectionsProps> = (
                     className="wk-button"
                     style={{ background: 'var(--color-action-destructive-bg)', color: 'var(--color-action-destructive-fg)' }}
                   >
-                    Confirm Erase
+                    Confirm erase
                   </button>
                 </div>
               </div>
             )}
 
-            <div
-              style={{
-                paddingTop: fig(20),
-                borderTop: '1px solid rgba(255,255,255,0.08)',
-              }}
-            >
+            <div className="pt-3" style={{ borderTop: '1px solid var(--color-border-subtle)' }}>
               <button
                 type="button"
                 onClick={() => setShowPrivacyDetails(!showPrivacyDetails)}
                 aria-expanded={showPrivacyDetails}
-                className="wk-tap w-full flex items-center justify-between wk-label"
+                className="min-h-[44px] w-full flex items-center justify-between wk-meta-title"
               >
-                <span>Privacy Policy &amp; Fitness Disclaimer</span>
+                <span>Privacy policy &amp; fitness disclaimer</span>
                 <ChevronRight
                   className="wk-chevron transition-transform"
                   style={{ transform: showPrivacyDetails ? 'rotate(90deg)' : undefined }}
@@ -639,22 +528,22 @@ export const ProfileSettingsSections: React.FC<ProfileSettingsSectionsProps> = (
               </button>
 
               {showPrivacyDetails && (
-                <div className="wk-body" style={{ marginTop: fig(16) }}>
+                <div className="wk-body mt-2 max-w-prose space-y-2">
                   <p>
-                    <strong className="text-white">Privacy:</strong> Your workouts, bodyweight and recovery logs are stored on this device. When you connect Whoop, data passes through our server only to fetch it and is not stored there. Health data is never sold or shared.
+                    <strong style={{ color: 'var(--color-text-primary)' }}>Privacy:</strong> Your workouts, bodyweight and recovery logs are stored on this device. When you connect Whoop, data passes through our server only to fetch it and is not stored there. Health data is never sold or shared.
                   </p>
-                  <p style={{ marginTop: fig(12) }}>
-                    <strong className="text-white">Fitness Disclaimer:</strong> Recovery scores and target weights are for informational fitness tracking only and are not medical advice.
+                  <p>
+                    <strong style={{ color: 'var(--color-text-primary)' }}>Fitness disclaimer:</strong> Recovery scores and target weights are for informational fitness tracking only and are not medical advice.
                   </p>
                   <div
-                    className="flex items-center font-semibold"
-                    style={{ marginTop: fig(16), gap: fig(24), color: 'var(--wk-accent)' }}
+                    className="flex flex-wrap items-center font-medium gap-4 pt-1"
+                    style={{ color: 'var(--color-text-primary)' }}
                   >
-                    <a href="/privacy.html" target="_blank" rel="noreferrer" className="wk-tap hover:underline">
-                      Full Privacy Policy &rarr;
+                    <a href="/privacy.html" target="_blank" rel="noreferrer" className="min-h-[44px] inline-flex items-center hover:underline">
+                      Full privacy policy &rarr;
                     </a>
-                    <a href="/terms.html" target="_blank" rel="noreferrer" className="wk-tap hover:underline">
-                      Terms of Service &rarr;
+                    <a href="/terms.html" target="_blank" rel="noreferrer" className="min-h-[44px] inline-flex items-center hover:underline">
+                      Terms of service &rarr;
                     </a>
                   </div>
                 </div>

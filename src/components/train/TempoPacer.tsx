@@ -72,11 +72,11 @@ export const TempoPacer: React.FC<TempoPacerProps> = ({ tempo }) => {
   const phase = phases[phaseIdx];
 
   return (
-    <div className="wk-raised flex items-center justify-between gap-[calc(16*var(--f))]">
+    <div className="wk-raised flex items-center justify-between gap-2">
       <div className="wk-body min-w-0" aria-live="polite">
         {running ? (
           <span>
-            Rep {rep} • <strong className="text-white">{phase.label}</strong>{' '}
+            Rep {rep} • <strong style={{ color: 'var(--color-text-primary)' }}>{phase.label}</strong>{' '}
             <span className="tabular-numbers font-semibold">{phase.seconds - secondInPhase}s</span>
           </span>
         ) : (
@@ -89,10 +89,10 @@ export const TempoPacer: React.FC<TempoPacerProps> = ({ tempo }) => {
         type="button"
         onClick={() => setRunning((r) => !r)}
         aria-pressed={running}
-        className="wk-btn-secondary shrink-0 min-h-[44px] gap-[calc(12*var(--f))] transition-colors"
+        className="wk-btn-secondary shrink-0 min-h-[44px] gap-2 transition-colors"
         style={
           running
-            ? { background: 'var(--wk-accent)', color: 'var(--color-text-on-accent)' }
+            ? { background: 'var(--color-action-primary-bg)', color: 'var(--color-action-primary-fg)' }
             : { background: 'var(--color-action-secondary-bg)', color: 'var(--color-action-secondary-fg)' }
         }
       >

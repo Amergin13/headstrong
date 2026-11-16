@@ -7,8 +7,7 @@
 @layer base {
   :root {
     color-scheme: dark;
-    --f: calc(min(100vw, 448px) / 996);
-    /* Legacy aliases mapped to codified Whoop Slate tokens */
+    /* Legacy aliases mapped to Treise Slate tokens */
     --wk-bg: var(--color-bg-canvas);
     --wk-card: var(--color-bg-surface);
     --wk-raised: var(--color-bg-surface-raised);
@@ -41,48 +40,7 @@
   }
 }
 
-/* Unified Surface Tokens mapped to Workout Design System */
-.surface-glass {
-  background: var(--wk-card);
-  border-radius: calc(30 * var(--f));
-}
-
-.surface-elevated {
-  background: var(--wk-raised);
-  border-radius: calc(15 * var(--f));
-}
-
-.biometric-card {
-  background: var(--wk-card);
-  border-radius: calc(30 * var(--f));
-}
-
-.biometric-card-subtle {
-  background: var(--wk-raised);
-  border-radius: calc(15 * var(--f));
-}
-
-.biometric-pill {
-  background: var(--wk-pill);
-  border-radius: calc(8 * var(--f));
-}
-
-.biometric-track-hatched,
-.biometric-track {
-  background-color: var(--wk-pill);
-}
-
-.glow-recovery {
-  /* Crisp clean recovery accent */
-}
-
-.glow-strain {
-  /* Crisp clean strain accent */
-}
-
-.glow-amber {
-  /* Crisp clean amber accent */
-}
+/* Legacy aliases and utility layer preserved in tokens.css and .wk primitives below. */
 
 /* Tabular figures for weights, reps, and telemetry */
 .tabular-numbers {
@@ -101,7 +59,7 @@
   right: -20px;
   width: 140px;
   height: 140px;
-  background: radial-gradient(circle, rgba(0, 241, 159, 0.12) 0%, rgba(0, 241, 159, 0) 70%);
+  background: radial-gradient(circle, rgb(var(--color-accent-primary-rgb) / 0.12) 0%, rgb(var(--color-accent-primary-rgb) / 0) 70%);
   pointer-events: none;
   border-radius: 50%;
 }
@@ -116,7 +74,7 @@
   right: -20px;
   width: 140px;
   height: 140px;
-  background: radial-gradient(circle, rgba(255, 200, 61, 0.14) 0%, rgba(255, 200, 61, 0) 70%);
+  background: radial-gradient(circle, rgb(var(--color-status-warning-rgb) / 0.14) 0%, rgb(var(--color-status-warning-rgb) / 0) 70%);
   pointer-events: none;
   border-radius: 50%;
 }
@@ -164,12 +122,9 @@ select:focus-visible {
 }
 
 /* ------------------------------------------------------------------------------------------
- * Workout Design System (Figma: 1344 px wide frame). --f converts one Figma pixel to screen pixels, so
- * every size is written as calc(<figma px> * var(--f)). On a Pixel (448 px wide) --f is 0.45, which
- * puts body text at ~12 px and inputs at 33 px, matched against Whoop.
+ * Treise 4px Implicit Grid System — Fixed 4px spacing, concentric radii, and 4-role Inter scale
  * ---------------------------------------------------------------------------------------- */
 .wk {
-  --f: calc(min(100vw, 448px) / 996);
   --wk-bg: var(--color-bg-canvas);
   --wk-card: var(--color-bg-surface);
   --wk-raised: var(--color-bg-surface-raised);
@@ -186,105 +141,146 @@ select:focus-visible {
   letter-spacing: 0;
 }
 .wk-page {
-  padding-left: calc(38 * var(--f));
-  padding-right: calc(38 * var(--f));
-  padding-bottom: 120px;
+  padding-left: var(--space-4);
+  padding-right: var(--space-4);
+  padding-bottom: 112px;
 }
 .wk-page-title {
-  font-size: max(16px, calc(36 * var(--f)));
-  line-height: 1.25;
+  font-size: 32px;
+  line-height: 36px;
+  font-weight: 700;
+  text-transform: none;
+  letter-spacing: -0.03em;
+  color: var(--color-text-primary);
+  text-align: left;
+}
+.wk-nav-title {
+  font-size: 20px;
+  line-height: 24px;
   font-weight: 600;
   text-transform: none;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.02em;
   color: var(--color-text-primary);
   text-align: center;
 }
 .wk-card {
   background: var(--wk-card);
-  border-radius: calc(30 * var(--f));
-  padding: calc(38 * var(--f));
+  border-radius: var(--radius-card);
+  padding: var(--space-4);
+  min-width: 0;
+  max-width: 100%;
 }
 .wk-raised {
   background: var(--wk-raised);
-  border-radius: calc(15 * var(--f));
-  padding: calc(24 * var(--f));
+  border-radius: var(--radius-inset);
+  padding: var(--space-3);
+  min-width: 0;
+  max-width: 100%;
 }
-/* Role: Title (16px/600, sentence/normal case) */
-.wk-title,
-.wk-h1 {
-  font-size: max(16px, calc(36 * var(--f)));
-  line-height: 1.25;
-  font-weight: 600;
-  text-transform: none;
-  letter-spacing: -0.01em;
-  color: var(--color-text-primary);
-}
-/* Role: Body (14px/400, normal case) */
-.wk-body {
-  font-size: max(14px, calc(30 * var(--f)));
-  line-height: 1.45;
-  font-weight: 400;
-  color: var(--wk-body);
-}
-/* Role: Label (12px/600, uppercase with +0.04em tracking — reserved for tiny column headers & status tags) */
-.wk-label {
-  font-size: max(12px, calc(24 * var(--f)));
-  line-height: 1.25;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--color-text-primary);
-}
-/* Secondary description / caption (12px/400, normal case) */
-.wk-caption {
-  font-size: max(12px, calc(24 * var(--f)));
-  line-height: 1.35;
-  font-weight: 400;
-  color: var(--wk-muted);
-}
-/* Workout tab caption floor (13px/500, +0.04em tracking, >= 4.5:1 contrast on card surface) */
-.wk-workout-caption {
-  font-size: max(13px, calc(28 * var(--f)));
-  line-height: 1.25;
-  font-weight: 500;
-  letter-spacing: 0.04em;
-  color: var(--wk-muted);
-}
-/* Role: Number (20px/600, Inter tabular figures) */
-.wk-number {
-  font-size: max(20px, calc(44 * var(--f)));
-  line-height: 1.1;
-  font-weight: 600;
+/* Role: Display (32px/36px 700, Inter tabular figures for hero stats & summaries) */
+.wk-display {
+  font-size: 32px;
+  line-height: 36px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
   font-variant-numeric: tabular-nums;
   font-feature-settings: 'tnum' on, 'cv05' on, 'cv08' on;
   color: var(--color-text-primary);
 }
-/* Informational badge only (e.g., wearable source "WHOOP", superset order "A1"). Never use on <button> elements. */
+/* Role: Title / Card header (20px/24px 600, sentence/normal case, high-contrast #FFFFFF) */
+.wk-title,
+.wk-h1 {
+  font-size: 20px;
+  line-height: 24px;
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: -0.02em;
+  color: var(--color-text-primary);
+}
+/* Role: Subhead / Nested item or section title (16px/24px 500, #FFFFFF) */
+.wk-subhead {
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: -0.01em;
+  color: var(--color-text-primary);
+}
+/* Role: Body (16px/24px 400, normal case, 65ch measure cap) */
+.wk-body {
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 400;
+  max-width: 65ch;
+  color: var(--wk-body);
+}
+/* Role: Label (12px/16px 500, uppercase with +0.06em tracking — calm 1-3 word eyebrows & column headers) */
+.wk-label {
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-text-muted);
+}
+/* Sentence-case micro title (12px/16px 500 — goal ring titles, trophy lift labels, form field labels) */
+.wk-meta-title {
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: 0em;
+  color: var(--color-text-secondary);
+}
+/* Secondary description / caption (12px/16px 400, normal case) */
+.wk-caption {
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 400;
+  letter-spacing: 0.005em;
+  color: var(--wk-muted);
+}
+/* Role: Number (20px/24px 600, Inter tabular figures) */
+.wk-number {
+  font-size: 20px;
+  line-height: 24px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' on, 'cv05' on, 'cv08' on;
+  color: var(--color-text-primary);
+}
+/* Read-only status tag (e.g., wearable source, superset order). Never use on <button> elements. */
 .wk-pill {
   display: inline-flex;
   align-items: center;
+  min-height: 24px;
   background: var(--wk-pill);
-  border-radius: calc(8 * var(--f));
-  padding: calc(6 * var(--f)) calc(22 * var(--f));
-  font-size: max(12px, calc(24 * var(--f)));
-  line-height: 1.2;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--color-status-neutral);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-inset);
+  padding: var(--space-1) var(--space-2);
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: 0.01em;
+  color: var(--color-text-secondary);
 }
-/* Compact secondary action button (#44494C surface, #FFFFFF label, pill-shaped interactive radius). */
+/* Compact interactive secondary action button (#4B5156 + overhead top rim + 1px border, >= 44px touch height). */
 .wk-btn-secondary {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: var(--space-2);
   background: var(--color-action-secondary-bg);
-  border-radius: calc(20 * var(--f));
-  padding: calc(12 * var(--f)) calc(26 * var(--f));
-  min-height: 36px;
-  font-size: max(12px, calc(24 * var(--f)));
-  line-height: 1.2;
-  font-weight: 600;
+  border: 1px solid var(--color-border-strong);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius-control);
+  padding: var(--space-2) var(--space-4);
+  min-height: 44px;
+  font-size: 16px;
+  line-height: 20px;
+  font-weight: 500;
   text-transform: none;
   color: var(--color-action-secondary-fg);
 }
@@ -298,8 +294,8 @@ select:focus-visible {
   inset: min(0px, calc((100% - 44px) / 2)) 0;
 }
 .wk-bar {
-  height: calc(10 * var(--f));
-  border-radius: calc(30 * var(--f));
+  height: 4px;
+  border-radius: var(--radius-pill);
   background: var(--wk-pill);
   overflow: hidden;
 }
@@ -313,17 +309,18 @@ select:focus-visible {
   pointer-events: var(--dock-pe, none);
 }
 .wk-chevron {
-  width: calc(40 * var(--f));
-  height: calc(40 * var(--f));
+  width: var(--space-4);
+  height: var(--space-4);
   color: var(--wk-muted);
   flex-shrink: 0;
 }
 .wk-input {
   background: var(--wk-raised);
-  border-radius: calc(15 * var(--f));
+  border-radius: var(--radius-inset);
   min-height: 48px;
-  height: max(48px, calc(106 * var(--f)));
-  font-size: max(20px, calc(44 * var(--f)));
+  height: 48px;
+  font-size: 20px;
+  line-height: 24px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   font-feature-settings: 'tnum' on, 'cv05' on, 'cv08' on;
@@ -333,16 +330,18 @@ select:focus-visible {
 }
 .wk-input:focus-within,
 .wk-input:focus {
-  outline: calc(3 * var(--f)) solid var(--color-text-primary);
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: 2px;
 }
 .wk-field {
   background: var(--wk-raised);
-  border-radius: calc(15 * var(--f));
-  min-height: 44px;
-  height: calc(84 * var(--f));
-  padding: 0 calc(24 * var(--f));
-  font-size: max(16px, calc(32 * var(--f)));
-  font-weight: 600;
+  border-radius: var(--radius-inset);
+  min-height: 48px;
+  height: 48px;
+  padding: 0 var(--space-3);
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
   font-feature-settings: 'tnum' on, 'cv05' on, 'cv08' on;
   color: var(--color-text-primary);
@@ -350,27 +349,40 @@ select:focus-visible {
 }
 .wk-field:focus-within,
 .wk-field:focus {
-  outline: calc(3 * var(--f)) solid var(--color-text-primary);
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: 2px;
 }
 .wk-segments {
   display: grid;
-  padding: calc(8 * var(--f));
-  gap: calc(8 * var(--f));
-  border-radius: calc(30 * var(--f));
-  background: var(--wk-card);
+  padding: var(--space-1);
+  gap: var(--space-1);
+  border-radius: var(--radius-tray);
+  background: var(--color-bg-canvas);
+  border: 1px solid var(--color-border-subtle);
 }
 .wk-segment {
   min-height: 44px;
-  height: calc(84 * var(--f));
-  border-radius: calc(22 * var(--f));
-  font-size: max(13px, calc(26 * var(--f)));
-  font-weight: 600;
+  height: 44px;
+  border-radius: var(--radius-control);
+  padding: 0 var(--space-3);
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 400;
   text-transform: none;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: calc(12 * var(--f));
+  gap: var(--space-2);
+  color: var(--wk-muted);
   transition: background-color 0.15s ease, color 0.15s ease;
+}
+.wk-segment.is-active,
+.wk-segment[aria-selected='true'],
+.wk-segment[aria-pressed='true'] {
+  background: var(--color-action-secondary-bg);
+  color: var(--color-text-primary);
+  font-weight: 500;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
 }
 .wk-button {
   display: flex;
@@ -378,11 +390,21 @@ select:focus-visible {
   justify-content: center;
   width: 100%;
   min-height: 48px;
-  height: calc(130 * var(--f));
-  border-radius: calc(30 * var(--f));
-  font-size: max(16px, calc(34 * var(--f)));
+  height: 48px;
+  border-radius: var(--radius-control);
+  padding: 0 var(--space-4);
+  font-size: 16px;
+  line-height: 24px;
   font-weight: 600;
   text-transform: none;
+}
+.wk-button:disabled,
+.wk-btn-secondary:disabled {
+  background: var(--color-action-disabled-bg);
+  color: var(--color-action-disabled-fg);
+  border: 1px solid var(--color-border-subtle);
+  box-shadow: none;
+  cursor: not-allowed;
 }
 .wk input[type='number']::-webkit-inner-spin-button,
 .wk input[type='number']::-webkit-outer-spin-button {
@@ -421,8 +443,12 @@ select:focus-visible {
   to { clip-path: inset(0 0 0 0); }
 }
 @keyframes wk-fade-in {
-  from { opacity: 0; transform: translateY(calc(6 * var(--f))); }
+  from { opacity: 0; transform: translateY(4px); }
   to { opacity: 1; transform: none; }
+}
+@keyframes wk-chart-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 @keyframes wk-dot-pop {
   0% { transform: scale(0); }
@@ -450,9 +476,14 @@ select:focus-visible {
 }
 .wk-row-flash {
   position: absolute;
-  inset: calc(-8 * var(--f)) calc(-16 * var(--f));
-  border-radius: calc(15 * var(--f));
-  background: linear-gradient(90deg, rgba(0, 241, 159, 0) 0%, rgba(0, 241, 159, 0.14) 60%, rgba(0, 241, 159, 0.22) 100%);
+  inset: -4px -8px;
+  border-radius: var(--radius-inset);
+  background: linear-gradient(
+    90deg,
+    rgb(var(--color-accent-primary-rgb) / 0) 0%,
+    rgb(var(--color-accent-primary-rgb) / 0.14) 60%,
+    rgb(var(--color-accent-primary-rgb) / 0.22) 100%
+  );
   pointer-events: none;
   animation: wk-row-flash 900ms ease-out both;
 }
@@ -465,7 +496,7 @@ select:focus-visible {
   animation: wk-chart-reveal 1100ms cubic-bezier(0.65, 0, 0.35, 1) both;
 }
 .wk-chart-play .wk-chart-fade {
-  animation: wk-fade-in 500ms ease-out both;
+  animation: wk-chart-fade-in 500ms ease-out both;
 }
 .wk-chart-play .wk-chart-dot {
   animation: wk-dot-pop 420ms 1000ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
@@ -497,9 +528,9 @@ select:focus-visible {
 .wk-today::after {
   content: '';
   position: absolute;
-  inset: calc(-4 * var(--f));
+  inset: -4px;
   border-radius: 9999px;
-  border: calc(3 * var(--f)) solid var(--color-text-primary);
+  border: 2px solid var(--color-text-primary);
   pointer-events: none;
   animation: wk-today-halo 1100ms 750ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }

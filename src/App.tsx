@@ -1008,7 +1008,7 @@ export const App: React.FC = () => {
 
   return (
     <UnitsProvider unit={weightUnit}>
-    <div className="wk min-h-screen text-slate-100 flex flex-col font-sans relative">
+    <div className="wk min-h-screen flex flex-col font-sans relative">
       <div id="page-top-gradient-host" className="pointer-events-none" />
       {/* App Header */}
       <Header
@@ -1019,7 +1019,7 @@ export const App: React.FC = () => {
       />
 
       {/* Main Mobile Container */}
-      <main className="flex-1 max-w-md mx-auto w-full px-3.5 pt-3 relative">
+      <main className="flex-1 max-w-md mx-auto w-full px-4 pt-3 relative">
         <Suspense fallback={<div className="wk-card wk-body" role="status">Loading…</div>}>
         <ErrorBoundary key={activeTab} area={activeTab === 'train' ? 'Workout' : activeTab === 'analytics' ? 'Progress' : activeTab === 'program' ? 'Program' : 'Treise'}>
         {activeTab === 'train' && (
@@ -1235,10 +1235,9 @@ export const App: React.FC = () => {
 
       {toast && (
         <Toast
-          title={toast.title}
+          subtitle={toast.title ? (toast.tag ? `${toast.tag} · ${toast.title}` : toast.title) : toast.tag}
           message={toast.message}
-          tag={toast.tag}
-          onClose={() => setToast(null)}
+          onDismiss={() => setToast(null)}
         />
       )}
 

@@ -1,64 +1,86 @@
 import React from 'react';
+import { SEMANTIC_COLOR } from '../../styles/semanticTokens';
 
-export type BiometricGaugeVariant = 'recovery' | 'strain' | 'sleep' | 'amber' | 'purple' | 'emerald';
+export type BiometricGaugeVariant =
+  | 'positive'
+  | 'info'
+  | 'amber'
+  | 'danger'
+  | 'recovery'
+  | 'strain'
+  | 'sleep';
 
 interface BiometricCircularGaugeProps {
   value: number;
   max?: number;
   label: string;
   unit?: string;
-  sublabel?: string;
   variant?: BiometricGaugeVariant;
   size?: 'sm' | 'md' | 'lg' | 'xl';
-  className?: string;
-  strokeWidth?: number;
+  subtitle?: string;
 }
 
+/**
+ * Semantic ring variants only — never goal-specific or third-party hues:
+ * - Positive (`--color-status-positive` Mint): recovery / readiness score, achieved target
+ * - Info (`--color-status-info` Blue): informational, non-progress telemetry (Strain, Sleep)
+ * - Amber (`--color-status-warning`): moderate readiness / caution
+ * - Danger (`--color-status-danger-fill`): low readiness / overreaching warning
+ */
 const VARIANT_CONFIG: Record<
   BiometricGaugeVariant,
-  {
-    stroke: string;
-    textClass: string;
-    badgeBg: string;
-  }
+  { stroke: string; glow: string; valueColor: string; trackColor: string }
 > = {
-  recovery: {
-    stroke: 'var(--color-status-positive)',
-    textClass: 'text-brand-primary',
-    badgeBg: 'bg-brand-primary/15 text-brand-primary',
+  positive: {
+    stroke: SEMANTIC_COLOR.statusPositive,
+    glow: 'drop-shadow(0 0 8px rgb(var(--color-accent-primary-rgb) / 0.3))',
+    valueColor: SEMANTIC_COLOR.statusPositive,
+    trackColor: 'var(--color-border-track)',
   },
-  emerald: {
-    stroke: 'var(--color-partner-fitbit)',
-    textClass: 'text-emerald-400',
-    badgeBg: 'bg-emerald-500/15 text-emerald-400',
+  recovery: {
+    stroke: SEMANTIC_COLOR.statusPositive,
+    glow: 'drop-shadow(0 0 8px rgb(var(--color-accent-primary-rgb) / 0.3))',
+    valueColor: SEMANTIC_COLOR.statusPositive,
+    trackColor: 'var(--color-border-track)',
+  },
+  info: {
+    stroke: SEMANTIC_COLOR.statusInfo,
+    glow: 'drop-shadow(0 0 8px rgb(var(--color-status-info-rgb) / 0.25))',
+    valueColor: SEMANTIC_COLOR.textPrimary,
+    trackColor: 'var(--color-border-track)',
   },
   strain: {
-    stroke: 'var(--color-status-info)',
-    textClass: 'text-brand-strain',
-    badgeBg: 'bg-brand-strain/15 text-brand-strain',
+    stroke: SEMANTIC_COLOR.statusInfo,
+    glow: 'drop-shadow(0 0 8px rgb(var(--color-status-info-rgb) / 0.25))',
+    valueColor: SEMANTIC_COLOR.textPrimary,
+    trackColor: 'var(--color-border-track)',
   },
   sleep: {
-    stroke: 'var(--color-viz-1)',
-    textClass: 'text-cyan-400',
-    badgeBg: 'bg-cyan-500/15 text-cyan-400',
+    stroke: SEMANTIC_COLOR.statusInfo,
+    glow: 'drop-shadow(0 0 8px rgb(var(--color-status-info-rgb) / 0.25))',
+    valueColor: SEMANTIC_COLOR.textPrimary,
+    trackColor: 'var(--color-border-track)',
   },
   amber: {
-    stroke: 'var(--color-status-warning)',
-    textClass: 'text-amber-400',
-    badgeBg: 'bg-amber-500/15 text-amber-400',
+    stroke: SEMANTIC_COLOR.statusWarning,
+    glow: 'drop-shadow(0 0 8px rgb(var(--color-status-warning-rgb) / 0.28))',
+    valueColor: SEMANTIC_COLOR.statusWarning,
+    trackColor: 'var(--color-border-track)',
   },
-  purple: {
-    stroke: 'var(--color-phase-hypertrophy)',
-    textClass: 'text-purple-400',
-    badgeBg: 'bg-purple-500/15 text-purple-400',
+  danger: {
+    stroke: SEMANTIC_COLOR.statusDangerFill,
+    glow: 'drop-shadow(0 0 8px rgb(var(--color-status-danger-fill-rgb) / 0.28))',
+    valueColor: SEMANTIC_COLOR.statusDanger,
+    trackColor: 'var(--color-border-track)',
   },
 };
 
+/** Strictly on the 4px implicit grid (`112px` minimum diameter prevents long labels crossing the ring). */
 const SIZE_CONFIG = {
-  sm: { dim: 96, stroke: 8, valueText: 'text-xl', labelText: 'text-xs' },
-  md: { dim: 128, stroke: 10, valueText: 'text-xl', labelText: 'text-xs' },
-  lg: { dim: 164, stroke: 12, valueText: 'text-xl', labelText: 'text-xs' },
-  xl: { dim: 196, stroke: 14, valueText: 'text-xl', labelText: 'text-xs' },
+  sm: { container: 112, strokeWidth: 8, textSize: 'text-base font-medium', labelSize: 'text-xs' },
+  md: { container: 128, strokeWidth: 8, textSize: 'text-xl font-semibold', labelSize: 'text-xs' },
+  lg: { container: 160, strokeWidth: 12, textSize: 'text-xl font-semibold', labelSize: 'text-xs' },
+  xl: { container: 192, strokeWidth: 12, textSize: 'text-xl font-semibold', labelSize: 'text-xs' },
 };
 
 export const BiometricCircularGauge: React.FC<BiometricCircularGaugeProps> = ({
@@ -66,83 +88,74 @@ export const BiometricCircularGauge: React.FC<BiometricCircularGaugeProps> = ({
   max = 100,
   label,
   unit = '',
-  sublabel,
-  variant = 'recovery',
+  variant = 'positive',
   size = 'md',
-  className = '',
-  strokeWidth: customStrokeWidth,
+  subtitle,
 }) => {
-  const cfg = VARIANT_CONFIG[variant] || VARIANT_CONFIG.recovery;
-  const sizeCfg = SIZE_CONFIG[size] || SIZE_CONFIG.md;
+  const cfg = VARIANT_CONFIG[variant] || VARIANT_CONFIG.positive;
+  const dims = SIZE_CONFIG[size] || SIZE_CONFIG.md;
 
-  const dim = sizeCfg.dim;
-  const strokeWidth = customStrokeWidth ?? sizeCfg.stroke;
-  const radius = (dim - strokeWidth) / 2;
+  const radius = (dims.container - dims.strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
-
-  // Clamped percentage
-  const percentage = Math.max(0, Math.min(100, (value / max) * 100));
-  const strokeDashoffset = circumference - (percentage / 100) * circumference;
-
-  // Format value (e.g. decimals if non-integer)
-  const formattedValue = Number.isInteger(value) ? value : value.toFixed(1);
+  const pct = Math.min(1, Math.max(0, value / max));
+  const strokeDashoffset = circumference * (1 - pct);
 
   return (
-    <div className={`flex flex-col items-center justify-center ${className}`}>
-      <div className="relative flex items-center justify-center" style={{ width: dim, height: dim }}>
+    <div className="flex flex-col items-center">
+      <div
+        className="relative flex items-center justify-center"
+        style={{ width: dims.container, height: dims.container }}
+      >
         <svg
-          width={dim}
-          height={dim}
-          viewBox={`0 0 ${dim} ${dim}`}
+          width={dims.container}
+          height={dims.container}
           className="transform -rotate-90"
-          aria-hidden="true"
         >
-          {/* Outer dark track channel */}
           <circle
-            cx={dim / 2}
-            cy={dim / 2}
+            cx={dims.container / 2}
+            cy={dims.container / 2}
             r={radius}
-            fill="none"
-            stroke="var(--color-bg-surface-control)"
-            strokeWidth={strokeWidth}
+            fill="transparent"
+            stroke={cfg.trackColor}
+            strokeWidth={dims.strokeWidth}
           />
-          {/* Active progress arc */}
           <circle
-            cx={dim / 2}
-            cy={dim / 2}
+            cx={dims.container / 2}
+            cy={dims.container / 2}
             r={radius}
-            fill="none"
+            fill="transparent"
             stroke={cfg.stroke}
-            strokeWidth={strokeWidth}
+            strokeWidth={dims.strokeWidth}
             strokeDasharray={circumference}
             strokeDashoffset={strokeDashoffset}
-            className="transition-all duration-700 ease-out"
+            strokeLinecap="round"
+            style={{ filter: cfg.glow, transition: 'stroke-dashoffset 0.8s cubic-bezier(0.16, 1, 0.3, 1)' }}
           />
         </svg>
 
-        {/* Centered Metric Content */}
-        <div className="absolute inset-0 flex flex-col items-center justify-center text-center px-2">
-          <div className="flex items-baseline justify-center">
-            <span className={`${sizeCfg.valueText} font-semibold text-white tabular-numbers tracking-tight`}>
-              {formattedValue}
+        <div className="absolute inset-0 flex flex-col items-center justify-center px-3 text-center">
+          <div className="flex items-baseline justify-center gap-1 tabular-nums" style={{ color: cfg.valueColor }}>
+            <span className={dims.textSize}>
+              {typeof value === 'number' && !Number.isInteger(value) ? value.toFixed(1) : Math.round(value)}
             </span>
             {unit && (
-              <span className="text-xs font-semibold text-slate-400 ml-0.5">
+              <span className="text-xs font-normal" style={{ color: 'var(--color-text-muted)' }}>
                 {unit}
               </span>
             )}
           </div>
-          <span className="text-xs font-semibold tracking-widest uppercase text-slate-400 mt-0.5">
+          <span
+            className="wk-meta-title mt-1 max-w-full truncate"
+          >
             {label}
           </span>
+          {subtitle && (
+            <span className="text-xs leading-tight" style={{ color: 'var(--color-text-muted)' }}>
+              {subtitle}
+            </span>
+          )}
         </div>
       </div>
-
-      {sublabel && (
-        <span className="mt-2 text-xs font-medium text-slate-400 text-center">
-          {sublabel}
-        </span>
-      )}
     </div>
   );
 };

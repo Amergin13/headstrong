@@ -26,8 +26,9 @@ type ChatTurn = { role: 'user' | 'assistant'; content: string };
 
 const STATUS_TTL_MS = 5 * 60 * 1000;
 const FAILURE_STATUS_TTL_MS = 15 * 1000;
-const STATUS_TIMEOUT_MS = 1800;
-const REQUEST_TIMEOUT_MS = 15_000;
+const TRANSIENT_FAILURE_TTL_MS = 3 * 1000;
+const STATUS_TIMEOUT_MS = 4500;
+const REQUEST_TIMEOUT_MS = 20_000;
 const MAX_REMEMBERED_EXCHANGES = 4;
 
 let cachedStatus: { configured: boolean; at: number; ttlMs: number } | null = null;
@@ -67,17 +68,21 @@ export async function isFlashLiteReady(force = false): Promise<boolean> {
   let check: Promise<boolean> | null = null;
   check = (async () => {
     try {
-      const res = await fetchWithTimeout('/api/coach/generate', { method: 'GET' }, STATUS_TIMEOUT_MS);
-      if (!res || !res.ok || !isJsonResponse(res)) {
+      const res = await fetchWithTimeout('/api/coach/generate', { method: 'GET', cache: 'no-store' }, STATUS_TIMEOUT_MS);
+      if (!res) {
+        cachedStatus = { configured: false, at: Date.now(), ttlMs: TRANSIENT_FAILURE_TTL_MS };
+        return false;
+      }
+      if (!res.ok || !isJsonResponse(res)) {
         cachedStatus = { configured: false, at: Date.now(), ttlMs: FAILURE_STATUS_TTL_MS };
         return false;
       }
       const body: any = await res.json();
       const configured = Boolean(body?.configured);
-      cachedStatus = { configured, at: Date.now(), ttlMs: STATUS_TTL_MS };
+      cachedStatus = { configured, at: Date.now(), ttlMs: configured ? STATUS_TTL_MS : FAILURE_STATUS_TTL_MS };
       return configured;
     } catch {
-      cachedStatus = { configured: false, at: Date.now(), ttlMs: FAILURE_STATUS_TTL_MS };
+      cachedStatus = { configured: false, at: Date.now(), ttlMs: TRANSIENT_FAILURE_TTL_MS };
       return false;
     } finally {
       if (inFlightStatus === check) inFlightStatus = null;

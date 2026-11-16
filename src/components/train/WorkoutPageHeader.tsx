@@ -4,8 +4,6 @@ import { StripDay } from '../../services/sessionSchedule';
 import { triggerHaptic } from '../../utils/haptics';
 import { formatSentenceCase } from '../../utils/typography';
 
-const fig = (px: number) => `calc(${px} * var(--f))`;
-
 interface WorkoutPageHeaderProps {
   title: string;
   days: StripDay[];
@@ -23,8 +21,7 @@ const STATUS_TEXT: Record<StripDay['status'], string> = {
 };
 
 const DayCircle: React.FC<{ day: StripDay }> = ({ day }) => {
-  const size = fig(48);
-  const stroke = fig(3);
+  const size = 24;
   if (day.status === 'trained') {
     return (
       <span
@@ -32,11 +29,11 @@ const DayCircle: React.FC<{ day: StripDay }> = ({ day }) => {
         style={{
           width: size,
           height: size,
-          background: 'var(--wk-accent)',
-          boxShadow: day.isToday ? `0 0 0 ${fig(4)} var(--color-bg-canvas), 0 0 0 ${fig(7)} var(--color-text-primary)` : undefined,
+          background: 'var(--color-status-positive)',
+          boxShadow: day.isToday ? '0 0 0 2px var(--color-bg-canvas), 0 0 0 4px var(--color-text-primary)' : undefined,
         }}
       >
-        <Check style={{ width: fig(28), height: fig(28), color: 'var(--color-text-on-accent)' }} strokeWidth={3.5} aria-hidden="true" />
+        <Check className="w-3.5 h-3.5" style={{ color: 'var(--color-text-on-accent)' }} strokeWidth={3} aria-hidden="true" />
       </span>
     );
   }
@@ -44,10 +41,10 @@ const DayCircle: React.FC<{ day: StripDay }> = ({ day }) => {
     return (
       <span
         className="wk-today rounded-full flex items-center justify-center"
-        style={{ width: size, height: size, border: `${stroke} solid var(--color-text-primary)` }}
+        style={{ width: size, height: size, border: '2px solid var(--color-text-primary)' }}
       >
         {day.status === 'planned' && (
-          <span className="rounded-full" style={{ width: fig(30), height: fig(30), background: 'var(--color-text-secondary)' }} />
+          <span className="rounded-full w-3.5 h-3.5" style={{ background: 'var(--color-text-secondary)' }} />
         )}
       </span>
     );
@@ -56,11 +53,11 @@ const DayCircle: React.FC<{ day: StripDay }> = ({ day }) => {
     return (
       <span
         className="rounded-full"
-        style={{ width: size, height: size, background: 'var(--color-bg-surface-control)', border: `${stroke} solid var(--color-text-subtle)` }}
+        style={{ width: size, height: size, background: 'var(--color-bg-surface-control)', border: '1.5px solid var(--color-text-muted)' }}
       />
     );
   }
-  return <span className="rounded-full" style={{ width: size, height: size, border: `${stroke} solid rgba(255,255,255,0.45)` }} />;
+  return <span className="rounded-full" style={{ width: size, height: size, border: '1.5px solid var(--color-border-strong)' }} />;
 };
 
 export const WorkoutPageHeader: React.FC<WorkoutPageHeaderProps> = ({ title, days, selectedDate, onSelectDay, renderMenu }) => {
@@ -77,8 +74,8 @@ export const WorkoutPageHeader: React.FC<WorkoutPageHeaderProps> = ({ title, day
   }, [menuOpen]);
 
   return (
-    <header className="relative" style={{ paddingTop: fig(20) }}>
-      <div className="relative flex items-center justify-center">
+    <header className="relative pt-2">
+      <div className="relative flex items-center justify-start pr-12">
         <h1 className="wk-page-title">{formatSentenceCase(title)}</h1>
         {renderMenu && (
           <button
@@ -93,7 +90,7 @@ export const WorkoutPageHeader: React.FC<WorkoutPageHeaderProps> = ({ title, day
             className="absolute right-0 top-1/2 -translate-y-1/2 flex items-center justify-center rounded-full"
             style={{ width: 44, height: 44, color: 'var(--wk-muted)' }}
           >
-            <MoreHorizontal style={{ width: fig(48), height: fig(48) }} strokeWidth={2} aria-hidden="true" />
+            <MoreHorizontal className="w-6 h-6" strokeWidth={2} aria-hidden="true" />
           </button>
         )}
         {menuOpen && renderMenu && (
@@ -105,8 +102,8 @@ export const WorkoutPageHeader: React.FC<WorkoutPageHeaderProps> = ({ title, day
       </div>
 
       <ol
-        className="grid grid-cols-7 mx-auto"
-        style={{ width: `min(${fig(7 * 131)}, 100%)`, marginTop: fig(52) }}
+        className="grid grid-cols-7 mx-auto w-full mt-6"
+        style={{ maxWidth: 460 }}
         aria-label="This week"
       >
         {days.map((day) => {
@@ -127,21 +124,17 @@ export const WorkoutPageHeader: React.FC<WorkoutPageHeaderProps> = ({ title, day
                   }}
                   aria-label={label}
                   aria-pressed={selected}
-                  className="flex flex-col items-center rounded-xl transition-opacity"
+                  className="flex flex-col items-center rounded-xl transition-opacity p-1 gap-3"
                   style={{
-                    gap: fig(26),
                     minWidth: 44,
                     minHeight: 44,
-                    padding: `${fig(4)} ${fig(6)}`,
                     opacity: selectedDate && !selected ? 0.65 : 1,
                   }}
                 >
                   <span
                     aria-hidden="true"
+                    className="text-xs font-medium"
                     style={{
-                      fontSize: `max(12px, ${fig(22)})`,
-                      fontWeight: 600,
-                      letterSpacing: '0.04em',
                       color: selected || day.isToday ? 'var(--color-text-primary)' : 'var(--wk-muted)',
                     }}
                   >
@@ -150,13 +143,11 @@ export const WorkoutPageHeader: React.FC<WorkoutPageHeaderProps> = ({ title, day
                   <DayCircle day={day} />
                 </button>
               ) : (
-                <div className="flex flex-col items-center" style={{ gap: fig(26) }}>
+                <div className="flex flex-col items-center gap-3">
                   <span
                     aria-hidden="true"
+                    className="text-xs font-medium"
                     style={{
-                      fontSize: `max(12px, ${fig(22)})`,
-                      fontWeight: 600,
-                      letterSpacing: '0.04em',
                       color: day.isToday ? 'var(--color-text-primary)' : 'var(--wk-muted)',
                     }}
                   >

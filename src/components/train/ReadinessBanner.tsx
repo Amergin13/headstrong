@@ -60,8 +60,8 @@ export const ReadinessBanner: React.FC<ReadinessBannerProps> = ({
     : readiness.readinessScore ?? derivedScore;
 
   const gaugeVariant = isFitbit
-    ? (displayScore >= 65 ? 'emerald' : 'amber')
-    : (displayScore >= 67 ? 'recovery' : 'amber');
+    ? (displayScore >= 65 ? 'positive' : 'amber')
+    : (displayScore >= 67 ? 'positive' : 'amber');
 
   const summary =
     readiness.reason ||
@@ -78,10 +78,10 @@ export const ReadinessBanner: React.FC<ReadinessBannerProps> = ({
   const bodyText = hasPrefix ? summary.slice(colonIndex + 1) : summary;
 
   return (
-    <div className="p-4 sm:p-5 rounded-2xl bg-surface-elevated border border-white/[0.04] space-y-3.5">
+    <div className="wk-card space-y-3 border" style={{ borderColor: 'var(--color-border-subtle)' }}>
       {/* 1. Recovery Telemetry Row (Image 1) */}
       {hasWatchData ? (
-        <div className="flex items-center gap-4 sm:gap-5">
+        <div className="flex items-center gap-4">
           {/* Recovery Value (Circular Gauge matching Image 1); hidden when nothing was measured today */}
           {readiness.hasRecoveryData !== false ? (
             <div className="shrink-0">
@@ -95,26 +95,29 @@ export const ReadinessBanner: React.FC<ReadinessBannerProps> = ({
               />
             </div>
           ) : (
-            <div className="w-8 h-8 rounded-xl bg-white/[0.06] flex items-center justify-center shrink-0 text-slate-400">
+            <div
+              className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+              style={{ background: 'var(--wk-raised)', color: 'var(--color-text-muted)' }}
+            >
               <Watch className="w-4 h-4 stroke-[2]" aria-hidden="true" />
             </div>
           )}
 
           {/* Description Text matching Image 1 */}
           <div className="flex-1 min-w-0">
-            <p className="text-xs sm:text-sm text-slate-200 leading-relaxed font-medium">
-              {prefix && <strong className="text-white font-semibold">{prefix} </strong>}
+            <p className="text-base text-[color:var(--color-text-secondary)] leading-relaxed font-medium max-w-prose">
+              {prefix && <strong className="text-[color:var(--color-text-primary)] font-semibold">{prefix} </strong>}
               {bodyText}
             </p>
             {((latestBiometrics?.restingHr || 0) > 0 || (latestBiometrics?.hrvRmssd || 0) > 0) && (
               <div className="flex items-center gap-2 mt-2 flex-wrap">
                 {(latestBiometrics?.restingHr || 0) > 0 && (
-                  <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-white/[0.05] border border-white/[0.06] text-xs font-semibold text-slate-300">
+                  <span className="wk-pill tabular-nums text-[color:var(--color-text-secondary)]">
                     {latestBiometrics?.restingHr} bpm resting HR
                   </span>
                 )}
                 {(latestBiometrics?.hrvRmssd || 0) > 0 && (
-                  <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-white/[0.05] border border-white/[0.06] text-xs font-semibold text-slate-300">
+                  <span className="wk-pill tabular-nums text-[color:var(--color-text-secondary)]">
                     {latestBiometrics?.hrvRmssd} ms HRV
                   </span>
                 )}
@@ -124,13 +127,16 @@ export const ReadinessBanner: React.FC<ReadinessBannerProps> = ({
         </div>
       ) : (
         <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center space-x-3 min-w-0">
-            <div className="w-8 h-8 rounded-xl bg-white/[0.06] flex items-center justify-center shrink-0 text-slate-400">
+          <div className="flex items-center gap-3 min-w-0">
+            <div
+              className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+              style={{ background: 'var(--wk-raised)', color: 'var(--color-text-muted)' }}
+            >
               <Watch className="w-4 h-4 stroke-[2]" />
             </div>
             <div>
-              <p className="text-xs font-semibold text-white">No Watch Connected</p>
-              <p className="text-xs text-slate-400">
+              <p className="wk-subhead">No watch connected</p>
+              <p className="wk-caption max-w-prose">
                 Connect your watch to auto-adjust daily training intensity based on recovery.
               </p>
             </div>
@@ -142,9 +148,9 @@ export const ReadinessBanner: React.FC<ReadinessBannerProps> = ({
                 triggerHaptic('light');
                 onOpenWatchSync();
               }}
-              className="px-3 py-1.5 rounded-xl bg-white/[0.08] hover:bg-white/[0.12] text-xs font-semibold text-white shrink-0 min-h-[36px] flex items-center space-x-1.5 transition-colors"
+              className="wk-btn-secondary shrink-0"
             >
-              <Watch className="w-3.5 h-3.5 stroke-[2]" />
+              <Watch className="w-4 h-4 stroke-[2]" aria-hidden="true" />
               <span>Connect</span>
             </button>
           )}
@@ -153,7 +159,7 @@ export const ReadinessBanner: React.FC<ReadinessBannerProps> = ({
 
       {/* 2. Tactical Progression Checklist (Image 2) */}
       {children && (
-        <div className="pt-3.5 border-t border-white/[0.06]">
+        <div className="pt-3" style={{ borderTop: '1px solid var(--color-border-subtle)' }}>
           {children}
         </div>
       )}

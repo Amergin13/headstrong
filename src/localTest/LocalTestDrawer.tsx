@@ -199,14 +199,14 @@ export const LocalTestDrawer: React.FC<LocalTestDrawerProps> = ({
           aria-label="Open Local Test Lab"
           className="flex items-center gap-2 rounded-full border bg-surface-subtle/95 shadow-lg backdrop-blur-md transition"
           style={{
-            padding: minimized ? '8px' : '7px 12px',
+            padding: minimized ? '8px' : '8px 12px',
             fontSize: 12,
             minHeight: 36,
-            borderColor: 'var(--color-coach-border)',
-            color: 'var(--color-coach-surface)',
+            borderColor: 'var(--color-border-strong)',
+            color: 'var(--color-text-primary)',
           }}
         >
-          <Beaker className="h-4 w-4 shrink-0" style={{ color: 'var(--color-coach-border)' }} />
+          <Beaker className="h-4 w-4 shrink-0" style={{ color: 'var(--color-status-neutral)' }} />
           {!minimized && (
             <span className="font-semibold tracking-tight max-w-[160px] truncate">
               {activeMeta ? `Test: ${activeMeta.title}` : 'Local Test Lab'}
@@ -238,18 +238,18 @@ export const LocalTestDrawer: React.FC<LocalTestDrawerProps> = ({
         >
           <div
             className="w-full max-w-lg max-h-[86vh] flex flex-col overflow-hidden rounded-3xl border border-white/15 bg-surface-canvas shadow-2xl"
-            style={{ fontSize: 13, color: 'var(--color-coach-surface)' }}
+            style={{ fontSize: 12, color: 'var(--color-text-primary)' }}
           >
             <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
               <div className="flex items-center gap-2.5">
                 <span
                   className="flex h-8 w-8 items-center justify-center rounded-xl bg-white/10"
-                  style={{ color: 'var(--color-coach-border)' }}
+                  style={{ color: 'var(--color-status-neutral)' }}
                 >
                   <Beaker className="h-4 w-4" />
                 </span>
                 <div>
-                  <div className="font-semibold text-white" style={{ fontSize: 14 }}>
+                  <div className="font-semibold text-white" style={{ fontSize: 16 }}>
                     Treise Local Test Lab
                   </div>
                   <div className="text-white/60" style={{ fontSize: 12 }}>
@@ -298,7 +298,7 @@ export const LocalTestDrawer: React.FC<LocalTestDrawerProps> = ({
                 <div className="space-y-4">
                   {categories.map((cat) => (
                     <div key={cat} className="space-y-2">
-                      <div className="font-semibold uppercase tracking-wider" style={{ fontSize: 12, color: 'var(--color-coach-border)' }}>
+                      <div className="font-semibold uppercase tracking-wider" style={{ fontSize: 12, color: 'var(--color-status-neutral)' }}>
                         {cat}
                       </div>
                       <div className="space-y-2">
@@ -316,7 +316,7 @@ export const LocalTestDrawer: React.FC<LocalTestDrawerProps> = ({
                               }`}
                             >
                               <div className="flex items-center justify-between gap-2">
-                                <span className="font-semibold text-white" style={{ fontSize: 13 }}>
+                                <span className="font-semibold text-white" style={{ fontSize: 16 }}>
                                   {s.title}
                                 </span>
                                 <span className="shrink-0 rounded-full bg-white/10 px-2 py-0.5 text-white/75" style={{ fontSize: 12 }}>
@@ -418,7 +418,7 @@ export const LocalTestDrawer: React.FC<LocalTestDrawerProps> = ({
                           setOpen(false);
                         }}
                         className="w-full rounded-xl border bg-surface-elevated py-2 font-semibold"
-                        style={{ fontSize: 12, borderColor: 'var(--color-coach-border)', color: 'var(--color-coach-surface)' }}
+                        style={{ fontSize: 12, borderColor: 'var(--color-border-strong)', color: 'var(--color-text-primary)' }}
                       >
                         Tick All Sets Done
                       </button>
@@ -484,7 +484,7 @@ export const LocalTestDrawer: React.FC<LocalTestDrawerProps> = ({
               {tab === 'inspector' && (
                 <div className="space-y-4">
                   <div className="rounded-2xl border border-white/10 bg-surface-card p-3 space-y-1.5">
-                    <div className="font-semibold text-white" style={{ fontSize: 13 }}>
+                    <div className="font-semibold text-white" style={{ fontSize: 16 }}>
                       Live Engine State
                     </div>
                     <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-white/75" style={{ fontSize: 12 }}>
@@ -503,8 +503,8 @@ export const LocalTestDrawer: React.FC<LocalTestDrawerProps> = ({
 
                   <div className="rounded-2xl border border-white/10 bg-surface-card p-3 space-y-2">
                     <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-1.5 font-semibold text-white" style={{ fontSize: 13 }}>
-                        <Terminal className="h-4 w-4" style={{ color: 'var(--color-coach-border)' }} />
+                      <div className="flex items-center gap-1.5 font-semibold text-white" style={{ fontSize: 16 }}>
+                        <Terminal className="h-4 w-4" style={{ color: 'var(--color-status-neutral)' }} />
                         <span>Local /api/* Proxies</span>
                       </div>
                       <button
@@ -520,7 +520,7 @@ export const LocalTestDrawer: React.FC<LocalTestDrawerProps> = ({
                     <div className="space-y-1 text-white/75" style={{ fontSize: 12 }}>
                       {Object.entries(apiStatus).map(([route, status]) => (
                         <div key={route} className="flex items-center justify-between gap-2">
-                          <code style={{ color: 'var(--color-viz-1)' }}>{route}</code>
+                          <code style={{ color: 'var(--color-text-primary)' }}>{route}</code>
                           <span className="truncate text-right">{status}</span>
                         </div>
                       ))}

@@ -5,8 +5,6 @@ import { calculateEngineVitalityScore } from '../../engine/vitality';
 import { MovementStandardsReport, levelLabel } from '../../services/movementStandards';
 import { formatSentenceCase } from '../../utils/typography';
 
-const fig = (px: number) => `calc(${px} * var(--f))`;
-
 const SHORT_NAME: Record<string, string> = {
   Squat: 'Squat',
   Hinge: 'Deadlift',
@@ -19,8 +17,6 @@ interface StrengthLevelsCardProps {
   report: MovementStandardsReport;
   latestBiometrics: BiometricLog;
 }
-
-const muted: React.CSSProperties = { fontSize: `max(12px, ${fig(24)})`, color: 'var(--wk-muted)' };
 
 /**
  * Strength levels (Progress → Strength standards). Each movement against published standards: Kilgore (ExRx)
@@ -35,10 +31,10 @@ export const StrengthLevelsCard: React.FC<StrengthLevelsCardProps> = ({ report, 
   if (!report.levels.some((l) => l.logged)) {
     return (
       <section aria-label="Strength levels" className="wk-card w-full text-left block">
-        <h2 className="wk-h1" style={{ lineHeight: 1.21 }}>
+        <h2 className="wk-h1 leading-tight">
           Strength levels
         </h2>
-        <p className="wk-body" style={{ marginTop: fig(24) }}>
+        <p className="wk-body mt-3 max-w-prose">
           Finish a workout to see your level on each movement, compared with lifters of your sex, bodyweight and age.
         </p>
       </section>
@@ -58,43 +54,48 @@ export const StrengthLevelsCard: React.FC<StrengthLevelsCardProps> = ({ report, 
 
   return (
     <section aria-label="Strength levels" className="wk-card w-full text-left block">
-      <div className="flex items-start justify-between" style={{ gap: fig(20) }}>
-        <h2 className="wk-h1" style={{ lineHeight: 1.21 }}>
+      <div className="flex items-start justify-between gap-3">
+        <h2 className="wk-h1 leading-tight">
           Strength levels
         </h2>
-        {overall && <span className="wk-pill">{overall}</span>}
+        {overall && <span className="wk-pill shrink-0">{overall}</span>}
       </div>
-      <p className="wk-body" style={{ marginTop: fig(20) }}>
+      <p className="wk-body mt-3 max-w-prose">
         Your best estimated max on each lift, compared with standards for {report.tableLabel} at your bodyweight.
       </p>
 
-      <div className="w-full h-56" style={{ marginTop: fig(28) }} aria-hidden="true">
-        <ResponsiveContainer width="100%" height="100%">
+      <div className="w-full h-56 mt-4" aria-hidden="true">
+        <ResponsiveContainer width="100%" height="100%" initialDimension={{ width: 340, height: 224 }}>
           <RadarChart cx="50%" cy="50%" outerRadius="72%" data={radarData}>
             <PolarGrid stroke="var(--color-bg-surface-control)" strokeDasharray="2 2" />
-            <PolarAngleAxis dataKey="axis" tick={{ fill: 'var(--color-text-secondary)', fontSize: 12, fontWeight: 600 }} />
+            <PolarAngleAxis dataKey="axis" tick={{ fill: 'var(--color-text-secondary)', fontSize: 12, fontWeight: 500 }} />
             <PolarRadiusAxis angle={90} domain={[0, 100]} tick={false} axisLine={false} />
             <Radar dataKey="score" stroke="var(--color-accent-primary)" strokeWidth={2} fill="var(--color-accent-primary)" fillOpacity={0.2} dot={{ r: 3, fill: 'var(--color-accent-primary)' }} />
           </RadarChart>
         </ResponsiveContainer>
       </div>
 
-      <ul className="flex flex-col" style={{ marginTop: fig(32), gap: fig(30) }} aria-label="Level for each movement">
+      <ul className="flex flex-col mt-4 gap-4" aria-label="Level for each movement">
         {rated.map((l) => (
           <li key={l.pillar}>
-            <div className="flex items-baseline justify-between" style={{ gap: fig(16) }}>
-              <span className="wk-title" style={{ lineHeight: 1.21 }}>
+            <div className="flex items-baseline justify-between gap-2">
+              <span className="wk-subhead leading-tight">
                 {formatSentenceCase(l.name)}
               </span>
-              <span className="font-semibold shrink-0" style={{ fontSize: `max(12px, ${fig(26)})`, color: l.logged ? 'var(--color-text-primary)' : 'var(--wk-muted)' }}>
+              <span
+                className="text-xs shrink-0 tabular-nums"
+                style={{
+                  fontWeight: l.logged ? 500 : 400,
+                  color: l.logged ? 'var(--color-text-secondary)' : 'var(--wk-muted)',
+                }}
+              >
                 {l.logged ? `${l.tier} ${l.subDivision}` : 'Not logged yet'}
               </span>
             </div>
             {l.logged && (
               <>
                 <div
-                  className="wk-bar"
-                  style={{ marginTop: fig(14) }}
+                  className="wk-bar mt-2"
                   role="progressbar"
                   aria-valuemin={0}
                   aria-valuemax={100}
@@ -103,12 +104,12 @@ export const StrengthLevelsCard: React.FC<StrengthLevelsCardProps> = ({ report, 
                 >
                   <div style={{ width: `${l.next ? l.progress ?? 0 : 100}%` }} />
                 </div>
-                <div className="flex justify-between" style={{ ...muted, marginTop: fig(10), gap: fig(16) }}>
+                <div className="wk-caption flex justify-between gap-2 mt-2">
                   <span>{l.next ? `Next: ${l.next}` : 'Top level'}</span>
                   <span>{l.tested ? 'Tested' : 'Estimated'}</span>
                 </div>
                 {l.firstLevel && l.firstLoggedOn && (
-                  <span className="block" style={{ ...muted, marginTop: fig(6) }}>
+                  <span className="wk-caption block mt-1">
                     {l.firstLevel} when you started ({new Date(`${l.firstLoggedOn}T12:00:00`).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })})
                   </span>
                 )}
@@ -119,27 +120,27 @@ export const StrengthLevelsCard: React.FC<StrengthLevelsCardProps> = ({ report, 
       </ul>
 
       {rows?.logged && (
-        <p style={{ ...muted, marginTop: fig(28) }}>
+        <p className="wk-caption mt-4 max-w-prose">
           Rows have no published strength standard, so they have no level.
         </p>
       )}
 
-      <div className="flex items-end justify-between" style={{ marginTop: fig(40), gap: fig(20) }}>
-        <span className="wk-label" style={{ lineHeight: 1.21 }}>
+      <div className="flex items-end justify-between gap-3 mt-5">
+        <span className="wk-meta-title leading-tight">
           Cardio &amp; recovery
-          {cardio > 0 && (latestBiometrics?.restingHr || 0) > 0 ? ` • ${latestBiometrics.restingHr} bpm resting` : ''}
+          {cardio > 0 && (latestBiometrics?.restingHr || 0) > 0 ? ` · ${latestBiometrics.restingHr} bpm resting` : ''}
         </span>
-        <span className="font-semibold text-white shrink-0" style={{ fontSize: `max(12px, ${fig(40)})`, lineHeight: 1 }}>
+        <span className="wk-number shrink-0 leading-none">
           {cardio > 0 ? `${cardio}/100` : '—'}
         </span>
       </div>
-      <div className="wk-bar" style={{ marginTop: fig(30) }} role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={cardio} aria-label="Cardio and recovery score">
+      <div className="wk-bar mt-3" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={cardio} aria-label="Cardio and recovery score">
         <div style={{ width: `${Math.max(0, Math.min(100, cardio))}%` }} />
       </div>
 
-      <p style={{ ...muted, marginTop: fig(32) }}>
-        "Tested" means your best came from the standard lift (back squat, deadlift, bench press, standing press or chin-up) for 5 reps or fewer.
-        Other lifts and higher reps give an estimate. Standards: Dr Lon Kilgore (ExRx); chin-ups from Charles Poliquin's strength ratios.
+      <p className="wk-caption mt-4 max-w-prose">
+        &quot;Tested&quot; means your best came from the standard lift (back squat, deadlift, bench press, standing press or chin-up) for 5 reps or fewer.
+        Other lifts and higher reps give an estimate. Standards: Dr Lon Kilgore (ExRx); chin-ups from Charles Poliquin&apos;s strength ratios.
       </p>
     </section>
   );

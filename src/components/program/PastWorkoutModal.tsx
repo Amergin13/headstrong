@@ -7,8 +7,6 @@ import { useUnits } from '../../utils/unitsContext';
 import { triggerHaptic } from '../../utils/haptics';
 import { formatSentenceCase } from '../../utils/typography';
 
-const fig = (px: number) => `calc(${px} * var(--f))`;
-
 interface PastWorkoutModalProps {
   workoutNumber: number;
   title: string;
@@ -36,7 +34,8 @@ export const PastWorkoutModal: React.FC<PastWorkoutModalProps> = ({ workoutNumbe
       role="dialog"
       aria-modal="true"
       aria-label={`Workout ${workoutNumber}, ${planWorkoutLabel(title)}`}
-      className="wk fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/80 backdrop-blur-sm"
+      className="wk fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 backdrop-blur-sm"
+      style={{ background: 'var(--color-bg-scrim)' }}
       onPointerDown={(e) => {
         pressedBackdrop.current = e.target === e.currentTarget;
       }}
@@ -44,16 +43,13 @@ export const PastWorkoutModal: React.FC<PastWorkoutModalProps> = ({ workoutNumbe
         if (pressedBackdrop.current && e.target === e.currentTarget) onClose();
       }}
     >
-      <div
-        className="wk-card w-full max-w-lg max-h-[85vh] overflow-y-auto"
-        style={{ display: 'flex', flexDirection: 'column', gap: fig(28) }}
-      >
-        <div className="flex items-start justify-between" style={{ gap: fig(24) }}>
+      <div className="wk-card w-full max-w-lg max-h-[85vh] overflow-y-auto flex flex-col gap-3">
+        <div className="flex items-start justify-between gap-3">
           <div>
             <h3 className="wk-h1">
               {workoutNumber}. {formatSentenceCase(planWorkoutLabel(title))}
             </h3>
-            <p className="wk-body" style={{ marginTop: fig(10), color: 'var(--wk-muted)' }}>
+            <p className="wk-caption mt-1">
               {formatSessionDate(session.date)}
               {session.durationMinutes ? ` • ${session.durationMinutes} min` : ''}
             </p>
@@ -65,8 +61,12 @@ export const PastWorkoutModal: React.FC<PastWorkoutModalProps> = ({ workoutNumbe
               onClose();
             }}
             aria-label="Close workout"
-            className="w-11 h-11 rounded-full text-white/70 hover:text-white flex items-center justify-center transition-colors shrink-0"
-            style={{ background: 'var(--wk-raised)' }}
+            className="w-11 h-11 min-h-[44px] min-w-[44px] rounded-full border flex items-center justify-center transition-colors shrink-0"
+            style={{
+              background: 'var(--wk-raised)',
+              borderColor: 'var(--color-border-strong)',
+              color: 'var(--color-text-secondary)',
+            }}
           >
             <X className="w-5 h-5 stroke-[2]" />
           </button>
@@ -78,19 +78,20 @@ export const PastWorkoutModal: React.FC<PastWorkoutModalProps> = ({ workoutNumbe
           exercises.map(({ ex, sets }) => (
             <div
               key={ex.id}
-              style={{ paddingTop: fig(24), borderTop: '1px solid rgba(255,255,255,0.08)' }}
+              className="pt-3"
+              style={{ borderTop: '1px solid var(--color-border-subtle)' }}
             >
-              <div className="wk-title">
+              <div className="wk-subhead">
                 {formatSentenceCase(ex.name)}
               </div>
-              <ol className="flex flex-col" style={{ marginTop: fig(14), gap: fig(8) }}>
+              <ol className="flex flex-col mt-2 gap-1">
                 {sets.map((st, i) => {
                   const kg = st.actualWeightKg ?? st.targetWeightKg;
                   const reps = st.actualReps ?? st.targetReps;
                   return (
-                    <li key={st.id} className="wk-body flex justify-between" style={{ gap: fig(16) }}>
+                    <li key={st.id} className="wk-body flex justify-between gap-2">
                       <span style={{ color: 'var(--wk-muted)' }}>Set {i + 1}</span>
-                      <span className="text-white tabular-numbers">
+                      <span className="tabular-numbers" style={{ color: 'var(--color-text-primary)' }}>
                         {kg > 0 ? `${units.format(kg)} × ${reps}` : `${reps} reps`}
                         {st.actualRir !== undefined ? ` • ${st.actualRir} RIR` : ''}
                       </span>

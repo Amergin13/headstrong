@@ -12,8 +12,6 @@ import { localDateString } from '../../utils/date';
 import { formatSentenceCase } from '../../utils/typography';
 import { isUnilateralExercise } from '../../services/movementStandards';
 
-const fig = (px: number) => `calc(${px} * var(--f))`;
-
 interface ExerciseCardProps {
   exerciseIndex?: number;
   totalExercises?: number;
@@ -80,9 +78,11 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
   return (
     <section aria-label={exercise.name} className="wk-card">
       {/* Title, swap button, details toggle */}
-      <div className="flex items-start justify-between" style={{ gap: fig(20) }}>
-        <div className="flex items-center min-w-0 flex-wrap" style={{ columnGap: fig(16), rowGap: fig(8) }}>
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex items-center min-w-0 flex-wrap gap-2">
           <h3 className="wk-h1">{formatSentenceCase(exercise.name)}</h3>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
           {onOpenSwap && (
             <button
               type="button"
@@ -91,36 +91,36 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
                 onOpenSwap();
               }}
               aria-label={`Change exercise from ${exercise.name}`}
-              className="flex items-center justify-center"
-              style={{ width: 44, height: 44, margin: -14, color: 'var(--wk-muted)' }}
+              className="w-11 h-11 min-w-[44px] min-h-[44px] rounded-xl border border-[var(--color-border-strong)] flex items-center justify-center shrink-0 transition-colors"
+              style={{ background: 'var(--color-action-secondary-bg)', color: 'var(--color-action-secondary-fg)' }}
             >
-              <ArrowRightLeft style={{ width: fig(32), height: fig(32) }} strokeWidth={2} aria-hidden="true" />
+              <ArrowRightLeft className="w-4 h-4" strokeWidth={2} aria-hidden="true" />
             </button>
           )}
+          <button
+            type="button"
+            onClick={() => {
+              triggerHaptic('light');
+              setShowDetails((v) => !v);
+            }}
+            aria-expanded={showDetails}
+            aria-controls={detailsId}
+            aria-label={`${showDetails ? 'Hide' : 'Show'} tempo, warm-up and set options for ${exercise.name}`}
+            className="w-11 h-11 min-w-[44px] min-h-[44px] rounded-xl border border-[var(--color-border-strong)] flex items-center justify-center shrink-0 transition-colors"
+            style={{ background: 'var(--color-action-secondary-bg)', color: 'var(--color-action-secondary-fg)' }}
+          >
+            <ChevronRight
+              className="wk-chevron transition-transform"
+              style={{ transform: showDetails ? 'rotate(90deg)' : undefined, color: 'var(--color-action-secondary-fg)' }}
+              strokeWidth={2}
+              aria-hidden="true"
+            />
+          </button>
         </div>
-        <button
-          type="button"
-          onClick={() => {
-            triggerHaptic('light');
-            setShowDetails((v) => !v);
-          }}
-          aria-expanded={showDetails}
-          aria-controls={detailsId}
-          aria-label={`${showDetails ? 'Hide' : 'Show'} tempo, warm-up and set options for ${exercise.name}`}
-          className="flex items-center justify-center"
-          style={{ width: 44, height: 44, margin: -14 }}
-        >
-          <ChevronRight
-            className="wk-chevron transition-transform"
-            style={{ transform: showDetails ? 'rotate(90deg)' : undefined }}
-            strokeWidth={2}
-            aria-hidden="true"
-          />
-        </button>
       </div>
 
       {(chip || exercise.intensityProtocol) && (
-        <div className="flex items-center flex-wrap" style={{ gap: fig(12), marginTop: fig(16) }}>
+        <div className="flex items-center flex-wrap gap-2 mt-2">
           {chip && <span className="wk-pill">{chip}</span>}
           {exercise.intensityProtocol && <span className="wk-pill">{exercise.intensityProtocol.name}</span>}
         </div>
@@ -128,11 +128,11 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
 
       {/* 2-line dynamic summary (Line 1: Historical Trajectory Anchor, Line 2: Session Stimulus Directive) and history chart */}
       {insight && (showSummary || (showChart && !(exercise.durationSeconds || exercise.durationMinutesRange))) && (
-        <div className="flex flex-col" style={{ gap: fig(28), marginTop: fig(36) }}>
+        <div className="flex flex-col gap-3 mt-4">
           {showSummary && (
-            <div className="wk-body" aria-live="polite">
+            <div className="wk-body max-w-prose" aria-live="polite">
               {/* Re-keyed on change so a written note replacing its placeholder fades in. */}
-              <div key={note ?? insight.summary} className="wk-text-swap flex flex-col" style={{ gap: fig(6) }}>
+              <div key={note ?? insight.summary} className="wk-text-swap flex flex-col gap-1">
                 {(note ?? insight.summary)
                   .split('\n')
                   .map((l) => l.trim())
@@ -181,16 +181,20 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
 
       {/* Details: tempo, warm-up ramp, technique, set options */}
       {showDetails && (
-        <div id={detailsId} className="space-y-3" style={{ marginTop: fig(40) }}>
+        <div id={detailsId} className="space-y-3 mt-4">
           {(muscleLabel || customTempoText || readinessState === 'Amber Shield') && (
-            <p className="wk-body">
-              {muscleLabel && <strong className="text-white font-semibold">{muscleLabel}. </strong>}
+            <p className="wk-body max-w-prose">
+              {muscleLabel && (
+                <strong className="font-semibold" style={{ color: 'var(--color-text-primary)' }}>
+                  {muscleLabel}.{' '}
+                </strong>
+              )}
               {customTempoText}
               {readinessState === 'Amber Shield' ? ' Holding weight steady today.' : ''}
             </p>
           )}
           {hasTempoPacer && exercise.tempo && <TempoPacer tempo={exercise.tempo} />}
-          {exercise.intensityProtocol && <p className="wk-body">{exercise.intensityProtocol.instruction}</p>}
+          {exercise.intensityProtocol && <p className="wk-body max-w-prose">{exercise.intensityProtocol.instruction}</p>}
           {warmupSteps.length > 0 && (
             <div className="space-y-1">
               <p className="wk-label">Warm-up ramp</p>
@@ -210,7 +214,7 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
               ))}
             </ul>
           )}
-          <div className="flex flex-wrap" style={{ gap: fig(16) }}>
+          <div className="flex flex-wrap gap-2">
             {onOpenPlateCalc && exercise.equipment === 'barbell' && (
               <button
                 type="button"
@@ -250,18 +254,14 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
       )}
 
       {/* Set table */}
-      <div role="table" aria-label={`${exercise.name} sets`} style={{ marginTop: fig(60) }}>
+      <div role="table" aria-label={`${exercise.name} sets`} className="mt-6">
         <div
           role="row"
-          className="wk-workout-caption grid items-center text-center uppercase"
+          className="wk-label grid items-center text-center mb-3"
           style={{
             gridTemplateColumns: SET_TABLE_COLUMNS,
             columnGap: SET_TABLE_GAP,
-            fontSize: `max(13px, ${fig(28)})`,
-            fontWeight: 500,
-            letterSpacing: '0.04em',
-            color: 'var(--wk-muted)',
-            marginBottom: fig(30),
+            color: 'var(--color-text-secondary)',
           }}
         >
           <span role="columnheader">SET</span>
@@ -271,8 +271,8 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
           <span role="columnheader" title="Reps in reserve">RIR</span>
           <span role="columnheader">DONE</span>
         </div>
-        {/* At least 12 px apart between 48 px+ rows so touch areas never overlap. */}
-        <div className="flex flex-col" style={{ gap: `max(${fig(24)}, 12px)` }}>
+        {/* At least 12 px apart between 48 px rows so touch areas never overlap. */}
+        <div className="flex flex-col gap-3">
           {(() => {
             let warmupIndex = 0;
             let workingIndex = 0;
@@ -322,8 +322,7 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
               triggerHaptic('light');
               setPerSide((v) => !v);
             }}
-            className={secondaryButton}
-            style={{ marginTop: fig(28) }}
+            className={`${secondaryButton} mt-3`}
           >
             {perSide ? 'Log both sides together' : 'Log each side'}
           </button>

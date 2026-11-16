@@ -60,9 +60,20 @@ interface AICoachChatModalProps {
   onUndoAction?: (snapshot: CoachUndoSnapshot) => void;
   onNavigateTab?: (tab: 'train' | 'program' | 'analytics') => void;
   onViewAllEquipment?: () => void;
+  /** Render inline inside a showcase container instead of a fixed viewport overlay. */
+  embedded?: boolean;
+  /** Explicit height when `embedded` is true. */
+  embeddedHeight?: number | string;
+  /** Pre-populated messages for static / Design System previews. */
+  initialMessages?: AssistantChatMessage[];
+  /** Show the typing/processing status indicator immediately. */
+  initialPendingStatus?: string | null;
+  /** Show the floating "New message" scroll pill immediately. */
+  initialShowNewMsgPill?: boolean;
+  /** Seeded composer value for previewing active typing state. */
+  initialInputValue?: string;
 }
 
-const fig = (px: number) => `calc(${px} * var(--f))`;
 const WORD_REVEAL_INTERVAL_MS = 16;
 const COMPOSER_MAX_HEIGHT_PX = 96;
 
@@ -70,7 +81,7 @@ const COMPOSER_MAX_HEIGHT_PX = 96;
 function renderBold(text: string): React.ReactNode[] {
   return text.split(/(\*\*[^*]+\*\*)/g).map((part, i) =>
     part.startsWith('**') && part.endsWith('**') ? (
-      <strong key={i} className="text-white font-semibold">
+      <strong key={i} className="font-semibold" style={{ color: 'var(--color-text-primary)' }}>
         {part.slice(2, -2)}
       </strong>
     ) : (
@@ -122,28 +133,13 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
   onUndoAction,
   onNavigateTab,
   onViewAllEquipment,
+  embedded = false,
+  embeddedHeight,
+  initialMessages,
+  initialPendingStatus = null,
+  initialShowNewMsgPill = false,
+  initialInputValue = '',
 }) => {
-  const [inputMessage, setInputMessage] = useState('');
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [pendingStatus, setPendingStatus] = useState<string>('Thinking…');
-  const [revertedMessageIds, setRevertedMessageIds] = useState<Record<string, boolean>>({});
-  const [messages, setMessages] = useState<AssistantChatMessage[]>([]);
-  const [streamingText, setStreamingText] = useState<string | null>(null);
-  const [revealing, setRevealing] = useState<{
-    messageId: string;
-    fullText: string;
-    visibleText: string;
-  } | null>(null);
-  const [showNewMsgPill, setShowNewMsgPill] = useState(false);
-
-  /** A fly-up sheet for quick questions; expanded, it is a full-screen conversation. */
-  const [expanded, setExpanded] = useState(false);
-  const [closing, setClosing] = useState(false);
-  const [viewportMetrics, setViewportMetrics] = useState<{
-    height: number | null;
-    keyboardOpen: boolean;
-  }>({ height: null, keyboardOpen: false });
-
   // The line and suggestions for the screen the coach was opened on, memoized so typing never recomputes KG/history.
   const opening = useMemo(
     () =>
@@ -160,6 +156,37 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
       }),
     [place, profile, activeWorkout, workouts, activities, biometrics, exerciseCatalog, readinessState, bodyweightEmaKg]
   );
+
+  const [inputMessage, setInputMessage] = useState(initialInputValue);
+  const [isProcessing, setIsProcessing] = useState(Boolean(initialPendingStatus));
+  const [pendingStatus, setPendingStatus] = useState<string>(initialPendingStatus || 'Thinking…');
+  const [revertedMessageIds, setRevertedMessageIds] = useState<Record<string, boolean>>({});
+  const [messages, setMessages] = useState<AssistantChatMessage[]>(
+    () =>
+      initialMessages ?? [
+        {
+          id: 'msg-welcome',
+          sender: 'assistant',
+          text: opening.line,
+          timestamp: '09:41',
+        },
+      ]
+  );
+  const [streamingText, setStreamingText] = useState<string | null>(null);
+  const [revealing, setRevealing] = useState<{
+    messageId: string;
+    fullText: string;
+    visibleText: string;
+  } | null>(null);
+  const [showNewMsgPill, setShowNewMsgPill] = useState(Boolean(initialShowNewMsgPill));
+
+  /** A fly-up sheet for quick questions; expanded, it is a full-screen conversation. */
+  const [expanded, setExpanded] = useState(false);
+  const [closing, setClosing] = useState(false);
+  const [viewportMetrics, setViewportMetrics] = useState<{
+    height: number | null;
+    keyboardOpen: boolean;
+  }>({ height: null, keyboardOpen: false });
 
   const threadRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -196,13 +223,13 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
     if (closing) return;
     inputRef.current?.blur();
     stopReveal();
-    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+    if (embedded || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
       onClose();
       return;
     }
     setClosing(true);
     closeTimerRef.current = window.setTimeout(onClose, 240);
-  }, [closing, onClose, stopReveal]);
+  }, [closing, embedded, onClose, stopReveal]);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -214,6 +241,7 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
   }, []);
 
   useEffect(() => {
+    if (embedded) return;
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') requestClose();
     };
@@ -221,11 +249,11 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
     return () => {
       window.removeEventListener('keydown', onKeyDown);
     };
-  }, [requestClose]);
+  }, [embedded, requestClose]);
 
   // Track visualViewport height so opening Android/iOS soft keyboards resizes cleanly inside 100dvh.
   useEffect(() => {
-    if (typeof window === 'undefined' || !window.visualViewport) return;
+    if (embedded || typeof window === 'undefined' || !window.visualViewport) return;
     const vv = window.visualViewport;
     const baselineHeight = Math.max(window.innerHeight, vv.height);
     let wasKeyboardOpen = false;
@@ -247,23 +275,26 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
       vv.removeEventListener('resize', syncViewport);
       vv.removeEventListener('scroll', syncViewport);
     };
-  }, [scrollThreadToBottom]);
+  }, [embedded, scrollThreadToBottom]);
 
   // Starter greeting + warm-up
   useEffect(() => {
+    if (embedded) return;
     warmUpOnDeviceModel().catch(() => undefined);
-    const starterMessage: AssistantChatMessage = {
-      id: 'msg-welcome',
-      sender: 'assistant',
-      text: opening.line,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-    };
-    setMessages([starterMessage]);
+    if (!initialMessages) {
+      const starterMessage: AssistantChatMessage = {
+        id: 'msg-welcome',
+        sender: 'assistant',
+        text: opening.line,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      };
+      setMessages([starterMessage]);
+    }
     return () => {
       resetOnDeviceConversation();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [embedded]);
 
   // Auto-grow multiline composer up to 4 lines cleanly.
   const resizeComposer = useCallback(() => {
@@ -279,14 +310,18 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
   }, [inputMessage, resizeComposer]);
 
   // Maintain auto-scroll inside thread when locked; offer "New message" pill if user scrolled up mid-stream.
+  const prevLenRef = useRef(messages.length);
   useEffect(() => {
+    const grew = messages.length > prevLenRef.current;
+    prevLenRef.current = messages.length;
+    if (embedded && !grew) return;
     if (autoScrollLockedRef.current) {
       scrollThreadToBottom('auto');
       setShowNewMsgPill(false);
     } else if (isProcessing || revealing !== null) {
       setShowNewMsgPill(true);
     }
-  }, [messages.length, streamingText, revealing?.visibleText, isProcessing, revealing, scrollThreadToBottom]);
+  }, [embedded, messages.length, streamingText, revealing?.visibleText, isProcessing, revealing, scrollThreadToBottom]);
 
   // Progressive 60fps word-by-word reveal for arriving assistant replies.
   const startProgressiveReveal = useCallback(
@@ -430,7 +465,7 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
           },
         }),
         new Promise<never>((_, reject) => {
-          failsafeTimer = window.setTimeout(() => reject(new Error('Coach response timed out')), 18_000);
+          failsafeTimer = window.setTimeout(() => reject(new Error('Coach response timed out')), 26_000);
         }),
       ]);
 
@@ -633,96 +668,81 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
           maxHeight: vvHeightPx ? `${Math.round(vvHeightPx * 0.92)}px` : '88dvh',
         };
 
-  return (
+  const sheetInner = (
     <div
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="ai-coach-title"
-      className={`wk fixed inset-0 z-50 flex flex-col justify-end sm:items-center ${
-        closing ? 'pointer-events-none' : ''
-      }`}
+      className={`${embedded ? 'relative w-full border flex flex-col overflow-hidden' : `${closing ? 'wk-sheet-down' : 'wk-sheet-up'} relative w-full sm:max-w-md border-t flex flex-col overflow-hidden transition-[height,max-height,border-radius] duration-300 ease-out`}`}
       style={{
-        height: vvHeightPx ? `${vvHeightPx}px` : '100dvh',
+        borderColor: 'var(--color-border-strong)',
+        background: 'linear-gradient(180deg, var(--color-bg-surface) 0%, var(--color-bg-canvas) 180px)',
+        borderTopLeftRadius: embedded ? 24 : expanded ? 0 : 24,
+        borderTopRightRadius: embedded ? 24 : expanded ? 0 : 24,
+        ...(embedded ? { borderBottomLeftRadius: 24, borderBottomRightRadius: 24 } : {}),
+        boxShadow: 'inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 -12px 40px rgba(0, 0, 0, 0.58)',
+        ...(embedded && embeddedHeight
+          ? { height: embeddedHeight, maxHeight: embeddedHeight }
+          : embedded
+            ? {}
+            : sheetHeightStyle),
       }}
     >
-      {/* Tapping the page behind closes the sheet. */}
-      <button
-        type="button"
-        tabIndex={-1}
-        aria-hidden="true"
-        onClick={requestClose}
-        className={`wk-backdrop-in absolute inset-0 w-full h-full cursor-default transition-[background-color,opacity] duration-300 ease-out ${
-          closing ? 'bg-black/45 opacity-0' : expanded ? 'bg-black/90 opacity-100' : 'bg-black/45 opacity-100'
-        }`}
-      />
-      <div
-        className={`${closing ? 'wk-sheet-down' : 'wk-sheet-up'} relative w-full sm:max-w-md border-t border-white/[0.11] flex flex-col overflow-hidden transition-[height,max-height,border-radius] duration-300 ease-out`}
-        style={{
-          background: 'linear-gradient(180deg, var(--color-bg-canvas-top) 0%, var(--color-bg-canvas) 180px)',
-          borderTopLeftRadius: expanded ? 0 : 30,
-          borderTopRightRadius: expanded ? 0 : 30,
-          boxShadow: 'inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 -12px 40px rgba(0, 0, 0, 0.58)',
-          ...sheetHeightStyle,
-        }}
-      >
         {/* Header: safe-area top inset when full-screen, grab bar, Treise title, expand & close */}
         <div
-          className="relative flex items-center justify-between shrink-0"
+          className="relative flex items-center justify-between shrink-0 px-4 pb-3"
           style={{
-            paddingLeft: fig(38),
-            paddingRight: fig(38),
-            paddingTop: expanded ? `calc(${fig(44)} + env(safe-area-inset-top, 0px))` : fig(44),
-            paddingBottom: fig(20),
+            paddingTop: expanded ? 'calc(20px + env(safe-area-inset-top, 0px))' : '20px',
           }}
         >
           <span
             aria-hidden="true"
             className="absolute left-1/2 -translate-x-1/2 rounded-full"
             style={{
-              top: expanded ? `calc(${fig(14)} + env(safe-area-inset-top, 0px))` : fig(14),
-              width: fig(72),
-              height: fig(8),
+              top: expanded ? 'calc(8px + env(safe-area-inset-top, 0px))' : '8px',
+              width: 36,
+              height: 4,
               background: 'rgba(255, 255, 255, 0.22)',
             }}
           />
           <div>
             <h3
-              id="ai-coach-title"
-              className="wk-h1 flex items-center"
+              id={embedded ? undefined : 'ai-coach-title'}
+              className="wk-h1 flex items-center gap-2"
               style={{
-                gap: fig(12),
-                color: 'var(--color-coach-surface)',
+                color: 'var(--color-text-primary)',
                 textTransform: 'none',
                 fontWeight: 600,
                 letterSpacing: '-0.02em',
               }}
             >
               <span>
-                Treise<span style={{ color: 'var(--color-coach-border)' }}>.</span>
+                Treise<span style={{ color: 'var(--color-coach-accent)' }}>.</span>
               </span>
               <svg viewBox="0 0 16 16" className="w-3.5 h-3.5 shrink-0" aria-hidden="true">
                 <path
                   d="M7.5 1.5L8.75 5.25L12.5 6.5L8.75 7.75L7.5 11.5L6.25 7.75L2.5 6.5L6.25 5.25L7.5 1.5Z"
-                  fill="var(--color-coach-glow)"
+                  fill="var(--color-coach-accent)"
                 />
                 <path
                   d="M12.5 10.5L13.1 12.15L14.75 12.75L13.1 13.35L12.5 15L11.9 13.35L10.25 12.75L11.9 12.15L12.5 10.5Z"
-                  fill="var(--color-coach-border)"
+                  fill="var(--color-text-primary)"
                 />
               </svg>
             </h3>
-            <p className="wk-caption" style={{ marginTop: fig(6) }}>
+            <p className="wk-caption mt-1">
               No chat history saved on any server
             </p>
           </div>
-          <div className="flex items-center" style={{ gap: fig(12) }}>
+          <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={toggleExpanded}
               aria-label={expanded ? 'Shrink Treise to a sheet' : 'Expand Treise to full screen'}
               aria-pressed={expanded}
-              className="w-11 h-11 min-h-[44px] min-w-[44px] rounded-full flex items-center justify-center text-white/80 hover:text-white transition-all duration-200 active:scale-90"
-              style={{ background: 'var(--wk-card)' }}
+              className="w-11 h-11 min-h-[44px] min-w-[44px] rounded-full border flex items-center justify-center transition-all duration-200 active:scale-90"
+              style={{
+                background: 'var(--wk-card)',
+                borderColor: 'var(--color-border-subtle)',
+                color: 'var(--color-text-secondary)',
+              }}
             >
               {expanded ? <Minimize2 className="w-5 h-5 stroke-[2]" /> : <Maximize2 className="w-5 h-5 stroke-[2]" />}
             </button>
@@ -733,8 +753,12 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
                 requestClose();
               }}
               aria-label="Close Treise"
-              className="w-11 h-11 min-h-[44px] min-w-[44px] rounded-full flex items-center justify-center text-white/80 hover:text-white transition-colors"
-              style={{ background: 'var(--wk-card)' }}
+              className="w-11 h-11 min-h-[44px] min-w-[44px] rounded-full border flex items-center justify-center transition-colors"
+              style={{
+                background: 'var(--wk-card)',
+                borderColor: 'var(--color-border-subtle)',
+                color: 'var(--color-text-secondary)',
+              }}
             >
               <X className="w-5 h-5 stroke-[2]" />
             </button>
@@ -774,14 +798,10 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
                 inputRef.current?.blur();
               }
             }}
-            className="flex-1 min-h-0 overflow-y-auto no-scrollbar overscroll-contain flex flex-col"
+            className="flex-1 min-h-0 overflow-y-auto no-scrollbar overscroll-contain flex flex-col px-4 pt-1 gap-3"
             style={{
               touchAction: 'pan-y',
-              paddingLeft: fig(38),
-              paddingRight: fig(38),
-              paddingTop: fig(8),
-              paddingBottom: fig(28),
-              gap: fig(22),
+              paddingBottom: showNewMsgPill ? 64 : 16,
             }}
           >
             {messages.map((msg) => {
@@ -794,13 +814,7 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
                 return (
                   <p
                     key={msg.id}
-                    className="text-white font-semibold"
-                    style={{
-                      fontSize: `max(16px, ${fig(36)})`,
-                      lineHeight: 1.32,
-                      paddingTop: fig(8),
-                      paddingBottom: fig(8),
-                    }}
+                    className="wk-h1 py-1"
                   >
                     {renderBold(displayText)}
                   </p>
@@ -823,7 +837,7 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
                         : undefined
                     }
                     title={isBeingRevealed ? 'Tap to show full reply' : undefined}
-                    className={`${isUser ? 'wk-body text-white font-medium' : 'wk-card wk-body flex flex-col'} ${
+                    className={`${isUser ? 'wk-body font-medium' : 'wk-card wk-body flex flex-col'} ${
                       isBeingRevealed ? 'cursor-pointer' : ''
                     }`}
                     style={
@@ -831,29 +845,25 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
                         ? {
                             maxWidth: '82%',
                             background: 'var(--wk-raised)',
-                            border: '1px solid rgba(0, 241, 159, 0.35)',
-                            borderRadius: fig(30),
-                            padding: `${fig(22)} ${fig(30)}`,
+                            border: '1px solid var(--color-border-strong)',
+                            borderRadius: 16,
+                            padding: '12px 16px',
                           }
                         : {
                             maxWidth: '82%',
-                            padding: `${fig(28)} ${fig(34)}`,
-                            gap: fig(18),
+                            padding: '12px 16px',
+                            gap: 8,
                           }
                     }
                   >
                     {/* Saved to Athlete Memory pill */}
                     {!isUser && msg.memorySaved && (
                       <div
-                        className="inline-flex items-center self-start font-semibold"
+                        className="inline-flex items-center self-start font-medium rounded-full gap-2 px-3 py-1 text-xs"
                         style={{
-                          borderRadius: 60,
-                          gap: fig(8),
-                          padding: `${fig(8)} ${fig(18)}`,
-                          background: 'rgba(0, 241, 159, 0.12)',
-                          border: '1px solid rgba(0, 241, 159, 0.28)',
+                          background: 'var(--color-status-positive-soft)',
+                          border: '1px solid var(--color-border-accent)',
                           color: 'var(--wk-accent)',
-                          fontSize: `max(11px, ${fig(21)})`,
                         }}
                       >
                         <Sparkles className="w-3 h-3 shrink-0" strokeWidth={2.2} />
@@ -866,33 +876,26 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
                     {/* Destructive Action Confirmation Card */}
                     {!isUser && !isBeingRevealed && msg.pendingConfirmation && (
                       <div
-                        className="wk-raised flex flex-col"
+                        className="wk-raised flex flex-col gap-2"
                         style={{
-                          gap: fig(14),
-                          borderColor: 'rgba(245, 158, 11, 0.35)',
+                          borderColor: 'rgb(var(--color-status-warning-rgb) / 0.35)',
                         }}
                       >
-                        <div className="flex items-start" style={{ gap: fig(12) }}>
+                        <div className="flex items-start gap-2">
                           <AlertTriangle
-                            className="w-4 h-4 shrink-0"
-                            style={{ color: 'var(--color-status-warning)', marginTop: fig(3) }}
+                            className="w-4 h-4 shrink-0 mt-1"
+                            style={{ color: 'var(--color-status-warning)' }}
                             strokeWidth={2.2}
                           />
                           <div className="min-w-0">
-                            <div className="wk-label" style={{ color: 'var(--color-status-warning)' }}>
+                            <div className="wk-subhead" style={{ color: 'var(--color-status-warning)' }}>
                               {msg.pendingConfirmation.title}
                             </div>
-                            <p
-                              className="wk-body"
-                              style={{ color: 'var(--wk-muted)', marginTop: fig(6) }}
-                            >
+                            <p className="wk-body mt-1" style={{ color: 'var(--wk-muted)' }}>
                               {msg.pendingConfirmation.warning}
                             </p>
                             {msg.stateDiff && (
-                              <div
-                                className="wk-body font-medium text-white"
-                                style={{ marginTop: fig(8) }}
-                              >
+                              <div className="wk-body font-medium mt-1" style={{ color: 'var(--color-text-primary)' }}>
                                 {formatStateDiffText(msg.stateDiff)}
                               </div>
                             )}
@@ -900,7 +903,7 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
                         </div>
 
                         {msg.pendingConfirmation.status === 'pending' ? (
-                          <div className="flex items-center" style={{ gap: fig(12) }}>
+                          <div className="flex items-center gap-2">
                             <button
                               type="button"
                               onClick={() => handleConfirmPendingAction(msg.id, msg.pendingConfirmation!)}
@@ -917,14 +920,7 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
                               type="button"
                               onClick={() => handleCancelPendingAction(msg.id)}
                               disabled={isProcessing}
-                              className="wk-button min-h-[44px] font-medium disabled:opacity-50"
-                              style={{
-                                paddingLeft: fig(28),
-                                paddingRight: fig(28),
-                                background: 'var(--wk-pill)',
-                                color: 'var(--wk-muted)',
-                                border: '1px solid rgba(255,255,255,0.1)',
-                              }}
+                              className="wk-btn-secondary flex-none px-4 disabled:opacity-50"
                             >
                               {msg.pendingConfirmation.cancel_label}
                             </button>
@@ -939,11 +935,11 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
 
                     {/* Inline OOUX Mutation Receipt Card */}
                     {!isUser && !isBeingRevealed && msg.actionApplied && (
-                      <div className="wk-raised flex flex-col" style={{ gap: fig(14) }}>
-                        <div className="flex items-start" style={{ gap: fig(14) }}>
+                      <div className="wk-raised flex flex-col gap-2">
+                        <div className="flex items-start gap-2">
                           <CheckCircle2
-                            className="w-4 h-4 shrink-0"
-                            style={{ color: 'var(--wk-accent)', marginTop: fig(4) }}
+                            className="w-4 h-4 shrink-0 mt-1"
+                            style={{ color: 'var(--wk-accent)' }}
                             strokeWidth={2}
                           />
                           <div className="min-w-0 flex-1">
@@ -951,8 +947,8 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
                               {msg.stateDiff?.label || actionCardLabel(msg.actionApplied.type)}
                             </div>
                             <div
-                              className="wk-body font-medium"
-                              style={{ color: 'var(--wk-accent)', marginTop: fig(6) }}
+                              className="wk-body font-medium mt-1"
+                              style={{ color: 'var(--color-text-primary)' }}
                             >
                               {msg.stateDiff
                                 ? formatStateDiffText(msg.stateDiff)
@@ -962,7 +958,7 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
                         </div>
 
                         {(msg.navigateTarget || msg.undoSnapshot || msg.actionApplied.type === 'UPDATE_EQUIPMENT') && (
-                          <div className="flex flex-wrap items-center" style={{ gap: fig(12) }}>
+                          <div className="flex flex-wrap items-center gap-2">
                             {msg.navigateTarget && onNavigateTab && (
                               <button
                                 type="button"
@@ -970,11 +966,10 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
                                   triggerHaptic('light');
                                   onNavigateTab(msg.navigateTarget!);
                                 }}
-                                className="wk-button min-h-[44px] flex-1 font-semibold"
+                                className="wk-button min-h-[44px] flex-1 gap-2 font-semibold"
                                 style={{
                                   background: 'var(--color-action-primary-bg)',
                                   color: 'var(--color-action-primary-fg)',
-                                  gap: fig(10),
                                 }}
                               >
                                 <span>{msg.navigateLabel || 'View'}</span>
@@ -987,14 +982,7 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
                                 type="button"
                                 disabled={Boolean(revertedMessageIds[msg.id]) || msg.id !== latestUndoableMessageId}
                                 onClick={() => handleUndoMutation(msg.id, msg.undoSnapshot!)}
-                                className="wk-button min-h-[44px] font-medium text-white disabled:opacity-50"
-                                style={{
-                                  paddingLeft: fig(26),
-                                  paddingRight: fig(26),
-                                  background: 'var(--wk-pill)',
-                                  border: '1px solid rgba(255,255,255,0.12)',
-                                  gap: fig(8),
-                                }}
+                                className="wk-btn-secondary px-3 gap-2 disabled:opacity-50"
                               >
                                 <RotateCcw className="w-3.5 h-3.5 stroke-[2]" />
                                 <span>
@@ -1014,15 +1002,14 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
                                   triggerHaptic('light');
                                   onViewAllEquipment?.();
                                 }}
-                                className="wk-button min-h-[44px]"
+                                className="wk-button min-h-[44px] gap-2"
                                 style={{
                                   background: 'var(--color-action-primary-bg)',
                                   color: 'var(--color-action-primary-fg)',
-                                  gap: fig(12),
                                 }}
                               >
                                 <Dumbbell className="w-4 h-4 stroke-[2]" />
-                                <span>View All Equipment</span>
+                                <span>View all equipment</span>
                                 <ChevronRight className="w-4 h-4 stroke-[2]" />
                               </button>
                             )}
@@ -1033,29 +1020,28 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
 
                     {/* Scientific Principles & Academic Citations */}
                     {!isUser && !isBeingRevealed && msg.scientificPrinciplesCited && msg.scientificPrinciplesCited.length > 0 && (
-                      <div className="flex flex-col" style={{ paddingTop: fig(8), gap: fig(12) }}>
+                      <div className="flex flex-col pt-1 gap-2">
                         <span
-                          className="wk-label flex items-center"
-                          style={{ color: 'var(--wk-accent)', gap: fig(8) }}
+                          className="wk-label flex items-center gap-2"
+                          style={{ color: 'var(--wk-accent)' }}
                         >
                           <FlaskConical className="w-3.5 h-3.5 stroke-[2]" style={{ color: 'var(--wk-accent)' }} />
-                          <span>Scientific Rationale</span>
+                          <span>Scientific rationale</span>
                         </span>
-                        <div className="flex flex-col" style={{ gap: fig(12) }}>
+                        <div className="flex flex-col gap-2">
                           {msg.scientificPrinciplesCited.map((sp) => (
                             <div
                               key={sp.id}
-                              className="wk-raised flex flex-col"
-                              style={{ gap: fig(10) }}
+                              className="wk-raised flex flex-col gap-2"
                             >
-                              <div className="flex items-center justify-between" style={{ gap: fig(12) }}>
-                                <span className="wk-label">{sp.title}</span>
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="wk-subhead">{sp.title}</span>
                                 <span className="wk-pill shrink-0">{sp.topic}</span>
                               </div>
                               {sp.formula && (
                                 <div
-                                  className="tabular-numbers overflow-x-auto no-scrollbar"
-                                  style={{ color: 'var(--wk-accent)', fontSize: `max(12px, ${fig(24)})` }}
+                                  className="tabular-numbers overflow-x-auto no-scrollbar text-xs"
+                                  style={{ color: 'var(--wk-accent)' }}
                                 >
                                   {sp.formula}
                                 </div>
@@ -1075,7 +1061,7 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
                   </div>
 
                   {isUser && (
-                    <span className="wk-caption" style={{ marginTop: fig(8), paddingLeft: fig(8), paddingRight: fig(8) }}>
+                    <span className="wk-caption mt-1 px-1">
                       {msg.timestamp}
                     </span>
                   )}
@@ -1089,18 +1075,18 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
                   <div
                     data-streaming-bubble="true"
                     className="wk-card wk-body whitespace-pre-wrap"
-                    style={{ maxWidth: '82%', padding: `${fig(28)} ${fig(34)}` }}
+                    style={{ maxWidth: '82%', padding: '12px 16px' }}
                     aria-live="polite"
                   >
                     {renderBold(streamingText)}
                   </div>
                 ) : (
                   <div
-                    className="wk-card wk-body flex items-center"
-                    style={{ maxWidth: '82%', padding: `${fig(26)} ${fig(32)}`, gap: fig(18) }}
+                    className="wk-card wk-body flex items-center gap-2"
+                    style={{ maxWidth: '82%', padding: '12px 16px' }}
                     aria-live="polite"
                   >
-                    <div className="flex items-center shrink-0" style={{ gap: fig(10) }} aria-hidden="true">
+                    <div className="flex items-center shrink-0 gap-2" aria-hidden="true">
                       <span
                         className="w-2 h-2 rounded-full wk-typing-dot"
                         style={{ background: 'var(--wk-accent)', animationDelay: '0ms' }}
@@ -1114,7 +1100,7 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
                         style={{ background: 'var(--wk-accent)', animationDelay: '320ms' }}
                       />
                     </div>
-                    <span className="wk-caption font-semibold">{pendingStatus}</span>
+                    <span className="wk-caption font-medium">{pendingStatus}</span>
                   </div>
                 )}
               </div>
@@ -1131,17 +1117,11 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
                 scrollThreadToBottom('smooth');
               }}
               aria-label="Scroll to new message"
-              className="absolute right-0 bottom-0 min-h-[44px] flex items-center rounded-full font-semibold shadow-lg transition-transform active:scale-95"
+              className="absolute right-4 bottom-2 min-h-[44px] flex items-center rounded-full px-3 gap-1 text-xs font-medium shadow-lg transition-transform active:scale-95"
               style={{
-                right: fig(28),
-                bottom: fig(16),
                 background: 'var(--wk-raised)',
-                color: 'var(--wk-accent)',
-                border: '1px solid rgba(0, 241, 159, 0.35)',
-                paddingLeft: fig(24),
-                paddingRight: fig(24),
-                gap: fig(8),
-                fontSize: `max(12px, ${fig(24)})`,
+                color: 'var(--color-text-primary)',
+                border: '1px solid var(--color-border-strong)',
               }}
             >
               <ChevronDown className="w-4 h-4 stroke-[2.2]" />
@@ -1152,14 +1132,7 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
 
         {/* Single-row horizontal quick-reply chips (44px min touch target) */}
         <div
-          className="overflow-x-auto no-scrollbar flex flex-nowrap items-center shrink-0"
-          style={{
-            paddingLeft: fig(38),
-            paddingRight: fig(38),
-            paddingTop: fig(6),
-            paddingBottom: fig(18),
-            gap: fig(14),
-          }}
+          className="overflow-x-auto no-scrollbar flex flex-nowrap items-center shrink-0 px-4 pt-1 pb-2 gap-2"
           role="group"
           aria-label="Suggestions"
         >
@@ -1170,14 +1143,11 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
                   type="button"
                   onClick={() => handleSendMessage(chip.prompt)}
                   disabled={isProcessing}
-                  className="shrink-0 min-h-[44px] whitespace-nowrap font-semibold text-white transition-all active:scale-95 disabled:opacity-50"
+                  className="shrink-0 min-h-[44px] whitespace-nowrap rounded-full px-4 text-xs font-medium transition-all active:scale-95 disabled:opacity-50"
                   style={{
-                    borderRadius: 60,
                     background: 'var(--wk-card)',
-                    border: '1px solid rgba(255, 255, 255, 0.08)',
-                    paddingLeft: fig(28),
-                    paddingRight: fig(28),
-                    fontSize: `max(12px, ${fig(24)})`,
+                    color: 'var(--color-text-primary)',
+                    border: '1px solid var(--color-border-strong)',
                   }}
                 >
                   {chip.label}
@@ -1189,14 +1159,11 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
                   type="button"
                   onClick={() => useHook(q)}
                   disabled={isProcessing}
-                  className="shrink-0 min-h-[44px] whitespace-nowrap font-semibold text-white transition-all active:scale-95 disabled:opacity-50"
+                  className="shrink-0 min-h-[44px] whitespace-nowrap rounded-full px-4 text-xs font-medium transition-all active:scale-95 disabled:opacity-50"
                   style={{
-                    borderRadius: 60,
                     background: 'var(--wk-card)',
-                    border: '1px solid rgba(255, 255, 255, 0.08)',
-                    paddingLeft: fig(28),
-                    paddingRight: fig(28),
-                    fontSize: `max(12px, ${fig(24)})`,
+                    color: 'var(--color-text-primary)',
+                    border: '1px solid var(--color-border-strong)',
                   }}
                 >
                   {q.label}
@@ -1206,14 +1173,11 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
 
         {/* Multiline Input Bar pinned cleanly above soft keyboard / gesture bar */}
         <div
-          className="shrink-0"
+          className="shrink-0 px-4 pt-1"
           style={{
-            paddingLeft: fig(38),
-            paddingRight: fig(38),
-            paddingTop: fig(4),
             paddingBottom: viewportMetrics.keyboardOpen
               ? '12px'
-              : 'calc(18px + env(safe-area-inset-bottom, 0px))',
+              : 'calc(16px + env(safe-area-inset-bottom, 0px))',
           }}
         >
           <form
@@ -1221,14 +1185,11 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
               e.preventDefault();
               handleSendMessage();
             }}
-            className="flex items-end"
+            className="flex items-end rounded-3xl pl-4 pr-2 py-2 gap-2"
             style={{
-              borderRadius: fig(44),
               background: 'var(--wk-card)',
-              border: '1px solid rgba(255, 255, 255, 0.11)',
+              border: '1px solid var(--color-border-strong)',
               boxShadow: 'inset 0 1px 0 rgba(255, 255, 255, 0.06)',
-              padding: `${fig(8)} ${fig(8)} ${fig(8)} ${fig(32)}`,
-              gap: fig(12),
             }}
           >
             <textarea
@@ -1251,12 +1212,10 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
               readOnly={isProcessing}
               autoComplete="off"
               autoCorrect="off"
-              className="flex-1 bg-transparent outline-none wk-body text-white placeholder:text-white/45 min-h-[44px] resize-none overflow-y-auto no-scrollbar"
+              className="flex-1 bg-transparent outline-none font-normal text-[color:var(--color-text-primary)] placeholder:text-[color:var(--color-text-muted)] min-h-[44px] py-3 resize-none overflow-y-auto no-scrollbar text-base"
               style={{
-                fontSize: `max(16px, ${fig(28)})`,
-                lineHeight: '22px',
-                paddingTop: '11px',
-                paddingBottom: '11px',
+                fontSize: '16px',
+                lineHeight: '24px',
                 maxHeight: `${COMPOSER_MAX_HEIGHT_PX}px`,
               }}
             />
@@ -1268,7 +1227,6 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
               aria-label="Send message"
               className="w-11 h-11 min-h-[44px] min-w-[44px] rounded-full flex items-center justify-center transition-all active:scale-95 disabled:opacity-30 shrink-0"
               style={{
-                borderRadius: 60,
                 background: 'var(--color-action-primary-bg)',
                 color: 'var(--color-action-primary-fg)',
               }}
@@ -1277,7 +1235,37 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
             </button>
           </form>
         </div>
-      </div>
+    </div>
+  );
+
+  if (embedded) {
+    return <div className="wk relative w-full flex flex-col justify-end">{sheetInner}</div>;
+  }
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="ai-coach-title"
+      className={`wk fixed inset-0 z-50 flex flex-col justify-end sm:items-center ${
+        closing ? 'pointer-events-none' : ''
+      }`}
+      style={{
+        height: vvHeightPx ? `${vvHeightPx}px` : '100dvh',
+      }}
+    >
+      {/* Tapping the page behind closes the sheet. */}
+      <button
+        type="button"
+        tabIndex={-1}
+        aria-hidden="true"
+        onClick={requestClose}
+        className={`wk-backdrop-in absolute inset-0 w-full h-full cursor-default transition-[background-color,opacity] duration-300 ease-out ${
+          closing ? 'opacity-0' : 'opacity-100'
+        }`}
+        style={{ background: expanded ? 'var(--color-bg-scrim)' : 'rgb(var(--color-bg-canvas-rgb) / 0.5)' }}
+      />
+      {sheetInner}
     </div>
   );
 };

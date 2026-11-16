@@ -306,13 +306,16 @@ export function buildGoalsSummary(goals: AthleteGoal[], formatWeight: (kg: numbe
       `${weekly.title}: ${frequency.thisWeek} of ${frequency.perWeek} sessions done this week${frequency.thisWeek > 0 && left > 0 ? `, ${left} to go` : ''}.`
     );
     if (frequency.streakWeeks > 0) facts.push(`Weeks in a row at ${frequency.perWeek} sessions: ${frequency.streakWeeks}.`);
-    const run = frequency.streakWeeks > 0 ? ` That's ${frequency.streakWeeks} ${frequency.streakWeeks === 1 ? 'week' : 'weeks'} in a row at ${frequency.perWeek}.` : '';
+    const streakClause =
+      frequency.streakWeeks > 0
+        ? `, making ${frequency.streakWeeks} ${frequency.streakWeeks === 1 ? 'week' : 'weeks'} in a row at ${frequency.perWeek}`
+        : '';
     sentences.push(
-      (frequency.thisWeek >= frequency.perWeek
-        ? `You've done all ${frequency.perWeek} sessions this week.`
+      frequency.thisWeek >= frequency.perWeek
+        ? `You've done all ${frequency.perWeek} sessions this week${streakClause}.`
         : frequency.thisWeek === 0
         ? `This week's ${frequency.perWeek} sessions are still ahead of you.`
-        : `You've done ${frequency.thisWeek} of ${frequency.perWeek} sessions this week, with ${left} to go.`) + (frequency.thisWeek >= frequency.perWeek ? run : '')
+        : `You've done ${frequency.thisWeek} of ${frequency.perWeek} sessions this week, with ${left} to go.`
     );
   }
   const chosen = goals.find((g) => g.id === CHOSEN_GOAL_ID);

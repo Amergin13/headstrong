@@ -27,7 +27,7 @@ let cachedStatus: { value: OnDeviceModelStatus; at: number } | null = null;
 let warmUpPromise: Promise<void> | null = null;
 
 /** A model that doesn't say whether it is ready within this time is treated as not ready. */
-const STATUS_TIMEOUT_MS = 2500;
+const STATUS_TIMEOUT_MS = 4500;
 
 /**
  * Health of the on-device model. A model that errors or runs out of time twice in a row is left
@@ -59,6 +59,7 @@ export function resetOnDeviceModelHealth(): void {
   consecutiveFailures = 0;
   pausedUntil = 0;
   cachedStatus = null;
+  warmUpPromise = null;
 }
 
 export async function getOnDeviceModelStatus(force = false): Promise<OnDeviceModelStatus> {
@@ -417,9 +418,12 @@ export function warmUpOnDeviceModel(): Promise<void> {
   if (!warmUpPromise) {
     warmUpPromise = (async () => {
       try {
-        if ((await getOnDeviceModelStatus()) !== 'available') return;
-        const session = await createSession('You are a helpful assistant.');
-        session?.destroy?.();
+        if ((await getOnDeviceModelStatus()) === 'available') {
+          const session = await createSession('You are a helpful assistant.');
+          session?.destroy?.();
+          return;
+        }
+        await fallbackModel?.isReady?.();
       } catch {
         // Model not usable; questions will fall back to the rule-based coach.
       }
