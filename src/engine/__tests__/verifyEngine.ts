@@ -11891,7 +11891,171 @@ Exercise,,Date,Workout,Sets,Reps,Tempo,Rest,Notes,Set 1,Set 2,Set 3,Set 4
     );
   }
 
-  console.log('\nALL 58 ENGINE, GOVERNANCE, DESIGN SYSTEM, TYPOGRAPHY, WEARABLES, WHOOP STRAIN, GOOGLE AUTH, ONBOARDING CONTEXT, 6-WEEK PROGRAM, SPREADSHEET IMPORT, AI COACH ACTIONS, GEMINI FLASH + KG, OOUX, AGENTIC COACH, PRODUCT UPGRADES, INFO EXPERIENCE, CONTENT DESIGN, GOAL CAROUSEL, SHIFT NUDGE COLOR POLISH, EXERCISE DRILL-IN MODAL & LAUNCH VERIFICATION SUITES PASSED SUCCESSFULLY! 🎯');
+  // Suite 59: Optional Composition Progress Widget (Overlaid Weight, Body Fat %, Lean Mass & AI Insight)
+  {
+    console.log('\n[Suite 59: Optional Composition Progress Widget & AI Summary]');
+    const fs59 = await import('fs');
+    const path59 = await import('path');
+    const repo59 = process.cwd();
+    const pw59 = await import('../../services/progressWidgets');
+    const compMod = await import('../../services/compositionOverview');
+    const aiMod59 = await import('../../services/aiAssistantService');
+    const storage59 = await import('../../services/storage');
+    const { localDateString: localDs59 } = await import('../../utils/date');
+
+    // 1. Optional widget registration + Customize UI + AI Coach toggles
+    const compDef = pw59.PROGRESS_WIDGETS.find((w) => w.id === 'composition');
+    assert(
+      Boolean(compDef) &&
+        compDef!.label === 'Composition' &&
+        compDef!.defaultEnabled === false &&
+        !pw59.DEFAULT_PROGRESS_WIDGETS.includes('composition') &&
+        pw59.availableProgressWidgets(NEW_USER_PROFILE).some((w) => w.id === 'composition'),
+      'Composition is registered as an optional Progress widget (defaultEnabled: false)'
+    );
+
+    const toggledOn = pw59.toggleProgressWidget(undefined, 'composition');
+    const demo59 = storage59.resetAllToSeedData();
+    const weeklyVol59 = storage59.calculateWeeklyMuscleVolume(demo59.workouts, demo59.exercises);
+    const coachAddComp = await aiMod59.processAssistantMessage({
+      userMessage: 'add composition to my progress page',
+      activeWorkout: demo59.activeWorkout,
+      biometrics: demo59.biometrics,
+      profile: demo59.profile,
+      workouts: demo59.workouts,
+      exerciseCatalog: demo59.exercises,
+      bodyweightEmaKg: 80,
+      readinessState: 'Normal',
+      weeklyVolume: weeklyVol59,
+    });
+    const withCompProfile = {
+      ...demo59.profile,
+      progressWidgets: coachAddComp.updatedProfile?.progressWidgets ?? toggledOn,
+    };
+    const coachRemoveComp = await aiMod59.processAssistantMessage({
+      userMessage: 'remove composition from my progress page',
+      activeWorkout: demo59.activeWorkout,
+      biometrics: demo59.biometrics,
+      profile: withCompProfile,
+      workouts: demo59.workouts,
+      exerciseCatalog: demo59.exercises,
+      bodyweightEmaKg: 80,
+      readinessState: 'Normal',
+      weeklyVolume: weeklyVol59,
+    });
+    assert(
+      Boolean(toggledOn?.includes('composition')) &&
+        coachAddComp.actionTaken?.type === 'UPDATE_PROGRESS_WIDGETS' &&
+        Boolean(coachAddComp.updatedProfile?.progressWidgets?.includes('composition')) &&
+        coachRemoveComp.actionTaken?.type === 'UPDATE_PROGRESS_WIDGETS' &&
+        !pw59.resolveProgressWidgets(coachRemoveComp.updatedProfile?.progressWidgets).includes('composition'),
+      'Composition widget toggles cleanly via Customize settings and Coach prompts'
+    );
+
+    // 2. Dual-axis series math, empty/weight-only truth, lb/kg unit parity & zero internal phase leaks
+    const blank59 = { hrvRmssd: 0, restingHr: 0, sleepHours: 0, steps: 0, activeZoneMinutes: 0 };
+    const today59 = localDs59(new Date());
+    const d59 = (daysAgo: number) => {
+      const dt = new Date();
+      dt.setDate(dt.getDate() - daysAgo);
+      return localDs59(dt);
+    };
+    const recompLogs: BiometricLog[] = [
+      { ...blank59, date: d59(35), bodyweightKg: 80.0, bodyFatPct: 20.0 },
+      { ...blank59, date: d59(14), bodyweightKg: 80.5, bodyFatPct: 19.0 },
+      { ...blank59, date: today59, bodyweightKg: 81.0, bodyFatPct: 18.0 },
+    ];
+    const recompOverview = compMod.buildCompositionOverview({
+      biometrics: recompLogs,
+      goalPhase: 'Lean Bulk',
+      timeline: '1Y',
+      formatWeight: (kg) => `${Math.round(kg * 10) / 10} kg`,
+      formatPreciseWeight: (kg) => `${Math.round(kg * 10) / 10} kg`,
+      today: today59,
+    });
+    const lbOverview = compMod.buildCompositionOverview({
+      biometrics: recompLogs,
+      goalPhase: 'Maingain',
+      timeline: '1Y',
+      formatWeight: (kg) => `${Math.round(kg * 2.20462 * 10) / 10} lb`,
+      formatPreciseWeight: (kg) => `${Math.round(kg * 2.20462 * 10) / 10} lb`,
+      today: today59,
+    });
+    const emptyOverview = compMod.buildCompositionOverview({
+      biometrics: [],
+      goalPhase: 'Cut / Recomp',
+      timeline: '1Y',
+      formatWeight: (kg) => `${kg} kg`,
+      today: today59,
+    });
+    const weightOnlyOverview = compMod.buildCompositionOverview({
+      biometrics: [
+        { ...blank59, date: d59(10), bodyweightKg: 80 },
+        { ...blank59, date: today59, bodyweightKg: 81 },
+      ],
+      goalPhase: 'Lean Bulk',
+      timeline: '1Y',
+      formatWeight: (kg) => `${kg} kg`,
+      today: today59,
+    });
+
+    assert(
+      recompOverview.points.length === 3 &&
+        recompOverview.weight.delta === 1 &&
+        recompOverview.bodyFat.delta === -2 &&
+        recompOverview.leanMass.delta === 2.4 &&
+        !recompOverview.summary.sparse &&
+        /recomposition|lean mass/i.test(recompOverview.summary.fallback) &&
+        !/Lean Bulk|Cut \/ Recomp|Maingain/.test(recompOverview.summary.fallback) &&
+        /Stay Lean/.test(lbOverview.summary.facts.join(' ')) &&
+        emptyOverview.points.length === 0 &&
+        emptyOverview.summary.sparse &&
+        emptyOverview.weight.latest === undefined &&
+        emptyOverview.leanMass.latest === undefined &&
+        weightOnlyOverview.bodyFat.count === 0 &&
+        weightOnlyOverview.leanMass.count === 0 &&
+        weightOnlyOverview.summary.sparse,
+      'Composition overview overlays Weight, Body fat %, and Lean body mass accurately with honest empty/weight-only states'
+    );
+
+    // 3. AI insight grounding & unit checks
+    const validDraft = `Lean mass climbed +2.4 kg to 66.4 kg while body fat dropped 2 points (18%). Training continues driving clean recomposition toward Build Muscle.`;
+    const hallucinatedNumber = `Lean mass climbed +9.9 kg while body fat fell 2 points (18%). Keeping intensity high sustains progress.`;
+    const wrongUnitDraft = `Lean mass rose +2.4 kg while body fat fell 2 points to 18%. Keep hitting progressive overload cleanly.`;
+    const generatedOk = await compMod.generateCompositionInsight(
+      recompOverview.summary,
+      async () => validDraft
+    );
+    const rejectedBad = await compMod.generateCompositionInsight(
+      recompOverview.summary,
+      async () => hallucinatedNumber
+    );
+    assert(
+      generatedOk === validDraft &&
+        rejectedBad === null &&
+        compMod.checkCompositionInsight(wrongUnitDraft, lbOverview.summary).problem !== undefined,
+      'Composition AI insight rejects invented numbers/wrong units and accepts grounded 2-line summaries'
+    );
+
+    // 4. CompositionCard, AnalyticsTab & Design System parity
+    const compCardSrc = fs59.readFileSync(path59.join(repo59, 'src/components/analytics/CompositionCard.tsx'), 'utf8');
+    const analyticsSrc59 = fs59.readFileSync(path59.join(repo59, 'src/components/analytics/AnalyticsTab.tsx'), 'utf8');
+    const dsSrc59 = fs59.readFileSync(path59.join(repo59, 'src/designSystem/DesignSystemApp.tsx'), 'utf8');
+    assert(
+      compCardSrc.includes('useUnits()') &&
+        compCardSrc.includes('<TimelineToggle') &&
+        compCardSrc.includes('<CoachSummaryText') &&
+        compCardSrc.includes('hasBodyFatSeries') &&
+        compCardSrc.includes('Lean mass') &&
+        compCardSrc.includes('Body fat') &&
+        analyticsSrc59.includes("hasWidget('composition')") &&
+        analyticsSrc59.includes('<CompositionCard') &&
+        dsSrc59.includes('<CompositionCard'),
+      'CompositionCard, AnalyticsTab, and DesignSystemApp expose the optional dual-axis Composition widget'
+    );
+  }
+
+  console.log('\nALL 59 ENGINE, GOVERNANCE, DESIGN SYSTEM, TYPOGRAPHY, WEARABLES, WHOOP STRAIN, GOOGLE AUTH, ONBOARDING CONTEXT, 6-WEEK PROGRAM, SPREADSHEET IMPORT, AI COACH ACTIONS, GEMINI FLASH + KG, OOUX, AGENTIC COACH, PRODUCT UPGRADES, INFO EXPERIENCE, CONTENT DESIGN, GOAL CAROUSEL, SHIFT NUDGE COLOR POLISH, EXERCISE DRILL-IN MODAL, COMPOSITION WIDGET & LAUNCH VERIFICATION SUITES PASSED SUCCESSFULLY! 🎯');
 })().catch((err) => {
   console.error('Test Suite Failed:', err);
   if (typeof process !== 'undefined' && process.exit) {

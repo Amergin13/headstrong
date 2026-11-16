@@ -190,6 +190,7 @@ const REBUILDABLE_CACHE_KEYS = [
   'treise_identity_message_v1',
   'treise_workout_summary_v1',
   'treise_goals_summary_v1',
+  'treise_composition_insight_v1',
   'treise_ai_rejected_v1',
 ];
 

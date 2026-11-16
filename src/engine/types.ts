@@ -442,6 +442,7 @@ export type CoreProgressWidgetId =
   | 'recent-stats'
   | 'steps'
   | 'body-weight'
+  | 'composition'
   | 'measurements'
   | 'insights'
   | 'strength-standards'

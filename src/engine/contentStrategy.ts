@@ -468,7 +468,7 @@ export const IA_PROGRESS_TAXONOMY: ProgressTaxonomyGroup[] = [
   {
     id: 'body_recovery',
     label: 'Body, Recovery & Insights',
-    widgetIds: ['insights', 'body-weight', 'measurements', 'steps', 'whoop-summary'],
+    widgetIds: ['insights', 'body-weight', 'composition', 'measurements', 'steps', 'whoop-summary'],
     description: 'Weekly muscle set volume, joint load, Knowledge Graph causal insights, Session notes timeline, and biometrics.',
   },
 ];

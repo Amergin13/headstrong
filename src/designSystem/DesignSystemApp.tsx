@@ -51,6 +51,7 @@ import {
   StatRow,
 } from '../components/analytics/ProgressOverviewCards';
 import { ProgressChartCard } from '../components/analytics/ProgressChartCard';
+import { CompositionCard } from '../components/analytics/CompositionCard';
 import { StrengthLevelsCard } from '../components/analytics/StrengthLevelsCard';
 import { BalanceCard } from '../components/analytics/BalanceCard';
 import { MuscleProgressCard } from '../components/analytics/MuscleProgressCard';
@@ -1875,6 +1876,19 @@ export const DesignSystemContent: React.FC<{
               <div className="wk-card flex flex-col items-center">
                 <StandardsRadar report={fixtures.movementReport} />
               </div>
+
+              <StageHeader
+                title="CompositionCard (Overlaid Weight, Body Fat % &amp; Lean Mass + AI Insight)"
+                source="src/components/analytics/CompositionCard.tsx"
+              />
+              <CompositionCard
+                biometrics={fixtures.biometrics.map((b, i) => ({
+                  ...b,
+                  bodyFatPct: Number((18.4 - i * 0.04).toFixed(1)),
+                }))}
+                goalPhase={fixtures.profile.goalPhase}
+                onOpenLog={() => undefined}
+              />
 
               <StageHeader
                 title="StrengthLevelsCard &amp; BalanceCard (Imbalance findings + Balanced)"

@@ -46,6 +46,7 @@ import { weightPace } from '../../services/progressSeries';
 import { parseLocalDate } from '../../utils/date';
 import { formatSentenceCase } from '../../utils/typography';
 import { DetailHeader, GoalsHero, OverviewCard, Sparkline, StandardsRadar, StatRow } from './ProgressOverviewCards';
+import { CompositionCard } from './CompositionCard';
 import { GoalDetailScreen } from './GoalDetailScreen';
 import { GoalSettingsScreen } from './GoalSettingsScreen';
 import { ProgressWidgetsScreen } from './ProgressWidgetsScreen';
@@ -985,6 +986,14 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
               </div>
             )}
           </OverviewCard>
+        )}
+
+        {hasWidget('composition') && (
+          <CompositionCard
+            biometrics={biometrics}
+            goalPhase={profile.goalPhase}
+            onOpenLog={openLogWeight}
+          />
         )}
 
         {hasWidget('measurements') && (

@@ -64,6 +64,20 @@ export const PROGRESS_WIDGETS: readonly ProgressWidgetDefinition[] = [
     aliases: ['body weight', 'bodyweight', 'scale weight', 'weigh-ins', 'weigh ins', 'weigh-in', 'weight'],
   },
   {
+    id: 'composition',
+    label: 'Composition',
+    description: 'Weight, body fat % and lean body mass overlaid over time with an AI insight.',
+    defaultEnabled: false,
+    aliases: [
+      'body composition widget',
+      'composition widget',
+      'body composition card',
+      'composition card',
+      'body composition',
+      'composition',
+    ],
+  },
+  {
     id: 'measurements',
     label: 'Measurements',
     description: 'Waist and body tape highlights.',
