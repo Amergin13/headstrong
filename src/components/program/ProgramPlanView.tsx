@@ -22,6 +22,7 @@ import { ActivityLog, describeActivity } from '../../engine/activeDays';
 import { triggerHaptic } from '../../utils/haptics';
 import { formatSentenceCase } from '../../utils/typography';
 import { PastWorkoutModal } from './PastWorkoutModal';
+import { CoachSummaryText } from '../common/CoachSummaryText';
 import { resolveCssToken } from '../../styles/semanticTokens';
 
 /** One contour of the identity form: a finished workout, or the outline of the next one. */
@@ -458,18 +459,24 @@ export const ProgramPlanView: React.FC<ProgramPlanViewProps> = ({
       </header>
 
       {isFirstRun && (
-        <section aria-label="Your progress as an athlete" className="flex flex-col items-center text-center">
+        <section aria-label="Your progress as an athlete" className="flex flex-col items-center">
           <div className="self-stretch -mx-4 -mt-1">
             <IdentityForm rings={identityRings} seed={identitySeed} total={TOTAL} />
           </div>
-          <h2 className="wk-h1 -mt-3">
+          <h2 className="wk-h1 -mt-3 text-center">
             Your new identity as an athlete is forming
           </h2>
-          <p className="wk-body mt-3 max-w-prose">
-            <span key={identityMessage ? 'model' : 'facts'} className="wk-text-swap">
-              {identityMessage ?? identityFacts.fallback}
+          <div className="wk-card w-full mt-4 text-left">
+            <span className="wk-label block mb-2" style={{ color: 'var(--wk-muted)' }}>
+              Plan momentum
             </span>
-          </p>
+            <CoachSummaryText
+              text={identityMessage ?? identityFacts.fallback}
+              swapKey={identityMessage ? 'model' : 'facts'}
+              splitBy="sentences"
+              accentRail
+            />
+          </div>
         </section>
       )}
 

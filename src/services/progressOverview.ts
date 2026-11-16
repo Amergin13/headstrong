@@ -307,17 +307,17 @@ export interface GoalsSummary {
 }
 
 export const GOALS_SUMMARY_SYSTEM_PROMPT =
-  "You are the pragmatic, observant strength coach in the athlete's pocket. Write two or three short sentences to them as \"you\" about " +
-  'where their goals stand, using only the facts given: what is on track first, then the one thing that would move a goal forward. ' +
-  'No hype, no greetings, no lists, no technical terms. Do not praise or judge: state the figures plainly. Never say how they felt. ' +
+  "You are the pragmatic, observant strength coach in the athlete's pocket. Synthesize into two crisp sentences (under 200 characters total) " +
+  'speaking as "you", using only the facts given: first, weekly pace plus primary goal standing; second, the single clearest action that moves the closest goal forward. ' +
+  'Never list every ring or repeat daily step counts one by one. No hype, greetings, lists, or technical jargon. Never praise, judge, or say how they felt. ' +
   'Do not use any number that is not in the facts.';
 
-/** Where the goals stand, in the same order as the rings. */
+/** Where the goals stand, synthesized cleanly rather than narrating every ring. */
 export function buildGoalsSummary(goals: AthleteGoal[], formatWeight: (kg: number) => string): GoalsSummary {
   const facts: string[] = [];
-  const sentences: string[] = [];
   const weekly = goals.find((g) => g.id === WEEKLY_GOAL_ID);
   const frequency = weekly?.measure.type === 'frequency' ? weekly.measure : undefined;
+  let weeklyLead = '';
   if (weekly && frequency) {
     const left = frequency.perWeek - frequency.thisWeek;
     facts.push(
@@ -326,18 +326,19 @@ export function buildGoalsSummary(goals: AthleteGoal[], formatWeight: (kg: numbe
     if (frequency.streakWeeks > 0) facts.push(`Weeks in a row at ${frequency.perWeek} sessions: ${frequency.streakWeeks}.`);
     const streakClause =
       frequency.streakWeeks > 0
-        ? `, making ${frequency.streakWeeks} ${frequency.streakWeeks === 1 ? 'week' : 'weeks'} in a row at ${frequency.perWeek}`
+        ? ` (${frequency.streakWeeks} ${frequency.streakWeeks === 1 ? 'week' : 'weeks'} running)`
         : '';
-    sentences.push(
+    weeklyLead =
       frequency.thisWeek >= frequency.perWeek
-        ? `You've done all ${frequency.perWeek} sessions this week${streakClause}.`
+        ? `All ${frequency.perWeek} sessions done this week${streakClause}`
         : frequency.thisWeek === 0
-        ? `This week's ${frequency.perWeek} sessions are still ahead of you.`
-        : `You've done ${frequency.thisWeek} of ${frequency.perWeek} sessions this week, with ${left} to go.`
-    );
+        ? `This week's ${frequency.perWeek} sessions are ahead`
+        : `${frequency.thisWeek} of ${frequency.perWeek} sessions done this week`;
   }
+
   const chosen = goals.find((g) => g.id === CHOSEN_GOAL_ID);
   const body = chosen?.measure.type === 'body' ? chosen.measure : undefined;
+  let chosenClause = '';
   if (chosen && body) {
     if (body.signsMeasured > 0) {
       const showing = body.signs.filter((sign) => sign.met === true).map((sign) => sign.label.toLowerCase());
@@ -345,60 +346,70 @@ export function buildGoalsSummary(goals: AthleteGoal[], formatWeight: (kg: numbe
       facts.push(`${chosen.title}: ${body.signsMet} of ${body.signsMeasured} measured signs are showing${showing.length ? ` (${showing.join('; ')})` : ''}.`);
       if (missing.length) facts.push(`${chosen.title}, not showing yet: ${missing.join('; ')}.`);
       facts.push(`How ${chosen.title} is judged: ${body.evidenceLabel}`);
-      sentences.push(
-        `For ${chosen.title}, ${body.signsMet} of ${body.signsMeasured} measured ${body.signsMeasured === 1 ? 'sign is' : 'signs are'} showing${
-          showing.length ? `: ${showing.join(' and ')}` : ''
-        }.${body.nextStep ? ` ${body.nextStep}` : ''}`
-      );
+      chosenClause = `${chosen.title} shows ${body.signsMet} of ${body.signsMeasured} ${body.signsMeasured === 1 ? 'sign' : 'signs'}`;
     } else {
       facts.push(`${chosen.title}: nothing has been measured for it yet.`);
-      sentences.push(`${chosen.title} is judged on your strength, your weight and your measurements, which show once you've repeated a workout and logged your weight.`);
+      chosenClause = `${chosen.title} tracks once lifts repeat and weigh-ins start`;
     }
   }
+
+  let leadSentence = '';
+  if (weeklyLead && chosenClause) leadSentence = `${weeklyLead}; ${chosenClause}.`;
+  else if (weeklyLead) leadSentence = `${weeklyLead}.`;
+  else if (chosenClause) leadSentence = `${chosenClause}.`;
+
+  let actionSentence = '';
   const strength = closestStrengthGoal(goals);
+  let strengthAction = '';
   if (strength && strength.measure.type === 'reps') {
     const m = strength.measure;
     const [movement] = strength.title.split(': ');
     const at = repsAt(m, formatWeight);
     facts.push(`Closest strength level: ${movement} reaches ${m.level} with ${m.targetReps} reps ${at} on ${m.exerciseName}; the best so far is ${m.currentReps} reps.`);
-    sentences.push(`Your closest strength level is ${movement}: ${m.targetReps} reps ${at} reaches ${m.level}, and your best is ${m.currentReps}.`);
+    strengthAction = `${movement}: ${m.targetReps} reps ${at} reaches ${m.level} (best ${m.currentReps}).`;
   } else if (strength && strength.measure.type === 'load') {
     const m = strength.measure;
     const [movement] = strength.title.split(': ');
     const gap = Math.max(0, Math.round((m.targetE1rmKg - m.e1rmKg) * 10) / 10);
     facts.push(`Closest strength level: ${movement} needs ${formatWeight(gap)} more on its estimated max (${formatWeight(m.e1rmKg)} of ${formatWeight(m.targetE1rmKg)}) to reach ${m.level}.`);
-    sentences.push(`Your closest strength level is ${movement}: ${formatWeight(gap)} more on your estimated max reaches ${m.level}.`);
+    strengthAction = `${movement}: ${formatWeight(gap)} more estimated max reaches ${m.level}.`;
   } else {
     facts.push('Strength levels need a logged bodyweight and a logged standard lift; neither is available yet.');
-    sentences.push('Log your weight to see how your lifts compare with strength standards.');
   }
-  // Goals of the athlete's own.
+
+  let ownAchievedAction = '';
+  let ownLiftAction = '';
   for (const own of activeGoals(goals).filter((g) => g.measure.type === 'target')) {
     const m = own.measure as Extract<AthleteGoal['measure'], { type: 'target' }>;
     if (m.metric === 'steps') {
       facts.push(
         `Your own goal: ${m.target} steps a day. ${m.best > 0 ? `Steps today: ${m.best} steps.` : 'No steps recorded today yet.'}`
       );
-      sentences.push(
-        own.achieved
-          ? `You've reached your daily goal of ${m.target} steps today.`
-          : m.best > 0
-          ? `You have ${m.best} of ${m.target} steps today.`
-          : `Your daily goal is ${m.target} steps.`
-      );
+      if (own.achieved && !ownAchievedAction) {
+        ownAchievedAction = `Daily ${m.target}-step goal reached today.`;
+      }
       continue;
     }
     const goalText = m.metric === 'weight' ? formatWeight(m.target) : `${m.target} reps`;
     const bestText = m.metric === 'weight' ? formatWeight(m.best) : `${m.best} reps`;
     facts.push(`Your own goal: ${goalText} on ${m.exerciseName}. ${m.best > 0 ? `Best so far: ${bestText}.` : 'It has not been logged yet.'}`);
-    sentences.push(
-      own.achieved
-        ? `You've reached your goal of ${goalText} on ${m.exerciseName}.`
-        : m.best > 0
-        ? `Your own goal is ${goalText} on ${m.exerciseName}, and your best is ${bestText}.`
-        : `Your own goal is ${goalText} on ${m.exerciseName}; log it to start counting.`
-    );
+    if (own.achieved && !ownAchievedAction) {
+      ownAchievedAction = `Goal reached: ${goalText} on ${m.exerciseName}.`;
+    } else if (!ownLiftAction) {
+      ownLiftAction =
+        m.best > 0
+          ? `${m.exerciseName}: ${goalText} goal (best ${bestText}).`
+          : `${m.exerciseName}: log a set to start toward ${goalText}.`;
+    }
   }
+
+  if (ownAchievedAction) actionSentence = ownAchievedAction;
+  else if (strengthAction) actionSentence = strengthAction;
+  else if (ownLiftAction) actionSentence = ownLiftAction;
+  else if (body?.nextStep) actionSentence = body.nextStep;
+  else if (!strength) actionSentence = 'Log your weight to unlock strength level targets.';
+
+  const sentences = [leadSentence, actionSentence].filter(Boolean);
   const hasActiveOwnProgress = activeGoals(goals).some(
     (g) => g.measure.type === 'target' && (g.achieved || (g.measure as Extract<AthleteGoal['measure'], { type: 'target' }>).best > 0)
   );
@@ -424,8 +435,8 @@ export function checkGoalsSummary(answer: string | null, summary: Pick<GoalsSumm
     .replace(/\s+/g, ' ')
     .trim();
   if (text.length < 40) return { problem: 'it was too short' };
-  if (text.length > 380) return { problem: 'it was too long; write two or three short sentences' };
-  if ((text.match(/[.!?](\s|$)/g) || []).length > 4) return { problem: 'it had too many sentences; write two or three' };
+  if (text.length > 250) return { problem: 'it was too long; write two concise sentences under 250 characters' };
+  if ((text.match(/[.!?](\s|$)/g) || []).length > 3) return { problem: 'it had too many sentences; write two' };
   if (/\b(as an ai|language model|the facts|facts provided|i am an?|i'm an?)\b/i.test(text)) return { problem: 'it talked about itself or "the facts"' };
   if (!runReadAloudQaGate(text).passed) return { problem: 'it used hype, a cliché or judgmental wording' };
   if (/\b(felt|feel|feeling|enjoy(ed)?|loved)\b/i.test(text)) return { problem: 'it said how the athlete felt, which is not known' };

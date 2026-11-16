@@ -63,11 +63,11 @@ export interface WorkoutFinish {
 }
 
 export const WORKOUT_SUMMARY_SYSTEM_PROMPT =
-  'You are the pragmatic, observant strength coach in the athlete\'s pocket. They have just finished a workout. ' +
-  'Write two or three short sentences to them as "you", using only the facts given: first what this session showed on their lifts, ' +
-  'then what it did for their goals. Earned, understated pride. No hype, no greetings, no lists, no percentages. ' +
-  'Do not mention total volume or the number of sets. Never say how they felt. Do not praise or judge: state what happened. ' +
-  'Keep each figure tied to what its fact measures (a gain across several sessions is not a gain today). Do not use any number that is not in the facts.';
+  'You are the pragmatic, observant strength coach in the athlete\'s pocket right after a workout. ' +
+  'Write two crisp sentences (under 200 characters total) speaking as "you", using only the facts given: first, the standout lift or milestone today; ' +
+  'second, what this moved on their goals. Earned, understated pride—no hype, greetings, lists, or percentages. ' +
+  'Do not mention total volume or number of sets. Never say how they felt or judge their effort. ' +
+  'Keep each figure tied to what its fact measures (a gain across several sessions is not a gain today). Do not use any number not in the facts.';
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 const listAnd = (items: string[]) => (items.length <= 1 ? items.join('') : `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`);
@@ -174,14 +174,14 @@ export function buildWorkoutFinish(input: WorkoutFinishInput): WorkoutFinish | n
     sentences.push(
       names.length === 1
         ? `${names[0]} beat its previous best today.`
-        : `${names.length} lifts beat their previous best today: ${more > 0 ? `${names[0]}, ${names[1]} and ${more} more` : listAnd(names)}.`
+        : `${names.length} lifts beat their best: ${more > 0 ? `${names[0]}, ${names[1]} and ${more} more` : listAnd(names)}.`
     );
   } else if (allNew) {
     facts.push('Every exercise today was logged for the first time, so these sets are the starting point.');
-    sentences.push('Every lift today was a first, so these sets are your starting point: the next session has something to beat.');
+    sentences.push('Starting point logged across all lifts—clear targets wait for next session.');
   } else {
     facts.push('No personal bests today; the loads and reps held at their current level.');
-    sentences.push('No personal bests today. Holding your current loads with clean reps is what the next increase is built on.');
+    sentences.push('Loads held steady cleanly today to build your base for the next jump.');
   }
   // The longer view on one lift: its estimated max since the first session on it (concrete load).
   const climbing = [...report.trends]
@@ -189,7 +189,7 @@ export function buildWorkoutFinish(input: WorkoutFinishInput): WorkoutFinish | n
     .filter((t) => t.gainKg >= 0.1)
     .sort((x, y) => y.gainKg - x.gainKg)[0];
   const trendSentence = climbing
-    ? `${climbing.exerciseName} estimated max${climbing.includesBodyweight ? ' (bodyweight + added weight)' : ''} is now ${input.formatWeight(climbing.latestE1rmKg)}, up +${input.formatWeight(climbing.gainKg)} across ${climbing.sessions} sessions.`
+    ? `${climbing.exerciseName} estimated max${climbing.includesBodyweight ? ' (bodyweight + added weight)' : ''} climbed to ${input.formatWeight(climbing.latestE1rmKg)} (+${input.formatWeight(climbing.gainKg)} across ${climbing.sessions} sessions).`
     : '';
   if (trendSentence) facts.push(trendSentence);
   if (firstTimeExercises.length > 0 && !allNew) {
@@ -198,12 +198,12 @@ export function buildWorkoutFinish(input: WorkoutFinishInput): WorkoutFinish | n
   for (const g of goalProgress) facts.push(`Goal ${g.status}: ${describeGoal(g, input.formatWeight)}.`);
   const outcomes = goalProgress.filter((g) => g.kind === 'outcome');
   if (outcomes.length > 0) sentences.push(`${describeGoal(outcomeReached ?? outcomes[0], input.formatWeight)}.`);
-  else if (trendSentence) sentences.push(trendSentence);
+  else if (trendSentence && sentences[0].length + trendSentence.length <= 210) sentences.push(trendSentence);
   if (processGoal) {
     sentences.push(
       processGoal.status === 'reached'
-        ? `That's all ${processGoal.goal.target} sessions done this week.`
-        : `That's ${processGoal.goal.current} of ${processGoal.goal.target} sessions this week.`
+        ? `All ${processGoal.goal.target} sessions done this week.`
+        : `${processGoal.goal.current} of ${processGoal.goal.target} sessions done this week.`
     );
   }
 
@@ -229,8 +229,8 @@ export function checkWorkoutSummary(
     .replace(/\s+/g, ' ')
     .trim();
   if (text.length < 40) return { problem: 'it was too short' };
-  if (text.length > 360) return { problem: 'it was too long; write two or three short sentences' };
-  if ((text.match(/[.!?](\s|$)/g) || []).length > 4) return { problem: 'it had too many sentences; write two or three' };
+  if (text.length > 240) return { problem: 'it was too long; write two crisp sentences under 240 characters' };
+  if ((text.match(/[.!?](\s|$)/g) || []).length > 3) return { problem: 'it had too many sentences; write two' };
   if (/\b(as an ai|language model|the facts|facts provided|i am an?|i'm an?)\b/i.test(text)) return { problem: 'it talked about itself or "the facts"' };
   if (!runReadAloudQaGate(text).passed) return { problem: 'it used hype, a cliché or judgmental wording' };
   if (/\d\s*%|\bpercent/i.test(text)) return { problem: 'it used a percentage; use the figures as given' };

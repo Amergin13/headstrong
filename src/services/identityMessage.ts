@@ -42,10 +42,9 @@ export interface IdentityMessageFacts {
 }
 
 export const IDENTITY_SYSTEM_PROMPT =
-  'You write the short message at the top of an athlete\'s training plan, under the heading "Your new identity as an athlete is forming". ' +
-  'Use only the facts given. Write two or three sentences to the athlete as "you": first, what their training so far shows about the athlete ' +
-  'they are becoming, using their real progress; then, how their next workout moves them forward. Grounded and plain, like a pragmatic coach: no hype, no greetings, lists ' +
-  'or headings. Never say how they felt. Do not use any number that is not in the facts.';
+  'You write the short coaching message at the top of an athlete\'s training plan, under "Your new identity as an athlete is forming". ' +
+  'Use only the facts given. Write two crisp sentences (under 220 characters total) speaking as "you": first, concrete progress proving who they are becoming; ' +
+  'second, how the next session advances their week. Grounded, direct, plain language—no greetings, fluff, lists, or headings. Never say how they felt. Do not use any number not in the facts.';
 
 const DAY = 24 * 60 * 60 * 1000;
 const isWorking = (s: WorkoutSet) => !s.isWarmup && s.setType !== 'warmup';
@@ -143,14 +142,15 @@ export function buildIdentityFacts(input: IdentityMessageInput): IdentityMessage
       activeDaysDone > 0
         ? `${plural(runSessions.length, 'workout')} and ${plural(activeDaysDone, 'active day')} done`
         : completed === 1
-        ? 'Your first workout is done'
+        ? '1 workout done'
         : `${completed} workouts done`;
-    progressSentence = `${doneText}${totalPbs > 0 ? `, with ${plural(totalPbs, 'personal best')} along the way` : ''}.`;
-    if (trend.improved > 0) {
-      progressSentence += ` Your estimated strength is already up on ${trend.improved} of the ${plural(trend.repeated, 'lift')} you've repeated.`;
-    } else if (recent >= 2) {
-      progressSentence += ` That's ${recent} workouts in the last 14 days: showing up is who you are now.`;
-    }
+    const proofClause =
+      trend.improved > 0
+        ? `—strength up on ${trend.improved} of ${plural(trend.repeated, 'repeated lift')}`
+        : recent >= 2
+        ? `—${recent} workouts in 14 days`
+        : '';
+    progressSentence = `${doneText}${totalPbs > 0 ? `, with ${plural(totalPbs, 'personal best')}` : ''}${proofClause}.`;
   }
 
   // What the next workout trains, and where the knowledge graph says those muscles stand this week.
@@ -191,16 +191,16 @@ export function buildIdentityFacts(input: IdentityMessageInput): IdentityMessage
   const focus = trains.length ? `your ${listWords(trains.slice(0, 2))}` : nextName;
   let nextSentence: string;
   if (completed === 0) {
-    nextSentence = `Every workout you finish shapes the athlete you're becoming. Your first workout, ${nextName}, is ready when you are.`;
+    nextSentence = `Your first workout, ${nextName}, is ready—every finished session builds the habit.`;
   } else {
     // Name the muscle the set count belongs to (it may not be one of the first ones listed).
-    nextSentence = `Next up is ${nextName}, a chance to build ${focus}${
+    nextSentence = `Next: ${nextName}${
       behind
-        ? `. You're at ${behind.weeklySets} of ${behind.personalizedMav[0]}–${behind.personalizedMav[1]} sets for ${behind.displayName.toLowerCase()} this week`
-        : ''
+        ? ` (${behind.displayName.toLowerCase()} at ${behind.weeklySets} of ${behind.personalizedMav[0]}–${behind.personalizedMav[1]} sets this week)`
+        : ` for ${focus}`
     }.`;
-    if (readiness === 'Amber Shield') nextSentence += ' Recovery is low today, so a steady session still counts.';
-    else if (readiness === 'Primed') nextSentence += " You're well recovered, so it's a good day to push.";
+    if (readiness === 'Amber Shield') nextSentence += ' Low recovery today—a steady session still counts.';
+    else if (readiness === 'Primed') nextSentence += ' Recovery is high today.';
   }
 
   return {
@@ -235,12 +235,12 @@ export function checkIdentityMessage(answer: string | null, facts: IdentityMessa
     .replace(/^["']|["']$/g, '')
     .replace(/\s+/g, ' ')
     .trim();
-  if (text.length < 60) return { problem: 'it was too short' };
-  if (text.length > 420) return { problem: 'it was too long; write two or three sentences' };
+  if (text.length < 40) return { problem: 'it was too short' };
+  if (text.length > 260) return { problem: 'it was too long; write two concise sentences under 260 characters' };
   if (/\b(as an ai|language model|the facts|facts provided|i am an?|i'm an?)\b/i.test(text)) return { problem: 'it talked about itself or "the facts" instead of the athlete' };
   // The app never asks how a workout felt, so the message can't say.
   if (/\b(felt|feel|feeling|enjoy(ed)?|loved)\b/i.test(text)) return { problem: 'it said how the athlete felt, which is not known' };
-  if ((text.match(/[.!?](\s|$)/g) || []).length > 4) return { problem: 'it had too many sentences; write two or three' };
+  if ((text.match(/[.!?](\s|$)/g) || []).length > 3) return { problem: 'it had too many sentences; write two' };
   // The content strategy's read-aloud gate: no hype, clichés, judgmental wording or error leaks.
   if (!runReadAloudQaGate(text).passed) return { problem: 'it used hype, a cliché or judgmental wording' };
   if (/\d\s*%|\bpercent/i.test(text)) return { problem: 'it used a percentage; use the figures as given' };

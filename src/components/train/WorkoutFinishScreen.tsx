@@ -7,6 +7,7 @@ import { WhoopStrainCard } from './FinishedWorkoutCards';
 import { triggerHaptic } from '../../utils/haptics';
 import { formatSentenceCase } from '../../utils/typography';
 import { useUnits } from '../../utils/unitsContext';
+import { CoachSummaryText } from '../common/CoachSummaryText';
 
 interface WorkoutFinishScreenProps {
   finish: WorkoutFinish;
@@ -184,13 +185,12 @@ export const WorkoutFinishScreen: React.FC<WorkoutFinishScreenProps> = ({
 
         {/* Summary, volume and sets */}
         <section className="wk-card mt-5" aria-label="Workout summary">
+          <span className="wk-label block mb-1" style={{ color: 'var(--wk-muted)' }}>
+            Session takeaway
+          </span>
           <CardTitle>{headline}</CardTitle>
-          <p className="wk-body mt-2 max-w-prose" aria-live="polite">
-            <span key={summary} className="wk-text-swap">
-              {summary}
-            </span>
-          </p>
-          <div className="flex gap-14 mt-6">
+          <CoachSummaryText text={summary} splitBy="sentences" accentRail className="mt-3" />
+          <div className="flex gap-14 pt-5 mt-5 border-t" style={{ borderColor: 'var(--color-border-subtle)' }}>
             <div>
               <p className="wk-label" style={{ color: 'var(--wk-muted)' }}>
                 Volume ({units.unit})

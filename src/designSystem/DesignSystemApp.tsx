@@ -181,20 +181,20 @@ const AI_SURFACE_QUALITY_GATES = [
     source: 'src/services/exerciseCoachNote.ts',
     validator: 'checkExerciseNote',
     checks: [
-      'Strict 2 lines / 2 sentences (30–340 chars), zero headers or Progress:/Goal: prefixes',
+      'Front-loaded 2-line CoachSummaryText brief (<= 240 chars, target <= 180 chars), zero Progress:/Goal: headers',
+      'Shift Nudge hierarchy: Line 1 at 16px/500 (--color-text-primary) over Line 2 at 16px/400 (--color-text-secondary)',
       'Zero sets, reps, weight×rep, RIR, %, tempo, rest seconds, or weekly-set leakage',
-      'kg/lb anchored only in Line 1 + mismatchedWeightUnit + runReadAloudQaGate',
     ],
-    retryAndFallback: '1 retry with failure reason -> deterministic buildExerciseInsight fallback',
+    retryAndFallback: '1 retry with failure reason -> concise buildExerciseInsight fallback',
   },
   {
     surface: 'Program Identity Message',
     source: 'src/services/identityMessage.ts',
     validator: 'checkIdentityMessage',
     checks: [
+      '2–3 crisp left-aligned sentences (<= 260 chars) inside wk-card with Plan momentum eyebrow & accent rail',
       'Blocks ungrounded digits/%, feeling claims, and invented phase-completion estimates',
       'Guards plan-vs-phase totals, "most" (requires share > 0.5), and "consistent" (>= 6 recent sessions)',
-      'mislabelledFigure + mismatchedWeightUnit + spelledNumberNotInFacts + runReadAloudQaGate',
     ],
     retryAndFallback: '1 retry + persistent negative reject cache (treise_ai_rejected_v1) -> deterministic fallback',
   },
@@ -203,9 +203,9 @@ const AI_SURFACE_QUALITY_GATES = [
     source: 'src/services/workoutFinish.ts',
     validator: 'checkWorkoutSummary',
     checks: [
+      '2–3 crisp sentences (<= 240 chars) separated by subtle divider from Volume & Sets telemetry',
       'Blocks multi-session E1RM deltas framed as single-day gains or unreached goals marked met',
       'Requires estimated max to be labelled as estimate; blocks volume/set duplication & "felt"',
-      'mislabelledFigure + mismatchedWeightUnit + spelledNumberNotInFacts + runReadAloudQaGate',
     ],
     retryAndFallback: '1 retry + negative reject cache -> deterministic WorkoutFinish summary',
   },
@@ -214,11 +214,11 @@ const AI_SURFACE_QUALITY_GATES = [
     source: 'src/services/progressOverview.ts',
     validator: 'checkGoalsSummary',
     checks: [
-      'Skipped automatically when goalsSummary.sparse is true (no fabricated progress summaries)',
+      'Synthesized 2-sentence Goal takeaway card (<= 250 chars); never repeats step counts or every ring',
       'Bans "insufficient data / cannot be assessed", hype words, and feeling claims',
       'Exact number, unit, and counted-noun check + runReadAloudQaGate',
     ],
-    retryAndFallback: '1 retry + negative reject cache (max 120 keys) -> deterministic buildGoalsSummary',
+    retryAndFallback: '1 retry + negative reject cache (max 120 keys) -> synthesized buildGoalsSummary fallback',
   },
 ] as const;
 

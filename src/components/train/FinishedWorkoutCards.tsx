@@ -4,6 +4,7 @@ import { localDateString } from '../../utils/date';
 import { formatSentenceCase } from '../../utils/typography';
 import { useUnits } from '../../utils/unitsContext';
 import { TrendChart } from '../common/TrendChart';
+import { CoachSummaryText } from '../common/CoachSummaryText';
 import { useWorkoutSummaryText } from './useWorkoutSummaryText';
 
 const Stat: React.FC<{ label: string; value: string }> = ({ label, value }) => (
@@ -24,15 +25,14 @@ export const FinishedWorkoutSummaryCard: React.FC<{ finish: WorkoutFinish }> = (
   const { session } = finish.report;
   return (
     <section className="wk-card" aria-labelledby="finished-workout-title">
+      <span className="wk-label block mb-1" style={{ color: 'var(--wk-muted)' }}>
+        Session takeaway
+      </span>
       <h2 id="finished-workout-title" className="wk-title">
         Today&apos;s workout finished
       </h2>
-      <p className="wk-body mt-2 max-w-prose" aria-live="polite">
-        <span key={summary} className="wk-text-swap">
-          {summary}
-        </span>
-      </p>
-      <dl className="flex flex-wrap gap-12 mt-5">
+      <CoachSummaryText text={summary} splitBy="sentences" accentRail className="mt-3" />
+      <dl className="flex flex-wrap gap-12 pt-5 mt-5 border-t" style={{ borderColor: 'var(--color-border-subtle)' }}>
         <Stat label={`Volume (${units.unit})`} value={Math.round(units.toDisplay(session.volumeKg)).toLocaleString()} />
         <Stat label="Sets" value={`${session.workingSets}`} />
       </dl>

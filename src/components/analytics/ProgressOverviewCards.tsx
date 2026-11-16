@@ -10,6 +10,7 @@ import {
   getCachedGoalsSummary,
 } from '../../services/progressOverview';
 import { ProgressPoint } from '../../services/progressSeries';
+import { CoachSummaryText } from '../common/CoachSummaryText';
 import { triggerHaptic } from '../../utils/haptics';
 
 /**
@@ -150,15 +151,19 @@ export const GoalsHero: React.FC<{ rings: GoalRing[]; summary: GoalsSummary; onO
           </li>
         ))}
       </ul>
-      <div className="mt-6 px-3">
+      <div className="wk-card mt-6">
+        <span className="wk-label block mb-1" style={{ color: 'var(--wk-muted)' }}>
+          Goal takeaway
+        </span>
         <h2 id="goals-title" className="wk-title">
           Goals
         </h2>
-        <p className="wk-body mt-2 max-w-prose" aria-live="polite">
-          <span key={summaryText} className="wk-text-swap">
-            {summaryText}
-          </span>
-        </p>
+        <CoachSummaryText
+          text={summaryText}
+          splitBy="sentences"
+          accentRail
+          className="mt-3"
+        />
       </div>
     </section>
   );

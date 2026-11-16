@@ -14,6 +14,7 @@
  */
 import { AthleteKnowledgeGraph } from '../engine/knowledgeGraph';
 import { runReadAloudQaGate } from '../engine/contentStrategy';
+import { isTimedExercise } from '../engine/e1rm';
 import { getWorkoutCompletedAt } from '../engine/recovery';
 import { ExerciseSession, ReadinessState, WorkoutSession, WorkoutSet } from '../engine/types';
 import { ExerciseInsight } from './exerciseInsight';
@@ -50,10 +51,10 @@ export interface ExerciseNoteFacts {
 }
 
 export const EXERCISE_NOTE_SYSTEM_PROMPT =
-  "You write a strict 2-line coaching summary for one exercise in the athlete's workout today. Use only the facts given. " +
-  'Output exactly two lines separated by a newline, speaking to the athlete as "you", with one sentence per line and zero section headers or labels (never write Progress:, Goal:, Summary:, or Focus:). ' +
-  'Line 1 is the historical trajectory anchor using only the exact load or estimated 1RM figures in the facts (never use percentages). ' +
-  "Line 2 is the session stimulus directive framing today's acute training goal (such as progressive mechanical tension or volume accumulation for hypertrophy). " +
+  "You write a strict 2-line coaching brief for one exercise in today's workout. Use only the facts given. " +
+  'Output exactly two short, scannable lines separated by a newline (under 180 characters total, roughly 8–14 words per line), speaking to the athlete as "you", with one sentence per line and zero section headers or labels (never write Progress:, Goal:, Summary:, or Focus:). ' +
+  'Line 1 front-loads the historical trajectory anchor using only the exact load or estimated max figures in the facts (never use percentages; e.g., "Estimated max: 15.9 kg (+1.7 kg over 2 sessions)."). ' +
+  "Line 2 frames today's acute stimulus and why in concise, plain language (such as progressive mechanical tension or volume accumulation for hypertrophy). " +
   'Never mention target weight, target reps, target sets, RIR, reps in reserve, tempo, rest times, or weekly muscle set counts. ' +
   'When the facts give an estimated 1RM or estimated max, call it an estimated max; when they give added weight or reps, state those plainly, and do not mention the last session. ' +
   'Do not use any number that is not in the facts.';
@@ -84,30 +85,30 @@ export function buildExerciseNoteFacts(input: ExerciseNoteInput): ExerciseNoteFa
     .map((w) => w.exercises.find((e) => e.exerciseId === exercise.exerciseId && e.sets.some(done)))
     .filter((e): e is ExerciseSession => Boolean(e));
   const lastSession = completedSessions[0];
-  const timedWork = Boolean(exercise.durationSeconds || exercise.durationMinutesRange);
+  const timedWork = Boolean(exercise.durationSeconds || exercise.durationMinutesRange || isTimedExercise(exercise));
 
-  // Line 1: Historical Trajectory Anchor (concrete absolute load, zero percentages).
+  // Line 1: Front-loaded Historical Trajectory Anchor (concrete absolute load, zero percentages).
   let line1: string;
   if (timedWork) {
     if (completedSessions.length === 0) {
       facts.push('This is the first time you have logged this exercise.');
-      line1 = `First time on ${exercise.name}—today sets your starting point.`;
+      line1 = `First time on ${exercise.name}—sets your starting point.`;
     } else if (completedSessions.length === 1) {
       facts.push(`Logged 1 completed session on ${exercise.name}, establishing your baseline endurance.`);
-      line1 = `Baseline endurance established from your first session on ${exercise.name}.`;
+      line1 = `Baseline endurance set from session 1.`;
     } else {
       facts.push(`Logged ${completedSessions.length} completed sessions on ${exercise.name}, building endurance capacity.`);
-      line1 = `Endurance capacity is rising across ${completedSessions.length} logged sessions on ${exercise.name}.`;
+      line1 = `Endurance building across ${completedSessions.length} sessions.`;
     }
   } else if (!lastSession || insight.history.length === 0) {
     facts.push('This is the first time you have logged this exercise.');
-    line1 = `First time on ${exercise.name}—today sets your starting point.`;
+    line1 = `First time on ${exercise.name}—sets your starting point.`;
   } else if (insight.metric === 'reps') {
     const val = (h: (typeof insight.history)[number]) => h.value ?? h.e1rmKg;
     if (insight.history.length === 1) {
       const startReps = val(insight.history[0]);
       facts.push(`Baseline bodyweight best set established at ${startReps} per set from your first session.`);
-      line1 = `Baseline bodyweight strength established at ${startReps} per set from your first session.`;
+      line1 = `Baseline best set: ${startReps} per set from session 1.`;
     } else {
       const first = val(insight.history[0]);
       const last = val(insight.history[insight.history.length - 1]);
@@ -115,13 +116,13 @@ export function buildExerciseNoteFacts(input: ExerciseNoteInput): ExerciseNoteFa
       const n = insight.history.length;
       if (delta > 0) {
         facts.push(`Best set on this bodyweight exercise has risen by +${delta} across ${n} sessions (from ${first} to ${last} per set).`);
-        line1 = `Bodyweight strength on this lift is rising, up +${delta} per set across ${n} sessions to a best of ${last}.`;
+        line1 = `Best set: ${last} (+${delta} over ${n} sessions).`;
       } else if (delta < 0) {
         facts.push(`Best set on this bodyweight exercise shifted -${Math.abs(delta)} across ${n} sessions (from ${first} to ${last} per set).`);
-        line1 = `Best set on this bodyweight lift shifted -${Math.abs(delta)} across ${n} sessions and currently stands at ${last}.`;
+        line1 = `Best set: ${last} (-${Math.abs(delta)} over ${n} sessions).`;
       } else {
         facts.push(`Best set on this bodyweight exercise has held steady at ${last} per set across ${n} sessions.`);
-        line1 = `Bodyweight strength on this lift has held steady at ${last} per set across ${n} sessions.`;
+        line1 = `Best set steady at ${last} per set across ${n} sessions.`;
       }
     }
   } else if (insight.metric === 'added_kg') {
@@ -129,7 +130,7 @@ export function buildExerciseNoteFacts(input: ExerciseNoteInput): ExerciseNoteFa
     if (insight.history.length === 1) {
       const startAdded = load(val(insight.history[0]));
       facts.push(`Baseline added weight established at ${startAdded} from your first session.`);
-      line1 = `Baseline added weight established at ${startAdded} from your first session.`;
+      line1 = `Baseline added load: ${startAdded} from session 1.`;
     } else {
       const first = round1(val(insight.history[0]));
       const last = round1(val(insight.history[insight.history.length - 1]));
@@ -137,43 +138,45 @@ export function buildExerciseNoteFacts(input: ExerciseNoteInput): ExerciseNoteFa
       const n = insight.history.length;
       if (delta > 0) {
         facts.push(`Added weight on this exercise has risen by +${load(delta)} across ${n} sessions (from ${load(first)} to ${load(last)}).`);
-        line1 = `Added weight on this lift is rising, up +${load(delta)} across ${n} sessions to ${load(last)}.`;
+        line1 = `Added weight: ${load(last)} (+${load(delta)} over ${n} sessions).`;
       } else if (delta < 0) {
         facts.push(`Added weight on this exercise shifted -${load(Math.abs(delta))} across ${n} sessions (from ${load(first)} to ${load(last)}).`);
-        line1 = `Added weight on this lift shifted -${load(Math.abs(delta))} across ${n} sessions and sits at ${load(last)}.`;
+        line1 = `Added weight: ${load(last)} (-${load(Math.abs(delta))} over ${n} sessions).`;
       } else {
         facts.push(`Added weight on this exercise has held steady at ${load(last)} across ${n} sessions.`);
-        line1 = `Added weight on this lift has held steady at ${load(last)} across ${n} sessions.`;
+        line1 = `Added weight steady at ${load(last)} across ${n} sessions.`;
       }
     }
   } else if (insight.history.length === 1) {
     const startE1rm = load(insight.history[0].e1rmKg);
-    const bwQualifier = insight.includesBodyweight ? ' (bodyweight + added weight)' : '';
-    facts.push(`Baseline estimated 1RM${bwQualifier} established at ${startE1rm} from your first session.`);
-    line1 = `Baseline strength${bwQualifier} established at a ${startE1rm} estimated max from your first session.`;
+    const bwFactsQualifier = insight.includesBodyweight ? ' (bodyweight + added weight)' : '';
+    const bwShort = bwFactsQualifier;
+    facts.push(`Baseline estimated 1RM${bwFactsQualifier} established at ${startE1rm} from your first session.`);
+    line1 = `Baseline estimated max${bwShort}: ${startE1rm} from session 1.`;
   } else {
     const first = round1(insight.history[0].e1rmKg);
     const last = round1(insight.history[insight.history.length - 1].e1rmKg);
     const delta = round1(last - first);
     const n = insight.history.length;
-    const bwQualifier = insight.includesBodyweight ? ' (bodyweight + added weight)' : '';
+    const bwFactsQualifier = insight.includesBodyweight ? ' (bodyweight + added weight)' : '';
+    const bwShort = bwFactsQualifier;
     if (delta > 0) {
       facts.push(
-        `Estimated 1RM${bwQualifier} on this exercise has risen by +${load(delta)} across ${n} sessions (from ${load(first)} to ${load(last)}).`
+        `Estimated 1RM${bwFactsQualifier} on this exercise has risen by +${load(delta)} across ${n} sessions (from ${load(first)} to ${load(last)}).`
       );
-      line1 = `Strength on this lift${bwQualifier} is rising, up +${load(delta)} across ${n} sessions to a ${load(last)} estimated max.`;
+      line1 = `Estimated max${bwShort}: ${load(last)} (+${load(delta)} over ${n} sessions).`;
     } else if (delta < 0) {
       facts.push(
-        `Estimated 1RM${bwQualifier} on this exercise has shifted by -${load(Math.abs(delta))} across ${n} sessions (from ${load(first)} to ${load(last)}).`
+        `Estimated 1RM${bwFactsQualifier} on this exercise has shifted by -${load(Math.abs(delta))} across ${n} sessions (from ${load(first)} to ${load(last)}).`
       );
-      line1 = `Estimated max${bwQualifier} on this lift shifted -${load(Math.abs(delta))} across ${n} sessions and currently stands at ${load(last)}.`;
+      line1 = `Estimated max${bwShort}: ${load(last)} (-${load(Math.abs(delta))} over ${n} sessions).`;
     } else {
-      facts.push(`Estimated 1RM${bwQualifier} on this exercise has held steady at ${load(last)} across ${n} sessions.`);
-      line1 = `Strength on this lift${bwQualifier} has held steady at a ${load(last)} estimated max across ${n} sessions.`;
+      facts.push(`Estimated 1RM${bwFactsQualifier} on this exercise has held steady at ${load(last)} across ${n} sessions.`);
+      line1 = `Estimated max${bwShort} steady at ${load(last)} across ${n} sessions.`;
     }
   }
 
-  // Line 2: Session Stimulus Directive (acute training goal, zero table duplication or execution cues).
+  // Line 2: Session Stimulus Directive (acute training goal, concise, zero table duplication or execution cues).
   const working = exercise.sets.filter(isWorking);
   const planned = working[0];
   const joint = knowledgeGraph.joints.find((j) => j.status !== 'Optimal' && j.topContributors.includes(exercise.name));
@@ -183,18 +186,18 @@ export function buildExerciseNoteFacts(input: ExerciseNoteInput): ExerciseNoteFa
   let line2: string;
   if (readinessState === 'Amber Shield') {
     facts.push('Recovery today is low, so the session holds load steady to preserve muscle and limit fatigue.');
-    line2 = `Recovery is low, so today holds the weight steady to preserve muscle${jointClause || ' while managing fatigue'}.`;
+    line2 = `Low recovery today—holding weight preserves muscle${jointClause || ' without added fatigue'}.`;
   } else if (timedWork) {
-    if (exercise.durationSeconds) {
+    if (exercise.durationSeconds || isTimedExercise(exercise)) {
       facts.push('Session stimulus today: sustained isometric trunk stability and muscular endurance.');
-      line2 = `Today targets sustained isometric trunk stability and muscular endurance${jointClause}.`;
+      line2 = `Today targets isometric trunk stability and endurance${jointClause}.`;
     } else {
       facts.push('Session stimulus today: aerobic conditioning and sustained work capacity.');
-      line2 = `Today builds aerobic conditioning and sustained work capacity${jointClause}.`;
+      line2 = `Today builds aerobic conditioning and work capacity${jointClause}.`;
     }
   } else if (!lastSession || !planned) {
     facts.push(`Session stimulus today: establish baseline mechanical tension and hypertrophy stimulus${musclePhrase}.`);
-    line2 = `Today focuses on clean mechanical tension to establish your baseline hypertrophy stimulus${musclePhrase}${jointClause}.`;
+    line2 = `Today sets your hypertrophy baseline with clean tension${musclePhrase}${jointClause}.`;
   } else {
     const prevSets = lastSession.sets.filter(done);
     const prevTop = prevSets.reduce((m, s) => Math.max(m, weightOf(s)), 0);
@@ -202,23 +205,23 @@ export function buildExerciseNoteFacts(input: ExerciseNoteInput): ExerciseNoteFa
     if (insight.metric === 'reps') {
       if (planned.targetReps > prevReps) {
         facts.push(`Today expands volume accumulation with additional bodyweight output${musclePhrase}.`);
-        line2 = `Today expands volume accumulation with additional bodyweight output${musclePhrase || ' for hypertrophy'}${jointClause}.`;
+        line2 = `Expanding bodyweight output today drives hypertrophy${musclePhrase}${jointClause}.`;
       } else {
         facts.push(`Today consolidates volume accumulation at your bodyweight load${musclePhrase}.`);
-        line2 = `Today consolidates volume accumulation at your bodyweight load to deepen hypertrophy${musclePhrase}${jointClause}.`;
+        line2 = `Matching bodyweight output deepens hypertrophy volume${musclePhrase}${jointClause}.`;
       }
     } else if (planned.targetWeightKg > prevTop + 0.01) {
       facts.push(`Today is heavier than last time: progressive mechanical tension stimulus${musclePhrase}.`);
-      line2 = `Today increases the weight to drive progressive mechanical tension${musclePhrase}${jointClause || (musclePhrase ? '' : ' for hypertrophy')}.`;
+      line2 = `Heavier weight today drives progressive tension${musclePhrase}${jointClause}.`;
     } else if (planned.targetWeightKg < prevTop - 0.01) {
       facts.push(`Today is lighter than last time: deloaded volume accumulation stimulus${musclePhrase}.`);
-      line2 = `Today lightens the weight to prioritize clean volume accumulation${musclePhrase}${jointClause || (musclePhrase ? '' : ' for hypertrophy')}.`;
+      line2 = `Lighter weight today keeps volume crisp and recoverable${musclePhrase}${jointClause}.`;
     } else if (planned.targetReps > prevReps) {
       facts.push(`Today expands volume accumulation at the current load${musclePhrase}.`);
-      line2 = `Today builds volume accumulation at your current load to expand hypertrophy capacity${musclePhrase}${jointClause}.`;
+      line2 = `Pushing volume at this load expands hypertrophy${musclePhrase}${jointClause}.`;
     } else {
       facts.push(`Today consolidates volume accumulation at the current load${musclePhrase}.`);
-      line2 = `Today consolidates volume accumulation at your current load to deepen hypertrophy${musclePhrase}${jointClause}.`;
+      line2 = `Matching this load deepens hypertrophy volume${musclePhrase}${jointClause}.`;
     }
   }
 
@@ -260,8 +263,8 @@ export function checkExerciseNote(
     .replace(/^\s*(?:coaching\s+note|note)\s*:\s*/i, '')
     .replace(/^["']|["']$/g, '')
     .trim();
-  if (cleaned.length < 30 || cleaned.length > 340) {
-    return { problem: 'it must be two concise sentences between 30 and 340 characters' };
+  if (cleaned.length < 30 || cleaned.length > 240) {
+    return { problem: 'it must be two concise sentences under 240 characters' };
   }
 
   // Rule 1: Zero section headers or line prefixes (e.g., Progress:, Goal:, Summary:, Focus:, Line 1:).

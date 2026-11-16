@@ -6,6 +6,7 @@ import { TempoPacer } from './TempoPacer';
 import { useUnits } from '../../utils/unitsContext';
 import { ArrowRightLeft, ChevronRight } from 'lucide-react';
 import { triggerHaptic } from '../../utils/haptics';
+import { CoachSummaryText } from '../common/CoachSummaryText';
 import { ExerciseInsight } from '../../services/exerciseInsight';
 import { TrendChart } from '../common/TrendChart';
 import { localDateString } from '../../utils/date';
@@ -169,21 +170,10 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
       {insight && (showSummary || showChart) && (
         <div className="flex flex-col gap-3 mt-4">
           {showSummary && (
-            <div className="wk-body max-w-prose" aria-live="polite">
-              {/* Re-keyed on change so a written note replacing its placeholder fades in. */}
-              <div key={note ?? insight.summary} className="wk-text-swap flex flex-col gap-1">
-                {(note ?? insight.summary)
-                  .split('\n')
-                  .map((l) => l.trim())
-                  .filter(Boolean)
-                  .slice(0, 2)
-                  .map((line, lineIdx) => (
-                    <p key={lineIdx} className="m-0">
-                      {line}
-                    </p>
-                  ))}
-              </div>
-            </div>
+            <CoachSummaryText
+              text={note ?? insight.summary}
+              splitBy="lines"
+            />
           )}
           {showChart && (
             <TrendChart

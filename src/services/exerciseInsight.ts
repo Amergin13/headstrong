@@ -29,7 +29,15 @@ export interface ExerciseInsight {
 }
 
 const isWorking = (s: WorkoutSet) => !s.isWarmup && s.setType !== 'warmup';
+const durationOf = (ex: ExerciseSession, s: WorkoutSet) => {
+  if (s.actualDurationSeconds && s.actualDurationSeconds > 0) return s.actualDurationSeconds;
+  if (s.targetDurationSeconds && s.targetDurationSeconds > 0) return s.targetDurationSeconds;
+  if ((s.actualReps ?? 0) > 5 && ex.repTargetType === 'duration') return s.actualReps as number;
+  return ex.durationSeconds ?? 0;
+};
 const done = (s: WorkoutSet) => s.completed && isWorking(s) && (s.actualReps ?? 0) > 0;
+const doneForExercise = (ex: ExerciseSession, s: WorkoutSet) =>
+  done(s) || (s.completed && isWorking(s) && isTimedExercise(ex) && durationOf(ex, s) > 0);
 const weightOf = (s: WorkoutSet) => s.actualWeightKg ?? s.targetWeightKg ?? 0;
 const round1 = (n: number) => Math.round(n * 10) / 10;
 
@@ -61,7 +69,7 @@ export function buildExerciseInsight(
 ): ExerciseInsight {
   const past = workouts
     .filter((w) => w.completed)
-    .map((w) => ({ w, ex: w.exercises.find((e) => e.exerciseId === exercise.exerciseId && e.sets.some(done)) }))
+    .map((w) => ({ w, ex: w.exercises.find((e) => e.exerciseId === exercise.exerciseId && e.sets.some((s) => doneForExercise(e, s))) }))
     .filter((x): x is { w: WorkoutSession; ex: ExerciseSession } => Boolean(x.ex))
     .sort((a, b) => getWorkoutCompletedAt(a.w) - getWorkoutCompletedAt(b.w))
     .slice(-maxSessions);
@@ -80,12 +88,6 @@ export function buildExerciseInsight(
 
   // Timed holds and intervals are measured in hold seconds (or duration), not reps or E1RM.
   if (isTimedExercise(exercise)) {
-    const durationOf = (ex: ExerciseSession, s: WorkoutSet) => {
-      if (s.actualDurationSeconds && s.actualDurationSeconds > 0) return s.actualDurationSeconds;
-      if (s.targetDurationSeconds && s.targetDurationSeconds > 0) return s.targetDurationSeconds;
-      if ((s.actualReps ?? 0) > 5 && ex.repTargetType === 'duration') return s.actualReps as number;
-      return ex.durationSeconds ?? 0;
-    };
     const history = past
       .map(({ w, ex }) => {
         const bestSec = ex.sets
@@ -97,16 +99,16 @@ export function buildExerciseInsight(
 
     const line1 =
       history.length === 0
-        ? `First time on ${exercise.name}—today sets your starting point.`
+        ? `First time on ${exercise.name}—sets your starting point.`
         : history.length === 1
-        ? `Baseline hold established at ${history[0].value}s from your first session.`
-        : `Hold capacity across ${history.length} sessions stands at ${history[history.length - 1].value}s.`;
+        ? `Baseline hold: ${history[0].value}s from session 1.`
+        : `Top hold across ${history.length} sessions: ${history[history.length - 1].value}s.`;
     const line2 =
       readinessState === 'Amber Shield'
-        ? 'Recovery is low, so today holds steady to maintain stability without excess fatigue.'
+        ? 'Low recovery today—holding steady protects stability.'
         : exercise.durationSeconds || isTimedExercise(exercise)
-        ? 'Today targets sustained isometric stability and muscular endurance.'
-        : 'Today builds aerobic conditioning and sustained work capacity.';
+        ? 'Today targets isometric stability and muscular endurance.'
+        : 'Today builds aerobic conditioning and work capacity.';
     return { metric: 'time', history, lines: [line1, line2], summary: `${line1}\n${line2}` };
   }
 
@@ -126,28 +128,28 @@ export function buildExerciseInsight(
       .filter((h) => h.value > 0);
 
     if (past.length === 0 || history.length === 0) {
-      const line1 = `First time on ${exercise.name}—today sets your starting point.`;
+      const line1 = `First time on ${exercise.name}—sets your starting point.`;
       const line2 =
         readinessState === 'Amber Shield'
-          ? 'Recovery is low, so today holds steady while establishing your baseline groove.'
-          : 'Today focuses on clean mechanical tension to establish your baseline hypertrophy stimulus.';
+          ? 'Low recovery today—holding steady builds your groove cleanly.'
+          : 'Today sets your hypertrophy baseline with clean mechanical tension.';
       return { metric: 'reps', history, lines: [line1, line2], summary: `${line1}\n${line2}` };
     }
 
     let line1: string;
     if (history.length === 1) {
-      line1 = `Baseline bodyweight strength established at ${history[0].value} per set from your first session.`;
+      line1 = `Baseline best set: ${history[0].value} per set from session 1.`;
     } else {
       const first = history[0].value;
       const last = history[history.length - 1].value;
       const delta = last - first;
       const n = history.length;
       if (delta > 0) {
-        line1 = `Bodyweight strength on this lift is rising, up +${delta} per set across ${n} sessions to a best of ${last}.`;
+        line1 = `Best set: ${last} (+${delta} over ${n} sessions).`;
       } else if (delta < 0) {
-        line1 = `Best set on this bodyweight lift shifted -${Math.abs(delta)} across ${n} sessions and currently stands at ${last}.`;
+        line1 = `Best set: ${last} (-${Math.abs(delta)} over ${n} sessions).`;
       } else {
-        line1 = `Bodyweight strength on this lift has held steady at ${last} per set across ${n} sessions.`;
+        line1 = `Best set steady at ${last} per set across ${n} sessions.`;
       }
     }
 
@@ -156,10 +158,10 @@ export function buildExerciseInsight(
     const plannedReps = plannedSet?.targetReps ?? 0;
     const line2 =
       readinessState === 'Amber Shield'
-        ? 'Recovery is low, so today holds the target steady to preserve muscle while managing fatigue.'
+        ? 'Low recovery today—holding target steady protects muscle.'
         : plannedReps > prevReps
-        ? 'Today expands volume accumulation with additional bodyweight output for hypertrophy.'
-        : 'Today consolidates volume accumulation at your bodyweight load to deepen hypertrophy.';
+        ? 'Expanding bodyweight output today drives hypertrophy.'
+        : 'Matching bodyweight output deepens hypertrophy volume.';
     return { metric: 'reps', history, lines: [line1, line2], summary: `${line1}\n${line2}` };
   }
 
@@ -173,11 +175,11 @@ export function buildExerciseInsight(
       })
       .filter((h) => h.value > 0);
     if (past.length === 0 || history.length === 0) {
-      const line1 = `First time on ${exercise.name}—today sets your starting point.`;
+      const line1 = `First time on ${exercise.name}—sets your starting point.`;
       const line2 =
         readinessState === 'Amber Shield'
-          ? 'Recovery is low, so today holds the weight steady while establishing your baseline groove.'
-          : 'Today focuses on clean mechanical tension to establish your baseline hypertrophy stimulus.';
+          ? 'Low recovery today—holding steady builds your groove cleanly.'
+          : 'Today sets your hypertrophy baseline with clean mechanical tension.';
       return { metric: 'added_kg', history, lines: [line1, line2], summary: `${line1}\n${line2}` };
     }
     const first = history[0].value;
@@ -186,12 +188,12 @@ export function buildExerciseInsight(
     const n = history.length;
     const line1 =
       n === 1
-        ? `Baseline added weight established at ${load(first)} from your first session.`
+        ? `Baseline added load: ${load(first)} from session 1.`
         : delta > 0
-        ? `Added weight on this lift is rising, up +${load(delta)} across ${n} sessions to ${load(last)}.`
+        ? `Added weight: ${load(last)} (+${load(delta)} over ${n} sessions).`
         : delta < 0
-        ? `Added weight on this lift shifted -${load(Math.abs(delta))} across ${n} sessions and sits at ${load(last)}.`
-        : `Added weight on this lift has held steady at ${load(last)} across ${n} sessions.`;
+        ? `Added weight: ${load(last)} (-${load(Math.abs(delta))} over ${n} sessions).`
+        : `Added weight steady at ${load(last)} across ${n} sessions.`;
     const lastEx = past[past.length - 1].ex;
     const lastSets = lastEx.sets.filter(done);
     const prevTop = lastSets.reduce((m, s) => Math.max(m, weightOf(s)), 0);
@@ -200,14 +202,14 @@ export function buildExerciseInsight(
     const plannedReps = plannedSet?.targetReps ?? 0;
     const line2 =
       readinessState === 'Amber Shield'
-        ? 'Recovery is low, so today holds the weight steady to preserve muscle while managing fatigue.'
+        ? 'Low recovery today—holding weight preserves muscle.'
         : plannedTop > prevTop + 0.01
-        ? 'Today increases the weight to drive progressive mechanical tension for hypertrophy.'
+        ? 'Heavier load today drives progressive mechanical tension.'
         : plannedTop < prevTop - 0.01
-        ? 'Today lightens the weight to prioritize clean volume accumulation for hypertrophy.'
+        ? 'Lighter weight today keeps volume crisp and recoverable.'
         : plannedReps > prevReps
-        ? 'Today builds volume accumulation at your current load to expand hypertrophy capacity.'
-        : 'Today consolidates volume accumulation at your current load to deepen hypertrophy.';
+        ? 'Pushing volume at this load expands hypertrophy.'
+        : 'Matching this load deepens hypertrophy volume.';
     return { metric: 'added_kg', history, lines: [line1, line2], summary: `${line1}\n${line2}` };
   }
 
@@ -219,29 +221,29 @@ export function buildExerciseInsight(
     .filter((h) => h.e1rmKg > 0);
 
   if (past.length === 0 || history.length === 0) {
-    const line1 = `First time on ${exercise.name}—today sets your starting point.`;
+    const line1 = `First time on ${exercise.name}—sets your starting point.`;
     const line2 =
       readinessState === 'Amber Shield'
-        ? 'Recovery is low, so today holds the weight steady while establishing your baseline groove.'
-        : 'Today focuses on clean mechanical tension to establish your baseline hypertrophy stimulus.';
+        ? 'Low recovery today—holding steady builds your groove cleanly.'
+        : 'Today sets your hypertrophy baseline with clean mechanical tension.';
     return { metric: 'e1rm', includesBodyweight: isCalisthenic, history, lines: [line1, line2], summary: `${line1}\n${line2}` };
   }
 
   const bwQualifier = isCalisthenic ? ' (bodyweight + added weight)' : '';
   let line1: string;
   if (history.length === 1) {
-    line1 = `Baseline strength${bwQualifier} established at a ${load(history[0].e1rmKg)} estimated max from your first session.`;
+    line1 = `Baseline estimated max${bwQualifier}: ${load(history[0].e1rmKg)} from session 1.`;
   } else {
     const first = round1(history[0].e1rmKg);
     const last = round1(history[history.length - 1].e1rmKg);
     const delta = round1(last - first);
     const n = history.length;
     if (delta > 0) {
-      line1 = `Strength on this lift${bwQualifier} is rising, up +${load(delta)} across ${n} sessions to a ${load(last)} estimated max.`;
+      line1 = `Estimated max${bwQualifier}: ${load(last)} (+${load(delta)} over ${n} sessions).`;
     } else if (delta < 0) {
-      line1 = `Estimated max${bwQualifier} on this lift shifted -${load(Math.abs(delta))} across ${n} sessions and currently stands at ${load(last)}.`;
+      line1 = `Estimated max${bwQualifier}: ${load(last)} (-${load(Math.abs(delta))} over ${n} sessions).`;
     } else {
-      line1 = `Strength on this lift${bwQualifier} has held steady at a ${load(last)} estimated max across ${n} sessions.`;
+      line1 = `Estimated max${bwQualifier} steady at ${load(last)} across ${n} sessions.`;
     }
   }
 
@@ -254,15 +256,15 @@ export function buildExerciseInsight(
 
   let line2: string;
   if (readinessState === 'Amber Shield') {
-    line2 = 'Recovery is low, so today holds the weight steady to preserve muscle while managing fatigue.';
+    line2 = 'Low recovery today—holding weight preserves muscle.';
   } else if (plannedTop > prevTop + 0.01) {
-    line2 = "Today increases the weight to drive progressive mechanical tension for hypertrophy.";
+    line2 = 'Heavier load today drives progressive mechanical tension.';
   } else if (plannedTop < prevTop - 0.01) {
-    line2 = "Today lightens the weight to prioritize clean volume accumulation for hypertrophy.";
+    line2 = 'Lighter weight today keeps volume crisp and recoverable.';
   } else if (plannedReps > prevReps) {
-    line2 = "Today builds volume accumulation at your current load to expand hypertrophy capacity.";
+    line2 = 'Pushing volume at this load expands hypertrophy.';
   } else {
-    line2 = "Today consolidates volume accumulation at your current load to deepen hypertrophy.";
+    line2 = 'Matching this load deepens hypertrophy volume.';
   }
 
   return { metric: 'e1rm', includesBodyweight: isCalisthenic, history, lines: [line1, line2], summary: `${line1}\n${line2}` };

@@ -3733,11 +3733,11 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
     assert(
       insight.history.length === 2 &&
         insight.history[1].e1rmKg > insight.history[0].e1rmKg &&
-        /Strength on this lift is rising/.test(insight.summary) &&
-        /increases the weight/.test(insight.summary),
+        /Estimated max:\s*\d+(?:\.\d+)?\s*kg\s*\(\+\d+(?:\.\d+)?\s*kg over 2 sessions\)/i.test(insight.summary) &&
+        /Heavier load today/i.test(insight.summary),
       `Exercise summary describes the trend and today's change: "${insight.summary}"`
     );
-    assert(/holds the weight steady/.test(buildExerciseInsight(plan2.exercises[0], [same], 'Amber Shield').summary), 'Low recovery days say the weight is held');
+    assert(/holding weight|Low recovery today/i.test(buildExerciseInsight(plan2.exercises[0], [same], 'Amber Shield').summary), 'Low recovery days say the weight is held');
     // Fewer sets at a heavier weight is progress, even though session volume falls (Phase 2 drops to 2 sets).
     const fourSets = doneAt(2, stripNow - 7 * 24 * HOUR);
     const twoHeavierSets = doneAt(2, stripNow - 2 * 24 * HOUR);
@@ -3746,7 +3746,7 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
     });
     const phaseChange = buildExerciseInsight(plan2.exercises[0], [fourSets, twoHeavierSets], 'Normal');
     assert(
-      phaseChange.history[1].e1rmKg > phaseChange.history[0].e1rmKg && /rising/.test(phaseChange.summary),
+      phaseChange.history[1].e1rmKg > phaseChange.history[0].e1rmKg && /\+\d+(?:\.\d+)?\s*kg over 2 sessions/i.test(phaseChange.summary),
       'Progress is tracked by estimated max, so dropping from 4 to 2 heavier sets shows as progress, not a decline'
     );
 
@@ -4037,8 +4037,8 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
       'Identity facts come from the athlete\'s history: workouts done, last workout, personal bests and strength trend'
     );
     assert(
-      /^2 workouts done, with \d+ personal bests? along the way\. Your estimated strength is already up on/.test(idFacts.fallback) && /Next up is legs and abs/.test(idFacts.fallback),
-      `Without a model the message is built from the same facts: "${idFacts.fallback}"`
+      /^2 workouts done, with \d+ personal bests?—strength up on/.test(idFacts.fallback) && /Next: legs and abs/.test(idFacts.fallback),
+      `Without a model the concise message is built from the same facts: "${idFacts.fallback}"`
     );
     assert(!/NaN|undefined/.test(idFacts.fallback + all), 'Identity facts and fallback have no NaN or undefined');
 
@@ -7227,10 +7227,11 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
           `Daily steps ring formats compactly and lights 9/10 segments at 85% (got ${stepRing.value}, ${stepRing.segments.filter((s) => s === 'on').length})`
         );
         assert(
-          stepSummary.fallback.includes('8500 of 10000 steps today') &&
-            stepSummary.facts.some((f) => f.includes('8500') && f.includes('10000')) &&
+          stepSummary.facts.some((f) => f.includes('8500') && f.includes('10000')) &&
+            stepSummary.fallback.length <= 220 &&
+            stepSummary.fallback.split(/(?<=[.!?])\s+/).filter(Boolean).length <= 2 &&
             stepSummaryProblem === undefined,
-          `Goals summary includes daily steps fact & passes checkGoalsSummary (got problem: ${stepSummaryProblem ?? 'none'}, len=${stepSummary.fallback.length})`
+          `Goals summary keeps daily steps fact, stays concise (<= 2 sentences, len=${stepSummary.fallback.length}), & passes checkGoalsSummary (got problem: ${stepSummaryProblem ?? 'none'})`
         );
         assert(
           /8,500 steps today/.test(askStepsToday.message.text) && removeStepsGoal.updatedProfile?.goalSettings?.customGoals === undefined,
@@ -11298,7 +11299,261 @@ Exercise,,Date,Workout,Sets,Reps,Tempo,Rest,Notes,Set 1,Set 2,Set 3,Set 4
     );
   }
 
-  console.log('\nALL 54 ENGINE, GOVERNANCE, DESIGN SYSTEM, TYPOGRAPHY, WEARABLES, WHOOP STRAIN, GOOGLE AUTH, ONBOARDING CONTEXT, 6-WEEK PROGRAM, SPREADSHEET IMPORT, AI COACH ACTIONS, GEMINI FLASH + KG, OOUX, AGENTIC COACH, PRODUCT UPGRADES, INFO EXPERIENCE & LAUNCH VERIFICATION SUITES PASSED SUCCESSFULLY! 🎯');
+  console.log('\n[Suite 55: Content Design & Shift Nudge AI Summary Optimization]');
+  {
+    const fs55 = await import('fs');
+    const path55 = await import('path');
+    const repo55 = process.cwd();
+    const { buildExerciseInsight } = await import('../../services/exerciseInsight');
+    const { buildExerciseNoteFacts, checkExerciseNote } = await import('../../services/exerciseCoachNote');
+    const { buildIdentityFacts, checkIdentityMessage } = await import('../../services/identityMessage');
+    const { buildWorkoutFinish, checkWorkoutSummary } = await import('../../services/workoutFinish');
+    const { buildGoalsSummary, checkGoalsSummary } = await import('../../services/progressOverview');
+    const { buildAthleteGoals } = await import('../../services/athleteGoals');
+    const { buildCoachSystemPrompt } = await import('../../services/aiAssistantService');
+    const { buildAthleteKnowledgeGraph } = await import('../knowledgeGraph');
+    const { generate6WeekMuscleBuildingWorkout } = await import('../muscleBuildingProgram');
+
+    // 1. Tighter length & sentence ceilings reject wordy AI outputs across all 4 summary surfaces
+    const now55 = Date.now();
+    const DAY55 = 24 * 60 * 60 * 1000;
+    const mkDone = (num: number, daysAgo: number, bumpKg: number): WorkoutSession => {
+      const base = generate6WeekMuscleBuildingWorkout(num, 80);
+      const startTime = now55 - daysAgo * DAY55;
+      return {
+        ...base,
+        id: `s55-${num}-${daysAgo}`,
+        completed: true,
+        date: localDateString(new Date(startTime)),
+        durationMinutes: 42,
+        completedAt: new Date(startTime + 42 * 60 * 1000).toISOString(),
+        exercises: base.exercises.map((ex, i) => ({
+          ...ex,
+          sets: ex.sets.map((st, sIdx) => ({
+            ...st,
+            completed: true,
+            actualWeightKg: st.targetWeightKg + bumpKg,
+            actualReps: st.targetReps,
+            actualRir: 2,
+            isPB: i === 0 && sIdx === 0 && bumpKg > 0,
+          })),
+        })),
+      };
+    };
+    const w55a = mkDone(1, 7, 0);
+    const w55b = mkDone(1, 2, 2.5);
+    const baseProfile55: UserProfile = {
+      ...NEW_USER_PROFILE,
+      name: 'Athlete',
+      weightUnit: 'kg',
+      gender: 'male',
+    };
+    const kg55 = buildAthleteKnowledgeGraph([w55a, w55b], [], SEED_EXERCISES, baseProfile55, {});
+    const nextPlan55 = generate6WeekMuscleBuildingWorkout(1, 80);
+    const ex55 = nextPlan55.exercises[0];
+    const exInsight55 = buildExerciseInsight(ex55, [w55a, w55b], 'Normal', 80);
+    const exFacts55 = buildExerciseNoteFacts({
+      exercise: ex55,
+      insight: exInsight55,
+      workouts: [w55a, w55b],
+      readinessState: 'Normal',
+      knowledgeGraph: kg55,
+      formatWeight: (kg) => `${kg} kg`,
+    });
+    const verboseEx = `${exFacts55.fallback.split('\n')[0]} ${'Additional filler words about stability and fatigue. '.repeat(5)}\nHold controlled tempo across every working set today.`;
+    const exReject = checkExerciseNote(verboseEx, exFacts55);
+    const exAccept = checkExerciseNote(exFacts55.fallback, exFacts55);
+    assert(
+      exFacts55.fallback.length <= 185 &&
+        /^(?:Estimated max|Baseline)/.test(exFacts55.fallback) &&
+        Boolean(exReject.problem) &&
+        exAccept.text === exFacts55.fallback,
+      `Exercise note front-loads metrics (${exFacts55.fallback.length} chars) & rejects verbose >240 char answers`
+    );
+
+    // Timed hold & bodyweight+added weight formatting
+    const plankEx55: ExerciseSession = {
+      id: 'ex55-plank',
+      exerciseId: 'ex-decline-gymball-plank',
+      name: 'Decline gym ball plank',
+      pillar: 'Squat',
+      equipment: 'bodyweight',
+      minReps: 1,
+      maxReps: 1,
+      sets: [{ id: 'p1', setNumber: 1, targetWeightKg: 0, targetReps: 0, targetDurationSeconds: 45, targetRir: 2, isWarmup: false, completed: false }],
+    };
+    const plankDone55: WorkoutSession = {
+      ...w55a,
+      id: 's55-plank',
+      exercises: [{ ...plankEx55, sets: [{ id: 'p0', setNumber: 1, targetWeightKg: 0, targetReps: 0, targetDurationSeconds: 40, actualDurationSeconds: 40, targetRir: 2, isWarmup: false, completed: true }] }],
+    };
+    const plankInsight55 = buildExerciseInsight(plankEx55, [plankDone55], 'Normal', 80);
+    const plankNoteFacts55 = buildExerciseNoteFacts({
+      exercise: plankEx55,
+      insight: plankInsight55,
+      workouts: [plankDone55],
+      readinessState: 'Normal',
+      knowledgeGraph: kg55,
+      formatWeight: (kg) => `${kg} kg`,
+    });
+    const chinEx55: ExerciseSession = {
+      id: 'ex55-chin',
+      exerciseId: 'ex-chinup',
+      name: 'Chin-Ups',
+      pillar: 'Vertical Pull',
+      equipment: 'bodyweight',
+      isWeightedCalisthenic: true,
+      minReps: 6,
+      maxReps: 10,
+      sets: [{ id: 'c1', setNumber: 1, targetWeightKg: 10, targetReps: 8, targetRir: 2, isWarmup: false, completed: false }],
+    };
+    const chinDone55: WorkoutSession = {
+      ...w55a,
+      id: 's55-chin',
+      exercises: [{ ...chinEx55, sets: [{ id: 'c0', setNumber: 1, targetWeightKg: 5, actualWeightKg: 5, targetReps: 8, actualReps: 8, targetRir: 2, isWarmup: false, completed: true }] }],
+    };
+    const chinInsight55 = buildExerciseInsight(chinEx55, [chinDone55], 'Normal', 80);
+    const chinNoteFacts55 = buildExerciseNoteFacts({
+      exercise: chinEx55,
+      insight: chinInsight55,
+      workouts: [chinDone55],
+      readinessState: 'Normal',
+      knowledgeGraph: kg55,
+      formatWeight: (kg) => `${kg} kg`,
+    });
+    assert(
+      /40s/.test(plankInsight55.summary) &&
+        !/0 kg/.test(plankNoteFacts55.fallback) &&
+        /\(bodyweight \+ added weight\)/.test(chinInsight55.summary) &&
+        /\(bodyweight \+ added weight\)/.test(chinNoteFacts55.fallback),
+      'Timed holds avoid rep/0 kg boilerplate and calisthenics keep (bodyweight + added weight) clarity'
+    );
+
+    // 2. Identity message & Workout Finish concise caps
+    const plan55 = buildPlanOverview([w55a, w55b]);
+    const idFacts55 = buildIdentityFacts({
+      plan: plan55,
+      workouts: [w55a, w55b],
+      nextSession: generate6WeekMuscleBuildingWorkout(plan55.nextWorkoutNumber, 80),
+      exerciseCatalog: SEED_EXERCISES,
+      readinessState: 'Normal',
+      now: now55,
+    });
+    const conciseModelId = 'You have finished 1 of 24 sessions with recent personal bests. Next is Shoulders and Arms for your side shoulders.';
+    const verboseId = `${conciseModelId} ${'Keep showing up every week and focus on controlled effort. '.repeat(4)}`;
+    assert(
+      idFacts55.fallback.length <= 220 &&
+        /under 260 characters/.test(checkIdentityMessage(verboseId, idFacts55).problem ?? '') &&
+        checkIdentityMessage(conciseModelId, idFacts55).text === conciseModelId,
+      `Identity message stays <= 220 chars (${idFacts55.fallback.length}) & rejects >260 char prose`
+    );
+
+    const finish55 = buildWorkoutFinish({
+      profile: baseProfile55,
+      workouts: [w55a],
+      finished: w55b,
+      biometrics: [{ date: w55b.date, bodyweightKg: 80, hrvRmssd: 60, restingHr: 54, sleepHours: 7.6, steps: 9200, activeZoneMinutes: 40 }],
+      exerciseCatalog: SEED_EXERCISES,
+      bodyweightKg: 80,
+      formatWeight: (kg) => `${kg} kg`,
+      now: now55,
+    })!;
+    const verboseFinish = `${finish55.fallback} ${'Four sentences to test both sentence limit and character cap cleanly. '.repeat(4)}`;
+    const manySentencesFinish = 'One sentence here. Two sentences here. Three sentences here. Four sentences fail the cap.';
+    assert(
+      finish55.fallback.length <= 210 &&
+        Boolean(checkWorkoutSummary(verboseFinish, finish55).problem) &&
+        Boolean(checkWorkoutSummary(manySentencesFinish, finish55).problem) &&
+        checkWorkoutSummary(finish55.fallback, finish55).text === finish55.fallback,
+      `Workout finish summary stays <= 210 chars (${finish55.fallback.length}) & rejects verbose/4-sentence copy`
+    );
+
+    // 3. Goals summary 2-sentence synthesis & daily steps anti-duplication
+    const goalsProfile55: UserProfile = {
+      ...baseProfile55,
+      goalSettings: {
+        customGoals: [
+          {
+            id: 'cg55-steps',
+            exerciseId: 'daily-steps',
+            exerciseName: 'Daily steps',
+            metric: 'steps',
+            target: 10000,
+            createdOn: w55b.date,
+          },
+        ],
+      },
+    };
+    const goalsBio55 = [{ date: localDateString(new Date(now55)), bodyweightKg: 80, hrvRmssd: 60, restingHr: 54, sleepHours: 7.5, steps: 8500, activeZoneMinutes: 30 }];
+    const goalsList55 = buildAthleteGoals({ profile: goalsProfile55, workouts: [w55a, w55b], biometrics: goalsBio55, bodyweightKg: 80 });
+    const goalsSum55 = buildGoalsSummary(goalsList55, (kg) => `${kg} kg`);
+    const goalsSentences55 = goalsSum55.fallback.split(/(?<=[.!?])\s+/).filter(Boolean);
+    const verboseGoals = `${goalsSum55.fallback} ${'Every ring matters and today counts toward consistency. '.repeat(4)}`;
+    assert(
+      goalsSentences55.length <= 2 &&
+        goalsSum55.fallback.length <= 210 &&
+        goalsSum55.facts.some((f) => f.includes('8500') && f.includes('10000')) &&
+        !goalsSum55.fallback.includes('8500') &&
+        Boolean(checkGoalsSummary(verboseGoals, goalsSum55).problem) &&
+        checkGoalsSummary(goalsSum55.fallback, goalsSum55).text === goalsSum55.fallback,
+      `Goals summary synthesizes <= 2 high-value sentences (${goalsSum55.fallback.length} chars) without repeating daily step ring counts`
+    );
+
+    // 4. Coach system prompt front-loading rule
+    const coachSys55 = buildCoachSystemPrompt({
+      profile: goalsProfile55,
+      workouts: [w55a, w55b],
+      biometrics: goalsBio55,
+      bodyweightEmaKg: 80,
+      exerciseCatalog: SEED_EXERCISES,
+      readinessState: 'Normal',
+      activeWorkout: nextPlan55,
+      userMessage: 'How did today look?',
+    });
+    assert(
+      /Front-load/i.test(coachSys55) && /never repeat visible set tables/i.test(coachSys55),
+      'Coach system prompt enforces front-loading metrics and avoiding set table duplication'
+    );
+
+    // 5. Shift Nudge UI hierarchy components & Design System documentation parity
+    const coachTextSrc = fs55.readFileSync(path55.join(repo55, 'src/components/common/CoachSummaryText.tsx'), 'utf8');
+    const exCardSrc = fs55.readFileSync(path55.join(repo55, 'src/components/train/ExerciseCard.tsx'), 'utf8');
+    const progPlanSrc = fs55.readFileSync(path55.join(repo55, 'src/components/program/ProgramPlanView.tsx'), 'utf8');
+    const finishScreenSrc = fs55.readFileSync(path55.join(repo55, 'src/components/train/WorkoutFinishScreen.tsx'), 'utf8');
+    const finishCardsSrc = fs55.readFileSync(path55.join(repo55, 'src/components/train/FinishedWorkoutCards.tsx'), 'utf8');
+    const overviewCardsSrc55 = fs55.readFileSync(path55.join(repo55, 'src/components/analytics/ProgressOverviewCards.tsx'), 'utf8');
+    const dsSrc55 = fs55.readFileSync(path55.join(repo55, 'src/designSystem/DesignSystemApp.tsx'), 'utf8');
+    const dsHtml55 = fs55.readFileSync(path55.join(repo55, 'design-system.html'), 'utf8');
+
+    assert(
+      coachTextSrc.includes("maxWidth: '58ch'") &&
+        coachTextSrc.includes('font-medium') &&
+        coachTextSrc.includes('--color-text-secondary') &&
+        coachTextSrc.includes('text-left') &&
+        coachTextSrc.includes('gap-1') &&
+        coachTextSrc.includes('border-l-2') &&
+        exCardSrc.includes('<CoachSummaryText') &&
+        progPlanSrc.includes('<CoachSummaryText') &&
+        progPlanSrc.includes('Plan momentum') &&
+        progPlanSrc.includes('text-left') &&
+        finishScreenSrc.includes('<CoachSummaryText') &&
+        finishScreenSrc.includes('Session takeaway') &&
+        finishCardsSrc.includes('<CoachSummaryText') &&
+        finishCardsSrc.includes('Session takeaway') &&
+        finishCardsSrc.includes('border-t') &&
+        overviewCardsSrc55.includes('<CoachSummaryText') &&
+        overviewCardsSrc55.includes('Goal takeaway') &&
+        dsSrc55.includes('<= 240 chars') &&
+        dsSrc55.includes('<= 260 chars') &&
+        dsSrc55.includes('<= 250 chars') &&
+        dsHtml55.includes('checkGoalsSummary') &&
+        (dsHtml55.includes('&lt;= 250 chars') || dsHtml55.includes('<= 250 chars')) &&
+        dsHtml55.includes('Plan momentum'),
+      'UI summary surfaces share <CoachSummaryText />, left-aligned 58ch measure, accent rail & Design System gate parity'
+    );
+  }
+
+  console.log('\nALL 55 ENGINE, GOVERNANCE, DESIGN SYSTEM, TYPOGRAPHY, WEARABLES, WHOOP STRAIN, GOOGLE AUTH, ONBOARDING CONTEXT, 6-WEEK PROGRAM, SPREADSHEET IMPORT, AI COACH ACTIONS, GEMINI FLASH + KG, OOUX, AGENTIC COACH, PRODUCT UPGRADES, INFO EXPERIENCE, CONTENT DESIGN & LAUNCH VERIFICATION SUITES PASSED SUCCESSFULLY! 🎯');
 })().catch((err) => {
   console.error('Test Suite Failed:', err);
   if (typeof process !== 'undefined' && process.exit) {
