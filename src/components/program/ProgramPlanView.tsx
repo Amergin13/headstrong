@@ -474,7 +474,6 @@ export const ProgramPlanView: React.FC<ProgramPlanViewProps> = ({
               text={identityMessage ?? identityFacts.fallback}
               swapKey={identityMessage ? 'model' : 'facts'}
               splitBy="sentences"
-              accentRail
             />
           </div>
         </section>

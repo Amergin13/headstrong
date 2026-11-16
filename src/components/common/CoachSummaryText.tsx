@@ -7,8 +7,6 @@ interface CoachSummaryTextProps {
   swapKey?: string;
   /** Split mode: `'lines'` enforces newline lines (2-line card briefs); `'sentences'` splits Sentence 1 vs trailing sentences. */
   splitBy?: 'lines' | 'sentences';
-  /** Optional left accent border cue for high-signal callout blocks. */
-  accentRail?: boolean;
   className?: string;
 }
 
@@ -39,7 +37,6 @@ export const CoachSummaryText: React.FC<CoachSummaryTextProps> = ({
   text,
   swapKey,
   splitBy = 'sentences',
-  accentRail = false,
   className = '',
 }) => {
   const parts = extractSummaryParts(text, splitBy);
@@ -48,12 +45,9 @@ export const CoachSummaryText: React.FC<CoachSummaryTextProps> = ({
   return (
     <div
       key={swapKey ?? text}
-      className={`wk-text-swap flex flex-col gap-1 text-left ${
-        accentRail ? 'pl-3 border-l-2' : ''
-      } ${className}`.trim()}
+      className={`wk-text-swap flex flex-col gap-1 text-left ${className}`.trim()}
       style={{
         maxWidth: '58ch',
-        ...(accentRail ? { borderColor: 'var(--color-accent-primary)' } : {}),
       }}
       aria-live="polite"
     >

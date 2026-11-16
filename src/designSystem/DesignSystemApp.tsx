@@ -192,7 +192,7 @@ const AI_SURFACE_QUALITY_GATES = [
     source: 'src/services/identityMessage.ts',
     validator: 'checkIdentityMessage',
     checks: [
-      '2–3 crisp left-aligned sentences (<= 260 chars) inside wk-card with Plan momentum eyebrow & accent rail',
+      '2–3 crisp left-aligned sentences (<= 260 chars) inside wk-card with Plan momentum eyebrow',
       'Blocks ungrounded digits/%, feeling claims, and invented phase-completion estimates',
       'Guards plan-vs-phase totals, "most" (requires share > 0.5), and "consistent" (>= 6 recent sessions)',
     ],
@@ -214,7 +214,7 @@ const AI_SURFACE_QUALITY_GATES = [
     source: 'src/services/progressOverview.ts',
     validator: 'checkGoalsSummary',
     checks: [
-      'Per-goal carousel slide (<= 250 chars): 192px hero ring + directly paired 2-sentence Goal takeaway card',
+      'Per-goal carousel slide (<= 250 chars): canvas-native 192px hero ring + directly paired 2-sentence Goal takeaway',
       'Bans "insufficient data / cannot be assessed", hype words, percentages on rings, and feeling claims',
       'Exact number, unit, and counted-noun check + runReadAloudQaGate',
     ],

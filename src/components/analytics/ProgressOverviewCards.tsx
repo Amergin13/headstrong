@@ -143,7 +143,7 @@ const GoalSlideCard: React.FC<{
       role="group"
       aria-roledescription="slide"
       aria-label={`Goal ${index + 1} of ${total}: ${ring.title}`}
-      className="wk-card shrink-0 w-full snap-center flex flex-col justify-between"
+      className="shrink-0 w-full snap-center flex flex-col justify-between py-2"
     >
       <button
         type="button"
@@ -223,7 +223,7 @@ const GoalSlideCard: React.FC<{
         </div>
       </button>
 
-      <div className="mt-4 pt-4 border-t text-left" style={{ borderColor: 'var(--color-border-subtle)' }}>
+      <div className="mt-5 pt-4 border-t text-left" style={{ borderColor: 'var(--color-border-subtle)' }}>
         <span className="wk-label block mb-2" style={{ color: 'var(--wk-muted)' }}>
           Goal takeaway
         </span>
@@ -231,7 +231,6 @@ const GoalSlideCard: React.FC<{
           text={summaryText}
           swapKey={`${ring.id}:${summaryText}`}
           splitBy="sentences"
-          accentRail
         />
       </div>
     </article>
@@ -301,53 +300,12 @@ export const GoalsHero: React.FC<{
     <section
       aria-labelledby="goals-title"
       aria-roledescription="carousel"
-      className="pt-6"
+      className="pt-4"
       onKeyDown={handleKeyDown}
     >
-      <div className="flex items-center justify-between gap-3 mb-3">
-        <div className="flex items-baseline gap-2 min-w-0">
-          <h2 id="goals-title" className="wk-title">
-            Goals
-          </h2>
-          {rings.length > 1 && (
-            <span className="wk-caption tabular-nums" aria-live="polite">
-              {activeIndex + 1} of {rings.length}
-            </span>
-          )}
-        </div>
-        {rings.length > 1 && (
-          <div className="flex items-center gap-2 shrink-0">
-            <button
-              type="button"
-              onClick={() => goTo(activeIndex - 1)}
-              disabled={activeIndex === 0}
-              aria-label="Previous goal"
-              className="w-11 h-11 min-w-[44px] min-h-[44px] rounded-full flex items-center justify-center transition-opacity disabled:opacity-35"
-              style={{
-                background: 'var(--color-bg-surface)',
-                border: '1px solid var(--color-border-subtle)',
-                color: 'var(--color-text-primary)',
-              }}
-            >
-              <ChevronLeft className="w-5 h-5" strokeWidth={2} aria-hidden="true" />
-            </button>
-            <button
-              type="button"
-              onClick={() => goTo(activeIndex + 1)}
-              disabled={activeIndex >= rings.length - 1}
-              aria-label="Next goal"
-              className="w-11 h-11 min-w-[44px] min-h-[44px] rounded-full flex items-center justify-center transition-opacity disabled:opacity-35"
-              style={{
-                background: 'var(--color-bg-surface)',
-                border: '1px solid var(--color-border-subtle)',
-                color: 'var(--color-text-primary)',
-              }}
-            >
-              <ChevronRight className="w-5 h-5" strokeWidth={2} aria-hidden="true" />
-            </button>
-          </div>
-        )}
-      </div>
+      <h2 id="goals-title" className="sr-only">
+        Goals
+      </h2>
 
       <div
         ref={trackRef}

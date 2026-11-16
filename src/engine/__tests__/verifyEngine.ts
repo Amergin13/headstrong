@@ -11531,7 +11531,7 @@ Exercise,,Date,Workout,Sets,Reps,Tempo,Rest,Notes,Set 1,Set 2,Set 3,Set 4
         coachTextSrc.includes('--color-text-secondary') &&
         coachTextSrc.includes('text-left') &&
         coachTextSrc.includes('gap-1') &&
-        coachTextSrc.includes('border-l-2') &&
+        !coachTextSrc.includes('border-l-2') &&
         exCardSrc.includes('<CoachSummaryText') &&
         progPlanSrc.includes('<CoachSummaryText') &&
         progPlanSrc.includes('Plan momentum') &&
@@ -11549,7 +11549,7 @@ Exercise,,Date,Workout,Sets,Reps,Tempo,Rest,Notes,Set 1,Set 2,Set 3,Set 4
         dsHtml55.includes('checkGoalsSummary') &&
         (dsHtml55.includes('&lt;= 250 chars') || dsHtml55.includes('<= 250 chars')) &&
         dsHtml55.includes('Plan momentum'),
-      'UI summary surfaces share <CoachSummaryText />, left-aligned 58ch measure, accent rail & Design System gate parity'
+      'UI summary surfaces share <CoachSummaryText />, left-aligned 58ch measure & Design System gate parity'
     );
   }
 
@@ -11685,8 +11685,9 @@ Exercise,,Date,Workout,Sets,Reps,Tempo,Rest,Notes,Set 1,Set 2,Set 3,Set 4
       overviewSrc56.includes('aria-roledescription="carousel"') &&
         overviewSrc56.includes('snap-x snap-mandatory') &&
         overviewSrc56.includes('size={192}') &&
-        overviewSrc56.includes('Previous goal') &&
-        overviewSrc56.includes('Next goal') &&
+        !overviewSrc56.includes('Previous goal') &&
+        !overviewSrc56.includes('Next goal') &&
+        !overviewSrc56.includes('wk-card shrink-0 w-full snap-center') &&
         overviewSrc56.includes('aria-label="Choose a goal"') &&
         overviewSrc56.includes('min-h-[44px]') &&
         overviewSrc56.includes('<CoachSummaryText') &&
@@ -11696,7 +11697,7 @@ Exercise,,Date,Workout,Sets,Reps,Tempo,Rest,Notes,Set 1,Set 2,Set 3,Set 4
         analyticsSrc56.includes('cardSummaries={goalCardSummaries}') &&
         dsSrc56.includes('Progress Goals Carousel Summary') &&
         dsHtml56.includes('Progress Goals Carousel Summary'),
-      'ProgressOverviewCards, AnalyticsTab, DesignSystemApp & design-system.html ship accessible 192px Goal Carousel + per-goal summaries'
+      'ProgressOverviewCards, AnalyticsTab, DesignSystemApp & design-system.html ship clean canvas-native 192px Goal Carousel + per-goal summaries'
     );
   }
 

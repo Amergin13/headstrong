@@ -189,7 +189,7 @@ export const WorkoutFinishScreen: React.FC<WorkoutFinishScreenProps> = ({
             Session takeaway
           </span>
           <CardTitle>{headline}</CardTitle>
-          <CoachSummaryText text={summary} splitBy="sentences" accentRail className="mt-3" />
+          <CoachSummaryText text={summary} splitBy="sentences" className="mt-3" />
           <div className="flex gap-14 pt-5 mt-5 border-t" style={{ borderColor: 'var(--color-border-subtle)' }}>
             <div>
               <p className="wk-label" style={{ color: 'var(--wk-muted)' }}>

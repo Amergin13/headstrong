@@ -31,7 +31,7 @@ export const FinishedWorkoutSummaryCard: React.FC<{ finish: WorkoutFinish }> = (
       <h2 id="finished-workout-title" className="wk-title">
         Today&apos;s workout finished
       </h2>
-      <CoachSummaryText text={summary} splitBy="sentences" accentRail className="mt-3" />
+      <CoachSummaryText text={summary} splitBy="sentences" className="mt-3" />
       <dl className="flex flex-wrap gap-12 pt-5 mt-5 border-t" style={{ borderColor: 'var(--color-border-subtle)' }}>
         <Stat label={`Volume (${units.unit})`} value={Math.round(units.toDisplay(session.volumeKg)).toLocaleString()} />
         <Stat label="Sets" value={`${session.workingSets}`} />
