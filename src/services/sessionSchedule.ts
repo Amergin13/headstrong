@@ -3,7 +3,15 @@
  * are expected to fall on. Expected days come from the recovery model (each session waits until
  * its muscles recover), never from a fixed calendar.
  */
-import { TrainingPlan, generatePlanWorkout, getProgramWorkoutNumber, getSessionPlanId, isActiveSlot } from '../engine/muscleBuildingProgram';
+import { isTimedExercise } from '../engine/e1rm';
+import {
+  TrainingPlan,
+  generatePlanWorkout,
+  getProgramWorkoutNumber,
+  getSessionPlanId,
+  isActiveSlot,
+  planWorkoutLabel,
+} from '../engine/muscleBuildingProgram';
 import { getPlanById } from '../engine/trainingPlans';
 import { evaluateSessionRecovery, getTrainableReadyAt, getWorkoutCompletedAt } from '../engine/recovery';
 import { ExerciseDefinition, ExerciseSession, ProgramSplitType, WorkoutSession } from '../engine/types';
@@ -12,12 +20,27 @@ import { getNextSplitDay, getSplitTemplateExerciseIds, SplitDayType } from './wo
 
 export type StripDayStatus = 'trained' | 'planned' | 'rest';
 
+export interface UpcomingSessionPreview {
+  name: string;
+  splitDay?: string;
+  programWorkoutNumber?: number;
+  totalProgramWorkouts?: number;
+  exercises: Array<{
+    exerciseId: string;
+    name: string;
+    setsCount: number;
+    targetLabel: string;
+  }>;
+}
+
 export interface StripDay {
   date: string;
   /** 'Sat', 'Sun', ... */
   label: string;
   isToday: boolean;
   status: StripDayStatus;
+  /** Scheduled workout preview for upcoming 'planned' training days. */
+  plannedSession?: UpcomingSessionPreview;
 }
 
 const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -83,6 +106,35 @@ export function getFollowingSession(
   return splitDaySession(getNextSplitDay(session.splitDay, programType), catalog);
 }
 
+function toUpcomingPreview(session: WorkoutSession, plan?: TrainingPlan): UpcomingSessionPreview {
+  const num = getProgramWorkoutNumber(session);
+  const planId = getSessionPlanId(session);
+  const p = num && planId ? (plan && plan.id === planId ? plan : getPlanById(planId)) : undefined;
+  const totalProgramWorkouts = p ? p.templates.filter((t) => !isActiveSlot(t)).length : undefined;
+  return {
+    name: planWorkoutLabel(session.name),
+    splitDay: session.splitDay,
+    ...(num ? { programWorkoutNumber: num, totalProgramWorkouts } : {}),
+    exercises: session.exercises.map((ex) => {
+      const working = ex.sets.filter((s) => !s.isWarmup && s.setType !== 'warmup');
+      const sets = working.length > 0 ? working : ex.sets;
+      const timed = isTimedExercise(ex);
+      const holdSecs = sets[0]?.targetDurationSeconds ?? ex.durationSeconds ?? 45;
+      const targetLabel = timed
+        ? `${holdSecs}s hold`
+        : ex.minReps === ex.maxReps
+        ? `${ex.minReps} reps`
+        : `${ex.minReps}–${ex.maxReps} reps`;
+      return {
+        exerciseId: ex.exerciseId,
+        name: ex.name,
+        setsCount: sets.length,
+        targetLabel,
+      };
+    }),
+  };
+}
+
 export function buildWeekStrip(input: {
   workouts: WorkoutSession[];
   /** The queued session (today's or the next one). */
@@ -104,6 +156,7 @@ export function buildWeekStrip(input: {
   const daysAfter = input.daysAfter ?? 3;
   const dates = Array.from({ length: daysBefore + 1 + daysAfter }, (_, i) => localDateOffset(i - daysBefore, today));
   const lastDate = dates[dates.length - 1];
+  const todayStr = localDateString(today);
 
   const completed = input.workouts.filter((w) => w.completed);
   const trained = new Set([
@@ -113,15 +166,25 @@ export function buildWeekStrip(input: {
 
   // Walk the queue forward: each session lands on the day its muscles are ready.
   const planned = new Set<string>();
+  const plannedSessions = new Map<string, WorkoutSession>();
   const simulated = [...completed];
   let session = input.nextSession;
-  let cursor = now;
+  // If today's session was deliberately pushed onto an upcoming day in this window (rest day), start projection there.
+  let cursor =
+    input.nextSession.date > todayStr &&
+    input.nextSession.date <= lastDate &&
+    !input.nextSession.completed
+      ? Math.max(now, parseLocalDate(input.nextSession.date).getTime())
+      : now;
   for (let i = 0; i < daysAfter + 2; i++) {
     const gate = evaluateSessionRecovery(session, simulated, input.exerciseCatalog, cursor);
     const readyAt = gate.isReady || gate.readyAt === null ? cursor : getTrainableReadyAt(gate.readyAt);
     const day = localDateString(new Date(readyAt));
     if (day > lastDate) break;
     planned.add(day);
+    if (!plannedSessions.has(day)) {
+      plannedSessions.set(day, session);
+    }
     const trainAt = new Date(readyAt);
     if (trainAt.getHours() < PROJECTED_TRAINING_HOUR) trainAt.setHours(PROJECTED_TRAINING_HOUR, 0, 0, 0);
     simulated.push(asCompleted(session, trainAt.getTime(), i));
@@ -129,11 +192,19 @@ export function buildWeekStrip(input: {
     cursor = trainAt.getTime() + 60 * 1000;
   }
 
-  const todayStr = localDateString(today);
-  return dates.map((date) => ({
-    date,
-    label: WEEKDAY_LABELS[parseLocalDate(date).getDay()],
-    isToday: date === todayStr,
-    status: trained.has(date) ? 'trained' : planned.has(date) && date >= todayStr ? 'planned' : 'rest',
-  }));
+  return dates.map((date) => {
+    const status: StripDayStatus = trained.has(date)
+      ? 'trained'
+      : planned.has(date) && date >= todayStr
+      ? 'planned'
+      : 'rest';
+    const scheduled = status === 'planned' ? plannedSessions.get(date) : undefined;
+    return {
+      date,
+      label: WEEKDAY_LABELS[parseLocalDate(date).getDay()],
+      isToday: date === todayStr,
+      status,
+      ...(scheduled ? { plannedSession: toUpcomingPreview(scheduled, input.plan) } : {}),
+    };
+  });
 }

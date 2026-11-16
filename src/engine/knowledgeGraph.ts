@@ -6,6 +6,7 @@ import {
   DesignSystemComponentCategory,
   ExerciseDefinition,
   JointType,
+  ReadinessState,
   ResistanceProfile,
   ScientificPrinciple,
   UserProfile,
@@ -162,6 +163,27 @@ export interface KgActivitySummary {
   activeMinutesLast7d: number;
 }
 
+export type ExerciseNoteCategory =
+  | 'pain_discomfort'
+  | 'fatigue_heavy'
+  | 'strong_easy'
+  | 'equipment_setup'
+  | 'technique_cue'
+  | 'general';
+
+export interface ExerciseNoteEntry {
+  exerciseId: string;
+  exerciseName: string;
+  date: string;
+  workoutId: string;
+  note: string;
+  category: ExerciseNoteCategory;
+  readinessState: ReadinessState;
+  bestE1rmKg?: number;
+  topWeightKg?: number;
+  topReps?: number;
+}
+
 export interface AthleteKnowledgeGraph {
   nodes: KgNode[];
   edges: KgEdge[];
@@ -176,6 +198,8 @@ export interface AthleteKnowledgeGraph {
   stepsSummary: KgStepsSummary;
   whoopSummary: KgWhoopSummary;
   activitySummary: KgActivitySummary;
+  /** Chronological athlete notes captured on exercise blocks across workouts (newest first). */
+  exerciseNotesHistory: ExerciseNoteEntry[];
   insights: CausalInsight[];
   scientificKnowledgeBase: ScientificPrinciple[];
   designSystem: DesignSystemComponent[];
@@ -1259,22 +1283,22 @@ export const TREISE_DESIGN_SYSTEM: DesignSystemComponent[] = [
     category: 'layout',
     anatomy: {
       container: 'Opaque full-screen overlay (var(--color-bg-canvas) + 28% top surface gradient) constrained to max-w-448px, or inline PhoneStage specimen in catalog',
-      typography: 'Screen heading at 20px/600 (--color-text-primary); body guidance at 16px/400 (var(--wk-body), 65ch max); fieldset legends 12px/500 (--color-text-muted); option rows 16px/500 with 12px detail',
-      colors: 'Step progress bar & active selection ring use var(--wk-accent) over --color-status-positive-soft; primary Continue/Start CTA uses --color-action-primary-bg / --color-action-primary-fg; unselected choices sit on --wk-card + --color-border-subtle',
+      typography: 'Steps 1-2 hero titles use .wk-page-title (32px/700); Step 3 and editing sheet headings use 20px/600 (--color-text-primary); body 16px/400 (var(--wk-body), 65ch max); fieldset legends 12px/500 (--color-text-muted); option rows 16px/500 with 12px detail',
+      colors: 'Step progress bar & active selection ring use var(--wk-accent) over --color-status-positive-soft; primary Continue/Start CTA uses --color-action-primary-bg / --color-action-primary-fg; inline validation alert uses --color-status-danger-fill; unselected choices sit on --wk-card + --color-border-subtle',
       states: {
         step1: 'Identity + IdentityIllustration + Continue CTA + optional "See a demo with sample data" action',
-        step2: 'Session cadence & habit rationale + SessionsIllustration + Back / Skip navigation',
-        step3: 'Restarting mindset + Goal / optional Custom Goal / Plan cadence / Location & Home Equipment picker + sticky primary CTA',
-        editing: 'Returning athlete "Where you train" sheet with Close button and location/equipment persistence',
+        step2: 'Session cadence & habit rationale + SessionsIllustration (hollow upcoming rings with Day 1 highlight) + Back / Skip navigation',
+        step3: 'Restarting mindset + Goal / optional Custom Goal (Check icon + crimson alert) / Plan cadence / single-column Location rows + contextual Home Equipment picker + deepened sticky CTA fade',
+        editing: 'Returning athlete "Where you train" sheet with Close button, Escape handler, location/equipment persistence, and disclosure toggle when away from home',
       },
       touchTarget: '>= 44px on Back, Skip, Close, goal/location/equipment buttons, and custom target input; >= 48px primary sticky CTA',
     },
     logic: {
       rules: [
         'Full-screen overlay keeps solid backgroundColor: var(--color-bg-canvas) beneath the top gradient so underlying tabs never bleed through.',
-        'Steps 1 and 2 pair animated canvas-safe SVG illustrations with concise scannable copy and support horizontal swipe or Continue/Skip progression.',
+        'Steps 1 and 2 pair animated canvas-safe SVG illustrations with concise scannable copy and support horizontal swipe, Escape close (when dismissible), and visible focus outlines.',
         'Goal choices always map to GOAL_DISPLAY_NAME (Build Muscle, Lose Fat, Stay Lean) and never expose internal phase names.',
-        'Home equipment pills default to empty for new athletes so unowned kit is never assumed.',
+        'Home equipment pills default to empty for new athletes and appear contextually when At Home is selected (or via Edit home fallback gear).',
       ],
       variants: {
         firstRun: 'Steps 1-3 full onboarding with demo mode entry on Step 1',
@@ -1499,16 +1523,21 @@ export function getExerciseBiomechanicalMeta(ex: ExerciseDefinition): {
   const id = ex.id.toLowerCase();
   const name = ex.name.toLowerCase();
 
-  // Calves, Lateral Raises, Face Pulls, Curls, Pushdowns, Leg Curls, Core = Isolation
+  // Calves, Lateral Raises, Face Pulls, Curls, Pushdowns, Leg Curls, Leg Extensions, Core = Isolation
   const isIsolation =
     ex.isIsolation ??
     (id.includes('lateral') ||
       id.includes('calf') ||
       id.includes('curl') ||
+      id.includes('leg-extension') ||
       id.includes('pushdown') ||
+      id.includes('skullcrusher') ||
       id.includes('face-pull') ||
+      id.includes('pull-apart') ||
       id.includes('crunch') ||
+      id.includes('plank') ||
       id.includes('fly') ||
+      id.includes('reverse-nordic') ||
       ex.primaryMuscle === 'Side Delts' ||
       ex.primaryMuscle === 'Rear Delts' ||
       ex.primaryMuscle === 'Calves' ||
@@ -1525,14 +1554,22 @@ export function getExerciseBiomechanicalMeta(ex: ExerciseDefinition): {
     id.includes('standing-calf') ||
     id.includes('seated-calf') ||
     id.includes('leg-curl') ||
+    id.includes('nordic') ||
+    id.includes('leg-extension') ||
     id.includes('pullup') ||
     id.includes('squat') ||
+    id.includes('lunge') ||
+    id.includes('step-up') ||
+    id.includes('skullcrusher') ||
     id.includes('fly')
   ) {
     resistanceProfile = 'lengthened';
   } else if (
     id.includes('pushdown') ||
     id.includes('face-pull') ||
+    id.includes('pull-apart') ||
+    id.includes('hip-thrust') ||
+    id.includes('glute-bridge') ||
     id.includes('db-lateral') ||
     id.includes('cable-row')
   ) {
@@ -1547,15 +1584,23 @@ export function getExerciseBiomechanicalMeta(ex: ExerciseDefinition): {
   else if (id.includes('squat')) axialLoadIndex = 0.85;
   else if (id.includes('rdl')) axialLoadIndex = 0.75;
   else if (id.includes('barbell-row')) axialLoadIndex = 0.65;
-  else if (id.includes('ohp')) axialLoadIndex = 0.50;
-  else if (id.includes('bench') || id.includes('pullup') || id.includes('leg-press')) axialLoadIndex = 0.35;
+  else if (id.includes('ohp') || id.includes('farmers-walk') || id.includes('suitcase-carry')) axialLoadIndex = 0.50;
+  else if (id.includes('hip-thrust')) axialLoadIndex = 0.30;
+  else if (id.includes('bench') || id.includes('pullup') || id.includes('dip') || id.includes('leg-press')) axialLoadIndex = 0.35;
   else if (isIsolation) axialLoadIndex = 0.08;
 
   // Stimulus-to-Fatigue Ratio (1.0 - 10.0)
   let sfrScore = ex.sfrScore ?? 8.0;
   if (ex.equipment === 'bodyweight' && !ex.isWeightedCalisthenic) {
     sfrScore = 9.0;
-  } else if (id.includes('cable') || id.includes('incline') || id.includes('calf') || id.includes('leg-curl')) {
+  } else if (
+    id.includes('cable') ||
+    id.includes('incline') ||
+    id.includes('calf') ||
+    id.includes('leg-curl') ||
+    id.includes('leg-extension') ||
+    id.includes('hip-thrust')
+  ) {
     sfrScore = 9.2;
   } else if (id.includes('deadlift') && !id.includes('rdl')) {
     sfrScore = 6.2;
@@ -1569,25 +1614,30 @@ export function getExerciseBiomechanicalMeta(ex: ExerciseDefinition): {
     if (ex.pillar === 'Horizontal Push' || ex.pillar === 'Vertical Push') {
       primaryJoints = id.includes('lateral') || id.includes('fly')
         ? ['Shoulder Capsule']
-        : id.includes('pushdown')
+        : id.includes('pushdown') || id.includes('skullcrusher')
         ? ['Elbow Tendons']
         : ['Shoulder Capsule', 'Elbow Tendons'];
     } else if (ex.pillar === 'Horizontal Pull' || ex.pillar === 'Vertical Pull') {
       primaryJoints = id.includes('barbell-row')
         ? ['Lumbar Spine', 'Elbow Tendons']
-        : id.includes('face-pull')
+        : id.includes('face-pull') || id.includes('pull-apart')
         ? ['Shoulder Capsule']
         : ['Elbow Tendons', 'Shoulder Capsule'];
     } else if (ex.pillar === 'Squat') {
       primaryJoints = id.includes('calf')
         ? ['Ankle / Achilles']
+        : id.includes('plank')
+        ? ['Shoulder Capsule', 'Lumbar Spine']
         : id.includes('squat')
         ? ['Knee / Patellar', 'Lumbar Spine']
         : ['Knee / Patellar'];
     } else if (ex.pillar === 'Hinge') {
-      primaryJoints = id.includes('leg-curl')
-        ? ['Knee / Patellar']
-        : ['Lumbar Spine', 'Knee / Patellar'];
+      primaryJoints =
+        id.includes('leg-curl') || id.includes('nordic')
+          ? ['Knee / Patellar']
+          : id.includes('hip-thrust') || id.includes('glute-bridge') || id.includes('farmers-walk') || id.includes('suitcase-carry')
+          ? ['Lumbar Spine']
+          : ['Lumbar Spine', 'Knee / Patellar'];
     }
   }
 
@@ -2431,6 +2481,141 @@ export function buildAthleteKnowledgeGraph(
     });
   }
 
+  // Extract athlete session notes across workouts and derive longitudinal insights
+  const classifyExerciseNote = (note: string): ExerciseNoteCategory => {
+    if (/\b(pain|ache|aching|sharp|pinch|tweak|twinge|stiff|tight|sore|hurt|strain|clicking|impinge|discomfort|tendon)\b/i.test(note)) {
+      return 'pain_discomfort';
+    }
+    if (/\b(heavy|grind|ground out|exhaust|fatigue|tired|weak|struggl|failed|slipping|grip gave)\b/i.test(note)) {
+      return 'fatigue_heavy';
+    }
+    if (/\b(easy|light|smooth|fast|crisp|snappy|explosive|felt strong|room for more|move up|increase weight)\b/i.test(note)) {
+      return 'strong_easy';
+    }
+    if (/\b(pin|seat|hole|bench|notch|rack|grip width|stance|belt|straps|hook|cable|attachment|setting)\b/i.test(note)) {
+      return 'equipment_setup';
+    }
+    if (/\b(pause|slow|tempo|eccentric|stretch|lockout|depth|form|cue|brace|arch|elbow|scapula|control)\b/i.test(note)) {
+      return 'technique_cue';
+    }
+    return 'general';
+  };
+
+  const emaForNotes = buildBodyweightEmaLookup(biometrics);
+  const completedChrono = [...workouts]
+    .filter((w) => w.completed)
+    .sort((a, b) => a.date.localeCompare(b.date));
+  const exerciseNotesHistory: ExerciseNoteEntry[] = [];
+  for (const w of completedChrono) {
+    const bwKg = emaForNotes(w.date, 0);
+    for (const ex of w.exercises) {
+      const note = ex.athleteNotes?.trim();
+      if (!note) continue;
+      const doneSets = ex.sets.filter((s) => s.completed && !s.isWarmup && s.setType !== 'warmup');
+      let bestE1rmKg = 0;
+      let topWeightKg = 0;
+      let topReps = 0;
+      for (const s of doneSets) {
+        const kg = s.actualWeightKg ?? s.targetWeightKg ?? 0;
+        const reps = s.actualReps ?? 0;
+        if (kg > topWeightKg || (kg === topWeightKg && reps > topReps)) {
+          topWeightKg = kg;
+          topReps = reps;
+        }
+        const usesBw = ex.equipment === 'bodyweight' || ex.equipment === 'weighted_bodyweight' || Boolean(ex.isWeightedCalisthenic);
+        if (!usesBw || bwKg > 0) {
+          const e = calculateE1RM(
+            kg,
+            reps,
+            s.actualRir ?? s.targetRir ?? 2,
+            ex.equipment,
+            ex.isRdl,
+            ex.isWeightedCalisthenic,
+            bwKg > 0 ? bwKg : 80,
+            ex.exerciseId,
+            ex.pillar
+          );
+          if (e > bestE1rmKg) bestE1rmKg = Math.round(e * 10) / 10;
+        }
+      }
+      exerciseNotesHistory.push({
+        exerciseId: ex.exerciseId,
+        exerciseName: ex.name,
+        date: w.date,
+        workoutId: w.id,
+        note,
+        category: classifyExerciseNote(note),
+        readinessState: w.readinessState || 'Normal',
+        ...(bestE1rmKg > 0 ? { bestE1rmKg } : {}),
+        ...(topWeightKg > 0 ? { topWeightKg } : {}),
+        ...(topReps > 0 ? { topReps } : {}),
+      });
+    }
+  }
+  exerciseNotesHistory.reverse();
+
+  const discomfortNotes = exerciseNotesHistory.filter((n) => n.category === 'pain_discomfort');
+  if (discomfortNotes.length > 0) {
+    const byExercise = new Map<string, ExerciseNoteEntry[]>();
+    for (const n of discomfortNotes) {
+      const arr = byExercise.get(n.exerciseName) || [];
+      arr.push(n);
+      byExercise.set(n.exerciseName, arr);
+    }
+    const repeatedEntry = [...byExercise.entries()].sort((a, b) => b[1].length - a[1].length)[0];
+    const [flaggedName, entries] = repeatedEntry;
+    const dateList = entries.slice(0, 3).map((e) => e.date).join(', ');
+    insights.push({
+      id: 'pkg-insight-notes-discomfort',
+      category: 'Joint Health',
+      title:
+        entries.length >= 2
+          ? `Recurring Note: ${flaggedName}`
+          : `Discomfort Note: ${flaggedName}`,
+      confidence: entries.length >= 2 ? 93 : 84,
+      impactMetric: `${entries.length} ${entries.length === 1 ? 'note' : 'notes'}`,
+      narrative:
+        entries.length >= 2
+          ? `You noted discomfort or tightness on ${flaggedName} across ${entries.length} sessions (${dateList}): "${entries[0].note}".`
+          : `You logged a discomfort note on ${flaggedName} (${entries[0].date}): "${entries[0].note}".`,
+      actionableStep:
+        'Use the Swap button if pain repeats on this pattern, keep 2–3 reps in reserve, and stop any set that produces sharp joint pain.',
+    });
+  }
+
+  const fatigueNotes = exerciseNotesHistory.filter((n) => n.category === 'fatigue_heavy');
+  if (fatigueNotes.length >= 2) {
+    const lowRecoveryMatches = fatigueNotes.filter((n) => n.readinessState === 'Amber Shield').length;
+    insights.push({
+      id: 'pkg-insight-notes-fatigue',
+      category: 'Autonomic',
+      title: 'Session Notes Show Elevated Fatigue',
+      confidence: 88,
+      impactMetric: `${fatigueNotes.length} heavy logs`,
+      narrative:
+        lowRecoveryMatches > 0
+          ? `${fatigueNotes.length} recent exercise notes mention heavy or grinding sets, with ${lowRecoveryMatches} falling on Amber Shield recovery days (${fatigueNotes[0].exerciseName} on ${fatigueNotes[0].date}).`
+          : `You flagged heavy or grinding effort in ${fatigueNotes.length} sessions (latest: ${fatigueNotes[0].exerciseName} on ${fatigueNotes[0].date}: "${fatigueNotes[0].note}").`,
+      actionableStep:
+        'Hold weight steady until bar speed returns cleanly within 1–2 reps in reserve.',
+    });
+  }
+
+  if (exerciseNotesHistory.length > 0 && discomfortNotes.length === 0) {
+    const latestNote = exerciseNotesHistory[0];
+    const uniqueExCount = new Set(exerciseNotesHistory.map((n) => n.exerciseId)).size;
+    insights.push({
+      id: 'pkg-insight-notes-log',
+      category: 'Biomechanical',
+      title: 'Session Notes & Cues Tracked',
+      confidence: 90,
+      impactMetric: `${exerciseNotesHistory.length} ${exerciseNotesHistory.length === 1 ? 'note' : 'notes'}`,
+      narrative: `Latest on ${latestNote.exerciseName} (${latestNote.date}): "${latestNote.note}" across ${uniqueExCount} ${uniqueExCount === 1 ? 'exercise' : 'exercises'}.`,
+      actionableStep:
+        'Your latest cue stays pinned directly on each exercise card next session so setups and feel stay consistent.',
+    });
+  }
+
   const latestBf = bodyComposition.scaleTrends.find((t) => t.id === 'body_fat')?.latest;
   const latestFfm = bodyComposition.scaleTrends.find((t) => t.id === 'fat_free_mass')?.latest;
   const latestWaist = bodyComposition.tapeTrends.find((t) => t.id === 'waist')?.latest;
@@ -2634,6 +2819,7 @@ export function buildAthleteKnowledgeGraph(
     stepsSummary,
     whoopSummary,
     activitySummary,
+    exerciseNotesHistory,
     // The full-stretch share only means something once there are sets this week.
     insights: totalHardSetsWeek > 0 ? insights : insights.filter((i) => i.id !== 'pkg-insight-2'),
     scientificKnowledgeBase: EXERCISE_SCIENCE_KNOWLEDGE_BASE,

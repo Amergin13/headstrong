@@ -202,12 +202,14 @@ export const ProgressChartCard: React.FC<{
           positiveProgress={delta ? delta.polarity === 'positive' : undefined}
           typicalRange={visibleChart.typicalRange}
           windowRange={visibleChart.windowRange}
+          emptyTitle="No data yet"
+          emptyMessage={`Log ${chart.title.toLowerCase()} to start building this trend.`}
           label={
             visibleChart.points.length >= 2
               ? `${chart.title} from ${visibleChart.format(visibleChart.points[0].value)} to ${visibleChart.format(visibleChart.points[visibleChart.points.length - 1].value)}`
               : visibleChart.points.length === 1
               ? `${chart.title}: starting point ${visibleChart.format(visibleChart.points[0].value)}. The trend line starts after your next one.`
-              : `Example chart. ${chart.title} appears here after your first one.`
+              : `No data yet. ${chart.title} appears here after your first entry.`
           }
         />
       </div>

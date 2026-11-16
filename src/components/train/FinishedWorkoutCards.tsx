@@ -179,22 +179,35 @@ export const CompletedExerciseCard: React.FC<{ summary: CompletedExerciseSummary
           </p>
         ))}
       </div>
-      {!summary.timed && (
+      {summary.athleteNotes && (
+        <p className="wk-caption mt-3 max-w-prose" style={{ color: 'var(--color-text-secondary)' }}>
+          Session note: {summary.athleteNotes}
+        </p>
+      )}
         <div className="mt-3">
           <TrendChart
-            points={history.map((h) => ({ date: localDateString(new Date(h.at)), value: h.e1rmKg }))}
-            format={(kg) => units.formatPrecise(kg)}
+            points={history.map((h) => ({ date: localDateString(new Date(h.at)), value: h.value ?? h.e1rmKg }))}
+            format={(v) => (summary.timed ? `${Math.round(v)}s` : units.formatPrecise(v))}
             height={240}
+            emptyTitle="No history yet"
+            emptyMessage="Your progress appears here once sessions are saved."
             label={
               history.length >= 2
-                ? `Estimated one-rep max over your last ${history.length} sessions, ending today: ${units.formatPrecise(history[0].e1rmKg)} to ${units.formatPrecise(history[history.length - 1].e1rmKg)}`
+                ? `${summary.timed ? 'Hold time' : 'Estimated one-rep max'} over your last ${history.length} sessions, ending today: ${
+                    summary.timed ? `${Math.round(history[0].value ?? history[0].e1rmKg)}s` : units.formatPrecise(history[0].e1rmKg)
+                  } to ${
+                    summary.timed
+                      ? `${Math.round(history[history.length - 1].value ?? history[history.length - 1].e1rmKg)}s`
+                      : units.formatPrecise(history[history.length - 1].e1rmKg)
+                  }`
                 : history.length === 1
-                ? `Starting point set today: estimated one-rep max ${units.formatPrecise(history[0].e1rmKg)}. The trend line starts after your next session.`
-                : 'Example chart. Your estimated one-rep max for this exercise appears here after your first session.'
+                ? `Starting point set today: ${
+                    summary.timed ? `${Math.round(history[0].value ?? history[0].e1rmKg)}s` : units.formatPrecise(history[0].e1rmKg)
+                  }. The trend line starts after your next session.`
+                : 'Empty chart. Your progress for this exercise appears here after your first session.'
             }
           />
         </div>
-      )}
     </section>
   );
 };

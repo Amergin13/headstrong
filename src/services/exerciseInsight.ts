@@ -9,10 +9,11 @@
  * Progress is tracked as the best set's estimated one-rep max per session (RIR-adjusted Epley,
  * the app's E1RM formula). Built only from completed sets.
  */
-import { calculateE1RM } from '../engine/e1rm';
+import { calculateE1RM, getBodyweightLoadRatio, isTimedExercise } from '../engine/e1rm';
 import { buildBodyweightEmaLookup } from '../engine/ema';
 import { getWorkoutCompletedAt } from '../engine/recovery';
 import { BiometricLog, ExerciseSession, ReadinessState, WorkoutSession, WorkoutSet } from '../engine/types';
+import { localDateString } from '../utils/date';
 
 export interface ExerciseInsight {
   /** What the chart points and trajectory line track: estimated 1RM (kg), reps (unloaded bodyweight), added weight (kg), or time. */
@@ -77,25 +78,46 @@ export function buildExerciseInsight(
   const load = (kg: number) => formatLoad(round1(kg));
   const plannedSet = exercise.sets.find(isWorking);
 
-  // Timed holds and intervals are measured in time, not load.
-  if (exercise.durationSeconds || exercise.durationMinutesRange) {
+  // Timed holds and intervals are measured in hold seconds (or duration), not reps or E1RM.
+  if (isTimedExercise(exercise)) {
+    const durationOf = (ex: ExerciseSession, s: WorkoutSet) => {
+      if (s.actualDurationSeconds && s.actualDurationSeconds > 0) return s.actualDurationSeconds;
+      if (s.targetDurationSeconds && s.targetDurationSeconds > 0) return s.targetDurationSeconds;
+      if ((s.actualReps ?? 0) > 5 && ex.repTargetType === 'duration') return s.actualReps as number;
+      return ex.durationSeconds ?? 0;
+    };
+    const history = past
+      .map(({ w, ex }) => {
+        const bestSec = ex.sets
+          .filter((s) => s.completed && isWorking(s))
+          .reduce((m, s) => Math.max(m, durationOf(ex, s)), 0);
+        return { at: getWorkoutCompletedAt(w), e1rmKg: bestSec, value: bestSec };
+      })
+      .filter((h) => h.value > 0);
+
     const line1 =
-      past.length === 0
+      history.length === 0
         ? `First time on ${exercise.name}—today sets your starting point.`
-        : past.length === 1
-        ? `Baseline endurance established from your first session on ${exercise.name}.`
-        : `Endurance capacity is rising across ${past.length} logged sessions on ${exercise.name}.`;
+        : history.length === 1
+        ? `Baseline hold established at ${history[0].value}s from your first session.`
+        : `Hold capacity across ${history.length} sessions stands at ${history[history.length - 1].value}s.`;
     const line2 =
       readinessState === 'Amber Shield'
-        ? 'Recovery is low, so today holds the weight steady to maintain stability without excess fatigue.'
-        : exercise.durationSeconds
-        ? 'Today targets sustained isometric trunk stability and muscular endurance.'
+        ? 'Recovery is low, so today holds steady to maintain stability without excess fatigue.'
+        : exercise.durationSeconds || isTimedExercise(exercise)
+        ? 'Today targets sustained isometric stability and muscular endurance.'
         : 'Today builds aerobic conditioning and sustained work capacity.';
-    return { metric: 'time', history: [], lines: [line1, line2], summary: `${line1}\n${line2}` };
+    return { metric: 'time', history, lines: [line1, line2], summary: `${line1}\n${line2}` };
   }
 
-  // Unloaded bodyweight exercises (0 added weight) are measured in best set reps, never phantom 100+ kg E1RM.
-  if (isCalisthenic && !hasAddedLoad) {
+  const bwRatio = isCalisthenic ? getBodyweightLoadRatio(exercise.exerciseId, exercise.pillar) : 0;
+  const hasRealPastBw = past.length > 0 && past.every(({ w }) => bwForDate(w.date) > 0);
+  const currentSessionBw = bwForDate(localDateString());
+  const canCountBodyweight =
+    isCalisthenic && bwRatio > 0 && (past.length > 0 ? hasRealPastBw : currentSessionBw > 0);
+
+  // Unloaded bodyweight exercises (or bands/zero-BW moves) track best set reps ONLY when bodyweight is not logged or ratio is 0.
+  if (isCalisthenic && !hasAddedLoad && !canCountBodyweight) {
     const history = past
       .map(({ w, ex }) => {
         const bestReps = ex.sets.filter(done).reduce((m, s) => Math.max(m, s.actualReps ?? 0), 0);
@@ -142,7 +164,7 @@ export function buildExerciseInsight(
   }
 
   // Calisthenic exercise with added external weight, when any past session lacks a real bodyweight: track added load instead of guessing 80 kg or showing an artificial +80 kg jump.
-  const hasRealBw = past.length > 0 && past.every(({ w }) => bwForDate(w.date) > 0);
+  const hasRealBw = canCountBodyweight;
   if (isCalisthenic && !hasRealBw) {
     const history = past
       .map(({ w, ex }) => {
@@ -250,6 +272,7 @@ export function buildExerciseInsight(
 export interface PreviousSet {
   weightKg: number;
   reps: number;
+  durationSeconds?: number;
 }
 
 /** Working sets from the last completed session of this exact exercise (newest first by finish time). */
@@ -260,10 +283,19 @@ export function getPreviousWorkingSets(exerciseId: string, workouts: WorkoutSess
   for (const w of ordered) {
     const ex = w.exercises.find((e) => e.exerciseId === exerciseId);
     const doneSets = ex?.sets.filter((st) => st.completed && !st.isWarmup && st.setType !== 'warmup') || [];
-    if (doneSets.length > 0) {
+    if (doneSets.length > 0 && ex) {
+      const timed = isTimedExercise(ex);
       return doneSets.map((st) => ({
         weightKg: st.actualWeightKg ?? st.targetWeightKg,
         reps: st.actualReps ?? st.targetReps,
+        ...(timed
+          ? {
+              durationSeconds:
+                st.actualDurationSeconds ??
+                st.targetDurationSeconds ??
+                ((st.actualReps ?? 0) > 5 && ex.repTargetType === 'duration' ? st.actualReps : ex.durationSeconds),
+            }
+          : {}),
       }));
     }
   }

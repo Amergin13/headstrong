@@ -2,11 +2,13 @@ import React, { useState } from 'react';
 import {
   ExerciseDefinition,
   ExerciseSession,
+  GoalPhase,
   HomeEquipmentTag,
+  ReadinessState,
   TrainingLocation,
+  WorkoutSession,
 } from '../../engine/types';
 import {
-  translateWeightBetweenImplements,
   formatImplementWeightLabel,
   usesOneDumbbell,
 } from '../../engine/e1rm';
@@ -14,11 +16,15 @@ import {
   canPerformExerciseInLocation,
   getMovementFamilyLabel,
   getMovementVectorId,
+  getRelatedSwapAlternatives,
+  prescribeExerciseSwap,
+  SwapPrescription,
 } from '../../engine/progression';
 import { X, ArrowRightLeft } from 'lucide-react';
 import { triggerHaptic } from '../../utils/haptics';
 import { formatSentenceCase } from '../../utils/typography';
 import { useUnits } from '../../utils/unitsContext';
+import { WeightUnit } from '../../utils/units';
 
 interface ExerciseSwapModalProps {
   currentExercise: ExerciseSession;
@@ -26,7 +32,16 @@ interface ExerciseSwapModalProps {
   bodyweightEmaKg: number;
   activeLocation?: TrainingLocation;
   homeEquipment?: HomeEquipmentTag[];
-  onConfirmSwap: (newExerciseDef: ExerciseDefinition, convertedWeightKg: number) => void;
+  workouts?: WorkoutSession[];
+  readinessState?: ReadinessState;
+  goalPhase?: GoalPhase;
+  unit?: WeightUnit;
+  resolveFallbackWeight?: (def: ExerciseDefinition) => number | undefined;
+  onConfirmSwap: (
+    newExerciseDef: ExerciseDefinition,
+    convertedWeightKg: number,
+    prescription?: SwapPrescription
+  ) => void;
   onClose: () => void;
   /** Exercise IDs already in today's workout (not offered again). */
   excludeExerciseIds?: string[];
@@ -55,11 +70,17 @@ export const ExerciseSwapModal: React.FC<ExerciseSwapModalProps> = ({
   bodyweightEmaKg,
   activeLocation = 'gym',
   homeEquipment = ['bench', 'dumbbells', 'trx', 'pullup_bar'],
+  workouts = [],
+  readinessState = 'Normal',
+  goalPhase = 'Lean Bulk',
+  unit,
+  resolveFallbackWeight,
   onConfirmSwap,
   onClose,
   excludeExerciseIds = [],
 }) => {
   const units = useUnits();
+  const activeUnit = unit ?? units.unit;
   const [selectedLocation, setSelectedLocation] = useState<TrainingLocation>(activeLocation);
 
   const currentWeight =
@@ -80,43 +101,39 @@ export const ExerciseSwapModal: React.FC<ExerciseSwapModalProps> = ({
       return canPerformExerciseInLocation(ex, selectedLocation, homeEquipment);
     })
     .sort((a, b) => {
-      const aPureBw = (!a.requiredHomeEquipment || a.requiredHomeEquipment.length === 0) ? 1 : 0;
-      const bPureBw = (!b.requiredHomeEquipment || b.requiredHomeEquipment.length === 0) ? 1 : 0;
+      const aLoaded = a.equipment !== 'bodyweight' ? 1 : 0;
+      const bLoaded = b.equipment !== 'bodyweight' ? 1 : 0;
+      if (aLoaded !== bLoaded) return bLoaded - aLoaded;
+      const aPureBw = !a.requiredHomeEquipment || a.requiredHomeEquipment.length === 0 ? 1 : 0;
+      const bPureBw = !b.requiredHomeEquipment || b.requiredHomeEquipment.length === 0 ? 1 : 0;
       return bPureBw - aPureBw;
     });
 
-  const computeConvertedWeight = (targetDef: ExerciseDefinition): number => {
-    const isPureBw =
-      selectedLocation === 'travel' ||
-      (targetDef.equipment === 'bodyweight' && !targetDef.isWeightedCalisthenic);
-    if (isPureBw) return 0;
+  // Secondary related substitutes sharing the primary prime mover (e.g. DB RDL for Leg Curl at home)
+  const relatedAlternatives = getRelatedSwapAlternatives(
+    currentDef || currentExercise,
+    exerciseCatalog,
+    selectedLocation,
+    homeEquipment,
+    [currentExercise.exerciseId, ...excludeExerciseIds, ...alternatives.map((a) => a.id)]
+  );
 
-    return translateWeightBetweenImplements(
-      currentWeight,
-      {
-        equipment: currentExercise.equipment,
-        isRdl: currentExercise.isRdl,
-        isWeightedCalisthenic: currentExercise.isWeightedCalisthenic,
-        exerciseId: currentExercise.exerciseId,
-        name: currentExercise.name,
-        pillar: currentExercise.pillar,
-      },
-      {
-        equipment: targetDef.equipment,
-        isRdl: targetDef.isRdl,
-        isWeightedCalisthenic: targetDef.isWeightedCalisthenic,
-        exerciseId: targetDef.id,
-        name: targetDef.name,
-        pillar: targetDef.pillar,
-      },
-      bodyweightEmaKg
-    );
-  };
+  const computeSwapPrescription = (targetDef: ExerciseDefinition): SwapPrescription =>
+    prescribeExerciseSwap({
+      sourceExercise: currentExercise,
+      targetDef,
+      workouts,
+      readinessState,
+      goalPhase,
+      bodyweightEmaKg,
+      location: selectedLocation,
+      unit: activeUnit,
+      fallbackTargetWeightKg: resolveFallbackWeight?.(targetDef),
+    });
 
-  const handleSelectAlternative = (alt: ExerciseDefinition) => {
+  const handleSelectAlternative = (alt: ExerciseDefinition, prescription: SwapPrescription) => {
     triggerHaptic('success');
-    const converted = computeConvertedWeight(alt);
-    onConfirmSwap(alt, converted);
+    onConfirmSwap(alt, prescription.targetWeightKg, prescription);
     onClose();
   };
 
@@ -230,11 +247,12 @@ export const ExerciseSwapModal: React.FC<ExerciseSwapModalProps> = ({
               Select replacement exercise
             </span>
             <span className="wk-caption">
-              {alternatives.length} {alternatives.length === 1 ? 'option' : 'options'}
+              {alternatives.length + relatedAlternatives.length}{' '}
+              {alternatives.length + relatedAlternatives.length === 1 ? 'option' : 'options'}
             </span>
           </div>
 
-          {alternatives.length === 0 ? (
+          {alternatives.length === 0 && relatedAlternatives.length === 0 ? (
             <div className="wk-raised text-center space-y-1">
               <p className="wk-subhead">
                 No {selectedLocation === 'travel' ? 'bodyweight' : selectedLocation === 'home' ? 'home' : 'gym'} exercises found
@@ -244,21 +262,29 @@ export const ExerciseSwapModal: React.FC<ExerciseSwapModalProps> = ({
               </p>
             </div>
           ) : (
-            alternatives.map((alt) => {
-              const convertedKg = computeConvertedWeight(alt);
+            (() => {
+              const renderOption = (alt: ExerciseDefinition) => {
+              const prescription = computeSwapPrescription(alt);
+              const convertedKg = prescription.targetWeightKg;
               const equipLabel =
                 alt.requiredHomeEquipment && alt.requiredHomeEquipment.length > 0
                   ? alt.requiredHomeEquipment.map((t) => HOME_TAG_LABELS[t] || t).join(' + ')
                   : EQUIPMENT_LABELS[alt.equipment] || alt.equipment;
-              const isPureBw =
-                selectedLocation === 'travel' ||
-                (alt.equipment === 'bodyweight' && !alt.isWeightedCalisthenic);
+              const isPureBw = prescription.isPureBodyweight;
+              const targetLine = prescription.isTimed
+                ? `${prescription.targetDurationSeconds}s hold`
+                : `${prescription.minReps}–${prescription.maxReps} reps • Start ${prescription.targetReps}`;
+              const rightDetail = prescription.usedOwnHistory
+                ? 'Your last target'
+                : prescription.isTimed
+                ? 'Timed hold'
+                : `${prescription.targetReps} reps @ ${prescription.targetRir} RIR`;
 
               return (
                 <button
                   key={alt.id}
                   type="button"
-                  onClick={() => handleSelectAlternative(alt)}
+                  onClick={() => handleSelectAlternative(alt, prescription)}
                   className="wk-raised w-full text-left transition-all space-y-2 min-h-[44px] active:scale-[0.99]"
                 >
                   <div className="flex items-start justify-between gap-2">
@@ -267,8 +293,8 @@ export const ExerciseSwapModal: React.FC<ExerciseSwapModalProps> = ({
                         {formatSentenceCase(alt.name)}
                       </div>
                       <div className="wk-caption mt-1">
-                        {equipLabel} • {alt.defaultRepRange[0]}–{alt.defaultRepRange[1]} reps
-                        {selectedLocation === 'travel' ? ' • Zero Equipment' : ''}
+                        {equipLabel} • {targetLine}
+                        {selectedLocation === 'travel' ? ' • Zero equipment' : ''}
                       </div>
                     </div>
 
@@ -285,11 +311,13 @@ export const ExerciseSwapModal: React.FC<ExerciseSwapModalProps> = ({
                           ? `${units.format(convertedKg / 2)} each`
                           : units.format(convertedKg)}
                       </span>
-                      <span className="wk-caption">
-                        {isPureBw ? 'No added weight' : 'Matched to your strength'}
-                      </span>
+                      <span className="wk-caption">{rightDetail}</span>
                     </div>
                   </div>
+
+                  <p className="wk-caption" style={{ color: 'var(--color-text-secondary)' }}>
+                    {prescription.rationale}
+                  </p>
 
                   {alt.whyItWorks && (
                     <p className="wk-body pt-1 max-w-prose">
@@ -298,7 +326,24 @@ export const ExerciseSwapModal: React.FC<ExerciseSwapModalProps> = ({
                   )}
                 </button>
               );
-            })
+              };
+
+              return (
+                <>
+                  {alternatives.map(renderOption)}
+                  {relatedAlternatives.length > 0 && (
+                    <div className="pt-2 space-y-2">
+                      <div className="px-1">
+                        <span className="wk-label" style={{ color: 'var(--wk-muted)' }}>
+                          Same muscle • Alternative pattern
+                        </span>
+                      </div>
+                      {relatedAlternatives.map(renderOption)}
+                    </div>
+                  )}
+                </>
+              );
+            })()
           )}
         </div>
       </div>

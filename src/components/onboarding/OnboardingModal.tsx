@@ -125,25 +125,28 @@ const defaultUnit = (): WeightUnit => {
 
 const titleStyle: React.CSSProperties = {
   fontSize: 20,
-  lineHeight: 1.2,
+  lineHeight: '24px',
   fontWeight: 600,
   color: 'var(--color-text-primary)',
   letterSpacing: '-0.02em',
 };
 const bodyStyle: React.CSSProperties = {
   fontSize: 16,
-  lineHeight: 1.5,
+  lineHeight: '24px',
   color: 'var(--wk-body)',
   maxWidth: '65ch',
 };
 const sectionLabel: React.CSSProperties = {
   fontSize: 12,
+  lineHeight: '16px',
   fontWeight: 500,
   color: 'var(--color-text-muted)',
   marginBottom: 8,
 };
-const optionText: React.CSSProperties = { fontSize: 16, fontWeight: 500, color: 'var(--color-text-primary)', lineHeight: 1.25 };
-const optionDetail: React.CSSProperties = { fontSize: 12, color: 'var(--wk-muted)', lineHeight: 1.4, marginTop: 4 };
+const optionText: React.CSSProperties = { fontSize: 16, fontWeight: 500, color: 'var(--color-text-primary)', lineHeight: '20px' };
+const optionDetail: React.CSSProperties = { fontSize: 12, color: 'var(--wk-muted)', lineHeight: '16px', marginTop: 4 };
+const focusRingClass =
+  'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-text-primary)]';
 
 /** A selectable row or tile: accent ring when chosen. */
 const choiceStyle = (selected: boolean): React.CSSProperties => ({
@@ -183,6 +186,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
   // Optional: one goal of the athlete's own, on top of the plan's three.
   const [ownLift, setOwnLift] = useState<string | null>(null);
   const [ownTarget, setOwnTarget] = useState('');
+  const [showHomeGearFallback, setShowHomeGearFallback] = useState(false);
   const unit: WeightUnit = returning ? profile.weightUnit || 'kg' : defaultUnit();
   const ownChoice = OWN_GOAL_OPTIONS.find((l) => l.exerciseId === ownLift);
   const ownNumber = Number(ownTarget);
@@ -192,7 +196,11 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
       : null;
   const ownInvalid = Boolean(ownChoice) && ownTarget.trim() !== '' && !ownGoal;
   const headingRef = useRef<HTMLHeadingElement>(null);
+  const ownInputRef = useRef<HTMLInputElement>(null);
   const touchStartX = useRef<number | null>(null);
+
+  // Opened from Settings to change gear: just where you train, no introduction (the goal has its own control in Settings).
+  const editing = returning && initialStep === 3;
 
   // Move focus to the new screen's heading so screen readers announce it (disabled in inline specimens).
   useEffect(() => {
@@ -201,8 +209,18 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
     }
   }, [inline, step]);
 
-  // Opened from Settings to change gear: just where you train, no introduction (the goal has its own control in Settings).
-  const editing = returning && initialStep === 3;
+  // Escape closes the returning location editor dialog.
+  useEffect(() => {
+    if (inline || !returning) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [inline, onClose, returning]);
 
   const goTo = (next: OnboardingStep) => {
     triggerHaptic('light');
@@ -210,6 +228,11 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
   };
 
   const finish = () => {
+    if (!editing && ownInvalid) {
+      triggerHaptic('warning');
+      ownInputRef.current?.focus();
+      return;
+    }
     triggerHaptic('success');
     const known: TrainingLocation[] = profile.availableLocations?.length ? profile.availableLocations : ['gym', 'home', 'travel'];
     const availableLocations = known.includes(location) ? known : [...known, location];
@@ -256,7 +279,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
               type="button"
               onClick={() => goTo((step - 1) as OnboardingStep)}
               aria-label="Back"
-              className="w-11 h-11 min-h-[44px] min-w-[44px] -ml-2 rounded-full flex items-center justify-center transition-colors"
+              className={`w-11 h-11 min-h-[44px] min-w-[44px] -ml-2 rounded-full flex items-center justify-center transition-colors hover:bg-[var(--wk-raised)] ${focusRingClass}`}
               style={{ color: 'var(--color-text-secondary)' }}
             >
               <ChevronLeft className="w-6 h-6 stroke-[2]" />
@@ -295,7 +318,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                 onClose();
               }}
               aria-label="Close"
-              className="w-11 h-11 min-h-[44px] min-w-[44px] -mr-2 rounded-full flex items-center justify-center transition-colors"
+              className={`w-11 h-11 min-h-[44px] min-w-[44px] -mr-2 rounded-full flex items-center justify-center transition-colors hover:bg-[var(--wk-raised)] ${focusRingClass}`}
               style={{ color: 'var(--color-text-secondary)' }}
             >
               <X className="w-5 h-5 stroke-[2]" />
@@ -305,7 +328,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
               <button
                 type="button"
                 onClick={() => goTo(3)}
-                className="h-11 min-h-[44px] px-2 -mr-2 font-medium transition-colors"
+                className={`h-11 min-h-[44px] px-2 -mr-2 rounded-xl font-medium transition-colors hover:text-[var(--color-text-primary)] ${focusRingClass}`}
                 style={{ fontSize: 16, color: 'var(--color-text-secondary)' }}
               >
                 Skip
@@ -317,7 +340,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
 
       <div key={step} className="ob-enter flex flex-col flex-1">
         {!editing && (
-          <div style={{ height: isLast ? 112 : 200, marginTop: isLast ? 4 : 20 }}>
+          <div style={{ height: isLast ? 120 : 200, marginTop: isLast ? 8 : 20 }}>
             <Illustration weeks={6} perWeek={plan.workoutsPerWeek} />
           </div>
         )}
@@ -326,8 +349,8 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
           id={titleId}
           ref={headingRef}
           tabIndex={inline ? undefined : -1}
-          className="outline-none"
-          style={{ ...titleStyle, marginTop: isLast ? 8 : 20 }}
+          className={isLast ? 'outline-none' : 'wk-page-title outline-none'}
+          style={{ ...(isLast ? titleStyle : {}), marginTop: isLast ? 12 : 20 }}
         >
           {editing ? 'Where you train' : screen.title}
         </HeadingTag>
@@ -353,7 +376,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                         triggerHaptic('light');
                         setGoal(g.id);
                       }}
-                      className="w-full text-left flex items-center"
+                      className={`w-full text-left flex items-center ${focusRingClass}`}
                       style={{ ...choiceStyle(goal === g.id), padding: '12px 16px', gap: 12 }}
                     >
                       <span className="flex-1">
@@ -388,20 +411,30 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                           setOwnLift(on ? null : lift.exerciseId);
                           setOwnTarget(on ? '' : lift.metric === 'steps' ? '10000' : '');
                         }}
-                        className="flex items-center font-medium"
-                        style={{ ...choiceStyle(on), borderRadius: 999, padding: '0 16px', minHeight: 44, fontSize: 16, color: 'var(--color-text-primary)' }}
+                        className={`flex items-center font-medium ${focusRingClass}`}
+                        style={{
+                          ...choiceStyle(on),
+                          borderRadius: 999,
+                          padding: '0 16px',
+                          gap: 8,
+                          minHeight: 44,
+                          fontSize: 16,
+                          color: on ? 'var(--color-text-primary)' : 'var(--color-text-secondary)',
+                        }}
                       >
+                        {on && <Check className="w-4 h-4 stroke-[2]" style={{ color: 'var(--wk-accent)' }} aria-hidden="true" />}
                         {lift.label}
                       </button>
                     );
                   })}
                 </div>
                 {ownChoice && (
-                  <div className="flex items-center" style={{ gap: 8, marginTop: 12 }}>
+                  <div className="flex items-center flex-wrap" style={{ gap: 8, marginTop: 12 }}>
                     <label htmlFor={targetInputId} style={{ ...optionText, flexShrink: 0 }}>
                       {ownChoice.metric === 'weight' ? 'Lift' : ownChoice.metric === 'steps' ? 'Reach' : 'Do'}
                     </label>
                     <input
+                      ref={ownInputRef}
                       id={targetInputId}
                       type="number"
                       inputMode={ownChoice.metric === 'weight' ? 'decimal' : 'numeric'}
@@ -412,14 +445,44 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                       aria-invalid={ownInvalid}
                       aria-describedby={targetHelpId}
                       className="wk-field tabular-nums"
-                      style={{ width: 96, minHeight: 44, padding: '0 12px', fontSize: 16, color: 'var(--color-text-primary)' }}
+                      style={{
+                        width: 96,
+                        minHeight: 44,
+                        padding: '0 12px',
+                        fontSize: 16,
+                        color: 'var(--color-text-primary)',
+                        border: `1px solid ${ownInvalid ? 'var(--color-status-danger-fill)' : 'var(--color-border-subtle)'}`,
+                      }}
                     />
                     <span style={optionText}>
                       {ownChoice.metric === 'weight' ? unit : ownChoice.metric === 'steps' ? 'steps a day' : 'reps in one set'}
                     </span>
+                    {ownInvalid && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          triggerHaptic('light');
+                          setOwnTarget('');
+                          ownInputRef.current?.focus();
+                        }}
+                        className={`px-3 min-h-[44px] rounded-xl font-medium ${focusRingClass}`}
+                        style={{ fontSize: 12, color: 'var(--color-text-secondary)', border: '1px solid var(--color-border-strong)' }}
+                      >
+                        Clear
+                      </button>
+                    )}
                   </div>
                 )}
-                <p id={targetHelpId} style={{ ...optionDetail, marginTop: 8, maxWidth: '65ch' }}>
+                <p
+                  id={targetHelpId}
+                  role={ownInvalid ? 'alert' : undefined}
+                  style={{
+                    ...optionDetail,
+                    marginTop: 8,
+                    maxWidth: '65ch',
+                    color: ownInvalid ? 'var(--color-status-danger)' : optionDetail.color,
+                  }}
+                >
                   {ownInvalid
                     ? `Enter ${
                         ownChoice!.metric === 'weight'
@@ -452,14 +515,23 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                         triggerHaptic('light');
                         setProgram(opt.id);
                       }}
-                      className="w-full text-left flex items-center"
+                      className={`w-full text-left flex items-center ${focusRingClass}`}
                       style={{ ...choiceStyle(program === opt.id), padding: '12px 16px', gap: 12 }}
                     >
-                      <span className="flex-1">
+                      <span className="flex-1 min-w-0">
                         <span className="flex items-center flex-wrap" style={{ gap: 8 }}>
                           <span style={optionText}>{opt.label}</span>
                           {opt.recommended && (
-                            <span className="wk-pill" style={{ color: 'var(--wk-accent)', background: 'var(--color-status-positive-soft)' }}>
+                            <span
+                              className="font-medium rounded-lg px-2 py-1"
+                              style={{
+                                fontSize: 12,
+                                lineHeight: '16px',
+                                color: 'var(--wk-accent)',
+                                background: 'var(--color-bg-surface-control)',
+                                border: '1px solid var(--color-border-accent)',
+                              }}
+                            >
                               Recommended
                             </span>
                           )}
@@ -476,8 +548,10 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
             )}
 
             <fieldset style={{ marginTop: editing ? 0 : 20 }}>
-              <legend style={sectionLabel}>Where will you train?</legend>
-              <div className="grid grid-cols-3" style={{ gap: 8 }}>
+              <legend className={editing ? 'sr-only' : undefined} style={editing ? undefined : sectionLabel}>
+                Where will you train?
+              </legend>
+              <div className="flex flex-col" style={{ gap: 8 }}>
                 {LOCATIONS.map((loc) => (
                   <button
                     key={loc.id}
@@ -487,20 +561,45 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                       triggerHaptic('light');
                       setLocation(loc.id);
                     }}
-                    className="text-center flex flex-col items-center justify-center"
-                    style={{ ...choiceStyle(location === loc.id), padding: '12px 8px' }}
+                    className={`w-full text-left flex items-center ${focusRingClass}`}
+                    style={{ ...choiceStyle(location === loc.id), padding: '12px 16px', gap: 12 }}
                   >
-                    <span style={optionText}>{loc.label}</span>
-                    <span style={optionDetail}>{loc.detail}</span>
+                    <span className="flex-1 min-w-0">
+                      <span className="block" style={optionText}>
+                        {loc.label}
+                      </span>
+                      <span className="block" style={optionDetail}>
+                        {loc.detail}
+                      </span>
+                    </span>
+                    <RadioDot selected={location === loc.id} />
                   </button>
                 ))}
               </div>
               <p style={{ ...optionDetail, marginTop: 8 }}>You can switch place before any workout.</p>
             </fieldset>
 
-            {(location === 'home' || initialStep === 3) && (
+            {editing && location !== 'home' && !showHomeGearFallback && (
+              <div style={{ marginTop: 12 }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    triggerHaptic('light');
+                    setShowHomeGearFallback(true);
+                  }}
+                  className={`min-h-[44px] font-medium underline underline-offset-4 ${focusRingClass}`}
+                  style={{ fontSize: 16, color: 'var(--color-text-secondary)' }}
+                >
+                  Edit home fallback gear{homeEquipment.length > 0 ? ` (${homeEquipment.length})` : ''}
+                </button>
+              </div>
+            )}
+
+            {(location === 'home' || (editing && showHomeGearFallback)) && (
               <fieldset style={{ marginTop: 16 }}>
-                <legend style={sectionLabel}>What do you have at home?</legend>
+                <legend style={sectionLabel}>
+                  {location === 'home' ? 'What do you have at home?' : 'What do you have at home? (fallback gear)'}
+                </legend>
                 <div className="flex flex-wrap" style={{ gap: 8 }}>
                   {HOME_EQUIPMENT_OPTIONS.map((eq) => {
                     const on = homeEquipment.includes(eq.id);
@@ -513,7 +612,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                           triggerHaptic('light');
                           setHomeEquipment((prev) => (on ? prev.filter((t) => t !== eq.id) : [...prev, eq.id]));
                         }}
-                        className="flex items-center font-medium"
+                        className={`flex items-center font-medium ${focusRingClass}`}
                         style={{
                           ...choiceStyle(on),
                           borderRadius: 999,
@@ -544,15 +643,17 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
             inline
               ? undefined
               : {
-                  padding: '16px 0 max(16px, env(safe-area-inset-bottom))',
-                  background: isLast ? 'linear-gradient(180deg, rgb(var(--color-bg-canvas-rgb) / 0) 0%, var(--color-bg-canvas) 35%)' : undefined,
+                  padding: `${isLast ? 28 : 16}px 0 max(16px, env(safe-area-inset-bottom))`,
+                  background: isLast
+                    ? 'linear-gradient(180deg, rgb(var(--color-bg-canvas-rgb) / 0) 0%, rgb(var(--color-bg-canvas-rgb) / 0.92) 44%, var(--color-bg-canvas) 72%)'
+                    : undefined,
                 }
           }
         >
           <button
             type="button"
             onClick={() => (isLast ? finish() : goTo((step + 1) as OnboardingStep))}
-            className="wk-button w-full font-semibold active:scale-[0.98] transition-transform"
+            className={`wk-button w-full font-semibold active:scale-[0.98] transition-transform ${focusRingClass}`}
             style={{
               background: 'var(--color-action-primary-bg)',
               color: 'var(--color-action-primary-fg)',
@@ -561,19 +662,21 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
           >
             {ctaLabel}
           </button>
-          {step === 1 && !returning && onExploreDemo && (
+          {step === 1 && !returning && onExploreDemo ? (
             <button
               type="button"
               onClick={() => {
                 triggerHaptic('light');
                 onExploreDemo();
               }}
-              className="w-full font-medium transition-colors"
+              className={`w-full font-medium transition-colors rounded-xl ${focusRingClass}`}
               style={{ minHeight: 44, marginTop: 4, fontSize: 16, color: 'var(--color-text-muted)' }}
             >
               See a demo with sample data
             </button>
-          )}
+          ) : !isLast && !returning && !inline ? (
+            <div style={{ height: 48 }} aria-hidden="true" />
+          ) : null}
         </div>
       </div>
     </div>

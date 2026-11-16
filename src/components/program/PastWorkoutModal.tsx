@@ -88,17 +88,29 @@ export const PastWorkoutModal: React.FC<PastWorkoutModalProps> = ({ workoutNumbe
                 {sets.map((st, i) => {
                   const kg = st.actualWeightKg ?? st.targetWeightKg;
                   const reps = st.actualReps ?? st.targetReps;
+                  const secs = st.actualDurationSeconds ?? st.targetDurationSeconds;
                   return (
                     <li key={st.id} className="wk-body flex justify-between gap-2">
                       <span style={{ color: 'var(--wk-muted)' }}>Set {i + 1}</span>
                       <span className="tabular-numbers" style={{ color: 'var(--color-text-primary)' }}>
-                        {kg > 0 ? `${units.format(kg)} × ${reps}` : `${reps} reps`}
+                        {secs && secs > 0
+                          ? kg > 0
+                            ? `${units.format(kg)} × ${secs}s`
+                            : `${secs}s hold`
+                          : kg > 0
+                          ? `${units.format(kg)} × ${reps}`
+                          : `${reps} reps`}
                         {st.actualRir !== undefined ? ` • ${st.actualRir} RIR` : ''}
                       </span>
                     </li>
                   );
                 })}
               </ol>
+              {ex.athleteNotes?.trim() && (
+                <p className="wk-caption mt-2" style={{ color: 'var(--color-text-secondary)' }}>
+                  Note: {ex.athleteNotes.trim()}
+                </p>
+              )}
             </div>
           ))
         )}

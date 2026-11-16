@@ -125,27 +125,65 @@ export const KnowledgeGraphCard: React.FC<KnowledgeGraphCardProps> = ({
       </div>
 
       {/* TAB 1: RECOVERY INSIGHTS */}
-      {viewMode === 'overview' &&
-        pkg.insights.map((ins) => (
-          <div key={ins.id} className="wk-card w-full text-left block">
-            <div className="flex items-start justify-between gap-3">
-              <h3 className="wk-h1 leading-tight">
-                {ins.title}
-              </h3>
-              <span className="wk-pill shrink-0">
-                {ins.impactMetric}
-              </span>
+      {viewMode === 'overview' && (
+        <>
+          {pkg.insights.map((ins) => (
+            <div key={ins.id} className="wk-card w-full text-left block">
+              <div className="flex items-start justify-between gap-3">
+                <h3 className="wk-h1 leading-tight">
+                  {ins.title}
+                </h3>
+                <span className="wk-pill shrink-0">
+                  {ins.impactMetric}
+                </span>
+              </div>
+
+              <p className="wk-body mt-2 max-w-prose">
+                {ins.narrative}
+              </p>
+
+              <p className="wk-body mt-3 max-w-prose" style={{ color: 'var(--color-text-primary)' }}>
+                {ins.actionableStep}
+              </p>
             </div>
+          ))}
 
-            <p className="wk-body mt-2 max-w-prose">
-              {ins.narrative}
-            </p>
-
-            <p className="wk-body mt-3 max-w-prose" style={{ color: 'var(--color-text-primary)' }}>
-              {ins.actionableStep}
-            </p>
-          </div>
-        ))}
+          {pkg.exerciseNotesHistory.length > 0 && (
+            <div className="wk-card w-full text-left block">
+              <div className="flex items-start justify-between gap-3">
+                <h3 className="wk-h1 leading-tight">
+                  Session notes timeline
+                </h3>
+                <span className="wk-pill shrink-0 tabular-nums">
+                  {pkg.exerciseNotesHistory.length}{' '}
+                  {pkg.exerciseNotesHistory.length === 1 ? 'note' : 'notes'}
+                </span>
+              </div>
+              <ul className="mt-3 space-y-3">
+                {pkg.exerciseNotesHistory.slice(0, 6).map((entry) => (
+                  <li
+                    key={`${entry.workoutId}-${entry.exerciseId}`}
+                    className="pt-2 border-t"
+                    style={{ borderColor: 'var(--color-border-subtle)' }}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="wk-subhead truncate">
+                        {entry.exerciseName}
+                      </span>
+                      <span className="wk-caption tabular-nums shrink-0">
+                        {entry.date}
+                      </span>
+                    </div>
+                    <p className="wk-body mt-1 max-w-prose">
+                      {entry.note}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </>
+      )}
 
       {/* TAB 2: JOINT HEALTH */}
       {viewMode === 'joints' &&

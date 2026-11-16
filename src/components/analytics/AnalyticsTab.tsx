@@ -235,11 +235,12 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
     [workouts, hasBodyweight, bodyweightEmaKg, biometrics]
   );
   const trophies = useMemo(() => trophyCase(personalBests), [personalBests]);
-  const lifetime = useMemo(() => buildTrainingTotals(workouts), [workouts]);
-  const recent = useMemo(() => buildTrainingTotals(workouts, RECENT_DAYS), [workouts]);
+  const bwForTotals = hasBodyweight ? bodyweightEmaKg : 0;
+  const lifetime = useMemo(() => buildTrainingTotals(workouts, undefined, undefined, bwForTotals, biometrics), [workouts, bwForTotals, biometrics]);
+  const recent = useMemo(() => buildTrainingTotals(workouts, RECENT_DAYS, undefined, bwForTotals, biometrics), [workouts, bwForTotals, biometrics]);
   const recentWindow = useMemo(
-    () => buildTrainingTotals(workouts, timelineMeta.days),
-    [workouts, timelineMeta.days]
+    () => buildTrainingTotals(workouts, timelineMeta.days, undefined, bwForTotals, biometrics),
+    [workouts, timelineMeta.days, bwForTotals, biometrics]
   );
   const pace = useMemo(() => weightPace(biometrics, profile.goalPhase), [biometrics, profile.goalPhase]);
   const weightChart = compositionCharts.find((c) => c.id === 'bodyweight');

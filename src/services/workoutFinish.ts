@@ -358,6 +358,8 @@ export interface CompletedExerciseSummary {
   /** Order chip, e.g. "A1". */
   chip?: string;
   isPersonalBest: boolean;
+  /** Athlete session note logged on this exercise block, if any. */
+  athleteNotes?: string;
   /** [where this lift now stands, what today's session did]. */
   lines: [string, string];
   /** Estimated max per session, oldest first, ending with today's. Empty for timed work. */
@@ -391,8 +393,17 @@ export function buildCompletedExerciseSummaries(input: {
     const insight = buildExerciseInsight(ex, input.workouts, 'Normal', input.bodyweightKg ?? 0, 12, formatWeight, input.biometrics);
     const history = insight.history;
     const weight = (st: (typeof sets)[number]) => st.actualWeightKg ?? st.targetWeightKg ?? 0;
+    const secOf = (st: (typeof sets)[number]) =>
+      st.actualDurationSeconds ??
+      st.targetDurationSeconds ??
+      ((st.actualReps ?? 0) > 5 && ex.repTargetType === 'duration' ? st.actualReps ?? 0 : ex.durationSeconds ?? 0);
     const top = sets.reduce((a, b) => (weight(b) > weight(a) || (weight(b) === weight(a) && (b.actualReps ?? 0) > (a.actualReps ?? 0)) ? b : a));
-    const topSet = weight(top) > 0 ? `${formatWeight(weight(top))} × ${top.actualReps}` : `${top.actualReps} reps`;
+    const bestSec = timed ? sets.reduce((m, s) => Math.max(m, secOf(s)), 0) : 0;
+    const topSet = timed
+      ? `${bestSec > 0 ? `${bestSec}s` : ex.tempo || 'Timed'}`
+      : weight(top) > 0
+      ? `${formatWeight(weight(top))} × ${top.actualReps}`
+      : `${top.actualReps} reps`;
     const isPersonalBest = bests.has(ex.name);
 
     let line2: string;
@@ -462,8 +473,9 @@ export function buildCompletedExerciseSummaries(input: {
       exerciseName: ex.name,
       chip: ex.orderCode || String(index + 1),
       isPersonalBest,
+      ...(ex.athleteNotes?.trim() ? { athleteNotes: ex.athleteNotes.trim() } : {}),
       lines: [insight.lines[0], line2],
-      history: timed ? [] : history,
+      history,
       timed,
     });
   });

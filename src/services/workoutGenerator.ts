@@ -13,6 +13,7 @@ import {
   canPerformExerciseInLocation,
   getMovementFamilyLabel,
   getMovementVectorId,
+  getRelatedSwapAlternatives,
   findLastCompletedExerciseSession,
   prescribeDoubleProgression,
 } from '../engine/progression';
@@ -210,14 +211,37 @@ export function getTemplateDefaultWeight(exerciseId: string): number | undefined
   const source =
     withDefaults((e) => getMovementVectorId(e) === vector)[0] ??
     withDefaults((e) => e.pillar === def.pillar && e.equipment === def.equipment).sort((a, b) => a.weight - b.weight)[0];
-  if (!source) return undefined;
+  if (!source) return CATALOG_FALLBACK_WEIGHTS_KG[exerciseId];
   const converted = translateWeightBetweenImplements(
     source.weight,
     { ...source.e, exerciseId: source.e.id },
     { ...def, exerciseId: def.id }
   );
-  return converted > 0 ? converted : undefined;
+  return converted > 0 ? converted : CATALOG_FALLBACK_WEIGHTS_KG[exerciseId];
 }
+
+const CATALOG_FALLBACK_WEIGHTS_KG: Record<string, number> = {
+  'ex-db-leg-curl': 14,
+  'ex-single-leg-db-rdl': 24,
+  'ex-barbell-hip-thrust': 80,
+  'ex-db-hip-thrust': 30,
+  'ex-leg-extension': 45,
+  'ex-db-front-squat': 36,
+  'ex-db-walking-lunge': 28,
+  'ex-db-step-up': 24,
+  'ex-db-floor-press': 36,
+  'ex-db-fly': 20,
+  'ex-cable-fly': 25,
+  'ex-single-arm-db-row': 22,
+  'ex-straight-arm-pulldown': 27.5,
+  'ex-neutral-grip-pulldown': 55,
+  'ex-arnold-press': 28,
+  'ex-db-skullcrusher': 18,
+  'ex-db-hammer-curl': 22,
+  'ex-ez-bar-curl': 30,
+  'ex-farmers-walk': 44,
+  'ex-suitcase-carry': 22,
+};
 
 function getDirectTemplateDefaultWeight(exerciseId: string): number | undefined {
   for (const tmpl of Object.values(SPLIT_TEMPLATES)) {
@@ -552,13 +576,38 @@ export function adaptWorkoutSessionToLocation(
           getMovementVectorId(d) === movementVector &&
           canPerformExerciseInLocation(d, 'home', homeEquipment)
       );
-      // Prefer loaded home equipment (dumbbells / weighted_bodyweight / trx) before pure bodyweight
-      const sortedHome = [...homeCandidates].sort((a, b) => {
-        const aLoaded = (a.requiredHomeEquipment?.length || 0) > 0 ? 1 : 0;
-        const bLoaded = (b.requiredHomeEquipment?.length || 0) > 0 ? 1 : 0;
-        return bLoaded - aLoaded;
-      });
-      targetDef = sortedHome.find((d) => !usedIds.has(d.id)) || sortedHome[0] || currentDef;
+      const hasLoadedSameFamily = homeCandidates.some(
+        (d) => (d.requiredHomeEquipment?.length || 0) > 0 && d.equipment !== 'bodyweight' && !usedIds.has(d.id)
+      );
+      if (hasLoadedSameFamily) {
+        // Prefer loaded home equipment (dumbbells / weighted_bodyweight / trx) before pure bodyweight
+        const sortedHome = [...homeCandidates].sort((a, b) => {
+          const aLoaded = (a.requiredHomeEquipment?.length || 0) > 0 ? 1 : 0;
+          const bLoaded = (b.requiredHomeEquipment?.length || 0) > 0 ? 1 : 0;
+          return bLoaded - aLoaded;
+        });
+        targetDef = sortedHome.find((d) => !usedIds.has(d.id)) || sortedHome[0] || currentDef;
+      } else {
+        // When the same movement family has no loaded home option (e.g., Seated Leg Curl with dumbbells),
+        // check related same-muscle loaded options (e.g., Dumbbell Romanian Deadlift) before falling back to BW.
+        const relatedLoadedHome = getRelatedSwapAlternatives(
+          currentDef || ex,
+          exerciseCatalog,
+          'home',
+          homeEquipment,
+          Array.from(usedIds)
+        ).filter((d) => d.equipment !== 'bodyweight' || d.isWeightedCalisthenic);
+        if (relatedLoadedHome.length > 0) {
+          targetDef = relatedLoadedHome[0];
+        } else {
+          const sortedHome = [...homeCandidates].sort((a, b) => {
+            const aLoaded = (a.requiredHomeEquipment?.length || 0) > 0 ? 1 : 0;
+            const bLoaded = (b.requiredHomeEquipment?.length || 0) > 0 ? 1 : 0;
+            return bLoaded - aLoaded;
+          });
+          targetDef = sortedHome.find((d) => !usedIds.has(d.id)) || sortedHome[0] || currentDef;
+        }
+      }
     } else {
       // location === 'travel' — prioritize zero-equipment bodyweight movements first
       const travelCandidates = exerciseCatalog.filter(
@@ -673,8 +722,8 @@ export function adaptWorkoutSessionToLocation(
       isRdl: targetDef.isRdl,
       isWeightedCalisthenic: isPureBw ? false : targetDef.isWeightedCalisthenic,
       isIsolation: meta.isIsolation,
-      movementFamily: movementVector,
-      movementFamilyLabel: familyLabel,
+      movementFamily: getMovementVectorId(targetDef),
+      movementFamilyLabel: getMovementFamilyLabel(targetDef),
       resistanceProfile: meta.resistanceProfile,
       sfrScore: meta.sfrScore,
       minReps: targetDef.defaultRepRange[0],

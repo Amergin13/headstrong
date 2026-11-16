@@ -5,7 +5,7 @@
  * and the drill-ins agree.
  */
 import { runReadAloudQaGate } from '../engine/contentStrategy';
-import { calculateE1RM } from '../engine/e1rm';
+import { calculateE1RM, getBodyweightLoadRatio, isTimedExercise } from '../engine/e1rm';
 import { buildBodyweightEmaLookup } from '../engine/ema';
 import { getWorkoutCompletedAt } from '../engine/recovery';
 import { calculateSessionTonnage } from '../engine/wci';
@@ -58,7 +58,7 @@ export function buildPersonalBests(
   for (const w of ordered) {
     const sessionBw = emaLookup ? emaLookup(w.date, fallbackBw) : fallbackBw;
     for (const ex of w.exercises) {
-      if (ex.durationSeconds || ex.durationMinutesRange) continue;
+      if (isTimedExercise(ex)) continue;
       const sets = ex.sets.filter(done);
       if (!sets.length) continue;
       const isCalisthenic =
@@ -84,8 +84,12 @@ export function buildPersonalBests(
           entry.reps = reps;
           entry.date = w.completedAt ? localDateString(new Date(w.completedAt)) : w.date;
         }
-        // A calisthenic move needs both added load (so bodyweight-only stays reps) and a real logged bodyweight before calculating total-mass E1RM.
-        if (kg > 0 && (!isCalisthenic || sessionBw > 0)) {
+        const bwRatio = isCalisthenic ? getBodyweightLoadRatio(ex.exerciseId, ex.pillar) : 0;
+        // Count bodyweight for calisthenics whenever real bodyweight is logged and the movement loads bodyweight.
+        if (
+          (kg > 0 || (isCalisthenic && sessionBw > 0 && bwRatio > 0)) &&
+          (!isCalisthenic || (sessionBw > 0 && (kg > 0 || bwRatio > 0)))
+        ) {
           const e = calculateE1RM(
             kg,
             reps,
@@ -140,14 +144,28 @@ export interface TrainingTotals {
 }
 
 /** Totals over all saved workouts, or only those finished in the last `days`. */
-export function buildTrainingTotals(workouts: WorkoutSession[], days?: number, now = Date.now()): TrainingTotals {
+export function buildTrainingTotals(
+  workouts: WorkoutSession[],
+  days?: number,
+  now = Date.now(),
+  bodyweightKg: number = 0,
+  biometrics?: BiometricLog[]
+): TrainingTotals {
   const since = days ? now - days * 24 * 60 * 60 * 1000 : -Infinity;
+  const emaLookup = biometrics ? buildBodyweightEmaLookup(biometrics) : undefined;
+  const bwLookup = (date: string) => (emaLookup ? emaLookup(date, bodyweightKg) : bodyweightKg);
   const totals: TrainingTotals = { volumeKg: 0, reps: 0, workouts: 0 };
   for (const w of workouts) {
     if (!w.completed || getWorkoutCompletedAt(w) < since) continue;
     totals.workouts += 1;
-    totals.volumeKg += calculateSessionTonnage(w).tonnageKg;
-    totals.reps += w.exercises.reduce((n, ex) => n + ex.sets.filter(done).reduce((r, s) => r + (s.actualReps ?? 0), 0), 0);
+    totals.volumeKg += calculateSessionTonnage(w, bwLookup).tonnageKg;
+    totals.reps += w.exercises.reduce(
+      (n, ex) =>
+        isTimedExercise(ex)
+          ? n
+          : n + ex.sets.filter(done).reduce((r, s) => r + (s.actualReps ?? 0), 0),
+      0
+    );
   }
   totals.volumeKg = Math.round(totals.volumeKg);
   return totals;

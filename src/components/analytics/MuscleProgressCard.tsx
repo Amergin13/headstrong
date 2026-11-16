@@ -114,12 +114,14 @@ export const MuscleProgressCard: React.FC<{
         points={view.strengthIndex}
         format={(v) => `${Math.round(v)}`}
         height={220}
+        emptyTitle="No strength index yet"
+        emptyMessage={`Train ${view.label.toLowerCase()} across sessions to build this strength curve.`}
         label={
           view.strengthIndex.length >= 2
             ? `${view.label} strength index from 100 to ${Math.round(view.strengthIndex[view.strengthIndex.length - 1].value)}`
             : view.strengthIndex.length === 1
             ? `${view.label} strength starts at 100. The trend appears after another week of training it.`
-            : `Example chart. ${view.label} strength appears here after you train it.`
+            : `No strength data yet. ${view.label} strength appears here after you train it.`
         }
       />
 
@@ -133,10 +135,12 @@ export const MuscleProgressCard: React.FC<{
             format={formatLength}
             tone="body"
             height={200}
+            emptyTitle="No measurements yet"
+            emptyMessage={`Log ${view.measurement.label.toLowerCase()} measurements to track changes here.`}
             label={
               view.measurement.points.length > 0
                 ? `${view.measurement.label} measurement: ${view.measurement.points.map((p) => formatLength(p.value)).join(', ')}`
-                : `Example chart. ${view.measurement.label} measurements in this range appear here.`
+                : `No measurements yet. ${view.measurement.label} measurements in this range appear here.`
             }
           />
         </>

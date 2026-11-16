@@ -1319,8 +1319,11 @@ export function parseProgramSpreadsheet(
 
             const workoutSets: WorkoutSet[] = weekRow.loggedSets.map((st, sIdx) => {
               const weightKg = Math.round(st.weightKg * loggedDbFactor * 10) / 10;
+              const isDuration = Boolean(weekRow.durationSeconds);
               totalSetsCount += 1;
-              totalVolumeKg += weightKg * st.reps;
+              if (!isDuration) {
+                totalVolumeKg += weightKg * st.reps;
+              }
               if (weightKg > heaviestWeight) {
                 heaviestWeight = weightKg;
                 heaviestLabel = `${loggedDef.name} (${weightKg} kg × ${st.reps})`;
@@ -1332,6 +1335,12 @@ export function parseProgramSpreadsheet(
                 actualWeightKg: weightKg,
                 targetReps: st.reps,
                 actualReps: st.reps,
+                ...(isDuration
+                  ? {
+                      targetDurationSeconds: weekRow.durationSeconds,
+                      actualDurationSeconds: weekRow.durationSeconds,
+                    }
+                  : {}),
                 ...(st.actualRepsLeft !== undefined ? { actualRepsLeft: st.actualRepsLeft } : {}),
                 ...(st.actualRepsRight !== undefined ? { actualRepsRight: st.actualRepsRight } : {}),
                 targetRir: 2,

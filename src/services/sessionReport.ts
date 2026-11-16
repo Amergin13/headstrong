@@ -3,7 +3,8 @@
  * of their program, strength and muscle growth over time. Built only from logged sets and the
  * athlete's knowledge graph; anything not measured is left out rather than estimated.
  */
-import { calculateE1RM } from '../engine/e1rm';
+import { calculateE1RM, getBodyweightLoadRatio, isTimedExercise } from '../engine/e1rm';
+import { calculateSessionTonnage } from '../engine/wci';
 import { buildBodyweightEmaLookup } from '../engine/ema';
 import { AthleteKnowledgeGraph } from '../engine/knowledgeGraph';
 import { getProgramWorkoutNumber } from '../engine/muscleBuildingProgram';
@@ -118,13 +119,6 @@ function mostReps(ex: ExerciseSession): number {
   return ex.sets.filter(isWorkingSet).reduce((max, s) => Math.max(max, s.actualReps ?? 0), 0);
 }
 
-function sessionVolume(w: WorkoutSession): number {
-  return w.exercises.reduce(
-    (sum, ex) => sum + ex.sets.filter(isWorkingSet).reduce((t, s) => t + setWeight(s) * (s.actualReps ?? 0), 0),
-    0
-  );
-}
-
 /** Catalog muscle names to the knowledge graph's muscle keys. */
 export const MUSCLE_TO_GRAPH_KEY: Record<string, string> = {
   'Side Delts': 'SideDelts',
@@ -175,6 +169,7 @@ export function buildSessionProgressReport(input: {
   const firstTimeExercises: string[] = [];
   const trends: LiftTrend[] = [];
   for (const ex of trained) {
+    if (isTimedExercise(ex)) continue;
     const history = earlier
       .map((w) => {
         const found = w.exercises.find((e) => e.exerciseId === ex.exerciseId && e.sets.some(isWorkingSet));
@@ -183,6 +178,7 @@ export function buildSessionProgressReport(input: {
       .filter((x): x is { date: string; ex: ExerciseSession } => Boolean(x));
     const isCalisthenic =
       ex.equipment === 'bodyweight' || ex.equipment === 'weighted_bodyweight' || Boolean(ex.isWeightedCalisthenic);
+    const bwRatio = isCalisthenic ? getBodyweightLoadRatio(ex.exerciseId, ex.pillar) : 0;
     const nowE1rm = bestE1rm(ex, sessionBw);
     if (history.length === 0) {
       firstTimeExercises.push(ex.name);
@@ -196,17 +192,17 @@ export function buildSessionProgressReport(input: {
     const nowHeaviest = heaviestSet(ex);
     const prevReps = Math.max(...history.map((h) => mostReps(h.ex)));
     const nowReps = mostReps(ex);
-    const isBodyweightOnly = isCalisthenic && nowHeaviest === 0 && prevHeaviest === 0;
+    const isBodyweightOnlyWithoutCountedBw = isCalisthenic && (nowHeaviest === 0 && prevHeaviest === 0) && (sessionBw <= 0 || bwRatio === 0);
     if (nowHeaviest > prevHeaviest + 0.01 && nowHeaviest > 0) {
       records.push({ exerciseName: ex.name, kind: 'heavier', isBodyweight: isCalisthenic, newKg: nowHeaviest, previousKg: prevHeaviest });
-    } else if (isBodyweightOnly && nowHeaviest === prevHeaviest && nowReps > prevReps) {
+    } else if (isCalisthenic && nowHeaviest === 0 && prevHeaviest === 0 && nowReps > prevReps) {
       records.push({ exerciseName: ex.name, kind: 'reps', isBodyweight: true, newKg: nowReps, previousKg: prevReps });
-    } else if (!isBodyweightOnly && nowE1rm > prevE1rm + 0.25) {
+    } else if (!isBodyweightOnlyWithoutCountedBw && nowE1rm > prevE1rm + 0.25) {
       records.push({ exerciseName: ex.name, kind: 'stronger', isBodyweight: isCalisthenic, newKg: nowE1rm, previousKg: prevE1rm });
     }
     const firstE1rm = bestE1rm(history[0].ex, bwForDate(history[0].date));
-    // Skip unloaded bodyweight exercises in E1RM load trends so chin-ups without added weight aren't framed as "107.6 kg max".
-    if (!isBodyweightOnly && firstE1rm > 0 && nowE1rm > 0 && Math.abs(nowE1rm - firstE1rm) / firstE1rm >= 0.005) {
+    // Count bodyweight calisthenic trends in E1RM whenever bodyweight is logged (never for zero-ratio bands/holds).
+    if (!isBodyweightOnlyWithoutCountedBw && firstE1rm > 0 && nowE1rm > 0 && Math.abs(nowE1rm - firstE1rm) / firstE1rm >= 0.005) {
       trends.push({
         exerciseName: ex.name,
         sessions: history.length + 1,
@@ -268,9 +264,9 @@ export function buildSessionProgressReport(input: {
     });
 
   // Volume vs the previous time this same session (by name) was done.
-  const volumeKg = Math.round(sessionVolume(session));
+  const volumeKg = Math.round(calculateSessionTonnage(session, sessionBw).tonnageKg);
   const previousSame = [...earlier].reverse().find((w) => w.name === session.name);
-  const previousVolume = previousSame ? sessionVolume(previousSame) : 0;
+  const previousVolume = previousSame ? calculateSessionTonnage(previousSame, bwForDate(previousSame.date)).tonnageKg : 0;
 
   const workoutNumber = getProgramWorkoutNumber(session);
   const planShape = getSessionPlanShape(session);

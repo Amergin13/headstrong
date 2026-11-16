@@ -9,6 +9,7 @@ import { triggerHaptic } from '../../utils/haptics';
 import { ExerciseInsight } from '../../services/exerciseInsight';
 import { TrendChart } from '../common/TrendChart';
 import { localDateString } from '../../utils/date';
+import { getBodyweightLoadRatio, isTimedExercise } from '../../engine/e1rm';
 import { formatSentenceCase } from '../../utils/typography';
 import { isUnilateralExercise } from '../../services/movementStandards';
 
@@ -19,6 +20,9 @@ interface ExerciseCardProps {
   prescription: ProgressionPrescription;
   quest: SubTierQuest;
   readinessState: ReadinessState;
+  bodyweightKg?: number;
+  lastAthleteNote?: { date: string; text: string };
+  onUpdateNotes?: (notes: string) => void;
   onUpdateSet: (setId: string, updated: Partial<WorkoutSet>) => void;
   onCompleteSet: (setId: string) => void;
   onAddSet: (isWarmup?: boolean) => void;
@@ -42,6 +46,9 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
   exerciseIndex,
   exercise,
   readinessState,
+  bodyweightKg = 0,
+  lastAthleteNote,
+  onUpdateNotes,
   onUpdateSet,
   onCompleteSet,
   onAddSet,
@@ -56,15 +63,28 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
 }) => {
   const units = useUnits();
   const [showDetails, setShowDetails] = useState(false);
-  const unilateral = isUnilateralExercise(exercise);
+  const isTimed = isTimedExercise(exercise);
+  const workingSets = exercise.sets.filter((s) => !s.isWarmup && s.setType !== 'warmup');
+  const isBlockCompleted = workingSets.length > 0 && workingSets.every((s) => s.completed);
+  const unilateral = !isTimed && isUnilateralExercise(exercise);
   const [perSide, setPerSide] = useState(() => exercise.sets.some((s) => s.actualRepsLeft !== undefined));
   const detailsId = useId();
+  const notesId = useId();
 
   const firstWorkingSet = exercise.sets.find((s) => !s.isWarmup && s.setType !== 'warmup');
   const currentWeight = firstWorkingSet?.targetWeightKg ?? exercise.sets[0]?.targetWeightKg ?? 20;
   const plannedWeightKg = firstWorkingSet?.targetWeightKg ?? 0;
   const isBodyweightOnly =
     exercise.equipment === 'bodyweight' && (!exercise.isWeightedCalisthenic || plannedWeightKg === 0);
+  const isCalisthenic =
+    exercise.equipment === 'bodyweight' ||
+    exercise.equipment === 'weighted_bodyweight' ||
+    Boolean(exercise.isWeightedCalisthenic);
+  const bwRatio = isCalisthenic ? getBodyweightLoadRatio(exercise.exerciseId, exercise.pillar) : 0;
+  const countedBodyweightKg =
+    !isTimed && isCalisthenic && bwRatio > 0 && bodyweightKg > 0
+      ? Math.round(bodyweightKg * bwRatio * 10) / 10
+      : 0;
   const warmupCount = exercise.sets.filter((s) => s.isWarmup || s.setType === 'warmup').length;
   const hasTempoPacer = Boolean(exercise.tempo && /^[\dXx]{4}$/.test(exercise.tempo));
   const customTempoText = !hasTempoPacer && exercise.tempo ? exercise.tempo : null;
@@ -119,15 +139,31 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
         </div>
       </div>
 
-      {(chip || exercise.intensityProtocol) && (
+      {(chip || exercise.intensityProtocol || countedBodyweightKg > 0 || isBlockCompleted) && (
         <div className="flex items-center flex-wrap gap-2 mt-2">
           {chip && <span className="wk-pill">{chip}</span>}
+          {isBlockCompleted && (
+            <span
+              className="wk-pill"
+              style={{
+                background: 'var(--color-status-positive-soft)',
+                color: 'var(--wk-accent)',
+              }}
+            >
+              Completed
+            </span>
+          )}
           {exercise.intensityProtocol && <span className="wk-pill">{exercise.intensityProtocol.name}</span>}
+          {countedBodyweightKg > 0 && (
+            <span className="wk-pill tabular-nums">
+              {units.format(countedBodyweightKg)} bodyweight counted
+            </span>
+          )}
         </div>
       )}
 
       {/* 2-line dynamic summary (Line 1: Historical Trajectory Anchor, Line 2: Session Stimulus Directive) and history chart */}
-      {insight && (showSummary || (showChart && !(exercise.durationSeconds || exercise.durationMinutesRange))) && (
+      {insight && (showSummary || showChart) && (
         <div className="flex flex-col gap-3 mt-4">
           {showSummary && (
             <div className="wk-body max-w-prose" aria-live="polite">
@@ -146,16 +182,28 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
               </div>
             </div>
           )}
-          {showChart && !(exercise.durationSeconds || exercise.durationMinutesRange) && (
+          {showChart && (
             <TrendChart
               points={history.map((h) => ({ date: localDateString(new Date(h.at)), value: h.value ?? h.e1rmKg }))}
-              format={(v) => (insight.metric === 'reps' ? `${Math.round(v)} reps` : units.formatPrecise(v))}
+              format={(v) =>
+                insight.metric === 'time'
+                  ? `${Math.round(v)}s`
+                  : insight.metric === 'reps'
+                  ? `${Math.round(v)} reps`
+                  : units.formatPrecise(v)
+              }
               height={240}
               label={(() => {
                 const fmtVal = (v: number) =>
-                  insight.metric === 'reps' ? `${Math.round(v)} reps` : units.formatPrecise(v);
+                  insight.metric === 'time'
+                    ? `${Math.round(v)}s`
+                    : insight.metric === 'reps'
+                    ? `${Math.round(v)} reps`
+                    : units.formatPrecise(v);
                 const metricName =
-                  insight.metric === 'reps'
+                  insight.metric === 'time'
+                    ? 'hold duration'
+                    : insight.metric === 'reps'
                     ? 'best set'
                     : insight.metric === 'added_kg'
                     ? 'top added weight'
@@ -172,8 +220,14 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
                 if (history.length === 1) {
                   return `Starting point: ${metricName} ${firstVal}. The trend line starts after your next session.`;
                 }
-                return `Example chart. Your ${metricName} for this exercise appears here after your first session.`;
+                return `No sessions logged yet. Your ${metricName} for this exercise appears here after your first session.`;
               })()}
+              emptyTitle="No history yet"
+              emptyMessage={
+                isTimed
+                  ? 'Complete all hold sets to establish your starting hold time.'
+                  : 'Complete all working sets to establish your starting estimated max.'
+              }
             />
           )}
         </div>
@@ -267,7 +321,7 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
           <span role="columnheader">SET</span>
           <span role="columnheader">PREV</span>
           <span role="columnheader">WEIGHT</span>
-          <span role="columnheader">REPS</span>
+          <span role="columnheader">{isTimed ? 'TIME' : 'REPS'}</span>
           <span role="columnheader" title="Reps in reserve">RIR</span>
           <span role="columnheader">DONE</span>
         </div>
@@ -306,6 +360,7 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
                   previous={previous}
                   isBodyweight={isBodyweightOnly}
                   isDumbbell={exercise.equipment === 'dumbbell'}
+                  isTimed={isTimed}
                   perSide={unilateral && perSide && !isWarm}
                   onUpdate={(updated) => onUpdateSet(s.id, updated)}
                   onComplete={() => onCompleteSet(s.id)}
@@ -327,6 +382,29 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
             {perSide ? 'Log both sides together' : 'Log each side'}
           </button>
         )}
+      </div>
+
+      {/* Open session notes for cues, setup, pain/discomfort, and longitudinal Knowledge Graph insights */}
+      <div className="mt-4 pt-3 border-t" style={{ borderColor: 'var(--color-border-subtle)' }}>
+        <div className="flex items-center justify-between gap-2 mb-1">
+          <label htmlFor={notesId} className="wk-label" style={{ color: 'var(--wk-muted)' }}>
+            Session notes
+          </label>
+          {lastAthleteNote && (
+            <span className="wk-caption truncate max-w-[65%]" title={lastAthleteNote.text}>
+              Last ({lastAthleteNote.date}): &ldquo;{lastAthleteNote.text}&rdquo;
+            </span>
+          )}
+        </div>
+        <textarea
+          id={notesId}
+          rows={2}
+          value={exercise.athleteNotes ?? ''}
+          onChange={(e) => onUpdateNotes?.(e.target.value)}
+          placeholder="Add cues, seat/pin setup, tightness, or how this felt…"
+          className="wk-field w-full resize-none"
+          style={{ fontSize: 16, minHeight: 56 }}
+        />
       </div>
     </section>
   );

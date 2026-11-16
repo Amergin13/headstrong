@@ -13,7 +13,7 @@
  * 3. Outcome: tape measurements for the muscle (arm, chest, thigh, calf, hips, shoulders), when the
  *    athlete has logged them.
  */
-import { calculateE1RM } from '../engine/e1rm';
+import { calculateE1RM, isTimedExercise } from '../engine/e1rm';
 import { buildBodyweightEmaLookup } from '../engine/ema';
 import { AthleteKnowledgeGraph } from '../engine/knowledgeGraph';
 import { MUSCLE_FRIENDLY_NAMES, getWorkoutCompletedAt } from '../engine/recovery';
@@ -194,7 +194,7 @@ export function buildMuscleProgress(input: {
       for (const w of inWindow) {
         const sessionBw = bwForDate(w.date);
         for (const ex of w.exercises) {
-          if (weightOf(ex.exerciseId) === 0 || ex.durationSeconds || ex.durationMinutesRange) continue;
+          if (weightOf(ex.exerciseId) === 0 || isTimedExercise(ex)) continue;
           const usesBw =
             ex.equipment === 'bodyweight' || ex.equipment === 'weighted_bodyweight' || Boolean(ex.isWeightedCalisthenic);
           if (usesBw && sessionBw <= 0) continue;

@@ -410,12 +410,14 @@ const BodyDetail: React.FC<{
             secondary={visibleWeight.length >= 2 ? visibleWeight : undefined}
             format={(v) => `${Math.round(v)}`}
             height={280}
+            emptyTitle="No comparison yet"
+            emptyMessage="Repeat a workout and log bodyweight to see both trends together."
             label={
               visibleStrength.length >= 2
                 ? `Strength index from 100 to ${Math.round(visibleStrength[visibleStrength.length - 1].value)}${
                     visibleWeight.length >= 2 ? `; bodyweight index from 100 to ${Math.round(visibleWeight[visibleWeight.length - 1].value)}` : ''
                   }`
-                : 'Example chart. Your strength and bodyweight appear here once you have repeated a workout.'
+                : 'No comparison yet. Your strength and bodyweight appear here once you have repeated a workout.'
             }
           />
         </div>

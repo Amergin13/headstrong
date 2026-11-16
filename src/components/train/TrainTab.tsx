@@ -43,15 +43,20 @@ import { useUnits } from '../../utils/unitsContext';
 import {
   prescribeDoubleProgression,
   findLastCompletedExerciseSession,
+  getMovementFamilyLabel,
+  getMovementVectorId,
   getSessionProgressNarrative,
+  prescribeExerciseSwap,
+  SwapPrescription,
 } from '../../engine/progression';
 import { calculateSubTierQuest, standardsAge } from '../../engine/strengthStandards';
 import {
   calculateE1RM,
-  calculateHypertrophyBodyweightReps,
+  isTimedExercise,
 } from '../../engine/e1rm';
 import { buildAthleteKnowledgeGraph, getExerciseBiomechanicalMeta } from '../../engine/knowledgeGraph';
 import { calculateWeeklyMuscleVolume } from '../../services/storage';
+import { calculateSessionTonnage } from '../../engine/wci';
 import { CompletedExerciseCard, FinishedWorkoutSummaryCard, WhoopStrainCard } from './FinishedWorkoutCards';
 import { WorkoutPageHeader } from './WorkoutPageHeader';
 import { CurrentSessionCard, ProgramProgressCard, StickySessionHeader } from './ProgramProgressCard';
@@ -239,6 +244,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
         if (sourceSet && sourceSet.setType !== 'warmup' && !sourceSet.isWarmup) {
           const sourceWeight = sourceSet.actualWeightKg ?? sourceSet.targetWeightKg;
           const sourceReps = sourceSet.actualReps ?? sourceSet.targetReps;
+          const sourceDuration = sourceSet.actualDurationSeconds ?? sourceSet.targetDurationSeconds;
           const sourceRir = sourceSet.actualRir ?? sourceSet.targetRir ?? 2;
 
           for (let i = completedIndex + 1; i < updatedSets.length; i++) {
@@ -249,6 +255,9 @@ export const TrainTab: React.FC<TrainTabProps> = ({
                 actualWeightKg: sourceWeight,
                 targetReps: sourceReps,
                 actualReps: sourceReps,
+                ...(sourceDuration !== undefined
+                  ? { targetDurationSeconds: sourceDuration, actualDurationSeconds: sourceDuration }
+                  : {}),
                 targetRir: sourceRir,
                 actualRir: sourceRir,
               };
@@ -262,6 +271,13 @@ export const TrainTab: React.FC<TrainTabProps> = ({
         sets: updatedSets,
       };
     });
+    onUpdateWorkout({ ...activeWorkout, exercises: nextExercises });
+  };
+
+  const handleUpdateExerciseNotes = (exerciseId: string, athleteNotes: string) => {
+    const nextExercises = activeWorkout.exercises.map((ex) =>
+      ex.id === exerciseId ? { ...ex, athleteNotes } : ex
+    );
     onUpdateWorkout({ ...activeWorkout, exercises: nextExercises });
   };
 
@@ -309,13 +325,20 @@ export const TrainTab: React.FC<TrainTabProps> = ({
       const lastWorkingSet = workingSets[workingSets.length - 1] ?? ex.sets[ex.sets.length - 1];
       const newWeight = lastWorkingSet?.actualWeightKg ?? lastWorkingSet?.targetWeightKg ?? baseWeight;
       const newReps = lastWorkingSet?.actualReps ?? lastWorkingSet?.targetReps ?? ex.minReps;
+      const timed = isTimedExercise(ex);
+      const holdSecs =
+        lastWorkingSet?.actualDurationSeconds ??
+        lastWorkingSet?.targetDurationSeconds ??
+        ex.durationSeconds ??
+        45;
       const newSet: WorkoutSet = {
         id: `set-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
         setNumber: ex.sets.length + 1,
         targetWeightKg: newWeight,
         actualWeightKg: newWeight,
-        targetReps: newReps,
-        actualReps: newReps,
+        targetReps: timed ? 1 : newReps,
+        actualReps: timed ? 1 : newReps,
+        ...(timed ? { targetDurationSeconds: holdSecs, actualDurationSeconds: holdSecs } : {}),
         targetRir: 2,
         actualRir: 2,
         completed: false,
@@ -329,13 +352,13 @@ export const TrainTab: React.FC<TrainTabProps> = ({
     onUpdateWorkout({ ...activeWorkout, exercises: nextExercises });
   };
 
-  const handleAddExerciseToSession = (def: ExerciseDefinition) => {
-    triggerHaptic('medium');
+  const buildBaseExerciseSession = (def: ExerciseDefinition): ExerciseSession => {
     const meta = getExerciseBiomechanicalMeta(def);
     const isPureBw = def.equipment === 'bodyweight' && !def.isWeightedCalisthenic;
+    const timed = isTimedExercise(def);
+    const holdSeconds = def.defaultDurationSeconds || 45;
     const defaultSeedWeight = isPureBw ? 0 : def.equipment === 'dumbbell' ? 16 : 40;
-
-    const seedEx: ExerciseSession = {
+    return {
       id: `active-ex-${Date.now()}`,
       exerciseId: def.id,
       name: def.name,
@@ -344,44 +367,60 @@ export const TrainTab: React.FC<TrainTabProps> = ({
       isRdl: def.isRdl,
       isWeightedCalisthenic: def.isWeightedCalisthenic,
       isIsolation: meta.isIsolation,
+      movementFamily: getMovementVectorId(def),
+      movementFamilyLabel: getMovementFamilyLabel(def),
       resistanceProfile: meta.resistanceProfile,
       sfrScore: meta.sfrScore,
-      minReps: def.defaultRepRange[0],
-      maxReps: def.defaultRepRange[1],
-      notes:
-        meta.resistanceProfile === 'lengthened'
-          ? 'Focus on a controlled stretch at the bottom of each rep.'
-          : 'Keep a steady, controlled pace on every rep.',
-      sets: [
-        {
-          id: `s-${Date.now()}-1`,
-          setNumber: 1,
-          targetWeightKg: defaultSeedWeight,
-          targetReps: def.defaultRepRange[0],
-          targetRir: 2,
-          completed: false,
-          setType: 'working',
-        },
-        {
-          id: `s-${Date.now()}-2`,
-          setNumber: 2,
-          targetWeightKg: defaultSeedWeight,
-          targetReps: def.defaultRepRange[0],
-          targetRir: 2,
-          completed: false,
-          setType: 'working',
-        },
-        {
-          id: `s-${Date.now()}-3`,
-          setNumber: 3,
-          targetWeightKg: defaultSeedWeight,
-          targetReps: def.defaultRepRange[0],
-          targetRir: 1,
-          completed: false,
-          setType: 'working',
-        },
-      ],
+      minReps: timed ? 1 : def.defaultRepRange[0],
+      maxReps: timed ? 1 : def.defaultRepRange[1],
+      ...(timed
+        ? {
+            repTargetType: 'duration' as const,
+            durationSeconds: holdSeconds,
+            tempo: `${holdSeconds}sec`,
+          }
+        : {}),
+      notes: timed
+        ? `Hold with controlled tension for ${holdSeconds}s per set.`
+        : meta.resistanceProfile === 'lengthened'
+        ? 'Focus on a controlled stretch at the bottom of each rep.'
+        : 'Keep a steady, controlled pace on every rep.',
+      sets: [1, 2, 3].map((n) => ({
+        id: `s-${Date.now()}-${n}`,
+        setNumber: n,
+        targetWeightKg: defaultSeedWeight,
+        targetReps: timed ? 1 : def.defaultRepRange[0],
+        targetRir: n === 3 ? 1 : 2,
+        ...(timed
+          ? { targetDurationSeconds: holdSeconds, actualDurationSeconds: holdSeconds }
+          : {}),
+        completed: false,
+        setType: 'working' as const,
+      })),
     };
+  };
+
+  const resolveNewExerciseFallbackWeight = (def: ExerciseDefinition): number | undefined => {
+    const isPureBw = def.equipment === 'bodyweight' && !def.isWeightedCalisthenic;
+    if (isPureBw) return 0;
+    const seedEx = buildBaseExerciseSession(def);
+    return (
+      startingWeightForNewExercise(activeWorkout, seedEx, {
+        history: workouts,
+        bodyweightKg: bodyweightEmaKg,
+        readinessState: readiness.state,
+        gender: profile.gender,
+        experienceLevel: profile.experienceLevel,
+        unit: units.unit,
+      }) ?? undefined
+    );
+  };
+
+  const handleAddExerciseToSession = (def: ExerciseDefinition) => {
+    triggerHaptic('medium');
+    const isPureBw = def.equipment === 'bodyweight' && !def.isWeightedCalisthenic;
+    const timed = isTimedExercise(def);
+    const seedEx = buildBaseExerciseSession(def);
 
     const prescription = prescribeDoubleProgression(
       seedEx,
@@ -394,23 +433,20 @@ export const TrainTab: React.FC<TrainTabProps> = ({
     const ownHistory = findLastCompletedExerciseSession(def.id, workouts);
     const startingWeight = ownHistory
       ? null
-      : startingWeightForNewExercise(activeWorkout, seedEx, {
-          history: workouts,
-          bodyweightKg: bodyweightEmaKg,
-          readinessState: readiness.state,
-          gender: profile.gender,
-          experienceLevel: profile.experienceLevel,
-          unit: units.unit,
-        });
+      : resolveNewExerciseFallbackWeight(def);
     const nextWeight = isPureBw ? 0 : startingWeight ?? prescription.nextWeightKg;
+    const timedHoldSecs = def.defaultDurationSeconds || 45;
     const baseHydratedEx: ExerciseSession = {
       ...seedEx,
       sets: seedEx.sets.map((s, idx) => ({
         ...s,
         targetWeightKg: nextWeight,
         actualWeightKg: nextWeight,
-        targetReps: prescription.nextTargetReps[idx] ?? def.defaultRepRange[0],
-        actualReps: prescription.nextTargetReps[idx] ?? def.defaultRepRange[0],
+        targetReps: timed ? 1 : (prescription.nextTargetReps[idx] ?? def.defaultRepRange[0]),
+        actualReps: timed ? 1 : (prescription.nextTargetReps[idx] ?? def.defaultRepRange[0]),
+        ...(timed
+          ? { targetDurationSeconds: timedHoldSecs, actualDurationSeconds: timedHoldSecs }
+          : {}),
       })),
     };
 
@@ -420,7 +456,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
       [...activeWorkout.exercises, baseHydratedEx]
     );
 
-    const hydratedEx = ensureWarmupSetsOnExercise(baseHydratedEx, isFirstCompound);
+    const hydratedEx = timed ? baseHydratedEx : ensureWarmupSetsOnExercise(baseHydratedEx, isFirstCompound);
 
     onUpdateWorkout({
       ...activeWorkout,
@@ -429,54 +465,39 @@ export const TrainTab: React.FC<TrainTabProps> = ({
     setShowAddExerciseModal(false);
   };
 
-  const handleConfirmSwap = (newDef: ExerciseDefinition, convertedWeightKg: number) => {
+  const handleConfirmSwap = (
+    newDef: ExerciseDefinition,
+    convertedWeightKg: number,
+    explicitPrescription?: SwapPrescription
+  ) => {
     if (!swappingExercise) return;
     const meta = getExerciseBiomechanicalMeta(newDef);
-    const isPureBw =
-      (newDef.equipment === 'bodyweight' && !newDef.isWeightedCalisthenic) ||
-      activeWorkout.location === 'travel';
-    const effectiveTargetWeight = isPureBw ? 0 : convertedWeightKg;
-
-    // Compute canonical E1RM from the exercise being swapped
-    let sourceE1rm = 0;
-    for (const s of swappingExercise.sets) {
-      const w = s.actualWeightKg ?? s.targetWeightKg;
-      const r = s.actualReps ?? s.targetReps;
-      const rir = s.actualRir ?? s.targetRir ?? 2;
-      const e1rm = calculateE1RM(
-        w,
-        r,
-        rir,
-        swappingExercise.equipment,
-        swappingExercise.isRdl,
-        swappingExercise.isWeightedCalisthenic,
+    const rx =
+      explicitPrescription ??
+      prescribeExerciseSwap({
+        sourceExercise: swappingExercise,
+        targetDef: newDef,
+        workouts,
+        readinessState: readiness.state,
+        goalPhase: profile.goalPhase,
         bodyweightEmaKg,
-        swappingExercise.exerciseId,
-        swappingExercise.pillar
-      );
-      if (e1rm > sourceE1rm) sourceE1rm = e1rm;
-    }
+        location: activeWorkout.location || profile.activeLocation || 'gym',
+        unit: units.unit,
+        fallbackTargetWeightKg: convertedWeightKg > 0 ? convertedWeightKg : resolveNewExerciseFallbackWeight(newDef),
+      });
 
-    let defaultTargetReps = newDef.defaultRepRange[0];
-    let customNotes =
-      meta.resistanceProfile === 'lengthened'
-        ? 'Focus on a controlled stretch at the bottom of each rep.'
-        : 'Keep a steady, controlled pace on every rep.';
+    const isPureBw = rx.isPureBodyweight;
+    const effectiveTargetWeight = isPureBw ? 0 : rx.targetWeightKg;
+    const defaultTargetReps = rx.targetReps;
+    const timed = rx.isTimed;
 
-    if (isPureBw) {
-      const bwPrescription = calculateHypertrophyBodyweightReps(
-        sourceE1rm,
-        bodyweightEmaKg,
-        newDef.id,
-        newDef.pillar,
-        newDef.defaultRepRange[0],
-        newDef.defaultRepRange[1]
-      );
-      defaultTargetReps = bwPrescription.targetReps;
-      if (bwPrescription.tempoCue) {
-        customNotes = `${bwPrescription.tempoCue}. Focus on full muscle stretch.`;
-      }
-    }
+    const customNotes = timed
+      ? rx.rationale
+      : rx.tempoCue
+      ? `${rx.tempoCue}. ${rx.rationale}.`
+      : meta.resistanceProfile === 'lengthened'
+      ? `${rx.rationale}. Focus on a controlled stretch at the bottom of each rep.`
+      : `${rx.rationale}. Keep a steady, controlled pace on every rep.`;
 
     const nextExercises = activeWorkout.exercises.flatMap((ex, exIdx) => {
       if (ex.id !== swappingExercise.id) return [ex];
@@ -492,8 +513,19 @@ export const TrainTab: React.FC<TrainTabProps> = ({
         setNumber: sIdx + 1,
         targetWeightKg: effectiveTargetWeight,
         actualWeightKg: effectiveTargetWeight,
-        targetReps: defaultTargetReps,
-        actualReps: defaultTargetReps,
+        targetReps: timed ? 1 : defaultTargetReps,
+        actualReps: timed ? 1 : defaultTargetReps,
+        targetRir: rx.targetRir,
+        actualRir: rx.targetRir,
+        ...(timed
+          ? {
+              targetDurationSeconds: rx.targetDurationSeconds || 45,
+              actualDurationSeconds: rx.targetDurationSeconds || 45,
+            }
+          : {
+              targetDurationSeconds: undefined,
+              actualDurationSeconds: undefined,
+            }),
         isWarmup: false,
         setType: 'working' as const,
       }));
@@ -502,7 +534,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
       // exercise had them, and never add more than it had.
       const originalWarmupCount = setsToDo.filter((st) => st.isWarmup || st.setType === 'warmup').length;
       let calibratedSets: WorkoutSet[] = calibratedWorkingSets;
-      if (originalWarmupCount > 0 && !isPureBw && !meta.isIsolation) {
+      if (originalWarmupCount > 0 && !isPureBw && !meta.isIsolation && !timed) {
         const isFirstCompound = isFirstCompoundForPillar(
           {
             pillar: newDef.pillar,
@@ -535,15 +567,22 @@ export const TrainTab: React.FC<TrainTabProps> = ({
         ...ex,
         exerciseId: newDef.id,
         name: newDef.name,
+        pillar: newDef.pillar,
         equipment: isPureBw ? 'bodyweight' : newDef.equipment,
         isRdl: newDef.isRdl,
         isWeightedCalisthenic: isPureBw ? false : newDef.isWeightedCalisthenic,
         isIsolation: meta.isIsolation,
+        movementFamily: getMovementVectorId(newDef),
+        movementFamilyLabel: getMovementFamilyLabel(newDef),
         resistanceProfile: meta.resistanceProfile,
         sfrScore: meta.sfrScore,
-        minReps: newDef.defaultRepRange[0],
-        maxReps: newDef.defaultRepRange[1],
+        minReps: rx.minReps,
+        maxReps: rx.maxReps,
+        repTargetType: timed ? 'duration' : 'reps',
+        durationSeconds: timed ? rx.targetDurationSeconds : undefined,
+        tempo: timed && rx.targetDurationSeconds ? `${rx.targetDurationSeconds}sec` : undefined,
         notes: customNotes,
+        athleteNotes: ex.athleteNotes,
         sets: calibratedSets,
       };
       if (loggedSets.length === 0) return [replacement];
@@ -560,20 +599,8 @@ export const TrainTab: React.FC<TrainTabProps> = ({
     0
   );
 
-  const liveTonnageKg = Math.round(
-    activeWorkout.exercises.reduce((acc, ex) => {
-      return (
-        acc +
-        ex.sets
-          .filter((s) => s.completed)
-          .reduce(
-            (sAcc, s) =>
-              sAcc + (s.actualWeightKg ?? s.targetWeightKg) * (s.actualReps ?? s.targetReps),
-            0
-          )
-      );
-    }, 0)
-  );
+  const bwForTonnage = biometrics.some((b) => (b.bodyweightKg || 0) > 0) ? bodyweightEmaKg : 0;
+  const liveTonnageKg = Math.round(calculateSessionTonnage(activeWorkout, bwForTonnage).tonnageKg);
 
   // Prescriptions look only at past sessions; sets ticked today must not change the target or PREV.
   const exercisePrescriptions = activeWorkout.exercises.map((ex) => {
@@ -800,7 +827,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
         exerciseCatalog,
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [workouts, activeWorkout.id, activeWorkout.programWorkoutNumber, profile.programType, trainingPlan, exerciseCatalog, activities]
+    [workouts, activeWorkout.id, activeWorkout.date, activeWorkout.programWorkoutNumber, profile.programType, trainingPlan, exerciseCatalog, activities]
   );
 
   // Exercise overviews: personal notes written on the device from the athlete's knowledge graph.
@@ -1006,27 +1033,34 @@ export const TrainTab: React.FC<TrainTabProps> = ({
       isRestDayToday ||
       (todayStripDay?.status === 'rest' && completedSets === 0 && !activeWorkout.recoveryOverride));
   const inspectedDay = selectedStripDate ? stripDays.find((d) => d.date === selectedStripDate) ?? null : null;
+  const isPastInspected = Boolean(inspectedDay && inspectedDay.date < todayDateStr);
+  const isFutureInspected = Boolean(inspectedDay && inspectedDay.date > todayDateStr);
   const inspectedLiftingWorkout = useMemo(() => {
-    if (!inspectedDay) return null;
+    if (!inspectedDay || inspectedDay.date > todayDateStr) return null;
     return (
       workouts
         .filter((w) => w.completed && localDateString(new Date(getWorkoutCompletedAt(w))) === inspectedDay.date)
         .sort((x, y) => getWorkoutCompletedAt(x) - getWorkoutCompletedAt(y))
         .pop() ?? null
     );
-  }, [inspectedDay, workouts]);
+  }, [inspectedDay, todayDateStr, workouts]);
   const isNonTrainingView = inspectedDay
     ? inspectedDay.isToday
       ? isNonTrainingToday
+      : isFutureInspected
+      ? true
       : !inspectedLiftingWorkout
     : isNonTrainingToday;
   const showActiveExercises = !isNonTrainingView && (!inspectedDay || inspectedDay.isToday) && !todayFinished;
 
+  // Never surface step count while an active workout is shown or when inspecting future days.
   const overviewStepDay =
-    inspectedDay ??
-    (isNonTrainingToday
-      ? todayStripDay ?? { date: todayDateStr, label: 'TODAY', status: 'rest' as const, isToday: true }
-      : null);
+    !showActiveExercises && !isFutureInspected
+      ? inspectedDay ??
+        (isNonTrainingToday
+          ? todayStripDay ?? { date: todayDateStr, label: 'TODAY', status: 'rest' as const, isToday: true }
+          : null)
+      : null;
   const overviewSteps = overviewStepDay ? stepsOnDate(biometrics, overviewStepDay.date) : 0;
   const dailyStepsGoal = profile.goalSettings?.customGoals?.find((g) => g.metric === 'steps')?.target;
   const sevenDaysAgoStr = localDateOffset(-6, parseLocalDate(todayDateStr));
@@ -1144,7 +1178,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
         </>
       ) : null}
 
-      {workoutDisplay.showStepsCard && overviewStepDay && (isNonTrainingView || inspectedDay || overviewStepDay.status !== 'trained') && (
+      {workoutDisplay.showStepsCard && overviewStepDay && !showActiveExercises && !isFutureInspected && (isNonTrainingView || isPastInspected || overviewStepDay.status !== 'trained') && (
         <section
           aria-label={overviewStepDay.isToday ? "Today's steps" : `${overviewStepDay.label} steps`}
           className="wk-card"
@@ -1229,7 +1263,80 @@ export const TrainTab: React.FC<TrainTabProps> = ({
         </section>
       )}
 
-      {isNonTrainingView && (
+      {isFutureInspected && inspectedDay && (
+        inspectedDay.status === 'planned' && inspectedDay.plannedSession ? (
+          <section aria-label="Upcoming training day" className="wk-card">
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <div className="flex items-center flex-wrap gap-2">
+                  <h2 className="wk-h1">
+                    {formatSentenceCase(inspectedDay.plannedSession.name)}
+                  </h2>
+                  <span
+                    className="wk-pill"
+                    style={{ background: 'var(--color-status-positive-soft)', color: 'var(--wk-accent)' }}
+                  >
+                    Upcoming
+                  </span>
+                </div>
+                <p className="wk-caption mt-1">
+                  {inspectedDay.label} ({formatDayShort(inspectedDay.date)}) • Upcoming training day
+                  {inspectedDay.plannedSession.programWorkoutNumber && inspectedDay.plannedSession.totalProgramWorkouts
+                    ? ` • Workout ${inspectedDay.plannedSession.programWorkoutNumber} of ${inspectedDay.plannedSession.totalProgramWorkouts}`
+                    : ''}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedStripDate(null)}
+                className="wk-btn-secondary wk-tap shrink-0"
+              >
+                Back to today
+              </button>
+            </div>
+
+            <ul className="mt-4 space-y-2">
+              {inspectedDay.plannedSession.exercises.map((ex, i) => (
+                <li
+                  key={`${ex.exerciseId}-${i}`}
+                  className="pt-2 border-t flex items-center justify-between gap-3"
+                  style={{ borderColor: 'var(--color-border-subtle)' }}
+                >
+                  <span className="wk-subhead min-w-0 truncate">
+                    {formatSentenceCase(ex.name)}
+                  </span>
+                  <span className="wk-caption tabular-nums shrink-0">
+                    {ex.setsCount} × {ex.targetLabel}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : (
+          <section aria-label="Planned rest day" className="wk-card">
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <h2 className="wk-h1">Planned rest day</h2>
+                <p className="wk-caption mt-1">
+                  {inspectedDay.label} ({formatDayShort(inspectedDay.date)}) • Scheduled recovery day
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedStripDate(null)}
+                className="wk-btn-secondary wk-tap shrink-0"
+              >
+                Back to today
+              </button>
+            </div>
+            <p className="wk-body mt-3 max-w-prose">
+              Your target muscle groups are scheduled to recover on this day before your next lifting session.
+            </p>
+          </section>
+        )
+      )}
+
+      {isNonTrainingView && !isFutureInspected && (
         <ActiveDayCard
           thisWeek={thisWeekActiveDay}
           recent={recentActivities}
@@ -1399,6 +1506,33 @@ export const TrainTab: React.FC<TrainTabProps> = ({
             }
           );
 
+          const exWorkingSets = ex.sets.filter((s) => !s.isWarmup && s.setType !== 'warmup');
+          const isBlockCompleted = exWorkingSets.length > 0 && exWorkingSets.every((s) => s.completed);
+          const liveInsightWorkouts = isBlockCompleted
+            ? [
+                ...workouts.filter((w) => w.id !== activeWorkout.id),
+                {
+                  ...activeWorkout,
+                  completed: true,
+                  completedAt: new Date().toISOString(),
+                  exercises: [ex],
+                },
+              ]
+            : workouts;
+
+          const lastAthleteNote = (() => {
+            const ordered = workouts
+              .filter((w) => w.completed)
+              .sort((a, b) => (b.completedAt || b.date).localeCompare(a.completedAt || a.date));
+            for (const w of ordered) {
+              const found = w.exercises.find((e) => e.exerciseId === ex.exerciseId && e.athleteNotes?.trim());
+              if (found?.athleteNotes?.trim()) {
+                return { date: w.date, text: found.athleteNotes.trim() };
+              }
+            }
+            return undefined;
+          })();
+
           return (
             <ExerciseCard
               key={ex.id}
@@ -1408,6 +1542,9 @@ export const TrainTab: React.FC<TrainTabProps> = ({
               prescription={prescription}
               quest={quest}
               readinessState={readiness.state}
+              bodyweightKg={measuredBodyweightKg}
+              lastAthleteNote={lastAthleteNote}
+              onUpdateNotes={(notes) => handleUpdateExerciseNotes(ex.id, notes)}
               onUpdateSet={(setId, updated) => handleUpdateSet(ex.id, setId, updated)}
               onCompleteSet={(setId) => {
                 const s = ex.sets.find((item) => item.id === setId);
@@ -1418,11 +1555,15 @@ export const TrainTab: React.FC<TrainTabProps> = ({
               onOpenPlateCalc={(kg) => setPlateCalcWeight(kg)}
               muscleLabel={def ? MUSCLE_FRIENDLY_NAMES[def.primaryMuscle] : undefined}
               previousSets={getPreviousWorkingSets(ex.exerciseId, workouts)}
-              insight={buildExerciseInsight(ex, workouts, readiness.state, measuredBodyweightKg, 12, (kg) => units.formatPrecise(kg), biometrics)}
-              note={(() => {
-                const n = exerciseNotes[index];
-                return n ? generatedNotes[n.key] ?? n.fallback : undefined;
-              })()}
+              insight={buildExerciseInsight(ex, liveInsightWorkouts, readiness.state, measuredBodyweightKg, 12, (kg) => units.formatPrecise(kg), biometrics)}
+              note={
+                isBlockCompleted
+                  ? undefined
+                  : (() => {
+                      const n = exerciseNotes[index];
+                      return n ? generatedNotes[n.key] ?? n.fallback : undefined;
+                    })()
+              }
               showSummary={workoutDisplay.showExerciseSummaries}
               showChart={workoutDisplay.showExerciseCharts}
             />
@@ -1509,7 +1650,14 @@ export const TrainTab: React.FC<TrainTabProps> = ({
                     ? 'Dumbbell'
                     : def.equipment === 'cable'
                     ? 'Cable'
+                    : def.equipment === 'machine'
+                    ? 'Machine'
+                    : def.equipment === 'weighted_bodyweight'
+                    ? 'Weighted Bodyweight'
                     : 'Bodyweight';
+                const targetSummary = def.isTimed
+                  ? `${def.defaultDurationSeconds ?? 45}s hold`
+                  : `${def.defaultRepRange[0]}–${def.defaultRepRange[1]} reps`;
                 return (
                   <button
                     key={def.id}
@@ -1522,7 +1670,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
                         {def.name}
                       </div>
                       <div className="wk-caption mt-1">
-                        {def.primaryMuscle} • {equipLabel} • {def.defaultRepRange[0]}–{def.defaultRepRange[1]} reps
+                        {def.primaryMuscle} • {equipLabel} • {targetSummary}
                       </div>
                     </div>
                     <Plus className="w-4 h-4 shrink-0 stroke-[2]" style={{ color: 'var(--color-text-secondary)' }} />
@@ -1675,6 +1823,11 @@ export const TrainTab: React.FC<TrainTabProps> = ({
           bodyweightEmaKg={bodyweightEmaKg}
           activeLocation={activeWorkout.location || profile.activeLocation}
           homeEquipment={profile.homeEquipment}
+          workouts={workouts}
+          readinessState={readiness.state}
+          goalPhase={profile.goalPhase}
+          unit={units.unit}
+          resolveFallbackWeight={resolveNewExerciseFallbackWeight}
           onConfirmSwap={handleConfirmSwap}
           onClose={() => setSwappingExercise(null)}
           excludeExerciseIds={activeWorkout.exercises.map((e) => e.exerciseId)}

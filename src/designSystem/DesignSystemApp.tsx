@@ -1471,7 +1471,7 @@ export const DesignSystemContent: React.FC<{
             </span>
             <h2 className="wk-title mt-1">3-step onboarding, habit framing &amp; location setup</h2>
             <p className="wk-body mt-1 max-w-prose">
-              Rendered from the live <code>OnboardingModal</code> component across Step 1 (Identity), Step 2 (18 sessions),
+              Rendered from the live <code>OnboardingModal</code> component across Step 1 (Identity), Step 2 (24 sessions),
               Step 3 (Restarting + Goal / Plan / Equipment setup), and the returning athlete &quot;Where you train&quot; editor.
             </p>
           </div>
@@ -1496,7 +1496,7 @@ export const DesignSystemContent: React.FC<{
               </div>
 
               <StageHeader
-                title="Step 2 of 3 · Habit &amp; 18 sessions"
+                title="Step 2 of 3 · Habit &amp; 24 sessions"
                 source="src/components/onboarding/OnboardingModal.tsx"
                 description="SessionsIllustration with Back / Skip controls and research-backed 6-week consistency copy."
               />
@@ -1752,7 +1752,7 @@ export const DesignSystemContent: React.FC<{
               />
 
               <StageHeader
-                title="ExerciseCard (No history · Dimmed Example chart)"
+                title="ExerciseCard (No history · Empty chart)"
                 source="src/components/train/ExerciseCard.tsx"
               />
               <ExerciseCard
@@ -1907,12 +1907,14 @@ export const DesignSystemContent: React.FC<{
                   />
                 </div>
                 <div className="pt-3 border-t" style={{ borderColor: 'var(--color-border-subtle)' }}>
-                  <div className="wk-caption mb-2">0 logged sessions (dimmed shape-only &quot;Example&quot; chart)</div>
+                  <div className="wk-caption mb-2">0 logged sessions (empty chart state)</div>
                   <TrendChart
                     points={[]}
                     format={(v) => fixtures.fmt.weight(v)}
                     height={180}
-                    label="Example empty chart"
+                    emptyTitle="No data yet"
+                    emptyMessage="Log this exercise to establish your starting point."
+                    label="Empty chart state"
                   />
                 </div>
               </div>

@@ -1,9 +1,9 @@
 /**
  * Chart series and plain-English summaries for the Progress tab. Every value comes from logged
  * workouts or measurements the athlete entered; one point shows that real starting value, and
- * only a chart with no points shows the labelled "Example" shape instead of numbers.
+ * charts with no points show an honest empty state instead of fabricated curves.
  */
-import { calculateE1RM } from '../engine/e1rm';
+import { calculateE1RM, getBodyweightLoadRatio, isTimedExercise } from '../engine/e1rm';
 import { buildBodyweightEmaLookup, calculateEmaSeries } from '../engine/ema';
 import { getWorkoutCompletedAt } from '../engine/recovery';
 import { isPillarBenchmarkExercise } from '../engine/strengthStandards';
@@ -985,9 +985,10 @@ export function buildStrengthCharts(input: {
   return charts;
 }
 
-/** Per-exercise progression chart for custom Progress widgets: E1RM for loaded/weighted lifts, best reps for unloaded bodyweight moves. */
+/** Per-exercise progression chart for custom Progress widgets: E1RM for loaded/bodyweight lifts, seconds for timed holds, best reps when bodyweight is unlogged. */
 export function buildExerciseProgressChart(input: {
-  exercise: Pick<ExerciseDefinition, 'id' | 'name' | 'equipment' | 'isRdl' | 'isWeightedCalisthenic'>;
+  exercise: Pick<ExerciseDefinition, 'id' | 'name' | 'equipment' | 'isRdl' | 'isWeightedCalisthenic'> &
+    Partial<Pick<ExerciseDefinition, 'pillar' | 'isTimed' | 'defaultDurationSeconds'>>;
   workouts: WorkoutSession[];
   bodyweightKg: number;
   biometrics?: BiometricLog[];
@@ -998,17 +999,27 @@ export function buildExerciseProgressChart(input: {
   const done = workouts.filter((w) => w.completed).sort((a, b) => getWorkoutCompletedAt(a) - getWorkoutCompletedAt(b));
   const timedEntry = done
     .flatMap((w) => w.exercises)
-    .find((e) => e.exerciseId === exercise.id && (e.durationSeconds || e.durationMinutesRange));
+    .find((e) => e.exerciseId === exercise.id && isTimedExercise(e));
 
-  if (timedEntry) {
+  if (timedEntry || isTimedExercise(exercise)) {
     const byDate = new Map<string, number>();
     for (const w of done) {
       const ex = w.exercises.find((e) => e.exerciseId === exercise.id && e.sets.some((s) => s.completed));
       if (!ex) continue;
-      const secs = ex.sets.reduce(
-        (m, s) => Math.max(m, s.actualReps && ex.repTargetType === 'duration' ? s.actualReps : ex.durationSeconds ?? 0),
-        0
-      );
+      const secs = ex.sets
+        .filter((s) => s.completed && !s.isWarmup && s.setType !== 'warmup')
+        .reduce(
+          (m, s) =>
+            Math.max(
+              m,
+              s.actualDurationSeconds ??
+                s.targetDurationSeconds ??
+                (s.actualReps && (s.actualReps > 5 || ex.repTargetType === 'duration')
+                  ? s.actualReps
+                  : ex.durationSeconds ?? exercise.defaultDurationSeconds ?? 0)
+            ),
+          0
+        );
       if (secs > 0) byDate.set(w.date, Math.max(byDate.get(w.date) ?? 0, secs));
     }
     const points = [...byDate.entries()].map(([date, value]) => ({ date, value })).sort((a, b) => a.date.localeCompare(b.date));
@@ -1045,7 +1056,14 @@ export function buildExerciseProgressChart(input: {
     }
   }
 
-  if (isCalisthenic && !hasExternalLoad) {
+  const bwRatio = isCalisthenic ? getBodyweightLoadRatio(exercise.id, exercise.pillar) : 0;
+  const hasRealBw =
+    bwRatio > 0 &&
+    (matchingEntries.length > 0
+      ? matchingEntries.every(({ date }) => (emaLookup ? emaLookup(date, 0) : bodyweightKg) > 0)
+      : bodyweightKg > 0);
+
+  if (isCalisthenic && !hasExternalLoad && !hasRealBw) {
     const byDate = new Map<string, number>();
     for (const { date, ex } of matchingEntries) {
       for (const s of ex.sets.filter(isWorkingDone)) {
@@ -1072,8 +1090,6 @@ export function buildExerciseProgressChart(input: {
     };
   }
 
-  // Calisthenic exercises with added external load but no logged bodyweight yet: chart added weight rather than fabricating an 80 kg bodyweight.
-  const hasRealBw = emaLookup ? matchingEntries.some(({ date }) => emaLookup(date, 0) > 0) : bodyweightKg > 0;
   if (isCalisthenic && !hasRealBw) {
     const byDate = new Map<string, number>();
     for (const { date, ex } of matchingEntries) {

@@ -25,10 +25,12 @@ interface TrendChartProps {
   typicalRange?: ChartTypicalRange;
   /** Active calendar window for stepping & daily 1W X-axis ticks. */
   windowRange?: { start: string; end: string; isDailyCalendar?: boolean };
+  /** Empty state title when `points` is empty. */
+  emptyTitle?: string;
+  /** Empty state message when `points` is empty. */
+  emptyMessage?: string;
 }
 
-/** Shape-only sample series for charts with fewer than two real points. */
-const EXAMPLE_SERIES = [100, 104, 101, 103, 99, 102, 106, 103, 109, 106, 111, 108, 113];
 const W = 1000;
 const H = 400;
 const PAD_TOP = 64;
@@ -96,10 +98,10 @@ function buildCalendarDays(start: string, end: string): { date: string; weekday:
 }
 
 /**
- * Whoop-inspired time-series chart positioned directly on the card surface: clean Y-axis gutter,
+ * Time-series chart positioned directly on the card surface: clean Y-axis gutter,
  * optional 28-day typical-range band, soft vertical gradient fill, and hollow circle value nodes on
  * sparse windows (<= 10 logged points) with continuous curve + endpoint dot on longer ranges.
- * With 1 point it shows the real starting point; only with 0 points does it show a dimmed "Example".
+ * With 1 point it shows and animates the real starting point; with 0 points it shows an honest empty state.
  */
 export const TrendChart: React.FC<TrendChartProps> = ({
   points,
@@ -111,11 +113,26 @@ export const TrendChart: React.FC<TrendChartProps> = ({
   positiveProgress,
   typicalRange,
   windowRange,
+  emptyTitle = 'No data yet',
+  emptyMessage = 'Log this exercise to establish your starting point.',
 }) => {
   const lineGradientId = useId();
   const areaGradientId = useId();
   const boxRef = useRef<HTMLDivElement>(null);
   const [play, setPlay] = useState(false);
+  const signature = points.map((p) => `${p.date}:${p.value}`).join('|');
+  const prevSigRef = useRef(signature);
+  const [animVersion, setAnimVersion] = useState(0);
+
+  useEffect(() => {
+    if (prevSigRef.current !== signature) {
+      prevSigRef.current = signature;
+      if (points.length > 0) {
+        setPlay(true);
+        setAnimVersion((v) => v + 1);
+      }
+    }
+  }, [signature, points.length]);
 
   useEffect(() => {
     const el = boxRef.current;
@@ -135,16 +152,39 @@ export const TrendChart: React.FC<TrendChartProps> = ({
     );
     observer.observe(el);
     return () => observer.disconnect();
-  }, [play]);
+  }, [play, points.length]);
 
-  const example = points.length === 0;
+  const plotHeight = Math.round((height * 0.45) / 4) * 4;
+  if (points.length === 0) {
+    return (
+      <div
+        ref={boxRef}
+        role="img"
+        aria-label={label}
+        className="relative flex flex-col items-center justify-center rounded-xl border border-dashed text-center px-4"
+        style={{
+          height: plotHeight,
+          borderColor: 'var(--color-border-subtle)',
+          background: 'rgb(var(--color-bg-raised-rgb, 28 32 38) / 0.35)',
+        }}
+      >
+        <p className="wk-caption font-medium m-0" style={{ color: 'var(--color-text-secondary)' }}>
+          {emptyTitle}
+        </p>
+        <p className="wk-caption m-0 mt-1" style={{ color: 'var(--color-text-muted)' }}>
+          {emptyMessage}
+        </p>
+      </div>
+    );
+  }
+
   const single = points.length === 1;
-  const showNodes = !example && !single && points.length <= 10;
+  const showNodes = !single && points.length <= 10;
   const padX = showNodes || windowRange?.isDailyCalendar ? 52 : 24;
 
-  const values = example ? EXAMPLE_SERIES : points.map((p) => p.value);
-  const rangeExtras = !example && !single && typicalRange ? [typicalRange.low, typicalRange.high] : [];
-  const all = example ? values : [...values, ...(secondary ?? []).map((p) => p.value), ...rangeExtras];
+  const values = points.map((p) => p.value);
+  const rangeExtras = !single && typicalRange ? [typicalRange.low, typicalRange.high] : [];
+  const all = [...values, ...(secondary ?? []).map((p) => p.value), ...rangeExtras];
   const rawMin = Math.min(...all);
   const rawMax = Math.max(...all);
   const { min, max, ticks } = niceAxisTicks(rawMin, rawMax, 4);
@@ -152,34 +192,32 @@ export const TrendChart: React.FC<TrendChartProps> = ({
   const y = (v: number) => H - PAD_BOTTOM - ((v - min) / Math.max(1e-9, max - min)) * (H - PAD_TOP - PAD_BOTTOM);
 
   const calendarDays =
-    !example && !single && windowRange?.isDailyCalendar
+    !single && windowRange?.isDailyCalendar
       ? buildCalendarDays(windowRange.start, windowRange.end)
       : [];
 
-  const t0 = example
-    ? 0
-    : windowRange?.isDailyCalendar && calendarDays.length > 1
-    ? parseLocalDate(windowRange.start).getTime()
-    : parseLocalDate(points[0].date).getTime();
-  const t1 = example
-    ? 1
-    : windowRange?.isDailyCalendar && calendarDays.length > 1
-    ? parseLocalDate(windowRange.end).getTime()
-    : parseLocalDate(points[points.length - 1].date).getTime();
+  const t0 =
+    windowRange?.isDailyCalendar && calendarDays.length > 1
+      ? parseLocalDate(windowRange.start).getTime()
+      : parseLocalDate(points[0].date).getTime();
+  const t1 =
+    windowRange?.isDailyCalendar && calendarDays.length > 1
+      ? parseLocalDate(windowRange.end).getTime()
+      : parseLocalDate(points[points.length - 1].date).getTime();
   const span = Math.max(1, t1 - t0);
-  const byIndex = example || (t1 === t0 && values.length > 1);
+  const byIndex = t1 === t0 && values.length > 1;
 
-  const xOf = (p: TrendPoint | number, i: number) =>
+  const xOf = (p: TrendPoint, i: number) =>
     single
       ? padX * 2.5
       : byIndex
       ? padX + (i / Math.max(1, values.length - 1)) * (W - padX * 2)
-      : padX + ((parseLocalDate((p as TrendPoint).date).getTime() - t0) / span) * (W - padX * 2);
+      : padX + ((parseLocalDate(p.date).getTime() - t0) / span) * (W - padX * 2);
 
-  const main = (example ? values : points).map((p, i) => ({
-    x: xOf(p as TrendPoint | number, i),
-    y: y(example ? (p as number) : (p as TrendPoint).value),
-    raw: example ? (p as number) : (p as TrendPoint).value,
+  const main = points.map((p, i) => ({
+    x: xOf(p, i),
+    y: y(p.value),
+    raw: p.value,
   }));
 
   const path = (pts: { x: number; y: number }[]) =>
@@ -191,7 +229,7 @@ export const TrendChart: React.FC<TrendChartProps> = ({
       : '';
 
   const secondaryPts =
-    !example && secondary && secondary.length > 1
+    secondary && secondary.length > 1
       ? byIndex
         ? secondary.map((p, i) => ({
             x: padX + (i / Math.max(1, secondary.length - 1)) * (W - padX * 2),
@@ -208,10 +246,10 @@ export const TrendChart: React.FC<TrendChartProps> = ({
   const last = main[main.length - 1];
   const isPositiveTrend =
     positiveProgress ??
-    (tone === 'strength' && !example && main.length >= 2 && main[main.length - 1].raw > main[0].raw);
+    (tone === 'strength' && main.length >= 2 && main[main.length - 1].raw > main[0].raw);
   const accentColor = isPositiveTrend
     ? 'var(--color-accent-primary)'
-    : !example && tone === 'biometric'
+    : tone === 'biometric'
     ? 'var(--color-data-telemetry)'
     : 'var(--color-text-primary)';
   const mutedStyle: React.CSSProperties = {
@@ -236,14 +274,18 @@ export const TrendChart: React.FC<TrendChartProps> = ({
     });
   }
 
-  const showTypicalBand = Boolean(typicalRange && !example && !single);
+  const showTypicalBand = Boolean(typicalRange && !single);
   const bandTop = showTypicalBand && typicalRange ? y(typicalRange.high) : 0;
   const bandBottom = showTypicalBand && typicalRange ? y(typicalRange.low) : 0;
   const bandY = Math.min(bandTop, bandBottom);
   const bandH = Math.max(10, Math.abs(bandBottom - bandTop));
 
   return (
-    <div ref={boxRef} className={play ? 'wk-chart-play' : 'wk-chart-idle'}>
+    <div
+      key={animVersion}
+      ref={boxRef}
+      className={play ? `wk-chart-play${single ? ' wk-chart-single' : ''}` : 'wk-chart-idle'}
+    >
       {showTypicalBand && typicalRange && (
         <div className="flex items-center justify-end gap-2 mb-2" aria-hidden="true">
           <span
@@ -259,39 +301,36 @@ export const TrendChart: React.FC<TrendChartProps> = ({
       <div
         className="grid items-stretch"
         style={{
-          gridTemplateColumns: example ? '1fr' : 'auto 1fr',
-          columnGap: example ? 0 : 8,
-          opacity: example ? 0.5 : 1,
+          gridTemplateColumns: 'auto 1fr',
+          columnGap: 8,
         }}
       >
-        {!example && (
-          <div
-            className="relative select-none"
-            style={{ height: Math.round((height * 0.45) / 4) * 4, minWidth: 28 }}
-            aria-hidden="true"
-          >
-            {ticks.map((tick) => {
-              const tickY = y(tick);
-              return (
-                <span
-                  key={tick}
-                  className="block text-right"
-                  style={{
-                    ...mutedStyle,
-                    position: 'absolute',
-                    right: 0,
-                    top: `${(tickY / H) * 100}%`,
-                    transform: 'translateY(-50%)',
-                  }}
-                >
-                  {stripTrailingUnit(format(tick))}
-                </span>
-              );
-            })}
-          </div>
-        )}
+        <div
+          className="relative select-none"
+          style={{ height: plotHeight, minWidth: 28 }}
+          aria-hidden="true"
+        >
+          {ticks.map((tick) => {
+            const tickY = y(tick);
+            return (
+              <span
+                key={tick}
+                className="block text-right"
+                style={{
+                  ...mutedStyle,
+                  position: 'absolute',
+                  right: 0,
+                  top: `${(tickY / H) * 100}%`,
+                  transform: 'translateY(-50%)',
+                }}
+              >
+                {stripTrailingUnit(format(tick))}
+              </span>
+            );
+          })}
+        </div>
 
-        <div className="relative w-full" style={{ height: Math.round((height * 0.45) / 4) * 4 }}>
+        <div className="relative w-full" style={{ height: plotHeight }}>
           <svg
             viewBox={`0 0 ${W} ${H}`}
             preserveAspectRatio="none"
@@ -353,7 +392,7 @@ export const TrendChart: React.FC<TrendChartProps> = ({
                 <stop offset="100%" stopColor={accentColor} stopOpacity="0" />
               </linearGradient>
             </defs>
-            {!example && areaPath && <path d={areaPath} fill={`url(#${areaGradientId})`} />}
+            {areaPath && <path d={areaPath} fill={`url(#${areaGradientId})`} />}
             {!showNodes && (
               <line
                 x1={last.x}
@@ -370,9 +409,8 @@ export const TrendChart: React.FC<TrendChartProps> = ({
             <path
               d={path(main)}
               fill="none"
-              stroke={example ? accentColor : `url(#${lineGradientId})`}
-              strokeOpacity={example ? 0.4 : 1}
-              strokeDasharray={example ? '4 4' : undefined}
+              stroke={`url(#${lineGradientId})`}
+              strokeOpacity={1}
               strokeWidth={showNodes ? 2.25 : 3}
               strokeLinejoin="round"
               strokeLinecap="round"
@@ -380,23 +418,38 @@ export const TrendChart: React.FC<TrendChartProps> = ({
             />
           </svg>
 
-          {/* Hollow ring nodes + direct numeric labels for sparse windows (<= 10 points) */}
+          {/* Hollow ring nodes + direct numeric labels for sparse windows (<= 10 points), with live dot pop on newest */}
           {showNodes &&
             main.map((pt, idx) => (
               <React.Fragment key={points[idx].date}>
-                <span
-                  className="wk-chart-fade absolute rounded-full pointer-events-none"
-                  style={{
-                    width: 8,
-                    height: 8,
-                    left: `${(pt.x / W) * 100}%`,
-                    top: `${(pt.y / H) * 100}%`,
-                    transform: 'translate(-50%, -50%)',
-                    background: 'var(--color-bg-surface)',
-                    border: `2px solid ${accentColor}`,
-                  }}
-                  aria-hidden="true"
-                />
+                {idx === main.length - 1 ? (
+                  <span
+                    className="wk-chart-dot absolute rounded-full pointer-events-none"
+                    style={{
+                      width: 10,
+                      height: 10,
+                      left: `calc(${(pt.x / W) * 100}% - 5px)`,
+                      top: `calc(${(pt.y / H) * 100}% - 5px)`,
+                      background: accentColor,
+                      boxShadow: '0 0 0 3px rgb(var(--color-bg-canvas-rgb) / 0.85)',
+                    }}
+                    aria-hidden="true"
+                  />
+                ) : (
+                  <span
+                    className="wk-chart-fade absolute rounded-full pointer-events-none"
+                    style={{
+                      width: 8,
+                      height: 8,
+                      left: `${(pt.x / W) * 100}%`,
+                      top: `${(pt.y / H) * 100}%`,
+                      transform: 'translate(-50%, -50%)',
+                      background: 'var(--color-bg-surface)',
+                      border: `2px solid ${accentColor}`,
+                    }}
+                    aria-hidden="true"
+                  />
+                )}
                 {visibleNodeLabels.has(idx) && (
                   <span
                     className={`wk-chart-fade absolute pointer-events-none select-none whitespace-nowrap ${
@@ -450,16 +503,10 @@ export const TrendChart: React.FC<TrendChartProps> = ({
               {format(points[0].value)}
             </span>
           )}
-
-          {example && (
-            <span className="wk-pill absolute" style={{ top: 8, left: 8 }} aria-hidden="true">
-              Example
-            </span>
-          )}
         </div>
 
         {/* X-axis footer aligned with the plot column */}
-        {!example && <div aria-hidden="true" />}
+        <div aria-hidden="true" />
 
         {single && (
           <div className="wk-chart-fade flex justify-between" style={{ ...mutedStyle, marginTop: 8 }} aria-hidden="true">
@@ -468,7 +515,7 @@ export const TrendChart: React.FC<TrendChartProps> = ({
           </div>
         )}
 
-        {!example && !single && calendarDays.length > 1 && (
+        {!single && calendarDays.length > 1 && (
           <div
             className="wk-chart-fade relative"
             style={{ height: 28, marginTop: 4 }}
@@ -498,7 +545,7 @@ export const TrendChart: React.FC<TrendChartProps> = ({
           </div>
         )}
 
-        {!example && !single && calendarDays.length <= 1 && (
+        {!single && calendarDays.length <= 1 && (
           <div className="wk-chart-fade flex justify-between" style={{ ...mutedStyle, marginTop: 8 }} aria-hidden="true">
             <span>{dayMonth(points[0].date)}</span>
             <span>

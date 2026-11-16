@@ -1,4 +1,5 @@
 import { WorkoutSession } from './types';
+import { getBodyweightLoadRatio } from './e1rm';
 
 /**
  * Calculates Heart Rate Reserve Percentage (HRR%):
@@ -16,41 +17,73 @@ export function calculateHrrPercentage(
 
 /**
  * Calculates Total Effective Tonnage from a workout session:
- * Tonnage = sum(weight * reps) across completed sets
+ * Tonnage = sum(effectiveWeight * reps) across completed dynamic working sets.
+ * When a measured bodyweight (`> 0`) is supplied, bodyweight and weighted-calisthenic
+ * sets include their biomechanical bodyweight fraction alongside added load.
+ * Timed holds / carries are counted in completedSetsCount without multiplying seconds as reps.
  */
-export function calculateSessionTonnage(session: WorkoutSession): {
+export function calculateSessionTonnage(
+  session: WorkoutSession,
+  bodyweightKgOrLookup: number | ((date: string) => number) = 0
+): {
   tonnageKg: number;
   completedSetsCount: number;
 } {
   let tonnageKg = 0;
   let completedSetsCount = 0;
+  const resolvedBw =
+    typeof bodyweightKgOrLookup === 'function'
+      ? bodyweightKgOrLookup(session.date)
+      : bodyweightKgOrLookup;
+  const sessionBw = resolvedBw > 0 ? resolvedBw : 0;
 
   for (const ex of session.exercises) {
+    const isTimed = Boolean(
+      ex.repTargetType === 'duration' || ex.durationSeconds || ex.durationMinutesRange
+    );
+    const isCalisthenic =
+      ex.equipment === 'bodyweight' ||
+      ex.equipment === 'weighted_bodyweight' ||
+      Boolean(ex.isWeightedCalisthenic);
+    const bwLoad =
+      !isTimed && isCalisthenic && sessionBw > 0
+        ? sessionBw * getBodyweightLoadRatio(ex.exerciseId, ex.pillar)
+        : 0;
+
     for (const s of ex.sets) {
-      if (s.completed && !s.isWarmup && s.setType !== 'warmup' && s.actualReps && s.actualReps > 0) {
-        const weight = s.actualWeightKg ?? s.targetWeightKg ?? 0;
-        tonnageKg += weight * s.actualReps;
+      if (!s.completed || s.isWarmup || s.setType === 'warmup') continue;
+      if (isTimed) {
+        if ((s.actualDurationSeconds ?? s.targetDurationSeconds ?? s.actualReps ?? 0) > 0) {
+          completedSetsCount++;
+        }
+        continue;
+      }
+      if (s.actualReps && s.actualReps > 0) {
+        const addedWeight = s.actualWeightKg ?? s.targetWeightKg ?? 0;
+        const effectiveWeight = bwLoad + addedWeight;
+        tonnageKg += effectiveWeight * s.actualReps;
         completedSetsCount++;
       }
     }
   }
 
-  return { tonnageKg, completedSetsCount };
+  return { tonnageKg: Math.round(tonnageKg * 10) / 10, completedSetsCount };
 }
 
 /**
  * Work Capacity Index (WCI):
  * Formula: WCI = (Effective Tonnage * Sets) / (Avg Session HRR% * Duration_minutes)
- * 
+ *
  * High WCI indicates the lifter is handling more volume/density with less cardiovascular strain,
  * proving physiological conditioning alongside mechanical overload.
  */
 export function calculateWci(
   session: WorkoutSession,
   restingHr: number = 60,
-  maxHr: number = 190
+  maxHr: number = 190,
+  bodyweightKg: number = 0
 ): number {
-  const { tonnageKg, completedSetsCount } = calculateSessionTonnage(session);
+  const { tonnageKg, completedSetsCount } = calculateSessionTonnage(session, bodyweightKg);
   if (completedSetsCount === 0 || tonnageKg === 0) return 0;
 
   const durationMin = Math.max(15, session.durationMinutes || 60);

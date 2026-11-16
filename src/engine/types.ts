@@ -191,6 +191,10 @@ export interface WorkoutSet {
   tempo?: string;
   isFormFailure?: boolean;
   repDisplay?: string;
+  /** Target hold/carry time in seconds for timed isometric or loaded-carry exercises. */
+  targetDurationSeconds?: number;
+  /** Logged hold/carry time in seconds for timed exercises. */
+  actualDurationSeconds?: number;
 }
 
 export interface ExerciseDefinition {
@@ -203,6 +207,10 @@ export interface ExerciseDefinition {
   isRdl?: boolean;
   isWeightedCalisthenic?: boolean;
   isIsolation?: boolean; // True for isolation movements (lateral raises, curls, pushdowns, calves)
+  /** True when sets are tracked for duration (seconds/minutes) rather than rep count (e.g., planks, carries, holds). */
+  isTimed?: boolean;
+  /** Default hold duration in seconds when adding or swapping into a timed exercise. */
+  defaultDurationSeconds?: number;
   movementFamily?: string; // Canonical movement vector ID in the Knowledge Graph
   movementFamilyLabel?: string; // Plain-English movement family name (e.g. "Horizontal Chest Press")
   environments?: TrainingLocation[]; // Where this exercise can be performed ('gym', 'home', 'travel')
@@ -233,6 +241,8 @@ export interface ExerciseSession {
   maxReps: number;
   sets: WorkoutSet[];
   notes?: string;
+  /** Open session notes written by the athlete for this exercise during the workout. */
+  athleteNotes?: string;
   orderCode?: string; // Grouping / superset code, e.g. 'A1', 'A2', 'B1', 'B2', 'C'
   tempo?: string; // 4-digit tempo e.g. '4010', '3110', or duration target e.g. '60sec', '15-30min'
   restSeconds?: number;

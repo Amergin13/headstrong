@@ -7013,7 +7013,7 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
             id: 'w-own-reached',
             exercises: active.exercises.map((ex, idx) =>
               idx === 0
-                ? { ...ex, exerciseId: 'ex-bench-press', name: 'Barbell Bench Press', sets: ex.sets.map((st) => ({ ...st, completed: true, actualWeightKg: 100, actualReps: 3 })) }
+                ? { ...ex, exerciseId: 'ex-bench-press', name: 'Barbell Bench Press', equipment: 'barbell' as const, sets: ex.sets.map((st) => ({ ...st, completed: true, actualWeightKg: 100, actualReps: 3 })) }
                 : { ...ex, sets: ex.sets.map((st) => ({ ...st, completed: true, actualWeightKg: st.targetWeightKg, actualReps: st.targetReps })) }
             ),
           },
@@ -7853,7 +7853,8 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
       ],
     });
 
-    // 1. Unloaded chin-ups (0 added kg) never report 107.6 kg estimated max — they track reps & pass ROT/QA gates.
+    // 1. Unloaded chin-ups (0 added kg) count real logged bodyweight (80.7 kg -> 107.6 to 113 kg E1RM),
+    // while unloaded chin-ups with no weigh-in fall back to tracking reps (never inventing 80 kg).
     const bioSame807: BiometricLog[] = [
       { date: '2026-09-01', bodyweightKg: 81.2, hrvRmssd: 60, restingHr: 54, sleepHours: 7.5, steps: 0, activeZoneMinutes: 0 },
       { date: '2026-09-01', bodyweightKg: 80.7, hrvRmssd: 62, restingHr: 53, sleepHours: 7.8, steps: 0, activeZoneMinutes: 0 },
@@ -7896,18 +7897,34 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
     });
     const unloadedRot = cs44.runRotContentAudit([{ exerciseName: unloadedEx.name, summary: unloadedInsight.summary }]);
     assert(
-      unloadedInsight.metric === 'reps' &&
-        unloadedInsight.history[1].value === 10 &&
-        !/107\.6|estimated max/i.test(unloadedInsight.summary) &&
+      unloadedInsight.metric === 'e1rm' &&
+        unloadedInsight.includesBodyweight === true &&
+        unloadedInsight.history[0].e1rmKg === 107.6 &&
+        unloadedInsight.history[1].e1rmKg === 113 &&
         unloadedFacts.lines[0] === unloadedInsight.lines[0] &&
         noteMod44.checkExerciseNote(unloadedFacts.fallback, unloadedFacts).problem === undefined &&
         unloadedRot.passed &&
-        unloadedChart.summary.includes('reps') &&
-        !/estimated one-rep max/i.test(unloadedChart.summary) &&
-        unloadedChart.points[1].value === 10 &&
-        unloadedSummaries[0].lines[1].includes('+2 reps') &&
-        unloadedReport?.trends.length === 0,
-      `Unloaded chin-ups track reps instead of 107.6 kg E1RM (got "${unloadedInsight.lines[0]}", "${unloadedSummaries[0]?.lines[1]}")`
+        /estimated one-rep max/i.test(unloadedChart.summary) &&
+        unloadedChart.points[1].value === 113 &&
+        /estimated max \(bodyweight \+ added weight\)/.test(unloadedSummaries[0].lines[1]) &&
+        unloadedReport?.trends[0]?.includesBodyweight === true,
+      `Unloaded chin-ups count logged bodyweight for E1RM & trends (got "${unloadedInsight.lines[0]}", "${unloadedSummaries[0]?.lines[1]}")`
+    );
+
+    const unloadedNoBwInsight = buildExerciseInsight(unloadedEx, unloadedWorkouts, 'Normal', 0, 12, fmtKg44, []);
+    const unloadedNoBwChart = seriesMod44.buildExerciseProgressChart({
+      exercise: { id: 'ex-chinup', name: 'Hammer-Grip Chin-Up', equipment: 'weighted_bodyweight', isWeightedCalisthenic: true },
+      workouts: unloadedWorkouts,
+      bodyweightKg: 0,
+      biometrics: [],
+      fmt: pFmt44,
+    });
+    assert(
+      unloadedNoBwInsight.metric === 'reps' &&
+        unloadedNoBwInsight.history[1].value === 10 &&
+        !/estimated max/i.test(unloadedNoBwInsight.summary) &&
+        unloadedNoBwChart.points[1].value === 10,
+      'Unloaded chin-ups fall back to tracking reps when no bodyweight has been logged'
     );
 
     // 2. When no bodyweight has been logged, weighted calisthenics use added weight (no 80 kg phantom E1RM).
@@ -10765,7 +10782,314 @@ Exercise,,Date,Workout,Sets,Reps,Tempo,Rest,Notes,Set 1,Set 2,Set 3,Set 4
     }
   }
 
-  console.log('\nALL 52 ENGINE, GOVERNANCE, DESIGN SYSTEM, TYPOGRAPHY, WEARABLES, WHOOP STRAIN, GOOGLE AUTH, ONBOARDING CONTEXT, 6-WEEK PROGRAM, SPREADSHEET IMPORT, AI COACH ACTIONS, GEMINI FLASH + KG, OOUX, AGENTIC COACH & LAUNCH VERIFICATION SUITES PASSED SUCCESSFULLY! 🎯');
+  // ==========================================================================
+  // 53. Product Upgrades: Bodyweight Counting, Live Charts, Notes -> KG,
+  //     Expanded Catalog, Science-Backed Swaps, Timed Holds, Steps & Future Days
+  // ==========================================================================
+  console.log('\n[Suite 53: Product Upgrades & Onboarding Shift Nudge Verification]');
+  {
+    const fs53 = await import('fs');
+    const path53 = await import('path');
+    const prog53 = await import('../progression');
+    const { isTimedExercise, getEffectiveBodyweightLoadKg } = await import('../e1rm');
+    const { calculateSessionTonnage } = await import('../wci');
+    const { buildExerciseInsight, getPreviousWorkingSets } = await import('../../services/exerciseInsight');
+    const { buildWeekStrip } = await import('../../services/sessionSchedule');
+    const { buildAthleteKnowledgeGraph } = await import('../knowledgeGraph');
+    const { buildWorkoutFinish } = await import('../../services/workoutFinish');
+    const { buildStarterPlan } = await import('../starterPlan');
+    const { generatePlanWorkout } = await import('../muscleBuildingProgram');
+    const { buildStrengthCharts, buildExerciseProgressChart } = await import('../../services/progressSeries');
+    const { buildPersonalBests, buildTrainingTotals } = await import('../../services/progressOverview');
+    const repo53 = process.cwd();
+
+    // 1. Expanded catalog: no vector typo, bands & dumbbell home leg curl, timed holds & carries
+    assert(
+      !SEED_EXERCISES.some((e) => (e.movementFamily as string) === 'vector-iso-side-delts') &&
+        ['ex-db-leg-curl', 'ex-single-leg-db-rdl', 'ex-band-leg-curl', 'ex-leg-extension', 'ex-barbell-hip-thrust', 'ex-db-hip-thrust', 'ex-forearm-plank', 'ex-farmers-walk', 'ex-suitcase-carry'].every((id) =>
+          SEED_EXERCISES.some((e) => e.id === id)
+        ),
+      'Expanded catalog fixes side-delt vector typo and includes new home/gym/band/carry/timed exercises'
+    );
+
+    // 2. Bodyweight counting in exercises & tonnage when weigh-in exists
+    const pushupDef = SEED_EXERCISES.find((e) => e.id === 'ex-pushup')!;
+    const pushupSession: WorkoutSession = {
+      id: 'w-bw-push',
+      date: '2026-11-10',
+      completed: true,
+      completedAt: '2026-11-10T18:00:00Z',
+      name: 'Travel Push',
+      splitDay: 'Push',
+      readinessState: 'Normal',
+      readinessZScore: 0,
+      exercises: [
+        {
+          id: 'ex-1',
+          exerciseId: pushupDef.id,
+          name: pushupDef.name,
+          pillar: pushupDef.pillar,
+          equipment: 'bodyweight',
+          minReps: 10,
+          maxReps: 20,
+          sets: [
+            { id: 's1', setNumber: 1, targetWeightKg: 0, actualWeightKg: 0, targetReps: 15, actualReps: 15, targetRir: 2, actualRir: 2, completed: true, setType: 'working' },
+          ],
+        },
+      ],
+    };
+    const bwTonnage = calculateSessionTonnage(pushupSession, 80);
+    const noBwTonnage = calculateSessionTonnage(pushupSession, 0);
+    const bandPullDef = SEED_EXERCISES.find((e) => e.id === 'ex-band-pull-apart')!;
+    const bandTonnage = calculateSessionTonnage(
+      {
+        ...pushupSession,
+        exercises: [
+          {
+            id: 'ex-b1',
+            exerciseId: bandPullDef.id,
+            name: bandPullDef.name,
+            pillar: bandPullDef.pillar,
+            equipment: 'bodyweight',
+            minReps: 15,
+            maxReps: 25,
+            sets: [{ id: 'sb1', setNumber: 1, targetWeightKg: 0, actualWeightKg: 0, targetReps: 20, actualReps: 20, targetRir: 2, completed: true, setType: 'working' }],
+          },
+        ],
+      },
+      80
+    );
+    const bwTotals = buildTrainingTotals([pushupSession], undefined, Date.now(), 80);
+    const pushupInsight = buildExerciseInsight(pushupSession.exercises[0], [pushupSession], 'Normal', 80);
+    const pushupChart = buildExerciseProgressChart({
+      exercise: pushupDef,
+      workouts: [pushupSession],
+      bodyweightKg: 80,
+      fmt: { weight: (k) => `${k} kg`, length: (c) => `${c} cm` },
+    });
+    const pushupPbs = buildPersonalBests([pushupSession], 80);
+    assert(
+      getEffectiveBodyweightLoadKg(80, 'ex-pushup') === 51.2 &&
+        Math.round(bwTonnage.tonnageKg) === Math.round(51.2 * 15) &&
+        noBwTonnage.tonnageKg === 0 &&
+        bandTonnage.tonnageKg === 0 &&
+        bwTotals.volumeKg === Math.round(51.2 * 15) &&
+        pushupInsight.metric === 'e1rm' &&
+        pushupInsight.includesBodyweight === true &&
+        pushupChart.points[0].value > 50 &&
+        pushupPbs[0].e1rmKg > 50,
+      'Bodyweight exercises count biomechanically scaled bodyweight across E1RM, charts, PBs, and tonnage when weigh-in exists, while bands and unlogged BW stay clean'
+    );
+
+    // 3. Cross-family swaps + science-backed rep & inverse-Epley load calculation
+    const legCurlEx: ExerciseSession = {
+      id: 'ex-lc',
+      exerciseId: 'ex-leg-curl',
+      name: 'Seated Leg Curl',
+      pillar: 'Hinge',
+      equipment: 'machine',
+      isIsolation: true,
+      minReps: 10,
+      maxReps: 15,
+      sets: [
+        { id: 'slc1', setNumber: 1, targetWeightKg: 50, actualWeightKg: 50, targetReps: 12, actualReps: 12, targetRir: 2, actualRir: 2, completed: false, setType: 'working' },
+      ],
+    };
+    const homeRelatedHams = prog53.getRelatedSwapAlternatives(legCurlEx, SEED_EXERCISES, 'home', ['dumbbells'], []);
+    assert(
+      homeRelatedHams.some((e) => e.id === 'ex-db-rdl') &&
+        homeRelatedHams.some((e) => e.id === 'ex-single-leg-db-rdl'),
+      'Related substitutes surface Dumbbell Romanian Deadlift when swapping off Seated Leg Curl at home'
+    );
+    const benchEx: ExerciseSession = {
+      id: 'ex-bp',
+      exerciseId: 'ex-bench-press',
+      name: 'Barbell Bench Press',
+      pillar: 'Horizontal Push',
+      equipment: 'barbell',
+      isIsolation: false,
+      minReps: 6,
+      maxReps: 8,
+      sets: [{ id: 'sbp', setNumber: 1, targetWeightKg: 80, targetReps: 6, targetRir: 2, completed: false, setType: 'working' }],
+    };
+    const dbBenchDef = SEED_EXERCISES.find((e) => e.id === 'ex-db-bench-press')!;
+    const swapFresh = prog53.prescribeExerciseSwap({
+      sourceExercise: benchEx,
+      targetDef: dbBenchDef,
+      workouts: [],
+      readinessState: 'Normal',
+      goalPhase: 'Lean Bulk',
+      bodyweightEmaKg: 80,
+      location: 'home',
+      unit: 'kg',
+    });
+    const swapMaingain = prog53.prescribeExerciseSwap({
+      sourceExercise: benchEx,
+      targetDef: dbBenchDef,
+      workouts: [],
+      readinessState: 'Normal',
+      goalPhase: 'Maingain',
+      bodyweightEmaKg: 80,
+      location: 'home',
+      unit: 'kg',
+    });
+    const priorDbWorkout: WorkoutSession = {
+      id: 'w-db-hist',
+      date: '2026-11-12',
+      completed: true,
+      completedAt: '2026-11-12T18:00:00Z',
+      name: 'Upper',
+      splitDay: 'Upper',
+      readinessState: 'Normal',
+      readinessZScore: 0,
+      exercises: [
+        {
+          id: 'ex-dbh',
+          exerciseId: dbBenchDef.id,
+          name: dbBenchDef.name,
+          pillar: 'Horizontal Push',
+          equipment: 'dumbbell',
+          minReps: 8,
+          maxReps: 12,
+          sets: [
+            { id: 'sdb1', setNumber: 1, targetWeightKg: 60, actualWeightKg: 60, targetReps: 10, actualReps: 10, targetRir: 2, actualRir: 2, completed: true, setType: 'working' },
+            { id: 'sdb2', setNumber: 2, targetWeightKg: 60, actualWeightKg: 60, targetReps: 10, actualReps: 10, targetRir: 2, actualRir: 2, completed: true, setType: 'working' },
+          ],
+        },
+      ],
+    };
+    const swapFromHistory = prog53.prescribeExerciseSwap({
+      sourceExercise: benchEx,
+      targetDef: dbBenchDef,
+      workouts: [priorDbWorkout],
+      readinessState: 'Normal',
+      goalPhase: 'Lean Bulk',
+      bodyweightEmaKg: 80,
+      location: 'home',
+      unit: 'kg',
+    });
+    assert(
+      swapFresh.targetReps === 8 &&
+        swapFresh.targetWeightKg >= 60 &&
+        swapFresh.targetWeightKg <= 66 &&
+        swapMaingain.targetReps === 6 &&
+        swapMaingain.targetWeightKg >= swapFresh.targetWeightKg &&
+        swapFromHistory.usedOwnHistory === true &&
+        swapFromHistory.targetWeightKg === 60 &&
+        swapFromHistory.targetReps === 11,
+      `Science-backed swap prescribes inverse-Epley weight (${swapFresh.targetWeightKg}kg x ${swapFresh.targetReps}), Maingain compound shift (${swapMaingain.targetWeightKg}kg x ${swapMaingain.targetReps}), and own history (${swapFromHistory.targetWeightKg}kg x ${swapFromHistory.targetReps})`
+    );
+
+    // 4. Timed exercises (planks/holds/carries): seconds not reps, excluded from lifted tonnage
+    const plankPlan = generate6WeekMuscleBuildingWorkout(2, 80);
+    const gymballPlankEx: ExerciseSession = {
+      id: 'ex-plank-53',
+      exerciseId: 'ex-forearm-plank',
+      name: 'Forearm Plank',
+      pillar: 'Squat',
+      equipment: 'bodyweight',
+      minReps: 1,
+      maxReps: 1,
+      repTargetType: 'duration',
+      durationSeconds: 60,
+      sets: [{ id: 'spl1', setNumber: 1, targetWeightKg: 0, actualWeightKg: 0, targetReps: 1, actualReps: 1, targetRir: 2, targetDurationSeconds: 60, actualDurationSeconds: 65, completed: true, setType: 'working' }],
+    };
+    const plankWorkout: WorkoutSession = { ...pushupSession, id: 'w-plank-53', exercises: [gymballPlankEx] };
+    const plankTonnage = calculateSessionTonnage(plankWorkout, 80);
+    const plankInsight = buildExerciseInsight(gymballPlankEx, [plankWorkout], 'Normal', 80);
+    const plankPrev = getPreviousWorkingSets('ex-forearm-plank', [plankWorkout]);
+    assert(
+      plankPlan.exercises.every((e) => !isTimedExercise(e) || e.sets.every((s) => (s.targetDurationSeconds ?? 0) > 0)) &&
+        plankTonnage.tonnageKg === 0 &&
+        plankInsight.metric === 'time' &&
+        plankInsight.history[0]?.value === 65 &&
+        plankPrev[0]?.durationSeconds === 65,
+      'Timed exercises use target/actual duration seconds across insights & PREV and exclude hold time from tonnage'
+    );
+
+    // 5. Exercise block athlete notes captured & turned into longitudinal Knowledge Graph insights
+    const notedWorkouts: WorkoutSession[] = [
+      {
+        ...pushupSession,
+        id: 'w-note-1',
+        date: '2026-11-05',
+        readinessState: 'Amber Shield',
+        exercises: [{ ...legCurlEx, athleteNotes: 'Right hamstring tendon felt pinch at full stretch', sets: [{ ...legCurlEx.sets[0], completed: true }] }],
+      },
+      {
+        ...pushupSession,
+        id: 'w-note-2',
+        date: '2026-11-12',
+        readinessState: 'Normal',
+        exercises: [{ ...legCurlEx, athleteNotes: 'Tight pinch again on bottom half of leg curl', sets: [{ ...legCurlEx.sets[0], completed: true }] }],
+      },
+    ];
+    const notedKg = buildAthleteKnowledgeGraph(notedWorkouts, [], SEED_EXERCISES, NEW_USER_PROFILE, {});
+    const notedFinish = buildWorkoutFinish({
+      profile: NEW_USER_PROFILE,
+      workouts: notedWorkouts.slice(0, 1),
+      finished: notedWorkouts[1],
+      biometrics: [],
+      exerciseCatalog: SEED_EXERCISES,
+      formatWeight: (k) => `${k} kg`,
+    });
+    assert(
+      notedKg.exerciseNotesHistory.length === 2 &&
+        notedKg.exerciseNotesHistory[0].category === 'pain_discomfort' &&
+        notedKg.insights.some((i) => i.id === 'pkg-insight-notes-discomfort' && i.title.includes('Recurring Note')) &&
+        Boolean(notedFinish?.report) &&
+        notedFinish!.report.session.exerciseCount === 1,
+      'Knowledge graph ingests exercise session notes across dates and derives longitudinal insights'
+    );
+
+    // 6. Future strip days hold distinct upcoming sessions without carrying over today's workout
+    const sNow = new Date(2026, 9, 24, 12, 0).getTime();
+    const sPlan = buildStarterPlan('Lean Bulk', 'lift4');
+    const w1 = generatePlanWorkout(sPlan, 1);
+    const futureStrip = buildWeekStrip({
+      workouts: [],
+      nextSession: w1,
+      programType: sPlan.id as any,
+      plan: sPlan,
+      exerciseCatalog: SEED_EXERCISES,
+      now: sNow,
+    });
+    const futurePlanned = futureStrip.filter((d) => !d.isToday && d.status === 'planned' && d.plannedSession);
+    assert(
+      futureStrip[3].isToday &&
+        futureStrip[3].plannedSession?.programWorkoutNumber === 1 &&
+        futurePlanned.length >= 1 &&
+        futurePlanned[0].plannedSession!.programWorkoutNumber !== 1 &&
+        futurePlanned[0].plannedSession!.exercises.length > 0,
+      'Future planned strip days preview upcoming workouts cleanly instead of carrying over today'
+    );
+
+    // 7. Static checks for UI changes: empty charts, no Example label, open notes input, steps guard, future day card & onboarding polish
+    const trendSrc = fs53.readFileSync(path53.join(repo53, 'src/components/common/TrendChart.tsx'), 'utf8');
+    const emptyStrengthCharts = buildStrengthCharts({ workouts: [], profile: NEW_USER_PROFILE, bodyweightKg: 0, fmt: { weight: (k) => `${k} kg`, length: (c) => `${c} cm` } });
+    const trainSrc53 = fs53.readFileSync(path53.join(repo53, 'src/components/train/TrainTab.tsx'), 'utf8');
+    const exCardSrc53 = fs53.readFileSync(path53.join(repo53, 'src/components/train/ExerciseCard.tsx'), 'utf8');
+    const setRowSrc53 = fs53.readFileSync(path53.join(repo53, 'src/components/train/SetRow.tsx'), 'utf8');
+    const obModalSrc53 = fs53.readFileSync(path53.join(repo53, 'src/components/onboarding/OnboardingModal.tsx'), 'utf8');
+    const dsAppSrc53 = fs53.readFileSync(path53.join(repo53, 'src/designSystem/DesignSystemApp.tsx'), 'utf8');
+    assert(
+      !trendSrc.includes('EXAMPLE_SERIES') &&
+        !trendSrc.includes('>Example<') &&
+        emptyStrengthCharts[0]?.points.length === 0 &&
+        trainSrc53.includes('!showActiveExercises && !isFutureInspected') &&
+        trainSrc53.includes('Upcoming training day') &&
+        trainSrc53.includes('liveInsightWorkouts') &&
+        exCardSrc53.includes('Session notes') &&
+        exCardSrc53.includes("isTimed ? 'TIME' : 'REPS'") &&
+        setRowSrc53.includes('duration in seconds') &&
+        obModalSrc53.includes('wk-page-title') &&
+        obModalSrc53.includes("ownInvalid ? 'alert'") &&
+        !dsAppSrc53.includes('18 sessions'),
+      'UI components ship empty-state charts without Example curve, live block completion insights, open session notes, seconds UI, steps guard, future preview, and onboarding Shift Nudge fixes'
+    );
+  }
+
+  console.log('\nALL 53 ENGINE, GOVERNANCE, DESIGN SYSTEM, TYPOGRAPHY, WEARABLES, WHOOP STRAIN, GOOGLE AUTH, ONBOARDING CONTEXT, 6-WEEK PROGRAM, SPREADSHEET IMPORT, AI COACH ACTIONS, GEMINI FLASH + KG, OOUX, AGENTIC COACH, PRODUCT UPGRADES & LAUNCH VERIFICATION SUITES PASSED SUCCESSFULLY! 🎯');
 })().catch((err) => {
   console.error('Test Suite Failed:', err);
   if (typeof process !== 'undefined' && process.exit) {

@@ -405,7 +405,14 @@ export function buildCoachSystemPrompt(input: AssistantProcessInput): string {
   }
   if (kg.insights.length > 0) {
     kgFacts.push(
-      ...kg.insights.slice(0, 2).map((ins) => `Insight: ${ins.title} — ${ins.narrative}`)
+      ...kg.insights.slice(0, 3).map((ins) => `Insight: ${ins.title} — ${ins.narrative}`)
+    );
+  }
+  if (kg.exerciseNotesHistory.length > 0) {
+    kgFacts.push(
+      ...kg.exerciseNotesHistory
+        .slice(0, 3)
+        .map((n) => `Exercise note (${n.exerciseName}, ${n.date}): "${n.note}"`)
     );
   }
   const latestWaist = kg.bodyComposition.tapeTrends.find((t) => t.id === 'waist')?.latest;

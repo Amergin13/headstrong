@@ -17,6 +17,7 @@ interface SetRowProps {
   previous?: PreviousSet;
   isBodyweight?: boolean;
   isDumbbell?: boolean;
+  isTimed?: boolean;
   displayBadge?: string;
   displayLabel?: string;
   /** Single-arm / single-leg: show left and right reps under the row. */
@@ -30,6 +31,7 @@ export const SetRow: React.FC<SetRowProps> = ({
   previous,
   isBodyweight = false,
   isDumbbell = false,
+  isTimed = false,
   displayBadge,
   displayLabel,
   perSide = false,
@@ -40,6 +42,10 @@ export const SetRow: React.FC<SetRowProps> = ({
   const currentWeight = set.actualWeightKg ?? set.targetWeightKg;
   const displayWeight = units.toDisplay(currentWeight);
   const currentReps = set.actualReps ?? set.targetReps;
+  const currentSeconds =
+    set.actualDurationSeconds ??
+    set.targetDurationSeconds ??
+    (currentReps > 5 ? currentReps : 45);
   const currentRir = set.actualRir ?? set.targetRir ?? 2;
   const currentSetType: SetType = set.setType || (set.isWarmup ? 'warmup' : 'working');
   const weightStep = units.unit === 'lb' ? 5 : isDumbbell ? 2.0 : 2.5;
@@ -60,7 +66,8 @@ export const SetRow: React.FC<SetRowProps> = ({
     triggerHaptic(nextCompleted ? 'success' : 'light');
     onUpdate({
       actualWeightKg: currentWeight,
-      actualReps: currentReps,
+      actualReps: isTimed ? 1 : currentReps,
+      ...(isTimed ? { actualDurationSeconds: currentSeconds } : {}),
       actualRir: currentRir,
       completed: nextCompleted,
       completedAt: nextCompleted ? new Date().toISOString() : undefined,
@@ -68,15 +75,21 @@ export const SetRow: React.FC<SetRowProps> = ({
     if (nextCompleted) onComplete();
   };
 
-  // Tap the previous-session value to copy its weight & reps into this set
+  // Tap the previous-session value to copy its weight & reps (or seconds) into this set
   const handleCopyPrevious = () => {
     if (!previous || set.completed) return;
     triggerHaptic('light');
-    onUpdate({ actualWeightKg: isBodyweight ? 0 : previous.weightKg, actualReps: previous.reps });
+    onUpdate({
+      actualWeightKg: isBodyweight ? 0 : previous.weightKg,
+      actualReps: isTimed ? 1 : previous.reps,
+      ...(isTimed && previous.durationSeconds ? { actualDurationSeconds: previous.durationSeconds } : {}),
+    });
   };
 
   const prevDisplay = previous
-    ? `${isBodyweight || previous.weightKg === 0 ? 'BW' : units.format(previous.weightKg, false)}×${previous.reps}`
+    ? isTimed && previous.durationSeconds
+      ? `${isBodyweight || previous.weightKg === 0 ? 'BW' : units.format(previous.weightKg, false)}×${previous.durationSeconds}s`
+      : `${isBodyweight || previous.weightKg === 0 ? 'BW' : units.format(previous.weightKg, false)}×${previous.reps}`
     : '—';
   const badge =
     displayBadge || (currentSetType === 'warmup' ? 'W' : currentSetType === 'drop' ? 'D' : currentSetType === 'myo' ? '+' : `${set.setNumber}`);
@@ -162,27 +175,54 @@ export const SetRow: React.FC<SetRowProps> = ({
         )}
       </label>
 
-      <label className="wk-tap block relative">
-        <input
-          type="number"
-          inputMode="numeric"
-          value={currentReps}
-          aria-label={`${label} repetitions`}
-          onFocus={(e) => e.target.select()}
-          onChange={(e) => onUpdate({ actualReps: parseInt(e.target.value, 10) || 0 })}
-          className="wk-input tabular-numbers outline-none block"
-          style={{ color: set.completed ? 'var(--color-text-primary)' : 'var(--color-text-muted)' }}
-        />
-        {(set.isFormFailure || set.repDisplay === 'F*') && (
+      {isTimed ? (
+        <label className="wk-tap wk-input tabular-numbers flex items-center justify-center cursor-text">
+          <input
+            type="number"
+            inputMode="numeric"
+            value={currentSeconds}
+            aria-label={`${label} duration in seconds`}
+            onFocus={(e) => e.target.select()}
+            onChange={(e) =>
+              onUpdate({ actualDurationSeconds: Math.max(0, parseInt(e.target.value, 10) || 0) })
+            }
+            className="bg-transparent text-right font-semibold tabular-numbers outline-none p-0"
+            style={{
+              width: `${Math.max(1, String(currentSeconds).length)}ch`,
+              fontSize: 'inherit',
+              color: set.completed ? 'var(--color-text-primary)' : 'var(--color-text-muted)',
+            }}
+          />
           <span
-            className="absolute rounded pointer-events-none font-medium"
-            style={{ top: -4, right: -4, fontSize: 12, padding: '0 4px', background: 'var(--color-set-failure-bg)', color: 'var(--color-set-failure-fg)' }}
-            title="Do as many reps as you can with good form"
+            aria-hidden="true"
+            style={{ fontSize: 12, fontWeight: 500, marginLeft: '0.12em', color: 'var(--wk-muted)' }}
           >
-            F*
+            s
           </span>
-        )}
-      </label>
+        </label>
+      ) : (
+        <label className="wk-tap block relative">
+          <input
+            type="number"
+            inputMode="numeric"
+            value={currentReps}
+            aria-label={`${label} repetitions`}
+            onFocus={(e) => e.target.select()}
+            onChange={(e) => onUpdate({ actualReps: parseInt(e.target.value, 10) || 0 })}
+            className="wk-input tabular-numbers outline-none block"
+            style={{ color: set.completed ? 'var(--color-text-primary)' : 'var(--color-text-muted)' }}
+          />
+          {(set.isFormFailure || set.repDisplay === 'F*') && (
+            <span
+              className="absolute rounded pointer-events-none font-medium"
+              style={{ top: -4, right: -4, fontSize: 12, padding: '0 4px', background: 'var(--color-set-failure-bg)', color: 'var(--color-set-failure-fg)' }}
+              title="Do as many reps as you can with good form"
+            >
+              F*
+            </span>
+          )}
+        </label>
+      )}
 
       <label className="wk-tap block">
         <input

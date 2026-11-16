@@ -12,8 +12,11 @@ import {
 import {
   calculateE1RM,
   calculateHypertrophyBodyweightReps,
+  isTimedExercise,
+  solveTargetWeightForE1RM,
   translateWeightBetweenImplements,
 } from './e1rm';
+import { snapLoadKg, WeightUnit } from '../utils/units';
 
 const MOVEMENT_FAMILY_LABELS: Record<string, string> = {
   'vector-pillar-horizontal-push': 'Horizontal Chest Press',
@@ -27,8 +30,22 @@ const MOVEMENT_FAMILY_LABELS: Record<string, string> = {
   'vector-iso-triceps': 'Triceps Extension',
   'vector-iso-biceps': 'Biceps Curl',
   'vector-iso-hamstrings': 'Hamstring Leg Curl',
+  'vector-iso-quads': 'Quad Knee Extension',
   'vector-iso-calves': 'Calf Raise',
   'vector-iso-core': 'Core & Abs',
+};
+
+/**
+ * Related biomechanical movement vectors sharing primary prime movers
+ * (e.g., Hamstring Knee Flexion <-> Hip Hinge when home equipment lacks a leg-curl machine).
+ */
+export const RELATED_MOVEMENT_FAMILIES: Record<string, string[]> = {
+  'vector-iso-hamstrings': ['vector-pillar-hinge'],
+  'vector-pillar-hinge': ['vector-iso-hamstrings'],
+  'vector-iso-quads': ['vector-pillar-squat'],
+  'vector-pillar-squat': ['vector-iso-quads'],
+  'vector-iso-triceps': ['vector-pillar-horizontal-push'],
+  'vector-iso-biceps': ['vector-pillar-vertical-pull', 'vector-pillar-horizontal-pull'],
 };
 
 /**
@@ -204,6 +221,319 @@ export function getVectorImplementOptions(
   }
 
   return locationMatches.length > 0 ? locationMatches : familyMatches;
+}
+
+/**
+ * Secondary substitutes targeting the same primary muscle via a related movement pattern
+ * (e.g. Dumbbell Romanian Deadlift when substituting Seated Leg Curl at home).
+ */
+export function getRelatedSwapAlternatives(
+  currentEx: {
+    exerciseId?: string;
+    id?: string;
+    movementFamily?: string;
+    pillar: string;
+    isIsolation?: boolean;
+    primaryMuscle?: string;
+  },
+  exerciseCatalog: ExerciseDefinition[],
+  locationFilter?: TrainingLocation,
+  homeEquipment?: HomeEquipmentTag[],
+  excludeExerciseIds: string[] = []
+): ExerciseDefinition[] {
+  const sourceVector = getMovementVectorId(currentEx);
+  const relatedVectors = RELATED_MOVEMENT_FAMILIES[sourceVector] || [];
+  if (relatedVectors.length === 0) return [];
+
+  const currentId = currentEx.exerciseId || currentEx.id;
+  const currentDef = currentId ? exerciseCatalog.find((e) => e.id === currentId) : undefined;
+  const primaryMuscle = currentEx.primaryMuscle || currentDef?.primaryMuscle;
+
+  return exerciseCatalog
+    .filter((def) => {
+      if (def.id === currentId || excludeExerciseIds.includes(def.id)) return false;
+      const vec = getMovementVectorId(def);
+      if (!relatedVectors.includes(vec)) return false;
+      if (
+        primaryMuscle &&
+        def.primaryMuscle !== primaryMuscle &&
+        !(def.secondaryMuscles as string[] | undefined)?.includes(primaryMuscle)
+      ) {
+        return false;
+      }
+      if (!locationFilter) return true;
+      return canPerformExerciseInLocation(def, locationFilter, homeEquipment);
+    })
+    .sort((a, b) => {
+      const aPrimaryMatch = a.primaryMuscle === primaryMuscle ? 1 : 0;
+      const bPrimaryMatch = b.primaryMuscle === primaryMuscle ? 1 : 0;
+      if (aPrimaryMatch !== bPrimaryMatch) return bPrimaryMatch - aPrimaryMatch;
+      const aLoaded = a.equipment !== 'bodyweight' ? 1 : 0;
+      const bLoaded = b.equipment !== 'bodyweight' ? 1 : 0;
+      return bLoaded - aLoaded;
+    });
+}
+
+export interface SwapPrescription {
+  targetWeightKg: number;
+  targetReps: number;
+  minReps: number;
+  maxReps: number;
+  targetRir: number;
+  isTimed: boolean;
+  targetDurationSeconds?: number;
+  isPureBodyweight: boolean;
+  usedOwnHistory: boolean;
+  isCrossFamily: boolean;
+  tempoCue?: string;
+  rationale: string;
+}
+
+/**
+ * Computes science-backed target weight, reps (or hold seconds), rep range, and rationale
+ * when switching from `sourceExercise` to `targetDef`:
+ * - Uses the target movement's own double-progression history first when logged before.
+ * - Calibrates rep ranges by movement role (compound vs isolation) and athlete goal phase.
+ * - For timed movements, converts to duration hold progression in seconds.
+ * - For pure bodyweight movements, solves Epley reps at real bodyweight (`calculateHypertrophyBodyweightReps`).
+ * - For same-family loaded movements without own history, solves inverse Epley weight at the new `(targetReps, targetRir)`.
+ */
+export function prescribeExerciseSwap(params: {
+  sourceExercise: ExerciseSession;
+  targetDef: ExerciseDefinition;
+  workouts?: WorkoutSession[];
+  readinessState?: ReadinessState;
+  goalPhase?: GoalPhase;
+  bodyweightEmaKg?: number;
+  location?: TrainingLocation;
+  unit?: WeightUnit;
+  fallbackTargetWeightKg?: number;
+}): SwapPrescription {
+  const {
+    sourceExercise,
+    targetDef,
+    workouts = [],
+    readinessState = 'Normal',
+    goalPhase = 'Lean Bulk',
+    bodyweightEmaKg = 80,
+    location = 'gym',
+    unit = 'kg',
+    fallbackTargetWeightKg,
+  } = params;
+
+  const isCrossFamily =
+    getMovementVectorId(sourceExercise) !== getMovementVectorId(targetDef);
+  const isPureBw =
+    location === 'travel' ||
+    (targetDef.equipment === 'bodyweight' && !targetDef.isWeightedCalisthenic);
+  const targetRir = readinessState === 'Amber Shield' ? 3 : 2;
+  const timed = isTimedExercise(targetDef);
+
+  const exactHistory = findLastCompletedExerciseSession(targetDef.id, workouts);
+  const hasOwnHistory = Boolean(exactHistory && !exactHistory.isCrossImplementTransfer);
+
+  if (timed) {
+    const baseDuration = targetDef.defaultDurationSeconds || 45;
+    let targetDurationSeconds = baseDuration;
+    let targetWeightKg = isPureBw ? 0 : fallbackTargetWeightKg ?? 0;
+
+    if (hasOwnHistory && exactHistory) {
+      const doneTimed = exactHistory.session.sets.filter(
+        (s) => s.completed && !s.isWarmup && s.setType !== 'warmup'
+      );
+      const lastDuration =
+        doneTimed[0]?.actualDurationSeconds ??
+        doneTimed[0]?.targetDurationSeconds ??
+        exactHistory.session.durationSeconds ??
+        baseDuration;
+      const lastWeight = doneTimed[0]?.actualWeightKg ?? doneTimed[0]?.targetWeightKg ?? 0;
+      targetDurationSeconds =
+        readinessState === 'Amber Shield' ? lastDuration : Math.min(120, lastDuration + 5);
+      if (!isPureBw && lastWeight > 0) targetWeightKg = lastWeight;
+    }
+
+    const rationale = hasOwnHistory
+      ? `From your last ${targetDef.name} hold (+${targetDurationSeconds - (targetDurationSeconds > baseDuration ? 5 : 0)}s target)`
+      : `Timed isometric hold calibrated at ${targetDurationSeconds}s @ controlled breathing`;
+
+    return {
+      targetWeightKg: isPureBw ? 0 : snapLoadKg(targetWeightKg, unit),
+      targetReps: 1,
+      minReps: 1,
+      maxReps: 1,
+      targetRir,
+      isTimed: true,
+      targetDurationSeconds,
+      isPureBodyweight: isPureBw,
+      usedOwnHistory: hasOwnHistory,
+      isCrossFamily,
+      rationale,
+    };
+  }
+
+  // Calibrate double-progression rep band by isolation role and athlete's current goal phase.
+  const [baseMin, baseMax] = targetDef.defaultRepRange;
+  let minReps = baseMin;
+  let maxReps = baseMax;
+  if (goalPhase === 'Maingain' && !targetDef.isIsolation && baseMin >= 6) {
+    minReps = Math.max(4, baseMin - 2);
+    maxReps = Math.max(minReps + 2, baseMax - 2);
+  } else if (goalPhase === 'Cut / Recomp') {
+    maxReps = targetDef.isIsolation
+      ? Math.min(baseMax, Math.max(minReps + 2, 12))
+      : Math.min(baseMax, Math.max(minReps + 2, 10));
+  }
+
+  if (hasOwnHistory && exactHistory) {
+    const candidate: ExerciseSession = {
+      id: `swap-${targetDef.id}`,
+      exerciseId: targetDef.id,
+      name: targetDef.name,
+      pillar: targetDef.pillar,
+      equipment: isPureBw ? 'bodyweight' : targetDef.equipment,
+      isRdl: targetDef.isRdl,
+      isWeightedCalisthenic: isPureBw ? false : targetDef.isWeightedCalisthenic,
+      isIsolation: targetDef.isIsolation,
+      minReps,
+      maxReps,
+      sets: sourceExercise.sets
+        .filter((s) => !s.isWarmup && s.setType !== 'warmup')
+        .map((s, i) => ({
+          ...s,
+          setNumber: i + 1,
+          completed: false,
+          targetWeightKg: exactHistory.session.sets[0]?.actualWeightKg ?? exactHistory.session.sets[0]?.targetWeightKg ?? 0,
+          targetReps: minReps,
+        })),
+    };
+    const dp = prescribeDoubleProgression(
+      candidate,
+      readinessState,
+      workouts,
+      bodyweightEmaKg,
+      goalPhase
+    );
+    const prescribedReps = dp.nextTargetReps[0] ?? minReps;
+    const prescribedWeight = isPureBw ? 0 : snapLoadKg(dp.nextWeightKg, unit);
+    return {
+      targetWeightKg: prescribedWeight,
+      targetReps: prescribedReps,
+      minReps,
+      maxReps,
+      targetRir,
+      isTimed: false,
+      isPureBodyweight: isPureBw,
+      usedOwnHistory: true,
+      isCrossFamily,
+      tempoCue: dp.calibratedTempoCue,
+      rationale: `From your ${targetDef.name} history${exactHistory.date ? ` (${exactHistory.date})` : ''} • ${minReps}–${maxReps} rep band`,
+    };
+  }
+
+  // Compute source stimulus E1RM & reps from working sets
+  const sourceWorking = sourceExercise.sets.filter((s) => !s.isWarmup && s.setType !== 'warmup');
+  const sourceFirst = sourceWorking[0] ?? sourceExercise.sets[0];
+  const sourceWeightKg = sourceFirst?.actualWeightKg ?? sourceFirst?.targetWeightKg ?? 0;
+  const sourceReps = sourceFirst?.actualReps ?? sourceFirst?.targetReps ?? minReps;
+  const sourceIsPureBw = sourceExercise.equipment === 'bodyweight' && !sourceExercise.isWeightedCalisthenic;
+
+  let sourceE1rmKg = 0;
+  for (const s of sourceWorking) {
+    const w = s.actualWeightKg ?? s.targetWeightKg;
+    const r = s.actualReps ?? s.targetReps;
+    const rir = s.actualRir ?? s.targetRir ?? 2;
+    const e1rm = calculateE1RM(
+      w,
+      r,
+      rir,
+      sourceExercise.equipment,
+      sourceExercise.isRdl,
+      sourceExercise.isWeightedCalisthenic,
+      bodyweightEmaKg,
+      sourceExercise.exerciseId,
+      sourceExercise.pillar
+    );
+    if (e1rm > sourceE1rmKg) sourceE1rmKg = e1rm;
+  }
+
+  if (isPureBw) {
+    const bwRx = calculateHypertrophyBodyweightReps(
+      isCrossFamily ? 0 : sourceE1rmKg,
+      bodyweightEmaKg,
+      targetDef.id,
+      targetDef.pillar,
+      minReps,
+      maxReps,
+      targetRir
+    );
+    return {
+      targetWeightKg: 0,
+      targetReps: bwRx.targetReps,
+      minReps,
+      maxReps,
+      targetRir,
+      isTimed: false,
+      isPureBodyweight: true,
+      usedOwnHistory: false,
+      isCrossFamily,
+      tempoCue: bwRx.tempoCue,
+      rationale:
+        !isCrossFamily && sourceE1rmKg > 0 && bwRx.effectiveBwLoadKg > 0
+          ? `Calibrated to ${bwRx.targetReps} reps via Epley against ~${bwRx.effectiveBwLoadKg} kg bodyweight load`
+          : `Hypertrophy range ${minReps}–${maxReps} reps @ ${targetRir} RIR`,
+    };
+  }
+
+  // Loaded replacement without own history
+  const targetReps =
+    !isCrossFamily && !sourceIsPureBw && sourceReps >= minReps && sourceReps <= maxReps
+      ? sourceReps
+      : minReps;
+
+  let rawTargetWeightKg: number;
+  let rationale: string;
+  if (!isCrossFamily && !sourceIsPureBw && sourceE1rmKg > 0 && sourceWeightKg > 0) {
+    rawTargetWeightKg = solveTargetWeightForE1RM(
+      sourceE1rmKg,
+      targetReps,
+      targetRir,
+      sourceExercise,
+      {
+        exerciseId: targetDef.id,
+        id: targetDef.id,
+        name: targetDef.name,
+        equipment: targetDef.equipment,
+        isRdl: targetDef.isRdl,
+        isWeightedCalisthenic: targetDef.isWeightedCalisthenic,
+        pillar: targetDef.pillar,
+      },
+      bodyweightEmaKg
+    );
+    rationale = `Matched ~${Math.round(sourceE1rmKg)} kg E1RM stimulus across ${targetReps} reps @ ${targetRir} RIR`;
+  } else {
+    rawTargetWeightKg =
+      fallbackTargetWeightKg && fallbackTargetWeightKg > 0
+        ? fallbackTargetWeightKg
+        : targetDef.equipment === 'dumbbell'
+        ? 16
+        : 30;
+    rationale = isCrossFamily
+      ? `Targets ${targetDef.primaryMuscle.toLowerCase()} • ${minReps}–${maxReps} reps @ ${targetRir} RIR`
+      : `Calibrated for ${minReps}–${maxReps} reps (${goalPhase})`;
+  }
+
+  return {
+    targetWeightKg: snapLoadKg(rawTargetWeightKg, unit),
+    targetReps,
+    minReps,
+    maxReps,
+    targetRir,
+    isTimed: false,
+    isPureBodyweight: false,
+    usedOwnHistory: false,
+    isCrossFamily,
+    rationale,
+  };
 }
 
 /**

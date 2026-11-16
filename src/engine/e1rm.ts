@@ -25,7 +25,35 @@ export function isUnilateralExercise(ex: { exerciseId?: string; name?: string })
 
 /** Moves done holding one dumbbell, so their weight is that dumbbell, not a pair. */
 export function usesOneDumbbell(ex: { exerciseId?: string; id?: string; name?: string }): boolean {
-  return /(goblet|pullover)/.test(`${ex.exerciseId || ex.id || ''} ${ex.name || ''}`.toLowerCase());
+  return /(goblet|pullover|single[- ]?arm|one[- ]?arm|1[- ]arm|suitcase|db[- ]leg[- ]curl|lying leg curl)/.test(
+    `${ex.exerciseId || ex.id || ''} ${ex.name || ''}`.toLowerCase()
+  );
+}
+
+/** True when an exercise is tracked by time (seconds/minutes held) rather than repetition count. */
+export function isTimedExercise(ex: {
+  isTimed?: boolean;
+  durationSeconds?: number;
+  durationMinutesRange?: [number, number];
+  repTargetType?: string;
+  exerciseId?: string;
+  id?: string;
+}): boolean {
+  const id = (ex.exerciseId || ex.id || '').toLowerCase();
+  return Boolean(
+    ex.isTimed ||
+      (ex.durationSeconds !== undefined && ex.durationSeconds > 0) ||
+      ex.durationMinutesRange ||
+      ex.repTargetType === 'duration' ||
+      id === 'ex-decline-gymball-plank' ||
+      id === 'ex-forearm-plank' ||
+      id === 'ex-side-plank' ||
+      id === 'ex-dead-hang' ||
+      id === 'ex-wall-sit' ||
+      id === 'ex-farmers-walk' ||
+      id === 'ex-suitcase-carry' ||
+      id === 'ex-hiit-sprints'
+  );
 }
 
 /**
@@ -47,61 +75,95 @@ export const BODYWEIGHT_LOAD_RATIOS: Record<string, number> = {
   // Push / Horizontal Chest
   'ex-deficit-pushup': 0.74,
   'ex-pushup': 0.64,
+  'ex-wide-pushup': 0.64,
   'ex-incline-pushup': 0.45,
   'ex-diamond-pushup': 0.68,
   'ex-trx-pushup': 0.60,
+  'ex-ring-pressup': 0.68,
   'ex-triceps-dip': 1.00,
   'ex-dip': 1.00,
   'ex-weighted-dip': 1.00,
+  'ex-bw-tricep-extension': 0.45,
+  'ex-trx-tricep-extension': 0.55,
   // Overhead / Vertical Push
   'ex-pike-pushup': 0.65,
+  'ex-dolphin-pushup': 0.68,
   'ex-elevated-pike-pushup': 0.75,
   'ex-handstand-pushup': 0.85,
   // Rows / Horizontal Pull
   'ex-inverted-row': 0.60,
+  'ex-bodyweight-inverted-row': 0.60,
   'ex-table-inverted-row': 0.60,
   'ex-doorframe-row': 0.45,
   'ex-trx-row': 0.55,
+  'ex-trx-inverted-row': 0.55,
   // Vertical Pull
   'ex-pullup': 1.00,
   'ex-chinup': 1.00,
+  'ex-hammer-chinup': 1.00,
   'ex-weighted-pullup': 1.00,
   'ex-sliding-lat-pulldown': 0.45,
+  'ex-sliding-floor-pulldown': 0.45,
+  'ex-doorway-lat-pull': 0.50,
   // Squat / Quads
   'ex-bw-squat': 0.65,
   'ex-bulgarian-split-squat': 0.85,
+  'ex-bw-split-squat': 0.85,
   'ex-pistol-squat': 0.90,
   'ex-trx-single-leg-squat': 0.75,
+  'ex-trx-pistol-squat': 0.75,
   'ex-walking-lunge': 0.75,
+  'ex-reverse-nordic': 0.55,
   // Hinge / Hamstrings & Glutes
   'ex-single-leg-rdl-bw': 0.80,
+  'ex-single-leg-rdl': 0.80,
+  'ex-bw-good-morning': 0.45,
   'ex-glute-bridge-bw': 0.45,
   'ex-single-leg-glute-bridge': 0.75,
   'ex-sliding-hamstring-curl': 0.50,
-  // Calves
+  'ex-sliding-leg-curl': 0.50,
+  'ex-trx-hamstring-curl': 0.55,
+  'ex-hamstring-walkout': 0.55,
+  'ex-nordic-curl': 0.65,
+  // Arms / Core / Calves
+  'ex-trx-bicep-curl': 0.50,
+  'ex-underhand-bar-curl': 0.70,
   'ex-single-leg-calf-raise': 1.00,
+  'ex-bw-single-leg-calf': 1.00,
+  'ex-slow-calf-raise': 1.00,
+  'ex-dead-hang': 1.00,
+  'ex-wall-sit': 0.55,
+  'ex-decline-gymball-plank': 0,
+  'ex-forearm-plank': 0,
+  'ex-side-plank': 0,
+  'ex-hiit-sprints': 0,
+  'ex-band-leg-curl': 0,
+  'ex-band-lat-pulldown': 0,
+  'ex-band-seated-row': 0,
+  'ex-band-pull-apart': 0,
 };
 
 export function getBodyweightLoadRatio(exerciseId?: string, pillar?: string): number {
-  if (exerciseId && BODYWEIGHT_LOAD_RATIOS[exerciseId]) {
+  if (exerciseId && exerciseId in BODYWEIGHT_LOAD_RATIOS) {
     return BODYWEIGHT_LOAD_RATIOS[exerciseId];
   }
   const id = (exerciseId || '').toLowerCase();
   if (id.includes('deficit') && id.includes('pushup')) return 0.74;
   if (id.includes('incline') && id.includes('pushup')) return 0.45;
   if (id.includes('diamond') && id.includes('pushup')) return 0.68;
-  if (id.includes('pushup')) return 0.64;
+  if (id.includes('pushup') || id.includes('pressup')) return 0.64;
   if (id.includes('handstand')) return 0.85;
   if (id.includes('pike')) return 0.72;
   if (id.includes('inverted-row') || id.includes('table')) return 0.60;
   if (id.includes('doorframe') || id.includes('towel')) return 0.45;
   if (id.includes('sliding') && id.includes('lat')) return 0.45;
-  if (id.includes('pullup') || id.includes('chinup') || id.includes('dip')) return 1.00;
+  if (id.includes('pullup') || id.includes('chinup') || id.includes('dip') || id.includes('dead-hang')) return 1.00;
   if (id.includes('bulgarian') || id.includes('split-squat')) return 0.85;
   if (id.includes('pistol') || id.includes('single-leg-squat')) return 0.90;
   if (id.includes('lunge')) return 0.75;
   if (id.includes('squat')) return 0.65;
   if (id.includes('rdl') || id.includes('hinge')) return 0.80;
+  if (id.includes('nordic')) return 0.60;
   if (id.includes('bridge')) return 0.50;
   if (id.includes('calf')) return 1.00;
   if (id.includes('trx')) return 0.65;
@@ -114,6 +176,19 @@ export function getBodyweightLoadRatio(exerciseId?: string, pillar?: string): nu
   if (pillar === 'Hinge') return 0.75;
 
   return 0.65;
+}
+
+/**
+ * Portion of the athlete's own bodyweight moved on a bodyweight/calisthenic movement.
+ * Returns 0 when bodyweight hasn't been logged yet (never invents an 80 kg figure).
+ */
+export function getEffectiveBodyweightLoadKg(
+  bodyweightKg: number | undefined,
+  exerciseId?: string,
+  pillar?: string
+): number {
+  if (!bodyweightKg || bodyweightKg <= 0) return 0;
+  return Math.round(bodyweightKg * getBodyweightLoadRatio(exerciseId, pillar) * 10) / 10;
 }
 
 /**
@@ -459,5 +534,59 @@ export function calculateWeightNeededForTargetE1RM(
     bodyweightEmaKg,
     exerciseId,
     pillar
+  );
+}
+
+/**
+ * Solves the external weight required on a target implement to preserve a canonical E1RM
+ * stimulus at a new (targetReps, targetRir) prescription, accounting for unilateral and
+ * single-dumbbell loading differences.
+ */
+export function solveTargetWeightForE1RM(
+  targetE1rmKg: number,
+  targetReps: number,
+  targetRir: number,
+  sourceMeta: { exerciseId?: string; id?: string; name?: string; equipment: EquipmentType },
+  targetMeta: {
+    exerciseId?: string;
+    id?: string;
+    name?: string;
+    equipment: EquipmentType;
+    isRdl?: boolean;
+    isWeightedCalisthenic?: boolean;
+    pillar?: string;
+  },
+  bodyweightEmaKg: number = 80
+): number {
+  if (targetMeta.equipment === 'bodyweight' && !targetMeta.isWeightedCalisthenic) return 0;
+  if (targetE1rmKg <= 0 || targetReps <= 0) return 0;
+
+  const sourceUnilateral = isUnilateralExercise(sourceMeta);
+  const targetUnilateral = isUnilateralExercise(targetMeta);
+  const oneDumbbellFactor =
+    targetMeta.equipment === 'dumbbell' && usesOneDumbbell(targetMeta) && !usesOneDumbbell(sourceMeta)
+      ? 0.5
+      : sourceMeta.equipment === 'dumbbell' && usesOneDumbbell(sourceMeta) && !usesOneDumbbell(targetMeta)
+      ? 2
+      : 1;
+  const sideFactor =
+    targetUnilateral && !sourceUnilateral
+      ? UNILATERAL_LOAD_FRACTION
+      : sourceUnilateral && !targetUnilateral
+      ? 1 / UNILATERAL_LOAD_FRACTION
+      : 1;
+
+  const repsFromFailure = Math.min(targetReps + Math.max(0, targetRir), MAX_E1RM_REPS_FROM_FAILURE);
+  const divisor = 1 + repsFromFailure / 30;
+  const effectiveRequired = (targetE1rmKg * sideFactor * oneDumbbellFactor) / divisor;
+
+  return convertEffectiveToExternalLoad(
+    effectiveRequired,
+    targetMeta.equipment,
+    targetMeta.isRdl,
+    targetMeta.isWeightedCalisthenic,
+    bodyweightEmaKg,
+    targetMeta.exerciseId || targetMeta.id,
+    targetMeta.pillar
   );
 }

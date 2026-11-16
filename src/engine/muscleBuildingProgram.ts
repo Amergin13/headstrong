@@ -785,6 +785,7 @@ export function generatePlanWorkout(plan: TrainingPlan, workoutNumber: number): 
       }
 
       const weight = e.defaultWeightKg ?? (e.equipment === 'bodyweight' ? 0 : range ? 0 : 20);
+      const holdSeconds = isTimed ? (e.durationSeconds ?? 60) : undefined;
       return {
         id: `set-${tmpl.workoutNumber}-${idx}-${sIdx + 1}`,
         setNumber: sIdx + 1,
@@ -792,6 +793,9 @@ export function generatePlanWorkout(plan: TrainingPlan, workoutNumber: number): 
         actualWeightKg: weight,
         targetReps,
         actualReps: targetReps,
+        ...(holdSeconds !== undefined
+          ? { targetDurationSeconds: holdSeconds, actualDurationSeconds: holdSeconds }
+          : {}),
         targetRir: plan.targetRirForPhase(tmpl.phase),
         completed: false,
         isWarmup: false,
