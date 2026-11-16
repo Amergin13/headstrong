@@ -1744,6 +1744,8 @@ export const DesignSystemContent: React.FC<{
                 exerciseIndex={1}
                 totalExercises={4}
                 exercise={interactiveSquat}
+                exerciseDef={fixtures.exerciseCatalog.find((d) => d.id === interactiveSquat.exerciseId)}
+                workouts={fixtures.workouts}
                 prescription={fixtures.prescription}
                 quest={fixtures.quest}
                 readinessState={'Normal' as ReadinessState}
@@ -1769,6 +1771,8 @@ export const DesignSystemContent: React.FC<{
                 exerciseIndex={2}
                 totalExercises={4}
                 exercise={fixtures.emptyHistoryExercise}
+                exerciseDef={fixtures.exerciseCatalog.find((d) => d.id === fixtures.emptyHistoryExercise.exerciseId)}
+                workouts={[]}
                 prescription={fixtures.prescription}
                 quest={fixtures.quest}
                 readinessState={'Normal' as ReadinessState}

@@ -1,13 +1,21 @@
-import React, { useId, useState } from 'react';
-import { ExerciseSession, ProgressionPrescription, ReadinessState, SubTierQuest, WorkoutSet } from '../../engine/types';
-import { calculate5StepWarmupRamp } from '../../engine/muscleBuildingProgram';
+import React, { useId, useMemo, useState } from 'react';
+import {
+  ExerciseDefinition,
+  ExerciseSession,
+  ProgressionPrescription,
+  ReadinessState,
+  SubTierQuest,
+  WorkoutSession,
+  WorkoutSet,
+} from '../../engine/types';
 import { SetRow, PreviousSet, SET_TABLE_COLUMNS, SET_TABLE_GAP } from './SetRow';
-import { TempoPacer } from './TempoPacer';
+import { ExerciseDetailModal } from './ExerciseDetailModal';
 import { useUnits } from '../../utils/unitsContext';
 import { ArrowRightLeft, ChevronRight } from 'lucide-react';
 import { triggerHaptic } from '../../utils/haptics';
 import { CoachSummaryText } from '../common/CoachSummaryText';
 import { ExerciseInsight } from '../../services/exerciseInsight';
+import { buildExerciseTrendSpec } from '../../services/exerciseDetails';
 import { TrendChart } from '../common/TrendChart';
 import { localDateString } from '../../utils/date';
 import { getBodyweightLoadRatio, isTimedExercise } from '../../engine/e1rm';
@@ -18,6 +26,8 @@ interface ExerciseCardProps {
   exerciseIndex?: number;
   totalExercises?: number;
   exercise: ExerciseSession;
+  exerciseDef?: ExerciseDefinition;
+  workouts?: WorkoutSession[];
   prescription: ProgressionPrescription;
   quest: SubTierQuest;
   readinessState: ReadinessState;
@@ -28,6 +38,7 @@ interface ExerciseCardProps {
   onUpdateSet: (setId: string, updated: Partial<WorkoutSet>) => void;
   onCompleteSet: (setId: string) => void;
   onAddSet: (isWarmup?: boolean) => void;
+  onOpenDetail?: () => void;
   onOpenSwap?: () => void;
   onOpenPlateCalc?: (weightKg: number) => void;
   /** Plain-English primary muscle, e.g. "Triceps". */
@@ -47,6 +58,9 @@ interface ExerciseCardProps {
 export const ExerciseCard: React.FC<ExerciseCardProps> = ({
   exerciseIndex,
   exercise,
+  exerciseDef,
+  workouts = [],
+  prescription,
   readinessState,
   bodyweightKg = 0,
   lastAthleteNote,
@@ -55,6 +69,7 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
   onUpdateSet,
   onCompleteSet,
   onAddSet,
+  onOpenDetail,
   onOpenSwap,
   onOpenPlateCalc,
   muscleLabel,
@@ -65,17 +80,15 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
   showChart = true,
 }) => {
   const units = useUnits();
-  const [showDetails, setShowDetails] = useState(false);
+  const [detailOpen, setDetailOpen] = useState(false);
   const isTimed = isTimedExercise(exercise);
   const workingSets = exercise.sets.filter((s) => !s.isWarmup && s.setType !== 'warmup');
   const isBlockCompleted = workingSets.length > 0 && workingSets.every((s) => s.completed);
   const unilateral = !isTimed && isUnilateralExercise(exercise);
   const [perSide, setPerSide] = useState(() => exercise.sets.some((s) => s.actualRepsLeft !== undefined));
-  const detailsId = useId();
   const notesId = useId();
 
   const firstWorkingSet = exercise.sets.find((s) => !s.isWarmup && s.setType !== 'warmup');
-  const currentWeight = firstWorkingSet?.targetWeightKg ?? exercise.sets[0]?.targetWeightKg ?? 20;
   const plannedWeightKg = firstWorkingSet?.targetWeightKg ?? 0;
   const isBodyweightOnly =
     exercise.equipment === 'bodyweight' && (!exercise.isWeightedCalisthenic || plannedWeightKg === 0);
@@ -89,18 +102,18 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
       ? Math.round(bodyweightKg * bwRatio * 10) / 10
       : 0;
   const warmupCount = exercise.sets.filter((s) => s.isWarmup || s.setType === 'warmup').length;
-  const hasTempoPacer = Boolean(exercise.tempo && /^[\dXx]{4}$/.test(exercise.tempo));
-  const customTempoText = !hasTempoPacer && exercise.tempo ? exercise.tempo : null;
-  const warmupSteps = exercise.useWarmupProtocol ? calculate5StepWarmupRamp(currentWeight) : [];
   const chip = exercise.orderCode || (exerciseIndex !== undefined ? String(exerciseIndex) : null);
-  const history = insight?.history ?? [];
+  const trendSpec = useMemo(
+    () => buildExerciseTrendSpec(insight, isTimed, (kg) => units.formatPrecise(kg), localDateString),
+    [insight, isTimed, units]
+  );
 
   const secondaryButton =
     'wk-btn-secondary justify-center normal-case min-h-[44px] active:scale-95 transition-transform';
 
   return (
     <section aria-label={exercise.name} className="wk-card">
-      {/* Title, swap button, details toggle */}
+      {/* Title, swap button, drill-in detail arrow */}
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center min-w-0 flex-wrap gap-2">
           <h3 className="wk-h1">{formatSentenceCase(exercise.name)}</h3>
@@ -125,17 +138,17 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
             type="button"
             onClick={() => {
               triggerHaptic('light');
-              setShowDetails((v) => !v);
+              if (onOpenDetail) onOpenDetail();
+              else setDetailOpen(true);
             }}
-            aria-expanded={showDetails}
-            aria-controls={detailsId}
-            aria-label={`${showDetails ? 'Hide' : 'Show'} tempo, warm-up and set options for ${exercise.name}`}
+            aria-label={`Open exercise details, form and history for ${exercise.name}`}
+            title="Exercise info, form & history"
             className="w-11 h-11 min-w-[44px] min-h-[44px] rounded-xl border border-[var(--color-border-strong)] flex items-center justify-center shrink-0 transition-colors"
             style={{ background: 'var(--color-action-secondary-bg)', color: 'var(--color-action-secondary-fg)' }}
           >
             <ChevronRight
-              className="wk-chevron transition-transform"
-              style={{ transform: showDetails ? 'rotate(90deg)' : undefined, color: 'var(--color-action-secondary-fg)' }}
+              className="wk-chevron"
+              style={{ color: 'var(--color-action-secondary-fg)' }}
               strokeWidth={2}
               aria-hidden="true"
             />
@@ -177,126 +190,14 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
           )}
           {showChart && (
             <TrendChart
-              points={history.map((h) => ({ date: localDateString(new Date(h.at)), value: h.value ?? h.e1rmKg }))}
-              format={(v) =>
-                insight.metric === 'time'
-                  ? `${Math.round(v)}s`
-                  : insight.metric === 'reps'
-                  ? `${Math.round(v)} reps`
-                  : units.formatPrecise(v)
-              }
+              points={trendSpec.points}
+              format={trendSpec.format}
               height={240}
-              label={(() => {
-                const fmtVal = (v: number) =>
-                  insight.metric === 'time'
-                    ? `${Math.round(v)}s`
-                    : insight.metric === 'reps'
-                    ? `${Math.round(v)} reps`
-                    : units.formatPrecise(v);
-                const metricName =
-                  insight.metric === 'time'
-                    ? 'hold duration'
-                    : insight.metric === 'reps'
-                    ? 'best set'
-                    : insight.metric === 'added_kg'
-                    ? 'top added weight'
-                    : insight.includesBodyweight
-                    ? 'estimated one-rep max (bodyweight + added weight)'
-                    : 'estimated one-rep max';
-                const firstVal = history[0] ? fmtVal(history[0].value ?? history[0].e1rmKg) : '';
-                const lastVal = history[history.length - 1]
-                  ? fmtVal(history[history.length - 1].value ?? history[history.length - 1].e1rmKg)
-                  : '';
-                if (history.length >= 2) {
-                  return `${metricName.charAt(0).toUpperCase() + metricName.slice(1)} over your last ${history.length} sessions: ${firstVal} to ${lastVal}`;
-                }
-                if (history.length === 1) {
-                  return `Starting point: ${metricName} ${firstVal}. The trend line starts after your next session.`;
-                }
-                return `No sessions logged yet. Your ${metricName} for this exercise appears here after your first session.`;
-              })()}
-              emptyTitle="No history yet"
-              emptyMessage={
-                isTimed
-                  ? 'Complete all hold sets to establish your starting hold time.'
-                  : 'Complete all working sets to establish your starting estimated max.'
-              }
+              label={trendSpec.label}
+              emptyTitle={trendSpec.emptyTitle}
+              emptyMessage={trendSpec.emptyMessage}
             />
           )}
-        </div>
-      )}
-
-      {/* Details: tempo, warm-up ramp, technique, set options */}
-      {showDetails && (
-        <div id={detailsId} className="space-y-3 mt-4">
-          {(muscleLabel || customTempoText || readinessState === 'Amber Shield') && (
-            <p className="wk-body max-w-prose">
-              {muscleLabel && (
-                <strong className="font-semibold" style={{ color: 'var(--color-text-primary)' }}>
-                  {muscleLabel}.{' '}
-                </strong>
-              )}
-              {customTempoText}
-              {readinessState === 'Amber Shield' ? ' Holding weight steady today.' : ''}
-            </p>
-          )}
-          {hasTempoPacer && exercise.tempo && <TempoPacer tempo={exercise.tempo} />}
-          {exercise.intensityProtocol && <p className="wk-body max-w-prose">{exercise.intensityProtocol.instruction}</p>}
-          {warmupSteps.length > 0 && (
-            <div className="space-y-1">
-              <p className="wk-label">Warm-up ramp</p>
-              <ul className="wk-body">
-                {warmupSteps.map((step) => (
-                  <li key={step.setNumber}>
-                    {units.format(step.targetWeightKg)} × {step.reps} ({step.percentage}%) · {step.restLabel}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-          {exercise.exerciseNotes && exercise.exerciseNotes.length > 0 && (
-            <ul className="wk-body list-disc pl-4">
-              {exercise.exerciseNotes.map((note, i) => (
-                <li key={i}>{note}</li>
-              ))}
-            </ul>
-          )}
-          <div className="flex flex-wrap gap-2">
-            {onOpenPlateCalc && exercise.equipment === 'barbell' && (
-              <button
-                type="button"
-                className={secondaryButton}
-                onClick={() => {
-                  triggerHaptic('light');
-                  onOpenPlateCalc(currentWeight);
-                }}
-              >
-                Plates
-              </button>
-            )}
-            {!isBodyweightOnly && (
-              <button
-                type="button"
-                className={secondaryButton}
-                onClick={() => {
-                  triggerHaptic('light');
-                  onAddSet(true);
-                }}
-              >
-                + Warm-up set
-              </button>
-            )}
-            <button
-              type="button"
-              className={secondaryButton}
-              onClick={() => {
-                triggerHaptic('light');
-                onAddSet(false);
-              }}
-            >
-              + Add set
-            </button>
-          </div>
         </div>
       )}
 
@@ -415,6 +316,24 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
           style={{ fontSize: 16, minHeight: 56 }}
         />
       </div>
+
+      {detailOpen && !onOpenDetail && (
+        <ExerciseDetailModal
+          exercise={exercise}
+          exerciseDef={exerciseDef}
+          workouts={workouts}
+          insight={insight}
+          bodyweightKg={bodyweightKg}
+          muscleLabel={muscleLabel}
+          prescription={prescription}
+          readinessState={readinessState}
+          onAddSet={onAddSet}
+          onOpenSwap={onOpenSwap}
+          onOpenPlateCalc={onOpenPlateCalc}
+          onOpenNotesHistory={onOpenNotesHistory}
+          onClose={() => setDetailOpen(false)}
+        />
+      )}
     </section>
   );
 };

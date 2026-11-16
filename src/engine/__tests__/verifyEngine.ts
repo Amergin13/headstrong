@@ -11803,7 +11803,95 @@ Exercise,,Date,Workout,Sets,Reps,Tempo,Rest,Notes,Set 1,Set 2,Set 3,Set 4
     );
   }
 
-  console.log('\nALL 57 ENGINE, GOVERNANCE, DESIGN SYSTEM, TYPOGRAPHY, WEARABLES, WHOOP STRAIN, GOOGLE AUTH, ONBOARDING CONTEXT, 6-WEEK PROGRAM, SPREADSHEET IMPORT, AI COACH ACTIONS, GEMINI FLASH + KG, OOUX, AGENTIC COACH, PRODUCT UPGRADES, INFO EXPERIENCE, CONTENT DESIGN, GOAL CAROUSEL, SHIFT NUDGE COLOR POLISH & LAUNCH VERIFICATION SUITES PASSED SUCCESSFULLY! 🎯');
+  // Suite 58: Exercise Card Drill-In Modal (Info, Form, Tempo, Set Tools & History)
+  {
+    console.log('\n[Suite 58: Exercise Card Drill-In Modal & Non-Accordion Arrow Behaviour]');
+    const fs58 = await import('fs');
+    const path58 = await import('path');
+    const repo58 = process.cwd();
+    const exCardSrc58 = fs58.readFileSync(path58.join(repo58, 'src/components/train/ExerciseCard.tsx'), 'utf8');
+    const detailModalSrc58 = fs58.readFileSync(path58.join(repo58, 'src/components/train/ExerciseDetailModal.tsx'), 'utf8');
+    const trainTabSrc58 = fs58.readFileSync(path58.join(repo58, 'src/components/train/TrainTab.tsx'), 'utf8');
+    const { buildExerciseDetailModel, buildExerciseTrendSpec } = await import('../../services/exerciseDetails');
+    const { buildExerciseInsight } = await import('../../services/exerciseInsight');
+    const storage58 = await import('../../services/storage');
+
+    assert(
+      !exCardSrc58.includes('showDetails') &&
+        !exCardSrc58.includes('setShowDetails') &&
+        !exCardSrc58.includes('aria-expanded') &&
+        !exCardSrc58.includes('rotate(90deg)') &&
+        exCardSrc58.includes('onOpenDetail') &&
+        exCardSrc58.includes('<ExerciseDetailModal') &&
+        exCardSrc58.includes('Open exercise details, form and history'),
+      'ExerciseCard arrow opens the drill-in modal rather than toggling an inline accordion'
+    );
+
+    assert(
+      trainTabSrc58.includes('detailExerciseId') &&
+        trainTabSrc58.includes('onOpenDetail={() => setDetailExerciseId(ex.id)}') &&
+        trainTabSrc58.includes('<ExerciseDetailModal'),
+      'TrainTab wires active exercise cards directly to ExerciseDetailModal'
+    );
+
+    assert(
+      detailModalSrc58.includes('createPortal(') &&
+        detailModalSrc58.includes('role="dialog"') &&
+        detailModalSrc58.includes('aria-modal="true"') &&
+        detailModalSrc58.includes('useUnits()') &&
+        detailModalSrc58.includes('<TempoPacer') &&
+        detailModalSrc58.includes('<TrendChart') &&
+        detailModalSrc58.includes('Form &amp; execution') &&
+        detailModalSrc58.includes('History &amp; performance'),
+      'ExerciseDetailModal exposes accessible portal dialog with overview, form steps, tempo, warm-up/set actions, TrendChart and session history'
+    );
+
+    const demo58 = storage58.resetAllToSeedData();
+    const benchDef = demo58.exercises.find((d) => d.id === 'ex-db-bench-press' || d.id === 'ex-bench-press')!;
+    const completedSample = demo58.workouts.find((w) =>
+      w.completed && w.exercises.some((e) => e.exerciseId === benchDef.id)
+    )!;
+    const sampleEx = completedSample.exercises.find((e) => e.exerciseId === benchDef.id)!;
+    const sampleInsight = buildExerciseInsight(sampleEx, demo58.workouts, 'Normal', 80, 12, (k) => `${k} kg`, demo58.biometrics);
+    const populatedModel = buildExerciseDetailModel({
+      exercise: sampleEx,
+      exerciseDef: benchDef,
+      workouts: demo58.workouts,
+      biometrics: demo58.biometrics,
+      insight: sampleInsight,
+      bodyweightKg: 80,
+      readinessState: 'Amber Shield',
+      formatWeight: (kg) => `${Math.round(kg)} kg`,
+      formatPreciseWeight: (kg) => `${Math.round(kg * 10) / 10} kg`,
+    });
+    const emptyModel = buildExerciseDetailModel({
+      exercise: sampleEx,
+      exerciseDef: benchDef,
+      workouts: [],
+      biometrics: [],
+      bodyweightKg: 0,
+      readinessState: 'Normal',
+      formatWeight: (kg) => `${Math.round(kg)} kg`,
+      formatPreciseWeight: (kg) => `${Math.round(kg * 10) / 10} kg`,
+    });
+    const trendSpec58 = buildExerciseTrendSpec(sampleInsight, false, (kg) => `${kg} kg`, (d) => d.toISOString().slice(0, 10));
+
+    assert(
+      populatedModel.formSteps.length >= 2 &&
+        populatedModel.secondaryMuscles.length >= 1 &&
+        populatedModel.loggedSessions.length >= 1 &&
+        populatedModel.bestDisplay !== '—' &&
+        Boolean(populatedModel.readinessNote) &&
+        trendSpec58.points.length >= 1 &&
+        emptyModel.sessionCount === 0 &&
+        emptyModel.loggedSessions.length === 0 &&
+        emptyModel.latestDisplay === '—' &&
+        emptyModel.bestDisplay === '—',
+      'buildExerciseDetailModel accurately builds muscles, form steps, real workout history, Amber Shield cue, and empty states without fabricated metrics'
+    );
+  }
+
+  console.log('\nALL 58 ENGINE, GOVERNANCE, DESIGN SYSTEM, TYPOGRAPHY, WEARABLES, WHOOP STRAIN, GOOGLE AUTH, ONBOARDING CONTEXT, 6-WEEK PROGRAM, SPREADSHEET IMPORT, AI COACH ACTIONS, GEMINI FLASH + KG, OOUX, AGENTIC COACH, PRODUCT UPGRADES, INFO EXPERIENCE, CONTENT DESIGN, GOAL CAROUSEL, SHIFT NUDGE COLOR POLISH, EXERCISE DRILL-IN MODAL & LAUNCH VERIFICATION SUITES PASSED SUCCESSFULLY! 🎯');
 })().catch((err) => {
   console.error('Test Suite Failed:', err);
   if (typeof process !== 'undefined' && process.exit) {

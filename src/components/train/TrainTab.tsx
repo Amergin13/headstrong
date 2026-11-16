@@ -18,6 +18,7 @@ import {
 import { ReadinessEvaluation } from '../../engine/readiness';
 import { ReadinessBanner } from './ReadinessBanner';
 import { ExerciseCard } from './ExerciseCard';
+import { ExerciseDetailModal } from './ExerciseDetailModal';
 import { ExerciseSwapModal } from './ExerciseSwapModal';
 import { PlateCalculatorModal } from './PlateCalculatorModal';
 import { WorkoutFinishScreen } from './WorkoutFinishScreen';
@@ -190,6 +191,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
   onOpenInsights,
 }) => {
   const units = useUnits();
+  const [detailExerciseId, setDetailExerciseId] = useState<string | null>(null);
   const [swappingExercise, setSwappingExercise] = useState<ExerciseSession | null>(null);
   const [plateCalcWeight, setPlateCalcWeight] = useState<number | null>(null);
   const [showSummaryModal, setShowSummaryModal] = useState(false);
@@ -1553,6 +1555,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
                 onSetCompleted(ex.name, s?.setNumber || 1, s, ex);
               }}
               onAddSet={(isWarmup) => handleAddSet(ex.id, isWarmup)}
+              onOpenDetail={() => setDetailExerciseId(ex.id)}
               onOpenSwap={() => setSwappingExercise(ex)}
               onOpenPlateCalc={(kg) => setPlateCalcWeight(kg)}
               muscleLabel={def ? MUSCLE_FRIENDLY_NAMES[def.primaryMuscle] : undefined}
@@ -1816,6 +1819,55 @@ export const TrainTab: React.FC<TrainTabProps> = ({
           </div>
         </div>
       )}
+
+      {/* Exercise Drill-In Detail Modal */}
+      {(() => {
+        const entry = detailExerciseId
+          ? exercisePrescriptions.find(({ ex }) => ex.id === detailExerciseId)
+          : undefined;
+        if (!entry) return null;
+        const detailEx = entry.ex;
+        const detailDef = exMap.get(detailEx.exerciseId);
+        const detailWorkingSets = detailEx.sets.filter((s) => !s.isWarmup && s.setType !== 'warmup');
+        const detailBlockDone = detailWorkingSets.length > 0 && detailWorkingSets.every((s) => s.completed);
+        const detailInsightWorkouts = detailBlockDone
+          ? [
+              ...workouts.filter((w) => w.id !== activeWorkout.id),
+              {
+                ...activeWorkout,
+                completed: true,
+                completedAt: new Date().toISOString(),
+                exercises: [detailEx],
+              },
+            ]
+          : workouts;
+        return (
+          <ExerciseDetailModal
+            exercise={detailEx}
+            exerciseDef={detailDef}
+            workouts={detailInsightWorkouts}
+            biometrics={biometrics}
+            insight={buildExerciseInsight(
+              detailEx,
+              detailInsightWorkouts,
+              readiness.state,
+              measuredBodyweightKg,
+              12,
+              (kg) => units.formatPrecise(kg),
+              biometrics
+            )}
+            bodyweightKg={measuredBodyweightKg}
+            muscleLabel={detailDef ? MUSCLE_FRIENDLY_NAMES[detailDef.primaryMuscle] : undefined}
+            prescription={entry.prescription}
+            readinessState={readiness.state}
+            onAddSet={(isWarmup) => handleAddSet(detailEx.id, isWarmup)}
+            onOpenSwap={() => setSwappingExercise(detailEx)}
+            onOpenPlateCalc={(kg) => setPlateCalcWeight(kg)}
+            onOpenNotesHistory={onOpenInsights ? () => onOpenInsights(detailEx.exerciseId) : undefined}
+            onClose={() => setDetailExerciseId(null)}
+          />
+        );
+      })()}
 
       {/* Smart Equipment Swap Modal */}
       {swappingExercise && (
