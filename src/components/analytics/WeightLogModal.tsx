@@ -111,7 +111,7 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
   currentEma,
   biometrics = [],
   initialMode = 'weight',
-  initialSite = 'waist',
+  initialSite,
   heightCm,
   athleteAge,
   athleteGender,
@@ -219,7 +219,18 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
   const [savedDevices, setSavedDevices] = useState<SavedRenphoDevices>(() =>
     loadSavedRenphoDevices()
   );
-  const [activeSite, setActiveSite] = useState<BodyMeasurementSite>(initialSite);
+  const [activeSite, setActiveSite] = useState<BodyMeasurementSite>(initialSite ?? 'waist');
+  const [showAllSites, setShowAllSites] = useState(false);
+  const [showLimbSites, setShowLimbSites] = useState(() =>
+    Boolean(
+      todayLog &&
+        BODY_MEASUREMENT_SITES.some(
+          (s) => !s.primary && typeof todayLog[s.field] === 'number' && (todayLog[s.field] as number) > 0
+        )
+    )
+  );
+  const [showTapeHelp, setShowTapeHelp] = useState(false);
+  const singleSiteMode = mode === 'measurements' && Boolean(initialSite) && !showAllSites;
   const [bleDeviceKind, setBleDeviceKind] = useState<'scale' | 'tape' | null>(null);
   const [bleDeviceName, setBleDeviceName] = useState<string | null>(null);
   const [bleStatus, setBleStatus] = useState<string | null>(null);
@@ -260,6 +271,8 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
   const bleConnectInFlightRef = useRef(false);
   const activeSiteRef = useRef<BodyMeasurementSite>(activeSite);
   activeSiteRef.current = activeSite;
+  const singleSiteModeRef = useRef(singleSiteMode);
+  singleSiteModeRef.current = singleSiteMode;
 
   const typedHeightCm = useMemo(() => {
     const parsed = parseFloat(height);
@@ -328,7 +341,7 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
       const summary = `${siteMeta.label}: ${displayVal} ${lengthUnit}`;
       setSavedDevices(recordRenphoDeviceSync('tape', summary));
     }
-    if (advance) {
+    if (advance && !singleSiteModeRef.current) {
       const idx = BODY_MEASUREMENT_SITES.findIndex((s) => s.id === targetSite);
       if (idx >= 0 && idx + 1 < BODY_MEASUREMENT_SITES.length) {
         const nextSite = BODY_MEASUREMENT_SITES[idx + 1];
@@ -341,6 +354,8 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
           `Saved ${siteMeta?.label ?? targetSite} (${displayVal} ${lengthUnit}) to app.`
         );
       }
+    } else if (advance) {
+      setAutoSavedBanner(`Saved ${siteMeta?.label ?? targetSite} (${displayVal} ${lengthUnit}) to app.`);
     }
   };
 
@@ -730,10 +745,13 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
   const lengthValid = (s: string, min: number, max: number) =>
     !s || (toCm(num(s)) >= min && toCm(num(s)) <= max);
 
-  const allSitesValid = BODY_MEASUREMENT_SITES.every((site) =>
+  const scopedSites = singleSiteMode
+    ? BODY_MEASUREMENT_SITES.filter((s) => s.id === activeSite)
+    : BODY_MEASUREMENT_SITES;
+  const allSitesValid = scopedSites.every((site) =>
     lengthValid(siteValues[site.id], site.minCm, site.maxCm)
   );
-  const hasAnySiteValue = BODY_MEASUREMENT_SITES.some((site) => num(siteValues[site.id]) > 0);
+  const hasAnySiteValue = scopedSites.some((site) => num(siteValues[site.id]) > 0);
   const hasAnyScaleMetric = Object.values(capturedScaleMetrics).some(
     (v) => typeof v === 'number' && v > 0
   );
@@ -773,7 +791,7 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
     }
     const round = (v: number) => Math.round(v * 10) / 10;
     const sitePayload: Partial<MeasurementEntry> = {};
-    for (const site of BODY_MEASUREMENT_SITES) {
+    for (const site of scopedSites) {
       const val = num(siteValues[site.id]);
       if (val > 0) {
         const cmVal = round(toCm(val));
@@ -1038,21 +1056,31 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
     <div
       role="dialog"
       aria-modal="true"
-      aria-label="Log weight or measurements"
+      aria-label={
+        mode === 'weight'
+          ? 'Log weight'
+          : singleSiteMode
+          ? `Log ${activeSiteDef.label.toLowerCase()} measurement`
+          : 'Log measurements'
+      }
       className="wk fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 backdrop-blur-md"
       style={{ background: 'var(--color-bg-scrim)' }}
     >
       <div className="wk-card w-full max-w-lg shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
         {/* Header */}
         <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 min-w-0">
             {mode === 'weight' ? (
-              <Scale className="w-5 h-5 stroke-[2]" style={{ color: 'var(--color-text-primary)' }} />
+              <Scale className="w-5 h-5 stroke-[2] shrink-0" style={{ color: 'var(--color-text-primary)' }} />
             ) : (
-              <Ruler className="w-5 h-5 stroke-[2]" style={{ color: 'var(--color-text-primary)' }} />
+              <Ruler className="w-5 h-5 stroke-[2] shrink-0" style={{ color: 'var(--color-text-primary)' }} />
             )}
-            <h3 className="wk-h1">
-              {mode === 'weight' ? 'Log weight' : 'Log measurements'}
+            <h3 className="wk-h1 truncate">
+              {mode === 'weight'
+                ? 'Log weight'
+                : singleSiteMode
+                ? `Log ${activeSiteDef.label.toLowerCase()}`
+                : 'Log measurements'}
             </h3>
           </div>
           <button
@@ -1167,187 +1195,92 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
                 </div>
               )}
             </>
-          ) : (
+          ) : singleSiteMode ? (
             <>
-              {/* MEASUREMENTS MODE: 12 Body Tape Sites (RENPHO Smart Tape or Manual) */}
-              <div
-                className="rounded-xl p-3 space-y-3"
-                style={{ background: 'var(--wk-raised)', border: '1px solid var(--color-border-subtle)' }}
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2 min-w-0">
+              {/* SINGLE-SITE MEASUREMENTS MODE (focused purely on the chosen body part) */}
+              {(() => {
+                const prevCm = latestSiteCmByField[activeSiteDef.id];
+                const lastPart =
+                  prevCm && prevCm > 0 ? ` · Last: ${fromCmToDisplay(prevCm)} ${lengthUnit}` : '';
+                return field(
+                  activeSiteDef.label,
+                  siteValues[activeSiteDef.id],
+                  (v) => setSiteValue(activeSiteDef.id, v),
+                  lengthUnit,
+                  `${activeSiteDef.hint}${lastPart}`,
+                  lengthValid(siteValues[activeSiteDef.id], activeSiteDef.minCm, activeSiteDef.maxCm)
+                );
+              })()}
+
+              {(bluetoothAvailable || Boolean(rememberedTape)) && (
+                <div
+                  className="rounded-xl p-3 flex flex-wrap items-center justify-between gap-2"
+                  style={{ background: 'var(--wk-raised)', border: '1px solid var(--color-border-subtle)' }}
+                >
+                  <div className="min-w-0 flex items-center gap-2">
                     <Bluetooth className="w-4 h-4 stroke-[2] shrink-0" style={{ color: 'var(--color-data-telemetry)' }} />
-                    <span className="wk-meta-title truncate" style={{ color: 'var(--color-text-primary)' }}>
-                      Pull from RENPHO Smart Tape (12 sites)
-                    </span>
-                  </div>
-                  {rememberedTape && (
-                    <div className="flex items-center gap-2 shrink-0">
-                      <span className="text-xs font-medium" style={{ color: 'var(--color-data-telemetry)' }}>
-                        {bleDeviceKind === 'tape'
-                          ? `${bleDeviceName ?? rememberedTape.name} · Live`
-                          : `${rememberedTape.name} · Paired`}
+                    <div className="min-w-0">
+                      <span className="block wk-subhead truncate">
+                        {liveTapeReading
+                          ? `${fromCmToDisplay(liveTapeReading.lengthCm)} ${lengthUnit} ready`
+                          : bleDeviceKind === 'tape'
+                          ? `${bleDeviceName ?? 'Smart tape'} connected`
+                          : rememberedTape
+                          ? `${rememberedTape.name} ready`
+                          : 'RENPHO Smart Tape'}
                       </span>
+                      {(bleStatus || bleError) && (
+                        <span
+                          className="block wk-caption truncate"
+                          style={{ color: bleError ? 'var(--color-status-danger)' : 'var(--color-text-secondary)' }}
+                        >
+                          {bleError ?? bleStatus}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    {liveTapeReading ? (
                       <button
                         type="button"
-                        onClick={() => handleForgetDevice('tape')}
-                        className="wk-caption underline min-h-[44px] px-1"
+                        onClick={() => applyTapeReadingToSite(liveTapeReading.lengthCm, activeSiteDef.id, true, true)}
+                        className="wk-btn-secondary min-h-[44px]"
+                        style={{ background: 'var(--color-action-primary-bg)', color: 'var(--color-action-primary-fg)' }}
                       >
-                        Forget
+                        Apply {fromCmToDisplay(liveTapeReading.lengthCm)} {lengthUnit}
                       </button>
-                    </div>
-                  )}
-                </div>
-
-                {/* Clear 3-Step Instructions for the Smart Tape */}
-                <div
-                  className="rounded-lg p-3 space-y-2 border"
-                  style={{ background: 'var(--color-bg-canvas)', borderColor: 'var(--color-border-subtle)' }}
-                >
-                  <span className="wk-meta-title block" style={{ color: 'var(--color-text-primary)' }}>
-                    How tape measurements are pulled into the app:
-                  </span>
-                  <ol className="text-xs text-[color:var(--wk-body)] space-y-2 list-decimal list-inside max-w-prose">
-                    <li>
-                      <strong style={{ color: 'var(--color-text-primary)' }}>Select body site:</strong> Tap the area you are
-                      measuring below (currently <strong style={{ color: 'var(--color-text-primary)' }}>{activeSiteDef.label}</strong>).
-                    </li>
-                    <li>
-                      <strong style={{ color: 'var(--color-text-primary)' }}>Wrap the tape:</strong> Pull the RENPHO tape
-                      around that site — your live reading streams here.
-                    </li>
-                    <li>
-                      <strong style={{ color: 'var(--color-text-primary)' }}>Lock &amp; auto-advance:</strong> Press the confirm
-                      button on the tape (or tap Save below) to save to the app and move to the next
-                      site.
-                    </li>
-                  </ol>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => handleConnectTape(false, false)}
-                    aria-label="Connect RENPHO Smart Tape"
-                    className={bleDeviceKind === 'tape' ? 'wk-button flex-1 gap-2 min-h-[44px]' : 'wk-btn-secondary flex-1 justify-center gap-2 min-h-[44px]'}
-                    style={
-                      bleDeviceKind === 'tape'
-                        ? { background: 'var(--color-status-positive)', color: 'var(--color-text-on-accent)' }
-                        : undefined
-                    }
-                  >
-                    <Ruler className="w-4 h-4 stroke-[2]" />
-                    <span>
-                      {bleDeviceKind === 'tape'
-                        ? `Connected to ${bleDeviceName ?? 'Smart Tape'}`
-                        : rememberedTape
-                        ? `Wake ${rememberedTape.name} & Tap to Connect`
-                        : 'Pair RENPHO Smart Tape'}
-                    </span>
-                  </button>
-
-                  {rememberedTape && (
-                    <button
-                      type="button"
-                      onClick={() => handleConnectTape(true, false)}
-                      className="wk-btn-secondary min-h-[44px]"
-                    >
-                      Switch tape
-                    </button>
-                  )}
-                </div>
-
-                <div className="space-y-2 pt-1">
-                  <span className="block wk-meta-title">
-                    Active body site for smart tape (tap to change):
-                  </span>
-                  <div
-                    role="group"
-                    aria-label="Body measurement area for smart tape"
-                    className="flex flex-wrap gap-2"
-                  >
-                    {BODY_MEASUREMENT_SITES.map((site) => {
-                      const isSelected = activeSite === site.id;
-                      const hasVal = num(siteValues[site.id]) > 0;
-                      return (
-                        <button
-                          key={site.id}
-                          type="button"
-                          aria-pressed={isSelected}
-                          onClick={() => setActiveSite(site.id)}
-                          className="px-3 py-2 rounded-full text-xs font-medium transition-colors min-h-[44px]"
-                          style={{
-                            background: isSelected
-                              ? 'var(--color-status-positive-soft)'
-                              : hasVal
-                              ? 'var(--wk-pill)'
-                              : 'var(--color-bg-canvas)',
-                            border: isSelected ? '1px solid var(--color-border-accent)' : '1px solid var(--color-border-subtle)',
-                            color: 'var(--color-text-primary)',
-                          }}
-                        >
-                          {site.shortLabel}
-                          {hasVal ? ` · ${siteValues[site.id]}${lengthUnit}` : ''}
-                        </button>
-                      );
-                    })}
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => handleConnectTape(false, false)}
+                        aria-label="Connect RENPHO Smart Tape"
+                        className="wk-btn-secondary min-h-[44px]"
+                      >
+                        {bleDeviceKind === 'tape' ? 'Listening' : rememberedTape ? 'Reconnect' : 'Pair tape'}
+                      </button>
+                    )}
                   </div>
-                  <p className="wk-caption max-w-prose">
-                    Measuring <strong style={{ color: 'var(--color-text-primary)' }}>{activeSiteDef.label}</strong> —{' '}
-                    {activeSiteDef.hint}.
-                  </p>
                 </div>
+              )}
 
-                {liveTapeReading && (
-                  <div
-                    className="rounded-lg p-3 flex items-center justify-between gap-2 border"
-                    style={{ background: 'var(--color-bg-canvas)', borderColor: 'var(--color-border-subtle)' }}
-                  >
-                    <div>
-                      <span className="wk-caption block">
-                        {liveTapeReading.stabilized
-                          ? 'Locked & auto-saved tape measurement'
-                          : `Live tape → ${activeSiteDef.label}`}
-                      </span>
-                      <span className="wk-subhead tabular-nums">
-                        {fromCmToDisplay(liveTapeReading.lengthCm)} {lengthUnit}
-                      </span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        applyTapeReadingToSite(liveTapeReading.lengthCm, activeSite, true, true)
-                      }
-                      className="px-3 rounded-xl text-xs font-medium min-h-[44px]"
-                      style={{ background: 'var(--color-action-primary-bg)', color: 'var(--color-action-primary-fg)' }}
-                    >
-                      Save to {activeSiteDef.shortLabel} &amp; next &rarr;
-                    </button>
-                  </div>
-                )}
-
-                {bleStatus && <p className="wk-caption" style={{ color: 'var(--color-data-telemetry)' }}>{bleStatus}</p>}
-                {bleError && <p className="wk-caption" style={{ color: 'var(--color-status-danger)' }}>{bleError}</p>}
-              </div>
-
-              {/* OPTION 2: Manual 12-Site Tape Circumferences */}
-              <div
-                className="rounded-xl p-3 space-y-3"
-                style={{ background: 'var(--wk-raised)', border: '1px solid var(--color-border-subtle)' }}
+              <button
+                type="button"
+                onClick={() => setShowAllSites(true)}
+                className="wk-caption underline min-h-[44px] inline-flex items-center"
+                style={{ color: 'var(--color-text-secondary)' }}
               >
-                <div className="flex items-center justify-between">
-                  <h4 className="wk-subhead">
-                    Option 2: Enter measurements manually ({lengthUnit})
-                  </h4>
-                  <span className="wk-caption">12 body sites</span>
-                </div>
+                Measure other body parts
+              </button>
+            </>
+          ) : (
+            <>
+              {/* GENERAL MEASUREMENTS MODE: manual-first with primary torso sites cleanly laid out */}
+              <div className="space-y-3">
                 <div className="grid grid-cols-2 gap-3">
-                  {BODY_MEASUREMENT_SITES.map((site) => {
+                  {BODY_MEASUREMENT_SITES.filter((s) => s.primary).map((site) => {
                     const prevCm = latestSiteCmByField[site.id];
                     const prevHint =
-                      prevCm && prevCm > 0
-                        ? `Last: ${fromCmToDisplay(prevCm)} ${lengthUnit}`
-                        : undefined;
+                      prevCm && prevCm > 0 ? `Last: ${fromCmToDisplay(prevCm)} ${lengthUnit}` : undefined;
                     return (
                       <div key={site.id}>
                         {field(
@@ -1363,7 +1296,134 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
                     );
                   })}
                 </div>
+
+                <button
+                  type="button"
+                  onClick={() => setShowLimbSites((prev) => !prev)}
+                  aria-expanded={showLimbSites}
+                  className="w-full flex items-center justify-between wk-meta-title min-h-[44px]"
+                >
+                  <span>{showLimbSites ? 'Hide arms & legs' : 'Add arms & legs (6 sites)'}</span>
+                  {showLimbSites ? <ChevronUp className="w-4 h-4 stroke-[2]" /> : <ChevronDown className="w-4 h-4 stroke-[2]" />}
+                </button>
+
+                {showLimbSites && (
+                  <div className="grid grid-cols-2 gap-3">
+                    {BODY_MEASUREMENT_SITES.filter((s) => !s.primary).map((site) => {
+                      const prevCm = latestSiteCmByField[site.id];
+                      const prevHint =
+                        prevCm && prevCm > 0 ? `Last: ${fromCmToDisplay(prevCm)} ${lengthUnit}` : undefined;
+                      return (
+                        <div key={site.id}>
+                          {field(
+                            site.label,
+                            siteValues[site.id],
+                            (v) => setSiteValue(site.id, v),
+                            lengthUnit,
+                            prevHint,
+                            lengthValid(siteValues[site.id], site.minCm, site.maxCm),
+                            () => setActiveSite(site.id)
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
+
+              {(bluetoothAvailable || Boolean(rememberedTape)) && (
+                <div
+                  className="rounded-xl p-3 space-y-2"
+                  style={{ background: 'var(--wk-raised)', border: '1px solid var(--color-border-subtle)' }}
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Bluetooth className="w-4 h-4 stroke-[2] shrink-0" style={{ color: 'var(--color-data-telemetry)' }} />
+                      <div className="min-w-0">
+                        <span className="block wk-subhead truncate">
+                          {bleDeviceKind === 'tape'
+                            ? `${bleDeviceName ?? 'Smart tape'} · ${activeSiteDef.label}`
+                            : rememberedTape
+                            ? `${rememberedTape.name} · Target: ${activeSiteDef.label}`
+                            : 'RENPHO Smart Tape'}
+                        </span>
+                        <span className="block wk-caption" style={{ color: bleError ? 'var(--color-status-danger)' : 'var(--color-text-secondary)' }}>
+                          {bleError ?? bleStatus ?? 'Tap a field above, then pull the tape to fill it.'}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => handleConnectTape(false, false)}
+                        aria-label="Connect RENPHO Smart Tape"
+                        className="wk-btn-secondary min-h-[44px]"
+                      >
+                        <Ruler className="w-4 h-4 stroke-[2]" />
+                        <span>{bleDeviceKind === 'tape' ? 'Listening' : rememberedTape ? 'Connect' : 'Pair tape'}</span>
+                      </button>
+                      {rememberedTape && (
+                        <button
+                          type="button"
+                          onClick={() => handleForgetDevice('tape')}
+                          className="wk-caption underline min-h-[44px] px-1"
+                        >
+                          Forget
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {liveTapeReading && (
+                    <div
+                      className="rounded-lg p-3 flex items-center justify-between gap-2 border"
+                      style={{ background: 'var(--color-bg-canvas)', borderColor: 'var(--color-border-subtle)' }}
+                    >
+                      <div>
+                        <span className="wk-caption block">
+                          {liveTapeReading.stabilized ? 'Locked & auto-saved' : `Live → ${activeSiteDef.label}`}
+                        </span>
+                        <span className="wk-subhead tabular-nums">
+                          {fromCmToDisplay(liveTapeReading.lengthCm)} {lengthUnit}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => applyTapeReadingToSite(liveTapeReading.lengthCm, activeSite, true, true)}
+                        className="px-3 rounded-xl text-xs font-medium min-h-[44px]"
+                        style={{ background: 'var(--color-action-primary-bg)', color: 'var(--color-action-primary-fg)' }}
+                      >
+                        Save to {activeSiteDef.shortLabel} &amp; next &rarr;
+                      </button>
+                    </div>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => setShowTapeHelp((v) => !v)}
+                    className="wk-caption underline min-h-[44px] inline-flex items-center"
+                    style={{ color: 'var(--color-text-muted)' }}
+                  >
+                    {showTapeHelp ? 'Hide tape steps' : 'How smart tape works'}
+                  </button>
+
+                  {showTapeHelp && (
+                    <div
+                      className="rounded-lg p-3 space-y-2 border"
+                      style={{ background: 'var(--color-bg-canvas)', borderColor: 'var(--color-border-subtle)' }}
+                    >
+                      <span className="wk-meta-title block" style={{ color: 'var(--color-text-primary)' }}>
+                        How tape measurements are pulled into the app:
+                      </span>
+                      <ol className="text-xs text-[color:var(--wk-body)] space-y-2 list-decimal list-inside max-w-prose">
+                        <li>Focus the body site box you want to measure (currently {activeSiteDef.label}).</li>
+                        <li>Wrap the RENPHO tape around that site to stream the live measurement.</li>
+                        <li>Press confirm on the tape (or tap Save) to record it and advance to the next site.</li>
+                      </ol>
+                    </div>
+                  )}
+                </div>
+              )}
             </>
           )}
 
@@ -1381,8 +1441,14 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
             <button
               type="submit"
               disabled={(!valid && !autoSavedBanner) || capturePhase === 'analysing'}
-              aria-label={mode === 'weight' ? 'Save weight' : 'Save measurements'}
-              className="wk-button gap-2 active:scale-[0.98] transition-transform"
+              aria-label={
+                mode === 'weight'
+                  ? 'Save weight'
+                  : singleSiteMode
+                  ? `Save ${activeSiteDef.label.toLowerCase()}`
+                  : 'Save measurements'
+              }
+              className="wk-button gap-2 whitespace-nowrap active:scale-[0.98] transition-transform"
               style={{
                 background:
                   (!valid && !autoSavedBanner) || capturePhase === 'analysing'
@@ -1402,7 +1468,9 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
                   ? 'Done'
                   : mode === 'weight'
                   ? 'Save weight'
-                  : 'Save measurements'}
+                  : singleSiteMode
+                  ? `Save ${activeSiteDef.label.toLowerCase()}`
+                  : 'Save'}
               </span>
             </button>
           </div>

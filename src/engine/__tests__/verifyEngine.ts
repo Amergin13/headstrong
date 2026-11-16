@@ -12055,7 +12055,38 @@ Exercise,,Date,Workout,Sets,Reps,Tempo,Rest,Notes,Set 1,Set 2,Set 3,Set 4
     );
   }
 
-  console.log('\nALL 59 ENGINE, GOVERNANCE, DESIGN SYSTEM, TYPOGRAPHY, WEARABLES, WHOOP STRAIN, GOOGLE AUTH, ONBOARDING CONTEXT, 6-WEEK PROGRAM, SPREADSHEET IMPORT, AI COACH ACTIONS, GEMINI FLASH + KG, OOUX, AGENTIC COACH, PRODUCT UPGRADES, INFO EXPERIENCE, CONTENT DESIGN, GOAL CAROUSEL, SHIFT NUDGE COLOR POLISH, EXERCISE DRILL-IN MODAL, COMPOSITION WIDGET & LAUNCH VERIFICATION SUITES PASSED SUCCESSFULLY! 🎯');
+  // Suite 60: Shift Nudge Focused Measurement Screens & Single-Site Scoping
+  {
+    console.log('\n[Suite 60: Focused Measurement Screens & Single-Site Input Scoping]');
+    const fs60 = await import('fs');
+    const path60 = await import('path');
+    const repo60 = process.cwd();
+    const modalSrc60 = fs60.readFileSync(path60.join(repo60, 'src/components/analytics/WeightLogModal.tsx'), 'utf8');
+    const analyticsSrc60 = fs60.readFileSync(path60.join(repo60, 'src/components/analytics/AnalyticsTab.tsx'), 'utf8');
+
+    assert(
+      modalSrc60.includes('const singleSiteMode = mode === \'measurements\' && Boolean(initialSite) && !showAllSites;') &&
+        modalSrc60.includes('const scopedSites = singleSiteMode') &&
+        modalSrc60.includes('Measure other body parts') &&
+        modalSrc60.includes('Add arms & legs (6 sites)') &&
+        !modalSrc60.includes('Option 2: Enter measurements manually') &&
+        !modalSrc60.includes('Pull from RENPHO Smart Tape (12 sites)') &&
+        !modalSrc60.includes('Active body site for smart tape (tap to change)'),
+      'WeightLogModal scopes inputs strictly to initialSite when entered from a body part, removes duplicate 12-pill smart tape bloat, and collapses limb inputs cleanly'
+    );
+
+    assert(
+      analyticsSrc60.includes('const [logModalSite, setLogModalSite] = useState<BodyMeasurementSite | undefined>(undefined)') &&
+        analyticsSrc60.includes('openLogMeasurements(CHART_ID_TO_TAPE_SITE[chart.id])') &&
+        analyticsSrc60.includes('const primaryCharts = isWeight') &&
+        analyticsSrc60.includes('unmeasuredSites') &&
+        analyticsSrc60.includes('Measure a body part') &&
+        !analyticsSrc60.includes('Measure both arms, thighs or calves to compare your left and right sides.'),
+      'AnalyticsTab hides empty stacked measurement charts behind one clean site picker linking directly into focused single-site entry'
+    );
+  }
+
+  console.log('\nALL 60 ENGINE, GOVERNANCE, DESIGN SYSTEM, TYPOGRAPHY, WEARABLES, WHOOP STRAIN, GOOGLE AUTH, ONBOARDING CONTEXT, 6-WEEK PROGRAM, SPREADSHEET IMPORT, AI COACH ACTIONS, GEMINI FLASH + KG, OOUX, AGENTIC COACH, PRODUCT UPGRADES, INFO EXPERIENCE, CONTENT DESIGN, GOAL CAROUSEL, SHIFT NUDGE COLOR POLISH, EXERCISE DRILL-IN MODAL, COMPOSITION WIDGET, MEASUREMENT UX & LAUNCH VERIFICATION SUITES PASSED SUCCESSFULLY! 🎯');
 })().catch((err) => {
   console.error('Test Suite Failed:', err);
   if (typeof process !== 'undefined' && process.exit) {

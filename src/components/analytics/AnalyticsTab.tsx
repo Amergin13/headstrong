@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Scale, Ruler, Bluetooth, MoreHorizontal, SlidersHorizontal, Target } from 'lucide-react';
+import { Scale, Ruler, ChevronRight, MoreHorizontal, SlidersHorizontal, Target } from 'lucide-react';
 import { PageTopGradient } from '../common/PageTopGradient';
 import { BiometricLog, BodyMeasurementSite, ExerciseDefinition, GoalPhase, ProgressWidgetId, UserProfile, WorkoutSession, isWhoopConfigured } from '../../engine/types';
 import { StrengthLevelsCard } from './StrengthLevelsCard';
@@ -30,7 +30,7 @@ import {
 } from '../../services/progressSeries';
 import { TimelineToggle } from './TimelineToggle';
 import { stepsOnDate } from '../../services/athleteGoals';
-import { loadSavedRenphoDevices } from '../../services/renphoBluetooth';
+import { BODY_MEASUREMENT_SITES } from '../../services/renphoBluetooth';
 import { ActivityLog } from '../../engine/activeDays';
 import {
   RECENT_DAYS,
@@ -154,7 +154,9 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
   const compositionView: CompositionView = detail === 'measurements' ? 'measurements' : 'weight';
   const [showLogModal, setShowLogModal] = useState(false);
   const [logModalMode, setLogModalMode] = useState<LogModalMode>('weight');
-  const [logModalSite, setLogModalSite] = useState<BodyMeasurementSite>('waist');
+  const [logModalSite, setLogModalSite] = useState<BodyMeasurementSite | undefined>(undefined);
+  const [showUnloggedScaleCharts, setShowUnloggedScaleCharts] = useState(false);
+  const [showLimbSitesList, setShowLimbSitesList] = useState(false);
   const units = useUnits();
   const latestWeighIn = latestBodyweightLog(biometrics);
   const hasBodyweight = hasMeasuredBodyweight(biometrics);
@@ -309,10 +311,12 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
   // Each screen opens at its top, not where the last one was scrolled to.
   useEffect(() => {
     setDetailTimeline(DEFAULT_CHART_TIMELINE);
+    setShowUnloggedScaleCharts(false);
+    setShowLimbSitesList(false);
     if (typeof window !== 'undefined') window.scrollTo(0, 0);
   }, [detail, openGoalId]);
 
-  const openLogMeasurements = (site: BodyMeasurementSite = 'waist') => {
+  const openLogMeasurements = (site?: BodyMeasurementSite) => {
     setOpenGoalId(null);
     setDetail('measurements');
     setLogModalMode('measurements');
@@ -322,7 +326,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
 
   const openLogForChart = (chart: ProgressChart) => {
     if (chart.category === 'tape') {
-      openLogMeasurements(CHART_ID_TO_TAPE_SITE[chart.id] ?? 'waist');
+      openLogMeasurements(CHART_ID_TO_TAPE_SITE[chart.id]);
     } else {
       openLogWeight();
     }
@@ -331,7 +335,6 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
   const measuredSymmetryPairs = bodyComposition.bilateralSymmetry.filter(
     (p) => p.status !== 'insufficient_data'
   );
-  const savedRenpho = loadSavedRenphoDevices();
 
   const handleSaveAndShowComposition = (entry: MeasurementEntry) => {
     onSaveMeasurements(entry);
@@ -664,49 +667,46 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
           </>
         )}
 
-        {(detail === 'weight' || detail === 'measurements') && (
-          <>
-                      {/* One log button: it logs whatever the tab above shows. */}
-          <button
-            type="button"
-            onClick={() => {
-              triggerHaptic('light');
-              if (compositionView === 'weight') openLogWeight();
-              else openLogMeasurements('waist');
-            }}
-            className="wk-button gap-2 active:scale-[0.98] transition-transform"
-            style={{ background: 'var(--color-action-primary-bg)', color: 'var(--color-action-primary-fg)' }}
-          >
-            {compositionView === 'weight' ? <Scale className="w-4 h-4 stroke-[2]" /> : <Ruler className="w-4 h-4 stroke-[2]" />}
-            <span>{compositionView === 'weight' ? 'Log weight' : 'Log measurements'}</span>
-          </button>
+        {(detail === 'weight' || detail === 'measurements') && (() => {
+          const isWeight = compositionView === 'weight';
+          const primaryCharts = isWeight
+            ? visibleCompositionCharts.filter((c) => c.id === 'bodyweight' || c.points.length > 0)
+            : visibleCompositionCharts.filter((c) => c.points.length > 0);
+          const unloggedScaleCharts = isWeight
+            ? visibleCompositionCharts.filter((c) => c.id !== 'bodyweight' && c.points.length === 0)
+            : [];
+          const loggedSiteIds = new Set(
+            primaryCharts
+              .map((c) => CHART_ID_TO_TAPE_SITE[c.id])
+              .filter((id): id is BodyMeasurementSite => Boolean(id))
+          );
+          const unmeasuredSites = !isWeight
+            ? BODY_MEASUREMENT_SITES.filter((s) => !loggedSiteIds.has(s.id))
+            : [];
+          const primaryUnmeasuredSites = unmeasuredSites.filter((s) => s.primary);
+          const limbUnmeasuredSites = unmeasuredSites.filter((s) => !s.primary);
 
-          {(compositionView === 'weight' ? savedRenpho.scale : savedRenpho.tape) && (
-            <div
-              className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 rounded-xl border"
-              style={{ background: 'var(--wk-card)', borderColor: 'var(--color-border-subtle)' }}
-            >
-              <div className="flex items-center gap-2 text-xs font-medium" style={{ color: 'var(--color-data-telemetry)' }}>
-                <Bluetooth className="w-3.5 h-3.5 stroke-[2]" />
-                <span>Remembered: {(compositionView === 'weight' ? savedRenpho.scale : savedRenpho.tape)?.name}</span>
-              </div>
-              {(compositionView === 'weight' ? savedRenpho.scale : savedRenpho.tape)?.lastSummary && (
-                <span className="text-xs text-[color:var(--wk-body)]">
-                  Last: {(compositionView === 'weight' ? savedRenpho.scale : savedRenpho.tape)?.lastSummary}
-                </span>
-              )}
-            </div>
-          )}
+          return (
+            <>
+              {/* One focused action at the top matching the active screen */}
+              <button
+                type="button"
+                onClick={() => {
+                  triggerHaptic('light');
+                  if (isWeight) openLogWeight();
+                  else openLogMeasurements();
+                }}
+                className="wk-button gap-2 active:scale-[0.98] transition-transform"
+                style={{ background: 'var(--color-action-primary-bg)', color: 'var(--color-action-primary-fg)' }}
+              >
+                {isWeight ? <Scale className="w-4 h-4 stroke-[2]" /> : <Ruler className="w-4 h-4 stroke-[2]" />}
+                <span>{isWeight ? 'Log weight' : 'Log measurements'}</span>
+              </button>
 
-          {(compositionView === 'weight'
-            ? bodyComposition.populatedScaleCount > 0
-            : bodyComposition.populatedTapeCount > 0) && (
-            <div className="wk-card space-y-3">
-              <h2 className="wk-title">{compositionView === 'weight' ? 'Body composition' : 'Symmetry'}</h2>
-              {compositionView === 'weight' ? (
-                <>
+              {isWeight && bodyComposition.populatedScaleCount > 0 && (
+                <div className="wk-card space-y-3">
+                  <h2 className="wk-title">Body composition</h2>
                   <p className="wk-body text-[color:var(--wk-body)] max-w-prose">{bodyComposition.recompositionSummary}</p>
-                  {/* The latest reading of each metric, from the same series as the charts below. */}
                   {visibleCompositionCharts.some((c) => c.id !== 'bodyweight' && c.points.length > 0) && (
                     <dl className="grid grid-cols-2 gap-x-4 gap-y-3 pt-1">
                       {visibleCompositionCharts
@@ -714,57 +714,169 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
                         .map((c) => (
                           <div key={c.id} className="min-w-0">
                             <dt className="wk-caption">{c.title}</dt>
-                            <dd className="text-base font-medium tabular-nums" style={{ color: 'var(--color-text-primary)' }}>{c.format(c.points[c.points.length - 1].value)}</dd>
+                            <dd className="text-base font-medium tabular-nums" style={{ color: 'var(--color-text-primary)' }}>
+                              {c.format(c.points[c.points.length - 1].value)}
+                            </dd>
                           </div>
                         ))}
                     </dl>
                   )}
-                </>
-              ) : measuredSymmetryPairs.length > 0 ? (
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1">
-                  {measuredSymmetryPairs.map((pair) => (
-                    <div
-                      key={pair.id}
-                      className="rounded-xl p-3 border"
-                      style={{ background: 'var(--wk-raised)', borderColor: 'var(--color-border-subtle)' }}
-                    >
-                      <span className="block wk-meta-title">{pair.label}</span>
-                      <span className="block text-base font-medium tabular-nums mt-1" style={{ color: 'var(--color-text-primary)' }}>
-                        L {fmt.length(pair.leftCm!)} · R {fmt.length(pair.rightCm!)}
-                      </span>
-                      <span
-                        className="block text-xs font-medium mt-1 tabular-nums"
-                        style={{ color: pair.status === 'balanced' ? 'var(--wk-accent)' : 'var(--color-status-warning)' }}
-                      >
-                        {pair.status === 'balanced'
-                          ? 'Balanced'
-                          : `${pair.dominantSide === 'right' ? 'Right' : 'Left'} +${fmt.length(Math.abs(pair.diffCm ?? 0))}`}
-                      </span>
-                    </div>
-                  ))}
                 </div>
-              ) : (
-                <p className="wk-body text-[color:var(--wk-body)] max-w-prose">Measure both arms, thighs or calves to compare your left and right sides.</p>
               )}
-            </div>
-          )}
 
-          <TimelineToggle
-            value={detailTimeline}
-            onChange={setDetailTimeline}
-            ariaLabel={compositionView === 'weight' ? 'Body weight charts timeline' : 'Body measurements charts timeline'}
-          />
-          {visibleCompositionCharts.map((chart) => (
-            <ProgressChartCard
-              key={chart.id}
-              chart={chart}
-              timeline={detailTimeline}
-              hideTimelineToggle
-              onOpen={() => openLogForChart(chart)}
-            />
-          ))}
-          </>
-        )}
+              {!isWeight && measuredSymmetryPairs.length > 0 && (
+                <div className="wk-card space-y-3">
+                  <h2 className="wk-title">Symmetry</h2>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1">
+                    {measuredSymmetryPairs.map((pair) => (
+                      <div
+                        key={pair.id}
+                        className="rounded-xl p-3 border"
+                        style={{ background: 'var(--wk-raised)', borderColor: 'var(--color-border-subtle)' }}
+                      >
+                        <span className="block wk-meta-title">{pair.label}</span>
+                        <span className="block text-base font-medium tabular-nums mt-1" style={{ color: 'var(--color-text-primary)' }}>
+                          L {fmt.length(pair.leftCm!)} · R {fmt.length(pair.rightCm!)}
+                        </span>
+                        <span
+                          className="block text-xs font-medium mt-1 tabular-nums"
+                          style={{ color: pair.status === 'balanced' ? 'var(--wk-accent)' : 'var(--color-status-warning)' }}
+                        >
+                          {pair.status === 'balanced'
+                            ? 'Balanced'
+                            : `${pair.dominantSide === 'right' ? 'Right' : 'Left'} +${fmt.length(Math.abs(pair.diffCm ?? 0))}`}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {primaryCharts.length > 0 && (
+                <>
+                  <TimelineToggle
+                    value={detailTimeline}
+                    onChange={setDetailTimeline}
+                    ariaLabel={isWeight ? 'Body weight charts timeline' : 'Body measurements charts timeline'}
+                  />
+                  {primaryCharts.map((chart) => (
+                    <ProgressChartCard
+                      key={chart.id}
+                      chart={chart}
+                      timeline={detailTimeline}
+                      hideTimelineToggle
+                      onOpen={() => openLogForChart(chart)}
+                    />
+                  ))}
+                </>
+              )}
+
+              {isWeight && unloggedScaleCharts.length > 0 && (
+                <>
+                  <button
+                    type="button"
+                    aria-expanded={showUnloggedScaleCharts}
+                    onClick={() => {
+                      triggerHaptic('light');
+                      setShowUnloggedScaleCharts((v) => !v);
+                    }}
+                    className="wk-btn-secondary w-full"
+                  >
+                    {showUnloggedScaleCharts
+                      ? 'Hide unmeasured scale metrics'
+                      : `More scale metrics (${unloggedScaleCharts.length} not logged)`}
+                  </button>
+                  {showUnloggedScaleCharts &&
+                    unloggedScaleCharts.map((chart) => (
+                      <ProgressChartCard
+                        key={chart.id}
+                        chart={chart}
+                        timeline={detailTimeline}
+                        hideTimelineToggle
+                        onOpen={() => openLogForChart(chart)}
+                      />
+                    ))}
+                </>
+              )}
+
+              {!isWeight && unmeasuredSites.length > 0 && (
+                <section aria-label="Body measurement sites" className="wk-card space-y-2">
+                  <div className="flex items-baseline justify-between gap-2">
+                    <h2 className="wk-title">
+                      {primaryCharts.length > 0 ? 'Add another site' : 'Measure a body part'}
+                    </h2>
+                    <span className="wk-caption">Tap one to log</span>
+                  </div>
+                  <ul className="flex flex-col">
+                    {primaryUnmeasuredSites.map((site, idx) => (
+                      <li
+                        key={site.id}
+                        style={idx > 0 ? { borderTop: '1px solid var(--color-border-subtle)' } : undefined}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => {
+                            triggerHaptic('light');
+                            openLogMeasurements(site.id);
+                          }}
+                          className="w-full text-left flex items-center justify-between gap-3 py-3 min-h-[44px]"
+                        >
+                          <span className="min-w-0">
+                            <span className="wk-subhead block">{site.label}</span>
+                            <span className="wk-caption block mt-1">{site.hint}</span>
+                          </span>
+                          <ChevronRight className="wk-chevron shrink-0" strokeWidth={2} aria-hidden="true" />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                  {limbUnmeasuredSites.length > 0 && (
+                    <>
+                      <button
+                        type="button"
+                        aria-expanded={showLimbSitesList}
+                        onClick={() => {
+                          triggerHaptic('light');
+                          setShowLimbSitesList((v) => !v);
+                        }}
+                        className="wk-btn-secondary w-full"
+                      >
+                        {showLimbSitesList
+                          ? 'Hide arms & legs'
+                          : `Arms & legs (${limbUnmeasuredSites.length} sites)`}
+                      </button>
+                      {showLimbSitesList && (
+                        <ul className="flex flex-col pt-1">
+                          {limbUnmeasuredSites.map((site, idx) => (
+                            <li
+                              key={site.id}
+                              style={idx > 0 ? { borderTop: '1px solid var(--color-border-subtle)' } : undefined}
+                            >
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  triggerHaptic('light');
+                                  openLogMeasurements(site.id);
+                                }}
+                                className="w-full text-left flex items-center justify-between gap-3 py-3 min-h-[44px]"
+                              >
+                                <span className="min-w-0">
+                                  <span className="wk-subhead block">{site.label}</span>
+                                  <span className="wk-caption block mt-1">{site.hint}</span>
+                                </span>
+                                <ChevronRight className="wk-chevron shrink-0" strokeWidth={2} aria-hidden="true" />
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </>
+                  )}
+                </section>
+              )}
+            </>
+          );
+        })()}
       </div>
     </>
   );
