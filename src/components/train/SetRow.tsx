@@ -118,7 +118,7 @@ export const SetRow: React.FC<SetRowProps> = ({
         onFocus={(e) => e.target.select()}
         onChange={(e) => updateSide(side, Math.max(0, parseInt(e.target.value, 10) || 0))}
         className="wk-input tabular-numbers outline-none block"
-        style={{ width: 52 }}
+        style={{ width: 52, color: set.completed ? 'var(--color-text-primary)' : 'var(--color-text-secondary)' }}
       />
     </label>
   );
@@ -170,7 +170,7 @@ export const SetRow: React.FC<SetRowProps> = ({
                 style={{
                   width: `${Math.max(showBwToken ? 3 : 1, String(showBwToken ? 'BW' : displayWeight).length)}ch`,
                   fontSize: 'inherit',
-                  color: set.completed ? 'var(--color-text-primary)' : 'var(--color-text-muted)',
+                  color: set.completed ? 'var(--color-text-primary)' : 'var(--color-text-secondary)',
                 }}
               />
               {displayWeight > 0 && (
@@ -198,7 +198,7 @@ export const SetRow: React.FC<SetRowProps> = ({
             style={{
               width: `${Math.max(1, String(currentSeconds).length)}ch`,
               fontSize: 'inherit',
-              color: set.completed ? 'var(--color-text-primary)' : 'var(--color-text-muted)',
+              color: set.completed ? 'var(--color-text-primary)' : 'var(--color-text-secondary)',
             }}
           />
           <span
@@ -218,7 +218,7 @@ export const SetRow: React.FC<SetRowProps> = ({
             onFocus={(e) => e.target.select()}
             onChange={(e) => onUpdate({ actualReps: parseInt(e.target.value, 10) || 0 })}
             className="wk-input tabular-numbers outline-none block"
-            style={{ color: set.completed ? 'var(--color-text-primary)' : 'var(--color-text-muted)' }}
+            style={{ color: set.completed ? 'var(--color-text-primary)' : 'var(--color-text-secondary)' }}
           />
           {(set.isFormFailure || set.repDisplay === 'F*') && (
             <span
@@ -243,7 +243,7 @@ export const SetRow: React.FC<SetRowProps> = ({
           onFocus={(e) => e.target.select()}
           onChange={(e) => onUpdate({ actualRir: Math.max(0, Math.min(5, parseInt(e.target.value, 10) || 0)) })}
           className="wk-input tabular-numbers outline-none block"
-          style={{ color: set.completed ? 'var(--color-text-primary)' : 'var(--color-text-muted)' }}
+          style={{ color: set.completed ? 'var(--color-text-primary)' : 'var(--color-text-secondary)' }}
         />
       </label>
 
@@ -261,15 +261,15 @@ export const SetRow: React.FC<SetRowProps> = ({
           minWidth: 48,
           height: 48,
           borderRadius: 8,
-          background: set.completed ? 'var(--color-status-positive)' : 'var(--color-action-secondary-bg)',
-          border: set.completed ? '1px solid transparent' : '1px solid var(--color-border-strong)',
+          background: set.completed ? 'var(--color-status-positive-soft)' : 'var(--color-action-secondary-bg)',
+          border: set.completed ? '1px solid var(--color-border-accent)' : '1px solid var(--color-border-strong)',
         }}
       >
         <svg
           viewBox="0 0 24 24"
           style={{ width: 20, height: 20 }}
           fill="none"
-          stroke={set.completed ? 'var(--color-text-on-accent)' : 'var(--color-text-secondary)'}
+          stroke={set.completed ? 'var(--color-status-positive)' : 'var(--color-text-secondary)'}
           strokeWidth={set.completed ? 3 : 2.2}
           strokeLinecap="round"
           strokeLinejoin="round"

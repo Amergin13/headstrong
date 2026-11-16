@@ -8892,7 +8892,7 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
         resolveVar(rawVars['--color-bg-surface-control']).toUpperCase() === '#3B4044' &&
         resolveVar(rawVars['--color-action-primary-bg']).toUpperCase() === '#FFFFFF' &&
         resolveVar(rawVars['--color-action-secondary-bg']).toUpperCase() === '#4B5156' &&
-        resolveVar(rawVars['--color-accent-primary']).toUpperCase() === '#00F19F' &&
+        resolveVar(rawVars['--color-accent-primary']).toUpperCase() === '#1AE3A0' &&
         resolveVar(rawVars['--color-data-telemetry']).toUpperCase() === '#8FD3FF',
       'Treise Slate Tier-2 canonical canvas/surface/action/accent/telemetry hex values and --color-border-accent locked in tokens.css'
     );
@@ -8966,8 +8966,9 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
         !activeDaySrc.includes('--color-status-info') &&
         !onbIllusSrc.includes('stopColor="var(--color-status-info)"') &&
         !sparklineSrc.includes('--color-status-info') &&
-        setRowSrc.includes("set.completed ? 'var(--color-text-primary)' : 'var(--color-text-muted)'") &&
-        setRowSrc.includes("set.completed ? 'var(--color-text-on-accent)' : 'var(--color-text-secondary)'"),
+        setRowSrc.includes("set.completed ? 'var(--color-text-primary)' : 'var(--color-text-secondary)'") &&
+        setRowSrc.includes("set.completed ? 'var(--color-status-positive-soft)' : 'var(--color-action-secondary-bg)'") &&
+        setRowSrc.includes("set.completed ? 'var(--color-status-positive)' : 'var(--color-text-secondary)'"),
       'Semantic color purity enforced: no Info Blue in progress/plan/onboarding/finish cards, Header streak flame avoids Caution Amber, and SetRow separates pending vs completed digits'
     );
 
@@ -11701,7 +11702,108 @@ Exercise,,Date,Workout,Sets,Reps,Tempo,Rest,Notes,Set 1,Set 2,Set 3,Set 4
     );
   }
 
-  console.log('\nALL 56 ENGINE, GOVERNANCE, DESIGN SYSTEM, TYPOGRAPHY, WEARABLES, WHOOP STRAIN, GOOGLE AUTH, ONBOARDING CONTEXT, 6-WEEK PROGRAM, SPREADSHEET IMPORT, AI COACH ACTIONS, GEMINI FLASH + KG, OOUX, AGENTIC COACH, PRODUCT UPGRADES, INFO EXPERIENCE, CONTENT DESIGN, GOAL CAROUSEL & LAUNCH VERIFICATION SUITES PASSED SUCCESSFULLY! 🎯');
+  // Suite 57: Shift Nudge Color Calibration, Hierarchy Polarity, Copper AA Contrast & State-Bound Orbs/Rings
+  {
+    console.log('\n[Suite 57: Shift Nudge Color Calibration, Hierarchy & State-Bound Color]');
+    const fs57 = await import('fs');
+    const path57 = await import('path');
+    const repo57 = process.cwd();
+    const tokensSrc57 = fs57.readFileSync(path57.join(repo57, 'src/styles/tokens.css'), 'utf8');
+    const setRowSrc57 = fs57.readFileSync(path57.join(repo57, 'src/components/train/SetRow.tsx'), 'utf8');
+    const overviewSrc57 = fs57.readFileSync(path57.join(repo57, 'src/components/analytics/ProgressOverviewCards.tsx'), 'utf8');
+    const planViewSrc57 = fs57.readFileSync(path57.join(repo57, 'src/components/program/ProgramPlanView.tsx'), 'utf8');
+
+    const parseVars = (src: string): Record<string, string> => {
+      const m: Record<string, string> = {};
+      for (const line of src.split(/\r?\n/)) {
+        const match = line.match(/^\s*(--[a-z0-9-]+)\s*:\s*([^;]+);/i);
+        if (match) m[match[1]] = match[2].trim();
+      }
+      return m;
+    };
+    const vars57 = parseVars(tokensSrc57);
+    const resolve57 = (v: string): string => {
+      const ref = v.match(/^var\((--[a-z0-9-]+)\)$/i);
+      return ref && vars57[ref[1]] ? resolve57(vars57[ref[1]]) : v;
+    };
+    const hexToRgb57 = (hex: string): [number, number, number] => {
+      const h = hex.replace('#', '');
+      return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
+    };
+    const relLum57 = ([r, g, b]: [number, number, number]) => {
+      const f = (c: number) => {
+        const s = c / 255;
+        return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+      };
+      return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
+    };
+    const cr57 = (fgHex: string, bgHex: string) => {
+      const l1 = relLum57(hexToRgb57(fgHex));
+      const l2 = relLum57(hexToRgb57(bgHex));
+      return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
+    };
+    const hueOf = (hex: string) => {
+      const [r, g, b] = hexToRgb57(hex).map((c) => c / 255);
+      const mx = Math.max(r, g, b);
+      const mn = Math.min(r, g, b);
+      const d = mx - mn;
+      if (!d) return 0;
+      let h = mx === r ? ((g - b) / d) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4;
+      h = Math.round(h * 60);
+      return h < 0 ? h + 360 : h;
+    };
+
+    const primaryInkHex = resolve57(vars57['--color-text-primary']).toUpperCase();
+    const mintHex = resolve57(vars57['--color-accent-primary']).toUpperCase();
+    const copperHex = resolve57(vars57['--color-coach-accent']).toUpperCase();
+    const amberHex = resolve57(vars57['--color-status-warning']).toUpperCase();
+    const raisedHex = resolve57(vars57['--color-bg-surface-raised']).toUpperCase();
+    const cardHex = resolve57(vars57['--color-bg-surface']).toUpperCase();
+
+    assert(
+      primaryInkHex === '#F5F8FB' &&
+        resolve57(vars57['--color-action-primary-bg']).toUpperCase() === '#FFFFFF' &&
+        vars57['--color-text-secondary'].includes('224, 234, 242') &&
+        vars57['--color-border-subtle'].includes('224, 234, 242') &&
+        mintHex === '#1AE3A0',
+      'Tokens use cool off-white primary text (#F5F8FB), Slate-tinted alphas, and calibrated precision Mint (#1AE3A0)'
+    );
+
+    assert(
+      cr57(copperHex, raisedHex) >= 4.5 &&
+        cr57(copperHex, cardHex) >= 5.5 &&
+        Math.abs(hueOf(copperHex) - hueOf(amberHex)) >= 15,
+      `Coach Copper (${copperHex}, H ${hueOf(copperHex)}deg) is separated from Caution Amber (${amberHex}, H ${hueOf(amberHex)}deg) and passes AA on raised surface (${cr57(copperHex, raisedHex).toFixed(2)}:1 >= 4.5:1)`
+    );
+
+    assert(
+      !setRowSrc57.includes("background: set.completed ? 'var(--color-status-positive)'") &&
+        setRowSrc57.includes("background: set.completed ? 'var(--color-status-positive-soft)'") &&
+        setRowSrc57.includes("stroke={set.completed ? 'var(--color-status-positive)' : 'var(--color-text-secondary)'}") &&
+        setRowSrc57.includes("color: 'var(--wk-muted)'") &&
+        setRowSrc57.includes("set.completed ? 'var(--color-text-primary)' : 'var(--color-text-secondary)'"),
+      'SetRow reserves solid Mint fill for milestones/100% rings while cleanly separating passive labels < pending inputs < completed values'
+    );
+
+    assert(
+      !overviewSrc57.includes('opacity: sign.state') &&
+        overviewSrc57.includes("sign.state === 'unknown'") &&
+        overviewSrc57.includes("'1px solid var(--color-border-strong)'") &&
+        overviewSrc57.includes("achieved") &&
+        overviewSrc57.includes(": 'var(--color-text-primary)'"),
+      'ProgressOverviewCards matches sign check color with Goal ring achievement and replaces translucent unknown dots with solid hollow borders'
+    );
+
+    assert(
+      planViewSrc57.includes('readinessState={readinessState}') &&
+        planViewSrc57.includes("readinessState === 'Amber Shield'") &&
+        !planViewSrc57.includes('0, 241, 159') &&
+        !planViewSrc57.includes('0 241 159'),
+      'ProgramPlanView IdentityForm orb binds dynamically to live readinessState and removes old #00F19F RGB fallbacks'
+    );
+  }
+
+  console.log('\nALL 57 ENGINE, GOVERNANCE, DESIGN SYSTEM, TYPOGRAPHY, WEARABLES, WHOOP STRAIN, GOOGLE AUTH, ONBOARDING CONTEXT, 6-WEEK PROGRAM, SPREADSHEET IMPORT, AI COACH ACTIONS, GEMINI FLASH + KG, OOUX, AGENTIC COACH, PRODUCT UPGRADES, INFO EXPERIENCE, CONTENT DESIGN, GOAL CAROUSEL, SHIFT NUDGE COLOR POLISH & LAUNCH VERIFICATION SUITES PASSED SUCCESSFULLY! 🎯');
 })().catch((err) => {
   console.error('Test Suite Failed:', err);
   if (typeof process !== 'undefined' && process.exit) {

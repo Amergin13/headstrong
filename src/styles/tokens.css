@@ -17,9 +17,10 @@
   --palette-slate-750: #3B4044;
   --palette-slate-700: #4B5156;
   --palette-slate-300: #BCC3C8;
+  --palette-slate-50: #F5F8FB;
 
   /* Positive / Progress Mint */
-  --palette-mint-400: #00F19F;
+  --palette-mint-400: #1AE3A0;
 
   /* Information / Non-Progress Telemetry Blue */
   --palette-blue-300: #8FD3FF;
@@ -35,7 +36,7 @@
   --palette-crimson-900: #5B2A33;
 
   /* Treise Coach Identity */
-  --palette-copper-500: #DC8748;
+  --palette-copper-500: #F29468;
   --palette-cream-100: #F3EEE3;
 
   /* ------------------------------------------------------------------------
@@ -53,17 +54,17 @@
   --color-bg-surface-raised-rgb: 59 64 68;
   --color-bg-surface-control-rgb: 59 64 68;
 
-  --color-text-primary: var(--palette-white);
-  --color-text-secondary: rgba(255, 255, 255, 0.78);
-  --color-text-muted: rgba(255, 255, 255, 0.60);
+  --color-text-primary: var(--palette-slate-50);
+  --color-text-secondary: rgba(224, 234, 242, 0.80);
+  --color-text-muted: rgba(224, 234, 242, 0.65);
   --color-text-on-accent: var(--palette-slate-950);
   --color-text-on-danger: var(--palette-white);
 
-  --color-border-subtle: rgba(255, 255, 255, 0.08);
-  --color-border-strong: rgba(255, 255, 255, 0.16);
-  --color-border-accent: rgba(0, 241, 159, 0.38);
+  --color-border-subtle: rgba(224, 234, 242, 0.09);
+  --color-border-strong: rgba(224, 234, 242, 0.18);
+  --color-border-accent: rgba(26, 227, 160, 0.38);
   --color-border-focus: var(--palette-white);
-  --color-border-track: rgba(255, 255, 255, 0.12);
+  --color-border-track: rgba(224, 234, 242, 0.14);
 
   /* ------------------------------------------------------------------------
      Tier 2: Semantic Tokens — Actions
@@ -76,18 +77,18 @@
   --color-action-secondary-fg: var(--palette-white);
   --color-action-destructive-bg: var(--palette-crimson-600);
   --color-action-destructive-fg: var(--color-text-on-danger);
-  --color-action-disabled-bg: rgba(255, 255, 255, 0.04);
-  --color-action-disabled-fg: rgba(255, 255, 255, 0.44);
+  --color-action-disabled-bg: rgba(224, 234, 242, 0.04);
+  --color-action-disabled-fg: rgba(224, 234, 242, 0.56);
 
   /* ------------------------------------------------------------------------
      Tier 2: Semantic Tokens — Status, Telemetry & Coach
      ------------------------------------------------------------------------ */
   /* Semantic Status & Positive */
   --color-accent-primary: var(--palette-mint-400);
-  --color-accent-primary-rgb: 0 241 159;
+  --color-accent-primary-rgb: 26 227 160;
 
   --color-status-positive: var(--palette-mint-400);
-  --color-status-positive-soft: rgba(0, 241, 159, 0.14);
+  --color-status-positive-soft: rgba(26, 227, 160, 0.14);
 
   /* Blue reserved strictly for non-progress / informational telemetry */
   --color-status-info: var(--palette-blue-300);
@@ -113,9 +114,9 @@
   --color-set-failure-bg: var(--palette-crimson-900);
   --color-set-failure-fg: var(--palette-crimson-200);
 
-  /* Scoped strictly to Treise Coach dock & sheet. Contrast gate: copper (#DC8748) passes AA on canvas/card (6.47:1 / 4.81:1), fails on raised #3B4044 (3.80:1) & cream #F3EEE3 (2.39:1). */
+  /* Scoped strictly to Treise Coach dock & sheet. Contrast gate: copper (#F29468, H 19°) passes AA on canvas/card/raised (7.84:1 / 5.83:1 / 4.60:1); never set copper text on cream (#F3EEE3, 1.97:1). */
   --color-coach-accent: var(--palette-copper-500);
-  --color-coach-accent-rgb: 220 135 72;
+  --color-coach-accent-rgb: 242 148 104;
   --color-coach-surface: var(--palette-cream-100);
   --color-coach-surface-rgb: 243 238 227;
 

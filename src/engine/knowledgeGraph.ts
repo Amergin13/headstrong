@@ -806,7 +806,7 @@ export const TREISE_DESIGN_SYSTEM: DesignSystemComponent[] = [
         'Exactly ONE primary CTA button per view, modal, or action card.',
         'Uses Treise Slate semantic primary action token (--color-action-primary-bg) with dark slate ink (--color-action-primary-fg, 17.56:1 contrast).',
         'Positive mint (--color-accent-primary / --color-status-positive) is reserved for achieved progress and completion states and is never used for primary system CTA fills.',
-        'Disabled state uses --color-action-disabled-bg (0.04 white scrim) with --color-action-disabled-fg (0.44 white, ~3.44:1 inactive UI legibility over card surfaces), cleanly separating disabled buttons from active --color-action-secondary-bg controls.',
+        'Disabled state uses --color-action-disabled-bg (0.04 Slate scrim) with --color-action-disabled-fg (0.56 cool Slate, ~4.26:1 outdoor legibility over card surfaces), cleanly separating disabled buttons from active --color-action-secondary-bg controls.',
         'Maintains 48px primary height (exceeding the 44px touch target floor) on a 12px radius.',
       ],
       variants: {

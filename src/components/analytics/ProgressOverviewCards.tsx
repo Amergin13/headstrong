@@ -138,6 +138,7 @@ const GoalSlideCard: React.FC<{
 }> = ({ ring, cardSummary, active, index, total, onOpenGoal }) => {
   const summaryText = useGoalSummaryText(cardSummary, active);
   const colour = goalRingColour(ring);
+  const achieved = colour === 'var(--color-status-positive)';
   return (
     <article
       role="group"
@@ -197,8 +198,19 @@ const GoalSlideCard: React.FC<{
                     className="w-4 h-4 rounded-full inline-flex items-center justify-center"
                     style={{
                       background:
-                        sign.state === 'on' ? 'var(--color-accent-primary)' : 'var(--color-bg-surface-control)',
-                      opacity: sign.state === 'unknown' ? 0.55 : 1,
+                        sign.state === 'on'
+                          ? achieved
+                            ? 'var(--color-status-positive)'
+                            : 'var(--color-text-primary)'
+                          : sign.state === 'off'
+                          ? 'var(--color-bg-surface-control)'
+                          : 'transparent',
+                      border:
+                        sign.state === 'unknown'
+                          ? '1px solid var(--color-border-strong)'
+                          : sign.state === 'off'
+                          ? '1px solid var(--color-border-subtle)'
+                          : '1px solid transparent',
                     }}
                   >
                     {sign.state === 'on' ? (
@@ -207,7 +219,7 @@ const GoalSlideCard: React.FC<{
                       <Minus className="w-3 h-3" style={{ color: 'var(--color-text-secondary)' }} strokeWidth={3} />
                     ) : null}
                   </span>
-                  <span style={{ color: sign.state === 'unknown' ? 'var(--wk-muted)' : 'var(--color-text-secondary)' }}>
+                  <span style={{ color: sign.state === 'unknown' ? 'var(--color-text-muted)' : 'var(--color-text-secondary)' }}>
                     {sign.label}
                   </span>
                 </span>

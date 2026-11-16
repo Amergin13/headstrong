@@ -64,10 +64,23 @@ function seededRandom(seedText: string) {
  * plan goes on, and the next workout shows as a faint dotted ring. A slow pulse travels through the
  * rings in the order they were earned. Still frame with reduced motion.
  */
-const IdentityForm: React.FC<{ rings: IdentityRing[]; seed: string; total: number }> = ({ rings, seed, total }) => {
+const parseRgbTuple = (token: string, fallback: [number, number, number]): [number, number, number] => {
+  const parts = resolveCssToken(token, fallback.join(' '))
+    .trim()
+    .split(/\s+/)
+    .map((n) => Number(n));
+  return parts.length === 3 && parts.every(Number.isFinite) ? [parts[0], parts[1], parts[2]] : fallback;
+};
+
+const IdentityForm: React.FC<{ rings: IdentityRing[]; seed: string; total: number; readinessState: ReadinessState }> = ({
+  rings,
+  seed,
+  total,
+  readinessState,
+}) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const completed = rings.filter((r) => r.done).length;
-  const key = rings.map((r) => `${r.done ? 1 : 0}${r.next ? 1 : 0}${r.sets}`).join('') + seed;
+  const key = rings.map((r) => `${r.done ? 1 : 0}${r.next ? 1 : 0}${r.sets}`).join('') + seed + readinessState;
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -94,18 +107,18 @@ const IdentityForm: React.FC<{ rings: IdentityRing[]; seed: string; total: numbe
       };
     });
     const progress = completed / total;
-    const progressStroke = resolveCssToken('--color-accent-primary', 'rgb(0, 241, 159)');
-    const accentRgbParts = resolveCssToken('--color-accent-primary-rgb', '0 241 159')
-      .trim()
-      .split(/\s+/)
-      .map((n) => Number(n));
-    const accentRgbTuple: [number, number, number] =
-      accentRgbParts.length === 3 && accentRgbParts.every(Number.isFinite)
-        ? [accentRgbParts[0], accentRgbParts[1], accentRgbParts[2]]
-        : [0, 241, 159];
-    const progressRgb = accentRgbTuple.join(', ');
+    const isCaution = readinessState === 'Amber Shield';
+    const isPrimed = readinessState === 'Primed';
+    const accentRgbTuple = parseRgbTuple('--color-accent-primary-rgb', [26, 227, 160]);
+    const warningRgbTuple = parseRgbTuple('--color-status-warning-rgb', [245, 185, 74]);
+    const activeAuraTuple = isCaution ? warningRgbTuple : accentRgbTuple;
+    const auraAlpha = isCaution ? 0.10 + 0.14 * progress : isPrimed ? 0.12 + 0.16 * progress : 0.08 + 0.12 * progress;
+    const progressStroke = isCaution
+      ? resolveCssToken('--color-status-warning', 'rgb(245, 185, 74)')
+      : resolveCssToken('--color-accent-primary', 'rgb(26, 227, 160)');
     const neutralRgb = '188, 195, 200';
-    const brightStroke = resolveCssToken('--color-text-primary', 'rgb(255, 255, 255)');
+    const progressRgb = activeAuraTuple.join(', ');
+    const brightStroke = resolveCssToken('--color-text-primary', 'rgb(245, 248, 251)');
     const nextContourStroke = brightStroke;
     let width = 0;
     let height = 0;
@@ -193,8 +206,8 @@ const IdentityForm: React.FC<{ rings: IdentityRing[]; seed: string; total: numbe
       // Ambient light: neutral slate mist and subtle progression aura drifting behind the form.
       ctx.globalCompositeOperation = 'screen';
       const ambient: [number, number, number, number][] = [
-        progress > 0 ? [...accentRgbTuple, 0.10 + 0.16 * progress] : [188, 195, 200, 0.18],
-        [255, 255, 255, 0.10 + 0.12 * progress],
+        progress > 0 ? [...activeAuraTuple, auraAlpha] : [188, 195, 200, 0.18],
+        [245, 248, 251, 0.10 + 0.12 * progress],
       ];
       ambient.forEach(([r, g, b, alpha], i) => {
         const a = t * 0.12 + i * 2.1;
@@ -298,7 +311,7 @@ const IdentityForm: React.FC<{ rings: IdentityRing[]; seed: string; total: numbe
     <canvas
       ref={canvasRef}
       role="img"
-      aria-label={`Your athlete identity: ${completed} of ${total} workouts complete`}
+      aria-label={`Your athlete identity: ${completed} of ${total} workouts complete (${readinessState} readiness)`}
       className="block w-full"
       style={{ height: 248 }}
     />
@@ -461,7 +474,7 @@ export const ProgramPlanView: React.FC<ProgramPlanViewProps> = ({
       {isFirstRun && (
         <section aria-label="Your progress as an athlete" className="flex flex-col items-center">
           <div className="self-stretch -mx-4 -mt-1">
-            <IdentityForm rings={identityRings} seed={identitySeed} total={TOTAL} />
+            <IdentityForm rings={identityRings} seed={identitySeed} total={TOTAL} readinessState={readinessState} />
           </div>
           <h2 className="wk-h1 -mt-3 text-center">
             Your new identity as an athlete is forming

@@ -28,11 +28,11 @@ export default {
           'border-subtle': 'var(--color-border-subtle)',
         },
         brand: {
-          primary: 'rgb(var(--color-accent-primary-rgb) / <alpha-value>)', // Treise Mint (#00F19F)
+          primary: 'rgb(var(--color-accent-primary-rgb) / <alpha-value>)', // Treise Mint (#1AE3A0)
           recovery: 'rgb(var(--color-accent-primary-rgb) / <alpha-value>)',
           strain: 'rgb(var(--color-status-info-rgb) / <alpha-value>)', // Non-progress telemetry Blue (#8FD3FF)
           amber: 'rgb(var(--color-status-warning-rgb) / <alpha-value>)', // Caution Amber (#F5B94A)
-          copper: 'rgb(var(--color-coach-accent-rgb) / <alpha-value>)', // Coach Copper (#DC8748)
+          copper: 'rgb(var(--color-coach-accent-rgb) / <alpha-value>)', // Coach Copper (#F29468)
           stress: 'rgb(var(--color-status-danger-rgb) / <alpha-value>)', // WCAG AA Danger Ink (#FF8A94)
           rose: 'rgb(var(--color-status-danger-fill-rgb) / <alpha-value>)', // Danger Fill (#FF3B4E)
           darktrack: 'rgb(var(--color-bg-surface-control-rgb) / <alpha-value>)',

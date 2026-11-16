@@ -238,13 +238,13 @@ const THREE_LAYER_SPECS = [
   {
     pillar: 'Treise Slate & Semantic Polarity',
     heuristic: 'Tinted cool dark slate surfaces step up cleanly; chromatic saturation is rationed strictly by meaning, never decoration or third-party brands.',
-    spec: '#13181C canvas -> #2C3034 card -> #3B4044 raised & static pill -> #4B5156 secondary CTA (top rim bevel). #FFFFFF primary CTA; #00F19F achieved progress; #8FD3FF non-progress telemetry; #F5B94A warmup/caution; #FF8A94 crimson danger; #DC8748 Coach mark.',
+    spec: '#13181C canvas -> #2C3034 card -> #3B4044 raised & static pill -> #4B5156 secondary CTA (top rim bevel). #FFFFFF primary CTA; #F5F8FB cool off-white primary ink; #1AE3A0 calibrated precision Mint for achieved progress; #8FD3FF non-progress telemetry; #F5B94A warmup/caution; #FF8A94 crimson danger; #F29468 Coach Copper.',
     trigger: 'Third-party brand hexes, goal-specific ring hues, or mint on informational telemetry -> Route to semantic status tokens.',
   },
   {
     pillar: 'Interactive State Polarity',
     heuristic: 'Pre-filled smart defaults read calmly so unlogged targets never masquerade as logged data; completed sets snap into high-contrast celebration.',
-    spec: 'Pending set: --color-text-muted (0.64) inputs + bordered #4B5156 Done button with 0.76 checkmark. Focused: 2px #FFFFFF ring. Completed: #FFFFFF digits (10.49:1) + #00F19F checkmark + active:scale-[0.98].',
+    spec: 'Pending set: --color-text-secondary (0.80 cool Slate) inputs above 0.65 passive PREV/unit labels + bordered #4B5156 Done button. Focused: 2px #FFFFFF ring. Completed: #F5F8FB digits (12.47:1) + calm soft-mint Done check + active:scale-[0.98].',
     trigger: 'Muted defaults indistinguishable from logged sets, missing checkmark on Done, or next-set row highlight -> Enforce pending/active/completed polarity.',
   },
 ] as const;
@@ -739,7 +739,7 @@ export const DesignSystemContent: React.FC<{
             </span>
             <h2 className="wk-title mt-1">Color system (Treise Slate two-tier tokens) &amp; 4px spatial grid</h2>
             <p className="wk-body mt-1 max-w-prose">
-              Pruned strictly to surface neutrals and semantic roles: Mint (<code>#00F19F</code>) for achieved progress,
+              Pruned strictly to surface neutrals and semantic roles: calibrated Mint (<code>#1AE3A0</code>) for achieved progress,
               Info Blue (<code>#8FD3FF</code>) strictly for non-progress telemetry, Amber for caution, and Crimson for failure.
             </p>
           </div>
@@ -1106,7 +1106,7 @@ export const DesignSystemContent: React.FC<{
                 {
                   type: 'C · Active Execution Card',
                   examples: 'ExerciseCard, RecoveryScoreCard, ReadinessBanner',
-                  scan: '1) .wk-h1 #FFFFFF + >=44px icon controls -> 2) .wk-pill order/status tag (12/500 sentence case) -> 3) 2-line Insight (.wk-body 16/400 secondary) -> 4) Table header (.wk-label 12/500 muted) -> 5) SetRow (20/600 #FFFFFF done vs 0.60 pending).',
+                  scan: '1) .wk-h1 #F5F8FB + >=44px icon controls -> 2) .wk-pill order/status tag (12/500 sentence case) -> 3) 2-line Insight (.wk-body 16/400 secondary) -> 4) Table header (.wk-label 12/500 muted) -> 5) SetRow (20/600 #F5F8FB done vs 0.80 pending vs 0.65 PREV/units).',
                 },
                 {
                   type: 'D · Structured Breakdown Card',
