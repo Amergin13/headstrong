@@ -10000,8 +10000,8 @@ Exercise,,Date,Workout,Sets,Reps,Tempo,Rest,Notes,Set 1,Set 2,Set 3,Set 4
     );
     assert(
       COACH_TOOL_DECLARATIONS.map((t) => t.name).join(',') ===
-        'reset_program,swap_exercise,adjust_workout_volume,save_athlete_memory',
-      'All 4 deterministic coach tool declarations are registered'
+        'reset_program,swap_exercise,adjust_workout_volume,save_athlete_memory,modify_workout_exercises,switch_location,update_home_equipment,switch_program,switch_goal_phase,log_rest_day,update_goals,update_progress_widgets,log_entry',
+      'All 13 AI-native coach tool declarations are registered'
     );
 
     const s51Profile: UserProfile = {
@@ -12086,7 +12086,353 @@ Exercise,,Date,Workout,Sets,Reps,Tempo,Rest,Notes,Set 1,Set 2,Set 3,Set 4
     );
   }
 
-  console.log('\nALL 60 ENGINE, GOVERNANCE, DESIGN SYSTEM, TYPOGRAPHY, WEARABLES, WHOOP STRAIN, GOOGLE AUTH, ONBOARDING CONTEXT, 6-WEEK PROGRAM, SPREADSHEET IMPORT, AI COACH ACTIONS, GEMINI FLASH + KG, OOUX, AGENTIC COACH, PRODUCT UPGRADES, INFO EXPERIENCE, CONTENT DESIGN, GOAL CAROUSEL, SHIFT NUDGE COLOR POLISH, EXERCISE DRILL-IN MODAL, COMPOSITION WIDGET, MEASUREMENT UX & LAUNCH VERIFICATION SUITES PASSED SUCCESSFULLY! 🎯');
+  // Suite 61: AI-Native Chat Action Execution, Polite Intents, Multi-Tool Execution & Function Calling Routing
+  {
+    console.log('\n[Suite 61: AI-Native Chat Actions, 13 Tools, Multi-Tool Calls & Function Calling Pipeline]');
+    const fs61 = await import('fs');
+    const path61 = await import('path');
+    const generateHandlerSrc = fs61.readFileSync(path61.join(process.cwd(), 'api/coach/generate.ts'), 'utf8');
+    const { COACH_TOOL_DECLARATIONS: tools61 } = await import('../../services/coachTools');
+    const { resetFlashLiteState } = await import('../../services/geminiFlashLite');
+    const { buildStarterPlan: buildStarter61 } = await import('../starterPlan');
+    const { generatePlanWorkout: generatePlanWorkout61 } = await import('../muscleBuildingProgram');
+    const storage61 = await import('../../services/storage');
+
+    // A. System prompt & tool limits in serverless proxy
+    const sysCapMatch = generateHandlerSrc.match(/MAX_SYSTEM_CHARS\s*=\s*(\d+)/);
+    assert(
+      Boolean(sysCapMatch && parseInt(sysCapMatch[1], 10) >= 8000) &&
+        generateHandlerSrc.includes('.slice(0, 16)') &&
+        tools61.length === 13,
+      `api/coach/generate allows full coach context (MAX_SYSTEM_CHARS >= 8000) and up to 16 tools (registered ${tools61.length})`
+    );
+
+    const s61Plan = buildStarter61('Lean Bulk');
+    const s61BaseWorkout = generatePlanWorkout61(s61Plan, 1);
+    const s61Profile: UserProfile = {
+      ...NEW_USER_PROFILE,
+      name: 'Alex Test',
+      onboardingCompleted: true,
+      programType: 'starter_6wk',
+      mesocycleWeek: 1,
+      activeLocation: 'gym',
+      homeEquipment: [],
+    };
+    const s61Base = {
+      profile: s61Profile,
+      activeWorkout: s61BaseWorkout,
+      workouts: [] as WorkoutSession[],
+      biometrics: [] as BiometricLog[],
+      exerciseCatalog: SEED_EXERCISES,
+      bodyweightEmaKg: 80,
+      readinessState: 'Normal' as const,
+      activities: [],
+    };
+
+    const firstEx = s61BaseWorkout.exercises[0];
+    const secondEx = s61BaseWorkout.exercises[1];
+    assert(Boolean(firstEx && secondEx), 'Starter workout has at least two exercises for AI action checks');
+
+    // B. Polite swaps, one-sided swaps, and non-mutating swap question guards
+    const politeSwap = await processAssistantMessage({
+      ...s61Base,
+      userMessage: `Can you swap ${secondEx.name} for Dumbbell Bench Press?`,
+    });
+    assert(
+      politeSwap.actionTaken?.type === 'SWAP_EXERCISE' &&
+        politeSwap.updatedWorkout?.exercises[1]?.name === 'Flat Dumbbell Bench Press' &&
+        Boolean(politeSwap.message.undoSnapshot),
+      'Polite swap request ("Can you swap X for Y?") executes SWAP_EXERCISE with Undo snapshot'
+    );
+
+    const quickSwap = await processAssistantMessage({
+      ...s61Base,
+      userMessage: `I want to swap ${firstEx.name}.`,
+    });
+    assert(
+      quickSwap.actionTaken?.type === 'SWAP_EXERCISE' &&
+        quickSwap.updatedWorkout?.exercises[0]?.name !== firstEx.name &&
+        quickSwap.message.text.includes(firstEx.name),
+      'One-sided swap chip ("I want to swap <exercise>.") executes calibrated SWAP_EXERCISE'
+    );
+
+    const questionSwap = await processAssistantMessage({
+      ...s61Base,
+      userMessage: `What can I swap ${firstEx.name} for?`,
+    });
+    assert(
+      !questionSwap.updatedWorkout && questionSwap.actionTaken?.type !== 'SWAP_EXERCISE',
+      'Informational swap question ("What can I swap X for?") gives options without mutating workout'
+    );
+
+    // C. Scoped single-exercise volume edit vs workout-wide shorten + question guard
+    const origSecondSets = secondEx.sets.filter((s) => !s.isWarmup).length;
+    const origFirstSets = firstEx.sets.filter((s) => !s.isWarmup).length;
+    if (origFirstSets >= 2) {
+      const scopedVol = await processAssistantMessage({
+        ...s61Base,
+        userMessage: `Can you reduce working sets on ${firstEx.name}?`,
+      });
+      const afterFirst = scopedVol.updatedWorkout?.exercises[0]?.sets.filter((s) => !s.isWarmup).length ?? 0;
+      const afterSecond = scopedVol.updatedWorkout?.exercises[1]?.sets.filter((s) => !s.isWarmup).length ?? 0;
+      assert(
+        scopedVol.actionTaken?.type === 'ADJUST_WORKOUT_VOLUME' &&
+          afterFirst === origFirstSets - 1 &&
+          afterSecond === origSecondSets,
+        `Scoped volume reduction drops a set on ${firstEx.name} (${origFirstSets}->${afterFirst}) without touching ${secondEx.name}`
+      );
+    }
+
+    const shortenCmd = await processAssistantMessage({
+      ...s61Base,
+      userMessage: 'I only have 20 minutes, shorten today workout',
+    });
+    assert(
+      shortenCmd.actionTaken?.type === 'ADJUST_WORKOUT_VOLUME' && Boolean(shortenCmd.updatedWorkout),
+      'Shorten workout command trims today workout even when mentioning time limit'
+    );
+
+    const volQuestion = await processAssistantMessage({
+      ...s61Base,
+      userMessage: 'Should I reduce working sets today?',
+    });
+    assert(
+      !volQuestion.updatedWorkout && volQuestion.actionTaken?.type !== 'ADJUST_WORKOUT_VOLUME',
+      'Question "Should I reduce working sets today?" does not mutate volume'
+    );
+
+    // D. Add & Remove exercise in workout + completed-set protection
+    const addExRes = await processAssistantMessage({
+      ...s61Base,
+      userMessage: "Can you add Cable Flyes to today's workout for 3 sets?",
+    });
+    assert(
+      addExRes.actionTaken?.type === 'ADD_EXERCISE' &&
+        addExRes.updatedWorkout?.exercises.some((e) => e.name === 'Cable Chest Fly') === true &&
+        addExRes.updatedWorkout!.exercises.find((e) => e.name === 'Cable Chest Fly')!.sets.filter((s) => !s.isWarmup).length === 3,
+      'Polite add-exercise command adds Cable Chest Fly with 3 calibrated working sets'
+    );
+
+    const removeExRes = await processAssistantMessage({
+      ...s61Base,
+      activeWorkout: addExRes.updatedWorkout!,
+      userMessage: "Please remove Cable Chest Fly from today's workout.",
+    });
+    assert(
+      removeExRes.actionTaken?.type === 'REMOVE_EXERCISE' &&
+        !removeExRes.updatedWorkout?.exercises.some((e) => e.name === 'Cable Chest Fly'),
+      'Remove-exercise command removes Cable Chest Fly cleanly'
+    );
+
+    const startedFirst = {
+      ...s61BaseWorkout,
+      exercises: s61BaseWorkout.exercises.map((ex, i) =>
+        i === 0 ? { ...ex, sets: ex.sets.map((s) => ({ ...s, completed: true, actualReps: 8 })) } : ex
+      ),
+    };
+    const removeCompletedRes = await processAssistantMessage({
+      ...s61Base,
+      activeWorkout: startedFirst,
+      userMessage: `Remove ${firstEx.name} from today's workout`,
+    });
+    assert(
+      removeCompletedRes.message.mutationStatus === 'error' && !removeCompletedRes.updatedWorkout,
+      'Removing an exercise that already has completed sets is blocked cleanly'
+    );
+
+    // E. Polite equipment (multi-item), location, goal phase, goal target, widgets, memory, rest day & entries
+    const equipAddRes = await processAssistantMessage({
+      ...s61Base,
+      userMessage: 'Can you add dumbbells and an exercise bench to my home equipment?',
+    });
+    assert(
+      equipAddRes.actionTaken?.type === 'UPDATE_EQUIPMENT' &&
+        Boolean(equipAddRes.updatedProfile?.homeEquipment?.includes('dumbbells')) &&
+        Boolean(equipAddRes.updatedProfile?.homeEquipment?.includes('bench')) &&
+        Boolean(equipAddRes.message.undoSnapshot),
+      'Polite multi-item home equipment update adds dumbbells + bench with Undo snapshot'
+    );
+
+    const locSwitchRes = await processAssistantMessage({
+      ...s61Base,
+      userMessage: "Can you switch today's workout to bodyweight?",
+    });
+    assert(
+      locSwitchRes.actionTaken?.type === 'SWITCH_LOCATION' &&
+        locSwitchRes.updatedProfile?.activeLocation === 'travel' &&
+        Boolean(locSwitchRes.message.undoSnapshot),
+      'Polite switch-location request switches workout to bodyweight travel mode with Undo'
+    );
+
+    const locQuestion = await processAssistantMessage({
+      ...s61Base,
+      userMessage: 'Should I train at home today?',
+    });
+    assert(
+      !locQuestion.updatedWorkout && locQuestion.actionTaken?.type !== 'SWITCH_LOCATION',
+      'Location question ("Should I train at home today?") does not mutate location'
+    );
+
+    const goalPhaseRes = await processAssistantMessage({
+      ...s61Base,
+      userMessage: 'Can you switch my goal phase to Cut / Recomp?',
+    });
+    assert(
+      goalPhaseRes.actionTaken?.type === 'SWITCH_GOAL_PHASE' &&
+        goalPhaseRes.updatedProfile?.goalPhase === 'Cut / Recomp' &&
+        Boolean(goalPhaseRes.message.undoSnapshot),
+      'Polite goal-phase change switches profile.goalPhase with Undo'
+    );
+
+    const politeGoalRes = await processAssistantMessage({
+      ...s61Base,
+      userMessage: 'Can you set a goal of 120 kg on Bench Press?',
+    });
+    assert(
+      politeGoalRes.actionTaken?.type === 'UPDATE_GOALS' &&
+        politeGoalRes.updatedProfile?.goalSettings?.customGoals?.some((g) => g.target === 120) === true &&
+        Boolean(politeGoalRes.message.undoSnapshot),
+      'Polite custom goal request ending in "?" executes UPDATE_GOALS with Undo'
+    );
+
+    const politeWidgetRes = await processAssistantMessage({
+      ...s61Base,
+      userMessage: 'Can you add Composition to my Progress page?',
+    });
+    assert(
+      politeWidgetRes.actionTaken?.type === 'UPDATE_PROGRESS_WIDGETS' &&
+        politeWidgetRes.updatedProfile?.progressWidgets?.includes('composition') === true &&
+        Boolean(politeWidgetRes.message.undoSnapshot),
+      'Polite widget toggle ending in "?" executes UPDATE_PROGRESS_WIDGETS with Undo'
+    );
+
+    const politeMemRes = await processAssistantMessage({
+      ...s61Base,
+      userMessage: 'Can you remember that my left shoulder is sensitive on dips?',
+    });
+    assert(
+      politeMemRes.actionTaken?.type === 'SAVE_ATHLETE_MEMORY' &&
+        Boolean(politeMemRes.message.memorySaved?.value.toLowerCase().includes('shoulder')),
+      'Polite memory save request ending in "?" executes SAVE_ATHLETE_MEMORY'
+    );
+
+    const logBwRes = await processAssistantMessage({
+      ...s61Base,
+      userMessage: 'Can you log my weight as 82.5 kg?',
+    });
+    assert(
+      logBwRes.actionTaken?.type === 'LOG_BIOMETRIC' &&
+        logBwRes.updatedBiometrics?.some((b) => b.bodyweightKg === 82.5) === true &&
+        Boolean(logBwRes.message.undoSnapshot),
+      'Bodyweight logging via chat records BiometricLog (82.5 kg) with Undo'
+    );
+
+    const logRunRes = await processAssistantMessage({
+      ...s61Base,
+      userMessage: 'Log a 35 minute run',
+    });
+    assert(
+      logRunRes.actionTaken?.type === 'LOG_ACTIVE_DAY' &&
+        logRunRes.updatedActivities?.some((a) => a.minutes === 35 && a.type === 'run') === true &&
+        Boolean(logRunRes.message.undoSnapshot),
+      'Explicit cardio log command records ActivityLog (35 min run) with Undo'
+    );
+
+    const walkInfoOnly = await processAssistantMessage({
+      ...s61Base,
+      userMessage: 'I walked 40 minutes today',
+    });
+    assert(
+      !walkInfoOnly.updatedActivities && !walkInfoOnly.actionTaken && /active day/.test(walkInfoOnly.message.text),
+      'Observational "I walked 40 minutes today" explains active day rules without mutating'
+    );
+
+    const politeRestRes = await processAssistantMessage({
+      ...s61Base,
+      userMessage: 'Can you log a rest day?',
+    });
+    assert(
+      politeRestRes.actionTaken?.type === 'SHIFT_WORKOUT' &&
+        Boolean(politeRestRes.updatedWorkout?.date) &&
+        Boolean(politeRestRes.message.undoSnapshot),
+      'Polite rest-day request moves workout to tomorrow with Undo'
+    );
+
+    // F. Gemini Flash-Lite function calling executes multi-tool calls even when prompt has tactical keywords
+    //    AND when Chrome LanguageModel reports 'available'
+    const origFetch61 = globalThis.fetch;
+    const origLangModel61 = (globalThis as any).LanguageModel;
+    const origWindow61 = (globalThis as any).window;
+    try {
+      (globalThis as any).window = globalThis;
+      resetFlashLiteState();
+      let generatePostCount = 0;
+      globalThis.fetch = (async (url: string | URL, init?: RequestInit) => {
+        const u = String(url);
+        if (u.includes('/api/coach/generate')) {
+          if (!init || !init.method || init.method === 'GET') {
+            return {
+              ok: true,
+              status: 200,
+              headers: { get: () => 'application/json' },
+              json: async () => ({ configured: true, model: 'gemini-3.5-flash-lite' }),
+            } as unknown as Response;
+          }
+          generatePostCount += 1;
+          return {
+            ok: true,
+            status: 200,
+            headers: { get: () => 'application/json' },
+            json: async () => ({
+              text: '',
+              toolCalls: [
+                { name: 'switch_location', args: { location: 'home' } },
+                {
+                  name: 'adjust_workout_volume',
+                  args: { modifier_type: 'reduce_sets', details: `${secondEx.name}` },
+                },
+              ],
+            }),
+          } as unknown as Response;
+        }
+        return origFetch61(url as any, init);
+      }) as typeof fetch;
+
+      (globalThis as any).LanguageModel = {
+        availability: async () => 'available',
+        create: async () => ({
+          prompt: async () => 'Should never be called for explicit action intents.',
+        }),
+      };
+
+      const multiToolRes = await processAssistantMessage({
+        ...s61Base,
+        profile: { ...s61Profile, homeEquipment: ['dumbbells', 'bench'] },
+        // Contains "sets" & "weight" & "today" (which used to trigger isTacticalWorkoutQuery block!)
+        // plus doesn't match regexes, forcing it through Flash-Lite function calling while Chrome LM is 'available'
+        userMessage: 'Modify today sets and weight setup so everything fits my apartment setup cleanly please',
+      });
+      assert(
+        generatePostCount === 1 &&
+          multiToolRes.updatedProfile?.activeLocation === 'home' &&
+          multiToolRes.updatedWorkout?.location === 'home' &&
+          Boolean(multiToolRes.message.undoSnapshot?.previousProfile) &&
+          typeof multiToolRes.message.stateDiff?.new_state?.display === 'string' &&
+          multiToolRes.message.stateDiff.new_state.display.includes('·'),
+        'Natural-language action request with tactical words bypasses Chrome LM + isTacticalWorkoutQuery block and executes multi-tool Flash-Lite calls with atomic Undo & multi-row receipt'
+      );
+    } finally {
+      globalThis.fetch = origFetch61;
+      if (origLangModel61 === undefined) delete (globalThis as any).LanguageModel;
+      else (globalThis as any).LanguageModel = origLangModel61;
+      if (origWindow61 === undefined) delete (globalThis as any).window;
+      else (globalThis as any).window = origWindow61;
+      resetFlashLiteState();
+      storage61.resetAllToSeedData();
+    }
+  }
+
+  console.log('\nALL 61 ENGINE, GOVERNANCE, DESIGN SYSTEM, TYPOGRAPHY, WEARABLES, WHOOP STRAIN, GOOGLE AUTH, ONBOARDING CONTEXT, 6-WEEK PROGRAM, SPREADSHEET IMPORT, AI COACH ACTIONS, GEMINI FLASH + KG, OOUX, AGENTIC COACH, PRODUCT UPGRADES, INFO EXPERIENCE, CONTENT DESIGN, GOAL CAROUSEL, SHIFT NUDGE COLOR POLISH, EXERCISE DRILL-IN MODAL, COMPOSITION WIDGET, MEASUREMENT UX, AI-NATIVE ACTIONS & LAUNCH VERIFICATION SUITES PASSED SUCCESSFULLY! 🎯');
 })().catch((err) => {
   console.error('Test Suite Failed:', err);
   if (typeof process !== 'undefined' && process.exit) {

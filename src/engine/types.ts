@@ -1,3 +1,5 @@
+import type { ActivityLog } from './activeDays';
+
 export type StrengthPillar =
   | 'Squat'
   | 'Hinge'
@@ -636,18 +638,31 @@ export type AssistantActionType =
   | 'RESET_PROGRAM'
   | 'SWAP_EXERCISE'
   | 'ADJUST_WORKOUT_VOLUME'
+  | 'ADD_EXERCISE'
+  | 'REMOVE_EXERCISE'
   | 'SAVE_ATHLETE_MEMORY'
   | 'SWITCH_GOAL_PHASE'
   | 'SWITCH_LOCATION'
   | 'SHIFT_WORKOUT'
   | 'UPDATE_GOALS'
-  | 'UPDATE_PROGRESS_WIDGETS';
+  | 'UPDATE_PROGRESS_WIDGETS'
+  | 'LOG_BIOMETRIC'
+  | 'LOG_ACTIVE_DAY';
 
 export type CoachToolName =
   | 'reset_program'
   | 'swap_exercise'
   | 'adjust_workout_volume'
-  | 'save_athlete_memory';
+  | 'save_athlete_memory'
+  | 'modify_workout_exercises'
+  | 'switch_location'
+  | 'update_home_equipment'
+  | 'switch_program'
+  | 'switch_goal_phase'
+  | 'log_rest_day'
+  | 'update_goals'
+  | 'update_progress_widgets'
+  | 'log_entry';
 
 export type CoachMutationStatus =
   | 'success'
@@ -657,7 +672,7 @@ export type CoachMutationStatus =
   | 'noop';
 
 export interface CoachStateDiff {
-  object_type: 'Program' | 'Workout' | 'Exercise' | 'Athlete' | 'Goal';
+  object_type: 'Program' | 'Workout' | 'Exercise' | 'Athlete' | 'Goal' | 'Biometric' | 'ActiveDay';
   object_id: string;
   label: string;
   previous_state: Record<string, unknown>;
@@ -685,6 +700,8 @@ export interface CoachUndoSnapshot {
   label: string;
   previousProfile?: Partial<UserProfile>;
   previousWorkout?: WorkoutSession;
+  previousBiometrics?: BiometricLog[];
+  previousActivities?: ActivityLog[];
   undone?: boolean;
 }
 

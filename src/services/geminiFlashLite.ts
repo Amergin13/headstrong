@@ -8,7 +8,7 @@
  * fact-based text immediately.
  */
 import { CoachSuggestedAction, CoachToolName } from '../engine/types';
-import { GeminiFunctionDeclaration } from './coachTools';
+import { COACH_TOOL_DECLARATIONS, GeminiFunctionDeclaration } from './coachTools';
 import { withoutLastExchange } from './onDeviceModel';
 
 export interface FlashLiteFunctionCall {
@@ -19,6 +19,7 @@ export interface FlashLiteFunctionCall {
 export interface FlashLiteStructuredResult {
   text: string;
   functionCall?: FlashLiteFunctionCall;
+  toolCalls?: FlashLiteFunctionCall[];
   suggestedActions?: CoachSuggestedAction[];
 }
 
@@ -208,12 +209,7 @@ export interface FlashLiteStructuredOptions {
   responseSchema?: Record<string, unknown>;
 }
 
-const VALID_TOOLS = new Set<string>([
-  'reset_program',
-  'swap_exercise',
-  'adjust_workout_volume',
-  'save_athlete_memory',
-]);
+const VALID_TOOLS = new Set<string>(COACH_TOOL_DECLARATIONS.map((t) => t.name));
 
 /**
  * Structured Gemini Flash-Lite request with optional tool declarations and JSON reply parsing.
@@ -245,7 +241,7 @@ export async function promptFlashLiteStructured(
         body: JSON.stringify({
           systemPrompt,
           messages,
-          maxOutputTokens: options.maxTokens ?? 320,
+          maxOutputTokens: options.maxTokens ?? 400,
           temperature: options.temperature ?? 0.25,
           ...(options.tools?.length ? { tools: options.tools } : {}),
           ...(options.responseSchema && !options.tools?.length
@@ -261,14 +257,18 @@ export async function promptFlashLiteStructured(
     }
 
     const data: any = await res.json();
-    const rawFc = data?.functionCall;
-    const functionCall: FlashLiteFunctionCall | undefined =
-      rawFc && typeof rawFc.name === 'string' && VALID_TOOLS.has(rawFc.name)
-        ? {
-            name: rawFc.name as CoachToolName,
-            args: rawFc.args && typeof rawFc.args === 'object' ? rawFc.args : {},
-          }
-        : undefined;
+    const rawToolCalls: any[] = Array.isArray(data?.toolCalls)
+      ? data.toolCalls
+      : data?.functionCall
+      ? [data.functionCall]
+      : [];
+    const toolCalls: FlashLiteFunctionCall[] = rawToolCalls
+      .filter((fc: any) => Boolean(fc && typeof fc.name === 'string' && VALID_TOOLS.has(fc.name)))
+      .map((fc: any) => ({
+        name: fc.name as CoachToolName,
+        args: fc.args && typeof fc.args === 'object' ? fc.args : {},
+      }));
+    const functionCall = toolCalls[0];
 
     const rawText = typeof data?.text === 'string' ? data.text.trim() : '';
     let text = rawText;
@@ -295,11 +295,27 @@ export async function promptFlashLiteStructured(
     if (text && !functionCall) {
       conversation = [...messages, { role: 'assistant', content: text }];
     }
-    return { text, functionCall, suggestedActions };
+    return {
+      text,
+      functionCall,
+      ...(toolCalls.length > 0 ? { toolCalls } : {}),
+      suggestedActions,
+    };
   } catch {
     conversation = [];
     return null;
   }
+}
+
+/** Records a completed tool-execution exchange in chat memory so follow-ups keep context. */
+export function recordFlashLiteExchange(userPrompt: string, assistantText: string): void {
+  const cleanUser = userPrompt.trim();
+  const cleanAssistant = assistantText.trim();
+  if (!cleanUser || !cleanAssistant) return;
+  if (conversation.length / 2 >= MAX_REMEMBERED_EXCHANGES) {
+    conversation = conversation.slice(-(MAX_REMEMBERED_EXCHANGES - 1) * 2);
+  }
+  conversation = [...conversation, { role: 'user', content: cleanUser }, { role: 'assistant', content: cleanAssistant }];
 }
 
 /** Drops the last question and answer from chat memory when the answer was rejected by fact checks. */

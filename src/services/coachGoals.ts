@@ -45,7 +45,11 @@ const LIFT_ALIASES: { re: RegExp; exerciseId: string; pillar?: StrengthPillar }[
   { re: /\b(push[\s-]?ups?|press[\s-]?ups?)\b/, exerciseId: 'ex-pushup' },
 ];
 
-const isQuestion = (msg: string) => /\?\s*$/.test(msg) || /^(how|should|can|could|what|what's|whats|which|is|are|why|when|do|does|did|will|would)\b/.test(msg);
+const isQuestion = (msg: string) =>
+  !/^(?:can|could|would|will)\s+you\b/i.test(msg) &&
+  (/^(how|should|can|could|what|what's|whats|which|is|are|why|when|do|does|did|will|would)\b/.test(msg) ||
+    (/\?\s*$/.test(msg) &&
+      !/^(?:please\s+)?(?:set|change|make|update|add|remove|delete|drop|reset|restore|clear|follow|track|switch)\b/i.test(msg)));
 
 function cleaned(settings: GoalSettings): GoalSettings | undefined {
   const next: GoalSettings = {

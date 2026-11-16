@@ -1,15 +1,33 @@
-import { ActivityLog } from '../engine/activeDays';
+import {
+  ACTIVITY_LABELS,
+  ActivityLog,
+  ActivityType,
+  MIN_ACTIVE_MINUTES,
+  activeDayDates,
+} from '../engine/activeDays';
+import { isTimedExercise } from '../engine/e1rm';
+import { getExerciseBiomechanicalMeta } from '../engine/knowledgeGraph';
 import {
   buildPlanOverview,
   generatePlanWorkout,
+  getNextProgramWorkoutNumber,
   isActiveSlot,
   planWorkoutLabel,
 } from '../engine/muscleBuildingProgram';
-import { loadIncrementFor } from '../engine/progressionRules';
-import { getPlanById, isPlanProgram, resolveActivePlan } from '../engine/trainingPlans';
 import {
+  getMovementFamilyLabel,
+  getMovementVectorId,
+  prescribeDoubleProgression,
+  prescribeExerciseSwap,
+} from '../engine/progression';
+import { loadIncrementFor } from '../engine/progressionRules';
+import { computeTrainingStreak, MUSCLE_FRIENDLY_NAMES } from '../engine/recovery';
+import { canUseMusclePlan, getPlanById, isPlanProgram, resolveActivePlan } from '../engine/trainingPlans';
+import {
+  AssistantActionType,
   AthleteMemoryCategory,
   AthleteMemoryFact,
+  BiometricLog,
   CoachMutationStatus,
   CoachPendingConfirmation,
   CoachStateDiff,
@@ -18,19 +36,28 @@ import {
   CoachUndoSnapshot,
   ExerciseDefinition,
   ExerciseSession,
+  GoalPhase,
+  HomeEquipmentTag,
   PlanId,
   ProgramSplitType,
   ReadinessState,
+  TrainingLocation,
   UserProfile,
   WorkoutSession,
+  WorkoutSet,
 } from '../engine/types';
-import { snapLoadKg } from '../utils/units';
+import { ensureWarmupSetsOnExercise, isFirstCompoundForPillar } from '../engine/warmup';
+import { localDateString } from '../utils/date';
+import { GOAL_DISPLAY_NAME } from '../utils/goalNames';
+import { formatPreciseWeight, formatWeight, snapLoadKg, unitToKg } from '../utils/units';
 import { findExerciseNamed } from './coachAnswers';
 import { CoachPlace } from './coachContext';
 import { ContextEnvelope, createMemoryFact, deriveContraindicationEdges } from './coachContextEnvelope';
+import { detectGoalChange } from './coachGoals';
 import { GOOGLE_AUTH_CONFIG, isSupabaseConfigured } from './googleAuthService';
-import { prepareSessionForAthlete } from './sessionPreparation';
-import { loadAuthUser, saveActiveWorkout, saveProfile } from './storage';
+import { detectProgressWidgetChange } from './progressWidgets';
+import { prepareSessionForAthlete, startingWeightForNewExercise } from './sessionPreparation';
+import { loadAuthUser, saveActiveWorkout, saveActivities, saveBiometrics, saveProfile } from './storage';
 import { adaptWorkoutSessionToLocation, generateSmartWorkoutSession, getFirstSplitDayForProgram } from './workoutGenerator';
 
 // ============================================================================
@@ -147,6 +174,212 @@ export const COACH_TOOL_DECLARATIONS: GeminiFunctionDeclaration[] = [
       required: ['fact_category', 'fact_value'],
     },
   },
+  {
+    name: 'modify_workout_exercises',
+    description:
+      'Add a new exercise to today active workout or remove an existing exercise from today active workout while keeping completed sets.',
+    parameters: {
+      type: 'object',
+      properties: {
+        action: {
+          type: 'string',
+          enum: ['add', 'remove'],
+          description: 'Whether to add or remove the named exercise.',
+        },
+        exercise_name: {
+          type: 'string',
+          description: 'Exercise ID or name to add or remove.',
+        },
+        reason: {
+          type: 'string',
+          description: 'Optional reason for the change.',
+        },
+      },
+      required: ['action', 'exercise_name'],
+    },
+  },
+  {
+    name: 'switch_location',
+    description:
+      'Switch training location between gym, home, and travel (bodyweight) for today active session or schedule a specific future week (1-6) away/home.',
+    parameters: {
+      type: 'object',
+      properties: {
+        location: {
+          type: 'string',
+          enum: ['gym', 'home', 'travel'],
+          description: 'Target training environment (travel = bodyweight without equipment).',
+        },
+        week: {
+          type: 'integer',
+          description: 'Optional future program week number (1-6) to schedule this location for.',
+        },
+      },
+      required: ['location'],
+    },
+  },
+  {
+    name: 'update_home_equipment',
+    description:
+      'Add or remove equipment tags saved for home workouts (only when the athlete owns, bought, added, or sold/removed home equipment—never when gym equipment is temporarily busy).',
+    parameters: {
+      type: 'object',
+      properties: {
+        action: {
+          type: 'string',
+          enum: ['add', 'remove'],
+          description: 'Add or remove the listed equipment tags.',
+        },
+        equipment: {
+          type: 'array',
+          items: {
+            type: 'string',
+            enum: ['pullup_bar', 'dumbbells', 'bench', 'trx', 'bands'],
+          },
+          description: 'Equipment tags to add or remove.',
+        },
+      },
+      required: ['action', 'equipment'],
+    },
+  },
+  {
+    name: 'switch_program',
+    description:
+      'Switch the athlete active training plan (e.g. Starter 3-day + active day, Starter 4-day / Upper-Lower, 6-Week Muscle Plan if unlocked, or a saved custom program).',
+    parameters: {
+      type: 'object',
+      properties: {
+        program_name: {
+          type: 'string',
+          description: 'Program name or id (e.g. starter_6wk, starter_4day, 4-day, upper lower, Phase 1 BT).',
+        },
+      },
+      required: ['program_name'],
+    },
+  },
+  {
+    name: 'switch_goal_phase',
+    description:
+      'Switch the athlete primary training goal between Lean Bulk (Build Muscle), Cut / Recomp (Lose Fat), and Maingain (Stay Lean).',
+    parameters: {
+      type: 'object',
+      properties: {
+        goal_phase: {
+          type: 'string',
+          enum: ['Lean Bulk', 'Cut / Recomp', 'Maingain'],
+          description: 'Target training goal phase.',
+        },
+      },
+      required: ['goal_phase'],
+    },
+  },
+  {
+    name: 'log_rest_day',
+    description:
+      'Log a rest day by moving today unstarted workout to tomorrow without breaking the athlete streak.',
+    parameters: {
+      type: 'object',
+      properties: {
+        reason: {
+          type: 'string',
+          description: 'Optional note for resting today.',
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'update_goals',
+    description:
+      'Update weekly training session target (2-7), daily steps target, personal lift target (weight or reps), featured strength standard lift, or reset goals to plan defaults.',
+    parameters: {
+      type: 'object',
+      properties: {
+        action: {
+          type: 'string',
+          enum: [
+            'set_sessions_per_week',
+            'set_step_goal',
+            'set_lift_goal',
+            'set_strength_focus',
+            'remove_custom_goal',
+            'reset_goals',
+          ],
+          description: 'Goal operation to perform.',
+        },
+        value: {
+          type: 'number',
+          description: 'Numeric target (sessions/week 2-7, steps count, weight amount, or rep count).',
+        },
+        metric: {
+          type: 'string',
+          enum: ['weight', 'reps'],
+          description: 'Whether a custom lift target is weight or reps.',
+        },
+        unit: {
+          type: 'string',
+          enum: ['kg', 'lb'],
+          description: 'Weight unit for custom lift weight goals.',
+        },
+        exercise_name: {
+          type: 'string',
+          description: 'Lift name (e.g. Bench Press, Chin-Ups, Squat) when setting/removing a lift goal or focus.',
+        },
+      },
+      required: ['action'],
+    },
+  },
+  {
+    name: 'update_progress_widgets',
+    description:
+      'Add, remove, or reset dashboard cards/charts on the Progress screen (e.g. composition, balance, measurements, trophy, goals, steps, whoop, specific exercise/tape charts).',
+    parameters: {
+      type: 'object',
+      properties: {
+        action: {
+          type: 'string',
+          enum: ['add', 'remove', 'reset'],
+          description: 'Widget update mode.',
+        },
+        widget_names: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Names of widgets, measurements, or exercises to add or remove.',
+        },
+      },
+      required: ['action'],
+    },
+  },
+  {
+    name: 'log_entry',
+    description:
+      'Log an athlete-supplied measurement (bodyweight, body fat %, waist circumference) or deliberate active day cardio/sport session.',
+    parameters: {
+      type: 'object',
+      properties: {
+        kind: {
+          type: 'string',
+          enum: ['bodyweight', 'body_fat', 'waist', 'active_day'],
+          description: 'Measurement or activity type.',
+        },
+        value: {
+          type: 'number',
+          description: 'Numeric value provided by the athlete (weight, %, waist size, or duration minutes).',
+        },
+        unit: {
+          type: 'string',
+          enum: ['kg', 'lb', 'cm', 'in', 'minutes'],
+          description: 'Unit for the supplied value.',
+        },
+        activity_type: {
+          type: 'string',
+          enum: ['run', 'walk', 'cycle', 'swim', 'row', 'hike', 'class', 'sport', 'strength', 'other'],
+          description: 'Activity type when kind is active_day.',
+        },
+      },
+      required: ['kind', 'value'],
+    },
+  },
 ];
 
 // ============================================================================
@@ -176,6 +409,7 @@ export interface CoachToolExecutionContext {
   profile: UserProfile;
   activeWorkout: WorkoutSession;
   workouts: WorkoutSession[];
+  biometrics?: BiometricLog[];
   activities?: ActivityLog[];
   exerciseCatalog: ExerciseDefinition[];
   bodyweightEmaKg: number;
@@ -186,10 +420,13 @@ export interface CoachToolExecutionContext {
 
 export interface CoachToolOutcome {
   toolName: CoachToolName;
+  actionType?: AssistantActionType;
   mutationStatus: CoachMutationStatus;
   summaryText: string;
   updatedProfile?: Partial<UserProfile>;
   updatedWorkout?: WorkoutSession;
+  updatedBiometrics?: BiometricLog[];
+  updatedActivities?: ActivityLog[];
   stateDiff?: CoachStateDiff;
   undoSnapshot?: CoachUndoSnapshot;
   pendingConfirmation?: CoachPendingConfirmation;
@@ -264,8 +501,11 @@ async function syncMutationRemote(
 async function commitMutationTransaction(args: {
   context: CoachToolExecutionContext;
   toolName: CoachToolName;
+  actionType?: AssistantActionType;
   updatedProfile?: Partial<UserProfile>;
   updatedWorkout?: WorkoutSession;
+  updatedBiometrics?: BiometricLog[];
+  updatedActivities?: ActivityLog[];
   stateDiff: CoachStateDiff;
   summaryText: string;
   memorySaved?: AthleteMemoryFact;
@@ -275,8 +515,11 @@ async function commitMutationTransaction(args: {
   const {
     context,
     toolName,
+    actionType,
     updatedProfile,
     updatedWorkout,
+    updatedBiometrics,
+    updatedActivities,
     stateDiff,
     summaryText,
     memorySaved,
@@ -296,14 +539,19 @@ async function commitMutationTransaction(args: {
           })),
         }
       : undefined,
+    previousBiometrics: updatedBiometrics && context.biometrics ? context.biometrics.map((b) => ({ ...b })) : undefined,
+    previousActivities: updatedActivities && context.activities ? context.activities.map((a) => ({ ...a })) : undefined,
   };
 
   const remote = await syncMutationRemote(context, toolName, updatedProfile, updatedWorkout);
   if (!remote.ok) {
     if (updatedProfile) saveProfile(context.profile);
     if (updatedWorkout) saveActiveWorkout(context.activeWorkout);
+    if (updatedBiometrics && context.biometrics) saveBiometrics(context.biometrics);
+    if (updatedActivities && context.activities) saveActivities(context.activities);
     return {
       toolName,
+      actionType,
       mutationStatus: 'error',
       summaryText: `Could not complete "${stateDiff.label}": ${remote.error || 'save rejected'}. No training state was changed.`,
       errorMessage: remote.error || 'Sync failed.',
@@ -316,13 +564,22 @@ async function commitMutationTransaction(args: {
   if (updatedWorkout) {
     saveActiveWorkout(updatedWorkout);
   }
+  if (updatedBiometrics) {
+    saveBiometrics(updatedBiometrics);
+  }
+  if (updatedActivities) {
+    saveActivities(updatedActivities);
+  }
 
   return {
     toolName,
+    actionType,
     mutationStatus: 'success',
     summaryText,
     updatedProfile,
     updatedWorkout,
+    updatedBiometrics,
+    updatedActivities,
     stateDiff,
     undoSnapshot,
     memorySaved,
@@ -549,6 +806,115 @@ export interface SwapExerciseArgs {
   reason?: string;
 }
 
+function cleanExerciseQuery(raw?: string): string {
+  return (raw || '')
+    .trim()
+    .replace(/[?!.,;:]+$/g, '')
+    .replace(/\b(?:please|thanks|thank you|today|tonight|now)\b/gi, '')
+    .replace(/^(?:the|a|an|my)\s+/i, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function bestTokenMatch<T extends { name: string }>(items: T[], query: string): T | undefined {
+  const qTokens = normalizeExerciseTokens(query);
+  if (qTokens.length === 0) return undefined;
+  let best: T | undefined;
+  let bestScore = 0;
+  for (const item of items) {
+    const itemTokens = normalizeExerciseTokens(item.name);
+    const overlap = qTokens.filter((t) => itemTokens.includes(t)).length;
+    if (overlap === qTokens.length) {
+      const score = overlap * 10 - Math.abs(itemTokens.length - qTokens.length);
+      if (score > bestScore) {
+        bestScore = score;
+        best = item;
+      }
+    }
+  }
+  return best;
+}
+
+export function resolveWorkoutExerciseByName(
+  query: string,
+  workout: WorkoutSession,
+  catalog: ExerciseDefinition[]
+): ExerciseSession | undefined {
+  return findWorkoutExercise(query, workout, catalog);
+}
+
+function findWorkoutExercise(query: string, workout: WorkoutSession, catalog: ExerciseDefinition[]): ExerciseSession | undefined {
+  const cleaned = cleanExerciseQuery(query);
+  if (!cleaned) return undefined;
+  const q = cleaned.toLowerCase();
+  return (
+    workout.exercises.find((e) => e.id.toLowerCase() === q || e.exerciseId.toLowerCase() === q) ??
+    workout.exercises.find((e) => e.name.toLowerCase() === q) ??
+    findExerciseNamed(q, workout, catalog)?.session ??
+    workout.exercises.find((e) => e.name.toLowerCase().includes(q) || q.includes(e.name.toLowerCase())) ??
+    bestTokenMatch(workout.exercises, cleaned)
+  );
+}
+
+function normalizeExerciseTokens(text: string): string[] {
+  const stopWords = new Set(['the', 'a', 'an', 'to', 'for', 'with', 'in', 'on', 'of', 'my', 'today', 'todays', 'workout', 'session']);
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, ' ')
+    .split(/[\s-]+/)
+    .filter(Boolean)
+    .map((tok) => {
+      if (tok === 'db' || tok === 'dbs') return 'dumbbell';
+      if (tok === 'bb') return 'barbell';
+      if (tok === 'ohp') return 'overhead';
+      if (tok === 'rdl' || tok === 'rdls') return 'romanian';
+      if (tok === 'flyes' || tok === 'flies') return 'fly';
+      if (tok === 'pulldowns') return 'pulldown';
+      if (tok === 'pushdowns') return 'pushdown';
+      if (tok === 'pullups') return 'pullup';
+      if (tok === 'chinups') return 'chinup';
+      if (tok === 'raises') return 'raise';
+      if (tok === 'presses') return 'press';
+      if (tok === 'crunches') return 'crunch';
+      if (tok.length > 4 && tok.endsWith('s') && !tok.endsWith('ss')) return tok.slice(0, -1);
+      return tok;
+    })
+    .filter((tok) => !stopWords.has(tok));
+}
+
+export function resolveCatalogExerciseByName(
+  query: string,
+  catalog: ExerciseDefinition[],
+  workout?: WorkoutSession
+): ExerciseDefinition | undefined {
+  return findCatalogExercise(query, catalog, workout);
+}
+
+function findCatalogExercise(query: string, catalog: ExerciseDefinition[], workout?: WorkoutSession): ExerciseDefinition | undefined {
+  const cleaned = cleanExerciseQuery(query);
+  if (!cleaned) return undefined;
+  const q = cleaned.toLowerCase();
+  const byId = catalog.find((d) => d.id.toLowerCase() === q);
+  if (byId) return byId;
+  const byExact = catalog.find((d) => d.name.toLowerCase() === q);
+  if (byExact) return byExact;
+  const bySub = catalog.find((d) => d.name.toLowerCase().includes(q) || q.includes(d.name.toLowerCase()));
+  if (bySub) return bySub;
+  const byToken = bestTokenMatch(catalog, cleaned);
+  if (byToken) return byToken;
+  const dummyWorkout: WorkoutSession = workout ?? {
+    id: 'catalog-lookup',
+    date: localDateString(),
+    name: 'Lookup',
+    splitDay: 'Full Body',
+    exercises: [],
+    completed: false,
+    readinessState: 'Normal',
+    readinessZScore: 0,
+  };
+  return findExerciseNamed(q, dummyWorkout, catalog)?.def;
+}
+
 function findBestReplacementExercise(
   currentEx: ExerciseSession,
   requestedNew: string | undefined,
@@ -568,20 +934,26 @@ function findBestReplacementExercise(
     !d.requiredHomeEquipment?.length ||
     d.requiredHomeEquipment.every((tag) => homeEquip.includes(tag));
 
-  if (requestedNew) {
-    const q = requestedNew.toLowerCase().trim();
+  const cleanedNew = cleanExerciseQuery(requestedNew);
+  if (cleanedNew) {
+    const q = cleanedNew.toLowerCase();
     const byId = catalog.find((d) => d.id.toLowerCase() === q);
-    if (byId) return byId;
+    if (byId && byId.id !== currentEx.exerciseId) return byId;
     const byExact = catalog.find((d) => d.name.toLowerCase() === q);
-    if (byExact) return byExact;
+    if (byExact && byExact.id !== currentEx.exerciseId) return byExact;
     const bySafeSubstring = catalog.find(
       (d) =>
+        d.id !== currentEx.exerciseId &&
         !avoidedIds.has(d.id) &&
         fitsHomeEquip(d) &&
         (d.name.toLowerCase().includes(q) || q.includes(d.name.toLowerCase()))
     );
     if (bySafeSubstring) return bySafeSubstring;
-    const bySubstring = catalog.find((d) => d.name.toLowerCase().includes(q) || q.includes(d.name.toLowerCase()));
+    const namedCatalog = findCatalogExercise(cleanedNew, catalog, todayWorkout);
+    if (namedCatalog && namedCatalog.id !== currentEx.exerciseId) return namedCatalog;
+    const bySubstring = catalog.find(
+      (d) => d.id !== currentEx.exerciseId && (d.name.toLowerCase().includes(q) || q.includes(d.name.toLowerCase()))
+    );
     if (bySubstring) return bySubstring;
   }
 
@@ -615,16 +987,18 @@ export async function executeSwapExercise(
   context: CoachToolExecutionContext
 ): Promise<CoachToolOutcome> {
   const { activeWorkout, exerciseCatalog } = context;
-  const oldQuery = (rawArgs.old_exercise_id || '').trim();
-  const byId = activeWorkout.exercises.find((e) => e.id === oldQuery || e.exerciseId === oldQuery);
-  const byName = !byId ? findExerciseNamed(oldQuery.toLowerCase(), activeWorkout, exerciseCatalog)?.session : undefined;
-  const targetEx = byId || byName;
+  const oldQuery = cleanExerciseQuery(rawArgs.old_exercise_id);
+  const targetEx = findWorkoutExercise(oldQuery, activeWorkout, exerciseCatalog);
 
   if (!targetEx) {
+    const names = activeWorkout.exercises.map((e) => e.name).join(', ');
     return {
       toolName: 'swap_exercise',
+      actionType: 'SWAP_EXERCISE',
       mutationStatus: 'error',
-      summaryText: `Couldn't find "${oldQuery || 'that exercise'}" in today's **${activeWorkout.name}** session. No exercises were changed.`,
+      summaryText: names
+        ? `Couldn't find "${oldQuery || 'that exercise'}" in today's **${activeWorkout.name}** session (today's exercises: ${names}). No exercises were changed.`
+        : `Couldn't find "${oldQuery || 'that exercise'}" in today's **${activeWorkout.name}** session. No exercises were changed.`,
       errorMessage: 'Exercise not in active workout.',
     };
   }
@@ -633,6 +1007,7 @@ export async function executeSwapExercise(
   if (!replacement) {
     return {
       toolName: 'swap_exercise',
+      actionType: 'SWAP_EXERCISE',
       mutationStatus: 'error',
       summaryText: `Couldn't find a matching replacement for **${targetEx.name}** in the exercise library. No exercises were changed.`,
       errorMessage: 'Replacement exercise not found.',
@@ -644,48 +1019,96 @@ export async function executeSwapExercise(
   const completedWorkingCount = completedSets.filter((s) => !s.isWarmup && s.setType !== 'warmup').length;
   const totalWorkingCount = Math.max(1, targetEx.sets.filter((s) => !s.isWarmup && s.setType !== 'warmup').length);
   const remainingWorkingCount = Math.max(1, totalWorkingCount - completedWorkingCount);
-  const repTarget = targetEx.sets.find((s) => !s.isWarmup && s.setType !== 'warmup')?.targetReps ?? targetEx.minReps;
-  const seedSession: WorkoutSession = {
-    ...activeWorkout,
-    exercises: [
-      {
-        ...targetEx,
-        id: completedSets.length > 0 ? `${targetEx.id}-swap-${Date.now()}` : targetEx.id,
-        exerciseId: replacement.id,
-        name: replacement.name,
-        pillar: replacement.pillar,
-        equipment: replacement.equipment,
-        sets: Array.from({ length: remainingWorkingCount }, (_, idx) => ({
-          id: `swap-${replacement.id}-${Date.now()}-${idx}`,
-          setNumber: idx + 1,
-          setType: 'working' as const,
-          targetWeightKg: 0,
-          targetReps: repTarget,
-          targetRir: 2,
-          actualWeightKg: 0,
-          actualReps: 0,
-          actualRir: 2,
-          completed: false,
-        })),
-      },
-    ],
+
+  const rx = prescribeExerciseSwap({
+    sourceExercise: targetEx,
+    targetDef: replacement,
+    workouts: context.workouts,
+    readinessState: context.readinessState,
+    goalPhase: context.profile.goalPhase,
+    bodyweightEmaKg: context.bodyweightEmaKg,
+    location: activeWorkout.location || context.profile.activeLocation || 'gym',
+    unit,
+  });
+
+  const timed = rx.isTimed;
+  const holdSecs = replacement.defaultDurationSeconds || 45;
+  const targetWeightKg = rx.isPureBodyweight ? 0 : rx.targetWeightKg;
+  const targetReps = timed ? 1 : rx.targetReps;
+  const meta = getExerciseBiomechanicalMeta(replacement);
+
+  const baseReplacement: ExerciseSession = {
+    id: completedSets.length > 0 ? `${targetEx.id}-swap-${Date.now()}` : targetEx.id,
+    exerciseId: replacement.id,
+    name: replacement.name,
+    pillar: replacement.pillar,
+    equipment: replacement.equipment,
+    isRdl: replacement.isRdl,
+    isWeightedCalisthenic: replacement.isWeightedCalisthenic,
+    isIsolation: meta.isIsolation,
+    movementFamily: getMovementVectorId(replacement),
+    movementFamilyLabel: getMovementFamilyLabel(replacement),
+    resistanceProfile: meta.resistanceProfile,
+    sfrScore: meta.sfrScore,
+    minReps: timed ? 1 : replacement.defaultRepRange[0],
+    maxReps: timed ? 1 : replacement.defaultRepRange[1],
+    tempo: replacement.isIsolation ? '2-1-1-0' : '3-0-1-0',
+    ...(timed
+      ? {
+          repTargetType: 'duration' as const,
+          durationSeconds: holdSecs,
+          tempo: `${holdSecs}sec`,
+        }
+      : {}),
+    notes: timed
+      ? rx.rationale
+      : rx.tempoCue
+      ? `${rx.tempoCue}. ${rx.rationale}.`
+      : meta.resistanceProfile === 'lengthened'
+      ? `${rx.rationale}. Focus on a controlled stretch at the bottom of each rep.`
+      : `${rx.rationale}. Keep a steady, controlled pace on every rep.`,
+    sets: Array.from({ length: remainingWorkingCount }, (_, idx) => ({
+      id: `swap-${replacement.id}-${Date.now()}-${idx}`,
+      setNumber: idx + 1,
+      setType: 'working' as const,
+      targetWeightKg,
+      actualWeightKg: targetWeightKg,
+      targetReps,
+      actualReps: targetReps,
+      targetRir: context.readinessState === 'Amber Shield' ? 2 : 2,
+      actualRir: 2,
+      ...(timed ? { targetDurationSeconds: holdSecs, actualDurationSeconds: holdSecs } : {}),
+      completed: false,
+    })),
   };
 
-  const preparedSingle = prepareSessionForAthlete(seedSession, {
-    history: context.workouts,
-    bodyweightKg: context.bodyweightEmaKg,
-    readinessState: context.readinessState,
-    gender: context.profile.gender,
-    experienceLevel: context.profile.experienceLevel,
-    unit,
-    isProgramPlan: isPlanProgram(context.profile.programType),
-  }).exercises[0];
+  const preparedSingle = prepareSessionForAthlete(
+    { ...activeWorkout, exercises: [baseReplacement] },
+    {
+      history: context.workouts,
+      bodyweightKg: context.bodyweightEmaKg,
+      readinessState: context.readinessState,
+      gender: context.profile.gender,
+      experienceLevel: context.profile.experienceLevel,
+      unit,
+      isProgramPlan: isPlanProgram(context.profile.programType),
+    }
+  ).exercises[0];
+
+  const finalReplacement: ExerciseSession = {
+    ...preparedSingle,
+    sets: preparedSingle.sets.map((st, idx) =>
+      targetWeightKg > 0 && (st.targetWeightKg ?? 0) <= 0
+        ? { ...st, setNumber: idx + 1, targetWeightKg, actualWeightKg: targetWeightKg }
+        : { ...st, setNumber: idx + 1 }
+    ),
+  };
 
   const updatedWorkout: WorkoutSession = {
     ...activeWorkout,
     exercises:
       completedSets.length === 0
-        ? activeWorkout.exercises.map((ex) => (ex.id === targetEx.id ? preparedSingle : ex))
+        ? activeWorkout.exercises.map((ex) => (ex.id === targetEx.id ? finalReplacement : ex))
         : activeWorkout.exercises.flatMap((ex) =>
             ex.id === targetEx.id
               ? [
@@ -693,7 +1116,7 @@ export async function executeSwapExercise(
                     ...targetEx,
                     sets: completedSets.map((st, idx) => ({ ...st, setNumber: idx + 1 })),
                   },
-                  preparedSingle,
+                  finalReplacement,
                 ]
               : [ex]
           ),
@@ -703,6 +1126,7 @@ export async function executeSwapExercise(
   return commitMutationTransaction({
     context,
     toolName: 'swap_exercise',
+    actionType: 'SWAP_EXERCISE',
     updatedWorkout,
     stateDiff: {
       object_type: 'Workout',
@@ -727,7 +1151,7 @@ export async function executeAdjustWorkoutVolume(
   rawArgs: AdjustWorkoutVolumeArgs,
   context: CoachToolExecutionContext
 ): Promise<CoachToolOutcome> {
-  const { activeWorkout } = context;
+  const { activeWorkout, exerciseCatalog } = context;
   const workingCountBefore = activeWorkout.exercises.reduce(
     (sum, ex) => sum + ex.sets.filter((s) => !s.isWarmup && s.setType !== 'warmup').length,
     0
@@ -735,6 +1159,7 @@ export async function executeAdjustWorkoutVolume(
   if (workingCountBefore === 0) {
     return {
       toolName: 'adjust_workout_volume',
+      actionType: 'ADJUST_WORKOUT_VOLUME',
       mutationStatus: 'error',
       summaryText: `There are no working sets in **${activeWorkout.name}** to adjust.`,
       errorMessage: 'Empty workout.',
@@ -744,15 +1169,25 @@ export async function executeAdjustWorkoutVolume(
   if (rawArgs.modifier_type === 'increase_sets' && context.readinessState === 'Amber Shield') {
     return {
       toolName: 'adjust_workout_volume',
+      actionType: 'ADJUST_WORKOUT_VOLUME',
       mutationStatus: 'error',
       summaryText: `Recovery is low today, so working sets in **${activeWorkout.name}** stay capped to protect your joints and recovery.`,
       errorMessage: 'Cannot increase sets during Amber Shield recovery.',
     };
   }
 
+  // Scope to a single named exercise if details mentions one specifically (unless asking for all/workout-wide).
+  const detailText = (rawArgs.details || '').toLowerCase();
+  const isWorkoutWide = /\b(all|every|each|whole|entire|workout|session)\b/.test(detailText);
+  const specificEx =
+    detailText && !isWorkoutWide && rawArgs.modifier_type !== 'short_on_time'
+      ? findWorkoutExercise(detailText, activeWorkout, exerciseCatalog)
+      : undefined;
+
   const unit = context.profile.weightUnit || 'kg';
   let changed = false;
   const updatedExercises = activeWorkout.exercises.map((ex, exIdx) => {
+    if (specificEx && ex.id !== specificEx.id) return ex;
     const warmups = ex.sets.filter((s) => s.isWarmup || s.setType === 'warmup');
     const working = ex.sets.filter((s) => !s.isWarmup && s.setType !== 'warmup');
     const completedWorking = working.filter((s) => s.completed);
@@ -806,8 +1241,11 @@ export async function executeAdjustWorkoutVolume(
   if (!changed) {
     return {
       toolName: 'adjust_workout_volume',
+      actionType: 'ADJUST_WORKOUT_VOLUME',
       mutationStatus: 'error',
-      summaryText: `Every exercise in **${activeWorkout.name}** is already at its minimum or completed. No volume changes were made.`,
+      summaryText: specificEx
+        ? `**${specificEx.name}** is already at its minimum or completed. No volume changes were made.`
+        : `Every exercise in **${activeWorkout.name}** is already at its minimum or completed. No volume changes were made.`,
       errorMessage: 'No adjustable pending sets.',
     };
   }
@@ -827,9 +1265,11 @@ export async function executeAdjustWorkoutVolume(
       ? `-10% load, RIR 2+ (${workingCountAfter} sets)`
       : `${workingCountAfter} working sets`;
 
+  const scopeLabel = specificEx ? `${specificEx.name} in **${activeWorkout.name}**` : `**${activeWorkout.name}**`;
   return commitMutationTransaction({
     context,
     toolName: 'adjust_workout_volume',
+    actionType: 'ADJUST_WORKOUT_VOLUME',
     updatedWorkout,
     stateDiff: {
       object_type: 'Workout',
@@ -845,8 +1285,8 @@ export async function executeAdjustWorkoutVolume(
     },
     summaryText:
       rawArgs.modifier_type === 'deload_load'
-        ? `Lightened uncompleted sets in **${activeWorkout.name}** by ~10% and set target effort to 2 RIR.`
-        : `Adjusted **${activeWorkout.name}** from ${workingCountBefore} to **${workingCountAfter} working sets**${rawArgs.details ? ` (${rawArgs.details})` : ''}.`,
+        ? `Lightened uncompleted sets in ${scopeLabel} by ~10% and set target effort to 2 RIR.`
+        : `Adjusted ${scopeLabel} from ${workingCountBefore} to **${workingCountAfter} working sets**.`,
     navigateTarget: 'train',
     navigateLabel: 'View Workout',
   });
@@ -865,6 +1305,7 @@ export async function executeSaveAthleteMemory(
   if (!cleanedValue) {
     return {
       toolName: 'save_athlete_memory',
+      actionType: 'SAVE_ATHLETE_MEMORY',
       mutationStatus: 'error',
       summaryText: 'No memory detail was provided to save.',
       errorMessage: 'Empty memory fact.',
@@ -881,6 +1322,7 @@ export async function executeSaveAthleteMemory(
   return commitMutationTransaction({
     context,
     toolName: 'save_athlete_memory',
+    actionType: 'SAVE_ATHLETE_MEMORY',
     updatedProfile: { athleteMemories: nextMemories },
     memorySaved: fact,
     stateDiff: {
@@ -891,6 +1333,864 @@ export async function executeSaveAthleteMemory(
       new_state: { display: `${fact.category}: ${fact.value}`, count: nextMemories.length },
     },
     summaryText: `Saved to your athlete profile: **${fact.value}**. I will apply this context in future coaching and exercise suggestions.`,
+  });
+}
+
+export interface ModifyWorkoutExercisesArgs {
+  action: 'add' | 'remove';
+  exercise_name: string;
+  reason?: string;
+}
+
+export async function executeModifyWorkoutExercises(
+  rawArgs: ModifyWorkoutExercisesArgs,
+  context: CoachToolExecutionContext
+): Promise<CoachToolOutcome> {
+  const { activeWorkout, exerciseCatalog } = context;
+  const query = cleanExerciseQuery(rawArgs.exercise_name);
+  if (!query) {
+    return {
+      toolName: 'modify_workout_exercises',
+      actionType: rawArgs.action === 'remove' ? 'REMOVE_EXERCISE' : 'ADD_EXERCISE',
+      mutationStatus: 'error',
+      summaryText: 'Tell me which exercise you want to add or remove from today\'s workout.',
+      errorMessage: 'Missing exercise name.',
+    };
+  }
+
+  if (rawArgs.action === 'remove') {
+    const target = findWorkoutExercise(query, activeWorkout, exerciseCatalog);
+    if (!target) {
+      return {
+        toolName: 'modify_workout_exercises',
+        actionType: 'REMOVE_EXERCISE',
+        mutationStatus: 'error',
+        summaryText: `Couldn't find "${query}" in today's **${activeWorkout.name}** session. No exercises were removed.`,
+        errorMessage: 'Exercise not in active workout.',
+      };
+    }
+    const completedSets = target.sets.filter((s) => s.completed);
+    const pendingSets = target.sets.filter((s) => !s.completed);
+    if (completedSets.length > 0 && pendingSets.length === 0) {
+      return {
+        toolName: 'modify_workout_exercises',
+        actionType: 'REMOVE_EXERCISE',
+        mutationStatus: 'error',
+        summaryText: `All sets on **${target.name}** are already logged, so it stays in **${activeWorkout.name}**.`,
+        errorMessage: 'Cannot remove exercise with all sets completed.',
+      };
+    }
+    if (completedSets.length === 0 && activeWorkout.exercises.length <= 1) {
+      return {
+        toolName: 'modify_workout_exercises',
+        actionType: 'REMOVE_EXERCISE',
+        mutationStatus: 'error',
+        summaryText: `**${target.name}** is the only exercise left in **${activeWorkout.name}**. Swap it for another lift or log a rest day instead.`,
+        errorMessage: 'Cannot empty active workout.',
+      };
+    }
+    const nextExercises =
+      completedSets.length === 0
+        ? activeWorkout.exercises.filter((e) => e.id !== target.id)
+        : activeWorkout.exercises.map((e) =>
+            e.id === target.id
+              ? { ...e, sets: completedSets.map((s, idx) => ({ ...s, setNumber: idx + 1 })) }
+              : e
+          );
+    return commitMutationTransaction({
+      context,
+      toolName: 'modify_workout_exercises',
+      actionType: 'REMOVE_EXERCISE',
+      updatedWorkout: { ...activeWorkout, exercises: nextExercises },
+      stateDiff: {
+        object_type: 'Workout',
+        object_id: activeWorkout.id,
+        label: 'Exercise Removed',
+        previous_state: { display: `${activeWorkout.exercises.length} exercises` },
+        new_state: { display: `${nextExercises.length} exercises (removed ${target.name})` },
+      },
+      summaryText:
+        completedSets.length > 0
+          ? `Kept your ${completedSets.length} logged set${completedSets.length === 1 ? '' : 's'} on **${target.name}** and removed remaining pending sets from **${activeWorkout.name}**.`
+          : `Removed **${target.name}** from **${activeWorkout.name}**.`,
+      navigateTarget: 'train',
+      navigateLabel: 'View Workout',
+    });
+  }
+
+  const def = findCatalogExercise(query, exerciseCatalog, activeWorkout);
+  if (!def) {
+    return {
+      toolName: 'modify_workout_exercises',
+      actionType: 'ADD_EXERCISE',
+      mutationStatus: 'error',
+      summaryText: `Couldn't find "${query}" in the exercise library. No exercises were added.`,
+      errorMessage: 'Exercise not found.',
+    };
+  }
+  if (activeWorkout.exercises.some((e) => e.exerciseId === def.id)) {
+    return {
+      toolName: 'modify_workout_exercises',
+      actionType: 'ADD_EXERCISE',
+      mutationStatus: 'error',
+      summaryText: `**${def.name}** is already in today's **${activeWorkout.name}** session.`,
+      errorMessage: 'Exercise already present.',
+    };
+  }
+
+  const unit = context.profile.weightUnit || 'kg';
+  const meta = getExerciseBiomechanicalMeta(def);
+  const timed = isTimedExercise(def);
+  const isPureBw = def.equipment === 'bodyweight' && !def.isWeightedCalisthenic;
+  const holdSecs = def.defaultDurationSeconds || 45;
+  const seedEx: ExerciseSession = {
+    id: `coach-add-${Date.now()}`,
+    exerciseId: def.id,
+    name: def.name,
+    pillar: def.pillar,
+    equipment: def.equipment,
+    isRdl: def.isRdl,
+    isWeightedCalisthenic: def.isWeightedCalisthenic,
+    isIsolation: meta.isIsolation,
+    movementFamily: getMovementVectorId(def),
+    movementFamilyLabel: getMovementFamilyLabel(def),
+    resistanceProfile: meta.resistanceProfile,
+    sfrScore: meta.sfrScore,
+    minReps: timed ? 1 : def.defaultRepRange[0],
+    maxReps: timed ? 1 : def.defaultRepRange[1],
+    ...(timed ? { repTargetType: 'duration' as const, durationSeconds: holdSecs, tempo: `${holdSecs}sec` } : {}),
+    notes: timed
+      ? `Hold with controlled tension for ${holdSecs}s per set.`
+      : meta.resistanceProfile === 'lengthened'
+      ? 'Focus on a controlled stretch at the bottom of each rep.'
+      : 'Keep a steady, controlled pace on every rep.',
+    sets: [1, 2, 3].map((n) => ({
+      id: `coach-s-${Date.now()}-${n}`,
+      setNumber: n,
+      targetWeightKg: isPureBw ? 0 : def.equipment === 'dumbbell' ? 16 : 40,
+      targetReps: timed ? 1 : def.defaultRepRange[0],
+      targetRir: n === 3 ? 1 : 2,
+      ...(timed ? { targetDurationSeconds: holdSecs, actualDurationSeconds: holdSecs } : {}),
+      completed: false,
+      setType: 'working' as const,
+    })),
+  };
+
+  const rx = prescribeDoubleProgression(
+    seedEx,
+    context.readinessState,
+    context.workouts,
+    context.bodyweightEmaKg,
+    context.profile.goalPhase
+  );
+  const fallbackKg = isPureBw
+    ? 0
+    : startingWeightForNewExercise(activeWorkout, seedEx, {
+        history: context.workouts,
+        bodyweightKg: context.bodyweightEmaKg,
+        readinessState: context.readinessState,
+        gender: context.profile.gender,
+        experienceLevel: context.profile.experienceLevel,
+        unit,
+      }) ?? rx.nextWeightKg;
+
+  const baseHydrated: ExerciseSession = {
+    ...seedEx,
+    sets: seedEx.sets.map((s, idx) => ({
+      ...s,
+      targetWeightKg: fallbackKg,
+      actualWeightKg: fallbackKg,
+      targetReps: timed ? 1 : (rx.nextTargetReps[idx] ?? def.defaultRepRange[0]),
+      actualReps: timed ? 1 : (rx.nextTargetReps[idx] ?? def.defaultRepRange[0]),
+    })),
+  };
+  const isFirstComp = isFirstCompoundForPillar(
+    baseHydrated,
+    activeWorkout.exercises.length,
+    [...activeWorkout.exercises, baseHydrated]
+  );
+  const finalEx = timed ? baseHydrated : ensureWarmupSetsOnExercise(baseHydrated, isFirstComp);
+
+  return commitMutationTransaction({
+    context,
+    toolName: 'modify_workout_exercises',
+    actionType: 'ADD_EXERCISE',
+    updatedWorkout: { ...activeWorkout, exercises: [...activeWorkout.exercises, finalEx] },
+    stateDiff: {
+      object_type: 'Workout',
+      object_id: activeWorkout.id,
+      label: 'Exercise Added',
+      previous_state: { display: `${activeWorkout.exercises.length} exercises` },
+      new_state: { display: `${activeWorkout.exercises.length + 1} exercises (+ ${def.name})` },
+    },
+    summaryText: `Added **${def.name}** (${finalEx.sets.filter((s) => !s.isWarmup && s.setType !== 'warmup').length} working sets @ ${isPureBw ? 'bodyweight' : formatWeight(fallbackKg, unit)}) to **${activeWorkout.name}**.`,
+    navigateTarget: 'train',
+    navigateLabel: 'View Workout',
+  });
+}
+
+const LOCATION_LABELS: Record<TrainingLocation, string> = {
+  gym: 'Full Gym',
+  home: 'At Home',
+  travel: 'Bodyweight',
+};
+
+export interface SwitchLocationArgs {
+  location: TrainingLocation;
+  week?: number;
+}
+
+export async function executeSwitchLocation(
+  rawArgs: SwitchLocationArgs,
+  context: CoachToolExecutionContext
+): Promise<CoachToolOutcome> {
+  const targetLoc: TrainingLocation =
+    rawArgs.location === 'home' || rawArgs.location === 'travel' ? rawArgs.location : 'gym';
+  const equipNames: Record<HomeEquipmentTag, string> = {
+    pullup_bar: 'Pull-Up Bar',
+    dumbbells: 'Dumbbells',
+    bench: 'Exercise Bench',
+    trx: 'TRX Suspension Trainer',
+    bands: 'Resistance Bands',
+  };
+
+  if (typeof rawArgs.week === 'number' && rawArgs.week >= 1 && rawArgs.week <= 6) {
+    const targetWeek = Math.round(rawArgs.week);
+    const currentSchedule = { ...(context.profile.scheduledWeekLocations || {}) };
+    const prevWeekLoc = currentSchedule[targetWeek] ?? context.profile.activeLocation ?? 'gym';
+    currentSchedule[targetWeek] = targetLoc;
+    const updatedProfile: Partial<UserProfile> = { scheduledWeekLocations: currentSchedule };
+    let updatedWorkout: WorkoutSession | undefined;
+
+    if ((context.profile.mesocycleWeek || 1) === targetWeek && context.activeWorkout.location !== targetLoc) {
+      const adapted = adaptWorkoutSessionToLocation(
+        context.activeWorkout,
+        targetLoc,
+        context.profile.homeEquipment || [],
+        context.exerciseCatalog,
+        context.workouts,
+        context.readinessState,
+        context.bodyweightEmaKg
+      );
+      updatedWorkout = prepareSessionForAthlete(adapted, {
+        history: context.workouts,
+        bodyweightKg: context.bodyweightEmaKg,
+        readinessState: context.readinessState,
+        gender: context.profile.gender,
+        experienceLevel: context.profile.experienceLevel,
+        unit: context.profile.weightUnit || 'kg',
+        isProgramPlan: isPlanProgram(context.profile.programType),
+      });
+      updatedProfile.activeLocation = targetLoc;
+    }
+
+    const summary =
+      targetLoc === 'travel'
+        ? `Done. Week ${targetWeek} of your plan is set to bodyweight training. When you reach it, each workout switches to exercises that need no equipment, like push-ups, split squats and inverted rows, with reps matched to your strength. Back early? Switch to the gym from the Workout tab.`
+        : `Scheduled Week ${targetWeek} for **${LOCATION_LABELS[targetLoc]}** mode.`;
+
+    return commitMutationTransaction({
+      context,
+      toolName: 'switch_location',
+      actionType: 'SCHEDULE_LOCATION_WEEK',
+      updatedProfile,
+      updatedWorkout,
+      stateDiff: {
+        object_type: 'Program',
+        object_id: `week-${targetWeek}`,
+        label: `Week ${targetWeek} Location`,
+        previous_state: { display: `Week ${targetWeek}: ${LOCATION_LABELS[prevWeekLoc]}` },
+        new_state: { display: `Week ${targetWeek}: ${LOCATION_LABELS[targetLoc]}` },
+      },
+      summaryText: summary,
+      navigateTarget: updatedWorkout ? 'train' : 'program',
+      navigateLabel: updatedWorkout ? 'View Workout' : 'View Program',
+    });
+  }
+
+  const prevLoc = context.activeWorkout.location ?? context.profile.activeLocation ?? 'gym';
+  const adapted = adaptWorkoutSessionToLocation(
+    context.activeWorkout,
+    targetLoc,
+    context.profile.homeEquipment || [],
+    context.exerciseCatalog,
+    context.workouts,
+    context.readinessState,
+    context.bodyweightEmaKg
+  );
+  const updatedWorkout = prepareSessionForAthlete(adapted, {
+    history: context.workouts,
+    bodyweightKg: context.bodyweightEmaKg,
+    readinessState: context.readinessState,
+    gender: context.profile.gender,
+    experienceLevel: context.profile.experienceLevel,
+    unit: context.profile.weightUnit || 'kg',
+    isProgramPlan: isPlanProgram(context.profile.programType),
+  });
+  const reply =
+    targetLoc === 'travel'
+      ? `Switched today's workout to bodyweight. Every exercise now needs no equipment, with reps matched to your strength.`
+      : targetLoc === 'home'
+      ? `Switched today's workout to home. It now uses ${(context.profile.homeEquipment || []).map((t) => equipNames[t] || t).join(', ') || 'your bodyweight'}.`
+      : `Switched today's workout back to the gym, with barbells, cables and machines available again.`;
+
+  return commitMutationTransaction({
+    context,
+    toolName: 'switch_location',
+    actionType: 'SWITCH_LOCATION',
+    updatedProfile: { activeLocation: targetLoc },
+    updatedWorkout,
+    stateDiff: {
+      object_type: 'Workout',
+      object_id: context.activeWorkout.id,
+      label: 'Location Switched',
+      previous_state: { display: LOCATION_LABELS[prevLoc] },
+      new_state: { display: LOCATION_LABELS[targetLoc] },
+    },
+    summaryText: reply,
+    navigateTarget: 'train',
+    navigateLabel: 'View Workout',
+  });
+}
+
+export interface UpdateHomeEquipmentArgs {
+  action: 'add' | 'remove';
+  equipment: HomeEquipmentTag[];
+}
+
+export async function executeUpdateHomeEquipment(
+  rawArgs: UpdateHomeEquipmentArgs,
+  context: CoachToolExecutionContext
+): Promise<CoachToolOutcome> {
+  const equipNames: Record<HomeEquipmentTag, string> = {
+    pullup_bar: 'Pull-Up Bar',
+    dumbbells: 'Dumbbells',
+    bench: 'Exercise Bench',
+    trx: 'TRX Suspension Trainer',
+    bands: 'Resistance Bands',
+  };
+  const validTags = (rawArgs.equipment || []).filter((t): t is HomeEquipmentTag => t in equipNames);
+  if (validTags.length === 0) {
+    return {
+      toolName: 'update_home_equipment',
+      actionType: 'UPDATE_EQUIPMENT',
+      mutationStatus: 'error',
+      summaryText: 'No recognized home equipment items were named (supported: Pull-Up Bar, Dumbbells, Bench, TRX, Resistance Bands).',
+      errorMessage: 'No recognized equipment tags.',
+    };
+  }
+
+  const prevList = context.profile.homeEquipment || [];
+  const nextSet = new Set<HomeEquipmentTag>(prevList);
+  for (const tag of validTags) {
+    if (rawArgs.action === 'remove') nextSet.delete(tag);
+    else nextSet.add(tag);
+  }
+  const nextEquip = Array.from(nextSet);
+  const changedLabels = validTags.map((t) => equipNames[t]).join(', ');
+
+  let updatedWorkout: WorkoutSession | undefined;
+  if (context.activeWorkout.location === 'home') {
+    const adapted = adaptWorkoutSessionToLocation(
+      context.activeWorkout,
+      'home',
+      nextEquip,
+      context.exerciseCatalog,
+      context.workouts,
+      context.readinessState,
+      context.bodyweightEmaKg
+    );
+    updatedWorkout = prepareSessionForAthlete(adapted, {
+      history: context.workouts,
+      bodyweightKg: context.bodyweightEmaKg,
+      readinessState: context.readinessState,
+      gender: context.profile.gender,
+      experienceLevel: context.profile.experienceLevel,
+      unit: context.profile.weightUnit || 'kg',
+      isProgramPlan: isPlanProgram(context.profile.programType),
+    });
+  }
+
+  let reply: string;
+  if (rawArgs.action === 'remove') {
+    reply = `Done. Removed ${changedLabels} from your home equipment, so your home workouts and swap options won't use ${validTags.length === 1 ? 'it' : 'them'}.`;
+  } else if (validTags.length === 1 && validTags[0] === 'pullup_bar') {
+    reply = `Nice addition. I've added the Pull-Up Bar to your home equipment, so your home workouts can now include pull-ups and chin-ups.`;
+  } else if (validTags.length === 1 && validTags[0] === 'dumbbells') {
+    reply = `Great. I've added Dumbbells to your home equipment, so your home workouts can now include dumbbell presses, rows and Romanian deadlifts.`;
+  } else if (validTags.length === 1 && validTags[0] === 'bench') {
+    reply = `Added an Exercise Bench to your home equipment. Your home workouts can now include flat and incline presses with proper back support.`;
+  } else if (validTags.length === 1 && validTags[0] === 'trx') {
+    reply = `Added the TRX Suspension Trainer to your home equipment. Your home workouts can now include TRX rows, push-ups and single-leg squats.`;
+  } else {
+    reply = `Added ${changedLabels} to your home equipment. Your home workouts and swap options can now use ${validTags.length === 1 ? 'it' : 'them'}.`;
+  }
+
+  return commitMutationTransaction({
+    context,
+    toolName: 'update_home_equipment',
+    actionType: 'UPDATE_EQUIPMENT',
+    updatedProfile: { homeEquipment: nextEquip },
+    updatedWorkout,
+    stateDiff: {
+      object_type: 'Athlete',
+      object_id: 'home-equipment',
+      label: 'Equipment Updated',
+      previous_state: { display: prevList.map((t) => equipNames[t]).join(', ') || 'None' },
+      new_state: { display: nextEquip.map((t) => equipNames[t]).join(', ') || 'None' },
+    },
+    summaryText: reply,
+    navigateTarget: updatedWorkout ? 'train' : undefined,
+    navigateLabel: updatedWorkout ? 'View Workout' : undefined,
+  });
+}
+
+export interface SwitchProgramArgs {
+  program_name: string;
+}
+
+export function resolveProgramSelection(
+  query: string,
+  profile: UserProfile
+): { id: ProgramSplitType; name: string } | null {
+  const lower = query.toLowerCase().trim();
+  if (!lower) return null;
+  for (const custom of profile.customPlans ?? []) {
+    const cname = custom.name.toLowerCase();
+    if (
+      lower === custom.id.toLowerCase() ||
+      lower.includes(cname) ||
+      cname.includes(lower) ||
+      (cname.includes('phase 1') && /\bphase\s*1\b/i.test(lower)) ||
+      (cname.includes('bt') && /\bbt\b/i.test(lower))
+    ) {
+      return { id: custom.id, name: custom.name };
+    }
+  }
+  if (/\b(muscle_building_6wk|6[\s-]*week\s*muscle|muscle\s*building|muscle\s*plan)\b/i.test(lower)) {
+    return { id: 'muscle_building_6wk', name: '6-Week Muscle Building Plan' };
+  }
+  if (/\b(starter_4day|4[\s-]*day|lift\s*4|four\s*day|upper\s*\/?\s*lower)\b/i.test(lower)) {
+    return { id: 'starter_4day', name: '6-Week Starter Plan' };
+  }
+  if (/\b(starter_6wk|starter\s*plan|starter|3[\s-]*day|three\s*day|3\s*workouts?)\b/i.test(lower)) {
+    return { id: 'starter_6wk', name: '6-Week Starter Plan' };
+  }
+  return null;
+}
+
+export async function executeSwitchProgram(
+  rawArgs: SwitchProgramArgs,
+  context: CoachToolExecutionContext
+): Promise<CoachToolOutcome> {
+  const matchedPlan = resolveProgramSelection(rawArgs.program_name || '', context.profile);
+  const currentPlan = resolveActivePlan(context.profile);
+  if (!matchedPlan) {
+    return {
+      toolName: 'switch_program',
+      actionType: 'SWITCH_PROGRAM_SPLIT',
+      mutationStatus: 'error',
+      summaryText: `Couldn't find a saved plan matching "${rawArgs.program_name || 'that'}". Active program remains **${currentPlan.name}**.`,
+      errorMessage: 'Program not found.',
+    };
+  }
+  if (matchedPlan.id === 'muscle_building_6wk' && !canUseMusclePlan(context.profile.email)) {
+    return {
+      toolName: 'switch_program',
+      actionType: 'SWITCH_PROGRAM_SPLIT',
+      mutationStatus: 'error',
+      summaryText: `The 6-Week Muscle Building Plan isn't enabled on this account, so I kept **${currentPlan.name}** active.`,
+      errorMessage: 'Program not unlocked.',
+    };
+  }
+
+  const nextProfile: UserProfile = { ...context.profile, programType: matchedPlan.id };
+  const targetPlan = resolveActivePlan(nextProfile);
+  const nextNum = getNextProgramWorkoutNumber(context.workouts, targetPlan, nextProfile.planCycleStarts);
+  const nextWeek = targetPlan.templates.find((t) => t.workoutNumber === nextNum)?.week ?? 1;
+  const freshWorkout = buildPreparedSessionForReset(targetPlan, nextNum, context, nextProfile);
+
+  return commitMutationTransaction({
+    context,
+    toolName: 'switch_program',
+    actionType: 'SWITCH_PROGRAM_SPLIT',
+    updatedProfile: { programType: matchedPlan.id, mesocycleWeek: nextWeek },
+    updatedWorkout: freshWorkout,
+    stateDiff: {
+      object_type: 'Program',
+      object_id: targetPlan.id,
+      label: 'Program Updated',
+      previous_state: { display: currentPlan.name },
+      new_state: { display: targetPlan.name },
+    },
+    summaryText: `Switched your program to **${targetPlan.name}**. Your next session on the Workout tab is **Workout ${nextNum} of ${targetPlan.templates.length}: ${planWorkoutLabel(freshWorkout.name)}** (Week ${nextWeek}).`,
+    navigateTarget: 'program',
+    navigateLabel: 'View Program',
+  });
+}
+
+export interface SwitchGoalPhaseArgs {
+  goal_phase: GoalPhase;
+}
+
+export async function executeSwitchGoalPhase(
+  rawArgs: SwitchGoalPhaseArgs,
+  context: CoachToolExecutionContext
+): Promise<CoachToolOutcome> {
+  const prevGoal = context.profile.goalPhase;
+  const targetGoal: GoalPhase =
+    rawArgs.goal_phase === 'Cut / Recomp' || rawArgs.goal_phase === 'Maingain' ? rawArgs.goal_phase : 'Lean Bulk';
+
+  const nextProfile: UserProfile = { ...context.profile, goalPhase: targetGoal };
+  let updatedWorkout: WorkoutSession | undefined;
+  const hasStartedSets = context.activeWorkout.exercises.some((ex) => ex.sets.some((st) => st.completed));
+  if (!hasStartedSets && isPlanProgram(nextProfile.programType)) {
+    const plan = resolveActivePlan(nextProfile);
+    if (plan.id !== 'muscle_building_6wk' && !plan.id.startsWith('custom:')) {
+      const nextNum = getNextProgramWorkoutNumber(context.workouts, plan, nextProfile.planCycleStarts);
+      updatedWorkout = buildPreparedSessionForReset(plan, nextNum, context, nextProfile);
+    }
+  }
+
+  const reply =
+    targetGoal === 'Cut / Recomp'
+      ? `Your goal is now ${GOAL_DISPLAY_NAME[targetGoal]}. From your next workout the big lifts stay heavy, with no extra sets, so you keep your strength and muscle while you eat a little less.`
+      : targetGoal === 'Lean Bulk'
+      ? `Your goal is now ${GOAL_DISPLAY_NAME[targetGoal]}. From your next workout your sets build across the 6 weeks, with an extra set on smaller muscles in the last two weeks.`
+      : `Your goal is now ${GOAL_DISPLAY_NAME[targetGoal]}. From your next workout you'll keep a steady 3 sets per exercise to get stronger without wearing yourself down.`;
+
+  return commitMutationTransaction({
+    context,
+    toolName: 'switch_goal_phase',
+    actionType: 'SWITCH_GOAL_PHASE',
+    updatedProfile: { goalPhase: targetGoal },
+    updatedWorkout,
+    stateDiff: {
+      object_type: 'Goal',
+      object_id: 'goal-phase',
+      label: 'Goal Updated',
+      previous_state: { display: GOAL_DISPLAY_NAME[prevGoal] || prevGoal },
+      new_state: { display: GOAL_DISPLAY_NAME[targetGoal] },
+    },
+    summaryText: reply,
+    navigateTarget: 'analytics',
+    navigateLabel: 'View Goals',
+  });
+}
+
+export async function executeLogRestDay(
+  _rawArgs: { reason?: string },
+  context: CoachToolExecutionContext
+): Promise<CoachToolOutcome> {
+  if (hasInProgressSets(context.activeWorkout)) {
+    return {
+      toolName: 'log_rest_day',
+      actionType: 'SHIFT_WORKOUT',
+      mutationStatus: 'error',
+      summaryText: `You already have logged sets in **${context.activeWorkout.name}** today. Finish the session or ask to reset your workout if you're stopping early.`,
+      errorMessage: 'Active workout already has completed sets.',
+    };
+  }
+  const today = new Date();
+  const tomorrow = new Date(today);
+  tomorrow.setDate(today.getDate() + 1);
+  const tomorrowStr = localDateString(tomorrow);
+  const streak = computeTrainingStreak(context.workouts, Date.now(), activeDayDates(context.activities ?? []));
+  const updatedWorkout: WorkoutSession = { ...context.activeWorkout, date: tomorrowStr };
+
+  return commitMutationTransaction({
+    context,
+    toolName: 'log_rest_day',
+    actionType: 'SHIFT_WORKOUT',
+    updatedWorkout,
+    stateDiff: {
+      object_type: 'Workout',
+      object_id: context.activeWorkout.id,
+      label: 'Rest Day Logged',
+      previous_state: { display: `${context.activeWorkout.name} (${context.activeWorkout.date || 'Today'})` },
+      new_state: { display: `${context.activeWorkout.name} (${tomorrowStr})` },
+    },
+    summaryText: `Rest day logged. ${context.activeWorkout.name} will be waiting for you tomorrow. Missing a day doesn't set your plan back${streak > 0 ? `, and your ${streak}-day streak is safe` : ''}.`,
+    navigateTarget: 'train',
+    navigateLabel: 'View Workout',
+  });
+}
+
+export interface UpdateGoalsToolArgs {
+  action: 'set_sessions_per_week' | 'set_step_goal' | 'set_lift_goal' | 'set_strength_focus' | 'remove_custom_goal' | 'reset_goals';
+  value?: number;
+  metric?: 'weight' | 'reps';
+  unit?: 'kg' | 'lb';
+  exercise_name?: string;
+}
+
+export async function executeUpdateGoals(
+  rawArgs: UpdateGoalsToolArgs,
+  context: CoachToolExecutionContext
+): Promise<CoachToolOutcome> {
+  const unit = rawArgs.unit || context.profile.weightUnit || 'kg';
+  let syntheticMsg = '';
+  switch (rawArgs.action) {
+    case 'reset_goals':
+      syntheticMsg = 'reset my goals';
+      break;
+    case 'set_sessions_per_week':
+      syntheticMsg = `change my goal to ${Math.round(rawArgs.value ?? 3)} times a week`;
+      break;
+    case 'set_step_goal':
+      syntheticMsg = `set a steps goal of ${Math.round(rawArgs.value ?? 8000)}`;
+      break;
+    case 'set_strength_focus':
+      syntheticMsg = `follow my ${rawArgs.exercise_name || 'bench press'} strength level`;
+      break;
+    case 'remove_custom_goal':
+      syntheticMsg = `remove my ${rawArgs.exercise_name ? `${rawArgs.exercise_name} ` : ''}goal`;
+      break;
+    case 'set_lift_goal': {
+      const targetStr =
+        rawArgs.metric === 'reps'
+          ? `${Math.round(rawArgs.value ?? 10)} reps`
+          : `${rawArgs.value ?? 100} ${unit}`;
+      syntheticMsg = `set a goal of ${targetStr} on ${rawArgs.exercise_name || 'bench press'}`;
+      break;
+    }
+  }
+
+  const result = detectGoalChange(
+    syntheticMsg.toLowerCase(),
+    context.profile,
+    context.activeWorkout,
+    context.workouts,
+    context.exerciseCatalog
+  );
+  if (!result || !result.changed) {
+    return {
+      toolName: 'update_goals',
+      actionType: 'UPDATE_GOALS',
+      mutationStatus: 'error',
+      summaryText: result?.reply || "Tell me what goal you'd like to set (for example, weekly sessions, daily steps, or a lift target).",
+      errorMessage: 'Goal update not applied.',
+    };
+  }
+
+  return commitMutationTransaction({
+    context,
+    toolName: 'update_goals',
+    actionType: 'UPDATE_GOALS',
+    updatedProfile: { goalSettings: result.goalSettings },
+    stateDiff: {
+      object_type: 'Goal',
+      object_id: 'goals',
+      label: 'Goals Updated',
+      previous_state: { display: `${(context.profile.goalSettings?.customGoals?.length ?? 0)} custom goal(s)` },
+      new_state: { display: result.summary || 'Goals updated' },
+    },
+    summaryText: result.reply,
+    navigateTarget: 'analytics',
+    navigateLabel: 'View Goals',
+  });
+}
+
+export interface UpdateProgressWidgetsToolArgs {
+  action: 'add' | 'remove' | 'reset';
+  widget_names?: string[];
+}
+
+export async function executeUpdateProgressWidgets(
+  rawArgs: UpdateProgressWidgetsToolArgs,
+  context: CoachToolExecutionContext
+): Promise<CoachToolOutcome> {
+  const names = (rawArgs.widget_names || []).filter(Boolean).join(', ');
+  const syntheticMsg =
+    rawArgs.action === 'reset'
+      ? 'reset my progress widgets'
+      : `${rawArgs.action === 'remove' ? 'remove' : 'add'} ${names} ${rawArgs.action === 'remove' ? 'from' : 'to'} my progress page`;
+
+  const result = detectProgressWidgetChange(
+    syntheticMsg.toLowerCase(),
+    context.profile,
+    context.exerciseCatalog,
+    context.activeWorkout
+  );
+  if (!result || !result.changed) {
+    return {
+      toolName: 'update_progress_widgets',
+      actionType: 'UPDATE_PROGRESS_WIDGETS',
+      mutationStatus: 'error',
+      summaryText: result?.reply || 'Tell me which Progress card or chart you want to add or remove.',
+      errorMessage: 'Progress widgets unchanged.',
+    };
+  }
+
+  return commitMutationTransaction({
+    context,
+    toolName: 'update_progress_widgets',
+    actionType: 'UPDATE_PROGRESS_WIDGETS',
+    updatedProfile: { progressWidgets: result.progressWidgets },
+    stateDiff: {
+      object_type: 'Program',
+      object_id: 'progress-widgets',
+      label: 'Progress Updated',
+      previous_state: { display: `${(context.profile.progressWidgets ?? []).length || 'Default'} widgets` },
+      new_state: { display: result.summary || 'Progress widgets updated' },
+    },
+    summaryText: result.reply,
+    navigateTarget: 'analytics',
+    navigateLabel: 'View Progress',
+  });
+}
+
+export interface LogEntryArgs {
+  kind: 'bodyweight' | 'body_fat' | 'waist' | 'active_day';
+  value: number;
+  unit?: 'kg' | 'lb' | 'cm' | 'in' | 'minutes';
+  activity_type?: ActivityType;
+}
+
+export async function executeLogEntry(
+  rawArgs: LogEntryArgs,
+  context: CoachToolExecutionContext
+): Promise<CoachToolOutcome> {
+  const val = Number(rawArgs.value);
+  const todayStr = localDateString();
+
+  if (rawArgs.kind === 'active_day') {
+    const mins = Math.round(val);
+    if (!Number.isFinite(mins) || mins < 5 || mins > 600) {
+      return {
+        toolName: 'log_entry',
+        actionType: 'LOG_ACTIVE_DAY',
+        mutationStatus: 'error',
+        summaryText: 'Give me a valid workout duration between 5 and 600 minutes to log.',
+        errorMessage: 'Invalid activity duration.',
+      };
+    }
+    const actType: ActivityType = rawArgs.activity_type && rawArgs.activity_type in ACTIVITY_LABELS ? rawArgs.activity_type : 'other';
+    const label = ACTIVITY_LABELS[actType];
+    const existing = context.activities ?? [];
+    const entry: ActivityLog = {
+      id: `act-coach-${Date.now()}`,
+      date: todayStr,
+      startedAt: new Date().toISOString(),
+      minutes: mins,
+      type: actType,
+      source: 'manual',
+      name: `${label} (${mins} min)`,
+    };
+    const updatedActivities = [...existing, entry];
+    const countsActiveDay = mins >= MIN_ACTIVE_MINUTES;
+    return commitMutationTransaction({
+      context,
+      toolName: 'log_entry',
+      actionType: 'LOG_ACTIVE_DAY',
+      updatedActivities,
+      stateDiff: {
+        object_type: 'ActiveDay',
+        object_id: entry.id,
+        label: 'Activity Logged',
+        previous_state: { display: `${existing.length} logged activities` },
+        new_state: { display: `${label} · ${mins} min` },
+      },
+      summaryText: countsActiveDay
+        ? `Logged your **${mins}-minute ${label.toLowerCase()}** for today. It counts as an active day toward your weekly sessions and keeps your streak alive.`
+        : `Logged your **${mins}-minute ${label.toLowerCase()}** for today. Sessions of ${MIN_ACTIVE_MINUTES}+ minutes count toward your weekly active-day goal.`,
+      navigateTarget: 'train',
+      navigateLabel: 'View Workout',
+    });
+  }
+
+  if (!Number.isFinite(val) || val <= 0) {
+    return {
+      toolName: 'log_entry',
+      actionType: 'LOG_BIOMETRIC',
+      mutationStatus: 'error',
+      summaryText: 'Provide a positive measurement value to record.',
+      errorMessage: 'Invalid measurement value.',
+    };
+  }
+
+  const profileUnit = context.profile.weightUnit || 'kg';
+  const existingBio = context.biometrics ?? [];
+  const todayIdx = existingBio.findIndex((b) => b.date === todayStr);
+  const currentToday = todayIdx >= 0 ? existingBio[todayIdx] : undefined;
+
+  let patch: Partial<BiometricLog> = {};
+  let displayNew = '';
+  if (rawArgs.kind === 'bodyweight') {
+    const unitUsed = rawArgs.unit === 'lb' || rawArgs.unit === 'kg' ? rawArgs.unit : profileUnit;
+    const kg = Math.round(unitToKg(val, unitUsed) * 10) / 10;
+    if (kg < 25 || kg > 300) {
+      return {
+        toolName: 'log_entry',
+        actionType: 'LOG_BIOMETRIC',
+        mutationStatus: 'error',
+        summaryText: `Bodyweight ${val} ${unitUsed} looks outside a realistic range (25–300 kg).`,
+        errorMessage: 'Bodyweight out of range.',
+      };
+    }
+    patch = { bodyweightKg: kg, isManualEntry: true };
+    displayNew = `Weight: ${formatPreciseWeight(kg, profileUnit)}`;
+  } else if (rawArgs.kind === 'body_fat') {
+    const bf = Math.round(val * 10) / 10;
+    if (bf < 3 || bf > 65) {
+      return {
+        toolName: 'log_entry',
+        actionType: 'LOG_BIOMETRIC',
+        mutationStatus: 'error',
+        summaryText: 'Body fat percentage must be between 3% and 65%.',
+        errorMessage: 'Body fat out of range.',
+      };
+    }
+    patch = { bodyFatPct: bf, isManualEntry: true };
+    displayNew = `Body fat: ${bf}%`;
+  } else {
+    const lenUnit = rawArgs.unit === 'in' || rawArgs.unit === 'cm' ? rawArgs.unit : profileUnit === 'lb' ? 'in' : 'cm';
+    const cm = Math.round((lenUnit === 'in' ? val * 2.54 : val) * 10) / 10;
+    if (cm < 40 || cm > 200) {
+      return {
+        toolName: 'log_entry',
+        actionType: 'LOG_BIOMETRIC',
+        mutationStatus: 'error',
+        summaryText: 'Waist circumference must be between 40 and 200 cm.',
+        errorMessage: 'Waist out of range.',
+      };
+    }
+    patch = { waistCm: cm, isManualEntry: true };
+    displayNew = profileUnit === 'lb' ? `Waist: ${Math.round((cm / 2.54) * 10) / 10} in` : `Waist: ${cm} cm`;
+  }
+
+  const nextLog: BiometricLog = currentToday
+    ? { ...currentToday, ...patch }
+    : {
+        date: todayStr,
+        bodyweightKg: 0,
+        hrvRmssd: 0,
+        restingHr: 0,
+        sleepHours: 0,
+        steps: 0,
+        activeZoneMinutes: 0,
+        ...patch,
+      };
+  const updatedBiometrics =
+    todayIdx >= 0
+      ? existingBio.map((b, i) => (i === todayIdx ? nextLog : b))
+      : [...existingBio, nextLog].sort((a, b) => a.date.localeCompare(b.date));
+
+  return commitMutationTransaction({
+    context,
+    toolName: 'log_entry',
+    actionType: 'LOG_BIOMETRIC',
+    updatedBiometrics,
+    stateDiff: {
+      object_type: 'Biometric',
+      object_id: todayStr,
+      label: 'Measurement Logged',
+      previous_state: { display: currentToday?.bodyweightKg ? formatPreciseWeight(currentToday.bodyweightKg, profileUnit) : 'Today' },
+      new_state: { display: displayNew },
+    },
+    summaryText: `Logged **${displayNew}** for today. Your Progress trend charts now reflect it.`,
+    navigateTarget: 'analytics',
+    navigateLabel: 'View Progress',
   });
 }
 
@@ -908,7 +2208,113 @@ export async function executeCoachToolCall(
       return executeAdjustWorkoutVolume(rawArgs as unknown as AdjustWorkoutVolumeArgs, context);
     case 'save_athlete_memory':
       return executeSaveAthleteMemory(rawArgs as unknown as SaveAthleteMemoryArgs, context);
+    case 'modify_workout_exercises':
+      return executeModifyWorkoutExercises(rawArgs as unknown as ModifyWorkoutExercisesArgs, context);
+    case 'switch_location':
+      return executeSwitchLocation(rawArgs as unknown as SwitchLocationArgs, context);
+    case 'update_home_equipment':
+      return executeUpdateHomeEquipment(rawArgs as unknown as UpdateHomeEquipmentArgs, context);
+    case 'switch_program':
+      return executeSwitchProgram(rawArgs as unknown as SwitchProgramArgs, context);
+    case 'switch_goal_phase':
+      return executeSwitchGoalPhase(rawArgs as unknown as SwitchGoalPhaseArgs, context);
+    case 'log_rest_day':
+      return executeLogRestDay(rawArgs as { reason?: string }, context);
+    case 'update_goals':
+      return executeUpdateGoals(rawArgs as unknown as UpdateGoalsToolArgs, context);
+    case 'update_progress_widgets':
+      return executeUpdateProgressWidgets(rawArgs as unknown as UpdateProgressWidgetsToolArgs, context);
+    case 'log_entry':
+      return executeLogEntry(rawArgs as unknown as LogEntryArgs, context);
   }
+}
+
+export async function executeCoachToolCalls(
+  calls: Array<{ name: CoachToolName; args: Record<string, unknown> }>,
+  context: CoachToolExecutionContext
+): Promise<CoachToolOutcome | null> {
+  if (!calls.length) return null;
+  if (calls.length === 1) {
+    return executeCoachToolCall(calls[0].name, calls[0].args, context);
+  }
+
+  let rollingCtx: CoachToolExecutionContext = { ...context };
+  let mergedProfile: Partial<UserProfile> | undefined;
+  let latestWorkout: WorkoutSession | undefined;
+  let latestBiometrics: BiometricLog[] | undefined;
+  let latestActivities: ActivityLog[] | undefined;
+  let memorySaved: AthleteMemoryFact | undefined;
+  const summaries: string[] = [];
+  const diffs: string[] = [];
+  let lastOutcome: CoachToolOutcome | null = null;
+
+  const initialUndoSnapshot: CoachUndoSnapshot = {
+    label: 'Coach Actions',
+    previousProfile: { ...context.profile },
+    previousWorkout: {
+      ...context.activeWorkout,
+      exercises: context.activeWorkout.exercises.map((e) => ({
+        ...e,
+        sets: e.sets.map((s) => ({ ...s })),
+      })),
+    },
+    previousBiometrics: context.biometrics ? context.biometrics.map((b) => ({ ...b })) : undefined,
+    previousActivities: context.activities ? context.activities.map((a) => ({ ...a })) : undefined,
+  };
+
+  for (const call of calls) {
+    const outcome = await executeCoachToolCall(call.name, call.args, rollingCtx);
+    if (outcome.mutationStatus === 'awaiting_confirmation') {
+      return outcome;
+    }
+    if (outcome.mutationStatus !== 'success') {
+      if (!lastOutcome) return outcome;
+      summaries.push(outcome.summaryText);
+      continue;
+    }
+    lastOutcome = outcome;
+    if (outcome.updatedProfile) {
+      mergedProfile = { ...(mergedProfile ?? {}), ...outcome.updatedProfile };
+      rollingCtx = { ...rollingCtx, profile: { ...rollingCtx.profile, ...outcome.updatedProfile } };
+    }
+    if (outcome.updatedWorkout) {
+      latestWorkout = outcome.updatedWorkout;
+      rollingCtx = { ...rollingCtx, activeWorkout: outcome.updatedWorkout };
+    }
+    if (outcome.updatedBiometrics) {
+      latestBiometrics = outcome.updatedBiometrics;
+      rollingCtx = { ...rollingCtx, biometrics: outcome.updatedBiometrics };
+    }
+    if (outcome.updatedActivities) {
+      latestActivities = outcome.updatedActivities;
+      rollingCtx = { ...rollingCtx, activities: outcome.updatedActivities };
+    }
+    if (outcome.memorySaved) memorySaved = outcome.memorySaved;
+    summaries.push(outcome.summaryText);
+    if (outcome.stateDiff) diffs.push(formatStateDiffText(outcome.stateDiff));
+  }
+
+  if (!lastOutcome) return null;
+  return {
+    ...lastOutcome,
+    summaryText: summaries.join('\n\n'),
+    updatedProfile: mergedProfile,
+    updatedWorkout: latestWorkout,
+    updatedBiometrics: latestBiometrics,
+    updatedActivities: latestActivities,
+    memorySaved,
+    stateDiff:
+      diffs.length > 1
+        ? {
+            object_type: lastOutcome.stateDiff?.object_type ?? 'Program',
+            object_id: 'multi-action',
+            label: `${diffs.length} Updates Applied`,
+            previous_state: { display: 'Previous state' },
+            new_state: { display: diffs.join(' · ') },
+          }
+        : lastOutcome.stateDiff,
+    undoSnapshot: { ...initialUndoSnapshot, label: `${diffs.length || 1} Updates Applied` },
+  };
 }
 
 export async function executePendingConfirmation(
@@ -923,7 +2329,7 @@ export async function executePendingConfirmation(
 // ============================================================================
 
 const FALSE_SUCCESS_RE =
-  /\b(i['’]?ve reset|i have reset|program reset|reset to week|swapped\b.+\bfor\b|adjusted your sets|volume adjusted|saved to (?:your )?memory|updated your (?:plan|workout|program))\b/i;
+  /\b(i['’]?ve reset|i have reset|program reset|reset to week|swapped\b.+\bfor\b|adjusted your sets|volume adjusted|saved to (?:your )?memory|updated your (?:plan|workout|program)|logged your (?:weight|bodyweight|waist|body fat)|removed\b.+\bfrom today|added\b.+\bto today)\b/i;
 
 /**
  * Hard contract: never allow assistant text to claim a state mutation succeeded
@@ -936,7 +2342,9 @@ export function enforceMutationTruthfulness(
 ): string {
   if (mutationStatus === 'success') return replyText;
   if (mutationStatus === 'error') {
-    return fallbackText || 'The update could not be saved, so your training data was left unchanged. Please try again.';
+    if (fallbackText) return fallbackText;
+    if (!FALSE_SUCCESS_RE.test(replyText) && replyText.trim().length > 0) return replyText;
+    return 'The update could not be saved, so your training data was left unchanged. Please try again.';
   }
   if (mutationStatus === 'awaiting_confirmation') {
     if (FALSE_SUCCESS_RE.test(replyText)) {
@@ -981,11 +2389,14 @@ export function buildSuggestedActions(params: {
     ];
   }
 
-  if (toolName === 'swap_exercise' && mutationStatus === 'success') {
+  if (
+    (toolName === 'swap_exercise' || toolName === 'modify_workout_exercises' || toolName === 'switch_location') &&
+    mutationStatus === 'success'
+  ) {
     return [
       { label: 'Review updated workout', prompt: 'What am I lifting today?' },
       { label: 'Check weekly volume', prompt: 'Am I doing enough sets this week?' },
-      { label: 'Short on time?', prompt: 'I only have 25 minutes today' },
+      { label: 'Trim today to 25m', prompt: 'Shorten today\'s workout' },
     ];
   }
 
@@ -1002,7 +2413,18 @@ export function buildSuggestedActions(params: {
         label: todayFirstEx ? `Check ${todayFirstEx}` : 'Check today workout',
         prompt: 'What am I lifting today?',
       },
-      { label: 'Swap an exercise', prompt: 'Can I swap an exercise today?' },
+      {
+        label: todayFirstEx ? `Swap ${todayFirstEx.split(' ').slice(0, 2).join(' ')}` : 'Swap an exercise',
+        prompt: todayFirstEx ? `Swap ${todayFirstEx}` : 'What can I swap today?',
+      },
+    ];
+  }
+
+  if ((toolName === 'update_goals' || toolName === 'switch_goal_phase' || toolName === 'log_entry') && mutationStatus === 'success') {
+    return [
+      { label: 'How am I doing?', prompt: 'How am I doing?' },
+      { label: 'Weekly muscle sets', prompt: 'Am I doing enough sets this week?' },
+      { label: 'Today workout brief', prompt: 'What am I lifting today?' },
     ];
   }
 

@@ -500,7 +500,7 @@ function maskSpan(text: string, start: number, length: number): string {
   return text.slice(0, start) + ' '.repeat(length) + text.slice(start + length);
 }
 
-function findWidgetsInText(
+export function findWidgetsInText(
   text: string,
   exerciseCatalog: ExerciseDefinition[],
   activeWorkout?: WorkoutSession
@@ -640,8 +640,12 @@ export function detectProgressWidgetChange(
     };
   }
 
-  // Questions other than polite requests ("can you add balance to progress?") are never mutations.
-  if (!isPoliteRequest && (/^(why|when|what|which|how|is|are|do|does|did)\b/.test(msg) || /\?\s*$/.test(msg))) {
+  // Questions other than polite requests ("can you add balance to progress?") or explicit widget imperatives ("add balance widget?") are never mutations.
+  if (
+    !isPoliteRequest &&
+    (/^(why|when|what|which|how|is|are|do|does|did)\b/.test(msg) ||
+      (/\?\s*$/.test(msg) && !/^(?:please\s+)?(?:add|show|enable|remove|hide|disable|reset|restore|clear)\b/i.test(msg)))
+  ) {
     return null;
   }
 

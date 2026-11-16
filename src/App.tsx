@@ -472,53 +472,66 @@ export const App: React.FC = () => {
     }
   };
 
-  // Handler: Apply AI Coach mutations (Equipment, Scheduled Location, Split, Workout updates)
+  // Handler: Apply AI Coach mutations (Equipment, Scheduled Location, Split, Workout, Biometrics, Activities)
   const handleApplyAssistantAction = (
     updatedProfile?: Partial<UserProfile>,
-    updatedWorkout?: WorkoutSession
+    updatedWorkout?: WorkoutSession,
+    updatedBiometrics?: BiometricLog[],
+    updatedActivities?: ActivityLog[]
   ) => {
-    const nextProfile = updatedProfile ? { ...profile, ...updatedProfile } : profile;
     if (updatedProfile?.goalPhase && !updatedWorkout) {
       handleUpdateGoalPhase(updatedProfile.goalPhase);
     }
     if (updatedProfile) {
       setProfile((prev) => ({ ...prev, ...updatedProfile }));
     }
-    const isPlanSwitchOrReset = Boolean(updatedProfile?.programType || updatedProfile?.planCycleStarts);
-    if (
-      updatedWorkout?.location &&
-      updatedWorkout.location !== activeWorkout.location &&
-      activeWorkout.programWorkoutNumber &&
-      !isPlanSwitchOrReset
-    ) {
-      // Same path as the Workout tab's place switch, so the plan and the athlete's weights are kept.
-      handleSwitchTrainingLocation(updatedWorkout.location);
-    } else if (updatedWorkout) {
-      if (isPlanSwitchOrReset) {
-        setActiveWorkout(
-          prepareSession(updatedWorkout, { isProgramPlan: isPlanProgram(nextProfile.programType) })
-        );
-      } else {
-        setActiveWorkout(fillWeightless(updatedWorkout));
-      }
+    if (updatedBiometrics) {
+      saveBiometrics(updatedBiometrics);
+      setBiometrics(updatedBiometrics);
+    }
+    if (updatedActivities) {
+      saveActivities(updatedActivities);
+      setActivities(updatedActivities);
+    }
+    if (updatedWorkout) {
+      setActiveWorkout(fillWeightless(updatedWorkout));
     }
   };
 
   const handleUndoAssistantAction = (snapshot: CoachUndoSnapshot) => {
     if (snapshot.previousProfile) {
-      const restoredProfile = {
-        ...profile,
-        ...snapshot.previousProfile,
-        athleteMemories: snapshot.previousProfile.athleteMemories,
-        planCycleStarts: snapshot.previousProfile.planCycleStarts,
-        goalSettings: snapshot.previousProfile.goalSettings,
-      };
-      saveProfile(restoredProfile);
-      setProfile(restoredProfile);
+      setProfile((prev) => {
+        const restoredProfile: UserProfile = {
+          ...prev,
+          ...snapshot.previousProfile,
+          ...('athleteMemories' in snapshot.previousProfile!
+            ? { athleteMemories: snapshot.previousProfile!.athleteMemories }
+            : {}),
+          ...('planCycleStarts' in snapshot.previousProfile!
+            ? { planCycleStarts: snapshot.previousProfile!.planCycleStarts }
+            : {}),
+          ...('goalSettings' in snapshot.previousProfile!
+            ? { goalSettings: snapshot.previousProfile!.goalSettings }
+            : {}),
+          ...('progressWidgets' in snapshot.previousProfile!
+            ? { progressWidgets: snapshot.previousProfile!.progressWidgets }
+            : {}),
+        };
+        saveProfile(restoredProfile);
+        return restoredProfile;
+      });
     }
     if (snapshot.previousWorkout) {
       saveActiveWorkout(snapshot.previousWorkout);
       setActiveWorkout(snapshot.previousWorkout);
+    }
+    if (snapshot.previousBiometrics) {
+      saveBiometrics(snapshot.previousBiometrics);
+      setBiometrics(snapshot.previousBiometrics);
+    }
+    if (snapshot.previousActivities) {
+      saveActivities(snapshot.previousActivities);
+      setActivities(snapshot.previousActivities);
     }
   };
 

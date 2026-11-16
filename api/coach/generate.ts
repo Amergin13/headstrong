@@ -29,7 +29,7 @@ function getCandidateModels(preferCached = false): string[] {
   return [...new Set(list)];
 }
 
-const MAX_SYSTEM_CHARS = 4000;
+const MAX_SYSTEM_CHARS = 12000;
 const MAX_MESSAGE_CHARS = 2000;
 const MAX_TURNS = 10;
 
@@ -97,7 +97,7 @@ export default async function handler(req: any, res: any) {
     return res.status(400).json({ error: 'A user prompt is required.' });
   }
 
-  const rawTools = Array.isArray(body.tools) ? body.tools.slice(0, 8) : [];
+  const rawTools = Array.isArray(body.tools) ? body.tools.slice(0, 16) : [];
   const hasTools = rawTools.length > 0;
   const responseSchema =
     !hasTools && body.responseSchema && typeof body.responseSchema === 'object'
@@ -107,7 +107,7 @@ export default async function handler(req: any, res: any) {
     !hasTools && typeof body.responseMimeType === 'string' && body.responseMimeType === 'application/json'
       ? 'application/json'
       : undefined;
-  const tokenCap = hasTools || responseSchema ? 450 : 250;
+  const tokenCap = hasTools || responseSchema ? 600 : 250;
 
   const rawMaxTokens = Number(body.maxOutputTokens);
   const maxOutputTokens = Number.isFinite(rawMaxTokens) ? Math.max(16, Math.min(tokenCap, Math.round(rawMaxTokens))) : 180;

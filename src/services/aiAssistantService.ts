@@ -3,6 +3,7 @@ import { standardsAge } from '../engine/strengthStandards';
 import { GOAL_DISPLAY_NAME } from '../utils/goalNames';
 import {
   AssistantActionPayload,
+  AssistantActionType,
   AssistantChatMessage,
   AthleteMemoryCategory,
   AthleteMemoryFact,
@@ -33,20 +34,12 @@ import {
   queryExerciseScienceKnowledgeBase,
 } from '../engine/knowledgeGraph';
 import { forgetOnDeviceExchange, getOnDeviceModelStatus, isOnDeviceModelReady, promptOnDeviceModel } from './onDeviceModel';
-import { adaptWorkoutSessionToLocation, generateSmartWorkoutSession, getFirstSplitDayForProgram } from './workoutGenerator';
 import {
   canUseMusclePlan,
   isPlanProgram,
   resolveActivePlan,
 } from '../engine/trainingPlans';
-import {
-  generatePlanWorkout,
-  getNextProgramWorkoutNumber,
-  isActiveSlot,
-  planWorkoutLabel,
-} from '../engine/muscleBuildingProgram';
-import { prepareSessionForAthlete } from './sessionPreparation';
-import { localDateString } from '../utils/date';
+import { planWorkoutLabel } from '../engine/muscleBuildingProgram';
 import { formatPreciseWeight, formatWeight } from '../utils/units';
 import { calculateWarmupPrescription } from '../engine/warmup';
 import { PROGRESSION_RULES } from '../engine/progressionRules';
@@ -88,11 +81,19 @@ import {
   CoachToolOutcome,
   enforceMutationTruthfulness,
   executeCoachToolCall,
+  executeCoachToolCalls,
   executePendingConfirmation,
   formatStateDiffText,
+  resolveCatalogExerciseByName,
+  resolveWorkoutExerciseByName,
   SupabaseSyncHook,
 } from './coachTools';
-import { forgetLastFlashLiteExchange, isFlashLiteReady, promptFlashLiteStructured } from './geminiFlashLite';
+import {
+  forgetLastFlashLiteExchange,
+  isFlashLiteReady,
+  promptFlashLiteStructured,
+  recordFlashLiteExchange,
+} from './geminiFlashLite';
 
 export { exerciseNamedIn };
 
@@ -124,7 +125,41 @@ export interface AssistantProcessResult {
   message: AssistantChatMessage;
   updatedProfile?: Partial<UserProfile>;
   updatedWorkout?: WorkoutSession;
+  updatedBiometrics?: BiometricLog[];
+  updatedActivities?: ActivityLog[];
   actionTaken?: AssistantActionPayload;
+}
+
+function actionTypeForOutcome(outcome: CoachToolOutcome): AssistantActionType {
+  if (outcome.actionType) return outcome.actionType;
+  switch (outcome.toolName) {
+    case 'reset_program':
+      return 'RESET_PROGRAM';
+    case 'swap_exercise':
+      return 'SWAP_EXERCISE';
+    case 'adjust_workout_volume':
+      return 'ADJUST_WORKOUT_VOLUME';
+    case 'modify_workout_exercises':
+      return 'ADD_EXERCISE';
+    case 'switch_location':
+      return 'SWITCH_LOCATION';
+    case 'update_home_equipment':
+      return 'UPDATE_EQUIPMENT';
+    case 'switch_program':
+      return 'SWITCH_PROGRAM_SPLIT';
+    case 'switch_goal_phase':
+      return 'SWITCH_GOAL_PHASE';
+    case 'log_rest_day':
+      return 'SHIFT_WORKOUT';
+    case 'update_goals':
+      return 'UPDATE_GOALS';
+    case 'update_progress_widgets':
+      return 'UPDATE_PROGRESS_WIDGETS';
+    case 'log_entry':
+      return 'LOG_BIOMETRIC';
+    default:
+      return 'SAVE_ATHLETE_MEMORY';
+  }
 }
 
 /**
@@ -199,6 +234,7 @@ export async function confirmAssistantPendingAction(
     profile: context.profile,
     activeWorkout: context.activeWorkout,
     workouts: context.workouts,
+    biometrics: context.biometrics,
     activities: context.activities,
     exerciseCatalog: context.exerciseCatalog,
     bodyweightEmaKg: context.bodyweightEmaKg,
@@ -210,14 +246,7 @@ export async function confirmAssistantPendingAction(
   const actionTaken: AssistantActionPayload | undefined =
     outcome.mutationStatus === 'success'
       ? {
-          type:
-            outcome.toolName === 'reset_program'
-              ? 'RESET_PROGRAM'
-              : outcome.toolName === 'swap_exercise'
-                ? 'SWAP_EXERCISE'
-                : outcome.toolName === 'adjust_workout_volume'
-                  ? 'ADJUST_WORKOUT_VOLUME'
-                  : 'SAVE_ATHLETE_MEMORY',
+          type: actionTypeForOutcome(outcome),
           summary: outcome.stateDiff ? `${outcome.stateDiff.label}: ${formatStateDiffText(outcome.stateDiff)}` : text,
           toolName: outcome.toolName,
           mutationStatus: outcome.mutationStatus,
@@ -247,6 +276,8 @@ export async function confirmAssistantPendingAction(
     },
     updatedProfile: outcome.updatedProfile,
     updatedWorkout: outcome.updatedWorkout,
+    updatedBiometrics: outcome.updatedBiometrics,
+    updatedActivities: outcome.updatedActivities,
     actionTaken,
   };
 }
@@ -444,6 +475,16 @@ export function buildCoachSystemPrompt(input: AssistantProcessInput): string {
 
   // Voice from the content strategy: pragmatic and observant, grounded in logged facts, no hype, formatted for mobile chat.
   const athleteAge = standardsAge(profile);
+  const homeGearList =
+    (profile.homeEquipment || []).length > 0
+      ? (profile.homeEquipment || []).map((t) => EQUIPMENT_NAMES[t] || t).join(', ')
+      : 'none listed';
+  const availablePlanNames = [
+    ...(profile.customPlans ?? []).map((p) => `${p.name} (${p.id})`),
+    '6-Week Starter Plan (starter_6wk)',
+    '4-Day Starter Plan (starter_4day)',
+    ...(canUseMusclePlan(profile.email) ? ['6-Week Muscle Building Plan (muscle_building_6wk)'] : []),
+  ].join('; ');
   const contextEnvelope = buildContextEnvelope({
     profile,
     activeWorkout,
@@ -458,10 +499,11 @@ export function buildCoachSystemPrompt(input: AssistantProcessInput): string {
     routeName: input.routeName,
     knowledgeGraph: kg,
   });
-  return `You are ${VOICE_TONE_MATRIX.steadyVoice.replace(/^The /, 'the ').replace(/\.$/, '')}, speaking to ${athleteName || 'the athlete'} as "you". Front-load one direct sentence answering the question with the key figure or outcome first (no greeting, and never repeat visible set tables). Keep replies concise at 35-75 words unless they explicitly ask for a detailed breakdown. Keep each paragraph to 1-2 short sentences, and use concise bold-lead bullets (- **Topic:** detail) for multi-part guidance. For anything about their plan, weights, sets or progress, use only the facts below. Never claim a program reset, swap, volume edit, or memory save happened unless a tool call succeeded. For general training questions (timing, motivation, habits, technique, recovery, sleep, food), give practical, widely accepted advice in your own words without inventing numbers (avoid ungrounded weights, reps, sets, percentages, minutes, seconds, or hours—say "a short rest" or "a focused session" instead). Never say the plan or the facts don't cover something. Never call a muscle's sets enough unless it is on target. High recovery means today's targets stand. Don't praise effort the facts don't show. Never guess or invent how individual sets or reps went in past workouts. The plan sets weights and raises them itself when every set reaches the top of the range; never tell them to change the weight. No hype, cheerleading or percentages; say why something works in one plain clause.
-Athlete: ${hasWeighIn ? `${formatWeight(bodyweightEmaKg, unit)}, ` : ''}${athleteAge ? `age ${athleteAge}, ` : ''}location ${profile.activeLocation === 'travel' ? 'Bodyweight' : profile.activeLocation === 'home' ? 'At Home' : 'Full Gym'}, goal ${goalLabel}, week ${planPos.week}/${planPos.totalWeeks}, recovery ${recovery}${kg.recoveryEfficiencyScore > 0 ? ` (${kg.recoveryEfficiencyScore}%)` : ''}${
+  return `You are ${VOICE_TONE_MATRIX.steadyVoice.replace(/^The /, 'the ').replace(/\.$/, '')}, speaking to ${athleteName || 'the athlete'} as "you". Front-load one direct sentence answering the question with the key figure or outcome first (no greeting, and never repeat visible set tables). Keep replies concise at 35-75 words unless they explicitly ask for a detailed breakdown. Keep each paragraph to 1-2 short sentences, and use concise bold-lead bullets (- **Topic:** detail) for multi-part guidance. For anything about their plan, weights, sets or progress, use only the facts below. Whenever the athlete asks or implies they want to take an action—swapping, adding, or removing exercises, adjusting sets/volume/load, switching location (gym, home, travel), updating home equipment, switching program, changing goal phase, setting targets/goals, toggling Progress cards, logging bodyweight/body fat/waist/cardio, logging a rest day, resetting their plan, or saving a preference—invoke the matching function tool(s) immediately, even when phrased politely ("Can you...", "Could you..."). Ask clarifying questions only when an essential target cannot be inferred. Never claim a mutation happened unless a tool call succeeded. For general training questions (timing, motivation, habits, technique, recovery, sleep, food), give practical, widely accepted advice in your own words without inventing numbers (avoid ungrounded weights, reps, sets, percentages, minutes, seconds, or hours—say "a short rest" or "a focused session" instead). Never say the plan or the facts don't cover something. Never call a muscle's sets enough unless it is on target. High recovery means today's targets stand. Don't praise effort the facts don't show. Never guess or invent how individual sets or reps went in past workouts. The plan sets weights and raises them itself when every set reaches the top of the range; never tell them to change the weight. No hype, cheerleading or percentages; say why something works in one plain clause.
+Athlete: ${hasWeighIn ? `${formatWeight(bodyweightEmaKg, unit)}, ` : ''}${athleteAge ? `age ${athleteAge}, ` : ''}location ${profile.activeLocation === 'travel' ? 'Bodyweight' : profile.activeLocation === 'home' ? 'At Home' : 'Full Gym'}, home gear: ${homeGearList}, goal ${goalLabel}, week ${planPos.week}/${planPos.totalWeeks}, recovery ${recovery}${kg.recoveryEfficiencyScore > 0 ? ` (${kg.recoveryEfficiencyScore}%)` : ''}${
     latestBio && latestBio.hrvRmssd > 0 ? `, slept ${latestBio.sleepHours} h` : ''
   }.${placeFacts.length ? `\nViewing: ${placeFacts.join(' ')}.` : ''}${kgFacts.length ? `\n${kgFacts.join('\n')}` : ''}
+Available plans: ${availablePlanNames}.
 ${serializeContextEnvelopeForPrompt(contextEnvelope)}
 Today's plan (not done yet): ${activeWorkout?.name || 'rest'}: ${exercisesDesc || 'nothing planned'}.
 Weekly hard sets (done of target): ${musclesDesc || 'none yet'}.`;
@@ -643,34 +685,64 @@ const EQUIPMENT_KEYWORDS: { tag: HomeEquipmentTag; pattern: string; name: string
 ];
 /** Only these words may sit between the verb and the gear, so "got 8 reps on bench" isn't a purchase. */
 const EQUIPMENT_FILLER =
-  '(?:\\s+(?:a|an|some|new|the|my|me|myself|our|this|that|adjustable|flat|incline|workout|home|pair|set|of|second|spare|old|own))*';
+  '(?:\\s+(?:a|an|some|new|the|my|me|myself|our|this|that|adjustable|flat|incline|exercise|weight|lifting|workout|home|pair|set|of|second|spare|old|own))*';
 /** "Bench" is also a lift: "got a new bench PR" and "have bench today" are about training, not gear. */
 const NOT_EQUIPMENT_AFTER =
   '(?!\\s+(?:press|presses|pressing|row|rows|curl|curls|fly|flies|flyes|squat|squats|raise|raises|extension|extensions|lunge|lunges|rdl|deadlift|deadlifts|pull|pulls|pr|prs|pb|pbs|max|1rm|e1rm|record|best|rep|reps|set|sets|today|tonight|tomorrow|day|session|workout|next)\\b)';
 const EQUIPMENT_ADD_VERBS = 'bought|got|have|has|own|new|add|added|purchased|acquired|picked\\s*up|equipped\\s*with|can\\s*use';
 const EQUIPMENT_REMOVE_VERBS =
-  'remove|removed|delete|deleted|lost|sold|don[\'’]?t\\s*have|do\\s*not\\s*have|no\\s*longer\\s*(?:have|own|use)|got\\s*rid\\s*of';
+  'remove|removed|delete|deleted|drop|dropped|lost|sold|don[\'’]?t\\s*have|do\\s*not\\s*have|no\\s*longer\\s*(?:have|own|use)|got\\s*rid\\s*of';
 
 /**
- * A change to the athlete's gear, only when the message says so directly ("I got a pull-up bar",
- * "I sold my dumbbells"). Mentioning gear, or a lift named after it, never changes anything, and
- * neither does a question.
+ * Extracts all home-gear additions/removals requested ("I got dumbbells and a bench",
+ * "Can you add a pull-up bar to my home equipment?"), while ignoring questions and lift names.
  */
+function detectEquipmentChanges(
+  lowerMsg: string
+): { equipment: (typeof EQUIPMENT_KEYWORDS)[number]; action: 'add' | 'remove' }[] {
+  const isPoliteGearCommand =
+    /^(?:can|could|would|will)\s+you\s+(?:please\s+)?(?:add|remove|delete|drop|take\s+off)\b/i.test(lowerMsg) &&
+    (/\b(?:home\s+)?(?:equipment|gear|setup)\b/i.test(lowerMsg) ||
+      (!/\b(set|sets|widget|card|chart|goal)\b/i.test(lowerMsg) &&
+        !/(?:to|from|in)\s+(?:today'?s?\s+)?(?:workout|session|routine)\b/i.test(lowerMsg)));
+  if (
+    !isPoliteGearCommand &&
+    (/\?\s*$/.test(lowerMsg) ||
+      /^(do|does|did|can|could|should|would|will|what|what['’]?s|whats|which|how|why|when|where|is|are)\b/.test(lowerMsg))
+  ) {
+    return [];
+  }
+
+  const allPattern = EQUIPMENT_KEYWORDS.map((e) => `(?:${e.pattern})`).join('|');
+  const results: { equipment: (typeof EQUIPMENT_KEYWORDS)[number]; action: 'add' | 'remove' }[] = [];
+  const seenTags = new Set<HomeEquipmentTag>();
+
+  const scanAction = (verbs: string, action: 'add' | 'remove') => {
+    const chainRegex = new RegExp(
+      `\\b(?:${verbs})${EQUIPMENT_FILLER}\\s+((?:${allPattern})(?:${NOT_EQUIPMENT_AFTER})(?:\\s*(?:,|and|&|\\+)${EQUIPMENT_FILLER}\\s*(?:${allPattern})(?:${NOT_EQUIPMENT_AFTER}))*)`,
+      'gi'
+    );
+    for (const m of lowerMsg.matchAll(chainRegex)) {
+      const span = m[1] || '';
+      for (const equipment of EQUIPMENT_KEYWORDS) {
+        if (seenTags.has(equipment.tag)) continue;
+        if (new RegExp(`\\b(?:${equipment.pattern})\\b`, 'i').test(span)) {
+          results.push({ equipment, action });
+          seenTags.add(equipment.tag);
+        }
+      }
+    }
+  };
+
+  scanAction(EQUIPMENT_REMOVE_VERBS, 'remove');
+  scanAction(EQUIPMENT_ADD_VERBS, 'add');
+  return results;
+}
+
 function detectEquipmentChange(
   lowerMsg: string
 ): { equipment: (typeof EQUIPMENT_KEYWORDS)[number]; action: 'add' | 'remove' } | null {
-  if (/\?\s*$/.test(lowerMsg) || /^(do|does|did|can|could|should|would|will|what|what['’]?s|whats|which|how|why|when|where|is|are)\b/.test(lowerMsg)) {
-    return null;
-  }
-  const mentions = (verbs: string, pattern: string) =>
-    new RegExp(`\\b(?:${verbs})${EQUIPMENT_FILLER}\\s+(?:${pattern})\\b${NOT_EQUIPMENT_AFTER}`, 'i').test(lowerMsg);
-  for (const equipment of EQUIPMENT_KEYWORDS) {
-    if (mentions(EQUIPMENT_REMOVE_VERBS, equipment.pattern)) return { equipment, action: 'remove' };
-  }
-  for (const equipment of EQUIPMENT_KEYWORDS) {
-    if (mentions(EQUIPMENT_ADD_VERBS, equipment.pattern)) return { equipment, action: 'add' };
-  }
-  return null;
+  return detectEquipmentChanges(lowerMsg)[0] ?? null;
 }
 
 /**
@@ -790,37 +862,6 @@ function recoveryReadingsClause(log?: BiometricLog): string {
   return readings.length ? `, with ${readings.join(', ')}` : '';
 }
 
-function buildPreparedPlanSession(
-  plan: ReturnType<typeof resolveActivePlan>,
-  workoutNumber: number,
-  input: AssistantProcessInput,
-  targetProfile: UserProfile
-): WorkoutSession {
-  const raw = generatePlanWorkout(plan, workoutNumber);
-  const loc = targetProfile.activeLocation || input.activeWorkout?.location || 'gym';
-  const placed =
-    loc !== 'gym'
-      ? adaptWorkoutSessionToLocation(
-          raw,
-          loc,
-          targetProfile.homeEquipment || [],
-          input.exerciseCatalog,
-          input.workouts,
-          input.readinessState,
-          input.bodyweightEmaKg
-        )
-      : raw;
-  return prepareSessionForAthlete(placed, {
-    history: input.workouts,
-    bodyweightKg: input.bodyweightEmaKg,
-    readinessState: input.readinessState,
-    gender: targetProfile.gender,
-    experienceLevel: targetProfile.experienceLevel,
-    unit: targetProfile.weightUnit || 'kg',
-    isProgramPlan: true,
-  });
-}
-
 function matchTargetProgramFromMessage(
   lowerMsg: string,
   profile: UserProfile
@@ -892,6 +933,7 @@ async function processAssistantMessageCore(
     profile,
     activeWorkout,
     workouts,
+    biometrics,
     activities: input.activities,
     exerciseCatalog,
     bodyweightEmaKg,
@@ -904,6 +946,8 @@ async function processAssistantMessageCore(
   let actionTaken: AssistantActionPayload | undefined;
   let updatedProfile: Partial<UserProfile> | undefined;
   let updatedWorkout: WorkoutSession | undefined;
+  let updatedBiometrics: BiometricLog[] | undefined;
+  let updatedActivities: ActivityLog[] | undefined;
   let mutationStatus: CoachMutationStatus | undefined;
   let stateDiff: CoachStateDiff | undefined;
   let pendingConfirmation: CoachPendingConfirmation | undefined;
@@ -927,15 +971,10 @@ async function processAssistantMessageCore(
     if (outcome.mutationStatus === 'success') {
       if (outcome.updatedProfile) updatedProfile = outcome.updatedProfile;
       if (outcome.updatedWorkout) updatedWorkout = outcome.updatedWorkout;
+      if (outcome.updatedBiometrics) updatedBiometrics = outcome.updatedBiometrics;
+      if (outcome.updatedActivities) updatedActivities = outcome.updatedActivities;
       actionTaken = {
-        type:
-          outcome.toolName === 'reset_program'
-            ? 'RESET_PROGRAM'
-            : outcome.toolName === 'swap_exercise'
-              ? 'SWAP_EXERCISE'
-              : outcome.toolName === 'adjust_workout_volume'
-                ? 'ADJUST_WORKOUT_VOLUME'
-                : 'SAVE_ATHLETE_MEMORY',
+        type: actionTypeForOutcome(outcome),
         summary: outcome.stateDiff ? `${outcome.stateDiff.label}: ${formatStateDiffText(outcome.stateDiff)}` : outcome.summaryText,
         toolName: outcome.toolName,
         mutationStatus: outcome.mutationStatus,
@@ -998,7 +1037,8 @@ async function processAssistantMessageCore(
     knowledgeGraph: kg,
   });
 
-  const detectedEquipmentChange = detectEquipmentChange(lowerMsg);
+  const detectedEquipmentChanges = detectEquipmentChanges(lowerMsg);
+  const detectedEquipmentChange = detectedEquipmentChanges[0] ?? null;
   // At the gym, "I don't have dumbbells" is about today's workout, not the gear kept at home:
   // it gets swap options and never deletes home equipment. "I sold my dumbbells" still does.
   const kitMissingToday =
@@ -1006,35 +1046,222 @@ async function processAssistantMessageCore(
     (activeWorkout.location ?? 'gym') === 'gym' &&
     /\b(don['’]?t|do not) have\b/.test(lowerMsg) &&
     !/\b(any ?more|any longer|at home)\b/.test(lowerMsg);
-  const equipmentChange = kitMissingToday ? null : detectedEquipmentChange;
-  const matchedEquip = equipmentChange?.equipment;
+  const equipmentChanges = kitMissingToday ? [] : detectedEquipmentChanges;
+  const matchedEquip = equipmentChanges[0]?.equipment;
+
+  const isPoliteCommandPrefix = /^(?:can|could|would|will)\s+you\b/i.test(lowerMsg);
+  const isAdvisoryQuestion =
+    /^(?:what|which|how|why|when|where|who|should\s+i|can\s+i|could\s+i|do\s+i|did\s+i|am\s+i|are\s+my|is\s+my|would\s+you\s+(?:recommend|suggest|advise)|if\s+i)\b/i.test(
+      lowerMsg
+    ) ||
+    (/\?\s*$/.test(lowerMsg) && !isPoliteCommandPrefix);
+  const hasActionRequestVerb =
+    /\b(swap|replace|substitute|switch|change|adjust|modify|edit|reduce|cut|drop|trim|lower|decrease|increase|shorten|deload|add|remove|delete|reset|restart|remember|log|record|save|schedule|update|set)\b/i.test(
+      lowerMsg
+    );
+  const isExplicitActionIntent = hasActionRequestVerb && !isAdvisoryQuestion;
 
   // ============================================================================
   // 0. INTENT: CUSTOMISE PROGRESS WIDGETS / CHANGE GOALS
   // ============================================================================
   const resetProgramIntent =
-    /\b(reset|restart|re-start|start\s+over|go\s+back|back\s+to)\b.*\b(program|plan|cycle|day\s*(1|one)|workout\s*1|week\s*1|the\s+beginning|scratch)\b|\b(start|begin)\b.*\b(from\s+(day\s*(1|one)|workout\s*1|week\s*1|(the\s+)?(beginning|start|scratch)))\b/i.test(lowerMsg) &&
+    /\b(reset|restart|re-start|start\s+over|go\s+back|back\s+to)\b.*\b(program|plan|cycle|day\s*(1|one)|workout\s*1|week\s*1|the\s+beginning|scratch)\b|\b(start|begin)\b.*\b(from\s+(day\s*(1|one)|workout\s*1|week\s*1|(the\s+)?(beginning|start|scratch)))\b/i.test(
+      lowerMsg
+    ) &&
     !/\b(weight|load|barbell|timer|streak|app|data|account|factory|everything)\b/i.test(lowerMsg);
   const isResetQuestionOnly =
     resetProgramIntent &&
-    /^(should\s+i|would\s+you|do\s+i\s+need\s+to|is\s+it\s+better\s+to)\b/i.test(lowerMsg);
+    /^(should\s+i|would\s+you\s+(?:recommend|suggest|advise)|do\s+i\s+need\s+to|is\s+it\s+better\s+to|what\s+happens\s+if\s+i)\b/i.test(
+      lowerMsg
+    );
 
   const progressWidgetChange = detectProgressWidgetChange(lowerMsg, profile, exerciseCatalog, activeWorkout);
-  const goalChange = progressWidgetChange ? null : detectGoalChange(lowerMsg, profile, activeWorkout, workouts, exerciseCatalog);
+  const goalChange = progressWidgetChange
+    ? null
+    : detectGoalChange(lowerMsg, profile, activeWorkout, workouts, exerciseCatalog);
+
+  const cleanPromptForCmd = userMessage
+    .trim()
+    .replace(/^(?:(?:can|could|would|will)\s+you\s+(?:please\s+)?)?(?:please\s+|i(?:'d|\s+would)?\s+like\s+to\s+|i\s+want\s+to\s+|help\s+me\s+)?/i, '')
+    .replace(/[?.!\s]+$/, '')
+    .trim();
+  const cleanLowerForCmd = cleanPromptForCmd.toLowerCase();
+
+  const twoSidedSwapMatch =
+    !isAdvisoryQuestion
+      ? /^(?:swap|replace|substitute|switch|change)\s+(?:out\s+)?(.+?)\s+(?:with|for|to|instead\s+of|->|→)\s+(.+)$/i.exec(
+          cleanPromptForCmd
+        )
+      : null;
+  const twoSidedSwapCandidate = (() => {
+    if (!twoSidedSwapMatch) return null;
+    const isGenericSwitch = /^(?:switch|change)\b/i.test(cleanLowerForCmd);
+    if (
+      isGenericSwitch &&
+      /\b(goal|goals|phase|program|plan|split|location|home|gym|travel|bodyweight|bulk|cut|maingain|week|widget|widgets|chart|card|progress)\b/i.test(
+        cleanLowerForCmd
+      )
+    ) {
+      return null;
+    }
+    const oldPart = twoSidedSwapMatch[1].replace(/\s+(?:in\s+today'?s?\s+workout|today)\b/gi, '').trim();
+    const newPart = twoSidedSwapMatch[2].replace(/\s+(?:because|since|due\s+to)\s+.*$/i, '').trim();
+    if (!oldPart || !newPart) return null;
+    if (isGenericSwitch && !findExerciseNamed(oldPart.toLowerCase(), activeWorkout, exerciseCatalog)?.session) {
+      return null;
+    }
+    return { oldPart, newPart };
+  })();
+
+  const oneSidedSwapMatch =
+    !isAdvisoryQuestion && !twoSidedSwapCandidate
+      ? /^(?:swap|replace|substitute)(?:\s+out)?\s+(.+)$/i.exec(cleanPromptForCmd)
+      : null;
+  const oneSidedSwapExercise = (() => {
+    if (!oneSidedSwapMatch) return null;
+    const candidate = oneSidedSwapMatch[1]
+      .replace(/\s+(?:in\s+today'?s?\s+workout|today|please)\b/gi, '')
+      .replace(/\s+(?:because|since|due\s+to)\s+.*$/i, '')
+      .trim();
+    if (!candidate || /^(?:an?\s+exercise|exercises?|something|this|that|it|one)$/i.test(candidate)) return null;
+    return findExerciseNamed(candidate.toLowerCase(), activeWorkout, exerciseCatalog)?.session ?? null;
+  })();
+
+  const hasVolumeVerbTarget =
+    /\b(?:reduce|cut|drop|trim|lower|decrease|increase|add)\s+(?:my\s+|today'?s?\s+)?(?:(?:\d+|a|an|more|extra|another)\s+)?(?:working\s+)?(?:sets?|volume)\b/i.test(
+      cleanLowerForCmd
+    ) ||
+    /\b(?:reduce|cut|drop|trim|lower|decrease|increase)\b[^.?!]*\b(?:working\s+)?(?:sets?|volume)\b(?:\s+(?:on|for|from|in)\b)?/i.test(
+      cleanLowerForCmd
+    ) ||
+    /\bdeload\s+(?:today'?s?\s+)?(?:workout|weights|loads|session)\b|\b(?:shorten|trim)\s+(?:today'?s?\s+)?(?:workout|session)\b|\bmake\s+(?:today'?s?\s+)?(?:workout|session)\s+shorter\b/i.test(
+      cleanLowerForCmd
+    ) ||
+    /\bshorten\s+(?:today'?s?\s+)?(?:workout|session)\b|\badjust\s+(?:today'?s?\s+)?(?:workout|session)\s+to\s+(?:fit|be\s+shorter)\b/i.test(
+      lowerMsg
+    );
+  const volumeCmdMatch = !isAdvisoryQuestion && hasVolumeVerbTarget;
+
+  const modifyExerciseMatch =
+    !isAdvisoryQuestion && !volumeCmdMatch && !progressWidgetChange && !goalChange
+      ? /^(add|include|append|insert|remove|delete|drop|take\s+out)\s+(.+)$/i.exec(cleanPromptForCmd)
+      : null;
+  const modifyExerciseCandidate = (() => {
+    if (!modifyExerciseMatch) return null;
+    const verb = modifyExerciseMatch[1].toLowerCase();
+    const action: 'add' | 'remove' =
+      verb.startsWith('add') || verb.startsWith('include') || verb.startsWith('append') || verb.startsWith('insert')
+        ? 'add'
+        : 'remove';
+    let body = modifyExerciseMatch[2].trim();
+    if (
+      /\b(home\s*(?:equipment|gear|setup)|progress\s*(?:page|tab|widget|chart|card)|goal|goals|memory)\b/i.test(body)
+    ) {
+      return null;
+    }
+    const setsMatch = /\bfor\s+(\d+)\s+sets?\b/i.exec(body);
+    const setsCount = setsMatch ? parseInt(setsMatch[1], 10) : undefined;
+    body = body
+      .replace(/\bfor\s+\d+\s+sets?\b/gi, '')
+      .replace(/\b(?:to|into|from|out\s+of|in)\s+(?:today'?s?\s+)?(?:workout|session|routine|plan)\b/gi, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (!body) return null;
+    if (action === 'remove') {
+      const matched = resolveWorkoutExerciseByName(body, activeWorkout, exerciseCatalog);
+      return matched ? { action, exerciseName: matched.name, setsCount } : null;
+    }
+    // For adding, require an identifiable catalog match unless they explicitly wrote "to today's workout/session"
+    const explicitlyWorkout = /\b(?:workout|session|routine)\b/i.test(modifyExerciseMatch[2]);
+    const matchedDef = resolveCatalogExerciseByName(body, exerciseCatalog, activeWorkout);
+    if (!matchedDef && !explicitlyWorkout) return null;
+    // Do not hijack "add dumbbells" when it looks like home equipment
+    if (!explicitlyWorkout && equipmentChanges.length > 0) return null;
+    return matchedDef ? { action, exerciseName: matchedDef.name, setsCount } : null;
+  })();
+
+  const memoryCmdMatch =
+    !isAdvisoryQuestion &&
+    /\b(remember\s+(that|this)?|save\s+(this|to\s+(?:my\s+)?memory)|keep\s+in\s+mind|note\s+that)\b/i.test(lowerMsg) &&
+    !/^(what|can\s+you\s+tell\s+me|do\s+you\s+remember)\b/i.test(lowerMsg);
+
+  const logWeightMatch =
+    !isAdvisoryQuestion
+      ? /^(?:log|record|save|update|enter|set)\s+(?:my\s+)?(?:body\s*weight|weight)\s*(?:to|as|at|is|:)?\s*(\d+(?:\.\d+)?)\s*(kg|kilos?|lbs?|pounds?)?$/i.exec(
+          cleanPromptForCmd
+        ) || /^i\s+(?:just\s+)?weigh(?:ed)?\s+(\d+(?:\.\d+)?)\s*(kg|kilos?|lbs?|pounds?)$/i.exec(cleanPromptForCmd)
+      : null;
+  const logBodyFatMatch =
+    !isAdvisoryQuestion && !logWeightMatch
+      ? /^(?:log|record|save|update|enter|set)\s+(?:my\s+)?body\s*fat(?:\s*%|\s*pct|\s*percentage)?\s*(?:to|as|at|is|:)?\s*(\d+(?:\.\d+)?)\s*%?$/i.exec(
+          cleanPromptForCmd
+        )
+      : null;
+  const logWaistMatch =
+    !isAdvisoryQuestion && !logWeightMatch && !logBodyFatMatch
+      ? /^(?:log|record|save|update|enter|set)\s+(?:my\s+)?waist(?:\s*(?:measurement|circumference|size))?\s*(?:to|as|at|is|:)?\s*(\d+(?:\.\d+)?)\s*(cm|in|inch|inches)?$/i.exec(
+          cleanPromptForCmd
+        )
+      : null;
+  const logActiveDayMatch =
+    !isAdvisoryQuestion && !logWeightMatch && !logBodyFatMatch && !logWaistMatch
+      ? /^(?:log|record|save|add)\s+(?:a\s+|an\s+|my\s+)?(\d+(?:\.\d+)?)\s*(?:-|\s)?min(?:ute)?s?\s+(?:of\s+)?(walk(?:ing)?|run(?:ning)?|jog(?:ging)?|bike|biking|cycling|ride|riding|swim(?:ming)?|row(?:ing)?|hike|hiking|cardio|hiit|class|yoga|stretch(?:ing)?|mobility|activity|workout)(?:\s+today)?$/i.exec(
+          cleanPromptForCmd
+        )
+      : null;
+
   if (progressWidgetChange) {
     answerText = progressWidgetChange.reply;
     if (progressWidgetChange.changed) {
+      const prevCount = profile.progressWidgets?.length;
       updatedProfile = { progressWidgets: progressWidgetChange.progressWidgets };
+      mutationStatus = 'success';
+      stateDiff = {
+        object_type: 'Program',
+        object_id: 'progress-widgets',
+        label: 'Progress Updated',
+        previous_state: { display: prevCount ? `${prevCount} widgets` : 'Default' },
+        new_state: { display: progressWidgetChange.summary ?? 'Progress widgets updated' },
+      };
+      undoSnapshot = {
+        label: 'Undo Progress Update',
+        previousProfile: { progressWidgets: profile.progressWidgets },
+      };
+      navigateTarget = 'analytics';
+      navigateLabel = 'View Progress';
       actionTaken = {
         type: 'UPDATE_PROGRESS_WIDGETS',
         summary: progressWidgetChange.summary ?? 'Progress widgets updated',
+        toolName: 'update_progress_widgets',
+        mutationStatus: 'success',
+        stateDiff,
       };
     }
   } else if (goalChange) {
     answerText = goalChange.reply;
     if (goalChange.changed) {
       updatedProfile = { goalSettings: goalChange.goalSettings };
-      actionTaken = { type: 'UPDATE_GOALS', summary: goalChange.summary ?? 'Goals updated' };
+      mutationStatus = 'success';
+      stateDiff = {
+        object_type: 'Goal',
+        object_id: 'goals',
+        label: 'Goals Updated',
+        previous_state: { display: `${profile.goalSettings?.customGoals?.length ?? 0} custom goal(s)` },
+        new_state: { display: goalChange.summary ?? 'Goals updated' },
+      };
+      undoSnapshot = {
+        label: 'Undo Goal Update',
+        previousProfile: { goalSettings: profile.goalSettings },
+      };
+      navigateTarget = 'analytics';
+      navigateLabel = 'View Goals';
+      actionTaken = {
+        type: 'UPDATE_GOALS',
+        summary: goalChange.summary ?? 'Goals updated',
+        toolName: 'update_goals',
+        mutationStatus: 'success',
+        stateDiff,
+      };
     }
   } else if (isResetQuestionOnly) {
     const currentPlan = resolveActivePlan(profile);
@@ -1073,38 +1300,25 @@ async function processAssistantMessageCore(
         value: `Workout ${workoutNum} of ${activePlan.templates.length} (Week 1/${totalWeeks})`,
       });
     }
-  } else if (
-    /^(?:please\s+)?(?:swap|replace)\s+(?:out\s+)?(.+?)\s+(?:with|for|to)\s+(.+)$/i.test(lowerMsg) &&
-    !/^(can|should|would|could|what|how|why)\b/i.test(lowerMsg) &&
-    !/\?\s*$/.test(lowerMsg)
-  ) {
-    const swapMatch = /^(?:please\s+)?(?:swap|replace)\s+(?:out\s+)?(.+?)\s+(?:with|for|to)\s+(.+)$/i.exec(lowerMsg);
-    const oldPart = swapMatch?.[1]?.replace(/\s+(?:in\s+today'?s?\s+workout|today)\b/gi, '').trim() ?? '';
-    const newPart = swapMatch?.[2]?.replace(/\s+(?:because|since|due\s+to)\s+.*$/i, '').trim() ?? '';
-    const reasonMatch = /\b(?:because|since|due\s+to)\s+(.+)$/i.exec(lowerMsg);
+  } else if (twoSidedSwapCandidate || oneSidedSwapExercise) {
+    const reasonMatch = /\b(?:because|since|due\s+to)\s+(.+)$/i.exec(cleanPromptForCmd);
     const outcome = await executeCoachToolCall(
       'swap_exercise',
       {
         workout_id: activeWorkout.id,
-        old_exercise_id: oldPart,
-        new_exercise_id: newPart,
+        old_exercise_id: twoSidedSwapCandidate ? twoSidedSwapCandidate.oldPart : oneSidedSwapExercise!.name,
+        ...(twoSidedSwapCandidate ? { new_exercise_id: twoSidedSwapCandidate.newPart } : {}),
         reason: reasonMatch?.[1]?.trim() || 'athlete request',
       },
       toolCtx
     );
     applyToolOutcome(outcome);
-  } else if (
-    (/\b(reduce|cut|drop|trim|lower|decrease|increase|add)\b.*\b(working\s+)?(sets?|volume)\b|\bdeload\s+(today'?s?\s+)?(workout|weights|loads|session)\b|\b(shorten|trim)\s+(today'?s?\s+)?(workout|session)\b/i.test(
-      lowerMsg
-    )) &&
-    !/^(should|can|would|could|how|why|what|am\s+i|do\s+i|if\s+i)\b/i.test(lowerMsg) &&
-    !/\?\s*$/.test(lowerMsg)
-  ) {
-    const modifierType = /\b(increase|add)\b/i.test(lowerMsg)
+  } else if (volumeCmdMatch) {
+    const modifierType = /\b(increase|add)\b/i.test(cleanLowerForCmd)
       ? 'increase_sets'
-      : /\bdeload\b/i.test(lowerMsg)
+      : /\bdeload\b/i.test(cleanLowerForCmd)
         ? 'deload_load'
-        : /\b(shorten|trim)\s+(today'?s?\s+)?(workout|session)\b/i.test(lowerMsg)
+        : /\b(shorten|trim|shorter)\b/i.test(cleanLowerForCmd)
           ? 'short_on_time'
           : 'reduce_sets';
     const outcome = await executeCoachToolCall(
@@ -1112,18 +1326,26 @@ async function processAssistantMessageCore(
       {
         workout_id: activeWorkout.id,
         modifier_type: modifierType,
-        details: userMessage.trim().slice(0, 80),
+        details: userMessage.trim().slice(0, 120),
       },
       toolCtx
     );
     applyToolOutcome(outcome);
-  } else if (
-    /\b(remember\s+(that|this)?|save\s+(this|to\s+(?:my\s+)?memory)|keep\s+in\s+mind|note\s+that)\b/i.test(lowerMsg) &&
-    !/^(what|can|do\s+you)\b/i.test(lowerMsg) &&
-    !/\?\s*$/.test(lowerMsg)
-  ) {
+  } else if (modifyExerciseCandidate) {
+    const outcome = await executeCoachToolCall(
+      'modify_workout_exercises',
+      {
+        action: modifyExerciseCandidate.action,
+        exercise_name: modifyExerciseCandidate.exerciseName,
+        ...(modifyExerciseCandidate.setsCount ? { sets: modifyExerciseCandidate.setsCount } : {}),
+      },
+      toolCtx
+    );
+    applyToolOutcome(outcome);
+  } else if (memoryCmdMatch) {
     const cleanedFact = userMessage
       .replace(/^.*?\b(?:remember\s+(?:that|this)?|save\s+(?:this|to\s+(?:my\s+)?memory)|keep\s+in\s+mind|note\s+that)[:,\s-]*/i, '')
+      .replace(/[?.!\s]+$/, '')
       .trim();
     const category: AthleteMemoryCategory = /\b(avoid|skip|sensitive|impingement|issue|knee|shoulder|back|elbow|wrist)\b/i.test(cleanedFact)
       ? 'contraindication'
@@ -1138,79 +1360,97 @@ async function processAssistantMessageCore(
       toolCtx
     );
     applyToolOutcome(outcome);
+  } else if (logWeightMatch || logBodyFatMatch || logWaistMatch || logActiveDayMatch) {
+    if (logWeightMatch) {
+      const val = parseFloat(logWeightMatch[1]);
+      const rawUnit = (logWeightMatch[2] || '').toLowerCase();
+      const unitArg = rawUnit.startsWith('lb') || rawUnit.startsWith('pound') ? 'lb' : rawUnit.startsWith('kg') || rawUnit.startsWith('kilo') ? 'kg' : undefined;
+      const outcome = await executeCoachToolCall(
+        'log_entry',
+        { kind: 'bodyweight', value: val, ...(unitArg ? { unit: unitArg } : {}) },
+        toolCtx
+      );
+      applyToolOutcome(outcome);
+    } else if (logBodyFatMatch) {
+      const outcome = await executeCoachToolCall(
+        'log_entry',
+        { kind: 'body_fat', value: parseFloat(logBodyFatMatch[1]) },
+        toolCtx
+      );
+      applyToolOutcome(outcome);
+    } else if (logWaistMatch) {
+      const val = parseFloat(logWaistMatch[1]);
+      const rawUnit = (logWaistMatch[2] || '').toLowerCase();
+      const unitArg = rawUnit.startsWith('in') ? 'in' : rawUnit.startsWith('cm') ? 'cm' : undefined;
+      const outcome = await executeCoachToolCall(
+        'log_entry',
+        { kind: 'waist', value: val, ...(unitArg ? { unit: unitArg } : {}) },
+        toolCtx
+      );
+      applyToolOutcome(outcome);
+    } else if (logActiveDayMatch) {
+      const mins = parseFloat(logActiveDayMatch[1]);
+      const noun = logActiveDayMatch[2].toLowerCase();
+      const actType = /walk/.test(noun)
+        ? 'walk'
+        : /run|jog/.test(noun)
+          ? 'run'
+          : /bik|cycl|ride/.test(noun)
+            ? 'cycle'
+            : /swim/.test(noun)
+              ? 'swim'
+              : /hik/.test(noun)
+                ? 'hike'
+                : /class|hiit/.test(noun)
+                  ? 'class'
+                  : /yoga|stretch|mobility/.test(noun)
+                    ? 'mobility'
+                    : 'other';
+      const outcome = await executeCoachToolCall(
+        'log_entry',
+        { kind: 'active_day', value: mins, unit: 'minutes', activity_type: actType },
+        toolCtx
+      );
+      applyToolOutcome(outcome);
+    }
   } else if (matchedEquip) {
-    const currentList = new Set<HomeEquipmentTag>(profile.homeEquipment || []);
-
-    if (equipmentChange.action === 'remove') {
-      currentList.delete(matchedEquip.tag);
-      const nextEquip = Array.from(currentList);
-      updatedProfile = { homeEquipment: nextEquip };
-      actionTaken = {
-        type: 'UPDATE_EQUIPMENT',
-        summary: `Removed ${matchedEquip.name} from Home Equipment`,
-        details: { equipment: nextEquip, removed: matchedEquip.tag },
-      };
-      answerText = `Done. I've removed the ${matchedEquip.name} from your home equipment, so your home workouts and swap options won't use it.`;
-    } else {
-      currentList.add(matchedEquip.tag);
-      const nextEquip = Array.from(currentList);
-      updatedProfile = { homeEquipment: nextEquip };
-      actionTaken = {
-        type: 'UPDATE_EQUIPMENT',
-        summary: `Added ${matchedEquip.name} to Home Equipment`,
-        details: { equipment: nextEquip, added: matchedEquip.tag },
-      };
-
-      if (matchedEquip.tag === 'pullup_bar') {
-        answerText = `Nice addition. I've added the Pull-Up Bar to your home equipment, so your home workouts can now include pull-ups and chin-ups.`;
-      } else if (matchedEquip.tag === 'dumbbells') {
-        answerText = `Great. I've added Dumbbells to your home equipment, so your home workouts can now include dumbbell presses, rows and Romanian deadlifts.`;
-      } else if (matchedEquip.tag === 'bench') {
-        answerText = `Added an Exercise Bench to your home equipment. Your home workouts can now include flat and incline presses with proper back support.`;
-      } else if (matchedEquip.tag === 'trx') {
-        answerText = `Added the TRX Suspension Trainer to your home equipment. Your home workouts can now include TRX rows, push-ups and single-leg squats.`;
-      } else {
-        answerText = `Added ${matchedEquip.name} to your home equipment. Your home workouts and swap options can now use it.`;
+    const toolCallsForEquip = equipmentChanges.map((change) => ({
+      name: 'update_home_equipment' as const,
+      args: { action: change.action, equipment: [change.equipment.tag] },
+    }));
+    const outcome =
+      toolCallsForEquip.length === 1
+        ? await executeCoachToolCall('update_home_equipment', toolCallsForEquip[0].args, toolCtx)
+        : await executeCoachToolCalls(toolCallsForEquip, toolCtx);
+    if (outcome) {
+      applyToolOutcome(outcome);
+      if (outcome.mutationStatus === 'success') {
+        const nextEquip = outcome.updatedProfile?.homeEquipment ?? [];
+        if (actionTaken) {
+          actionTaken.details = {
+            equipment: nextEquip,
+            ...(equipmentChanges[0].action === 'remove'
+              ? { removed: matchedEquip.tag }
+              : { added: matchedEquip.tag }),
+          };
+        }
+        citations.push({
+          label: 'Home Equipment',
+          metric: 'Available Tools',
+          value: nextEquip.map((t) => EQUIPMENT_NAMES[t] || t).join(', '),
+        });
       }
     }
-
-    // If current workout is at home, adapt it to immediately leverage new equipment
-    if (activeWorkout.location === 'home') {
-      const adapted = adaptWorkoutSessionToLocation(
-        activeWorkout,
-        'home',
-        updatedProfile.homeEquipment,
-        exerciseCatalog,
-        workouts,
-        readinessState,
-        bodyweightEmaKg
-      );
-      updatedWorkout = prepareSessionForAthlete(adapted, {
-        history: workouts,
-        bodyweightKg: bodyweightEmaKg,
-        readinessState,
-        gender: profile.gender,
-        experienceLevel: profile.experienceLevel,
-        unit: profile.weightUnit || 'kg',
-        isProgramPlan: isPlanProgram(profile.programType),
-      });
-    }
-
-    citations.push({
-      label: 'Home Equipment',
-      metric: 'Available Tools',
-      value: (updatedProfile.homeEquipment || []).map((t) => EQUIPMENT_NAMES[t] || t).join(', '),
-    });
   }
 
   // ============================================================================
   // 2. INTENT: SCHEDULE TRAVEL / LOCATION FOR FUTURE MESOCYCLE WEEK (e.g. "away in week 5")
   // ============================================================================
   else if (
+    !isAdvisoryQuestion &&
     /\b(away|travel|travelling|traveling|trip|holiday|vacation|hotel|work\s*trip)\b/i.test(lowerMsg) &&
     /\b(week\s*[1-6]|next\s*week)\b/i.test(lowerMsg)
   ) {
-    // Extract week number
     let targetWeek = profile.mesocycleWeek || 1;
     const weekMatch = lowerMsg.match(/week\s*([1-6])/i);
     if (weekMatch) {
@@ -1219,123 +1459,80 @@ async function processAssistantMessageCore(
       targetWeek = Math.min(6, (profile.mesocycleWeek || 1) + 1);
     }
 
-    const currentSchedule = { ...(profile.scheduledWeekLocations || {}) };
-    currentSchedule[targetWeek] = 'travel';
-
-    updatedProfile = {
-      scheduledWeekLocations: currentSchedule,
-    };
-
-    actionTaken = {
-      type: 'SCHEDULE_LOCATION_WEEK',
-      summary: `Scheduled Week ${targetWeek} for Bodyweight (0 kg External Load)`,
-      details: { week: targetWeek, location: 'travel' },
-    };
-
-    answerText = `Done. Week ${targetWeek} of your plan is set to bodyweight training. When you reach it, each workout switches to exercises that need no equipment, like push-ups, split squats and inverted rows, with reps matched to your strength. Back early? Switch to the gym from the Workout tab.`;
-
-    // If athlete is already in that week, adapt current workout too
-    if ((profile.mesocycleWeek || 1) === targetWeek && activeWorkout.location !== 'travel') {
-      const adapted = adaptWorkoutSessionToLocation(
-        activeWorkout,
-        'travel',
-        profile.homeEquipment || [],
-        exerciseCatalog,
-        workouts,
-        readinessState,
-        bodyweightEmaKg
-      );
-      updatedWorkout = adapted;
-      updatedProfile.activeLocation = 'travel';
+    const outcome = await executeCoachToolCall(
+      'switch_location',
+      { location: 'travel', week: targetWeek },
+      toolCtx
+    );
+    applyToolOutcome(outcome);
+    if (outcome.mutationStatus === 'success') {
+      if (actionTaken) {
+        actionTaken.details = { week: targetWeek, location: 'travel' };
+      }
+      citations.push({
+        label: `Week ${targetWeek} Plan`,
+        metric: 'Location Override',
+        value: 'Bodyweight (0 kg external load)',
+      });
     }
-
-    citations.push({
-      label: `Week ${targetWeek} Plan`,
-      metric: 'Location Override',
-      value: 'Bodyweight (0 kg external load)',
-    });
   }
 
   // ============================================================================
   // 3. INTENT: SWITCH CURRENT WORKOUT LOCATION (e.g. "switch today to bodyweight", "train at home")
   // ============================================================================
   else if (
-    /\b(switch|change|set|turn)\b.*\b(travel|bodyweight|home|gym)\b/i.test(lowerMsg) ||
-    /\b(train\s*at\s*home|at\s*home\s*today|in\s*a\s*hotel|no\s*weights?\s*today|bodyweight\s*today|back\s*(?:to|at|in)\s*(?:the\s*)?gym|at\s*the\s*gym\s*today|train\s*at\s*the\s*gym)\b/i.test(lowerMsg)
+    !isAdvisoryQuestion &&
+    (/\b(switch|change|set|turn|move)\b.*\b(travel|bodyweight|home|gym)\b/i.test(lowerMsg) ||
+      /\b(train\s*at\s*home|at\s*home\s*today|in\s*a\s*hotel|no\s*weights?\s*today|bodyweight\s*today|back\s*(?:to|at|in)\s*(?:the\s*)?gym|at\s*the\s*gym\s*today|train\s*at\s*the\s*gym)\b/i.test(
+        lowerMsg
+      ))
   ) {
     let targetLoc: TrainingLocation = 'travel';
     if (/\b(home|house)\b/i.test(lowerMsg)) targetLoc = 'home';
     else if (/\b(gym|full\s*gym)\b/i.test(lowerMsg)) targetLoc = 'gym';
 
-    const adapted = adaptWorkoutSessionToLocation(
-      activeWorkout,
-      targetLoc,
-      profile.homeEquipment || [],
-      exerciseCatalog,
-      workouts,
-      readinessState,
-      bodyweightEmaKg
+    const outcome = await executeCoachToolCall(
+      'switch_location',
+      { location: targetLoc },
+      toolCtx
     );
-
-    updatedWorkout = prepareSessionForAthlete(adapted, {
-      history: workouts,
-      bodyweightKg: bodyweightEmaKg,
-      readinessState,
-      gender: profile.gender,
-      experienceLevel: profile.experienceLevel,
-      unit: profile.weightUnit || 'kg',
-      isProgramPlan: isPlanProgram(profile.programType),
-    });
-    updatedProfile = { activeLocation: targetLoc };
-    actionTaken = {
-      type: 'SWITCH_LOCATION',
-      summary: `Switched today's session to ${targetLoc === 'travel' ? 'Bodyweight' : targetLoc === 'home' ? 'At Home' : 'Full Gym'}`,
-      details: { location: targetLoc },
-    };
-
-    if (targetLoc === 'travel') {
-      answerText = `Switched today's workout to bodyweight. Every exercise now needs no equipment, with reps matched to your strength.`;
-    } else if (targetLoc === 'home') {
-      answerText = `Switched today's workout to home. It now uses ${(profile.homeEquipment || []).map((t) => EQUIPMENT_NAMES[t] || t).join(', ') || 'your bodyweight'}.`;
-    } else {
-      answerText = `Switched today's workout back to the gym, with barbells, cables and machines available again.`;
+    applyToolOutcome(outcome);
+    if (outcome.mutationStatus === 'success') {
+      if (actionTaken) {
+        actionTaken.details = { location: targetLoc };
+      }
+      citations.push({
+        label: 'Active Session',
+        metric: 'Location',
+        value: targetLoc,
+      });
     }
-
-    citations.push({
-      label: 'Active Session',
-      metric: 'Location',
-      value: targetLoc,
-    });
   }
 
   // ============================================================================
   // 4. INTENT: SWITCH PROGRAM OR SPLIT (supports saved/built-in plans; legacy split names explain the goal plan)
   // ============================================================================
   else if (
+    !isAdvisoryQuestion &&
     matchTargetProgramFromMessage(lowerMsg, profile) &&
     /\b(switch|change|set|swap|use|start|load|move|go\s+to)\b/i.test(lowerMsg)
   ) {
     const matchedPlan = matchTargetProgramFromMessage(lowerMsg, profile)!;
-    if (matchedPlan.id === 'muscle_building_6wk' && !canUseMusclePlan(profile.email)) {
-      const currentPlan = resolveActivePlan(profile);
-      answerText = `The 6-Week Muscle Building Plan isn't enabled on this account, so I kept **${currentPlan.name}** active. You can switch between your saved programs from the Program tab's menu (⋯).`;
-    } else {
-      const nextProfile: UserProfile = { ...profile, programType: matchedPlan.id };
-      const targetPlan = resolveActivePlan(nextProfile);
-      const nextNum = getNextProgramWorkoutNumber(workouts, targetPlan, nextProfile.planCycleStarts);
-      const nextWeek = targetPlan.templates.find((t) => t.workoutNumber === nextNum)?.week ?? 1;
-      updatedProfile = { programType: matchedPlan.id, mesocycleWeek: nextWeek };
-      updatedWorkout = buildPreparedPlanSession(targetPlan, nextNum, input, nextProfile);
-      actionTaken = {
-        type: 'SWITCH_PROGRAM_SPLIT',
-        summary: `Switched to ${targetPlan.name}`,
-        details: { programType: matchedPlan.id, workoutNumber: nextNum },
-      };
-      answerText = `Switched your program to **${targetPlan.name}**. Your next session on the Workout tab is **Workout ${nextNum} of ${targetPlan.templates.length}: ${planWorkoutLabel(updatedWorkout.name)}** (Week ${nextWeek}).`;
+    const outcome = await executeCoachToolCall(
+      'switch_program',
+      { program_name: matchedPlan.id },
+      toolCtx
+    );
+    applyToolOutcome(outcome);
+    if (outcome.mutationStatus === 'success') {
+      const nextNum = outcome.updatedWorkout?.programWorkoutNumber ?? 1;
+      if (actionTaken) {
+        actionTaken.details = { programType: matchedPlan.id, workoutNumber: nextNum };
+      }
       citations.push({
         label: 'Active Program',
         metric: 'Program',
-        value: targetPlan.name,
+        value: matchedPlan.name,
       });
     }
   } else if (
@@ -1356,8 +1553,11 @@ async function processAssistantMessageCore(
   // 5. INTENT: SWITCH GOAL PHASE (e.g. "switch my goal to Cut / Recomp", "start a bulk")
   // ============================================================================
   else if (
-    /\b(cut|cutting|recomp|lose\s*fat|fat\s*loss|lean\s*bulk|bulk|bulking|build\s*muscle|muscle\s*gain|gain\s*muscle|maingain|stay\s*lean)\b/i.test(lowerMsg) &&
-    /\b(goal|phase|switch|change|want\s*to|start)\b/i.test(lowerMsg)
+    !isAdvisoryQuestion &&
+    /\b(cut|cutting|recomp|lose\s*fat|fat\s*loss|lean\s*bulk|bulk|bulking|build\s*muscle|muscle\s*gain|gain\s*muscle|maingain|stay\s*lean)\b/i.test(
+      lowerMsg
+    ) &&
+    /\b(goal|phase|switch|change|want\s*to|start|set)\b/i.test(lowerMsg)
   ) {
     let targetGoal: GoalPhase = 'Cut / Recomp';
     if (/\b(bulk|bulking|build\s*muscle|muscle\s*gain|gain\s*muscle|lean\s*bulk)\b/i.test(lowerMsg)) {
@@ -1366,26 +1566,22 @@ async function processAssistantMessageCore(
       targetGoal = 'Maingain';
     }
 
-    updatedProfile = { goalPhase: targetGoal };
-    actionTaken = {
-      type: 'SWITCH_GOAL_PHASE',
-      summary: `Switched goal to ${GOAL_DISPLAY_NAME[targetGoal]}`,
-      details: { goalPhase: targetGoal },
-    };
-
-    if (targetGoal === 'Cut / Recomp') {
-      answerText = `Your goal is now ${GOAL_DISPLAY_NAME[targetGoal]}. From your next workout the big lifts stay heavy, with no extra sets, so you keep your strength and muscle while you eat a little less.`;
-    } else if (targetGoal === 'Lean Bulk') {
-      answerText = `Your goal is now ${GOAL_DISPLAY_NAME[targetGoal]}. From your next workout your sets build across the 6 weeks, with an extra set on smaller muscles in the last two weeks.`;
-    } else {
-      answerText = `Your goal is now ${GOAL_DISPLAY_NAME[targetGoal]}. From your next workout you'll keep a steady 3 sets per exercise to get stronger without wearing yourself down.`;
+    const outcome = await executeCoachToolCall(
+      'switch_goal_phase',
+      { goal_phase: targetGoal },
+      toolCtx
+    );
+    applyToolOutcome(outcome);
+    if (outcome.mutationStatus === 'success') {
+      if (actionTaken) {
+        actionTaken.details = { goalPhase: targetGoal };
+      }
+      citations.push({
+        label: 'Training Goal',
+        metric: 'Goal',
+        value: GOAL_DISPLAY_NAME[targetGoal],
+      });
     }
-
-    citations.push({
-      label: 'Training Goal',
-      metric: 'Goal',
-      value: GOAL_DISPLAY_NAME[targetGoal],
-    });
   }
 
   // ============================================================================
@@ -1394,7 +1590,8 @@ async function processAssistantMessageCore(
   else if (
     /\b(rest\s*day|can['’]?t\s*train|skip\s*today|shift\s*(workout|session|today)|day\s*off)\b/i.test(lowerMsg) &&
     (/\?\s*$/.test(lowerMsg) || /^(should|can|could|do|does|is|would|what|when|how|why)\b/.test(lowerMsg)) &&
-    !/\b(log|take|make|give me|i need|i want|i'?m taking)\b/.test(lowerMsg)
+    !(/\b(log|take|make|give\s+me|schedule|i\s+need|i\s+want|i'?m\s+taking)\b/.test(lowerMsg) &&
+      (isPoliteCommandPrefix || !/^(should|can\s+i|could\s+i)\b/.test(lowerMsg)))
   ) {
     // "Should I skip today?" is a question: answer it from recovery and change nothing.
     const check = answerShouldTrain(activeWorkout, workouts, exerciseCatalog, readinessState);
@@ -1403,64 +1600,59 @@ async function processAssistantMessageCore(
   } else if (
     /\b(rest\s*day|can['’]?t\s*train|skip\s*today|shift\s*(workout|session|today)|day\s*off)\b/i.test(lowerMsg)
   ) {
-    const today = new Date();
-    // The header's streak (saved workouts and active days), never a stored counter.
-    const restDayStreak = computeTrainingStreak(workouts, Date.now(), activeDayDates(input.activities ?? []));
-    const tomorrow = new Date(today);
-    tomorrow.setDate(today.getDate() + 1);
-    const tomorrowStr = localDateString(tomorrow);
-
-    updatedWorkout = {
-      ...activeWorkout,
-      date: tomorrowStr,
-    };
-
-    actionTaken = {
-      type: 'SHIFT_WORKOUT',
-      summary: `Logged Rest Day: ${activeWorkout.name} held for tomorrow`,
-      details: { date: tomorrowStr },
-    };
-
-    answerText = `Rest day logged. ${activeWorkout.name} will be waiting for you tomorrow. Missing a day doesn't set your plan back${restDayStreak > 0 ? `, and your ${restDayStreak}-day streak is safe` : ''}.`;
-
-    citations.push({
-      label: 'Schedule',
-      metric: 'Next Session',
-      value: `Tomorrow (${activeWorkout.name})`,
-    });
+    const outcome = await executeCoachToolCall('log_rest_day', {}, toolCtx);
+    applyToolOutcome(outcome);
+    if (outcome.mutationStatus === 'success') {
+      const tomorrowStr = outcome.updatedWorkout?.date;
+      if (actionTaken) {
+        actionTaken.details = { date: tomorrowStr };
+      }
+      citations.push({
+        label: 'Schedule',
+        metric: 'Next Session',
+        value: `Tomorrow (${activeWorkout.name})`,
+      });
+    }
   }
 
   // ============================================================================
   // 6b. INTENTS ABOUT THE ATHLETE'S OWN PLAN AND DATA (same figures as the pages)
   // ============================================================================
-  else if (/\bstreak\b/.test(lowerMsg)) {
+  else if (!isExplicitActionIntent && /\bstreak\b/.test(lowerMsg)) {
     answerText = answerStreak(workouts, input.activities ?? []);
   } else if (
     kitMissingToday ||
     /\b(no|without) (a |an |the |any )?(free )?(barbells?|dumbbells?|cables?|machines?)\b|\b(barbells?|dumbbells?|cables?|machines?) (is|are|were|was) (all )?(taken|busy|in use|broken|full|occupied)\b/.test(lowerMsg)
   ) {
-    answerText = `${answerSwap(lowerMsg, activeWorkout, exerciseCatalog)}${kitMissingToday ? `\n\nIf you meant your home equipment, say "remove the ${detectedEquipmentChange!.equipment.name.toLowerCase()}".` : ''}`;
-  } else if (everydayAnswer) {
+    const swapOpts = answerSwapWithOptions(lowerMsg, activeWorkout, exerciseCatalog);
+    answerText = `${swapOpts.text}${kitMissingToday ? `\n\nIf you meant your home equipment, say "remove the ${detectedEquipmentChange!.equipment.name.toLowerCase()}".` : ''}`;
+  } else if (everydayAnswer && !isExplicitActionIntent) {
     answerText = everydayAnswer;
   } else if (
+    !isExplicitActionIntent &&
     /\b(what|which) week\b|\bweek am i\b|\b(sessions?|workouts?) (are )?left\b|\bhow far (am i|through)\b|\bwhere am i in\b|\bwhat'?s next\b|\bwhat is next\b|\bnext workout\b|\bafter this (workout|session)\b|\bwhich phase\b|\bwhat phase\b/.test(lowerMsg)
   ) {
     answerText = answerPlanPosition(profile, workouts, input.activities ?? []);
   } else if (
-    (/\bshould i (train|work ?out|lift|go to the gym|skip)\b(?! (to|till|until) failure)/.test(lowerMsg) &&
+    !isExplicitActionIntent &&
+    ((/\bshould i (train|work ?out|lift|go to the gym|skip)\b(?! (to|till|until) failure)/.test(lowerMsg) &&
       !/\b(?:how|what way|why)\s+should\s+i\s+(?:train|lift|work ?out)\b/.test(lowerMsg) &&
       !/\bshould i (?:train|lift|work ?out) (?:for|to|with|more|less|heavier|lighter|faster|after|when|while)\b/.test(lowerMsg)) ||
-    /\b(am i|are my muscles) (ready|recovered)\b|\b(ok|okay|fine) to train\b|\bcan i train\b/.test(lowerMsg)
+      /\b(am i|are my muscles) (ready|recovered)\b|\b(ok|okay|fine) to train\b|\bcan i train\b/.test(lowerMsg))
   ) {
     answerText = answerShouldTrain(activeWorkout, workouts, exerciseCatalog, readinessState);
   } else if (
+    !isExplicitActionIntent &&
     /\bwhy\b.*\b(weights?|heavier|lighter|reps?|load)\b/.test(lowerMsg) &&
     /\b(go|goes|went|gone|change[ds]?|up|down|drop(ped)?|increase[ds]?|same|heavier|lighter|more|less|higher|lower)\b/.test(lowerMsg)
   ) {
     answerText = answerWeightChange(lowerMsg, activeWorkout, workouts, readinessState, profile.weightUnit || 'kg');
-  } else if (/\b(how long|how much|how many (minutes|seconds))\b.*\brest\b|\brest (times?|between|periods?)\b/.test(lowerMsg)) {
+  } else if (
+    !isExplicitActionIntent &&
+    (/\b(how long|how much|how many (minutes|seconds))\b.*\brest\b|\brest (times?|between|periods?)\b/.test(lowerMsg))
+  ) {
     answerText = answerRestTimes(activeWorkout);
-  } else if (asksAboutVolume(lowerMsg)) {
+  } else if (!isExplicitActionIntent && asksAboutVolume(lowerMsg)) {
     answerText = answerWeeklySets(lowerMsg, kg);
   }
 
@@ -1499,7 +1691,7 @@ async function processAssistantMessageCore(
         })
       : undefined;
 
-    if (jointQuery || lowerMsg.includes('joint strain') || /\bjoints?\b/.test(lowerMsg)) {
+    if (!isExplicitActionIntent && (jointQuery || lowerMsg.includes('joint strain') || /\bjoints?\b/.test(lowerMsg))) {
       const targetJoint = jointQuery || kg.joints.sort((a, b) => b.strainScore - a.strainScore)[0];
       answerText = `Your ${targetJoint.joint} is currently at ${targetJoint.strainScore}/100 load (${targetJoint.status}). Most of the recent stress came from ${targetJoint.topContributors.slice(0, 2).join(' and ') || 'recent pressing movements'}. ${targetJoint.biomechanicalAdvice}`;
 
@@ -1617,6 +1809,7 @@ async function processAssistantMessageCore(
       const namesTodayExercise = (activeWorkout?.exercises ?? []).some((e) => exerciseNamedIn(lowerMsg, e.name));
 
       const candidatePrinciple =
+        !isExplicitActionIntent &&
         !asksForOwnMax &&
         !asksForOwnScore &&
         !asksOwnAttributes &&
@@ -1632,7 +1825,7 @@ async function processAssistantMessageCore(
         (isExplicitScienceQuestion || (!isOwnProgressQuestion && !(await isOnDeviceModelReady())))
           ? candidatePrinciple
           : null;
-      if (asksOwnAttributes) {
+      if (!isExplicitActionIntent && asksOwnAttributes) {
         const unit = profile.weightUnit || 'kg';
         const planPos = planPosition(profile, workouts, input.activities ?? []);
         const hasBw = biometrics.some((b) => (b.bodyweightKg || 0) > 0);
@@ -1646,13 +1839,13 @@ async function processAssistantMessageCore(
         ];
         if (kg.stepsSummary.avg7d !== undefined) parts.push(`7-day steps avg: ${kg.stepsSummary.avg7d.toLocaleString()}/day`);
         answerText = `Your current profile and metrics:\n• ${parts.join('\n• ')}`;
-      } else if (asksForOwnMax) {
+      } else if (!isExplicitActionIntent && asksForOwnMax) {
         answerText = buildEstimatedMaxAnswer(lowerMsg, workouts, measuredBodyweightKg, profile.weightUnit || 'kg', biometrics, activeWorkout, exerciseCatalog);
-      } else if (asksForOwnScore) {
+      } else if (!isExplicitActionIntent && asksForOwnScore) {
         answerText = `Treise compares each lift with published strength standards instead of giving one score.\n\n${strengthLevelsAnswer()}`;
-      } else if (isStandardsQuestion && !isExplicitScienceQuestion && !isTacticalWorkoutQuery) {
+      } else if (!isExplicitActionIntent && isStandardsQuestion && !isExplicitScienceQuestion && !isTacticalWorkoutQuery) {
         answerText = strengthLevelsAnswer();
-      } else if (scientificPrinciple) {
+      } else if (!isExplicitActionIntent && scientificPrinciple) {
         scientificPrinciplesCited.push(scientificPrinciple);
         answerText = `${scientificPrinciple.title}\n\n${scientificPrinciple.scientificRationale}\n\n`;
         if (scientificPrinciple.formula) {
@@ -1676,6 +1869,7 @@ async function processAssistantMessageCore(
 
       // C. Recovery, Strain & Autonomic Telemetry Query (direct telemetry checks; open sleep/recovery/motivation tips go to Gemini when available)
       else if (
+        !isExplicitActionIntent &&
         (lowerMsg.includes('recovery') ||
           lowerMsg.includes('strain') ||
           lowerMsg.includes('hrv') ||
@@ -1769,7 +1963,7 @@ async function processAssistantMessageCore(
       }
 
       // D. Hypertrophy Muscle Volume Query
-      else if (/\b(volume|sets|mav)\b/.test(lowerMsg)) {
+      else if (!isExplicitActionIntent && /\b(volume|sets|mav)\b/.test(lowerMsg)) {
         const matchedMuscle = kg.muscleProfiles.find((m) =>
           lowerMsg.includes(m.displayName.toLowerCase()) || lowerMsg.includes(m.muscleKey.toLowerCase())
         ) || kg.muscleProfiles[0];
@@ -1791,6 +1985,7 @@ async function processAssistantMessageCore(
         });
         }
       } else if (
+        !isExplicitActionIntent &&
         /\b(protein|eat|eating|ate|meals?|diet|nutrition|food|snack)\b/.test(lowerMsg) &&
         (!/\b(recipes?|meal prep|ideas?|breakfast|lunch|dinner|vegan|vegetarian|high[- ]?protein (?:meals?|foods?|snacks?))\b/.test(
           lowerMsg
@@ -1905,15 +2100,17 @@ async function processAssistantMessageCore(
             lowerMsg
           ) || /^(?:progress|prs?|personal\s+(?:best|record)s?)\??$/i.test(lowerMsg.trim());
         const isLooseProgressQuery = /\b(progress|progressing|improv\w*|stronger|getting better|gains?|prs?|personal (best|record)s?)\b/i.test(lowerMsg);
-        const isProgressQuery = isExplicitOwnProgressQuery || (isLooseProgressQuery && !(await isOnDeviceModelReady()));
+        const isProgressQuery =
+          !isExplicitActionIntent &&
+          (isExplicitOwnProgressQuery || (isLooseProgressQuery && !(await isOnDeviceModelReady())));
         if (isProgressQuery) {
           answerText = buildProgressSummary(workouts, profile.weightUnit || 'kg');
           nanoHandled = true;
         }
 
-        // A. On-device model (Gemini Nano where Chrome exposes it, else the downloaded GPU model)
-        //    for open coaching questions only.
-        if (!nanoHandled && !isTacticalWorkoutQuery) {
+        // A. Function calling (Gemini Flash-Lite tool calling) for explicit action intents + open coaching,
+        //    or Chrome on-device LanguageModel for non-action open questions when available.
+        if (!nanoHandled && (!isTacticalWorkoutQuery || isExplicitActionIntent)) {
 
           const groundingPrinciple = queryExerciseScienceKnowledgeBase(userMessage);
           const groundingFacts = groundingPrinciple
@@ -1980,19 +2177,35 @@ async function processAssistantMessageCore(
           };
           const runStructuredFlashLite = async (): Promise<void> => {
             const startedAt = Date.now();
+            const executeStructuredTools = async (
+              res: NonNullable<Awaited<ReturnType<typeof promptFlashLiteStructured>>>
+            ): Promise<boolean> => {
+              const calls = res.toolCalls?.length
+                ? res.toolCalls
+                : res.functionCall
+                  ? [res.functionCall]
+                  : [];
+              if (calls.length === 0) return false;
+              const toolOutcome =
+                calls.length > 1
+                  ? await executeCoachToolCalls(calls, toolCtx)
+                  : await executeCoachToolCall(calls[0].name, calls[0].args, toolCtx);
+              if (!toolOutcome) return false;
+              applyToolOutcome(toolOutcome);
+              modelSuggestedActions = res.suggestedActions;
+              recordFlashLiteExchange(
+                userMessage,
+                enforceMutationTruthfulness(toolOutcome.summaryText, toolOutcome.mutationStatus)
+              );
+              nanoHandled = true;
+              return true;
+            };
+
             let structured = await promptFlashLiteStructured(questionWithFacts, {
               systemPrompt,
               tools: COACH_TOOL_DECLARATIONS,
             });
-            if (structured?.functionCall) {
-              const toolOutcome = await executeCoachToolCall(
-                structured.functionCall.name,
-                structured.functionCall.args,
-                toolCtx
-              );
-              applyToolOutcome(toolOutcome);
-              modelSuggestedActions = structured.suggestedActions;
-              nanoHandled = true;
+            if (structured && (await executeStructuredTools(structured))) {
               return;
             }
             if (!structured?.text) return;
@@ -2008,15 +2221,7 @@ async function processAssistantMessageCore(
                     tools: COACH_TOOL_DECLARATIONS,
                   }
                 );
-                if (structured?.functionCall) {
-                  const toolOutcome = await executeCoachToolCall(
-                    structured.functionCall.name,
-                    structured.functionCall.args,
-                    toolCtx
-                  );
-                  applyToolOutcome(toolOutcome);
-                  modelSuggestedActions = structured.suggestedActions;
-                  nanoHandled = true;
+                if (structured && (await executeStructuredTools(structured))) {
                   return;
                 }
                 problem = structured?.text ? problemWith(structured.text) : 'empty reply';
@@ -2047,12 +2252,12 @@ async function processAssistantMessageCore(
 
           const onDeviceStatus = await getOnDeviceModelStatus();
           let handledByStructuredFlash = false;
-          if (onDeviceStatus !== 'available' && (await isFlashLiteReady())) {
+          if ((onDeviceStatus !== 'available' || isExplicitActionIntent) && (await isFlashLiteReady())) {
             handledByStructuredFlash = true;
             await runStructuredFlashLite();
           }
 
-          if (!handledByStructuredFlash) {
+          if (!handledByStructuredFlash && !isTacticalWorkoutQuery && !isExplicitActionIntent) {
             const startedAt = Date.now();
             let nanoAnswer = await promptOnDeviceModel(systemPrompt, questionWithFacts, {
               onPartial: showWhileSound,
@@ -2223,6 +2428,18 @@ async function processAssistantMessageCore(
             // From today's workout: never an exercise that isn't in it, never kit the athlete lacks.
             const swap = answerSwapWithOptions(lowerMsg, activeWorkout, exerciseCatalog);
             answerText = swap.text;
+            const targetExForChips = matchedWorkoutEx ?? findExerciseNamed(lowerMsg, activeWorkout, exerciseCatalog)?.session;
+            if (targetExForChips && swap.options.length > 0) {
+              modelSuggestedActions = swap.options.slice(0, 3).map((opt) => ({
+                label: `Swap → ${opt.name.split(' ').slice(0, 3).join(' ')}`,
+                prompt: `Swap ${targetExForChips.name} for ${opt.name}`,
+              }));
+            } else if (!targetExForChips && workoutExercises.length > 0) {
+              modelSuggestedActions = workoutExercises.slice(0, 3).map((ex) => ({
+                label: `Swap ${ex.name.split(' ').slice(0, 3).join(' ')}`,
+                prompt: `Swap ${ex.name}`,
+              }));
+            }
             for (const option of swap.options.slice(0, 3)) {
               citations.push({ label: option.name, metric: 'Swap Option', value: `${option.defaultRepRange[0]}–${option.defaultRepRange[1]} reps` });
             }
@@ -2437,6 +2654,8 @@ async function processAssistantMessageCore(
     message,
     updatedProfile,
     updatedWorkout,
+    updatedBiometrics,
+    updatedActivities,
     actionTaken,
   };
 }

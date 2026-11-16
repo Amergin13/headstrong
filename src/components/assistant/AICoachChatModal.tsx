@@ -56,7 +56,12 @@ interface AICoachChatModalProps {
   /** Where the coach was opened, so its first line and suggestions fit what is on screen. */
   place: CoachPlace;
   onClose: () => void;
-  onApplyAction: (updatedProfile?: Partial<UserProfile>, updatedWorkout?: WorkoutSession) => void;
+  onApplyAction: (
+    updatedProfile?: Partial<UserProfile>,
+    updatedWorkout?: WorkoutSession,
+    updatedBiometrics?: BiometricLog[],
+    updatedActivities?: ActivityLog[]
+  ) => void;
   onUndoAction?: (snapshot: CoachUndoSnapshot) => void;
   onNavigateTab?: (tab: 'train' | 'program' | 'analytics') => void;
   onViewAllEquipment?: () => void;
@@ -476,9 +481,19 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
       setIsProcessing(false);
       setMessages((prev) => [...prev, result.message]);
 
-      if (result.updatedProfile || result.updatedWorkout) {
+      if (
+        result.updatedProfile ||
+        result.updatedWorkout ||
+        result.updatedBiometrics ||
+        result.updatedActivities
+      ) {
         triggerHaptic('success');
-        onApplyAction(result.updatedProfile, result.updatedWorkout);
+        onApplyAction(
+          result.updatedProfile,
+          result.updatedWorkout,
+          result.updatedBiometrics,
+          result.updatedActivities
+        );
       }
 
       startProgressiveReveal(result.message.id, result.message.text, streamedPrefix);
@@ -532,14 +547,36 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
       if (!isMountedRef.current) return;
       setIsProcessing(false);
       setMessages((prev) => [...prev, result.message]);
-      if (result.updatedProfile || result.updatedWorkout) {
+      if (
+        result.updatedProfile ||
+        result.updatedWorkout ||
+        result.updatedBiometrics ||
+        result.updatedActivities
+      ) {
         triggerHaptic('success');
-        onApplyAction(result.updatedProfile, result.updatedWorkout);
+        onApplyAction(
+          result.updatedProfile,
+          result.updatedWorkout,
+          result.updatedBiometrics,
+          result.updatedActivities
+        );
       }
       startProgressiveReveal(result.message.id, result.message.text, '');
-    } catch {
+    } catch (err) {
+      console.error('Failed to confirm pending coach action:', err);
       if (!isMountedRef.current) return;
       setIsProcessing(false);
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `err-confirm-${Date.now()}`,
+          sender: 'assistant',
+          text: "Sorry, I couldn't complete that confirmed change just now. Nothing was changed — please try again.",
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          mutationStatus: 'error',
+        },
+      ]);
+      scrollThreadToBottom('smooth');
     }
   };
 
@@ -627,10 +664,18 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
         return 'Program reset';
       case 'SWAP_EXERCISE':
         return 'Exercise swapped';
+      case 'ADD_EXERCISE':
+        return 'Exercise added';
+      case 'REMOVE_EXERCISE':
+        return 'Exercise removed';
       case 'ADJUST_WORKOUT_VOLUME':
         return 'Workout volume adjusted';
       case 'SAVE_ATHLETE_MEMORY':
         return 'Memory updated';
+      case 'SWITCH_LOCATION':
+        return 'Location switched';
+      case 'SCHEDULE_LOCATION_WEEK':
+        return 'Week scheduled';
       case 'SWITCH_PROGRAM_SPLIT':
         return 'Program updated';
       case 'UPDATE_GOALS':
@@ -643,6 +688,10 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
         return 'Equipment updated';
       case 'SWITCH_GOAL_PHASE':
         return 'Goal updated';
+      case 'LOG_BIOMETRIC':
+        return 'Measurement logged';
+      case 'LOG_ACTIVE_DAY':
+        return 'Activity logged';
       default:
         return 'Plan updated';
     }
