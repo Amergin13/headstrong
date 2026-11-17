@@ -156,9 +156,26 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
         </div>
       </div>
 
-      {(chip || exercise.intensityProtocol || countedBodyweightKg > 0 || isBlockCompleted) && (
+      {(chip ||
+        (!isTimed &&
+          exercise.repTargetType !== 'form_failure' &&
+          exercise.minReps > 0 &&
+          exercise.maxReps > 0 &&
+          exercise.minReps < exercise.maxReps) ||
+        exercise.intensityProtocol ||
+        countedBodyweightKg > 0 ||
+        isBlockCompleted) && (
         <div className="flex items-center flex-wrap gap-2 mt-2">
           {chip && <span className="wk-pill">{chip}</span>}
+          {!isTimed &&
+            exercise.repTargetType !== 'form_failure' &&
+            exercise.minReps > 0 &&
+            exercise.maxReps > 0 &&
+            exercise.minReps < exercise.maxReps && (
+              <span className="wk-pill tabular-nums">
+                {exercise.minReps}–{exercise.maxReps} reps
+              </span>
+            )}
           {isBlockCompleted && (
             <span
               className="wk-pill"

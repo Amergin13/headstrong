@@ -748,7 +748,7 @@ export function generatePlanWorkout(plan: TrainingPlan, workoutNumber: number): 
     const notesArray = EXERCISE_NOTES_MAP[e.name] || [];
     const exerciseNotesCombined = e.notes || notesArray.join(' ');
 
-    const range = /^(\d+)-(\d+)$/.exec(e.reps);
+    const range = /^(\d+)\s*[-–]\s*(\d+)$/.exec(e.reps);
     const isTimed = e.durationSeconds !== undefined || e.tempo.includes('sec') || e.tempo.includes('min');
     let repTargetType: 'reps' | 'wave' | 'form_failure' | 'duration' = 'reps';
     if (isTimed) {

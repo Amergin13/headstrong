@@ -121,23 +121,25 @@ $$\text{Readiness Score} = 0.50 \cdot Z_{\text{HRV}} - 0.30 \cdot Z_{\text{RHR}}
 ---
 
 ### 2.2 Double Progression Auto-Regulation Logic
-For any target rep range (e.g., 8–12 reps):
-1. **Top of Rep Range Achieved:** If all prescribed sets reach max reps (e.g., 12/12/12) at $1\text{–}2$ RIR:
-   - Barbell exercises: Increment load by $+2.5\text{ kg}$.
-   - Dumbbell exercises: Increment load by $+2.0\text{ kg}$.
-   - Reset working target reps to lower boundary (e.g., 8 reps).
-2. **Within Rep Range:** If working within rep range at $1\text{–}2$ RIR:
+For any target rep range (e.g., 6–8 or 8–12 reps):
+1. **Top of Rep Range Achieved:** If all prescribed sets reach max reps (e.g., 8/8/8 or 12/12/12) at $1\text{–}2$ RIR:
+   - Barbell, cable, and machine exercises: Increment load by $+2.5\text{ kg}$ ($+5\text{ lb}$).
+   - Dumbbell exercises: Increment load by $+2.0\text{ kg}$ ($+5\text{ lb}$).
+   - Reset working target reps to lower boundary (e.g., 6 or 8 reps across every set).
+2. **Within Rep Range:** If all working sets hit at least the bottom of the rep range (e.g., 6/6/6 on 6–8) without yet hitting the top on all sets:
    - Hold weight constant.
-   - Prescribe $+1$ rep on the first two working sets for next session.
-3. **Amber Shield State Active:**
+   - Prescribe $+1$ rep on up to two working sets still short of max reps with quality RIR, until every set reaches max reps cleanly.
+3. **Below Rep Range:** If any prescribed working set falls below the bottom of the rep range (e.g., can't hit 6 on every set in a 6–8 range):
+   - Auto-regulate weight downward by at least one loadable step (scaled by Epley E1RM capacity), and reset working target reps to the lower boundary (e.g., 6 reps across every set) so all sets stay in the target zone.
+4. **Amber Shield State Active:**
    - Override progression: Hold load and reps static.
    - Shift target RIR to $2\text{–}3$ to prevent central nervous system and joint burnout.
 
 ---
 
-Implementation: the numbers live in one place, `PROGRESSION_RULES` (`src/engine/progressionRules.ts`); the knowledge graph's `sp-double-progression` text is written from them, and both the split path (`prescribeDoubleProgression`) and the 6-week plan's carry-over (`personalizeSessionLoads`) apply them. Quality reps = at least 1 rep in reserve (or the plan's 0 RIR on failure sets); more reserve still counts. Missed reps, ground-out sets or low recovery never raise the weight. An exercise's own last session sets its next weight (`findLastCompletedExerciseSession` only falls back to a similar movement when the exercise has never been done). Jumps are capped at +10% plus one step, after rounding to real plate/dumbbell sizes. Engine suite 36b simulates all 24 plan workouts with a realistic athlete and checks every prescription, PREV value, chart, Progress/Athlete card and the knowledge graph.
+Implementation: the shared logic lives in one place, `PROGRESSION_RULES` and `evaluateRepRangeDoubleProgression` (`src/engine/progressionRules.ts`); the knowledge graph's `sp-double-progression` text is written from them, and both the split/prescription path (`prescribeDoubleProgression`) and the 6-week plan's carry-over (`personalizeSessionLoads`) apply them. Quality reps = at least 1 rep in reserve (or the plan's 0 RIR on failure sets); more reserve still counts. Incomplete sets, ground-out sets or low recovery never raise the weight. An exercise's own last session sets its next weight (`findLastCompletedExerciseSession` only falls back to a similar movement when the exercise has never been done). Jumps are capped at +10% plus one step, after rounding to real plate/dumbbell sizes. Engine suite 36b simulates all 24 plan workouts with a realistic athlete and checks every prescription, PREV value, chart, Progress/Athlete card and the knowledge graph.
 
-Rep ranges on a plan (the starter plan's "6-10"; `progressThroughRepRange`): targets start at the bottom of the range. The weight holds and the first two sets still below the top aim for +1 rep until every prescribed set reaches the top with quality reps; then one load step and back to the bottom. The best set under the range lowers the weight to match; a later set dropping under it is normal fatigue and holds. A new goal's range moves the weight to match and starts at its bottom. Fixed-rep plans (the muscle plan) use `carryOverWeight`, where the target is the top of the range. Engine suite 39b covers this.
+Rep ranges on a plan (e.g., "5-8", "6-8", "6-10"; `progressThroughRepRange` & `prescribeDoubleProgression`): targets start at the bottom of the range. If any working set falls below the bottom of the range, load reduces to match capacity (at least one loadable step) and reps reset to the bottom across all sets. While every set meets the bottom, the weight holds and up to two sets still below the top aim for +1 rep per session until every prescribed set reaches the top with quality reps; then weight increases by one load step and reps reset back to the bottom. A new goal's range moves the weight to match and starts at its bottom. Fixed-rep plans (the muscle plan) use `carryOverWeight`, where the target is the top of the range. Engine suites 39b and 63 cover this.
 
 ### 2.3 Work Capacity Index (WCI)
 Measures cardiovascular efficiency and localized muscular stamina under load:

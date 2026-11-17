@@ -30,6 +30,7 @@ import {
   isFirstCompoundForPillar,
 } from '../engine/warmup';
 import { localDateString } from '../utils/date';
+import { snapLoadKg } from '../utils/units';
 import { SEED_EXERCISES } from './seedData';
 
 export type SplitDayType = 'Push' | 'Pull' | 'Legs' | 'Upper';
@@ -1000,9 +1001,11 @@ export function generateSmartWorkoutSession(
 
     // Deload week reduces working weight by ~10% on compounds to unload joints
     const deloadFactor = mesocycleWeek === 6 && !meta.isIsolation ? 0.9 : 1.0;
+    const baseWorkingWeight = prescription.nextWeightKg || item.defaultWeightKg;
     const prescribedWeight =
-      Math.round(((prescription.nextWeightKg || item.defaultWeightKg) * deloadFactor) / 2.5) * 2.5 ||
-      prescription.nextWeightKg;
+      deloadFactor === 1.0
+        ? baseWorkingWeight
+        : snapLoadKg(baseWorkingWeight * deloadFactor, 'kg', def?.equipment) || baseWorkingWeight;
 
     const calibratedSets: WorkoutSet[] = seedSets.map((s, idx) => ({
       ...s,

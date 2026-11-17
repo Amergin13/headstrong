@@ -1,4 +1,11 @@
-import { PROGRESSION_RULES, hadQualityEffort, loadIncrementFor } from './progressionRules';
+import {
+  PROGRESSION_RULES,
+  capAndSnapWeight as capAndSnapEquipmentWeight,
+  equivalentWeightForReps,
+  evaluateRepRangeDoubleProgression,
+  hadQualityEffort,
+  loadIncrementFor,
+} from './progressionRules';
 import {
   ExerciseSession,
   ExperienceLevel,
@@ -124,15 +131,8 @@ export function learnStrengthRatios(
   return { byPillar, overall: samples.length > 0 ? median(samples.map((s) => s.ratio)) : null };
 }
 
-/** Epley-based weight for a new rep/RIR target from a previous set. */
-function equivalentWeight(prevWeight: number, prevReps: number, prevRir: number, newReps: number, newRir: number): number {
-  const e1rm = prevWeight * (1 + (prevReps + prevRir) / 30);
-  return e1rm / (1 + (newReps + newRir) / 30);
-}
-
 function loadIncrementKg(ex: ExerciseSession, unit: WeightUnit): number {
-  if (unit === 'lb') return 5 / 2.2046226218;
-  return loadIncrementFor(ex.equipment);
+  return loadIncrementFor(ex.equipment, unit);
 }
 
 /** Carry-over weight for an exercise the athlete has done before (exact same exercise only). */
@@ -158,49 +158,34 @@ function carryOverWeight(
   const newReps = firstWorking?.targetReps ?? prevReps;
   const newRir = firstWorking?.targetRir ?? prevRir;
 
-  let weight = equivalentWeight(prevWeight, prevReps, prevRir, newReps, newRir);
+  let weight = equivalentWeightForReps(prevWeight, prevReps, prevRir, newReps, newRir);
 
   // Double progression (knowledge graph `sp-double-progression`): this path is for a fixed rep
-  // target, which is the top of the range. Every set reaching it with quality reps → one load step.
+  // target, which is the top of the range. Every prescribed set reaching it with quality reps → one load step.
   // Missed reps or ground-out sets → the weight that matches what was actually lifted (no increase).
-  const hitAllTargets = done.every(
-    (s) => (s.actualReps ?? s.targetReps) >= s.targetReps && hadQualityEffort(s.actualRir, s.targetRir)
-  );
+  const prescribedCount = previous.sets.filter(isWorking).length;
+  const hitAllTargets =
+    done.length >= prescribedCount &&
+    done.every(
+      (s) => (s.actualReps ?? s.targetReps) >= s.targetReps && hadQualityEffort(s.actualRir, s.targetRir)
+    );
   if (hitAllTargets && readinessState !== 'Amber Shield' && newReps >= prevReps) {
     weight = Math.max(weight, prevWeight) + loadIncrementKg(ex, unit);
   } else if (readinessState === 'Amber Shield' || newReps >= prevReps) {
     // Low recovery, or the same/higher rep target: never heavier than last time.
     weight = Math.min(weight, prevWeight);
   }
-  return capAndSnapWeight(ex, weight, prevWeight, unit);
+  return capAndSnapEquipmentWeight(ex.equipment, weight, prevWeight, unit);
 }
 
-/**
- * Never prescribes a big jump from one session to the next, including after rounding to the weights
- * that exist (e.g. dumbbells in 2 kg steps).
- */
-function capAndSnapWeight(ex: ExerciseSession, weight: number, prevWeight: number, unit: WeightUnit): number {
-  const cap = prevWeight * (1 + PROGRESSION_RULES.maxSessionIncreaseFraction) + loadIncrementKg(ex, unit);
-  let snapped = snapLoadKg(Math.min(weight, cap), unit, ex.equipment);
-  while (snapped > cap + 1e-9 && snapped > prevWeight) {
-    snapped = snapLoadKg(snapped - loadIncrementKg(ex, unit), unit, ex.equipment);
-  }
-  return snapped;
-}
-
-/** True when the exercise works in a rep range (e.g. the starter plan's "6-10"), not a fixed target. */
+/** True when the exercise works in a rep range (e.g. "6-8" or "6-10"), not a fixed target. */
 function hasRepRange(ex: ExerciseSession): boolean {
   return (ex.repTargetType === undefined || ex.repTargetType === 'reps') && ex.minReps < ex.maxReps;
 }
 
 /**
- * Double progression through a rep range (knowledge graph `sp-double-progression`), from the
- * exercise's last session:
- * - every prescribed set at the top of the range with quality reps → one load step, reps back to the bottom
- * - otherwise the weight holds, and the first two sets below the top aim for one more rep if they were quality reps
- * - the best set below the bottom of the range → the weight that matches what was lifted
- * - low recovery → weight and reps held
- * - the range itself changed (a new goal) → the matching weight for the new range, at its bottom
+ * Double progression through a rep range (knowledge graph `sp-double-progression`), delegating to the
+ * single shared evaluator in `progressionRules.ts`.
  */
 function progressThroughRepRange(
   ex: ExerciseSession,
@@ -211,74 +196,30 @@ function progressThroughRepRange(
   const done = previous.sets.filter((s) => s.completed && isWorking(s));
   if (done.length === 0) return null;
   const weightOf = (s: WorkoutSet) => s.actualWeightKg ?? s.targetWeightKg;
-  const repsOf = (s: WorkoutSet) => s.actualReps ?? s.targetReps;
-
   const prevWeight = Math.max(...done.map(weightOf));
   if (prevWeight <= 0) return null;
 
-  const { minReps, maxReps } = ex;
-  const setCount = ex.sets.filter(isWorking).length;
-  const atBottom = Array.from({ length: setCount }, () => minReps);
-  const finish = (weight: number, repsBySet: number[]) => ({
-    weightKg: capAndSnapWeight(ex, weight, prevWeight, unit),
-    repsBySet,
+  const firstWorking = ex.sets.find(isWorking);
+  const result = evaluateRepRangeDoubleProgression({
+    completedWorkingSets: done,
+    sourcePrescribedSetCount: previous.sets.filter(isWorking).length,
+    targetSetCount: ex.sets.filter(isWorking).length,
+    minReps: ex.minReps,
+    maxReps: ex.maxReps,
+    sourceMinReps: previous.minReps,
+    sourceMaxReps: previous.maxReps,
+    targetRir: firstWorking?.targetRir,
+    currentWeightKg: prevWeight,
+    equipment: ex.equipment,
+    readinessState,
+    unit,
+    isPureBodyweight: isPureBodyweight(ex),
   });
 
-  const heaviest = done.filter((s) => weightOf(s) === prevWeight);
-  const bestSet = heaviest.reduce((best, s) => (repsOf(s) > repsOf(best) ? s : best));
-  const bestReps = repsOf(bestSet);
-  const bestRir = bestSet.actualRir ?? bestSet.targetRir ?? 2;
-  const newRir = ex.sets.find(isWorking)?.targetRir ?? bestRir;
-
-  if (previous.minReps !== minReps || previous.maxReps !== maxReps) {
-    const matched = equivalentWeight(prevWeight, bestReps, bestRir, minReps, newRir);
-    const neverHeavier = minReps >= bestReps || readinessState === 'Amber Shield';
-    return finish(neverHeavier ? Math.min(matched, prevWeight) : matched, atBottom);
-  }
-
-  // Reps for each set if the weight holds: last time's, on the same set at the same weight.
-  const lowestAtWeight = Math.min(...heaviest.map(repsOf));
-  const repsLastTime = (idx: number) => {
-    const s = done[idx];
-    return s && weightOf(s) === prevWeight ? repsOf(s) : lowestAtWeight;
+  return {
+    weightKg: result.nextWeightKg,
+    repsBySet: result.nextRepsBySet,
   };
-  const clampToRange = (reps: number) => Math.min(maxReps, Math.max(minReps, reps));
-
-  if (readinessState === 'Amber Shield') {
-    return finish(prevWeight, Array.from({ length: setCount }, (_, i) => clampToRange(repsLastTime(i))));
-  }
-
-  const everySetDone = done.length === previous.sets.filter(isWorking).length;
-  const allAtTop =
-    everySetDone && done.every((s) => repsOf(s) >= maxReps && hadQualityEffort(s.actualRir, s.targetRir));
-  if (allAtTop) {
-    // Reps beyond the range mean the weight was well under the athlete: move it to match, then step.
-    const lowestReps = Math.min(...done.map(repsOf));
-    const base = lowestReps > maxReps ? equivalentWeight(prevWeight, lowestReps, bestRir, maxReps, bestRir) : prevWeight;
-    return finish(base + loadIncrementKg(ex, unit), atBottom);
-  }
-
-  if (bestReps < minReps) {
-    return finish(Math.min(equivalentWeight(prevWeight, bestReps, bestRir, minReps, newRir), prevWeight), atBottom);
-  }
-
-  // +1 rep on the first two sets still short of the top, so later sets catch up instead of sticking.
-  let repsAdded = 0;
-  return finish(
-    prevWeight,
-    Array.from({ length: setCount }, (_, i) => {
-      const reps = clampToRange(repsLastTime(i));
-      const earnedRep =
-        repsAdded < 2 &&
-        reps < maxReps &&
-        done[i] !== undefined &&
-        weightOf(done[i]) === prevWeight &&
-        hadQualityEffort(done[i].actualRir, done[i].targetRir);
-      if (!earnedRep) return reps;
-      repsAdded++;
-      return clampToRange(reps + PROGRESSION_RULES.repStep);
-    })
-  );
 }
 
 function applyWeightToExercise(

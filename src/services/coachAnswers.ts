@@ -227,7 +227,11 @@ export function answerWeightChange(
         : `${ex.name}: ${formatWeight(lastKg, unit)} → ${formatWeight(todayKg, unit)}, matched to how many reps you managed last time (${repsText(lastReps)}).`;
     }
     if (todayKg < lastKg - 0.01) {
-      return `${ex.name}: ${formatWeight(lastKg, unit)} → ${formatWeight(todayKg, unit)} because your best set last time (${Math.max(...lastReps)} reps) was under the ${last.session.minReps}–${top} range, so the weight was matched to what you could lift.`;
+      const lowestLast = Math.min(...lastReps);
+      const bestLast = Math.max(...lastReps);
+      return bestLast < last.session.minReps
+        ? `${ex.name}: ${formatWeight(lastKg, unit)} → ${formatWeight(todayKg, unit)} because your best set last time (${bestLast} reps) was under the ${last.session.minReps}–${top} range, so the weight was matched to what you could lift.`
+        : `${ex.name}: ${formatWeight(lastKg, unit)} → ${formatWeight(todayKg, unit)} because you couldn't hit at least ${last.session.minReps} reps across every set last time (${repsText(lastReps)}, low: ${lowestLast}), so the weight was lowered to keep all sets in the ${last.session.minReps}–${top} range.`;
     }
     const repsUp = todayReps.some((r, i) => r > (lastReps[i] ?? 0));
     return repsUp
@@ -237,7 +241,7 @@ export function answerWeightChange(
   const targets = named.length ? named : activeWorkout.exercises;
   const lines = targets.map(explain).filter((l): l is string => Boolean(l));
   if (!lines.length) return "I couldn't find a logged session to compare with yet. Once you've done an exercise, I can tell you why its weight changes.";
-  const rule = 'Weights rise only when every set reaches the top of the rep range with reps to spare; otherwise you add reps first.';
+  const rule = 'Weights rise once every set hits the top of the rep range with reps to spare, hold while you build reps inside the range, and drop if any set falls below the bottom of the range.';
   return `${named.length ? '' : `Here's how today's ${activeWorkout.name} compares with last time:\n`}${lines.map((l) => `• ${l}`).join('\n')}\n\n${rule}`;
 }
 

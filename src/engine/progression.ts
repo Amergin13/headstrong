@@ -1,4 +1,8 @@
-import { PROGRESSION_RULES, hadQualityEffort, loadIncrementFor } from './progressionRules';
+import {
+  evaluateRepRangeDoubleProgression,
+  hadQualityEffort,
+  loadIncrementFor,
+} from './progressionRules';
 import {
   ExerciseDefinition,
   ExerciseSession,
@@ -16,7 +20,7 @@ import {
   solveTargetWeightForE1RM,
   translateWeightBetweenImplements,
 } from './e1rm';
-import { snapLoadKg, WeightUnit } from '../utils/units';
+import { formatWeight, snapLoadKg, WeightUnit } from '../utils/units';
 
 const MOVEMENT_FAMILY_LABELS: Record<string, string> = {
   'vector-pillar-horizontal-push': 'Horizontal Chest Press',
@@ -620,7 +624,8 @@ export function prescribeDoubleProgression(
   readinessState: ReadinessState = 'Normal',
   historicalWorkouts?: WorkoutSession[],
   bodyweightEmaKg: number = 81.5,
-  goalPhase: GoalPhase = 'Lean Bulk'
+  goalPhase: GoalPhase = 'Lean Bulk',
+  unit: WeightUnit = 'kg'
 ): ProgressionPrescription {
   let sourceSession = session;
   let lastSessionDate: string | undefined;
@@ -646,49 +651,62 @@ export function prescribeDoubleProgression(
   const sets = sourceSession.sets.filter(
     (s) => s.completed && !s.isWarmup && s.setType !== 'warmup'
   );
+  const workingSetsInSession = session.sets.filter(
+    (s) => !s.isWarmup && s.setType !== 'warmup'
+  );
+  const targetSets = workingSetsInSession.length > 0 ? workingSetsInSession : session.sets;
+  const sourceWorkingSets = sourceSession.sets.filter(
+    (s) => !s.isWarmup && s.setType !== 'warmup'
+  );
   const minReps = session.minReps || sourceSession.minReps || 8;
   const maxReps = session.maxReps || sourceSession.maxReps || 12;
   const sourceMaxReps = sourceSession.maxReps || maxReps;
   const sourceMinReps = sourceSession.minReps || minReps;
 
-  const firstWorkingInSession =
-    session.sets.find((s) => !s.isWarmup && s.setType !== 'warmup') ?? session.sets[0];
+  const firstWorkingInSession = targetSets[0] ?? session.sets[0];
 
-  const rawSourceWeight =
-    sets[0]?.actualWeightKg ??
-    sets[0]?.targetWeightKg ??
-    firstWorkingInSession?.targetWeightKg ??
-    20;
+  const translateWeight = (rawW: number): number =>
+    isCrossImplement
+      ? translateWeightBetweenImplements(
+          rawW,
+          {
+            equipment: sourceSession.equipment,
+            isRdl: sourceSession.isRdl,
+            isWeightedCalisthenic: sourceSession.isWeightedCalisthenic,
+            exerciseId: sourceSession.exerciseId,
+            name: sourceSession.name,
+            pillar: sourceSession.pillar,
+          },
+          {
+            equipment: session.equipment,
+            isRdl: session.isRdl,
+            isWeightedCalisthenic: session.isWeightedCalisthenic,
+            exerciseId: session.exerciseId,
+            name: session.name,
+            pillar: session.pillar,
+          },
+          bodyweightEmaKg
+        )
+      : rawW;
+
+  const completedWorkingWeights = sets
+    .map((s) => translateWeight(s.actualWeightKg ?? s.targetWeightKg ?? 0))
+    .filter((w) => w > 0);
+  const rawFallbackWeight = firstWorkingInSession?.targetWeightKg ?? 20;
+  const rawSourceFirst = sets[0]?.actualWeightKg ?? sets[0]?.targetWeightKg;
 
   const isPureBodyweight =
     (session.equipment === 'bodyweight' && !session.isWeightedCalisthenic) ||
-    (rawSourceWeight === 0 && session.equipment === 'bodyweight');
+    ((rawSourceFirst ?? rawFallbackWeight) === 0 && session.equipment === 'bodyweight');
 
-  // Translate weight into today's implement if the last session was on a different exercise/equipment!
+  // Anchor to the heaviest completed working weight in the athlete's target implement (never warm-up sets).
   const currentWeight = isPureBodyweight
     ? 0
-    : isCrossImplement
-    ? translateWeightBetweenImplements(
-        rawSourceWeight,
-        {
-          equipment: sourceSession.equipment,
-          isRdl: sourceSession.isRdl,
-          isWeightedCalisthenic: sourceSession.isWeightedCalisthenic,
-          exerciseId: sourceSession.exerciseId,
-          name: sourceSession.name,
-          pillar: sourceSession.pillar,
-        },
-        {
-          equipment: session.equipment,
-          isRdl: session.isRdl,
-          isWeightedCalisthenic: session.isWeightedCalisthenic,
-          exerciseId: session.exerciseId,
-          name: session.name,
-          pillar: session.pillar,
-        },
-        bodyweightEmaKg
-      )
-    : rawSourceWeight;
+    : completedWorkingWeights.length > 0
+    ? Math.max(...completedWorkingWeights)
+    : rawSourceFirst !== undefined
+    ? translateWeight(rawSourceFirst)
+    : rawFallbackWeight;
 
   // Compute Canonical Pillar E1RM from the source session's best set
   let canonicalE1rmKg = 0;
@@ -754,12 +772,12 @@ export function prescribeDoubleProgression(
   if (readinessState === 'Amber Shield') {
     const amberReason = isPureBodyweight
       ? `${transferPrefix}Recovery mode is active. Stop 2–3 reps short of failure on bodyweight sets so your joints and muscles can recover.`
-      : `${transferPrefix}Recovery mode is active. Weight stays at ${currentWeight} kg with 2–3 reps left in reserve so your joints and muscles can recover.`;
+      : `${transferPrefix}Recovery mode is active. Weight stays at ${formatWeight(currentWeight, unit)} with 2–3 reps left in reserve so your joints and muscles can recover.`;
 
     return {
       exerciseId: session.exerciseId,
       nextWeightKg: isPureBodyweight ? 0 : currentWeight,
-      nextTargetReps: session.sets.map((s, idx) => sets[idx]?.actualReps || s.targetReps || minReps),
+      nextTargetReps: targetSets.map((s, idx) => sets[idx]?.actualReps || s.targetReps || minReps),
       reason: amberReason,
       weightChanged: false,
       repsChanged: false,
@@ -787,7 +805,7 @@ export function prescribeDoubleProgression(
       return {
         exerciseId: session.exerciseId,
         nextWeightKg: 0,
-        nextTargetReps: session.sets.map(() => bwPrescription.targetReps),
+        nextTargetReps: targetSets.map(() => bwPrescription.targetReps),
         reason: `${transferPrefix}${bwPrescription.explanation}`,
         weightChanged: false,
         repsChanged: bwPrescription.targetReps !== minReps,
@@ -804,7 +822,7 @@ export function prescribeDoubleProgression(
     return {
       exerciseId: session.exerciseId,
       nextWeightKg: currentWeight,
-      nextTargetReps: session.sets.map((s) => s.targetReps || minReps),
+      nextTargetReps: targetSets.map((s) => s.targetReps || minReps),
       reason: 'Starting target based on your current training plan.',
       weightChanged: false,
       repsChanged: false,
@@ -817,22 +835,71 @@ export function prescribeDoubleProgression(
     };
   }
 
-  // Check if all working sets hit top of rep range at 1–2 RIR:
-  // Reps left in reserve count as quality reps; more reserve than planned means the weight is easy,
-  // so it still progresses (PROGRESSION_RULES, knowledge graph `sp-double-progression`).
-  const allHitTopWithGoodRir = sets.every(
-    (s) => (s.actualReps ?? 0) >= sourceMaxReps && hadQualityEffort(s.actualRir, s.targetRir)
-  );
+  // Form-failure protocols ('F*') intentionally push high-rep failure rather than strict rep floors.
+  if (session.repTargetType === 'form_failure') {
+    const allAtTop =
+      sets.length >= Math.max(1, sourceWorkingSets.length) &&
+      sets.every((s) => (s.actualReps ?? 0) >= sourceMaxReps && hadQualityEffort(s.actualRir, s.targetRir));
+    if (allAtTop && !isPureBodyweight) {
+      const increment = loadIncrementFor(session.equipment, unit);
+      const nextWeight = snapLoadKg(currentWeight + increment, unit, session.equipment);
+      return {
+        exerciseId: session.exerciseId,
+        nextWeightKg: nextWeight,
+        nextTargetReps: targetSets.map(() => minReps),
+        reason: `${transferPrefix}Hit ${sourceMaxReps} reps cleanly on all form-failure sets — increasing weight to ${formatWeight(nextWeight, unit)}.`,
+        weightChanged: nextWeight > currentWeight + 0.05,
+        repsChanged: true,
+        isAmberShieldBuffer: false,
+        lastSessionDate,
+        previousSetsSummary,
+        transferredFromExerciseName,
+        canonicalE1rmKg,
+        isPureBodyweight: false,
+      };
+    }
+    return {
+      exerciseId: session.exerciseId,
+      nextWeightKg: isPureBodyweight ? 0 : currentWeight,
+      nextTargetReps: targetSets.map((s, idx) => sets[idx]?.actualReps || s.targetReps || minReps),
+      reason: isPureBodyweight
+        ? `${transferPrefix}Push each bodyweight set close to crisp technical failure.`
+        : `${transferPrefix}Keeping ${formatWeight(currentWeight, unit)} while pushing close to clean technical failure.`,
+      weightChanged: false,
+      repsChanged: false,
+      isAmberShieldBuffer: false,
+      lastSessionDate,
+      previousSetsSummary,
+      transferredFromExerciseName,
+      canonicalE1rmKg,
+      isPureBodyweight,
+    };
+  }
 
-  if (allHitTopWithGoodRir) {
+  // Evaluate Double Progression cleanly through the single shared rule engine
+  const evaluation = evaluateRepRangeDoubleProgression({
+    completedWorkingSets: sets,
+    sourcePrescribedSetCount: sourceWorkingSets.length || sets.length,
+    targetSetCount: targetSets.length,
+    minReps,
+    maxReps,
+    sourceMinReps: isCrossImplement ? minReps : sourceMinReps,
+    sourceMaxReps: isCrossImplement ? maxReps : sourceMaxReps,
+    targetRir: firstWorkingInSession?.targetRir,
+    currentWeightKg: currentWeight,
+    equipment: session.equipment,
+    readinessState,
+    unit,
+    isPureBodyweight,
+    weightOfSetKg: (s) => translateWeight(s.actualWeightKg ?? s.targetWeightKg ?? 0),
+  });
+
+  if (evaluation.status === 'increase_load') {
     if (isPureBodyweight) {
-      const nextReps = session.sets.map((s, idx) =>
-        Math.min(30, (sets[idx]?.actualReps || sourceMaxReps) + 2)
-      );
       return {
         exerciseId: session.exerciseId,
         nextWeightKg: 0,
-        nextTargetReps: nextReps,
+        nextTargetReps: evaluation.nextRepsBySet,
         reason: `${transferPrefix}You hit ${sourceMaxReps} reps on all bodyweight sets! Increasing target by +2 reps (or pause 2 seconds in the stretch) to continue progressive overload without external weights.`,
         weightChanged: false,
         repsChanged: true,
@@ -846,20 +913,19 @@ export function prescribeDoubleProgression(
       };
     }
 
-    const increment = loadIncrementFor(session.equipment);
-    const nextWeight = Math.round((currentWeight + increment) * 10) / 10;
+    const deltaText = formatWeight(Math.max(0.5, evaluation.nextWeightKg - currentWeight), unit);
     const reasonText =
       goalPhase === 'Cut / Recomp'
-        ? `${transferPrefix}Retention Shield Breakthrough: You hit ${sourceMaxReps} reps on all sets! Even in a caloric deficit, your strength increased—moving weight up by +${increment} kg and resetting target to ${minReps} reps.`
-        : `${transferPrefix}You hit ${sourceMaxReps} reps on all sets last time! Moving weight up by +${increment} kg and resetting target to ${minReps} reps.`;
+        ? `${transferPrefix}Retention Shield Breakthrough: You hit ${maxReps} reps across all sets! Moving weight up by +${deltaText} to ${formatWeight(evaluation.nextWeightKg, unit)} and resetting target to ${minReps} reps.`
+        : `${transferPrefix}You hit ${maxReps} reps across every set with reps in reserve — moving weight up by +${deltaText} to ${formatWeight(evaluation.nextWeightKg, unit)} and resetting target to ${minReps} reps.`;
 
     return {
       exerciseId: session.exerciseId,
-      nextWeightKg: nextWeight,
-      nextTargetReps: session.sets.map(() => minReps),
+      nextWeightKg: evaluation.nextWeightKg,
+      nextTargetReps: evaluation.nextRepsBySet,
       reason: reasonText,
-      weightChanged: true,
-      repsChanged: true,
+      weightChanged: evaluation.weightChanged,
+      repsChanged: evaluation.repsChanged,
       isAmberShieldBuffer: false,
       lastSessionDate,
       previousSetsSummary,
@@ -869,26 +935,71 @@ export function prescribeDoubleProgression(
     };
   }
 
-  // Check if within rep range at 1–2 RIR:
-  const goodQualitySets = sets.filter(
-    (s) => (s.actualReps ?? 0) >= sourceMinReps && hadQualityEffort(s.actualRir, s.targetRir)
-  );
-
-  if (goodQualitySets.length > 0) {
+  if (evaluation.status === 'reduce_load') {
     if (isPureBodyweight) {
-      const nextReps = session.sets.map((s, idx) => {
-        const baseReps = Math.min(30, Math.max(minReps, sets[idx]?.actualReps ?? s.targetReps ?? minReps));
-        if (idx < 2) {
-          return Math.min(30, baseReps + 1);
-        }
-        return baseReps;
-      });
-
       return {
         exerciseId: session.exerciseId,
         nextWeightKg: 0,
-        nextTargetReps: nextReps,
-        reason: `${transferPrefix}Strong bodyweight sets last session${lastSessionDate ? ` (${lastSessionDate})` : ''}. Aiming for +1 rep on your first two sets to continue progressive overload without weights.`,
+        nextTargetReps: evaluation.nextRepsBySet,
+        reason: `${transferPrefix}At least one set fell below ${minReps} reps (low: ${evaluation.lowestReps}). Hold bodyweight and build cleanly until every set reaches ${minReps}–${maxReps} reps.`,
+        weightChanged: false,
+        repsChanged: evaluation.repsChanged,
+        isAmberShieldBuffer: false,
+        lastSessionDate,
+        previousSetsSummary,
+        transferredFromExerciseName,
+        canonicalE1rmKg,
+        isPureBodyweight: true,
+        calibratedTempoCue: 'Controlled 3s eccentric tempo',
+      };
+    }
+
+    const reasonText = evaluation.weightChanged
+      ? `${transferPrefix}Set performance dropped below the ${minReps}-rep floor (lowest: ${evaluation.lowestReps} reps) — reducing weight from ${formatWeight(currentWeight, unit)} to ${formatWeight(evaluation.nextWeightKg, unit)} and targeting ${minReps} reps across every set.`
+      : `${transferPrefix}At least one set fell below ${minReps} reps — keeping minimum load (${formatWeight(evaluation.nextWeightKg, unit)}) and targeting ${minReps} reps cleanly across each set.`;
+
+    return {
+      exerciseId: session.exerciseId,
+      nextWeightKg: evaluation.nextWeightKg,
+      nextTargetReps: evaluation.nextRepsBySet,
+      reason: reasonText,
+      weightChanged: evaluation.weightChanged,
+      repsChanged: evaluation.repsChanged,
+      isAmberShieldBuffer: false,
+      lastSessionDate,
+      previousSetsSummary,
+      transferredFromExerciseName,
+      canonicalE1rmKg,
+      isPureBodyweight: false,
+    };
+  }
+
+  if (evaluation.status === 'range_changed') {
+    return {
+      exerciseId: session.exerciseId,
+      nextWeightKg: evaluation.nextWeightKg,
+      nextTargetReps: evaluation.nextRepsBySet,
+      reason: isPureBodyweight
+        ? `${transferPrefix}Rep range shifted to ${minReps}–${maxReps} — starting at ${minReps} reps across each set.`
+        : `${transferPrefix}Rep range shifted to ${minReps}–${maxReps} — matched load to ${formatWeight(evaluation.nextWeightKg, unit)} at ${minReps} reps across each set.`,
+      weightChanged: evaluation.weightChanged,
+      repsChanged: evaluation.repsChanged,
+      isAmberShieldBuffer: false,
+      lastSessionDate,
+      previousSetsSummary,
+      transferredFromExerciseName,
+      canonicalE1rmKg,
+      isPureBodyweight,
+    };
+  }
+
+  if (evaluation.status === 'build_reps') {
+    if (isPureBodyweight) {
+      return {
+        exerciseId: session.exerciseId,
+        nextWeightKg: 0,
+        nextTargetReps: evaluation.nextRepsBySet,
+        reason: `${transferPrefix}Strong bodyweight sets last session${lastSessionDate ? ` (${lastSessionDate})` : ''}. Aiming for +1 rep on your first two sets toward ${maxReps}.`,
         weightChanged: false,
         repsChanged: true,
         isAmberShieldBuffer: false,
@@ -901,23 +1012,15 @@ export function prescribeDoubleProgression(
       };
     }
 
-    const nextReps = session.sets.map((s, idx) => {
-      const baseReps = Math.min(maxReps, Math.max(minReps, sets[idx]?.actualReps ?? s.targetReps ?? minReps));
-      if (idx < 2) {
-        return Math.min(maxReps, baseReps + 1);
-      }
-      return baseReps;
-    });
-
     const inRangeReason =
       goalPhase === 'Cut / Recomp'
-        ? `${transferPrefix}Retention Shield: Strong sets last session. Keeping weight at ${currentWeight} kg and aiming for +1 rep today. Holding your load steady in a caloric deficit preserves 100% of your muscle mass.`
-        : `${transferPrefix}Strong sets last session${lastSessionDate ? ` (${lastSessionDate})` : ''}. Keeping weight at ${currentWeight} kg and aiming for +1 rep on your first two sets.`;
+        ? `${transferPrefix}Retention Shield: All sets hit the ${minReps}-rep floor. Keeping ${formatWeight(currentWeight, unit)} and pushing +1 rep toward ${maxReps} across every set to preserve lean mass.`
+        : `${transferPrefix}All sets hit at least ${minReps} reps${lastSessionDate ? ` (${lastSessionDate})` : ''}. Keeping weight at ${formatWeight(currentWeight, unit)} until all sets reach ${maxReps} reps.`;
 
     return {
       exerciseId: session.exerciseId,
-      nextWeightKg: currentWeight,
-      nextTargetReps: nextReps,
+      nextWeightKg: evaluation.nextWeightKg,
+      nextTargetReps: evaluation.nextRepsBySet,
       reason: inRangeReason,
       weightChanged: false,
       repsChanged: true,
@@ -930,17 +1033,17 @@ export function prescribeDoubleProgression(
     };
   }
 
-  // Sub-par performance or high fatigue (0 RIR or below min reps): hold everything
+  // status === 'consolidate' (sets hit >= minReps, e.g., ground-out 0 RIR or incomplete sets -> hold load and reps)
   const holdReason = isPureBodyweight
-    ? `${transferPrefix}Hold reps steady today and focus on clean form and full stretch through every rep.`
+    ? `${transferPrefix}Hold reps steady today and focus on clean form and reps in reserve before adding more.`
     : goalPhase === 'Cut / Recomp'
-    ? `${transferPrefix}Retention Shield Active: Holding weight at ${currentWeight} kg in a caloric deficit preserves lean muscle and drives relative strength (DOTS) gains as body fat drops.`
-    : `${transferPrefix}Keeping weight at ${currentWeight} kg today so you can build clean, consistent reps.`;
+    ? `${transferPrefix}Retention Shield Active: Holding weight at ${formatWeight(currentWeight, unit)} until all sets finish cleanly with 1+ rep in reserve.`
+    : `${transferPrefix}Keeping ${formatWeight(currentWeight, unit)} today until every prescribed set finishes cleanly with at least 1 rep in reserve.`;
 
   return {
     exerciseId: session.exerciseId,
-    nextWeightKg: isPureBodyweight ? 0 : currentWeight,
-    nextTargetReps: session.sets.map((s, idx) => sets[idx]?.actualReps || s.targetReps || minReps),
+    nextWeightKg: isPureBodyweight ? 0 : evaluation.nextWeightKg,
+    nextTargetReps: evaluation.nextRepsBySet,
     reason: holdReason,
     weightChanged: false,
     repsChanged: false,

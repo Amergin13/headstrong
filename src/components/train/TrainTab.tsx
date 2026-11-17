@@ -436,7 +436,8 @@ export const TrainTab: React.FC<TrainTabProps> = ({
       readiness.state,
       workouts,
       bodyweightEmaKg,
-      profile.goalPhase
+      profile.goalPhase,
+      units.unit
     );
     // Never done before: its own default scaled to the athlete, not a number from a similar movement.
     const ownHistory = findLastCompletedExerciseSession(def.id, workouts);
@@ -618,7 +619,8 @@ export const TrainTab: React.FC<TrainTabProps> = ({
       readiness.state,
       workouts,
       bodyweightEmaKg,
-      profile.goalPhase
+      profile.goalPhase,
+      units.unit
     );
     return { ex, prescription };
   });

@@ -5397,7 +5397,10 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
     const missed = runBench(() => ({ reps: 3, rir: 2 }), { sessions: 3 });
     assert(missed[1].weight < missed[0].weight && missed[1].targets.every((r) => r === 6), `The best set well under the range lowers the weight to match (got ${JSON.stringify(missed)})`);
     const dropOff = runBench((i) => ({ reps: i === 0 ? 7 : 5, rir: 2 }), { sessions: 3 });
-    assert(dropOff[1].weight === dropOff[0].weight, 'A later set dropping under the range is normal fatigue: the weight holds');
+    assert(
+      dropOff[1].weight < dropOff[0].weight && dropOff[1].targets.every((r) => r === 6),
+      `Any working set falling under the rep-range floor reduces the weight and resets targets to bottom (got ${JSON.stringify(dropOff)})`
+    );
 
     // Far more reps than the range: the starting weight was too light, so it can move faster (still capped).
     const tooLight = runBench(() => ({ reps: 20, rir: 2 }), { sessions: 2 });
@@ -12909,7 +12912,312 @@ Exercise,,Date,Workout,Sets,Reps,Tempo,Rest,Notes,Set 1,Set 2,Set 3,Set 4
     );
   }
 
-  console.log('\nALL 62 ENGINE, GOVERNANCE, DESIGN SYSTEM, TYPOGRAPHY, WEARABLES, WHOOP STRAIN, GOOGLE AUTH, ONBOARDING CONTEXT, 6-WEEK PROGRAM, SPREADSHEET IMPORT, AI COACH ACTIONS, GEMINI FLASH + KG, OOUX, AGENTIC COACH, PRODUCT UPGRADES, INFO EXPERIENCE, CONTENT DESIGN, GOAL CAROUSEL, SHIFT NUDGE COLOR POLISH, EXERCISE DRILL-IN MODAL, COMPOSITION WIDGET, MEASUREMENT UX, AI-NATIVE ACTIONS, PERMANENT PROGRAM ADAPTATION & HITL INTERVENTION SUITES PASSED SUCCESSFULLY! 🎯');
+  // Suite 63: Evidence-Based Rep-Range Double Progression Across Every Surface
+  {
+    console.log('\n[Suite 63: Rep-Range Double Progression (6–8 Example, Load Reduction, Consolidation & Full Parity)]');
+    const fs63 = await import('fs');
+    const path63 = await import('path');
+    const { evaluateRepRangeDoubleProgression } = await import('../progressionRules');
+    const { answerWeightChange } = await import('../../services/coachAnswers');
+    const { prepareSessionForAthlete } = await import('../../services/sessionPreparation');
+    const { buildStarterPlan } = await import('../starterPlan');
+    const { generatePlanWorkout } = await import('../muscleBuildingProgram');
+
+    const makeRangeBench = (
+      weightKg: number,
+      repsList: Array<{ reps: number; rir?: number; completed?: boolean }>,
+      equipment: ExerciseSession['equipment'] = 'barbell',
+      opts: { withWarmups?: boolean; minReps?: number; maxReps?: number } = {}
+    ): ExerciseSession => {
+      const minReps = opts.minReps ?? 6;
+      const maxReps = opts.maxReps ?? 8;
+      const warmups = opts.withWarmups
+        ? [
+            {
+              id: 'w-1',
+              setNumber: 1,
+              targetWeightKg: Math.round(weightKg * 0.5),
+              actualWeightKg: Math.round(weightKg * 0.5),
+              targetReps: 5,
+              actualReps: 5,
+              targetRir: 4,
+              actualRir: 4,
+              completed: true,
+              isWarmup: true,
+              setType: 'warmup' as const,
+            },
+          ]
+        : [];
+      const workSets = repsList.map((entry, idx) => ({
+        id: `work-${idx + 1}`,
+        setNumber: warmups.length + idx + 1,
+        targetWeightKg: weightKg,
+        actualWeightKg: weightKg,
+        targetReps: entry.reps,
+        actualReps: entry.reps,
+        targetRir: 2,
+        actualRir: entry.rir ?? 2,
+        completed: entry.completed ?? true,
+        isWarmup: false,
+        setType: 'working' as const,
+      }));
+      return {
+        id: 'ex-sess-63',
+        exerciseId: 'ex-bench-press',
+        name: 'Barbell Bench Press',
+        pillar: 'Horizontal Push',
+        equipment,
+        minReps,
+        maxReps,
+        sets: [...warmups, ...workSets],
+      };
+    };
+
+    // A. User's 6-8 example: fail to hit 6 across each set -> reduce weight & reset to 6
+    const allMissed = prescribeDoubleProgression(
+      makeRangeBench(100, [{ reps: 5 }, { reps: 5 }, { reps: 5 }]),
+      'Normal'
+    );
+    assert(
+      allMissed.nextWeightKg === 97.5 &&
+        allMissed.weightChanged === true &&
+        allMissed.nextTargetReps.every((r) => r === 6),
+      `[5, 5, 5] in 6-8 reduces weight 100 -> 97.5 kg and resets targets to [6, 6, 6] (got ${allMissed.nextWeightKg} kg, reps ${allMissed.nextTargetReps.join(',')})`
+    );
+
+    const lateDropMissed = prescribeDoubleProgression(
+      makeRangeBench(100, [{ reps: 7 }, { reps: 6 }, { reps: 5 }]),
+      'Normal'
+    );
+    assert(
+      lateDropMissed.nextWeightKg === 97.5 &&
+        lateDropMissed.weightChanged === true &&
+        lateDropMissed.nextTargetReps.every((r) => r === 6),
+      `[7, 6, 5] in 6-8 (cannot hit 6 on set 3) reduces weight 100 -> 97.5 kg and resets targets to [6, 6, 6] (got ${lateDropMissed.nextWeightKg} kg, reps ${lateDropMissed.nextTargetReps.join(',')})`
+    );
+
+    // Small weights never snap back up to previous weight when missing bottom of range
+    const smallBbMissed = prescribeDoubleProgression(
+      makeRangeBench(40, [{ reps: 5 }, { reps: 5 }, { reps: 5 }], 'barbell'),
+      'Normal'
+    );
+    const smallDbMissed = prescribeDoubleProgression(
+      makeRangeBench(20, [{ reps: 5 }, { reps: 5 }, { reps: 5 }], 'dumbbell'),
+      'Normal'
+    );
+    assert(
+      smallBbMissed.nextWeightKg === 37.5 && smallDbMissed.nextWeightKg === 18,
+      `Small barbell (40 -> ${smallBbMissed.nextWeightKg} kg) and dumbbell (20 -> ${smallDbMissed.nextWeightKg} kg) drop by >=1 real step on missed bottom reps`
+    );
+
+    // B. Hit 6 across all sets -> keep weight & climb incrementally inside 6-8 until all sets hit 8 -> then increase
+    const hitBottom = prescribeDoubleProgression(
+      makeRangeBench(100, [{ reps: 6 }, { reps: 6 }, { reps: 6 }]),
+      'Normal'
+    );
+    assert(
+      hitBottom.nextWeightKg === 100 &&
+        hitBottom.weightChanged === false &&
+        hitBottom.nextTargetReps.join(',') === '7,7,6',
+      `[6, 6, 6] in 6-8 keeps 100 kg and builds reps toward 8 (got ${hitBottom.nextWeightKg} kg, ${hitBottom.nextTargetReps.join(',')})`
+    );
+
+    // Later set behind ([8, 8, 7]): previously stuck at [8, 8, 7] forever because of old `idx < 2` bug
+    const catchUpThirdSet = prescribeDoubleProgression(
+      makeRangeBench(100, [{ reps: 8 }, { reps: 8 }, { reps: 7 }], 'barbell', { withWarmups: true }),
+      'Normal'
+    );
+    assert(
+      catchUpThirdSet.nextWeightKg === 100 &&
+        catchUpThirdSet.weightChanged === false &&
+        catchUpThirdSet.nextTargetReps.join(',') === '8,8,8',
+      `[8, 8, 7] with warmup sets ignores warmup offset and advances working set 3 to [8, 8, 8] (got ${catchUpThirdSet.nextTargetReps.join(',')})`
+    );
+
+    // Every prescribed set hits 8 with quality RIR -> increment weight (+2.5 kg barbell, +2 kg dumbbell) & reset reps to 6
+    const allAtTopBb = prescribeDoubleProgression(
+      makeRangeBench(100, [{ reps: 8, rir: 2 }, { reps: 8, rir: 2 }, { reps: 8, rir: 1 }]),
+      'Normal'
+    );
+    const allAtTopDb = prescribeDoubleProgression(
+      makeRangeBench(24, [{ reps: 8, rir: 2 }, { reps: 8, rir: 2 }, { reps: 8, rir: 1 }], 'dumbbell'),
+      'Normal'
+    );
+    assert(
+      allAtTopBb.nextWeightKg === 102.5 &&
+        allAtTopBb.weightChanged === true &&
+        allAtTopBb.nextTargetReps.join(',') === '6,6,6' &&
+        allAtTopDb.nextWeightKg === 26 &&
+        allAtTopDb.nextTargetReps.join(',') === '6,6,6',
+      `[8, 8, 8] with 1-2 RIR raises BB (100->102.5) and DB (24->26) and resets reps to [6, 6, 6]`
+    );
+
+    // C. Safety checks: skipped set & ground-out 0 RIR & Amber Shield never increase weight
+    const skippedThirdSet = prescribeDoubleProgression(
+      makeRangeBench(100, [
+        { reps: 8, rir: 2, completed: true },
+        { reps: 8, rir: 2, completed: true },
+        { reps: 8, rir: 2, completed: false },
+      ]),
+      'Normal'
+    );
+    assert(
+      skippedThirdSet.nextWeightKg === 100 && skippedThirdSet.weightChanged === false,
+      `Incomplete prescribed sets (2 of 3 completed) never increase load (got ${skippedThirdSet.nextWeightKg} kg)`
+    );
+
+    const groundOutAtTop = prescribeDoubleProgression(
+      makeRangeBench(100, [{ reps: 8, rir: 0 }, { reps: 8, rir: 0 }, { reps: 8, rir: 0 }]),
+      'Normal'
+    );
+    assert(
+      groundOutAtTop.nextWeightKg === 100 &&
+        groundOutAtTop.weightChanged === false &&
+        groundOutAtTop.nextTargetReps.join(',') === '8,8,8',
+      `[8, 8, 8] ground out to 0 RIR holds 100 kg and [8, 8, 8] until owned with >=1 RIR`
+    );
+
+    const amberMissed = prescribeDoubleProgression(
+      makeRangeBench(100, [{ reps: 5 }, { reps: 5 }, { reps: 5 }]),
+      'Amber Shield'
+    );
+    assert(
+      amberMissed.nextWeightKg === 100 && amberMissed.isAmberShieldBuffer === true,
+      'Amber Shield holds weight static instead of pushing or cutting prematurely on a bad recovery day'
+    );
+
+    // D. Full parity between progression.ts (prescribeDoubleProgression) and loadPersonalization.ts (prepareSessionForAthlete)
+    const starterPlan = buildStarterPlan('Cut / Recomp'); // main lifts use "5-8", compound uses "6-10"
+    const s1 = prepareSessionForAthlete(generatePlanWorkout(starterPlan, 1), {
+      history: [],
+      bodyweightKg: 80,
+      readinessState: 'Normal',
+      gender: 'male',
+      experienceLevel: 'intermediate',
+      unit: 'kg',
+      isProgramPlan: true,
+    });
+    const squatS1 = s1.exercises.find((e) => e.exerciseId === 'ex-barbell-squat')!;
+    const squatStartW = squatS1.sets[0].targetWeightKg;
+    const completedMissedSquat: WorkoutSession = {
+      ...s1,
+      completed: true,
+      completedAt: new Date(2026, 10, 10, 18).toISOString(),
+      exercises: s1.exercises.map((ex) => ({
+        ...ex,
+        sets: ex.sets.map((s, idx) => ({
+          ...s,
+          completed: true,
+          actualWeightKg: s.targetWeightKg,
+          // Squat range is 5-8: hit 5 on Set 1, miss bottom on Set 2 -> 4 reps
+          actualReps: ex.exerciseId === 'ex-barbell-squat' ? (idx === 0 ? 5 : 4) : s.targetReps,
+          actualRir: 2,
+        })),
+      })),
+    };
+    const s2 = prepareSessionForAthlete(generatePlanWorkout(starterPlan, 3), {
+      history: [completedMissedSquat],
+      bodyweightKg: 80,
+      readinessState: 'Normal',
+      gender: 'male',
+      experienceLevel: 'intermediate',
+      unit: 'kg',
+      isProgramPlan: true,
+    });
+    const squatS2 = s2.exercises.find((e) => e.exerciseId === 'ex-barbell-squat')!;
+    const cardRxSquat = prescribeDoubleProgression(
+      squatS2,
+      'Normal',
+      [completedMissedSquat],
+      80,
+      'Cut / Recomp',
+      'kg'
+    );
+    assert(
+      squatS2.sets[0].targetWeightKg < squatStartW &&
+        squatS2.sets[0].targetWeightKg === cardRxSquat.nextWeightKg &&
+        squatS2.sets.every((s) => s.targetReps === 5),
+      `Plan session generator & ExerciseCard prescription match identically on reduction (${squatStartW} -> ${squatS2.sets[0].targetWeightKg} kg)`
+    );
+
+    // E. Dumbbell split generation preserves 2.0 kg steps (no 2.5 kg clobbering)
+    const dbLastDone: WorkoutSession = {
+      id: 'w-db-hist-63',
+      date: '2026-11-12',
+      name: 'Push Day',
+      splitDay: 'Push',
+      readinessState: 'Normal',
+      readinessZScore: 0,
+      completed: true,
+      completedAt: '2026-11-12T10:00:00Z',
+      exercises: [makeRangeBench(34, [{ reps: 12 }, { reps: 12 }, { reps: 12 }], 'dumbbell', { minReps: 8, maxReps: 12 })],
+    };
+    dbLastDone.exercises[0].exerciseId = 'ex-db-bench-press';
+    dbLastDone.exercises[0].name = 'Incline Dumbbell Press';
+    const nextPush = generateSmartWorkoutSession(
+      'Push',
+      [dbLastDone],
+      SEED_EXERCISES,
+      'Normal',
+      3,
+      'gym',
+      [],
+      'Lean Bulk',
+      80
+    );
+    const dbNextEx = nextPush.exercises.find((e) => e.exerciseId === 'ex-db-bench-press')!;
+    const dbNextW = dbNextEx.sets.find((s) => !s.isWarmup && s.setType !== 'warmup')!.targetWeightKg;
+    assert(
+      dbNextW === 36,
+      `Split generator preserves 2 kg dumbbell increment (34 -> 36 kg instead of clobbering to 35 kg; got ${dbNextW} kg)`
+    );
+
+    // F. Coach answerWeightChange, Knowledge Graph & ExerciseCard UI rep-range pill
+    const coachDropExplain = answerWeightChange(
+      'why did barbell bench press drop',
+      {
+        ...dbLastDone,
+        completed: false,
+        exercises: [
+          {
+            ...makeRangeBench(97.5, [{ reps: 6 }, { reps: 6 }, { reps: 6 }]),
+            sets: [6, 6, 6].map((r, i) => ({
+              id: `t-${i}`,
+              setNumber: i + 1,
+              targetWeightKg: 97.5,
+              targetReps: r,
+              targetRir: 2,
+              completed: false,
+            })),
+          },
+        ],
+      },
+      [
+        {
+          ...dbLastDone,
+          exercises: [makeRangeBench(100, [{ reps: 7 }, { reps: 6 }, { reps: 5 }])],
+        },
+      ],
+      'Normal',
+      'kg'
+    );
+    assert(
+      coachDropExplain.includes('at least 6 reps across every set') && coachDropExplain.includes('100 kg → 97.5 kg'),
+      `Coach answerWeightChange explains partial below-range set reduction accurately (got: ${coachDropExplain})`
+    );
+
+    const exCardSrc63 = fs63.readFileSync(path63.join(process.cwd(), 'src/components/train/ExerciseCard.tsx'), 'utf8');
+    const progRulesSrc63 = fs63.readFileSync(path63.join(process.cwd(), 'src/engine/progressionRules.ts'), 'utf8');
+    const spRule63 = EXERCISE_SCIENCE_KNOWLEDGE_BASE.find((p) => p.id === 'sp-double-progression')!;
+    assert(
+      exCardSrc63.includes('{exercise.minReps}–{exercise.maxReps} reps') &&
+        progRulesSrc63.includes('export function evaluateRepRangeDoubleProgression') &&
+        Boolean(spRule63.formula?.includes('below the bottom of the rep range')),
+      'ExerciseCard displays rep range pill cleanly and Knowledge Graph matches shared evaluator'
+    );
+  }
+
+  console.log('\nALL 63 ENGINE, GOVERNANCE, DESIGN SYSTEM, TYPOGRAPHY, WEARABLES, WHOOP STRAIN, GOOGLE AUTH, ONBOARDING CONTEXT, 6-WEEK PROGRAM, SPREADSHEET IMPORT, AI COACH ACTIONS, GEMINI FLASH + KG, OOUX, AGENTIC COACH, PRODUCT UPGRADES, INFO EXPERIENCE, CONTENT DESIGN, GOAL CAROUSEL, SHIFT NUDGE COLOR POLISH, EXERCISE DRILL-IN MODAL, COMPOSITION WIDGET, MEASUREMENT UX, AI-NATIVE ACTIONS, PERMANENT PROGRAM ADAPTATION, HITL INTERVENTION & REP-RANGE DOUBLE PROGRESSION SUITES PASSED SUCCESSFULLY! 🎯');
 })().catch((err) => {
   console.error('Test Suite Failed:', err);
   if (typeof process !== 'undefined' && process.exit) {
