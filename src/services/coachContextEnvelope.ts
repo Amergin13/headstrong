@@ -101,6 +101,7 @@ export interface OouxProgram {
   completion_pct: number;
   phase_name: string;
   cycle_started_at: string | null;
+  overrides_count?: number;
 }
 
 export interface OouxGoal {
@@ -246,6 +247,7 @@ export const OOUX_OBJECT_SCHEMAS = {
       completion_pct: { type: 'number', minimum: 0, maximum: 100 },
       phase_name: { type: 'string' },
       cycle_started_at: { type: ['string', 'null'] },
+      overrides_count: { type: 'number' },
     },
   },
   Workout: {
@@ -503,88 +505,8 @@ export function buildContextEnvelope(input: {
     .filter((w) => w.completed)
     .sort((a, b) => getWorkoutCompletedAt(b) - getWorkoutCompletedAt(a));
 
-  // Best E1RM per exercise across history + detect stalled lifts (>= 2 sessions with no top-set / E1RM improvement)
-  const sessionsByEx = new Map<
-    string,
-    Array<{ name: string; date: string; e1rmKg: number; weightKg: number; reps: number }>
-  >();
-
-  for (const w of completedWorkouts) {
-    const bw = hasRealBw ? emaLookup(w.date, bodyweightEmaKg) : 0;
-    for (const ex of w.exercises) {
-      if (isTimedExercise(ex)) continue;
-      const sets = ex.sets.filter(isDoneWorking);
-      if (sets.length === 0) continue;
-      let topE1rm = 0;
-      let topWeight = 0;
-      let topReps = 0;
-      for (const s of sets) {
-        const wt = s.actualWeightKg ?? s.targetWeightKg ?? 0;
-        const reps = s.actualReps ?? s.targetReps ?? 0;
-        const e1 = calculateE1RM(
-          wt,
-          reps,
-          s.actualRir ?? s.targetRir ?? 2,
-          ex.equipment,
-          ex.isRdl,
-          ex.isWeightedCalisthenic,
-          bw,
-          ex.exerciseId,
-          ex.pillar
-        );
-        if (e1 >= topE1rm) {
-          topE1rm = Math.round(e1 * 10) / 10;
-          topWeight = wt;
-          topReps = reps;
-        }
-      }
-      if (!sessionsByEx.has(ex.exerciseId)) sessionsByEx.set(ex.exerciseId, []);
-      sessionsByEx.get(ex.exerciseId)!.push({
-        name: ex.name,
-        date: w.date,
-        e1rmKg: topE1rm,
-        weightKg: topWeight,
-        reps: topReps,
-      });
-    }
-  }
-
-  const trainingMaxesKg: Record<string, number> = {};
-  const recentPrs: EpisodicPrSummary[] = [];
-  const stalledLifts: EpisodicStallSummary[] = [];
-  const stalledIds = new Set<string>();
-
-  for (const [exerciseId, hist] of sessionsByEx.entries()) {
-    if (hist.length === 0) continue;
-    const best = hist.reduce((a, b) => (b.e1rmKg > a.e1rmKg ? b : a));
-    if (best.e1rmKg > 0) {
-      trainingMaxesKg[exerciseId] = best.e1rmKg;
-    }
-    // Recent PR: latest session equals the all-time best E1RM (or within top 1% and strictly > prior best)
-    if (hist.length >= 2) {
-      const latest = hist[0];
-      const priorBest = hist.slice(1).reduce((m, s) => Math.max(m, s.e1rmKg), 0);
-      if (latest.e1rmKg > priorBest) {
-        recentPrs.push({
-          exercise_id: exerciseId,
-          exercise_name: latest.name,
-          e1rm_kg: latest.e1rmKg,
-          weight_kg: latest.weightKg,
-          reps: latest.reps,
-          date: latest.date,
-        });
-      } else if (hist.length >= 3 && latest.e1rmKg <= hist[1].e1rmKg && hist[1].e1rmKg <= hist[2].e1rmKg) {
-        stalledIds.add(exerciseId);
-        stalledLifts.push({
-          exercise_id: exerciseId,
-          exercise_name: latest.name,
-          last_weight_kg: latest.weightKg,
-          last_reps: latest.reps,
-          sessions_flat: 3,
-        });
-      }
-    }
-  }
+  const stallAnalysis = analyzeExerciseHistoryAndStalls(completedWorkouts, emaLookup, hasRealBw, bodyweightEmaKg);
+  const { trainingMaxesKg, recentPrs, stalledLifts, stalledIds } = stallAnalysis;
 
   const unit = profile.weightUnit || 'kg';
   const recentWorkouts: EpisodicWorkoutSummary[] = completedWorkouts.slice(0, 5).map((w) => {
@@ -651,6 +573,7 @@ export function buildContextEnvelope(input: {
     completion_pct: completionPct,
     phase_name: currentPhase?.shortName ?? 'Current Phase',
     cycle_started_at: profile.planCycleStarts?.[plan.id] ?? null,
+    overrides_count: (profile.programOverrides ?? []).filter((o) => o.planId === plan.id).length,
   };
 
   // Today's Workout OOUX object
@@ -792,6 +715,109 @@ export function buildContextEnvelope(input: {
       knowledge_graph_edges: kgEdges,
     },
   };
+}
+
+function analyzeExerciseHistoryAndStalls(
+  completedWorkouts: WorkoutSession[],
+  emaLookup: (date: string, fallbackKg: number) => number,
+  hasRealBw: boolean,
+  bodyweightEmaKg: number
+) {
+  const sessionsByEx = new Map<
+    string,
+    Array<{ name: string; date: string; e1rmKg: number; weightKg: number; reps: number }>
+  >();
+
+  for (const w of completedWorkouts) {
+    const bw = hasRealBw ? emaLookup(w.date, bodyweightEmaKg) : 0;
+    for (const ex of w.exercises) {
+      if (isTimedExercise(ex)) continue;
+      const sets = ex.sets.filter(isDoneWorking);
+      if (sets.length === 0) continue;
+      let topE1rm = 0;
+      let topWeight = 0;
+      let topReps = 0;
+      for (const s of sets) {
+        const wt = s.actualWeightKg ?? s.targetWeightKg ?? 0;
+        const reps = s.actualReps ?? s.targetReps ?? 0;
+        const e1 = calculateE1RM(
+          wt,
+          reps,
+          s.actualRir ?? s.targetRir ?? 2,
+          ex.equipment,
+          ex.isRdl,
+          ex.isWeightedCalisthenic,
+          bw,
+          ex.exerciseId,
+          ex.pillar
+        );
+        if (e1 >= topE1rm) {
+          topE1rm = Math.round(e1 * 10) / 10;
+          topWeight = wt;
+          topReps = reps;
+        }
+      }
+      if (!sessionsByEx.has(ex.exerciseId)) sessionsByEx.set(ex.exerciseId, []);
+      sessionsByEx.get(ex.exerciseId)!.push({
+        name: ex.name,
+        date: w.date,
+        e1rmKg: topE1rm,
+        weightKg: topWeight,
+        reps: topReps,
+      });
+    }
+  }
+
+  const trainingMaxesKg: Record<string, number> = {};
+  const recentPrs: EpisodicPrSummary[] = [];
+  const stalledLifts: EpisodicStallSummary[] = [];
+  const stalledIds = new Set<string>();
+
+  for (const [exerciseId, hist] of sessionsByEx.entries()) {
+    if (hist.length === 0) continue;
+    const best = hist.reduce((a, b) => (b.e1rmKg > a.e1rmKg ? b : a));
+    if (best.e1rmKg > 0) {
+      trainingMaxesKg[exerciseId] = best.e1rmKg;
+    }
+    if (hist.length >= 2) {
+      const latest = hist[0];
+      const priorBest = hist.slice(1).reduce((m, s) => Math.max(m, s.e1rmKg), 0);
+      if (latest.e1rmKg > priorBest) {
+        recentPrs.push({
+          exercise_id: exerciseId,
+          exercise_name: latest.name,
+          e1rm_kg: latest.e1rmKg,
+          weight_kg: latest.weightKg,
+          reps: latest.reps,
+          date: latest.date,
+        });
+      } else if (hist.length >= 3 && latest.e1rmKg <= hist[1].e1rmKg && hist[1].e1rmKg <= hist[2].e1rmKg) {
+        stalledIds.add(exerciseId);
+        stalledLifts.push({
+          exercise_id: exerciseId,
+          exercise_name: latest.name,
+          last_weight_kg: latest.weightKg,
+          last_reps: latest.reps,
+          sessions_flat: 3,
+        });
+      }
+    }
+  }
+
+  return { trainingMaxesKg, recentPrs, stalledLifts, stalledIds };
+}
+
+export function detectStalledExerciseIds(
+  workouts: WorkoutSession[],
+  biometrics: BiometricLog[],
+  bodyweightEmaKg: number
+): Set<string> {
+  const emaLookup = buildBodyweightEmaLookup(biometrics);
+  const hasRealBw = biometrics.some((b) => (b.bodyweightKg || 0) > 0);
+  const completed = workouts
+    .filter((w) => w.completed)
+    .sort((a, b) => getWorkoutCompletedAt(b) - getWorkoutCompletedAt(a));
+  return analyzeExerciseHistoryAndStalls(completed, emaLookup, hasRealBw, bodyweightEmaKg).stalledIds;
 }
 
 export function serializeContextEnvelopeForPrompt(env: ContextEnvelope): string {

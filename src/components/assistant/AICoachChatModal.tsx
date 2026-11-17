@@ -77,6 +77,8 @@ interface AICoachChatModalProps {
   initialShowNewMsgPill?: boolean;
   /** Seeded composer value for previewing active typing state. */
   initialInputValue?: string;
+  /** Optional contextual prompt to submit once automatically on launch (HITL intervention flow). */
+  initialPrompt?: string;
 }
 
 const WORD_REVEAL_INTERVAL_MS = 16;
@@ -106,6 +108,13 @@ function inferPendingStatus(message: string): string {
   }
   if (/\b(switch|change)\b.*\b(program|phase\s*1|muscle|starter|day)\b/.test(lower)) {
     return 'Switching program…';
+  }
+  if (
+    /\b(rebalance|imbalance|asymmetry|symmetr|pull.*push|push.*pull|all sessions|whole program|every session|program-wide|permanently)\b/.test(
+      lower
+    )
+  ) {
+    return 'Reviewing program…';
   }
   if (/\b(goal|target)\b/.test(lower) && /\b(set|change|update|make|add)\b/.test(lower)) {
     return 'Updating goals…';
@@ -144,6 +153,7 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
   initialPendingStatus = null,
   initialShowNewMsgPill = false,
   initialInputValue = '',
+  initialPrompt,
 }) => {
   // The line and suggestions for the screen the coach was opened on, memoized so typing never recomputes KG/history.
   const opening = useMemo(
@@ -201,6 +211,7 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
   const touchStartYRef = useRef<number | null>(null);
   const latestStreamingRef = useRef<string | null>(null);
   const isMountedRef = useRef(true);
+  const initialPromptHandledRef = useRef<string | undefined>(undefined);
 
   const stopReveal = useCallback(() => {
     if (revealRafRef.current !== null) {
@@ -580,8 +591,13 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
     }
   };
 
-  const handleCancelPendingAction = (messageId: string) => {
+  const handleCancelPendingAction = (
+    messageId: string,
+    toolName?: CoachPendingConfirmation['tool_name']
+  ) => {
     triggerHaptic('light');
+    const isProgramAdaptation =
+      toolName === 'modify_program' || toolName === 'rebalance_program';
     setMessages((prev) => [
       ...prev.map((m) =>
         m.id === messageId && m.pendingConfirmation
@@ -591,12 +607,21 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
       {
         id: `cancel-${Date.now()}`,
         sender: 'assistant',
-        text: 'Reset cancelled — your current program progress stays untouched.',
+        text: isProgramAdaptation
+          ? 'Kept your current program unchanged.'
+          : 'Reset cancelled — your current program progress stays untouched.',
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       },
     ]);
     scrollThreadToBottom('smooth');
   };
+
+  useEffect(() => {
+    if (!initialPrompt || initialMessages) return;
+    if (initialPromptHandledRef.current === initialPrompt) return;
+    initialPromptHandledRef.current = initialPrompt;
+    void handleSendMessage(initialPrompt);
+  }, [initialPrompt, initialMessages]);
 
   const handleUndoMutation = (messageId: string, snapshot: CoachUndoSnapshot) => {
     if (revertedMessageIds[messageId] || !onUndoAction) return;
@@ -678,6 +703,8 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
         return 'Week scheduled';
       case 'SWITCH_PROGRAM_SPLIT':
         return 'Program updated';
+      case 'MODIFY_PROGRAM':
+        return 'Program adapted';
       case 'UPDATE_GOALS':
         return 'Goals updated';
       case 'UPDATE_PROGRESS_WIDGETS':
@@ -922,22 +949,38 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
 
                     <p className="whitespace-pre-wrap">{renderBold(displayText)}</p>
 
-                    {/* Destructive Action Confirmation Card */}
-                    {!isUser && !isBeingRevealed && msg.pendingConfirmation && (
+                    {/* Human-in-the-loop Confirmation Card (Program adaptations & destructive actions) */}
+                    {!isUser && !isBeingRevealed && msg.pendingConfirmation && (() => {
+                      const isProgramAdaptation =
+                        msg.pendingConfirmation.tool_name === 'modify_program' ||
+                        msg.pendingConfirmation.tool_name === 'rebalance_program';
+                      const accentColor = isProgramAdaptation
+                        ? 'var(--color-coach-accent)'
+                        : 'var(--color-status-warning)';
+                      const borderColor = isProgramAdaptation
+                        ? 'rgb(var(--color-coach-accent-rgb) / 0.35)'
+                        : 'rgb(var(--color-status-warning-rgb) / 0.35)';
+                      return (
                       <div
                         className="wk-raised flex flex-col gap-2"
-                        style={{
-                          borderColor: 'rgb(var(--color-status-warning-rgb) / 0.35)',
-                        }}
+                        style={{ borderColor }}
                       >
                         <div className="flex items-start gap-2">
-                          <AlertTriangle
-                            className="w-4 h-4 shrink-0 mt-1"
-                            style={{ color: 'var(--color-status-warning)' }}
-                            strokeWidth={2.2}
-                          />
+                          {isProgramAdaptation ? (
+                            <Sparkles
+                              className="w-4 h-4 shrink-0 mt-1"
+                              style={{ color: accentColor }}
+                              strokeWidth={2.2}
+                            />
+                          ) : (
+                            <AlertTriangle
+                              className="w-4 h-4 shrink-0 mt-1"
+                              style={{ color: accentColor }}
+                              strokeWidth={2.2}
+                            />
+                          )}
                           <div className="min-w-0">
-                            <div className="wk-subhead" style={{ color: 'var(--color-status-warning)' }}>
+                            <div className="wk-subhead" style={{ color: accentColor }}>
                               {msg.pendingConfirmation.title}
                             </div>
                             <p className="wk-body mt-1" style={{ color: 'var(--wk-muted)' }}>
@@ -952,12 +995,20 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
                         </div>
 
                         {msg.pendingConfirmation.status === 'pending' ? (
-                          <div className="flex items-center gap-2">
+                          <div
+                            className={
+                              msg.pendingConfirmation.confirm_label.length +
+                                msg.pendingConfirmation.cancel_label.length >
+                              22
+                                ? 'flex flex-col gap-2'
+                                : 'flex items-center gap-2'
+                            }
+                          >
                             <button
                               type="button"
                               onClick={() => handleConfirmPendingAction(msg.id, msg.pendingConfirmation!)}
                               disabled={isProcessing}
-                              className="wk-button min-h-[44px] flex-1 font-semibold disabled:opacity-50"
+                              className="wk-button min-h-[44px] w-full flex-1 font-semibold whitespace-nowrap disabled:opacity-50"
                               style={{
                                 background: 'var(--color-action-primary-bg)',
                                 color: 'var(--color-action-primary-fg)',
@@ -967,9 +1018,17 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
                             </button>
                             <button
                               type="button"
-                              onClick={() => handleCancelPendingAction(msg.id)}
+                              onClick={() =>
+                                handleCancelPendingAction(msg.id, msg.pendingConfirmation!.tool_name)
+                              }
                               disabled={isProcessing}
-                              className="wk-btn-secondary flex-none px-4 disabled:opacity-50"
+                              className={
+                                msg.pendingConfirmation.confirm_label.length +
+                                  msg.pendingConfirmation.cancel_label.length >
+                                22
+                                  ? 'wk-btn-secondary w-full min-h-[44px] px-4 disabled:opacity-50'
+                                  : 'wk-btn-secondary flex-none px-4 disabled:opacity-50'
+                              }
                             >
                               {msg.pendingConfirmation.cancel_label}
                             </button>
@@ -980,7 +1039,8 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
                           </div>
                         )}
                       </div>
-                    )}
+                      );
+                    })()}
 
                     {/* Inline OOUX Mutation Receipt Card */}
                     {!isUser && !isBeingRevealed && msg.actionApplied && (

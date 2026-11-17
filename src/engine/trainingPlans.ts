@@ -1,6 +1,7 @@
-import { GoalPhase, PlanId, ProgramSplitType, SavedTrainingPlan, UserProfile, WorkoutSession } from './types';
+import { GoalPhase, PlanId, ProgramExerciseOverride, ProgramSplitType, SavedTrainingPlan, UserProfile, WorkoutSession } from './types';
 import { MUSCLE_BUILDING_PLAN, TrainingPlan, getSessionPlanId } from './muscleBuildingProgram';
 import { STARTER_SESSIONS_PER_WEEK, STARTER_WORKOUT_COUNT, buildStarterPlan } from './starterPlan';
+import { applyProgramOverridesToPlan } from './programOverrides';
 
 /**
  * Which plan an athlete is on.
@@ -61,30 +62,47 @@ export function savedPlanToTrainingPlan(saved: SavedTrainingPlan): TrainingPlan 
 /**
  * The plan to show. A saved custom plan when chosen and present on the profile; the muscle plan
  * only when it's chosen and the owner is signed in; otherwise the starter plan for the athlete's goal.
+ * Applies any persistent athlete-approved `programOverrides` for that plan.
  */
 export function resolveActivePlan(
-  profile: Pick<UserProfile, 'programType' | 'goalPhase' | 'email' | 'customPlans'>
+  profile: Pick<UserProfile, 'programType' | 'goalPhase' | 'email' | 'customPlans' | 'programOverrides'>
 ): TrainingPlan {
+  let basePlan: TrainingPlan;
   if (isCustomPlanId(profile.programType)) {
     const custom = profile.customPlans?.find((p) => p.id === profile.programType);
-    if (custom) return savedPlanToTrainingPlan(custom);
+    if (custom) {
+      basePlan = savedPlanToTrainingPlan(custom);
+      return applyProgramOverridesToPlan(basePlan, profile.programOverrides);
+    }
   }
-  if (profile.programType === 'muscle_building_6wk' && canUseMusclePlan(profile.email)) return MUSCLE_BUILDING_PLAN;
-  return buildStarterPlan(profile.goalPhase || 'Lean Bulk', profile.programType === 'starter_4day' ? 'lift4' : 'lift3_active1');
+  if (profile.programType === 'muscle_building_6wk' && canUseMusclePlan(profile.email)) {
+    basePlan = MUSCLE_BUILDING_PLAN;
+  } else {
+    basePlan = buildStarterPlan(profile.goalPhase || 'Lean Bulk', profile.programType === 'starter_4day' ? 'lift4' : 'lift3_active1');
+  }
+  return applyProgramOverridesToPlan(basePlan, profile.programOverrides);
 }
 
-/** A plan by id (including custom saved plans when supplied). */
+/** A plan by id (including custom saved plans and persistent overrides when supplied). */
 export function getPlanById(
   id: PlanId,
   goal: GoalPhase = 'Lean Bulk',
-  customPlans?: SavedTrainingPlan[]
+  customPlans?: SavedTrainingPlan[],
+  programOverrides?: ProgramExerciseOverride[]
 ): TrainingPlan {
+  let basePlan: TrainingPlan;
   if (isCustomPlanId(id)) {
     const custom = customPlans?.find((p) => p.id === id);
-    if (custom) return savedPlanToTrainingPlan(custom);
+    if (custom) {
+      return applyProgramOverridesToPlan(savedPlanToTrainingPlan(custom), programOverrides);
+    }
   }
-  if (id === 'muscle_building_6wk') return MUSCLE_BUILDING_PLAN;
-  return buildStarterPlan(goal, id === 'starter_4day' ? 'lift4' : 'lift3_active1');
+  if (id === 'muscle_building_6wk') {
+    basePlan = MUSCLE_BUILDING_PLAN;
+  } else {
+    basePlan = buildStarterPlan(goal, id === 'starter_4day' ? 'lift4' : 'lift3_active1');
+  }
+  return applyProgramOverridesToPlan(basePlan, programOverrides);
 }
 
 /** Workouts in the plan a session belongs to, and how many per week (for "Workout 3 of 18"). */

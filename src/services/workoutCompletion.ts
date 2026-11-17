@@ -122,7 +122,9 @@ export function completeWorkout(input: WorkoutCompletionInput): WorkoutCompletio
   // any time that week); older split sessions finish a week every N sessions.
   const programType = profile.programType || 'starter_6wk';
   const planId = getSessionPlanId(completedSession);
-  const plan = planId ? getPlanById(planId, profile.goalPhase, profile.customPlans) : undefined;
+  const plan = planId
+    ? getPlanById(planId, profile.goalPhase, profile.customPlans, profile.programOverrides)
+    : undefined;
   const planNumber = completedSession.programWorkoutNumber || 0;
   const tmpl = plan?.templates.find((t) => t.workoutNumber === planNumber);
   const isWeekMilestone = plan

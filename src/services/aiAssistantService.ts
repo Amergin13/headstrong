@@ -74,6 +74,7 @@ import {
 } from './coachAnswers';
 
 import { buildContextEnvelope, ContextEnvelope, serializeContextEnvelopeForPrompt } from './coachContextEnvelope';
+import { detectCoachInterventions } from './coachInterventions';
 import {
   buildSuggestedActions,
   COACH_TOOL_DECLARATIONS,
@@ -135,6 +136,9 @@ function actionTypeForOutcome(outcome: CoachToolOutcome): AssistantActionType {
   switch (outcome.toolName) {
     case 'reset_program':
       return 'RESET_PROGRAM';
+    case 'modify_program':
+    case 'rebalance_program':
+      return 'MODIFY_PROGRAM';
     case 'swap_exercise':
       return 'SWAP_EXERCISE';
     case 'adjust_workout_volume':
@@ -485,6 +489,32 @@ export function buildCoachSystemPrompt(input: AssistantProcessInput): string {
     '4-Day Starter Plan (starter_4day)',
     ...(canUseMusclePlan(profile.email) ? ['6-Week Muscle Building Plan (muscle_building_6wk)'] : []),
   ].join('; ');
+  const activePlanResolved = resolveActivePlan(profile);
+  const overrideCount = (profile.programOverrides ?? []).filter((o) => o.planId === activePlanResolved.id).length;
+  const activeInterventions = detectCoachInterventions({
+    profile,
+    activeWorkout,
+    workouts,
+    biometrics,
+    exerciseCatalog,
+    bodyweightEmaKg,
+    readinessState,
+    weeklyVolume,
+    activities: input.activities,
+    knowledgeGraph: kg,
+    trainingPlan: activePlanResolved,
+  });
+  if (overrideCount > 0) {
+    kgFacts.push(`Active program adaptations: ${overrideCount} custom rule${overrideCount === 1 ? '' : 's'} on ${activePlanResolved.name}.`);
+  }
+  if (activeInterventions.length > 0) {
+    kgFacts.push(
+      `Detected program opportunities (offer HITL confirmation with modify_program/rebalance_program when relevant): ${activeInterventions
+        .slice(0, 2)
+        .map((it) => `${it.title} — ${it.rationale}`)
+        .join(' | ')}`
+    );
+  }
   const contextEnvelope = buildContextEnvelope({
     profile,
     activeWorkout,
@@ -499,7 +529,7 @@ export function buildCoachSystemPrompt(input: AssistantProcessInput): string {
     routeName: input.routeName,
     knowledgeGraph: kg,
   });
-  return `You are ${VOICE_TONE_MATRIX.steadyVoice.replace(/^The /, 'the ').replace(/\.$/, '')}, speaking to ${athleteName || 'the athlete'} as "you". Front-load one direct sentence answering the question with the key figure or outcome first (no greeting, and never repeat visible set tables). Keep replies concise at 35-75 words unless they explicitly ask for a detailed breakdown. Keep each paragraph to 1-2 short sentences, and use concise bold-lead bullets (- **Topic:** detail) for multi-part guidance. For anything about their plan, weights, sets or progress, use only the facts below. Whenever the athlete asks or implies they want to take an action—swapping, adding, or removing exercises, adjusting sets/volume/load, switching location (gym, home, travel), updating home equipment, switching program, changing goal phase, setting targets/goals, toggling Progress cards, logging bodyweight/body fat/waist/cardio, logging a rest day, resetting their plan, or saving a preference—invoke the matching function tool(s) immediately, even when phrased politely ("Can you...", "Could you..."). Ask clarifying questions only when an essential target cannot be inferred. Never claim a mutation happened unless a tool call succeeded. For general training questions (timing, motivation, habits, technique, recovery, sleep, food), give practical, widely accepted advice in your own words without inventing numbers (avoid ungrounded weights, reps, sets, percentages, minutes, seconds, or hours—say "a short rest" or "a focused session" instead). Never say the plan or the facts don't cover something. Never call a muscle's sets enough unless it is on target. High recovery means today's targets stand. Don't praise effort the facts don't show. Never guess or invent how individual sets or reps went in past workouts. The plan sets weights and raises them itself when every set reaches the top of the range; never tell them to change the weight. No hype, cheerleading or percentages; say why something works in one plain clause.
+  return `You are ${VOICE_TONE_MATRIX.steadyVoice.replace(/^The /, 'the ').replace(/\.$/, '')}, speaking to ${athleteName || 'the athlete'} as "you". Front-load one direct sentence answering the question with the key figure or outcome first (no greeting, and never repeat visible set tables). Keep replies concise at 35-75 words unless they explicitly ask for a detailed breakdown. Keep each paragraph to 1-2 short sentences, and use concise bold-lead bullets (- **Topic:** detail) for multi-part guidance. For anything about their plan, weights, sets or progress, use only the facts below. Whenever the athlete asks or implies they want to take an action—swapping, adding, or removing exercises (for today OR permanently across their program via modify_program), rebalancing their program for imbalances/symmetry/stalls/contraindications via rebalance_program, adjusting sets/volume/load, switching location (gym, home, travel), updating home equipment, switching program, changing goal phase, setting targets/goals, toggling Progress cards, logging bodyweight/body fat/waist/cardio, logging a rest day, resetting their plan, or saving a preference—invoke the matching function tool(s) immediately, even when phrased politely ("Can you...", "Could you..."). Ask clarifying questions only when an essential target cannot be inferred. Never claim a mutation happened unless a tool call succeeded. For general training questions (timing, motivation, habits, technique, recovery, sleep, food), give practical, widely accepted advice in your own words without inventing numbers (avoid ungrounded weights, reps, sets, percentages, minutes, seconds, or hours—say "a short rest" or "a focused session" instead). Never say the plan or the facts don't cover something. Never call a muscle's sets enough unless it is on target. High recovery means today's targets stand. Don't praise effort the facts don't show. Never guess or invent how individual sets or reps went in past workouts. The plan sets weights and raises them itself when every set reaches the top of the range; never tell them to change the weight. No hype, cheerleading or percentages; say why something works in one plain clause.
 Athlete: ${hasWeighIn ? `${formatWeight(bodyweightEmaKg, unit)}, ` : ''}${athleteAge ? `age ${athleteAge}, ` : ''}location ${profile.activeLocation === 'travel' ? 'Bodyweight' : profile.activeLocation === 'home' ? 'At Home' : 'Full Gym'}, home gear: ${homeGearList}, goal ${goalLabel}, week ${planPos.week}/${planPos.totalWeeks}, recovery ${recovery}${kg.recoveryEfficiencyScore > 0 ? ` (${kg.recoveryEfficiencyScore}%)` : ''}${
     latestBio && latestBio.hrvRmssd > 0 ? `, slept ${latestBio.sleepHours} h` : ''
   }.${placeFacts.length ? `\nViewing: ${placeFacts.join(' ')}.` : ''}${kgFacts.length ? `\n${kgFacts.join('\n')}` : ''}
@@ -1056,7 +1086,7 @@ async function processAssistantMessageCore(
     ) ||
     (/\?\s*$/.test(lowerMsg) && !isPoliteCommandPrefix);
   const hasActionRequestVerb =
-    /\b(swap|replace|substitute|switch|change|adjust|modify|edit|reduce|cut|drop|trim|lower|decrease|increase|shorten|deload|add|remove|delete|reset|restart|remember|log|record|save|schedule|update|set)\b/i.test(
+    /\b(swap|replace|substitute|switch|change|adjust|modify|edit|reduce|cut|drop|trim|lower|decrease|increase|shorten|deload|add|remove|delete|reset|restart|remember|log|record|save|schedule|update|set|fix|rebalance|correct|adapt|prioritize|move|restore|clear|compensate|even\s+out|bring\s+up)\b/i.test(
       lowerMsg
     );
   const isExplicitActionIntent = hasActionRequestVerb && !isAdvisoryQuestion;
@@ -1210,6 +1240,63 @@ async function processAssistantMessageCore(
         )
       : null;
 
+  const PROGRAM_SCOPE_SOURCE =
+    '\\b(?:all\\s+(?:remaining\\s+|future\\s+)?(?:workouts?|sessions?|days?|weeks?)|every\\s+(?:workout|session|day|week)|(?:whole|entire)\\s+(?:program|plan)|rest\\s+of\\s+(?:my\\s+|the\\s+)?(?:program|plan)|(?:across|throughout|in|to|from)\\s+(?:my\\s+|the\\s+)?(?:program|plan|all\\s+(?:workouts?|sessions?))|permanent(?:ly)?|going\\s+forward|from\\s+now\\s+on|for\\s+good)\\b';
+  const isProgramScope = new RegExp(PROGRAM_SCOPE_SOURCE, 'i').test(lowerMsg);
+  const wantsImmediateNoHitl = /\b(immediately|without asking|no confirm(?:ation)?|skip confirm(?:ation)?)\b/i.test(lowerMsg);
+  const clearProgramEditsIntent =
+    !isAdvisoryQuestion &&
+    /\b(?:clear|remove|reset|undo|restore)\b.*\b(?:program\s+(?:edits|overrides|customi[sz]ations|adaptations|changes)|default\s+exercises)\b/i.test(
+      lowerMsg
+    );
+  const rebalanceProgramIntent =
+    !isAdvisoryQuestion &&
+    !resetProgramIntent &&
+    (/\b(?:rebalance|fix|correct|address|even\s+out|make\s+up\s+for|compensate\s+for|adapt|adjust|modify)\b.*\b(?:imbalanc\w*|asymmetr\w*|weaker\s+side|weak\s+side|symmetry|pull(?:ing)?\s+(?:behind|vs|imbalance|weak\w*)|level\s+gap|lagging|weakness|stall(?:ed)?|contraindication)\b/i.test(
+      lowerMsg
+    ) ||
+      /\brebalance\s+(?:my\s+)?(?:program|plan|workouts?)\b/i.test(lowerMsg));
+  const cleanProgramScopedCmd = cleanPromptForCmd
+    .replace(new RegExp(PROGRAM_SCOPE_SOURCE, 'gi'), ' ')
+    .replace(/\b(?:permanently|always)\b/gi, ' ')
+    .replace(/\b(?:stalled|bothersome|painful)\b/gi, ' ')
+    .replace(/\s+(?:because|since|due\s+to)\s+.*$/i, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const programReasonMatch = /\b(?:because|since|due\s+to)\s+(.+)$/i.exec(cleanPromptForCmd);
+  const programFilterMatch = /\b(?:on|in|for)\s+(upper(?:\s*body)?|lower(?:\s*body)?|legs?|chest\s+and\s+back|shoulders?\s+and\s+arms|full\s+body\s+[ab]|week\s*[1-6])\b/i.exec(
+    lowerMsg
+  );
+  const extractedProgramFilter = programFilterMatch?.[1]?.trim();
+
+  const programSwapTwoMatch =
+    !isAdvisoryQuestion && isProgramScope
+      ? /^(?:swap|replace|substitute|switch|change)\s+(?:out\s+)?(.+?)\s+(?:with|for|to|instead\s+of|->|→)\s+(.+)$/i.exec(
+          cleanProgramScopedCmd
+        )
+      : null;
+  const programSwapOneMatch =
+    !isAdvisoryQuestion && isProgramScope && !programSwapTwoMatch
+      ? /^(?:swap|replace|substitute)(?:\s+out)?\s+(.+)$/i.exec(cleanProgramScopedCmd)
+      : null;
+  const programAddMatch =
+    !isAdvisoryQuestion && isProgramScope && !programSwapTwoMatch && !programSwapOneMatch
+      ? /^(?:add|include|append|insert)\s+(.+)$/i.exec(cleanProgramScopedCmd)
+      : null;
+  const programRemoveMatch =
+    !isAdvisoryQuestion && isProgramScope && !programSwapTwoMatch && !programSwapOneMatch && !programAddMatch
+      ? /^(?:remove|delete|drop|take\s+out)\s+(.+)$/i.exec(cleanProgramScopedCmd)
+      : null;
+  const programAdjustSetsMatch =
+    !isAdvisoryQuestion && isProgramScope
+      ? /^(?:adjust|change|increase|add|reduce|drop|cut)\b.*\b(\d+)\s+sets?\b.*\b(?:on|to|for|of)\s+(.+)$/i.exec(cleanProgramScopedCmd) ||
+        /^(?:add|increase|reduce|drop|cut)\s+(?:a\s+|an\s+|one\s+|1\s+)?(?:working\s+)?set\b.*\b(?:on|to|for|of)\s+(.+)$/i.exec(cleanProgramScopedCmd)
+      : null;
+  const programPrioritizeMatch =
+    !isAdvisoryQuestion && isProgramScope
+      ? /^(?:prioritize|move)\s+(.+?)(?:\s+first|\s+to\s+first|\s+to\s+(?:#?1|exercise\s*1))?$/i.exec(cleanProgramScopedCmd)
+      : null;
+
   if (progressWidgetChange) {
     answerText = progressWidgetChange.reply;
     if (progressWidgetChange.changed) {
@@ -1300,6 +1387,118 @@ async function processAssistantMessageCore(
         value: `Workout ${workoutNum} of ${activePlan.templates.length} (Week 1/${totalWeeks})`,
       });
     }
+  } else if (clearProgramEditsIntent) {
+    const outcome = await executeCoachToolCall(
+      'modify_program',
+      {
+        action: 'clear_overrides',
+        confirmation_required: wantsImmediateNoHitl ? false : undefined,
+      },
+      toolCtx
+    );
+    applyToolOutcome(outcome);
+  } else if (programAdjustSetsMatch) {
+    const hasNumericSets = programAdjustSetsMatch.length >= 3 && /^\d+$/.test(programAdjustSetsMatch[1]);
+    const rawTarget = (hasNumericSets ? programAdjustSetsMatch[2] : programAdjustSetsMatch[1] || '').trim();
+    const isDrop = /\b(reduce|drop|cut|lower|decrease)\b/i.test(cleanProgramScopedCmd);
+    const isDeltaWord = /\b(?:a|an|one)\s+(?:working\s+)?set\b/i.test(cleanLowerForCmd) || !hasNumericSets;
+    const valNum = hasNumericSets ? parseInt(programAdjustSetsMatch[1], 10) : 1;
+    const outcome = await executeCoachToolCall(
+      'modify_program',
+      {
+        action: 'adjust_sets',
+        old_exercise_id: rawTarget,
+        ...(isDeltaWord ? { set_delta: isDrop ? -valNum : valNum } : { sets: valNum }),
+        ...(extractedProgramFilter ? { workout_filter: extractedProgramFilter } : {}),
+        reason: programReasonMatch?.[1]?.trim() || 'athlete request',
+        confirmation_required: wantsImmediateNoHitl ? false : undefined,
+      },
+      toolCtx
+    );
+    applyToolOutcome(outcome);
+  } else if (rebalanceProgramIntent && !programSwapTwoMatch && !programAddMatch && !programRemoveMatch) {
+    let focus: 'auto' | 'pull_vs_push' | 'level_gap' | 'left_right_symmetry' | 'plateau' | 'contraindication' | 'muscle_volume' = 'auto';
+    if (/\bpull(?:ing)?\b|\bchin[\s-]?up|\bpoliquin\b/i.test(lowerMsg)) focus = 'pull_vs_push';
+    else if (/\basymmetr|symmetr|left[\s-]?(?:vs|and|to)?\s*right|weaker\s+side|weak\s+side\b/i.test(lowerMsg)) focus = 'left_right_symmetry';
+    else if (/\blevel\s+gap|kilgore|lagging\b/i.test(lowerMsg)) focus = 'level_gap';
+    else if (/\bstall|plateau\b/i.test(lowerMsg)) focus = 'plateau';
+    else if (/\bshoulder|knee|back|elbow|wrist|contraindicat\w*|joint\b/i.test(lowerMsg)) focus = 'contraindication';
+    else if (/\bvolume|sets\b/i.test(lowerMsg)) focus = 'muscle_volume';
+    const muscleHint =
+      lowerMsg.match(/\b(pull(?:ing)?|push|squat|hinge|deadlift|bench|chest|back|shoulders?|rear\s*delts?|side\s*delts?|quads?|hamstrings?|glutes?|biceps?|triceps?|calves?|symmetry)\b/i)?.[1];
+    const outcome = await executeCoachToolCall(
+      'rebalance_program',
+      {
+        focus,
+        ...(muscleHint ? { target_muscle_or_pillar: muscleHint } : {}),
+        confirmation_required: wantsImmediateNoHitl ? false : undefined,
+      },
+      toolCtx
+    );
+    applyToolOutcome(outcome);
+  } else if (programSwapTwoMatch || programSwapOneMatch) {
+    const oldPart = (programSwapTwoMatch ? programSwapTwoMatch[1] : programSwapOneMatch![1]).trim();
+    const newPart = programSwapTwoMatch ? programSwapTwoMatch[2].trim() : undefined;
+    const outcome = await executeCoachToolCall(
+      'modify_program',
+      {
+        action: 'swap_exercise',
+        old_exercise_id: oldPart,
+        ...(newPart ? { new_exercise_id: newPart } : {}),
+        ...(extractedProgramFilter ? { workout_filter: extractedProgramFilter } : {}),
+        reason: programReasonMatch?.[1]?.trim() || 'athlete request',
+        confirmation_required: wantsImmediateNoHitl ? false : undefined,
+      },
+      toolCtx
+    );
+    applyToolOutcome(outcome);
+  } else if (programAddMatch && !/\bsets?\b/.test(cleanProgramScopedCmd.replace(/\bfor\s+\d+\s+sets?\b/gi, ''))) {
+    const setsMatchProg = /\bfor\s+(\d+)\s+sets?\b/i.exec(programAddMatch[1]);
+    const cleanNewName = programAddMatch[1]
+      .replace(/\bfor\s+\d+\s+sets?\b/gi, '')
+      .replace(/\b(?:to|into|across|in)\b.*$/i, '')
+      .trim();
+    const outcome = await executeCoachToolCall(
+      'modify_program',
+      {
+        action: 'add_exercise',
+        new_exercise_id: cleanNewName,
+        sets: setsMatchProg ? parseInt(setsMatchProg[1], 10) : 3,
+        ...(extractedProgramFilter ? { workout_filter: extractedProgramFilter } : {}),
+        reason: programReasonMatch?.[1]?.trim(),
+        confirmation_required: wantsImmediateNoHitl ? false : undefined,
+      },
+      toolCtx
+    );
+    applyToolOutcome(outcome);
+  } else if (programRemoveMatch) {
+    const cleanOld = programRemoveMatch[1].replace(/\b(?:from|out\s+of|in)\b.*$/i, '').trim();
+    const outcome = await executeCoachToolCall(
+      'modify_program',
+      {
+        action: 'remove_exercise',
+        old_exercise_id: cleanOld,
+        ...(extractedProgramFilter ? { workout_filter: extractedProgramFilter } : {}),
+        reason: programReasonMatch?.[1]?.trim(),
+        confirmation_required: wantsImmediateNoHitl ? false : undefined,
+      },
+      toolCtx
+    );
+    applyToolOutcome(outcome);
+  } else if (programPrioritizeMatch) {
+    const cleanOld = programPrioritizeMatch[1].replace(/\s+in\s+(?:the\s+|my\s+)?(?:workout|session|program|plan)\b/gi, '').trim();
+    const outcome = await executeCoachToolCall(
+      'modify_program',
+      {
+        action: 'prioritize_first',
+        old_exercise_id: cleanOld,
+        ...(extractedProgramFilter ? { workout_filter: extractedProgramFilter } : {}),
+        reason: programReasonMatch?.[1]?.trim() || 'prioritize lagging movement',
+        confirmation_required: wantsImmediateNoHitl ? false : undefined,
+      },
+      toolCtx
+    );
+    applyToolOutcome(outcome);
   } else if (twoSidedSwapCandidate || oneSidedSwapExercise) {
     const reasonMatch = /\b(?:because|since|due\s+to)\s+(.+)$/i.exec(cleanPromptForCmd);
     const outcome = await executeCoachToolCall(
@@ -2623,12 +2822,20 @@ async function processAssistantMessageCore(
   const effectiveStatus: CoachMutationStatus | undefined =
     mutationStatus ?? (actionTaken ? 'success' : undefined);
   const finalAnswerText = enforceMutationTruthfulness(answerText, effectiveStatus);
+  const lastSwap =
+    toolNameUsed === 'swap_exercise' &&
+    effectiveStatus === 'success' &&
+    typeof stateDiff?.previous_state?.display === 'string' &&
+    typeof stateDiff?.new_state?.display === 'string'
+      ? { from: stateDiff.previous_state.display, to: stateDiff.new_state.display }
+      : undefined;
   const suggestedActions = buildSuggestedActions({
     toolName: toolNameUsed,
     mutationStatus: effectiveStatus,
     envelope,
     place: input.place,
     custom: modelSuggestedActions,
+    lastSwap,
   });
 
   const message: AssistantChatMessage = {

@@ -543,6 +543,8 @@ export interface UserProfile {
   importedSheetIds?: string[];
   /** ISO timestamps when each plan was explicitly reset to Day 1 so prior logs stay in stats without blocking a fresh run. */
   planCycleStarts?: Record<string, string>;
+  /** Persistent program-level exercise swaps, additions, removals, set adjustments, and priority reorders across sessions. */
+  programOverrides?: ProgramExerciseOverride[];
   /** Persistent athlete memory facts saved via Treise Coach (injuries, contraindications, preferences, schedule). */
   athleteMemories?: AthleteMemoryFact[];
   mesocycleWeek?: number; // 1 to 6
@@ -631,11 +633,32 @@ export function isWhoopConfigured(profile?: UserProfile | null): boolean {
   return Boolean(profile && (profile.whoopConnected || profile.wearableSource === 'whoop'));
 }
 
+export interface ProgramExerciseOverride {
+  id: string;
+  planId: PlanId;
+  kind: 'swap_exercise' | 'add_exercise' | 'remove_exercise' | 'adjust_sets' | 'prioritize_first';
+  targetExerciseId?: string;
+  targetExerciseName?: string;
+  replacementExerciseId?: string;
+  replacementExerciseName?: string;
+  replacementPillar?: ExerciseSession['pillar'];
+  replacementEquipment?: ExerciseSession['equipment'];
+  replacementRepRange?: [number, number];
+  replacementIsTimed?: boolean;
+  replacementDurationSeconds?: number;
+  sets?: number;
+  setDelta?: number;
+  workoutFilter?: string;
+  reason?: string;
+  createdAt: string;
+}
+
 export type AssistantActionType =
   | 'UPDATE_EQUIPMENT'
   | 'SCHEDULE_LOCATION_WEEK'
   | 'SWITCH_PROGRAM_SPLIT'
   | 'RESET_PROGRAM'
+  | 'MODIFY_PROGRAM'
   | 'SWAP_EXERCISE'
   | 'ADJUST_WORKOUT_VOLUME'
   | 'ADD_EXERCISE'
@@ -651,6 +674,8 @@ export type AssistantActionType =
 
 export type CoachToolName =
   | 'reset_program'
+  | 'modify_program'
+  | 'rebalance_program'
   | 'swap_exercise'
   | 'adjust_workout_volume'
   | 'save_athlete_memory'
@@ -685,7 +710,7 @@ export interface CoachSuggestedAction {
 }
 
 export interface CoachPendingConfirmation {
-  tool_name: 'reset_program' | 'swap_exercise' | 'adjust_workout_volume';
+  tool_name: 'reset_program' | 'swap_exercise' | 'adjust_workout_volume' | 'modify_program' | 'rebalance_program';
   args: Record<string, unknown>;
   title: string;
   summary: string;

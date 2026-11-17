@@ -14,6 +14,7 @@ import { AthleteGoal, CHOSEN_GOAL_ID, WEEKLY_GOAL_ID, buildAthleteGoals, describ
 import { buildStepsCoachingSummary, buildWhoopCoachingSummary, planPosition } from './coachAnswers';
 import { closestStrengthGoal } from './progressOverview';
 import { availableProgressWidgets, resolveVisibleProgressWidgets } from './progressWidgets';
+import { detectCoachInterventions } from './coachInterventions';
 
 /** Where the coach was opened. */
 export interface CoachPlace {
@@ -21,6 +22,8 @@ export interface CoachPlace {
   /** On Progress: the goal whose detail is open, or the screen that is open. */
   goalId?: string;
   detail?: 'bests' | 'lifetime' | 'recent' | 'steps' | 'whoop' | 'weight' | 'measurements' | 'insights' | 'standards' | 'goals' | 'widgets';
+  /** Optional exercise currently inspected (e.g. from ExerciseDetailModal). */
+  exerciseId?: string;
 }
 
 export interface CoachHook {
@@ -55,8 +58,45 @@ const KIT_WORD: Record<string, string> = { barbell: 'barbell is', dumbbell: 'dum
 const KIT_LABEL: Record<string, string> = { barbell: 'Barbell taken', dumbbell: 'Dumbbells taken', cable: 'Cables taken', machine: 'Machine taken' };
 
 function workoutOpening(input: CoachOpeningInput, unit: WeightUnit): CoachOpening {
-  const { activeWorkout, workouts, exerciseCatalog } = input;
+  const { activeWorkout, workouts, exerciseCatalog, place } = input;
   const now = input.now ?? Date.now();
+
+  if (place.exerciseId) {
+    const target = activeWorkout.exercises.find((e) => e.exerciseId === place.exerciseId);
+    if (target) {
+      const workingEx = target.sets.filter(isWorking);
+      const firstWorking = workingEx[0];
+      const targetLine = firstWorking
+        ? firstWorking.targetWeightKg > 0
+          ? `${workingEx.length} sets × ${firstWorking.targetReps} reps at ${formatWeight(firstWorking.targetWeightKg, unit)}`
+          : `${workingEx.length} sets × ${firstWorking.targetReps} reps`
+        : `${target.sets.length} sets`;
+      const hooks: CoachHook[] = [
+        { label: 'Swap in program', text: `Swap ${target.name} across my whole program` },
+        { label: 'Swap today only', text: `I want to swap ${target.name}` },
+        { label: 'How do I do it?', text: `How do I do the ${target.name.toLowerCase()}?` },
+      ];
+      const interventions = detectCoachInterventions({
+        profile: input.profile,
+        activeWorkout,
+        workouts,
+        biometrics: input.biometrics,
+        exerciseCatalog,
+        bodyweightEmaKg: input.bodyweightEmaKg,
+        readinessState: input.readinessState,
+        activities: input.activities,
+      });
+      const matching = interventions.find((i) => i.exerciseId === target.exerciseId || i.pillar === target.pillar);
+      if (matching) {
+        hooks.unshift({ label: matching.ctaLabel, text: matching.coachPrompt });
+      }
+      return {
+        id: 'workout-exercise',
+        line: `${target.name} (${targetLine}). Ask for form cues, today's swap, or a permanent program swap.`,
+        hooks: hooks.slice(0, 5),
+      };
+    }
+  }
   const working = activeWorkout.exercises.flatMap((ex) => ex.sets.filter(isWorking));
   const done = working.filter((s) => s.completed).length;
   const load = (ex: ExerciseSession, set: WorkoutSet) => (set.targetWeightKg > 0 ? `${set.targetReps} reps at ${formatWeight(set.targetWeightKg, unit)}` : `${set.targetReps} reps`);
@@ -198,15 +238,32 @@ export function buildCoachOpening(input: CoachOpeningInput): CoachOpening {
 
   if (place.tab === 'program') {
     const p = planPosition(profile, workouts, input.activities ?? []);
+    const interventions = detectCoachInterventions({
+      profile,
+      activeWorkout: input.activeWorkout,
+      workouts,
+      biometrics,
+      exerciseCatalog: input.exerciseCatalog,
+      bodyweightEmaKg: input.bodyweightEmaKg,
+      readinessState: input.readinessState,
+      activities: input.activities,
+      trainingPlan: p.plan,
+    });
+    const topIntervention = interventions[0];
+    const activeEditCount = (profile.programOverrides ?? []).filter((o) => o.planId === p.plan.id).length;
+    const baseHooks: CoachHook[] = [
+      ...(topIntervention ? [{ label: topIntervention.ctaLabel, text: topIntervention.coachPrompt }] : []),
+      { label: 'What is this phase for?', text: 'What phase am I in?' },
+      { label: "I'm away next week", text: "I'll be away travelling next week" },
+      ...(activeEditCount > 0
+        ? [{ label: 'Reset program edits', text: 'Clear my program customizations' }]
+        : [{ label: 'I missed a week', text: 'I missed a week, what now?' }]),
+      { label: 'Change my goal', text: 'Change my goal to ', fill: true },
+    ];
     return {
       id: 'program',
-      line: `You're in week ${p.week} of 6 of your ${p.plan.name}: ${p.overview.completedCount} of ${p.total} sessions done${p.nextLabel ? `, next is ${p.nextLabel}` : ''}.`,
-      hooks: [
-        { label: 'What is this phase for?', text: 'What phase am I in?' },
-        { label: "I'm away next week", text: "I'll be away travelling next week" },
-        { label: 'I missed a week', text: 'I missed a week, what now?' },
-        { label: 'Change my goal', text: 'Change my goal to ', fill: true },
-      ],
+      line: `You're in week ${p.week} of 6 of your ${p.plan.name}: ${p.overview.completedCount} of ${p.total} sessions done${p.nextLabel ? `, next is ${p.nextLabel}` : ''}${activeEditCount > 0 ? ` (${activeEditCount} custom adaptation${activeEditCount === 1 ? '' : 's'})` : ''}.`,
+      hooks: baseHooks.slice(0, 5),
     };
   }
 
@@ -295,14 +352,30 @@ export function buildCoachOpening(input: CoachOpeningInput): CoachOpening {
     };
   }
   if (place.detail === 'standards') {
+    const balInterventions = detectCoachInterventions({
+      profile,
+      activeWorkout: input.activeWorkout,
+      workouts,
+      biometrics,
+      exerciseCatalog: input.exerciseCatalog,
+      bodyweightEmaKg: input.bodyweightEmaKg,
+      readinessState: input.readinessState,
+      activities: input.activities,
+    }).filter((it) => it.kind === 'pull_push_imbalance' || it.kind === 'unilateral_asymmetry' || it.kind === 'strength_level_gap');
+    const topBal = balInterventions[0];
     return {
       id: 'progress-standards',
-      line: strength ? `Your closest strength level is ${strength.title}: ${describeGoalStanding(strength, precise)}.` : 'Strength levels compare your lifts with your bodyweight. Log your weight to see them.',
+      line: topBal
+        ? `${topBal.title}: ${topBal.rationale}`
+        : strength
+        ? `Your closest strength level is ${strength.title}: ${describeGoalStanding(strength, precise)}.`
+        : 'Strength levels compare your lifts with your bodyweight. Log your weight to see them.',
       hooks: [
+        ...(topBal ? [{ label: topBal.ctaLabel, text: topBal.coachPrompt }] : []),
         { label: "What's my weakest lift?", text: "What's my weakest lift?" },
         { label: 'How are levels worked out?', text: 'How are strength levels worked out?' },
         ownGoal,
-      ],
+      ].slice(0, 5),
     };
   }
   if (place.detail) {

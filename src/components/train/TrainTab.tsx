@@ -71,6 +71,7 @@ import {
   generateExerciseNote,
   getCachedExerciseNote,
 } from '../../services/exerciseCoachNote';
+import { detectCoachInterventions } from '../../services/coachInterventions';
 import { isOnDeviceModelReady } from '../../services/onDeviceModel';
 import '../../services/deviceModels';
 import {
@@ -139,6 +140,8 @@ interface TrainTabProps {
   onRemoveActivity?: (id: string) => void;
   /** Opens Progress -> Training insights (optionally focused on an exercise's notes history). */
   onOpenInsights?: (exerciseId?: string) => void;
+  /** Opens Treise coach with a pre-filled OOUX HITL intervention prompt. */
+  onOpenCoachIntervention?: (opts: { prompt: string; exerciseId?: string }) => void;
 }
 
 /** Primary muscles each split day trains, used to suggest a recovered alternative. */
@@ -189,6 +192,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
   onOpenActivityApps,
   onRemoveActivity,
   onOpenInsights,
+  onOpenCoachIntervention,
 }) => {
   const units = useUnits();
   const [detailExerciseId, setDetailExerciseId] = useState<string | null>(null);
@@ -847,6 +851,22 @@ export const TrainTab: React.FC<TrainTabProps> = ({
     : `week ${mesoWeek} of 6 (${phaseMeta.name})`;
   const hasWeighIn = biometrics.some((b) => (b.bodyweightKg || 0) > 0);
   const measuredBodyweightKg = hasWeighIn ? bodyweightEmaKg : 0;
+  const programInterventions = useMemo(
+    () =>
+      detectCoachInterventions({
+        profile,
+        activeWorkout,
+        workouts,
+        biometrics,
+        exerciseCatalog,
+        bodyweightEmaKg: measuredBodyweightKg,
+        readinessState: readiness.state,
+        activities,
+        knowledgeGraph,
+        trainingPlan,
+      }),
+    [profile, activeWorkout, workouts, biometrics, exerciseCatalog, measuredBodyweightKg, readiness.state, activities, knowledgeGraph, trainingPlan]
+  );
   const exerciseNotes = useMemo(
     () =>
       activeWorkout.exercises.map((ex) => {
@@ -1864,6 +1884,16 @@ export const TrainTab: React.FC<TrainTabProps> = ({
             onOpenSwap={() => setSwappingExercise(detailEx)}
             onOpenPlateCalc={(kg) => setPlateCalcWeight(kg)}
             onOpenNotesHistory={onOpenInsights ? () => onOpenInsights(detailEx.exerciseId) : undefined}
+            intervention={programInterventions.find((i) => i.exerciseId === detailEx.exerciseId)}
+            onAskCoachToAdapt={
+              onOpenCoachIntervention
+                ? (prompt, exerciseId) =>
+                    onOpenCoachIntervention({
+                      prompt,
+                      exerciseId: exerciseId ?? detailEx.exerciseId,
+                    })
+                : undefined
+            }
             onClose={() => setDetailExerciseId(null)}
           />
         );

@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Scale, Ruler, ChevronRight, MoreHorizontal, SlidersHorizontal, Target } from 'lucide-react';
 import { PageTopGradient } from '../common/PageTopGradient';
-import { BiometricLog, BodyMeasurementSite, ExerciseDefinition, GoalPhase, ProgressWidgetId, UserProfile, WorkoutSession, isWhoopConfigured } from '../../engine/types';
+import { BiometricLog, BodyMeasurementSite, ExerciseDefinition, GoalPhase, ProgressWidgetId, ReadinessState, UserProfile, WorkoutSession, isWhoopConfigured } from '../../engine/types';
 import { StrengthLevelsCard } from './StrengthLevelsCard';
 import { BalanceCard } from './BalanceCard';
+import { detectCoachInterventions } from '../../services/coachInterventions';
 import { buildMovementStandards } from '../../services/movementStandards';
 import { standardsAge } from '../../engine/strengthStandards';
 import { buildBodyCompositionKnowledgeGraph } from '../../engine/knowledgeGraph';
@@ -101,6 +102,10 @@ interface AnalyticsTabProps {
   /** Opens Training insights (e.g. from an exercise card's last session note). */
   openInsightsRequest?: { nonce: number; exerciseId?: string } | null;
   onInsightsRequestHandled?: () => void;
+  /** Latest readiness classification, used for contextual HITL coach interventions. */
+  readinessState?: ReadinessState;
+  /** Opens Treise coach with a pre-filled HITL adaptation prompt. */
+  onOpenCoachIntervention?: (opts: { prompt: string; detail?: ProgressDetail }) => void;
 }
 
 type CompositionView = 'weight' | 'measurements';
@@ -144,6 +149,8 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
   onLogWeightRequestHandled,
   openInsightsRequest = null,
   onInsightsRequestHandled,
+  readinessState = 'Normal',
+  onOpenCoachIntervention,
 }) => {
   const [detail, setDetail] = useState<ProgressDetail | null>(null);
   const [focusedInsightExerciseId, setFocusedInsightExerciseId] = useState<string | undefined>(undefined);
@@ -205,6 +212,25 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
     () => buildAthleteKnowledgeGraph(workouts, biometrics, exerciseCatalog, profile, calculateWeeklyMuscleVolume(workouts, exerciseCatalog), activities),
     [workouts, biometrics, exerciseCatalog, profile, activities]
   );
+  const coachInterventions = useMemo(
+    () =>
+      detectCoachInterventions({
+        profile,
+        workouts,
+        biometrics,
+        exerciseCatalog,
+        bodyweightEmaKg: hasBodyweight ? bodyweightEmaKg : 0,
+        readinessState,
+        weeklyVolume,
+        activities,
+        knowledgeGraph,
+      }),
+    [profile, workouts, biometrics, exerciseCatalog, hasBodyweight, bodyweightEmaKg, readinessState, weeklyVolume, activities, knowledgeGraph]
+  );
+  const balanceIntervention = coachInterventions.find(
+    (i) => i.surface === 'balance' || i.kind === 'pull_push_imbalance' || i.kind === 'unilateral_asymmetry' || i.kind === 'strength_level_gap'
+  );
+  const balanceAdaptationApplied = Boolean(!balanceIntervention && (profile.programOverrides?.length ?? 0) > 0);
   const timelineMeta = useMemo(() => getTimelineMeta(detailTimeline), [detailTimeline]);
   const muscleProgress = useMemo(() => {
     return buildMuscleProgress({
@@ -648,7 +674,16 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
             {hasBodyweight ? (
               <>
                 <StrengthLevelsCard report={movementStandards} latestBiometrics={latestBiometrics} />
-                <BalanceCard report={movementStandards} />
+                <BalanceCard
+                  report={movementStandards}
+                  intervention={balanceIntervention}
+                  adaptationApplied={balanceAdaptationApplied}
+                  onFixImbalanceWithCoach={
+                    onOpenCoachIntervention
+                      ? (prompt) => onOpenCoachIntervention({ prompt, detail: 'standards' })
+                      : undefined
+                  }
+                />
               </>
             ) : (
               logWeightPrompt
@@ -1192,7 +1227,18 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
             logWeightPrompt
           ))}
 
-        {hasWidget('balance') && <BalanceCard report={movementStandards} />}
+        {hasWidget('balance') && (
+          <BalanceCard
+            report={movementStandards}
+            intervention={balanceIntervention}
+            adaptationApplied={balanceAdaptationApplied}
+            onFixImbalanceWithCoach={
+              onOpenCoachIntervention
+                ? (prompt) => onOpenCoachIntervention({ prompt, detail: 'standards' })
+                : undefined
+            }
+          />
+        )}
 
         {whoopConfigured && hasWidget('whoop-summary') && (
           <OverviewCard title="Whoop metrics" opens="Whoop recovery, strain and sleep" onOpen={() => setDetail('whoop')}>

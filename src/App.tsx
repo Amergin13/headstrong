@@ -128,6 +128,15 @@ export const App: React.FC = () => {
   const [restTimerContext, setRestTimerContext] = useState<RestTimerContext | undefined>(undefined);
   const [watchModalOpen, setWatchModalOpen] = useState(false);
   const [aiCoachOpen, setAiCoachOpen] = useState(false);
+  const [coachLaunchRequest, setCoachLaunchRequest] = useState<{
+    prompt: string;
+    place?: CoachPlace;
+    nonce: number;
+  } | null>(null);
+  const openCoachWithIntervention = (prompt: string, place?: CoachPlace) => {
+    setCoachLaunchRequest({ prompt, place, nonce: Date.now() });
+    setAiCoachOpen(true);
+  };
   /** What is open on the Progress page (a goal, or one of its screens), for the coach's opening line. */
   const [progressContext, setProgressContext] = useState<Pick<CoachPlace, 'goalId' | 'detail'>>({});
   const [authModalOpen, setAuthModalOpen] = useState(false);
@@ -516,6 +525,7 @@ export const App: React.FC = () => {
           ...('progressWidgets' in snapshot.previousProfile!
             ? { progressWidgets: snapshot.previousProfile!.progressWidgets }
             : {}),
+          programOverrides: snapshot.previousProfile!.programOverrides,
         };
         saveProfile(restoredProfile);
         return restoredProfile;
@@ -1072,6 +1082,12 @@ export const App: React.FC = () => {
                 ? undefined
                 : (split) => handleSwitchSplitDay(split)
             }
+            onOpenCoachIntervention={({ prompt, exerciseId }) =>
+              openCoachWithIntervention(prompt, {
+                tab: 'train',
+                ...(exerciseId ? { exerciseId } : {}),
+              })
+            }
           />
         )}
 
@@ -1093,6 +1109,14 @@ export const App: React.FC = () => {
             onLogWeightRequestHandled={() => setLogWeightRequest(0)}
             openInsightsRequest={openInsightsRequest}
             onInsightsRequestHandled={() => setOpenInsightsRequest(null)}
+            readinessState={readiness.state}
+            onOpenCoachIntervention={({ prompt, detail }) =>
+              openCoachWithIntervention(prompt, {
+                tab: 'analytics',
+                ...progressContext,
+                ...(detail ? { detail } : {}),
+              })
+            }
           />
         )}
 
@@ -1127,6 +1151,9 @@ export const App: React.FC = () => {
               setActiveTab('train');
               window.scrollTo({ top: 0 });
             }}
+            onOpenCoachIntervention={(prompt) =>
+              openCoachWithIntervention(prompt, { tab: 'program' })
+            }
           />
         )}
         </ErrorBoundary>
@@ -1153,6 +1180,7 @@ export const App: React.FC = () => {
       {aiCoachOpen && (
         <Suspense fallback={null}>
         <AICoachChatModal
+          key={coachLaunchRequest ? `coach-${coachLaunchRequest.nonce}` : 'coach-default'}
           profile={profile}
           activeWorkout={activeWorkout}
           workouts={workouts}
@@ -1162,16 +1190,27 @@ export const App: React.FC = () => {
           readinessState={readiness.state}
           weeklyVolume={weeklyVolume}
           activities={activities}
-          place={{ tab: activeTab === 'program' ? 'program' : activeTab === 'analytics' ? 'analytics' : 'train', ...(activeTab === 'analytics' ? progressContext : {}) }}
-          onClose={() => setAiCoachOpen(false)}
+          place={
+            coachLaunchRequest?.place ?? {
+              tab: activeTab === 'program' ? 'program' : activeTab === 'analytics' ? 'analytics' : 'train',
+              ...(activeTab === 'analytics' ? progressContext : {}),
+            }
+          }
+          initialPrompt={coachLaunchRequest?.prompt}
+          onClose={() => {
+            setAiCoachOpen(false);
+            setCoachLaunchRequest(null);
+          }}
           onApplyAction={handleApplyAssistantAction}
           onUndoAction={handleUndoAssistantAction}
           onNavigateTab={(tab) => {
             setAiCoachOpen(false);
+            setCoachLaunchRequest(null);
             setActiveTab(tab);
           }}
           onViewAllEquipment={() => {
             setAiCoachOpen(false);
+            setCoachLaunchRequest(null);
             setOnboardingInitialStep(3);
             setOnboardingOpen(true);
           }}
@@ -1267,15 +1306,20 @@ export const App: React.FC = () => {
         activeTab={activeTab}
         onTabChange={(tab) => {
           if (tab === 'chat') {
+            setCoachLaunchRequest(null);
             setAiCoachOpen((prev) => !prev);
           } else {
             setActiveTab(tab);
             setAiCoachOpen(false);
+            setCoachLaunchRequest(null);
             window.scrollTo({ top: 0 });
           }
         }}
         isChatOpen={aiCoachOpen}
-        onOpenAICoach={() => setAiCoachOpen((prev) => !prev)}
+        onOpenAICoach={() => {
+          setCoachLaunchRequest(null);
+          setAiCoachOpen((prev) => !prev);
+        }}
       />
 
       {import.meta.env.VITE_LOCAL_TEST_COPY === 'true' && LocalTestDrawer && (

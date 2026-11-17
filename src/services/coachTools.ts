@@ -11,9 +11,15 @@ import {
   buildPlanOverview,
   generatePlanWorkout,
   getNextProgramWorkoutNumber,
+  getSessionPlanId,
   isActiveSlot,
   planWorkoutLabel,
 } from '../engine/muscleBuildingProgram';
+import {
+  applyProgramOverridesToPlan,
+  matchesWorkoutTemplateFilter,
+  previewProgramOverrides,
+} from '../engine/programOverrides';
 import {
   getMovementFamilyLabel,
   getMovementVectorId,
@@ -39,8 +45,10 @@ import {
   GoalPhase,
   HomeEquipmentTag,
   PlanId,
+  ProgramExerciseOverride,
   ProgramSplitType,
   ReadinessState,
+  StrengthPillar,
   TrainingLocation,
   UserProfile,
   WorkoutSession,
@@ -53,6 +61,7 @@ import { formatPreciseWeight, formatWeight, snapLoadKg, unitToKg } from '../util
 import { findExerciseNamed } from './coachAnswers';
 import { CoachPlace } from './coachContext';
 import { ContextEnvelope, createMemoryFact, deriveContraindicationEdges } from './coachContextEnvelope';
+import { detectCoachInterventions } from './coachInterventions';
 import { detectGoalChange } from './coachGoals';
 import { GOOGLE_AUTH_CONFIG, isSupabaseConfigured } from './googleAuthService';
 import { detectProgressWidgetChange } from './progressWidgets';
@@ -380,6 +389,74 @@ export const COACH_TOOL_DECLARATIONS: GeminiFunctionDeclaration[] = [
       required: ['kind', 'value'],
     },
   },
+  {
+    name: 'modify_program',
+    description:
+      'Create permanent structural changes across all (or filtered) workouts in the athlete active training program: permanently swap an exercise across sessions, add/remove an exercise, adjust working sets across the plan, move a lagging lift first, or clear program adaptations. Uses confirmation_required=true by default so the athlete approves multi-session changes (human-in-the-loop).',
+    parameters: {
+      type: 'object',
+      properties: {
+        action: {
+          type: 'string',
+          enum: ['swap_exercise', 'add_exercise', 'remove_exercise', 'adjust_sets', 'prioritize_first', 'clear_overrides'],
+          description: 'Program-level adaptation to perform.',
+        },
+        old_exercise_id: {
+          type: 'string',
+          description: 'Exercise ID or name currently in the program to swap, remove, adjust, or prioritize.',
+        },
+        new_exercise_id: {
+          type: 'string',
+          description: 'Replacement or newly added exercise ID or name.',
+        },
+        sets: {
+          type: 'integer',
+          description: 'Target working sets per session (1-10) when adding or adjusting sets.',
+        },
+        set_delta: {
+          type: 'integer',
+          description: 'Relative working set change (e.g. +1 or -1) when adjusting sets across sessions.',
+        },
+        workout_filter: {
+          type: 'string',
+          description: 'Optional filter (e.g. "Upper", "Legs", "Full Body A", "Chest and Back", "Week 2") to limit which workouts change; omit for all matching workouts.',
+        },
+        reason: {
+          type: 'string',
+          description: 'Clinical or athlete rationale (e.g. "shoulder comfort", "balance pull vs push").',
+        },
+        confirmation_required: {
+          type: 'boolean',
+          description: 'True to show a human-in-the-loop approval preview before applying permanent plan changes (default true).',
+        },
+      },
+      required: ['action'],
+    },
+  },
+  {
+    name: 'rebalance_program',
+    description:
+      'Analyze real strength imbalances (Poliquin pull-vs-push, Kilgore movement tier gaps), left/right asymmetries (<90% symmetry), stalled lifts, saved contraindications, or under-target muscle volume and propose permanent program adaptations with human-in-the-loop confirmation.',
+    parameters: {
+      type: 'object',
+      properties: {
+        focus: {
+          type: 'string',
+          enum: ['auto', 'pull_vs_push', 'level_gap', 'left_right_symmetry', 'plateau', 'contraindication', 'muscle_volume'],
+          description: 'Specific imbalance or intervention category to address (default auto).',
+        },
+        target_muscle_or_pillar: {
+          type: 'string',
+          description: 'Optional muscle or movement pattern the athlete wants to bring up across the program (e.g. "pull", "rear delts", "hamstrings", "squat").',
+        },
+        confirmation_required: {
+          type: 'boolean',
+          description: 'True to present a human-in-the-loop approval card before changing the program (default true).',
+        },
+      },
+      required: [],
+    },
+  },
 ];
 
 // ============================================================================
@@ -529,7 +606,14 @@ async function commitMutationTransaction(args: {
 
   const undoSnapshot: CoachUndoSnapshot = {
     label: stateDiff.label,
-    previousProfile: updatedProfile ? { ...context.profile } : undefined,
+    previousProfile: updatedProfile
+      ? {
+          ...context.profile,
+          ...('programOverrides' in updatedProfile
+            ? { programOverrides: context.profile.programOverrides }
+            : {}),
+        }
+      : undefined,
     previousWorkout: updatedWorkout
       ? {
           ...context.activeWorkout,
@@ -645,7 +729,12 @@ export async function executeResetProgram(
   const targetDay = Math.max(1, Math.round(rawArgs.target_day ?? 1));
   const requestedProgramId = (rawArgs.program_id || context.profile.programType || 'muscle_building_6wk') as ProgramSplitType;
   const plan = isPlanProgram(requestedProgramId)
-    ? getPlanById(requestedProgramId as PlanId, context.profile.goalPhase, context.profile.customPlans)
+    ? getPlanById(
+        requestedProgramId as PlanId,
+        context.profile.goalPhase,
+        context.profile.customPlans,
+        context.profile.programOverrides
+      )
     : resolveActivePlan(context.profile);
 
   const overviewBefore = buildPlanOverview(
@@ -982,38 +1071,16 @@ function findBestReplacementExercise(
   );
 }
 
-export async function executeSwapExercise(
-  rawArgs: SwapExerciseArgs,
+function buildSwappedExerciseSession(
+  targetEx: ExerciseSession,
+  replacement: ExerciseDefinition,
   context: CoachToolExecutionContext
-): Promise<CoachToolOutcome> {
-  const { activeWorkout, exerciseCatalog } = context;
-  const oldQuery = cleanExerciseQuery(rawArgs.old_exercise_id);
-  const targetEx = findWorkoutExercise(oldQuery, activeWorkout, exerciseCatalog);
-
-  if (!targetEx) {
-    const names = activeWorkout.exercises.map((e) => e.name).join(', ');
-    return {
-      toolName: 'swap_exercise',
-      actionType: 'SWAP_EXERCISE',
-      mutationStatus: 'error',
-      summaryText: names
-        ? `Couldn't find "${oldQuery || 'that exercise'}" in today's **${activeWorkout.name}** session (today's exercises: ${names}). No exercises were changed.`
-        : `Couldn't find "${oldQuery || 'that exercise'}" in today's **${activeWorkout.name}** session. No exercises were changed.`,
-      errorMessage: 'Exercise not in active workout.',
-    };
-  }
-
-  const replacement = findBestReplacementExercise(targetEx, rawArgs.new_exercise_id, exerciseCatalog, activeWorkout, context);
-  if (!replacement) {
-    return {
-      toolName: 'swap_exercise',
-      actionType: 'SWAP_EXERCISE',
-      mutationStatus: 'error',
-      summaryText: `Couldn't find a matching replacement for **${targetEx.name}** in the exercise library. No exercises were changed.`,
-      errorMessage: 'Replacement exercise not found.',
-    };
-  }
-
+): {
+  replacementEx: ExerciseSession;
+  completedSets: WorkoutSet[];
+  targetWeightKg: number;
+} {
+  const { activeWorkout } = context;
   const unit = context.profile.weightUnit || 'kg';
   const completedSets = targetEx.sets.filter((s) => s.completed);
   const completedWorkingCount = completedSets.filter((s) => !s.isWarmup && s.setType !== 'warmup').length;
@@ -1095,7 +1162,7 @@ export async function executeSwapExercise(
     }
   ).exercises[0];
 
-  const finalReplacement: ExerciseSession = {
+  const replacementEx: ExerciseSession = {
     ...preparedSingle,
     sets: preparedSingle.sets.map((st, idx) =>
       targetWeightKg > 0 && (st.targetWeightKg ?? 0) <= 0
@@ -1103,6 +1170,47 @@ export async function executeSwapExercise(
         : { ...st, setNumber: idx + 1 }
     ),
   };
+
+  return { replacementEx, completedSets, targetWeightKg };
+}
+
+export async function executeSwapExercise(
+  rawArgs: SwapExerciseArgs,
+  context: CoachToolExecutionContext
+): Promise<CoachToolOutcome> {
+  const { activeWorkout, exerciseCatalog } = context;
+  const oldQuery = cleanExerciseQuery(rawArgs.old_exercise_id);
+  const targetEx = findWorkoutExercise(oldQuery, activeWorkout, exerciseCatalog);
+
+  if (!targetEx) {
+    const names = activeWorkout.exercises.map((e) => e.name).join(', ');
+    return {
+      toolName: 'swap_exercise',
+      actionType: 'SWAP_EXERCISE',
+      mutationStatus: 'error',
+      summaryText: names
+        ? `Couldn't find "${oldQuery || 'that exercise'}" in today's **${activeWorkout.name}** session (today's exercises: ${names}). No exercises were changed.`
+        : `Couldn't find "${oldQuery || 'that exercise'}" in today's **${activeWorkout.name}** session. No exercises were changed.`,
+      errorMessage: 'Exercise not in active workout.',
+    };
+  }
+
+  const replacement = findBestReplacementExercise(targetEx, rawArgs.new_exercise_id, exerciseCatalog, activeWorkout, context);
+  if (!replacement) {
+    return {
+      toolName: 'swap_exercise',
+      actionType: 'SWAP_EXERCISE',
+      mutationStatus: 'error',
+      summaryText: `Couldn't find a matching replacement for **${targetEx.name}** in the exercise library. No exercises were changed.`,
+      errorMessage: 'Replacement exercise not found.',
+    };
+  }
+
+  const { replacementEx: finalReplacement, completedSets } = buildSwappedExerciseSession(
+    targetEx,
+    replacement,
+    context
+  );
 
   const updatedWorkout: WorkoutSession = {
     ...activeWorkout,
@@ -1339,7 +1447,93 @@ export async function executeSaveAthleteMemory(
 export interface ModifyWorkoutExercisesArgs {
   action: 'add' | 'remove';
   exercise_name: string;
+  sets?: number;
   reason?: string;
+}
+
+function buildCalibratedAddedExercise(
+  def: ExerciseDefinition,
+  setsCount: number,
+  workout: WorkoutSession,
+  context: CoachToolExecutionContext
+): { exercise: ExerciseSession; fallbackKg: number; isPureBw: boolean } {
+  const unit = context.profile.weightUnit || 'kg';
+  const meta = getExerciseBiomechanicalMeta(def);
+  const timed = isTimedExercise(def);
+  const isPureBw = def.equipment === 'bodyweight' && !def.isWeightedCalisthenic;
+  const holdSecs = def.defaultDurationSeconds || 45;
+  const cleanSets = Math.max(1, Math.min(8, Math.round(setsCount || 3)));
+  const seedEx: ExerciseSession = {
+    id: `coach-add-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`,
+    exerciseId: def.id,
+    name: def.name,
+    pillar: def.pillar,
+    equipment: def.equipment,
+    isRdl: def.isRdl,
+    isWeightedCalisthenic: def.isWeightedCalisthenic,
+    isIsolation: meta.isIsolation,
+    movementFamily: getMovementVectorId(def),
+    movementFamilyLabel: getMovementFamilyLabel(def),
+    resistanceProfile: meta.resistanceProfile,
+    sfrScore: meta.sfrScore,
+    minReps: timed ? 1 : def.defaultRepRange[0],
+    maxReps: timed ? 1 : def.defaultRepRange[1],
+    ...(timed ? { repTargetType: 'duration' as const, durationSeconds: holdSecs, tempo: `${holdSecs}sec` } : {}),
+    notes: timed
+      ? `Hold with controlled tension for ${holdSecs}s per set.`
+      : meta.resistanceProfile === 'lengthened'
+      ? 'Focus on a controlled stretch at the bottom of each rep.'
+      : 'Keep a steady, controlled pace on every rep.',
+    sets: Array.from({ length: cleanSets }, (_, i) => i + 1).map((n) => ({
+      id: `coach-s-${Date.now()}-${n}`,
+      setNumber: n,
+      targetWeightKg: isPureBw ? 0 : def.equipment === 'dumbbell' ? 16 : 40,
+      targetReps: timed ? 1 : def.defaultRepRange[0],
+      targetRir: n === cleanSets ? 1 : 2,
+      ...(timed ? { targetDurationSeconds: holdSecs, actualDurationSeconds: holdSecs } : {}),
+      completed: false,
+      setType: 'working' as const,
+    })),
+  };
+
+  const rx = prescribeDoubleProgression(
+    seedEx,
+    context.readinessState,
+    context.workouts,
+    context.bodyweightEmaKg,
+    context.profile.goalPhase
+  );
+  const fallbackKg = isPureBw
+    ? 0
+    : startingWeightForNewExercise(workout, seedEx, {
+        history: context.workouts,
+        bodyweightKg: context.bodyweightEmaKg,
+        readinessState: context.readinessState,
+        gender: context.profile.gender,
+        experienceLevel: context.profile.experienceLevel,
+        unit,
+      }) ?? rx.nextWeightKg;
+
+  const baseHydrated: ExerciseSession = {
+    ...seedEx,
+    sets: seedEx.sets.map((s, idx) => ({
+      ...s,
+      targetWeightKg: fallbackKg,
+      actualWeightKg: fallbackKg,
+      targetReps: timed ? 1 : (rx.nextTargetReps[idx] ?? def.defaultRepRange[0]),
+      actualReps: timed ? 1 : (rx.nextTargetReps[idx] ?? def.defaultRepRange[0]),
+    })),
+  };
+  const isFirstComp = isFirstCompoundForPillar(
+    baseHydrated,
+    workout.exercises.length,
+    [...workout.exercises, baseHydrated]
+  );
+  return {
+    exercise: timed ? baseHydrated : ensureWarmupSetsOnExercise(baseHydrated, isFirstComp),
+    fallbackKg,
+    isPureBw,
+  };
 }
 
 export async function executeModifyWorkoutExercises(
@@ -1439,77 +1633,12 @@ export async function executeModifyWorkoutExercises(
   }
 
   const unit = context.profile.weightUnit || 'kg';
-  const meta = getExerciseBiomechanicalMeta(def);
-  const timed = isTimedExercise(def);
-  const isPureBw = def.equipment === 'bodyweight' && !def.isWeightedCalisthenic;
-  const holdSecs = def.defaultDurationSeconds || 45;
-  const seedEx: ExerciseSession = {
-    id: `coach-add-${Date.now()}`,
-    exerciseId: def.id,
-    name: def.name,
-    pillar: def.pillar,
-    equipment: def.equipment,
-    isRdl: def.isRdl,
-    isWeightedCalisthenic: def.isWeightedCalisthenic,
-    isIsolation: meta.isIsolation,
-    movementFamily: getMovementVectorId(def),
-    movementFamilyLabel: getMovementFamilyLabel(def),
-    resistanceProfile: meta.resistanceProfile,
-    sfrScore: meta.sfrScore,
-    minReps: timed ? 1 : def.defaultRepRange[0],
-    maxReps: timed ? 1 : def.defaultRepRange[1],
-    ...(timed ? { repTargetType: 'duration' as const, durationSeconds: holdSecs, tempo: `${holdSecs}sec` } : {}),
-    notes: timed
-      ? `Hold with controlled tension for ${holdSecs}s per set.`
-      : meta.resistanceProfile === 'lengthened'
-      ? 'Focus on a controlled stretch at the bottom of each rep.'
-      : 'Keep a steady, controlled pace on every rep.',
-    sets: [1, 2, 3].map((n) => ({
-      id: `coach-s-${Date.now()}-${n}`,
-      setNumber: n,
-      targetWeightKg: isPureBw ? 0 : def.equipment === 'dumbbell' ? 16 : 40,
-      targetReps: timed ? 1 : def.defaultRepRange[0],
-      targetRir: n === 3 ? 1 : 2,
-      ...(timed ? { targetDurationSeconds: holdSecs, actualDurationSeconds: holdSecs } : {}),
-      completed: false,
-      setType: 'working' as const,
-    })),
-  };
-
-  const rx = prescribeDoubleProgression(
-    seedEx,
-    context.readinessState,
-    context.workouts,
-    context.bodyweightEmaKg,
-    context.profile.goalPhase
+  const { exercise: finalEx, fallbackKg, isPureBw } = buildCalibratedAddedExercise(
+    def,
+    rawArgs.sets ?? 3,
+    activeWorkout,
+    context
   );
-  const fallbackKg = isPureBw
-    ? 0
-    : startingWeightForNewExercise(activeWorkout, seedEx, {
-        history: context.workouts,
-        bodyweightKg: context.bodyweightEmaKg,
-        readinessState: context.readinessState,
-        gender: context.profile.gender,
-        experienceLevel: context.profile.experienceLevel,
-        unit,
-      }) ?? rx.nextWeightKg;
-
-  const baseHydrated: ExerciseSession = {
-    ...seedEx,
-    sets: seedEx.sets.map((s, idx) => ({
-      ...s,
-      targetWeightKg: fallbackKg,
-      actualWeightKg: fallbackKg,
-      targetReps: timed ? 1 : (rx.nextTargetReps[idx] ?? def.defaultRepRange[0]),
-      actualReps: timed ? 1 : (rx.nextTargetReps[idx] ?? def.defaultRepRange[0]),
-    })),
-  };
-  const isFirstComp = isFirstCompoundForPillar(
-    baseHydrated,
-    activeWorkout.exercises.length,
-    [...activeWorkout.exercises, baseHydrated]
-  );
-  const finalEx = timed ? baseHydrated : ensureWarmupSetsOnExercise(baseHydrated, isFirstComp);
 
   return commitMutationTransaction({
     context,
@@ -2194,6 +2323,684 @@ export async function executeLogEntry(
   });
 }
 
+function findProgramTemplateExercise(
+  query: string,
+  plan: ReturnType<typeof resolveActivePlan>,
+  catalog: ExerciseDefinition[]
+): { exerciseId: string; name: string; pillar: StrengthPillar; equipment: ExerciseSession['equipment'] } | undefined {
+  const cleaned = cleanExerciseQuery(query);
+  if (!cleaned) return undefined;
+  const q = cleaned.toLowerCase();
+  const planEntries = plan.templates
+    .filter((t) => !isActiveSlot(t))
+    .flatMap((t) => t.exercises);
+  const direct =
+    planEntries.find((e) => e.exerciseId.toLowerCase() === q) ??
+    planEntries.find((e) => e.name.toLowerCase() === q) ??
+    planEntries.find((e) => e.name.toLowerCase().includes(q) || q.includes(e.name.toLowerCase())) ??
+    bestTokenMatch(planEntries, cleaned);
+  if (direct) {
+    return {
+      exerciseId: direct.exerciseId,
+      name: direct.name,
+      pillar: direct.pillar,
+      equipment: direct.equipment,
+    };
+  }
+  const cat = findCatalogExercise(cleaned, catalog);
+  if (cat && planEntries.some((e) => e.exerciseId === cat.id)) {
+    return {
+      exerciseId: cat.id,
+      name: cat.name,
+      pillar: cat.pillar,
+      equipment: cat.equipment,
+    };
+  }
+  return undefined;
+}
+
+function syncActiveWorkoutWithOverrides(
+  plan: ReturnType<typeof resolveActivePlan>,
+  appliedOverrides: ProgramExerciseOverride[],
+  context: CoachToolExecutionContext
+): WorkoutSession | undefined {
+  const { activeWorkout, exerciseCatalog } = context;
+  if (activeWorkout.completed || !activeWorkout.programWorkoutNumber) return undefined;
+  if (getSessionPlanId(activeWorkout) !== plan.id) return undefined;
+  const tmpl = plan.templates.find((t) => t.workoutNumber === activeWorkout.programWorkoutNumber);
+  if (!tmpl) return undefined;
+
+  let current: WorkoutSession = {
+    ...activeWorkout,
+    exercises: activeWorkout.exercises.map((e) => ({
+      ...e,
+      sets: e.sets.map((s) => ({ ...s })),
+    })),
+  };
+  let touched = false;
+
+  for (const ov of appliedOverrides) {
+    if (!matchesWorkoutTemplateFilter(tmpl, ov.workoutFilter)) continue;
+
+    if (ov.kind === 'swap_exercise' && ov.replacementExerciseId) {
+      const replacementDef = exerciseCatalog.find((d) => d.id === ov.replacementExerciseId);
+      const targetEx = current.exercises.find(
+        (e) =>
+          (ov.targetExerciseId && e.exerciseId === ov.targetExerciseId) ||
+          (ov.targetExerciseName && e.name.toLowerCase() === ov.targetExerciseName.toLowerCase())
+      );
+      if (replacementDef && targetEx) {
+        const { replacementEx, completedSets } = buildSwappedExerciseSession(targetEx, replacementDef, {
+          ...context,
+          activeWorkout: current,
+        });
+        const alreadyHasRep = current.exercises.some(
+          (e) => e.exerciseId === replacementDef.id && e.id !== targetEx.id
+        );
+        current = {
+          ...current,
+          exercises:
+            completedSets.length === 0
+              ? alreadyHasRep
+                ? current.exercises.filter((e) => e.id !== targetEx.id)
+                : current.exercises.map((e) => (e.id === targetEx.id ? replacementEx : e))
+              : current.exercises.flatMap((e) =>
+                  e.id === targetEx.id
+                    ? [
+                        { ...targetEx, sets: completedSets.map((st, idx) => ({ ...st, setNumber: idx + 1 })) },
+                        ...(alreadyHasRep ? [] : [replacementEx]),
+                      ]
+                    : [e]
+                ),
+        };
+        touched = true;
+      }
+    } else if (ov.kind === 'add_exercise' && ov.replacementExerciseId) {
+      const addDef = exerciseCatalog.find((d) => d.id === ov.replacementExerciseId);
+      if (addDef && !current.exercises.some((e) => e.exerciseId === addDef.id)) {
+        const { exercise } = buildCalibratedAddedExercise(addDef, ov.sets ?? 3, current, {
+          ...context,
+          activeWorkout: current,
+        });
+        current = { ...current, exercises: [...current.exercises, exercise] };
+        touched = true;
+      }
+    } else if (ov.kind === 'remove_exercise') {
+      const targetEx = current.exercises.find(
+        (e) =>
+          (ov.targetExerciseId && e.exerciseId === ov.targetExerciseId) ||
+          (ov.targetExerciseName && e.name.toLowerCase() === ov.targetExerciseName.toLowerCase())
+      );
+      if (targetEx && !targetEx.sets.some((s) => s.completed) && current.exercises.length > 1) {
+        current = { ...current, exercises: current.exercises.filter((e) => e.id !== targetEx.id) };
+        touched = true;
+      }
+    } else if (ov.kind === 'adjust_sets') {
+      const targetEx = current.exercises.find(
+        (e) =>
+          (ov.targetExerciseId && e.exerciseId === ov.targetExerciseId) ||
+          (ov.targetExerciseName && e.name.toLowerCase() === ov.targetExerciseName.toLowerCase())
+      );
+      if (targetEx) {
+        const warmups = targetEx.sets.filter((s) => s.isWarmup || s.setType === 'warmup');
+        const working = targetEx.sets.filter((s) => !s.isWarmup && s.setType !== 'warmup');
+        const desiredCount =
+          typeof ov.sets === 'number'
+            ? Math.max(1, Math.min(10, Math.round(ov.sets)))
+            : Math.max(1, Math.min(10, working.length + Math.round(ov.setDelta ?? 1)));
+        if (desiredCount > working.length) {
+          const sample = working[working.length - 1];
+          const extra: WorkoutSet[] = Array.from({ length: desiredCount - working.length }, (_, idx) => ({
+            id: `prog-set-${Date.now()}-${idx}`,
+            setNumber: working.length + idx + 1,
+            setType: 'working',
+            targetWeightKg: sample?.targetWeightKg ?? 0,
+            actualWeightKg: sample?.targetWeightKg ?? 0,
+            targetReps: sample?.targetReps ?? targetEx.minReps,
+            actualReps: sample?.targetReps ?? targetEx.minReps,
+            targetRir: sample?.targetRir ?? 2,
+            actualRir: sample?.targetRir ?? 2,
+            ...(sample?.targetDurationSeconds
+              ? { targetDurationSeconds: sample.targetDurationSeconds, actualDurationSeconds: sample.actualDurationSeconds }
+              : {}),
+            completed: false,
+          }));
+          const combined = [...warmups, ...working, ...extra].map((st, idx) => ({ ...st, setNumber: idx + 1 }));
+          current = {
+            ...current,
+            exercises: current.exercises.map((e) => (e.id === targetEx.id ? { ...e, sets: combined } : e)),
+          };
+          touched = true;
+        } else if (desiredCount < working.length) {
+          const doneWorking = working.filter((s) => s.completed);
+          const uncompleted = working.filter((s) => !s.completed);
+          const keepUncompleted = Math.max(0, desiredCount - doneWorking.length);
+          const nextWorking = [...doneWorking, ...uncompleted.slice(0, keepUncompleted)];
+          if (nextWorking.length < working.length) {
+            const combined = [...warmups, ...nextWorking].map((st, idx) => ({ ...st, setNumber: idx + 1 }));
+            current = {
+              ...current,
+              exercises: current.exercises.map((e) => (e.id === targetEx.id ? { ...e, sets: combined } : e)),
+            };
+            touched = true;
+          }
+        }
+      }
+    } else if (ov.kind === 'prioritize_first') {
+      const hasStarted = current.exercises.some((e) => e.sets.some((s) => s.completed));
+      const idx = current.exercises.findIndex(
+        (e) =>
+          (ov.targetExerciseId && e.exerciseId === ov.targetExerciseId) ||
+          (ov.targetExerciseName && e.name.toLowerCase() === ov.targetExerciseName.toLowerCase())
+      );
+      if (!hasStarted && idx > 0) {
+        const reordered = [...current.exercises];
+        const [promoted] = reordered.splice(idx, 1);
+        reordered.unshift(promoted);
+        current = { ...current, exercises: reordered };
+        touched = true;
+      }
+    }
+  }
+
+  return touched ? current : undefined;
+}
+
+export interface ModifyProgramArgs {
+  action: 'swap_exercise' | 'add_exercise' | 'remove_exercise' | 'adjust_sets' | 'prioritize_first' | 'clear_overrides';
+  old_exercise_id?: string;
+  new_exercise_id?: string;
+  sets?: number;
+  set_delta?: number;
+  workout_filter?: string;
+  reason?: string;
+  confirmation_required?: boolean;
+}
+
+export async function executeModifyProgram(
+  rawArgs: ModifyProgramArgs,
+  context: CoachToolExecutionContext
+): Promise<CoachToolOutcome> {
+  const plan = resolveActivePlan(context.profile);
+  const existingOverrides = context.profile.programOverrides ?? [];
+  const planOverrides = existingOverrides.filter((o) => o.planId === plan.id);
+
+  if (rawArgs.action === 'clear_overrides') {
+    if (planOverrides.length === 0) {
+      return {
+        toolName: 'modify_program',
+        actionType: 'MODIFY_PROGRAM',
+        mutationStatus: 'noop',
+        summaryText: `**${plan.name}** is already using its original exercises and set counts.`,
+      };
+    }
+    const clearDiff: CoachStateDiff = {
+      object_type: 'Program',
+      object_id: plan.id,
+      label: 'Program Adaptations',
+      previous_state: { display: `${planOverrides.length} active adaptation${planOverrides.length === 1 ? '' : 's'}` },
+      new_state: { display: `Default ${plan.name} plan` },
+    };
+    if (rawArgs.confirmation_required !== false) {
+      const pendingConfirmation: CoachPendingConfirmation = {
+        tool_name: 'modify_program',
+        args: { action: 'clear_overrides', confirmation_required: false },
+        title: `Restore default exercises in ${plan.name}?`,
+        summary: `${planOverrides.length} custom program edit${planOverrides.length === 1 ? '' : 's'} → Original plan`,
+        warning: `All remaining sessions will return to the default ${plan.name} template. Past completed sessions remain unchanged.`,
+        confirm_label: 'Restore default plan',
+        cancel_label: 'Keep adaptations',
+        preview_diff: clearDiff,
+        status: 'pending',
+      };
+      return {
+        toolName: 'modify_program',
+        actionType: 'MODIFY_PROGRAM',
+        mutationStatus: 'awaiting_confirmation',
+        summaryText: `Review the reset below before removing ${planOverrides.length} adaptation${planOverrides.length === 1 ? '' : 's'} from **${plan.name}**.`,
+        stateDiff: clearDiff,
+        pendingConfirmation,
+      };
+    }
+
+    const nextOverrides = existingOverrides.filter((o) => o.planId !== plan.id);
+    const nextProfile: UserProfile = {
+      ...context.profile,
+      programOverrides: nextOverrides.length > 0 ? nextOverrides : undefined,
+    };
+    const restoredPlan = resolveActivePlan(nextProfile);
+    let updatedWorkout: WorkoutSession | undefined;
+    if (
+      !context.activeWorkout.completed &&
+      context.activeWorkout.programWorkoutNumber &&
+      getSessionPlanId(context.activeWorkout) === restoredPlan.id &&
+      !hasInProgressSets(context.activeWorkout)
+    ) {
+      updatedWorkout = buildPreparedSessionForReset(
+        restoredPlan,
+        context.activeWorkout.programWorkoutNumber,
+        context,
+        nextProfile
+      );
+    }
+    return commitMutationTransaction({
+      context,
+      toolName: 'modify_program',
+      actionType: 'MODIFY_PROGRAM',
+      updatedProfile: { programOverrides: nextProfile.programOverrides },
+      updatedWorkout,
+      stateDiff: clearDiff,
+      summaryText: `Restored **${restoredPlan.name}** to its default exercise plan across remaining sessions.`,
+      navigateTarget: 'program',
+      navigateLabel: 'View Program',
+    });
+  }
+
+  let targetEx:
+    | { exerciseId: string; name: string; pillar: StrengthPillar; equipment: ExerciseSession['equipment'] }
+    | undefined;
+  let replacementDef: ExerciseDefinition | undefined;
+
+  if (rawArgs.action !== 'add_exercise') {
+    targetEx = findProgramTemplateExercise(rawArgs.old_exercise_id || '', plan, context.exerciseCatalog);
+    if (!targetEx) {
+      const sampleNames = Array.from(
+        new Set(plan.templates.filter((t) => !isActiveSlot(t)).flatMap((t) => t.exercises.map((e) => e.name)))
+      )
+        .slice(0, 6)
+        .join(', ');
+      return {
+        toolName: 'modify_program',
+        actionType: 'MODIFY_PROGRAM',
+        mutationStatus: 'error',
+        summaryText: `Couldn't find "${rawArgs.old_exercise_id || 'that exercise'}" inside **${plan.name}** (current exercises include: ${sampleNames}).`,
+        errorMessage: 'Exercise not found in active plan.',
+      };
+    }
+  }
+
+  if (rawArgs.action === 'swap_exercise' || rawArgs.action === 'add_exercise') {
+    if (rawArgs.new_exercise_id) {
+      replacementDef = findCatalogExercise(rawArgs.new_exercise_id, context.exerciseCatalog, context.activeWorkout);
+    } else if (rawArgs.action === 'swap_exercise' && targetEx) {
+      const pseudoSession: ExerciseSession = {
+        id: targetEx.exerciseId,
+        exerciseId: targetEx.exerciseId,
+        name: targetEx.name,
+        pillar: targetEx.pillar,
+        equipment: targetEx.equipment,
+        minReps: 8,
+        maxReps: 12,
+        sets: [],
+      };
+      replacementDef = findBestReplacementExercise(
+        pseudoSession,
+        undefined,
+        context.exerciseCatalog,
+        context.activeWorkout,
+        context
+      );
+    }
+    if (!replacementDef) {
+      return {
+        toolName: 'modify_program',
+        actionType: 'MODIFY_PROGRAM',
+        mutationStatus: 'error',
+        summaryText: `Couldn't find a matching replacement "${rawArgs.new_exercise_id || ''}" in the exercise library.`,
+        errorMessage: 'Replacement exercise not found.',
+      };
+    }
+  }
+
+  const now = new Date().toISOString();
+  const candidate: ProgramExerciseOverride = {
+    id: `ov-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    planId: plan.id,
+    kind: rawArgs.action,
+    ...(targetEx ? { targetExerciseId: targetEx.exerciseId, targetExerciseName: targetEx.name } : {}),
+    ...(replacementDef
+      ? {
+          replacementExerciseId: replacementDef.id,
+          replacementExerciseName: replacementDef.name,
+          replacementPillar: replacementDef.pillar,
+          replacementEquipment: replacementDef.equipment,
+          replacementRepRange: replacementDef.defaultRepRange,
+          replacementIsTimed: replacementDef.isTimed,
+          replacementDurationSeconds: replacementDef.defaultDurationSeconds,
+        }
+      : {}),
+    ...(typeof rawArgs.sets === 'number' ? { sets: Math.max(1, Math.min(10, Math.round(rawArgs.sets))) } : {}),
+    ...(typeof rawArgs.set_delta === 'number' ? { setDelta: Math.round(rawArgs.set_delta) } : {}),
+    ...(rawArgs.workout_filter ? { workoutFilter: rawArgs.workout_filter } : {}),
+    ...(rawArgs.reason ? { reason: rawArgs.reason } : {}),
+    createdAt: now,
+  };
+
+  const preview = previewProgramOverrides(plan, [candidate], context.workouts, context.profile.planCycleStarts);
+  if (preview.totalAffectedCount === 0) {
+    return {
+      toolName: 'modify_program',
+      actionType: 'MODIFY_PROGRAM',
+      mutationStatus: 'error',
+      summaryText:
+        rawArgs.action === 'add_exercise' && replacementDef
+          ? `**${replacementDef.name}** is already included in the matching workouts of **${plan.name}**.`
+          : `No workouts in **${plan.name}** needed changing for that adjustment.`,
+      errorMessage: 'No program templates changed.',
+    };
+  }
+
+  const sessionCount = preview.remainingAffectedCount || preview.totalAffectedCount;
+  const affectedLabel = preview.affectedTitles.slice(0, 2).join(', ');
+  const slotsText = `${sessionCount} session${sessionCount === 1 ? '' : 's'}${affectedLabel ? ` · ${affectedLabel}` : ''}`;
+  let titleText = `Update ${plan.name}?`;
+  let prevDisplay = targetEx?.name || plan.name;
+  let newDisplay = replacementDef?.name || plan.name;
+  let commitSummary = `Updated **${plan.name}** across ${slotsText}.`;
+
+  if (rawArgs.action === 'swap_exercise' && targetEx && replacementDef) {
+    titleText = `Swap ${targetEx.name} → ${replacementDef.name} across ${plan.name}?`;
+    prevDisplay = targetEx.name;
+    newDisplay = `${replacementDef.name} (${slotsText})`;
+    commitSummary = `Permanently swapped **${targetEx.name} → ${replacementDef.name}** across ${slotsText} in **${plan.name}**.`;
+  } else if (rawArgs.action === 'add_exercise' && replacementDef) {
+    const setsLbl = `${candidate.sets ?? 3} sets`;
+    titleText = `Add ${replacementDef.name} (${setsLbl}) across ${plan.name}?`;
+    prevDisplay = plan.name;
+    newDisplay = `+ ${replacementDef.name} (${setsLbl}, ${slotsText})`;
+    commitSummary = `Permanently added **${replacementDef.name}** (${setsLbl}) across ${slotsText} in **${plan.name}**.`;
+  } else if (rawArgs.action === 'remove_exercise' && targetEx) {
+    titleText = `Remove ${targetEx.name} across ${plan.name}?`;
+    prevDisplay = targetEx.name;
+    newDisplay = `Removed across ${slotsText}`;
+    commitSummary = `Permanently removed **${targetEx.name}** across ${slotsText} in **${plan.name}**.`;
+  } else if (rawArgs.action === 'adjust_sets' && targetEx) {
+    const label = typeof candidate.sets === 'number' ? `${candidate.sets} sets` : `${(candidate.setDelta ?? 1) > 0 ? '+' : ''}${candidate.setDelta ?? 1} set`;
+    titleText = `Adjust sets on ${targetEx.name} (${label}) across ${plan.name}?`;
+    prevDisplay = `${targetEx.name}`;
+    newDisplay = `${targetEx.name}: ${label} (${slotsText})`;
+    commitSummary = `Adjusted **${targetEx.name}** (${label}) across ${slotsText} in **${plan.name}**.`;
+  } else if (rawArgs.action === 'prioritize_first' && targetEx) {
+    titleText = `Train ${targetEx.name} first across ${plan.name}?`;
+    prevDisplay = `${targetEx.name} (later slot)`;
+    newDisplay = `${targetEx.name} first (${slotsText})`;
+    commitSummary = `Moved **${targetEx.name}** to exercise #1 across ${slotsText} in **${plan.name}**.`;
+  }
+
+  const stateDiff: CoachStateDiff = {
+    object_type: 'Program',
+    object_id: plan.id,
+    label: 'Program Adapted',
+    previous_state: { display: prevDisplay },
+    new_state: { display: newDisplay },
+  };
+
+  if (rawArgs.confirmation_required !== false) {
+    const pendingConfirmation: CoachPendingConfirmation = {
+      tool_name: 'modify_program',
+      args: {
+        action: rawArgs.action,
+        ...(targetEx ? { old_exercise_id: targetEx.exerciseId } : {}),
+        ...(replacementDef ? { new_exercise_id: replacementDef.id } : {}),
+        ...(candidate.sets !== undefined ? { sets: candidate.sets } : {}),
+        ...(candidate.setDelta !== undefined ? { set_delta: candidate.setDelta } : {}),
+        ...(rawArgs.workout_filter ? { workout_filter: rawArgs.workout_filter } : {}),
+        ...(rawArgs.reason ? { reason: rawArgs.reason } : {}),
+        confirmation_required: false,
+      },
+      title: titleText,
+      summary: `${slotsText} · ${formatStateDiffText(stateDiff)}`,
+      warning: `${rawArgs.reason && !/^(athlete|user)\s+request$/i.test(rawArgs.reason.trim()) ? `Reason: ${rawArgs.reason}. ` : ''}Applies to remaining weeks of ${plan.name}; past history stays intact and you can Undo anytime.`,
+      confirm_label: 'Apply to program',
+      cancel_label: 'Keep current plan',
+      preview_diff: stateDiff,
+      status: 'pending',
+    };
+    return {
+      toolName: 'modify_program',
+      actionType: 'MODIFY_PROGRAM',
+      mutationStatus: 'awaiting_confirmation',
+      summaryText: `Confirm below to apply this change across **${slotsText}** in **${plan.name}**.`,
+      stateDiff,
+      pendingConfirmation,
+    };
+  }
+
+  const nextOverrides = [...existingOverrides, candidate];
+  const updatedPlan = applyProgramOverridesToPlan(plan, [candidate]);
+  const updatedWorkout = syncActiveWorkoutWithOverrides(updatedPlan, [candidate], context);
+
+  return commitMutationTransaction({
+    context,
+    toolName: 'modify_program',
+    actionType: 'MODIFY_PROGRAM',
+    updatedProfile: { programOverrides: nextOverrides },
+    updatedWorkout,
+    stateDiff,
+    summaryText: `${commitSummary} Remaining workouts now follow this update automatically.`,
+    navigateTarget: 'program',
+    navigateLabel: 'View Program',
+  });
+}
+
+export interface RebalanceProgramArgs {
+  focus?: 'auto' | 'pull_vs_push' | 'level_gap' | 'left_right_symmetry' | 'plateau' | 'contraindication' | 'muscle_volume';
+  target_muscle_or_pillar?: string;
+  confirmation_required?: boolean;
+}
+
+export async function executeRebalanceProgram(
+  rawArgs: RebalanceProgramArgs,
+  context: CoachToolExecutionContext
+): Promise<CoachToolOutcome> {
+  const plan = resolveActivePlan(context.profile);
+  const interventions = detectCoachInterventions({
+    profile: context.profile,
+    activeWorkout: context.activeWorkout,
+    workouts: context.workouts,
+    biometrics: context.biometrics ?? [],
+    exerciseCatalog: context.exerciseCatalog,
+    bodyweightEmaKg: context.bodyweightEmaKg,
+    readinessState: context.readinessState,
+    activities: context.activities,
+    trainingPlan: plan,
+  });
+
+  const focusMap: Record<NonNullable<RebalanceProgramArgs['focus']>, string[]> = {
+    auto: [],
+    pull_vs_push: ['pull_push_imbalance'],
+    level_gap: ['strength_level_gap'],
+    left_right_symmetry: ['unilateral_asymmetry'],
+    plateau: ['exercise_plateau'],
+    contraindication: ['contraindication_conflict'],
+    muscle_volume: ['volume_gap'],
+  };
+
+  const query = (rawArgs.target_muscle_or_pillar || '').toLowerCase().trim();
+  const focusKinds = rawArgs.focus ? focusMap[rawArgs.focus] : [];
+
+  let chosen =
+    (focusKinds.length > 0
+      ? interventions.find((it) => focusKinds.includes(it.kind))
+      : undefined) ??
+    (query
+      ? interventions.find(
+          (it) =>
+            it.title.toLowerCase().includes(query) ||
+            it.rationale.toLowerCase().includes(query) ||
+            (it.pillar && it.pillar.toLowerCase().includes(query))
+        )
+      : undefined) ??
+    interventions[0];
+
+  // If no existing diagnostic triggered yet (e.g. athlete explicitly names a muscle/symmetry preference), build targeted adaptation cleanly
+  let candidateChanges = chosen?.proposedChanges;
+  let chosenTitle = chosen?.title;
+  let chosenRationale = chosen?.rationale;
+
+  if (!candidateChanges && query) {
+    const planExercises = plan.templates.filter((t) => !isActiveSlot(t)).flatMap((t) => t.exercises);
+    if (/\b(symmetr|unilateral|left|right|single[\s-]?(arm|leg)|one[\s-]?side)\b/i.test(query)) {
+      const bilateralSwapMap: Record<string, string> = {
+        'ex-bench-press': 'ex-flat-db-press',
+        'ex-barbell-row': 'ex-single-arm-db-row',
+        'ex-barbell-squat': 'ex-bulgarian-split-squat',
+        'ex-leg-press': 'ex-bulgarian-split-squat',
+        'ex-rdl': 'ex-single-leg-db-rdl',
+      };
+      const match = planExercises.find((e) => bilateralSwapMap[e.exerciseId]);
+      const uniDef = match ? context.exerciseCatalog.find((d) => d.id === bilateralSwapMap[match.exerciseId]) : undefined;
+      if (match && uniDef) {
+        candidateChanges = [
+          {
+            kind: 'swap_exercise',
+            targetExerciseId: match.exerciseId,
+            targetExerciseName: match.name,
+            replacementExerciseId: uniDef.id,
+            replacementExerciseName: uniDef.name,
+            replacementPillar: uniDef.pillar,
+            replacementEquipment: uniDef.equipment,
+            replacementRepRange: uniDef.defaultRepRange,
+            reason: 'unilateral symmetry balance',
+            humanSummary: `${match.name} → ${uniDef.name} across sessions`,
+          },
+        ];
+        chosenTitle = `Switch ${match.name} to unilateral ${uniDef.name}`;
+        chosenRationale = `Replacing bilateral ${match.name} with ${uniDef.name} lets your weaker side set the pace on every set.`;
+      }
+    } else {
+      const catMatch =
+        context.exerciseCatalog.find((d) => d.primaryMuscle.toLowerCase().includes(query) || d.pillar.toLowerCase().includes(query)) ??
+        findCatalogExercise(query, context.exerciseCatalog, context.activeWorkout);
+      if (catMatch) {
+        const existing = planExercises.find((e) => e.exerciseId === catMatch.id || e.pillar === catMatch.pillar);
+        if (existing) {
+          candidateChanges = [
+            {
+              kind: 'adjust_sets',
+              targetExerciseId: existing.exerciseId,
+              targetExerciseName: existing.name,
+              setDelta: 1,
+              reason: `bring up ${query}`,
+              humanSummary: `+1 working set on ${existing.name} across sessions`,
+            },
+          ];
+          chosenTitle = `Increase ${existing.name} focus in ${plan.name}`;
+          chosenRationale = `Adds +1 working set on ${existing.name} across remaining workouts to bring up your ${query}.`;
+        } else {
+          candidateChanges = [
+            {
+              kind: 'add_exercise',
+              replacementExerciseId: catMatch.id,
+              replacementExerciseName: catMatch.name,
+              replacementPillar: catMatch.pillar,
+              replacementEquipment: catMatch.equipment,
+              replacementRepRange: catMatch.defaultRepRange,
+              sets: 3,
+              workoutFilter: catMatch.pillar === 'Squat' || catMatch.pillar === 'Hinge' ? 'lower_or_full' : 'upper_or_full',
+              reason: `bring up ${query}`,
+              humanSummary: `Add ${catMatch.name} (3 sets) to matching workouts`,
+            },
+          ];
+          chosenTitle = `Add ${catMatch.name} across ${plan.name}`;
+          chosenRationale = `Adds ${catMatch.name} to matching sessions so ${query} receives direct weekly stimulus.`;
+        }
+      }
+    }
+  }
+
+  if (!candidateChanges || candidateChanges.length === 0) {
+    return {
+      toolName: 'rebalance_program',
+      actionType: 'MODIFY_PROGRAM',
+      mutationStatus: 'error',
+      summaryText: `Your lifts currently show no strength imbalances or symmetry gaps to rebalance in **${plan.name}**. Log more sessions across main lifts (or "Log each side" on unilateral exercises), or tell me a specific lift or muscle to emphasize across your program.`,
+      errorMessage: 'No active imbalance intervention detected.',
+    };
+  }
+
+  const now = new Date().toISOString();
+  const overridesToApply: ProgramExerciseOverride[] = candidateChanges.map((c, idx) => ({
+    id: `ov-rebal-${Date.now()}-${idx}`,
+    planId: plan.id,
+    kind: c.kind,
+    targetExerciseId: c.targetExerciseId,
+    targetExerciseName: c.targetExerciseName,
+    replacementExerciseId: c.replacementExerciseId,
+    replacementExerciseName: c.replacementExerciseName,
+    replacementPillar: c.replacementPillar,
+    replacementEquipment: c.replacementEquipment,
+    replacementRepRange: c.replacementRepRange,
+    replacementIsTimed: c.replacementIsTimed,
+    replacementDurationSeconds: c.replacementDurationSeconds,
+    sets: c.sets,
+    setDelta: c.setDelta,
+    workoutFilter: c.workoutFilter,
+    reason: c.reason,
+    createdAt: now,
+  }));
+
+  const preview = previewProgramOverrides(
+    plan,
+    overridesToApply,
+    context.workouts,
+    context.profile.planCycleStarts
+  );
+  const sessionCount = preview.remainingAffectedCount || preview.totalAffectedCount;
+  const slotsText = `${sessionCount} session${sessionCount === 1 ? '' : 's'}`;
+  const changeListText = candidateChanges.map((c) => c.humanSummary).join(' + ');
+
+  const stateDiff: CoachStateDiff = {
+    object_type: 'Program',
+    object_id: plan.id,
+    label: 'Program Rebalanced',
+    previous_state: { display: `${plan.name} (current setup)` },
+    new_state: { display: `${changeListText} (${slotsText})` },
+  };
+
+  if (rawArgs.confirmation_required !== false) {
+    const pendingConfirmation: CoachPendingConfirmation = {
+      tool_name: 'rebalance_program',
+      args: {
+        ...(rawArgs.focus ? { focus: rawArgs.focus } : {}),
+        ...(rawArgs.target_muscle_or_pillar ? { target_muscle_or_pillar: rawArgs.target_muscle_or_pillar } : {}),
+        confirmation_required: false,
+      },
+      title: chosenTitle || `Rebalance ${plan.name}?`,
+      summary: `${slotsText} affected · ${changeListText}`,
+      warning: `${chosenRationale || 'Targeted adjustment based on your logged strength ratios and symmetry.'} Past logs stay untouched and you can Undo anytime.`,
+      confirm_label: 'Apply to program',
+      cancel_label: 'Keep current plan',
+      preview_diff: stateDiff,
+      status: 'pending',
+    };
+    return {
+      toolName: 'rebalance_program',
+      actionType: 'MODIFY_PROGRAM',
+      mutationStatus: 'awaiting_confirmation',
+      summaryText: `${chosenRationale || ''}\n\nConfirm below to apply **${changeListText}** across **${slotsText}** in **${plan.name}**.`.trim(),
+      stateDiff,
+      pendingConfirmation,
+    };
+  }
+
+  const nextOverrides = [...(context.profile.programOverrides ?? []), ...overridesToApply];
+  const updatedPlan = applyProgramOverridesToPlan(plan, overridesToApply);
+  const updatedWorkout = syncActiveWorkoutWithOverrides(updatedPlan, overridesToApply, context);
+
+  return commitMutationTransaction({
+    context,
+    toolName: 'rebalance_program',
+    actionType: 'MODIFY_PROGRAM',
+    updatedProfile: { programOverrides: nextOverrides },
+    updatedWorkout,
+    stateDiff,
+    summaryText: `Applied **${changeListText}** across **${slotsText}** in **${plan.name}**. Your Program schedule and remaining sessions now reflect this change.`,
+    navigateTarget: 'program',
+    navigateLabel: 'View Program',
+  });
+}
+
 export async function executeCoachToolCall(
   toolName: CoachToolName,
   rawArgs: Record<string, unknown>,
@@ -2202,6 +3009,10 @@ export async function executeCoachToolCall(
   switch (toolName) {
     case 'reset_program':
       return executeResetProgram(rawArgs as unknown as ResetProgramArgs, context);
+    case 'modify_program':
+      return executeModifyProgram(rawArgs as unknown as ModifyProgramArgs, context);
+    case 'rebalance_program':
+      return executeRebalanceProgram(rawArgs as unknown as RebalanceProgramArgs, context);
     case 'swap_exercise':
       return executeSwapExercise(rawArgs as unknown as SwapExerciseArgs, context);
     case 'adjust_workout_volume':
@@ -2250,7 +3061,10 @@ export async function executeCoachToolCalls(
 
   const initialUndoSnapshot: CoachUndoSnapshot = {
     label: 'Coach Actions',
-    previousProfile: { ...context.profile },
+    previousProfile: {
+      ...context.profile,
+      programOverrides: context.profile.programOverrides,
+    },
     previousWorkout: {
       ...context.activeWorkout,
       exercises: context.activeWorkout.exercises.map((e) => ({
@@ -2329,7 +3143,7 @@ export async function executePendingConfirmation(
 // ============================================================================
 
 const FALSE_SUCCESS_RE =
-  /\b(i['’]?ve reset|i have reset|program reset|reset to week|swapped\b.+\bfor\b|adjusted your sets|volume adjusted|saved to (?:your )?memory|updated your (?:plan|workout|program)|logged your (?:weight|bodyweight|waist|body fat)|removed\b.+\bfrom today|added\b.+\bto today)\b/i;
+  /\b(i['’]?ve reset|i have reset|program reset|reset to week|permanently swapped|rebalanced your program|applied.*to your program|swapped\b.+\bfor\b|adjusted your sets|volume adjusted|saved to (?:your )?memory|updated your (?:plan|workout|program)|logged your (?:weight|bodyweight|waist|body fat)|removed\b.+\bfrom today|added\b.+\bto today)\b/i;
 
 /**
  * Hard contract: never allow assistant text to claim a state mutation succeeded
@@ -2364,6 +3178,7 @@ export function buildSuggestedActions(params: {
   envelope: ContextEnvelope;
   place?: CoachPlace;
   custom?: CoachSuggestedAction[];
+  lastSwap?: { from: string; to: string };
 }): CoachSuggestedAction[] {
   if (params.custom && params.custom.length > 0) {
     return params.custom
@@ -2371,13 +3186,21 @@ export function buildSuggestedActions(params: {
       .slice(0, 3);
   }
 
-  const { toolName, mutationStatus, envelope, place } = params;
+  const { toolName, mutationStatus, envelope, place, lastSwap } = params;
   const todayFirstEx = envelope.working_state.today_workout?.exercises[0]?.name;
 
   if (mutationStatus === 'awaiting_confirmation') {
     return [
       { label: 'How recovery looks', prompt: 'Should I train today?' },
       { label: 'Keep current week', prompt: 'What am I lifting today?' },
+    ];
+  }
+
+  if ((toolName === 'modify_program' || toolName === 'rebalance_program') && mutationStatus === 'success') {
+    return [
+      { label: 'Review updated workout', prompt: 'What am I lifting today?' },
+      { label: 'Where am I in my program?', prompt: 'Where am I in my program?' },
+      { label: 'Reset program edits', prompt: 'Clear my program customizations' },
     ];
   }
 
@@ -2389,8 +3212,23 @@ export function buildSuggestedActions(params: {
     ];
   }
 
+  if (toolName === 'swap_exercise' && mutationStatus === 'success') {
+    return [
+      ...(lastSwap
+        ? [
+            {
+              label: 'Apply to whole program',
+              prompt: `Swap ${lastSwap.from} for ${lastSwap.to} across my whole program`,
+            },
+          ]
+        : []),
+      { label: 'Review updated workout', prompt: 'What am I lifting today?' },
+      { label: 'Check weekly volume', prompt: 'Am I doing enough sets this week?' },
+    ].slice(0, 3);
+  }
+
   if (
-    (toolName === 'swap_exercise' || toolName === 'modify_workout_exercises' || toolName === 'switch_location') &&
+    (toolName === 'modify_workout_exercises' || toolName === 'switch_location') &&
     mutationStatus === 'success'
   ) {
     return [

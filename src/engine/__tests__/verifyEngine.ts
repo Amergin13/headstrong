@@ -10000,8 +10000,8 @@ Exercise,,Date,Workout,Sets,Reps,Tempo,Rest,Notes,Set 1,Set 2,Set 3,Set 4
     );
     assert(
       COACH_TOOL_DECLARATIONS.map((t) => t.name).join(',') ===
-        'reset_program,swap_exercise,adjust_workout_volume,save_athlete_memory,modify_workout_exercises,switch_location,update_home_equipment,switch_program,switch_goal_phase,log_rest_day,update_goals,update_progress_widgets,log_entry',
-      'All 13 AI-native coach tool declarations are registered'
+        'reset_program,swap_exercise,adjust_workout_volume,save_athlete_memory,modify_workout_exercises,switch_location,update_home_equipment,switch_program,switch_goal_phase,log_rest_day,update_goals,update_progress_widgets,log_entry,modify_program,rebalance_program',
+      'All 15 AI-native coach tool declarations are registered'
     );
 
     const s51Profile: UserProfile = {
@@ -12088,7 +12088,7 @@ Exercise,,Date,Workout,Sets,Reps,Tempo,Rest,Notes,Set 1,Set 2,Set 3,Set 4
 
   // Suite 61: AI-Native Chat Action Execution, Polite Intents, Multi-Tool Execution & Function Calling Routing
   {
-    console.log('\n[Suite 61: AI-Native Chat Actions, 13 Tools, Multi-Tool Calls & Function Calling Pipeline]');
+    console.log('\n[Suite 61: AI-Native Chat Actions, 15 Tools, Multi-Tool Calls & Function Calling Pipeline]');
     const fs61 = await import('fs');
     const path61 = await import('path');
     const generateHandlerSrc = fs61.readFileSync(path61.join(process.cwd(), 'api/coach/generate.ts'), 'utf8');
@@ -12103,7 +12103,7 @@ Exercise,,Date,Workout,Sets,Reps,Tempo,Rest,Notes,Set 1,Set 2,Set 3,Set 4
     assert(
       Boolean(sysCapMatch && parseInt(sysCapMatch[1], 10) >= 8000) &&
         generateHandlerSrc.includes('.slice(0, 16)') &&
-        tools61.length === 13,
+        tools61.length === 15,
       `api/coach/generate allows full coach context (MAX_SYSTEM_CHARS >= 8000) and up to 16 tools (registered ${tools61.length})`
     );
 
@@ -12432,7 +12432,484 @@ Exercise,,Date,Workout,Sets,Reps,Tempo,Rest,Notes,Set 1,Set 2,Set 3,Set 4
     }
   }
 
-  console.log('\nALL 61 ENGINE, GOVERNANCE, DESIGN SYSTEM, TYPOGRAPHY, WEARABLES, WHOOP STRAIN, GOOGLE AUTH, ONBOARDING CONTEXT, 6-WEEK PROGRAM, SPREADSHEET IMPORT, AI COACH ACTIONS, GEMINI FLASH + KG, OOUX, AGENTIC COACH, PRODUCT UPGRADES, INFO EXPERIENCE, CONTENT DESIGN, GOAL CAROUSEL, SHIFT NUDGE COLOR POLISH, EXERCISE DRILL-IN MODAL, COMPOSITION WIDGET, MEASUREMENT UX, AI-NATIVE ACTIONS & LAUNCH VERIFICATION SUITES PASSED SUCCESSFULLY! 🎯');
+  // Suite 62: Permanent Program Adaptation & OOUX Contextual HITL Interventions
+  {
+    console.log('\n[Suite 62: Permanent Program Modifications, Rebalance HITL, Overrides & Undo]');
+    const fs62 = await import('fs');
+    const path62 = await import('path');
+    const { applyProgramOverridesToPlan } = await import('../programOverrides');
+    const { resolveActivePlan: resolvePlan62, getPlanById: getPlan62 } = await import('../trainingPlans');
+    const { generatePlanWorkout: genPlanWorkout62 } = await import('../muscleBuildingProgram');
+    const {
+      processAssistantMessage: askCoach62,
+      confirmAssistantPendingAction: confirmCoach62,
+    } = await import('../../services/aiAssistantService');
+    const { detectCoachInterventions } = await import('../../services/coachInterventions');
+    const { SEED_EXERCISES: EX_CAT62 } = await import('../../services/seedData');
+    const bio80 = (date: string): BiometricLog => ({
+      date,
+      bodyweightKg: 80,
+      hrvRmssd: 60,
+      restingHr: 54,
+      sleepHours: 7.5,
+      steps: 8000,
+      activeZoneMinutes: 30,
+    });
+
+    // A. Pure applyProgramOverridesToPlan across starter, muscle, and custom plans without mutating cache
+    const baselineStarter62 = getPlan62('starter_6wk', 'Lean Bulk');
+    const benchTemplateCountBefore = baselineStarter62.templates.filter((t) =>
+      t.exercises.some((e) => e.exerciseId === 'ex-bench-press')
+    ).length;
+    assert(
+      benchTemplateCountBefore >= 8,
+      'Starter 6-week plan includes Barbell Bench Press across multiple scheduled templates'
+    );
+
+    const modifiedStarter62 = applyProgramOverridesToPlan(baselineStarter62, [
+      {
+        id: 'ov-swap-1',
+        planId: 'starter_6wk',
+        kind: 'swap_exercise',
+        targetExerciseId: 'ex-bench-press',
+        targetExerciseName: 'Barbell Bench Press',
+        replacementExerciseId: 'ex-flat-db-press',
+        replacementExerciseName: 'Flat Dumbbell Bench Press',
+        replacementPillar: 'Horizontal Push',
+        replacementEquipment: 'dumbbell',
+        createdAt: '2026-11-17T08:00:00Z',
+      },
+      {
+        id: 'ov-sets-1',
+        planId: 'starter_6wk',
+        kind: 'adjust_sets',
+        targetExerciseId: 'ex-lat-pulldown',
+        targetExerciseName: 'Lat Pulldown',
+        setDelta: 1,
+        createdAt: '2026-11-17T08:01:00Z',
+      },
+      {
+        id: 'ov-prio-1',
+        planId: 'starter_6wk',
+        kind: 'prioritize_first',
+        targetExerciseId: 'ex-lat-pulldown',
+        targetExerciseName: 'Lat Pulldown',
+        createdAt: '2026-11-17T08:02:00Z',
+      },
+      {
+        id: 'ov-add-1',
+        planId: 'starter_6wk',
+        kind: 'add_exercise',
+        replacementExerciseId: 'ex-face-pull',
+        replacementExerciseName: 'Cable Face Pull',
+        replacementPillar: 'Horizontal Pull',
+        replacementEquipment: 'cable',
+        sets: 3,
+        workoutFilter: 'Workout B',
+        createdAt: '2026-11-17T08:03:00Z',
+      },
+      {
+        id: 'ov-rem-1',
+        planId: 'starter_6wk',
+        kind: 'remove_exercise',
+        targetExerciseId: 'ex-tricep-pushdown',
+        targetExerciseName: 'Cable Tricep Pushdown',
+        workoutFilter: 'Workout A',
+        createdAt: '2026-11-17T08:04:00Z',
+      },
+    ]);
+
+    assert(
+      modifiedStarter62.templates.every((t) =>
+        t.exercises.every((e) => e.exerciseId !== 'ex-bench-press')
+      ) &&
+        modifiedStarter62.templates.filter((t) =>
+          t.exercises.some((e) => e.exerciseId === 'ex-flat-db-press')
+        ).length === benchTemplateCountBefore &&
+        modifiedStarter62.templates
+          .filter((t) => t.exercises.some((e) => e.exerciseId === 'ex-lat-pulldown'))
+          .every((t) => t.exercises[0].exerciseId === 'ex-lat-pulldown') &&
+        modifiedStarter62.templates
+          .filter((t) => t.title.includes('Workout B'))
+          .every((t) => t.exercises.some((e) => e.exerciseId === 'ex-face-pull')) &&
+        modifiedStarter62.templates
+          .filter((t) => t.title.includes('Workout A'))
+          .every((t) => t.exercises.every((e) => e.exerciseId !== 'ex-tricep-pushdown')),
+      'applyProgramOverridesToPlan supports swap, adjust_sets, prioritize_first, add, and filtered remove uniformly'
+    );
+
+    const refetchedStarter62 = getPlan62('starter_6wk', 'Lean Bulk');
+    assert(
+      refetchedStarter62.templates.filter((t) =>
+        t.exercises.some((e) => e.exerciseId === 'ex-bench-press')
+      ).length === benchTemplateCountBefore,
+      'applyProgramOverridesToPlan does not mutate cached starter templates'
+    );
+
+    const muscleProfile62: UserProfile = {
+      ...NEW_USER_PROFILE,
+      email: 'benentaylor@gmail.com',
+      onboardingCompleted: true,
+      programType: 'muscle_building_6wk',
+      activeLocation: 'gym',
+      homeEquipment: [],
+      programOverrides: [
+        {
+          id: 'ov-muscle-swap',
+          planId: 'muscle_building_6wk',
+          kind: 'swap_exercise',
+          targetExerciseId: 'ex-bench-press',
+          targetExerciseName: 'Barbell Bench Press',
+          replacementExerciseId: 'ex-flat-db-press',
+          replacementExerciseName: 'Flat Dumbbell Bench Press',
+          createdAt: '2026-11-17T08:05:00Z',
+        },
+      ],
+    };
+    const muscleResolved62 = resolvePlan62(muscleProfile62);
+    assert(
+      muscleResolved62.templates.every((t) =>
+        t.exercises.every((e) => e.exerciseId !== 'ex-bench-press')
+      ),
+      'resolveActivePlan applies permanent overrides on owner muscle plan'
+    );
+
+    // Custom plan overrides
+    const customPlanId62 = 'custom:plan-62' as const;
+    const customPlanProfile62: UserProfile = {
+      ...NEW_USER_PROFILE,
+      onboardingCompleted: true,
+      programType: customPlanId62,
+      customPlans: [
+        {
+          ...baselineStarter62,
+          id: customPlanId62,
+          name: 'Custom Plan 62',
+          createdAt: '2026-11-17T08:00:00Z',
+        },
+      ],
+      programOverrides: [
+        {
+          id: 'ov-custom-swap',
+          planId: customPlanId62,
+          kind: 'swap_exercise',
+          targetExerciseId: 'ex-bench-press',
+          replacementExerciseId: 'ex-flat-db-press',
+          replacementExerciseName: 'Flat Dumbbell Bench Press',
+          createdAt: '2026-11-17T08:06:00Z',
+        },
+      ],
+    };
+    assert(
+      resolvePlan62(customPlanProfile62).templates.every((t) =>
+        t.exercises.every((e) => e.exerciseId !== 'ex-bench-press')
+      ),
+      'resolveActivePlan applies permanent overrides on custom imported plans'
+    );
+
+    // B. HITL Confirmation Card -> Confirm -> Persistent across sessions 1..24 -> Undo
+    const baseProfile62: UserProfile = {
+      ...NEW_USER_PROFILE,
+      name: 'Taylor',
+      onboardingCompleted: true,
+      programType: 'starter_6wk',
+      mesocycleWeek: 1,
+      activeLocation: 'gym',
+      homeEquipment: [],
+    };
+    const baseWorkout62 = genPlanWorkout62(getPlan62('starter_6wk', 'Lean Bulk'), 1);
+
+    const hitlPromptRes = await askCoach62({
+      profile: baseProfile62,
+      activeWorkout: baseWorkout62,
+      workouts: [],
+      biometrics: [],
+      exerciseCatalog: EX_CAT62,
+      bodyweightEmaKg: 80,
+      readinessState: 'Normal',
+      weeklyVolume: {},
+      userMessage: 'Swap Barbell Bench Press for Flat Dumbbell Bench Press across my whole program',
+    });
+    assert(
+      Boolean(hitlPromptRes.message.pendingConfirmation) &&
+        hitlPromptRes.message.pendingConfirmation?.tool_name === 'modify_program' &&
+        hitlPromptRes.message.pendingConfirmation?.status === 'pending' &&
+        !hitlPromptRes.updatedProfile?.programOverrides?.length &&
+        !hitlPromptRes.updatedWorkout,
+      'Permanent program swap pauses behind HITL confirmation card without mutating before user approval'
+    );
+
+    const confirmedSwapRes = await confirmCoach62(hitlPromptRes.message.pendingConfirmation!, {
+      profile: baseProfile62,
+      activeWorkout: baseWorkout62,
+      workouts: [],
+      biometrics: [],
+      exerciseCatalog: EX_CAT62,
+      bodyweightEmaKg: 80,
+      readinessState: 'Normal',
+      weeklyVolume: {},
+    });
+    const postSwapProfile: UserProfile = {
+      ...baseProfile62,
+      ...(confirmedSwapRes.updatedProfile ?? {}),
+    };
+    const resolvedPostSwap = resolvePlan62(postSwapProfile);
+    assert(
+      confirmedSwapRes.actionTaken?.type === 'MODIFY_PROGRAM' &&
+        (confirmedSwapRes.updatedProfile?.programOverrides?.length ?? 0) === 1 &&
+        confirmedSwapRes.updatedWorkout?.exercises.some((e) => e.exerciseId === 'ex-flat-db-press') === true &&
+        confirmedSwapRes.updatedWorkout?.exercises.every((e) => e.exerciseId !== 'ex-bench-press') === true &&
+        resolvedPostSwap.templates.every((t) =>
+          t.exercises.every((e) => e.exerciseId !== 'ex-bench-press')
+        ) &&
+        genPlanWorkout62(resolvedPostSwap, 19).exercises.some((e) => e.exerciseId === 'ex-flat-db-press') &&
+        Boolean(confirmedSwapRes.message.undoSnapshot),
+      'Confirming HITL modify_program updates programOverrides, activeWorkout, all 24 future plan templates, and returns Undo snapshot'
+    );
+
+    // Simulate Undo restoring pre-swap profile & workout (matching App.tsx handleUndoAssistantAction)
+    const undoSnap62 = confirmedSwapRes.message.undoSnapshot!;
+    const revertedProfile62: UserProfile = {
+      ...postSwapProfile,
+      ...(undoSnap62.previousProfile ?? {}),
+      programOverrides: undoSnap62.previousProfile?.programOverrides,
+    };
+    assert(
+      !(revertedProfile62.programOverrides?.length) &&
+        resolvePlan62(revertedProfile62).templates.some((t) =>
+          t.exercises.some((e) => e.exerciseId === 'ex-bench-press')
+        ),
+      'Undo after permanent program adaptation reverts programOverrides and future plan templates cleanly'
+    );
+
+    // Single-workout swap offers 'Apply to whole program' follow-up chip
+    const singleSwapRes = await askCoach62({
+      profile: baseProfile62,
+      activeWorkout: baseWorkout62,
+      workouts: [],
+      biometrics: [],
+      exerciseCatalog: EX_CAT62,
+      bodyweightEmaKg: 80,
+      readinessState: 'Normal',
+      weeklyVolume: {},
+      userMessage: 'Swap Barbell Bench Press for Flat Dumbbell Bench Press today',
+    });
+    assert(
+      singleSwapRes.actionTaken?.type === 'SWAP_EXERCISE' &&
+        Boolean(
+          singleSwapRes.message.suggestedActions?.some((s) =>
+            /apply to whole program/i.test(s.label)
+          )
+        ),
+      'Single-session swap suggests "Apply to whole program" HITL follow-up chip'
+    );
+
+    // C. detectCoachInterventions & rebalance_program (zero noise on empty athlete; self-clearing once adapted)
+    const emptyInterventions = detectCoachInterventions({
+      profile: baseProfile62,
+      activeWorkout: baseWorkout62,
+      workouts: [],
+      biometrics: [],
+      exerciseCatalog: EX_CAT62,
+      bodyweightEmaKg: 80,
+      readinessState: 'Normal',
+    });
+    assert(
+      emptyInterventions.length === 0,
+      'detectCoachInterventions produces zero fabricated noise on an empty athlete'
+    );
+
+    // Seed real Poliquin pull-vs-push imbalance: Heavy Bench Press (110 kg x 5) vs light pull (25 kg lat pulldown)
+    const imbalanceWorkout: WorkoutSession = {
+      id: 'w-imbal-1',
+      date: '2026-11-14',
+      name: 'Workout A',
+      splitDay: 'Full Body',
+      readinessState: 'Normal',
+      readinessZScore: 0,
+      completed: true,
+      completedAt: '2026-11-14T10:00:00Z',
+      exercises: [
+        {
+          id: 'we-bench',
+          exerciseId: 'ex-bench-press',
+          name: 'Barbell Bench Press',
+          pillar: 'Horizontal Push',
+          equipment: 'barbell',
+          minReps: 5,
+          maxReps: 8,
+          sets: [
+            { id: 's1', setNumber: 1, targetWeightKg: 110, targetReps: 5, targetRir: 2, actualWeightKg: 110, actualReps: 5, actualRir: 2, completed: true },
+          ],
+        },
+        {
+          id: 'we-lat',
+          exerciseId: 'ex-lat-pulldown',
+          name: 'Lat Pulldown',
+          pillar: 'Vertical Pull',
+          equipment: 'cable',
+          minReps: 8,
+          maxReps: 12,
+          sets: [
+            { id: 's2', setNumber: 1, targetWeightKg: 30, targetReps: 8, targetRir: 2, actualWeightKg: 30, actualReps: 8, actualRir: 2, completed: true },
+          ],
+        },
+      ],
+    };
+    const imbalanceInterventions = detectCoachInterventions({
+      profile: { ...baseProfile62, gender: 'male' },
+      activeWorkout: baseWorkout62,
+      workouts: [imbalanceWorkout],
+      biometrics: [bio80('2026-11-14')],
+      exerciseCatalog: EX_CAT62,
+      bodyweightEmaKg: 80,
+      readinessState: 'Normal',
+    });
+    assert(
+      imbalanceInterventions.some((i) => i.kind === 'pull_push_imbalance'),
+      'detectCoachInterventions flags Poliquin pull-vs-push imbalance when pulling trails pressing'
+    );
+
+    // Seed Grindem <90% unilateral asymmetry + contraindication memory
+    const asymmetryWorkouts: WorkoutSession[] = [
+      {
+        id: 'w-asym-1',
+        date: '2026-11-15',
+        name: 'Workout B',
+        splitDay: 'Full Body',
+        readinessState: 'Normal',
+        readinessZScore: 0,
+        completed: true,
+        completedAt: '2026-11-15T10:00:00Z',
+        exercises: [
+          {
+            id: 'we-bss',
+            exerciseId: 'ex-bulgarian-split-squat',
+            name: 'Dumbbell Bulgarian Split Squat',
+            pillar: 'Squat',
+            equipment: 'dumbbell',
+            minReps: 8,
+            maxReps: 12,
+            sets: [
+              {
+                id: 's-bss-1',
+                setNumber: 1,
+                targetWeightKg: 20,
+                targetReps: 10,
+                targetRir: 2,
+                actualWeightKg: 20,
+                actualReps: 7,
+                actualRepsLeft: 7,
+                actualRepsRight: 11,
+                actualRir: 1,
+                completed: true,
+              },
+            ],
+          },
+        ],
+      },
+    ];
+    const contraAndAsymProfile: UserProfile = {
+      ...baseProfile62,
+      gender: 'male',
+      athleteMemories: [
+        {
+          id: 'mem-contra-1',
+          category: 'contraindication',
+          value: 'Avoid Seated DB Shoulder Press due to sensitive left shoulder',
+          createdAt: '2026-11-10T09:00:00Z',
+        },
+      ],
+    };
+    const contraInterventions = detectCoachInterventions({
+      profile: contraAndAsymProfile,
+      activeWorkout: baseWorkout62,
+      workouts: asymmetryWorkouts,
+      biometrics: [bio80('2026-11-15')],
+      exerciseCatalog: EX_CAT62,
+      bodyweightEmaKg: 80,
+      readinessState: 'Normal',
+    });
+    assert(
+      contraInterventions.some((i) => i.kind === 'unilateral_asymmetry'),
+      'detectCoachInterventions detects Grindem <90% left-right asymmetry from logged side reps'
+    );
+    assert(
+      contraInterventions.some((i) => i.kind === 'contraindication_conflict'),
+      'detectCoachInterventions detects contraindication conflicts and finds joint-safe replacement'
+    );
+
+    // Rebalance HITL prompt -> confirmation -> self-clearing
+    const rebalancePromptRes = await askCoach62({
+      profile: { ...baseProfile62, gender: 'male' },
+      activeWorkout: baseWorkout62,
+      workouts: [imbalanceWorkout],
+      biometrics: [bio80('2026-11-14')],
+      exerciseCatalog: EX_CAT62,
+      bodyweightEmaKg: 80,
+      readinessState: 'Normal',
+      weeklyVolume: {},
+      userMessage: 'Rebalance my program for my imbalances',
+    });
+    assert(
+      rebalancePromptRes.message.pendingConfirmation?.tool_name === 'rebalance_program' &&
+        rebalancePromptRes.message.pendingConfirmation?.status === 'pending',
+      'Rebalance request presents HITL confirmation card first'
+    );
+
+    const confirmedRebalanceRes = await confirmCoach62(rebalancePromptRes.message.pendingConfirmation!, {
+      profile: { ...baseProfile62, gender: 'male' },
+      activeWorkout: baseWorkout62,
+      workouts: [imbalanceWorkout],
+      biometrics: [bio80('2026-11-14')],
+      exerciseCatalog: EX_CAT62,
+      bodyweightEmaKg: 80,
+      readinessState: 'Normal',
+      weeklyVolume: {},
+    });
+    const rebalancedProfile: UserProfile = {
+      ...baseProfile62,
+      gender: 'male',
+      ...(confirmedRebalanceRes.updatedProfile ?? {}),
+    };
+    const remainingImbalanceInterventions = detectCoachInterventions({
+      profile: rebalancedProfile,
+      activeWorkout: confirmedRebalanceRes.updatedWorkout ?? baseWorkout62,
+      workouts: [imbalanceWorkout],
+      biometrics: [bio80('2026-11-14')],
+      exerciseCatalog: EX_CAT62,
+      bodyweightEmaKg: 80,
+      readinessState: 'Normal',
+    });
+    assert(
+      confirmedRebalanceRes.actionTaken?.type === 'MODIFY_PROGRAM' &&
+        (rebalancedProfile.programOverrides?.length ?? 0) >= 1 &&
+        !remainingImbalanceInterventions.some((i) => i.kind === 'pull_push_imbalance'),
+      'Confirming rebalance_program persists adaptations across plan and self-clears the addressed intervention'
+    );
+
+    // D. Static OOUX UI wiring & Suite 42 token hygiene checks across touched components
+    const balanceCardSrc = fs62.readFileSync(path62.join(process.cwd(), 'src/components/analytics/BalanceCard.tsx'), 'utf8');
+    const exDetailSrc = fs62.readFileSync(path62.join(process.cwd(), 'src/components/train/ExerciseDetailModal.tsx'), 'utf8');
+    const progPlanSrc = fs62.readFileSync(path62.join(process.cwd(), 'src/components/program/ProgramPlanView.tsx'), 'utf8');
+    const chatModalSrc = fs62.readFileSync(path62.join(process.cwd(), 'src/components/assistant/AICoachChatModal.tsx'), 'utf8');
+    const appSrc = fs62.readFileSync(path62.join(process.cwd(), 'src/App.tsx'), 'utf8');
+
+    assert(
+      balanceCardSrc.includes('onFixImbalanceWithCoach') &&
+        exDetailSrc.includes('Swap in program') &&
+        exDetailSrc.includes('onAskCoachToAdapt') &&
+        progPlanSrc.includes('Program adaptations') &&
+        progPlanSrc.includes('Reset adaptations') &&
+        chatModalSrc.includes('initialPrompt') &&
+        chatModalSrc.includes('Program adapted') &&
+        appSrc.includes('openCoachWithIntervention') &&
+        appSrc.includes('programOverrides'),
+      'OOUX HITL intervention entrypoints are wired across BalanceCard, ExerciseDetailModal, ProgramPlanView, AICoachChatModal, and App'
+    );
+  }
+
+  console.log('\nALL 62 ENGINE, GOVERNANCE, DESIGN SYSTEM, TYPOGRAPHY, WEARABLES, WHOOP STRAIN, GOOGLE AUTH, ONBOARDING CONTEXT, 6-WEEK PROGRAM, SPREADSHEET IMPORT, AI COACH ACTIONS, GEMINI FLASH + KG, OOUX, AGENTIC COACH, PRODUCT UPGRADES, INFO EXPERIENCE, CONTENT DESIGN, GOAL CAROUSEL, SHIFT NUDGE COLOR POLISH, EXERCISE DRILL-IN MODAL, COMPOSITION WIDGET, MEASUREMENT UX, AI-NATIVE ACTIONS, PERMANENT PROGRAM ADAPTATION & HITL INTERVENTION SUITES PASSED SUCCESSFULLY! 🎯');
 })().catch((err) => {
   console.error('Test Suite Failed:', err);
   if (typeof process !== 'undefined' && process.exit) {

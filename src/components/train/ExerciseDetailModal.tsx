@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowRightLeft, Disc, Plus, X } from 'lucide-react';
+import { ArrowRightLeft, Disc, Plus, Sparkles, X } from 'lucide-react';
+import type { CoachIntervention } from '../../services/coachInterventions';
 import {
   BiometricLog,
   ExerciseDefinition,
@@ -33,6 +34,10 @@ interface ExerciseDetailModalProps {
   onOpenSwap?: () => void;
   onOpenPlateCalc?: (weightKg: number) => void;
   onOpenNotesHistory?: () => void;
+  /** Contextual OOUX HITL intervention surfaced for this movement, when applicable. */
+  intervention?: CoachIntervention;
+  /** Launches Treise coach with a contextual HITL adaptation prompt for this movement. */
+  onAskCoachToAdapt?: (prompt: string, exerciseId?: string) => void;
   onClose: () => void;
 }
 
@@ -56,6 +61,8 @@ export const ExerciseDetailModal: React.FC<ExerciseDetailModalProps> = ({
   onOpenSwap,
   onOpenPlateCalc,
   onOpenNotesHistory,
+  intervention,
+  onAskCoachToAdapt,
   onClose,
 }) => {
   const units = useUnits();
@@ -79,6 +86,8 @@ export const ExerciseDetailModal: React.FC<ExerciseDetailModalProps> = ({
   const plannedWeightKg = firstWorkingSet?.targetWeightKg ?? 0;
   const isBodyweightOnly =
     exercise.equipment === 'bodyweight' && (!exercise.isWeightedCalisthenic || plannedWeightKg === 0);
+  const workingSets = exercise.sets.filter((s) => !s.isWarmup && s.setType !== 'warmup');
+  const isCompleted = workingSets.length > 0 && workingSets.every((s) => s.completed);
 
   const detail = useMemo(
     () =>
@@ -229,6 +238,51 @@ export const ExerciseDetailModal: React.FC<ExerciseDetailModalProps> = ({
               {detail.readinessNote}
             </p>
           )}
+          {intervention && onAskCoachToAdapt && (
+            <div
+              className="wk-raised flex flex-col gap-2 mt-2"
+              style={{
+                borderColor: 'rgb(var(--color-coach-accent-rgb) / 0.35)',
+              }}
+            >
+              <div className="flex items-start gap-2">
+                <Sparkles
+                  className="w-4 h-4 shrink-0 mt-1"
+                  style={{ color: 'var(--color-coach-accent)' }}
+                  strokeWidth={2.2}
+                  aria-hidden="true"
+                />
+                <div className="min-w-0">
+                  <div className="wk-subhead" style={{ color: 'var(--color-coach-accent)' }}>
+                    {intervention.title}
+                  </div>
+                  <p className="wk-caption mt-1 max-w-prose">
+                    {intervention.rationale}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                className={secondaryButton}
+                style={{
+                  borderColor: 'rgb(var(--color-coach-accent-rgb) / 0.35)',
+                }}
+                onClick={() => {
+                  triggerHaptic('light');
+                  onClose();
+                  onAskCoachToAdapt(intervention.coachPrompt, exercise.exerciseId);
+                }}
+              >
+                <Sparkles
+                  className="w-4 h-4 shrink-0"
+                  style={{ color: 'var(--color-coach-accent)' }}
+                  strokeWidth={2.2}
+                  aria-hidden="true"
+                />
+                <span>{intervention.ctaLabel}</span>
+              </button>
+            </div>
+          )}
         </section>
 
         {/* Form & Execution */}
@@ -297,7 +351,7 @@ export const ExerciseDetailModal: React.FC<ExerciseDetailModalProps> = ({
             </div>
           )}
 
-          {(onAddSet || onOpenPlateCalc || onOpenSwap) && (
+          {(onAddSet || onOpenPlateCalc || onOpenSwap || (!isCompleted && onAskCoachToAdapt)) && (
             <div className="pt-2 space-y-2">
               <div className="flex flex-wrap gap-2">
                 {onOpenSwap && (
@@ -312,6 +366,31 @@ export const ExerciseDetailModal: React.FC<ExerciseDetailModalProps> = ({
                   >
                     <ArrowRightLeft className="w-4 h-4" aria-hidden="true" />
                     <span>Swap exercise</span>
+                  </button>
+                )}
+                {!isCompleted && onAskCoachToAdapt && (
+                  <button
+                    type="button"
+                    className={secondaryButton}
+                    style={{
+                      borderColor: 'rgb(var(--color-coach-accent-rgb) / 0.35)',
+                    }}
+                    onClick={() => {
+                      triggerHaptic('light');
+                      onClose();
+                      onAskCoachToAdapt(
+                        `Swap ${exercise.name} across my whole program`,
+                        exercise.exerciseId
+                      );
+                    }}
+                  >
+                    <Sparkles
+                      className="w-4 h-4 shrink-0"
+                      style={{ color: 'var(--color-coach-accent)' }}
+                      strokeWidth={2.2}
+                      aria-hidden="true"
+                    />
+                    <span>Swap in program</span>
                   </button>
                 )}
                 {onOpenPlateCalc && exercise.equipment === 'barbell' && (

@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronRight } from 'lucide-react';
+import { ChevronRight, Sparkles } from 'lucide-react';
 import { PageTopGradient } from '../common/PageTopGradient';
 import { BiometricLog, ExerciseDefinition, ReadinessState, UserProfile, WorkoutSession } from '../../engine/types';
+import { detectCoachInterventions } from '../../services/coachInterventions';
 import { buildAthleteKnowledgeGraph } from '../../engine/knowledgeGraph';
 import { calculateWeeklyMuscleVolume } from '../../services/storage';
 import { isOnDeviceModelReady } from '../../services/onDeviceModel';
@@ -318,6 +319,37 @@ const IdentityForm: React.FC<{ rings: IdentityRing[]; seed: string; total: numbe
   );
 };
 
+function describeProgramOverride(
+  ov: NonNullable<UserProfile['programOverrides']>[number],
+  exerciseNameById: Map<string, string>
+): string {
+  const target =
+    ov.targetExerciseName ||
+    (ov.targetExerciseId ? exerciseNameById.get(ov.targetExerciseId) : undefined) ||
+    ov.targetExerciseId ||
+    'Exercise';
+  const replacement =
+    ov.replacementExerciseName ||
+    (ov.replacementExerciseId ? exerciseNameById.get(ov.replacementExerciseId) : undefined) ||
+    ov.replacementExerciseId;
+  const scope = ov.workoutFilter ? ` (${ov.workoutFilter})` : '';
+  switch (ov.kind) {
+    case 'swap_exercise':
+      return `${target} → ${replacement ?? 'replacement'}${scope}`;
+    case 'add_exercise':
+      return `Added ${replacement ?? target}${ov.sets ? ` (${ov.sets} sets)` : ''}${scope}`;
+    case 'remove_exercise':
+      return `Removed ${target}${scope}`;
+    case 'adjust_sets':
+      if (ov.sets !== undefined) return `${target}: ${ov.sets} working sets${scope}`;
+      return `${target}: ${(ov.setDelta ?? 0) >= 0 ? `+${ov.setDelta ?? 0}` : ov.setDelta} sets${scope}`;
+    case 'prioritize_first':
+      return `Prioritized ${target} first${scope}`;
+    default:
+      return `${target}${scope}`;
+  }
+}
+
 interface ProgramPlanViewProps {
   /** The athlete's plan: the goal-based starter plan, or the muscle plan on the owner's account. */
   trainingPlan: TrainingPlan;
@@ -334,6 +366,8 @@ interface ProgramPlanViewProps {
   activeProgramWorkoutNumber?: number;
   onLaunchWorkoutNumber?: (workoutNumber: number) => void;
   onBackToWorkout?: () => void;
+  /** Opens Treise coach with a pre-filled HITL program adaptation prompt. */
+  onOpenCoachIntervention?: (prompt: string) => void;
   headerAction?: React.ReactNode;
 }
 
@@ -351,6 +385,7 @@ export const ProgramPlanView: React.FC<ProgramPlanViewProps> = ({
   activeProgramWorkoutNumber,
   onLaunchWorkoutNumber,
   onBackToWorkout,
+  onOpenCoachIntervention,
   headerAction,
 }) => {
   const plan = useMemo(
@@ -362,6 +397,32 @@ export const ProgramPlanView: React.FC<ProgramPlanViewProps> = ({
   const [viewing, setViewing] = useState<PlanWorkoutOverview | null>(null);
   const next = plan.workouts.find((w) => w.workoutNumber === plan.nextWorkoutNumber)!;
   const isFirstRun = plan.cycleNumber === 1;
+  const exerciseNameById = useMemo(
+    () => new Map(exerciseCatalog.map((ex) => [ex.id, ex.name])),
+    [exerciseCatalog]
+  );
+  const activeOverrides = useMemo(
+    () =>
+      (profile.programOverrides ?? []).filter(
+        (ov) => !ov.planId || ov.planId === trainingPlan.id
+      ),
+    [profile.programOverrides, trainingPlan.id]
+  );
+  const coachInterventions = useMemo(
+    () =>
+      detectCoachInterventions({
+        profile,
+        workouts,
+        biometrics,
+        exerciseCatalog,
+        bodyweightEmaKg: bodyweightKg,
+        readinessState,
+        activities,
+        trainingPlan,
+      }),
+    [profile, workouts, biometrics, exerciseCatalog, bodyweightKg, readinessState, activities, trainingPlan]
+  );
+  const topIntervention = coachInterventions[0];
 
   // Identity message: facts from the plan, history and knowledge graph; written by the on-device
   // model when one is ready, otherwise the fact-based fallback.
@@ -516,6 +577,115 @@ export const ProgramPlanView: React.FC<ProgramPlanViewProps> = ({
           <div style={{ width: `${(plan.nextWorkoutNumber / TOTAL) * 100}%` }} />
         </div>
       </section>
+
+      {(activeOverrides.length > 0 || topIntervention) && (
+        <section
+          aria-labelledby="program-adaptations-title"
+          className="wk-card mt-4 flex flex-col gap-3"
+          style={
+            topIntervention
+              ? { borderColor: 'rgb(var(--color-coach-accent-rgb) / 0.35)' }
+              : undefined
+          }
+        >
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-center gap-2 min-w-0">
+              <Sparkles
+                className="w-4 h-4 shrink-0"
+                style={{ color: 'var(--color-coach-accent)' }}
+                strokeWidth={2.2}
+                aria-hidden="true"
+              />
+              <h2 id="program-adaptations-title" className="wk-subhead">
+                Program adaptations
+              </h2>
+            </div>
+            {activeOverrides.length > 0 && (
+              <span
+                className="wk-pill shrink-0"
+                style={{
+                  background: 'rgb(var(--color-coach-accent-rgb) / 0.12)',
+                  color: 'var(--color-coach-accent)',
+                }}
+              >
+                {activeOverrides.length} active
+              </span>
+            )}
+          </div>
+
+          {activeOverrides.length > 0 && (
+            <ul className="flex flex-col gap-2">
+              {activeOverrides.map((ov) => (
+                <li key={ov.id} className="wk-body flex items-start justify-between gap-2">
+                  <span style={{ color: 'var(--color-text-primary)' }}>
+                    {describeProgramOverride(ov, exerciseNameById)}
+                  </span>
+                  {ov.reason && (
+                    <span className="wk-caption shrink-0">{ov.reason}</span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {topIntervention && (
+            <div
+              className={activeOverrides.length > 0 ? 'pt-3 border-t flex flex-col gap-2' : 'flex flex-col gap-2'}
+              style={
+                activeOverrides.length > 0
+                  ? { borderColor: 'var(--color-border-subtle)' }
+                  : undefined
+              }
+            >
+              <div className="wk-body font-medium" style={{ color: 'var(--color-text-primary)' }}>
+                {topIntervention.title}
+              </div>
+              <p className="wk-caption max-w-prose">
+                {topIntervention.rationale}
+              </p>
+            </div>
+          )}
+
+          {onOpenCoachIntervention && (
+            <div className="flex flex-wrap gap-2">
+              {topIntervention && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    triggerHaptic('light');
+                    onOpenCoachIntervention(topIntervention.coachPrompt);
+                  }}
+                  className="wk-btn-secondary min-h-[44px] flex-1 inline-flex items-center justify-center gap-2 font-medium"
+                  style={{
+                    borderColor: 'rgb(var(--color-coach-accent-rgb) / 0.35)',
+                    color: 'var(--color-text-primary)',
+                  }}
+                >
+                  <Sparkles
+                    className="w-4 h-4 shrink-0"
+                    style={{ color: 'var(--color-coach-accent)' }}
+                    strokeWidth={2.2}
+                    aria-hidden="true"
+                  />
+                  <span>{topIntervention.ctaLabel}</span>
+                </button>
+              )}
+              {activeOverrides.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    triggerHaptic('light');
+                    onOpenCoachIntervention('Clear my program customizations');
+                  }}
+                  className="wk-btn-secondary min-h-[44px] px-4 inline-flex items-center justify-center"
+                >
+                  Reset adaptations
+                </button>
+              )}
+            </div>
+          )}
+        </section>
+      )}
 
       <div ref={phasesTopRef} className="flex flex-col mt-8 gap-4">
         {trainingPlan.phases.map((phase) => {

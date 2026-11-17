@@ -57,6 +57,8 @@ interface ProgramTabProps {
   activeWorkoutName?: string;
   activeProgramWorkoutNumber?: number;
   onBackToWorkout?: () => void;
+  /** Opens Treise coach with a pre-filled HITL program adaptation prompt. */
+  onOpenCoachIntervention?: (prompt: string) => void;
 }
 
 const HOME_EQUIP_LABELS: Record<string, string> = {
@@ -91,6 +93,7 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
   activeWorkoutName,
   activeProgramWorkoutNumber,
   onBackToWorkout,
+  onOpenCoachIntervention,
 }) => {
   const [showCreateExercise, setShowCreateExercise] = useState(false);
   const [showProgramPicker, setShowProgramPicker] = useState(false);
@@ -135,6 +138,7 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
           activeProgramWorkoutNumber={activeProgramWorkoutNumber}
           onLaunchWorkoutNumber={onLaunchWorkoutNumber}
           onBackToWorkout={onBackToWorkout}
+          onOpenCoachIntervention={onOpenCoachIntervention}
           headerAction={headerMenu}
         />
       )}
