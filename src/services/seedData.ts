@@ -1884,7 +1884,7 @@ export function generateSeedWorkouts(): WorkoutSession[] {
   let rdlWeight = 110;
   let pullupWeight = 10; // +10kg external load
   let ohpWeight = 50;
-  let dbInclineWeight = 60; // 60kg combined dumbbell weight (30kg per dumbbell)
+  let dbInclineWeight = 30; // 30kg per dumbbell (60kg combined)
 
   let workoutCount = 0;
 
@@ -1906,7 +1906,7 @@ export function generateSeedWorkouts(): WorkoutSession[] {
         rdlWeight = Math.min(127.5, rdlWeight + 2.5);
         pullupWeight = Math.min(17.5, pullupWeight + 1.25);
         ohpWeight = Math.min(57.5, ohpWeight + 1.25);
-        dbInclineWeight = Math.min(68, dbInclineWeight + 2);
+        dbInclineWeight = Math.min(34, dbInclineWeight + 1);
       }
 
       if (split === 'Push') {
@@ -1972,10 +1972,10 @@ export function generateSeedWorkouts(): WorkoutSession[] {
               minReps: 12,
               maxReps: 20,
               sets: [
-                { id: `s-lat1-${day}`, setNumber: 1, targetWeightKg: 14, actualWeightKg: 14, targetReps: 15, actualReps: 15, targetRir: 2, actualRir: 2, completed: true },
-                { id: `s-lat2-${day}`, setNumber: 2, targetWeightKg: 14, actualWeightKg: 14, targetReps: 15, actualReps: 15, targetRir: 2, actualRir: 2, completed: true },
-                { id: `s-lat3-${day}`, setNumber: 3, targetWeightKg: 14, actualWeightKg: 14, targetReps: 15, actualReps: 14, targetRir: 1, actualRir: 1, completed: true },
-                { id: `s-lat4-${day}`, setNumber: 4, targetWeightKg: 14, actualWeightKg: 14, targetReps: 15, actualReps: 13, targetRir: 1, actualRir: 1, completed: true },
+                { id: `s-lat1-${day}`, setNumber: 1, targetWeightKg: 8, actualWeightKg: 8, targetReps: 15, actualReps: 15, targetRir: 2, actualRir: 2, completed: true },
+                { id: `s-lat2-${day}`, setNumber: 2, targetWeightKg: 8, actualWeightKg: 8, targetReps: 15, actualReps: 15, targetRir: 2, actualRir: 2, completed: true },
+                { id: `s-lat3-${day}`, setNumber: 3, targetWeightKg: 8, actualWeightKg: 8, targetReps: 15, actualReps: 14, targetRir: 1, actualRir: 1, completed: true },
+                { id: `s-lat4-${day}`, setNumber: 4, targetWeightKg: 8, actualWeightKg: 8, targetReps: 15, actualReps: 13, targetRir: 1, actualRir: 1, completed: true },
               ],
             },
             {
@@ -2060,9 +2060,9 @@ export function generateSeedWorkouts(): WorkoutSession[] {
               minReps: 10,
               maxReps: 14,
               sets: [
-                { id: `s-bc1-${day}`, setNumber: 1, targetWeightKg: 14, actualWeightKg: 14, targetReps: 12, actualReps: 12, targetRir: 2, actualRir: 2, completed: true },
-                { id: `s-bc2-${day}`, setNumber: 2, targetWeightKg: 14, actualWeightKg: 14, targetReps: 12, actualReps: 11, targetRir: 2, actualRir: 1, completed: true },
-                { id: `s-bc3-${day}`, setNumber: 3, targetWeightKg: 14, actualWeightKg: 14, targetReps: 12, actualReps: 10, targetRir: 1, actualRir: 1, completed: true },
+                { id: `s-bc1-${day}`, setNumber: 1, targetWeightKg: 12, actualWeightKg: 12, targetReps: 12, actualReps: 12, targetRir: 2, actualRir: 2, completed: true },
+                { id: `s-bc2-${day}`, setNumber: 2, targetWeightKg: 12, actualWeightKg: 12, targetReps: 12, actualReps: 11, targetRir: 2, actualRir: 1, completed: true },
+                { id: `s-bc3-${day}`, setNumber: 3, targetWeightKg: 12, actualWeightKg: 12, targetReps: 12, actualReps: 10, targetRir: 1, actualRir: 1, completed: true },
               ],
             },
           ],
@@ -2161,9 +2161,9 @@ export function generateSeedWorkouts(): WorkoutSession[] {
               minReps: 8,
               maxReps: 12,
               sets: [
-                { id: `s20-${day}`, setNumber: 1, targetWeightKg: Math.round(benchWeight / 1.18 / 2) * 2, actualWeightKg: Math.round(benchWeight / 1.18 / 2) * 2, targetReps: 10, actualReps: 10, targetRir: 2, actualRir: 2, completed: true },
-                { id: `s21-${day}`, setNumber: 2, targetWeightKg: Math.round(benchWeight / 1.18 / 2) * 2, actualWeightKg: Math.round(benchWeight / 1.18 / 2) * 2, targetReps: 10, actualReps: 10, targetRir: 2, actualRir: 1, completed: true },
-                { id: `s21b-${day}`, setNumber: 3, targetWeightKg: Math.round(benchWeight / 1.18 / 2) * 2, actualWeightKg: Math.round(benchWeight / 1.18 / 2) * 2, targetReps: 10, actualReps: 9, targetRir: 1, actualRir: 1, completed: true },
+                { id: `s20-${day}`, setNumber: 1, targetWeightKg: Math.round(benchWeight / 1.18 / 2), actualWeightKg: Math.round(benchWeight / 1.18 / 2), targetReps: 10, actualReps: 10, targetRir: 2, actualRir: 2, completed: true },
+                { id: `s21-${day}`, setNumber: 2, targetWeightKg: Math.round(benchWeight / 1.18 / 2), actualWeightKg: Math.round(benchWeight / 1.18 / 2), targetReps: 10, actualReps: 10, targetRir: 2, actualRir: 1, completed: true },
+                { id: `s21b-${day}`, setNumber: 3, targetWeightKg: Math.round(benchWeight / 1.18 / 2), actualWeightKg: Math.round(benchWeight / 1.18 / 2), targetReps: 10, actualReps: 9, targetRir: 1, actualRir: 1, completed: true },
               ],
             },
             {
@@ -2406,7 +2406,7 @@ export function createTodaysActiveWorkout(): WorkoutSession {
           {
             id: 'set-9',
             setNumber: 1,
-            targetWeightKg: 14,
+            targetWeightKg: 8,
             targetReps: 15,
             targetRir: 2,
             completed: false,
@@ -2414,7 +2414,7 @@ export function createTodaysActiveWorkout(): WorkoutSession {
           {
             id: 'set-10',
             setNumber: 2,
-            targetWeightKg: 14,
+            targetWeightKg: 8,
             targetReps: 15,
             targetRir: 2,
             completed: false,
@@ -2422,7 +2422,7 @@ export function createTodaysActiveWorkout(): WorkoutSession {
           {
             id: 'set-11',
             setNumber: 3,
-            targetWeightKg: 14,
+            targetWeightKg: 8,
             targetReps: 15,
             targetRir: 1,
             completed: false,

@@ -26,7 +26,7 @@ export const ImportProgramModal: React.FC<ImportProgramModalProps> = ({
   const [programName, setProgramName] = useState('Phase 1 BT');
   const [sheetText, setSheetText] = useState('');
   const [importHistory, setImportHistory] = useState(true);
-  const [doubleTwoHandDumbbells, setDoubleTwoHandDumbbells] = useState(true);
+  const [halveCombinedTwoHandDumbbells, setHalveCombinedTwoHandDumbbells] = useState(false);
   const [activateProgram, setActivateProgram] = useState(true);
   const [preferHistoricalStartDate, setPreferHistoricalStartDate] = useState(true);
   const [historicalStartDate, setHistoricalStartDate] = useState('2017-01-09');
@@ -41,7 +41,7 @@ export const ImportProgramModal: React.FC<ImportProgramModalProps> = ({
         importHistory,
         historicalStartDate,
         preferHistoricalStartDate,
-        doubleTwoHandDumbbells,
+        halveCombinedTwoHandDumbbells,
       });
       return { parsed };
     } catch (err) {
@@ -54,7 +54,7 @@ export const ImportProgramModal: React.FC<ImportProgramModalProps> = ({
     importHistory,
     historicalStartDate,
     preferHistoricalStartDate,
-    doubleTwoHandDumbbells,
+    halveCombinedTwoHandDumbbells,
   ]);
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -238,11 +238,11 @@ export const ImportProgramModal: React.FC<ImportProgramModalProps> = ({
           <label className="flex items-center min-h-[44px] gap-2 cursor-pointer">
             <input
               type="checkbox"
-              checked={doubleTwoHandDumbbells}
-              onChange={(e) => setDoubleTwoHandDumbbells(e.target.checked)}
+              checked={halveCombinedTwoHandDumbbells}
+              onChange={(e) => setHalveCombinedTwoHandDumbbells(e.target.checked)}
               className="w-5 h-5 accent-[var(--color-accent-primary)]"
             />
-            <span style={labelStyle}>Double two-hand dumbbell loads (sheet logs per dumbbell)</span>
+            <span style={labelStyle}>Halve two-hand dumbbell loads (sheet logs combined pair total)</span>
           </label>
 
           <label className="flex items-center min-h-[44px] gap-2 cursor-pointer">

@@ -54,6 +54,7 @@ import { calculateSubTierQuest, standardsAge } from '../../engine/strengthStanda
 import {
   calculateE1RM,
   isTimedExercise,
+  usesOneDumbbell,
 } from '../../engine/e1rm';
 import { buildAthleteKnowledgeGraph, getExerciseBiomechanicalMeta } from '../../engine/knowledgeGraph';
 import { calculateWeeklyMuscleVolume } from '../../services/storage';
@@ -366,7 +367,13 @@ export const TrainTab: React.FC<TrainTabProps> = ({
     const isPureBw = def.equipment === 'bodyweight' && !def.isWeightedCalisthenic;
     const timed = isTimedExercise(def);
     const holdSeconds = def.defaultDurationSeconds || 45;
-    const defaultSeedWeight = isPureBw ? 0 : def.equipment === 'dumbbell' ? 16 : 40;
+    const defaultSeedWeight = isPureBw
+      ? 0
+      : def.equipment === 'dumbbell'
+      ? usesOneDumbbell(def)
+        ? 16
+        : 12
+      : 40;
     return {
       id: `active-ex-${Date.now()}`,
       exerciseId: def.id,
@@ -1510,7 +1517,10 @@ export const TrainTab: React.FC<TrainTabProps> = ({
             ex.equipment,
             ex.isRdl,
             ex.isWeightedCalisthenic,
-            bodyweightEmaKg
+            bodyweightEmaKg,
+            ex.exerciseId,
+            ex.pillar,
+            ex.name
           );
 
           const quest = calculateSubTierQuest(
@@ -1528,7 +1538,11 @@ export const TrainTab: React.FC<TrainTabProps> = ({
               maxReps: ex.maxReps,
               sfrScore: meta.sfrScore,
               resistanceProfile: meta.resistanceProfile,
-            }
+            },
+            profile.weightUnit || 'kg',
+            standardsAge(profile),
+            ex.exerciseId,
+            ex.name
           );
 
           const exWorkingSets = ex.sets.filter((s) => !s.isWarmup && s.setType !== 'warmup');

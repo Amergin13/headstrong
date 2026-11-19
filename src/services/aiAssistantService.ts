@@ -43,7 +43,7 @@ import { planWorkoutLabel } from '../engine/muscleBuildingProgram';
 import { formatPreciseWeight, formatWeight } from '../utils/units';
 import { calculateWarmupPrescription } from '../engine/warmup';
 import { PROGRESSION_RULES } from '../engine/progressionRules';
-import { calculateE1RM, isTimedExercise } from '../engine/e1rm';
+import { calculateE1RM, isTimedExercise, usesOneDumbbell } from '../engine/e1rm';
 import { buildBodyweightEmaLookup } from '../engine/ema';
 import { runReadAloudQaGate, VOICE_TONE_MATRIX } from '../engine/contentStrategy';
 import { buildExerciseInsight } from './exerciseInsight';
@@ -863,7 +863,8 @@ function buildEstimatedMaxAnswer(
           ex.isWeightedCalisthenic,
           sessionBw,
           ex.exerciseId,
-          ex.pillar
+          ex.pillar,
+          ex.name
         );
         if (!best || kg > best.kg) {
           best = { name: ex.name, kg, includesBodyweight: isCalisthenic, bestReps: reps, bestAddedKg: added };
@@ -2732,10 +2733,14 @@ async function processAssistantMessageCore(
             const workingSets = isWorkoutEx
               ? (targetEx as ExerciseSession).sets.filter((st) => !st.isWarmup && st.setType !== 'warmup')
               : [];
+            const targetMeta = isWorkoutEx
+              ? { exerciseId: (targetEx as ExerciseSession).exerciseId, name: (targetEx as ExerciseSession).name }
+              : { id: (targetEx as ExerciseDefinition).id, name: (targetEx as ExerciseDefinition).name };
+            const isTwoDbTarget = targetEx.equipment === 'dumbbell' && !usesOneDumbbell(targetMeta);
             const targetWeightLabel = workingSets[0]
               ? targetEx.equipment === 'bodyweight' && workingSets[0].targetWeightKg === 0
                 ? 'bodyweight'
-                : formatWeight(workingSets[0].targetWeightKg, unit)
+                : `${formatWeight(workingSets[0].targetWeightKg, unit)}${isTwoDbTarget ? ' each' : ''}`
               : 'a weight you can lift with 1–2 reps to spare';
             const minReps = isWorkoutEx
               ? (targetEx as ExerciseSession).minReps
@@ -2757,7 +2762,7 @@ async function processAssistantMessageCore(
             const todayReps = workingSets[0]?.targetReps;
             const repLabel =
               minReps === maxReps ? `${minReps}` : todayReps ? `${todayReps} (range ${minReps}–${maxReps})` : `${minReps}–${maxReps}`;
-            const inc = unit === 'lb' ? '5 lb' : targetEx.equipment === 'dumbbell' ? '2 kg' : '2.5 kg';
+            const inc = unit === 'lb' ? '5 lb' : targetEx.equipment === 'dumbbell' ? '1 kg per dumbbell' : '2.5 kg';
 
             // The exercise card's own two lines (where this lift has been, what today is for), so the
             // coach and the card say the same thing.

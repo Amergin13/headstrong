@@ -42,7 +42,7 @@ $$\text{E1RM} = \text{Effective Weight} \times \left(1 + \frac{\text{Reps} + \te
   *(For bodyweight-only sets, external load = 0 kg).*
 - **Dumbbell Exercise Multiplier:**
   $$\text{Effective Barbell-Equivalent Weight} = \text{Combined Dumbbell Weight} \times 1.18$$
-  *(Reflects stabilizer muscle fatigue and bilateral deficit).*
+  *(Reflects stabilizer muscle fatigue and bilateral deficit. Exercises using two dumbbells (`usesTwoDumbbells`, e.g., Incline Dumbbell Press) log and display weight **per dumbbell**—for example `24 kg`—while session volume/tonnage, WCI, and E1RM calculate against `2 × 24 = 48 kg` combined weight. Single-dumbbell exercises (`usesOneDumbbell`: Goblet Squat, Pullover, Single-Arm Row/Carry, Overhead Tricep Extension, Lying DB Leg Curl, DB Hip Thrust, Step Calf Raise, Weighted Gym Ball Crunch) use `1 ×` the dumbbell weight.)*
 - **Romanian Deadlift (RDL) Multiplier:**
   $$\text{Effective Deadlift-Equivalent Weight} = \text{RDL Weight} \times 1.20$$
   *(Normalizes posterior chain loading against conventional deadlift standard).*
@@ -124,7 +124,7 @@ $$\text{Readiness Score} = 0.50 \cdot Z_{\text{HRV}} - 0.30 \cdot Z_{\text{RHR}}
 For any target rep range (e.g., 6–8 or 8–12 reps):
 1. **Top of Rep Range Achieved:** If all prescribed sets reach max reps (e.g., 8/8/8 or 12/12/12) at $1\text{–}2$ RIR:
    - Barbell, cable, and machine exercises: Increment load by $+2.5\text{ kg}$ ($+5\text{ lb}$).
-   - Dumbbell exercises: Increment load by $+2.0\text{ kg}$ ($+5\text{ lb}$).
+   - Dumbbell exercises: Increment load by $+1.0\text{ kg}$ per dumbbell ($+2\text{ kg}$ combined pair load on paired lifts; $+5\text{ lb}$ in lb).
    - Reset working target reps to lower boundary (e.g., 6 or 8 reps across every set).
 2. **Within Rep Range:** If all working sets hit at least the bottom of the rep range (e.g., 6/6/6 on 6–8) without yet hitting the top on all sets:
    - Hold weight constant.

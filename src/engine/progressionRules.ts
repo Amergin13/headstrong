@@ -10,7 +10,8 @@ import { LB_PER_KG, snapLoadKg, WeightUnit } from '../utils/units';
 export const PROGRESSION_RULES = {
   /** Load step when every working set reached the top of the rep range. */
   barbellIncrementKg: 2.5,
-  dumbbellIncrementKg: 2,
+  /** Logged weight on paired dumbbells is per dumbbell (+1 kg/DB = +2 kg total pair load). */
+  dumbbellIncrementKg: 1,
   /** Machines and cables use the smallest common plate step. */
   otherIncrementKg: 2.5,
   /** Reps added on the first sets when the athlete is inside the range. */

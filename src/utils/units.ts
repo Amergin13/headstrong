@@ -32,7 +32,7 @@ export function formatPreciseWeight(kg: number, unit: WeightUnit): string {
 
 /**
  * Snaps a kg load to the nearest loadable increment in the athlete's unit so prescriptions
- * match real plates and dumbbells (2.5 kg / 5 lb for barbells & cables, 2 kg / 5 lb per pair of dumbbells).
+ * match real plates and dumbbells (2.5 kg / 5 lb for barbells & cables, 1 kg / 5 lb per dumbbell).
  */
 export function snapLoadKg(kg: number, unit: WeightUnit, equipment?: string): number {
   if (kg <= 0) return 0;
@@ -41,6 +41,6 @@ export function snapLoadKg(kg: number, unit: WeightUnit, equipment?: string): nu
     const lb = Math.max(stepLb, Math.round((kg * LB_PER_KG) / stepLb) * stepLb);
     return lb / LB_PER_KG;
   }
-  const stepKg = equipment === 'dumbbell' ? 2 : 2.5;
+  const stepKg = equipment === 'dumbbell' ? 1 : 2.5;
   return Math.max(stepKg, Math.round(kg / stepKg) * stepKg);
 }

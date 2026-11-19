@@ -14,6 +14,7 @@ import {
 } from '../engine/types';
 import { planWorkoutLabel } from '../engine/muscleBuildingProgram';
 import { canUseMusclePlan } from '../engine/trainingPlans';
+import { toCombinedExternalLoadKg, usesOneDumbbell } from '../engine/e1rm';
 import { SEED_EXERCISES } from './seedData';
 import { localDateOffset, parseLocalDate } from '../utils/date';
 
@@ -390,7 +391,9 @@ export interface SpreadsheetImportOptions {
   historicalStartDate?: string;
   /** When true, ignore partial/stray sheet dates and anchor sessions chronologically from historicalStartDate. */
   preferHistoricalStartDate?: boolean;
-  /** True when bilateral two-hand dumbbell cells (e.g. Incline DB Press 25 x 10) list per-hand weight. */
+  /** True when bilateral two-hand dumbbell cells log combined pair weight (e.g. 48 x 10 instead of 24 x 10 per DB). */
+  halveCombinedTwoHandDumbbells?: boolean;
+  /** @deprecated No longer doubles because paired dumbbell lifts log per-dumbbell weight by default. */
   doubleTwoHandDumbbells?: boolean;
 }
 
@@ -474,7 +477,7 @@ interface SyntheticSpec {
   isWeightedCalisthenic?: boolean;
   defaultRepRange: [number, number];
   environments?: ExerciseDefinition['environments'];
-  perHandOnly?: boolean;
+  sheetLogsCombined?: boolean;
 }
 
 const SYNTHETIC_SPECS: Record<string, SyntheticSpec> = {
@@ -497,7 +500,7 @@ const SYNTHETIC_SPECS: Record<string, SyntheticSpec> = {
     equipment: 'dumbbell',
     defaultRepRange: [8, 12],
     environments: ['gym', 'home'],
-    perHandOnly: true, // Sheet logs combined load (52 -> 39 kg) matching 50 kg squat
+    sheetLogsCombined: true, // Sheet logs combined load (52 -> 39 kg), so convert to 26 -> 19.5 kg per DB
   },
   'incline back extensions': {
     id: 'ex-back-extension',
@@ -528,7 +531,6 @@ const SYNTHETIC_SPECS: Record<string, SyntheticSpec> = {
     equipment: 'dumbbell',
     defaultRepRange: [6, 8],
     environments: ['gym', 'home'],
-    perHandOnly: true,
   },
   'one arm dumbbell row': {
     id: 'ex-one-arm-db-row',
@@ -539,7 +541,6 @@ const SYNTHETIC_SPECS: Record<string, SyntheticSpec> = {
     equipment: 'dumbbell',
     defaultRepRange: [6, 12],
     environments: ['gym', 'home'],
-    perHandOnly: true,
   },
   'underhand grip pulldown': {
     id: 'ex-underhand-pulldown',
@@ -807,31 +808,27 @@ function inferExerciseMetadata(rawName: string): SyntheticSpec {
   };
 }
 
-function isOneHandOnlyExercise(nameOrId: string): boolean {
-  return /one arm|single arm|single-arm|front foot elevated|ffe-split-squat|bulgarian/i.test(nameOrId);
-}
-
 function resolveSheetExercise(
   rawName: string,
   catalogMap: Map<string, ExerciseDefinition>,
   addedById: Map<string, ExerciseDefinition>
-): { def: ExerciseDefinition; perHandOnly: boolean } {
+): { def: ExerciseDefinition; sheetLogsCombined: boolean } {
   const key = normalizeExerciseKey(rawName);
   const aliasId = KNOWN_ALIASES[key];
   if (aliasId && catalogMap.has(aliasId)) {
-    return { def: catalogMap.get(aliasId)!, perHandOnly: isOneHandOnlyExercise(key) };
+    return { def: catalogMap.get(aliasId)!, sheetLogsCombined: false };
   }
 
   for (const existing of catalogMap.values()) {
     if (normalizeExerciseKey(existing.name) === key) {
-      return { def: existing, perHandOnly: isOneHandOnlyExercise(key) };
+      return { def: existing, sheetLogsCombined: false };
     }
   }
 
   const spec = inferExerciseMetadata(rawName);
   const existingSynthetic = catalogMap.get(spec.id) || addedById.get(spec.id);
   if (existingSynthetic) {
-    return { def: existingSynthetic, perHandOnly: Boolean(spec.perHandOnly || isOneHandOnlyExercise(key)) };
+    return { def: existingSynthetic, sheetLogsCombined: Boolean(spec.sheetLogsCombined) };
   }
 
   const created: ExerciseDefinition = {
@@ -848,7 +845,7 @@ function resolveSheetExercise(
     defaultRepRange: spec.defaultRepRange,
   };
   addedById.set(created.id, created);
-  return { def: created, perHandOnly: Boolean(spec.perHandOnly || isOneHandOnlyExercise(key)) };
+  return { def: created, sheetLogsCombined: Boolean(spec.sheetLogsCombined) };
 }
 
 function parseSetsCount(raw: string, fallback = 3): number {
@@ -1221,7 +1218,7 @@ export function parseProgramSpreadsheet(
 
   const rawTitle = (options.programName || 'Phase 1 BT').trim() || 'Imported Program';
   const planId: `custom:${string}` = options.programId || `custom:${slugify(rawTitle)}`;
-  const doubleDb = options.doubleTwoHandDumbbells !== false;
+  const halveCombinedDb = options.halveCombinedTwoHandDumbbells === true;
 
   const phaseNumbers = [...new Set(blocks.map((b) => b.phase))].sort((a, b) => a - b);
   const templates: SavedPlanWorkout[] = [];
@@ -1276,7 +1273,7 @@ export function parseProgramSpreadsheet(
         let explicitDate: string | undefined;
 
         for (const rawEx of block.exercises) {
-          const { def, perHandOnly } = resolveSheetExercise(rawEx.name, catalogMap, addedById);
+          const { def, sheetLogsCombined } = resolveSheetExercise(rawEx.name, catalogMap, addedById);
           const weekRow = rawEx.weeks.find((r) => r.week === w) ?? rawEx.weeks[0];
           if (!weekRow) continue;
           if (weekRow.date && !explicitDate) explicitDate = weekRow.date;
@@ -1284,7 +1281,10 @@ export function parseProgramSpreadsheet(
           // Seed a sensible starting weight from Week 1 logged sets (or best available week) if numeric
           const seedRow = rawEx.weeks.find((r) => r.loggedSets.some((st) => st.weightKg > 0));
           const rawSeedWeight = seedRow?.loggedSets.find((st) => st.weightKg > 0)?.weightKg;
-          const dbFactor = def.equipment === 'dumbbell' && doubleDb && !perHandOnly ? 2 : 1;
+          const dbFactor =
+            def.equipment === 'dumbbell' && !usesOneDumbbell(def) && (halveCombinedDb || sheetLogsCombined)
+              ? 0.5
+              : 1;
           const defaultWeightKg = rawSeedWeight !== undefined ? Math.round(rawSeedWeight * dbFactor * 10) / 10 : def.equipment === 'bodyweight' ? 0 : undefined;
 
           templateExercises.push({
@@ -1312,20 +1312,25 @@ export function parseProgramSpreadsheet(
             const effectiveSwap = noteSwap || setSwap || week1SetSwap;
             const loggedResolved = effectiveSwap
               ? resolveSheetExercise(effectiveSwap, catalogMap, addedById)
-              : { def, perHandOnly };
+              : { def, sheetLogsCombined };
             const loggedDef = loggedResolved.def;
             const loggedDbFactor =
-              loggedDef.equipment === 'dumbbell' && doubleDb && !loggedResolved.perHandOnly ? 2 : 1;
+              loggedDef.equipment === 'dumbbell' &&
+              !usesOneDumbbell(loggedDef) &&
+              (halveCombinedDb || loggedResolved.sheetLogsCombined)
+                ? 0.5
+                : 1;
 
             const workoutSets: WorkoutSet[] = weekRow.loggedSets.map((st, sIdx) => {
               const weightKg = Math.round(st.weightKg * loggedDbFactor * 10) / 10;
+              const volumeWeightKg = toCombinedExternalLoadKg(weightKg, loggedDef);
               const isDuration = Boolean(weekRow.durationSeconds);
               totalSetsCount += 1;
               if (!isDuration) {
-                totalVolumeKg += weightKg * st.reps;
+                totalVolumeKg += volumeWeightKg * st.reps;
               }
-              if (weightKg > heaviestWeight) {
-                heaviestWeight = weightKg;
+              if (volumeWeightKg > heaviestWeight) {
+                heaviestWeight = volumeWeightKg;
                 heaviestLabel = `${loggedDef.name} (${weightKg} kg × ${st.reps})`;
               }
               return {
@@ -1541,7 +1546,7 @@ export function ensureOwnerPhase1BtSeeded(state: {
     importHistory: true,
     historicalStartDate: '2017-01-09',
     preferHistoricalStartDate: true,
-    doubleTwoHandDumbbells: true,
+    halveCombinedTwoHandDumbbells: false,
   });
 
   const merged = applySpreadsheetImportToState(state, parsed, {

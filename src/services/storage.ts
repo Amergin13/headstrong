@@ -16,11 +16,11 @@ import {
   generateSeedBiometrics,
   generateSeedWorkouts,
 } from './seedData';
-import { calculateE1RM } from '../engine/e1rm';
+import { calculateE1RM, usesOneDumbbell } from '../engine/e1rm';
 import { isPillarBenchmarkExercise } from '../engine/strengthStandards';
 import { getLatestBodyweightEma } from '../engine/ema';
 import { localDateString } from '../utils/date';
-import { generatePlanWorkout, withPlanWorkoutName } from '../engine/muscleBuildingProgram';
+import { generatePlanWorkout, getSessionPlanId, withPlanWorkoutName } from '../engine/muscleBuildingProgram';
 import { prepareSessionForAthlete } from './sessionPreparation';
 import { buildStarterPlan } from '../engine/starterPlan';
 import { ActivityLog } from '../engine/activeDays';
@@ -51,7 +51,7 @@ const LEGACY_KEYS = {
  * Version of the saved-data format. Bump it and add a step to runStorageMigrations whenever
  * the shape of stored data changes, so existing athletes' history keeps loading.
  */
-export const STORAGE_SCHEMA_VERSION = 8;
+export const STORAGE_SCHEMA_VERSION = 9;
 const SCHEMA_VERSION_KEY = 'treise_schema_version';
 
 /**
@@ -144,6 +144,64 @@ export function removeDayHeartRateFromWorkouts(): void {
   }
 }
 
+/** Exercises in the 6-week muscle plan whose templates were already written as weight per dumbbell. */
+const NATIVE_MB6_PER_DB_EXERCISES = new Set([
+  'ex-seated-lateral-raise',
+  'ex-db-upright-row',
+  'ex-hammer-preacher-curl',
+  'ex-incline-db-curl',
+]);
+
+const halveCombinedDumbbellKg = (kg: number | undefined): number | undefined => {
+  if (kg === undefined || kg <= 0) return kg;
+  return Math.max(1, Math.round((kg / 2) * 2) / 2);
+};
+
+/**
+ * Converts legacy combined-pair two-dumbbell set weights (e.g. 48 kg Incline DB Press)
+ * into per-dumbbell weights (24 kg) while leaving single-dumbbell moves and already-per-hand
+ * 6-week muscle-plan dumbbell exercises untouched.
+ */
+export function migrateSessionDumbbellWeightsToPerHand(session: WorkoutSession): WorkoutSession {
+  const isNativeMb6 = getSessionPlanId(session) === 'muscle_building_6wk';
+  let sessionChanged = false;
+  const exercises = session.exercises.map((ex) => {
+    if (ex.equipment !== 'dumbbell' || usesOneDumbbell(ex)) return ex;
+    if (isNativeMb6 && NATIVE_MB6_PER_DB_EXERCISES.has(ex.exerciseId)) return ex;
+    sessionChanged = true;
+    return {
+      ...ex,
+      sets: ex.sets.map((s) => ({
+        ...s,
+        targetWeightKg: halveCombinedDumbbellKg(s.targetWeightKg) ?? 0,
+        ...(s.actualWeightKg !== undefined
+          ? { actualWeightKg: halveCombinedDumbbellKg(s.actualWeightKg) }
+          : {}),
+      })),
+    };
+  });
+  return sessionChanged ? { ...session, exercises } : session;
+}
+
+export function migrateCombinedDumbbellWeightsToPerHand(): void {
+  const migrateListKey = (key: string, fallbackLegacyKey?: string) => {
+    const raw = localStorage.getItem(key) || (fallbackLegacyKey ? localStorage.getItem(fallbackLegacyKey) : null);
+    if (!raw) return;
+    const workouts: WorkoutSession[] = JSON.parse(raw);
+    if (!Array.isArray(workouts)) return;
+    localStorage.setItem(key, JSON.stringify(workouts.map(migrateSessionDumbbellWeightsToPerHand)));
+  };
+  const migrateSingleKey = (key: string, fallbackLegacyKey?: string) => {
+    const raw = localStorage.getItem(key) || (fallbackLegacyKey ? localStorage.getItem(fallbackLegacyKey) : null);
+    if (!raw) return;
+    const session: WorkoutSession = JSON.parse(raw);
+    if (!session || !Array.isArray(session.exercises)) return;
+    localStorage.setItem(key, JSON.stringify(migrateSessionDumbbellWeightsToPerHand(session)));
+  };
+  migrateListKey(KEYS.WORKOUTS, LEGACY_KEYS.WORKOUTS);
+  migrateSingleKey(KEYS.ACTIVE_WORKOUT, LEGACY_KEYS.ACTIVE_WORKOUT);
+}
+
 export function runStorageMigrations(): void {
   if (typeof localStorage === 'undefined') return;
   try {
@@ -171,6 +229,9 @@ export function runStorageMigrations(): void {
       if (Array.isArray(logs) && logs.some(isErasePlaceholder)) {
         localStorage.setItem(KEYS.BIOMETRICS, JSON.stringify(logs.filter((l) => !isErasePlaceholder(l))));
       }
+    }
+    if (current < 9) {
+      migrateCombinedDumbbellWeightsToPerHand();
     }
     if (current < STORAGE_SCHEMA_VERSION) {
       localStorage.setItem(SCHEMA_VERSION_KEY, String(STORAGE_SCHEMA_VERSION));
@@ -656,6 +717,7 @@ export function calculateWeeklyMuscleVolume(
 
 export interface TreiseDataBackup {
   appVersion: string;
+  schemaVersion?: number;
   exportedAt: string;
   profile: UserProfile;
   biometrics: BiometricLog[];
@@ -703,6 +765,7 @@ export function saveDismissedActivityIds(ids: string[]): void {
 export function exportAllUserDataJSON(): string {
   const payload: TreiseDataBackup = {
     appVersion: '1.0.0',
+    schemaVersion: STORAGE_SCHEMA_VERSION,
     exportedAt: new Date().toISOString(),
     profile: loadProfile(),
     biometrics: loadBiometrics(),
@@ -727,9 +790,16 @@ export function importUserDataJSON(rawJson: string): TreiseDataBackup {
   const { currentXp: _xp, level: _level, leaderboardOptIn: _opt, leaderboardDisplayName: _name, ...profile } =
     parsed.profile as UserProfile & Record<string, unknown>;
   const biometrics = Array.isArray(parsed.biometrics) ? parsed.biometrics : loadBiometrics();
+  const needsDbPerHandMigration = (parsed.schemaVersion ?? 0) < 9;
   // Same clean-up as loading from storage, so imported data shows the same everywhere.
-  const workouts = (parsed.workouts as WorkoutSession[]).map((w) => withPlanWorkoutName(w));
-  const activeWorkout = withPlanWorkoutName(parsed.activeWorkout || createTodaysActiveWorkout());
+  const rawWorkouts = (parsed.workouts as WorkoutSession[]).map((w) => withPlanWorkoutName(w));
+  const workouts = needsDbPerHandMigration
+    ? rawWorkouts.map(migrateSessionDumbbellWeightsToPerHand)
+    : rawWorkouts;
+  const rawActive = withPlanWorkoutName(parsed.activeWorkout || createTodaysActiveWorkout());
+  const activeWorkout = needsDbPerHandMigration
+    ? migrateSessionDumbbellWeightsToPerHand(rawActive)
+    : rawActive;
   const exercises = Array.isArray(parsed.exercises) ? parsed.exercises : SEED_EXERCISES;
   profile.programType = normalizeProgramType(profile.programType);
 

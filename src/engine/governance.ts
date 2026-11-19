@@ -87,7 +87,7 @@ export const INITIAL_GOVERNANCE_ITEMS: GovernanceChangeItem[] = [
     critiqueAndRisks:
       'Pure bodyweight movements (0 kg external weight) should progress via reps and tempo rather than suggesting +2.5 kg barbell increments.',
     lockedInvariant:
-      'translateWeightBetweenImplements(90kg Barbell) must equal 76kg combined Dumbbell (38kg/DB) and preserve canonical E1RM.',
+      'translateWeightBetweenImplements(90kg Barbell -> paired Dumbbell) must equal 38kg per DB (76kg combined) and preserve canonical E1RM.',
     files: ['src/engine/e1rm.ts', 'src/engine/progression.ts'],
   },
   {

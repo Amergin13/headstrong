@@ -17,6 +17,7 @@ interface SetRowProps {
   previous?: PreviousSet;
   isBodyweight?: boolean;
   isDumbbell?: boolean;
+  isTwoDumbbell?: boolean;
   isTimed?: boolean;
   displayBadge?: string;
   displayLabel?: string;
@@ -31,6 +32,7 @@ export const SetRow: React.FC<SetRowProps> = ({
   previous,
   isBodyweight = false,
   isDumbbell = false,
+  isTwoDumbbell = false,
   isTimed = false,
   displayBadge,
   displayLabel,
@@ -48,7 +50,7 @@ export const SetRow: React.FC<SetRowProps> = ({
     (currentReps > 5 ? currentReps : 45);
   const currentRir = set.actualRir ?? set.targetRir ?? 2;
   const currentSetType: SetType = set.setType || (set.isWarmup ? 'warmup' : 'working');
-  const weightStep = units.unit === 'lb' ? 5 : isDumbbell ? 2.0 : 2.5;
+  const weightStep = units.unit === 'lb' ? 5 : isDumbbell ? 1.0 : 2.5;
   const label = displayLabel || `Set ${set.setNumber}`;
 
   // Bumped each time the athlete ticks the set, to replay the completion animation (not on load).
@@ -163,7 +165,7 @@ export const SetRow: React.FC<SetRowProps> = ({
                 inputMode="decimal"
                 value={showBwToken ? '' : displayWeight}
                 placeholder={showBwToken ? 'BW' : undefined}
-                aria-label={`${label} weight in ${units.unit === 'lb' ? 'pounds' : 'kilograms'}`}
+                aria-label={`${label} ${isTwoDumbbell ? 'weight per dumbbell' : 'weight'} in ${units.unit === 'lb' ? 'pounds' : 'kilograms'}`}
                 onFocus={(e) => e.target.select()}
                 onChange={(e) => onUpdate({ actualWeightKg: units.fromDisplay(parseFloat(e.target.value) || 0) })}
                 className={`bg-transparent font-semibold tabular-numbers outline-none p-0 ${showBwToken ? 'text-center' : 'text-right'}`}

@@ -23,11 +23,60 @@ export function isUnilateralExercise(ex: { exerciseId?: string; name?: string })
   return /(single[- ]?(arm|leg)|one[- ]arm|1[- ]arm|\bsa[- ]|split[- ]squat|bulgarian|lunge|pistol|step[- ]?up|unilateral|copenhagen|suitcase)/.test(s);
 }
 
-/** Moves done holding one dumbbell, so their weight is that dumbbell, not a pair. */
+/** Moves done holding one dumbbell, so the weight logged on the dumbbell IS the total external load moved. */
 export function usesOneDumbbell(ex: { exerciseId?: string; id?: string; name?: string }): boolean {
-  return /(goblet|pullover|single[- ]?arm|one[- ]?arm|1[- ]arm|suitcase|db[- ]leg[- ]curl|lying leg curl)/.test(
-    `${ex.exerciseId || ex.id || ''} ${ex.name || ''}`.toLowerCase()
+  const id = (ex.exerciseId || ex.id || '').toLowerCase();
+  const s = `${id} ${(ex.name || '').toLowerCase()}`;
+  if (/(two[- ]?(arm|hand|dumbbell)|bilateral|paired)/.test(s)) return false;
+  return (
+    id === 'ex-db-hip-thrust' ||
+    id === 'ex-gymball-crunch' ||
+    id === 'ex-db-calf-raise' ||
+    id === 'ex-overhead-db-extension' ||
+    /(goblet|pullover|single[- ]?arm|one[- ]?arm|1[- ]arm|suitcase|db[- ]leg[- ]curl|lying leg curl|hip thrust|gym ?ball crunch|step calf raise|overhead.*tricep)/.test(
+      s
+    )
   );
+}
+
+/** True when a dumbbell movement holds a pair of dumbbells (one in each hand), so logged weight is per dumbbell. */
+export function usesTwoDumbbells(ex: {
+  equipment?: EquipmentType;
+  exerciseId?: string;
+  id?: string;
+  name?: string;
+}): boolean {
+  if (ex.equipment && ex.equipment !== 'dumbbell') return false;
+  return !usesOneDumbbell(ex);
+}
+
+/** 2 for paired two-dumbbell lifts (logged per dumbbell), 1 otherwise. */
+export function getDumbbellCount(ex: {
+  equipment?: EquipmentType;
+  exerciseId?: string;
+  id?: string;
+  name?: string;
+}): 1 | 2 {
+  return ex.equipment === 'dumbbell' && !usesOneDumbbell(ex) ? 2 : 1;
+}
+
+/** Converts logged set weight (per DB for paired DB exercises, full load otherwise) into total external mass moved. */
+export function toCombinedExternalLoadKg(
+  loggedWeightKg: number,
+  ex: { equipment?: EquipmentType; exerciseId?: string; id?: string; name?: string }
+): number {
+  return loggedWeightKg * getDumbbellCount(ex);
+}
+
+/**
+ * Bilateral single-dumbbell exercises constrained by rack/balance/leverage (~0.5× bilateral bar/cable load),
+ * unlike two-arm single-DB tricep extension which matches full combined tricep load.
+ */
+function isLeverageLimitedSingleDumbbell(ex: { exerciseId?: string; id?: string; name?: string }): boolean {
+  if (!usesOneDumbbell(ex) || isUnilateralExercise(ex)) return false;
+  const id = (ex.exerciseId || ex.id || '').toLowerCase();
+  const s = `${id} ${(ex.name || '').toLowerCase()}`;
+  return /(goblet|pullover|hip thrust|db[- ]leg[- ]curl|lying leg curl|gym ?ball crunch)/.test(s);
 }
 
 /** True when an exercise is tracked by time (seconds/minutes held) rather than repetition count. */
@@ -195,7 +244,8 @@ export function getEffectiveBodyweightLoadKg(
  * Calculates effective canonical load normalized for barbell strength standards:
  * - Weighted calisthenics: Weight = (7Day_EMA_Bodyweight * BW_Ratio) + External_Load
  * - Pure bodyweight: Weight = (7Day_EMA_Bodyweight * BW_Ratio) + External_Load
- * - Dumbbells: Weight = Combined_Dumbbell_Weight * 1.18
+ * - Dumbbells: Paired two-DB moves store per-DB weight so Combined_Dumbbell_Weight = External * 2;
+ *   Single-DB moves use External * 1. Then Effective = Combined_Dumbbell_Weight * 1.18
  * - RDLs: Weight = RDL_Weight * 1.20
  */
 export function calculateEffectiveLoad(
@@ -205,7 +255,8 @@ export function calculateEffectiveLoad(
   isWeightedCalisthenic?: boolean,
   bodyweightEmaKg: number = 80,
   exerciseId?: string,
-  pillar?: string
+  pillar?: string,
+  exerciseName?: string
 ): number {
   let effectiveLoad = Math.max(0, externalWeightKg);
 
@@ -220,7 +271,7 @@ export function calculateEffectiveLoad(
   }
 
   if (equipment === 'dumbbell') {
-    effectiveLoad *= EQUIPMENT_MULTIPLIERS.DUMBBELL;
+    effectiveLoad = toCombinedExternalLoadKg(effectiveLoad, { equipment, exerciseId, name: exerciseName }) * EQUIPMENT_MULTIPLIERS.DUMBBELL;
   }
 
   if (isRdl) {
@@ -232,8 +283,9 @@ export function calculateEffectiveLoad(
 
 /**
  * Inverse of calculateEffectiveLoad:
- * Converts a Canonical Barbell-Equivalent Load into the exact external load
- * required on any target implement (Barbell, Dumbbell, RDL, Weighted Calisthenics).
+ * Converts a Canonical Barbell-Equivalent Load into the logged external load
+ * required on any target implement (Barbell, per-DB weight for paired Dumbbell moves,
+ * single-DB weight for one-DB moves, RDL, Weighted Calisthenics).
  * Pure bodyweight exercises ALWAYS return 0 external load.
  */
 export function convertEffectiveToExternalLoad(
@@ -243,7 +295,8 @@ export function convertEffectiveToExternalLoad(
   targetIsWeightedCalisthenic?: boolean,
   bodyweightEmaKg: number = 80,
   targetExerciseId?: string,
-  targetPillar?: string
+  targetPillar?: string,
+  targetExerciseName?: string
 ): number {
   // Pure bodyweight exercises (bodyweight squats, push-ups, lunges, travel exercises) have ZERO external load
   if (targetEquipment === 'bodyweight' && !targetIsWeightedCalisthenic) {
@@ -258,8 +311,14 @@ export function convertEffectiveToExternalLoad(
 
   if (targetEquipment === 'dumbbell') {
     rawExternal /= EQUIPMENT_MULTIPLIERS.DUMBBELL;
-    // Round to nearest 2kg combined (1kg per hand)
-    return Math.max(4, Math.round(rawExternal / 2) * 2);
+    const pairCount = getDumbbellCount({
+      equipment: 'dumbbell',
+      exerciseId: targetExerciseId,
+      name: targetExerciseName,
+    });
+    const perDumbbellKg = rawExternal / pairCount;
+    // Standard 1 kg per dumbbell step (minimum 2 kg per dumbbell)
+    return Math.max(2, Math.round(perDumbbellKg));
   }
 
   // Weighted calisthenics (e.g. weighted pull-up with dip belt)
@@ -277,6 +336,7 @@ export function convertEffectiveToExternalLoad(
 /**
  * Directly translates working weight from one exercise implement to another
  * while preserving 100% Canonical Pillar Mechanical Tension / E1RM equivalence.
+ * Two-dumbbell moves accept & return weight per dumbbell (e.g. 90 kg Barbell -> 38 kg per DB).
  */
 export function translateWeightBetweenImplements(
   sourceWeightKg: number,
@@ -309,16 +369,18 @@ export function translateWeightBetweenImplements(
     sourceMeta.isWeightedCalisthenic,
     bodyweightEmaKg,
     sourceMeta.exerciseId,
-    sourceMeta.pillar
+    sourceMeta.pillar,
+    sourceMeta.name
   );
 
   const sourceUnilateral = isUnilateralExercise(sourceMeta);
   const targetUnilateral = isUnilateralExercise(targetMeta);
-  // A pair of dumbbells or a bar shares the load between two hands; a goblet squat or pullover holds one.
+  const sourceLimitedSingle = sourceMeta.equipment === 'dumbbell' && isLeverageLimitedSingleDumbbell(sourceMeta);
+  const targetLimitedSingle = targetMeta.equipment === 'dumbbell' && isLeverageLimitedSingleDumbbell(targetMeta);
   const oneDumbbellFactor =
-    targetMeta.equipment === 'dumbbell' && usesOneDumbbell(targetMeta) && !usesOneDumbbell(sourceMeta)
+    targetLimitedSingle && !sourceLimitedSingle
       ? 0.5
-      : sourceMeta.equipment === 'dumbbell' && usesOneDumbbell(sourceMeta) && !usesOneDumbbell(targetMeta)
+      : sourceLimitedSingle && !targetLimitedSingle
       ? 2
       : 1;
   const sideFactor =
@@ -335,22 +397,28 @@ export function translateWeightBetweenImplements(
     targetMeta.isWeightedCalisthenic,
     bodyweightEmaKg,
     targetMeta.exerciseId,
-    targetMeta.pillar
+    targetMeta.pillar,
+    targetMeta.name
   );
 }
 
 /**
- * Formats an implement load for clear gym-floor ergonomics
- * (e.g., Dumbbells show both combined & per-hand weight).
+ * Formats an implement load for clear gym-floor ergonomics:
+ * Two-dumbbell lifts store per-hand weight and show e.g. "24kg/DB (48kg total)";
+ * single-dumbbell lifts show e.g. "24kg".
  */
 export function formatImplementWeightLabel(
   externalWeightKg: number,
   equipment: EquipmentType,
-  isWeightedCalisthenic?: boolean
+  isWeightedCalisthenic?: boolean,
+  exerciseMeta?: { exerciseId?: string; id?: string; name?: string }
 ): string {
   if (equipment === 'dumbbell') {
-    const perHand = Math.round((externalWeightKg / 2) * 10) / 10;
-    return `${externalWeightKg}kg (${perHand}kg/DB)`;
+    if (exerciseMeta && usesOneDumbbell(exerciseMeta)) {
+      return `${externalWeightKg}kg`;
+    }
+    const combined = Math.round(externalWeightKg * 2 * 10) / 10;
+    return `${externalWeightKg}kg/DB (${combined}kg total)`;
   }
   if (equipment === 'bodyweight' && (!isWeightedCalisthenic || externalWeightKg === 0)) {
     return 'Bodyweight';
@@ -451,7 +519,8 @@ export function calculateE1RM(
   isWeightedCalisthenic?: boolean,
   bodyweightEmaKg: number = 80,
   exerciseId?: string,
-  pillar?: string
+  pillar?: string,
+  exerciseName?: string
 ): number {
   if (reps <= 0) return 0;
 
@@ -462,7 +531,8 @@ export function calculateE1RM(
     isWeightedCalisthenic,
     bodyweightEmaKg,
     exerciseId,
-    pillar
+    pillar,
+    exerciseName
   );
 
   // Epley drifts high beyond ~15 reps from failure, so cap the rep term for estimation only.
@@ -486,7 +556,8 @@ export function calculateRepsNeededForTargetE1RM(
   isWeightedCalisthenic?: boolean,
   bodyweightEmaKg: number = 80,
   exerciseId?: string,
-  pillar?: string
+  pillar?: string,
+  exerciseName?: string
 ): number {
   const effectiveWeight = calculateEffectiveLoad(
     externalWeightKg,
@@ -495,7 +566,8 @@ export function calculateRepsNeededForTargetE1RM(
     isWeightedCalisthenic,
     bodyweightEmaKg,
     exerciseId,
-    pillar
+    pillar,
+    exerciseName
   );
 
   if (targetE1rmKg <= 0 || effectiveWeight <= 0) return 1;
@@ -519,7 +591,8 @@ export function calculateWeightNeededForTargetE1RM(
   isWeightedCalisthenic?: boolean,
   bodyweightEmaKg: number = 80,
   exerciseId?: string,
-  pillar?: string
+  pillar?: string,
+  exerciseName?: string
 ): number {
   if (targetE1rmKg <= 0 || targetReps <= 0) return 0;
   const repsFromFailure = Math.min(targetReps + Math.max(0, targetRir), MAX_E1RM_REPS_FROM_FAILURE);
@@ -533,14 +606,15 @@ export function calculateWeightNeededForTargetE1RM(
     isWeightedCalisthenic,
     bodyweightEmaKg,
     exerciseId,
-    pillar
+    pillar,
+    exerciseName
   );
 }
 
 /**
  * Solves the external weight required on a target implement to preserve a canonical E1RM
  * stimulus at a new (targetReps, targetRir) prescription, accounting for unilateral and
- * single-dumbbell loading differences.
+ * single-dumbbell vs paired-dumbbell loading differences.
  */
 export function solveTargetWeightForE1RM(
   targetE1rmKg: number,
@@ -563,10 +637,12 @@ export function solveTargetWeightForE1RM(
 
   const sourceUnilateral = isUnilateralExercise(sourceMeta);
   const targetUnilateral = isUnilateralExercise(targetMeta);
+  const sourceLimitedSingle = sourceMeta.equipment === 'dumbbell' && isLeverageLimitedSingleDumbbell(sourceMeta);
+  const targetLimitedSingle = targetMeta.equipment === 'dumbbell' && isLeverageLimitedSingleDumbbell(targetMeta);
   const oneDumbbellFactor =
-    targetMeta.equipment === 'dumbbell' && usesOneDumbbell(targetMeta) && !usesOneDumbbell(sourceMeta)
+    targetLimitedSingle && !sourceLimitedSingle
       ? 0.5
-      : sourceMeta.equipment === 'dumbbell' && usesOneDumbbell(sourceMeta) && !usesOneDumbbell(targetMeta)
+      : sourceLimitedSingle && !targetLimitedSingle
       ? 2
       : 1;
   const sideFactor =
@@ -587,6 +663,7 @@ export function solveTargetWeightForE1RM(
     targetMeta.isWeightedCalisthenic,
     bodyweightEmaKg,
     targetMeta.exerciseId || targetMeta.id,
-    targetMeta.pillar
+    targetMeta.pillar,
+    targetMeta.name
   );
 }

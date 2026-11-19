@@ -5,7 +5,7 @@ import {
   MIN_ACTIVE_MINUTES,
   activeDayDates,
 } from '../engine/activeDays';
-import { isTimedExercise } from '../engine/e1rm';
+import { isTimedExercise, usesOneDumbbell } from '../engine/e1rm';
 import { getExerciseBiomechanicalMeta } from '../engine/knowledgeGraph';
 import {
   buildPlanOverview,
@@ -1487,7 +1487,7 @@ function buildCalibratedAddedExercise(
     sets: Array.from({ length: cleanSets }, (_, i) => i + 1).map((n) => ({
       id: `coach-s-${Date.now()}-${n}`,
       setNumber: n,
-      targetWeightKg: isPureBw ? 0 : def.equipment === 'dumbbell' ? 16 : 40,
+      targetWeightKg: isPureBw ? 0 : def.equipment === 'dumbbell' ? (usesOneDumbbell(def) ? 16 : 12) : 40,
       targetReps: timed ? 1 : def.defaultRepRange[0],
       targetRir: n === cleanSets ? 1 : 2,
       ...(timed ? { targetDurationSeconds: holdSecs, actualDurationSeconds: holdSecs } : {}),
@@ -1652,7 +1652,7 @@ export async function executeModifyWorkoutExercises(
       previous_state: { display: `${activeWorkout.exercises.length} exercises` },
       new_state: { display: `${activeWorkout.exercises.length + 1} exercises (+ ${def.name})` },
     },
-    summaryText: `Added **${def.name}** (${finalEx.sets.filter((s) => !s.isWarmup && s.setType !== 'warmup').length} working sets @ ${isPureBw ? 'bodyweight' : formatWeight(fallbackKg, unit)}) to **${activeWorkout.name}**.`,
+    summaryText: `Added **${def.name}** (${finalEx.sets.filter((s) => !s.isWarmup && s.setType !== 'warmup').length} working sets @ ${isPureBw ? 'bodyweight' : `${formatWeight(fallbackKg, unit)}${def.equipment === 'dumbbell' && !usesOneDumbbell(def) ? ' each' : ''}`}) to **${activeWorkout.name}**.`,
     navigateTarget: 'train',
     navigateLabel: 'View Workout',
   });

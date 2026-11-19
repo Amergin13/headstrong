@@ -869,10 +869,10 @@ export function buildScenarioState(scenarioId: LocalScenarioId): AppliedScenario
             {
               id: `u1-${daysAgo}`,
               setNumber: 1,
-              targetWeightKg: 24,
+              targetWeightKg: 12,
               targetReps: 10,
               targetRir: 1,
-              actualWeightKg: 24,
+              actualWeightKg: 12,
               actualReps: 6,
               actualRepsLeft: 6,
               actualRepsRight: 10,

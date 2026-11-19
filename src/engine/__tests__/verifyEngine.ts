@@ -124,8 +124,11 @@ const bbE1rm = calculateE1RM(100, 10, 2, 'barbell');
 assert(Math.abs(bbE1rm - 140) < 0.1, `Barbell 100kg x 10 @ 2 RIR = 140kg (got ${bbE1rm})`);
 
 const dbE1rm = calculateE1RM(30, 10, 2, 'dumbbell');
-// 30 * 1.18 * 1.4 = 49.56 -> 49.6
-assert(Math.abs(dbE1rm - 49.6) < 0.2, `Dumbbell 30kg x 10 @ 2 RIR with 1.18x multiplier (got ${dbE1rm})`);
+// Two 30kg dumbbells (60kg combined) * 1.18 * 1.4 = 99.12 -> 99.1
+assert(Math.abs(dbE1rm - 99.1) < 0.2, `Paired Dumbbell 30kg/DB (60kg combined) x 10 @ 2 RIR with 1.18x multiplier (got ${dbE1rm})`);
+const singleDbE1rm = calculateE1RM(30, 10, 2, 'dumbbell', false, false, 80, 'ex-single-arm-db-row', 'Horizontal Pull');
+// Single 30kg dumbbell * 1.18 * 1.4 = 49.56 -> 49.6
+assert(Math.abs(singleDbE1rm - 49.6) < 0.2, `Single-DB 30kg x 10 @ 2 RIR with 1.18x multiplier (got ${singleDbE1rm})`);
 
 const rdlE1rm = calculateE1RM(100, 10, 2, 'barbell', true);
 // 100 * 1.20 * 1.4 = 168
@@ -437,7 +440,7 @@ const isoQuest = calculateSubTierQuest(
 
 // 11. OOUX Cross-Implement Equivalence & Unified Movement Vector Progression
 console.log('\n[11. OOUX Cross-Implement Equivalence & Unified Vector Progression]');
-// 90kg Barbell Bench -> Dumbbell Press (90 / 1.18 = 76.27 -> 76kg combined = 38kg/DB)
+// 90kg Barbell Bench -> Dumbbell Press (90 / 1.18 = 76.27 combined -> 38kg per dumbbell)
 const translatedDbWeight = translateWeightBetweenImplements(
   90,
   { equipment: 'barbell' },
@@ -445,24 +448,24 @@ const translatedDbWeight = translateWeightBetweenImplements(
   80
 );
 assert(
-  translatedDbWeight === 76,
-  `90kg Barbell translates to 76kg combined Dumbbell (38kg/DB) @ 1.18x (got ${translatedDbWeight})`
+  translatedDbWeight === 38,
+  `90kg Barbell translates to 38kg per Dumbbell (76kg combined) @ 1.18x (got ${translatedDbWeight})`
 );
 assert(
-  formatImplementWeightLabel(translatedDbWeight, 'dumbbell') === '76kg (38kg/DB)',
-  `Dumbbell label formats combined and per-hand weight clearly`
+  formatImplementWeightLabel(translatedDbWeight, 'dumbbell') === '38kg/DB (76kg total)',
+  `Dumbbell label formats per-hand and combined weight clearly`
 );
 
-// Round-trip: 76kg Dumbbell -> Barbell (76 * 1.18 = 89.68 -> 90kg Barbell)
+// Round-trip: 38kg per Dumbbell (76kg combined) -> Barbell (76 * 1.18 = 89.68 -> 90kg Barbell)
 const roundTripBarbell = translateWeightBetweenImplements(
-  76,
+  38,
   { equipment: 'dumbbell' },
   { equipment: 'barbell' },
   80
 );
 assert(
   roundTripBarbell === 90,
-  `76kg combined Dumbbell translates back to 90kg Barbell (got ${roundTripBarbell})`
+  `38kg/DB (76kg combined) translates back to 90kg Barbell (got ${roundTripBarbell})`
 );
 
 // Cross-implement Double Progression:
@@ -477,9 +480,9 @@ const activeDumbbellPress: ExerciseSession = {
   minReps: 8,
   maxReps: 12,
   sets: [
-    { id: 'db1', setNumber: 1, targetWeightKg: 68, targetReps: 10, targetRir: 2, completed: false },
-    { id: 'db2', setNumber: 2, targetWeightKg: 68, targetReps: 10, targetRir: 2, completed: false },
-    { id: 'db3', setNumber: 3, targetWeightKg: 68, targetReps: 10, targetRir: 2, completed: false },
+    { id: 'db1', setNumber: 1, targetWeightKg: 34, targetReps: 10, targetRir: 2, completed: false },
+    { id: 'db2', setNumber: 2, targetWeightKg: 34, targetReps: 10, targetRir: 2, completed: false },
+    { id: 'db3', setNumber: 3, targetWeightKg: 34, targetReps: 10, targetRir: 2, completed: false },
   ],
 };
 
@@ -494,12 +497,12 @@ assert(
   `Cross-implement prescription detects transfer from Barbell Bench Press (got ${crossPrescription.transferredFromExerciseName})`
 );
 assert(
-  crossPrescription.nextWeightKg === 78,
-  `Cross-implement Double Progression translates 90kg BB -> 76kg DB and adds +2kg DB progression = 78kg (got ${crossPrescription.nextWeightKg})`
+  crossPrescription.nextWeightKg === 39,
+  `Cross-implement Double Progression translates 90kg BB -> 38kg/DB and adds +1kg/DB progression = 39kg (got ${crossPrescription.nextWeightKg})`
 );
 assert(
-  crossPrescription.previousSetsSummary?.[0] === '≈76×12 @2R',
-  `Cross-implement ghost displays translated load "≈76×12 @2R" (got ${crossPrescription.previousSetsSummary?.[0]})`
+  crossPrescription.previousSetsSummary?.[0] === '≈38×12 @2R',
+  `Cross-implement ghost displays translated per-DB load "≈38×12 @2R" (got ${crossPrescription.previousSetsSummary?.[0]})`
 );
 
 // 12. Full End-to-End Application Lifecycle: Storage, Workout Generator & Google Play Data Safety
@@ -3806,11 +3809,11 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
       `Exercise summary is strictly 2 headerless lines: "${facts.fallback}"`
     );
 
-    // Rule 4: Concrete absolute load (+1.7 kg, 15.9 kg) over abstract percentages.
+    // Rule 4: Concrete absolute load (+3.6 kg, 31.9 kg) over abstract percentages.
     assert(
-      facts.facts.some((f) => /risen by \+1\.7 kg across 2 sessions \(from 14\.2 kg to 15\.9 kg\)/.test(f)) &&
-        /\+1\.7 kg/.test(fallbackLines[0]) &&
-        /15\.9 kg/.test(fallbackLines[0]) &&
+      facts.facts.some((f) => /risen by \+3\.6 kg across 2 sessions \(from 28\.3 kg to 31\.9 kg\)/.test(f)) &&
+        /\+3\.6 kg/.test(fallbackLines[0]) &&
+        /31\.9 kg/.test(fallbackLines[0]) &&
         !/%/.test(facts.fallback) &&
         !/%/.test(facts.facts.join(' ')),
       `Line 1 uses concrete absolute load rounded to 0.1 kg, never percentages: "${fallbackLines[0]}"`
@@ -3824,7 +3827,7 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
     );
 
     const good =
-      'Strength on this lift is rising, up +1.7 kg across 2 sessions to a 15.9 kg estimated max.\nToday increases the weight to drive progressive mechanical tension for your side shoulders.';
+      'Strength on this lift is rising, up +3.6 kg across 2 sessions to a 31.9 kg estimated max.\nToday increases the weight to drive progressive mechanical tension for your side shoulders.';
     assert(acceptExerciseNote(good, facts) === good, 'A valid 2-line summary with concrete load and stimulus directive is accepted');
     assert(
       acceptExerciseNote(good.replace('\n', ' '), facts) === good,
@@ -3970,7 +3973,7 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
       return good;
     });
     assert(
-      fromModel === good && /Use only the facts/.test(seenSystem) && seenUser.includes('+1.7 kg'),
+      fromModel === good && /Use only the facts/.test(seenSystem) && seenUser.includes('+3.6 kg'),
       'The on-device model is prompted with the concrete load facts and its checked 2-line summary is used'
     );
     assert((await generateExerciseNote(facts, async () => null)) === null, 'Without an on-device model the card keeps the fact-based 2-line fallback');
@@ -7500,29 +7503,29 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
     const squatKg = 117.5;
     const ctx = { history: demo, bodyweightKg: 81, readinessState: 'Normal' as const, gender: 'male' as const, experienceLevel: 'experienced' as const, unit: 'kg' as const };
     const started = startingWeightForNewExercise(demo[demo.length - 1], seed, ctx);
-    assert(started !== null && started >= 30 && started <= 60, `Added split squat starts from a scaled weight, not the 100 kg it used to (got ${started} kg with a ${squatKg} kg squat)`);
+    assert(started !== null && started >= 15 && started <= 30, `Added split squat starts from a scaled per-DB weight, not 50–100 kg (got ${started} kg/DB with a ${squatKg} kg squat)`);
 
     const newAthlete = startingWeightForNewExercise(demo[demo.length - 1], seed, { ...ctx, history: [], experienceLevel: 'new' });
     assert(newAthlete !== null && newAthlete > 0 && newAthlete < (started as number), `A new athlete starts lighter than the sample athlete (got ${newAthlete} kg)`);
 
     const prescribed = prescribeDoubleProgression(seed, 'Normal', demo, 81, 'Lean Bulk');
-    assert(prescribed.nextWeightKg <= 52, `Falling back on the squat halves it for one working leg and converts it to dumbbells (got ${prescribed.nextWeightKg} kg)`);
+    assert(prescribed.nextWeightKg <= 26, `Falling back on the squat halves it for one working leg and converts it to per-DB weight (got ${prescribed.nextWeightKg} kg/DB)`);
 
     const barbell = { equipment: 'barbell' as const, exerciseId: 'ex-barbell-squat', pillar: 'Squat' };
     const single = { equipment: 'dumbbell' as const, exerciseId: bss.id, name: bss.name, pillar: 'Squat' };
-    assert(translateWeightBetweenImplements(100, barbell, single, 80) === 42, 'Barbell to single-leg dumbbell: 100 kg becomes 42 kg combined');
-    assert(translateWeightBetweenImplements(42, single, barbell, 80) === 100, 'Single-leg dumbbell back to barbell: 42 kg combined becomes 100 kg');
+    assert(translateWeightBetweenImplements(100, barbell, single, 80) === 21, 'Barbell to single-leg dumbbell: 100 kg becomes 21 kg per DB (42 kg combined)');
+    assert(translateWeightBetweenImplements(21, single, barbell, 80) === 100, 'Single-leg dumbbell back to barbell: 21 kg/DB (42 kg combined) becomes 100 kg');
     assert(
-      translateWeightBetweenImplements(90, { equipment: 'barbell', exerciseId: 'ex-bench-press' }, { equipment: 'dumbbell', exerciseId: 'ex-db-bench-press' }, 80) === 76,
-      'Two-sided lifts keep the plain dumbbell conversion (90 kg barbell = 76 kg combined)'
+      translateWeightBetweenImplements(90, { equipment: 'barbell', exerciseId: 'ex-bench-press' }, { equipment: 'dumbbell', exerciseId: 'ex-db-bench-press' }, 80) === 38,
+      'Two-sided lifts keep the plain dumbbell conversion (90 kg barbell = 38 kg/DB, 76 kg combined)'
     );
     assert(
-      translateWeightBetweenImplements(20, { equipment: 'dumbbell', exerciseId: 'ex-walking-lunge' }, single, 80) === 20,
+      translateWeightBetweenImplements(10, { equipment: 'dumbbell', exerciseId: 'ex-walking-lunge' }, single, 80) === 10,
       'Two single-sided lifts on the same equipment convert one to one'
     );
     // Estimated max is not touched by the starting-weight factor.
-    const e1rmPlain = calculateE1RM(40, 8, 2, 'dumbbell', false, false, 80, bss.id, 'Squat');
-    assert(e1rmPlain === Math.round(40 * 1.18 * (1 + 10 / 30) * 10) / 10, 'Estimated max for a split squat is unchanged by the starting-weight factor');
+    const e1rmPlain = calculateE1RM(20, 8, 2, 'dumbbell', false, false, 80, bss.id, 'Squat');
+    assert(e1rmPlain === Math.round(40 * 1.18 * (1 + 10 / 30) * 10) / 10, 'Estimated max for a split squat multiplies 2 DBs (20 -> 40 kg combined) and is unchanged by the starting-weight factor');
   }
 
   console.log('\n[42. Renpho scale through the Android app: pair once]');
@@ -9251,7 +9254,7 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
       importHistory: true,
       historicalStartDate: '2017-01-09',
       preferHistoricalStartDate: true,
-      doubleTwoHandDumbbells: true,
+      halveCombinedTwoHandDumbbells: false,
     });
 
     assert(parsed.savedPlan.id === OWNER_PHASE_1_BT_ID, 'Phase 1 BT keeps custom:phase-1-bt id');
@@ -10963,8 +10966,8 @@ Exercise,,Date,Workout,Sets,Reps,Tempo,Rest,Notes,Set 1,Set 2,Set 3,Set 4
           minReps: 8,
           maxReps: 12,
           sets: [
-            { id: 'sdb1', setNumber: 1, targetWeightKg: 60, actualWeightKg: 60, targetReps: 10, actualReps: 10, targetRir: 2, actualRir: 2, completed: true, setType: 'working' },
-            { id: 'sdb2', setNumber: 2, targetWeightKg: 60, actualWeightKg: 60, targetReps: 10, actualReps: 10, targetRir: 2, actualRir: 2, completed: true, setType: 'working' },
+            { id: 'sdb1', setNumber: 1, targetWeightKg: 30, actualWeightKg: 30, targetReps: 10, actualReps: 10, targetRir: 2, actualRir: 2, completed: true, setType: 'working' },
+            { id: 'sdb2', setNumber: 2, targetWeightKg: 30, actualWeightKg: 30, targetReps: 10, actualReps: 10, targetRir: 2, actualRir: 2, completed: true, setType: 'working' },
           ],
         },
       ],
@@ -10981,12 +10984,12 @@ Exercise,,Date,Workout,Sets,Reps,Tempo,Rest,Notes,Set 1,Set 2,Set 3,Set 4
     });
     assert(
       swapFresh.targetReps === 8 &&
-        swapFresh.targetWeightKg >= 60 &&
-        swapFresh.targetWeightKg <= 66 &&
+        swapFresh.targetWeightKg >= 30 &&
+        swapFresh.targetWeightKg <= 34 &&
         swapMaingain.targetReps === 6 &&
         swapMaingain.targetWeightKg >= swapFresh.targetWeightKg &&
         swapFromHistory.usedOwnHistory === true &&
-        swapFromHistory.targetWeightKg === 60 &&
+        swapFromHistory.targetWeightKg === 30 &&
         swapFromHistory.targetReps === 11,
       `Science-backed swap prescribes inverse-Epley weight (${swapFresh.targetWeightKg}kg x ${swapFresh.targetReps}), Maingain compound shift (${swapMaingain.targetWeightKg}kg x ${swapMaingain.targetReps}), and own history (${swapFromHistory.targetWeightKg}kg x ${swapFromHistory.targetReps})`
     );
@@ -13006,7 +13009,7 @@ Exercise,,Date,Workout,Sets,Reps,Tempo,Rest,Notes,Set 1,Set 2,Set 3,Set 4
       'Normal'
     );
     assert(
-      smallBbMissed.nextWeightKg === 37.5 && smallDbMissed.nextWeightKg === 18,
+      smallBbMissed.nextWeightKg === 37.5 && smallDbMissed.nextWeightKg === 19,
       `Small barbell (40 -> ${smallBbMissed.nextWeightKg} kg) and dumbbell (20 -> ${smallDbMissed.nextWeightKg} kg) drop by >=1 real step on missed bottom reps`
     );
 
@@ -13034,7 +13037,7 @@ Exercise,,Date,Workout,Sets,Reps,Tempo,Rest,Notes,Set 1,Set 2,Set 3,Set 4
       `[8, 8, 7] with warmup sets ignores warmup offset and advances working set 3 to [8, 8, 8] (got ${catchUpThirdSet.nextTargetReps.join(',')})`
     );
 
-    // Every prescribed set hits 8 with quality RIR -> increment weight (+2.5 kg barbell, +2 kg dumbbell) & reset reps to 6
+    // Every prescribed set hits 8 with quality RIR -> increment weight (+2.5 kg barbell, +1 kg per dumbbell) & reset reps to 6
     const allAtTopBb = prescribeDoubleProgression(
       makeRangeBench(100, [{ reps: 8, rir: 2 }, { reps: 8, rir: 2 }, { reps: 8, rir: 1 }]),
       'Normal'
@@ -13047,9 +13050,9 @@ Exercise,,Date,Workout,Sets,Reps,Tempo,Rest,Notes,Set 1,Set 2,Set 3,Set 4
       allAtTopBb.nextWeightKg === 102.5 &&
         allAtTopBb.weightChanged === true &&
         allAtTopBb.nextTargetReps.join(',') === '6,6,6' &&
-        allAtTopDb.nextWeightKg === 26 &&
+        allAtTopDb.nextWeightKg === 25 &&
         allAtTopDb.nextTargetReps.join(',') === '6,6,6',
-      `[8, 8, 8] with 1-2 RIR raises BB (100->102.5) and DB (24->26) and resets reps to [6, 6, 6]`
+      `[8, 8, 8] with 1-2 RIR raises BB (100->102.5) and DB (24->25/DB) and resets reps to [6, 6, 6]`
     );
 
     // C. Safety checks: skipped set & ground-out 0 RIR & Amber Shield never increase weight
@@ -13140,7 +13143,7 @@ Exercise,,Date,Workout,Sets,Reps,Tempo,Rest,Notes,Set 1,Set 2,Set 3,Set 4
       `Plan session generator & ExerciseCard prescription match identically on reduction (${squatStartW} -> ${squatS2.sets[0].targetWeightKg} kg)`
     );
 
-    // E. Dumbbell split generation preserves 2.0 kg steps (no 2.5 kg clobbering)
+    // E. Dumbbell split generation preserves 1.0 kg per-DB steps (no 2.5 kg barbell clobbering)
     const dbLastDone: WorkoutSession = {
       id: 'w-db-hist-63',
       date: '2026-11-12',
@@ -13150,7 +13153,7 @@ Exercise,,Date,Workout,Sets,Reps,Tempo,Rest,Notes,Set 1,Set 2,Set 3,Set 4
       readinessZScore: 0,
       completed: true,
       completedAt: '2026-11-12T10:00:00Z',
-      exercises: [makeRangeBench(34, [{ reps: 12 }, { reps: 12 }, { reps: 12 }], 'dumbbell', { minReps: 8, maxReps: 12 })],
+      exercises: [makeRangeBench(17, [{ reps: 12 }, { reps: 12 }, { reps: 12 }], 'dumbbell', { minReps: 8, maxReps: 12 })],
     };
     dbLastDone.exercises[0].exerciseId = 'ex-db-bench-press';
     dbLastDone.exercises[0].name = 'Incline Dumbbell Press';
@@ -13168,8 +13171,8 @@ Exercise,,Date,Workout,Sets,Reps,Tempo,Rest,Notes,Set 1,Set 2,Set 3,Set 4
     const dbNextEx = nextPush.exercises.find((e) => e.exerciseId === 'ex-db-bench-press')!;
     const dbNextW = dbNextEx.sets.find((s) => !s.isWarmup && s.setType !== 'warmup')!.targetWeightKg;
     assert(
-      dbNextW === 36,
-      `Split generator preserves 2 kg dumbbell increment (34 -> 36 kg instead of clobbering to 35 kg; got ${dbNextW} kg)`
+      dbNextW === 18,
+      `Split generator preserves 1 kg per-DB increment (17 -> 18 kg instead of clobbering to 17.5 kg; got ${dbNextW} kg)`
     );
 
     // F. Coach answerWeightChange, Knowledge Graph & ExerciseCard UI rep-range pill
@@ -13217,7 +13220,262 @@ Exercise,,Date,Workout,Sets,Reps,Tempo,Rest,Notes,Set 1,Set 2,Set 3,Set 4
     );
   }
 
-  console.log('\nALL 63 ENGINE, GOVERNANCE, DESIGN SYSTEM, TYPOGRAPHY, WEARABLES, WHOOP STRAIN, GOOGLE AUTH, ONBOARDING CONTEXT, 6-WEEK PROGRAM, SPREADSHEET IMPORT, AI COACH ACTIONS, GEMINI FLASH + KG, OOUX, AGENTIC COACH, PRODUCT UPGRADES, INFO EXPERIENCE, CONTENT DESIGN, GOAL CAROUSEL, SHIFT NUDGE COLOR POLISH, EXERCISE DRILL-IN MODAL, COMPOSITION WIDGET, MEASUREMENT UX, AI-NATIVE ACTIONS, PERMANENT PROGRAM ADAPTATION, HITL INTERVENTION & REP-RANGE DOUBLE PROGRESSION SUITES PASSED SUCCESSFULLY! 🎯');
+  // ==========================================================================
+  // 64. TWO-DUMBBELL PER-HAND LOGGING, COMBINED TONNAGE & MIGRATION v9
+  // ==========================================================================
+  console.log('\n[64. Two-Dumbbell Per-Hand Logging, Combined Tonnage & Migration v9]');
+  {
+    const {
+      usesOneDumbbell: isOneDb,
+      usesTwoDumbbells: isTwoDb,
+      toCombinedExternalLoadKg: toCombinedKg,
+      formatImplementWeightLabel: fmtImpl,
+      translateWeightBetweenImplements: translateImpl,
+    } = await import('../e1rm');
+    const { calculateSessionTonnage: calcTonnage, calculateWci: calcWci64 } = await import('../wci');
+    const { calculateWarmupPrescription: calcWarmup64 } = await import('../warmup');
+    const { buildExerciseDetailModel: buildDetail64 } = await import('../../services/exerciseDetails');
+    const { buildTrainingTotals: buildTotals64 } = await import('../../services/progressOverview');
+    const { parseProgramSpreadsheet: parseSheet64 } = await import('../../services/spreadsheetProgramImport');
+
+    // A. Classifier covers every dumbbell exercise in SEED_EXERCISES accurately
+    const twoDbIds = [
+      'ex-db-bench-press',
+      'ex-flat-db-press',
+      'ex-db-shoulder-press',
+      'ex-chest-supported-db-row',
+      'ex-bulgarian-split-squat',
+      'ex-db-rdl',
+      'ex-db-lateral-raise',
+      'ex-rear-delt-db-fly',
+      'ex-bicep-curl',
+      'ex-seated-lateral-raise',
+      'ex-db-upright-row',
+      'ex-hammer-preacher-curl',
+      'ex-incline-db-curl',
+      'ex-single-leg-db-rdl',
+      'ex-db-front-squat',
+      'ex-db-walking-lunge',
+      'ex-db-step-up',
+      'ex-db-floor-press',
+      'ex-db-fly',
+      'ex-arnold-press',
+      'ex-db-skullcrusher',
+      'ex-db-hammer-curl',
+      'ex-farmers-walk',
+    ];
+    const oneDbIds = [
+      'ex-goblet-squat',
+      'ex-db-pullover',
+      'ex-overhead-db-extension',
+      'ex-db-calf-raise',
+      'ex-gymball-crunch',
+      'ex-db-leg-curl',
+      'ex-db-hip-thrust',
+      'ex-single-arm-db-row',
+      'ex-suitcase-carry',
+    ];
+    const dbDefs = SEED_EXERCISES.filter((d) => d.equipment === 'dumbbell');
+    assert(
+      dbDefs.every((d) => (isOneDb(d) ? oneDbIds.includes(d.id) : twoDbIds.includes(d.id))) &&
+        twoDbIds.every((id) => isTwoDb(SEED_EXERCISES.find((d) => d.id === id)!)) &&
+        oneDbIds.every((id) => isOneDb(SEED_EXERCISES.find((d) => d.id === id)!)),
+      `Every dumbbell exercise in catalog (${dbDefs.length}) classifies cleanly as 1-DB vs 2-DB`
+    );
+
+    // B. Incline DB Press logged at 24 kg/hand computes tonnage against 48 kg & E1RM against 48*1.18
+    const incline24: ExerciseSession = {
+      id: 'ex-64-inc',
+      exerciseId: 'ex-db-bench-press',
+      name: 'Incline Dumbbell Press',
+      pillar: 'Horizontal Push',
+      equipment: 'dumbbell',
+      minReps: 8,
+      maxReps: 12,
+      sets: [1, 2, 3].map((n) => ({
+        id: `s64-inc-${n}`,
+        setNumber: n,
+        setType: 'working' as const,
+        targetWeightKg: 24,
+        actualWeightKg: 24,
+        targetReps: 10,
+        actualReps: 10,
+        targetRir: 2,
+        actualRir: 2,
+        completed: true,
+      })),
+    };
+    const singleArm24: ExerciseSession = {
+      id: 'ex-64-row',
+      exerciseId: 'ex-single-arm-db-row',
+      name: 'Single-Arm Dumbbell Row',
+      pillar: 'Horizontal Pull',
+      equipment: 'dumbbell',
+      minReps: 8,
+      maxReps: 12,
+      sets: [1, 2, 3].map((n) => ({
+        id: `s64-row-${n}`,
+        setNumber: n,
+        setType: 'working' as const,
+        targetWeightKg: 24,
+        actualWeightKg: 24,
+        targetReps: 10,
+        actualReps: 10,
+        targetRir: 2,
+        actualRir: 2,
+        completed: true,
+      })),
+    };
+    const pairedSession: WorkoutSession = {
+      id: 'w-64-paired',
+      date: '2026-11-17',
+      name: 'Upper',
+      splitDay: 'Upper',
+      completed: true,
+      completedAt: '2026-11-17T10:00:00Z',
+      durationMinutes: 45,
+      avgHeartRate: 135,
+      readinessState: 'Normal',
+      readinessZScore: 0,
+      exercises: [incline24],
+    };
+    const singleSession: WorkoutSession = { ...pairedSession, id: 'w-64-single', exercises: [singleArm24] };
+    const pairedTonnage = calcTonnage(pairedSession, 80);
+    const singleTonnage = calcTonnage(singleSession, 80);
+    const e1rm24PerHand = calculateE1RM(
+      24,
+      10,
+      2,
+      'dumbbell',
+      false,
+      false,
+      80,
+      'ex-db-bench-press',
+      'Horizontal Push',
+      'Incline Dumbbell Press'
+    );
+    const totals64 = buildTotals64([pairedSession], undefined, Date.now(), 80);
+    const wciPaired = calcWci64(pairedSession, 60, 190, 80);
+    const detail24 = buildDetail64({
+      exercise: incline24,
+      workouts: [pairedSession],
+      bodyweightKg: 80,
+      readinessState: 'Normal',
+      formatWeight: (kg) => `${kg} kg`,
+      formatPreciseWeight: (kg) => `${kg} kg`,
+    });
+    const warmup24 = calcWarmup64(incline24, 24, true);
+
+    assert(
+      toCombinedKg(24, incline24) === 48 &&
+        toCombinedKg(24, singleArm24) === 24 &&
+        pairedTonnage.tonnageKg === 1440 &&
+        totals64.volumeKg === 1440 &&
+        wciPaired > 0 &&
+        singleTonnage.tonnageKg === 720 &&
+        Math.abs(e1rm24PerHand - 79.3) < 0.15 &&
+        detail24.targetSummary.includes('24 kg each') &&
+        warmup24.count === 2 &&
+        warmup24.sets[0].weightKg === 12,
+      `Incline DB Bench logs 24 kg/DB (detail "${detail24.targetSummary}"), computes volume against 48 kg (1440 vs 720 for 1-arm row), E1RM=79.3 kg, and prescribes 12 kg/DB warmup`
+    );
+
+    // C. Swap & cross-implement UI/engine consistency
+    const row2DbTo1Db = translateImpl(
+      24,
+      { equipment: 'dumbbell', exerciseId: 'ex-chest-supported-db-row', name: 'Chest-Supported Dumbbell Row' },
+      { equipment: 'dumbbell', exerciseId: 'ex-single-arm-db-row', name: 'Single-Arm Dumbbell Row' },
+      80
+    );
+    assert(
+      row2DbTo1Db === 24 &&
+        fmtImpl(24, 'dumbbell', false, incline24) === '24kg/DB (48kg total)' &&
+        fmtImpl(24, 'dumbbell', false, singleArm24) === '24kg',
+      `Paired DB Row (24 kg/hand) swaps 1:1 to Single-Arm DB Row (24 kg) and labels paired vs single cleanly`
+    );
+
+    // D. Storage migration v9 & JSON import upgrade legacy combined DB loads once, idempotently
+    const legacySaved: WorkoutSession = {
+      ...pairedSession,
+      id: 'w-64-legacy',
+      exercises: [
+        { ...incline24, sets: incline24.sets.map((s) => ({ ...s, targetWeightKg: 48, actualWeightKg: 48 })) },
+        { ...singleArm24, sets: singleArm24.sets.map((s) => ({ ...s, targetWeightKg: 25, actualWeightKg: 25 })) },
+      ],
+    };
+    const nativeMb6 = {
+      ...generate6WeekMuscleBuildingWorkout(2, 80),
+      id: 'w-64-mb6',
+      completed: true,
+      exercises: [
+        {
+          id: 'ex-64-mb6-curl',
+          exerciseId: 'ex-incline-db-curl',
+          name: 'Incline dumbbell biceps curl',
+          pillar: 'Horizontal Pull' as const,
+          equipment: 'dumbbell' as const,
+          minReps: 10,
+          maxReps: 10,
+          sets: [{ id: 's-mb6', setNumber: 1, targetWeightKg: 12, actualWeightKg: 12, targetReps: 10, actualReps: 10, completed: true }],
+        },
+      ],
+    };
+    localStorage.setItem('treise_workouts_v3', JSON.stringify([legacySaved, nativeMb6]));
+    localStorage.setItem('treise_active_workout_v3', JSON.stringify({ ...legacySaved, completed: false }));
+    localStorage.setItem('treise_schema_version', '8');
+    runStorageMigrations();
+    const afterMig1 = loadWorkouts();
+    runStorageMigrations(); // Idempotence check
+    const afterMig2 = loadWorkouts();
+    const legacyAfter = afterMig2.find((w) => w.id === 'w-64-legacy')!;
+    const mb6After = afterMig2.find((w) => w.id === 'w-64-mb6')!;
+    const activeAfter = loadActiveWorkout();
+
+    assert(
+      afterMig1[0].exercises[0].sets[0].actualWeightKg === 24 &&
+        legacyAfter.exercises[0].sets[0].actualWeightKg === 24 &&
+        legacyAfter.exercises[1].sets[0].actualWeightKg === 25 &&
+        mb6After.exercises[0].sets[0].actualWeightKg === 12 &&
+        activeAfter.exercises[0].sets[0].targetWeightKg === 24 &&
+        localStorage.getItem('treise_schema_version') === '9',
+      'Storage migration v9 halves legacy combined paired-DB logs (48->24), keeps single-DB (25) & native MB6 per-DB (12), and is idempotent'
+    );
+
+    const oldBackup = JSON.stringify({
+      appVersion: '1.0.0',
+      exportedAt: '2026-11-10T00:00:00Z',
+      profile: NEW_USER_PROFILE,
+      biometrics: [],
+      workouts: [legacySaved],
+      activeWorkout: { ...legacySaved, completed: false },
+      exercises: SEED_EXERCISES,
+    });
+    const restored64 = importUserDataJSON(oldBackup);
+    assert(
+      restored64.workouts[0].exercises[0].sets[0].actualWeightKg === 24 &&
+        restored64.workouts[0].exercises[1].sets[0].actualWeightKg === 25,
+      'Pre-v9 JSON backup restore upgrades legacy combined DB loads to per-DB automatically'
+    );
+
+    // E. Spreadsheet import stores per-DB load and calculates volume against pair load
+    const dbSheet = `WORKOUT 1: UPPER PUSH,,,,,,,,,,,,
+Exercise,,Date,Workout,Sets,Reps,Tempo,Rest,Notes,Set 1,Set 2,Set 3,Set 4
+2A,Incline Dumbbell Press,,1,3,8 to 12,3010,90,,24 x 10,24 x 10,24 x 10,`;
+    const sheetPerHand = parseSheet64(dbSheet, { exerciseCatalog: SEED_EXERCISES, importHistory: true });
+    const sheetCombined = parseSheet64(
+      dbSheet.replace(/24 x 10/g, '48 x 10'),
+      { exerciseCatalog: SEED_EXERCISES, importHistory: true, halveCombinedTwoHandDumbbells: true }
+    );
+    assert(
+      sheetPerHand.historicalWorkouts[0].exercises[0].sets[0].actualWeightKg === 24 &&
+        sheetPerHand.summary.totalVolumeKg === 1440 &&
+        sheetCombined.historicalWorkouts[0].exercises[0].sets[0].actualWeightKg === 24 &&
+        sheetCombined.summary.totalVolumeKg === 1440,
+      `Spreadsheet import stores 24 kg/DB and computes 1,440 kg volume for both per-DB and combined-sheet imports (got ${sheetPerHand.summary.totalVolumeKg})`
+    );
+  }
+
+  console.log('\nALL 64 ENGINE, GOVERNANCE, DESIGN SYSTEM, TYPOGRAPHY, WEARABLES, WHOOP STRAIN, GOOGLE AUTH, ONBOARDING CONTEXT, 6-WEEK PROGRAM, SPREADSHEET IMPORT, AI COACH ACTIONS, GEMINI FLASH + KG, OOUX, AGENTIC COACH, PRODUCT UPGRADES, INFO EXPERIENCE, CONTENT DESIGN, GOAL CAROUSEL, SHIFT NUDGE COLOR POLISH, EXERCISE DRILL-IN MODAL, COMPOSITION WIDGET, MEASUREMENT UX, AI-NATIVE ACTIONS, PERMANENT PROGRAM ADAPTATION, HITL INTERVENTION, REP-RANGE DOUBLE PROGRESSION & TWO-DUMBBELL PER-HAND LOGGING SUITES PASSED SUCCESSFULLY! 🎯');
 })().catch((err) => {
   console.error('Test Suite Failed:', err);
   if (typeof process !== 'undefined' && process.exit) {

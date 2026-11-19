@@ -5,6 +5,7 @@ import {
   StrengthPillar,
   WorkoutSet,
 } from './types';
+import { toCombinedExternalLoadKg } from './e1rm';
 
 /**
  * Treise Evidence-Based Warmup Set Protocol
@@ -90,8 +91,8 @@ export function isCompoundMovement(exercise: {
 function roundToImplementIncrement(weightKg: number, equipment: EquipmentType): number {
   if (weightKg <= 0) return 0;
   if (equipment === 'dumbbell') {
-    // 2.0 kg dumbbell jumps
-    return Math.max(2, Math.round(weightKg / 2) * 2);
+    // 1.0 kg per-dumbbell step
+    return Math.max(1, Math.round(weightKg));
   }
   // Standard 2.5 kg barbell / machine jumps
   return Math.max(2.5, Math.round(weightKg / 2.5) * 2.5);
@@ -153,10 +154,16 @@ export function calculateWarmupPrescription(
     };
   }
 
-  // 4. Very light external load (< 20 kg on barbell/machine, < 8 kg on dumbbell) -> 0 warmup sets
+  // 4. Very light external load (< 25 kg on barbell/machine, < 10 kg combined on dumbbell) -> 0 warmup sets
   const isDumbbell = equip === 'dumbbell';
+  const combinedWeightKg = toCombinedExternalLoadKg(workingWeightKg, {
+    equipment: equip,
+    exerciseId: exercise.exerciseId,
+    name: exercise.name,
+  });
+  const step = isDumbbell ? 1.0 : 2.5;
   const minThresholdKg = isDumbbell ? 10 : 25;
-  if (workingWeightKg < minThresholdKg) {
+  if (combinedWeightKg < minThresholdKg) {
     return {
       count: 0,
       sets: [],
@@ -168,7 +175,7 @@ export function calculateWarmupPrescription(
   if (isFirstCompoundForMuscleOrPillar) {
     const heavyThresholdKg = isDumbbell ? 18 : 40;
 
-    if (workingWeightKg >= heavyThresholdKg) {
+    if (combinedWeightKg >= heavyThresholdKg) {
       // 2-stage Ramp: 50% and 72% of working load
       let rawW1 = workingWeightKg * 0.5;
       if (equip === 'barbell') {
@@ -177,7 +184,6 @@ export function calculateWarmupPrescription(
       const w1 = roundToImplementIncrement(rawW1, equip);
 
       const rawW2 = workingWeightKg * 0.72;
-      const step = isDumbbell ? 2.0 : 2.5;
       let w2 = roundToImplementIncrement(rawW2, equip);
       if (w2 <= w1) {
         w2 = w1 + step;
@@ -208,13 +214,13 @@ export function calculateWarmupPrescription(
     }
 
     // Moderate compound (between 25kg and 40kg): 1 warmup set at ~60%
-    const rawW1 = Math.max(equip === 'barbell' ? 20 : 6, workingWeightKg * 0.6);
+    const rawW1 = Math.max(equip === 'barbell' ? 20 : 3, workingWeightKg * 0.6);
     const w1 = roundToImplementIncrement(rawW1, equip);
     return {
       count: 1,
       sets: [
         {
-          weightKg: Math.min(w1, workingWeightKg - (isDumbbell ? 2 : 2.5)),
+          weightKg: Math.min(w1, workingWeightKg - step),
           reps: 6,
           rir: 3,
           label: 'Acclimation Set (60%)',
@@ -226,10 +232,9 @@ export function calculateWarmupPrescription(
 
   // 6. Secondary Compound Movement (e.g. Incline DB Press after Bench Press)
   // Muscles are already warm; only motor angle acclimation is needed: 1 warmup set at ~60%
-  const step = isDumbbell ? 2.0 : 2.5;
-  const rawW = Math.max(isDumbbell ? 8 : 20, workingWeightKg * 0.6);
+  const rawW = Math.max(isDumbbell ? 4 : 20, workingWeightKg * 0.6);
   const w = roundToImplementIncrement(rawW, equip);
-  const finalW = Math.min(w, Math.max(isDumbbell ? 6 : 20, workingWeightKg - step));
+  const finalW = Math.min(w, Math.max(isDumbbell ? 3 : 20, workingWeightKg - step));
 
   return {
     count: 1,

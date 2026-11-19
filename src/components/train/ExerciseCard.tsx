@@ -16,6 +16,7 @@ import { triggerHaptic } from '../../utils/haptics';
 import { CoachSummaryText } from '../common/CoachSummaryText';
 import { ExerciseInsight } from '../../services/exerciseInsight';
 import { buildExerciseTrendSpec } from '../../services/exerciseDetails';
+import { usesOneDumbbell } from '../../engine/e1rm';
 import { TrendChart } from '../common/TrendChart';
 import { localDateString } from '../../utils/date';
 import { getBodyweightLoadRatio, isTimedExercise } from '../../engine/e1rm';
@@ -231,7 +232,9 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
         >
           <span role="columnheader">SET</span>
           <span role="columnheader">PREV</span>
-          <span role="columnheader">WEIGHT</span>
+          <span role="columnheader" title={exercise.equipment === 'dumbbell' && !usesOneDumbbell(exercise) ? 'Weight per dumbbell' : undefined}>
+            {exercise.equipment === 'dumbbell' && !usesOneDumbbell(exercise) ? 'PER DB' : 'WEIGHT'}
+          </span>
           <span role="columnheader">{isTimed ? 'TIME' : 'REPS'}</span>
           <span role="columnheader" title="Reps in reserve">RIR</span>
           <span role="columnheader">DONE</span>
@@ -271,6 +274,7 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
                   previous={previous}
                   isBodyweight={isBodyweightOnly}
                   isDumbbell={exercise.equipment === 'dumbbell'}
+                  isTwoDumbbell={exercise.equipment === 'dumbbell' && !usesOneDumbbell(exercise)}
                   isTimed={isTimed}
                   perSide={unilateral && perSide && !isWarm}
                   onUpdate={(updated) => onUpdateSet(s.id, updated)}

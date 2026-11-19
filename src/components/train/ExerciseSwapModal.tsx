@@ -203,7 +203,8 @@ export const ExerciseSwapModal: React.FC<ExerciseSwapModalProps> = ({
               {formatImplementWeightLabel(
                 currentWeight,
                 currentExercise.equipment,
-                currentExercise.isWeightedCalisthenic
+                currentExercise.isWeightedCalisthenic,
+                currentExercise
               )}
             </span>
           </div>
@@ -308,7 +309,7 @@ export const ExerciseSwapModal: React.FC<ExerciseSwapModalProps> = ({
                           : alt.isWeightedCalisthenic || alt.equipment === 'weighted_bodyweight'
                           ? `BW + ${units.format(convertedKg)}`
                           : alt.equipment === 'dumbbell' && !usesOneDumbbell(alt)
-                          ? `${units.format(convertedKg / 2)} each`
+                          ? `${units.format(convertedKg)} each`
                           : units.format(convertedKg)}
                       </span>
                       <span className="wk-caption">{rightDetail}</span>

@@ -174,7 +174,9 @@ export function calculateSubTierQuest(
     resistanceProfile?: 'lengthened' | 'mid' | 'shortened';
   },
   unit: WeightUnit = 'kg',
-  age?: number
+  age?: number,
+  exerciseId?: string,
+  exerciseName?: string
 ): SubTierQuest {
   const evalResult = evaluateStrengthStandard(pillar, currentE1rmKg, bodyweightEmaKg, gender, age);
   const targetE1rm = Math.round(evalResult.targetRatio * bodyweightEmaKg * 10) / 10;
@@ -213,7 +215,10 @@ export function calculateSubTierQuest(
     equipment,
     isRdl,
     isWeightedCalisthenic,
-    bodyweightEmaKg
+    bodyweightEmaKg,
+    exerciseId,
+    pillar,
+    exerciseName
   );
 
   const questTargetName = `${evalResult.nextTier} ${evalResult.nextSubDivision}`;

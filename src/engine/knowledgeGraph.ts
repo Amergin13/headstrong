@@ -230,12 +230,13 @@ export const EXERCISE_SCIENCE_KNOWLEDGE_BASE: ScientificPrinciple[] = [
     id: 'sp-db-multiplier',
     topic: 'Cross-Implement Continuity',
     title: 'Dumbbell Stabilizer Multiplier (1.18x)',
-    formula: 'Effective Barbell-Equivalent = Combined Dumbbell Weight × 1.18',
+    formula:
+      'Effective Barbell-Equivalent = Combined Dumbbell Weight × 1.18 (two-dumbbell lifts log per dumbbell, so Combined = 2 × Weight/DB)',
     scientificRationale:
       'Dumbbells require independent neuromuscular control across multiple rotational axes, recruiting rotator cuff and serratus stabilizers while exhibiting a bilateral force deficit compared to a rigid barbell bar.',
     academicCitation: 'Saeterbakken, van den Tillaar & Fimland (2011), J Sports Sci: dumbbell bench 1RM ~17% below barbell, so 1.18x is an approximation',
     practicalApplication:
-      'Allows seamless progressive overload when training with dumbbells at home. For example, pressing two 30 kg dumbbells (60 kg total) provides an authoritative 70.8 kg barbell bench press equivalent.',
+      'Allows seamless progressive overload when training with dumbbells at home or the gym. For paired lifts, Treise logs the weight per dumbbell (e.g. 24 kg) while calculating volume and strength equivalence against the combined pair load (48 kg total × 1.18 = 56.6 kg barbell bench equivalent).',
     keywords: ['dumbbell', 'dumbbells', 'db', 'dumbbell multiplier', '1.18', '1.18x', 'stabilizer', 'bilateral deficit', 'barbell equivalent', 'barbell vs dumbbell', 'single dumbbell', 'dumbbell bench'],
   },
   {
@@ -329,12 +330,12 @@ export const EXERCISE_SCIENCE_KNOWLEDGE_BASE: ScientificPrinciple[] = [
     id: 'sp-double-progression',
     topic: 'Progression Mechanics',
     title: 'Double Progression Auto-Regulation Logic',
-    formula: `Every set at the top of the rep range with >= ${PROGRESSION_RULES.minRirForProgress} rep in reserve (or the planned 0 RIR) -> +${PROGRESSION_RULES.barbellIncrementKg} kg barbell / +${PROGRESSION_RULES.dumbbellIncrementKg} kg dumbbell / +${PROGRESSION_RULES.otherIncrementKg} kg machine and cable (reps reset to bottom); inside the range across all sets -> same weight, +${PROGRESSION_RULES.repStep} rep until every set reaches the top; any working set below the bottom of the rep range -> reduce weight to match capacity (at least 1 step) and reset to bottom; ground-out 0 RIR sets or low recovery -> hold weight; never more than +${Math.round(PROGRESSION_RULES.maxSessionIncreaseFraction * 100)}% plus one step per session`,
+    formula: `Every set at the top of the rep range with >= ${PROGRESSION_RULES.minRirForProgress} rep in reserve (or the planned 0 RIR) -> +${PROGRESSION_RULES.barbellIncrementKg} kg barbell / +${PROGRESSION_RULES.dumbbellIncrementKg} kg dumbbell per hand / +${PROGRESSION_RULES.otherIncrementKg} kg machine and cable (reps reset to bottom); inside the range across all sets -> same weight, +${PROGRESSION_RULES.repStep} rep until every set reaches the top; any working set below the bottom of the rep range -> reduce weight to match capacity (at least 1 step) and reset to bottom; ground-out 0 RIR sets or low recovery -> hold weight; never more than +${Math.round(PROGRESSION_RULES.maxSessionIncreaseFraction * 100)}% plus one step per session`,
     scientificRationale:
       'Prevents both premature load jumps and chronically heavy grinding below the target repetition zone. Lifters first earn the bottom of the rep range across all working sets (dropping weight slightly if any set falls short of the minimum), accumulate repetitions at that constant load until every set hits the top of the range with 1+ RIR, and only then add load and reset to the bottom.',
     academicCitation: 'Helms, Morgan & Valdez (2019); Israetel, Feather & Helms (2020)',
     practicalApplication:
-      `Tells you exactly what to lift on each set across any rep range (for example 6–8). If you cannot hit the bottom (6) on every set, weight comes down so all sets stay in range; if every set hits at least 6, weight holds while you build toward 8 across every set; once every set hits 8 with reps in reserve, weight steps up by ${PROGRESSION_RULES.barbellIncrementKg} kg (${PROGRESSION_RULES.dumbbellIncrementKg} kg on dumbbells) and reps reset to 6. In fixed-rep 6-week plan workouts, hitting the target on every set steps weight up, while missing drops weight to match what you lifted.`,
+      `Tells you exactly what to lift on each set across any rep range (for example 6–8). If you cannot hit the bottom (6) on every set, weight comes down so all sets stay in range; if every set hits at least 6, weight holds while you build toward 8 across every set; once every set hits 8 with reps in reserve, weight steps up by ${PROGRESSION_RULES.barbellIncrementKg} kg (${PROGRESSION_RULES.dumbbellIncrementKg} kg per dumbbell) and reps reset to 6. In fixed-rep 6-week plan workouts, hitting the target on every set steps weight up, while missing drops weight to match what you lifted.`,
     keywords: ['double progression', 'progression', 'add weight', 'add rep', 'rep range', 'auto-regulation', 'overload', 'progressive overload'],
   },
   {

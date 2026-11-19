@@ -19,6 +19,7 @@ import {
   isTimedExercise,
   solveTargetWeightForE1RM,
   translateWeightBetweenImplements,
+  usesOneDumbbell,
 } from './e1rm';
 import { formatWeight, snapLoadKg, WeightUnit } from '../utils/units';
 
@@ -361,7 +362,7 @@ export function prescribeExerciseSwap(params: {
       : `Timed isometric hold calibrated at ${targetDurationSeconds}s @ controlled breathing`;
 
     return {
-      targetWeightKg: isPureBw ? 0 : snapLoadKg(targetWeightKg, unit),
+      targetWeightKg: isPureBw ? 0 : snapLoadKg(targetWeightKg, unit, targetDef.equipment),
       targetReps: 1,
       minReps: 1,
       maxReps: 1,
@@ -418,7 +419,7 @@ export function prescribeExerciseSwap(params: {
       goalPhase
     );
     const prescribedReps = dp.nextTargetReps[0] ?? minReps;
-    const prescribedWeight = isPureBw ? 0 : snapLoadKg(dp.nextWeightKg, unit);
+    const prescribedWeight = isPureBw ? 0 : snapLoadKg(dp.nextWeightKg, unit, targetDef.equipment);
     return {
       targetWeightKg: prescribedWeight,
       targetReps: prescribedReps,
@@ -455,7 +456,8 @@ export function prescribeExerciseSwap(params: {
       sourceExercise.isWeightedCalisthenic,
       bodyweightEmaKg,
       sourceExercise.exerciseId,
-      sourceExercise.pillar
+      sourceExercise.pillar,
+      sourceExercise.name
     );
     if (e1rm > sourceE1rmKg) sourceE1rmKg = e1rm;
   }
@@ -519,7 +521,9 @@ export function prescribeExerciseSwap(params: {
       fallbackTargetWeightKg && fallbackTargetWeightKg > 0
         ? fallbackTargetWeightKg
         : targetDef.equipment === 'dumbbell'
-        ? 16
+        ? usesOneDumbbell(targetDef)
+          ? 16
+          : 12
         : 30;
     rationale = isCrossFamily
       ? `Targets ${targetDef.primaryMuscle.toLowerCase()} • ${minReps}–${maxReps} reps @ ${targetRir} RIR`
@@ -527,7 +531,7 @@ export function prescribeExerciseSwap(params: {
   }
 
   return {
-    targetWeightKg: snapLoadKg(rawTargetWeightKg, unit),
+    targetWeightKg: snapLoadKg(rawTargetWeightKg, unit, targetDef.equipment),
     targetReps,
     minReps,
     maxReps,
@@ -723,7 +727,8 @@ export function prescribeDoubleProgression(
       sourceSession.isWeightedCalisthenic,
       bodyweightEmaKg,
       sourceSession.exerciseId,
-      sourceSession.pillar
+      sourceSession.pillar,
+      sourceSession.name
     );
     if (e1rm > canonicalE1rmKg) canonicalE1rmKg = e1rm;
   }

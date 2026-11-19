@@ -1,5 +1,5 @@
 import { WorkoutSession } from './types';
-import { getBodyweightLoadRatio } from './e1rm';
+import { getBodyweightLoadRatio, toCombinedExternalLoadKg } from './e1rm';
 
 /**
  * Calculates Heart Rate Reserve Percentage (HRR%):
@@ -18,6 +18,8 @@ export function calculateHrrPercentage(
 /**
  * Calculates Total Effective Tonnage from a workout session:
  * Tonnage = sum(effectiveWeight * reps) across completed dynamic working sets.
+ * Paired two-dumbbell exercises store weight per dumbbell (e.g. 24 kg) and contribute
+ * combined two-hand external load (e.g. 48 kg) to total session volume/tonnage.
  * When a measured bodyweight (`> 0`) is supplied, bodyweight and weighted-calisthenic
  * sets include their biomechanical bodyweight fraction alongside added load.
  * Timed holds / carries are counted in completedSetsCount without multiplying seconds as reps.
@@ -59,7 +61,8 @@ export function calculateSessionTonnage(
         continue;
       }
       if (s.actualReps && s.actualReps > 0) {
-        const addedWeight = s.actualWeightKg ?? s.targetWeightKg ?? 0;
+        const loggedWeight = s.actualWeightKg ?? s.targetWeightKg ?? 0;
+        const addedWeight = toCombinedExternalLoadKg(loggedWeight, ex);
         const effectiveWeight = bwLoad + addedWeight;
         tonnageKg += effectiveWeight * s.actualReps;
         completedSetsCount++;

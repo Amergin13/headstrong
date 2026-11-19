@@ -6,7 +6,7 @@
  * (zero fabricated metrics). Form guidance prefers `exercise.exerciseNotes` when supplied
  * by a program template and falls back cleanly to exercise-specific or movement-family cues.
  */
-import { calculateE1RM, isTimedExercise } from '../engine/e1rm';
+import { calculateE1RM, isTimedExercise, usesOneDumbbell } from '../engine/e1rm';
 import { calculate5StepWarmupRamp } from '../engine/muscleBuildingProgram';
 import { getMovementFamilyLabel, getMovementVectorId } from '../engine/progression';
 import { MUSCLE_FRIENDLY_NAMES, getWorkoutCompletedAt } from '../engine/recovery';
@@ -434,10 +434,13 @@ export function buildExerciseDetailModel(params: {
     : exercise.minReps === exercise.maxReps
     ? `${exercise.minReps} reps`
     : `${exercise.minReps}–${exercise.maxReps} reps`;
+  const isTwoDb = exercise.equipment === 'dumbbell' && !usesOneDumbbell(exercise);
   const loadStr = isBwZero
     ? 'Bodyweight'
     : firstWorking && firstWorking.targetWeightKg > 0
-    ? formatWeight(firstWorking.targetWeightKg)
+    ? isTwoDb
+      ? `${formatWeight(firstWorking.targetWeightKg)} each`
+      : formatWeight(firstWorking.targetWeightKg)
     : undefined;
   const rirVal = firstWorking?.targetRir;
   const targetParts = [
@@ -498,7 +501,8 @@ export function buildExerciseDetailModel(params: {
               match.isWeightedCalisthenic,
               bw,
               match.exerciseId,
-              match.pillar
+              match.pillar,
+              match.name
             );
             return Math.max(best, e1rm);
           }, 0);

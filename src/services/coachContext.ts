@@ -7,6 +7,7 @@
  */
 import { ActivityLog } from '../engine/activeDays';
 import { evaluateSessionRecovery, formatReadyTime, getWorkoutCompletedAt } from '../engine/recovery';
+import { usesOneDumbbell } from '../engine/e1rm';
 import { BiometricLog, ExerciseDefinition, ExerciseSession, ReadinessState, UserProfile, WorkoutSession, WorkoutSet, isWhoopConfigured } from '../engine/types';
 import { GOAL_DISPLAY_NAME } from '../utils/goalNames';
 import { WeightUnit, formatPreciseWeight, formatWeight } from '../utils/units';
@@ -68,7 +69,7 @@ function workoutOpening(input: CoachOpeningInput, unit: WeightUnit): CoachOpenin
       const firstWorking = workingEx[0];
       const targetLine = firstWorking
         ? firstWorking.targetWeightKg > 0
-          ? `${workingEx.length} sets × ${firstWorking.targetReps} reps at ${formatWeight(firstWorking.targetWeightKg, unit)}`
+          ? `${workingEx.length} sets × ${firstWorking.targetReps} reps at ${formatWeight(firstWorking.targetWeightKg, unit)}${target.equipment === 'dumbbell' && !usesOneDumbbell(target) ? ' each' : ''}`
           : `${workingEx.length} sets × ${firstWorking.targetReps} reps`
         : `${target.sets.length} sets`;
       const hooks: CoachHook[] = [
@@ -99,7 +100,10 @@ function workoutOpening(input: CoachOpeningInput, unit: WeightUnit): CoachOpenin
   }
   const working = activeWorkout.exercises.flatMap((ex) => ex.sets.filter(isWorking));
   const done = working.filter((s) => s.completed).length;
-  const load = (ex: ExerciseSession, set: WorkoutSet) => (set.targetWeightKg > 0 ? `${set.targetReps} reps at ${formatWeight(set.targetWeightKg, unit)}` : `${set.targetReps} reps`);
+  const load = (ex: ExerciseSession, set: WorkoutSet) =>
+    set.targetWeightKg > 0
+      ? `${set.targetReps} reps at ${formatWeight(set.targetWeightKg, unit)}${ex.equipment === 'dumbbell' && !usesOneDumbbell(ex) ? ' each' : ''}`
+      : `${set.targetReps} reps`;
 
   if (done > 0) {
     // In a session: the exercise the athlete is on.
