@@ -40,7 +40,7 @@ import {
 import { PlateCalculatorModal } from '../components/train/PlateCalculatorModal';
 import { ExerciseSwapModal } from '../components/train/ExerciseSwapModal';
 import { AICoachChatModal } from '../components/assistant/AICoachChatModal';
-import { OnboardingModal } from '../components/onboarding/OnboardingModal';
+import { ONBOARDING_LOCATION_STEP, OnboardingModal } from '../components/onboarding/OnboardingModal';
 import { TimelineToggle } from '../components/analytics/TimelineToggle';
 import { GoalPhaseSwitcher } from '../components/program/GoalPhaseSwitcher';
 import { ProgramAdaptationCarousel } from '../components/program/ProgramAdaptationCarousel';
@@ -1596,7 +1596,7 @@ export const DesignSystemContent: React.FC<{
             </span>
             <h2 className="wk-title mt-1">3-step onboarding, habit framing &amp; location setup</h2>
             <p className="wk-body mt-1 max-w-prose">
-              Rendered from the live <code>OnboardingModal</code> component using lean progressive disclosure across Step 1 (Identity + Goal), Step 2 (24 sessions + Weekly rhythm &amp; optional habit anchor),
+              Rendered from the live <code>OnboardingModal</code> component using lean progressive disclosure across Step 1 (Identity + Goal), Step 2 (Weekly rhythm &amp; optional habit anchor), Step 3 (Dedicated Health Connect prompt), Step 4 (Skippable lean baseline stats), and Step 5 (Place, experience &amp; launch).
               Step 3 (Restarting + Place, conditional Home gear &amp; Experience), and the returning athlete &quot;Where you train&quot; editor.
             </p>
           </div>
@@ -1634,18 +1634,47 @@ export const DesignSystemContent: React.FC<{
                   onClose={() => undefined}
                 />
               </div>
+              <StageHeader
+                title="Step 3 of 5 · Connect Health Connect"
+                source="src/components/onboarding/OnboardingModal.tsx"
+                description="Dedicated prompt to pull in weight, height, sleep, recovery, steps &amp; workout history on Android (or import JSON on web), with a direct path to manual stats or skip."
+              />
+              <div className="rounded-[var(--radius-card)] overflow-hidden border" style={{ borderColor: 'var(--color-border-subtle)' }}>
+                <OnboardingModal
+                  inline
+                  initialStep={3}
+                  profile={fixtures.onboardingNewProfile}
+                  onCompleteOnboarding={() => setShowToast(true)}
+                  onClose={() => undefined}
+                />
+              </div>
+
+              <StageHeader
+                title="Step 4 of 5 · Lean baseline stats (skippable)"
+                source="src/components/onboarding/OnboardingModal.tsx"
+                description="Optional sex, weight, height, age, resting HR &amp; sleep fallback when Health Connect isn't connected — 100% skippable with zero fabricated defaults."
+              />
+              <div className="rounded-[var(--radius-card)] overflow-hidden border" style={{ borderColor: 'var(--color-border-subtle)' }}>
+                <OnboardingModal
+                  inline
+                  initialStep={4}
+                  profile={fixtures.onboardingNewProfile}
+                  onCompleteOnboarding={() => setShowToast(true)}
+                  onClose={() => undefined}
+                />
+              </div>
             </PhoneStage>
 
             <PhoneStage className="space-y-5">
               <StageHeader
-                title="Step 3 of 3 · Place, experience &amp; launch"
+                title="Step 5 of 5 · Place, experience &amp; launch"
                 source="src/components/onboarding/OnboardingModal.tsx"
                 description="Lean setup with conditional Home gear (revealed only when Home is selected), experience calibration, collapsed fine-tune drawer, and ready-to-launch summary."
               />
               <div className="rounded-[var(--radius-card)] overflow-hidden border" style={{ borderColor: 'var(--color-border-subtle)' }}>
                 <OnboardingModal
                   inline
-                  initialStep={3}
+                  initialStep={5}
                   profile={fixtures.onboardingNewProfile}
                   onCompleteOnboarding={() => setShowToast(true)}
                   onClose={() => undefined}
@@ -1660,7 +1689,7 @@ export const DesignSystemContent: React.FC<{
               <div className="rounded-[var(--radius-card)] overflow-hidden border" style={{ borderColor: 'var(--color-border-subtle)' }}>
                 <OnboardingModal
                   inline
-                  initialStep={3}
+                  initialStep={ONBOARDING_LOCATION_STEP}
                   profile={fixtures.onboardingReturningProfile}
                   onCompleteOnboarding={() => setShowToast(true)}
                   onClose={() => setShowToast(true)}
@@ -3246,7 +3275,7 @@ export const DesignSystemContent: React.FC<{
       )}
       {openModal === 'onboarding-edit' && (
         <OnboardingModal
-          initialStep={3}
+          initialStep={ONBOARDING_LOCATION_STEP}
           profile={fixtures.onboardingReturningProfile}
           onCompleteOnboarding={() => {
             setOpenModal(null);

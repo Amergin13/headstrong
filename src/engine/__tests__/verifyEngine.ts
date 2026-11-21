@@ -1046,9 +1046,11 @@ assert(
     !onboardingModalSrc.includes('Other programs') &&
     onboardingModalSrc.includes('Where will you train?') &&
     onboardingModalSrc.includes('What do you have at home?') &&
+    onboardingModalSrc.includes("title: 'Connect Health Connect'") &&
+    onboardingModalSrc.includes("title: 'Your baseline stats'") &&
     onboardingModalSrc.includes('Start my first workout') &&
-    onboardingModalSrc.includes('aria-valuemax={3}'),
-  `Onboarding is 3 illustrated screens (identity, the plan's sessions, restarting); the last one picks the goal and place (no program list), then delivers workout 1`
+    onboardingModalSrc.includes('aria-valuemax={ONBOARDING_TOTAL_STEPS}'),
+  `Onboarding is 5 illustrated screens (identity, the plan's sessions, Health Connect, skippable baseline stats, restarting/place); then delivers workout 1`
 );
 
 const appSrc = fs.readFileSync(
@@ -15913,35 +15915,45 @@ Exercise,,Date,Workout,Sets,Reps,Tempo,Rest,Notes,Set 1,Set 2,Set 3,Set 4
     );
     const step1SectionIdx = onboardingSrc70.indexOf('{step === 1 && !editing && (');
     const step2SectionIdx = onboardingSrc70.indexOf('{step === 2 && !editing && (');
-    const step3SectionIdx = onboardingSrc70.indexOf('{isLast && (');
+    const step3SectionIdx = onboardingSrc70.indexOf('{step === 3 && !editing && (');
+    const step4SectionIdx = onboardingSrc70.indexOf('{step === 4 && !editing && (');
+    const step5SectionIdx = onboardingSrc70.indexOf('{isLast && (');
     const step1Slice = onboardingSrc70.slice(step1SectionIdx, step2SectionIdx);
     const step2Slice = onboardingSrc70.slice(step2SectionIdx, step3SectionIdx);
-    const step3Slice = onboardingSrc70.slice(step3SectionIdx);
+    const step3Slice = onboardingSrc70.slice(step3SectionIdx, step4SectionIdx);
+    const step4Slice = onboardingSrc70.slice(step4SectionIdx, step5SectionIdx);
+    const step5Slice = onboardingSrc70.slice(step5SectionIdx);
 
     assert(
       step1SectionIdx > 0 &&
         step2SectionIdx > step1SectionIdx &&
         step3SectionIdx > step2SectionIdx &&
+        step4SectionIdx > step3SectionIdx &&
+        step5SectionIdx > step4SectionIdx &&
         step1Slice.includes("What's your goal?") &&
         step2Slice.includes('How do you want to fit in 4 sessions a week?') &&
         step2Slice.includes('Optional habit anchor') &&
         step2Slice.includes('aria-expanded={showHabitAnchorDrawer}') &&
+        step3Slice.includes('Health Connect') &&
+        step4Slice.includes('Sex (optional') &&
         onboardingSrc70.includes('const [showHabitAnchorDrawer, setShowHabitAnchorDrawer] = useState<boolean>(false);') &&
         onboardingSrc70.includes('const [showFineTuneDrawer, setShowFineTuneDrawer] = useState<boolean>(false);'),
-      'Onboarding distributes essential choices cleanly across Steps 1–3 and defaults optional habit-anchor and fine-tune drawers to collapsed'
+      'Onboarding distributes essential choices cleanly across Steps 1–5 (Goal, Rhythm, Health Connect, Skippable Baseline Stats, Place/Launch) and defaults optional drawers to collapsed'
     );
 
     assert(
-      step3Slice.includes('Where will you train?') &&
-        step3Slice.includes("{(location === 'home' || (editing && showHomeGearFallback)) && (") &&
-        step3Slice.includes('What do you have at home?') &&
+      step5Slice.includes('Where will you train?') &&
+        step5Slice.includes("{(location === 'home' || (editing && showHomeGearFallback)) && (") &&
+        step5Slice.includes('What do you have at home?') &&
         !step1Slice.includes('What do you have at home?') &&
         !step2Slice.includes('What do you have at home?') &&
+        !step3Slice.includes('What do you have at home?') &&
+        !step4Slice.includes('What do you have at home?') &&
         onboardingSrc70.includes("location === 'home' || (editing && showHomeGearFallback) ? homeEquipment : editing ? profile.homeEquipment || [] : []") &&
-        step3Slice.includes('Fine-tune setup (optional)') &&
-        step3Slice.includes('aria-expanded={showFineTuneDrawer}') &&
-        step3Slice.includes('Ready to launch'),
-      'Home equipment is strictly gated on selecting Home (never persisted for Gym/Bodyweight new signups) and Step 3 tucks secondary options under Fine-tune setup with a launch summary'
+        step5Slice.includes('Fine-tune setup (optional)') &&
+        step5Slice.includes('aria-expanded={showFineTuneDrawer}') &&
+        step5Slice.includes('Ready to launch'),
+      'Home equipment is strictly gated on selecting Home (never persisted for Gym/Bodyweight new signups) and Step 5 tucks secondary options under Fine-tune setup with a launch summary'
     );
   }
 
@@ -16529,7 +16541,87 @@ Exercise,,Date,Workout,Sets,Reps,Tempo,Rest,Notes,Set 1,Set 2,Set 3,Set 4
     );
   }
 
-  console.log('\nALL 73 ENGINE, GOVERNANCE, DESIGN SYSTEM, TYPOGRAPHY, WEARABLES, WHOOP STRAIN, GOOGLE AUTH, ONBOARDING CONTEXT, 6-WEEK PROGRAM, SPREADSHEET IMPORT, AI COACH ACTIONS, GEMINI FLASH + KG, OOUX, AGENTIC COACH, PRODUCT UPGRADES, INFO EXPERIENCE, CONTENT DESIGN, GOAL CAROUSEL, SHIFT NUDGE COLOR POLISH, EXERCISE DRILL-IN MODAL, COMPOSITION WIDGET, MEASUREMENT UX, AI-NATIVE ACTIONS, PERMANENT PROGRAM ADAPTATION, HITL INTERVENTION, REP-RANGE DOUBLE PROGRESSION, TWO-DUMBBELL PER-HAND LOGGING, AI-NATIVE CONVERSATIONAL DESIGN, P0 CLOSED-BETA READINESS, P1 GYM-FLOOR ACTIVATION, MACROFACTOR EXERCISE SCIENCE, AI PERSONALISATION/MEMORY, LEAN PROGRESSIVE ONBOARDING, CROSS-SURFACE AI ECONOMY, EXERCISE CARD DECLUTTERING & ADAPTATION CAROUSEL SUITES PASSED SUCCESSFULLY! 🎯');
+  // ---------------------------------------------------------------------------
+  // 74. Onboarding Dedicated Health Connect Screen & Lean Skippable Baseline Stats
+  // ---------------------------------------------------------------------------
+  console.log('\n--- 74. Onboarding Dedicated Health Connect Screen & Lean Skippable Baseline Stats ---');
+  {
+    const fs74 = require('fs');
+    const path74 = require('path');
+    const {
+      importFromHealthConnectJson: importJson74,
+      formatOnboardingHealthSummary: formatHcSum74,
+    } = await import('../../services/onboardingHealthImport');
+
+    // 1. JSON export import pulls real weight, height, recovery/steps history & optional profile fields without inventing missing metrics.
+    const sampleExport74 = JSON.stringify({
+      profile: { sex: 'female', age: 31 },
+      records: [
+        { type: 'WeightRecord', time: '2026-11-18T07:30:00Z', weightKg: 64.2 },
+        { type: 'HeightRecord', time: '2026-11-18T07:30:00Z', height: { inMeters: 1.68 } },
+        { type: 'RestingHeartRateRecord', time: '2026-11-18T07:30:00Z', beatsPerMinute: 56 },
+        { type: 'SleepSessionRecord', startTime: '2026-11-17T23:00:00Z', endTime: '2026-11-18T06:45:00Z' },
+        { type: 'StepsRecord', time: '2026-11-18T18:00:00Z', count: 9400 },
+        { type: 'WeightRecord', time: '2026-11-20T07:30:00Z', weightKg: 63.8 },
+      ],
+    });
+    const parsed74 = importJson74(sampleExport74);
+    const summaryKg74 = formatHcSum74(parsed74, 'kg');
+    const emptyParsed74 = importJson74(JSON.stringify({ records: [] }));
+    const emptySummary74 = formatHcSum74(emptyParsed74, 'kg');
+    let threwOnBadJson74 = false;
+    try {
+      importJson74('{not valid json');
+    } catch {
+      threwOnBadJson74 = true;
+    }
+    assert(
+      parsed74.latestBodyweightKg === 63.8 &&
+        parsed74.latestHeightCm === 168 &&
+        parsed74.latestRestingHr === 56 &&
+        parsed74.avgSleepHours === 7.8 &&
+        parsed74.gender === 'female' &&
+        parsed74.age === 31 &&
+        parsed74.biometricDaysCount === 2 &&
+        summaryKg74.includes('63.8 kg') &&
+        summaryKg74.includes('168 cm') &&
+        summaryKg74.includes('2 days of health history') &&
+        emptyParsed74.latestBodyweightKg === undefined &&
+        emptyParsed74.gender === undefined &&
+        /no recent Health Connect records/i.test(emptySummary74) &&
+        threwOnBadJson74,
+      `Onboarding Health Connect importer extracts real stats/history cleanly without fabricating defaults (got "${summaryKg74}")`
+    );
+
+    // 2. Static wiring checks: dedicated Step 3 Health Connect screen, Step 4 lean skippable stats form (blank by default),
+    //    App persistence of imported history & explicit manual fields, and native READ_HEIGHT support.
+    const obSrc74 = fs74.readFileSync(path74.join(process.cwd(), 'src/components/onboarding/OnboardingModal.tsx'), 'utf8');
+    const appSrc74 = fs74.readFileSync(path74.join(process.cwd(), 'src/App.tsx'), 'utf8');
+    const hcKt74 = fs74.readFileSync(path74.join(process.cwd(), 'app/src/main/java/com/headstrong/app/HealthConnectBridge.kt'), 'utf8');
+    const manifest74 = fs74.readFileSync(path74.join(process.cwd(), 'app/src/main/AndroidManifest.xml'), 'utf8');
+    assert(
+      obSrc74.includes("title: 'Connect Health Connect'") &&
+        obSrc74.includes("title: 'Your baseline stats'") &&
+        obSrc74.includes('requestHealthConnectPermission()') &&
+        obSrc74.includes('importFromHealthConnectBridge()') &&
+        obSrc74.includes('importFromHealthConnectJson(') &&
+        obSrc74.includes("useState<Gender | null>(returning && profile.sexEntered ? profile.gender : null)") &&
+        obSrc74.includes("Skip for now") &&
+        obSrc74.includes("Enter stats manually") &&
+        appSrc74.includes('ONBOARDING_LOCATION_STEP') &&
+        appSrc74.includes('setup.importedBiometrics') &&
+        appSrc74.includes('setup.importedActivities') &&
+        appSrc74.includes('setup.manualBaselineBiometric') &&
+        appSrc74.includes('athlete.sexEntered') &&
+        appSrc74.includes('athlete.ageEntered') &&
+        appSrc74.includes('athlete.measuredHeightCm') &&
+        hcKt74.includes('HEIGHT_PERMISSION') &&
+        manifest74.includes('android.permission.health.READ_HEIGHT'),
+      'Dedicated Health Connect onboarding step, lean skippable baseline stats fallback, App persistence, and native READ_HEIGHT permission are wired cleanly end-to-end'
+    );
+  }
+
+  console.log('\nALL 74 ENGINE, GOVERNANCE, DESIGN SYSTEM, TYPOGRAPHY, WEARABLES, WHOOP STRAIN, GOOGLE AUTH, ONBOARDING CONTEXT, 6-WEEK PROGRAM, SPREADSHEET IMPORT, AI COACH ACTIONS, GEMINI FLASH + KG, OOUX, AGENTIC COACH, PRODUCT UPGRADES, INFO EXPERIENCE, CONTENT DESIGN, GOAL CAROUSEL, SHIFT NUDGE COLOR POLISH, EXERCISE DRILL-IN MODAL, COMPOSITION WIDGET, MEASUREMENT UX, AI-NATIVE ACTIONS, PERMANENT PROGRAM ADAPTATION, HITL INTERVENTION, REP-RANGE DOUBLE PROGRESSION, TWO-DUMBBELL PER-HAND LOGGING, AI-NATIVE CONVERSATIONAL DESIGN, P0 CLOSED-BETA READINESS, P1 GYM-FLOOR ACTIVATION, MACROFACTOR EXERCISE SCIENCE, AI PERSONALISATION/MEMORY, LEAN PROGRESSIVE ONBOARDING, CROSS-SURFACE AI ECONOMY, EXERCISE CARD DECLUTTERING, ADAPTATION CAROUSEL & HEALTH CONNECT ONBOARDING SUITES PASSED SUCCESSFULLY! 🎯');
 })().catch((err) => {
   console.error('Test Suite Failed:', err);
   if (typeof process !== 'undefined' && process.exit) {

@@ -172,3 +172,61 @@ export const RestartIllustration: React.FC = () => (
     <circle className="ob-pop" cx="344" cy="16" r="6" fill="var(--color-accent-primary)" style={{ animationDelay: '720ms' }} />
   </svg>
 );
+
+/** Health Connect: on-device biometric signals (pulse, recovery, weight, history) flowing cleanly into Treise. */
+export const HealthConnectIllustration: React.FC = () => (
+  <svg viewBox="0 0 320 140" className="w-full h-full" role="img" aria-label="On-device health signals flowing into Treise">
+    <defs>
+      <radialGradient id="ob-hc-glow" cx="50%" cy="50%" r="50%">
+        <stop offset="0%" stopColor="var(--color-accent-primary)" stopOpacity="0.22" />
+        <stop offset="100%" stopColor="var(--color-bg-canvas)" stopOpacity="0" />
+      </radialGradient>
+    </defs>
+    <circle className="ob-glow" cx="160" cy="70" r="56" fill="url(#ob-hc-glow)" />
+    <circle cx="160" cy="70" r="40" fill="none" stroke="var(--color-border-strong)" strokeWidth="1.5" strokeDasharray="3 5" />
+    <circle cx="160" cy="70" r="24" fill="var(--color-status-positive-soft)" stroke="var(--color-accent-primary)" strokeWidth="2" />
+    <path
+      className="ob-draw"
+      d="M52 70 H118 L132 70 L142 46 L154 92 L166 56 L176 70 H268"
+      fill="none"
+      stroke="var(--color-accent-primary)"
+      strokeWidth="3"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      pathLength={1}
+      style={{ animationDelay: '120ms', animationDuration: '680ms' }}
+    />
+    {[52, 268].map((cx, i) => (
+      <circle
+        key={cx}
+        className="ob-pop"
+        cx={cx}
+        cy="70"
+        r="5"
+        fill={i === 1 ? 'var(--color-accent-primary)' : 'var(--color-status-neutral)'}
+        style={{ animationDelay: `${200 + i * 420}ms` }}
+      />
+    ))}
+  </svg>
+);
+
+/** Baseline stats: calm calibration scale & markers representing optional starting stats. */
+export const BaselineStatsIllustration: React.FC = () => (
+  <svg viewBox="0 0 320 120" className="w-full h-full" role="img" aria-label="Calibration markers for baseline stats">
+    <line x1="36" x2="284" y1="68" y2="68" stroke="var(--color-border-strong)" strokeWidth="2" strokeLinecap="round" />
+    {[60, 110, 160, 210, 260].map((x, idx) => (
+      <line
+        key={x}
+        x1={x}
+        x2={x}
+        y1={idx === 2 ? 44 : 56}
+        y2="68"
+        stroke={idx === 2 ? 'var(--color-accent-primary)' : 'var(--color-status-neutral)'}
+        strokeWidth={idx === 2 ? '3' : '2'}
+        strokeLinecap="round"
+      />
+    ))}
+    <circle className="ob-glow" cx="160" cy="40" r="14" fill="var(--color-accent-primary)" fillOpacity="0.2" />
+    <circle className="ob-pop" cx="160" cy="40" r="6" fill="var(--color-accent-primary)" style={{ animationDelay: '180ms' }} />
+  </svg>
+);

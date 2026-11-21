@@ -165,6 +165,7 @@ const expectedReadHealthPermissions = [
   'READ_RESTING_HEART_RATE',
   'READ_HEART_RATE_VARIABILITY',
   'READ_WEIGHT',
+  'READ_HEIGHT',
   'READ_BODY_FAT',
 ];
 const allowedReadPattern = new RegExp(

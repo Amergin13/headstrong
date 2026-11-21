@@ -127,7 +127,14 @@ import { RestTimerModal } from './components/common/RestTimerModal';
 import { Toast } from './components/common/Toast';
 import { TrainTab } from './components/train/TrainTab';
 import { WatchSyncModal } from './components/program/WatchSyncModal';
-import { OnboardingModal } from './components/onboarding/OnboardingModal';
+import {
+  ONBOARDING_LOCATION_STEP,
+  OnboardingModal,
+  OnboardingModalProps,
+  OnboardingStep,
+} from './components/onboarding/OnboardingModal';
+import { mergeDetectedActivities } from './engine/activeDays';
+import { loadDismissedActivityIds } from './services/storage';
 import { GoogleAuthModal } from './components/auth/GoogleAuthModal';
 import { localDateString } from './utils/date';
 
@@ -196,7 +203,7 @@ export const App: React.FC = () => {
   const [logActivityOpen, setLogActivityOpen] = useState(false);
   const [activityAppsOpen, setActivityAppsOpen] = useState(false);
   const [competitorImportOpen, setCompetitorImportOpen] = useState(false);
-  const [onboardingInitialStep, setOnboardingInitialStep] = useState<1 | 2 | 3>(1);
+  const [onboardingInitialStep, setOnboardingInitialStep] = useState<OnboardingStep>(1);
   const [deferredInstallPrompt, setDeferredInstallPrompt] = useState<any>(null);
   const [toast, setToast] = useState<{ title?: string; message: string; tag?: string } | null>(null);
 
@@ -764,23 +771,8 @@ export const App: React.FC = () => {
     setActiveWorkout(fillWeightless(adapted));
   };
 
-  // Handler: Complete Onboarding / Goals & Equipment Setup
-  const handleCompleteOnboarding = (setup: {
-    goalPhase: GoalPhase;
-    programType: ProgramSplitType;
-    activeLocation: TrainingLocation;
-    availableLocations: TrainingLocation[];
-    homeEquipment: HomeEquipmentTag[];
-    athlete?: {
-      gender: UserProfile['gender'];
-      experienceLevel: NonNullable<UserProfile['experienceLevel']>;
-      weightUnit: NonNullable<UserProfile['weightUnit']>;
-      bodyweightKg?: number;
-    };
-    showRirTracking?: boolean;
-    habitAnchor?: UserProfile['habitAnchor'];
-    ownGoal?: { exerciseId: string; metric: 'weight' | 'reps' | 'steps'; target: number };
-  }) => {
+  // Handler: Complete Onboarding / Goals, Health Connect, Baseline Stats & Equipment Setup
+  const handleCompleteOnboarding: OnboardingModalProps['onCompleteOnboarding'] = (setup) => {
     const athlete = setup.athlete;
     const startingBodyweight = athlete?.bodyweightKg && athlete.bodyweightKg > 0 ? athlete.bodyweightKg : undefined;
     const ownLiftDef = setup.ownGoal ? exercises.find((e) => e.id === setup.ownGoal!.exerciseId) : undefined;
@@ -803,8 +795,19 @@ export const App: React.FC = () => {
       ...(athlete
         ? {
             gender: athlete.gender,
+            ...(athlete.sexEntered ? { sexEntered: true } : {}),
+            ...(athlete.age && athlete.ageEntered ? { age: athlete.age, ageEntered: true } : {}),
+            ...(athlete.measuredHeightCm ? { measuredHeightCm: athlete.measuredHeightCm, heightCm: athlete.measuredHeightCm } : {}),
             experienceLevel: athlete.experienceLevel,
             weightUnit: athlete.weightUnit,
+          }
+        : {}),
+      ...(setup.healthConnectConnected
+        ? {
+            healthConnectConnected: true,
+            healthConnectActivities: true,
+            wearableSource: prev.wearableSource ?? 'health_connect',
+            healthConnectLastSync: new Date().toISOString(),
           }
         : {}),
       ...(setup.showRirTracking !== undefined
@@ -821,28 +824,66 @@ export const App: React.FC = () => {
       ...(ownGoalFromSetup ? { goalSettings: { ...prev.goalSettings, customGoals: [...(prev.goalSettings?.customGoals ?? []).filter((g) => g.id !== ownGoalFromSetup.id), ownGoalFromSetup].slice(-MAX_CUSTOM_GOALS) } } : {}),
     }));
 
-    // Record the starting bodyweight so DOTS and calibration use the real number from day one.
-    if (startingBodyweight) {
+    // Merge real historical biometrics from Health Connect AND/OR explicit manual baseline entries (never overwriting with 0).
+    if ((setup.importedBiometrics && setup.importedBiometrics.length > 0) || setup.manualBaselineBiometric || startingBodyweight) {
       const todayStr = localDateString();
       setBiometrics((prev) => {
-        const idx = prev.findIndex((b) => b.date === todayStr);
-        if (idx >= 0) {
-          return prev.map((b, i) => (i === idx ? { ...b, bodyweightKg: startingBodyweight } : b));
+        const byDate = new Map<string, BiometricLog>();
+        for (const item of prev) byDate.set(item.date, { ...item });
+
+        // 1. Merge real Health Connect history first (filling only missing/zero fields on existing days).
+        for (const incoming of setup.importedBiometrics ?? []) {
+          const existing = byDate.get(incoming.date);
+          if (!existing) {
+            byDate.set(incoming.date, { ...incoming });
+          } else {
+            byDate.set(incoming.date, {
+              ...existing,
+              bodyweightKg: existing.bodyweightKg > 0 ? existing.bodyweightKg : incoming.bodyweightKg,
+              hrvRmssd: existing.hrvRmssd > 0 ? existing.hrvRmssd : incoming.hrvRmssd,
+              restingHr: existing.restingHr > 0 ? existing.restingHr : incoming.restingHr,
+              sleepHours: existing.sleepHours > 0 ? existing.sleepHours : incoming.sleepHours,
+              steps: existing.steps > 0 ? existing.steps : incoming.steps,
+              activeZoneMinutes: existing.activeZoneMinutes > 0 ? existing.activeZoneMinutes : incoming.activeZoneMinutes,
+              vo2Max: (existing.vo2Max || 0) > 0 ? existing.vo2Max : incoming.vo2Max,
+              bodyFatPct: existing.bodyFatPct && existing.bodyFatPct > 0 ? existing.bodyFatPct : incoming.bodyFatPct,
+            });
+          }
         }
-        return [
-          ...prev,
-          {
-            date: todayStr,
-            bodyweightKg: startingBodyweight,
-            hrvRmssd: 0,
-            restingHr: 0,
-            sleepHours: 0,
-            steps: 0,
-            activeZoneMinutes: 0,
-            isManualEntry: true,
-          } as BiometricLog,
-        ];
+
+        // 2. Apply explicit manual baseline fields onto today's record (only fields the athlete actually entered).
+        const manual = setup.manualBaselineBiometric;
+        const explicitTodayWeight = manual?.bodyweightKg ?? (!setup.importedBiometrics?.length ? startingBodyweight : undefined);
+        if (explicitTodayWeight || manual?.restingHr || manual?.sleepHours) {
+          const existingToday = byDate.get(todayStr);
+          if (existingToday) {
+            byDate.set(todayStr, {
+              ...existingToday,
+              ...(explicitTodayWeight ? { bodyweightKg: explicitTodayWeight } : {}),
+              ...(manual?.restingHr ? { restingHr: manual.restingHr } : {}),
+              ...(manual?.sleepHours ? { sleepHours: manual.sleepHours } : {}),
+            });
+          } else {
+            byDate.set(todayStr, {
+              date: todayStr,
+              bodyweightKg: explicitTodayWeight || 0,
+              hrvRmssd: 0,
+              restingHr: manual?.restingHr || 0,
+              sleepHours: manual?.sleepHours || 0,
+              steps: 0,
+              activeZoneMinutes: 0,
+              isManualEntry: true,
+            });
+          }
+        }
+
+        return Array.from(byDate.values()).sort((a, b) => a.date.localeCompare(b.date));
       });
+    }
+
+    // Merge recent workouts imported from Health Connect into active days cleanly.
+    if (setup.importedActivities && setup.importedActivities.length > 0) {
+      setActivities((prev) => mergeDetectedActivities(prev, setup.importedActivities!, loadDismissedActivityIds()).merged);
     }
 
     // Re-running setup (e.g. to edit equipment) must not throw away a workout in progress.
@@ -1501,7 +1542,7 @@ export const App: React.FC = () => {
             activities={activities}
             onLogActivity={() => setLogActivityOpen(true)}
             onOpenOnboarding={() => {
-              setOnboardingInitialStep(3);
+              setOnboardingInitialStep(ONBOARDING_LOCATION_STEP);
               setOnboardingOpen(true);
             }}
             activeWorkoutName={activeWorkout.name}
@@ -1587,7 +1628,7 @@ export const App: React.FC = () => {
           onViewAllEquipment={() => {
             setAiCoachOpen(false);
             setCoachLaunchRequest(null);
-            setOnboardingInitialStep(3);
+            setOnboardingInitialStep(ONBOARDING_LOCATION_STEP);
             setOnboardingOpen(true);
           }}
         />

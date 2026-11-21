@@ -1,8 +1,9 @@
 import { OWN_GOAL_OPTIONS, makeCustomGoal } from '../../services/athleteGoals';
-import { unitToKg } from '../../utils/units';
+import { formatWeight, kgToUnit, unitToKg, WeightUnit } from '../../utils/units';
 import React, { useEffect, useId, useRef, useState } from 'react';
-import { Check, ChevronDown, ChevronLeft, X } from 'lucide-react';
+import { Activity, Check, ChevronDown, ChevronLeft, Upload, X } from 'lucide-react';
 import {
+  BiometricLog,
   CustomGoal,
   ExperienceLevel,
   Gender,
@@ -16,16 +17,38 @@ import {
   WeekdayShort,
   resolveRirTrackingEnabled,
 } from '../../engine/types';
+import { DetectedActivity } from '../../engine/activeDays';
 import { triggerHaptic } from '../../utils/haptics';
-import { WeightUnit } from '../../utils/units';
 import { canUseMusclePlan, resolveActivePlan } from '../../engine/trainingPlans';
-import { IdentityIllustration, RestartIllustration, SessionsIllustration } from './OnboardingIllustrations';
+import {
+  getHealthConnectStatus,
+  HealthConnectStatus,
+  onHealthConnectStatus,
+  requestHealthConnectPermission,
+  startHealthConnectBridge,
+} from '../../services/healthConnectBridge';
+import {
+  formatOnboardingHealthSummary,
+  importFromHealthConnectBridge,
+  importFromHealthConnectJson,
+  OnboardingHealthImportResult,
+} from '../../services/onboardingHealthImport';
+import {
+  BaselineStatsIllustration,
+  HealthConnectIllustration,
+  IdentityIllustration,
+  RestartIllustration,
+  SessionsIllustration,
+} from './OnboardingIllustrations';
 
-export type OnboardingStep = 1 | 2 | 3;
+export type OnboardingStep = 1 | 2 | 3 | 4 | 5;
+export const ONBOARDING_TOTAL_STEPS = 5;
+/** Step index for the standalone "Where you train" editor opened from Settings/Program. */
+export const ONBOARDING_LOCATION_STEP: OnboardingStep = 5;
 
 export interface OnboardingModalProps {
   profile: UserProfile;
-  /** 3 opens straight on the location choice (used to edit training location & home equipment later). */
+  /** Pass ONBOARDING_LOCATION_STEP (5) to open straight on the location choice (used to edit training location & home equipment later). */
   initialStep?: OnboardingStep;
   onCompleteOnboarding: (updated: {
     goalPhase: GoalPhase;
@@ -35,10 +58,26 @@ export interface OnboardingModalProps {
     homeEquipment: HomeEquipmentTag[];
     athlete?: {
       gender: Gender;
+      sexEntered?: boolean;
+      age?: number;
+      ageEntered?: boolean;
+      measuredHeightCm?: number;
       experienceLevel: ExperienceLevel;
       weightUnit: WeightUnit;
       bodyweightKg?: number;
     };
+    /** Optional manual health baseline values entered in the lean stats step (omitted when skipped). */
+    manualBaselineBiometric?: {
+      bodyweightKg?: number;
+      restingHr?: number;
+      sleepHours?: number;
+    };
+    /** True when the athlete connected Android Health Connect during onboarding. */
+    healthConnectConnected?: boolean;
+    /** Historical biometric/recovery/body/step logs imported from Health Connect during onboarding. */
+    importedBiometrics?: BiometricLog[];
+    /** Recent workout/activity sessions imported from Health Connect during onboarding. */
+    importedActivities?: DetectedActivity[];
     /** Progressive disclosure RIR preference (hidden by default for new lifters). */
     showRirTracking?: boolean;
     /** Optional habit anchor (preferred days/time/cue) with non-punitive asynchronous rollover. */
@@ -74,9 +113,23 @@ const buildScreens = (total: number, perWeek: number): ScreenCopy[] => [
     Illustration: SessionsIllustration,
   },
   {
+    title: 'Connect Health Connect',
+    body: [
+      'Pull in your weight, height, sleep, recovery, steps, and recent workouts automatically—strictly read-only on your device.',
+    ],
+    Illustration: HealthConnectIllustration,
+  },
+  {
+    title: 'Your baseline stats',
+    body: [
+      'Optional—helps calibrate starting loads, strength standards, and daily recovery from day one. Skip anything you prefer not to add.',
+    ],
+    Illustration: BaselineStatsIllustration,
+  },
+  {
     title: 'Your superpower is restarting',
     body: [
-      "Missing a workout never ruins your progress. Switch place in one tap whenever life gets busy.",
+      'Missing a workout never ruins your progress. Switch place in one tap whenever life gets busy.',
     ],
     Illustration: RestartIllustration,
   },
@@ -130,6 +183,11 @@ const PLAN_CHOICES: { id: ProgramSplitType; label: string; detail: string; recom
   { id: 'muscle_building_6wk', label: 'Muscle plan', detail: '4 workouts a week: supersets, drop sets, giant sets', ownerOnly: true },
 ];
 
+const SEX_CHOICES: { id: Gender; label: string }[] = [
+  { id: 'male', label: 'Male' },
+  { id: 'female', label: 'Female' },
+];
+
 /** Pounds where gyms use them; everyone else starts in kilograms (changeable in Settings). */
 const defaultUnit = (): WeightUnit => {
   if (typeof navigator === 'undefined') return 'kg';
@@ -178,6 +236,13 @@ const disclosureButtonStyle: React.CSSProperties = {
   padding: '12px 16px',
 };
 
+const leanFieldStyle: React.CSSProperties = {
+  fontSize: 16,
+  minHeight: 44,
+  padding: '0 12px',
+  color: 'var(--color-text-primary)',
+};
+
 export const OnboardingModal: React.FC<OnboardingModalProps> = ({
   profile,
   initialStep = 1,
@@ -190,6 +255,11 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
   const titleId = inline ? `${uid}-onboarding-title` : 'onboarding-title';
   const targetInputId = inline ? `${uid}-own-goal-target` : 'own-goal-target';
   const targetHelpId = inline ? `${uid}-own-goal-help` : 'own-goal-help';
+  const weightInputId = `${uid}-baseline-weight`;
+  const heightInputId = `${uid}-baseline-height`;
+  const ageInputId = `${uid}-baseline-age`;
+  const rhrInputId = `${uid}-baseline-rhr`;
+  const sleepInputId = `${uid}-baseline-sleep`;
   const returning = !!profile.onboardingCompleted;
   const [step, setStep] = useState<OnboardingStep>(initialStep);
   const canUseMuscle = canUseMusclePlan(profile.email);
@@ -224,20 +294,124 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
   const [ownLift, setOwnLift] = useState<string | null>(null);
   const [ownTarget, setOwnTarget] = useState('');
   const [showHomeGearFallback, setShowHomeGearFallback] = useState(false);
-  const unit: WeightUnit = returning ? profile.weightUnit || 'kg' : defaultUnit();
+
+  // Step 3 (Health Connect) + Step 4 (Lean skippable baseline stats) state
+  const [weightUnit, setWeightUnit] = useState<WeightUnit>(() => (returning ? profile.weightUnit || 'kg' : defaultUnit()));
+  const [hcStatus, setHcStatus] = useState<HealthConnectStatus>(() => getHealthConnectStatus());
+  const [hcSyncing, setHcSyncing] = useState(false);
+  const [hcError, setHcError] = useState<string | null>(null);
+  const [healthImport, setHealthImport] = useState<OnboardingHealthImportResult | null>(null);
+  const [hcConnectedFlag, setHcConnectedFlag] = useState(false);
+
+  // Manual baseline stats (strictly blank by default for new athletes so skipping never saves un-entered defaults)
+  const [selectedSex, setSelectedSex] = useState<Gender | null>(returning && profile.sexEntered ? profile.gender : null);
+  const [weightInput, setWeightInput] = useState<string>('');
+  const [heightInput, setHeightInput] = useState<string>(
+    returning && profile.measuredHeightCm ? String(profile.measuredHeightCm) : ''
+  );
+  const [ageInput, setAgeInput] = useState<string>(
+    returning && profile.ageEntered ? String(profile.age) : ''
+  );
+  const [rhrInput, setRhrInput] = useState<string>('');
+  const [sleepInput, setSleepInput] = useState<string>('');
+  const [statsSkipped, setStatsSkipped] = useState<boolean>(false);
+
   const ownChoice = OWN_GOAL_OPTIONS.find((l) => l.exerciseId === ownLift);
   const ownNumber = Number(ownTarget);
   const ownGoal =
     ownChoice && ownTarget.trim() !== '' && Number.isFinite(ownNumber) && ownNumber > 0
-      ? makeCustomGoal(ownChoice.exerciseId, ownChoice.label, ownChoice.metric, ownChoice.metric === 'weight' ? unitToKg(ownNumber, unit) : ownNumber, '')
+      ? makeCustomGoal(
+          ownChoice.exerciseId,
+          ownChoice.label,
+          ownChoice.metric,
+          ownChoice.metric === 'weight' ? unitToKg(ownNumber, weightUnit) : ownNumber,
+          ''
+        )
       : null;
   const ownInvalid = Boolean(ownChoice) && ownTarget.trim() !== '' && !ownGoal;
   const headingRef = useRef<HTMLHeadingElement>(null);
   const ownInputRef = useRef<HTMLInputElement>(null);
+  const hcFileInputRef = useRef<HTMLInputElement>(null);
   const touchStartX = useRef<number | null>(null);
+  const autoPullAttemptedRef = useRef(false);
 
   // Opened from Settings to change gear: just where you train, no introduction (the goal has its own control in Settings).
-  const editing = returning && initialStep === 3;
+  const editing = returning && initialStep === ONBOARDING_LOCATION_STEP;
+
+  // Listen for live Android Health Connect bridge status updates (no-op on web browsers).
+  useEffect(() => {
+    if (inline) return;
+    startHealthConnectBridge();
+    return onHealthConnectStatus(setHcStatus);
+  }, [inline]);
+
+  const applyImportedHintsToLeanForm = (imported: OnboardingHealthImportResult) => {
+    setHealthImport(imported);
+    setStatsSkipped(false);
+    if (imported.latestBodyweightKg && imported.latestBodyweightKg > 0 && !weightInput.trim()) {
+      setWeightInput(String(Math.round(kgToUnit(imported.latestBodyweightKg, weightUnit) * 10) / 10));
+    }
+    if (imported.latestHeightCm && imported.latestHeightCm > 0 && !heightInput.trim()) {
+      setHeightInput(String(imported.latestHeightCm));
+    }
+    if (imported.latestRestingHr && imported.latestRestingHr > 0 && !rhrInput.trim()) {
+      setRhrInput(String(imported.latestRestingHr));
+    }
+    if (imported.avgSleepHours && imported.avgSleepHours > 0 && !sleepInput.trim()) {
+      setSleepInput(String(imported.avgSleepHours));
+    }
+    if (imported.gender && !selectedSex) {
+      setSelectedSex(imported.gender);
+    }
+    if (imported.age && !ageInput.trim()) {
+      setAgeInput(String(imported.age));
+    }
+  };
+
+  const pullFromHealthConnectNow = async () => {
+    setHcSyncing(true);
+    setHcError(null);
+    try {
+      const imported = await importFromHealthConnectBridge();
+      setHcConnectedFlag(true);
+      applyImportedHintsToLeanForm(imported);
+      triggerHaptic('success');
+    } catch {
+      setHcError("Couldn't read Health Connect right now. You can enter stats manually or skip.");
+    } finally {
+      setHcSyncing(false);
+    }
+  };
+
+  // When returning from the Android Health Connect permission screen with permissions granted, pull real history automatically.
+  const hcHasAnyPermission = Boolean(hcStatus.granted || hcStatus.stepsGranted || hcStatus.biometricsGranted);
+  useEffect(() => {
+    if (inline || editing || step !== 3) return;
+    if (hcStatus.bridge && hcStatus.available && hcHasAnyPermission && !healthImport && !hcSyncing && !autoPullAttemptedRef.current) {
+      autoPullAttemptedRef.current = true;
+      void pullFromHealthConnectNow();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inline, editing, step, hcStatus.bridge, hcStatus.available, hcHasAnyPermission]);
+
+  const handleImportJsonFile = (file: File) => {
+    setHcError(null);
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const text = String(reader.result || '');
+        const imported = importFromHealthConnectJson(text);
+        applyImportedHintsToLeanForm(imported);
+        triggerHaptic('success');
+      } catch {
+        setHcError("That file wasn't a valid Health Connect JSON export. You can enter stats manually or skip.");
+      }
+    };
+    reader.onerror = () => {
+      setHcError("Couldn't read that file. You can enter stats manually or skip.");
+    };
+    reader.readAsText(file);
+  };
 
   // Move focus to the new screen's heading so screen readers announce it (disabled in inline specimens).
   useEffect(() => {
@@ -264,6 +438,77 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
     setStep(next);
   };
 
+  // Parse lean form inputs safely — blank fields stay undefined (never fabricated).
+  const parsedWeightNum = weightInput.trim() !== '' ? Number(weightInput) : NaN;
+  const parsedWeightKg =
+    Number.isFinite(parsedWeightNum) && parsedWeightNum > 0
+      ? Math.round(unitToKg(parsedWeightNum, weightUnit) * 10) / 10
+      : undefined;
+  const weightInvalid =
+    weightInput.trim() !== '' &&
+    (!Number.isFinite(parsedWeightNum) || parsedWeightKg === undefined || parsedWeightKg < 25 || parsedWeightKg > 300);
+
+  const parsedHeightNum = heightInput.trim() !== '' ? Number(heightInput) : NaN;
+  const parsedHeightCm =
+    Number.isFinite(parsedHeightNum) && parsedHeightNum >= 100 && parsedHeightNum <= 250
+      ? Math.round(parsedHeightNum)
+      : undefined;
+  const heightInvalid = heightInput.trim() !== '' && parsedHeightCm === undefined;
+
+  const parsedAgeNum = ageInput.trim() !== '' ? Number(ageInput) : NaN;
+  const parsedAge =
+    Number.isFinite(parsedAgeNum) && parsedAgeNum >= 13 && parsedAgeNum <= 110
+      ? Math.round(parsedAgeNum)
+      : undefined;
+  const ageInvalid = ageInput.trim() !== '' && parsedAge === undefined;
+
+  const parsedRhrNum = rhrInput.trim() !== '' ? Number(rhrInput) : NaN;
+  const parsedRhr =
+    Number.isFinite(parsedRhrNum) && parsedRhrNum >= 30 && parsedRhrNum <= 130
+      ? Math.round(parsedRhrNum)
+      : undefined;
+  const rhrInvalid = rhrInput.trim() !== '' && parsedRhr === undefined;
+
+  const parsedSleepNum = sleepInput.trim() !== '' ? Number(sleepInput) : NaN;
+  const parsedSleep =
+    Number.isFinite(parsedSleepNum) && parsedSleepNum >= 2 && parsedSleepNum <= 16
+      ? Math.round(parsedSleepNum * 10) / 10
+      : undefined;
+  const sleepInvalid = sleepInput.trim() !== '' && parsedSleep === undefined;
+
+  const leanFormHasAnyInvalid = weightInvalid || heightInvalid || ageInvalid || rhrInvalid || sleepInvalid;
+  const leanFormHasAnyInput = Boolean(
+    selectedSex ||
+      weightInput.trim() ||
+      heightInput.trim() ||
+      ageInput.trim() ||
+      rhrInput.trim() ||
+      sleepInput.trim()
+  );
+
+  const switchUnit = (nextUnit: WeightUnit) => {
+    if (nextUnit === weightUnit) return;
+    triggerHaptic('light');
+    if (parsedWeightKg !== undefined && !weightInvalid) {
+      setWeightInput(String(Math.round(kgToUnit(parsedWeightKg, nextUnit) * 10) / 10));
+    }
+    setWeightUnit(nextUnit);
+  };
+
+  const handleStep4Continue = () => {
+    if (leanFormHasAnyInvalid) {
+      triggerHaptic('warning');
+      return;
+    }
+    setStatsSkipped(false);
+    goTo(5);
+  };
+
+  const handleStep4Skip = () => {
+    setStatsSkipped(true);
+    goTo(5);
+  };
+
   const finish = () => {
     if (!editing && ownInvalid) {
       triggerHaptic('warning');
@@ -286,6 +531,29 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
     // Progressive disclosure hygiene: only persist home equipment when training at home (or explicitly edited as fallback).
     const resolvedHomeEquipment =
       location === 'home' || (editing && showHomeGearFallback) ? homeEquipment : editing ? profile.homeEquipment || [] : [];
+
+    // Resolve optional baseline stats strictly from real user entries or Health Connect import (never fabricated).
+    const effectiveWeightKg = !statsSkipped && !weightInvalid && parsedWeightKg
+      ? parsedWeightKg
+      : healthImport?.latestBodyweightKg;
+    const effectiveHeightCm = !statsSkipped && !heightInvalid && parsedHeightCm
+      ? parsedHeightCm
+      : healthImport?.latestHeightCm;
+    const effectiveSex = !statsSkipped && selectedSex ? selectedSex : healthImport?.gender;
+    const effectiveAge = !statsSkipped && !ageInvalid && parsedAge ? parsedAge : healthImport?.age;
+    const effectiveRhr = !statsSkipped && !rhrInvalid ? parsedRhr : undefined;
+    const effectiveSleep = !statsSkipped && !sleepInvalid ? parsedSleep : undefined;
+
+    // Only emit manualBaselineBiometric when the user explicitly typed a health metric (not already covered by an identical Health Connect day).
+    const hasManualBiometric =
+      !editing &&
+      !statsSkipped &&
+      Boolean(
+        (!weightInvalid && parsedWeightKg && parsedWeightKg !== healthImport?.latestBodyweightKg) ||
+          effectiveRhr ||
+          effectiveSleep
+      );
+
     onCompleteOnboarding({
       goalPhase: editing ? profile.goalPhase || goal : goal,
       programType: program,
@@ -293,11 +561,27 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
       availableLocations,
       homeEquipment: resolvedHomeEquipment,
       athlete: {
-        gender: profile.gender,
+        gender: effectiveSex ?? profile.gender,
+        ...(effectiveSex ? { sexEntered: true } : {}),
+        ...(effectiveAge ? { age: effectiveAge, ageEntered: true } : {}),
+        ...(effectiveHeightCm ? { measuredHeightCm: effectiveHeightCm } : {}),
         // New athletes start light; the first logged sets teach the app their real strength.
         experienceLevel: editing ? profile.experienceLevel || experienceLevel : experienceLevel,
-        weightUnit: unit,
+        weightUnit,
+        ...(effectiveWeightKg ? { bodyweightKg: effectiveWeightKg } : {}),
       },
+      ...(hasManualBiometric
+        ? {
+            manualBaselineBiometric: {
+              ...(!weightInvalid && parsedWeightKg ? { bodyweightKg: parsedWeightKg } : {}),
+              ...(effectiveRhr ? { restingHr: effectiveRhr } : {}),
+              ...(effectiveSleep ? { sleepHours: effectiveSleep } : {}),
+            },
+          }
+        : {}),
+      ...(hcConnectedFlag ? { healthConnectConnected: true } : {}),
+      ...(healthImport && healthImport.biometrics.length > 0 ? { importedBiometrics: healthImport.biometrics } : {}),
+      ...(healthImport && healthImport.activities.length > 0 ? { importedActivities: healthImport.activities } : {}),
       showRirTracking: editing ? profile.workoutDisplay?.showRirTracking : showRirTracking,
       habitAnchor: editing ? profile.habitAnchor : habitAnchor,
       ownGoal: !editing && ownGoal ? { exerciseId: ownGoal.exerciseId, metric: ownGoal.metric, target: ownGoal.target } : undefined,
@@ -310,8 +594,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
 
   const screen = SCREENS[step - 1];
   const Illustration = screen.Illustration;
-  const isLast = step === 3;
-  const ctaLabel = !isLast ? 'Continue' : returning ? 'Save changes' : 'Start my first workout';
+  const isLast = step === ONBOARDING_LOCATION_STEP;
   const HeadingTag = inline ? 'h4' : 'h1';
 
   const selectedGoalLabel = GOALS.find((g) => g.id === goal)?.label || 'Build Muscle';
@@ -330,6 +613,62 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
   ]
     .filter(Boolean)
     .join(' · ');
+
+  const importedSummaryText = healthImport ? formatOnboardingHealthSummary(healthImport, weightUnit) : null;
+  const baselineReadySummary = [
+    hcConnectedFlag || healthImport ? 'Health Connect' : null,
+    !statsSkipped && parsedWeightKg ? formatWeight(parsedWeightKg, weightUnit) : null,
+    !statsSkipped && selectedSex ? (selectedSex === 'male' ? 'Male' : 'Female') : null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+
+  const isHealthBridgeReady = hcStatus.bridge && hcStatus.available;
+
+  // Determine Step 3 & Step 4 primary CTA behavior cleanly
+  const primaryAction = () => {
+    if (isLast) {
+      finish();
+      return;
+    }
+    if (step === 3) {
+      if (isHealthBridgeReady && !hcHasAnyPermission && !healthImport) {
+        triggerHaptic('light');
+        setHcError(null);
+        requestHealthConnectPermission();
+        return;
+      }
+      goTo(4);
+      return;
+    }
+    if (step === 4) {
+      if (!leanFormHasAnyInput && !healthImport) {
+        handleStep4Skip();
+        return;
+      }
+      handleStep4Continue();
+      return;
+    }
+    goTo((step + 1) as OnboardingStep);
+  };
+
+  const ctaLabel = isLast
+    ? returning
+      ? 'Save changes'
+      : 'Start my first workout'
+    : step === 3
+    ? isHealthBridgeReady && !hcHasAnyPermission && !healthImport
+      ? 'Connect Health Connect'
+      : hcSyncing
+      ? 'Syncing Health Connect…'
+      : healthImport
+      ? 'Continue'
+      : 'Enter stats manually'
+    : step === 4
+    ? leanFormHasAnyInput || healthImport
+      ? 'Continue'
+      : 'Skip for now'
+    : 'Continue';
 
   const bodyContent = (
     <div
@@ -360,11 +699,11 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
           style={{ gap: 8 }}
           role="progressbar"
           aria-valuemin={1}
-          aria-valuemax={3}
+          aria-valuemax={ONBOARDING_TOTAL_STEPS}
           aria-valuenow={step}
-          aria-label={`Step ${step} of 3`}
+          aria-label={`Step ${step} of ${ONBOARDING_TOTAL_STEPS}`}
         >
-          {[1, 2, 3].map((s) => (
+          {[1, 2, 3, 4, 5].map((s) => (
             <span
               key={s}
               aria-hidden="true"
@@ -396,7 +735,10 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
             !isLast && (
               <button
                 type="button"
-                onClick={() => goTo(3)}
+                onClick={() => {
+                  if (step === 4) handleStep4Skip();
+                  else goTo(ONBOARDING_LOCATION_STEP);
+                }}
                 className={`h-11 min-h-[44px] px-2 -mr-2 rounded-xl font-medium transition-colors hover:text-[var(--color-text-primary)] ${focusRingClass}`}
                 style={{ fontSize: 16, color: 'var(--color-text-secondary)' }}
               >
@@ -409,7 +751,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
 
       <div key={step} className="ob-enter flex flex-col flex-1">
         {!editing && (
-          <div style={{ height: isLast ? 104 : 140, marginTop: 8 }}>
+          <div style={{ height: isLast || step === 4 ? 104 : 132, marginTop: 8 }}>
             <Illustration weeks={6} perWeek={plan.workoutsPerWeek} />
           </div>
         )}
@@ -609,7 +951,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                       placeholder="Optional cue, e.g. After morning coffee"
                       maxLength={80}
                       className="wk-field w-full"
-                      style={{ fontSize: 16, minHeight: 44, padding: '0 12px', color: 'var(--color-text-primary)' }}
+                      style={leanFieldStyle}
                     />
                   </label>
                 </fieldset>
@@ -618,7 +960,334 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
           </div>
         )}
 
-        {/* STEP 3: Lean launchpad — Where you train (+ conditional Home gear ONLY if Home selected) + Experience + Optional Fine-Tune */}
+        {/* STEP 3: Dedicated Health Connect screen (real Android bridge or JSON export; honest fallback to lean form) */}
+        {step === 3 && !editing && (
+          <div className="flex flex-col gap-3" style={{ marginTop: 20 }}>
+            <section
+              aria-label="What Health Connect brings in"
+              className="wk-card flex flex-col gap-3"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  <Activity
+                    className="w-4 h-4 shrink-0"
+                    style={{ color: 'var(--wk-accent)' }}
+                    strokeWidth={2}
+                    aria-hidden="true"
+                  />
+                  <span className="wk-subhead">Health Connect</span>
+                </div>
+                <span
+                  className="wk-pill shrink-0"
+                  style={
+                    healthImport || hcHasAnyPermission
+                      ? {
+                          background: 'var(--color-status-positive-soft)',
+                          color: 'var(--wk-accent)',
+                        }
+                      : undefined
+                  }
+                >
+                  {healthImport
+                    ? 'Synced'
+                    : isHealthBridgeReady
+                    ? hcHasAnyPermission
+                      ? 'Connected'
+                      : 'Ready on this phone'
+                    : 'Android app'}
+                </span>
+              </div>
+
+              <ul className="flex flex-col gap-2">
+                <li className="wk-caption" style={{ color: 'var(--color-text-primary)' }}>
+                  Bodyweight &amp; height — calibrates starting loads and strength standards
+                </li>
+                <li className="wk-caption" style={{ color: 'var(--color-text-primary)' }}>
+                  Sleep, resting HR &amp; HRV — unlocks daily recovery status from day one
+                </li>
+                <li className="wk-caption" style={{ color: 'var(--color-text-primary)' }}>
+                  Steps &amp; recent workouts — carries over your last 30 days of activity
+                </li>
+              </ul>
+
+              <p className="wk-caption">
+                Read-only and kept on your device. Health Connect doesn&apos;t store sex or age—you can add those next or skip.
+              </p>
+
+              {!isHealthBridgeReady && !healthImport && (
+                <div
+                  className="wk-raised flex flex-col gap-2"
+                >
+                  <p className="wk-caption" style={{ color: 'var(--color-text-secondary)' }}>
+                    Direct Health Connect sync runs inside the Treise Android app. In this browser you can import a Health Connect JSON export or enter quick stats on the next screen.
+                  </p>
+                  <input
+                    ref={hcFileInputRef}
+                    type="file"
+                    accept=".json,application/json"
+                    className="sr-only"
+                    aria-label="Import Health Connect JSON export"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) handleImportJsonFile(file);
+                      e.target.value = '';
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      triggerHaptic('light');
+                      hcFileInputRef.current?.click();
+                    }}
+                    className={`wk-btn-secondary w-full ${focusRingClass}`}
+                  >
+                    <Upload className="w-4 h-4 shrink-0" aria-hidden="true" />
+                    <span>Import Health Connect export (.json)</span>
+                  </button>
+                </div>
+              )}
+
+              {healthImport && importedSummaryText && (
+                <div
+                  role="status"
+                  className="wk-raised flex items-start gap-2 border"
+                  style={{ borderColor: 'rgb(var(--color-accent-primary-rgb) / 0.4)' }}
+                >
+                  <Check
+                    className="w-4 h-4 shrink-0 mt-1"
+                    style={{ color: 'var(--wk-accent)' }}
+                    strokeWidth={2.4}
+                    aria-hidden="true"
+                  />
+                  <div className="min-w-0">
+                    <span className="wk-label block">Imported</span>
+                    <p className="wk-caption mt-1" style={{ color: 'var(--color-text-primary)' }}>
+                      {importedSummaryText}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {hcError && (
+                <p role="alert" className="wk-caption" style={{ color: 'var(--color-status-danger)' }}>
+                  {hcError}
+                </p>
+              )}
+            </section>
+          </div>
+        )}
+
+        {/* STEP 4: Lean, 100% skippable baseline stats form (sex, weight, height, age, optional resting HR & sleep) */}
+        {step === 4 && !editing && (
+          <div className="flex flex-col gap-4" style={{ marginTop: 16 }}>
+            {healthImport && importedSummaryText && (
+              <div
+                className="wk-raised flex items-start gap-2 border"
+                style={{ borderColor: 'rgb(var(--color-accent-primary-rgb) / 0.35)' }}
+              >
+                <Check
+                  className="w-4 h-4 shrink-0 mt-1"
+                  style={{ color: 'var(--wk-accent)' }}
+                  strokeWidth={2.4}
+                  aria-hidden="true"
+                />
+                <div className="min-w-0">
+                  <span className="wk-label block">Synced from Health Connect</span>
+                  <p className="wk-caption mt-1" style={{ color: 'var(--color-text-primary)' }}>
+                    {importedSummaryText}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Sex (optional, for strength standards — never pre-selected for new athletes) */}
+            <fieldset>
+              <legend style={sectionLabel}>Sex (optional · for strength standards)</legend>
+              <div className="grid grid-cols-2" style={{ gap: 8 }}>
+                {SEX_CHOICES.map((opt) => {
+                  const selected = selectedSex === opt.id;
+                  return (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      aria-pressed={selected}
+                      onClick={() => {
+                        triggerHaptic('light');
+                        setSelectedSex(selected ? null : opt.id);
+                      }}
+                      className={`w-full flex items-center justify-between px-4 ${focusRingClass}`}
+                      style={choiceStyle(selected)}
+                    >
+                      <span style={optionText}>{opt.label}</span>
+                      <RadioDot selected={selected} />
+                    </button>
+                  );
+                })}
+              </div>
+            </fieldset>
+
+            {/* Weight + Height (lean 2-column row) */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center justify-between gap-2">
+                  <label htmlFor={weightInputId} style={{ ...sectionLabel, marginBottom: 0 }}>
+                    Weight ({weightUnit})
+                  </label>
+                  <div className="flex items-center gap-1" role="group" aria-label="Weight unit">
+                    {(['kg', 'lb'] as WeightUnit[]).map((u) => (
+                      <button
+                        key={u}
+                        type="button"
+                        aria-pressed={weightUnit === u}
+                        onClick={() => switchUnit(u)}
+                        className={`px-2 rounded-lg font-medium ${focusRingClass}`}
+                        style={{
+                          minHeight: 28,
+                          fontSize: 12,
+                          background: weightUnit === u ? 'var(--color-action-secondary-bg)' : 'transparent',
+                          color: weightUnit === u ? 'var(--color-text-primary)' : 'var(--wk-muted)',
+                          border: `1px solid ${weightUnit === u ? 'var(--color-border-strong)' : 'var(--color-border-subtle)'}`,
+                        }}
+                      >
+                        {u}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <input
+                  id={weightInputId}
+                  type="number"
+                  inputMode="decimal"
+                  step="0.1"
+                  placeholder={weightUnit === 'lb' ? 'e.g. 175' : 'e.g. 80'}
+                  value={weightInput}
+                  onChange={(e) => setWeightInput(e.target.value)}
+                  aria-invalid={weightInvalid}
+                  className="wk-field w-full tabular-nums"
+                  style={{
+                    ...leanFieldStyle,
+                    border: `1px solid ${weightInvalid ? 'var(--color-status-danger-fill)' : 'var(--color-border-subtle)'}`,
+                  }}
+                />
+                {weightInvalid && (
+                  <span role="alert" className="wk-caption" style={{ color: 'var(--color-status-danger)' }}>
+                    Enter a valid weight.
+                  </span>
+                )}
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <label htmlFor={heightInputId} style={{ ...sectionLabel, marginBottom: 0, minHeight: 28, display: 'flex', alignItems: 'center' }}>
+                  Height (cm)
+                </label>
+                <input
+                  id={heightInputId}
+                  type="number"
+                  inputMode="numeric"
+                  placeholder="e.g. 178"
+                  value={heightInput}
+                  onChange={(e) => setHeightInput(e.target.value)}
+                  aria-invalid={heightInvalid}
+                  className="wk-field w-full tabular-nums"
+                  style={{
+                    ...leanFieldStyle,
+                    border: `1px solid ${heightInvalid ? 'var(--color-status-danger-fill)' : 'var(--color-border-subtle)'}`,
+                  }}
+                />
+                {heightInvalid && (
+                  <span role="alert" className="wk-caption" style={{ color: 'var(--color-status-danger)' }}>
+                    100–250 cm.
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* Age + Optional Health Baseline (Resting HR & Typical Sleep) */}
+            <div className="grid grid-cols-3 gap-2">
+              <div className="flex flex-col gap-2">
+                <label htmlFor={ageInputId} style={{ ...sectionLabel, marginBottom: 0 }}>
+                  Age
+                </label>
+                <input
+                  id={ageInputId}
+                  type="number"
+                  inputMode="numeric"
+                  placeholder="Years"
+                  value={ageInput}
+                  onChange={(e) => setAgeInput(e.target.value)}
+                  aria-invalid={ageInvalid}
+                  className="wk-field w-full tabular-nums"
+                  style={{
+                    ...leanFieldStyle,
+                    border: `1px solid ${ageInvalid ? 'var(--color-status-danger-fill)' : 'var(--color-border-subtle)'}`,
+                  }}
+                />
+                {ageInvalid && (
+                  <span role="alert" className="wk-caption" style={{ color: 'var(--color-status-danger)' }}>
+                    13–110.
+                  </span>
+                )}
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <label htmlFor={rhrInputId} style={{ ...sectionLabel, marginBottom: 0 }}>
+                  Resting HR
+                </label>
+                <input
+                  id={rhrInputId}
+                  type="number"
+                  inputMode="numeric"
+                  placeholder="bpm"
+                  value={rhrInput}
+                  onChange={(e) => setRhrInput(e.target.value)}
+                  aria-invalid={rhrInvalid}
+                  className="wk-field w-full tabular-nums"
+                  style={{
+                    ...leanFieldStyle,
+                    border: `1px solid ${rhrInvalid ? 'var(--color-status-danger-fill)' : 'var(--color-border-subtle)'}`,
+                  }}
+                />
+                {rhrInvalid && (
+                  <span role="alert" className="wk-caption" style={{ color: 'var(--color-status-danger)' }}>
+                    30–130.
+                  </span>
+                )}
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <label htmlFor={sleepInputId} style={{ ...sectionLabel, marginBottom: 0 }}>
+                  Avg sleep
+                </label>
+                <input
+                  id={sleepInputId}
+                  type="number"
+                  inputMode="decimal"
+                  step="0.5"
+                  placeholder="hrs"
+                  value={sleepInput}
+                  onChange={(e) => setSleepInput(e.target.value)}
+                  aria-invalid={sleepInvalid}
+                  className="wk-field w-full tabular-nums"
+                  style={{
+                    ...leanFieldStyle,
+                    border: `1px solid ${sleepInvalid ? 'var(--color-status-danger-fill)' : 'var(--color-border-subtle)'}`,
+                  }}
+                />
+                {sleepInvalid && (
+                  <span role="alert" className="wk-caption" style={{ color: 'var(--color-status-danger)' }}>
+                    2–16 hrs.
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <p style={{ ...optionDetail, marginTop: 0 }}>
+              Every field is optional and stored only on your device. You can add or update these anytime in Profile or Progress.
+            </p>
+          </div>
+        )}
+
+        {/* STEP 5: Lean launchpad — Where you train (+ conditional Home gear ONLY if Home selected) + Experience + Optional Fine-Tune */}
         {isLast && (
           <div style={{ marginTop: editing ? 16 : 20 }}>
             <fieldset>
@@ -830,7 +1499,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                             }}
                           />
                           <span style={optionText}>
-                            {ownChoice.metric === 'weight' ? unit : ownChoice.metric === 'steps' ? 'steps a day' : 'reps in one set'}
+                            {ownChoice.metric === 'weight' ? weightUnit : ownChoice.metric === 'steps' ? 'steps a day' : 'reps in one set'}
                           </span>
                           {ownInvalid && (
                             <button
@@ -913,6 +1582,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                   <span className="wk-caption block mt-1" style={{ color: 'var(--color-text-primary)' }}>
                     {selectedGoalLabel} · {selectedPlanLabel} · {selectedLocationLabel}
                     {location === 'home' && homeEquipment.length > 0 ? ` (${homeEquipment.length} gear)` : ''}
+                    {baselineReadySummary ? ` · ${baselineReadySummary}` : ''}
                   </span>
                 </div>
                 <button
@@ -946,8 +1616,9 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
         >
           <button
             type="button"
-            onClick={() => (isLast ? finish() : goTo((step + 1) as OnboardingStep))}
-            className={`wk-button w-full font-semibold active:scale-[0.98] transition-transform ${focusRingClass}`}
+            disabled={step === 3 && hcSyncing}
+            onClick={primaryAction}
+            className={`wk-button w-full font-semibold active:scale-[0.98] transition-transform disabled:opacity-60 ${focusRingClass}`}
             style={{
               background: 'var(--color-action-primary-bg)',
               color: 'var(--color-action-primary-fg)',
@@ -956,6 +1627,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
           >
             {ctaLabel}
           </button>
+
           {step === 1 && !returning && onExploreDemo ? (
             <button
               type="button"
@@ -967,6 +1639,34 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
               style={{ minHeight: 44, marginTop: 4, fontSize: 16, color: 'var(--color-text-muted)' }}
             >
               See a demo with sample data
+            </button>
+          ) : step === 3 && !editing ? (
+            <button
+              type="button"
+              onClick={() => {
+                if (isHealthBridgeReady && !hcHasAnyPermission && !healthImport) {
+                  goTo(4);
+                } else {
+                  goTo(5);
+                }
+              }}
+              className={`w-full font-medium transition-colors rounded-xl ${focusRingClass}`}
+              style={{ minHeight: 44, marginTop: 4, fontSize: 16, color: 'var(--color-text-muted)' }}
+            >
+              {isHealthBridgeReady && !hcHasAnyPermission && !healthImport
+                ? 'Enter stats manually instead'
+                : healthImport
+                ? 'Skip extra details'
+                : 'Skip for now'}
+            </button>
+          ) : step === 4 && !editing && (leanFormHasAnyInput || healthImport) ? (
+            <button
+              type="button"
+              onClick={handleStep4Skip}
+              className={`w-full font-medium transition-colors rounded-xl ${focusRingClass}`}
+              style={{ minHeight: 44, marginTop: 4, fontSize: 16, color: 'var(--color-text-muted)' }}
+            >
+              Skip for now
             </button>
           ) : !isLast && !returning && !inline ? (
             <div style={{ height: 48 }} aria-hidden="true" />
@@ -1008,7 +1708,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
         const dx = e.changedTouches[0].clientX - touchStartX.current;
         touchStartX.current = null;
         if (Math.abs(dx) < 60) return;
-        if (dx < 0 && step < 3) goTo((step + 1) as OnboardingStep);
+        if (dx < 0 && step < ONBOARDING_LOCATION_STEP) goTo((step + 1) as OnboardingStep);
         if (dx > 0 && step > 1) goTo((step - 1) as OnboardingStep);
       }}
     >

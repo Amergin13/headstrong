@@ -33,6 +33,7 @@ export interface HealthConnectBiometricDay {
   restingHr?: number;
   hrvRmssd?: number;
   bodyweightKg?: number;
+  heightCm?: number;
   bodyFatPct?: number;
   steps?: number;
   avgDailyHr?: number;
@@ -48,8 +49,10 @@ export interface HealthConnectStatus {
   granted: boolean;
   /** The athlete allowed Treise to read daily step counts. */
   stepsGranted?: boolean;
-  /** The athlete allowed at least one recovery/body metric (sleep, HR, HRV, weight, body fat). */
+  /** The athlete allowed at least one recovery/body metric (sleep, HR, HRV, weight, height, body fat). */
   biometricsGranted?: boolean;
+  /** The athlete allowed Treise to read height records. */
+  heightGranted?: boolean;
 }
 
 type StatusListener = (status: HealthConnectStatus) => void;
@@ -130,6 +133,7 @@ function handleAppMessage(data: unknown) {
       granted: Boolean(msg.granted),
       stepsGranted: Boolean(msg.stepsGranted),
       biometricsGranted: Boolean(msg.biometricsGranted),
+      heightGranted: Boolean(msg.heightGranted),
     });
   } else if (msg.type === 'sessions' && typeof msg.requestId === 'string') {
     const p = pending.get(msg.requestId);

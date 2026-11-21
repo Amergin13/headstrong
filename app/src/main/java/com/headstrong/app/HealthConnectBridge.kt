@@ -14,6 +14,7 @@ import androidx.health.connect.client.records.BodyFatRecord
 import androidx.health.connect.client.records.ExerciseSessionRecord
 import androidx.health.connect.client.records.HeartRateRecord
 import androidx.health.connect.client.records.HeartRateVariabilityRmssdRecord
+import androidx.health.connect.client.records.HeightRecord
 import androidx.health.connect.client.records.RestingHeartRateRecord
 import androidx.health.connect.client.records.SleepSessionRecord
 import androidx.health.connect.client.records.StepsRecord
@@ -61,6 +62,7 @@ object HealthConnectBridge {
     val RESTING_HR_PERMISSION: String = HealthPermission.getReadPermission(RestingHeartRateRecord::class)
     val HRV_PERMISSION: String = HealthPermission.getReadPermission(HeartRateVariabilityRmssdRecord::class)
     val WEIGHT_PERMISSION: String = HealthPermission.getReadPermission(WeightRecord::class)
+    val HEIGHT_PERMISSION: String = HealthPermission.getReadPermission(HeightRecord::class)
     val BODY_FAT_PERMISSION: String = HealthPermission.getReadPermission(BodyFatRecord::class)
 
     val BIOMETRIC_PERMISSIONS: Set<String> = setOf(
@@ -69,6 +71,7 @@ object HealthConnectBridge {
         RESTING_HR_PERMISSION,
         HRV_PERMISSION,
         WEIGHT_PERMISSION,
+        HEIGHT_PERMISSION,
         BODY_FAT_PERMISSION
     )
 
@@ -214,6 +217,7 @@ object HealthConnectBridge {
                     .put("restingHrGranted", grantedPerms.contains(RESTING_HR_PERMISSION))
                     .put("hrvGranted", grantedPerms.contains(HRV_PERMISSION))
                     .put("weightGranted", grantedPerms.contains(WEIGHT_PERMISSION))
+                    .put("heightGranted", grantedPerms.contains(HEIGHT_PERMISSION))
                     .put("bodyFatGranted", grantedPerms.contains(BODY_FAT_PERMISSION))
             )
         }
@@ -507,6 +511,34 @@ object HealthConnectBridge {
                     }
                 } catch (_: SecurityException) {
                     // User declined body fat read
+                }
+            }
+
+            // 7. Height (latest cm per day, read across available history)
+            if (granted.contains(HEIGHT_PERMISSION)) {
+                try {
+                    val latestHeight = HashMap<String, Pair<Instant, Double>>()
+                    var pageToken: String? = null
+                    do {
+                        val res = withContext(Dispatchers.IO) {
+                            client.readRecords(ReadRecordsRequest(HeightRecord::class, filter, pageToken = pageToken))
+                        }
+                        for (r in res.records) {
+                            val cm = r.height.inMeters * 100.0
+                            if (cm < 100.0 || cm > 250.0) continue
+                            val d = r.time.atZone(zone).toLocalDate().toString()
+                            val prev = latestHeight[d]
+                            if (prev == null || r.time.isAfter(prev.first)) {
+                                latestHeight[d] = Pair(r.time, cm)
+                            }
+                        }
+                        pageToken = res.pageToken
+                    } while (!pageToken.isNullOrEmpty())
+                    for ((d, pair) in latestHeight) {
+                        bucket(LocalDate.parse(d)).put("heightCm", pair.second.roundToInt())
+                    }
+                } catch (_: SecurityException) {
+                    // User declined height read
                 }
             }
 
