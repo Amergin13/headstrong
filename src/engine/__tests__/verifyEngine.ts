@@ -13510,8 +13510,8 @@ Exercise,,Date,Workout,Sets,Reps,Tempo,Rest,Notes,Set 1,Set 2,Set 3,Set 4
         legacyAfter.exercises[1].sets[0].actualWeightKg === 25 &&
         mb6After.exercises[0].sets[0].actualWeightKg === 12 &&
         activeAfter.exercises[0].sets[0].targetWeightKg === 24 &&
-        localStorage.getItem('treise_schema_version') === '9',
-      'Storage migration v9 halves legacy combined paired-DB logs (48->24), keeps single-DB (25) & native MB6 per-DB (12), and is idempotent'
+        localStorage.getItem('treise_schema_version') === '10',
+      'Storage migration v9+ halves legacy combined paired-DB logs (48->24), keeps single-DB (25) & native MB6 per-DB (12), and is idempotent'
     );
 
     const oldBackup = JSON.stringify({
@@ -17534,7 +17534,15 @@ Exercise,,Date,Workout,Sets,Reps,Tempo,Rest,Notes,Set 1,Set 2,Set 3,Set 4
     await runPreAndroidCleanupSuite(assert);
   }
 
-  console.log('\nALL 76 ENGINE, GOVERNANCE, DESIGN SYSTEM, TYPOGRAPHY, WEARABLES, WHOOP STRAIN, GOOGLE AUTH, ONBOARDING CONTEXT, 6-WEEK PROGRAM, SPREADSHEET IMPORT, AI COACH ACTIONS, GEMINI FLASH + KG, OOUX, AGENTIC COACH, PRODUCT UPGRADES, INFO EXPERIENCE, CONTENT DESIGN, GOAL CAROUSEL, SHIFT NUDGE COLOR POLISH, EXERCISE DRILL-IN MODAL, COMPOSITION WIDGET, MEASUREMENT UX, AI-NATIVE ACTIONS, PERMANENT PROGRAM ADAPTATION, HITL INTERVENTION, REP-RANGE DOUBLE PROGRESSION, TWO-DUMBBELL PER-HAND LOGGING, AI-NATIVE CONVERSATIONAL DESIGN, P0 CLOSED-BETA READINESS, P1 GYM-FLOOR ACTIVATION, MACROFACTOR EXERCISE SCIENCE, AI PERSONALISATION/MEMORY, LEAN PROGRESSIVE ONBOARDING, CROSS-SURFACE AI ECONOMY, EXERCISE CARD DECLUTTERING, ADAPTATION CAROUSEL, HEALTH CONNECT ONBOARDING, SEAMLESS CROSS-ENVIRONMENT SWAPPING & PRE-ANDROID COMPLETENESS SUITES PASSED SUCCESSFULLY! 🎯');
+  // =========================================================================
+  // 77. Dumbbell Load Integrity, Rep-Range Preservation & Storage Migration v10
+  // =========================================================================
+  {
+    const { runDumbbellIntegrityAndRepRangeSuite } = await import('./dumbbellIntegrityAndRepRange.suite');
+    await runDumbbellIntegrityAndRepRangeSuite(assert);
+  }
+
+  console.log('\nALL 77 ENGINE, GOVERNANCE, DESIGN SYSTEM, TYPOGRAPHY, WEARABLES, WHOOP STRAIN, GOOGLE AUTH, ONBOARDING CONTEXT, 6-WEEK PROGRAM, SPREADSHEET IMPORT, AI COACH ACTIONS, GEMINI FLASH + KG, OOUX, AGENTIC COACH, PRODUCT UPGRADES, INFO EXPERIENCE, CONTENT DESIGN, GOAL CAROUSEL, SHIFT NUDGE COLOR POLISH, EXERCISE DRILL-IN MODAL, COMPOSITION WIDGET, MEASUREMENT UX, AI-NATIVE ACTIONS, PERMANENT PROGRAM ADAPTATION, HITL INTERVENTION, REP-RANGE DOUBLE PROGRESSION, TWO-DUMBBELL PER-HAND LOGGING, AI-NATIVE CONVERSATIONAL DESIGN, P0 CLOSED-BETA READINESS, P1 GYM-FLOOR ACTIVATION, MACROFACTOR EXERCISE SCIENCE, AI PERSONALISATION/MEMORY, LEAN PROGRESSIVE ONBOARDING, CROSS-SURFACE AI ECONOMY, EXERCISE CARD DECLUTTERING, ADAPTATION CAROUSEL, HEALTH CONNECT ONBOARDING, SEAMLESS CROSS-ENVIRONMENT SWAPPING, PRE-ANDROID COMPLETENESS & DUMBBELL INTEGRITY SUITES PASSED SUCCESSFULLY! 🎯');
 })().catch((err) => {
   console.error('Test Suite Failed:', err);
   if (typeof process !== 'undefined' && process.exit) {

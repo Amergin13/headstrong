@@ -14,7 +14,14 @@ import {
   WorkoutSession,
   WorkoutSet,
 } from '../engine/types';
-import { isAssistedExercise, isTimedExercise, toCombinedExternalLoadKg, usesOneDumbbell } from '../engine/e1rm';
+import {
+  CombinedDumbbellWarning,
+  detectLikelyCombinedTwoDumbbellImport,
+  isAssistedExercise,
+  isTimedExercise,
+  toCombinedExternalLoadKg,
+  usesOneDumbbell,
+} from '../engine/e1rm';
 import { getMovementFamilyLabel, getMovementVectorId } from '../engine/progression';
 import { getExerciseBiomechanicalMeta } from '../engine/knowledgeGraph';
 import { LB_PER_KG } from '../utils/units';
@@ -43,6 +50,8 @@ export interface CompetitorCsvImportSummary {
   addedExerciseCount: number;
   dateRange?: [string, string];
   heaviestLiftLabel?: string;
+  /** Set when imported paired two-dumbbell weights look like combined pair totals rather than per-dumbbell weights. */
+  combinedDumbbellWarning?: CombinedDumbbellWarning;
 }
 
 export interface CompetitorCsvImportResult {
@@ -720,8 +729,19 @@ export function parseCompetitorCsv(
       });
 
       const workingReps = sets.filter((s) => !s.isWarmup).map((s) => s.actualReps ?? def.defaultRepRange[0]);
-      const minReps = workingReps.length > 0 ? Math.min(def.defaultRepRange[0], ...workingReps) : def.defaultRepRange[0];
-      const maxReps = workingReps.length > 0 ? Math.max(def.defaultRepRange[1], ...workingReps) : def.defaultRepRange[1];
+      const isLoadedCompound =
+        !meta.isIsolation && def.equipment !== 'bodyweight' && def.equipment !== 'weighted_bodyweight';
+      const [defMinReps, defMaxReps] = def.defaultRepRange;
+      const boundedWorkingReps = isLoadedCompound
+        ? workingReps.filter((r) => r >= 1 && r <= 15)
+        : workingReps.filter((r) => r >= 1);
+      const minReps = boundedWorkingReps.length > 0 ? Math.min(defMinReps, ...boundedWorkingReps) : defMinReps;
+      // Never let a stray 20-rep pump or warm-up set stretch a loaded compound lift's rep ceiling past 15.
+      const maxReps = isLoadedCompound
+        ? Math.min(15, Math.max(defMaxReps, ...(boundedWorkingReps.length > 0 ? boundedWorkingReps : [defMaxReps])))
+        : workingReps.length > 0
+        ? Math.max(defMaxReps, ...workingReps)
+        : defMaxReps;
       const noteText = exRows.map((r) => r.exerciseNotes).filter(Boolean).join(' · ');
 
       return {
@@ -775,6 +795,9 @@ export function parseCompetitorCsv(
   const dateRange: [string, string] | undefined =
     dates.length > 0 ? [dates[0], dates[dates.length - 1]] : undefined;
   const addedExercises = [...addedExercisesMap.values()];
+  const combinedDumbbellWarning = options.halveCombinedTwoHandDumbbells
+    ? undefined
+    : detectLikelyCombinedTwoDumbbellImport(workouts) ?? undefined;
 
   return {
     format,
@@ -793,6 +816,7 @@ export function parseCompetitorCsv(
       heaviestLiftLabel: heaviestTracker.best
         ? `${heaviestTracker.best.name}: ${heaviestTracker.best.weightKg} kg × ${heaviestTracker.best.reps}`
         : undefined,
+      combinedDumbbellWarning,
     },
   };
 }

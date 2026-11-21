@@ -23,10 +23,11 @@ import {
   WorkoutSet,
 } from './types';
 import {
-  calculateE1RM,
   getBodyweightLoadRatio,
   HARD_SET_MAX_RIR,
+  HIGH_REP_RIR_DAMPEN_THRESHOLD,
   isUnilateralExercise,
+  MAX_E1RM_REPS_FROM_FAILURE,
   MAX_LOGGABLE_RIR,
   usesTwoDumbbells,
 } from './e1rm';
@@ -35,7 +36,7 @@ import {
   hasInvertedStraightSetRir,
 } from './progressionRules';
 import { localDateString } from '../utils/date';
-import { formatWeight, WeightUnit } from '../utils/units';
+import { formatWeight, LB_PER_KG, snapLoadKg, WeightUnit } from '../utils/units';
 
 // ============================================================================
 // Constants (Spec REQ-1 .. REQ-5)
@@ -53,6 +54,59 @@ export const BODYWEIGHT_LEVERAGE_UPGRADE_REP_THRESHOLD = 18;
 export function clampRir(rir: number): number {
   if (!Number.isFinite(rir)) return 2;
   return Math.max(0, Math.min(MAX_LOGGABLE_RIR, Math.round(rir)));
+}
+
+/**
+ * Logged-weight Epley 1RM used consistently across ExerciseProgressionState writers
+ * (per-hand for paired two-dumbbell exercises, total external load for barbell/single-DB/machine/cable).
+ * Dampens RIR credit above 12 reps and caps reps-from-failure at 15 to match e1rm.ts.
+ */
+function computeLoggedWeightEpley1rm(weightKg: number, reps: number, rir: number): number {
+  if (weightKg <= 0 || reps <= 0) return 0;
+  const clampedRir = clampRir(rir);
+  const effRir = reps > HIGH_REP_RIR_DAMPEN_THRESHOLD ? clampedRir * 0.5 : clampedRir;
+  const effReps = Math.min(MAX_E1RM_REPS_FROM_FAILURE, reps + effRir);
+  return Math.round(weightKg * (1 + effReps / 30) * 10) / 10;
+}
+
+/**
+ * Converts an ExerciseProgressionState's logged-weight Epley 1RM into a canonical
+ * barbell-equivalent 1RM for cross-exercise anchor prior transfers (Branch B / Branch C / bodyweight sizing).
+ * Barbell anchors pass through 1:1; paired two-dumbbell anchors convert per-hand -> combined -> barbell equivalent.
+ */
+export function toBarbellEquivalentAnchorE1rm(
+  anchorState: ExerciseProgressionState | null | undefined,
+  anchorDef?: ExerciseDefinition
+): number {
+  const raw = anchorState?.estimated1rmKg ?? 0;
+  if (raw <= 0) return 0;
+  if (!anchorDef) return raw;
+  const anchorMeta = resolveExerciseMetadata(anchorDef);
+  if (anchorMeta.equipmentClass !== 'STANDARDIZED_FREE_WEIGHT') return raw;
+  if (anchorDef.equipment === 'barbell') return raw;
+  const totalCombinedE1rm = anchorMeta.isUnilateralPerHand ? raw * 2 : raw;
+  const ratio = anchorMeta.anchorTransferRatio ?? 0.78;
+  return ratio > 0 ? totalCombinedE1rm / ratio : totalCombinedE1rm;
+}
+
+function resolveEffectiveStepKg(
+  equipment: ExerciseDefinition['equipment'],
+  overlay: EnvironmentOverlay | null | undefined,
+  unit: WeightUnit
+): number {
+  if (equipment === 'dumbbell') {
+    const rawStep = overlay?.dumbbellStepKg;
+    if (unit === 'kg') {
+      // Only honor clean integer kg steps in kg mode so stale lb-derived steps (e.g. 2.268 kg / 1.134 kg)
+      // never manufacture impossible fractional dumbbell weights such as 46.5 kg.
+      if (rawStep != null && rawStep >= 0.99 && Math.abs(rawStep - Math.round(rawStep)) < 0.05) {
+        return Math.max(1, Math.round(rawStep));
+      }
+      return 2;
+    }
+    return rawStep != null && rawStep > 0 ? rawStep : 5 / LB_PER_KG;
+  }
+  return unit === 'lb' ? 5 / LB_PER_KG : 2.5;
 }
 
 export function formatRirDisplay(rir: number): string {
@@ -749,23 +803,22 @@ export function prescribeSet1WithAnchorPrior(params: {
   const setCount = Math.max(1, slot.targetSets);
   const initialRir = clampRir(slot.targetRirInitial);
   const decayRate = targetDef.isIsolation ? DEFAULT_ISOLATION_DECAY_RATE : DEFAULT_COMPOUND_DECAY_RATE;
-  const stepKg =
-    targetDef.equipment === 'dumbbell'
-      ? overlay?.dumbbellStepKg ?? 2
-      : 2.5;
+  const stepKg = resolveEffectiveStepKg(targetDef.equipment, overlay, unit);
+  const isSameAsAnchor = Boolean(anchorDef && anchorDef.id === targetDef.id);
 
   // -------------------------------------------------------------------------
-  // Branch A — Existing Exercise History within 90 days (OWN_HISTORY)
+  // Branch A — Existing Exercise History within 90 days (or same-exercise history
+  // when the lift was not swapped, so older own history never suffers a 0.74x penalty)
   // -------------------------------------------------------------------------
-  const hasRecentOwnHistory = Boolean(
+  const hasOwnHistory = Boolean(
     targetState &&
       targetState.lastLoggedAt != null &&
-      nowMs - targetState.lastLoggedAt <= OWN_HISTORY_WINDOW_MS &&
+      (nowMs - targetState.lastLoggedAt <= OWN_HISTORY_WINDOW_MS || isSameAsAnchor) &&
       (meta.equipmentClass === 'BODYWEIGHT' ||
         (targetState.lastWorkingWeightKg != null && targetState.lastWorkingWeightKg > 0))
   );
 
-  if (hasRecentOwnHistory && targetState) {
+  if (hasOwnHistory && targetState) {
     if (meta.equipmentClass === 'BODYWEIGHT') {
       const bwPct = meta.bodyweightLoadPct ?? getBodyweightLoadRatio(targetDef.id, targetDef.pillar);
       const setupLabel = formatBodyweightSetupLabel(targetDef, bwPct);
@@ -792,7 +845,7 @@ export function prescribeSet1WithAnchorPrior(params: {
       };
     }
 
-    let workingWeight = targetState.lastWorkingWeightKg ?? 0;
+    let workingWeight = snapLoadKg(targetState.lastWorkingWeightKg ?? 0, unit, targetDef.equipment);
     let repMax = slot.targetRepMax;
     let rationaleKind: ContinuityRationaleKind | undefined;
     let coarseJumpPct: number | undefined;
@@ -803,6 +856,7 @@ export function prescribeSet1WithAnchorPrior(params: {
       workingWeight > overlay.maxDumbbellKg
     ) {
       workingWeight = Math.max(stepKg, Math.floor(overlay.maxDumbbellKg / stepKg) * stepKg);
+      if (unit === 'kg') workingWeight = snapLoadKg(workingWeight, 'kg', 'dumbbell');
       const coarse = evaluateCoarseJumpRepExpansion({
         currentWeightKg: workingWeight,
         nextAvailableWeightKg: null,
@@ -856,20 +910,34 @@ export function prescribeSet1WithAnchorPrior(params: {
     anchorState?.estimated1rmKg != null &&
     anchorState.estimated1rmKg > 0
   ) {
-    const transferRatio = meta.anchorTransferRatio ?? 0.78;
-    const priorE1rm = anchorState.estimated1rmKg * transferRatio;
     const rTarget = (slot.targetRepMin + slot.targetRepMax) / 2;
-    const totalLoad = priorE1rm / (1 + (rTarget + initialRir) / 30);
-    const rawPerHand = meta.isUnilateralPerHand ? totalLoad / 2 : totalLoad;
+    const targetEpleyDivisor = 1 + Math.min(MAX_E1RM_REPS_FROM_FAILURE, rTarget + initialRir) / 30;
+    let rawPerHand: number;
+    let perUnitPriorE1rm: number;
+    if (isSameAsAnchor) {
+      perUnitPriorE1rm = anchorState.estimated1rmKg;
+      rawPerHand = perUnitPriorE1rm / targetEpleyDivisor;
+    } else {
+      const canonicalBarbellAnchorE1rm = toBarbellEquivalentAnchorE1rm(anchorState, anchorDef);
+      const transferRatio = meta.anchorTransferRatio ?? 0.78;
+      const priorTotalE1rm = canonicalBarbellAnchorE1rm * transferRatio;
+      const totalLoad = priorTotalE1rm / targetEpleyDivisor;
+      rawPerHand = meta.isUnilateralPerHand ? totalLoad / 2 : totalLoad;
+      perUnitPriorE1rm = meta.isUnilateralPerHand ? priorTotalE1rm / 2 : priorTotalE1rm;
+    }
 
     // Round DOWN to nearest available gym increment
     let suggested = Math.max(stepKg, Math.floor(rawPerHand / stepKg) * stepKg);
+    if (unit === 'kg' && targetDef.equipment === 'dumbbell') {
+      suggested = Math.max(1, Math.round(suggested));
+    }
     let repMax = slot.targetRepMax;
     let rationaleKind: ContinuityRationaleKind = 'ANCHOR_PRIOR';
     let coarseJumpPct: number | undefined;
 
     if (targetDef.equipment === 'dumbbell' && overlay?.maxDumbbellKg != null && suggested > overlay.maxDumbbellKg) {
       suggested = Math.max(stepKg, Math.floor(overlay.maxDumbbellKg / stepKg) * stepKg);
+      if (unit === 'kg') suggested = Math.max(1, Math.round(suggested));
       const coarse = evaluateCoarseJumpRepExpansion({
         currentWeightKg: suggested,
         nextAvailableWeightKg: null,
@@ -886,7 +954,6 @@ export function prescribeSet1WithAnchorPrior(params: {
     }
 
     const rirs = buildMonotonicRirs(setCount, initialRir, false);
-    const perUnitPriorE1rm = meta.isUnilateralPerHand ? priorE1rm / 2 : priorE1rm;
 
     const sets: ActiveSetPrescription[] = [];
     for (let idx = 0; idx < setCount; idx++) {
@@ -943,7 +1010,7 @@ export function prescribeSet1WithAnchorPrior(params: {
     const bwPct = meta.bodyweightLoadPct ?? getBodyweightLoadRatio(targetDef.id, targetDef.pillar);
     const safeBw = userBodyweightKg > 0 ? userBodyweightKg : 80;
     const effectiveLoad = safeBw * bwPct;
-    const anchorE1rm = anchorState?.estimated1rmKg ?? 0;
+    const anchorE1rm = toBarbellEquivalentAnchorE1rm(anchorState, anchorDef);
     const isLightLoadTightened =
       anchorE1rm > 0 && effectiveLoad > 0 && effectiveLoad < LIGHT_LOAD_ANCHOR_RATIO * anchorE1rm;
 
@@ -1353,10 +1420,7 @@ export function recalibrateSetsAfterSet1(params: {
     };
   }
 
-  const stepKg =
-    targetDef.equipment === 'dumbbell'
-      ? overlay?.dumbbellStepKg ?? 2
-      : 2.5;
+  const stepKg = resolveEffectiveStepKg(targetDef.equipment, overlay, unit);
   const maxDbCap = targetDef.equipment === 'dumbbell' ? overlay?.maxDumbbellKg ?? null : null;
 
   // Decide working weight for Sets 2..N (REPS_FIRST: choose one clean working weight and hold it across Sets 2..N)
@@ -1517,7 +1581,7 @@ export function updateExerciseProgressionStateDamped(
     };
   }
 
-  const rawE1rm = loggedSet.weightKg * (1 + (loggedSet.reps + clampedRir) / 30);
+  const rawE1rm = computeLoggedWeightEpley1rm(loggedSet.weightKg, loggedSet.reps, clampedRir);
   let nextE1rm: number;
 
   const isEstablishedLift =
@@ -2135,7 +2199,8 @@ export function buildSessionContinuitySummary(params: {
 export function deriveIsolatedProgressionStateFromHistory(
   exerciseId: string,
   workouts: WorkoutSession[],
-  storedStates?: Record<string, ExerciseProgressionState>
+  storedStates?: Record<string, ExerciseProgressionState>,
+  defaultBodyweightKg: number = 80
 ): ExerciseProgressionState | null {
   if (storedStates && storedStates[exerciseId]) {
     return storedStates[exerciseId];
@@ -2145,7 +2210,7 @@ export function deriveIsolatedProgressionStateFromHistory(
     .sort((a, b) => (b.completedAt || b.date).localeCompare(a.completedAt || a.date));
 
   let sessionCount = 0;
-  let latest: { weight: number; reps: number; rir: number; e1rm: number; atMs: number } | null = null;
+  let latest: { weight: number; reps: number; rir: number; e1rm: number; atMs: number; isBodyweight: boolean } | null = null;
 
   for (const w of completed) {
     const ex = w.exercises.find((e) => e.exerciseId === exerciseId);
@@ -2154,15 +2219,21 @@ export function deriveIsolatedProgressionStateFromHistory(
     if (working.length === 0) continue;
     sessionCount++;
     if (!latest) {
+      const isBodyweight = classifyEquipment(ex.equipment) === 'BODYWEIGHT';
       let bestSet: WorkoutSet | null = null;
       let bestScore = -1;
       for (const s of working) {
         const wt = s.actualWeightKg ?? s.targetWeightKg ?? 0;
         const rp = s.actualReps ?? s.targetReps ?? 0;
+        if (rp <= 0) continue;
         const rir = clampRir(s.actualRir ?? s.targetRir ?? 2);
-        const e1 = calculateE1RM(wt, rp, Math.min(3, rir), ex.equipment, ex.isRdl, ex.isWeightedCalisthenic, 80, ex.exerciseId, ex.pillar, ex.name);
-        if (e1 > bestScore) {
-          bestScore = e1;
+        const score = isBodyweight
+          ? rp * 10 - rir
+          : wt > 0
+          ? computeLoggedWeightEpley1rm(wt, rp, Math.min(rir, 5))
+          : -1;
+        if (score > bestScore) {
+          bestScore = score;
           bestSet = s;
         }
       }
@@ -2171,14 +2242,22 @@ export function deriveIsolatedProgressionStateFromHistory(
         const rp = bestSet.actualReps ?? bestSet.targetReps ?? 0;
         const rir = clampRir(bestSet.actualRir ?? bestSet.targetRir ?? 2);
         const atMs = w.completedAt ? Date.parse(w.completedAt) : Date.parse(`${w.date}T12:00:00`);
-        // Use clean raw barbell/external Epley for standardized anchor e1RM
-        const rawE1 = wt > 0 && rp > 0 ? Math.round(wt * (1 + (rp + rir) / 30) * 10) / 10 : bestScore;
+        const effectiveWt = isBodyweight
+          ? (defaultBodyweightKg > 0 ? defaultBodyweightKg : 80) * getBodyweightLoadRatio(ex.exerciseId, ex.pillar)
+          : wt;
+        // Keep estimated1rmKg strictly in the same logged-weight Epley convention as
+        // rebuildIsolatedProgressionStates & updateExerciseProgressionStateDamped.
+        const rawE1 =
+          rir >= MAX_LOGGABLE_RIR || effectiveWt <= 0 || rp <= 0
+            ? 0
+            : computeLoggedWeightEpley1rm(effectiveWt, rp, rir);
         latest = {
-          weight: wt,
+          weight: isBodyweight ? 0 : wt,
           reps: rp,
           rir,
-          e1rm: ex.equipment === 'barbell' ? rawE1 : bestScore || rawE1,
+          e1rm: rawE1,
           atMs: Number.isFinite(atMs) ? atMs : Date.now(),
+          isBodyweight,
         };
       }
     }
@@ -2189,7 +2268,7 @@ export function deriveIsolatedProgressionStateFromHistory(
     exerciseId,
     lastLoggedAt: latest.atMs,
     estimated1rmKg: latest.e1rm > 0 ? latest.e1rm : null,
-    lastWorkingWeightKg: latest.weight > 0 ? latest.weight : null,
+    lastWorkingWeightKg: !latest.isBodyweight && latest.weight > 0 ? latest.weight : null,
     lastWorkingReps: latest.reps > 0 ? latest.reps : null,
     lastLoggedRir: latest.rir,
     calibratedSessionCount: sessionCount,
@@ -2252,6 +2331,42 @@ export function applyEnvironmentOverlayToSession(params: {
         ? Math.max(2, workingSets.length - 1)
         : Math.max(1, workingSets.length);
 
+    // Always derive the canonical slot rep range from the preserved anchor bounds (never from a
+    // bodyweight push-up or coarse-jump capped rep ceiling such as 20 reps from a prior overlay).
+    const wasPreviouslyOverlaid = Boolean(
+      ex.anchorExerciseId ||
+        ex.continuityRationaleKind === 'COARSE_JUMP_EXPANDED' ||
+        ex.continuityRationaleKind === 'BODYWEIGHT' ||
+        ex.anchorMinReps !== undefined ||
+        ex.anchorMaxReps !== undefined
+    );
+    const isLoadedCompoundAnchor =
+      !anchorDef.isIsolation &&
+      anchorDef.equipment !== 'bodyweight' &&
+      anchorDef.equipment !== 'weighted_bodyweight' &&
+      ex.repTargetType !== 'form_failure';
+    const rawAnchorMin =
+      ex.anchorMinReps ??
+      (wasPreviouslyOverlaid ? anchorDef.defaultRepRange[0] : ex.minReps || anchorDef.defaultRepRange[0]);
+    let rawAnchorMax =
+      ex.anchorMaxReps ??
+      (wasPreviouslyOverlaid ? anchorDef.defaultRepRange[1] : ex.maxReps || anchorDef.defaultRepRange[1]);
+    if (
+      ex.anchorMaxReps === undefined &&
+      isLoadedCompoundAnchor &&
+      rawAnchorMax > 15 &&
+      anchorDef.defaultRepRange[1] <= 15
+    ) {
+      rawAnchorMax = anchorDef.defaultRepRange[1];
+    }
+    const origMinReps = Math.max(1, rawAnchorMin);
+    const origMaxReps = Math.max(origMinReps, rawAnchorMax);
+    const origWeightKg =
+      ex.anchorTargetWeightKg ??
+      (ex.exerciseId === anchorDef.id && ex.continuityRationaleKind !== 'COARSE_JUMP_EXPANDED'
+        ? workingSets[0]?.targetWeightKg
+        : undefined);
+
     const slot: ProgramSlot = {
       slotId,
       programId: session.planId ?? 'default',
@@ -2259,8 +2374,8 @@ export function applyEnvironmentOverlayToSession(params: {
       movementPattern: resolveMovementPattern(anchorDef),
       anchorExerciseId: anchorDef.id,
       targetSets: targetSetsCount,
-      targetRepMin: ex.minReps || anchorDef.defaultRepRange[0],
-      targetRepMax: ex.maxReps || anchorDef.defaultRepRange[1],
+      targetRepMin: origMinReps,
+      targetRepMax: origMaxReps,
       targetRirInitial: clampRir(workingSets[0]?.targetRir ?? 2),
       restSeconds: ex.restSeconds ?? (anchorDef.isIsolation ? 75 : 120),
     };
@@ -2268,7 +2383,8 @@ export function applyEnvironmentOverlayToSession(params: {
     const anchorState = deriveIsolatedProgressionStateFromHistory(
       anchorDef.id,
       historicalWorkouts,
-      storedProgressionStates
+      storedProgressionStates,
+      userBodyweightKg
     );
 
     // No active overlay -> restore master anchor exercise & check clean Home-Gym Re-Entry (REQ-5)
@@ -2281,21 +2397,50 @@ export function applyEnvironmentOverlayToSession(params: {
         unit,
       });
 
-      if (ex.exerciseId === anchorDef.id && !reentry.isBridgeReentry) {
+      const needsOverlayRestore =
+        ex.exerciseId !== anchorDef.id ||
+        reentry.isBridgeReentry ||
+        ex.continuityRationaleKind === 'COARSE_JUMP_EXPANDED' ||
+        ex.anchorMaxReps !== undefined ||
+        ex.anchorMinReps !== undefined ||
+        ex.anchorTargetWeightKg !== undefined ||
+        ex.minReps !== origMinReps ||
+        ex.maxReps !== origMaxReps;
+
+      if (!needsOverlayRestore) {
         return {
           ...ex,
           slotId,
           anchorExerciseId: undefined,
           anchorExerciseName: undefined,
+          anchorMinReps: undefined,
+          anchorMaxReps: undefined,
+          anchorTargetWeightKg: undefined,
           anchorReferenceLabel: undefined,
           continuityRationaleKind: undefined,
+          coarseJumpPct: undefined,
           isBridgeReentry: false,
           reentryFromLabel: undefined,
         };
       }
 
-      const restoredWeight = reentry.lastGymWeightKg ?? anchorState?.lastWorkingWeightKg ?? workingSets[0]?.targetWeightKg ?? 0;
-      const restoredReps = reentry.lastGymReps ?? anchorState?.lastWorkingReps ?? slot.targetRepMin;
+      const rawRestoredWeight =
+        reentry.lastGymWeightKg ??
+        ex.anchorTargetWeightKg ??
+        anchorState?.lastWorkingWeightKg ??
+        workingSets[0]?.targetWeightKg ??
+        0;
+      const isAnchorPureBw = anchorDef.equipment === 'bodyweight' && !anchorDef.isWeightedCalisthenic;
+      const restoredWeight = isAnchorPureBw
+        ? 0
+        : rawRestoredWeight > 0
+        ? snapLoadKg(rawRestoredWeight, unit, anchorDef.equipment)
+        : 0;
+      const rawRestoredReps =
+        reentry.lastGymReps ??
+        anchorState?.lastWorkingReps ??
+        slot.targetRepMin;
+      const restoredReps = Math.min(slot.targetRepMax, Math.max(slot.targetRepMin, rawRestoredReps));
       const rirs = buildMonotonicRirs(targetSetsCount, slot.targetRirInitial, false);
 
       const restoredSets: WorkoutSet[] = Array.from({ length: targetSetsCount }, (_, sIdx) => ({
@@ -2330,9 +2475,13 @@ export function applyEnvironmentOverlayToSession(params: {
         slotId,
         anchorExerciseId: undefined,
         anchorExerciseName: undefined,
+        anchorMinReps: undefined,
+        anchorMaxReps: undefined,
+        anchorTargetWeightKg: undefined,
         anchorReferenceLabel: undefined,
         calibrationSource: 'OWN_HISTORY',
         continuityRationaleKind: reentry.isBridgeReentry ? 'HOME_GYM_REENTRY' : undefined,
+        coarseJumpPct: undefined,
         setupLabel: undefined,
         bodyweightLoadPct: undefined,
         leverageTier: undefined,
@@ -2347,14 +2496,77 @@ export function applyEnvironmentOverlayToSession(params: {
       slot,
       overlay: active,
       exerciseCatalog,
-      anchorE1rmKg: anchorState?.estimated1rmKg,
+      anchorE1rmKg: toBarbellEquivalentAnchorE1rm(anchorState, anchorDef),
       userBodyweightKg,
     });
     const targetDef = resolved.exerciseDef;
+
+    // Fast path: the master anchor lift is ALREADY compatible with the new overlay (e.g., Incline DB Press
+    // when switching Gym -> Home with dumbbells). Preserve the athlete's personalized working weight and
+    // rep range rather than overwriting them with a generic anchor prior; only enforce maxDumbbellKg cap.
+    if (!resolved.wasSwapped && ex.exerciseId === anchorDef.id && origWeightKg !== undefined && origWeightKg > 0) {
+      const stepKg = resolveEffectiveStepKg(targetDef.equipment, active, unit);
+      let workingWeight = snapLoadKg(origWeightKg, unit, targetDef.equipment);
+      let repMax = slot.targetRepMax;
+      let rationaleKind: ContinuityRationaleKind | undefined;
+      let coarseJumpPct: number | undefined;
+
+      if (
+        targetDef.equipment === 'dumbbell' &&
+        active.maxDumbbellKg != null &&
+        workingWeight > active.maxDumbbellKg
+      ) {
+        workingWeight = Math.max(stepKg, Math.floor(active.maxDumbbellKg / stepKg) * stepKg);
+        if (unit === 'kg') workingWeight = Math.max(1, Math.round(workingWeight));
+        const coarse = evaluateCoarseJumpRepExpansion({
+          currentWeightKg: workingWeight,
+          nextAvailableWeightKg: null,
+          maxDumbbellKg: active.maxDumbbellKg,
+          currentRepMin: slot.targetRepMin,
+          currentRepMax: slot.targetRepMax,
+          stepKg,
+          unit,
+        });
+        if (coarse.expanded) {
+          repMax = coarse.expandedRepMax;
+          rationaleKind = 'COARSE_JUMP_EXPANDED';
+          coarseJumpPct = coarse.jumpPct;
+        }
+      }
+
+      const preservedSets: WorkoutSet[] = ex.sets.map((s) => {
+        if (s.isWarmup || s.setType === 'warmup') return s;
+        const clampedReps = Math.min(repMax, Math.max(slot.targetRepMin, s.targetReps || slot.targetRepMin));
+        return {
+          ...s,
+          targetWeightKg: workingWeight,
+          actualWeightKg: workingWeight,
+          targetReps: clampedReps,
+          actualReps: clampedReps,
+        };
+      });
+
+      return {
+        ...ex,
+        minReps: slot.targetRepMin,
+        maxReps: repMax,
+        slotId,
+        anchorMinReps: origMinReps,
+        anchorMaxReps: origMaxReps,
+        anchorTargetWeightKg: origWeightKg,
+        continuityRationaleKind: rationaleKind,
+        coarseJumpPct,
+        isBridgeReentry: false,
+        reentryFromLabel: undefined,
+        sets: preservedSets,
+      };
+    }
+
     const targetState = deriveIsolatedProgressionStateFromHistory(
       targetDef.id,
       historicalWorkouts,
-      storedProgressionStates
+      storedProgressionStates,
+      userBodyweightKg
     );
 
     const presc = prescribeSet1WithAnchorPrior({
@@ -2415,6 +2627,9 @@ export function applyEnvironmentOverlayToSession(params: {
       slotId,
       anchorExerciseId: resolved.wasSwapped ? anchorDef.id : undefined,
       anchorExerciseName: resolved.wasSwapped ? anchorDef.name : undefined,
+      anchorMinReps: origMinReps,
+      anchorMaxReps: origMaxReps,
+      anchorTargetWeightKg: origWeightKg,
       anchorReferenceLabel: resolved.wasSwapped
         ? formatCompactAnchorRef(anchorDef, anchorState, unit)
         : undefined,
@@ -2690,11 +2905,10 @@ export function evaluateSingleExerciseContinuitySwap(params: {
     const firstR = allWorking[0]?.targetReps ?? currentExercise.minReps ?? 8;
     const firstRir = clampRir(allWorking[0]?.targetRir ?? 2);
     if (firstW > 0 && firstR > 0) {
-      const combinedW = usesTwoDumbbells(anchorDef) ? firstW * 2 : firstW;
       anchorState = {
         exerciseId: anchorDef.id,
         lastLoggedAt: nowMs,
-        estimated1rmKg: Math.round(combinedW * (1 + (firstR + firstRir) / 30) * 10) / 10,
+        estimated1rmKg: computeLoggedWeightEpley1rm(firstW, firstR, firstRir),
         lastWorkingWeightKg: firstW,
         lastWorkingReps: firstR,
         lastLoggedRir: firstRir,

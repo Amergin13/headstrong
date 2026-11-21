@@ -198,13 +198,25 @@ export function getTemplateDefaultWeight(exerciseId: string): number | undefined
   const direct = getDirectTemplateDefaultWeight(exerciseId);
   if (direct !== undefined) return direct;
 
-  // Not in any template: borrow the default of a templated exercise with the same movement,
-  // converted between implements (same equipment preferred).
+  // Explicit per-exercise catalog baseline takes precedence over cross-exercise borrowing so
+  // isolation moves (e.g. Dumbbell Chest Fly = 10 kg, Cable Fly = 25 kg) never inherit compound bench loads.
+  const explicitCatalogFallback = CATALOG_FALLBACK_WEIGHTS_KG[exerciseId];
+  if (explicitCatalogFallback !== undefined) return explicitCatalogFallback;
+
+  // Not in any template or fallback table: borrow the default of a templated exercise with the same
+  // movement & isolation role, converted between implements (same equipment preferred).
   const def = SEED_EXERCISES.find((e) => e.id === exerciseId);
   if (!def || def.equipment === 'bodyweight' || def.isWeightedCalisthenic) return undefined;
   const vector = getMovementVectorId(def);
   const withDefaults = (match: (e: ExerciseDefinition) => boolean) =>
-    SEED_EXERCISES.filter((e) => e.id !== exerciseId && e.equipment !== 'bodyweight' && !e.isWeightedCalisthenic && match(e))
+    SEED_EXERCISES.filter(
+      (e) =>
+        e.id !== exerciseId &&
+        e.equipment !== 'bodyweight' &&
+        !e.isWeightedCalisthenic &&
+        Boolean(e.isIsolation) === Boolean(def.isIsolation) &&
+        match(e)
+    )
       .map((e) => ({ e, weight: getDirectTemplateDefaultWeight(e.id) }))
       .filter((x): x is { e: ExerciseDefinition; weight: number } => x.weight !== undefined)
       .sort((a, b) => Number(b.e.equipment === def.equipment) - Number(a.e.equipment === def.equipment));
@@ -213,13 +225,13 @@ export function getTemplateDefaultWeight(exerciseId: string): number | undefined
   const source =
     withDefaults((e) => getMovementVectorId(e) === vector)[0] ??
     withDefaults((e) => e.pillar === def.pillar && e.equipment === def.equipment).sort((a, b) => a.weight - b.weight)[0];
-  if (!source) return CATALOG_FALLBACK_WEIGHTS_KG[exerciseId];
+  if (!source) return undefined;
   const converted = translateWeightBetweenImplements(
     source.weight,
     { ...source.e, exerciseId: source.e.id },
     { ...def, exerciseId: def.id }
   );
-  return converted > 0 ? converted : CATALOG_FALLBACK_WEIGHTS_KG[exerciseId];
+  return converted > 0 ? converted : undefined;
 }
 
 const CATALOG_FALLBACK_WEIGHTS_KG: Record<string, number> = {
@@ -1008,10 +1020,12 @@ export function generateSmartWorkoutSession(
     // Deload week reduces working weight by ~10% on compounds to unload joints
     const deloadFactor = mesocycleWeek === 6 && !meta.isIsolation ? 0.9 : 1.0;
     const baseWorkingWeight = prescription.nextWeightKg || item.defaultWeightKg;
-    const prescribedWeight =
-      deloadFactor === 1.0
-        ? baseWorkingWeight
-        : snapLoadKg(baseWorkingWeight * deloadFactor, 'kg', def?.equipment) || baseWorkingWeight;
+    const isPureBw = def?.equipment === 'bodyweight' && !def?.isWeightedCalisthenic;
+    const prescribedWeight = isPureBw
+      ? 0
+      : baseWorkingWeight > 0
+      ? snapLoadKg(baseWorkingWeight * deloadFactor, 'kg', def?.equipment) || baseWorkingWeight
+      : 0;
 
     const calibratedSets: WorkoutSet[] = seedSets.map((s, idx) => ({
       ...s,

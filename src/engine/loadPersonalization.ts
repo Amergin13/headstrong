@@ -19,6 +19,7 @@ import {
 import { findLastCompletedExerciseSession } from './progression';
 import { isAssistedExercise, learnExerciseEnduranceSlope } from './e1rm';
 import { isMesocycleLoadHoldTransition } from './hypertrophyVolume';
+import { isPillarBenchmarkExercise } from './strengthStandards';
 import { snapLoadKg, WeightUnit } from '../utils/units';
 
 /**
@@ -100,7 +101,8 @@ export function learnStrengthRatios(
   history: WorkoutSession[],
   templateDefaultFor: (exerciseId: string) => number | undefined
 ): { byPillar: Partial<Record<StrengthPillar, number>>; overall: number | null } {
-  const samples: { pillar: StrengthPillar; ratio: number }[] = [];
+  const freeWeightSamples: { pillar: StrengthPillar; ratio: number }[] = [];
+  const fallbackCompoundSamples: { pillar: StrengthPillar; ratio: number }[] = [];
   const seen = new Set<string>();
   const ordered = history
     .filter((w) => w.completed)
@@ -108,7 +110,10 @@ export function learnStrengthRatios(
 
   for (const w of ordered) {
     for (const ex of w.exercises) {
-      if (seen.has(ex.exerciseId) || isPureBodyweight(ex)) continue;
+      if (seen.has(ex.exerciseId) || isPureBodyweight(ex) || isAssistedExercise(ex)) continue;
+      // Exclude core & isolation lifts (e.g. 82 kg cable rope crunch or 59 kg tricep pushdown)
+      // whose variable pulley stacks otherwise pollute compound pressing/pulling pillar ratios.
+      if (ex.isIsolation || !isPillarBenchmarkExercise(ex)) continue;
       const def = templateDefaultFor(ex.exerciseId);
       if (!def || def <= 0) continue;
       const done = ex.sets.filter((s) => s.completed && isWorking(s));
@@ -116,9 +121,18 @@ export function learnStrengthRatios(
       const top = Math.max(...done.map((s) => s.actualWeightKg ?? s.targetWeightKg ?? 0));
       if (top <= 0) continue;
       seen.add(ex.exerciseId);
-      samples.push({ pillar: ex.pillar, ratio: top / def });
+      const clampedRatio = Math.max(0.25, Math.min(1.75, top / def));
+      if (ex.equipment === 'barbell' || ex.equipment === 'dumbbell') {
+        freeWeightSamples.push({ pillar: ex.pillar, ratio: clampedRatio });
+      } else {
+        fallbackCompoundSamples.push({ pillar: ex.pillar, ratio: clampedRatio });
+      }
     }
   }
+
+  // Prefer standardized barbell & dumbbell compound benchmarks; fall back to compound machines/cables
+  // only when the athlete has no barbell/dumbbell history for a pillar.
+  const samples = freeWeightSamples.length > 0 ? freeWeightSamples : fallbackCompoundSamples;
 
   const median = (vals: number[]) => {
     const sorted = [...vals].sort((a, b) => a - b);
@@ -127,9 +141,12 @@ export function learnStrengthRatios(
   };
 
   const byPillar: Partial<Record<StrengthPillar, number>> = {};
-  const pillars = new Set(samples.map((s) => s.pillar));
+  const pillars = new Set([...freeWeightSamples, ...fallbackCompoundSamples].map((s) => s.pillar));
   for (const p of pillars) {
-    byPillar[p] = median(samples.filter((s) => s.pillar === p).map((s) => s.ratio));
+    const fw = freeWeightSamples.filter((s) => s.pillar === p).map((s) => s.ratio);
+    const fb = fallbackCompoundSamples.filter((s) => s.pillar === p).map((s) => s.ratio);
+    const chosen = fw.length > 0 ? fw : fb;
+    if (chosen.length > 0) byPillar[p] = median(chosen);
   }
   return { byPillar, overall: samples.length > 0 ? median(samples.map((s) => s.ratio)) : null };
 }

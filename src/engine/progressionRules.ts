@@ -2,7 +2,11 @@ import { EquipmentInventory, EquipmentType, ReadinessState, WorkoutSet } from '.
 import { formatWeight, LB_PER_KG, snapLoadKg, WeightUnit } from '../utils/units';
 import { getInventoryStepKg, snapWeightToInventory } from './equipmentInventory';
 import { isMesocycleLoadHoldTransition } from './hypertrophyVolume';
-import { DEFAULT_EPLEY_DENOMINATOR } from './e1rm';
+import {
+  DEFAULT_EPLEY_DENOMINATOR,
+  HIGH_REP_RIR_DAMPEN_THRESHOLD,
+  MAX_E1RM_REPS_FROM_FAILURE,
+} from './e1rm';
 
 /**
  * The double progression rule, in one place. The knowledge graph's `sp-double-progression`
@@ -259,6 +263,13 @@ export function computeEquipmentAwareRepCeiling(params: {
   };
 }
 
+function epleyRepsFromFailure(reps: number, rir: number): number {
+  const safeReps = Math.max(0, reps);
+  const safeRir = Math.max(0, rir);
+  const effectiveRir = safeReps > HIGH_REP_RIR_DAMPEN_THRESHOLD ? safeRir * 0.5 : safeRir;
+  return Math.min(MAX_E1RM_REPS_FROM_FAILURE, safeReps + effectiveRir);
+}
+
 /** Epley-based equivalent working weight for a new rep/RIR target from a completed set. */
 export function equivalentWeightForReps(
   prevWeight: number,
@@ -269,8 +280,8 @@ export function equivalentWeightForReps(
   epleyDenominator: number = DEFAULT_EPLEY_DENOMINATOR
 ): number {
   const denom = Math.max(20, Math.min(45, epleyDenominator));
-  const e1rm = prevWeight * (1 + (Math.max(0, prevReps) + Math.max(0, prevRir)) / denom);
-  return e1rm / (1 + (Math.max(1, newReps) + Math.max(0, newRir)) / denom);
+  const e1rm = prevWeight * (1 + epleyRepsFromFailure(prevReps, prevRir) / denom);
+  return e1rm / (1 + epleyRepsFromFailure(Math.max(1, newReps), newRir) / denom);
 }
 
 /** Snaps a load to real equipment increments (or custom gym/home inventory) while enforcing the max session jump cap. */
@@ -439,11 +450,27 @@ export function evaluateRepRangeDoubleProgression(
     !rirTrackingEnabled || hadQualityEffort(effectiveRirAt(idx), evalSets[idx]?.targetRir);
 
   const prevWeight = isPureBodyweight ? 0 : currentWeightKg;
+  const heldWeightKg = isPureBodyweight ? 0 : prevWeight > 0 ? snap(prevWeight) : 0;
+  // Pick the strongest completed set by its own Epley capacity (never pair the heaviest set's weight
+  // with a lighter back-off set's rep count, which inflates prescriptions on pyramid / back-off work).
+  const setStrengthScore = (idx: number): number => {
+    const s = evalSets[idx];
+    const r = repsOf(s);
+    if (isPureBodyweight) return r;
+    const w = weightOf(s) > 0 ? weightOf(s) : prevWeight;
+    return w * (1 + epleyRepsFromFailure(r, effectiveRirAt(idx)) / Math.max(20, Math.min(45, epleyDenominator)));
+  };
   let bestSetIdx = 0;
+  let bestScore = setStrengthScore(0);
   for (let i = 1; i < evalSets.length; i++) {
-    if (repsOf(evalSets[i]) > repsOf(evalSets[bestSetIdx])) bestSetIdx = i;
+    const score = setStrengthScore(i);
+    if (score > bestScore + 1e-6) {
+      bestScore = score;
+      bestSetIdx = i;
+    }
   }
   const bestSet = evalSets[bestSetIdx];
+  const bestSetWeight = isPureBodyweight ? 0 : (weightOf(bestSet) > 0 ? weightOf(bestSet) : prevWeight);
   const bestReps = repsOf(bestSet);
   const lowestReps = Math.min(...evalSets.map(repsOf));
   const bestRir = effectiveRirAt(bestSetIdx);
@@ -471,7 +498,7 @@ export function evaluateRepRangeDoubleProgression(
       // For assisted calisthenics, hold current assistance when rep range shifts and reset to minReps.
       return {
         status: 'range_changed',
-        nextWeightKg: prevWeight,
+        nextWeightKg: heldWeightKg,
         nextRepsBySet: atBottom,
         weightChanged: false,
         repsChanged: evalSets.some((s) => repsOf(s) !== minReps),
@@ -480,12 +507,12 @@ export function evaluateRepRangeDoubleProgression(
         effectiveStepKg: step,
       };
     }
-    const matched = equivalentWeightForReps(prevWeight, bestReps, bestRir, minReps, newRir, epleyDenominator);
+    const matched = equivalentWeightForReps(bestSetWeight, bestReps, bestRir, minReps, newRir, epleyDenominator);
     const neverHeavier = minReps >= bestReps || readinessState === 'Amber Shield';
     const nextWeightKg = capAndSnapWeight(
       equipment,
-      neverHeavier ? Math.min(matched, prevWeight) : matched,
-      prevWeight,
+      neverHeavier ? Math.min(matched, bestSetWeight) : matched,
+      bestSetWeight,
       unit,
       inventory
     );
@@ -505,7 +532,7 @@ export function evaluateRepRangeDoubleProgression(
   if (readinessState === 'Amber Shield') {
     return {
       status: 'amber_hold',
-      nextWeightKg: isPureBodyweight ? 0 : prevWeight,
+      nextWeightKg: heldWeightKg,
       nextRepsBySet: Array.from({ length: Math.max(1, targetSetCount) }, (_, i) =>
         isPureBodyweight
           ? Math.max(minReps, Math.min(30, repsLastTime(i)))
@@ -605,7 +632,7 @@ export function evaluateRepRangeDoubleProgression(
     ) {
       return {
         status: 'consolidate',
-        nextWeightKg: isPureBodyweight ? 0 : prevWeight,
+        nextWeightKg: heldWeightKg,
         nextRepsBySet: Array.from({ length: Math.max(1, targetSetCount) }, (_, i) =>
           isPureBodyweight
             ? Math.max(minReps, Math.min(30, repsLastTime(i)))
@@ -680,7 +707,7 @@ export function evaluateRepRangeDoubleProgression(
       if (requiredE1rm > demonstratedE1rm + 1e-6) {
         return {
           status: 'consolidate',
-          nextWeightKg: prevWeight,
+          nextWeightKg: heldWeightKg,
           nextRepsBySet: Array.from({ length: Math.max(1, targetSetCount) }, (_, i) =>
             clampToRange(repsLastTime(i))
           ),
@@ -732,7 +759,7 @@ export function evaluateRepRangeDoubleProgression(
 
   return {
     status: repsAdded > 0 ? 'build_reps' : 'consolidate',
-    nextWeightKg: isPureBodyweight ? 0 : prevWeight,
+    nextWeightKg: heldWeightKg,
     nextRepsBySet,
     weightChanged: false,
     repsChanged: repsAdded > 0,

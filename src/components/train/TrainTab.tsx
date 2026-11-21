@@ -430,6 +430,8 @@ export const TrainTab: React.FC<TrainTabProps> = ({
 
               return {
                 ...ex,
+                anchorMinReps: recal.coarseJump?.expanded ? (ex.anchorMinReps ?? ex.minReps) : ex.anchorMinReps,
+                anchorMaxReps: recal.coarseJump?.expanded ? (ex.anchorMaxReps ?? ex.maxReps) : ex.anchorMaxReps,
                 maxReps: recal.coarseJump?.expanded ? recal.coarseJump.expandedRepMax : ex.maxReps,
                 continuityRationaleKind: recal.coarseJump?.expanded
                   ? 'COARSE_JUMP_EXPANDED'
@@ -813,10 +815,21 @@ export const TrainTab: React.FC<TrainTabProps> = ({
         calibratedSets = [...warmupSets, ...calibratedWorkingSets].map((st, i) => ({ ...st, setNumber: i + 1 }));
       }
 
-      const maxRepAcrossSets = timed
+      const isNewLoadedCompound =
+        !timed && !isPureBw && !meta.isIsolation && newDef.equipment !== 'bodyweight' && newDef.equipment !== 'weighted_bodyweight';
+      const rawMaxAcrossSets = timed
         ? rx.maxReps
         : Math.max(rx.maxReps, ...continuity.prescription.sets.map((p) => p.targetRepsMax));
+      const maxRepAcrossSets =
+        isNewLoadedCompound &&
+        continuity.prescription.rationaleKind !== 'COARSE_JUMP_EXPANDED' &&
+        rawMaxAcrossSets > 15 &&
+        newDef.defaultRepRange[1] <= 15
+          ? Math.max(rx.minReps, newDef.defaultRepRange[1])
+          : rawMaxAcrossSets;
       const keepAnchorMeta = scope === 'today' && continuity.anchorDef && continuity.anchorDef.id !== newDef.id;
+      const preservedAnchorMin = keepAnchorMeta ? (ex.anchorMinReps ?? continuity.anchorDef?.defaultRepRange[0] ?? ex.minReps) : undefined;
+      const preservedAnchorMax = keepAnchorMeta ? (ex.anchorMaxReps ?? continuity.anchorDef?.defaultRepRange[1] ?? ex.maxReps) : undefined;
 
       const replacement: ExerciseSession = {
         ...ex,
@@ -842,6 +855,8 @@ export const TrainTab: React.FC<TrainTabProps> = ({
         slotId: ex.slotId ?? ex.orderCode ?? ex.id,
         anchorExerciseId: keepAnchorMeta ? continuity.anchorDef!.id : undefined,
         anchorExerciseName: keepAnchorMeta ? continuity.anchorDef!.name : undefined,
+        anchorMinReps: preservedAnchorMin,
+        anchorMaxReps: preservedAnchorMax,
         anchorReferenceLabel: keepAnchorMeta ? continuity.anchorReferenceLabel : undefined,
         calibrationSource: timed ? undefined : continuity.prescription.calibrationSource,
         continuityRationaleKind: timed ? undefined : continuity.prescription.rationaleKind,

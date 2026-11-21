@@ -16,7 +16,13 @@ import {
   generateSeedBiometrics,
   generateSeedWorkouts,
 } from './seedData';
-import { calculateE1RM, usesOneDumbbell } from '../engine/e1rm';
+import {
+  calculateE1RM,
+  extractBarbellBenchmarksKg,
+  isLikelyCombinedTwoDumbbellWeight,
+  usesOneDumbbell,
+  usesTwoDumbbells,
+} from '../engine/e1rm';
 import { isPillarBenchmarkExercise } from '../engine/strengthStandards';
 import { getLatestBodyweightEma } from '../engine/ema';
 import { HARD_SET_MAX_RIR } from '../engine/e1rm';
@@ -25,6 +31,8 @@ import { generatePlanWorkout, getSessionPlanId, withPlanWorkoutName } from '../e
 import { prepareSessionForAthlete } from './sessionPreparation';
 import { buildStarterPlan } from '../engine/starterPlan';
 import { ActivityLog } from '../engine/activeDays';
+import { rebuildIsolatedProgressionStates } from '../engine/continuityEngine';
+import { snapLoadKg, WeightUnit } from '../utils/units';
 import {
   clearDriveSessionCredentials,
   decryptBackupPayload,
@@ -58,7 +66,7 @@ const LEGACY_KEYS = {
  * Version of the saved-data format. Bump it and add a step to runStorageMigrations whenever
  * the shape of stored data changes, so existing athletes' history keeps loading.
  */
-export const STORAGE_SCHEMA_VERSION = 9;
+export const STORAGE_SCHEMA_VERSION = 10;
 const SCHEMA_VERSION_KEY = 'treise_schema_version';
 
 /**
@@ -161,7 +169,7 @@ const NATIVE_MB6_PER_DB_EXERCISES = new Set([
 
 const halveCombinedDumbbellKg = (kg: number | undefined): number | undefined => {
   if (kg === undefined || kg <= 0) return kg;
-  return Math.max(1, Math.round((kg / 2) * 2) / 2);
+  return Math.max(1, Math.round(kg / 2));
 };
 
 /**
@@ -209,6 +217,325 @@ export function migrateCombinedDumbbellWeightsToPerHand(): void {
   migrateSingleKey(KEYS.ACTIVE_WORKOUT, LEGACY_KEYS.ACTIVE_WORKOUT);
 }
 
+/**
+ * Pure, idempotent v10 data repair fixing:
+ * 1. Pre-v9 doubled two-dumbbell defaults saved inside profile.customPlans (e.g. Phase 1 BT).
+ * 2. Unambiguously un-halved combined two-dumbbell working weights (e.g. 46.5–60 kg logged as
+ *    per-dumbbell Incline DB Press -> ~150 kg E1RM) while preserving legitimate elite lifters.
+ * 3. Fractional .5 kg dumbbell prescriptions on unstarted active workouts in kg mode.
+ * 4. Leaked maxReps > 15 (such as 8–20 reps) on loaded compound exercises in unstarted workouts.
+ * 5. Stale/mixed-unit ExerciseProgressionState entries (rebuilt cleanly from repaired workouts).
+ */
+export function repairCorruptedDumbbellAndRepRangeState(params: {
+  profile: UserProfile;
+  workouts: WorkoutSession[];
+  activeWorkout: WorkoutSession | null;
+  biometrics?: BiometricLog[];
+  exerciseCatalog?: ExerciseDefinition[];
+}): {
+  profile: UserProfile;
+  workouts: WorkoutSession[];
+  activeWorkout: WorkoutSession | null;
+  didChange: boolean;
+} {
+  const { profile, workouts, activeWorkout, biometrics = [], exerciseCatalog = SEED_EXERCISES } = params;
+  const unit: WeightUnit = profile.weightUnit === 'lb' ? 'lb' : 'kg';
+  const exMap = new Map(exerciseCatalog.map((e) => [e.id, e]));
+  const benchmarks = extractBarbellBenchmarksKg(workouts);
+  let didChange = false;
+
+  const repairSetWeightIfCombined = (
+    w: number | undefined,
+    ex: { equipment?: ExerciseDefinition['equipment']; exerciseId?: string; name?: string; pillar?: string; isIsolation?: boolean }
+  ): number | undefined => {
+    if (w === undefined || w <= 0) return w;
+    if (!isLikelyCombinedTwoDumbbellWeight(w, ex, benchmarks)) return w;
+    const halved = snapLoadKg(w / 2, unit, 'dumbbell');
+    if (Math.abs(halved - w) > 0.05) {
+      didChange = true;
+      return halved;
+    }
+    return w;
+  };
+
+  // 1. Repair legacy doubled two-dumbbell defaultWeightKg inside saved customPlans
+  let nextProfile = profile;
+  if (Array.isArray(profile.customPlans) && profile.customPlans.length > 0) {
+    let customPlansChanged = false;
+    const repairedPlans = profile.customPlans.map((plan) => {
+      let planChanged = false;
+      const templates = plan.templates.map((tmpl) => {
+        let tmplChanged = false;
+        const exercises = tmpl.exercises.map((item) => {
+          const def = exMap.get(item.exerciseId);
+          const equip = item.equipment ?? def?.equipment;
+          const isIso = def?.isIsolation;
+          if (
+            equip !== 'dumbbell' ||
+            !usesTwoDumbbells({ equipment: equip, exerciseId: item.exerciseId, name: item.name }) ||
+            !item.defaultWeightKg ||
+            item.defaultWeightKg <= 0
+          ) {
+            return item;
+          }
+          const isLegacyPhase1BtDoubled =
+            plan.id === 'custom:phase-1-bt' &&
+            ((item.exerciseId === 'ex-db-bench-press' && item.defaultWeightKg >= 38) ||
+              (item.exerciseId === 'ex-db-shoulder-press' && item.defaultWeightKg >= 28) ||
+              (item.exerciseId === 'ex-chest-supported-db-row' && item.defaultWeightKg >= 42) ||
+              (item.exerciseId === 'ex-db-floor-press' && item.defaultWeightKg >= 36) ||
+              ((item.exerciseId === 'ex-bicep-curl' || item.exerciseId === 'ex-hammer-preacher-curl') &&
+                item.defaultWeightKg >= 20));
+          const flaggedCombined =
+            isLegacyPhase1BtDoubled ||
+            isLikelyCombinedTwoDumbbellWeight(
+              item.defaultWeightKg,
+              {
+                equipment: equip,
+                exerciseId: item.exerciseId,
+                name: item.name,
+                pillar: item.pillar ?? def?.pillar,
+                isIsolation: isIso,
+              },
+              benchmarks
+            );
+          if (!flaggedCombined) return item;
+          const fixedDefault = Math.max(1, Math.round(item.defaultWeightKg / 2));
+          if (fixedDefault === item.defaultWeightKg) return item;
+          tmplChanged = true;
+          planChanged = true;
+          customPlansChanged = true;
+          didChange = true;
+          return { ...item, defaultWeightKg: fixedDefault };
+        });
+        return tmplChanged ? { ...tmpl, exercises } : tmpl;
+      });
+      return planChanged ? { ...plan, templates } : plan;
+    });
+    if (customPlansChanged) {
+      nextProfile = { ...nextProfile, customPlans: repairedPlans };
+    }
+  }
+
+  // 2. Repair unambiguously un-halved combined two-dumbbell sets in completed history
+  const repairedWorkouts = workouts.map((w) => {
+    let wChanged = false;
+    const exercises = w.exercises.map((ex) => {
+      if (ex.equipment !== 'dumbbell' || !usesTwoDumbbells(ex)) return ex;
+      const def = exMap.get(ex.exerciseId);
+      const exMeta = {
+        equipment: ex.equipment,
+        exerciseId: ex.exerciseId,
+        name: ex.name,
+        pillar: ex.pillar ?? def?.pillar,
+        isIsolation: ex.isIsolation ?? def?.isIsolation,
+      };
+      let exChanged = false;
+      const sets = ex.sets.map((s) => {
+        const nextTarget = repairSetWeightIfCombined(s.targetWeightKg, exMeta) ?? s.targetWeightKg;
+        const nextActual =
+          s.actualWeightKg !== undefined ? repairSetWeightIfCombined(s.actualWeightKg, exMeta) : undefined;
+        if (nextTarget !== s.targetWeightKg || nextActual !== s.actualWeightKg) {
+          exChanged = true;
+          wChanged = true;
+          return {
+            ...s,
+            targetWeightKg: nextTarget,
+            ...(s.actualWeightKg !== undefined ? { actualWeightKg: nextActual } : {}),
+          };
+        }
+        return s;
+      });
+      return exChanged ? { ...ex, sets } : ex;
+    });
+    return wChanged ? { ...w, exercises } : w;
+  });
+
+  // 3. Repair unstarted exercises in activeWorkout (combined paired-DB weights, .5 kg DB increments in kg, leaked 8-20 rep ceilings)
+  let repairedActive = activeWorkout;
+  if (activeWorkout && Array.isArray(activeWorkout.exercises)) {
+    const activeMaxDbCap =
+      nextProfile.activeLocation === 'home'
+        ? nextProfile.activeEnvironmentOverlay?.maxDumbbellKg ?? nextProfile.equipmentInventories?.home?.dumbbellMaxKg ?? null
+        : null;
+    let activeChanged = false;
+    const repairedExercises = activeWorkout.exercises.map((ex) => {
+      const anyCompleted = ex.sets.some((s) => s.completed);
+      if (anyCompleted) return ex;
+      const def = exMap.get(ex.exerciseId);
+      const exMeta = {
+        equipment: ex.equipment,
+        exerciseId: ex.exerciseId,
+        name: ex.name,
+        pillar: ex.pillar ?? def?.pillar,
+        isIsolation: ex.isIsolation ?? def?.isIsolation,
+      };
+
+      let exChanged = false;
+      let nextMinReps = ex.minReps;
+      let nextMaxReps = ex.maxReps;
+      let nextRationale = ex.continuityRationaleKind;
+      let nextCoarsePct = ex.coarseJumpPct;
+
+      // 3a. Repair un-halved paired-DB loads and snap illegal fractional kg dumbbell increments
+      const nextSets = ex.sets.map((s) => {
+        let tw = s.targetWeightKg;
+        let aw = s.actualWeightKg;
+        if (ex.equipment === 'dumbbell' && usesTwoDumbbells(ex)) {
+          const fixedT = repairSetWeightIfCombined(tw, exMeta);
+          if (fixedT !== undefined) tw = fixedT;
+          if (aw !== undefined) {
+            const fixedA = repairSetWeightIfCombined(aw, exMeta);
+            if (fixedA !== undefined) aw = fixedA;
+          }
+        }
+        if (ex.equipment === 'dumbbell' && unit === 'kg') {
+          if (tw > 0) {
+            const snappedT = snapLoadKg(tw, 'kg', 'dumbbell');
+            if (Math.abs(snappedT - tw) > 0.01) {
+              tw = snappedT;
+              didChange = true;
+            }
+          }
+          if (aw !== undefined && aw > 0) {
+            const snappedA = snapLoadKg(aw, 'kg', 'dumbbell');
+            if (Math.abs(snappedA - aw) > 0.01) {
+              aw = snappedA;
+              didChange = true;
+            }
+          }
+        }
+        if (tw !== s.targetWeightKg || aw !== s.actualWeightKg) {
+          exChanged = true;
+          activeChanged = true;
+          return {
+            ...s,
+            targetWeightKg: tw,
+            ...(s.actualWeightKg !== undefined ? { actualWeightKg: aw } : {}),
+          };
+        }
+        return s;
+      });
+
+      // 3b. Repair leaked maxReps > 15 (e.g. 8–20 reps) on loaded compound exercises
+      const isLoadedCompound =
+        !(ex.isIsolation ?? def?.isIsolation) &&
+        ex.equipment !== 'bodyweight' &&
+        ex.equipment !== 'weighted_bodyweight' &&
+        ex.repTargetType !== 'form_failure';
+      const firstWorkingWeight = nextSets.find((s) => !s.isWarmup && s.setType !== 'warmup')?.targetWeightKg ?? 0;
+      const isLegitimatelyCapped =
+        ex.continuityRationaleKind === 'COARSE_JUMP_EXPANDED' &&
+        activeMaxDbCap != null &&
+        firstWorkingWeight >= activeMaxDbCap - 0.1;
+
+      if (isLoadedCompound && ex.maxReps > 15 && !isLegitimatelyCapped) {
+        const cleanMin = ex.anchorMinReps ?? def?.defaultRepRange[0] ?? Math.min(ex.minReps || 8, 8);
+        const cleanMax = ex.anchorMaxReps ?? def?.defaultRepRange[1] ?? 12;
+        if (cleanMax <= 15 && (cleanMin !== ex.minReps || cleanMax !== ex.maxReps)) {
+          nextMinReps = cleanMin;
+          nextMaxReps = cleanMax;
+          if (nextRationale === 'COARSE_JUMP_EXPANDED') {
+            nextRationale = undefined;
+            nextCoarsePct = undefined;
+          }
+          exChanged = true;
+          activeChanged = true;
+          didChange = true;
+        }
+      }
+
+      const clampedSets = exChanged
+        ? nextSets.map((s) => {
+            if (s.isWarmup || s.setType === 'warmup') return s;
+            const tr = Math.min(nextMaxReps, Math.max(nextMinReps, s.targetReps || nextMinReps));
+            const ar =
+              s.actualReps !== undefined
+                ? Math.min(nextMaxReps, Math.max(nextMinReps, s.actualReps))
+                : undefined;
+            return {
+              ...s,
+              targetReps: tr,
+              ...(s.actualReps !== undefined ? { actualReps: ar } : {}),
+            };
+          })
+        : nextSets;
+
+      if (!exChanged) return ex;
+      return {
+        ...ex,
+        minReps: nextMinReps,
+        maxReps: nextMaxReps,
+        continuityRationaleKind: nextRationale,
+        coarseJumpPct: nextCoarsePct,
+        sets: clampedSets,
+      };
+    });
+    if (activeChanged) {
+      repairedActive = { ...activeWorkout, exercises: repairedExercises };
+    }
+  }
+
+  // 4. Rebuild isolated ExerciseProgressionStates cleanly in unified logged-weight Epley convention
+  const bwEma = getLatestBodyweightEma(biometrics);
+  const rebuiltStates = rebuildIsolatedProgressionStates(repairedWorkouts, bwEma > 0 ? bwEma : 80);
+  const statesChanged =
+    JSON.stringify(nextProfile.exerciseProgressionStates ?? {}) !== JSON.stringify(rebuiltStates);
+  if (statesChanged) {
+    nextProfile = {
+      ...nextProfile,
+      exerciseProgressionStates: rebuiltStates,
+    };
+    didChange = true;
+  }
+
+  return {
+    profile: nextProfile,
+    workouts: repairedWorkouts,
+    activeWorkout: repairedActive,
+    didChange,
+  };
+}
+
+export function migrateRepairCorruptedDumbbellAndRepRangeData(): void {
+  const rawProfile = localStorage.getItem(KEYS.PROFILE) || localStorage.getItem(LEGACY_KEYS.PROFILE);
+  const rawWorkouts = localStorage.getItem(KEYS.WORKOUTS) || localStorage.getItem(LEGACY_KEYS.WORKOUTS);
+  const rawActive = localStorage.getItem(KEYS.ACTIVE_WORKOUT) || localStorage.getItem(LEGACY_KEYS.ACTIVE_WORKOUT);
+  const rawBio = localStorage.getItem(KEYS.BIOMETRICS) || localStorage.getItem(LEGACY_KEYS.BIOMETRICS);
+  const rawEx = localStorage.getItem(KEYS.EXERCISES) || localStorage.getItem(LEGACY_KEYS.EXERCISES);
+
+  const profile: UserProfile | null = rawProfile ? JSON.parse(rawProfile) : null;
+  const workouts: WorkoutSession[] = rawWorkouts ? JSON.parse(rawWorkouts) : [];
+  const activeWorkout: WorkoutSession | null = rawActive ? JSON.parse(rawActive) : null;
+  const biometrics: BiometricLog[] = rawBio ? JSON.parse(rawBio) : [];
+  const exercises: ExerciseDefinition[] = rawEx ? JSON.parse(rawEx) : SEED_EXERCISES;
+
+  if (!profile && !Array.isArray(workouts) && !activeWorkout) return;
+
+  const repaired = repairCorruptedDumbbellAndRepRangeState({
+    profile: profile ?? NEW_USER_PROFILE,
+    workouts: Array.isArray(workouts) ? workouts : [],
+    activeWorkout,
+    biometrics: Array.isArray(biometrics) ? biometrics : [],
+    exerciseCatalog: Array.isArray(exercises) && exercises.length > 0 ? exercises : SEED_EXERCISES,
+  });
+
+  if (profile && repaired.didChange) {
+    localStorage.setItem(KEYS.PROFILE, JSON.stringify(repaired.profile));
+  }
+  if (rawWorkouts && repaired.didChange) {
+    localStorage.setItem(KEYS.WORKOUTS, JSON.stringify(repaired.workouts));
+  }
+  if (rawActive && repaired.activeWorkout && repaired.didChange) {
+    localStorage.setItem(KEYS.ACTIVE_WORKOUT, JSON.stringify(repaired.activeWorkout));
+  }
+  if (repaired.didChange) {
+    for (const cacheKey of REBUILDABLE_CACHE_KEYS) {
+      localStorage.removeItem(cacheKey);
+    }
+  }
+}
+
 export function runStorageMigrations(): void {
   if (typeof localStorage === 'undefined') return;
   try {
@@ -239,6 +566,9 @@ export function runStorageMigrations(): void {
     }
     if (current < 9) {
       migrateCombinedDumbbellWeightsToPerHand();
+    }
+    if (current < 10) {
+      migrateRepairCorruptedDumbbellAndRepRangeData();
     }
     if (current < STORAGE_SCHEMA_VERSION) {
       localStorage.setItem(SCHEMA_VERSION_KEY, String(STORAGE_SCHEMA_VERSION));
@@ -484,6 +814,7 @@ export function resetAllToSeedData(): {
   exercises: ExerciseDefinition[];
 } {
   localStorage.clear();
+  localStorage.setItem(SCHEMA_VERSION_KEY, String(STORAGE_SCHEMA_VERSION));
   // The sample athlete is partway through the plan: their latest workouts fill its first sessions,
   // so the Workout and Program pages show the same mid-plan story as Progress.
   const profile: UserProfile = { ...SAMPLE_DEMO_PROFILE, programType: 'starter_4day' };
@@ -926,30 +1257,46 @@ export function importUserDataJSON(rawJson: string): TreiseDataBackup {
     parsed.profile as UserProfile & Record<string, unknown>;
   const biometrics = Array.isArray(parsed.biometrics) ? parsed.biometrics : loadBiometrics();
   const needsDbPerHandMigration = (parsed.schemaVersion ?? 0) < 9;
+  const needsV10Repair = (parsed.schemaVersion ?? 0) < 10;
   // Same clean-up as loading from storage, so imported data shows the same everywhere.
   const rawWorkouts = (parsed.workouts as WorkoutSession[]).map((w) => withPlanWorkoutName(w));
-  const workouts = needsDbPerHandMigration
+  const v9Workouts = needsDbPerHandMigration
     ? rawWorkouts.map(migrateSessionDumbbellWeightsToPerHand)
     : rawWorkouts;
   const rawActive = withPlanWorkoutName(parsed.activeWorkout || createTodaysActiveWorkout());
-  const activeWorkout = needsDbPerHandMigration
+  const v9Active = needsDbPerHandMigration
     ? migrateSessionDumbbellWeightsToPerHand(rawActive)
     : rawActive;
   const exercises = Array.isArray(parsed.exercises) ? parsed.exercises : SEED_EXERCISES;
   profile.programType = normalizeProgramType(profile.programType);
 
-  saveProfile(profile);
+  const repaired = needsV10Repair
+    ? repairCorruptedDumbbellAndRepRangeState({
+        profile,
+        workouts: v9Workouts,
+        activeWorkout: v9Active,
+        biometrics,
+        exerciseCatalog: exercises,
+      })
+    : { profile, workouts: v9Workouts, activeWorkout: v9Active };
+
+  const finalProfile = repaired.profile;
+  const workouts = repaired.workouts;
+  const activeWorkout = repaired.activeWorkout || v9Active;
+
+  saveProfile(finalProfile);
   saveBiometrics(biometrics);
   saveWorkouts(workouts);
   saveActiveWorkout(activeWorkout);
   saveExercises(exercises);
+  localStorage.setItem(SCHEMA_VERSION_KEY, String(STORAGE_SCHEMA_VERSION));
   const activities = Array.isArray(parsed.activities) ? (parsed.activities as ActivityLog[]) : loadActivities();
   saveActivities(activities);
 
   return {
     appVersion: parsed.appVersion || '1.0.0',
     exportedAt: parsed.exportedAt || new Date().toISOString(),
-    profile,
+    profile: finalProfile,
     biometrics,
     workouts,
     activeWorkout,
@@ -1037,6 +1384,7 @@ export function permanentlyEraseAllUserData() {
   saveWorkouts(cleanWorkouts);
   saveActiveWorkout(cleanActive);
   saveExercises(SEED_EXERCISES);
+  localStorage.setItem(SCHEMA_VERSION_KEY, String(STORAGE_SCHEMA_VERSION));
 
   return {
     profile: cleanProfile,

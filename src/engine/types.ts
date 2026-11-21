@@ -426,6 +426,12 @@ export interface ExerciseSession {
   anchorExerciseId?: string;
   /** Master program anchor exercise display name. */
   anchorExerciseName?: string;
+  /** Original program/slot minReps preserved before any environment overlay expands/alters reps. */
+  anchorMinReps?: number;
+  /** Original program/slot maxReps preserved before any environment overlay expands/alters reps. */
+  anchorMaxReps?: number;
+  /** Original uncapped anchor working weight (kg) preserved before an environment overlay caps/swaps it. */
+  anchorTargetWeightKg?: number;
   /** Compact Set-1 parent anchor reference shown in PREV/REF (e.g., "BB 77.5×8"). */
   anchorReferenceLabel?: string;
   /** Calibration mode for this exercise session. */

@@ -861,3 +861,129 @@ export function learnExerciseEnduranceSlope(
     explanation,
   };
 }
+
+export interface BarbellBenchmarksKg {
+  benchKg: number;
+  ohpKg: number;
+  rowKg: number;
+  lowerKg: number;
+}
+
+/**
+ * Extracts the athlete's strongest completed barbell working weights per movement group
+ * so combined-dumbbell detection protects legitimate elite lifters while catching un-halved
+ * pair totals on intermediate/recreational accounts.
+ */
+export function extractBarbellBenchmarksKg(workouts: WorkoutSession[]): BarbellBenchmarksKg {
+  const out: BarbellBenchmarksKg = { benchKg: 0, ohpKg: 0, rowKg: 0, lowerKg: 0 };
+  for (const w of workouts) {
+    if (!w.completed) continue;
+    for (const ex of w.exercises) {
+      if (ex.equipment !== 'barbell' || ex.isIsolation) continue;
+      for (const s of ex.sets) {
+        if (!s.completed || s.isWarmup || s.setType === 'warmup') continue;
+        const wt = s.actualWeightKg ?? s.targetWeightKg ?? 0;
+        if (wt <= 0) continue;
+        if (ex.pillar === 'Horizontal Push') out.benchKg = Math.max(out.benchKg, wt);
+        else if (ex.pillar === 'Vertical Push') out.ohpKg = Math.max(out.ohpKg, wt);
+        else if (ex.pillar === 'Horizontal Pull') out.rowKg = Math.max(out.rowKg, wt);
+        else if (ex.pillar === 'Squat' || ex.pillar === 'Hinge') out.lowerKg = Math.max(out.lowerKg, wt);
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * Returns true when a stored per-hand weight on a paired two-dumbbell exercise is almost certainly
+ * an un-halved combined pair total (e.g. 46.5–60 kg logged as per-dumbbell Incline DB Press when
+ * barbell bench working sets are <105 kg), while leaving legitimate elite lifters untouched.
+ */
+export function isLikelyCombinedTwoDumbbellWeight(
+  weightKg: number,
+  ex: {
+    equipment?: EquipmentType;
+    exerciseId?: string;
+    id?: string;
+    name?: string;
+    pillar?: string;
+    isIsolation?: boolean;
+  },
+  benchmarks: BarbellBenchmarksKg
+): boolean {
+  if (weightKg <= 0 || ex.equipment !== 'dumbbell' || !usesTwoDumbbells(ex)) return false;
+
+  const idAndName = `${ex.exerciseId || ex.id || ''} ${ex.name || ''}`.toLowerCase();
+  const isLateralOrRear = /(lateral|rear[- ]?delt|y[- ]?fly|reverse[- ]?fly)/.test(idAndName);
+  const isIso = Boolean(ex.isIsolation) || /(curl|fly|flye|skullcrusher|extension|lateral|rear[- ]?delt)/.test(idAndName);
+
+  if (isLateralOrRear) {
+    return weightKg >= 18 && benchmarks.benchKg < 130;
+  }
+  if (isIso) {
+    return weightKg >= 24 && benchmarks.benchKg < 120;
+  }
+  if (ex.pillar === 'Horizontal Push') {
+    if (benchmarks.benchKg >= 40 && weightKg >= 35 && weightKg > benchmarks.benchKg * 0.65) {
+      return true;
+    }
+    return weightKg >= 42 && (benchmarks.benchKg === 0 || benchmarks.benchKg < 105 || weightKg > benchmarks.benchKg * 0.58);
+  }
+  if (ex.pillar === 'Vertical Push') {
+    if (benchmarks.ohpKg >= 25 && weightKg >= 24 && weightKg > benchmarks.ohpKg * 0.65) {
+      return true;
+    }
+    return weightKg >= 30 && (benchmarks.ohpKg === 0 ? benchmarks.benchKg < 115 : weightKg > benchmarks.ohpKg * 0.58);
+  }
+  if (ex.pillar === 'Horizontal Pull') {
+    if (benchmarks.rowKg >= 40 && weightKg >= 36 && weightKg > benchmarks.rowKg * 0.65) {
+      return true;
+    }
+    return weightKg >= 44 && (benchmarks.rowKg === 0 ? benchmarks.benchKg < 115 : weightKg > benchmarks.rowKg * 0.62);
+  }
+  if (ex.pillar === 'Squat' || ex.pillar === 'Hinge') {
+    return weightKg >= 48 && (benchmarks.lowerKg === 0 || benchmarks.lowerKg < 150 || weightKg > benchmarks.lowerKg * 0.55);
+  }
+  return false;
+}
+
+export interface CombinedDumbbellWarning {
+  exerciseName: string;
+  exampleWeightKg: number;
+  flaggedExerciseCount: number;
+}
+
+/**
+ * Inspects imported workouts to warn when paired two-dumbbell exercises look like combined pair
+ * totals rather than per-dumbbell weights, so the athlete can flip the divide-by-2 toggle before importing.
+ */
+export function detectLikelyCombinedTwoDumbbellImport(
+  workouts: WorkoutSession[]
+): CombinedDumbbellWarning | null {
+  const benchmarks = extractBarbellBenchmarksKg(workouts);
+  const flaggedNames = new Set<string>();
+  let worst: { name: string; weightKg: number } | null = null;
+
+  for (const w of workouts) {
+    for (const ex of w.exercises) {
+      if (ex.equipment !== 'dumbbell' || !usesTwoDumbbells(ex)) continue;
+      for (const s of ex.sets) {
+        if (s.isWarmup || s.setType === 'warmup') continue;
+        const wt = s.actualWeightKg ?? s.targetWeightKg ?? 0;
+        if (isLikelyCombinedTwoDumbbellWeight(wt, ex, benchmarks)) {
+          flaggedNames.add(ex.name);
+          if (!worst || wt > worst.weightKg) {
+            worst = { name: ex.name, weightKg: wt };
+          }
+        }
+      }
+    }
+  }
+
+  if (!worst) return null;
+  return {
+    exerciseName: worst.name,
+    exampleWeightKg: Math.round(worst.weightKg * 10) / 10,
+    flaggedExerciseCount: flaggedNames.size,
+  };
+}

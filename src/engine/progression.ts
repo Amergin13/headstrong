@@ -821,13 +821,14 @@ export function prescribeDoubleProgression(
 
   // Amber Shield override:
   if (readinessState === 'Amber Shield') {
+    const snappedHold = isPureBodyweight ? 0 : currentWeight > 0 ? snapLoadKg(currentWeight, unit, session.equipment) : 0;
     const amberReason = isPureBodyweight
       ? `${transferPrefix}Recovery mode is active. Stop 2–3 reps short of failure on bodyweight sets so your joints and muscles can recover.`
-      : `${transferPrefix}Recovery mode is active. Weight stays at ${formatWeight(currentWeight, unit)} with 2–3 reps left in reserve so your joints and muscles can recover.`;
+      : `${transferPrefix}Recovery mode is active. Weight stays at ${formatWeight(snappedHold, unit)} with 2–3 reps left in reserve so your joints and muscles can recover.`;
 
     return {
       exerciseId: session.exerciseId,
-      nextWeightKg: isPureBodyweight ? 0 : currentWeight,
+      nextWeightKg: snappedHold,
       nextTargetReps: targetSets.map((s, idx) => sets[idx]?.actualReps || s.targetReps || minReps),
       reason: amberReason,
       weightChanged: false,
@@ -872,7 +873,7 @@ export function prescribeDoubleProgression(
 
     return {
       exerciseId: session.exerciseId,
-      nextWeightKg: currentWeight,
+      nextWeightKg: currentWeight > 0 ? snapLoadKg(currentWeight, unit, session.equipment) : 0,
       nextTargetReps: targetSets.map((s) => s.targetReps || minReps),
       reason: 'Starting target based on your current training plan.',
       weightChanged: false,
@@ -888,18 +889,19 @@ export function prescribeDoubleProgression(
 
   // Form-failure protocols ('F*') intentionally push high-rep failure rather than strict rep floors.
   if (session.repTargetType === 'form_failure') {
+    const snappedCurrent = isPureBodyweight ? 0 : currentWeight > 0 ? snapLoadKg(currentWeight, unit, session.equipment) : 0;
     const allAtTop =
       sets.length >= Math.max(1, sourceWorkingSets.length) &&
       sets.every((s) => (s.actualReps ?? 0) >= sourceMaxReps && hadQualityEffort(s.actualRir, s.targetRir));
     if (allAtTop && !isPureBodyweight) {
       const increment = loadIncrementFor(session.equipment, unit);
-      const nextWeight = snapLoadKg(currentWeight + increment, unit, session.equipment);
+      const nextWeight = snapLoadKg(snappedCurrent + increment, unit, session.equipment);
       return {
         exerciseId: session.exerciseId,
         nextWeightKg: nextWeight,
         nextTargetReps: targetSets.map(() => minReps),
         reason: `${transferPrefix}Hit ${sourceMaxReps} reps cleanly on all form-failure sets — increasing weight to ${formatWeight(nextWeight, unit)}.`,
-        weightChanged: nextWeight > currentWeight + 0.05,
+        weightChanged: nextWeight > snappedCurrent + 0.05,
         repsChanged: true,
         isAmberShieldBuffer: false,
         lastSessionDate,
@@ -911,11 +913,11 @@ export function prescribeDoubleProgression(
     }
     return {
       exerciseId: session.exerciseId,
-      nextWeightKg: isPureBodyweight ? 0 : currentWeight,
+      nextWeightKg: snappedCurrent,
       nextTargetReps: targetSets.map((s, idx) => sets[idx]?.actualReps || s.targetReps || minReps),
       reason: isPureBodyweight
         ? `${transferPrefix}Push each bodyweight set close to crisp technical failure.`
-        : `${transferPrefix}Keeping ${formatWeight(currentWeight, unit)} while pushing close to clean technical failure.`,
+        : `${transferPrefix}Keeping ${formatWeight(snappedCurrent, unit)} while pushing close to clean technical failure.`,
       weightChanged: false,
       repsChanged: false,
       isAmberShieldBuffer: false,
@@ -933,8 +935,20 @@ export function prescribeDoubleProgression(
     historicalWorkouts && historicalWorkouts.length > 0
       ? learnExerciseEnduranceSlope(session.exerciseId, historicalWorkouts)
       : null;
+  // Translate historical set weights into the target implement when transferring across implements
+  // so single-set Epley scoring inside evaluateRepRangeDoubleProgression uses target-implement kg.
+  const setsForEvaluation = isCrossImplement
+    ? sets.map((s) => {
+        const translated = translateWeight(s.actualWeightKg ?? s.targetWeightKg ?? 0);
+        return {
+          ...s,
+          targetWeightKg: translated,
+          actualWeightKg: translated,
+        };
+      })
+    : sets;
   const evaluation = evaluateRepRangeDoubleProgression({
-    completedWorkingSets: sets,
+    completedWorkingSets: setsForEvaluation,
     sourcePrescribedSetCount: sourceWorkingSets.length || sets.length,
     targetSetCount: targetSets.length,
     minReps,

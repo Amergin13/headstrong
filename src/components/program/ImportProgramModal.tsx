@@ -343,6 +343,32 @@ export const ImportProgramModal: React.FC<ImportProgramModalProps> = ({
               </div>
             )}
 
+            {historyParseResult.parsed?.summary.combinedDumbbellWarning && !halveCombinedTwoHandDumbbells && (
+              <div
+                className="rounded-xl p-3 flex flex-col gap-2 text-xs"
+                style={{
+                  background: 'var(--color-status-warning-soft)',
+                  border: '1px solid var(--color-status-warning)',
+                  color: 'var(--color-text-primary)',
+                }}
+              >
+                <div>
+                  <strong>Check dumbbell weights:</strong> {historyParseResult.parsed.summary.combinedDumbbellWarning.exerciseName} is logged at{' '}
+                  <strong>{units.format(historyParseResult.parsed.summary.combinedDumbbellWarning.exampleWeightKg)}</strong>. Treise stores weight <em>per dumbbell</em> — if your file logs both dumbbells combined, divide by 2.
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    triggerHaptic('light');
+                    setHalveCombinedTwoHandDumbbells(true);
+                  }}
+                  className="wk-btn-secondary self-start text-xs px-3 py-2"
+                >
+                  Divide two-hand dumbbell loads by 2
+                </button>
+              </div>
+            )}
+
             {historyParseResult.parsed && (
               <div
                 className="rounded-xl p-3"
@@ -531,6 +557,32 @@ export const ImportProgramModal: React.FC<ImportProgramModalProps> = ({
             }}
           >
             {fileError || parseResult.error}
+          </div>
+        )}
+
+        {parseResult.parsed?.summary.combinedDumbbellWarning && !halveCombinedTwoHandDumbbells && (
+          <div
+            className="rounded-xl p-3 flex flex-col gap-2 text-xs"
+            style={{
+              background: 'var(--color-status-warning-soft)',
+              border: '1px solid var(--color-status-warning)',
+              color: 'var(--color-text-primary)',
+            }}
+          >
+            <div>
+              <strong>Check dumbbell weights:</strong> {parseResult.parsed.summary.combinedDumbbellWarning.exerciseName} is logged at{' '}
+              <strong>{units.format(parseResult.parsed.summary.combinedDumbbellWarning.exampleWeightKg)}</strong>. Treise stores weight <em>per dumbbell</em> — if your sheet logs both dumbbells combined, divide by 2.
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                triggerHaptic('light');
+                setHalveCombinedTwoHandDumbbells(true);
+              }}
+              className="wk-btn-secondary self-start text-xs px-3 py-2"
+            >
+              Divide two-hand dumbbell loads by 2
+            </button>
           </div>
         )}
 

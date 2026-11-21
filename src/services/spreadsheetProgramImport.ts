@@ -14,7 +14,12 @@ import {
 } from '../engine/types';
 import { planWorkoutLabel } from '../engine/muscleBuildingProgram';
 import { canUseMusclePlan } from '../engine/trainingPlans';
-import { toCombinedExternalLoadKg, usesOneDumbbell } from '../engine/e1rm';
+import {
+  CombinedDumbbellWarning,
+  detectLikelyCombinedTwoDumbbellImport,
+  toCombinedExternalLoadKg,
+  usesOneDumbbell,
+} from '../engine/e1rm';
 import { SEED_EXERCISES } from './seedData';
 import { localDateOffset, parseLocalDate } from '../utils/date';
 
@@ -409,6 +414,8 @@ export interface ParsedProgramImportSummary {
   heaviestLiftLabel?: string;
   addedExerciseCount: number;
   biometricCount: number;
+  /** Set when imported paired two-dumbbell weights look like combined pair totals rather than per-dumbbell weights. */
+  combinedDumbbellWarning?: CombinedDumbbellWarning;
 }
 
 export interface ParsedProgramImport {
@@ -1435,6 +1442,9 @@ export function parseProgramSpreadsheet(
   }
 
   const newExercises = [...addedById.values()];
+  const combinedDumbbellWarning = options.halveCombinedTwoHandDumbbells
+    ? undefined
+    : detectLikelyCombinedTwoDumbbellImport(historicalWorkouts) ?? undefined;
   return {
     savedPlan,
     newExercises,
@@ -1452,6 +1462,7 @@ export function parseProgramSpreadsheet(
       heaviestLiftLabel: heaviestLabel,
       addedExerciseCount: newExercises.length,
       biometricCount: bioByDate.size,
+      combinedDumbbellWarning,
     },
   };
 }

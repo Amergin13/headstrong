@@ -511,10 +511,13 @@ export const App: React.FC = () => {
       exercises,
     });
     if (!seeded.didImport) return;
-    setProfile(seeded.profile);
+    const rebuiltStates = rebuildIsolatedProgressionStates(seeded.workouts, bodyweightEmaKg);
+    setProfile({ ...seeded.profile, exerciseProgressionStates: rebuiltStates });
     setWorkouts(seeded.workouts);
     setBiometrics(seeded.biometrics);
     setExercises(seeded.exercises);
+    clearAiGenerationCaches();
+    clearKnowledgeGraphCache();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile.email, importedSheetsKey]);
 
@@ -1199,18 +1202,30 @@ export const App: React.FC = () => {
         importHistory: opts.importHistory,
       }
     );
-    setProfile(merged.profile);
+    const rebuiltStates = rebuildIsolatedProgressionStates(merged.workouts, bodyweightEmaKg);
+    const nextProfile: UserProfile = {
+      ...merged.profile,
+      exerciseProgressionStates: rebuiltStates,
+    };
+    setProfile(nextProfile);
     setWorkouts(merged.workouts);
     setBiometrics(merged.biometrics);
     setExercises(merged.exercises);
+    clearAiGenerationCaches();
+    clearKnowledgeGraphCache();
 
     if (
       opts.activateProgram &&
       !activeWorkout.exercises.some((ex) => ex.sets.some((s) => s.completed))
     ) {
-      const nextPlan = resolveActivePlan(merged.profile);
-      const nextNum = getNextProgramWorkoutNumber(merged.workouts, nextPlan, merged.profile.planCycleStarts, merged.profile.planStartWorkouts);
-      setActiveWorkout(prepareSession(generatePlanWorkout(nextPlan, nextNum), { isProgramPlan: true }));
+      const nextPlan = resolveActivePlan(nextProfile);
+      const nextNum = getNextProgramWorkoutNumber(merged.workouts, nextPlan, nextProfile.planCycleStarts, nextProfile.planStartWorkouts);
+      setActiveWorkout(
+        prepareSession(generatePlanWorkout(nextPlan, nextNum), {
+          isProgramPlan: true,
+          history: merged.workouts,
+        })
+      );
     }
 
     const addedWorkouts = merged.workouts.length - workouts.length;
@@ -1487,13 +1502,30 @@ export const App: React.FC = () => {
   // Handler: 1-Click Competitor CSV Import (Hevy, Strong, FitNotes)
   const handleImportCompetitorHistory = (parsed: CompetitorCsvImportResult) => {
     const { merged, addedCount } = mergeImportedWorkouts(workouts, parsed.workouts);
+    const rebuiltStates = rebuildIsolatedProgressionStates(merged, bodyweightEmaKg);
     setWorkouts(merged);
+    setProfile((prev) => ({
+      ...prev,
+      exerciseProgressionStates: rebuiltStates,
+    }));
     if (parsed.addedExercises.length > 0) {
       setExercises((prev) => {
         const ids = new Set(prev.map((e) => e.id));
         const fresh = parsed.addedExercises.filter((e) => !ids.has(e.id));
         return fresh.length > 0 ? [...prev, ...fresh] : prev;
       });
+    }
+    clearAiGenerationCaches();
+    clearKnowledgeGraphCache();
+    // Re-personalize an unstarted workout cleanly so newly imported history informs today's targets.
+    if (addedCount > 0 && !activeWorkout.exercises.some((ex) => ex.sets.some((s) => s.completed))) {
+      if (isPlanProgram(profile.programType) && activeWorkout.programWorkoutNumber) {
+        const refreshed = prepareSession(
+          generatePlanWorkout(activePlan, activeWorkout.programWorkoutNumber),
+          { isProgramPlan: true, history: merged }
+        );
+        setActiveWorkout({ ...refreshed, date: activeWorkout.date });
+      }
     }
     setToast({
       title: `${parsed.summary.formatLabel} import complete`,
