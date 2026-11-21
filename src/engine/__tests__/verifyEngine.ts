@@ -973,10 +973,12 @@ assert(
 assert(
   !trainTabSrc.includes('handleSwitchImplementInline') &&
     !trainTabSrc.includes('Adjust Gear / Split') &&
-    trainTabSrc.includes('Full Gym') &&
-    trainTabSrc.includes('At Home') &&
-    trainTabSrc.includes('Bodyweight'),
-  `TrainTab has 1 single canonical Equipment Location bar (Full Gym | At Home | Bodyweight) with no duplicate inline gear/split drawers`
+    !trainTabSrc.includes('EnvironmentOverlaySheet') &&
+    !trainTabSrc.includes('Training environment') &&
+    trainTabSrc.includes("label: 'Gym'") &&
+    trainTabSrc.includes("label: 'Home'") &&
+    trainTabSrc.includes("label: 'Bodyweight / No equipment'"),
+  `TrainTab has 1 single canonical 3-dot Location menu (Gym | Home | Bodyweight / No equipment) with no duplicate inline drawers or separate Training environment sheets`
 );
 
 const auditedFiles = [
@@ -9908,7 +9910,7 @@ Exercise,,Date,Workout,Sets,Reps,Tempo,Rest,Notes,Set 1,Set 2,Set 3,Set 4
     );
 
     const promptStr = buildPrompt50({ ...baseCoachInput, userMessage: 'How should I pace this week?' });
-    assert(promptStr.includes('age 34') && promptStr.includes('location Full Gym'), 'Coach system prompt includes athlete age and canonical active location');
+    assert(promptStr.includes('age 34') && promptStr.includes('location Gym'), 'Coach system prompt includes athlete age and canonical active location');
 
     // D. Summary guards: no phantom BW jump on calisthenics, dynamic plan weeks, non-sparse custom targets
     const chinExDef = SEED_EXERCISES.find((e) => e.id === 'chin-up') || SEED_EXERCISES[0];
@@ -11177,7 +11179,9 @@ Exercise,,Date,Workout,Sets,Reps,Tempo,Rest,Notes,Set 1,Set 2,Set 3,Set 4
 
     // 1. Controlled Vocabulary & Ontology specs
     assert(
-      cs54.CONTROLLED_VOCABULARY.locations.travel.label === 'Bodyweight' &&
+      cs54.CONTROLLED_VOCABULARY.locations.gym.label === 'Gym' &&
+        cs54.CONTROLLED_VOCABULARY.locations.home.label === 'Home' &&
+        cs54.CONTROLLED_VOCABULARY.locations.travel.label === 'Bodyweight / No equipment' &&
         cs54.CONTROLLED_VOCABULARY.actions.swapExercise === 'Swap exercise' &&
         cs54.CONTROLLED_VOCABULARY.actions.logActiveDay === 'Log active day' &&
         cs54.CORE_CONCEPTS.some((c) => c.concept === 'Scheduled Day' && c.objectInstances.length === 3) &&
@@ -17247,8 +17251,9 @@ Exercise,,Date,Workout,Sets,Reps,Tempo,Rest,Notes,Set 1,Set 2,Set 3,Set 4
       'Dual-Layer Progress View populates stacked tool volume breakdowns and Travel Bridge bands cleanly'
     );
 
-    // UI wiring & privacy checks across all UI-1 .. UI-5b surfaces
-    const envSheetSrc = fs.readFileSync(path.join(process.cwd(), 'src/components/train/EnvironmentOverlaySheet.tsx'), 'utf8');
+    // UI wiring & privacy checks across Workout 3-dot menu and Continuity surfaces
+    const trainTabSrc75 = fs.readFileSync(path.join(process.cwd(), 'src/components/train/TrainTab.tsx'), 'utf8');
+    const progCardSrc75 = fs.readFileSync(path.join(process.cwd(), 'src/components/train/ProgramProgressCard.tsx'), 'utf8');
     const exCardSrc75 = fs.readFileSync(path.join(process.cwd(), 'src/components/train/ExerciseCard.tsx'), 'utf8');
     const setRowSrc75 = fs.readFileSync(path.join(process.cwd(), 'src/components/train/SetRow.tsx'), 'utf8');
     const restModalSrc75 = fs.readFileSync(path.join(process.cwd(), 'src/components/common/RestTimerModal.tsx'), 'utf8');
@@ -17259,10 +17264,12 @@ Exercise,,Date,Workout,Sets,Reps,Tempo,Rest,Notes,Set 1,Set 2,Set 3,Set 4
     const appSrc75 = fs.readFileSync(path.join(process.cwd(), 'src/App.tsx'), 'utf8');
 
     assert(
-      envSheetSrc.includes('Hotel / Dumbbells Only') &&
-        envSheetSrc.includes('Bodyweight / No Equipment') &&
-        envSheetSrc.includes('Private · stays on this phone') &&
-        envSheetSrc.includes("Adapt This Week's Plan") &&
+      !fs.existsSync(path.join(process.cwd(), 'src/components/train/EnvironmentOverlaySheet.tsx')) &&
+        !progCardSrc75.includes('Training environment') &&
+        !progCardSrc75.includes('Temporary environment') &&
+        trainTabSrc75.includes("label: 'Gym'") &&
+        trainTabSrc75.includes("label: 'Home'") &&
+        trainTabSrc75.includes("label: 'Bodyweight / No equipment'") &&
         !parserSrc75.includes('/api/coach') &&
         !parserSrc75.includes('fetch(') &&
         exCardSrc75.includes('Why this works') &&
@@ -17278,7 +17285,7 @@ Exercise,,Date,Workout,Sets,Reps,Tempo,Rest,Notes,Set 1,Set 2,Set 3,Set 4
         trendChartSrc75.includes('Travel Bridge') &&
         appSrc75.includes('handleApplyEnvironmentOverlay') &&
         appSrc75.includes('exerciseProgressionStates'),
-      'UI-1 through UI-5b components, local-only constraint parser (zero network calls), and App persistence are wired cleanly end-to-end'
+      '3-dot menu location switcher (Gym / Home / Bodyweight / No equipment), Continuity UI surfaces, local-only constraint parser, and App persistence are wired cleanly end-to-end'
     );
   }
 

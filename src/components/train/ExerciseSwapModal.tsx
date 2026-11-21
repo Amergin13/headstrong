@@ -232,9 +232,9 @@ export const ExerciseSwapModal: React.FC<ExerciseSwapModalProps> = ({
         >
           {(
             [
-              { id: 'travel', label: 'Bodyweight' },
-              { id: 'home', label: 'At Home' },
-              { id: 'gym', label: 'Full Gym' },
+              { id: 'travel', label: 'Bodyweight / No equipment' },
+              { id: 'home', label: 'Home' },
+              { id: 'gym', label: 'Gym' },
             ] as const
           ).map((loc) => {
             const isSelected = selectedLocation === loc.id;

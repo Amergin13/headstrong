@@ -31,20 +31,24 @@ type AssertFn = (condition: boolean, message: string) => void;
 export async function runPreAndroidCleanupSuite(assert: AssertFn): Promise<void> {
   console.log('\n[76. Pre-Android Web App Completeness, Unification & Cleanup]');
 
-  // 1. Unified Location Switching onto EnvironmentOverlay
+  // 1. Unified Persistent Location Switching onto EnvironmentOverlay (no timeline/expiry — stays until changed back)
   const gymOv = createOverlayForTrainingLocation('gym');
   const homeOv = createOverlayForTrainingLocation('home', ['dumbbells', 'bench']);
   const travelOv = createOverlayForTrainingLocation('travel');
   assert(
     gymOv === null &&
       homeOv !== null &&
+      homeOv.label === 'Home' &&
+      homeOv.expiresAtEpochMs === null &&
       homeOv.activeProfileType === 'CUSTOM' &&
       homeOv.availableEquipment.includes('DUMBBELLS') &&
       homeOv.availableEquipment.includes('BENCH') &&
       travelOv !== null &&
+      travelOv.label === 'Bodyweight / No equipment' &&
+      travelOv.expiresAtEpochMs === null &&
       travelOv.activeProfileType === 'BODYWEIGHT' &&
       travelOv.availableEquipment.every((t) => t === 'NONE'),
-    'createOverlayForTrainingLocation unifies gym (null), home (CUSTOM), and travel (BODYWEIGHT) onto EnvironmentOverlay'
+    'createOverlayForTrainingLocation maps Gym (null), Home (persistent CUSTOM), and Bodyweight / No equipment (persistent BODYWEIGHT) with no auto-expiry'
   );
 
   const hotelNoWeights = parseEnvironmentConstraintText("I'm in a hotel room with no weights today");
@@ -387,6 +391,8 @@ export async function runPreAndroidCleanupSuite(assert: AssertFn): Promise<void>
 
   // 8. UI Wiring, Dead Code Removal, PKCE Extraction & Privacy Policy Sync
   const trainTabSrc = fs.readFileSync(path.join(process.cwd(), 'src/components/train/TrainTab.tsx'), 'utf8');
+  const progCardSrc = fs.readFileSync(path.join(process.cwd(), 'src/components/train/ProgramProgressCard.tsx'), 'utf8');
+  const settingsSrc = fs.readFileSync(path.join(process.cwd(), 'src/components/auth/ProfileSettingsSections.tsx'), 'utf8');
   const swapModalSrc = fs.readFileSync(path.join(process.cwd(), 'src/components/train/ExerciseSwapModal.tsx'), 'utf8');
   const exCardSrc = fs.readFileSync(path.join(process.cwd(), 'src/components/train/ExerciseCard.tsx'), 'utf8');
   const exDetailSrc = fs.readFileSync(path.join(process.cwd(), 'src/components/train/ExerciseDetailModal.tsx'), 'utf8');
@@ -404,9 +410,17 @@ export async function runPreAndroidCleanupSuite(assert: AssertFn): Promise<void>
       !trainTabSrc.includes('{activeDisplayCount}/6') &&
       !trainTabSrc.includes('ReadinessBanner') &&
       !trainTabSrc.includes('showLocationDropdown') &&
+      !trainTabSrc.includes('EnvironmentOverlaySheet') &&
+      !progCardSrc.includes('Training environment') &&
+      !progCardSrc.includes('Temporary environment') &&
+      !fs.existsSync(path.join(process.cwd(), 'src/components/train/EnvironmentOverlaySheet.tsx')) &&
+      trainTabSrc.includes("label: 'Gym'") &&
+      trainTabSrc.includes("label: 'Home'") &&
+      trainTabSrc.includes("label: 'Bodyweight / No equipment'") &&
+      settingsSrc.includes('Available home equipment') &&
       trainTabSrc.includes('evaluateSingleExerciseContinuitySwap') &&
       trainTabSrc.includes('<PastWorkoutModal'),
-    'TrainTab fixes 7/7 toggle counter, prunes dead ReadinessBanner/showLocationDropdown, routes swaps through Continuity Engine, and reuses PastWorkoutModal'
+    'TrainTab refactors location switching strictly into the 3-dot menu (Gym / Home / Bodyweight / No equipment), removes Training environment & timeline sheet, keeps home gear in Settings/Onboarding, fixes 7/7 counter, and reuses PastWorkoutModal'
   );
 
   assert(
@@ -431,6 +445,7 @@ export async function runPreAndroidCleanupSuite(assert: AssertFn): Promise<void>
 
   assert(
     appSrc.includes('createOverlayForTrainingLocation') &&
+      !appSrc.includes("scope !== 'TODAY_ONLY'") &&
       appSrc.includes("calibrationSource !== 'EFFORT_ONLY'") &&
       appSrc.includes("lazy(() => import('./components/onboarding/OnboardingModal')") &&
       appSrc.includes("lazy(() => import('./components/auth/GoogleAuthModal')") &&

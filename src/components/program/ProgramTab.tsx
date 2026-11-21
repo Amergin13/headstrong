@@ -313,15 +313,15 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
                 style={{ borderTop: '1px solid var(--color-border-subtle)' }}
               >
                 <div className="flex items-center justify-between gap-2">
-                  <span className="wk-meta-title">Full gym</span>
+                  <span className="wk-meta-title">Gym</span>
                   <span className="wk-pill">Barbells, cables &amp; machines</span>
                 </div>
                 <div className="flex items-center justify-between gap-2">
-                  <span className="wk-meta-title">At home</span>
+                  <span className="wk-meta-title">Home</span>
                   <span className="wk-pill">{homeEquipList}</span>
                 </div>
                 <div className="flex items-center justify-between gap-2">
-                  <span className="wk-meta-title">Bodyweight</span>
+                  <span className="wk-meta-title">Bodyweight / No equipment</span>
                   <span className="wk-pill">Zero-equipment variations</span>
                 </div>
               </div>

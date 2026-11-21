@@ -2076,9 +2076,9 @@ export async function executeModifyWorkoutExercises(
 }
 
 const LOCATION_LABELS: Record<TrainingLocation, string> = {
-  gym: 'Full Gym',
-  home: 'At Home',
-  travel: 'Bodyweight',
+  gym: 'Gym',
+  home: 'Home',
+  travel: 'Bodyweight / No equipment',
 };
 
 export interface SwitchLocationArgs {
@@ -2134,7 +2134,11 @@ export async function executeSwitchLocation(
         targetLoc,
         context.profile.homeEquipment,
         nowMs,
-        'WEEK_OVERRIDE'
+        {
+          scope: 'WEEK_OVERRIDE',
+          maxDumbbellKg: context.profile.equipmentInventories?.home?.dumbbellMaxKg ?? null,
+          dumbbellStepKg: context.profile.equipmentInventories?.home?.dumbbellStepKg ?? null,
+        }
       );
       updatedWorkout = applyEnvironmentOverlayToSession({
         session: context.activeWorkout,
@@ -2218,7 +2222,10 @@ export async function executeSwitchLocation(
             homeEquipment: context.profile.homeEquipment,
           });
   } else {
-    nextOverlay = createOverlayForTrainingLocation(targetLoc, context.profile.homeEquipment, nowMs);
+    nextOverlay = createOverlayForTrainingLocation(targetLoc, context.profile.homeEquipment, nowMs, {
+      maxDumbbellKg: context.profile.equipmentInventories?.home?.dumbbellMaxKg ?? null,
+      dumbbellStepKg: context.profile.equipmentInventories?.home?.dumbbellStepKg ?? null,
+    });
   }
 
   const resolvedLoc: TrainingLocation = nextOverlay ? overlayToTrainingLocation(nextOverlay) : 'gym';

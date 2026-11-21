@@ -3,6 +3,7 @@ import { ChevronRight } from 'lucide-react';
 import {
   BiometricLog,
   EquipmentInventory,
+  HomeEquipmentTag,
   UserProfile,
   getActiveWearableProvider,
   isWearableConnected,
@@ -359,7 +360,7 @@ export const ProfileSettingsSections: React.FC<ProfileSettingsSectionsProps> = (
         >
           <div className="flex items-start justify-between gap-3">
             <h3 className="wk-subhead leading-tight">
-              Plates &amp; dumbbell increments
+              Home equipment &amp; plate increments
             </h3>
             <div className="flex items-center shrink-0 gap-2">
               <span className="wk-pill">
@@ -376,13 +377,13 @@ export const ProfileSettingsSections: React.FC<ProfileSettingsSectionsProps> = (
             </div>
           </div>
           <p className="wk-caption mt-2">
-            Set exact available plate pairs and dumbbell steps for your gym and home setups.
+            Configure your home gear, plate pairs, and dumbbell steps for Gym and Home workouts.
           </p>
         </button>
 
         {openSection === 'inventory' && (
           <div className="flex flex-col mt-4 pt-4 gap-4" style={{ borderTop: '1px solid var(--color-border-subtle)' }}>
-            <div className="wk-segments grid grid-cols-2" role="group" aria-label="Choose gym or home inventory">
+            <div className="wk-segments grid grid-cols-2" role="group" aria-label="Choose gym or home setup">
               {(['gym', 'home'] as const).map((loc) => (
                 <button
                   key={loc}
@@ -392,12 +393,58 @@ export const ProfileSettingsSections: React.FC<ProfileSettingsSectionsProps> = (
                     triggerHaptic('light');
                     setInventoryLoc(loc);
                   }}
-                  className={`wk-segment capitalize ${inventoryLoc === loc ? 'is-active' : ''}`}
+                  className={`wk-segment ${inventoryLoc === loc ? 'is-active' : ''}`}
                 >
-                  {loc === 'gym' ? 'Full gym' : 'Home gym'}
+                  {loc === 'gym' ? 'Gym' : 'Home'}
                 </button>
               ))}
             </div>
+
+            {inventoryLoc === 'home' && (
+              <div className="space-y-2">
+                <span className="wk-label block">Available home equipment</span>
+                <div className="flex flex-wrap gap-2">
+                  {(
+                    [
+                      { id: 'dumbbells', label: 'Dumbbells' },
+                      { id: 'bench', label: 'Bench' },
+                      { id: 'pullup_bar', label: 'Pull-up bar' },
+                      { id: 'trx', label: 'TRX' },
+                      { id: 'bands', label: 'Bands' },
+                    ] as Array<{ id: HomeEquipmentTag; label: string }>
+                  ).map((item) => {
+                    const currentGear = profile.homeEquipment ?? [];
+                    const selected = currentGear.includes(item.id);
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        aria-pressed={selected}
+                        onClick={() => {
+                          triggerHaptic('light');
+                          const next = selected
+                            ? currentGear.filter((t) => t !== item.id)
+                            : [...currentGear, item.id];
+                          onUpdateProfile({ homeEquipment: next });
+                        }}
+                        className="wk-btn-secondary min-h-[44px] px-3"
+                        style={
+                          selected
+                            ? {
+                                background: 'var(--color-status-positive-soft)',
+                                borderColor: 'var(--wk-accent)',
+                                color: 'var(--color-text-primary)',
+                              }
+                            : undefined
+                        }
+                      >
+                        {item.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
             <div className="space-y-2">
               <span className="wk-label block">Available barbell plate pairs ({unit})</span>

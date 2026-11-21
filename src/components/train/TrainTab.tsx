@@ -3,7 +3,6 @@ import { PageTopGradient } from '../common/PageTopGradient';
 import {
   ActiveSetPrescription,
   BiometricLog,
-  EnvironmentOverlay,
   EquipmentInventory,
   ExerciseDefinition,
   ExerciseSession,
@@ -28,7 +27,6 @@ import {
   resolveActiveOverlay,
   resolveMovementPattern,
 } from '../../engine/continuityEngine';
-import { EnvironmentOverlaySheet } from './EnvironmentOverlaySheet';
 import { getActiveEquipmentInventory, snapWeightToInventory } from '../../engine/equipmentInventory';
 import { ReadinessEvaluation, evaluateSet1RirConfirmation } from '../../engine/readiness';
 import { ExerciseCard } from './ExerciseCard';
@@ -147,8 +145,6 @@ interface TrainTabProps {
   onFinishWorkout: (whoopTelemetry?: WhoopWorkoutStrainSummary) => void;
   onShiftWorkout: () => void;
   onSwitchLocation?: (location: TrainingLocation) => void;
-  /** Applies a temporary environment overlay (or null to restore Home Gym) without mutating master templates. */
-  onApplyEnvironmentOverlay?: (overlay: EnvironmentOverlay | null) => void;
   onOpenWatchSync?: () => void;
   /** Opens the Program tab (plan overview, weeks, splits). */
   onOpenProgram?: () => void;
@@ -220,7 +216,6 @@ export const TrainTab: React.FC<TrainTabProps> = ({
   onFinishWorkout,
   onShiftWorkout,
   onSwitchLocation,
-  onApplyEnvironmentOverlay,
   onOpenWatchSync,
   onOpenProgram,
   onSwitchSplitDay,
@@ -244,7 +239,6 @@ export const TrainTab: React.FC<TrainTabProps> = ({
   const [previewPastWorkout, setPreviewPastWorkout] = useState<WorkoutSession | null>(null);
   const [showAddExerciseModal, setShowAddExerciseModal] = useState(false);
   const [showWorkoutDisplayModal, setShowWorkoutDisplayModal] = useState(false);
-  const [showEnvironmentSheet, setShowEnvironmentSheet] = useState(false);
   const pendingRecalRef = useRef<{
     exerciseSessionId: string;
     recalibrationStatus?: string;
@@ -1071,13 +1065,23 @@ export const TrainTab: React.FC<TrainTabProps> = ({
     ? `Week ${planWeek} of 6 • Phase ${planPhase?.phaseNumber ?? 1}`
     : `Week ${mesoWeek} of 6 • ${phaseMeta.name}`;
 
+  const HOME_GEAR_LABELS: Record<string, string> = {
+    dumbbells: 'Dumbbells',
+    bench: 'Bench',
+    pullup_bar: 'Pull-up bar',
+    trx: 'TRX',
+    bands: 'Bands',
+  };
+  const homeGearDetail =
+    profile.homeEquipment && profile.homeEquipment.length > 0
+      ? profile.homeEquipment.map((t) => HOME_GEAR_LABELS[t] || t).join(', ')
+      : 'Configured in Settings';
+
   const LOCATION_CONFIG: Array<{ id: TrainingLocation; label: string; detail: string }> = [
-    { id: 'gym', label: 'Full Gym', detail: 'Barbell, dumbbells & machines' },
-    { id: 'home', label: 'At Home', detail: 'Dumbbells, pull-up bar & bands' },
-    { id: 'travel', label: 'Bodyweight', detail: 'No equipment, anywhere' },
+    { id: 'gym', label: 'Gym', detail: 'Barbell, dumbbells & machines' },
+    { id: 'home', label: 'Home', detail: homeGearDetail },
+    { id: 'travel', label: 'Bodyweight / No equipment', detail: 'Zero-equipment variations' },
   ];
-  const activeLocationOption =
-    LOCATION_CONFIG.find((l) => l.id === currentLoc) || LOCATION_CONFIG[0];
 
   const hasRecoveryMechanism = Boolean(
     isWearableConnected(profile) || profile.whoopAccessToken || profile.fitbitAccessToken
@@ -1495,14 +1499,6 @@ export const TrainTab: React.FC<TrainTabProps> = ({
               current={programCard.current}
               total={programCard.total}
               sessionRef={sessionBlockRef}
-              environmentLabel={
-                resolveActiveOverlay(profile.activeEnvironmentOverlay).active?.label ||
-                activeLocationOption.label
-              }
-              isTemporaryOverlay={Boolean(resolveActiveOverlay(profile.activeEnvironmentOverlay).active)}
-              onOpenEnvironment={
-                onApplyEnvironmentOverlay ? () => setShowEnvironmentSheet(true) : undefined
-              }
             />
           )}
           {workoutDisplay.showRecoveryCard && hasRecoveryMechanism && (
@@ -2357,17 +2353,6 @@ export const TrainTab: React.FC<TrainTabProps> = ({
           onConfirmSwap={handleConfirmSwap}
           onClose={() => setSwappingExercise(null)}
           excludeExerciseIds={activeWorkout.exercises.map((e) => e.exerciseId)}
-        />
-      )}
-
-      {/* Environment Overlay Bottom Sheet (Temporary Hotel / Bodyweight / Custom Swapping) */}
-      {showEnvironmentSheet && onApplyEnvironmentOverlay && (
-        <EnvironmentOverlaySheet
-          activeOverlay={profile.activeEnvironmentOverlay}
-          currentWeekNumber={planWeek ?? mesoWeek}
-          homeEquipment={profile.homeEquipment}
-          onApplyOverlay={onApplyEnvironmentOverlay}
-          onClose={() => setShowEnvironmentSheet(false)}
         />
       )}
 

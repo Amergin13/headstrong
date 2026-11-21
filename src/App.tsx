@@ -802,10 +802,51 @@ export const App: React.FC = () => {
     setActiveWorkout(overlaid);
   };
 
-  // Handler: Switch Training Location ('gym' | 'home' | 'travel') in 1 tap — unified onto EnvironmentOverlay
+  // Handler: Switch Training Location ('gym' | 'home' | 'travel') in 1 tap from the 3-dots menu.
+  // Persistent until changed back — Home uses equipment configured in onboarding or settings.
   const handleSwitchTrainingLocation = (location: TrainingLocation) => {
-    const overlay = createOverlayForTrainingLocation(location, profile.homeEquipment);
+    const homeInv = profile.equipmentInventories?.home;
+    const overlay = createOverlayForTrainingLocation(
+      location,
+      profile.homeEquipment,
+      Date.now(),
+      location === 'home'
+        ? {
+            maxDumbbellKg: homeInv?.dumbbellMaxKg ?? null,
+            dumbbellStepKg: homeInv?.dumbbellStepKg ?? null,
+          }
+        : undefined
+    );
     handleApplyEnvironmentOverlay(overlay);
+  };
+
+  // Handler: Update athlete profile (and sync Home overlay if home gear/inventory changes while in Home mode)
+  const handleUpdateProfile = (up: Partial<UserProfile>) => {
+    const nextHomeEquipment = up.homeEquipment ?? profile.homeEquipment;
+    const nextHomeInv = up.equipmentInventories?.home ?? profile.equipmentInventories?.home;
+    const updatedHomeSetup =
+      (up.homeEquipment !== undefined || up.equipmentInventories !== undefined) &&
+      profile.activeLocation === 'home';
+    if (updatedHomeSetup) {
+      const syncedOverlay = createOverlayForTrainingLocation('home', nextHomeEquipment, Date.now(), {
+        maxDumbbellKg: nextHomeInv?.dumbbellMaxKg ?? null,
+        dumbbellStepKg: nextHomeInv?.dumbbellStepKg ?? null,
+      });
+      setProfile((p) => ({ ...p, ...up, activeEnvironmentOverlay: syncedOverlay }));
+      setActiveWorkout((prev) =>
+        applyEnvironmentOverlayToSession({
+          session: prev,
+          overlay: syncedOverlay,
+          exerciseCatalog: exercises,
+          historicalWorkouts: workouts,
+          storedProgressionStates: profile.exerciseProgressionStates,
+          userBodyweightKg: bodyweightEmaKg,
+          unit: profile.weightUnit || 'kg',
+        })
+      );
+    } else {
+      setProfile((p) => ({ ...p, ...up }));
+    }
   };
 
   // Handler: Save inline edits to a completed past workout & keep streak + isolated progression states in sync
@@ -890,6 +931,17 @@ export const App: React.FC = () => {
       goalPhase: setup.goalPhase,
       programType: setup.programType,
       activeLocation: setup.activeLocation,
+      activeEnvironmentOverlay: createOverlayForTrainingLocation(
+        setup.activeLocation,
+        setup.homeEquipment,
+        Date.now(),
+        setup.activeLocation === 'home'
+          ? {
+              maxDumbbellKg: prev.equipmentInventories?.home?.dumbbellMaxKg ?? null,
+              dumbbellStepKg: prev.equipmentInventories?.home?.dumbbellStepKg ?? null,
+            }
+          : undefined
+      ),
       availableLocations: setup.availableLocations,
       homeEquipment: setup.homeEquipment,
       onboardingCompleted: true,
@@ -1203,17 +1255,25 @@ export const App: React.FC = () => {
       );
     }
 
-    // Auto-expire TODAY_ONLY overlays on session completion (or any overlay past expiresAtEpochMs)
+    // Location persists as chosen until the athlete changes it back (no auto-revert on finish).
     const currentOverlayCheck = resolveActiveOverlay(profile.activeEnvironmentOverlay, finishedAtMs);
+    const homeInv = profile.equipmentInventories?.home;
     const remainingOverlay =
-      currentOverlayCheck.active && currentOverlayCheck.active.scope !== 'TODAY_ONLY'
-        ? currentOverlayCheck.active
-        : null;
+      currentOverlayCheck.active ??
+      createOverlayForTrainingLocation(
+        profile.activeLocation || 'gym',
+        profile.homeEquipment,
+        finishedAtMs,
+        profile.activeLocation === 'home'
+          ? {
+              maxDumbbellKg: homeInv?.dumbbellMaxKg ?? null,
+              dumbbellStepKg: homeInv?.dumbbellStepKg ?? null,
+            }
+          : undefined
+      );
     const nextActiveLocation = remainingOverlay
       ? overlayToTrainingLocation(remainingOverlay)
-      : profile.activeEnvironmentOverlay
-      ? 'gym'
-      : profile.activeLocation || 'gym';
+      : 'gym';
 
     setWorkouts(nextHistory);
     setProfile((prev) => ({
@@ -1230,7 +1290,7 @@ export const App: React.FC = () => {
       isPlanProgram(profile.programType)
         ? prepareSession(
             generatePlanWorkout(activePlan, getNextProgramWorkoutNumber(nextHistory, activePlan, profile.planCycleStarts, profile.planStartWorkouts)),
-            { isProgramPlan: true, history: nextHistory }
+            { isProgramPlan: true, location: 'gym', history: nextHistory }
           )
         : prepareSession(
             generateSmartWorkoutSession(
@@ -1239,7 +1299,7 @@ export const App: React.FC = () => {
               exercises,
               readiness.state,
               nextMesocycleWeek,
-              nextActiveLocation,
+              'gym',
               profile.homeEquipment || [],
               profile.goalPhase,
               bodyweightEmaKg,
@@ -1599,13 +1659,12 @@ export const App: React.FC = () => {
             onFinishWorkout={handleFinishWorkout}
             onShiftWorkout={handleShiftWorkout}
             onSwitchLocation={handleSwitchTrainingLocation}
-            onApplyEnvironmentOverlay={handleApplyEnvironmentOverlay}
             onOpenWatchSync={() => setWatchModalOpen(true)}
             onOpenProgram={() => {
               setActiveTab('program');
               window.scrollTo({ top: 0 });
             }}
-            onUpdateProfile={(up) => setProfile((p) => ({ ...p, ...up }))}
+            onUpdateProfile={handleUpdateProfile}
             activities={activities}
             onLogActivity={() => setLogActivityOpen(true)}
             onOpenActivityApps={() => setActivityAppsOpen(true)}
@@ -1652,7 +1711,7 @@ export const App: React.FC = () => {
             exerciseCatalog={exercises}
             weeklyVolume={weeklyVolume}
             activities={activities}
-            onUpdateProfile={(up) => setProfile((p) => ({ ...p, ...up }))}
+            onUpdateProfile={handleUpdateProfile}
             onUpdateGoalPhase={handleUpdateGoalPhase}
             onContextChange={setProgressContext}
             onSaveMeasurements={handleSaveMeasurements}
@@ -1696,7 +1755,7 @@ export const App: React.FC = () => {
             bodyweightKg={bodyweightEmaKg}
             exerciseCatalog={exercises}
             activeSplitDay={activeWorkout.splitDay}
-            onUpdateProfile={(up) => setProfile((p) => ({ ...p, ...up }))}
+            onUpdateProfile={handleUpdateProfile}
             onSelectMesocycleWeek={handleSelectMesocycleWeek}
             onUpdateGoalPhase={handleUpdateGoalPhase}
             onLaunchSplitDay={(sp) => handleSwitchSplitDay(sp, true)}
@@ -1865,7 +1924,7 @@ export const App: React.FC = () => {
             onClose={() => setAuthModalOpen(false)}
             onAuthSuccess={handleAuthSuccess}
             onSignOut={handleSignOut}
-            onUpdateProfile={(up) => setProfile((p) => ({ ...p, ...up }))}
+            onUpdateProfile={handleUpdateProfile}
             onOpenWatchSync={() => setWatchModalOpen(true)}
             onOpenActivityApps={() => setActivityAppsOpen(true)}
             onResetData={handleResetData}

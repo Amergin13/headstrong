@@ -338,7 +338,7 @@ export function createPresetOverlay(
     return {
       overlayId: id,
       activeProfileType: 'HOME_GYM',
-      label: options?.label ?? 'Full Gym',
+      label: options?.label ?? 'Gym',
       availableEquipment: [
         'BARBELL',
         'DUMBBELLS',
@@ -385,7 +385,7 @@ export function createPresetOverlay(
     return {
       overlayId: id,
       activeProfileType: 'BODYWEIGHT',
-      label: options?.label ?? 'Bodyweight Only',
+      label: options?.label ?? 'Bodyweight / No equipment',
       availableEquipment: ['NONE'],
       maxDumbbellKg: null,
       dumbbellStepKg: null,
@@ -424,7 +424,7 @@ export function createPresetOverlay(
     };
   }
 
-  // CUSTOM (e.g. Home Equipment setup or custom parsed constraints)
+  // CUSTOM (Home equipment setup configured in onboarding or settings)
   const tokens: EquipmentAvailabilityToken[] = ['NONE'];
   for (const tag of options?.homeEquipment ?? ['bench', 'dumbbells']) {
     const t = mapHomeTagToToken(tag);
@@ -433,7 +433,7 @@ export function createPresetOverlay(
   return {
     overlayId: id,
     activeProfileType: 'CUSTOM',
-    label: options?.label ?? 'At Home',
+    label: options?.label ?? 'Home',
     availableEquipment: tokens,
     maxDumbbellKg: options?.maxDumbbellKg ?? null,
     dumbbellStepKg: options?.dumbbellStepKg ?? 2,
@@ -468,29 +468,41 @@ export function overlayToTrainingLocation(overlay: EnvironmentOverlay | null | u
 }
 
 /**
- * Unified mapping from legacy 3-option TrainingLocation ('gym' | 'home' | 'travel')
- * onto a first-class EnvironmentOverlay so every location switcher across the app
- * (3-dots menu, Environment sheet, AI Coach) stays on one source of truth.
+ * Maps the athlete's selected TrainingLocation ('gym' | 'home' | 'travel') onto a persistent
+ * EnvironmentOverlay (no timeline/expiry — stays active until the athlete switches location back).
+ * Equipment for Home comes strictly from what the athlete configured in onboarding or settings.
  */
 export function createOverlayForTrainingLocation(
   location: TrainingLocation,
   homeEquipment?: HomeEquipmentTag[],
   nowMs: number = Date.now(),
-  scope: OverlayScope = 'TODAY_ONLY'
+  options?: {
+    maxDumbbellKg?: number | null;
+    dumbbellStepKg?: number | null;
+    scope?: OverlayScope;
+    expiresAtEpochMs?: number | null;
+  }
 ): EnvironmentOverlay | null {
   if (location === 'gym') return null;
+  const scope = options?.scope ?? 'TODAY_ONLY';
+  // Location stays active until the athlete switches it back unless a caller explicitly supplies an expiry.
+  const expiresAtEpochMs = options?.expiresAtEpochMs !== undefined ? options.expiresAtEpochMs : null;
   if (location === 'travel') {
     return createPresetOverlay('BODYWEIGHT', scope, {
       nowMs,
-      label: 'Bodyweight Only',
+      expiresAtEpochMs,
+      label: 'Bodyweight / No equipment',
     });
   }
   const tags =
     homeEquipment && homeEquipment.length > 0 ? homeEquipment : (['bench', 'dumbbells'] as HomeEquipmentTag[]);
   return createPresetOverlay('CUSTOM', scope, {
     nowMs,
+    expiresAtEpochMs,
     homeEquipment: tags,
-    label: 'At Home',
+    maxDumbbellKg: options?.maxDumbbellKg ?? null,
+    dumbbellStepKg: options?.dumbbellStepKg ?? null,
+    label: 'Home',
   });
 }
 
@@ -2037,10 +2049,12 @@ export function buildSessionContinuitySummary(params: {
     (session.environmentProfileType === 'HOTEL_DUMBBELLS'
       ? 'Hotel Dumbbells'
       : session.environmentProfileType === 'BODYWEIGHT'
-      ? 'Bodyweight Only'
+      ? 'Bodyweight / No equipment'
+      : session.environmentProfileType === 'CUSTOM'
+      ? 'Home'
       : session.environmentProfileType === 'TIME_CONSTRAINED'
       ? 'Short on time'
-      : 'Full Gym');
+      : 'Gym');
 
   return {
     winLeverBadge,
@@ -2368,7 +2382,7 @@ export function applyEnvironmentOverlayToSession(params: {
     location: overlayToTrainingLocation(active),
     environmentOverlayId: active?.overlayId,
     environmentProfileType: active?.activeProfileType ?? 'HOME_GYM',
-    environmentOverlayLabel: active?.label ?? 'Full Gym',
+    environmentOverlayLabel: active?.label ?? 'Gym',
     exercises: nextExercises,
   };
 }

@@ -257,9 +257,9 @@ export const COPE_PHYSIOLOGICAL_RELATIONSHIPS: CopePhysiologicalRelationship[] =
  */
 export const CONTROLLED_VOCABULARY = {
   locations: {
-    gym: { label: 'Full Gym', onboardingLabel: 'Gym', detail: 'Barbell, dumbbells & machines' },
-    home: { label: 'At Home', onboardingLabel: 'Home', detail: 'Dumbbells, pull-up bar & bands' },
-    travel: { label: 'Bodyweight', onboardingLabel: 'Bodyweight', detail: 'No equipment, anywhere' },
+    gym: { label: 'Gym', onboardingLabel: 'Gym', detail: 'Barbell, dumbbells & machines' },
+    home: { label: 'Home', onboardingLabel: 'Home', detail: 'Your configured home setup' },
+    travel: { label: 'Bodyweight / No equipment', onboardingLabel: 'Bodyweight / No equipment', detail: 'Zero-equipment variations' },
   },
   dayInstances: {
     workout: 'Workout',

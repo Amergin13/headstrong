@@ -1213,7 +1213,7 @@ export function answerWeeklySchedule(
   const liftingPerWeek = hasActiveSlot ? Math.max(1, p.plan.workoutsPerWeek - 1) : p.plan.workoutsPerWeek;
   const scheduled = profile.scheduledWeekLocations ?? {};
   const plannedWeeks = Object.entries(scheduled)
-    .map(([wk, loc]) => `Week ${wk}: ${loc === 'travel' ? 'Bodyweight' : loc === 'home' ? 'At Home' : 'Full Gym'}`)
+    .map(([wk, loc]) => `Week ${wk}: ${loc === 'travel' ? 'Bodyweight / No equipment' : loc === 'home' ? 'Home' : 'Gym'}`)
     .join(', ');
   const activePart = hasActiveSlot
     ? ` plus 1 active day (20+ min walk, run, ride, swim, class, or sport)`

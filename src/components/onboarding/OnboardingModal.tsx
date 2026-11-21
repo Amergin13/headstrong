@@ -136,7 +136,7 @@ const buildScreens = (total: number, perWeek: number): ScreenCopy[] => [
 const LOCATIONS: { id: TrainingLocation; label: string; detail: string }[] = [
   { id: 'gym', label: 'Gym', detail: 'Full equipment' },
   { id: 'home', label: 'Home', detail: 'Your own gear' },
-  { id: 'travel', label: 'Bodyweight', detail: 'No equipment, anywhere' },
+  { id: 'travel', label: 'Bodyweight / No equipment', detail: 'Zero-equipment variations' },
 ];
 
 const HOME_EQUIPMENT_OPTIONS: { id: HomeEquipmentTag; label: string }[] = [
