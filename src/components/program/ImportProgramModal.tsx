@@ -184,7 +184,7 @@ export const ImportProgramModal: React.FC<ImportProgramModalProps> = ({
       role="dialog"
       aria-modal="true"
       aria-label="Import program from spreadsheet"
-      className="wk fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-sm"
+      className="wk fixed inset-0 z-[60] flex items-center justify-center p-4 backdrop-blur-sm"
       style={{ background: 'var(--color-bg-scrim)' }}
     >
       <form

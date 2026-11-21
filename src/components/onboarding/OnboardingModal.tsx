@@ -11,10 +11,11 @@ import {
   WeightUnit,
 } from '../../utils/units';
 import React, { useEffect, useId, useRef, useState } from 'react';
-import { Activity, Check, ChevronDown, ChevronLeft, Upload, X } from 'lucide-react';
+import { Activity, Check, ChevronDown, ChevronLeft, FileSpreadsheet, History, Upload, X } from 'lucide-react';
 import {
   BiometricLog,
   CustomGoal,
+  ExerciseDefinition,
   ExperienceLevel,
   Gender,
   GoalPhase,
@@ -28,6 +29,10 @@ import {
   resolveRirTrackingEnabled,
 } from '../../engine/types';
 import { DetectedActivity } from '../../engine/activeDays';
+import { SEED_EXERCISES } from '../../services/seedData';
+import { ParsedProgramImport } from '../../services/spreadsheetProgramImport';
+import { CompetitorCsvImportResult } from '../../services/competitorCsvImport';
+import { ImportModalMode, ImportProgramModal } from '../program/ImportProgramModal';
 import { triggerHaptic } from '../../utils/haptics';
 import { canUseMusclePlan, resolveActivePlan } from '../../engine/trainingPlans';
 import {
@@ -47,18 +52,21 @@ import {
   BaselineStatsIllustration,
   HealthConnectIllustration,
   IdentityIllustration,
+  ImportProgramIllustration,
   RestartIllustration,
   SessionsIllustration,
 } from './OnboardingIllustrations';
 
-export type OnboardingStep = 1 | 2 | 3 | 4 | 5;
-export const ONBOARDING_TOTAL_STEPS = 5;
+export type OnboardingStep = 1 | 2 | 3 | 4 | 5 | 6;
+export const ONBOARDING_TOTAL_STEPS = 6;
 /** Step index for the standalone "Where you train" editor opened from Settings/Program. */
-export const ONBOARDING_LOCATION_STEP: OnboardingStep = 5;
+export const ONBOARDING_LOCATION_STEP: OnboardingStep = 6;
 
 export interface OnboardingModalProps {
   profile: UserProfile;
-  /** Pass ONBOARDING_LOCATION_STEP (5) to open straight on the location choice (used to edit training location & home equipment later). */
+  /** Exercise catalog used by the onboarding program & history importer (defaults to built-in catalog). */
+  exerciseCatalog?: ExerciseDefinition[];
+  /** Pass ONBOARDING_LOCATION_STEP (6) to open straight on the location choice (used to edit training location & home equipment later). */
   initialStep?: OnboardingStep;
   onCompleteOnboarding: (updated: {
     goalPhase: GoalPhase;
@@ -81,6 +89,14 @@ export interface OnboardingModalProps {
     manualBaselineBiometric?: {
       bodyweightKg?: number;
     };
+    /** Optional existing spreadsheet program (plus optional historical sets) imported during onboarding. */
+    importedSpreadsheet?: {
+      parsed: ParsedProgramImport;
+      activateProgram: boolean;
+      importHistory: boolean;
+    };
+    /** Optional historical workout CSV (Hevy, Strong, FitNotes) imported during onboarding. */
+    importedCompetitorHistory?: CompetitorCsvImportResult;
     /** True when the athlete connected Android Health Connect during onboarding. */
     healthConnectConnected?: boolean;
     /** Historical biometric/recovery/body/step logs imported from Health Connect during onboarding. */
@@ -113,6 +129,13 @@ const buildScreens = (total: number, perWeek: number): ScreenCopy[] => [
       "People who stay active for life don't rely on willpower—they build a simple rhythm that fits their week.",
     ],
     Illustration: IdentityIllustration,
+  },
+  {
+    title: 'Import your program & history?',
+    body: [
+      'Bring an existing program or workout history from Hevy, Strong, FitNotes, or a spreadsheet—or start fresh with a Treise plan.',
+    ],
+    Illustration: ImportProgramIllustration,
   },
   {
     title: `${total} sessions`,
@@ -254,6 +277,7 @@ const leanFieldStyle: React.CSSProperties = {
 
 export const OnboardingModal: React.FC<OnboardingModalProps> = ({
   profile,
+  exerciseCatalog = SEED_EXERCISES,
   initialStep = 1,
   onCompleteOnboarding,
   onClose,
@@ -304,7 +328,16 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
   const [ownTarget, setOwnTarget] = useState('');
   const [showHomeGearFallback, setShowHomeGearFallback] = useState(false);
 
-  // Step 3 (Health Connect) + Step 4 (Lean skippable baseline stats) state
+  // Step 2 (Optional existing program & historical workout data import) state
+  const [importModalMode, setImportModalMode] = useState<ImportModalMode | null>(null);
+  const [importedSpreadsheet, setImportedSpreadsheet] = useState<{
+    parsed: ParsedProgramImport;
+    activateProgram: boolean;
+    importHistory: boolean;
+  } | null>(null);
+  const [importedCompetitorHistory, setImportedCompetitorHistory] = useState<CompetitorCsvImportResult | null>(null);
+
+  // Step 4 (Health Connect) + Step 5 (Lean skippable baseline stats) state
   const [weightUnit, setWeightUnit] = useState<WeightUnit>(() => (returning ? profile.weightUnit || 'kg' : defaultUnit()));
   const [heightUnit, setHeightUnit] = useState<HeightUnit>(() =>
     returning ? resolveHeightUnit(profile) : defaultUnit() === 'lb' ? 'ft_in' : 'cm'
@@ -405,7 +438,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
   // When returning from the Android Health Connect permission screen with permissions granted, pull real history automatically.
   const hcHasAnyPermission = Boolean(hcStatus.granted || hcStatus.stepsGranted || hcStatus.biometricsGranted);
   useEffect(() => {
-    if (inline || editing || step !== 3) return;
+    if (inline || editing || step !== 4) return;
     if (hcStatus.bridge && hcStatus.available && hcHasAnyPermission && !healthImport && !hcSyncing && !autoPullAttemptedRef.current) {
       autoPullAttemptedRef.current = true;
       void pullFromHealthConnectNow();
@@ -530,18 +563,18 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
     setHeightUnit(nextUnit);
   };
 
-  const handleStep4Continue = () => {
+  const handleStep5Continue = () => {
     if (leanFormHasAnyInvalid) {
       triggerHaptic('warning');
       return;
     }
     setStatsSkipped(false);
-    goTo(5);
+    goTo(6);
   };
 
-  const handleStep4Skip = () => {
+  const handleStep5Skip = () => {
     setStatsSkipped(true);
-    goTo(5);
+    goTo(6);
   };
 
   const finish = () => {
@@ -610,6 +643,8 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
       ...(hcConnectedFlag ? { healthConnectConnected: true } : {}),
       ...(healthImport && healthImport.biometrics.length > 0 ? { importedBiometrics: healthImport.biometrics } : {}),
       ...(healthImport && healthImport.activities.length > 0 ? { importedActivities: healthImport.activities } : {}),
+      ...(importedSpreadsheet ? { importedSpreadsheet } : {}),
+      ...(importedCompetitorHistory ? { importedCompetitorHistory } : {}),
       showRirTracking: editing ? profile.workoutDisplay?.showRirTracking : showRirTracking,
       habitAnchor: editing ? profile.habitAnchor : habitAnchor,
       ownGoal: !editing && ownGoal ? { exerciseId: ownGoal.exerciseId, metric: ownGoal.metric, target: ownGoal.target } : undefined,
@@ -625,8 +660,15 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
   const isLast = step === ONBOARDING_LOCATION_STEP;
   const HeadingTag = inline ? 'h4' : 'h1';
 
+  const hasActiveImportedProgram = Boolean(importedSpreadsheet?.activateProgram);
+  const importedHistoryWorkoutCount =
+    (importedSpreadsheet?.importHistory ? importedSpreadsheet.parsed.historicalWorkouts.length : 0) +
+    (importedCompetitorHistory ? importedCompetitorHistory.workouts.length : 0);
+
   const selectedGoalLabel = GOALS.find((g) => g.id === goal)?.label || 'Build Muscle';
-  const selectedPlanLabel = PLAN_CHOICES.find((p) => p.id === program)?.label || '3 workouts + 1 active day';
+  const selectedPlanLabel = hasActiveImportedProgram
+    ? importedSpreadsheet!.parsed.savedPlan.name
+    : PLAN_CHOICES.find((p) => p.id === program)?.label || '3 workouts + 1 active day';
   const selectedLocationLabel = LOCATIONS.find((l) => l.id === location)?.label || 'Gym';
   const habitAnchorSummary = [
     preferredDays.length > 0 ? preferredDays.join(', ') : null,
@@ -644,6 +686,9 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
 
   const importedSummaryText = healthImport ? formatOnboardingHealthSummary(healthImport, weightUnit, heightUnit) : null;
   const baselineReadySummary = [
+    importedHistoryWorkoutCount > 0
+      ? `${importedHistoryWorkoutCount} past ${importedHistoryWorkoutCount === 1 ? 'workout' : 'workouts'}`
+      : null,
     hcConnectedFlag || healthImport ? 'Health Connect' : null,
     !statsSkipped && selectedSex ? (selectedSex === 'male' ? 'Male' : 'Female') : null,
     !statsSkipped && parsedAge ? `${parsedAge} yrs` : null,
@@ -654,29 +699,42 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
     .join(' · ');
 
   const isHealthBridgeReady = hcStatus.bridge && hcStatus.available;
+  const hasAnyProgramOrHistoryImport = Boolean(importedSpreadsheet || importedCompetitorHistory);
 
-  // Determine Step 3 & Step 4 primary CTA behavior cleanly
+  const goBackStep = () => {
+    if (step === 4 && hasActiveImportedProgram) {
+      goTo(2);
+      return;
+    }
+    goTo((step - 1) as OnboardingStep);
+  };
+
+  // Determine per-step primary CTA behavior cleanly
   const primaryAction = () => {
     if (isLast) {
       finish();
       return;
     }
-    if (step === 3) {
+    if (step === 2) {
+      goTo(hasActiveImportedProgram ? 4 : 3);
+      return;
+    }
+    if (step === 4) {
       if (isHealthBridgeReady && !hcHasAnyPermission && !healthImport) {
         triggerHaptic('light');
         setHcError(null);
         requestHealthConnectPermission();
         return;
       }
-      goTo(4);
+      goTo(5);
       return;
     }
-    if (step === 4) {
+    if (step === 5) {
       if (!leanFormHasAnyInput && !healthImport) {
-        handleStep4Skip();
+        handleStep5Skip();
         return;
       }
-      handleStep4Continue();
+      handleStep5Continue();
       return;
     }
     goTo((step + 1) as OnboardingStep);
@@ -686,7 +744,11 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
     ? returning
       ? 'Save changes'
       : 'Start my first workout'
-    : step === 3
+    : step === 2
+    ? hasAnyProgramOrHistoryImport
+      ? 'Continue'
+      : 'Start with a Treise plan'
+    : step === 4
     ? isHealthBridgeReady && !hcHasAnyPermission && !healthImport
       ? 'Connect Health Connect'
       : hcSyncing
@@ -694,7 +756,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
       : healthImport
       ? 'Continue'
       : 'Enter stats manually'
-    : step === 4
+    : step === 5
     ? leanFormHasAnyInput || healthImport
       ? 'Continue'
       : 'Skip for now'
@@ -715,7 +777,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
           {step > 1 && !editing && (
             <button
               type="button"
-              onClick={() => goTo((step - 1) as OnboardingStep)}
+              onClick={goBackStep}
               aria-label="Back"
               className={`w-11 h-11 min-h-[44px] min-w-[44px] -ml-2 rounded-full flex items-center justify-center transition-colors hover:bg-[var(--wk-raised)] ${focusRingClass}`}
               style={{ color: 'var(--color-text-secondary)' }}
@@ -733,7 +795,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
           aria-valuenow={step}
           aria-label={`Step ${step} of ${ONBOARDING_TOTAL_STEPS}`}
         >
-          {[1, 2, 3, 4, 5].map((s) => (
+          {[1, 2, 3, 4, 5, 6].map((s) => (
             <span
               key={s}
               aria-hidden="true"
@@ -766,7 +828,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
               <button
                 type="button"
                 onClick={() => {
-                  if (step === 4) handleStep4Skip();
+                  if (step === 5) handleStep5Skip();
                   else goTo(ONBOARDING_LOCATION_STEP);
                 }}
                 className={`h-11 min-h-[44px] px-2 -mr-2 rounded-xl font-medium transition-colors hover:text-[var(--color-text-primary)] ${focusRingClass}`}
@@ -781,7 +843,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
 
       <div key={step} className="ob-enter flex flex-col flex-1">
         {!editing && (
-          <div style={{ height: isLast || step === 4 ? 104 : 132, marginTop: 8 }}>
+          <div style={{ height: isLast || step === 5 ? 104 : 132, marginTop: 8 }}>
             <Illustration weeks={6} perWeek={plan.workoutsPerWeek} />
           </div>
         )}
@@ -835,8 +897,164 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
           </fieldset>
         )}
 
-        {/* STEP 2: Weekly rhythm (1 essential decision + progressively disclosed optional habit anchor) */}
+        {/* STEP 2: Optional existing program & historical workout data import */}
         {step === 2 && !editing && (
+          <div className="flex flex-col gap-3" style={{ marginTop: 20 }}>
+            <section
+              aria-label="Import an existing program or workout history"
+              className="wk-card flex flex-col gap-3"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="wk-subhead">Bring your own data</span>
+                <span
+                  className="wk-pill shrink-0"
+                  style={
+                    hasAnyProgramOrHistoryImport
+                      ? {
+                          background: 'var(--color-status-positive-soft)',
+                          color: 'var(--wk-accent)',
+                        }
+                      : undefined
+                  }
+                >
+                  {hasAnyProgramOrHistoryImport ? 'Ready to import' : 'Optional'}
+                </span>
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    triggerHaptic('light');
+                    setImportModalMode('spreadsheet');
+                  }}
+                  className={`wk-btn-secondary w-full justify-between px-4 py-3 text-left ${focusRingClass}`}
+                  style={{ minHeight: 56 }}
+                >
+                  <span className="flex items-center gap-3 min-w-0">
+                    <FileSpreadsheet
+                      className="w-5 h-5 shrink-0"
+                      style={{ color: 'var(--wk-accent)' }}
+                      aria-hidden="true"
+                    />
+                    <span className="min-w-0">
+                      <span className="block" style={optionText}>
+                        Import existing program
+                      </span>
+                      <span className="block" style={optionDetail}>
+                        Spreadsheet CSV / TSV — schedule &amp; past sets
+                      </span>
+                    </span>
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    triggerHaptic('light');
+                    setImportModalMode('history');
+                  }}
+                  className={`wk-btn-secondary w-full justify-between px-4 py-3 text-left ${focusRingClass}`}
+                  style={{ minHeight: 56 }}
+                >
+                  <span className="flex items-center gap-3 min-w-0">
+                    <History
+                      className="w-5 h-5 shrink-0"
+                      style={{ color: 'var(--wk-accent)' }}
+                      aria-hidden="true"
+                    />
+                    <span className="min-w-0">
+                      <span className="block" style={optionText}>
+                        Import workout history
+                      </span>
+                      <span className="block" style={optionDetail}>
+                        Hevy, Strong, or FitNotes CSV — sets &amp; PRs
+                      </span>
+                    </span>
+                  </span>
+                </button>
+              </div>
+
+              {importedSpreadsheet && (
+                <div
+                  role="status"
+                  className="wk-raised flex items-start justify-between gap-2 border"
+                  style={{ borderColor: 'rgb(var(--color-accent-primary-rgb) / 0.4)' }}
+                >
+                  <div className="flex items-start gap-2 min-w-0">
+                    <Check
+                      className="w-4 h-4 shrink-0 mt-1"
+                      style={{ color: 'var(--wk-accent)' }}
+                      strokeWidth={2.4}
+                      aria-hidden="true"
+                    />
+                    <div className="min-w-0">
+                      <span className="wk-label block">Program ready</span>
+                      <p className="wk-caption mt-1" style={{ color: 'var(--color-text-primary)' }}>
+                        {importedSpreadsheet.parsed.savedPlan.name} ({importedSpreadsheet.parsed.savedPlan.templates.length} workouts)
+                        {importedSpreadsheet.importHistory && importedSpreadsheet.parsed.historicalWorkouts.length > 0
+                          ? ` · ${importedSpreadsheet.parsed.historicalWorkouts.length} historical workouts`
+                          : ''}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      triggerHaptic('light');
+                      setImportedSpreadsheet(null);
+                    }}
+                    className={`px-2 min-h-[44px] rounded-lg wk-caption shrink-0 ${focusRingClass}`}
+                    style={{ color: 'var(--color-text-secondary)' }}
+                  >
+                    Remove
+                  </button>
+                </div>
+              )}
+
+              {importedCompetitorHistory && (
+                <div
+                  role="status"
+                  className="wk-raised flex items-start justify-between gap-2 border"
+                  style={{ borderColor: 'rgb(var(--color-accent-primary-rgb) / 0.4)' }}
+                >
+                  <div className="flex items-start gap-2 min-w-0">
+                    <Check
+                      className="w-4 h-4 shrink-0 mt-1"
+                      style={{ color: 'var(--wk-accent)' }}
+                      strokeWidth={2.4}
+                      aria-hidden="true"
+                    />
+                    <div className="min-w-0">
+                      <span className="wk-label block">History ready</span>
+                      <p className="wk-caption mt-1" style={{ color: 'var(--color-text-primary)' }}>
+                        {importedCompetitorHistory.summary.formatLabel} · {importedCompetitorHistory.workouts.length} workouts ({importedCompetitorHistory.summary.totalSetsCount} sets)
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      triggerHaptic('light');
+                      setImportedCompetitorHistory(null);
+                    }}
+                    className={`px-2 min-h-[44px] rounded-lg wk-caption shrink-0 ${focusRingClass}`}
+                    style={{ color: 'var(--color-text-secondary)' }}
+                  >
+                    Remove
+                  </button>
+                </div>
+              )}
+
+              <p className="wk-caption">
+                You can also import an existing program or historical data anytime from the Program screen.
+              </p>
+            </section>
+          </div>
+        )}
+
+        {/* STEP 3: Weekly rhythm (1 essential decision + progressively disclosed optional habit anchor) */}
+        {step === 3 && !editing && (
           <div style={{ marginTop: 20 }}>
             <fieldset>
               <legend style={sectionLabel}>How do you want to fit in 4 sessions a week?</legend>
@@ -845,13 +1063,16 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                   <button
                     key={opt.id}
                     type="button"
-                    aria-pressed={program === opt.id}
+                    aria-pressed={program === opt.id && !hasActiveImportedProgram}
                     onClick={() => {
                       triggerHaptic('light');
                       setProgram(opt.id);
+                      if (importedSpreadsheet?.activateProgram) {
+                        setImportedSpreadsheet({ ...importedSpreadsheet, activateProgram: false });
+                      }
                     }}
                     className={`w-full text-left flex items-center ${focusRingClass}`}
-                    style={{ ...choiceStyle(program === opt.id), padding: '12px 16px', gap: 12 }}
+                    style={{ ...choiceStyle(program === opt.id && !hasActiveImportedProgram), padding: '12px 16px', gap: 12 }}
                   >
                     <span className="flex-1 min-w-0">
                       <span className="flex items-center flex-wrap" style={{ gap: 8 }}>
@@ -875,7 +1096,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                         {opt.detail}
                       </span>
                     </span>
-                    <RadioDot selected={program === opt.id} />
+                    <RadioDot selected={program === opt.id && !hasActiveImportedProgram} />
                   </button>
                 ))}
               </div>
@@ -990,8 +1211,8 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
           </div>
         )}
 
-        {/* STEP 3: Dedicated Health Connect screen (real Android bridge or JSON export; honest fallback to lean form) */}
-        {step === 3 && !editing && (
+        {/* STEP 4: Dedicated Health Connect screen (real Android bridge or JSON export; honest fallback to lean form) */}
+        {step === 4 && !editing && (
           <div className="flex flex-col gap-3" style={{ marginTop: 20 }}>
             <section
               aria-label="What Health Connect brings in"
@@ -1107,8 +1328,8 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
           </div>
         )}
 
-        {/* STEP 4: Lean, 100% skippable baseline stats form (sex, weight, height, age) */}
-        {step === 4 && !editing && (
+        {/* STEP 5: Lean, 100% skippable baseline stats form (sex, weight, height, age) */}
+        {step === 5 && !editing && (
           <div className="flex flex-col gap-4" style={{ marginTop: 16 }}>
             {healthImport && importedSummaryText && (
               <div
@@ -1677,7 +1898,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
         >
           <button
             type="button"
-            disabled={step === 3 && hcSyncing}
+            disabled={step === 4 && hcSyncing}
             onClick={primaryAction}
             className={`wk-button w-full font-semibold active:scale-[0.98] transition-transform disabled:opacity-60 ${focusRingClass}`}
             style={{
@@ -1701,14 +1922,29 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
             >
               See a demo with sample data
             </button>
-          ) : step === 3 && !editing ? (
+          ) : step === 2 && !editing && hasActiveImportedProgram ? (
+            <button
+              type="button"
+              onClick={() => {
+                triggerHaptic('light');
+                if (importedSpreadsheet) {
+                  setImportedSpreadsheet({ ...importedSpreadsheet, activateProgram: false });
+                }
+                goTo(3);
+              }}
+              className={`w-full font-medium transition-colors rounded-xl ${focusRingClass}`}
+              style={{ minHeight: 44, marginTop: 4, fontSize: 16, color: 'var(--color-text-muted)' }}
+            >
+              Choose a Treise plan instead
+            </button>
+          ) : step === 4 && !editing ? (
             <button
               type="button"
               onClick={() => {
                 if (isHealthBridgeReady && !hcHasAnyPermission && !healthImport) {
-                  goTo(4);
-                } else {
                   goTo(5);
+                } else {
+                  goTo(6);
                 }
               }}
               className={`w-full font-medium transition-colors rounded-xl ${focusRingClass}`}
@@ -1720,10 +1956,10 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                 ? 'Skip extra details'
                 : 'Skip for now'}
             </button>
-          ) : step === 4 && !editing && (leanFormHasAnyInput || healthImport) ? (
+          ) : step === 5 && !editing && (leanFormHasAnyInput || healthImport) ? (
             <button
               type="button"
-              onClick={handleStep4Skip}
+              onClick={handleStep5Skip}
               className={`w-full font-medium transition-colors rounded-xl ${focusRingClass}`}
               style={{ minHeight: 44, marginTop: 4, fontSize: 16, color: 'var(--color-text-muted)' }}
             >
@@ -1734,6 +1970,24 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
           ) : null}
         </div>
       </div>
+
+      {importModalMode !== null && (
+        <ImportProgramModal
+          exerciseCatalog={exerciseCatalog}
+          initialMode={importModalMode}
+          onImport={(parsed, opts) => {
+            setImportedSpreadsheet({
+              parsed,
+              activateProgram: opts.activateProgram,
+              importHistory: opts.importHistory,
+            });
+          }}
+          onImportHistory={(parsed) => {
+            setImportedCompetitorHistory(parsed);
+          }}
+          onClose={() => setImportModalMode(null)}
+        />
+      )}
     </div>
   );
 
@@ -1769,8 +2023,10 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
         const dx = e.changedTouches[0].clientX - touchStartX.current;
         touchStartX.current = null;
         if (Math.abs(dx) < 60) return;
-        if (dx < 0 && step < ONBOARDING_LOCATION_STEP) goTo((step + 1) as OnboardingStep);
-        if (dx > 0 && step > 1) goTo((step - 1) as OnboardingStep);
+        if (dx < 0 && step < ONBOARDING_LOCATION_STEP) {
+          goTo((step === 2 && hasActiveImportedProgram ? 4 : step + 1) as OnboardingStep);
+        }
+        if (dx > 0 && step > 1) goBackStep();
       }}
     >
       {bodyContent}

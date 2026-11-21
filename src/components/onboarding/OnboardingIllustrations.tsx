@@ -230,3 +230,66 @@ export const BaselineStatsIllustration: React.FC = () => (
     <circle className="ob-pop" cx="160" cy="40" r="6" fill="var(--color-accent-primary)" style={{ animationDelay: '180ms' }} />
   </svg>
 );
+
+/** Import program & history: structured training sheet and past sessions flowing smoothly into Treise. */
+export const ImportProgramIllustration: React.FC = () => (
+  <svg viewBox="0 0 320 140" className="w-full h-full" role="img" aria-label="Existing program and workout history flowing into Treise">
+    <defs>
+      <radialGradient id="ob-imp-glow" cx="50%" cy="50%" r="50%">
+        <stop offset="0%" stopColor="var(--color-accent-primary)" stopOpacity="0.2" />
+        <stop offset="100%" stopColor="var(--color-bg-canvas)" stopOpacity="0" />
+      </radialGradient>
+    </defs>
+    {/* Source sheet */}
+    <rect x="44" y="34" width="72" height="72" rx="12" fill="none" stroke="var(--color-border-strong)" strokeWidth="2" />
+    {[54, 70, 86].map((y, idx) => (
+      <line
+        key={y}
+        x1="58"
+        x2={idx === 2 ? '92' : '102'}
+        y1={y}
+        y2={y}
+        stroke="var(--color-status-neutral)"
+        strokeOpacity={0.55 + idx * 0.15}
+        strokeWidth="2.5"
+        strokeLinecap="round"
+      />
+    ))}
+    {/* Flow path */}
+    <path
+      className="ob-draw"
+      d="M126 70 H194"
+      fill="none"
+      stroke="var(--color-accent-primary)"
+      strokeWidth="3"
+      strokeLinecap="round"
+      pathLength={1}
+      style={{ animationDelay: '120ms', animationDuration: '480ms' }}
+    />
+    <path
+      className="ob-draw"
+      d="M182 58 L194 70 L182 82"
+      fill="none"
+      stroke="var(--color-accent-primary)"
+      strokeWidth="3"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      pathLength={1}
+      style={{ animationDelay: '320ms', animationDuration: '320ms' }}
+    />
+    {/* Target ready state */}
+    <circle className="ob-glow" cx="240" cy="70" r="38" fill="url(#ob-imp-glow)" />
+    <circle cx="240" cy="70" r="28" fill="var(--color-status-positive-soft)" stroke="var(--color-accent-primary)" strokeWidth="2" />
+    <path
+      className="ob-draw"
+      d="M228 70 L236 78 L253 61"
+      fill="none"
+      stroke="var(--color-accent-primary)"
+      strokeWidth="3"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      pathLength={1}
+      style={{ animationDelay: '460ms', animationDuration: '360ms' }}
+    />
+  </svg>
+);

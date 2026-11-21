@@ -1582,17 +1582,16 @@ export const DesignSystemContent: React.FC<{
             <span className="wk-label">
               05 · Onboarding Flow
             </span>
-            <h2 className="wk-title mt-1">3-step onboarding, habit framing &amp; location setup</h2>
+            <h2 className="wk-title mt-1">6-step onboarding, program import, habit framing &amp; location setup</h2>
             <p className="wk-body mt-1 max-w-prose">
-              Rendered from the live <code>OnboardingModal</code> component using lean progressive disclosure across Step 1 (Identity + Goal), Step 2 (Weekly rhythm &amp; optional habit anchor), Step 3 (Dedicated Health Connect prompt), Step 4 (Skippable lean baseline stats), and Step 5 (Place, experience &amp; launch).
-              Step 3 (Restarting + Place, conditional Home gear &amp; Experience), and the returning athlete &quot;Where you train&quot; editor.
+              Rendered from the live <code>OnboardingModal</code> component using lean progressive disclosure across Step 1 (Identity + Goal), Step 2 (Import existing program &amp; history), Step 3 (Weekly rhythm &amp; optional habit anchor), Step 4 (Dedicated Health Connect prompt), Step 5 (Skippable lean baseline stats), and Step 6 (Place, experience &amp; launch), plus the returning athlete &quot;Where you train&quot; editor.
             </p>
           </div>
 
           <div className="grid lg:grid-cols-2 gap-6 items-start">
             <PhoneStage className="space-y-5">
               <StageHeader
-                title="Step 1 of 3 · Identity &amp; goal"
+                title="Step 1 of 6 · Identity &amp; goal"
                 source="src/components/onboarding/OnboardingModal.tsx"
                 dsId="ds-onboarding-flow"
                 description="Value-first identity framing paired with one essential goal decision, Skip action, Continue CTA, and demo launcher."
@@ -1609,9 +1608,9 @@ export const DesignSystemContent: React.FC<{
               </div>
 
               <StageHeader
-                title="Step 2 of 3 · 24 sessions &amp; weekly rhythm"
+                title="Step 2 of 6 · Import program &amp; history"
                 source="src/components/onboarding/OnboardingModal.tsx"
-                description="6-week consistency science paired with cadence choice and collapsed-by-default optional habit anchor."
+                description="Asks whether to bring an existing spreadsheet program or workout history (Hevy, Strong, FitNotes) on Day 1, or start fresh with a Treise plan."
               />
               <div className="rounded-[var(--radius-card)] overflow-hidden border" style={{ borderColor: 'var(--color-border-subtle)' }}>
                 <OnboardingModal
@@ -1622,10 +1621,11 @@ export const DesignSystemContent: React.FC<{
                   onClose={() => undefined}
                 />
               </div>
+
               <StageHeader
-                title="Step 3 of 5 · Connect Health Connect"
+                title="Step 3 of 6 · 24 sessions &amp; weekly rhythm"
                 source="src/components/onboarding/OnboardingModal.tsx"
-                description="Dedicated prompt to pull in weight, height, sleep, recovery, steps &amp; workout history on Android (or import JSON on web), with a direct path to manual stats or skip."
+                description="6-week consistency science paired with cadence choice and collapsed-by-default optional habit anchor."
               />
               <div className="rounded-[var(--radius-card)] overflow-hidden border" style={{ borderColor: 'var(--color-border-subtle)' }}>
                 <OnboardingModal
@@ -1638,9 +1638,9 @@ export const DesignSystemContent: React.FC<{
               </div>
 
               <StageHeader
-                title="Step 4 of 5 · Lean baseline stats (skippable)"
+                title="Step 4 of 6 · Connect Health Connect"
                 source="src/components/onboarding/OnboardingModal.tsx"
-                description="Optional sex, weight, height, age, resting HR &amp; sleep fallback when Health Connect isn't connected — 100% skippable with zero fabricated defaults."
+                description="Dedicated prompt to pull in weight, height, sleep, recovery, steps &amp; workout history on Android (or import JSON on web), with a direct path to manual stats or skip."
               />
               <div className="rounded-[var(--radius-card)] overflow-hidden border" style={{ borderColor: 'var(--color-border-subtle)' }}>
                 <OnboardingModal
@@ -1655,14 +1655,29 @@ export const DesignSystemContent: React.FC<{
 
             <PhoneStage className="space-y-5">
               <StageHeader
-                title="Step 5 of 5 · Place, experience &amp; launch"
+                title="Step 5 of 6 · Lean baseline stats (skippable)"
+                source="src/components/onboarding/OnboardingModal.tsx"
+                description="Optional sex, weight (kg/lb), height (cm/ft-in) &amp; age fallback when Health Connect isn't connected — 100% skippable with zero fabricated defaults."
+              />
+              <div className="rounded-[var(--radius-card)] overflow-hidden border" style={{ borderColor: 'var(--color-border-subtle)' }}>
+                <OnboardingModal
+                  inline
+                  initialStep={5}
+                  profile={fixtures.onboardingNewProfile}
+                  onCompleteOnboarding={() => setShowToast(true)}
+                  onClose={() => undefined}
+                />
+              </div>
+
+              <StageHeader
+                title="Step 6 of 6 · Place, experience &amp; launch"
                 source="src/components/onboarding/OnboardingModal.tsx"
                 description="Lean setup with conditional Home gear (revealed only when Home is selected), experience calibration, collapsed fine-tune drawer, and ready-to-launch summary."
               />
               <div className="rounded-[var(--radius-card)] overflow-hidden border" style={{ borderColor: 'var(--color-border-subtle)' }}>
                 <OnboardingModal
                   inline
-                  initialStep={5}
+                  initialStep={6}
                   profile={fixtures.onboardingNewProfile}
                   onCompleteOnboarding={() => setShowToast(true)}
                   onClose={() => undefined}

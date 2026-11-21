@@ -15921,12 +15921,14 @@ Exercise,,Date,Workout,Sets,Reps,Tempo,Rest,Notes,Set 1,Set 2,Set 3,Set 4
     const step2SectionIdx = onboardingSrc70.indexOf('{step === 2 && !editing && (');
     const step3SectionIdx = onboardingSrc70.indexOf('{step === 3 && !editing && (');
     const step4SectionIdx = onboardingSrc70.indexOf('{step === 4 && !editing && (');
-    const step5SectionIdx = onboardingSrc70.indexOf('{isLast && (');
+    const step5SectionIdx = onboardingSrc70.indexOf('{step === 5 && !editing && (');
+    const step6SectionIdx = onboardingSrc70.indexOf('{isLast && (');
     const step1Slice = onboardingSrc70.slice(step1SectionIdx, step2SectionIdx);
     const step2Slice = onboardingSrc70.slice(step2SectionIdx, step3SectionIdx);
     const step3Slice = onboardingSrc70.slice(step3SectionIdx, step4SectionIdx);
     const step4Slice = onboardingSrc70.slice(step4SectionIdx, step5SectionIdx);
-    const step5Slice = onboardingSrc70.slice(step5SectionIdx);
+    const step5Slice = onboardingSrc70.slice(step5SectionIdx, step6SectionIdx);
+    const step6Slice = onboardingSrc70.slice(step6SectionIdx);
 
     assert(
       step1SectionIdx > 0 &&
@@ -15934,30 +15936,34 @@ Exercise,,Date,Workout,Sets,Reps,Tempo,Rest,Notes,Set 1,Set 2,Set 3,Set 4
         step3SectionIdx > step2SectionIdx &&
         step4SectionIdx > step3SectionIdx &&
         step5SectionIdx > step4SectionIdx &&
+        step6SectionIdx > step5SectionIdx &&
         step1Slice.includes("What's your goal?") &&
-        step2Slice.includes('How do you want to fit in 4 sessions a week?') &&
-        step2Slice.includes('Optional habit anchor') &&
-        step2Slice.includes('aria-expanded={showHabitAnchorDrawer}') &&
-        step3Slice.includes('Health Connect') &&
-        step4Slice.includes('Sex (optional') &&
+        step2Slice.includes('Import existing program') &&
+        step2Slice.includes('Import workout history') &&
+        step3Slice.includes('How do you want to fit in 4 sessions a week?') &&
+        step3Slice.includes('Optional habit anchor') &&
+        step3Slice.includes('aria-expanded={showHabitAnchorDrawer}') &&
+        step4Slice.includes('Health Connect') &&
+        step5Slice.includes('Sex (optional') &&
         onboardingSrc70.includes('const [showHabitAnchorDrawer, setShowHabitAnchorDrawer] = useState<boolean>(false);') &&
         onboardingSrc70.includes('const [showFineTuneDrawer, setShowFineTuneDrawer] = useState<boolean>(false);'),
-      'Onboarding distributes essential choices cleanly across Steps 1–5 (Goal, Rhythm, Health Connect, Skippable Baseline Stats, Place/Launch) and defaults optional drawers to collapsed'
+      'Onboarding distributes essential choices cleanly across Steps 1–6 (Goal, Import Program/History, Rhythm, Health Connect, Skippable Baseline Stats, Place/Launch) and defaults optional drawers to collapsed'
     );
 
     assert(
-      step5Slice.includes('Where will you train?') &&
-        step5Slice.includes("{(location === 'home' || (editing && showHomeGearFallback)) && (") &&
-        step5Slice.includes('What do you have at home?') &&
+      step6Slice.includes('Where will you train?') &&
+        step6Slice.includes("{(location === 'home' || (editing && showHomeGearFallback)) && (") &&
+        step6Slice.includes('What do you have at home?') &&
         !step1Slice.includes('What do you have at home?') &&
         !step2Slice.includes('What do you have at home?') &&
         !step3Slice.includes('What do you have at home?') &&
         !step4Slice.includes('What do you have at home?') &&
+        !step5Slice.includes('What do you have at home?') &&
         onboardingSrc70.includes("location === 'home' || (editing && showHomeGearFallback) ? homeEquipment : editing ? profile.homeEquipment || [] : []") &&
-        step5Slice.includes('Fine-tune setup (optional)') &&
-        step5Slice.includes('aria-expanded={showFineTuneDrawer}') &&
-        step5Slice.includes('Ready to launch'),
-      'Home equipment is strictly gated on selecting Home (never persisted for Gym/Bodyweight new signups) and Step 5 tucks secondary options under Fine-tune setup with a launch summary'
+        step6Slice.includes('Fine-tune setup (optional)') &&
+        step6Slice.includes('aria-expanded={showFineTuneDrawer}') &&
+        step6Slice.includes('Ready to launch'),
+      'Home equipment is strictly gated on selecting Home (never persisted for Gym/Bodyweight new signups) and Step 6 tucks secondary options under Fine-tune setup with a launch summary'
     );
   }
 
@@ -16802,6 +16808,32 @@ Exercise,,Date,Workout,Sets,Reps,Tempo,Rest,Notes,Set 1,Set 2,Set 3,Set 4
         appSrc74.includes('athlete.heightUnit') &&
         weightLogSrc74.includes("units.heightUnit === 'ft_in'"),
       `Weight (kg/lb) and height (cm/ft-in) unit conversion & UI controls work cleanly across Onboarding, Settings, and Weigh-in (got "${summaryImperial74}")`
+    );
+
+    // 4. Onboarding Step 2 asks whether to import an existing program and/or historical workout data,
+    //    reusing ImportProgramModal cleanly while keeping Program screen import working identically.
+    const progTabSrc74 = fs74.readFileSync(path74.join(process.cwd(), 'src/components/program/ProgramTab.tsx'), 'utf8');
+    const importModalSrc74 = fs74.readFileSync(path74.join(process.cwd(), 'src/components/program/ImportProgramModal.tsx'), 'utf8');
+    assert(
+      obSrc74.includes("title: 'Import your program & history?'") &&
+        obSrc74.includes('Import existing program') &&
+        obSrc74.includes('Import workout history') &&
+        obSrc74.includes('Program screen') &&
+        obSrc74.includes('<ImportProgramModal') &&
+        obSrc74.includes('importedSpreadsheet') &&
+        obSrc74.includes('importedCompetitorHistory') &&
+        obSrc74.includes('ONBOARDING_TOTAL_STEPS = 6') &&
+        obSrc74.includes('ONBOARDING_LOCATION_STEP: OnboardingStep = 6') &&
+        appSrc74.includes('ONBOARDING_LOCATION_STEP: OnboardingStep = 6') &&
+        appSrc74.includes('setup.importedSpreadsheet') &&
+        appSrc74.includes('setup.importedCompetitorHistory') &&
+        appSrc74.includes('rebuildIsolatedProgressionStates(') &&
+        appSrc74.includes('exerciseCatalog={exercises}') &&
+        progTabSrc74.includes('<ImportProgramModal') &&
+        progTabSrc74.includes('onImport={onImportProgram}') &&
+        progTabSrc74.includes('onImportHistory={onImportHistory}') &&
+        importModalSrc74.includes('z-[60]'),
+      'Onboarding asks to import existing program & historical data via ImportProgramModal, applies both atomically with Day 1 calibration, and preserves Program screen import'
     );
   }
 

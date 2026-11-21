@@ -32,6 +32,7 @@ import {
   applyEnvironmentOverlayToSession,
   createOverlayForTrainingLocation,
   overlayToTrainingLocation,
+  rebuildIsolatedProgressionStates,
   resolveActiveOverlay,
   updateExerciseProgressionStateDamped,
 } from './engine/continuityEngine';
@@ -144,7 +145,7 @@ import { mergeDetectedActivities } from './engine/activeDays';
 import { loadDismissedActivityIds } from './services/storage';
 import { localDateString } from './utils/date';
 
-const ONBOARDING_LOCATION_STEP: OnboardingStep = 5;
+const ONBOARDING_LOCATION_STEP: OnboardingStep = 6;
 
 // Secondary tabs and heavy modals load on demand, keeping the initial entry bundle lean.
 import type { MeasurementEntry } from './components/analytics/WeightLogModal';
@@ -339,6 +340,7 @@ export const App: React.FC = () => {
     opts: {
       isProgramPlan?: boolean;
       history?: WorkoutSession[];
+      exerciseCatalog?: ExerciseDefinition[];
       overrides?: Partial<Pick<UserProfile, 'experienceLevel' | 'gender' | 'weightUnit'>> & { bodyweightKg?: number };
       /** Plan workouts are written for the gym; away from it they get the same movements with the gear at hand. */
       location?: TrainingLocation;
@@ -356,7 +358,7 @@ export const App: React.FC = () => {
             session,
             location,
             opts.homeEquipment ?? profile.homeEquipment ?? [],
-            exercises,
+            opts.exerciseCatalog ?? exercises,
             opts.history ?? workouts,
             effectiveReadiness,
             opts.overrides?.bodyweightKg ?? bodyweightEmaKg
@@ -927,8 +929,8 @@ export const App: React.FC = () => {
         : null
       : null;
 
-    setProfile((prev) => ({
-      ...prev,
+    let nextProfile: UserProfile = {
+      ...profile,
       goalPhase: setup.goalPhase,
       programType: setup.programType,
       activeLocation: setup.activeLocation,
@@ -938,8 +940,8 @@ export const App: React.FC = () => {
         Date.now(),
         setup.activeLocation === 'home'
           ? {
-              maxDumbbellKg: prev.equipmentInventories?.home?.dumbbellMaxKg ?? null,
-              dumbbellStepKg: prev.equipmentInventories?.home?.dumbbellStepKg ?? null,
+              maxDumbbellKg: profile.equipmentInventories?.home?.dumbbellMaxKg ?? null,
+              dumbbellStepKg: profile.equipmentInventories?.home?.dumbbellStepKg ?? null,
             }
           : undefined
       ),
@@ -961,78 +963,126 @@ export const App: React.FC = () => {
         ? {
             healthConnectConnected: true,
             healthConnectActivities: true,
-            wearableSource: prev.wearableSource ?? 'health_connect',
+            wearableSource: profile.wearableSource ?? 'health_connect',
             healthConnectLastSync: new Date().toISOString(),
           }
         : {}),
       ...(setup.showRirTracking !== undefined
         ? {
             workoutDisplay: {
-              ...(prev.workoutDisplay ?? {}),
+              ...(profile.workoutDisplay ?? {}),
               showRirTracking: setup.showRirTracking,
             },
           }
         : {}),
       ...(setup.habitAnchor !== undefined ? { habitAnchor: setup.habitAnchor } : {}),
-      mesocycleWeek: prev.onboardingCompleted ? prev.mesocycleWeek : 1,
+      mesocycleWeek: profile.onboardingCompleted ? profile.mesocycleWeek : 1,
       // A goal of the athlete's own, set in onboarding, joins the plan's three.
-      ...(ownGoalFromSetup ? { goalSettings: { ...prev.goalSettings, customGoals: [...(prev.goalSettings?.customGoals ?? []).filter((g) => g.id !== ownGoalFromSetup.id), ownGoalFromSetup].slice(-MAX_CUSTOM_GOALS) } } : {}),
-    }));
+      ...(ownGoalFromSetup ? { goalSettings: { ...profile.goalSettings, customGoals: [...(profile.goalSettings?.customGoals ?? []).filter((g) => g.id !== ownGoalFromSetup.id), ownGoalFromSetup].slice(-MAX_CUSTOM_GOALS) } } : {}),
+    };
+    let nextWorkouts: WorkoutSession[] = workouts;
+    let nextBiometrics: BiometricLog[] = biometrics;
+    let nextExercises: ExerciseDefinition[] = exercises;
+
+    // Apply optional existing spreadsheet program + historical sets imported during onboarding.
+    if (setup.importedSpreadsheet) {
+      const mergedSheet = applySpreadsheetImportToState(
+        {
+          profile: nextProfile,
+          workouts: nextWorkouts,
+          biometrics: nextBiometrics,
+          exercises: nextExercises,
+        },
+        setup.importedSpreadsheet.parsed,
+        {
+          activateProgram: setup.importedSpreadsheet.activateProgram,
+          importHistory: setup.importedSpreadsheet.importHistory,
+        }
+      );
+      nextProfile = mergedSheet.profile;
+      nextWorkouts = mergedSheet.workouts;
+      nextBiometrics = mergedSheet.biometrics;
+      nextExercises = mergedSheet.exercises;
+    }
+
+    // Apply optional competitor CSV workout history (Hevy, Strong, FitNotes) imported during onboarding.
+    if (setup.importedCompetitorHistory) {
+      const { merged } = mergeImportedWorkouts(nextWorkouts, setup.importedCompetitorHistory.workouts);
+      nextWorkouts = merged;
+      if (setup.importedCompetitorHistory.addedExercises.length > 0) {
+        const ids = new Set(nextExercises.map((e) => e.id));
+        const fresh = setup.importedCompetitorHistory.addedExercises.filter((e) => !ids.has(e.id));
+        if (fresh.length > 0) nextExercises = [...nextExercises, ...fresh];
+      }
+    }
 
     // Merge real historical biometrics from Health Connect AND/OR explicit manual baseline entries (never overwriting with 0).
     if ((setup.importedBiometrics && setup.importedBiometrics.length > 0) || setup.manualBaselineBiometric || startingBodyweight) {
       const todayStr = localDateString();
-      setBiometrics((prev) => {
-        const byDate = new Map<string, BiometricLog>();
-        for (const item of prev) byDate.set(item.date, { ...item });
+      const byDate = new Map<string, BiometricLog>();
+      for (const item of nextBiometrics) byDate.set(item.date, { ...item });
 
-        // 1. Merge real Health Connect history first (filling only missing/zero fields on existing days).
-        for (const incoming of setup.importedBiometrics ?? []) {
-          const existing = byDate.get(incoming.date);
-          if (!existing) {
-            byDate.set(incoming.date, { ...incoming });
-          } else {
-            byDate.set(incoming.date, {
-              ...existing,
-              bodyweightKg: existing.bodyweightKg > 0 ? existing.bodyweightKg : incoming.bodyweightKg,
-              hrvRmssd: existing.hrvRmssd > 0 ? existing.hrvRmssd : incoming.hrvRmssd,
-              restingHr: existing.restingHr > 0 ? existing.restingHr : incoming.restingHr,
-              sleepHours: existing.sleepHours > 0 ? existing.sleepHours : incoming.sleepHours,
-              steps: existing.steps > 0 ? existing.steps : incoming.steps,
-              activeZoneMinutes: existing.activeZoneMinutes > 0 ? existing.activeZoneMinutes : incoming.activeZoneMinutes,
-              vo2Max: (existing.vo2Max || 0) > 0 ? existing.vo2Max : incoming.vo2Max,
-              bodyFatPct: existing.bodyFatPct && existing.bodyFatPct > 0 ? existing.bodyFatPct : incoming.bodyFatPct,
-            });
-          }
+      // 1. Merge real Health Connect history first (filling only missing/zero fields on existing days).
+      for (const incoming of setup.importedBiometrics ?? []) {
+        const existing = byDate.get(incoming.date);
+        if (!existing) {
+          byDate.set(incoming.date, { ...incoming });
+        } else {
+          byDate.set(incoming.date, {
+            ...existing,
+            bodyweightKg: existing.bodyweightKg > 0 ? existing.bodyweightKg : incoming.bodyweightKg,
+            hrvRmssd: existing.hrvRmssd > 0 ? existing.hrvRmssd : incoming.hrvRmssd,
+            restingHr: existing.restingHr > 0 ? existing.restingHr : incoming.restingHr,
+            sleepHours: existing.sleepHours > 0 ? existing.sleepHours : incoming.sleepHours,
+            steps: existing.steps > 0 ? existing.steps : incoming.steps,
+            activeZoneMinutes: existing.activeZoneMinutes > 0 ? existing.activeZoneMinutes : incoming.activeZoneMinutes,
+            vo2Max: (existing.vo2Max || 0) > 0 ? existing.vo2Max : incoming.vo2Max,
+            bodyFatPct: existing.bodyFatPct && existing.bodyFatPct > 0 ? existing.bodyFatPct : incoming.bodyFatPct,
+          });
         }
+      }
 
-        // 2. Apply explicit manual bodyweight onto today's record (only if the athlete actually entered one).
-        const manual = setup.manualBaselineBiometric;
-        const explicitTodayWeight = manual?.bodyweightKg ?? (!setup.importedBiometrics?.length ? startingBodyweight : undefined);
-        if (explicitTodayWeight) {
-          const existingToday = byDate.get(todayStr);
-          if (existingToday) {
-            byDate.set(todayStr, {
-              ...existingToday,
-              bodyweightKg: explicitTodayWeight,
-            });
-          } else {
-            byDate.set(todayStr, {
-              date: todayStr,
-              bodyweightKg: explicitTodayWeight,
-              hrvRmssd: 0,
-              restingHr: 0,
-              sleepHours: 0,
-              steps: 0,
-              activeZoneMinutes: 0,
-              isManualEntry: true,
-            });
-          }
+      // 2. Apply explicit manual bodyweight onto today's record (only if the athlete actually entered one).
+      const manual = setup.manualBaselineBiometric;
+      const explicitTodayWeight = manual?.bodyweightKg ?? (!setup.importedBiometrics?.length ? startingBodyweight : undefined);
+      if (explicitTodayWeight) {
+        const existingToday = byDate.get(todayStr);
+        if (existingToday) {
+          byDate.set(todayStr, {
+            ...existingToday,
+            bodyweightKg: explicitTodayWeight,
+          });
+        } else {
+          byDate.set(todayStr, {
+            date: todayStr,
+            bodyweightKg: explicitTodayWeight,
+            hrvRmssd: 0,
+            restingHr: 0,
+            sleepHours: 0,
+            steps: 0,
+            activeZoneMinutes: 0,
+            isManualEntry: true,
+          });
         }
+      }
 
-        return Array.from(byDate.values()).sort((a, b) => a.date.localeCompare(b.date));
-      });
+      nextBiometrics = Array.from(byDate.values()).sort((a, b) => a.date.localeCompare(b.date));
     }
+
+    if (nextWorkouts.length > workouts.length) {
+      nextProfile = {
+        ...nextProfile,
+        exerciseProgressionStates: rebuildIsolatedProgressionStates(
+          nextWorkouts,
+          startingBodyweight ?? bodyweightEmaKg
+        ),
+      };
+    }
+
+    setProfile(nextProfile);
+    if (nextWorkouts !== workouts) setWorkouts(nextWorkouts);
+    if (nextBiometrics !== biometrics) setBiometrics(nextBiometrics);
+    if (nextExercises !== exercises) setExercises(nextExercises);
 
     // Merge recent workouts imported from Health Connect into active days cleanly.
     if (setup.importedActivities && setup.importedActivities.length > 0) {
@@ -1046,16 +1096,17 @@ export const App: React.FC = () => {
     if (isEditingSetup) setToast({ message: 'Where you train is saved.', tag: 'Saved' });
     if (isEditingSetup && hasProgress) return;
 
-    // Quickest path to value: Generate Day 1 workout for the chosen split and take user to Workout tab
-    const starterSplit = getFirstSplitDayForProgram(setup.programType);
-    const isPlan = isPlanProgram(setup.programType);
-    const setupPlan = resolveActivePlan({ programType: setup.programType, goalPhase: setup.goalPhase, email: profile.email });
+    // Quickest path to value: Generate Day 1 workout for the chosen (or imported) plan and take user to Workout tab
+    const effectiveProgramType = nextProfile.programType || setup.programType;
+    const starterSplit = getFirstSplitDayForProgram(effectiveProgramType);
+    const isPlan = isPlanProgram(effectiveProgramType);
+    const setupPlan = resolveActivePlan(nextProfile);
     const starterSession = isPlan
-      ? generatePlanWorkout(setupPlan, getNextProgramWorkoutNumber(workouts, setupPlan, profile.planCycleStarts, profile.planStartWorkouts))
+      ? generatePlanWorkout(setupPlan, getNextProgramWorkoutNumber(nextWorkouts, setupPlan, nextProfile.planCycleStarts, nextProfile.planStartWorkouts))
       : generateSmartWorkoutSession(
           starterSplit,
-          workouts,
-          exercises,
+          nextWorkouts,
+          nextExercises,
           readiness.state,
           profile.onboardingCompleted ? profile.mesocycleWeek || 1 : 1,
           setup.activeLocation,
@@ -1066,6 +1117,8 @@ export const App: React.FC = () => {
     setActiveWorkout(
       prepareSession(starterSession, {
         isProgramPlan: isPlan,
+        history: nextWorkouts,
+        exerciseCatalog: nextExercises,
         location: setup.activeLocation,
         homeEquipment: setup.homeEquipment,
         overrides: athlete
@@ -1078,6 +1131,19 @@ export const App: React.FC = () => {
           : undefined,
       })
     );
+    const addedHistoricalCount = nextWorkouts.length - workouts.length;
+    if (!isEditingSetup && (setup.importedSpreadsheet || addedHistoricalCount > 0)) {
+      const planPart = setup.importedSpreadsheet?.parsed.savedPlan.name;
+      setToast({
+        tag: 'Imported',
+        message:
+          planPart && addedHistoricalCount > 0
+            ? `Saved ${planPart} and imported ${addedHistoricalCount} past workouts. Day 1 is calibrated and ready.`
+            : planPart
+            ? `Saved ${planPart}. Your first workout is ready.`
+            : `Imported ${addedHistoricalCount} past workouts. Day 1 weights are calibrated from your history.`,
+      });
+    }
     if (!isEditingSetup) setActiveTab('train');
   };
 
@@ -1876,6 +1942,7 @@ export const App: React.FC = () => {
         <Suspense fallback={null}>
           <OnboardingModal
             profile={profile}
+            exerciseCatalog={exercises}
             initialStep={onboardingInitialStep}
             onCompleteOnboarding={handleCompleteOnboarding}
             onClose={() => {
