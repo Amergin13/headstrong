@@ -8,6 +8,7 @@
  * 3. Semantic Memory & Knowledge Graph Edges: persistent athlete attributes & injury/contraindication edges
  */
 import { ActivityLog, activeDayDates, describeActivity } from '../engine/activeDays';
+import { resolveActiveOverlay } from '../engine/continuityEngine';
 import { calculateE1RM, isTimedExercise } from '../engine/e1rm';
 import { buildBodyweightEmaLookup } from '../engine/ema';
 import { AthleteKnowledgeGraph, buildAthleteKnowledgeGraph } from '../engine/knowledgeGraph';
@@ -58,6 +59,17 @@ export interface OouxExercise {
   estimated_1rm_kg: number | null;
   athlete_notes: string | null;
   stalled: boolean;
+  anchor_exercise_name?: string | null;
+  calibration_source?: string | null;
+}
+
+export interface OouxEnvironmentOverlay {
+  label: string;
+  profile_type: string;
+  scope: string;
+  max_dumbbell_kg: number | null;
+  max_session_minutes: number | null;
+  expires_at_iso: string | null;
 }
 
 export interface OouxWorkout {
@@ -66,6 +78,7 @@ export interface OouxWorkout {
   split_day: string;
   day_instance_kind: 'lifting_workout' | 'active_day' | 'rest_day';
   location: TrainingLocation;
+  active_environment_overlay?: OouxEnvironmentOverlay | null;
   readiness_state: ReadinessState;
   program_workout_number: number | null;
   completed: boolean;
@@ -262,6 +275,7 @@ export const OOUX_OBJECT_SCHEMAS = {
       split_day: { type: 'string' },
       day_instance_kind: { type: 'string', enum: ['lifting_workout', 'active_day', 'rest_day'] },
       location: { type: 'string', enum: ['gym', 'home', 'travel'] },
+      active_environment_overlay: { type: ['object', 'null'] },
       readiness_state: { type: 'string', enum: ['Primed', 'Normal', 'Amber Shield'] },
       program_workout_number: { type: ['number', 'null'] },
       completed: { type: 'boolean' },
@@ -293,6 +307,8 @@ export const OOUX_OBJECT_SCHEMAS = {
       estimated_1rm_kg: { type: ['number', 'null'] },
       athlete_notes: { type: ['string', 'null'] },
       stalled: { type: 'boolean' },
+      anchor_exercise_name: { type: ['string', 'null'] },
+      calibration_source: { type: ['string', 'null'] },
     },
   },
   Goal: {
@@ -621,6 +637,8 @@ export function buildContextEnvelope(input: {
       estimated_1rm_kg: timed ? null : trainingMaxesKg[ex.exerciseId] ?? null,
       athlete_notes: ex.athleteNotes?.trim() ? ex.athleteNotes.trim() : null,
       stalled: stalledIds.has(ex.exerciseId),
+      ...(ex.anchorExerciseName ? { anchor_exercise_name: ex.anchorExerciseName } : {}),
+      ...(ex.calibrationSource ? { calibration_source: ex.calibrationSource } : {}),
     };
   });
 
@@ -634,12 +652,28 @@ export function buildContextEnvelope(input: {
         : 'rest_day'
       : 'lifting_workout';
 
+  const resolvedOverlay = resolveActiveOverlay(profile.activeEnvironmentOverlay).active;
+  const activeOverlayObj: OouxEnvironmentOverlay | null = resolvedOverlay
+    ? {
+        label: resolvedOverlay.label ?? resolvedOverlay.activeProfileType,
+        profile_type: resolvedOverlay.activeProfileType,
+        scope: resolvedOverlay.scope,
+        max_dumbbell_kg: resolvedOverlay.maxDumbbellKg ?? null,
+        max_session_minutes: resolvedOverlay.maxSessionMinutes ?? null,
+        expires_at_iso:
+          resolvedOverlay.expiresAtEpochMs != null
+            ? localDateString(new Date(resolvedOverlay.expiresAtEpochMs))
+            : null,
+      }
+    : null;
+
   const todayWorkoutObj: OouxWorkout = {
     id: activeWorkout.id,
     name: planWorkoutLabel(activeWorkout.name),
     split_day: activeWorkout.splitDay,
     day_instance_kind: dayInstanceKind,
     location: activeWorkout.location ?? profile.activeLocation ?? 'gym',
+    active_environment_overlay: activeOverlayObj,
     readiness_state: readinessState,
     program_workout_number: activeWorkout.programWorkoutNumber ?? null,
     completed: activeWorkout.completed,
@@ -921,9 +955,22 @@ export function serializeContextEnvelopeForPrompt(
     .join(', ');
 
   const modePrefix = mode && scope ? `Mode: ${mode} | Scope: ${scope} | ` : '';
+  const overlayObj = ws.today_workout.active_environment_overlay;
+  const overlayLine = overlayObj
+    ? `Active environment overlay: ${overlayObj.label} (${overlayObj.profile_type}, ${overlayObj.scope}${overlayObj.max_dumbbell_kg ? `, max DB ${formatWeight(overlayObj.max_dumbbell_kg, unit)}` : ''}${overlayObj.max_session_minutes ? `, max ${overlayObj.max_session_minutes} min` : ''}${overlayObj.expires_at_iso ? `, reverts after ${overlayObj.expires_at_iso}` : ''}).`
+    : '';
+  const swappedSlots = ws.today_workout.exercises
+    .filter((e) => e.anchor_exercise_name)
+    .map((e) => `${e.name} (covering ${e.anchor_exercise_name}${e.calibration_source ? `, ${e.calibration_source}` : ''})`)
+    .join(', ');
   const lines = [
     `${modePrefix}Route: ${ws.app_route} | Day mode: ${ws.today_workout.day_instance_kind} | Program completion: ${ws.program.completion_pct}% (${ws.program.completed_workouts}/${ws.program.total_workouts}, Wk ${ws.program.current_week}/${ws.program.total_weeks} Day ${ws.program.current_day_number}).`,
   ];
+  if (overlayLine) {
+    lines.push(`${overlayLine}${swappedSlots ? ` Swapped slots: ${swappedSlots}.` : ''}`);
+  } else if (swappedSlots) {
+    lines.push(`Swapped slots today: ${swappedSlots}.`);
+  }
   if (!isFloorScoped) {
     lines.push(`Goals: ${goalsText}. Program overrides: ${overridesText}.`);
     lines.push(`Streak: ${ep.adherence_streak_days}d. Recent 5: ${recentText}. Active days: ${activeDaysText}.`);

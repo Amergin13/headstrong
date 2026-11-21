@@ -1,5 +1,5 @@
 import React, { useMemo, useRef, useState } from 'react';
-import { Sparkles } from 'lucide-react';
+import { Pencil, Plus, Sparkles } from 'lucide-react';
 import { PageTopGradient } from '../common/PageTopGradient';
 import {
   BiometricLog,
@@ -31,6 +31,8 @@ import { WeeklyVolumeCard } from './WeeklyVolumeCard';
 import { ProgramAdaptationCarousel } from './ProgramAdaptationCarousel';
 import { CoachIntervention, detectCoachInterventions } from '../../services/coachInterventions';
 import { calculateWeeklyMuscleVolume } from '../../services/storage';
+import { isCustomExercise } from '../../services/workoutHistoryEdits';
+import { formatSentenceCase } from '../../utils/typography';
 import { triggerHaptic } from '../../utils/haptics';
 import '../../services/deviceModels';
 
@@ -61,6 +63,10 @@ interface ProgramTabProps {
   onImportHistory?: (parsed: CompetitorCsvImportResult) => void;
   onDeleteCustomPlan?: (planId: CustomPlanId) => void;
   onAddCustomExercise: (newEx: ExerciseDefinition) => void;
+  onUpdateCustomExercise?: (updatedEx: ExerciseDefinition) => void;
+  onDeleteCustomExercise?: (exerciseId: string) => void;
+  onUpdatePastWorkout?: (updated: WorkoutSession) => void;
+  onDeletePastWorkout?: (workoutId: string) => void;
   onOpenOnboarding?: () => void;
   /** Name of the queued workout, shown on the "Back to workout" link. */
   activeWorkoutName?: string;
@@ -109,6 +115,10 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
   onImportHistory,
   onDeleteCustomPlan,
   onAddCustomExercise,
+  onUpdateCustomExercise,
+  onDeleteCustomExercise,
+  onUpdatePastWorkout,
+  onDeletePastWorkout,
   onOpenOnboarding,
   activeWorkoutName,
   activeProgramWorkoutNumber,
@@ -121,9 +131,14 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
   onClearProgramOverrides,
 }) => {
   const [showCreateExercise, setShowCreateExercise] = useState(false);
+  const [editingCustomExercise, setEditingCustomExercise] = useState<ExerciseDefinition | null>(null);
   const [showProgramPicker, setShowProgramPicker] = useState(false);
   const [showImportSpreadsheet, setShowImportSpreadsheet] = useState(false);
   const [inspectedExerciseId, setInspectedExerciseId] = useState<string | null>(null);
+  const customExercises = useMemo(
+    () => exerciseCatalog.filter((ex) => isCustomExercise(ex)),
+    [exerciseCatalog]
+  );
   const inspectedExercise = useMemo(() => {
     if (!inspectedExerciseId) return null;
     return buildInspectExerciseSession({
@@ -161,6 +176,10 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
     <ProgramHeaderMenu
       onOpenImportSpreadsheet={() => setShowImportSpreadsheet(true)}
       onOpenChangeProgram={() => setShowProgramPicker(true)}
+      onOpenCreateExercise={() => {
+        setEditingCustomExercise(null);
+        setShowCreateExercise(true);
+      }}
     />
   );
 
@@ -193,6 +212,8 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
           onDismissIntervention={onDismissIntervention}
           onRemoveProgramOverride={onRemoveProgramOverride}
           onClearProgramOverrides={onClearProgramOverrides}
+          onUpdatePastWorkout={onUpdatePastWorkout}
+          onDeletePastWorkout={onDeletePastWorkout}
           headerAction={headerMenu}
         />
       )}
@@ -350,11 +371,73 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
         </>
       )}
 
-      {/* Custom Exercise Modal */}
+      {customExercises.length > 0 && (
+        <section
+          aria-label="Custom exercises"
+          className="wk-card flex flex-col gap-3 mt-4"
+        >
+          <div className="flex items-center justify-between gap-2">
+            <div>
+              <h2 className="wk-h1 leading-tight">Custom exercises</h2>
+              <p className="wk-caption mt-1">
+                {customExercises.length} {customExercises.length === 1 ? 'exercise' : 'exercises'} added by you
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                triggerHaptic('light');
+                setEditingCustomExercise(null);
+                setShowCreateExercise(true);
+              }}
+              className="wk-btn-secondary min-h-[44px] inline-flex items-center gap-1 shrink-0"
+            >
+              <Plus className="w-4 h-4 stroke-[2]" aria-hidden="true" />
+              <span>New</span>
+            </button>
+          </div>
+          <ul className="flex flex-col gap-2">
+            {customExercises.map((ex) => (
+              <li
+                key={ex.id}
+                className="wk-raised flex items-center justify-between gap-2"
+              >
+                <div className="min-w-0">
+                  <div className="wk-subhead truncate">{formatSentenceCase(ex.name)}</div>
+                  <div className="wk-caption mt-1">
+                    {ex.primaryMuscle} • {ex.equipment.replace('_', ' ')} • {ex.defaultRepRange[0]}–{ex.defaultRepRange[1]} reps
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    triggerHaptic('light');
+                    setEditingCustomExercise(ex);
+                    setShowCreateExercise(true);
+                  }}
+                  aria-label={`Edit ${formatSentenceCase(ex.name)}`}
+                  className="wk-btn-secondary min-h-[44px] px-3 inline-flex items-center gap-1 shrink-0"
+                >
+                  <Pencil className="w-4 h-4 stroke-[2]" aria-hidden="true" />
+                  <span>Edit</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {/* Custom Exercise Modal (Add / Edit / Delete) */}
       {showCreateExercise && (
         <CustomExerciseModal
+          existingExercise={editingCustomExercise ?? undefined}
           onAddExercise={onAddCustomExercise}
-          onClose={() => setShowCreateExercise(false)}
+          onUpdateExercise={onUpdateCustomExercise}
+          onDeleteExercise={onDeleteCustomExercise}
+          onClose={() => {
+            setShowCreateExercise(false);
+            setEditingCustomExercise(null);
+          }}
         />
       )}
 

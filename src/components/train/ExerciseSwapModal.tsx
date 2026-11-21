@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import {
+  EnvironmentOverlay,
   ExerciseDefinition,
+  ExerciseProgressionState,
   ExerciseSession,
   GoalPhase,
   HomeEquipmentTag,
@@ -8,6 +10,7 @@ import {
   TrainingLocation,
   WorkoutSession,
 } from '../../engine/types';
+import { evaluateSingleExerciseContinuitySwap } from '../../engine/continuityEngine';
 import {
   formatImplementWeightLabel,
   usesOneDumbbell,
@@ -35,6 +38,8 @@ interface ExerciseSwapModalProps {
   activeLocation?: TrainingLocation;
   homeEquipment?: HomeEquipmentTag[];
   workouts?: WorkoutSession[];
+  activeOverlay?: EnvironmentOverlay | null;
+  storedProgressionStates?: Record<string, ExerciseProgressionState>;
   readinessState?: ReadinessState;
   goalPhase?: GoalPhase;
   unit?: WeightUnit;
@@ -74,6 +79,8 @@ export const ExerciseSwapModal: React.FC<ExerciseSwapModalProps> = ({
   activeLocation = 'gym',
   homeEquipment = ['bench', 'dumbbells', 'trx', 'pullup_bar'],
   workouts = [],
+  activeOverlay = null,
+  storedProgressionStates,
   readinessState = 'Normal',
   goalPhase = 'Lean Bulk',
   unit,
@@ -273,7 +280,36 @@ export const ExerciseSwapModal: React.FC<ExerciseSwapModalProps> = ({
             (() => {
               const renderOption = (alt: ExerciseDefinition) => {
               const prescription = computeSwapPrescription(alt);
-              const convertedKg = prescription.targetWeightKg;
+              const continuity = evaluateSingleExerciseContinuitySwap({
+                currentExercise,
+                replacementDef: alt,
+                historicalWorkouts: workouts,
+                exerciseCatalog,
+                storedProgressionStates,
+                activeOverlay,
+                userBodyweightKg: bodyweightEmaKg,
+                unit: activeUnit,
+              });
+              const continuitySet1 = continuity.prescription.sets[0];
+              const isEffortMachine =
+                !prescription.isTimed &&
+                continuity.prescription.calibrationSource === 'EFFORT_ONLY' &&
+                continuity.targetMetadata.equipmentClass === 'VARIABLE_MACHINE_OR_CABLE';
+              const isAnchorEstimate =
+                !prescription.isTimed &&
+                continuity.prescription.calibrationSource === 'ANCHOR_PRIOR' &&
+                continuity.targetMetadata.equipmentClass === 'STANDARDIZED_FREE_WEIGHT' &&
+                continuitySet1?.suggestedWeightKg != null &&
+                continuitySet1.suggestedWeightKg > 0;
+              const convertedKg = isEffortMachine
+                ? 0
+                : isAnchorEstimate
+                ? continuitySet1!.suggestedWeightKg!
+                : continuity.prescription.calibrationSource === 'OWN_HISTORY' &&
+                  continuitySet1?.suggestedWeightKg != null &&
+                  continuitySet1.suggestedWeightKg > 0
+                ? continuitySet1.suggestedWeightKg
+                : prescription.targetWeightKg;
               const equipLabel =
                 alt.requiredHomeEquipment && alt.requiredHomeEquipment.length > 0
                   ? alt.requiredHomeEquipment.map((t) => HOME_TAG_LABELS[t] || t).join(' + ')
@@ -281,12 +317,35 @@ export const ExerciseSwapModal: React.FC<ExerciseSwapModalProps> = ({
               const isPureBw = prescription.isPureBodyweight;
               const targetLine = prescription.isTimed
                 ? `${prescription.targetDurationSeconds}s hold`
-                : `${prescription.minReps}–${prescription.maxReps} reps • Start ${prescription.targetReps}`;
-              const rightDetail = prescription.usedOwnHistory
-                ? 'Your last target'
-                : prescription.isTimed
+                : `${prescription.minReps}–${prescription.maxReps} reps • Start ${
+                    continuitySet1?.targetRepsMin ?? prescription.targetReps
+                  }`;
+              const rightDetail = prescription.isTimed
                 ? 'Timed hold'
-                : `${prescription.targetReps} reps @ ${prescription.targetRir} RIR`;
+                : isEffortMachine
+                ? 'Set 1 calibrates'
+                : isAnchorEstimate
+                ? 'Est. · Set 1 calibrates'
+                : isPureBw && continuity.prescription.setupLabel
+                ? continuity.prescription.setupLabel
+                : prescription.usedOwnHistory || continuity.prescription.calibrationSource === 'OWN_HISTORY'
+                ? 'Your last target'
+                : `${continuitySet1?.targetRepsMin ?? prescription.targetReps} reps @ ${
+                    continuitySet1?.targetRir ?? prescription.targetRir
+                  } RIR`;
+              const rationaleText =
+                !prescription.isTimed && continuity.prescription.copy?.tier1
+                  ? continuity.prescription.copy.tier1
+                  : prescription.rationale;
+              const primaryLoadText = isEffortMachine
+                ? 'Pick moderate'
+                : isPureBw
+                ? 'Bodyweight'
+                : alt.isWeightedCalisthenic || alt.equipment === 'weighted_bodyweight'
+                ? `BW + ${units.format(convertedKg)}`
+                : alt.equipment === 'dumbbell' && !usesOneDumbbell(alt)
+                ? `${isAnchorEstimate ? '~' : ''}${units.format(convertedKg)} each`
+                : `${isAnchorEstimate ? '~' : ''}${units.format(convertedKg)}`;
 
               return (
                 <div
@@ -309,20 +368,14 @@ export const ExerciseSwapModal: React.FC<ExerciseSwapModalProps> = ({
                         className="wk-subhead tabular-numbers block"
                         style={{ color: 'var(--color-text-primary)' }}
                       >
-                        {isPureBw
-                          ? 'Bodyweight'
-                          : alt.isWeightedCalisthenic || alt.equipment === 'weighted_bodyweight'
-                          ? `BW + ${units.format(convertedKg)}`
-                          : alt.equipment === 'dumbbell' && !usesOneDumbbell(alt)
-                          ? `${units.format(convertedKg)} each`
-                          : units.format(convertedKg)}
+                        {primaryLoadText}
                       </span>
                       <span className="wk-caption">{rightDetail}</span>
                     </div>
                   </div>
 
                   <p className="wk-caption" style={{ color: 'var(--color-text-secondary)' }}>
-                    {prescription.rationale}
+                    {rationaleText}
                   </p>
 
                   {alt.whyItWorks && (

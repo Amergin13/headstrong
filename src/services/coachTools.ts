@@ -5,6 +5,13 @@ import {
   MIN_ACTIVE_MINUTES,
   activeDayDates,
 } from '../engine/activeDays';
+import {
+  applyEnvironmentOverlayToSession,
+  createOverlayForTrainingLocation,
+  createPresetOverlay,
+  overlayToTrainingLocation,
+  resolveActiveOverlay,
+} from '../engine/continuityEngine';
 import { isTimedExercise, isUnilateralExercise, usesOneDumbbell, usesTwoDumbbells } from '../engine/e1rm';
 import { getExerciseBiomechanicalMeta } from '../engine/knowledgeGraph';
 import {
@@ -41,6 +48,7 @@ import {
   CoachSuggestedAction,
   CoachToolName,
   CoachUndoSnapshot,
+  EnvironmentOverlay,
   ExerciseDefinition,
   ExerciseSession,
   ExperienceLevel,
@@ -63,6 +71,7 @@ import { ensureWarmupSetsOnExercise, isFirstCompoundForPillar } from '../engine/
 import { localDateString } from '../utils/date';
 import { GOAL_DISPLAY_NAME } from '../utils/goalNames';
 import { formatPreciseWeight, formatWeight, snapLoadKg, unitToKg } from '../utils/units';
+import { parseEnvironmentConstraintText } from './environmentOverlayParser';
 import { findExerciseNamed } from './coachAnswers';
 import { CoachPlace } from './coachContext';
 import { ContextEnvelope, createMemoryFact, deriveContraindicationEdges } from './coachContextEnvelope';
@@ -240,7 +249,7 @@ export const COACH_TOOL_DECLARATIONS: GeminiFunctionDeclaration[] = [
   {
     name: 'switch_location',
     description:
-      'Switch training location between gym, home, and travel (bodyweight) for today active session or schedule a specific future week (1-6) away/home.',
+      'Switch training location between gym, home, travel (bodyweight), or a temporary hotel/dumbbell/time-constrained environment overlay for today or a multi-day trip, or schedule a specific future week (1-6) away/home.',
     parameters: {
       type: 'object',
       properties: {
@@ -252,6 +261,23 @@ export const COACH_TOOL_DECLARATIONS: GeminiFunctionDeclaration[] = [
         week: {
           type: 'integer',
           description: 'Optional future program week number (1-6) to schedule this location for.',
+        },
+        constraint_text: {
+          type: 'string',
+          description:
+            'Optional natural-language environment constraint (e.g. "Hotel dumbbells up to 30 kg for 5 days" or "Only have 25 minutes today") parsed into a temporary EnvironmentOverlay.',
+        },
+        max_dumbbell_kg: {
+          type: 'number',
+          description: 'Optional maximum available dumbbell weight per hand in kg.',
+        },
+        max_session_minutes: {
+          type: 'integer',
+          description: 'Optional session duration cap in minutes (e.g. 25 or 30).',
+        },
+        duration_days: {
+          type: 'integer',
+          description: 'Optional number of days before the temporary environment overlay auto-reverts to Full Gym.',
         },
       },
       required: ['location'],
@@ -2058,6 +2084,10 @@ const LOCATION_LABELS: Record<TrainingLocation, string> = {
 export interface SwitchLocationArgs {
   location: TrainingLocation;
   week?: number;
+  constraint_text?: string;
+  max_dumbbell_kg?: number;
+  max_session_minutes?: number;
+  duration_days?: number;
 }
 
 export async function executeSwitchLocation(
@@ -2073,6 +2103,8 @@ export async function executeSwitchLocation(
     trx: 'TRX Suspension Trainer',
     bands: 'Resistance Bands',
   };
+  const nowMs = Date.now();
+  const unit = context.profile.weightUnit || 'kg';
 
   const activePlanForWeek = resolveActivePlan(context.profile);
   const maxPlanWeeks = Math.max(6, ...activePlanForWeek.templates.map((t) => t.week));
@@ -2098,25 +2130,24 @@ export async function executeSwitchLocation(
       : context.profile.mesocycleWeek || 1;
 
     if (currentPlanWeek === targetWeek && context.activeWorkout.location !== targetLoc) {
-      const adapted = adaptWorkoutSessionToLocation(
-        context.activeWorkout,
+      const weekOverlay = createOverlayForTrainingLocation(
         targetLoc,
-        context.profile.homeEquipment || [],
-        context.exerciseCatalog,
-        context.workouts,
-        context.readinessState,
-        context.bodyweightEmaKg
+        context.profile.homeEquipment,
+        nowMs,
+        'WEEK_OVERRIDE'
       );
-      updatedWorkout = prepareSessionForAthlete(adapted, {
-        history: context.workouts,
-        bodyweightKg: context.bodyweightEmaKg,
-        readinessState: context.readinessState,
-        gender: context.profile.gender,
-        experienceLevel: context.profile.experienceLevel,
-        unit: context.profile.weightUnit || 'kg',
-        isProgramPlan: isPlanProgram(context.profile.programType),
+      updatedWorkout = applyEnvironmentOverlayToSession({
+        session: context.activeWorkout,
+        overlay: weekOverlay,
+        exerciseCatalog: context.exerciseCatalog,
+        historicalWorkouts: context.workouts,
+        storedProgressionStates: context.profile.exerciseProgressionStates,
+        userBodyweightKg: context.bodyweightEmaKg,
+        nowMs,
+        unit,
       });
       updatedProfile.activeLocation = targetLoc;
+      updatedProfile.activeEnvironmentOverlay = weekOverlay;
     }
 
     const summary =
@@ -2144,43 +2175,131 @@ export async function executeSwitchLocation(
   }
 
   const prevLoc = context.activeWorkout.location ?? context.profile.activeLocation ?? 'gym';
-  const adapted = adaptWorkoutSessionToLocation(
-    context.activeWorkout,
-    targetLoc,
-    context.profile.homeEquipment || [],
-    context.exerciseCatalog,
-    context.workouts,
-    context.readinessState,
-    context.bodyweightEmaKg
-  );
-  const updatedWorkout = prepareSessionForAthlete(adapted, {
-    history: context.workouts,
-    bodyweightKg: context.bodyweightEmaKg,
-    readinessState: context.readinessState,
-    gender: context.profile.gender,
-    experienceLevel: context.profile.experienceLevel,
-    unit: context.profile.weightUnit || 'kg',
-    isProgramPlan: isPlanProgram(context.profile.programType),
+  const prevOverlay = resolveActiveOverlay(context.profile.activeEnvironmentOverlay, nowMs).active;
+
+  // Build unified EnvironmentOverlay from natural-language constraints, structured caps, or TrainingLocation.
+  let nextOverlay: EnvironmentOverlay | null = null;
+  const hasStructuredConstraint =
+    Boolean(rawArgs.constraint_text && rawArgs.constraint_text.trim().length > 0) ||
+    typeof rawArgs.max_dumbbell_kg === 'number' ||
+    typeof rawArgs.max_session_minutes === 'number' ||
+    typeof rawArgs.duration_days === 'number';
+
+  if (rawArgs.constraint_text && rawArgs.constraint_text.trim().length > 0) {
+    const parsed = parseEnvironmentConstraintText(rawArgs.constraint_text, { nowMs });
+    nextOverlay = parsed.activeProfileType === 'HOME_GYM' ? null : parsed;
+  } else if (hasStructuredConstraint) {
+    const scope =
+      typeof rawArgs.duration_days === 'number' && rawArgs.duration_days > 1
+        ? 'CUSTOM_UNTIL_DATE'
+        : 'TODAY_ONLY';
+    const expiresAtEpochMs =
+      typeof rawArgs.duration_days === 'number' && rawArgs.duration_days > 0
+        ? nowMs + Math.round(rawArgs.duration_days) * 24 * 60 * 60 * 1000
+        : undefined;
+    const profileType =
+      typeof rawArgs.max_dumbbell_kg === 'number'
+        ? 'HOTEL_DUMBBELLS'
+        : typeof rawArgs.max_session_minutes === 'number' && targetLoc === 'gym'
+        ? 'TIME_CONSTRAINED'
+        : targetLoc === 'travel'
+        ? 'BODYWEIGHT'
+        : targetLoc === 'home'
+        ? 'CUSTOM'
+        : 'HOME_GYM';
+    nextOverlay =
+      profileType === 'HOME_GYM'
+        ? null
+        : createPresetOverlay(profileType, scope, {
+            nowMs,
+            maxDumbbellKg: rawArgs.max_dumbbell_kg ?? null,
+            maxSessionMinutes: rawArgs.max_session_minutes ?? null,
+            expiresAtEpochMs,
+            homeEquipment: context.profile.homeEquipment,
+          });
+  } else {
+    nextOverlay = createOverlayForTrainingLocation(targetLoc, context.profile.homeEquipment, nowMs);
+  }
+
+  const resolvedLoc: TrainingLocation = nextOverlay ? overlayToTrainingLocation(nextOverlay) : 'gym';
+
+  let baseSessionForOverlay = context.activeWorkout;
+  const returningToGymWithoutAnchors =
+    !nextOverlay &&
+    (context.activeWorkout.location ?? context.profile.activeLocation) !== 'gym' &&
+    !context.activeWorkout.exercises.some((ex) => Boolean(ex.anchorExerciseId));
+
+  if (returningToGymWithoutAnchors) {
+    const adaptedGym = adaptWorkoutSessionToLocation(
+      context.activeWorkout,
+      'gym',
+      context.profile.homeEquipment || [],
+      context.exerciseCatalog,
+      context.workouts,
+      context.readinessState,
+      context.bodyweightEmaKg
+    );
+    baseSessionForOverlay = prepareSessionForAthlete(adaptedGym, {
+      history: context.workouts,
+      bodyweightKg: context.bodyweightEmaKg,
+      readinessState: context.readinessState,
+      gender: context.profile.gender,
+      experienceLevel: context.profile.experienceLevel,
+      unit,
+      isProgramPlan: isPlanProgram(context.profile.programType),
+    });
+  }
+
+  const updatedWorkout = applyEnvironmentOverlayToSession({
+    session: baseSessionForOverlay,
+    overlay: nextOverlay,
+    exerciseCatalog: context.exerciseCatalog,
+    historicalWorkouts: context.workouts,
+    storedProgressionStates: context.profile.exerciseProgressionStates,
+    userBodyweightKg: context.bodyweightEmaKg,
+    nowMs,
+    unit,
   });
-  const reply =
-    targetLoc === 'travel'
-      ? `Switched today's workout to bodyweight. Every exercise now needs no equipment, with reps matched to your strength.`
-      : targetLoc === 'home'
-      ? `Switched today's workout to home. It now uses ${(context.profile.homeEquipment || []).map((t) => equipNames[t] || t).join(', ') || 'your bodyweight'}.`
-      : `Switched today's workout back to the gym, with barbells, cables and machines available again.`;
+
+  let reply: string;
+  if (nextOverlay && hasStructuredConstraint) {
+    const capPart = nextOverlay.maxDumbbellKg
+      ? ` with dumbbells capped at ${formatWeight(nextOverlay.maxDumbbellKg, unit)}`
+      : '';
+    const minsPart = nextOverlay.maxSessionMinutes
+      ? ` sized for ~${nextOverlay.maxSessionMinutes} min`
+      : '';
+    const expiryPart =
+      nextOverlay.scope === 'CUSTOM_UNTIL_DATE' && nextOverlay.expiresAtEpochMs
+        ? ` Auto-reverts to your master program after ${localDateString(new Date(nextOverlay.expiresAtEpochMs))}.`
+        : nextOverlay.scope === 'WEEK_OVERRIDE'
+        ? ' Auto-reverts to your master program at the end of this week.'
+        : ' Applies to today only — your master program stays untouched.';
+    reply = `Switched to **${nextOverlay.label}**${capPart}${minsPart}. Set 1 weights are anchored from your gym history and will calibrate on the fly.${expiryPart}`;
+  } else {
+    reply =
+      resolvedLoc === 'travel'
+        ? `Switched today's workout to bodyweight. Every exercise now needs no equipment, with reps matched to your strength.`
+        : resolvedLoc === 'home'
+        ? `Switched today's workout to home. It now uses ${(context.profile.homeEquipment || []).map((t) => equipNames[t] || t).join(', ') || 'your bodyweight'}.`
+        : `Switched today's workout back to the gym, with barbells, cables and machines available again.`;
+  }
 
   return commitMutationTransaction({
     context,
     toolName: 'switch_location',
     actionType: 'SWITCH_LOCATION',
-    updatedProfile: { activeLocation: targetLoc },
+    updatedProfile: {
+      activeLocation: resolvedLoc,
+      activeEnvironmentOverlay: nextOverlay,
+    },
     updatedWorkout,
     stateDiff: {
       object_type: 'Workout',
       object_id: context.activeWorkout.id,
-      label: 'Location Switched',
-      previous_state: { display: LOCATION_LABELS[prevLoc] },
-      new_state: { display: LOCATION_LABELS[targetLoc] },
+      label: nextOverlay && hasStructuredConstraint ? 'Environment Overlay Applied' : 'Location Switched',
+      previous_state: { display: prevOverlay ? prevOverlay.label : LOCATION_LABELS[prevLoc] },
+      new_state: { display: nextOverlay ? nextOverlay.label : LOCATION_LABELS[resolvedLoc] },
     },
     summaryText: reply,
     navigateTarget: 'train',

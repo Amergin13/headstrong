@@ -1457,6 +1457,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
               workouts,
               bodyweightKg: hasBodyweight ? bodyweightEmaKg : 0,
               biometrics,
+              exerciseCatalog,
               fmt,
             });
             return (

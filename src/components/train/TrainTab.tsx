@@ -23,6 +23,7 @@ import {
   isWhoopConfigured,
 } from '../../engine/types';
 import {
+  evaluateSingleExerciseContinuitySwap,
   recalibrateSetsAfterSet1,
   resolveActiveOverlay,
   resolveMovementPattern,
@@ -30,12 +31,12 @@ import {
 import { EnvironmentOverlaySheet } from './EnvironmentOverlaySheet';
 import { getActiveEquipmentInventory, snapWeightToInventory } from '../../engine/equipmentInventory';
 import { ReadinessEvaluation, evaluateSet1RirConfirmation } from '../../engine/readiness';
-import { ReadinessBanner } from './ReadinessBanner';
 import { ExerciseCard } from './ExerciseCard';
 import { ExerciseDetailModal } from './ExerciseDetailModal';
 import { ExerciseSwapModal, ExerciseSwapScope } from './ExerciseSwapModal';
 import { PlateCalculatorModal } from './PlateCalculatorModal';
 import { WorkoutFinishScreen } from './WorkoutFinishScreen';
+import { PastWorkoutModal } from '../program/PastWorkoutModal';
 import { buildCompletedExerciseSummaries, buildWorkoutFinish } from '../../services/workoutFinish';
 import {
   WhoopWorkoutStrainSummary,
@@ -173,6 +174,10 @@ interface TrainTabProps {
   onAcceptIntervention?: (intervention: CoachIntervention) => void;
   /** Dismisses an adaptation suggestion and persists dismissal across the entire product. */
   onDismissIntervention?: (intervention: CoachIntervention) => void;
+  /** Saves inline edits to a completed past workout. */
+  onUpdatePastWorkout?: (updated: WorkoutSession) => void;
+  /** Deletes a completed past workout from history. */
+  onDeletePastWorkout?: (workoutId: string) => void;
 }
 
 /** Primary muscles each split day trains, used to suggest a recovered alternative. */
@@ -228,6 +233,8 @@ export const TrainTab: React.FC<TrainTabProps> = ({
   onOpenCoach,
   onAcceptIntervention,
   onDismissIntervention,
+  onUpdatePastWorkout,
+  onDeletePastWorkout,
 }) => {
   const units = useUnits();
   const [detailExerciseId, setDetailExerciseId] = useState<string | null>(null);
@@ -237,7 +244,6 @@ export const TrainTab: React.FC<TrainTabProps> = ({
   const [previewPastWorkout, setPreviewPastWorkout] = useState<WorkoutSession | null>(null);
   const [showAddExerciseModal, setShowAddExerciseModal] = useState(false);
   const [showWorkoutDisplayModal, setShowWorkoutDisplayModal] = useState(false);
-  const [showLocationDropdown, setShowLocationDropdown] = useState(false);
   const [showEnvironmentSheet, setShowEnvironmentSheet] = useState(false);
   const pendingRecalRef = useRef<{
     exerciseSessionId: string;
@@ -694,15 +700,41 @@ export const TrainTab: React.FC<TrainTabProps> = ({
         fallbackTargetWeightKg: convertedWeightKg > 0 ? convertedWeightKg : resolveNewExerciseFallbackWeight(newDef),
       });
 
+    const continuity = evaluateSingleExerciseContinuitySwap({
+      currentExercise: swappingExercise,
+      replacementDef: newDef,
+      historicalWorkouts: workouts,
+      exerciseCatalog,
+      storedProgressionStates: profile.exerciseProgressionStates,
+      activeOverlay: resolveActiveOverlay(profile.activeEnvironmentOverlay).active,
+      userBodyweightKg: bodyweightEmaKg,
+      unit: units.unit,
+      planId: trainingPlan?.id ?? getSessionPlanId(activeWorkout) ?? 'default',
+      splitDay: activeWorkout.splitDay,
+    });
+
     const isPureBw = rx.isPureBodyweight;
-    const effectiveTargetWeight = isPureBw
-      ? 0
-      : snapWeightToInventory(rx.targetWeightKg, newDef.equipment, units.unit, activeInventory);
-    const defaultTargetReps = rx.targetReps;
     const timed = rx.isTimed;
+    const isEffortMachine =
+      !timed &&
+      continuity.prescription.calibrationSource === 'EFFORT_ONLY' &&
+      continuity.targetMetadata.equipmentClass === 'VARIABLE_MACHINE_OR_CABLE';
+    const continuitySet1Weight = continuity.prescription.sets[0]?.suggestedWeightKg ?? null;
+    const rawTargetWeight = isPureBw || isEffortMachine
+      ? 0
+      : continuitySet1Weight != null && continuitySet1Weight > 0
+      ? continuitySet1Weight
+      : rx.targetWeightKg;
+    const effectiveTargetWeight =
+      rawTargetWeight > 0
+        ? snapWeightToInventory(rawTargetWeight, newDef.equipment, units.unit, activeInventory)
+        : 0;
+    const defaultTargetReps = rx.targetReps;
 
     const customNotes = timed
       ? rx.rationale
+      : continuity.prescription.copy?.tier1
+      ? continuity.prescription.copy.tier1
       : rx.tempoCue
       ? `${rx.tempoCue}. ${rx.rationale}.`
       : meta.resistanceProfile === 'lengthened'
@@ -718,33 +750,47 @@ export const TrainTab: React.FC<TrainTabProps> = ({
       const workingSetsOnly = setsToDo.filter((s) => !s.isWarmup && s.setType !== 'warmup');
       if (workingSetsOnly.length === 0) return [ex];
 
-      const calibratedWorkingSets: WorkoutSet[] = workingSetsOnly.map((s, sIdx) => ({
-        ...s,
-        setNumber: sIdx + 1,
-        targetWeightKg: effectiveTargetWeight,
-        actualWeightKg: effectiveTargetWeight,
-        targetReps: timed ? 1 : defaultTargetReps,
-        actualReps: timed ? 1 : defaultTargetReps,
-        targetRir: rx.targetRir,
-        actualRir: rx.targetRir,
-        ...(timed
-          ? {
-              targetDurationSeconds: rx.targetDurationSeconds || 45,
-              actualDurationSeconds: rx.targetDurationSeconds || 45,
-            }
-          : {
-              targetDurationSeconds: undefined,
-              actualDurationSeconds: undefined,
-            }),
-        isWarmup: false,
-        setType: 'working' as const,
-      }));
+      const calibratedWorkingSets: WorkoutSet[] = workingSetsOnly.map((s, sIdx) => {
+        const contSet = continuity.prescription.sets[sIdx] ?? continuity.prescription.sets[continuity.prescription.sets.length - 1];
+        const setWeight =
+          isPureBw || isEffortMachine
+            ? 0
+            : contSet?.suggestedWeightKg != null && contSet.suggestedWeightKg > 0
+            ? snapWeightToInventory(contSet.suggestedWeightKg, newDef.equipment, units.unit, activeInventory)
+            : effectiveTargetWeight;
+        const setReps = timed ? 1 : (contSet?.targetRepsMin ?? defaultTargetReps);
+        const setRir = timed ? rx.targetRir : (contSet?.targetRir ?? rx.targetRir);
+        return {
+          ...s,
+          setNumber: sIdx + 1,
+          targetWeightKg: setWeight,
+          actualWeightKg: setWeight,
+          targetReps: setReps,
+          actualReps: setReps,
+          targetRir: setRir,
+          actualRir: setRir,
+          isWeightEstimated: !timed && Boolean(contSet?.isWeightEstimated) && setWeight > 0,
+          setupLabel: timed ? null : (contSet?.setupLabel ?? null),
+          calibrationSource: timed ? undefined : (contSet?.calibrationSource ?? continuity.prescription.calibrationSource),
+          ...(timed
+            ? {
+                targetDurationSeconds: rx.targetDurationSeconds || 45,
+                actualDurationSeconds: rx.targetDurationSeconds || 45,
+              }
+            : {
+                targetDurationSeconds: undefined,
+                actualDurationSeconds: undefined,
+              }),
+          isWarmup: false,
+          setType: 'working' as const,
+        };
+      });
 
       // Keep the same structure as before the swap: only re-create warm-ups if the original
       // exercise had them, and never add more than it had.
       const originalWarmupCount = setsToDo.filter((st) => st.isWarmup || st.setType === 'warmup').length;
       let calibratedSets: WorkoutSet[] = calibratedWorkingSets;
-      if (originalWarmupCount > 0 && !isPureBw && !meta.isIsolation && !timed) {
+      if (originalWarmupCount > 0 && !isPureBw && !isEffortMachine && effectiveTargetWeight > 0 && !meta.isIsolation && !timed) {
         const isFirstCompound = isFirstCompoundForPillar(
           {
             pillar: newDef.pillar,
@@ -773,6 +819,11 @@ export const TrainTab: React.FC<TrainTabProps> = ({
         calibratedSets = [...warmupSets, ...calibratedWorkingSets].map((st, i) => ({ ...st, setNumber: i + 1 }));
       }
 
+      const maxRepAcrossSets = timed
+        ? rx.maxReps
+        : Math.max(rx.maxReps, ...continuity.prescription.sets.map((p) => p.targetRepsMax));
+      const keepAnchorMeta = scope === 'today' && continuity.anchorDef && continuity.anchorDef.id !== newDef.id;
+
       const replacement: ExerciseSession = {
         ...ex,
         exerciseId: newDef.id,
@@ -781,18 +832,31 @@ export const TrainTab: React.FC<TrainTabProps> = ({
         equipment: isPureBw ? 'bodyweight' : newDef.equipment,
         isRdl: newDef.isRdl,
         isWeightedCalisthenic: isPureBw ? false : newDef.isWeightedCalisthenic,
+        isAssisted: newDef.isAssisted,
         isIsolation: meta.isIsolation,
         movementFamily: getMovementVectorId(newDef),
         movementFamilyLabel: getMovementFamilyLabel(newDef),
         resistanceProfile: meta.resistanceProfile,
         sfrScore: meta.sfrScore,
         minReps: rx.minReps,
-        maxReps: rx.maxReps,
+        maxReps: maxRepAcrossSets,
         repTargetType: timed ? 'duration' : 'reps',
         durationSeconds: timed ? rx.targetDurationSeconds : undefined,
         tempo: timed && rx.targetDurationSeconds ? `${rx.targetDurationSeconds}sec` : undefined,
         notes: customNotes,
         athleteNotes: ex.athleteNotes,
+        slotId: ex.slotId ?? ex.orderCode ?? ex.id,
+        anchorExerciseId: keepAnchorMeta ? continuity.anchorDef!.id : undefined,
+        anchorExerciseName: keepAnchorMeta ? continuity.anchorDef!.name : undefined,
+        anchorReferenceLabel: keepAnchorMeta ? continuity.anchorReferenceLabel : undefined,
+        calibrationSource: timed ? undefined : continuity.prescription.calibrationSource,
+        continuityRationaleKind: timed ? undefined : continuity.prescription.rationaleKind,
+        coarseJumpPct: timed ? undefined : continuity.prescription.coarseJumpPct,
+        setupLabel: timed ? undefined : continuity.prescription.setupLabel,
+        bodyweightLoadPct: timed ? undefined : continuity.prescription.bodyweightLoadPct,
+        leverageTier: timed ? undefined : continuity.targetMetadata.leverageTier,
+        isBridgeReentry: false,
+        reentryFromLabel: undefined,
         sets: calibratedSets,
       };
       if (loggedSets.length === 0) return [replacement];
@@ -1257,7 +1321,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
             <span>Customize workout page</span>
           </span>
           <span className="text-xs font-normal tabular-numbers" style={{ color: 'var(--color-text-muted)' }}>
-            {activeDisplayCount}/6
+            {activeDisplayCount}/7
           </span>
         </button>
         <button
@@ -1902,6 +1966,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
               totalExercises={activeWorkout.exercises.length}
               exercise={ex}
               exerciseDef={def}
+              exerciseCatalog={exerciseCatalog}
               prescription={prescription}
               quest={quest}
               readinessState={readiness.state}
@@ -2283,6 +2348,8 @@ export const TrainTab: React.FC<TrainTabProps> = ({
           activeLocation={activeWorkout.location || profile.activeLocation}
           homeEquipment={profile.homeEquipment}
           workouts={workouts}
+          activeOverlay={profile.activeEnvironmentOverlay}
+          storedProgressionStates={profile.exerciseProgressionStates}
           readinessState={readiness.state}
           goalPhase={profile.goalPhase}
           unit={units.unit}
@@ -2337,52 +2404,16 @@ export const TrainTab: React.FC<TrainTabProps> = ({
         />
       )}
 
-      {/* Past Workout Preview Modal */}
+      {/* Past Workout Preview / Edit / Delete Modal */}
       {previewPastWorkout && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-label="Last workout"
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-md"
-          style={{ background: 'var(--color-bg-scrim)' }}
-        >
-          <div className="wk-card w-full max-w-sm shadow-2xl space-y-4">
-            <div className="flex justify-between items-center">
-              <h3 className="wk-h1">
-                Completed workout ({previewPastWorkout.date})
-              </h3>
-              <button
-                type="button"
-                onClick={() => setPreviewPastWorkout(null)}
-                className="wk-btn-secondary min-h-[44px]"
-              >
-                Close
-              </button>
-            </div>
-            <div className="wk-body">{formatSentenceCase(previewPastWorkout.name)}</div>
-            <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
-              {previewPastWorkout.exercises.map((ex) => (
-                <div
-                  key={ex.id}
-                  className="wk-raised"
-                >
-                  <div className="wk-subhead">{formatSentenceCase(ex.name)}</div>
-                  <div className="wk-caption tabular-nums mt-1">
-                    {ex.sets
-                      .filter((s) => s.completed)
-                      .map(
-                        (s) =>
-                          `${units.format(s.actualWeightKg ?? s.targetWeightKg)} × ${
-                            s.actualReps ?? s.targetReps
-                          }`
-                      )
-                      .join('  |  ')}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
+        <PastWorkoutModal
+          workoutNumber={previewPastWorkout.programWorkoutNumber}
+          title={previewPastWorkout.name}
+          session={workouts.find((w) => w.id === previewPastWorkout.id) ?? previewPastWorkout}
+          onSaveWorkout={onUpdatePastWorkout}
+          onDeleteWorkout={onDeletePastWorkout}
+          onClose={() => setPreviewPastWorkout(null)}
+        />
       )}
     </div>
   );

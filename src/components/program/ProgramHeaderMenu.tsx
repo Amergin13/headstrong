@@ -1,19 +1,21 @@
 import React, { useEffect, useState } from 'react';
-import { FileSpreadsheet, Layers, MoreHorizontal } from 'lucide-react';
+import { FileSpreadsheet, Layers, MoreHorizontal, Plus } from 'lucide-react';
 import { triggerHaptic } from '../../utils/haptics';
 
 interface ProgramHeaderMenuProps {
   onOpenImportSpreadsheet: () => void;
   onOpenChangeProgram: () => void;
+  onOpenCreateExercise?: () => void;
 }
 
 /**
  * 3-dots overflow menu for the Program page header (matches Workout & Progress headers):
- * opens actions to import a program from a spreadsheet or switch between Treise and saved programs.
+ * opens actions to import a program from a spreadsheet, switch programs, or add a custom exercise.
  */
 export const ProgramHeaderMenu: React.FC<ProgramHeaderMenuProps> = ({
   onOpenImportSpreadsheet,
   onOpenChangeProgram,
+  onOpenCreateExercise,
 }) => {
   const [open, setOpen] = useState(false);
 
@@ -82,6 +84,23 @@ export const ProgramHeaderMenu: React.FC<ProgramHeaderMenuProps> = ({
                 <Layers className="w-4 h-4 stroke-[2] shrink-0" aria-hidden="true" />
                 <span>Change program</span>
               </button>
+
+              {onOpenCreateExercise && (
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    triggerHaptic('light');
+                    setOpen(false);
+                    onOpenCreateExercise();
+                  }}
+                  className="w-full text-left px-3 py-2 rounded-xl text-base font-medium hover:bg-[var(--wk-raised)] flex items-center gap-2 min-h-[44px]"
+                  style={{ color: 'var(--color-text-primary)' }}
+                >
+                  <Plus className="w-4 h-4 stroke-[2] shrink-0" aria-hidden="true" />
+                  <span>Add custom exercise</span>
+                </button>
+              )}
             </div>
           </div>
         </>

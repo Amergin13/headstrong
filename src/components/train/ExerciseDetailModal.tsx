@@ -12,6 +12,7 @@ import {
   WorkoutSession,
 } from '../../engine/types';
 import { isTimedExercise } from '../../engine/e1rm';
+import { buildExerciseBridgeBands } from '../../engine/continuityEngine';
 import { buildExerciseInsight, ExerciseInsight } from '../../services/exerciseInsight';
 import {
   buildExerciseDetailModel,
@@ -857,6 +858,11 @@ export const ExerciseDetailModal: React.FC<ExerciseDetailModalProps> = ({
               <TrendChart
                 points={trendSpec.points}
                 format={trendSpec.format}
+                bridgeBands={
+                  !isTimed
+                    ? buildExerciseBridgeBands(exercise.exerciseId, workouts, exerciseCatalog ?? [])
+                    : undefined
+                }
                 height={200}
                 label={trendSpec.label}
                 emptyTitle={trendSpec.emptyTitle}

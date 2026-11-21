@@ -30,10 +30,17 @@ import {
 } from './engine/types';
 import {
   applyEnvironmentOverlayToSession,
+  createOverlayForTrainingLocation,
   overlayToTrainingLocation,
   resolveActiveOverlay,
   updateExerciseProgressionStateDamped,
 } from './engine/continuityEngine';
+import {
+  deleteCustomExerciseFromCatalog,
+  deletePastWorkoutFromHistory,
+  updateCustomExerciseInCatalog,
+  updatePastWorkoutInHistory,
+} from './services/workoutHistoryEdits';
 import { resetFlashLiteConversation } from './services/geminiFlashLite';
 import { resetOnDeviceConversation } from './services/onDeviceModel';
 import { calculateDailyReadiness } from './engine/readiness';
@@ -80,7 +87,6 @@ import {
   CompetitorCsvImportResult,
   mergeImportedWorkouts,
 } from './services/competitorCsvImport';
-import { ImportProgramModal } from './components/program/ImportProgramModal';
 import {
   adaptWorkoutSessionToLocation,
   generateSmartWorkoutSession,
@@ -111,8 +117,6 @@ import {
 } from './services/spreadsheetProgramImport';
 import { ActivityLog, activeDayDates } from './engine/activeDays';
 import { useActivitySync } from './hooks/useActivitySync';
-import { LogActivityModal } from './components/activity/LogActivityModal';
-import { ActivityConnectionsModal } from './components/activity/ActivityConnectionsModal';
 import { startStravaConnect } from './services/activitySources';
 import { requestHealthConnectPermission } from './services/healthConnectBridge';
 import { prepareSessionForAthlete } from './services/sessionPreparation';
@@ -132,23 +136,27 @@ import { NavigationBar, TabId } from './components/common/NavigationBar';
 import { RestTimerModal } from './components/common/RestTimerModal';
 import { Toast } from './components/common/Toast';
 import { TrainTab } from './components/train/TrainTab';
-import { WatchSyncModal } from './components/program/WatchSyncModal';
-import {
-  ONBOARDING_LOCATION_STEP,
-  OnboardingModal,
+import type {
   OnboardingModalProps,
   OnboardingStep,
 } from './components/onboarding/OnboardingModal';
 import { mergeDetectedActivities } from './engine/activeDays';
 import { loadDismissedActivityIds } from './services/storage';
-import { GoogleAuthModal } from './components/auth/GoogleAuthModal';
 import { localDateString } from './utils/date';
 
-// Secondary tabs and the coach load on demand, keeping the first download small.
+const ONBOARDING_LOCATION_STEP: OnboardingStep = 5;
+
+// Secondary tabs and heavy modals load on demand, keeping the initial entry bundle lean.
 import type { MeasurementEntry } from './components/analytics/WeightLogModal';
 const AnalyticsTab = lazy(() => import('./components/analytics/AnalyticsTab').then((m) => ({ default: m.AnalyticsTab })));
 const ProgramTab = lazy(() => import('./components/program/ProgramTab').then((m) => ({ default: m.ProgramTab })));
 const AICoachChatModal = lazy(() => import('./components/assistant/AICoachChatModal').then((m) => ({ default: m.AICoachChatModal })));
+const OnboardingModal = lazy(() => import('./components/onboarding/OnboardingModal').then((m) => ({ default: m.OnboardingModal })));
+const GoogleAuthModal = lazy(() => import('./components/auth/GoogleAuthModal').then((m) => ({ default: m.GoogleAuthModal })));
+const WatchSyncModal = lazy(() => import('./components/program/WatchSyncModal').then((m) => ({ default: m.WatchSyncModal })));
+const ImportProgramModal = lazy(() => import('./components/program/ImportProgramModal').then((m) => ({ default: m.ImportProgramModal })));
+const LogActivityModal = lazy(() => import('./components/activity/LogActivityModal').then((m) => ({ default: m.LogActivityModal })));
+const ActivityConnectionsModal = lazy(() => import('./components/activity/ActivityConnectionsModal').then((m) => ({ default: m.ActivityConnectionsModal })));
 const LocalTestDrawer =
   import.meta.env.VITE_LOCAL_TEST_COPY === 'true'
     ? lazy(() => import('./localTest/LocalTestDrawer').then((m) => ({ default: m.LocalTestDrawer })))
@@ -365,8 +373,9 @@ export const App: React.FC = () => {
     return { ...prepared, readinessState: readiness.state };
   };
 
-  /** Gives loaded exercises that have no weight yet (e.g. swapped in for a bodyweight move) a starting weight. */
+  /** Gives loaded exercises that have no weight yet (e.g. swapped in for a bodyweight move) a starting weight, while respecting EFFORT_ONLY machine/cable calibration. */
   const isWeightless = (ex: ExerciseSession) =>
+    ex.calibrationSource !== 'EFFORT_ONLY' &&
     !(ex.equipment === 'bodyweight' && !ex.isWeightedCalisthenic) &&
     !ex.sets.some((s) => s.completed) &&
     ex.sets.filter((s) => !s.isWarmup).every((s) => (s.targetWeightKg ?? 0) <= 0);
@@ -652,6 +661,9 @@ export const App: React.FC = () => {
           ...('workoutDisplay' in prevSnap ? { workoutDisplay: prevSnap.workoutDisplay } : {}),
           ...('programOverrides' in prevSnap ? { programOverrides: prevSnap.programOverrides } : {}),
           ...('dismissedInterventions' in prevSnap ? { dismissedInterventions: prevSnap.dismissedInterventions } : {}),
+          ...('activeEnvironmentOverlay' in prevSnap
+            ? { activeEnvironmentOverlay: prevSnap.activeEnvironmentOverlay }
+            : {}),
         };
         saveProfile(restoredProfile);
         return restoredProfile;
@@ -741,7 +753,8 @@ export const App: React.FC = () => {
 
   // Handler: Apply (or clear) a temporary Environment Overlay without mutating master program templates
   const handleApplyEnvironmentOverlay = (overlay: EnvironmentOverlay | null) => {
-    const resolved = resolveActiveOverlay(overlay, Date.now());
+    const nowMs = Date.now();
+    const resolved = resolveActiveOverlay(overlay, nowMs);
     const nextOverlay = resolved.active;
     const nextLocation = overlayToTrainingLocation(nextOverlay);
 
@@ -751,56 +764,112 @@ export const App: React.FC = () => {
       activeLocation: nextLocation,
     }));
 
+    // When returning to Full Gym on a plan workout that was originally generated outside the gym
+    // (no anchorExerciseId stored on slots), restore unstarted exercises from the master plan first.
+    let baseSession = activeWorkout;
+    if (
+      !nextOverlay &&
+      activeWorkout.programWorkoutNumber &&
+      !activeWorkout.exercises.some((ex) => Boolean(ex.anchorExerciseId))
+    ) {
+      const rebuilt = prepareSession(generatePlanWorkout(activePlan, activeWorkout.programWorkoutNumber), {
+        isProgramPlan: true,
+        location: 'gym',
+      });
+      const startedIds = new Set(
+        activeWorkout.exercises.filter((ex) => ex.sets.some((s) => s.completed)).map((ex) => ex.exerciseId)
+      );
+      baseSession = {
+        ...activeWorkout,
+        location: 'gym',
+        exercises: activeWorkout.exercises.map((ex, idx) => {
+          const planned = rebuilt.exercises[idx];
+          return ex.sets.some((s) => s.completed) || !planned || startedIds.has(planned.exerciseId) ? ex : planned;
+        }),
+      };
+    }
+
     const overlaid = applyEnvironmentOverlayToSession({
-      session: activeWorkout,
+      session: baseSession,
       overlay: nextOverlay,
       exerciseCatalog: exercises,
       historicalWorkouts: workouts,
       storedProgressionStates: profile.exerciseProgressionStates,
       userBodyweightKg: bodyweightEmaKg,
+      nowMs,
       unit: profile.weightUnit || 'kg',
     });
     setActiveWorkout(overlaid);
   };
 
-  // Handler: Switch Training Location ('gym' | 'home' | 'travel') in 1 tap
+  // Handler: Switch Training Location ('gym' | 'home' | 'travel') in 1 tap — unified onto EnvironmentOverlay
   const handleSwitchTrainingLocation = (location: TrainingLocation) => {
+    const overlay = createOverlayForTrainingLocation(location, profile.homeEquipment);
+    handleApplyEnvironmentOverlay(overlay);
+  };
+
+  // Handler: Save inline edits to a completed past workout & keep streak + isolated progression states in sync
+  const handleUpdatePastWorkout = (updated: WorkoutSession) => {
+    const result = updatePastWorkoutInHistory({
+      workouts,
+      updatedWorkout: updated,
+      activities,
+      defaultBodyweightKg: bodyweightEmaKg,
+    });
+    setWorkouts(result.nextWorkouts);
     setProfile((prev) => ({
       ...prev,
-      activeLocation: location,
+      streakDays: result.streakDays,
+      lastWorkoutDate: result.lastWorkoutDate,
+      exerciseProgressionStates: result.exerciseProgressionStates,
     }));
+    clearAiGenerationCaches();
+    clearKnowledgeGraphCache();
+    setToast({
+      tag: 'Saved',
+      message: 'Workout updated. Strength trends and progression targets recalculated.',
+    });
+  };
 
-    // A plan workout is rebuilt from the plan for the new place, so going back to the gym restores
-    // the plan's own exercises. Anything already logged stays exactly as it was done.
-    if (activeWorkout.programWorkoutNumber) {
-      const rebuilt = prepareSession(generatePlanWorkout(activePlan, activeWorkout.programWorkoutNumber), {
-        isProgramPlan: true,
-        location,
-      });
-      const startedIds = new Set(
-        activeWorkout.exercises.filter((ex) => ex.sets.some((s) => s.completed)).map((ex) => ex.exerciseId)
-      );
-      setActiveWorkout({
-        ...activeWorkout,
-        location,
-        exercises: activeWorkout.exercises.map((ex, idx) => {
-          const planned = rebuilt.exercises[idx];
-          return ex.sets.some((s) => s.completed) || !planned || startedIds.has(planned.exerciseId) ? ex : planned;
-        }),
-      });
-      return;
-    }
-
-    const adapted = adaptWorkoutSessionToLocation(
-      activeWorkout,
-      location,
-      profile.homeEquipment || ['bench', 'dumbbells', 'trx', 'pullup_bar'],
-      exercises,
+  // Handler: Delete a completed past workout & recalculate streak + isolated progression states
+  const handleDeletePastWorkout = (workoutId: string) => {
+    const result = deletePastWorkoutFromHistory({
       workouts,
-      readiness.state,
-      bodyweightEmaKg
-    );
-    setActiveWorkout(fillWeightless(adapted));
+      workoutId,
+      activities,
+      defaultBodyweightKg: bodyweightEmaKg,
+    });
+    setWorkouts(result.nextWorkouts);
+    setProfile((prev) => ({
+      ...prev,
+      streakDays: result.streakDays,
+      lastWorkoutDate: result.lastWorkoutDate,
+      exerciseProgressionStates: result.exerciseProgressionStates,
+    }));
+    clearAiGenerationCaches();
+    clearKnowledgeGraphCache();
+    setToast({
+      tag: 'Removed',
+      message: 'Workout removed from history. Strength trends and streak updated.',
+    });
+  };
+
+  // Handler: Edit a custom exercise definition in the catalog
+  const handleUpdateCustomExercise = (updatedEx: ExerciseDefinition) => {
+    setExercises((prev) => updateCustomExerciseInCatalog(prev, updatedEx));
+    setToast({
+      tag: 'Saved',
+      message: `Updated ${updatedEx.name}.`,
+    });
+  };
+
+  // Handler: Delete a custom exercise definition from the catalog (built-in lifts stay protected)
+  const handleDeleteCustomExercise = (exerciseId: string) => {
+    setExercises((prev) => deleteCustomExerciseFromCatalog(prev, exerciseId));
+    setToast({
+      tag: 'Removed',
+      message: 'Custom exercise deleted. Past logged workouts remain intact.',
+    });
   };
 
   // Handler: Complete Onboarding / Goals, Health Connect, Baseline Stats & Equipment Setup
@@ -1568,6 +1637,8 @@ export const App: React.FC = () => {
             }
             onAcceptIntervention={handleAcceptIntervention}
             onDismissIntervention={handleDismissIntervention}
+            onUpdatePastWorkout={handleUpdatePastWorkout}
+            onDeletePastWorkout={handleDeletePastWorkout}
           />
         )}
 
@@ -1635,6 +1706,10 @@ export const App: React.FC = () => {
             onImportHistory={handleImportCompetitorHistory}
             onDeleteCustomPlan={handleDeleteCustomPlan}
             onAddCustomExercise={(newEx) => setExercises((prev) => [...prev, newEx])}
+            onUpdateCustomExercise={handleUpdateCustomExercise}
+            onDeleteCustomExercise={handleDeleteCustomExercise}
+            onUpdatePastWorkout={handleUpdatePastWorkout}
+            onDeletePastWorkout={handleDeletePastWorkout}
             activities={activities}
             onLogActivity={() => setLogActivityOpen(true)}
             onOpenOnboarding={() => {
@@ -1662,19 +1737,23 @@ export const App: React.FC = () => {
       </main>
 
       {logActivityOpen && (
-        <LogActivityModal onLog={activitySync.logManualActivity} onClose={() => setLogActivityOpen(false)} />
+        <Suspense fallback={null}>
+          <LogActivityModal onLog={activitySync.logManualActivity} onClose={() => setLogActivityOpen(false)} />
+        </Suspense>
       )}
       {activityAppsOpen && (
-        <ActivityConnectionsModal
-          profile={profile}
-          hcStatus={activitySync.hcStatus}
-          onConnectStrava={startStravaConnect}
-          onDisconnectStrava={activitySync.disconnectStrava}
-          onSetHealthConnect={(on) => setProfile((p) => ({ ...p, healthConnectActivities: on }))}
-          onRequestHealthConnectPermission={requestHealthConnectPermission}
-          onOpenWatchSync={() => setWatchModalOpen(true)}
-          onClose={() => setActivityAppsOpen(false)}
-        />
+        <Suspense fallback={null}>
+          <ActivityConnectionsModal
+            profile={profile}
+            hcStatus={activitySync.hcStatus}
+            onConnectStrava={startStravaConnect}
+            onDisconnectStrava={activitySync.disconnectStrava}
+            onSetHealthConnect={(on) => setProfile((p) => ({ ...p, healthConnectActivities: on }))}
+            onRequestHealthConnectPermission={requestHealthConnectPermission}
+            onOpenWatchSync={() => setWatchModalOpen(true)}
+            onClose={() => setActivityAppsOpen(false)}
+          />
+        </Suspense>
       )}
 
       {/* AI Assistant Conversational Chat Modal */}
@@ -1733,31 +1812,34 @@ export const App: React.FC = () => {
 
       {/* Onboarding & Equipment Context Setup Modal */}
       {onboardingOpen && (
-        <OnboardingModal
-          profile={profile}
-          initialStep={onboardingInitialStep}
-          onCompleteOnboarding={handleCompleteOnboarding}
-          onClose={() => {
-            setOnboardingOpen(false);
-            setOnboardingInitialStep(1);
-          }}
-          onExploreDemo={() => {
-            const reset = resetAllToSeedData();
-            setProfile(reset.profile);
-            setBiometrics(reset.biometrics);
-            setWorkouts(reset.workouts);
-            setActiveWorkout(reset.activeWorkout);
-            setExercises(reset.exercises);
-            setActivities([]);
-            resetCoachSession();
-    clearAiGenerationCaches();
-    clearKnowledgeGraphCache();
-            setOnboardingOpen(false);
-            setToast({ message: 'Sample 6-week workout and biometric history loaded.',
-              tag: 'Demo Mode',
-            });
-          }}
-        />
+        <Suspense fallback={null}>
+          <OnboardingModal
+            profile={profile}
+            initialStep={onboardingInitialStep}
+            onCompleteOnboarding={handleCompleteOnboarding}
+            onClose={() => {
+              setOnboardingOpen(false);
+              setOnboardingInitialStep(1);
+            }}
+            onExploreDemo={() => {
+              const reset = resetAllToSeedData();
+              setProfile(reset.profile);
+              setBiometrics(reset.biometrics);
+              setWorkouts(reset.workouts);
+              setActiveWorkout(reset.activeWorkout);
+              setExercises(reset.exercises);
+              setActivities([]);
+              resetCoachSession();
+              clearAiGenerationCaches();
+              clearKnowledgeGraphCache();
+              setOnboardingOpen(false);
+              setToast({
+                message: 'Sample 6-week workout and biometric history loaded.',
+                tag: 'Demo Mode',
+              });
+            }}
+          />
+        </Suspense>
       )}
 
       {/* Floating rest timer, labelled with the exercise and next set (hidden behind the coach chat) */}
@@ -1771,60 +1853,67 @@ export const App: React.FC = () => {
       )}
 
       {/* User Profile, Google Sign In & Settings Modal */}
-      <GoogleAuthModal
-        currentUser={authUser}
-        profile={profile}
-        latestBiometrics={latestBiometrics}
-        canInstallPwa={Boolean(deferredInstallPrompt)}
-        onTriggerInstallPwa={handleTriggerInstallPwa}
-        // Onboarding comes first on a fresh install; sign-in opens once it's finished.
-        isOpen={authModalOpen && !onboardingOpen}
-        onClose={() => setAuthModalOpen(false)}
-        onAuthSuccess={handleAuthSuccess}
-        onSignOut={handleSignOut}
-        onUpdateProfile={(up) => setProfile((p) => ({ ...p, ...up }))}
-        onOpenWatchSync={() => setWatchModalOpen(true)}
-        onOpenActivityApps={() => setActivityAppsOpen(true)}
-        onResetData={handleResetData}
-        onExportData={handleExportData}
-        onImportData={handleImportData}
-        onOpenCompetitorImport={() => {
-          setAuthModalOpen(false);
-          setCompetitorImportOpen(true);
-        }}
-        onEnableDriveBackup={handleEnableDriveBackup}
-        onRunDriveBackupNow={handleRunDriveBackupNow}
-        onRestoreDriveBackup={handleRestoreDriveBackup}
-        onDisableDriveBackup={handleDisableDriveBackup}
-        onDeleteAllData={handleDeleteAllData}
-      />
+      {authModalOpen && !onboardingOpen && (
+        <Suspense fallback={null}>
+          <GoogleAuthModal
+            currentUser={authUser}
+            profile={profile}
+            latestBiometrics={latestBiometrics}
+            canInstallPwa={Boolean(deferredInstallPrompt)}
+            onTriggerInstallPwa={handleTriggerInstallPwa}
+            isOpen={authModalOpen && !onboardingOpen}
+            onClose={() => setAuthModalOpen(false)}
+            onAuthSuccess={handleAuthSuccess}
+            onSignOut={handleSignOut}
+            onUpdateProfile={(up) => setProfile((p) => ({ ...p, ...up }))}
+            onOpenWatchSync={() => setWatchModalOpen(true)}
+            onOpenActivityApps={() => setActivityAppsOpen(true)}
+            onResetData={handleResetData}
+            onExportData={handleExportData}
+            onImportData={handleImportData}
+            onOpenCompetitorImport={() => {
+              setAuthModalOpen(false);
+              setCompetitorImportOpen(true);
+            }}
+            onEnableDriveBackup={handleEnableDriveBackup}
+            onRunDriveBackupNow={handleRunDriveBackupNow}
+            onRestoreDriveBackup={handleRestoreDriveBackup}
+            onDisableDriveBackup={handleDisableDriveBackup}
+            onDeleteAllData={handleDeleteAllData}
+          />
+        </Suspense>
+      )}
 
       {competitorImportOpen && (
-        <ImportProgramModal
-          exerciseCatalog={exercises}
-          initialMode="history"
-          onImport={handleImportSpreadsheetProgram}
-          onImportHistory={handleImportCompetitorHistory}
-          onClose={() => setCompetitorImportOpen(false)}
-        />
+        <Suspense fallback={null}>
+          <ImportProgramModal
+            exerciseCatalog={exercises}
+            initialMode="history"
+            onImport={handleImportSpreadsheetProgram}
+            onImportHistory={handleImportCompetitorHistory}
+            onClose={() => setCompetitorImportOpen(false)}
+          />
+        </Suspense>
       )}
 
       {/* Wearable & Recovery Sync Dialog Modal */}
       {watchModalOpen && (
-        <WatchSyncModal
-          profile={profile}
-          latestBiometrics={latestBiometrics}
-          hcStatus={activitySync.hcStatus}
-          onSetHealthConnect={(on) => setProfile((p) => ({ ...p, healthConnectActivities: on }))}
-          onRequestHealthConnectPermission={requestHealthConnectPermission}
-          onSyncCompleted={(log, provider) => {
-            handleSyncCompleted(log, provider);
-            setWatchModalOpen(false);
-          }}
-          onUpdateProfile={(up) => setProfile((prev) => ({ ...prev, ...up }))}
-          onClose={() => setWatchModalOpen(false)}
-          isModal={true}
-        />
+        <Suspense fallback={null}>
+          <WatchSyncModal
+            profile={profile}
+            latestBiometrics={latestBiometrics}
+            hcStatus={activitySync.hcStatus}
+            onSetHealthConnect={(on) => setProfile((p) => ({ ...p, healthConnectActivities: on }))}
+            onRequestHealthConnectPermission={requestHealthConnectPermission}
+            onSyncCompleted={(log, provider) => {
+              handleSyncCompleted(log, provider);
+              setWatchModalOpen(false);
+            }}
+            onUpdateProfile={(up) => setProfile((prev) => ({ ...prev, ...up }))}
+            onClose={() => setWatchModalOpen(false)}
+            isModal={true}
+          />
+        </Suspense>
       )}
 
       {toast && (

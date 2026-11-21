@@ -65,10 +65,10 @@ export function hadQualityEffort(actualRir: number | undefined, targetRir: numbe
 
 /**
  * When an exercise's smallest physical load increment exceeds this fraction of working load
- * (e.g., 8 kg -> 10 kg dumbbell = +25%), double progression automatically expands the rep
+ * (e.g., 8 kg -> 10 kg dumbbell = +25% > 7.5%), double progression automatically expands the rep
  * ceiling instead of forcing an unsustainable jump (Schoenfeld et al., 2021; Plotkin et al., 2022).
  */
-export const EQUIPMENT_JUMP_EXPANSION_THRESHOLD = 0.08;
+export const EQUIPMENT_JUMP_EXPANSION_THRESHOLD = 0.075;
 
 /** Upper rep ceiling for equipment-aware expansion (remains squarely in the hypertrophy zone). */
 export const MAX_EXPANDED_REP_CEILING = 25;

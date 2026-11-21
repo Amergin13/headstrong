@@ -9,6 +9,7 @@
  * - weight changes: the double progression rule (PROGRESSION_RULES), read from the logged sets
  */
 import { ActivityLog, activeDayDates } from '../engine/activeDays';
+import { resolveActiveOverlay } from '../engine/continuityEngine';
 import { isTimedExercise, usesTwoDumbbells } from '../engine/e1rm';
 import { AthleteKnowledgeGraph, getExerciseBiomechanicalMeta } from '../engine/knowledgeGraph';
 import { buildPlanOverview, isActiveSlot, planWorkoutLabel } from '../engine/muscleBuildingProgram';
@@ -1217,7 +1218,11 @@ export function answerWeeklySchedule(
   const activePart = hasActiveSlot
     ? ` plus 1 active day (20+ min walk, run, ride, swim, class, or sport)`
     : '';
-  return `Your **${p.plan.name}** schedules **${plural(liftingPerWeek, 'lifting session')}${activePart}** per week (${p.totalWeeks} weeks total, currently Week ${p.week}). Workouts aren't locked to fixed weekdays — place rest days wherever they fit best, and up to 4 rest days between sessions still protects your streak.${plannedWeeks ? ` Scheduled location overrides: ${plannedWeeks}.` : ''} You can say "Take a rest day today" or "Set week 3 to home" anytime.`;
+  const activeOverlay = resolveActiveOverlay(profile.activeEnvironmentOverlay).active;
+  const overlayPart = activeOverlay
+    ? ` Active temporary overlay: **${activeOverlay.label}**${activeOverlay.expiresAtEpochMs ? ` (reverts after ${localDateString(new Date(activeOverlay.expiresAtEpochMs))})` : ''}.`
+    : '';
+  return `Your **${p.plan.name}** schedules **${plural(liftingPerWeek, 'lifting session')}${activePart}** per week (${p.totalWeeks} weeks total, currently Week ${p.week}). Workouts aren't locked to fixed weekdays — place rest days wherever they fit best, and up to 4 rest days between sessions still protects your streak.${overlayPart}${plannedWeeks ? ` Scheduled location overrides: ${plannedWeeks}.` : ''} You can say "Take a rest day today" or "Set week 3 to home" anytime.`;
 }
 
 /** Lists everything saved in profile.athleteMemories so the athlete can audit or forget facts. */

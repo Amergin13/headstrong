@@ -1,4 +1,5 @@
 import { buildMovementStandards, buildStandardsAnswer } from './movementStandards';
+import { resolveActiveOverlay } from '../engine/continuityEngine';
 import {
   CoachPersonaSpec,
   CoachSurface,
@@ -685,8 +686,10 @@ export function buildCoachSystemPrompt(input: AssistantProcessInput): string {
     typeof activeWorkout?.readinessZScore === 'number' && Number.isFinite(activeWorkout.readinessZScore) && activeWorkout.readinessZScore !== 0
       ? `, readiness Z ${activeWorkout.readinessZScore >= 0 ? '+' : ''}${activeWorkout.readinessZScore.toFixed(2)}`
       : '';
+  const activeOverlay = resolveActiveOverlay(profile.activeEnvironmentOverlay).active;
+  const overlayClause = activeOverlay ? ` (temporary overlay: ${activeOverlay.label})` : '';
   return `You are ${VOICE_TONE_MATRIX.steadyVoice.replace(/^The /, 'the ').replace(/\.$/, '')}, speaking directly to ${athleteName || 'the athlete'} using "I" and "you". ${voicePersonaContract} ${personalizationContract} Front-load one direct sentence answering the question with the key figure or outcome first (no greeting, and never repeat visible set tables). Keep each paragraph to 1-2 short sentences, and use concise bold-lead bullets (- **Topic:** detail) for multi-part guidance unless the athlete asked for plain prose. For anything about their plan, weights, sets or progress, use only the facts below. Whenever the athlete asks or implies they want to take an action—logging/editing sets (log_workout_set), reordering exercises (reorder_workout_exercises), saving exercise notes (update_exercise_note), unlocking a recovering session with confirmation (override_recovery_gate), swapping/adding/removing exercises (for today OR permanently across their program via modify_program, including rep-range edits and removing single edits), rebalancing for imbalances/symmetry/stalls/contraindications (rebalance_program), adjusting sets/volume/load, switching location (gym, home, travel) or future week, updating home equipment, switching program, changing goal phase, setting targets/goals, toggling Progress cards, logging bodyweight/body fat/any tape measurement/steps/height/cardio, logging a rest day, resetting their plan, updating profile/units/display toggles (update_athlete_profile), or saving/forgetting athlete memories (save_athlete_memory / delete_athlete_memory)—invoke the matching function tool(s) immediately, even when phrased politely ("Can you...", "Could you..."). Ask clarifying questions only when an essential target cannot be inferred. Never claim a mutation happened unless a tool call succeeded. For general training questions (timing, motivation, habits, technique, recovery, sleep, food), give practical, widely accepted advice in your own words without inventing numbers (avoid ungrounded weights, reps, sets, percentages, minutes, seconds, or hours—say "a short rest" or "a focused session" instead). Never say the plan or the facts don't cover something. Never call a muscle's sets enough unless it is on target. High recovery means today's targets stand. Don't praise effort the facts don't show. Never guess or invent how individual sets or reps went in past workouts. The plan sets weights and raises them itself when every set reaches the top of the range; never tell them to change the weight. No hype, cheerleading or percentages; say why something works in one plain clause.
-Athlete: ${hasWeighIn ? `${formatWeight(bodyweightEmaKg, unit)}, ` : ''}${athleteAge ? `age ${athleteAge}, ` : ''}location ${profile.activeLocation === 'travel' ? 'Bodyweight' : profile.activeLocation === 'home' ? 'At Home' : 'Full Gym'}, home gear: ${homeGearList}, goal ${goalLabel}, week ${planPos.week}/${planPos.totalWeeks}, recovery ${recovery}${kg.recoveryEfficiencyScore > 0 ? ` (${kg.recoveryEfficiencyScore}%)` : ''}${readinessZClause}${
+Athlete: ${hasWeighIn ? `${formatWeight(bodyweightEmaKg, unit)}, ` : ''}${athleteAge ? `age ${athleteAge}, ` : ''}location ${profile.activeLocation === 'travel' ? 'Bodyweight' : profile.activeLocation === 'home' ? 'At Home' : 'Full Gym'}${overlayClause}, home gear: ${homeGearList}, goal ${goalLabel}, week ${planPos.week}/${planPos.totalWeeks}, recovery ${recovery}${kg.recoveryEfficiencyScore > 0 ? ` (${kg.recoveryEfficiencyScore}%)` : ''}${readinessZClause}${
     latestBio && latestBio.hrvRmssd > 0 ? `, slept ${latestBio.sleepHours} h` : ''
   }.${placeFacts.length ? `\nViewing: ${placeFacts.join(' ')}.` : ''}${kgFacts.length ? `\n${kgFacts.join('\n')}` : ''}
 Available plans: ${availablePlanNames}.
@@ -2234,33 +2237,49 @@ async function processAssistantMessageCore(
   }
 
   // ============================================================================
-  // 3. INTENT: SWITCH CURRENT WORKOUT LOCATION (e.g. "switch today to bodyweight", "train at home")
+  // 3. INTENT: SWITCH CURRENT WORKOUT LOCATION OR TEMPORARY ENVIRONMENT OVERLAY
+  //    (e.g. "switch today to bodyweight", "train at home", "hotel dumbbells up to 30 kg for 5 days")
   // ============================================================================
   else if (
     !isAdvisoryQuestion &&
     (/\b(switch|change|set|turn|move)\b.*\b(travel|bodyweight|home|gym)\b/i.test(lowerMsg) ||
-      /\b(train\s*at\s*home|at\s*home\s*today|in\s*a\s*hotel|no\s*weights?\s*today|bodyweight\s*today|back\s*(?:to|at|in)\s*(?:the\s*)?gym|at\s*the\s*gym\s*today|train\s*at\s*the\s*gym)\b/i.test(
+      /\b(train\s*at\s*home|at\s*home\s*today|in\s*a\s*hotel|hotel\s*(?:gym|dumbbells?|only|for)|no\s*weights?\s*today|bodyweight\s*today|back\s*(?:to|at|in)\s*(?:the\s*)?gym|at\s*the\s*gym\s*today|train\s*at\s*the\s*gym)\b/i.test(
         lowerMsg
-      ))
+      ) ||
+      /\b(dumbbells?|dbs?)\s*(?:only|up\s*to|max|capped?\s*at)\b/i.test(lowerMsg))
   ) {
+    const hasOverlayConstraints =
+      /\b(hotel|up\s*to|max(?:imum)?|capped?\s*at|<=|≤|\d+\s*(?:kg|lb|lbs|days?|mins?|minutes?)|dumbbells?\s*only)\b/i.test(
+        lowerMsg
+      );
     let targetLoc: TrainingLocation = 'travel';
-    if (/\b(home|house)\b/i.test(lowerMsg)) targetLoc = 'home';
-    else if (/\b(gym|full\s*gym)\b/i.test(lowerMsg)) targetLoc = 'gym';
+    if (/\b(home|house|hotel\s*(?:gym|dumbbells?)|dumbbells?)\b/i.test(lowerMsg) && !/\bno\s*dumbbells?\b/i.test(lowerMsg)) {
+      targetLoc = 'home';
+    } else if (/\b(gym|full\s*gym)\b/i.test(lowerMsg) && !/\bhotel\s*gym\b/i.test(lowerMsg)) {
+      targetLoc = 'gym';
+    }
 
     const outcome = await executeCoachToolCall(
       'switch_location',
-      { location: targetLoc },
+      hasOverlayConstraints
+        ? { location: targetLoc, constraint_text: userMessage }
+        : { location: targetLoc },
       toolCtx
     );
     applyToolOutcome(outcome);
     if (outcome.mutationStatus === 'success') {
       if (actionTaken) {
-        actionTaken.details = { location: targetLoc };
+        actionTaken.details = {
+          location: outcome.updatedProfile?.activeLocation ?? targetLoc,
+          ...(outcome.updatedProfile?.activeEnvironmentOverlay
+            ? { overlayLabel: outcome.updatedProfile.activeEnvironmentOverlay.label }
+            : {}),
+        };
       }
       citations.push({
         label: 'Active Session',
-        metric: 'Location',
-        value: targetLoc,
+        metric: outcome.updatedProfile?.activeEnvironmentOverlay ? 'Environment Overlay' : 'Location',
+        value: outcome.updatedProfile?.activeEnvironmentOverlay?.label ?? (outcome.updatedProfile?.activeLocation ?? targetLoc),
       });
     }
   }

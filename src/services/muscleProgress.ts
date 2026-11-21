@@ -13,7 +13,7 @@
  * 3. Outcome: tape measurements for the muscle (arm, chest, thigh, calf, hips, shoulders), when the
  *    athlete has logged them.
  */
-import { calculateE1RM, isTimedExercise } from '../engine/e1rm';
+import { calculateE1RM, HARD_SET_MAX_RIR, isTimedExercise } from '../engine/e1rm';
 import {
   calculateFractionalVolumeByEquipment,
   classifyTravelBridgeWeeks,
@@ -176,7 +176,7 @@ export function buildMuscleProgress(input: {
     calculateFractionalVolumeByEquipment(done, input.exerciseCatalog, {
       fromDate: w.from,
       toDate: w.to,
-      maxRir: 3,
+      maxRir: HARD_SET_MAX_RIR,
     })
   );
 

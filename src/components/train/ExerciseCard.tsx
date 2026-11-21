@@ -17,7 +17,7 @@ import { CoachSummaryText } from '../common/CoachSummaryText';
 import { ExerciseInsight, isIsolationOrSmallExercise } from '../../services/exerciseInsight';
 import { buildExerciseTrendSpec } from '../../services/exerciseDetails';
 import { isAssistedExercise, isTimedExercise, usesOneDumbbell } from '../../engine/e1rm';
-import { buildContinuityCopy } from '../../engine/continuityEngine';
+import { buildContinuityCopy, buildExerciseBridgeBands } from '../../engine/continuityEngine';
 import { TrendChart } from '../common/TrendChart';
 import { localDateString, parseLocalDate } from '../../utils/date';
 import { formatSentenceCase } from '../../utils/typography';
@@ -28,6 +28,7 @@ interface ExerciseCardProps {
   totalExercises?: number;
   exercise: ExerciseSession;
   exerciseDef?: ExerciseDefinition;
+  exerciseCatalog?: ExerciseDefinition[];
   workouts?: WorkoutSession[];
   prescription: ProgressionPrescription;
   quest: SubTierQuest;
@@ -62,6 +63,7 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
   exerciseIndex,
   exercise,
   exerciseDef,
+  exerciseCatalog = [],
   workouts = [],
   prescription,
   readinessState,
@@ -91,6 +93,11 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
   const unilateral = !isTimed && isUnilateralExercise(exercise);
   const [perSide, setPerSide] = useState(() => exercise.sets.some((s) => s.actualRepsLeft !== undefined));
   const notesId = useId();
+
+  const bridgeBands = useMemo(
+    () => (isTimed ? [] : buildExerciseBridgeBands(exercise.exerciseId, workouts, exerciseCatalog)),
+    [isTimed, exercise.exerciseId, workouts, exerciseCatalog]
+  );
 
   const continuityCopy = useMemo(() => {
     if (!exercise.continuityRationaleKind) return null;
@@ -316,6 +323,7 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
             <TrendChart
               points={trendSpec.points}
               format={trendSpec.format}
+              bridgeBands={bridgeBands.length > 0 ? bridgeBands : undefined}
               height={240}
               label={trendSpec.label}
               emptyTitle={trendSpec.emptyTitle}

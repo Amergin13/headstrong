@@ -93,8 +93,10 @@ export function parseEnvironmentConstraintText(
   }
 
   // 4) Parse equipment availability & profile type
-  const mentionsNoEquipment = /\b(bodyweight|no equipment|no gear|no weights|calisthenics|zero equipment|nothing)\b/.test(lower);
-  const mentionsDumbbells = /\b(dumbbells?|dbs?|hotel gym|hotel)\b/.test(lower) && !/\bno dumbbells?\b/.test(lower);
+  const mentionsNoEquipment = /\b(bodyweight|no equipment|no gear|no weights?|calisthenics|zero equipment|nothing)\b/.test(lower);
+  const mentionsDumbbells =
+    (/\b(dumbbells?|dbs?|hotel gym)\b/.test(lower) || (/\bhotel\b/.test(lower) && !mentionsNoEquipment)) &&
+    !/\bno dumbbells?\b/.test(lower);
   const mentionsBarbell = /\b(barbell|full gym|back at the gym|home gym|commercial gym)\b/.test(lower) && !/\bno barbell\b/.test(lower) && !/\bdumbbells?\s+only\b/.test(lower);
   const mentionsNoBench = /\b(no bench|without a? ?bench|floor only)\b/.test(lower);
   const mentionsCable = /\b(cables?|pulley)\b/.test(lower) && !/\bno cables?\b/.test(lower);

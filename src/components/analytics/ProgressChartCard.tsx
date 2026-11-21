@@ -202,6 +202,7 @@ export const ProgressChartCard: React.FC<{
           positiveProgress={delta ? delta.polarity === 'positive' : undefined}
           typicalRange={visibleChart.typicalRange}
           windowRange={visibleChart.windowRange}
+          bridgeBands={visibleChart.bridgeBands}
           emptyTitle="No data yet"
           emptyMessage={`Log ${chart.title.toLowerCase()} to start building this trend.`}
           label={

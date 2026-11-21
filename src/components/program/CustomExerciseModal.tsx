@@ -5,25 +5,36 @@ import {
   MuscleGroup,
   StrengthPillar,
 } from '../../engine/types';
-import { X, Check } from 'lucide-react';
+import { X, Check, Trash2 } from 'lucide-react';
+import { triggerHaptic } from '../../utils/haptics';
 
 interface CustomExerciseModalProps {
+  existingExercise?: ExerciseDefinition;
   onAddExercise: (newEx: ExerciseDefinition) => void;
+  onUpdateExercise?: (updatedEx: ExerciseDefinition) => void;
+  onDeleteExercise?: (exerciseId: string) => void;
   onClose: () => void;
 }
 
 export const CustomExerciseModal: React.FC<CustomExerciseModalProps> = ({
+  existingExercise,
   onAddExercise,
+  onUpdateExercise,
+  onDeleteExercise,
   onClose,
 }) => {
-  const [name, setName] = useState('');
-  const [pillar, setPillar] = useState<StrengthPillar>('Horizontal Push');
-  const [equipment, setEquipment] = useState<EquipmentType>('barbell');
-  const [primaryMuscle, setPrimaryMuscle] = useState<MuscleGroup>('Chest');
-  const [isRdl, setIsRdl] = useState(false);
-  const [isWeightedCalisthenic, setIsWeightedCalisthenic] = useState(false);
-  const [minReps, setMinReps] = useState(8);
-  const [maxReps, setMaxReps] = useState(12);
+  const isEditing = Boolean(existingExercise);
+  const [name, setName] = useState(existingExercise?.name ?? '');
+  const [pillar, setPillar] = useState<StrengthPillar>(existingExercise?.pillar ?? 'Horizontal Push');
+  const [equipment, setEquipment] = useState<EquipmentType>(existingExercise?.equipment ?? 'barbell');
+  const [primaryMuscle, setPrimaryMuscle] = useState<MuscleGroup>(existingExercise?.primaryMuscle ?? 'Chest');
+  const [isRdl, setIsRdl] = useState(Boolean(existingExercise?.isRdl));
+  const [isWeightedCalisthenic, setIsWeightedCalisthenic] = useState(
+    Boolean(existingExercise?.isWeightedCalisthenic)
+  );
+  const [minReps, setMinReps] = useState(existingExercise?.defaultRepRange?.[0] ?? 8);
+  const [maxReps, setMaxReps] = useState(existingExercise?.defaultRepRange?.[1] ?? 12);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   const pillarOptions: { value: StrengthPillar; label: string }[] = [
     { value: 'Horizontal Push', label: 'Chest Press' },
@@ -59,19 +70,27 @@ export const CustomExerciseModal: React.FC<CustomExerciseModalProps> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
+    const safeMin = Math.max(1, Math.min(30, minReps || 8));
+    const safeMax = Math.max(safeMin, Math.min(30, maxReps || 12));
 
-    const newEx: ExerciseDefinition = {
-      id: `custom-${Date.now()}`,
+    const exercisePayload: ExerciseDefinition = {
+      ...(existingExercise ?? {}),
+      id: existingExercise?.id ?? `custom-${Date.now()}`,
       name: name.trim(),
       pillar,
       equipment,
       primaryMuscle,
       isRdl,
-      isWeightedCalisthenic,
-      defaultRepRange: [minReps, maxReps],
+      isWeightedCalisthenic: isWeightedCalisthenic || equipment === 'weighted_bodyweight',
+      defaultRepRange: [safeMin, safeMax],
     };
 
-    onAddExercise(newEx);
+    triggerHaptic('success');
+    if (isEditing && onUpdateExercise) {
+      onUpdateExercise(exercisePayload);
+    } else {
+      onAddExercise(exercisePayload);
+    }
     onClose();
   };
 
@@ -79,13 +98,13 @@ export const CustomExerciseModal: React.FC<CustomExerciseModalProps> = ({
     <div
       role="dialog"
       aria-modal="true"
-      aria-label="Add custom exercise"
+      aria-label={isEditing ? 'Edit custom exercise' : 'Add custom exercise'}
       className="wk fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-md"
       style={{ background: 'var(--color-bg-scrim)' }}
     >
       <div className="wk-card w-full max-w-sm shadow-2xl max-h-[90vh] overflow-y-auto space-y-5">
         <div className="flex items-center justify-between gap-2">
-          <h3 className="wk-h1">Add custom exercise</h3>
+          <h3 className="wk-h1">{isEditing ? 'Edit custom exercise' : 'Add custom exercise'}</h3>
           <button
             type="button"
             onClick={onClose}
@@ -217,22 +236,72 @@ export const CustomExerciseModal: React.FC<CustomExerciseModalProps> = ({
             <button
               type="button"
               onClick={onClose}
-              className="wk-btn-secondary w-full"
+              className="wk-btn-secondary w-full min-h-[44px]"
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="wk-button flex items-center justify-center gap-2 active:scale-95"
+              className="wk-button min-h-[44px] flex items-center justify-center gap-2 active:scale-95"
               style={{ background: 'var(--color-action-primary-bg)', color: 'var(--color-action-primary-fg)' }}
             >
               <Check className="w-4 h-4 stroke-[2]" />
-              <span>Save exercise</span>
+              <span>{isEditing ? 'Save changes' : 'Save exercise'}</span>
             </button>
           </div>
+
+          {isEditing && existingExercise && onDeleteExercise && (
+            <div className="pt-3" style={{ borderTop: '1px solid var(--color-border-subtle)' }}>
+              {confirmingDelete ? (
+                <div className="wk-raised flex flex-col gap-3">
+                  <p className="wk-caption" style={{ color: 'var(--color-text-primary)' }}>
+                    Delete {existingExercise.name} from your custom exercises? Past logged workouts remain intact.
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setConfirmingDelete(false)}
+                      className="wk-btn-secondary min-h-[44px] w-full justify-center"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        triggerHaptic('medium');
+                        onDeleteExercise(existingExercise.id);
+                        onClose();
+                      }}
+                      className="wk-button min-h-[44px] w-full flex items-center justify-center gap-1"
+                      style={{
+                        background: 'var(--color-status-danger-soft)',
+                        color: 'var(--color-status-danger)',
+                        border: '1px solid var(--color-status-danger)',
+                      }}
+                    >
+                      <Trash2 className="w-4 h-4 stroke-[2]" aria-hidden="true" />
+                      <span>Confirm delete</span>
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    triggerHaptic('light');
+                    setConfirmingDelete(true);
+                  }}
+                  className="wk-btn-secondary min-h-[44px] w-full inline-flex items-center justify-center gap-2"
+                  style={{ color: 'var(--color-status-danger)' }}
+                >
+                  <Trash2 className="w-4 h-4 stroke-[2]" aria-hidden="true" />
+                  <span>Delete exercise</span>
+                </button>
+              )}
+            </div>
+          )}
         </form>
       </div>
     </div>
   );
 };
-

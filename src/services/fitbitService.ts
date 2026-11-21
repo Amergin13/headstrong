@@ -28,39 +28,7 @@ export async function getFitbitConfig(): Promise<FitbitServerConfig> {
   };
 }
 
-// PKCE Helper utilities using Web Crypto API (shared with Whoop OAuth)
-export function generateRandomString(length: number = 64): string {
-  const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~';
-  let text = '';
-  const cryptoObj = typeof window !== 'undefined' ? window.crypto : (globalThis as any).crypto;
-  if (cryptoObj?.getRandomValues) {
-    const bytes = new Uint8Array(length);
-    cryptoObj.getRandomValues(bytes);
-    for (let i = 0; i < length; i++) {
-      text += possible.charAt(bytes[i] % possible.length);
-    }
-    return text;
-  }
-  for (let i = 0; i < length; i++) {
-    text += possible.charAt(Math.floor(Math.random() * possible.length));
-  }
-  return text;
-}
-
-export async function generateCodeChallenge(verifier: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(verifier);
-  const cryptoObj = typeof window !== 'undefined' ? window.crypto : (globalThis as any).crypto;
-  if (cryptoObj?.subtle) {
-    const digest = await cryptoObj.subtle.digest('SHA-256', data);
-    const base64Digest = btoa(String.fromCharCode(...new Uint8Array(digest)))
-      .replace(/\+/g, '-')
-      .replace(/\//g, '_')
-      .replace(/=+$/, '');
-    return base64Digest;
-  }
-  return btoa(verifier).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-}
+export { generateRandomString, generateCodeChallenge } from './pkce';
 
 /**
  * Parses a Fitbit / Google Takeout CSV or JSON export (daily readiness, HRV, resting heart rate,

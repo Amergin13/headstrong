@@ -25,11 +25,15 @@ import {
 import {
   calculateE1RM,
   getBodyweightLoadRatio,
+  HARD_SET_MAX_RIR,
   isUnilateralExercise,
   MAX_LOGGABLE_RIR,
   usesTwoDumbbells,
 } from './e1rm';
-import { hasInvertedStraightSetRir } from './progressionRules';
+import {
+  EQUIPMENT_JUMP_EXPANSION_THRESHOLD,
+  hasInvertedStraightSetRir,
+} from './progressionRules';
 import { localDateString } from '../utils/date';
 import { formatWeight, WeightUnit } from '../utils/units';
 
@@ -38,7 +42,7 @@ import { formatWeight, WeightUnit } from '../utils/units';
 // ============================================================================
 
 export const OWN_HISTORY_WINDOW_MS = 90 * 24 * 60 * 60 * 1000;
-export const COARSE_JUMP_THRESHOLD = 0.075;
+export const COARSE_JUMP_THRESHOLD = EQUIPMENT_JUMP_EXPANSION_THRESHOLD;
 export const MAX_COARSE_EXPANDED_REPS = 20;
 export const DEFAULT_COMPOUND_DECAY_RATE = 0.045;
 export const DEFAULT_ISOLATION_DECAY_RATE = 0.03;
@@ -461,6 +465,33 @@ export function overlayToTrainingLocation(overlay: EnvironmentOverlay | null | u
     return overlay.availableEquipment.includes('DUMBBELLS') ? 'home' : 'travel';
   }
   return 'gym';
+}
+
+/**
+ * Unified mapping from legacy 3-option TrainingLocation ('gym' | 'home' | 'travel')
+ * onto a first-class EnvironmentOverlay so every location switcher across the app
+ * (3-dots menu, Environment sheet, AI Coach) stays on one source of truth.
+ */
+export function createOverlayForTrainingLocation(
+  location: TrainingLocation,
+  homeEquipment?: HomeEquipmentTag[],
+  nowMs: number = Date.now(),
+  scope: OverlayScope = 'TODAY_ONLY'
+): EnvironmentOverlay | null {
+  if (location === 'gym') return null;
+  if (location === 'travel') {
+    return createPresetOverlay('BODYWEIGHT', scope, {
+      nowMs,
+      label: 'Bodyweight Only',
+    });
+  }
+  const tags =
+    homeEquipment && homeEquipment.length > 0 ? homeEquipment : (['bench', 'dumbbells'] as HomeEquipmentTag[]);
+  return createPresetOverlay('CUSTOM', scope, {
+    nowMs,
+    homeEquipment: tags,
+    label: 'At Home',
+  });
 }
 
 export function isExerciseCompatibleWithOverlay(
@@ -1540,7 +1571,7 @@ export function calculateFractionalVolumeByEquipment(
     maxRir?: number;
   }
 ): Record<string, MuscleVolumeWithTools> {
-  const maxRir = options?.maxRir ?? 4;
+  const maxRir = options?.maxRir ?? HARD_SET_MAX_RIR;
   const exMap = new Map(exerciseCatalog.map((e) => [e.id, e]));
   const result: Record<string, MuscleVolumeWithTools> = {};
 
@@ -1974,6 +2005,7 @@ export function buildSessionContinuitySummary(params: {
     fromDate: localDateString(startDate),
     toDate: session.date,
     activeSession: session,
+    maxRir: HARD_SET_MAX_RIR,
   });
   const muscleVol = volMap[primaryMuscle]?.total ?? 0;
   const target = weeklyTargetsByMuscle?.[primaryMuscle] ?? { min: 10, max: 18 };
@@ -2338,5 +2370,293 @@ export function applyEnvironmentOverlayToSession(params: {
     environmentProfileType: active?.activeProfileType ?? 'HOME_GYM',
     environmentOverlayLabel: active?.label ?? 'Full Gym',
     exercises: nextExercises,
+  };
+}
+
+// ============================================================================
+// Isolated Progression State Sync, Travel Bridge Bands & Single-Lift Swap
+// ============================================================================
+
+/**
+ * Rebuilds every exercise's isolated progression state strictly from completed
+ * workout history (never merging dumbbell/bodyweight sets into a barbell exercise).
+ * Call whenever past workouts are edited or deleted so profile.exerciseProgressionStates
+ * stays in exact lockstep with workouts[].
+ */
+export function rebuildIsolatedProgressionStates(
+  workouts: WorkoutSession[],
+  defaultBodyweightKg: number = 80
+): Record<string, ExerciseProgressionState> {
+  const completedAsc = workouts
+    .filter((w) => w.completed)
+    .slice()
+    .sort((a, b) => (a.completedAt || `${a.date}T12:00:00`).localeCompare(b.completedAt || `${b.date}T12:00:00`));
+
+  const states: Record<string, ExerciseProgressionState> = {};
+
+  for (const w of completedAsc) {
+    const loggedAtMs = w.completedAt ? Date.parse(w.completedAt) : Date.parse(`${w.date}T12:00:00`);
+    const safeLoggedAtMs = Number.isFinite(loggedAtMs) ? loggedAtMs : Date.now();
+
+    for (const ex of w.exercises) {
+      const working = ex.sets.filter((s) => s.completed && !s.isWarmup && s.setType !== 'warmup');
+      if (working.length === 0) continue;
+
+      const isBodyweight = classifyEquipment(ex.equipment) === 'BODYWEIGHT';
+      let bestSet: WorkoutSet | null = null;
+      let bestScore = -1;
+
+      for (const s of working) {
+        const wt = s.actualWeightKg ?? s.targetWeightKg ?? 0;
+        const rp = s.actualReps ?? s.targetReps ?? 0;
+        if (rp <= 0) continue;
+        const rir = clampRir(s.actualRir ?? s.targetRir ?? 2);
+        if (isBodyweight) {
+          const score = rp * 10 - rir;
+          if (score > bestScore) {
+            bestScore = score;
+            bestSet = s;
+          }
+        } else {
+          if (wt <= 0) continue;
+          const score = wt * (1 + (rp + Math.min(rir, 5)) / 30);
+          if (score > bestScore) {
+            bestScore = score;
+            bestSet = s;
+          }
+        }
+      }
+
+      if (!bestSet) continue;
+
+      const rp = bestSet.actualReps ?? bestSet.targetReps ?? 0;
+      const rir = clampRir(bestSet.actualRir ?? bestSet.targetRir ?? 2);
+      const wt = isBodyweight
+        ? (defaultBodyweightKg > 0 ? defaultBodyweightKg : 80) * getBodyweightLoadRatio(ex.exerciseId, ex.pillar)
+        : bestSet.actualWeightKg ?? bestSet.targetWeightKg ?? 0;
+
+      const prev = states[ex.exerciseId] ?? null;
+      states[ex.exerciseId] = updateExerciseProgressionStateDamped(
+        prev,
+        {
+          exerciseId: ex.exerciseId,
+          weightKg: wt,
+          reps: rp,
+          rir,
+          loggedAtMs: safeLoggedAtMs,
+        },
+        {
+          isFirstAnchorCalibration: !prev,
+          incrementSessionCount: true,
+          storeWeightAsNull: isBodyweight,
+        }
+      );
+    }
+  }
+
+  return states;
+}
+
+/**
+ * Builds shaded "Travel Bridge" date bands for a single exercise's E1RM chart:
+ * identifies calendar weeks after the exercise's first logged session where the
+ * anchor lift was not logged, yet a same-slot / same-pattern substitute kept volume moving.
+ */
+export function buildExerciseBridgeBands(
+  exerciseId: string,
+  workouts: WorkoutSession[],
+  exerciseCatalog: ExerciseDefinition[]
+): { startDate: string; endDate: string; label: string }[] {
+  const completed = workouts.filter((w) => w.completed);
+  if (completed.length === 0) return [];
+
+  const anchorDates: string[] = [];
+  let maxAnyDate = '';
+  for (const w of completed) {
+    if (w.date > maxAnyDate) maxAnyDate = w.date;
+    const hasAnchor = w.exercises.some(
+      (ex) =>
+        ex.exerciseId === exerciseId &&
+        ex.sets.some((s) => s.completed && !s.isWarmup && s.setType !== 'warmup')
+    );
+    if (hasAnchor) anchorDates.push(w.date);
+  }
+  if (anchorDates.length === 0 || !maxAnyDate) return [];
+
+  anchorDates.sort();
+  const firstDate = anchorDates[0];
+
+  const toMonday = (iso: string): Date => {
+    const d = new Date(`${iso}T12:00:00`);
+    const day = d.getDay();
+    const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+    d.setDate(diff);
+    return d;
+  };
+
+  const startMon = toMonday(firstDate);
+  const endMon = toMonday(maxAnyDate);
+  const weekWindows: { start: string; end: string }[] = [];
+
+  const cursor = new Date(startMon.getTime());
+  let guard = 0;
+  while (cursor.getTime() <= endMon.getTime() && guard < 104) {
+    const sun = new Date(cursor.getTime());
+    sun.setDate(sun.getDate() + 6);
+    weekWindows.push({
+      start: localDateString(cursor),
+      end: localDateString(sun),
+    });
+    cursor.setDate(cursor.getDate() + 7);
+    guard++;
+  }
+
+  if (weekWindows.length === 0) return [];
+
+  const classified = classifyTravelBridgeWeeks({
+    anchorExerciseId: exerciseId,
+    workouts: completed,
+    exerciseCatalog,
+    weekWindows,
+  });
+
+  return classified
+    .filter((c) => c.status === 'BRIDGE_WEEK')
+    .map((c) => ({
+      startDate: c.weekStart,
+      endDate: c.weekEnd,
+      label:
+        c.substituteExerciseNames.length > 0
+          ? `Travel bridge · ${c.substituteExerciseNames[0]}`
+          : 'Travel bridge',
+    }));
+}
+
+export interface SingleExerciseSwapPreview {
+  prescription: SlotPrescriptionOutput;
+  targetMetadata: ExerciseMetadata;
+  anchorDef: ExerciseDefinition | undefined;
+  anchorState: ExerciseProgressionState | null;
+  targetState: ExerciseProgressionState | null;
+  anchorReferenceLabel?: string;
+}
+
+/**
+ * Evaluates a single-exercise swap through the 4-branch Continuity Engine
+ * (OWN_HISTORY -> ANCHOR_PRIOR -> BODYWEIGHT -> EFFORT_ONLY for unfamiliar machines/cables),
+ * so single-lift swaps share identical cold-start honesty and Set-1 recalibration with
+ * full-session Environment Overlays.
+ */
+export function evaluateSingleExerciseContinuitySwap(params: {
+  currentExercise: ExerciseSession;
+  replacementDef: ExerciseDefinition;
+  historicalWorkouts: WorkoutSession[];
+  exerciseCatalog: ExerciseDefinition[];
+  storedProgressionStates?: Record<string, ExerciseProgressionState>;
+  activeOverlay?: EnvironmentOverlay | null;
+  userBodyweightKg?: number;
+  nowMs?: number;
+  unit?: WeightUnit;
+  planId?: string;
+  splitDay?: string;
+}): SingleExerciseSwapPreview {
+  const {
+    currentExercise,
+    replacementDef,
+    historicalWorkouts,
+    exerciseCatalog,
+    storedProgressionStates,
+    activeOverlay = null,
+    userBodyweightKg = 80,
+    nowMs = Date.now(),
+    unit = 'kg',
+    planId = 'default',
+    splitDay = 'Session',
+  } = params;
+
+  const exMap = new Map(exerciseCatalog.map((e) => [e.id, e]));
+  const anchorId = currentExercise.anchorExerciseId ?? currentExercise.exerciseId;
+  const anchorDef = exMap.get(anchorId) ?? exMap.get(currentExercise.exerciseId);
+
+  const remainingWorking = currentExercise.sets.filter(
+    (s) => !s.completed && !s.isWarmup && s.setType !== 'warmup'
+  );
+  const allWorking = currentExercise.sets.filter((s) => !s.isWarmup && s.setType !== 'warmup');
+  const setCount = Math.max(1, remainingWorking.length || allWorking.length || 3);
+  const initialRir = clampRir(remainingWorking[0]?.targetRir ?? allWorking[0]?.targetRir ?? 2);
+
+  const slot: ProgramSlot = {
+    slotId: currentExercise.slotId ?? currentExercise.orderCode ?? currentExercise.id,
+    programId: planId,
+    workoutDayId: splitDay,
+    movementPattern: anchorDef
+      ? resolveMovementPattern(anchorDef)
+      : resolveMovementPattern(replacementDef),
+    anchorExerciseId: anchorDef?.id ?? currentExercise.exerciseId,
+    targetSets: setCount,
+    targetRepMin: replacementDef.defaultRepRange[0] || currentExercise.minReps || 8,
+    targetRepMax: replacementDef.defaultRepRange[1] || currentExercise.maxReps || 12,
+    targetRirInitial: initialRir,
+    restSeconds: currentExercise.restSeconds ?? (replacementDef.isIsolation ? 75 : 120),
+  };
+
+  const targetState = deriveIsolatedProgressionStateFromHistory(
+    replacementDef.id,
+    historicalWorkouts,
+    storedProgressionStates
+  );
+
+  let anchorState = anchorDef
+    ? deriveIsolatedProgressionStateFromHistory(
+        anchorDef.id,
+        historicalWorkouts,
+        storedProgressionStates
+      )
+    : null;
+
+  // If the athlete hasn't logged the anchor lift in history yet (e.g. Day 1 onboarding calibration),
+  // synthesize a conservative anchor prior from today's calibrated anchor load for standardized free weights.
+  if (!anchorState && anchorDef && classifyEquipment(anchorDef.equipment) === 'STANDARDIZED_FREE_WEIGHT') {
+    const firstW = allWorking[0]?.targetWeightKg ?? 0;
+    const firstR = allWorking[0]?.targetReps ?? currentExercise.minReps ?? 8;
+    const firstRir = clampRir(allWorking[0]?.targetRir ?? 2);
+    if (firstW > 0 && firstR > 0) {
+      const combinedW = usesTwoDumbbells(anchorDef) ? firstW * 2 : firstW;
+      anchorState = {
+        exerciseId: anchorDef.id,
+        lastLoggedAt: nowMs,
+        estimated1rmKg: Math.round(combinedW * (1 + (firstR + firstRir) / 30) * 10) / 10,
+        lastWorkingWeightKg: firstW,
+        lastWorkingReps: firstR,
+        lastLoggedRir: firstRir,
+        calibratedSessionCount: 0,
+      };
+    }
+  }
+
+  const prescription = prescribeSet1WithAnchorPrior({
+    slot,
+    targetDef: replacementDef,
+    anchorDef,
+    targetState,
+    anchorState,
+    overlay: activeOverlay,
+    userBodyweightKg,
+    nowMs,
+    unit,
+  });
+
+  const anchorReferenceLabel =
+    anchorDef && anchorDef.id !== replacementDef.id
+      ? formatCompactAnchorRef(anchorDef, anchorState, unit)
+      : undefined;
+
+  return {
+    prescription,
+    targetMetadata: resolveExerciseMetadata(replacementDef),
+    anchorDef,
+    anchorState,
+    targetState,
+    anchorReferenceLabel,
   };
 }

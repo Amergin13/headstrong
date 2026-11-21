@@ -19,6 +19,7 @@ import {
 import { calculateE1RM, usesOneDumbbell } from '../engine/e1rm';
 import { isPillarBenchmarkExercise } from '../engine/strengthStandards';
 import { getLatestBodyweightEma } from '../engine/ema';
+import { HARD_SET_MAX_RIR } from '../engine/e1rm';
 import { localDateString } from '../utils/date';
 import { generatePlanWorkout, getSessionPlanId, withPlanWorkoutName } from '../engine/muscleBuildingProgram';
 import { prepareSessionForAthlete } from './sessionPreparation';
@@ -706,9 +707,9 @@ export function creditMuscleSets(
   if (pillar === 'Vertical Pull') volume.Back += hardSets;
 }
 
-/** Hard sets: completed working sets taken within 3 reps of failure. */
+/** Hard sets: completed working sets taken within HARD_SET_MAX_RIR (3) reps of failure. */
 export function countHardSets(ex: WorkoutSession['exercises'][number]): number {
-  return ex.sets.filter((s) => s.completed && !s.isWarmup && s.setType !== 'warmup' && (s.actualRir ?? 2) <= 3).length;
+  return ex.sets.filter((s) => s.completed && !s.isWarmup && s.setType !== 'warmup' && (s.actualRir ?? 2) <= HARD_SET_MAX_RIR).length;
 }
 
 /** Hard sets per muscle for sessions dated from `fromDate` to `toDate` (inclusive, local dates). */

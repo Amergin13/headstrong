@@ -3,7 +3,8 @@
  * workouts or measurements the athlete entered; one point shows that real starting value, and
  * charts with no points show an honest empty state instead of fabricated curves.
  */
-import { calculateE1RM, getBodyweightLoadRatio, isTimedExercise } from '../engine/e1rm';
+import { calculateE1RM, getBodyweightLoadRatio, HARD_SET_MAX_RIR, isTimedExercise } from '../engine/e1rm';
+import { buildExerciseBridgeBands } from '../engine/continuityEngine';
 import { buildBodyweightEmaLookup, calculateEmaSeries } from '../engine/ema';
 import { getWorkoutCompletedAt } from '../engine/recovery';
 import { isPillarBenchmarkExercise } from '../engine/strengthStandards';
@@ -73,6 +74,8 @@ export interface ProgressChart {
   delta?: ChartDeltaBadge;
   typicalRange?: ChartTypicalRange;
   windowRange?: ChartWindowMeta;
+  /** Lightly shaded "Travel Bridge" date bands marking weeks where substitute tools kept volume moving. */
+  bridgeBands?: { startDate: string; endDate: string; label?: string }[];
 }
 
 export type ChartTimeline = '1W' | '1M' | '3M' | '1Y';
@@ -251,6 +254,7 @@ export function filterChartByTimeline(
   const points = chart.points.filter((p) => p.date >= start && p.date <= end);
   const priorPoints = chart.points.filter((p) => p.date >= priorStart && p.date <= priorEnd);
   const secondary = chart.secondary?.filter((p) => p.date >= start && p.date <= end);
+  const visibleBridgeBands = chart.bridgeBands?.filter((b) => b.endDate >= start && b.startDate <= end);
 
   const { chartTone, supportsTypicalRange, isDailySeries, useWindowAverage, higherIsBetter, useInteger } = inferChartConfig(chart);
   const typicalRange = supportsTypicalRange ? computeTypicalRange(chart.points, end, useInteger) : undefined;
@@ -354,6 +358,7 @@ export function filterChartByTimeline(
     chartTone,
     points,
     secondary,
+    bridgeBands: visibleBridgeBands,
     summary,
     headline,
     delta,
@@ -946,10 +951,10 @@ export function buildStrengthCharts(input: {
     });
   }
 
-  // Weekly hard sets: completed working sets within 3 reps of failure (Schoenfeld et al., 2017; matches countHardSets).
+  // Weekly hard sets: completed working sets within HARD_SET_MAX_RIR (3) reps of failure (Schoenfeld et al., 2017; matches countHardSets).
   const weekly = new Map<string, number>();
   for (const w of done) {
-    const sets = w.exercises.reduce((n, ex) => n + ex.sets.filter((s) => isWorkingDone(s) && (s.actualRir ?? s.targetRir ?? 2) <= 3).length, 0);
+    const sets = w.exercises.reduce((n, ex) => n + ex.sets.filter((s) => isWorkingDone(s) && (s.actualRir ?? s.targetRir ?? 2) <= HARD_SET_MAX_RIR).length, 0);
     weekly.set(weekStart(w.date), (weekly.get(weekStart(w.date)) ?? 0) + sets);
   }
   const weeklyPoints = [...weekly.entries()].map(([date, value]) => ({ date, value })).sort((a, b) => a.date.localeCompare(b.date));
@@ -992,9 +997,10 @@ export function buildExerciseProgressChart(input: {
   workouts: WorkoutSession[];
   bodyweightKg: number;
   biometrics?: BiometricLog[];
+  exerciseCatalog?: ExerciseDefinition[];
   fmt: ProgressFormatters;
 }): ProgressChart {
-  const { exercise, workouts, bodyweightKg, biometrics, fmt } = input;
+  const { exercise, workouts, bodyweightKg, biometrics, exerciseCatalog = [], fmt } = input;
   const emaLookup = biometrics ? buildBodyweightEmaLookup(biometrics) : undefined;
   const done = workouts.filter((w) => w.completed).sort((a, b) => getWorkoutCompletedAt(a) - getWorkoutCompletedAt(b));
   const timedEntry = done
@@ -1140,10 +1146,12 @@ export function buildExerciseProgressChart(input: {
   const first = points[0];
   const delta = last && first ? Math.round((last.value - first.value) * 10) / 10 : 0;
   const maxLabel = isCalisthenic ? 'Estimated one-rep max (bodyweight + added weight)' : 'Estimated one-rep max';
+  const bridgeBands = buildExerciseBridgeBands(exercise.id, done, exerciseCatalog);
   return {
     id: exercise.id,
     title: exercise.name,
     points,
+    ...(bridgeBands.length > 0 ? { bridgeBands } : {}),
     lastUpdated: last?.date,
     summary:
       points.length === 0

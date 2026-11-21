@@ -19,6 +19,12 @@ export const DEFAULT_EPLEY_DENOMINATOR = 30;
  */
 export const MAX_E1RM_RIR = 3;
 
+/**
+ * Single-source hard-set RIR threshold shared across weekly muscle volume accounting,
+ * Program WeeklyVolumeCard, ExerciseDetailModal, MuscleProgressCard, and Post-Session Continuity Card.
+ */
+export const HARD_SET_MAX_RIR = 3;
+
 /** Above 12 reps, RIR prediction error rises sharply (Halperin et al., 2022), so RIR credit is dampened. */
 export const HIGH_REP_RIR_DAMPEN_THRESHOLD = 12;
 

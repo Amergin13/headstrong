@@ -382,6 +382,10 @@ interface ProgramPlanViewProps {
   onRemoveProgramOverride?: (overrideId: string) => void;
   /** Clears all accepted program overrides for the current plan. */
   onClearProgramOverrides?: (planId: string) => void;
+  /** Saves inline edits to a completed past workout. */
+  onUpdatePastWorkout?: (updated: WorkoutSession) => void;
+  /** Deletes a completed past workout from history. */
+  onDeletePastWorkout?: (workoutId: string) => void;
   headerAction?: React.ReactNode;
 }
 
@@ -405,6 +409,8 @@ export const ProgramPlanView: React.FC<ProgramPlanViewProps> = ({
   onDismissIntervention,
   onRemoveProgramOverride,
   onClearProgramOverrides,
+  onUpdatePastWorkout,
+  onDeletePastWorkout,
   headerAction,
 }) => {
   const plan = useMemo(
@@ -820,8 +826,10 @@ export const ProgramPlanView: React.FC<ProgramPlanViewProps> = ({
         <PastWorkoutModal
           workoutNumber={viewing.workoutNumber}
           title={viewing.label}
-          session={viewing.session}
+          session={workouts.find((w) => w.id === viewing.session!.id) ?? viewing.session}
           onSelectExercise={(ex) => setInspectedExerciseId(ex.exerciseId)}
+          onSaveWorkout={onUpdatePastWorkout}
+          onDeleteWorkout={onDeletePastWorkout}
           onClose={() => setViewing(null)}
         />
       )}

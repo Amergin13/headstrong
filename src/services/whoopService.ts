@@ -1,5 +1,5 @@
 import { BiometricLog, ReadinessState, WearableSyncProgress } from '../engine/types';
-import { generateCodeChallenge, generateRandomString } from './fitbitService';
+import { generateCodeChallenge, generateRandomString } from './pkce';
 import { localDateString } from '../utils/date';
 import { getLatestWearableTokens, publishRefreshedTokens, serializeWhoopCall } from './wearableTokens';
 
