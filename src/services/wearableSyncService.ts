@@ -20,8 +20,12 @@ import {
 import {
   HealthConnectBiometricDay,
   getHealthConnectStatus,
-  readHealthConnectBiometrics,
+  readHealthConnectBiometricsWithProfile,
 } from './healthConnectBridge';
+import {
+  HealthConnectDemographics,
+  extractHealthConnectDemographics,
+} from './healthConnectProfile';
 import { localDateString } from '../utils/date';
 import { SEMANTIC_COLOR } from '../styles/semanticTokens';
 
@@ -39,7 +43,7 @@ export const WEARABLE_PROVIDERS: Record<WearableProvider, WearableProviderMeta> 
     id: 'fitbit',
     name: 'Google Pixel Watch / Fitbit (via Health Connect)',
     tagline: 'Synced automatically via Android Health Connect',
-    description: 'Legacy Fitbit Web API was retired Nov 2, 2026. Connect Android Health Connect to sync Pixel Watch and Fitbit sleep, HR, HRV, weight, body fat, steps, and workouts.',
+    description: 'Legacy Fitbit Web API was retired Nov 2, 2026. Connect Android Health Connect to sync Pixel Watch and Fitbit sleep, HR, HRV, weight, height, body fat, steps, and workouts.',
     hardwareFocus: 'Google Pixel Watch 1, 2, 3 & Fitbit Sense/Charge (via Health Connect)',
     accentColor: SEMANTIC_COLOR.statusInfo,
   },
@@ -55,7 +59,7 @@ export const WEARABLE_PROVIDERS: Record<WearableProvider, WearableProviderMeta> 
     id: 'health_connect',
     name: 'Android Health Connect',
     tagline: 'Android Unified Hub (Fitbit, Pixel Watch, Samsung & Garmin)',
-    description: 'On-device health hub syncing sleep, heart rate, resting HR, HRV, weight, body fat, steps, and workouts automatically.',
+    description: 'On-device health hub syncing sleep, heart rate, resting HR, HRV, weight, height, body fat, steps, and workouts automatically.',
     hardwareFocus: 'Google Pixel Watch, Fitbit, Samsung Galaxy Watch, Wear OS & Garmin',
     accentColor: SEMANTIC_COLOR.statusInfo,
   },
@@ -69,6 +73,7 @@ export async function syncWearableBiometrics(
   provider: WearableProvider,
   options?: {
     onProgress?: (progress: WearableSyncProgress) => void;
+    onProfileExtracted?: (demographics: HealthConnectDemographics) => void;
     forcedState?: ReadinessState;
     accessToken?: string;
     refreshToken?: string;
@@ -131,22 +136,32 @@ export async function syncWearableBiometrics(
 
     case 'health_connect': {
       const hc = getHealthConnectStatus();
-      if (hc.bridge && hc.biometricsGranted) {
+      if (hc.bridge && (hc.biometricsGranted || hc.heightGranted)) {
         onProg({ stage: 'connecting', percent: 25, message: 'Reading Health Connect biometrics...', provider: 'health_connect' });
-        const days = await readHealthConnectBiometrics(new Date(Date.now() - 14 * 86400000));
-        if (!days.length) {
-          throw new Error('Health Connect is connected, but no recent sleep, heart rate, HRV, or weight records were found yet.');
+        const { days, profile: hcProfile } = await readHealthConnectBiometricsWithProfile(
+          new Date(Date.now() - 29 * 86400000)
+        );
+        const demographics = extractHealthConnectDemographics({ profile: hcProfile, days });
+        const hasDemographics =
+          demographics.latestHeightCm !== undefined ||
+          demographics.gender !== undefined ||
+          demographics.age !== undefined;
+        if (hasDemographics && options?.onProfileExtracted) {
+          options.onProfileExtracted(demographics);
         }
-        const latest = days[days.length - 1];
+        if (!days.length && !hasDemographics) {
+          throw new Error('Health Connect is connected, but no recent sleep, heart rate, HRV, weight, or height records were found yet.');
+        }
+        const latest = days.length > 0 ? days[days.length - 1] : undefined;
         onProg({ stage: 'complete', percent: 100, message: 'Health Connect synced', provider: 'health_connect' });
         return {
-          date: latest.date || localDateString(),
-          bodyweightKg: latest.bodyweightKg || 0,
-          bodyFatPct: latest.bodyFatPct,
-          hrvRmssd: latest.hrvRmssd || 0,
-          restingHr: latest.restingHr || 0,
-          sleepHours: latest.sleepHours || 0,
-          steps: latest.steps || 0,
+          date: latest?.date || localDateString(),
+          bodyweightKg: latest?.bodyweightKg || 0,
+          bodyFatPct: latest?.bodyFatPct,
+          hrvRmssd: latest?.hrvRmssd || 0,
+          restingHr: latest?.restingHr || 0,
+          sleepHours: latest?.sleepHours || 0,
+          steps: latest?.steps || 0,
           activeZoneMinutes: 0,
           source: 'health_connect',
         };

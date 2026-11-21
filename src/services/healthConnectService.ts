@@ -14,6 +14,7 @@ export const HEALTH_CONNECT_CONFIG = {
     'SleepSessionRecord',
     'StepsRecord',
     'WeightRecord',
+    'HeightRecord',
     'BodyFatRecord',
     'Vo2MaxRecord',
     'ActiveCaloriesBurnedRecord',

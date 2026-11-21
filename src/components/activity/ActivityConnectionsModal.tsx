@@ -162,7 +162,7 @@ export const ActivityConnectionsModal: React.FC<
           {!hcStatus.bridge ? (
             <p className="wk-body mt-2 max-w-prose">
               Available in the Treise app from Google Play on Android. It reads
-              workouts, daily steps, sleep, heart rate, HRV, weight, and body fat from Google Pixel Watch, Fitbit, Samsung Health and Garmin automatically.
+              workouts, daily steps, sleep, heart rate, HRV, weight, height, and body fat from Google Pixel Watch, Fitbit, Samsung Health and Garmin automatically.
             </p>
           ) : !hcStatus.available ? (
             <p className="wk-body mt-2 max-w-prose">
@@ -172,7 +172,7 @@ export const ActivityConnectionsModal: React.FC<
           ) : (
             <>
               <p className="wk-body mt-2 max-w-prose">
-                Treise reads only the health categories you allow (exercise sessions, daily steps, sleep, heart rate, resting HR, HRV, weight, and body fat) from Health Connect — including Fitbit, Pixel Watch, Samsung Health and Garmin. Strictly read-only.
+                Treise reads only the health categories you allow (exercise sessions, daily steps, sleep, heart rate, resting HR, HRV, weight, height, and body fat) from Health Connect — including Fitbit, Pixel Watch, Samsung Health and Garmin. Strictly read-only.
               </p>
               <button
                 type="button"

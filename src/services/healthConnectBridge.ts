@@ -27,6 +27,14 @@ export interface DailyStepRecord {
   steps: number;
 }
 
+export interface HealthConnectProfileData {
+  heightCm?: number;
+  gender?: 'male' | 'female';
+  sex?: string;
+  age?: number;
+  birthDate?: string;
+}
+
 export interface HealthConnectBiometricDay {
   date: string;
   sleepHours?: number;
@@ -38,6 +46,15 @@ export interface HealthConnectBiometricDay {
   steps?: number;
   avgDailyHr?: number;
   maxDailyHr?: number;
+  gender?: 'male' | 'female';
+  sex?: string;
+  age?: number;
+  birthDate?: string;
+}
+
+export interface HealthConnectBiometricsResult {
+  days: HealthConnectBiometricDay[];
+  profile?: HealthConnectProfileData;
 }
 
 export interface HealthConnectStatus {
@@ -71,7 +88,7 @@ const pending = new Map<string, { resolve: (s: RawSourceSession[]) => void; reje
 const pendingSteps = new Map<string, { resolve: (days: DailyStepRecord[]) => void; reject: (e: Error) => void }>();
 const pendingBiometrics = new Map<
   string,
-  { resolve: (days: HealthConnectBiometricDay[]) => void; reject: (e: Error) => void }
+  { resolve: (result: HealthConnectBiometricsResult) => void; reject: (e: Error) => void }
 >();
 let started = false;
 
@@ -151,8 +168,29 @@ function handleAppMessage(data: unknown) {
     const p = pendingBiometrics.get(msg.requestId);
     if (!p) return;
     pendingBiometrics.delete(msg.requestId);
-    if (msg.error) p.reject(new Error(String(msg.error)));
-    else p.resolve(Array.isArray(msg.days) ? msg.days : []);
+    if (msg.error) {
+      p.reject(new Error(String(msg.error)));
+    } else {
+      const days: HealthConnectBiometricDay[] = Array.isArray(msg.days) ? msg.days : [];
+      const rawProfile = msg.profile && typeof msg.profile === 'object' ? msg.profile : {};
+      const profile: HealthConnectProfileData = {
+        ...(rawProfile.heightCm !== undefined ? { heightCm: Number(rawProfile.heightCm) } : {}),
+        ...(msg.latestHeightCm !== undefined && rawProfile.heightCm === undefined ? { heightCm: Number(msg.latestHeightCm) } : {}),
+        ...(msg.heightCm !== undefined && rawProfile.heightCm === undefined && msg.latestHeightCm === undefined ? { heightCm: Number(msg.heightCm) } : {}),
+        ...(rawProfile.gender !== undefined ? { gender: rawProfile.gender } : msg.gender !== undefined ? { gender: msg.gender } : {}),
+        ...(rawProfile.sex !== undefined ? { sex: String(rawProfile.sex) } : msg.sex !== undefined ? { sex: String(msg.sex) } : {}),
+        ...(rawProfile.age !== undefined ? { age: Number(rawProfile.age) } : msg.age !== undefined ? { age: Number(msg.age) } : {}),
+        ...(rawProfile.birthDate !== undefined
+          ? { birthDate: String(rawProfile.birthDate) }
+          : msg.birthDate !== undefined
+          ? { birthDate: String(msg.birthDate) }
+          : {}),
+      };
+      p.resolve({
+        days,
+        profile: Object.keys(profile).length > 0 ? profile : undefined,
+      });
+    }
   }
 }
 
@@ -264,15 +302,17 @@ export function readHealthConnectSteps(since: Date, timeoutMs = 20000): Promise<
 }
 
 /**
- * Daily biometric metrics (sleep, resting HR, HRV RMSSD, weight, body fat) since `since`,
- * read natively from Android Health Connect (bridge v5+) so Fitbit and Pixel Watch data flows
- * through the OS hub automatically.
+ * Daily biometric metrics (sleep, resting HR, HRV RMSSD, weight, height, body fat) plus any
+ * available profile demographics (height, sex, age/birthDate) read natively from Android Health
+ * Connect (bridge v5+).
  */
-export function readHealthConnectBiometrics(
+export function readHealthConnectBiometricsWithProfile(
   since: Date,
   timeoutMs = 20000
-): Promise<HealthConnectBiometricDay[]> {
-  if (!port || appVersion < 5 || !status.biometricsGranted) return Promise.resolve([]);
+): Promise<HealthConnectBiometricsResult> {
+  if (!port || appVersion < 5 || !(status.biometricsGranted || status.heightGranted)) {
+    return Promise.resolve({ days: [] });
+  }
   const requestId = `hc-bio-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   return new Promise((resolve, reject) => {
     pendingBiometrics.set(requestId, { resolve, reject });
@@ -281,4 +321,16 @@ export function readHealthConnectBiometrics(
       if (pendingBiometrics.delete(requestId)) reject(new Error('Health Connect did not answer'));
     }, timeoutMs);
   });
+}
+
+/**
+ * Daily biometric metrics (sleep, resting HR, HRV RMSSD, weight, height, body fat) since `since`,
+ * read natively from Android Health Connect (bridge v5+) so Fitbit and Pixel Watch data flows
+ * through the OS hub automatically.
+ */
+export function readHealthConnectBiometrics(
+  since: Date,
+  timeoutMs = 20000
+): Promise<HealthConnectBiometricDay[]> {
+  return readHealthConnectBiometricsWithProfile(since, timeoutMs).then((res) => res.days);
 }

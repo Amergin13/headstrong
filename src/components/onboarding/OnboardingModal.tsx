@@ -581,8 +581,10 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
   const importedSummaryText = healthImport ? formatOnboardingHealthSummary(healthImport, weightUnit) : null;
   const baselineReadySummary = [
     hcConnectedFlag || healthImport ? 'Health Connect' : null,
-    !statsSkipped && parsedWeightKg ? formatWeight(parsedWeightKg, weightUnit) : null,
     !statsSkipped && selectedSex ? (selectedSex === 'male' ? 'Male' : 'Female') : null,
+    !statsSkipped && parsedAge ? `${parsedAge} yrs` : null,
+    !statsSkipped && parsedWeightKg ? formatWeight(parsedWeightKg, weightUnit) : null,
+    !statsSkipped && parsedHeightCm ? `${parsedHeightCm} cm` : null,
   ]
     .filter(Boolean)
     .join(' · ');
@@ -964,7 +966,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
 
               <ul className="flex flex-col gap-2">
                 <li className="wk-caption" style={{ color: 'var(--color-text-primary)' }}>
-                  Bodyweight &amp; height — calibrates starting loads and strength standards
+                  Bodyweight, height, sex &amp; age (when available) — calibrates starting loads and strength standards
                 </li>
                 <li className="wk-caption" style={{ color: 'var(--color-text-primary)' }}>
                   Sleep, resting HR &amp; HRV — unlocks daily recovery status from day one
@@ -975,7 +977,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
               </ul>
 
               <p className="wk-caption">
-                Read-only and kept on your device. Health Connect doesn&apos;t store sex or age—you can add those next or skip.
+                Read-only and kept on your device. Android Health Connect provides weight and height natively; sex and age import automatically if present in your export, or you can add or skip them next.
               </p>
 
               {!isHealthBridgeReady && !healthImport && (

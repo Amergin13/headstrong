@@ -16560,7 +16560,10 @@ Exercise,,Date,Workout,Sets,Reps,Tempo,Rest,Notes,Set 1,Set 2,Set 3,Set 4
     const path74 = require('path');
     const {
       importFromHealthConnectJson: importJson74,
+      importFromHealthConnectBridge: importBridge74,
       formatOnboardingHealthSummary: formatHcSum74,
+      computeAgeFromBirthDate: computeAge74,
+      mergeHealthConnectProfile: mergeHcProfile74,
     } = await import('../../services/onboardingHealthImport');
 
     // 1. JSON export import pulls real weight, height, recovery/steps history & optional profile fields without inventing missing metrics.
@@ -16593,20 +16596,141 @@ Exercise,,Date,Workout,Sets,Reps,Tempo,Rest,Notes,Set 1,Set 2,Set 3,Set 4
         parsed74.gender === 'female' &&
         parsed74.age === 31 &&
         parsed74.biometricDaysCount === 2 &&
+        summaryKg74.includes('Female') &&
+        summaryKg74.includes('31 yrs') &&
         summaryKg74.includes('63.8 kg') &&
         summaryKg74.includes('168 cm') &&
         summaryKg74.includes('2 days of health history') &&
         emptyParsed74.latestBodyweightKg === undefined &&
         emptyParsed74.gender === undefined &&
+        emptyParsed74.age === undefined &&
+        emptyParsed74.latestHeightCm === undefined &&
         /no recent Health Connect records/i.test(emptySummary74) &&
         threwOnBadJson74,
       `Onboarding Health Connect importer extracts real stats/history cleanly without fabricating defaults (got "${summaryKg74}")`
     );
 
+    // 1b. Sex, age (from birthDate / dateOfBirth / birthYear / FHIR Patient) & height (multi-unit + latest record) extraction + profile merging.
+    const refDate74 = new Date(2026, 10, 21); // Nov 21, 2026 local
+    const fhirExport74 = JSON.stringify({
+      medicalResources: [
+        {
+          fhirResource: {
+            data: JSON.stringify({
+              resourceType: 'Patient',
+              gender: 'male',
+              birthDate: '1991-12-05', // Birthday hasn't passed yet on Nov 21, 2026 -> 34
+            }),
+          },
+        },
+      ],
+      records: [
+        { type: 'HeightRecord', time: '2026-10-01T08:00:00Z', height: { inInches: 70 } }, // 178 cm (older)
+        { type: 'HeightRecord', time: '2026-11-19T08:00:00Z', height: { value: 181.4, unit: 'cm' } }, // 181 cm (newer)
+      ],
+    });
+    const parsedFhir74 = importJson74(fhirExport74, refDate74);
+    const fhirSummary74 = formatHcSum74(parsedFhir74, 'kg');
+    const dobBefore74 = computeAge74('1991-12-05', refDate74);
+    const dobAfter74 = computeAge74('1991-11-05', refDate74);
+    const birthYear74 = computeAge74(1994, refDate74);
+    const invalidDob74 = computeAge74('2099-01-01', refDate74);
+
+    // Background merge never clobbers explicitly entered sex/age, while filling unentered demographics & latest height.
+    const explicitProfile74 = {
+      ...NEW_USER_PROFILE,
+      gender: 'female' as const,
+      sexEntered: true,
+      age: 29,
+      ageEntered: true,
+      measuredHeightCm: 170,
+      heightCm: 170,
+    };
+    const bgPatchExplicit74 = mergeHcProfile74(explicitProfile74, parsedFhir74, { overwriteExplicit: false });
+    const blankProfile74 = {
+      ...NEW_USER_PROFILE,
+      sexEntered: false,
+      ageEntered: false,
+      measuredHeightCm: undefined,
+    };
+    const bgPatchBlank74 = mergeHcProfile74(blankProfile74, parsedFhir74, { overwriteExplicit: false });
+    const manualPatch74 = mergeHcProfile74(explicitProfile74, parsedFhir74, { overwriteExplicit: true });
+    assert(
+      parsedFhir74.gender === 'male' &&
+        parsedFhir74.age === 34 &&
+        parsedFhir74.latestHeightCm === 181 &&
+        fhirSummary74.includes('Male') &&
+        fhirSummary74.includes('34 yrs') &&
+        fhirSummary74.includes('181 cm') &&
+        dobBefore74 === 34 &&
+        dobAfter74 === 35 &&
+        birthYear74 === 32 &&
+        invalidDob74 === undefined &&
+        bgPatchExplicit74.measuredHeightCm === 181 &&
+        bgPatchExplicit74.heightCm === 181 &&
+        bgPatchExplicit74.gender === undefined &&
+        bgPatchExplicit74.age === undefined &&
+        bgPatchBlank74.gender === 'male' &&
+        bgPatchBlank74.sexEntered === true &&
+        bgPatchBlank74.age === 34 &&
+        bgPatchBlank74.ageEntered === true &&
+        bgPatchBlank74.measuredHeightCm === 181 &&
+        manualPatch74.gender === 'male' &&
+        manualPatch74.age === 34 &&
+        manualPatch74.measuredHeightCm === 181,
+      `Health Connect demographic extraction (sex, DOB/age, FHIR Patient, multi-unit height) and non-destructive profile merge work cleanly (got "${fhirSummary74}")`
+    );
+
+    // 1c. Native bridge biometrics reply carries top-level profile (heightCm + optional sex/age/birthDate) into importFromHealthConnectBridge.
+    const hcBridgeMod74 = await import('../../services/healthConnectBridge');
+    const posted74: any[] = [];
+    const mockPort74: any = {
+      onmessage: null as any,
+      postMessage: (raw: string) => {
+        const msg = JSON.parse(raw);
+        posted74.push(msg);
+        if (msg.type === 'status') {
+          mockPort74.onmessage?.({
+            data: JSON.stringify({
+              type: 'status',
+              available: true,
+              granted: false,
+              stepsGranted: false,
+              biometricsGranted: true,
+              heightGranted: true,
+            }),
+          });
+        } else if (msg.type === 'read-biometrics') {
+          mockPort74.onmessage?.({
+            data: JSON.stringify({
+              type: 'biometrics',
+              requestId: msg.requestId,
+              profile: { heightCm: 179, gender: 'male', birthDate: '1990-04-10' },
+              days: [{ date: '2026-11-20', bodyweightKg: 81.5, heightCm: 179 }],
+            }),
+          });
+        }
+      },
+    };
+    hcBridgeMod74.attachAppPort(mockPort74, 5);
+    const bridgeImport74 = await importBridge74(29);
+    assert(
+      bridgeImport74.latestBodyweightKg === 81.5 &&
+        bridgeImport74.latestHeightCm === 179 &&
+        bridgeImport74.gender === 'male' &&
+        typeof bridgeImport74.age === 'number' &&
+        bridgeImport74.age >= 35 &&
+        bridgeImport74.age <= 37,
+      `Native Health Connect bridge pulls height plus forward-compatible sex/age when present (got height=${bridgeImport74.latestHeightCm}, sex=${bridgeImport74.gender}, age=${bridgeImport74.age})`
+    );
+
     // 2. Static wiring checks: dedicated Step 3 Health Connect screen, Step 4 lean skippable stats form (blank by default),
-    //    App persistence of imported history & explicit manual fields, and native READ_HEIGHT support.
+    //    App persistence, background sync profile update, WatchSyncModal JSON/bridge profile import, and native READ_HEIGHT full-window read.
     const obSrc74 = fs74.readFileSync(path74.join(process.cwd(), 'src/components/onboarding/OnboardingModal.tsx'), 'utf8');
     const appSrc74 = fs74.readFileSync(path74.join(process.cwd(), 'src/App.tsx'), 'utf8');
+    const actSyncSrc74 = fs74.readFileSync(path74.join(process.cwd(), 'src/hooks/useActivitySync.ts'), 'utf8');
+    const watchModalSrc74 = fs74.readFileSync(path74.join(process.cwd(), 'src/components/program/WatchSyncModal.tsx'), 'utf8');
+    const hcSvcSrc74 = fs74.readFileSync(path74.join(process.cwd(), 'src/services/healthConnectService.ts'), 'utf8');
     const hcKt74 = fs74.readFileSync(path74.join(process.cwd(), 'app/src/main/java/com/headstrong/app/HealthConnectBridge.kt'), 'utf8');
     const manifest74 = fs74.readFileSync(path74.join(process.cwd(), 'app/src/main/AndroidManifest.xml'), 'utf8');
     assert(
@@ -16627,9 +16751,16 @@ Exercise,,Date,Workout,Sets,Reps,Tempo,Rest,Notes,Set 1,Set 2,Set 3,Set 4
         appSrc74.includes('athlete.sexEntered') &&
         appSrc74.includes('athlete.ageEntered') &&
         appSrc74.includes('athlete.measuredHeightCm') &&
+        actSyncSrc74.includes('readHealthConnectBiometricsWithProfile') &&
+        actSyncSrc74.includes('mergeHealthConnectProfile') &&
+        watchModalSrc74.includes('importFromHealthConnectJson') &&
+        watchModalSrc74.includes('mergeHealthConnectProfile') &&
+        hcSvcSrc74.includes("'HeightRecord'") &&
         hcKt74.includes('HEIGHT_PERMISSION') &&
+        hcKt74.includes('TimeRangeFilter.after(earliest)') &&
+        hcKt74.includes('reply.put("profile"') &&
         manifest74.includes('android.permission.health.READ_HEIGHT'),
-      'Dedicated Health Connect onboarding step, lean skippable baseline stats fallback, App persistence, and native READ_HEIGHT permission are wired cleanly end-to-end'
+      'Dedicated Health Connect onboarding step, background sync, WatchSyncModal import, native full-window READ_HEIGHT + profile payload, and App persistence are wired cleanly end-to-end'
     );
   }
 

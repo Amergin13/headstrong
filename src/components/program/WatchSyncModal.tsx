@@ -21,7 +21,10 @@ import {
   WHOOP_CONFIG,
   parseWhoopCsvExport,
 } from '../../services/whoopService';
-import { parseHealthConnectExport } from '../../services/healthConnectService';
+import {
+  importFromHealthConnectJson,
+  mergeHealthConnectProfile,
+} from '../../services/onboardingHealthImport';
 import { HealthConnectStatus } from '../../services/healthConnectBridge';
 import { X } from 'lucide-react';
 import { triggerHaptic } from '../../utils/haptics';
@@ -118,9 +121,15 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
     try {
       const accessToken = selectedProvider === 'whoop' ? profile.whoopAccessToken : undefined;
       const refreshToken = selectedProvider === 'whoop' ? profile.whoopRefreshToken : undefined;
+      let extractedProfilePatch: Partial<UserProfile> = {};
 
       const result = await syncWearableBiometrics(selectedProvider, {
         onProgress: (prog) => setSyncProgress(prog),
+        onProfileExtracted: (demographics) => {
+          extractedProfilePatch = mergeHealthConnectProfile(profile, demographics, {
+            overwriteExplicit: false,
+          });
+        },
         forcedState: stateOverride,
         accessToken,
         refreshToken,
@@ -129,7 +138,10 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
       triggerHaptic('success');
       onSyncCompleted(result, selectedProvider);
       if (onUpdateProfile) {
-        onUpdateProfile(setActiveTracker(selectedProvider, profile));
+        onUpdateProfile({
+          ...setActiveTracker(selectedProvider, profile),
+          ...extractedProfilePatch,
+        });
       }
     } catch (err: any) {
       if (err instanceof WhoopReconnectNeededError) setWhoopReconnectNeeded(true);
@@ -228,8 +240,43 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
           }
         }
 
-        const parsedHc = parseHealthConnectExport(text);
-        const parsed = parsedHc.length > 0 ? parsedHc : parseFitbitExport(text);
+        const trimmedText = text.trim();
+        if (trimmedText.startsWith('{') || trimmedText.startsWith('[')) {
+          const hcImport = importFromHealthConnectJson(trimmedText);
+          const hasHcDemographics = Boolean(
+            hcImport.latestHeightCm !== undefined ||
+              hcImport.gender !== undefined ||
+              hcImport.age !== undefined
+          );
+          if (hcImport.biometrics.length > 0 || hasHcDemographics) {
+            const profilePatch = mergeHealthConnectProfile(profile, hcImport, { overwriteExplicit: true });
+            const latest =
+              hcImport.biometrics.length > 0
+                ? { ...hcImport.biometrics[hcImport.biometrics.length - 1], source: 'health_connect' as const }
+                : null;
+            if (latest) {
+              onSyncCompleted(latest, 'health_connect');
+            }
+            if (onUpdateProfile) {
+              onUpdateProfile({
+                ...setActiveTracker('health_connect', profile),
+                healthConnectConnected: true,
+                healthConnectLastSync: new Date().toISOString(),
+                ...profilePatch,
+              });
+            }
+            const summaryBits: string[] = [];
+            if (hcImport.gender) summaryBits.push(hcImport.gender === 'male' ? 'Male' : 'Female');
+            if (hcImport.age) summaryBits.push(`${hcImport.age} yrs`);
+            if (hcImport.latestHeightCm) summaryBits.push(`${hcImport.latestHeightCm} cm`);
+            if (latest) summaryBits.push(`latest day ${latest.date}`);
+            setImportStatus(`Imported from Health Connect (${summaryBits.join(' · ')}).`);
+            triggerHaptic('success');
+            return;
+          }
+        }
+
+        const parsed = parseFitbitExport(text);
         if (parsed.length > 0) {
           const latest = { ...parsed[parsed.length - 1], source: 'health_connect' as const };
           onSyncCompleted(latest, 'health_connect');
@@ -373,8 +420,8 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
             'Sync your overnight recovery score, HRV, resting heart rate, and sleep duration automatically to calibrate your daily training volume and RIR targets.'}
           {selectedProvider === 'health_connect' &&
             (hcBridgeAvailable
-              ? 'Allow Health Connect below so sleep, heart rate, HRV, weight, body fat, workouts, and daily steps from Google Pixel Watch, Fitbit, Samsung Health, Garmin and Wear OS sync automatically.'
-              : "In the Treise app from Google Play, Android Health Connect syncs sleep, heart rate, HRV, weight, body fat, workouts, and daily steps from Pixel Watch, Fitbit, Samsung Health and Garmin automatically. You can also import an export file below.")}
+              ? 'Allow Health Connect below so sleep, heart rate, HRV, weight, height, body fat, workouts, and daily steps from Google Pixel Watch, Fitbit, Samsung Health, Garmin and Wear OS sync automatically.'
+              : "In the Treise app from Google Play, Android Health Connect syncs sleep, heart rate, HRV, weight, height, body fat, workouts, and daily steps from Pixel Watch, Fitbit, Samsung Health and Garmin automatically. You can also import a Health Connect JSON export below (including sex, age, and height when present).")}
         </p>
       )}
 

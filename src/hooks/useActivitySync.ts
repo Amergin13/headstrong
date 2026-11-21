@@ -21,20 +21,26 @@ import {
 } from '../services/activitySources';
 import {
   DailyStepRecord,
-  HealthConnectBiometricDay,
+  HealthConnectBiometricsResult,
   HealthConnectStatus,
   getHealthConnectStatus,
   onHealthConnectStatus,
-  readHealthConnectBiometrics,
+  readHealthConnectBiometricsWithProfile,
   readHealthConnectSessions,
   readHealthConnectSteps,
   startHealthConnectBridge,
 } from '../services/healthConnectBridge';
+import {
+  extractHealthConnectDemographics,
+  mergeHealthConnectProfile,
+} from '../services/healthConnectProfile';
 import { mergeDailySteps, mergeHealthConnectBiometrics } from '../services/wearableSyncService';
 import { loadDismissedActivityIds, saveDismissedActivityIds } from '../services/storage';
 
 const RESYNC_MS = 10 * 60 * 1000;
 const LOOKBACK_MS = LOOKBACK_DAYS * 24 * 60 * 60 * 1000;
+// Use the full 29-day Health Connect window for biometrics so infrequent records like height aren't missed.
+const HEALTH_CONNECT_BIOMETRICS_LOOKBACK_MS = 29 * 24 * 60 * 60 * 1000;
 
 interface ActivitySyncDeps {
   profile: UserProfile;
@@ -100,10 +106,10 @@ export function useActivitySync({ profile, setProfile, activities, setActivities
         p.healthConnectActivities && hc.stepsGranted && setBiometrics
           ? readHealthConnectSteps(new Date(Date.now() - LOOKBACK_MS))
           : Promise.resolve([]);
-      const biometricsJob: Promise<HealthConnectBiometricDay[]> =
-        (p.healthConnectActivities || p.healthConnectConnected) && hc.biometricsGranted && setBiometrics
-          ? readHealthConnectBiometrics(new Date(Date.now() - LOOKBACK_MS))
-          : Promise.resolve([]);
+      const biometricsJob: Promise<HealthConnectBiometricsResult> =
+        (p.healthConnectActivities || p.healthConnectConnected) && (hc.biometricsGranted || hc.heightGranted)
+          ? readHealthConnectBiometricsWithProfile(new Date(Date.now() - HEALTH_CONNECT_BIOMETRICS_LOOKBACK_MS))
+          : Promise.resolve({ days: [] });
       setSyncing(true);
       const [results, stepsResult, bioResult] = await Promise.all([
         Promise.allSettled(jobs),
@@ -119,8 +125,18 @@ export function useActivitySync({ profile, setProfile, activities, setActivities
         console.warn('Activity sync skipped Health Connect steps:', stepOutcome.reason);
       }
       const bioOutcome = bioResult[0];
-      if (bioOutcome?.status === 'fulfilled' && bioOutcome.value.length > 0 && setBiometrics) {
-        setBiometrics((prev) => mergeHealthConnectBiometrics(prev, bioOutcome.value));
+      if (bioOutcome?.status === 'fulfilled') {
+        const { days, profile: hcProfile } = bioOutcome.value;
+        if (days.length > 0 && setBiometrics) {
+          setBiometrics((prev) => mergeHealthConnectBiometrics(prev, days));
+        }
+        const extracted = extractHealthConnectDemographics({ profile: hcProfile, days });
+        if (extracted.latestHeightCm !== undefined || extracted.gender !== undefined || extracted.age !== undefined) {
+          setProfile((prev) => {
+            const patch = mergeHealthConnectProfile(prev, extracted, { overwriteExplicit: false });
+            return Object.keys(patch).length > 0 ? { ...prev, ...patch } : prev;
+          });
+        }
       } else if (bioOutcome?.status === 'rejected') {
         console.warn('Activity sync skipped Health Connect biometrics:', bioOutcome.reason);
       }
@@ -142,7 +158,7 @@ export function useActivitySync({ profile, setProfile, activities, setActivities
         notifyRef.current(`Found ${counted.length} workouts from your apps. They count as active days.`, 'Active days');
       }
     },
-    [setActivities, setBiometrics]
+    [setActivities, setBiometrics, setProfile]
   );
 
   // On launch, when Health Connect becomes readable, and whenever the app comes back to the front.
@@ -155,10 +171,21 @@ export function useActivitySync({ profile, setProfile, activities, setActivities
     return () => document.removeEventListener('visibilitychange', onVisible);
   }, [syncActivities]);
   useEffect(() => {
-    if ((hcStatus.granted || hcStatus.stepsGranted || hcStatus.biometricsGranted) && profile.healthConnectActivities) {
+    if (
+      (hcStatus.granted || hcStatus.stepsGranted || hcStatus.biometricsGranted || hcStatus.heightGranted) &&
+      (profile.healthConnectActivities || profile.healthConnectConnected)
+    ) {
       syncActivities(true);
     }
-  }, [hcStatus.granted, hcStatus.stepsGranted, hcStatus.biometricsGranted, profile.healthConnectActivities, syncActivities]);
+  }, [
+    hcStatus.granted,
+    hcStatus.stepsGranted,
+    hcStatus.biometricsGranted,
+    hcStatus.heightGranted,
+    profile.healthConnectActivities,
+    profile.healthConnectConnected,
+    syncActivities,
+  ]);
 
   const logManualActivity = useCallback(
     (type: ActivityType, minutes: number) => {

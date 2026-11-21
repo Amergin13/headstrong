@@ -514,14 +514,16 @@ object HealthConnectBridge {
                 }
             }
 
-            // 7. Height (latest cm per day, read across available history)
+            // 7. Height (latest cm per day, always scanning the full 29-day window since height is logged infrequently)
+            var mostRecentHeight: Pair<Instant, Int>? = null
             if (granted.contains(HEIGHT_PERMISSION)) {
                 try {
+                    val heightFilter = TimeRangeFilter.after(earliest)
                     val latestHeight = HashMap<String, Pair<Instant, Double>>()
                     var pageToken: String? = null
                     do {
                         val res = withContext(Dispatchers.IO) {
-                            client.readRecords(ReadRecordsRequest(HeightRecord::class, filter, pageToken = pageToken))
+                            client.readRecords(ReadRecordsRequest(HeightRecord::class, heightFilter, pageToken = pageToken))
                         }
                         for (r in res.records) {
                             val cm = r.height.inMeters * 100.0
@@ -530,6 +532,9 @@ object HealthConnectBridge {
                             val prev = latestHeight[d]
                             if (prev == null || r.time.isAfter(prev.first)) {
                                 latestHeight[d] = Pair(r.time, cm)
+                            }
+                            if (mostRecentHeight == null || r.time.isAfter(mostRecentHeight.first)) {
+                                mostRecentHeight = Pair(r.time, cm.roundToInt())
                             }
                         }
                         pageToken = res.pageToken
@@ -545,6 +550,9 @@ object HealthConnectBridge {
             val days = JSONArray()
             for (d in byDate.keys.sorted()) {
                 days.put(byDate[d])
+            }
+            if (mostRecentHeight != null) {
+                reply.put("profile", JSONObject().put("heightCm", mostRecentHeight.second))
             }
             post(reply.put("days", days))
         } catch (e: SecurityException) {

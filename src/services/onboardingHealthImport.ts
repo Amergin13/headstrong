@@ -1,18 +1,33 @@
 import { DetectedActivity } from '../engine/activeDays';
-import { BiometricLog, Gender } from '../engine/types';
+import { BiometricLog } from '../engine/types';
 import { formatPreciseWeight, WeightUnit } from '../utils/units';
 import { toDetectedActivities } from './activitySources';
 import {
   getHealthConnectStatus,
   HealthConnectBiometricDay,
-  readHealthConnectBiometrics,
+  HealthConnectBiometricsResult,
+  HealthConnectProfileData,
+  readHealthConnectBiometricsWithProfile,
   readHealthConnectSessions,
   readHealthConnectSteps,
 } from './healthConnectBridge';
+import {
+  extractHealthConnectDemographics,
+  HealthConnectDemographics,
+} from './healthConnectProfile';
 import { parseHealthConnectExport } from './healthConnectService';
 import { mergeDailySteps, mergeHealthConnectBiometrics } from './wearableSyncService';
 
-export interface OnboardingHealthImportResult {
+export {
+  computeAgeFromBirthDate,
+  extractHealthConnectDemographics,
+  mergeHealthConnectProfile,
+  parseHeightCmValue,
+  parseSexValue,
+} from './healthConnectProfile';
+export type { HealthConnectDemographics } from './healthConnectProfile';
+
+export interface OnboardingHealthImportResult extends HealthConnectDemographics {
   source: 'health_connect_bridge' | 'health_connect_export';
   /** Normalized daily biometric/recovery/body/step logs ready to merge into app biometrics. */
   biometrics: BiometricLog[];
@@ -20,16 +35,10 @@ export interface OnboardingHealthImportResult {
   activities: DetectedActivity[];
   /** Latest real bodyweight found in the imported records (kg), if any. */
   latestBodyweightKg?: number;
-  /** Latest real height found in the imported records (cm), if any. */
-  latestHeightCm?: number;
   /** Latest resting heart rate found in the imported records (bpm), if any. */
   latestRestingHr?: number;
   /** Recent average sleep duration found in the imported records (hours), if any. */
   avgSleepHours?: number;
-  /** Optional sex/gender only if explicitly present in a personal JSON health export. */
-  gender?: Gender;
-  /** Optional age (years) only if explicitly present in a personal JSON health export. */
-  age?: number;
   /** Count of days with at least one recovery/body/step metric. */
   biometricDaysCount: number;
   /** Count of recent workout/activity sessions imported. */
@@ -41,7 +50,7 @@ const DEFAULT_LOOKBACK_DAYS = 29;
 function summarizeExtractedMetrics(
   biometrics: BiometricLog[],
   activities: DetectedActivity[],
-  extra?: { latestHeightCm?: number; gender?: Gender; age?: number }
+  extra?: HealthConnectDemographics
 ): Omit<OnboardingHealthImportResult, 'source'> {
   const ordered = [...biometrics].sort((a, b) => a.date.localeCompare(b.date));
   let latestBodyweightKg: number | undefined;
@@ -94,12 +103,17 @@ export async function importFromHealthConnectBridge(
   const since = new Date(Date.now() - lookbackDays * 24 * 60 * 60 * 1000);
 
   const [bioRes, stepsRes, sessRes] = await Promise.allSettled([
-    status.biometricsGranted ? readHealthConnectBiometrics(since) : Promise.resolve<HealthConnectBiometricDay[]>([]),
+    status.biometricsGranted || status.heightGranted
+      ? readHealthConnectBiometricsWithProfile(since)
+      : Promise.resolve<HealthConnectBiometricsResult>({ days: [] }),
     status.stepsGranted ? readHealthConnectSteps(since) : Promise.resolve([]),
     status.granted ? readHealthConnectSessions(since) : Promise.resolve([]),
   ]);
 
-  const rawBioDays = bioRes.status === 'fulfilled' ? bioRes.value : [];
+  const rawBioResult: HealthConnectBiometricsResult =
+    bioRes.status === 'fulfilled' ? bioRes.value : { days: [] };
+  const rawBioDays: HealthConnectBiometricDay[] = rawBioResult.days;
+  const bridgeProfile: HealthConnectProfileData | undefined = rawBioResult.profile;
   const rawSteps = stepsRes.status === 'fulfilled' ? stepsRes.value : [];
   const rawSessions = sessRes.status === 'fulfilled' ? sessRes.value : [];
 
@@ -108,19 +122,16 @@ export async function importFromHealthConnectBridge(
     mergedBiometrics = mergeDailySteps(mergedBiometrics, rawSteps, 'health_connect');
   }
 
-  let latestHeightCm: number | undefined;
-  const sortedRawBio = [...rawBioDays].sort((a, b) => a.date.localeCompare(b.date));
-  for (const d of sortedRawBio) {
-    if (typeof d.heightCm === 'number' && d.heightCm >= 100 && d.heightCm <= 250) {
-      latestHeightCm = Math.round(d.heightCm);
-    }
-  }
+  const demographics = extractHealthConnectDemographics({
+    profile: bridgeProfile,
+    days: rawBioDays,
+  });
 
   const activities = rawSessions.length > 0 ? toDetectedActivities('health_connect', rawSessions) : [];
 
   return {
     source: 'health_connect_bridge',
-    ...summarizeExtractedMetrics(mergedBiometrics, activities, { latestHeightCm }),
+    ...summarizeExtractedMetrics(mergedBiometrics, activities, demographics),
   };
 }
 
@@ -128,54 +139,17 @@ export async function importFromHealthConnectBridge(
  * Parses a real user-provided Health Connect / health JSON export into onboarding baseline stats
  * and biometric history. Throws on invalid JSON; never invents missing values.
  */
-export function importFromHealthConnectJson(rawJson: string): OnboardingHealthImportResult {
+export function importFromHealthConnectJson(
+  rawJson: string,
+  referenceDate: Date = new Date()
+): OnboardingHealthImportResult {
   const parsedObj = JSON.parse(rawJson);
   const biometrics = parseHealthConnectExport(parsedObj);
-
-  let latestHeightCm: number | undefined;
-  let gender: Gender | undefined;
-  let age: number | undefined;
-
-  const inspectMeta = (obj: any) => {
-    if (!obj || typeof obj !== 'object') return;
-    const rawGender = String(obj.gender ?? obj.sex ?? obj.biologicalSex ?? '').toLowerCase().trim();
-    if (rawGender === 'male' || rawGender === 'm') gender = 'male';
-    else if (rawGender === 'female' || rawGender === 'f') gender = 'female';
-
-    const rawAge = Number(obj.age);
-    if (Number.isFinite(rawAge) && rawAge >= 13 && rawAge <= 110) {
-      age = Math.round(rawAge);
-    }
-    const rawHeightCm = Number(obj.heightCm ?? obj.measuredHeightCm);
-    if (Number.isFinite(rawHeightCm) && rawHeightCm >= 100 && rawHeightCm <= 250) {
-      latestHeightCm = Math.round(rawHeightCm);
-    }
-    const rawHeightMeters = Number(obj.height?.inMeters ?? obj.heightMeters);
-    if (Number.isFinite(rawHeightMeters) && rawHeightMeters >= 1.0 && rawHeightMeters <= 2.5) {
-      latestHeightCm = Math.round(rawHeightMeters * 100);
-    }
-  };
-
-  inspectMeta(parsedObj);
-  inspectMeta(parsedObj?.profile);
-
-  const records = Array.isArray(parsedObj)
-    ? parsedObj
-    : Array.isArray(parsedObj?.records)
-    ? parsedObj.records
-    : Array.isArray(parsedObj?.Data)
-    ? parsedObj.Data
-    : [];
-  for (const rec of records) {
-    if (!rec || typeof rec !== 'object') continue;
-    if (rec.type === 'HeightRecord' || rec.heightCm !== undefined || rec.height?.inMeters !== undefined) {
-      inspectMeta(rec);
-    }
-  }
+  const demographics = extractHealthConnectDemographics(parsedObj, referenceDate);
 
   return {
     source: 'health_connect_export',
-    ...summarizeExtractedMetrics(biometrics, [], { latestHeightCm, gender, age }),
+    ...summarizeExtractedMetrics(biometrics, [], demographics),
   };
 }
 
@@ -185,6 +159,12 @@ export function formatOnboardingHealthSummary(
   weightUnit: WeightUnit
 ): string {
   const parts: string[] = [];
+  if (result.gender) {
+    parts.push(result.gender === 'male' ? 'Male' : 'Female');
+  }
+  if (result.age && result.age > 0) {
+    parts.push(`${result.age} yrs`);
+  }
   if (result.latestBodyweightKg && result.latestBodyweightKg > 0) {
     parts.push(formatPreciseWeight(result.latestBodyweightKg, weightUnit));
   }
