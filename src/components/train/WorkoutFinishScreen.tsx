@@ -1,4 +1,5 @@
 import React, { useMemo } from 'react';
+import { Sparkles } from 'lucide-react';
 import { GoalProgress, describeGoalStanding } from '../../services/athleteGoals';
 import { WhoopWorkoutStrainSummary } from '../../services/whoopService';
 import { FinishPersonalBest, WorkoutFinish } from '../../services/workoutFinish';
@@ -18,6 +19,7 @@ interface WorkoutFinishScreenProps {
   hasLiveWhoopConnection?: boolean;
   isSyncingWhoop?: boolean;
   onRefreshWhoop?: () => void;
+  onDebriefWithCoach?: () => void;
 }
 
 /** Semantic celebratory confetti: Positive Mint, Crisp White, and High-Contrast Slate. */
@@ -109,6 +111,7 @@ export const WorkoutFinishScreen: React.FC<WorkoutFinishScreenProps> = ({
   hasLiveWhoopConnection = false,
   isSyncingWhoop = false,
   onRefreshWhoop,
+  onDebriefWithCoach,
 }) => {
   const units = useUnits();
   const { report, personalBests, goalProgress, headline } = finish;
@@ -260,15 +263,31 @@ export const WorkoutFinishScreen: React.FC<WorkoutFinishScreenProps> = ({
           </div>
         )}
 
-        <button
-          type="button"
-          onClick={handleDone}
-          aria-label="Close: done"
-          className="wk-button transition-transform active:scale-[0.98] mt-5"
-          style={{ background: 'var(--color-action-primary-bg)', color: 'var(--color-action-primary-fg)' }}
-        >
-          Done
-        </button>
+        <div className="flex flex-col gap-2 mt-5">
+          <button
+            type="button"
+            onClick={handleDone}
+            aria-label="Close: done"
+            className="wk-button transition-transform active:scale-[0.98]"
+            style={{ background: 'var(--color-action-primary-bg)', color: 'var(--color-action-primary-fg)' }}
+          >
+            Done
+          </button>
+          {onDebriefWithCoach && (
+            <button
+              type="button"
+              onClick={() => {
+                triggerHaptic('light');
+                onDebriefWithCoach();
+              }}
+              className="wk-btn-secondary w-full min-h-[44px] justify-center gap-2"
+              style={{ borderColor: 'rgb(var(--color-coach-accent-rgb) / 0.35)' }}
+            >
+              <Sparkles className="w-4 h-4 shrink-0" style={{ color: 'var(--color-coach-accent)' }} strokeWidth={2.2} aria-hidden="true" />
+              <span>Debrief with Treise</span>
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );

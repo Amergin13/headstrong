@@ -214,8 +214,14 @@ export function detectGoalChange(
     };
   }
 
-  // Which lift's strength level leads the Progress page.
-  if (/\b(follow|focus on|track|lead with|prioriti[sz]e)\b/.test(msg) && lift?.pillar && (mentionsGoal || /\b(level|strength|progress)\b/.test(msg) || /^(follow|focus on|track)\b/.test(msg))) {
+  // Which lift's strength level leads the Progress page (never hijack program-wide ordering like "prioritize squat across my program").
+  const isProgramOrderingRequest = /\b(program|plan|sessions?|workouts?|first\s+in|order|start\s+with)\b/.test(msg);
+  if (
+    !isProgramOrderingRequest &&
+    /\b(follow|focus on|track|lead with|prioriti[sz]e)\b/.test(msg) &&
+    lift?.pillar &&
+    (mentionsGoal || /\b(level|strength|progress)\b/.test(msg) || /^(follow|focus on|track)\b/.test(msg))
+  ) {
     const logged = workouts.some((w) => w.completed && w.exercises.some((e) => e.pillar === lift.pillar && e.sets.some((s) => s.completed && !s.isWarmup && (s.actualReps ?? 0) > 0)));
     return {
       goalSettings: cleaned({ ...settings, strengthFocus: lift.pillar }),

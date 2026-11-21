@@ -133,6 +133,8 @@ export type SetType = 'working' | 'warmup' | 'drop' | 'myo';
 
 export type ResistanceProfile = 'lengthened' | 'mid' | 'shortened';
 
+export type ExerciseStability = 'high' | 'moderate' | 'low';
+
 export type JointType =
   | 'Shoulder Capsule'
   | 'Elbow Tendons'
@@ -208,6 +210,8 @@ export interface ExerciseDefinition {
   equipment: EquipmentType;
   isRdl?: boolean;
   isWeightedCalisthenic?: boolean;
+  /** True for counterweight-assisted calisthenics (e.g. Assisted Chin-Up) where lower counterweight = heavier effective load. */
+  isAssisted?: boolean;
   isIsolation?: boolean; // True for isolation movements (lateral raises, curls, pushdowns, calves)
   /** True when sets are tracked for duration (seconds/minutes) rather than rep count (e.g., planks, carries, holds). */
   isTimed?: boolean;
@@ -219,6 +223,7 @@ export interface ExerciseDefinition {
   requiredHomeEquipment?: HomeEquipmentTag[]; // Equipment needed when training at home
   whyItWorks?: string; // Plain-English biomechanical rationale for why this alternative works
   resistanceProfile?: ResistanceProfile; // 'lengthened' | 'mid' | 'shortened'
+  stability?: ExerciseStability; // 'high' | 'moderate' | 'low' external stability profile
   sfrScore?: number; // Stimulus-to-Fatigue Ratio (1.0 - 10.0)
   axialLoadIndex?: number; // Spinal / CNS strain index per set (0.0 - 1.0)
   primaryJoints?: JointType[];
@@ -234,6 +239,8 @@ export interface ExerciseSession {
   equipment: EquipmentType;
   isRdl?: boolean;
   isWeightedCalisthenic?: boolean;
+  /** True for counterweight-assisted calisthenics (e.g. Assisted Chin-Up) where lower counterweight = heavier effective load. */
+  isAssisted?: boolean;
   isIsolation?: boolean;
   movementFamily?: string;
   movementFamilyLabel?: string;
@@ -284,6 +291,12 @@ export interface WorkoutSession {
   planId?: PlanId;
   /** Athlete chose to train before the queued session's muscles were recovered. */
   recoveryOverride?: boolean;
+  /** Opt-in 1-tap recovery modulation applied by the athlete on a low-recovery or recovering day. */
+  recoveryModulation?: {
+    mode: 'trim_sets' | 'conservative_rir' | 'both';
+    appliedAt: string;
+    originalSetsByExerciseId?: Record<string, WorkoutSet[]>;
+  };
   /** Working-set IDs already celebrated as a personal best this session. */
   celebratedSetIds?: string[];
 }
@@ -321,6 +334,12 @@ export interface ProgressionPrescription {
   canonicalE1rmKg?: number; // Unified Pillar E1RM preserving continuity across equipment
   isPureBodyweight?: boolean; // Flags zero external load bodyweight movements
   calibratedTempoCue?: string; // Biomechanical tempo cue for hypertrophy progression
+  /** Set when coarse equipment increments (>8% jump) automatically expand the rep ceiling before bumping load. */
+  expandedRepCeiling?: number;
+  /** Plain-English note explaining why the rep ceiling expanded for a coarse weight step. */
+  repCeilingExplanation?: string;
+  /** Individualized Epley strength-endurance denominator when learned from multi-rep-range history (Nuzzo et al., 2024). */
+  enduranceSlopeDenominator?: number;
 }
 
 export interface PillarScore {
@@ -489,9 +508,15 @@ export interface WorkoutDisplaySettings {
   showExerciseCharts?: boolean;
   /** Show the daily steps card on Workout overview / rest days (default: true). */
   showStepsCard?: boolean;
+  /**
+   * Progressive disclosure for RIR (reps in reserve) tracking on sets:
+   * - `undefined`: hidden by default for `'new'` lifters (clean weight × reps), shown for `'intermediate'` / `'experienced'`.
+   * - `true` / `false`: explicit athlete preference.
+   */
+  showRirTracking?: boolean;
 }
 
-export const DEFAULT_WORKOUT_DISPLAY_SETTINGS: Required<WorkoutDisplaySettings> = {
+export const DEFAULT_WORKOUT_DISPLAY_SETTINGS: Required<Omit<WorkoutDisplaySettings, 'showRirTracking'>> = {
   showProgramCard: false,
   showSessionCard: true,
   showRecoveryCard: true,
@@ -502,7 +527,7 @@ export const DEFAULT_WORKOUT_DISPLAY_SETTINGS: Required<WorkoutDisplaySettings> 
 
 export function resolveWorkoutDisplaySettings(
   settings?: WorkoutDisplaySettings | null
-): Required<WorkoutDisplaySettings> {
+): Required<Omit<WorkoutDisplaySettings, 'showRirTracking'>> & Pick<WorkoutDisplaySettings, 'showRirTracking'> {
   return {
     showProgramCard: settings?.showProgramCard ?? DEFAULT_WORKOUT_DISPLAY_SETTINGS.showProgramCard,
     showSessionCard: settings?.showSessionCard ?? DEFAULT_WORKOUT_DISPLAY_SETTINGS.showSessionCard,
@@ -510,7 +535,54 @@ export function resolveWorkoutDisplaySettings(
     showExerciseSummaries: settings?.showExerciseSummaries ?? DEFAULT_WORKOUT_DISPLAY_SETTINGS.showExerciseSummaries,
     showExerciseCharts: settings?.showExerciseCharts ?? DEFAULT_WORKOUT_DISPLAY_SETTINGS.showExerciseCharts,
     showStepsCard: settings?.showStepsCard ?? DEFAULT_WORKOUT_DISPLAY_SETTINGS.showStepsCard,
+    showRirTracking: settings?.showRirTracking,
   };
+}
+
+/**
+ * Resolves whether per-set RIR inputs should be shown on the gym floor.
+ * New lifters start with RIR hidden by default so they focus on clean weight & rep targets
+ * (Alpha Progression; Robinson et al., 2024), while intermediate/experienced lifters or anyone
+ * who toggles it on gets RIR-first logging.
+ */
+export function resolveRirTrackingEnabled(
+  profile?: Pick<UserProfile, 'experienceLevel' | 'workoutDisplay'> | null
+): boolean {
+  if (typeof profile?.workoutDisplay?.showRirTracking === 'boolean') {
+    return profile.workoutDisplay.showRirTracking;
+  }
+  return (profile?.experienceLevel ?? 'intermediate') !== 'new';
+}
+
+export type WeekdayShort = 'Mon' | 'Tue' | 'Wed' | 'Thu' | 'Fri' | 'Sat' | 'Sun';
+export type PreferredTimeOfDay = 'morning' | 'midday' | 'evening' | 'flexible';
+
+/** Optional habit anchor (Kaushal & Rhodes, 2015; Lally et al., 2010) with non-punitive rollover. */
+export interface HabitAnchor {
+  preferredDays?: WeekdayShort[];
+  preferredTime?: PreferredTimeOfDay;
+  /** Short environmental/temporal cue, e.g. "After morning coffee" or "Right after work". */
+  cue?: string;
+}
+
+/** Granular available plate pair counts and dumbbell increments for a gym or home profile. */
+export interface EquipmentInventory {
+  /** Barbell weight in kg (e.g. 20 kg Olympic bar, 15 kg women's bar, or 20.41 kg for 45 lb). */
+  barWeightKg: number;
+  /**
+   * Pairs of plates available per denomination, keyed by display-unit weight string
+   * (e.g. `{ "20": 4, "15": 2, "10": 2, "5": 2, "2.5": 2, "1.25": 2 }` in kg, or `"45"`, `"35"`, `"25"`, `"10"`, `"5"`, `"2.5"` in lb).
+   * Unit is stored explicitly so switching kg/lb never misinterprets plate counts.
+   */
+  plateUnit: 'kg' | 'lb';
+  platePairs: Record<string, number>;
+  /** Dumbbell increment configuration (either fixed rack range + step, or exact available weights). */
+  dumbbellMode: 'range' | 'fixed_list';
+  dumbbellMinKg?: number;
+  dumbbellMaxKg?: number;
+  dumbbellStepKg?: number;
+  /** Exact available per-dumbbell weights in kg when `dumbbellMode === 'fixed_list'`. */
+  availableDumbbellsKg?: number[];
 }
 
 export interface UserProfile {
@@ -541,8 +613,10 @@ export interface UserProfile {
   customPlans?: SavedTrainingPlan[];
   /** Seed/import markers applied to this profile so auto-imports remain idempotent across launches. */
   importedSheetIds?: string[];
-  /** ISO timestamps when each plan was explicitly reset to Day 1 so prior logs stay in stats without blocking a fresh run. */
+  /** ISO timestamps when each plan was explicitly reset so prior logs stay in stats without blocking a fresh run. */
   planCycleStarts?: Record<string, string>;
+  /** Optional starting workoutNumber when a plan was reset to a specific week/day (defaults to 1). */
+  planStartWorkouts?: Record<string, number>;
   /** Persistent program-level exercise swaps, additions, removals, set adjustments, and priority reorders across sessions. */
   programOverrides?: ProgramExerciseOverride[];
   /** Persistent athlete memory facts saved via Treise Coach (injuries, contraindications, preferences, schedule). */
@@ -583,12 +657,25 @@ export interface UserProfile {
   activeLocation?: TrainingLocation;
   availableLocations?: TrainingLocation[];
   homeEquipment?: HomeEquipmentTag[];
+  /** Granular plate pair counts and dumbbell increments per gym / home profile. */
+  equipmentInventories?: Partial<Record<'gym' | 'home', EquipmentInventory>>;
+  /** Optional habit anchor (preferred days/time/cue) with non-punitive asynchronous rollover. */
+  habitAnchor?: HabitAnchor;
   scheduledWeekLocations?: Record<number, TrainingLocation>; // Planned locations for future mesocycle weeks (e.g. week 5 -> 'travel')
   authUserId?: string;
   email?: string;
   avatarUrl?: string;
   authProvider?: 'google' | 'supabase' | 'guest';
   lastLoginAt?: string;
+  /** Opt-in automatic client-side encrypted backup (AES-256-GCM to user's private Google Drive appDataFolder). */
+  cloudBackup?: {
+    enabled: boolean;
+    provider: 'google_drive';
+    lastBackedUpAt?: string;
+    lastBackupHash?: string;
+    lastError?: string;
+    lastRestoredAt?: string;
+  };
 }
 
 export interface AuthUser {
@@ -636,7 +723,13 @@ export function isWhoopConfigured(profile?: UserProfile | null): boolean {
 export interface ProgramExerciseOverride {
   id: string;
   planId: PlanId;
-  kind: 'swap_exercise' | 'add_exercise' | 'remove_exercise' | 'adjust_sets' | 'prioritize_first';
+  kind:
+    | 'swap_exercise'
+    | 'add_exercise'
+    | 'remove_exercise'
+    | 'adjust_sets'
+    | 'adjust_rep_range'
+    | 'prioritize_first';
   targetExerciseId?: string;
   targetExerciseName?: string;
   replacementExerciseId?: string;
@@ -648,6 +741,7 @@ export interface ProgramExerciseOverride {
   replacementDurationSeconds?: number;
   sets?: number;
   setDelta?: number;
+  repRange?: [number, number];
   workoutFilter?: string;
   reason?: string;
   createdAt: string;
@@ -663,7 +757,13 @@ export type AssistantActionType =
   | 'ADJUST_WORKOUT_VOLUME'
   | 'ADD_EXERCISE'
   | 'REMOVE_EXERCISE'
+  | 'LOG_WORKOUT_SET'
+  | 'REORDER_WORKOUT'
+  | 'UPDATE_EXERCISE_NOTE'
+  | 'OVERRIDE_RECOVERY'
   | 'SAVE_ATHLETE_MEMORY'
+  | 'DELETE_ATHLETE_MEMORY'
+  | 'UPDATE_PROFILE'
   | 'SWITCH_GOAL_PHASE'
   | 'SWITCH_LOCATION'
   | 'SHIFT_WORKOUT'
@@ -678,7 +778,13 @@ export type CoachToolName =
   | 'rebalance_program'
   | 'swap_exercise'
   | 'adjust_workout_volume'
+  | 'log_workout_set'
+  | 'reorder_workout_exercises'
+  | 'update_exercise_note'
+  | 'override_recovery_gate'
   | 'save_athlete_memory'
+  | 'delete_athlete_memory'
+  | 'update_athlete_profile'
   | 'modify_workout_exercises'
   | 'switch_location'
   | 'update_home_equipment'
@@ -697,7 +803,7 @@ export type CoachMutationStatus =
   | 'noop';
 
 export interface CoachStateDiff {
-  object_type: 'Program' | 'Workout' | 'Exercise' | 'Athlete' | 'Goal' | 'Biometric' | 'ActiveDay';
+  object_type: 'Program' | 'Workout' | 'Exercise' | 'Athlete' | 'Goal' | 'Biometric' | 'ActiveDay' | 'Dashboard';
   object_id: string;
   label: string;
   previous_state: Record<string, unknown>;
@@ -707,10 +813,19 @@ export interface CoachStateDiff {
 export interface CoachSuggestedAction {
   label: string;
   prompt: string;
+  /** When true, populates the composer for the athlete to complete instead of sending immediately. */
+  fill?: boolean;
 }
 
 export interface CoachPendingConfirmation {
-  tool_name: 'reset_program' | 'swap_exercise' | 'adjust_workout_volume' | 'modify_program' | 'rebalance_program';
+  tool_name:
+    | 'reset_program'
+    | 'swap_exercise'
+    | 'adjust_workout_volume'
+    | 'modify_program'
+    | 'rebalance_program'
+    | 'override_recovery_gate'
+    | 'delete_athlete_memory';
   args: Record<string, unknown>;
   title: string;
   summary: string;
@@ -763,6 +878,11 @@ export interface AssistantChatMessage {
   undoSnapshot?: CoachUndoSnapshot;
   suggestedActions?: CoachSuggestedAction[];
   navigateTarget?: 'train' | 'program' | 'analytics';
+  navigateDetail?: {
+    detail?: string;
+    goalId?: string;
+    exerciseId?: string;
+  };
   navigateLabel?: string;
   knowledgeGraphCitations?: {
     label: string;

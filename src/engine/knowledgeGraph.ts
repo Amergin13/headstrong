@@ -218,12 +218,12 @@ export const EXERCISE_SCIENCE_KNOWLEDGE_BASE: ScientificPrinciple[] = [
     id: 'sp-e1rm',
     topic: 'Load Mechanics & E1RM',
     title: 'RIR-Adjusted Estimated 1-Rep Max (E1RM)',
-    formula: 'E1RM = Effective Weight × (1 + (Reps + RIR) / 30)',
+    formula: 'E1RM = Effective Weight × (1 + min(Reps + EffectiveRIR, 15) / 30), restricted to sets at <= 3 RIR (RIR halved above 12 reps)',
     scientificRationale:
-      'Based on an augmented Lombardi/Epley progression model. Accounting for Repetitions in Reserve (RIR) standardizes true neuromuscular capacity without the severe injury and systemic fatigue costs of taking heavy compound lifts to absolute concentric failure.',
-    academicCitation: 'Epley (1985); Lombardi (1989); Zourdos et al. (2016)',
+      'Based on an augmented Epley/Lombardi progression model. Halperin et al. (2022) showed lifters mispredict reps to failure by ~0.95 reps (SD 1.45), with error rising sharply above 12 reps and far from failure. Restricting E1RM calculations to sets logged at <= 3 RIR and dampening RIR credit above 12 reps prevents inflated estimates while keeping heavy compound tracking safe without constant failure training.',
+    academicCitation: 'Epley (1985); Lombardi (1989); Zourdos et al. (2016); Halperin et al. (2022)',
     practicalApplication:
-      'Calculates your working 1-rep maximum on every set, normalizes strength across different rep ranges, and benchmarks your progress against international strength standards.',
+      'Calculates your estimated 1-rep maximum on main and compound lifts (<= 3 RIR) to normalize strength across rep ranges and benchmark against international standards. Isolation lifts track Best Set / reps-at-weight instead of E1RM.',
     keywords: ['e1rm', '1rm', 'epley', 'lombardi', 'e1rm formula', 'reps in reserve', 'rir', 'one rep max', 'one-rep max', 'rep max', 'estimate max', 'estimated max', 'estimated 1rm', 'estimated strength', 'calculate max', 'strength formula'],
   },
   {
@@ -236,8 +236,8 @@ export const EXERCISE_SCIENCE_KNOWLEDGE_BASE: ScientificPrinciple[] = [
       'Dumbbells require independent neuromuscular control across multiple rotational axes, recruiting rotator cuff and serratus stabilizers while exhibiting a bilateral force deficit compared to a rigid barbell bar.',
     academicCitation: 'Saeterbakken, van den Tillaar & Fimland (2011), J Sports Sci: dumbbell bench 1RM ~17% below barbell, so 1.18x is an approximation',
     practicalApplication:
-      'Allows seamless progressive overload when training with dumbbells at home or the gym. For paired lifts, Treise logs the weight per dumbbell (e.g. 24 kg) while calculating volume and strength equivalence against the combined pair load (48 kg total × 1.18 = 56.6 kg barbell bench equivalent).',
-    keywords: ['dumbbell', 'dumbbells', 'db', 'dumbbell multiplier', '1.18', '1.18x', 'stabilizer', 'bilateral deficit', 'barbell equivalent', 'barbell vs dumbbell', 'single dumbbell', 'dumbbell bench'],
+      'Allows seamless progressive overload when training with dumbbells at home or the gym. For two-dumbbell lifts (like Incline Dumbbell Press, Flat DB Bench, DB Shoulder Press, DB RDL, DB Lateral Raise, and Incline DB Curls), Treise logs weight per dumbbell (e.g. 24 kg) while calculating total volume and barbell-equivalent strength against the combined pair load (48 kg total × 1.18 = 56.6 kg barbell equivalent). Single-dumbbell movements (Goblet Squat, Pullover, Single-Arm Row/Carry, Overhead DB Tricep Extension, Lying DB Leg Curl, DB Hip Thrust, Step Calf Raise, Weighted Gym Ball Crunch) count that single dumbbell directly.',
+    keywords: ['dumbbell', 'dumbbells', 'db', 'dumbbell multiplier', '1.18', '1.18x', 'stabilizer', 'bilateral deficit', 'barbell equivalent', 'barbell vs dumbbell', 'single dumbbell', 'dumbbell bench', 'per dumbbell', 'each dumbbell', 'combined weight', 'one dumbbell', 'two dumbbells'],
   },
   {
     id: 'sp-rdl-multiplier',
@@ -292,9 +292,9 @@ export const EXERCISE_SCIENCE_KNOWLEDGE_BASE: ScientificPrinciple[] = [
     topic: 'Relative Strength Standards',
     title: 'Strength Levels, Balance and Left/Right Symmetry',
     formula:
-      'Level: best estimated max vs Kilgore standard for sex, bodyweight class and age (Untrained → Elite, I–IV each). Chin-up (bodyweight included) ≈ 81% of bench (Poliquin). Symmetry = weaker side ÷ stronger side, flagged under 90%.',
+      'Level: best estimated max vs Kilgore standard for sex, bodyweight class and age (Untrained → Elite, I–IV each). Chin-up (bodyweight included) ≈ 81% of bench for men (Poliquin, 1999); sex-adjusted guideline (~105% of bench, caveated) for women. Symmetry = weaker side ÷ stronger side, flagged under 90%.',
     scientificRationale:
-      "Squat, deadlift, bench press and standing press levels use Dr Lon Kilgore's performance standards (ExRx.net), built from nearly 70 years of weightlifting and powerlifting performance data for adults, by sex, bodyweight class and age group (18–39, 40–49, 50–59, 60–69). Chin-ups are judged with Charles Poliquin's structural balance ratio: a supinated chin-up 1RM, bodyweight included, of about 81% of the close-grip bench press (elite male athletes, 1999); Treise applies it to the bench press it logs. Rows have no published standard, so they get no level. Large gaps between movements and left/right differences under 90% are flagged: 90% limb symmetry is the line used in return-to-sport criteria (Grindem et al., 2016).",
+      "Squat, deadlift, bench press and standing press levels use Dr Lon Kilgore's performance standards (ExRx.net), built from nearly 70 years of weightlifting and powerlifting performance data for adults, by sex, bodyweight class and age group (18–39, 40–49, 50–59, 60–69). Chin-ups use Charles Poliquin's structural balance ratio (81% of close-grip bench, bodyweight included) for men; because Poliquin's 1999 sample was male athletes and female bench-to-bodyweight norms are lower, Treise uses a sex-adjusted ~105% guideline for women with an explicit caveat, and supports counterweight-assisted chin-ups cleanly. Rows have no published standard, so they get no level. Large gaps between movements and left/right differences under 90% are flagged: 90% limb symmetry is the line used in return-to-sport criteria (Grindem et al., 2016).",
     academicCitation:
       'Kilgore L. Strength performance standards, ExRx.net; Poliquin C. Achieving Structural Balance, T-Nation (1999); Grindem H et al., Br J Sports Med 2016;50:804–808; van den Hoek DJ et al., J Sci Med Sport 2024;27(10):734–742 (normative powerlifting data, 809,986 entries).',
     practicalApplication:
@@ -398,7 +398,7 @@ export const EXERCISE_SCIENCE_KNOWLEDGE_BASE: ScientificPrinciple[] = [
       'Lifting light loads or pure bodyweight stimulates equal hypertrophy to heavy weights provided sets are taken within 1–3 reps of failure. Terminal motor unit recruitment is achieved via the size principle as muscle fibers fatigue.',
     academicCitation: 'Schoenfeld, Grgic, et al. (2016); Pedrosa et al. (2022)',
     practicalApplication:
-      'When in Travel mode, Treise sets target weight strictly to 0 kg (never telling you to add +5kg) and calibrates reps to your strength level with lengthened tempo cues.',
+      'When in Bodyweight mode, Treise sets target weight strictly to 0 kg (never telling you to add external weight) and calibrates reps to your strength level with lengthened tempo cues.',
     keywords: ['travel', 'bodyweight', 'hotel', 'no weights', 'deficit pushup', '0kg', 'bodyweight reps', 'calisthenics reps', 'hotel workout'],
   },
   {
@@ -453,25 +453,49 @@ export const EXERCISE_SCIENCE_KNOWLEDGE_BASE: ScientificPrinciple[] = [
     id: 'sp-wci',
     topic: 'Cardiovascular & Stamina',
     title: 'Work Capacity Index (WCI)',
-    formula: 'WCI = (Effective Tonnage × Completed Sets) / (Avg Session HRR% × Duration (min))',
+    formula: 'WCI = Effective Tonnage / (Duration (min) × (1 + max(0.35, Avg Session HRR%)))',
     scientificRationale:
-      'Measures total localized mechanical work completed relative to cardiovascular cost (Heart Rate Reserve percentage) over time.',
+      'Measures mechanical work density (effective tonnage per minute) normalized by bounded cardiovascular cost (Heart Rate Reserve percentage floored at 35%). Removing redundant set multipliers prevents quadratic inflation from junk volume, and bounding HRR% prevents longer rests or low-effort heart rates from artificially boosting the score.',
     academicCitation: 'Banister et al. (1975); Foster et al. (2001)',
     practicalApplication:
       'Quantifies cardiovascular and muscular endurance efficiency across sessions so held working weights still show work-capacity adaptation.',
     keywords: ['wci', 'work capacity', 'stamina', 'tonnage', 'hrr', 'heart rate reserve', 'cardiovascular', 'work capacity index'],
   },
   {
-    id: 'sp-tensor-ai',
-    topic: 'Hardware Acceleration & On-Device AI',
-    title: 'Hardware Acceleration & Zero-Cost Local Inference',
-    formula: 'Tensor G1-G4 TPU (Gemini Nano AICore) / NPU (WebNN) / GPU (WebGPU) / WASM SIMD Fallback',
+    id: 'sp-tempo-codes',
+    topic: 'Execution & Tempo',
+    title: '4-Digit Tempo Notation (Eccentric-Bottom-Concentric-Top)',
+    formula: 'ABCD = A sec lowering (eccentric) · B sec pause in stretch · C sec lifting (X = explosive) · D sec pause at top',
     scientificRationale:
-      'Processing health, biometric, and training data locally on device protects athlete confidentiality, functions without network coverage in gym basements, eliminates cloud API fees, and delivers < 15ms inference latency.',
-    academicCitation: 'Google Tensor Architecture Whitepaper; W3C WebNN / WebGPU Specifications',
+      'Standardizing repetition cadence controls time under tension and ensures the eccentric (lowering) and stretched bottom phases are loaded smoothly instead of bounced with momentum. For example, 3010 means 3 seconds lowering, 0 pause at the bottom, 1 second lifting, and 0 pause at the top; 31X0 adds a 1-second pause in the stretch and an explosive concentric drive.',
+    academicCitation: 'Wilk et al. (2021), Sports Medicine; Schoenfeld et al. (2015)',
     practicalApplication:
-      'Accelerates your AI Coach directly on your device with 100% privacy and zero subscription fees.',
-    keywords: ['tensor', 'pixel', 'tpu', 'gemini nano', 'on-device', 'local ai', 'latency', 'privacy', 'aicore', 'google pixel ai'],
+      'Use the 4-digit tempo code on an exercise card (or open its detail view for the Tempo Pacer) to match the intended lowering speed and stretch pause on each working rep.',
+    keywords: ['tempo', 'tempo code', '3010', '4010', '31x0', '2010', '2012', '21x0', '2212', 'eccentric', 'concentric', 'four digit', '4 digit', 'what does tempo mean', 'read tempo', 'lowering speed'],
+  },
+  {
+    id: 'sp-warmup-protocol',
+    topic: 'Session Execution & Safety',
+    title: 'Evidence-Based Warm-Up Set Protocol',
+    formula: 'Primary compound: 50% × 8 & 72% × 4 · Secondary compound: 60% × 5 · Weighted calisthenics: BW × 5 · Isolations & bodyweight: 0 sets',
+    scientificRationale:
+      'Targeted ramp-up sets raise muscle temperature, lubricate joints, and potentiate motor-unit recruitment (post-activation potentiation) without creating metabolic fatigue. Isolation lifts follow already-warmed compounds, so skipping unnecessary warm-up sets preserves work capacity. Warm-up sets never count toward weekly hard set targets.',
+    academicCitation: 'McGowan et al. (2015), Sports Medicine; Ribeiro et al. (2014)',
+    practicalApplication:
+      'Treise automatically attaches ramp-up warm-up sets only where needed and keeps them separate from working sets, volume landmarks, and personal records.',
+    keywords: ['warmup', 'warm-up', 'warm up', 'warmup protocol', 'warm-up protocol', 'warmup sets', 'warm-up sets', 'how many warmup', 'why no warmup', '0 warmup', 'ramp up', 'acclimation set'],
+  },
+  {
+    id: 'sp-tensor-ai',
+    topic: 'AI Coach Architecture & Privacy',
+    title: 'Private Coaching Architecture (On-Device & Stateless Proxy)',
+    formula: 'On-Device Prompt API (when available) -> Stateless Gemini Flash-Lite Proxy (zero server storage) -> Offline Rule-Based Coach',
+    scientificRationale:
+      'Training logs, body metrics, and program settings stay stored locally on your device. When Chrome provides an on-device language model, open coaching runs locally; otherwise Treise sends only anonymized training facts for the current turn to a stateless server proxy that stores no chat history, and deterministic actions and science rules still work offline.',
+    academicCitation: 'Treise Privacy & Stateless Coaching Specification',
+    practicalApplication:
+      'You can ask questions, adapt your program, and log workouts with your data remaining on your device and zero chat history saved on any server.',
+    keywords: ['ai coach', 'how does the coach work', 'gemini nano', 'on-device', 'local ai', 'privacy', 'stateless', 'offline coach', 'chat history'],
   },
   {
     id: 'sp-ai-coach-single-entry-invariant',
@@ -555,12 +579,12 @@ export const EXERCISE_SCIENCE_KNOWLEDGE_BASE: ScientificPrinciple[] = [
     topic: 'Body Composition & Physical Metrics',
     title: 'Morning Weigh-Ins, Circumference Measurements & Body Recomposition',
     formula:
-      'True Physical Progress = 7-Day EMA Bodyweight + 13 Scale Composition Metrics (BF%, FFM, SMM, Visceral Fat, Water, Bone, Protein, BMR, Metabolic Age) + 12 Tape Sites (Neck, Shoulder, Chest, Waist, Abdomen, Hip, Bicep L/R, Thigh L/R, Calf L/R)',
+      'Tier-1 Progress = 7-Day EMA Total Bodyweight + Multi-Week Anchor-Lift E1RM + Optional Waist Circumference; Secondary 12+ Week Overlay = Consumer BIA FFM (±2.0–4.9 kg individual 95% LoA)',
     scientificRationale:
-      'Muscle tissue is ~18% denser than adipose tissue (~1.06 g/mL vs ~0.90 g/mL). Lifters with extra body fat undergoing progressive resistance training often experience simultaneous muscle hypertrophy and fat loss (body recomposition). Under recomposition, total scale weight may remain flat or even fluctuate upwards despite substantial loss of visceral and subcutaneous fat. Assessing progress solely through bathroom scales creates false stalls; pairing morning weigh-ins (dampened by a 7-day EMA) and 4-compartment bioelectrical impedance body composition with 12-site tape circumference measurements (waist/abdomen reduction alongside chest/shoulder and bilateral left/right arm, thigh, and calf expansion) captures real muscular cross-sectional changes. You look radically different with your shirt off even when the scale barely budges.',
-    academicCitation: 'Barakat et al. (2020); Longland et al. (2016); Morton et al. (2018); Lukaski et al. (1986)',
+      'Muscle tissue is ~18% denser than adipose tissue (~1.06 g/mL vs ~0.90 g/mL), so total scale weight alone can mask recomposition. However, Siedler et al. (2023) showed consumer foot-to-foot BIA scales have 7.2% cross-sectional Total Error and 3.4–5.2% longitudinal body-fat 95% limits of agreement (±2.0–4.9 kg for 60–95 kg lifters), and 50 kHz foot-to-foot impedance cannot validly estimate bone or protein mass. Therefore Tier-1 goal progress relies on 7-day EMA bodyweight, multi-week anchor-lift E1RM, and optional tape circumference (waist + limb sites), while consumer BIA fat-free mass is demoted to a secondary 12+ week directional overlay.',
+    academicCitation: 'Siedler et al. (2023); Barakat et al. (2020); Longland et al. (2016); Morton et al. (2018)',
     practicalApplication:
-      'Weigh yourself first thing in the morning on the same scale under consistent conditions, and track body fat and circumference measurements manually or via RENPHO Bluetooth devices. Even if total weight stays flat, losing waist/abdomen circumference while growing fat-free mass and limb circumferences proves body recomposition.',
+      'Weigh yourself fasted first thing in the morning after using the bathroom on the same scale, track anchor-lift E1RM across weeks, and optionally tape your waist and limbs every 2+ weeks. Treat smart-scale fat-free mass only as a 12+ week directional overlay alongside those primary signals.',
     keywords: [
       'weigh yourself',
       'morning weigh-in',
@@ -858,7 +882,7 @@ export const TREISE_DESIGN_SYSTEM: DesignSystemComponent[] = [
     name: 'Segmented Control / Mode Switcher',
     category: 'pill',
     anatomy: {
-      container: 'wk-segments grid gap-1 bg-[var(--color-bg-canvas)] border border-[var(--color-border-subtle)] p-1 rounded-2xl',
+      container: 'wk-segments grid gap-1 bg-[var(--color-bg-surface)] (.wk-card .wk-segments -> var(--color-bg-surface-raised)) border border-[var(--color-border-subtle)] p-1 rounded-2xl',
       typography: 'text-xs (500 active / 400 inactive)',
       colors: 'Active: var(--color-action-secondary-bg) + var(--color-text-primary) | Inactive: var(--color-text-muted)',
       states: {
@@ -869,9 +893,9 @@ export const TREISE_DESIGN_SYSTEM: DesignSystemComponent[] = [
     },
     logic: {
       rules: [
-        'Used for mutually exclusive mode selections (e.g. Full Gym | At Home | Bodyweight, 1W | 1M | 3M | 1Y timeline).',
-        'A segmented control is NOT a primary CTA and recesses its tray to --color-bg-canvas with 1px --color-border-subtle so the active --color-action-secondary-bg pill elevates cleanly.',
-        'Active state maintains 8.04:1 ink contrast against --color-action-secondary-bg.',
+        'Used for mutually exclusive mode selections (e.g. Full Gym | At Home | Bodyweight, 1W | 1M | 3M | 1Y timeline, Overview | Form | History exercise tabs).',
+        'Follows Shift Nudge dark-mode surface elevation: sits on --color-bg-surface over canvas and steps up to --color-bg-surface-raised inside .wk-card so trays never punch a dark pit, while the active --color-action-secondary-bg pill elevates cleanly with a subtle overhead highlight.',
+        'Active state maintains > 7.5:1 ink contrast against --color-action-secondary-bg.',
       ],
       variants: {
         equipmentSwitcher: '3-way grid: Full Gym | At Home | Bodyweight',
@@ -902,11 +926,11 @@ export const TREISE_DESIGN_SYSTEM: DesignSystemComponent[] = [
     },
     logic: {
       rules: [
-        'Positive status accent (--color-status-positive) celebrates completed sets and snaps input digits from --color-text-muted (0.60, 4.96:1 AA on raised) to --color-text-primary (10.49:1) so unlogged targets never masquerade as logged data.',
-        'The Done button always renders a visible checkmark icon even before completion (--color-text-secondary on upcoming sets over bordered --color-action-secondary-bg with top rim bevel) and enforces a >= 48px Android touch target height.',
+        'Positive status accent (--color-status-positive solid fill with --color-text-on-accent dark check) provides instant at-a-glance separation for completed sets.',
+        'Once a set is marked complete, Weight, Reps/Duration, RIR, and per-side inputs drop their raised --wk-raised field chrome via .wk-input-readonly (transparent over the card surface, readOnly, non-focusable) so completed rows stay calm and uncompleted sets command active focus; unchecking restores editable raised boxes immediately.',
+        'The Done button always renders a visible checkmark icon even before completion (--color-text-secondary on upcoming sets over bordered --color-action-secondary-bg) and enforces a >= 48px Android touch target height.',
         'Uncompleted set rows maintain uniform calm styling with no next-set row highlight borders or mint tints.',
         'Warmup sets display amber W indicator (--color-set-warmup) and failure sets display crimson soft badge (--color-set-failure-bg / --color-set-failure-fg).',
-        'Completing a set triggers haptic feedback and real-time tonnage updates.',
       ],
       variants: {
         workingSet: 'Checkmark toggle separating pending smart defaults from completed locks',
@@ -1161,29 +1185,29 @@ export const TREISE_DESIGN_SYSTEM: DesignSystemComponent[] = [
     name: 'Treise Single Entry Invoked-Layer Rule',
     category: 'navigation',
     anatomy: {
-      container: 'NavigationBar.tsx connected 3-tab destination pill + separate right-hand Treise button',
-      typography: 'Destination labels: text-xs font-medium (active) / font-normal (inactive)',
-      colors: 'Active destination: var(--color-text-primary) + glow | Inactive: var(--color-text-muted) | Treise button: var(--color-coach-surface) T + var(--color-coach-accent) AI sparkles',
+      container: 'NavigationBar.tsx connected 3-tab destination pill + detached right-hand AI coach pill with matching rounded-full curvature',
+      typography: 'Destination & AI coach labels: text-xs font-medium (active) / font-normal (inactive) on a single shared baseline',
+      colors: 'Active destination: var(--color-text-primary) + glow | Inactive: var(--color-text-secondary) | AI coach button: var(--color-coach-surface) 20x20 T + var(--color-coach-accent) 4-point spark & label',
       states: {
         active: 'font-medium using var(--color-text-primary)',
-        inactive: 'font-normal opacity-70',
+        inactive: 'font-normal using var(--color-text-secondary) / var(--color-coach-accent)',
       },
-      touchTarget: 'Min 44px vertical height (h-16 segmented pill and 64x64 squircle button)',
-      iconSpec: 'Dumbbell, CalendarDays, TrendingUp in pill; Treise T + copper brand sparkles in detached button',
+      touchTarget: 'Min 44px vertical height (h-16 segmented nav pill and h-16 min-w-[80px] rounded-full AI coach pill)',
+      iconSpec: '20x20 Lucide keyline grid (1.85–2.15px round strokes): Dumbbell, CalendarDays, TrendingUp in nav bank; unified geometric T + crisp copper 4-point AI spark in AI coach pill',
     },
     logic: {
       rules: [
-        'MANDATORY INVARIANT: The ONLY entry point to Treise is the detached right-hand button in the bottom navigation dock.',
-        'Zero dedicated coach cards are permitted on the workout/training tab or any other screen.',
+        'Detached right-hand AI coach pill shares the exact h-16 height, rounded-full curvature, overhead highlight rim, and icon+label baseline of the 3-tab navigation bank.',
+        'Zero dedicated coach cards are permitted on the workout/training tab.',
         'Zero coach buttons, pills, sparkles, or icons are permitted in the top application header.',
-        'Tapping Treise opens the invoked assistant sheet over the current screen.',
+        'Tapping AI coach opens the invoked Treise assistant sheet over the current screen.',
       ],
       variants: {
-        bottomNavTab: 'Detached squircle button to the right of the connected 3-tab segmented pill in NavigationBar.tsx',
+        bottomNavTab: 'Detached rounded-full "AI coach" pill to the right of the connected 3-tab segmented pill in NavigationBar.tsx',
       },
-      accessibility: 'aria-label="Open Treise" with aria-haspopup="dialog" and min-h-[44px] touch target',
+      accessibility: 'aria-label="Open Treise AI coach" with visible "AI coach" label, aria-haspopup="dialog", rounded-full pill radius matching nav bank, and min-h-[44px] touch target',
     },
-    tailwindTokens: 'fixed bottom-0 left-0 right-0 z-40 px-4; flex-1 h-16 rounded-full + shrink-0 w-16 h-16 rounded-3xl',
+    tailwindTokens: 'fixed bottom-0 left-0 right-0 z-40 px-3; flex-1 h-16 rounded-full + shrink-0 h-16 min-w-[80px] px-4 rounded-full',
     rationale: 'Separating Treise from the destination tabs signals that Treise is an invoked layer while keeping athletes 100% focused on their workout.',
   },
   {
@@ -1287,10 +1311,10 @@ export const TREISE_DESIGN_SYSTEM: DesignSystemComponent[] = [
       typography: 'Steps 1-2 hero titles use .wk-page-title (32px/700); Step 3 and editing sheet headings use 20px/600 (--color-text-primary); body 16px/400 (var(--wk-body), 65ch max); fieldset legends 12px/500 (--color-text-muted); option rows 16px/500 with 12px detail',
       colors: 'Step progress bar & active selection ring use var(--wk-accent) over --color-status-positive-soft; primary Continue/Start CTA uses --color-action-primary-bg / --color-action-primary-fg; inline validation alert uses --color-status-danger-fill; unselected choices sit on --wk-card + --color-border-subtle',
       states: {
-        step1: 'Identity + IdentityIllustration + Continue CTA + optional "See a demo with sample data" action',
-        step2: 'Session cadence & habit rationale + SessionsIllustration (hollow upcoming rings with Day 1 highlight) + Back / Skip navigation',
-        step3: 'Restarting mindset + Goal / optional Custom Goal (Check icon + crimson alert) / Plan cadence / single-column Location rows + contextual Home Equipment picker + deepened sticky CTA fade',
-        editing: 'Returning athlete "Where you train" sheet with Close button, Escape handler, location/equipment persistence, and disclosure toggle when away from home',
+        step1: 'Identity + IdentityIllustration + 1 essential decision (What is your goal?) + Continue CTA + optional demo launcher',
+        step2: '24 sessions habit science + weekly cadence (3 workouts + 1 active day / 4 workouts) + collapsed-by-default Optional habit anchor drawer',
+        step3: 'Restarting framing + Where will you train? (strict conditional Home equipment ONLY when Home is chosen) + Lifting experience (smart RIR default) + collapsed Fine-tune setup drawer (custom goal & RIR toggle) + Ready-to-launch summary',
+        editing: 'Returning athlete "Where you train" sheet with Close button, Escape handler, location/equipment persistence, and fallback gear toggle when away from home',
       },
       touchTarget: '>= 44px on Back, Skip, Close, goal/location/equipment buttons, and custom target input; >= 48px primary sticky CTA',
     },
@@ -1328,7 +1352,7 @@ export const TREISE_DESIGN_SYSTEM: DesignSystemComponent[] = [
       rules: [
         'Separate abstract organizing Concepts (Scheduled Day, Performance & Standards, Body & Recovery Insights, Plan & Progression) from data-backed Object instances (Workout, ActiveDay, RestDay, Exercise, Set, ExerciseNote, Goal).',
         'Enforce a single Controlled Vocabulary across UI and AI Coach: locations are Full Gym / At Home / Bodyweight (never Travel); unlifted days read Rest day (never Non-training day); replacements use Swap exercise.',
-        'Separate Training insights (KnowledgeGraphCard + Session notes timeline) as its own top-level Progress surface rather than nesting it under Strength standards.',
+        'Separate Training insights (KnowledgeGraphCard + Exercise notes timeline) as its own top-level Progress surface rather than nesting it under Strength standards.',
         'Bind Pragmatics visibility strictly per mode (Active Set Logging suppresses Steps card; Future Day Preview suppresses today session & Finish button) and display BW rather than misleading 0 on zero-added-load sets.',
       ],
       variants: {
@@ -1339,6 +1363,36 @@ export const TREISE_DESIGN_SYSTEM: DesignSystemComponent[] = [
     },
     tailwindTokens: 'wk-card wk-raised wk-label wk-title wk-body wk-caption wk-pill --color-accent-primary --color-border-subtle',
     rationale: 'Treating Ontology and Semiotics as an executable design-system contract prevents vocabulary drift, surface leaks, and disconnected AI mental models.',
+  },
+  {
+    id: 'ds-exercise-detail-tabs',
+    name: 'Canonical 3-Tab Exercise Detail Modal (Overview · Form · History)',
+    category: 'modal',
+    anatomy: {
+      container: 'Portal modal dialog (wk-card max-w-lg max-h-[88vh]) with sticky header + 3-tab .wk-segments bar and scrollable tabpanel body',
+      typography: 'Title in wk-h1, compact Equipment · Primary muscle caption, section headers in wk-label, targets/metrics in wk-subhead & wk-title (tabular-nums)',
+      colors: 'Elevated tab tray (--color-bg-surface-raised inside .wk-card), active tab (--color-action-secondary-bg), Best PR in --color-status-positive, Coach intervention in --color-coach-accent',
+      states: {
+        overview: 'Immediate context: HITL intervention & readiness advisory, Today target + progression rationale (or Sessions/Latest/Best snapshot outside workout), Quick actions, Anatomy & mechanics',
+        form: 'Technique & execution: offline ExerciseFormClipPlayer, lead biomechanical cue, numbered 1–3 steps, intensity protocol, interactive TempoPacer, 5-step warm-up ramp',
+        history: 'Longitudinal performance: Sessions/Latest/Best KPI strip, TrendChart, logged session cards with per-set pills & Exercise notes timeline link',
+      },
+      touchTarget: '>= 44px Close button, tab segments, Quick action buttons, and Exercise notes link',
+    },
+    logic: {
+      rules: [
+        'Serves as the single canonical view of an Exercise object from every entry point (Workout ExerciseCard, Progress Trophy Case & pinned charts, PastWorkoutModal, and SplitEditor).',
+        'Default tab is Overview so immediate workout targets/actions or performance snapshot appear without vertical scrolling.',
+        'Supports keyboard tab navigation (ArrowLeft / ArrowRight) and Escape close.',
+      ],
+      variants: {
+        workoutEntry: 'Includes Today target, progression rationale, Swap / Plates / Warm-up / Add set actions',
+        referenceEntry: 'Opened via buildInspectExerciseSession from Progress, Past Workouts, or Split Editor with Sessions/Latest/Best snapshot',
+      },
+      accessibility: 'role="dialog" aria-modal="true", role="tablist" / role="tab" / role="tabpanel" with aria-selected and aria-controls',
+    },
+    tailwindTokens: 'wk fixed inset-0 z-50 wk-card wk-raised wk-segments grid-cols-3 wk-segment wk-btn-secondary',
+    rationale: 'Grouping exercise details into three shared contexts eliminates vertical data walls while guaranteeing one consistent mental model across every app surface.',
   },
 ];
 export const HEADSTRONG_DESIGN_SYSTEM = TREISE_DESIGN_SYSTEM;
@@ -1415,6 +1469,14 @@ const QUERY_STOPWORDS = new Set([
   'why', 'will', 'with', 'work', 'worked', 'would', 'you', 'your', 'yours',
 ]);
 
+/** Internal product/design governance specs kept in EXERCISE_SCIENCE_KNOWLEDGE_BASE for audits, never shown to athletes in chat. */
+const INTERNAL_GOVERNANCE_PRINCIPLE_IDS = new Set([
+  'sp-ai-coach-single-entry-invariant',
+  'sp-design-system-4-tier-typography',
+  'sp-design-system-semantic-colors',
+  'sp-design-system-touch-targets',
+]);
+
 /**
  * Searches and queries the Knowledge Graph's authoritative Exercise Science knowledge base.
  */
@@ -1423,10 +1485,13 @@ export function queryExerciseScienceKnowledgeBase(query: string): ScientificPrin
   const normalizedQuery = normalizeSearchText(cleanQuery);
   if (!cleanQuery) return null;
 
+  const athletePrinciples = EXERCISE_SCIENCE_KNOWLEDGE_BASE.filter(
+    (p) => !INTERNAL_GOVERNANCE_PRINCIPLE_IDS.has(p.id)
+  );
   let bestMatch: ScientificPrinciple | null = null;
   let maxScore = 0;
 
-  for (const principle of EXERCISE_SCIENCE_KNOWLEDGE_BASE) {
+  for (const principle of athletePrinciples) {
     let score = 0;
 
     // 1. Title match (highest weight)
@@ -1461,7 +1526,7 @@ export function queryExerciseScienceKnowledgeBase(query: string): ScientificPrin
     .split(/\s+/)
     .filter((t) => t.length >= 4 && !QUERY_STOPWORDS.has(t));
   if (tokens.length === 0) return null;
-  for (const principle of EXERCISE_SCIENCE_KNOWLEDGE_BASE) {
+  for (const principle of athletePrinciples) {
     let score = 0;
     const titleWords = new Set(normalizeSearchText(principle.title).split(/\s+/));
     const citationWords = new Set(normalizeSearchText(principle.academicCitation || '').split(/\s+/));
@@ -1494,10 +1559,13 @@ export function queryExerciseScienceKnowledgeBase(query: string): ScientificPrin
 export function searchExerciseScienceKnowledgeBase(query: string, maxResults: number = 6): ScientificPrinciple[] {
   const cleanQuery = query.toLowerCase().trim();
   const normalizedQuery = normalizeSearchText(cleanQuery);
-  if (!cleanQuery) return EXERCISE_SCIENCE_KNOWLEDGE_BASE.slice(0, maxResults);
+  const athletePrinciples = EXERCISE_SCIENCE_KNOWLEDGE_BASE.filter(
+    (p) => !INTERNAL_GOVERNANCE_PRINCIPLE_IDS.has(p.id)
+  );
+  if (!cleanQuery) return athletePrinciples.slice(0, maxResults);
 
   const tokens = normalizedQuery.split(/\s+/).filter((t) => t.length > 2 && !QUERY_STOPWORDS.has(t));
-  const scored = EXERCISE_SCIENCE_KNOWLEDGE_BASE.map((p) => {
+  const scored = athletePrinciples.map((p) => {
     let score = 0;
     if (p.title.toLowerCase().includes(cleanQuery)) score += 10;
     if (p.topic.toLowerCase().includes(cleanQuery)) score += 8;
@@ -1531,10 +1599,60 @@ export function searchExerciseScienceKnowledgeBase(query: string, maxResults: nu
 export function getExerciseBiomechanicalMeta(ex: ExerciseDefinition): {
   isIsolation: boolean;
   resistanceProfile: ResistanceProfile;
+  /** Alias for resistanceProfile grounded in stretch-mediated hypertrophy literature (Maeo et al., 2021, 2023). */
+  stretchBias: ResistanceProfile;
+  /** External mechanical stability: machines/supported ('high'), bilateral free weights ('moderate'), unilateral/balance ('low'). */
+  stability: 'high' | 'moderate' | 'low';
+  /** Structured Pelland et al. (2026) fractional attribution: 1.0 primary, 0.5 synergist. */
+  fractionalMuscleWeights: Array<{ muscle: string; weight: 1 | 0.5 }>;
   sfrScore: number;
   axialLoadIndex: number;
   primaryJoints: JointType[];
 } {
+  const id = ex.id.toLowerCase();
+  const name = ex.name.toLowerCase();
+
+  const deriveStability = (): 'high' | 'moderate' | 'low' => {
+    if (ex.stability) return ex.stability;
+    if (
+      id.includes('split-squat') ||
+      id.includes('bulgarian') ||
+      id.includes('lunge') ||
+      id.includes('pistol') ||
+      id.includes('single-leg') ||
+      id.includes('trx') ||
+      id.includes('ring') ||
+      id.includes('gymball') ||
+      id.includes('handstand')
+    ) {
+      return 'low';
+    }
+    if (
+      ex.equipment === 'machine' ||
+      ex.equipment === 'cable' ||
+      id.includes('leg-press') ||
+      id.includes('hack') ||
+      id.includes('chest-supported') ||
+      id.includes('preacher') ||
+      id.includes('seated-calf') ||
+      id.includes('leg-curl') ||
+      id.includes('leg-extension') ||
+      id.includes('pulldown')
+    ) {
+      return 'high';
+    }
+    return 'moderate';
+  };
+
+  const fractionalMuscleWeights: Array<{ muscle: string; weight: 1 | 0.5 }> = [
+    { muscle: ex.primaryMuscle, weight: 1 },
+    ...(ex.secondaryMuscles ?? [])
+      .filter((m) => m !== ex.primaryMuscle)
+      .map((m) => ({ muscle: m, weight: 0.5 as const })),
+  ];
+
+  const stability = deriveStability();
+
   if (
     ex.isIsolation !== undefined &&
     ex.resistanceProfile &&
@@ -1545,14 +1663,14 @@ export function getExerciseBiomechanicalMeta(ex: ExerciseDefinition): {
     return {
       isIsolation: ex.isIsolation,
       resistanceProfile: ex.resistanceProfile,
+      stretchBias: ex.resistanceProfile,
+      stability,
+      fractionalMuscleWeights,
       sfrScore: ex.sfrScore,
       axialLoadIndex: ex.axialLoadIndex,
       primaryJoints: ex.primaryJoints,
     };
   }
-
-  const id = ex.id.toLowerCase();
-  const name = ex.name.toLowerCase();
 
   // Calves, Lateral Raises, Face Pulls, Curls, Pushdowns, Leg Curls, Leg Extensions, Core = Isolation
   const isIsolation =
@@ -1675,10 +1793,119 @@ export function getExerciseBiomechanicalMeta(ex: ExerciseDefinition): {
   return {
     isIsolation,
     resistanceProfile,
+    stretchBias: resistanceProfile,
+    stability,
+    fractionalMuscleWeights,
     sfrScore,
     axialLoadIndex,
     primaryJoints,
   };
+}
+
+// ============================================================================
+// BOUNDED STRUCTURAL MEMOIZATION (prevents redundant graph rebuilds across tabs)
+// ============================================================================
+
+const KG_CACHE_MAX_ENTRIES = 8;
+const bodyCompGraphCache = new Map<string, BodyCompositionKnowledgeProfile>();
+const athleteKgCache = new Map<string, AthleteKnowledgeGraph>();
+let kgCacheStats = {
+  athleteHits: 0,
+  athleteMisses: 0,
+  bodyCompHits: 0,
+  bodyCompMisses: 0,
+};
+
+function hashKeyStr(raw: string): string {
+  let h1 = 0xdeadbeef;
+  let h2 = 0x41c6ce57;
+  for (let i = 0; i < raw.length; i++) {
+    const ch = raw.charCodeAt(i);
+    h1 = Math.imul(h1 ^ ch, 2654435761);
+    h2 = Math.imul(h2 ^ ch, 1597334677);
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  return `${(h2 >>> 0).toString(36)}-${(h1 >>> 0).toString(36)}`;
+}
+
+function lruGet<V>(cache: Map<string, V>, key: string): V | undefined {
+  const val = cache.get(key);
+  if (val !== undefined) {
+    cache.delete(key);
+    cache.set(key, val);
+  }
+  return val;
+}
+
+function lruSet<V>(cache: Map<string, V>, key: string, value: V): void {
+  if (cache.has(key)) cache.delete(key);
+  cache.set(key, value);
+  while (cache.size > KG_CACHE_MAX_ENTRIES) {
+    const oldest = cache.keys().next().value;
+    if (oldest !== undefined) cache.delete(oldest);
+    else break;
+  }
+}
+
+function biometricsFingerprint(biometrics: BiometricLog[]): string {
+  const parts: string[] = [String(biometrics.length)];
+  for (const b of biometrics) {
+    parts.push(
+      `${b.date}:${b.bodyweightKg ?? ''}:${b.bodyFatPct ?? ''}:${b.fatFreeMassKg ?? ''}:${b.muscleMassKg ?? ''}:${b.waistCm ?? ''}:${b.hipsCm ?? ''}:${b.chestCm ?? ''}:${b.bicepLeftCm ?? ''}:${b.bicepRightCm ?? ''}:${b.thighLeftCm ?? ''}:${b.thighRightCm ?? ''}:${b.calfLeftCm ?? ''}:${b.calfRightCm ?? ''}:${b.hrvRmssd ?? ''}:${b.restingHr ?? ''}:${b.sleepHours ?? ''}:${b.steps ?? ''}:${b.recoveryScore ?? ''}:${b.strain ?? ''}:${b.workoutStrain ?? ''}:${b.heightCm ?? ''}:${b.source ?? ''}`
+    );
+  }
+  return hashKeyStr(parts.join('|'));
+}
+
+function workoutsFingerprint(workouts: WorkoutSession[]): string {
+  const parts: string[] = [String(workouts.length)];
+  for (const w of workouts) {
+    const exSig = w.exercises
+      .map((ex) => {
+        const setsSig = ex.sets
+          .map(
+            (s) =>
+              `${s.completed ? 1 : 0}:${s.actualWeightKg ?? s.targetWeightKg ?? 0}:${s.actualReps ?? s.targetReps ?? 0}:${s.actualRir ?? s.targetRir ?? ''}:${s.actualDurationSeconds ?? ''}:${s.setType ?? ''}`
+          )
+          .join(',');
+        return `${ex.exerciseId}[${setsSig}]${ex.athleteNotes ? `~${ex.athleteNotes}` : ''}`;
+      })
+      .join(';');
+    parts.push(`${w.id}:${w.date}:${w.completed ? 1 : 0}:${w.completedAt ?? ''}:${w.programWorkoutNumber ?? ''}:${w.planId ?? ''}:${exSig}`);
+  }
+  return hashKeyStr(parts.join('|'));
+}
+
+function profileDomainFingerprint(profile: UserProfile): string {
+  return hashKeyStr(
+    JSON.stringify({
+      g: profile.gender,
+      a: profile.age,
+      ae: profile.ageEntered,
+      gp: profile.goalPhase,
+      pt: profile.programType,
+      wu: profile.weightUnit,
+      mh: profile.measuredHeightCm,
+      h: profile.heightCm,
+      ws: profile.wearableSource,
+      wc: profile.whoopConnected,
+      gs: profile.goalSettings,
+      po: profile.programOverrides,
+      ha: profile.habitAnchor,
+      em: profile.email,
+    })
+  );
+}
+
+export function getKnowledgeGraphCacheStats() {
+  return { ...kgCacheStats };
+}
+
+export function clearKnowledgeGraphCache(): void {
+  bodyCompGraphCache.clear();
+  athleteKgCache.clear();
+  kgCacheStats = { athleteHits: 0, athleteMisses: 0, bodyCompHits: 0, bodyCompMisses: 0 };
 }
 
 /**
@@ -1695,6 +1922,15 @@ export function buildBodyCompositionKnowledgeGraph(
     length: (cm) => `${Math.round(cm * 10) / 10} cm`,
   }
 ): BodyCompositionKnowledgeProfile {
+  const fmtSig = `${fmt.weight(10)}|${fmt.length(10)}`;
+  const cacheKey = `${localDateString()}|${biometricsFingerprint(biometrics)}|${profile.goalPhase}|${profile.measuredHeightCm ?? ''}|${profile.heightCm ?? ''}|${fmtSig}`;
+  const cached = lruGet(bodyCompGraphCache, cacheKey);
+  if (cached) {
+    kgCacheStats.bodyCompHits += 1;
+    return cached;
+  }
+  kgCacheStats.bodyCompMisses += 1;
+
   const sorted = [...biometrics].sort((a, b) => a.date.localeCompare(b.date));
   const athleteHeightCm = profile.measuredHeightCm || profile.heightCm;
   const heightM =
@@ -1893,38 +2129,49 @@ export function buildBodyCompositionKnowledgeGraph(
 
   let recompositionStatus: BodyCompositionKnowledgeProfile['recompositionStatus'] = 'insufficient_data';
   let recompositionSummary =
-    'Log your weight, body fat or tape measurements to see how your body is changing.';
+    'Log fasted morning weigh-ins and optional waist tape to track body composition alongside anchor-lift strength.';
 
   const ffmDelta = ffmTrend?.delta;
   const bfDelta = bfTrend?.delta;
   const waistDelta = waistTrend?.delta;
   const weightDelta = weightTrend?.delta;
 
+  // Consumer BIA spans at least 12 weeks (84 days) and exceeds ±2.0 kg / ±2.0% scale noise (Siedler et al., 2023).
+  const biaSpanDays =
+    ffmTrend?.baselineDate && ffmTrend?.latestDate
+      ? Math.round(
+          (parseLocalDate(ffmTrend.latestDate).getTime() - parseLocalDate(ffmTrend.baselineDate).getTime()) /
+            (24 * 60 * 60 * 1000)
+        )
+      : 0;
+  const biaDirectionalValid = biaSpanDays >= 84;
+  const strongBiaRecomp =
+    biaDirectionalValid && ffmDelta !== undefined && ffmDelta >= 2.0 && bfDelta !== undefined && bfDelta <= -2.0;
+  const strongBiaLeanGain = biaDirectionalValid && ffmDelta !== undefined && ffmDelta >= 2.0;
+  const strongBiaFatLoss = biaDirectionalValid && bfDelta !== undefined && bfDelta <= -2.0;
+
   if (
-    (ffmDelta !== undefined && ffmDelta >= 0.2 && bfDelta !== undefined && bfDelta <= -0.2) ||
-    (waistDelta !== undefined && waistDelta <= -0.4 && weightDelta !== undefined && weightDelta >= -0.5)
+    (waistDelta !== undefined && waistDelta <= -0.5 && weightDelta !== undefined && weightDelta >= -0.5) ||
+    strongBiaRecomp
   ) {
     recompositionStatus = 'recomp_positive';
     const parts: string[] = [];
-    if (ffmDelta !== undefined && ffmDelta > 0) parts.push(`lean mass up ${fmt.weight(ffmDelta)}`);
-    if (bfDelta !== undefined && bfDelta < 0) parts.push(`body fat down ${Math.abs(bfDelta).toFixed(1)}%`);
-    if (waistDelta !== undefined && waistDelta < 0) parts.push(`waist down ${fmt.length(Math.abs(waistDelta))}`);
-    recompositionSummary = `You're building muscle and losing fat at the same time: ${parts.join(', ')}.`;
-  } else if (ffmDelta !== undefined && ffmDelta > 0.2) {
+    if (waistDelta !== undefined && waistDelta <= -0.5) parts.push(`waist down ${fmt.length(Math.abs(waistDelta))}`);
+    if (strongBiaRecomp && ffmDelta !== undefined) parts.push(`12+ wk BIA lean mass +${fmt.weight(ffmDelta)} (directional)`);
+    if (strongBiaRecomp && bfDelta !== undefined) parts.push(`12+ wk BIA body fat -${Math.abs(bfDelta).toFixed(1)}%`);
+    recompositionSummary = `Body recomposition trend: ${parts.join(', ')}.`;
+  } else if (strongBiaLeanGain && ffmDelta !== undefined) {
     recompositionStatus = 'lean_gain';
-    recompositionSummary = `Your lean mass is up ${fmt.weight(ffmDelta)} since your first measurement.`;
-  } else if (
-    (bfDelta !== undefined && bfDelta < -0.2) ||
-    (waistDelta !== undefined && waistDelta < -0.4)
-  ) {
+    recompositionSummary = `12+ week directional BIA overlay: fat-free mass up ${fmt.weight(ffmDelta)} (±2–5 kg scale uncertainty; confirm with weight, strength, and waist).`;
+  } else if ((waistDelta !== undefined && waistDelta <= -0.5) || strongBiaFatLoss) {
     recompositionStatus = 'fat_loss';
     const lost: string[] = [];
-    if (bfDelta !== undefined && bfDelta < 0) lost.push(`body fat down ${Math.abs(bfDelta).toFixed(1)}%`);
-    if (waistDelta !== undefined && waistDelta < 0) lost.push(`waist down ${fmt.length(Math.abs(waistDelta))}`);
-    recompositionSummary = `You're losing fat: ${lost.join(', ')}.`;
+    if (waistDelta !== undefined && waistDelta <= -0.5) lost.push(`waist down ${fmt.length(Math.abs(waistDelta))}`);
+    if (strongBiaFatLoss && bfDelta !== undefined) lost.push(`12+ wk BIA body fat -${Math.abs(bfDelta).toFixed(1)}%`);
+    recompositionSummary = `Fat-loss trend: ${lost.join(', ')}.`;
   } else if (weightTrend && weightTrend.sampleCount >= 1) {
     recompositionStatus = 'holding';
-    recompositionSummary = `Latest weight ${fmt.weight(weightTrend.latest ?? 0)}${weightTrend.ema7d && Math.abs(weightTrend.ema7d - (weightTrend.latest ?? 0)) >= 0.05 ? ` (7-day average ${fmt.weight(weightTrend.ema7d)})` : ''}. Keep logging your weight and measurements to see your trend.`;
+    recompositionSummary = `Latest weight ${fmt.weight(weightTrend.latest ?? 0)}${weightTrend.ema7d && Math.abs(weightTrend.ema7d - (weightTrend.latest ?? 0)) >= 0.05 ? ` (7-day average ${fmt.weight(weightTrend.ema7d)})` : ''}. Track 7-day EMA weight, anchor-lift strength, and optional waist tape; consumer BIA needs 12+ weeks of fasted morning readings.`;
   }
 
   const populatedScaleCount = scaleTrends.filter((t) => t.sampleCount > 0).length;
@@ -1943,7 +2190,7 @@ export function buildBodyCompositionKnowledgeGraph(
     }
   }
 
-  return {
+  const result: BodyCompositionKnowledgeProfile = {
     scaleTrends,
     tapeTrends,
     bilateralSymmetry,
@@ -1954,6 +2201,26 @@ export function buildBodyCompositionKnowledgeGraph(
     latestScaleDate,
     latestTapeDate,
   };
+  lruSet(bodyCompGraphCache, cacheKey, result);
+  return result;
+}
+
+/**
+ * Linear per-set joint strain weighting across completed hard sets:
+ * each normal hard set (1–3 RIR) contributes 1.0, while each 0-RIR failure set
+ * contributes 1.25 (replacing the abrupt global 1.25x step function across all sets).
+ */
+export function calculateWeightedJointSets(
+  sets: Array<{ completed?: boolean; setType?: string; isWarmup?: boolean; actualRir?: number; targetRir?: number }>
+): number {
+  let weighted = 0;
+  for (const s of sets) {
+    if (!s.completed || s.setType === 'warmup' || s.isWarmup) continue;
+    const rir = s.actualRir ?? s.targetRir ?? 2;
+    if (rir > 3) continue;
+    weighted += rir === 0 ? 1.25 : 1.0;
+  }
+  return Math.round(weighted * 100) / 100;
 }
 
 /**
@@ -1968,6 +2235,21 @@ export function buildAthleteKnowledgeGraph(
   /** Active days (rides, runs…), which count toward the weekly sessions goal. */
   activities: ActivityLog[] = []
 ): AthleteKnowledgeGraph {
+  const cacheDayKey = localDateString();
+  const volSig = Object.keys(weeklyVolume)
+    .sort()
+    .map((k) => `${k}:${weeklyVolume[k]}`)
+    .join(',');
+  const actSig = activities.map((a) => `${a.id}:${a.date}:${a.minutes ?? 0}`).join(',');
+  const catSig = `${exerciseCatalog.length}:${exerciseCatalog[0]?.id ?? ''}:${exerciseCatalog[exerciseCatalog.length - 1]?.id ?? ''}`;
+  const kgCacheKey = `${cacheDayKey}|${workoutsFingerprint(workouts)}|${biometricsFingerprint(biometrics)}|${catSig}|${profileDomainFingerprint(profile)}|${volSig}|${hashKeyStr(actSig)}`;
+  const cachedKg = lruGet(athleteKgCache, kgCacheKey);
+  if (cachedKg) {
+    kgCacheStats.athleteHits += 1;
+    return cachedKg;
+  }
+  kgCacheStats.athleteMisses += 1;
+
   const exMap = new Map<string, ExerciseDefinition>(
     exerciseCatalog.map((e) => [e.id, e])
   );
@@ -2022,10 +2304,10 @@ export function buildAthleteKnowledgeGraph(
         lengthenedSetsCount += hardSets;
       }
 
-      // Attribute to joints
-      const rirIntensityMultiplier = ex.sets.some((s) => (s.actualRir ?? 2) === 0) ? 1.25 : 1.0;
+      // Attribute to joints using linear per-set weighting (1.0 per 1–3 RIR set, 1.25 per 0-RIR set)
+      const weightedJointSets = calculateWeightedJointSets(ex.sets);
       for (const j of meta.primaryJoints) {
-        const jointIncrement = hardSets * (meta.isIsolation ? 2.4 : 4.2) * rirIntensityMultiplier;
+        const jointIncrement = weightedJointSets * (meta.isIsolation ? 2.4 : 4.2);
         jointRawStrain[j].strain += jointIncrement;
         jointRawStrain[j].contributors.add(ex.name);
       }
@@ -2620,7 +2902,7 @@ export function buildAthleteKnowledgeGraph(
     insights.push({
       id: 'pkg-insight-notes-fatigue',
       category: 'Autonomic',
-      title: 'Session Notes Show Elevated Fatigue',
+      title: 'Exercise Notes Show Elevated Fatigue',
       confidence: 88,
       impactMetric: `${fatigueNotes.length} heavy logs`,
       narrative:
@@ -2638,7 +2920,7 @@ export function buildAthleteKnowledgeGraph(
     insights.push({
       id: 'pkg-insight-notes-log',
       category: 'Biomechanical',
-      title: 'Session Notes & Cues Tracked',
+      title: 'Exercise Notes & Cues Tracked',
       confidence: 90,
       impactMetric: `${exerciseNotesHistory.length} ${exerciseNotesHistory.length === 1 ? 'note' : 'notes'}`,
       narrative: `Latest on ${latestNote.exerciseName} (${latestNote.date}): "${latestNote.note}" across ${uniqueExCount} ${uniqueExCount === 1 ? 'exercise' : 'exercises'}.`,
@@ -2834,7 +3116,7 @@ export function buildAthleteKnowledgeGraph(
     },
   ];
 
-  return {
+  const builtGraph: AthleteKnowledgeGraph = {
     nodes,
     edges,
     joints,
@@ -2859,4 +3141,6 @@ export function buildAthleteKnowledgeGraph(
     lengthenedStimulusRatio,
     recoveryEfficiencyScore,
   };
+  lruSet(athleteKgCache, kgCacheKey, builtGraph);
+  return builtGraph;
 }

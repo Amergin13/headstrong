@@ -31,6 +31,11 @@ interface GoogleAuthModalProps {
   onResetData?: () => void;
   onExportData?: () => void;
   onImportData?: (rawJson: string) => void;
+  onOpenCompetitorImport?: () => void;
+  onEnableDriveBackup?: (passphrase: string) => Promise<void>;
+  onRunDriveBackupNow?: (passphrase?: string) => Promise<void>;
+  onRestoreDriveBackup?: (passphrase: string) => Promise<void>;
+  onDisableDriveBackup?: (deleteRemote: boolean) => Promise<void>;
   onDeleteAllData?: () => void;
 }
 
@@ -51,6 +56,11 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({
   onResetData,
   onExportData,
   onImportData,
+  onOpenCompetitorImport,
+  onEnableDriveBackup,
+  onRunDriveBackupNow,
+  onRestoreDriveBackup,
+  onDisableDriveBackup,
   onDeleteAllData,
 }) => {
   const [clientId, setClientId] = useState(GOOGLE_AUTH_CONFIG.CLIENT_ID);
@@ -294,6 +304,11 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({
               onResetData={onResetData}
               onExportData={onExportData}
               onImportData={onImportData}
+              onOpenCompetitorImport={onOpenCompetitorImport}
+              onEnableDriveBackup={onEnableDriveBackup}
+              onRunDriveBackupNow={onRunDriveBackupNow}
+              onRestoreDriveBackup={onRestoreDriveBackup}
+              onDisableDriveBackup={onDisableDriveBackup}
               onDeleteAllData={onDeleteAllData}
             />
           )}

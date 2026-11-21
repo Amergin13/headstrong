@@ -11,18 +11,32 @@ import { RawSourceSession } from './activitySources';
  * Messages (JSON strings):
  *   app -> page  {type:'hello', version}                      bridge is ready (older installed apps send 1)
  *   page -> app  {type:'status'}                              ask for availability and permission
- *   app -> page  {type:'status', available, granted, stepsGranted}
+ *   app -> page  {type:'status', available, granted, stepsGranted, biometricsGranted}
  *   page -> app  {type:'request-permission'}                  show Health Connect's permission screen
  *   page -> app  {type:'read-sessions', requestId, since}     read ExerciseSessionRecords since ISO time
  *   app -> page  {type:'sessions', requestId, sessions|error}
  *   page -> app  {type:'read-steps', requestId, since}        read daily StepsRecord totals since ISO time
  *   app -> page  {type:'steps', requestId, days|error}
+ *   page -> app  {type:'read-biometrics', requestId, since}   read daily sleep/HR/HRV/weight/bodyFat since ISO time
+ *   app -> page  {type:'biometrics', requestId, days|error}
  * Scale messages (type 'ble-…') share this channel; see nativeScale.ts.
  */
 
 export interface DailyStepRecord {
   date: string;
   steps: number;
+}
+
+export interface HealthConnectBiometricDay {
+  date: string;
+  sleepHours?: number;
+  restingHr?: number;
+  hrvRmssd?: number;
+  bodyweightKg?: number;
+  bodyFatPct?: number;
+  steps?: number;
+  avgDailyHr?: number;
+  maxDailyHr?: number;
 }
 
 export interface HealthConnectStatus {
@@ -34,16 +48,28 @@ export interface HealthConnectStatus {
   granted: boolean;
   /** The athlete allowed Treise to read daily step counts. */
   stepsGranted?: boolean;
+  /** The athlete allowed at least one recovery/body metric (sleep, HR, HRV, weight, body fat). */
+  biometricsGranted?: boolean;
 }
 
 type StatusListener = (status: HealthConnectStatus) => void;
 
 let port: MessagePort | null = null;
 let appVersion = 0;
-let status: HealthConnectStatus = { bridge: false, available: false, granted: false, stepsGranted: false };
+let status: HealthConnectStatus = {
+  bridge: false,
+  available: false,
+  granted: false,
+  stepsGranted: false,
+  biometricsGranted: false,
+};
 const statusListeners = new Set<StatusListener>();
 const pending = new Map<string, { resolve: (s: RawSourceSession[]) => void; reject: (e: Error) => void }>();
 const pendingSteps = new Map<string, { resolve: (days: DailyStepRecord[]) => void; reject: (e: Error) => void }>();
+const pendingBiometrics = new Map<
+  string,
+  { resolve: (days: HealthConnectBiometricDay[]) => void; reject: (e: Error) => void }
+>();
 let started = false;
 
 function setStatus(next: Partial<HealthConnectStatus>) {
@@ -103,6 +129,7 @@ function handleAppMessage(data: unknown) {
       available: Boolean(msg.available),
       granted: Boolean(msg.granted),
       stepsGranted: Boolean(msg.stepsGranted),
+      biometricsGranted: Boolean(msg.biometricsGranted),
     });
   } else if (msg.type === 'sessions' && typeof msg.requestId === 'string') {
     const p = pending.get(msg.requestId);
@@ -114,6 +141,12 @@ function handleAppMessage(data: unknown) {
     const p = pendingSteps.get(msg.requestId);
     if (!p) return;
     pendingSteps.delete(msg.requestId);
+    if (msg.error) p.reject(new Error(String(msg.error)));
+    else p.resolve(Array.isArray(msg.days) ? msg.days : []);
+  } else if (msg.type === 'biometrics' && typeof msg.requestId === 'string') {
+    const p = pendingBiometrics.get(msg.requestId);
+    if (!p) return;
+    pendingBiometrics.delete(msg.requestId);
     if (msg.error) p.reject(new Error(String(msg.error)));
     else p.resolve(Array.isArray(msg.days) ? msg.days : []);
   }
@@ -222,6 +255,26 @@ export function readHealthConnectSteps(since: Date, timeoutMs = 20000): Promise<
     send({ type: 'read-steps', requestId, since: since.toISOString() });
     setTimeout(() => {
       if (pendingSteps.delete(requestId)) reject(new Error('Health Connect did not answer'));
+    }, timeoutMs);
+  });
+}
+
+/**
+ * Daily biometric metrics (sleep, resting HR, HRV RMSSD, weight, body fat) since `since`,
+ * read natively from Android Health Connect (bridge v5+) so Fitbit and Pixel Watch data flows
+ * through the OS hub automatically.
+ */
+export function readHealthConnectBiometrics(
+  since: Date,
+  timeoutMs = 20000
+): Promise<HealthConnectBiometricDay[]> {
+  if (!port || appVersion < 5 || !status.biometricsGranted) return Promise.resolve([]);
+  const requestId = `hc-bio-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  return new Promise((resolve, reject) => {
+    pendingBiometrics.set(requestId, { resolve, reject });
+    send({ type: 'read-biometrics', requestId, since: since.toISOString() });
+    setTimeout(() => {
+      if (pendingBiometrics.delete(requestId)) reject(new Error('Health Connect did not answer'));
     }, timeoutMs);
   });
 }

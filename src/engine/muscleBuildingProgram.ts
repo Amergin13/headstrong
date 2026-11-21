@@ -8,6 +8,7 @@ import {
 } from './types';
 import { localDateString } from '../utils/date';
 import { ActivityLog, activeDayDates } from './activeDays';
+import { prescribeFatigueAwareSetRirs } from './progressionRules';
 
 export const WARMUP_PROTOCOL: WarmupProtocol = {
   description:
@@ -759,6 +760,12 @@ export function generatePlanWorkout(plan: TrainingPlan, workoutNumber: number): 
       repTargetType = 'form_failure';
     }
 
+    const phaseEndRir = plan.targetRirForPhase(tmpl.phase);
+    const straightSetRirs =
+      repTargetType === 'reps' && !isTimed && e.sets >= 2
+        ? prescribeFatigueAwareSetRirs(e.sets, phaseEndRir)
+        : Array.from({ length: e.sets }, () => phaseEndRir);
+
     const sets: WorkoutSet[] = Array.from({ length: e.sets }).map((_, sIdx) => {
       let targetReps = 10;
       let repDisplay = e.reps;
@@ -796,7 +803,7 @@ export function generatePlanWorkout(plan: TrainingPlan, workoutNumber: number): 
         ...(holdSeconds !== undefined
           ? { targetDurationSeconds: holdSeconds, actualDurationSeconds: holdSeconds }
           : {}),
-        targetRir: plan.targetRirForPhase(tmpl.phase),
+        targetRir: straightSetRirs[sIdx] ?? phaseEndRir,
         completed: false,
         isWarmup: false,
         setType: 'working',
@@ -942,12 +949,21 @@ function completedPlanSessions(
 export function getNextProgramWorkoutNumber(
   workouts: WorkoutSession[],
   plan: TrainingPlan = MUSCLE_BUILDING_PLAN,
-  planCycleStarts?: Record<string, string>
+  planCycleStarts?: Record<string, string>,
+  planStartWorkouts?: Record<string, number>
 ): number {
   const done = completedPlanSessions(workouts, plan, planCycleStarts)
     .sort((a, b) => (b.completedAt || b.date).localeCompare(a.completedAt || a.date));
   const last = done[0] ? getProgramWorkoutNumber(done[0]) : undefined;
-  if (!last) return nextLiftAfter(plan, 0);
+  if (!last) {
+    const startOverride = planStartWorkouts?.[plan.id];
+    if (startOverride && startOverride >= 1) {
+      const match = plan.templates.find((t) => t.workoutNumber === startOverride && !isActiveSlot(t));
+      if (match) return match.workoutNumber;
+      return nextLiftAfter(plan, startOverride - 1);
+    }
+    return nextLiftAfter(plan, 0);
+  }
   return last >= lastLiftNumber(plan) ? nextLiftAfter(plan, 0) : nextLiftAfter(plan, last);
 }
 
@@ -991,7 +1007,8 @@ export function buildPlanOverview(
   history: WorkoutSession[],
   plan: TrainingPlan = MUSCLE_BUILDING_PLAN,
   activities: ActivityLog[] = [],
-  planCycleStarts?: Record<string, string>
+  planCycleStarts?: Record<string, string>,
+  planStartWorkouts?: Record<string, number>
 ): PlanOverview {
   const done = completedPlanSessions(history, plan, planCycleStarts)
     .sort((a, b) => (a.completedAt || a.date).localeCompare(b.completedAt || b.date));
@@ -1012,7 +1029,7 @@ export function buildPlanOverview(
       runStartDate = localDateString(end);
     }
   }
-  const nextWorkoutNumber = getNextProgramWorkoutNumber(history, plan, planCycleStarts);
+  const nextWorkoutNumber = getNextProgramWorkoutNumber(history, plan, planCycleStarts, planStartWorkouts);
   const nextWeek = plan.templates.find((t) => t.workoutNumber === nextWorkoutNumber)?.week ?? 1;
 
   // Active days: qualifying activities since the run started, one per open week, in order.

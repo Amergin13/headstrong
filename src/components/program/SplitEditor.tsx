@@ -28,6 +28,7 @@ interface SplitEditorProps {
   onLaunchSplitDay?: (split: SplitDayType) => void;
   onLaunchWorkoutNumber?: (workoutNumber: number) => void;
   onChangeProgram?: (program: ProgramSplitType) => void;
+  onInspectExercise?: (exerciseId: string) => void;
 }
 
 
@@ -40,6 +41,7 @@ export const SplitEditor: React.FC<SplitEditorProps> = ({
   onLaunchSplitDay,
   onLaunchWorkoutNumber,
   onChangeProgram,
+  onInspectExercise,
 }) => {
   const is6WkProgram = programType === 'muscle_building_6wk';
   const startWorkoutNum = activeProgramWorkoutNumber || 1;
@@ -351,7 +353,31 @@ export const SplitEditor: React.FC<SplitEditorProps> = ({
                 : ex.equipment === 'machine'
                 ? 'Machine'
                 : 'Bodyweight';
-            return (
+            return onInspectExercise ? (
+              <button
+                key={ex.id}
+                type="button"
+                onClick={() => {
+                  triggerHaptic('light');
+                  onInspectExercise(ex.id);
+                }}
+                aria-label={`Open details for ${formatSentenceCase(ex.name)}`}
+                className="w-full text-left flex items-center justify-between gap-2 min-h-[44px]"
+              >
+                <div className="min-w-0">
+                  <div className="wk-subhead">{idx + 1}. {formatSentenceCase(ex.name)}</div>
+                  <div className="wk-caption mt-1">
+                    {ex.primaryMuscle} • {equipLabel}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="wk-pill tabular-numbers">
+                    {ex.defaultRepRange[0]}–{ex.defaultRepRange[1]} reps
+                  </span>
+                  <ChevronRight className="wk-chevron" strokeWidth={2} aria-hidden="true" />
+                </div>
+              </button>
+            ) : (
               <div
                 key={ex.id}
                 className="flex items-center justify-between gap-2"
@@ -409,7 +435,31 @@ export const SplitEditor: React.FC<SplitEditorProps> = ({
           <div className="flex flex-col mt-4 pt-4 gap-3" style={{ borderTop: '1px solid var(--color-border-subtle)' }}>
             {alternativeExercises.map((ex) => {
               const meta = getExerciseBiomechanicalMeta(ex);
-              return (
+              return onInspectExercise ? (
+                <button
+                  key={ex.id}
+                  type="button"
+                  onClick={() => {
+                    triggerHaptic('light');
+                    onInspectExercise(ex.id);
+                  }}
+                  aria-label={`Open details for ${formatSentenceCase(ex.name)}`}
+                  className="w-full text-left flex items-center justify-between gap-2 min-h-[44px]"
+                >
+                  <div className="min-w-0">
+                    <div className="wk-subhead">{formatSentenceCase(ex.name)}</div>
+                    <div className="wk-caption mt-1 tabular-nums">
+                      {ex.primaryMuscle} • {ex.defaultRepRange[0]}–{ex.defaultRepRange[1]} reps
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="wk-pill tabular-numbers">
+                      {meta.isIsolation ? '3–4 sets' : '3 sets'}
+                    </span>
+                    <ChevronRight className="wk-chevron" strokeWidth={2} aria-hidden="true" />
+                  </div>
+                </button>
+              ) : (
                 <div
                   key={ex.id}
                   className="flex items-center justify-between gap-2"

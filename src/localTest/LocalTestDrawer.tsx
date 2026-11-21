@@ -105,7 +105,6 @@ export const LocalTestDrawer: React.FC<LocalTestDrawerProps> = ({
     const routes = [
       '/api/coach/generate',
       '/api/whoop/token',
-      '/api/fitbit/token',
       '/api/strava/token',
     ];
     const results: Record<string, string> = {};

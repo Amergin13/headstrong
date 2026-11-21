@@ -570,11 +570,15 @@ function round2(val: number): number {
 }
 
 /**
- * Body composition from a measured impedance, using the QingNiu formulas published in the
- * renpho-escs20m library (MIT License, Copyright (c) 2026 Ron). Returns nothing unless the impedance
- * is measured and the athlete entered their own height, age and sex: never from a placeholder. These
- * are bioimpedance estimates. Subcutaneous fat, visceral fat and metabolic age have no published
- * formula, so they are left out rather than invented.
+ * Body composition from a measured 50 kHz impedance, using published bioimpedance equations.
+ * Returns nothing unless impedance is measured and the athlete entered their own height, age and sex:
+ * never from a placeholder.
+ *
+ * Bone mass, protein mass, subcutaneous fat, visceral fat, and metabolic age cannot be measured
+ * from single-frequency 50 kHz foot-to-foot impedance and are NEVER regression-estimated (Zero
+ * Fabricated Data invariant; Siedler et al., 2023). Consumer BIA body fat / fat-free mass carry
+ * ±3.4–5.2% BF (±2.0–4.9 kg) individual longitudinal uncertainty and are treated as a secondary
+ * 12+ week directional overlay only.
  */
 function estimateBodyComposition(
   weightKg: number,
@@ -596,18 +600,14 @@ function estimateBodyComposition(
   const clamp = (val: number, min: number, max: number) => Math.min(max, Math.max(min, val));
   const softLeanPct = round1((male ? 94.992 : 93.988) + (male ? -0.94969 : -0.9396) * bodyFatPct);
   const softLeanKg = clamp(round2((weightKg * softLeanPct) / 100), 3.75, 110);
-  const fatKg = (bodyFatPct * weightKg) / 100;
-  const boneMassKg = clamp(round2(weightKg - softLeanKg - fatKg), 1, 7);
   const skeletalPct = clamp(round1((male ? 64.713 : 58.39) + (male ? -0.65508 : -0.58654) * bodyFatPct), 17.5, 70);
-  const proteinPct = clamp(round1((male ? 22.787 : 25.34) + (male ? -0.22735 : -0.30245) * bodyFatPct), 5, 24);
   return {
     bodyFatPct,
     bodyWaterPct: clamp(round1((male ? 72.202 : 68.651) + (male ? -0.72223 : -0.68725) * bodyFatPct), 20, 80),
     skeletalMuscleMassKg: (skeletalPct * weightKg) / 100,
-    muscleMassKg: round2(weightKg - boneMassKg - fatKg),
-    boneMassKg,
-    proteinMassKg: (proteinPct * weightKg) / 100,
-    bmrKcal: clamp(Math.round((male ? 372.7023 : 370.5818) + (male ? 430.9015 : 359.6167) * boneMassKg), 900, 2500),
+    muscleMassKg: softLeanKg,
+    // Katch-McArdle resting energy estimate from lean mass (never derived from regression bone mass).
+    bmrKcal: clamp(Math.round(370 + 21.6 * leanMass), 900, 3500),
   };
 }
 
@@ -726,7 +726,9 @@ export function computeRenphoScaleMetrics(
     const v = inRange(val, min, max);
     return v === undefined ? undefined : round1(v);
   };
-  const boneMass = inRange(reading.boneMassKg ?? estimated?.boneMassKg, 1, 10);
+  // Never regression-estimate bone or protein mass from 50 kHz foot-to-foot impedance;
+  // only preserve values explicitly supplied by an external clinical/hardware record.
+  const boneMass = inRange(reading.boneMassKg, 1, 10);
   const bmr = inRange(reading.bmrKcal ?? estimated?.bmrKcal, 700, 6000);
   const metabolicAge = inRange(reading.metabolicAge, 12, 100);
 
@@ -741,7 +743,7 @@ export function computeRenphoScaleMetrics(
     skeletalMuscleMassKg: opt1(reading.skeletalMuscleMassKg ?? estimated?.skeletalMuscleMassKg, 8, 150),
     muscleMassKg: opt1(reading.muscleMassKg ?? estimated?.muscleMassKg, 10, 200),
     boneMassKg: boneMass === undefined ? undefined : round2(boneMass),
-    proteinMassKg: opt1(reading.proteinMassKg ?? estimated?.proteinMassKg, 2, 60),
+    proteinMassKg: opt1(reading.proteinMassKg, 2, 60),
     bmrKcal: bmr === undefined ? undefined : Math.round(bmr),
     metabolicAge: metabolicAge === undefined ? undefined : Math.round(metabolicAge),
   };

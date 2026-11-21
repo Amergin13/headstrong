@@ -20,6 +20,12 @@ import { ExerciseSession, ReadinessState, WorkoutSession, WorkoutSet } from '../
 import { ExerciseInsight } from './exerciseInsight';
 import { markPromptRejected, mismatchedWeightUnit, spelledNumberNotInFacts, wasPromptRejected } from './factChecks';
 import { promptOnDeviceModel } from './onDeviceModel';
+import {
+  buildSummaryVoiceGuidelines,
+  checkSummaryVoiceGuidelines,
+  normalizeSummaryVoice,
+} from './coachPersonalization';
+import { coalesceAiGeneration, readCachedAiText, writeCachedAiText } from './aiGenerationCache';
 
 export interface ExerciseNoteInput {
   exercise: ExerciseSession;
@@ -57,7 +63,8 @@ export const EXERCISE_NOTE_SYSTEM_PROMPT =
   "Line 2 frames today's acute stimulus and why in concise, plain language (such as progressive mechanical tension or volume accumulation for hypertrophy). " +
   'Never mention target weight, target reps, target sets, RIR, reps in reserve, tempo, rest times, or weekly muscle set counts. ' +
   'When the facts give an estimated 1RM or estimated max, call it an estimated max; when they give added weight or reps, state those plainly, and do not mention the last session. ' +
-  'Do not use any number that is not in the facts.';
+  'Do not use any number that is not in the facts. ' +
+  buildSummaryVoiceGuidelines('exercise_brief');
 
 const isWorking = (s: WorkoutSet) => !s.isWarmup && s.setType !== 'warmup';
 const done = (s: WorkoutSet) => s.completed && isWorking(s) && (s.actualReps ?? 0) > 0;
@@ -258,11 +265,15 @@ export function checkExerciseNote(
   facts: ExerciseNoteFacts
 ): { text: string; problem?: undefined } | { text?: undefined; problem: string } {
   if (!answer) return { problem: 'it was empty' };
-  const cleaned = answer
+  const rawCleaned = answer
     .replace(/[*#_`]/g, '')
     .replace(/^\s*(?:coaching\s+note|note)\s*:\s*/i, '')
     .replace(/^["']|["']$/g, '')
     .trim();
+  const cleaned = normalizeSummaryVoice(rawCleaned, {
+    preserveNewlines: true,
+    prefixPattern: /^\s*(?:coaching\s+note|note)\s*:\s*/i,
+  });
   if (cleaned.length < 30 || cleaned.length > 240) {
     return { problem: 'it must be two concise sentences under 240 characters' };
   }
@@ -401,6 +412,10 @@ export function checkExerciseNote(
   if (!runReadAloudQaGate(text).passed) {
     return { problem: 'it used hype, a cliché, or judgmental wording' };
   }
+  const voiceProblem = checkSummaryVoiceGuidelines(text);
+  if (voiceProblem) {
+    return { problem: voiceProblem };
+  }
 
   return { text };
 }
@@ -420,62 +435,57 @@ export async function generateExerciseNote(
   prompt: typeof promptOnDeviceModel = promptOnDeviceModel,
   attempts = 2
 ): Promise<string | null> {
+  const isLive = prompt === promptOnDeviceModel;
   const rejectKey = `note:${facts.key}`;
-  if (prompt === promptOnDeviceModel && wasPromptRejected(rejectKey)) return null;
-  let problem: string | undefined;
-  let sawModelAnswer = false;
-  // A model that throws is the same as no model: the fact-based text stays.
-  try {
-    for (let i = 0; i < attempts; i++) {
-      const request = problem
-        ? `${buildExerciseNotePrompt(facts)}\n(Your last 2-line summary could not be used because ${problem}. Write it again.)`
-        : buildExerciseNotePrompt(facts);
-      const answer = await prompt(EXERCISE_NOTE_SYSTEM_PROMPT, request, {
-        stateless: true,
-        maxTokens: 110,
-        timeoutMs: 45_000,
-      });
-      if (answer === null) return null; // no model, or it failed: don't retry or poison cache
-      sawModelAnswer = true;
-      const checked = checkExerciseNote(answer, facts);
-      if (checked.problem === undefined) return checked.text;
-      problem = checked.problem;
-    }
-    if (prompt === promptOnDeviceModel && sawModelAnswer) {
-      markPromptRejected(rejectKey);
-    }
-  } catch {
-    return null;
+  if (isLive) {
+    const cached = acceptExerciseNote(getCachedExerciseNote(facts.key) ?? null, facts);
+    if (cached) return cached;
+    if (wasPromptRejected(rejectKey)) return null;
   }
-  return null;
+
+  const run = async (): Promise<string | null> => {
+    let problem: string | undefined;
+    let sawModelAnswer = false;
+    // A model that throws is the same as no model: the fact-based text stays.
+    try {
+      for (let i = 0; i < attempts; i++) {
+        const request = problem
+          ? `${buildExerciseNotePrompt(facts)}\n(Your last 2-line summary could not be used because ${problem}. Write it again.)`
+          : buildExerciseNotePrompt(facts);
+        const answer = await prompt(EXERCISE_NOTE_SYSTEM_PROMPT, request, {
+          stateless: true,
+          maxTokens: 110,
+          timeoutMs: 45_000,
+        });
+        if (answer === null) return null; // no model, or it failed: don't retry or poison cache
+        sawModelAnswer = true;
+        const checked = checkExerciseNote(answer, facts);
+        if (checked.problem === undefined) return checked.text;
+        problem = checked.problem;
+      }
+      if (isLive && sawModelAnswer) {
+        markPromptRejected(rejectKey);
+      }
+    } catch {
+      return null;
+    }
+    return null;
+  };
+
+  if (isLive) {
+    return coalesceAiGeneration(rejectKey, run, (text) => cacheExerciseNote(facts.key, text));
+  }
+  return run();
 }
 
 // Generated notes are kept on the device, keyed by their facts, so each is written once.
 const CACHE_KEY = 'treise_exercise_notes_v2';
 const MAX_CACHED = 80;
 
-function readCache(): Record<string, string> {
-  try {
-    const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(CACHE_KEY) : null;
-    // Anything that isn't a saved map of texts (a damaged or foreign value) counts as empty.
-    const parsed = raw ? JSON.parse(raw) : {};
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
-  } catch {
-    return {};
-  }
-}
-
 export function getCachedExerciseNote(key: string): string | undefined {
-  const hit = readCache()[key];
-  return typeof hit === 'string' ? hit : undefined;
+  return readCachedAiText(CACHE_KEY, key);
 }
 
 export function cacheExerciseNote(key: string, note: string): void {
-  try {
-    const entries = Object.entries(readCache()).filter(([k]) => k !== key);
-    entries.push([key, note]);
-    localStorage.setItem(CACHE_KEY, JSON.stringify(Object.fromEntries(entries.slice(-MAX_CACHED))));
-  } catch {
-    // Storage unavailable: the note is simply generated again next time.
-  }
+  writeCachedAiText(CACHE_KEY, key, note, MAX_CACHED);
 }

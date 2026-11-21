@@ -1,4 +1,5 @@
-import React, { useState, useRef } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
+import { Sparkles } from 'lucide-react';
 import { PageTopGradient } from '../common/PageTopGradient';
 import {
   BiometricLog,
@@ -12,6 +13,8 @@ import {
 } from '../../engine/types';
 import { SplitDayType } from '../../services/workoutGenerator';
 import { SplitEditor } from './SplitEditor';
+import { ExerciseDetailModal } from '../train/ExerciseDetailModal';
+import { buildInspectExerciseSession } from '../../services/exerciseDetails';
 import { ProgramPlanView } from './ProgramPlanView';
 import { ProgramHeaderMenu } from './ProgramHeaderMenu';
 import { ProgramPickerModal } from './ProgramPickerModal';
@@ -19,6 +22,7 @@ import { ImportProgramModal } from './ImportProgramModal';
 import { TrainingPlan } from '../../engine/muscleBuildingProgram';
 import { isPlanProgram, canUseMusclePlan } from '../../engine/trainingPlans';
 import { ParsedProgramImport } from '../../services/spreadsheetProgramImport';
+import { CompetitorCsvImportResult } from '../../services/competitorCsvImport';
 import { ActivityLog } from '../../engine/activeDays';
 import { CustomExerciseModal } from './CustomExerciseModal';
 import { MesocycleManager } from './MesocycleManager';
@@ -50,6 +54,7 @@ interface ProgramTabProps {
     parsed: ParsedProgramImport,
     opts: { activateProgram: boolean; importHistory: boolean }
   ) => void;
+  onImportHistory?: (parsed: CompetitorCsvImportResult) => void;
   onDeleteCustomPlan?: (planId: CustomPlanId) => void;
   onAddCustomExercise: (newEx: ExerciseDefinition) => void;
   onOpenOnboarding?: () => void;
@@ -59,6 +64,8 @@ interface ProgramTabProps {
   onBackToWorkout?: () => void;
   /** Opens Treise coach with a pre-filled HITL program adaptation prompt. */
   onOpenCoachIntervention?: (prompt: string) => void;
+  /** Opens Treise coach in the Program context (optional pre-filled prompt). */
+  onOpenCoach?: (prompt?: string) => void;
 }
 
 const HOME_EQUIP_LABELS: Record<string, string> = {
@@ -87,6 +94,7 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
   onLaunchWorkoutNumber,
   onUpdateProgram,
   onImportProgram,
+  onImportHistory,
   onDeleteCustomPlan,
   onAddCustomExercise,
   onOpenOnboarding,
@@ -94,10 +102,20 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
   activeProgramWorkoutNumber,
   onBackToWorkout,
   onOpenCoachIntervention,
+  onOpenCoach,
 }) => {
   const [showCreateExercise, setShowCreateExercise] = useState(false);
   const [showProgramPicker, setShowProgramPicker] = useState(false);
   const [showImportSpreadsheet, setShowImportSpreadsheet] = useState(false);
+  const [inspectedExerciseId, setInspectedExerciseId] = useState<string | null>(null);
+  const inspectedExercise = useMemo(() => {
+    if (!inspectedExerciseId) return null;
+    return buildInspectExerciseSession({
+      exerciseId: inspectedExerciseId,
+      exerciseCatalog,
+      workouts,
+    });
+  }, [inspectedExerciseId, exerciseCatalog, workouts]);
   const isPlan = isPlanProgram(profile.programType);
   const changeProgram = (newProg: ProgramSplitType) => {
     if (onUpdateProgram) {
@@ -139,6 +157,7 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
           onLaunchWorkoutNumber={onLaunchWorkoutNumber}
           onBackToWorkout={onBackToWorkout}
           onOpenCoachIntervention={onOpenCoachIntervention}
+          onOpenCoach={onOpenCoach}
           headerAction={headerMenu}
         />
       )}
@@ -152,17 +171,40 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
           </header>
 
           <div ref={programCardsTopRef} className="flex flex-col gap-3 mt-5">
-            {onBackToWorkout && (
-              <button
-                type="button"
-                onClick={() => {
-                  triggerHaptic('light');
-                  onBackToWorkout();
-                }}
-                className="wk-btn-secondary self-start"
-              >
-                Back to workout{activeWorkoutName ? `: ${activeWorkoutName}` : ''}
-              </button>
+            {(onBackToWorkout || onOpenCoach) && (
+              <div className="flex flex-wrap items-center gap-2">
+                {onBackToWorkout && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      triggerHaptic('light');
+                      onBackToWorkout();
+                    }}
+                    className="wk-btn-secondary"
+                  >
+                    Back to workout{activeWorkoutName ? `: ${activeWorkoutName}` : ''}
+                  </button>
+                )}
+                {onOpenCoach && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      triggerHaptic('light');
+                      onOpenCoach();
+                    }}
+                    className="wk-btn-secondary min-h-[44px] inline-flex items-center gap-2"
+                    style={{ borderColor: 'rgb(var(--color-coach-accent-rgb) / 0.35)' }}
+                  >
+                    <Sparkles
+                      className="w-4 h-4 shrink-0"
+                      style={{ color: 'var(--color-coach-accent)' }}
+                      strokeWidth={2.2}
+                      aria-hidden="true"
+                    />
+                    <span>Adapt plan with Treise</span>
+                  </button>
+                )}
+              </div>
             )}
 
             {/* 1. Training Locations & Equipment Summary Card */}
@@ -252,6 +294,7 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
               onLaunchSplitDay={onLaunchSplitDay}
               onLaunchWorkoutNumber={onLaunchWorkoutNumber}
               onChangeProgram={changeProgram}
+              onInspectExercise={(id) => setInspectedExerciseId(id)}
             />
           </div>
         </>
@@ -277,12 +320,33 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
         />
       )}
 
-      {/* Import Program From Spreadsheet Modal */}
-      {showImportSpreadsheet && onImportProgram && (
+      {/* Import Program / Competitor History CSV Modal */}
+      {showImportSpreadsheet && (onImportProgram || onImportHistory) && (
         <ImportProgramModal
           exerciseCatalog={exerciseCatalog}
           onImport={onImportProgram}
+          onImportHistory={onImportHistory}
           onClose={() => setShowImportSpreadsheet(false)}
+        />
+      )}
+
+      {inspectedExercise && (
+        <ExerciseDetailModal
+          exercise={inspectedExercise.exercise}
+          exerciseDef={inspectedExercise.exerciseDef}
+          workouts={workouts}
+          biometrics={biometrics}
+          bodyweightKg={bodyweightKg}
+          readinessState={readinessState}
+          onAskCoach={
+            onOpenCoachIntervention
+              ? () =>
+                  onOpenCoachIntervention(
+                    `Review my progress and form cues for ${inspectedExercise.exercise.name}`
+                  )
+              : undefined
+          }
+          onClose={() => setInspectedExerciseId(null)}
         />
       )}
     </div>

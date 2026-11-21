@@ -33,6 +33,7 @@ import { GOAL_DISPLAY_NAME } from '../utils/goalNames';
 import { formatWeight } from '../utils/units';
 import { buildAthleteGoals } from './athleteGoals';
 import type { CoachPlace } from './coachContext';
+import type { CoachContextSliceScope, CoachInteractionMode } from './coachPersonalization';
 
 // ============================================================================
 // 1. STRICT OOUX DOMAIN OBJECTS
@@ -102,6 +103,7 @@ export interface OouxProgram {
   phase_name: string;
   cycle_started_at: string | null;
   overrides_count?: number;
+  active_overrides?: string[];
 }
 
 export interface OouxGoal {
@@ -351,6 +353,7 @@ function routeFromPlace(place?: CoachPlace): string {
     if (place.detail) return `/progress/${place.detail}`;
     return '/progress';
   }
+  if (place.exerciseId) return `/train/exercise/${place.exerciseId}`;
   return '/train';
 }
 
@@ -550,8 +553,8 @@ export function buildContextEnvelope(input: {
 
   // Program state (1:1 with ProgramTab)
   const plan = resolveActivePlan(profile);
-  const overview = buildPlanOverview(workouts, plan, activities, profile.planCycleStarts);
-  const nextNum = getNextProgramWorkoutNumber(workouts, plan, profile.planCycleStarts);
+  const overview = buildPlanOverview(workouts, plan, activities, profile.planCycleStarts, profile.planStartWorkouts);
+  const nextNum = getNextProgramWorkoutNumber(workouts, plan, profile.planCycleStarts, profile.planStartWorkouts);
   const totalWeeks = Math.max(1, ...plan.templates.map((t) => t.week));
   const totalWorkouts = plan.templates.length;
   const nextTemplate = plan.templates.find((t) => t.workoutNumber === nextNum);
@@ -561,6 +564,17 @@ export function buildContextEnvelope(input: {
     plan.phases[0];
   const completionPct =
     totalWorkouts > 0 ? Math.min(100, Math.round((overview.completedCount / totalWorkouts) * 100)) : 0;
+
+  const planOverrides = (profile.programOverrides ?? []).filter((o) => o.planId === plan.id);
+  const activeOverrides = planOverrides.map((ov) => {
+    if (ov.kind === 'swap_exercise') return `Swap ${ov.targetExerciseName || ov.targetExerciseId} → ${ov.replacementExerciseName || ov.replacementExerciseId}`;
+    if (ov.kind === 'add_exercise') return `Add ${ov.replacementExerciseName || ov.replacementExerciseId} (${ov.sets ?? 3} sets)`;
+    if (ov.kind === 'remove_exercise') return `Remove ${ov.targetExerciseName || ov.targetExerciseId}`;
+    if (ov.kind === 'adjust_sets') return `Sets on ${ov.targetExerciseName || ov.targetExerciseId}: ${ov.sets ?? `${(ov.setDelta ?? 1) > 0 ? '+' : ''}${ov.setDelta ?? 1}`}`;
+    if (ov.kind === 'adjust_rep_range' && ov.repRange) return `Rep range on ${ov.targetExerciseName || ov.targetExerciseId}: ${ov.repRange[0]}–${ov.repRange[1]}`;
+    if (ov.kind === 'prioritize_first') return `Prioritize ${ov.targetExerciseName || ov.targetExerciseId} first`;
+    return ov.kind;
+  });
 
   const programObj: OouxProgram = {
     id: plan.id,
@@ -573,7 +587,8 @@ export function buildContextEnvelope(input: {
     completion_pct: completionPct,
     phase_name: currentPhase?.shortName ?? 'Current Phase',
     cycle_started_at: profile.planCycleStarts?.[plan.id] ?? null,
-    overrides_count: (profile.programOverrides ?? []).filter((o) => o.planId === plan.id).length,
+    overrides_count: planOverrides.length,
+    active_overrides: activeOverrides,
   };
 
   // Today's Workout OOUX object
@@ -688,7 +703,7 @@ export function buildContextEnvelope(input: {
   return {
     schema_version: '1.0',
     working_state: {
-      app_route: routeFromPlace(input.routeName ? { tab: input.routeName } : place),
+      app_route: routeFromPlace(place ?? (input.routeName ? { tab: input.routeName } : undefined)),
       athlete: athleteObj,
       program: programObj,
       today_workout: todayWorkoutObj,
@@ -820,23 +835,58 @@ export function detectStalledExerciseIds(
   return analyzeExerciseHistoryAndStalls(completed, emaLookup, hasRealBw, bodyweightEmaKg).stalledIds;
 }
 
-export function serializeContextEnvelopeForPrompt(env: ContextEnvelope): string {
+export interface SerializeEnvelopeOptions {
+  mode?: CoachInteractionMode;
+  scope?: CoachContextSliceScope;
+  focusedExerciseId?: string;
+}
+
+export function serializeContextEnvelopeForPrompt(
+  env: ContextEnvelope,
+  opts?: SerializeEnvelopeOptions
+): string {
   const { working_state: ws, episodic_memory: ep, semantic_memory: sm } = env;
   const unit = ws.athlete.weight_unit || 'kg';
+  const scope = opts?.scope;
+  const mode = opts?.mode;
+  const isFloorScoped = scope === 'exercise_focus' || scope === 'mid_workout';
+  const todayExerciseIds = new Set(ws.today_workout.exercises.map((e) => e.exercise_id));
+
+  const recentLimit = isFloorScoped ? 2 : 5;
   const recentText =
     ep.recent_workouts.length > 0
       ? ep.recent_workouts
-          .slice(0, 5)
-          .map((w) => `${w.date} ${w.name} (${w.completed_sets} sets${w.top_lift ? `, ${w.top_lift}` : ''})`)
+          .slice(0, recentLimit)
+          .map(
+            (w) =>
+              `${w.date} ${w.name} (${w.completed_sets} sets${w.total_volume_kg > 0 ? `, vol ${formatWeight(w.total_volume_kg, unit)}` : ''}${w.top_lift ? `, ${w.top_lift}` : ''})`
+          )
           .join('; ')
       : 'none yet';
-  const prsText =
-    ep.recent_prs.length > 0
-      ? ep.recent_prs.map((p) => `${p.exercise_name} E1RM ${formatWeight(p.e1rm_kg, unit)}`).join(', ')
+  const goalsText =
+    ws.goals.length > 0
+      ? ws.goals
+          .slice(0, isFloorScoped ? 2 : 5)
+          .map((g) => `${g.title}: ${g.current}/${g.target} ${g.unit} (${g.progress_pct}%)`)
+          .join('; ')
       : 'none';
+  const overridesText =
+    ws.program.active_overrides && ws.program.active_overrides.length > 0
+      ? ws.program.active_overrides.join('; ')
+      : 'none';
+  const scopedPrs = isFloorScoped
+    ? ep.recent_prs.filter((p) => todayExerciseIds.has(p.exercise_id))
+    : ep.recent_prs;
+  const prsText =
+    scopedPrs.length > 0
+      ? scopedPrs.map((p) => `${p.exercise_name} E1RM ${formatWeight(p.e1rm_kg, unit)}`).join(', ')
+      : 'none';
+  const scopedStalls = isFloorScoped
+    ? ep.stalled_lifts.filter((s) => todayExerciseIds.has(s.exercise_id))
+    : ep.stalled_lifts;
   const stallText =
-    ep.stalled_lifts.length > 0
-      ? ep.stalled_lifts.map((s) => `${s.exercise_name} (${formatWeight(s.last_weight_kg, unit)}×${s.last_reps})`).join(', ')
+    scopedStalls.length > 0
+      ? scopedStalls.map((s) => `${s.exercise_name} (${formatWeight(s.last_weight_kg, unit)}×${s.last_reps})`).join(', ')
       : 'none';
   const memoriesText =
     sm.saved_memories.length > 0
@@ -852,23 +902,37 @@ export function serializeContextEnvelopeForPrompt(env: ContextEnvelope): string 
 
   const activeDaysText =
     ep.recent_active_days.length > 0
-      ? ep.recent_active_days.slice(0, 3).map((a) => `${a.date} ${a.summary}`).join('; ')
+      ? ep.recent_active_days.slice(0, isFloorScoped ? 1 : 3).map((a) => `${a.date} ${a.summary}`).join('; ')
       : 'none';
+
+  // Prioritize carried-over exercise notes matching the focused exercise or today's workout first.
+  const prioritizedNotes = [...ep.exercise_notes].sort((a, b) => {
+    const aFocus = opts?.focusedExerciseId && a.exercise_id === opts.focusedExerciseId ? 2 : todayExerciseIds.has(a.exercise_id) ? 1 : 0;
+    const bFocus = opts?.focusedExerciseId && b.exercise_id === opts.focusedExerciseId ? 2 : todayExerciseIds.has(b.exercise_id) ? 1 : 0;
+    return bFocus - aFocus;
+  });
   const notesText =
-    ep.exercise_notes.length > 0
-      ? ep.exercise_notes.slice(0, 4).map((n) => `${n.exercise_name} (${n.date}): "${n.note}"`).join('; ')
+    prioritizedNotes.length > 0
+      ? prioritizedNotes.slice(0, 4).map((n) => `${n.exercise_name} (${n.date}): "${n.note}"`).join('; ')
       : 'none';
   const timedToday = ws.today_workout.exercises
     .filter((e) => e.is_timed)
     .map((e) => `${e.name} (${e.target_duration_seconds ?? 45}s hold)`)
     .join(', ');
 
-  return [
-    `Route: ${ws.app_route} | Day mode: ${ws.today_workout.day_instance_kind} | Program completion: ${ws.program.completion_pct}% (${ws.program.completed_workouts}/${ws.program.total_workouts}, Wk ${ws.program.current_week}/${ws.program.total_weeks} Day ${ws.program.current_day_number}).`,
-    `Streak: ${ep.adherence_streak_days}d. Recent 5: ${recentText}. Active days: ${activeDaysText}.`,
-    `PRs: ${prsText}. Stalled: ${stallText}.${timedToday ? ` Timed holds today: ${timedToday}.` : ''}`,
-    `Notes: ${notesText}. Memory: ${memoriesText}. Contraindications: ${contraText}.`,
-  ].join('\n');
+  const modePrefix = mode && scope ? `Mode: ${mode} | Scope: ${scope} | ` : '';
+  const lines = [
+    `${modePrefix}Route: ${ws.app_route} | Day mode: ${ws.today_workout.day_instance_kind} | Program completion: ${ws.program.completion_pct}% (${ws.program.completed_workouts}/${ws.program.total_workouts}, Wk ${ws.program.current_week}/${ws.program.total_weeks} Day ${ws.program.current_day_number}).`,
+  ];
+  if (!isFloorScoped) {
+    lines.push(`Goals: ${goalsText}. Program overrides: ${overridesText}.`);
+    lines.push(`Streak: ${ep.adherence_streak_days}d. Recent 5: ${recentText}. Active days: ${activeDaysText}.`);
+  } else {
+    lines.push(`Streak: ${ep.adherence_streak_days}d. Recent sessions: ${recentText}. Program overrides: ${overridesText}.`);
+  }
+  lines.push(`PRs: ${prsText}. Stalled: ${stallText}.${timedToday ? ` Timed holds today: ${timedToday}.` : ''}`);
+  lines.push(`Notes: ${notesText}. Memory: ${memoriesText}. Contraindications: ${contraText}.`);
+  return lines.join('\n');
 }
 
 export function createMemoryFact(

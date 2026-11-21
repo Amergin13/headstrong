@@ -1,30 +1,53 @@
 import React, { useState } from 'react';
 import { X, Disc, Sliders } from 'lucide-react';
+import { EquipmentInventory, TrainingLocation } from '../../engine/types';
+import {
+  STANDARD_BARS_BY_UNIT,
+  STANDARD_PLATES_BY_UNIT,
+  calculateBarbellPlatesForInventory,
+  createDefaultEquipmentInventory,
+} from '../../engine/equipmentInventory';
 import { triggerHaptic } from '../../utils/haptics';
+import { LB_PER_KG } from '../../utils/units';
 import { useUnits } from '../../utils/unitsContext';
-
-// Standard plate sets and bars, in the athlete's unit.
-const PLATE_SETS = {
-  kg: { plates: [25, 20, 15, 10, 5, 2.5, 1.25], bars: [20, 15] },
-  lb: { plates: [45, 35, 25, 10, 5, 2.5], bars: [45, 35] },
-} as const;
 
 interface PlateCalculatorModalProps {
   initialWeightKg: number;
+  location?: TrainingLocation;
+  inventory?: EquipmentInventory;
+  onSaveInventory?: (next: EquipmentInventory) => void;
   onClose: () => void;
 }
 
 export const PlateCalculatorModal: React.FC<PlateCalculatorModalProps> = ({
   initialWeightKg,
+  location = 'gym',
+  inventory,
+  onSaveInventory,
   onClose,
 }) => {
   const units = useUnits();
   const unit = units.unit;
-  const plateSet = PLATE_SETS[unit];
+  const standardPlates = STANDARD_PLATES_BY_UNIT[unit];
+  const standardBars = STANDARD_BARS_BY_UNIT[unit];
+  const effectiveLocation: 'gym' | 'home' = location === 'home' ? 'home' : 'gym';
+  const baseInv =
+    inventory && inventory.plateUnit === unit
+      ? inventory
+      : createDefaultEquipmentInventory(effectiveLocation, unit);
+
+  const initialBarDisplay =
+    Math.round((unit === 'lb' ? baseInv.barWeightKg * LB_PER_KG : baseInv.barWeightKg) * 2) / 2;
+
   // All values below are in the athlete's unit (kg or lb).
   const [targetWeight, setTargetWeight] = useState(units.toDisplay(initialWeightKg));
-  const [barWeight, setBarWeight] = useState<number>(plateSet.bars[0]);
-  const availablePlates: number[] = [...plateSet.plates];
+  const [barWeight, setBarWeight] = useState<number>(
+    standardBars.includes(initialBarDisplay) ? initialBarDisplay : standardBars[0]
+  );
+  const [platePairs, setPlatePairs] = useState<Record<string, number>>(() => ({ ...baseInv.platePairs }));
+  const [editingInventory, setEditingInventory] = useState(false);
+
+  const availablePlates: number[] = [...standardPlates];
 
   // Color mapping for standard Olympic bumper / competition plates
   const plateColors: Record<number, { bg: string; border: string; text: string; height: number }> = {
@@ -39,25 +62,27 @@ export const PlateCalculatorModal: React.FC<PlateCalculatorModalProps> = ({
     1.25: { bg: 'var(--color-bg-surface)', border: 'var(--color-border-subtle)', text: 'var(--color-text-muted)', height: 40 },
   };
 
-  // Calculate plates per side (Greedy algorithm)
-  const calculatePlatesPerSide = (totalKg: number, barKg: number, platePool: number[]) => {
-    if (totalKg <= barKg) return { platesPerSide: [], remainderKg: 0 };
+  const solved = calculateBarbellPlatesForInventory(targetWeight, barWeight, platePairs);
+  const { platesPerSide, achievedTotal, remainderTotal, maxLoadableTotal } = solved;
 
-    let weightNeededPerSide = (totalKg - barKg) / 2;
-    const sortedPool = [...platePool].sort((a, b) => b - a);
-    const result: number[] = [];
-
-    for (const plate of sortedPool) {
-      while (weightNeededPerSide >= plate) {
-        result.push(plate);
-        weightNeededPerSide = Math.round((weightNeededPerSide - plate) * 100) / 100;
-      }
-    }
-
-    return { platesPerSide: result, remainderKg: weightNeededPerSide * 2 };
+  const persistInventory = (nextBar: number, nextPairs: Record<string, number>) => {
+    if (!onSaveInventory) return;
+    onSaveInventory({
+      ...baseInv,
+      barWeightKg: unit === 'lb' ? nextBar / LB_PER_KG : nextBar,
+      plateUnit: unit,
+      platePairs: nextPairs,
+    });
   };
 
-  const { platesPerSide, remainderKg } = calculatePlatesPerSide(targetWeight, barWeight, availablePlates);
+  const adjustPairCount = (plate: number, delta: number) => {
+    triggerHaptic('light');
+    const key = String(plate);
+    const nextVal = Math.max(0, Math.min(12, (platePairs[key] ?? 0) + delta));
+    const nextPairs = { ...platePairs, [key]: nextVal };
+    setPlatePairs(nextPairs);
+    persistInventory(barWeight, nextPairs);
+  };
 
   return (
     <div
@@ -67,14 +92,15 @@ export const PlateCalculatorModal: React.FC<PlateCalculatorModalProps> = ({
       className="wk fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-md"
       style={{ background: 'var(--color-bg-scrim)' }}
     >
-      <div className="wk-card w-full max-w-sm shadow-2xl space-y-5">
+      <div className="wk-card w-full max-w-sm max-h-[88vh] overflow-y-auto shadow-2xl space-y-5">
         {/* Header */}
         <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <Disc className="w-5 h-5" style={{ color: 'var(--color-text-secondary)' }} />
-            <h3 className="wk-h1">
-              Barbell plate calculator
-            </h3>
+          <div className="flex items-center gap-2 min-w-0">
+            <Disc className="w-5 h-5 shrink-0" style={{ color: 'var(--color-text-secondary)' }} />
+            <div className="min-w-0">
+              <h3 className="wk-h1 truncate">Barbell plate calculator</h3>
+              <p className="wk-caption">{effectiveLocation === 'home' ? 'Home' : 'Gym'} plate inventory · Max {maxLoadableTotal} {unit}</p>
+            </div>
           </div>
           <button
             type="button"
@@ -83,7 +109,7 @@ export const PlateCalculatorModal: React.FC<PlateCalculatorModalProps> = ({
               onClose();
             }}
             aria-label="Close plate calculator"
-            className="w-11 h-11 min-w-[44px] min-h-[44px] rounded-full flex items-center justify-center transition-colors border border-[var(--color-border-strong)]"
+            className="w-11 h-11 min-w-[44px] min-h-[44px] rounded-full flex items-center justify-center transition-colors border border-[var(--color-border-strong)] shrink-0"
             style={{ background: 'var(--wk-raised)', color: 'var(--color-text-secondary)' }}
           >
             <X className="w-4 h-4 stroke-[2]" />
@@ -112,7 +138,7 @@ export const PlateCalculatorModal: React.FC<PlateCalculatorModalProps> = ({
 
             {/* Bar weight toggle */}
             <div className="wk-segments grid-cols-2">
-              {plateSet.bars.map((b) => (
+              {standardBars.map((b) => (
                 <button
                   key={b}
                   type="button"
@@ -120,6 +146,7 @@ export const PlateCalculatorModal: React.FC<PlateCalculatorModalProps> = ({
                   onClick={() => {
                     triggerHaptic('light');
                     setBarWeight(b);
+                    persistInventory(b, platePairs);
                   }}
                   className={`wk-segment tabular-numbers ${barWeight === b ? 'is-active' : ''}`}
                 >
@@ -132,8 +159,8 @@ export const PlateCalculatorModal: React.FC<PlateCalculatorModalProps> = ({
 
         {/* Visual Barbell Collar & Plates (Neutral Treise Slate + 4px steps) */}
         <div className="wk-raised flex flex-col items-center justify-center min-h-[144px]">
-          <span className="wk-label mb-2">
-            Plates per side ({Math.max(0, (targetWeight - barWeight) / 2)} {unit} each side)
+          <span className="wk-label mb-2 tabular-nums">
+            Plates per side ({Math.max(0, Math.round(((achievedTotal - barWeight) / 2) * 100) / 100)} {unit} each side)
           </span>
 
           {platesPerSide.length === 0 ? (
@@ -175,36 +202,88 @@ export const PlateCalculatorModal: React.FC<PlateCalculatorModalProps> = ({
             </div>
           )}
 
-          {remainderKg > 0 && (
-            <span className="wk-caption mt-2" style={{ color: 'var(--color-status-warning)' }}>
-              {remainderKg} {unit} can&apos;t be made with standard plates.
+          {remainderTotal > 0 && (
+            <span className="wk-caption mt-2 text-center tabular-nums" style={{ color: 'var(--color-status-warning)' }}>
+              Closest loadable with your plates: {achievedTotal} {unit} (Δ {remainderTotal} {unit}).
             </span>
           )}
         </div>
 
         {/* Plate Counts Summary Grid */}
         <div className="space-y-2">
-          <span className="wk-label">
-            Plate checklist per side
-          </span>
-
-          <div className="grid grid-cols-4 gap-2 text-xs">
-            {availablePlates.map((plate) => {
-              const count = platesPerSide.filter((p) => p === plate).length;
-              if (count === 0) return null;
-              return (
-                <div
-                  key={plate}
-                  className="wk-raised text-center"
-                >
-                  <span className="wk-caption block">{plate} {unit}</span>
-                  <span className="wk-label tabular-numbers block mt-1" style={{ color: 'var(--color-text-primary)' }}>
-                    × {count}
-                  </span>
-                </div>
-              );
-            })}
+          <div className="flex items-center justify-between gap-2">
+            <span className="wk-label">Plate checklist per side</span>
+            {onSaveInventory && (
+              <button
+                type="button"
+                onClick={() => {
+                  triggerHaptic('light');
+                  setEditingInventory((v) => !v);
+                }}
+                aria-expanded={editingInventory}
+                className="wk-btn-secondary min-h-[44px] gap-1"
+              >
+                <Sliders className="w-4 h-4 stroke-[2]" aria-hidden="true" />
+                <span>{editingInventory ? 'Done editing' : 'Edit my plates'}</span>
+              </button>
+            )}
           </div>
+
+          {!editingInventory ? (
+            <div className="grid grid-cols-4 gap-2 text-xs">
+              {availablePlates.map((plate) => {
+                const count = platesPerSide.filter((p) => p === plate).length;
+                if (count === 0) return null;
+                return (
+                  <div key={plate} className="wk-raised text-center">
+                    <span className="wk-caption block">{plate} {unit}</span>
+                    <span className="wk-label tabular-numbers block mt-1" style={{ color: 'var(--color-text-primary)' }}>
+                      × {count}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <p className="wk-caption">
+                Set how many pairs of each plate you have at {effectiveLocation === 'home' ? 'home' : 'the gym'}.
+              </p>
+              <div className="space-y-2">
+                {availablePlates.map((plate) => {
+                  const pairs = platePairs[String(plate)] ?? 0;
+                  return (
+                    <div key={plate} className="wk-raised flex items-center justify-between gap-2">
+                      <span className="wk-subhead tabular-nums">
+                        {plate} {unit}
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => adjustPairCount(plate, -1)}
+                          aria-label={`Remove a pair of ${plate} ${unit} plates`}
+                          className="wk-btn-secondary min-h-[44px] min-w-[44px] justify-center"
+                        >
+                          −
+                        </button>
+                        <span className="wk-subhead tabular-nums w-16 text-center">
+                          {pairs} {pairs === 1 ? 'pair' : 'pairs'}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => adjustPairCount(plate, 1)}
+                          aria-label={`Add a pair of ${plate} ${unit} plates`}
+                          className="wk-btn-secondary min-h-[44px] min-w-[44px] justify-center"
+                        >
+                          +
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Done Button */}

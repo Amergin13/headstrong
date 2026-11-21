@@ -1,4 +1,4 @@
-import { ExerciseDefinition, MuscleGroup, WorkoutSession } from './types';
+import { ExerciseDefinition, MuscleGroup, ReadinessState, WorkoutSession, WorkoutSet } from './types';
 import { daysBetweenLocalDates, localDateString } from '../utils/date';
 
 /**
@@ -44,6 +44,11 @@ export const MUSCLE_FRIENDLY_NAMES: Record<MuscleGroup, string> = {
 
 /** A muscle counts as ready at 90% of its recovery window. */
 export const READY_THRESHOLD = 0.9;
+/**
+ * Modest multiplier applied to local muscle recovery windows while systemic Amber Shield
+ * is active, unifying systemic and local recovery so they never contradict each other.
+ */
+export const AMBER_SHIELD_RECOVERY_MULTIPLIER = 1.2;
 /** Secondary (assisting) muscles need roughly half the window of a direct hit. */
 const SECONDARY_STIMULUS_FACTOR = 0.5;
 /** After training today, the next session is never recommended before this local hour tomorrow. */
@@ -60,6 +65,8 @@ export interface MuscleRecoveryStatus {
   readyAt: number; // epoch ms when the muscle reaches READY_THRESHOLD
 }
 
+export type RecoveryAdvisoryStatus = 'ready' | 'recovering' | 'systemic_low' | 'trained_today';
+
 export interface SessionRecoveryGate {
   isReady: boolean;
   trainedToday: boolean;
@@ -69,6 +76,14 @@ export interface SessionRecoveryGate {
   limitingMuscles: { muscle: MuscleGroup; recoveryPct: number; readyAt: number }[];
   lastWorkoutName?: string;
   lastWorkoutAt?: number;
+  /** Systemic multiplier applied to local recovery windows (1.2 during Amber Shield, else 1.0). */
+  systemicMultiplier: number;
+  /** Readiness state incorporated into this unified recovery check. */
+  readinessState?: ReadinessState;
+  /** Unified advisory status across local muscle recovery and systemic wearable readiness. */
+  advisoryStatus: RecoveryAdvisoryStatus;
+  /** Calm, non-blocking advisory note describing recovery without blocking the session. */
+  advisoryMessage: string;
 }
 
 function isWorkingSet(s: { completed?: boolean; isWarmup?: boolean; setType?: string }): boolean {
@@ -91,14 +106,18 @@ function volumeFactor(hardSets: number): number {
 
 /**
  * Latest stimulus per muscle across completed workouts.
+ * When `readinessState === 'Amber Shield'`, local recovery windows are scaled by
+ * `AMBER_SHIELD_RECOVERY_MULTIPLIER` (1.2x) so local muscle recovery and systemic readiness stay unified.
  */
 export function computeMuscleRecovery(
   workouts: WorkoutSession[],
   exerciseCatalog: ExerciseDefinition[],
-  now: number = Date.now()
+  now: number = Date.now(),
+  readinessState?: ReadinessState
 ): Partial<Record<MuscleGroup, MuscleRecoveryStatus>> {
   const exMap = new Map(exerciseCatalog.map((e) => [e.id, e]));
   const result: Partial<Record<MuscleGroup, MuscleRecoveryStatus>> = {};
+  const systemicMultiplier = readinessState === 'Amber Shield' ? AMBER_SHIELD_RECOVERY_MULTIPLIER : 1;
 
   for (const w of workouts) {
     if (!w.completed) continue;
@@ -125,9 +144,10 @@ export function computeMuscleRecovery(
       const base = MUSCLE_RECOVERY_HOURS[muscle] ?? 48;
       const pSets = primarySets.get(muscle) || 0;
       const sSets = secondarySets.get(muscle) || 0;
-      const requiredHours = pSets > 0
+      const baseRequiredHours = pSets > 0
         ? base * volumeFactor(pSets)
         : base * SECONDARY_STIMULUS_FACTOR * volumeFactor(sSets);
+      const requiredHours = baseRequiredHours * systemicMultiplier;
       const readyAt = completedAt + requiredHours * READY_THRESHOLD * HOUR_MS;
 
       const existing = result[muscle];
@@ -166,13 +186,15 @@ export function getSessionTargetMuscles(
 }
 
 /**
- * Decides whether the queued session should be trained now, and if not, when it will be ready.
+ * Advisory unified recovery evaluation across local muscle windows and systemic wearable readiness.
+ * Never blocks the planned workout; surfaces calm guidance and opt-in modulation cues.
  */
 export function evaluateSessionRecovery(
   session: WorkoutSession,
   workouts: WorkoutSession[],
   exerciseCatalog: ExerciseDefinition[],
-  now: number = Date.now()
+  now: number = Date.now(),
+  readinessState?: ReadinessState
 ): SessionRecoveryGate {
   const completed = workouts
     .filter((w) => w.completed)
@@ -180,8 +202,9 @@ export function evaluateSessionRecovery(
   const last = completed[0];
   const lastAt = last ? getWorkoutCompletedAt(last) : undefined;
   const trainedToday = lastAt !== undefined && localDateString(new Date(lastAt)) === localDateString(new Date(now));
+  const systemicMultiplier = readinessState === 'Amber Shield' ? AMBER_SHIELD_RECOVERY_MULTIPLIER : 1;
 
-  const recovery = computeMuscleRecovery(workouts, exerciseCatalog, now);
+  const recovery = computeMuscleRecovery(workouts, exerciseCatalog, now, readinessState);
   const targetMuscles = getSessionTargetMuscles(session, exerciseCatalog);
 
   const limitingMuscles = targetMuscles
@@ -199,13 +222,44 @@ export function evaluateSessionRecovery(
     readyAt = Math.max(readyAt ?? 0, tomorrow.getTime());
   }
 
-  const lowestPct = targetMuscles.reduce((min, m) => {
+  const rawLowestPct = targetMuscles.reduce((min, m) => {
     const r = recovery[m];
     return Math.min(min, r ? r.recoveryPct : 100);
   }, 100);
+  // Prevent contradictory "100% recovered" local readout while systemic Amber Shield is active.
+  const lowestPct = readinessState === 'Amber Shield' ? Math.min(rawLowestPct, 85) : rawLowestPct;
+
+  const isReady = readyAt === null || readyAt <= now;
+  const advisoryStatus: RecoveryAdvisoryStatus = trainedToday
+    ? 'trained_today'
+    : !isReady
+    ? 'recovering'
+    : readinessState === 'Amber Shield'
+    ? 'systemic_low'
+    : 'ready';
+
+  const topMuscleNames = limitingMuscles
+    .slice(0, 2)
+    .map((m) => MUSCLE_FRIENDLY_NAMES[m.muscle].toLowerCase())
+    .join(' and ');
+
+  let advisoryMessage: string;
+  if (advisoryStatus === 'trained_today') {
+    advisoryMessage = `You already finished ${last?.name ?? 'a workout'} today. Your next session is queued for tomorrow.`;
+  } else if (advisoryStatus === 'recovering') {
+    const systemicNote = readinessState === 'Amber Shield' ? ' Systemic recovery is also low today.' : '';
+    advisoryMessage = `${
+      topMuscleNames ? `${topMuscleNames.charAt(0).toUpperCase() + topMuscleNames.slice(1)} still recovering` : 'Target muscles are still recovering'
+    } (full recovery ${formatReadyTime(readyAt ?? now, now)}).${systemicNote} Your planned workout is ready if today fits your schedule—optionally trim 1 set per lift or leave 2–3 RIR.`;
+  } else if (advisoryStatus === 'systemic_low') {
+    advisoryMessage =
+      'Systemic recovery signal is low today. Your planned session is ready—optionally trim 1 set per lift or shift to 2–3 RIR.';
+  } else {
+    advisoryMessage = 'Target muscles are recovered and ready for your planned session.';
+  }
 
   return {
-    isReady: readyAt === null || readyAt <= now,
+    isReady,
     trainedToday,
     readyAt,
     recoveryPct: lowestPct,
@@ -213,6 +267,94 @@ export function evaluateSessionRecovery(
     limitingMuscles,
     lastWorkoutName: last?.name,
     lastWorkoutAt: lastAt,
+    systemicMultiplier,
+    readinessState,
+    advisoryStatus,
+    advisoryMessage,
+  };
+}
+
+/**
+ * Applies a 1-tap opt-in recovery modulation to an active workout without blocking or hiding it:
+ * - 'trim_sets': removes 1 uncompleted working set per exercise (down to a minimum of 1 working set).
+ * - 'conservative_rir': shifts uncompleted working sets to 2–3 RIR.
+ * - 'both': applies both set trim and 2–3 RIR buffer.
+ * Preserves the original planned sets so the athlete can restore them with 1 tap.
+ */
+export function applyRecoveryModulation(
+  session: WorkoutSession,
+  mode: 'trim_sets' | 'conservative_rir' | 'both'
+): WorkoutSession {
+  const baselineByEx: Record<string, WorkoutSet[]> =
+    session.recoveryModulation?.originalSetsByExerciseId ??
+    Object.fromEntries(session.exercises.map((ex) => [ex.id, ex.sets.map((s) => ({ ...s }))]));
+
+  const exercises = session.exercises.map((ex) => {
+    const sourceSets = (baselineByEx[ex.id] ?? ex.sets).map((s) => {
+      const current = ex.sets.find((c) => c.id === s.id);
+      return current?.completed ? { ...current } : { ...s };
+    });
+
+    let workingIndices = sourceSets
+      .map((s, i) => ({ s, i }))
+      .filter(({ s }) => !s.isWarmup && s.setType !== 'warmup');
+
+    let kept = sourceSets;
+    if ((mode === 'trim_sets' || mode === 'both') && workingIndices.length > 1) {
+      // Remove the last uncompleted working set so at least 1 working set remains.
+      const removable = [...workingIndices].reverse().find(({ s }) => !s.completed);
+      if (removable) {
+        kept = sourceSets.filter((_, idx) => idx !== removable.i);
+      }
+    }
+
+    if (mode === 'conservative_rir' || mode === 'both') {
+      kept = kept.map((s) => {
+        if (s.completed || s.isWarmup || s.setType === 'warmup') return s;
+        const shiftedRir = Math.max(2, Math.min(3, (s.targetRir ?? 2) <= 1 ? 2 : 3));
+        return {
+          ...s,
+          targetRir: shiftedRir,
+          actualRir: s.actualRir !== undefined ? shiftedRir : undefined,
+        };
+      });
+    }
+
+    return {
+      ...ex,
+      sets: kept.map((s, idx) => ({ ...s, setNumber: idx + 1 })),
+    };
+  });
+
+  return {
+    ...session,
+    exercises,
+    recoveryModulation: {
+      mode,
+      appliedAt: new Date().toISOString(),
+      originalSetsByExerciseId: baselineByEx,
+    },
+  };
+}
+
+/** Restores an opt-in modulated workout back to its original planned sets and RIR targets. */
+export function clearRecoveryModulation(session: WorkoutSession): WorkoutSession {
+  const baselineByEx = session.recoveryModulation?.originalSetsByExerciseId;
+  if (!baselineByEx) return { ...session, recoveryModulation: undefined };
+  return {
+    ...session,
+    exercises: session.exercises.map((ex) => {
+      const orig = baselineByEx[ex.id];
+      if (!orig) return ex;
+      return {
+        ...ex,
+        sets: orig.map((s, idx) => {
+          const current = ex.sets.find((c) => c.id === s.id);
+          return current?.completed ? { ...current, setNumber: idx + 1 } : { ...s, setNumber: idx + 1 };
+        }),
+      };
+    }),
+    recoveryModulation: undefined,
   };
 }
 

@@ -344,7 +344,7 @@ export function getRecommendedSetsForWeek(
   muscleKey: string,
   mesoWeek: number, // 1 to 6
   goalPhase: 'Lean Bulk' | 'Cut / Recomp' | 'Maingain' = 'Lean Bulk'
-): { targetSets: number; rirTarget: string; phaseNote: string } {
+): { targetSets: number; rirTarget: string; numericRir: number; phaseNote: string } {
   const landmark = HYPERTROPHY_VOLUME_LANDMARKS[muscleKey] || HYPERTROPHY_VOLUME_LANDMARKS.Back;
 
   // During a Cut, recovery capacity is reduced by ~15-20% due to caloric deficit
@@ -355,30 +355,35 @@ export function getRecommendedSetsForWeek(
       return {
         targetSets: Math.round(landmark.mev * volumeMultiplier),
         rirTarget: '2–3 RIR',
+        numericRir: 3,
         phaseNote: 'Intro week: Establish mind-muscle connection at Minimum Effective Volume.',
       };
     case 2: // Early MAV
       return {
         targetSets: Math.round(landmark.mavMin * volumeMultiplier),
         rirTarget: '2 RIR',
+        numericRir: 2,
         phaseNote: 'Entering Maximum Adaptive Volume sweet spot.',
       };
     case 3: // Mid MAV
       return {
         targetSets: Math.round(((landmark.mavMin + landmark.mavMax) / 2) * volumeMultiplier),
         rirTarget: '1–2 RIR',
+        numericRir: 1.5,
         phaseNote: 'Prime hypertrophy zone. High mechanical tension & volume balance.',
       };
     case 4: // Upper MAV
       return {
         targetSets: Math.round((landmark.mavMax * 0.95) * volumeMultiplier),
         rirTarget: '1 RIR',
+        numericRir: 1,
         phaseNote: 'Peak stimulus accumulation. Heavy metabolic and mechanical load.',
       };
     case 5: // Overreaching near MRV
       return {
         targetSets: Math.round(landmark.mrv * 0.95 * volumeMultiplier),
         rirTarget: '0–1 RIR',
+        numericRir: 0.5,
         phaseNote: 'Functional overreaching week near Maximum Recoverable Volume.',
       };
     case 6: // Planned Deload
@@ -386,7 +391,75 @@ export function getRecommendedSetsForWeek(
       return {
         targetSets: Math.round(landmark.mv * (goalPhase === 'Cut / Recomp' ? 0.9 : 1.0)),
         rirTarget: '3–4 RIR',
+        numericRir: 3.5,
         phaseNote: 'Consolidation deload at Maintenance Volume to dissipate systemic fatigue.',
       };
   }
+}
+
+export interface GoalAdaptedVolumeRange {
+  minSets: number;
+  maxSets: number;
+  goalLabel: string;
+  frequencyCue: string;
+}
+
+/**
+ * Adapts a muscle group's weekly hard-set target window to the athlete's active goal phase
+ * (Pelland et al., 2026; Helms et al., 2014):
+ * - Lean Bulk (Build Muscle): full hypertrophy MAV window.
+ * - Cut / Recomp (Lose Fat): retention-focused window centered from MEV to lower-mid MAV.
+ * - Maingain (Stay Lean / Strength): tighter quality-volume window emphasizing frequency and tension.
+ */
+export function getGoalAdaptedVolumeRange(
+  muscleKey: string,
+  goalPhase: 'Lean Bulk' | 'Cut / Recomp' | 'Maingain' = 'Lean Bulk'
+): GoalAdaptedVolumeRange {
+  const landmark = HYPERTROPHY_VOLUME_LANDMARKS[muscleKey] || HYPERTROPHY_VOLUME_LANDMARKS.Back;
+  const freq = `${landmark.frequencyMin}–${landmark.frequencyMax}×/wk`;
+
+  if (goalPhase === 'Cut / Recomp') {
+    const minSets = Math.max(landmark.mv, Math.round(landmark.mev * 0.9));
+    const maxSets = Math.max(minSets + 2, Math.round(landmark.mavMin + (landmark.mavMax - landmark.mavMin) * 0.35));
+    return {
+      minSets,
+      maxSets,
+      goalLabel: 'Retention target',
+      frequencyCue: `Hold tension across ${freq} without excess fatigue`,
+    };
+  }
+
+  if (goalPhase === 'Maingain') {
+    const minSets = Math.max(landmark.mev, landmark.mavMin - 2);
+    const maxSets = Math.max(minSets + 2, Math.round((landmark.mavMin + landmark.mavMax) / 2));
+    return {
+      minSets,
+      maxSets,
+      goalLabel: 'Stay-lean target',
+      frequencyCue: `Quality sets spread ${freq} for lean strength`,
+    };
+  }
+
+  return {
+    minSets: landmark.mavMin,
+    maxSets: landmark.mavMax,
+    goalLabel: 'Hypertrophy target',
+    frequencyCue: `Optimal growth zone across ${freq}`,
+  };
+}
+
+/**
+ * True when a mesocycle transition simultaneously drops target RIR (closer to failure)
+ * and adds working sets. Double progression should hold external load on that exact
+ * transition week instead of stacking a third overload variable (load + sets + RIR).
+ */
+export function isMesocycleLoadHoldTransition(params: {
+  sourceTargetRir?: number;
+  targetRir?: number;
+  sourcePrescribedSetCount: number;
+  targetSetCount: number;
+}): boolean {
+  const { sourceTargetRir, targetRir, sourcePrescribedSetCount, targetSetCount } = params;
+  if (sourceTargetRir === undefined || targetRir === undefined) return false;
+  return targetRir < sourceTargetRir && targetSetCount > sourcePrescribedSetCount;
 }

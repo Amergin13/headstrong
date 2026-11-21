@@ -10,8 +10,14 @@ import androidx.browser.customtabs.CustomTabsService
 import androidx.browser.customtabs.CustomTabsSession
 import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.permission.HealthPermission
+import androidx.health.connect.client.records.BodyFatRecord
 import androidx.health.connect.client.records.ExerciseSessionRecord
+import androidx.health.connect.client.records.HeartRateRecord
+import androidx.health.connect.client.records.HeartRateVariabilityRmssdRecord
+import androidx.health.connect.client.records.RestingHeartRateRecord
+import androidx.health.connect.client.records.SleepSessionRecord
 import androidx.health.connect.client.records.StepsRecord
+import androidx.health.connect.client.records.WeightRecord
 import androidx.health.connect.client.request.AggregateGroupByPeriodRequest
 import androidx.health.connect.client.request.ReadRecordsRequest
 import androidx.health.connect.client.time.TimeRangeFilter
@@ -24,21 +30,23 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.time.Duration
 import java.time.Instant
+import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.Period
 import java.time.ZoneId
+import kotlin.math.roundToInt
 
 /**
  * Health Connect for the Treise web app.
  *
- * A web page can't read Health Connect, so this app reads exercise sessions and daily step counts
- * natively and passes them to the page over Chrome's Trusted Web Activity message channel
- * (Chrome 115+). The page's side is src/services/healthConnectBridge.ts; the message format is
- * documented there.
+ * A web page can't read Health Connect, so this app reads exercise sessions, daily steps,
+ * sleep, heart rate, resting heart rate, HRV (RMSSD), bodyweight, and body fat natively and
+ * passes them to the page over Chrome's Trusted Web Activity message channel (Chrome 115+).
+ * Fitbit, Pixel Watch, Samsung Health, and Garmin all write into Android Health Connect, so
+ * athlete data flows automatically through the OS hub without legacy cloud OAuth proxies.
  *
- * Only ExerciseSessionRecord (type, start, end, title) and aggregated daily StepsRecord totals
- * are read, only after the athlete allows it in Health Connect, and only when the page asks.
- * Nothing is stored or sent anywhere else.
+ * Strictly read-only, only after the athlete allows each permission in Health Connect, and
+ * only when the page asks. Nothing is stored or sent anywhere else.
  */
 object HealthConnectBridge {
     private const val TAG = "TreiseHealthConnect"
@@ -48,7 +56,26 @@ object HealthConnectBridge {
 
     val EXERCISE_PERMISSION: String = HealthPermission.getReadPermission(ExerciseSessionRecord::class)
     val STEPS_PERMISSION: String = HealthPermission.getReadPermission(StepsRecord::class)
-    val READ_PERMISSIONS: Set<String> = setOf(EXERCISE_PERMISSION, STEPS_PERMISSION)
+    val SLEEP_PERMISSION: String = HealthPermission.getReadPermission(SleepSessionRecord::class)
+    val HEART_RATE_PERMISSION: String = HealthPermission.getReadPermission(HeartRateRecord::class)
+    val RESTING_HR_PERMISSION: String = HealthPermission.getReadPermission(RestingHeartRateRecord::class)
+    val HRV_PERMISSION: String = HealthPermission.getReadPermission(HeartRateVariabilityRmssdRecord::class)
+    val WEIGHT_PERMISSION: String = HealthPermission.getReadPermission(WeightRecord::class)
+    val BODY_FAT_PERMISSION: String = HealthPermission.getReadPermission(BodyFatRecord::class)
+
+    val BIOMETRIC_PERMISSIONS: Set<String> = setOf(
+        SLEEP_PERMISSION,
+        HEART_RATE_PERMISSION,
+        RESTING_HR_PERMISSION,
+        HRV_PERMISSION,
+        WEIGHT_PERMISSION,
+        BODY_FAT_PERMISSION
+    )
+
+    val READ_PERMISSIONS: Set<String> = setOf(
+        EXERCISE_PERMISSION,
+        STEPS_PERMISSION
+    ) + BIOMETRIC_PERMISSIONS
 
     /** Health Connect only lets an app read 30 days back without the history permission. */
     private val MAX_LOOKBACK: Duration = Duration.ofDays(29)
@@ -103,7 +130,7 @@ object HealthConnectBridge {
     }
 
     fun onChannelReady() {
-        post(JSONObject().put("type", "hello").put("version", 4)) // 2: scale; 3: permission screens; 4: read-steps
+        post(JSONObject().put("type", "hello").put("version", 5)) // 2: scale; 3: permission screens; 4: read-steps; 5: read-biometrics
     }
 
     fun onMessage(message: String) {
@@ -141,35 +168,53 @@ object HealthConnectBridge {
                 }
                 scope.launch { readSteps(requestId, since) }
             }
+            "read-biometrics" -> {
+                val requestId = msg.optString("requestId")
+                val since = try {
+                    Instant.parse(msg.optString("since"))
+                } catch (e: Exception) {
+                    Instant.now().minus(Duration.ofDays(14))
+                }
+                scope.launch { readBiometrics(requestId, since) }
+            }
         }
     }
 
     private fun isAvailable(): Boolean =
         HealthConnectClient.getSdkStatus(appContext) == HealthConnectClient.SDK_AVAILABLE
 
-    /** Tells the page whether Health Connect is usable and whether Treise may read workouts and daily steps. */
+    /** Tells the page whether Health Connect is usable and which read-only permissions are granted. */
     fun sendStatus() {
         scope.launch {
             val available = isAvailable()
-            val (exerciseGranted, stepsGranted) = if (available) {
+            val grantedPerms: Set<String> = if (available) {
                 try {
                     val client = HealthConnectClient.getOrCreate(appContext)
-                    val permissions = withContext(Dispatchers.IO) {
+                    withContext(Dispatchers.IO) {
                         client.permissionController.getGrantedPermissions()
                     }
-                    Pair(permissions.contains(EXERCISE_PERMISSION), permissions.contains(STEPS_PERMISSION))
                 } catch (e: Exception) {
-                    Pair(false, false)
+                    emptySet()
                 }
             } else {
-                Pair(false, false)
+                emptySet()
             }
+            val exerciseGranted = grantedPerms.contains(EXERCISE_PERMISSION)
+            val stepsGranted = grantedPerms.contains(STEPS_PERMISSION)
+            val biometricsGranted = BIOMETRIC_PERMISSIONS.any { grantedPerms.contains(it) }
             post(
                 JSONObject()
                     .put("type", "status")
                     .put("available", available)
                     .put("granted", exerciseGranted)
                     .put("stepsGranted", stepsGranted)
+                    .put("biometricsGranted", biometricsGranted)
+                    .put("sleepGranted", grantedPerms.contains(SLEEP_PERMISSION))
+                    .put("heartRateGranted", grantedPerms.contains(HEART_RATE_PERMISSION))
+                    .put("restingHrGranted", grantedPerms.contains(RESTING_HR_PERMISSION))
+                    .put("hrvGranted", grantedPerms.contains(HRV_PERMISSION))
+                    .put("weightGranted", grantedPerms.contains(WEIGHT_PERMISSION))
+                    .put("bodyFatGranted", grantedPerms.contains(BODY_FAT_PERMISSION))
             )
         }
     }
@@ -264,6 +309,216 @@ object HealthConnectBridge {
             post(reply.put("error", "not-granted"))
         } catch (e: Exception) {
             Log.w(TAG, "Reading daily steps failed", e)
+            post(reply.put("error", "read-failed"))
+        }
+    }
+
+    /**
+     * Reads Health Connect daily biometric metrics (sleep, resting HR, HRV RMSSD, heart rate,
+     * bodyweight, and body fat) from [since] until now, aggregated per local calendar day.
+     * Each record type is guarded independently so partial user permissions still sync cleanly.
+     */
+    private suspend fun readBiometrics(requestId: String, since: Instant) {
+        val reply = JSONObject().put("type", "biometrics").put("requestId", requestId)
+        if (!isAvailable()) {
+            post(reply.put("error", "Health Connect isn't available"))
+            return
+        }
+        try {
+            val client = HealthConnectClient.getOrCreate(appContext)
+            val granted = withContext(Dispatchers.IO) {
+                client.permissionController.getGrantedPermissions()
+            }
+            val zone = ZoneId.systemDefault()
+            val earliest = Instant.now().minus(MAX_LOOKBACK)
+            val start = if (since.isBefore(earliest)) earliest else since
+            val filter = TimeRangeFilter.after(start)
+
+            val byDate = LinkedHashMap<String, JSONObject>()
+            fun bucket(date: LocalDate): JSONObject {
+                val key = date.toString()
+                return byDate.getOrPut(key) { JSONObject().put("date", key) }
+            }
+
+            // 1. Sleep (attributed to wake date, summed across sessions)
+            if (granted.contains(SLEEP_PERMISSION)) {
+                try {
+                    val sleepMinutesByDate = HashMap<String, Long>()
+                    var pageToken: String? = null
+                    do {
+                        val res = withContext(Dispatchers.IO) {
+                            client.readRecords(ReadRecordsRequest(SleepSessionRecord::class, filter, pageToken = pageToken))
+                        }
+                        for (r in res.records) {
+                            val mins = Duration.between(r.startTime, r.endTime).toMinutes()
+                            if (mins <= 0) continue
+                            val wakeDate = r.endTime.atZone(zone).toLocalDate().toString()
+                            sleepMinutesByDate[wakeDate] = (sleepMinutesByDate[wakeDate] ?: 0L) + mins
+                        }
+                        pageToken = res.pageToken
+                    } while (!pageToken.isNullOrEmpty())
+                    for ((d, mins) in sleepMinutesByDate) {
+                        val hours = (mins / 6.0).roundToInt() / 10.0
+                        if (hours > 0.0) bucket(LocalDate.parse(d)).put("sleepHours", hours)
+                    }
+                } catch (_: SecurityException) {
+                    // User declined sleep read
+                }
+            }
+
+            // 2. Resting Heart Rate (latest bpm per day)
+            if (granted.contains(RESTING_HR_PERMISSION)) {
+                try {
+                    val latestRhr = HashMap<String, Pair<Instant, Long>>()
+                    var pageToken: String? = null
+                    do {
+                        val res = withContext(Dispatchers.IO) {
+                            client.readRecords(ReadRecordsRequest(RestingHeartRateRecord::class, filter, pageToken = pageToken))
+                        }
+                        for (r in res.records) {
+                            if (r.beatsPerMinute <= 0L) continue
+                            val d = r.time.atZone(zone).toLocalDate().toString()
+                            val prev = latestRhr[d]
+                            if (prev == null || r.time.isAfter(prev.first)) {
+                                latestRhr[d] = Pair(r.time, r.beatsPerMinute)
+                            }
+                        }
+                        pageToken = res.pageToken
+                    } while (!pageToken.isNullOrEmpty())
+                    for ((d, pair) in latestRhr) {
+                        bucket(LocalDate.parse(d)).put("restingHr", pair.second)
+                    }
+                } catch (_: SecurityException) {
+                    // User declined resting HR read
+                }
+            }
+
+            // 3. Heart Rate Variability RMSSD (mean ms per day)
+            if (granted.contains(HRV_PERMISSION)) {
+                try {
+                    val hrvSamples = HashMap<String, MutableList<Double>>()
+                    var pageToken: String? = null
+                    do {
+                        val res = withContext(Dispatchers.IO) {
+                            client.readRecords(ReadRecordsRequest(HeartRateVariabilityRmssdRecord::class, filter, pageToken = pageToken))
+                        }
+                        for (r in res.records) {
+                            if (r.heartRateVariabilityMillis <= 0.0) continue
+                            val d = r.time.atZone(zone).toLocalDate().toString()
+                            hrvSamples.getOrPut(d) { mutableListOf() }.add(r.heartRateVariabilityMillis)
+                        }
+                        pageToken = res.pageToken
+                    } while (!pageToken.isNullOrEmpty())
+                    for ((d, list) in hrvSamples) {
+                        if (list.isNotEmpty()) {
+                            bucket(LocalDate.parse(d)).put("hrvRmssd", list.average().roundToInt())
+                        }
+                    }
+                } catch (_: SecurityException) {
+                    // User declined HRV read
+                }
+            }
+
+            // 4. Heart Rate samples (daily peak & average bpm when workout/all-day HR is present)
+            if (granted.contains(HEART_RATE_PERMISSION)) {
+                try {
+                    val hrStats = HashMap<String, Triple<Long, Long, Long>>() // sum, count, max
+                    var pageToken: String? = null
+                    do {
+                        val res = withContext(Dispatchers.IO) {
+                            client.readRecords(ReadRecordsRequest(HeartRateRecord::class, filter, pageToken = pageToken))
+                        }
+                        for (r in res.records) {
+                            for (sample in r.samples) {
+                                if (sample.beatsPerMinute <= 0L) continue
+                                val d = sample.time.atZone(zone).toLocalDate().toString()
+                                val prev = hrStats[d] ?: Triple(0L, 0L, 0L)
+                                hrStats[d] = Triple(
+                                    prev.first + sample.beatsPerMinute,
+                                    prev.second + 1L,
+                                    maxOf(prev.third, sample.beatsPerMinute)
+                                )
+                            }
+                        }
+                        pageToken = res.pageToken
+                    } while (!pageToken.isNullOrEmpty())
+                    for ((d, triple) in hrStats) {
+                        if (triple.second > 0L) {
+                            val obj = bucket(LocalDate.parse(d))
+                            obj.put("avgDailyHr", (triple.first.toDouble() / triple.second).roundToInt())
+                            obj.put("maxDailyHr", triple.third)
+                        }
+                    }
+                } catch (_: SecurityException) {
+                    // User declined heart rate read
+                }
+            }
+
+            // 5. Bodyweight (latest kg per day)
+            if (granted.contains(WEIGHT_PERMISSION)) {
+                try {
+                    val latestWeight = HashMap<String, Pair<Instant, Double>>()
+                    var pageToken: String? = null
+                    do {
+                        val res = withContext(Dispatchers.IO) {
+                            client.readRecords(ReadRecordsRequest(WeightRecord::class, filter, pageToken = pageToken))
+                        }
+                        for (r in res.records) {
+                            val kg = r.weight.inKilograms
+                            if (kg <= 0.0) continue
+                            val d = r.time.atZone(zone).toLocalDate().toString()
+                            val prev = latestWeight[d]
+                            if (prev == null || r.time.isAfter(prev.first)) {
+                                latestWeight[d] = Pair(r.time, kg)
+                            }
+                        }
+                        pageToken = res.pageToken
+                    } while (!pageToken.isNullOrEmpty())
+                    for ((d, pair) in latestWeight) {
+                        bucket(LocalDate.parse(d)).put("bodyweightKg", (pair.second * 10.0).roundToInt() / 10.0)
+                    }
+                } catch (_: SecurityException) {
+                    // User declined weight read
+                }
+            }
+
+            // 6. Body Fat percentage (latest % per day)
+            if (granted.contains(BODY_FAT_PERMISSION)) {
+                try {
+                    val latestBf = HashMap<String, Pair<Instant, Double>>()
+                    var pageToken: String? = null
+                    do {
+                        val res = withContext(Dispatchers.IO) {
+                            client.readRecords(ReadRecordsRequest(BodyFatRecord::class, filter, pageToken = pageToken))
+                        }
+                        for (r in res.records) {
+                            val pct = r.percentage.value
+                            if (pct <= 0.0 || pct >= 75.0) continue
+                            val d = r.time.atZone(zone).toLocalDate().toString()
+                            val prev = latestBf[d]
+                            if (prev == null || r.time.isAfter(prev.first)) {
+                                latestBf[d] = Pair(r.time, pct)
+                            }
+                        }
+                        pageToken = res.pageToken
+                    } while (!pageToken.isNullOrEmpty())
+                    for ((d, pair) in latestBf) {
+                        bucket(LocalDate.parse(d)).put("bodyFatPct", (pair.second * 10.0).roundToInt() / 10.0)
+                    }
+                } catch (_: SecurityException) {
+                    // User declined body fat read
+                }
+            }
+
+            val days = JSONArray()
+            for (d in byDate.keys.sorted()) {
+                days.put(byDate[d])
+            }
+            post(reply.put("days", days))
+        } catch (e: SecurityException) {
+            post(reply.put("error", "not-granted"))
+        } catch (e: Exception) {
+            Log.w(TAG, "Reading Health Connect biometrics failed", e)
             post(reply.put("error", "read-failed"))
         }
     }

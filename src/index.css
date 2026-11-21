@@ -333,6 +333,14 @@ select:focus-visible {
   outline: 2px solid var(--color-border-focus);
   outline-offset: 2px;
 }
+.wk-input-readonly {
+  background: transparent;
+  cursor: default;
+}
+.wk-input-readonly:focus-within,
+.wk-input-readonly:focus {
+  outline: none;
+}
 .wk-field {
   background: var(--wk-raised);
   border-radius: var(--radius-inset);
@@ -352,13 +360,38 @@ select:focus-visible {
   outline: 2px solid var(--color-border-focus);
   outline-offset: 2px;
 }
+.wk-textarea {
+  background: var(--wk-raised);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-control);
+  min-height: 72px;
+  height: auto;
+  padding: var(--space-3);
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 400;
+  color: var(--color-text-primary);
+  width: 100%;
+  display: block;
+}
+.wk-textarea::placeholder {
+  color: var(--color-text-muted);
+}
+.wk-textarea:focus-within,
+.wk-textarea:focus {
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: 2px;
+}
 .wk-segments {
   display: grid;
   padding: var(--space-1);
   gap: var(--space-1);
   border-radius: var(--radius-tray);
-  background: var(--color-bg-canvas);
+  background: var(--color-bg-surface);
   border: 1px solid var(--color-border-subtle);
+}
+.wk-card .wk-segments {
+  background: var(--color-bg-surface-raised);
 }
 .wk-segment {
   min-height: 44px;
@@ -374,7 +407,8 @@ select:focus-visible {
   justify-content: center;
   gap: var(--space-2);
   color: var(--wk-muted);
-  transition: background-color 0.15s ease, color 0.15s ease;
+  border: 1px solid transparent;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
 }
 .wk-segment.is-active,
 .wk-segment[aria-selected='true'],
@@ -382,7 +416,8 @@ select:focus-visible {
   background: var(--color-action-secondary-bg);
   color: var(--color-text-primary);
   font-weight: 500;
-  box-shadow: inset 0 1px 0 rgba(224, 234, 242, 0.12);
+  border-color: var(--color-border-strong);
+  box-shadow: inset 0 1px 0 rgba(224, 234, 242, 0.14);
 }
 .wk-button {
   display: flex;

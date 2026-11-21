@@ -1,4 +1,19 @@
-import { BiometricLog, ReadinessState, WearableProvider } from './types';
+import { BiometricLog, ReadinessState, WearableProvider, WorkoutSession } from './types';
+
+/** Multi-day rolling window used to separate genuine recovery suppression from single-day wearable noise. */
+export const MULTI_DAY_SUPPRESSION_WINDOW = 5;
+/** Minimum suppressed days in the rolling window before flagging a sustained multi-day dip. */
+export const MULTI_DAY_SUPPRESSION_MIN_DAYS = 4;
+
+export type RecoveryTrendStatus = 'sustained_low' | 'single_day_dip' | 'steady' | 'primed';
+
+export interface Set1RirConfirmation {
+  status: 'pending' | 'confirmed_strong' | 'confirmed_manageable' | 'fatigue_confirmed';
+  exerciseName?: string;
+  actualRir?: number;
+  targetRir?: number;
+  message?: string;
+}
 
 export interface ReadinessEvaluation {
   state: ReadinessState;
@@ -15,6 +30,142 @@ export interface ReadinessEvaluation {
   readinessScore?: number; // 1-100 score for display
   scoreLabel?: string; // 'Recovery' vs 'Daily Readiness' vs 'Readiness'
   hasRecoveryData?: boolean; // false when nothing was measured today, so no score may be shown
+  /** Multi-day trend filter distinguishing isolated single-day noise from sustained suppression. */
+  trendStatus?: RecoveryTrendStatus;
+  /** Number of suppressed recovery days in the last 5-day window (including today). */
+  consecutiveLowDays?: number;
+  /** 7-day rolling HRV percentage delta against the 14-day baseline. */
+  rolling7dHrvChangePct?: number;
+  /** True only for sustained multi-day suppression (never for isolated 1-day wearable dips). */
+  recommendVolumeModulation?: boolean;
+  /** Anti-nocebo guidance prompting the athlete to judge by warm-ups & Set 1 RIR on a single-day dip. */
+  set1ConfirmationCue?: string;
+}
+
+/** Evaluates Set 1 working-set RIR in the active workout to confirm or override a morning wearable dip. */
+export function evaluateSet1RirConfirmation(activeWorkout?: WorkoutSession | null): Set1RirConfirmation {
+  if (!activeWorkout?.exercises?.length) return { status: 'pending' };
+  for (const ex of activeWorkout.exercises) {
+    const firstCompletedWorking = ex.sets.find(
+      (s) => s.completed && !s.isWarmup && s.setType !== 'warmup'
+    );
+    if (!firstCompletedWorking) continue;
+    const targetRir = firstCompletedWorking.targetRir ?? 2;
+    const actualRir = firstCompletedWorking.actualRir ?? targetRir;
+    if (actualRir >= targetRir) {
+      return {
+        status: 'confirmed_strong',
+        exerciseName: ex.name,
+        actualRir,
+        targetRir,
+        message: 'Set 1 felt on target — proceed with your planned session.',
+      };
+    }
+    if (actualRir <= targetRir - 2 || (actualRir === 0 && targetRir >= 2)) {
+      return {
+        status: 'fatigue_confirmed',
+        exerciseName: ex.name,
+        actualRir,
+        targetRir,
+        message:
+          'Set 1 felt noticeably harder than planned — consider trimming 1 set per lift or shifting to 2–3 RIR.',
+      };
+    }
+    return {
+      status: 'confirmed_manageable',
+      exerciseName: ex.name,
+      actualRir,
+      targetRir,
+      message: 'Set 1 was solid — stay with your planned loads and watch effort on later sets.',
+    };
+  }
+  return { status: 'pending' };
+}
+
+function isHistoricalDaySuppressed(
+  log: BiometricLog,
+  meanHrv: number,
+  meanRhr: number,
+  effectiveProvider: WearableProvider | null
+): boolean {
+  if (effectiveProvider === 'whoop' && typeof log.recoveryScore === 'number') {
+    return log.recoveryScore < 34;
+  }
+  if (effectiveProvider === 'fitbit' && typeof log.fitbitReadinessScore === 'number') {
+    return log.fitbitReadinessScore < 30;
+  }
+  const hrvDrop = log.hrvRmssd > 0 && meanHrv > 0 ? ((log.hrvRmssd - meanHrv) / meanHrv) * 100 < -15 : false;
+  const rhrRise = log.restingHr > 0 && meanRhr > 0 ? log.restingHr - meanRhr >= 4 : false;
+  const lowSleep = log.sleepHours > 0 && log.sleepHours < 6.0;
+  return hrvDrop || rhrRise || lowSleep;
+}
+
+/**
+ * Multi-day wearable trend filter (De Oliveira et al., 2019; 2024 resistance-training HRV reviews):
+ * Separates an isolated 1-day morning dip (anti-nocebo: verify with warm-ups & Set 1 RIR)
+ * from a sustained multi-day suppressed recovery trend (>= 4 of last 5 days or >= 3 days with
+ * rolling 7-day HRV down >= 10%).
+ */
+export function evaluateRecoveryTrend(params: {
+  todayLog: BiometricLog;
+  providerHistory: BiometricLog[];
+  meanHrv: number;
+  meanRhr: number;
+  effectiveProvider: WearableProvider | null;
+  todayIsLow: boolean;
+  todayIsPrimed?: boolean;
+}): {
+  trendStatus: RecoveryTrendStatus;
+  consecutiveLowDays: number;
+  rolling7dHrvChangePct?: number;
+  recommendVolumeModulation: boolean;
+  set1ConfirmationCue?: string;
+} {
+  const { todayLog, providerHistory, meanHrv, meanRhr, effectiveProvider, todayIsLow, todayIsPrimed } = params;
+
+  // Rolling 7-day HRV percentage delta vs 14-day baseline
+  const recent7 = [...providerHistory.slice(-6), todayLog].filter((l) => (l.hrvRmssd || 0) > 0);
+  const rolling7dHrvChangePct =
+    recent7.length >= 3 && meanHrv > 0
+      ? Math.round((((recent7.reduce((sum, l) => sum + l.hrvRmssd, 0) / recent7.length) - meanHrv) / meanHrv) * 1000) /
+        10
+      : undefined;
+
+  if (!todayIsLow) {
+    return {
+      trendStatus: todayIsPrimed ? 'primed' : 'steady',
+      consecutiveLowDays: 0,
+      rolling7dHrvChangePct,
+      recommendVolumeModulation: false,
+    };
+  }
+
+  const recentPrior = providerHistory.slice(-(MULTI_DAY_SUPPRESSION_WINDOW - 1));
+  const priorSuppressedCount = recentPrior.filter((l) =>
+    isHistoricalDaySuppressed(l, meanHrv, meanRhr, effectiveProvider)
+  ).length;
+  const totalSuppressedInWindow = 1 + priorSuppressedCount;
+
+  const isSustained =
+    totalSuppressedInWindow >= MULTI_DAY_SUPPRESSION_MIN_DAYS ||
+    (totalSuppressedInWindow >= 3 && rolling7dHrvChangePct !== undefined && rolling7dHrvChangePct <= -10);
+
+  if (isSustained) {
+    return {
+      trendStatus: 'sustained_low',
+      consecutiveLowDays: totalSuppressedInWindow,
+      rolling7dHrvChangePct,
+      recommendVolumeModulation: true,
+    };
+  }
+
+  return {
+    trendStatus: 'single_day_dip',
+    consecutiveLowDays: totalSuppressedInWindow,
+    rolling7dHrvChangePct,
+    recommendVolumeModulation: false,
+    set1ConfirmationCue: "Single-day dip — judge by warm-ups and Set 1 RIR before changing today's plan.",
+  };
 }
 
 /**
@@ -164,6 +315,15 @@ export function calculateDailyReadiness(
 
     if (recScore >= 67) {
       const mappedZ = Math.round((0.8 + ((recScore - 67) / 33) * 0.7) * 100) / 100;
+      const trend = evaluateRecoveryTrend({
+        todayLog,
+        providerHistory,
+        meanHrv,
+        meanRhr,
+        effectiveProvider: 'whoop',
+        todayIsLow: false,
+        todayIsPrimed: true,
+      });
       return {
         state: 'Primed',
         score: mappedZ,
@@ -178,11 +338,20 @@ export function calculateDailyReadiness(
         provider: 'whoop',
         readinessScore: recScore,
         scoreLabel: 'Recovery',
+        ...trend,
       };
     }
 
     if (recScore >= 34) {
       const mappedZ = Math.round((((recScore - 34) / 33) * 1.4 - 0.7) * 100) / 100;
+      const trend = evaluateRecoveryTrend({
+        todayLog,
+        providerHistory,
+        meanHrv,
+        meanRhr,
+        effectiveProvider: 'whoop',
+        todayIsLow: false,
+      });
       return {
         state: 'Normal',
         score: mappedZ,
@@ -197,10 +366,19 @@ export function calculateDailyReadiness(
         provider: 'whoop',
         readinessScore: recScore,
         scoreLabel: 'Recovery',
+        ...trend,
       };
     }
 
-    // Red zone (< 34%): Amber Shield triggered
+    // Red zone (< 34%): multi-day trend filter distinguishes isolated single-day noise vs sustained suppression
+    const whoopLowTrend = evaluateRecoveryTrend({
+      todayLog,
+      providerHistory,
+      meanHrv,
+      meanRhr,
+      effectiveProvider: 'whoop',
+      todayIsLow: true,
+    });
     return {
       state: 'Amber Shield',
       score: -1.0,
@@ -210,11 +388,15 @@ export function calculateDailyReadiness(
       hrvChangePercent: Math.round(hrvChangePercent * 10) / 10,
       rhrDeltaBpm: Math.round(rhrDeltaBpm * 10) / 10,
       sleepHours: sleepVal,
-      reason: `Recovery Shield Active (${recScore}% - Red). Working loads are held steady today (2–3 RIR buffer) and your streak is protected.`,
+      reason:
+        whoopLowTrend.trendStatus === 'sustained_low'
+          ? `Sustained Low Recovery (${recScore}% across ${whoopLowTrend.consecutiveLowDays} days). Your planned workout is ready—optionally trim 1 set per lift or leave 2–3 RIR today. Streak protected.`
+          : `Single-Day Recovery Dip (${recScore}%). One low morning rarely limits strength—judge by warm-ups and Set 1 RIR before adjusting today's plan. Streak protected.`,
       streakProtected: true,
       provider: 'whoop',
       readinessScore: recScore,
       scoreLabel: 'Recovery',
+      ...whoopLowTrend,
     };
   }
 
@@ -235,6 +417,15 @@ export function calculateDailyReadiness(
     // High Readiness (>= 65) -> Primed
     if (drs >= 65) {
       const mappedZ = Math.round((0.8 + ((drs - 65) / 35) * 0.7) * 100) / 100;
+      const trend = evaluateRecoveryTrend({
+        todayLog,
+        providerHistory,
+        meanHrv,
+        meanRhr,
+        effectiveProvider: 'fitbit',
+        todayIsLow: false,
+        todayIsPrimed: true,
+      });
       return {
         state: 'Primed',
         score: mappedZ,
@@ -249,6 +440,7 @@ export function calculateDailyReadiness(
         provider: 'fitbit',
         readinessScore: drs,
         scoreLabel: 'Daily Readiness',
+        ...trend,
       };
     }
 
@@ -259,6 +451,14 @@ export function calculateDailyReadiness(
         if (isHrvDepressed) triggers.push(`HRV down ${Math.abs(Math.round(hrvChangePercent))}%`);
         if (isRhrElevated) triggers.push(`resting pulse +${Math.round(rhrDeltaBpm * 10) / 10} bpm`);
         if (isSleepDeprived) triggers.push(`${todayLog.sleepHours}h sleep`);
+        const strainTrend = evaluateRecoveryTrend({
+          todayLog,
+          providerHistory,
+          meanHrv,
+          meanRhr,
+          effectiveProvider: 'fitbit',
+          todayIsLow: true,
+        });
 
         return {
           state: 'Amber Shield',
@@ -269,15 +469,27 @@ export function calculateDailyReadiness(
           hrvChangePercent: Math.round(hrvChangePercent * 10) / 10,
           rhrDeltaBpm: Math.round(rhrDeltaBpm * 10) / 10,
           sleepHours: sleepVal,
-          reason: `Recovery Shield Active (${triggers.join(', ')}). Daily Readiness (${drs}) with elevated fatigue. Loads held steady and streak protected.`,
+          reason:
+            strainTrend.trendStatus === 'sustained_low'
+              ? `Sustained Low Recovery (${triggers.join(', ')} across ${strainTrend.consecutiveLowDays} days). Your planned workout is ready—optionally trim 1 set per lift or leave 2–3 RIR today. Streak protected.`
+              : `Single-Day Readiness Dip (${triggers.join(', ')}). Judge by warm-ups and Set 1 RIR before adjusting today's plan. Streak protected.`,
           streakProtected: true,
           provider: 'fitbit',
           readinessScore: drs,
           scoreLabel: 'Daily Readiness',
+          ...strainTrend,
         };
       }
 
       const mappedZ = Math.round((((drs - 30) / 34) * 1.4 - 0.7) * 100) / 100;
+      const steadyTrend = evaluateRecoveryTrend({
+        todayLog,
+        providerHistory,
+        meanHrv,
+        meanRhr,
+        effectiveProvider: 'fitbit',
+        todayIsLow: false,
+      });
       return {
         state: 'Normal',
         score: mappedZ,
@@ -292,10 +504,19 @@ export function calculateDailyReadiness(
         provider: 'fitbit',
         readinessScore: drs,
         scoreLabel: 'Daily Readiness',
+        ...steadyTrend,
       };
     }
 
-    // Low Readiness (< 30) -> Amber Shield
+    // Low Readiness (< 30) -> Amber Shield advisory with multi-day trend filtering
+    const fitbitLowTrend = evaluateRecoveryTrend({
+      todayLog,
+      providerHistory,
+      meanHrv,
+      meanRhr,
+      effectiveProvider: 'fitbit',
+      todayIsLow: true,
+    });
     return {
       state: 'Amber Shield',
       score: -1.0,
@@ -305,11 +526,15 @@ export function calculateDailyReadiness(
       hrvChangePercent: Math.round(hrvChangePercent * 10) / 10,
       rhrDeltaBpm: Math.round(rhrDeltaBpm * 10) / 10,
       sleepHours: sleepVal,
-      reason: `Recovery Shield Active (${drs} Low Readiness - Pixel Watch). Body is carrying high fatigue. Loads held steady (2–3 RIR buffer) and streak protected.`,
+      reason:
+        fitbitLowTrend.trendStatus === 'sustained_low'
+          ? `Sustained Low Readiness (${drs} across ${fitbitLowTrend.consecutiveLowDays} days). Your planned workout is ready—optionally trim 1 set per lift or leave 2–3 RIR today. Streak protected.`
+          : `Single-Day Readiness Dip (${drs}). Judge by warm-ups and Set 1 RIR before adjusting today's plan. Streak protected.`,
       streakProtected: true,
       provider: 'fitbit',
       readinessScore: drs,
       scoreLabel: 'Daily Readiness',
+      ...fitbitLowTrend,
     };
   }
 
@@ -325,6 +550,14 @@ export function calculateDailyReadiness(
     if (isRhrElevated) triggers.push(`resting pulse +${Math.round(rhrDeltaBpm * 10) / 10} bpm`);
     if (isSleepDeprived) triggers.push(`${todayLog.sleepHours}h sleep`);
     if (triggers.length === 0) triggers.push(`lower recovery score`);
+    const hcLowTrend = evaluateRecoveryTrend({
+      todayLog,
+      providerHistory,
+      meanHrv,
+      meanRhr,
+      effectiveProvider,
+      todayIsLow: true,
+    });
 
     return {
       state: 'Amber Shield',
@@ -335,15 +568,28 @@ export function calculateDailyReadiness(
       hrvChangePercent: Math.round(hrvChangePercent * 10) / 10,
       rhrDeltaBpm: Math.round(rhrDeltaBpm * 10) / 10,
       sleepHours: sleepVal,
-      reason: `Recovery Mode (${triggers.join(', ')}). Weights are held steady today and your streak is protected.`,
+      reason:
+        hcLowTrend.trendStatus === 'sustained_low'
+          ? `Sustained Low Recovery (${triggers.join(', ')} across ${hcLowTrend.consecutiveLowDays} days). Your planned workout is ready—optionally trim 1 set per lift or leave 2–3 RIR today. Streak protected.`
+          : `Single-Day Recovery Dip (${triggers.join(', ')}). Judge by warm-ups and Set 1 RIR before adjusting today's plan. Streak protected.`,
       streakProtected: true,
       provider: effectiveProvider || undefined,
       readinessScore: Math.max(1, Math.min(100, Math.round(55 + 20 * score))),
       scoreLabel: 'Readiness',
+      ...hcLowTrend,
     };
   }
 
   if (score >= 0.8) {
+    const trend = evaluateRecoveryTrend({
+      todayLog,
+      providerHistory,
+      meanHrv,
+      meanRhr,
+      effectiveProvider,
+      todayIsLow: false,
+      todayIsPrimed: true,
+    });
     return {
       state: 'Primed',
       score: roundedScore,
@@ -358,9 +604,18 @@ export function calculateDailyReadiness(
       provider: effectiveProvider || undefined,
       readinessScore: Math.max(1, Math.min(100, Math.round(55 + 20 * score))),
       scoreLabel: 'Readiness',
+      ...trend,
     };
   }
 
+  const steadyTrend = evaluateRecoveryTrend({
+    todayLog,
+    providerHistory,
+    meanHrv,
+    meanRhr,
+    effectiveProvider,
+    todayIsLow: false,
+  });
   return {
     state: 'Normal',
     score: roundedScore,
@@ -375,5 +630,6 @@ export function calculateDailyReadiness(
     provider: effectiveProvider || undefined,
     readinessScore: Math.max(1, Math.min(100, Math.round(55 + 20 * score))),
     scoreLabel: 'Readiness',
+    ...steadyTrend,
   };
 }

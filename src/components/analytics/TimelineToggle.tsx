@@ -56,14 +56,9 @@ export const TimelineToggle: React.FC<TimelineToggleProps> = ({
 
   return (
     <div
-      className="wk-segments grid-cols-4"
+      className={compact ? 'wk-segments grid-cols-4 mt-3' : 'wk-segments grid-cols-4'}
       role="tablist"
       aria-label={ariaLabel}
-      style={
-        compact
-          ? { background: 'var(--wk-bg)', marginTop: 12 }
-          : undefined
-      }
     >
       {CHART_TIMELINES.map((option) => {
         const selected = value === option.id;

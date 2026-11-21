@@ -1,16 +1,20 @@
 import { OWN_GOAL_OPTIONS, makeCustomGoal } from '../../services/athleteGoals';
 import { unitToKg } from '../../utils/units';
 import React, { useEffect, useId, useRef, useState } from 'react';
-import { Check, ChevronLeft, X } from 'lucide-react';
+import { Check, ChevronDown, ChevronLeft, X } from 'lucide-react';
 import {
   CustomGoal,
   ExperienceLevel,
   Gender,
   GoalPhase,
+  HabitAnchor,
   HomeEquipmentTag,
+  PreferredTimeOfDay,
   ProgramSplitType,
   TrainingLocation,
   UserProfile,
+  WeekdayShort,
+  resolveRirTrackingEnabled,
 } from '../../engine/types';
 import { triggerHaptic } from '../../utils/haptics';
 import { WeightUnit } from '../../utils/units';
@@ -21,7 +25,7 @@ export type OnboardingStep = 1 | 2 | 3;
 
 export interface OnboardingModalProps {
   profile: UserProfile;
-  /** 3 opens straight on the goal and place choice (used to edit equipment later). */
+  /** 3 opens straight on the location choice (used to edit training location & home equipment later). */
   initialStep?: OnboardingStep;
   onCompleteOnboarding: (updated: {
     goalPhase: GoalPhase;
@@ -35,6 +39,10 @@ export interface OnboardingModalProps {
       weightUnit: WeightUnit;
       bodyweightKg?: number;
     };
+    /** Progressive disclosure RIR preference (hidden by default for new lifters). */
+    showRirTracking?: boolean;
+    /** Optional habit anchor (preferred days/time/cue) with non-punitive asynchronous rollover. */
+    habitAnchor?: HabitAnchor;
     /** A goal of the athlete's own, if they set one: a weight in kg, or reps in one set. */
     ownGoal?: { exerciseId: string; metric: CustomGoal['metric']; target: number };
   }) => void;
@@ -44,41 +52,31 @@ export interface OnboardingModalProps {
   inline?: boolean;
 }
 
-
 interface ScreenCopy {
   title: string;
   body: string[];
   Illustration: React.FC<{ weeks?: number; perWeek?: number }>;
 }
 
-/** Screen copy; screen 2 states the athlete's own plan (18 workouts, 3 a week, or 24, 4 a week). */
-const WEEK_DETAIL: Record<string, string> = {
-  starter_6wk: 'Each week is 3 workouts we set for you, plus 1 active day of anything you enjoy: a ride, run, walk or class.',
-  starter_4day: 'Each week is 4 workouts. We set your weights and reps, so you just show up and lift.',
-  muscle_building_6wk: 'Each week is 4 workouts. We set your weights and reps, so you just show up and lift.',
-};
-
-const buildScreens = (total: number, perWeek: number, program: ProgramSplitType): ScreenCopy[] => [
+const buildScreens = (total: number, perWeek: number): ScreenCopy[] => [
   {
     title: 'Identity',
     body: [
-      "People who stay active for life don't rely on willpower. They build an identity where movement is a fundamental part of who they are.",
+      "People who stay active for life don't rely on willpower—they build a simple rhythm that fits their week.",
     ],
     Illustration: IdentityIllustration,
   },
   {
     title: `${total} sessions`,
     body: [
-      `Research with new gym members found that exercising at least ${perWeek} times a week for 6 weeks was what it took to build the habit. Your plan gives you ${total} sessions to get there.`,
-      WEEK_DETAIL[program] ?? WEEK_DETAIL.starter_4day,
+      `Research with new gym members found exercising at least ${perWeek} times a week for 6 weeks built a lasting habit. Treise sets every weight and rep so you just show up.`,
     ],
     Illustration: SessionsIllustration,
   },
   {
     title: 'Your superpower is restarting',
     body: [
-      "Most programs fall apart when life gets busy. Missing a workout doesn't ruin your progress. Don't aim for perfection, aim for bouncing back.",
-      "Each workout matches how recovered you are and where you are. Can't make the gym? Switch to a home workout in one tap.",
+      "Missing a workout never ruins your progress. Switch place in one tap whenever life gets busy.",
     ],
     Illustration: RestartIllustration,
   },
@@ -98,6 +96,21 @@ const HOME_EQUIPMENT_OPTIONS: { id: HomeEquipmentTag; label: string }[] = [
   { id: 'bands', label: 'Bands' },
 ];
 
+const WEEKDAYS: WeekdayShort[] = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+const TIME_WINDOWS: { id: PreferredTimeOfDay; label: string }[] = [
+  { id: 'morning', label: 'Morning' },
+  { id: 'midday', label: 'Midday' },
+  { id: 'evening', label: 'Evening' },
+  { id: 'flexible', label: 'Flexible' },
+];
+
+const EXPERIENCE_CHOICES: { id: ExperienceLevel; label: string; detail: string }[] = [
+  { id: 'new', label: 'New to lifting', detail: 'Simple weight & rep targets to start' },
+  { id: 'intermediate', label: '1–3 years', detail: 'Calibrated starting loads & effort tracking' },
+  { id: 'experienced', label: '3+ years', detail: 'Full effort & autoregulation controls' },
+];
+
 /** The goal shapes the plan's sets, reps and effort (see starterPlan.ts). Names match GOAL_DISPLAY_NAME. */
 const GOALS: { id: GoalPhase; label: string; detail: string }[] = [
   { id: 'Lean Bulk', label: 'Build Muscle', detail: 'Add size and strength' },
@@ -110,10 +123,10 @@ const PLAN_CHOICES: { id: ProgramSplitType; label: string; detail: string; recom
   {
     id: 'starter_6wk',
     label: '3 workouts + 1 active day',
-    detail: 'Lift 3 days, and do any ride, run, walk or class on a 4th',
+    detail: 'Lift 3 days, plus any ride, run, walk or class',
     recommended: true,
   },
-  { id: 'starter_4day', label: '4 workouts', detail: 'Lift 4 days, with shorter upper and lower body workouts' },
+  { id: 'starter_4day', label: '4 workouts', detail: 'Lift 4 days with shorter upper & lower sessions' },
   { id: 'muscle_building_6wk', label: 'Muscle plan', detail: '4 workouts a week: supersets, drop sets, giant sets', ownerOnly: true },
 ];
 
@@ -157,6 +170,14 @@ const choiceStyle = (selected: boolean): React.CSSProperties => ({
   transition: 'background 150ms, border-color 150ms',
 });
 
+const disclosureButtonStyle: React.CSSProperties = {
+  background: 'var(--wk-raised)',
+  border: '1px solid var(--color-border-subtle)',
+  borderRadius: 12,
+  minHeight: 44,
+  padding: '12px 16px',
+};
+
 export const OnboardingModal: React.FC<OnboardingModalProps> = ({
   profile,
   initialStep = 1,
@@ -179,10 +200,26 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
   );
   const [goal, setGoal] = useState<GoalPhase>(profile.goalPhase || 'Lean Bulk');
   const plan = resolveActivePlan({ programType: program, goalPhase: goal, email: profile.email });
-  const SCREENS = buildScreens(plan.templates.length, plan.workoutsPerWeek, program);
+  const SCREENS = buildScreens(plan.templates.length, plan.workoutsPerWeek);
   const [location, setLocation] = useState<TrainingLocation>(profile.activeLocation || 'gym');
   // Nothing ticked for new athletes: we never assume gear they may not own.
   const [homeEquipment, setHomeEquipment] = useState<HomeEquipmentTag[]>(returning ? profile.homeEquipment || [] : []);
+  const [experienceLevel, setExperienceLevel] = useState<ExperienceLevel>(
+    returning ? profile.experienceLevel || 'intermediate' : 'new'
+  );
+  const [showRirTracking, setShowRirTracking] = useState<boolean>(
+    returning ? resolveRirTrackingEnabled(profile) : false
+  );
+  const [preferredDays, setPreferredDays] = useState<WeekdayShort[]>(
+    returning ? profile.habitAnchor?.preferredDays || [] : []
+  );
+  const [preferredTime, setPreferredTime] = useState<PreferredTimeOfDay>(
+    returning ? profile.habitAnchor?.preferredTime || 'flexible' : 'flexible'
+  );
+  const [habitCue, setHabitCue] = useState<string>(returning ? profile.habitAnchor?.cue || '' : '');
+  // Progressive disclosure drawers: optional enhancements stay tucked away until tapped.
+  const [showHabitAnchorDrawer, setShowHabitAnchorDrawer] = useState<boolean>(false);
+  const [showFineTuneDrawer, setShowFineTuneDrawer] = useState<boolean>(false);
   // Optional: one goal of the athlete's own, on top of the plan's three.
   const [ownLift, setOwnLift] = useState<string | null>(null);
   const [ownTarget, setOwnTarget] = useState('');
@@ -230,24 +267,39 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
   const finish = () => {
     if (!editing && ownInvalid) {
       triggerHaptic('warning');
+      setShowFineTuneDrawer(true);
       ownInputRef.current?.focus();
       return;
     }
     triggerHaptic('success');
     const known: TrainingLocation[] = profile.availableLocations?.length ? profile.availableLocations : ['gym', 'home', 'travel'];
     const availableLocations = known.includes(location) ? known : [...known, location];
+    const trimmedCue = habitCue.trim();
+    const habitAnchor: HabitAnchor | undefined =
+      preferredDays.length > 0 || preferredTime !== 'flexible' || trimmedCue
+        ? {
+            ...(preferredDays.length > 0 ? { preferredDays } : {}),
+            ...(preferredTime !== 'flexible' ? { preferredTime } : {}),
+            ...(trimmedCue ? { cue: trimmedCue } : {}),
+          }
+        : undefined;
+    // Progressive disclosure hygiene: only persist home equipment when training at home (or explicitly edited as fallback).
+    const resolvedHomeEquipment =
+      location === 'home' || (editing && showHomeGearFallback) ? homeEquipment : editing ? profile.homeEquipment || [] : [];
     onCompleteOnboarding({
       goalPhase: editing ? profile.goalPhase || goal : goal,
       programType: program,
       activeLocation: location,
       availableLocations,
-      homeEquipment,
+      homeEquipment: resolvedHomeEquipment,
       athlete: {
         gender: profile.gender,
         // New athletes start light; the first logged sets teach the app their real strength.
-        experienceLevel: returning ? profile.experienceLevel || 'intermediate' : 'new',
+        experienceLevel: editing ? profile.experienceLevel || experienceLevel : experienceLevel,
         weightUnit: unit,
       },
+      showRirTracking: editing ? profile.workoutDisplay?.showRirTracking : showRirTracking,
+      habitAnchor: editing ? profile.habitAnchor : habitAnchor,
       ownGoal: !editing && ownGoal ? { exerciseId: ownGoal.exerciseId, metric: ownGoal.metric, target: ownGoal.target } : undefined,
     });
     onClose();
@@ -261,6 +313,23 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
   const isLast = step === 3;
   const ctaLabel = !isLast ? 'Continue' : returning ? 'Save changes' : 'Start my first workout';
   const HeadingTag = inline ? 'h4' : 'h1';
+
+  const selectedGoalLabel = GOALS.find((g) => g.id === goal)?.label || 'Build Muscle';
+  const selectedPlanLabel = PLAN_CHOICES.find((p) => p.id === program)?.label || '3 workouts + 1 active day';
+  const selectedLocationLabel = LOCATIONS.find((l) => l.id === location)?.label || 'Gym';
+  const habitAnchorSummary = [
+    preferredDays.length > 0 ? preferredDays.join(', ') : null,
+    preferredTime !== 'flexible' ? TIME_WINDOWS.find((t) => t.id === preferredTime)?.label : null,
+    habitCue.trim() ? 'cue set' : null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+  const fineTuneSummary = [
+    ownGoal ? ownChoice?.label : null,
+    showRirTracking ? 'RIR on' : 'RIR off',
+  ]
+    .filter(Boolean)
+    .join(' · ');
 
   const bodyContent = (
     <div
@@ -340,7 +409,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
 
       <div key={step} className="ob-enter flex flex-col flex-1">
         {!editing && (
-          <div style={{ height: isLast ? 120 : 200, marginTop: isLast ? 8 : 20 }}>
+          <div style={{ height: isLast ? 104 : 140, marginTop: 8 }}>
             <Illustration weeks={6} perWeek={plan.workoutsPerWeek} />
           </div>
         )}
@@ -350,7 +419,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
           ref={headingRef}
           tabIndex={inline ? undefined : -1}
           className={isLast ? 'outline-none' : 'wk-page-title outline-none'}
-          style={{ ...(isLast ? titleStyle : {}), marginTop: isLast ? 12 : 20 }}
+          style={{ ...(isLast ? titleStyle : {}), marginTop: 12 }}
         >
           {editing ? 'Where you train' : screen.title}
         </HeadingTag>
@@ -361,193 +430,198 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
             </p>
           ))}
 
+        {/* STEP 1: Goal (1 essential decision paired with Identity framing) */}
+        {step === 1 && !editing && (
+          <fieldset style={{ marginTop: 20 }}>
+            <legend style={sectionLabel}>What's your goal?</legend>
+            <div className="flex flex-col" style={{ gap: 8 }}>
+              {GOALS.map((g) => (
+                <button
+                  key={g.id}
+                  type="button"
+                  aria-pressed={goal === g.id}
+                  onClick={() => {
+                    triggerHaptic('light');
+                    setGoal(g.id);
+                  }}
+                  className={`w-full text-left flex items-center ${focusRingClass}`}
+                  style={{ ...choiceStyle(goal === g.id), padding: '12px 16px', gap: 12 }}
+                >
+                  <span className="flex-1">
+                    <span className="block" style={optionText}>
+                      {g.label}
+                    </span>
+                    <span className="block" style={optionDetail}>
+                      {g.detail}
+                    </span>
+                  </span>
+                  <RadioDot selected={goal === g.id} />
+                </button>
+              ))}
+            </div>
+            <p style={{ ...optionDetail, marginTop: 8 }}>Your sets, reps, and targets adapt automatically for this goal.</p>
+          </fieldset>
+        )}
+
+        {/* STEP 2: Weekly rhythm (1 essential decision + progressively disclosed optional habit anchor) */}
+        {step === 2 && !editing && (
+          <div style={{ marginTop: 20 }}>
+            <fieldset>
+              <legend style={sectionLabel}>How do you want to fit in 4 sessions a week?</legend>
+              <div className="flex flex-col" style={{ gap: 8 }}>
+                {PLAN_CHOICES.filter((opt) => canUseMuscle || !opt.ownerOnly).map((opt) => (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    aria-pressed={program === opt.id}
+                    onClick={() => {
+                      triggerHaptic('light');
+                      setProgram(opt.id);
+                    }}
+                    className={`w-full text-left flex items-center ${focusRingClass}`}
+                    style={{ ...choiceStyle(program === opt.id), padding: '12px 16px', gap: 12 }}
+                  >
+                    <span className="flex-1 min-w-0">
+                      <span className="flex items-center flex-wrap" style={{ gap: 8 }}>
+                        <span style={optionText}>{opt.label}</span>
+                        {opt.recommended && (
+                          <span
+                            className="font-medium rounded-lg px-2 py-1"
+                            style={{
+                              fontSize: 12,
+                              lineHeight: '16px',
+                              color: 'var(--wk-accent)',
+                              background: 'var(--color-bg-surface-control)',
+                              border: '1px solid var(--color-border-accent)',
+                            }}
+                          >
+                            Recommended
+                          </span>
+                        )}
+                      </span>
+                      <span className="block" style={optionDetail}>
+                        {opt.detail}
+                      </span>
+                    </span>
+                    <RadioDot selected={program === opt.id} />
+                  </button>
+                ))}
+              </div>
+            </fieldset>
+
+            {/* Progressive disclosure: Optional habit anchor stays collapsed unless the athlete wants to set days/time */}
+            <div style={{ marginTop: 16 }}>
+              <button
+                type="button"
+                aria-expanded={showHabitAnchorDrawer}
+                onClick={() => {
+                  triggerHaptic('light');
+                  setShowHabitAnchorDrawer((v) => !v);
+                }}
+                className={`w-full text-left flex items-center justify-between gap-3 ${focusRingClass}`}
+                style={disclosureButtonStyle}
+              >
+                <span className="min-w-0">
+                  <span className="block" style={optionText}>
+                    Optional habit anchor
+                  </span>
+                  <span className="block" style={optionDetail}>
+                    {habitAnchorSummary || 'Pick preferred days or a time cue (skip anytime)'}
+                  </span>
+                </span>
+                <ChevronDown
+                  className="w-5 h-5 shrink-0 transition-transform"
+                  style={{
+                    color: 'var(--color-text-secondary)',
+                    transform: showHabitAnchorDrawer ? 'rotate(180deg)' : undefined,
+                  }}
+                  aria-hidden="true"
+                />
+              </button>
+
+              {showHabitAnchorDrawer && (
+                <fieldset
+                  className="rounded-xl p-4 mt-2 border"
+                  style={{ background: 'var(--wk-card)', borderColor: 'var(--color-border-subtle)' }}
+                >
+                  <legend className="sr-only">Optional habit anchor (skip anytime)</legend>
+                  <p style={{ ...optionDetail, marginTop: 0, marginBottom: 12 }}>
+                    Miss a preferred day? Your next session rolls forward automatically—never miss twice.
+                  </p>
+                  <div className="flex flex-wrap" style={{ gap: 8 }}>
+                    {WEEKDAYS.map((day) => {
+                      const on = preferredDays.includes(day);
+                      return (
+                        <button
+                          key={day}
+                          type="button"
+                          aria-pressed={on}
+                          onClick={() => {
+                            triggerHaptic('light');
+                            setPreferredDays((prev) => (on ? prev.filter((d) => d !== day) : [...prev, day]));
+                          }}
+                          className={`flex items-center justify-center font-medium ${focusRingClass}`}
+                          style={{
+                            ...choiceStyle(on),
+                            borderRadius: 999,
+                            padding: '0 12px',
+                            minWidth: 48,
+                            fontSize: 12,
+                            color: on ? 'var(--color-text-primary)' : 'var(--color-text-secondary)',
+                          }}
+                        >
+                          {day}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 mt-3" style={{ gap: 8 }}>
+                    {TIME_WINDOWS.map((tw) => {
+                      const on = preferredTime === tw.id;
+                      return (
+                        <button
+                          key={tw.id}
+                          type="button"
+                          aria-pressed={on}
+                          onClick={() => {
+                            triggerHaptic('light');
+                            setPreferredTime(tw.id);
+                          }}
+                          className={`flex items-center justify-center font-medium ${focusRingClass}`}
+                          style={{
+                            ...choiceStyle(on),
+                            padding: '8px 12px',
+                            fontSize: 12,
+                            color: on ? 'var(--color-text-primary)' : 'var(--color-text-secondary)',
+                          }}
+                        >
+                          {tw.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <label className="block mt-3">
+                    <span className="sr-only">Optional habit cue</span>
+                    <input
+                      type="text"
+                      value={habitCue}
+                      onChange={(e) => setHabitCue(e.target.value)}
+                      placeholder="Optional cue, e.g. After morning coffee"
+                      maxLength={80}
+                      className="wk-field w-full"
+                      style={{ fontSize: 16, minHeight: 44, padding: '0 12px', color: 'var(--color-text-primary)' }}
+                    />
+                  </label>
+                </fieldset>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* STEP 3: Lean launchpad — Where you train (+ conditional Home gear ONLY if Home selected) + Experience + Optional Fine-Tune */}
         {isLast && (
           <div style={{ marginTop: editing ? 16 : 20 }}>
-            {!editing && (
-              <fieldset>
-                <legend style={sectionLabel}>What's your goal?</legend>
-                <div className="flex flex-col" style={{ gap: 8 }}>
-                  {GOALS.map((g) => (
-                    <button
-                      key={g.id}
-                      type="button"
-                      aria-pressed={goal === g.id}
-                      onClick={() => {
-                        triggerHaptic('light');
-                        setGoal(g.id);
-                      }}
-                      className={`w-full text-left flex items-center ${focusRingClass}`}
-                      style={{ ...choiceStyle(goal === g.id), padding: '12px 16px', gap: 12 }}
-                    >
-                      <span className="flex-1">
-                        <span className="block" style={optionText}>
-                          {g.label}
-                        </span>
-                        <span className="block" style={optionDetail}>
-                          {g.detail}
-                        </span>
-                      </span>
-                      <RadioDot selected={goal === g.id} />
-                    </button>
-                  ))}
-                </div>
-                <p style={{ ...optionDetail, marginTop: 8 }}>Your plan's sets and reps are set for this goal.</p>
-              </fieldset>
-            )}
-
-            {!editing && (
-              <fieldset style={{ marginTop: 20 }}>
-                <legend style={sectionLabel}>A goal of your own (optional)</legend>
-                <div className="flex flex-wrap" style={{ gap: 8 }}>
-                  {OWN_GOAL_OPTIONS.map((lift) => {
-                    const on = ownLift === lift.exerciseId;
-                    return (
-                      <button
-                        key={lift.exerciseId}
-                        type="button"
-                        aria-pressed={on}
-                        onClick={() => {
-                          triggerHaptic('light');
-                          setOwnLift(on ? null : lift.exerciseId);
-                          setOwnTarget(on ? '' : lift.metric === 'steps' ? '10000' : '');
-                        }}
-                        className={`flex items-center font-medium ${focusRingClass}`}
-                        style={{
-                          ...choiceStyle(on),
-                          borderRadius: 999,
-                          padding: '0 16px',
-                          gap: 8,
-                          minHeight: 44,
-                          fontSize: 16,
-                          color: on ? 'var(--color-text-primary)' : 'var(--color-text-secondary)',
-                        }}
-                      >
-                        {on && <Check className="w-4 h-4 stroke-[2]" style={{ color: 'var(--wk-accent)' }} aria-hidden="true" />}
-                        {lift.label}
-                      </button>
-                    );
-                  })}
-                </div>
-                {ownChoice && (
-                  <div className="flex items-center flex-wrap" style={{ gap: 8, marginTop: 12 }}>
-                    <label htmlFor={targetInputId} style={{ ...optionText, flexShrink: 0 }}>
-                      {ownChoice.metric === 'weight' ? 'Lift' : ownChoice.metric === 'steps' ? 'Reach' : 'Do'}
-                    </label>
-                    <input
-                      ref={ownInputRef}
-                      id={targetInputId}
-                      type="number"
-                      inputMode={ownChoice.metric === 'weight' ? 'decimal' : 'numeric'}
-                      min={ownChoice.metric === 'steps' ? 500 : 1}
-                      step={ownChoice.metric === 'steps' ? 500 : undefined}
-                      value={ownTarget}
-                      onChange={(e) => setOwnTarget(e.target.value)}
-                      aria-invalid={ownInvalid}
-                      aria-describedby={targetHelpId}
-                      className="wk-field tabular-nums"
-                      style={{
-                        width: 96,
-                        minHeight: 44,
-                        padding: '0 12px',
-                        fontSize: 16,
-                        color: 'var(--color-text-primary)',
-                        border: `1px solid ${ownInvalid ? 'var(--color-status-danger-fill)' : 'var(--color-border-subtle)'}`,
-                      }}
-                    />
-                    <span style={optionText}>
-                      {ownChoice.metric === 'weight' ? unit : ownChoice.metric === 'steps' ? 'steps a day' : 'reps in one set'}
-                    </span>
-                    {ownInvalid && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          triggerHaptic('light');
-                          setOwnTarget('');
-                          ownInputRef.current?.focus();
-                        }}
-                        className={`px-3 min-h-[44px] rounded-xl font-medium ${focusRingClass}`}
-                        style={{ fontSize: 12, color: 'var(--color-text-secondary)', border: '1px solid var(--color-border-strong)' }}
-                      >
-                        Clear
-                      </button>
-                    )}
-                  </div>
-                )}
-                <p
-                  id={targetHelpId}
-                  role={ownInvalid ? 'alert' : undefined}
-                  style={{
-                    ...optionDetail,
-                    marginTop: 8,
-                    maxWidth: '65ch',
-                    color: ownInvalid ? 'var(--color-status-danger)' : optionDetail.color,
-                  }}
-                >
-                  {ownInvalid
-                    ? `Enter ${
-                        ownChoice!.metric === 'weight'
-                          ? 'a weight'
-                          : ownChoice!.metric === 'steps'
-                          ? 'between 500 and 100,000 steps'
-                          : 'a number of reps'
-                      } you could reach.`
-                    : ownChoice
-                    ? ownChoice.metric === 'weight'
-                      ? 'Counted by your heaviest logged set, whatever the reps.'
-                      : ownChoice.metric === 'steps'
-                      ? 'Counted from Health Connect or your watch each day.'
-                      : 'Counted by the most reps you log in one set.'
-                    : 'Your plan gives you three goals. Add one of your own if you have a number in mind; you can add or change it later.'}
-                </p>
-              </fieldset>
-            )}
-
-            {!editing && (
-              <fieldset style={{ marginTop: 20 }}>
-                <legend style={sectionLabel}>How do you want to fit in 4 sessions a week?</legend>
-                <div className="flex flex-col" style={{ gap: 8 }}>
-                  {PLAN_CHOICES.filter((opt) => canUseMuscle || !opt.ownerOnly).map((opt) => (
-                    <button
-                      key={opt.id}
-                      type="button"
-                      aria-pressed={program === opt.id}
-                      onClick={() => {
-                        triggerHaptic('light');
-                        setProgram(opt.id);
-                      }}
-                      className={`w-full text-left flex items-center ${focusRingClass}`}
-                      style={{ ...choiceStyle(program === opt.id), padding: '12px 16px', gap: 12 }}
-                    >
-                      <span className="flex-1 min-w-0">
-                        <span className="flex items-center flex-wrap" style={{ gap: 8 }}>
-                          <span style={optionText}>{opt.label}</span>
-                          {opt.recommended && (
-                            <span
-                              className="font-medium rounded-lg px-2 py-1"
-                              style={{
-                                fontSize: 12,
-                                lineHeight: '16px',
-                                color: 'var(--wk-accent)',
-                                background: 'var(--color-bg-surface-control)',
-                                border: '1px solid var(--color-border-accent)',
-                              }}
-                            >
-                              Recommended
-                            </span>
-                          )}
-                        </span>
-                        <span className="block" style={optionDetail}>
-                          {opt.detail}
-                        </span>
-                      </span>
-                      <RadioDot selected={program === opt.id} />
-                    </button>
-                  ))}
-                </div>
-              </fieldset>
-            )}
-
-            <fieldset style={{ marginTop: editing ? 0 : 20 }}>
+            <fieldset>
               <legend className={editing ? 'sr-only' : undefined} style={editing ? undefined : sectionLabel}>
                 Where will you train?
               </legend>
@@ -595,6 +669,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
               </div>
             )}
 
+            {/* Home equipment is ONLY revealed when the athlete explicitly selects Home (or fallback gear in Settings editor) */}
             {(location === 'home' || (editing && showHomeGearFallback)) && (
               <fieldset style={{ marginTop: 16 }}>
                 <legend style={sectionLabel}>
@@ -631,6 +706,225 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                 <p style={{ ...optionDetail, marginTop: 8 }}>Nothing at home? Bodyweight workouts still work.</p>
               </fieldset>
             )}
+
+            {!editing && (
+              <fieldset style={{ marginTop: 20 }}>
+                <legend style={sectionLabel}>Lifting experience</legend>
+                <div className="flex flex-col" style={{ gap: 8 }}>
+                  {EXPERIENCE_CHOICES.map((opt) => (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      aria-pressed={experienceLevel === opt.id}
+                      onClick={() => {
+                        triggerHaptic('light');
+                        setExperienceLevel(opt.id);
+                        setShowRirTracking(opt.id !== 'new');
+                      }}
+                      className={`w-full text-left flex items-center ${focusRingClass}`}
+                      style={{ ...choiceStyle(experienceLevel === opt.id), padding: '12px 16px', gap: 12 }}
+                    >
+                      <span className="flex-1 min-w-0">
+                        <span className="block" style={optionText}>{opt.label}</span>
+                        <span className="block" style={optionDetail}>{opt.detail}</span>
+                      </span>
+                      <RadioDot selected={experienceLevel === opt.id} />
+                    </button>
+                  ))}
+                </div>
+              </fieldset>
+            )}
+
+            {/* Progressive disclosure: Personal goal & RIR toggle stay tucked cleanly until tapped */}
+            {!editing && (
+              <div style={{ marginTop: 16 }}>
+                <button
+                  type="button"
+                  aria-expanded={showFineTuneDrawer}
+                  onClick={() => {
+                    triggerHaptic('light');
+                    setShowFineTuneDrawer((v) => !v);
+                  }}
+                  className={`w-full text-left flex items-center justify-between gap-3 ${focusRingClass}`}
+                  style={disclosureButtonStyle}
+                >
+                  <span className="min-w-0">
+                    <span className="block" style={optionText}>
+                      Fine-tune setup (optional)
+                    </span>
+                    <span className="block" style={optionDetail}>
+                      Add a target goal or adjust RIR logging · {fineTuneSummary}
+                    </span>
+                  </span>
+                  <ChevronDown
+                    className="w-5 h-5 shrink-0 transition-transform"
+                    style={{
+                      color: 'var(--color-text-secondary)',
+                      transform: showFineTuneDrawer ? 'rotate(180deg)' : undefined,
+                    }}
+                    aria-hidden="true"
+                  />
+                </button>
+
+                {showFineTuneDrawer && (
+                  <div
+                    className="rounded-xl p-4 mt-2 border flex flex-col gap-5"
+                    style={{ background: 'var(--wk-card)', borderColor: 'var(--color-border-subtle)' }}
+                  >
+                    <fieldset>
+                      <legend style={sectionLabel}>A goal of your own (optional)</legend>
+                      <div className="flex flex-wrap" style={{ gap: 8 }}>
+                        {OWN_GOAL_OPTIONS.map((lift) => {
+                          const on = ownLift === lift.exerciseId;
+                          return (
+                            <button
+                              key={lift.exerciseId}
+                              type="button"
+                              aria-pressed={on}
+                              onClick={() => {
+                                triggerHaptic('light');
+                                setOwnLift(on ? null : lift.exerciseId);
+                                setOwnTarget(on ? '' : lift.metric === 'steps' ? '10000' : '');
+                              }}
+                              className={`flex items-center font-medium ${focusRingClass}`}
+                              style={{
+                                ...choiceStyle(on),
+                                borderRadius: 999,
+                                padding: '0 16px',
+                                gap: 8,
+                                minHeight: 44,
+                                fontSize: 16,
+                                color: on ? 'var(--color-text-primary)' : 'var(--color-text-secondary)',
+                              }}
+                            >
+                              {on && <Check className="w-4 h-4 stroke-[2]" style={{ color: 'var(--wk-accent)' }} aria-hidden="true" />}
+                              {lift.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      {ownChoice && (
+                        <div className="flex items-center flex-wrap" style={{ gap: 8, marginTop: 12 }}>
+                          <label htmlFor={targetInputId} style={{ ...optionText, flexShrink: 0 }}>
+                            {ownChoice.metric === 'weight' ? 'Lift' : ownChoice.metric === 'steps' ? 'Reach' : 'Do'}
+                          </label>
+                          <input
+                            ref={ownInputRef}
+                            id={targetInputId}
+                            type="number"
+                            inputMode={ownChoice.metric === 'weight' ? 'decimal' : 'numeric'}
+                            min={ownChoice.metric === 'steps' ? 500 : 1}
+                            step={ownChoice.metric === 'steps' ? 500 : undefined}
+                            value={ownTarget}
+                            onChange={(e) => setOwnTarget(e.target.value)}
+                            aria-invalid={ownInvalid}
+                            aria-describedby={targetHelpId}
+                            className="wk-field tabular-nums"
+                            style={{
+                              width: 96,
+                              minHeight: 44,
+                              padding: '0 12px',
+                              fontSize: 16,
+                              color: 'var(--color-text-primary)',
+                              border: `1px solid ${ownInvalid ? 'var(--color-status-danger-fill)' : 'var(--color-border-subtle)'}`,
+                            }}
+                          />
+                          <span style={optionText}>
+                            {ownChoice.metric === 'weight' ? unit : ownChoice.metric === 'steps' ? 'steps a day' : 'reps in one set'}
+                          </span>
+                          {ownInvalid && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                triggerHaptic('light');
+                                setOwnTarget('');
+                                ownInputRef.current?.focus();
+                              }}
+                              className={`px-3 min-h-[44px] rounded-xl font-medium ${focusRingClass}`}
+                              style={{ fontSize: 12, color: 'var(--color-text-secondary)', border: '1px solid var(--color-border-strong)' }}
+                            >
+                              Clear
+                            </button>
+                          )}
+                        </div>
+                      )}
+                      <p
+                        id={targetHelpId}
+                        role={ownInvalid ? 'alert' : undefined}
+                        style={{
+                          ...optionDetail,
+                          marginTop: 8,
+                          maxWidth: '65ch',
+                          color: ownInvalid ? 'var(--color-status-danger)' : optionDetail.color,
+                        }}
+                      >
+                        {ownInvalid
+                          ? `Enter ${
+                              ownChoice!.metric === 'weight'
+                                ? 'a weight'
+                                : ownChoice!.metric === 'steps'
+                                ? 'between 500 and 100,000 steps'
+                                : 'a number of reps'
+                            } you could reach.`
+                          : ownChoice
+                          ? ownChoice.metric === 'weight'
+                            ? 'Counted by your heaviest logged set, whatever the reps.'
+                            : ownChoice.metric === 'steps'
+                            ? 'Counted from Health Connect or your watch each day.'
+                            : 'Counted by the most reps you log in one set.'
+                          : 'Your plan starts with three built-in goals. Add one of your own now or anytime later.'}
+                      </p>
+                    </fieldset>
+
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={showRirTracking}
+                      onClick={() => {
+                        triggerHaptic('light');
+                        setShowRirTracking((v) => !v);
+                      }}
+                      className={`w-full text-left flex items-center justify-between ${focusRingClass}`}
+                      style={{ ...choiceStyle(showRirTracking), padding: '12px 16px', gap: 12 }}
+                    >
+                      <span className="min-w-0">
+                        <span className="block" style={optionText}>Track RIR (reps in reserve) on sets</span>
+                        <span className="block" style={optionDetail}>
+                          {showRirTracking
+                            ? 'RIR column shown on every set.'
+                            : 'Hidden by default so you can focus cleanly on weight and reps.'}
+                        </span>
+                      </span>
+                      <span className="wk-pill shrink-0">{showRirTracking ? 'On' : 'Off'}</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Clear 1-line plan summary right above the launch CTA */}
+            {!editing && (
+              <div
+                className="rounded-xl px-4 py-3 mt-4 border flex items-center justify-between gap-2"
+                style={{ background: 'var(--wk-raised)', borderColor: 'var(--color-border-subtle)' }}
+              >
+                <div className="min-w-0">
+                  <span className="wk-label block">Ready to launch</span>
+                  <span className="wk-caption block mt-1" style={{ color: 'var(--color-text-primary)' }}>
+                    {selectedGoalLabel} · {selectedPlanLabel} · {selectedLocationLabel}
+                    {location === 'home' && homeEquipment.length > 0 ? ` (${homeEquipment.length} gear)` : ''}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => goTo(1)}
+                  className={`px-3 min-h-[44px] rounded-xl font-medium shrink-0 ${focusRingClass}`}
+                  style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}
+                >
+                  Edit
+                </button>
+              </div>
+            )}
           </div>
         )}
 
@@ -643,7 +937,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
             inline
               ? undefined
               : {
-                  padding: `${isLast ? 28 : 16}px 0 max(16px, env(safe-area-inset-bottom))`,
+                  padding: `${isLast ? 20 : 16}px 0 max(16px, env(safe-area-inset-bottom))`,
                   background: isLast
                     ? 'linear-gradient(180deg, rgb(var(--color-bg-canvas-rgb) / 0) 0%, rgb(var(--color-bg-canvas-rgb) / 0.92) 44%, var(--color-bg-canvas) 72%)'
                     : undefined,
@@ -710,7 +1004,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
         touchStartX.current = e.touches[0].clientX;
       }}
       onTouchEnd={(e) => {
-        if (touchStartX.current === null) return;
+        if (editing || touchStartX.current === null) return;
         const dx = e.changedTouches[0].clientX - touchStartX.current;
         touchStartX.current = null;
         if (Math.abs(dx) < 60) return;
@@ -731,9 +1025,8 @@ const RadioDot: React.FC<{ selected: boolean }> = ({ selected }) => (
       width: 24,
       height: 24,
       border: `2px solid ${selected ? 'var(--wk-accent)' : 'var(--color-border-strong)'}`,
-      background: selected ? 'var(--wk-accent)' : 'transparent',
     }}
   >
-    {selected && <Check className="w-3.5 h-3.5 stroke-[3]" style={{ color: 'var(--color-text-on-accent)' }} />}
+    {selected && <span className="rounded-full" style={{ width: 12, height: 12, background: 'var(--wk-accent)' }} />}
   </span>
 );

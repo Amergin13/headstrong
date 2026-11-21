@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
 import { WorkoutFinish, cacheWorkoutSummary, generateWorkoutSummary, getCachedWorkoutSummary } from '../../services/workoutFinish';
+import { isOnDeviceModelReady } from '../../services/onDeviceModel';
 
 /**
  * The summary to show for a finished workout: the fact-based text straight away, replaced by the
  * on-device model's version when one is saved or gets written (same facts, same checks). The finish
- * screen and the Workout tab share it, so both show the same words.
+ * screen and the Workout tab share both the cache and any in-flight request, so each workout
+ * summary is generated at most once.
  */
 export function useWorkoutSummaryText(finish: Pick<WorkoutFinish, 'facts' | 'fallback'> | null): string {
   const factsKey = finish ? finish.facts.join('|') : '';
@@ -16,13 +18,13 @@ export function useWorkoutSummaryText(finish: Pick<WorkoutFinish, 'facts' | 'fal
     setWritten(cached);
     if (cached) return;
     let cancelled = false;
-    generateWorkoutSummary(finish)
-      .then((answer) => {
-        if (!answer) return;
-        cacheWorkoutSummary(finish, answer);
-        if (!cancelled) setWritten(answer);
-      })
-      .catch(() => undefined);
+    (async () => {
+      if (cancelled || !(await isOnDeviceModelReady())) return;
+      const answer = await generateWorkoutSummary(finish);
+      if (!answer) return;
+      cacheWorkoutSummary(finish, answer);
+      if (!cancelled) setWritten(answer);
+    })().catch(() => undefined);
     return () => {
       cancelled = true;
     };

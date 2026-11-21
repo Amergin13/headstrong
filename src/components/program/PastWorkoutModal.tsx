@@ -1,7 +1,7 @@
 import React, { useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { X } from 'lucide-react';
-import { WorkoutSession } from '../../engine/types';
+import { ChevronRight, X } from 'lucide-react';
+import { ExerciseSession, WorkoutSession } from '../../engine/types';
 import { planWorkoutLabel } from '../../engine/muscleBuildingProgram';
 import { useUnits } from '../../utils/unitsContext';
 import { triggerHaptic } from '../../utils/haptics';
@@ -11,6 +11,7 @@ interface PastWorkoutModalProps {
   workoutNumber: number;
   title: string;
   session: WorkoutSession;
+  onSelectExercise?: (exercise: ExerciseSession) => void;
   onClose: () => void;
 }
 
@@ -21,7 +22,13 @@ function formatSessionDate(date: string): string {
 }
 
 /** Read-only record of a completed plan workout: the working sets the athlete logged. */
-export const PastWorkoutModal: React.FC<PastWorkoutModalProps> = ({ workoutNumber, title, session, onClose }) => {
+export const PastWorkoutModal: React.FC<PastWorkoutModalProps> = ({
+  workoutNumber,
+  title,
+  session,
+  onSelectExercise,
+  onClose,
+}) => {
   const units = useUnits();
   // Close on a tap that starts on the backdrop, not on the tail of the tap that opened the sheet.
   const pressedBackdrop = useRef(false);
@@ -81,9 +88,24 @@ export const PastWorkoutModal: React.FC<PastWorkoutModalProps> = ({ workoutNumbe
               className="pt-3"
               style={{ borderTop: '1px solid var(--color-border-subtle)' }}
             >
-              <div className="wk-subhead">
-                {formatSentenceCase(ex.name)}
-              </div>
+              {onSelectExercise ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    triggerHaptic('light');
+                    onSelectExercise(ex);
+                  }}
+                  aria-label={`Open details for ${formatSentenceCase(ex.name)}`}
+                  className="w-full text-left flex items-center justify-between gap-2 min-h-[44px]"
+                >
+                  <span className="wk-subhead">{formatSentenceCase(ex.name)}</span>
+                  <ChevronRight className="wk-chevron shrink-0" strokeWidth={2} aria-hidden="true" />
+                </button>
+              ) : (
+                <div className="wk-subhead">
+                  {formatSentenceCase(ex.name)}
+                </div>
+              )}
               <ol className="flex flex-col mt-2 gap-1">
                 {sets.map((st, i) => {
                   const kg = st.actualWeightKg ?? st.targetWeightKg;

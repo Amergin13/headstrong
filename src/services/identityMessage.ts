@@ -17,6 +17,12 @@ import { promptOnDeviceModel } from './onDeviceModel';
 import { strengthTrend } from './strengthTrend';
 import { mislabelledFigure, mismatchedWeightUnit, markPromptRejected, spelledNumberNotInFacts, wasPromptRejected } from './factChecks';
 import { MUSCLE_TO_GRAPH_KEY } from './sessionReport';
+import {
+  buildSummaryVoiceGuidelines,
+  checkSummaryVoiceGuidelines,
+  normalizeSummaryVoice,
+} from './coachPersonalization';
+import { coalesceAiGeneration, readCachedAiText, writeCachedAiText } from './aiGenerationCache';
 
 export interface IdentityMessageInput {
   plan: PlanOverview;
@@ -44,7 +50,8 @@ export interface IdentityMessageFacts {
 export const IDENTITY_SYSTEM_PROMPT =
   'You write the short coaching message at the top of an athlete\'s training plan, under "Your new identity as an athlete is forming". ' +
   'Use only the facts given. Write two crisp sentences (under 220 characters total) speaking as "you": first, concrete progress proving who they are becoming; ' +
-  'second, how the next session advances their week. Grounded, direct, plain language—no greetings, fluff, lists, or headings. Never say how they felt. Do not use any number not in the facts.';
+  'second, how the next workout advances their week. Grounded, direct, plain language—no greetings, fluff, lists, or headings. Never say how they felt. Do not use any number not in the facts. ' +
+  buildSummaryVoiceGuidelines('program_identity');
 
 const DAY = 24 * 60 * 60 * 1000;
 const isWorking = (s: WorkoutSet) => !s.isWarmup && s.setType !== 'warmup';
@@ -229,12 +236,9 @@ export function acceptIdentityMessage(answer: string | null, facts: IdentityMess
 /** The cleaned message, or why it can't be shown (in words the model can act on in a second try). */
 export function checkIdentityMessage(answer: string | null, facts: IdentityMessageFacts): { text: string; problem?: undefined } | { text?: undefined; problem: string } {
   if (!answer) return { problem: 'it was empty' };
-  const text = answer
-    .replace(/[*#_`]/g, '')
-    .replace(/^\s*(message|note)\s*:\s*/i, '')
-    .replace(/^["']|["']$/g, '')
-    .replace(/\s+/g, ' ')
-    .trim();
+  const text = normalizeSummaryVoice(answer, {
+    prefixPattern: /^\s*(message|note)\s*:\s*/i,
+  });
   if (text.length < 40) return { problem: 'it was too short' };
   if (text.length > 260) return { problem: 'it was too long; write two concise sentences under 260 characters' };
   if (/\b(as an ai|language model|the facts|facts provided|i am an?|i'm an?)\b/i.test(text)) return { problem: 'it talked about itself or "the facts" instead of the athlete' };
@@ -243,6 +247,8 @@ export function checkIdentityMessage(answer: string | null, facts: IdentityMessa
   if ((text.match(/[.!?](\s|$)/g) || []).length > 3) return { problem: 'it had too many sentences; write two' };
   // The content strategy's read-aloud gate: no hype, clichés, judgmental wording or error leaks.
   if (!runReadAloudQaGate(text).passed) return { problem: 'it used hype, a cliché or judgmental wording' };
+  const voiceProblem = checkSummaryVoiceGuidelines(text);
+  if (voiceProblem) return { problem: voiceProblem };
   if (/\d\s*%|\bpercent/i.test(text)) return { problem: 'it used a percentage; use the figures as given' };
   const allFacts = facts.facts.join(' ');
   const allowed = new Set(allFacts.match(NUMBER) || []);
@@ -289,57 +295,52 @@ export async function generateIdentityMessage(
   // Before the first finished session there is no progress to write about; the fact-based
   // welcome is the message.
   if (facts.facts.some((f) => /^Sessions finished in this plan: 0 of /.test(f))) return null;
+  const isLive = prompt === promptOnDeviceModel;
   const rejectKey = `identity:${facts.key}`;
-  if (prompt === promptOnDeviceModel && wasPromptRejected(rejectKey)) return null;
-  let problem: string | undefined;
-  let sawModelAnswer = false;
-  // A model that throws is the same as no model: the fact-based text stays.
-  try {
-    for (let i = 0; i < attempts; i++) {
-      // A second try is told what was wrong with the first, so it isn't the same mistake again.
-      const request = problem
-        ? `${buildIdentityPrompt(facts)}\n(Your last message could not be used because ${problem}. Write it again.)`
-        : buildIdentityPrompt(facts);
-      const answer = await prompt(IDENTITY_SYSTEM_PROMPT, request, { stateless: true, maxTokens: 130, timeoutMs: 45_000 });
-      if (answer === null) return null; // no model, or it failed: don't retry
-      sawModelAnswer = true;
-      const checked = checkIdentityMessage(answer, facts);
-      if (checked.problem === undefined) return checked.text;
-      problem = checked.problem;
-    }
-    if (prompt === promptOnDeviceModel && sawModelAnswer) markPromptRejected(rejectKey);
-  } catch {
-    return null;
+  if (isLive) {
+    const cached = acceptIdentityMessage(getCachedIdentityMessage(facts.key) ?? null, facts);
+    if (cached) return cached;
+    if (wasPromptRejected(rejectKey)) return null;
   }
-  return null;
+
+  const run = async (): Promise<string | null> => {
+    let problem: string | undefined;
+    let sawModelAnswer = false;
+    // A model that throws is the same as no model: the fact-based text stays.
+    try {
+      for (let i = 0; i < attempts; i++) {
+        // A second try is told what was wrong with the first, so it isn't the same mistake again.
+        const request = problem
+          ? `${buildIdentityPrompt(facts)}\n(Your last message could not be used because ${problem}. Write it again.)`
+          : buildIdentityPrompt(facts);
+        const answer = await prompt(IDENTITY_SYSTEM_PROMPT, request, { stateless: true, maxTokens: 130, timeoutMs: 45_000 });
+        if (answer === null) return null; // no model, or it failed: don't retry
+        sawModelAnswer = true;
+        const checked = checkIdentityMessage(answer, facts);
+        if (checked.problem === undefined) return checked.text;
+        problem = checked.problem;
+      }
+      if (isLive && sawModelAnswer) markPromptRejected(rejectKey);
+    } catch {
+      return null;
+    }
+    return null;
+  };
+
+  if (isLive) {
+    return coalesceAiGeneration(rejectKey, run, (text) => cacheIdentityMessage(facts.key, text));
+  }
+  return run();
 }
 
 // Generated messages are kept on the device, keyed by their facts, so each is written once.
 const CACHE_KEY = 'treise_identity_message_v1';
 const MAX_CACHED = 12;
 
-function readCache(): Record<string, string> {
-  try {
-    const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(CACHE_KEY) : null;
-    // Anything that isn't a saved map of texts (a damaged or foreign value) counts as empty.
-    const parsed = raw ? JSON.parse(raw) : {};
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
-  } catch {
-    return {};
-  }
-}
-
 export function getCachedIdentityMessage(key: string): string | undefined {
-  const hit = readCache()[key];
-  return typeof hit === 'string' ? hit : undefined;
+  return readCachedAiText(CACHE_KEY, key);
 }
 
 export function cacheIdentityMessage(key: string, message: string): void {
-  try {
-    const entries = Object.entries(readCache()).filter(([k]) => k !== key);
-    entries.push([key, message]);
-    localStorage.setItem(CACHE_KEY, JSON.stringify(Object.fromEntries(entries.slice(-MAX_CACHED))));
-  } catch {
-    // Storage unavailable: the message is simply generated again next time.
-  }
+  writeCachedAiText(CACHE_KEY, key, message, MAX_CACHED);
 }

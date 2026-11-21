@@ -8,8 +8,8 @@ import {
   createManualActivity,
   describeActivity,
   mergeDetectedActivities,
-  overlapsLifting,
   qualifiesAsActiveDay,
+  trimLiftingOverlap,
 } from '../engine/activeDays';
 import {
   LOOKBACK_DAYS,
@@ -21,14 +21,16 @@ import {
 } from '../services/activitySources';
 import {
   DailyStepRecord,
+  HealthConnectBiometricDay,
   HealthConnectStatus,
   getHealthConnectStatus,
   onHealthConnectStatus,
+  readHealthConnectBiometrics,
   readHealthConnectSessions,
   readHealthConnectSteps,
   startHealthConnectBridge,
 } from '../services/healthConnectBridge';
-import { mergeDailySteps } from '../services/wearableSyncService';
+import { mergeDailySteps, mergeHealthConnectBiometrics } from '../services/wearableSyncService';
 import { loadDismissedActivityIds, saveDismissedActivityIds } from '../services/storage';
 
 const RESYNC_MS = 10 * 60 * 1000;
@@ -98,8 +100,16 @@ export function useActivitySync({ profile, setProfile, activities, setActivities
         p.healthConnectActivities && hc.stepsGranted && setBiometrics
           ? readHealthConnectSteps(new Date(Date.now() - LOOKBACK_MS))
           : Promise.resolve([]);
+      const biometricsJob: Promise<HealthConnectBiometricDay[]> =
+        (p.healthConnectActivities || p.healthConnectConnected) && hc.biometricsGranted && setBiometrics
+          ? readHealthConnectBiometrics(new Date(Date.now() - LOOKBACK_MS))
+          : Promise.resolve([]);
       setSyncing(true);
-      const [results, stepsResult] = await Promise.all([Promise.allSettled(jobs), Promise.allSettled([stepsJob])]);
+      const [results, stepsResult, bioResult] = await Promise.all([
+        Promise.allSettled(jobs),
+        Promise.allSettled([stepsJob]),
+        Promise.allSettled([biometricsJob]),
+      ]);
       setSyncing(false);
       syncInFlight.current = false;
       const stepOutcome = stepsResult[0];
@@ -108,9 +118,16 @@ export function useActivitySync({ profile, setProfile, activities, setActivities
       } else if (stepOutcome?.status === 'rejected') {
         console.warn('Activity sync skipped Health Connect steps:', stepOutcome.reason);
       }
+      const bioOutcome = bioResult[0];
+      if (bioOutcome?.status === 'fulfilled' && bioOutcome.value.length > 0 && setBiometrics) {
+        setBiometrics((prev) => mergeHealthConnectBiometrics(prev, bioOutcome.value));
+      } else if (bioOutcome?.status === 'rejected') {
+        console.warn('Activity sync skipped Health Connect biometrics:', bioOutcome.reason);
+      }
       const detected = results
         .flatMap((r) => (r.status === 'fulfilled' ? r.value : []))
-        .filter((a) => !overlapsLifting(a, w));
+        .map((a) => trimLiftingOverlap(a, w))
+        .filter((a): a is DetectedActivity => a !== null);
       results.forEach((r) => {
         if (r.status === 'rejected') console.warn('Activity sync skipped a source:', r.reason);
       });
@@ -138,8 +155,10 @@ export function useActivitySync({ profile, setProfile, activities, setActivities
     return () => document.removeEventListener('visibilitychange', onVisible);
   }, [syncActivities]);
   useEffect(() => {
-    if ((hcStatus.granted || hcStatus.stepsGranted) && profile.healthConnectActivities) syncActivities(true);
-  }, [hcStatus.granted, hcStatus.stepsGranted, profile.healthConnectActivities, syncActivities]);
+    if ((hcStatus.granted || hcStatus.stepsGranted || hcStatus.biometricsGranted) && profile.healthConnectActivities) {
+      syncActivities(true);
+    }
+  }, [hcStatus.granted, hcStatus.stepsGranted, hcStatus.biometricsGranted, profile.healthConnectActivities, syncActivities]);
 
   const logManualActivity = useCallback(
     (type: ActivityType, minutes: number) => {

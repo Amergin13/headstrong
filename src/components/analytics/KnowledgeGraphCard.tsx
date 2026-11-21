@@ -6,6 +6,7 @@ import {
   WorkoutSession,
 } from '../../engine/types';
 import {
+  AthleteKnowledgeGraph,
   buildAthleteKnowledgeGraph,
   EXERCISE_SCIENCE_KNOWLEDGE_BASE,
   searchExerciseScienceKnowledgeBase,
@@ -27,6 +28,8 @@ interface KnowledgeGraphCardProps {
   exerciseCatalog: ExerciseDefinition[];
   profile: UserProfile;
   weeklyVolume: Record<string, number>;
+  /** Pre-computed knowledge graph passed from parent to avoid duplicate rebuilds. */
+  knowledgeGraph?: AthleteKnowledgeGraph;
   focusExerciseId?: string;
 }
 
@@ -38,10 +41,12 @@ export const KnowledgeGraphCard: React.FC<KnowledgeGraphCardProps> = ({
   exerciseCatalog,
   profile,
   weeklyVolume,
+  knowledgeGraph,
   focusExerciseId,
 }) => {
   const pkg = useMemo(
     () =>
+      knowledgeGraph ??
       buildAthleteKnowledgeGraph(
         workouts,
         biometrics,
@@ -49,7 +54,7 @@ export const KnowledgeGraphCard: React.FC<KnowledgeGraphCardProps> = ({
         profile,
         weeklyVolume
       ),
-    [workouts, biometrics, exerciseCatalog, profile, weeklyVolume]
+    [knowledgeGraph, workouts, biometrics, exerciseCatalog, profile, weeklyVolume]
   );
 
   const [viewMode, setViewMode] = useState<InsightTabMode>('overview');
@@ -154,7 +159,7 @@ export const KnowledgeGraphCard: React.FC<KnowledgeGraphCardProps> = ({
             <div className="wk-card w-full text-left block">
               <div className="flex items-start justify-between gap-3">
                 <h3 className="wk-h1 leading-tight">
-                  Session notes timeline
+                  Exercise notes timeline
                 </h3>
                 <span className="wk-pill shrink-0 tabular-nums">
                   {pkg.exerciseNotesHistory.length}{' '}

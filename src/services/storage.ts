@@ -24,6 +24,12 @@ import { generatePlanWorkout, getSessionPlanId, withPlanWorkoutName } from '../e
 import { prepareSessionForAthlete } from './sessionPreparation';
 import { buildStarterPlan } from '../engine/starterPlan';
 import { ActivityLog } from '../engine/activeDays';
+import {
+  clearDriveSessionCredentials,
+  decryptBackupPayload,
+  encryptBackupPayload,
+  isEncryptedBackupEnvelope,
+} from './encryptedBackup';
 
 const KEYS = {
   PROFILE: 'treise_profile_v3',
@@ -244,6 +250,15 @@ export function runStorageMigrations(): void {
 
 /** Fired on `window` when data couldn't be saved even after clearing caches (e.g. storage full). */
 export const SAVE_FAILED_EVENT = 'treise-save-failed';
+/** Fired on `window` when core training data changes, so opt-in automated encrypted backup can sync. */
+export const DATA_CHANGED_EVENT = 'treise-data-changed';
+const BACKUP_TRIGGER_KEYS = new Set<string>([
+  KEYS.PROFILE,
+  KEYS.BIOMETRICS,
+  KEYS.WORKOUTS,
+  KEYS.EXERCISES,
+  KEYS.ACTIVITIES,
+]);
 /** Caches that can be rebuilt (written AI notes); cleared first when storage is full. */
 const REBUILDABLE_CACHE_KEYS = [
   'treise_exercise_notes_v1',
@@ -261,17 +276,31 @@ const REBUILDABLE_CACHE_KEYS = [
  */
 function persist(key: string, value: string): boolean {
   if (typeof localStorage === 'undefined') return false;
+  const emitWindowEvent = (eventName: string) => {
+    if (
+      typeof window !== 'undefined'
+      && typeof window.dispatchEvent === 'function'
+      && typeof CustomEvent === 'function'
+    ) {
+      window.dispatchEvent(new CustomEvent(eventName, { detail: { key } }));
+    }
+  };
+  const emitChanged = () => {
+    if (BACKUP_TRIGGER_KEYS.has(key)) emitWindowEvent(DATA_CHANGED_EVENT);
+  };
   try {
     localStorage.setItem(key, value);
+    emitChanged();
     return true;
   } catch {
     try {
       REBUILDABLE_CACHE_KEYS.forEach((k) => localStorage.removeItem(k));
       localStorage.setItem(key, value);
+      emitChanged();
       return true;
     } catch (e) {
       console.error(`Failed to save ${key}:`, e);
-      if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(SAVE_FAILED_EVENT, { detail: { key } }));
+      emitWindowEvent(SAVE_FAILED_EVENT);
       return false;
     }
   }
@@ -702,6 +731,111 @@ export function muscleSetsBetween(
   return volume;
 }
 
+export interface MuscleVolumeBreakdownEntry {
+  total: number;
+  direct: number;
+  fractional: number;
+}
+
+/**
+ * Credits one exercise's hard sets into separate direct (1.0× primary) and fractional (0.5×
+ * synergist) buckets (Pelland et al., 2024/2026), guaranteeing exact parity with
+ * `creditMuscleSets` (`direct + fractional === total`).
+ */
+export function creditMuscleSetsBreakdown(
+  breakdown: Record<string, MuscleVolumeBreakdownEntry>,
+  def: ExerciseDefinition | undefined,
+  pillar: WorkoutSession['exercises'][number]['pillar'],
+  hardSets: number
+): void {
+  if (hardSets === 0) return;
+  const add = (key: string, amount: number, kind: 'direct' | 'fractional') => {
+    const entry = breakdown[key] ?? { total: 0, direct: 0, fractional: 0 };
+    entry[kind] += amount;
+    entry.total += amount;
+    breakdown[key] = entry;
+  };
+  if (def) {
+    const primary = def.primaryMuscle;
+    if (primary === 'Side Delts') {
+      add('SideDelts', hardSets, 'direct');
+      add('Shoulders', hardSets, 'direct');
+    } else if (primary === 'Rear Delts') {
+      add('RearDelts', hardSets, 'direct');
+      add('Shoulders', hardSets, 'direct');
+    } else if (primary === 'Front Delts') {
+      add('FrontDelts', hardSets, 'direct');
+      add('Shoulders', hardSets, 'direct');
+    } else if (primary === 'Shoulders') {
+      add('Shoulders', hardSets, 'direct');
+      add('FrontDelts', hardSets, 'direct');
+      add('SideDelts', hardSets * 0.5, 'fractional');
+    } else {
+      add(primary, hardSets, 'direct');
+    }
+    for (const sec of def.secondaryMuscles ?? []) {
+      const secCredit = hardSets * 0.5;
+      if (sec === 'Side Delts') {
+        add('SideDelts', secCredit, 'fractional');
+      } else if (sec === 'Rear Delts') {
+        add('RearDelts', secCredit, 'fractional');
+      } else if (sec === 'Shoulders') {
+        add('Shoulders', secCredit, 'fractional');
+        add('FrontDelts', secCredit, 'fractional');
+      } else {
+        add(sec, secCredit, 'fractional');
+      }
+    }
+    return;
+  }
+  if (pillar === 'Squat') add('Quads', hardSets, 'direct');
+  if (pillar === 'Hinge') add('Hamstrings', hardSets, 'direct');
+  if (pillar === 'Horizontal Push') add('Chest', hardSets, 'direct');
+  if (pillar === 'Vertical Push') {
+    add('Shoulders', hardSets, 'direct');
+    add('SideDelts', hardSets, 'direct');
+  }
+  if (pillar === 'Horizontal Pull') add('Back', hardSets, 'direct');
+  if (pillar === 'Vertical Pull') add('Back', hardSets, 'direct');
+}
+
+/**
+ * Returns weekly hard sets broken down into direct (1.0×) and fractional synergist (0.5×) sets
+ * per muscle group for live intra-workout visibility and transparent volume accounting.
+ */
+export function calculateWeeklyMuscleVolumeBreakdown(
+  workouts: WorkoutSession[],
+  exerciseCatalog: ExerciseDefinition[],
+  activeWorkout?: WorkoutSession,
+  now: Date = new Date()
+): Record<string, MuscleVolumeBreakdownEntry> {
+  const weekStart = new Date(now.getTime());
+  weekStart.setDate(weekStart.getDate() - 7);
+  const fromDate = localDateString(weekStart);
+  const exMap = new Map(exerciseCatalog.map((e) => [e.id, e]));
+  const baseKeys = Object.keys(EMPTY_MUSCLE_VOLUME());
+  const breakdown: Record<string, MuscleVolumeBreakdownEntry> = {};
+  for (const key of baseKeys) {
+    breakdown[key] = { total: 0, direct: 0, fractional: 0 };
+  }
+  const sessionsToScan = activeWorkout
+    ? [activeWorkout, ...workouts.filter((w) => w.id !== activeWorkout.id)]
+    : workouts;
+  for (const w of sessionsToScan) {
+    if (w.date < fromDate) continue;
+    for (const ex of w.exercises) {
+      creditMuscleSetsBreakdown(breakdown, exMap.get(ex.exerciseId), ex.pillar, countHardSets(ex));
+    }
+  }
+  for (const key of Object.keys(breakdown)) {
+    const e = breakdown[key];
+    e.direct = Math.round(e.direct * 2) / 2;
+    e.fractional = Math.round(e.fractional * 2) / 2;
+    e.total = Math.round((e.direct + e.fractional) * 2) / 2;
+  }
+  return breakdown;
+}
+
 export function calculateWeeklyMuscleVolume(
   workouts: WorkoutSession[],
   exerciseCatalog: ExerciseDefinition[],
@@ -824,6 +958,36 @@ export function importUserDataJSON(rawJson: string): TreiseDataBackup {
 }
 
 /**
+ * Exports all user data encrypted client-side with AES-256-GCM (PBKDF2-SHA256)
+ * for portable encrypted file backup or Google Drive appDataFolder upload.
+ */
+export async function exportEncryptedUserDataJSON(passphrase: string): Promise<string> {
+  const rawJson = exportAllUserDataJSON();
+  const envelope = await encryptBackupPayload(rawJson, passphrase, {
+    schemaVersion: STORAGE_SCHEMA_VERSION,
+  });
+  return JSON.stringify(envelope, null, 2);
+}
+
+/**
+ * Restores either a plain JSON Treise backup or an AES-256-GCM encrypted backup file.
+ */
+export async function importEncryptedOrPlainUserDataJSON(
+  rawText: string,
+  passphrase?: string
+): Promise<TreiseDataBackup> {
+  const parsed = JSON.parse(rawText);
+  if (isEncryptedBackupEnvelope(parsed)) {
+    if (!passphrase) {
+      throw new Error('This backup is encrypted. Enter your backup passphrase to restore it.');
+    }
+    const decryptedJson = await decryptBackupPayload(parsed, passphrase);
+    return importUserDataJSON(decryptedJson);
+  }
+  return importUserDataJSON(rawText);
+}
+
+/**
  * Permanently erases all personal, workout, biometric, and OAuth data from the device
  * (Mandatory for Google Play Store User Data & Account Deletion Policy compliance)
  */
@@ -832,6 +996,7 @@ export function permanentlyEraseAllUserData() {
     Object.values(KEYS).forEach((k) => localStorage.removeItem(k));
     Object.values(LEGACY_KEYS).forEach((k) => localStorage.removeItem(k));
     localStorage.removeItem('treise_renpho_devices_v1');
+    clearDriveSessionCredentials();
     if (typeof sessionStorage !== 'undefined') {
       sessionStorage.removeItem('fitbit_code_verifier');
       sessionStorage.removeItem('fitbit_oauth_state');

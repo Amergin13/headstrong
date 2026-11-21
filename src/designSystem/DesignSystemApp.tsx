@@ -30,6 +30,7 @@ import { RecoveryScoreCard } from '../components/train/RecoveryScoreCard';
 import { ReadinessBanner } from '../components/train/ReadinessBanner';
 import { ActiveDayCard } from '../components/train/ActiveDayCard';
 import { ExerciseCard } from '../components/train/ExerciseCard';
+import { ExerciseDetailModal } from '../components/train/ExerciseDetailModal';
 import { SET_TABLE_COLUMNS, SET_TABLE_GAP, SetRow } from '../components/train/SetRow';
 import {
   CompletedExerciseCard,
@@ -113,7 +114,7 @@ const OOUX_MUTATION_RULES: Record<
     readOnlyFields: 'source attribution, workoutsPerWeek adherence rollover',
   },
   ExerciseNote: {
-    mutableVia: 'ExerciseCard Session notes open input (immediately persisted)',
+    mutableVia: 'ExerciseCard Exercise notes open input (immediately persisted)',
     mutableFields: 'note text per active workout exercise',
     readOnlyFields: 'historical dates, longitudinal Knowledge Graph fatigue/discomfort insight mining',
   },
@@ -327,7 +328,7 @@ export const DesignSystemContent: React.FC<{
   const [timeline, setTimeline] = useState<ChartTimeline>('1M');
   const [goalPhase, setGoalPhase] = useState<'Lean Bulk' | 'Cut / Recomp' | 'Maingain'>('Lean Bulk');
   const [showToast, setShowToast] = useState(false);
-  const [openModal, setOpenModal] = useState<'rest' | 'plates' | 'swap' | 'coach' | 'onboarding' | 'onboarding-edit' | null>(null);
+  const [openModal, setOpenModal] = useState<'rest' | 'plates' | 'swap' | 'exercise-detail' | 'coach' | 'onboarding' | 'onboarding-edit' | null>(null);
   const [runtimeMode, setRuntimeMode] = useState<'ssr' | 'http' | 'file'>('ssr');
   const [liveComputedVars, setLiveComputedVars] = useState<Record<string, string>>({});
 
@@ -1296,6 +1297,17 @@ export const DesignSystemContent: React.FC<{
                   aria-label="Sample text field"
                   className="wk-field"
                 />
+                <div className="flex flex-col gap-2">
+                  <span className="wk-label" style={{ color: 'var(--wk-muted)' }}>
+                    Exercise notes (.wk-textarea)
+                  </span>
+                  <textarea
+                    rows={2}
+                    defaultValue="Keep elbows 45° and pause 1s on chest."
+                    aria-label="Sample exercise notes textarea"
+                    className="wk-textarea resize-none"
+                  />
+                </div>
                 <div className="wk-bar" role="progressbar" aria-valuenow={62} aria-valuemin={0} aria-valuemax={100}>
                   <div style={{ width: '62%' }} />
                 </div>
@@ -1308,22 +1320,26 @@ export const DesignSystemContent: React.FC<{
                 title="Timeline &amp; Goal Phase Controls"
                 source="src/components/.../TimelineToggle &amp; GoalPhaseSwitcher"
                 dsId="ds-btn-segmented"
+                description="Shift Nudge dark-mode elevation: --color-bg-surface on canvas, stepping up to --color-bg-surface-raised inside cards so trays never punch a dark pit."
               />
 
               <div className="space-y-2">
                 <div className="wk-label" style={{ color: 'var(--wk-muted)' }}>
-                  TimelineToggle · Default full width
+                  TimelineToggle · Canvas surface (--color-bg-surface)
                 </div>
                 <TimelineToggle value={timeline} onChange={setTimeline} />
               </div>
 
               <div className="space-y-2">
                 <div className="wk-label" style={{ color: 'var(--wk-muted)' }}>
-                  TimelineToggle · Header compact variant
+                  TimelineToggle · Nested in card (--color-bg-surface-raised)
                 </div>
-                <div className="wk-card flex items-center justify-between gap-2">
-                  <span className="wk-title">Bodyweight</span>
-                  <TimelineToggle value={timeline} onChange={setTimeline} variant="header" />
+                <div className="wk-card space-y-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="wk-title">Bodyweight</span>
+                    <TimelineToggle value={timeline} onChange={setTimeline} variant="header" />
+                  </div>
+                  <TimelineToggle value={timeline} onChange={setTimeline} compact />
                 </div>
               </div>
 
@@ -1338,16 +1354,16 @@ export const DesignSystemContent: React.FC<{
                 </div>
                 <div className="grid grid-cols-3 gap-2">
                   <div
-                    className="rounded-lg p-2.5 text-center space-y-1 border"
+                    className="rounded-lg p-3 text-center space-y-1 border"
                     style={{ background: 'var(--color-bg-surface-raised)', borderColor: 'var(--color-border-subtle)' }}
                   >
-                    <div className="wk-caption">Pending default (0.64)</div>
-                    <div className="text-base font-semibold tabular-nums" style={{ color: 'var(--color-text-muted)' }}>
+                    <div className="wk-caption">Pending editable</div>
+                    <div className="text-base font-semibold tabular-nums" style={{ color: 'var(--color-text-secondary)' }}>
                       100 × 8
                     </div>
                   </div>
                   <div
-                    className="rounded-lg p-2.5 text-center space-y-1 border-2"
+                    className="rounded-lg p-3 text-center space-y-1 border-2"
                     style={{ background: 'var(--color-bg-surface-raised)', borderColor: 'var(--color-border-focus)' }}
                   >
                     <div className="wk-caption">Focused input</div>
@@ -1356,14 +1372,23 @@ export const DesignSystemContent: React.FC<{
                     </div>
                   </div>
                   <div
-                    className="rounded-lg p-2.5 text-center space-y-1 border"
-                    style={{ background: 'var(--color-status-positive-soft)', borderColor: 'var(--color-status-positive)' }}
+                    className="rounded-lg p-3 text-center space-y-1 border"
+                    style={{ background: 'var(--color-bg-surface)', borderColor: 'var(--color-border-accent)' }}
                   >
                     <div className="wk-caption" style={{ color: 'var(--color-status-positive)' }}>
-                      Completed set
+                      Done · Read-only
                     </div>
-                    <div className="text-base font-semibold tabular-nums" style={{ color: 'var(--color-text-primary)' }}>
-                      100 × 8
+                    <div className="flex items-center justify-center gap-2">
+                      <span className="text-base font-semibold tabular-nums" style={{ color: 'var(--color-text-primary)' }}>
+                        100 × 8
+                      </span>
+                      <span
+                        className="inline-flex items-center justify-center w-5 h-5 rounded"
+                        style={{ background: 'var(--color-status-positive)', color: 'var(--color-text-on-accent)' }}
+                        aria-hidden="true"
+                      >
+                        ✓
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -1428,10 +1453,10 @@ export const DesignSystemContent: React.FC<{
 
             <PhoneStage className="space-y-6">
               <StageHeader
-                title="NavigationBar + Detached Treise AI Entry"
+                title="NavigationBar + Detached AI coach Pill"
                 source="src/components/common/NavigationBar.tsx"
                 dsId="ds-ai-coach-navigation-rule"
-                description="Interactive tabs; scoped inside a transformed containing block so position:fixed docks cleanly."
+                description="Matched h-16 rounded-full pill curvature with unified 20×20 geometric T + copper AI spark icon and visible 'AI coach' label on the shared tab baseline."
               />
               <div
                 className="relative rounded-2xl overflow-hidden border"
@@ -1482,18 +1507,18 @@ export const DesignSystemContent: React.FC<{
             </span>
             <h2 className="wk-title mt-1">3-step onboarding, habit framing &amp; location setup</h2>
             <p className="wk-body mt-1 max-w-prose">
-              Rendered from the live <code>OnboardingModal</code> component across Step 1 (Identity), Step 2 (24 sessions),
-              Step 3 (Restarting + Goal / Plan / Equipment setup), and the returning athlete &quot;Where you train&quot; editor.
+              Rendered from the live <code>OnboardingModal</code> component using lean progressive disclosure across Step 1 (Identity + Goal), Step 2 (24 sessions + Weekly rhythm &amp; optional habit anchor),
+              Step 3 (Restarting + Place, conditional Home gear &amp; Experience), and the returning athlete &quot;Where you train&quot; editor.
             </p>
           </div>
 
           <div className="grid lg:grid-cols-2 gap-6 items-start">
             <PhoneStage className="space-y-5">
               <StageHeader
-                title="Step 1 of 3 · Identity"
+                title="Step 1 of 3 · Identity &amp; goal"
                 source="src/components/onboarding/OnboardingModal.tsx"
                 dsId="ds-onboarding-flow"
-                description="Identity framing with IdentityIllustration, Skip action, primary Continue CTA, and demo launcher."
+                description="Value-first identity framing paired with one essential goal decision, Skip action, Continue CTA, and demo launcher."
               />
               <div className="rounded-[var(--radius-card)] overflow-hidden border" style={{ borderColor: 'var(--color-border-subtle)' }}>
                 <OnboardingModal
@@ -1507,9 +1532,9 @@ export const DesignSystemContent: React.FC<{
               </div>
 
               <StageHeader
-                title="Step 2 of 3 · Habit &amp; 24 sessions"
+                title="Step 2 of 3 · 24 sessions &amp; weekly rhythm"
                 source="src/components/onboarding/OnboardingModal.tsx"
-                description="SessionsIllustration with Back / Skip controls and research-backed 6-week consistency copy."
+                description="6-week consistency science paired with cadence choice and collapsed-by-default optional habit anchor."
               />
               <div className="rounded-[var(--radius-card)] overflow-hidden border" style={{ borderColor: 'var(--color-border-subtle)' }}>
                 <OnboardingModal
@@ -1524,9 +1549,9 @@ export const DesignSystemContent: React.FC<{
 
             <PhoneStage className="space-y-5">
               <StageHeader
-                title="Step 3 of 3 · Goal, plan &amp; kit setup"
+                title="Step 3 of 3 · Place, experience &amp; launch"
                 source="src/components/onboarding/OnboardingModal.tsx"
-                description="RestartIllustration, Build Muscle / Lose Fat / Stay Lean choices, optional custom lift goal, cadence split, and place picker."
+                description="Lean setup with conditional Home gear (revealed only when Home is selected), experience calibration, collapsed fine-tune drawer, and ready-to-launch summary."
               />
               <div className="rounded-[var(--radius-card)] overflow-hidden border" style={{ borderColor: 'var(--color-border-subtle)' }}>
                 <OnboardingModal
@@ -1630,9 +1655,10 @@ export const DesignSystemContent: React.FC<{
               </div>
 
               <StageHeader
-                title="SetRow State Matrix (>= 48px targets, no next-set highlights)"
+                title="SetRow State Matrix (>= 48px targets, solid Mint completion + read-only completed cells)"
                 source="src/components/train/SetRow.tsx"
                 dsId="ds-set-toggle / ds-input-numeric"
+                description="Active sets display raised editable inputs; completed sets fill the Done CTA in solid Mint (#1AE3A0) and flatten Weight, Reps, and RIR to read-only text on the card background until unchecked."
               />
               <div className="wk-card space-y-2">
                 <div
@@ -1651,34 +1677,28 @@ export const DesignSystemContent: React.FC<{
                     set={matrixSets.warmup}
                     displayBadge="W"
                     onUpdate={(u) => setMatrixSets((p) => ({ ...p, warmup: { ...p.warmup, ...u } }))}
-                    onComplete={() => setMatrixSets((p) => ({ ...p, warmup: { ...p.warmup, completed: !p.warmup.completed } }))}
+                    onComplete={() => undefined}
                   />
                   <SetRow
                     set={matrixSets.upcoming}
                     displayBadge="1"
                     previous={{ weightKg: 97.5, reps: 8 }}
                     onUpdate={(u) => setMatrixSets((p) => ({ ...p, upcoming: { ...p.upcoming, ...u } }))}
-                    onComplete={() =>
-                      setMatrixSets((p) => ({ ...p, upcoming: { ...p.upcoming, completed: !p.upcoming.completed } }))
-                    }
+                    onComplete={() => undefined}
                   />
                   <SetRow
                     set={matrixSets.completed}
                     displayBadge="2"
                     previous={{ weightKg: 97.5, reps: 8 }}
                     onUpdate={(u) => setMatrixSets((p) => ({ ...p, completed: { ...p.completed, ...u } }))}
-                    onComplete={() =>
-                      setMatrixSets((p) => ({ ...p, completed: { ...p.completed, completed: !p.completed.completed } }))
-                    }
+                    onComplete={() => undefined}
                   />
                   <SetRow
                     set={matrixSets.failure}
                     displayBadge="F"
                     previous={{ weightKg: 100, reps: 7 }}
                     onUpdate={(u) => setMatrixSets((p) => ({ ...p, failure: { ...p.failure, ...u } }))}
-                    onComplete={() =>
-                      setMatrixSets((p) => ({ ...p, failure: { ...p.failure, completed: !p.failure.completed } }))
-                    }
+                    onComplete={() => undefined}
                   />
                   <SetRow
                     set={matrixSets.unilateral}
@@ -1686,9 +1706,7 @@ export const DesignSystemContent: React.FC<{
                     isDumbbell
                     perSide
                     onUpdate={(u) => setMatrixSets((p) => ({ ...p, unilateral: { ...p.unilateral, ...u } }))}
-                    onComplete={() =>
-                      setMatrixSets((p) => ({ ...p, unilateral: { ...p.unilateral, completed: !p.unilateral.completed } }))
-                    }
+                    onComplete={() => undefined}
                   />
                 </div>
               </div>
@@ -1760,6 +1778,7 @@ export const DesignSystemContent: React.FC<{
                 onUpdateSet={handleUpdateSquatSet}
                 onCompleteSet={handleCompleteSquatSet}
                 onAddSet={handleAddSquatSet}
+                onOpenDetail={() => setOpenModal('exercise-detail')}
                 onOpenSwap={() => setOpenModal('swap')}
                 onOpenPlateCalc={() => setOpenModal('plates')}
               />
@@ -1893,6 +1912,7 @@ export const DesignSystemContent: React.FC<{
               <StageHeader
                 title="StrengthLevelsCard &amp; BalanceCard (Imbalance findings + Balanced)"
                 source="src/components/analytics/StrengthLevelsCard.tsx &amp; BalanceCard.tsx"
+                description="Shift Nudge hierarchy: Mint overall standing pill, elevated inset radar telemetry stage, structured .wk-raised movement tiles, bounded Engine tile, and collapsed methodology drawer."
               />
               <StrengthLevelsCard report={fixtures.movementReport} latestBiometrics={fixtures.latestBio} />
               <BalanceCard report={balancedWithFindingsReport} />
@@ -2197,7 +2217,7 @@ export const DesignSystemContent: React.FC<{
                   <span className="wk-pill">{fixtures.iaProgressTaxonomy.length} groups</span>
                 </div>
                 <p className="wk-caption max-w-prose">
-                  Separates Training insights (Knowledge Graph &amp; Session notes timeline) from Strength standards so mental models match destinations.
+                  Separates Training insights (Knowledge Graph &amp; Exercise notes timeline) from Strength standards so mental models match destinations.
                 </p>
                 <ul className="space-y-2 pt-2 border-t" style={{ borderColor: 'var(--color-border-subtle)' }}>
                   {fixtures.iaProgressTaxonomy.map((grp) => (
@@ -2900,6 +2920,17 @@ export const DesignSystemContent: React.FC<{
 
             <div className="wk-card space-y-3">
               <div className="flex items-center justify-between gap-2">
+                <h3 className="wk-title">ExerciseDetailModal</h3>
+                <span className="wk-pill">ds-exercise-detail-tabs</span>
+              </div>
+              <p className="wk-body">Canonical 3-tab exercise view (Overview, Form, History) shared from Workout, Progress, Past Workouts &amp; Split Editor.</p>
+              <button type="button" onClick={() => setOpenModal('exercise-detail')} className="wk-btn-secondary w-full min-h-[44px]">
+                Open Exercise Detail
+              </button>
+            </div>
+
+            <div className="wk-card space-y-3">
+              <div className="flex items-center justify-between gap-2">
                 <h3 className="wk-title">ExerciseSwapModal</h3>
                 <span className="wk-pill">E1RM Translate</span>
               </div>
@@ -3059,6 +3090,25 @@ export const DesignSystemContent: React.FC<{
           onClose={() => setOpenModal(null)}
         />
       )}
+      {openModal === 'exercise-detail' && (
+        <ExerciseDetailModal
+          exercise={interactiveSquat}
+          exerciseDef={fixtures.exerciseCatalog.find((d) => d.id === interactiveSquat.exerciseId)}
+          workouts={fixtures.workouts}
+          biometrics={fixtures.biometrics}
+          insight={fixtures.squatInsight}
+          bodyweightKg={fixtures.bodyweightKg}
+          muscleLabel="Quads"
+          prescription={fixtures.prescription}
+          readinessState={'Normal' as ReadinessState}
+          onAddSet={handleAddSquatSet}
+          onOpenSwap={() => setOpenModal('swap')}
+          onOpenPlateCalc={() => setOpenModal('plates')}
+          onAskCoach={() => setOpenModal('coach')}
+          onClose={() => setOpenModal(null)}
+        />
+      )}
+
       {openModal === 'swap' && (
         <ExerciseSwapModal
           currentExercise={fixtures.squatExercise}

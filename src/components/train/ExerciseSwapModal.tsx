@@ -26,6 +26,8 @@ import { formatSentenceCase } from '../../utils/typography';
 import { useUnits } from '../../utils/unitsContext';
 import { WeightUnit } from '../../utils/units';
 
+export type ExerciseSwapScope = 'today' | 'permanent';
+
 interface ExerciseSwapModalProps {
   currentExercise: ExerciseSession;
   exerciseCatalog: ExerciseDefinition[];
@@ -40,7 +42,8 @@ interface ExerciseSwapModalProps {
   onConfirmSwap: (
     newExerciseDef: ExerciseDefinition,
     convertedWeightKg: number,
-    prescription?: SwapPrescription
+    prescription?: SwapPrescription,
+    scope?: ExerciseSwapScope
   ) => void;
   onClose: () => void;
   /** Exercise IDs already in today's workout (not offered again). */
@@ -131,9 +134,13 @@ export const ExerciseSwapModal: React.FC<ExerciseSwapModalProps> = ({
       fallbackTargetWeightKg: resolveFallbackWeight?.(targetDef),
     });
 
-  const handleSelectAlternative = (alt: ExerciseDefinition, prescription: SwapPrescription) => {
+  const handleSelectAlternative = (
+    alt: ExerciseDefinition,
+    prescription: SwapPrescription,
+    scope: ExerciseSwapScope = 'today'
+  ) => {
     triggerHaptic('success');
-    onConfirmSwap(alt, prescription.targetWeightKg, prescription);
+    onConfirmSwap(alt, prescription.targetWeightKg, prescription, scope);
     onClose();
   };
 
@@ -282,11 +289,9 @@ export const ExerciseSwapModal: React.FC<ExerciseSwapModalProps> = ({
                 : `${prescription.targetReps} reps @ ${prescription.targetRir} RIR`;
 
               return (
-                <button
+                <div
                   key={alt.id}
-                  type="button"
-                  onClick={() => handleSelectAlternative(alt, prescription)}
-                  className="wk-raised w-full text-left transition-all space-y-2 min-h-[44px] active:scale-[0.99]"
+                  className="wk-raised w-full text-left space-y-3"
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
@@ -321,11 +326,33 @@ export const ExerciseSwapModal: React.FC<ExerciseSwapModalProps> = ({
                   </p>
 
                   {alt.whyItWorks && (
-                    <p className="wk-body pt-1 max-w-prose">
+                    <p className="wk-body max-w-prose">
                       {alt.whyItWorks}
                     </p>
                   )}
-                </button>
+
+                  <div className="grid grid-cols-2 gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => handleSelectAlternative(alt, prescription, 'today')}
+                      className="wk-btn-secondary min-h-[44px] justify-center text-center active:scale-[0.98] transition-transform"
+                      style={{
+                        background: 'var(--color-action-primary-bg)',
+                        color: 'var(--color-action-primary-fg)',
+                        borderColor: 'var(--color-action-primary-bg)',
+                      }}
+                    >
+                      Swap for today only
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleSelectAlternative(alt, prescription, 'permanent')}
+                      className="wk-btn-secondary min-h-[44px] justify-center text-center active:scale-[0.98] transition-transform"
+                    >
+                      Swap permanently in plan
+                    </button>
+                  </div>
+                </div>
               );
               };
 

@@ -12,16 +12,58 @@
 import { calculateE1RM, getBodyweightLoadRatio, isTimedExercise } from '../engine/e1rm';
 import { buildBodyweightEmaLookup } from '../engine/ema';
 import { getWorkoutCompletedAt } from '../engine/recovery';
-import { BiometricLog, ExerciseSession, ReadinessState, WorkoutSession, WorkoutSet } from '../engine/types';
+import { isPillarBenchmarkExercise } from '../engine/strengthStandards';
+import { BiometricLog, ExerciseDefinition, ExerciseSession, ReadinessState, WorkoutSession, WorkoutSet } from '../engine/types';
 import { localDateString } from '../utils/date';
+
+/**
+ * True for isolation and small-muscle exercises (lateral raises, tricep pushdowns, curls, calves,
+ * leg curls/extensions, crunches, face pulls, etc.) where a Best Set / reps-at-weight progression
+ * view is more meaningful than an estimated 1RM sparkline.
+ */
+export function isIsolationOrSmallExercise(
+  ex: {
+    id?: string;
+    exerciseId?: string;
+    name?: string;
+    isIsolation?: boolean;
+    durationSeconds?: number;
+    durationMinutesRange?: [number, number];
+    repTargetType?: string;
+  },
+  exerciseDef?: Pick<ExerciseDefinition, 'isIsolation'>
+): boolean {
+  if (isTimedExercise(ex)) return false;
+  if (ex.isIsolation || exerciseDef?.isIsolation) return true;
+  const exerciseId = ex.exerciseId || ex.id || '';
+  return !isPillarBenchmarkExercise({
+    exerciseId,
+    isIsolation: ex.isIsolation,
+    durationSeconds: ex.durationSeconds,
+    durationMinutesRange: ex.durationMinutesRange,
+    repTargetType: ex.repTargetType,
+  });
+}
+
+export interface BestSetSessionPoint {
+  at: number;
+  date: string;
+  weightKg: number;
+  reps: number;
+  rir?: number;
+}
 
 export interface ExerciseInsight {
   /** What the chart points and trajectory line track: estimated 1RM (kg), reps (unloaded bodyweight), added weight (kg), or time. */
   metric: 'e1rm' | 'reps' | 'added_kg' | 'time';
   /** True when `e1rm` includes bodyweight (weighted calisthenics). */
   includesBodyweight?: boolean;
+  /** True for isolation/small exercises that show a Best Set / reps-at-weight progression view instead of an E1RM sparkline. */
+  isIsolation?: boolean;
   /** Best set per past session, oldest first (`value` is kg for load metrics or reps for `reps`). */
   history: { at: number; e1rmKg: number; value?: number }[];
+  /** Best working set (highest weight, breaking ties by most reps) per past session, oldest first. */
+  bestSetHistory?: BestSetSessionPoint[];
   /** Strict 2-line summary (Line 1 + '\n' + Line 2) with zero section headers. */
   summary: string;
   /** [Line 1: Historical Trajectory Anchor, Line 2: Session Stimulus Directive]. */
@@ -52,10 +94,31 @@ function bestE1rm(ex: ExerciseSession, bodyweightKg: number): number {
       ex.isWeightedCalisthenic,
       bodyweightKg,
       ex.exerciseId,
-      ex.pillar
+      ex.pillar,
+      ex.name
     );
     return Math.max(best, e);
   }, 0);
+}
+
+function bestWorkingSet(ex: ExerciseSession): { weightKg: number; reps: number; rir?: number } | null {
+  const completed = ex.sets.filter(done);
+  if (completed.length === 0) return null;
+  let best = completed[0];
+  for (const s of completed.slice(1)) {
+    const w = weightOf(s);
+    const bw = weightOf(best);
+    const r = s.actualReps ?? 0;
+    const br = best.actualReps ?? 0;
+    if (w > bw + 0.05 || (Math.abs(w - bw) <= 0.05 && r > br)) {
+      best = s;
+    }
+  }
+  return {
+    weightKg: round1(weightOf(best)),
+    reps: best.actualReps ?? 0,
+    rir: best.actualRir ?? best.targetRir,
+  };
 }
 
 export function buildExerciseInsight(
@@ -85,6 +148,20 @@ export function buildExerciseInsight(
 
   const load = (kg: number) => formatLoad(round1(kg));
   const plannedSet = exercise.sets.find(isWorking);
+  const isIsolation = isIsolationOrSmallExercise(exercise);
+  const bestSetHistory: BestSetSessionPoint[] = past
+    .map(({ w, ex }): BestSetSessionPoint | null => {
+      const best = bestWorkingSet(ex);
+      if (!best) return null;
+      return {
+        at: getWorkoutCompletedAt(w),
+        date: w.date,
+        weightKg: best.weightKg,
+        reps: best.reps,
+        rir: best.rir,
+      };
+    })
+    .filter((pt): pt is BestSetSessionPoint => pt !== null);
 
   // Timed holds and intervals are measured in hold seconds (or duration), not reps or E1RM.
   if (isTimedExercise(exercise)) {
@@ -226,7 +303,7 @@ export function buildExerciseInsight(
       readinessState === 'Amber Shield'
         ? 'Low recovery today—holding steady builds your groove cleanly.'
         : 'Today sets your hypertrophy baseline with clean mechanical tension.';
-    return { metric: 'e1rm', includesBodyweight: isCalisthenic, history, lines: [line1, line2], summary: `${line1}\n${line2}` };
+    return { metric: 'e1rm', includesBodyweight: isCalisthenic, isIsolation, history, bestSetHistory, lines: [line1, line2], summary: `${line1}\n${line2}` };
   }
 
   const bwQualifier = isCalisthenic ? ' (bodyweight + added weight)' : '';
@@ -267,7 +344,7 @@ export function buildExerciseInsight(
     line2 = 'Matching this load deepens hypertrophy volume.';
   }
 
-  return { metric: 'e1rm', includesBodyweight: isCalisthenic, history, lines: [line1, line2], summary: `${line1}\n${line2}` };
+  return { metric: 'e1rm', includesBodyweight: isCalisthenic, isIsolation, history, bestSetHistory, lines: [line1, line2], summary: `${line1}\n${line2}` };
 }
 
 /** One set from last time, shown in the PREV column. */

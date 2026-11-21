@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Check } from 'lucide-react';
+import { Check, Sparkles } from 'lucide-react';
 import { GoalPhase, GoalSettings, StrengthPillar, UserProfile } from '../../engine/types';
 import {
   AthleteGoal,
@@ -73,13 +73,14 @@ interface GoalSettingsScreenProps {
   goals: AthleteGoal[];
   onUpdateProfile: (update: Partial<UserProfile>) => void;
   onUpdateGoalPhase: (phase: GoalPhase) => void;
+  onAskCoach?: (prompt?: string) => void;
 }
 
 /**
  * Change the goals shown on Progress. Each one starts as the plan sets it (marked "Your plan");
  * a change is saved as soon as it is made and can be put back with one tap.
  */
-export const GoalSettingsScreen: React.FC<GoalSettingsScreenProps> = ({ profile, goals, onUpdateProfile, onUpdateGoalPhase }) => {
+export const GoalSettingsScreen: React.FC<GoalSettingsScreenProps> = ({ profile, goals, onUpdateProfile, onUpdateGoalPhase, onAskCoach }) => {
   const units = useUnits();
   const { perWeek, planPerWeek } = sessionsPerWeekTarget(profile);
   const settings: GoalSettings = profile.goalSettings ?? {};
@@ -216,8 +217,27 @@ export const GoalSettingsScreen: React.FC<GoalSettingsScreenProps> = ({ profile,
           </span>
         </div>
         <p className="wk-body mt-2 max-w-prose">
-          You have 3 goals from your plan and can add up to {MAX_CUSTOM_GOALS} of your own. Pick one below or open Treise and say it, for example &quot;my goal is 10,000 steps&quot; or &quot;set a goal of 100 kg on bench press&quot;.
+          You have 3 goals from your plan and can add up to {MAX_CUSTOM_GOALS} of your own. Pick one below or set one directly with Treise.
         </p>
+        {onAskCoach && (
+          <button
+            type="button"
+            onClick={() => {
+              triggerHaptic('light');
+              onAskCoach();
+            }}
+            className="wk-btn-secondary w-full mt-3 min-h-[44px] inline-flex items-center justify-center gap-2"
+            style={{ borderColor: 'rgb(var(--color-coach-accent-rgb) / 0.35)' }}
+          >
+            <Sparkles
+              className="w-4 h-4 shrink-0"
+              style={{ color: 'var(--color-coach-accent)' }}
+              strokeWidth={2.2}
+              aria-hidden="true"
+            />
+            <span>Set or adjust goals with Treise</span>
+          </button>
+        )}
 
         <div className="flex flex-wrap gap-2 mt-3">
           {OWN_GOAL_OPTIONS.map((opt) => {

@@ -24,9 +24,16 @@
     
         <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
 
-    <!-- Health Connect: read exercise sessions (active days) and daily steps only. -->
+    <!-- Health Connect: read-only permissions so Fitbit, Pixel Watch, Samsung Health & Garmin
+         data flows automatically through the OS hub (zero WRITE permissions). -->
     <uses-permission android:name="android.permission.health.READ_EXERCISE"/>
     <uses-permission android:name="android.permission.health.READ_STEPS"/>
+    <uses-permission android:name="android.permission.health.READ_SLEEP"/>
+    <uses-permission android:name="android.permission.health.READ_HEART_RATE"/>
+    <uses-permission android:name="android.permission.health.READ_RESTING_HEART_RATE"/>
+    <uses-permission android:name="android.permission.health.READ_HEART_RATE_VARIABILITY"/>
+    <uses-permission android:name="android.permission.health.READ_WEIGHT"/>
+    <uses-permission android:name="android.permission.health.READ_BODY_FAT"/>
 
     <!-- Renpho scale: find it and talk to it directly, so it only has to be paired once. Readings
          stay on the phone. Bluetooth is never used to work out where the athlete is. -->

@@ -1,7 +1,43 @@
-import { EquipmentType } from './types';
+import { EquipmentType, WorkoutSession } from './types';
 
 /** Above this many reps from failure, rep-max equations stop being reliable. */
 export const MAX_E1RM_REPS_FROM_FAILURE = 15;
+
+/**
+ * Cap logged RIR at 6 ("6+" in UI) because human rep-in-reserve perception loses precision
+ * beyond ~5–6 reps from failure (Halperin et al., 2022; Robinson et al., 2024).
+ */
+export const MAX_LOGGABLE_RIR = 6;
+
+/** Population-average Epley strength-endurance denominator (30). */
+export const DEFAULT_EPLEY_DENOMINATOR = 30;
+
+/**
+ * Sets logged further than 3 reps from failure are excluded from E1RM calculation
+ * (Halperin et al., 2022: lifters mispredict reps to failure by ~0.95 reps SD 1.45,
+ * with error rising sharply further from failure and above 12 reps).
+ */
+export const MAX_E1RM_RIR = 3;
+
+/** Above 12 reps, RIR prediction error rises sharply (Halperin et al., 2022), so RIR credit is dampened. */
+export const HIGH_REP_RIR_DAMPEN_THRESHOLD = 12;
+
+/** True when a logged set is close enough to failure (<= 3 RIR) to yield a valid E1RM estimate. */
+export function isE1rmEligibleSet(reps: number, rir: number = 0): boolean {
+  return reps > 0 && rir <= MAX_E1RM_RIR;
+}
+
+/** True for counterweight-assisted calisthenics (e.g. Assisted Chin-Up / Assisted Dip) where lower counterweight = heavier load. */
+export function isAssistedExercise(ex: {
+  isAssisted?: boolean;
+  exerciseId?: string;
+  id?: string;
+  name?: string;
+}): boolean {
+  if (ex.isAssisted) return true;
+  const s = `${ex.exerciseId || ex.id || ''} ${ex.name || ''}`.toLowerCase();
+  return /(assisted.*(chin|pull|dip)|(chin|pull|dip).*assisted)/.test(s);
+}
 
 export const EQUIPMENT_MULTIPLIERS = {
   DUMBBELL: 1.18, // 1.18x combined dumbbell weight (stabilizer & bilateral deficit)
@@ -260,7 +296,11 @@ export function calculateEffectiveLoad(
 ): number {
   let effectiveLoad = Math.max(0, externalWeightKg);
 
-  if (isWeightedCalisthenic || equipment === 'weighted_bodyweight') {
+  if (isAssistedExercise({ exerciseId, name: exerciseName })) {
+    // Counterweight-assisted calisthenics (e.g. Assisted Chin-Up): effective load is BW - counterweight.
+    const ratio = getBodyweightLoadRatio(exerciseId, pillar || 'Vertical Pull');
+    effectiveLoad = Math.max(5, bodyweightEmaKg * ratio - Math.max(0, externalWeightKg));
+  } else if (isWeightedCalisthenic || equipment === 'weighted_bodyweight') {
     // Weighted calisthenics (e.g. Weighted Pull-Up) uses full bodyweight or specific ratio + plate load
     const ratio = getBodyweightLoadRatio(exerciseId, pillar || (equipment === 'weighted_bodyweight' ? 'Vertical Pull' : undefined));
     effectiveLoad = bodyweightEmaKg * ratio + Math.max(0, externalWeightKg);
@@ -319,6 +359,13 @@ export function convertEffectiveToExternalLoad(
     const perDumbbellKg = rawExternal / pairCount;
     // Standard 1 kg per dumbbell step (minimum 2 kg per dumbbell)
     return Math.max(2, Math.round(perDumbbellKg));
+  }
+
+  // Counterweight-assisted calisthenics (e.g. Assisted Chin-Up): assistance = BW - effectiveLoad
+  if (isAssistedExercise({ exerciseId: targetExerciseId, name: targetExerciseName })) {
+    const ratio = getBodyweightLoadRatio(targetExerciseId, targetPillar || 'Vertical Pull');
+    rawExternal = Math.max(0, bodyweightEmaKg * ratio - effectiveLoadKg);
+    return Math.round(rawExternal / 2.5) * 2.5;
   }
 
   // Weighted calisthenics (e.g. weighted pull-up with dip belt)
@@ -508,7 +555,10 @@ export function calculateHypertrophyBodyweightReps(
 
 /**
  * RIR-Adjusted Estimated 1RM (E1RM):
- * Formula: E1RM = Weight * (1 + (Reps + RIR) / 30)
+ * Formula: E1RM = Weight * (1 + (Reps + EffectiveRIR) / 30)
+ *
+ * Restricted to sets logged at <= 3 RIR (returns 0 above 3 RIR), with RIR credit dampened
+ * above 12 reps to avoid high-rep E1RM inflation (Halperin et al., 2022).
  */
 export function calculateE1RM(
   externalWeightKg: number,
@@ -522,7 +572,7 @@ export function calculateE1RM(
   pillar?: string,
   exerciseName?: string
 ): number {
-  if (reps <= 0) return 0;
+  if (!isE1rmEligibleSet(reps, rir)) return 0;
 
   const effectiveWeight = calculateEffectiveLoad(
     externalWeightKg,
@@ -535,8 +585,11 @@ export function calculateE1RM(
     exerciseName
   );
 
-  // Epley drifts high beyond ~15 reps from failure, so cap the rep term for estimation only.
-  const repsFromFailure = Math.min(reps + Math.max(0, rir), MAX_E1RM_REPS_FROM_FAILURE);
+  // Dampen RIR credit above 12 reps where RIR prediction error rises sharply (Halperin et al., 2022),
+  // and cap total reps-from-failure at MAX_E1RM_REPS_FROM_FAILURE so Epley never drifts high.
+  const clampedRir = Math.max(0, rir);
+  const effectiveRir = reps > HIGH_REP_RIR_DAMPEN_THRESHOLD ? clampedRir * 0.5 : clampedRir;
+  const repsFromFailure = Math.min(reps + effectiveRir, MAX_E1RM_REPS_FROM_FAILURE);
   const e1rm = effectiveWeight * (1 + repsFromFailure / 30);
   return Math.round(e1rm * 10) / 10;
 }
@@ -666,4 +719,139 @@ export function solveTargetWeightForE1RM(
     targetMeta.pillar,
     targetMeta.name
   );
+}
+
+export interface ExerciseEnduranceSlope {
+  /** Personalized Epley denominator (clamped to [22, 42]; default 30). Higher = better high-rep endurance. */
+  denominator: number;
+  /** Number of eligible working sessions inspected for this exercise. */
+  sampleCount: number;
+  /** Number of valid distinct-rep-bracket pairs that informed the slope. */
+  pairCount: number;
+  /** True once at least 3 eligible sessions spanning >= 3 reps-to-failure yield a personalized estimate. */
+  isPersonalized: boolean;
+  /** Plain-English endurance curve label for transparent UI / coach display. */
+  profile: 'high_endurance' | 'standard' | 'strength_biased';
+  explanation: string;
+}
+
+/**
+ * Learns an athlete's individual strength-endurance slope per exercise from multi-rep-range
+ * training history (Nuzzo et al., 2024: individual reps-at-%1RM slopes vary widely across lifts
+ * and lifters, e.g. leg press vs. overhead press).
+ *
+ * Uses exponentially weighted recency pairs across distinct rep brackets (separation >= 3 RTF)
+ * with empirical-Bayes shrinkage toward the population Epley denominator (30), clamped safely
+ * to [22, 42]. Standard Kilgore E1RM remains deterministic at D = 30; this slope personalizes
+ * rep-range transitions and equipment-aware rep-ceiling conversions.
+ */
+export function learnExerciseEnduranceSlope(
+  exerciseId: string,
+  workouts: WorkoutSession[]
+): ExerciseEnduranceSlope {
+  const defaultResult = (sampleCount: number): ExerciseEnduranceSlope => ({
+    denominator: DEFAULT_EPLEY_DENOMINATOR,
+    sampleCount,
+    pairCount: 0,
+    isPersonalized: false,
+    profile: 'standard',
+    explanation: 'Using standard rep-to-load curve until more multi-rep-range history is logged.',
+  });
+
+  if (!exerciseId || !workouts || workouts.length === 0) return defaultResult(0);
+
+  const ordered = workouts
+    .filter((w) => w.completed)
+    .sort((a, b) => (a.completedAt || a.date).localeCompare(b.completedAt || b.date));
+
+  type Sample = { weight: number; rtf: number; sessionIdx: number };
+  const samples: Sample[] = [];
+
+  for (const w of ordered) {
+    const ex = w.exercises.find((e) => e.exerciseId === exerciseId);
+    if (!ex) continue;
+    let bestInSession: { weight: number; rtf: number; score: number } | null = null;
+    for (const s of ex.sets) {
+      if (!s.completed || s.isWarmup || s.setType === 'warmup') continue;
+      const weight = s.actualWeightKg ?? s.targetWeightKg ?? 0;
+      const reps = s.actualReps ?? s.targetReps ?? 0;
+      const rawRir = Math.max(0, Math.min(MAX_LOGGABLE_RIR, s.actualRir ?? s.targetRir ?? 2));
+      if (weight <= 0 || reps < 1 || reps > 20 || rawRir > MAX_E1RM_RIR) continue;
+      const effectiveRir = reps > HIGH_REP_RIR_DAMPEN_THRESHOLD ? rawRir * 0.5 : rawRir;
+      const rtf = reps + effectiveRir;
+      const score = weight * (1 + rtf / DEFAULT_EPLEY_DENOMINATOR);
+      if (!bestInSession || score > bestInSession.score) {
+        bestInSession = { weight, rtf, score };
+      }
+    }
+    if (bestInSession) {
+      samples.push({ weight: bestInSession.weight, rtf: bestInSession.rtf, sessionIdx: samples.length });
+    }
+  }
+
+  if (samples.length < 3) return defaultResult(samples.length);
+
+  const rtfs = samples.map((s) => s.rtf);
+  if (Math.max(...rtfs) - Math.min(...rtfs) < 3) {
+    return defaultResult(samples.length);
+  }
+
+  // Evaluate recent cross-rep-bracket pairs (within 10 sessions of each other so long-term strength
+  // gain doesn't masquerade as endurance slope).
+  const latestIdx = samples.length - 1;
+  let weightedSum = 0;
+  let totalWeight = 0;
+  let pairCount = 0;
+
+  for (let i = 0; i < samples.length; i++) {
+    for (let j = i + 1; j < samples.length; j++) {
+      const a = samples[i];
+      const b = samples[j];
+      if (b.sessionIdx - a.sessionIdx > 10) continue;
+      const heavier = a.weight > b.weight ? a : b;
+      const lighter = a.weight > b.weight ? b : a;
+      const weightDiff = heavier.weight - lighter.weight;
+      const rtfDiff = lighter.rtf - heavier.rtf;
+      if (weightDiff <= 0.25 || rtfDiff < 3) continue;
+
+      const rawD = (lighter.weight * lighter.rtf - heavier.weight * heavier.rtf) / weightDiff;
+      if (!Number.isFinite(rawD) || rawD < 10 || rawD > 70) continue;
+
+      const clampedPairD = Math.max(18, Math.min(48, rawD));
+      const recencyAge = latestIdx - Math.max(a.sessionIdx, b.sessionIdx);
+      const recencyWeight = Math.pow(0.85, recencyAge);
+      const separationWeight = Math.min(2, rtfDiff / 4);
+      const pairWeight = recencyWeight * separationWeight;
+
+      weightedSum += clampedPairD * pairWeight;
+      totalWeight += pairWeight;
+      pairCount++;
+    }
+  }
+
+  if (pairCount === 0 || totalWeight <= 0) return defaultResult(samples.length);
+
+  // Empirical-Bayes shrinkage toward standard 30 with prior strength k = 2.0
+  const PRIOR_WEIGHT = 2.0;
+  const shrunk = (weightedSum + PRIOR_WEIGHT * DEFAULT_EPLEY_DENOMINATOR) / (totalWeight + PRIOR_WEIGHT);
+  const denominator = Math.round(Math.max(22, Math.min(42, shrunk)) * 10) / 10;
+
+  const profile: ExerciseEnduranceSlope['profile'] =
+    denominator >= 33 ? 'high_endurance' : denominator <= 27 ? 'strength_biased' : 'standard';
+
+  const explanation =
+    profile === 'high_endurance'
+      ? `Learned higher rep endurance on this lift (slope ${denominator} vs 30 standard) — higher-rep sets hold weight closer to your heavy sets.`
+      : profile === 'strength_biased'
+      ? `Learned steeper rep drop-off on this lift (slope ${denominator} vs 30 standard) — load adjustments scale more conservatively when reps rise.`
+      : `Your rep-to-load curve on this lift tracks close to standard (slope ${denominator}).`;
+
+  return {
+    denominator,
+    sampleCount: samples.length,
+    pairCount,
+    isPersonalized: true,
+    profile,
+    explanation,
+  };
 }

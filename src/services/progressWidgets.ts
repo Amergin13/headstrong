@@ -33,7 +33,7 @@ export const PROGRESS_WIDGETS: readonly ProgressWidgetDefinition[] = [
     label: 'Trophy case',
     description: 'Your top three personal best lifts.',
     defaultEnabled: true,
-    aliases: ['trophy case', 'trophies', 'personal bests', 'personal records', 'prs', 'pbs'],
+    aliases: ['trophy case', 'trophy', 'trophies', 'personal bests', 'personal records', 'prs', 'pbs'],
   },
   {
     id: 'lifetime-stats',
@@ -87,9 +87,9 @@ export const PROGRESS_WIDGETS: readonly ProgressWidgetDefinition[] = [
   {
     id: 'insights',
     label: 'Training insights',
-    description: 'Recovery score, joint strain, muscle balance insights and session notes timeline.',
+    description: 'Recovery score, joint strain, muscle balance insights and exercise notes timeline.',
     defaultEnabled: true,
-    aliases: ['training insights', 'insights', 'knowledge graph', 'session notes', 'joint load', 'recovery insights', 'muscle balance'],
+    aliases: ['training insights', 'insights', 'knowledge graph', 'exercise notes', 'session notes', 'joint load', 'recovery insights', 'muscle balance'],
   },
   {
     id: 'strength-standards',
@@ -646,6 +646,18 @@ export function detectProgressWidgetChange(
     (/^(why|when|what|which|how|is|are|do|does|did)\b/.test(msg) ||
       (/\?\s*$/.test(msg) && !/^(?:please\s+)?(?:add|show|enable|remove|hide|disable|reset|restore|clear)\b/i.test(msg)))
   ) {
+    return null;
+  }
+
+  // Goal targets ("remove my steps goal from progress", "add a 100 kg bench goal to progress")
+  // belong to GoalSettings, never Progress widget toggles — unless explicit widget/card/chart wording is used.
+  const hasExplicitWidgetNoun = /\b(widgets?|cards?|charts?|rings?|tiles?|modules?|panels?|dashboard|layout)\b/.test(msg);
+  const looksLikeGoalTargetMutation =
+    !hasExplicitWidgetNoun &&
+    (/\b(\d+(?:\.\d+)?)\s*(kg|kgs|kilos?|lbs?|pounds?|reps?|steps?)\b/.test(msg) ||
+      /\bmy\s+[\w\s-]{1,25}\s+goal\b/.test(msg) ||
+      /\bgoal\s+of\b/.test(msg));
+  if (looksLikeGoalTargetMutation) {
     return null;
   }
 

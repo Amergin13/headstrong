@@ -404,7 +404,7 @@ export const PRAGMATIC_VISIBILITY_MATRIX: PragmaticContextSpec[] = [
   {
     mode: 'active_workout',
     label: 'Active Set Logging (Today)',
-    shownSurfaces: ['Session header card', 'Exercise cards (2-line brief, live chart, Set matrix, Session notes)', 'Finish workout CTA'],
+    shownSurfaces: ['Workout header card', 'Exercise cards (2-line brief, live chart, Set matrix, Exercise notes)', 'Finish workout CTA'],
     suppressedSurfaces: ['Today step count card', 'ActiveDay cardio prompt', 'Example fake chart data'],
     semioticNote: 'Pure bodyweight / timed zero-added-load sets display BW; completed blocks animate Starting point immediately.',
   },
@@ -439,7 +439,7 @@ export const PRAGMATIC_VISIBILITY_MATRIX: PragmaticContextSpec[] = [
   {
     mode: 'post_session',
     label: 'Post-Session Reflection & Progress',
-    shownSurfaces: ['WorkoutFinishScreen highlights & notes', 'Progress -> Training insights (KnowledgeGraph & Session notes timeline)', 'Strength standards'],
+    shownSurfaces: ['WorkoutFinishScreen highlights & notes', 'Progress -> Training insights (KnowledgeGraph & Exercise notes timeline)', 'Strength standards'],
     suppressedSurfaces: ['Standards level claims without logged bodyweight or published tables'],
     semioticNote: 'Tapping an exercise note links cleanly into Progress -> Training insights.',
   },
@@ -469,7 +469,7 @@ export const IA_PROGRESS_TAXONOMY: ProgressTaxonomyGroup[] = [
     id: 'body_recovery',
     label: 'Body, Recovery & Insights',
     widgetIds: ['insights', 'body-weight', 'composition', 'measurements', 'steps', 'whoop-summary'],
-    description: 'Weekly muscle set volume, joint load, Knowledge Graph causal insights, Session notes timeline, and biometrics.',
+    description: 'Weekly muscle set volume, joint load, Knowledge Graph causal insights, Exercise notes timeline, and biometrics.',
   },
 ];
 

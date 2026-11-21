@@ -9,13 +9,15 @@
  * - weight changes: the double progression rule (PROGRESSION_RULES), read from the logged sets
  */
 import { ActivityLog, activeDayDates } from '../engine/activeDays';
-import { AthleteKnowledgeGraph } from '../engine/knowledgeGraph';
-import { buildPlanOverview, planWorkoutLabel } from '../engine/muscleBuildingProgram';
+import { isTimedExercise, usesTwoDumbbells } from '../engine/e1rm';
+import { AthleteKnowledgeGraph, getExerciseBiomechanicalMeta } from '../engine/knowledgeGraph';
+import { buildPlanOverview, isActiveSlot, planWorkoutLabel } from '../engine/muscleBuildingProgram';
 import { findLastCompletedExerciseSession } from '../engine/progression';
 import { hadQualityEffort } from '../engine/progressionRules';
 import { computeTrainingStreak, evaluateSessionRecovery, formatReadyTime, MUSCLE_FRIENDLY_NAMES } from '../engine/recovery';
 import { resolveActivePlan } from '../engine/trainingPlans';
 import {
+  BiometricLog,
   ExerciseDefinition,
   ExerciseSession,
   ReadinessState,
@@ -24,13 +26,13 @@ import {
   WorkoutSet,
   isWhoopConfigured,
 } from '../engine/types';
-import { BiometricLog } from '../engine/types';
-import { isActiveSlot } from '../engine/muscleBuildingProgram';
-import { formatPreciseWeight, formatWeight, WeightUnit } from '../utils/units';
+import { calculateSessionTonnage, calculateWci } from '../engine/wci';
 import { localDateString, parseLocalDate } from '../utils/date';
-import { STEPS_GOAL_EXERCISE_ID, stepsOnDate } from './athleteGoals';
+import { formatPreciseWeight, formatWeight, WeightUnit } from '../utils/units';
+import { activeGoals, buildAthleteGoals, describeGoalStanding, STEPS_GOAL_EXERCISE_ID, stepsOnDate } from './athleteGoals';
 import type { CoachPlace } from './coachContext';
 import { buildWhoopSnapshot } from './progressSeries';
+import { BODY_MEASUREMENT_SITES } from './renphoBluetooth';
 import { planRestAfterSet } from './setCompletion';
 
 const isWorking = (s: WorkoutSet) => !s.isWarmup && s.setType !== 'warmup';
@@ -39,7 +41,7 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 /** Where the athlete is in their plan, exactly as the Program page shows it. */
 export function planPosition(profile: UserProfile, workouts: WorkoutSession[], activities: ActivityLog[] = []) {
   const plan = resolveActivePlan(profile);
-  const overview = buildPlanOverview(workouts, plan, activities, profile.planCycleStarts);
+  const overview = buildPlanOverview(workouts, plan, activities, profile.planCycleStarts, profile.planStartWorkouts);
   const total = plan.templates.length;
   const totalWeeks = Math.max(1, ...plan.templates.map((t) => t.week));
   const next = plan.templates.find((t) => t.workoutNumber === overview.nextWorkoutNumber);
@@ -86,7 +88,7 @@ export function answerShouldTrain(
   readinessState: ReadinessState,
   now = Date.now()
 ): string {
-  const gate = evaluateSessionRecovery(activeWorkout, workouts, exerciseCatalog, now);
+  const gate = evaluateSessionRecovery(activeWorkout, workouts, exerciseCatalog, now, readinessState);
   if (gate.trainedToday && !activeWorkout.exercises.some((ex) => ex.sets.some((s) => s.completed))) {
     const when = gate.readyAt ? formatReadyTime(gate.readyAt, now) : 'soon';
     return `You've already trained today, so today is for recovery. ${activeWorkout.name} will be ready ${when}.`;
@@ -97,10 +99,10 @@ export function answerShouldTrain(
       .map((m) => `${MUSCLE_FRIENDLY_NAMES[m.muscle] ?? m.muscle} ${Math.round(m.recoveryPct)}%`)
       .join(', ');
     const when = gate.readyAt ? formatReadyTime(gate.readyAt, now) : 'soon';
-    return `Not yet. The muscles in ${activeWorkout.name} are still recovering (${slowest}), and it will be ready ${when}. Training them early means less growth, not more. If you want to move today, an active day like a ride or walk counts toward your plan.`;
+    return `Yes, if today fits your schedule—your muscles in ${activeWorkout.name} are still recovering (${slowest}, full recovery ${when}), so resting or logging an active day is ideal, or you can train as planned and optionally trim 1 set per lift or leave 2–3 RIR.`;
   }
   if (readinessState === 'Amber Shield') {
-    return `Yes, but go easier. Your muscles have recovered for ${activeWorkout.name}, but your recovery is low today, so your weights are held steady and you stop 2–3 reps short of failure.`;
+    return `Yes, with an optional lighter effort. Your target muscles are ready for ${activeWorkout.name}, though systemic recovery is low today—you can train as planned or tap Trim 1 set / Shift to 2–3 RIR.`;
   }
   if (readinessState === 'Primed') {
     return `Yes. Your muscles have recovered for ${activeWorkout.name} and your recovery is high, so it's a good day to push your first working sets.`;
@@ -177,12 +179,25 @@ export function answerWeeklySets(lowerMsg: string, kg: AthleteKnowledgeGraph): s
   return `${intro}${lines.join('\n')}\n\nA hard set is a working set taken within about 3 reps of failure; a muscle that only helps counts half. Your plan builds toward these targets across your plan.`;
 }
 
-/** True when a message asks about personal weekly volume rather than volume formulas, MEV/MRV science, or joint load. */
+/** True when a message asks about personal weekly volume rather than volume formulas, MEV/MRV science, warm-ups, or intensity protocols. */
 export function asksAboutVolume(lowerMsg: string): boolean {
-  if (/\b(formula|calculat\w*|worked out|mev|mav|mrv|landmark\w*|junk|wasted|excess|science|framework\w*|why does)\b/.test(lowerMsg)) {
+  if (
+    /\b(formula|calculat\w*|worked out|mev|mav|mrv|landmark\w*|junk|wasted|excess|science|framework\w*|why does|warm[\s-]?up|drop[\s-]?set|giant[\s-]?set|super[\s-]?set|myo[\s-]?rep|rest[\s-]?pause|cluster[\s-]?set|working set|what (is|are) a)\b/.test(
+      lowerMsg
+    )
+  ) {
     return false;
   }
-  return /\b(sets?|volume|enough|target|how much (training|work)|training (enough|my))\b/.test(lowerMsg) && musclesNamed(lowerMsg).length + (/\bsets?\b/.test(lowerMsg) ? 1 : 0) > 0;
+  const mentionsMuscle = musclesNamed(lowerMsg).length > 0;
+  const asksWeeklySets =
+    /\b(enough sets|sets this week|weekly (sets|volume)|hard sets|volume target|my (weekly )?volume|how many sets (have i|did i|this week))\b/.test(
+      lowerMsg
+    );
+  if (asksWeeklySets) return true;
+  if (mentionsMuscle && /\b(sets?|volume|enough|target|how much (training|work)|training (enough|my))\b/.test(lowerMsg)) {
+    return true;
+  }
+  return false;
 }
 
 /**
@@ -194,20 +209,28 @@ export function answerWeightChange(
   activeWorkout: WorkoutSession,
   workouts: WorkoutSession[],
   readinessState: ReadinessState,
-  unit: WeightUnit
+  unit: WeightUnit,
+  exerciseCatalog: ExerciseDefinition[] = []
 ): string {
+  const exactNamed = findExerciseNamed(lowerMsg, activeWorkout, exerciseCatalog);
   const words = (name: string) => name.toLowerCase().split(/[\s()-]+/).filter((w) => w.length > 3 && !['dumbbell', 'barbell', 'cable', 'seated', 'machine'].includes(w));
   // The exercise(s) the message names best: "incline press" is the incline press, not every press.
   const scored = activeWorkout.exercises.map((ex) => ({ ex, hits: words(ex.name).filter((w) => lowerMsg.includes(w.replace(/s$/, ''))).length }));
   const best = Math.max(0, ...scored.map((s) => s.hits));
-  const named = best > 0 ? scored.filter((s) => s.hits === best).map((s) => s.ex) : [];
+  const named = exactNamed?.session
+    ? [exactNamed.session]
+    : best > 0
+      ? scored.filter((s) => s.hits === best).map((s) => s.ex)
+      : [];
+  const fmtExLoad = (kg: number, ex: ExerciseSession) =>
+    `${formatWeight(kg, unit)}${usesTwoDumbbells(ex) && kg > 0 ? ' each' : ''}`;
   const explain = (ex: ExerciseSession): string | null => {
     const today = ex.sets.filter(isWorking);
     if (!today.length) return null;
     const todayKg = today[0].targetWeightKg;
     const todayReps = today.map((s) => s.targetReps);
     const last = findLastCompletedExerciseSession(ex.exerciseId, workouts);
-    if (!last) return `${ex.name}: first time, so today's ${formatWeight(todayKg, unit)} is a starting point worked out from your other lifts. Your first sets show where you really are.`;
+    if (!last) return `${ex.name}: first time, so today's ${fmtExLoad(todayKg, ex)} is a starting point worked out from your other lifts. Your first sets show where you really are.`;
     const done = last.session.sets.filter((s) => s.completed && isWorking(s));
     if (!done.length) return null;
     const lastKg = Math.max(...done.map((s) => s.actualWeightKg ?? s.targetWeightKg));
@@ -216,27 +239,27 @@ export function answerWeightChange(
     const allAtTop = done.length === last.session.sets.filter(isWorking).length && done.every((s) => (s.actualReps ?? s.targetReps) >= top && hadQualityEffort(s.actualRir, s.targetRir));
     const repsText = (r: number[]) => r.join(', ');
     if (readinessState === 'Amber Shield' && todayKg <= lastKg) {
-      return `${ex.name}: held at ${formatWeight(todayKg, unit)} because your recovery is low today.`;
+      return `${ex.name}: held at ${fmtExLoad(todayKg, ex)} because your recovery is low today.`;
     }
     if (todayKg > lastKg + 0.01) {
       if (ex.minReps !== last.session.minReps || ex.maxReps !== last.session.maxReps) {
-        return `${ex.name}: ${formatWeight(lastKg, unit)} → ${formatWeight(todayKg, unit)} because your rep range changed to ${ex.minReps}–${ex.maxReps}, and the weight was matched to what you lifted.`;
+        return `${ex.name}: ${fmtExLoad(lastKg, ex)} → ${fmtExLoad(todayKg, ex)} because your rep range changed to ${ex.minReps}–${ex.maxReps}, and the weight was matched to what you lifted.`;
       }
       return allAtTop
-        ? `${ex.name}: ${formatWeight(lastKg, unit)} → ${formatWeight(todayKg, unit)} because every set reached the top of ${top} reps last time (${repsText(lastReps)}). Reps go back to ${ex.minReps} and build up again.`
-        : `${ex.name}: ${formatWeight(lastKg, unit)} → ${formatWeight(todayKg, unit)}, matched to how many reps you managed last time (${repsText(lastReps)}).`;
+        ? `${ex.name}: ${fmtExLoad(lastKg, ex)} → ${fmtExLoad(todayKg, ex)} because every set reached the top of ${top} reps last time (${repsText(lastReps)}). Reps go back to ${ex.minReps} and build up again.`
+        : `${ex.name}: ${fmtExLoad(lastKg, ex)} → ${fmtExLoad(todayKg, ex)}, matched to how many reps you managed last time (${repsText(lastReps)}).`;
     }
     if (todayKg < lastKg - 0.01) {
       const lowestLast = Math.min(...lastReps);
       const bestLast = Math.max(...lastReps);
       return bestLast < last.session.minReps
-        ? `${ex.name}: ${formatWeight(lastKg, unit)} → ${formatWeight(todayKg, unit)} because your best set last time (${bestLast} reps) was under the ${last.session.minReps}–${top} range, so the weight was matched to what you could lift.`
-        : `${ex.name}: ${formatWeight(lastKg, unit)} → ${formatWeight(todayKg, unit)} because you couldn't hit at least ${last.session.minReps} reps across every set last time (${repsText(lastReps)}, low: ${lowestLast}), so the weight was lowered to keep all sets in the ${last.session.minReps}–${top} range.`;
+        ? `${ex.name}: ${fmtExLoad(lastKg, ex)} → ${fmtExLoad(todayKg, ex)} because your best set last time (${bestLast} reps) was under the ${last.session.minReps}–${top} range, so the weight was matched to what you could lift.`
+        : `${ex.name}: ${fmtExLoad(lastKg, ex)} → ${fmtExLoad(todayKg, ex)} because you couldn't hit at least ${last.session.minReps} reps across every set last time (${repsText(lastReps)}, low: ${lowestLast}), so the weight was lowered to keep all sets in the ${last.session.minReps}–${top} range.`;
     }
     const repsUp = todayReps.some((r, i) => r > (lastReps[i] ?? 0));
     return repsUp
-      ? `${ex.name}: same ${formatWeight(todayKg, unit)}, aiming for ${repsText(todayReps)} reps (last time ${repsText(lastReps)}). The weight goes up once every set reaches ${ex.maxReps}.`
-      : `${ex.name}: same ${formatWeight(todayKg, unit)} and reps as last time, so you can match them cleanly before adding more.`;
+      ? `${ex.name}: same ${fmtExLoad(todayKg, ex)}, aiming for ${repsText(todayReps)} reps (last time ${repsText(lastReps)}). The weight goes up once every set reaches ${ex.maxReps}.`
+      : `${ex.name}: same ${fmtExLoad(todayKg, ex)} and reps as last time, so you can match them cleanly before adding more.`;
   };
   const targets = named.length ? named : activeWorkout.exercises;
   const lines = targets.map(explain).filter((l): l is string => Boolean(l));
@@ -776,12 +799,21 @@ export function answerEverydayQuestion(ctx: EverydayContext): string | null {
       const helpers = (def.secondaryMuscles ?? []).map(friendly);
       const muscles = `${def.name} mainly trains your ${friendly(def.primaryMuscle)}${helpers.length ? `, with help from your ${listAnd(helpers)}` : ''}.`;
       if (asksMuscles && !asksHow) return muscles;
-      const cue = [def.whyItWorks, named.session?.notes].filter(Boolean).join(' ');
+      const cue = [def.biomechanicalCue, def.whyItWorks, named.session?.notes].filter(Boolean).join(' ');
       const working = named.session?.sets.filter(isWorking) ?? [];
+      const timed = isTimedExercise(named.session ?? def);
+      const pairSuffix = named.session && usesTwoDumbbells(named.session) ? ' each' : usesTwoDumbbells(def) ? ' each' : '';
       const target = working[0]
-        ? ` Today it's ${plural(working.length, 'set')} of ${working[0].targetReps} reps at ${working[0].targetWeightKg > 0 ? formatWeight(working[0].targetWeightKg, unit) : 'bodyweight'}. The weight goes up by itself once every set reaches ${named.session!.maxReps} reps.`
+        ? timed
+          ? ` Today it's ${plural(working.length, 'set')} of ${working[0].targetDurationSeconds ?? named.session?.durationSeconds ?? def.defaultDurationSeconds ?? 45}s holds${working[0].targetWeightKg > 0 ? ` at ${formatWeight(working[0].targetWeightKg, unit)}${pairSuffix}` : ''}.`
+          : ` Today it's ${plural(working.length, 'set')} of ${working[0].targetReps} reps at ${working[0].targetWeightKg > 0 ? `${formatWeight(working[0].targetWeightKg, unit)}${pairSuffix}` : 'bodyweight'}. The weight goes up by itself once every set reaches ${named.session!.maxReps} reps.`
         : ` It isn't in today's workout (${activeWorkout.name}).`;
-      return `${muscles} ${cue ? `${cue} ` : ''}Lower each rep under control for about 2 seconds, and stop the set when your form starts to change.${target}`.replace(/\s+/g, ' ');
+      const tempoNote = timed
+        ? 'Keep your brace tight and stop the hold as soon as your form breaks.'
+        : named.session?.tempo && /^\d{4}$/.test(named.session.tempo)
+          ? `Follow today's ${named.session.tempo} tempo (${named.session.tempo[0]}s lowering, ${named.session.tempo[1]}s pause, ${named.session.tempo[2]}s lift, ${named.session.tempo[3]}s top), and stop when form changes.`
+          : 'Lower each rep under control for about 2–3 seconds, and stop the set when your form starts to change.';
+      return `${muscles} ${cue ? `${cue} ` : ''}${tempoNote}${target}`.replace(/\s+/g, ' ');
     }
     if (asksMuscles && /\b(today|this workout|this session)\b/.test(msg)) {
       const muscles = [...new Set(today.map((e) => exerciseCatalog.find((d) => d.id === e.exerciseId)?.primaryMuscle).filter((m): m is NonNullable<typeof m> => Boolean(m)))].map(friendly);
@@ -808,9 +840,14 @@ export function answerEverydayQuestion(ctx: EverydayContext): string | null {
       .map((ex) => {
         const sets = ex.sets.filter((s) => s.completed && isWorking(s));
         if (!sets.length) return null;
+        if (isTimedExercise(ex)) {
+          const bestSecs = Math.max(...sets.map((s) => s.actualDurationSeconds ?? s.targetDurationSeconds ?? ex.durationSeconds ?? 0));
+          return `• ${ex.name}: ${plural(sets.length, 'set')}, best ${bestSecs}s hold`;
+        }
         const best = sets.reduce((a, b) => ((b.actualWeightKg ?? b.targetWeightKg) > (a.actualWeightKg ?? a.targetWeightKg) ? b : a));
         const kg = best.actualWeightKg ?? best.targetWeightKg;
-        return `• ${ex.name}: ${plural(sets.length, 'set')}, best ${kg > 0 ? formatWeight(kg, unit) : 'bodyweight'} × ${best.actualReps ?? best.targetReps}`;
+        const eachSuffix = usesTwoDumbbells(ex) && kg > 0 ? ' each' : '';
+        return `• ${ex.name}: ${plural(sets.length, 'set')}, best ${kg > 0 ? `${formatWeight(kg, unit)}${eachSuffix}` : 'bodyweight'} × ${best.actualReps ?? best.targetReps}`;
       })
       .filter((l): l is string => Boolean(l));
     const time = (last.durationMinutes ?? 0) > 0 ? `, ${Math.round(last.durationMinutes!)} minutes` : '';
@@ -891,4 +928,304 @@ export function answerEverydayQuestion(ctx: EverydayContext): string | null {
   }
 
   return null;
+}
+
+/** Deterministic readout of all active goals from buildAthleteGoals (one source per number). */
+export function answerGoalsStatus(
+  profile: UserProfile,
+  workouts: WorkoutSession[],
+  biometrics: BiometricLog[],
+  activities: ActivityLog[] = [],
+  bodyweightKg?: number,
+  now = Date.now()
+): string {
+  const unit: WeightUnit = profile.weightUnit || 'kg';
+  const all = buildAthleteGoals({
+    profile,
+    workouts,
+    activities,
+    biometrics,
+    bodyweightKg,
+    now,
+  });
+  const shown = activeGoals(all);
+  if (!shown.length) {
+    return "You don't have any tracked goals set up yet. Tell me a weekly session target, daily steps target, or lift goal to add one.";
+  }
+  const lines = shown.map((g) => {
+    const standing = describeGoalStanding(g, (kg) => formatWeight(kg, unit));
+    return `• **${g.title}**: ${standing}`;
+  });
+  return `Here are your active goals right now:\n${lines.join('\n')}\n\nTell me if you'd like to change your weekly sessions, set a lift or steps target, or switch your main goal.`;
+}
+
+/** Lists active permanent ProgramExerciseOverrides on the athlete's current plan. */
+export function answerProgramOverrides(profile: UserProfile): string {
+  const plan = resolveActivePlan(profile);
+  const overrides = (profile.programOverrides ?? []).filter((o) => o.planId === plan.id);
+  if (!overrides.length) {
+    return `**${plan.name}** is running its original template with no custom program edits yet. You can ask me to swap an exercise across your whole program, adjust sets or rep ranges, or rebalance a lagging movement.`;
+  }
+  const lines = overrides.map((ov, i) => {
+    const scope = ov.workoutFilter ? ` (${ov.workoutFilter})` : '';
+    const reason = ov.reason ? ` — ${ov.reason}` : '';
+    if (ov.kind === 'swap_exercise') {
+      return `${i + 1}. Swap **${ov.targetExerciseName || ov.targetExerciseId}** → **${ov.replacementExerciseName || ov.replacementExerciseId}**${scope}${reason}`;
+    }
+    if (ov.kind === 'add_exercise') {
+      return `${i + 1}. Add **${ov.replacementExerciseName || ov.replacementExerciseId}** (${ov.sets ?? 3} sets)${scope}${reason}`;
+    }
+    if (ov.kind === 'remove_exercise') {
+      return `${i + 1}. Remove **${ov.targetExerciseName || ov.targetExerciseId}**${scope}${reason}`;
+    }
+    if (ov.kind === 'adjust_sets') {
+      const lbl = typeof ov.sets === 'number' ? `${ov.sets} sets` : `${(ov.setDelta ?? 1) > 0 ? '+' : ''}${ov.setDelta ?? 1} set`;
+      return `${i + 1}. Adjust **${ov.targetExerciseName || ov.targetExerciseId}** (${lbl})${scope}${reason}`;
+    }
+    if (ov.kind === 'adjust_rep_range' && ov.repRange) {
+      return `${i + 1}. Rep range **${ov.targetExerciseName || ov.targetExerciseId}** → ${ov.repRange[0]}–${ov.repRange[1]} reps${scope}${reason}`;
+    }
+    return `${i + 1}. Train **${ov.targetExerciseName || ov.targetExerciseId}** first${scope}${reason}`;
+  });
+  return `Active customizations on **${plan.name}** (${overrides.length}):\n${lines.join('\n')}\n\nSay "remove my <exercise> edit" to undo one, or "clear my program customizations" to restore the default plan.`;
+}
+
+/** Reads body fat %, fat-free / lean mass, composition trend, and all 12 tape measurement sites. */
+export function answerBodyCompositionAndMeasurements(
+  lowerMsg: string,
+  biometrics: BiometricLog[],
+  profile: UserProfile,
+  bodyweightEmaKg: number,
+  now = Date.now()
+): string | null {
+  const unit: WeightUnit = profile.weightUnit || 'kg';
+  const sorted = [...biometrics].sort((a, b) => a.date.localeCompare(b.date));
+  const fmtLen = (cm: number) =>
+    unit === 'lb' ? `${Math.round((cm / 2.54) * 10) / 10} in` : `${Math.round(cm * 10) / 10} cm`;
+  const daysAgoLabel = (dateStr: string) => {
+    const d = Math.max(0, Math.floor((now - parseLocalDate(dateStr).getTime()) / DAY_MS));
+    return d === 0 ? 'today' : d === 1 ? 'yesterday' : `${d} days ago`;
+  };
+
+  // Specific tape site lookup
+  const siteMatchers: Array<{ re: RegExp; ids: string[] }> = [
+    { re: /\bneck\b/, ids: ['neck'] },
+    { re: /\bshoulders?\b/, ids: ['shoulder'] },
+    { re: /\bchest\b/, ids: ['chest'] },
+    { re: /\bwaist\b/, ids: ['waist'] },
+    { re: /\b(abdomen|stomach|belly)\b/, ids: ['abdomen'] },
+    { re: /\bhips?\b/, ids: ['hip'] },
+    { re: /\b(left\s+(?:biceps?|arms?)|(?:biceps?|arms?)\s+left)\b/, ids: ['bicep_left'] },
+    { re: /\b(right\s+(?:biceps?|arms?)|(?:biceps?|arms?)\s+right)\b/, ids: ['bicep_right'] },
+    { re: /\b(biceps?|arms?)\b/, ids: ['bicep_left', 'bicep_right'] },
+    { re: /\b(left\s+(?:thighs?|quads?)|(?:thighs?|quads?)\s+left)\b/, ids: ['thigh_left'] },
+    { re: /\b(right\s+(?:thighs?|quads?)|(?:thighs?|quads?)\s+right)\b/, ids: ['thigh_right'] },
+    { re: /\b(thighs?|quads?)\b/, ids: ['thigh_left', 'thigh_right'] },
+    { re: /\b(left\s+cal(?:f|ves)|cal(?:f|ves)\s+left)\b/, ids: ['calf_left'] },
+    { re: /\b(right\s+cal(?:f|ves)|cal(?:f|ves)\s+right)\b/, ids: ['calf_right'] },
+    { re: /\bcal(?:f|ves)\b/, ids: ['calf_left', 'calf_right'] },
+  ];
+
+  const wantsMeasurementsOverview =
+    /\b(measurements?|tape|circumference)\b/.test(lowerMsg) &&
+    !/\b(add|remove|hide|show|widget|card|log|record|save)\b/.test(lowerMsg);
+  const matchedSiteIds = siteMatchers.find((m) => m.re.test(lowerMsg))?.ids;
+
+  if (matchedSiteIds || wantsMeasurementsOverview) {
+    const sitesToReport = matchedSiteIds
+      ? BODY_MEASUREMENT_SITES.filter((s) => matchedSiteIds.includes(s.id))
+      : BODY_MEASUREMENT_SITES;
+    const lines: string[] = [];
+    for (const site of sitesToReport) {
+      const entries = sorted.filter((b) => typeof b[site.field] === 'number' && (b[site.field] as number) > 0);
+      if (!entries.length) continue;
+      const latest = entries[entries.length - 1];
+      const latestVal = latest[site.field] as number;
+      const firstVal = entries[0][site.field] as number;
+      const delta = entries.length >= 2 ? Math.round((latestVal - firstVal) * 10) / 10 : 0;
+      const deltaTxt =
+        entries.length >= 2 && Math.abs(delta) >= 0.1
+          ? ` (${delta > 0 ? '+' : '−'}${fmtLen(Math.abs(delta))} since ${entries[0].date})`
+          : '';
+      lines.push(`• **${site.label}**: ${fmtLen(latestVal)} (${daysAgoLabel(latest.date)})${deltaTxt}`);
+    }
+    if (!lines.length) {
+      const siteName = matchedSiteIds
+        ? BODY_MEASUREMENT_SITES.find((s) => s.id === matchedSiteIds[0])?.label.toLowerCase() || 'that measurement'
+        : 'any tape measurements';
+      return `You haven't logged ${siteName} yet. Say something like "Log waist 82 cm" or "Log left bicep 38 cm" and I'll save it straight to your Measurements history.`;
+    }
+    return `${matchedSiteIds ? 'Latest tape measurement:' : 'Your latest logged body measurements:'}\n${lines.join('\n')}`;
+  }
+
+  // Body composition / body fat % / lean body mass / fat-free mass
+  const asksComp = /\b(body\s*comp(?:osition)?|body\s*fat|bf\s*%|lean\s*(?:body\s*)?mass|fat[- ]?free\s*mass|lbm|ffm|muscle\s*mass)\b/.test(
+    lowerMsg
+  );
+  if (!asksComp) return null;
+
+  const weighIns = sorted.filter((b) => (b.bodyweightKg || 0) > 0);
+  const bfEntries = sorted.filter((b) => typeof b.bodyFatPct === 'number' && b.bodyFatPct > 0);
+  const compEntries = sorted.filter(
+    (b) => (b.bodyweightKg || 0) > 0 && typeof b.bodyFatPct === 'number' && b.bodyFatPct > 0
+  );
+
+  if (!weighIns.length && !bfEntries.length) {
+    return `You haven't logged bodyweight or body fat yet. Say "Log weight 80 kg" or "Log body fat 16%" (or enter them in Progress → Composition) and I'll track your weight, body fat, and lean body mass together.`;
+  }
+
+  const parts: string[] = [];
+  if (weighIns.length) {
+    const latestW = weighIns[weighIns.length - 1];
+    parts.push(
+      `Latest weight: **${formatPreciseWeight(latestW.bodyweightKg, unit)}** (${daysAgoLabel(latestW.date)}; 7-day average ${formatPreciseWeight(bodyweightEmaKg, unit)})`
+    );
+  }
+  if (bfEntries.length) {
+    const latestBf = bfEntries[bfEntries.length - 1];
+    parts.push(`Latest body fat: **${latestBf.bodyFatPct}%** (${daysAgoLabel(latestBf.date)})`);
+  }
+  if (compEntries.length) {
+    const latestComp = compEntries[compEntries.length - 1];
+    const lbmLatest = Math.round(latestComp.bodyweightKg * (1 - latestComp.bodyFatPct! / 100) * 10) / 10;
+    parts.push(`Estimated lean body mass: **${formatPreciseWeight(lbmLatest, unit)}**`);
+    if (compEntries.length >= 2) {
+      const firstComp = compEntries[0];
+      const lbmFirst = Math.round(firstComp.bodyweightKg * (1 - firstComp.bodyFatPct! / 100) * 10) / 10;
+      const lbmDelta = Math.round((lbmLatest - lbmFirst) * 10) / 10;
+      const bfDelta = Math.round((latestComp.bodyFatPct! - firstComp.bodyFatPct!) * 10) / 10;
+      const lbmDir = Math.abs(lbmDelta) < 0.2 ? 'steady' : `${lbmDelta > 0 ? '+' : '−'}${formatPreciseWeight(Math.abs(lbmDelta), unit)}`;
+      const bfDir = Math.abs(bfDelta) < 0.2 ? 'steady' : `${bfDelta > 0 ? '+' : ''}${bfDelta}%`;
+      parts.push(`Trend since ${firstComp.date}: lean mass ${lbmDir}, body fat ${bfDir}`);
+    }
+  } else if (weighIns.length && !bfEntries.length) {
+    parts.push('Log a body fat % reading so I can compute and trend your lean body mass alongside weight.');
+  }
+  return parts.map((p) => `• ${p}`).join('\n');
+}
+
+/** Summarizes an exercise's logged history across completed sessions. */
+export function answerExerciseHistory(
+  lowerMsg: string,
+  activeWorkout: WorkoutSession,
+  workouts: WorkoutSession[],
+  exerciseCatalog: ExerciseDefinition[],
+  unit: WeightUnit
+): string | null {
+  const named = findExerciseNamed(lowerMsg, activeWorkout, exerciseCatalog);
+  const exerciseId = named?.session?.exerciseId ?? named?.def?.id;
+  const exerciseName = named?.session?.name ?? named?.def?.name;
+  if (!exerciseId || !exerciseName) return null;
+
+  const done = completedByTime(workouts);
+  const matching: Array<{ date: string; ex: ExerciseSession }> = [];
+  for (const w of done) {
+    const found = w.exercises.find((e) => e.exerciseId === exerciseId);
+    if (found && found.sets.some((s) => s.completed && isWorking(s))) {
+      matching.push({ date: w.date, ex: found });
+    }
+  }
+  if (!matching.length) {
+    return `You haven't logged **${exerciseName}** in a finished workout yet. Once you complete a session with it, I'll track every set and progression trend here.`;
+  }
+  const recent = matching.slice(-4).reverse();
+  const lines = recent.map(({ date, ex }) => {
+    const sets = ex.sets.filter((s) => s.completed && isWorking(s));
+    if (isTimedExercise(ex)) {
+      const holds = sets.map((s) => `${s.actualDurationSeconds ?? s.targetDurationSeconds ?? ex.durationSeconds ?? 0}s`).join(', ');
+      return `• ${date}: ${holds}`;
+    }
+    const pairSuffix = usesTwoDumbbells(ex) ? ' each' : '';
+    const summary = sets
+      .map((s) => {
+        const kg = s.actualWeightKg ?? s.targetWeightKg;
+        const load = kg > 0 ? `${formatWeight(kg, unit)}${pairSuffix}` : 'BW';
+        return `${load} × ${s.actualReps ?? s.targetReps}`;
+      })
+      .join(', ');
+    return `• ${date}: ${summary}`;
+  });
+  return `Your last ${plural(recent.length, 'session')} on **${exerciseName}** (${matching.length} logged in total):\n${lines.join('\n')}`;
+}
+
+/** Explains joints stressed, resistance profile, axial load, and SFR for a specific exercise. */
+export function answerExerciseBiomechanics(
+  lowerMsg: string,
+  activeWorkout: WorkoutSession,
+  exerciseCatalog: ExerciseDefinition[]
+): string | null {
+  const named = findExerciseNamed(lowerMsg, activeWorkout, exerciseCatalog);
+  if (!named?.def) return null;
+  const def = named.def;
+  const meta = getExerciseBiomechanicalMeta(def);
+  const joints = meta.primaryJoints.length ? meta.primaryJoints.join(', ') : 'minimal joint isolation load';
+  const profileDesc =
+    meta.resistanceProfile === 'lengthened'
+      ? 'lengthened (heaviest in the stretched position, strong hypertrophy stimulus)'
+      : meta.resistanceProfile === 'shortened'
+        ? 'shortened (peak tension at full contraction)'
+        : 'mid-range (balanced tension across the rep)';
+  const axial =
+    meta.axialLoadIndex >= 0.7
+      ? 'high spinal/CNS load'
+      : meta.axialLoadIndex >= 0.35
+        ? 'moderate spinal/CNS load'
+        : 'low spinal/CNS load';
+  const cue = def.biomechanicalCue || def.whyItWorks || '';
+  return `**${def.name}** primarily stresses the **${joints}** joint${meta.primaryJoints.length === 1 ? '' : 's'} with a **${profileDesc}** resistance profile and **${axial}** (${meta.isIsolation ? 'isolation' : 'compound'} movement).${cue ? ` ${cue}` : ''}`;
+}
+
+/** Reports tonnage and Work Capacity Index (WCI) from the athlete's latest finished workout. */
+export function answerLastSessionTonnage(
+  workouts: WorkoutSession[],
+  biometrics: BiometricLog[],
+  profile: UserProfile,
+  bodyweightEmaKg: number
+): string {
+  const unit: WeightUnit = profile.weightUnit || 'kg';
+  const done = completedByTime(workouts);
+  const last = done[done.length - 1];
+  if (!last) {
+    return "You haven't finished a workout yet, so there's no session tonnage or work capacity to report. Complete your first session and I'll calculate it automatically.";
+  }
+  const hasMeasuredBw = biometrics.some((b) => (b.bodyweightKg || 0) > 0);
+  const { tonnageKg, completedSetsCount } = calculateSessionTonnage(last, hasMeasuredBw ? bodyweightEmaKg : 0);
+  const tonnageDisplay = formatWeight(tonnageKg, unit);
+  const wci =
+    last.avgHeartRate && last.avgHeartRate > 0 && last.durationMinutes && last.durationMinutes > 0
+      ? calculateWci(last, profile.restingHrBaseline || 60, profile.maxHr || 190, hasMeasuredBw ? bodyweightEmaKg : 0)
+      : null;
+  const wciPart = wci !== null
+    ? ` Work Capacity Index (WCI): **${Math.round(wci)}** (using your measured ${Math.round(last.avgHeartRate!)} bpm avg HR across ${Math.round(last.durationMinutes!)} min).`
+    : ' Work Capacity Index requires measured session heart rate and duration from a connected watch.';
+  return `Your last workout (**${last.name}**, ${last.date}) totaled **${tonnageDisplay}** across **${plural(completedSetsCount, 'working set')}** (paired dumbbell lifts count both hands combined).${wciPart}`;
+}
+
+/** Explains how the athlete's weekly schedule, rest days, active days, and planned away weeks work. */
+export function answerWeeklySchedule(
+  profile: UserProfile,
+  workouts: WorkoutSession[],
+  activities: ActivityLog[] = []
+): string {
+  const p = planPosition(profile, workouts, activities);
+  const hasActiveSlot = p.plan.templates.some(isActiveSlot);
+  const liftingPerWeek = hasActiveSlot ? Math.max(1, p.plan.workoutsPerWeek - 1) : p.plan.workoutsPerWeek;
+  const scheduled = profile.scheduledWeekLocations ?? {};
+  const plannedWeeks = Object.entries(scheduled)
+    .map(([wk, loc]) => `Week ${wk}: ${loc === 'travel' ? 'Bodyweight' : loc === 'home' ? 'At Home' : 'Full Gym'}`)
+    .join(', ');
+  const activePart = hasActiveSlot
+    ? ` plus 1 active day (20+ min walk, run, ride, swim, class, or sport)`
+    : '';
+  return `Your **${p.plan.name}** schedules **${plural(liftingPerWeek, 'lifting session')}${activePart}** per week (${p.totalWeeks} weeks total, currently Week ${p.week}). Workouts aren't locked to fixed weekdays — place rest days wherever they fit best, and up to 4 rest days between sessions still protects your streak.${plannedWeeks ? ` Scheduled location overrides: ${plannedWeeks}.` : ''} You can say "Take a rest day today" or "Set week 3 to home" anytime.`;
+}
+
+/** Lists everything saved in profile.athleteMemories so the athlete can audit or forget facts. */
+export function answerAthleteMemories(profile: UserProfile): string {
+  const memories = profile.athleteMemories ?? [];
+  if (!memories.length) {
+    return "I don't have any personal constraints, injuries, or preferences saved in memory yet. Say something like \"Remember I have a sensitive left shoulder\" or \"Remember I prefer 45-minute workouts\" and I'll keep it in mind for future coaching.";
+  }
+  const lines = memories.map((m, idx) => `${idx + 1}. **[${m.category}]** ${m.value}`);
+  return `Here's what I currently remember about you (${memories.length}):\n${lines.join('\n')}\n\nSay "Forget <topic>" (for example, "Forget my shoulder injury") to remove any note, or "Clear all my memories" to wipe them.`;
 }

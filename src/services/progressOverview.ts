@@ -12,6 +12,12 @@ import { calculateSessionTonnage } from '../engine/wci';
 import { BiometricLog, WorkoutSession, WorkoutSet } from '../engine/types';
 import { AthleteGoal, CHOSEN_GOAL_ID, WEEKLY_GOAL_ID, activeGoals, repsAt } from './athleteGoals';
 import { promptOnDeviceModel } from './onDeviceModel';
+import {
+  buildSummaryVoiceGuidelines,
+  checkSummaryVoiceGuidelines,
+  normalizeSummaryVoice,
+} from './coachPersonalization';
+import { coalesceAiGeneration, readCachedAiText, writeCachedAiText } from './aiGenerationCache';
 import { mislabelledFigure, mismatchedWeightUnit, markPromptRejected, spelledNumberNotInFacts, wasPromptRejected } from './factChecks';
 import { ProgressChart } from './progressSeries';
 import { STANDARD_TEST_EXERCISE } from './storage';
@@ -324,12 +330,14 @@ export const GOALS_SUMMARY_SYSTEM_PROMPT =
   "You are the pragmatic, observant strength coach in the athlete's pocket. Synthesize into two crisp sentences (under 200 characters total) " +
   'speaking as "you", using only the facts given: first, weekly pace plus primary goal standing; second, the single clearest action that moves the closest goal forward. ' +
   'Never list every ring or repeat daily step counts one by one. No hype, greetings, lists, or technical jargon. Never praise, judge, or say how they felt. ' +
-  'Do not use any number that is not in the facts.';
+  'Do not use any number that is not in the facts. ' +
+  buildSummaryVoiceGuidelines('goals_summary');
 
 export const SINGLE_GOAL_SUMMARY_SYSTEM_PROMPT =
   "You are the pragmatic, observant strength coach in the athlete's pocket. In two concise sentences (under 200 characters total), speak as \"you\" " +
   'using only the facts for this single goal: first, what the logged figures show about current standing; second, the clearest next step to move this goal forward. ' +
-  'No hype, greetings, lists, percentages, or technical jargon. Never praise, judge, or say how the athlete felt. Do not use any number that is not in the facts.';
+  'No hype, greetings, lists, percentages, or technical jargon. Never praise, judge, or say how the athlete felt. Do not use any number that is not in the facts. ' +
+  buildSummaryVoiceGuidelines('goals_summary');
 
 const capFirst = (s: string) => (s ? s[0].toUpperCase() + s.slice(1) : s);
 
@@ -520,9 +528,9 @@ export function buildSingleGoalSummary(
       ? m.nextStep
       : unmeasured
       ? `Log ${unmeasured.label.toLowerCase()} to track all three signs.`
-      : m.evidence === 'fat-free-mass'
-      ? 'Tracked directly with fat-free mass, strength, and weight.'
-      : 'Keep repeating workouts and logging body metrics to verify progress.';
+      : m.evidence === 'tape'
+      ? 'Tracked with 7-day average weight, anchor-lift strength, and tape measurements.'
+      : 'Keep repeating workouts and logging morning weight and optional waist tape to verify progress.';
     fallback = `${lead} ${step}`;
   }
 
@@ -663,17 +671,16 @@ const stripCommas = (s: string) => s.replace(/(\d),(?=\d{3}\b)/g, '$1');
 /** The cleaned summary, or why it can't be shown (in words the model can act on in a second try). */
 export function checkGoalsSummary(answer: string | null, summary: Pick<GoalsSummary, 'facts'>): { text: string; problem?: undefined } | { text?: undefined; problem: string } {
   if (!answer) return { problem: 'it was empty' };
-  const text = answer
-    .replace(/[*#_`]/g, '')
-    .replace(/^\s*(summary|message|note)\s*:\s*/i, '')
-    .replace(/^["']|["']$/g, '')
-    .replace(/\s+/g, ' ')
-    .trim();
+  const text = normalizeSummaryVoice(answer, {
+    prefixPattern: /^\s*(summary|message|note)\s*:\s*/i,
+  });
   if (text.length < 40) return { problem: 'it was too short' };
   if (text.length > 250) return { problem: 'it was too long; write two concise sentences under 250 characters' };
   if ((text.match(/[.!?](\s|$)/g) || []).length > 3) return { problem: 'it had too many sentences; write two' };
   if (/\b(as an ai|language model|the facts|facts provided|i am an?|i'm an?)\b/i.test(text)) return { problem: 'it talked about itself or "the facts"' };
   if (!runReadAloudQaGate(text).passed) return { problem: 'it used hype, a cliché or judgmental wording' };
+  const voiceProblem = checkSummaryVoiceGuidelines(text);
+  if (voiceProblem) return { problem: voiceProblem };
   if (/\b(felt|feel|feeling|enjoy(ed)?|loved)\b/i.test(text)) return { problem: 'it said how the athlete felt, which is not known' };
   if (/\b(significant\w*|dramatic\w*|huge|massive|incredibl\w*|amazing|awesome)\b/i.test(text)) return { problem: 'it used a size or hype word the facts do not support' };
   if (/\b(consistent\w*|dedicat\w*|progressing well|going well|great|excellent|impressive|solid|strong (work|effort|progress)|(good|nice) (work|job|session)|well done|keep it up|(on|staying on) (schedule|track))\b/i.test(text)) return { problem: 'it praised consistency or quality that the facts do not show; state the figures plainly' };
@@ -697,28 +704,41 @@ export async function generateGoalsSummary(
   attempts = 2
 ): Promise<string | null> {
   if (summary.sparse) return null;
+  const isLive = prompt === promptOnDeviceModel;
   const rejectKey = `goals:${goalsKey(summary)}`;
-  if (prompt === promptOnDeviceModel && wasPromptRejected(rejectKey)) return null;
-  let problem: string | undefined;
-  let sawModelAnswer = false;
-  const systemPrompt = summary.systemPrompt ?? GOALS_SUMMARY_SYSTEM_PROMPT;
-  const base = `Facts:\n${summary.facts.map((f) => `- ${f}`).join('\n')}\n\nWrite the summary.`;
-  // A model that throws is the same as no model: the fact-based text stays.
-  try {
-    for (let i = 0; i < attempts; i++) {
-      const request = problem ? `${base}\n(Your last summary could not be used because ${problem}. Write it again.)` : base;
-      const answer = await prompt(systemPrompt, request, { stateless: true, maxTokens: 120, timeoutMs: 30_000 });
-      if (answer === null) return null;
-      sawModelAnswer = true;
-      const checked = checkGoalsSummary(answer, summary);
-      if (checked.problem === undefined) return checked.text;
-      problem = checked.problem;
-    }
-    if (prompt === promptOnDeviceModel && sawModelAnswer) markPromptRejected(rejectKey);
-  } catch {
-    return null;
+  if (isLive) {
+    const cached = getCachedGoalsSummary(summary);
+    if (cached) return cached;
+    if (wasPromptRejected(rejectKey)) return null;
   }
-  return null;
+
+  const run = async (): Promise<string | null> => {
+    let problem: string | undefined;
+    let sawModelAnswer = false;
+    const systemPrompt = summary.systemPrompt ?? GOALS_SUMMARY_SYSTEM_PROMPT;
+    const base = `Facts:\n${summary.facts.map((f) => `- ${f}`).join('\n')}\n\nWrite the summary.`;
+    // A model that throws is the same as no model: the fact-based text stays.
+    try {
+      for (let i = 0; i < attempts; i++) {
+        const request = problem ? `${base}\n(Your last summary could not be used because ${problem}. Write it again.)` : base;
+        const answer = await prompt(systemPrompt, request, { stateless: true, maxTokens: 120, timeoutMs: 30_000 });
+        if (answer === null) return null;
+        sawModelAnswer = true;
+        const checked = checkGoalsSummary(answer, summary);
+        if (checked.problem === undefined) return checked.text;
+        problem = checked.problem;
+      }
+      if (isLive && sawModelAnswer) markPromptRejected(rejectKey);
+    } catch {
+      return null;
+    }
+    return null;
+  };
+
+  if (isLive) {
+    return coalesceAiGeneration(rejectKey, run, (text) => cacheGoalsSummary(summary, text));
+  }
+  return run();
 }
 
 const GOALS_CACHE_KEY = 'treise_goals_summary_v1';
@@ -733,28 +753,13 @@ function goalsKey(summary: Pick<GoalsSummary, 'facts' | 'systemPrompt'>): string
 
 /** The written summary saved for these facts, if it still passes the checks. */
 export function getCachedGoalsSummary(summary: Pick<GoalsSummary, 'facts' | 'systemPrompt'>): string | null {
-  try {
-    const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(GOALS_CACHE_KEY) : null;
-    const parsed = raw ? JSON.parse(raw) : null;
-    const hit = parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>)[goalsKey(summary)] : undefined;
-    const checked = typeof hit === 'string' ? checkGoalsSummary(hit, summary) : null;
-    return checked && checked.problem === undefined ? checked.text : null;
-  } catch {
-    return null;
-  }
+  const hit = readCachedAiText(GOALS_CACHE_KEY, goalsKey(summary));
+  const checked = typeof hit === 'string' ? checkGoalsSummary(hit, summary) : null;
+  return checked && checked.problem === undefined ? checked.text : null;
 }
 
 export function cacheGoalsSummary(summary: Pick<GoalsSummary, 'facts' | 'systemPrompt'>, text: string): void {
-  try {
-    const raw = localStorage.getItem(GOALS_CACHE_KEY);
-    const parsed = raw ? JSON.parse(raw) : {};
-    const saved: Record<string, string> = parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
-    const entries = Object.entries(saved).filter(([k]) => k !== goalsKey(summary));
-    entries.push([goalsKey(summary), text]);
-    localStorage.setItem(GOALS_CACHE_KEY, JSON.stringify(Object.fromEntries(entries.slice(-16))));
-  } catch {
-    // Storage unavailable: the summary is simply written again next time.
-  }
+  writeCachedAiText(GOALS_CACHE_KEY, goalsKey(summary), text, 16);
 }
 
 // ---------------------------------------------------------------------------------------------

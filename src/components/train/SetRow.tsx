@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { SetType, WorkoutSet } from '../../engine/types';
+import { MAX_LOGGABLE_RIR } from '../../engine/e1rm';
 import { evaluateWeightPokaYoke } from '../../engine/contentStrategy';
 import { triggerHaptic } from '../../utils/haptics';
 import { useUnits } from '../../utils/unitsContext';
@@ -8,6 +9,8 @@ import type { PreviousSet } from '../../services/exerciseInsight';
 
 /** SET | PREV | WEIGHT | REPS | RIR | DONE — shared by the header and every row (48px+ Android touch targets). */
 export const SET_TABLE_COLUMNS = '44fr 84fr 122fr 92fr 82fr minmax(48px, 96fr)';
+/** Progressive-disclosure layout when RIR tracking is hidden: SET | PREV | WEIGHT | REPS | DONE. */
+export const SET_TABLE_COLUMNS_NO_RIR = '44fr 96fr 136fr 104fr minmax(48px, 96fr)';
 export const SET_TABLE_GAP = '8px';
 
 export type { PreviousSet } from '../../services/exerciseInsight';
@@ -19,6 +22,8 @@ interface SetRowProps {
   isDumbbell?: boolean;
   isTwoDumbbell?: boolean;
   isTimed?: boolean;
+  /** Progressive disclosure: hide granular RIR input for new lifters focusing on weight × reps. */
+  showRir?: boolean;
   displayBadge?: string;
   displayLabel?: string;
   /** Single-arm / single-leg: show left and right reps under the row. */
@@ -34,6 +39,7 @@ export const SetRow: React.FC<SetRowProps> = ({
   isDumbbell = false,
   isTwoDumbbell = false,
   isTimed = false,
+  showRir = true,
   displayBadge,
   displayLabel,
   perSide = false,
@@ -114,12 +120,21 @@ export const SetRow: React.FC<SetRowProps> = ({
       <span style={greyText}>{side === 'left' ? 'Left' : 'Right'}</span>
       <input
         type="number"
-        inputMode="numeric"
+        inputMode={set.completed ? 'none' : 'numeric'}
+        readOnly={set.completed}
+        aria-readonly={set.completed}
+        tabIndex={set.completed ? -1 : undefined}
         value={(side === 'left' ? set.actualRepsLeft : set.actualRepsRight) ?? currentReps}
         aria-label={`${label} ${side} side repetitions`}
-        onFocus={(e) => e.target.select()}
-        onChange={(e) => updateSide(side, Math.max(0, parseInt(e.target.value, 10) || 0))}
-        className="wk-input tabular-numbers outline-none block"
+        onFocus={(e) => {
+          if (!set.completed) e.target.select();
+        }}
+        onChange={(e) => {
+          if (!set.completed) updateSide(side, Math.max(0, parseInt(e.target.value, 10) || 0));
+        }}
+        className={`wk-input tabular-numbers outline-none block transition-colors ${
+          set.completed ? 'wk-input-readonly pointer-events-none' : ''
+        }`}
         style={{ width: 52, color: set.completed ? 'var(--color-text-primary)' : 'var(--color-text-secondary)' }}
       />
     </label>
@@ -129,7 +144,7 @@ export const SetRow: React.FC<SetRowProps> = ({
     <div className="flex flex-col gap-2">
     <div
       className="grid items-center relative"
-      style={{ gridTemplateColumns: SET_TABLE_COLUMNS, columnGap: SET_TABLE_GAP }}
+      style={{ gridTemplateColumns: showRir ? SET_TABLE_COLUMNS : SET_TABLE_COLUMNS_NO_RIR, columnGap: SET_TABLE_GAP }}
       aria-label={label}
     >
       {celebration > 0 && set.completed && (
@@ -146,7 +161,7 @@ export const SetRow: React.FC<SetRowProps> = ({
       <button
         type="button"
         onClick={handleCopyPrevious}
-        disabled={!previous}
+        disabled={!previous || set.completed}
         aria-label={previous ? `Last time ${prevDisplay}. Tap to copy` : 'No previous set for this exercise'}
         className="wk-tap text-center truncate tabular-numbers disabled:pointer-events-none"
         style={greyText}
@@ -154,7 +169,11 @@ export const SetRow: React.FC<SetRowProps> = ({
         {prevDisplay}
       </button>
 
-      <label className="wk-tap wk-input tabular-numbers flex items-center justify-center cursor-text">
+      <label
+        className={`wk-tap wk-input tabular-numbers flex items-center justify-center transition-colors ${
+          set.completed ? 'wk-input-readonly' : 'cursor-text'
+        }`}
+      >
         {(() => {
           const showBwToken = (isBodyweight || isTimed) && displayWeight === 0;
           return (
@@ -162,13 +181,22 @@ export const SetRow: React.FC<SetRowProps> = ({
               <input
                 type="number"
                 step={weightStep}
-                inputMode="decimal"
+                inputMode={set.completed ? 'none' : 'decimal'}
+                readOnly={set.completed}
+                aria-readonly={set.completed}
+                tabIndex={set.completed ? -1 : undefined}
                 value={showBwToken ? '' : displayWeight}
                 placeholder={showBwToken ? 'BW' : undefined}
                 aria-label={`${label} ${isTwoDumbbell ? 'weight per dumbbell' : 'weight'} in ${units.unit === 'lb' ? 'pounds' : 'kilograms'}`}
-                onFocus={(e) => e.target.select()}
-                onChange={(e) => onUpdate({ actualWeightKg: units.fromDisplay(parseFloat(e.target.value) || 0) })}
-                className={`bg-transparent font-semibold tabular-numbers outline-none p-0 ${showBwToken ? 'text-center' : 'text-right'}`}
+                onFocus={(e) => {
+                  if (!set.completed) e.target.select();
+                }}
+                onChange={(e) => {
+                  if (!set.completed) onUpdate({ actualWeightKg: units.fromDisplay(parseFloat(e.target.value) || 0) });
+                }}
+                className={`bg-transparent font-semibold tabular-numbers outline-none p-0 ${showBwToken ? 'text-center' : 'text-right'} ${
+                  set.completed ? 'pointer-events-none' : ''
+                }`}
                 style={{
                   width: `${Math.max(showBwToken ? 3 : 1, String(showBwToken ? 'BW' : displayWeight).length)}ch`,
                   fontSize: 'inherit',
@@ -186,17 +214,28 @@ export const SetRow: React.FC<SetRowProps> = ({
       </label>
 
       {isTimed ? (
-        <label className="wk-tap wk-input tabular-numbers flex items-center justify-center cursor-text">
+        <label
+          className={`wk-tap wk-input tabular-numbers flex items-center justify-center transition-colors ${
+            set.completed ? 'wk-input-readonly' : 'cursor-text'
+          }`}
+        >
           <input
             type="number"
-            inputMode="numeric"
+            inputMode={set.completed ? 'none' : 'numeric'}
+            readOnly={set.completed}
+            aria-readonly={set.completed}
+            tabIndex={set.completed ? -1 : undefined}
             value={currentSeconds}
             aria-label={`${label} duration in seconds`}
-            onFocus={(e) => e.target.select()}
-            onChange={(e) =>
-              onUpdate({ actualDurationSeconds: Math.max(0, parseInt(e.target.value, 10) || 0) })
-            }
-            className="bg-transparent text-right font-semibold tabular-numbers outline-none p-0"
+            onFocus={(e) => {
+              if (!set.completed) e.target.select();
+            }}
+            onChange={(e) => {
+              if (!set.completed) onUpdate({ actualDurationSeconds: Math.max(0, parseInt(e.target.value, 10) || 0) });
+            }}
+            className={`bg-transparent text-right font-semibold tabular-numbers outline-none p-0 ${
+              set.completed ? 'pointer-events-none' : ''
+            }`}
             style={{
               width: `${Math.max(1, String(currentSeconds).length)}ch`,
               fontSize: 'inherit',
@@ -214,12 +253,21 @@ export const SetRow: React.FC<SetRowProps> = ({
         <label className="wk-tap block relative">
           <input
             type="number"
-            inputMode="numeric"
+            inputMode={set.completed ? 'none' : 'numeric'}
+            readOnly={set.completed}
+            aria-readonly={set.completed}
+            tabIndex={set.completed ? -1 : undefined}
             value={currentReps}
             aria-label={`${label} repetitions`}
-            onFocus={(e) => e.target.select()}
-            onChange={(e) => onUpdate({ actualReps: parseInt(e.target.value, 10) || 0 })}
-            className="wk-input tabular-numbers outline-none block"
+            onFocus={(e) => {
+              if (!set.completed) e.target.select();
+            }}
+            onChange={(e) => {
+              if (!set.completed) onUpdate({ actualReps: parseInt(e.target.value, 10) || 0 });
+            }}
+            className={`wk-input tabular-numbers outline-none block transition-colors ${
+              set.completed ? 'wk-input-readonly pointer-events-none' : ''
+            }`}
             style={{ color: set.completed ? 'var(--color-text-primary)' : 'var(--color-text-secondary)' }}
           />
           {(set.isFormFailure || set.repDisplay === 'F*') && (
@@ -234,20 +282,48 @@ export const SetRow: React.FC<SetRowProps> = ({
         </label>
       )}
 
-      <label className="wk-tap block">
-        <input
-          type="number"
-          inputMode="numeric"
-          min={0}
-          max={5}
-          value={currentRir}
-          aria-label={`${label} reps in reserve`}
-          onFocus={(e) => e.target.select()}
-          onChange={(e) => onUpdate({ actualRir: Math.max(0, Math.min(5, parseInt(e.target.value, 10) || 0)) })}
-          className="wk-input tabular-numbers outline-none block"
-          style={{ color: set.completed ? 'var(--color-text-primary)' : 'var(--color-text-secondary)' }}
-        />
-      </label>
+      {showRir && (
+        <label
+          className={`wk-tap wk-input tabular-numbers flex items-center justify-center transition-colors ${
+            set.completed ? 'wk-input-readonly' : 'cursor-text'
+          }`}
+        >
+          <input
+            type="number"
+            inputMode={set.completed ? 'none' : 'numeric'}
+            readOnly={set.completed}
+            aria-readonly={set.completed}
+            tabIndex={set.completed ? -1 : undefined}
+            min={0}
+            max={MAX_LOGGABLE_RIR}
+            value={Math.min(MAX_LOGGABLE_RIR, Math.max(0, currentRir))}
+            aria-label={`${label} reps in reserve (0 to ${MAX_LOGGABLE_RIR}+)`}
+            onFocus={(e) => {
+              if (!set.completed) e.target.select();
+            }}
+            onChange={(e) => {
+              if (!set.completed) {
+                onUpdate({
+                  actualRir: Math.max(0, Math.min(MAX_LOGGABLE_RIR, parseInt(e.target.value, 10) || 0)),
+                });
+              }
+            }}
+            className={`bg-transparent text-center font-semibold tabular-numbers outline-none p-0 ${
+              set.completed ? 'pointer-events-none' : ''
+            }`}
+            style={{
+              width: `${Math.max(1, String(Math.min(MAX_LOGGABLE_RIR, Math.max(0, currentRir))).length)}ch`,
+              fontSize: 'inherit',
+              color: set.completed ? 'var(--color-text-primary)' : 'var(--color-text-secondary)',
+            }}
+          />
+          {currentRir >= MAX_LOGGABLE_RIR && (
+            <span aria-hidden="true" style={{ fontSize: 12, fontWeight: 500, color: 'var(--wk-muted)' }}>
+              +
+            </span>
+          )}
+        </label>
+      )}
 
       <button
         type="button"
@@ -263,15 +339,15 @@ export const SetRow: React.FC<SetRowProps> = ({
           minWidth: 48,
           height: 48,
           borderRadius: 8,
-          background: set.completed ? 'var(--color-status-positive-soft)' : 'var(--color-action-secondary-bg)',
-          border: set.completed ? '1px solid var(--color-border-accent)' : '1px solid var(--color-border-strong)',
+          background: set.completed ? 'var(--color-status-positive)' : 'var(--color-action-secondary-bg)',
+          border: set.completed ? '1px solid transparent' : '1px solid var(--color-border-strong)',
         }}
       >
         <svg
           viewBox="0 0 24 24"
           style={{ width: 20, height: 20 }}
           fill="none"
-          stroke={set.completed ? 'var(--color-status-positive)' : 'var(--color-text-secondary)'}
+          stroke={set.completed ? 'var(--color-text-on-accent)' : 'var(--color-text-secondary)'}
           strokeWidth={set.completed ? 3 : 2.2}
           strokeLinecap="round"
           strokeLinejoin="round"

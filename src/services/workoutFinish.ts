@@ -20,6 +20,12 @@ import { mislabelledFigure, mismatchedWeightUnit, markPromptRejected, spelledNum
 import { SessionProgressReport, buildSessionProgressReport } from './sessionReport';
 import { calculateWeeklyMuscleVolume } from './storage';
 import { ExerciseInsight, buildExerciseInsight } from './exerciseInsight';
+import {
+  buildSummaryVoiceGuidelines,
+  checkSummaryVoiceGuidelines,
+  normalizeSummaryVoice,
+} from './coachPersonalization';
+import { coalesceAiGeneration, readCachedAiText, writeCachedAiText } from './aiGenerationCache';
 
 export interface WorkoutFinishInput {
   profile: UserProfile;
@@ -67,7 +73,8 @@ export const WORKOUT_SUMMARY_SYSTEM_PROMPT =
   'Write two crisp sentences (under 200 characters total) speaking as "you", using only the facts given: first, the standout lift or milestone today; ' +
   'second, what this moved on their goals. Earned, understated pride—no hype, greetings, lists, or percentages. ' +
   'Do not mention total volume or number of sets. Never say how they felt or judge their effort. ' +
-  'Keep each figure tied to what its fact measures (a gain across several sessions is not a gain today). Do not use any number not in the facts.';
+  'Keep each figure tied to what its fact measures (a gain across several workouts is not a gain today). Do not use any number not in the facts. ' +
+  buildSummaryVoiceGuidelines('workout_summary');
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 const listAnd = (items: string[]) => (items.length <= 1 ? items.join('') : `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`);
@@ -222,17 +229,16 @@ export function checkWorkoutSummary(
   finish: Pick<WorkoutFinish, 'facts'>
 ): { text: string; problem?: undefined } | { text?: undefined; problem: string } {
   if (!answer) return { problem: 'it was empty' };
-  const text = answer
-    .replace(/[*#_`]/g, '')
-    .replace(/^\s*(summary|message|note)\s*:\s*/i, '')
-    .replace(/^["']|["']$/g, '')
-    .replace(/\s+/g, ' ')
-    .trim();
+  const text = normalizeSummaryVoice(answer, {
+    prefixPattern: /^\s*(summary|message|note)\s*:\s*/i,
+  });
   if (text.length < 40) return { problem: 'it was too short' };
   if (text.length > 240) return { problem: 'it was too long; write two crisp sentences under 240 characters' };
   if ((text.match(/[.!?](\s|$)/g) || []).length > 3) return { problem: 'it had too many sentences; write two' };
   if (/\b(as an ai|language model|the facts|facts provided|i am an?|i'm an?)\b/i.test(text)) return { problem: 'it talked about itself or "the facts"' };
   if (!runReadAloudQaGate(text).passed) return { problem: 'it used hype, a cliché or judgmental wording' };
+  const voiceProblem = checkSummaryVoiceGuidelines(text);
+  if (voiceProblem) return { problem: voiceProblem };
   if (/\d\s*%|\bpercent/i.test(text)) return { problem: 'it used a percentage; use the figures as given' };
   if (/\b(felt|feel|feeling|enjoy(ed)?|loved)\b/i.test(text)) return { problem: 'it said how the athlete felt, which is not known' };
   if (/\b(volume|tonnage|\d+\s+(working\s+|hard\s+)?sets?)\b/i.test(text)) return { problem: 'it mentioned volume or a number of sets, which are shown beside it' };
@@ -284,29 +290,43 @@ export async function generateWorkoutSummary(
   prompt: typeof promptOnDeviceModel = promptOnDeviceModel,
   attempts = 2
 ): Promise<string | null> {
-  if (!WORKOUT_SUMMARY_USES_MODEL && prompt === promptOnDeviceModel) return null;
-  const rejectKey = `workout:${summaryKey(finish)}`;
-  if (prompt === promptOnDeviceModel && wasPromptRejected(rejectKey)) return null;
-  let problem: string | undefined;
-  let sawModelAnswer = false;
-  // A model that throws is the same as no model: the fact-based text stays.
-  try {
-    for (let i = 0; i < attempts; i++) {
-      const request = problem
-        ? `${buildWorkoutSummaryPrompt(finish)}\n(Your last summary could not be used because ${problem}. Write it again.)`
-        : buildWorkoutSummaryPrompt(finish);
-      const answer = await prompt(WORKOUT_SUMMARY_SYSTEM_PROMPT, request, { stateless: true, maxTokens: 120, timeoutMs: 30_000 });
-      if (answer === null) return null;
-      sawModelAnswer = true;
-      const checked = checkWorkoutSummary(answer, finish);
-      if (checked.problem === undefined) return checked.text;
-      problem = checked.problem;
-    }
-    if (prompt === promptOnDeviceModel && sawModelAnswer) markPromptRejected(rejectKey);
-  } catch {
-    return null;
+  const isLive = prompt === promptOnDeviceModel;
+  if (!WORKOUT_SUMMARY_USES_MODEL && isLive) return null;
+  const key = summaryKey(finish);
+  const rejectKey = `workout:${key}`;
+  if (isLive) {
+    const cached = getCachedWorkoutSummary(finish);
+    if (cached) return cached;
+    if (wasPromptRejected(rejectKey)) return null;
   }
-  return null;
+
+  const run = async (): Promise<string | null> => {
+    let problem: string | undefined;
+    let sawModelAnswer = false;
+    // A model that throws is the same as no model: the fact-based text stays.
+    try {
+      for (let i = 0; i < attempts; i++) {
+        const request = problem
+          ? `${buildWorkoutSummaryPrompt(finish)}\n(Your last summary could not be used because ${problem}. Write it again.)`
+          : buildWorkoutSummaryPrompt(finish);
+        const answer = await prompt(WORKOUT_SUMMARY_SYSTEM_PROMPT, request, { stateless: true, maxTokens: 120, timeoutMs: 30_000 });
+        if (answer === null) return null;
+        sawModelAnswer = true;
+        const checked = checkWorkoutSummary(answer, finish);
+        if (checked.problem === undefined) return checked.text;
+        problem = checked.problem;
+      }
+      if (isLive && sawModelAnswer) markPromptRejected(rejectKey);
+    } catch {
+      return null;
+    }
+    return null;
+  };
+
+  if (isLive) {
+    return coalesceAiGeneration(rejectKey, run, (text) => cacheWorkoutSummary(finish, text));
+  }
+  return run();
 }
 
 // A written summary is kept on the device, keyed by its facts, so the finish screen and the
@@ -321,33 +341,15 @@ function summaryKey(finish: Pick<WorkoutFinish, 'facts'>): string {
   return (h >>> 0).toString(36);
 }
 
-function readSummaryCache(): Record<string, string> {
-  try {
-    const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(SUMMARY_CACHE_KEY) : null;
-    // Anything that isn't a saved map of texts (a damaged or foreign value) counts as empty.
-    const parsed = raw ? JSON.parse(raw) : {};
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
-  } catch {
-    return {};
-  }
-}
-
 /** The written summary saved for these facts, if it still passes the checks. */
 export function getCachedWorkoutSummary(finish: Pick<WorkoutFinish, 'facts'>): string | null {
-  const hit = readSummaryCache()[summaryKey(finish)];
+  const hit = readCachedAiText(SUMMARY_CACHE_KEY, summaryKey(finish));
   const checked = typeof hit === 'string' ? checkWorkoutSummary(hit, finish) : null;
   return checked && checked.problem === undefined ? checked.text : null;
 }
 
 export function cacheWorkoutSummary(finish: Pick<WorkoutFinish, 'facts'>, summary: string): void {
-  try {
-    const key = summaryKey(finish);
-    const entries = Object.entries(readSummaryCache()).filter(([k]) => k !== key);
-    entries.push([key, summary]);
-    localStorage.setItem(SUMMARY_CACHE_KEY, JSON.stringify(Object.fromEntries(entries.slice(-MAX_CACHED_SUMMARIES))));
-  } catch {
-    // Storage unavailable: the summary is simply written again next time.
-  }
+  writeCachedAiText(SUMMARY_CACHE_KEY, summaryKey(finish), summary, MAX_CACHED_SUMMARIES);
 }
 
 /** One exercise from a finished workout, as the Workout tab shows it afterwards. */

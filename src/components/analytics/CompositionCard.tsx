@@ -1,5 +1,5 @@
 import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
-import { ChevronRight } from 'lucide-react';
+import { ChevronRight, Sparkles } from 'lucide-react';
 import { BiometricLog, GoalPhase } from '../../engine/types';
 import { parseLocalDate } from '../../utils/date';
 import { triggerHaptic } from '../../utils/haptics';
@@ -15,6 +15,7 @@ import {
   generateCompositionInsight,
   getCachedCompositionInsight,
 } from '../../services/compositionOverview';
+import { isOnDeviceModelReady } from '../../services/onDeviceModel';
 import { ChartTimeline, DEFAULT_CHART_TIMELINE } from '../../services/progressSeries';
 
 const W = 1000;
@@ -95,15 +96,19 @@ function useCompositionSummaryText(summary: CompositionInsightSummary): string {
     setWritten(cached);
     if (cached || summary.sparse) return;
     let cancelled = false;
-    generateCompositionInsight(summary)
-      .then((answer) => {
-        if (!answer) return;
+    // Settle debounce prevents burning model calls while clicking rapidly across 1W / 1M / 3M / 1Y.
+    const timer = setTimeout(() => {
+      (async () => {
+        if (cancelled || !(await isOnDeviceModelReady())) return;
+        const answer = await generateCompositionInsight(summary);
+        if (!answer || cancelled) return;
         cacheCompositionInsight(summary, answer);
-        if (!cancelled) setWritten(answer);
-      })
-      .catch(() => undefined);
+        setWritten(answer);
+      })().catch(() => undefined);
+    }, 400);
     return () => {
       cancelled = true;
+      clearTimeout(timer);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
@@ -115,12 +120,14 @@ interface CompositionCardProps {
   biometrics: BiometricLog[];
   goalPhase: GoalPhase;
   onOpenLog?: () => void;
+  onAskCoach?: () => void;
 }
 
 export const CompositionCard: React.FC<CompositionCardProps> = ({
   biometrics,
   goalPhase,
   onOpenLog,
+  onAskCoach,
 }) => {
   const units = useUnits();
   const [timeline, setTimeline] = useState<ChartTimeline>(DEFAULT_CHART_TIMELINE);
@@ -598,7 +605,29 @@ export const CompositionCard: React.FC<CompositionCardProps> = ({
 
       {/* Concise 2-line AI summary of body composition insight */}
       <div className="mt-4 pt-4 border-t" style={{ borderColor: 'var(--color-border-subtle)' }}>
-        <span className="wk-label block mb-1">Composition insight</span>
+        {hasBodyFatSeries && (
+          <p className="wk-caption mb-3 max-w-prose">
+            Consumer BIA fat-free mass carries ±2–5 kg individual uncertainty (Siedler et al., 2023). Weigh in fasted mornings and treat lean mass as a 12+ week directional overlay alongside 7-day average weight, strength, and waist tape.
+          </p>
+        )}
+        <div className="flex items-center justify-between gap-2 mb-1">
+          <span className="wk-label">Composition insight</span>
+          {onAskCoach && (
+            <button
+              type="button"
+              onClick={() => {
+                triggerHaptic('light');
+                onAskCoach();
+              }}
+              className="inline-flex items-center gap-2 text-xs font-medium min-h-[44px] px-2 -my-2 -mr-2 rounded-lg active:opacity-75 transition-opacity"
+              style={{ color: 'var(--color-coach-accent)' }}
+              aria-label="Ask Treise about your body composition"
+            >
+              <Sparkles className="w-3.5 h-3.5 shrink-0" strokeWidth={2.2} aria-hidden="true" />
+              <span>Ask Treise</span>
+            </button>
+          )}
+        </div>
         <CoachSummaryText
           text={summaryText}
           splitBy="lines"

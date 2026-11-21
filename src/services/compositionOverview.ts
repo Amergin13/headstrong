@@ -16,6 +16,12 @@ import { localDateString } from '../utils/date';
 import { markPromptRejected, mismatchedWeightUnit, spelledNumberNotInFacts, wasPromptRejected } from './factChecks';
 import { promptOnDeviceModel } from './onDeviceModel';
 import { ChartTimeline, timelineCutoffDate } from './progressSeries';
+import {
+  buildSummaryVoiceGuidelines,
+  checkSummaryVoiceGuidelines,
+  normalizeSummaryVoice,
+} from './coachPersonalization';
+import { coalesceAiGeneration, readCachedAiText, writeCachedAiText } from './aiGenerationCache';
 
 const round1 = (n: number): number => Math.round(n * 10) / 10;
 
@@ -55,7 +61,8 @@ export const COMPOSITION_SYSTEM_PROMPT =
   'You write a concise 2-line body composition insight for a strength training app card showing overlaid Weight, Body fat %, and Lean body mass over time. ' +
   'Use only the facts given. Line 1: state how weight, lean mass, and body fat shifted in concrete figures (kg/lb/% points). ' +
   'Line 2: explain what that tissue partitioning means for the athlete’s goal and one clear next focus. ' +
-  'Plain, grounded, non-judgmental coach voice—no headings, bullets, clichés, AI self-references, or ungiven numbers. Under 240 characters total.';
+  'Plain, grounded, non-judgmental coach voice—no headings, bullets, clichés, AI self-references, or ungiven numbers. Under 240 characters total. ' +
+  buildSummaryVoiceGuidelines('composition_insight');
 
 function extractPoint(log: BiometricLog): CompositionPoint | null {
   const weightKg = log.bodyweightKg > 0 ? round1(log.bodyweightKg) : undefined;
@@ -195,34 +202,34 @@ export function buildCompositionOverview(input: {
     const bfNow = `${round1(bodyFat.latest!)}%`;
     const leanNow = formatPreciseWeight(leanMass.latest!);
 
-    if (lDelta >= 0.2 && bfDelta <= -0.2) {
+    if (lDelta >= 2.0 && bfDelta <= -2.0) {
       fallback =
-        `Lean mass rose ${signedPrecise(lDelta, formatPreciseWeight)} to ${leanNow} while body fat fell ${round1(Math.abs(bfDelta))} points (${bfNow}).\n` +
-        `Body recomposition is showing: training is adding lean tissue as fat drops.`;
-    } else if (lDelta >= 0.2 && bfDelta <= 0.8) {
+        `BIA lean mass shifted ${signedPrecise(lDelta, formatPreciseWeight)} to ${leanNow} and body fat fell ${round1(Math.abs(bfDelta))} points (${bfNow}).\n` +
+        `Directional recomposition signal—confirm with fasted morning weight, anchor-lift strength, and waist tape.`;
+    } else if (lDelta >= 2.0 && bfDelta <= 0.8) {
       const bfPhrase =
         Math.abs(bfDelta) < 0.1
           ? `body fat held at ${bfNow}`
           : `body fat shifted ${signedPctPoints(bfDelta)} to ${bfNow}`;
       fallback =
-        `Lean mass rose ${signedPrecise(lDelta, formatPreciseWeight)} to ${leanNow} while ${bfPhrase}.\n` +
-        `Scale weight is trending toward lean tissue cleanly for ${goalLabel}.`;
-    } else if (bfDelta <= -0.2 && lDelta >= -0.3) {
+        `BIA lean mass rose ${signedPrecise(lDelta, formatPreciseWeight)} to ${leanNow} while ${bfPhrase}.\n` +
+        `Directional lean-gain trend for ${goalLabel}—weigh in fasted mornings and track over 12+ weeks.`;
+    } else if (bfDelta <= -2.0 && lDelta >= -1.0) {
       fallback =
-        `Body fat dropped ${round1(Math.abs(bfDelta))} points to ${bfNow} while lean mass held at ${leanNow}.\n` +
-        `Fat loss is sparing muscle tissue—keep lifting heavy across main sets.`;
-    } else if (bfDelta > 0.8 && lDelta < Math.max(0.2, wDelta * 0.4)) {
+        `BIA body fat dropped ${round1(Math.abs(bfDelta))} points to ${bfNow} while lean mass held near ${leanNow}.\n` +
+        `Directional fat-loss signal—confirm with 7-day average weight, waist tape, and steady main lifts.`;
+    } else if (bfDelta > 2.0 && lDelta < Math.max(0.5, wDelta * 0.4)) {
       fallback =
-        `Body fat climbed ${round1(bfDelta)} points to ${bfNow} with weight ${signedPrecise(wDelta, formatPreciseWeight)}.\n` +
-        `Tighten daily intake or boost daily steps so gain shifts back to lean mass.`;
-    } else if (lDelta <= -0.4 && wDelta <= -0.5) {
+        `BIA body fat climbed ${round1(bfDelta)} points to ${bfNow} with weight ${signedPrecise(wDelta, formatPreciseWeight)}.\n` +
+        `Check 7-day average weight pace and waist tape to keep gain steady.`;
+    } else if (lDelta <= -2.0 && wDelta <= -2.0) {
       fallback =
-        `Weight dropped ${formatPreciseWeight(Math.abs(wDelta))} and lean mass dipped ${formatPreciseWeight(Math.abs(lDelta))} to ${leanNow}.\n` +
-        `Keep protein and heavy tension steady so loss comes from body fat.`;
+        `Weight dropped ${formatPreciseWeight(Math.abs(wDelta))} and BIA lean mass dipped ${formatPreciseWeight(Math.abs(lDelta))} to ${leanNow}.\n` +
+        `Confirm with anchor-lift strength and waist tape; BIA readings fluctuate with hydration.`;
     } else {
       fallback =
-        `Weight (${weight.latest !== undefined ? formatPreciseWeight(weight.latest) : '—'}), lean mass (${leanNow}), and body fat (${bfNow}) held steady.\n` +
-        `Keep logging mornings with the same method to catch gradual shifts.`;
+        `Weight (${weight.latest !== undefined ? formatPreciseWeight(weight.latest) : '—'}), BIA lean mass (${leanNow}), and body fat (${bfNow}) are within normal scale noise.\n` +
+        `Weigh in fasted mornings and evaluate BIA lean mass as a 12+ week directional overlay.`;
     }
   } else if (weight.count >= 2 && weight.delta !== undefined) {
     sparse = bodyFat.count === 0;
@@ -267,11 +274,10 @@ export function checkCompositionInsight(
   summary: Pick<CompositionInsightSummary, 'facts'>
 ): { text: string; problem?: undefined } | { text?: undefined; problem: string } {
   if (!answer) return { problem: 'it was empty' };
-  const text = answer
-    .replace(/[*#_`]/g, '')
-    .replace(/^\s*(summary|insight|composition insight)\s*:\s*/i, '')
-    .replace(/^["']|["']$/g, '')
-    .trim();
+  const text = normalizeSummaryVoice(answer, {
+    preserveNewlines: true,
+    prefixPattern: /^\s*(summary|insight|composition insight)\s*:\s*/i,
+  });
 
   if (text.length < 36) return { problem: 'it was too short' };
   if (text.length > 260) return { problem: 'it exceeded 260 characters; keep it to two brief lines' };
@@ -281,6 +287,10 @@ export function checkCompositionInsight(
   }
   if (!runReadAloudQaGate(text).passed) {
     return { problem: 'it used hype, clichés or judgmental wording' };
+  }
+  const voiceProblem = checkSummaryVoiceGuidelines(text);
+  if (voiceProblem) {
+    return { problem: voiceProblem };
   }
   if (/\b(felt|feel|feeling|enjoy(ed)?|loved)\b/i.test(text)) {
     return { problem: 'it claimed how the athlete felt' };
@@ -317,37 +327,16 @@ function compositionHash(summary: Pick<CompositionInsightSummary, 'facts' | 'sys
 export function getCachedCompositionInsight(
   summary: Pick<CompositionInsightSummary, 'facts' | 'systemPrompt'>
 ): string | null {
-  try {
-    const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(COMPOSITION_CACHE_KEY) : null;
-    const parsed = raw ? JSON.parse(raw) : null;
-    const hit =
-      parsed && typeof parsed === 'object'
-        ? (parsed as Record<string, unknown>)[compositionHash(summary)]
-        : undefined;
-    const checked = typeof hit === 'string' ? checkCompositionInsight(hit, summary) : null;
-    return checked && checked.problem === undefined ? checked.text : null;
-  } catch {
-    return null;
-  }
+  const hit = readCachedAiText(COMPOSITION_CACHE_KEY, compositionHash(summary));
+  const checked = typeof hit === 'string' ? checkCompositionInsight(hit, summary) : null;
+  return checked && checked.problem === undefined ? checked.text : null;
 }
 
 export function cacheCompositionInsight(
   summary: Pick<CompositionInsightSummary, 'facts' | 'systemPrompt'>,
   text: string
 ): void {
-  try {
-    if (typeof localStorage === 'undefined') return;
-    const raw = localStorage.getItem(COMPOSITION_CACHE_KEY);
-    const parsed = raw ? JSON.parse(raw) : {};
-    const saved: Record<string, string> =
-      parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
-    const key = compositionHash(summary);
-    const entries = Object.entries(saved).filter(([k]) => k !== key);
-    entries.push([key, text]);
-    localStorage.setItem(COMPOSITION_CACHE_KEY, JSON.stringify(Object.fromEntries(entries.slice(-12))));
-  } catch {
-    // Storage unavailable; recomputes next view.
-  }
+  writeCachedAiText(COMPOSITION_CACHE_KEY, compositionHash(summary), text, 12);
 }
 
 export async function generateCompositionInsight(
@@ -356,32 +345,44 @@ export async function generateCompositionInsight(
   attempts = 2
 ): Promise<string | null> {
   if (summary.sparse) return null;
+  const isLive = prompt === promptOnDeviceModel;
   const rejectKey = `composition:${compositionHash(summary)}`;
-  if (prompt === promptOnDeviceModel && wasPromptRejected(rejectKey)) return null;
-
-  let problem: string | undefined;
-  let sawModelAnswer = false;
-  const base = `Facts:\n${summary.facts.map((f) => `- ${f}`).join('\n')}\n\nWrite the 2-line insight.`;
-
-  try {
-    for (let i = 0; i < attempts; i++) {
-      const request = problem
-        ? `${base}\n(Your previous draft failed because ${problem}. Rewrite it cleanly.)`
-        : base;
-      const answer = await prompt(summary.systemPrompt, request, {
-        stateless: true,
-        maxTokens: 110,
-        timeoutMs: 30_000,
-      });
-      if (answer === null) return null;
-      sawModelAnswer = true;
-      const checked = checkCompositionInsight(answer, summary);
-      if (checked.problem === undefined) return checked.text;
-      problem = checked.problem;
-    }
-    if (prompt === promptOnDeviceModel && sawModelAnswer) markPromptRejected(rejectKey);
-  } catch {
-    return null;
+  if (isLive) {
+    const cached = getCachedCompositionInsight(summary);
+    if (cached) return cached;
+    if (wasPromptRejected(rejectKey)) return null;
   }
-  return null;
+
+  const run = async (): Promise<string | null> => {
+    let problem: string | undefined;
+    let sawModelAnswer = false;
+    const base = `Facts:\n${summary.facts.map((f) => `- ${f}`).join('\n')}\n\nWrite the 2-line insight.`;
+
+    try {
+      for (let i = 0; i < attempts; i++) {
+        const request = problem
+          ? `${base}\n(Your previous draft failed because ${problem}. Rewrite it cleanly.)`
+          : base;
+        const answer = await prompt(summary.systemPrompt, request, {
+          stateless: true,
+          maxTokens: 110,
+          timeoutMs: 30_000,
+        });
+        if (answer === null) return null;
+        sawModelAnswer = true;
+        const checked = checkCompositionInsight(answer, summary);
+        if (checked.problem === undefined) return checked.text;
+        problem = checked.problem;
+      }
+      if (isLive && sawModelAnswer) markPromptRejected(rejectKey);
+    } catch {
+      return null;
+    }
+    return null;
+  };
+
+  if (isLive) {
+    return coalesceAiGeneration(rejectKey, run, (text) => cacheCompositionInsight(summary, text));
+  }
+  return run();
 }

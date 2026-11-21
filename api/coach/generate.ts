@@ -97,7 +97,7 @@ export default async function handler(req: any, res: any) {
     return res.status(400).json({ error: 'A user prompt is required.' });
   }
 
-  const rawTools = Array.isArray(body.tools) ? body.tools.slice(0, 16) : [];
+  const rawTools = Array.isArray(body.tools) ? body.tools.slice(0, 32) : [];
   const hasTools = rawTools.length > 0;
   const responseSchema =
     !hasTools && body.responseSchema && typeof body.responseSchema === 'object'

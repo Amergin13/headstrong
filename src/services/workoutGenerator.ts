@@ -23,6 +23,7 @@ import {
   translateWeightBetweenImplements,
 } from '../engine/e1rm';
 import { getExerciseBiomechanicalMeta } from '../engine/knowledgeGraph';
+import { prescribeFatigueAwareSetRirs } from '../engine/progressionRules';
 import { WORKOUT_TEMPLATES_24 } from '../engine/muscleBuildingProgram';
 import {
   calculateWarmupPrescription,
@@ -956,13 +957,18 @@ export function generateSmartWorkoutSession(
       );
     }
 
+    // Prescribe physiologically descending (non-increasing) RIR across fixed-load straight sets
+    const straightSetRirs = prescribeFatigueAwareSetRirs(targetSetCount, finalSetRir, {
+      maxRir: Math.max(baseRir, finalSetRir),
+    });
+
     // Seed dummy session to query historical Double Progression
     const seedSets: WorkoutSet[] = Array.from({ length: targetSetCount }, (_, sIdx) => ({
       id: `set-${Date.now()}-${exIdx}-${sIdx}`,
       setNumber: sIdx + 1,
       targetWeightKg: item.defaultWeightKg,
       targetReps: minReps,
-      targetRir: sIdx === targetSetCount - 1 ? finalSetRir : baseRir,
+      targetRir: straightSetRirs[sIdx] ?? finalSetRir,
       completed: false,
       setType: 'working',
     }));
@@ -1013,7 +1019,7 @@ export function generateSmartWorkoutSession(
       actualWeightKg: prescribedWeight,
       targetReps: prescription.nextTargetReps[idx] ?? minReps,
       actualReps: prescription.nextTargetReps[idx] ?? minReps,
-      targetRir: idx === targetSetCount - 1 ? finalSetRir : baseRir,
+      targetRir: straightSetRirs[idx] ?? finalSetRir,
     }));
 
     let warmupSets: WorkoutSet[] = [];

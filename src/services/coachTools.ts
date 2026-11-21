@@ -5,7 +5,7 @@ import {
   MIN_ACTIVE_MINUTES,
   activeDayDates,
 } from '../engine/activeDays';
-import { isTimedExercise, usesOneDumbbell } from '../engine/e1rm';
+import { isTimedExercise, isUnilateralExercise, usesOneDumbbell, usesTwoDumbbells } from '../engine/e1rm';
 import { getExerciseBiomechanicalMeta } from '../engine/knowledgeGraph';
 import {
   buildPlanOverview,
@@ -27,7 +27,7 @@ import {
   prescribeExerciseSwap,
 } from '../engine/progression';
 import { loadIncrementFor } from '../engine/progressionRules';
-import { computeTrainingStreak, MUSCLE_FRIENDLY_NAMES } from '../engine/recovery';
+import { computeTrainingStreak, evaluateSessionRecovery, formatReadyTime, MUSCLE_FRIENDLY_NAMES } from '../engine/recovery';
 import { canUseMusclePlan, getPlanById, isPlanProgram, resolveActivePlan } from '../engine/trainingPlans';
 import {
   AssistantActionType,
@@ -42,6 +42,8 @@ import {
   CoachUndoSnapshot,
   ExerciseDefinition,
   ExerciseSession,
+  ExperienceLevel,
+  Gender,
   GoalPhase,
   HomeEquipmentTag,
   PlanId,
@@ -51,8 +53,10 @@ import {
   StrengthPillar,
   TrainingLocation,
   UserProfile,
+  WorkoutDisplaySettings,
   WorkoutSession,
   WorkoutSet,
+  resolveWorkoutDisplaySettings,
 } from '../engine/types';
 import { ensureWarmupSetsOnExercise, isFirstCompoundForPillar } from '../engine/warmup';
 import { localDateString } from '../utils/date';
@@ -65,6 +69,7 @@ import { detectCoachInterventions } from './coachInterventions';
 import { detectGoalChange } from './coachGoals';
 import { GOOGLE_AUTH_CONFIG, isSupabaseConfigured } from './googleAuthService';
 import { detectProgressWidgetChange } from './progressWidgets';
+import { BODY_MEASUREMENT_SITES, BodySiteDefinition } from './renphoBluetooth';
 import { prepareSessionForAthlete, startingWeightForNewExercise } from './sessionPreparation';
 import { loadAuthUser, saveActiveWorkout, saveActivities, saveBiometrics, saveProfile } from './storage';
 import { adaptWorkoutSessionToLocation, generateSmartWorkoutSession, getFirstSplitDayForProgram } from './workoutGenerator';
@@ -142,7 +147,7 @@ export const COACH_TOOL_DECLARATIONS: GeminiFunctionDeclaration[] = [
   {
     name: 'adjust_workout_volume',
     description:
-      'Adjust set counts or working load targets for uncompleted sets in the active workout (e.g. short on time, recovery adjustment, or extra working sets).',
+      'Adjust set counts or working load targets for uncompleted sets in the active workout (e.g. short on time, recovery adjustment, exact set count, or extra working sets on a specific lift).',
     parameters: {
       type: 'object',
       properties: {
@@ -154,6 +159,22 @@ export const COACH_TOOL_DECLARATIONS: GeminiFunctionDeclaration[] = [
           type: 'string',
           enum: ['reduce_sets', 'increase_sets', 'deload_load', 'short_on_time'],
           description: 'Volume or load adjustment mode.',
+        },
+        exercise_name: {
+          type: 'string',
+          description: 'Optional exercise ID or name to scope the change to one exercise in today workout.',
+        },
+        target_sets: {
+          type: 'integer',
+          description: 'Optional exact target working set count (1-10) when setting an exercise to N sets.',
+        },
+        set_delta: {
+          type: 'integer',
+          description: 'Optional number of working sets to add or remove (e.g. +2 or -1).',
+        },
+        load_delta_pct: {
+          type: 'number',
+          description: 'Optional percentage load reduction (e.g. -10 or -15) for deload_load.',
         },
         details: {
           type: 'string',
@@ -172,7 +193,7 @@ export const COACH_TOOL_DECLARATIONS: GeminiFunctionDeclaration[] = [
       properties: {
         fact_category: {
           type: 'string',
-          enum: ['injury', 'contraindication', 'equipment', 'preference', 'goal_note', 'schedule'],
+          enum: ['injury', 'contraindication', 'equipment', 'preference', 'goal', 'schedule'],
           description: 'Category of athlete memory fact.',
         },
         fact_value: {
@@ -186,7 +207,7 @@ export const COACH_TOOL_DECLARATIONS: GeminiFunctionDeclaration[] = [
   {
     name: 'modify_workout_exercises',
     description:
-      'Add a new exercise to today active workout or remove an existing exercise from today active workout while keeping completed sets.',
+      'Add a new exercise to today active workout (with optional working set count) or remove an existing exercise from today active workout while keeping completed sets.',
     parameters: {
       type: 'object',
       properties: {
@@ -198,6 +219,10 @@ export const COACH_TOOL_DECLARATIONS: GeminiFunctionDeclaration[] = [
         exercise_name: {
           type: 'string',
           description: 'Exercise ID or name to add or remove.',
+        },
+        sets: {
+          type: 'integer',
+          description: 'Optional working sets count (1-8, default 3) when adding an exercise.',
         },
         reason: {
           type: 'string',
@@ -362,28 +387,62 @@ export const COACH_TOOL_DECLARATIONS: GeminiFunctionDeclaration[] = [
   {
     name: 'log_entry',
     description:
-      'Log an athlete-supplied measurement (bodyweight, body fat %, waist circumference) or deliberate active day cardio/sport session.',
+      'Log an athlete-supplied measurement (bodyweight, body fat %, any of the 12 tape circumference sites, daily steps, height) or deliberate active day cardio/sport session.',
     parameters: {
       type: 'object',
       properties: {
         kind: {
           type: 'string',
-          enum: ['bodyweight', 'body_fat', 'waist', 'active_day'],
+          enum: [
+            'bodyweight',
+            'body_fat',
+            'waist',
+            'tape_measurement',
+            'steps',
+            'height',
+            'active_day',
+          ],
           description: 'Measurement or activity type.',
         },
         value: {
           type: 'number',
-          description: 'Numeric value provided by the athlete (weight, %, waist size, or duration minutes).',
+          description: 'Numeric value provided by the athlete (weight, %, tape measurement, steps, height, or duration minutes).',
         },
         unit: {
           type: 'string',
-          enum: ['kg', 'lb', 'cm', 'in', 'minutes'],
+          enum: ['kg', 'lb', 'cm', 'in', 'steps', 'minutes'],
           description: 'Unit for the supplied value.',
+        },
+        measurement_site: {
+          type: 'string',
+          enum: [
+            'neck',
+            'shoulder',
+            'chest',
+            'waist',
+            'abdomen',
+            'hip',
+            'bicep_left',
+            'bicep_right',
+            'thigh_left',
+            'thigh_right',
+            'calf_left',
+            'calf_right',
+          ],
+          description: 'Tape measurement site when kind is tape_measurement (or waist).',
         },
         activity_type: {
           type: 'string',
-          enum: ['run', 'walk', 'cycle', 'swim', 'row', 'hike', 'class', 'sport', 'strength', 'other'],
+          enum: ['run', 'walk', 'cycle', 'swim', 'row', 'elliptical', 'hike', 'class', 'sport', 'strength', 'other'],
           description: 'Activity type when kind is active_day.',
+        },
+        distance_km: {
+          type: 'number',
+          description: 'Optional distance in km for an active day run/ride/walk/row/swim.',
+        },
+        date: {
+          type: 'string',
+          description: 'Optional local date YYYY-MM-DD (or "yesterday"); defaults to today.',
         },
       },
       required: ['kind', 'value'],
@@ -392,18 +451,27 @@ export const COACH_TOOL_DECLARATIONS: GeminiFunctionDeclaration[] = [
   {
     name: 'modify_program',
     description:
-      'Create permanent structural changes across all (or filtered) workouts in the athlete active training program: permanently swap an exercise across sessions, add/remove an exercise, adjust working sets across the plan, move a lagging lift first, or clear program adaptations. Uses confirmation_required=true by default so the athlete approves multi-session changes (human-in-the-loop).',
+      'Create permanent structural changes across all (or filtered) workouts in the athlete active training program: permanently swap an exercise across sessions, add/remove an exercise, adjust working sets or rep range across the plan, move a lagging lift first, remove a single custom edit, or clear program adaptations. Uses confirmation_required=true by default so the athlete approves multi-session changes (human-in-the-loop).',
     parameters: {
       type: 'object',
       properties: {
         action: {
           type: 'string',
-          enum: ['swap_exercise', 'add_exercise', 'remove_exercise', 'adjust_sets', 'prioritize_first', 'clear_overrides'],
+          enum: [
+            'swap_exercise',
+            'add_exercise',
+            'remove_exercise',
+            'adjust_sets',
+            'adjust_rep_range',
+            'prioritize_first',
+            'remove_override',
+            'clear_overrides',
+          ],
           description: 'Program-level adaptation to perform.',
         },
         old_exercise_id: {
           type: 'string',
-          description: 'Exercise ID or name currently in the program to swap, remove, adjust, or prioritize.',
+          description: 'Exercise ID or name currently in the program to swap, remove, adjust, prioritize, or un-override.',
         },
         new_exercise_id: {
           type: 'string',
@@ -416,6 +484,14 @@ export const COACH_TOOL_DECLARATIONS: GeminiFunctionDeclaration[] = [
         set_delta: {
           type: 'integer',
           description: 'Relative working set change (e.g. +1 or -1) when adjusting sets across sessions.',
+        },
+        min_reps: {
+          type: 'integer',
+          description: 'Lower bound of target rep range (e.g. 6 for 6-8) when action is adjust_rep_range.',
+        },
+        max_reps: {
+          type: 'integer',
+          description: 'Upper bound of target rep range (e.g. 8 for 6-8) when action is adjust_rep_range.',
         },
         workout_filter: {
           type: 'string',
@@ -452,6 +528,195 @@ export const COACH_TOOL_DECLARATIONS: GeminiFunctionDeclaration[] = [
         confirmation_required: {
           type: 'boolean',
           description: 'True to present a human-in-the-loop approval card before changing the program (default true).',
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'log_workout_set',
+    description:
+      'Log, complete, or edit a working set on an exercise in today active workout (weight per dumbbell for paired DB lifts, reps or timed hold seconds, RIR, optional left/right unilateral reps).',
+    parameters: {
+      type: 'object',
+      properties: {
+        exercise_name: {
+          type: 'string',
+          description: 'Exercise ID or name in today active workout.',
+        },
+        set_number: {
+          type: 'integer',
+          description: 'Optional 1-based working set number to update; defaults to the next uncompleted working set.',
+        },
+        weight: {
+          type: 'number',
+          description: 'Weight used (per dumbbell for paired two-dumbbell exercises).',
+        },
+        unit: {
+          type: 'string',
+          enum: ['kg', 'lb'],
+          description: 'Weight unit; defaults to athlete profile unit.',
+        },
+        reps: {
+          type: 'integer',
+          description: 'Repetitions completed.',
+        },
+        reps_left: {
+          type: 'integer',
+          description: 'Left-side repetitions for unilateral exercises.',
+        },
+        reps_right: {
+          type: 'integer',
+          description: 'Right-side repetitions for unilateral exercises.',
+        },
+        duration_seconds: {
+          type: 'integer',
+          description: 'Hold or carry duration in seconds for timed exercises.',
+        },
+        rir: {
+          type: 'integer',
+          description: 'Reps in reserve (0-5).',
+        },
+      },
+      required: ['exercise_name'],
+    },
+  },
+  {
+    name: 'reorder_workout_exercises',
+    description:
+      'Reorder exercises within today active workout (e.g. move an exercise first, or place it before/after another exercise).',
+    parameters: {
+      type: 'object',
+      properties: {
+        exercise_name: {
+          type: 'string',
+          description: 'Exercise ID or name in today workout to move.',
+        },
+        position: {
+          type: 'string',
+          enum: ['first', 'last', 'before', 'after'],
+          description: 'Where to move the exercise.',
+        },
+        reference_exercise_name: {
+          type: 'string',
+          description: 'Target exercise name when position is before or after.',
+        },
+      },
+      required: ['exercise_name', 'position'],
+    },
+  },
+  {
+    name: 'update_exercise_note',
+    description:
+      'Save, append, or clear a session cue/note on an exercise in today active workout (e.g. seat height, grip width, brace cue).',
+    parameters: {
+      type: 'object',
+      properties: {
+        exercise_name: {
+          type: 'string',
+          description: 'Exercise ID or name in today workout.',
+        },
+        note: {
+          type: 'string',
+          description: 'Note text to save on the exercise.',
+        },
+        mode: {
+          type: 'string',
+          enum: ['set', 'append', 'clear'],
+          description: 'Whether to set, append to, or clear the note (default set).',
+        },
+      },
+      required: ['exercise_name'],
+    },
+  },
+  {
+    name: 'override_recovery_gate',
+    description:
+      'Unlock today queued workout when its muscles are still recovering (Train anyway). Always confirms with the athlete first so recovery is respected.',
+    parameters: {
+      type: 'object',
+      properties: {
+        confirmation_required: {
+          type: 'boolean',
+          description: 'True to warn about recovering muscles and ask for confirmation first (default true).',
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'delete_athlete_memory',
+    description:
+      'Forget/remove a saved athlete memory fact (e.g. resolved injury, old preference) by keyword or category, or clear all saved memories with confirmation.',
+    parameters: {
+      type: 'object',
+      properties: {
+        query: {
+          type: 'string',
+          description: 'Keyword or phrase matching the saved memory to remove (e.g. "shoulder", "overhead press").',
+        },
+        category: {
+          type: 'string',
+          enum: ['injury', 'contraindication', 'equipment', 'preference', 'goal', 'schedule'],
+          description: 'Optional category filter.',
+        },
+        clear_all: {
+          type: 'boolean',
+          description: 'True to remove all saved athlete memories (requires confirmation).',
+        },
+        confirmation_required: {
+          type: 'boolean',
+          description: 'True to confirm before clearing all saved memories.',
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'update_athlete_profile',
+    description:
+      'Update athlete profile settings or Workout screen display preferences: weight units (kg/lb), age, strength standard category (male/female), experience level, height, or Workout card display toggles.',
+    parameters: {
+      type: 'object',
+      properties: {
+        weight_unit: {
+          type: 'string',
+          enum: ['kg', 'lb'],
+          description: 'Switch weight display and rounding between kg and lb.',
+        },
+        age: {
+          type: 'integer',
+          description: 'Athlete age in years (13-100) for strength standards age group.',
+        },
+        gender: {
+          type: 'string',
+          enum: ['male', 'female'],
+          description: 'Strength standard category (male or female).',
+        },
+        experience_level: {
+          type: 'string',
+          enum: ['new', 'beginner', 'intermediate', 'experienced'],
+          description: 'Training experience level for starting weight calibration.',
+        },
+        height_cm: {
+          type: 'number',
+          description: 'Athlete height in cm (110-250).',
+        },
+        display_setting: {
+          type: 'string',
+          enum: [
+            'showExerciseCharts',
+            'showExerciseSummaries',
+            'showRecoveryCard',
+            'showSessionCard',
+            'showProgramCard',
+            'showStepsCard',
+          ],
+          description: 'Workout screen display card toggle to update.',
+        },
+        display_enabled: {
+          type: 'boolean',
+          description: 'Whether to show (true) or hide (false) the specified Workout screen card.',
         },
       },
       required: [],
@@ -510,6 +775,11 @@ export interface CoachToolOutcome {
   memorySaved?: AthleteMemoryFact;
   navigateTarget?: 'train' | 'program' | 'analytics';
   navigateLabel?: string;
+  navigateDetail?: {
+    detail?: string;
+    goalId?: string;
+    exerciseId?: string;
+  };
   errorMessage?: string;
 }
 
@@ -588,6 +858,11 @@ async function commitMutationTransaction(args: {
   memorySaved?: AthleteMemoryFact;
   navigateTarget?: 'train' | 'program' | 'analytics';
   navigateLabel?: string;
+  navigateDetail?: {
+    detail?: string;
+    goalId?: string;
+    exerciseId?: string;
+  };
 }): Promise<CoachToolOutcome> {
   const {
     context,
@@ -602,6 +877,7 @@ async function commitMutationTransaction(args: {
     memorySaved,
     navigateTarget,
     navigateLabel,
+    navigateDetail,
   } = args;
 
   const undoSnapshot: CoachUndoSnapshot = {
@@ -669,6 +945,7 @@ async function commitMutationTransaction(args: {
     memorySaved,
     navigateTarget,
     navigateLabel,
+    navigateDetail,
   };
 }
 
@@ -741,39 +1018,49 @@ export async function executeResetProgram(
     context.workouts,
     plan,
     context.activities ?? [],
-    context.profile.planCycleStarts
+    context.profile.planCycleStarts,
+    context.profile.planStartWorkouts
   );
   const completedInProgress = hasInProgressSets(context.activeWorkout);
   const shouldConfirm =
     rawArgs.confirmation_required === true ||
-    (rawArgs.confirmation_required !== false && completedInProgress);
+    (rawArgs.confirmation_required !== false && (completedInProgress || overviewBefore.completedCount > 0));
 
   const totalWeeks = Math.max(1, ...plan.templates.map((t) => t.week));
+  const clampedWeek = Math.min(totalWeeks, targetWeek);
   const liftingSlots = plan.templates.filter((t) => !isActiveSlot(t));
-  const slotIndex = Math.min(
-    Math.max(0, (targetWeek - 1) * Math.max(1, Math.round(liftingSlots.length / totalWeeks)) + (targetDay - 1)),
-    Math.max(0, liftingSlots.length - 1)
-  );
+  const weekSlots = liftingSlots.filter((t) => t.week === clampedWeek);
   const targetWorkoutNumber =
-    targetWeek === 1 && targetDay === 1
+    clampedWeek === 1 && targetDay === 1
       ? liftingSlots[0]?.workoutNumber ?? 1
-      : liftingSlots[slotIndex]?.workoutNumber ?? 1;
+      : weekSlots[Math.min(Math.max(0, targetDay - 1), Math.max(0, weekSlots.length - 1))]?.workoutNumber ??
+        liftingSlots[
+          Math.min(
+            Math.max(0, (clampedWeek - 1) * Math.max(1, Math.round(liftingSlots.length / totalWeeks)) + (targetDay - 1)),
+            Math.max(0, liftingSlots.length - 1)
+          )
+        ]?.workoutNumber ??
+        1;
 
-  const previousDisplay = `Week ${context.profile.mesocycleWeek || 1}, ${overviewBefore.completedCount} done`;
-  const newDisplay = `Week ${targetWeek}, Day ${targetDay} (${planWorkoutLabel(plan.templates.find((t) => t.workoutNumber === targetWorkoutNumber)?.title || 'Day 1')})`;
+  const currentWeekBefore =
+    plan.templates.find((t) => t.workoutNumber === overviewBefore.nextWorkoutNumber)?.week ||
+    context.profile.mesocycleWeek ||
+    1;
+  const previousDisplay = `Week ${currentWeekBefore}, ${overviewBefore.completedCount} done`;
+  const newDisplay = `Week ${clampedWeek}, Day ${targetDay} (${planWorkoutLabel(plan.templates.find((t) => t.workoutNumber === targetWorkoutNumber)?.title || 'Day 1')})`;
 
   const previewDiff: CoachStateDiff = {
     object_type: 'Program',
     object_id: plan.id,
-    label: `Program Reset • Week ${targetWeek}, Day ${targetDay}`,
+    label: `Program Reset • Week ${clampedWeek}, Day ${targetDay}`,
     previous_state: {
       display: previousDisplay,
-      week: context.profile.mesocycleWeek || 1,
+      week: currentWeekBefore,
       completed_workouts: overviewBefore.completedCount,
     },
     new_state: {
       display: newDisplay,
-      week: targetWeek,
+      week: clampedWeek,
       day: targetDay,
       workout_number: targetWorkoutNumber,
     },
@@ -782,18 +1069,20 @@ export async function executeResetProgram(
   if (shouldConfirm) {
     const pendingConfirmation: CoachPendingConfirmation = {
       tool_name: 'reset_program',
-      title: `Reset ${plan.name} to Week ${targetWeek}, Day ${targetDay}?`,
+      title: `Reset ${plan.name} to Week ${clampedWeek}, Day ${targetDay}?`,
       summary: `${previousDisplay} → ${newDisplay}`,
       warning: completedInProgress
-        ? `Today's session (${context.activeWorkout.name}) has logged sets in progress. Confirming restarts your current plan run from Day 1 while keeping past finished workouts in history.`
-        : `This starts a fresh cycle of ${plan.name} at Week ${targetWeek}, Day ${targetDay} while keeping your completed workout log.`,
-      confirm_label: `Confirm Reset to Day ${targetDay}`,
+        ? `Today's session (${context.activeWorkout.name}) has logged sets in progress. Confirming restarts your current plan run at Week ${clampedWeek}, Day ${targetDay} while keeping past finished workouts in history.`
+        : overviewBefore.completedCount > 0
+          ? `You have ${overviewBefore.completedCount} completed workout${overviewBefore.completedCount === 1 ? '' : 's'} in this run of ${plan.name}. Confirming starts a fresh cycle at Week ${clampedWeek}, Day ${targetDay} while keeping your workout log and personal bests.`
+          : `Confirming starts a fresh run of ${plan.name} at Week ${clampedWeek}, Day ${targetDay} while keeping your workout log and personal bests.`,
+      confirm_label: `Reset to W${clampedWeek} Day ${targetDay}`,
       cancel_label: 'Cancel',
       preview_diff: previewDiff,
       status: 'pending',
       args: {
         program_id: requestedProgramId,
-        target_week: targetWeek,
+        target_week: clampedWeek,
         target_day: targetDay,
         confirmation_required: false,
       },
@@ -802,8 +1091,10 @@ export async function executeResetProgram(
       toolName: 'reset_program',
       mutationStatus: 'awaiting_confirmation',
       summaryText: completedInProgress
-        ? `Today's **${context.activeWorkout.name}** already has logged sets in progress. Confirm below if you want to discard today's uncompleted draft and restart **${plan.name}** from Week ${targetWeek}, Day ${targetDay} (saved workouts stay in history).`
-        : `Ready to restart **${plan.name}** at Week ${targetWeek}, Day ${targetDay}. Confirm below to apply the reset.`,
+        ? `Today's **${context.activeWorkout.name}** already has logged sets in progress. Confirm below if you want to discard today's uncompleted draft and restart **${plan.name}** at Week ${clampedWeek}, Day ${targetDay} (saved workouts stay in history).`
+        : overviewBefore.completedCount > 0
+          ? `You currently have **${overviewBefore.completedCount} completed workout${overviewBefore.completedCount === 1 ? '' : 's'}** in this run of **${plan.name}**. Confirm below to restart at Week ${clampedWeek}, Day ${targetDay} (your past workout history stays intact).`
+          : `Confirm below to reset **${plan.name}** to Week ${clampedWeek}, Day ${targetDay} (your past workout history stays intact).`,
       pendingConfirmation,
       stateDiff: previewDiff,
     };
@@ -814,7 +1105,7 @@ export async function executeResetProgram(
     const splitDay = getFirstSplitDayForProgram(requestedProgramId);
     const updatedProfilePatch: Partial<UserProfile> = {
       programType: requestedProgramId,
-      mesocycleWeek: targetWeek,
+      mesocycleWeek: clampedWeek,
     };
     const generated = prepareSessionForAthlete(
       generateSmartWorkoutSession(
@@ -822,7 +1113,7 @@ export async function executeResetProgram(
         context.workouts,
         context.exerciseCatalog,
         context.readinessState,
-        targetWeek,
+        clampedWeek,
         context.profile.activeLocation || 'gym',
         context.profile.homeEquipment || [],
         context.profile.goalPhase,
@@ -842,25 +1133,26 @@ export async function executeResetProgram(
     return commitMutationTransaction({
       context,
       toolName: 'reset_program',
+      actionType: 'RESET_PROGRAM',
       updatedProfile: updatedProfilePatch,
       updatedWorkout: generated,
       stateDiff: {
         object_type: 'Program',
         object_id: requestedProgramId,
-        label: `Program Reset • Week ${targetWeek}, Day ${targetDay}`,
+        label: `Program Reset • Week ${clampedWeek}, Day ${targetDay}`,
         previous_state: {
           display: `Week ${context.profile.mesocycleWeek || 1} • ${context.activeWorkout.name}`,
           week: context.profile.mesocycleWeek || 1,
         },
         new_state: {
-          display: `Week ${targetWeek}, Day ${targetDay} • ${generated.name}`,
-          week: targetWeek,
+          display: `Week ${clampedWeek}, Day ${targetDay} • ${generated.name}`,
+          week: clampedWeek,
           day: targetDay,
         },
       },
-      summaryText: `**Program reset to Week ${targetWeek}, Day ${targetDay}.** Today's session is now **${generated.name}**.`,
+      summaryText: `**Program reset to Week ${clampedWeek}, Day ${targetDay}.** Today's session is now **${generated.name}**.`,
       navigateTarget: 'program',
-      navigateLabel: `View Day ${targetDay}`,
+      navigateLabel: 'View Program',
     });
   }
 
@@ -868,10 +1160,19 @@ export async function executeResetProgram(
     ...(context.profile.planCycleStarts || {}),
     [plan.id]: new Date(Date.now() + 1).toISOString(),
   };
+  const nextStartWorkouts: Record<string, number> = {
+    ...(context.profile.planStartWorkouts || {}),
+  };
+  if (targetWorkoutNumber > 1) {
+    nextStartWorkouts[plan.id] = targetWorkoutNumber;
+  } else {
+    delete nextStartWorkouts[plan.id];
+  }
   const updatedProfilePatch: Partial<UserProfile> = {
     programType: plan.id,
-    mesocycleWeek: targetWeek,
+    mesocycleWeek: clampedWeek,
     planCycleStarts: cycleStarts,
+    planStartWorkouts: Object.keys(nextStartWorkouts).length > 0 ? nextStartWorkouts : undefined,
   };
   const nextProfile = { ...context.profile, ...updatedProfilePatch };
   const freshWorkout = buildPreparedSessionForReset(plan, targetWorkoutNumber, context, nextProfile);
@@ -879,12 +1180,13 @@ export async function executeResetProgram(
   return commitMutationTransaction({
     context,
     toolName: 'reset_program',
+    actionType: 'RESET_PROGRAM',
     updatedProfile: updatedProfilePatch,
     updatedWorkout: freshWorkout,
     stateDiff: previewDiff,
-    summaryText: `**${plan.name} reset to Week ${targetWeek}, Day ${targetDay}.** Today's queued workout is **${planWorkoutLabel(freshWorkout.name)}**, and your past completed logs remain in history.`,
+    summaryText: `**${plan.name} reset to Week ${clampedWeek}, Day ${targetDay}.** Today's queued workout is **${planWorkoutLabel(freshWorkout.name)}**, and your past completed logs remain in history.`,
     navigateTarget: 'program',
-    navigateLabel: `View Day ${targetDay}`,
+    navigateLabel: 'View Program',
   });
 }
 
@@ -1252,6 +1554,10 @@ export async function executeSwapExercise(
 export interface AdjustWorkoutVolumeArgs {
   workout_id?: string;
   modifier_type: 'reduce_sets' | 'increase_sets' | 'deload_load' | 'short_on_time';
+  exercise_name?: string;
+  target_sets?: number;
+  set_delta?: number;
+  load_delta_pct?: number;
   details?: string;
 }
 
@@ -1284,13 +1590,78 @@ export async function executeAdjustWorkoutVolume(
     };
   }
 
-  // Scope to a single named exercise if details mentions one specifically (unless asking for all/workout-wide).
   const detailText = (rawArgs.details || '').toLowerCase();
-  const isWorkoutWide = /\b(all|every|each|whole|entire|workout|session)\b/.test(detailText);
-  const specificEx =
-    detailText && !isWorkoutWide && rawArgs.modifier_type !== 'short_on_time'
-      ? findWorkoutExercise(detailText, activeWorkout, exerciseCatalog)
-      : undefined;
+  const explicitExQuery = (rawArgs.exercise_name || '').trim();
+  const isExplicitlyAll = /\b(all|every|each|whole|entire)\b/.test(detailText) && !explicitExQuery;
+
+  // Resolve a named exercise FIRST so phrases like "Add a set to Bench Press in today's workout"
+  // target that exercise instead of mutating every lift in the session.
+  let specificEx: ExerciseSession | undefined;
+  if (rawArgs.modifier_type !== 'short_on_time' && !isExplicitlyAll) {
+    if (explicitExQuery) {
+      specificEx = findWorkoutExercise(explicitExQuery, activeWorkout, exerciseCatalog);
+    }
+    if (!specificEx && detailText) {
+      specificEx = findWorkoutExercise(detailText, activeWorkout, exerciseCatalog);
+    }
+  }
+
+  // If the athlete asked to add N sets of an exercise that is NOT in today's workout (e.g. "Add 4 sets of Face Pulls"),
+  // delegate cleanly to executeModifyWorkoutExercises(add) rather than bumping every unrelated lift.
+  if (
+    !specificEx &&
+    rawArgs.modifier_type === 'increase_sets' &&
+    !isExplicitlyAll &&
+    (explicitExQuery || /\b(?:of|for|on)\s+[a-z]/i.test(detailText))
+  ) {
+    const candidateQuery =
+      explicitExQuery ||
+      detailText.match(/\b(?:of|for|on)\s+([a-z0-9\s-]{3,40}?)(?:\s+(?:to|in)\s+today|$)/i)?.[1]?.trim() ||
+      '';
+    const catalogDef = candidateQuery ? findCatalogExercise(candidateQuery, exerciseCatalog, activeWorkout) : undefined;
+    if (catalogDef && !activeWorkout.exercises.some((e) => e.exerciseId === catalogDef.id)) {
+      const explicitSetMatch = detailText.match(/\b(\d+)\s*(?:working\s*)?sets?\b/i);
+      const setsToAdd =
+        typeof rawArgs.target_sets === 'number'
+          ? rawArgs.target_sets
+          : typeof rawArgs.set_delta === 'number'
+            ? rawArgs.set_delta
+            : explicitSetMatch
+              ? Number(explicitSetMatch[1])
+              : 3;
+      return executeModifyWorkoutExercises(
+        {
+          action: 'add',
+          exercise_name: catalogDef.name,
+          sets: Math.max(1, Math.min(8, Math.round(setsToAdd))),
+          reason: rawArgs.details,
+        },
+        context
+      );
+    }
+  }
+
+  // Parse explicit target set count, set delta, or load percentage from args or details text.
+  const explicitTargetSets =
+    typeof rawArgs.target_sets === 'number'
+      ? Math.max(1, Math.min(10, Math.round(rawArgs.target_sets)))
+      : detailText.match(/\b(?:to|at)\s+(\d+)\s*(?:working\s*)?sets?\b/i)
+        ? Math.max(1, Math.min(10, Number(detailText.match(/\b(?:to|at)\s+(\d+)\s*(?:working\s*)?sets?\b/i)![1])))
+        : undefined;
+  const parsedDeltaMatch = detailText.match(/(?:^|\s)[+-]?(\d+)\s*(?:more|extra|working)?\s*sets?\b/i);
+  const deltaStep =
+    typeof rawArgs.set_delta === 'number'
+      ? Math.max(1, Math.min(5, Math.abs(Math.round(rawArgs.set_delta))))
+      : !explicitTargetSets && parsedDeltaMatch
+        ? Math.max(1, Math.min(5, Number(parsedDeltaMatch[1])))
+        : 1;
+  const parsedPctMatch = detailText.match(/(\d+(?:\.\d+)?)\s*%/);
+  const loadDropPct =
+    typeof rawArgs.load_delta_pct === 'number'
+      ? Math.max(5, Math.min(40, Math.abs(rawArgs.load_delta_pct)))
+      : parsedPctMatch
+        ? Math.max(5, Math.min(40, Number(parsedPctMatch[1])))
+        : 10;
 
   const unit = context.profile.weightUnit || 'kg';
   let changed = false;
@@ -1300,11 +1671,18 @@ export async function executeAdjustWorkoutVolume(
     const working = ex.sets.filter((s) => !s.isWarmup && s.setType !== 'warmup');
     const completedWorking = working.filter((s) => s.completed);
     const pendingWorking = working.filter((s) => !s.completed);
-    if (pendingWorking.length === 0) return ex;
+    if (pendingWorking.length === 0 && rawArgs.modifier_type !== 'increase_sets') return ex;
 
     if (rawArgs.modifier_type === 'reduce_sets' || rawArgs.modifier_type === 'short_on_time') {
-      const minRemaining = rawArgs.modifier_type === 'short_on_time' ? (exIdx < 3 ? 2 : 1) : Math.max(1, working.length - 1);
-      const keepTotal = Math.max(completedWorking.length, minRemaining);
+      const targetRemaining =
+        rawArgs.modifier_type === 'short_on_time'
+          ? exIdx < 3
+            ? 2
+            : 1
+          : explicitTargetSets !== undefined
+            ? explicitTargetSets
+            : Math.max(1, working.length - deltaStep);
+      const keepTotal = Math.max(completedWorking.length, Math.min(working.length, targetRemaining));
       if (keepTotal < working.length) {
         changed = true;
         const nextSets = [...warmups, ...completedWorking, ...pendingWorking.slice(0, keepTotal - completedWorking.length)].map(
@@ -1318,21 +1696,29 @@ export async function executeAdjustWorkoutVolume(
     if (rawArgs.modifier_type === 'increase_sets') {
       const lastWorking = working[working.length - 1];
       if (!lastWorking) return ex;
+      const desiredTotal =
+        explicitTargetSets !== undefined
+          ? Math.min(10, Math.max(working.length, explicitTargetSets))
+          : Math.min(10, working.length + deltaStep);
+      const addCount = desiredTotal - working.length;
+      if (addCount <= 0) return ex;
       changed = true;
-      const extraSet = {
+      const extras: WorkoutSet[] = Array.from({ length: addCount }, (_, idx) => ({
         ...lastWorking,
-        id: `${ex.id}-extra-${Date.now()}-${exIdx}`,
-        setNumber: ex.sets.length + 1,
+        id: `${ex.id}-extra-${Date.now()}-${exIdx}-${idx}`,
+        setNumber: ex.sets.length + idx + 1,
         completed: false,
-      };
-      return { ...ex, sets: [...ex.sets, extraSet] };
+        completedAt: undefined,
+      }));
+      return { ...ex, sets: [...ex.sets, ...extras] };
     }
 
     if (rawArgs.modifier_type === 'deload_load') {
-      changed = true;
+      const factor = 1 - loadDropPct / 100;
       const nextWorking = working.map((s) => {
         if (s.completed || s.targetWeightKg <= 0) return s;
-        const reduced = snapLoadKg(Math.max(loadIncrementFor(ex.equipment), s.targetWeightKg * 0.9), unit, ex.equipment);
+        const reduced = snapLoadKg(Math.max(loadIncrementFor(ex.equipment), s.targetWeightKg * factor), unit, ex.equipment);
+        changed = true;
         return {
           ...s,
           targetWeightKg: reduced,
@@ -1352,7 +1738,7 @@ export async function executeAdjustWorkoutVolume(
       actionType: 'ADJUST_WORKOUT_VOLUME',
       mutationStatus: 'error',
       summaryText: specificEx
-        ? `**${specificEx.name}** is already at its minimum or completed. No volume changes were made.`
+        ? `**${specificEx.name}** is already at that set count or completed. No volume changes were made.`
         : `Every exercise in **${activeWorkout.name}** is already at its minimum or completed. No volume changes were made.`,
       errorMessage: 'No adjustable pending sets.',
     };
@@ -1370,10 +1756,10 @@ export async function executeAdjustWorkoutVolume(
       : `${workingCountBefore} working sets`;
   const nextDisplay =
     rawArgs.modifier_type === 'deload_load'
-      ? `-10% load, RIR 2+ (${workingCountAfter} sets)`
+      ? `-${Math.round(loadDropPct)}% load, RIR 2+ (${workingCountAfter} sets)`
       : `${workingCountAfter} working sets`;
 
-  const scopeLabel = specificEx ? `${specificEx.name} in **${activeWorkout.name}**` : `**${activeWorkout.name}**`;
+  const scopeLabel = specificEx ? `**${specificEx.name}** in **${activeWorkout.name}**` : `**${activeWorkout.name}**`;
   return commitMutationTransaction({
     context,
     toolName: 'adjust_workout_volume',
@@ -1393,7 +1779,7 @@ export async function executeAdjustWorkoutVolume(
     },
     summaryText:
       rawArgs.modifier_type === 'deload_load'
-        ? `Lightened uncompleted sets in ${scopeLabel} by ~10% and set target effort to 2 RIR.`
+        ? `Lightened uncompleted sets on ${scopeLabel} by ~${Math.round(loadDropPct)}% and set target effort to 2 RIR.`
         : `Adjusted ${scopeLabel} from ${workingCountBefore} to **${workingCountAfter} working sets**.`,
     navigateTarget: 'train',
     navigateLabel: 'View Workout',
@@ -1683,7 +2069,9 @@ export async function executeSwitchLocation(
     bands: 'Resistance Bands',
   };
 
-  if (typeof rawArgs.week === 'number' && rawArgs.week >= 1 && rawArgs.week <= 6) {
+  const activePlanForWeek = resolveActivePlan(context.profile);
+  const maxPlanWeeks = Math.max(6, ...activePlanForWeek.templates.map((t) => t.week));
+  if (typeof rawArgs.week === 'number' && rawArgs.week >= 1 && rawArgs.week <= maxPlanWeeks) {
     const targetWeek = Math.round(rawArgs.week);
     const currentSchedule = { ...(context.profile.scheduledWeekLocations || {}) };
     const prevWeekLoc = currentSchedule[targetWeek] ?? context.profile.activeLocation ?? 'gym';
@@ -1691,7 +2079,20 @@ export async function executeSwitchLocation(
     const updatedProfile: Partial<UserProfile> = { scheduledWeekLocations: currentSchedule };
     let updatedWorkout: WorkoutSession | undefined;
 
-    if ((context.profile.mesocycleWeek || 1) === targetWeek && context.activeWorkout.location !== targetLoc) {
+    const planOverview = buildPlanOverview(
+      context.workouts,
+      activePlanForWeek,
+      context.activities ?? [],
+      context.profile.planCycleStarts,
+      context.profile.planStartWorkouts
+    );
+    const currentPlanWeek = isPlanProgram(context.profile.programType)
+      ? activePlanForWeek.templates.find((t) => t.workoutNumber === planOverview.nextWorkoutNumber)?.week ||
+        context.profile.mesocycleWeek ||
+        1
+      : context.profile.mesocycleWeek || 1;
+
+    if (currentPlanWeek === targetWeek && context.activeWorkout.location !== targetLoc) {
       const adapted = adaptWorkoutSessionToLocation(
         context.activeWorkout,
         targetLoc,
@@ -1899,11 +2300,11 @@ export function resolveProgramSelection(
   if (/\b(muscle_building_6wk|6[\s-]*week\s*muscle|muscle\s*building|muscle\s*plan)\b/i.test(lower)) {
     return { id: 'muscle_building_6wk', name: '6-Week Muscle Building Plan' };
   }
-  if (/\b(starter_4day|4[\s-]*day|lift\s*4|four\s*day|upper\s*\/?\s*lower)\b/i.test(lower)) {
-    return { id: 'starter_4day', name: '6-Week Starter Plan' };
+  if (/\b(starter_4day|4[\s-]*day|lift\s*4|four\s*day|upper\s*[\/-]?\s*lower|upper\s+and\s+lower)\b/i.test(lower)) {
+    return { id: 'starter_4day', name: '6-Week Starter Plan (4-Day Upper/Lower)' };
   }
-  if (/\b(starter_6wk|starter\s*plan|starter|3[\s-]*day|three\s*day|3\s*workouts?)\b/i.test(lower)) {
-    return { id: 'starter_6wk', name: '6-Week Starter Plan' };
+  if (/\b(starter_6wk|starter\s*plan|starter|3[\s-]*day|three\s*day|3\s*workouts?|full[\s-]*body)\b/i.test(lower)) {
+    return { id: 'starter_6wk', name: '6-Week Starter Plan (3-Day Full Body)' };
   }
   return null;
 }
@@ -1935,7 +2336,12 @@ export async function executeSwitchProgram(
 
   const nextProfile: UserProfile = { ...context.profile, programType: matchedPlan.id };
   const targetPlan = resolveActivePlan(nextProfile);
-  const nextNum = getNextProgramWorkoutNumber(context.workouts, targetPlan, nextProfile.planCycleStarts);
+  const nextNum = getNextProgramWorkoutNumber(
+    context.workouts,
+    targetPlan,
+    nextProfile.planCycleStarts,
+    nextProfile.planStartWorkouts
+  );
   const nextWeek = targetPlan.templates.find((t) => t.workoutNumber === nextNum)?.week ?? 1;
   const freshWorkout = buildPreparedSessionForReset(targetPlan, nextNum, context, nextProfile);
 
@@ -1949,10 +2355,10 @@ export async function executeSwitchProgram(
       object_type: 'Program',
       object_id: targetPlan.id,
       label: 'Program Updated',
-      previous_state: { display: currentPlan.name },
-      new_state: { display: targetPlan.name },
+      previous_state: { display: currentPlan.id === 'starter_4day' ? '6-Week Starter Plan (4-Day Upper/Lower)' : currentPlan.id === 'starter_6wk' ? '6-Week Starter Plan (3-Day Full Body)' : currentPlan.name },
+      new_state: { display: matchedPlan.name },
     },
-    summaryText: `Switched your program to **${targetPlan.name}**. Your next session on the Workout tab is **Workout ${nextNum} of ${targetPlan.templates.length}: ${planWorkoutLabel(freshWorkout.name)}** (Week ${nextWeek}).`,
+    summaryText: `Switched your program to **${matchedPlan.name}**. Your next session on the Workout tab is **Workout ${nextNum} of ${targetPlan.templates.length}: ${planWorkoutLabel(freshWorkout.name)}** (Week ${nextWeek}).`,
     navigateTarget: 'program',
     navigateLabel: 'View Program',
   });
@@ -1976,7 +2382,12 @@ export async function executeSwitchGoalPhase(
   if (!hasStartedSets && isPlanProgram(nextProfile.programType)) {
     const plan = resolveActivePlan(nextProfile);
     if (plan.id !== 'muscle_building_6wk' && !plan.id.startsWith('custom:')) {
-      const nextNum = getNextProgramWorkoutNumber(context.workouts, plan, nextProfile.planCycleStarts);
+      const nextNum = getNextProgramWorkoutNumber(
+        context.workouts,
+        plan,
+        nextProfile.planCycleStarts,
+        nextProfile.planStartWorkouts
+      );
       updatedWorkout = buildPreparedSessionForReset(plan, nextNum, context, nextProfile);
     }
   }
@@ -2004,6 +2415,7 @@ export async function executeSwitchGoalPhase(
     summaryText: reply,
     navigateTarget: 'analytics',
     navigateLabel: 'View Goals',
+    navigateDetail: { detail: 'goals' },
   });
 }
 
@@ -2117,6 +2529,7 @@ export async function executeUpdateGoals(
     summaryText: result.reply,
     navigateTarget: 'analytics',
     navigateLabel: 'View Goals',
+    navigateDetail: { detail: 'goals' },
   });
 }
 
@@ -2157,7 +2570,7 @@ export async function executeUpdateProgressWidgets(
     actionType: 'UPDATE_PROGRESS_WIDGETS',
     updatedProfile: { progressWidgets: result.progressWidgets },
     stateDiff: {
-      object_type: 'Program',
+      object_type: 'Dashboard',
       object_id: 'progress-widgets',
       label: 'Progress Updated',
       previous_state: { display: `${(context.profile.progressWidgets ?? []).length || 'Default'} widgets` },
@@ -2166,14 +2579,62 @@ export async function executeUpdateProgressWidgets(
     summaryText: result.reply,
     navigateTarget: 'analytics',
     navigateLabel: 'View Progress',
+    navigateDetail: { detail: 'overview' },
   });
 }
 
 export interface LogEntryArgs {
-  kind: 'bodyweight' | 'body_fat' | 'waist' | 'active_day';
+  kind: 'bodyweight' | 'body_fat' | 'waist' | 'tape_measurement' | 'steps' | 'height' | 'active_day';
   value: number;
-  unit?: 'kg' | 'lb' | 'cm' | 'in' | 'minutes';
-  activity_type?: ActivityType;
+  unit?: 'kg' | 'lb' | 'cm' | 'in' | 'steps' | 'minutes';
+  measurement_site?: string;
+  activity_type?: ActivityType | 'mobility';
+  distance_km?: number;
+  date?: string;
+}
+
+function resolveLogDateString(rawDate?: string): { dateStr: string; label: string } {
+  const today = new Date();
+  const todayStr = localDateString(today);
+  if (!rawDate) return { dateStr: todayStr, label: 'today' };
+  const cleaned = rawDate.trim().toLowerCase();
+  if (cleaned === 'today') return { dateStr: todayStr, label: 'today' };
+  if (cleaned === 'yesterday') {
+    const y = new Date(today);
+    y.setDate(today.getDate() - 1);
+    return { dateStr: localDateString(y), label: 'yesterday' };
+  }
+  if (/^\d{4}-\d{2}-\d{2}$/.test(cleaned)) {
+    return { dateStr: cleaned, label: cleaned === todayStr ? 'today' : cleaned };
+  }
+  return { dateStr: todayStr, label: 'today' };
+}
+
+function resolveTapeSite(rawSite?: string): BodySiteDefinition | undefined {
+  if (!rawSite) return undefined;
+  const s = rawSite.toLowerCase().trim().replace(/[\s-]+/g, '_');
+  const direct = BODY_MEASUREMENT_SITES.find((site) => site.id === s || site.label.toLowerCase().replace(/\s+/g, '_') === s);
+  if (direct) return direct;
+  if (s === 'shoulders' || s === 'delts') return BODY_MEASUREMENT_SITES.find((site) => site.id === 'shoulder');
+  if (s === 'hips' || s === 'glutes') return BODY_MEASUREMENT_SITES.find((site) => site.id === 'hip');
+  if (s === 'stomach' || s === 'belly' || s === 'navel') return BODY_MEASUREMENT_SITES.find((site) => site.id === 'abdomen');
+  if (s === 'left_bicep' || s === 'left_arm' || s === 'arm_left' || s === 'biceps_left') {
+    return BODY_MEASUREMENT_SITES.find((site) => site.id === 'bicep_left');
+  }
+  if (s === 'right_bicep' || s === 'right_arm' || s === 'arm_right' || s === 'biceps_right' || s === 'bicep' || s === 'biceps' || s === 'arm') {
+    return BODY_MEASUREMENT_SITES.find((site) => site.id === 'bicep_right');
+  }
+  if (s === 'left_thigh' || s === 'left_quad' || s === 'quad_left' || s === 'thighs_left') {
+    return BODY_MEASUREMENT_SITES.find((site) => site.id === 'thigh_left');
+  }
+  if (s === 'right_thigh' || s === 'right_quad' || s === 'quad_right' || s === 'thighs_right' || s === 'thigh' || s === 'thighs') {
+    return BODY_MEASUREMENT_SITES.find((site) => site.id === 'thigh_right');
+  }
+  if (s === 'left_calf' || s === 'calves_left') return BODY_MEASUREMENT_SITES.find((site) => site.id === 'calf_left');
+  if (s === 'right_calf' || s === 'calves_right' || s === 'calf' || s === 'calves') {
+    return BODY_MEASUREMENT_SITES.find((site) => site.id === 'calf_right');
+  }
+  return undefined;
 }
 
 export async function executeLogEntry(
@@ -2181,7 +2642,8 @@ export async function executeLogEntry(
   context: CoachToolExecutionContext
 ): Promise<CoachToolOutcome> {
   const val = Number(rawArgs.value);
-  const todayStr = localDateString();
+  const { dateStr: targetDateStr, label: dateLabel } = resolveLogDateString(rawArgs.date);
+  const profileUnit = context.profile.weightUnit || 'kg';
 
   if (rawArgs.kind === 'active_day') {
     const mins = Math.round(val);
@@ -2194,17 +2656,23 @@ export async function executeLogEntry(
         errorMessage: 'Invalid activity duration.',
       };
     }
-    const actType: ActivityType = rawArgs.activity_type && rawArgs.activity_type in ACTIVITY_LABELS ? rawArgs.activity_type : 'other';
+    const rawType = rawArgs.activity_type === 'mobility' ? 'class' : rawArgs.activity_type;
+    const actType: ActivityType = rawType && rawType in ACTIVITY_LABELS ? (rawType as ActivityType) : 'other';
     const label = ACTIVITY_LABELS[actType];
+    const distKm =
+      typeof rawArgs.distance_km === 'number' && Number.isFinite(rawArgs.distance_km) && rawArgs.distance_km > 0 && rawArgs.distance_km <= 300
+        ? Math.round(rawArgs.distance_km * 10) / 10
+        : undefined;
     const existing = context.activities ?? [];
     const entry: ActivityLog = {
       id: `act-coach-${Date.now()}`,
-      date: todayStr,
+      date: targetDateStr,
       startedAt: new Date().toISOString(),
       minutes: mins,
       type: actType,
       source: 'manual',
-      name: `${label} (${mins} min)`,
+      name: `${label} (${mins} min${distKm ? ` · ${distKm} km` : ''})`,
+      ...(distKm ? { distanceKm: distKm } : {}),
     };
     const updatedActivities = [...existing, entry];
     const countsActiveDay = mins >= MIN_ACTIVE_MINUTES;
@@ -2218,11 +2686,11 @@ export async function executeLogEntry(
         object_id: entry.id,
         label: 'Activity Logged',
         previous_state: { display: `${existing.length} logged activities` },
-        new_state: { display: `${label} · ${mins} min` },
+        new_state: { display: `${label} · ${mins} min${distKm ? ` (${distKm} km)` : ''}` },
       },
       summaryText: countsActiveDay
-        ? `Logged your **${mins}-minute ${label.toLowerCase()}** for today. It counts as an active day toward your weekly sessions and keeps your streak alive.`
-        : `Logged your **${mins}-minute ${label.toLowerCase()}** for today. Sessions of ${MIN_ACTIVE_MINUTES}+ minutes count toward your weekly active-day goal.`,
+        ? `Logged your **${mins}-minute ${label.toLowerCase()}**${distKm ? ` (${distKm} km)` : ''} for ${dateLabel}. It counts as an active day toward your weekly sessions and keeps your streak alive.`
+        : `Logged your **${mins}-minute ${label.toLowerCase()}** for ${dateLabel}. Sessions of ${MIN_ACTIVE_MINUTES}+ minutes count toward your weekly active-day goal.`,
       navigateTarget: 'train',
       navigateLabel: 'View Workout',
     });
@@ -2238,13 +2706,50 @@ export async function executeLogEntry(
     };
   }
 
-  const profileUnit = context.profile.weightUnit || 'kg';
+  if (rawArgs.kind === 'height') {
+    const lenUnit = rawArgs.unit === 'in' || rawArgs.unit === 'cm' ? rawArgs.unit : profileUnit === 'lb' ? 'in' : 'cm';
+    const cm = Math.round((lenUnit === 'in' ? val * 2.54 : val) * 10) / 10;
+    if (cm < 110 || cm > 250) {
+      return {
+        toolName: 'log_entry',
+        actionType: 'UPDATE_PROFILE',
+        mutationStatus: 'error',
+        summaryText: 'Height must be between 110 and 250 cm.',
+        errorMessage: 'Height out of range.',
+      };
+    }
+    const prevHeight = context.profile.measuredHeightCm
+      ? `${context.profile.measuredHeightCm} cm`
+      : 'Not set';
+    return commitMutationTransaction({
+      context,
+      toolName: 'log_entry',
+      actionType: 'UPDATE_PROFILE',
+      updatedProfile: { heightCm: Math.round(cm), measuredHeightCm: Math.round(cm) },
+      stateDiff: {
+        object_type: 'Athlete',
+        object_id: 'height',
+        label: 'Height Updated',
+        previous_state: { display: prevHeight },
+        new_state: { display: `${Math.round(cm)} cm` },
+      },
+      summaryText: `Saved your height as **${Math.round(cm)} cm**. Body composition ratios now use it.`,
+      navigateTarget: 'analytics',
+      navigateLabel: 'View Measurements',
+      navigateDetail: { detail: 'measurements' },
+    });
+  }
+
   const existingBio = context.biometrics ?? [];
-  const todayIdx = existingBio.findIndex((b) => b.date === todayStr);
-  const currentToday = todayIdx >= 0 ? existingBio[todayIdx] : undefined;
+  const dayIdx = existingBio.findIndex((b) => b.date === targetDateStr);
+  const currentDay = dayIdx >= 0 ? existingBio[dayIdx] : undefined;
 
   let patch: Partial<BiometricLog> = {};
+  let displayPrev = dateLabel === 'today' ? 'Not logged today' : `Not logged (${dateLabel})`;
   let displayNew = '';
+  let navDetail: { detail?: string } = { detail: 'weight' };
+  let navLabel = 'View Body Weight';
+
   if (rawArgs.kind === 'bodyweight') {
     const unitUsed = rawArgs.unit === 'lb' || rawArgs.unit === 'kg' ? rawArgs.unit : profileUnit;
     const kg = Math.round(unitToKg(val, unitUsed) * 10) / 10;
@@ -2258,6 +2763,9 @@ export async function executeLogEntry(
       };
     }
     patch = { bodyweightKg: kg, isManualEntry: true };
+    if (currentDay?.bodyweightKg && currentDay.bodyweightKg > 0) {
+      displayPrev = `Weight: ${formatPreciseWeight(currentDay.bodyweightKg, profileUnit)}`;
+    }
     displayNew = `Weight: ${formatPreciseWeight(kg, profileUnit)}`;
   } else if (rawArgs.kind === 'body_fat') {
     const bf = Math.round(val * 10) / 10;
@@ -2271,27 +2779,67 @@ export async function executeLogEntry(
       };
     }
     patch = { bodyFatPct: bf, isManualEntry: true };
+    if (typeof currentDay?.bodyFatPct === 'number' && currentDay.bodyFatPct > 0) {
+      displayPrev = `Body fat: ${currentDay.bodyFatPct}%`;
+    }
     displayNew = `Body fat: ${bf}%`;
-  } else {
-    const lenUnit = rawArgs.unit === 'in' || rawArgs.unit === 'cm' ? rawArgs.unit : profileUnit === 'lb' ? 'in' : 'cm';
-    const cm = Math.round((lenUnit === 'in' ? val * 2.54 : val) * 10) / 10;
-    if (cm < 40 || cm > 200) {
+    navDetail = { detail: 'composition' };
+    navLabel = 'View Composition';
+  } else if (rawArgs.kind === 'steps') {
+    const steps = Math.round(val);
+    if (steps < 100 || steps > 100000) {
       return {
         toolName: 'log_entry',
         actionType: 'LOG_BIOMETRIC',
         mutationStatus: 'error',
-        summaryText: 'Waist circumference must be between 40 and 200 cm.',
-        errorMessage: 'Waist out of range.',
+        summaryText: 'Daily steps should be between 100 and 100,000.',
+        errorMessage: 'Steps out of range.',
       };
     }
-    patch = { waistCm: cm, isManualEntry: true };
-    displayNew = profileUnit === 'lb' ? `Waist: ${Math.round((cm / 2.54) * 10) / 10} in` : `Waist: ${cm} cm`;
+    patch = { steps, isManualEntry: true };
+    if (currentDay?.steps && currentDay.steps > 0) {
+      displayPrev = `${currentDay.steps.toLocaleString()} steps`;
+    }
+    displayNew = `${steps.toLocaleString()} steps`;
+    navDetail = { detail: 'steps' };
+    navLabel = 'View Steps';
+  } else {
+    // waist or any of the 12 tape_measurement sites
+    const siteDef =
+      rawArgs.kind === 'waist'
+        ? BODY_MEASUREMENT_SITES.find((s) => s.id === 'waist')!
+        : resolveTapeSite(rawArgs.measurement_site) ?? BODY_MEASUREMENT_SITES.find((s) => s.id === 'waist')!;
+    const lenUnit = rawArgs.unit === 'in' || rawArgs.unit === 'cm' ? rawArgs.unit : profileUnit === 'lb' ? 'in' : 'cm';
+    const cm = Math.round((lenUnit === 'in' ? val * 2.54 : val) * 10) / 10;
+    if (cm < siteDef.minCm || cm > siteDef.maxCm) {
+      return {
+        toolName: 'log_entry',
+        actionType: 'LOG_BIOMETRIC',
+        mutationStatus: 'error',
+        summaryText: `${siteDef.label} measurement must be between ${siteDef.minCm} and ${siteDef.maxCm} cm.`,
+        errorMessage: `${siteDef.label} out of range.`,
+      };
+    }
+    patch = { [siteDef.field]: cm, isManualEntry: true } as Partial<BiometricLog>;
+    const prevVal = currentDay?.[siteDef.field];
+    if (typeof prevVal === 'number' && prevVal > 0) {
+      displayPrev =
+        profileUnit === 'lb'
+          ? `${siteDef.label}: ${Math.round((prevVal / 2.54) * 10) / 10} in`
+          : `${siteDef.label}: ${prevVal} cm`;
+    }
+    displayNew =
+      profileUnit === 'lb'
+        ? `${siteDef.label}: ${Math.round((cm / 2.54) * 10) / 10} in`
+        : `${siteDef.label}: ${cm} cm`;
+    navDetail = { detail: 'measurements' };
+    navLabel = 'View Measurements';
   }
 
-  const nextLog: BiometricLog = currentToday
-    ? { ...currentToday, ...patch }
+  const nextLog: BiometricLog = currentDay
+    ? { ...currentDay, ...patch }
     : {
-        date: todayStr,
+        date: targetDateStr,
         bodyweightKg: 0,
         hrvRmssd: 0,
         restingHr: 0,
@@ -2301,8 +2849,8 @@ export async function executeLogEntry(
         ...patch,
       };
   const updatedBiometrics =
-    todayIdx >= 0
-      ? existingBio.map((b, i) => (i === todayIdx ? nextLog : b))
+    dayIdx >= 0
+      ? existingBio.map((b, i) => (i === dayIdx ? nextLog : b))
       : [...existingBio, nextLog].sort((a, b) => a.date.localeCompare(b.date));
 
   return commitMutationTransaction({
@@ -2312,14 +2860,15 @@ export async function executeLogEntry(
     updatedBiometrics,
     stateDiff: {
       object_type: 'Biometric',
-      object_id: todayStr,
+      object_id: targetDateStr,
       label: 'Measurement Logged',
-      previous_state: { display: currentToday?.bodyweightKg ? formatPreciseWeight(currentToday.bodyweightKg, profileUnit) : 'Today' },
+      previous_state: { display: displayPrev },
       new_state: { display: displayNew },
     },
-    summaryText: `Logged **${displayNew}** for today. Your Progress trend charts now reflect it.`,
+    summaryText: `Logged **${displayNew}** for ${dateLabel}. Your Progress trend charts now reflect it.`,
     navigateTarget: 'analytics',
-    navigateLabel: 'View Progress',
+    navigateLabel: navLabel,
+    navigateDetail: navDetail,
   });
 }
 
@@ -2486,6 +3035,33 @@ function syncActiveWorkoutWithOverrides(
           }
         }
       }
+    } else if (ov.kind === 'adjust_rep_range' && ov.repRange) {
+      const targetEx = current.exercises.find(
+        (e) =>
+          (ov.targetExerciseId && e.exerciseId === ov.targetExerciseId) ||
+          (ov.targetExerciseName && e.name.toLowerCase() === ov.targetExerciseName.toLowerCase())
+      );
+      if (targetEx) {
+        const [minR, maxR] = ov.repRange;
+        current = {
+          ...current,
+          exercises: current.exercises.map((e) =>
+            e.id === targetEx.id
+              ? {
+                  ...e,
+                  minReps: minR,
+                  maxReps: maxR,
+                  sets: e.sets.map((s) =>
+                    s.completed || s.isWarmup || s.setType === 'warmup'
+                      ? s
+                      : { ...s, targetReps: minR, actualReps: minR }
+                  ),
+                }
+              : e
+          ),
+        };
+        touched = true;
+      }
     } else if (ov.kind === 'prioritize_first') {
       const hasStarted = current.exercises.some((e) => e.sets.some((s) => s.completed));
       const idx = current.exercises.findIndex(
@@ -2507,11 +3083,21 @@ function syncActiveWorkoutWithOverrides(
 }
 
 export interface ModifyProgramArgs {
-  action: 'swap_exercise' | 'add_exercise' | 'remove_exercise' | 'adjust_sets' | 'prioritize_first' | 'clear_overrides';
+  action:
+    | 'swap_exercise'
+    | 'add_exercise'
+    | 'remove_exercise'
+    | 'adjust_sets'
+    | 'adjust_rep_range'
+    | 'prioritize_first'
+    | 'remove_override'
+    | 'clear_overrides';
   old_exercise_id?: string;
   new_exercise_id?: string;
   sets?: number;
   set_delta?: number;
+  min_reps?: number;
+  max_reps?: number;
   workout_filter?: string;
   reason?: string;
   confirmation_required?: boolean;
@@ -2524,6 +3110,106 @@ export async function executeModifyProgram(
   const plan = resolveActivePlan(context.profile);
   const existingOverrides = context.profile.programOverrides ?? [];
   const planOverrides = existingOverrides.filter((o) => o.planId === plan.id);
+
+  if (rawArgs.action === 'remove_override') {
+    if (planOverrides.length === 0) {
+      return {
+        toolName: 'modify_program',
+        actionType: 'MODIFY_PROGRAM',
+        mutationStatus: 'noop',
+        summaryText: `**${plan.name}** has no custom program edits to remove.`,
+      };
+    }
+    const q = (rawArgs.old_exercise_id || rawArgs.new_exercise_id || rawArgs.reason || '').toLowerCase().trim();
+    const matched = q
+      ? planOverrides.find(
+          (o) =>
+            o.targetExerciseName?.toLowerCase().includes(q) ||
+            o.replacementExerciseName?.toLowerCase().includes(q) ||
+            o.targetExerciseId?.toLowerCase() === q ||
+            o.replacementExerciseId?.toLowerCase() === q ||
+            o.reason?.toLowerCase().includes(q)
+        )
+      : planOverrides[planOverrides.length - 1];
+    if (!matched) {
+      return {
+        toolName: 'modify_program',
+        actionType: 'MODIFY_PROGRAM',
+        mutationStatus: 'error',
+        summaryText: `Couldn't find a custom program edit matching "${q}" in **${plan.name}**.`,
+        errorMessage: 'Override not found.',
+      };
+    }
+    const matchedLabel =
+      matched.kind === 'swap_exercise'
+        ? `${matched.targetExerciseName || matched.targetExerciseId} → ${matched.replacementExerciseName || matched.replacementExerciseId}`
+        : matched.kind === 'add_exercise'
+          ? `+ ${matched.replacementExerciseName || matched.replacementExerciseId}`
+          : matched.targetExerciseName || matched.targetExerciseId || matched.kind;
+    const removeDiff: CoachStateDiff = {
+      object_type: 'Program',
+      object_id: plan.id,
+      label: 'Program Edit Removed',
+      previous_state: { display: `${planOverrides.length} active edit${planOverrides.length === 1 ? '' : 's'}` },
+      new_state: { display: `Removed: ${matchedLabel}` },
+    };
+    if (rawArgs.confirmation_required !== false) {
+      const pendingConfirmation: CoachPendingConfirmation = {
+        tool_name: 'modify_program',
+        args: {
+          action: 'remove_override',
+          old_exercise_id: matched.targetExerciseName || matched.replacementExerciseName || matched.targetExerciseId,
+          confirmation_required: false,
+        },
+        title: `Remove "${matchedLabel}" from ${plan.name}?`,
+        summary: `Restores that edit to the default plan while keeping ${planOverrides.length - 1} other edit${planOverrides.length - 1 === 1 ? '' : 's'}`,
+        warning: `Only this single customization is removed; your other program adaptations and past logs stay untouched.`,
+        confirm_label: 'Remove edit',
+        cancel_label: 'Keep edit',
+        preview_diff: removeDiff,
+        status: 'pending',
+      };
+      return {
+        toolName: 'modify_program',
+        actionType: 'MODIFY_PROGRAM',
+        mutationStatus: 'awaiting_confirmation',
+        summaryText: `Confirm below to remove **${matchedLabel}** from **${plan.name}**.`,
+        stateDiff: removeDiff,
+        pendingConfirmation,
+      };
+    }
+    const nextOverrides = existingOverrides.filter((o) => o.id !== matched.id);
+    const nextProfile: UserProfile = {
+      ...context.profile,
+      programOverrides: nextOverrides.length > 0 ? nextOverrides : undefined,
+    };
+    const rebuiltPlan = resolveActivePlan(nextProfile);
+    let updatedWorkout: WorkoutSession | undefined;
+    if (
+      !context.activeWorkout.completed &&
+      context.activeWorkout.programWorkoutNumber &&
+      getSessionPlanId(context.activeWorkout) === rebuiltPlan.id &&
+      !hasInProgressSets(context.activeWorkout)
+    ) {
+      updatedWorkout = buildPreparedSessionForReset(
+        rebuiltPlan,
+        context.activeWorkout.programWorkoutNumber,
+        context,
+        nextProfile
+      );
+    }
+    return commitMutationTransaction({
+      context,
+      toolName: 'modify_program',
+      actionType: 'MODIFY_PROGRAM',
+      updatedProfile: { programOverrides: nextProfile.programOverrides },
+      updatedWorkout,
+      stateDiff: removeDiff,
+      summaryText: `Removed the **${matchedLabel}** customization from **${rebuiltPlan.name}**. ${nextOverrides.filter((o) => o.planId === plan.id).length} custom edit${nextOverrides.filter((o) => o.planId === plan.id).length === 1 ? '' : 's'} remain active.`,
+      navigateTarget: 'program',
+      navigateLabel: 'View Program',
+    });
+  }
 
   if (rawArgs.action === 'clear_overrides') {
     if (planOverrides.length === 0) {
@@ -2652,6 +3338,22 @@ export async function executeModifyProgram(
     }
   }
 
+  let validatedRepRange: [number, number] | undefined;
+  if (rawArgs.action === 'adjust_rep_range') {
+    const minR = Math.round(rawArgs.min_reps ?? 6);
+    const maxR = Math.round(rawArgs.max_reps ?? Math.max(minR, minR + 2));
+    if (!Number.isFinite(minR) || !Number.isFinite(maxR) || minR < 1 || maxR > 30 || maxR < minR) {
+      return {
+        toolName: 'modify_program',
+        actionType: 'MODIFY_PROGRAM',
+        mutationStatus: 'error',
+        summaryText: 'Provide a valid rep range between 1 and 30 reps (for example, 6–8 or 8–12).',
+        errorMessage: 'Invalid rep range.',
+      };
+    }
+    validatedRepRange = [minR, maxR];
+  }
+
   const now = new Date().toISOString();
   const candidate: ProgramExerciseOverride = {
     id: `ov-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
@@ -2671,6 +3373,7 @@ export async function executeModifyProgram(
       : {}),
     ...(typeof rawArgs.sets === 'number' ? { sets: Math.max(1, Math.min(10, Math.round(rawArgs.sets))) } : {}),
     ...(typeof rawArgs.set_delta === 'number' ? { setDelta: Math.round(rawArgs.set_delta) } : {}),
+    ...(validatedRepRange ? { repRange: validatedRepRange } : {}),
     ...(rawArgs.workout_filter ? { workoutFilter: rawArgs.workout_filter } : {}),
     ...(rawArgs.reason ? { reason: rawArgs.reason } : {}),
     createdAt: now,
@@ -2720,6 +3423,15 @@ export async function executeModifyProgram(
     prevDisplay = `${targetEx.name}`;
     newDisplay = `${targetEx.name}: ${label} (${slotsText})`;
     commitSummary = `Adjusted **${targetEx.name}** (${label}) across ${slotsText} in **${plan.name}**.`;
+  } else if (rawArgs.action === 'adjust_rep_range' && targetEx && validatedRepRange) {
+    const rangeLbl =
+      validatedRepRange[0] === validatedRepRange[1]
+        ? `${validatedRepRange[0]} reps`
+        : `${validatedRepRange[0]}–${validatedRepRange[1]} reps`;
+    titleText = `Change ${targetEx.name} rep range to ${rangeLbl} across ${plan.name}?`;
+    prevDisplay = targetEx.name;
+    newDisplay = `${targetEx.name}: ${rangeLbl} (${slotsText})`;
+    commitSummary = `Updated **${targetEx.name}** to **${rangeLbl}** across ${slotsText} in **${plan.name}**. Double progression will now progress within ${rangeLbl}.`;
   } else if (rawArgs.action === 'prioritize_first' && targetEx) {
     titleText = `Train ${targetEx.name} first across ${plan.name}?`;
     prevDisplay = `${targetEx.name} (later slot)`;
@@ -2744,6 +3456,7 @@ export async function executeModifyProgram(
         ...(replacementDef ? { new_exercise_id: replacementDef.id } : {}),
         ...(candidate.sets !== undefined ? { sets: candidate.sets } : {}),
         ...(candidate.setDelta !== undefined ? { set_delta: candidate.setDelta } : {}),
+        ...(validatedRepRange ? { min_reps: validatedRepRange[0], max_reps: validatedRepRange[1] } : {}),
         ...(rawArgs.workout_filter ? { workout_filter: rawArgs.workout_filter } : {}),
         ...(rawArgs.reason ? { reason: rawArgs.reason } : {}),
         confirmation_required: false,
@@ -3001,6 +3714,712 @@ export async function executeRebalanceProgram(
   });
 }
 
+export interface LogWorkoutSetArgs {
+  exercise_name: string;
+  set_number?: number;
+  weight?: number;
+  unit?: 'kg' | 'lb';
+  reps?: number;
+  reps_left?: number;
+  reps_right?: number;
+  duration_seconds?: number;
+  rir?: number;
+}
+
+export async function executeLogWorkoutSet(
+  rawArgs: LogWorkoutSetArgs,
+  context: CoachToolExecutionContext
+): Promise<CoachToolOutcome> {
+  const { activeWorkout, exerciseCatalog } = context;
+  const query = cleanExerciseQuery(rawArgs.exercise_name);
+  let targetEx = query ? findWorkoutExercise(query, activeWorkout, exerciseCatalog) : undefined;
+  if (!targetEx && context.place?.exerciseId) {
+    targetEx = activeWorkout.exercises.find(
+      (e) => e.exerciseId === context.place?.exerciseId || e.id === context.place?.exerciseId
+    );
+  }
+  if (!targetEx) {
+    return {
+      toolName: 'log_workout_set',
+      actionType: 'LOG_WORKOUT_SET',
+      mutationStatus: 'error',
+      summaryText: query
+        ? `Couldn't find "${query}" in today's **${activeWorkout.name}** session.`
+        : `Tell me which exercise in **${activeWorkout.name}** you want to log a set for.`,
+      errorMessage: 'Exercise not found in active workout.',
+    };
+  }
+
+  const workingIndices: number[] = [];
+  targetEx.sets.forEach((s, idx) => {
+    if (!s.isWarmup && s.setType !== 'warmup') workingIndices.push(idx);
+  });
+  if (workingIndices.length === 0) {
+    return {
+      toolName: 'log_workout_set',
+      actionType: 'LOG_WORKOUT_SET',
+      mutationStatus: 'error',
+      summaryText: `**${targetEx.name}** has no working sets to log.`,
+      errorMessage: 'No working sets.',
+    };
+  }
+
+  let workingPos = -1;
+  if (typeof rawArgs.set_number === 'number' && Number.isFinite(rawArgs.set_number)) {
+    const requested = Math.round(rawArgs.set_number);
+    if (requested >= 1 && requested <= workingIndices.length) {
+      workingPos = requested - 1;
+    } else {
+      return {
+        toolName: 'log_workout_set',
+        actionType: 'LOG_WORKOUT_SET',
+        mutationStatus: 'error',
+        summaryText: `**${targetEx.name}** has ${workingIndices.length} working set${workingIndices.length === 1 ? '' : 's'} (1–${workingIndices.length}).`,
+        errorMessage: 'Set number out of range.',
+      };
+    }
+  } else {
+    workingPos = workingIndices.findIndex((idx) => !targetEx!.sets[idx].completed);
+    if (workingPos < 0) workingPos = workingIndices.length - 1;
+  }
+
+  const setIdx = workingIndices[workingPos];
+  const prevSet = targetEx.sets[setIdx];
+  const profileUnit = context.profile.weightUnit || 'kg';
+  const inputUnit = rawArgs.unit === 'lb' || rawArgs.unit === 'kg' ? rawArgs.unit : profileUnit;
+  const timed = isTimedExercise(targetEx);
+  const unilateral = isUnilateralExercise(targetEx);
+
+  let nextWeightKg = prevSet.actualWeightKg ?? prevSet.targetWeightKg;
+  if (typeof rawArgs.weight === 'number' && Number.isFinite(rawArgs.weight)) {
+    const converted = Math.round(unitToKg(rawArgs.weight, inputUnit) * 10) / 10;
+    if (converted < 0 || converted > 500) {
+      return {
+        toolName: 'log_workout_set',
+        actionType: 'LOG_WORKOUT_SET',
+        mutationStatus: 'error',
+        summaryText: `Weight ${rawArgs.weight} ${inputUnit} is outside a realistic range (0–500 kg).`,
+        errorMessage: 'Weight out of range.',
+      };
+    }
+    nextWeightKg = converted;
+  }
+
+  let nextReps = prevSet.actualReps ?? prevSet.targetReps;
+  let repsLeft = prevSet.actualRepsLeft;
+  let repsRight = prevSet.actualRepsRight;
+  if (
+    typeof rawArgs.reps_left === 'number' &&
+    typeof rawArgs.reps_right === 'number' &&
+    Number.isFinite(rawArgs.reps_left) &&
+    Number.isFinite(rawArgs.reps_right)
+  ) {
+    const l = Math.round(rawArgs.reps_left);
+    const r = Math.round(rawArgs.reps_right);
+    if (l < 1 || l > 100 || r < 1 || r > 100) {
+      return {
+        toolName: 'log_workout_set',
+        actionType: 'LOG_WORKOUT_SET',
+        mutationStatus: 'error',
+        summaryText: 'Left and right side reps must be between 1 and 100.',
+        errorMessage: 'Unilateral reps out of range.',
+      };
+    }
+    repsLeft = l;
+    repsRight = r;
+    nextReps = Math.min(l, r);
+  } else if (typeof rawArgs.reps === 'number' && Number.isFinite(rawArgs.reps)) {
+    const r = Math.round(rawArgs.reps);
+    if (r < 1 || r > 100) {
+      return {
+        toolName: 'log_workout_set',
+        actionType: 'LOG_WORKOUT_SET',
+        mutationStatus: 'error',
+        summaryText: 'Reps must be between 1 and 100.',
+        errorMessage: 'Reps out of range.',
+      };
+    }
+    nextReps = r;
+  }
+
+  let nextDuration = prevSet.actualDurationSeconds ?? prevSet.targetDurationSeconds;
+  if (typeof rawArgs.duration_seconds === 'number' && Number.isFinite(rawArgs.duration_seconds)) {
+    const secs = Math.round(rawArgs.duration_seconds);
+    if (secs < 5 || secs > 600) {
+      return {
+        toolName: 'log_workout_set',
+        actionType: 'LOG_WORKOUT_SET',
+        mutationStatus: 'error',
+        summaryText: 'Hold duration must be between 5 and 600 seconds.',
+        errorMessage: 'Duration out of range.',
+      };
+    }
+    nextDuration = secs;
+  }
+
+  let nextRir = prevSet.actualRir ?? prevSet.targetRir;
+  if (typeof rawArgs.rir === 'number' && Number.isFinite(rawArgs.rir)) {
+    const rir = Math.round(rawArgs.rir);
+    if (rir < 0 || rir > 6) {
+      return {
+        toolName: 'log_workout_set',
+        actionType: 'LOG_WORKOUT_SET',
+        mutationStatus: 'error',
+        summaryText: 'RIR (reps in reserve) must be between 0 and 6.',
+        errorMessage: 'RIR out of range.',
+      };
+    }
+    nextRir = rir;
+  }
+
+  const nowIso = new Date().toISOString();
+  const nextSet: WorkoutSet = {
+    ...prevSet,
+    actualWeightKg: nextWeightKg,
+    actualReps: timed ? 1 : nextReps,
+    ...(repsLeft !== undefined ? { actualRepsLeft: repsLeft } : {}),
+    ...(repsRight !== undefined ? { actualRepsRight: repsRight } : {}),
+    ...(nextDuration !== undefined ? { actualDurationSeconds: nextDuration } : {}),
+    actualRir: nextRir,
+    completed: true,
+    completedAt: nowIso,
+  };
+
+  const updatedWorkout: WorkoutSession = {
+    ...activeWorkout,
+    startedAt: activeWorkout.startedAt || nowIso,
+    exercises: activeWorkout.exercises.map((ex) =>
+      ex.id === targetEx!.id
+        ? { ...ex, sets: ex.sets.map((s, idx) => (idx === setIdx ? nextSet : s)) }
+        : ex
+    ),
+  };
+
+  const pairSuffix = usesTwoDumbbells(targetEx) ? ' each' : '';
+  const loadLabel =
+    nextWeightKg > 0
+      ? `${formatWeight(nextWeightKg, profileUnit)}${pairSuffix}`
+      : 'Bodyweight';
+  const perfLabel = timed
+    ? `${nextDuration ?? 45}s hold`
+    : repsLeft !== undefined && repsRight !== undefined
+      ? `L ${repsLeft} / R ${repsRight} reps`
+      : `${nextReps} reps`;
+  const rirLabel = `${nextRir} RIR`;
+  const workingNum = workingPos + 1;
+
+  return commitMutationTransaction({
+    context,
+    toolName: 'log_workout_set',
+    actionType: 'LOG_WORKOUT_SET',
+    updatedWorkout,
+    stateDiff: {
+      object_type: 'Workout',
+      object_id: activeWorkout.id,
+      label: `Set ${workingNum} Logged`,
+      previous_state: {
+        display: prevSet.completed
+          ? `Set ${workingNum}: ${formatWeight(prevSet.actualWeightKg ?? prevSet.targetWeightKg, profileUnit)} × ${prevSet.actualReps ?? prevSet.targetReps}`
+          : `Set ${workingNum}: pending`,
+      },
+      new_state: {
+        display: `${targetEx.name} Set ${workingNum}: ${loadLabel} × ${perfLabel} @ ${rirLabel}`,
+      },
+    },
+    summaryText: `Logged **Set ${workingNum}** on **${targetEx.name}**: **${loadLabel} × ${perfLabel}** @ ${rirLabel}${unilateral && repsLeft !== undefined && repsRight !== undefined && repsLeft !== repsRight ? ` (tracking the weaker side at ${nextReps} reps for balanced progression)` : ''}.`,
+    navigateTarget: 'train',
+    navigateLabel: 'View Workout',
+  });
+}
+
+export interface ReorderWorkoutExercisesArgs {
+  exercise_name: string;
+  position: 'first' | 'last' | 'before' | 'after';
+  reference_exercise_name?: string;
+}
+
+export async function executeReorderWorkoutExercises(
+  rawArgs: ReorderWorkoutExercisesArgs,
+  context: CoachToolExecutionContext
+): Promise<CoachToolOutcome> {
+  const { activeWorkout, exerciseCatalog } = context;
+  const target = findWorkoutExercise(cleanExerciseQuery(rawArgs.exercise_name), activeWorkout, exerciseCatalog);
+  if (!target) {
+    return {
+      toolName: 'reorder_workout_exercises',
+      actionType: 'REORDER_WORKOUT',
+      mutationStatus: 'error',
+      summaryText: `Couldn't find "${rawArgs.exercise_name || 'that exercise'}" in today's **${activeWorkout.name}** session.`,
+      errorMessage: 'Exercise not found in active workout.',
+    };
+  }
+  const fromIdx = activeWorkout.exercises.findIndex((e) => e.id === target.id);
+  const remaining = activeWorkout.exercises.filter((e) => e.id !== target.id);
+  let toIdx = 0;
+  if (rawArgs.position === 'first') {
+    toIdx = 0;
+  } else if (rawArgs.position === 'last') {
+    toIdx = remaining.length;
+  } else {
+    const ref = findWorkoutExercise(cleanExerciseQuery(rawArgs.reference_exercise_name), activeWorkout, exerciseCatalog);
+    if (!ref || ref.id === target.id) {
+      return {
+        toolName: 'reorder_workout_exercises',
+        actionType: 'REORDER_WORKOUT',
+        mutationStatus: 'error',
+        summaryText: `Tell me which exercise in **${activeWorkout.name}** to place **${target.name}** ${rawArgs.position}.`,
+        errorMessage: 'Reference exercise not found.',
+      };
+    }
+    const refIdx = remaining.findIndex((e) => e.id === ref.id);
+    toIdx = rawArgs.position === 'before' ? Math.max(0, refIdx) : Math.min(remaining.length, refIdx + 1);
+  }
+
+  if (toIdx === fromIdx) {
+    return {
+      toolName: 'reorder_workout_exercises',
+      actionType: 'REORDER_WORKOUT',
+      mutationStatus: 'noop',
+      summaryText: `**${target.name}** is already in slot #${fromIdx + 1} of **${activeWorkout.name}**.`,
+    };
+  }
+
+  const nextExercises = [...remaining];
+  nextExercises.splice(toIdx, 0, target);
+  return commitMutationTransaction({
+    context,
+    toolName: 'reorder_workout_exercises',
+    actionType: 'REORDER_WORKOUT',
+    updatedWorkout: { ...activeWorkout, exercises: nextExercises },
+    stateDiff: {
+      object_type: 'Workout',
+      object_id: activeWorkout.id,
+      label: 'Workout Reordered',
+      previous_state: { display: `${target.name} (#${fromIdx + 1})` },
+      new_state: { display: `${target.name} (#${toIdx + 1})` },
+    },
+    summaryText: `Moved **${target.name}** to exercise **#${toIdx + 1}** in today's **${activeWorkout.name}** session.`,
+    navigateTarget: 'train',
+    navigateLabel: 'View Workout',
+  });
+}
+
+export interface UpdateExerciseNoteArgs {
+  exercise_name: string;
+  note?: string;
+  mode?: 'set' | 'append' | 'clear';
+}
+
+export async function executeUpdateExerciseNote(
+  rawArgs: UpdateExerciseNoteArgs,
+  context: CoachToolExecutionContext
+): Promise<CoachToolOutcome> {
+  const { activeWorkout, exerciseCatalog } = context;
+  let target = findWorkoutExercise(cleanExerciseQuery(rawArgs.exercise_name), activeWorkout, exerciseCatalog);
+  if (!target && context.place?.exerciseId) {
+    target = activeWorkout.exercises.find(
+      (e) => e.exerciseId === context.place?.exerciseId || e.id === context.place?.exerciseId
+    );
+  }
+  if (!target) {
+    return {
+      toolName: 'update_exercise_note',
+      actionType: 'UPDATE_EXERCISE_NOTE',
+      mutationStatus: 'error',
+      summaryText: `Couldn't find "${rawArgs.exercise_name || 'that exercise'}" in today's **${activeWorkout.name}** session.`,
+      errorMessage: 'Exercise not found in active workout.',
+    };
+  }
+
+  const mode = rawArgs.mode || 'set';
+  const cleanedNote = (rawArgs.note || '').trim();
+  if (mode !== 'clear' && !cleanedNote) {
+    return {
+      toolName: 'update_exercise_note',
+      actionType: 'UPDATE_EXERCISE_NOTE',
+      mutationStatus: 'error',
+      summaryText: `Tell me what note you'd like saved on **${target.name}**.`,
+      errorMessage: 'Empty note.',
+    };
+  }
+
+  const prevNote = target.athleteNotes?.trim() || '';
+  const nextNote =
+    mode === 'clear'
+      ? undefined
+      : mode === 'append' && prevNote
+        ? `${prevNote} · ${cleanedNote}`
+        : cleanedNote;
+
+  const updatedWorkout: WorkoutSession = {
+    ...activeWorkout,
+    exercises: activeWorkout.exercises.map((e) => (e.id === target!.id ? { ...e, athleteNotes: nextNote } : e)),
+  };
+
+  return commitMutationTransaction({
+    context,
+    toolName: 'update_exercise_note',
+    actionType: 'UPDATE_EXERCISE_NOTE',
+    updatedWorkout,
+    stateDiff: {
+      object_type: 'Exercise',
+      object_id: target.exerciseId,
+      label: mode === 'clear' ? 'Note Cleared' : 'Exercise Note Saved',
+      previous_state: { display: prevNote || 'No note' },
+      new_state: { display: nextNote || 'Cleared' },
+    },
+    summaryText:
+      mode === 'clear'
+        ? `Cleared your session note on **${target.name}**.`
+        : `Saved your note on **${target.name}**: "${nextNote}".`,
+    navigateTarget: 'train',
+    navigateLabel: 'View Workout',
+  });
+}
+
+export interface OverrideRecoveryGateArgs {
+  confirmation_required?: boolean;
+}
+
+export async function executeOverrideRecoveryGate(
+  rawArgs: OverrideRecoveryGateArgs,
+  context: CoachToolExecutionContext
+): Promise<CoachToolOutcome> {
+  const { activeWorkout, workouts, exerciseCatalog } = context;
+  if (activeWorkout.recoveryOverride) {
+    return {
+      toolName: 'override_recovery_gate',
+      actionType: 'OVERRIDE_RECOVERY',
+      mutationStatus: 'noop',
+      summaryText: `**${activeWorkout.name}** is already unlocked on your Workout tab.`,
+    };
+  }
+
+  const rec = evaluateSessionRecovery(activeWorkout, workouts, exerciseCatalog);
+  const recoveringNames = rec.limitingMuscles
+    .map((m) => MUSCLE_FRIENDLY_NAMES[m.muscle] || m.muscle)
+    .slice(0, 3);
+  const musclesText = recoveringNames.length > 0 ? recoveringNames.join(', ') : 'target muscles';
+  const readyLabel = rec.readyAt ? formatReadyTime(rec.readyAt) : 'soon';
+
+  const diff: CoachStateDiff = {
+    object_type: 'Workout',
+    object_id: activeWorkout.id,
+    label: 'Train Anyway Override',
+    previous_state: { display: rec.isReady ? 'Ready' : `Recovering (${musclesText})` },
+    new_state: { display: `${activeWorkout.name} unlocked today` },
+  };
+
+  if (rawArgs.confirmation_required !== false) {
+    const pendingConfirmation: CoachPendingConfirmation = {
+      tool_name: 'override_recovery_gate',
+      args: { confirmation_required: false },
+      title: `Train ${activeWorkout.name} before recovery finishes?`,
+      summary: rec.isReady
+        ? `Unlock ${activeWorkout.name} on the Workout tab`
+        : `${musclesText} still recovering · ready ${readyLabel}`,
+      warning: rec.isReady
+        ? `This unlocks ${activeWorkout.name} right now on your Workout tab.`
+        : `Your ${musclesText} are still recovering. Training early can blunt strength gains and raise joint fatigue — keep 2–3 reps in reserve if you train anyway.`,
+      confirm_label: 'Train anyway',
+      cancel_label: 'Respect recovery',
+      preview_diff: diff,
+      status: 'pending',
+    };
+    return {
+      toolName: 'override_recovery_gate',
+      actionType: 'OVERRIDE_RECOVERY',
+      mutationStatus: 'awaiting_confirmation',
+      summaryText: rec.isReady
+        ? `Confirm below to unlock **${activeWorkout.name}** on your Workout tab.`
+        : `Your **${musclesText}** are still recovering (ready ${readyLabel}). Confirm below if you still want to unlock **${activeWorkout.name}** and train anyway — if you go ahead, leave 2–3 reps in reserve.`,
+      stateDiff: diff,
+      pendingConfirmation,
+    };
+  }
+
+  return commitMutationTransaction({
+    context,
+    toolName: 'override_recovery_gate',
+    actionType: 'OVERRIDE_RECOVERY',
+    updatedWorkout: { ...activeWorkout, recoveryOverride: true },
+    stateDiff: diff,
+    summaryText: `Unlocked **${activeWorkout.name}** on your Workout tab. Keep effort controlled (2–3 RIR) while recovering muscles catch up.`,
+    navigateTarget: 'train',
+    navigateLabel: 'View Workout',
+  });
+}
+
+export interface DeleteAthleteMemoryArgs {
+  query?: string;
+  category?: AthleteMemoryCategory;
+  clear_all?: boolean;
+  confirmation_required?: boolean;
+}
+
+export async function executeDeleteAthleteMemory(
+  rawArgs: DeleteAthleteMemoryArgs,
+  context: CoachToolExecutionContext
+): Promise<CoachToolOutcome> {
+  const existing = context.profile.athleteMemories ?? [];
+  if (existing.length === 0) {
+    return {
+      toolName: 'delete_athlete_memory',
+      actionType: 'DELETE_ATHLETE_MEMORY',
+      mutationStatus: 'noop',
+      summaryText: "You don't have any saved coaching memories on file yet.",
+    };
+  }
+
+  if (rawArgs.clear_all) {
+    const clearDiff: CoachStateDiff = {
+      object_type: 'Athlete',
+      object_id: 'memories',
+      label: 'Memories Cleared',
+      previous_state: { display: `${existing.length} saved note${existing.length === 1 ? '' : 's'}` },
+      new_state: { display: '0 saved notes' },
+    };
+    if (rawArgs.confirmation_required !== false) {
+      const pendingConfirmation: CoachPendingConfirmation = {
+        tool_name: 'delete_athlete_memory',
+        args: { clear_all: true, confirmation_required: false },
+        title: `Clear all ${existing.length} saved coaching notes?`,
+        summary: `${existing.length} saved note${existing.length === 1 ? '' : 's'} → None`,
+        warning: 'Injuries, contraindications, and preferences saved in chat will be forgotten until you tell Treise again.',
+        confirm_label: 'Clear all notes',
+        cancel_label: 'Keep notes',
+        preview_diff: clearDiff,
+        status: 'pending',
+      };
+      return {
+        toolName: 'delete_athlete_memory',
+        actionType: 'DELETE_ATHLETE_MEMORY',
+        mutationStatus: 'awaiting_confirmation',
+        summaryText: `Confirm below to forget all **${existing.length}** saved coaching note${existing.length === 1 ? '' : 's'}.`,
+        stateDiff: clearDiff,
+        pendingConfirmation,
+      };
+    }
+    return commitMutationTransaction({
+      context,
+      toolName: 'delete_athlete_memory',
+      actionType: 'DELETE_ATHLETE_MEMORY',
+      updatedProfile: { athleteMemories: undefined },
+      stateDiff: clearDiff,
+      summaryText: `Cleared all ${existing.length} saved coaching note${existing.length === 1 ? '' : 's'} from your profile.`,
+    });
+  }
+
+  const q = (rawArgs.query || '').toLowerCase().trim();
+  const qTokens = q
+    .split(/[^a-z0-9]+/)
+    .filter((t) => t.length >= 3 && !['the', 'my', 'note', 'memory', 'fact', 'about', 'that', 'injury', 'pain'].includes(t));
+
+  const matched = existing.filter((m) => {
+    if (rawArgs.category && m.category === rawArgs.category && !q) return true;
+    const hay = `${m.category} ${m.value}`.toLowerCase();
+    if (q && hay.includes(q)) return true;
+    if (qTokens.length > 0 && qTokens.some((tok) => hay.includes(tok))) return true;
+    if (rawArgs.category && m.category === rawArgs.category && /\b(injury|pain|constraint|preference)\b/i.test(q)) {
+      return true;
+    }
+    return false;
+  });
+
+  if (matched.length === 0) {
+    const listed = existing.map((m) => `"${m.value}"`).join(', ');
+    return {
+      toolName: 'delete_athlete_memory',
+      actionType: 'DELETE_ATHLETE_MEMORY',
+      mutationStatus: 'error',
+      summaryText: `Couldn't find a saved note matching "${rawArgs.query || rawArgs.category || 'that'}". Currently saved: ${listed}.`,
+      errorMessage: 'Memory fact not found.',
+    };
+  }
+
+  const matchedIds = new Set(matched.map((m) => m.id));
+  const remaining = existing.filter((m) => !matchedIds.has(m.id));
+  const removedLabel = matched.map((m) => m.value).join('; ');
+
+  return commitMutationTransaction({
+    context,
+    toolName: 'delete_athlete_memory',
+    actionType: 'DELETE_ATHLETE_MEMORY',
+    updatedProfile: { athleteMemories: remaining.length > 0 ? remaining : undefined },
+    stateDiff: {
+      object_type: 'Athlete',
+      object_id: 'memories',
+      label: 'Memory Removed',
+      previous_state: { display: `${existing.length} saved note${existing.length === 1 ? '' : 's'}` },
+      new_state: { display: `Forgot: ${removedLabel}` },
+    },
+    summaryText: `Forgot **${removedLabel}** from your athlete profile.${remaining.length > 0 ? ` ${remaining.length} saved note${remaining.length === 1 ? '' : 's'} remain.` : ''}`,
+  });
+}
+
+export interface UpdateAthleteProfileArgs {
+  weight_unit?: 'kg' | 'lb';
+  age?: number;
+  gender?: Gender;
+  experience_level?: ExperienceLevel | 'beginner';
+  height_cm?: number;
+  display_setting?: keyof WorkoutDisplaySettings;
+  display_enabled?: boolean;
+}
+
+const DISPLAY_SETTING_LABELS: Record<keyof WorkoutDisplaySettings, string> = {
+  showExerciseCharts: 'exercise charts',
+  showExerciseSummaries: 'exercise summaries',
+  showRecoveryCard: 'recovery card',
+  showSessionCard: 'session card',
+  showProgramCard: 'program card',
+  showStepsCard: 'daily steps card',
+  showRirTracking: 'RIR tracking',
+};
+
+export async function executeUpdateAthleteProfile(
+  rawArgs: UpdateAthleteProfileArgs,
+  context: CoachToolExecutionContext
+): Promise<CoachToolOutcome> {
+  const patch: Partial<UserProfile> = {};
+  const prevParts: string[] = [];
+  const nextParts: string[] = [];
+  let updatedWorkout: WorkoutSession | undefined;
+  let navTarget: 'train' | 'program' | 'analytics' | undefined;
+  let navLabel: string | undefined;
+
+  if (rawArgs.weight_unit === 'kg' || rawArgs.weight_unit === 'lb') {
+    const prevUnit = context.profile.weightUnit || 'kg';
+    if (prevUnit !== rawArgs.weight_unit) {
+      patch.weightUnit = rawArgs.weight_unit;
+      prevParts.push(`Units: ${prevUnit}`);
+      nextParts.push(`Units: ${rawArgs.weight_unit}`);
+      const hasStarted = context.activeWorkout.exercises.some((ex) => ex.sets.some((s) => s.completed));
+      if (!hasStarted) {
+        updatedWorkout = {
+          ...context.activeWorkout,
+          exercises: context.activeWorkout.exercises.map((ex) => ({
+            ...ex,
+            sets: ex.sets.map((st) =>
+              st.targetWeightKg > 0
+                ? {
+                    ...st,
+                    targetWeightKg: snapLoadKg(st.targetWeightKg, rawArgs.weight_unit!, ex.equipment),
+                    actualWeightKg: snapLoadKg(st.targetWeightKg, rawArgs.weight_unit!, ex.equipment),
+                  }
+                : st
+            ),
+          })),
+        };
+      }
+      navTarget = 'train';
+      navLabel = 'View Workout';
+    }
+  }
+
+  if (typeof rawArgs.age === 'number' && Number.isFinite(rawArgs.age)) {
+    const age = Math.round(rawArgs.age);
+    if (age < 13 || age > 100) {
+      return {
+        toolName: 'update_athlete_profile',
+        actionType: 'UPDATE_PROFILE',
+        mutationStatus: 'error',
+        summaryText: 'Age must be between 13 and 100 years.',
+        errorMessage: 'Age out of range.',
+      };
+    }
+    patch.age = age;
+    patch.ageEntered = true;
+    prevParts.push(context.profile.ageEntered ? `Age: ${context.profile.age}` : 'Age: default (18–39)');
+    nextParts.push(`Age: ${age}`);
+    navTarget = navTarget || 'analytics';
+    navLabel = navLabel || 'View Standards';
+  }
+
+  if (rawArgs.gender === 'male' || rawArgs.gender === 'female') {
+    patch.gender = rawArgs.gender;
+    patch.sexEntered = true;
+    prevParts.push(`Category: ${context.profile.gender}`);
+    nextParts.push(`Category: ${rawArgs.gender}`);
+    navTarget = navTarget || 'analytics';
+    navLabel = navLabel || 'View Standards';
+  }
+
+  if (
+    rawArgs.experience_level === 'new' ||
+    rawArgs.experience_level === 'beginner' ||
+    rawArgs.experience_level === 'intermediate' ||
+    rawArgs.experience_level === 'experienced'
+  ) {
+    const normalizedExp: ExperienceLevel =
+      rawArgs.experience_level === 'beginner' ? 'new' : rawArgs.experience_level;
+    patch.experienceLevel = normalizedExp;
+    prevParts.push(`Experience: ${context.profile.experienceLevel || 'unset'}`);
+    nextParts.push(`Experience: ${normalizedExp === 'new' ? 'beginner' : normalizedExp}`);
+  }
+
+  if (typeof rawArgs.height_cm === 'number' && Number.isFinite(rawArgs.height_cm)) {
+    const cm = Math.round(rawArgs.height_cm);
+    if (cm < 110 || cm > 250) {
+      return {
+        toolName: 'update_athlete_profile',
+        actionType: 'UPDATE_PROFILE',
+        mutationStatus: 'error',
+        summaryText: 'Height must be between 110 and 250 cm.',
+        errorMessage: 'Height out of range.',
+      };
+    }
+    patch.heightCm = cm;
+    patch.measuredHeightCm = cm;
+    prevParts.push(context.profile.measuredHeightCm ? `Height: ${context.profile.measuredHeightCm} cm` : 'Height: unset');
+    nextParts.push(`Height: ${cm} cm`);
+  }
+
+  if (rawArgs.display_setting && rawArgs.display_setting in DISPLAY_SETTING_LABELS) {
+    const resolved = resolveWorkoutDisplaySettings(context.profile.workoutDisplay);
+    const desired = rawArgs.display_enabled ?? !resolved[rawArgs.display_setting];
+    patch.workoutDisplay = { ...resolved, [rawArgs.display_setting]: desired };
+    const lbl = DISPLAY_SETTING_LABELS[rawArgs.display_setting];
+    prevParts.push(`${lbl}: ${resolved[rawArgs.display_setting] ? 'shown' : 'hidden'}`);
+    nextParts.push(`${lbl}: ${desired ? 'shown' : 'hidden'}`);
+    navTarget = 'train';
+    navLabel = 'View Workout';
+  }
+
+  if (Object.keys(patch).length === 0) {
+    return {
+      toolName: 'update_athlete_profile',
+      actionType: 'UPDATE_PROFILE',
+      mutationStatus: 'noop',
+      summaryText: 'Your profile setting already matches that value.',
+    };
+  }
+
+  const unitSnapNote =
+    patch.weightUnit && updatedWorkout
+      ? ` Unstarted weights in today's session were snapped to real ${patch.weightUnit} increments.`
+      : '';
+
+  return commitMutationTransaction({
+    context,
+    toolName: 'update_athlete_profile',
+    actionType: 'UPDATE_PROFILE',
+    updatedProfile: patch,
+    updatedWorkout,
+    stateDiff: {
+      object_type: 'Athlete',
+      object_id: 'profile',
+      label: 'Profile Updated',
+      previous_state: { display: prevParts.join(' · ') },
+      new_state: { display: nextParts.join(' · ') },
+    },
+    summaryText: `Updated your profile: **${nextParts.join(' · ')}**.${unitSnapNote}`,
+    navigateTarget: navTarget,
+    navigateLabel: navLabel,
+    navigateDetail: navLabel === 'View Standards' ? { detail: 'standards' } : undefined,
+  });
+}
+
 export async function executeCoachToolCall(
   toolName: CoachToolName,
   rawArgs: Record<string, unknown>,
@@ -3037,6 +4456,18 @@ export async function executeCoachToolCall(
       return executeUpdateProgressWidgets(rawArgs as unknown as UpdateProgressWidgetsToolArgs, context);
     case 'log_entry':
       return executeLogEntry(rawArgs as unknown as LogEntryArgs, context);
+    case 'log_workout_set':
+      return executeLogWorkoutSet(rawArgs as unknown as LogWorkoutSetArgs, context);
+    case 'reorder_workout_exercises':
+      return executeReorderWorkoutExercises(rawArgs as unknown as ReorderWorkoutExercisesArgs, context);
+    case 'update_exercise_note':
+      return executeUpdateExerciseNote(rawArgs as unknown as UpdateExerciseNoteArgs, context);
+    case 'override_recovery_gate':
+      return executeOverrideRecoveryGate(rawArgs as unknown as OverrideRecoveryGateArgs, context);
+    case 'delete_athlete_memory':
+      return executeDeleteAthleteMemory(rawArgs as unknown as DeleteAthleteMemoryArgs, context);
+    case 'update_athlete_profile':
+      return executeUpdateAthleteProfile(rawArgs as unknown as UpdateAthleteProfileArgs, context);
   }
 }
 
@@ -3079,6 +4510,19 @@ export async function executeCoachToolCalls(
   for (const call of calls) {
     const outcome = await executeCoachToolCall(call.name, call.args, rollingCtx);
     if (outcome.mutationStatus === 'awaiting_confirmation') {
+      // Preserve any earlier committed tool mutations so React state never falls out of sync with storage.
+      if (lastOutcome) {
+        return {
+          ...outcome,
+          summaryText: [...summaries, outcome.summaryText].join('\n\n'),
+          updatedProfile: mergedProfile,
+          updatedWorkout: latestWorkout,
+          updatedBiometrics: latestBiometrics,
+          updatedActivities: latestActivities,
+          memorySaved,
+          undoSnapshot: { ...initialUndoSnapshot, label: `${diffs.length || 1} Updates Applied` },
+        };
+      }
       return outcome;
     }
     if (outcome.mutationStatus !== 'success') {
@@ -3143,7 +4587,7 @@ export async function executePendingConfirmation(
 // ============================================================================
 
 const FALSE_SUCCESS_RE =
-  /\b(i['’]?ve reset|i have reset|program reset|reset to week|permanently swapped|rebalanced your program|applied.*to your program|swapped\b.+\bfor\b|adjusted your sets|volume adjusted|saved to (?:your )?memory|updated your (?:plan|workout|program)|logged your (?:weight|bodyweight|waist|body fat)|removed\b.+\bfrom today|added\b.+\bto today)\b/i;
+  /\b(i['’]?ve reset|i have reset|program reset|reset to week|permanently swapped|rebalanced your program|applied.*to your program|swapped\b.+\bfor\b|adjusted your sets|volume adjusted|saved to (?:your )?memory|updated your (?:plan|workout|program|profile)|logged your (?:weight|bodyweight|waist|body fat|set)|removed\b.+\bfrom today|added\b.+\bto today|forgot\b.+\bfrom your profile)\b/i;
 
 /**
  * Hard contract: never allow assistant text to claim a state mutation succeeded
@@ -3172,6 +4616,25 @@ export function enforceMutationTruthfulness(
   return replyText;
 }
 
+function dedupeAgainstUserMessage(
+  chips: CoachSuggestedAction[],
+  lastUserMessage?: string
+): CoachSuggestedAction[] {
+  const normUser = (lastUserMessage || '').toLowerCase().replace(/[^a-z0-9\s]/g, '').trim();
+  const seen = new Set<string>();
+  const filtered: CoachSuggestedAction[] = [];
+  for (const chip of chips) {
+    if (!chip.label?.trim() || !chip.prompt?.trim()) continue;
+    const normPrompt = chip.prompt.toLowerCase().replace(/[^a-z0-9\s]/g, '').trim();
+    if (normUser && normPrompt === normUser) continue;
+    if (seen.has(normPrompt)) continue;
+    seen.add(normPrompt);
+    filtered.push(chip);
+    if (filtered.length >= 3) break;
+  }
+  return filtered;
+}
+
 export function buildSuggestedActions(params: {
   toolName?: CoachToolName;
   mutationStatus?: CoachMutationStatus;
@@ -3179,107 +4642,201 @@ export function buildSuggestedActions(params: {
   place?: CoachPlace;
   custom?: CoachSuggestedAction[];
   lastSwap?: { from: string; to: string };
+  lastUserMessage?: string;
+  isSafetyResponse?: boolean;
 }): CoachSuggestedAction[] {
   if (params.custom && params.custom.length > 0) {
-    return params.custom
-      .filter((a) => a.label?.trim() && a.prompt?.trim())
-      .slice(0, 3);
+    return dedupeAgainstUserMessage(params.custom, params.lastUserMessage);
   }
 
-  const { toolName, mutationStatus, envelope, place, lastSwap } = params;
+  const { toolName, mutationStatus, envelope, place, lastSwap, lastUserMessage, isSafetyResponse } = params;
   const todayFirstEx = envelope.working_state.today_workout?.exercises[0]?.name;
 
+  if (isSafetyResponse) {
+    return dedupeAgainstUserMessage(
+      [
+        ...(todayFirstEx
+          ? [
+              {
+                label: `Swap ${todayFirstEx.split(' ').slice(0, 2).join(' ')}`,
+                prompt: `Swap ${todayFirstEx} for a gentler alternative`,
+              },
+            ]
+          : []),
+        { label: 'Take a rest day', prompt: 'Take a rest day today' },
+        { label: 'Remember constraint', prompt: 'Remember I have ', fill: true },
+      ],
+      lastUserMessage
+    );
+  }
+
   if (mutationStatus === 'awaiting_confirmation') {
-    return [
-      { label: 'How recovery looks', prompt: 'Should I train today?' },
-      { label: 'Keep current week', prompt: 'What am I lifting today?' },
-    ];
+    return dedupeAgainstUserMessage(
+      [
+        { label: 'How recovery looks', prompt: 'Should I train today?' },
+        { label: 'Keep current plan', prompt: 'Cancel' },
+      ],
+      lastUserMessage
+    );
+  }
+
+  if (mutationStatus === 'error') {
+    return dedupeAgainstUserMessage(
+      [
+        { label: 'Today workout brief', prompt: 'What am I lifting today?' },
+        { label: 'Where am I in my plan?', prompt: 'Where am I in my program?' },
+      ],
+      lastUserMessage
+    );
   }
 
   if ((toolName === 'modify_program' || toolName === 'rebalance_program') && mutationStatus === 'success') {
-    return [
-      { label: 'Review updated workout', prompt: 'What am I lifting today?' },
-      { label: 'Where am I in my program?', prompt: 'Where am I in my program?' },
-      { label: 'Reset program edits', prompt: 'Clear my program customizations' },
-    ];
+    return dedupeAgainstUserMessage(
+      [
+        { label: 'Review updated workout', prompt: 'What am I lifting today?' },
+        { label: 'List my program edits', prompt: 'What custom changes are on my program?' },
+        { label: 'Where am I in my plan?', prompt: 'Where am I in my program?' },
+      ],
+      lastUserMessage
+    );
   }
 
   if (toolName === 'reset_program' && mutationStatus === 'success') {
-    return [
-      { label: 'Preview Day 1 exercises', prompt: 'What am I lifting today?' },
-      { label: 'Check starting weights', prompt: 'How hard should I push today?' },
-      { label: 'Schedule rest days', prompt: 'How does the weekly schedule work?' },
-    ];
+    return dedupeAgainstUserMessage(
+      [
+        { label: 'Preview today’s workout', prompt: 'What am I lifting today?' },
+        { label: 'Check starting effort', prompt: 'How hard should I push today?' },
+        { label: 'How the schedule works', prompt: 'How does the weekly schedule work?' },
+      ],
+      lastUserMessage
+    );
   }
 
   if (toolName === 'swap_exercise' && mutationStatus === 'success') {
-    return [
-      ...(lastSwap
-        ? [
-            {
-              label: 'Apply to whole program',
-              prompt: `Swap ${lastSwap.from} for ${lastSwap.to} across my whole program`,
-            },
-          ]
-        : []),
-      { label: 'Review updated workout', prompt: 'What am I lifting today?' },
-      { label: 'Check weekly volume', prompt: 'Am I doing enough sets this week?' },
-    ].slice(0, 3);
+    return dedupeAgainstUserMessage(
+      [
+        ...(lastSwap
+          ? [
+              {
+                label: 'Apply to whole program',
+                prompt: `Swap ${lastSwap.from} for ${lastSwap.to} across my whole program`,
+              },
+            ]
+          : []),
+        { label: 'Review updated workout', prompt: 'What am I lifting today?' },
+        { label: 'Check weekly volume', prompt: 'Am I doing enough sets this week?' },
+      ],
+      lastUserMessage
+    );
   }
 
   if (
-    (toolName === 'modify_workout_exercises' || toolName === 'switch_location') &&
+    (toolName === 'modify_workout_exercises' ||
+      toolName === 'switch_location' ||
+      toolName === 'reorder_workout_exercises' ||
+      toolName === 'update_exercise_note' ||
+      toolName === 'override_recovery_gate') &&
     mutationStatus === 'success'
   ) {
-    return [
-      { label: 'Review updated workout', prompt: 'What am I lifting today?' },
-      { label: 'Check weekly volume', prompt: 'Am I doing enough sets this week?' },
-      { label: 'Trim today to 25m', prompt: 'Shorten today\'s workout' },
-    ];
+    return dedupeAgainstUserMessage(
+      [
+        { label: 'Review updated workout', prompt: 'What am I lifting today?' },
+        { label: 'Check weekly volume', prompt: 'Am I doing enough sets this week?' },
+        { label: 'Trim today to 25m', prompt: "Shorten today's workout" },
+      ],
+      lastUserMessage
+    );
+  }
+
+  if (toolName === 'log_workout_set' && mutationStatus === 'success') {
+    return dedupeAgainstUserMessage(
+      [
+        { label: 'Rest between sets', prompt: 'How long should I rest between sets?' },
+        { label: 'Log another set', prompt: 'Log set ', fill: true },
+        { label: 'How hard to push', prompt: 'How hard should I push today?' },
+      ],
+      lastUserMessage
+    );
   }
 
   if (toolName === 'adjust_workout_volume' && mutationStatus === 'success') {
-    return [
-      { label: 'Updated workout brief', prompt: 'What am I lifting today?' },
-      { label: 'Rest between sets', prompt: 'How long should I rest between sets?' },
-    ];
+    return dedupeAgainstUserMessage(
+      [
+        { label: 'Updated workout brief', prompt: 'What am I lifting today?' },
+        { label: 'Rest between sets', prompt: 'How long should I rest between sets?' },
+      ],
+      lastUserMessage
+    );
   }
 
-  if (toolName === 'save_athlete_memory' && mutationStatus === 'success') {
-    return [
-      {
-        label: todayFirstEx ? `Check ${todayFirstEx}` : 'Check today workout',
-        prompt: 'What am I lifting today?',
-      },
-      {
-        label: todayFirstEx ? `Swap ${todayFirstEx.split(' ').slice(0, 2).join(' ')}` : 'Swap an exercise',
-        prompt: todayFirstEx ? `Swap ${todayFirstEx}` : 'What can I swap today?',
-      },
-    ];
+  if ((toolName === 'save_athlete_memory' || toolName === 'delete_athlete_memory') && mutationStatus === 'success') {
+    return dedupeAgainstUserMessage(
+      [
+        { label: 'What do you remember?', prompt: 'What do you remember about me?' },
+        ...(todayFirstEx
+          ? [
+              {
+                label: `Swap ${todayFirstEx.split(' ').slice(0, 2).join(' ')}`,
+                prompt: `Swap ${todayFirstEx}`,
+              },
+            ]
+          : [{ label: 'Today workout brief', prompt: 'What am I lifting today?' }]),
+      ],
+      lastUserMessage
+    );
   }
 
-  if ((toolName === 'update_goals' || toolName === 'switch_goal_phase' || toolName === 'log_entry') && mutationStatus === 'success') {
-    return [
-      { label: 'How am I doing?', prompt: 'How am I doing?' },
-      { label: 'Weekly muscle sets', prompt: 'Am I doing enough sets this week?' },
-      { label: 'Today workout brief', prompt: 'What am I lifting today?' },
-    ];
+  if (
+    (toolName === 'update_goals' ||
+      toolName === 'switch_goal_phase' ||
+      toolName === 'log_entry' ||
+      toolName === 'update_progress_widgets' ||
+      toolName === 'update_athlete_profile') &&
+    mutationStatus === 'success'
+  ) {
+    return dedupeAgainstUserMessage(
+      [
+        { label: 'How am I doing?', prompt: 'How am I doing?' },
+        { label: 'What are my goals?', prompt: 'What are my goals?' },
+        { label: 'Today workout brief', prompt: 'What am I lifting today?' },
+      ],
+      lastUserMessage
+    );
+  }
+
+  if ((toolName === 'switch_program' || toolName === 'log_rest_day' || toolName === 'update_home_equipment') && mutationStatus === 'success') {
+    return dedupeAgainstUserMessage(
+      [
+        { label: 'Today workout brief', prompt: 'What am I lifting today?' },
+        { label: 'Where am I in my plan?', prompt: 'Where am I in my program?' },
+        { label: 'Check weekly volume', prompt: 'Am I doing enough sets this week?' },
+      ],
+      lastUserMessage
+    );
   }
 
   if (place?.tab === 'program') {
-    return [
-      { label: 'Reset program to Day 1', prompt: 'Reset my program to Day 1' },
-      { label: 'Next workout plan', prompt: 'Where am I in my program?' },
-      { label: 'Weekly muscle sets', prompt: 'Am I doing enough sets this week?' },
-    ];
+    return dedupeAgainstUserMessage(
+      [
+        { label: 'Next workout plan', prompt: 'Where am I in my program?' },
+        { label: 'Rebalance my program', prompt: 'Rebalance my program for any imbalances' },
+        { label: 'Weekly muscle sets', prompt: 'Am I doing enough sets this week?' },
+        { label: 'How the schedule works', prompt: 'How does the weekly schedule work?' },
+      ],
+      lastUserMessage
+    );
   }
 
   if (place?.tab === 'analytics') {
-    return [
-      { label: 'Strength balance', prompt: 'What are my strength standards?' },
-      { label: 'Check weekly sets', prompt: 'Am I doing enough sets this week?' },
-      { label: 'Training streak', prompt: 'What is my training streak?' },
-    ];
+    return dedupeAgainstUserMessage(
+      [
+        { label: 'Strength balance', prompt: 'What are my strength standards?' },
+        { label: 'Body composition', prompt: 'How is my body composition trending?' },
+        { label: 'Check weekly sets', prompt: 'Am I doing enough sets this week?' },
+        { label: 'What are my goals?', prompt: 'What are my goals?' },
+      ],
+      lastUserMessage
+    );
   }
 
   const defaults: CoachSuggestedAction[] = [
@@ -3292,5 +4849,6 @@ export function buildSuggestedActions(params: {
       prompt: `What can I swap ${todayFirstEx} for?`,
     });
   }
-  return defaults.slice(0, 3);
+  defaults.push({ label: 'Weekly muscle sets', prompt: 'Am I doing enough sets this week?' });
+  return dedupeAgainstUserMessage(defaults, lastUserMessage);
 }

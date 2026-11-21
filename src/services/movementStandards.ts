@@ -1,9 +1,13 @@
 import { BiometricLog, Gender, StrengthPillar, StrengthTier, SubDivision, WorkoutSession } from '../engine/types';
 import {
   POLIQUIN_CHIN_UP_TO_BENCH,
+  POLIQUIN_CHIN_UP_TO_BENCH_FEMALE,
   PILLAR_STANDARD_SOURCE,
   StandardSource,
+  allometricEquivalentAtReferenceBw,
+  calculateAllometricScore,
   evaluateStrengthStandard,
+  getPoliquinChinUpToBenchRatio,
 } from '../engine/strengthStandards';
 import { kilgoreAgeGroup } from '../engine/kilgoreStandards';
 import { calculateBestPillarDetails, isTestedBest } from './storage';
@@ -66,6 +70,12 @@ export interface MovementLevel {
   /** Level when this movement was first logged, and that date (only when it has changed since). */
   firstLevel?: string;
   firstLoggedOn?: string;
+  /** Mass-independent allometric strength index (E1RM / BW^b; b = 0.55 male, 0.50 female). */
+  allometricScore?: number;
+  /** Size-adjusted equivalent E1RM at reference bodyweight (82 kg male / 63 kg female). */
+  allometricEquivalentKg?: number;
+  /** Scientific caveat when a standard is adapted from a different population (e.g. Poliquin ratio for women). */
+  caveat?: string;
 }
 
 export interface Imbalance {
@@ -75,6 +85,8 @@ export interface Imbalance {
   message: string;
   /** What to do about it. */
   advice: string;
+  /** Optional methodological caveat surfaced alongside the finding. */
+  caveat?: string;
   weaker: StrengthPillar;
   stronger: StrengthPillar;
 }
@@ -133,6 +145,8 @@ export function buildMovementStandards(input: {
     const std = evaluateStrengthStandard(pillar, b.e1rmKg, bodyweightKg, gender, age);
     const step = levelStep(std.tier, std.subDivision);
     const topped = std.tier === 'Elite' && std.subDivision === 'IV';
+    const allometricScore = calculateAllometricScore(b.e1rmKg, bodyweightKg, gender);
+    const allometricEquivalentKg = allometricEquivalentAtReferenceBw(b.e1rmKg, bodyweightKg, gender);
     const level: MovementLevel = {
       ...base,
       tier: std.tier,
@@ -140,6 +154,15 @@ export function buildMovementStandards(input: {
       step,
       progress: std.percentageProgress,
       next: topped ? null : `${std.nextTier} ${std.nextSubDivision}`,
+      allometricScore,
+      allometricEquivalentKg,
+      ...(pillar === 'Vertical Pull' && gender === 'female'
+        ? {
+            caveat: `Approximate guideline: Poliquin's 81% chin-up-to-bench ratio was derived from male athletes, so Treise adjusts the female reference to ${Math.round(
+              POLIQUIN_CHIN_UP_TO_BENCH_FEMALE * 100
+            )}% of bench.`,
+          }
+        : {}),
     };
 
     // Over time: the level from the first week this movement was logged, at that week's bodyweight.
@@ -167,21 +190,32 @@ export function buildMovementStandards(input: {
   const byPillar = new Map(levels.map((l) => [l.pillar, l]));
   const imbalances: Imbalance[] = [];
 
-  // Poliquin: chin-up (bodyweight included) should be about 81% of the bench.
+  // Poliquin: chin-up (bodyweight included) vs bench press (81% for men; sex-adjusted ~105% caveated guideline for women).
   const bench = byPillar.get('Horizontal Push');
   const chin = byPillar.get('Vertical Pull');
+  const targetChinRatio = getPoliquinChinUpToBenchRatio(gender);
   if (bench?.logged && chin?.logged && bench.e1rmKg > 0) {
     const ratio = chin.e1rmKg / bench.e1rmKg;
-    if (ratio < POLIQUIN_CHIN_UP_TO_BENCH * RATIO_FLAG_FRACTION) {
+    if (ratio < targetChinRatio * RATIO_FLAG_FRACTION) {
       imbalances.push({
         id: 'pull-vs-push',
         kind: 'pull-vs-push',
         weaker: 'Vertical Pull',
         stronger: 'Horizontal Push',
-        message: `Your chin-up max (with bodyweight) is ${Math.round(ratio * 100)}% of your bench. Balanced lifters reach about ${Math.round(
-          POLIQUIN_CHIN_UP_TO_BENCH * 100
-        )}%.`,
-        advice: 'Pulling is behind pushing. Keep chin-ups or pulldowns in every week and push them as hard as your presses.',
+        message: `Your chin-up max (with bodyweight) is ${Math.round(ratio * 100)}% of your bench. ${
+          gender === 'female'
+            ? `An approximate sex-adjusted target is about ${Math.round(targetChinRatio * 100)}% (Poliquin's original ${Math.round(
+                POLIQUIN_CHIN_UP_TO_BENCH * 100
+              )}% ratio was derived from male athletes).`
+            : `Balanced lifters reach about ${Math.round(targetChinRatio * 100)}%.`
+        }`,
+        advice: 'Pulling is behind pushing. Keep chin-ups, assisted chin-ups, or pulldowns in every week and progress them steadily alongside your presses.',
+        ...(gender === 'female'
+          ? {
+              caveat:
+                "Poliquin's 1999 structural balance ratio was studied in male athletes; treat this female reference as a directional guideline.",
+            }
+          : {}),
       });
     }
   }
@@ -272,7 +306,8 @@ export function buildStandardsAnswer(report: MovementStandardsReport, hasBodywei
     parts.push(`Your levels (compared with ${report.tableLabel} at your bodyweight):`);
     for (const l of logged) {
       const since = l.firstLevel ? `, up from ${l.firstLevel} when you started` : '';
-      parts.push(`• ${l.name}: ${l.tier} ${l.subDivision} (${l.tested ? 'tested' : `estimated${l.bestFrom ? ` from ${l.bestFrom}` : ''}`})${since}.${l.next ? ` Next: ${l.next}.` : ''}`);
+      const caveatNote = l.caveat ? ` (${l.caveat})` : '';
+      parts.push(`• ${l.name}: ${l.tier} ${l.subDivision} (${l.tested ? 'tested' : `estimated${l.bestFrom ? ` from ${l.bestFrom}` : ''}`})${since}.${l.next ? ` Next: ${l.next}.` : ''}${caveatNote}`);
     }
   }
   if (report.imbalances.length || report.sideDifferences.length) {

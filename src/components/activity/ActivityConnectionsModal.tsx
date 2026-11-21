@@ -162,7 +162,7 @@ export const ActivityConnectionsModal: React.FC<
           {!hcStatus.bridge ? (
             <p className="wk-body mt-2 max-w-prose">
               Available in the Treise app from Google Play on Android. It reads
-              workouts and daily step counts from Google Pixel Watch, Fitbit, Samsung Health, Google Fit and Garmin.
+              workouts, daily steps, sleep, heart rate, HRV, weight, and body fat from Google Pixel Watch, Fitbit, Samsung Health and Garmin automatically.
             </p>
           ) : !hcStatus.available ? (
             <p className="wk-body mt-2 max-w-prose">
@@ -172,8 +172,7 @@ export const ActivityConnectionsModal: React.FC<
           ) : (
             <>
               <p className="wk-body mt-2 max-w-prose">
-                Treise reads your exercise sessions (type, start time and
-                length) and daily step counts from Health Connect, including data from Fitbit, Pixel Watch, Samsung Health and Garmin. Nothing else.
+                Treise reads only the health categories you allow (exercise sessions, daily steps, sleep, heart rate, resting HR, HRV, weight, and body fat) from Health Connect — including Fitbit, Pixel Watch, Samsung Health and Garmin. Strictly read-only.
               </p>
               <button
                 type="button"
@@ -183,7 +182,7 @@ export const ActivityConnectionsModal: React.FC<
                     onSetHealthConnect(false);
                   } else {
                     onSetHealthConnect(true);
-                    if ((!hcStatus.granted || !hcStatus.stepsGranted) && onRequestHealthConnectPermission() === false) setNeedsAppUpdate(true);
+                    if ((!hcStatus.granted || !hcStatus.stepsGranted || !hcStatus.biometricsGranted) && onRequestHealthConnectPermission() === false) setNeedsAppUpdate(true);
                   }
                 }}
                 className="wk-button mt-3"
@@ -195,7 +194,7 @@ export const ActivityConnectionsModal: React.FC<
               >
                 {hcOn
                   ? "Turn off Health Connect"
-                  : hcStatus.granted && hcStatus.stepsGranted
+                  : hcStatus.granted && hcStatus.stepsGranted && hcStatus.biometricsGranted
                     ? "Turn on Health Connect"
                     : "Allow access in Health Connect"}
               </button>

@@ -16,7 +16,7 @@ import { useUnits } from '../../utils/unitsContext';
 import { TrendChart } from '../common/TrendChart';
 import { ProgressChartCard } from './ProgressChartCard';
 import { TimelineToggle } from './TimelineToggle';
-import { Check, Minus } from 'lucide-react';
+import { Check, Minus, Sparkles } from 'lucide-react';
 
 const dayMonth = (date: string) => {
   const d = parseLocalDate(date);
@@ -293,7 +293,7 @@ const TargetDetail: React.FC<{ goal: AthleteGoal }> = ({ goal }) => {
         )}
         <p className="wk-body mt-4 max-w-prose">
           {goal.achieved
-            ? `You've reached it: ${byWeight ? best : `${best} reps`}${m.bestOn ? ` on ${dayMonth(m.bestOn)}` : ''}. Tell Treise a new target to keep going.`
+            ? `You've reached it: ${byWeight ? best : `${best} reps`}${m.bestOn ? ` on ${dayMonth(m.bestOn)}` : ''}. Set a new target below to keep building.`
             : m.best > 0
             ? `Your best is ${byWeight ? best : `${best} reps`}${m.bestOn ? `, on ${dayMonth(m.bestOn)}` : ''}: ${left} to go.`
             : "You haven't logged this exercise yet. It starts counting with your first set."}
@@ -383,6 +383,23 @@ const BodyDetail: React.FC<{
         )}
       </section>
 
+      {measure.biaOverlay && (
+        <section className="wk-card" aria-label="Secondary smart-scale directional overlay">
+          <div className="flex items-start justify-between gap-2">
+            <h2 className="wk-title">Smart-scale BIA overlay</h2>
+            <span className="wk-pill shrink-0">
+              {measure.biaOverlay.isDirectionalReady ? '12+ wk directional' : 'Secondary'}
+            </span>
+          </div>
+          <p className="wk-body mt-2 max-w-prose">
+            {measure.biaOverlay.summary}
+          </p>
+          <p className="wk-caption mt-2 max-w-prose">
+            {measure.biaOverlay.fastedWeighInPrompt}
+          </p>
+        </section>
+      )}
+
       <section className="wk-card" aria-label="Weight against strength">
         <h2 className="wk-title">Weight against strength</h2>
         <p className="wk-body mt-2 max-w-prose">
@@ -454,9 +471,10 @@ export interface GoalDetailProps {
   onOpenGoal: (id: string) => void;
   onLogWeight: () => void;
   onLogMeasurements: () => void;
+  onAskCoach?: (prompt?: string) => void;
 }
 
-export const GoalDetailScreen: React.FC<GoalDetailProps> = ({ goal, goals, strengthIndex, weightIndex, supporting, onOpenGoal, onLogWeight, onLogMeasurements }) => {
+export const GoalDetailScreen: React.FC<GoalDetailProps> = ({ goal, goals, strengthIndex, weightIndex, supporting, onOpenGoal, onLogWeight, onLogMeasurements, onAskCoach }) => {
   const m = goal.measure;
   return (
     <>
@@ -470,6 +488,25 @@ export const GoalDetailScreen: React.FC<GoalDetailProps> = ({ goal, goals, stren
       {m.type === 'target' && <TargetDetail goal={goal} />}
       {m.type === 'body' && (
         <BodyDetail goal={goal} measure={m} strengthIndex={strengthIndex} weightIndex={weightIndex} supporting={supporting} onLogWeight={onLogWeight} onLogMeasurements={onLogMeasurements} />
+      )}
+      {onAskCoach && (
+        <button
+          type="button"
+          onClick={() => {
+            triggerHaptic('light');
+            onAskCoach();
+          }}
+          className="wk-btn-secondary w-full min-h-[48px] inline-flex items-center justify-center gap-2"
+          style={{ borderColor: 'rgb(var(--color-coach-accent-rgb) / 0.35)' }}
+        >
+          <Sparkles
+            className="w-4 h-4 shrink-0"
+            style={{ color: 'var(--color-coach-accent)' }}
+            strokeWidth={2.2}
+            aria-hidden="true"
+          />
+          <span>{goal.achieved ? 'Set a new target with Treise' : 'Ask Treise about this goal'}</span>
+        </button>
       )}
     </>
   );

@@ -1,10 +1,11 @@
-import { CoachPlace, buildCoachOpening } from '../../services/coachContext';
+import { CoachPlace, buildCoachOpening, describeCoachPlace } from '../../services/coachContext';
 import type { ActivityLog } from '../../engine/activeDays';
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import {
   AssistantChatMessage,
   BiometricLog,
   CoachPendingConfirmation,
+  CoachSuggestedAction,
   CoachUndoSnapshot,
   ExerciseDefinition,
   ReadinessState,
@@ -15,7 +16,12 @@ import {
   confirmAssistantPendingAction,
   processAssistantMessage,
 } from '../../services/aiAssistantService';
+import {
+  CoachThreadMemory,
+  createEmptyThreadMemory,
+} from '../../services/coachPersonalization';
 import { formatStateDiffText } from '../../services/coachTools';
+import { resetFlashLiteConversation } from '../../services/geminiFlashLite';
 import {
   prepareOnDeviceModel,
   resetOnDeviceConversation,
@@ -40,6 +46,8 @@ import {
   RotateCcw,
   AlertTriangle,
   Sparkles,
+  RefreshCw,
+  SquarePen,
 } from 'lucide-react';
 
 interface AICoachChatModalProps {
@@ -63,8 +71,17 @@ interface AICoachChatModalProps {
     updatedActivities?: ActivityLog[]
   ) => void;
   onUndoAction?: (snapshot: CoachUndoSnapshot) => void;
-  onNavigateTab?: (tab: 'train' | 'program' | 'analytics') => void;
+  onNavigateTab?: (
+    tab: 'train' | 'program' | 'analytics',
+    detail?: AssistantChatMessage['navigateDetail']
+  ) => void;
   onViewAllEquipment?: () => void;
+  /** Optional lifted session messages so closing or deep-linking preserves thread & Undo. */
+  persistedMessages?: AssistantChatMessage[];
+  onMessagesChange?: React.Dispatch<React.SetStateAction<AssistantChatMessage[]>>;
+  persistedRevertedIds?: Record<string, boolean>;
+  onRevertedIdsChange?: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
+  onResetConversation?: () => void;
   /** Render inline inside a showcase container instead of a fixed viewport overlay. */
   embedded?: boolean;
   /** Explicit height when `embedded` is true. */
@@ -84,6 +101,10 @@ interface AICoachChatModalProps {
 const WORD_REVEAL_INTERVAL_MS = 16;
 const COMPOSER_MAX_HEIGHT_PX = 96;
 
+function liveClockTime(): string {
+  return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
 /** Renders **bold** segments as <strong> (React text nodes only, never raw HTML). */
 function renderBold(text: string): React.ReactNode[] {
   return text.split(/(\*\*[^*]+\*\*)/g).map((part, i) =>
@@ -102,11 +123,11 @@ function inferPendingStatus(message: string): string {
   const lower = message.toLowerCase();
   if (
     /\b(reset|restart|re-start|start\s+over)\b/.test(lower) &&
-    /\b(program|plan|cycle|day\s*(1|one)|workout\s*1|beginning|scratch|over)\b/.test(lower)
+    /\b(program|plan|cycle|day\s*(?:\d+|one)|workout\s*\d+|week\s*\d+|beginning|scratch|over)\b/.test(lower)
   ) {
     return 'Resetting program…';
   }
-  if (/\b(switch|change)\b.*\b(program|phase\s*1|muscle|starter|day)\b/.test(lower)) {
+  if (/\b(switch|change)\b.*\b(program|phase\s*1|muscle|starter|day|upper|lower|full\s*body)\b/.test(lower)) {
     return 'Switching program…';
   }
   if (
@@ -116,19 +137,28 @@ function inferPendingStatus(message: string): string {
   ) {
     return 'Reviewing program…';
   }
-  if (/\b(goal|target)\b/.test(lower) && /\b(set|change|update|make|add)\b/.test(lower)) {
+  if (/\b(log|record|save)\b.*\b(set|reps|kg|lb|weight|waist|bicep|thigh|calf|neck|chest|hip|body\s*fat|steps|min)\b/.test(lower)) {
+    return 'Logging entry…';
+  }
+  if (/\b(forget|remember|memory|memories)\b/.test(lower)) {
+    return 'Updating memory…';
+  }
+  if (/\b(units?|kg|lb|age|gender|hide|show)\b/.test(lower) && /\b(switch|change|set|use|hide|show)\b/.test(lower)) {
+    return 'Updating settings…';
+  }
+  if (/\b(goal|target)\b/.test(lower) && /\b(set|change|update|make|add|remove)\b/.test(lower)) {
     return 'Updating goals…';
   }
-  if (/\b(rest\s*day|can['’]?t\s*train|skip\s*today|shift)\b/.test(lower)) {
+  if (/\b(rest\s*day|can['’]?t\s*train|skip\s*today|shift|train\s+anyway|unlock)\b/.test(lower)) {
     return 'Updating schedule…';
   }
-  if (/\b(bought|got|sold|remove|equipment|travel|away|home|gym|bodyweight)\b/.test(lower)) {
+  if (/\b(bought|got|sold|remove|equipment|travel|away|home|gym|bodyweight|move|reorder|note|swap|replace)\b/.test(lower)) {
     return 'Updating workout…';
   }
-  if (/\b(recovery|whoop|hrv|strain|sleep|joint|shoulder|knee|back|elbow|strength|level|steps)\b/.test(lower)) {
+  if (/\b(recovery|whoop|hrv|strain|sleep|joint|shoulder|knee|back|elbow|strength|level|steps|composition|tonnage)\b/.test(lower)) {
     return 'Reviewing your data…';
   }
-  return 'Thinking…';
+  return 'Checking your plan…';
 }
 
 export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
@@ -147,6 +177,11 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
   onUndoAction,
   onNavigateTab,
   onViewAllEquipment,
+  persistedMessages,
+  onMessagesChange,
+  persistedRevertedIds,
+  onRevertedIdsChange,
+  onResetConversation,
   embedded = false,
   embeddedHeight,
   initialMessages,
@@ -172,21 +207,50 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
     [place, profile, activeWorkout, workouts, activities, biometrics, exerciseCatalog, readinessState, bodyweightEmaKg]
   );
 
+  const placeMeta = useMemo(
+    () => describeCoachPlace(place, activeWorkout, exerciseCatalog),
+    [place, activeWorkout, exerciseCatalog]
+  );
+
   const [inputMessage, setInputMessage] = useState(initialInputValue);
   const [isProcessing, setIsProcessing] = useState(Boolean(initialPendingStatus));
   const [pendingStatus, setPendingStatus] = useState<string>(initialPendingStatus || 'Thinking…');
-  const [revertedMessageIds, setRevertedMessageIds] = useState<Record<string, boolean>>({});
-  const [messages, setMessages] = useState<AssistantChatMessage[]>(
+  const [localRevertedIds, setLocalRevertedIds] = useState<Record<string, boolean>>({});
+  const [failedPromptsByMsgId, setFailedPromptsByMsgId] = useState<Record<string, string>>({});
+  const [localMessages, setLocalMessages] = useState<AssistantChatMessage[]>(
     () =>
       initialMessages ?? [
         {
           id: 'msg-welcome',
           sender: 'assistant',
           text: opening.line,
-          timestamp: '09:41',
+          timestamp: liveClockTime(),
         },
       ]
   );
+
+  const isControlledMessages = Boolean(!embedded && !initialMessages && persistedMessages && onMessagesChange);
+  const messages = isControlledMessages
+    ? persistedMessages!.length > 0
+      ? persistedMessages!
+      : [
+          {
+            id: 'msg-welcome',
+            sender: 'assistant' as const,
+            text: opening.line,
+            timestamp: liveClockTime(),
+          },
+        ]
+    : localMessages;
+  const setMessages: React.Dispatch<React.SetStateAction<AssistantChatMessage[]>> = isControlledMessages
+    ? onMessagesChange!
+    : setLocalMessages;
+
+  const revertedMessageIds =
+    !embedded && persistedRevertedIds && onRevertedIdsChange ? persistedRevertedIds : localRevertedIds;
+  const setRevertedMessageIds =
+    !embedded && persistedRevertedIds && onRevertedIdsChange ? onRevertedIdsChange : setLocalRevertedIds;
+
   const [streamingText, setStreamingText] = useState<string | null>(null);
   const [revealing, setRevealing] = useState<{
     messageId: string;
@@ -212,6 +276,8 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
   const latestStreamingRef = useRef<string | null>(null);
   const isMountedRef = useRef(true);
   const initialPromptHandledRef = useRef<string | undefined>(undefined);
+  /** Thread-local ephemeral memory (style overrides, temporary constraints, name-use cap). Wiped on New Chat. */
+  const threadMemoryRef = useRef<CoachThreadMemory>(createEmptyThreadMemory());
 
   const stopReveal = useCallback(() => {
     if (revealRafRef.current !== null) {
@@ -293,24 +359,30 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
     };
   }, [embedded, scrollThreadToBottom]);
 
-  // Starter greeting + warm-up
+  // Warm up on-device model when opened; keep welcome headline synced to current screen before conversation starts.
   useEffect(() => {
     if (embedded) return;
     warmUpOnDeviceModel().catch(() => undefined);
-    if (!initialMessages) {
-      const starterMessage: AssistantChatMessage = {
-        id: 'msg-welcome',
-        sender: 'assistant',
-        text: opening.line,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      };
-      setMessages([starterMessage]);
-    }
+    // Only reset on-device conversation when unmounted WITHOUT lifted persistence.
     return () => {
-      resetOnDeviceConversation();
+      if (!isControlledMessages) {
+        resetOnDeviceConversation();
+      }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [embedded]);
+  }, [embedded, isControlledMessages]);
+
+  useEffect(() => {
+    if (embedded || initialMessages) return;
+    setMessages((prev) => {
+      if (prev.length === 0) {
+        return [{ id: 'msg-welcome', sender: 'assistant', text: opening.line, timestamp: liveClockTime() }];
+      }
+      if (prev.length === 1 && prev[0].id === 'msg-welcome' && prev[0].text !== opening.line) {
+        return [{ ...prev[0], text: opening.line, timestamp: liveClockTime() }];
+      }
+      return prev;
+    });
+  }, [embedded, initialMessages, opening.line, setMessages]);
 
   // Auto-grow multiline composer up to 4 lines cleanly.
   const resizeComposer = useCallback(() => {
@@ -431,9 +503,32 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
     }
   };
 
+  const activePendingMessage = useMemo(() => {
+    const last = messages[messages.length - 1];
+    if (last && last.sender === 'assistant' && last.pendingConfirmation?.status === 'pending') {
+      return last;
+    }
+    return null;
+  }, [messages]);
+
   const handleSendMessage = async (textToSend?: string) => {
     const text = (textToSend || inputMessage).trim();
     if (!text || isProcessing) return;
+
+    // Natural-language confirmation / cancellation when a HITL confirmation card is active.
+    if (activePendingMessage?.pendingConfirmation) {
+      const lower = text.toLowerCase().replace(/[!.?]+$/, '').trim();
+      if (/^(yes|yeah|yep|yup|confirm|apply|apply it|do it|go ahead|sounds good|ok|okay|sure|proceed)$/.test(lower)) {
+        setInputMessage('');
+        await handleConfirmPendingAction(activePendingMessage.id, activePendingMessage.pendingConfirmation);
+        return;
+      }
+      if (/^(no|nope|nah|cancel|never mind|nevermind|keep|keep it|keep current|skip|don't|dont|stop)$/.test(lower)) {
+        setInputMessage('');
+        handleCancelPendingAction(activePendingMessage.id, activePendingMessage.pendingConfirmation.tool_name);
+        return;
+      }
+    }
 
     stopReveal();
     triggerHaptic('light');
@@ -442,7 +537,7 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
       id: `user-${Date.now()}`,
       sender: 'user',
       text,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      timestamp: liveClockTime(),
     };
 
     autoScrollLockedRef.current = true;
@@ -474,6 +569,10 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
           activities,
           place,
           routeName: place.tab,
+          threadMemory: {
+            ...threadMemoryRef.current,
+            pendingActionSummary: activePendingMessage?.pendingConfirmation?.summary || undefined,
+          },
           onPartial: (textSoFar) => {
             if (!isMountedRef.current) return;
             latestStreamingRef.current = textSoFar || null;
@@ -486,6 +585,9 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
       ]);
 
       if (!isMountedRef.current) return;
+      if (result.updatedThreadMemory) {
+        threadMemoryRef.current = result.updatedThreadMemory;
+      }
       const streamedPrefix = latestStreamingRef.current ?? '';
       latestStreamingRef.current = null;
       setStreamingText(null);
@@ -514,11 +616,18 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
       latestStreamingRef.current = null;
       setStreamingText(null);
       setIsProcessing(false);
+      const errId = `err-${Date.now()}`;
+      setFailedPromptsByMsgId((prev) => ({ ...prev, [errId]: text }));
       const errorMsg: AssistantChatMessage = {
-        id: `err-${Date.now()}`,
+        id: errId,
         sender: 'assistant',
-        text: "Sorry, I couldn't answer that just now. Please try again.",
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        text: "I ran into an error answering that and couldn't finish the reply. Tap Retry, rephrase it, or pick a quick check below.",
+        timestamp: liveClockTime(),
+        mutationStatus: 'error',
+        suggestedActions: [
+          { label: 'Today workout brief', prompt: 'What am I lifting today?' },
+          { label: 'How am I doing?', prompt: 'How am I doing?' },
+        ],
       };
       setMessages((prev) => [...prev, errorMsg]);
     } finally {
@@ -534,13 +643,6 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
     triggerHaptic('medium');
     setIsProcessing(true);
     setPendingStatus('Applying confirmed change…');
-    setMessages((prev) =>
-      prev.map((m) =>
-        m.id === messageId && m.pendingConfirmation
-          ? { ...m, pendingConfirmation: { ...m.pendingConfirmation, status: 'confirmed' } }
-          : m
-      )
-    );
     try {
       const result = await confirmAssistantPendingAction(pending, {
         profile,
@@ -557,7 +659,15 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
       });
       if (!isMountedRef.current) return;
       setIsProcessing(false);
-      setMessages((prev) => [...prev, result.message]);
+      const succeeded = result.message.mutationStatus === 'success';
+      setMessages((prev) => [
+        ...prev.map((m) =>
+          m.id === messageId && m.pendingConfirmation && succeeded
+            ? { ...m, pendingConfirmation: { ...m.pendingConfirmation, status: 'confirmed' as const } }
+            : m
+        ),
+        result.message,
+      ]);
       if (
         result.updatedProfile ||
         result.updatedWorkout ||
@@ -577,13 +687,14 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
       console.error('Failed to confirm pending coach action:', err);
       if (!isMountedRef.current) return;
       setIsProcessing(false);
+      // Keep the confirmation card pending so the athlete can tap Confirm again.
       setMessages((prev) => [
         ...prev,
         {
           id: `err-confirm-${Date.now()}`,
           sender: 'assistant',
-          text: "Sorry, I couldn't complete that confirmed change just now. Nothing was changed — please try again.",
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          text: "I couldn't apply that confirmed change just now, so your plan wasn't modified. Tap Confirm again to retry.",
+          timestamp: liveClockTime(),
           mutationStatus: 'error',
         },
       ]);
@@ -596,8 +707,14 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
     toolName?: CoachPendingConfirmation['tool_name']
   ) => {
     triggerHaptic('light');
-    const isProgramAdaptation =
-      toolName === 'modify_program' || toolName === 'rebalance_program';
+    const cancelText =
+      toolName === 'modify_program' || toolName === 'rebalance_program'
+        ? 'Kept your current program unchanged.'
+        : toolName === 'override_recovery_gate'
+          ? 'Good call — respecting muscle recovery today. Your session stays queued until muscles recover.'
+          : toolName === 'delete_athlete_memory'
+            ? 'Kept your saved coaching memories untouched.'
+            : 'Reset cancelled — your current program progress stays untouched.';
     setMessages((prev) => [
       ...prev.map((m) =>
         m.id === messageId && m.pendingConfirmation
@@ -607,21 +724,55 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
       {
         id: `cancel-${Date.now()}`,
         sender: 'assistant',
-        text: isProgramAdaptation
-          ? 'Kept your current program unchanged.'
-          : 'Reset cancelled — your current program progress stays untouched.',
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        text: cancelText,
+        timestamp: liveClockTime(),
+        suggestedActions: [
+          { label: 'Today workout brief', prompt: 'What am I lifting today?' },
+          { label: 'Should I train today?', prompt: 'Should I train today?' },
+        ],
       },
     ]);
     scrollThreadToBottom('smooth');
   };
 
+  const contextNoticeRef = useRef<string | null>(null);
   useEffect(() => {
     if (!initialPrompt || initialMessages) return;
     if (initialPromptHandledRef.current === initialPrompt) return;
     initialPromptHandledRef.current = initialPrompt;
     void handleSendMessage(initialPrompt);
   }, [initialPrompt, initialMessages]);
+
+  // When opened from an explicit object trigger (ExerciseDetailModal, CompositionCard,
+  // StrengthLevelsCard, GoalDetailScreen, etc.) while a prior conversation exists, append a
+  // fresh contextual opening + chips for that object so prior history/Undo stay scrollable above
+  // and the new object's context greets the athlete immediately.
+  useEffect(() => {
+    if (embedded || initialMessages || initialPrompt) return;
+    const isSpecificObjectTrigger = Boolean(place?.exerciseId || place?.detail || place?.goalId);
+    if (!isSpecificObjectTrigger) return;
+    const ctxKey = `${place?.tab || ''}:${place?.exerciseId || ''}:${place?.detail || ''}:${place?.goalId || ''}:${opening.id}`;
+    if (contextNoticeRef.current === ctxKey) return;
+    contextNoticeRef.current = ctxKey;
+    if (messages.length <= 1 && messages[0]?.id === 'msg-welcome') return;
+    const last = messages[messages.length - 1];
+    if (last?.sender === 'assistant' && last.text === opening.line) return;
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: `msg-ctx-${opening.id}-${Date.now()}`,
+        sender: 'assistant',
+        text: opening.line,
+        timestamp: liveClockTime(),
+        suggestedActions: opening.hooks.slice(0, 3).map((h) => ({
+          label: h.label,
+          prompt: h.text,
+          ...(h.fill ? { fill: true } : {}),
+        })),
+      },
+    ]);
+    requestAnimationFrame(() => scrollThreadToBottom('auto'));
+  }, [embedded, initialMessages, initialPrompt, place?.tab, place?.exerciseId, place?.detail, place?.goalId, opening.id]);
 
   const handleUndoMutation = (messageId: string, snapshot: CoachUndoSnapshot) => {
     if (revertedMessageIds[messageId] || !onUndoAction) return;
@@ -634,46 +785,83 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
         id: `undo-${Date.now()}`,
         sender: 'assistant',
         text: `Reverted "${snapshot.label}". Your previous workout and profile state are restored.`,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        timestamp: liveClockTime(),
+        suggestedActions: [
+          { label: 'Today workout brief', prompt: 'What am I lifting today?' },
+          { label: 'Where am I in my plan?', prompt: 'Where am I in my program?' },
+        ],
       },
     ]);
     scrollThreadToBottom('smooth');
   };
 
+  const handleStartNewChat = () => {
+    if (isProcessing) return;
+    triggerHaptic('light');
+    stopReveal();
+    resetOnDeviceConversation();
+    resetFlashLiteConversation();
+    threadMemoryRef.current = createEmptyThreadMemory();
+    setFailedPromptsByMsgId({});
+    setRevertedMessageIds({});
+    setInputMessage('');
+    setStreamingText(null);
+    setShowNewMsgPill(false);
+    setMessages([
+      {
+        id: 'msg-welcome',
+        sender: 'assistant',
+        text: opening.line,
+        timestamp: liveClockTime(),
+      },
+    ]);
+    onResetConversation?.();
+  };
+
+  // Only show suggested actions from the LATEST assistant message so stale chips from earlier turns never linger.
   const latestSuggestedActions = useMemo(() => {
-    for (let i = messages.length - 1; i >= 0; i--) {
-      const item = messages[i];
-      if (item.sender === 'assistant' && item.suggestedActions?.length) {
-        return item.suggestedActions.slice(0, 3);
-      }
+    const last = messages[messages.length - 1];
+    if (last && last.sender === 'assistant' && last.suggestedActions?.length) {
+      return last.suggestedActions.slice(0, 3);
     }
     return null;
   }, [messages]);
 
+  // Skip already-reverted actions so undoing action #2 reveals Undo on action #1 cleanly.
   const latestUndoableMessageId = useMemo(() => {
     for (let i = messages.length - 1; i >= 0; i--) {
       const item = messages[i];
-      if (item.sender === 'assistant' && item.undoSnapshot) {
+      if (item.sender === 'assistant' && item.undoSnapshot && !revertedMessageIds[item.id]) {
         return item.id;
       }
     }
     return null;
-  }, [messages]);
+  }, [messages, revertedMessageIds]);
 
   const quickPrompts = opening.hooks;
+  const fillComposerWith = (text: string) => {
+    triggerHaptic('light');
+    setInputMessage(text);
+    setTimeout(() => {
+      const input = inputRef.current;
+      if (!input) return;
+      input.focus();
+      input.setSelectionRange(text.length, text.length);
+    }, 0);
+  };
   const useHook = (hook: (typeof quickPrompts)[number]) => {
     if (!hook.fill) {
       handleSendMessage(hook.text);
       return;
     }
-    triggerHaptic('light');
-    setInputMessage(hook.text);
-    setTimeout(() => {
-      const input = inputRef.current;
-      if (!input) return;
-      input.focus();
-      input.setSelectionRange(hook.text.length, hook.text.length);
-    }, 0);
+    fillComposerWith(hook.text);
+  };
+  const useSuggestedChip = (chip: CoachSuggestedAction) => {
+    if (chip.fill) {
+      fillComposerWith(chip.prompt);
+      return;
+    }
+    handleSendMessage(chip.prompt);
   };
 
   const conversationStarted = messages.length > 1 || isProcessing || revealing !== null;
@@ -697,6 +885,8 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
         return 'Workout volume adjusted';
       case 'SAVE_ATHLETE_MEMORY':
         return 'Memory updated';
+      case 'DELETE_ATHLETE_MEMORY':
+        return 'Memory removed';
       case 'SWITCH_LOCATION':
         return 'Location switched';
       case 'SCHEDULE_LOCATION_WEEK':
@@ -719,6 +909,16 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
         return 'Measurement logged';
       case 'LOG_ACTIVE_DAY':
         return 'Activity logged';
+      case 'LOG_WORKOUT_SET':
+        return 'Set logged';
+      case 'REORDER_WORKOUT':
+        return 'Workout reordered';
+      case 'UPDATE_EXERCISE_NOTE':
+        return 'Note saved';
+      case 'OVERRIDE_RECOVERY':
+        return 'Workout unlocked';
+      case 'UPDATE_PROFILE':
+        return 'Profile updated';
       default:
         return 'Plan updated';
     }
@@ -778,7 +978,7 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
               background: 'rgba(255, 255, 255, 0.22)',
             }}
           />
-          <div>
+          <div className="min-w-0 flex-1 pr-2">
             <h3
               id={embedded ? undefined : 'ai-coach-title'}
               className="wk-h1 flex items-center gap-2"
@@ -803,11 +1003,39 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
                 />
               </svg>
             </h3>
-            <p className="wk-caption mt-1">
-              No chat history saved on any server
-            </p>
+            <div className="flex items-center gap-2 mt-1 min-w-0">
+              <span
+                data-coach-context-pill="true"
+                className="inline-flex items-center rounded-full px-3 py-1 text-xs font-medium truncate max-w-full"
+                style={{
+                  background: 'rgb(var(--color-coach-accent-rgb) / 0.12)',
+                  color: 'var(--color-coach-accent)',
+                  border: '1px solid rgb(var(--color-coach-accent-rgb) / 0.28)',
+                }}
+              >
+                {placeMeta.label}
+              </span>
+              <span className="wk-caption truncate hidden sm:inline">Private · not stored on server</span>
+            </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0">
+            {conversationStarted && !embedded && (
+              <button
+                type="button"
+                onClick={handleStartNewChat}
+                disabled={isProcessing}
+                aria-label="Start new chat"
+                title="New chat"
+                className="w-11 h-11 min-h-[44px] min-w-[44px] rounded-full border flex items-center justify-center transition-all duration-200 active:scale-90 disabled:opacity-40"
+                style={{
+                  background: 'var(--wk-card)',
+                  borderColor: 'var(--color-border-subtle)',
+                  color: 'var(--color-text-secondary)',
+                }}
+              >
+                <SquarePen className="w-[18px] h-[18px] stroke-[2]" />
+              </button>
+            )}
             <button
               type="button"
               onClick={toggleExpanded}
@@ -949,6 +1177,27 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
 
                     <p className="whitespace-pre-wrap">{renderBold(displayText)}</p>
 
+                    {/* 1-tap Retry button when a send failed */}
+                    {!isUser && !isBeingRevealed && failedPromptsByMsgId[msg.id] && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const retryText = failedPromptsByMsgId[msg.id];
+                          setFailedPromptsByMsgId((prev) => {
+                            const next = { ...prev };
+                            delete next[msg.id];
+                            return next;
+                          });
+                          void handleSendMessage(retryText);
+                        }}
+                        disabled={isProcessing}
+                        className="wk-btn-secondary self-start min-h-[44px] px-4 gap-2 text-xs font-medium disabled:opacity-50"
+                      >
+                        <RefreshCw className="w-3.5 h-3.5 stroke-[2]" />
+                        <span>Retry</span>
+                      </button>
+                    )}
+
                     {/* Human-in-the-loop Confirmation Card (Program adaptations & destructive actions) */}
                     {!isUser && !isBeingRevealed && msg.pendingConfirmation && (() => {
                       const isProgramAdaptation =
@@ -1008,7 +1257,7 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
                               type="button"
                               onClick={() => handleConfirmPendingAction(msg.id, msg.pendingConfirmation!)}
                               disabled={isProcessing}
-                              className="wk-button min-h-[44px] w-full flex-1 font-semibold whitespace-nowrap disabled:opacity-50"
+                              className="wk-button min-h-[44px] w-full flex-1 font-semibold leading-snug py-2 px-3 text-center disabled:opacity-50"
                               style={{
                                 background: 'var(--color-action-primary-bg)',
                                 color: 'var(--color-action-primary-fg)',
@@ -1073,16 +1322,16 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
                                 type="button"
                                 onClick={() => {
                                   triggerHaptic('light');
-                                  onNavigateTab(msg.navigateTarget!);
+                                  onNavigateTab(msg.navigateTarget!, msg.navigateDetail);
                                 }}
-                                className="wk-button min-h-[44px] flex-1 gap-2 font-semibold"
+                                className="wk-button min-h-[44px] flex-1 gap-2 px-3 whitespace-nowrap font-semibold"
                                 style={{
                                   background: 'var(--color-action-primary-bg)',
                                   color: 'var(--color-action-primary-fg)',
                                 }}
                               >
                                 <span>{msg.navigateLabel || 'View'}</span>
-                                <ChevronRight className="w-4 h-4 stroke-[2]" />
+                                <ChevronRight className="w-4 h-4 stroke-[2] shrink-0" />
                               </button>
                             )}
 
@@ -1091,7 +1340,7 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
                                 type="button"
                                 disabled={Boolean(revertedMessageIds[msg.id]) || msg.id !== latestUndoableMessageId}
                                 onClick={() => handleUndoMutation(msg.id, msg.undoSnapshot!)}
-                                className="wk-btn-secondary px-3 gap-2 disabled:opacity-50"
+                                className="wk-btn-secondary px-3 gap-2 whitespace-nowrap shrink-0 disabled:opacity-50"
                               >
                                 <RotateCcw className="w-3.5 h-3.5 stroke-[2]" />
                                 <span>
@@ -1111,11 +1360,19 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
                                   triggerHaptic('light');
                                   onViewAllEquipment?.();
                                 }}
-                                className="wk-button min-h-[44px] gap-2"
-                                style={{
-                                  background: 'var(--color-action-primary-bg)',
-                                  color: 'var(--color-action-primary-fg)',
-                                }}
+                                className={
+                                  msg.navigateTarget
+                                    ? 'wk-btn-secondary min-h-[44px] px-3 gap-2'
+                                    : 'wk-button min-h-[44px] gap-2'
+                                }
+                                style={
+                                  msg.navigateTarget
+                                    ? undefined
+                                    : {
+                                        background: 'var(--color-action-primary-bg)',
+                                        color: 'var(--color-action-primary-fg)',
+                                      }
+                                }
                               >
                                 <Dumbbell className="w-4 h-4 stroke-[2]" />
                                 <span>View all equipment</span>
@@ -1239,45 +1496,54 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
           )}
         </div>
 
-        {/* Single-row horizontal quick-reply chips (44px min touch target) */}
-        <div
-          className="overflow-x-auto no-scrollbar flex flex-nowrap items-center shrink-0 px-4 pt-1 pb-2 gap-2"
-          role="group"
-          aria-label="Suggestions"
-        >
-          {latestSuggestedActions
-            ? latestSuggestedActions.map((chip) => (
-                <button
-                  key={chip.label}
-                  type="button"
-                  onClick={() => handleSendMessage(chip.prompt)}
-                  disabled={isProcessing}
-                  className="shrink-0 min-h-[44px] whitespace-nowrap rounded-full px-4 text-xs font-medium transition-all active:scale-95 disabled:opacity-50"
-                  style={{
-                    background: 'var(--wk-card)',
-                    color: 'var(--color-text-primary)',
-                    border: '1px solid var(--color-border-strong)',
-                  }}
-                >
-                  {chip.label}
-                </button>
-              ))
-            : quickPrompts.map((q) => (
-                <button
-                  key={q.label}
-                  type="button"
-                  onClick={() => useHook(q)}
-                  disabled={isProcessing}
-                  className="shrink-0 min-h-[44px] whitespace-nowrap rounded-full px-4 text-xs font-medium transition-all active:scale-95 disabled:opacity-50"
-                  style={{
-                    background: 'var(--wk-card)',
-                    color: 'var(--color-text-primary)',
-                    border: '1px solid var(--color-border-strong)',
-                  }}
-                >
-                  {q.label}
-                </button>
-              ))}
+        {/* Single-row horizontal quick-reply chips (44px min touch target) with subtle right-edge scroll fade */}
+        <div className="relative shrink-0">
+          <div
+            className="overflow-x-auto no-scrollbar flex flex-nowrap items-center px-4 pr-8 pt-1 pb-2 gap-2"
+            role="group"
+            aria-label="Suggestions"
+          >
+            {latestSuggestedActions
+              ? latestSuggestedActions.map((chip) => (
+                  <button
+                    key={chip.label}
+                    type="button"
+                    onClick={() => useSuggestedChip(chip)}
+                    disabled={isProcessing}
+                    className="shrink-0 min-h-[44px] whitespace-nowrap rounded-full px-4 text-xs font-medium transition-all active:scale-95 disabled:opacity-50"
+                    style={{
+                      background: 'var(--wk-card)',
+                      color: 'var(--color-text-primary)',
+                      border: '1px solid var(--color-border-strong)',
+                    }}
+                  >
+                    {chip.label}
+                  </button>
+                ))
+              : quickPrompts.map((q) => (
+                  <button
+                    key={q.label}
+                    type="button"
+                    onClick={() => useHook(q)}
+                    disabled={isProcessing}
+                    className="shrink-0 min-h-[44px] whitespace-nowrap rounded-full px-4 text-xs font-medium transition-all active:scale-95 disabled:opacity-50"
+                    style={{
+                      background: 'var(--wk-card)',
+                      color: 'var(--color-text-primary)',
+                      border: '1px solid var(--color-border-strong)',
+                    }}
+                  >
+                    {q.label}
+                  </button>
+                ))}
+          </div>
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute right-0 top-0 bottom-0 w-8"
+            style={{
+              background: 'linear-gradient(90deg, transparent 0%, var(--color-bg-canvas) 100%)',
+            }}
+          />
         </div>
 
         {/* Multiline Input Bar pinned cleanly above soft keyboard / gesture bar */}
@@ -1315,7 +1581,7 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
               onFocus={() => {
                 if (autoScrollLockedRef.current) scrollThreadToBottom('smooth');
               }}
-              placeholder="Ask Treise…"
+              placeholder={placeMeta.placeholder}
               aria-label="Message your coach"
               enterKeyHint="send"
               readOnly={isProcessing}

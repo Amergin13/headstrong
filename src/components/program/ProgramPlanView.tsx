@@ -23,6 +23,8 @@ import { ActivityLog, describeActivity } from '../../engine/activeDays';
 import { triggerHaptic } from '../../utils/haptics';
 import { formatSentenceCase } from '../../utils/typography';
 import { PastWorkoutModal } from './PastWorkoutModal';
+import { ExerciseDetailModal } from '../train/ExerciseDetailModal';
+import { buildInspectExerciseSession } from '../../services/exerciseDetails';
 import { CoachSummaryText } from '../common/CoachSummaryText';
 import { resolveCssToken } from '../../styles/semanticTokens';
 
@@ -368,6 +370,8 @@ interface ProgramPlanViewProps {
   onBackToWorkout?: () => void;
   /** Opens Treise coach with a pre-filled HITL program adaptation prompt. */
   onOpenCoachIntervention?: (prompt: string) => void;
+  /** Opens Treise coach in the Program context (optional pre-filled prompt). */
+  onOpenCoach?: (prompt?: string) => void;
   headerAction?: React.ReactNode;
 }
 
@@ -386,15 +390,25 @@ export const ProgramPlanView: React.FC<ProgramPlanViewProps> = ({
   onLaunchWorkoutNumber,
   onBackToWorkout,
   onOpenCoachIntervention,
+  onOpenCoach,
   headerAction,
 }) => {
   const plan = useMemo(
-    () => buildPlanOverview(workouts, trainingPlan, activities, profile.planCycleStarts),
-    [workouts, trainingPlan, activities, profile.planCycleStarts]
+    () => buildPlanOverview(workouts, trainingPlan, activities, profile.planCycleStarts, profile.planStartWorkouts),
+    [workouts, trainingPlan, activities, profile.planCycleStarts, profile.planStartWorkouts]
   );
   const TOTAL = trainingPlan.templates.length;
   const [openPhases, setOpenPhases] = useState<number[]>([plan.activePhase]);
   const [viewing, setViewing] = useState<PlanWorkoutOverview | null>(null);
+  const [inspectedExerciseId, setInspectedExerciseId] = useState<string | null>(null);
+  const inspectedExercise = useMemo(() => {
+    if (!inspectedExerciseId) return null;
+    return buildInspectExerciseSession({
+      exerciseId: inspectedExerciseId,
+      exerciseCatalog,
+      workouts,
+    });
+  }, [inspectedExerciseId, exerciseCatalog, workouts]);
   const next = plan.workouts.find((w) => w.workoutNumber === plan.nextWorkoutNumber)!;
   const isFirstRun = plan.cycleNumber === 1;
   const exerciseNameById = useMemo(
@@ -408,6 +422,22 @@ export const ProgramPlanView: React.FC<ProgramPlanViewProps> = ({
       ),
     [profile.programOverrides, trainingPlan.id]
   );
+  const weeklyVolume = useMemo(
+    () => calculateWeeklyMuscleVolume(workouts, exerciseCatalog),
+    [workouts, exerciseCatalog]
+  );
+  const knowledgeGraph = useMemo(
+    () =>
+      buildAthleteKnowledgeGraph(
+        workouts,
+        biometrics,
+        exerciseCatalog,
+        profile,
+        weeklyVolume,
+        activities
+      ),
+    [workouts, biometrics, exerciseCatalog, profile, weeklyVolume, activities]
+  );
   const coachInterventions = useMemo(
     () =>
       detectCoachInterventions({
@@ -417,54 +447,55 @@ export const ProgramPlanView: React.FC<ProgramPlanViewProps> = ({
         exerciseCatalog,
         bodyweightEmaKg: bodyweightKg,
         readinessState,
+        weeklyVolume,
         activities,
+        knowledgeGraph,
         trainingPlan,
       }),
-    [profile, workouts, biometrics, exerciseCatalog, bodyweightKg, readinessState, activities, trainingPlan]
+    [profile, workouts, biometrics, exerciseCatalog, bodyweightKg, readinessState, weeklyVolume, activities, knowledgeGraph, trainingPlan]
   );
-  const topIntervention = coachInterventions[0];
+  const visibleInterventions = coachInterventions.slice(0, 3);
+  const topIntervention = visibleInterventions[0];
+  const secondaryInterventions = visibleInterventions.slice(1);
 
   // Identity message: facts from the plan, history and knowledge graph; written by the on-device
   // model when one is ready, otherwise the fact-based fallback.
-  const identityFacts = useMemo(() => {
-    const knowledgeGraph = buildAthleteKnowledgeGraph(
-      workouts,
-      biometrics,
-      exerciseCatalog,
-      profile,
-      calculateWeeklyMuscleVolume(workouts, exerciseCatalog),
-      activities
-    );
-    return buildIdentityFacts({
-      plan,
-      trainingPlan,
-      workouts,
-      nextSession: generatePlanWorkout(trainingPlan, plan.nextWorkoutNumber),
-      exerciseCatalog,
-      knowledgeGraph,
-      readinessState,
-      bodyweightKg,
-    });
-    // Facts change with history and readiness, not with every profile edit.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [plan, trainingPlan, workouts, biometrics, exerciseCatalog, readinessState, bodyweightKg, activities]);
-  const [identityMessage, setIdentityMessage] = useState<string | null>(null);
+  const identityFacts = useMemo(
+    () =>
+      buildIdentityFacts({
+        plan,
+        trainingPlan,
+        workouts,
+        nextSession: generatePlanWorkout(trainingPlan, plan.nextWorkoutNumber),
+        exerciseCatalog,
+        knowledgeGraph,
+        readinessState,
+        bodyweightKg,
+      }),
+    [plan, trainingPlan, workouts, exerciseCatalog, knowledgeGraph, readinessState, bodyweightKg]
+  );
+  const [identityMessage, setIdentityMessage] = useState<string | null>(() =>
+    acceptIdentityMessage(getCachedIdentityMessage(identityFacts.key) ?? null, identityFacts)
+  );
   useEffect(() => {
     if (!isFirstRun) return;
     let cancelled = false;
     const cached = acceptIdentityMessage(getCachedIdentityMessage(identityFacts.key) ?? null, identityFacts);
     setIdentityMessage(cached);
     if (cached) return;
-    (async () => {
-      if (!(await isOnDeviceModelReady())) return;
-      const message = await generateIdentityMessage(identityFacts);
-      if (cancelled || !message) return;
-      cacheIdentityMessage(identityFacts.key, message);
-      setIdentityMessage(message);
-      // Any failure leaves the fact-based message in place.
-    })().catch(() => undefined);
+    const timer = setTimeout(() => {
+      (async () => {
+        if (cancelled || !(await isOnDeviceModelReady())) return;
+        const message = await generateIdentityMessage(identityFacts);
+        if (cancelled || !message) return;
+        cacheIdentityMessage(identityFacts.key, message);
+        setIdentityMessage(message);
+        // Any failure leaves the fact-based message in place.
+      })().catch(() => undefined);
+    }, 400);
     return () => {
       cancelled = true;
+      clearTimeout(timer);
     };
   }, [identityFacts, isFirstRun]);
   const identityRings = useMemo<IdentityRing[]>(
@@ -576,6 +607,25 @@ export const ProgramPlanView: React.FC<ProgramPlanViewProps> = ({
         >
           <div style={{ width: `${(plan.nextWorkoutNumber / TOTAL) * 100}%` }} />
         </div>
+        {onOpenCoach && activeOverrides.length === 0 && !topIntervention && (
+          <button
+            type="button"
+            onClick={() => {
+              triggerHaptic('light');
+              onOpenCoach();
+            }}
+            className="wk-btn-secondary w-full mt-4 min-h-[44px] inline-flex items-center justify-center gap-2"
+            style={{ borderColor: 'rgb(var(--color-coach-accent-rgb) / 0.3)' }}
+          >
+            <Sparkles
+              className="w-4 h-4 shrink-0"
+              style={{ color: 'var(--color-coach-accent)' }}
+              strokeWidth={2.2}
+              aria-hidden="true"
+            />
+            <span>Adapt plan with Treise</span>
+          </button>
+        )}
       </section>
 
       {(activeOverrides.length > 0 || topIntervention) && (
@@ -646,9 +696,9 @@ export const ProgramPlanView: React.FC<ProgramPlanViewProps> = ({
             </div>
           )}
 
-          {onOpenCoachIntervention && (
+          {(onOpenCoachIntervention || onOpenCoach) && (
             <div className="flex flex-wrap gap-2">
-              {topIntervention && (
+              {topIntervention && onOpenCoachIntervention && (
                 <button
                   type="button"
                   onClick={() => {
@@ -670,19 +720,71 @@ export const ProgramPlanView: React.FC<ProgramPlanViewProps> = ({
                   <span>{topIntervention.ctaLabel}</span>
                 </button>
               )}
-              {activeOverrides.length > 0 && (
+              {!topIntervention && onOpenCoach && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    triggerHaptic('light');
+                    onOpenCoach();
+                  }}
+                  className="wk-btn-secondary min-h-[44px] flex-1 px-3 inline-flex items-center justify-center gap-2 whitespace-nowrap font-medium"
+                  style={{
+                    borderColor: 'rgb(var(--color-coach-accent-rgb) / 0.35)',
+                    color: 'var(--color-text-primary)',
+                  }}
+                >
+                  <Sparkles
+                    className="w-4 h-4 shrink-0"
+                    style={{ color: 'var(--color-coach-accent)' }}
+                    strokeWidth={2.2}
+                    aria-hidden="true"
+                  />
+                  <span>Adapt with Treise</span>
+                </button>
+              )}
+              {activeOverrides.length > 0 && onOpenCoachIntervention && (
                 <button
                   type="button"
                   onClick={() => {
                     triggerHaptic('light');
                     onOpenCoachIntervention('Clear my program customizations');
                   }}
-                  className="wk-btn-secondary min-h-[44px] px-4 inline-flex items-center justify-center"
+                  className="wk-btn-secondary min-h-[44px] px-3 whitespace-nowrap inline-flex items-center justify-center"
                 >
                   Reset adaptations
                 </button>
               )}
             </div>
+          )}
+
+          {secondaryInterventions.length > 0 && onOpenCoachIntervention && (
+            <ul
+              className="flex flex-col gap-2 pt-3 border-t"
+              style={{ borderColor: 'var(--color-border-subtle)' }}
+              aria-label="Additional coaching suggestions"
+            >
+              {secondaryInterventions.map((item) => (
+                <li key={item.id} className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="wk-caption font-medium" style={{ color: 'var(--color-text-primary)' }}>
+                      {item.title}
+                    </div>
+                    <p className="wk-caption line-clamp-2">{item.rationale}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      triggerHaptic('light');
+                      onOpenCoachIntervention(item.coachPrompt);
+                    }}
+                    className="wk-btn-secondary min-h-[44px] px-3 shrink-0 text-xs font-medium"
+                    style={{ borderColor: 'rgb(var(--color-coach-accent-rgb) / 0.35)' }}
+                  >
+                    {item.ctaLabel}
+                  </button>
+                </li>
+              ))}
+            </ul>
           )}
         </section>
       )}
@@ -788,7 +890,28 @@ export const ProgramPlanView: React.FC<ProgramPlanViewProps> = ({
           workoutNumber={viewing.workoutNumber}
           title={viewing.label}
           session={viewing.session}
+          onSelectExercise={(ex) => setInspectedExerciseId(ex.exerciseId)}
           onClose={() => setViewing(null)}
+        />
+      )}
+
+      {inspectedExercise && (
+        <ExerciseDetailModal
+          exercise={inspectedExercise.exercise}
+          exerciseDef={inspectedExercise.exerciseDef}
+          workouts={workouts}
+          biometrics={biometrics}
+          bodyweightKg={bodyweightKg}
+          readinessState={readinessState}
+          onAskCoach={
+            onOpenCoachIntervention
+              ? () =>
+                  onOpenCoachIntervention(
+                    `Review my progress and form cues for ${formatSentenceCase(inspectedExercise.exercise.name)}`
+                  )
+              : undefined
+          }
+          onClose={() => setInspectedExerciseId(null)}
         />
       )}
     </>

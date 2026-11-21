@@ -14,7 +14,7 @@ import {
 } from '../engine/muscleBuildingProgram';
 import { getPlanById } from '../engine/trainingPlans';
 import { evaluateSessionRecovery, getTrainableReadyAt, getWorkoutCompletedAt } from '../engine/recovery';
-import { ExerciseDefinition, ExerciseSession, ProgramSplitType, WorkoutSession } from '../engine/types';
+import { ExerciseDefinition, ExerciseSession, HabitAnchor, ProgramSplitType, WeekdayShort, WorkoutSession } from '../engine/types';
 import { localDateOffset, localDateString, parseLocalDate } from '../utils/date';
 import { getNextSplitDay, getSplitTemplateExerciseIds, SplitDayType } from './workoutGenerator';
 
@@ -207,4 +207,104 @@ export function buildWeekStrip(input: {
       ...(scheduled ? { plannedSession: toUpcomingPreview(scheduled, input.plan) } : {}),
     };
   });
+}
+
+export interface HabitAnchorStatus {
+  hasAnchor: boolean;
+  isPreferredDayToday: boolean;
+  rolledOverFromMissedDay: boolean;
+  headline?: string;
+  detail?: string;
+}
+
+const TIME_LABELS: Record<NonNullable<HabitAnchor['preferredTime']>, string> = {
+  morning: 'morning',
+  midday: 'midday',
+  evening: 'evening',
+  flexible: 'any time',
+};
+
+/**
+ * Evaluates an athlete's optional habit anchor (Kaushal & Rhodes, 2015) with non-punitive
+ * asynchronous rollover (Lally et al., 2010: a single missed session does not break habit formation;
+ * "never miss twice"). Never blocks training or penalizes streaks.
+ */
+export function evaluateHabitAnchor(
+  anchor: HabitAnchor | undefined,
+  workouts: WorkoutSession[],
+  activeDates: string[] = [],
+  now: number = Date.now()
+): HabitAnchorStatus {
+  const days = anchor?.preferredDays ?? [];
+  const hasCue = Boolean(anchor?.cue?.trim());
+  const hasTime = Boolean(anchor?.preferredTime && anchor.preferredTime !== 'flexible');
+  if (days.length === 0 && !hasCue && !hasTime) {
+    return { hasAnchor: false, isPreferredDayToday: false, rolledOverFromMissedDay: false };
+  }
+
+  const today = new Date(now);
+  const todayStr = localDateString(today);
+  const todayLabel = WEEKDAY_LABELS[today.getDay()] as WeekdayShort;
+  const trainedSet = new Set<string>(activeDates);
+  for (const w of workouts) {
+    if (w.completed) trainedSet.add(w.completedAt ? localDateString(new Date(w.completedAt)) : w.date);
+  }
+  const trainedToday = trainedSet.has(todayStr);
+
+  // Check if the most recent preferred day within the past 2 days was missed -> gentle "never miss twice" rollover.
+  let missedRecentPreferredDay: WeekdayShort | null = null;
+  if (!trainedToday && days.length > 0) {
+    for (let offset = 1; offset <= 2; offset++) {
+      const dStr = localDateOffset(-offset, today);
+      const dLabel = WEEKDAY_LABELS[parseLocalDate(dStr).getDay()] as WeekdayShort;
+      if (days.includes(dLabel)) {
+        if (!trainedSet.has(dStr)) {
+          missedRecentPreferredDay = dLabel;
+        }
+        break;
+      }
+    }
+  }
+
+  const isPreferredDayToday = days.includes(todayLabel);
+  const cuePart = anchor?.cue?.trim();
+  const timePart = hasTime && anchor?.preferredTime ? TIME_LABELS[anchor.preferredTime] : undefined;
+
+  if (trainedToday) {
+    return {
+      hasAnchor: true,
+      isPreferredDayToday,
+      rolledOverFromMissedDay: false,
+      headline: 'Habit cue hit today',
+      detail: cuePart ? `Anchored to "${cuePart}".` : undefined,
+    };
+  }
+
+  if (missedRecentPreferredDay) {
+    return {
+      hasAnchor: true,
+      isPreferredDayToday,
+      rolledOverFromMissedDay: true,
+      headline: 'Rolled forward — never miss twice',
+      detail: `Your ${missedRecentPreferredDay} session moved cleanly to today${cuePart ? ` · Cue: ${cuePart}` : ''}. One missed day doesn't break the habit.`,
+    };
+  }
+
+  if (isPreferredDayToday) {
+    return {
+      hasAnchor: true,
+      isPreferredDayToday: true,
+      rolledOverFromMissedDay: false,
+      headline: timePart ? `Planned ${timePart} session` : 'Preferred training day',
+      detail: cuePart ? `Cue: ${cuePart}` : `Scheduled for ${days.join(', ')}.`,
+    };
+  }
+
+  return {
+    hasAnchor: true,
+    isPreferredDayToday: false,
+    rolledOverFromMissedDay: false,
+    headline: days.length > 0 ? `Preferred days: ${days.join(', ')}` : 'Habit anchor active',
+    detail: cuePart ? `Cue: ${cuePart}` : timePart ? `Preferred window: ${timePart}` : undefined,
+  };
 }

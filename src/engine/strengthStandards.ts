@@ -53,8 +53,68 @@ export function standardsAge(profile: { age?: number; ageEntered?: boolean }): n
   return profile.ageEntered ? profile.age : undefined;
 }
 
-/** Poliquin (1999): supinated chin-up 81% of the close-grip bench press 1RM. */
+/** Poliquin (1999): supinated chin-up 81% of the close-grip bench press 1RM (derived from male athletes). */
 export const POLIQUIN_CHIN_UP_TO_BENCH = 0.81;
+
+/**
+ * Sex-adjusted approximate chin-up-to-bench guideline for female athletes.
+ * Poliquin's 81% ratio was derived from elite male athletes; women's bench-to-bodyweight norms are
+ * lower while chin-up mass includes full bodyweight, so applying 81% raw understates female
+ * chin-up thresholds relative to bodyweight. Treated as an approximate caveated guideline.
+ */
+export const POLIQUIN_CHIN_UP_TO_BENCH_FEMALE = 1.05;
+
+export function getPoliquinChinUpToBenchRatio(gender: Gender = 'male'): number {
+  return gender === 'female' ? POLIQUIN_CHIN_UP_TO_BENCH_FEMALE : POLIQUIN_CHIN_UP_TO_BENCH;
+}
+
+/**
+ * Empirical allometric scaling exponents derived from 457,471 competitive powerlifters
+ * (S_2 = S_1 × (BW_2 / BW_1)^b). Unlike naive linear bodyweight ratios (1RM / BW), which
+ * systematically penalize heavier lifters because muscle cross-sectional area scales slower
+ * than body volume, allometric scaling stays size-neutral across weight classes.
+ */
+export const ALLOMETRIC_EXPONENT_MALE = 0.55;
+export const ALLOMETRIC_EXPONENT_FEMALE = 0.50;
+export const ALLOMETRIC_REFERENCE_BW_MALE = 82;
+export const ALLOMETRIC_REFERENCE_BW_FEMALE = 63;
+
+export function getAllometricExponent(gender: Gender = 'male'): number {
+  return gender === 'female' ? ALLOMETRIC_EXPONENT_FEMALE : ALLOMETRIC_EXPONENT_MALE;
+}
+
+/** Mass-independent allometric strength index: E1RM / BW^b (b = 0.55 male, 0.50 female). */
+export function calculateAllometricScore(
+  e1rmKg: number,
+  bodyweightKg: number,
+  gender: Gender = 'male'
+): number {
+  if (e1rmKg <= 0 || bodyweightKg <= 0) return 0;
+  const b = getAllometricExponent(gender);
+  return Math.round((e1rmKg / Math.pow(bodyweightKg, b)) * 100) / 100;
+}
+
+/**
+ * Translates an athlete's E1RM to a size-neutral reference bodyweight using empirical allometric
+ * scaling: S_ref = S × (BW_ref / BW)^b.
+ */
+export function allometricEquivalentAtReferenceBw(
+  e1rmKg: number,
+  bodyweightKg: number,
+  gender: Gender = 'male',
+  referenceBwKg: number = gender === 'female' ? ALLOMETRIC_REFERENCE_BW_FEMALE : ALLOMETRIC_REFERENCE_BW_MALE
+): number {
+  if (e1rmKg <= 0 || bodyweightKg <= 0 || referenceBwKg <= 0) return 0;
+  const b = getAllometricExponent(gender);
+  return Math.round(e1rmKg * Math.pow(referenceBwKg / bodyweightKg, b) * 10) / 10;
+}
+
+/** Age-adjusted relative strength multiplier (~5% decline per decade after age 40, floor 0.70). */
+export function allometricAgeAdjustmentFactor(age?: number): number {
+  if (!age || age <= 40) return 1;
+  const decades = (age - 40) / 10;
+  return Math.round(Math.max(0.7, 1 - 0.05 * decades) * 1000) / 1000;
+}
 
 /**
  * The 5 level thresholds as a ratio of bodyweight (Untrained, Novice, Intermediate, Advanced, Elite),
@@ -71,7 +131,8 @@ export function getThresholds(
   const lift = KILGORE_LIFT[pillar];
   if (lift) return kilgoreThresholdsKg(lift, sex, bw, age).map((kg) => kg / bw) as [number, number, number, number, number];
   if (pillar === 'Vertical Pull') {
-    return kilgoreThresholdsKg('bench', sex, bw, age).map((kg) => (kg * POLIQUIN_CHIN_UP_TO_BENCH) / bw) as [number, number, number, number, number];
+    const chinRatio = getPoliquinChinUpToBenchRatio(sex);
+    return kilgoreThresholdsKg('bench', sex, bw, age).map((kg) => (kg * chinRatio) / bw) as [number, number, number, number, number];
   }
   return null;
 }

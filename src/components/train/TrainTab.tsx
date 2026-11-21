@@ -2,8 +2,10 @@ import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react'
 import { PageTopGradient } from '../common/PageTopGradient';
 import {
   BiometricLog,
+  EquipmentInventory,
   ExerciseDefinition,
   ExerciseSession,
+  ProgramExerciseOverride,
   TrainingLocation,
   UserProfile,
   WorkoutSession,
@@ -12,14 +14,16 @@ import {
   WorkoutDisplaySettings,
   DEFAULT_WORKOUT_DISPLAY_SETTINGS,
   resolveWorkoutDisplaySettings,
+  resolveRirTrackingEnabled,
   isWearableConnected,
   isWhoopConfigured,
 } from '../../engine/types';
-import { ReadinessEvaluation } from '../../engine/readiness';
+import { getActiveEquipmentInventory, snapWeightToInventory } from '../../engine/equipmentInventory';
+import { ReadinessEvaluation, evaluateSet1RirConfirmation } from '../../engine/readiness';
 import { ReadinessBanner } from './ReadinessBanner';
 import { ExerciseCard } from './ExerciseCard';
 import { ExerciseDetailModal } from './ExerciseDetailModal';
-import { ExerciseSwapModal } from './ExerciseSwapModal';
+import { ExerciseSwapModal, ExerciseSwapScope } from './ExerciseSwapModal';
 import { PlateCalculatorModal } from './PlateCalculatorModal';
 import { WorkoutFinishScreen } from './WorkoutFinishScreen';
 import { buildCompletedExerciseSummaries, buildWorkoutFinish } from '../../services/workoutFinish';
@@ -28,6 +32,8 @@ import {
   fetchWhoopWorkoutStrain,
 } from '../../services/whoopService';
 import {
+  applyRecoveryModulation,
+  clearRecoveryModulation,
   computeMuscleRecovery,
   evaluateSessionRecovery,
   formatReadyTime,
@@ -57,7 +63,9 @@ import {
   usesOneDumbbell,
 } from '../../engine/e1rm';
 import { buildAthleteKnowledgeGraph, getExerciseBiomechanicalMeta } from '../../engine/knowledgeGraph';
-import { calculateWeeklyMuscleVolume } from '../../services/storage';
+import { MUSCLE_TO_GRAPH_KEY } from '../../services/sessionReport';
+import { getGoalAdaptedVolumeRange } from '../../engine/hypertrophyVolume';
+import { calculateWeeklyMuscleVolume, calculateWeeklyMuscleVolumeBreakdown } from '../../services/storage';
 import { calculateSessionTonnage } from '../../engine/wci';
 import { CompletedExerciseCard, FinishedWorkoutSummaryCard, WhoopStrainCard } from './FinishedWorkoutCards';
 import { WorkoutPageHeader } from './WorkoutPageHeader';
@@ -73,7 +81,7 @@ import {
   getCachedExerciseNote,
 } from '../../services/exerciseCoachNote';
 import { detectCoachInterventions } from '../../services/coachInterventions';
-import { isOnDeviceModelReady } from '../../services/onDeviceModel';
+import { getActiveModelTier } from '../../services/onDeviceModel';
 import '../../services/deviceModels';
 import {
   calculateWarmupPrescription,
@@ -99,6 +107,7 @@ import {
   Moon,
   BedDouble,
   SlidersHorizontal,
+  Sparkles,
 } from 'lucide-react';
 import { triggerHaptic } from '../../utils/haptics';
 
@@ -143,6 +152,8 @@ interface TrainTabProps {
   onOpenInsights?: (exerciseId?: string) => void;
   /** Opens Treise coach with a pre-filled OOUX HITL intervention prompt. */
   onOpenCoachIntervention?: (opts: { prompt: string; exerciseId?: string }) => void;
+  /** Opens Treise coach in Workout context (optionally scoped to an exercise or prompt). */
+  onOpenCoach?: (opts?: { exerciseId?: string; prompt?: string }) => void;
 }
 
 /** Primary muscles each split day trains, used to suggest a recovered alternative. */
@@ -194,6 +205,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
   onRemoveActivity,
   onOpenInsights,
   onOpenCoachIntervention,
+  onOpenCoach,
 }) => {
   const units = useUnits();
   const [detailExerciseId, setDetailExerciseId] = useState<string | null>(null);
@@ -212,6 +224,12 @@ export const TrainTab: React.FC<TrainTabProps> = ({
     () => resolveWorkoutDisplaySettings(profile.workoutDisplay),
     [profile.workoutDisplay]
   );
+  const showRir = resolveRirTrackingEnabled(profile);
+  const activeLocationForInventory = activeWorkout.location || profile.activeLocation || 'gym';
+  const activeInventory = useMemo(
+    () => getActiveEquipmentInventory(profile, activeLocationForInventory),
+    [profile, activeLocationForInventory]
+  );
   const activeDisplayCount = [
     workoutDisplay.showProgramCard,
     workoutDisplay.showSessionCard,
@@ -219,21 +237,35 @@ export const TrainTab: React.FC<TrainTabProps> = ({
     workoutDisplay.showExerciseSummaries,
     workoutDisplay.showExerciseCharts,
     workoutDisplay.showStepsCard,
+    showRir,
   ].filter(Boolean).length;
+  const defaultRirForExperience = (profile.experienceLevel ?? 'intermediate') !== 'new';
   const isDefaultWorkoutDisplay =
     workoutDisplay.showProgramCard === DEFAULT_WORKOUT_DISPLAY_SETTINGS.showProgramCard &&
     workoutDisplay.showSessionCard === DEFAULT_WORKOUT_DISPLAY_SETTINGS.showSessionCard &&
     workoutDisplay.showRecoveryCard === DEFAULT_WORKOUT_DISPLAY_SETTINGS.showRecoveryCard &&
     workoutDisplay.showExerciseSummaries === DEFAULT_WORKOUT_DISPLAY_SETTINGS.showExerciseSummaries &&
     workoutDisplay.showExerciseCharts === DEFAULT_WORKOUT_DISPLAY_SETTINGS.showExerciseCharts &&
-    workoutDisplay.showStepsCard === DEFAULT_WORKOUT_DISPLAY_SETTINGS.showStepsCard;
+    workoutDisplay.showStepsCard === DEFAULT_WORKOUT_DISPLAY_SETTINGS.showStepsCard &&
+    showRir === defaultRirForExperience;
 
   const handleToggleWorkoutDisplay = (key: keyof WorkoutDisplaySettings) => {
+    const currentValue = key === 'showRirTracking' ? showRir : Boolean(workoutDisplay[key]);
     const next: WorkoutDisplaySettings = {
       ...workoutDisplay,
-      [key]: !workoutDisplay[key],
+      [key]: !currentValue,
     };
     onUpdateProfile?.({ workoutDisplay: next });
+  };
+
+  const handleSaveEquipmentInventory = (nextInv: EquipmentInventory) => {
+    const targetLoc: 'gym' | 'home' = activeLocationForInventory === 'home' ? 'home' : 'gym';
+    onUpdateProfile?.({
+      equipmentInventories: {
+        ...(profile.equipmentInventories ?? {}),
+        [targetLoc]: nextInv,
+      },
+    });
   };
 
   const handleResetWorkoutDisplay = () => {
@@ -259,6 +291,8 @@ export const TrainTab: React.FC<TrainTabProps> = ({
 
           for (let i = completedIndex + 1; i < updatedSets.length; i++) {
             if (!updatedSets[i].completed && updatedSets[i].setType !== 'warmup') {
+              // Carry adjusted working load & reps forward without flattening descending straight-set targetRir.
+              const preservedTargetRir = Math.min(updatedSets[i].targetRir ?? sourceRir, sourceRir);
               updatedSets[i] = {
                 ...updatedSets[i],
                 targetWeightKg: sourceWeight,
@@ -268,8 +302,8 @@ export const TrainTab: React.FC<TrainTabProps> = ({
                 ...(sourceDuration !== undefined
                   ? { targetDurationSeconds: sourceDuration, actualDurationSeconds: sourceDuration }
                   : {}),
-                targetRir: sourceRir,
-                actualRir: sourceRir,
+                targetRir: preservedTargetRir,
+                actualRir: preservedTargetRir,
               };
             }
           }
@@ -485,7 +519,8 @@ export const TrainTab: React.FC<TrainTabProps> = ({
   const handleConfirmSwap = (
     newDef: ExerciseDefinition,
     convertedWeightKg: number,
-    explicitPrescription?: SwapPrescription
+    explicitPrescription?: SwapPrescription,
+    scope: ExerciseSwapScope = 'today'
   ) => {
     if (!swappingExercise) return;
     const meta = getExerciseBiomechanicalMeta(newDef);
@@ -504,7 +539,9 @@ export const TrainTab: React.FC<TrainTabProps> = ({
       });
 
     const isPureBw = rx.isPureBodyweight;
-    const effectiveTargetWeight = isPureBw ? 0 : rx.targetWeightKg;
+    const effectiveTargetWeight = isPureBw
+      ? 0
+      : snapWeightToInventory(rx.targetWeightKg, newDef.equipment, units.unit, activeInventory);
     const defaultTargetReps = rx.targetReps;
     const timed = rx.isTimed;
 
@@ -607,6 +644,35 @@ export const TrainTab: React.FC<TrainTabProps> = ({
     });
 
     onUpdateWorkout({ ...activeWorkout, exercises: nextExercises });
+
+    if (scope === 'permanent' && onUpdateProfile) {
+      const targetPlanId = trainingPlan?.id ?? getSessionPlanId(activeWorkout) ?? 'starter_6wk';
+      const newOverride: ProgramExerciseOverride = {
+        id: `ov-swap-${swappingExercise.exerciseId}-${newDef.id}-${Date.now()}`,
+        planId: targetPlanId,
+        kind: 'swap_exercise',
+        targetExerciseId: swappingExercise.exerciseId,
+        targetExerciseName: swappingExercise.name,
+        replacementExerciseId: newDef.id,
+        replacementExerciseName: newDef.name,
+        replacementPillar: newDef.pillar,
+        replacementEquipment: newDef.equipment,
+        replacementRepRange: [rx.minReps, rx.maxReps],
+        ...(timed ? { replacementIsTimed: true, replacementDurationSeconds: rx.targetDurationSeconds || 45 } : {}),
+        reason: 'permanent gym-floor swap',
+        createdAt: new Date().toISOString(),
+      };
+      const prevOverrides = (profile.programOverrides ?? []).filter(
+        (ov) =>
+          !(
+            ov.planId === targetPlanId &&
+            ov.kind === 'swap_exercise' &&
+            ov.targetExerciseId === swappingExercise.exerciseId
+          )
+      );
+      onUpdateProfile({ programOverrides: [...prevOverrides, newOverride] });
+    }
+
     setSwappingExercise(null);
   };
 
@@ -709,13 +775,23 @@ export const TrainTab: React.FC<TrainTabProps> = ({
   const recentCompletedWorkouts = workouts.filter((w) => w.completed).slice(0, 4);
   const currentLoc = activeWorkout.location || profile.activeLocation || 'gym';
 
-  // Recovery gate: after a workout, the next queued session waits until its muscles recover.
-  const recoveryGate = evaluateSessionRecovery(activeWorkout, workouts, exerciseCatalog);
-  const showRecoveryGate =
-    !recoveryGate.isReady && completedSets === 0 && !activeWorkout.recoveryOverride;
+  // Unified advisory recovery status (combines local muscle recovery with systemic Amber Shield 1.2x multiplier).
+  // Never hides today's queued workout behind a blocking rest card; only shows today's finished summary
+  // after the athlete already completed a workout today.
+  const recoveryGate = evaluateSessionRecovery(activeWorkout, workouts, exerciseCatalog, Date.now(), readiness.state);
+  const showTrainedTodaySummary =
+    recoveryGate.trainedToday && completedSets === 0 && !activeWorkout.recoveryOverride;
+  const hasRecoveryAdvisory =
+    !recoveryGate.trainedToday && (!recoveryGate.isReady || readiness.state === 'Amber Shield');
+  const handleModulateSession = (mode: 'trim_sets' | 'conservative_rir' | 'both') => {
+    onUpdateWorkout(applyRecoveryModulation(activeWorkout, mode));
+  };
+  const handleRestoreModulation = () => {
+    onUpdateWorkout(clearRecoveryModulation(activeWorkout));
+  };
   const recoveredAlternative: SplitDayType | null = (() => {
     if (!onSwitchSplitDay || recoveryGate.trainedToday) return null;
-    const recovery = computeMuscleRecovery(workouts, exerciseCatalog);
+    const recovery = computeMuscleRecovery(workouts, exerciseCatalog, Date.now(), readiness.state);
     const options = getSplitDaysForProgram(profile.programType).map((o) => o.id);
     return (
       options.find(
@@ -731,7 +807,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
   // After today's workout: its summary and each exercise done, from the saved session (the same
   // data and words as the finish screen).
   const todayFinished = useMemo(() => {
-    if (!showRecoveryGate || !recoveryGate.trainedToday) return null;
+    if (!showTrainedTodaySummary) return null;
     const finished = workouts
       .filter((w) => w.completed)
       .sort((x, y) => getWorkoutCompletedAt(x) - getWorkoutCompletedAt(y))
@@ -761,12 +837,8 @@ export const TrainTab: React.FC<TrainTabProps> = ({
       }),
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showRecoveryGate, recoveryGate.trainedToday, workouts, biometrics, exerciseCatalog, profile, activities, bodyweightEmaKg, units.unit]);
+  }, [showTrainedTodaySummary, workouts, biometrics, exerciseCatalog, profile, activities, bodyweightEmaKg, units.unit]);
   const sessionReport = todayFinished?.finish.report ?? null;
-
-  const lastWorkoutAgoHours = recoveryGate.lastWorkoutAt
-    ? Math.max(0, Math.round((Date.now() - recoveryGate.lastWorkoutAt) / (60 * 60 * 1000)))
-    : null;
 
   // 6-Week plan sessions show their own week and phase.
   const planWorkoutNumber =
@@ -805,8 +877,8 @@ export const TrainTab: React.FC<TrainTabProps> = ({
   const sessionSetsCurrent = todayFinished
     ? todayFinished.workout.exercises.reduce((acc, ex) => acc + ex.sets.filter((s) => s.completed).length, 0)
     : completedSets;
-  // After a logged rest day (or when holding for recovery) an unfinished session is queued as next rather than today's.
-  const isNextSession = !todayFinished && (showRecoveryGate || activeWorkout.date > localDateString());
+  // After an explicit rest day, an unfinished session is queued as next rather than today's.
+  const isNextSession = !todayFinished && activeWorkout.date > localDateString();
   const rawSessionName = todayFinished
     ? getSessionPlanId(todayFinished.workout) === trainingPlan.id
       ? planWorkoutLabel(todayFinished.workout.name)
@@ -848,11 +920,19 @@ export const TrainTab: React.FC<TrainTabProps> = ({
     [workouts, activeWorkout.id, activeWorkout.date, activeWorkout.programWorkoutNumber, profile.programType, trainingPlan, exerciseCatalog, activities]
   );
 
-  // Exercise overviews: personal notes written on the device from the athlete's knowledge graph.
+  // Exercise overviews: personal notes written from the athlete's knowledge graph (engine-memoized).
+  const savedWeeklyVolume = useMemo(
+    () => calculateWeeklyMuscleVolume(workouts, exerciseCatalog),
+    [workouts, exerciseCatalog]
+  );
   const knowledgeGraph = useMemo(
     () =>
-      buildAthleteKnowledgeGraph(workouts, biometrics, exerciseCatalog, profile, calculateWeeklyMuscleVolume(workouts, exerciseCatalog), activities),
-    [workouts, biometrics, exerciseCatalog, profile]
+      buildAthleteKnowledgeGraph(workouts, biometrics, exerciseCatalog, profile, savedWeeklyVolume, activities),
+    [workouts, biometrics, exerciseCatalog, profile, savedWeeklyVolume, activities]
+  );
+  const liveWeeklyVolumeBreakdown = useMemo(
+    () => calculateWeeklyMuscleVolumeBreakdown(workouts, exerciseCatalog, activeWorkout),
+    [workouts, exerciseCatalog, activeWorkout]
   );
   const planTotalWeeks = Math.max(1, ...trainingPlan.templates.map((t) => t.week));
   const programLabel = planWorkoutNumber
@@ -899,7 +979,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
   const [generatedNotes, setGeneratedNotes] = useState<Record<string, string>>({});
   const noteKeys = exerciseNotes.map((n) => n.key).join('|');
   useEffect(() => {
-    if (showRecoveryGate) return;
+    if (showTrainedTodaySummary) return;
     let cancelled = false;
     const cached: Record<string, string> = {};
     for (const n of exerciseNotes) {
@@ -909,7 +989,10 @@ export const TrainTab: React.FC<TrainTabProps> = ({
     setGeneratedNotes(cached);
     const timer = setTimeout(() => {
       (async () => {
-        if (cancelled || !(await isOnDeviceModelReady())) return;
+        // Economical AI budget: per-exercise card rewrites run automatically only on free local
+        // on-device models (Gemini Nano). Over the cloud proxy, deterministic 2-line exercise briefs
+        // already carry exact kg/lb history & stimulus without firing 6-8 background API calls per workout.
+        if (cancelled || (await getActiveModelTier()) !== 'local') return;
         // One at a time, top to bottom: the model answers one request at a time.
         // First-time exercises (hasHistory === false) already have an exact 2-line baseline fallback.
         for (const n of exerciseNotes) {
@@ -928,7 +1011,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
       clearTimeout(timer);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [noteKeys, showRecoveryGate]);
+  }, [noteKeys, showTrainedTodaySummary]);
 
   // Page background: canvas top tint fading to canvas base exactly where the first workout card starts.
   const cardsTopRef = useRef<HTMLDivElement>(null);
@@ -1061,11 +1144,8 @@ export const TrainTab: React.FC<TrainTabProps> = ({
   const todayDateStr = localDateString();
   const todayStripDay = stripDays.find((d) => d.isToday);
   const isRestDayToday = activeWorkout.date > todayDateStr && completedSets === 0;
-  const isNonTrainingToday =
-    !todayFinished &&
-    (showRecoveryGate ||
-      isRestDayToday ||
-      (todayStripDay?.status === 'rest' && completedSets === 0 && !activeWorkout.recoveryOverride));
+  // Recovery is advisory, never blocking: only an explicitly logged rest day hides today's exercises.
+  const isNonTrainingToday = !todayFinished && isRestDayToday;
   const inspectedDay = selectedStripDate ? stripDays.find((d) => d.date === selectedStripDate) ?? null : null;
   const isPastInspected = Boolean(inspectedDay && inspectedDay.date < todayDateStr);
   const isFutureInspected = Boolean(inspectedDay && inspectedDay.date > todayDateStr);
@@ -1124,7 +1204,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
         markerRef={exercisesTopRef}
         fallbackRef={cardsTopRef}
         observeRef={cardsTopRef}
-        deps={[showRecoveryGate, sessionReport, isNonTrainingView]}
+        deps={[hasRecoveryAdvisory, sessionReport, isNonTrainingView]}
       />
       {workoutDisplay.showSessionCard && !isNonTrainingView && (
         <StickySessionHeader
@@ -1201,12 +1281,18 @@ export const TrainTab: React.FC<TrainTabProps> = ({
               sessionRef={sessionBlockRef}
             />
           )}
-          {!showRecoveryGate && workoutDisplay.showRecoveryCard && hasRecoveryMechanism && (
+          {workoutDisplay.showRecoveryCard && hasRecoveryMechanism && (
             <RecoveryScoreCard
               readiness={readiness}
               latestBiometrics={latestBiometrics}
               isConnected={isWearableConnected(profile)}
+              recoveryGate={recoveryGate}
+              set1Confirmation={evaluateSet1RirConfirmation(activeWorkout)}
+              activeModulation={activeWorkout.recoveryModulation}
+              onModulateSession={handleModulateSession}
+              onRestoreModulation={handleRestoreModulation}
               onOpen={onOpenWatchSync}
+              onAskCoach={onOpenCoach ? () => onOpenCoach() : undefined}
             />
           )}
         </>
@@ -1378,104 +1464,181 @@ export const TrainTab: React.FC<TrainTabProps> = ({
         />
       )}
 
-      {isRestDayToday && (!inspectedDay || inspectedDay.isToday) && !showRecoveryGate && (
+      {isRestDayToday && (!inspectedDay || inspectedDay.isToday) && !todayFinished && (
         <section aria-label="Rest day status" className="wk-card">
           <h2 className="wk-h1">Rest day logged</h2>
           <p className="wk-body mt-2 max-w-prose">
             {activeWorkout.name} is queued for your next training day. Focus on steps, active recovery or rest today.
           </p>
-          <button
-            type="button"
-            onClick={() => {
-              triggerHaptic('light');
-              onUpdateWorkout({ ...activeWorkout, date: todayDateStr });
-            }}
-            className="wk-btn-secondary w-full mt-3"
-          >
-            Train today instead
-          </button>
-        </section>
-      )}
-
-      {showRecoveryGate && (!inspectedDay || inspectedDay.isToday) && !sessionReport && (
-        <section aria-label="Recovery before next workout" className="wk-card">
-          <h2 className="wk-h1">Your muscles are still recovering</h2>
-          <p className="wk-body mt-2 max-w-prose">
-            {activeWorkout.name} will be ready{' '}
-            <strong style={{ color: 'var(--color-text-primary)' }}>{formatReadyTime(recoveryGate.readyAt ?? Date.now())}</strong>.
-            {lastWorkoutAgoHours !== null && recoveryGate.lastWorkoutName
-              ? ` You finished ${recoveryGate.lastWorkoutName} ${
-                  lastWorkoutAgoHours < 1 ? 'less than an hour' : `${lastWorkoutAgoHours} hour${lastWorkoutAgoHours === 1 ? '' : 's'}`
-                } ago.`
-              : ''}
-          </p>
-
-          {recoveryGate.limitingMuscles.length > 0 && (
-            <ul className="flex flex-col gap-3 mt-5" aria-label="Muscle recovery">
-              {recoveryGate.limitingMuscles.slice(0, 4).map((m) => (
-                <li key={m.muscle}>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="wk-subhead">{MUSCLE_FRIENDLY_NAMES[m.muscle]}</span>
-                    <span className="wk-caption tabular-nums">
-                      {m.recoveryPct}% • ready {formatReadyTime(m.readyAt)}
-                    </span>
-                  </div>
-                  <div
-                    className="wk-bar"
-                    role="progressbar"
-                    aria-valuemin={0}
-                    aria-valuemax={100}
-                    aria-valuenow={m.recoveryPct}
-                    aria-label={`${MUSCLE_FRIENDLY_NAMES[m.muscle]} recovery`}
-                  >
-                    <div
-                      style={{
-                        width: `${m.recoveryPct}%`,
-                        background:
-                          m.recoveryPct >= 67
-                            ? 'var(--color-status-positive)'
-                            : m.recoveryPct >= 34
-                            ? 'var(--color-status-warning)'
-                            : 'var(--color-status-danger)',
-                      }}
-                    />
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-
-          <p className="wk-body mt-5 max-w-prose">
-            Muscles grow while they recover. Training them again early means less growth, not more.
-          </p>
-
-          <div className="flex flex-col gap-2 mt-5">
-            {recoveredAlternative && onSwitchSplitDay && (
-              <button
-                type="button"
-                onClick={() => {
-                  triggerHaptic('medium');
-                  onSwitchSplitDay(recoveredAlternative);
-                }}
-                className="wk-button"
-                style={{ background: 'var(--color-action-primary-bg)', color: 'var(--color-action-primary-fg)' }}
-              >
-                Train {recoveredAlternative} instead
-              </button>
-            )}
+          <div className="flex flex-col gap-2 mt-3">
             <button
               type="button"
               onClick={() => {
-                triggerHaptic('warning');
-                onUpdateWorkout({ ...activeWorkout, recoveryOverride: true });
+                triggerHaptic('light');
+                onUpdateWorkout({ ...activeWorkout, date: todayDateStr });
               }}
               className="wk-btn-secondary w-full"
             >
-              Train anyway
+              Train today instead
             </button>
+            {onOpenCoach && (
+              <button
+                type="button"
+                onClick={() => {
+                  triggerHaptic('light');
+                  onOpenCoach();
+                }}
+                className="wk-btn-secondary w-full min-h-[44px] justify-center gap-2"
+                style={{ borderColor: 'rgb(var(--color-coach-accent-rgb) / 0.35)' }}
+              >
+                <Sparkles className="w-4 h-4 shrink-0" style={{ color: 'var(--color-coach-accent)' }} strokeWidth={2.2} aria-hidden="true" />
+                <span>Ask Treise about today</span>
+              </button>
+            )}
           </div>
         </section>
       )}
+
+      {/* Calm, non-blocking recovery advisory indicator when no wearable card already shows it */}
+      {showActiveExercises &&
+        hasRecoveryAdvisory &&
+        !(workoutDisplay.showRecoveryCard && hasRecoveryMechanism) && (
+          <section aria-label="Recovery advisory" className="wk-card flex flex-col gap-3">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <h2 className="wk-subhead">
+                  {readiness.state === 'Amber Shield' ? 'Low recovery today' : 'Muscles still recovering'}
+                </h2>
+                <p className="wk-body mt-1 max-w-prose">
+                  {recoveryGate.advisoryMessage}
+                </p>
+              </div>
+              <span
+                className="wk-pill shrink-0"
+                style={{ background: 'var(--color-status-warning-soft)', color: 'var(--color-status-warning)' }}
+              >
+                Advisory
+              </span>
+            </div>
+
+            {recoveryGate.limitingMuscles.length > 0 && (
+              <ul className="flex flex-col gap-2" aria-label="Muscle recovery">
+                {recoveryGate.limitingMuscles.slice(0, 3).map((m) => (
+                  <li key={m.muscle}>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="wk-caption" style={{ color: 'var(--color-text-secondary)' }}>
+                        {MUSCLE_FRIENDLY_NAMES[m.muscle]}
+                      </span>
+                      <span className="wk-caption tabular-nums">
+                        {m.recoveryPct}% • ready {formatReadyTime(m.readyAt)}
+                      </span>
+                    </div>
+                    <div
+                      className="wk-bar"
+                      role="progressbar"
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                      aria-valuenow={m.recoveryPct}
+                      aria-label={`${MUSCLE_FRIENDLY_NAMES[m.muscle]} recovery`}
+                    >
+                      <div
+                        style={{
+                          width: `${m.recoveryPct}%`,
+                          background:
+                            m.recoveryPct >= 67
+                              ? 'var(--color-status-positive)'
+                              : m.recoveryPct >= 34
+                              ? 'var(--color-status-warning)'
+                              : 'var(--color-status-danger)',
+                        }}
+                      />
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            <div className="flex flex-col gap-2 pt-2 border-t" style={{ borderColor: 'var(--color-border-subtle)' }}>
+              <div className="flex items-center justify-between gap-2">
+                <span className="wk-label">Optional modulation</span>
+                {activeWorkout.recoveryModulation && (
+                  <span
+                    className="wk-pill"
+                    style={{ background: 'var(--color-status-warning-soft)', color: 'var(--color-status-warning)' }}
+                  >
+                    {activeWorkout.recoveryModulation.mode === 'trim_sets'
+                      ? '−1 set/lift'
+                      : activeWorkout.recoveryModulation.mode === 'conservative_rir'
+                      ? '2–3 RIR'
+                      : '−1 set & 2–3 RIR'}
+                  </span>
+                )}
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  aria-pressed={
+                    activeWorkout.recoveryModulation?.mode === 'trim_sets' ||
+                    activeWorkout.recoveryModulation?.mode === 'both'
+                  }
+                  onClick={() => {
+                    triggerHaptic('light');
+                    if (activeWorkout.recoveryModulation?.mode === 'trim_sets') handleRestoreModulation();
+                    else
+                      handleModulateSession(
+                        activeWorkout.recoveryModulation?.mode === 'conservative_rir' ? 'both' : 'trim_sets'
+                      );
+                  }}
+                  className="wk-btn-secondary w-full min-h-[44px] justify-center"
+                >
+                  Trim 1 set / lift
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={
+                    activeWorkout.recoveryModulation?.mode === 'conservative_rir' ||
+                    activeWorkout.recoveryModulation?.mode === 'both'
+                  }
+                  onClick={() => {
+                    triggerHaptic('light');
+                    if (activeWorkout.recoveryModulation?.mode === 'conservative_rir') handleRestoreModulation();
+                    else
+                      handleModulateSession(
+                        activeWorkout.recoveryModulation?.mode === 'trim_sets' ? 'both' : 'conservative_rir'
+                      );
+                  }}
+                  className="wk-btn-secondary w-full min-h-[44px] justify-center"
+                >
+                  Shift to 2–3 RIR
+                </button>
+              </div>
+              {activeWorkout.recoveryModulation && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    triggerHaptic('light');
+                    handleRestoreModulation();
+                  }}
+                  className="wk-btn-secondary w-full min-h-[44px] justify-center"
+                >
+                  Restore planned session
+                </button>
+              )}
+              {recoveredAlternative && onSwitchSplitDay && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    triggerHaptic('medium');
+                    onSwitchSplitDay(recoveredAlternative);
+                  }}
+                  className="wk-btn-secondary w-full min-h-[44px] justify-center"
+                >
+                  Switch to {recoveredAlternative} instead
+                </button>
+              )}
+            </div>
+          </section>
+        )}
 
       {inspectedDay && !inspectedDay.isToday && inspectedLiftingWorkout && (
         <>
@@ -1572,12 +1735,34 @@ export const TrainTab: React.FC<TrainTabProps> = ({
             return undefined;
           })();
 
+          const primaryGraphKey = def ? MUSCLE_TO_GRAPH_KEY[def.primaryMuscle] : undefined;
+          const liveMuscleBreakdown = primaryGraphKey
+            ? liveWeeklyVolumeBreakdown[primaryGraphKey]
+            : undefined;
+          const adaptedRange = primaryGraphKey
+            ? getGoalAdaptedVolumeRange(primaryGraphKey, profile.goalPhase)
+            : undefined;
+          const weeklyMuscleVolume =
+            def && liveMuscleBreakdown && adaptedRange
+              ? {
+                  muscleName: MUSCLE_FRIENDLY_NAMES[def.primaryMuscle] || def.primaryMuscle,
+                  total: liveMuscleBreakdown.total,
+                  direct: liveMuscleBreakdown.direct,
+                  fractional: liveMuscleBreakdown.fractional,
+                  targetMin: adaptedRange.minSets,
+                  targetMax: adaptedRange.maxSets,
+                  goalLabel: adaptedRange.goalLabel,
+                  frequencyCue: adaptedRange.frequencyCue,
+                }
+              : undefined;
+
           return (
             <ExerciseCard
               key={ex.id}
               exerciseIndex={index + 1}
               totalExercises={activeWorkout.exercises.length}
               exercise={ex}
+              exerciseDef={def}
               prescription={prescription}
               quest={quest}
               readinessState={readiness.state}
@@ -1595,6 +1780,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
               onOpenSwap={() => setSwappingExercise(ex)}
               onOpenPlateCalc={(kg) => setPlateCalcWeight(kg)}
               muscleLabel={def ? MUSCLE_FRIENDLY_NAMES[def.primaryMuscle] : undefined}
+              weeklyMuscleVolume={weeklyMuscleVolume}
               previousSets={getPreviousWorkingSets(ex.exerciseId, workouts)}
               insight={buildExerciseInsight(ex, liveInsightWorkouts, readiness.state, measuredBodyweightKg, 12, (kg) => units.formatPrecise(kg), biometrics)}
               note={
@@ -1607,6 +1793,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
               }
               showSummary={workoutDisplay.showExerciseSummaries}
               showChart={workoutDisplay.showExerciseCharts}
+              showRir={showRir}
             />
           );
         })}
@@ -1783,9 +1970,14 @@ export const TrainTab: React.FC<TrainTabProps> = ({
                     title: 'Daily steps card',
                     description: 'Step count overview on rest days and selected week-strip days.',
                   },
+                  {
+                    key: 'showRirTracking' as const,
+                    title: 'Track RIR (reps in reserve)',
+                    description: 'Show RIR input column on every set. Off by default for new lifters.',
+                  },
                 ]
               ).map((item) => {
-                const enabled = workoutDisplay[item.key];
+                const enabled = item.key === 'showRirTracking' ? showRir : Boolean(workoutDisplay[item.key]);
                 return (
                   <li key={item.key} style={{ borderBottom: '1px solid var(--color-border-subtle)' }}>
                     <button
@@ -1910,6 +2102,11 @@ export const TrainTab: React.FC<TrainTabProps> = ({
                     })
                 : undefined
             }
+            onAskCoach={
+              onOpenCoach
+                ? (exerciseId) => onOpenCoach({ exerciseId })
+                : undefined
+            }
             onClose={() => setDetailExerciseId(null)}
           />
         );
@@ -1938,6 +2135,9 @@ export const TrainTab: React.FC<TrainTabProps> = ({
       {plateCalcWeight !== null && (
         <PlateCalculatorModal
           initialWeightKg={plateCalcWeight}
+          location={activeLocationForInventory}
+          inventory={activeInventory}
+          onSaveInventory={handleSaveEquipmentInventory}
           onClose={() => setPlateCalcWeight(null)}
         />
       )}
@@ -1953,6 +2153,14 @@ export const TrainTab: React.FC<TrainTabProps> = ({
           hasLiveWhoopConnection={Boolean(profile.whoopAccessToken)}
           isSyncingWhoop={isSyncingWhoopStrain}
           onRefreshWhoop={profile.whoopAccessToken ? syncWhoopWorkoutTelemetry : undefined}
+          onDebriefWithCoach={
+            onOpenCoach
+              ? () => {
+                  handleCloseSummary();
+                  onOpenCoach({ prompt: "What did I do last workout and what's next?" });
+                }
+              : undefined
+          }
         />
       )}
 

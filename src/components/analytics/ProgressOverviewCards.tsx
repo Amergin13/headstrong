@@ -15,6 +15,7 @@ import { AthleteGoal } from '../../services/athleteGoals';
 import { ProgressPoint } from '../../services/progressSeries';
 import { CoachSummaryText } from '../common/CoachSummaryText';
 import { triggerHaptic } from '../../utils/haptics';
+import { isOnDeviceModelReady } from '../../services/onDeviceModel';
 
 /**
  * Semantic ring colour rule:
@@ -113,15 +114,19 @@ function useGoalSummaryText(summary: GoalsSummary, active: boolean): string {
     setWritten(cached);
     if (cached || !active || summary.sparse) return;
     let cancelled = false;
-    generateGoalsSummary(summary)
-      .then((answer) => {
-        if (!answer) return;
+    // Settle debounce prevents burning model calls while swiping past intermediate goal slides.
+    const timer = setTimeout(() => {
+      (async () => {
+        if (cancelled || !(await isOnDeviceModelReady())) return;
+        const answer = await generateGoalsSummary(summary);
+        if (!answer || cancelled) return;
         cacheGoalsSummary(summary, answer);
-        if (!cancelled) setWritten(answer);
-      })
-      .catch(() => undefined);
+        setWritten(answer);
+      })().catch(() => undefined);
+    }, 400);
     return () => {
       cancelled = true;
+      clearTimeout(timer);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, active]);

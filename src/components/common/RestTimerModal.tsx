@@ -1,7 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Play, Pause, X, Plus, CheckCircle2, Timer } from 'lucide-react';
+import { Play, Pause, X, Plus, CheckCircle2, Timer, Bell, Volume2, VolumeX } from 'lucide-react';
 import { triggerHaptic } from '../../utils/haptics';
 import type { RestTimerContext } from '../../services/setCompletion';
+import {
+  fireRestCompleteAlerts,
+  getRestNotificationStatus,
+  isRestChimeMuted,
+  requestRestNotificationPermission,
+  RestNotificationStatus,
+  setRestChimeMuted,
+} from '../../services/restAlerts';
 
 export type { RestTimerContext };
 
@@ -13,9 +21,9 @@ interface RestTimerModalProps {
 
 /**
  * Rest timer between sets. It is labelled with the exercise and the next set so the athlete
- * always knows what the countdown is for. It is based on wall-clock time, so it stays accurate
- * when the phone is locked or the app is in the background. Heart rate is not shown because
- * no live heart-rate stream is available in the app.
+ * always knows what the countdown is for. It uses wall-clock time (`endsAt`) + visibility
+ * resync + Service Worker lock-screen notifications + haptics + a brief Web Audio chime that
+ * closes its AudioContext immediately so background gym music keeps playing uninterrupted.
  */
 export const RestTimerModal: React.FC<RestTimerModalProps> = ({
   initialSeconds = 90,
@@ -25,7 +33,9 @@ export const RestTimerModal: React.FC<RestTimerModalProps> = ({
   const [endsAt, setEndsAt] = useState(() => Date.now() + initialSeconds * 1000);
   const [pausedRemaining, setPausedRemaining] = useState<number | null>(null);
   const [now, setNow] = useState(Date.now());
-  const hasTriggeredDoneHaptic = useRef(false);
+  const [chimeMuted, setChimeMuted] = useState(() => isRestChimeMuted());
+  const [notifStatus, setNotifStatus] = useState<RestNotificationStatus>(() => getRestNotificationStatus());
+  const hasTriggeredDoneAlerts = useRef(false);
 
   const isRunning = pausedRemaining === null;
   const secondsRemaining = isRunning
@@ -35,16 +45,37 @@ export const RestTimerModal: React.FC<RestTimerModalProps> = ({
 
   useEffect(() => {
     if (!isRunning || isDone) return;
-    const timer = setInterval(() => setNow(Date.now()), 250);
-    return () => clearInterval(timer);
-  }, [isRunning, isDone]);
+    const interval = setInterval(() => setNow(Date.now()), 250);
+    // Schedule an exact deadline timeout + resync immediately when unlocking the phone
+    const remainingMs = Math.max(0, endsAt - Date.now());
+    const deadlineTimer = setTimeout(() => setNow(Date.now()), remainingMs + 50);
+    const onVisibility = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        setNow(Date.now());
+      }
+    };
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', onVisibility);
+    }
+    return () => {
+      clearInterval(interval);
+      clearTimeout(deadlineTimer);
+      if (typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', onVisibility);
+      }
+    };
+  }, [isRunning, isDone, endsAt]);
 
   useEffect(() => {
-    if (isDone && !hasTriggeredDoneHaptic.current) {
-      hasTriggeredDoneHaptic.current = true;
-      triggerHaptic('success');
+    if (isDone && !hasTriggeredDoneAlerts.current) {
+      hasTriggeredDoneAlerts.current = true;
+      void fireRestCompleteAlerts({
+        exerciseName: context?.exerciseName,
+        nextLabel: context?.nextLabel,
+        muted: chimeMuted,
+      });
     }
-  }, [isDone]);
+  }, [isDone, context?.exerciseName, context?.nextLabel, chimeMuted]);
 
   const formatTime = (secs: number) => {
     const m = Math.floor(secs / 60);
@@ -54,7 +85,7 @@ export const RestTimerModal: React.FC<RestTimerModalProps> = ({
 
   const handleAdd30s = () => {
     triggerHaptic('light');
-    hasTriggeredDoneHaptic.current = false;
+    hasTriggeredDoneAlerts.current = false;
     if (isRunning) {
       setEndsAt((t) => Math.max(t, Date.now()) + 30_000);
       setNow(Date.now());
@@ -74,6 +105,19 @@ export const RestTimerModal: React.FC<RestTimerModalProps> = ({
     }
   };
 
+  const handleToggleMute = () => {
+    triggerHaptic('light');
+    const next = !chimeMuted;
+    setChimeMuted(next);
+    setRestChimeMuted(next);
+  };
+
+  const handleEnableLockScreenAlerts = async () => {
+    triggerHaptic('light');
+    const result = await requestRestNotificationPermission();
+    setNotifStatus(result);
+  };
+
   return (
     <aside
       aria-label="Rest timer"
@@ -88,12 +132,19 @@ export const RestTimerModal: React.FC<RestTimerModalProps> = ({
         }}
       >
         {context && (
-          <div className="flex items-center gap-2 wk-caption mb-2 min-w-0">
-            <Timer className="w-3.5 h-3.5 stroke-[2] shrink-0" aria-hidden="true" />
-            <span className="truncate">
-              Rest after <strong style={{ color: 'var(--color-text-primary)' }}>{context.exerciseName}</strong>
-              {context.restReason ? ` • ${context.restReason}` : ''}
-            </span>
+          <div className="flex items-center justify-between gap-2 wk-caption mb-2 min-w-0">
+            <div className="flex items-center gap-2 min-w-0">
+              <Timer className="w-4 h-4 stroke-[2] shrink-0" aria-hidden="true" />
+              <span className="truncate">
+                Rest after <strong style={{ color: 'var(--color-text-primary)' }}>{context.exerciseName}</strong>
+                {context.restReason ? ` • ${context.restReason}` : ''}
+              </span>
+            </div>
+            {notifStatus === 'granted' && (
+              <span className="wk-caption shrink-0" style={{ color: 'var(--wk-accent)' }}>
+                Lock-screen on
+              </span>
+            )}
           </div>
         )}
         <div className="flex items-center justify-between gap-3">
@@ -135,12 +186,24 @@ export const RestTimerModal: React.FC<RestTimerModalProps> = ({
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={handleToggleMute}
+              aria-label={chimeMuted ? 'Unmute rest chime (haptics only)' : 'Mute rest chime (keeps music playing)'}
+              aria-pressed={chimeMuted}
+              title={chimeMuted ? 'Chime muted (haptics on)' : 'Gentle chime on (never pauses music)'}
+              className="w-11 h-11 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-xl border border-[var(--color-border-strong)] transition-colors"
+              style={{ background: 'var(--wk-raised)', color: chimeMuted ? 'var(--color-text-muted)' : 'var(--color-text-primary)' }}
+            >
+              {chimeMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+            </button>
+
             {isDone ? (
               <span
                 className="wk-pill gap-2"
                 style={{ background: 'var(--wk-accent)', color: 'var(--color-text-on-accent)' }}
               >
-                <CheckCircle2 className="w-3.5 h-3.5 stroke-[2.5]" aria-hidden="true" />
+                <CheckCircle2 className="w-4 h-4 stroke-[2.5]" aria-hidden="true" />
                 <span>Go</span>
               </span>
             ) : (
@@ -169,6 +232,23 @@ export const RestTimerModal: React.FC<RestTimerModalProps> = ({
             </button>
           </div>
         </div>
+
+        {notifStatus === 'default' && !isDone && (
+          <div
+            className="mt-3 pt-2 flex items-center justify-between gap-2 border-t"
+            style={{ borderColor: 'var(--color-border-subtle)' }}
+          >
+            <span className="wk-caption">Alert on locked screen without pausing music</span>
+            <button
+              type="button"
+              onClick={handleEnableLockScreenAlerts}
+              className="wk-btn-secondary min-h-[44px] gap-1 shrink-0"
+            >
+              <Bell className="w-4 h-4 stroke-[2]" aria-hidden="true" />
+              <span>Allow alerts</span>
+            </button>
+          </div>
+        )}
       </div>
     </aside>
   );

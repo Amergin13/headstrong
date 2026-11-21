@@ -5,6 +5,7 @@ import {
   evaluateRepRangeDoubleProgression,
   hadQualityEffort,
   loadIncrementFor,
+  normalizeStraightSetRirs,
 } from './progressionRules';
 import {
   ExerciseSession,
@@ -16,6 +17,8 @@ import {
   WorkoutSet,
 } from './types';
 import { findLastCompletedExerciseSession } from './progression';
+import { isAssistedExercise, learnExerciseEnduranceSlope } from './e1rm';
+import { isMesocycleLoadHoldTransition } from './hypertrophyVolume';
 import { snapLoadKg, WeightUnit } from '../utils/units';
 
 /**
@@ -154,25 +157,36 @@ function carryOverWeight(
   const prevReps = anchor.actualReps ?? anchor.targetReps;
   const prevRir = anchor.actualRir ?? anchor.targetRir ?? 2;
 
-  const firstWorking = ex.sets.find(isWorking);
+  const workingSets = ex.sets.filter(isWorking);
+  const firstWorking = workingSets[0];
+  const peakWorking = workingSets[workingSets.length - 1] ?? firstWorking;
   const newReps = firstWorking?.targetReps ?? prevReps;
-  const newRir = firstWorking?.targetRir ?? prevRir;
+  const newRir = peakWorking?.targetRir ?? prevRir;
 
   let weight = equivalentWeightForReps(prevWeight, prevReps, prevRir, newReps, newRir);
 
   // Double progression (knowledge graph `sp-double-progression`): this path is for a fixed rep
   // target, which is the top of the range. Every prescribed set reaching it with quality reps → one load step.
   // Missed reps or ground-out sets → the weight that matches what was actually lifted (no increase).
-  const prescribedCount = previous.sets.filter(isWorking).length;
+  const prevWorkingSets = previous.sets.filter(isWorking);
+  const prescribedCount = prevWorkingSets.length;
+  const targetCount = workingSets.length;
+  const sourceTargetRir = prevWorkingSets[prevWorkingSets.length - 1]?.targetRir;
+  const holdForMesocycleStepUp = isMesocycleLoadHoldTransition({
+    sourceTargetRir,
+    targetRir: peakWorking?.targetRir,
+    sourcePrescribedSetCount: prescribedCount,
+    targetSetCount: targetCount,
+  });
   const hitAllTargets =
     done.length >= prescribedCount &&
     done.every(
       (s) => (s.actualReps ?? s.targetReps) >= s.targetReps && hadQualityEffort(s.actualRir, s.targetRir)
     );
-  if (hitAllTargets && readinessState !== 'Amber Shield' && newReps >= prevReps) {
+  if (hitAllTargets && !holdForMesocycleStepUp && readinessState !== 'Amber Shield' && newReps >= prevReps) {
     weight = Math.max(weight, prevWeight) + loadIncrementKg(ex, unit);
-  } else if (readinessState === 'Amber Shield' || newReps >= prevReps) {
-    // Low recovery, or the same/higher rep target: never heavier than last time.
+  } else if (holdForMesocycleStepUp || readinessState === 'Amber Shield' || newReps >= prevReps) {
+    // Low recovery, mesocycle set+RIR step-up, or the same/higher rep target: never heavier than last time.
     weight = Math.min(weight, prevWeight);
   }
   return capAndSnapEquipmentWeight(ex.equipment, weight, prevWeight, unit);
@@ -191,7 +205,8 @@ function progressThroughRepRange(
   ex: ExerciseSession,
   previous: ExerciseSession,
   readinessState: ReadinessState,
-  unit: WeightUnit
+  unit: WeightUnit,
+  epleyDenominator?: number
 ): { weightKg: number; repsBySet: number[] } | null {
   const done = previous.sets.filter((s) => s.completed && isWorking(s));
   if (done.length === 0) return null;
@@ -199,21 +214,27 @@ function progressThroughRepRange(
   const prevWeight = Math.max(...done.map(weightOf));
   if (prevWeight <= 0) return null;
 
-  const firstWorking = ex.sets.find(isWorking);
+  const targetWorkingSets = ex.sets.filter(isWorking);
+  const prevWorkingSets = previous.sets.filter(isWorking);
+  const peakTargetWorking = targetWorkingSets[targetWorkingSets.length - 1];
+  const peakPrevWorking = prevWorkingSets[prevWorkingSets.length - 1];
   const result = evaluateRepRangeDoubleProgression({
     completedWorkingSets: done,
-    sourcePrescribedSetCount: previous.sets.filter(isWorking).length,
-    targetSetCount: ex.sets.filter(isWorking).length,
+    sourcePrescribedSetCount: prevWorkingSets.length,
+    targetSetCount: targetWorkingSets.length,
     minReps: ex.minReps,
     maxReps: ex.maxReps,
     sourceMinReps: previous.minReps,
     sourceMaxReps: previous.maxReps,
-    targetRir: firstWorking?.targetRir,
+    sourceTargetRir: peakPrevWorking?.targetRir,
+    targetRir: peakTargetWorking?.targetRir,
     currentWeightKg: prevWeight,
     equipment: ex.equipment,
     readinessState,
     unit,
     isPureBodyweight: isPureBodyweight(ex),
+    isAssisted: isAssistedExercise(ex),
+    epleyDenominator,
   });
 
   return {
@@ -234,23 +255,25 @@ function applyWeightToExercise(
   const ratio = oldWorking > 0 ? snapped / oldWorking : 1;
   let workingIndex = 0;
 
+  const updatedSets = ex.sets.map((s) => {
+    if (s.completed) return s;
+    if (isWorking(s)) {
+      const reps = repsBySet?.[workingIndex++];
+      return {
+        ...s,
+        targetWeightKg: snapped,
+        actualWeightKg: snapped,
+        ...(reps !== undefined ? { targetReps: reps, actualReps: reps, repDisplay: `${reps}` } : {}),
+      };
+    }
+    // Warm-ups scale with the new working weight.
+    const warm = s.targetWeightKg > 0 ? snapLoadKg(s.targetWeightKg * ratio, unit, ex.equipment) : 0;
+    return { ...s, targetWeightKg: warm, actualWeightKg: warm };
+  });
+
   return {
     ...ex,
-    sets: ex.sets.map((s) => {
-      if (s.completed) return s;
-      if (isWorking(s)) {
-        const reps = repsBySet?.[workingIndex++];
-        return {
-          ...s,
-          targetWeightKg: snapped,
-          actualWeightKg: snapped,
-          ...(reps !== undefined ? { targetReps: reps, actualReps: reps, repDisplay: `${reps}` } : {}),
-        };
-      }
-      // Warm-ups scale with the new working weight.
-      const warm = s.targetWeightKg > 0 ? snapLoadKg(s.targetWeightKg * ratio, unit, ex.equipment) : 0;
-      return { ...s, targetWeightKg: warm, actualWeightKg: warm };
-    }),
+    sets: normalizeStraightSetRirs(updatedSets),
   };
 }
 
@@ -280,8 +303,10 @@ export function personalizeSessionLoads(
     if (previous) {
       if (!ctx.carryOverExactHistory) return ex;
       if (!previous.isCrossImplementTransfer) {
+        const learnedSlope = learnExerciseEnduranceSlope(ex.exerciseId, ctx.history);
+        const slopeDenom = learnedSlope.isPersonalized ? learnedSlope.denominator : undefined;
         if (hasRepRange(ex)) {
-          const next = progressThroughRepRange(ex, previous.session, readiness, unit);
+          const next = progressThroughRepRange(ex, previous.session, readiness, unit, slopeDenom);
           if (next) return applyWeightToExercise(ex, next.weightKg, unit, next.repsBySet);
         }
         const carried = carryOverWeight(ex, previous.session, readiness, unit);

@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Scale, Ruler, ChevronRight, MoreHorizontal, SlidersHorizontal, Target } from 'lucide-react';
+import { Scale, Ruler, ChevronRight, MoreHorizontal, SlidersHorizontal, Sparkles, Target } from 'lucide-react';
 import { PageTopGradient } from '../common/PageTopGradient';
+import { CoachPlace } from '../../services/coachContext';
 import { BiometricLog, BodyMeasurementSite, ExerciseDefinition, GoalPhase, ProgressWidgetId, ReadinessState, UserProfile, WorkoutSession, isWhoopConfigured } from '../../engine/types';
 import { StrengthLevelsCard } from './StrengthLevelsCard';
 import { BalanceCard } from './BalanceCard';
@@ -14,7 +15,6 @@ import { ProgressChartCard } from './ProgressChartCard';
 import { MuscleProgressCard } from './MuscleProgressCard';
 import { buildMuscleProgress } from '../../services/muscleProgress';
 import { buildAthleteKnowledgeGraph } from '../../engine/knowledgeGraph';
-import { calculateWeeklyMuscleVolume } from '../../services/storage';
 import {
   averageRecentSteps,
   buildCompositionCharts,
@@ -58,6 +58,8 @@ import { triggerHaptic } from '../../utils/haptics';
 import '../../services/deviceModels';
 import { useUnits } from '../../utils/unitsContext';
 import { kgToUnit } from '../../utils/units';
+import { ExerciseDetailModal } from '../train/ExerciseDetailModal';
+import { buildInspectExerciseSession } from '../../services/exerciseDetails';
 
 
 const CHART_ID_TO_TAPE_SITE: Partial<Record<string, BodyMeasurementSite>> = {
@@ -102,10 +104,15 @@ interface AnalyticsTabProps {
   /** Opens Training insights (e.g. from an exercise card's last session note). */
   openInsightsRequest?: { nonce: number; exerciseId?: string } | null;
   onInsightsRequestHandled?: () => void;
+  /** Opens a specific Progress sub-view or goal detail (e.g. from Treise action cards). */
+  openDetailRequest?: { detail?: string; goalId?: string; nonce: number } | null;
+  onDetailRequestHandled?: () => void;
   /** Latest readiness classification, used for contextual HITL coach interventions. */
   readinessState?: ReadinessState;
   /** Opens Treise coach with a pre-filled HITL adaptation prompt. */
   onOpenCoachIntervention?: (opts: { prompt: string; detail?: ProgressDetail }) => void;
+  /** Opens Treise coach in the given Progress context (optional pre-filled prompt). */
+  onOpenCoach?: (opts?: { detail?: CoachPlace['detail']; goalId?: string; prompt?: string }) => void;
 }
 
 type CompositionView = 'weight' | 'measurements';
@@ -149,8 +156,11 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
   onLogWeightRequestHandled,
   openInsightsRequest = null,
   onInsightsRequestHandled,
+  openDetailRequest = null,
+  onDetailRequestHandled,
   readinessState = 'Normal',
   onOpenCoachIntervention,
+  onOpenCoach,
 }) => {
   const [detail, setDetail] = useState<ProgressDetail | null>(null);
   const [focusedInsightExerciseId, setFocusedInsightExerciseId] = useState<string | undefined>(undefined);
@@ -209,8 +219,8 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
   );
   const compositionCharts = useMemo(() => buildCompositionCharts({ biometrics, profile, fmt }), [biometrics, profile, fmt]);
   const knowledgeGraph = useMemo(
-    () => buildAthleteKnowledgeGraph(workouts, biometrics, exerciseCatalog, profile, calculateWeeklyMuscleVolume(workouts, exerciseCatalog), activities),
-    [workouts, biometrics, exerciseCatalog, profile, activities]
+    () => buildAthleteKnowledgeGraph(workouts, biometrics, exerciseCatalog, profile, weeklyVolume, activities),
+    [workouts, biometrics, exerciseCatalog, profile, weeklyVolume, activities]
   );
   const coachInterventions = useMemo(
     () =>
@@ -328,6 +338,38 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
   }, [openInsightsRequest]);
 
   useEffect(() => {
+    if (!openDetailRequest || openDetailRequest.nonce <= 0) return;
+    const validDetails: ProgressDetail[] = [
+      'bests',
+      'lifetime',
+      'recent',
+      'steps',
+      'whoop',
+      'weight',
+      'measurements',
+      'insights',
+      'standards',
+      'goals',
+      'widgets',
+    ];
+    if (openDetailRequest.goalId) {
+      setDetail(null);
+      setOpenGoalId(openDetailRequest.goalId);
+    } else if (
+      openDetailRequest.detail &&
+      validDetails.includes(openDetailRequest.detail as ProgressDetail)
+    ) {
+      setOpenGoalId(null);
+      setFocusedInsightExerciseId(undefined);
+      setDetail(openDetailRequest.detail as ProgressDetail);
+    } else if (openDetailRequest.detail === 'composition' || openDetailRequest.detail === 'overview') {
+      setOpenGoalId(null);
+      setDetail(null);
+    }
+    onDetailRequestHandled?.();
+  }, [openDetailRequest]);
+
+  useEffect(() => {
     onContextChange?.({ goalId: openGoalId ?? undefined, detail: openGoalId ? undefined : detail ?? undefined });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [detail, openGoalId]);
@@ -387,7 +429,17 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
     </div>
   );
 
+  const [inspectedExerciseId, setInspectedExerciseId] = useState<string | null>(null);
   const cardsTopRef = useRef<HTMLDivElement>(null);
+
+  const inspectedExercise = useMemo(() => {
+    if (!inspectedExerciseId) return null;
+    return buildInspectExerciseSession({
+      exerciseId: inspectedExerciseId,
+      exerciseCatalog,
+      workouts,
+    });
+  }, [inspectedExerciseId, exerciseCatalog, workouts]);
 
   const detailScreen = detail && (
     <>
@@ -403,26 +455,39 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
                   return (
                     <li
                       key={b.exerciseId}
-                      className="flex items-center justify-between gap-3 py-3 border-t"
+                      className="border-t"
                       style={{ borderColor: 'var(--color-border-subtle)' }}
                     >
-                      <div className="min-w-0">
-                        <p className="wk-subhead leading-tight">
-                          {formatSentenceCase(b.exerciseName)}
-                        </p>
-                        <p className="wk-caption mt-1">
-                          {shortDate(b.date)}
-                          {b.e1rmKg > 0
-                            ? ` • estimated max ${units.formatPrecise(b.e1rmKg)}${b.includesBodyweight ? ' (bodyweight + added weight)' : ''}`
-                            : ''}
-                        </p>
-                      </div>
-                      <p className="text-base font-medium tabular-nums shrink-0 text-right leading-none" style={{ color: 'var(--color-text-primary)' }}>
-                        {shown.value}
-                        <span className="wk-caption ml-1">
-                          {shown.unit}
-                        </span>
-                      </p>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          triggerHaptic('light');
+                          setInspectedExerciseId(b.exerciseId);
+                        }}
+                        aria-label={`Open details for ${formatSentenceCase(b.exerciseName)}`}
+                        className="w-full text-left flex items-center justify-between gap-3 py-3 min-h-[44px]"
+                      >
+                        <div className="min-w-0">
+                          <p className="wk-subhead leading-tight">
+                            {formatSentenceCase(b.exerciseName)}
+                          </p>
+                          <p className="wk-caption mt-1">
+                            {shortDate(b.date)}
+                            {b.e1rmKg > 0
+                              ? ` • estimated max ${units.formatPrecise(b.e1rmKg)}${b.includesBodyweight ? ' (bodyweight + added weight)' : ''}`
+                              : ''}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <p className="text-base font-medium tabular-nums text-right leading-none" style={{ color: 'var(--color-text-primary)' }}>
+                            {shown.value}
+                            <span className="wk-caption ml-1">
+                              {shown.unit}
+                            </span>
+                          </p>
+                          <ChevronRight className="wk-chevron" strokeWidth={2} aria-hidden="true" />
+                        </div>
+                      </button>
                     </li>
                   );
                 })}
@@ -643,7 +708,17 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
         )}
 
         {detail === 'goals' && (
-          <GoalSettingsScreen profile={profile} goals={knowledgeGraph.goals} onUpdateProfile={onUpdateProfile} onUpdateGoalPhase={onUpdateGoalPhase} />
+          <GoalSettingsScreen
+            profile={profile}
+            goals={knowledgeGraph.goals}
+            onUpdateProfile={onUpdateProfile}
+            onUpdateGoalPhase={onUpdateGoalPhase}
+            onAskCoach={
+              onOpenCoach
+                ? (prompt) => onOpenCoach({ detail: 'goals', prompt })
+                : undefined
+            }
+          />
         )}
 
         {detail === 'widgets' && (
@@ -655,6 +730,11 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
             isDefault={profile.progressWidgets === undefined}
             onToggle={(id) => onUpdateProfile({ progressWidgets: toggleProgressWidget(profile.progressWidgets, id) })}
             onReset={() => onUpdateProfile({ progressWidgets: undefined })}
+            onAskCoach={
+              onOpenCoach
+                ? (prompt) => onOpenCoach({ detail: 'widgets', prompt })
+                : undefined
+            }
           />
         )}
 
@@ -665,6 +745,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
             exerciseCatalog={exerciseCatalog}
             profile={profile}
             weeklyVolume={weeklyVolume}
+            knowledgeGraph={knowledgeGraph}
             focusExerciseId={focusedInsightExerciseId}
           />
         )}
@@ -673,7 +754,15 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
           <>
             {hasBodyweight ? (
               <>
-                <StrengthLevelsCard report={movementStandards} latestBiometrics={latestBiometrics} />
+                <StrengthLevelsCard
+                  report={movementStandards}
+                  latestBiometrics={latestBiometrics}
+                  onAskCoach={
+                    onOpenCoach
+                      ? () => onOpenCoach({ detail: 'standards' })
+                      : undefined
+                  }
+                />
                 <BalanceCard
                   report={movementStandards}
                   intervention={balanceIntervention}
@@ -697,7 +786,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
               }}
               className="wk-btn-secondary w-full"
             >
-              Open training insights &amp; session notes
+              Open training insights &amp; exercise notes
             </button>
           </>
         )}
@@ -1140,6 +1229,11 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
             biometrics={biometrics}
             goalPhase={profile.goalPhase}
             onOpenLog={openLogWeight}
+            onAskCoach={
+              onOpenCoach
+                ? () => onOpenCoach({ detail: 'composition' })
+                : undefined
+            }
           />
         )}
 
@@ -1168,7 +1262,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
         {hasWidget('insights') && (
           <OverviewCard
             title="Training insights"
-            opens="recovery, joint load and session notes"
+            opens="recovery, joint load and exercise notes"
             onOpen={() => {
               setFocusedInsightExerciseId(undefined);
               setDetail('insights');
@@ -1222,7 +1316,15 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
 
         {hasWidget('strength-levels') &&
           (hasBodyweight ? (
-            <StrengthLevelsCard report={movementStandards} latestBiometrics={latestBiometrics} />
+            <StrengthLevelsCard
+              report={movementStandards}
+              latestBiometrics={latestBiometrics}
+              onAskCoach={
+                onOpenCoach
+                  ? () => onOpenCoach({ detail: 'standards' })
+                  : undefined
+              }
+            />
           ) : (
             logWeightPrompt
           ))}
@@ -1339,7 +1441,14 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
               biometrics,
               fmt,
             });
-            return <ProgressChartCard key={wid} chart={chart} />;
+            return (
+              <ProgressChartCard
+                key={wid}
+                chart={chart}
+                onOpen={() => setInspectedExerciseId(exDef.id)}
+                openLabel={`Open details for ${formatSentenceCase(exDef.name)}`}
+              />
+            );
           }
           return null;
         })}
@@ -1348,18 +1457,39 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
           <section className="wk-card" aria-label="No widgets selected">
             <h2 className="wk-h1">Progress widgets hidden</h2>
             <p className="wk-body mt-2 max-w-prose">
-              Choose what you want to track here, or ask Treise in chat to add widgets back.
+              Choose what you want to track here, or let Treise pin the widgets you care about.
             </p>
-            <button
-              type="button"
-              onClick={() => {
-                triggerHaptic('light');
-                setDetail('widgets');
-              }}
-              className="wk-btn-secondary w-full justify-center min-h-[48px] mt-4"
-            >
-              Customize widgets
-            </button>
+            <div className="flex flex-col gap-2 mt-4">
+              <button
+                type="button"
+                onClick={() => {
+                  triggerHaptic('light');
+                  setDetail('widgets');
+                }}
+                className="wk-btn-secondary w-full justify-center min-h-[48px]"
+              >
+                Customize widgets
+              </button>
+              {onOpenCoach && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    triggerHaptic('light');
+                    onOpenCoach({ detail: 'widgets' });
+                  }}
+                  className="wk-btn-secondary w-full min-h-[48px] inline-flex items-center justify-center gap-2"
+                  style={{ borderColor: 'rgb(var(--color-coach-accent-rgb) / 0.35)' }}
+                >
+                  <Sparkles
+                    className="w-4 h-4 shrink-0"
+                    style={{ color: 'var(--color-coach-accent)' }}
+                    strokeWidth={2.2}
+                    aria-hidden="true"
+                  />
+                  <span>Ask Treise to set up Progress</span>
+                </button>
+              )}
+            </div>
           </section>
         )}
       </div>
@@ -1379,6 +1509,11 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
           onOpenGoal={setOpenGoalId}
           onLogWeight={openLogWeight}
           onLogMeasurements={() => openLogMeasurements('waist')}
+          onAskCoach={
+            onOpenCoach
+              ? (prompt) => onOpenCoach({ goalId: openGoal.id, prompt })
+              : undefined
+          }
         />
         <button
           type="button"
@@ -1413,6 +1548,28 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
           onSave={handleSaveAndShowComposition}
           onAutoCapture={handleSaveAndShowComposition}
           onClose={() => setShowLogModal(false)}
+        />
+      )}
+
+      {inspectedExercise && (
+        <ExerciseDetailModal
+          exercise={inspectedExercise.exercise}
+          exerciseDef={inspectedExercise.exerciseDef}
+          workouts={workouts}
+          biometrics={biometrics}
+          bodyweightKg={hasBodyweight ? bodyweightEmaKg : 0}
+          readinessState={readinessState}
+          onAskCoach={
+            onOpenCoach
+              ? (exId) =>
+                  onOpenCoach({
+                    detail: detail ?? undefined,
+                    prompt: `Review my progress and form cues for ${formatSentenceCase(inspectedExercise.exercise.name)}`,
+                    ...(exId ? {} : {}),
+                  })
+              : undefined
+          }
+          onClose={() => setInspectedExerciseId(null)}
         />
       )}
     </div>

@@ -88,6 +88,20 @@ import {
 
 import { onWearableTokensRefreshed } from '../../services/wearableTokens';
 import { registerFallbackOnDeviceModel } from '../../services/onDeviceModel';
+import {
+  encryptBackupPayload,
+  decryptBackupPayload,
+  isEncryptedBackupEnvelope,
+  runEncryptedDriveBackup,
+  restoreEncryptedDriveBackup,
+  deleteEncryptedBackupFromDrive,
+  DRIVE_BACKUP_FILENAME,
+} from '../../services/encryptedBackup';
+import {
+  detectCompetitorCsvFormat,
+  parseCompetitorCsv,
+  mergeImportedWorkouts,
+} from '../../services/competitorCsvImport';
 import { fetchWhoopDailyBiometrics, fetchWhoopWorkoutStrain } from '../../services/whoopService';
 import { WhoopWorkoutStrainSummary } from '../../services/whoopService';
 import {
@@ -556,11 +570,23 @@ import {
 } from '../progression';
 import {
   generateRandomString,
-  initiateFitbitOAuth,
+  getFitbitConfig,
   parseFitbitExport,
   simulatePixelWatchSync,
-  FITBIT_CONFIG,
+  FITBIT_WEB_API_DECOMMISSIONED_DATE,
 } from '../../services/fitbitService';
+import {
+  createDefaultEquipmentInventory,
+  calculateBarbellPlatesForInventory,
+  snapWeightToInventory,
+} from '../equipmentInventory';
+import { getExerciseFormClip, resolveFormClipPattern } from '../../services/exerciseFormClips';
+import {
+  isRestChimeMuted,
+  setRestChimeMuted,
+  getRestNotificationStatus,
+} from '../../services/restAlerts';
+import { evaluateHabitAnchor } from '../../services/sessionSchedule';
 import {
   initiateWhoopOAuth,
   simulateWhoopSync,
@@ -1838,10 +1864,25 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
     splitResult.actionTaken?.type === 'SWITCH_PROGRAM_SPLIT',
     'AI Assistant classifies split change intent (type: SWITCH_PROGRAM_SPLIT)'
   );
-  // Only the 6-week plans are offered: asking for a split explains that the plan follows the goal.
   assert(
-    !splitResult.updatedProfile?.programType && !splitResult.updatedWorkout && /goal/.test(splitResult.message.text),
-    'AI Assistant does not switch to an old split; it explains the plan follows your goal'
+    splitResult.updatedProfile?.programType === 'starter_4day' && Boolean(splitResult.updatedWorkout),
+    'Upper / Lower switches cleanly to the built-in 4-day Upper/Lower 6-week plan (never retired legacy split)'
+  );
+
+  // Retired legacy splits (e.g. PPL) do not switch and explain that plans follow your goal.
+  const legacyPplResult = await processAssistantMessage({
+    userMessage: 'Switch my split to Push Pull Legs',
+    profile: testProfile,
+    activeWorkout: pushW3,
+    workouts: [pushW3],
+    biometrics: mockBiometrics,
+    exerciseCatalog: SEED_EXERCISES,
+    bodyweightEmaKg: 80,
+    readinessState: 'Primed',
+  });
+  assert(
+    !legacyPplResult.updatedProfile?.programType && !legacyPplResult.updatedWorkout && /goal/.test(legacyPplResult.message.text),
+    'AI Assistant does not switch to a retired PPL split; it explains the plan follows your goal'
   );
 
   // E. Intent: Query Joint Strain & Biomechanical Grounding
@@ -2354,27 +2395,14 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
 
   // --- SUITE 26: MULTI-WEARABLE BIOMETRIC TELEMETRY (FITBIT, WHOOP, HEALTH CONNECT) ---
   console.log('\n--- SUITE 26: MULTI-WEARABLE BIOMETRIC TELEMETRY (FITBIT, WHOOP, HEALTH CONNECT) ---');
-  // 1. Fitbit Provider
+  // 1. Fitbit Provider (decommissioned legacy Web API -> routed via Android Health Connect)
+  const fitbitCfg26 = await getFitbitConfig();
   assert(
-    FITBIT_CONFIG.SCOPES.includes('heartrate') && FITBIT_CONFIG.SCOPES.includes('sleep'),
-    `Fitbit Web API config requests heartrate, sleep, and activity scopes`
-  );
-  const fitbitAuthUrl = await initiateFitbitOAuth('test_fitbit_client');
-  assert(
-    fitbitAuthUrl.includes('fitbit.com/oauth2/authorize') &&
-      fitbitAuthUrl.includes('code_challenge') &&
-      fitbitAuthUrl.includes('response_type=code'),
-    `Fitbit OAuth 2.0 PKCE generates valid authorization URL with code_challenge`
-  );
-  const googleHealthAuthUrl = await initiateFitbitOAuth('12345-gh.apps.googleusercontent.com');
-  assert(
-    googleHealthAuthUrl.includes('accounts.google.com/o/oauth2/v2/auth') &&
-      googleHealthAuthUrl.includes('googlehealth') &&
-      googleHealthAuthUrl.includes('code_challenge') &&
-      googleHealthAuthUrl.includes('access_type=offline') &&
-      localStorage.getItem('fitbit_code_verifier') !== null &&
-      sessionStorage.getItem('fitbit_code_verifier') !== null,
-    `Google Health API OAuth 2.0 PKCE generates Google authorization URL and persists verifier in localStorage and sessionStorage`
+    fitbitCfg26.configured === false &&
+      fitbitCfg26.decommissioned === true &&
+      fitbitCfg26.recommendedProvider === 'health_connect' &&
+      FITBIT_WEB_API_DECOMMISSIONED_DATE === '2026-11-02',
+    'Legacy Fitbit Web API is decommissioned (Nov 2, 2026) and routes athletes to Android Health Connect'
   );
   const sampleFitbitCsv = `date,resting_heart_rate,rmssd,minutesAsleep,steps,activeZoneMinutes,weight
 2026-10-20,53,64.8,465,9840,44,80.4`;
@@ -2563,7 +2591,7 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
   } catch (e: any) {
     unconnectedError = e?.message || '';
   }
-  assert(/Connect your Pixel Watch or Fitbit/.test(unconnectedError), 'Sync without a connected watch fails instead of inventing data');
+  assert(/Health Connect/.test(unconnectedError), 'Sync without a connected watch fails with Health Connect guidance instead of inventing data');
 
   const fitbitResult = await syncWearableBiometrics('fitbit', { forcedState: 'Primed', allowSimulation: true });
   assert(fitbitResult.hrvRmssd > 0 && fitbitResult.restingHr > 0, `syncWearableBiometrics('fitbit') succeeds`);
@@ -3154,9 +3182,9 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
   assert(
     recompPrinciple !== undefined &&
       recompPrinciple.scientificRationale.includes('18% denser') &&
-      recompPrinciple.scientificRationale.includes('shirt off') &&
+      recompPrinciple.scientificRationale.includes('Siedler') &&
       recompPrinciple.academicCitation.includes('Barakat'),
-    'Knowledge Graph codifies sp-scale-weight-measurements with recomp dynamics and Barakat citation'
+    'Knowledge Graph codifies sp-scale-weight-measurements with recomp dynamics, Siedler BIA limits, and Barakat citation'
   );
 
   const smartPrinciple = EXERCISE_SCIENCE_KNOWLEDGE_BASE.find((p) => p.id === 'sp-smart-device-integration');
@@ -3248,7 +3276,7 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
   assert(
     !freshOnboardingModalSrc.includes('Bluetooth') &&
       !freshOnboardingModalSrc.includes('takes 4 sessions a week') &&
-      freshOnboardingModalSrc.includes("experienceLevel: returning ? profile.experienceLevel || 'intermediate' : 'new'") &&
+      freshOnboardingModalSrc.includes("returning ? profile.experienceLevel || 'intermediate' : 'new'") &&
       !/bodyweightKg:\s*\d/.test(freshOnboardingModalSrc),
     'Onboarding makes no unbuilt device or unsupported science claims, starts new athletes light and never invents a bodyweight'
   );
@@ -4782,10 +4810,11 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
       'A real 0x55AA final with no body reading gives the weight and no impedance or body fat'
     );
     // Body metrics: only from a measured impedance plus the athlete's own height, age and sex.
+    // Regression-derived bone mass and protein mass are NEVER fabricated from 50 kHz impedance.
     const real = computeRenphoScaleMetrics({ weightKg: 91.05, impedanceOhms: 500 }, { measuredHeightCm: 180, age: 40, gender: 'male' });
     assert(
-      real?.bodyFatPct === 29.2 && real.bmi === 28.1 && real.bodyWaterPct === 51.1 && real.fatFreeMassKg === 64.5 && typeof real.boneMassKg === 'number' && typeof real.muscleMassKg === 'number' && typeof real.bmrKcal === 'number',
-      `Impedance with real height, age and sex gives the published formulas (body fat ${real?.bodyFatPct}, BMI ${real?.bmi}, water ${real?.bodyWaterPct})`
+      real?.bodyFatPct === 29.2 && real.bmi === 28.1 && real.bodyWaterPct === 51.1 && real.fatFreeMassKg === 64.5 && real.boneMassKg === undefined && real.proteinMassKg === undefined && typeof real.muscleMassKg === 'number' && typeof real.bmrKcal === 'number',
+      `Impedance with real height, age and sex gives body fat/water/FFM without regression-derived bone or protein mass (body fat ${real?.bodyFatPct}, BMI ${real?.bmi}, water ${real?.bodyWaterPct})`
     );
     assert(real?.visceralFat === undefined && real?.subcutaneousFatPct === undefined && real?.metabolicAge === undefined, 'Metrics with no published formula stay empty');
     for (const missing of [{ age: 40, gender: 'male' as const }, { measuredHeightCm: 180, gender: 'male' as const }, { measuredHeightCm: 180, age: 40 }]) {
@@ -6327,9 +6356,10 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
           const withStroll = goalsMod2.buildAthleteGoals({ profile: NEW_USER_PROFILE, workouts: history, activities: [{ id: 'a2', date: '2026-11-06', startedAt: '2026-11-06T07:00:00', minutes: 10, type: 'walk', source: 'manual' } as any], biometrics: weighIns, bodyweightKg: 81.5, now });
           assert(withWalk[0].current === 4 && withStroll[0].current === 3, 'An active day of 20+ minutes counts as a session; a shorter one does not');
           const ringsFixed = ov.buildGoalRings(fixed, fmtKg);
+          // October has 31 days, so pro-rated monthly target at 4/wk is 18 sessions.
           const withFullOct = goalsMod2.buildAthleteGoals({
             profile: NEW_USER_PROFILE,
-            workouts: [...history, at('2026-10-20', [chin(7)]), at('2026-10-22', [chin(7)])],
+            workouts: [...history, at('2026-10-02', [chin(7)]), at('2026-10-04', [chin(7)]), at('2026-10-20', [chin(7)]), at('2026-10-22', [chin(7)])],
             biometrics: weighIns,
             bodyweightKg: 81.5,
             now,
@@ -6409,7 +6439,8 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
           }
           assert(goalsMod2.describeGoalStanding(chinGoal!, fmtKg) === `9 of ${(chinGoal!.measure as any).targetReps} reps at bodyweight`, 'A goal is described as a count against its target');
 
-          // The chosen goal says how good its evidence is.
+          // The chosen goal uses Tier-1 evidence (7-day EMA weight + anchor-lift E1RM + optional tape);
+          // consumer BIA FFM is demoted to a secondary 12+ week directional overlay (never a Tier-1 gate).
           const chosenOf = (bio: any[], w = history) => goalsMod2.buildAthleteGoals({ profile: NEW_USER_PROFILE, workouts: w, biometrics: bio, bodyweightKg: 81.5, now }).find((g) => g.id === goalsMod2.CHOSEN_GOAL_ID)!.measure as any;
           const none = chosenOf([], []);
           const strengthOnly = chosenOf([]);
@@ -6417,15 +6448,15 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
           const taped = chosenOf(weighIns.map((b, i) => (i === 0 ? { ...b, bicepRightCm: 36, waistCm: 86 } : i === 5 ? { ...b, bicepRightCm: 37, waistCm: 86 } : b)));
           const scanned = chosenOf(weighIns.map((b, i) => (i === 0 ? { ...b, bodyFatPct: 20 } : i === 5 ? { ...b, bodyFatPct: 19 } : b)));
           assert(
-            none.evidence === 'none' && none.signsMeasured === 0 && strengthOnly.evidence === 'strength-only' && proxy.evidence === 'weight-and-strength' && /estimate/i.test(proxy.evidenceLabel) && proxy.signs[2].met === null,
-            'Build Muscle with only weight and strength is labelled an estimate, and its size sign is "not measured" rather than guessed'
+            none.evidence === 'none' && none.signsMeasured === 0 && strengthOnly.evidence === 'strength-only' && proxy.evidence === 'weight-and-strength' && proxy.signs[2].met === null,
+            'Build Muscle with weight and strength uses Tier-1 weight+strength evidence and leaves optional tape unmeasured'
           );
           assert(
-            taped.evidence === 'tape' && taped.signs[2].met === true && scanned.evidence === 'fat-free-mass' && scanned.signs[2].met === true && scanned.fatFreeMassChangeKg > 0 && scanned.nextStep === '',
-            `Tape, then fat-free mass from body-fat readings, are the better evidence when logged (${scanned.signs[2].detail})`
+            taped.evidence === 'tape' && taped.signs[2].met === true && scanned.evidence === 'weight-and-strength' && scanned.signs[2].met === null && scanned.biaOverlay !== undefined && scanned.biaOverlay.isDirectionalReady === false && scanned.biaOverlay.uncertaintyBandKg >= 2.0,
+            `Tape satisfies the optional Tier-1 size sign, while short-term consumer BIA stays a secondary overlay with ±${scanned.biaOverlay?.uncertaintyBandKg} kg uncertainty`
           );
-          const fatter = chosenOf(weighIns.map((b, i) => (i === 0 ? { ...b, bodyFatPct: 20 } : i === 5 ? { ...b, bodyFatPct: 22 } : b)));
-          assert(fatter.signs[2].met === false, 'Weight gained as fat does not count as muscle built');
+          const waistUp = chosenOf(weighIns.map((b, i) => (i === 0 ? { ...b, bicepRightCm: 36, waistCm: 86 } : i === 5 ? { ...b, bicepRightCm: 36.2, waistCm: 90 } : b)));
+          assert(waistUp.signs[2].met === false, 'Waist climbing faster than muscle sites does not pass the Tier-1 tape sign');
 
           const index = (await import('../../services/strengthTrend')).strengthIndexSeries(history, 81.5);
           assert(index[0].value === 100 && index.length === 5 && index[index.length - 1].value > 100 && index.every((pt, i2) => i2 === 0 || pt.date > index[i2 - 1].date), `Strength index starts at 100 and moves with each week's lifts (${index.map((pt) => pt.value).join(', ')})`);
@@ -8659,6 +8690,7 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
     assert(
       toggleSrc.includes('wk-segments grid-cols-4') &&
         toggleSrc.includes('wk-segment') &&
+        !toggleSrc.includes("background: 'var(--wk-bg)'") &&
         chartCardSrc.includes('<TimelineToggle') &&
         analyticsSrc.includes('<TimelineToggle') &&
         goalDetailSrc.includes('<TimelineToggle') &&
@@ -8973,9 +9005,10 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
         !onbIllusSrc.includes('stopColor="var(--color-status-info)"') &&
         !sparklineSrc.includes('--color-status-info') &&
         setRowSrc.includes("set.completed ? 'var(--color-text-primary)' : 'var(--color-text-secondary)'") &&
-        setRowSrc.includes("set.completed ? 'var(--color-status-positive-soft)' : 'var(--color-action-secondary-bg)'") &&
-        setRowSrc.includes("set.completed ? 'var(--color-status-positive)' : 'var(--color-text-secondary)'"),
-      'Semantic color purity enforced: no Info Blue in progress/plan/onboarding/finish cards, Header streak flame avoids Caution Amber, and SetRow separates pending vs completed digits'
+        setRowSrc.includes("set.completed ? 'var(--color-status-positive)' : 'var(--color-action-secondary-bg)'") &&
+        setRowSrc.includes("set.completed ? 'var(--color-text-on-accent)' : 'var(--color-text-secondary)'") &&
+        setRowSrc.includes('wk-input-readonly'),
+      'Semantic color purity enforced: no Info Blue in progress/plan/onboarding/finish cards, Header streak flame avoids Caution Amber, and SetRow separates pending editable boxes vs solid-Mint completed read-only rows'
     );
 
     const walkFiles = (dir: string, exts: string[], ignoreDirs: string[] = []): string[] => {
@@ -9470,9 +9503,9 @@ Exercise,,Date,Workout,Sets,Reps,Tempo,Rest,Notes,Set 1,Set 2,Set 3,Set 4
       'Before reset, 6-week muscle plan sits at 3 done and Workout 4 next'
     );
 
-    // A1. Reset current program to Day 1 via natural chat request
-    const resetRes = await processAssistantMessage({
-      userMessage: 'reset my current program to day one to start from the beginning',
+    // A1. Reset current program to Day 1 via natural chat request (gates via HITL confirmation when 3 workouts are done)
+    const { confirmAssistantPendingAction: confirm49 } = await import('../../services/aiAssistantService');
+    const resetContext49 = {
       profile: seeded.profile,
       activeWorkout: activeW4,
       workouts: ongoingHistory,
@@ -9492,14 +9525,26 @@ Exercise,,Date,Workout,Sets,Reps,Tempo,Rest,Notes,Set 1,Set 2,Set 3,Set 4
       ],
       exerciseCatalog: SEED_EXERCISES,
       bodyweightEmaKg: 82.4,
-      readinessState: 'Primed',
+      readinessState: 'Primed' as const,
+    };
+    const resetGateRes = await processAssistantMessage({
+      userMessage: 'reset my current program to day one to start from the beginning',
+      ...resetContext49,
     });
+    assert(
+      resetGateRes.message.mutationStatus === 'awaiting_confirmation' &&
+        resetGateRes.message.pendingConfirmation?.tool_name === 'reset_program' &&
+        !resetGateRes.updatedProfile &&
+        !resetGateRes.updatedWorkout,
+      'AI Coach gates RESET_PROGRAM behind a 1-tap HITL confirmation when completed cycle workouts would be restarted'
+    );
+    const resetRes = await confirm49(resetGateRes.message.pendingConfirmation!, resetContext49);
     assert(
       resetRes.actionTaken?.type === 'RESET_PROGRAM' &&
         Boolean(resetRes.updatedProfile?.planCycleStarts?.[MUSCLE_BUILDING_PLAN.id]) &&
         resetRes.updatedProfile?.mesocycleWeek === 1 &&
         resetRes.updatedWorkout?.programWorkoutNumber === 1,
-      'AI Coach executes RESET_PROGRAM: sets planCycleStarts for active plan, resets mesocycleWeek to 1, and queues Workout 1'
+      'Confirmed RESET_PROGRAM executes: sets planCycleStarts for active plan, resets mesocycleWeek to 1, and queues Workout 1'
     );
     const postResetProfile = { ...seeded.profile, ...resetRes.updatedProfile };
     assert(
@@ -9542,24 +9587,31 @@ Exercise,,Date,Workout,Sets,Reps,Tempo,Rest,Notes,Set 1,Set 2,Set 3,Set 4
         Boolean(switchBtRes.updatedWorkout),
       'AI Coach switches to saved Phase 1 BT program and queues its next workout'
     );
-    const btResetRes = await processAssistantMessage({
-      userMessage: 'Restart Phase 1 BT from day 1',
+    const btResetCtx = {
       profile: { ...postResetProfile, ...switchBtRes.updatedProfile },
       activeWorkout: switchBtRes.updatedWorkout!,
       workouts: ongoingHistory,
       biometrics: [],
       exerciseCatalog: SEED_EXERCISES,
       bodyweightEmaKg: 82.4,
-      readinessState: 'Normal',
+      readinessState: 'Normal' as const,
+    };
+    const btResetGate = await processAssistantMessage({
+      userMessage: 'Restart Phase 1 BT from day 1',
+      ...btResetCtx,
     });
+    const btResetRes = btResetGate.message.pendingConfirmation
+      ? await confirm49(btResetGate.message.pendingConfirmation, btResetCtx)
+      : btResetGate;
     const btResetProfile = { ...postResetProfile, ...switchBtRes.updatedProfile, ...btResetRes.updatedProfile };
     const btPlan = resolveActivePlan(btResetProfile);
     assert(
-      btResetRes.actionTaken?.type === 'RESET_PROGRAM' &&
+      btResetGate.message.mutationStatus === 'awaiting_confirmation' &&
+        btResetRes.actionTaken?.type === 'RESET_PROGRAM' &&
         btResetRes.updatedWorkout?.programWorkoutNumber === 1 &&
         buildPlanOverview(ongoingHistory, btPlan, [], btResetProfile.planCycleStarts).completedCount === 0 &&
         seeded.workouts.length > 0,
-      'Phase 1 BT resets cleanly to Workout 1 while preserving all 2017 historical logs'
+      'Phase 1 BT gates behind confirmation then resets cleanly to Workout 1 while preserving all 2017 historical logs'
     );
 
     // B. Gemini Flash + Knowledge Graph enrichment & non-false-positive fact checking
@@ -10006,8 +10058,8 @@ Exercise,,Date,Workout,Sets,Reps,Tempo,Rest,Notes,Set 1,Set 2,Set 3,Set 4
     );
     assert(
       COACH_TOOL_DECLARATIONS.map((t) => t.name).join(',') ===
-        'reset_program,swap_exercise,adjust_workout_volume,save_athlete_memory,modify_workout_exercises,switch_location,update_home_equipment,switch_program,switch_goal_phase,log_rest_day,update_goals,update_progress_widgets,log_entry,modify_program,rebalance_program',
-      'All 15 AI-native coach tool declarations are registered'
+        'reset_program,swap_exercise,adjust_workout_volume,save_athlete_memory,modify_workout_exercises,switch_location,update_home_equipment,switch_program,switch_goal_phase,log_rest_day,update_goals,update_progress_widgets,log_entry,modify_program,rebalance_program,log_workout_set,reorder_workout_exercises,update_exercise_note,override_recovery_gate,delete_athlete_memory,update_athlete_profile',
+      'All 21 AI-native coach tool declarations are registered'
     );
 
     const s51Profile: UserProfile = {
@@ -11093,7 +11145,9 @@ Exercise,,Date,Workout,Sets,Reps,Tempo,Rest,Notes,Set 1,Set 2,Set 3,Set 4
         trainSrc53.includes('!showActiveExercises && !isFutureInspected') &&
         trainSrc53.includes('Upcoming training day') &&
         trainSrc53.includes('liveInsightWorkouts') &&
-        exCardSrc53.includes('Session notes') &&
+        exCardSrc53.includes('Exercise notes') &&
+        exCardSrc53.includes('wk-textarea') &&
+        !exCardSrc53.includes('Session notes') &&
         exCardSrc53.includes("isTimed ? 'TIME' : 'REPS'") &&
         setRowSrc53.includes('duration in seconds') &&
         obModalSrc53.includes('wk-page-title') &&
@@ -11783,12 +11837,13 @@ Exercise,,Date,Workout,Sets,Reps,Tempo,Rest,Notes,Set 1,Set 2,Set 3,Set 4
     );
 
     assert(
-      !setRowSrc57.includes("background: set.completed ? 'var(--color-status-positive)'") &&
-        setRowSrc57.includes("background: set.completed ? 'var(--color-status-positive-soft)'") &&
-        setRowSrc57.includes("stroke={set.completed ? 'var(--color-status-positive)' : 'var(--color-text-secondary)'}") &&
+      setRowSrc57.includes("background: set.completed ? 'var(--color-status-positive)' : 'var(--color-action-secondary-bg)'") &&
+        setRowSrc57.includes("stroke={set.completed ? 'var(--color-text-on-accent)' : 'var(--color-text-secondary)'}") &&
+        setRowSrc57.includes('readOnly={set.completed}') &&
+        setRowSrc57.includes('wk-input-readonly') &&
         setRowSrc57.includes("color: 'var(--wk-muted)'") &&
         setRowSrc57.includes("set.completed ? 'var(--color-text-primary)' : 'var(--color-text-secondary)'"),
-      'SetRow reserves solid Mint fill for milestones/100% rings while cleanly separating passive labels < pending inputs < completed values'
+      'SetRow highlights completed sets with solid Mint fill + dark check and flattens completed Weight/Reps/RIR to read-only card-background text until unchecked'
     );
 
     assert(
@@ -11840,16 +11895,27 @@ Exercise,,Date,Workout,Sets,Reps,Tempo,Rest,Notes,Set 1,Set 2,Set 3,Set 4
       'TrainTab wires active exercise cards directly to ExerciseDetailModal'
     );
 
+    const analyticsSrc58 = fs58.readFileSync(path58.join(repo58, 'src/components/analytics/AnalyticsTab.tsx'), 'utf8');
+    const pastWorkoutSrc58 = fs58.readFileSync(path58.join(repo58, 'src/components/program/PastWorkoutModal.tsx'), 'utf8');
+    const splitEditorSrc58 = fs58.readFileSync(path58.join(repo58, 'src/components/program/SplitEditor.tsx'), 'utf8');
     assert(
       detailModalSrc58.includes('createPortal(') &&
         detailModalSrc58.includes('role="dialog"') &&
         detailModalSrc58.includes('aria-modal="true"') &&
+        detailModalSrc58.includes('role="tablist"') &&
+        detailModalSrc58.includes('role="tabpanel"') &&
+        detailModalSrc58.includes("{ id: 'overview', label: 'Overview' }") &&
+        detailModalSrc58.includes("{ id: 'form', label: 'Form' }") &&
+        detailModalSrc58.includes("{ id: 'history', label: 'History' }") &&
         detailModalSrc58.includes('useUnits()') &&
         detailModalSrc58.includes('<TempoPacer') &&
         detailModalSrc58.includes('<TrendChart') &&
         detailModalSrc58.includes('Form &amp; execution') &&
-        detailModalSrc58.includes('History &amp; performance'),
-      'ExerciseDetailModal exposes accessible portal dialog with overview, form steps, tempo, warm-up/set actions, TrendChart and session history'
+        detailModalSrc58.includes('History &amp; performance') &&
+        analyticsSrc58.includes('<ExerciseDetailModal') &&
+        pastWorkoutSrc58.includes('onSelectExercise') &&
+        splitEditorSrc58.includes('onInspectExercise'),
+      'ExerciseDetailModal exposes a consistent 3-tab canonical view (Overview, Form, History) wired across Workout, Progress, Past Workouts, and Split Editor'
     );
 
     const demo58 = storage58.resetAllToSeedData();
@@ -12108,9 +12174,10 @@ Exercise,,Date,Workout,Sets,Reps,Tempo,Rest,Notes,Set 1,Set 2,Set 3,Set 4
     const sysCapMatch = generateHandlerSrc.match(/MAX_SYSTEM_CHARS\s*=\s*(\d+)/);
     assert(
       Boolean(sysCapMatch && parseInt(sysCapMatch[1], 10) >= 8000) &&
-        generateHandlerSrc.includes('.slice(0, 16)') &&
-        tools61.length === 15,
-      `api/coach/generate allows full coach context (MAX_SYSTEM_CHARS >= 8000) and up to 16 tools (registered ${tools61.length})`
+        generateHandlerSrc.includes('.slice(0, 32)') &&
+        tools61.length === 21 &&
+        tools61.length <= 32,
+      `api/coach/generate allows full coach context (MAX_SYSTEM_CHARS >= 8000) and up to 32 tools (registered ${tools61.length})`
     );
 
     const s61Plan = buildStarter61('Lean Bulk');
@@ -13475,7 +13542,2586 @@ Exercise,,Date,Workout,Sets,Reps,Tempo,Rest,Notes,Set 1,Set 2,Set 3,Set 4
     );
   }
 
-  console.log('\nALL 64 ENGINE, GOVERNANCE, DESIGN SYSTEM, TYPOGRAPHY, WEARABLES, WHOOP STRAIN, GOOGLE AUTH, ONBOARDING CONTEXT, 6-WEEK PROGRAM, SPREADSHEET IMPORT, AI COACH ACTIONS, GEMINI FLASH + KG, OOUX, AGENTIC COACH, PRODUCT UPGRADES, INFO EXPERIENCE, CONTENT DESIGN, GOAL CAROUSEL, SHIFT NUDGE COLOR POLISH, EXERCISE DRILL-IN MODAL, COMPOSITION WIDGET, MEASUREMENT UX, AI-NATIVE ACTIONS, PERMANENT PROGRAM ADAPTATION, HITL INTERVENTION, REP-RANGE DOUBLE PROGRESSION & TWO-DUMBBELL PER-HAND LOGGING SUITES PASSED SUCCESSFULLY! 🎯');
+  // ============================================================================
+  // SUITE 65: AI-NATIVE CONVERSATIONAL DESIGN — ALL 21 OOUX TOOLS, EXPLANATIONS,
+  // SAFETY HARMONY, STATE INTEGRITY & CONTEXTUAL TRIGGERS
+  // ============================================================================
+  {
+    console.log('\n[Suite 65: AI-Native Conversational Design, 21 OOUX Tools, Concept Explanations & Contextual Triggers]');
+    const fs65 = await import('fs');
+    const path65 = await import('path');
+    const {
+      confirmAssistantPendingAction: confirm65,
+      processAssistantMessage: ask65,
+    } = await import('../../services/aiAssistantService');
+    const { buildContextEnvelope: buildEnv65, serializeContextEnvelopeForPrompt: serializeEnv65 } = await import(
+      '../../services/coachContextEnvelope'
+    );
+    const { buildCoachOpening: open65, describeCoachPlace: describePlace65 } = await import(
+      '../../services/coachContext'
+    );
+    const { buildStarterPlan: starter65 } = await import('../starterPlan');
+    const {
+      buildPlanOverview: overview65,
+      generatePlanWorkout: genPlan65,
+      getNextProgramWorkoutNumber: nextNum65,
+    } = await import('../muscleBuildingProgram');
+    const { applyProgramOverridesToPlan: applyOverrides65 } = await import('../programOverrides');
+    const { queryExerciseScienceKnowledgeBase: queryKb65 } = await import('../knowledgeGraph');
+
+    const plan65 = starter65('Lean Bulk');
+    const w1Base = genPlan65(plan65, 1);
+    const inclineDef65 = SEED_EXERCISES.find((e) => e.id === 'ex-db-bench-press')!;
+    const bssDef65 = SEED_EXERCISES.find((e) => e.id === 'ex-bulgarian-split-squat')!;
+    const benchDef65 = SEED_EXERCISES.find((e) => e.id === 'ex-bench-press')!;
+    const squatDef65 = SEED_EXERCISES.find((e) => e.id === 'ex-barbell-squat')!;
+    const rdlDef65 = SEED_EXERCISES.find((e) => e.id === 'ex-rdl')!;
+    const todayStr65 = localDateString(new Date());
+
+    const active65: WorkoutSession = {
+      ...w1Base,
+      date: todayStr65,
+      location: 'gym',
+      exercises: [
+        {
+          id: 'ex65-1',
+          exerciseId: squatDef65.id,
+          name: squatDef65.name,
+          pillar: squatDef65.pillar,
+          equipment: squatDef65.equipment,
+          minReps: 6,
+          maxReps: 8,
+          tempo: '3010',
+          restSeconds: 150,
+          sets: [
+            { id: 's65-sq-1', setNumber: 1, targetWeightKg: 100, targetReps: 6, targetRir: 2, completed: false },
+            { id: 's65-sq-2', setNumber: 2, targetWeightKg: 100, targetReps: 6, targetRir: 2, completed: false },
+            { id: 's65-sq-3', setNumber: 3, targetWeightKg: 100, targetReps: 6, targetRir: 2, completed: false },
+          ],
+        },
+        {
+          id: 'ex65-2',
+          exerciseId: inclineDef65.id,
+          name: inclineDef65.name,
+          pillar: inclineDef65.pillar,
+          equipment: inclineDef65.equipment,
+          minReps: 8,
+          maxReps: 12,
+          tempo: '3010',
+          restSeconds: 120,
+          sets: [
+            { id: 's65-inc-1', setNumber: 1, targetWeightKg: 24, targetReps: 10, targetRir: 2, completed: false },
+            { id: 's65-inc-2', setNumber: 2, targetWeightKg: 24, targetReps: 10, targetRir: 2, completed: false },
+            { id: 's65-inc-3', setNumber: 3, targetWeightKg: 24, targetReps: 10, targetRir: 2, completed: false },
+          ],
+        },
+        {
+          id: 'ex65-3',
+          exerciseId: benchDef65.id,
+          name: benchDef65.name,
+          pillar: benchDef65.pillar,
+          equipment: benchDef65.equipment,
+          minReps: 6,
+          maxReps: 10,
+          tempo: '3010',
+          restSeconds: 150,
+          sets: [
+            { id: 's65-bn-1', setNumber: 1, targetWeightKg: 80, targetReps: 8, targetRir: 2, completed: false },
+            { id: 's65-bn-2', setNumber: 2, targetWeightKg: 80, targetReps: 8, targetRir: 2, completed: false },
+            { id: 's65-bn-3', setNumber: 3, targetWeightKg: 80, targetReps: 8, targetRir: 2, completed: false },
+          ],
+        },
+        {
+          id: 'ex65-4',
+          exerciseId: bssDef65.id,
+          name: bssDef65.name,
+          pillar: bssDef65.pillar,
+          equipment: bssDef65.equipment,
+          minReps: 8,
+          maxReps: 12,
+          tempo: '3010',
+          restSeconds: 90,
+          sets: [
+            { id: 's65-bss-1', setNumber: 1, targetWeightKg: 20, targetReps: 10, targetRir: 2, completed: false },
+            { id: 's65-bss-2', setNumber: 2, targetWeightKg: 20, targetReps: 10, targetRir: 2, completed: false },
+          ],
+        },
+        {
+          id: 'ex65-5',
+          exerciseId: rdlDef65.id,
+          name: rdlDef65.name,
+          pillar: rdlDef65.pillar,
+          equipment: rdlDef65.equipment,
+          isRdl: true,
+          minReps: 6,
+          maxReps: 8,
+          tempo: '3010',
+          restSeconds: 150,
+          sets: [
+            { id: 's65-rdl-1', setNumber: 1, targetWeightKg: 102.5, targetReps: 6, targetRir: 2, completed: false },
+            { id: 's65-rdl-2', setNumber: 2, targetWeightKg: 102.5, targetReps: 6, targetRir: 2, completed: false },
+          ],
+        },
+      ],
+    };
+
+    const doneRdlWorkout: WorkoutSession = {
+      ...active65,
+      id: 'w65-prev',
+      date: localDateString(new Date(Date.now() - 3 * 24 * 60 * 60 * 1000)),
+      completed: true,
+      completedAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
+      exercises: [
+        {
+          ...active65.exercises[0],
+          sets: active65.exercises[0].sets.map((s) => ({
+            ...s,
+            completed: true,
+            actualWeightKg: 100,
+            actualReps: 5,
+            actualRir: 1,
+          })),
+        },
+        {
+          ...active65.exercises[4],
+          sets: active65.exercises[4].sets.map((s) => ({
+            ...s,
+            completed: true,
+            actualWeightKg: 100,
+            actualReps: 8,
+            actualRir: 2,
+          })),
+        },
+      ],
+    };
+
+    const recentSquatDone: WorkoutSession = {
+      ...doneRdlWorkout,
+      id: 'w65-today-recent',
+      date: todayStr65,
+      completed: true,
+      completedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+    };
+
+    const bio65: BiometricLog[] = [
+      {
+        date: localDateString(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)),
+        bodyweightKg: 82.0,
+        bodyFatPct: 16.4,
+        waistCm: 84.0,
+        neckCm: 39.0,
+        hrvRmssd: 64,
+        restingHr: 54,
+        sleepHours: 7.5,
+        steps: 8200,
+        activeZoneMinutes: 35,
+      },
+      {
+        date: todayStr65,
+        bodyweightKg: 81.4,
+        bodyFatPct: 15.6,
+        waistCm: 82.5,
+        neckCm: 39.2,
+        hrvRmssd: 68,
+        restingHr: 52,
+        sleepHours: 7.9,
+        steps: 9100,
+        activeZoneMinutes: 42,
+      },
+    ];
+
+    const profile65: UserProfile = {
+      ...NEW_USER_PROFILE,
+      name: 'Taylor',
+      onboardingCompleted: true,
+      programType: 'starter_6wk',
+      goalPhase: 'Lean Bulk',
+      gender: 'male',
+      sexEntered: true,
+      age: 34,
+      ageEntered: true,
+      weightUnit: 'kg',
+      activeLocation: 'gym',
+      homeEquipment: ['dumbbells', 'bench'],
+      goalSettings: {
+        customGoals: [
+          {
+            id: 'steps',
+            exerciseId: 'daily-steps',
+            exerciseName: 'Daily steps',
+            metric: 'steps',
+            target: 10000,
+            createdOn: todayStr65,
+          },
+        ],
+      },
+    };
+
+    const base65 = {
+      profile: profile65,
+      activeWorkout: active65,
+      workouts: [doneRdlWorkout],
+      biometrics: bio65,
+      exerciseCatalog: SEED_EXERCISES,
+      bodyweightEmaKg: 81.5,
+      readinessState: 'Normal' as const,
+      activities: [],
+    };
+
+    // A. ContextEnvelope preserves sub-routes (exerciseId, detail, goalId) even with routeName
+    const envEx = buildEnv65({
+      ...base65,
+      routeName: 'train',
+      place: { tab: 'train', exerciseId: 'ex-db-bench-press' },
+    });
+    const envComp = buildEnv65({
+      ...base65,
+      routeName: 'analytics',
+      place: { tab: 'analytics', detail: 'composition' },
+    });
+    const envGoal = buildEnv65({
+      ...base65,
+      routeName: 'analytics',
+      place: { tab: 'analytics', goalId: 'custom-steps' },
+    });
+    assert(
+      envEx.working_state.app_route === '/train/exercise/ex-db-bench-press' &&
+        envComp.working_state.app_route === '/progress/composition' &&
+        envGoal.working_state.app_route === '/progress/goals/custom-steps' &&
+        serializeEnv65(envEx).includes('Goals:'),
+      `ContextEnvelope preserves exerciseId, Progress detail, and goalId sub-routes even when routeName is supplied (got ${envEx.working_state.app_route}, ${envComp.working_state.app_route}, ${envGoal.working_state.app_route})`
+    );
+
+    // B. Safety + Protective Deterministic Action Harmony (zero LLM calls, safety caution preserved)
+    const savedLm65 = (globalThis as any).LanguageModel;
+    let llmCallsDuringPain = 0;
+    (globalThis as any).LanguageModel = {
+      availability: async () => 'available',
+      create: async () => ({
+        prompt: async () => {
+          llmCallsDuringPain++;
+          return 'Should never run on pain';
+        },
+        promptStreaming: async function* () {
+          llmCallsDuringPain++;
+          yield 'Should never run on pain';
+        },
+        destroy: () => {},
+      }),
+    };
+    try {
+      const painSwapRes = await ask65({
+        ...base65,
+        userMessage: 'My shoulder hurts, swap bench press for incline dumbbell press across my program',
+      });
+      assert(
+        llmCallsDuringPain === 0 &&
+          /stop|professional|medical/i.test(painSwapRes.message.text) &&
+          painSwapRes.message.mutationStatus === 'awaiting_confirmation' &&
+          painSwapRes.message.pendingConfirmation?.tool_name === 'modify_program',
+        'Pain + protective program swap never invokes LLM, prepends fixed safety guidance, and offers HITL swap confirmation'
+      );
+
+      const painMemoryRes = await ask65({
+        ...base65,
+        userMessage: 'Remember I have a shoulder injury',
+      });
+      assert(
+        llmCallsDuringPain === 0 &&
+          /stop|professional|medical/i.test(painMemoryRes.message.text) &&
+          painMemoryRes.actionTaken?.type === 'SAVE_ATHLETE_MEMORY' &&
+          Boolean(painMemoryRes.updatedProfile?.athleteMemories?.some((m) => /shoulder/i.test(m.value))),
+        'Pain injury memory saves deterministically with safety guidance and zero LLM calls'
+      );
+
+      const urgentRes = await ask65({
+        ...base65,
+        userMessage: 'I have chest pain and dizziness, swap bench press',
+      });
+      assert(
+        llmCallsDuringPain === 0 &&
+          !urgentRes.updatedWorkout &&
+          !urgentRes.updatedProfile &&
+          !urgentRes.message.pendingConfirmation &&
+          /stop immediately|medical/i.test(urgentRes.message.text),
+        'Urgent red-flag symptoms immediately stop without executing any mutation or LLM call'
+      );
+    } finally {
+      (globalThis as any).LanguageModel = savedLm65;
+    }
+
+    // C. P0 Bug Fixes: Home "no dumbbells today", Week 2 Day 1 reset persistence, Add N sets of absent lift,
+    // single-lift volume scoping, steps goal removal vs widgets, future week home scheduling, KB honesty
+    const homeNoDbRes = await ask65({
+      ...base65,
+      profile: { ...profile65, activeLocation: 'home' },
+      activeWorkout: { ...active65, location: 'home' },
+      userMessage: 'No dumbbells today',
+    });
+    assert(
+      !homeNoDbRes.updatedProfile?.homeEquipment &&
+        homeNoDbRes.actionTaken?.type !== 'UPDATE_EQUIPMENT' &&
+        /swap|without dumbbells/i.test(homeNoDbRes.message.text),
+      '"No dumbbells today" at home gives session swaps without deleting dumbbells from home equipment'
+    );
+
+    const resetW2Gate = await ask65({
+      ...base65,
+      userMessage: 'Reset my program to week 2 day 1',
+    });
+    const resetW2Res = resetW2Gate.message.pendingConfirmation
+      ? await confirm65(resetW2Gate.message.pendingConfirmation, base65)
+      : resetW2Gate;
+    const resetW2Profile = { ...profile65, ...resetW2Res.updatedProfile };
+    assert(
+      resetW2Res.actionTaken?.type === 'RESET_PROGRAM' &&
+        resetW2Profile.mesocycleWeek === 2 &&
+        Boolean(resetW2Profile.planStartWorkouts?.[plan65.id]) &&
+        nextNum65([doneRdlWorkout], plan65, resetW2Profile.planCycleStarts, resetW2Profile.planStartWorkouts) ===
+          resetW2Res.updatedWorkout?.programWorkoutNumber &&
+        overview65([doneRdlWorkout], plan65, [], resetW2Profile.planCycleStarts, resetW2Profile.planStartWorkouts)
+          .nextWorkoutNumber === resetW2Res.updatedWorkout?.programWorkoutNumber,
+      'Reset to Week 2 Day 1 persists planStartWorkouts so Program overview and next queued session agree'
+    );
+
+    const add4FacePulls = await ask65({
+      ...base65,
+      userMessage: 'Add 4 sets of Face Pulls',
+    });
+    const addedFp = add4FacePulls.updatedWorkout?.exercises.find((e) => /face pull/i.test(e.name));
+    assert(
+      add4FacePulls.actionTaken?.type === 'ADD_EXERCISE' &&
+        Boolean(addedFp) &&
+        addedFp!.sets.filter((s) => !s.isWarmup).length === 4,
+      '"Add 4 sets of Face Pulls" delegates to ADD_EXERCISE with 4 calibrated working sets'
+    );
+
+    const addSetBenchToday = await ask65({
+      ...base65,
+      userMessage: "Add a set to Barbell Bench Press in today's workout",
+    });
+    const benchAfterAdd = addSetBenchToday.updatedWorkout?.exercises.find((e) => e.exerciseId === benchDef65.id);
+    const squatAfterBenchAdd = addSetBenchToday.updatedWorkout?.exercises.find((e) => e.exerciseId === squatDef65.id);
+    assert(
+      addSetBenchToday.actionTaken?.type === 'ADJUST_WORKOUT_VOLUME' &&
+        benchAfterAdd?.sets.filter((s) => !s.isWarmup).length === 4 &&
+        squatAfterBenchAdd?.sets.filter((s) => !s.isWarmup).length === 3,
+      '"Add a set to Barbell Bench Press in today\'s workout" scopes strictly to Bench Press'
+    );
+
+    const removeStepsGoal = await ask65({
+      ...base65,
+      userMessage: 'Remove my steps goal from progress',
+    });
+    assert(
+      removeStepsGoal.actionTaken?.type === 'UPDATE_GOALS' &&
+        !(removeStepsGoal.updatedProfile?.goalSettings?.customGoals ?? []).some((g) => g.metric === 'steps') &&
+        !removeStepsGoal.updatedProfile?.progressWidgets,
+      '"Remove my steps goal from progress" removes the custom goal without hiding Progress widgets'
+    );
+
+    const schedWeek3Home = await ask65({
+      ...base65,
+      userMessage: 'Switch week 3 to home',
+    });
+    assert(
+      schedWeek3Home.actionTaken?.type === 'SCHEDULE_LOCATION_WEEK' &&
+        schedWeek3Home.updatedProfile?.scheduledWeekLocations?.[3] === 'home',
+      '"Switch week 3 to home" schedules Week 3 location to home'
+    );
+
+    // Honest KB & internal governance filtering
+    const aiKb = EXERCISE_SCIENCE_KNOWLEDGE_BASE.find((p) => p.id === 'sp-tensor-ai')!;
+    assert(
+      !/<15ms|TPU/i.test(aiKb.scientificRationale + aiKb.practicalApplication) &&
+        queryKb65('tokens.css shift nudge typography grid')?.id !== 'sp-design-system-governance',
+      'Knowledge Base drops fabricated <15ms/TPU claims and filters internal governance docs from athlete queries'
+    );
+
+    // D. All 6 New OOUX Tools + Extended log_entry & modify_program
+    // 1) log_workout_set (paired 2-DB + unilateral L/R)
+    const logPairedDb = await ask65({
+      ...base65,
+      userMessage: 'Log 24 kg x 10 @ 2 RIR on Incline Dumbbell Press',
+    });
+    const loggedIncSet = logPairedDb.updatedWorkout?.exercises
+      .find((e) => e.exerciseId === inclineDef65.id)
+      ?.sets.find((s) => s.completed);
+    assert(
+      logPairedDb.actionTaken?.type === 'LOG_WORKOUT_SET' &&
+        loggedIncSet?.actualWeightKg === 24 &&
+        loggedIncSet?.actualReps === 10 &&
+        loggedIncSet?.actualRir === 2 &&
+        Boolean(logPairedDb.message.undoSnapshot),
+      'log_workout_set logs paired 2-DB set at 24 kg/hand x 10 @ 2 RIR with Undo'
+    );
+
+    const logUnilat = await ask65({
+      ...base65,
+      userMessage: 'Log 20 kg x 8 left, 10 right on Dumbbell Bulgarian Split Squat',
+    });
+    const loggedBssSet = logUnilat.updatedWorkout?.exercises
+      .find((e) => e.exerciseId === bssDef65.id)
+      ?.sets.find((s) => s.completed);
+    assert(
+      logUnilat.actionTaken?.type === 'LOG_WORKOUT_SET' &&
+        loggedBssSet?.actualRepsLeft === 8 &&
+        loggedBssSet?.actualRepsRight === 10 &&
+        loggedBssSet?.actualReps === 8,
+      'log_workout_set records unilateral L/R reps and sets canonical actualReps to weaker side (8)'
+    );
+
+    // 2) reorder_workout_exercises
+    const reorderRes = await ask65({
+      ...base65,
+      userMessage: 'Move Barbell Bench Press first in today workout',
+    });
+    assert(
+      reorderRes.actionTaken?.type === 'REORDER_WORKOUT' &&
+        reorderRes.updatedWorkout?.exercises[0]?.exerciseId === benchDef65.id &&
+        Boolean(reorderRes.message.undoSnapshot),
+      'reorder_workout_exercises moves Barbell Bench Press to position 1 with Undo'
+    );
+
+    // 3) update_exercise_note
+    const noteRes = await ask65({
+      ...base65,
+      userMessage: 'Add a note to Barbell Back Squat: brace hard before descent',
+    });
+    const squatNote = noteRes.updatedWorkout?.exercises.find((e) => e.exerciseId === squatDef65.id)?.athleteNotes;
+    assert(
+      noteRes.actionTaken?.type === 'UPDATE_EXERCISE_NOTE' &&
+        Boolean(squatNote && /brace hard before descent/i.test(squatNote)) &&
+        Boolean(noteRes.message.undoSnapshot),
+      'update_exercise_note saves exercise note onto session exercise with Undo'
+    );
+
+    // 4) override_recovery_gate (HITL confirmation -> recoveryOverride=true)
+    const recGateRes = await ask65({
+      ...base65,
+      workouts: [recentSquatDone],
+      userMessage: 'Train anyway today',
+    });
+    const recConfirmRes = recGateRes.message.pendingConfirmation
+      ? await confirm65(recGateRes.message.pendingConfirmation, { ...base65, workouts: [recentSquatDone] })
+      : recGateRes;
+    assert(
+      recGateRes.message.mutationStatus === 'awaiting_confirmation' &&
+        recGateRes.message.pendingConfirmation?.tool_name === 'override_recovery_gate' &&
+        recConfirmRes.actionTaken?.type === 'OVERRIDE_RECOVERY' &&
+        recConfirmRes.updatedWorkout?.recoveryOverride === true,
+      'override_recovery_gate warns via HITL confirmation and unlocks activeWorkout.recoveryOverride on confirm'
+    );
+
+    // 5) update_athlete_profile (kg->lb snap, experience beginner->new, display toggle)
+    const unitLbRes = await ask65({
+      ...base65,
+      userMessage: 'Switch my units to lb',
+    });
+    const expRes = await ask65({
+      ...base65,
+      userMessage: 'Set my experience level to beginner',
+    });
+    const hideChartsRes = await ask65({
+      ...base65,
+      userMessage: 'Hide exercise charts',
+    });
+    assert(
+      unitLbRes.actionTaken?.type === 'UPDATE_PROFILE' &&
+        unitLbRes.updatedProfile?.weightUnit === 'lb' &&
+        Boolean(unitLbRes.updatedWorkout) &&
+        expRes.updatedProfile?.experienceLevel === 'new' &&
+        hideChartsRes.updatedProfile?.workoutDisplay?.showExerciseCharts === false,
+      'update_athlete_profile updates weightUnit (with workout snap), experienceLevel (beginner->new), and workout display toggles'
+    );
+
+    // 6) delete_athlete_memory + list memories + clear-all confirmation
+    const profileWithMem: UserProfile = {
+      ...profile65,
+      athleteMemories: [
+        { id: 'm65-1', category: 'injury', value: 'Left shoulder impingement', createdAt: todayStr65 },
+        { id: 'm65-2', category: 'preference', value: 'Prefer morning workouts', createdAt: todayStr65 },
+      ],
+    };
+    const listMemRes = await ask65({
+      ...base65,
+      profile: profileWithMem,
+      userMessage: 'What do you remember about me?',
+    });
+    const delMemRes = await ask65({
+      ...base65,
+      profile: profileWithMem,
+      userMessage: 'Forget my shoulder injury',
+    });
+    const clearAllMemGate = await ask65({
+      ...base65,
+      profile: profileWithMem,
+      userMessage: 'Clear all my memories',
+    });
+    assert(
+      /Left shoulder impingement/.test(listMemRes.message.text) &&
+        delMemRes.actionTaken?.type === 'DELETE_ATHLETE_MEMORY' &&
+        (delMemRes.updatedProfile?.athleteMemories?.length ?? 0) === 1 &&
+        clearAllMemGate.message.mutationStatus === 'awaiting_confirmation' &&
+        clearAllMemGate.message.pendingConfirmation?.tool_name === 'delete_athlete_memory',
+      'Memory lifecycle lists saved memories, deletes a single memory, and gates clearing all memories behind HITL confirmation'
+    );
+
+    // 7) Extended log_entry (neck tape, steps, height, yoga -> class, accurate previous_state)
+    const logNeckRes = await ask65({ ...base65, userMessage: 'Log neck 39.8 cm' });
+    const logStepsRes = await ask65({ ...base65, userMessage: 'Log 10500 steps' });
+    const logHeightRes = await ask65({ ...base65, userMessage: 'Log height 182 cm' });
+    const logYogaRes = await ask65({ ...base65, userMessage: 'Log yoga 35 min' });
+    assert(
+      logNeckRes.actionTaken?.type === 'LOG_BIOMETRIC' &&
+        logNeckRes.updatedBiometrics?.find((b) => b.date === todayStr65)?.neckCm === 39.8 &&
+        String(logNeckRes.message.stateDiff?.previous_state?.display || '').includes('39.2') &&
+        logStepsRes.updatedBiometrics?.find((b) => b.date === todayStr65)?.steps === 10500 &&
+        logHeightRes.updatedProfile?.measuredHeightCm === 182 &&
+        Boolean(logYogaRes.updatedActivities?.some((a) => a.type === 'class' && a.minutes === 35)),
+      'Extended log_entry logs neck tape with metric-specific previous_state, steps, height, and yoga as class activity'
+    );
+
+    // 8) modify_program: adjust_rep_range & remove_override
+    const repRangeGate = await ask65({
+      ...base65,
+      userMessage: 'Change Barbell Bench Press to 6-8 reps across my program',
+    });
+    const repRangeDone = repRangeGate.message.pendingConfirmation
+      ? await confirm65(repRangeGate.message.pendingConfirmation, base65)
+      : repRangeGate;
+    const planWithRepOv = applyOverrides65(plan65, repRangeDone.updatedProfile?.programOverrides);
+    const benchTemplateWithRepOv = planWithRepOv.templates
+      .flatMap((t) => t.exercises)
+      .find((e) => e.exerciseId === benchDef65.id);
+    const removeOvGate = await ask65({
+      ...base65,
+      profile: { ...profile65, ...repRangeDone.updatedProfile },
+      userMessage: 'Remove my Barbell Bench Press program override',
+    });
+    const removeOvDone = removeOvGate.message.pendingConfirmation
+      ? await confirm65(removeOvGate.message.pendingConfirmation, {
+          ...base65,
+          profile: { ...profile65, ...repRangeDone.updatedProfile },
+        })
+      : removeOvGate;
+    assert(
+      repRangeGate.message.mutationStatus === 'awaiting_confirmation' &&
+        repRangeDone.actionTaken?.type === 'MODIFY_PROGRAM' &&
+        benchTemplateWithRepOv?.reps === '6-8' &&
+        removeOvDone.actionTaken?.type === 'MODIFY_PROGRAM' &&
+        (removeOvDone.updatedProfile?.programOverrides?.length ?? 0) === 0,
+      'modify_program supports adjust_rep_range (6-8 across templates) and remove_override with HITL confirmation'
+    );
+
+    // E. Concept/Rule & Live-Data Explanations
+    const qTempo = await ask65({ ...base65, userMessage: 'What does tempo 3010 mean?' });
+    const qWarmup = await ask65({ ...base65, userMessage: 'How do warm-ups work?' });
+    const qDbLog = await ask65({ ...base65, userMessage: 'Do I log per dumbbell or total?' });
+    const qSquatLvl = await ask65({ ...base65, userMessage: 'What is my squat level?' });
+    const qWaist = await ask65({ ...base65, userMessage: "What's my waist?" });
+    const qRestWhy = await ask65({ ...base65, userMessage: 'Why are my rest times 2.5 minutes?' });
+    const qJoints = await ask65({ ...base65, userMessage: 'Which joints does Barbell Back Squat stress?' });
+    const qSchedule = await ask65({ ...base65, userMessage: 'How does the weekly schedule work?' });
+    const qGoals = await ask65({ ...base65, userMessage: 'What are my goals?' });
+    const qTonnage = await ask65({ ...base65, userMessage: 'What was my tonnage last workout?' });
+    const qRdlWhy = await ask65({ ...base65, userMessage: 'Why did RDL weight change?' });
+    assert(
+      /eccentric|lowering/i.test(qTempo.message.text) &&
+        /3010/.test(qTempo.message.text) &&
+        /warm[- ]?up/i.test(qWarmup.message.text) &&
+        /per dumbbell|each dumbbell|single dumbbell/i.test(qDbLog.message.text) &&
+        /squat/i.test(qSquatLvl.message.text) &&
+        !/Scientific Formula/i.test(qSquatLvl.message.text) &&
+        /82\.5\s*cm/i.test(qWaist.message.text) &&
+        /ATP|phosphocreatine|rest/i.test(qRestWhy.message.text) &&
+        /knee|lumbar|spine|hip/i.test(qJoints.message.text) &&
+        /week|session|active day/i.test(qSchedule.message.text) &&
+        /10,000|steps|goal/i.test(qGoals.message.text) &&
+        /3,100|kg/i.test(qTonnage.message.text) &&
+        /Romanian Deadlift/i.test(qRdlWhy.message.text),
+      'All 11 concept/rule and live-data explanations route accurately and ground in athlete metrics'
+    );
+
+    // F. Upgraded CoachPlace openings, describeCoachPlace & Contextual Trigger Wiring
+    const opComp = open65({
+      place: { tab: 'analytics', detail: 'composition' },
+      profile: profile65,
+      activeWorkout: active65,
+      workouts: [doneRdlWorkout],
+      biometrics: bio65,
+      exerciseCatalog: SEED_EXERCISES,
+      bodyweightEmaKg: 81.5,
+      readinessState: 'Normal',
+    });
+    const opMeas = open65({
+      place: { tab: 'analytics', detail: 'measurements' },
+      profile: profile65,
+      activeWorkout: active65,
+      workouts: [doneRdlWorkout],
+      biometrics: bio65,
+      exerciseCatalog: SEED_EXERCISES,
+      bodyweightEmaKg: 81.5,
+      readinessState: 'Normal',
+    });
+    const opProg = open65({
+      place: { tab: 'program' },
+      profile: profile65,
+      activeWorkout: active65,
+      workouts: [doneRdlWorkout],
+      biometrics: bio65,
+      exerciseCatalog: SEED_EXERCISES,
+      bodyweightEmaKg: 81.5,
+      readinessState: 'Normal',
+    });
+    const opRest = open65({
+      place: { tab: 'train' },
+      profile: profile65,
+      activeWorkout: {
+        ...active65,
+        date: localDateString(new Date(Date.now() + 24 * 60 * 60 * 1000)),
+      },
+      workouts: [doneRdlWorkout],
+      biometrics: bio65,
+      exerciseCatalog: SEED_EXERCISES,
+      bodyweightEmaKg: 81.5,
+      readinessState: 'Normal',
+    });
+    const descEx = describePlace65({ tab: 'train', exerciseId: inclineDef65.id }, active65, SEED_EXERCISES);
+    assert(
+      opComp.id === 'progress-composition' &&
+        /15\.6%|lean mass|81\.4/i.test(opComp.line) &&
+        opMeas.id === 'progress-measurements' &&
+        /82\.5 cm/i.test(opMeas.line) &&
+        !opProg.hooks.some((h) => /reset/i.test(h.label)) &&
+        opRest.id === 'workout-rest-day' &&
+        descEx.label.includes('Incline Dumbbell Press'),
+      'Context-aware openings cover composition, measurements, rest-day, safe Program defaults, and describeCoachPlace pills'
+    );
+
+    // G. Structural verification of Undo programOverrides guard, modal persistence, and inline triggers
+    const appSrc65 = fs65.readFileSync(path65.join(process.cwd(), 'src/App.tsx'), 'utf8');
+    const modalSrc65 = fs65.readFileSync(path65.join(process.cwd(), 'src/components/assistant/AICoachChatModal.tsx'), 'utf8');
+    const triggerFiles = [
+      'src/components/train/ExerciseDetailModal.tsx',
+      'src/components/train/RecoveryScoreCard.tsx',
+      'src/components/train/WorkoutFinishScreen.tsx',
+      'src/components/program/ProgramPlanView.tsx',
+      'src/components/analytics/CompositionCard.tsx',
+      'src/components/analytics/StrengthLevelsCard.tsx',
+      'src/components/analytics/GoalDetailScreen.tsx',
+      'src/components/analytics/GoalSettingsScreen.tsx',
+      'src/components/analytics/ProgressWidgetsScreen.tsx',
+    ];
+    const missingTriggers = triggerFiles.filter(
+      (f) => !fs65.readFileSync(path65.join(process.cwd(), f), 'utf8').includes('Treise')
+    );
+    assert(
+      appSrc65.includes("'programOverrides' in prevSnap") &&
+        appSrc65.includes('coachMessages') &&
+        modalSrc65.includes('persistedMessages') &&
+        modalSrc65.includes('describeCoachPlace') &&
+        modalSrc65.includes('New chat') &&
+        missingTriggers.length === 0,
+      `App Undo guards programOverrides, AICoachChatModal persists chat + Context Pill + New chat, and all 9 inline Treise triggers are wired (missing: ${missingTriggers.join(', ') || 'none'})`
+    );
+  }
+
+  // =========================================================================
+  // Suite 66: P0 Closed-Beta Readiness — BIA FFM Retirement, Unified Advisory
+  // Recovery, Encrypted Google Drive Backup + Competitor CSV Import, and Core
+  // Engine Math Fixes (Mesocycle/DP, E1RM/Isolation, WCI, Joint Strain,
+  // Poliquin Female Standard & Assisted Chin-Ups)
+  // =========================================================================
+  console.log('\n[Suite 66: P0 Closed-Beta Readiness — BIA, Advisory Recovery, Encrypted Backup, CSV Import & Core Engine Fixes]');
+  {
+    const fs66 = require('fs');
+    const path66 = require('path');
+    const {
+      buildAthleteGoals: buildGoals66,
+      MIN_BIA_OVERLAY_DAYS: MIN_BIA_DAYS_66,
+      FASTED_BIA_WEIGH_IN_PROMPT: FASTED_PROMPT_66,
+      consumerBiaUncertaintyKg: biaUnc66,
+    } = require('../../services/athleteGoals');
+    const {
+      AMBER_SHIELD_RECOVERY_MULTIPLIER: AMBER_MULT_66,
+      computeMuscleRecovery: computeMuscleRec66,
+      applyRecoveryModulation: applyMod66,
+      clearRecoveryModulation: clearMod66,
+    } = require('../recovery');
+    const encBackup66 = encryptBackupPayload;
+    const decBackup66 = decryptBackupPayload;
+    const isEncEnv66 = isEncryptedBackupEnvelope;
+    const runDriveBackup66 = runEncryptedDriveBackup;
+    const restoreDriveBackup66 = restoreEncryptedDriveBackup;
+    const deleteDriveBackup66 = deleteEncryptedBackupFromDrive;
+    const DRIVE_FILE_66 = DRIVE_BACKUP_FILENAME;
+    const detectCsv66 = detectCompetitorCsvFormat;
+    const parseCsv66 = parseCompetitorCsv;
+    const mergeImported66 = mergeImportedWorkouts;
+    const {
+      evaluateRepRangeDoubleProgression: evalDp66,
+    } = require('../progressionRules');
+    const {
+      isMesocycleLoadHoldTransition: isMesoHold66,
+      getRecommendedSetsForWeek: getRecSets66,
+    } = require('../hypertrophyVolume');
+    const {
+      MAX_E1RM_RIR: MAX_RIR_66,
+      isE1rmEligibleSet: isE1rmElig66,
+      isAssistedExercise: isAssist66,
+    } = require('../e1rm');
+    const { calculateSessionTonnage: calcTonnage66, WCI_HRR_FLOOR: WCI_FLOOR_66 } = require('../wci');
+    const { calculateWeightedJointSets: weightedJoint66 } = require('../knowledgeGraph');
+    const {
+      POLIQUIN_CHIN_UP_TO_BENCH_FEMALE: POLIQUIN_F_66,
+      getPoliquinChinUpToBenchRatio: poliquinRatio66,
+    } = require('../strengthStandards');
+    const {
+      buildMovementStandards: buildStd66,
+      buildStandardsAnswer: stdAnswer66,
+    } = require('../../services/movementStandards');
+    const { isIsolationOrSmallExercise: isIso66 } = require('../../services/exerciseInsight');
+
+    // --- P0.1: Retire +/-0.3 kg BIA FFM Tier-1 gate & drop regression bone/protein mass ---
+    const scaleRead66 = computeRenphoScaleMetrics(
+      {
+        weightKg: 80,
+        impedanceOhms: 515,
+      },
+      {
+        heightCm: 178,
+        age: 32,
+        gender: 'male',
+      }
+    );
+    assert(
+      Boolean(scaleRead66) && scaleRead66?.boneMassKg === undefined && scaleRead66?.proteinMassKg === undefined,
+      'RENPHO 50 kHz impedance never fabricates regression-derived boneMassKg or proteinMassKg'
+    );
+    assert(
+      biaUnc66(80) >= 2.0 && biaUnc66(80) <= 5.0 && FASTED_PROMPT_66.toLowerCase().includes('fasted'),
+      `Consumer BIA uncertainty band reflects Siedler et al. (2023) (±${biaUnc66(80)} kg at 80 kg BW) with fasted prompt`
+    );
+
+    const makeBioDay66 = (daysAgo: number, weightKg: number, bfPct: number): BiometricLog => {
+      const d = new Date(Date.now() - daysAgo * 86400000);
+      return {
+        date: localDateString(d),
+        bodyweightKg: weightKg,
+        bodyFatPct: bfPct,
+        hrvRmssd: 0,
+        restingHr: 0,
+        sleepHours: 0,
+        steps: 0,
+        activeZoneMinutes: 0,
+        vo2Max: 0,
+      };
+    };
+    const shortBiaBios66: BiometricLog[] = [
+      makeBioDay66(28, 80.0, 18.0),
+      makeBioDay66(21, 80.2, 17.6),
+      makeBioDay66(14, 80.4, 17.3),
+      makeBioDay66(7, 80.5, 17.0),
+      makeBioDay66(0, 80.7, 16.8),
+    ];
+    const longBiaBios66: BiometricLog[] = [
+      makeBioDay66(98, 79.0, 18.5),
+      makeBioDay66(56, 80.1, 17.8),
+      makeBioDay66(14, 81.2, 16.5),
+      makeBioDay66(0, 81.8, 16.0),
+    ];
+    const profile66: any = {
+      name: 'Test Athlete',
+      gender: 'male',
+      age: 30,
+      heightCm: 178,
+      weightUnit: 'kg',
+      trainingGoal: 'size',
+      experienceLevel: 'intermediate',
+      trainingDaysPerWeek: 4,
+      targetBodyweightKg: 82,
+    };
+    const goalsShortBia66 = buildGoals66({
+      profile: profile66,
+      workouts: [],
+      biometrics: shortBiaBios66,
+      activities: [],
+      exerciseCatalog: SEED_EXERCISES,
+      now: Date.now(),
+    });
+    const goalsLongBia66 = buildGoals66({
+      profile: profile66,
+      workouts: [],
+      biometrics: longBiaBios66,
+      activities: [],
+      exerciseCatalog: SEED_EXERCISES,
+      now: Date.now(),
+    });
+    const chosenShort66 = goalsShortBia66.find((g: any) => g.id === 'chosen-goal');
+    const chosenLong66 = goalsLongBia66.find((g: any) => g.id === 'chosen-goal');
+    assert(
+      chosenShort66?.measure?.evidence !== 'fat-free-mass' &&
+        chosenShort66?.measure?.biaOverlay?.isDirectionalReady === false &&
+        chosenShort66?.measure?.biaOverlay?.spanDays < MIN_BIA_DAYS_66,
+      'Short-term (<12w) BIA FFM is demoted to a non-ready secondary overlay and never drives Tier-1 verdict'
+    );
+    assert(
+      chosenLong66?.measure?.evidence !== 'fat-free-mass' &&
+        chosenLong66?.measure?.biaOverlay?.isDirectionalReady === true &&
+        chosenLong66?.measure?.biaOverlay?.uncertaintyBandKg >= 2.0,
+      '12+ week BIA FFM unlocks secondary directional overlay with explicit ±2.0–4.9 kg uncertainty band'
+    );
+    const kgShortBia66 = buildBodyCompositionKnowledgeGraph(shortBiaBios66, profile66);
+    assert(
+      kgShortBia66.recompositionStatus !== 'recomp_positive' && kgShortBia66.recompositionStatus !== 'lean_gain',
+      `Short-term BIA noise does not trigger lean_gain/recomp_positive in KG (got ${kgShortBia66.recompositionStatus})`
+    );
+
+    // --- P0.2: Advisory Unified Recovery & Amber Shield (1.2x multiplier + 1-tap opt-in modulation) ---
+    const now66 = Date.now();
+    const bench66 = SEED_EXERCISES.find((e) => e.id === 'ex-bench-press')!;
+    const recentBenchSession66: WorkoutSession = {
+      id: 'w-rec-66',
+      date: localDateString(new Date(now66 - 30 * 3600000)),
+      name: 'Push A',
+      splitDay: 'Push',
+      completed: true,
+      completedAt: new Date(now66 - 30 * 3600000).toISOString(),
+      readinessState: 'Normal',
+      readinessZScore: 0,
+      exercises: [
+        {
+          id: 'es-bench-rec-66',
+          exerciseId: bench66.id,
+          name: bench66.name,
+          equipment: bench66.equipment,
+          pillar: bench66.pillar,
+          minReps: 6,
+          maxReps: 8,
+          sets: [
+            { id: 's1', setNumber: 1, targetWeightKg: 90, targetReps: 8, targetRir: 2, actualWeightKg: 90, actualReps: 8, actualRir: 1, completed: true },
+            { id: 's2', setNumber: 2, targetWeightKg: 90, targetReps: 8, targetRir: 2, actualWeightKg: 90, actualReps: 8, actualRir: 1, completed: true },
+            { id: 's3', setNumber: 3, targetWeightKg: 90, targetReps: 8, targetRir: 2, actualWeightKg: 90, actualReps: 8, actualRir: 1, completed: true },
+          ],
+        },
+      ],
+    };
+    const queuedPush66: WorkoutSession = {
+      ...recentBenchSession66,
+      id: 'w-queued-66',
+      date: localDateString(new Date(now66)),
+      completed: false,
+      completedAt: undefined,
+      exercises: recentBenchSession66.exercises.map((ex) => ({
+        ...ex,
+        id: 'es-q-66',
+        sets: ex.sets.map((s) => ({ ...s, completed: false, actualReps: undefined, actualRir: undefined })),
+      })),
+    };
+    const recNormal66 = computeMuscleRec66([recentBenchSession66], SEED_EXERCISES, now66, 'Normal');
+    const recAmber66 = computeMuscleRec66([recentBenchSession66], SEED_EXERCISES, now66, 'Amber Shield');
+    const evalNormal66 = evaluateSessionRecovery(queuedPush66, [recentBenchSession66], SEED_EXERCISES, now66, 'Normal');
+    const evalAmber66 = evaluateSessionRecovery(queuedPush66, [recentBenchSession66], SEED_EXERCISES, now66, 'Amber Shield');
+    assert(
+      AMBER_MULT_66 === 1.2 &&
+        recAmber66.Chest.requiredHours > recNormal66.Chest.requiredHours &&
+        evalAmber66.systemicMultiplier === 1.2 &&
+        evalAmber66.recoveryPct <= 85 &&
+        evalAmber66.recoveryPct < evalNormal66.recoveryPct,
+      `Amber Shield scales local recovery hours by 1.2x and caps local pct <=85% (normal ${evalNormal66.recoveryPct}% vs amber ${evalAmber66.recoveryPct}%)`
+    );
+
+    const modBoth66 = applyMod66(queuedPush66, 'both');
+    const restored66 = clearMod66(modBoth66);
+    assert(
+      modBoth66.exercises[0].sets.length === 2 &&
+        modBoth66.exercises[0].sets.every((s: any) => s.targetRir >= 2) &&
+        modBoth66.recoveryModulation?.mode === 'both' &&
+        restored66.exercises[0].sets.length === 3 &&
+        restored66.recoveryModulation === undefined,
+      '1-tap opt-in recovery modulation trims 1 set + shifts to 2–3 RIR and restores planned sets cleanly'
+    );
+
+    const trainTabSrc66 = fs66.readFileSync(path66.join(process.cwd(), 'src/components/train/TrainTab.tsx'), 'utf8');
+    assert(
+      !trainTabSrc66.includes('Your muscles are still recovering') &&
+        trainTabSrc66.includes('Trim 1 set / lift') &&
+        trainTabSrc66.includes('Shift to 2–3 RIR'),
+      'TrainTab never hides today’s workout behind a blocking rest gate and offers 1-tap opt-in modulation'
+    );
+
+    // --- P0.3: Opt-in Encrypted Google Drive Backup & 1-Click Competitor CSV Import ---
+    const samplePayload66 = JSON.stringify({
+      version: 9,
+      exportedAt: new Date().toISOString(),
+      workouts: [recentBenchSession66],
+      biometrics: shortBiaBios66,
+    });
+    const envelope66 = await encBackup66(samplePayload66, 'strong-passphrase-2026');
+    const decrypted66 = await decBackup66(envelope66, 'strong-passphrase-2026');
+    let wrongPassFailed66 = false;
+    try {
+      await decBackup66(envelope66, 'wrong-passphrase-2026');
+    } catch {
+      wrongPassFailed66 = true;
+    }
+    let shortPassFailed66 = false;
+    try {
+      await encBackup66(samplePayload66, 'short');
+    } catch {
+      shortPassFailed66 = true;
+    }
+    assert(
+      isEncEnv66(envelope66) &&
+        envelope66.cipher === 'AES-256-GCM' &&
+        envelope66.kdf === 'PBKDF2-SHA256' &&
+        decrypted66 === samplePayload66 &&
+        wrongPassFailed66 &&
+        shortPassFailed66,
+      'Client-side AES-256-GCM + PBKDF2-SHA256 backup round-trips cleanly and rejects wrong/short passphrases'
+    );
+
+    // Mock Google Drive appDataFolder REST flow
+    let mockDriveBody66 = '';
+    const seenDriveUrls66: string[] = [];
+    const mockDriveFetch66: typeof fetch = (async (input: any, init?: any) => {
+      const url = String(input);
+      seenDriveUrls66.push(`${init?.method || 'GET'} ${url}`);
+      if (url.includes('spaces=appDataFolder')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            files: mockDriveBody66
+              ? [{ id: 'drive-file-1', name: DRIVE_FILE_66, modifiedTime: '2026-11-20T12:00:00Z', size: String(mockDriveBody66.length) }]
+              : [],
+          }),
+        } as any;
+      }
+      if (init?.method === 'POST' && url.includes('uploadType=multipart')) {
+        const raw = String(init.body || '');
+        const jsonStart = raw.indexOf('{"format":"treise-encrypted-backup"');
+        const jsonEnd = raw.lastIndexOf('\r\n--');
+        mockDriveBody66 = raw.slice(jsonStart, jsonEnd);
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ id: 'drive-file-1', modifiedTime: '2026-11-20T12:00:00Z', size: String(mockDriveBody66.length) }),
+        } as any;
+      }
+      if (url.includes('alt=media')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => JSON.parse(mockDriveBody66),
+        } as any;
+      }
+      if (init?.method === 'DELETE') {
+        mockDriveBody66 = '';
+        return { ok: true, status: 204, json: async () => ({}) } as any;
+      }
+      return { ok: false, status: 404, json: async () => ({}) } as any;
+    }) as any;
+
+    const uploaded66 = await runDriveBackup66({
+      rawJson: samplePayload66,
+      passphrase: 'strong-passphrase-2026',
+      accessToken: 'fake-drive-token',
+      fetchImpl: mockDriveFetch66,
+    });
+    const restoredDrive66 = await restoreDriveBackup66({
+      passphrase: 'strong-passphrase-2026',
+      accessToken: 'fake-drive-token',
+      fetchImpl: mockDriveFetch66,
+    });
+    const deletedDrive66 = await deleteDriveBackup66('fake-drive-token', mockDriveFetch66);
+    assert(
+      uploaded66.metadata.fileId === 'drive-file-1' &&
+        restoredDrive66?.rawJson === samplePayload66 &&
+        deletedDrive66 === true &&
+        seenDriveUrls66.some((u) => u.includes('spaces=appDataFolder')) &&
+        !seenDriveUrls66.some((u) => u.includes('client_secret')),
+      'Google Drive appDataFolder upload, restore, and delete flow works end-to-end with zero client secrets'
+    );
+
+    // Competitor CSV importers: Hevy, Strong (semicolon + lbs), FitNotes
+    const hevyClean66 = [
+      'title,start_time,end_time,description,exercise_title,superset_id,exercise_notes,set_index,set_type,weight_kg,reps,distance_km,duration_seconds,rpe',
+      '"Upper Strength","18 Nov 2026, 08:00","18 Nov 2026, 08:50","","Bench Press (Barbell)","","Paused",0,warmup,60,8,,,',
+      '"Upper Strength","18 Nov 2026, 08:00","18 Nov 2026, 08:50","","Bench Press (Barbell)","","Paused",1,normal,100,8,,,8.5',
+      '"Upper Strength","18 Nov 2026, 08:00","18 Nov 2026, 08:50","","Chin Up (Assisted)","","",0,normal,15,10,,,8',
+    ].join('\n');
+    const hevyRes66 = parseCsv66(hevyClean66);
+    const hevyExIds66 = hevyRes66.workouts[0]?.exercises.map((e: any) => e.exerciseId) ?? [];
+    assert(
+      detectCsv66(hevyClean66) === 'hevy' &&
+        hevyRes66.summary.workoutsCount === 1 &&
+        hevyExIds66.includes('ex-bench-press') &&
+        hevyExIds66.includes('ex-assisted-chinup') &&
+        hevyRes66.workouts[0].exercises[0].sets[0].isWarmup === true &&
+        hevyRes66.workouts[0].exercises[0].sets[1].actualRir === 2,
+      'Hevy CSV importer detects format, matches Bench + Assisted Chin-Up, preserves warmup, and converts RPE -> integer RIR'
+    );
+
+    const strongCsv66 = [
+      'Date;Workout Name;Duration;Exercise Name;Set Order;Weight (lbs);Reps;Distance;Seconds;Notes;Workout Notes;RPE',
+      '2026-11-16 07:30:00;Lower Power;55m;Squat (Barbell);W;135;5;;;Warmup;;',
+      '2026-11-16 07:30:00;Lower Power;55m;Squat (Barbell);1;225;5;;;;;8',
+      '2026-11-16 07:30:00;Lower Power;55m;Romanian Deadlift (Barbell);1;185;8;;;;;9',
+    ].join('\n');
+    const strongRes66 = parseCsv66(strongCsv66);
+    const squatWorkingKg66 = strongRes66.workouts[0]?.exercises[0]?.sets[1]?.actualWeightKg ?? 0;
+    assert(
+      detectCsv66(strongCsv66) === 'strong' &&
+        strongRes66.summary.detectedUnit === 'lb' &&
+        Math.abs(squatWorkingKg66 - 102) <= 0.5 &&
+        strongRes66.workouts[0].durationMinutes === 55,
+      `Strong semicolon CSV importer converts 225 lbs -> ${squatWorkingKg66} kg and parses 55m duration`
+    );
+
+    const fitNotesCsv66 = [
+      'Date,Exercise,Category,Weight (kgs),Reps,Distance,Distance Unit,Time',
+      '2026-11-15,Overhead Press,Shoulders,60,6,,,',
+      '2026-11-15,Overhead Press,Shoulders,60,6,,,',
+      '2026-11-15,Plank,Abs,0,0,,,00:01:00',
+    ].join('\n');
+    const fitNotesRes66 = parseCsv66(fitNotesCsv66);
+    const mergedFirst66 = mergeImported66([], [...hevyRes66.workouts, ...strongRes66.workouts, ...fitNotesRes66.workouts]);
+    const mergedSecond66 = mergeImported66(mergedFirst66.merged, [...hevyRes66.workouts, ...strongRes66.workouts, ...fitNotesRes66.workouts]);
+    assert(
+      detectCsv66(fitNotesCsv66) === 'fitnotes' &&
+        fitNotesRes66.summary.workoutsCount === 1 &&
+        mergedFirst66.addedCount === 3 &&
+        mergedSecond66.addedCount === 0,
+      'FitNotes CSV importer parses exercises + timed sets, and mergeImportedWorkouts is idempotent'
+    );
+
+    // --- P0.4a: Mesocycle vs. Double Progression collision ---
+    assert(
+      isMesoHold66({ sourceTargetRir: 3, targetRir: 2, sourcePrescribedSetCount: 2, targetSetCount: 3 }) === true &&
+        isMesoHold66({ sourceTargetRir: 3, targetRir: 2, sourcePrescribedSetCount: 3, targetSetCount: 3 }) === false &&
+        getRecSets66('Chest', 1).numericRir === 3 &&
+        getRecSets66('Chest', 2).numericRir === 2,
+      'Mesocycle volume ramp helper detects simultaneous RIR drop + set addition between weeks'
+    );
+    const mesoHoldRes66 = evalDp66({
+      completedWorkingSets: [
+        { id: 'm1', setNumber: 1, targetWeightKg: 80, targetReps: 10, targetRir: 3, actualWeightKg: 80, actualReps: 10, actualRir: 3, completed: true },
+        { id: 'm2', setNumber: 2, targetWeightKg: 80, targetReps: 10, targetRir: 3, actualWeightKg: 80, actualReps: 10, actualRir: 3, completed: true },
+      ],
+      sourcePrescribedSetCount: 2,
+      targetSetCount: 3,
+      minReps: 8,
+      maxReps: 10,
+      targetRir: 2,
+      sourceTargetRir: 3,
+      currentWeightKg: 80,
+      equipment: 'barbell',
+      readinessState: 'Normal',
+      unit: 'kg',
+    });
+    assert(
+      mesoHoldRes66.status === 'consolidate' && mesoHoldRes66.nextWeightKg === 80,
+      `Mesocycle RIR drop (3->2) + set addition (2->3) holds load at 80 kg instead of colliding with DP jump (got ${mesoHoldRes66.status}, ${mesoHoldRes66.nextWeightKg} kg)`
+    );
+
+    // --- P0.4b: E1RM inflation (>3 RIR & >12 reps) & isolation Best Set view ---
+    const e1rmHighRir66 = calculateE1RM(100, 8, 4, 'barbell', false, false, 80, 'ex-bench-press');
+    const e1rmLowRir66 = calculateE1RM(100, 8, 2, 'barbell', false, false, 80, 'ex-bench-press');
+    const e1rmHighRepWithRir66 = calculateE1RM(60, 14, 2, 'barbell', false, false, 80, 'ex-bench-press');
+    const e1rmHighRepRaw66 = calculateE1RM(60, 14, 0, 'barbell', false, false, 80, 'ex-bench-press');
+    // At 14 reps (>12), effectiveRir is halved from 2 to 1 -> 60*(1 + 15/30) = 90.0 vs raw 60*(1+14/30)=88.0
+    assert(
+      MAX_RIR_66 === 3 &&
+        e1rmHighRir66 === 0 &&
+        !isE1rmElig66(8, 4) &&
+        e1rmLowRir66 > 130 &&
+        e1rmHighRepWithRir66 === 90 &&
+        e1rmHighRepRaw66 === 88,
+      `E1RM rejects >3 RIR (got ${e1rmHighRir66}) and dampens RIR credit above 12 reps (${e1rmHighRepWithRir66} vs raw ${e1rmHighRepRaw66})`
+    );
+    const latRaise66 = SEED_EXERCISES.find((e) => e.id === 'ex-db-lateral-raise')!;
+    const tricepPush66 = SEED_EXERCISES.find((e) => e.id === 'ex-tricep-pushdown')!;
+    const cardSrc66 = fs66.readFileSync(path66.join(process.cwd(), 'src/components/train/ExerciseCard.tsx'), 'utf8');
+    assert(
+      isIso66(latRaise66) === true &&
+        isIso66(tricepPush66) === true &&
+        isIso66(bench66) === false &&
+        cardSrc66.includes('Best set') &&
+        cardSrc66.includes('bestSetHistory'),
+      'Isolation lifts (lateral raises, tricep pushdowns) switch to Best Set / reps-at-weight view instead of E1RM sparklines'
+    );
+
+    // --- P0.4c: WCI distortion (no CompletedSets quadratic multiplier, bounded HRR% denominator) ---
+    const makeWciSession66 = (setsCount: number, weightPerSet: number, durationMinutes: number, avgHeartRate: number): WorkoutSession => ({
+      id: `wci-${setsCount}-${durationMinutes}-${avgHeartRate}`,
+      date: localDateString(new Date()),
+      name: 'WCI Test',
+      splitDay: 'Push',
+      completed: true,
+      durationMinutes,
+      avgHeartRate,
+      readinessState: 'Normal',
+      readinessZScore: 0,
+      exercises: [
+        {
+          id: 'es-wci',
+          exerciseId: bench66.id,
+          name: bench66.name,
+          equipment: 'barbell',
+          pillar: 'Horizontal Push',
+          minReps: 8,
+          maxReps: 10,
+          sets: Array.from({ length: setsCount }, (_, i) => ({
+            id: `ws-${i}`,
+            setNumber: i + 1,
+            targetWeightKg: weightPerSet,
+            targetReps: 10,
+            targetRir: 2,
+            actualWeightKg: weightPerSet,
+            actualReps: 10,
+            actualRir: 2,
+            completed: true,
+          })),
+        },
+      ],
+    });
+    // Both sessions move 6,000 kg total (10x10@60 vs 20x10@30) in 45 min at 140 bpm
+    const wciSameTonnage10Sets66 = calculateWci(makeWciSession66(10, 60, 45, 140), 60, 190);
+    const wciSameTonnage20Sets66 = calculateWci(makeWciSession66(20, 30, 45, 140), 60, 190);
+    const wciLongRestLowHr66 = calculateWci(makeWciSession66(10, 60, 90, 95), 60, 190);
+    const wciLowHrFloorA66 = calculateWci(makeWciSession66(10, 60, 45, 70), 60, 190);
+    const wciLowHrFloorB66 = calculateWci(makeWciSession66(10, 60, 45, 100), 60, 190);
+    assert(
+      WCI_FLOOR_66 === 0.35 &&
+        wciSameTonnage10Sets66 === wciSameTonnage20Sets66 &&
+        wciLongRestLowHr66 < wciSameTonnage10Sets66 &&
+        wciLowHrFloorA66 === wciLowHrFloorB66,
+      `WCI removes quadratic set scaling (${wciSameTonnage10Sets66} === ${wciSameTonnage20Sets66}), penalizes longer rest (${wciLongRestLowHr66}), and floors HRR% at 0.35`
+    );
+
+    // --- P0.4d: Linear Joint Strain per 0-RIR set, Poliquin Female Standard & Assisted Chin-Ups ---
+    const mkSet66 = (rir: number) => ({ completed: true, actualRir: rir, targetRir: 2 });
+    const j0 = weightedJoint66([mkSet66(2), mkSet66(2), mkSet66(2), mkSet66(2)]);
+    const j1 = weightedJoint66([mkSet66(2), mkSet66(2), mkSet66(2), mkSet66(0)]);
+    const j2 = weightedJoint66([mkSet66(2), mkSet66(2), mkSet66(0), mkSet66(0)]);
+    const j4 = weightedJoint66([mkSet66(0), mkSet66(0), mkSet66(0), mkSet66(0)]);
+    assert(
+      j0 === 4 && j1 === 4.25 && j2 === 4.5 && j4 === 5.0,
+      `Joint strain scales linearly per 0-RIR set instead of a global 1.25x step (${j0} -> ${j1} -> ${j2} -> ${j4})`
+    );
+
+    const assistedChin66 = SEED_EXERCISES.find((e) => e.id === 'ex-assisted-chinup')!;
+    const femaleChinWorkout66: WorkoutSession = {
+      id: 'w-female-chin-66',
+      date: localDateString(new Date()),
+      name: 'Pull A',
+      splitDay: 'Pull',
+      completed: true,
+      readinessState: 'Normal',
+      readinessZScore: 0,
+      exercises: [
+        {
+          id: 'es-female-chin-66',
+          exerciseId: assistedChin66.id,
+          name: assistedChin66.name,
+          equipment: assistedChin66.equipment,
+          pillar: assistedChin66.pillar,
+          isAssisted: true,
+          minReps: 6,
+          maxReps: 10,
+          sets: [
+            { id: 'fc1', setNumber: 1, targetWeightKg: 10, targetReps: 8, targetRir: 2, actualWeightKg: 10, actualReps: 8, actualRir: 2, completed: true },
+          ],
+        },
+      ],
+    };
+    const femaleStd66 = buildStd66({
+      gender: 'female',
+      bodyweightKg: 60,
+      workouts: [femaleChinWorkout66],
+      biometrics: [],
+      age: 28,
+    });
+    const femaleVpull66 = femaleStd66.levels.find((l: any) => l.pillar === 'Vertical Pull');
+    const femaleStdAns66 = stdAnswer66(femaleStd66, true);
+    assert(
+      POLIQUIN_F_66 === 1.05 &&
+        poliquinRatio66('female') === 1.05 &&
+        poliquinRatio66('male') === 0.81 &&
+        Boolean(femaleVpull66?.caveat && /male/i.test(femaleVpull66.caveat)) &&
+        /Approximate guideline|male athletes/i.test(femaleStdAns66),
+      'Female Poliquin vertical-pull standard uses sex-adjusted ratio (1.05) with explicit male-sample caveat'
+    );
+
+    const effAssist66 = calculateEffectiveLoad(20, 'machine', false, false, 80, assistedChin66.id, assistedChin66.pillar, assistedChin66.name);
+    const assistUp66 = evalDp66({
+      completedWorkingSets: [
+        { id: 'au1', setNumber: 1, targetWeightKg: 20, targetReps: 10, targetRir: 2, actualWeightKg: 20, actualReps: 10, actualRir: 2, completed: true },
+        { id: 'au2', setNumber: 2, targetWeightKg: 20, targetReps: 10, targetRir: 2, actualWeightKg: 20, actualReps: 10, actualRir: 2, completed: true },
+        { id: 'au3', setNumber: 3, targetWeightKg: 20, targetReps: 10, targetRir: 2, actualWeightKg: 20, actualReps: 10, actualRir: 2, completed: true },
+      ],
+      sourcePrescribedSetCount: 3,
+      targetSetCount: 3,
+      minReps: 6,
+      maxReps: 10,
+      targetRir: 2,
+      currentWeightKg: 20,
+      equipment: 'machine',
+      isAssisted: true,
+      readinessState: 'Normal',
+      unit: 'kg',
+    });
+    const assistDown66 = evalDp66({
+      completedWorkingSets: [
+        { id: 'ad1', setNumber: 1, targetWeightKg: 17.5, targetReps: 6, targetRir: 2, actualWeightKg: 17.5, actualReps: 4, actualRir: 1, completed: true },
+        { id: 'ad2', setNumber: 2, targetWeightKg: 17.5, targetReps: 6, targetRir: 2, actualWeightKg: 17.5, actualReps: 4, actualRir: 1, completed: true },
+      ],
+      sourcePrescribedSetCount: 2,
+      targetSetCount: 2,
+      minReps: 6,
+      maxReps: 10,
+      targetRir: 2,
+      currentWeightKg: 17.5,
+      equipment: 'machine',
+      isAssisted: true,
+      readinessState: 'Normal',
+      unit: 'kg',
+    });
+    const assistTonnage66 = calcTonnage66(
+      {
+        id: 'w-assist-66',
+        date: localDateString(new Date()),
+        name: 'Pull A',
+        splitDay: 'Pull',
+        completed: true,
+        readinessState: 'Normal',
+        readinessZScore: 0,
+        exercises: [
+          {
+            id: 'es-assist-66',
+            exerciseId: assistedChin66.id,
+            name: assistedChin66.name,
+            equipment: assistedChin66.equipment,
+            pillar: assistedChin66.pillar,
+            isAssisted: true,
+            minReps: 6,
+            maxReps: 10,
+            sets: [
+              { id: 'as1', setNumber: 1, targetWeightKg: 20, targetReps: 10, targetRir: 2, actualWeightKg: 20, actualReps: 10, actualRir: 2, completed: true },
+            ],
+          },
+        ],
+      },
+      80
+    ).tonnageKg;
+    assert(
+      isAssist66(assistedChin66) &&
+        effAssist66 === 60 &&
+        assistTonnage66 === 600 &&
+        assistUp66.status === 'increase_load' &&
+        assistUp66.nextWeightKg === 17.5 &&
+        assistDown66.status === 'reduce_load' &&
+        assistDown66.nextWeightKg > 17.5,
+      `Assisted Chin-Up computes BW−assist (${effAssist66} kg, tonnage ${assistTonnage66}), progresses by reducing counterweight (20 -> ${assistUp66.nextWeightKg} kg), and regresses by adding counterweight (17.5 -> ${assistDown66.nextWeightKg} kg)`
+    );
+  }
+
+  // =========================================================================
+  // Suite 67: P1 Day-7 Activation & Gym-Floor Friction — Progressive RIR,
+  // Plate/DB Inventory, 1-Tap Swap Scope, Lock-Screen Rest Alerts, Offline
+  // Form Clips, Habit Anchors, Active-Day Cooldown Merge, Pro-Rated Months &
+  // Legacy Fitbit Decommission + Expanded Health Connect
+  // =========================================================================
+  console.log('\n[Suite 67: P1 Activation & Gym-Floor Table Stakes — RIR Disclosure, Inventory, Swaps, Rest Alerts, Clips, Habit Anchors, Monthly Targets & Health Connect]');
+  {
+    const fs67 = require('fs');
+    const path67 = require('path');
+    const { resolveRirTrackingEnabled: resolveRir67 } = require('../types');
+    const {
+      dampenSingleSetRirOutliers: dampenRir67,
+      evaluateRepRangeDoubleProgression: evalDp67,
+    } = require('../progressionRules');
+    const {
+      overlapsLifting: overlaps67,
+      trimLiftingOverlap: trimOverlap67,
+    } = require('../activeDays');
+    const {
+      proRatedMonthlyTarget: proRated67,
+      buildAthleteGoals: buildGoals67,
+    } = require('../../services/athleteGoals');
+    const {
+      attachAppPort: attachPort67,
+      readHealthConnectBiometrics: readHcBio67,
+    } = require('../../services/healthConnectBridge');
+    const {
+      mergeHealthConnectBiometrics: mergeHcBio67,
+    } = require('../../services/wearableSyncService');
+
+    // --- 1. Progressive Disclosure for RIR Tracking & Single-Set Outlier Dampening ---
+    assert(
+      resolveRir67({ experienceLevel: 'new' }) === false &&
+        resolveRir67({ experienceLevel: 'intermediate' }) === true &&
+        resolveRir67({ experienceLevel: 'experienced' }) === true &&
+        resolveRir67({ experienceLevel: 'new', workoutDisplay: { showRirTracking: true } }) === true &&
+        resolveRir67({ experienceLevel: 'experienced', workoutDisplay: { showRirTracking: false } }) === false,
+      'Progressive RIR disclosure hides RIR by default for new lifters, enables for intermediate/experienced, and honors explicit toggle'
+    );
+
+    const dOutlierLow = dampenRir67([2, 2, 0]);
+    const dOutlierHigh = dampenRir67([2, 2, 5]);
+    const dTrueFatigue = dampenRir67([0, 0, 0]);
+    const dMultiFatigue = dampenRir67([1, 0, 0]);
+    assert(
+      dOutlierLow[2] === 1 &&
+        dOutlierHigh[2] === 3 &&
+        dTrueFatigue.every((r: number) => r === 0) &&
+        dMultiFatigue[1] === 0 &&
+        dMultiFatigue[2] === 0,
+      `Single-set RIR outliers are dampened ([2,2,0]->[${dOutlierLow}], [2,2,5]->[${dOutlierHigh}]) while true fatigue ([0,0,0], [1,0,0]) stays intact`
+    );
+
+    const dpWithSingleOutlier67 = evalDp67({
+      completedWorkingSets: [
+        { id: 'o1', setNumber: 1, targetWeightKg: 80, targetReps: 8, targetRir: 2, actualWeightKg: 80, actualReps: 8, actualRir: 2, completed: true },
+        { id: 'o2', setNumber: 2, targetWeightKg: 80, targetReps: 8, targetRir: 2, actualWeightKg: 80, actualReps: 8, actualRir: 2, completed: true },
+        { id: 'o3', setNumber: 3, targetWeightKg: 80, targetReps: 8, targetRir: 2, actualWeightKg: 80, actualReps: 8, actualRir: 0, completed: true },
+      ],
+      sourcePrescribedSetCount: 3,
+      targetSetCount: 3,
+      minReps: 6,
+      maxReps: 8,
+      targetRir: 2,
+      currentWeightKg: 80,
+      equipment: 'barbell',
+      readinessState: 'Normal',
+      unit: 'kg',
+    });
+    const dpBeginnerNoRir67 = evalDp67({
+      completedWorkingSets: [
+        { id: 'b1', setNumber: 1, targetWeightKg: 50, targetReps: 10, targetRir: 2, actualWeightKg: 50, actualReps: 10, completed: true },
+        { id: 'b2', setNumber: 2, targetWeightKg: 50, targetReps: 10, targetRir: 2, actualWeightKg: 50, actualReps: 10, completed: true },
+        { id: 'b3', setNumber: 3, targetWeightKg: 50, targetReps: 10, targetRir: 2, actualWeightKg: 50, actualReps: 10, completed: true },
+      ],
+      sourcePrescribedSetCount: 3,
+      targetSetCount: 3,
+      minReps: 8,
+      maxReps: 10,
+      targetRir: 2,
+      currentWeightKg: 50,
+      equipment: 'barbell',
+      readinessState: 'Normal',
+      unit: 'kg',
+      rirTrackingEnabled: false,
+    });
+    assert(
+      dpWithSingleOutlier67.status === 'increase_load' &&
+        dpWithSingleOutlier67.nextWeightKg === 82.5 &&
+        dpBeginnerNoRir67.status === 'increase_load' &&
+        dpBeginnerNoRir67.nextWeightKg === 52.5,
+      'Single-set 0-RIR outlier does not block load progression (80->82.5 kg), and RIR-hidden beginner mode progresses cleanly (50->52.5 kg)'
+    );
+
+    const setRowSrc67 = fs67.readFileSync(path67.join(process.cwd(), 'src/components/train/SetRow.tsx'), 'utf8');
+    const onboardSrc67 = fs67.readFileSync(path67.join(process.cwd(), 'src/components/onboarding/OnboardingModal.tsx'), 'utf8');
+    assert(
+      setRowSrc67.includes('SET_TABLE_COLUMNS_NO_RIR') &&
+        onboardSrc67.includes('Track RIR (reps in reserve) on sets') &&
+        onboardSrc67.includes('Optional habit anchor'),
+      'SetRow supports RIR-hidden layout and OnboardingModal exposes progressive RIR disclosure + optional habit anchors'
+    );
+
+    // --- 2. Plate & Dumbbell Inventory, 1-Tap Swap Scope, Lock-Screen Rest Alerts, Offline Form Clips ---
+    const limitedHomeInv67 = {
+      barWeightKg: 20,
+      plateUnit: 'kg' as const,
+      platePairs: { '10': 1, '5': 1, '2.5': 1 }, // Max loadable = 20 + 2*(10+5+2.5) = 55 kg
+      dumbbellMode: 'fixed_list' as const,
+      availableDumbbellsKg: [5, 10, 15, 20],
+    };
+    const solvedHome67 = calculateBarbellPlatesForInventory(60, 20, limitedHomeInv67.platePairs);
+    const snappedBar67 = snapWeightToInventory(62, 'barbell', 'kg', limitedHomeInv67);
+    const snappedDb67 = snapWeightToInventory(13.5, 'dumbbell', 'kg', limitedHomeInv67);
+    const defaultGymInv67 = createDefaultEquipmentInventory('gym', 'kg');
+    assert(
+      solvedHome67.maxLoadableTotal === 55 &&
+        solvedHome67.achievedTotal === 55 &&
+        solvedHome67.platesPerSide.filter((p) => p === 10).length === 1 &&
+        snappedBar67 === 55 &&
+        snappedDb67 === 15 &&
+        defaultGymInv67.platePairs['20'] >= 4,
+      `Bounded plate/DB inventory caps home bar at ${snappedBar67} kg (1×10 + 1×5 + 1×2.5/side) and snaps 13.5 kg DB -> ${snappedDb67} kg`
+    );
+
+    const swapSrc67 = fs67.readFileSync(path67.join(process.cwd(), 'src/components/train/ExerciseSwapModal.tsx'), 'utf8');
+    const restSrc67 = fs67.readFileSync(path67.join(process.cwd(), 'src/components/common/RestTimerModal.tsx'), 'utf8');
+    const detailSrc67 = fs67.readFileSync(path67.join(process.cwd(), 'src/components/train/ExerciseDetailModal.tsx'), 'utf8');
+    const clipPlayerSrc67 = fs67.readFileSync(path67.join(process.cwd(), 'src/components/train/ExerciseFormClipPlayer.tsx'), 'utf8');
+    setRestChimeMuted(true);
+    const mutedTrue67 = isRestChimeMuted();
+    setRestChimeMuted(false);
+    const mutedFalse67 = isRestChimeMuted();
+    assert(
+      swapSrc67.includes('Swap for today only') &&
+        swapSrc67.includes('Swap permanently in plan') &&
+        restSrc67.includes('visibilitychange') &&
+        restSrc67.includes('fireRestCompleteAlerts') &&
+        mutedTrue67 === true &&
+        mutedFalse67 === false &&
+        typeof getRestNotificationStatus() === 'string',
+      'ExerciseSwapModal offers 1-tap today vs permanent swap; RestTimerModal delivers lock-screen/haptic/music-safe alerts'
+    );
+
+    const everyCatalogHasClip67 = SEED_EXERCISES.every((ex) => {
+      const clip = getExerciseFormClip(ex);
+      return clip.muted === true && clip.loop === true && clip.offlineCached === true && clip.phases.length === 3;
+    });
+    assert(
+      everyCatalogHasClip67 &&
+        resolveFormClipPattern({ id: 'ex-assisted-chinup', name: 'Assisted Chin-Up', pillar: 'Vertical Pull' }) === 'vertical_pull' &&
+        detailSrc67.includes('ExerciseFormClipPlayer') &&
+        !/youtube\.com|youtu\.be|<iframe/i.test(detailSrc67) &&
+        !/youtube\.com|youtu\.be|<iframe/i.test(clipPlayerSrc67),
+      `All ${SEED_EXERCISES.length} catalog exercises map to offline-cached, muted, looping form clips with zero external YouTube embeds`
+    );
+
+    // --- 3. Optional Habit Anchors, Active-Day Cooldown Merge, and Pro-Rated Monthly Targets ---
+    const wedNow67 = new Date(2026, 10, 18, 10, 0, 0).getTime(); // Wed Nov 18, 2026
+    const habitMissedTue67 = evaluateHabitAnchor(
+      { preferredDays: ['Mon', 'Tue', 'Thu', 'Fri'], preferredTime: 'morning', cue: 'After morning coffee' },
+      [],
+      [],
+      wedNow67
+    );
+    assert(
+      habitMissedTue67.hasAnchor &&
+        habitMissedTue67.rolledOverFromMissedDay === true &&
+        /never miss twice/i.test(habitMissedTue67.headline || '') &&
+        /After morning coffee/.test(habitMissedTue67.detail || ''),
+      'Habit anchor rolls a missed preferred day forward cleanly with non-punitive "never miss twice" guidance'
+    );
+
+    const liftingBlock67: WorkoutSession = {
+      id: 'w-lift-67',
+      date: '2026-11-18',
+      name: 'Upper',
+      splitDay: 'Upper',
+      completed: true,
+      startedAt: '2026-11-18T08:00:00.000Z',
+      completedAt: '2026-11-18T08:45:00.000Z',
+      durationMinutes: 45,
+      readinessState: 'Normal',
+      readinessZScore: 0,
+      exercises: [],
+    };
+    const mergedWalk67 = {
+      startedAt: '2026-11-18T08:00:00.000Z',
+      minutes: 70, // 45m lifting + 25m post-lifting cooldown walk merged by wearable
+      type: 'walk' as const,
+    };
+    const pureDuplicateLift67 = {
+      startedAt: '2026-11-18T08:00:00.000Z',
+      minutes: 48, // only 3 min outside lifting -> duplicate
+      type: 'strength' as const,
+    };
+    const trimmedWalk67 = trimOverlap67(mergedWalk67, [liftingBlock67]);
+    assert(
+      overlaps67(mergedWalk67, [liftingBlock67]) === false &&
+        trimmedWalk67 !== null &&
+        trimmedWalk67.minutes === 25 &&
+        trimmedWalk67.startedAt === '2026-11-18T08:45:00.000Z' &&
+        overlaps67(pureDuplicateLift67, [liftingBlock67]) === true &&
+        trimOverlap67(pureDuplicateLift67, [liftingBlock67]) === null,
+      'overlapsLifting preserves a 25-min post-lifting cooldown walk merged by a wearable (trimmed cleanly to 25m) while still filtering pure duplicate lifting blocks'
+    );
+
+    const febTarget67 = proRated67(2026, 2, 4); // 28 days -> 16
+    const aprTarget67 = proRated67(2026, 4, 4); // 30 days -> 17
+    const mayTarget67 = proRated67(2026, 5, 4); // 31 days -> 18
+    const goalsMay67 = buildGoals67({
+      profile: {
+        name: 'Test',
+        gender: 'male',
+        age: 30,
+        heightCm: 178,
+        goalPhase: 'Lean Bulk',
+        programType: 'starter_4day',
+        streakDays: 0,
+        fitbitConnected: false,
+        maxHr: 190,
+        restingHrBaseline: 60,
+      },
+      workouts: [],
+      biometrics: [],
+      activities: [],
+      exerciseCatalog: SEED_EXERCISES,
+      now: new Date(2026, 4, 15).getTime(), // May 2026 (31 days)
+    });
+    const freqGoal67 = goalsMay67.find((g: any) => g.measure?.type === 'frequency');
+    assert(
+      febTarget67 === 16 &&
+        aprTarget67 === 17 &&
+        mayTarget67 === 18 &&
+        freqGoal67?.measure?.months?.[0]?.target === 18,
+      `Monthly session targets pro-rate accurately to month length (Feb=${febTarget67}, Apr=${aprTarget67}, May=${mayTarget67})`
+    );
+
+    // --- 4. Decommissioned Legacy Fitbit Web API & Expanded Android Health Connect v5 Bridge ---
+    const fitbitSvcSrc67 = fs67.readFileSync(path67.join(process.cwd(), 'src/services/fitbitService.ts'), 'utf8');
+    const hcKotlinSrc67 = fs67.readFileSync(
+      path67.join(process.cwd(), 'app/src/main/java/com/headstrong/app/HealthConnectBridge.kt'),
+      'utf8'
+    );
+    const androidManifestSrc67 = fs67.readFileSync(
+      path67.join(process.cwd(), 'app/src/main/AndroidManifest.xml'),
+      'utf8'
+    );
+    assert(
+      !fs67.existsSync(path67.join(process.cwd(), 'api/fitbit')) &&
+        !fitbitSvcSrc67.includes('/api/fitbit') &&
+        !fitbitSvcSrc67.includes('api.fitbit.com') &&
+        hcKotlinSrc67.includes('SleepSessionRecord') &&
+        hcKotlinSrc67.includes('HeartRateRecord') &&
+        hcKotlinSrc67.includes('RestingHeartRateRecord') &&
+        hcKotlinSrc67.includes('HeartRateVariabilityRmssdRecord') &&
+        hcKotlinSrc67.includes('WeightRecord') &&
+        hcKotlinSrc67.includes('BodyFatRecord') &&
+        hcKotlinSrc67.includes('"read-biometrics"') &&
+        androidManifestSrc67.includes('android.permission.health.READ_SLEEP') &&
+        androidManifestSrc67.includes('android.permission.health.READ_HEART_RATE_VARIABILITY') &&
+        androidManifestSrc67.includes('android.permission.health.READ_BODY_FAT') &&
+        !androidManifestSrc67.includes('android.permission.health.WRITE_'),
+      'Dead api/fitbit/ removed; HealthConnectBridge.kt & AndroidManifest.xml expand read-only reads (sleep, HR, RHR, HRV, weight, body fat, steps, workouts)'
+    );
+
+    // Test v5 Health Connect bridge biometrics round-trip + manual weigh-in preservation
+    let mockOnMessage67: ((e: { data: string }) => void) | null = null;
+    const mockHcPort67: any = {
+      set onmessage(fn: (e: { data: string }) => void) {
+        mockOnMessage67 = fn;
+      },
+      postMessage(raw: string) {
+        const msg = JSON.parse(raw);
+        if (msg.type === 'status') {
+          mockOnMessage67?.({
+            data: JSON.stringify({
+              type: 'status',
+              available: true,
+              granted: true,
+              stepsGranted: true,
+              biometricsGranted: true,
+            }),
+          });
+        } else if (msg.type === 'read-biometrics') {
+          mockOnMessage67?.({
+            data: JSON.stringify({
+              type: 'biometrics',
+              requestId: msg.requestId,
+              days: [
+                {
+                  date: '2026-11-18',
+                  sleepHours: 7.6,
+                  restingHr: 52,
+                  hrvRmssd: 68,
+                  bodyweightKg: 81.9,
+                  bodyFatPct: 16.4,
+                },
+              ],
+            }),
+          });
+        }
+      },
+    };
+    attachPort67(mockHcPort67, 5);
+    const hcBioDays67 = await readHcBio67(new Date(Date.now() - 7 * 86400000));
+    const mergedHc67 = mergeHcBio67(
+      [
+        {
+          date: '2026-11-18',
+          bodyweightKg: 80.5, // Athlete's manual morning weigh-in must win over wearable weight
+          hrvRmssd: 0,
+          restingHr: 0,
+          sleepHours: 0,
+          steps: 0,
+          activeZoneMinutes: 0,
+          isManualEntry: true,
+        },
+      ],
+      hcBioDays67
+    );
+    assert(
+      hcBioDays67.length === 1 &&
+        mergedHc67[0].sleepHours === 7.6 &&
+        mergedHc67[0].restingHr === 52 &&
+        mergedHc67[0].hrvRmssd === 68 &&
+        mergedHc67[0].bodyFatPct === 16.4 &&
+        mergedHc67[0].bodyweightKg === 80.5,
+      'Health Connect v5 bridge reads sleep/RHR/HRV/bodyFat cleanly and preserves athlete manual weigh-in over wearable weight'
+    );
+  }
+
+  // =========================================================================
+  // SUITE 68: MacroFactor Exercise Science & Architecture Upgrades
+  // =========================================================================
+  {
+    console.log('\n[Suite 68: MacroFactor Science & Architecture — Fatigue-Aware RIR, Equipment Rep Expansion, Allometric Scaling, Multi-Day Recovery Trends, Fractional Volume Bar, Endurance Slope & Biomechanical Coach]');
+    const fs68 = require('fs');
+    const path68 = require('path');
+    const {
+      prescribeFatigueAwareSetRirs: prescribeRirs68,
+      hasInvertedStraightSetRir: hasInvertedRir68,
+      normalizeStraightSetRirs: normalizeRirs68,
+      computeEquipmentAwareRepCeiling: computeCeiling68,
+      evaluateRepRangeDoubleProgression: evalDp68,
+    } = require('../progressionRules');
+    const {
+      MAX_LOGGABLE_RIR: maxRir68,
+      learnExerciseEnduranceSlope: learnSlope68,
+    } = require('../e1rm');
+    const {
+      ALLOMETRIC_EXPONENT_MALE: expM68,
+      ALLOMETRIC_EXPONENT_FEMALE: expF68,
+      calculateAllometricScore: calcAllo68,
+      allometricEquivalentAtReferenceBw: alloEq68,
+      allometricAgeAdjustmentFactor: alloAge68,
+    } = require('../strengthStandards');
+    const { buildMovementStandards: buildStd68 } = require('../../services/movementStandards');
+    const { evaluateSet1RirConfirmation: evalSet1_68 } = require('../readiness');
+    const { getGoalAdaptedVolumeRange: getGoalVol68 } = require('../hypertrophyVolume');
+    const {
+      calculateWeeklyMuscleVolume: calcVol68,
+      calculateWeeklyMuscleVolumeBreakdown: calcBreakdown68,
+    } = require('../../services/storage');
+    const { getExerciseBiomechanicalMeta: getBioMeta68 } = require('../knowledgeGraph');
+    const { buildCoachSystemPrompt: buildCoachPrompt68 } = require('../../services/aiAssistantService');
+    const { prescribeExerciseSwap: prescribeSwap68 } = require('../progression');
+
+    // 1. Straight-Set RIR Fatigue Directionality
+    const rirs3End0 = prescribeRirs68(3, 0);
+    const rirs3End1 = prescribeRirs68(3, 1);
+    const rirs4End1 = prescribeRirs68(4, 1, { maxRir: 3 });
+    assert(
+      rirs3End0.join(',') === '2,1,0' &&
+        rirs3End1.join(',') === '2,2,1' &&
+        rirs4End1[0] >= rirs4End1[1] &&
+        rirs4End1[1] >= rirs4End1[2] &&
+        rirs4End1[2] >= rirs4End1[3] &&
+        rirs4End1[3] === 1,
+      `Straight-set RIR descends monotonically across inter-set fatigue (3@0 -> ${rirs3End0.join(',')}, 3@1 -> ${rirs3End1.join(',')}, 4@1 -> ${rirs4End1.join(',')})`
+    );
+    const invertedSets68 = [
+      { id: 'i1', setNumber: 1, targetWeightKg: 80, targetReps: 10, targetRir: 1, completed: false, setType: 'working' as const },
+      { id: 'i2', setNumber: 2, targetWeightKg: 80, targetReps: 10, targetRir: 1, completed: false, setType: 'working' as const },
+      { id: 'i3', setNumber: 3, targetWeightKg: 80, targetReps: 10, targetRir: 2, completed: false, setType: 'working' as const },
+    ];
+    assert(
+      hasInvertedRir68(invertedSets68) === true &&
+        hasInvertedRir68(normalizeRirs68(invertedSets68)) === false &&
+        normalizeRirs68(invertedSets68)[2].targetRir === 1,
+      'Inverted straight-set RIR (1 -> 1 -> 2) is detected and normalized so later sets never prescribe easier RIR'
+    );
+    const smartPush68 = generateSmartWorkoutSession('Push', [], SEED_EXERCISES, 'Normal', 3, 'gym');
+    const planW9_68 = generate6WeekMuscleBuildingWorkout(9, 80); // Phase 2 (0 RIR target)
+    assert(
+      smartPush68.exercises.every((ex) => !hasInvertedRir68(ex.sets)) &&
+        planW9_68.exercises.every((ex) => !hasInvertedRir68(ex.sets)),
+      'Generated smart workouts and 6-week plan workouts contain zero inverted straight-set RIR sequences'
+    );
+
+    // 2. Equipment-Aware Rep-Ceiling Expansion
+    const coarseDbInv68 = {
+      barbellBarKg: 20,
+      platePairsKg: { 20: 4, 10: 4, 5: 4, 2.5: 4, 1.25: 2 },
+      dumbbellWeightsKg: [4, 6, 8, 10, 12, 14, 16, 18, 20],
+    };
+    const latCeiling68 = computeCeiling68({
+      currentWeightKg: 8,
+      minReps: 10,
+      maxReps: 12,
+      equipment: 'dumbbell',
+      inventory: coarseDbInv68,
+    });
+    const benchCeiling68 = computeCeiling68({
+      currentWeightKg: 80,
+      minReps: 6,
+      maxReps: 8,
+      equipment: 'barbell',
+    });
+    assert(
+      latCeiling68.expanded === true &&
+        latCeiling68.effectiveMaxReps > 12 &&
+        latCeiling68.effectiveMaxReps <= 25 &&
+        Boolean(latCeiling68.explanation?.includes('+25%')) &&
+        benchCeiling68.expanded === false &&
+        benchCeiling68.effectiveMaxReps === 8,
+      `Coarse 8->10 kg DB jump (+25%) expands rep ceiling to ${latCeiling68.effectiveMaxReps} reps, while 80 kg barbell (+3.1%) keeps standard 8-rep ceiling`
+    );
+    const latRaiseDp68 = evalDp68({
+      completedWorkingSets: [
+        { id: 'lr1', setNumber: 1, targetWeightKg: 8, actualWeightKg: 8, targetReps: 12, actualReps: 12, targetRir: 2, actualRir: 2, completed: true },
+        { id: 'lr2', setNumber: 2, targetWeightKg: 8, actualWeightKg: 8, targetReps: 12, actualReps: 12, targetRir: 2, actualRir: 2, completed: true },
+        { id: 'lr3', setNumber: 3, targetWeightKg: 8, actualWeightKg: 8, targetReps: 12, actualReps: 12, targetRir: 2, actualRir: 2, completed: true },
+      ],
+      sourcePrescribedSetCount: 3,
+      targetSetCount: 3,
+      minReps: 10,
+      maxReps: 12,
+      currentWeightKg: 8,
+      equipment: 'dumbbell',
+      readinessState: 'Normal',
+      inventory: coarseDbInv68,
+    });
+    assert(
+      latRaiseDp68.status === 'build_reps' &&
+        latRaiseDp68.nextWeightKg === 8 &&
+        latRaiseDp68.nextRepsBySet[0] === 13 &&
+        latRaiseDp68.repCeilingExpanded === true,
+      `8 kg DB lateral raise hitting 12/12/12 holds 8 kg and builds to 13 reps instead of forcing a +25% jump to 10 kg (got ${latRaiseDp68.status}, ${latRaiseDp68.nextWeightKg} kg, reps ${latRaiseDp68.nextRepsBySet.join('/')})`
+    );
+
+    // 3. Empirical Allometric Strength Scaling (b = 0.55 male / 0.50 female)
+    const lightAllo68 = calcAllo68(140, 65, 'male');
+    const heavyAllo68 = calcAllo68(140 * Math.pow(115 / 65, expM68), 115, 'male');
+    const femaleEq68 = alloEq68(95, 75, 'female', 63);
+    assert(
+      expM68 === 0.55 &&
+        expF68 === 0.50 &&
+        Math.abs(lightAllo68 - heavyAllo68) <= 0.05 &&
+        femaleEq68 < 95 &&
+        femaleEq68 > 80 &&
+        alloAge68(35) === 1 &&
+        alloAge68(60) === 0.9,
+      `Allometric scaling is size-neutral across 65–115 kg (index ${lightAllo68} vs ${heavyAllo68}) with female b=0.50 and ~5%/decade age factor after 40`
+    );
+    const stdReport68 = buildStd68({
+      workouts: [
+        {
+          id: 'w-std-68',
+          date: '2026-11-18',
+          name: 'Upper',
+          splitDay: 'Upper',
+          completed: true,
+          completedAt: '2026-11-18T18:00:00Z',
+          readinessState: 'Normal',
+          readinessZScore: 0,
+          exercises: [
+            {
+              id: 'ex-b-68',
+              exerciseId: 'ex-bench-press',
+              name: 'Barbell Bench Press',
+              pillar: 'Horizontal Push',
+              equipment: 'barbell',
+              minReps: 5,
+              maxReps: 5,
+              sets: [
+                { id: 's1', setNumber: 1, targetWeightKg: 100, actualWeightKg: 100, targetReps: 5, actualReps: 5, targetRir: 1, actualRir: 1, completed: true },
+              ],
+            },
+          ],
+        },
+      ],
+      biometrics: [],
+      bodyweightKg: 82,
+      gender: 'male',
+    });
+    const benchStd68 = stdReport68.levels.find(
+      (l: { pillar: string; allometricScore?: number; allometricEquivalentKg?: number; tier?: string; subDivision?: string }) =>
+        l.pillar === 'Horizontal Push'
+    );
+    assert(
+      Boolean(benchStd68?.allometricScore && benchStd68.allometricScore > 0) &&
+        Boolean(benchStd68?.allometricEquivalentKg && benchStd68.allometricEquivalentKg > 0),
+      `Movement standards expose allometric index (${benchStd68?.allometricScore}) alongside intact Kilgore tier (${benchStd68?.tier} ${benchStd68?.subDivision})`
+    );
+
+    // 4. Multi-Day Wearable Trend Filtering & Anti-Nocebo Set-1 RIR Confirmation
+    const steadyWhoopHist68: BiometricLog[] = Array.from({ length: 10 }, (_, idx) => ({
+      date: `2026-11-${String(idx + 5).padStart(2, '0')}`,
+      bodyweightKg: 80,
+      hrvRmssd: 68,
+      restingHr: 52,
+      sleepHours: 7.5,
+      steps: 8500,
+      activeZoneMinutes: 35,
+      recoveryScore: 72,
+      source: 'whoop',
+    }));
+    const singleDayRed68 = calculateDailyReadiness(
+      {
+        date: '2026-11-15',
+        bodyweightKg: 80,
+        hrvRmssd: 50,
+        restingHr: 57,
+        sleepHours: 5.8,
+        steps: 7000,
+        activeZoneMinutes: 20,
+        recoveryScore: 28,
+        source: 'whoop',
+      },
+      steadyWhoopHist68,
+      'whoop'
+    );
+    const sustainedWhoopHist68: BiometricLog[] = [
+      ...steadyWhoopHist68.slice(0, 6),
+      ...Array.from({ length: 4 }, (_, idx) => ({
+        date: `2026-11-${String(idx + 11).padStart(2, '0')}`,
+        bodyweightKg: 80,
+        hrvRmssd: 46,
+        restingHr: 58,
+        sleepHours: 5.5,
+        steps: 6000,
+        activeZoneMinutes: 15,
+        recoveryScore: 26,
+        source: 'whoop' as const,
+      })),
+    ];
+    const sustainedRed68 = calculateDailyReadiness(
+      {
+        date: '2026-11-15',
+        bodyweightKg: 80,
+        hrvRmssd: 45,
+        restingHr: 59,
+        sleepHours: 5.4,
+        steps: 5500,
+        activeZoneMinutes: 10,
+        recoveryScore: 24,
+        source: 'whoop',
+      },
+      sustainedWhoopHist68,
+      'whoop'
+    );
+    assert(
+      singleDayRed68.state === 'Amber Shield' &&
+        singleDayRed68.trendStatus === 'single_day_dip' &&
+        singleDayRed68.recommendVolumeModulation === false &&
+        Boolean(singleDayRed68.set1ConfirmationCue?.includes('Set 1 RIR')) &&
+        sustainedRed68.state === 'Amber Shield' &&
+        sustainedRed68.trendStatus === 'sustained_low' &&
+        sustainedRed68.recommendVolumeModulation === true &&
+        (sustainedRed68.consecutiveLowDays ?? 0) >= 4,
+      `Whoop trend filter separates isolated single-day dip (modulate=false + Set 1 RIR cue) from sustained ${sustainedRed68.consecutiveLowDays}-day suppression (modulate=true)`
+    );
+    const strongSet1 = evalSet1_68({
+      ...smartPush68,
+      exercises: [
+        {
+          ...smartPush68.exercises[0],
+          sets: [
+            { id: 'c1', setNumber: 1, targetWeightKg: 80, actualWeightKg: 80, targetReps: 8, actualReps: 8, targetRir: 2, actualRir: 2, completed: true, setType: 'working' },
+          ],
+        },
+      ],
+    });
+    const fatiguedSet1 = evalSet1_68({
+      ...smartPush68,
+      exercises: [
+        {
+          ...smartPush68.exercises[0],
+          sets: [
+            { id: 'c2', setNumber: 1, targetWeightKg: 80, actualWeightKg: 80, targetReps: 8, actualReps: 8, targetRir: 2, actualRir: 0, completed: true, setType: 'working' },
+          ],
+        },
+      ],
+    });
+    assert(
+      strongSet1.status === 'confirmed_strong' && fatiguedSet1.status === 'fatigue_confirmed',
+      'Set-1 RIR confirmation overrides wearable noise when Set 1 feels on target and flags fatigue when Set 1 is >= 2 RIR harder than planned'
+    );
+
+    // 5. Fractional Set Accounting (1.0 Direct / 0.5 Synergist) + Goal-Adapted Volume Windows
+    const fracWorkout68: WorkoutSession = {
+      id: 'w-frac-68',
+      date: localDateString(),
+      name: 'Push',
+      splitDay: 'Push',
+      completed: true,
+      readinessState: 'Normal',
+      readinessZScore: 0,
+      exercises: [
+        {
+          id: 'ex-f-bench',
+          exerciseId: 'ex-bench-press',
+          name: 'Barbell Bench Press',
+          pillar: 'Horizontal Push',
+          equipment: 'barbell',
+          minReps: 8,
+          maxReps: 10,
+          sets: [
+            { id: 'fb1', setNumber: 1, targetWeightKg: 80, actualWeightKg: 80, targetReps: 8, actualReps: 8, targetRir: 2, actualRir: 2, completed: true },
+            { id: 'fb2', setNumber: 2, targetWeightKg: 80, actualWeightKg: 80, targetReps: 8, actualReps: 8, targetRir: 2, actualRir: 2, completed: true },
+            { id: 'fb3', setNumber: 3, targetWeightKg: 80, actualWeightKg: 80, targetReps: 8, actualReps: 8, targetRir: 2, actualRir: 1, completed: true },
+            { id: 'fb4', setNumber: 4, targetWeightKg: 80, actualWeightKg: 80, targetReps: 8, actualReps: 8, targetRir: 2, actualRir: 1, completed: true },
+          ],
+        },
+        {
+          id: 'ex-f-tri',
+          exerciseId: 'ex-tricep-pushdown',
+          name: 'Tricep Rope Pushdown',
+          pillar: 'Horizontal Push',
+          equipment: 'cable',
+          minReps: 10,
+          maxReps: 12,
+          sets: [
+            { id: 'ft1', setNumber: 1, targetWeightKg: 25, actualWeightKg: 25, targetReps: 12, actualReps: 12, targetRir: 2, actualRir: 2, completed: true },
+            { id: 'ft2', setNumber: 2, targetWeightKg: 25, actualWeightKg: 25, targetReps: 12, actualReps: 12, targetRir: 2, actualRir: 1, completed: true },
+            { id: 'ft3', setNumber: 3, targetWeightKg: 25, actualWeightKg: 25, targetReps: 12, actualReps: 12, targetRir: 2, actualRir: 1, completed: true },
+          ],
+        },
+      ],
+    };
+    const volTotal68 = calcVol68([fracWorkout68], SEED_EXERCISES);
+    const volSplit68 = calcBreakdown68([fracWorkout68], SEED_EXERCISES);
+    const bulkRange68 = getGoalVol68('Chest', 'Lean Bulk');
+    const cutRange68 = getGoalVol68('Chest', 'Cut / Recomp');
+    const mainRange68 = getGoalVol68('Chest', 'Maingain');
+    assert(
+      volSplit68.Chest.direct === 4 &&
+        volSplit68.Chest.total === volTotal68.Chest &&
+        volSplit68.Triceps.direct === 3 &&
+        volSplit68.Triceps.fractional === 2 &&
+        volSplit68.Triceps.total === 5 &&
+        volSplit68.Triceps.total === volTotal68.Triceps &&
+        bulkRange68.maxSets > cutRange68.maxSets &&
+        mainRange68.maxSets <= bulkRange68.maxSets,
+      `Fractional set breakdown preserves exact parity (Triceps: ${volSplit68.Triceps.direct} direct + ${volSplit68.Triceps.fractional} fractional = ${volSplit68.Triceps.total}) and adapts windows by goal (Bulk ${bulkRange68.minSets}–${bulkRange68.maxSets} vs Cut ${cutRange68.minSets}–${cutRange68.maxSets})`
+    );
+
+    // 6. Per-Exercise Learned Strength-Endurance Slope (Nuzzo et al., 2024) + 0-6+ RIR Cap
+    const makeSlopeHistory = (exerciseId: string, name: string, entries: Array<{ date: string; w: number; r: number; rir: number }>): WorkoutSession[] =>
+      entries.map((e, idx) => ({
+        id: `slope-${exerciseId}-${idx}`,
+        date: e.date,
+        name: 'Session',
+        splitDay: 'Full Body',
+        completed: true,
+        completedAt: `${e.date}T12:00:00Z`,
+        readinessState: 'Normal',
+        readinessZScore: 0,
+        exercises: [
+          {
+            id: `ex-${idx}`,
+            exerciseId,
+            name,
+            pillar: 'Squat',
+            equipment: 'machine',
+            minReps: 6,
+            maxReps: 15,
+            sets: [
+              { id: `s-${idx}`, setNumber: 1, targetWeightKg: e.w, actualWeightKg: e.w, targetReps: e.r, actualReps: e.r, targetRir: e.rir, actualRir: e.rir, completed: true },
+            ],
+          },
+        ],
+      }));
+    const highEnduranceHist = makeSlopeHistory('ex-leg-press', 'Leg Press', [
+      { date: '2026-10-01', w: 200, r: 6, rir: 1 },
+      { date: '2026-10-08', w: 170, r: 15, rir: 1 },
+      { date: '2026-10-15', w: 200, r: 6, rir: 1 },
+      { date: '2026-10-22', w: 170, r: 15, rir: 1 },
+    ]);
+    const steepDropHist = makeSlopeHistory('ex-ohp', 'Overhead Press', [
+      { date: '2026-10-01', w: 60, r: 5, rir: 1 },
+      { date: '2026-10-08', w: 45, r: 12, rir: 1 },
+      { date: '2026-10-15', w: 60, r: 5, rir: 1 },
+      { date: '2026-10-22', w: 45, r: 12, rir: 1 },
+    ]);
+    const legPressSlope = learnSlope68('ex-leg-press', highEnduranceHist);
+    const ohpSlope = learnSlope68('ex-ohp', steepDropHist);
+    assert(
+      maxRir68 === 6 &&
+        legPressSlope.isPersonalized &&
+        legPressSlope.denominator > 32 &&
+        ohpSlope.isPersonalized &&
+        ohpSlope.denominator < 28 &&
+        legPressSlope.denominator > ohpSlope.denominator,
+      `Per-exercise strength-endurance slope personalizes across rep brackets (Leg Press D=${legPressSlope.denominator} vs OHP D=${ohpSlope.denominator}) and caps RIR at 0–6+`
+    );
+
+    // 7. Structured Biomechanical Metadata Grounded in On-Device AI Coach & Swap Rationales
+    const legCurlDef68 = SEED_EXERCISES.find((e) => e.id === 'ex-leg-curl') || SEED_EXERCISES[0];
+    const rdlDef68 = SEED_EXERCISES.find((e) => e.id === 'ex-rdl') || SEED_EXERCISES[0];
+    const bssDef68 = SEED_EXERCISES.find((e) => e.id.includes('split-squat') || e.id.includes('bulgarian'));
+    const legCurlBio68 = getBioMeta68(legCurlDef68);
+    const bssBio68 = bssDef68 ? getBioMeta68(bssDef68) : null;
+    const coachPrompt68 = buildCoachPrompt68({
+      userQuery: 'What should I swap if the bench is taken?',
+      profile: NEW_USER_PROFILE,
+      activeWorkout: smartPush68,
+      workouts: [],
+      biometrics: [],
+      exerciseCatalog: SEED_EXERCISES,
+      readinessState: 'Normal',
+      bodyweightEmaKg: 80,
+      weeklyVolume: {},
+    });
+    const swapRx68 = prescribeSwap68({
+      sourceExercise: smartPush68.exercises[0],
+      targetDef: rdlDef68,
+      workouts: [],
+      readinessState: 'Normal',
+      goalPhase: 'Lean Bulk',
+      bodyweightEmaKg: 80,
+    });
+    const setRowSrc68 = fs68.readFileSync(path68.join(process.cwd(), 'src/components/train/SetRow.tsx'), 'utf8');
+    const exCardSrc68 = fs68.readFileSync(path68.join(process.cwd(), 'src/components/train/ExerciseCard.tsx'), 'utf8');
+    const recCardSrc68 = fs68.readFileSync(path68.join(process.cwd(), 'src/components/train/RecoveryScoreCard.tsx'), 'utf8');
+    const strCardSrc68 = fs68.readFileSync(path68.join(process.cwd(), 'src/components/analytics/StrengthLevelsCard.tsx'), 'utf8');
+    assert(
+      legCurlBio68.stability === 'high' &&
+        legCurlBio68.stretchBias === 'lengthened' &&
+        legCurlBio68.fractionalMuscleWeights[0]?.weight === 1 &&
+        (!bssBio68 || bssBio68.stability === 'low') &&
+        coachPrompt68.includes('stability') &&
+        coachPrompt68.includes('bias') &&
+        coachPrompt68.includes('1x') &&
+        Boolean(swapRx68.biomechanicalSummary?.includes('lengthened-stretch')) &&
+        setRowSrc68.includes('MAX_LOGGABLE_RIR') &&
+        exCardSrc68.includes('direct (1.0×)') &&
+        recCardSrc68.includes('Single-day recovery dip') &&
+        strCardSrc68.includes('allometric scaling'),
+      'Biomechanical metadata (stability, stretch bias, fractional weights) grounds AI Coach prompt, swap rationales, and UI components cleanly'
+    );
+  }
+
+  // =========================================================================
+  // SUITE 69: Treise AI Personalisation & Memory Guidelines (Sections 1–5)
+  // =========================================================================
+  {
+    console.log('\n[Suite 69: Treise AI Personalisation & Memory Guidelines — Scoped Context, Mode-Aware Formatting, Name Use, Thread Style Overrides & Persistence Boundary]');
+    const fs69 = require('fs');
+    const path69 = require('path');
+    const {
+      CONVERSATIONAL_MOMENTS_RULES: momentsRules69,
+      CORE_PLATFORM_VOICE_DEFAULTS: coreDefaults69,
+      DEFAULT_TREISE_PERSONA: defaultPersona69,
+      MULTI_TURN_BEHAVIOR_RULES: multiTurnRules69,
+      buildVoicePersonaPrompt: buildVoice69,
+      createEmptyThreadMemory: createMem69,
+      detectSituationalTone: detectTone69,
+      detectThreadConfidenceConflict: detectConflict69,
+      detectTopicShift: detectShift69,
+      resolveCoachMode: resolveMode69,
+      resolveContextSliceScope: resolveScope69,
+      stripFillerOpeners: stripFiller69,
+      stripReflexiveSignOffs: stripSignOff69,
+      updateThreadMemoryFromTurn: updateMem69,
+      enforceNameUsePolicy: enforceName69,
+      isExplicitPermanentMemoryRequest: isPermReq69,
+    } = require('../../services/coachPersonalization');
+    const {
+      buildCoachSystemPrompt: buildPrompt69,
+      buildSafetyResponse: buildSafety69,
+      processAssistantMessage: processCoach69,
+    } = require('../../services/aiAssistantService');
+
+    const activeWo69 = generateSmartWorkoutSession('Push', [], SEED_EXERCISES, 'Normal', 3, 'gym');
+    const completedWo69: WorkoutSession = { ...activeWo69, completed: true };
+
+    // 1. Mode-aware formatting & context slice resolution
+    assert(
+      resolveMode69({ tab: 'train' }, activeWo69) === 'mid_workout' &&
+        resolveMode69({ tab: 'train', exerciseId: activeWo69.exercises[0].exerciseId }, activeWo69) === 'mid_workout' &&
+        resolveMode69({ tab: 'program' }, activeWo69) === 'planning_review' &&
+        resolveMode69({ tab: 'analytics', detail: 'standards' }, activeWo69) === 'planning_review' &&
+        resolveMode69({ tab: 'train' }, completedWo69) === 'planning_review' &&
+        resolveScope69({ tab: 'train', exerciseId: activeWo69.exercises[0].exerciseId }, activeWo69) === 'exercise_focus' &&
+        resolveScope69({ tab: 'program' }, activeWo69) === 'program_planning',
+      'Coach mode resolves Mid-Workout on active gym-floor screens and Planning/Review on Program, Progress & post-workout screens'
+    );
+
+    // 2. Scoped context injection (mid-workout trims unrelated Progress widgets/body composition unless asked)
+    const richProfile69 = {
+      ...NEW_USER_PROFILE,
+      name: 'Ben Taylor',
+      progressWidgets: ['steps', 'body_composition', 'strength_standards'] as any,
+    };
+    const richBios69: BiometricLog[] = [
+      {
+        date: localDateString(),
+        bodyweightKg: 82,
+        bodyFatPct: 14.5,
+        waistCm: 81,
+        hrvRmssd: 65,
+        restingHr: 54,
+        sleepHours: 7.5,
+        steps: 9000,
+        activeZoneMinutes: 30,
+      },
+    ];
+    const floorPrompt69 = buildPrompt69({
+      userMessage: 'Can I swap incline press?',
+      profile: richProfile69,
+      activeWorkout: activeWo69,
+      workouts: [],
+      biometrics: richBios69,
+      exerciseCatalog: SEED_EXERCISES,
+      readinessState: 'Normal',
+      bodyweightEmaKg: 82,
+      place: { tab: 'train', exerciseId: activeWo69.exercises[0].exerciseId },
+    });
+    const reviewPrompt69 = buildPrompt69({
+      userMessage: 'How is my body composition trending?',
+      profile: richProfile69,
+      activeWorkout: activeWo69,
+      workouts: [],
+      biometrics: richBios69,
+      exerciseCatalog: SEED_EXERCISES,
+      readinessState: 'Normal',
+      bodyweightEmaKg: 82,
+      place: { tab: 'analytics', detail: 'composition' },
+    });
+    assert(
+      floorPrompt69.includes('MODE: Mid-Workout') &&
+        floorPrompt69.includes('Scope: exercise_focus') &&
+        !floorPrompt69.includes('Pinned Progress widgets:') &&
+        !floorPrompt69.includes('Body composition:') &&
+        reviewPrompt69.includes('MODE: Planning & Review') &&
+        reviewPrompt69.includes('Body composition:') &&
+        reviewPrompt69.includes('Pinned Progress widgets:'),
+      'Scoped context injection keeps gym-floor prompts focused on active workout/exercise while Planning/Review includes broader KG slices'
+    );
+
+    // 3. Name-use discipline (never on turn 1; at most once per conversation)
+    const freshMem69 = createMem69();
+    const strippedStart = enforceName69('Hi Ben, your bench target is 80 kg × 8.', 'Ben', freshMem69);
+    const turn1Mem = updateMem69(freshMem69, 'How am I doing?', 'Nice milestone, Ben — up 5 kg since last month.', 'Ben');
+    const strippedRepeat = enforceName69('Keep pushing steady reps, Ben.', 'Ben', turn1Mem);
+    const greetResult69 = await processCoach69({
+      userMessage: 'Hi',
+      profile: richProfile69,
+      activeWorkout: activeWo69,
+      workouts: [],
+      biometrics: [],
+      exerciseCatalog: SEED_EXERCISES,
+      readinessState: 'Normal',
+      bodyweightEmaKg: 82,
+      place: { tab: 'train' },
+      threadMemory: freshMem69,
+    });
+    assert(
+      strippedStart === 'Your bench target is 80 kg × 8.' &&
+        turn1Mem.nameUsedInThread === true &&
+        strippedRepeat === 'Keep pushing steady reps.' &&
+        !/^Hi Ben\b/i.test(greetResult69.message.text),
+      'Name-use policy strips scripted opening greetings, caps name usage to <= 1 per thread, and removes "Hi <Name>" from greeting replies'
+    );
+
+    // 4. Thread-local style overrides & ephemeral constraints (persist within thread, reset on New Chat)
+    let threadMem69 = createMem69();
+    threadMem69 = updateMem69(
+      threadMem69,
+      'Keep answers brief and no bullets please — I only have 30 minutes today and my left shoulder feels tight.',
+      'Got it.',
+      'Ben'
+    );
+    const styledPrompt69 = buildPrompt69({
+      userMessage: 'What should I focus on next?',
+      profile: richProfile69,
+      activeWorkout: activeWo69,
+      workouts: [],
+      biometrics: [],
+      exerciseCatalog: SEED_EXERCISES,
+      readinessState: 'Normal',
+      bodyweightEmaKg: 82,
+      place: { tab: 'train' },
+      threadMemory: threadMem69,
+    });
+    // Contradictory style update ("more detail") replaces "ultra-brief" cleanly
+    const detailedMem69 = updateMem69(threadMem69, 'Actually give me more detail on that.', 'Sure.', 'Ben');
+    assert(
+      threadMem69.styleOverrides.some((s: string) => /ultra-brief/i.test(s)) &&
+        threadMem69.styleOverrides.some((s: string) => /without bullet/i.test(s)) &&
+        threadMem69.ephemeralConstraints.some((c: string) => /30 minutes/i.test(c)) &&
+        threadMem69.ephemeralConstraints.some((c: string) => /left shoulder feels tight/i.test(c)) &&
+        styledPrompt69.includes('Active thread style overrides') &&
+        styledPrompt69.includes('Temporary constraints in this thread only') &&
+        detailedMem69.styleOverrides.some((s: string) => /fuller step-by-step/i.test(s)) &&
+        !detailedMem69.styleOverrides.some((s: string) => /ultra-brief/i.test(s)),
+      'User-directed style overrides & temporary constraints carry through the active thread and resolve style changes cleanly'
+    );
+
+    // 5. Explicit persistence boundary (ephemeral session note != permanent profile memory; New Chat wipes thread memory)
+    const ephemeralTurn69 = await processCoach69({
+      userMessage: 'Keep in mind I only have 30 minutes today',
+      profile: richProfile69,
+      activeWorkout: activeWo69,
+      workouts: [],
+      biometrics: [],
+      exerciseCatalog: SEED_EXERCISES,
+      readinessState: 'Normal',
+      bodyweightEmaKg: 82,
+      place: { tab: 'train' },
+      threadMemory: createMem69(),
+    });
+    const permanentTurn69 = await processCoach69({
+      userMessage: 'Remember that I prefer dumbbells for chest presses',
+      profile: richProfile69,
+      activeWorkout: activeWo69,
+      workouts: [],
+      biometrics: [],
+      exerciseCatalog: SEED_EXERCISES,
+      readinessState: 'Normal',
+      bodyweightEmaKg: 82,
+      place: { tab: 'program' },
+      threadMemory: createMem69(),
+    });
+    const chatModalSrc69 = fs69.readFileSync(
+      path69.join(process.cwd(), 'src/components/assistant/AICoachChatModal.tsx'),
+      'utf8'
+    );
+    assert(
+      !isPermReq69('Keep in mind I only have 30 minutes today') &&
+        isPermReq69('Remember that I prefer dumbbells for chest presses') &&
+        !ephemeralTurn69.updatedProfile?.athleteMemories &&
+        Boolean(ephemeralTurn69.updatedThreadMemory?.ephemeralConstraints.some((c: string) => /30 minutes/i.test(c))) &&
+        Boolean(permanentTurn69.updatedProfile?.athleteMemories?.some((m: { value: string }) => /dumbbells/i.test(m.value))) &&
+        chatModalSrc69.includes('threadMemoryRef.current = createEmptyThreadMemory()'),
+      'Explicit persistence boundary keeps ephemeral session constraints thread-local, persists explicit memories via tool call, and resets thread memory on New Chat'
+    );
+
+    // 6. Voice, Tone & Persona Guidelines (Who Treise Is/Isn't, Core Defaults, Filler Stripping, Situational Tone, Custom Personas & Error Copy)
+    const urgentTone69 = detectTone69({ userMessage: 'Only have 20 min and the squat rack is taken', mode: 'mid_workout' });
+    const frustratedTone69 = detectTone69({ userMessage: "This isn't working and I'm frustrated", mode: 'planning_review' });
+    const celebTone69 = detectTone69({ userMessage: 'Just hit a new PR on bench!', mode: 'mid_workout' });
+    const errTone69 = detectTone69({ userMessage: 'Swap bench', mode: 'mid_workout', hasError: true });
+    const routineTone69 = detectTone69({ userMessage: 'What am I lifting today?', mode: 'mid_workout' });
+    const customPersonaPrompt69 = buildVoice69({
+      situationTone: urgentTone69,
+      surface: 'watch',
+      persona: { ...defaultPersona69, name: 'IronCoach' },
+    });
+    const strippedFiller1 = stripFiller69('Great question! You should keep 2 reps in reserve today.');
+    const strippedFiller2 = stripFiller69('Absolutely! Of course, start with 80 kg for 8 reps.');
+    const urgentSysPrompt69 = buildPrompt69({
+      userMessage: 'Only have 20 min and the squat rack is taken',
+      profile: richProfile69,
+      activeWorkout: activeWo69,
+      workouts: [],
+      biometrics: [],
+      exerciseCatalog: SEED_EXERCISES,
+      readinessState: 'Normal',
+      bodyweightEmaKg: 82,
+      place: { tab: 'train' },
+    });
+    assert(
+      coreDefaults69.length >= 8 &&
+        urgentTone69 === 'high_stress_time_sensitive' &&
+        frustratedTone69 === 'frustrated' &&
+        celebTone69 === 'celebratory' &&
+        errTone69 === 'error_recovery' &&
+        routineTone69 === 'routine_positive' &&
+        strippedFiller1 === 'You should keep 2 reps in reserve today.' &&
+        strippedFiller2 === 'Start with 80 kg for 8 reps.' &&
+        customPersonaPrompt69.includes('PERSONA (IronCoach)') &&
+        customPersonaPrompt69.includes('Core voice rules (non-negotiable):') &&
+        customPersonaPrompt69.includes('Surface: watch') &&
+        urgentSysPrompt69.includes('thought partner, not a decision-maker') &&
+        urgentSysPrompt69.includes('High-stress / time-sensitive') &&
+        urgentSysPrompt69.includes('Use natural contractions') &&
+        !chatModalSrc69.includes("Sorry, I couldn't answer that just now") &&
+        chatModalSrc69.includes("I ran into an error answering that"),
+      'Voice, Tone & Persona guidelines ground system prompt, situational tone, filler stripping, custom personas, and plain ownership-first error recovery'
+    );
+
+    // 7. Multi-turn Behaviour (Proactive DO/DON'T boundaries & Confidence Across a Thread)
+    const claimMem69 = updateMem69(
+      createMem69(),
+      'What should I load on bench today?',
+      'Your barbell target is 80 kg × 8 with normal recovery.',
+      'Ben'
+    );
+    const loadConflict69 = detectConflict69(claimMem69, 'Actually I only have dumbbells at home up to 20 kg today');
+    const recoveryConflict69 = detectConflict69(claimMem69, 'Wait, I slept terribly (4h) and my shoulder feels tight');
+    const noConflict69 = detectConflict69(claimMem69, 'How long should I rest between sets?');
+    const conflictPrompt69 = buildPrompt69({
+      userMessage: 'Actually I only have dumbbells at home up to 20 kg today',
+      profile: richProfile69,
+      activeWorkout: activeWo69,
+      workouts: [],
+      biometrics: [],
+      exerciseCatalog: SEED_EXERCISES,
+      readinessState: 'Normal',
+      bodyweightEmaKg: 82,
+      place: { tab: 'train' },
+      threadMemory: claimMem69,
+    });
+    assert(
+      multiTurnRules69.proactiveDo.length >= 2 &&
+        multiTurnRules69.proactiveDont.length >= 2 &&
+        claimMem69.priorClaims.some((c: { topic: string; excerpt: string }) => c.topic === 'load' && /80 kg/i.test(c.excerpt)) &&
+        Boolean(loadConflict69 && /double-check/i.test(loadConflict69)) &&
+        Boolean(recoveryConflict69 && /re-evaluate/i.test(recoveryConflict69)) &&
+        noConflict69 === null &&
+        conflictPrompt69.includes('Multi-turn proactive behavior:') &&
+        conflictPrompt69.includes('Confidence across a thread:') &&
+        conflictPrompt69.includes('Thread confidence re-check:'),
+      'Multi-turn behaviour enforces proactive DO/DON\'T guardrails and flags earlier thread claims for confidence re-checks when new context conflicts'
+    );
+
+    // 8. Conversational Moments (Concrete wait text, topic shifts + unfinished action flag, no reflexive sign-offs, Treise escalation handoffs, small talk)
+    const pendingTopicMem69 = updateMem69(
+      createMem69(),
+      'Reset my program to Day 1',
+      'Confirm to reset 6 Week Starter Plan to Day 1.',
+      'Ben',
+      'Reset 6 Week Starter Plan to Day 1'
+    );
+    const topicShift69 = detectShift69(pendingTopicMem69, 'How much protein should I eat after training?');
+    const shiftedPrompt69 = buildPrompt69({
+      userMessage: 'How much protein should I eat after training?',
+      profile: richProfile69,
+      activeWorkout: activeWo69,
+      workouts: [],
+      biometrics: [],
+      exerciseCatalog: SEED_EXERCISES,
+      readinessState: 'Normal',
+      bodyweightEmaKg: 82,
+      place: { tab: 'program' },
+      threadMemory: pendingTopicMem69,
+    });
+    const strippedSignOff69 = stripSignOff69('Logged 80 kg × 8 on Bench Press. Is there anything else I can help you with today?');
+    const safetyHandoff69 = buildSafety69('My shoulder has sharp pain on bench press', activeWo69) || '';
+    assert(
+      Boolean(momentsRules69.waitStates) &&
+        Boolean(momentsRules69.smallTalk) &&
+        topicShift69.shifted === true &&
+        topicShift69.from === 'program_planning' &&
+        topicShift69.to === 'nutrition_sleep' &&
+        Boolean(topicShift69.promptNote?.includes('Reset 6 Week Starter Plan to Day 1')) &&
+        shiftedPrompt69.includes('Conversational moments:') &&
+        shiftedPrompt69.includes('Topic shift (program_planning -> nutrition_sleep)') &&
+        strippedSignOff69 === 'Logged 80 kg × 8 on Bench Press.' &&
+        safetyHandoff69.includes('before you go, note which lift triggered it') &&
+        chatModalSrc69.includes("return 'Checking your plan…'") &&
+        !chatModalSrc69.includes("return 'Thinking…'"),
+      'Conversational moments enforce concrete wait states, light topic-shift notes with pending-action flags, reflexive sign-off stripping, and Treise clinician escalation handoffs'
+    );
+  }
+
+  // =========================================================================
+  // SUITE 70: Lean Progressive-Disclosure Onboarding Flow
+  // =========================================================================
+  {
+    console.log('\n[Suite 70: Lean Progressive-Disclosure Onboarding — Value-First Steps, Conditional Home Gear & Collapsed Optional Drawers]');
+    const fs70 = require('fs');
+    const path70 = require('path');
+    const onboardingSrc70 = fs70.readFileSync(
+      path70.join(process.cwd(), 'src/components/onboarding/OnboardingModal.tsx'),
+      'utf8'
+    );
+    const step1SectionIdx = onboardingSrc70.indexOf('{step === 1 && !editing && (');
+    const step2SectionIdx = onboardingSrc70.indexOf('{step === 2 && !editing && (');
+    const step3SectionIdx = onboardingSrc70.indexOf('{isLast && (');
+    const step1Slice = onboardingSrc70.slice(step1SectionIdx, step2SectionIdx);
+    const step2Slice = onboardingSrc70.slice(step2SectionIdx, step3SectionIdx);
+    const step3Slice = onboardingSrc70.slice(step3SectionIdx);
+
+    assert(
+      step1SectionIdx > 0 &&
+        step2SectionIdx > step1SectionIdx &&
+        step3SectionIdx > step2SectionIdx &&
+        step1Slice.includes("What's your goal?") &&
+        step2Slice.includes('How do you want to fit in 4 sessions a week?') &&
+        step2Slice.includes('Optional habit anchor') &&
+        step2Slice.includes('aria-expanded={showHabitAnchorDrawer}') &&
+        onboardingSrc70.includes('const [showHabitAnchorDrawer, setShowHabitAnchorDrawer] = useState<boolean>(false);') &&
+        onboardingSrc70.includes('const [showFineTuneDrawer, setShowFineTuneDrawer] = useState<boolean>(false);'),
+      'Onboarding distributes essential choices cleanly across Steps 1–3 and defaults optional habit-anchor and fine-tune drawers to collapsed'
+    );
+
+    assert(
+      step3Slice.includes('Where will you train?') &&
+        step3Slice.includes("{(location === 'home' || (editing && showHomeGearFallback)) && (") &&
+        step3Slice.includes('What do you have at home?') &&
+        !step1Slice.includes('What do you have at home?') &&
+        !step2Slice.includes('What do you have at home?') &&
+        onboardingSrc70.includes("location === 'home' || (editing && showHomeGearFallback) ? homeEquipment : editing ? profile.homeEquipment || [] : []") &&
+        step3Slice.includes('Fine-tune setup (optional)') &&
+        step3Slice.includes('aria-expanded={showFineTuneDrawer}') &&
+        step3Slice.includes('Ready to launch'),
+      'Home equipment is strictly gated on selecting Home (never persisted for Gym/Bodyweight new signups) and Step 3 tucks secondary options under Fine-tune setup with a launch summary'
+    );
+  }
+
+  // =========================================================================
+  // SUITE 71: Cross-Surface AI Guidelines & Economical AI / KG Caching
+  // =========================================================================
+  {
+    console.log('\n[Suite 71: Cross-Surface AI Guidelines (All 5 Summary Surfaces) & Economical AI / Knowledge Graph Deduplication]');
+    const fs71 = require('fs');
+    const path71 = require('path');
+    const {
+      checkSummaryVoiceGuidelines: checkVoice71,
+      normalizeSummaryVoice: normVoice71,
+    } = require('../../services/coachPersonalization');
+    const {
+      EXERCISE_NOTE_SYSTEM_PROMPT: exPrompt71,
+      checkExerciseNote: checkExNote71,
+      buildExerciseNoteFacts: buildExFacts71,
+    } = require('../../services/exerciseCoachNote');
+    const {
+      IDENTITY_SYSTEM_PROMPT: idPrompt71,
+      checkIdentityMessage: checkId71,
+    } = require('../../services/identityMessage');
+    const {
+      WORKOUT_SUMMARY_SYSTEM_PROMPT: woPrompt71,
+      checkWorkoutSummary: checkWo71,
+    } = require('../../services/workoutFinish');
+    const {
+      GOALS_SUMMARY_SYSTEM_PROMPT: goalsPrompt71,
+      SINGLE_GOAL_SUMMARY_SYSTEM_PROMPT: singleGoalPrompt71,
+      checkGoalsSummary: checkGoals71,
+    } = require('../../services/progressOverview');
+    const {
+      COMPOSITION_SYSTEM_PROMPT: compPrompt71,
+      checkCompositionInsight: checkComp71,
+    } = require('../../services/compositionOverview');
+    const {
+      coalesceAiGeneration: coalesce71,
+      clearAiGenerationCaches: clearAiCache71,
+      getInFlightAiGenerationCount: getInFlight71,
+    } = require('../../services/aiGenerationCache');
+    const {
+      buildAthleteKnowledgeGraph: buildKg71,
+      buildBodyCompositionKnowledgeGraph: buildBodyComp71,
+      clearKnowledgeGraphCache: clearKgCache71,
+      getKnowledgeGraphCacheStats: getKgStats71,
+    } = require('../knowledgeGraph');
+
+    // 1. All 5 non-chat AI summary system prompts inherit shared Treise voice & context guidelines
+    assert(
+      exPrompt71.includes('Treise voice & context rules:') &&
+        idPrompt71.includes('Treise voice & context rules:') &&
+        woPrompt71.includes('Treise voice & context rules:') &&
+        goalsPrompt71.includes('Treise voice & context rules:') &&
+        singleGoalPrompt71.includes('Treise voice & context rules:') &&
+        compPrompt71.includes('Treise voice & context rules:'),
+      'All 5 non-chat AI summary system prompts include Treise cross-surface voice and context discipline guidelines'
+    );
+
+    // 2. Voice normalizer & cross-surface validator strip filler/sign-offs and reject surveillance/hype/greetings/questions
+    const normClean71 = normVoice71('Great question! Squat estimated max is 120 kg. Is there anything else I can help you with today?');
+    assert(
+      normClean71 === 'Squat estimated max is 120 kg.' &&
+        checkVoice71('I noticed your bench press moved up 2.5 kg.') !== null &&
+        checkVoice71('Based on your data, your chest is ready to train.') !== null &&
+        checkVoice71('Hi there, your weekly pace is on track.') !== null &&
+        checkVoice71('Treise recommends keeping the load steady today.') !== null &&
+        checkVoice71('Ready to push heavier today?') !== null &&
+        checkVoice71('Strong work today!') !== null &&
+        checkVoice71('Estimated max: 120 kg (+2.5 kg over 3 workouts).') === null,
+      'Cross-surface summary voice gate strips filler/sign-offs and rejects surveillance phrasing, greetings, third-person references, exclamation hype, and closing questions'
+    );
+
+    // 3. Every individual summary surface validator enforces the shared voice gate
+    const sampleFacts71 = { facts: ['Estimated max is 120 kg (+2.5 kg over 3 workouts).', 'Next workout: Upper A.'] };
+    const exSession71 = generateSmartWorkoutSession('Push', [], SEED_EXERCISES, 'Normal', 3, 'gym').exercises[0];
+    const exFacts71 = buildExFacts71({
+      exercise: exSession71,
+      insight: {
+        metric: 'e1rm',
+        history: [
+          { at: Date.now() - 7 * 86400000, e1rmKg: 100, value: 100 },
+          { at: Date.now() - 2 * 86400000, e1rmKg: 102.5, value: 102.5 },
+        ],
+        summary: 'Estimated max: 102.5 kg (+2.5 kg over 2 workouts).\nMatching this load deepens hypertrophy volume.',
+        lines: ['Estimated max: 102.5 kg (+2.5 kg over 2 workouts).', 'Matching this load deepens hypertrophy volume.'],
+      },
+      workouts: [],
+      readinessState: 'Normal',
+      knowledgeGraph: buildKg71([], [], SEED_EXERCISES, NEW_USER_PROFILE, {}),
+      formatWeight: (k: number) => `${k} kg`,
+    });
+    assert(
+      checkExNote71('I noticed your estimated max is 102.5 kg (+2.5 kg over 2 workouts).\nMatching this load deepens hypertrophy volume.', exFacts71).problem !== undefined &&
+        checkId71('Based on your data, your estimated max is 120 kg. Next workout is Upper A.', sampleFacts71).problem !== undefined &&
+        checkWo71('Hi! Your estimated max is 120 kg (+2.5 kg over 3 workouts).', sampleFacts71).problem !== undefined &&
+        checkGoals71('Treise recommends hitting Upper A after reaching 120 kg estimated max.', sampleFacts71).problem !== undefined &&
+        checkComp71('I noticed your estimated max is 120 kg over 3 workouts. Keep going?', sampleFacts71).problem !== undefined,
+      'All 5 summary validators (Exercise, Program Identity, Workout Finish, Goals, Composition) enforce the shared Treise voice & anti-surveillance gate'
+    );
+
+    // 4. In-flight AI request coalescing prevents duplicate concurrent model calls
+    clearAiCache71();
+    let concurrentRuns71 = 0;
+    let persistedValue71: string | null = null;
+    const delayedRun71 = () =>
+      new Promise<string | null>((resolve) => {
+        concurrentRuns71 += 1;
+        setTimeout(() => resolve('Coalesced summary output.'), 25);
+      });
+    const [resA71, resB71, resC71] = await Promise.all([
+      coalesce71('test:coalesce', delayedRun71, (v: string) => { persistedValue71 = v; }),
+      coalesce71('test:coalesce', delayedRun71),
+      coalesce71('test:coalesce', delayedRun71),
+    ]);
+    assert(
+      concurrentRuns71 === 1 &&
+        resA71 === 'Coalesced summary output.' &&
+        resB71 === resA71 &&
+        resC71 === resA71 &&
+        persistedValue71 === 'Coalesced summary output.' &&
+        getInFlight71() === 0,
+      `Concurrent callers for identical AI summary keys coalesce into exactly 1 model execution (runs=${concurrentRuns71}, inFlight=${getInFlight71()})`
+    );
+
+    // 5. Engine-layer Knowledge Graph & Body Composition Graph memoization (zero duplicate rebuilds, UI-edit immune, domain-change responsive)
+    clearKgCache71();
+    const kgWorkouts71: WorkoutSession[] = [
+      {
+        ...generateSmartWorkoutSession('Push', [], SEED_EXERCISES, 'Normal', 3, 'gym'),
+        id: 'kg-cache-w1',
+        completed: true,
+        completedAt: new Date().toISOString(),
+      },
+    ];
+    const kgBios71: BiometricLog[] = [
+      { date: localDateString(), bodyweightKg: 81.2, bodyFatPct: 15.2, waistCm: 80.5, hrvRmssd: 64, restingHr: 54, sleepHours: 7.4, steps: 9200, activeZoneMinutes: 30 },
+    ];
+    const kgFirst71 = buildKg71(kgWorkouts71, kgBios71, SEED_EXERCISES, NEW_USER_PROFILE, { Chest: 6 });
+    const kgSecond71 = buildKg71(kgWorkouts71, kgBios71, SEED_EXERCISES, NEW_USER_PROFILE, { Chest: 6 });
+    const kgAfterUiToggle71 = buildKg71(
+      kgWorkouts71,
+      kgBios71,
+      SEED_EXERCISES,
+      { ...NEW_USER_PROFILE, progressWidgets: ['steps'] as any },
+      { Chest: 6 }
+    );
+    const kgAfterNewData71 = buildKg71(kgWorkouts71, kgBios71, SEED_EXERCISES, NEW_USER_PROFILE, { Chest: 9 });
+    const bodyCompFirst71 = buildBodyComp71(kgBios71, NEW_USER_PROFILE);
+    const bodyCompSecond71 = buildBodyComp71(kgBios71, NEW_USER_PROFILE);
+    const stats71 = getKgStats71();
+    assert(
+      kgFirst71 === kgSecond71 &&
+        kgFirst71 === kgAfterUiToggle71 &&
+        kgFirst71 !== kgAfterNewData71 &&
+        bodyCompFirst71 === bodyCompSecond71 &&
+        stats71.athleteHits >= 2 &&
+        stats71.athleteMisses === 2 &&
+        stats71.bodyCompHits >= 1,
+      `Knowledge Graph & Body Composition Graph memoize identically across tabs/UI toggles (hits=${stats71.athleteHits}, misses=${stats71.athleteMisses}, bodyHits=${stats71.bodyCompHits}) and invalidate immediately on real training data changes`
+    );
+
+    // 6. UI & Cloud Economy Static Wiring (cloud local-only exercise briefs, 400ms settle debounces, shared KG prop reuse)
+    const trainSrc71 = fs71.readFileSync(path71.join(process.cwd(), 'src/components/train/TrainTab.tsx'), 'utf8');
+    const compCardSrc71 = fs71.readFileSync(path71.join(process.cwd(), 'src/components/analytics/CompositionCard.tsx'), 'utf8');
+    const progOverviewSrc71 = fs71.readFileSync(path71.join(process.cwd(), 'src/components/analytics/ProgressOverviewCards.tsx'), 'utf8');
+    const progPlanSrc71 = fs71.readFileSync(path71.join(process.cwd(), 'src/components/program/ProgramPlanView.tsx'), 'utf8');
+    const analyticsSrc71 = fs71.readFileSync(path71.join(process.cwd(), 'src/components/analytics/AnalyticsTab.tsx'), 'utf8');
+    const kgCardSrc71 = fs71.readFileSync(path71.join(process.cwd(), 'src/components/analytics/KnowledgeGraphCard.tsx'), 'utf8');
+    assert(
+      trainSrc71.includes("getActiveModelTier()) !== 'local'") &&
+        compCardSrc71.includes('setTimeout(') &&
+        progOverviewSrc71.includes('setTimeout(') &&
+        progPlanSrc71.includes('setTimeout(') &&
+        progPlanSrc71.includes('knowledgeGraph,') &&
+        analyticsSrc71.includes('knowledgeGraph={knowledgeGraph}') &&
+        kgCardSrc71.includes('knowledgeGraph ??'),
+      'UI hooks enforce cloud-economical local-only exercise-card bursts, 400ms settle debounces across timeline/carousel/plan summaries, and single-pass Knowledge Graph sharing'
+    );
+  }
+
+  console.log('\nALL 71 ENGINE, GOVERNANCE, DESIGN SYSTEM, TYPOGRAPHY, WEARABLES, WHOOP STRAIN, GOOGLE AUTH, ONBOARDING CONTEXT, 6-WEEK PROGRAM, SPREADSHEET IMPORT, AI COACH ACTIONS, GEMINI FLASH + KG, OOUX, AGENTIC COACH, PRODUCT UPGRADES, INFO EXPERIENCE, CONTENT DESIGN, GOAL CAROUSEL, SHIFT NUDGE COLOR POLISH, EXERCISE DRILL-IN MODAL, COMPOSITION WIDGET, MEASUREMENT UX, AI-NATIVE ACTIONS, PERMANENT PROGRAM ADAPTATION, HITL INTERVENTION, REP-RANGE DOUBLE PROGRESSION, TWO-DUMBBELL PER-HAND LOGGING, AI-NATIVE CONVERSATIONAL DESIGN, P0 CLOSED-BETA READINESS, P1 GYM-FLOOR ACTIVATION, MACROFACTOR EXERCISE SCIENCE, AI PERSONALISATION/MEMORY, LEAN PROGRESSIVE ONBOARDING & CROSS-SURFACE AI ECONOMY SUITES PASSED SUCCESSFULLY! 🎯');
 })().catch((err) => {
   console.error('Test Suite Failed:', err);
   if (typeof process !== 'undefined' && process.exit) {

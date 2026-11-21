@@ -263,6 +263,24 @@ export async function isOnDeviceModelReady(): Promise<boolean> {
   }
 }
 
+/**
+ * Identifies which inference tier is currently active so callers can be economical:
+ * - 'local': Chrome built-in Prompt API (Gemini Nano on-device — zero network/API token cost)
+ * - 'cloud': Stateless `/api/coach/generate` fallback (metered API calls — avoid high-cardinality bursts)
+ * - 'none': Offline / unavailable / circuit-breaker paused (use deterministic copy immediately)
+ */
+export async function getActiveModelTier(): Promise<'local' | 'cloud' | 'none'> {
+  if (isOnDeviceModelPaused()) return 'none';
+  if ((await getOnDeviceModelStatus()) === 'available') return 'local';
+  if (!fallbackModel) return 'none';
+  try {
+    const ready = (await withTimeout(Promise.resolve(fallbackModel.isReady()), STATUS_TIMEOUT_MS)) === true;
+    return ready ? 'cloud' : 'none';
+  } catch {
+    return 'none';
+  }
+}
+
 export async function promptOnDeviceModel(
   systemPrompt: string,
   userPrompt: string,
@@ -300,10 +318,10 @@ export async function promptOnDeviceModel(
         options.timeoutMs ?? 15_000
       );
       const usable = answer && isUsableModelAnswer(answer, systemPrompt, userPrompt) ? answer.trim() : null;
-      if (usable !== null || !options.stateless) recordModelResult(usable !== null);
+      recordModelResult(usable !== null);
       return usable;
     } catch {
-      if (!options.stateless) recordModelResult(false);
+      recordModelResult(false);
       return null;
     }
   }

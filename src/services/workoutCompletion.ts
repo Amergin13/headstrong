@@ -142,7 +142,7 @@ export function completeWorkout(input: WorkoutCompletionInput): WorkoutCompletio
   }
   if (plan && planNumber) {
     // The plan's week always follows the plan's next workout.
-    const next = getNextProgramWorkoutNumber(nextHistory, plan, profile.planCycleStarts);
+    const next = getNextProgramWorkoutNumber(nextHistory, plan, profile.planCycleStarts, profile.planStartWorkouts);
     nextMesocycleWeek = plan.templates.find((t) => t.workoutNumber === next)?.week ?? nextMesocycleWeek;
   }
 

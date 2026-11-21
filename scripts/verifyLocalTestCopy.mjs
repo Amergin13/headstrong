@@ -56,13 +56,15 @@ async function verifyLocalApiRoutes() {
     `POST /api/coach/generate returned unexpected status ${postCoach.status}`
   );
 
-  for (const route of ['/api/whoop/token', '/api/fitbit/token', '/api/strava/token']) {
+  for (const route of ['/api/whoop/token', '/api/strava/token']) {
     const r = await fetch(`${BASE_URL}${route}`);
     assert.equal(r.status, 200, `GET ${route} should return 200`);
     const body = await r.json();
     assert.equal(typeof body.configured, 'boolean', `GET ${route} should return configured flag`);
   }
-  console.log('✓ Local /api/* middleware routes executed cleanly (coach, whoop, fitbit, strava)');
+  const deadFitbit = await fetch(`${BASE_URL}/api/fitbit/token`);
+  assert.equal(deadFitbit.status, 404, 'Decommissioned GET /api/fitbit/token should return 404');
+  console.log('✓ Local /api/* middleware routes executed cleanly (coach, whoop, strava; dead fitbit 404)');
 }
 
 function verifyAllScenariosInChrome() {
@@ -73,17 +75,17 @@ function verifyAllScenariosInChrome() {
 
   const expectations = [
     ['fresh-onboarding', ['Identity', 'role="dialog"', 'Local Test Lab']],
-    ['starter-day1-calibrated', ['1/24', 'Barbell Back Squat', 'Open Local Test Lab']],
-    ['mid-plan-normal', ['11/24', 'Upper', 'Open Local Test Lab']],
+    ['starter-day1-calibrated', ['6 week starter plan', 'Barbell Back Squat', 'Open Local Test Lab']],
+    ['mid-plan-normal', ['Upper', 'this week', 'Open Local Test Lab']],
     ['returning-cycle-2', ['Cycle 2', '6 Week Starter Plan', 'Open Local Test Lab']],
-    ['recovery-gate-blocked', ['Your muscles are still recovering', 'Train anyway']],
-    ['amber-shield', ['Amber Shield', 'Open Local Test Lab']],
-    ['primed-progression', ['Primed', 'Barbell Back Squat']],
-    ['today-finished', ["Today's workout finished", 'Sets', 'Open Local Test Lab']],
+    ['recovery-gate-blocked', ['Muscles still recovering', 'Trim 1 set / lift']],
+    ['amber-shield', ['Single-day recovery dip', 'Trim 1 set / lift', 'Open Local Test Lab']],
+    ['primed-progression', ["You're ready to push it", 'Barbell Back Squat']],
+    ['today-finished', ['Completed', 'sets', 'Open Local Test Lab']],
     ['home-gym', ['Dumbbell', 'Open Local Test Lab']],
     ['travel-bodyweight', ['Push-Up', 'Open Local Test Lab']],
-    ['imperial-lb', ['LB', 'Open Local Test Lab']],
-    ['strength-imbalances-female', ['Strength standards', 'Strength levels', 'Barbell Bench Press']],
+    ['imperial-lb', ['lb', 'Open Local Test Lab']],
+    ['strength-imbalances-female', ['Strength standards', 'Progress', 'Open Local Test Lab']],
     ['active-days-wearables', ['Progress', 'Strength standards', 'Open Local Test Lab']],
   ];
 

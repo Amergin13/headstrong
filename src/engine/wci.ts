@@ -1,5 +1,11 @@
 import { WorkoutSession } from './types';
-import { getBodyweightLoadRatio, toCombinedExternalLoadKg } from './e1rm';
+import { getBodyweightLoadRatio, isAssistedExercise, toCombinedExternalLoadKg } from './e1rm';
+
+/**
+ * Floor on Heart Rate Reserve fraction used inside the WCI cardiovascular-cost term so
+ * lifting with minimal cardiovascular effort or taking excessively long rests cannot inflate WCI.
+ */
+export const WCI_HRR_FLOOR = 0.35;
 
 /**
  * Calculates Heart Rate Reserve Percentage (HRR%):
@@ -43,7 +49,9 @@ export function calculateSessionTonnage(
     const isTimed = Boolean(
       ex.repTargetType === 'duration' || ex.durationSeconds || ex.durationMinutesRange
     );
+    const isAssisted = isAssistedExercise(ex);
     const isCalisthenic =
+      isAssisted ||
       ex.equipment === 'bodyweight' ||
       ex.equipment === 'weighted_bodyweight' ||
       Boolean(ex.isWeightedCalisthenic);
@@ -63,7 +71,9 @@ export function calculateSessionTonnage(
       if (s.actualReps && s.actualReps > 0) {
         const loggedWeight = s.actualWeightKg ?? s.targetWeightKg ?? 0;
         const addedWeight = toCombinedExternalLoadKg(loggedWeight, ex);
-        const effectiveWeight = bwLoad + addedWeight;
+        const effectiveWeight = isAssisted
+          ? Math.max(0, bwLoad > 0 ? bwLoad - loggedWeight : 0)
+          : bwLoad + addedWeight;
         tonnageKg += effectiveWeight * s.actualReps;
         completedSetsCount++;
       }
@@ -75,10 +85,13 @@ export function calculateSessionTonnage(
 
 /**
  * Work Capacity Index (WCI):
- * Formula: WCI = (Effective Tonnage * Sets) / (Avg Session HRR% * Duration_minutes)
+ * Formula: WCI = Effective Tonnage / (Duration_minutes * (1 + max(0.35, Avg Session HRR%)))
  *
- * High WCI indicates the lifter is handling more volume/density with less cardiovascular strain,
- * proving physiological conditioning alongside mechanical overload.
+ * Mechanical work rate (kg/min) normalized by bounded cardiovascular cost:
+ * - No CompletedSets multiplier in the numerator (tonnage already scales with sets; multiplying
+ *   again caused quadratic scaling that rewarded high-volume junk sets).
+ * - Bounded (1 + max(0.35, HRR%)) denominator rewards genuine cardiovascular conditioning at equal
+ *   work density without allowing long rests or low-effort heart rates to inflate the score.
  */
 export function calculateWci(
   session: WorkoutSession,
@@ -94,10 +107,11 @@ export function calculateWci(
   if (!session.avgHeartRate) return 0;
   const avgHr = session.avgHeartRate;
   const hrrPct = calculateHrrPercentage(avgHr, restingHr, maxHr);
+  const boundedHrr = Math.max(WCI_HRR_FLOOR, hrrPct);
 
-  const denominator = hrrPct * durationMin;
+  const denominator = durationMin * (1 + boundedHrr);
   if (denominator <= 0) return 0;
 
-  const wci = (tonnageKg * completedSetsCount) / denominator;
+  const wci = tonnageKg / denominator;
   return Math.round(wci);
 }

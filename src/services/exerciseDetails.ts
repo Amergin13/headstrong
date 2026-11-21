@@ -580,3 +580,49 @@ export function buildExerciseDetailModel(params: {
     metricTitle,
   };
 }
+
+/**
+ * Builds a consistent ExerciseSession + catalog definition for inspecting any exercise
+ * from non-workout entry points (Progress, Past Workouts, Split Editor) using the exact
+ * same canonical ExerciseDetailModal view.
+ */
+export function buildInspectExerciseSession(params: {
+  exerciseId: string;
+  exerciseCatalog: ExerciseDefinition[];
+  workouts: WorkoutSession[];
+  fallbackName?: string;
+}): { exercise: ExerciseSession; exerciseDef?: ExerciseDefinition } | null {
+  const { exerciseId, exerciseCatalog, workouts, fallbackName } = params;
+  const def = exerciseCatalog.find((e) => e.id === exerciseId);
+  const latestLogged = workouts
+    .filter((w) => w.completed)
+    .sort((a, b) => getWorkoutCompletedAt(b) - getWorkoutCompletedAt(a))
+    .flatMap((w) => w.exercises)
+    .find((e) => e.exerciseId === exerciseId);
+
+  if (!def && !latestLogged) return null;
+
+  const exercise: ExerciseSession = {
+    id: latestLogged?.id ?? `inspect-${exerciseId}`,
+    exerciseId,
+    name: def?.name ?? latestLogged?.name ?? fallbackName ?? exerciseId,
+    pillar: def?.pillar ?? latestLogged?.pillar ?? 'Horizontal Push',
+    equipment: def?.equipment ?? latestLogged?.equipment ?? 'barbell',
+    minReps: def?.defaultRepRange?.[0] ?? latestLogged?.minReps ?? 8,
+    maxReps: def?.defaultRepRange?.[1] ?? latestLogged?.maxReps ?? 12,
+    isRdl: def?.isRdl ?? latestLogged?.isRdl,
+    isWeightedCalisthenic: def?.isWeightedCalisthenic ?? latestLogged?.isWeightedCalisthenic,
+    isAssisted: def?.isAssisted ?? latestLogged?.isAssisted,
+    isIsolation: def?.isIsolation ?? latestLogged?.isIsolation,
+    resistanceProfile: def?.resistanceProfile ?? latestLogged?.resistanceProfile,
+    tempo: latestLogged?.tempo,
+    restSeconds: latestLogged?.restSeconds,
+    durationSeconds: latestLogged?.durationSeconds,
+    repTargetType: latestLogged?.repTargetType,
+    exerciseNotes: latestLogged?.exerciseNotes,
+    notes: latestLogged?.notes,
+    sets: [],
+  };
+
+  return { exercise, exerciseDef: def };
+}

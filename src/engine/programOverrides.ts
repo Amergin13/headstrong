@@ -159,6 +159,16 @@ function applySingleOverrideToTemplate(
       if (targetSets !== e.sets) changed = true;
       return { ...e, sets: targetSets };
     });
+  } else if (override.kind === 'adjust_rep_range' && override.repRange && override.repRange.length === 2) {
+    const [minR, maxR] = override.repRange;
+    const cleanMin = Math.max(1, Math.min(30, Math.round(Math.min(minR, maxR))));
+    const cleanMax = Math.max(cleanMin, Math.min(35, Math.round(Math.max(minR, maxR))));
+    const repStr = cleanMin === cleanMax ? `${cleanMin}` : `${cleanMin}-${cleanMax}`;
+    nextExercises = nextExercises.map((e) => {
+      if (!matchesTarget(e, override.targetExerciseId, override.targetExerciseName)) return e;
+      if (e.reps !== repStr) changed = true;
+      return { ...e, reps: repStr };
+    });
   } else if (override.kind === 'prioritize_first') {
     const idx = nextExercises.findIndex((e) =>
       matchesTarget(e, override.targetExerciseId, override.targetExerciseName)

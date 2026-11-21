@@ -373,8 +373,8 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
             'Sync your overnight recovery score, HRV, resting heart rate, and sleep duration automatically to calibrate your daily training volume and RIR targets.'}
           {selectedProvider === 'health_connect' &&
             (hcBridgeAvailable
-              ? 'Allow Health Connect below so workouts and daily step counts from Google Pixel Watch, Fitbit, Samsung Health, Garmin and Wear OS sync automatically. You can also import a JSON export file for recovery metrics.'
-              : "In the Treise app from Google Play, Health Connect workouts and daily step counts from Pixel Watch, Fitbit, Samsung Health and Garmin sync automatically. If you have a Health Connect export file, you can import it below.")}
+              ? 'Allow Health Connect below so sleep, heart rate, HRV, weight, body fat, workouts, and daily steps from Google Pixel Watch, Fitbit, Samsung Health, Garmin and Wear OS sync automatically.'
+              : "In the Treise app from Google Play, Android Health Connect syncs sleep, heart rate, HRV, weight, body fat, workouts, and daily steps from Pixel Watch, Fitbit, Samsung Health and Garmin automatically. You can also import an export file below.")}
         </p>
       )}
 

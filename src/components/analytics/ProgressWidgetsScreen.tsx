@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Check } from 'lucide-react';
+import { Check, Sparkles } from 'lucide-react';
 import { ExerciseDefinition, ProgressWidgetId, WorkoutSession } from '../../engine/types';
 import {
   PROGRESS_CHART_WIDGETS,
@@ -20,6 +20,7 @@ interface ProgressWidgetsScreenProps {
   isDefault: boolean;
   onToggle: (id: ProgressWidgetId) => void;
   onReset: () => void;
+  onAskCoach?: (prompt?: string) => void;
 }
 
 const WidgetRow: React.FC<{
@@ -78,6 +79,7 @@ export const ProgressWidgetsScreen: React.FC<ProgressWidgetsScreenProps> = ({
   isDefault,
   onToggle,
   onReset,
+  onAskCoach,
 }) => {
   const [tab, setTab] = useState<PickerTab>('overview');
   const [query, setQuery] = useState('');
@@ -134,8 +136,27 @@ export const ProgressWidgetsScreen: React.FC<ProgressWidgetsScreenProps> = ({
           <span className="wk-pill shrink-0">{activeWidgets.length} active</span>
         </div>
         <p className="wk-body mt-2 max-w-prose">
-          Pin individual exercise progressions, arm and waist measurements, or overview cards. You can also ask Treise in chat.
+          Pin individual exercise progressions, arm and waist measurements, or overview cards.
         </p>
+        {onAskCoach && (
+          <button
+            type="button"
+            onClick={() => {
+              triggerHaptic('light');
+              onAskCoach();
+            }}
+            className="wk-btn-secondary w-full mt-3 min-h-[44px] inline-flex items-center justify-center gap-2"
+            style={{ borderColor: 'rgb(var(--color-coach-accent-rgb) / 0.35)' }}
+          >
+            <Sparkles
+              className="w-4 h-4 shrink-0"
+              style={{ color: 'var(--color-coach-accent)' }}
+              strokeWidth={2.2}
+              aria-hidden="true"
+            />
+            <span>Customize widgets with Treise</span>
+          </button>
+        )}
         {customPinned.length > 0 && (
           <div className="flex flex-wrap gap-2 mt-3">
             {customPinned.map((id) => (

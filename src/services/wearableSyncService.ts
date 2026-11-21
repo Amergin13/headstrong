@@ -6,7 +6,7 @@ import {
   WearableSyncProgress,
 } from '../engine/types';
 import {
-  fetchFitbitDailyBiometrics,
+  FITBIT_HEALTH_CONNECT_MIGRATION_MESSAGE,
   simulatePixelWatchSync,
 } from './fitbitService';
 import {
@@ -17,6 +17,11 @@ import {
 import {
   simulateHealthConnectSync,
 } from './healthConnectService';
+import {
+  HealthConnectBiometricDay,
+  getHealthConnectStatus,
+  readHealthConnectBiometrics,
+} from './healthConnectBridge';
 import { localDateString } from '../utils/date';
 import { SEMANTIC_COLOR } from '../styles/semanticTokens';
 
@@ -32,16 +37,16 @@ export interface WearableProviderMeta {
 export const WEARABLE_PROVIDERS: Record<WearableProvider, WearableProviderMeta> = {
   fitbit: {
     id: 'fitbit',
-    name: 'Google Pixel Watch / Fitbit',
-    tagline: 'Fitbit Web API & Pixel Watch Telemetry',
-    description: 'Syncs overnight heart rate recovery, resting pulse, sleep stages, and active zone minutes.',
-    hardwareFocus: 'Google Pixel Watch 1, 2, 3 & Fitbit Sense/Charge',
+    name: 'Google Pixel Watch / Fitbit (via Health Connect)',
+    tagline: 'Synced automatically via Android Health Connect',
+    description: 'Legacy Fitbit Web API was retired Nov 2, 2026. Connect Android Health Connect to sync Pixel Watch and Fitbit sleep, HR, HRV, weight, body fat, steps, and workouts.',
+    hardwareFocus: 'Google Pixel Watch 1, 2, 3 & Fitbit Sense/Charge (via Health Connect)',
     accentColor: SEMANTIC_COLOR.statusInfo,
   },
   whoop: {
     id: 'whoop',
     name: 'Whoop',
-    tagline: 'Whoop Developer Platform API v1',
+    tagline: 'Whoop Developer Platform API v2',
     description: 'Syncs recovery score, HRV RMSSD, sleep performance, and strain telemetry.',
     hardwareFocus: 'Whoop strap or band',
     accentColor: SEMANTIC_COLOR.statusInfo,
@@ -49,9 +54,9 @@ export const WEARABLE_PROVIDERS: Record<WearableProvider, WearableProviderMeta> 
   health_connect: {
     id: 'health_connect',
     name: 'Android Health Connect',
-    tagline: 'Android 14+ Unified Health Ecosystem',
-    description: 'On-device health hub aggregating HeartRateVariability, RestingHeartRate, Sleep, and Steps.',
-    hardwareFocus: 'Samsung Galaxy Watch, Wear OS, Pixel Watch & Garmin',
+    tagline: 'Android Unified Hub (Fitbit, Pixel Watch, Samsung & Garmin)',
+    description: 'On-device health hub syncing sleep, heart rate, resting HR, HRV, weight, body fat, steps, and workouts automatically.',
+    hardwareFocus: 'Google Pixel Watch, Fitbit, Samsung Galaxy Watch, Wear OS & Garmin',
     accentColor: SEMANTIC_COLOR.statusInfo,
   },
 };
@@ -125,38 +130,33 @@ export async function syncWearableBiometrics(
     }
 
     case 'health_connect': {
-      throw new Error('Health Connect data is added by importing an export file (Import Data below).');
+      const hc = getHealthConnectStatus();
+      if (hc.bridge && hc.biometricsGranted) {
+        onProg({ stage: 'connecting', percent: 25, message: 'Reading Health Connect biometrics...', provider: 'health_connect' });
+        const days = await readHealthConnectBiometrics(new Date(Date.now() - 14 * 86400000));
+        if (!days.length) {
+          throw new Error('Health Connect is connected, but no recent sleep, heart rate, HRV, or weight records were found yet.');
+        }
+        const latest = days[days.length - 1];
+        onProg({ stage: 'complete', percent: 100, message: 'Health Connect synced', provider: 'health_connect' });
+        return {
+          date: latest.date || localDateString(),
+          bodyweightKg: latest.bodyweightKg || 0,
+          bodyFatPct: latest.bodyFatPct,
+          hrvRmssd: latest.hrvRmssd || 0,
+          restingHr: latest.restingHr || 0,
+          sleepHours: latest.sleepHours || 0,
+          steps: latest.steps || 0,
+          activeZoneMinutes: 0,
+          source: 'health_connect',
+        };
+      }
+      throw new Error('Open Treise on Android to sync Health Connect automatically, or import an export file below.');
     }
 
     case 'fitbit':
     default: {
-      if (!options?.accessToken) {
-        throw new Error('Connect your Pixel Watch or Fitbit first, then sync.');
-      }
-      onProg({ stage: 'connecting', percent: 20, message: 'Connecting to Fitbit...', provider: 'fitbit' });
-      const liveData = await fetchFitbitDailyBiometrics(options.accessToken, undefined, options.refreshToken);
-      if (!(liveData.hrvRmssd || liveData.restingHr || liveData.fitbitReadinessScore)) {
-        throw new Error(
-          "Fitbit is connected, but today's sleep and heart data aren't ready yet. Sync your watch in the Fitbit app, then try again."
-        );
-      }
-      onProg({ stage: 'complete', percent: 100, message: 'Fitbit synced', provider: 'fitbit' });
-      return {
-        date: liveData.date || localDateString(),
-        bodyweightKg: liveData.bodyweightKg || 0,
-        hrvRmssd: liveData.hrvRmssd || 0,
-        restingHr: liveData.restingHr || 0,
-        sleepHours: liveData.sleepHours || 0,
-        steps: liveData.steps || 0,
-        activeZoneMinutes: liveData.activeZoneMinutes || 0,
-        vo2Max: liveData.vo2Max,
-        fitbitReadinessScore: liveData.fitbitReadinessScore,
-        readinessScore: liveData.readinessScore || liveData.fitbitReadinessScore,
-        kilojoules: liveData.kilojoules,
-        avgWorkoutHr: liveData.avgWorkoutHr,
-        maxWorkoutHr: liveData.maxWorkoutHr,
-        source: 'fitbit',
-      };
+      throw new Error(FITBIT_HEALTH_CONNECT_MIGRATION_MESSAGE);
     }
   }
 }
@@ -358,4 +358,44 @@ export function mergeDailySteps(
     }
   }
   return changed ? updated.sort((a, b) => a.date.localeCompare(b.date)) : prev;
+}
+
+/**
+ * Merges daily biometric records read natively from Android Health Connect (sleep, resting HR,
+ * HRV RMSSD, weight, body fat, steps) into local biometric history without ever overwriting
+ * an athlete's manual weigh-ins or fabricating missing values.
+ */
+export function mergeHealthConnectBiometrics(
+  prev: BiometricLog[],
+  days: HealthConnectBiometricDay[]
+): BiometricLog[] {
+  const clean = days.filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d.date));
+  if (!clean.length) return prev;
+  let next = prev;
+  for (const d of clean) {
+    const hasAny =
+      (d.sleepHours ?? 0) > 0 ||
+      (d.restingHr ?? 0) > 0 ||
+      (d.hrvRmssd ?? 0) > 0 ||
+      (d.bodyweightKg ?? 0) > 0 ||
+      (d.bodyFatPct ?? 0) > 0 ||
+      (d.steps ?? 0) > 0;
+    if (!hasAny) continue;
+    next = mergeWearableLog(
+      next,
+      {
+        date: d.date,
+        bodyweightKg: d.bodyweightKg || 0,
+        bodyFatPct: d.bodyFatPct,
+        hrvRmssd: d.hrvRmssd || 0,
+        restingHr: d.restingHr || 0,
+        sleepHours: d.sleepHours || 0,
+        steps: d.steps || 0,
+        activeZoneMinutes: 0,
+        source: 'health_connect',
+      },
+      'health_connect'
+    );
+  }
+  return next.sort((a, b) => a.date.localeCompare(b.date));
 }

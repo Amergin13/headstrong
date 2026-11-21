@@ -4,8 +4,6 @@
  */
 import whoopToken from '../api/whoop/token';
 import whoopBiometrics from '../api/whoop/biometrics';
-import fitbitToken from '../api/fitbit/token';
-import fitbitBiometrics from '../api/fitbit/biometrics';
 import stravaToken from '../api/strava/token';
 import stravaActivities from '../api/strava/activities';
 import coachGenerate from '../api/coach/generate';
@@ -180,84 +178,9 @@ const iso = (msAgo: number) => new Date(Date.now() - msAgo).toISOString();
   );
   assert(res.body.biometrics.workoutStrain === undefined, 'No Whoop workout in the session window means no strain is attached');
 
-  // ---------------------------------------------------------------- Fitbit / Google Health token proxy
-  console.log('\n[Fitbit / Google Health token proxy]');
-  delete process.env.FITBIT_CLIENT_ID;
-  delete process.env.FITBIT_CLIENT_SECRET;
-  delete process.env.GOOGLE_HEALTH_CLIENT_ID;
-  delete process.env.GOOGLE_HEALTH_CLIENT_SECRET;
-  installFetch(() => ({ status: 200, body: { access_token: 'a' } }));
-  res = mockRes();
-  await fitbitToken({ method: 'GET', headers: {} }, res);
-  assert(
-    res.body?.configured === false && !res.body?.clientId,
-    'Fitbit token proxy reports configured: false when no server client ID and secret are set'
-  );
-  res = mockRes();
-  await fitbitToken({ method: 'POST', headers: { origin: 'https://treise.vercel.app' }, body: 'code=abc&client_id=23QW89' }, res);
-  assert(
-    res.statusCode === 503 && calls.length === 0,
-    'Without FITBIT_CLIENT_SECRET or GOOGLE_HEALTH_CLIENT_SECRET the proxy refuses instead of calling a decommissioned endpoint'
-  );
-
-  process.env.GOOGLE_HEALTH_CLIENT_ID = '123456-gh.apps.googleusercontent.com';
-  process.env.GOOGLE_HEALTH_CLIENT_SECRET = 'gh-server-secret';
-  installFetch((url) =>
-    url.includes('oauth2.googleapis.com/token')
-      ? { status: 200, body: { access_token: 'ya29.test_tok', refresh_token: '1//gh_ref', expires_in: 3599 } }
-      : undefined
-  );
-  res = mockRes();
-  await fitbitToken({ method: 'GET', headers: {} }, res);
-  assert(
-    res.body?.configured === true &&
-      res.body?.mode === 'google_health' &&
-      res.body?.clientId === '123456-gh.apps.googleusercontent.com' &&
-      !JSON.stringify(res.body).includes('gh-server-secret'),
-    'Fitbit token GET exposes Google Health clientId and mode without leaking client secret'
-  );
-  res = mockRes();
-  await fitbitToken(
-    {
-      method: 'POST',
-      headers: { origin: 'https://treise.vercel.app' },
-      body: 'code=authcode&code_verifier=pkce123&client_secret=attacker&redirect_uri=https://evil.example',
-    },
-    res
-  );
-  const sentGh = new URLSearchParams(calls[0]?.init?.body || '');
-  assert(
-    res.statusCode === 200 && res.body?.access_token === 'ya29.test_tok',
-    'Google Health token exchange succeeds via oauth2.googleapis.com/token'
-  );
-  assert(
-    sentGh.get('client_id') === '123456-gh.apps.googleusercontent.com' &&
-      sentGh.get('client_secret') === 'gh-server-secret' &&
-      sentGh.get('redirect_uri') === 'https://treise.vercel.app/oauth/callback',
-    'Google Health token proxy pins client_id, client_secret and redirect_uri server-side'
-  );
-  delete process.env.GOOGLE_HEALTH_CLIENT_ID;
-  delete process.env.GOOGLE_HEALTH_CLIENT_SECRET;
-
-  // ---------------------------------------------------------------- Fitbit biometrics proxy
-  console.log('\n[Fitbit biometrics proxy]');
-  installFetch((url) => {
-    if (url.includes('/activities/heart/')) return { status: 200, body: { 'activities-heart': [{ value: { restingHeartRate: 57, heartRateZones: [{ name: 'Peak', min: 160 }] } }] } };
-    if (url.includes('/hrv/')) return { status: 200, body: { hrv: [{ value: { dailyRmssd: 48.6 } }] } };
-    if (url.includes('/sleep/')) return { status: 200, body: { summary: { totalMinutesAsleep: 412 } } };
-    if (url.includes('/activities/date/')) return { status: 200, body: { summary: { steps: 8123, activeZoneMinutes: { totalMinutes: 31 }, caloriesOut: 2400 } } };
-    if (url.includes('/body/log/weight/')) return { status: 200, body: { weight: [{ weight: 81.35 }] } };
-    if (url.includes('/readiness/')) return { status: 404, body: {} };
-    return undefined;
-  });
-  res = mockRes();
-  await fitbitBiometrics({ method: 'POST', headers: { authorization: 'Bearer tok' }, body: {}, query: { date: '2026-10-22' } }, res);
-  const f = res.body?.biometrics || {};
-  assert(f.restingHr === 57 && f.hrvRmssd === 49 && f.sleepHours === 6.9, 'Maps resting HR, HRV and sleep from Fitbit');
-  assert(f.steps === 8123 && f.activeZoneMinutes === 31 && f.bodyweightKg === 81.4, 'Maps steps, active minutes and weight');
-  assert(f.maxWorkoutHr === undefined, 'Does not invent a workout peak heart rate from zone boundaries');
-  assert(f.fitbitReadinessScore === undefined, "Does not label its own estimate as Fitbit's readiness score");
-  assert(calls.every((c) => !c.url.includes('/date/') || c.url.includes('2026-10-22')), "Uses the athlete's local date sent by the app");
+  // ---------------------------------------------------------------- Decommissioned Fitbit Web API check
+  console.log('\n[Legacy Fitbit Web API decommissioned]');
+  assert(!fs.existsSync(path.join(process.cwd(), 'api/fitbit')), 'Dead api/fitbit/ proxy directory is permanently removed');
 
   // A dead Whoop sign-in is reported as that, not as "no data yet".
   installFetch((url) => {
@@ -269,143 +192,8 @@ const iso = (msAgo: number) => new Date(Date.now() - msAgo).toISOString();
   await whoopBiometrics({ method: 'POST', headers: { authorization: 'Bearer dead' }, body: { refreshToken: 'dead' }, query: {} }, res);
   assert(res.statusCode === 401 && res.body?.error === 'whoop_reconnect_needed', 'A Whoop sign-in that can no longer refresh says so');
 
-  // Google Health API v4 biometrics & sessions
-  installFetch((url) => {
-    if (url.includes('/dataTypes/daily-resting-heart-rate/dataPoints')) {
-      return { status: 200, body: { dataPoints: [{ dailyRestingHeartRate: { date: { year: 2026, month: 10, day: 21 }, beatsPerMinute: '61' } }, { dailyRestingHeartRate: { date: { year: 2026, month: 10, day: 22 }, beatsPerMinute: '54' } }] } };
-    }
-    if (url.includes('/dataTypes/daily-heart-rate-variability/dataPoints')) {
-      return { status: 200, body: { dataPoints: [{ dailyHeartRateVariability: { date: { year: 2026, month: 10, day: 22 }, averageHeartRateVariabilityMilliseconds: 63.4 } }] } };
-    }
-    if (url.includes('/dataTypes/sleep/dataPoints')) {
-      return {
-        status: 200,
-        body: {
-          dataPoints: [
-            {
-              sleep: {
-                interval: { startTime: '2026-10-21T23:00:00Z', endTime: '2026-10-22T06:45:00Z' },
-                summary: { minutesAsleep: '450', minutesInSleepPeriod: '465' },
-              },
-            },
-          ],
-        },
-      };
-    }
-    if (url.includes('/dataTypes/steps/dataPoints')) {
-      return { status: 200, body: { dataPoints: [{ steps: { count: '6200', interval: { startTime: '2026-10-22T08:00:00Z', endTime: '2026-10-22T08:01:00Z' } } }, { steps: { count: '3100', interval: { startTime: '2026-10-22T08:00:00Z', endTime: '2026-10-22T08:01:00Z' } } }, { steps: { count: '999', interval: { startTime: '2026-10-21T08:00:00Z', endTime: '2026-10-21T08:01:00Z' } } }] } };
-    }
-    if (url.includes('/dataTypes/active-zone-minutes/dataPoints')) {
-      return { status: 200, body: { dataPoints: [{ activeZoneMinutes: { activeZoneMinutes: '28', interval: { startTime: '2026-10-22T08:00:00Z', endTime: '2026-10-22T08:01:00Z' } } }, { activeZoneMinutes: { activeZoneMinutes: '14', interval: { startTime: '2026-10-22T08:00:00Z', endTime: '2026-10-22T08:01:00Z' } } }] } };
-    }
-    if (url.includes('/dataTypes/weight/dataPoints')) {
-      return { status: 200, body: { dataPoints: [{ weight: { weightGrams: 80640, sampleTime: { physicalTime: '2026-10-22T07:00:00Z' } } }] } };
-    }
-    return undefined;
-  });
-  res = mockRes();
-  await fitbitBiometrics(
-    { method: 'POST', headers: { authorization: 'Bearer ya29.google_health_tok' }, body: {}, query: { date: '2026-10-22' } },
-    res
-  );
-  const ghBio = res.body?.biometrics || {};
-  assert(
-    ghBio.restingHr === 54 &&
-      ghBio.hrvRmssd === 63 &&
-      ghBio.sleepHours === 7.5 &&
-      ghBio.steps === 9300 &&
-      ghBio.activeZoneMinutes === 42 &&
-      ghBio.bodyweightKg === 80.6,
-    'Google Health API v4 biometrics: maps RHR, HRV RMSSD, time asleep, steps, active zone minutes and weight'
-  );
-
-  // A day with no readings stays empty: another day's number is never shown as today's.
-  installFetch((url) => {
-    if (url.includes('/dataTypes/daily-resting-heart-rate/dataPoints')) {
-      return { status: 200, body: { dataPoints: [{ dailyRestingHeartRate: { date: { year: 2026, month: 10, day: 21 }, beatsPerMinute: '61' } }] } };
-    }
-    if (url.includes('/dataTypes/daily-heart-rate-variability/dataPoints')) {
-      return { status: 200, body: { dataPoints: [{ dailyHeartRateVariability: { date: { year: 2026, month: 10, day: 21 }, averageHeartRateVariabilityMilliseconds: 70 } }] } };
-    }
-    if (url.includes('/dataTypes/sleep/dataPoints')) {
-      return { status: 200, body: { dataPoints: [{ sleep: { interval: { startTime: '2026-10-20T23:00:00Z', endTime: '2026-10-21T06:00:00Z' }, summary: { minutesAsleep: '400' } } }] } };
-    }
-    return undefined;
-  });
-  res = mockRes();
-  await fitbitBiometrics(
-    { method: 'POST', headers: { authorization: 'Bearer ya29.google_health_tok' }, body: {}, query: { date: '2026-10-22' } },
-    res
-  );
-  const ghStale = res.body?.biometrics || {};
-  assert(
-    ghStale.restingHr === undefined && ghStale.hrvRmssd === undefined && ghStale.sleepHours === undefined,
-    "Google Health API v4 biometrics: yesterday's readings are never reported as today's"
-  );
-
-  installFetch((url) => {
-    if (url.includes('/dataTypes/exercise/dataPoints')) {
-      return {
-        status: 200,
-        body: {
-          dataPoints: [
-            {
-              dataPointName: 'users/me/dataTypes/exercise/dataPoints/gh-ex-1',
-              exercise: {
-                exerciseType: 'RUNNING',
-                displayName: 'Morning run',
-                activeDuration: '2100s',
-                interval: { startTime: '2026-10-22T07:00:00Z', endTime: '2026-10-22T07:40:00Z' },
-                metricsSummary: { distanceMeters: 6400, averageHeartRateBpm: 148.2, activeEnergyKilocalories: 410 },
-              },
-            },
-          ],
-        },
-      };
-    }
-    return undefined;
-  });
-  res = mockRes();
-  await fitbitBiometrics(
-    { method: 'POST', headers: {}, body: { mode: 'sessions', accessToken: 'ya29.google_health_tok', afterDate: '2026-10-08' }, query: {} },
-    res
-  );
-  const ghSessions = res.body?.sessions || [];
-  assert(
-    res.body?.success &&
-      ghSessions.length === 1 &&
-      ghSessions[0].externalId === 'gh-ex-1' &&
-      ghSessions[0].name === 'Morning run' &&
-      ghSessions[0].minutes === 35 &&
-      ghSessions[0].distanceKm === 6.4 &&
-      ghSessions[0].avgHeartRate === 148,
-    'Google Health API v4 exercise sessions: maps id, duration, distance and average heart rate'
-  );
-
   // ---------------------------------------------------------------- Workout lists for active days
-  console.log('\n[Fitbit / Whoop workout lists]');
-  installFetch((url) => {
-    if (url.includes('/activities/list.json'))
-      return {
-        status: 200,
-        body: {
-          activities: [
-            { logId: 111, activityName: 'Bike', startTime: '2026-10-21T07:30:00.000+01:00', activeDuration: 32 * 60000, distance: 10, distanceUnit: 'Mile', averageHeartRate: 131 },
-            { logId: 112, activityName: 'Walk', startTime: '2026-10-22T12:00:00.000+01:00', duration: 25 * 60000 },
-          ],
-        },
-      };
-    return undefined;
-  });
-  res = mockRes();
-  await fitbitBiometrics({ method: 'POST', headers: {}, body: { mode: 'sessions', accessToken: 'tok', afterDate: '2026-10-08' }, query: {} }, res);
-  const fs1 = res.body?.sessions || [];
-  assert(
-    res.body?.success && fs1.length === 2 && fs1[0].externalId === '111' && fs1[0].minutes === 32 && fs1[0].distanceKm === 16.1 && fs1[0].avgHeartRate === 131,
-    'Fitbit exercise log: id, minutes, distance (miles to km) and heart rate'
-  );
-  assert(calls.length === 1 && calls[0].url.includes('afterDate=2026-10-08'), 'Fitbit sessions mode reads only the exercise log, from the date the app sends');
-
+  console.log('\n[Whoop workout lists]');
   installFetch((url) => {
     if (url.includes('/activity/workout'))
       return {
@@ -627,6 +415,40 @@ const iso = (msAgo: number) => new Date(Date.now() - msAgo).toISOString();
       toolPayload?.tools?.[0]?.functionDeclarations?.[0]?.name === 'reset_program' &&
       toolPayload?.generationConfig?.maxOutputTokens === 400,
     'Coach POST forwards tools declarations and returns parsed functionCall cleanly'
+  );
+
+  // Verify all 21 OOUX coach tools (up to 32 cap) are forwarded without truncation at 16
+  let multiToolPayload: any = null;
+  installFetch((_url, init) => {
+    multiToolPayload = JSON.parse(String(init?.body || '{}'));
+    return {
+      status: 200,
+      body: { candidates: [{ content: { parts: [{ text: 'All tools registered.' }] } }] },
+    };
+  });
+  const twentyOneTools = Array.from({ length: 21 }, (_, idx) => ({
+    name: `coach_tool_${idx + 1}`,
+    description: `Tool ${idx + 1}`,
+    parameters: { type: 'object', properties: {}, required: [] },
+  }));
+  res = mockRes();
+  await coachGenerate(
+    {
+      method: 'POST',
+      headers: {},
+      body: {
+        systemPrompt: 'sys',
+        userPrompt: 'check tools',
+        tools: twentyOneTools,
+      },
+    },
+    res
+  );
+  assert(
+    res.statusCode === 200 &&
+      multiToolPayload?.tools?.[0]?.functionDeclarations?.length === 21 &&
+      multiToolPayload?.tools?.[0]?.functionDeclarations?.[20]?.name === 'coach_tool_21',
+    'Coach POST forwards all 21 OOUX tool declarations (32 tool cap, no truncation at 16)'
   );
 
   delete process.env.GEMINI_API_KEY;

@@ -16,7 +16,9 @@ import {
 import {
   calculateE1RM,
   calculateHypertrophyBodyweightReps,
+  isAssistedExercise,
   isTimedExercise,
+  learnExerciseEnduranceSlope,
   solveTargetWeightForE1RM,
   translateWeightBetweenImplements,
   usesOneDumbbell,
@@ -292,6 +294,8 @@ export interface SwapPrescription {
   isCrossFamily: boolean;
   tempoCue?: string;
   rationale: string;
+  /** Biomechanical continuity summary (stretch bias, stability, fractional muscle attribution). */
+  biomechanicalSummary?: string;
 }
 
 /**
@@ -530,6 +534,47 @@ export function prescribeExerciseSwap(params: {
       : `Calibrated for ${minReps}–${maxReps} reps (${goalPhase})`;
   }
 
+  const targetIdLower = targetDef.id.toLowerCase();
+  const derivedProfile =
+    targetDef.resistanceProfile ||
+    (/(rdl|incline|cable-lateral|calf|leg-curl|nordic|leg-extension|pullup|squat|lunge|step-up|skullcrusher|fly)/.test(
+      targetIdLower
+    )
+      ? 'lengthened'
+      : /(pushdown|face-pull|pull-apart|hip-thrust|glute-bridge|db-lateral|cable-row)/.test(
+          targetIdLower
+        )
+      ? 'shortened'
+      : 'mid');
+  const stretchNote =
+    derivedProfile === 'lengthened'
+      ? 'Preserves lengthened-stretch stimulus'
+      : derivedProfile === 'shortened'
+      ? 'Shortened peak tension profile'
+      : 'Balanced mid-range resistance curve';
+  const derivedStability =
+    targetDef.stability ||
+    (/(split-squat|bulgarian|lunge|pistol|single-leg|trx|ring|gymball|handstand)/.test(targetIdLower)
+      ? 'low'
+      : targetDef.equipment === 'machine' ||
+        targetDef.equipment === 'cable' ||
+        /(leg-press|hack|chest-supported|preacher|seated-calf|leg-curl|leg-extension|pulldown)/.test(
+          targetIdLower
+        )
+      ? 'high'
+      : 'moderate');
+  const stabilityNote =
+    derivedStability === 'high'
+      ? 'high external stability'
+      : derivedStability === 'low'
+      ? 'unilateral/balance stability demand'
+      : 'moderate free-weight stability';
+  const secNote =
+    targetDef.secondaryMuscles && targetDef.secondaryMuscles.length > 0
+      ? ` · 1.0× ${targetDef.primaryMuscle} + 0.5× ${targetDef.secondaryMuscles.join(', ')}`
+      : ` · 1.0× ${targetDef.primaryMuscle}`;
+  const biomechanicalSummary = `${stretchNote} (${stabilityNote}${secNote}); original lift's progression curve stays untouched.`;
+
   return {
     targetWeightKg: snapLoadKg(rawTargetWeightKg, unit, targetDef.equipment),
     targetReps,
@@ -541,6 +586,7 @@ export function prescribeExerciseSwap(params: {
     usedOwnHistory: false,
     isCrossFamily,
     rationale,
+    biomechanicalSummary,
   };
 }
 
@@ -882,6 +928,11 @@ export function prescribeDoubleProgression(
   }
 
   // Evaluate Double Progression cleanly through the single shared rule engine
+  const isAssisted = isAssistedExercise(session);
+  const learnedSlope =
+    historicalWorkouts && historicalWorkouts.length > 0
+      ? learnExerciseEnduranceSlope(session.exerciseId, historicalWorkouts)
+      : null;
   const evaluation = evaluateRepRangeDoubleProgression({
     completedWorkingSets: sets,
     sourcePrescribedSetCount: sourceWorkingSets.length || sets.length,
@@ -890,14 +941,26 @@ export function prescribeDoubleProgression(
     maxReps,
     sourceMinReps: isCrossImplement ? minReps : sourceMinReps,
     sourceMaxReps: isCrossImplement ? maxReps : sourceMaxReps,
-    targetRir: firstWorkingInSession?.targetRir,
+    sourceTargetRir: sourceWorkingSets[sourceWorkingSets.length - 1]?.targetRir ?? sets[sets.length - 1]?.targetRir,
+    targetRir: targetSets[targetSets.length - 1]?.targetRir ?? firstWorkingInSession?.targetRir,
     currentWeightKg: currentWeight,
     equipment: session.equipment,
     readinessState,
     unit,
     isPureBodyweight,
+    isAssisted,
+    epleyDenominator: learnedSlope?.isPersonalized ? learnedSlope.denominator : undefined,
     weightOfSetKg: (s) => translateWeight(s.actualWeightKg ?? s.targetWeightKg ?? 0),
   });
+  const extraPrescriptionMeta = {
+    ...(evaluation.repCeilingExpanded && evaluation.effectiveMaxReps
+      ? {
+          expandedRepCeiling: evaluation.effectiveMaxReps,
+          repCeilingExplanation: evaluation.repCeilingExplanation,
+        }
+      : {}),
+    ...(learnedSlope?.isPersonalized ? { enduranceSlopeDenominator: learnedSlope.denominator } : {}),
+  };
 
   if (evaluation.status === 'increase_load') {
     if (isPureBodyweight) {
@@ -915,6 +978,28 @@ export function prescribeDoubleProgression(
         canonicalE1rmKg,
         isPureBodyweight: true,
         calibratedTempoCue: '2s paused stretch in the bottom',
+      };
+    }
+
+    if (isAssisted) {
+      const reducedBy = formatWeight(Math.max(0.5, currentWeight - evaluation.nextWeightKg), unit);
+      const reasonText =
+        evaluation.nextWeightKg <= 0
+          ? `${transferPrefix}You hit ${maxReps} reps across every set — ready for unassisted bodyweight reps (0 kg assistance), resetting target to ${minReps} reps.`
+          : `${transferPrefix}You hit ${maxReps} reps across every set with reps in reserve — reducing assistance by ${reducedBy} to ${formatWeight(evaluation.nextWeightKg, unit)} and resetting target to ${minReps} reps.`;
+      return {
+        exerciseId: session.exerciseId,
+        nextWeightKg: evaluation.nextWeightKg,
+        nextTargetReps: evaluation.nextRepsBySet,
+        reason: reasonText,
+        weightChanged: evaluation.weightChanged,
+        repsChanged: evaluation.repsChanged,
+        isAmberShieldBuffer: false,
+        lastSessionDate,
+        previousSetsSummary,
+        transferredFromExerciseName,
+        canonicalE1rmKg,
+        isPureBodyweight: false,
       };
     }
 
@@ -1017,10 +1102,13 @@ export function prescribeDoubleProgression(
       };
     }
 
+    const targetCeiling = evaluation.effectiveMaxReps ?? maxReps;
     const inRangeReason =
-      goalPhase === 'Cut / Recomp'
-        ? `${transferPrefix}Retention Shield: All sets hit the ${minReps}-rep floor. Keeping ${formatWeight(currentWeight, unit)} and pushing +1 rep toward ${maxReps} across every set to preserve lean mass.`
-        : `${transferPrefix}All sets hit at least ${minReps} reps${lastSessionDate ? ` (${lastSessionDate})` : ''}. Keeping weight at ${formatWeight(currentWeight, unit)} until all sets reach ${maxReps} reps.`;
+      evaluation.repCeilingExpanded && evaluation.repCeilingExplanation
+        ? `${transferPrefix}${evaluation.repCeilingExplanation}`
+        : goalPhase === 'Cut / Recomp'
+        ? `${transferPrefix}Retention Shield: All sets hit the ${minReps}-rep floor. Keeping ${formatWeight(currentWeight, unit)} and pushing +1 rep toward ${targetCeiling} across every set to preserve lean mass.`
+        : `${transferPrefix}All sets hit at least ${minReps} reps${lastSessionDate ? ` (${lastSessionDate})` : ''}. Keeping weight at ${formatWeight(currentWeight, unit)} until all sets reach ${targetCeiling} reps.`;
 
     return {
       exerciseId: session.exerciseId,
@@ -1035,6 +1123,7 @@ export function prescribeDoubleProgression(
       transferredFromExerciseName,
       canonicalE1rmKg,
       isPureBodyweight: false,
+      ...extraPrescriptionMeta,
     };
   }
 

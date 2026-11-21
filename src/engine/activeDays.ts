@@ -161,13 +161,108 @@ export function describeActivity(a: ActivityLog): string {
   return `${a.minutes} min ${ACTIVITY_LABELS[a.type].toLowerCase()}`;
 }
 
-/** A detected workout recorded during a session logged in Treise is that session, not another workout. */
-export function overlapsLifting(a: Pick<ActivityLog, 'startedAt' | 'minutes'>, workouts: WorkoutSession[]): boolean {
+/**
+ * Computes the largest contiguous segment of `[startMs, endMs]` that falls OUTSIDE all completed
+ * Treise lifting sessions (e.g. a 25-minute post-lifting cooldown walk merged by a wearable into
+ * one continuous block alongside a 45-minute lifting session).
+ */
+function nonOverlappingSegments(
+  startMs: number,
+  endMs: number,
+  workouts: WorkoutSession[]
+): Array<{ start: number; end: number }> {
+  const intervals: Array<{ start: number; end: number }> = [];
+  for (const w of workouts) {
+    if (!w.completed || !w.completedAt) continue;
+    const wEnd = new Date(w.completedAt).getTime();
+    if (Number.isNaN(wEnd)) continue;
+    const wStart = w.startedAt
+      ? new Date(w.startedAt).getTime()
+      : wEnd - (w.durationMinutes || 60) * 60000;
+    if (Number.isNaN(wStart) || wEnd <= startMs || wStart >= endMs) continue;
+    intervals.push({ start: Math.max(startMs, wStart), end: Math.min(endMs, wEnd) });
+  }
+  if (intervals.length === 0) return [{ start: startMs, end: endMs }];
+  intervals.sort((a, b) => a.start - b.start);
+  const merged: Array<{ start: number; end: number }> = [intervals[0]];
+  for (let i = 1; i < intervals.length; i++) {
+    const prev = merged[merged.length - 1];
+    if (intervals[i].start <= prev.end) {
+      prev.end = Math.max(prev.end, intervals[i].end);
+    } else {
+      merged.push(intervals[i]);
+    }
+  }
+  const free: Array<{ start: number; end: number }> = [];
+  let cursor = startMs;
+  for (const iv of merged) {
+    if (iv.start > cursor) free.push({ start: cursor, end: iv.start });
+    cursor = Math.max(cursor, iv.end);
+  }
+  if (cursor < endMs) free.push({ start: cursor, end: endMs });
+  return free;
+}
+
+/**
+ * A detected workout recorded during a session logged in Treise is that session, not another workout.
+ * However, if a wearable merged lifting with a 20+ minute post-lifting cooldown walk or cardio block
+ * (leaving at least `MIN_ACTIVE_MINUTES` outside the lifting window), it is NOT silently discarded.
+ */
+export function overlapsLifting(
+  a: Pick<ActivityLog, 'startedAt' | 'minutes'> & { type?: ActivityType },
+  workouts: WorkoutSession[]
+): boolean {
   const start = new Date(a.startedAt).getTime();
-  return workouts.some((w) => {
+  if (Number.isNaN(start) || !(a.minutes > 0)) return false;
+  const end = start + a.minutes * 60000;
+
+  const overlapsAny = workouts.some((w) => {
     if (!w.completed || !w.completedAt) return false;
     const wEnd = new Date(w.completedAt).getTime();
     const wStart = w.startedAt ? new Date(w.startedAt).getTime() : wEnd - (w.durationMinutes || 60) * 60000;
     return isSameSession(start, a.minutes, wStart, (wEnd - wStart) / 60000);
   });
+  if (!overlapsAny) return false;
+
+  // Check whether the wearable block contains a qualifying (>= 20 min) non-lifting segment
+  // (e.g. a 25-min post-lifting cooldown walk merged into the same watch recording).
+  const freeSegments = nonOverlappingSegments(start, end, workouts);
+  const longestOutsideMinutes = freeSegments.reduce(
+    (max, seg) => Math.max(max, (seg.end - seg.start) / 60000),
+    0
+  );
+  if (longestOutsideMinutes >= MIN_ACTIVE_MINUTES) {
+    return false;
+  }
+  return true;
+}
+
+/**
+ * When a wearable merged a lifting session with a 20+ minute cooldown walk/cardio block, trims
+ * away the overlapping lifting window so only the genuine non-lifting duration is saved.
+ * Returns `null` if the activity is purely a duplicate of the lifting session.
+ */
+export function trimLiftingOverlap<T extends Pick<ActivityLog, 'startedAt' | 'minutes'> & { type?: ActivityType }>(
+  a: T,
+  workouts: WorkoutSession[]
+): T | null {
+  if (overlapsLifting(a, workouts)) return null;
+  const start = new Date(a.startedAt).getTime();
+  if (Number.isNaN(start) || !(a.minutes > 0)) return null;
+  const end = start + a.minutes * 60000;
+  const free = nonOverlappingSegments(start, end, workouts);
+  if (free.length === 1 && free[0].start === start && free[0].end === end) {
+    return a;
+  }
+  const best = free.reduce(
+    (top, seg) => (seg.end - seg.start > top.end - top.start ? seg : top),
+    { start, end: start }
+  );
+  const trimmedMinutes = Math.round((best.end - best.start) / 60000);
+  if (trimmedMinutes < MIN_ACTIVE_MINUTES) return null;
+  return {
+    ...a,
+    startedAt: new Date(best.start).toISOString(),
+    minutes: trimmedMinutes,
+  };
 }

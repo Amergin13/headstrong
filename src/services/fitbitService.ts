@@ -1,53 +1,34 @@
 import { BiometricLog, ReadinessState } from '../engine/types';
 import { localDateString } from '../utils/date';
 import { parseHealthConnectExport } from './healthConnectService';
-import { publishRefreshedTokens } from './wearableTokens';
-
-export const FITBIT_CONFIG = {
-  CLIENT_ID: '23QW89',
-  AUTHORIZATION_URI: 'https://www.fitbit.com/oauth2/authorize',
-  GOOGLE_AUTHORIZATION_URI: 'https://accounts.google.com/o/oauth2/v2/auth',
-  TOKEN_URI: 'https://api.fitbit.com/oauth2/token',
-  SCOPES: ['activity', 'heartrate', 'sleep', 'weight', 'profile'],
-  GOOGLE_HEALTH_SCOPES: [
-    'https://www.googleapis.com/auth/googlehealth.activity_and_fitness.readonly',
-    'https://www.googleapis.com/auth/googlehealth.health_metrics_and_measurements.readonly',
-    'https://www.googleapis.com/auth/googlehealth.sleep.readonly',
-  ],
-  REDIRECT_URI:
-    typeof window !== 'undefined'
-      ? `${window.location.origin}/oauth/callback`
-      : 'https://treise.vercel.app/oauth/callback',
-};
-
-export interface FitbitServerConfig {
-  configured: boolean;
-  clientId?: string;
-  mode?: 'google_health' | 'fitbit';
-  redirectUri?: string;
-}
 
 /**
- * Checks whether Fitbit / Google Health OAuth is configured on the server.
- * Never exposes secrets; only returns whether the server has credentials and the public clientId.
+ * Legacy Fitbit Web API decommission note:
+ * Google permanently shut down the legacy Fitbit Web API on November 2, 2026 (410 Gone).
+ * Fitbit and Google Pixel Watch telemetry now flows automatically through Android Health Connect
+ * (sleep, heart rate, resting HR, HRV, weight, body fat, steps, and workouts) with zero cloud
+ * OAuth proxy or Restricted-scope review dependency.
  */
-export async function getFitbitConfig(): Promise<FitbitServerConfig> {
-  try {
-    const res = await fetch('/api/fitbit/token');
-    if (!res.ok) return { configured: false };
-    const data = await res.json();
-    return {
-      configured: Boolean(data?.configured && data?.clientId),
-      clientId: data?.clientId,
-      mode: data?.mode === 'google_health' ? 'google_health' : 'fitbit',
-      redirectUri: data?.redirectUri,
-    };
-  } catch {
-    return { configured: false };
-  }
+export const FITBIT_WEB_API_DECOMMISSIONED_DATE = '2026-11-02';
+export const FITBIT_HEALTH_CONNECT_MIGRATION_MESSAGE =
+  'Google shut down the legacy Fitbit Web API on November 2, 2026. Connect Android Health Connect in the Treise app so your Fitbit and Pixel Watch data (sleep, HR, HRV, weight, body fat, steps, and workouts) syncs automatically.';
+
+export interface FitbitServerConfig {
+  configured: false;
+  decommissioned: true;
+  recommendedProvider: 'health_connect';
 }
 
-// PKCE Helper utilities using Web Crypto API
+/** Legacy Fitbit Web API OAuth is permanently decommissioned; routes athletes to Android Health Connect. */
+export async function getFitbitConfig(): Promise<FitbitServerConfig> {
+  return {
+    configured: false,
+    decommissioned: true,
+    recommendedProvider: 'health_connect',
+  };
+}
+
+// PKCE Helper utilities using Web Crypto API (shared with Whoop OAuth)
 export function generateRandomString(length: number = 64): string {
   const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~';
   let text = '';
@@ -79,287 +60,6 @@ export async function generateCodeChallenge(verifier: string): Promise<string> {
     return base64Digest;
   }
   return btoa(verifier).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-}
-
-export async function initiateFitbitOAuth(
-  clientId: string = FITBIT_CONFIG.CLIENT_ID,
-  customRedirectUri?: string
-): Promise<string> {
-  const codeVerifier = generateRandomString(64);
-  const codeChallenge = await generateCodeChallenge(codeVerifier);
-  const state = `fitbit_${generateRandomString(24)}`;
-  const redirectUri = customRedirectUri || FITBIT_CONFIG.REDIRECT_URI;
-
-  // Store in both localStorage and sessionStorage so Android TWA / Custom Tab redirects keep PKCE state
-  if (typeof localStorage !== 'undefined') {
-    try {
-      localStorage.setItem('fitbit_code_verifier', codeVerifier);
-      localStorage.setItem('fitbit_oauth_state', state);
-      localStorage.setItem('fitbit_client_id', clientId);
-      localStorage.setItem('fitbit_redirect_uri', redirectUri);
-    } catch {
-      // Ignore if localStorage is blocked
-    }
-  }
-  if (typeof sessionStorage !== 'undefined') {
-    try {
-      sessionStorage.setItem('fitbit_code_verifier', codeVerifier);
-      sessionStorage.setItem('fitbit_oauth_state', state);
-      sessionStorage.setItem('fitbit_client_id', clientId);
-      sessionStorage.setItem('fitbit_redirect_uri', redirectUri);
-    } catch {
-      // Ignore if sessionStorage is blocked
-    }
-  }
-
-  const isGoogleClient = clientId.trim().endsWith('.apps.googleusercontent.com');
-  if (isGoogleClient) {
-    const params = new URLSearchParams({
-      response_type: 'code',
-      client_id: clientId.trim(),
-      redirect_uri: redirectUri,
-      code_challenge: codeChallenge,
-      code_challenge_method: 'S256',
-      access_type: 'offline',
-      prompt: 'consent',
-      scope: FITBIT_CONFIG.GOOGLE_HEALTH_SCOPES.join(' '),
-      state,
-    });
-    return `${FITBIT_CONFIG.GOOGLE_AUTHORIZATION_URI}?${params.toString()}`;
-  }
-
-  const params = new URLSearchParams({
-    response_type: 'code',
-    client_id: clientId,
-    redirect_uri: redirectUri,
-    code_challenge: codeChallenge,
-    code_challenge_method: 'S256',
-    scope: FITBIT_CONFIG.SCOPES.join(' '),
-    state,
-  });
-
-  return `${FITBIT_CONFIG.AUTHORIZATION_URI}?${params.toString()}`;
-}
-
-export async function exchangeFitbitCodeForToken(
-  code: string,
-  clientId?: string
-): Promise<{ accessToken: string; refreshToken: string; expiresIn: number; userId: string }> {
-  const codeVerifier =
-    (typeof localStorage !== 'undefined' && localStorage.getItem('fitbit_code_verifier')) ||
-    (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('fitbit_code_verifier')) ||
-    '';
-  const effectiveClientId =
-    clientId ||
-    (typeof localStorage !== 'undefined' && localStorage.getItem('fitbit_client_id')) ||
-    (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('fitbit_client_id')) ||
-    FITBIT_CONFIG.CLIENT_ID;
-  const redirectUri =
-    (typeof localStorage !== 'undefined' && localStorage.getItem('fitbit_redirect_uri')) ||
-    (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('fitbit_redirect_uri')) ||
-    FITBIT_CONFIG.REDIRECT_URI;
-
-  const proxyRes = await fetch('/api/fitbit/token', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      grant_type: 'authorization_code',
-      code,
-      code_verifier: codeVerifier,
-      redirect_uri: redirectUri,
-      client_id: effectiveClientId,
-    }),
-  });
-
-  const data = await proxyRes.json().catch(() => ({}));
-  if (!proxyRes.ok || !data?.access_token) {
-    const errMsg =
-      data?.error_description ||
-      data?.error ||
-      data?.details?.errors?.[0]?.message ||
-      `HTTP ${proxyRes.status}`;
-    throw new Error(`Fitbit token exchange failed: ${errMsg}`);
-  }
-
-  return {
-    accessToken: data.access_token,
-    refreshToken: data.refresh_token,
-    expiresIn: data.expires_in,
-    userId: data.user_id || 'me',
-  };
-}
-
-export async function refreshFitbitToken(
-  refreshToken: string,
-  clientId?: string
-): Promise<{ accessToken: string; refreshToken: string; expiresIn: number }> {
-  const effectiveClientId =
-    clientId ||
-    (typeof localStorage !== 'undefined' && localStorage.getItem('fitbit_client_id')) ||
-    (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('fitbit_client_id')) ||
-    FITBIT_CONFIG.CLIENT_ID;
-
-  const proxyRes = await fetch('/api/fitbit/token', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      grant_type: 'refresh_token',
-      refresh_token: refreshToken,
-      client_id: effectiveClientId,
-    }),
-  });
-
-  const data = await proxyRes.json().catch(() => ({}));
-  if (!proxyRes.ok || !data?.access_token) {
-    throw new Error(data?.error || `Fitbit token refresh failed: HTTP ${proxyRes.status}`);
-  }
-
-  return {
-    accessToken: data.access_token,
-    refreshToken: data.refresh_token || refreshToken,
-    expiresIn: data.expires_in,
-  };
-}
-
-/**
- * Fetches real daily biometrics from Fitbit / Google Health API:
- * Heart rate/Resting HR, HRV RMSSD, Sleep, Steps & AZM, Bodyweight, and Daily Readiness Score.
- * Routes through /api/fitbit/biometrics serverless proxy to eliminate CORS restrictions.
- */
-export async function fetchFitbitDailyBiometrics(
-  accessToken: string,
-  dateStr?: string,
-  refreshToken?: string
-): Promise<Partial<BiometricLog>> {
-  const date = dateStr || localDateString();
-
-  // 1. Try serverless proxy aggregator first
-  try {
-    const proxyRes = await fetch(`/api/fitbit/biometrics?date=${date}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${accessToken}`,
-      },
-      body: JSON.stringify({
-        accessToken,
-        refreshToken,
-        date,
-      }),
-    });
-
-    if (proxyRes.ok) {
-      const data = await proxyRes.json();
-      if (data.success && data.biometrics) {
-        // Save rotated tokens to the profile (Fitbit refresh tokens are single-use).
-        publishRefreshedTokens('fitbit', data.refreshedTokens);
-        return {
-          ...data.biometrics,
-          source: 'fitbit',
-        };
-      }
-    }
-  } catch {
-    // Fall back to direct browser fetch
-  }
-
-  // 2. Direct browser fetch fallback
-  const headers = {
-    Authorization: `Bearer ${accessToken}`,
-  };
-
-  const results: Partial<BiometricLog> = { date, source: 'fitbit' };
-
-  try {
-    const heartRes = await fetch(
-      `https://api.fitbit.com/1/user/-/activities/heart/date/${date}/1d.json`,
-      { headers }
-    );
-    if (heartRes.ok) {
-      const heartData = await heartRes.json();
-      const restingHr = heartData['activities-heart']?.[0]?.value?.restingHeartRate;
-      if (typeof restingHr === 'number' && restingHr > 0) {
-        results.restingHr = restingHr;
-      }
-    }
-  } catch {
-    // Non-fatal
-  }
-
-  try {
-    const hrvRes = await fetch(`https://api.fitbit.com/1/user/-/hrv/date/${date}.json`, { headers });
-    if (hrvRes.ok) {
-      const hrvData = await hrvRes.json();
-      const dailyRmssd = hrvData?.hrv?.[0]?.value?.dailyRmssd;
-      if (typeof dailyRmssd === 'number' && dailyRmssd > 0) {
-        results.hrvRmssd = Math.round(dailyRmssd);
-      }
-    }
-  } catch {
-    // Non-fatal
-  }
-
-  try {
-    const sleepRes = await fetch(`https://api.fitbit.com/1.2/user/-/sleep/date/${date}.json`, { headers });
-    if (sleepRes.ok) {
-      const sleepData = await sleepRes.json();
-      const totalMinutesAsleep = sleepData?.summary?.totalMinutesAsleep;
-      if (typeof totalMinutesAsleep === 'number' && totalMinutesAsleep > 0) {
-        results.sleepHours = Math.round((totalMinutesAsleep / 60) * 10) / 10;
-      }
-    }
-  } catch {
-    // Non-fatal
-  }
-
-  try {
-    const actRes = await fetch(`https://api.fitbit.com/1/user/-/activities/date/${date}.json`, { headers });
-    if (actRes.ok) {
-      const actData = await actRes.json();
-      const steps = actData?.summary?.steps;
-      if (typeof steps === 'number') results.steps = steps;
-      const azm = actData?.summary?.activeZoneMinutes?.totalMinutes;
-      if (typeof azm === 'number') results.activeZoneMinutes = azm;
-    }
-  } catch {
-    // Non-fatal
-  }
-
-  try {
-    const weightRes = await fetch(`https://api.fitbit.com/1/user/-/body/log/weight/date/${date}.json`, { headers });
-    if (weightRes.ok) {
-      const weightData = await weightRes.json();
-      const weight = weightData?.weight?.[0]?.weight;
-      if (typeof weight === 'number' && weight > 0) {
-        results.bodyweightKg = Math.round(weight * 10) / 10;
-      }
-    }
-  } catch {
-    // Non-fatal
-  }
-
-  try {
-    const readinessRes = await fetch(`https://api.fitbit.com/1/user/-/readiness/date/${date}.json`, { headers });
-    if (readinessRes.ok) {
-      const readinessData = await readinessRes.json();
-      const rawScore =
-        readinessData?.readiness?.[0]?.value?.score ??
-        readinessData?.readiness?.[0]?.score ??
-        readinessData?.score;
-      if (typeof rawScore === 'number' && rawScore > 0) {
-        results.fitbitReadinessScore = Math.round(rawScore);
-        results.readinessScore = Math.round(rawScore);
-      }
-    }
-  } catch {
-    // Non-fatal
-  }
-
-  return results;
 }
 
 /**
@@ -452,9 +152,7 @@ export interface WatchSyncProgress {
 }
 
 /**
- * Live Demo Pixel Watch Telemetry Simulator:
- * Seamlessly generates high-resolution biometric readings from Google Pixel Watch 3
- * including authentic Daily Readiness Score (1-100).
+ * Explicit Demo-Mode Pixel Watch Telemetry Simulator (used only when athlete loads demo data).
  */
 export async function simulatePixelWatchSync(
   onProgress?: (progress: WatchSyncProgress) => void,

@@ -276,11 +276,11 @@ export function detectCoachInterventions(input: DetectCoachInterventionsInput): 
     const pullPriorityTarget = liftingTemplates
       .flatMap((t) => t.exercises.slice(1))
       .find((e) => e.pillar === 'Vertical Pull');
+    const latPulldownDef = exerciseCatalog.find((d) => d.id === 'ex-lat-pulldown');
+    const chinupDef = exerciseCatalog.find((d) => d.id === 'ex-chinup');
     const bestPullDef =
-      (fitsEnvironment(exerciseCatalog.find((d) => d.id === 'ex-lat-pulldown')!, profile) &&
-        exerciseCatalog.find((d) => d.id === 'ex-lat-pulldown')) ||
-      (fitsEnvironment(exerciseCatalog.find((d) => d.id === 'ex-chinup')!, profile) &&
-        exerciseCatalog.find((d) => d.id === 'ex-chinup')) ||
+      (latPulldownDef && fitsEnvironment(latPulldownDef, profile) && !avoidIds.has(latPulldownDef.id) ? latPulldownDef : undefined) ||
+      (chinupDef && fitsEnvironment(chinupDef, profile) && !avoidIds.has(chinupDef.id) ? chinupDef : undefined) ||
       exerciseCatalog.find((d) => d.pillar === 'Vertical Pull' && fitsEnvironment(d, profile) && !avoidIds.has(d.id));
 
     const changes: ProposedProgramChange[] = [];

@@ -114,7 +114,7 @@ export interface LoadMeasure {
   targetE1rmKg: number;
 }
 
-export type BodyEvidence = 'fat-free-mass' | 'tape' | 'weight-and-strength' | 'strength-only' | 'none';
+export type BodyEvidence = 'tape' | 'weight-and-strength' | 'strength-only' | 'none';
 
 export interface BodySign {
   id: 'strength' | 'weight' | 'size';
@@ -124,7 +124,23 @@ export interface BodySign {
   detail: string;
 }
 
-/** Outcome: the chosen goal, judged on three signs. */
+/**
+ * Secondary consumer BIA fat-free mass overlay (Siedler et al., 2023):
+ * consumer foot-to-foot scales have ±3.4–5.2% BF (±2.0–4.9 kg) individual 95% LoA,
+ * so BIA FFM is never used as a Tier-1 goal gate and is shown only as a secondary
+ * 12+ week directional overlay with an explicit uncertainty band and fasted morning prompt.
+ */
+export interface BiaDirectionalOverlay {
+  spanDays: number;
+  isDirectionalReady: boolean;
+  fatFreeMassChangeKg?: number;
+  fatMassChangeKg?: number;
+  uncertaintyBandKg: number;
+  summary: string;
+  fastedWeighInPrompt: string;
+}
+
+/** Outcome: the chosen goal, judged on three Tier-1 signs (anchor-lift E1RM, 7-day EMA bodyweight, optional waist/tape). */
 export interface BodyMeasure {
   type: 'body';
   phase: GoalPhase;
@@ -136,8 +152,10 @@ export interface BodyMeasure {
   evidenceLabel: string;
   /** What to log to judge the goal better; empty when the best evidence is already in. */
   nextStep: string;
-  /** Change in fat-free mass over the logged readings, when there are two or more. */
+  /** Change in fat-free mass over logged BIA readings when 12+ weeks span (secondary overlay only). */
   fatFreeMassChangeKg?: number;
+  /** Secondary 12+ week consumer BIA directional overlay with explicit uncertainty band. */
+  biaOverlay?: BiaDirectionalOverlay;
 }
 
 /** Outcome: a target the athlete set themselves (on one exercise or daily steps). */
@@ -234,6 +252,16 @@ export function weekStart(date: string): string {
 // Process: train N times a week
 // ---------------------------------------------------------------------------------------------
 
+/**
+ * Pro-rates a weekly session target to the exact number of calendar days in a given month
+ * (28/29/30/31 days) instead of assuming every month is exactly 4 weeks (4 × perWeek).
+ * Example at 4 sessions/week: Feb (28d) = 16, Apr (30d) = 17, May (31d) = 18.
+ */
+export function proRatedMonthlyTarget(year: number, month1Based: number, perWeek: number): number {
+  const daysInMonth = new Date(year, month1Based, 0).getDate();
+  return Math.max(perWeek, Math.round((daysInMonth / 7) * perWeek));
+}
+
 function sessionsPerWeekGoal(input: AthleteGoalsInput): AthleteGoal {
   const { perWeek, planPerWeek, fromPlan } = sessionsPerWeekTarget(input.profile);
   const today = localDateString(new Date(input.now ?? Date.now()));
@@ -264,20 +292,21 @@ function sessionsPerWeekGoal(input: AthleteGoalsInput): AthleteGoal {
   }
   const thisMonth = today.slice(0, 7);
   const firstMonth = [...byMonth.keys()].sort()[0] ?? thisMonth;
-  const monthlyTarget = perWeek * 4;
   const allMonths: GoalMonth[] = [];
   const [startYear, startMonth] = firstMonth.split('-').map(Number);
   const [endYear, endMonth] = thisMonth.split('-').map(Number);
   for (let y = startYear, mo = startMonth; y < endYear || (y === endYear && mo <= endMonth); ) {
     const month = `${y}-${String(mo).padStart(2, '0')}`;
     const sessions = byMonth.get(month) ?? 0;
-    allMonths.push({ month, sessions, target: monthlyTarget, hit: sessions >= monthlyTarget, current: month === thisMonth });
+    const monthTarget = proRatedMonthlyTarget(y, mo, perWeek);
+    allMonths.push({ month, sessions, target: monthTarget, hit: sessions >= monthTarget, current: month === thisMonth });
     mo += 1;
     if (mo > 12) {
       mo = 1;
       y += 1;
     }
   }
+  const currentMonthTarget = proRatedMonthlyTarget(endYear, endMonth, perWeek);
   const thisWeek = all[all.length - 1].sessions;
   // The run of weeks at target. This week joins it once reached; until then it neither adds nor breaks it.
   let streakWeeks = 0;
@@ -305,7 +334,7 @@ function sessionsPerWeekGoal(input: AthleteGoalsInput): AthleteGoal {
     kind: 'process',
     title: `Train ${perWeek} times a week`,
     detail: `${thisWeek} of ${perWeek} sessions this week${streakWeeks > 0 ? `, ${plural(streakWeeks, 'week')} in a row at ${perWeek}` : ''}`,
-    method: `A session is a day with a finished workout or an active day of 20 minutes or more. Weeks run Monday to Sunday; a month counts toward the year ring at ${monthlyTarget} sessions (4 weeks at ${perWeek}). ${fromPlan ? `${perWeek} a week is what your plan is built on.` : `You set ${perWeek} a week; your plan is built on ${planPerWeek}.`}`,
+    method: `A session is a day with a finished workout or an active day of 20 minutes or more. Weeks run Monday to Sunday; monthly targets pro-rate to each month's days (${currentMonthTarget} sessions this month at ${perWeek}/week). ${fromPlan ? `${perWeek} a week is what your plan is built on.` : `You set ${perWeek} a week; your plan is built on ${planPerWeek}.`}`,
     measure,
     current: thisWeek,
     target: perWeek,
@@ -421,25 +450,74 @@ function strengthLevelGoals(input: AthleteGoalsInput): AthleteGoal[] {
 // Outcome: the chosen goal (Build Muscle, Lose Fat, Stay Lean)
 // ---------------------------------------------------------------------------------------------
 
-/** A reading must be this far from the first one before a change in it means anything. */
+/** A tape reading must be this far from the first one before a change in it means anything. */
 const MIN_BODY_SPAN_DAYS = 14;
-/** Tape and fat-free mass readings closer than this are within measuring error. */
+/** Consumer BIA FFM needs at least 12 weeks before reading as a secondary directional overlay (Siedler et al., 2023). */
+export const MIN_BIA_OVERLAY_DAYS = 84;
+/** Tape readings closer than this are within measuring error. */
 const TAPE_NOISE_CM = 0.5;
-const MASS_NOISE_KG = 0.3;
+/** Fasted morning weigh-in guidance for consumer BIA scales. */
+export const FASTED_BIA_WEIGH_IN_PROMPT =
+  'Weigh in fasted first thing in the morning after using the bathroom so hydration shifts affect BIA less.';
 
 type TapeSite = 'bicepRightCm' | 'bicepLeftCm' | 'chestCm' | 'thighRightCm' | 'thighLeftCm' | 'waistCm';
 
-function firstAndLast<T extends { date: string }>(rows: T[]): [T, T] | null {
+function firstAndLast<T extends { date: string }>(rows: T[], minSpanDays: number = MIN_BODY_SPAN_DAYS): [T, T] | null {
   if (rows.length < 2) return null;
   const sorted = [...rows].sort((a, b) => a.date.localeCompare(b.date));
   const first = sorted[0];
   const last = sorted[sorted.length - 1];
-  return parseLocalDate(last.date).getTime() - parseLocalDate(first.date).getTime() >= MIN_BODY_SPAN_DAYS * DAY_MS ? [first, last] : null;
+  return parseLocalDate(last.date).getTime() - parseLocalDate(first.date).getTime() >= minSpanDays * DAY_MS ? [first, last] : null;
 }
 
 function fatFreeMassOf(b: BiometricLog): number {
   if ((b.fatFreeMassKg ?? 0) > 0) return b.fatFreeMassKg as number;
   return (b.bodyFatPct ?? 0) > 0 && b.bodyweightKg > 0 ? b.bodyweightKg * (1 - (b.bodyFatPct as number) / 100) : 0;
+}
+
+/**
+ * Individual 95% longitudinal uncertainty band for consumer BIA FFM (~3.4–5.2% BF per Siedler et al., 2023,
+ * translating to roughly ±2.0 to ±4.9 kg for 60–95 kg lifters).
+ */
+export function consumerBiaUncertaintyKg(bodyweightKg: number): number {
+  const bw = bodyweightKg > 0 ? bodyweightKg : 80;
+  return round1(Math.max(2.0, Math.min(4.9, bw * 0.043)));
+}
+
+function buildBiaDirectionalOverlay(biometrics: BiometricLog[], fallbackBwKg: number): BiaDirectionalOverlay | undefined {
+  const rows = biometrics
+    .filter((b) => fatFreeMassOf(b) > 0)
+    .sort((a, b) => a.date.localeCompare(b.date));
+  if (rows.length === 0) return undefined;
+  const first = rows[0];
+  const last = rows[rows.length - 1];
+  const spanDays = Math.max(
+    0,
+    Math.round((parseLocalDate(last.date).getTime() - parseLocalDate(first.date).getTime()) / DAY_MS)
+  );
+  const uncertaintyBandKg = consumerBiaUncertaintyKg(last.bodyweightKg || fallbackBwKg);
+  const isDirectionalReady = rows.length >= 2 && spanDays >= MIN_BIA_OVERLAY_DAYS;
+  const signed = (n: number) => `${n > 0 ? '+' : ''}${n} kg`;
+  const fatFreeMassChangeKg =
+    rows.length >= 2 ? round1(fatFreeMassOf(last) - fatFreeMassOf(first)) : undefined;
+  const fatMassChangeKg =
+    rows.length >= 2 && last.bodyweightKg > 0 && first.bodyweightKg > 0
+      ? round1(last.bodyweightKg - fatFreeMassOf(last) - (first.bodyweightKg - fatFreeMassOf(first)))
+      : undefined;
+
+  const summary = isDirectionalReady && fatFreeMassChangeKg !== undefined
+    ? `12+ week BIA directional overlay (${Math.round(spanDays / 7)} weeks): fat-free mass ${signed(fatFreeMassChangeKg)} (±${uncertaintyBandKg} kg consumer scale uncertainty). Secondary reference only alongside weight, strength, and waist.`
+    : `Consumer BIA fat-free mass has ±${uncertaintyBandKg} kg individual uncertainty. Log fasted morning weigh-ins for 12+ weeks (${spanDays} of ${MIN_BIA_OVERLAY_DAYS} days so far) before reading it as a directional overlay.`;
+
+  return {
+    spanDays,
+    isDirectionalReady,
+    fatFreeMassChangeKg,
+    fatMassChangeKg,
+    uncertaintyBandKg,
+    summary,
+    fastedWeighInPrompt: FASTED_BIA_WEIGH_IN_PROMPT,
+  };
 }
 
 /** Change in the first of these tape sites with two readings two weeks or more apart. */
@@ -487,84 +565,93 @@ function chosenGoal(input: AthleteGoalsInput): AthleteGoal {
         } ${pace.goalLabel}.`,
   };
 
-  // 3. Size, from the best evidence logged: fat-free mass, else the tape.
-  const leanPair = firstAndLast(input.biometrics.filter((b) => fatFreeMassOf(b) > 0));
-  const leanChange = leanPair ? round1(fatFreeMassOf(leanPair[1]) - fatFreeMassOf(leanPair[0])) : null;
-  const fatChange = leanPair ? round1(leanPair[1].bodyweightKg - fatFreeMassOf(leanPair[1]) - (leanPair[0].bodyweightKg - fatFreeMassOf(leanPair[0]))) : null;
+  // 3. Tier-1 Size sign: optional waist circumference (and muscle tape sites when logged).
+  // Consumer BIA fat-free mass is retired from Tier-1 goal gating (Siedler et al., 2023) and
+  // demoted to a secondary 12+ week directional overlay with an explicit uncertainty band.
+  const biaOverlay = buildBiaDirectionalOverlay(input.biometrics, input.bodyweightKg ?? 80);
   const muscleTape = tapeChange(input.biometrics, ['bicepRightCm', 'bicepLeftCm', 'chestCm', 'thighRightCm', 'thighLeftCm']);
   const waist = tapeChange(input.biometrics, ['waistCm']);
   let size: BodySign;
   let evidence: BodyEvidence;
-  if (leanChange !== null && fatChange !== null) {
-    evidence = 'fat-free-mass';
-    const signed = (n: number) => `${n > 0 ? '+' : ''}${n} kg`;
-    size = {
-      id: 'size',
-      label: building ? 'Fat-free mass up' : losing ? 'Fat down, fat-free mass kept' : 'Fat-free mass kept',
-      met: building ? leanChange >= MASS_NOISE_KG : losing ? fatChange <= -MASS_NOISE_KG && leanChange >= -MASS_NOISE_KG * 2 : leanChange >= -MASS_NOISE_KG && fatChange <= MASS_NOISE_KG,
-      detail: `Fat-free mass ${signed(leanChange)}, fat ${signed(fatChange)} since your first body-fat reading.`,
-    };
-  } else if (muscleTape !== null || waist !== null) {
+  if (muscleTape !== null || waist !== null) {
     evidence = 'tape';
     const cm = (n: number) => `${n > 0 ? '+' : ''}${n} cm`;
     const parts = [muscleTape !== null ? `arm, chest or thigh ${cm(muscleTape)}` : '', waist !== null ? `waist ${cm(waist)}` : ''].filter(Boolean).join(', ');
     const met = building
       ? muscleTape !== null
         ? muscleTape >= TAPE_NOISE_CM && (waist === null || waist <= muscleTape)
+        : waist !== null
+        ? waist <= TAPE_NOISE_CM * 2
         : null
       : waist !== null
       ? losing
         ? waist <= -TAPE_NOISE_CM
         : waist <= TAPE_NOISE_CM
       : null;
-    size = { id: 'size', label: building ? 'Muscle sites up, waist steady' : losing ? 'Waist down' : 'Waist steady', met, detail: `By tape since your first reading: ${parts}.` };
+    size = {
+      id: 'size',
+      label: building
+        ? muscleTape !== null
+          ? 'Muscle sites up, waist steady'
+          : 'Waist staying controlled'
+        : losing
+        ? 'Waist down'
+        : 'Waist steady',
+      met,
+      detail: `By tape since your first reading: ${parts}.`,
+    };
   } else {
     evidence = 'none';
     size = {
       id: 'size',
-      label: building ? 'Muscle size' : 'Waist and body fat',
+      label: building ? 'Waist & muscle tape (optional)' : 'Waist circumference (optional)',
       met: null,
       detail: building
-        ? 'Not measured yet. Body fat from a scale, or a tape on your arm, chest and waist, shows muscle directly.'
-        : 'Not measured yet. A tape on your waist, or body fat from a scale, shows fat loss directly.',
+        ? 'Optional: tape your waist (and arm, chest or thigh) every 2+ weeks to confirm gain is lean.'
+        : 'Optional: tape your waist every 2+ weeks to confirm fat loss alongside 7-day average weight.',
     };
   }
-  // Without a measured size sign, the goal rests on whatever else is logged.
+  // Without a measured tape sign, Tier-1 rests on 7-day EMA bodyweight + anchor-lift E1RM.
   if (size.met === null) evidence = pace ? 'weight-and-strength' : trend.repeated > 0 ? 'strength-only' : 'none';
 
   const signs = [strength, weight, size];
   const signsMeasured = signs.filter((s) => s.met !== null).length;
   const signsMet = signs.filter((s) => s.met === true).length;
   const evidenceLabel =
-    evidence === 'fat-free-mass'
-      ? 'Measured: fat-free mass from your body-fat readings.'
-      : evidence === 'tape'
-      ? 'Measured by tape.'
+    evidence === 'tape'
+      ? 'Tracked by 7-day average bodyweight, anchor-lift E1RM, and tape circumference.'
       : evidence === 'weight-and-strength'
-      ? 'An estimate from weight and strength. Neither can tell muscle from fat.'
+      ? 'Tracked by 7-day average bodyweight and anchor-lift E1RM (optional waist tape adds a direct size check).'
       : evidence === 'strength-only'
-      ? 'An estimate from strength alone. Strength can rise without muscle changing.'
+      ? 'Tracked by anchor-lift E1RM so far. Add morning weigh-ins to track bodyweight pace.'
       : 'Nothing to judge this on yet.';
   const nextStep =
-    evidence === 'fat-free-mass'
+    evidence === 'tape'
       ? ''
-      : evidence === 'tape'
-      ? 'Body fat from a smart scale would measure this directly.'
       : !pace
       ? hasWeighIn
-        ? 'Keep weighing in each morning; a week of weigh-ins shows your pace.'
-        : 'Log your weight each morning; a week of weigh-ins shows your pace.'
-      : building
-      ? 'Log body fat, or tape your arm, chest and waist, to measure muscle directly.'
-      : 'Tape your waist, or log body fat, to measure fat loss directly.';
+        ? 'Keep weighing in fasted each morning; a week of weigh-ins shows your 7-day average pace.'
+        : 'Log your weight fasted each morning; a week of weigh-ins shows your 7-day average pace.'
+      : 'Optionally tape your waist every 2 weeks to pair with weight and anchor-lift strength.';
 
   return {
     id: CHOSEN_GOAL_ID,
     kind: 'outcome',
     title: GOAL_DISPLAY_NAME[phase],
     detail: signsMeasured > 0 ? `${signsMet} of ${signsMeasured} measured signs are showing` : 'Nothing measured yet',
-    method: `Judged on three signs: strength, bodyweight pace and size. ${evidenceLabel}`,
-    measure: { type: 'body', phase, signs, signsMet, signsMeasured, evidence, evidenceLabel, nextStep, fatFreeMassChangeKg: leanChange ?? undefined },
+    method: `Tier-1 progress uses 7-day average bodyweight, multi-week anchor-lift E1RM, and optional waist circumference. Consumer smart-scale fat-free mass is shown only as a secondary 12+ week directional overlay due to scale measurement error. ${evidenceLabel}`,
+    measure: {
+      type: 'body',
+      phase,
+      signs,
+      signsMet,
+      signsMeasured,
+      evidence,
+      evidenceLabel,
+      nextStep,
+      fatFreeMassChangeKg: biaOverlay?.isDirectionalReady ? biaOverlay.fatFreeMassChangeKg : undefined,
+      biaOverlay,
+    },
     current: signsMet,
     target: signs.length,
     unit: 'signs',

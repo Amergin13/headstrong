@@ -65,6 +65,11 @@ export const BalanceCard: React.FC<BalanceCardProps> = ({
             <li key={i.id}>
               <p className="wk-body max-w-prose" style={{ color: 'var(--color-text-primary)' }}>{i.message}</p>
               <p className="wk-caption mt-1 max-w-prose">{i.advice}</p>
+              {i.caveat && (
+                <p className="wk-caption mt-1 max-w-prose" style={{ color: 'var(--wk-muted)' }}>
+                  {i.caveat}
+                </p>
+              )}
             </li>
           ))}
           {sideDifferences.map((d) => (

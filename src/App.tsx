@@ -2,6 +2,7 @@ import { MAX_CUSTOM_GOALS, STEPS_GOAL_EXERCISE_ID, makeCustomGoal, ownGoalName }
 import type { CoachPlace } from './services/coachContext';
 import React, { useState, useEffect, useRef, Suspense, lazy } from 'react';
 import {
+  AssistantChatMessage,
   BiometricLog,
   CustomPlanId,
   ExerciseDefinition,
@@ -17,6 +18,8 @@ import {
   CoachUndoSnapshot,
   getActiveWearableProvider,
 } from './engine/types';
+import { resetFlashLiteConversation } from './services/geminiFlashLite';
+import { resetOnDeviceConversation } from './services/onDeviceModel';
 import { calculateDailyReadiness } from './engine/readiness';
 import { getLatestBodyweightEma } from './engine/ema';
 import { snapLoadKg } from './utils/units';
@@ -39,6 +42,7 @@ import {
   saveActiveWorkout,
   saveAuthUser,
   saveBiometrics,
+  DATA_CHANGED_EVENT,
   SAVE_FAILED_EVENT,
   requestPersistentStorage,
   saveExercises,
@@ -47,6 +51,21 @@ import {
   saveWorkouts,
 } from './services/storage';
 import {
+  cacheDriveSessionCredentials,
+  clearDriveSessionCredentials,
+  computeBackupContentHash,
+  deleteEncryptedBackupFromDrive,
+  getCachedDriveSessionCredentials,
+  requestGoogleDriveBackupToken,
+  restoreEncryptedDriveBackup,
+  runEncryptedDriveBackup,
+} from './services/encryptedBackup';
+import {
+  CompetitorCsvImportResult,
+  mergeImportedWorkouts,
+} from './services/competitorCsvImport';
+import { ImportProgramModal } from './components/program/ImportProgramModal';
+import {
   adaptWorkoutSessionToLocation,
   generateSmartWorkoutSession,
   getFirstSplitDayForProgram,
@@ -54,6 +73,8 @@ import {
   SplitDayType,
 } from './services/workoutGenerator';
 import { WhoopWorkoutStrainSummary } from './services/whoopService';
+import { clearAiGenerationCaches } from './services/aiGenerationCache';
+import { clearKnowledgeGraphCache } from './engine/knowledgeGraph';
 import { mergeWhoopWorkoutTelemetryLog } from './services/wearableSyncService';
 import {
   generatePlanWorkout,
@@ -128,17 +149,34 @@ export const App: React.FC = () => {
   const [restTimerContext, setRestTimerContext] = useState<RestTimerContext | undefined>(undefined);
   const [watchModalOpen, setWatchModalOpen] = useState(false);
   const [aiCoachOpen, setAiCoachOpen] = useState(false);
+  const [coachMessages, setCoachMessages] = useState<AssistantChatMessage[]>([]);
+  const [coachRevertedIds, setCoachRevertedIds] = useState<Record<string, boolean>>({});
   const [coachLaunchRequest, setCoachLaunchRequest] = useState<{
-    prompt: string;
+    prompt?: string;
     place?: CoachPlace;
     nonce: number;
   } | null>(null);
-  const openCoachWithIntervention = (prompt: string, place?: CoachPlace) => {
+  const resetCoachSession = () => {
+    setCoachMessages([]);
+    setCoachRevertedIds({});
+    setCoachLaunchRequest(null);
+    resetOnDeviceConversation();
+    resetFlashLiteConversation();
+  };
+  const openCoach = (place?: CoachPlace, prompt?: string) => {
     setCoachLaunchRequest({ prompt, place, nonce: Date.now() });
     setAiCoachOpen(true);
   };
+  const openCoachWithIntervention = (prompt: string, place?: CoachPlace) => {
+    openCoach(place, prompt);
+  };
   /** What is open on the Progress page (a goal, or one of its screens), for the coach's opening line. */
   const [progressContext, setProgressContext] = useState<Pick<CoachPlace, 'goalId' | 'detail'>>({});
+  const [progressDetailRequest, setProgressDetailRequest] = useState<{
+    detail?: string;
+    goalId?: string;
+    nonce: number;
+  } | null>(null);
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [authUser, setAuthUser] = useState<AuthUser | null>(loadAuthUser);
   const [onboardingOpen, setOnboardingOpen] = useState(!profile.onboardingCompleted);
@@ -147,6 +185,7 @@ export const App: React.FC = () => {
   const [openInsightsRequest, setOpenInsightsRequest] = useState<{ nonce: number; exerciseId?: string } | null>(null);
   const [logActivityOpen, setLogActivityOpen] = useState(false);
   const [activityAppsOpen, setActivityAppsOpen] = useState(false);
+  const [competitorImportOpen, setCompetitorImportOpen] = useState(false);
   const [onboardingInitialStep, setOnboardingInitialStep] = useState<1 | 2 | 3>(1);
   const [deferredInstallPrompt, setDeferredInstallPrompt] = useState<any>(null);
   const [toast, setToast] = useState<{ title?: string; message: string; tag?: string } | null>(null);
@@ -276,6 +315,9 @@ export const App: React.FC = () => {
   ): WorkoutSession => {
     const location = opts.location ?? profile.activeLocation ?? 'gym';
     // Same swap as the one-tap place switch on the Workout tab, before weights are personalized.
+    // Amber Shield is advisory (opt-in modulation via 1-tap button), so planned progression targets
+    // stay intact unless the athlete explicitly opts in.
+    const effectiveReadiness = readiness.state === 'Amber Shield' ? 'Normal' : readiness.state;
     const placed =
       opts.isProgramPlan && location !== 'gym'
         ? adaptWorkoutSessionToLocation(
@@ -284,19 +326,20 @@ export const App: React.FC = () => {
             opts.homeEquipment ?? profile.homeEquipment ?? [],
             exercises,
             opts.history ?? workouts,
-            readiness.state,
+            effectiveReadiness,
             opts.overrides?.bodyweightKg ?? bodyweightEmaKg
           )
         : session;
-    return prepareSessionForAthlete(placed, {
+    const prepared = prepareSessionForAthlete(placed, {
       history: opts.history ?? workouts,
       bodyweightKg: opts.overrides?.bodyweightKg ?? bodyweightEmaKg,
-      readinessState: readiness.state,
+      readinessState: effectiveReadiness,
       gender: opts.overrides?.gender ?? profile.gender,
       experienceLevel: opts.overrides?.experienceLevel ?? profile.experienceLevel,
       unit: opts.overrides?.weightUnit || weightUnit,
       isProgramPlan: opts.isProgramPlan,
     });
+    return { ...prepared, readinessState: readiness.state };
   };
 
   /** Gives loaded exercises that have no weight yet (e.g. swapped in for a bodyweight move) a starting weight. */
@@ -368,6 +411,50 @@ export const App: React.FC = () => {
     if (hasHistory) void requestPersistentStorage();
   }, [hasHistory]);
 
+  // Opt-in automatic encrypted backup: whenever core local data changes and the athlete has an
+  // active Google Drive backup session, debounce and upload an AES-256-GCM encrypted snapshot.
+  const cloudBackupEnabled = Boolean(profile.cloudBackup?.enabled);
+  const lastBackupHashRef = useRef(profile.cloudBackup?.lastBackupHash);
+  lastBackupHashRef.current = profile.cloudBackup?.lastBackupHash;
+  useEffect(() => {
+    if (!cloudBackupEnabled || typeof window === 'undefined') return;
+    let timer: number | undefined;
+    const scheduleUpload = () => {
+      if (timer !== undefined) window.clearTimeout(timer);
+      timer = window.setTimeout(async () => {
+        const creds = getCachedDriveSessionCredentials();
+        if (!creds?.accessToken || !creds.passphrase) return;
+        const rawJson = exportAllUserDataJSON();
+        const hash = computeBackupContentHash(rawJson);
+        if (hash === lastBackupHashRef.current) return;
+        try {
+          const result = await runEncryptedDriveBackup({
+            rawJson,
+            passphrase: creds.passphrase,
+            accessToken: creds.accessToken,
+          });
+          setProfile((prev) => ({
+            ...prev,
+            cloudBackup: {
+              enabled: true,
+              provider: 'google_drive',
+              lastBackedUpAt: result.backedUpAt,
+              lastBackupHash: result.contentHash,
+              lastRestoredAt: prev.cloudBackup?.lastRestoredAt,
+            },
+          }));
+        } catch (err) {
+          console.warn('Automatic encrypted Google Drive backup skipped:', err);
+        }
+      }, 12_000);
+    };
+    window.addEventListener(DATA_CHANGED_EVENT, scheduleUpload);
+    return () => {
+      window.removeEventListener(DATA_CHANGED_EVENT, scheduleUpload);
+      if (timer !== undefined) window.clearTimeout(timer);
+    };
+  }, [cloudBackupEnabled, setProfile]);
+
   // The streak always follows the saved workouts and active days (after imports, demo loads,
   // deletions or a long break).
   const activeDatesKey = activeDates.join(',');
@@ -403,32 +490,19 @@ export const App: React.FC = () => {
   useEffect(() => {
     if (!isPlanProgram(profile.programType)) return;
     if (activeWorkout.exercises.some((ex) => ex.sets.some((s) => s.completed))) return;
-    const next = getNextProgramWorkoutNumber(workouts, activePlan, profile.planCycleStarts);
+    const next = getNextProgramWorkoutNumber(workouts, activePlan, profile.planCycleStarts, profile.planStartWorkouts);
     if (activeWorkout.programWorkoutNumber === next && getSessionPlanId(activeWorkout) === activePlan.id) return;
     setActiveWorkout(prepareSession(generatePlanWorkout(activePlan, next), { isProgramPlan: true }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profile.programType, activePlan.id, workouts, profile.planCycleStarts]);
+  }, [profile.programType, activePlan.id, workouts, profile.planCycleStarts, profile.planStartWorkouts]);
 
-  // Recovery data usually arrives after the next workout was prepared. If low recovery starts or ends,
-  // an unstarted plan workout is prepared again, so it does what the recovery card says. Exercises the
-  // athlete changed by hand stay as they are.
+  // Keep the active unstarted session's advisory readinessState label synced without forcibly
+  // cancelling progression (Amber Shield modulation is opt-in via the 1-tap advisory buttons).
   useEffect(() => {
     if (!isPlanProgram(profile.programType) || !activeWorkout.programWorkoutNumber) return;
     if (activeWorkout.exercises.some((ex) => ex.sets.some((s) => s.completed))) return;
-    const wasLow = activeWorkout.readinessState === 'Amber Shield';
-    const isLow = readiness.state === 'Amber Shield';
-    if (wasLow === isLow) return;
-    const rebuilt = prepareSession(generatePlanWorkout(activePlan, activeWorkout.programWorkoutNumber), {
-      isProgramPlan: true,
-      location: activeWorkout.location,
-    });
-    setActiveWorkout({
-      ...activeWorkout,
-      readinessState: readiness.state,
-      exercises: activeWorkout.exercises.map((ex, idx) =>
-        rebuilt.exercises[idx]?.exerciseId === ex.exerciseId ? rebuilt.exercises[idx] : ex
-      ),
-    });
+    if (activeWorkout.readinessState === readiness.state) return;
+    setActiveWorkout((prev) => ({ ...prev, readinessState: readiness.state }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [readiness.state, activeWorkout.programWorkoutNumber]);
 
@@ -509,23 +583,18 @@ export const App: React.FC = () => {
 
   const handleUndoAssistantAction = (snapshot: CoachUndoSnapshot) => {
     if (snapshot.previousProfile) {
+      const prevSnap = snapshot.previousProfile;
       setProfile((prev) => {
         const restoredProfile: UserProfile = {
           ...prev,
-          ...snapshot.previousProfile,
-          ...('athleteMemories' in snapshot.previousProfile!
-            ? { athleteMemories: snapshot.previousProfile!.athleteMemories }
-            : {}),
-          ...('planCycleStarts' in snapshot.previousProfile!
-            ? { planCycleStarts: snapshot.previousProfile!.planCycleStarts }
-            : {}),
-          ...('goalSettings' in snapshot.previousProfile!
-            ? { goalSettings: snapshot.previousProfile!.goalSettings }
-            : {}),
-          ...('progressWidgets' in snapshot.previousProfile!
-            ? { progressWidgets: snapshot.previousProfile!.progressWidgets }
-            : {}),
-          programOverrides: snapshot.previousProfile!.programOverrides,
+          ...prevSnap,
+          ...('athleteMemories' in prevSnap ? { athleteMemories: prevSnap.athleteMemories } : {}),
+          ...('planCycleStarts' in prevSnap ? { planCycleStarts: prevSnap.planCycleStarts } : {}),
+          ...('planStartWorkouts' in prevSnap ? { planStartWorkouts: prevSnap.planStartWorkouts } : {}),
+          ...('goalSettings' in prevSnap ? { goalSettings: prevSnap.goalSettings } : {}),
+          ...('progressWidgets' in prevSnap ? { progressWidgets: prevSnap.progressWidgets } : {}),
+          ...('workoutDisplay' in prevSnap ? { workoutDisplay: prevSnap.workoutDisplay } : {}),
+          ...('programOverrides' in prevSnap ? { programOverrides: prevSnap.programOverrides } : {}),
         };
         saveProfile(restoredProfile);
         return restoredProfile;
@@ -598,6 +667,8 @@ export const App: React.FC = () => {
       weightUnit: NonNullable<UserProfile['weightUnit']>;
       bodyweightKg?: number;
     };
+    showRirTracking?: boolean;
+    habitAnchor?: UserProfile['habitAnchor'];
     ownGoal?: { exerciseId: string; metric: 'weight' | 'reps' | 'steps'; target: number };
   }) => {
     const athlete = setup.athlete;
@@ -626,6 +697,15 @@ export const App: React.FC = () => {
             weightUnit: athlete.weightUnit,
           }
         : {}),
+      ...(setup.showRirTracking !== undefined
+        ? {
+            workoutDisplay: {
+              ...(prev.workoutDisplay ?? {}),
+              showRirTracking: setup.showRirTracking,
+            },
+          }
+        : {}),
+      ...(setup.habitAnchor !== undefined ? { habitAnchor: setup.habitAnchor } : {}),
       mesocycleWeek: prev.onboardingCompleted ? prev.mesocycleWeek : 1,
       // A goal of the athlete's own, set in onboarding, joins the plan's three.
       ...(ownGoalFromSetup ? { goalSettings: { ...prev.goalSettings, customGoals: [...(prev.goalSettings?.customGoals ?? []).filter((g) => g.id !== ownGoalFromSetup.id), ownGoalFromSetup].slice(-MAX_CUSTOM_GOALS) } } : {}),
@@ -667,7 +747,7 @@ export const App: React.FC = () => {
     const isPlan = isPlanProgram(setup.programType);
     const setupPlan = resolveActivePlan({ programType: setup.programType, goalPhase: setup.goalPhase, email: profile.email });
     const starterSession = isPlan
-      ? generatePlanWorkout(setupPlan, getNextProgramWorkoutNumber(workouts, setupPlan, profile.planCycleStarts))
+      ? generatePlanWorkout(setupPlan, getNextProgramWorkoutNumber(workouts, setupPlan, profile.planCycleStarts, profile.planStartWorkouts))
       : generateSmartWorkoutSession(
           starterSplit,
           workouts,
@@ -716,7 +796,7 @@ export const App: React.FC = () => {
       // A started session is kept; the plan switch applies from the next workout.
       if (activeWorkout.exercises.some((ex) => ex.sets.some((s) => s.completed))) return;
       const plan = resolveActivePlan({ ...profile, programType: newProgramType });
-      const session = generatePlanWorkout(plan, getNextProgramWorkoutNumber(workouts, plan, profile.planCycleStarts));
+      const session = generatePlanWorkout(plan, getNextProgramWorkoutNumber(workouts, plan, profile.planCycleStarts, profile.planStartWorkouts));
       setActiveWorkout(prepareSession(session, { isProgramPlan: true }));
     } else {
       const starterSplit = getFirstSplitDayForProgram(newProgramType);
@@ -759,7 +839,7 @@ export const App: React.FC = () => {
       !activeWorkout.exercises.some((ex) => ex.sets.some((s) => s.completed))
     ) {
       const nextPlan = resolveActivePlan(merged.profile);
-      const nextNum = getNextProgramWorkoutNumber(merged.workouts, nextPlan, merged.profile.planCycleStarts);
+      const nextNum = getNextProgramWorkoutNumber(merged.workouts, nextPlan, merged.profile.planCycleStarts, merged.profile.planStartWorkouts);
       setActiveWorkout(prepareSession(generatePlanWorkout(nextPlan, nextNum), { isProgramPlan: true }));
     }
 
@@ -790,7 +870,7 @@ export const App: React.FC = () => {
       const nextPlan = resolveActivePlan(nextProfile);
       setActiveWorkout(
         prepareSession(
-          generatePlanWorkout(nextPlan, getNextProgramWorkoutNumber(workouts, nextPlan, nextProfile.planCycleStarts)),
+          generatePlanWorkout(nextPlan, getNextProgramWorkoutNumber(workouts, nextPlan, nextProfile.planCycleStarts, nextProfile.planStartWorkouts)),
           { isProgramPlan: true }
         )
       );
@@ -847,7 +927,7 @@ export const App: React.FC = () => {
     const nextSession =
       isPlanProgram(profile.programType)
         ? prepareSession(
-            generatePlanWorkout(activePlan, getNextProgramWorkoutNumber(nextHistory, activePlan, profile.planCycleStarts)),
+            generatePlanWorkout(activePlan, getNextProgramWorkoutNumber(nextHistory, activePlan, profile.planCycleStarts, profile.planStartWorkouts)),
             { isProgramPlan: true, history: nextHistory }
           )
         : prepareSession(
@@ -918,6 +998,9 @@ export const App: React.FC = () => {
     setActiveWorkout(reset.activeWorkout);
     setExercises(reset.exercises);
     setActivities([]);
+    resetCoachSession();
+    clearAiGenerationCaches();
+    clearKnowledgeGraphCache();
     setToast({ message: 'Restored 6-week sample workout and biometric history.',
       tag: 'Demo Loaded',
     });
@@ -958,6 +1041,142 @@ export const App: React.FC = () => {
     }
   };
 
+  // Handler: 1-Click Competitor CSV Import (Hevy, Strong, FitNotes)
+  const handleImportCompetitorHistory = (parsed: CompetitorCsvImportResult) => {
+    const { merged, addedCount } = mergeImportedWorkouts(workouts, parsed.workouts);
+    setWorkouts(merged);
+    if (parsed.addedExercises.length > 0) {
+      setExercises((prev) => {
+        const ids = new Set(prev.map((e) => e.id));
+        const fresh = parsed.addedExercises.filter((e) => !ids.has(e.id));
+        return fresh.length > 0 ? [...prev, ...fresh] : prev;
+      });
+    }
+    setToast({
+      title: `${parsed.summary.formatLabel} import complete`,
+      message:
+        addedCount > 0
+          ? `Imported ${addedCount} workout${addedCount === 1 ? '' : 's'} (${parsed.summary.totalSetsCount} sets) into your training history.`
+          : 'All workouts from this CSV were already in your history.',
+      tag: 'History Imported',
+    });
+  };
+
+  // Handlers: Opt-In Client-Side Encrypted Google Drive Backup
+  const handleEnableDriveBackup = async (passphrase: string) => {
+    const token = await requestGoogleDriveBackupToken();
+    cacheDriveSessionCredentials(token, passphrase);
+    const rawJson = exportAllUserDataJSON();
+    const res = await runEncryptedDriveBackup({
+      rawJson,
+      passphrase,
+      accessToken: token.accessToken,
+    });
+    setProfile((prev) => ({
+      ...prev,
+      cloudBackup: {
+        enabled: true,
+        provider: 'google_drive',
+        lastBackedUpAt: res.backedUpAt,
+        lastBackupHash: res.contentHash,
+        lastRestoredAt: prev.cloudBackup?.lastRestoredAt,
+      },
+    }));
+    setToast({
+      title: 'Encrypted backup enabled',
+      message: 'Your AES-256-GCM encrypted backup is saved in your private Google Drive app-data folder.',
+      tag: 'Encrypted Backup',
+    });
+  };
+
+  const handleRunDriveBackupNow = async (passphraseInput?: string) => {
+    const cached = getCachedDriveSessionCredentials();
+    const passphrase = passphraseInput || cached?.passphrase;
+    if (!passphrase) {
+      throw new Error('Enter your backup passphrase above to encrypt and upload now.');
+    }
+    const token = cached?.accessToken
+      ? { accessToken: cached.accessToken, expiresAt: cached.expiresAt }
+      : await requestGoogleDriveBackupToken(undefined, { prompt: '' }).catch(() =>
+          requestGoogleDriveBackupToken(undefined, { prompt: 'consent' })
+        );
+    cacheDriveSessionCredentials(token, passphrase);
+    const rawJson = exportAllUserDataJSON();
+    const res = await runEncryptedDriveBackup({
+      rawJson,
+      passphrase,
+      accessToken: token.accessToken,
+    });
+    setProfile((prev) => ({
+      ...prev,
+      cloudBackup: {
+        enabled: true,
+        provider: 'google_drive',
+        lastBackedUpAt: res.backedUpAt,
+        lastBackupHash: res.contentHash,
+        lastRestoredAt: prev.cloudBackup?.lastRestoredAt,
+      },
+    }));
+    setToast({
+      message: 'Encrypted backup updated in your private Google Drive app-data folder.',
+      tag: 'Backup Synced',
+    });
+  };
+
+  const handleRestoreDriveBackup = async (passphrase: string) => {
+    const cached = getCachedDriveSessionCredentials();
+    const token = cached?.accessToken
+      ? { accessToken: cached.accessToken, expiresAt: cached.expiresAt }
+      : await requestGoogleDriveBackupToken(undefined, { prompt: 'consent' });
+    cacheDriveSessionCredentials(token, passphrase);
+    const downloaded = await restoreEncryptedDriveBackup({
+      passphrase,
+      accessToken: token.accessToken,
+    });
+    if (!downloaded) {
+      throw new Error('No encrypted Treise backup was found in your Google Drive app-data folder.');
+    }
+    const restored = importUserDataJSON(downloaded.rawJson);
+    const restoredAt = new Date().toISOString();
+    const nextProfile: UserProfile = {
+      ...restored.profile,
+      cloudBackup: {
+        enabled: true,
+        provider: 'google_drive',
+        lastBackedUpAt: downloaded.metadata.modifiedTime || downloaded.envelope.createdAt,
+        lastBackupHash: computeBackupContentHash(downloaded.rawJson),
+        lastRestoredAt: restoredAt,
+      },
+    };
+    setProfile(nextProfile);
+    setBiometrics(restored.biometrics);
+    setWorkouts(restored.workouts);
+    setActiveWorkout(restored.activeWorkout);
+    setExercises(restored.exercises);
+    setActivities(restored.activities || []);
+    setToast({
+      title: 'Encrypted backup restored',
+      message: `Restored ${restored.workouts.length} workouts and your body metrics from Google Drive.`,
+      tag: 'Restored',
+    });
+  };
+
+  const handleDisableDriveBackup = async (deleteRemote: boolean) => {
+    const cached = getCachedDriveSessionCredentials();
+    if (deleteRemote && cached?.accessToken) {
+      await deleteEncryptedBackupFromDrive(cached.accessToken);
+    }
+    clearDriveSessionCredentials();
+    setProfile((prev) => ({
+      ...prev,
+      cloudBackup: undefined,
+    }));
+    setToast({
+      message: 'Automatic encrypted Google Drive backup turned off. Local data stays on this device.',
+      tag: 'Backup Off',
+    });
+  };
+
   // Handler: Permanently Delete All User Data (Google Play User Data Policy Compliance)
   const handleDeleteAllData = () => {
     const wiped = permanentlyEraseAllUserData();
@@ -967,6 +1186,9 @@ export const App: React.FC = () => {
     setActiveWorkout(wiped.activeWorkout);
     setExercises(wiped.exercises);
     setActivities([]);
+    resetCoachSession();
+    clearAiGenerationCaches();
+    clearKnowledgeGraphCache();
     // Start over like a fresh install, so no unpersonalised template workout is shown.
     setOnboardingInitialStep(1);
     setOnboardingOpen(true);
@@ -1010,7 +1232,7 @@ export const App: React.FC = () => {
                 const plan = resolveActivePlan({ ...profile, goalPhase: phase });
                 if (plan.id === 'muscle_building_6wk' || isCustomPlanId(plan.id)) return;
                 setActiveWorkout(
-                  prepareSession(generatePlanWorkout(plan, getNextProgramWorkoutNumber(workouts, plan, profile.planCycleStarts)), { isProgramPlan: true })
+                  prepareSession(generatePlanWorkout(plan, getNextProgramWorkoutNumber(workouts, plan, profile.planCycleStarts, profile.planStartWorkouts)), { isProgramPlan: true })
                 );
                 return;
               }
@@ -1088,6 +1310,15 @@ export const App: React.FC = () => {
                 ...(exerciseId ? { exerciseId } : {}),
               })
             }
+            onOpenCoach={(opts) =>
+              openCoach(
+                {
+                  tab: 'train',
+                  ...(opts?.exerciseId ? { exerciseId: opts.exerciseId } : {}),
+                },
+                opts?.prompt
+              )
+            }
           />
         )}
 
@@ -1109,6 +1340,8 @@ export const App: React.FC = () => {
             onLogWeightRequestHandled={() => setLogWeightRequest(0)}
             openInsightsRequest={openInsightsRequest}
             onInsightsRequestHandled={() => setOpenInsightsRequest(null)}
+            openDetailRequest={progressDetailRequest}
+            onDetailRequestHandled={() => setProgressDetailRequest(null)}
             readinessState={readiness.state}
             onOpenCoachIntervention={({ prompt, detail }) =>
               openCoachWithIntervention(prompt, {
@@ -1116,6 +1349,17 @@ export const App: React.FC = () => {
                 ...progressContext,
                 ...(detail ? { detail } : {}),
               })
+            }
+            onOpenCoach={(opts) =>
+              openCoach(
+                {
+                  tab: 'analytics',
+                  ...progressContext,
+                  ...(opts?.detail ? { detail: opts.detail } : {}),
+                  ...(opts?.goalId ? { goalId: opts.goalId } : {}),
+                },
+                opts?.prompt
+              )
             }
           />
         )}
@@ -1137,6 +1381,7 @@ export const App: React.FC = () => {
             onLaunchWorkoutNumber={handleLaunchWorkoutNumber}
             onUpdateProgram={handleUpdateProgram}
             onImportProgram={handleImportSpreadsheetProgram}
+            onImportHistory={handleImportCompetitorHistory}
             onDeleteCustomPlan={handleDeleteCustomPlan}
             onAddCustomExercise={(newEx) => setExercises((prev) => [...prev, newEx])}
             activities={activities}
@@ -1154,6 +1399,7 @@ export const App: React.FC = () => {
             onOpenCoachIntervention={(prompt) =>
               openCoachWithIntervention(prompt, { tab: 'program' })
             }
+            onOpenCoach={(prompt) => openCoach({ tab: 'program' }, prompt)}
           />
         )}
         </ErrorBoundary>
@@ -1180,7 +1426,6 @@ export const App: React.FC = () => {
       {aiCoachOpen && (
         <Suspense fallback={null}>
         <AICoachChatModal
-          key={coachLaunchRequest ? `coach-${coachLaunchRequest.nonce}` : 'coach-default'}
           profile={profile}
           activeWorkout={activeWorkout}
           workouts={workouts}
@@ -1197,16 +1442,29 @@ export const App: React.FC = () => {
             }
           }
           initialPrompt={coachLaunchRequest?.prompt}
+          persistedMessages={coachMessages}
+          onMessagesChange={setCoachMessages}
+          persistedRevertedIds={coachRevertedIds}
+          onRevertedIdsChange={setCoachRevertedIds}
+          onResetConversation={() => setCoachLaunchRequest(null)}
           onClose={() => {
             setAiCoachOpen(false);
             setCoachLaunchRequest(null);
           }}
           onApplyAction={handleApplyAssistantAction}
           onUndoAction={handleUndoAssistantAction}
-          onNavigateTab={(tab) => {
+          onNavigateTab={(tab, detail) => {
             setAiCoachOpen(false);
             setCoachLaunchRequest(null);
             setActiveTab(tab);
+            if (tab === 'analytics' && (detail?.detail || detail?.goalId)) {
+              setProgressDetailRequest({
+                detail: detail.detail,
+                goalId: detail.goalId,
+                nonce: Date.now(),
+              });
+            }
+            window.scrollTo({ top: 0 });
           }}
           onViewAllEquipment={() => {
             setAiCoachOpen(false);
@@ -1236,6 +1494,9 @@ export const App: React.FC = () => {
             setActiveWorkout(reset.activeWorkout);
             setExercises(reset.exercises);
             setActivities([]);
+            resetCoachSession();
+    clearAiGenerationCaches();
+    clearKnowledgeGraphCache();
             setOnboardingOpen(false);
             setToast({ message: 'Sample 6-week workout and biometric history loaded.',
               tag: 'Demo Mode',
@@ -1272,8 +1533,26 @@ export const App: React.FC = () => {
         onResetData={handleResetData}
         onExportData={handleExportData}
         onImportData={handleImportData}
+        onOpenCompetitorImport={() => {
+          setAuthModalOpen(false);
+          setCompetitorImportOpen(true);
+        }}
+        onEnableDriveBackup={handleEnableDriveBackup}
+        onRunDriveBackupNow={handleRunDriveBackupNow}
+        onRestoreDriveBackup={handleRestoreDriveBackup}
+        onDisableDriveBackup={handleDisableDriveBackup}
         onDeleteAllData={handleDeleteAllData}
       />
+
+      {competitorImportOpen && (
+        <ImportProgramModal
+          exerciseCatalog={exercises}
+          initialMode="history"
+          onImport={handleImportSpreadsheetProgram}
+          onImportHistory={handleImportCompetitorHistory}
+          onClose={() => setCompetitorImportOpen(false)}
+        />
+      )}
 
       {/* Wearable & Recovery Sync Dialog Modal */}
       {watchModalOpen && (
@@ -1331,10 +1610,10 @@ export const App: React.FC = () => {
             activeWorkout={activeWorkout}
             activeTab={activeTab}
             activePlan={activePlan}
-            nextWorkoutNumber={getNextProgramWorkoutNumber(workouts, activePlan, profile.planCycleStarts)}
+            nextWorkoutNumber={getNextProgramWorkoutNumber(workouts, activePlan, profile.planCycleStarts, profile.planStartWorkouts)}
             readinessState={readiness.state}
             bodyweightEmaKg={bodyweightEmaKg}
-            recoveryReady={evaluateSessionRecovery(activeWorkout, workouts, exercises).isReady}
+            recoveryReady={evaluateSessionRecovery(activeWorkout, workouts, exercises, Date.now(), readiness.state).isReady}
             streakDays={profile.streakDays || 0}
             onApplyScenario={(state) => {
               setAuthUser(null);
@@ -1347,6 +1626,9 @@ export const App: React.FC = () => {
               setOnboardingInitialStep(1);
               setOnboardingOpen(state.onboardingOpen);
               setAiCoachOpen(false);
+              resetCoachSession();
+    clearAiGenerationCaches();
+    clearKnowledgeGraphCache();
               setActiveTab(state.activeTab);
               setToast({
                 title: state.meta.title,
