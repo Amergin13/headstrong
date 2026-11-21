@@ -5,11 +5,8 @@ import {
   clearPlanProgramOverrides,
   dismissCoachIntervention,
   removeProgramOverride,
-  undismissCoachIntervention,
 } from './services/coachInterventions';
 import { applyCoachInterventionToState } from './services/coachTools';
-import type { InterventionActionReceipt } from './components/program/ProgramAdaptationCarousel';
-import { formatSentenceCase } from './utils/typography';
 import React, { useState, useEffect, useRef, Suspense, lazy } from 'react';
 import {
   AssistantChatMessage,
@@ -675,7 +672,7 @@ export const App: React.FC = () => {
   };
 
   // Product-wide handler: Accept a suggested program adaptation immediately (persists overrides + syncs active workout)
-  const handleAcceptIntervention = (intervention: CoachIntervention): InterventionActionReceipt => {
+  const handleAcceptIntervention = (intervention: CoachIntervention): void => {
     const result = applyCoachInterventionToState({
       intervention,
       profile,
@@ -695,46 +692,15 @@ export const App: React.FC = () => {
       saveActiveWorkout(synced);
       setActiveWorkout(synced);
     }
-    return {
-      kind: 'accepted',
-      message: result.summaryText,
-      undo: () => {
-        setProfile((prev) => {
-          const restored: UserProfile = {
-            ...prev,
-            programOverrides: result.previousProfileSnapshot.programOverrides,
-            dismissedInterventions: result.previousProfileSnapshot.dismissedInterventions,
-          };
-          saveProfile(restored);
-          return restored;
-        });
-        saveActiveWorkout(result.previousActiveWorkout);
-        setActiveWorkout(result.previousActiveWorkout);
-      },
-    };
   };
 
   // Product-wide handler: Dismiss a suggested program adaptation permanently across all surfaces
-  const handleDismissIntervention = (intervention: CoachIntervention): InterventionActionReceipt => {
+  const handleDismissIntervention = (intervention: CoachIntervention): void => {
     const planId = activePlan.id;
     const patch = dismissCoachIntervention(profile, intervention.id, planId);
     const nextProfile: UserProfile = { ...profile, ...patch };
     saveProfile(nextProfile);
     setProfile(nextProfile);
-    return {
-      kind: 'dismissed',
-      message: `Dismissed "${formatSentenceCase(intervention.title)}".`,
-      undo: () => {
-        setProfile((prev) => {
-          const restored: UserProfile = {
-            ...prev,
-            ...undismissCoachIntervention(prev, intervention.id, planId),
-          };
-          saveProfile(restored);
-          return restored;
-        });
-      },
-    };
   };
 
   // Rebuild an unstarted queued plan workout cleanly after removing or resetting program overrides
@@ -917,25 +883,23 @@ export const App: React.FC = () => {
           }
         }
 
-        // 2. Apply explicit manual baseline fields onto today's record (only fields the athlete actually entered).
+        // 2. Apply explicit manual bodyweight onto today's record (only if the athlete actually entered one).
         const manual = setup.manualBaselineBiometric;
         const explicitTodayWeight = manual?.bodyweightKg ?? (!setup.importedBiometrics?.length ? startingBodyweight : undefined);
-        if (explicitTodayWeight || manual?.restingHr || manual?.sleepHours) {
+        if (explicitTodayWeight) {
           const existingToday = byDate.get(todayStr);
           if (existingToday) {
             byDate.set(todayStr, {
               ...existingToday,
-              ...(explicitTodayWeight ? { bodyweightKg: explicitTodayWeight } : {}),
-              ...(manual?.restingHr ? { restingHr: manual.restingHr } : {}),
-              ...(manual?.sleepHours ? { sleepHours: manual.sleepHours } : {}),
+              bodyweightKg: explicitTodayWeight,
             });
           } else {
             byDate.set(todayStr, {
               date: todayStr,
-              bodyweightKg: explicitTodayWeight || 0,
+              bodyweightKg: explicitTodayWeight,
               hrvRmssd: 0,
-              restingHr: manual?.restingHr || 0,
-              sleepHours: manual?.sleepHours || 0,
+              restingHr: 0,
+              sleepHours: 0,
               steps: 0,
               activeZoneMinutes: 0,
               isManualEntry: true,

@@ -1415,22 +1415,10 @@ export const DesignSystemContent: React.FC<{
               <ProgramAdaptationCarousel
                 interventions={demoInterventions}
                 onAccept={(item) => {
-                  const snapshot = demoInterventions;
                   setDemoInterventions((prev) => prev.filter((x) => x.id !== item.id));
-                  return {
-                    kind: 'accepted',
-                    message: `Applied across ${item.remainingAffectedCount} sessions: ${item.proposedChanges.map((c) => c.humanSummary).join(' · ')}.`,
-                    undo: () => setDemoInterventions(snapshot),
-                  };
                 }}
                 onDismiss={(item) => {
-                  const snapshot = demoInterventions;
                   setDemoInterventions((prev) => prev.filter((x) => x.id !== item.id));
-                  return {
-                    kind: 'dismissed',
-                    message: `Dismissed "${item.title}".`,
-                    undo: () => setDemoInterventions(snapshot),
-                  };
                 }}
               />
 

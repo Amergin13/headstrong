@@ -16526,18 +16526,24 @@ Exercise,,Date,Workout,Sets,Reps,Tempo,Rest,Notes,Set 1,Set 2,Set 3,Set 4
         carouselSrc73.includes('snap-x snap-mandatory') &&
         carouselSrc73.includes('Accept') &&
         carouselSrc73.includes('Dismiss') &&
-        carouselSrc73.includes('Undo') &&
+        carouselSrc73.includes('Applied to your plan') &&
+        !carouselSrc73.includes('Undo') &&
+        !carouselSrc73.includes('RotateCcw') &&
+        !carouselSrc73.includes('Close confirmation') &&
         progPlanSrc73.includes('<ProgramAdaptationCarousel') &&
         !progPlanSrc73.includes('Additional coaching suggestions') &&
+        !progPlanSrc73.includes('Adapt with Treise') &&
         progTabSrc73.includes('<ProgramAdaptationCarousel') &&
         detailSrc73.includes('onAcceptIntervention') &&
         detailSrc73.includes('onDismissIntervention') &&
+        detailSrc73.includes('Applied to your plan') &&
         balanceSrc73.includes('onAcceptIntervention') &&
         balanceSrc73.includes('onDismissIntervention') &&
+        balanceSrc73.includes('Applied to your plan') &&
         appSrc73.includes('handleAcceptIntervention') &&
         appSrc73.includes('handleDismissIntervention') &&
         TREISE_DESIGN_SYSTEM.some((c) => c.id === 'ds-program-adaptation-carousel'),
-      'ProgramAdaptationCarousel renders standalone ordered suggestion cards with Accept/Dismiss/Undo wired across Program, Workout, Progress, App, and Design System'
+      'ProgramAdaptationCarousel, ExerciseDetailModal, and BalanceCard signal success in-card and auto-dismiss without creating separate undo/dismiss receipt components'
     );
   }
 
@@ -16608,6 +16614,8 @@ Exercise,,Date,Workout,Sets,Reps,Tempo,Rest,Notes,Set 1,Set 2,Set 3,Set 4
         obSrc74.includes("useState<Gender | null>(returning && profile.sexEntered ? profile.gender : null)") &&
         obSrc74.includes("Skip for now") &&
         obSrc74.includes("Enter stats manually") &&
+        !obSrc74.includes('Resting HR') &&
+        !obSrc74.includes('Avg sleep') &&
         appSrc74.includes('ONBOARDING_LOCATION_STEP') &&
         appSrc74.includes('setup.importedBiometrics') &&
         appSrc74.includes('setup.importedActivities') &&

@@ -6,7 +6,6 @@ import { BiometricLog, BodyMeasurementSite, ExerciseDefinition, GoalPhase, Progr
 import { StrengthLevelsCard } from './StrengthLevelsCard';
 import { BalanceCard } from './BalanceCard';
 import { CoachIntervention, detectCoachInterventions } from '../../services/coachInterventions';
-import type { InterventionActionReceipt } from '../program/ProgramAdaptationCarousel';
 import { buildMovementStandards } from '../../services/movementStandards';
 import { standardsAge } from '../../engine/strengthStandards';
 import { buildBodyCompositionKnowledgeGraph } from '../../engine/knowledgeGraph';
@@ -115,9 +114,9 @@ interface AnalyticsTabProps {
   /** Opens Treise coach in the given Progress context (optional pre-filled prompt). */
   onOpenCoach?: (opts?: { detail?: CoachPlace['detail']; goalId?: string; prompt?: string }) => void;
   /** Directly executes and persists an accepted adaptation suggestion across the entire product. */
-  onAcceptIntervention?: (intervention: CoachIntervention) => InterventionActionReceipt | void;
+  onAcceptIntervention?: (intervention: CoachIntervention) => void;
   /** Dismisses an adaptation suggestion and persists dismissal across the entire product. */
-  onDismissIntervention?: (intervention: CoachIntervention) => InterventionActionReceipt | void;
+  onDismissIntervention?: (intervention: CoachIntervention) => void;
 }
 
 type CompositionView = 'weight' | 'measurements';

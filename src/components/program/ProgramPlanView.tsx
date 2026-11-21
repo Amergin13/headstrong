@@ -24,7 +24,7 @@ import { triggerHaptic } from '../../utils/haptics';
 import { formatSentenceCase } from '../../utils/typography';
 import { PastWorkoutModal } from './PastWorkoutModal';
 import { WeeklyVolumeCard } from './WeeklyVolumeCard';
-import { InterventionActionReceipt, ProgramAdaptationCarousel } from './ProgramAdaptationCarousel';
+import { ProgramAdaptationCarousel } from './ProgramAdaptationCarousel';
 import { ExerciseDetailModal } from '../train/ExerciseDetailModal';
 import { buildInspectExerciseSession } from '../../services/exerciseDetails';
 import { CoachSummaryText } from '../common/CoachSummaryText';
@@ -375,9 +375,9 @@ interface ProgramPlanViewProps {
   /** Opens Treise coach in the Program context (optional pre-filled prompt). */
   onOpenCoach?: (prompt?: string) => void;
   /** Directly executes and persists an accepted adaptation suggestion across the entire product. */
-  onAcceptIntervention?: (intervention: CoachIntervention) => InterventionActionReceipt | void;
+  onAcceptIntervention?: (intervention: CoachIntervention) => void;
   /** Dismisses an adaptation suggestion and persists dismissal across the entire product. */
-  onDismissIntervention?: (intervention: CoachIntervention) => InterventionActionReceipt | void;
+  onDismissIntervention?: (intervention: CoachIntervention) => void;
   /** Removes a single accepted program override cleanly. */
   onRemoveProgramOverride?: (overrideId: string) => void;
   /** Clears all accepted program overrides for the current plan. */
@@ -653,34 +653,37 @@ export const ProgramPlanView: React.FC<ProgramPlanViewProps> = ({
           aria-labelledby="program-adaptations-title"
           className="wk-card mt-6 flex flex-col gap-3"
         >
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex items-center gap-2 min-w-0">
-              <Sparkles
-                className="w-4 h-4 shrink-0"
-                style={{ color: 'var(--color-coach-accent)' }}
-                strokeWidth={2.2}
-                aria-hidden="true"
-              />
-              <h2 id="program-adaptations-title" className="wk-subhead">
-                Program adaptations
-              </h2>
-            </div>
-            <span
-              className="wk-pill shrink-0"
-              style={{
-                background: 'rgb(var(--color-coach-accent-rgb) / 0.12)',
-                color: 'var(--color-coach-accent)',
-              }}
-            >
-              {activeOverrides.length} active
-            </span>
+          <div className="flex items-center justify-between gap-3">
+            <h2 id="program-adaptations-title" className="wk-subhead">
+              Program adaptations ({activeOverrides.length})
+            </h2>
+            {(onClearProgramOverrides || onOpenCoachIntervention) && (
+              <button
+                type="button"
+                onClick={() => {
+                  triggerHaptic('light');
+                  if (onClearProgramOverrides) {
+                    onClearProgramOverrides(trainingPlan.id);
+                  } else {
+                    onOpenCoachIntervention?.('Clear my program customizations');
+                  }
+                }}
+                className="wk-caption font-medium min-h-[44px] px-2 -my-2 inline-flex items-center shrink-0"
+                style={{ color: 'var(--color-text-secondary)' }}
+              >
+                Reset adaptations
+              </button>
+            )}
           </div>
 
-          <ul className="flex flex-col gap-2">
-            {activeOverrides.map((ov) => (
+          <ul className="flex flex-col">
+            {activeOverrides.map((ov, idx) => (
               <li
                 key={ov.id}
-                className="wk-raised flex items-center justify-between gap-2"
+                className={`flex items-center justify-between gap-2 ${
+                  idx > 0 ? 'pt-3 mt-3 border-t' : ''
+                }`}
+                style={idx > 0 ? { borderColor: 'var(--color-border-subtle)' } : undefined}
               >
                 <div className="min-w-0">
                   <div className="wk-body" style={{ color: 'var(--color-text-primary)' }}>
@@ -707,49 +710,6 @@ export const ProgramPlanView: React.FC<ProgramPlanViewProps> = ({
               </li>
             ))}
           </ul>
-
-          {(onOpenCoach || onClearProgramOverrides || onOpenCoachIntervention) && (
-            <div className="flex flex-wrap gap-2">
-              {onOpenCoach && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    triggerHaptic('light');
-                    onOpenCoach();
-                  }}
-                  className="wk-btn-secondary min-h-[44px] flex-1 px-3 inline-flex items-center justify-center gap-2 whitespace-nowrap font-medium"
-                  style={{
-                    borderColor: 'rgb(var(--color-coach-accent-rgb) / 0.35)',
-                    color: 'var(--color-text-primary)',
-                  }}
-                >
-                  <Sparkles
-                    className="w-4 h-4 shrink-0"
-                    style={{ color: 'var(--color-coach-accent)' }}
-                    strokeWidth={2.2}
-                    aria-hidden="true"
-                  />
-                  <span>Adapt with Treise</span>
-                </button>
-              )}
-              {(onClearProgramOverrides || onOpenCoachIntervention) && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    triggerHaptic('light');
-                    if (onClearProgramOverrides) {
-                      onClearProgramOverrides(trainingPlan.id);
-                    } else {
-                      onOpenCoachIntervention?.('Clear my program customizations');
-                    }
-                  }}
-                  className="wk-btn-secondary min-h-[44px] px-3 whitespace-nowrap inline-flex items-center justify-center"
-                >
-                  Reset adaptations
-                </button>
-              )}
-            </div>
-          )}
         </section>
       )}
 

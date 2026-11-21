@@ -89,7 +89,6 @@ import {
   getCachedExerciseNote,
 } from '../../services/exerciseCoachNote';
 import { CoachIntervention, detectCoachInterventions } from '../../services/coachInterventions';
-import type { InterventionActionReceipt } from '../program/ProgramAdaptationCarousel';
 import { getActiveModelTier } from '../../services/onDeviceModel';
 import '../../services/deviceModels';
 import {
@@ -171,9 +170,9 @@ interface TrainTabProps {
   /** Opens Treise coach in Workout context (optionally scoped to an exercise or prompt). */
   onOpenCoach?: (opts?: { exerciseId?: string; prompt?: string }) => void;
   /** Directly executes and persists an accepted adaptation suggestion across the entire product. */
-  onAcceptIntervention?: (intervention: CoachIntervention) => InterventionActionReceipt | void;
+  onAcceptIntervention?: (intervention: CoachIntervention) => void;
   /** Dismisses an adaptation suggestion and persists dismissal across the entire product. */
-  onDismissIntervention?: (intervention: CoachIntervention) => InterventionActionReceipt | void;
+  onDismissIntervention?: (intervention: CoachIntervention) => void;
 }
 
 /** Primary muscles each split day trains, used to suggest a recovered alternative. */

@@ -2,7 +2,6 @@ import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ArrowRightLeft, Check, Disc, Plus, Sparkles, X } from 'lucide-react';
 import type { CoachIntervention } from '../../services/coachInterventions';
-import type { InterventionActionReceipt } from '../program/ProgramAdaptationCarousel';
 import {
   BiometricLog,
   ExerciseDefinition,
@@ -61,9 +60,9 @@ export interface ExerciseDetailModalProps {
   /** Contextual OOUX HITL intervention surfaced for this movement, when applicable. */
   intervention?: CoachIntervention;
   /** Directly accepts the surfaced intervention and persists changes across the product. */
-  onAcceptIntervention?: (intervention: CoachIntervention) => InterventionActionReceipt | void;
+  onAcceptIntervention?: (intervention: CoachIntervention) => void;
   /** Directly dismisses the surfaced intervention and persists dismissal across the product. */
-  onDismissIntervention?: (intervention: CoachIntervention) => InterventionActionReceipt | void;
+  onDismissIntervention?: (intervention: CoachIntervention) => void;
   /** Launches Treise coach with a contextual HITL adaptation prompt for this movement. */
   onAskCoachToAdapt?: (prompt: string, exerciseId?: string) => void;
   /** Opens Treise coach focused on this exercise without auto-submitting a mutation. */
@@ -109,7 +108,50 @@ export const ExerciseDetailModal: React.FC<ExerciseDetailModalProps> = ({
   const scrollBodyRef = useRef<HTMLDivElement>(null);
   const [activeTab, setActiveTab] = useState<ExerciseDetailTab>(initialTab);
   const [setAddedNotice, setSetAddedNotice] = useState<string | null>(null);
+  const [resolvingIntervention, setResolvingIntervention] = useState<{
+    item: CoachIntervention;
+    phase: 'accepted' | 'exiting' | 'dismissing';
+  } | null>(null);
+  const interventionTimersRef = useRef<number[]>([]);
   const isTimed = isTimedExercise(exercise);
+
+  useEffect(() => {
+    return () => {
+      interventionTimersRef.current.forEach((id) => window.clearTimeout(id));
+      interventionTimersRef.current = [];
+    };
+  }, []);
+
+  const scheduleIntervention = (fn: () => void, ms: number) => {
+    const id = window.setTimeout(fn, ms);
+    interventionTimersRef.current.push(id);
+  };
+
+  const displayIntervention = resolvingIntervention?.item ?? intervention;
+  const isInterventionAccepted =
+    resolvingIntervention?.phase === 'accepted' || resolvingIntervention?.phase === 'exiting';
+  const isInterventionFading =
+    resolvingIntervention?.phase === 'exiting' || resolvingIntervention?.phase === 'dismissing';
+
+  const handleAcceptDetailIntervention = (item: CoachIntervention) => {
+    if (resolvingIntervention || !onAcceptIntervention) return;
+    triggerHaptic('success');
+    setResolvingIntervention({ item, phase: 'accepted' });
+    onAcceptIntervention(item);
+    scheduleIntervention(
+      () => setResolvingIntervention((prev) => (prev ? { ...prev, phase: 'exiting' } : null)),
+      900
+    );
+    scheduleIntervention(() => setResolvingIntervention(null), 1120);
+  };
+
+  const handleDismissDetailIntervention = (item: CoachIntervention) => {
+    if (resolvingIntervention || !onDismissIntervention) return;
+    triggerHaptic('light');
+    setResolvingIntervention({ item, phase: 'dismissing' });
+    onDismissIntervention(item);
+    scheduleIntervention(() => setResolvingIntervention(null), 180);
+  };
 
   useEffect(() => {
     setActiveTab(initialTab);
@@ -315,57 +357,79 @@ export const ExerciseDetailModal: React.FC<ExerciseDetailModalProps> = ({
               aria-labelledby={`${uid}-tab-overview`}
               className="flex flex-col gap-4"
             >
-              {intervention && (onAcceptIntervention || onAskCoachToAdapt) && (
+              {displayIntervention && (onAcceptIntervention || onAskCoachToAdapt) && (
                 <section
                   aria-label="Suggested coaching adjustment"
-                  className="wk-raised flex flex-col gap-3 border"
-                  style={{ borderColor: 'rgb(var(--color-coach-accent-rgb) / 0.35)' }}
+                  className={`wk-raised flex flex-col gap-3 border transition-all duration-200 ${
+                    isInterventionFading ? 'opacity-0 scale-[0.98]' : 'opacity-100 scale-100'
+                  }`}
+                  style={{
+                    borderColor: isInterventionAccepted
+                      ? 'rgb(var(--color-accent-primary-rgb) / 0.5)'
+                      : 'rgb(var(--color-coach-accent-rgb) / 0.35)',
+                  }}
                 >
                   <div className="flex items-start gap-2">
                     <Sparkles
                       className="w-4 h-4 shrink-0 mt-1"
-                      style={{ color: 'var(--color-coach-accent)' }}
+                      style={{
+                        color: isInterventionAccepted ? 'var(--wk-accent)' : 'var(--color-coach-accent)',
+                      }}
                       strokeWidth={2.2}
                       aria-hidden="true"
                     />
                     <div className="min-w-0">
-                      <div className="wk-subhead" style={{ color: 'var(--color-coach-accent)' }}>
-                        {formatSentenceCase(intervention.title)}
+                      <div
+                        className="wk-subhead"
+                        style={{
+                          color: isInterventionAccepted ? 'var(--wk-accent)' : 'var(--color-coach-accent)',
+                        }}
+                      >
+                        {formatSentenceCase(displayIntervention.title)}
                       </div>
                       <p className="wk-caption mt-1 max-w-prose">
-                        {intervention.rationale}
+                        {displayIntervention.rationale}
                       </p>
                     </div>
                   </div>
                   {onAcceptIntervention && onDismissIntervention ? (
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        className="flex-1 min-h-[44px] rounded-xl px-4 py-2 text-base font-semibold inline-flex items-center justify-center gap-2 transition-transform active:scale-[0.98]"
+                    isInterventionAccepted ? (
+                      <div
+                        aria-live="polite"
+                        className="min-h-[44px] rounded-xl px-4 py-2 flex items-center justify-center gap-2"
                         style={{
-                          background: 'var(--color-action-primary-bg)',
-                          color: 'var(--color-action-primary-fg)',
-                        }}
-                        onClick={() => {
-                          triggerHaptic('medium');
-                          onAcceptIntervention(intervention);
+                          background: 'var(--color-status-positive-soft)',
+                          color: 'var(--wk-accent)',
                         }}
                       >
-                        <Check className="w-4 h-4 shrink-0" strokeWidth={2.4} aria-hidden="true" />
-                        <span>Accept</span>
-                      </button>
-                      <button
-                        type="button"
-                        className={`${secondaryButton} px-4`}
-                        onClick={() => {
-                          triggerHaptic('light');
-                          onDismissIntervention(intervention);
-                        }}
-                      >
-                        <X className="w-4 h-4 shrink-0" strokeWidth={2} aria-hidden="true" />
-                        <span>Dismiss</span>
-                      </button>
-                    </div>
+                        <Check className="w-4 h-4 shrink-0" strokeWidth={2.5} aria-hidden="true" />
+                        <span className="text-base font-semibold">Applied to your plan</span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          disabled={Boolean(resolvingIntervention)}
+                          className="flex-1 min-h-[44px] rounded-xl px-4 py-2 text-base font-semibold inline-flex items-center justify-center gap-2 transition-transform active:scale-[0.98]"
+                          style={{
+                            background: 'var(--color-action-primary-bg)',
+                            color: 'var(--color-action-primary-fg)',
+                          }}
+                          onClick={() => handleAcceptDetailIntervention(displayIntervention)}
+                        >
+                          <Check className="w-4 h-4 shrink-0" strokeWidth={2.4} aria-hidden="true" />
+                          <span>Accept</span>
+                        </button>
+                        <button
+                          type="button"
+                          disabled={Boolean(resolvingIntervention)}
+                          className={`${secondaryButton} px-4`}
+                          onClick={() => handleDismissDetailIntervention(displayIntervention)}
+                        >
+                          Dismiss
+                        </button>
+                      </div>
+                    )
                   ) : (
                     onAskCoachToAdapt && (
                       <button
@@ -375,7 +439,7 @@ export const ExerciseDetailModal: React.FC<ExerciseDetailModalProps> = ({
                         onClick={() => {
                           triggerHaptic('light');
                           onClose();
-                          onAskCoachToAdapt(intervention.coachPrompt, exercise.exerciseId);
+                          onAskCoachToAdapt(displayIntervention.coachPrompt, exercise.exerciseId);
                         }}
                       >
                         <Sparkles
@@ -384,7 +448,7 @@ export const ExerciseDetailModal: React.FC<ExerciseDetailModalProps> = ({
                           strokeWidth={2.2}
                           aria-hidden="true"
                         />
-                        <span>{intervention.ctaLabel}</span>
+                        <span>{displayIntervention.ctaLabel}</span>
                       </button>
                     )
                   )}

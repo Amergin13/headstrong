@@ -66,11 +66,9 @@ export interface OnboardingModalProps {
       weightUnit: WeightUnit;
       bodyweightKg?: number;
     };
-    /** Optional manual health baseline values entered in the lean stats step (omitted when skipped). */
+    /** Optional manual bodyweight entered in the lean stats step (omitted when skipped). */
     manualBaselineBiometric?: {
       bodyweightKg?: number;
-      restingHr?: number;
-      sleepHours?: number;
     };
     /** True when the athlete connected Android Health Connect during onboarding. */
     healthConnectConnected?: boolean;
@@ -122,7 +120,7 @@ const buildScreens = (total: number, perWeek: number): ScreenCopy[] => [
   {
     title: 'Your baseline stats',
     body: [
-      'Optional—helps calibrate starting loads, strength standards, and daily recovery from day one. Skip anything you prefer not to add.',
+      'Optional—helps calibrate starting loads and strength standards from day one. Skip anything you prefer not to add.',
     ],
     Illustration: BaselineStatsIllustration,
   },
@@ -258,8 +256,6 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
   const weightInputId = `${uid}-baseline-weight`;
   const heightInputId = `${uid}-baseline-height`;
   const ageInputId = `${uid}-baseline-age`;
-  const rhrInputId = `${uid}-baseline-rhr`;
-  const sleepInputId = `${uid}-baseline-sleep`;
   const returning = !!profile.onboardingCompleted;
   const [step, setStep] = useState<OnboardingStep>(initialStep);
   const canUseMuscle = canUseMusclePlan(profile.email);
@@ -312,8 +308,6 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
   const [ageInput, setAgeInput] = useState<string>(
     returning && profile.ageEntered ? String(profile.age) : ''
   );
-  const [rhrInput, setRhrInput] = useState<string>('');
-  const [sleepInput, setSleepInput] = useState<string>('');
   const [statsSkipped, setStatsSkipped] = useState<boolean>(false);
 
   const ownChoice = OWN_GOAL_OPTIONS.find((l) => l.exerciseId === ownLift);
@@ -353,12 +347,6 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
     }
     if (imported.latestHeightCm && imported.latestHeightCm > 0 && !heightInput.trim()) {
       setHeightInput(String(imported.latestHeightCm));
-    }
-    if (imported.latestRestingHr && imported.latestRestingHr > 0 && !rhrInput.trim()) {
-      setRhrInput(String(imported.latestRestingHr));
-    }
-    if (imported.avgSleepHours && imported.avgSleepHours > 0 && !sleepInput.trim()) {
-      setSleepInput(String(imported.avgSleepHours));
     }
     if (imported.gender && !selectedSex) {
       setSelectedSex(imported.gender);
@@ -462,28 +450,12 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
       : undefined;
   const ageInvalid = ageInput.trim() !== '' && parsedAge === undefined;
 
-  const parsedRhrNum = rhrInput.trim() !== '' ? Number(rhrInput) : NaN;
-  const parsedRhr =
-    Number.isFinite(parsedRhrNum) && parsedRhrNum >= 30 && parsedRhrNum <= 130
-      ? Math.round(parsedRhrNum)
-      : undefined;
-  const rhrInvalid = rhrInput.trim() !== '' && parsedRhr === undefined;
-
-  const parsedSleepNum = sleepInput.trim() !== '' ? Number(sleepInput) : NaN;
-  const parsedSleep =
-    Number.isFinite(parsedSleepNum) && parsedSleepNum >= 2 && parsedSleepNum <= 16
-      ? Math.round(parsedSleepNum * 10) / 10
-      : undefined;
-  const sleepInvalid = sleepInput.trim() !== '' && parsedSleep === undefined;
-
-  const leanFormHasAnyInvalid = weightInvalid || heightInvalid || ageInvalid || rhrInvalid || sleepInvalid;
+  const leanFormHasAnyInvalid = weightInvalid || heightInvalid || ageInvalid;
   const leanFormHasAnyInput = Boolean(
     selectedSex ||
       weightInput.trim() ||
       heightInput.trim() ||
-      ageInput.trim() ||
-      rhrInput.trim() ||
-      sleepInput.trim()
+      ageInput.trim()
   );
 
   const switchUnit = (nextUnit: WeightUnit) => {
@@ -541,18 +513,12 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
       : healthImport?.latestHeightCm;
     const effectiveSex = !statsSkipped && selectedSex ? selectedSex : healthImport?.gender;
     const effectiveAge = !statsSkipped && !ageInvalid && parsedAge ? parsedAge : healthImport?.age;
-    const effectiveRhr = !statsSkipped && !rhrInvalid ? parsedRhr : undefined;
-    const effectiveSleep = !statsSkipped && !sleepInvalid ? parsedSleep : undefined;
 
-    // Only emit manualBaselineBiometric when the user explicitly typed a health metric (not already covered by an identical Health Connect day).
+    // Only emit manualBaselineBiometric when the user explicitly typed a weight (not already covered by an identical Health Connect day).
     const hasManualBiometric =
       !editing &&
       !statsSkipped &&
-      Boolean(
-        (!weightInvalid && parsedWeightKg && parsedWeightKg !== healthImport?.latestBodyweightKg) ||
-          effectiveRhr ||
-          effectiveSleep
-      );
+      Boolean(!weightInvalid && parsedWeightKg && parsedWeightKg !== healthImport?.latestBodyweightKg);
 
     onCompleteOnboarding({
       goalPhase: editing ? profile.goalPhase || goal : goal,
@@ -574,8 +540,6 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
         ? {
             manualBaselineBiometric: {
               ...(!weightInvalid && parsedWeightKg ? { bodyweightKg: parsedWeightKg } : {}),
-              ...(effectiveRhr ? { restingHr: effectiveRhr } : {}),
-              ...(effectiveSleep ? { sleepHours: effectiveSleep } : {}),
             },
           }
         : {}),
@@ -1077,7 +1041,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
           </div>
         )}
 
-        {/* STEP 4: Lean, 100% skippable baseline stats form (sex, weight, height, age, optional resting HR & sleep) */}
+        {/* STEP 4: Lean, 100% skippable baseline stats form (sex, weight, height, age) */}
         {step === 4 && !editing && (
           <div className="flex flex-col gap-4" style={{ marginTop: 16 }}>
             {healthImport && importedSummaryText && (
@@ -1126,58 +1090,59 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
               </div>
             </fieldset>
 
-            {/* Weight + Height (lean 2-column row) */}
+            {/* Weight (full width with kg/lb unit toggle) */}
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center justify-between gap-2">
+                <label htmlFor={weightInputId} style={{ ...sectionLabel, marginBottom: 0 }}>
+                  Weight ({weightUnit})
+                </label>
+                <div className="flex items-center gap-1" role="group" aria-label="Weight unit">
+                  {(['kg', 'lb'] as WeightUnit[]).map((u) => (
+                    <button
+                      key={u}
+                      type="button"
+                      aria-pressed={weightUnit === u}
+                      onClick={() => switchUnit(u)}
+                      className={`px-3 rounded-lg font-medium ${focusRingClass}`}
+                      style={{
+                        minHeight: 32,
+                        fontSize: 12,
+                        background: weightUnit === u ? 'var(--color-action-secondary-bg)' : 'transparent',
+                        color: weightUnit === u ? 'var(--color-text-primary)' : 'var(--wk-muted)',
+                        border: `1px solid ${weightUnit === u ? 'var(--color-border-strong)' : 'var(--color-border-subtle)'}`,
+                      }}
+                    >
+                      {u}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <input
+                id={weightInputId}
+                type="number"
+                inputMode="decimal"
+                step="0.1"
+                placeholder={weightUnit === 'lb' ? 'e.g. 175' : 'e.g. 80'}
+                value={weightInput}
+                onChange={(e) => setWeightInput(e.target.value)}
+                aria-invalid={weightInvalid}
+                className="wk-field w-full tabular-nums"
+                style={{
+                  ...leanFieldStyle,
+                  border: `1px solid ${weightInvalid ? 'var(--color-status-danger-fill)' : 'var(--color-border-subtle)'}`,
+                }}
+              />
+              {weightInvalid && (
+                <span role="alert" className="wk-caption" style={{ color: 'var(--color-status-danger)' }}>
+                  Enter a valid weight.
+                </span>
+              )}
+            </div>
+
+            {/* Height + Age (balanced 2-column row) */}
             <div className="grid grid-cols-2 gap-3">
               <div className="flex flex-col gap-2">
-                <div className="flex items-center justify-between gap-2">
-                  <label htmlFor={weightInputId} style={{ ...sectionLabel, marginBottom: 0 }}>
-                    Weight ({weightUnit})
-                  </label>
-                  <div className="flex items-center gap-1" role="group" aria-label="Weight unit">
-                    {(['kg', 'lb'] as WeightUnit[]).map((u) => (
-                      <button
-                        key={u}
-                        type="button"
-                        aria-pressed={weightUnit === u}
-                        onClick={() => switchUnit(u)}
-                        className={`px-2 rounded-lg font-medium ${focusRingClass}`}
-                        style={{
-                          minHeight: 28,
-                          fontSize: 12,
-                          background: weightUnit === u ? 'var(--color-action-secondary-bg)' : 'transparent',
-                          color: weightUnit === u ? 'var(--color-text-primary)' : 'var(--wk-muted)',
-                          border: `1px solid ${weightUnit === u ? 'var(--color-border-strong)' : 'var(--color-border-subtle)'}`,
-                        }}
-                      >
-                        {u}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <input
-                  id={weightInputId}
-                  type="number"
-                  inputMode="decimal"
-                  step="0.1"
-                  placeholder={weightUnit === 'lb' ? 'e.g. 175' : 'e.g. 80'}
-                  value={weightInput}
-                  onChange={(e) => setWeightInput(e.target.value)}
-                  aria-invalid={weightInvalid}
-                  className="wk-field w-full tabular-nums"
-                  style={{
-                    ...leanFieldStyle,
-                    border: `1px solid ${weightInvalid ? 'var(--color-status-danger-fill)' : 'var(--color-border-subtle)'}`,
-                  }}
-                />
-                {weightInvalid && (
-                  <span role="alert" className="wk-caption" style={{ color: 'var(--color-status-danger)' }}>
-                    Enter a valid weight.
-                  </span>
-                )}
-              </div>
-
-              <div className="flex flex-col gap-2">
-                <label htmlFor={heightInputId} style={{ ...sectionLabel, marginBottom: 0, minHeight: 28, display: 'flex', alignItems: 'center' }}>
+                <label htmlFor={heightInputId} style={{ ...sectionLabel, marginBottom: 0 }}>
                   Height (cm)
                 </label>
                 <input
@@ -1200,10 +1165,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                   </span>
                 )}
               </div>
-            </div>
 
-            {/* Age + Optional Health Baseline (Resting HR & Typical Sleep) */}
-            <div className="grid grid-cols-3 gap-2">
               <div className="flex flex-col gap-2">
                 <label htmlFor={ageInputId} style={{ ...sectionLabel, marginBottom: 0 }}>
                   Age
@@ -1225,57 +1187,6 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                 {ageInvalid && (
                   <span role="alert" className="wk-caption" style={{ color: 'var(--color-status-danger)' }}>
                     13–110.
-                  </span>
-                )}
-              </div>
-
-              <div className="flex flex-col gap-2">
-                <label htmlFor={rhrInputId} style={{ ...sectionLabel, marginBottom: 0 }}>
-                  Resting HR
-                </label>
-                <input
-                  id={rhrInputId}
-                  type="number"
-                  inputMode="numeric"
-                  placeholder="bpm"
-                  value={rhrInput}
-                  onChange={(e) => setRhrInput(e.target.value)}
-                  aria-invalid={rhrInvalid}
-                  className="wk-field w-full tabular-nums"
-                  style={{
-                    ...leanFieldStyle,
-                    border: `1px solid ${rhrInvalid ? 'var(--color-status-danger-fill)' : 'var(--color-border-subtle)'}`,
-                  }}
-                />
-                {rhrInvalid && (
-                  <span role="alert" className="wk-caption" style={{ color: 'var(--color-status-danger)' }}>
-                    30–130.
-                  </span>
-                )}
-              </div>
-
-              <div className="flex flex-col gap-2">
-                <label htmlFor={sleepInputId} style={{ ...sectionLabel, marginBottom: 0 }}>
-                  Avg sleep
-                </label>
-                <input
-                  id={sleepInputId}
-                  type="number"
-                  inputMode="decimal"
-                  step="0.5"
-                  placeholder="hrs"
-                  value={sleepInput}
-                  onChange={(e) => setSleepInput(e.target.value)}
-                  aria-invalid={sleepInvalid}
-                  className="wk-field w-full tabular-nums"
-                  style={{
-                    ...leanFieldStyle,
-                    border: `1px solid ${sleepInvalid ? 'var(--color-status-danger-fill)' : 'var(--color-border-subtle)'}`,
-                  }}
-                />
-                {sleepInvalid && (
-                  <span role="alert" className="wk-caption" style={{ color: 'var(--color-status-danger)' }}>
-                    2–16 hrs.
                   </span>
                 )}
               </div>

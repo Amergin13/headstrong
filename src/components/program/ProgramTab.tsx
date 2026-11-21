@@ -28,7 +28,7 @@ import { CustomExerciseModal } from './CustomExerciseModal';
 import { MesocycleManager } from './MesocycleManager';
 import { GoalPhaseSwitcher } from './GoalPhaseSwitcher';
 import { WeeklyVolumeCard } from './WeeklyVolumeCard';
-import { InterventionActionReceipt, ProgramAdaptationCarousel } from './ProgramAdaptationCarousel';
+import { ProgramAdaptationCarousel } from './ProgramAdaptationCarousel';
 import { CoachIntervention, detectCoachInterventions } from '../../services/coachInterventions';
 import { calculateWeeklyMuscleVolume } from '../../services/storage';
 import { triggerHaptic } from '../../utils/haptics';
@@ -71,9 +71,9 @@ interface ProgramTabProps {
   /** Opens Treise coach in the Program context (optional pre-filled prompt). */
   onOpenCoach?: (prompt?: string) => void;
   /** Directly executes and persists an accepted adaptation suggestion across the entire product. */
-  onAcceptIntervention?: (intervention: CoachIntervention) => InterventionActionReceipt | void;
+  onAcceptIntervention?: (intervention: CoachIntervention) => void;
   /** Dismisses an adaptation suggestion and persists dismissal across the entire product. */
-  onDismissIntervention?: (intervention: CoachIntervention) => InterventionActionReceipt | void;
+  onDismissIntervention?: (intervention: CoachIntervention) => void;
   /** Removes a single accepted program override cleanly. */
   onRemoveProgramOverride?: (overrideId: string) => void;
   /** Clears all accepted program overrides for the current plan. */

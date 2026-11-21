@@ -1,7 +1,6 @@
-import React from 'react';
-import { Check, Sparkles, X } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { Check, Sparkles } from 'lucide-react';
 import type { CoachIntervention } from '../../services/coachInterventions';
-import type { InterventionActionReceipt } from '../program/ProgramAdaptationCarousel';
 import { MovementStandardsReport, SYMMETRY_FLAG_PCT } from '../../services/movementStandards';
 import { formatSentenceCase } from '../../utils/typography';
 import { triggerHaptic } from '../../utils/haptics';
@@ -12,8 +11,8 @@ export interface BalanceCardProps {
   adaptationApplied?: boolean;
   /** True when the athlete explicitly dismissed the balance suggestion so we respect it here too. */
   adaptationDismissed?: boolean;
-  onAcceptIntervention?: (intervention: CoachIntervention) => InterventionActionReceipt | void;
-  onDismissIntervention?: (intervention: CoachIntervention) => InterventionActionReceipt | void;
+  onAcceptIntervention?: (intervention: CoachIntervention) => void;
+  onDismissIntervention?: (intervention: CoachIntervention) => void;
   onFixImbalanceWithCoach?: (suggestedPrompt: string) => void;
 }
 
@@ -35,6 +34,46 @@ export const BalanceCard: React.FC<BalanceCardProps> = ({
   const { imbalances, sideDifferences, levels } = report;
   const loggedCount = levels.filter((l) => l.logged && l.source !== 'none').length;
   const findings = imbalances.length + sideDifferences.length;
+
+  // Hold accepted/dismissed card briefly to signal Mint success in-place before auto-dismissing.
+  const [resolving, setResolving] = useState<{
+    item: CoachIntervention;
+    phase: 'accepted' | 'exiting' | 'dismissing';
+  } | null>(null);
+  const timersRef = useRef<number[]>([]);
+
+  useEffect(() => {
+    return () => {
+      timersRef.current.forEach((id) => window.clearTimeout(id));
+      timersRef.current = [];
+    };
+  }, []);
+
+  const schedule = (fn: () => void, ms: number) => {
+    const id = window.setTimeout(fn, ms);
+    timersRef.current.push(id);
+  };
+
+  const displayIntervention = resolving?.item ?? intervention;
+  const isAccepted = resolving?.phase === 'accepted' || resolving?.phase === 'exiting';
+  const isFadingOut = resolving?.phase === 'exiting' || resolving?.phase === 'dismissing';
+
+  const handleAccept = (item: CoachIntervention) => {
+    if (resolving || !onAcceptIntervention) return;
+    triggerHaptic('success');
+    setResolving({ item, phase: 'accepted' });
+    onAcceptIntervention(item);
+    schedule(() => setResolving((prev) => (prev ? { ...prev, phase: 'exiting' } : null)), 900);
+    schedule(() => setResolving(null), 1120);
+  };
+
+  const handleDismiss = (item: CoachIntervention) => {
+    if (resolving || !onDismissIntervention) return;
+    triggerHaptic('light');
+    setResolving({ item, phase: 'dismissing' });
+    onDismissIntervention(item);
+    schedule(() => setResolving(null), 180);
+  };
 
   return (
     <section aria-labelledby="balance-title" className="wk-card w-full text-left block">
@@ -96,13 +135,13 @@ export const BalanceCard: React.FC<BalanceCardProps> = ({
         </ul>
       )}
 
-      {findings > 0 && adaptationApplied && !intervention && (
+      {findings > 0 && adaptationApplied && !displayIntervention && (
         <div className="mt-3">
           <span
             className="wk-pill"
             style={{
-              background: 'rgb(var(--color-coach-accent-rgb) / 0.12)',
-              color: 'var(--color-coach-accent)',
+              background: 'var(--color-status-positive-soft)',
+              color: 'var(--wk-accent)',
             }}
           >
             Adapted in program
@@ -110,63 +149,78 @@ export const BalanceCard: React.FC<BalanceCardProps> = ({
         </div>
       )}
 
-      {findings > 0 && intervention && onAcceptIntervention && onDismissIntervention && (
+      {findings > 0 && displayIntervention && onAcceptIntervention && onDismissIntervention && (
         <div
-          className="wk-raised mt-3 flex flex-col gap-3 border"
-          style={{ borderColor: 'rgb(var(--color-coach-accent-rgb) / 0.35)' }}
+          className={`wk-raised mt-3 flex flex-col gap-3 border transition-all duration-200 ${
+            isFadingOut ? 'opacity-0 scale-[0.98]' : 'opacity-100 scale-100'
+          }`}
+          style={{
+            borderColor: isAccepted
+              ? 'rgb(var(--color-accent-primary-rgb) / 0.5)'
+              : 'rgb(var(--color-coach-accent-rgb) / 0.35)',
+          }}
         >
           <div className="flex items-start gap-2">
             <Sparkles
               className="w-4 h-4 shrink-0 mt-1"
-              style={{ color: 'var(--color-coach-accent)' }}
+              style={{ color: isAccepted ? 'var(--wk-accent)' : 'var(--color-coach-accent)' }}
               strokeWidth={2.2}
               aria-hidden="true"
             />
             <div className="min-w-0">
               <div className="wk-subhead" style={{ color: 'var(--color-text-primary)' }}>
-                {formatSentenceCase(intervention.title)}
+                {formatSentenceCase(displayIntervention.title)}
               </div>
-              {intervention.proposedChanges.length > 0 && (
+              {displayIntervention.proposedChanges.length > 0 && (
                 <p className="wk-caption mt-1 max-w-prose">
-                  {intervention.proposedChanges.map((c) => c.humanSummary).join(' · ')}
+                  {displayIntervention.proposedChanges.map((c) => c.humanSummary).join(' · ')}
                 </p>
               )}
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => {
-                triggerHaptic('medium');
-                onAcceptIntervention(intervention);
-              }}
-              className="flex-1 min-h-[44px] rounded-xl px-4 py-2 text-base font-semibold inline-flex items-center justify-center gap-2 transition-transform active:scale-[0.98]"
+          {isAccepted ? (
+            <div
+              aria-live="polite"
+              className="min-h-[44px] rounded-xl px-4 py-2 flex items-center justify-center gap-2"
               style={{
-                background: 'var(--color-action-primary-bg)',
-                color: 'var(--color-action-primary-fg)',
+                background: 'var(--color-status-positive-soft)',
+                color: 'var(--wk-accent)',
               }}
             >
-              <Check className="w-4 h-4 shrink-0" strokeWidth={2.4} aria-hidden="true" />
-              <span>Accept</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                triggerHaptic('light');
-                onDismissIntervention(intervention);
-              }}
-              className="wk-btn-secondary min-h-[44px] px-4 inline-flex items-center justify-center gap-2"
-            >
-              <X className="w-4 h-4 shrink-0" strokeWidth={2} aria-hidden="true" />
-              <span>Dismiss</span>
-            </button>
-          </div>
+              <Check className="w-4 h-4 shrink-0" strokeWidth={2.5} aria-hidden="true" />
+              <span className="text-base font-semibold">Applied to your plan</span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                disabled={Boolean(resolving)}
+                onClick={() => handleAccept(displayIntervention)}
+                className="flex-1 min-h-[44px] rounded-xl px-4 py-2 text-base font-semibold inline-flex items-center justify-center gap-2 transition-transform active:scale-[0.98]"
+                style={{
+                  background: 'var(--color-action-primary-bg)',
+                  color: 'var(--color-action-primary-fg)',
+                }}
+              >
+                <Check className="w-4 h-4 shrink-0" strokeWidth={2.4} aria-hidden="true" />
+                <span>Accept</span>
+              </button>
+              <button
+                type="button"
+                disabled={Boolean(resolving)}
+                onClick={() => handleDismiss(displayIntervention)}
+                className="wk-btn-secondary min-h-[44px] px-4 inline-flex items-center justify-center"
+              >
+                Dismiss
+              </button>
+            </div>
+          )}
         </div>
       )}
 
       {findings > 0 &&
-        !(intervention && onAcceptIntervention && onDismissIntervention) &&
-        (intervention || (!adaptationApplied && !adaptationDismissed)) &&
+        !(displayIntervention && onAcceptIntervention && onDismissIntervention) &&
+        (displayIntervention || (!adaptationApplied && !adaptationDismissed)) &&
         onFixImbalanceWithCoach &&
         (() => {
           const defaultPrompt =
