@@ -1,5 +1,5 @@
 import { buildMovementStandards, buildStandardsAnswer } from './movementStandards';
-import { resolveActiveOverlay } from '../engine/continuityEngine';
+import { buildSwapWhyThisWorksForExercise, resolveActiveOverlay } from '../engine/continuityEngine';
 import {
   CoachPersonaSpec,
   CoachSurface,
@@ -3212,7 +3212,11 @@ async function processAssistantMessageCore(
         // B0. Open questions the model couldn't answer well: a fact-based answer on the same topic,
         // rather than the general briefing.
         if (!nanoHandled && !isTacticalWorkoutQuery) {
-          const named = findExerciseNamed(lowerMsg, activeWorkout, exerciseCatalog)?.session;
+          const named =
+            findExerciseNamed(lowerMsg, activeWorkout, exerciseCatalog)?.session ??
+            workoutExercises.find(
+              (ex) => ex.anchorExerciseName && lowerMsg.includes(ex.anchorExerciseName.toLowerCase())
+            );
           if (named) {
             const working = named.sets.filter((st) => !st.isWarmup && st.setType !== 'warmup');
             const def = exerciseCatalog.find((d) => d.id === named.exerciseId);
@@ -3220,9 +3224,19 @@ async function processAssistantMessageCore(
             const rir = readinessState === 'Amber Shield' ? '2–3' : `${first?.targetRir ?? 2}`;
             const namedBrief = cardLines(named);
             const pairSuffix = usesTwoDumbbells(named) && (first?.targetWeightKg ?? 0) > 0 ? ' each' : '';
+            const swapWhy = buildSwapWhyThisWorksForExercise({
+              exercise: named,
+              exerciseCatalog,
+              unit: profile.weightUnit || 'kg',
+            });
+            const whyExtra = swapWhy
+              ? ` Why this works: ${swapWhy.tier1} ${swapWhy.whyBullets[0] ?? ''}`.trimEnd()
+              : def?.whyItWorks
+              ? ` ${def.whyItWorks}`
+              : '';
             answerText = first
-              ? `For ${named.name} today: ${working.length} sets of ${first.targetReps} reps at ${first.targetWeightKg > 0 ? `${formatWeight(first.targetWeightKg, profile.weightUnit || 'kg')}${pairSuffix}` : 'bodyweight'}, stopping with ${rir} reps to spare. ${namedBrief[1]} ${def?.whyItWorks ?? ''} The weight goes up by itself once every set reaches ${named.maxReps} reps.`.replace(/\s+/g, ' ').trim()
-              : `${named.name} is in today's workout. ${def?.whyItWorks ?? ''}`.trim();
+              ? `For ${named.name} today: ${working.length} sets of ${first.targetReps} reps at ${first.targetWeightKg > 0 ? `${formatWeight(first.targetWeightKg, profile.weightUnit || 'kg')}${pairSuffix}` : 'bodyweight'}, stopping with ${rir} reps to spare. ${namedBrief[1]}${whyExtra} The weight goes up by itself once every set reaches ${named.maxReps} reps.`.replace(/\s+/g, ' ').trim()
+              : `${named.name} is in today's workout.${whyExtra}`.trim();
             nanoHandled = true;
           } else if (/\b(flat|tired|exhausted|drained|no energy|low energy|push (hard|it)|go hard|sluggish)\b/.test(lowerMsg)) {
             answerText = `${answerShouldTrain(activeWorkout, workouts, exerciseCatalog, readinessState)} If you feel off once you start, keep the planned weight and stop with an extra rep or two to spare; the plan adjusts from what you log.`;
@@ -3462,7 +3476,15 @@ async function processAssistantMessageCore(
             const inc = unit === 'lb' ? '5 lb' : targetEx.equipment === 'dumbbell' ? '1 kg per dumbbell' : '2.5 kg';
 
             const brief = cardLines(targetEx as ExerciseSession);
-            answerText = `For **${targetEx.name}** today, your target is **${targetWeightLabel}** for **${setCount} working sets** of **${repLabel}** reps, leaving **${targetRir}**.\n\n${brief[0]}\n${brief[1]}\n\nOnce all ${setCount} sets reach ${maxReps} reps, the weight goes up by ${inc} next session.`;
+            const swapWhy = buildSwapWhyThisWorksForExercise({
+              exercise: targetEx as ExerciseSession,
+              exerciseCatalog,
+              unit,
+            });
+            const whyBlock = swapWhy
+              ? `\n\n**Why this works:** ${swapWhy.tier1} ${swapWhy.whyBullets[0] ?? ''}`.trimEnd()
+              : '';
+            answerText = `For **${targetEx.name}** today, your target is **${targetWeightLabel}** for **${setCount} working sets** of **${repLabel}** reps, leaving **${targetRir}**.\n\n${brief[0]}\n${brief[1]}${whyBlock}\n\nOnce all ${setCount} sets reach ${maxReps} reps, the weight goes up by ${inc} next session.`;
 
             citations.push({
               label: targetEx.name,
@@ -3470,7 +3492,7 @@ async function processAssistantMessageCore(
               value: `${targetWeightLabel} × ${setCount} sets (${minReps}–${maxReps} reps)`,
             });
           } else {
-            const asksAboutToday = /\b(today|tonight|workout|session|briefing|plan|training|train|exercises?|doing|lifting|gym)\b/.test(lowerMsg);
+            const asksAboutToday = /\b(today|tonight|workout|session|briefing|plan|training|train|exercises?|doing|lifting|gym|swaps?)\b/.test(lowerMsg);
             if (!asksAboutToday) {
               const placeHint =
                 input.place?.tab === 'program'
@@ -3492,17 +3514,38 @@ async function processAssistantMessageCore(
                       isTimedExercise(e) || (def && isTimedExercise(def))
                         ? `${working[0]?.targetDurationSeconds ?? def?.defaultDurationSeconds ?? 45}s hold`
                         : `${e.minReps === e.maxReps ? e.minReps : `${e.minReps}–${e.maxReps}`} reps`;
-                    return `${idx + 1}. **${e.name}** — ${working.length} sets × ${targetText} @ ${load}`;
+                    const coveringTag =
+                      e.anchorExerciseId && e.anchorExerciseId !== e.exerciseId && e.anchorExerciseName
+                        ? ` (covering ${e.anchorExerciseName})`
+                        : '';
+                    return `${idx + 1}. **${e.name}**${coveringTag} — ${working.length} sets × ${targetText} @ ${load}`;
                   })
                   .join('\n')
               : '  No movements scheduled.';
+
+            const swapWhyEntries = workoutExercises
+              .map((e) =>
+                buildSwapWhyThisWorksForExercise({
+                  exercise: e,
+                  exerciseCatalog,
+                  unit: profile.weightUnit || 'kg',
+                })
+              )
+              .filter((x): x is NonNullable<typeof x> => Boolean(x));
+            const swapWhySection =
+              swapWhyEntries.length > 0
+                ? `\n\n**Why today's swaps work:**\n${swapWhyEntries
+                    .slice(0, 4)
+                    .map((w) => `- **${w.headline}:** ${w.tier1} ${w.whyBullets[0] ?? ''}`.trimEnd())
+                    .join('\n')}`
+                : '';
 
             const latestBio = biometrics[biometrics.length - 1];
             const plannedRirs = [...new Set(workoutExercises.flatMap((e) => e.sets.filter((st) => !st.isWarmup && st.setType !== 'warmup').map((st) => st.targetRir)).filter((r): r is number => typeof r === 'number'))].sort((a, b) => a - b);
             const effortForBriefing = plannedRirs.length === 0 ? '1–2 reps to spare' : plannedRirs.length === 1 ? `${plannedRirs[0]} ${plannedRirs[0] === 1 ? 'rep' : 'reps'} to spare` : `${plannedRirs[0]}–${plannedRirs[plannedRirs.length - 1]} reps to spare`;
 
             const briefPos = planPosition(profile, workouts, input.activities ?? []);
-            answerText = `Today's session is **${activeWorkout?.name || 'Workout'}**${activeWorkout?.programWorkoutNumber ? '' : ` (**${activeWorkout?.splitDay || 'Scheduled'} Day**)`} in **Week ${briefPos.week} of ${briefPos.totalWeeks}** (${activeWorkout?.location === 'travel' ? 'Bodyweight / No equipment' : activeWorkout?.location === 'home' ? 'Home' : 'Gym'} mode).\n\nPlanned Movements:\n${plannedList}\n\n${
+            answerText = `Today's session is **${activeWorkout?.name || 'Workout'}**${activeWorkout?.programWorkoutNumber ? '' : ` (**${activeWorkout?.splitDay || 'Scheduled'} Day**)`} in **Week ${briefPos.week} of ${briefPos.totalWeeks}** (${activeWorkout?.location === 'travel' ? 'Bodyweight / No equipment' : activeWorkout?.location === 'home' ? 'Home' : 'Gym'} mode).\n\nPlanned Movements:\n${plannedList}${swapWhySection}\n\n${
               readinessState === 'Primed'
                 ? `Your recovery is high today${recoveryReadingsClause(latestBio)}, so it's a good day to push your first working sets.`
                 : readinessState === 'Amber Shield'

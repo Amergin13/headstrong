@@ -17,6 +17,9 @@ import { parseEnvironmentConstraintText } from '../../services/environmentOverla
 import { buildContextEnvelope, serializeContextEnvelopeForPrompt } from '../../services/coachContextEnvelope';
 import { processAssistantMessage } from '../../services/aiAssistantService';
 import { buildExerciseProgressChart, filterChartByTimeline } from '../../services/progressSeries';
+import { buildExerciseInsight } from '../../services/exerciseInsight';
+import { acceptExerciseNote, buildExerciseNoteFacts } from '../../services/exerciseCoachNote';
+import { buildAthleteKnowledgeGraph } from '../knowledgeGraph';
 import {
   deleteCustomExerciseFromCatalog,
   deletePastWorkoutFromHistory,
@@ -427,9 +430,80 @@ export async function runPreAndroidCleanupSuite(assert: AssertFn): Promise<void>
     swapModalSrc.includes('evaluateSingleExerciseContinuitySwap') &&
       swapModalSrc.includes('Pick moderate') &&
       exCardSrc.includes('buildExerciseBridgeBands') &&
+      !exCardSrc.includes('Bridged from') &&
+      !exCardSrc.includes('Why this works') &&
       exDetailSrc.includes('buildExerciseBridgeBands') &&
       progChartCardSrc.includes('bridgeBands={visibleChart.bridgeBands}'),
-    'ExerciseSwapModal uses Continuity Engine priors and all 3 single-exercise E1RM chart surfaces wire Travel Bridge bands'
+    'ExerciseCard strips Bridged from & Why this works clutter, ExerciseSwapModal uses Continuity Engine priors, and all 3 single-exercise E1RM chart surfaces wire Travel Bridge bands'
+  );
+
+  // 9. Bridged Context Refactored into 2-Sentence Summary & "Why this works" Refactored into AI Coach
+  const bridgedUnloggedEx = {
+    ...activeBenchEx,
+    id: 'ex-bridged-1',
+    exerciseId: 'ex-flat-db-press',
+    name: 'Flat Dumbbell Press',
+    equipment: 'dumbbell' as const,
+    anchorExerciseId: 'ex-bench-press',
+    anchorExerciseName: 'Barbell Bench Press',
+    continuityRationaleKind: 'ANCHOR_PRIOR' as const,
+    minReps: 8,
+    maxReps: 12,
+  };
+  const bridgedInsight = buildExerciseInsight(bridgedUnloggedEx, [], 'Normal', 80);
+  const kgForNote = buildAthleteKnowledgeGraph([], [], SEED_EXERCISES, NEW_USER_PROFILE, {}, []);
+  const bridgedNoteFacts = buildExerciseNoteFacts({
+    exercise: bridgedUnloggedEx,
+    insight: bridgedInsight,
+    workouts: [],
+    readinessState: 'Normal',
+    knowledgeGraph: kgForNote,
+    primaryMuscle: 'Chest',
+    muscleLabel: 'Chest',
+    formatWeight: (kg) => `${kg} kg`,
+  });
+  assert(
+    bridgedInsight.lines.length === 2 &&
+      bridgedInsight.lines[0].includes('Barbell Bench Press') &&
+      acceptExerciseNote(bridgedNoteFacts.fallback, bridgedNoteFacts) !== null,
+    'Bridged exercise context lives cleanly inside the strict 2-sentence summary and passes acceptExerciseNote'
+  );
+
+  const bridgedSessionForCoach: WorkoutSession = {
+    ...benchHistory[0],
+    completed: false,
+    exercises: [bridgedUnloggedEx],
+  };
+  const briefingWithSwap = await processAssistantMessage({
+    userMessage: "Give me today's briefing",
+    profile: coachProfile,
+    activeWorkout: bridgedSessionForCoach,
+    workouts: benchHistory,
+    biometrics: [],
+    exerciseCatalog: SEED_EXERCISES,
+    bodyweightEmaKg: 80,
+    readinessState: 'Normal',
+  });
+  assert(
+    briefingWithSwap.message.text.includes("Why today's swaps work") &&
+      briefingWithSwap.message.text.includes('covering Barbell Bench Press'),
+    'AI Coach session briefing explains active swaps ("Why today\'s swaps work") cleanly'
+  );
+
+  const chatSwapRes = await processAssistantMessage({
+    userMessage: 'Swap barbell bench press to flat dumbbell press',
+    profile: coachProfile,
+    activeWorkout: { ...benchHistory[0], completed: false, exercises: [activeBenchEx] },
+    workouts: benchHistory,
+    biometrics: [],
+    exerciseCatalog: SEED_EXERCISES,
+    bodyweightEmaKg: 80,
+    readinessState: 'Normal',
+  });
+  assert(
+    chatSwapRes.actionTaken?.type === 'SWAP_EXERCISE' &&
+      chatSwapRes.message.text.includes('Why this works:'),
+    'AI Coach swap_exercise reply explains "Why this works" right in chat'
   );
 
   assert(

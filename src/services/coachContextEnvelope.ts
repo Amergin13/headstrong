@@ -8,7 +8,7 @@
  * 3. Semantic Memory & Knowledge Graph Edges: persistent athlete attributes & injury/contraindication edges
  */
 import { ActivityLog, activeDayDates, describeActivity } from '../engine/activeDays';
-import { resolveActiveOverlay } from '../engine/continuityEngine';
+import { buildSwapWhyThisWorksForExercise, resolveActiveOverlay } from '../engine/continuityEngine';
 import { calculateE1RM, isTimedExercise } from '../engine/e1rm';
 import { buildBodyweightEmaLookup } from '../engine/ema';
 import { AthleteKnowledgeGraph, buildAthleteKnowledgeGraph } from '../engine/knowledgeGraph';
@@ -61,6 +61,7 @@ export interface OouxExercise {
   stalled: boolean;
   anchor_exercise_name?: string | null;
   calibration_source?: string | null;
+  swap_why_it_works?: string | null;
 }
 
 export interface OouxEnvironmentOverlay {
@@ -309,6 +310,7 @@ export const OOUX_OBJECT_SCHEMAS = {
       stalled: { type: 'boolean' },
       anchor_exercise_name: { type: ['string', 'null'] },
       calibration_source: { type: ['string', 'null'] },
+      swap_why_it_works: { type: ['string', 'null'] },
     },
   },
   Goal: {
@@ -618,6 +620,11 @@ export function buildContextEnvelope(input: {
     const targetDur = timed
       ? first?.targetDurationSeconds ?? def?.defaultDurationSeconds ?? 45
       : null;
+    const swapWhy = buildSwapWhyThisWorksForExercise({
+      exercise: ex,
+      exerciseCatalog,
+      unit: profile.weightUnit || 'kg',
+    });
     return {
       id: ex.id,
       exercise_id: ex.exerciseId,
@@ -639,6 +646,7 @@ export function buildContextEnvelope(input: {
       stalled: stalledIds.has(ex.exerciseId),
       ...(ex.anchorExerciseName ? { anchor_exercise_name: ex.anchorExerciseName } : {}),
       ...(ex.calibrationSource ? { calibration_source: ex.calibrationSource } : {}),
+      ...(swapWhy ? { swap_why_it_works: `${swapWhy.tier1} ${swapWhy.whyBullets[0] ?? ''}`.trim() } : {}),
     };
   });
 
@@ -960,9 +968,14 @@ export function serializeContextEnvelopeForPrompt(
     ? `Active environment overlay: ${overlayObj.label} (${overlayObj.profile_type}, ${overlayObj.scope}${overlayObj.max_dumbbell_kg ? `, max DB ${formatWeight(overlayObj.max_dumbbell_kg, unit)}` : ''}${overlayObj.max_session_minutes ? `, max ${overlayObj.max_session_minutes} min` : ''}${overlayObj.expires_at_iso ? `, reverts after ${overlayObj.expires_at_iso}` : ''}).`
     : '';
   const swappedSlots = ws.today_workout.exercises
-    .filter((e) => e.anchor_exercise_name)
-    .map((e) => `${e.name} (covering ${e.anchor_exercise_name}${e.calibration_source ? `, ${e.calibration_source}` : ''})`)
-    .join(', ');
+    .filter((e) => e.anchor_exercise_name || e.swap_why_it_works)
+    .map(
+      (e) =>
+        `${e.name}${e.anchor_exercise_name ? ` (covering ${e.anchor_exercise_name})` : ''}${
+          e.swap_why_it_works ? `: ${e.swap_why_it_works}` : ''
+        }`
+    )
+    .join('; ');
   const lines = [
     `${modePrefix}Route: ${ws.app_route} | Day mode: ${ws.today_workout.day_instance_kind} | Program completion: ${ws.program.completion_pct}% (${ws.program.completed_workouts}/${ws.program.total_workouts}, Wk ${ws.program.current_week}/${ws.program.total_weeks} Day ${ws.program.current_day_number}).`,
   ];

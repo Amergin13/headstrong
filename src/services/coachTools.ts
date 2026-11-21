@@ -7,8 +7,10 @@ import {
 } from '../engine/activeDays';
 import {
   applyEnvironmentOverlayToSession,
+  buildSwapWhyThisWorksForExercise,
   createOverlayForTrainingLocation,
   createPresetOverlay,
+  evaluateSingleExerciseContinuitySwap,
   overlayToTrainingLocation,
   resolveActiveOverlay,
 } from '../engine/continuityEngine';
@@ -1495,8 +1497,31 @@ function buildSwappedExerciseSession(
     }
   ).exercises[0];
 
+  const continuity = evaluateSingleExerciseContinuitySwap({
+    currentExercise: targetEx,
+    replacementDef: replacement,
+    historicalWorkouts: context.workouts,
+    exerciseCatalog: context.exerciseCatalog,
+    storedProgressionStates: context.profile.exerciseProgressionStates,
+    activeOverlay: resolveActiveOverlay(context.profile.activeEnvironmentOverlay).active,
+    userBodyweightKg: context.bodyweightEmaKg,
+    unit,
+    planId: getSessionPlanId(activeWorkout) ?? 'default',
+    splitDay: activeWorkout.splitDay,
+  });
+
   const replacementEx: ExerciseSession = {
     ...preparedSingle,
+    slotId: targetEx.slotId ?? targetEx.orderCode ?? targetEx.id,
+    anchorExerciseId: targetEx.anchorExerciseId ?? targetEx.exerciseId,
+    anchorExerciseName: targetEx.anchorExerciseName ?? targetEx.name,
+    anchorReferenceLabel: continuity.anchorReferenceLabel,
+    calibrationSource: timed ? undefined : continuity.prescription.calibrationSource,
+    continuityRationaleKind: timed ? undefined : continuity.prescription.rationaleKind,
+    coarseJumpPct: timed ? undefined : continuity.prescription.coarseJumpPct,
+    setupLabel: timed ? undefined : continuity.prescription.setupLabel,
+    bodyweightLoadPct: timed ? undefined : continuity.prescription.bodyweightLoadPct,
+    leverageTier: timed ? undefined : continuity.targetMetadata.leverageTier,
     sets: preparedSingle.sets.map((st, idx) =>
       targetWeightKg > 0 && (st.targetWeightKg ?? 0) <= 0
         ? { ...st, setNumber: idx + 1, targetWeightKg, actualWeightKg: targetWeightKg }
@@ -1564,6 +1589,16 @@ export async function executeSwapExercise(
   };
 
   const reasonSuffix = rawArgs.reason ? ` (${rawArgs.reason})` : '';
+  const swapWhy = buildSwapWhyThisWorksForExercise({
+    exercise: finalReplacement,
+    exerciseCatalog,
+    unit: context.profile.weightUnit || 'kg',
+  });
+  const whyClause = swapWhy
+    ? `\n\n**Why this works:** ${swapWhy.tier1} ${swapWhy.whyBullets[0] ?? ''}`.trimEnd()
+    : replacement.whyItWorks
+    ? `\n\n**Why this works:** ${replacement.whyItWorks}`
+    : '';
   return commitMutationTransaction({
     context,
     toolName: 'swap_exercise',
@@ -1576,7 +1611,7 @@ export async function executeSwapExercise(
       previous_state: { display: targetEx.name, exercise_id: targetEx.exerciseId },
       new_state: { display: replacement.name, exercise_id: replacement.id },
     },
-    summaryText: `Swapped **${targetEx.name}** → **${replacement.name}** in **${activeWorkout.name}**${reasonSuffix}.`,
+    summaryText: `Swapped **${targetEx.name}** → **${replacement.name}** in **${activeWorkout.name}**${reasonSuffix}.${whyClause}`,
     navigateTarget: 'train',
     navigateLabel: 'View Workout',
   });
@@ -2292,6 +2327,20 @@ export async function executeSwitchLocation(
         : `Switched today's workout back to the gym, with barbells, cables and machines available again.`;
   }
 
+  const firstSwappedWhy = updatedWorkout.exercises
+    .map((ex) =>
+      buildSwapWhyThisWorksForExercise({
+        exercise: ex,
+        exerciseCatalog: context.exerciseCatalog,
+        unit,
+      })
+    )
+    .find(Boolean);
+  const locationWhyClause =
+    firstSwappedWhy && resolvedLoc !== 'gym'
+      ? `\n\n**Why these swaps work:** ${firstSwappedWhy.whyBullets[0] ?? firstSwappedWhy.tier1}`
+      : '';
+
   return commitMutationTransaction({
     context,
     toolName: 'switch_location',
@@ -2308,7 +2357,7 @@ export async function executeSwitchLocation(
       previous_state: { display: prevOverlay ? prevOverlay.label : LOCATION_LABELS[prevLoc] },
       new_state: { display: nextOverlay ? nextOverlay.label : LOCATION_LABELS[resolvedLoc] },
     },
-    summaryText: reply,
+    summaryText: `${reply}${locationWhyClause}`,
     navigateTarget: 'train',
     navigateLabel: 'View Workout',
   });

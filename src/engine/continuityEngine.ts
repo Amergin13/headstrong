@@ -1981,6 +1981,61 @@ export function buildContinuityCopy(
   };
 }
 
+/**
+ * Builds the science-backed "Why this works" swap/continuity explanation for AI Coach briefings,
+ * chat swaps, and exercise Q&A (moved off the ExerciseCard to keep cards focused and scannable).
+ */
+export function buildSwapWhyThisWorksForExercise(params: {
+  exercise: ExerciseSession;
+  exerciseCatalog: ExerciseDefinition[];
+  unit?: WeightUnit;
+}): { headline: string; tier1: string; whyBullets: string[] } | null {
+  const { exercise, exerciseCatalog, unit = 'kg' } = params;
+  const isSwapped = Boolean(exercise.anchorExerciseId && exercise.anchorExerciseId !== exercise.exerciseId);
+  const kind: ContinuityRationaleKind | undefined =
+    exercise.continuityRationaleKind ??
+    (exercise.isBridgeReentry
+      ? 'HOME_GYM_REENTRY'
+      : isSwapped
+      ? classifyEquipment(exercise.equipment) === 'BODYWEIGHT'
+        ? 'BODYWEIGHT'
+        : classifyEquipment(exercise.equipment) === 'VARIABLE_MACHINE_OR_CABLE' &&
+          exercise.calibrationSource === 'EFFORT_ONLY'
+        ? 'EFFORT_ONLY'
+        : 'ANCHOR_PRIOR'
+      : undefined);
+
+  const def = exerciseCatalog.find((d) => d.id === exercise.exerciseId);
+  if (!kind && !isSwapped) return null;
+
+  const resolvedKind: ContinuityRationaleKind = kind ?? 'ANCHOR_PRIOR';
+  const copy = buildContinuityCopy(resolvedKind, {
+    anchorName: exercise.anchorExerciseName,
+    coarseJumpPct: exercise.coarseJumpPct,
+    setupLabel: exercise.setupLabel,
+    bodyweightLoadPct: exercise.bodyweightLoadPct,
+    primaryMuscle: def?.primaryMuscle,
+    unit,
+  });
+  const whyBullets =
+    def?.whyItWorks && !copy.tier2Bullets.includes(def.whyItWorks)
+      ? [...copy.tier2Bullets, def.whyItWorks]
+      : copy.tier2Bullets;
+
+  const headline =
+    resolvedKind === 'HOME_GYM_REENTRY'
+      ? `${exercise.name} (back at the gym)`
+      : exercise.anchorExerciseName && isSwapped
+      ? `${exercise.name} (covering ${exercise.anchorExerciseName})`
+      : exercise.name;
+
+  return {
+    headline,
+    tier1: copy.tier1,
+    whyBullets,
+  };
+}
+
 // ============================================================================
 // UI-5: Post-Session Continuity Summary
 // ============================================================================

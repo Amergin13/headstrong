@@ -112,13 +112,28 @@ export function buildExerciseNoteFacts(input: ExerciseNoteInput): ExerciseNoteFa
     : '';
   const repRange = getExerciseRepRangeLabel(exercise);
   const across = repRange ? ` across ${repRange}` : '';
+  const bridgedAnchor =
+    exercise.anchorExerciseId &&
+    exercise.anchorExerciseId !== exercise.exerciseId &&
+    exercise.anchorExerciseName
+      ? exercise.anchorExerciseName.replace(/[.!?]/g, '').trim()
+      : undefined;
+  const isReentry = Boolean(exercise.isBridgeReentry);
+
+  if (bridgedAnchor) {
+    facts.push(`Standing in for ${bridgedAnchor} in today's session.`);
+  } else if (isReentry) {
+    facts.push('Returning to this gym lift after away sessions.');
+  }
 
   // Line 1: Front-loaded Historical Trajectory Anchor (concrete absolute load, zero percentages).
   let line1: string;
   if (timedWork) {
     if (completedSessions.length === 0) {
       facts.push('This is the first time you have logged this exercise.');
-      line1 = `First time on ${exercise.name}—sets your starting point.`;
+      line1 = bridgedAnchor
+        ? `Standing in for ${bridgedAnchor}—first session sets your starting point.`
+        : `First time on ${exercise.name}—sets your starting point.`;
     } else if (completedSessions.length === 1) {
       facts.push(`Logged 1 completed session on ${exercise.name}, establishing your baseline endurance.`);
       line1 = `Baseline endurance set from session 1.`;
@@ -128,7 +143,9 @@ export function buildExerciseNoteFacts(input: ExerciseNoteInput): ExerciseNoteFa
     }
   } else if (!lastSession || insight.history.length === 0) {
     facts.push('This is the first time you have logged this exercise.');
-    line1 = isAssisted
+    line1 = bridgedAnchor
+      ? `Standing in for ${bridgedAnchor}—first session sets your starting point.`
+      : isAssisted
       ? `First time on ${exercise.name}—sets your starting point (less assistance is harder).`
       : isPureBodyweight && insight.includesBodyweight
       ? `First time on ${exercise.name}—sets your starting point using your bodyweight.`
@@ -218,7 +235,9 @@ export function buildExerciseNoteFacts(input: ExerciseNoteInput): ExerciseNoteFa
   let line2: string;
   if (readinessState === 'Amber Shield') {
     facts.push('Recovery today is low, so the session holds load steady to preserve muscle and limit fatigue.');
-    line2 = `Low recovery today—holding weight${across} preserves muscle${jointClause || ' without added fatigue'}.`;
+    line2 = bridgedAnchor
+      ? `Low recovery today—covering ${bridgedAnchor}${across} steadily preserves muscle.`
+      : `Low recovery today—holding weight${across} preserves muscle${jointClause || ' without added fatigue'}.`;
   } else if (timedWork) {
     if (exercise.durationSeconds || isTimedExercise(exercise)) {
       facts.push('Session stimulus today: sustained isometric trunk stability and muscular endurance.');
@@ -229,7 +248,15 @@ export function buildExerciseNoteFacts(input: ExerciseNoteInput): ExerciseNoteFa
     }
   } else if (!lastSession || !planned) {
     facts.push(`Session stimulus today: establish baseline mechanical tension and hypertrophy stimulus${across}${musclePhrase}.`);
-    line2 = `Today sets your hypertrophy baseline${across} with clean tension${musclePhrase}${jointClause}.`;
+    line2 = bridgedAnchor
+      ? `Today preserves hypertrophy stimulus${across} with clean mechanical tension.`
+      : `Today sets your hypertrophy baseline${across} with clean tension${musclePhrase}${jointClause}.`;
+  } else if (bridgedAnchor) {
+    facts.push(`Today covers ${bridgedAnchor}${across} to keep mechanical tension and hypertrophy moving${musclePhrase}.`);
+    line2 = `Covering ${bridgedAnchor}${across} keeps mechanical tension and hypertrophy moving.`;
+  } else if (isReentry) {
+    facts.push(`Back at the gym: matching your last gym load${across} grooves strength right back in${musclePhrase}.`);
+    line2 = `Back at the gym—matching your last load${across} grooves strength right back in.`;
   } else {
     const prevSets = lastSession.sets.filter(done);
     const prevTop = prevSets.reduce((m, s) => Math.max(m, weightOf(s)), 0);

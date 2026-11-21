@@ -209,6 +209,13 @@ export function buildExerciseInsight(
   const isAssisted = isAssistedExercise(exercise);
   const repRange = getExerciseRepRangeLabel(exercise);
   const across = repRange ? ` across ${repRange}` : '';
+  const bridgedAnchor =
+    exercise.anchorExerciseId &&
+    exercise.anchorExerciseId !== exercise.exerciseId &&
+    exercise.anchorExerciseName
+      ? exercise.anchorExerciseName.replace(/[.!?]/g, '').trim()
+      : undefined;
+  const isReentry = Boolean(exercise.isBridgeReentry);
   const bwRatio = isCalisthenic ? getBodyweightLoadRatio(exercise.exerciseId, exercise.pillar) : 0;
   const hasRealPastBw = past.length > 0 && past.every(({ w }) => bwForDate(w.date) > 0);
   const currentSessionBw = bwForDate(localDateString());
@@ -225,10 +232,14 @@ export function buildExerciseInsight(
       .filter((h) => h.value > 0);
 
     if (past.length === 0 || history.length === 0) {
-      const line1 = `First time on ${exercise.name}—sets your starting point.`;
+      const line1 = bridgedAnchor
+        ? `Standing in for ${bridgedAnchor}—first session sets your starting point.`
+        : `First time on ${exercise.name}—sets your starting point.`;
       const line2 =
         readinessState === 'Amber Shield'
           ? `Low recovery today—holding steady${across} builds your groove cleanly.`
+          : bridgedAnchor
+          ? `Today preserves hypertrophy stimulus${across} with clean mechanical tension.`
           : `Today sets your hypertrophy baseline${across} with clean mechanical tension.`;
       return { metric: 'reps', history, lines: [line1, line2], summary: `${line1}\n${line2}` };
     }
@@ -255,7 +266,11 @@ export function buildExerciseInsight(
     const plannedReps = plannedSet?.targetReps ?? 0;
     const line2 =
       readinessState === 'Amber Shield'
-        ? `Low recovery today—holding target steady${across} protects muscle.`
+        ? bridgedAnchor
+          ? `Low recovery today—covering ${bridgedAnchor}${across} steadily preserves muscle.`
+          : `Low recovery today—holding target steady${across} protects muscle.`
+        : bridgedAnchor
+        ? `Covering ${bridgedAnchor}${across} keeps hypertrophy stimulus moving.`
         : plannedReps > prevReps
         ? `Expanding bodyweight output${across || ' today'} drives hypertrophy.`
         : `Matching bodyweight output${across} deepens hypertrophy volume.`;
@@ -272,10 +287,14 @@ export function buildExerciseInsight(
       })
       .filter((h) => h.value > 0);
     if (past.length === 0 || history.length === 0) {
-      const line1 = `First time on ${exercise.name}—sets your starting point.`;
+      const line1 = bridgedAnchor
+        ? `Standing in for ${bridgedAnchor}—first session sets your starting point.`
+        : `First time on ${exercise.name}—sets your starting point.`;
       const line2 =
         readinessState === 'Amber Shield'
           ? `Low recovery today—holding steady${across} builds your groove cleanly.`
+          : bridgedAnchor
+          ? `Today preserves hypertrophy stimulus${across} with clean mechanical tension.`
           : `Today sets your hypertrophy baseline${across} with clean mechanical tension.`;
       return { metric: 'added_kg', history, lines: [line1, line2], summary: `${line1}\n${line2}` };
     }
@@ -299,7 +318,13 @@ export function buildExerciseInsight(
     const plannedReps = plannedSet?.targetReps ?? 0;
     const line2 =
       readinessState === 'Amber Shield'
-        ? `Low recovery today—holding weight${across} preserves muscle.`
+        ? bridgedAnchor
+          ? `Low recovery today—covering ${bridgedAnchor}${across} steadily preserves muscle.`
+          : `Low recovery today—holding weight${across} preserves muscle.`
+        : bridgedAnchor
+        ? `Covering ${bridgedAnchor}${across} keeps mechanical tension and hypertrophy moving.`
+        : isReentry
+        ? `Back at the gym—matching your last load${across} grooves strength right back in.`
         : plannedTop > prevTop + 0.01
         ? `Heavier load${across || ' today'} drives progressive mechanical tension.`
         : plannedTop < prevTop - 0.01
@@ -318,7 +343,9 @@ export function buildExerciseInsight(
     .filter((h) => h.e1rmKg > 0);
 
   if (past.length === 0 || history.length === 0) {
-    const line1 = isAssisted
+    const line1 = bridgedAnchor
+      ? `Standing in for ${bridgedAnchor}—first session sets your starting point.`
+      : isAssisted
       ? `First time on ${exercise.name}—sets your starting point (less assistance is harder).`
       : isCalisthenic && exercise.equipment === 'bodyweight' && !exercise.isWeightedCalisthenic && !hasAddedLoad
       ? `First time on ${exercise.name}—sets your starting point using your bodyweight.`
@@ -326,6 +353,8 @@ export function buildExerciseInsight(
     const line2 =
       readinessState === 'Amber Shield'
         ? `Low recovery today—holding steady${across} builds your groove cleanly.`
+        : bridgedAnchor
+        ? `Today preserves hypertrophy stimulus${across} with clean mechanical tension.`
         : `Today sets your hypertrophy baseline${across} with clean mechanical tension.`;
     return { metric: 'e1rm', includesBodyweight: isCalisthenic, isIsolation, history, bestSetHistory, lines: [line1, line2], summary: `${line1}\n${line2}` };
   }
@@ -365,7 +394,13 @@ export function buildExerciseInsight(
 
   let line2: string;
   if (readinessState === 'Amber Shield') {
-    line2 = `Low recovery today—holding weight${across} preserves muscle.`;
+    line2 = bridgedAnchor
+      ? `Low recovery today—covering ${bridgedAnchor}${across} steadily preserves muscle.`
+      : `Low recovery today—holding weight${across} preserves muscle.`;
+  } else if (bridgedAnchor) {
+    line2 = `Covering ${bridgedAnchor}${across} keeps mechanical tension and hypertrophy moving.`;
+  } else if (isReentry) {
+    line2 = `Back at the gym—matching your last load${across} grooves strength right back in.`;
   } else if (isAssisted && plannedTop < prevTop - 0.01) {
     line2 = `Less assistance${across || ' today'} drives progressive pulling strength.`;
   } else if (plannedTop > prevTop + 0.01) {

@@ -17272,7 +17272,8 @@ Exercise,,Date,Workout,Sets,Reps,Tempo,Rest,Notes,Set 1,Set 2,Set 3,Set 4
         trainTabSrc75.includes("label: 'Bodyweight / No equipment'") &&
         !parserSrc75.includes('/api/coach') &&
         !parserSrc75.includes('fetch(') &&
-        exCardSrc75.includes('Why this works') &&
+        !exCardSrc75.includes('Why this works') &&
+        !exCardSrc75.includes('Bridged from') &&
         exCardSrc75.includes('LAST AT GYM') &&
         exCardSrc75.includes('Adapts on S1') &&
         exCardSrc75.includes('SETUP') &&
