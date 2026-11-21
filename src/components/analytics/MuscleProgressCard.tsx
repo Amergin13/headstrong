@@ -8,7 +8,14 @@ const dayMonth = (date: string) => {
   return `${d}/${m}`;
 };
 
-/** Weekly hard sets as bars, with the personal target shaded behind them. */
+/** Weekly hard sets as bars (stacked by tool when mixed across Barbell, Dumbbell, Bodyweight & Machine), with the personal target shaded behind them. */
+const TOOL_SEGMENTS: { key: 'barbell' | 'dumbbell' | 'bodyweight' | 'machineCable'; label: string; color: string }[] = [
+  { key: 'barbell', label: 'Barbell', color: 'var(--wk-accent)' },
+  { key: 'dumbbell', label: 'Dumbbell', color: 'var(--color-text-primary)' },
+  { key: 'bodyweight', label: 'Bodyweight', color: 'var(--color-text-secondary)' },
+  { key: 'machineCable', label: 'Machine / Cable', color: 'var(--color-border-strong)' },
+];
+
 const WeeklySetsBars: React.FC<{ progress: MuscleProgress }> = ({ progress }) => {
   const { setsByWeek, target } = progress;
   const top = Math.max(target ? target[1] * 1.15 : 0, ...setsByWeek.map((w) => w.sets), 4);
@@ -19,6 +26,12 @@ const WeeklySetsBars: React.FC<{ progress: MuscleProgress }> = ({ progress }) =>
   const label = target
     ? `Hard sets per week for ${windowLabel}, against a target of ${target[0]} to ${target[1]}: ${setsByWeek.map((w) => w.sets).join(', ')}`
     : `Hard sets per week for ${windowLabel}: ${setsByWeek.map((w) => w.sets).join(', ')}`;
+
+  const usedTools = TOOL_SEGMENTS.filter((seg) =>
+    setsByWeek.some((w) => (w.byTool?.[seg.key] ?? 0) > 0)
+  );
+  const showStackedTools = usedTools.length >= 2;
+
   return (
     <div>
       <div
@@ -45,23 +58,56 @@ const WeeklySetsBars: React.FC<{ progress: MuscleProgress }> = ({ progress }) =>
           style={{ gridTemplateColumns: `repeat(${Math.max(1, setsByWeek.length)}, 1fr)`, gap: barGap }}
           aria-hidden="true"
         >
-          {setsByWeek.map((w, i) => (
-            <div
-              key={w.date}
-              className="wk-chart-fade"
-              style={{
-                height: `${Math.max(w.sets > 0 ? 3 : 0, (w.sets / top) * 100)}%`,
-                borderRadius: '4px 4px 0 0',
-                background:
-                  i === setsByWeek.length - 1
-                    ? inBand(w.sets)
-                      ? 'var(--wk-accent)'
-                      : 'var(--color-text-primary)'
-                    : 'var(--color-border-track)',
-                animationDelay: `${Math.min(i, 12) * 35}ms`,
-              }}
-            />
-          ))}
+          {setsByWeek.map((w, i) => {
+            const totalHeightPct = Math.max(w.sets > 0 ? 3 : 0, (w.sets / top) * 100);
+            if (showStackedTools && w.byTool && w.sets > 0) {
+              const toolSum =
+                w.byTool.barbell + w.byTool.dumbbell + w.byTool.bodyweight + w.byTool.machineCable;
+              const denom = toolSum > 0 ? toolSum : w.sets;
+              return (
+                <div
+                  key={w.date}
+                  className="wk-chart-fade flex flex-col-reverse overflow-hidden"
+                  style={{
+                    height: `${totalHeightPct}%`,
+                    borderRadius: '4px 4px 0 0',
+                    animationDelay: `${Math.min(i, 12) * 35}ms`,
+                  }}
+                >
+                  {TOOL_SEGMENTS.map((seg) => {
+                    const val = w.byTool?.[seg.key] ?? 0;
+                    if (val <= 0) return null;
+                    return (
+                      <div
+                        key={seg.key}
+                        style={{
+                          height: `${(val / denom) * 100}%`,
+                          background: seg.color,
+                        }}
+                      />
+                    );
+                  })}
+                </div>
+              );
+            }
+            return (
+              <div
+                key={w.date}
+                className="wk-chart-fade"
+                style={{
+                  height: `${totalHeightPct}%`,
+                  borderRadius: '4px 4px 0 0',
+                  background:
+                    i === setsByWeek.length - 1
+                      ? inBand(w.sets)
+                        ? 'var(--wk-accent)'
+                        : 'var(--color-text-primary)'
+                      : 'var(--color-border-track)',
+                  animationDelay: `${Math.min(i, 12) * 35}ms`,
+                }}
+              />
+            );
+          })}
         </div>
         {target && (
           <span
@@ -77,6 +123,19 @@ const WeeklySetsBars: React.FC<{ progress: MuscleProgress }> = ({ progress }) =>
         <span>{setsByWeek.length > 0 ? dayMonth(setsByWeek[0].date) : '—'}</span>
         <span>This week · {progress.weeklySets} sets</span>
       </div>
+      {showStackedTools && (
+        <div className="flex items-center flex-wrap gap-3 mt-2" aria-hidden="true">
+          {usedTools.map((seg) => (
+            <span key={seg.key} className="wk-caption inline-flex items-center gap-1">
+              <span
+                className="inline-block rounded-sm"
+                style={{ width: 8, height: 8, background: seg.color }}
+              />
+              <span>{seg.label}</span>
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 };
@@ -112,6 +171,7 @@ export const MuscleProgressCard: React.FC<{
       </h3>
       <TrendChart
         points={view.strengthIndex}
+        bridgeBands={view.bridgeBands}
         format={(v) => `${Math.round(v)}`}
         height={220}
         emptyTitle="No strength index yet"

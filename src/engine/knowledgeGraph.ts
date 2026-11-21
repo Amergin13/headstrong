@@ -1426,6 +1426,38 @@ export const TREISE_DESIGN_SYSTEM: DesignSystemComponent[] = [
     tailwindTokens: 'wk-card wk-raised wk-pill wk-btn-secondary snap-x snap-mandatory snap-center --color-coach-accent --color-action-primary-bg',
     rationale: 'Treating each suggestion as an atomic, swipeable decision card reduces cognitive load and ensures every Accept or Dismiss decision executes and persists cleanly across the entire product.',
   },
+  {
+    id: 'ds-environment-overlay-sheet',
+    name: 'Environment Overlay Sheet & Continuity Disclosure',
+    category: 'modal',
+    anatomy: {
+      container: 'Bottom sheet (.wk-card rounded-t-3xl) triggered from CurrentSessionCard location button, paired with Tier-1/Tier-2 ExerciseCard rationale, silent RestTimerModal recalibration toast, Post-Session Continuity Card, and stacked Dual-Layer Progress View',
+      typography: 'Sheet title wk-title, preset labels wk-subhead, privacy notice & scope chips wk-caption, Tier-1 rationale wk-body, Tier-2 collapsible science bullets wk-caption',
+      colors: 'Positive Mint (--wk-accent / --color-status-positive-soft) for active environment selection, recalibration toast, win-lever badges, and Travel Bridge chart bands; Primary CTA uses --color-action-primary-bg; zero raw hex or --color-status-info',
+      states: {
+        homeGym: 'Master program active with zero overlay; restores anchor lifts cleanly on expiry',
+        temporaryOverlay: 'Hotel Dumbbells (with optional max DB cap), Bodyweight Only, Short on time, At Home, or local on-device free-text constraint with TODAY_ONLY / WEEK_OVERRIDE / CUSTOM_UNTIL_DATE auto-expiry',
+        recalibrated: 'Set-1 logging updates Sets 2..N in place with fatigue-accurate REPS_FIRST decay and calm rest-bar toast (or 1-tap bodyweight leverage upgrade chip above 18 reps)',
+      },
+      touchTarget: '>= 44px preset radios, dumbbell cap buttons, scope toggles, primary CTA, Why this works disclosure toggle, and leverage upgrade chip',
+    },
+    logic: {
+      rules: [
+        'Slot-first UI with strictly exercise-isolated e1RM math — never merge dumbbell or bodyweight sets into a barbell anchor progression curve.',
+        'All environment switches are temporary overlays by default and auto-expire past expiresAtEpochMs without confirmation modals or mutating master templates.',
+        'Natural-language constraint descriptions parse strictly locally on-device (Private · stays on this phone) and never compute loads or e1RMs.',
+        'ExerciseCard keeps strictly 1 sequence .wk-pill badge; live weekly muscle volume lives in ExerciseDetailModal, Program WeeklyVolumeCard, MuscleProgressCard, and WorkoutFinishScreen.',
+      ],
+      variants: {
+        swappedCard: 'Tier-1 1-sentence rationale + collapsed Why this works drawer + ~ estimated load prefix + REF / Adapts on S1',
+        bodyweightCard: 'SETUP column with ~% BW load estimate (never 0 kg), tightened 0–1 RIR for light loads, and >18-rep leverage step-up chip in RestTimerModal',
+        reentryCard: 'LAST AT GYM column referencing pre-travel load/reps and Travel Bridge bands on Progress strength charts',
+      },
+      accessibility: 'role="dialog" aria-modal="true", role="radiogroup"/role="radio" presets, native details/summary Tier-2 science drawer, aria-live="polite" rest-bar recalibration toast',
+    },
+    tailwindTokens: 'wk-card wk-raised wk-textarea wk-btn-secondary --wk-accent --color-status-positive-soft --color-action-primary-bg',
+    rationale: 'Decoupling temporary travel and equipment constraints from the master program preserves unbroken weekly muscle volume while keeping individual exercise progression math honest and cold-start friction at zero.',
+  },
 ];
 export const HEADSTRONG_DESIGN_SYSTEM = TREISE_DESIGN_SYSTEM;
 

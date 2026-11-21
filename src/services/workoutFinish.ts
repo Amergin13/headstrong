@@ -12,7 +12,8 @@
 import { ActivityLog } from '../engine/activeDays';
 import { runReadAloudQaGate } from '../engine/contentStrategy';
 import { buildAthleteKnowledgeGraph } from '../engine/knowledgeGraph';
-import { BiometricLog, ExerciseDefinition, UserProfile, WorkoutSession } from '../engine/types';
+import { BiometricLog, ExerciseDefinition, SessionContinuitySummary, UserProfile, WorkoutSession } from '../engine/types';
+import { buildSessionContinuitySummary } from '../engine/continuityEngine';
 import { standardsAge } from '../engine/strengthStandards';
 import { AthleteGoal, GoalProgress, buildAthleteGoals, describeGoalStanding, goalsProgressedBy } from './athleteGoals';
 import { promptOnDeviceModel } from './onDeviceModel';
@@ -66,6 +67,8 @@ export interface WorkoutFinish {
   facts: string[];
   /** Summary built directly from the facts; shown until (or instead of) the model's. */
   fallback: string;
+  /** Post-session continuity win-lever card shown when finishing under an overlay or home-gym re-entry. */
+  continuity?: SessionContinuitySummary;
 }
 
 export const WORKOUT_SUMMARY_SYSTEM_PROMPT =
@@ -214,7 +217,21 @@ export function buildWorkoutFinish(input: WorkoutFinishInput): WorkoutFinish | n
     );
   }
 
-  return { report, personalBests: records, goals, goalProgress, headline, facts, fallback: sentences.join(' ') };
+  const weeklyTargetsByMuscle: Record<string, { min: number; max: number }> = {};
+  for (const mp of knowledgeGraph.muscleProfiles) {
+    weeklyTargetsByMuscle[mp.muscleKey] = {
+      min: mp.personalizedMav[0],
+      max: mp.personalizedMav[1],
+    };
+  }
+  const continuity = buildSessionContinuitySummary({
+    session: finished,
+    allWorkouts: after,
+    exerciseCatalog: input.exerciseCatalog,
+    weeklyTargetsByMuscle,
+  });
+
+  return { report, personalBests: records, goals, goalProgress, headline, facts, fallback: sentences.join(' '), continuity };
 }
 
 export function buildWorkoutSummaryPrompt(finish: Pick<WorkoutFinish, 'facts'>): string {

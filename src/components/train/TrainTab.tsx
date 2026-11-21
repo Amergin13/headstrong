@@ -1,11 +1,15 @@
 import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { PageTopGradient } from '../common/PageTopGradient';
 import {
+  ActiveSetPrescription,
   BiometricLog,
+  EnvironmentOverlay,
   EquipmentInventory,
   ExerciseDefinition,
   ExerciseSession,
+  LeverageUpgradeNudge,
   ProgramExerciseOverride,
+  ProgramSlot,
   TrainingLocation,
   UserProfile,
   WorkoutSession,
@@ -18,6 +22,12 @@ import {
   isWearableConnected,
   isWhoopConfigured,
 } from '../../engine/types';
+import {
+  recalibrateSetsAfterSet1,
+  resolveActiveOverlay,
+  resolveMovementPattern,
+} from '../../engine/continuityEngine';
+import { EnvironmentOverlaySheet } from './EnvironmentOverlaySheet';
 import { getActiveEquipmentInventory, snapWeightToInventory } from '../../engine/equipmentInventory';
 import { ReadinessEvaluation, evaluateSet1RirConfirmation } from '../../engine/readiness';
 import { ReadinessBanner } from './ReadinessBanner';
@@ -127,11 +137,18 @@ interface TrainTabProps {
     exerciseName: string,
     setNumber: number,
     completedSet?: WorkoutSet,
-    exercise?: ExerciseSession
+    exercise?: ExerciseSession,
+    restMeta?: {
+      recalibrationStatus?: string;
+      leverageUpgradeNudge?: LeverageUpgradeNudge;
+      onApplyLeverageUpgrade?: () => void;
+    }
   ) => void;
   onFinishWorkout: (whoopTelemetry?: WhoopWorkoutStrainSummary) => void;
   onShiftWorkout: () => void;
   onSwitchLocation?: (location: TrainingLocation) => void;
+  /** Applies a temporary environment overlay (or null to restore Home Gym) without mutating master templates. */
+  onApplyEnvironmentOverlay?: (overlay: EnvironmentOverlay | null) => void;
   onOpenWatchSync?: () => void;
   /** Opens the Program tab (plan overview, weeks, splits). */
   onOpenProgram?: () => void;
@@ -199,6 +216,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
   onFinishWorkout,
   onShiftWorkout,
   onSwitchLocation,
+  onApplyEnvironmentOverlay,
   onOpenWatchSync,
   onOpenProgram,
   onSwitchSplitDay,
@@ -221,6 +239,12 @@ export const TrainTab: React.FC<TrainTabProps> = ({
   const [showAddExerciseModal, setShowAddExerciseModal] = useState(false);
   const [showWorkoutDisplayModal, setShowWorkoutDisplayModal] = useState(false);
   const [showLocationDropdown, setShowLocationDropdown] = useState(false);
+  const [showEnvironmentSheet, setShowEnvironmentSheet] = useState(false);
+  const pendingRecalRef = useRef<{
+    exerciseSessionId: string;
+    recalibrationStatus?: string;
+    leverageUpgradeNudge?: LeverageUpgradeNudge;
+  } | null>(null);
   const [whoopStrainSummary, setWhoopStrainSummary] = useState<WhoopWorkoutStrainSummary | null>(null);
   const [isSyncingWhoopStrain, setIsSyncingWhoopStrain] = useState(false);
   const [selectedStripDate, setSelectedStripDate] = useState<string | null>(null);
@@ -279,7 +303,33 @@ export const TrainTab: React.FC<TrainTabProps> = ({
 
   const exMap = new Map(exerciseCatalog.map((e) => [e.id, e]));
 
+  const handleApplyLeverageUpgrade = (exerciseSessionId: string, nudge: LeverageUpgradeNudge) => {
+    const nextExercises = activeWorkoutRef.current.exercises.map((ex) => {
+      if (ex.id !== exerciseSessionId) return ex;
+      const suggestedDef = nudge.suggestedExerciseId ? exMap.get(nudge.suggestedExerciseId) : undefined;
+      return {
+        ...ex,
+        ...(suggestedDef ? { name: suggestedDef.name } : {}),
+        setupLabel: nudge.suggestedSetupLabel,
+        tempo: suggestedDef ? ex.tempo : '3210',
+        sets: ex.sets.map((s) =>
+          s.completed || s.isWarmup || s.setType === 'warmup'
+            ? s
+            : {
+                ...s,
+                setupLabel: nudge.suggestedSetupLabel,
+                tempo: suggestedDef ? s.tempo : '3210',
+              }
+        ),
+      };
+    });
+    onUpdateWorkout({ ...activeWorkoutRef.current, exercises: nextExercises });
+  };
+
   const handleUpdateSet = (exerciseId: string, setId: string, updated: Partial<WorkoutSet>) => {
+    const activeEnv = resolveActiveOverlay(profile.activeEnvironmentOverlay).active;
+    let isolatedStatePatch: NonNullable<UserProfile['exerciseProgressionStates']> | null = null;
+
     const nextExercises = activeWorkout.exercises.map((ex) => {
       if (ex.id !== exerciseId) return ex;
 
@@ -289,27 +339,126 @@ export const TrainTab: React.FC<TrainTabProps> = ({
         const completedIndex = updatedSets.findIndex((s) => s.id === setId);
         const sourceSet = updatedSets[completedIndex];
         if (sourceSet && sourceSet.setType !== 'warmup' && !sourceSet.isWarmup) {
+          const workingIndices = updatedSets
+            .map((s, idx) => (!s.isWarmup && s.setType !== 'warmup' ? idx : -1))
+            .filter((idx) => idx >= 0);
+          const isFirstWorkingSet = workingIndices[0] === completedIndex;
+          const def = exMap.get(ex.exerciseId);
           const sourceWeight = sourceSet.actualWeightKg ?? sourceSet.targetWeightKg;
           const sourceReps = sourceSet.actualReps ?? sourceSet.targetReps;
           const sourceDuration = sourceSet.actualDurationSeconds ?? sourceSet.targetDurationSeconds;
           const sourceRir = sourceSet.actualRir ?? sourceSet.targetRir ?? 2;
 
-          for (let i = completedIndex + 1; i < updatedSets.length; i++) {
-            if (!updatedSets[i].completed && updatedSets[i].setType !== 'warmup') {
-              // Carry adjusted working load & reps forward without flattening descending straight-set targetRir.
-              const preservedTargetRir = Math.min(updatedSets[i].targetRir ?? sourceRir, sourceRir);
-              updatedSets[i] = {
-                ...updatedSets[i],
-                targetWeightKg: sourceWeight,
-                actualWeightKg: sourceWeight,
-                targetReps: sourceReps,
-                actualReps: sourceReps,
-                ...(sourceDuration !== undefined
-                  ? { targetDurationSeconds: sourceDuration, actualDurationSeconds: sourceDuration }
-                  : {}),
-                targetRir: preservedTargetRir,
-                actualRir: preservedTargetRir,
+          let handledBySet1Recalibration = false;
+          if (isFirstWorkingSet && def && !isTimedExercise(ex) && workingIndices.length > 1) {
+            const currentPrescriptions: ActiveSetPrescription[] = workingIndices.map((wIdx, k) => {
+              const st = updatedSets[wIdx];
+              return {
+                setNumber: k + 1,
+                suggestedWeightKg:
+                  ex.equipment === 'bodyweight' && !ex.isWeightedCalisthenic
+                    ? null
+                    : st.targetWeightKg > 0
+                    ? st.targetWeightKg
+                    : null,
+                isWeightEstimated: Boolean(st.isWeightEstimated),
+                setupLabel: st.setupLabel ?? ex.setupLabel ?? null,
+                targetRepsMin: st.targetReps || ex.minReps,
+                targetRepsMax: Math.max(st.targetReps || ex.minReps, ex.maxReps),
+                targetRir: st.targetRir ?? 2,
+                calibrationSource: st.calibrationSource ?? ex.calibrationSource ?? 'OWN_HISTORY',
               };
+            });
+            const slot: ProgramSlot = {
+              slotId: ex.slotId ?? ex.orderCode ?? 'A1',
+              programId: activeWorkout.planId ?? 'default',
+              workoutDayId: activeWorkout.splitDay,
+              movementPattern: resolveMovementPattern(def),
+              anchorExerciseId: ex.anchorExerciseId ?? ex.exerciseId,
+              targetSets: workingIndices.length,
+              targetRepMin: ex.minReps,
+              targetRepMax: ex.maxReps,
+              targetRirInitial: sourceSet.targetRir ?? 2,
+              restSeconds: ex.restSeconds ?? (def.isIsolation ? 75 : 120),
+            };
+            const recal = recalibrateSetsAfterSet1({
+              slot,
+              targetDef: def,
+              currentPrescriptions,
+              loggedSet1: {
+                weightKg: ex.equipment === 'bodyweight' && !ex.isWeightedCalisthenic ? null : sourceWeight,
+                reps: sourceReps,
+                rir: sourceRir,
+              },
+              previousTargetState: profile.exerciseProgressionStates?.[ex.exerciseId] ?? null,
+              overlay: activeEnv,
+              exerciseCatalog,
+              userBodyweightKg: bodyweightEmaKg > 0 ? bodyweightEmaKg : 80,
+              unit: units.unit,
+            });
+
+            if (recal.didRecalibrate || recal.leverageUpgradeNudge) {
+              handledBySet1Recalibration = true;
+              isolatedStatePatch = {
+                ...(profile.exerciseProgressionStates ?? {}),
+                [ex.exerciseId]: recal.updatedProgressionState,
+              };
+              pendingRecalRef.current = {
+                exerciseSessionId: ex.id,
+                recalibrationStatus: recal.restBarStatus,
+                leverageUpgradeNudge: recal.leverageUpgradeNudge,
+              };
+
+              for (let k = 1; k < workingIndices.length; k++) {
+                const wIdx = workingIndices[k];
+                const presc = recal.prescriptions[k];
+                if (!updatedSets[wIdx].completed && presc) {
+                  const nextW = presc.suggestedWeightKg ?? 0;
+                  updatedSets[wIdx] = {
+                    ...updatedSets[wIdx],
+                    targetWeightKg: nextW,
+                    actualWeightKg: nextW,
+                    targetReps: presc.targetRepsMin,
+                    actualReps: presc.targetRepsMin,
+                    targetRir: presc.targetRir,
+                    actualRir: presc.targetRir,
+                    isWeightEstimated: false,
+                    setupLabel: presc.setupLabel,
+                    calibrationSource: 'SET_1_RECALIBRATED',
+                  };
+                }
+              }
+
+              return {
+                ...ex,
+                maxReps: recal.coarseJump?.expanded ? recal.coarseJump.expandedRepMax : ex.maxReps,
+                continuityRationaleKind: recal.coarseJump?.expanded
+                  ? 'COARSE_JUMP_EXPANDED'
+                  : ex.continuityRationaleKind,
+                coarseJumpPct: recal.coarseJump?.expanded ? recal.coarseJump.jumpPct : ex.coarseJumpPct,
+                sets: updatedSets,
+              };
+            }
+          }
+
+          if (!handledBySet1Recalibration) {
+            for (let i = completedIndex + 1; i < updatedSets.length; i++) {
+              if (!updatedSets[i].completed && updatedSets[i].setType !== 'warmup') {
+                // Carry adjusted working load & reps forward without flattening descending straight-set targetRir.
+                const preservedTargetRir = Math.min(updatedSets[i].targetRir ?? sourceRir, sourceRir);
+                updatedSets[i] = {
+                  ...updatedSets[i],
+                  targetWeightKg: sourceWeight,
+                  actualWeightKg: sourceWeight,
+                  targetReps: sourceReps,
+                  actualReps: sourceReps,
+                  ...(sourceDuration !== undefined
+                    ? { targetDurationSeconds: sourceDuration, actualDurationSeconds: sourceDuration }
+                    : {}),
+                  targetRir: preservedTargetRir,
+                  actualRir: preservedTargetRir,
+                };
+              }
             }
           }
         }
@@ -320,6 +469,9 @@ export const TrainTab: React.FC<TrainTabProps> = ({
         sets: updatedSets,
       };
     });
+    if (isolatedStatePatch) {
+      onUpdateProfile?.({ exerciseProgressionStates: isolatedStatePatch });
+    }
     onUpdateWorkout({ ...activeWorkout, exercises: nextExercises });
   };
 
@@ -1280,6 +1432,14 @@ export const TrainTab: React.FC<TrainTabProps> = ({
               current={programCard.current}
               total={programCard.total}
               sessionRef={sessionBlockRef}
+              environmentLabel={
+                resolveActiveOverlay(profile.activeEnvironmentOverlay).active?.label ||
+                activeLocationOption.label
+              }
+              isTemporaryOverlay={Boolean(resolveActiveOverlay(profile.activeEnvironmentOverlay).active)}
+              onOpenEnvironment={
+                onApplyEnvironmentOverlay ? () => setShowEnvironmentSheet(true) : undefined
+              }
             />
           )}
           {workoutDisplay.showRecoveryCard && hasRecoveryMechanism && (
@@ -1753,7 +1913,26 @@ export const TrainTab: React.FC<TrainTabProps> = ({
               onUpdateSet={(setId, updated) => handleUpdateSet(ex.id, setId, updated)}
               onCompleteSet={(setId) => {
                 const s = ex.sets.find((item) => item.id === setId);
-                onSetCompleted(ex.name, s?.setNumber || 1, s, ex);
+                const pending =
+                  pendingRecalRef.current && pendingRecalRef.current.exerciseSessionId === ex.id
+                    ? pendingRecalRef.current
+                    : null;
+                if (pending) pendingRecalRef.current = null;
+                onSetCompleted(
+                  ex.name,
+                  s?.setNumber || 1,
+                  s,
+                  ex,
+                  pending
+                    ? {
+                        recalibrationStatus: pending.recalibrationStatus,
+                        leverageUpgradeNudge: pending.leverageUpgradeNudge,
+                        onApplyLeverageUpgrade: pending.leverageUpgradeNudge
+                          ? () => handleApplyLeverageUpgrade(ex.id, pending.leverageUpgradeNudge!)
+                          : undefined,
+                      }
+                    : undefined
+                );
               }}
               onAddSet={(isWarmup) => handleAddSet(ex.id, isWarmup)}
               onOpenDetail={() => setDetailExerciseId(ex.id)}
@@ -2112,6 +2291,17 @@ export const TrainTab: React.FC<TrainTabProps> = ({
           onConfirmSwap={handleConfirmSwap}
           onClose={() => setSwappingExercise(null)}
           excludeExerciseIds={activeWorkout.exercises.map((e) => e.exerciseId)}
+        />
+      )}
+
+      {/* Environment Overlay Bottom Sheet (Temporary Hotel / Bodyweight / Custom Swapping) */}
+      {showEnvironmentSheet && onApplyEnvironmentOverlay && (
+        <EnvironmentOverlaySheet
+          activeOverlay={profile.activeEnvironmentOverlay}
+          currentWeekNumber={planWeek ?? mesoWeek}
+          homeEquipment={profile.homeEquipment}
+          onApplyOverlay={onApplyEnvironmentOverlay}
+          onClose={() => setShowEnvironmentSheet(false)}
         />
       )}
 

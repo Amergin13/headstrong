@@ -28,6 +28,12 @@ interface SetRowProps {
   displayLabel?: string;
   /** Single-arm / single-leg: show left and right reps under the row. */
   perSide?: boolean;
+  /** Optional fallback reference shown in PREV/REF when this exercise has no own prior history (e.g. "BB 77.5×8", "Adapts on S1", "Wk 3: 77.5×8"). */
+  prevOverride?: string;
+  /** Optional setup label shown instead of 0 kg in bodyweight mode or effort-only machines (e.g. "Elevated (~74% BW)", "Pick moderate"). */
+  setupLabelOverride?: string | null;
+  /** True for uncalibrated variable machines/cables where Set 1 skips load guessing. */
+  isEffortOnly?: boolean;
   onUpdate: (updated: Partial<WorkoutSet>) => void;
   onComplete: () => void;
 }
@@ -43,6 +49,9 @@ export const SetRow: React.FC<SetRowProps> = ({
   displayBadge,
   displayLabel,
   perSide = false,
+  prevOverride,
+  setupLabelOverride,
+  isEffortOnly = false,
   onUpdate,
   onComplete,
 }) => {
@@ -98,7 +107,7 @@ export const SetRow: React.FC<SetRowProps> = ({
     ? isTimed && previous.durationSeconds
       ? `${isBodyweight || previous.weightKg === 0 ? 'BW' : units.format(previous.weightKg, false)}×${previous.durationSeconds}s`
       : `${isBodyweight || previous.weightKg === 0 ? 'BW' : units.format(previous.weightKg, false)}×${previous.reps}`
-    : '—';
+    : prevOverride || '—';
   const badge =
     displayBadge || (currentSetType === 'warmup' ? 'W' : currentSetType === 'drop' ? 'D' : currentSetType === 'myo' ? '+' : `${set.setNumber}`);
   const greyText: React.CSSProperties = {
@@ -175,9 +184,53 @@ export const SetRow: React.FC<SetRowProps> = ({
         }`}
       >
         {(() => {
+          const effectiveSetup = set.setupLabel ?? setupLabelOverride ?? null;
+          const showEffortPrompt = isEffortOnly && displayWeight === 0 && !set.completed;
+          const showBwSetup = isBodyweight && displayWeight === 0 && Boolean(effectiveSetup);
           const showBwToken = (isBodyweight || isTimed) && displayWeight === 0;
+          const showEstimatedTilde = Boolean(set.isWeightEstimated && !set.completed && displayWeight > 0 && !isBodyweight);
+          if (showBwSetup && effectiveSetup) {
+            return (
+              <span
+                className="wk-caption text-center truncate px-1"
+                style={{ color: set.completed ? 'var(--color-text-primary)' : 'var(--color-text-secondary)' }}
+                title={effectiveSetup}
+              >
+                {effectiveSetup.replace(' (~', ' · ~').replace(')', '')}
+              </span>
+            );
+          }
+          if (showEffortPrompt) {
+            return (
+              <input
+                type="number"
+                step={weightStep}
+                inputMode="decimal"
+                value=""
+                placeholder="Pick moderate"
+                aria-label={`${label} weight in ${units.unit === 'lb' ? 'pounds' : 'kilograms'} (pick moderate)`}
+                onChange={(e) => {
+                  onUpdate({
+                    actualWeightKg: units.fromDisplay(parseFloat(e.target.value) || 0),
+                    isWeightEstimated: false,
+                  });
+                }}
+                className="bg-transparent font-semibold tabular-numbers outline-none p-0 text-center w-full"
+                style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}
+              />
+            );
+          }
           return (
             <>
+              {showEstimatedTilde && (
+                <span
+                  aria-hidden="true"
+                  title="Estimated from anchor lift"
+                  style={{ fontSize: 12, fontWeight: 500, marginRight: '0.1em', color: 'var(--wk-muted)' }}
+                >
+                  ~
+                </span>
+              )}
               <input
                 type="number"
                 step={weightStep}
@@ -187,12 +240,12 @@ export const SetRow: React.FC<SetRowProps> = ({
                 tabIndex={set.completed ? -1 : undefined}
                 value={showBwToken ? '' : displayWeight}
                 placeholder={showBwToken ? 'BW' : undefined}
-                aria-label={`${label} ${isTwoDumbbell ? 'weight per dumbbell' : 'weight'} in ${units.unit === 'lb' ? 'pounds' : 'kilograms'}`}
+                aria-label={`${label} ${isTwoDumbbell ? 'weight per dumbbell' : 'weight'} in ${units.unit === 'lb' ? 'pounds' : 'kilograms'}${showEstimatedTilde ? ' (estimated)' : ''}`}
                 onFocus={(e) => {
                   if (!set.completed) e.target.select();
                 }}
                 onChange={(e) => {
-                  if (!set.completed) onUpdate({ actualWeightKg: units.fromDisplay(parseFloat(e.target.value) || 0) });
+                  if (!set.completed) onUpdate({ actualWeightKg: units.fromDisplay(parseFloat(e.target.value) || 0), isWeightEstimated: false });
                 }}
                 className={`bg-transparent font-semibold tabular-numbers outline-none p-0 ${showBwToken ? 'text-center' : 'text-right'} ${
                   set.completed ? 'pointer-events-none' : ''

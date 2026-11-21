@@ -14,6 +14,11 @@
  *    athlete has logged them.
  */
 import { calculateE1RM, isTimedExercise } from '../engine/e1rm';
+import {
+  calculateFractionalVolumeByEquipment,
+  classifyTravelBridgeWeeks,
+  EquipmentToolBucket,
+} from '../engine/continuityEngine';
 import { buildBodyweightEmaLookup } from '../engine/ema';
 import { AthleteKnowledgeGraph } from '../engine/knowledgeGraph';
 import { MUSCLE_FRIENDLY_NAMES, getWorkoutCompletedAt } from '../engine/recovery';
@@ -75,6 +80,8 @@ export interface WeeklySets {
   /** Last day of the 7-day window. */
   date: string;
   sets: number;
+  /** Tool-level breakdown across Barbell, Dumbbell, Bodyweight & Machine/Cable (sums to sets). */
+  byTool?: Record<EquipmentToolBucket, number>;
 }
 
 export interface MuscleProgress {
@@ -88,6 +95,8 @@ export interface MuscleProgress {
   setsByWeek: WeeklySets[];
   /** Strength index per week the muscle was trained (100 = first week), oldest first. */
   strengthIndex: TrendPoint[];
+  /** Travel Bridge windows where the muscle stayed trained via substitute tools while anchor lifts paused. */
+  bridgeBands?: { startDate: string; endDate: string; label: string }[];
   /** Exercises that fed the index, main-muscle exercises first. */
   exercises: string[];
   /** Tape measurement for the muscle, when logged. */
@@ -163,6 +172,13 @@ export function buildMuscleProgress(input: {
     return { from: localDateString(new Date(end - 7 * DAY)), to: localDateString(new Date(end)) };
   });
   const setsPerWindow = windows.map((w) => muscleSetsBetween(done, input.exerciseCatalog, w.from, w.to));
+  const toolVolPerWindow = windows.map((w) =>
+    calculateFractionalVolumeByEquipment(done, input.exerciseCatalog, {
+      fromDate: w.from,
+      toDate: w.to,
+      maxRir: 3,
+    })
+  );
 
   return MUSCLES.flatMap(({ key, group }) => {
     // Exercises that train this muscle, with their weight in the index.
@@ -221,8 +237,35 @@ export function buildMuscleProgress(input: {
       lastTrained = lastDate;
     }
 
-    const setsByWeek = windows.map((w, i) => ({ date: w.to, sets: setsPerWindow[i][key] ?? 0 }));
+    const setsByWeek: WeeklySets[] = windows.map((w, i) => ({
+      date: w.to,
+      sets: setsPerWindow[i][key] ?? 0,
+      byTool: toolVolPerWindow[i][key]?.byTool,
+    }));
     const weeklySets = setsByWeek[setsByWeek.length - 1]?.sets ?? 0;
+
+    // Detect Travel Bridge weeks for the muscle's primary barbell anchor exercise
+    const primaryBarbellAnchor = [...used.entries()]
+      .filter(([, w]) => w >= 1)
+      .map(([id]) => catalog.get(id))
+      .find((def) => def && def.equipment === 'barbell');
+    const bridgeBands = primaryBarbellAnchor
+      ? classifyTravelBridgeWeeks({
+          anchorExerciseId: primaryBarbellAnchor.id,
+          workouts: done,
+          exerciseCatalog: input.exerciseCatalog,
+          weekWindows: windows.map((w) => ({ start: w.from, end: w.to })),
+        })
+          .filter((bw) => bw.status === 'BRIDGE_WEEK')
+          .map((bw) => ({
+            startDate: bw.weekStart,
+            endDate: bw.weekEnd,
+            label:
+              bw.substituteExerciseNames.length > 0
+                ? `Travel Bridge (${bw.substituteExerciseNames[0]})`
+                : 'Travel Bridge',
+          }))
+      : [];
     const measurement = measurementSeries(key, input.biometrics);
     // Skip muscles with no real training: no strength data and under one set (stray helper credit).
     const totalSets = setsByWeek.reduce((a, w) => a + w.sets, 0);
@@ -252,6 +295,7 @@ export function buildMuscleProgress(input: {
         target,
         setsByWeek,
         strengthIndex,
+        ...(bridgeBands.length > 0 ? { bridgeBands } : {}),
         exercises,
         measurement,
         lastTrained,
@@ -325,10 +369,13 @@ export function filterMuscleProgressByTimeline(
       }
     : undefined;
 
+  const bridgeBands = progress.bridgeBands?.filter((b) => b.endDate >= cutoff);
+
   return {
     ...progress,
     setsByWeek,
     strengthIndex,
+    ...(bridgeBands && bridgeBands.length > 0 ? { bridgeBands } : { bridgeBands: undefined }),
     measurement,
     summary: buildMuscleSummary(
       progress.weeklySets,

@@ -11,12 +11,13 @@ import {
 import { SetRow, PreviousSet, SET_TABLE_COLUMNS, SET_TABLE_COLUMNS_NO_RIR, SET_TABLE_GAP } from './SetRow';
 import { ExerciseDetailModal } from './ExerciseDetailModal';
 import { useUnits } from '../../utils/unitsContext';
-import { ArrowRightLeft, ChevronRight } from 'lucide-react';
+import { ArrowRightLeft, ChevronDown, ChevronRight } from 'lucide-react';
 import { triggerHaptic } from '../../utils/haptics';
 import { CoachSummaryText } from '../common/CoachSummaryText';
 import { ExerciseInsight, isIsolationOrSmallExercise } from '../../services/exerciseInsight';
 import { buildExerciseTrendSpec } from '../../services/exerciseDetails';
 import { isAssistedExercise, isTimedExercise, usesOneDumbbell } from '../../engine/e1rm';
+import { buildContinuityCopy } from '../../engine/continuityEngine';
 import { TrendChart } from '../common/TrendChart';
 import { localDateString, parseLocalDate } from '../../utils/date';
 import { formatSentenceCase } from '../../utils/typography';
@@ -91,6 +92,26 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
   const [perSide, setPerSide] = useState(() => exercise.sets.some((s) => s.actualRepsLeft !== undefined));
   const notesId = useId();
 
+  const continuityCopy = useMemo(() => {
+    if (!exercise.continuityRationaleKind) return null;
+    return buildContinuityCopy(exercise.continuityRationaleKind, {
+      anchorName: exercise.anchorExerciseName,
+      coarseJumpPct: exercise.coarseJumpPct,
+      setupLabel: exercise.setupLabel,
+      bodyweightLoadPct: exercise.bodyweightLoadPct,
+      primaryMuscle: muscleLabel,
+      unit: units.unit,
+    });
+  }, [
+    exercise.continuityRationaleKind,
+    exercise.anchorExerciseName,
+    exercise.coarseJumpPct,
+    exercise.setupLabel,
+    exercise.bodyweightLoadPct,
+    muscleLabel,
+    units.unit,
+  ]);
+
   const firstWorkingSet = exercise.sets.find((s) => !s.isWarmup && s.setType !== 'warmup');
   const plannedWeightKg = firstWorkingSet?.targetWeightKg ?? 0;
   const isBodyweightOnly =
@@ -153,6 +174,48 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
       {chip && (
         <div className="flex items-center gap-2 mt-2">
           <span className="wk-pill">{chip}</span>
+          {exercise.anchorExerciseId && exercise.anchorExerciseId !== exercise.exerciseId && (
+            <span className="wk-caption" style={{ color: 'var(--color-text-secondary)' }}>
+              {exercise.anchorExerciseName
+                ? `Bridged from ${formatSentenceCase(exercise.anchorExerciseName)}`
+                : 'Bridged slot'}
+            </span>
+          )}
+          {exercise.isBridgeReentry && (
+            <span className="wk-caption" style={{ color: 'var(--wk-accent)' }}>
+              Home-gym re-entry
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* Two-tier progressive disclosure for swapped / coarse-jump / re-entry slots (Tier 1 visible, Tier 2 expandable) */}
+      {continuityCopy && (
+        <div
+          className="mt-3 rounded-xl p-3 border flex flex-col gap-2"
+          style={{ background: 'var(--wk-raised)', borderColor: 'var(--color-border-subtle)' }}
+        >
+          <p className="wk-body m-0">{continuityCopy.tier1}</p>
+          <details className="group">
+            <summary
+              className="list-none cursor-pointer inline-flex items-center gap-1 min-h-[44px] -my-2 wk-caption font-medium select-none"
+              style={{ color: 'var(--wk-accent)' }}
+            >
+              <span>Why this works</span>
+              <ChevronDown
+                className="w-4 h-4 transition-transform group-open:rotate-180"
+                strokeWidth={2}
+                aria-hidden="true"
+              />
+            </summary>
+            <ul className="list-disc pl-4 flex flex-col gap-1 mt-2 mb-0">
+              {continuityCopy.tier2Bullets.map((bullet, bIdx) => (
+                <li key={bIdx} className="wk-caption" style={{ color: 'var(--color-text-secondary)' }}>
+                  {bullet}
+                </li>
+              ))}
+            </ul>
+          </details>
         </div>
       )}
 
@@ -274,18 +337,32 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
           }}
         >
           <span role="columnheader">SET</span>
-          <span role="columnheader">PREV</span>
+          <span role="columnheader">
+            {exercise.isBridgeReentry
+              ? 'LAST AT GYM'
+              : exercise.anchorReferenceLabel && previousSets.length === 0
+              ? 'REF'
+              : 'PREV'}
+          </span>
           <span
             role="columnheader"
             title={
-              isAssisted
+              isBodyweightOnly && exercise.setupLabel
+                ? 'Bodyweight leverage setup and estimated load'
+                : isAssisted
                 ? 'Counterweight assistance (lower = harder)'
                 : exercise.equipment === 'dumbbell' && !usesOneDumbbell(exercise)
                 ? 'Weight per dumbbell'
                 : undefined
             }
           >
-            {isAssisted ? 'ASSIST' : exercise.equipment === 'dumbbell' && !usesOneDumbbell(exercise) ? 'PER DB' : 'WEIGHT'}
+            {isBodyweightOnly && exercise.setupLabel
+              ? 'SETUP'
+              : isAssisted
+              ? 'ASSIST'
+              : exercise.equipment === 'dumbbell' && !usesOneDumbbell(exercise)
+              ? 'PER DB'
+              : 'WEIGHT'}
           </span>
           <span role="columnheader">{isTimed ? 'TIME' : 'REPS'}</span>
           {showRir && <span role="columnheader" title="Reps in reserve">RIR</span>}
@@ -317,6 +394,18 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
               }
               // PREV is the matching set from the last time this exact exercise was completed.
               const previous = isWarm ? undefined : previousSets[workingIndex - 1];
+              const prevOverride =
+                !isWarm && !previous
+                  ? exercise.isBridgeReentry && exercise.reentryFromLabel && workingIndex === 1
+                    ? exercise.reentryFromLabel
+                    : exercise.anchorReferenceLabel
+                    ? workingIndex === 1
+                      ? exercise.anchorReferenceLabel
+                      : s.calibrationSource === 'SET_1_RECALIBRATED'
+                      ? undefined
+                      : 'Adapts on S1'
+                    : undefined
+                  : undefined;
               return (
                 <SetRow
                   key={s.id}
@@ -324,6 +413,9 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
                   displayBadge={displayBadge}
                   displayLabel={displayLabel}
                   previous={previous}
+                  prevOverride={prevOverride}
+                  setupLabelOverride={s.setupLabel ?? exercise.setupLabel}
+                  isEffortOnly={s.calibrationSource === 'EFFORT_ONLY' && !s.completed}
                   isBodyweight={isBodyweightOnly}
                   isDumbbell={exercise.equipment === 'dumbbell'}
                   isTwoDumbbell={exercise.equipment === 'dumbbell' && !usesOneDumbbell(exercise)}

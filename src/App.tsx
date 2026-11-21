@@ -15,10 +15,13 @@ import {
   AssistantChatMessage,
   BiometricLog,
   CustomPlanId,
+  EnvironmentOverlay,
   ExerciseDefinition,
+  ExerciseProgressionState,
   ExerciseSession,
   GoalPhase,
   HomeEquipmentTag,
+  LeverageUpgradeNudge,
   ProgramSplitType,
   TrainingLocation,
   UserProfile,
@@ -28,6 +31,12 @@ import {
   CoachUndoSnapshot,
   getActiveWearableProvider,
 } from './engine/types';
+import {
+  applyEnvironmentOverlayToSession,
+  overlayToTrainingLocation,
+  resolveActiveOverlay,
+  updateExerciseProgressionStateDamped,
+} from './engine/continuityEngine';
 import { resetFlashLiteConversation } from './services/geminiFlashLite';
 import { resetOnDeviceConversation } from './services/onDeviceModel';
 import { calculateDailyReadiness } from './engine/readiness';
@@ -523,12 +532,42 @@ export const App: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [readiness.state, activeWorkout.programWorkoutNumber]);
 
+  // Auto-expire temporary environment overlays cleanly when opening a workout past expiresAtEpochMs
+  // with zero confirmation modals, restoring master anchor exercises and clean Home-Gym re-entry cues.
+  useEffect(() => {
+    const check = resolveActiveOverlay(profile.activeEnvironmentOverlay, Date.now());
+    if (!check.expired) return;
+    setProfile((prev) => ({
+      ...prev,
+      activeEnvironmentOverlay: null,
+      activeLocation: 'gym',
+    }));
+    if (!activeWorkout.completed && !activeWorkout.exercises.some((ex) => ex.sets.some((s) => s.completed))) {
+      const restored = applyEnvironmentOverlayToSession({
+        session: activeWorkout,
+        overlay: null,
+        exerciseCatalog: exercises,
+        historicalWorkouts: workouts,
+        storedProgressionStates: profile.exerciseProgressionStates,
+        userBodyweightKg: bodyweightEmaKg,
+        unit: profile.weightUnit || 'kg',
+      });
+      setActiveWorkout(restored);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile.activeEnvironmentOverlay?.overlayId, profile.activeEnvironmentOverlay?.expiresAtEpochMs]);
+
   // Handler: a set was ticked off. Starts the labelled rest timer and celebrates a personal best once per set.
   const handleSetCompleted = (
     _exerciseName: string,
     _setNumber: number,
     completedSet?: WorkoutSet,
-    exercise?: ExerciseSession
+    exercise?: ExerciseSession,
+    restMeta?: {
+      recalibrationStatus?: string;
+      leverageUpgradeNudge?: LeverageUpgradeNudge;
+      onApplyLeverageUpgrade?: () => void;
+    }
   ) => {
     if (!exercise || !completedSet) return;
 
@@ -537,7 +576,10 @@ export const App: React.FC = () => {
       setRestTimerOpen(false);
     } else {
       setRestTimerSeconds(rest.seconds);
-      setRestTimerContext(rest.context);
+      setRestTimerContext({
+        ...rest.context,
+        ...(restMeta ?? {}),
+      });
       setRestTimerKey((k) => k + 1);
       setRestTimerOpen(true);
     }
@@ -729,6 +771,30 @@ export const App: React.FC = () => {
     saveProfile(nextProfile);
     setProfile(nextProfile);
     syncUnstartedPlanWorkoutAfterOverrideChange(nextProfile);
+  };
+
+  // Handler: Apply (or clear) a temporary Environment Overlay without mutating master program templates
+  const handleApplyEnvironmentOverlay = (overlay: EnvironmentOverlay | null) => {
+    const resolved = resolveActiveOverlay(overlay, Date.now());
+    const nextOverlay = resolved.active;
+    const nextLocation = overlayToTrainingLocation(nextOverlay);
+
+    setProfile((prev) => ({
+      ...prev,
+      activeEnvironmentOverlay: nextOverlay,
+      activeLocation: nextLocation,
+    }));
+
+    const overlaid = applyEnvironmentOverlayToSession({
+      session: activeWorkout,
+      overlay: nextOverlay,
+      exerciseCatalog: exercises,
+      historicalWorkouts: workouts,
+      storedProgressionStates: profile.exerciseProgressionStates,
+      userBodyweightKg: bodyweightEmaKg,
+      unit: profile.weightUnit || 'kg',
+    });
+    setActiveWorkout(overlaid);
   };
 
   // Handler: Switch Training Location ('gym' | 'home' | 'travel') in 1 tap
@@ -1067,15 +1133,67 @@ export const App: React.FC = () => {
       setBiometrics((prev) => mergeWhoopWorkoutTelemetryLog(prev, todayStr, whoopTelemetry));
     }
 
+    // Persist isolated per-exercise progression states (never merging dumbbell/bodyweight into barbell anchor)
+    const nextProgressionStates: Record<string, ExerciseProgressionState> = {
+      ...(profile.exerciseProgressionStates ?? {}),
+    };
+    const finishedAtMs = Date.now();
+    for (const ex of completedSession.exercises) {
+      const workingDone = ex.sets.filter(
+        (s) => s.completed && !s.isWarmup && s.setType !== 'warmup' && (s.actualReps ?? 0) > 0
+      );
+      if (workingDone.length === 0) continue;
+      const topSet = workingDone.reduce((best, s) => {
+        const w = s.actualWeightKg ?? s.targetWeightKg ?? 0;
+        const bw = best.actualWeightKg ?? best.targetWeightKg ?? 0;
+        return w > bw || (w === bw && (s.actualReps ?? 0) > (best.actualReps ?? 0)) ? s : best;
+      });
+      const prevState = nextProgressionStates[ex.exerciseId] ?? null;
+      const isBw = ex.equipment === 'bodyweight' && !ex.isWeightedCalisthenic;
+      const weightForState = isBw
+        ? Math.max(1, bodyweightEmaKg * (ex.bodyweightLoadPct ?? 0.65))
+        : topSet.actualWeightKg ?? topSet.targetWeightKg ?? 0;
+      nextProgressionStates[ex.exerciseId] = updateExerciseProgressionStateDamped(
+        prevState,
+        {
+          exerciseId: ex.exerciseId,
+          weightKg: weightForState,
+          reps: topSet.actualReps ?? topSet.targetReps ?? 0,
+          rir: topSet.actualRir ?? topSet.targetRir ?? 2,
+          loggedAtMs: finishedAtMs,
+        },
+        {
+          isFirstAnchorCalibration:
+            ex.calibrationSource === 'ANCHOR_PRIOR' || ex.calibrationSource === 'EFFORT_ONLY',
+          storeWeightAsNull: isBw,
+        }
+      );
+    }
+
+    // Auto-expire TODAY_ONLY overlays on session completion (or any overlay past expiresAtEpochMs)
+    const currentOverlayCheck = resolveActiveOverlay(profile.activeEnvironmentOverlay, finishedAtMs);
+    const remainingOverlay =
+      currentOverlayCheck.active && currentOverlayCheck.active.scope !== 'TODAY_ONLY'
+        ? currentOverlayCheck.active
+        : null;
+    const nextActiveLocation = remainingOverlay
+      ? overlayToTrainingLocation(remainingOverlay)
+      : profile.activeEnvironmentOverlay
+      ? 'gym'
+      : profile.activeLocation || 'gym';
+
     setWorkouts(nextHistory);
     setProfile((prev) => ({
       ...prev,
-      streakDays: computeTrainingStreak(nextHistory, Date.now(), activeDates),
+      streakDays: computeTrainingStreak(nextHistory, finishedAtMs, activeDates),
       lastWorkoutDate: todayStr,
       mesocycleWeek: nextMesocycleWeek,
+      activeEnvironmentOverlay: remainingOverlay,
+      activeLocation: nextActiveLocation,
+      exerciseProgressionStates: nextProgressionStates,
     }));
 
-    const nextSession =
+    const baseNextSession =
       isPlanProgram(profile.programType)
         ? prepareSession(
             generatePlanWorkout(activePlan, getNextProgramWorkoutNumber(nextHistory, activePlan, profile.planCycleStarts, profile.planStartWorkouts)),
@@ -1088,7 +1206,7 @@ export const App: React.FC = () => {
               exercises,
               readiness.state,
               nextMesocycleWeek,
-              profile.activeLocation || 'gym',
+              nextActiveLocation,
               profile.homeEquipment || [],
               profile.goalPhase,
               bodyweightEmaKg,
@@ -1096,6 +1214,19 @@ export const App: React.FC = () => {
             ),
             { history: nextHistory }
           );
+    const nextSession =
+      remainingOverlay || profile.activeEnvironmentOverlay
+        ? applyEnvironmentOverlayToSession({
+            session: baseNextSession,
+            overlay: remainingOverlay,
+            exerciseCatalog: exercises,
+            historicalWorkouts: nextHistory,
+            storedProgressionStates: nextProgressionStates,
+            userBodyweightKg: bodyweightEmaKg,
+            nowMs: finishedAtMs,
+            unit: profile.weightUnit || 'kg',
+          })
+        : baseNextSession;
     setActiveWorkout(nextSession);
     setRestTimerOpen(false);
     setActiveTab('train');
@@ -1435,6 +1566,7 @@ export const App: React.FC = () => {
             onFinishWorkout={handleFinishWorkout}
             onShiftWorkout={handleShiftWorkout}
             onSwitchLocation={handleSwitchTrainingLocation}
+            onApplyEnvironmentOverlay={handleApplyEnvironmentOverlay}
             onOpenWatchSync={() => setWatchModalOpen(true)}
             onOpenProgram={() => {
               setActiveTab('program');

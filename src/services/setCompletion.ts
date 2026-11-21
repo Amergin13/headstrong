@@ -1,4 +1,4 @@
-import { ExerciseSession, WorkoutSession, WorkoutSet } from '../engine/types';
+import { ExerciseSession, LeverageUpgradeNudge, WorkoutSession, WorkoutSet } from '../engine/types';
 import { evaluateExerciseProgress, Milestone } from '../engine/milestones';
 import { isPillarBenchmarkExercise } from '../engine/strengthStandards';
 
@@ -7,6 +7,12 @@ export interface RestTimerContext {
   exerciseName: string;
   nextLabel: string;
   restReason?: string;
+  /** Calm 1-line status shown inside the rest bar after Set-1 recalibration updates Sets 2..N. */
+  recalibrationStatus?: string;
+  /** Optional non-blocking bodyweight leverage step-up chip when Set 1 exceeds 18 reps. */
+  leverageUpgradeNudge?: LeverageUpgradeNudge;
+  /** Callback to apply the leverage upgrade to remaining sets on tap. */
+  onApplyLeverageUpgrade?: () => void;
 }
 
 const isWorking = (s: WorkoutSet) => !s.isWarmup && s.setType !== 'warmup';

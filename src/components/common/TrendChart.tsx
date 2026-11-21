@@ -25,6 +25,8 @@ interface TrendChartProps {
   typicalRange?: ChartTypicalRange;
   /** Active calendar window for stepping & daily 1W X-axis ticks. */
   windowRange?: { start: string; end: string; isDailyCalendar?: boolean };
+  /** Lightly shaded "Travel Bridge" date bands marking weeks where substitute tools kept volume moving. */
+  bridgeBands?: { startDate: string; endDate: string; label?: string }[];
   /** Empty state title when `points` is empty. */
   emptyTitle?: string;
   /** Empty state message when `points` is empty. */
@@ -113,6 +115,7 @@ export const TrendChart: React.FC<TrendChartProps> = ({
   positiveProgress,
   typicalRange,
   windowRange,
+  bridgeBands,
   emptyTitle = 'No data yet',
   emptyMessage = 'Log this exercise to establish your starting point.',
 }) => {
@@ -280,23 +283,64 @@ export const TrendChart: React.FC<TrendChartProps> = ({
   const bandY = Math.min(bandTop, bandBottom);
   const bandH = Math.max(10, Math.abs(bandBottom - bandTop));
 
+  const visibleBridgeRects =
+    !single && !byIndex && bridgeBands && bridgeBands.length > 0
+      ? bridgeBands
+          .map((band) => {
+            const bStart = parseLocalDate(band.startDate).getTime();
+            const bEnd = parseLocalDate(band.endDate).getTime();
+            if (bEnd < t0 || bStart > t1) return null;
+            const clampedStart = Math.max(t0, bStart);
+            const clampedEnd = Math.min(t1, bEnd);
+            const xStart = padX + ((clampedStart - t0) / span) * (W - padX * 2);
+            const xEnd = padX + ((clampedEnd - t0) / span) * (W - padX * 2);
+            return {
+              key: `${band.startDate}-${band.endDate}`,
+              x: xStart,
+              width: Math.max(24, xEnd - xStart),
+              label: band.label || 'Travel Bridge',
+            };
+          })
+          .filter((r): r is { key: string; x: number; width: number; label: string } => Boolean(r))
+      : [];
+
   return (
     <div
       key={animVersion}
       ref={boxRef}
       className={play ? `wk-chart-play${single ? ' wk-chart-single' : ''}` : 'wk-chart-idle'}
     >
-      {showTypicalBand && typicalRange && (
-        <div className="flex items-center justify-end gap-2 mb-2" aria-hidden="true">
-          <span
-            className="inline-block rounded-[2px]"
-            style={{ width: 10, height: 10, background: 'var(--color-border-strong)' }}
-          />
-          <span className="wk-caption" style={{ lineHeight: 1 }}>
-            {typicalRange.label}
-          </span>
+      {(showTypicalBand && typicalRange) || visibleBridgeRects.length > 0 ? (
+        <div className="flex items-center justify-end gap-3 mb-2 flex-wrap" aria-hidden="true">
+          {visibleBridgeRects.length > 0 && (
+            <div className="flex items-center gap-2">
+              <span
+                className="inline-block rounded-[2px] border border-dashed"
+                style={{
+                  width: 10,
+                  height: 10,
+                  background: 'rgb(var(--color-accent-primary-rgb) / 0.14)',
+                  borderColor: 'rgb(var(--color-accent-primary-rgb) / 0.45)',
+                }}
+              />
+              <span className="wk-caption" style={{ lineHeight: 1 }}>
+                Travel Bridge
+              </span>
+            </div>
+          )}
+          {showTypicalBand && typicalRange && (
+            <div className="flex items-center gap-2">
+              <span
+                className="inline-block rounded-[2px]"
+                style={{ width: 10, height: 10, background: 'var(--color-border-strong)' }}
+              />
+              <span className="wk-caption" style={{ lineHeight: 1 }}>
+                {typicalRange.label}
+              </span>
+            </div>
+          )}
         </div>
-      )}
+      ) : null}
 
       <div
         className="grid items-stretch"
@@ -363,6 +407,23 @@ export const TrendChart: React.FC<TrendChartProps> = ({
                 fill="var(--color-border-track)"
               />
             )}
+            {visibleBridgeRects.map((band) => (
+              <rect
+                key={band.key}
+                x={band.x}
+                y={PAD_TOP * 0.45}
+                width={band.width}
+                height={H - PAD_BOTTOM - PAD_TOP * 0.45}
+                rx={8}
+                fill="rgb(var(--color-accent-primary-rgb) / 0.12)"
+                stroke="rgb(var(--color-accent-primary-rgb) / 0.35)"
+                strokeDasharray="4 4"
+                strokeWidth={1}
+                vectorEffect="non-scaling-stroke"
+              >
+                <title>{band.label}</title>
+              </rect>
+            ))}
             {secondaryPts.length > 1 && (
               <path
                 d={path(secondaryPts)}

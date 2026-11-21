@@ -1,5 +1,5 @@
 import React from 'react';
-import { ChevronRight } from 'lucide-react';
+import { ChevronDown, ChevronRight, MapPin } from 'lucide-react';
 import { triggerHaptic } from '../../utils/haptics';
 import { formatSentenceCase } from '../../utils/typography';
 
@@ -24,6 +24,12 @@ interface ProgramProgressCardProps {
 interface CurrentSessionCardProps extends SessionCountProps {
   /** Ref attached to the session count block for seamless scroll-linked docking. */
   sessionRef?: React.RefObject<HTMLDivElement>;
+  /** Active training environment label (e.g. "Home Gym", "Hotel Dumbbells (≤30 kg)"). */
+  environmentLabel?: string;
+  /** True when a temporary environment overlay is currently active. */
+  isTemporaryOverlay?: boolean;
+  /** Opens the Environment Overlay Bottom Sheet. */
+  onOpenEnvironment?: () => void;
 }
 
 const SessionCountBar: React.FC<SessionCountProps & { topMargin: string; barMargin: string }> = ({
@@ -108,6 +114,9 @@ export const CurrentSessionCard: React.FC<CurrentSessionCardProps> = ({
   current,
   total,
   sessionRef,
+  environmentLabel,
+  isTemporaryOverlay = false,
+  onOpenEnvironment,
 }) => (
   <section
     aria-label={`${formatSentenceCase(sessionLabel)}. ${current} of ${total} sets completed`}
@@ -122,6 +131,42 @@ export const CurrentSessionCard: React.FC<CurrentSessionCardProps> = ({
         barMargin="12px"
       />
     </div>
+    {onOpenEnvironment && environmentLabel && (
+      <div className="mt-3 pt-3 border-t flex items-center justify-between gap-2" style={{ borderColor: 'var(--color-border-subtle)' }}>
+        <span className="wk-caption">
+          {isTemporaryOverlay ? 'Temporary environment' : 'Training environment'}
+        </span>
+        <button
+          type="button"
+          onClick={() => {
+            triggerHaptic('light');
+            onOpenEnvironment();
+          }}
+          aria-label={`Change training environment (currently ${environmentLabel})`}
+          className="wk-btn-secondary min-h-[44px] px-3 gap-2 shrink-0"
+          style={
+            isTemporaryOverlay
+              ? {
+                  background: 'var(--color-status-positive-soft)',
+                  borderColor: 'var(--wk-accent)',
+                  color: 'var(--color-text-primary)',
+                }
+              : undefined
+          }
+        >
+          <MapPin
+            className="w-4 h-4 shrink-0"
+            style={{ color: isTemporaryOverlay ? 'var(--wk-accent)' : 'var(--color-text-secondary)' }}
+            strokeWidth={2}
+            aria-hidden="true"
+          />
+          <span className="wk-caption font-medium" style={{ color: 'var(--color-text-primary)' }}>
+            {environmentLabel}
+          </span>
+          <ChevronDown className="w-4 h-4 shrink-0" style={{ color: 'var(--color-text-secondary)' }} aria-hidden="true" />
+        </button>
+      </div>
+    )}
   </section>
 );
 

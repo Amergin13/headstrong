@@ -114,7 +114,7 @@ export const WorkoutFinishScreen: React.FC<WorkoutFinishScreenProps> = ({
   onDebriefWithCoach,
 }) => {
   const units = useUnits();
-  const { report, personalBests, goalProgress, headline } = finish;
+  const { report, personalBests, goalProgress, headline, continuity } = finish;
   const summary = useWorkoutSummaryText(finish);
 
   const plan = report.program.kind === 'plan' ? report.program : null;
@@ -208,6 +208,55 @@ export const WorkoutFinishScreen: React.FC<WorkoutFinishScreenProps> = ({
             </div>
           </div>
         </section>
+
+        {/* Post-session Continuity Card (UI-5): win-lever badge + weekly muscle target + dual honest status */}
+        {continuity && (
+          <section className="wk-card mt-3 flex flex-col gap-3" aria-label="Training continuity summary">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <span
+                className="wk-pill"
+                style={{
+                  background: 'var(--color-status-positive-soft)',
+                  color: 'var(--wk-accent)',
+                  borderColor: 'var(--wk-accent)',
+                }}
+              >
+                {continuity.winLeverBadge}
+              </span>
+              <span className="wk-caption">{continuity.environmentLabel}</span>
+            </div>
+            <CardTitle>{continuity.headline}</CardTitle>
+            <div>
+              <div className="flex items-center justify-between wk-caption tabular-nums mb-1">
+                <span>
+                  {continuity.primaryMuscle}: {continuity.weeklySetsCompleted} of {continuity.weeklyTargetMin}–{continuity.weeklyTargetMax} hard sets
+                </span>
+                <span style={{ color: 'var(--wk-accent)' }}>{continuity.weeklyTargetPct}%</span>
+              </div>
+              <div
+                className="wk-bar"
+                role="progressbar"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={continuity.weeklyTargetPct}
+                aria-label={`${continuity.primaryMuscle} weekly volume target ${continuity.weeklyTargetPct}%`}
+              >
+                <div style={{ width: `${continuity.weeklyTargetPct}%` }} />
+              </div>
+            </div>
+            <div
+              className="pt-3 border-t flex flex-col gap-1"
+              style={{ borderColor: 'var(--color-border-subtle)' }}
+            >
+              <p className="wk-caption m-0" style={{ color: 'var(--wk-accent)' }}>
+                {continuity.muscleGrowthStatus}
+              </p>
+              <p className="wk-caption m-0" style={{ color: 'var(--color-text-secondary)' }}>
+                {continuity.anchorStatusLine}
+              </p>
+            </div>
+          </section>
+        )}
 
         {/* Cardiovascular strain telemetry when configured */}
         {whoopConfigured && (

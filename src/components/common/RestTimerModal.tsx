@@ -35,6 +35,7 @@ export const RestTimerModal: React.FC<RestTimerModalProps> = ({
   const [now, setNow] = useState(Date.now());
   const [chimeMuted, setChimeMuted] = useState(() => isRestChimeMuted());
   const [notifStatus, setNotifStatus] = useState<RestNotificationStatus>(() => getRestNotificationStatus());
+  const [leverageApplied, setLeverageApplied] = useState(false);
   const hasTriggeredDoneAlerts = useRef(false);
 
   const isRunning = pausedRemaining === null;
@@ -232,6 +233,55 @@ export const RestTimerModal: React.FC<RestTimerModalProps> = ({
             </button>
           </div>
         </div>
+
+        {context?.leverageUpgradeNudge && (
+          <div
+            className="mt-3 pt-3 flex flex-col gap-2 border-t"
+            style={{ borderColor: 'var(--color-border-subtle)' }}
+            aria-live="polite"
+          >
+            {leverageApplied ? (
+              <span className="wk-caption" style={{ color: 'var(--wk-accent)' }}>
+                Updated remaining sets to {context.leverageUpgradeNudge.suggestedName}.
+              </span>
+            ) : (
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <span className="wk-caption" style={{ color: 'var(--color-text-secondary)' }}>
+                  Too light?
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    triggerHaptic('medium');
+                    context.onApplyLeverageUpgrade?.();
+                    setLeverageApplied(true);
+                  }}
+                  className="wk-btn-secondary min-h-[44px] px-3 wk-caption font-medium"
+                  style={{
+                    background: 'var(--color-status-positive-soft)',
+                    borderColor: 'var(--wk-accent)',
+                    color: 'var(--color-text-primary)',
+                  }}
+                >
+                  {context.leverageUpgradeNudge.chipLabel}
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {context?.recalibrationStatus && !context.leverageUpgradeNudge && (
+          <div
+            className="mt-3 pt-2 border-t wk-caption"
+            style={{
+              borderColor: 'var(--color-border-subtle)',
+              color: 'var(--wk-accent)',
+            }}
+            aria-live="polite"
+          >
+            {context.recalibrationStatus}
+          </div>
+        )}
 
         {notifStatus === 'default' && !isDone && (
           <div

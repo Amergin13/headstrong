@@ -151,6 +151,158 @@ export type HomeEquipmentTag =
   | 'pullup_bar'
   | 'bands';
 
+// ============================================================================
+// Seamless Cross-Environment Exercise Swapping & Continuity Domain Contracts
+// ============================================================================
+
+export type EquipmentClass =
+  | 'STANDARDIZED_FREE_WEIGHT'   // Barbell, Dumbbell, Smith Machine, Kettlebell
+  | 'BODYWEIGHT'                 // Push-ups, Pull-ups, Dips, Lunges
+  | 'VARIABLE_MACHINE_OR_CABLE'; // Pin-loaded machines, cable stacks (unknown pulley ratios)
+
+export type OverlayScope =
+  | 'TODAY_ONLY'
+  | 'WEEK_OVERRIDE'              // Auto-reverts at start of next training week
+  | 'CUSTOM_UNTIL_DATE';
+
+export type EnvironmentProfileType =
+  | 'HOME_GYM'
+  | 'HOTEL_DUMBBELLS'
+  | 'BODYWEIGHT'
+  | 'TIME_CONSTRAINED'
+  | 'CUSTOM';
+
+export type CalibrationSource =
+  | 'OWN_HISTORY'
+  | 'ANCHOR_PRIOR'
+  | 'SET_1_RECALIBRATED'
+  | 'EFFORT_ONLY';
+
+export type ContinuityRationaleKind =
+  | 'ANCHOR_PRIOR'
+  | 'BODYWEIGHT'
+  | 'EFFORT_ONLY'
+  | 'COARSE_JUMP_EXPANDED'
+  | 'HOME_GYM_REENTRY';
+
+export type EquipmentAvailabilityToken =
+  | 'BARBELL'
+  | 'DUMBBELLS'
+  | 'BENCH'
+  | 'CABLE'
+  | 'MACHINE'
+  | 'PULLUP_BAR'
+  | 'TRX'
+  | 'BANDS'
+  | 'NONE';
+
+export interface ExerciseMetadata {
+  exerciseId: string;
+  name: string;
+  movementPattern: string;
+  equipmentClass: EquipmentClass;
+  equipmentRequired: EquipmentAvailabilityToken[];
+  primaryMuscles: MuscleGroup[];
+  secondaryMuscles: MuscleGroup[];
+  /** Optional prior vs canonical barbell anchor (e.g., Flat DB Press = 0.78 total). */
+  anchorTransferRatio?: number;
+  /** Optional % of user BW (e.g., Floor Push-Up = 0.64, Feet-Elevated = 0.74). */
+  bodyweightLoadPct?: number;
+  /** Ordered difficulty ladder for bodyweight variants (1 = easiest). */
+  leverageTier?: number;
+  /** If true, split estimated total load across 2 hands (per-dumbbell logging). */
+  isUnilateralPerHand: boolean;
+}
+
+export interface ProgramSlot {
+  slotId: string; // e.g., "A1"
+  programId: string;
+  workoutDayId: string;
+  movementPattern: string;
+  anchorExerciseId: string;
+  targetSets: number;
+  targetRepMin: number;
+  targetRepMax: number;
+  targetRirInitial: number; // Clamped 0..6
+  restSeconds: number;
+}
+
+export interface EnvironmentOverlay {
+  overlayId: string;
+  activeProfileType: EnvironmentProfileType;
+  label?: string;
+  availableEquipment: EquipmentAvailabilityToken[];
+  maxDumbbellKg?: number | null;
+  dumbbellStepKg?: number | null;
+  maxSessionMinutes?: number | null;
+  scope: OverlayScope;
+  /** Null only for default HOME_GYM. */
+  expiresAtEpochMs: number | null;
+  /** Local natural-language prompt entered by user (kept strictly on-device). */
+  sourcePrompt?: string;
+  createdAtEpochMs?: number;
+}
+
+export interface ExerciseProgressionState {
+  exerciseId: string; // Strictly isolated per exercise
+  lastLoggedAt: number | null;
+  estimated1rmKg: number | null;
+  lastWorkingWeightKg: number | null;
+  lastWorkingReps: number | null;
+  lastLoggedRir: number | null;
+  calibratedSessionCount: number;
+}
+
+export interface ActiveSetPrescription {
+  setNumber: number;
+  /** Null for BODYWEIGHT or uncalibrated VARIABLE_MACHINE_OR_CABLE. */
+  suggestedWeightKg: number | null;
+  /** Drives "~" prefix in UI. */
+  isWeightEstimated: boolean;
+  /** e.g., "Elevated (~74% BW)" or "Pick moderate". */
+  setupLabel: string | null;
+  targetRepsMin: number;
+  targetRepsMax: number;
+  targetRir: number; // 0..6
+  calibrationSource: CalibrationSource;
+}
+
+export interface ContinuityCopyBlock {
+  kind: ContinuityRationaleKind;
+  tier1: string;
+  tier2Bullets: string[];
+}
+
+export interface LeverageUpgradeNudge {
+  currentExerciseId: string;
+  suggestedExerciseId?: string;
+  suggestedSetupLabel: string;
+  suggestedName: string;
+  chipLabel: string;
+  promptText: string;
+}
+
+export interface BridgeWeekClassification {
+  weekStart: string; // YYYY-MM-DD
+  weekEnd: string;   // YYYY-MM-DD
+  status: 'LOGGED_ANCHOR' | 'BRIDGE_WEEK' | 'MISSED_WEEK';
+  substituteExerciseNames: string[];
+  substituteSetCount: number;
+}
+
+export interface SessionContinuitySummary {
+  winLeverBadge: 'STIMULUS MATCHED' | 'LEVERAGE & EFFORT WIN' | 'CARRYOVER CONFIRMED';
+  headline: string;
+  primaryMuscle: MuscleGroup;
+  weeklySetsCompleted: number;
+  weeklyTargetMin: number;
+  weeklyTargetMax: number;
+  weeklyTargetPct: number;
+  muscleGrowthStatus: string;
+  anchorStatusLine: string;
+  environmentLabel: string;
+}
+
 export interface IntensityProtocol {
   id: string;
   symbol: string;
@@ -199,6 +351,12 @@ export interface WorkoutSet {
   targetDurationSeconds?: number;
   /** Logged hold/carry time in seconds for timed exercises. */
   actualDurationSeconds?: number;
+  /** True when target weight is an anchor-derived prior ("~" prefix in UI). */
+  isWeightEstimated?: boolean;
+  /** Non-numeric setup label for bodyweight or unfamiliar machines (e.g. "Elevated (~74% BW)", "Pick moderate"). */
+  setupLabel?: string | null;
+  /** How this set's target was calibrated (OWN_HISTORY | ANCHOR_PRIOR | SET_1_RECALIBRATED | EFFORT_ONLY). */
+  calibrationSource?: CalibrationSource;
 }
 
 export interface ExerciseDefinition {
@@ -262,6 +420,30 @@ export interface ExerciseSession {
   repTargetType?: 'reps' | 'wave' | 'form_failure' | 'duration';
   waveReps?: [number, number];
   exerciseNotes?: string[];
+  /** Movement slot identifier (e.g. "A1") decoupling program continuity from exercise-isolated math. */
+  slotId?: string;
+  /** Master program anchor exercise id when swapped under an environment overlay. */
+  anchorExerciseId?: string;
+  /** Master program anchor exercise display name. */
+  anchorExerciseName?: string;
+  /** Compact Set-1 parent anchor reference shown in PREV/REF (e.g., "BB 77.5×8"). */
+  anchorReferenceLabel?: string;
+  /** Calibration mode for this exercise session. */
+  calibrationSource?: CalibrationSource;
+  /** Rationale template key driving Tier-1 + expandable Tier-2 disclosure. */
+  continuityRationaleKind?: ContinuityRationaleKind;
+  /** Percentage of the next coarse load jump when COARSE_JUMP_EXPANDED triggers. */
+  coarseJumpPct?: number;
+  /** Setup label for bodyweight / unfamiliar machine slots (e.g., "Elevated (~74% BW)" or "Pick moderate"). */
+  setupLabel?: string;
+  /** Biomechanical % of bodyweight loaded (0..1) for bodyweight variants. */
+  bodyweightLoadPct?: number;
+  /** Ordered bodyweight leverage tier (1 = easiest). */
+  leverageTier?: number;
+  /** Pre-travel reference label shown under LAST AT GYM on first session back (e.g., "Wk 3: 77.5×8"). */
+  reentryFromLabel?: string;
+  /** True on first session back on an anchor lift after one or more BRIDGE_WEEK travel weeks. */
+  isBridgeReentry?: boolean;
 }
 
 export interface WorkoutSession {
@@ -299,6 +481,12 @@ export interface WorkoutSession {
   };
   /** Working-set IDs already celebrated as a personal best this session. */
   celebratedSetIds?: string[];
+  /** Active temporary environment overlay ID when this session was adapted. */
+  environmentOverlayId?: string;
+  /** Active environment profile type when this session was logged/adapted. */
+  environmentProfileType?: EnvironmentProfileType;
+  /** Human-readable active environment label (e.g., "Hotel Dumbbells (≤30 kg)"). */
+  environmentOverlayLabel?: string;
 }
 
 export interface SubTierQuest {
@@ -674,6 +862,10 @@ export interface UserProfile {
   /** Optional habit anchor (preferred days/time/cue) with non-punitive asynchronous rollover. */
   habitAnchor?: HabitAnchor;
   scheduledWeekLocations?: Record<number, TrainingLocation>; // Planned locations for future mesocycle weeks (e.g. week 5 -> 'travel')
+  /** Active time-bounded training environment overlay (auto-reverts on expiry without mutating master program). */
+  activeEnvironmentOverlay?: EnvironmentOverlay | null;
+  /** Strictly exercise-isolated progression states keyed by exerciseId (never merged across implements). */
+  exerciseProgressionStates?: Record<string, ExerciseProgressionState>;
   authUserId?: string;
   email?: string;
   avatarUrl?: string;
