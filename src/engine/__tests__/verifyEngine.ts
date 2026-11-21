@@ -16835,6 +16835,38 @@ Exercise,,Date,Workout,Sets,Reps,Tempo,Rest,Notes,Set 1,Set 2,Set 3,Set 4
         importModalSrc74.includes('z-[60]'),
       'Onboarding asks to import existing program & historical data via ImportProgramModal, applies both atomically with Day 1 calibration, and preserves Program screen import'
     );
+
+    // 5. Workout days-of-the-week strip never surfaces Health Connect steps or non-program activities
+    //    as completed historical workouts — only upcoming, active, and completed program sessions appear.
+    const { resolveActivePlan: resolveActivePlan74 } = await import('../trainingPlans');
+    const { generatePlanWorkout: generatePlanWorkout74 } = await import('../muscleBuildingProgram');
+    const stripNow74 = new Date(2026, 10, 21, 12, 0).getTime();
+    const sPlan74 = resolveActivePlan74({ programType: 'starter_4day', goalPhase: 'Lean Bulk' });
+    const nextW74 = generatePlanWorkout74(sPlan74, 1);
+    const freshStrip74 = buildWeekStrip({
+      workouts: [],
+      nextSession: nextW74,
+      programType: sPlan74.id as any,
+      plan: sPlan74,
+      exerciseCatalog: SEED_EXERCISES,
+      now: stripNow74,
+    });
+    const pastDaysFresh74 = freshStrip74.slice(0, 3);
+    const trainSrc74 = fs74.readFileSync(path74.join(process.cwd(), 'src/components/train/TrainTab.tsx'), 'utf8');
+    const headerSrc74 = fs74.readFileSync(path74.join(process.cwd(), 'src/components/train/WorkoutPageHeader.tsx'), 'utf8');
+    const schedSrc74 = fs74.readFileSync(path74.join(process.cwd(), 'src/services/sessionSchedule.ts'), 'utf8');
+    assert(
+      pastDaysFresh74.every((d) => d.status === 'rest') &&
+        freshStrip74[3].isToday &&
+        freshStrip74[3].status === 'planned' &&
+        !trainSrc74.includes('activeDates: activeDayDates(activities)') &&
+        trainSrc74.includes('!showActiveExercises && !isFutureInspected && !isPastInspected && isNonTrainingToday') &&
+        trainSrc74.includes('aria-label="Completed training day"') &&
+        headerSrc74.includes('const isSelectable = Boolean(') &&
+        headerSrc74.includes("day.status === 'trained'") &&
+        !schedSrc74.includes('...(input.activeDates'),
+      'Workout week strip excludes Health Connect steps/non-program activities and only allows inspecting upcoming, active, and completed program sessions'
+    );
   }
 
   console.log('\n--- 75. Seamless Cross-Environment Exercise Swapping & Continuity Engine (Spec Tests 1–8) ---');

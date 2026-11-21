@@ -216,7 +216,6 @@ export function buildShowcaseFixtures(unit: WeightUnit = 'kg') {
     workouts,
     nextSession: activeWorkout,
     programType: profile.programType,
-    activeDates: [localDateOffset(-2, now)],
     exerciseCatalog: SEED_EXERCISES,
     now: now.getTime(),
   });

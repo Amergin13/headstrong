@@ -49,7 +49,7 @@ import {
   MUSCLE_FRIENDLY_NAMES,
   READY_THRESHOLD, getWorkoutCompletedAt } from '../../engine/recovery';
 import { TrainingPlan, getSessionPlanId, planWorkoutLabel } from '../../engine/muscleBuildingProgram';
-import { ActivityLog, activeDayDates, qualifiesAsActiveDay } from '../../engine/activeDays';
+import { ActivityLog, qualifiesAsActiveDay } from '../../engine/activeDays';
 import { localDateOffset, localDateString, parseLocalDate } from '../../utils/date';
 import { formatSentenceCase } from '../../utils/typography';
 import { stepsOnDate } from '../../services/athleteGoals';
@@ -1137,11 +1137,10 @@ export const TrainTab: React.FC<TrainTabProps> = ({
         nextSession: activeWorkout,
         programType: profile.programType,
         plan: trainingPlan,
-        activeDates: activeDayDates(activities),
         exerciseCatalog,
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [workouts, activeWorkout.id, activeWorkout.date, activeWorkout.programWorkoutNumber, profile.programType, trainingPlan, exerciseCatalog, activities]
+    [workouts, activeWorkout.id, activeWorkout.date, activeWorkout.programWorkoutNumber, profile.programType, trainingPlan, exerciseCatalog]
   );
 
   // Exercise overviews: personal notes written from the athlete's knowledge graph (engine-memoized).
@@ -1366,18 +1365,31 @@ export const TrainTab: React.FC<TrainTabProps> = ({
   const isRestDayToday = activeWorkout.date > todayDateStr && completedSets === 0;
   // Recovery is advisory, never blocking: only an explicitly logged rest day hides today's exercises.
   const isNonTrainingToday = !todayFinished && isRestDayToday;
-  const inspectedDay = selectedStripDate ? stripDays.find((d) => d.date === selectedStripDate) ?? null : null;
-  const isPastInspected = Boolean(inspectedDay && inspectedDay.date < todayDateStr);
-  const isFutureInspected = Boolean(inspectedDay && inspectedDay.date > todayDateStr);
+  const rawInspectedDay = selectedStripDate ? stripDays.find((d) => d.date === selectedStripDate) ?? null : null;
   const inspectedLiftingWorkout = useMemo(() => {
-    if (!inspectedDay || inspectedDay.date > todayDateStr) return null;
+    if (!rawInspectedDay || rawInspectedDay.date > todayDateStr) return null;
     return (
       workouts
-        .filter((w) => w.completed && localDateString(new Date(getWorkoutCompletedAt(w))) === inspectedDay.date)
+        .filter((w) => w.completed && localDateString(new Date(getWorkoutCompletedAt(w))) === rawInspectedDay.date)
         .sort((x, y) => getWorkoutCompletedAt(x) - getWorkoutCompletedAt(y))
         .pop() ?? null
     );
-  }, [inspectedDay, todayDateStr, workouts]);
+  }, [rawInspectedDay, todayDateStr, workouts]);
+  // Only upcoming, active (today), and completed program sessions can be inspected from the week strip.
+  // Past rest days (even with Health Connect steps/walks) never open as historical workouts.
+  const inspectedDay = rawInspectedDay
+    ? rawInspectedDay.isToday
+      ? rawInspectedDay
+      : rawInspectedDay.date < todayDateStr
+      ? inspectedLiftingWorkout
+        ? rawInspectedDay
+        : null
+      : rawInspectedDay.status === 'planned' && rawInspectedDay.plannedSession
+      ? rawInspectedDay
+      : null
+    : null;
+  const isPastInspected = Boolean(inspectedDay && inspectedDay.date < todayDateStr && inspectedLiftingWorkout);
+  const isFutureInspected = Boolean(inspectedDay && inspectedDay.date > todayDateStr);
   const isNonTrainingView = inspectedDay
     ? inspectedDay.isToday
       ? isNonTrainingToday
@@ -1387,13 +1399,10 @@ export const TrainTab: React.FC<TrainTabProps> = ({
     : isNonTrainingToday;
   const showActiveExercises = !isNonTrainingView && (!inspectedDay || inspectedDay.isToday) && !todayFinished;
 
-  // Never surface step count while an active workout is shown or when inspecting future days.
+  // Never surface step count while an active workout is shown or when inspecting past/future days from the week strip.
   const overviewStepDay =
-    !showActiveExercises && !isFutureInspected
-      ? inspectedDay ??
-        (isNonTrainingToday
-          ? todayStripDay ?? { date: todayDateStr, label: 'TODAY', status: 'rest' as const, isToday: true }
-          : null)
+    !showActiveExercises && !isFutureInspected && !isPastInspected && isNonTrainingToday
+      ? todayStripDay ?? { date: todayDateStr, label: 'TODAY', status: 'rest' as const, isToday: true }
       : null;
   const overviewSteps = overviewStepDay ? stepsOnDate(biometrics, overviewStepDay.date) : 0;
   const dailyStepsGoal = profile.goalSettings?.customGoals?.find((g) => g.metric === 'steps')?.target;
@@ -1426,7 +1435,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
         observeRef={cardsTopRef}
         deps={[hasRecoveryAdvisory, sessionReport, isNonTrainingView]}
       />
-      {workoutDisplay.showSessionCard && !isNonTrainingView && (
+      {workoutDisplay.showSessionCard && !isNonTrainingView && !isPastInspected && (
         <StickySessionHeader
           sessionLabel={programCard.sessionLabel}
           current={programCard.current}
@@ -1439,8 +1448,14 @@ export const TrainTab: React.FC<TrainTabProps> = ({
       <WorkoutPageHeader
         title={pageTitle}
         days={stripDays}
-        selectedDate={selectedStripDate}
-        onSelectDay={(day) => setSelectedStripDate((prev) => (prev === day.date ? null : day.date))}
+        selectedDate={inspectedDay?.date ?? null}
+        onSelectDay={(day) => {
+          if (day.isToday) {
+            setSelectedStripDate(null);
+            return;
+          }
+          setSelectedStripDate((prev) => (prev === day.date ? null : day.date));
+        }}
         renderMenu={renderOptionsMenu}
       />
 
@@ -1484,7 +1499,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
             ))}
           </>
         );
-      })() : !isNonTrainingView ? (
+      })() : !isNonTrainingView && !isPastInspected ? (
         <>
           {workoutDisplay.showProgramCard && (
             <ProgramProgressCard
@@ -1518,7 +1533,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
         </>
       ) : null}
 
-      {workoutDisplay.showStepsCard && overviewStepDay && !showActiveExercises && !isFutureInspected && (isNonTrainingView || isPastInspected || overviewStepDay.status !== 'trained') && (
+      {workoutDisplay.showStepsCard && overviewStepDay && !showActiveExercises && !isFutureInspected && !isPastInspected && isNonTrainingToday && (
         <section
           aria-label={overviewStepDay.isToday ? "Today's steps" : `${overviewStepDay.label} steps`}
           className="wk-card"
@@ -1674,7 +1689,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
         )
       )}
 
-      {isNonTrainingView && !isFutureInspected && (
+      {isNonTrainingView && !isFutureInspected && !isPastInspected && (
         <ActiveDayCard
           thisWeek={thisWeekActiveDay}
           recent={recentActivities}
@@ -1860,19 +1875,55 @@ export const TrainTab: React.FC<TrainTabProps> = ({
           </section>
         )}
 
-      {inspectedDay && !inspectedDay.isToday && inspectedLiftingWorkout && (
-        <>
-          {buildCompletedExerciseSummaries({
-            finished: inspectedLiftingWorkout,
-            workouts,
-            bodyweightKg: hasWeighIn ? bodyweightEmaKg : 0,
-            biometrics,
-            formatWeight: (kg) => units.formatPrecise(kg),
-          }).map((ex) => (
-            <CompletedExerciseCard key={ex.id} summary={ex} />
-          ))}
-        </>
-      )}
+      {inspectedDay && !inspectedDay.isToday && inspectedLiftingWorkout && (() => {
+        const doneSetsCount = inspectedLiftingWorkout.exercises.reduce(
+          (acc, ex) => acc + ex.sets.filter((s) => s.completed && !s.isWarmup && s.setType !== 'warmup').length,
+          0
+        );
+        return (
+          <>
+            <section aria-label="Completed training day" className="wk-card">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="flex items-center flex-wrap gap-2">
+                    <h2 className="wk-h1">
+                      {formatSentenceCase(planWorkoutLabel(inspectedLiftingWorkout.name))}
+                    </h2>
+                    <span
+                      className="wk-pill"
+                      style={{ background: 'var(--color-status-positive-soft)', color: 'var(--wk-accent)' }}
+                    >
+                      Completed
+                    </span>
+                  </div>
+                  <p className="wk-caption mt-1">
+                    {inspectedDay.label} ({formatDayShort(inspectedDay.date)}) • {doneSetsCount} {doneSetsCount === 1 ? 'set' : 'sets'}
+                    {inspectedLiftingWorkout.durationMinutes && inspectedLiftingWorkout.durationMinutes > 0
+                      ? ` • ${Math.round(inspectedLiftingWorkout.durationMinutes)} min`
+                      : ''}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSelectedStripDate(null)}
+                  className="wk-btn-secondary wk-tap shrink-0"
+                >
+                  Back to today
+                </button>
+              </div>
+            </section>
+            {buildCompletedExerciseSummaries({
+              finished: inspectedLiftingWorkout,
+              workouts,
+              bodyweightKg: hasWeighIn ? bodyweightEmaKg : 0,
+              biometrics,
+              formatWeight: (kg) => units.formatPrecise(kg),
+            }).map((ex) => (
+              <CompletedExerciseCard key={ex.id} summary={ex} />
+            ))}
+          </>
+        );
+      })()}
 
       {showActiveExercises && (<>
       {/* Exercise cards (the page gradient ends where the first one starts) */}

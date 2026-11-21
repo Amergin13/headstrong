@@ -142,8 +142,6 @@ export function buildWeekStrip(input: {
   programType?: ProgramSplitType;
   /** The athlete's plan, so projected plan sessions use their goal's sets. */
   plan?: TrainingPlan;
-  /** Local dates of active days (rides, runs, classes); they show as trained days. */
-  activeDates?: string[];
   exerciseCatalog: ExerciseDefinition[];
   now?: number;
   daysBefore?: number;
@@ -158,11 +156,12 @@ export function buildWeekStrip(input: {
   const lastDate = dates[dates.length - 1];
   const todayStr = localDateString(today);
 
+  // Only completed program/lifting sessions count as trained days on the Workout week strip.
+  // Health Connect steps and non-program activities never appear here as completed workouts.
   const completed = input.workouts.filter((w) => w.completed);
-  const trained = new Set([
-    ...completed.map((w) => localDateString(new Date(getWorkoutCompletedAt(w)))),
-    ...(input.activeDates ?? []),
-  ]);
+  const trained = new Set(
+    completed.map((w) => localDateString(new Date(getWorkoutCompletedAt(w))))
+  );
 
   // Walk the queue forward: each session lands on the day its muscles are ready.
   const planned = new Set<string>();

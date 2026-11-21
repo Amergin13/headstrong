@@ -15,9 +15,9 @@ interface WorkoutPageHeaderProps {
 }
 
 const STATUS_TEXT: Record<StripDay['status'], string> = {
-  trained: 'trained',
-  planned: 'next session expected',
-  rest: 'rest',
+  trained: 'completed workout',
+  planned: 'upcoming workout',
+  rest: 'rest day',
 };
 
 const DayCircle: React.FC<{ day: StripDay }> = ({ day }) => {
@@ -108,14 +108,21 @@ export const WorkoutPageHeader: React.FC<WorkoutPageHeaderProps> = ({ title, day
       >
         {days.map((day) => {
           const selected = selectedDate === day.date;
+          // Only active (today), completed program workouts, and upcoming program sessions are selectable.
+          const isSelectable = Boolean(
+            onSelectDay &&
+              (day.isToday ||
+                day.status === 'trained' ||
+                (day.status === 'planned' && Boolean(day.plannedSession)))
+          );
           const label = `${day.label}${day.isToday ? ', today' : ''}: ${STATUS_TEXT[day.status]}`;
           return (
             <li
               key={day.date}
               className="flex flex-col items-center"
-              aria-label={onSelectDay ? undefined : label}
+              aria-label={isSelectable ? undefined : label}
             >
-              {onSelectDay ? (
+              {isSelectable && onSelectDay ? (
                 <button
                   type="button"
                   onClick={() => {
@@ -143,7 +150,14 @@ export const WorkoutPageHeader: React.FC<WorkoutPageHeaderProps> = ({ title, day
                   <DayCircle day={day} />
                 </button>
               ) : (
-                <div className="flex flex-col items-center gap-3">
+                <div
+                  className="flex flex-col items-center p-1 gap-3"
+                  style={{
+                    minWidth: 44,
+                    minHeight: 44,
+                    opacity: selectedDate ? 0.55 : 1,
+                  }}
+                >
                   <span
                     aria-hidden="true"
                     className="text-xs font-medium"
