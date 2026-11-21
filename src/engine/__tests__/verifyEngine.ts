@@ -13276,14 +13276,14 @@ Exercise,,Date,Workout,Sets,Reps,Tempo,Rest,Notes,Set 1,Set 2,Set 3,Set 4
       `Coach answerWeightChange explains partial below-range set reduction accurately (got: ${coachDropExplain})`
     );
 
-    const exCardSrc63 = fs63.readFileSync(path63.join(process.cwd(), 'src/components/train/ExerciseCard.tsx'), 'utf8');
+    const insightSrc63 = fs63.readFileSync(path63.join(process.cwd(), 'src/services/exerciseInsight.ts'), 'utf8');
     const progRulesSrc63 = fs63.readFileSync(path63.join(process.cwd(), 'src/engine/progressionRules.ts'), 'utf8');
     const spRule63 = EXERCISE_SCIENCE_KNOWLEDGE_BASE.find((p) => p.id === 'sp-double-progression')!;
     assert(
-      exCardSrc63.includes('{exercise.minReps}–{exercise.maxReps} reps') &&
+      insightSrc63.includes('getExerciseRepRangeLabel') &&
         progRulesSrc63.includes('export function evaluateRepRangeDoubleProgression') &&
         Boolean(spRule63.formula?.includes('below the bottom of the rep range')),
-      'ExerciseCard displays rep range pill cleanly and Knowledge Graph matches shared evaluator'
+      'Exercise summary weaves in rep range cleanly (no clutter badge on ExerciseCard) and Knowledge Graph matches shared evaluator'
     );
   }
 
@@ -15563,7 +15563,8 @@ Exercise,,Date,Workout,Sets,Reps,Tempo,Rest,Notes,Set 1,Set 2,Set 3,Set 4
       bodyweightEmaKg: 80,
     });
     const setRowSrc68 = fs68.readFileSync(path68.join(process.cwd(), 'src/components/train/SetRow.tsx'), 'utf8');
-    const exCardSrc68 = fs68.readFileSync(path68.join(process.cwd(), 'src/components/train/ExerciseCard.tsx'), 'utf8');
+    const detailModalSrc68 = fs68.readFileSync(path68.join(process.cwd(), 'src/components/train/ExerciseDetailModal.tsx'), 'utf8');
+    const weeklyVolSrc68 = fs68.readFileSync(path68.join(process.cwd(), 'src/components/program/WeeklyVolumeCard.tsx'), 'utf8');
     const recCardSrc68 = fs68.readFileSync(path68.join(process.cwd(), 'src/components/train/RecoveryScoreCard.tsx'), 'utf8');
     const strCardSrc68 = fs68.readFileSync(path68.join(process.cwd(), 'src/components/analytics/StrengthLevelsCard.tsx'), 'utf8');
     assert(
@@ -15576,7 +15577,8 @@ Exercise,,Date,Workout,Sets,Reps,Tempo,Rest,Notes,Set 1,Set 2,Set 3,Set 4
         coachPrompt68.includes('1x') &&
         Boolean(swapRx68.biomechanicalSummary?.includes('lengthened-stretch')) &&
         setRowSrc68.includes('MAX_LOGGABLE_RIR') &&
-        exCardSrc68.includes('direct (1.0×)') &&
+        detailModalSrc68.includes('direct (1.0×)') &&
+        weeklyVolSrc68.includes('direct (1.0×)') &&
         recCardSrc68.includes('Single-day recovery dip') &&
         strCardSrc68.includes('allometric scaling'),
       'Biomechanical metadata (stability, stretch bias, fractional weights) grounds AI Coach prompt, swap rationales, and UI components cleanly'
@@ -16121,7 +16123,186 @@ Exercise,,Date,Workout,Sets,Reps,Tempo,Rest,Notes,Set 1,Set 2,Set 3,Set 4
     );
   }
 
-  console.log('\nALL 71 ENGINE, GOVERNANCE, DESIGN SYSTEM, TYPOGRAPHY, WEARABLES, WHOOP STRAIN, GOOGLE AUTH, ONBOARDING CONTEXT, 6-WEEK PROGRAM, SPREADSHEET IMPORT, AI COACH ACTIONS, GEMINI FLASH + KG, OOUX, AGENTIC COACH, PRODUCT UPGRADES, INFO EXPERIENCE, CONTENT DESIGN, GOAL CAROUSEL, SHIFT NUDGE COLOR POLISH, EXERCISE DRILL-IN MODAL, COMPOSITION WIDGET, MEASUREMENT UX, AI-NATIVE ACTIONS, PERMANENT PROGRAM ADAPTATION, HITL INTERVENTION, REP-RANGE DOUBLE PROGRESSION, TWO-DUMBBELL PER-HAND LOGGING, AI-NATIVE CONVERSATIONAL DESIGN, P0 CLOSED-BETA READINESS, P1 GYM-FLOOR ACTIVATION, MACROFACTOR EXERCISE SCIENCE, AI PERSONALISATION/MEMORY, LEAN PROGRESSIVE ONBOARDING & CROSS-SURFACE AI ECONOMY SUITES PASSED SUCCESSFULLY! 🎯');
+  // ---------------------------------------------------------------------------
+  // 72. Exercise Card Decluttering, Summary Rep-Range Integration & Weekly Volume Placement
+  // ---------------------------------------------------------------------------
+  console.log('\n--- 72. Exercise Card Decluttering, Summary Rep-Range Integration & Weekly Volume Placement ---');
+  {
+    const fs72 = require('fs');
+    const path72 = require('path');
+    const {
+      buildExerciseDetailModel: buildDetail72,
+      buildExerciseWeeklyVolume: buildExWeekly72,
+      buildProgramWeeklyMuscleVolumes: buildProgWeekly72,
+    } = require('../../services/exerciseDetails');
+    const { checkExerciseNote: checkNote72, buildExerciseNoteFacts: buildFacts72 } = require('../../services/exerciseCoachNote');
+    const { runRotContentAudit: runRot72 } = require('../contentStrategy');
+
+    // 1. Rep range (8–12 reps) lives naturally in Line 2 of exerciseInsight & exerciseCoachNote,
+    //    passes checkExerciseNote + runRotContentAudit, while standalone single-number reps are still rejected.
+    const dbBenchDef72 = SEED_EXERCISES.find((e) => e.id === 'ex-db-bench-press')!;
+    const prevBenchWorkout72: WorkoutSession = {
+      id: 'w-72-prev',
+      name: 'Upper',
+      splitDay: 'Upper',
+      readinessState: 'Normal',
+      readinessZScore: 0,
+      date: localDateString(new Date(Date.now() - 3 * 86_400_000)),
+      completed: true,
+      completedAt: new Date(Date.now() - 3 * 86_400_000).toISOString(),
+      exercises: [
+        {
+          id: 'ex-72-prev',
+          exerciseId: dbBenchDef72.id,
+          name: dbBenchDef72.name,
+          pillar: dbBenchDef72.pillar,
+          equipment: dbBenchDef72.equipment,
+          minReps: 8,
+          maxReps: 12,
+          sets: [
+            { id: 's1', setNumber: 1, targetWeightKg: 24, targetReps: 10, targetRir: 2, actualWeightKg: 24, actualReps: 10, actualRir: 2, completed: true },
+            { id: 's2', setNumber: 2, targetWeightKg: 24, targetReps: 10, targetRir: 2, actualWeightKg: 24, actualReps: 10, actualRir: 2, completed: true },
+            { id: 's3', setNumber: 3, targetWeightKg: 24, targetReps: 10, targetRir: 2, actualWeightKg: 24, actualReps: 10, actualRir: 2, completed: true },
+          ],
+        },
+      ],
+    };
+    const todayBenchEx72: ExerciseSession = {
+      id: 'ex-72-today',
+      exerciseId: dbBenchDef72.id,
+      name: dbBenchDef72.name,
+      pillar: dbBenchDef72.pillar,
+      equipment: dbBenchDef72.equipment,
+      orderCode: '1A',
+      minReps: 8,
+      maxReps: 12,
+      sets: [
+        { id: 't1', setNumber: 1, targetWeightKg: 24, targetReps: 10, targetRir: 2, completed: false },
+        { id: 't2', setNumber: 2, targetWeightKg: 24, targetReps: 10, targetRir: 2, completed: false },
+        { id: 't3', setNumber: 3, targetWeightKg: 24, targetReps: 10, targetRir: 2, completed: false },
+      ],
+    };
+    const benchInsight72 = buildExerciseInsight(todayBenchEx72, [prevBenchWorkout72], 'Normal', 89);
+    const kg72 = buildAthleteKnowledgeGraph(
+      [prevBenchWorkout72],
+      [],
+      SEED_EXERCISES,
+      NEW_USER_PROFILE,
+      calculateWeeklyMuscleVolume([prevBenchWorkout72], SEED_EXERCISES)
+    );
+    const benchFacts72 = buildFacts72({
+      exercise: todayBenchEx72,
+      insight: benchInsight72,
+      workouts: [prevBenchWorkout72],
+      readinessState: 'Normal',
+      knowledgeGraph: kg72,
+      primaryMuscle: 'Chest',
+      muscleLabel: 'Chest',
+      formatWeight: (kg: number) => `${kg} kg`,
+    });
+    assert(
+      benchInsight72.lines[1] === 'Matching this load across 8–12 reps deepens hypertrophy volume.' &&
+        /across 8–12 reps/.test(benchFacts72.lines[1]) &&
+        checkNote72(benchFacts72.fallback, benchFacts72).problem === undefined &&
+        runRot72([{ exerciseName: todayBenchEx72.name, summary: benchInsight72.summary }]).passed &&
+        checkNote72(`${benchFacts72.lines[0]}\nAim for 10 reps per set for your chest.`, benchFacts72).problem !== undefined &&
+        checkNote72(`${benchFacts72.lines[0]}\nMatching this load across 6–8 reps deepens hypertrophy volume.`, benchFacts72).problem !== undefined,
+      `Rep range 8–12 reps lives naturally in Line 2 and passes QA gates while standalone single-number reps and mismatched ranges stay rejected (got "${benchInsight72.lines[1]}")`
+    );
+
+    // 2. Weekly muscle volume matches calculateWeeklyMuscleVolume (single source of truth) in both ExerciseDetailModal & ProgramTab.
+    const savedVol72 = calculateWeeklyMuscleVolume([prevBenchWorkout72], SEED_EXERCISES);
+    const drillInVol72 = buildExWeekly72({
+      exercise: todayBenchEx72,
+      exerciseDef: dbBenchDef72,
+      workouts: [prevBenchWorkout72],
+      exerciseCatalog: SEED_EXERCISES,
+      goalPhase: 'Lean Bulk',
+    });
+    const programVols72 = buildProgWeekly72({
+      workouts: [prevBenchWorkout72],
+      exerciseCatalog: SEED_EXERCISES,
+      goalPhase: 'Lean Bulk',
+    });
+    const programChest72 = programVols72.find((m: { muscleKey: string }) => m.muscleKey === 'Chest');
+    assert(
+      Boolean(drillInVol72) &&
+        drillInVol72!.muscleName === 'Chest' &&
+        drillInVol72!.total === savedVol72.Chest &&
+        drillInVol72!.direct === 3 &&
+        Boolean(programChest72) &&
+        programChest72!.total === savedVol72.Chest,
+      'ExerciseDetailModal and Program WeeklyVolumeCard share the exact same single-source weekly hard-set calculation'
+    );
+
+    // 3. Bodyweight & assisted load details live as plain-English explanations inside ExerciseDetailModal (never "89kg bodyweight counted" badges).
+    const pullupEx72: ExerciseSession = {
+      id: 'ex-72-pullup',
+      exerciseId: 'ex-weighted-pullup',
+      name: 'Weighted Pull-Up',
+      pillar: 'Vertical Pull',
+      equipment: 'weighted_bodyweight',
+      isWeightedCalisthenic: true,
+      minReps: 6,
+      maxReps: 10,
+      sets: [{ id: 'p1', setNumber: 1, targetWeightKg: 10, targetReps: 8, targetRir: 2, completed: false }],
+    };
+    const pushupEx72: ExerciseSession = {
+      id: 'ex-72-pushup',
+      exerciseId: 'ex-pushup',
+      name: 'Push-Up',
+      pillar: 'Horizontal Push',
+      equipment: 'bodyweight',
+      minReps: 10,
+      maxReps: 15,
+      sets: [{ id: 'pu1', setNumber: 1, targetWeightKg: 0, targetReps: 12, targetRir: 2, completed: false }],
+    };
+    const assistedEx72: ExerciseSession = {
+      id: 'ex-72-assisted',
+      exerciseId: 'ex-assisted-chinup',
+      name: 'Assisted Chin-Up',
+      pillar: 'Vertical Pull',
+      equipment: 'machine',
+      isAssisted: true,
+      minReps: 8,
+      maxReps: 12,
+      sets: [{ id: 'a1', setNumber: 1, targetWeightKg: 25, targetReps: 10, targetRir: 2, completed: false }],
+    };
+    const fmt72 = (kg: number) => `${kg} kg`;
+    const pullupDetail72 = buildDetail72({ exercise: pullupEx72, bodyweightKg: 89, formatWeight: fmt72, formatPreciseWeight: fmt72 });
+    const pushupDetail72 = buildDetail72({ exercise: pushupEx72, bodyweightKg: 89, formatWeight: fmt72, formatPreciseWeight: fmt72 });
+    const assistedDetail72 = buildDetail72({ exercise: assistedEx72, bodyweightKg: 89, formatWeight: fmt72, formatPreciseWeight: fmt72 });
+    assert(
+      /include your 89 kg bodyweight plus any added weight/i.test(pullupDetail72.loadExplanation || '') &&
+        /count roughly .* of your 89 kg bodyweight/i.test(pushupDetail72.loadExplanation || '') &&
+        /lower assistance weight means a harder set/i.test(assistedDetail72.loadExplanation || '') &&
+        !/bodyweight counted/i.test(pullupDetail72.loadExplanation || ''),
+      'ExerciseDetailModal surfaces plain-English bodyweight and assisted load explanations without "bodyweight counted" jargon'
+    );
+
+    // 4. Static UI placement guards: ExerciseCard shows ONLY the sequence badge & no weekly volume section;
+    //    weekly muscle volume lives on Program (ProgramPlanView & ProgramTab) and ExerciseDetailModal.
+    const exCardSrc72 = fs72.readFileSync(path72.join(process.cwd(), 'src/components/train/ExerciseCard.tsx'), 'utf8');
+    const detailSrc72 = fs72.readFileSync(path72.join(process.cwd(), 'src/components/train/ExerciseDetailModal.tsx'), 'utf8');
+    const progPlanSrc72 = fs72.readFileSync(path72.join(process.cwd(), 'src/components/program/ProgramPlanView.tsx'), 'utf8');
+    const progTabSrc72 = fs72.readFileSync(path72.join(process.cwd(), 'src/components/program/ProgramTab.tsx'), 'utf8');
+    const pillMatches72 = exCardSrc72.match(/wk-pill/g) || [];
+    assert(
+      pillMatches72.length === 1 &&
+        !exCardSrc72.includes('bodyweight counted') &&
+        !exCardSrc72.includes('weeklyMuscleVolume') &&
+        !exCardSrc72.includes('this week') &&
+        !exCardSrc72.includes('Assisted (lower = harder)') &&
+        detailSrc72.includes('resolvedWeeklyVolume') &&
+        detailSrc72.includes('this week') &&
+        detailSrc72.includes('detail.loadExplanation') &&
+        progPlanSrc72.includes('<WeeklyVolumeCard') &&
+        progTabSrc72.includes('<WeeklyVolumeCard'),
+      `ExerciseCard has strictly 1 sequence badge pill (found ${pillMatches72.length}) and zero weekly-volume/bodyweight-counted clutter, while ExerciseDetailModal and ProgramTab/ProgramPlanView render weekly muscle volume`
+    );
+  }
+
+  console.log('\nALL 72 ENGINE, GOVERNANCE, DESIGN SYSTEM, TYPOGRAPHY, WEARABLES, WHOOP STRAIN, GOOGLE AUTH, ONBOARDING CONTEXT, 6-WEEK PROGRAM, SPREADSHEET IMPORT, AI COACH ACTIONS, GEMINI FLASH + KG, OOUX, AGENTIC COACH, PRODUCT UPGRADES, INFO EXPERIENCE, CONTENT DESIGN, GOAL CAROUSEL, SHIFT NUDGE COLOR POLISH, EXERCISE DRILL-IN MODAL, COMPOSITION WIDGET, MEASUREMENT UX, AI-NATIVE ACTIONS, PERMANENT PROGRAM ADAPTATION, HITL INTERVENTION, REP-RANGE DOUBLE PROGRESSION, TWO-DUMBBELL PER-HAND LOGGING, AI-NATIVE CONVERSATIONAL DESIGN, P0 CLOSED-BETA READINESS, P1 GYM-FLOOR ACTIVATION, MACROFACTOR EXERCISE SCIENCE, AI PERSONALISATION/MEMORY, LEAN PROGRESSIVE ONBOARDING, CROSS-SURFACE AI ECONOMY & EXERCISE CARD DECLUTTERING SUITES PASSED SUCCESSFULLY! 🎯');
 })().catch((err) => {
   console.error('Test Suite Failed:', err);
   if (typeof process !== 'undefined' && process.exit) {

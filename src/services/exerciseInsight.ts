@@ -9,12 +9,29 @@
  * Progress is tracked as the best set's estimated one-rep max per session (RIR-adjusted Epley,
  * the app's E1RM formula). Built only from completed sets.
  */
-import { calculateE1RM, getBodyweightLoadRatio, isTimedExercise } from '../engine/e1rm';
+import { calculateE1RM, getBodyweightLoadRatio, isAssistedExercise, isTimedExercise } from '../engine/e1rm';
 import { buildBodyweightEmaLookup } from '../engine/ema';
 import { getWorkoutCompletedAt } from '../engine/recovery';
 import { isPillarBenchmarkExercise } from '../engine/strengthStandards';
 import { BiometricLog, ExerciseDefinition, ExerciseSession, ReadinessState, WorkoutSession, WorkoutSet } from '../engine/types';
 import { localDateString } from '../utils/date';
+
+/**
+ * Formats an exercise's prescribed rep range (e.g., "8–12 reps") when it spans a range.
+ * Returns null for timed holds, form-failure sets, or fixed single-rep prescriptions.
+ */
+export function getExerciseRepRangeLabel(
+  exercise: Pick<
+    ExerciseSession,
+    'minReps' | 'maxReps' | 'repTargetType' | 'durationSeconds' | 'durationMinutesRange' | 'exerciseId' | 'name'
+  >
+): string | null {
+  if (isTimedExercise(exercise) || exercise.repTargetType === 'form_failure') return null;
+  if (exercise.minReps > 0 && exercise.maxReps > 0 && exercise.minReps < exercise.maxReps) {
+    return `${exercise.minReps}–${exercise.maxReps} reps`;
+  }
+  return null;
+}
 
 /**
  * True for isolation and small-muscle exercises (lateral raises, tricep pushdowns, curls, calves,
@@ -189,6 +206,9 @@ export function buildExerciseInsight(
     return { metric: 'time', history, lines: [line1, line2], summary: `${line1}\n${line2}` };
   }
 
+  const isAssisted = isAssistedExercise(exercise);
+  const repRange = getExerciseRepRangeLabel(exercise);
+  const across = repRange ? ` across ${repRange}` : '';
   const bwRatio = isCalisthenic ? getBodyweightLoadRatio(exercise.exerciseId, exercise.pillar) : 0;
   const hasRealPastBw = past.length > 0 && past.every(({ w }) => bwForDate(w.date) > 0);
   const currentSessionBw = bwForDate(localDateString());
@@ -208,8 +228,8 @@ export function buildExerciseInsight(
       const line1 = `First time on ${exercise.name}—sets your starting point.`;
       const line2 =
         readinessState === 'Amber Shield'
-          ? 'Low recovery today—holding steady builds your groove cleanly.'
-          : 'Today sets your hypertrophy baseline with clean mechanical tension.';
+          ? `Low recovery today—holding steady${across} builds your groove cleanly.`
+          : `Today sets your hypertrophy baseline${across} with clean mechanical tension.`;
       return { metric: 'reps', history, lines: [line1, line2], summary: `${line1}\n${line2}` };
     }
 
@@ -235,10 +255,10 @@ export function buildExerciseInsight(
     const plannedReps = plannedSet?.targetReps ?? 0;
     const line2 =
       readinessState === 'Amber Shield'
-        ? 'Low recovery today—holding target steady protects muscle.'
+        ? `Low recovery today—holding target steady${across} protects muscle.`
         : plannedReps > prevReps
-        ? 'Expanding bodyweight output today drives hypertrophy.'
-        : 'Matching bodyweight output deepens hypertrophy volume.';
+        ? `Expanding bodyweight output${across || ' today'} drives hypertrophy.`
+        : `Matching bodyweight output${across} deepens hypertrophy volume.`;
     return { metric: 'reps', history, lines: [line1, line2], summary: `${line1}\n${line2}` };
   }
 
@@ -255,8 +275,8 @@ export function buildExerciseInsight(
       const line1 = `First time on ${exercise.name}—sets your starting point.`;
       const line2 =
         readinessState === 'Amber Shield'
-          ? 'Low recovery today—holding steady builds your groove cleanly.'
-          : 'Today sets your hypertrophy baseline with clean mechanical tension.';
+          ? `Low recovery today—holding steady${across} builds your groove cleanly.`
+          : `Today sets your hypertrophy baseline${across} with clean mechanical tension.`;
       return { metric: 'added_kg', history, lines: [line1, line2], summary: `${line1}\n${line2}` };
     }
     const first = history[0].value;
@@ -279,14 +299,14 @@ export function buildExerciseInsight(
     const plannedReps = plannedSet?.targetReps ?? 0;
     const line2 =
       readinessState === 'Amber Shield'
-        ? 'Low recovery today—holding weight preserves muscle.'
+        ? `Low recovery today—holding weight${across} preserves muscle.`
         : plannedTop > prevTop + 0.01
-        ? 'Heavier load today drives progressive mechanical tension.'
+        ? `Heavier load${across || ' today'} drives progressive mechanical tension.`
         : plannedTop < prevTop - 0.01
-        ? 'Lighter weight today keeps volume crisp and recoverable.'
+        ? `Lighter weight${across || ' today'} keeps volume crisp and recoverable.`
         : plannedReps > prevReps
-        ? 'Pushing volume at this load expands hypertrophy.'
-        : 'Matching this load deepens hypertrophy volume.';
+        ? `Pushing volume at this load${across} expands hypertrophy.`
+        : `Matching this load${across} deepens hypertrophy volume.`;
     return { metric: 'added_kg', history, lines: [line1, line2], summary: `${line1}\n${line2}` };
   }
 
@@ -298,15 +318,27 @@ export function buildExerciseInsight(
     .filter((h) => h.e1rmKg > 0);
 
   if (past.length === 0 || history.length === 0) {
-    const line1 = `First time on ${exercise.name}—sets your starting point.`;
+    const line1 = isAssisted
+      ? `First time on ${exercise.name}—sets your starting point (less assistance is harder).`
+      : isCalisthenic && exercise.equipment === 'bodyweight' && !exercise.isWeightedCalisthenic && !hasAddedLoad
+      ? `First time on ${exercise.name}—sets your starting point using your bodyweight.`
+      : `First time on ${exercise.name}—sets your starting point.`;
     const line2 =
       readinessState === 'Amber Shield'
-        ? 'Low recovery today—holding steady builds your groove cleanly.'
-        : 'Today sets your hypertrophy baseline with clean mechanical tension.';
+        ? `Low recovery today—holding steady${across} builds your groove cleanly.`
+        : `Today sets your hypertrophy baseline${across} with clean mechanical tension.`;
     return { metric: 'e1rm', includesBodyweight: isCalisthenic, isIsolation, history, bestSetHistory, lines: [line1, line2], summary: `${line1}\n${line2}` };
   }
 
-  const bwQualifier = isCalisthenic ? ' (bodyweight + added weight)' : '';
+  const isPureBodyweight =
+    isCalisthenic && !isAssisted && exercise.equipment === 'bodyweight' && !exercise.isWeightedCalisthenic && !hasAddedLoad;
+  const bwQualifier = isAssisted
+    ? ''
+    : isPureBodyweight
+    ? ' (including bodyweight)'
+    : isCalisthenic
+    ? ' (bodyweight + added weight)'
+    : '';
   let line1: string;
   if (history.length === 1) {
     line1 = `Baseline estimated max${bwQualifier}: ${load(history[0].e1rmKg)} from session 1.`;
@@ -333,15 +365,17 @@ export function buildExerciseInsight(
 
   let line2: string;
   if (readinessState === 'Amber Shield') {
-    line2 = 'Low recovery today—holding weight preserves muscle.';
+    line2 = `Low recovery today—holding weight${across} preserves muscle.`;
+  } else if (isAssisted && plannedTop < prevTop - 0.01) {
+    line2 = `Less assistance${across || ' today'} drives progressive pulling strength.`;
   } else if (plannedTop > prevTop + 0.01) {
-    line2 = 'Heavier load today drives progressive mechanical tension.';
+    line2 = `Heavier load${across || ' today'} drives progressive mechanical tension.`;
   } else if (plannedTop < prevTop - 0.01) {
-    line2 = 'Lighter weight today keeps volume crisp and recoverable.';
+    line2 = `Lighter weight${across || ' today'} keeps volume crisp and recoverable.`;
   } else if (plannedReps > prevReps) {
-    line2 = 'Pushing volume at this load expands hypertrophy.';
+    line2 = `Pushing volume at this load${across} expands hypertrophy.`;
   } else {
-    line2 = 'Matching this load deepens hypertrophy volume.';
+    line2 = `Matching this load${across} deepens hypertrophy volume.`;
   }
 
   return { metric: 'e1rm', includesBodyweight: isCalisthenic, isIsolation, history, bestSetHistory, lines: [line1, line2], summary: `${line1}\n${line2}` };

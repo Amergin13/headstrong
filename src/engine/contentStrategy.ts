@@ -964,10 +964,11 @@ export function runRotContentAudit(summaries: { exerciseName: string; summary: s
       .map((l) => l.trim())
       .filter(Boolean);
 
-    // Redundant checks (table or weekly volume bar duplication)
+    // Redundant checks (table or weekly volume bar duplication; rep ranges like "8–12 reps" are allowed in Line 2)
+    const summaryWithoutRepRange = summary.replace(/\b\d+\s*[–-]\s*\d+\s*reps?\b/gi, '');
     if (
       /\b\d+\s*(?:working\s+|hard\s+)?sets?\b/i.test(summary) ||
-      /\b\d+\s*reps?\b/i.test(summary) ||
+      /\b\d+\s*reps?\b/i.test(summaryWithoutRepRange) ||
       /\b\d+\s+of\s+\d+\s*[–-]\s*\d+/i.test(summary) ||
       /\b(?:rir|reps?\s+in\s+reserve|reps?\s+to\s+spare)\b/i.test(summary)
     ) {

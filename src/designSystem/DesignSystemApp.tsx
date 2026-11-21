@@ -3094,11 +3094,13 @@ export const DesignSystemContent: React.FC<{
         <ExerciseDetailModal
           exercise={interactiveSquat}
           exerciseDef={fixtures.exerciseCatalog.find((d) => d.id === interactiveSquat.exerciseId)}
+          exerciseCatalog={fixtures.exerciseCatalog}
           workouts={fixtures.workouts}
           biometrics={fixtures.biometrics}
           insight={fixtures.squatInsight}
           bodyweightKg={fixtures.bodyweightKg}
           muscleLabel="Quads"
+          goalPhase="Lean Bulk"
           prescription={fixtures.prescription}
           readinessState={'Normal' as ReadinessState}
           onAddSet={handleAddSquatSet}

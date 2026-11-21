@@ -14,10 +14,10 @@
  */
 import { AthleteKnowledgeGraph } from '../engine/knowledgeGraph';
 import { runReadAloudQaGate } from '../engine/contentStrategy';
-import { isTimedExercise } from '../engine/e1rm';
+import { isAssistedExercise, isTimedExercise } from '../engine/e1rm';
 import { getWorkoutCompletedAt } from '../engine/recovery';
 import { ExerciseSession, ReadinessState, WorkoutSession, WorkoutSet } from '../engine/types';
-import { ExerciseInsight } from './exerciseInsight';
+import { ExerciseInsight, getExerciseRepRangeLabel } from './exerciseInsight';
 import { markPromptRejected, mismatchedWeightUnit, spelledNumberNotInFacts, wasPromptRejected } from './factChecks';
 import { promptOnDeviceModel } from './onDeviceModel';
 import {
@@ -60,8 +60,8 @@ export const EXERCISE_NOTE_SYSTEM_PROMPT =
   "You write a strict 2-line coaching brief for one exercise in today's workout. Use only the facts given. " +
   'Output exactly two short, scannable lines separated by a newline (under 180 characters total, roughly 8–14 words per line), speaking to the athlete as "you", with one sentence per line and zero section headers or labels (never write Progress:, Goal:, Summary:, or Focus:). ' +
   'Line 1 front-loads the historical trajectory anchor using only the exact load or estimated max figures in the facts (never use percentages; e.g., "Estimated max: 15.9 kg (+1.7 kg over 2 sessions)."). ' +
-  "Line 2 frames today's acute stimulus and why in concise, plain language (such as progressive mechanical tension or volume accumulation for hypertrophy). " +
-  'Never mention target weight, target reps, target sets, RIR, reps in reserve, tempo, rest times, or weekly muscle set counts. ' +
+  "Line 2 frames today's acute stimulus and why in concise, plain language (such as progressive mechanical tension or volume accumulation for hypertrophy), weaving in the exact target rep range if one is given in the facts (e.g., \"Matching this load across 8–12 reps deepens hypertrophy volume.\"). " +
+  'Never mention target weight, single-set rep counts, target sets, RIR, reps in reserve, tempo, rest times, or weekly muscle set counts. ' +
   'When the facts give an estimated 1RM or estimated max, call it an estimated max; when they give added weight or reps, state those plainly, and do not mention the last session. ' +
   'Do not use any number that is not in the facts. ' +
   buildSummaryVoiceGuidelines('exercise_brief');
@@ -93,6 +93,25 @@ export function buildExerciseNoteFacts(input: ExerciseNoteInput): ExerciseNoteFa
     .filter((e): e is ExerciseSession => Boolean(e));
   const lastSession = completedSessions[0];
   const timedWork = Boolean(exercise.durationSeconds || exercise.durationMinutesRange || isTimedExercise(exercise));
+  const isAssisted = isAssistedExercise(exercise);
+  const isCalisthenic =
+    exercise.equipment === 'bodyweight' ||
+    exercise.equipment === 'weighted_bodyweight' ||
+    Boolean(exercise.isWeightedCalisthenic);
+  const hasAddedLoad =
+    completedSessions.some((ex) => ex.sets.filter(done).some((s) => weightOf(s) > 0)) ||
+    exercise.sets.filter(isWorking).some((s) => (s.targetWeightKg ?? 0) > 0);
+  const isPureBodyweight =
+    isCalisthenic && !isAssisted && exercise.equipment === 'bodyweight' && !exercise.isWeightedCalisthenic && !hasAddedLoad;
+  const bwFactsQualifier = isAssisted
+    ? ''
+    : insight.includesBodyweight
+    ? isPureBodyweight
+      ? ' (including bodyweight)'
+      : ' (bodyweight + added weight)'
+    : '';
+  const repRange = getExerciseRepRangeLabel(exercise);
+  const across = repRange ? ` across ${repRange}` : '';
 
   // Line 1: Front-loaded Historical Trajectory Anchor (concrete absolute load, zero percentages).
   let line1: string;
@@ -109,7 +128,11 @@ export function buildExerciseNoteFacts(input: ExerciseNoteInput): ExerciseNoteFa
     }
   } else if (!lastSession || insight.history.length === 0) {
     facts.push('This is the first time you have logged this exercise.');
-    line1 = `First time on ${exercise.name}—sets your starting point.`;
+    line1 = isAssisted
+      ? `First time on ${exercise.name}—sets your starting point (less assistance is harder).`
+      : isPureBodyweight && insight.includesBodyweight
+      ? `First time on ${exercise.name}—sets your starting point using your bodyweight.`
+      : `First time on ${exercise.name}—sets your starting point.`;
   } else if (insight.metric === 'reps') {
     const val = (h: (typeof insight.history)[number]) => h.value ?? h.e1rmKg;
     if (insight.history.length === 1) {
@@ -156,7 +179,6 @@ export function buildExerciseNoteFacts(input: ExerciseNoteInput): ExerciseNoteFa
     }
   } else if (insight.history.length === 1) {
     const startE1rm = load(insight.history[0].e1rmKg);
-    const bwFactsQualifier = insight.includesBodyweight ? ' (bodyweight + added weight)' : '';
     const bwShort = bwFactsQualifier;
     facts.push(`Baseline estimated 1RM${bwFactsQualifier} established at ${startE1rm} from your first session.`);
     line1 = `Baseline estimated max${bwShort}: ${startE1rm} from session 1.`;
@@ -165,7 +187,6 @@ export function buildExerciseNoteFacts(input: ExerciseNoteInput): ExerciseNoteFa
     const last = round1(insight.history[insight.history.length - 1].e1rmKg);
     const delta = round1(last - first);
     const n = insight.history.length;
-    const bwFactsQualifier = insight.includesBodyweight ? ' (bodyweight + added weight)' : '';
     const bwShort = bwFactsQualifier;
     if (delta > 0) {
       facts.push(
@@ -190,10 +211,14 @@ export function buildExerciseNoteFacts(input: ExerciseNoteInput): ExerciseNoteFa
   const jointClause = joint ? ` while keeping ${joint.joint.toLowerCase()} tracking smooth` : '';
   const musclePhrase = muscle ? ` for your ${muscle}` : '';
 
+  if (repRange) {
+    facts.push(`Target rep range: ${repRange}.`);
+  }
+
   let line2: string;
   if (readinessState === 'Amber Shield') {
     facts.push('Recovery today is low, so the session holds load steady to preserve muscle and limit fatigue.');
-    line2 = `Low recovery today—holding weight preserves muscle${jointClause || ' without added fatigue'}.`;
+    line2 = `Low recovery today—holding weight${across} preserves muscle${jointClause || ' without added fatigue'}.`;
   } else if (timedWork) {
     if (exercise.durationSeconds || isTimedExercise(exercise)) {
       facts.push('Session stimulus today: sustained isometric trunk stability and muscular endurance.');
@@ -203,32 +228,35 @@ export function buildExerciseNoteFacts(input: ExerciseNoteInput): ExerciseNoteFa
       line2 = `Today builds aerobic conditioning and work capacity${jointClause}.`;
     }
   } else if (!lastSession || !planned) {
-    facts.push(`Session stimulus today: establish baseline mechanical tension and hypertrophy stimulus${musclePhrase}.`);
-    line2 = `Today sets your hypertrophy baseline with clean tension${musclePhrase}${jointClause}.`;
+    facts.push(`Session stimulus today: establish baseline mechanical tension and hypertrophy stimulus${across}${musclePhrase}.`);
+    line2 = `Today sets your hypertrophy baseline${across} with clean tension${musclePhrase}${jointClause}.`;
   } else {
     const prevSets = lastSession.sets.filter(done);
     const prevTop = prevSets.reduce((m, s) => Math.max(m, weightOf(s)), 0);
     const prevReps = prevSets.reduce((m, s) => Math.max(m, s.actualReps ?? 0), 0);
     if (insight.metric === 'reps') {
       if (planned.targetReps > prevReps) {
-        facts.push(`Today expands volume accumulation with additional bodyweight output${musclePhrase}.`);
-        line2 = `Expanding bodyweight output today drives hypertrophy${musclePhrase}${jointClause}.`;
+        facts.push(`Today expands volume accumulation with additional bodyweight output${across}${musclePhrase}.`);
+        line2 = `Expanding bodyweight output${across || ' today'} drives hypertrophy${musclePhrase}${jointClause}.`;
       } else {
-        facts.push(`Today consolidates volume accumulation at your bodyweight load${musclePhrase}.`);
-        line2 = `Matching bodyweight output deepens hypertrophy volume${musclePhrase}${jointClause}.`;
+        facts.push(`Today consolidates volume accumulation at your bodyweight load${across}${musclePhrase}.`);
+        line2 = `Matching bodyweight output${across} deepens hypertrophy volume${musclePhrase}${jointClause}.`;
       }
+    } else if (isAssisted && planned.targetWeightKg < prevTop - 0.01) {
+      facts.push(`Today uses less counterweight assistance than last time: progressive pulling strength${across}${musclePhrase}.`);
+      line2 = `Less assistance${across || ' today'} drives progressive pulling strength${musclePhrase}${jointClause}.`;
     } else if (planned.targetWeightKg > prevTop + 0.01) {
-      facts.push(`Today is heavier than last time: progressive mechanical tension stimulus${musclePhrase}.`);
-      line2 = `Heavier weight today drives progressive tension${musclePhrase}${jointClause}.`;
+      facts.push(`Today is heavier than last time: progressive mechanical tension stimulus${across}${musclePhrase}.`);
+      line2 = `Heavier weight${across || ' today'} drives progressive tension${musclePhrase}${jointClause}.`;
     } else if (planned.targetWeightKg < prevTop - 0.01) {
-      facts.push(`Today is lighter than last time: deloaded volume accumulation stimulus${musclePhrase}.`);
-      line2 = `Lighter weight today keeps volume crisp and recoverable${musclePhrase}${jointClause}.`;
+      facts.push(`Today is lighter than last time: deloaded volume accumulation stimulus${across}${musclePhrase}.`);
+      line2 = `Lighter weight${across || ' today'} keeps volume crisp and recoverable${musclePhrase}${jointClause}.`;
     } else if (planned.targetReps > prevReps) {
-      facts.push(`Today expands volume accumulation at the current load${musclePhrase}.`);
-      line2 = `Pushing volume at this load expands hypertrophy${musclePhrase}${jointClause}.`;
+      facts.push(`Today expands volume accumulation at the current load${across}${musclePhrase}.`);
+      line2 = `Pushing volume at this load${across} expands hypertrophy${musclePhrase}${jointClause}.`;
     } else {
-      facts.push(`Today consolidates volume accumulation at the current load${musclePhrase}.`);
-      line2 = `Matching this load deepens hypertrophy volume${musclePhrase}${jointClause}.`;
+      facts.push(`Today consolidates volume accumulation at the current load${across}${musclePhrase}.`);
+      line2 = `Matching this load${across} deepens hypertrophy volume${musclePhrase}${jointClause}.`;
     }
   }
 
@@ -318,14 +346,24 @@ export function checkExerciseNote(
     return { problem: 'it talked about itself or the facts' };
   }
 
-  // Rule 2: Zero Table/Grid Duplication (no set counts, rep counts, weight×rep notation, or target weight/reps/sets/RIR).
+  // Rule 2: Zero Table/Grid Duplication (no set counts, single-set rep counts, weight×rep notation, or target weight/sets/RIR).
+  // Allow the exact prescribed rep range (e.g., "8–12 reps") when it appears in the facts so it can live naturally in Line 2 instead of a badge.
   if (/\b\d+\s*(?:working\s+|hard\s+|warmup\s+|warm-up\s+)?sets?\b/i.test(text)) {
     return { problem: 'it mentioned a number of sets' };
   }
   if (/\bsets?\s+of\s+\d+/i.test(text)) {
     return { problem: 'it mentioned sets and reps' };
   }
-  if (/\b\d+(?:\s*[–-]\s*\d+)?\s*reps?\b/i.test(text)) {
+  const repRangeFact = facts.facts
+    .map((f) => f.match(/Target rep range:\s*(\d+)\s*[–-]\s*(\d+)\s*reps/i))
+    .find(Boolean);
+  const textWithoutAllowedRepRange = repRangeFact
+    ? text.replace(
+        new RegExp(`\\b${repRangeFact[1]}\\s*[–-]\\s*${repRangeFact[2]}\\s*(?:reps?|rep\\s+range)\\b`, 'gi'),
+        ''
+      )
+    : text;
+  if (/\b\d+(?:\s*[–-]\s*\d+)?\s*reps?\b/i.test(textWithoutAllowedRepRange)) {
     return { problem: 'it mentioned a number of reps' };
   }
   if (/\b\d+(?:\.\d+)?\s*(?:kg|lbs?)?\s*[x×]\s*\d+/i.test(text)) {

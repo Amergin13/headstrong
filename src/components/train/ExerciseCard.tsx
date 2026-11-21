@@ -16,10 +16,9 @@ import { triggerHaptic } from '../../utils/haptics';
 import { CoachSummaryText } from '../common/CoachSummaryText';
 import { ExerciseInsight, isIsolationOrSmallExercise } from '../../services/exerciseInsight';
 import { buildExerciseTrendSpec } from '../../services/exerciseDetails';
-import { isAssistedExercise, usesOneDumbbell } from '../../engine/e1rm';
+import { isAssistedExercise, isTimedExercise, usesOneDumbbell } from '../../engine/e1rm';
 import { TrendChart } from '../common/TrendChart';
 import { localDateString, parseLocalDate } from '../../utils/date';
-import { getBodyweightLoadRatio, isTimedExercise } from '../../engine/e1rm';
 import { formatSentenceCase } from '../../utils/typography';
 import { isUnilateralExercise } from '../../services/movementStandards';
 
@@ -44,17 +43,6 @@ interface ExerciseCardProps {
   onOpenPlateCalc?: (weightKg: number) => void;
   /** Plain-English primary muscle, e.g. "Triceps". */
   muscleLabel?: string;
-  /** Live intra-workout weekly hard-set volume for this lift's primary muscle (direct 1.0× + fractional 0.5×). */
-  weeklyMuscleVolume?: {
-    muscleName: string;
-    total: number;
-    direct: number;
-    fractional: number;
-    targetMin: number;
-    targetMax: number;
-    goalLabel: string;
-    frequencyCue?: string;
-  };
   /** Working sets from the last time this exact exercise was completed. */
   previousSets?: PreviousSet[];
   /** Past sessions of this exercise and the progress summary. */
@@ -87,7 +75,6 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
   onOpenSwap,
   onOpenPlateCalc,
   muscleLabel,
-  weeklyMuscleVolume,
   previousSets = [],
   insight,
   note,
@@ -97,12 +84,9 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
 }) => {
   const units = useUnits();
   const [detailOpen, setDetailOpen] = useState(false);
-  const [volumeExpanded, setVolumeExpanded] = useState(false);
   const isTimed = isTimedExercise(exercise);
   const isAssisted = isAssistedExercise(exercise);
   const isIsolationView = !isTimed && isIsolationOrSmallExercise(exercise, exerciseDef);
-  const workingSets = exercise.sets.filter((s) => !s.isWarmup && s.setType !== 'warmup');
-  const isBlockCompleted = workingSets.length > 0 && workingSets.every((s) => s.completed);
   const unilateral = !isTimed && isUnilateralExercise(exercise);
   const [perSide, setPerSide] = useState(() => exercise.sets.some((s) => s.actualRepsLeft !== undefined));
   const notesId = useId();
@@ -111,15 +95,6 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
   const plannedWeightKg = firstWorkingSet?.targetWeightKg ?? 0;
   const isBodyweightOnly =
     exercise.equipment === 'bodyweight' && (!exercise.isWeightedCalisthenic || plannedWeightKg === 0);
-  const isCalisthenic =
-    exercise.equipment === 'bodyweight' ||
-    exercise.equipment === 'weighted_bodyweight' ||
-    Boolean(exercise.isWeightedCalisthenic);
-  const bwRatio = isCalisthenic ? getBodyweightLoadRatio(exercise.exerciseId, exercise.pillar) : 0;
-  const countedBodyweightKg =
-    !isTimed && isCalisthenic && bwRatio > 0 && bodyweightKg > 0
-      ? Math.round(bodyweightKg * bwRatio * 10) / 10
-      : 0;
   const warmupCount = exercise.sets.filter((s) => s.isWarmup || s.setType === 'warmup').length;
   const chip = exercise.orderCode || (exerciseIndex !== undefined ? String(exerciseIndex) : null);
   const trendSpec = useMemo(
@@ -175,98 +150,9 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
         </div>
       </div>
 
-      {(chip ||
-        (!isTimed &&
-          exercise.repTargetType !== 'form_failure' &&
-          exercise.minReps > 0 &&
-          exercise.maxReps > 0 &&
-          exercise.minReps < exercise.maxReps) ||
-        exercise.intensityProtocol ||
-        countedBodyweightKg > 0 ||
-        isBlockCompleted) && (
-        <div className="flex items-center flex-wrap gap-2 mt-2">
-          {chip && <span className="wk-pill">{chip}</span>}
-          {!isTimed &&
-            exercise.repTargetType !== 'form_failure' &&
-            exercise.minReps > 0 &&
-            exercise.maxReps > 0 &&
-            exercise.minReps < exercise.maxReps && (
-              <span className="wk-pill tabular-nums">
-                {exercise.minReps}–{exercise.maxReps} reps
-              </span>
-            )}
-          {isBlockCompleted && (
-            <span
-              className="wk-pill"
-              style={{
-                background: 'var(--color-status-positive-soft)',
-                color: 'var(--wk-accent)',
-              }}
-            >
-              Completed
-            </span>
-          )}
-          {exercise.intensityProtocol && <span className="wk-pill">{exercise.intensityProtocol.name}</span>}
-          {isAssisted && (
-            <span className="wk-pill">Assisted (lower = harder)</span>
-          )}
-          {countedBodyweightKg > 0 && !isAssisted && (
-            <span className="wk-pill tabular-nums">
-              {units.format(countedBodyweightKg)} bodyweight counted
-            </span>
-          )}
-        </div>
-      )}
-
-      {prescription.repCeilingExplanation && (
-        <p className="wk-caption mt-2 max-w-prose" style={{ color: 'var(--color-text-secondary)' }}>
-          {prescription.repCeilingExplanation}
-        </p>
-      )}
-
-      {weeklyMuscleVolume && (
-        <div className="mt-3">
-          <button
-            type="button"
-            aria-pressed={volumeExpanded}
-            aria-label={`${weeklyMuscleVolume.muscleName} weekly volume: ${weeklyMuscleVolume.total} of ${weeklyMuscleVolume.targetMin} to ${weeklyMuscleVolume.targetMax} hard sets. Tap to toggle direct and fractional breakdown.`}
-            onClick={() => {
-              triggerHaptic('light');
-              setVolumeExpanded((prev) => !prev);
-            }}
-            className="w-full text-left rounded-xl px-3 py-2 border min-h-[44px] flex flex-col justify-center gap-2 transition-colors"
-            style={{ background: 'var(--wk-raised)', borderColor: 'var(--color-border-subtle)' }}
-          >
-            <div className="flex items-center justify-between gap-2">
-              <span className="wk-caption" style={{ color: 'var(--color-text-secondary)' }}>
-                {weeklyMuscleVolume.muscleName} this week
-              </span>
-              <span className="text-xs font-medium tabular-nums" style={{ color: 'var(--color-text-primary)' }}>
-                {weeklyMuscleVolume.total} of {weeklyMuscleVolume.targetMin}–{weeklyMuscleVolume.targetMax} hard sets
-              </span>
-            </div>
-            <div className="wk-bar" aria-hidden="true">
-              <div
-                style={{
-                  width: `${Math.min(
-                    100,
-                    Math.round((weeklyMuscleVolume.total / Math.max(1, weeklyMuscleVolume.targetMax)) * 100)
-                  )}%`,
-                }}
-              />
-            </div>
-            {volumeExpanded && (
-              <div className="flex flex-col gap-1 pt-1 border-t" style={{ borderColor: 'var(--color-border-subtle)' }}>
-                <span className="wk-caption tabular-nums" style={{ color: 'var(--color-text-primary)' }}>
-                  {weeklyMuscleVolume.direct} direct (1.0×) + {weeklyMuscleVolume.fractional} fractional (0.5×)
-                </span>
-                <span className="wk-caption" style={{ color: 'var(--wk-muted)' }}>
-                  {weeklyMuscleVolume.goalLabel} ({weeklyMuscleVolume.targetMin}–{weeklyMuscleVolume.targetMax} sets/wk)
-                  {weeklyMuscleVolume.frequencyCue ? ` · ${weeklyMuscleVolume.frequencyCue}` : ''}
-                </span>
-              </div>
-            )}
-          </button>
+      {chip && (
+        <div className="flex items-center gap-2 mt-2">
+          <span className="wk-pill">{chip}</span>
         </div>
       )}
 

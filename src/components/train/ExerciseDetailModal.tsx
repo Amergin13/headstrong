@@ -6,13 +6,19 @@ import {
   BiometricLog,
   ExerciseDefinition,
   ExerciseSession,
+  GoalPhase,
   ProgressionPrescription,
   ReadinessState,
   WorkoutSession,
 } from '../../engine/types';
 import { isTimedExercise } from '../../engine/e1rm';
 import { buildExerciseInsight, ExerciseInsight } from '../../services/exerciseInsight';
-import { buildExerciseDetailModel, buildExerciseTrendSpec } from '../../services/exerciseDetails';
+import {
+  buildExerciseDetailModel,
+  buildExerciseTrendSpec,
+  buildExerciseWeeklyVolume,
+  ExerciseWeeklyMuscleVolume,
+} from '../../services/exerciseDetails';
 import { formatSentenceCase } from '../../utils/typography';
 import { triggerHaptic } from '../../utils/haptics';
 import { useUnits } from '../../utils/unitsContext';
@@ -33,11 +39,16 @@ const TABS: { id: ExerciseDetailTab; label: string }[] = [
 export interface ExerciseDetailModalProps {
   exercise: ExerciseSession;
   exerciseDef?: ExerciseDefinition;
+  exerciseCatalog?: ExerciseDefinition[];
   workouts?: WorkoutSession[];
+  activeWorkout?: WorkoutSession;
   biometrics?: BiometricLog[];
   insight?: ExerciseInsight;
   bodyweightKg?: number;
   muscleLabel?: string;
+  goalPhase?: GoalPhase;
+  /** Optional pre-computed weekly volume for this exercise's primary muscle (computed automatically if omitted). */
+  weeklyMuscleVolume?: ExerciseWeeklyMuscleVolume;
   prescription?: ProgressionPrescription;
   readinessState?: ReadinessState;
   /** Optional starting tab; defaults to Overview for a consistent view from every entry point. */
@@ -64,11 +75,15 @@ function formatSessionDate(dateStr: string): string {
 export const ExerciseDetailModal: React.FC<ExerciseDetailModalProps> = ({
   exercise,
   exerciseDef,
+  exerciseCatalog,
   workouts = [],
+  activeWorkout,
   biometrics,
   insight,
   bodyweightKg = 0,
   muscleLabel,
+  goalPhase = 'Lean Bulk',
+  weeklyMuscleVolume,
   prescription,
   readinessState = 'Normal',
   initialTab = 'overview',
@@ -168,6 +183,20 @@ export const ExerciseDetailModal: React.FC<ExerciseDetailModalProps> = ({
   const formClip = useMemo(
     () => getExerciseFormClip(exerciseDef ?? exercise),
     [exerciseDef, exercise]
+  );
+
+  const resolvedWeeklyVolume = useMemo(
+    () =>
+      weeklyMuscleVolume ??
+      buildExerciseWeeklyVolume({
+        exercise,
+        exerciseDef,
+        workouts,
+        activeWorkout,
+        exerciseCatalog,
+        goalPhase,
+      }),
+    [weeklyMuscleVolume, exercise, exerciseDef, workouts, activeWorkout, exerciseCatalog, goalPhase]
   );
 
   const secondaryButton =
@@ -361,6 +390,33 @@ export const ExerciseDetailModal: React.FC<ExerciseDetailModalProps> = ({
                   </dl>
                 )}
 
+                {detail.loadExplanation && (
+                  <p
+                    className="wk-caption pt-2 border-t max-w-prose"
+                    style={{
+                      borderColor: 'var(--color-border-subtle)',
+                      color: 'var(--color-text-secondary)',
+                    }}
+                  >
+                    {detail.loadExplanation}
+                  </p>
+                )}
+
+                {detail.intensityProtocol && (
+                  <p
+                    className="wk-caption pt-2 border-t max-w-prose"
+                    style={{
+                      borderColor: 'var(--color-border-subtle)',
+                      color: 'var(--color-text-secondary)',
+                    }}
+                  >
+                    <span className="font-medium" style={{ color: 'var(--color-text-primary)' }}>
+                      {detail.intensityProtocol.name}:
+                    </span>{' '}
+                    {detail.intensityProtocol.instruction}
+                  </p>
+                )}
+
                 {detail.readinessNote && (
                   <p
                     className="wk-caption pt-2 border-t"
@@ -385,6 +441,47 @@ export const ExerciseDetailModal: React.FC<ExerciseDetailModalProps> = ({
                   </p>
                 )}
               </section>
+
+              {/* Weekly Muscle Volume for this exercise's primary muscle */}
+              {resolvedWeeklyVolume && (
+                <section
+                  aria-label={`${resolvedWeeklyVolume.muscleName} weekly volume`}
+                  className="wk-raised flex flex-col gap-2"
+                >
+                  <div className="flex items-baseline justify-between gap-2">
+                    <span className="wk-label">{resolvedWeeklyVolume.muscleName} this week</span>
+                    <span className="wk-subhead tabular-nums" style={{ color: 'var(--color-text-primary)' }}>
+                      {resolvedWeeklyVolume.total} of {resolvedWeeklyVolume.targetMin}–{resolvedWeeklyVolume.targetMax} hard sets
+                    </span>
+                  </div>
+                  <div
+                    className="wk-bar"
+                    role="progressbar"
+                    aria-valuemin={0}
+                    aria-valuemax={resolvedWeeklyVolume.targetMax}
+                    aria-valuenow={Math.min(resolvedWeeklyVolume.total, resolvedWeeklyVolume.targetMax)}
+                    aria-label={`${resolvedWeeklyVolume.muscleName} weekly volume: ${resolvedWeeklyVolume.total} of ${resolvedWeeklyVolume.targetMin} to ${resolvedWeeklyVolume.targetMax} hard sets`}
+                  >
+                    <div
+                      style={{
+                        width: `${Math.min(
+                          100,
+                          Math.round((resolvedWeeklyVolume.total / Math.max(1, resolvedWeeklyVolume.targetMax)) * 100)
+                        )}%`,
+                      }}
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1 pt-1">
+                    <span className="wk-caption tabular-nums" style={{ color: 'var(--color-text-primary)' }}>
+                      {resolvedWeeklyVolume.direct} direct (1.0×) + {resolvedWeeklyVolume.fractional} fractional (0.5×)
+                    </span>
+                    <span className="wk-caption" style={{ color: 'var(--wk-muted)' }}>
+                      {resolvedWeeklyVolume.goalLabel} ({resolvedWeeklyVolume.targetMin}–{resolvedWeeklyVolume.targetMax} sets/wk)
+                      {resolvedWeeklyVolume.frequencyCue ? ` · ${resolvedWeeklyVolume.frequencyCue}` : ''}
+                    </span>
+                  </div>
+                </section>
+              )}
 
               {/* Quick Actions */}
               {hasQuickActions && (

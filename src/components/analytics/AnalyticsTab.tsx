@@ -1555,9 +1555,11 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
         <ExerciseDetailModal
           exercise={inspectedExercise.exercise}
           exerciseDef={inspectedExercise.exerciseDef}
+          exerciseCatalog={exerciseCatalog}
           workouts={workouts}
           biometrics={biometrics}
           bodyweightKg={hasBodyweight ? bodyweightEmaKg : 0}
+          goalPhase={profile.goalPhase}
           readinessState={readinessState}
           onAskCoach={
             onOpenCoach

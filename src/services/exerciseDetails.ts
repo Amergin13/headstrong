@@ -6,7 +6,14 @@
  * (zero fabricated metrics). Form guidance prefers `exercise.exerciseNotes` when supplied
  * by a program template and falls back cleanly to exercise-specific or movement-family cues.
  */
-import { calculateE1RM, isTimedExercise, usesOneDumbbell } from '../engine/e1rm';
+import {
+  calculateE1RM,
+  getBodyweightLoadRatio,
+  isAssistedExercise,
+  isTimedExercise,
+  usesOneDumbbell,
+} from '../engine/e1rm';
+import { getGoalAdaptedVolumeRange, HYPERTROPHY_VOLUME_LANDMARKS } from '../engine/hypertrophyVolume';
 import { calculate5StepWarmupRamp } from '../engine/muscleBuildingProgram';
 import { getMovementFamilyLabel, getMovementVectorId } from '../engine/progression';
 import { MUSCLE_FRIENDLY_NAMES, getWorkoutCompletedAt } from '../engine/recovery';
@@ -15,15 +22,18 @@ import {
   EquipmentType,
   ExerciseDefinition,
   ExerciseSession,
+  GoalPhase,
   IntensityProtocol,
   ProgressionPrescription,
   ReadinessState,
   ResistanceProfile,
+  StrengthPillar,
   WorkoutSession,
   WorkoutSet,
 } from '../engine/types';
 import { buildBodyweightEmaLookup } from '../engine/ema';
 import { buildExerciseInsight, ExerciseInsight } from './exerciseInsight';
+import { calculateWeeklyMuscleVolumeBreakdown } from './storage';
 
 const EQUIPMENT_DISPLAY: Record<EquipmentType, string> = {
   barbell: 'Barbell',
@@ -246,6 +256,18 @@ export interface ExerciseLoggedSessionEntry {
   athleteNote?: string;
 }
 
+export interface ExerciseWeeklyMuscleVolume {
+  muscleKey: string;
+  muscleName: string;
+  total: number;
+  direct: number;
+  fractional: number;
+  targetMin: number;
+  targetMax: number;
+  goalLabel: string;
+  frequencyCue?: string;
+}
+
 export interface ExerciseDetailModel {
   title: string;
   primaryMuscle: string;
@@ -263,6 +285,7 @@ export interface ExerciseDetailModel {
   tempoBreakdown: string | null;
   restLabel: string | null;
   targetSummary: string;
+  loadExplanation: string | null;
   readinessNote: string | null;
   intensityProtocol?: IntensityProtocol;
   warmupSteps: ReturnType<typeof calculate5StepWarmupRamp>;
@@ -450,6 +473,37 @@ export function buildExerciseDetailModel(params: {
   ].filter(Boolean);
   const targetSummary = targetParts.join(' · ');
 
+  const isAssisted = isAssistedExercise(exercise);
+  const isCalisthenic =
+    exercise.equipment === 'bodyweight' ||
+    exercise.equipment === 'weighted_bodyweight' ||
+    Boolean(exercise.isWeightedCalisthenic);
+  const bwRatio = isCalisthenic ? getBodyweightLoadRatio(exercise.exerciseId, exercise.pillar) : 0;
+  const countedBodyweightKg =
+    !timed && isCalisthenic && bwRatio > 0 && bodyweightKg > 0
+      ? Math.round(bodyweightKg * bwRatio * 10) / 10
+      : 0;
+  const hasAddedOrWeighted =
+    Boolean(exercise.isWeightedCalisthenic) ||
+    exercise.equipment === 'weighted_bodyweight' ||
+    (firstWorking?.targetWeightKg ?? 0) > 0;
+
+  let loadExplanation: string | null = null;
+  if (!timed) {
+    if (isAssisted) {
+      loadExplanation =
+        'Counterweight assistance reduces the load you lift—lower assistance weight means a harder set.';
+    } else if (countedBodyweightKg > 0) {
+      if (bwRatio >= 0.99) {
+        loadExplanation = `Strength estimates include your ${formatWeight(bodyweightKg)} bodyweight${
+          hasAddedOrWeighted ? ' plus any added weight' : ''
+        }.`;
+      } else {
+        loadExplanation = `Strength estimates count roughly ${formatWeight(countedBodyweightKg)} of your ${formatWeight(bodyweightKg)} bodyweight as the working load.`;
+      }
+    }
+  }
+
   const readinessNote =
     readinessState === 'Amber Shield'
       ? prescription?.reason || 'Recovery buffer active today — hold weight steady and leave 2–3 reps in reserve.'
@@ -570,6 +624,7 @@ export function buildExerciseDetailModel(params: {
     tempoBreakdown,
     restLabel,
     targetSummary,
+    loadExplanation,
     readinessNote,
     intensityProtocol: exercise.intensityProtocol,
     warmupSteps,
@@ -625,4 +680,142 @@ export function buildInspectExerciseSession(params: {
   };
 
   return { exercise, exerciseDef: def };
+}
+
+const PRIMARY_MUSCLE_TO_GRAPH_KEY: Record<string, string> = {
+  'Side Delts': 'SideDelts',
+  'Rear Delts': 'RearDelts',
+  'Front Delts': 'FrontDelts',
+  Shoulders: 'FrontDelts',
+  Back: 'Back',
+  Chest: 'Chest',
+  Quads: 'Quads',
+  Hamstrings: 'Hamstrings',
+  Glutes: 'Glutes',
+  Triceps: 'Triceps',
+  Biceps: 'Biceps',
+  Calves: 'Calves',
+  Core: 'Core',
+};
+
+const GRAPH_KEY_TO_DISPLAY_NAME: Record<string, string> = {
+  Chest: 'Chest',
+  Back: 'Back',
+  Quads: 'Quads',
+  Hamstrings: 'Hamstrings',
+  Glutes: 'Glutes',
+  SideDelts: 'Side shoulders',
+  RearDelts: 'Rear shoulders',
+  FrontDelts: 'Front shoulders',
+  Biceps: 'Biceps',
+  Triceps: 'Triceps',
+  Calves: 'Calves',
+  Core: 'Core',
+};
+
+const PROGRAM_VOLUME_MUSCLE_ORDER = [
+  'Chest',
+  'Back',
+  'Quads',
+  'Hamstrings',
+  'Glutes',
+  'SideDelts',
+  'RearDelts',
+  'FrontDelts',
+  'Biceps',
+  'Triceps',
+  'Calves',
+  'Core',
+] as const;
+
+export function resolvePrimaryMuscleGraphKey(
+  exerciseDef?: Pick<ExerciseDefinition, 'primaryMuscle'>,
+  pillar?: StrengthPillar
+): string | undefined {
+  if (exerciseDef?.primaryMuscle && exerciseDef.primaryMuscle in PRIMARY_MUSCLE_TO_GRAPH_KEY) {
+    return PRIMARY_MUSCLE_TO_GRAPH_KEY[exerciseDef.primaryMuscle];
+  }
+  switch (pillar) {
+    case 'Horizontal Push':
+      return 'Chest';
+    case 'Vertical Push':
+      return 'FrontDelts';
+    case 'Horizontal Pull':
+    case 'Vertical Pull':
+      return 'Back';
+    case 'Squat':
+      return 'Quads';
+    case 'Hinge':
+      return 'Hamstrings';
+    default:
+      return undefined;
+  }
+}
+
+/**
+ * Single-source weekly muscle volume summary for one exercise's primary muscle,
+ * used inside ExerciseDetailModal across every entry point (Workout, Program, Progress).
+ */
+export function buildExerciseWeeklyVolume(params: {
+  exercise: Pick<ExerciseSession, 'pillar'>;
+  exerciseDef?: Pick<ExerciseDefinition, 'primaryMuscle'>;
+  workouts: WorkoutSession[];
+  activeWorkout?: WorkoutSession;
+  exerciseCatalog?: ExerciseDefinition[];
+  goalPhase?: GoalPhase;
+  now?: Date;
+}): ExerciseWeeklyMuscleVolume | undefined {
+  const { exercise, exerciseDef, workouts, activeWorkout, exerciseCatalog = [], goalPhase = 'Lean Bulk', now } = params;
+  const graphKey = resolvePrimaryMuscleGraphKey(exerciseDef, exercise.pillar);
+  if (!graphKey || !(graphKey in HYPERTROPHY_VOLUME_LANDMARKS)) return undefined;
+
+  const breakdownMap = calculateWeeklyMuscleVolumeBreakdown(workouts, exerciseCatalog, activeWorkout, now);
+  const entry = breakdownMap[graphKey] ?? { total: 0, direct: 0, fractional: 0 };
+  const range = getGoalAdaptedVolumeRange(graphKey, goalPhase);
+  const muscleName =
+    (exerciseDef?.primaryMuscle && MUSCLE_FRIENDLY_NAMES[exerciseDef.primaryMuscle]) ||
+    GRAPH_KEY_TO_DISPLAY_NAME[graphKey] ||
+    HYPERTROPHY_VOLUME_LANDMARKS[graphKey]?.displayName ||
+    graphKey;
+
+  return {
+    muscleKey: graphKey,
+    muscleName,
+    total: entry.total,
+    direct: entry.direct,
+    fractional: entry.fractional,
+    targetMin: range.minSets,
+    targetMax: range.maxSets,
+    goalLabel: range.goalLabel,
+    frequencyCue: range.frequencyCue,
+  };
+}
+
+/**
+ * Single-source weekly muscle volume breakdown for the Program tab (saved workouts only,
+ * matching Knowledge Graph & Progress weekly volume).
+ */
+export function buildProgramWeeklyMuscleVolumes(params: {
+  workouts: WorkoutSession[];
+  exerciseCatalog: ExerciseDefinition[];
+  goalPhase?: GoalPhase;
+  now?: Date;
+}): ExerciseWeeklyMuscleVolume[] {
+  const { workouts, exerciseCatalog, goalPhase = 'Lean Bulk', now } = params;
+  const breakdownMap = calculateWeeklyMuscleVolumeBreakdown(workouts, exerciseCatalog, undefined, now);
+  return PROGRAM_VOLUME_MUSCLE_ORDER.map((graphKey) => {
+    const entry = breakdownMap[graphKey] ?? { total: 0, direct: 0, fractional: 0 };
+    const range = getGoalAdaptedVolumeRange(graphKey, goalPhase);
+    return {
+      muscleKey: graphKey,
+      muscleName: GRAPH_KEY_TO_DISPLAY_NAME[graphKey] || HYPERTROPHY_VOLUME_LANDMARKS[graphKey]?.displayName || graphKey,
+      total: entry.total,
+      direct: entry.direct,
+      fractional: entry.fractional,
+      targetMin: range.minSets,
+      targetMax: range.maxSets,
+      goalLabel: range.goalLabel,
+      frequencyCue: range.frequencyCue,
+    };
+  });
 }

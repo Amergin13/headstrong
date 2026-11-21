@@ -23,6 +23,7 @@ import { ActivityLog, describeActivity } from '../../engine/activeDays';
 import { triggerHaptic } from '../../utils/haptics';
 import { formatSentenceCase } from '../../utils/typography';
 import { PastWorkoutModal } from './PastWorkoutModal';
+import { WeeklyVolumeCard } from './WeeklyVolumeCard';
 import { ExerciseDetailModal } from '../train/ExerciseDetailModal';
 import { buildInspectExerciseSession } from '../../services/exerciseDetails';
 import { CoachSummaryText } from '../common/CoachSummaryText';
@@ -789,6 +790,13 @@ export const ProgramPlanView: React.FC<ProgramPlanViewProps> = ({
         </section>
       )}
 
+      <WeeklyVolumeCard
+        workouts={workouts}
+        exerciseCatalog={exerciseCatalog}
+        goalPhase={profile.goalPhase}
+        className="mt-6"
+      />
+
       <div ref={phasesTopRef} className="flex flex-col mt-8 gap-4">
         {trainingPlan.phases.map((phase) => {
           const isOpen = openPhases.includes(phase.phaseNumber);
@@ -899,9 +907,11 @@ export const ProgramPlanView: React.FC<ProgramPlanViewProps> = ({
         <ExerciseDetailModal
           exercise={inspectedExercise.exercise}
           exerciseDef={inspectedExercise.exerciseDef}
+          exerciseCatalog={exerciseCatalog}
           workouts={workouts}
           biometrics={biometrics}
           bodyweightKg={bodyweightKg}
+          goalPhase={profile.goalPhase}
           readinessState={readinessState}
           onAskCoach={
             onOpenCoachIntervention

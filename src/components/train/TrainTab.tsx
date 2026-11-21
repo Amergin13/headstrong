@@ -63,9 +63,7 @@ import {
   usesOneDumbbell,
 } from '../../engine/e1rm';
 import { buildAthleteKnowledgeGraph, getExerciseBiomechanicalMeta } from '../../engine/knowledgeGraph';
-import { MUSCLE_TO_GRAPH_KEY } from '../../services/sessionReport';
-import { getGoalAdaptedVolumeRange } from '../../engine/hypertrophyVolume';
-import { calculateWeeklyMuscleVolume, calculateWeeklyMuscleVolumeBreakdown } from '../../services/storage';
+import { calculateWeeklyMuscleVolume } from '../../services/storage';
 import { calculateSessionTonnage } from '../../engine/wci';
 import { CompletedExerciseCard, FinishedWorkoutSummaryCard, WhoopStrainCard } from './FinishedWorkoutCards';
 import { WorkoutPageHeader } from './WorkoutPageHeader';
@@ -930,10 +928,6 @@ export const TrainTab: React.FC<TrainTabProps> = ({
       buildAthleteKnowledgeGraph(workouts, biometrics, exerciseCatalog, profile, savedWeeklyVolume, activities),
     [workouts, biometrics, exerciseCatalog, profile, savedWeeklyVolume, activities]
   );
-  const liveWeeklyVolumeBreakdown = useMemo(
-    () => calculateWeeklyMuscleVolumeBreakdown(workouts, exerciseCatalog, activeWorkout),
-    [workouts, exerciseCatalog, activeWorkout]
-  );
   const planTotalWeeks = Math.max(1, ...trainingPlan.templates.map((t) => t.week));
   const programLabel = planWorkoutNumber
     ? `Phase ${planPhase?.phaseNumber ?? 1} (${planPhase?.shortName ?? ''}), week ${planWeek} of ${planTotalWeeks}`
@@ -1735,27 +1729,6 @@ export const TrainTab: React.FC<TrainTabProps> = ({
             return undefined;
           })();
 
-          const primaryGraphKey = def ? MUSCLE_TO_GRAPH_KEY[def.primaryMuscle] : undefined;
-          const liveMuscleBreakdown = primaryGraphKey
-            ? liveWeeklyVolumeBreakdown[primaryGraphKey]
-            : undefined;
-          const adaptedRange = primaryGraphKey
-            ? getGoalAdaptedVolumeRange(primaryGraphKey, profile.goalPhase)
-            : undefined;
-          const weeklyMuscleVolume =
-            def && liveMuscleBreakdown && adaptedRange
-              ? {
-                  muscleName: MUSCLE_FRIENDLY_NAMES[def.primaryMuscle] || def.primaryMuscle,
-                  total: liveMuscleBreakdown.total,
-                  direct: liveMuscleBreakdown.direct,
-                  fractional: liveMuscleBreakdown.fractional,
-                  targetMin: adaptedRange.minSets,
-                  targetMax: adaptedRange.maxSets,
-                  goalLabel: adaptedRange.goalLabel,
-                  frequencyCue: adaptedRange.frequencyCue,
-                }
-              : undefined;
-
           return (
             <ExerciseCard
               key={ex.id}
@@ -1780,7 +1753,6 @@ export const TrainTab: React.FC<TrainTabProps> = ({
               onOpenSwap={() => setSwappingExercise(ex)}
               onOpenPlateCalc={(kg) => setPlateCalcWeight(kg)}
               muscleLabel={def ? MUSCLE_FRIENDLY_NAMES[def.primaryMuscle] : undefined}
-              weeklyMuscleVolume={weeklyMuscleVolume}
               previousSets={getPreviousWorkingSets(ex.exerciseId, workouts)}
               insight={buildExerciseInsight(ex, liveInsightWorkouts, readiness.state, measuredBodyweightKg, 12, (kg) => units.formatPrecise(kg), biometrics)}
               note={
@@ -2073,7 +2045,9 @@ export const TrainTab: React.FC<TrainTabProps> = ({
           <ExerciseDetailModal
             exercise={detailEx}
             exerciseDef={detailDef}
+            exerciseCatalog={exerciseCatalog}
             workouts={detailInsightWorkouts}
+            activeWorkout={activeWorkout}
             biometrics={biometrics}
             insight={buildExerciseInsight(
               detailEx,
@@ -2086,6 +2060,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
             )}
             bodyweightKg={measuredBodyweightKg}
             muscleLabel={detailDef ? MUSCLE_FRIENDLY_NAMES[detailDef.primaryMuscle] : undefined}
+            goalPhase={profile.goalPhase}
             prescription={entry.prescription}
             readinessState={readiness.state}
             onAddSet={(isWarmup) => handleAddSet(detailEx.id, isWarmup)}

@@ -1373,7 +1373,7 @@ export const TREISE_DESIGN_SYSTEM: DesignSystemComponent[] = [
       typography: 'Title in wk-h1, compact Equipment · Primary muscle caption, section headers in wk-label, targets/metrics in wk-subhead & wk-title (tabular-nums)',
       colors: 'Elevated tab tray (--color-bg-surface-raised inside .wk-card), active tab (--color-action-secondary-bg), Best PR in --color-status-positive, Coach intervention in --color-coach-accent',
       states: {
-        overview: 'Immediate context: HITL intervention & readiness advisory, Today target + progression rationale (or Sessions/Latest/Best snapshot outside workout), Quick actions, Anatomy & mechanics',
+        overview: 'Immediate context: HITL intervention & readiness advisory, Today target + progression rationale + bodyweight/assisted load note (or Sessions/Latest/Best snapshot outside workout), Weekly muscle volume (direct + fractional), Quick actions, Anatomy & mechanics',
         form: 'Technique & execution: offline ExerciseFormClipPlayer, lead biomechanical cue, numbered 1–3 steps, intensity protocol, interactive TempoPacer, 5-step warm-up ramp',
         history: 'Longitudinal performance: Sessions/Latest/Best KPI strip, TrendChart, logged session cards with per-set pills & Exercise notes timeline link',
       },
@@ -1381,6 +1381,7 @@ export const TREISE_DESIGN_SYSTEM: DesignSystemComponent[] = [
     },
     logic: {
       rules: [
+        'ExerciseCard carries only the exercise sequence badge (1A, 1B, 2); rep ranges live naturally in the 2-line summary, while weekly muscle volume and bodyweight/assisted load details live in ExerciseDetailModal and WeeklyVolumeCard on the Program tab.',
         'Serves as the single canonical view of an Exercise object from every entry point (Workout ExerciseCard, Progress Trophy Case & pinned charts, PastWorkoutModal, and SplitEditor).',
         'Default tab is Overview so immediate workout targets/actions or performance snapshot appear without vertical scrolling.',
         'Supports keyboard tab navigation (ArrowLeft / ArrowRight) and Escape close.',

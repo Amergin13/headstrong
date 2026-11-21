@@ -27,6 +27,7 @@ import { ActivityLog } from '../../engine/activeDays';
 import { CustomExerciseModal } from './CustomExerciseModal';
 import { MesocycleManager } from './MesocycleManager';
 import { GoalPhaseSwitcher } from './GoalPhaseSwitcher';
+import { WeeklyVolumeCard } from './WeeklyVolumeCard';
 import { triggerHaptic } from '../../utils/haptics';
 import '../../services/deviceModels';
 
@@ -275,7 +276,14 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
               }}
             />
 
-            {/* 3. 6-Week Training Plan (Mesocycle Periodization) */}
+            {/* 3. Weekly Muscle Volume */}
+            <WeeklyVolumeCard
+              workouts={workouts}
+              exerciseCatalog={exerciseCatalog}
+              goalPhase={profile.goalPhase}
+            />
+
+            {/* 4. 6-Week Training Plan (Mesocycle Periodization) */}
             <MesocycleManager
               currentWeek={profile.mesocycleWeek || 1}
               totalWeeks={6}
@@ -334,9 +342,11 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
         <ExerciseDetailModal
           exercise={inspectedExercise.exercise}
           exerciseDef={inspectedExercise.exerciseDef}
+          exerciseCatalog={exerciseCatalog}
           workouts={workouts}
           biometrics={biometrics}
           bodyweightKg={bodyweightKg}
+          goalPhase={profile.goalPhase}
           readinessState={readinessState}
           onAskCoach={
             onOpenCoachIntervention
