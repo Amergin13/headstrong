@@ -1395,6 +1395,37 @@ export const TREISE_DESIGN_SYSTEM: DesignSystemComponent[] = [
     tailwindTokens: 'wk fixed inset-0 z-50 wk-card wk-raised wk-segments grid-cols-3 wk-segment wk-btn-secondary',
     rationale: 'Grouping exercise details into three shared contexts eliminates vertical data walls while guaranteeing one consistent mental model across every app surface.',
   },
+  {
+    id: 'ds-program-adaptation-carousel',
+    name: 'Ordered Program Adaptation Suggestion Carousel',
+    category: 'card',
+    anatomy: {
+      container: 'Canvas-level horizontal snap carousel (flex gap-3 overflow-x-auto snap-x snap-mandatory) with standalone .wk-card slides — never grouped inside a single outer card container',
+      typography: 'Canvas header in wk-label + ordered counter (1 of N) in wk-caption tabular-nums, slide title in wk-h1, rationale in wk-body, change preview in wk-raised wk-caption',
+      colors: 'Copper intelligence accent (--color-coach-accent) on badge, slide border tint, and active pagination pill; Accept uses primary CTA (--color-action-primary-bg); Dismiss uses quiet secondary CTA (.wk-btn-secondary)',
+      states: {
+        pending: 'Priority-ordered standalone suggestion slide with concrete What changes preview and Accept / Dismiss buttons',
+        accepted: 'Executes ProgramExerciseOverride rules immediately, syncs activeWorkout, persists across Program/Workout/Progress/Coach, removes slide, and surfaces 1-tap Undo receipt',
+        dismissed: 'Persists DismissedCoachIntervention on UserProfile, removes slide across all surfaces permanently, and surfaces 1-tap Undo receipt',
+      },
+      touchTarget: '>= 44px Accept/Dismiss CTAs, prev/next chevrons, Undo/Close buttons, and pagination dots',
+    },
+    logic: {
+      rules: [
+        'Each suggested adaptation renders as an independent card slide in priority order rather than grouping multiple suggestions inside one container.',
+        'Accepting executes applyCoachInterventionToState immediately, persisting programOverrides and updating today activeWorkout without dropping completed sets.',
+        'Dismissing persists dismissedInterventions on UserProfile so detectCoachInterventions suppresses the suggestion across Program, Workout drill-in, Progress BalanceCard, and AI Coach.',
+        'Already-accepted overrides live in a separate compact Program adaptations card only when activeOverrides.length > 0.',
+      ],
+      variants: {
+        multiSlide: 'Horizontal snap track with 1 of N counter, prev/next buttons, keyboard arrows, and pill dots',
+        singleSlide: 'Standalone suggestion card with clean header and Accept / Dismiss footer',
+      },
+      accessibility: 'aria-roledescription="carousel" with role="group" aria-roledescription="slide", role="tablist" dots, keyboard ArrowLeft/ArrowRight navigation, and role="status" Undo receipt',
+    },
+    tailwindTokens: 'wk-card wk-raised wk-pill wk-btn-secondary snap-x snap-mandatory snap-center --color-coach-accent --color-action-primary-bg',
+    rationale: 'Treating each suggestion as an atomic, swipeable decision card reduces cognitive load and ensures every Accept or Dismiss decision executes and persists cleanly across the entire product.',
+  },
 ];
 export const HEADSTRONG_DESIGN_SYSTEM = TREISE_DESIGN_SYSTEM;
 
@@ -1893,6 +1924,7 @@ function profileDomainFingerprint(profile: UserProfile): string {
       wc: profile.whoopConnected,
       gs: profile.goalSettings,
       po: profile.programOverrides,
+      di: profile.dismissedInterventions,
       ha: profile.habitAnchor,
       em: profile.email,
     })

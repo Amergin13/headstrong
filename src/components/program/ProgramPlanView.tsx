@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronRight, Sparkles } from 'lucide-react';
+import { ChevronRight, Sparkles, X } from 'lucide-react';
 import { PageTopGradient } from '../common/PageTopGradient';
 import { BiometricLog, ExerciseDefinition, ReadinessState, UserProfile, WorkoutSession } from '../../engine/types';
-import { detectCoachInterventions } from '../../services/coachInterventions';
+import { CoachIntervention, detectCoachInterventions } from '../../services/coachInterventions';
 import { buildAthleteKnowledgeGraph } from '../../engine/knowledgeGraph';
 import { calculateWeeklyMuscleVolume } from '../../services/storage';
 import { isOnDeviceModelReady } from '../../services/onDeviceModel';
@@ -24,6 +24,7 @@ import { triggerHaptic } from '../../utils/haptics';
 import { formatSentenceCase } from '../../utils/typography';
 import { PastWorkoutModal } from './PastWorkoutModal';
 import { WeeklyVolumeCard } from './WeeklyVolumeCard';
+import { InterventionActionReceipt, ProgramAdaptationCarousel } from './ProgramAdaptationCarousel';
 import { ExerciseDetailModal } from '../train/ExerciseDetailModal';
 import { buildInspectExerciseSession } from '../../services/exerciseDetails';
 import { CoachSummaryText } from '../common/CoachSummaryText';
@@ -373,6 +374,14 @@ interface ProgramPlanViewProps {
   onOpenCoachIntervention?: (prompt: string) => void;
   /** Opens Treise coach in the Program context (optional pre-filled prompt). */
   onOpenCoach?: (prompt?: string) => void;
+  /** Directly executes and persists an accepted adaptation suggestion across the entire product. */
+  onAcceptIntervention?: (intervention: CoachIntervention) => InterventionActionReceipt | void;
+  /** Dismisses an adaptation suggestion and persists dismissal across the entire product. */
+  onDismissIntervention?: (intervention: CoachIntervention) => InterventionActionReceipt | void;
+  /** Removes a single accepted program override cleanly. */
+  onRemoveProgramOverride?: (overrideId: string) => void;
+  /** Clears all accepted program overrides for the current plan. */
+  onClearProgramOverrides?: (planId: string) => void;
   headerAction?: React.ReactNode;
 }
 
@@ -392,6 +401,10 @@ export const ProgramPlanView: React.FC<ProgramPlanViewProps> = ({
   onBackToWorkout,
   onOpenCoachIntervention,
   onOpenCoach,
+  onAcceptIntervention,
+  onDismissIntervention,
+  onRemoveProgramOverride,
+  onClearProgramOverrides,
   headerAction,
 }) => {
   const plan = useMemo(
@@ -455,9 +468,6 @@ export const ProgramPlanView: React.FC<ProgramPlanViewProps> = ({
       }),
     [profile, workouts, biometrics, exerciseCatalog, bodyweightKg, readinessState, weeklyVolume, activities, knowledgeGraph, trainingPlan]
   );
-  const visibleInterventions = coachInterventions.slice(0, 3);
-  const topIntervention = visibleInterventions[0];
-  const secondaryInterventions = visibleInterventions.slice(1);
 
   // Identity message: facts from the plan, history and knowledge graph; written by the on-device
   // model when one is ready, otherwise the fact-based fallback.
@@ -608,7 +618,7 @@ export const ProgramPlanView: React.FC<ProgramPlanViewProps> = ({
         >
           <div style={{ width: `${(plan.nextWorkoutNumber / TOTAL) * 100}%` }} />
         </div>
-        {onOpenCoach && activeOverrides.length === 0 && !topIntervention && (
+        {onOpenCoach && activeOverrides.length === 0 && coachInterventions.length === 0 && (
           <button
             type="button"
             onClick={() => {
@@ -629,15 +639,19 @@ export const ProgramPlanView: React.FC<ProgramPlanViewProps> = ({
         )}
       </section>
 
-      {(activeOverrides.length > 0 || topIntervention) && (
+      {(onAcceptIntervention && onDismissIntervention) && (
+        <ProgramAdaptationCarousel
+          interventions={coachInterventions}
+          onAccept={onAcceptIntervention}
+          onDismiss={onDismissIntervention}
+          className="mt-6"
+        />
+      )}
+
+      {activeOverrides.length > 0 && (
         <section
           aria-labelledby="program-adaptations-title"
-          className="wk-card mt-4 flex flex-col gap-3"
-          style={
-            topIntervention
-              ? { borderColor: 'rgb(var(--color-coach-accent-rgb) / 0.35)' }
-              : undefined
-          }
+          className="wk-card mt-6 flex flex-col gap-3"
         >
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-center gap-2 min-w-0">
@@ -651,77 +665,52 @@ export const ProgramPlanView: React.FC<ProgramPlanViewProps> = ({
                 Program adaptations
               </h2>
             </div>
-            {activeOverrides.length > 0 && (
-              <span
-                className="wk-pill shrink-0"
-                style={{
-                  background: 'rgb(var(--color-coach-accent-rgb) / 0.12)',
-                  color: 'var(--color-coach-accent)',
-                }}
-              >
-                {activeOverrides.length} active
-              </span>
-            )}
+            <span
+              className="wk-pill shrink-0"
+              style={{
+                background: 'rgb(var(--color-coach-accent-rgb) / 0.12)',
+                color: 'var(--color-coach-accent)',
+              }}
+            >
+              {activeOverrides.length} active
+            </span>
           </div>
 
-          {activeOverrides.length > 0 && (
-            <ul className="flex flex-col gap-2">
-              {activeOverrides.map((ov) => (
-                <li key={ov.id} className="wk-body flex items-start justify-between gap-2">
-                  <span style={{ color: 'var(--color-text-primary)' }}>
+          <ul className="flex flex-col gap-2">
+            {activeOverrides.map((ov) => (
+              <li
+                key={ov.id}
+                className="wk-raised flex items-center justify-between gap-2"
+              >
+                <div className="min-w-0">
+                  <div className="wk-body" style={{ color: 'var(--color-text-primary)' }}>
                     {describeProgramOverride(ov, exerciseNameById)}
-                  </span>
+                  </div>
                   {ov.reason && (
-                    <span className="wk-caption shrink-0">{ov.reason}</span>
+                    <p className="wk-caption mt-1">{ov.reason}</p>
                   )}
-                </li>
-              ))}
-            </ul>
-          )}
+                </div>
+                {onRemoveProgramOverride && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      triggerHaptic('light');
+                      onRemoveProgramOverride(ov.id);
+                    }}
+                    aria-label={`Remove adaptation: ${describeProgramOverride(ov, exerciseNameById)}`}
+                    className="w-11 h-11 min-w-[44px] min-h-[44px] rounded-xl flex items-center justify-center shrink-0"
+                    style={{ color: 'var(--color-text-secondary)' }}
+                  >
+                    <X className="w-4 h-4" aria-hidden="true" />
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
 
-          {topIntervention && (
-            <div
-              className={activeOverrides.length > 0 ? 'pt-3 border-t flex flex-col gap-2' : 'flex flex-col gap-2'}
-              style={
-                activeOverrides.length > 0
-                  ? { borderColor: 'var(--color-border-subtle)' }
-                  : undefined
-              }
-            >
-              <div className="wk-body font-medium" style={{ color: 'var(--color-text-primary)' }}>
-                {topIntervention.title}
-              </div>
-              <p className="wk-caption max-w-prose">
-                {topIntervention.rationale}
-              </p>
-            </div>
-          )}
-
-          {(onOpenCoachIntervention || onOpenCoach) && (
+          {(onOpenCoach || onClearProgramOverrides || onOpenCoachIntervention) && (
             <div className="flex flex-wrap gap-2">
-              {topIntervention && onOpenCoachIntervention && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    triggerHaptic('light');
-                    onOpenCoachIntervention(topIntervention.coachPrompt);
-                  }}
-                  className="wk-btn-secondary min-h-[44px] flex-1 inline-flex items-center justify-center gap-2 font-medium"
-                  style={{
-                    borderColor: 'rgb(var(--color-coach-accent-rgb) / 0.35)',
-                    color: 'var(--color-text-primary)',
-                  }}
-                >
-                  <Sparkles
-                    className="w-4 h-4 shrink-0"
-                    style={{ color: 'var(--color-coach-accent)' }}
-                    strokeWidth={2.2}
-                    aria-hidden="true"
-                  />
-                  <span>{topIntervention.ctaLabel}</span>
-                </button>
-              )}
-              {!topIntervention && onOpenCoach && (
+              {onOpenCoach && (
                 <button
                   type="button"
                   onClick={() => {
@@ -743,12 +732,16 @@ export const ProgramPlanView: React.FC<ProgramPlanViewProps> = ({
                   <span>Adapt with Treise</span>
                 </button>
               )}
-              {activeOverrides.length > 0 && onOpenCoachIntervention && (
+              {(onClearProgramOverrides || onOpenCoachIntervention) && (
                 <button
                   type="button"
                   onClick={() => {
                     triggerHaptic('light');
-                    onOpenCoachIntervention('Clear my program customizations');
+                    if (onClearProgramOverrides) {
+                      onClearProgramOverrides(trainingPlan.id);
+                    } else {
+                      onOpenCoachIntervention?.('Clear my program customizations');
+                    }
                   }}
                   className="wk-btn-secondary min-h-[44px] px-3 whitespace-nowrap inline-flex items-center justify-center"
                 >
@@ -756,36 +749,6 @@ export const ProgramPlanView: React.FC<ProgramPlanViewProps> = ({
                 </button>
               )}
             </div>
-          )}
-
-          {secondaryInterventions.length > 0 && onOpenCoachIntervention && (
-            <ul
-              className="flex flex-col gap-2 pt-3 border-t"
-              style={{ borderColor: 'var(--color-border-subtle)' }}
-              aria-label="Additional coaching suggestions"
-            >
-              {secondaryInterventions.map((item) => (
-                <li key={item.id} className="flex items-center justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="wk-caption font-medium" style={{ color: 'var(--color-text-primary)' }}>
-                      {item.title}
-                    </div>
-                    <p className="wk-caption line-clamp-2">{item.rationale}</p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      triggerHaptic('light');
-                      onOpenCoachIntervention(item.coachPrompt);
-                    }}
-                    className="wk-btn-secondary min-h-[44px] px-3 shrink-0 text-xs font-medium"
-                    style={{ borderColor: 'rgb(var(--color-coach-accent-rgb) / 0.35)' }}
-                  >
-                    {item.ctaLabel}
-                  </button>
-                </li>
-              ))}
-            </ul>
           )}
         </section>
       )}
@@ -913,6 +876,9 @@ export const ProgramPlanView: React.FC<ProgramPlanViewProps> = ({
           bodyweightKg={bodyweightKg}
           goalPhase={profile.goalPhase}
           readinessState={readinessState}
+          intervention={coachInterventions.find((i) => i.exerciseId === inspectedExercise.exercise.exerciseId)}
+          onAcceptIntervention={onAcceptIntervention}
+          onDismissIntervention={onDismissIntervention}
           onAskCoach={
             onOpenCoachIntervention
               ? () =>

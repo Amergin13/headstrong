@@ -585,6 +585,16 @@ export interface EquipmentInventory {
   availableDumbbellsKg?: number[];
 }
 
+/** Record of a program adaptation suggestion explicitly dismissed by the athlete so it stays hidden across all surfaces. */
+export interface DismissedCoachIntervention {
+  /** Stable deterministic intervention id (e.g., "imbalance-pull-vs-push", "plateau-ex-bench-press", "volume-Chest"). */
+  id: string;
+  /** Plan id this dismissal applies to (when omitted, applies across all plans). */
+  planId?: string;
+  /** ISO timestamp when dismissed. */
+  dismissedAt: string;
+}
+
 export interface UserProfile {
   /** Goals changed on the Progress page; see GoalSettings. */
   goalSettings?: GoalSettings;
@@ -619,6 +629,8 @@ export interface UserProfile {
   planStartWorkouts?: Record<string, number>;
   /** Persistent program-level exercise swaps, additions, removals, set adjustments, and priority reorders across sessions. */
   programOverrides?: ProgramExerciseOverride[];
+  /** Persistent dismissals of program adaptation suggestions so dismissed items never reappear across Program, Workout, Progress, or Coach. */
+  dismissedInterventions?: DismissedCoachIntervention[];
   /** Persistent athlete memory facts saved via Treise Coach (injuries, contraindications, preferences, schedule). */
   athleteMemories?: AthleteMemoryFact[];
   mesocycleWeek?: number; // 1 to 6

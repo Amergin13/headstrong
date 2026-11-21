@@ -6,6 +6,7 @@ import { standardsAge } from '../engine/strengthStandards';
 import { resolveActivePlan } from '../engine/trainingPlans';
 import {
   BiometricLog,
+  DismissedCoachIntervention,
   ExerciseDefinition,
   ProgramExerciseOverride,
   ReadinessState,
@@ -74,6 +75,109 @@ export interface DetectCoachInterventionsInput {
   activities?: ActivityLog[];
   knowledgeGraph?: AthleteKnowledgeGraph;
   trainingPlan?: TrainingPlan;
+  /** When true, includes suggestions the athlete previously dismissed (default: false). */
+  includeDismissed?: boolean;
+}
+
+/** True when a deterministic intervention id was dismissed for this plan (or globally). */
+export function isInterventionDismissed(
+  dismissed: DismissedCoachIntervention[] | undefined,
+  interventionId: string,
+  planId: string
+): boolean {
+  if (!dismissed || dismissed.length === 0) return false;
+  return dismissed.some((d) => d.id === interventionId && (!d.planId || d.planId === planId));
+}
+
+/**
+ * Converts a suggested CoachIntervention into concrete persistent ProgramExerciseOverride objects
+ * ready to save on UserProfile and apply across the active plan and queued workout.
+ */
+export function buildOverridesForIntervention(
+  intervention: CoachIntervention,
+  planId: TrainingPlan['id'],
+  now: Date = new Date()
+): ProgramExerciseOverride[] {
+  const stamp = now.toISOString();
+  const baseId = `ov-accept-${intervention.id}-${now.getTime()}`;
+  return intervention.proposedChanges.map((c, idx) => ({
+    id: `${baseId}-${idx}`,
+    planId,
+    kind: c.kind,
+    targetExerciseId: c.targetExerciseId,
+    targetExerciseName: c.targetExerciseName,
+    replacementExerciseId: c.replacementExerciseId,
+    replacementExerciseName: c.replacementExerciseName,
+    replacementPillar: c.replacementPillar,
+    replacementEquipment: c.replacementEquipment,
+    replacementRepRange: c.replacementRepRange,
+    replacementIsTimed: c.replacementIsTimed,
+    replacementDurationSeconds: c.replacementDurationSeconds,
+    sets: c.sets,
+    setDelta: c.setDelta,
+    workoutFilter: c.workoutFilter,
+    reason: c.reason,
+    createdAt: stamp,
+  }));
+}
+
+/** Returns a profile patch that persists dismissing a suggestion for the active plan across all surfaces. */
+export function dismissCoachIntervention(
+  profile: Pick<UserProfile, 'dismissedInterventions'>,
+  interventionId: string,
+  planId: string,
+  now: Date = new Date()
+): Pick<UserProfile, 'dismissedInterventions'> {
+  const existing = profile.dismissedInterventions ?? [];
+  if (isInterventionDismissed(existing, interventionId, planId)) {
+    return { dismissedInterventions: existing };
+  }
+  return {
+    dismissedInterventions: [
+      ...existing,
+      {
+        id: interventionId,
+        planId,
+        dismissedAt: now.toISOString(),
+      },
+    ],
+  };
+}
+
+/** Restores a previously dismissed suggestion (used by 1-tap Undo after dismissal). */
+export function undismissCoachIntervention(
+  profile: Pick<UserProfile, 'dismissedInterventions'>,
+  interventionId: string,
+  planId?: string
+): Pick<UserProfile, 'dismissedInterventions'> {
+  const next = (profile.dismissedInterventions ?? []).filter(
+    (d) => !(d.id === interventionId && (!planId || !d.planId || d.planId === planId))
+  );
+  return {
+    dismissedInterventions: next.length > 0 ? next : undefined,
+  };
+}
+
+/** Removes a single accepted program override cleanly. */
+export function removeProgramOverride(
+  profile: Pick<UserProfile, 'programOverrides'>,
+  overrideId: string
+): Pick<UserProfile, 'programOverrides'> {
+  const next = (profile.programOverrides ?? []).filter((ov) => ov.id !== overrideId);
+  return {
+    programOverrides: next.length > 0 ? next : undefined,
+  };
+}
+
+/** Clears all accepted program overrides for the given plan while preserving overrides on other plans. */
+export function clearPlanProgramOverrides(
+  profile: Pick<UserProfile, 'programOverrides'>,
+  planId: string
+): Pick<UserProfile, 'programOverrides'> {
+  const next = (profile.programOverrides ?? []).filter((ov) => ov.planId && ov.planId !== planId);
+  return {
+    programOverrides: next.length > 0 ? next : undefined,
+  };
 }
 
 const BILATERAL_TO_UNILATERAL_FALLBACKS: Record<string, string[]> = {
@@ -199,6 +303,9 @@ export function detectCoachInterventions(input: DetectCoachInterventionsInput): 
   const interventions: CoachIntervention[] = [];
 
   const registerIfEffective = (item: Omit<CoachIntervention, 'remainingAffectedCount' | 'totalAffectedCount' | 'affectedTitles'>) => {
+    if (!input.includeDismissed && isInterventionDismissed(profile.dismissedInterventions, item.id, plan.id)) {
+      return;
+    }
     const preview = previewProgramOverrides(
       plan,
       toCandidateOverrides(plan.id, item.proposedChanges),

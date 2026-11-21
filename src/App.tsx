@@ -1,5 +1,15 @@
 import { MAX_CUSTOM_GOALS, STEPS_GOAL_EXERCISE_ID, makeCustomGoal, ownGoalName } from './services/athleteGoals';
 import type { CoachPlace } from './services/coachContext';
+import {
+  CoachIntervention,
+  clearPlanProgramOverrides,
+  dismissCoachIntervention,
+  removeProgramOverride,
+  undismissCoachIntervention,
+} from './services/coachInterventions';
+import { applyCoachInterventionToState } from './services/coachTools';
+import type { InterventionActionReceipt } from './components/program/ProgramAdaptationCarousel';
+import { formatSentenceCase } from './utils/typography';
 import React, { useState, useEffect, useRef, Suspense, lazy } from 'react';
 import {
   AssistantChatMessage,
@@ -595,6 +605,7 @@ export const App: React.FC = () => {
           ...('progressWidgets' in prevSnap ? { progressWidgets: prevSnap.progressWidgets } : {}),
           ...('workoutDisplay' in prevSnap ? { workoutDisplay: prevSnap.workoutDisplay } : {}),
           ...('programOverrides' in prevSnap ? { programOverrides: prevSnap.programOverrides } : {}),
+          ...('dismissedInterventions' in prevSnap ? { dismissedInterventions: prevSnap.dismissedInterventions } : {}),
         };
         saveProfile(restoredProfile);
         return restoredProfile;
@@ -612,6 +623,105 @@ export const App: React.FC = () => {
       saveActivities(snapshot.previousActivities);
       setActivities(snapshot.previousActivities);
     }
+  };
+
+  // Product-wide handler: Accept a suggested program adaptation immediately (persists overrides + syncs active workout)
+  const handleAcceptIntervention = (intervention: CoachIntervention): InterventionActionReceipt => {
+    const result = applyCoachInterventionToState({
+      intervention,
+      profile,
+      activeWorkout,
+      workouts,
+      biometrics,
+      exerciseCatalog: exercises,
+      bodyweightEmaKg,
+      readinessState: readiness.state,
+      trainingPlan: activePlan,
+    });
+    const nextProfile: UserProfile = { ...profile, ...result.updatedProfilePatch };
+    saveProfile(nextProfile);
+    setProfile(nextProfile);
+    if (result.updatedActiveWorkout) {
+      const synced = fillWeightless(result.updatedActiveWorkout);
+      saveActiveWorkout(synced);
+      setActiveWorkout(synced);
+    }
+    return {
+      kind: 'accepted',
+      message: result.summaryText,
+      undo: () => {
+        setProfile((prev) => {
+          const restored: UserProfile = {
+            ...prev,
+            programOverrides: result.previousProfileSnapshot.programOverrides,
+            dismissedInterventions: result.previousProfileSnapshot.dismissedInterventions,
+          };
+          saveProfile(restored);
+          return restored;
+        });
+        saveActiveWorkout(result.previousActiveWorkout);
+        setActiveWorkout(result.previousActiveWorkout);
+      },
+    };
+  };
+
+  // Product-wide handler: Dismiss a suggested program adaptation permanently across all surfaces
+  const handleDismissIntervention = (intervention: CoachIntervention): InterventionActionReceipt => {
+    const planId = activePlan.id;
+    const patch = dismissCoachIntervention(profile, intervention.id, planId);
+    const nextProfile: UserProfile = { ...profile, ...patch };
+    saveProfile(nextProfile);
+    setProfile(nextProfile);
+    return {
+      kind: 'dismissed',
+      message: `Dismissed "${formatSentenceCase(intervention.title)}".`,
+      undo: () => {
+        setProfile((prev) => {
+          const restored: UserProfile = {
+            ...prev,
+            ...undismissCoachIntervention(prev, intervention.id, planId),
+          };
+          saveProfile(restored);
+          return restored;
+        });
+      },
+    };
+  };
+
+  // Rebuild an unstarted queued plan workout cleanly after removing or resetting program overrides
+  const syncUnstartedPlanWorkoutAfterOverrideChange = (nextProfile: UserProfile) => {
+    if (
+      activeWorkout.completed ||
+      !activeWorkout.programWorkoutNumber ||
+      activeWorkout.exercises.some((ex) => ex.sets.some((s) => s.completed))
+    ) {
+      return;
+    }
+    const nextPlan = resolveActivePlan(nextProfile);
+    if ((activeWorkout.planId ?? nextPlan.id) !== nextPlan.id) return;
+    const rebuilt = prepareSession(
+      generatePlanWorkout(nextPlan, activeWorkout.programWorkoutNumber),
+      { isProgramPlan: true, location: activeWorkout.location || nextProfile.activeLocation }
+    );
+    const hydrated = fillWeightless({ ...rebuilt, date: activeWorkout.date });
+    saveActiveWorkout(hydrated);
+    setActiveWorkout(hydrated);
+  };
+
+  const handleRemoveProgramOverride = (overrideId: string) => {
+    const patch = removeProgramOverride(profile, overrideId);
+    const nextProfile: UserProfile = { ...profile, ...patch };
+    saveProfile(nextProfile);
+    setProfile(nextProfile);
+    syncUnstartedPlanWorkoutAfterOverrideChange(nextProfile);
+  };
+
+  const handleClearProgramOverrides = (planId: string) => {
+    const patch = clearPlanProgramOverrides(profile, planId);
+    const nextProfile: UserProfile = { ...profile, ...patch };
+    saveProfile(nextProfile);
+    setProfile(nextProfile);
+    syncUnstartedPlanWorkoutAfterOverrideChange(nextProfile);
   };
 
   // Handler: Switch Training Location ('gym' | 'home' | 'travel') in 1 tap
@@ -1319,6 +1429,8 @@ export const App: React.FC = () => {
                 opts?.prompt
               )
             }
+            onAcceptIntervention={handleAcceptIntervention}
+            onDismissIntervention={handleDismissIntervention}
           />
         )}
 
@@ -1361,6 +1473,8 @@ export const App: React.FC = () => {
                 opts?.prompt
               )
             }
+            onAcceptIntervention={handleAcceptIntervention}
+            onDismissIntervention={handleDismissIntervention}
           />
         )}
 
@@ -1400,6 +1514,10 @@ export const App: React.FC = () => {
               openCoachWithIntervention(prompt, { tab: 'program' })
             }
             onOpenCoach={(prompt) => openCoach({ tab: 'program' }, prompt)}
+            onAcceptIntervention={handleAcceptIntervention}
+            onDismissIntervention={handleDismissIntervention}
+            onRemoveProgramOverride={handleRemoveProgramOverride}
+            onClearProgramOverrides={handleClearProgramOverrides}
           />
         )}
         </ErrorBoundary>

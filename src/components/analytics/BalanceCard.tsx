@@ -1,12 +1,19 @@
 import React from 'react';
-import { Sparkles } from 'lucide-react';
+import { Check, Sparkles, X } from 'lucide-react';
 import type { CoachIntervention } from '../../services/coachInterventions';
+import type { InterventionActionReceipt } from '../program/ProgramAdaptationCarousel';
 import { MovementStandardsReport, SYMMETRY_FLAG_PCT } from '../../services/movementStandards';
+import { formatSentenceCase } from '../../utils/typography';
+import { triggerHaptic } from '../../utils/haptics';
 
 export interface BalanceCardProps {
   report: MovementStandardsReport;
   intervention?: CoachIntervention;
   adaptationApplied?: boolean;
+  /** True when the athlete explicitly dismissed the balance suggestion so we respect it here too. */
+  adaptationDismissed?: boolean;
+  onAcceptIntervention?: (intervention: CoachIntervention) => InterventionActionReceipt | void;
+  onDismissIntervention?: (intervention: CoachIntervention) => InterventionActionReceipt | void;
   onFixImbalanceWithCoach?: (suggestedPrompt: string) => void;
 }
 
@@ -20,6 +27,9 @@ export const BalanceCard: React.FC<BalanceCardProps> = ({
   report,
   intervention,
   adaptationApplied = false,
+  adaptationDismissed = false,
+  onAcceptIntervention,
+  onDismissIntervention,
   onFixImbalanceWithCoach,
 }) => {
   const { imbalances, sideDifferences, levels } = report;
@@ -100,8 +110,63 @@ export const BalanceCard: React.FC<BalanceCardProps> = ({
         </div>
       )}
 
+      {findings > 0 && intervention && onAcceptIntervention && onDismissIntervention && (
+        <div
+          className="wk-raised mt-3 flex flex-col gap-3 border"
+          style={{ borderColor: 'rgb(var(--color-coach-accent-rgb) / 0.35)' }}
+        >
+          <div className="flex items-start gap-2">
+            <Sparkles
+              className="w-4 h-4 shrink-0 mt-1"
+              style={{ color: 'var(--color-coach-accent)' }}
+              strokeWidth={2.2}
+              aria-hidden="true"
+            />
+            <div className="min-w-0">
+              <div className="wk-subhead" style={{ color: 'var(--color-text-primary)' }}>
+                {formatSentenceCase(intervention.title)}
+              </div>
+              {intervention.proposedChanges.length > 0 && (
+                <p className="wk-caption mt-1 max-w-prose">
+                  {intervention.proposedChanges.map((c) => c.humanSummary).join(' · ')}
+                </p>
+              )}
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                triggerHaptic('medium');
+                onAcceptIntervention(intervention);
+              }}
+              className="flex-1 min-h-[44px] rounded-xl px-4 py-2 text-base font-semibold inline-flex items-center justify-center gap-2 transition-transform active:scale-[0.98]"
+              style={{
+                background: 'var(--color-action-primary-bg)',
+                color: 'var(--color-action-primary-fg)',
+              }}
+            >
+              <Check className="w-4 h-4 shrink-0" strokeWidth={2.4} aria-hidden="true" />
+              <span>Accept</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                triggerHaptic('light');
+                onDismissIntervention(intervention);
+              }}
+              className="wk-btn-secondary min-h-[44px] px-4 inline-flex items-center justify-center gap-2"
+            >
+              <X className="w-4 h-4 shrink-0" strokeWidth={2} aria-hidden="true" />
+              <span>Dismiss</span>
+            </button>
+          </div>
+        </div>
+      )}
+
       {findings > 0 &&
-        (intervention || !adaptationApplied) &&
+        !(intervention && onAcceptIntervention && onDismissIntervention) &&
+        (intervention || (!adaptationApplied && !adaptationDismissed)) &&
         onFixImbalanceWithCoach &&
         (() => {
           const defaultPrompt =

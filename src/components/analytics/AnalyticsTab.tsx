@@ -5,7 +5,8 @@ import { CoachPlace } from '../../services/coachContext';
 import { BiometricLog, BodyMeasurementSite, ExerciseDefinition, GoalPhase, ProgressWidgetId, ReadinessState, UserProfile, WorkoutSession, isWhoopConfigured } from '../../engine/types';
 import { StrengthLevelsCard } from './StrengthLevelsCard';
 import { BalanceCard } from './BalanceCard';
-import { detectCoachInterventions } from '../../services/coachInterventions';
+import { CoachIntervention, detectCoachInterventions } from '../../services/coachInterventions';
+import type { InterventionActionReceipt } from '../program/ProgramAdaptationCarousel';
 import { buildMovementStandards } from '../../services/movementStandards';
 import { standardsAge } from '../../engine/strengthStandards';
 import { buildBodyCompositionKnowledgeGraph } from '../../engine/knowledgeGraph';
@@ -113,6 +114,10 @@ interface AnalyticsTabProps {
   onOpenCoachIntervention?: (opts: { prompt: string; detail?: ProgressDetail }) => void;
   /** Opens Treise coach in the given Progress context (optional pre-filled prompt). */
   onOpenCoach?: (opts?: { detail?: CoachPlace['detail']; goalId?: string; prompt?: string }) => void;
+  /** Directly executes and persists an accepted adaptation suggestion across the entire product. */
+  onAcceptIntervention?: (intervention: CoachIntervention) => InterventionActionReceipt | void;
+  /** Dismisses an adaptation suggestion and persists dismissal across the entire product. */
+  onDismissIntervention?: (intervention: CoachIntervention) => InterventionActionReceipt | void;
 }
 
 type CompositionView = 'weight' | 'measurements';
@@ -161,6 +166,8 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
   readinessState = 'Normal',
   onOpenCoachIntervention,
   onOpenCoach,
+  onAcceptIntervention,
+  onDismissIntervention,
 }) => {
   const [detail, setDetail] = useState<ProgressDetail | null>(null);
   const [focusedInsightExerciseId, setFocusedInsightExerciseId] = useState<string | undefined>(undefined);
@@ -241,6 +248,12 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
     (i) => i.surface === 'balance' || i.kind === 'pull_push_imbalance' || i.kind === 'unilateral_asymmetry' || i.kind === 'strength_level_gap'
   );
   const balanceAdaptationApplied = Boolean(!balanceIntervention && (profile.programOverrides?.length ?? 0) > 0);
+  const balanceAdaptationDismissed = Boolean(
+    !balanceIntervention &&
+      (profile.dismissedInterventions ?? []).some(
+        (d) => d.id.startsWith('imbalance-') || d.id.startsWith('symmetry-') || d.id.startsWith('gap-')
+      )
+  );
   const timelineMeta = useMemo(() => getTimelineMeta(detailTimeline), [detailTimeline]);
   const muscleProgress = useMemo(() => {
     return buildMuscleProgress({
@@ -767,6 +780,9 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
                   report={movementStandards}
                   intervention={balanceIntervention}
                   adaptationApplied={balanceAdaptationApplied}
+                  adaptationDismissed={balanceAdaptationDismissed}
+                  onAcceptIntervention={onAcceptIntervention}
+                  onDismissIntervention={onDismissIntervention}
                   onFixImbalanceWithCoach={
                     onOpenCoachIntervention
                       ? (prompt) => onOpenCoachIntervention({ prompt, detail: 'standards' })
@@ -1334,6 +1350,9 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
             report={movementStandards}
             intervention={balanceIntervention}
             adaptationApplied={balanceAdaptationApplied}
+            adaptationDismissed={balanceAdaptationDismissed}
+            onAcceptIntervention={onAcceptIntervention}
+            onDismissIntervention={onDismissIntervention}
             onFixImbalanceWithCoach={
               onOpenCoachIntervention
                 ? (prompt) => onOpenCoachIntervention({ prompt, detail: 'standards' })
@@ -1561,6 +1580,9 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
           bodyweightKg={hasBodyweight ? bodyweightEmaKg : 0}
           goalPhase={profile.goalPhase}
           readinessState={readinessState}
+          intervention={coachInterventions.find((i) => i.exerciseId === inspectedExercise.exercise.exerciseId)}
+          onAcceptIntervention={onAcceptIntervention}
+          onDismissIntervention={onDismissIntervention}
           onAskCoach={
             onOpenCoach
               ? (exId) =>

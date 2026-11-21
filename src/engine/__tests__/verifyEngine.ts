@@ -16302,7 +16302,234 @@ Exercise,,Date,Workout,Sets,Reps,Tempo,Rest,Notes,Set 1,Set 2,Set 3,Set 4
     );
   }
 
-  console.log('\nALL 72 ENGINE, GOVERNANCE, DESIGN SYSTEM, TYPOGRAPHY, WEARABLES, WHOOP STRAIN, GOOGLE AUTH, ONBOARDING CONTEXT, 6-WEEK PROGRAM, SPREADSHEET IMPORT, AI COACH ACTIONS, GEMINI FLASH + KG, OOUX, AGENTIC COACH, PRODUCT UPGRADES, INFO EXPERIENCE, CONTENT DESIGN, GOAL CAROUSEL, SHIFT NUDGE COLOR POLISH, EXERCISE DRILL-IN MODAL, COMPOSITION WIDGET, MEASUREMENT UX, AI-NATIVE ACTIONS, PERMANENT PROGRAM ADAPTATION, HITL INTERVENTION, REP-RANGE DOUBLE PROGRESSION, TWO-DUMBBELL PER-HAND LOGGING, AI-NATIVE CONVERSATIONAL DESIGN, P0 CLOSED-BETA READINESS, P1 GYM-FLOOR ACTIVATION, MACROFACTOR EXERCISE SCIENCE, AI PERSONALISATION/MEMORY, LEAN PROGRESSIVE ONBOARDING, CROSS-SURFACE AI ECONOMY & EXERCISE CARD DECLUTTERING SUITES PASSED SUCCESSFULLY! 🎯');
+  // ---------------------------------------------------------------------------
+  // 73. Ordered Program Adaptation Suggestion Carousel, Direct Accept/Dismiss & Product-Wide Persistence
+  // ---------------------------------------------------------------------------
+  console.log('\n--- 73. Ordered Program Adaptation Suggestion Carousel, Direct Accept/Dismiss & Product-Wide Persistence ---');
+  {
+    const fs73 = require('fs');
+    const path73 = require('path');
+    const {
+      detectCoachInterventions: detect73,
+      dismissCoachIntervention: dismiss73,
+      undismissCoachIntervention: undismiss73,
+      removeProgramOverride: removeOv73,
+      clearPlanProgramOverrides: clearOv73,
+    } = require('../../services/coachInterventions');
+    const { applyCoachInterventionToState: applyInt73 } = require('../../services/coachTools');
+    const { resolveActivePlan: resolvePlan73 } = require('../trainingPlans');
+    const { generatePlanWorkout: genPlanWorkout73 } = require('../muscleBuildingProgram');
+
+    // Construct an athlete with 2 distinct actionable suggestions:
+    // (a) High-priority contraindication conflict (saved memory avoiding Barbell Bench Press)
+    // (b) High-priority Poliquin pull-vs-push imbalance (strong bench, lagging chin-up)
+    const today73 = localDateString();
+    const bio73: BiometricLog[] = [
+      { date: today73, bodyweightKg: 80, hrvRmssd: 65, restingHr: 54, sleepHours: 7.5, steps: 8000, activeZoneMinutes: 30 },
+    ];
+    const baseProfile73: UserProfile = {
+      ...NEW_USER_PROFILE,
+      programType: 'starter_6wk',
+      goalPhase: 'Lean Bulk',
+      activeLocation: 'gym',
+      athleteMemories: [
+        {
+          id: 'mem-73-shoulder',
+          category: 'injury',
+          value: 'Avoid barbell bench press due to anterior shoulder impingement',
+          relatedExerciseIds: ['ex-bench-press'],
+          createdAt: new Date().toISOString(),
+        },
+      ],
+    };
+    const workouts73: WorkoutSession[] = [
+      {
+        id: 'w-73-1',
+        name: 'Upper A',
+        splitDay: 'Upper',
+        date: localDateString(new Date(Date.now() - 4 * 86_400_000)),
+        completed: true,
+        completedAt: new Date(Date.now() - 4 * 86_400_000).toISOString(),
+        readinessState: 'Normal',
+        readinessZScore: 0,
+        exercises: [
+          {
+            id: 'e-73-bench',
+            exerciseId: 'ex-bench-press',
+            name: 'Barbell Bench Press',
+            pillar: 'Horizontal Push',
+            equipment: 'barbell',
+            minReps: 6,
+            maxReps: 8,
+            sets: [
+              { id: 's1', setNumber: 1, targetWeightKg: 110, targetReps: 5, targetRir: 1, actualWeightKg: 110, actualReps: 5, actualRir: 1, completed: true },
+              { id: 's2', setNumber: 2, targetWeightKg: 110, targetReps: 5, targetRir: 1, actualWeightKg: 110, actualReps: 5, actualRir: 1, completed: true },
+              { id: 's3', setNumber: 3, targetWeightKg: 110, targetReps: 5, targetRir: 1, actualWeightKg: 110, actualReps: 5, actualRir: 1, completed: true },
+            ],
+          },
+          {
+            id: 'e-73-chin',
+            exerciseId: 'ex-chinup',
+            name: 'Hammer-Grip Chin-Up',
+            pillar: 'Vertical Pull',
+            equipment: 'weighted_bodyweight',
+            isWeightedCalisthenic: true,
+            minReps: 6,
+            maxReps: 8,
+            sets: [
+              { id: 'c1', setNumber: 1, targetWeightKg: 0, targetReps: 1, targetRir: 2, actualWeightKg: 0, actualReps: 1, actualRir: 2, completed: true },
+            ],
+          },
+        ],
+      },
+    ];
+
+    const plan73 = resolvePlan73(baseProfile73);
+    const activeWorkout73 = {
+      ...genPlanWorkout73(plan73, 1),
+      planId: plan73.id,
+      programWorkoutNumber: 1,
+      date: today73,
+      completed: false,
+    };
+    const initialSuggestions73 = detect73({
+      profile: baseProfile73,
+      workouts: workouts73,
+      biometrics: bio73,
+      exerciseCatalog: SEED_EXERCISES,
+      bodyweightEmaKg: 80,
+      readinessState: 'Normal',
+      trainingPlan: plan73,
+    });
+    assert(
+      initialSuggestions73.length >= 2 &&
+        initialSuggestions73.some((i: { kind: string }) => i.kind === 'contraindication_conflict') &&
+        initialSuggestions73.some((i: { kind: string }) => i.kind === 'pull_push_imbalance'),
+      `detectCoachInterventions surfaces multiple ordered suggestions (${initialSuggestions73.map((i: { id: string }) => i.id).join(', ')})`
+    );
+
+    // 1. Accepting a suggestion executes immediately, persists overrides on profile, updates active plan & activeWorkout, and self-clears across all surfaces.
+    const contraItem73 = initialSuggestions73.find((i: { kind: string }) => i.kind === 'contraindication_conflict')!;
+    const acceptRes73 = applyInt73({
+      intervention: contraItem73,
+      profile: baseProfile73,
+      activeWorkout: activeWorkout73,
+      workouts: workouts73,
+      biometrics: bio73,
+      exerciseCatalog: SEED_EXERCISES,
+      bodyweightEmaKg: 80,
+      readinessState: 'Normal',
+      trainingPlan: plan73,
+    });
+    const acceptedProfile73: UserProfile = {
+      ...baseProfile73,
+      ...acceptRes73.updatedProfilePatch,
+    };
+    const updatedPlan73 = resolvePlan73(acceptedProfile73);
+    const afterAcceptSuggestions73 = detect73({
+      profile: acceptedProfile73,
+      workouts: workouts73,
+      biometrics: bio73,
+      exerciseCatalog: SEED_EXERCISES,
+      bodyweightEmaKg: 80,
+      readinessState: 'Normal',
+      trainingPlan: updatedPlan73,
+    });
+    const benchStillInPlan73 = updatedPlan73.templates.some((t: any) =>
+      t.exercises.some((e: any) => e.exerciseId === 'ex-bench-press')
+    );
+    const benchStillInActive73 = (acceptRes73.updatedActiveWorkout?.exercises ?? []).some(
+      (e: any) => e.exerciseId === 'ex-bench-press'
+    );
+    assert(
+      acceptRes73.appliedOverrides.length >= 1 &&
+        (acceptedProfile73.programOverrides?.length ?? 0) >= 1 &&
+        !benchStillInPlan73 &&
+        Boolean(acceptRes73.updatedActiveWorkout) &&
+        !benchStillInActive73 &&
+        !afterAcceptSuggestions73.some((i: { id: string }) => i.id === contraItem73.id) &&
+        afterAcceptSuggestions73.some((i: { kind: string }) => i.kind === 'pull_push_imbalance'),
+      'Accepting a suggestion persists programOverrides, updates remaining plan templates + today activeWorkout immediately, self-clears accepted item, and keeps remaining suggestions intact'
+    );
+
+    // 2. Dismissing a suggestion persists on profile.dismissedInterventions and removes it across all surfaces; Undo restores it cleanly.
+    const imbItem73 = afterAcceptSuggestions73.find((i: { kind: string }) => i.kind === 'pull_push_imbalance')!;
+    const dismissedProfile73: UserProfile = {
+      ...acceptedProfile73,
+      ...dismiss73(acceptedProfile73, imbItem73.id, updatedPlan73.id),
+    };
+    const afterDismissSuggestions73 = detect73({
+      profile: dismissedProfile73,
+      workouts: workouts73,
+      biometrics: bio73,
+      exerciseCatalog: SEED_EXERCISES,
+      bodyweightEmaKg: 80,
+      readinessState: 'Normal',
+      trainingPlan: updatedPlan73,
+    });
+    const undismissedProfile73: UserProfile = {
+      ...dismissedProfile73,
+      ...undismiss73(dismissedProfile73, imbItem73.id, updatedPlan73.id),
+    };
+    const afterUndoDismiss73 = detect73({
+      profile: undismissedProfile73,
+      workouts: workouts73,
+      biometrics: bio73,
+      exerciseCatalog: SEED_EXERCISES,
+      bodyweightEmaKg: 80,
+      readinessState: 'Normal',
+      trainingPlan: updatedPlan73,
+    });
+    assert(
+      (dismissedProfile73.dismissedInterventions?.length ?? 0) === 1 &&
+        !afterDismissSuggestions73.some((i: { id: string }) => i.id === imbItem73.id) &&
+        afterUndoDismiss73.some((i: { id: string }) => i.id === imbItem73.id),
+      'Dismissing a suggestion persists on UserProfile, suppresses it across all surfaces via detectCoachInterventions, and Undo restores it cleanly'
+    );
+
+    // 3. Individual override removal & plan reset cleanly revert overrides.
+    const removedOne73: UserProfile = {
+      ...acceptedProfile73,
+      ...removeOv73(acceptedProfile73, acceptRes73.appliedOverrides[0].id),
+    };
+    const clearedPlan73: UserProfile = {
+      ...acceptedProfile73,
+      ...clearOv73(acceptedProfile73, plan73.id),
+    };
+    assert(
+      (removedOne73.programOverrides?.length ?? 0) === (acceptedProfile73.programOverrides?.length ?? 0) - 1 &&
+        (clearedPlan73.programOverrides?.length ?? 0) === 0,
+      'removeProgramOverride and clearPlanProgramOverrides cleanly revert accepted adaptations'
+    );
+
+    // 4. Static UI verification: standalone ordered carousel (not grouped into one container) + end-to-end wiring across App, Program, Workout, and Progress.
+    const carouselSrc73 = fs73.readFileSync(path73.join(process.cwd(), 'src/components/program/ProgramAdaptationCarousel.tsx'), 'utf8');
+    const progPlanSrc73 = fs73.readFileSync(path73.join(process.cwd(), 'src/components/program/ProgramPlanView.tsx'), 'utf8');
+    const progTabSrc73 = fs73.readFileSync(path73.join(process.cwd(), 'src/components/program/ProgramTab.tsx'), 'utf8');
+    const detailSrc73 = fs73.readFileSync(path73.join(process.cwd(), 'src/components/train/ExerciseDetailModal.tsx'), 'utf8');
+    const balanceSrc73 = fs73.readFileSync(path73.join(process.cwd(), 'src/components/analytics/BalanceCard.tsx'), 'utf8');
+    const appSrc73 = fs73.readFileSync(path73.join(process.cwd(), 'src/App.tsx'), 'utf8');
+    assert(
+      carouselSrc73.includes('aria-roledescription="slide"') &&
+        carouselSrc73.includes('snap-x snap-mandatory') &&
+        carouselSrc73.includes('Accept') &&
+        carouselSrc73.includes('Dismiss') &&
+        carouselSrc73.includes('Undo') &&
+        progPlanSrc73.includes('<ProgramAdaptationCarousel') &&
+        !progPlanSrc73.includes('Additional coaching suggestions') &&
+        progTabSrc73.includes('<ProgramAdaptationCarousel') &&
+        detailSrc73.includes('onAcceptIntervention') &&
+        detailSrc73.includes('onDismissIntervention') &&
+        balanceSrc73.includes('onAcceptIntervention') &&
+        balanceSrc73.includes('onDismissIntervention') &&
+        appSrc73.includes('handleAcceptIntervention') &&
+        appSrc73.includes('handleDismissIntervention') &&
+        TREISE_DESIGN_SYSTEM.some((c) => c.id === 'ds-program-adaptation-carousel'),
+      'ProgramAdaptationCarousel renders standalone ordered suggestion cards with Accept/Dismiss/Undo wired across Program, Workout, Progress, App, and Design System'
+    );
+  }
+
+  console.log('\nALL 73 ENGINE, GOVERNANCE, DESIGN SYSTEM, TYPOGRAPHY, WEARABLES, WHOOP STRAIN, GOOGLE AUTH, ONBOARDING CONTEXT, 6-WEEK PROGRAM, SPREADSHEET IMPORT, AI COACH ACTIONS, GEMINI FLASH + KG, OOUX, AGENTIC COACH, PRODUCT UPGRADES, INFO EXPERIENCE, CONTENT DESIGN, GOAL CAROUSEL, SHIFT NUDGE COLOR POLISH, EXERCISE DRILL-IN MODAL, COMPOSITION WIDGET, MEASUREMENT UX, AI-NATIVE ACTIONS, PERMANENT PROGRAM ADAPTATION, HITL INTERVENTION, REP-RANGE DOUBLE PROGRESSION, TWO-DUMBBELL PER-HAND LOGGING, AI-NATIVE CONVERSATIONAL DESIGN, P0 CLOSED-BETA READINESS, P1 GYM-FLOOR ACTIVATION, MACROFACTOR EXERCISE SCIENCE, AI PERSONALISATION/MEMORY, LEAN PROGRESSIVE ONBOARDING, CROSS-SURFACE AI ECONOMY, EXERCISE CARD DECLUTTERING & ADAPTATION CAROUSEL SUITES PASSED SUCCESSFULLY! 🎯');
 })().catch((err) => {
   console.error('Test Suite Failed:', err);
   if (typeof process !== 'undefined' && process.exit) {

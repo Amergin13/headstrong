@@ -28,6 +28,9 @@ import { CustomExerciseModal } from './CustomExerciseModal';
 import { MesocycleManager } from './MesocycleManager';
 import { GoalPhaseSwitcher } from './GoalPhaseSwitcher';
 import { WeeklyVolumeCard } from './WeeklyVolumeCard';
+import { InterventionActionReceipt, ProgramAdaptationCarousel } from './ProgramAdaptationCarousel';
+import { CoachIntervention, detectCoachInterventions } from '../../services/coachInterventions';
+import { calculateWeeklyMuscleVolume } from '../../services/storage';
 import { triggerHaptic } from '../../utils/haptics';
 import '../../services/deviceModels';
 
@@ -67,6 +70,14 @@ interface ProgramTabProps {
   onOpenCoachIntervention?: (prompt: string) => void;
   /** Opens Treise coach in the Program context (optional pre-filled prompt). */
   onOpenCoach?: (prompt?: string) => void;
+  /** Directly executes and persists an accepted adaptation suggestion across the entire product. */
+  onAcceptIntervention?: (intervention: CoachIntervention) => InterventionActionReceipt | void;
+  /** Dismisses an adaptation suggestion and persists dismissal across the entire product. */
+  onDismissIntervention?: (intervention: CoachIntervention) => InterventionActionReceipt | void;
+  /** Removes a single accepted program override cleanly. */
+  onRemoveProgramOverride?: (overrideId: string) => void;
+  /** Clears all accepted program overrides for the current plan. */
+  onClearProgramOverrides?: (planId: string) => void;
 }
 
 const HOME_EQUIP_LABELS: Record<string, string> = {
@@ -104,6 +115,10 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
   onBackToWorkout,
   onOpenCoachIntervention,
   onOpenCoach,
+  onAcceptIntervention,
+  onDismissIntervention,
+  onRemoveProgramOverride,
+  onClearProgramOverrides,
 }) => {
   const [showCreateExercise, setShowCreateExercise] = useState(false);
   const [showProgramPicker, setShowProgramPicker] = useState(false);
@@ -118,6 +133,21 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
     });
   }, [inspectedExerciseId, exerciseCatalog, workouts]);
   const isPlan = isPlanProgram(profile.programType);
+  const splitInterventions = useMemo(() => {
+    if (isPlan) return [];
+    const weeklyVolume = calculateWeeklyMuscleVolume(workouts, exerciseCatalog);
+    return detectCoachInterventions({
+      profile,
+      workouts,
+      biometrics,
+      exerciseCatalog,
+      bodyweightEmaKg: bodyweightKg,
+      readinessState,
+      weeklyVolume,
+      activities,
+      trainingPlan,
+    });
+  }, [isPlan, profile, workouts, biometrics, exerciseCatalog, bodyweightKg, readinessState, activities, trainingPlan]);
   const changeProgram = (newProg: ProgramSplitType) => {
     if (onUpdateProgram) {
       onUpdateProgram(newProg);
@@ -159,6 +189,10 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
           onBackToWorkout={onBackToWorkout}
           onOpenCoachIntervention={onOpenCoachIntervention}
           onOpenCoach={onOpenCoach}
+          onAcceptIntervention={onAcceptIntervention}
+          onDismissIntervention={onDismissIntervention}
+          onRemoveProgramOverride={onRemoveProgramOverride}
+          onClearProgramOverrides={onClearProgramOverrides}
           headerAction={headerMenu}
         />
       )}
@@ -206,6 +240,14 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
                   </button>
                 )}
               </div>
+            )}
+
+            {onAcceptIntervention && onDismissIntervention && (
+              <ProgramAdaptationCarousel
+                interventions={splitInterventions}
+                onAccept={onAcceptIntervention}
+                onDismiss={onDismissIntervention}
+              />
             )}
 
             {/* 1. Training Locations & Equipment Summary Card */}
@@ -348,6 +390,9 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
           bodyweightKg={bodyweightKg}
           goalPhase={profile.goalPhase}
           readinessState={readinessState}
+          intervention={splitInterventions.find((i) => i.exerciseId === inspectedExercise.exercise.exerciseId)}
+          onAcceptIntervention={onAcceptIntervention}
+          onDismissIntervention={onDismissIntervention}
           onAskCoach={
             onOpenCoachIntervention
               ? () =>

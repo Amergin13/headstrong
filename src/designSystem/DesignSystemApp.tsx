@@ -43,6 +43,8 @@ import { AICoachChatModal } from '../components/assistant/AICoachChatModal';
 import { OnboardingModal } from '../components/onboarding/OnboardingModal';
 import { TimelineToggle } from '../components/analytics/TimelineToggle';
 import { GoalPhaseSwitcher } from '../components/program/GoalPhaseSwitcher';
+import { ProgramAdaptationCarousel } from '../components/program/ProgramAdaptationCarousel';
+import type { CoachIntervention } from '../services/coachInterventions';
 import {
   DetailHeader,
   GoalsHero,
@@ -327,6 +329,66 @@ export const DesignSystemContent: React.FC<{
   const [activeNavTab, setActiveNavTab] = useState<TabId>('train');
   const [timeline, setTimeline] = useState<ChartTimeline>('1M');
   const [goalPhase, setGoalPhase] = useState<'Lean Bulk' | 'Cut / Recomp' | 'Maingain'>('Lean Bulk');
+  const [demoInterventions, setDemoInterventions] = useState<CoachIntervention[]>([
+    {
+      id: 'ds-imbalance-pull',
+      kind: 'pull_push_imbalance',
+      priority: 'high',
+      surface: 'balance',
+      badgeLabel: 'Strength balance',
+      title: 'Build vertical pulling across your program',
+      rationale: 'Your chin-up trails Poliquin pulling balance relative to bench press. Prioritizing vertical pulling while fresh closes the gap cleanly.',
+      ctaLabel: 'Fix imbalance in program',
+      coachPrompt: 'Rebalance my program for my pulling imbalance',
+      pillar: 'Vertical Pull',
+      remainingAffectedCount: 6,
+      totalAffectedCount: 6,
+      affectedTitles: ['Upper A', 'Upper B'],
+      proposedChanges: [
+        {
+          kind: 'prioritize_first',
+          targetExerciseId: 'ex-lat-pulldown',
+          targetExerciseName: 'Lat Pulldown',
+          reason: 'Poliquin pulling balance',
+          humanSummary: 'Move Lat Pulldown first when fresh',
+        },
+        {
+          kind: 'adjust_sets',
+          targetExerciseId: 'ex-lat-pulldown',
+          targetExerciseName: 'Lat Pulldown',
+          setDelta: 1,
+          reason: 'Poliquin pulling balance',
+          humanSummary: '+1 set on Lat Pulldown across sessions',
+        },
+      ],
+    },
+    {
+      id: 'ds-volume-chest',
+      kind: 'volume_gap',
+      priority: 'medium',
+      surface: 'program',
+      badgeLabel: 'Weekly volume',
+      title: 'Add chest sets across 6-week plan',
+      rationale: 'Chest is at 6 of 12–18 hard sets this week. Adding a working set per session raises weekly stimulus cleanly.',
+      ctaLabel: 'Add chest volume in program',
+      coachPrompt: 'Adjust my program to add a working set on Incline Dumbbell Press across all sessions',
+      exerciseId: 'ex-db-bench-press',
+      pillar: 'Horizontal Push',
+      remainingAffectedCount: 4,
+      totalAffectedCount: 4,
+      affectedTitles: ['Push', 'Upper'],
+      proposedChanges: [
+        {
+          kind: 'adjust_sets',
+          targetExerciseId: 'ex-db-bench-press',
+          targetExerciseName: 'Incline Dumbbell Press',
+          setDelta: 1,
+          reason: 'raise chest weekly sets toward MEV',
+          humanSummary: '+1 working set on Incline Dumbbell Press across sessions',
+        },
+      ],
+    },
+  ]);
   const [showToast, setShowToast] = useState(false);
   const [openModal, setOpenModal] = useState<'rest' | 'plates' | 'swap' | 'exercise-detail' | 'coach' | 'onboarding' | 'onboarding-edit' | null>(null);
   const [runtimeMode, setRuntimeMode] = useState<'ssr' | 'http' | 'file'>('ssr');
@@ -1344,6 +1406,33 @@ export const DesignSystemContent: React.FC<{
               </div>
 
               <GoalPhaseSwitcher currentPhase={goalPhase} onSelectPhase={setGoalPhase} />
+
+              <StageHeader
+                title="ProgramAdaptationCarousel (Ordered standalone suggestion cards)"
+                source="src/components/program/ProgramAdaptationCarousel.tsx"
+                dsId="ds-program-adaptation-carousel"
+              />
+              <ProgramAdaptationCarousel
+                interventions={demoInterventions}
+                onAccept={(item) => {
+                  const snapshot = demoInterventions;
+                  setDemoInterventions((prev) => prev.filter((x) => x.id !== item.id));
+                  return {
+                    kind: 'accepted',
+                    message: `Applied across ${item.remainingAffectedCount} sessions: ${item.proposedChanges.map((c) => c.humanSummary).join(' · ')}.`,
+                    undo: () => setDemoInterventions(snapshot),
+                  };
+                }}
+                onDismiss={(item) => {
+                  const snapshot = demoInterventions;
+                  setDemoInterventions((prev) => prev.filter((x) => x.id !== item.id));
+                  return {
+                    kind: 'dismissed',
+                    message: `Dismissed "${item.title}".`,
+                    undo: () => setDemoInterventions(snapshot),
+                  };
+                }}
+              />
 
               <div className="wk-card space-y-3">
                 <div className="flex items-center justify-between gap-2">

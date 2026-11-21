@@ -78,7 +78,8 @@ import {
   generateExerciseNote,
   getCachedExerciseNote,
 } from '../../services/exerciseCoachNote';
-import { detectCoachInterventions } from '../../services/coachInterventions';
+import { CoachIntervention, detectCoachInterventions } from '../../services/coachInterventions';
+import type { InterventionActionReceipt } from '../program/ProgramAdaptationCarousel';
 import { getActiveModelTier } from '../../services/onDeviceModel';
 import '../../services/deviceModels';
 import {
@@ -152,6 +153,10 @@ interface TrainTabProps {
   onOpenCoachIntervention?: (opts: { prompt: string; exerciseId?: string }) => void;
   /** Opens Treise coach in Workout context (optionally scoped to an exercise or prompt). */
   onOpenCoach?: (opts?: { exerciseId?: string; prompt?: string }) => void;
+  /** Directly executes and persists an accepted adaptation suggestion across the entire product. */
+  onAcceptIntervention?: (intervention: CoachIntervention) => InterventionActionReceipt | void;
+  /** Dismisses an adaptation suggestion and persists dismissal across the entire product. */
+  onDismissIntervention?: (intervention: CoachIntervention) => InterventionActionReceipt | void;
 }
 
 /** Primary muscles each split day trains, used to suggest a recovered alternative. */
@@ -204,6 +209,8 @@ export const TrainTab: React.FC<TrainTabProps> = ({
   onOpenInsights,
   onOpenCoachIntervention,
   onOpenCoach,
+  onAcceptIntervention,
+  onDismissIntervention,
 }) => {
   const units = useUnits();
   const [detailExerciseId, setDetailExerciseId] = useState<string | null>(null);
@@ -2068,6 +2075,8 @@ export const TrainTab: React.FC<TrainTabProps> = ({
             onOpenPlateCalc={(kg) => setPlateCalcWeight(kg)}
             onOpenNotesHistory={onOpenInsights ? () => onOpenInsights(detailEx.exerciseId) : undefined}
             intervention={programInterventions.find((i) => i.exerciseId === detailEx.exerciseId)}
+            onAcceptIntervention={onAcceptIntervention}
+            onDismissIntervention={onDismissIntervention}
             onAskCoachToAdapt={
               onOpenCoachIntervention
                 ? (prompt, exerciseId) =>

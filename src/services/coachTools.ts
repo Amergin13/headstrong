@@ -14,6 +14,7 @@ import {
   getSessionPlanId,
   isActiveSlot,
   planWorkoutLabel,
+  TrainingPlan,
 } from '../engine/muscleBuildingProgram';
 import {
   applyProgramOverridesToPlan,
@@ -65,7 +66,11 @@ import { formatPreciseWeight, formatWeight, snapLoadKg, unitToKg } from '../util
 import { findExerciseNamed } from './coachAnswers';
 import { CoachPlace } from './coachContext';
 import { ContextEnvelope, createMemoryFact, deriveContraindicationEdges } from './coachContextEnvelope';
-import { detectCoachInterventions } from './coachInterventions';
+import {
+  buildOverridesForIntervention,
+  CoachIntervention,
+  detectCoachInterventions,
+} from './coachInterventions';
 import { detectGoalChange } from './coachGoals';
 import { GOOGLE_AUTH_CONFIG, isSupabaseConfigured } from './googleAuthService';
 import { detectProgressWidgetChange } from './progressWidgets';
@@ -3080,6 +3085,119 @@ function syncActiveWorkoutWithOverrides(
   }
 
   return touched ? current : undefined;
+}
+
+export interface ApplyCoachInterventionInput {
+  intervention: CoachIntervention;
+  profile: UserProfile;
+  activeWorkout: WorkoutSession;
+  workouts: WorkoutSession[];
+  biometrics: BiometricLog[];
+  exerciseCatalog: ExerciseDefinition[];
+  bodyweightEmaKg: number;
+  readinessState: ReadinessState;
+  trainingPlan?: TrainingPlan;
+}
+
+export interface ApplyCoachInterventionResult {
+  appliedOverrides: ProgramExerciseOverride[];
+  updatedProfilePatch: Pick<UserProfile, 'programOverrides'>;
+  updatedActiveWorkout?: WorkoutSession;
+  previousProfileSnapshot: Pick<UserProfile, 'programOverrides' | 'dismissedInterventions'>;
+  previousActiveWorkout: WorkoutSession;
+  summaryText: string;
+  affectedCount: number;
+}
+
+/**
+ * Deterministically executes a suggested CoachIntervention when accepted by the athlete:
+ * persists the resulting ProgramExerciseOverride rules on UserProfile, updates the active plan,
+ * and synchronizes today's uncompleted active workout so changes take effect immediately across
+ * Program, Workout, Progress, Knowledge Graph, and AI Coach.
+ */
+export function applyCoachInterventionToState(
+  input: ApplyCoachInterventionInput
+): ApplyCoachInterventionResult {
+  const {
+    intervention,
+    profile,
+    activeWorkout,
+    workouts,
+    biometrics,
+    exerciseCatalog,
+    bodyweightEmaKg,
+    readinessState,
+  } = input;
+  const plan = input.trainingPlan ?? resolveActivePlan(profile);
+  const appliedOverrides = buildOverridesForIntervention(intervention, plan.id);
+  const nextOverrides = [...(profile.programOverrides ?? []), ...appliedOverrides];
+  const updatedPlan = applyProgramOverridesToPlan(plan, appliedOverrides);
+
+  const syntheticContext: CoachToolExecutionContext = {
+    profile,
+    activeWorkout,
+    workouts,
+    biometrics,
+    exerciseCatalog,
+    bodyweightEmaKg,
+    readinessState,
+  };
+
+  let updatedActiveWorkout = syncActiveWorkoutWithOverrides(updatedPlan, appliedOverrides, syntheticContext);
+
+  // Also synchronize custom/split active workouts (when not tied to a numbered 6-week plan slot)
+  // if the current uncompleted workout contains an affected exercise.
+  if (!updatedActiveWorkout && !activeWorkout.completed && !activeWorkout.programWorkoutNumber) {
+    const mappedSplitDay: 'Push' | 'Pull' | 'Legs' | 'Upper' =
+      activeWorkout.splitDay === 'Lower'
+        ? 'Legs'
+        : activeWorkout.splitDay === 'Full Body'
+        ? 'Upper'
+        : activeWorkout.splitDay;
+    const syntheticTemplate = {
+      workoutNumber: 1,
+      week: profile.mesocycleWeek ?? 1,
+      phase: 1,
+      dayOfWeek: 'Monday' as const,
+      title: activeWorkout.name,
+      splitDay: mappedSplitDay,
+      exercises: [],
+    };
+    const syntheticPlan: TrainingPlan = {
+      ...updatedPlan,
+      templates: [syntheticTemplate],
+    };
+    const synced = syncActiveWorkoutWithOverrides(syntheticPlan, appliedOverrides, {
+      ...syntheticContext,
+      activeWorkout: { ...activeWorkout, planId: updatedPlan.id, programWorkoutNumber: 1 },
+    });
+    if (synced) {
+      updatedActiveWorkout = {
+        ...synced,
+        planId: activeWorkout.planId,
+        programWorkoutNumber: activeWorkout.programWorkoutNumber,
+      };
+    }
+  }
+
+  const affectedCount = intervention.remainingAffectedCount || intervention.totalAffectedCount;
+  const sessionsLabel = `${affectedCount} ${affectedCount === 1 ? 'session' : 'sessions'}`;
+  const changeSummary = intervention.proposedChanges.map((c) => c.humanSummary).join(' · ');
+
+  return {
+    appliedOverrides,
+    updatedProfilePatch: { programOverrides: nextOverrides },
+    updatedActiveWorkout,
+    previousProfileSnapshot: {
+      programOverrides: profile.programOverrides,
+      dismissedInterventions: profile.dismissedInterventions,
+    },
+    previousActiveWorkout: activeWorkout,
+    summaryText: changeSummary
+      ? `Applied across ${sessionsLabel}: ${changeSummary}.`
+      : `Applied "${intervention.title}" across ${sessionsLabel}.`,
+    affectedCount,
+  };
 }
 
 export interface ModifyProgramArgs {

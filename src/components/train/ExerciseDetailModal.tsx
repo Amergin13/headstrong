@@ -1,7 +1,8 @@
 import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowRightLeft, Disc, Plus, Sparkles, X } from 'lucide-react';
+import { ArrowRightLeft, Check, Disc, Plus, Sparkles, X } from 'lucide-react';
 import type { CoachIntervention } from '../../services/coachInterventions';
+import type { InterventionActionReceipt } from '../program/ProgramAdaptationCarousel';
 import {
   BiometricLog,
   ExerciseDefinition,
@@ -59,6 +60,10 @@ export interface ExerciseDetailModalProps {
   onOpenNotesHistory?: () => void;
   /** Contextual OOUX HITL intervention surfaced for this movement, when applicable. */
   intervention?: CoachIntervention;
+  /** Directly accepts the surfaced intervention and persists changes across the product. */
+  onAcceptIntervention?: (intervention: CoachIntervention) => InterventionActionReceipt | void;
+  /** Directly dismisses the surfaced intervention and persists dismissal across the product. */
+  onDismissIntervention?: (intervention: CoachIntervention) => InterventionActionReceipt | void;
   /** Launches Treise coach with a contextual HITL adaptation prompt for this movement. */
   onAskCoachToAdapt?: (prompt: string, exerciseId?: string) => void;
   /** Opens Treise coach focused on this exercise without auto-submitting a mutation. */
@@ -92,6 +97,8 @@ export const ExerciseDetailModal: React.FC<ExerciseDetailModalProps> = ({
   onOpenPlateCalc,
   onOpenNotesHistory,
   intervention,
+  onAcceptIntervention,
+  onDismissIntervention,
   onAskCoachToAdapt,
   onAskCoach,
   onClose,
@@ -308,7 +315,7 @@ export const ExerciseDetailModal: React.FC<ExerciseDetailModalProps> = ({
               aria-labelledby={`${uid}-tab-overview`}
               className="flex flex-col gap-4"
             >
-              {intervention && onAskCoachToAdapt && (
+              {intervention && (onAcceptIntervention || onAskCoachToAdapt) && (
                 <section
                   aria-label="Suggested coaching adjustment"
                   className="wk-raised flex flex-col gap-3 border"
@@ -323,31 +330,64 @@ export const ExerciseDetailModal: React.FC<ExerciseDetailModalProps> = ({
                     />
                     <div className="min-w-0">
                       <div className="wk-subhead" style={{ color: 'var(--color-coach-accent)' }}>
-                        {intervention.title}
+                        {formatSentenceCase(intervention.title)}
                       </div>
                       <p className="wk-caption mt-1 max-w-prose">
                         {intervention.rationale}
                       </p>
                     </div>
                   </div>
-                  <button
-                    type="button"
-                    className={secondaryButton}
-                    style={{ borderColor: 'rgb(var(--color-coach-accent-rgb) / 0.35)' }}
-                    onClick={() => {
-                      triggerHaptic('light');
-                      onClose();
-                      onAskCoachToAdapt(intervention.coachPrompt, exercise.exerciseId);
-                    }}
-                  >
-                    <Sparkles
-                      className="w-4 h-4 shrink-0"
-                      style={{ color: 'var(--color-coach-accent)' }}
-                      strokeWidth={2.2}
-                      aria-hidden="true"
-                    />
-                    <span>{intervention.ctaLabel}</span>
-                  </button>
+                  {onAcceptIntervention && onDismissIntervention ? (
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        className="flex-1 min-h-[44px] rounded-xl px-4 py-2 text-base font-semibold inline-flex items-center justify-center gap-2 transition-transform active:scale-[0.98]"
+                        style={{
+                          background: 'var(--color-action-primary-bg)',
+                          color: 'var(--color-action-primary-fg)',
+                        }}
+                        onClick={() => {
+                          triggerHaptic('medium');
+                          onAcceptIntervention(intervention);
+                        }}
+                      >
+                        <Check className="w-4 h-4 shrink-0" strokeWidth={2.4} aria-hidden="true" />
+                        <span>Accept</span>
+                      </button>
+                      <button
+                        type="button"
+                        className={`${secondaryButton} px-4`}
+                        onClick={() => {
+                          triggerHaptic('light');
+                          onDismissIntervention(intervention);
+                        }}
+                      >
+                        <X className="w-4 h-4 shrink-0" strokeWidth={2} aria-hidden="true" />
+                        <span>Dismiss</span>
+                      </button>
+                    </div>
+                  ) : (
+                    onAskCoachToAdapt && (
+                      <button
+                        type="button"
+                        className={secondaryButton}
+                        style={{ borderColor: 'rgb(var(--color-coach-accent-rgb) / 0.35)' }}
+                        onClick={() => {
+                          triggerHaptic('light');
+                          onClose();
+                          onAskCoachToAdapt(intervention.coachPrompt, exercise.exerciseId);
+                        }}
+                      >
+                        <Sparkles
+                          className="w-4 h-4 shrink-0"
+                          style={{ color: 'var(--color-coach-accent)' }}
+                          strokeWidth={2.2}
+                          aria-hidden="true"
+                        />
+                        <span>{intervention.ctaLabel}</span>
+                      </button>
+                    )
+                  )}
                 </section>
               )}
 
