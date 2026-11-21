@@ -26,6 +26,7 @@ import {
   mergeHealthConnectProfile,
 } from '../../services/onboardingHealthImport';
 import { HealthConnectStatus } from '../../services/healthConnectBridge';
+import { formatHeight, resolveHeightUnit } from '../../utils/units';
 import { X } from 'lucide-react';
 import { triggerHaptic } from '../../utils/haptics';
 
@@ -268,7 +269,9 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
             const summaryBits: string[] = [];
             if (hcImport.gender) summaryBits.push(hcImport.gender === 'male' ? 'Male' : 'Female');
             if (hcImport.age) summaryBits.push(`${hcImport.age} yrs`);
-            if (hcImport.latestHeightCm) summaryBits.push(`${hcImport.latestHeightCm} cm`);
+            if (hcImport.latestHeightCm) {
+              summaryBits.push(formatHeight(hcImport.latestHeightCm, resolveHeightUnit(profile)));
+            }
             if (latest) summaryBits.push(`latest day ${latest.date}`);
             setImportStatus(`Imported from Health Connect (${summaryBits.join(' · ')}).`);
             triggerHaptic('success');

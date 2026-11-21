@@ -1,6 +1,6 @@
 import { DetectedActivity } from '../engine/activeDays';
 import { BiometricLog } from '../engine/types';
-import { formatPreciseWeight, WeightUnit } from '../utils/units';
+import { formatHeight, formatPreciseWeight, HeightUnit, WeightUnit } from '../utils/units';
 import { toDetectedActivities } from './activitySources';
 import {
   getHealthConnectStatus,
@@ -156,7 +156,8 @@ export function importFromHealthConnectJson(
 /** Concise, truthful 1-line summary of what Health Connect actually imported. */
 export function formatOnboardingHealthSummary(
   result: OnboardingHealthImportResult,
-  weightUnit: WeightUnit
+  weightUnit: WeightUnit,
+  heightUnit: HeightUnit = 'cm'
 ): string {
   const parts: string[] = [];
   if (result.gender) {
@@ -169,7 +170,7 @@ export function formatOnboardingHealthSummary(
     parts.push(formatPreciseWeight(result.latestBodyweightKg, weightUnit));
   }
   if (result.latestHeightCm && result.latestHeightCm > 0) {
-    parts.push(`${result.latestHeightCm} cm`);
+    parts.push(formatHeight(result.latestHeightCm, heightUnit));
   }
   if (result.biometricDaysCount > 0) {
     parts.push(`${result.biometricDaysCount} ${result.biometricDaysCount === 1 ? 'day' : 'days'} of health history`);

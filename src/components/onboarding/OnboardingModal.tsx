@@ -1,5 +1,15 @@
 import { OWN_GOAL_OPTIONS, makeCustomGoal } from '../../services/athleteGoals';
-import { formatWeight, kgToUnit, unitToKg, WeightUnit } from '../../utils/units';
+import {
+  cmToFeetInches,
+  feetInchesToCm,
+  formatHeight,
+  formatWeight,
+  HeightUnit,
+  kgToUnit,
+  resolveHeightUnit,
+  unitToKg,
+  WeightUnit,
+} from '../../utils/units';
 import React, { useEffect, useId, useRef, useState } from 'react';
 import { Activity, Check, ChevronDown, ChevronLeft, Upload, X } from 'lucide-react';
 import {
@@ -64,6 +74,7 @@ export interface OnboardingModalProps {
       measuredHeightCm?: number;
       experienceLevel: ExperienceLevel;
       weightUnit: WeightUnit;
+      heightUnit?: HeightUnit;
       bodyweightKg?: number;
     };
     /** Optional manual bodyweight entered in the lean stats step (omitted when skipped). */
@@ -255,6 +266,8 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
   const targetHelpId = inline ? `${uid}-own-goal-help` : 'own-goal-help';
   const weightInputId = `${uid}-baseline-weight`;
   const heightInputId = `${uid}-baseline-height`;
+  const heightFeetInputId = `${uid}-baseline-height-ft`;
+  const heightInchesInputId = `${uid}-baseline-height-in`;
   const ageInputId = `${uid}-baseline-age`;
   const returning = !!profile.onboardingCompleted;
   const [step, setStep] = useState<OnboardingStep>(initialStep);
@@ -293,6 +306,9 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
 
   // Step 3 (Health Connect) + Step 4 (Lean skippable baseline stats) state
   const [weightUnit, setWeightUnit] = useState<WeightUnit>(() => (returning ? profile.weightUnit || 'kg' : defaultUnit()));
+  const [heightUnit, setHeightUnit] = useState<HeightUnit>(() =>
+    returning ? resolveHeightUnit(profile) : defaultUnit() === 'lb' ? 'ft_in' : 'cm'
+  );
   const [hcStatus, setHcStatus] = useState<HealthConnectStatus>(() => getHealthConnectStatus());
   const [hcSyncing, setHcSyncing] = useState(false);
   const [hcError, setHcError] = useState<string | null>(null);
@@ -304,6 +320,12 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
   const [weightInput, setWeightInput] = useState<string>('');
   const [heightInput, setHeightInput] = useState<string>(
     returning && profile.measuredHeightCm ? String(profile.measuredHeightCm) : ''
+  );
+  const [heightFeetInput, setHeightFeetInput] = useState<string>(() =>
+    returning && profile.measuredHeightCm ? String(cmToFeetInches(profile.measuredHeightCm).feet) : ''
+  );
+  const [heightInchesInput, setHeightInchesInput] = useState<string>(() =>
+    returning && profile.measuredHeightCm ? String(cmToFeetInches(profile.measuredHeightCm).inches) : ''
   );
   const [ageInput, setAgeInput] = useState<string>(
     returning && profile.ageEntered ? String(profile.age) : ''
@@ -345,8 +367,17 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
     if (imported.latestBodyweightKg && imported.latestBodyweightKg > 0 && !weightInput.trim()) {
       setWeightInput(String(Math.round(kgToUnit(imported.latestBodyweightKg, weightUnit) * 10) / 10));
     }
-    if (imported.latestHeightCm && imported.latestHeightCm > 0 && !heightInput.trim()) {
+    if (
+      imported.latestHeightCm &&
+      imported.latestHeightCm > 0 &&
+      !heightInput.trim() &&
+      !heightFeetInput.trim() &&
+      !heightInchesInput.trim()
+    ) {
       setHeightInput(String(imported.latestHeightCm));
+      const { feet, inches } = cmToFeetInches(imported.latestHeightCm);
+      setHeightFeetInput(String(feet));
+      setHeightInchesInput(String(inches));
     }
     if (imported.gender && !selectedSex) {
       setSelectedSex(imported.gender);
@@ -436,12 +467,25 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
     weightInput.trim() !== '' &&
     (!Number.isFinite(parsedWeightNum) || parsedWeightKg === undefined || parsedWeightKg < 25 || parsedWeightKg > 300);
 
-  const parsedHeightNum = heightInput.trim() !== '' ? Number(heightInput) : NaN;
-  const parsedHeightCm =
-    Number.isFinite(parsedHeightNum) && parsedHeightNum >= 100 && parsedHeightNum <= 250
-      ? Math.round(parsedHeightNum)
-      : undefined;
-  const heightInvalid = heightInput.trim() !== '' && parsedHeightCm === undefined;
+  const hasHeightEntry =
+    heightUnit === 'cm'
+      ? heightInput.trim() !== ''
+      : heightFeetInput.trim() !== '' || heightInchesInput.trim() !== '';
+
+  const parsedHeightCm = (() => {
+    if (heightUnit === 'cm') {
+      const n = heightInput.trim() !== '' ? Number(heightInput) : NaN;
+      return Number.isFinite(n) && n >= 100 && n <= 250 ? Math.round(n) : undefined;
+    }
+    if (!hasHeightEntry) return undefined;
+    const ft = heightFeetInput.trim() !== '' ? Number(heightFeetInput) : NaN;
+    const inches = heightInchesInput.trim() !== '' ? Number(heightInchesInput) : 0;
+    if (!Number.isInteger(ft) || ft < 3 || ft > 8) return undefined;
+    if (!Number.isFinite(inches) || inches < 0 || inches >= 12) return undefined;
+    const cm = feetInchesToCm(ft, inches);
+    return cm >= 100 && cm <= 250 ? cm : undefined;
+  })();
+  const heightInvalid = hasHeightEntry && parsedHeightCm === undefined;
 
   const parsedAgeNum = ageInput.trim() !== '' ? Number(ageInput) : NaN;
   const parsedAge =
@@ -454,7 +498,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
   const leanFormHasAnyInput = Boolean(
     selectedSex ||
       weightInput.trim() ||
-      heightInput.trim() ||
+      hasHeightEntry ||
       ageInput.trim()
   );
 
@@ -465,6 +509,25 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
       setWeightInput(String(Math.round(kgToUnit(parsedWeightKg, nextUnit) * 10) / 10));
     }
     setWeightUnit(nextUnit);
+  };
+
+  const switchHeightUnit = (nextUnit: HeightUnit) => {
+    if (nextUnit === heightUnit) return;
+    triggerHaptic('light');
+    if (parsedHeightCm !== undefined && !heightInvalid) {
+      if (nextUnit === 'ft_in') {
+        const { feet, inches } = cmToFeetInches(parsedHeightCm);
+        setHeightFeetInput(String(feet));
+        setHeightInchesInput(String(inches));
+      } else {
+        setHeightInput(String(parsedHeightCm));
+      }
+    } else if (!hasHeightEntry) {
+      setHeightInput('');
+      setHeightFeetInput('');
+      setHeightInchesInput('');
+    }
+    setHeightUnit(nextUnit);
   };
 
   const handleStep4Continue = () => {
@@ -534,6 +597,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
         // New athletes start light; the first logged sets teach the app their real strength.
         experienceLevel: editing ? profile.experienceLevel || experienceLevel : experienceLevel,
         weightUnit,
+        heightUnit,
         ...(effectiveWeightKg ? { bodyweightKg: effectiveWeightKg } : {}),
       },
       ...(hasManualBiometric
@@ -578,13 +642,13 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
     .filter(Boolean)
     .join(' · ');
 
-  const importedSummaryText = healthImport ? formatOnboardingHealthSummary(healthImport, weightUnit) : null;
+  const importedSummaryText = healthImport ? formatOnboardingHealthSummary(healthImport, weightUnit, heightUnit) : null;
   const baselineReadySummary = [
     hcConnectedFlag || healthImport ? 'Health Connect' : null,
     !statsSkipped && selectedSex ? (selectedSex === 'male' ? 'Male' : 'Female') : null,
     !statsSkipped && parsedAge ? `${parsedAge} yrs` : null,
     !statsSkipped && parsedWeightKg ? formatWeight(parsedWeightKg, weightUnit) : null,
-    !statsSkipped && parsedHeightCm ? `${parsedHeightCm} cm` : null,
+    !statsSkipped && parsedHeightCm ? formatHeight(parsedHeightCm, heightUnit) : null,
   ]
     .filter(Boolean)
     .join(' · ');
@@ -1141,12 +1205,41 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
               )}
             </div>
 
-            {/* Height + Age (balanced 2-column row) */}
-            <div className="grid grid-cols-2 gap-3">
-              <div className="flex flex-col gap-2">
-                <label htmlFor={heightInputId} style={{ ...sectionLabel, marginBottom: 0 }}>
-                  Height (cm)
+            {/* Height (full width with cm / ft & in unit toggle) */}
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center justify-between gap-2">
+                <label
+                  htmlFor={heightUnit === 'cm' ? heightInputId : heightFeetInputId}
+                  style={{ ...sectionLabel, marginBottom: 0 }}
+                >
+                  Height ({heightUnit === 'ft_in' ? 'ft / in' : 'cm'})
                 </label>
+                <div className="flex items-center gap-1" role="group" aria-label="Height unit">
+                  {([
+                    { id: 'cm', label: 'cm' },
+                    { id: 'ft_in', label: 'ft / in' },
+                  ] as Array<{ id: HeightUnit; label: string }>).map((opt) => (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      aria-pressed={heightUnit === opt.id}
+                      onClick={() => switchHeightUnit(opt.id)}
+                      className={`px-3 rounded-lg font-medium ${focusRingClass}`}
+                      style={{
+                        minHeight: 32,
+                        fontSize: 12,
+                        background: heightUnit === opt.id ? 'var(--color-action-secondary-bg)' : 'transparent',
+                        color: heightUnit === opt.id ? 'var(--color-text-primary)' : 'var(--wk-muted)',
+                        border: `1px solid ${heightUnit === opt.id ? 'var(--color-border-strong)' : 'var(--color-border-subtle)'}`,
+                      }}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {heightUnit === 'cm' ? (
                 <input
                   id={heightInputId}
                   type="number"
@@ -1161,37 +1254,92 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                     border: `1px solid ${heightInvalid ? 'var(--color-status-danger-fill)' : 'var(--color-border-subtle)'}`,
                   }}
                 />
-                {heightInvalid && (
-                  <span role="alert" className="wk-caption" style={{ color: 'var(--color-status-danger)' }}>
-                    100–250 cm.
-                  </span>
-                )}
-              </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="relative">
+                    <input
+                      id={heightFeetInputId}
+                      type="number"
+                      inputMode="numeric"
+                      min={3}
+                      max={8}
+                      placeholder="5"
+                      aria-label="Height in feet"
+                      value={heightFeetInput}
+                      onChange={(e) => setHeightFeetInput(e.target.value)}
+                      aria-invalid={heightInvalid}
+                      className="wk-field w-full tabular-nums pr-9"
+                      style={{
+                        ...leanFieldStyle,
+                        border: `1px solid ${heightInvalid ? 'var(--color-status-danger-fill)' : 'var(--color-border-subtle)'}`,
+                      }}
+                    />
+                    <span
+                      className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 wk-caption"
+                      style={{ color: 'var(--wk-muted)' }}
+                    >
+                      ft
+                    </span>
+                  </div>
+                  <div className="relative">
+                    <input
+                      id={heightInchesInputId}
+                      type="number"
+                      inputMode="numeric"
+                      min={0}
+                      max={11}
+                      placeholder="10"
+                      aria-label="Height in inches"
+                      value={heightInchesInput}
+                      onChange={(e) => setHeightInchesInput(e.target.value)}
+                      aria-invalid={heightInvalid}
+                      className="wk-field w-full tabular-nums pr-9"
+                      style={{
+                        ...leanFieldStyle,
+                        border: `1px solid ${heightInvalid ? 'var(--color-status-danger-fill)' : 'var(--color-border-subtle)'}`,
+                      }}
+                    />
+                    <span
+                      className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 wk-caption"
+                      style={{ color: 'var(--wk-muted)' }}
+                    >
+                      in
+                    </span>
+                  </div>
+                </div>
+              )}
 
-              <div className="flex flex-col gap-2">
-                <label htmlFor={ageInputId} style={{ ...sectionLabel, marginBottom: 0 }}>
-                  Age
-                </label>
-                <input
-                  id={ageInputId}
-                  type="number"
-                  inputMode="numeric"
-                  placeholder="Years"
-                  value={ageInput}
-                  onChange={(e) => setAgeInput(e.target.value)}
-                  aria-invalid={ageInvalid}
-                  className="wk-field w-full tabular-nums"
-                  style={{
-                    ...leanFieldStyle,
-                    border: `1px solid ${ageInvalid ? 'var(--color-status-danger-fill)' : 'var(--color-border-subtle)'}`,
-                  }}
-                />
-                {ageInvalid && (
-                  <span role="alert" className="wk-caption" style={{ color: 'var(--color-status-danger)' }}>
-                    13–110.
-                  </span>
-                )}
-              </div>
+              {heightInvalid && (
+                <span role="alert" className="wk-caption" style={{ color: 'var(--color-status-danger)' }}>
+                  {heightUnit === 'ft_in' ? 'Enter 3–8 ft and 0–11 in.' : '100–250 cm.'}
+                </span>
+              )}
+            </div>
+
+            {/* Age */}
+            <div className="flex flex-col gap-2">
+              <label htmlFor={ageInputId} style={{ ...sectionLabel, marginBottom: 0 }}>
+                Age
+              </label>
+              <input
+                id={ageInputId}
+                type="number"
+                inputMode="numeric"
+                placeholder="Years"
+                value={ageInput}
+                onChange={(e) => setAgeInput(e.target.value)}
+                aria-invalid={ageInvalid}
+                className="wk-field w-full tabular-nums"
+                style={{
+                  ...leanFieldStyle,
+                  border: `1px solid ${ageInvalid ? 'var(--color-status-danger-fill)' : 'var(--color-border-subtle)'}`,
+                }}
+              />
+              {ageInvalid && (
+                <span role="alert" className="wk-caption" style={{ color: 'var(--color-status-danger)' }}>
+                  13–110.
+                </span>
+              )}
             </div>
 
             <p style={{ ...optionDetail, marginTop: 0 }}>

@@ -16762,6 +16762,47 @@ Exercise,,Date,Workout,Sets,Reps,Tempo,Rest,Notes,Set 1,Set 2,Set 3,Set 4
         manifest74.includes('android.permission.health.READ_HEIGHT'),
       'Dedicated Health Connect onboarding step, background sync, WatchSyncModal import, native full-window READ_HEIGHT + profile payload, and App persistence are wired cleanly end-to-end'
     );
+
+    // 3. Weight (kg/lb) & Height (cm/ft_in) unit switching across Onboarding, Settings, UnitsProvider, and WeightLogModal.
+    const {
+      cmToFeetInches: cm2ftIn74,
+      feetInchesToCm: ftIn2cm74,
+      formatHeight: fmtHeight74,
+      resolveHeightUnit: resolveHeightUnit74,
+    } = await import('../../utils/units');
+    const fi178 = cm2ftIn74(178);
+    const fi183 = cm2ftIn74(183);
+    const summaryImperial74 = formatHcSum74(parsed74, 'lb', 'ft_in');
+    const settingsSrc74 = fs74.readFileSync(path74.join(process.cwd(), 'src/components/auth/ProfileSettingsSections.tsx'), 'utf8');
+    const weightLogSrc74 = fs74.readFileSync(path74.join(process.cwd(), 'src/components/analytics/WeightLogModal.tsx'), 'utf8');
+    assert(
+      fi178.feet === 5 &&
+        fi178.inches === 10 &&
+        fi183.feet === 6 &&
+        fi183.inches === 0 &&
+        ftIn2cm74(5, 10) === 178 &&
+        ftIn2cm74(6, 0) === 183 &&
+        fmtHeight74(178, 'cm') === '178 cm' &&
+        fmtHeight74(178, 'ft_in') === `5'10"` &&
+        resolveHeightUnit74({ weightUnit: 'kg' }) === 'cm' &&
+        resolveHeightUnit74({ weightUnit: 'lb' }) === 'ft_in' &&
+        resolveHeightUnit74({ weightUnit: 'kg', heightUnit: 'ft_in' }) === 'ft_in' &&
+        resolveHeightUnit74({ weightUnit: 'lb', heightUnit: 'cm' }) === 'cm' &&
+        summaryImperial74.includes('140.7 lb') &&
+        summaryImperial74.includes(`5'6"`) &&
+        obSrc74.includes('aria-label="Weight unit"') &&
+        obSrc74.includes('aria-label="Height unit"') &&
+        obSrc74.includes('switchHeightUnit') &&
+        obSrc74.includes('heightUnit') &&
+        settingsSrc74.includes('aria-label="Weight units"') &&
+        settingsSrc74.includes('aria-label="Height units"') &&
+        settingsSrc74.includes('athlete-height-cm-input') &&
+        settingsSrc74.includes('athlete-height-ft-input') &&
+        appSrc74.includes('heightUnit={heightUnit}') &&
+        appSrc74.includes('athlete.heightUnit') &&
+        weightLogSrc74.includes("units.heightUnit === 'ft_in'"),
+      `Weight (kg/lb) and height (cm/ft-in) unit conversion & UI controls work cleanly across Onboarding, Settings, and Weigh-in (got "${summaryImperial74}")`
+    );
   }
 
   console.log('\n--- 75. Seamless Cross-Environment Exercise Swapping & Continuity Engine (Spec Tests 1–8) ---');

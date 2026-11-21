@@ -798,6 +798,8 @@ export interface UserProfile {
   experienceLevel?: ExperienceLevel;
   /** Display/input unit for weights. Data is always stored in kg. */
   weightUnit?: 'kg' | 'lb';
+  /** Display/input unit for height. Data is always stored in cm. */
+  heightUnit?: 'cm' | 'ft_in';
   /** Placeholder (25) until the athlete enters it; see ageEntered. */
   age: number;
   /** True once the athlete entered their age (Settings); strength standards use the 18–39 table until then. */

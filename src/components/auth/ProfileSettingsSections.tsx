@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { ChevronRight } from 'lucide-react';
 import {
   BiometricLog,
@@ -15,7 +15,14 @@ import {
 } from '../../engine/equipmentInventory';
 import { WEARABLE_PROVIDERS } from '../../services/wearableSyncService';
 import { MIN_BACKUP_PASSPHRASE_LENGTH } from '../../services/encryptedBackup';
-import { LB_PER_KG } from '../../utils/units';
+import {
+  cmToFeetInches,
+  feetInchesToCm,
+  formatHeight,
+  HeightUnit,
+  LB_PER_KG,
+  resolveHeightUnit,
+} from '../../utils/units';
 import { triggerHaptic } from '../../utils/haptics';
 
 
@@ -77,6 +84,48 @@ export const ProfileSettingsSections: React.FC<ProfileSettingsSectionsProps> = (
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const unit = profile.weightUnit || 'kg';
+  const heightUnit: HeightUnit = resolveHeightUnit(profile);
+  const [heightCmDraft, setHeightCmDraft] = useState<string>(() =>
+    profile.measuredHeightCm ? String(profile.measuredHeightCm) : ''
+  );
+  const [heightFeetDraft, setHeightFeetDraft] = useState<string>(() =>
+    profile.measuredHeightCm ? String(cmToFeetInches(profile.measuredHeightCm).feet) : ''
+  );
+  const [heightInchesDraft, setHeightInchesDraft] = useState<string>(() =>
+    profile.measuredHeightCm ? String(cmToFeetInches(profile.measuredHeightCm).inches) : ''
+  );
+
+  useEffect(() => {
+    if (profile.measuredHeightCm && profile.measuredHeightCm > 0) {
+      setHeightCmDraft(String(profile.measuredHeightCm));
+      const { feet, inches } = cmToFeetInches(profile.measuredHeightCm);
+      setHeightFeetDraft(String(feet));
+      setHeightInchesDraft(String(inches));
+    } else {
+      setHeightCmDraft('');
+      setHeightFeetDraft('');
+      setHeightInchesDraft('');
+    }
+  }, [profile.measuredHeightCm, heightUnit]);
+
+  const commitFeetInches = (nextFeetRaw: string, nextInchesRaw: string) => {
+    setHeightFeetDraft(nextFeetRaw);
+    setHeightInchesDraft(nextInchesRaw);
+    const trimmedFt = nextFeetRaw.trim();
+    const trimmedIn = nextInchesRaw.trim();
+    if (!trimmedFt && !trimmedIn) {
+      onUpdateProfile({ measuredHeightCm: undefined });
+      return;
+    }
+    const ft = Number(trimmedFt);
+    const inches = trimmedIn === '' ? 0 : Number(trimmedIn);
+    if (!Number.isInteger(ft) || ft < 3 || ft > 8) return;
+    if (!Number.isFinite(inches) || inches < 0 || inches >= 12) return;
+    const cm = feetInchesToCm(ft, inches);
+    if (cm >= 100 && cm <= 250) {
+      onUpdateProfile({ measuredHeightCm: cm, heightCm: cm });
+    }
+  };
   const rirEnabled = resolveRirTrackingEnabled(profile);
   const activeInv: EquipmentInventory =
     profile.equipmentInventories?.[inventoryLoc]?.plateUnit === unit
@@ -141,7 +190,7 @@ export const ProfileSettingsSections: React.FC<ProfileSettingsSectionsProps> = (
             </h3>
             <div className="flex items-center shrink-0 gap-2">
               <span className="wk-pill">
-                {(profile.weightUnit || 'kg').toUpperCase()}
+                {(profile.weightUnit || 'kg').toUpperCase()} · {heightUnit === 'ft_in' ? 'FT/IN' : 'CM'}
               </span>
               <ChevronRight
                 className="wk-chevron transition-transform"
@@ -157,6 +206,7 @@ export const ProfileSettingsSections: React.FC<ProfileSettingsSectionsProps> = (
           <p className="wk-caption mt-2">
             {[
               profile.name,
+              profile.measuredHeightCm && formatHeight(profile.measuredHeightCm, heightUnit),
               maxHrKnown && `Max HR ${profile.maxHr} bpm`,
               restingHrKnown && `Resting ${profile.restingHrBaseline} bpm`,
             ]
@@ -226,6 +276,79 @@ export const ProfileSettingsSections: React.FC<ProfileSettingsSectionsProps> = (
             </p>
 
             <div className="flex items-center justify-between gap-3">
+              <label htmlFor={heightUnit === 'ft_in' ? 'athlete-height-ft-input' : 'athlete-height-cm-input'} className="wk-meta-title">
+                Height ({heightUnit === 'ft_in' ? 'ft / in' : 'cm'})
+              </label>
+              {heightUnit === 'cm' ? (
+                <input
+                  id="athlete-height-cm-input"
+                  type="number"
+                  inputMode="numeric"
+                  min={100}
+                  max={250}
+                  value={heightCmDraft}
+                  placeholder="—"
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    setHeightCmDraft(raw);
+                    if (!raw.trim()) {
+                      onUpdateProfile({ measuredHeightCm: undefined });
+                      return;
+                    }
+                    const v = Math.round(Number(raw));
+                    if (Number.isFinite(v) && v >= 100 && v <= 250) {
+                      onUpdateProfile({ measuredHeightCm: v, heightCm: v });
+                    }
+                  }}
+                  className="wk-field text-base tabular-nums w-24"
+                />
+              ) : (
+                <div className="flex items-center gap-2 shrink-0">
+                  <div className="relative">
+                    <input
+                      id="athlete-height-ft-input"
+                      type="number"
+                      inputMode="numeric"
+                      min={3}
+                      max={8}
+                      value={heightFeetDraft}
+                      placeholder="—"
+                      aria-label="Height in feet"
+                      onChange={(e) => commitFeetInches(e.target.value, heightInchesDraft)}
+                      className="wk-field text-base tabular-nums w-20 pr-7"
+                    />
+                    <span
+                      className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 wk-caption"
+                      style={{ color: 'var(--wk-muted)' }}
+                    >
+                      ft
+                    </span>
+                  </div>
+                  <div className="relative">
+                    <input
+                      id="athlete-height-in-input"
+                      type="number"
+                      inputMode="numeric"
+                      min={0}
+                      max={11}
+                      value={heightInchesDraft}
+                      placeholder="—"
+                      aria-label="Height in inches"
+                      onChange={(e) => commitFeetInches(heightFeetDraft, e.target.value)}
+                      className="wk-field text-base tabular-nums w-20 pr-7"
+                    />
+                    <span
+                      className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 wk-caption"
+                      style={{ color: 'var(--wk-muted)' }}
+                    >
+                      in
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center justify-between gap-3">
               <span className="wk-meta-title">Weight units</span>
               <div
                 className="wk-segments grid grid-cols-2 shrink-0"
@@ -239,10 +362,43 @@ export const ProfileSettingsSections: React.FC<ProfileSettingsSectionsProps> = (
                       key={u}
                       type="button"
                       aria-pressed={isSelected}
-                      onClick={() => onUpdateProfile({ weightUnit: u })}
+                      onClick={() => {
+                        triggerHaptic('light');
+                        onUpdateProfile({ weightUnit: u });
+                      }}
                       className={`wk-segment px-4 ${isSelected ? 'is-active' : ''}`}
                     >
                       {u}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between gap-3">
+              <span className="wk-meta-title">Height units</span>
+              <div
+                className="wk-segments grid grid-cols-2 shrink-0"
+                role="group"
+                aria-label="Height units"
+              >
+                {([
+                  { id: 'cm', label: 'cm' },
+                  { id: 'ft_in', label: 'ft / in' },
+                ] as Array<{ id: HeightUnit; label: string }>).map((opt) => {
+                  const isSelected = heightUnit === opt.id;
+                  return (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      aria-pressed={isSelected}
+                      onClick={() => {
+                        triggerHaptic('light');
+                        onUpdateProfile({ heightUnit: opt.id });
+                      }}
+                      className={`wk-segment px-3 ${isSelected ? 'is-active' : ''}`}
+                    >
+                      {opt.label}
                     </button>
                   );
                 })}

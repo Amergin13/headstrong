@@ -128,7 +128,7 @@ import { useWearableSync } from './hooks/useWearableSync';
 import { useLaunchLinks } from './hooks/useLaunchLinks';
 import { useDialogKeyboard } from './hooks/useDialogKeyboard';
 import { UnitsProvider } from './utils/unitsContext';
-import { WeightUnit } from './utils/units';
+import { HeightUnit, resolveHeightUnit, WeightUnit } from './utils/units';
 import { RestTimerContext } from './components/common/RestTimerModal';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { Header } from './components/common/Header';
@@ -331,6 +331,7 @@ export const App: React.FC = () => {
   const celebrate = (m: Milestone) => setToast({ title: m.title, message: m.description, tag: m.tag });
 
   const weightUnit: WeightUnit = profile.weightUnit || 'kg';
+  const heightUnit: HeightUnit = resolveHeightUnit(profile);
 
   /** Personalizes weights and snaps loads for every generated session. */
   const prepareSession = (
@@ -953,6 +954,7 @@ export const App: React.FC = () => {
             ...(athlete.measuredHeightCm ? { measuredHeightCm: athlete.measuredHeightCm, heightCm: athlete.measuredHeightCm } : {}),
             experienceLevel: athlete.experienceLevel,
             weightUnit: athlete.weightUnit,
+            ...(athlete.heightUnit ? { heightUnit: athlete.heightUnit } : {}),
           }
         : {}),
       ...(setup.healthConnectConnected
@@ -1628,7 +1630,7 @@ export const App: React.FC = () => {
             };
 
   return (
-    <UnitsProvider unit={weightUnit}>
+    <UnitsProvider unit={weightUnit} heightUnit={heightUnit}>
     <div className="wk min-h-screen flex flex-col font-sans relative">
       <div id="page-top-gradient-host" className="pointer-events-none" />
       {/* App Header */}

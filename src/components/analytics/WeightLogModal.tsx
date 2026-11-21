@@ -214,6 +214,9 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
   });
 
   const [height, setHeight] = useState('');
+  const [heightFeet, setHeightFeet] = useState('');
+  const [heightInches, setHeightInches] = useState('');
+  const useFeetInches = units.heightUnit === 'ft_in';
 
   // Remembered & Live RENPHO Bluetooth state
   const [savedDevices, setSavedDevices] = useState<SavedRenphoDevices>(() =>
@@ -275,11 +278,19 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
   singleSiteModeRef.current = singleSiteMode;
 
   const typedHeightCm = useMemo(() => {
+    if (useFeetInches) {
+      if (!heightFeet.trim() && !heightInches.trim()) return undefined;
+      const ft = Number(heightFeet);
+      const inches = heightInches.trim() === '' ? 0 : Number(heightInches);
+      if (!Number.isInteger(ft) || ft < 3 || ft > 8) return undefined;
+      if (!Number.isFinite(inches) || inches < 0 || inches >= 12) return undefined;
+      const cm = units.feetInchesToCm(ft, inches);
+      return cm >= 100 && cm <= 250 ? cm : undefined;
+    }
     const parsed = parseFloat(height);
     if (!Number.isFinite(parsed) || parsed <= 0) return undefined;
-    const cm = imperial ? parsed * CM_PER_IN : parsed;
-    return cm >= 120 && cm <= 230 ? cm : undefined;
-  }, [height, imperial]);
+    return parsed >= 100 && parsed <= 250 ? Math.round(parsed) : undefined;
+  }, [height, heightFeet, heightInches, useFeetInches, units]);
 
   const typedAgeRef = useRef<number | undefined>(undefined);
   const sexInputRef = useRef<Gender | undefined>(undefined);
@@ -756,22 +767,27 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
     (v) => typeof v === 'number' && v > 0
   );
 
+  const heightEntered = useFeetInches
+    ? Boolean(heightFeet.trim() || heightInches.trim())
+    : Boolean(height.trim());
+  const heightFieldValid = !heightEntered || typedHeightCm !== undefined;
+
   const valid =
     weightValid &&
     bfValid &&
     allSitesValid &&
-    lengthValid(height, 120, 230) &&
+    heightFieldValid &&
     (weightKg > 0 ||
       num(bodyFat) > 0 ||
       hasAnySiteValue ||
       hasAnyScaleMetric ||
-      num(height) > 0);
+      typedHeightCm !== undefined);
   const previewEmaKg =
     currentEma > 0 && hasPrevious && weightKg > 0
       ? weightKg * 0.25 + currentEma * 0.75
       : weightKg;
 
-  const formSnapshot = JSON.stringify([weightInput, bodyFat, height, capturedScaleMetrics]);
+  const formSnapshot = JSON.stringify([weightInput, bodyFat, height, heightFeet, heightInches, capturedScaleMetrics]);
   useEffect(() => {
     if (capturedForm === 'pending') setCapturedForm(formSnapshot);
   }, [capturedForm, formSnapshot]);
@@ -812,7 +828,7 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
         : Math.round(weightKg * 100) / 100
       : undefined;
     const finalBfPct = num(bodyFat) ? round(num(bodyFat)) : capturedScaleMetrics.bodyFatPct;
-    const finalHeightCm = num(height) ? round(toCm(num(height))) : undefined;
+    const finalHeightCm = !heightCm ? typedHeightCm : undefined;
     const effectiveHeightCm = finalHeightCm ?? heightCm;
 
     // If both weight and body fat are entered manually, also populate exact Fat-Free Mass, BMI (when height is known), and Katch-McArdle BMR
@@ -1128,7 +1144,48 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
                 </p>
               )}
               {!heightCm &&
-                field('Height', height, setHeight, lengthUnit, 'Asked once, for BMI and body metrics', lengthValid(height, 120, 230))}
+                (useFeetInches ? (
+                  <div className="block">
+                    <span className="wk-meta-title">Height (ft / in)</span>
+                    <span className="block wk-caption mt-1">Asked once, for BMI and body metrics</span>
+                    <div className="grid grid-cols-2 gap-3 mt-2">
+                      <div className="relative">
+                        <input
+                          type="number"
+                          inputMode="numeric"
+                          min={3}
+                          max={8}
+                          placeholder="5"
+                          aria-label="Height in feet"
+                          value={heightFeet}
+                          onChange={(e) => setHeightFeet(e.target.value)}
+                          className="wk-field text-base tabular-nums w-full pr-9"
+                        />
+                        <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 wk-caption" style={{ color: 'var(--wk-muted)' }}>
+                          ft
+                        </span>
+                      </div>
+                      <div className="relative">
+                        <input
+                          type="number"
+                          inputMode="numeric"
+                          min={0}
+                          max={11}
+                          placeholder="10"
+                          aria-label="Height in inches"
+                          value={heightInches}
+                          onChange={(e) => setHeightInches(e.target.value)}
+                          className="wk-field text-base tabular-nums w-full pr-9"
+                        />
+                        <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 wk-caption" style={{ color: 'var(--wk-muted)' }}>
+                          in
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  field('Height', height, setHeight, 'cm', 'Asked once, for BMI and body metrics', !height || typedHeightCm !== undefined)
+                ))}
               {!athleteAge && field('Age', ageInput, setAgeInput, 'yrs', 'Asked once, for body metrics', !ageInput || typedAge !== undefined)}
               {!athleteGender && (
                 <div role="group" aria-label="Sex, asked once for body metrics">
