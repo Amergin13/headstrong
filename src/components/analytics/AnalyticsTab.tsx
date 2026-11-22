@@ -830,25 +830,43 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
 
           return (
             <>
-              {/* One focused action at the top matching the active screen */}
-              <button
-                type="button"
-                onClick={() => {
-                  triggerHaptic('light');
-                  if (isWeight) openLogWeight();
-                  else openLogMeasurements();
-                }}
-                className="wk-button gap-2 active:scale-[0.98] transition-transform"
-                style={{ background: 'var(--color-action-primary-bg)', color: 'var(--color-action-primary-fg)' }}
-              >
-                {isWeight ? <Scale className="w-4 h-4 stroke-[2]" /> : <Ruler className="w-4 h-4 stroke-[2]" />}
-                <span>{isWeight ? 'Log weight' : 'Log measurements'}</span>
-              </button>
+              {/* Focused actions at the top matching the active screen */}
+              <div className="flex flex-col gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    triggerHaptic('light');
+                    if (isWeight) openLogWeight();
+                    else openLogMeasurements();
+                  }}
+                  className="wk-button gap-2 active:scale-[0.98] transition-transform"
+                  style={{ background: 'var(--color-action-primary-bg)', color: 'var(--color-action-primary-fg)' }}
+                >
+                  {isWeight ? <Scale className="w-4 h-4 stroke-[2]" /> : <Ruler className="w-4 h-4 stroke-[2]" />}
+                  <span>{isWeight ? 'Log weight' : 'Log measurements'}</span>
+                </button>
+                {isWeight && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      triggerHaptic('light');
+                      setDetail('measurements');
+                    }}
+                    className="wk-btn-secondary w-full min-h-[44px] inline-flex items-center justify-center gap-2"
+                  >
+                    <Ruler className="w-4 h-4 stroke-[2]" aria-hidden="true" />
+                    <span>Body measurements &amp; tape</span>
+                  </button>
+                )}
+              </div>
 
               {isWeight && bodyComposition.populatedScaleCount > 0 && (
                 <div className="wk-card space-y-3">
                   <h2 className="wk-title">Body composition</h2>
                   <p className="wk-body text-[color:var(--wk-body)] max-w-prose">{bodyComposition.recompositionSummary}</p>
+                  <p className="wk-caption max-w-prose">
+                    Consumer BIA fat-free mass carries ±2–5 kg individual uncertainty (Siedler et al., 2023). Weigh in fasted mornings and treat lean mass as a directional trend alongside 7-day average weight and waist tape.
+                  </p>
                   {visibleCompositionCharts.some((c) => c.id !== 'bodyweight' && c.points.length > 0) && (
                     <dl className="grid grid-cols-2 gap-x-4 gap-y-3 pt-1">
                       {visibleCompositionCharts
@@ -1114,6 +1132,19 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
         ref={cardsTopRef}
         className={`flex flex-col gap-3 ${hasWidget('goals') ? 'mt-4' : 'mt-5'}`}
       >
+        {hasWidget('composition') && (
+          <CompositionCard
+            biometrics={biometrics}
+            goalPhase={profile.goalPhase}
+            onOpenLog={() => setDetail('weight')}
+            onAskCoach={
+              onOpenCoach
+                ? () => onOpenCoach({ detail: 'composition' })
+                : undefined
+            }
+          />
+        )}
+
         {hasWidget('trophy-case') && (
           <OverviewCard title="Trophy case" opens="all personal bests" onOpen={() => setDetail('bests')}>
             {trophies.length > 0 ? (
@@ -1129,6 +1160,61 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
                 Your best set on each lift appears here after your first workout.
               </p>
             )}
+          </OverviewCard>
+        )}
+
+        {hasWidget('strength-standards') && (
+          <OverviewCard title="Strength standards" opens="your level on each lift" onOpen={() => setDetail('standards')}>
+            {hasBodyweight && movementStandards.levels.some((l) => l.logged && l.source !== 'none') ? (
+              <>
+                <p className="wk-body mt-2 max-w-prose">
+                  Your best estimated max on each lift against published standards for {movementStandards.tableLabel} at your bodyweight.
+                </p>
+                <div className="flex justify-center mt-3">
+                  <StandardsRadar report={movementStandards} />
+                </div>
+              </>
+            ) : (
+              <p className="wk-body mt-3 max-w-prose">
+                {hasBodyweight
+                  ? 'Log a squat, deadlift, bench press, overhead press or chin-up to see your level.'
+                  : 'Strength levels compare what you lift with your bodyweight. Log your weight to see them.'}
+              </p>
+            )}
+          </OverviewCard>
+        )}
+
+        {hasWidget('insights') && (
+          <OverviewCard
+            title="Training insights"
+            opens="recovery, joint load and exercise notes"
+            onOpen={() => {
+              setFocusedInsightExerciseId(undefined);
+              setDetail('insights');
+            }}
+          >
+            <StatRow
+              stats={[
+                {
+                  label: 'Recovery',
+                  value: knowledgeGraph.recoveryEfficiencyScore > 0 ? `${knowledgeGraph.recoveryEfficiencyScore}` : 'Ready',
+                  unit: knowledgeGraph.recoveryEfficiencyScore > 0 ? '/100' : undefined,
+                },
+                {
+                  label: 'Full-stretch',
+                  value: `${knowledgeGraph.lengthenedStimulusRatio}%`,
+                },
+                {
+                  label: 'Notes',
+                  value: `${knowledgeGraph.exerciseNotesHistory.length}`,
+                },
+              ]}
+            />
+            <p className="wk-body mt-3 max-w-prose">
+              {knowledgeGraph.exerciseNotesHistory[0]
+                ? `Latest note (${knowledgeGraph.exerciseNotesHistory[0].exerciseName}): "${knowledgeGraph.exerciseNotesHistory[0].note}"`
+                : knowledgeGraph.insights[0]?.narrative || 'Weekly muscle sets, joint load and exercise cues pull together here as you train.'}
+            </p>
           </OverviewCard>
         )}
 
@@ -1242,19 +1328,6 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
           </OverviewCard>
         )}
 
-        {hasWidget('composition') && (
-          <CompositionCard
-            biometrics={biometrics}
-            goalPhase={profile.goalPhase}
-            onOpenLog={openLogWeight}
-            onAskCoach={
-              onOpenCoach
-                ? () => onOpenCoach({ detail: 'composition' })
-                : undefined
-            }
-          />
-        )}
-
         {hasWidget('measurements') && (
           <OverviewCard title="Measurements" opens="all measurements and logging" onOpen={() => setDetail('measurements')}>
             {tapeHighlights.length > 0 ? (
@@ -1272,61 +1345,6 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
             ) : (
               <p className="wk-body mt-3 max-w-prose">
                 Start with your waist: it says the most about your fitness. Measure at the navel, first thing in the morning.
-              </p>
-            )}
-          </OverviewCard>
-        )}
-
-        {hasWidget('insights') && (
-          <OverviewCard
-            title="Training insights"
-            opens="recovery, joint load and exercise notes"
-            onOpen={() => {
-              setFocusedInsightExerciseId(undefined);
-              setDetail('insights');
-            }}
-          >
-            <StatRow
-              stats={[
-                {
-                  label: 'Recovery',
-                  value: knowledgeGraph.recoveryEfficiencyScore > 0 ? `${knowledgeGraph.recoveryEfficiencyScore}` : 'Ready',
-                  unit: knowledgeGraph.recoveryEfficiencyScore > 0 ? '/100' : undefined,
-                },
-                {
-                  label: 'Full-stretch',
-                  value: `${knowledgeGraph.lengthenedStimulusRatio}%`,
-                },
-                {
-                  label: 'Notes',
-                  value: `${knowledgeGraph.exerciseNotesHistory.length}`,
-                },
-              ]}
-            />
-            <p className="wk-body mt-3 max-w-prose">
-              {knowledgeGraph.exerciseNotesHistory[0]
-                ? `Latest note (${knowledgeGraph.exerciseNotesHistory[0].exerciseName}): "${knowledgeGraph.exerciseNotesHistory[0].note}"`
-                : knowledgeGraph.insights[0]?.narrative || 'Weekly muscle sets, joint load and exercise cues pull together here as you train.'}
-            </p>
-          </OverviewCard>
-        )}
-
-        {hasWidget('strength-standards') && (
-          <OverviewCard title="Strength standards" opens="your level on each lift" onOpen={() => setDetail('standards')}>
-            {hasBodyweight && movementStandards.levels.some((l) => l.logged && l.source !== 'none') ? (
-              <>
-                <p className="wk-body mt-2 max-w-prose">
-                  Your best estimated max on each lift against published standards for {movementStandards.tableLabel} at your bodyweight.
-                </p>
-                <div className="flex justify-center mt-3">
-                  <StandardsRadar report={movementStandards} />
-                </div>
-              </>
-            ) : (
-              <p className="wk-body mt-3 max-w-prose">
-                {hasBodyweight
-                  ? 'Log a squat, deadlift, bench press, overhead press or chin-up to see your level.'
-                  : 'Strength levels compare what you lift with your bodyweight. Log your weight to see them.'}
               </p>
             )}
           </OverviewCard>

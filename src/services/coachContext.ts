@@ -82,7 +82,7 @@ export function describeCoachPlace(
     weight: { label: 'Progress · Body Weight', placeholder: 'Log today’s weight or check your weekly trend…' },
     standards: { label: 'Progress · Strength', placeholder: 'Ask about strength tiers, balance, or rebalance plan…' },
     goals: { label: 'Progress · Goals', placeholder: 'Set a lift, steps, or weekly sessions goal…' },
-    widgets: { label: 'Progress · Widgets', placeholder: 'Add or remove a card on Progress…' },
+    widgets: { label: 'Tracking cards', placeholder: 'Add or remove a tracking card…' },
     steps: { label: 'Progress · Steps', placeholder: 'Log steps, check your average, or set a target…' },
     whoop: { label: 'Progress · Recovery', placeholder: 'Ask about HRV, strain, or today’s readiness…' },
     insights: { label: 'Progress · Insights', placeholder: 'Ask about weekly muscle sets, joints, or recovery…' },
@@ -149,7 +149,7 @@ function composeCoachOpening(params: {
     greeting,
     nextActionPrompt,
     line: [greeting.trim(), context.trim(), nextActionPrompt.trim()].filter(Boolean).join(' '),
-    hooks: hooks.slice(0, 5),
+    hooks: hooks.slice(0, 3),
   };
 }
 
@@ -324,21 +324,21 @@ function workoutOpening(input: CoachOpeningInput, unit: WeightUnit): CoachOpenin
   }
   if (isAmber) {
     hooks.push({ label: 'Why recovery is low', text: 'How is my recovery today?' });
+    hooks.push({ label: 'Trim 1 set per lift', text: "Trim 1 working set per exercise in today's workout" });
     hooks.push({ label: 'Take a rest day', text: 'Take a rest day today' });
   } else {
     hooks.push({ label: "Today's briefing", text: "Give me a briefing for today's workout and targets" });
+    hooks.push({ label: 'Short on time', text: "I'm short on time today" });
+    if (kit) {
+      hooks.push({
+        label: `No ${kit === 'dumbbell' ? 'dumbbells' : kit === 'cable' ? 'cables' : kit} today`,
+        text: `I don't have ${kit === 'dumbbell' ? 'dumbbells' : kit === 'cable' ? 'cables' : `a ${kit}`} today`,
+      });
+    } else {
+      hooks.push({ label: 'Swap an exercise', text: 'I want to swap an exercise' });
+    }
     hooks.push({ label: 'Warm-up', text: 'How should I warm up today?' });
   }
-  if (kit) {
-    hooks.push({
-      label: `No ${kit === 'dumbbell' ? 'dumbbells' : kit === 'cable' ? 'cables' : kit} today`,
-      text: `I don't have ${kit === 'dumbbell' ? 'dumbbells' : kit === 'cable' ? 'cables' : `a ${kit}`} today`,
-    });
-  }
-  hooks.push(
-    { label: 'Short on time', text: "I'm short on time today" },
-    { label: 'Swap an exercise', text: 'I want to swap an exercise' }
-  );
   return composeCoachOpening({
     id: 'workout-ready',
     greeting: isAmber ? "Hey — I'm right here with you for today's session." : "Hey — ready to get after today's workout?",
@@ -512,8 +512,8 @@ export function buildCoachOpening(input: CoachOpeningInput): CoachOpening {
     hooks.push({ label: 'Reset to default', text: 'Reset my progress widgets' });
     return composeCoachOpening({
       id: 'progress-widgets',
-      greeting: "Hey — let's tailor your Progress dashboard.",
-      context: `You have ${activeCount} of ${totalAvailable} overview widgets on Progress.`,
+      greeting: "Hey — let's tailor what you track here.",
+      context: `You have ${activeCount} of ${totalAvailable} tracking cards turned on.`,
       nextActionPrompt: 'Want me to add Body Composition, Strength Balance, or Measurements, or reset your layout to default?',
       hooks,
     });

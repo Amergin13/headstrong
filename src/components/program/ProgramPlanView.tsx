@@ -588,23 +588,13 @@ export const ProgramPlanView: React.FC<ProgramPlanViewProps> = ({
           <h2 className="wk-h1 -mt-3 text-center">
             Your new identity as an athlete is forming
           </h2>
-          <div className="wk-card w-full mt-4 text-left">
-            <span className="wk-label block mb-2" style={{ color: 'var(--wk-muted)' }}>
-              Plan momentum
-            </span>
-            <CoachSummaryText
-              text={identityMessage ?? identityFacts.fallback}
-              swapKey={identityMessage ? 'model' : 'facts'}
-              splitBy="sentences"
-            />
-          </div>
         </section>
       )}
 
       <section
         ref={progressRef}
         aria-label="Plan progress"
-        className={isFirstRun ? 'mt-12' : 'mt-6'}
+        className={`wk-card text-left ${isFirstRun ? 'mt-4' : 'mt-6'}`}
       >
         <div className="flex items-end justify-between gap-2">
           <span className="wk-title">
@@ -624,6 +614,18 @@ export const ProgramPlanView: React.FC<ProgramPlanViewProps> = ({
         >
           <div style={{ width: `${(plan.nextWorkoutNumber / TOTAL) * 100}%` }} />
         </div>
+        {isFirstRun && (
+          <div className="mt-4 pt-4 border-t" style={{ borderColor: 'var(--color-border-subtle)' }}>
+            <span className="wk-label block mb-2" style={{ color: 'var(--wk-muted)' }}>
+              Plan momentum
+            </span>
+            <CoachSummaryText
+              text={identityMessage ?? identityFacts.fallback}
+              swapKey={identityMessage ? 'model' : 'facts'}
+              splitBy="sentences"
+            />
+          </div>
+        )}
         {onOpenCoach && activeOverrides.length === 0 && coachInterventions.length === 0 && (
           <button
             type="button"
@@ -719,14 +721,7 @@ export const ProgramPlanView: React.FC<ProgramPlanViewProps> = ({
         </section>
       )}
 
-      <WeeklyVolumeCard
-        workouts={workouts}
-        exerciseCatalog={exerciseCatalog}
-        goalPhase={profile.goalPhase}
-        className="mt-6"
-      />
-
-      <div ref={phasesTopRef} className="flex flex-col mt-8 gap-4">
+      <div ref={phasesTopRef} className="flex flex-col mt-6 gap-4">
         {trainingPlan.phases.map((phase) => {
           const isOpen = openPhases.includes(phase.phaseNumber);
           const phaseWorkouts = plan.workouts.filter((w) => w.phase === phase.phaseNumber);
@@ -821,6 +816,13 @@ export const ProgramPlanView: React.FC<ProgramPlanViewProps> = ({
           );
         })}
       </div>
+
+      <WeeklyVolumeCard
+        workouts={workouts}
+        exerciseCatalog={exerciseCatalog}
+        goalPhase={profile.goalPhase}
+        className="mt-6"
+      />
 
       {viewing?.session && (
         <PastWorkoutModal

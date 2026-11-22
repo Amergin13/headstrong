@@ -4933,7 +4933,7 @@ export function enforceMutationTruthfulness(
 function dedupeAgainstUserMessage(
   chips: CoachSuggestedAction[],
   lastUserMessage?: string,
-  maxCount = 4
+  maxCount = 3
 ): CoachSuggestedAction[] {
   const normUser = (lastUserMessage || '').toLowerCase().replace(/[^a-z0-9\s]/g, '').trim();
   const seen = new Set<string>();

@@ -605,11 +605,6 @@ export const CompositionCard: React.FC<CompositionCardProps> = ({
 
       {/* Concise 2-line AI summary of body composition insight */}
       <div className="mt-4 pt-4 border-t" style={{ borderColor: 'var(--color-border-subtle)' }}>
-        {hasBodyFatSeries && (
-          <p className="wk-caption mb-3 max-w-prose">
-            Consumer BIA fat-free mass carries ±2–5 kg individual uncertainty (Siedler et al., 2023). Weigh in fasted mornings and treat lean mass as a 12+ week directional overlay alongside 7-day average weight, strength, and waist tape.
-          </p>
-        )}
         <div className="flex items-center justify-between gap-2 mb-1">
           <span className="wk-label">Composition insight</span>
           {onAskCoach && (
@@ -623,7 +618,7 @@ export const CompositionCard: React.FC<CompositionCardProps> = ({
               style={{ color: 'var(--color-coach-accent)' }}
               aria-label="Ask Treise about your body composition"
             >
-              <Sparkles className="w-3.5 h-3.5 shrink-0" strokeWidth={2.2} aria-hidden="true" />
+              <Sparkles className="w-4 h-4 shrink-0" strokeWidth={2.2} aria-hidden="true" />
               <span>Ask Treise</span>
             </button>
           )}

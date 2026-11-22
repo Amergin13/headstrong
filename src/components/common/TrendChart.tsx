@@ -35,6 +35,8 @@ interface TrendChartProps {
   emptyTitle?: string;
   /** Empty state message when `points` is empty. */
   emptyMessage?: string;
+  /** Visual density mode: 'default' shows axes, gridlines, node labels, and date footer; 'minimal' shows only the trend line, gradient fill, and endpoint dot. */
+  variant?: 'default' | 'minimal';
 }
 
 const W = 1000;
@@ -122,7 +124,9 @@ export const TrendChart: React.FC<TrendChartProps> = ({
   bridgeBands,
   emptyTitle = 'No data yet',
   emptyMessage = 'Log this exercise to establish your starting point.',
+  variant = 'default',
 }) => {
+  const isMinimal = variant === 'minimal';
   const lineGradientId = useId();
   const areaGradientId = useId();
   const boxRef = useRef<HTMLDivElement>(null);
@@ -161,7 +165,9 @@ export const TrendChart: React.FC<TrendChartProps> = ({
     return () => observer.disconnect();
   }, [play, points.length]);
 
-  const plotHeight = Math.round((height * 0.45) / 4) * 4;
+  const plotHeight = isMinimal
+    ? Math.max(56, Math.round((height * 0.35) / 4) * 4)
+    : Math.round((height * 0.45) / 4) * 4;
   if (points.length === 0) {
     return (
       <div
@@ -186,8 +192,10 @@ export const TrendChart: React.FC<TrendChartProps> = ({
   }
 
   const single = points.length === 1;
-  const showNodes = !single && points.length <= 10;
-  const padX = showNodes || windowRange?.isDailyCalendar ? 52 : 24;
+  const showNodes = !isMinimal && !single && points.length <= 10;
+  const padX = isMinimal ? 16 : showNodes || windowRange?.isDailyCalendar ? 52 : 24;
+  const padTop = isMinimal ? 36 : PAD_TOP;
+  const padBottom = isMinimal ? 36 : PAD_BOTTOM;
 
   const values = points.map((p) => p.value);
   const rangeExtras = !single && typicalRange ? [typicalRange.low, typicalRange.high] : [];
@@ -196,10 +204,10 @@ export const TrendChart: React.FC<TrendChartProps> = ({
   const rawMax = Math.max(...all);
   const { min, max, ticks } = niceAxisTicks(rawMin, rawMax, 4);
 
-  const y = (v: number) => H - PAD_BOTTOM - ((v - min) / Math.max(1e-9, max - min)) * (H - PAD_TOP - PAD_BOTTOM);
+  const y = (v: number) => H - padBottom - ((v - min) / Math.max(1e-9, max - min)) * (H - padTop - padBottom);
 
   const calendarDays =
-    !single && windowRange?.isDailyCalendar
+    !isMinimal && !single && windowRange?.isDailyCalendar
       ? buildCalendarDays(windowRange.start, windowRange.end)
       : [];
 
@@ -216,7 +224,9 @@ export const TrendChart: React.FC<TrendChartProps> = ({
 
   const xOf = (p: TrendPoint, i: number) =>
     single
-      ? padX * 2.5
+      ? isMinimal
+        ? W * 0.5
+        : padX * 2.5
       : byIndex
       ? padX + (i / Math.max(1, values.length - 1)) * (W - padX * 2)
       : padX + ((parseLocalDate(p.date).getTime() - t0) / span) * (W - padX * 2);
@@ -232,7 +242,7 @@ export const TrendChart: React.FC<TrendChartProps> = ({
 
   const areaPath =
     main.length > 1
-      ? `${path(main)} L${main[main.length - 1].x.toFixed(1)},${(H - PAD_BOTTOM).toFixed(1)} L${main[0].x.toFixed(1)},${(H - PAD_BOTTOM).toFixed(1)} Z`
+      ? `${path(main)} L${main[main.length - 1].x.toFixed(1)},${(H - padBottom).toFixed(1)} L${main[0].x.toFixed(1)},${(H - padBottom).toFixed(1)} Z`
       : '';
 
   const secondaryPts =
@@ -317,7 +327,7 @@ export const TrendChart: React.FC<TrendChartProps> = ({
       ref={boxRef}
       className={play ? `wk-chart-play${single ? ' wk-chart-single' : ''}` : 'wk-chart-idle'}
     >
-      {(showTypicalBand && typicalRange) || visibleBridgeRects.length > 0 ? (
+      {!isMinimal && ((showTypicalBand && typicalRange) || visibleBridgeRects.length > 0) ? (
         <div className="flex items-center justify-end gap-3 mb-2 flex-wrap" aria-hidden="true">
           {visibleBridgeRects.length > 0 && (
             <div className="flex items-center gap-2">
@@ -352,102 +362,108 @@ export const TrendChart: React.FC<TrendChartProps> = ({
       <div
         className="grid items-stretch"
         style={{
-          gridTemplateColumns: 'auto 1fr',
-          columnGap: 8,
+          gridTemplateColumns: isMinimal ? '1fr' : 'auto 1fr',
+          columnGap: isMinimal ? 0 : 8,
         }}
       >
-        <div
-          className="relative select-none"
-          style={{ height: plotHeight, minWidth: 28 }}
-          aria-hidden="true"
-        >
-          {ticks.map((tick) => {
-            const tickY = y(tick);
-            return (
-              <span
-                key={tick}
-                className="block text-right"
-                style={{
-                  ...mutedStyle,
-                  position: 'absolute',
-                  right: 0,
-                  top: `${(tickY / H) * 100}%`,
-                  transform: 'translateY(-50%)',
-                }}
-              >
-                {stripTrailingUnit(format(tick))}
-              </span>
-            );
-          })}
-        </div>
-
-        <div className="relative w-full" style={{ height: plotHeight }}>
-          <svg
-            viewBox={`0 0 ${W} ${H}`}
-            preserveAspectRatio="none"
-            className="absolute inset-0 w-full h-full"
-            role="img"
-            aria-label={label}
+        {!isMinimal && (
+          <div
+            className="relative select-none"
+            style={{ height: plotHeight, minWidth: 28 }}
+            aria-hidden="true"
           >
             {ticks.map((tick) => {
               const tickY = y(tick);
               return (
-                <line
+                <span
                   key={tick}
-                  x1={0}
-                  x2={W}
-                  y1={tickY}
-                  y2={tickY}
-                  stroke="var(--color-border-track)"
-                  strokeWidth={1}
-                  vectorEffect="non-scaling-stroke"
-                />
+                  className="block text-right"
+                  style={{
+                    ...mutedStyle,
+                    position: 'absolute',
+                    right: 0,
+                    top: `${(tickY / H) * 100}%`,
+                    transform: 'translateY(-50%)',
+                  }}
+                >
+                  {stripTrailingUnit(format(tick))}
+                </span>
               );
             })}
-            {showTypicalBand && (
-              <rect
-                x={0}
-                y={bandY}
-                width={W}
-                height={bandH}
-                rx={10}
-                fill="var(--color-border-track)"
-              />
-            )}
-            {visibleBridgeRects.map((band) => (
-              <rect
-                key={band.key}
-                x={band.x}
-                y={PAD_TOP * 0.45}
-                width={band.width}
-                height={H - PAD_BOTTOM - PAD_TOP * 0.45}
-                rx={8}
-                fill="rgb(var(--color-accent-primary-rgb) / 0.12)"
-                stroke="rgb(var(--color-accent-primary-rgb) / 0.35)"
-                strokeDasharray="4 4"
-                strokeWidth={1}
-                vectorEffect="non-scaling-stroke"
-              >
-                <title>{band.label}</title>
-              </rect>
-            ))}
-            {secondaryPts.length > 1 && (
-              <path
-                d={path(secondaryPts)}
-                fill="none"
-                stroke="var(--color-border-strong)"
-                strokeWidth={1.5}
-                strokeLinejoin="round"
-                vectorEffect="non-scaling-stroke"
-              />
-            )}
-          </svg>
+          </div>
+        )}
+
+        <div className="relative w-full" style={{ height: plotHeight }}>
+          {!isMinimal && (
+            <svg
+              viewBox={`0 0 ${W} ${H}`}
+              preserveAspectRatio="none"
+              className="absolute inset-0 w-full h-full"
+              role="img"
+              aria-label={label}
+            >
+              {ticks.map((tick) => {
+                const tickY = y(tick);
+                return (
+                  <line
+                    key={tick}
+                    x1={0}
+                    x2={W}
+                    y1={tickY}
+                    y2={tickY}
+                    stroke="var(--color-border-track)"
+                    strokeWidth={1}
+                    vectorEffect="non-scaling-stroke"
+                  />
+                );
+              })}
+              {showTypicalBand && (
+                <rect
+                  x={0}
+                  y={bandY}
+                  width={W}
+                  height={bandH}
+                  rx={10}
+                  fill="var(--color-border-track)"
+                />
+              )}
+              {visibleBridgeRects.map((band) => (
+                <rect
+                  key={band.key}
+                  x={band.x}
+                  y={PAD_TOP * 0.45}
+                  width={band.width}
+                  height={H - PAD_BOTTOM - PAD_TOP * 0.45}
+                  rx={8}
+                  fill="rgb(var(--color-accent-primary-rgb) / 0.12)"
+                  stroke="rgb(var(--color-accent-primary-rgb) / 0.35)"
+                  strokeDasharray="4 4"
+                  strokeWidth={1}
+                  vectorEffect="non-scaling-stroke"
+                >
+                  <title>{band.label}</title>
+                </rect>
+              ))}
+              {secondaryPts.length > 1 && (
+                <path
+                  d={path(secondaryPts)}
+                  fill="none"
+                  stroke="var(--color-border-strong)"
+                  strokeWidth={1.5}
+                  strokeLinejoin="round"
+                  vectorEffect="non-scaling-stroke"
+                />
+              )}
+            </svg>
+          )}
 
           <svg
             viewBox={`0 0 ${W} ${H}`}
             preserveAspectRatio="none"
             className="wk-chart-line absolute inset-0 w-full h-full"
-            aria-hidden="true"
+            role={isMinimal ? 'img' : undefined}
+            aria-label={isMinimal ? label : undefined}
+            aria-hidden={isMinimal ? undefined : 'true'}
           >
             <defs>
               <linearGradient id={lineGradientId} gradientUnits="userSpaceOnUse" x1={0} x2={W} y1={0} y2={0}>
@@ -455,13 +471,13 @@ export const TrendChart: React.FC<TrendChartProps> = ({
                 <stop offset="45%" stopColor={accentColor} stopOpacity="0.95" />
                 <stop offset="100%" stopColor={accentColor} stopOpacity="1" />
               </linearGradient>
-              <linearGradient id={areaGradientId} gradientUnits="userSpaceOnUse" x1={0} x2={0} y1={PAD_TOP} y2={H - PAD_BOTTOM}>
+              <linearGradient id={areaGradientId} gradientUnits="userSpaceOnUse" x1={0} x2={0} y1={padTop} y2={H - padBottom}>
                 <stop offset="0%" stopColor={accentColor} stopOpacity="0.22" />
                 <stop offset="100%" stopColor={accentColor} stopOpacity="0" />
               </linearGradient>
             </defs>
             {areaPath && <path d={areaPath} fill={`url(#${areaGradientId})`} />}
-            {!showNodes && (
+            {!showNodes && !isMinimal && (
               <line
                 x1={last.x}
                 x2={last.x}
@@ -479,7 +495,7 @@ export const TrendChart: React.FC<TrendChartProps> = ({
               fill="none"
               stroke={`url(#${lineGradientId})`}
               strokeOpacity={1}
-              strokeWidth={showNodes ? 2.25 : 3}
+              strokeWidth={showNodes ? 2.25 : 2.5}
               strokeLinejoin="round"
               strokeLinecap="round"
               vectorEffect="non-scaling-stroke"
@@ -540,23 +556,23 @@ export const TrendChart: React.FC<TrendChartProps> = ({
               </React.Fragment>
             ))}
 
-          {/* Dense curves (>10 points) or lone starting point use the anchored endpoint dot */}
+          {/* Dense curves (>10 points), minimal trend-line mode, or lone starting point use the anchored endpoint dot */}
           {!showNodes && (
             <span
-              className="wk-chart-dot absolute rounded-full"
+              className="wk-chart-dot absolute rounded-full pointer-events-none"
               style={{
-                width: 12,
-                height: 12,
-                left: `calc(${(last.x / W) * 100}% - 6px)`,
-                top: `calc(${(last.y / H) * 100}% - 6px)`,
-                background: 'var(--color-text-primary)',
-                boxShadow: '0 0 0 4px rgb(var(--color-bg-canvas-rgb) / 0.8)',
+                width: isMinimal ? 10 : 12,
+                height: isMinimal ? 10 : 12,
+                left: `calc(${(last.x / W) * 100}% - ${isMinimal ? 5 : 6}px)`,
+                top: `calc(${(last.y / H) * 100}% - ${isMinimal ? 5 : 6}px)`,
+                background: isMinimal ? accentColor : 'var(--color-text-primary)',
+                boxShadow: '0 0 0 3px rgb(var(--color-bg-canvas-rgb) / 0.8)',
               }}
               aria-hidden="true"
             />
           )}
 
-          {single && (
+          {!isMinimal && single && (
             <span
               className="wk-chart-fade absolute font-medium tabular-nums"
               style={{
@@ -573,17 +589,17 @@ export const TrendChart: React.FC<TrendChartProps> = ({
           )}
         </div>
 
-        {/* X-axis footer aligned with the plot column */}
-        <div aria-hidden="true" />
+        {/* X-axis footer aligned with the plot column (default full mode only) */}
+        {!isMinimal && <div aria-hidden="true" />}
 
-        {single && (
+        {!isMinimal && single && (
           <div className="wk-chart-fade flex justify-between" style={{ ...mutedStyle, marginTop: 8 }} aria-hidden="true">
             <span>Starting point</span>
             <span>{dayMonth(points[0].date)}</span>
           </div>
         )}
 
-        {!single && calendarDays.length > 1 && (
+        {!isMinimal && !single && calendarDays.length > 1 && (
           <div
             className="wk-chart-fade relative"
             style={{ height: 28, marginTop: 4 }}
@@ -613,7 +629,7 @@ export const TrendChart: React.FC<TrendChartProps> = ({
           </div>
         )}
 
-        {!single && calendarDays.length <= 1 && (
+        {!isMinimal && !single && calendarDays.length <= 1 && (
           <div className="wk-chart-fade flex justify-between" style={{ ...mutedStyle, marginTop: 8 }} aria-hidden="true">
             <span>{dayMonth(points[0].date)}</span>
             <span>

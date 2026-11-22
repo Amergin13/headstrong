@@ -1,4 +1,4 @@
-import React, { useId, useMemo, useState } from 'react';
+import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
 import {
   ExerciseDefinition,
   ExerciseSession,
@@ -11,7 +11,7 @@ import {
 import { SetRow, PreviousSet, SET_TABLE_COLUMNS, SET_TABLE_COLUMNS_NO_RIR, SET_TABLE_GAP } from './SetRow';
 import { ExerciseDetailModal } from './ExerciseDetailModal';
 import { useUnits } from '../../utils/unitsContext';
-import { ArrowRightLeft, ChevronRight } from 'lucide-react';
+import { ArrowRightLeft, FileText, Info, MoreHorizontal } from 'lucide-react';
 import { triggerHaptic } from '../../utils/haptics';
 import { CoachSummaryText } from '../common/CoachSummaryText';
 import { ExerciseInsight, isIsolationOrSmallExercise } from '../../services/exerciseInsight';
@@ -87,12 +87,24 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
 }) => {
   const units = useUnits();
   const [detailOpen, setDetailOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [notesOpen, setNotesOpen] = useState(() => Boolean(exercise.athleteNotes?.trim()));
+  const notesTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const isTimed = isTimedExercise(exercise);
   const isAssisted = isAssistedExercise(exercise);
   const isIsolationView = !isTimed && isIsolationOrSmallExercise(exercise, exerciseDef);
   const unilateral = !isTimed && isUnilateralExercise(exercise);
   const [perSide, setPerSide] = useState(() => exercise.sets.some((s) => s.actualRepsLeft !== undefined));
   const notesId = useId();
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setMenuOpen(false);
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [menuOpen]);
 
   const bridgeBands = useMemo(
     () => (isTimed ? [] : buildExerciseBridgeBands(exercise.exerciseId, workouts, exerciseCatalog)),
@@ -107,6 +119,8 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
   const isTwoDb = exercise.equipment === 'dumbbell' && !usesOneDumbbell(exercise);
   const chip = exercise.orderCode || (exerciseIndex !== undefined ? String(exerciseIndex) : null);
   const hasBestSetHistory = Boolean(insight?.bestSetHistory && insight.bestSetHistory.length > 0);
+  const hasSavedNote = Boolean(exercise.athleteNotes?.trim());
+  const showNotesSection = notesOpen || hasSavedNote;
   const trendSpec = useMemo(
     () =>
       buildExerciseTrendSpec(
@@ -122,52 +136,99 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
       ),
     [insight, isTimed, units, isIsolationView, isTwoDb]
   );
+  const chartAriaLabel =
+    isIsolationView && hasBestSetHistory ? `Best set: ${trendSpec.label}` : trendSpec.label;
 
   const secondaryButton =
     'wk-btn-secondary justify-center normal-case min-h-[44px] active:scale-95 transition-transform';
 
   return (
     <section aria-label={exercise.name} className="wk-card">
-      {/* Title, swap button, drill-in detail arrow */}
+      {/* Title & 3-dot exercise options menu (details, swap, notes) */}
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center min-w-0 flex-wrap gap-2">
           <h3 className="wk-h1">{formatSentenceCase(exercise.name)}</h3>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
-          {onOpenSwap && (
-            <button
-              type="button"
-              onClick={() => {
-                triggerHaptic('light');
-                onOpenSwap();
-              }}
-              aria-label={`Swap exercise from ${exercise.name}`}
-              title={`Swap ${formatSentenceCase(exercise.name)}`}
-              className="w-11 h-11 min-w-[44px] min-h-[44px] rounded-xl border border-[var(--color-border-strong)] flex items-center justify-center shrink-0 transition-colors"
-              style={{ background: 'var(--color-action-secondary-bg)', color: 'var(--color-action-secondary-fg)' }}
-            >
-              <ArrowRightLeft className="w-4 h-4" strokeWidth={2} aria-hidden="true" />
-            </button>
-          )}
+        <div className="relative flex items-center gap-2 shrink-0">
           <button
             type="button"
             onClick={() => {
               triggerHaptic('light');
-              if (onOpenDetail) onOpenDetail();
-              else setDetailOpen(true);
+              setMenuOpen((o) => !o);
             }}
-            aria-label={`Open exercise details, form and history for ${exercise.name}`}
-            title="Exercise info, form & history"
+            aria-label={`More options for ${exercise.name}`}
+            aria-haspopup="menu"
+            title={`Options for ${formatSentenceCase(exercise.name)}`}
             className="w-11 h-11 min-w-[44px] min-h-[44px] rounded-xl border border-[var(--color-border-strong)] flex items-center justify-center shrink-0 transition-colors"
             style={{ background: 'var(--color-action-secondary-bg)', color: 'var(--color-action-secondary-fg)' }}
           >
-            <ChevronRight
-              className="wk-chevron"
-              style={{ color: 'var(--color-action-secondary-fg)' }}
-              strokeWidth={2}
-              aria-hidden="true"
-            />
+            <MoreHorizontal className="w-5 h-5" strokeWidth={2} aria-hidden="true" />
           </button>
+
+          {menuOpen && (
+            <>
+              <div className="fixed inset-0 z-20" onClick={() => setMenuOpen(false)} aria-hidden="true" />
+              <div className="absolute right-0 top-full mt-2 z-30">
+                <div
+                  role="menu"
+                  aria-label={`${formatSentenceCase(exercise.name)} options`}
+                  className="w-60 rounded-2xl bg-surface-card border shadow-2xl p-2 space-y-1 text-left"
+                  style={{ borderColor: 'var(--color-border-subtle)' }}
+                >
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      triggerHaptic('light');
+                      setMenuOpen(false);
+                      if (onOpenDetail) onOpenDetail();
+                      else setDetailOpen(true);
+                    }}
+                    aria-label={`Open exercise details, form and history for ${exercise.name}`}
+                    className="w-full text-left px-3 py-2 rounded-xl text-base font-medium hover:bg-[var(--wk-raised)] flex items-center gap-2 min-h-[44px]"
+                    style={{ color: 'var(--color-text-primary)' }}
+                  >
+                    <Info className="w-4 h-4 stroke-[2] shrink-0" aria-hidden="true" />
+                    <span>Exercise details</span>
+                  </button>
+
+                  {onOpenSwap && (
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        triggerHaptic('light');
+                        setMenuOpen(false);
+                        onOpenSwap();
+                      }}
+                      title={`Swap ${formatSentenceCase(exercise.name)}`}
+                      className="w-full text-left px-3 py-2 rounded-xl text-base font-medium hover:bg-[var(--wk-raised)] flex items-center gap-2 min-h-[44px]"
+                      style={{ color: 'var(--color-text-primary)' }}
+                    >
+                      <ArrowRightLeft className="w-4 h-4 stroke-[2] shrink-0" aria-hidden="true" />
+                      <span>Swap exercise</span>
+                    </button>
+                  )}
+
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      triggerHaptic('light');
+                      setMenuOpen(false);
+                      setNotesOpen(true);
+                      setTimeout(() => notesTextareaRef.current?.focus(), 0);
+                    }}
+                    className="w-full text-left px-3 py-2 rounded-xl text-base font-medium hover:bg-[var(--wk-raised)] flex items-center gap-2 min-h-[44px]"
+                    style={{ color: 'var(--color-text-primary)' }}
+                  >
+                    <FileText className="w-4 h-4 stroke-[2] shrink-0" aria-hidden="true" />
+                    <span>{hasSavedNote ? 'Edit note' : 'Add note'}</span>
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
         </div>
       </div>
 
@@ -177,7 +238,7 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
         </div>
       )}
 
-      {/* 2-line dynamic summary (Line 1: Historical Trajectory Anchor, Line 2: Session Stimulus Directive) and history chart */}
+      {/* 2-line dynamic summary (Line 1: Historical Trajectory Anchor, Line 2: Session Stimulus Directive) and minimal trend-line chart */}
       {insight && (showSummary || showChart) && (
         <div className="flex flex-col gap-3 mt-4">
           {showSummary && (
@@ -187,33 +248,17 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
             />
           )}
           {showChart && (
-            <div className="flex flex-col gap-2">
-              {isIsolationView && (
-                <div className="flex items-baseline justify-between gap-2">
-                  <span className="wk-caption" style={{ color: 'var(--color-text-muted)' }}>
-                    {trendSpec.caption ?? 'Best set'}
-                  </span>
-                  {hasBestSetHistory && trendSpec.latestDisplay && (
-                    <span
-                      className="wk-caption font-medium tabular-nums"
-                      style={{ color: 'var(--color-text-secondary)' }}
-                    >
-                      {trendSpec.latestDisplay}
-                    </span>
-                  )}
-                </div>
-              )}
-              <TrendChart
-                points={trendSpec.points}
-                format={trendSpec.format}
-                positiveProgress={trendSpec.positiveProgress}
-                bridgeBands={bridgeBands.length > 0 ? bridgeBands : undefined}
-                height={240}
-                label={trendSpec.label}
-                emptyTitle={trendSpec.emptyTitle}
-                emptyMessage={trendSpec.emptyMessage}
-              />
-            </div>
+            <TrendChart
+              points={trendSpec.points}
+              format={trendSpec.format}
+              positiveProgress={trendSpec.positiveProgress}
+              bridgeBands={bridgeBands.length > 0 ? bridgeBands : undefined}
+              height={180}
+              variant="minimal"
+              label={chartAriaLabel}
+              emptyTitle={trendSpec.emptyTitle}
+              emptyMessage={trendSpec.emptyMessage}
+            />
           )}
         </div>
       )}
@@ -309,41 +354,59 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
         )}
       </div>
 
-      {/* Open exercise notes for cues, setup, pain/discomfort, and longitudinal Knowledge Graph insights */}
-      <div className="mt-4 pt-3 border-t flex flex-col gap-2" style={{ borderColor: 'var(--color-border-subtle)' }}>
-        <label htmlFor={notesId} className="wk-label" style={{ color: 'var(--wk-muted)' }}>
-          Exercise notes
-        </label>
-        <textarea
-          id={notesId}
-          rows={2}
-          value={exercise.athleteNotes ?? ''}
-          onChange={(e) => onUpdateNotes?.(e.target.value)}
-          placeholder="Add cues, seat/pin setup, tightness, or how this felt…"
-          className="wk-textarea resize-none"
-        />
-        {lastAthleteNote &&
-          (onOpenNotesHistory ? (
-            <button
-              type="button"
-              onClick={() => {
-                triggerHaptic('light');
-                onOpenNotesHistory();
-              }}
-              title={`${lastAthleteNote.text} — open exercise notes history`}
-              className="wk-caption w-full text-left flex items-center gap-1 min-h-[44px] underline decoration-dotted underline-offset-2"
-              style={{ color: 'var(--color-text-secondary)' }}
-            >
-              <span className="truncate">
+      {/* Exercise notes drawer: hidden by default until opened from the 3-dot menu or when a note is present */}
+      {showNotesSection && (
+        <div className="mt-4 pt-3 border-t flex flex-col gap-2" style={{ borderColor: 'var(--color-border-subtle)' }}>
+          <div className="flex items-center justify-between gap-2">
+            <label htmlFor={notesId} className="wk-label" style={{ color: 'var(--wk-muted)' }}>
+              Exercise notes
+            </label>
+            {!hasSavedNote && (
+              <button
+                type="button"
+                onClick={() => {
+                  triggerHaptic('light');
+                  setNotesOpen(false);
+                }}
+                className="wk-caption font-medium min-h-[44px] px-2 -my-2 flex items-center"
+                style={{ color: 'var(--color-text-secondary)' }}
+              >
+                Hide
+              </button>
+            )}
+          </div>
+          <textarea
+            ref={notesTextareaRef}
+            id={notesId}
+            rows={2}
+            value={exercise.athleteNotes ?? ''}
+            onChange={(e) => onUpdateNotes?.(e.target.value)}
+            placeholder="Add cues, seat/pin setup, tightness, or how this felt…"
+            className="wk-textarea resize-none"
+          />
+          {lastAthleteNote &&
+            (onOpenNotesHistory ? (
+              <button
+                type="button"
+                onClick={() => {
+                  triggerHaptic('light');
+                  onOpenNotesHistory();
+                }}
+                title={`${lastAthleteNote.text} — open exercise notes history`}
+                className="wk-caption w-full text-left flex items-center gap-1 min-h-[44px] underline decoration-dotted underline-offset-2"
+                style={{ color: 'var(--color-text-secondary)' }}
+              >
+                <span className="truncate">
+                  Last note ({lastAthleteNote.date}): &ldquo;{lastAthleteNote.text}&rdquo;
+                </span>
+              </button>
+            ) : (
+              <p className="wk-caption truncate" title={lastAthleteNote.text}>
                 Last note ({lastAthleteNote.date}): &ldquo;{lastAthleteNote.text}&rdquo;
-              </span>
-            </button>
-          ) : (
-            <p className="wk-caption truncate" title={lastAthleteNote.text}>
-              Last note ({lastAthleteNote.date}): &ldquo;{lastAthleteNote.text}&rdquo;
-            </p>
-          ))}
-      </div>
+              </p>
+            ))}
+        </div>
+      )}
 
       {detailOpen && !onOpenDetail && (
         <ExerciseDetailModal

@@ -1006,20 +1006,7 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
                 />
               </svg>
             </h3>
-            <div className="flex items-center gap-2 mt-1 min-w-0">
-              <span
-                data-coach-context-pill="true"
-                className="inline-flex items-center rounded-full px-3 py-1 text-xs font-medium truncate max-w-full"
-                style={{
-                  background: 'rgb(var(--color-coach-accent-rgb) / 0.12)',
-                  color: 'var(--color-coach-accent)',
-                  border: '1px solid rgb(var(--color-coach-accent-rgb) / 0.28)',
-                }}
-              >
-                {placeMeta.label}
-              </span>
-              <span className="wk-caption truncate hidden sm:inline">Private · not stored on server</span>
-            </div>
+            <p className="wk-caption mt-1 truncate">Private · not stored on server</p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
             {conversationStarted && !embedded && (
@@ -1111,13 +1098,15 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
               paddingBottom: showNewMsgPill ? 64 : 16,
             }}
           >
-            {messages.map((msg) => {
+            {messages.map((msg, msgIdx) => {
               const isUser = msg.sender === 'user';
               const isBeingRevealed = revealing?.messageId === msg.id;
               const displayText = isBeingRevealed ? revealing.visibleText : msg.text;
+              const isLatestAssistant = !isUser && msgIdx === messages.length - 1;
 
-              // Before anything is asked, show the coach's warm greeting, live context, and high-likelihood next actions right in the thread.
+              // Before anything is asked, show Treise's greeting, live context, and the 3 highest-likelihood next actions right in the thread.
               if (msg.id === 'msg-welcome' && !conversationStarted) {
+                const topOpeningHooks = quickPrompts.slice(0, 3);
                 return (
                   <div key={msg.id} className="flex flex-col gap-3 py-1">
                     <div
@@ -1129,20 +1118,20 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
                         className="wk-label"
                         style={{ color: 'var(--color-coach-accent)' }}
                       >
-                        Coach greeting
+                        Treise
                       </span>
                       <p className="wk-body font-medium" style={{ color: 'var(--color-text-primary)' }}>
                         {renderBold(displayText)}
                       </p>
                     </div>
-                    {quickPrompts.length > 0 && (
+                    {topOpeningHooks.length > 0 && (
                       <div
                         data-coach-opening-hooks="true"
                         className="flex flex-col gap-2"
                       >
                         <span className="wk-label">Suggested next actions</span>
                         <div className="flex flex-wrap gap-2">
-                          {quickPrompts.map((q) => (
+                          {topOpeningHooks.map((q) => (
                             <button
                               key={`welcome-hook-${q.label}`}
                               type="button"
@@ -1466,6 +1455,38 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
                     )}
                   </div>
 
+                  {conversationStarted &&
+                    isLatestAssistant &&
+                    !isBeingRevealed &&
+                    !isProcessing &&
+                    latestSuggestedActions &&
+                    latestSuggestedActions.length > 0 && (
+                      <div
+                        data-coach-reply-hooks="true"
+                        className="flex flex-col gap-2 mt-3"
+                      >
+                        <span className="wk-label">Suggested next actions</span>
+                        <div className="flex flex-wrap gap-2">
+                          {latestSuggestedActions.slice(0, 3).map((chip) => (
+                            <button
+                              key={`reply-hook-${chip.label}`}
+                              type="button"
+                              onClick={() => useSuggestedChip(chip)}
+                              disabled={isProcessing}
+                              className="min-h-[44px] rounded-full px-4 text-xs font-medium transition-all active:scale-95 disabled:opacity-50"
+                              style={{
+                                background: 'var(--wk-card)',
+                                color: 'var(--color-text-primary)',
+                                border: '1px solid var(--color-border-strong)',
+                              }}
+                            >
+                              {chip.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
                   {isUser && (
                     <span className="wk-caption mt-1 px-1">
                       {msg.timestamp}
@@ -1534,56 +1555,6 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
               <span>New message</span>
             </button>
           )}
-        </div>
-
-        {/* Single-row horizontal quick-reply chips (44px min touch target) with subtle right-edge scroll fade */}
-        <div className="relative shrink-0">
-          <div
-            className="overflow-x-auto no-scrollbar flex flex-nowrap items-center px-4 pr-8 pt-1 pb-2 gap-2"
-            role="group"
-            aria-label="Suggestions"
-          >
-            {latestSuggestedActions
-              ? latestSuggestedActions.map((chip) => (
-                  <button
-                    key={chip.label}
-                    type="button"
-                    onClick={() => useSuggestedChip(chip)}
-                    disabled={isProcessing}
-                    className="shrink-0 min-h-[44px] whitespace-nowrap rounded-full px-4 text-xs font-medium transition-all active:scale-95 disabled:opacity-50"
-                    style={{
-                      background: 'var(--wk-card)',
-                      color: 'var(--color-text-primary)',
-                      border: '1px solid var(--color-border-strong)',
-                    }}
-                  >
-                    {chip.label}
-                  </button>
-                ))
-              : quickPrompts.map((q) => (
-                  <button
-                    key={q.label}
-                    type="button"
-                    onClick={() => useHook(q)}
-                    disabled={isProcessing}
-                    className="shrink-0 min-h-[44px] whitespace-nowrap rounded-full px-4 text-xs font-medium transition-all active:scale-95 disabled:opacity-50"
-                    style={{
-                      background: 'var(--wk-card)',
-                      color: 'var(--color-text-primary)',
-                      border: '1px solid var(--color-border-strong)',
-                    }}
-                  >
-                    {q.label}
-                  </button>
-                ))}
-          </div>
-          <div
-            aria-hidden="true"
-            className="pointer-events-none absolute right-0 top-0 bottom-0 w-8"
-            style={{
-              background: 'linear-gradient(90deg, transparent 0%, var(--color-bg-canvas) 100%)',
-            }}
-          />
         </div>
 
         {/* Multiline Input Bar pinned cleanly above soft keyboard / gesture bar */}

@@ -7088,8 +7088,11 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
         const pwMod = await import('../../services/progressWidgets');
         assert(
           pwMod.resolveProgressWidgets(undefined).length === pwMod.DEFAULT_PROGRESS_WIDGETS.length &&
-            !pwMod.resolveProgressWidgets(undefined).includes('balance'),
-          'Default Progress widgets include the 7 overview blocks and omit optional widgets'
+            pwMod.DEFAULT_PROGRESS_WIDGETS.includes('composition') &&
+            !pwMod.resolveProgressWidgets(undefined).includes('balance') &&
+            !pwMod.resolveProgressWidgets(undefined).includes('lifetime-stats') &&
+            !pwMod.resolveProgressWidgets(undefined).includes('body-weight'),
+          'Default Progress widgets focus on the 5 story blocks (goals, composition, trophy-case, strength-standards, insights) and keep operational widgets opt-in'
         );
         const addBal = await say('add balance to my progress page');
         assert(
@@ -7098,11 +7101,11 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
           'Coach: "add balance to my progress page" adds the Balance widget'
         );
         const withBal = { ...profile, progressWidgets: addBal.updatedProfile!.progressWidgets };
-        const removeTwo = await say('remove body weight and measurements from progress', withBal);
+        const removeTwo = await say('remove composition and insights from progress', withBal);
         assert(
           removeTwo.actionTaken?.type === 'UPDATE_PROGRESS_WIDGETS' &&
-            !removeTwo.updatedProfile?.progressWidgets?.includes('body-weight') &&
-            !removeTwo.updatedProfile?.progressWidgets?.includes('measurements') &&
+            !removeTwo.updatedProfile?.progressWidgets?.includes('composition') &&
+            !removeTwo.updatedProfile?.progressWidgets?.includes('insights') &&
             Boolean(removeTwo.updatedProfile?.progressWidgets?.includes('balance')),
           'Coach: removing two widgets from progress updates profile.progressWidgets while keeping other widgets'
         );
@@ -7196,23 +7199,23 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
           'Progress header exposes the 3-dots quick menu with Change goals & Customize widgets and removes the Change flag from GoalsHero'
         );
 
-        // Steps card on Progress, daily steps custom goal, and non-training day step count on Workout overview.
+        // Steps card on Progress (opt-in via Customize widgets or Coach), daily steps custom goal, and non-training day step count on Workout overview.
         assert(
-          pwMod.resolveProgressWidgets(undefined).includes('steps') &&
+          !pwMod.resolveProgressWidgets(undefined).includes('steps') &&
             analyticsSrc.includes("hasWidget('steps')") &&
             analyticsSrc.includes('title="Steps"') &&
             trainTabSrc.includes("Today's steps") &&
             trainTabSrc.includes('stepsOnDate('),
-          'Steps appears as a default Progress card and on non-training days in the day overview'
+          'Steps stays opt-in on Progress and appears on non-training days in the Workout day overview'
         );
-        const toggleStepsOff = await say('hide steps from my progress page', profile);
-        const toggleStepsOn = await say('add steps to my progress page', { ...profile, progressWidgets: toggleStepsOff.updatedProfile!.progressWidgets });
+        const toggleStepsOn = await say('add steps to my progress page', profile);
+        const toggleStepsOff = await say('hide steps from my progress page', { ...profile, progressWidgets: toggleStepsOn.updatedProfile!.progressWidgets });
         assert(
-          toggleStepsOff.actionTaken?.type === 'UPDATE_PROGRESS_WIDGETS' &&
-            !pwMod.resolveProgressWidgets(toggleStepsOff.updatedProfile?.progressWidgets).includes('steps') &&
-            toggleStepsOn.actionTaken?.type === 'UPDATE_PROGRESS_WIDGETS' &&
-            pwMod.resolveProgressWidgets(toggleStepsOn.updatedProfile?.progressWidgets).includes('steps'),
-          'Coach: steps widget can be hidden and added back cleanly'
+          toggleStepsOn.actionTaken?.type === 'UPDATE_PROGRESS_WIDGETS' &&
+            pwMod.resolveProgressWidgets(toggleStepsOn.updatedProfile?.progressWidgets).includes('steps') &&
+            toggleStepsOff.actionTaken?.type === 'UPDATE_PROGRESS_WIDGETS' &&
+            !pwMod.resolveProgressWidgets(toggleStepsOff.updatedProfile?.progressWidgets).includes('steps'),
+          'Coach: steps widget can be added and hidden cleanly'
         );
         const todayDate = localDateString(new Date());
         const stepBio = [
@@ -11209,7 +11212,7 @@ Exercise,,Date,Workout,Sets,Reps,Tempo,Rest,Notes,Set 1,Set 2,Set 3,Set 4
         !trainSrc54.includes('Non-training day') &&
         swapSrc54.includes('Swap exercise') &&
         !swapSrc54.includes('Change exercise') &&
-        cardSrc54.includes('Swap exercise from') &&
+        cardSrc54.includes('Swap exercise') &&
         cardSrc54.includes('onOpenNotesHistory') &&
         activeDaySrc54.includes('Active day') &&
         activeDaySrc54.includes('Log active day') &&
@@ -11888,10 +11891,14 @@ Exercise,,Date,Workout,Sets,Reps,Tempo,Rest,Notes,Set 1,Set 2,Set 3,Set 4
         !exCardSrc58.includes('setShowDetails') &&
         !exCardSrc58.includes('aria-expanded') &&
         !exCardSrc58.includes('rotate(90deg)') &&
+        exCardSrc58.includes('<MoreHorizontal') &&
+        exCardSrc58.includes('role="menu"') &&
         exCardSrc58.includes('onOpenDetail') &&
         exCardSrc58.includes('<ExerciseDetailModal') &&
-        exCardSrc58.includes('Open exercise details, form and history'),
-      'ExerciseCard arrow opens the drill-in modal rather than toggling an inline accordion'
+        exCardSrc58.includes('Open exercise details, form and history') &&
+        exCardSrc58.includes("hasSavedNote ? 'Edit note' : 'Add note'") &&
+        exCardSrc58.includes('variant="minimal"'),
+      'ExerciseCard 3-dot menu houses Exercise details, Swap exercise, and Add/Edit note while inline TrendChart renders minimal trend-line mode'
     );
 
     assert(
@@ -11981,40 +11988,40 @@ Exercise,,Date,Workout,Sets,Reps,Tempo,Rest,Notes,Set 1,Set 2,Set 3,Set 4
     const storage59 = await import('../../services/storage');
     const { localDateString: localDs59 } = await import('../../utils/date');
 
-    // 1. Optional widget registration + Customize UI + AI Coach toggles
+    // 1. Default Composition widget registration + Customize UI + AI Coach toggles
     const compDef = pw59.PROGRESS_WIDGETS.find((w) => w.id === 'composition');
     assert(
       Boolean(compDef) &&
         compDef!.label === 'Composition' &&
-        compDef!.defaultEnabled === false &&
-        !pw59.DEFAULT_PROGRESS_WIDGETS.includes('composition') &&
+        compDef!.defaultEnabled === true &&
+        pw59.DEFAULT_PROGRESS_WIDGETS.includes('composition') &&
         pw59.availableProgressWidgets(NEW_USER_PROFILE).some((w) => w.id === 'composition'),
-      'Composition is registered as an optional Progress widget (defaultEnabled: false)'
+      'Composition is registered as a default Progress story widget (defaultEnabled: true)'
     );
 
-    const toggledOn = pw59.toggleProgressWidget(undefined, 'composition');
+    const toggledOff = pw59.toggleProgressWidget(undefined, 'composition');
     const demo59 = storage59.resetAllToSeedData();
     const weeklyVol59 = storage59.calculateWeeklyMuscleVolume(demo59.workouts, demo59.exercises);
-    const coachAddComp = await aiMod59.processAssistantMessage({
-      userMessage: 'add composition to my progress page',
+    const coachRemoveComp = await aiMod59.processAssistantMessage({
+      userMessage: 'remove composition from my progress page',
       activeWorkout: demo59.activeWorkout,
       biometrics: demo59.biometrics,
-      profile: demo59.profile,
+      profile: { ...demo59.profile, progressWidgets: undefined },
       workouts: demo59.workouts,
       exerciseCatalog: demo59.exercises,
       bodyweightEmaKg: 80,
       readinessState: 'Normal',
       weeklyVolume: weeklyVol59,
     });
-    const withCompProfile = {
+    const withoutCompProfile = {
       ...demo59.profile,
-      progressWidgets: coachAddComp.updatedProfile?.progressWidgets ?? toggledOn,
+      progressWidgets: coachRemoveComp.updatedProfile?.progressWidgets ?? toggledOff,
     };
-    const coachRemoveComp = await aiMod59.processAssistantMessage({
-      userMessage: 'remove composition from my progress page',
+    const coachAddComp = await aiMod59.processAssistantMessage({
+      userMessage: 'add composition to my progress page',
       activeWorkout: demo59.activeWorkout,
       biometrics: demo59.biometrics,
-      profile: withCompProfile,
+      profile: withoutCompProfile,
       workouts: demo59.workouts,
       exerciseCatalog: demo59.exercises,
       bodyweightEmaKg: 80,
@@ -12022,11 +12029,11 @@ Exercise,,Date,Workout,Sets,Reps,Tempo,Rest,Notes,Set 1,Set 2,Set 3,Set 4
       weeklyVolume: weeklyVol59,
     });
     assert(
-      Boolean(toggledOn?.includes('composition')) &&
-        coachAddComp.actionTaken?.type === 'UPDATE_PROGRESS_WIDGETS' &&
-        Boolean(coachAddComp.updatedProfile?.progressWidgets?.includes('composition')) &&
+      !pw59.resolveProgressWidgets(toggledOff).includes('composition') &&
         coachRemoveComp.actionTaken?.type === 'UPDATE_PROGRESS_WIDGETS' &&
-        !pw59.resolveProgressWidgets(coachRemoveComp.updatedProfile?.progressWidgets).includes('composition'),
+        !pw59.resolveProgressWidgets(coachRemoveComp.updatedProfile?.progressWidgets).includes('composition') &&
+        coachAddComp.actionTaken?.type === 'UPDATE_PROGRESS_WIDGETS' &&
+        pw59.resolveProgressWidgets(coachAddComp.updatedProfile?.progressWidgets).includes('composition'),
       'Composition widget toggles cleanly via Customize settings and Coach prompts'
     );
 
@@ -12376,11 +12383,11 @@ Exercise,,Date,Workout,Sets,Reps,Tempo,Rest,Notes,Set 1,Set 2,Set 3,Set 4
 
     const politeWidgetRes = await processAssistantMessage({
       ...s61Base,
-      userMessage: 'Can you add Composition to my Progress page?',
+      userMessage: 'Can you add Steps to my Progress page?',
     });
     assert(
       politeWidgetRes.actionTaken?.type === 'UPDATE_PROGRESS_WIDGETS' &&
-        politeWidgetRes.updatedProfile?.progressWidgets?.includes('composition') === true &&
+        politeWidgetRes.updatedProfile?.progressWidgets?.includes('steps') === true &&
         Boolean(politeWidgetRes.message.undoSnapshot),
       'Polite widget toggle ending in "?" executes UPDATE_PROGRESS_WIDGETS with Undo'
     );

@@ -211,7 +211,8 @@ export const CompletedExerciseCard: React.FC<{
           <TrendChart
             points={history.map((h) => ({ date: localDateString(new Date(h.at)), value: h.value ?? h.e1rmKg }))}
             format={(v) => (summary.timed ? `${Math.round(v)}s` : units.formatPrecise(v))}
-            height={240}
+            height={180}
+            variant="minimal"
             emptyTitle="No history yet"
             emptyMessage="Your progress appears here once sessions are saved."
             label={

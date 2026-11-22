@@ -736,7 +736,7 @@ export async function runAiContentGuidelinesAuditSuite(assert: AssertFn): Promis
         hasNextActionQuestion &&
         noThirdPersonOrSurveillance &&
         opening.hooks.length >= 2 &&
-        opening.hooks.length <= 5,
+        opening.hooks.length <= 3,
       `Coach opening (${item.label}) greets the athlete warmly, invites a next action, and surfaces ${opening.hooks.length} contextual hooks ("${opening.line}")`
     );
   }
@@ -828,8 +828,9 @@ export async function runAiContentGuidelinesAuditSuite(assert: AssertFn): Promis
         noSurveillance &&
         sc.expectReplyRegex.test(text) &&
         hooks.length >= 2 &&
+        hooks.length <= 3 &&
         sc.expectHookRegex.test(hooksJoined),
-      `Chat turn (${sc.label}) speaks in first-person coach voice and surfaces contextual next-action hooks [${hooks.map((h) => h.label).join(', ')}]`
+      `Chat turn (${sc.label}) speaks in first-person coach voice and surfaces top-3 contextual next-action hooks [${hooks.map((h) => h.label).join(', ')}]`
     );
   }
 
@@ -839,9 +840,13 @@ export async function runAiContentGuidelinesAuditSuite(assert: AssertFn): Promis
   );
   assert(
     chatModalSrc79.includes('data-coach-greeting="true"') &&
+      !chatModalSrc79.includes('Coach greeting') &&
+      !chatModalSrc79.includes('data-coach-context-pill') &&
+      !chatModalSrc79.includes('aria-label="Suggestions"') &&
       chatModalSrc79.includes('data-coach-opening-hooks="true"') &&
+      chatModalSrc79.includes('data-coach-reply-hooks="true"') &&
       chatModalSrc79.includes('Suggested next actions') &&
       chatModalSrc79.includes('lastCtxMsg'),
-    'AICoachChatModal renders the Coach greeting card, in-thread Suggested next actions hooks on open, and cross-tab greeting refresh'
+    'AICoachChatModal labels the opener Treise, omits screen-name pills and bottom chips, caps in-thread Suggested next actions to 3, and refreshes greeting on navigation'
   );
 }

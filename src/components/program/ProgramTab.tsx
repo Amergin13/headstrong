@@ -271,7 +271,48 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
               />
             )}
 
-            {/* 1. Training Locations & Equipment Summary Card */}
+            {/* 1. Workout Split & Exercises */}
+            <SplitEditor
+              exerciseCatalog={exerciseCatalog}
+              activeSplitDay={activeSplitDay}
+              activeProgramWorkoutNumber={activeProgramWorkoutNumber}
+              programType={profile.programType}
+              onOpenCreateExercise={() => setShowCreateExercise(true)}
+              onLaunchSplitDay={onLaunchSplitDay}
+              onLaunchWorkoutNumber={onLaunchWorkoutNumber}
+              onChangeProgram={changeProgram}
+              onInspectExercise={(id) => setInspectedExerciseId(id)}
+            />
+
+            {/* 2. 6-Week Training Plan (Mesocycle Periodization) */}
+            <MesocycleManager
+              currentWeek={profile.mesocycleWeek || 1}
+              totalWeeks={6}
+              scheduledWeekLocations={profile.scheduledWeekLocations}
+              onSelectWeek={onSelectMesocycleWeek}
+              onTriggerDeload={() => onSelectMesocycleWeek(6)}
+            />
+
+            {/* 3. Training Goal Phase (Build Muscle / Lose Fat / Stay Lean) */}
+            <GoalPhaseSwitcher
+              currentPhase={profile.goalPhase}
+              onSelectPhase={(phase) => {
+                if (onUpdateGoalPhase) {
+                  onUpdateGoalPhase(phase);
+                } else {
+                  onUpdateProfile({ goalPhase: phase });
+                }
+              }}
+            />
+
+            {/* 4. Weekly Muscle Volume (collapsed summary by default) */}
+            <WeeklyVolumeCard
+              workouts={workouts}
+              exerciseCatalog={exerciseCatalog}
+              goalPhase={profile.goalPhase}
+            />
+
+            {/* 5. Training Locations & Equipment Summary Card */}
             <div className="wk-card w-full text-left block">
               <div className="flex items-start justify-between gap-3">
                 <h2 className="wk-h1 leading-tight">
@@ -326,47 +367,6 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
                 </div>
               </div>
             </div>
-
-            {/* 2. Training Goal Phase (Build Muscle / Lose Fat / Stay Lean) */}
-            <GoalPhaseSwitcher
-              currentPhase={profile.goalPhase}
-              onSelectPhase={(phase) => {
-                if (onUpdateGoalPhase) {
-                  onUpdateGoalPhase(phase);
-                } else {
-                  onUpdateProfile({ goalPhase: phase });
-                }
-              }}
-            />
-
-            {/* 3. Weekly Muscle Volume */}
-            <WeeklyVolumeCard
-              workouts={workouts}
-              exerciseCatalog={exerciseCatalog}
-              goalPhase={profile.goalPhase}
-            />
-
-            {/* 4. 6-Week Training Plan (Mesocycle Periodization) */}
-            <MesocycleManager
-              currentWeek={profile.mesocycleWeek || 1}
-              totalWeeks={6}
-              scheduledWeekLocations={profile.scheduledWeekLocations}
-              onSelectWeek={onSelectMesocycleWeek}
-              onTriggerDeload={() => onSelectMesocycleWeek(6)}
-            />
-
-            {/* 4. Workout Split & Exercises */}
-            <SplitEditor
-              exerciseCatalog={exerciseCatalog}
-              activeSplitDay={activeSplitDay}
-              activeProgramWorkoutNumber={activeProgramWorkoutNumber}
-              programType={profile.programType}
-              onOpenCreateExercise={() => setShowCreateExercise(true)}
-              onLaunchSplitDay={onLaunchSplitDay}
-              onLaunchWorkoutNumber={onLaunchWorkoutNumber}
-              onChangeProgram={changeProgram}
-              onInspectExercise={(id) => setInspectedExerciseId(id)}
-            />
           </div>
         </>
       )}
