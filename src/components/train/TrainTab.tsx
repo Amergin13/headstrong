@@ -1143,19 +1143,20 @@ export const TrainTab: React.FC<TrainTabProps> = ({
         const muscleLabel = def ? MUSCLE_FRIENDLY_NAMES[def.primaryMuscle] : undefined;
         return buildExerciseNoteFacts({
           exercise: ex,
-          insight: buildExerciseInsight(ex, workouts, readiness.state, measuredBodyweightKg, 12, (kg) => units.formatPrecise(kg), biometrics, muscleLabel),
+          insight: buildExerciseInsight(ex, workouts, readiness.state, measuredBodyweightKg, 12, (kg) => units.formatPrecise(kg), biometrics, muscleLabel, profile.goalPhase),
           workouts,
           readinessState: readiness.state,
           knowledgeGraph,
           primaryMuscle: def?.primaryMuscle,
           muscleLabel,
           programLabel,
+          goalPhase: profile.goalPhase,
           formatWeight: (kg) => units.formatPrecise(kg),
         });
       }),
     // Facts use planned targets and history only, so ticking sets doesn't rewrite the notes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [activeWorkout.id, activeWorkout.exercises.map((e) => `${e.id}:${e.exerciseId}:${e.sets.length}`).join('|'), workouts, readiness.state, knowledgeGraph, programLabel, units.unit, measuredBodyweightKg, biometrics]
+    [activeWorkout.id, activeWorkout.exercises.map((e) => `${e.id}:${e.exerciseId}:${e.sets.length}`).join('|'), workouts, readiness.state, knowledgeGraph, programLabel, profile.goalPhase, units.unit, measuredBodyweightKg, biometrics]
   );
   const [generatedNotes, setGeneratedNotes] = useState<Record<string, string>>({});
   const noteKeys = exerciseNotes.map((n) => n.key).join('|');
@@ -2013,7 +2014,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
               onOpenPlateCalc={(kg) => setPlateCalcWeight(kg)}
               muscleLabel={def ? MUSCLE_FRIENDLY_NAMES[def.primaryMuscle] : undefined}
               previousSets={getPreviousWorkingSets(ex.exerciseId, workouts)}
-              insight={buildExerciseInsight(ex, liveInsightWorkouts, readiness.state, measuredBodyweightKg, 12, (kg) => units.formatPrecise(kg), biometrics, def ? MUSCLE_FRIENDLY_NAMES[def.primaryMuscle] : undefined)}
+              insight={buildExerciseInsight(ex, liveInsightWorkouts, readiness.state, measuredBodyweightKg, 12, (kg) => units.formatPrecise(kg), biometrics, def ? MUSCLE_FRIENDLY_NAMES[def.primaryMuscle] : undefined, profile.goalPhase)}
               note={
                 isBlockCompleted
                   ? undefined
@@ -2228,7 +2229,8 @@ export const TrainTab: React.FC<TrainTabProps> = ({
               12,
               (kg) => units.formatPrecise(kg),
               biometrics,
-              detailDef ? MUSCLE_FRIENDLY_NAMES[detailDef.primaryMuscle] : undefined
+              detailDef ? MUSCLE_FRIENDLY_NAMES[detailDef.primaryMuscle] : undefined,
+              profile.goalPhase
             )}
             bodyweightKg={measuredBodyweightKg}
             muscleLabel={detailDef ? MUSCLE_FRIENDLY_NAMES[detailDef.primaryMuscle] : undefined}

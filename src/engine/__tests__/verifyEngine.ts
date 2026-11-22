@@ -3768,8 +3768,8 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
     assert(
       insight.history.length === 2 &&
         insight.history[1].e1rmKg > insight.history[0].e1rmKg &&
-        /Estimated max:\s*\d+(?:\.\d+)?\s*kg\s*\(\+\d+(?:\.\d+)?\s*kg over 2 sessions\)/i.test(insight.summary) &&
-        /Heavier load today/i.test(insight.summary),
+        /Your strength is rising—estimated max is up \+\d+(?:\.\d+)?\s*kg over 2 sessions to \d+(?:\.\d+)?\s*kg/i.test(insight.summary) &&
+        /Increasing the weight/i.test(insight.summary),
       `Exercise summary describes the trend and today's change: "${insight.summary}"`
     );
     assert(/holding weight|Low recovery today/i.test(buildExerciseInsight(plan2.exercises[0], [same], 'Amber Shield').summary), 'Low recovery days say the weight is held');
@@ -11431,11 +11431,11 @@ Exercise,,Date,Workout,Sets,Reps,Tempo,Rest,Notes,Set 1,Set 2,Set 3,Set 4
     const exReject = checkExerciseNote(verboseEx, exFacts55);
     const exAccept = checkExerciseNote(exFacts55.fallback, exFacts55);
     assert(
-      exFacts55.fallback.length <= 185 &&
-        /^(?:Estimated max|Baseline)/.test(exFacts55.fallback) &&
+      exFacts55.fallback.length <= 215 &&
+        /^(?:Your strength|Your estimated max|Your starting|First time)/.test(exFacts55.fallback) &&
         Boolean(exReject.problem) &&
         exAccept.text === exFacts55.fallback,
-      `Exercise note front-loads metrics (${exFacts55.fallback.length} chars) & rejects verbose >240 char answers`
+      `Exercise note front-loads goal progress (${exFacts55.fallback.length} chars) & rejects verbose >240 char answers`
     );
 
     // Timed hold & bodyweight+added weight formatting
@@ -16223,12 +16223,12 @@ Exercise,,Date,Workout,Sets,Reps,Tempo,Rest,Notes,Set 1,Set 2,Set 3,Set 4
       formatWeight: (kg: number) => `${kg} kg`,
     });
     assert(
-      benchInsight72.lines[1] === 'Matching this load across 8–12 reps deepens hypertrophy volume.' &&
-        /across 8–12 reps/.test(benchFacts72.lines[1]) &&
+      benchInsight72.lines[1] === 'Keeping the same weight for 8–12 reps stimulates muscle growth before the next jump.' &&
+        /for 8–12 reps/.test(benchFacts72.lines[1]) &&
         checkNote72(benchFacts72.fallback, benchFacts72).problem === undefined &&
         runRot72([{ exerciseName: todayBenchEx72.name, summary: benchInsight72.summary }]).passed &&
         checkNote72(`${benchFacts72.lines[0]}\nAim for 10 reps per set for your chest.`, benchFacts72).problem !== undefined &&
-        checkNote72(`${benchFacts72.lines[0]}\nMatching this load across 6–8 reps deepens hypertrophy volume.`, benchFacts72).problem !== undefined,
+        checkNote72(`${benchFacts72.lines[0]}\nKeeping the same weight for 6–8 reps stimulates muscle growth in your chest.`, benchFacts72).problem !== undefined,
       `Rep range 8–12 reps lives naturally in Line 2 and passes QA gates while standalone single-number reps and mismatched ranges stay rejected (got "${benchInsight72.lines[1]}")`
     );
 

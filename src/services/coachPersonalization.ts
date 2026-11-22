@@ -715,7 +715,7 @@ export type AiSummarySurface =
 export function buildSummaryVoiceGuidelines(surface: AiSummarySurface): string {
   const surfaceContext: Record<AiSummarySurface, string> = {
     exercise_brief:
-      'Surface: gym-floor exercise card — ultra-scannable, lead with the metric and acute stimulus; for swapped lifts, explain plainly what it replaces and how it keeps target-muscle growth moving while protecting original progression (never "standing in for" or "covering").',
+      'Surface: gym-floor exercise card — Line 1 states overall progress against goals with concrete figures (or pattern strength on a one-off swap); Line 2 states what today’s load/rep range does to move the athlete’s goal forward (never bare label dumps, "standing in for", or "covering").',
     program_identity: 'Surface: plan overview — calm, grounded identity reinforcement tied to concrete logged progress.',
     workout_summary: 'Surface: post-workout recap — earned, understated milestone tone with zero hype.',
     goals_summary: 'Surface: Progress goal card — concise standing plus one concrete next step.',

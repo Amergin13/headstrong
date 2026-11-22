@@ -1195,12 +1195,13 @@ async function processAssistantMessageCore(
     const muscleLabel = def ? MUSCLE_FRIENDLY_NAMES[def.primaryMuscle] : undefined;
     return buildExerciseNoteFacts({
       exercise: ex,
-      insight: buildExerciseInsight(ex, workouts, readinessState, measuredBodyweightKg, 12, precise, biometrics, muscleLabel),
+      insight: buildExerciseInsight(ex, workouts, readinessState, measuredBodyweightKg, 12, precise, biometrics, muscleLabel, profile.goalPhase),
       workouts,
       readinessState,
       knowledgeGraph: kg,
       primaryMuscle: def?.primaryMuscle,
       muscleLabel,
+      goalPhase: profile.goalPhase,
       formatWeight: precise,
     }).lines;
   };

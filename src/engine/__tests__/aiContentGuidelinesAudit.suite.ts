@@ -17,7 +17,12 @@
  * 4. System prompts & serialized context envelopes never leak internal "temporary overlay" or
  *    "(covering ...)" phrasing into model inputs.
  */
-import { runReadAloudQaGate, runRotContentAudit } from '../contentStrategy';
+import {
+  buildExerciseBriefContractPrompt,
+  EXERCISE_BRIEF_BLUEPRINT,
+  runReadAloudQaGate,
+  runRotContentAudit,
+} from '../contentStrategy';
 import {
   buildContinuityCopy,
   buildSwapWhyThisWorksForExercise,
@@ -249,25 +254,181 @@ export async function runAiContentGuidelinesAuditSuite(assert: AssertFn): Promis
   }
 
   // Explicitly verify user's concrete examples & changing session contexts live inside the 2-line summary
-  const facePullInsight = buildExerciseInsight(swappedFacePullFirst, workouts, 'Normal', 81.4, 12, fmtKg, biometrics, 'Rear shoulders');
-  const benchSubInsight = buildExerciseInsight(swappedBenchExperienced, workouts, 'Normal', 81.4, 12, fmtKg, biometrics, 'Chest');
-  const bwSetupInsight = buildExerciseInsight(swappedBwFirst, workouts, 'Normal', 81.4, 12, fmtKg, biometrics, 'Chest');
-  const effortOnlyInsight = buildExerciseInsight(swappedEffortOnlyFirst, workouts, 'Normal', 81.4, 12, fmtKg, biometrics, 'Chest');
-  const reentryInsight = buildExerciseInsight(reentryBench, workouts, 'Normal', 81.4, 12, fmtKg, biometrics, 'Chest');
+  const facePullInsight = buildExerciseInsight(swappedFacePullFirst, workouts, 'Normal', 81.4, 12, fmtKg, biometrics, 'Rear shoulders', 'Lean Bulk');
+  const benchSubInsight = buildExerciseInsight(swappedBenchExperienced, workouts, 'Normal', 81.4, 12, fmtKg, biometrics, 'Chest', 'Lean Bulk');
+  const bwSetupInsight = buildExerciseInsight(swappedBwFirst, workouts, 'Normal', 81.4, 12, fmtKg, biometrics, 'Chest', 'Lean Bulk');
+  const effortOnlyInsight = buildExerciseInsight(swappedEffortOnlyFirst, workouts, 'Normal', 81.4, 12, fmtKg, biometrics, 'Chest', 'Lean Bulk');
+  const reentryInsight = buildExerciseInsight(reentryBench, workouts, 'Normal', 81.4, 12, fmtKg, biometrics, 'Chest', 'Lean Bulk');
   assert(
     facePullInsight.lines[0].includes('Replaces Cable Face Pull') &&
       facePullInsight.lines[0].includes('estimated starting weight') &&
       facePullInsight.lines[1].includes('rear shoulders') &&
-      facePullInsight.lines[1].includes('saved progression') &&
-      benchSubInsight.lines[0].startsWith('Estimated max:') &&
-      benchSubInsight.lines[1].includes('Replaces Barbell Bench Press') &&
+      facePullInsight.lines[1].includes('pull progression') &&
+      benchSubInsight.lines[0].startsWith('Your strength is rising—estimated max is up +') &&
+      benchSubInsight.lines[1].includes('Replacing Barbell Bench Press') &&
       benchSubInsight.lines[1].includes('chest') &&
-      benchSubInsight.lines[1].includes('saved progression') &&
+      benchSubInsight.lines[1].includes('push progression') &&
       bwSetupInsight.lines[0].includes('feet elevated') &&
       !bwSetupInsight.summary.includes('%') &&
       effortOnlyInsight.lines[0].includes('moderate opening weight') &&
       reentryInsight.lines[1].includes('last gym load'),
-    'Swapped exercise, leverage setup, calibration, and gym re-entry contexts live cleanly inside the 2-line summary rather than varying table headers'
+    'Swapped exercise, leverage setup, calibration, and gym re-entry contexts live cleanly inside the codified 2-line summary rather than varying table headers'
+  );
+
+  // -------------------------------------------------------------------------
+  // 1b. Codified EXERCISE_BRIEF_BLUEPRINT End-to-End Scenarios
+  //     (Line 1 = Overall Progress Against Goals; Line 2 = Today's Action -> Goal Outcome)
+  // -------------------------------------------------------------------------
+  assert(
+    EXERCISE_BRIEF_BLUEPRINT.line1.role === 'Overall Progress Against Goals' &&
+      EXERCISE_BRIEF_BLUEPRINT.line2.role.includes('Goal Outcome') &&
+      EXERCISE_NOTE_SYSTEM_PROMPT.startsWith(buildExerciseBriefContractPrompt()),
+    'EXERCISE_BRIEF_BLUEPRINT is codified in contentStrategy.ts and drives EXERCISE_NOTE_SYSTEM_PROMPT directly'
+  );
+
+  // Build Barbell Bench history climbing by ~+19 kg E1RM (75 kg x 6 @ 2 RIR -> 90 kg x 6 @ 2 RIR)
+  const benchHist1: WorkoutSession = {
+    ...prevDbBenchWorkout,
+    id: 'w79-bb-1',
+    date: '2026-11-01',
+    completedAt: '2026-11-01T10:00:00Z',
+    exercises: [
+      {
+        id: 'bb-ex-1',
+        exerciseId: 'ex-bench-press',
+        name: 'Barbell Bench Press',
+        pillar: 'Horizontal Push',
+        equipment: 'barbell',
+        minReps: 8,
+        maxReps: 12,
+        sets: [
+          { id: 'bb1', setNumber: 1, targetWeightKg: 75, targetReps: 6, targetRir: 2, actualWeightKg: 75, actualReps: 6, actualRir: 2, isWarmup: false, completed: true },
+        ],
+      },
+    ],
+  };
+  const benchHist2: WorkoutSession = {
+    ...prevDbBenchWorkout,
+    id: 'w79-bb-2',
+    date: '2026-11-18',
+    completedAt: '2026-11-18T10:00:00Z',
+    exercises: [
+      {
+        id: 'bb-ex-2',
+        exerciseId: 'ex-bench-press',
+        name: 'Barbell Bench Press',
+        pillar: 'Horizontal Push',
+        equipment: 'barbell',
+        minReps: 8,
+        maxReps: 12,
+        sets: [
+          { id: 'bb2', setNumber: 1, targetWeightKg: 90, targetReps: 6, targetRir: 2, actualWeightKg: 90, actualReps: 6, actualRir: 2, isWarmup: false, completed: true },
+        ],
+      },
+    ],
+  };
+  const benchHistory79 = [benchHist1, benchHist2];
+
+  // Scenario A: Keeping same weight for 8–12 reps -> stimulates muscle growth
+  const todaySameWtBench: ExerciseSession = {
+    ...benchHist2.exercises[0],
+    id: 'bb-today-same',
+    minReps: 8,
+    maxReps: 12,
+    sets: [{ id: 't1', setNumber: 1, targetWeightKg: 90, targetReps: 6, targetRir: 2, isWarmup: false, completed: false }],
+  };
+  const sameWtBulk = buildExerciseInsight(todaySameWtBench, benchHistory79, 'Normal', 81.4, 12, fmtKg, biometrics, 'Chest', 'Lean Bulk');
+  const sameWtCut = buildExerciseInsight(todaySameWtBench, benchHistory79, 'Normal', 81.4, 12, fmtKg, biometrics, 'Chest', 'Cut / Recomp');
+  const sameWtRecomp = buildExerciseInsight(todaySameWtBench, benchHistory79, 'Normal', 81.4, 12, fmtKg, biometrics, 'Chest', 'Maingain');
+  const sameWtFacts = buildExerciseNoteFacts({
+    exercise: todaySameWtBench,
+    insight: sameWtBulk,
+    workouts: benchHistory79,
+    readinessState: 'Normal',
+    knowledgeGraph: kg,
+    muscleLabel: 'Chest',
+    goalPhase: 'Lean Bulk',
+    formatWeight: fmtKg,
+  });
+  assert(
+    sameWtBulk.lines[0].includes('Your strength is rising—estimated max is up +19 kg over 2 sessions to 114 kg') &&
+      sameWtBulk.lines[1].includes('Keeping the same weight for 8–12 reps stimulates muscle growth in your chest') &&
+      sameWtCut.lines[1].includes('preserves muscle in your chest') &&
+      sameWtRecomp.lines[1].includes('builds lean muscle in your chest') &&
+      sameWtBulk.summary === sameWtFacts.fallback &&
+      checkExerciseNote(sameWtFacts.fallback, sameWtFacts).problem === undefined &&
+      runRotContentAudit([{ exerciseName: todaySameWtBench.name, summary: sameWtBulk.summary }]).passed,
+    `Codified Scenario A (same weight for 8–12 reps across Bulk/Cut/Recomp) passes end-to-end ("${sameWtBulk.summary.replace(/\n/g, ' / ')}")`
+  );
+
+  // Scenario B: Increasing weight with fewer reps (5–8 strength range) -> builds overall strength
+  const todayStrengthBench: ExerciseSession = {
+    ...benchHist2.exercises[0],
+    id: 'bb-today-strength',
+    minReps: 5,
+    maxReps: 8,
+    sets: [{ id: 't2', setNumber: 1, targetWeightKg: 92.5, targetReps: 5, targetRir: 2, isWarmup: false, completed: false }],
+  };
+  const strengthInsight = buildExerciseInsight(todayStrengthBench, benchHistory79, 'Normal', 81.4, 12, fmtKg, biometrics, 'Chest', 'Lean Bulk');
+  const strengthFacts = buildExerciseNoteFacts({
+    exercise: todayStrengthBench,
+    insight: strengthInsight,
+    workouts: benchHistory79,
+    readinessState: 'Normal',
+    knowledgeGraph: kg,
+    muscleLabel: 'Chest',
+    goalPhase: 'Lean Bulk',
+    formatWeight: fmtKg,
+  });
+  assert(
+    strengthInsight.lines[1].includes('Increasing the weight with fewer reps for 5–8 reps builds overall strength') &&
+      strengthInsight.summary === strengthFacts.fallback &&
+      checkExerciseNote(strengthFacts.fallback, strengthFacts).problem === undefined,
+    `Codified Scenario B (heavier weight + fewer reps builds overall strength) passes end-to-end ("${strengthInsight.lines[1]}")`
+  );
+
+  // Scenario C: One-off swap backed by real logged Barbell Bench Press progression -> Flat DB Press (no own DB history)
+  const oneOffSwapDb: ExerciseSession = {
+    id: 'ex79-oneoff-db',
+    exerciseId: 'ex-incline-db-press',
+    name: 'Incline Dumbbell Press',
+    pillar: 'Horizontal Push',
+    equipment: 'dumbbell',
+    anchorExerciseId: 'ex-bench-press',
+    anchorExerciseName: 'Barbell Bench Press',
+    continuityRationaleKind: 'ANCHOR_PRIOR',
+    minReps: 8,
+    maxReps: 12,
+    sets: [{ id: 'od1', setNumber: 1, targetWeightKg: 28, targetReps: 10, targetRir: 2, isWeightEstimated: true, calibrationSource: 'ANCHOR_PRIOR', isWarmup: false, completed: false }],
+  };
+  const oneOffInsight = buildExerciseInsight(oneOffSwapDb, benchHistory79, 'Normal', 81.4, 12, fmtKg, biometrics, 'Chest', 'Lean Bulk');
+  const oneOffFacts = buildExerciseNoteFacts({
+    exercise: oneOffSwapDb,
+    insight: oneOffInsight,
+    workouts: benchHistory79,
+    readinessState: 'Normal',
+    knowledgeGraph: kg,
+    muscleLabel: 'Chest',
+    goalPhase: 'Lean Bulk',
+    formatWeight: fmtKg,
+  });
+  assert(
+    oneOffInsight.lines[0].includes('Your push strength is rising—Barbell Bench Press estimated max is up +19 kg to 114 kg') &&
+      oneOffInsight.lines[1].includes("Today's estimated load for 8–12 reps stimulates muscle growth in your chest based on your push progression") &&
+      oneOffInsight.summary === oneOffFacts.fallback &&
+      checkExerciseNote(oneOffFacts.fallback, oneOffFacts).problem === undefined &&
+      runRotContentAudit([{ exerciseName: oneOffSwapDb.name, summary: oneOffInsight.summary }]).passed,
+    `Codified Scenario C (one-off swap anchored to real push strength progression) passes end-to-end ("${oneOffInsight.summary.replace(/\n/g, ' / ')}")`
+  );
+
+  // Bare KPI label dump ("Estimated max: 114 kg (+19 kg over 2 sessions).") is rejected on live AI rewrites
+  const bareKpiReject = checkExerciseNote(
+    'Estimated max: 114 kg (+19 kg over 2 sessions).\nKeeping the same weight for 8–12 reps stimulates muscle growth in your chest.',
+    sameWtFacts
+  );
+  assert(
+    Boolean(bareKpiReject.problem) && /bare KPI label/i.test(bareKpiReject.problem!),
+    'checkExerciseNote rejects bare KPI label dumps in Line 1 in favor of plain-English goal-progress sentences'
   );
 
   const rotAudit = runRotContentAudit(rotPayloads);
@@ -479,14 +640,15 @@ export async function runAiContentGuidelinesAuditSuite(assert: AssertFn): Promis
   const serializedEnv = serializeContextEnvelopeForPrompt(envelope);
   assert(
     EXERCISE_NOTE_SYSTEM_PROMPT.includes('standing in for') &&
-      EXERCISE_NOTE_SYSTEM_PROMPT.includes('saved progression') &&
+      EXERCISE_NOTE_SYSTEM_PROMPT.includes("overall progress against the athlete's goals") &&
+      EXERCISE_NOTE_SYSTEM_PROMPT.includes('movement-pattern strength progression') &&
       coachPrompt.includes('standing in for') &&
       coachPrompt.includes('Gym, Home, Bodyweight / No equipment') &&
       !coachPrompt.includes('temporary overlay') &&
       !coachPrompt.includes('(covering ') &&
       !serializedEnv.includes('Active environment overlay:') &&
       !serializedEnv.includes('(covering '),
-    'Coach & Exercise prompts enforce swap-clarity rules and never leak "temporary overlay" or "(covering ...)" into model inputs'
+    'Coach & Exercise prompts enforce goal-progress + swap-clarity rules and never leak "temporary overlay" or "(covering ...)" into model inputs'
   );
 
   const scheduleReply = answerWeeklySchedule(profile, workouts, []);

@@ -193,9 +193,10 @@ export const ExerciseDetailModal: React.FC<ExerciseDetailModalProps> = ({
       Math.max(12, workouts.length),
       (kg) => units.formatPrecise(kg),
       biometrics,
-      muscleLabel
+      muscleLabel,
+      goalPhase
     );
-  }, [insight, exercise, workouts, readinessState, bodyweightKg, units, biometrics, muscleLabel]);
+  }, [insight, exercise, workouts, readinessState, bodyweightKg, units, biometrics, muscleLabel, goalPhase]);
 
   const detail = useMemo(
     () =>

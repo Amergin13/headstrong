@@ -176,10 +176,11 @@ export const VOICE_TONE_MATRIX: {
     in_workout_briefs: {
       context: 'in_workout_briefs',
       label: 'In-Workout Exercise Briefs',
-      toneAttributes: ['Terse', 'Direct', 'High-signal'],
-      directive: 'Two lines maximum: Line 1 anchors historical progress; Line 2 states the session stimulus.',
+      toneAttributes: ['Direct', 'Goal-anchored', 'High-signal'],
+      directive:
+        'Two lines maximum: Line 1 shows overall progress against your goal with concrete kg/lb figures; Line 2 states what today’s load and rep range are doing to move your goal forward.',
       sampleCopy:
-        'Strength on this lift is rising, up +12.9 kg across 4 sessions to a 108.4 kg estimated max.\nToday consolidates volume accumulation at your current load to deepen chest hypertrophy.',
+        'Your strength is rising—estimated max is up +12.9 kg over 4 sessions to 108.4 kg.\nKeeping the same weight for 8–12 reps stimulates muscle growth in your chest before the next jump.',
     },
     deloads_plateaus_missed: {
       context: 'deloads_plateaus_missed',
@@ -199,6 +200,79 @@ export const VOICE_TONE_MATRIX: {
     },
   },
 };
+
+export interface ExerciseBriefBlueprint {
+  version: string;
+  structure: string;
+  line1: {
+    role: string;
+    purpose: string;
+    examples: readonly string[];
+  };
+  line2: {
+    role: string;
+    purpose: string;
+    examples: readonly string[];
+  };
+  invariants: readonly string[];
+}
+
+/**
+ * Codified 2-Line Exercise Summary Contract shared across deterministic briefs (`exerciseInsight.ts`),
+ * live AI generation (`exerciseCoachNote.ts`), AI Coach exercise answers, and Design System governance.
+ *
+ * Line 1 = Overall progress against the athlete's goals (plain trajectory verdict + concrete metric).
+ * Line 2 = What today's load, rep range, or swap does to move the athlete's goal forward.
+ */
+export const EXERCISE_BRIEF_BLUEPRINT: ExerciseBriefBlueprint = {
+  version: '2.0',
+  structure:
+    'Strict 2 lines separated by a newline (1 sentence per line, under 220 characters total, zero headers or label prefixes).',
+  line1: {
+    role: 'Overall Progress Against Goals',
+    purpose:
+      'Lead with a plain-English verdict on how strength or output is progressing against the athlete’s goal, backed immediately by the exact empirical figure in kg/lb or reps (never bare KPI labels like "Estimated max: 85 kg" and never percentages). For a one-off swap with no own history, anchor to the replaced lift’s real movement-pattern strength progression when logged; otherwise state the starting baseline.',
+    examples: [
+      'Your strength is rising—estimated max is up +19 kg over 6 sessions to 114 kg.',
+      'Your push strength is rising—Barbell Bench Press estimated max is up +12.5 kg to 105 kg.',
+      'Your strength is holding steady at a 95 kg estimated max across 3 sessions.',
+      'First time on Barbell Back Squat—sets your starting strength baseline.',
+    ],
+  },
+  line2: {
+    role: 'Today’s Session Action → Goal Outcome',
+    purpose:
+      'Tell the athlete clearly what they are doing today (keeping the same weight for a rep range, adding reps at the same weight, increasing weight with fewer reps, lowering weight to keep form sharp, holding steady on low recovery, matching last gym load on re-entry, or working a swap load) and connect it directly to how that advances their goal (stimulating muscle growth, building overall strength, preserving muscle, or progressing muscle growth based on their movement-pattern progression).',
+    examples: [
+      'Keeping the same weight for 8–12 reps stimulates muscle growth in your chest before the next jump.',
+      'Increasing the weight with fewer reps for 5–8 reps builds overall strength.',
+      'Today’s estimated load for 8–12 reps stimulates muscle growth in your chest based on your push progression.',
+      'Recovery is low today—keeping the same weight for 8–12 reps preserves muscle in your chest without extra fatigue.',
+    ],
+  },
+  invariants: [
+    'Strict 2 lines, 1 sentence per line, zero label prefixes (Progress:, Goal:, Summary:, Focus:).',
+    'Concrete kg/lb/rep metrics only — zero percentages (%) and zero invented numbers.',
+    'Zero table duplication: never output target weight, single-set rep counts, set counts, RIR, tempo, rest times, or weekly hard-set counts (prescribed rep range like "8–12 reps" is allowed naturally in Line 2).',
+    'Never use vague swap idioms ("standing in for", "covering <lift>") or internal engineering jargon.',
+    'All changing session context (one-off swaps, gym re-entry, bodyweight leverage setup, opening-set calibration, per-dumbbell / assisted weight cues) belongs in these 2 lines — never by mutating table column headers.',
+  ],
+};
+
+/** Builds the canonical system-prompt specification directly from `EXERCISE_BRIEF_BLUEPRINT`. */
+export function buildExerciseBriefContractPrompt(): string {
+  return (
+    "You write a strict 2-line coaching summary for one exercise in today's workout. Use only the facts given. " +
+    'Output exactly two short, scannable lines separated by a newline (under 220 characters total, roughly 10–18 words per line), speaking directly to the athlete as "you", with one sentence per line and zero section headers or prefixes (never write Progress:, Goal:, Summary:, Focus:, or bare label dumps like "Estimated max: 100 kg"). ' +
+    'Line 1 shows overall progress against the athlete\'s goals: lead with the plain-English trajectory verdict backed by the exact load, estimated max, or rep figures from the facts (never percentages; e.g., "Your strength is rising—estimated max is up +12.9 kg over 4 sessions to 108.4 kg."). ' +
+    'For a one-off swap with anchor-lift history in the facts, anchor Line 1 to that real movement-pattern strength progression (e.g., "Your push strength is rising—Barbell Bench Press estimated max is up +12.5 kg to 105 kg."). ' +
+    "Line 2 tells the athlete what they are doing today and how it reaches their goal, weaving in the exact target rep range if given in the facts (e.g., \"Keeping the same weight for 8–12 reps stimulates muscle growth in your chest before the next jump.\", \"Increasing the weight with fewer reps for 5–8 reps builds overall strength.\", or for a swap \"Today's estimated load for 8–12 reps stimulates muscle growth in your chest based on your push progression.\"). " +
+    'Include any session-specific context from the facts (replacing another lift, returning to the gym, a bodyweight leverage setup, or calibrating load on your opening set) cleanly in these two lines—never use vague idioms like "standing in for" or "covering". ' +
+    'Never mention target weight, single-set rep counts, target sets, RIR, reps in reserve, tempo, rest times, or weekly muscle set counts. ' +
+    'When the facts give an estimated 1RM or estimated max, call it an estimated max; when they give added weight or reps, state those plainly, and do not invent how individual past sets felt or went. ' +
+    'Do not use any number that is not in the facts. '
+  );
+}
 
 // ============================================================================
 // 4. Domain & Structured Content Model (COPE Architecture)
