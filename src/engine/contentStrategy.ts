@@ -915,8 +915,24 @@ const BANNED_CHEERLEADING_AND_JARGON: { pattern: RegExp; reason: string }[] = [
     reason: 'Judgmental framing of missed or early training',
   },
   { pattern: /\b(?:OOUX|Canonical Vector|SFR)\b/, reason: 'Internal architectural jargon leak' },
+  {
+    pattern:
+      /\b(?:knowledge\s+graph|on-device\s+(?:model|engine)|continuity\s+engine|temporary\s+overlay|anchor\s+prior|EFFORT_ONLY|ANCHOR_PRIOR|HOME_GYM_REENTRY|COARSE_JUMP_EXPANDED)\b/i,
+    reason: 'Internal engineering jargon leak (use plain coaching language)',
+  },
+  {
+    pattern: /\bstanding\s+in\s+for\b/i,
+    reason: 'Vague swap idiom ("standing in for"); explain what it replaces and how it keeps target muscles progressing',
+  },
+  {
+    pattern:
+      /\bcovering\s+(?:for\s+)?(?:(?:barbell|dumbbell|cable|machine|incline|flat|seated|standing|weighted|assisted|romanian|bulgarian|overhead|single-arm|chest-supported|reverse|underhand|overhand|neutral-grip|close-grip|wide-grip|ez-bar|smith|band|trx|bodyweight)\b|(?:[a-z0-9-]+\s+){0,3}(?:press|row|curl|squat|deadlift|pulldown|pull-?up|chin-?up|pull|fly|flye|raise|extension|pushdown|dip|lunge|thrust|crunch|plank|shrug|kickback)\b)/i,
+    reason: 'Opaque swap phrasing ("covering <exercise>"); state what it replaces and how it protects progression',
+  },
   { pattern: /\bNon-training day\b/i, reason: 'Drifted rest-day terminology (use "Rest day")' },
   { pattern: /\bTravel mode\b/i, reason: 'Drifted location terminology (use "Bodyweight mode")' },
+  { pattern: /\bpre-travel\b/i, reason: 'Drifted travel terminology (use "last gym")' },
+  { pattern: /\banchor-lift\b/i, reason: 'Internal anchor-lift jargon (use "main-lift")' },
 ];
 
 /**

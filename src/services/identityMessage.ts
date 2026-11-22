@@ -246,7 +246,10 @@ export function checkIdentityMessage(answer: string | null, facts: IdentityMessa
   if (/\b(felt|feel|feeling|enjoy(ed)?|loved)\b/i.test(text)) return { problem: 'it said how the athlete felt, which is not known' };
   if ((text.match(/[.!?](\s|$)/g) || []).length > 3) return { problem: 'it had too many sentences; write two' };
   // The content strategy's read-aloud gate: no hype, clichés, judgmental wording or error leaks.
-  if (!runReadAloudQaGate(text).passed) return { problem: 'it used hype, a cliché or judgmental wording' };
+  const qa = runReadAloudQaGate(text);
+  if (!qa.passed) {
+    return { problem: `it failed the coaching voice gate (${(qa.violations[0] || 'hype, cliché, or judgmental wording').toLowerCase()})` };
+  }
   const voiceProblem = checkSummaryVoiceGuidelines(text);
   if (voiceProblem) return { problem: voiceProblem };
   if (/\d\s*%|\bpercent/i.test(text)) return { problem: 'it used a percentage; use the figures as given' };

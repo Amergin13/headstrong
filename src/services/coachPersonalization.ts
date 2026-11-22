@@ -714,7 +714,8 @@ export type AiSummarySurface =
  */
 export function buildSummaryVoiceGuidelines(surface: AiSummarySurface): string {
   const surfaceContext: Record<AiSummarySurface, string> = {
-    exercise_brief: 'Surface: gym-floor exercise card — ultra-scannable, lead with the metric and acute stimulus.',
+    exercise_brief:
+      'Surface: gym-floor exercise card — ultra-scannable, lead with the metric and acute stimulus; for swapped lifts, explain plainly what it replaces and how it keeps target-muscle growth moving while protecting original progression (never "standing in for" or "covering").',
     program_identity: 'Surface: plan overview — calm, grounded identity reinforcement tied to concrete logged progress.',
     workout_summary: 'Surface: post-workout recap — earned, understated milestone tone with zero hype.',
     goals_summary: 'Surface: Progress goal card — concise standing plus one concrete next step.',
@@ -771,7 +772,10 @@ export function checkSummaryVoiceGuidelines(text: string): string | null {
   ) {
     return 'it sounded like surveillance ("I noticed" / "based on your data"); state the training insight directly';
   }
-  if (/\bTreise\s+(?:thinks|recommends|suggests|believes|wants|says)\b/i.test(text)) {
+  if (
+    /\bTreise\s+(?:thinks|recommends|suggests|believes|wants|says|tailors|lets|tracks|adjusts)\b/i.test(text) ||
+    /\blets\s+Treise\b/i.test(text)
+  ) {
     return 'it referred to Treise in the third person';
   }
   if (/\?\s*$/.test(text.trim())) {

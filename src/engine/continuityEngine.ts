@@ -1977,7 +1977,7 @@ export function buildContinuityCopy(
   const muscleLower = (context.primaryMuscle ?? 'muscle').toLowerCase();
 
   if (kind === 'ANCHOR_PRIOR') {
-    const anchorName = context.anchorName ?? 'Barbell anchor';
+    const anchorName = context.anchorName ?? 'main gym lift';
     const weightPart =
       context.anchorWeightKg && context.anchorWeightKg > 0
         ? ` (${formatWeight(context.anchorWeightKg, unit)})`
@@ -1986,9 +1986,9 @@ export function buildContinuityCopy(
       kind,
       tier1: `Estimated from your ${anchorName}${weightPart}. Log Set 1 honestly — Sets 2 & 3 will dial in.`,
       tier2Bullets: [
-        'Muscle growth responds to hard tension near failure across tools.',
-        'Set 1 personalizes dumbbell stability differences immediately.',
-        'Your barbell history stays untouched for when you return.',
+        'Muscle growth responds to hard tension near failure across any tool.',
+        'Set 1 personalizes dumbbell or machine differences immediately for Sets 2–3.',
+        'Your original lift history stays untouched so you pick up where you left off when back.',
       ],
     };
   }
@@ -2002,7 +2002,7 @@ export function buildContinuityCopy(
       tier2Bullets: [
         'Lighter loads match heavier weights for muscle growth when taken close to failure.',
         'Elevating leverage keeps reps productive instead of turning sets into endurance drills.',
-        'Short travel breaks preserve barbell strength.',
+        'Short bodyweight-only blocks preserve your gym strength while keeping muscle growth moving.',
       ],
     };
   }
@@ -2013,7 +2013,7 @@ export function buildContinuityCopy(
       tier1: 'Machine pulley ratios vary by gym. Pick a moderate Set 1 weight and Sets 2–3 will dial in.',
       tier2Bullets: [
         'Cable/pin machines differ by 1:1 to 4:1 pulley ratios, so effort (RIR) is more accurate than copied numbers.',
-        'Logging Set 1 lets Treise tailor Sets 2–3 to this exact machine.',
+        'Logging Set 1 calibrates Sets 2–3 to this exact machine while keeping weekly muscle progress moving.',
       ],
     };
   }
@@ -2037,10 +2037,10 @@ export function buildContinuityCopy(
     kind: 'HOME_GYM_REENTRY',
     tier1:
       context.reentryWelcomeCue ??
-      'Welcome back — your weekly muscle volume stayed on track while away. Match your last gym weight to groove back in.',
+      'Your weekly muscle volume stayed on track while away. Match your last gym weight today to confirm readiness before adding load.',
     tier2Bullets: [
-      'Swapped sessions maintained muscle stimulus while your barbell history stayed untouched.',
-      'Matching 100% of your last pre-travel working load lets you confirm readiness cleanly before adding weight.',
+      'Swapped sessions maintained muscle stimulus while your original gym lift history stayed untouched.',
+      'Matching your last gym working load confirms readiness cleanly before stepping up weight again.',
     ],
   };
 }
@@ -2090,7 +2090,7 @@ export function buildSwapWhyThisWorksForExercise(params: {
     resolvedKind === 'HOME_GYM_REENTRY'
       ? `${exercise.name} (back at the gym)`
       : exercise.anchorExerciseName && isSwapped
-      ? `${exercise.name} (covering ${exercise.anchorExerciseName})`
+      ? `${exercise.name} (replaces ${exercise.anchorExerciseName})`
       : exercise.name;
 
   return {

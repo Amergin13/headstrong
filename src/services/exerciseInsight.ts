@@ -34,6 +34,59 @@ export function getExerciseRepRangeLabel(
 }
 
 /**
+ * Single source of truth for swapped/replaced exercise 2-line briefs and AI note facts.
+ * Explains plainly what the lift replaces, how it keeps target-muscle growth moving, and that
+ * the original lift's progression stays intact — never vague idioms like "standing in for" or "covering".
+ */
+export function buildSwappedExerciseCopy(params: {
+  anchorName: string;
+  muscleLabel?: string;
+  repRange?: string | null;
+  readinessState: ReadinessState;
+  hasOwnHistory: boolean;
+  isTimed?: boolean;
+}): { firstSessionLine1: string; line2: string; factLine1: string; factLine2: string } {
+  const { anchorName, muscleLabel, repRange, readinessState, hasOwnHistory, isTimed } = params;
+  const muscle = muscleLabel ? muscleLabel.toLowerCase() : undefined;
+  const muscleTarget = muscle ? `your ${muscle}` : 'the same muscles';
+  const forRange = repRange ? ` for ${repRange}` : '';
+
+  const firstSessionLine1 = isTimed
+    ? `Replaces ${anchorName} today and sets your starting hold.`
+    : `Replaces ${anchorName} today and sets your baseline on this lift.`;
+
+  const factLine1 = `Replaces ${anchorName} today so ${muscleTarget} keep growing while your saved ${anchorName} progression stays intact.`;
+
+  let line2: string;
+  let factLine2: string;
+  if (readinessState === 'Amber Shield') {
+    if (isTimed) {
+      line2 = 'Low recovery today—steady holds maintain stability while your saved progression holds.';
+      factLine2 = `Recovery today is low; replacing ${anchorName} with steady holds maintains stability without extra fatigue while your saved progression holds.`;
+    } else if (!hasOwnHistory) {
+      line2 = `Low recovery today—steady work${forRange} maintains ${muscleTarget} without extra fatigue.`;
+      factLine2 = `Recovery today is low; replacing ${anchorName}${forRange} at steady effort maintains ${muscleTarget} without extra fatigue while your saved progression holds.`;
+    } else {
+      line2 = `Low recovery today—replaces ${anchorName}${forRange} at steady effort to preserve ${muscleTarget}.`;
+      factLine2 = `Recovery today is low; replacing ${anchorName}${forRange} at steady effort preserves ${muscleTarget} without extra fatigue while your saved progression holds.`;
+    }
+  } else if (isTimed) {
+    line2 = hasOwnHistory
+      ? `Replaces ${anchorName} today to keep endurance building while your saved progression holds.`
+      : 'Trains the same stability pattern so endurance stays moving while your saved progression holds.';
+    factLine2 = `Today replaces ${anchorName} to train the same stability pattern and keep endurance building while your saved ${anchorName} progression stays intact.`;
+  } else if (!hasOwnHistory) {
+    line2 = `Trains ${muscleTarget}${forRange} to keep growth moving while your saved progression stays intact.`;
+    factLine2 = `Session stimulus today: train ${muscleTarget}${forRange} in place of ${anchorName} to keep muscle growth moving while your saved ${anchorName} progression stays intact.`;
+  } else {
+    line2 = `Replaces ${anchorName}${forRange} to keep ${muscleTarget} growing while your saved progression holds.`;
+    factLine2 = `Today replaces ${anchorName}${forRange} to keep ${muscleTarget} growing while your saved ${anchorName} progression holds.`;
+  }
+
+  return { firstSessionLine1, line2, factLine1, factLine2 };
+}
+
+/**
  * True for isolation and small-muscle exercises (lateral raises, tricep pushdowns, curls, calves,
  * leg curls/extensions, crunches, face pulls, etc.) where a Best Set / reps-at-weight progression
  * view is more meaningful than an estimated 1RM sparkline.
@@ -145,7 +198,8 @@ export function buildExerciseInsight(
   bodyweightKg = 80,
   maxSessions = 12,
   formatLoad: (kg: number) => string = (kg) => `${round1(kg)} kg`,
-  biometrics?: BiometricLog[]
+  biometrics?: BiometricLog[],
+  muscleLabel?: string
 ): ExerciseInsight {
   const past = workouts
     .filter((w) => w.completed)
@@ -180,6 +234,14 @@ export function buildExerciseInsight(
     })
     .filter((pt): pt is BestSetSessionPoint => pt !== null);
 
+  const bridgedAnchor =
+    exercise.anchorExerciseId &&
+    exercise.anchorExerciseId !== exercise.exerciseId &&
+    exercise.anchorExerciseName
+      ? exercise.anchorExerciseName.replace(/[.!?]/g, '').trim()
+      : undefined;
+  const isReentry = Boolean(exercise.isBridgeReentry);
+
   // Timed holds and intervals are measured in hold seconds (or duration), not reps or E1RM.
   if (isTimedExercise(exercise)) {
     const history = past
@@ -191,31 +253,39 @@ export function buildExerciseInsight(
       })
       .filter((h) => h.value > 0);
 
+    const swappedTimed = bridgedAnchor
+      ? buildSwappedExerciseCopy({
+          anchorName: bridgedAnchor,
+          muscleLabel,
+          repRange: null,
+          readinessState,
+          hasOwnHistory: history.length > 0,
+          isTimed: true,
+        })
+      : null;
+
     const line1 =
       history.length === 0
-        ? `First time on ${exercise.name}—sets your starting point.`
+        ? swappedTimed
+          ? swappedTimed.firstSessionLine1
+          : `First time on ${exercise.name}—sets your starting point.`
         : history.length === 1
         ? `Baseline hold: ${history[0].value}s from session 1.`
         : `Top hold across ${history.length} sessions: ${history[history.length - 1].value}s.`;
-    const line2 =
-      readinessState === 'Amber Shield'
-        ? 'Low recovery today—holding steady protects stability.'
-        : exercise.durationSeconds || isTimedExercise(exercise)
-        ? 'Today targets isometric stability and muscular endurance.'
-        : 'Today builds aerobic conditioning and work capacity.';
+    const line2 = swappedTimed
+      ? swappedTimed.line2
+      : readinessState === 'Amber Shield'
+      ? 'Low recovery today—holding steady protects stability.'
+      : exercise.durationSeconds || isTimedExercise(exercise)
+      ? 'Today targets isometric stability and muscular endurance.'
+      : 'Today builds aerobic conditioning and work capacity.';
     return { metric: 'time', history, lines: [line1, line2], summary: `${line1}\n${line2}` };
   }
 
   const isAssisted = isAssistedExercise(exercise);
   const repRange = getExerciseRepRangeLabel(exercise);
   const across = repRange ? ` across ${repRange}` : '';
-  const bridgedAnchor =
-    exercise.anchorExerciseId &&
-    exercise.anchorExerciseId !== exercise.exerciseId &&
-    exercise.anchorExerciseName
-      ? exercise.anchorExerciseName.replace(/[.!?]/g, '').trim()
-      : undefined;
-  const isReentry = Boolean(exercise.isBridgeReentry);
+  const forRange = repRange ? ` for ${repRange}` : '';
   const bwRatio = isCalisthenic ? getBodyweightLoadRatio(exercise.exerciseId, exercise.pillar) : 0;
   const hasRealPastBw = past.length > 0 && past.every(({ w }) => bwForDate(w.date) > 0);
   const currentSessionBw = bwForDate(localDateString());
@@ -231,16 +301,25 @@ export function buildExerciseInsight(
       })
       .filter((h) => h.value > 0);
 
+    const swappedBw = bridgedAnchor
+      ? buildSwappedExerciseCopy({
+          anchorName: bridgedAnchor,
+          muscleLabel,
+          repRange,
+          readinessState,
+          hasOwnHistory: past.length > 0 && history.length > 0,
+        })
+      : null;
+
     if (past.length === 0 || history.length === 0) {
-      const line1 = bridgedAnchor
-        ? `Standing in for ${bridgedAnchor}—first session sets your starting point.`
+      const line1 = swappedBw
+        ? swappedBw.firstSessionLine1
         : `First time on ${exercise.name}—sets your starting point.`;
-      const line2 =
-        readinessState === 'Amber Shield'
-          ? `Low recovery today—holding steady${across} builds your groove cleanly.`
-          : bridgedAnchor
-          ? `Today preserves hypertrophy stimulus${across} with clean mechanical tension.`
-          : `Today sets your hypertrophy baseline${across} with clean mechanical tension.`;
+      const line2 = swappedBw
+        ? swappedBw.line2
+        : readinessState === 'Amber Shield'
+        ? `Low recovery today—holding steady${across} builds your groove cleanly.`
+        : `Today sets your hypertrophy baseline${across} with clean mechanical tension.`;
       return { metric: 'reps', history, lines: [line1, line2], summary: `${line1}\n${line2}` };
     }
 
@@ -264,16 +343,13 @@ export function buildExerciseInsight(
     const lastEx = past[past.length - 1].ex;
     const prevReps = lastEx.sets.filter(done).reduce((m, s) => Math.max(m, s.actualReps ?? 0), 0);
     const plannedReps = plannedSet?.targetReps ?? 0;
-    const line2 =
-      readinessState === 'Amber Shield'
-        ? bridgedAnchor
-          ? `Low recovery today—covering ${bridgedAnchor}${across} steadily preserves muscle.`
-          : `Low recovery today—holding target steady${across} protects muscle.`
-        : bridgedAnchor
-        ? `Covering ${bridgedAnchor}${across} keeps hypertrophy stimulus moving.`
-        : plannedReps > prevReps
-        ? `Expanding bodyweight output${across || ' today'} drives hypertrophy.`
-        : `Matching bodyweight output${across} deepens hypertrophy volume.`;
+    const line2 = swappedBw
+      ? swappedBw.line2
+      : readinessState === 'Amber Shield'
+      ? `Low recovery today—holding target steady${across} protects muscle.`
+      : plannedReps > prevReps
+      ? `Expanding bodyweight output${across || ' today'} drives hypertrophy.`
+      : `Matching bodyweight output${across} deepens hypertrophy volume.`;
     return { metric: 'reps', history, lines: [line1, line2], summary: `${line1}\n${line2}` };
   }
 
@@ -286,16 +362,24 @@ export function buildExerciseInsight(
         return { at: getWorkoutCompletedAt(w), e1rmKg: round1(bestAdded), value: round1(bestAdded) };
       })
       .filter((h) => h.value > 0);
+    const swappedAdded = bridgedAnchor
+      ? buildSwappedExerciseCopy({
+          anchorName: bridgedAnchor,
+          muscleLabel,
+          repRange,
+          readinessState,
+          hasOwnHistory: past.length > 0 && history.length > 0,
+        })
+      : null;
     if (past.length === 0 || history.length === 0) {
-      const line1 = bridgedAnchor
-        ? `Standing in for ${bridgedAnchor}—first session sets your starting point.`
+      const line1 = swappedAdded
+        ? swappedAdded.firstSessionLine1
         : `First time on ${exercise.name}—sets your starting point.`;
-      const line2 =
-        readinessState === 'Amber Shield'
-          ? `Low recovery today—holding steady${across} builds your groove cleanly.`
-          : bridgedAnchor
-          ? `Today preserves hypertrophy stimulus${across} with clean mechanical tension.`
-          : `Today sets your hypertrophy baseline${across} with clean mechanical tension.`;
+      const line2 = swappedAdded
+        ? swappedAdded.line2
+        : readinessState === 'Amber Shield'
+        ? `Low recovery today—holding steady${across} builds your groove cleanly.`
+        : `Today sets your hypertrophy baseline${across} with clean mechanical tension.`;
       return { metric: 'added_kg', history, lines: [line1, line2], summary: `${line1}\n${line2}` };
     }
     const first = history[0].value;
@@ -316,22 +400,19 @@ export function buildExerciseInsight(
     const prevReps = lastSets.reduce((m, s) => Math.max(m, s.actualReps ?? 0), 0);
     const plannedTop = plannedSet?.targetWeightKg ?? 0;
     const plannedReps = plannedSet?.targetReps ?? 0;
-    const line2 =
-      readinessState === 'Amber Shield'
-        ? bridgedAnchor
-          ? `Low recovery today—covering ${bridgedAnchor}${across} steadily preserves muscle.`
-          : `Low recovery today—holding weight${across} preserves muscle.`
-        : bridgedAnchor
-        ? `Covering ${bridgedAnchor}${across} keeps mechanical tension and hypertrophy moving.`
-        : isReentry
-        ? `Back at the gym—matching your last load${across} grooves strength right back in.`
-        : plannedTop > prevTop + 0.01
-        ? `Heavier load${across || ' today'} drives progressive mechanical tension.`
-        : plannedTop < prevTop - 0.01
-        ? `Lighter weight${across || ' today'} keeps volume crisp and recoverable.`
-        : plannedReps > prevReps
-        ? `Pushing volume at this load${across} expands hypertrophy.`
-        : `Matching this load${across} deepens hypertrophy volume.`;
+    const line2 = swappedAdded
+      ? swappedAdded.line2
+      : readinessState === 'Amber Shield'
+      ? `Low recovery today—holding weight${across} preserves muscle.`
+      : isReentry
+      ? `Back at the gym—matching your last load${forRange} confirms readiness before adding weight.`
+      : plannedTop > prevTop + 0.01
+      ? `Heavier load${across || ' today'} drives progressive mechanical tension.`
+      : plannedTop < prevTop - 0.01
+      ? `Lighter weight${across || ' today'} keeps volume crisp and recoverable.`
+      : plannedReps > prevReps
+      ? `Pushing volume at this load${across} expands hypertrophy.`
+      : `Matching this load${across} deepens hypertrophy volume.`;
     return { metric: 'added_kg', history, lines: [line1, line2], summary: `${line1}\n${line2}` };
   }
 
@@ -342,20 +423,29 @@ export function buildExerciseInsight(
     })
     .filter((h) => h.e1rmKg > 0);
 
+  const swappedMain = bridgedAnchor
+    ? buildSwappedExerciseCopy({
+        anchorName: bridgedAnchor,
+        muscleLabel,
+        repRange,
+        readinessState,
+        hasOwnHistory: past.length > 0 && history.length > 0,
+      })
+    : null;
+
   if (past.length === 0 || history.length === 0) {
-    const line1 = bridgedAnchor
-      ? `Standing in for ${bridgedAnchor}—first session sets your starting point.`
+    const line1 = swappedMain
+      ? swappedMain.firstSessionLine1
       : isAssisted
       ? `First time on ${exercise.name}—sets your starting point (less assistance is harder).`
       : isCalisthenic && exercise.equipment === 'bodyweight' && !exercise.isWeightedCalisthenic && !hasAddedLoad
       ? `First time on ${exercise.name}—sets your starting point using your bodyweight.`
       : `First time on ${exercise.name}—sets your starting point.`;
-    const line2 =
-      readinessState === 'Amber Shield'
-        ? `Low recovery today—holding steady${across} builds your groove cleanly.`
-        : bridgedAnchor
-        ? `Today preserves hypertrophy stimulus${across} with clean mechanical tension.`
-        : `Today sets your hypertrophy baseline${across} with clean mechanical tension.`;
+    const line2 = swappedMain
+      ? swappedMain.line2
+      : readinessState === 'Amber Shield'
+      ? `Low recovery today—holding steady${across} builds your groove cleanly.`
+      : `Today sets your hypertrophy baseline${across} with clean mechanical tension.`;
     return { metric: 'e1rm', includesBodyweight: isCalisthenic, isIsolation, history, bestSetHistory, lines: [line1, line2], summary: `${line1}\n${line2}` };
   }
 
@@ -393,14 +483,12 @@ export function buildExerciseInsight(
   const plannedReps = plannedSet?.targetReps ?? 0;
 
   let line2: string;
-  if (readinessState === 'Amber Shield') {
-    line2 = bridgedAnchor
-      ? `Low recovery today—covering ${bridgedAnchor}${across} steadily preserves muscle.`
-      : `Low recovery today—holding weight${across} preserves muscle.`;
-  } else if (bridgedAnchor) {
-    line2 = `Covering ${bridgedAnchor}${across} keeps mechanical tension and hypertrophy moving.`;
+  if (swappedMain) {
+    line2 = swappedMain.line2;
+  } else if (readinessState === 'Amber Shield') {
+    line2 = `Low recovery today—holding weight${across} preserves muscle.`;
   } else if (isReentry) {
-    line2 = `Back at the gym—matching your last load${across} grooves strength right back in.`;
+    line2 = `Back at the gym—matching your last load${forRange} confirms readiness before adding weight.`;
   } else if (isAssisted && plannedTop < prevTop - 0.01) {
     line2 = `Less assistance${across || ' today'} drives progressive pulling strength.`;
   } else if (plannedTop > prevTop + 0.01) {

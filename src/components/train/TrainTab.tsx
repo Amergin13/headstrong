@@ -1140,14 +1140,15 @@ export const TrainTab: React.FC<TrainTabProps> = ({
     () =>
       activeWorkout.exercises.map((ex) => {
         const def = exMap.get(ex.exerciseId);
+        const muscleLabel = def ? MUSCLE_FRIENDLY_NAMES[def.primaryMuscle] : undefined;
         return buildExerciseNoteFacts({
           exercise: ex,
-          insight: buildExerciseInsight(ex, workouts, readiness.state, measuredBodyweightKg, 12, (kg) => units.formatPrecise(kg), biometrics),
+          insight: buildExerciseInsight(ex, workouts, readiness.state, measuredBodyweightKg, 12, (kg) => units.formatPrecise(kg), biometrics, muscleLabel),
           workouts,
           readinessState: readiness.state,
           knowledgeGraph,
           primaryMuscle: def?.primaryMuscle,
-          muscleLabel: def ? MUSCLE_FRIENDLY_NAMES[def.primaryMuscle] : undefined,
+          muscleLabel,
           programLabel,
           formatWeight: (kg) => units.formatPrecise(kg),
         });
@@ -2012,7 +2013,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
               onOpenPlateCalc={(kg) => setPlateCalcWeight(kg)}
               muscleLabel={def ? MUSCLE_FRIENDLY_NAMES[def.primaryMuscle] : undefined}
               previousSets={getPreviousWorkingSets(ex.exerciseId, workouts)}
-              insight={buildExerciseInsight(ex, liveInsightWorkouts, readiness.state, measuredBodyweightKg, 12, (kg) => units.formatPrecise(kg), biometrics)}
+              insight={buildExerciseInsight(ex, liveInsightWorkouts, readiness.state, measuredBodyweightKg, 12, (kg) => units.formatPrecise(kg), biometrics, def ? MUSCLE_FRIENDLY_NAMES[def.primaryMuscle] : undefined)}
               note={
                 isBlockCompleted
                   ? undefined
@@ -2226,7 +2227,8 @@ export const TrainTab: React.FC<TrainTabProps> = ({
               measuredBodyweightKg,
               12,
               (kg) => units.formatPrecise(kg),
-              biometrics
+              biometrics,
+              detailDef ? MUSCLE_FRIENDLY_NAMES[detailDef.primaryMuscle] : undefined
             )}
             bodyweightKg={measuredBodyweightKg}
             muscleLabel={detailDef ? MUSCLE_FRIENDLY_NAMES[detailDef.primaryMuscle] : undefined}

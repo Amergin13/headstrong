@@ -17,7 +17,7 @@ import { runReadAloudQaGate } from '../engine/contentStrategy';
 import { isAssistedExercise, isTimedExercise } from '../engine/e1rm';
 import { getWorkoutCompletedAt } from '../engine/recovery';
 import { ExerciseSession, ReadinessState, WorkoutSession, WorkoutSet } from '../engine/types';
-import { ExerciseInsight, getExerciseRepRangeLabel } from './exerciseInsight';
+import { buildSwappedExerciseCopy, ExerciseInsight, getExerciseRepRangeLabel } from './exerciseInsight';
 import { markPromptRejected, mismatchedWeightUnit, spelledNumberNotInFacts, wasPromptRejected } from './factChecks';
 import { promptOnDeviceModel } from './onDeviceModel';
 import {
@@ -58,9 +58,10 @@ export interface ExerciseNoteFacts {
 
 export const EXERCISE_NOTE_SYSTEM_PROMPT =
   "You write a strict 2-line coaching brief for one exercise in today's workout. Use only the facts given. " +
-  'Output exactly two short, scannable lines separated by a newline (under 180 characters total, roughly 8–14 words per line), speaking to the athlete as "you", with one sentence per line and zero section headers or labels (never write Progress:, Goal:, Summary:, or Focus:). ' +
+  'Output exactly two short, scannable lines separated by a newline (under 200 characters total, roughly 8–16 words per line), speaking to the athlete as "you", with one sentence per line and zero section headers or labels (never write Progress:, Goal:, Summary:, or Focus:). ' +
   'Line 1 front-loads the historical trajectory anchor using only the exact load or estimated max figures in the facts (never use percentages; e.g., "Estimated max: 15.9 kg (+1.7 kg over 2 sessions)."). ' +
   "Line 2 frames today's acute stimulus and why in concise, plain language (such as progressive mechanical tension or volume accumulation for hypertrophy), weaving in the exact target rep range if one is given in the facts (e.g., \"Matching this load across 8–12 reps deepens hypertrophy volume.\"). " +
+  'When the facts say this exercise replaces another lift today, state plainly what it replaces and how it keeps the target muscle growing while protecting the original lift\'s saved progression—never use vague idioms like "standing in for" or "covering". ' +
   'Never mention target weight, single-set rep counts, target sets, RIR, reps in reserve, tempo, rest times, or weekly muscle set counts. ' +
   'When the facts give an estimated 1RM or estimated max, call it an estimated max; when they give added weight or reps, state those plainly, and do not mention the last session. ' +
   'Do not use any number that is not in the facts. ' +
@@ -112,6 +113,7 @@ export function buildExerciseNoteFacts(input: ExerciseNoteInput): ExerciseNoteFa
     : '';
   const repRange = getExerciseRepRangeLabel(exercise);
   const across = repRange ? ` across ${repRange}` : '';
+  const forRange = repRange ? ` for ${repRange}` : '';
   const bridgedAnchor =
     exercise.anchorExerciseId &&
     exercise.anchorExerciseId !== exercise.exerciseId &&
@@ -119,9 +121,20 @@ export function buildExerciseNoteFacts(input: ExerciseNoteInput): ExerciseNoteFa
       ? exercise.anchorExerciseName.replace(/[.!?]/g, '').trim()
       : undefined;
   const isReentry = Boolean(exercise.isBridgeReentry);
+  const hasOwnHistory = timedWork ? completedSessions.length > 0 : Boolean(lastSession && insight.history.length > 0);
+  const swappedCopy = bridgedAnchor
+    ? buildSwappedExerciseCopy({
+        anchorName: bridgedAnchor,
+        muscleLabel: input.muscleLabel,
+        repRange,
+        readinessState,
+        hasOwnHistory,
+        isTimed: timedWork,
+      })
+    : null;
 
-  if (bridgedAnchor) {
-    facts.push(`Standing in for ${bridgedAnchor} in today's session.`);
+  if (swappedCopy) {
+    facts.push(swappedCopy.factLine1);
   } else if (isReentry) {
     facts.push('Returning to this gym lift after away sessions.');
   }
@@ -131,8 +144,8 @@ export function buildExerciseNoteFacts(input: ExerciseNoteInput): ExerciseNoteFa
   if (timedWork) {
     if (completedSessions.length === 0) {
       facts.push('This is the first time you have logged this exercise.');
-      line1 = bridgedAnchor
-        ? `Standing in for ${bridgedAnchor}—first session sets your starting point.`
+      line1 = swappedCopy
+        ? swappedCopy.firstSessionLine1
         : `First time on ${exercise.name}—sets your starting point.`;
     } else if (completedSessions.length === 1) {
       facts.push(`Logged 1 completed session on ${exercise.name}, establishing your baseline endurance.`);
@@ -143,8 +156,8 @@ export function buildExerciseNoteFacts(input: ExerciseNoteInput): ExerciseNoteFa
     }
   } else if (!lastSession || insight.history.length === 0) {
     facts.push('This is the first time you have logged this exercise.');
-    line1 = bridgedAnchor
-      ? `Standing in for ${bridgedAnchor}—first session sets your starting point.`
+    line1 = swappedCopy
+      ? swappedCopy.firstSessionLine1
       : isAssisted
       ? `First time on ${exercise.name}—sets your starting point (less assistance is harder).`
       : isPureBodyweight && insight.includesBodyweight
@@ -233,11 +246,12 @@ export function buildExerciseNoteFacts(input: ExerciseNoteInput): ExerciseNoteFa
   }
 
   let line2: string;
-  if (readinessState === 'Amber Shield') {
+  if (swappedCopy) {
+    facts.push(swappedCopy.factLine2);
+    line2 = swappedCopy.line2;
+  } else if (readinessState === 'Amber Shield') {
     facts.push('Recovery today is low, so the session holds load steady to preserve muscle and limit fatigue.');
-    line2 = bridgedAnchor
-      ? `Low recovery today—covering ${bridgedAnchor}${across} steadily preserves muscle.`
-      : `Low recovery today—holding weight${across} preserves muscle${jointClause || ' without added fatigue'}.`;
+    line2 = `Low recovery today—holding weight${across} preserves muscle${jointClause || ' without added fatigue'}.`;
   } else if (timedWork) {
     if (exercise.durationSeconds || isTimedExercise(exercise)) {
       facts.push('Session stimulus today: sustained isometric trunk stability and muscular endurance.');
@@ -248,15 +262,10 @@ export function buildExerciseNoteFacts(input: ExerciseNoteInput): ExerciseNoteFa
     }
   } else if (!lastSession || !planned) {
     facts.push(`Session stimulus today: establish baseline mechanical tension and hypertrophy stimulus${across}${musclePhrase}.`);
-    line2 = bridgedAnchor
-      ? `Today preserves hypertrophy stimulus${across} with clean mechanical tension.`
-      : `Today sets your hypertrophy baseline${across} with clean tension${musclePhrase}${jointClause}.`;
-  } else if (bridgedAnchor) {
-    facts.push(`Today covers ${bridgedAnchor}${across} to keep mechanical tension and hypertrophy moving${musclePhrase}.`);
-    line2 = `Covering ${bridgedAnchor}${across} keeps mechanical tension and hypertrophy moving.`;
+    line2 = `Today sets your hypertrophy baseline${across} with clean tension${musclePhrase}${jointClause}.`;
   } else if (isReentry) {
-    facts.push(`Back at the gym: matching your last gym load${across} grooves strength right back in${musclePhrase}.`);
-    line2 = `Back at the gym—matching your last load${across} grooves strength right back in.`;
+    facts.push(`Back at the gym: matching your last gym load${forRange} confirms readiness before adding weight${musclePhrase}.`);
+    line2 = `Back at the gym—matching your last load${forRange} confirms readiness before adding weight.`;
   } else {
     const prevSets = lastSession.sets.filter(done);
     const prevTop = prevSets.reduce((m, s) => Math.max(m, weightOf(s)), 0);
@@ -474,8 +483,9 @@ export function checkExerciseNote(
   if (/\b(consistent\w*|dedicat\w*|never miss\w*)\b/i.test(text)) {
     return { problem: 'it praised consistency not shown in the facts' };
   }
-  if (!runReadAloudQaGate(text).passed) {
-    return { problem: 'it used hype, a cliché, or judgmental wording' };
+  const qa = runReadAloudQaGate(text);
+  if (!qa.passed) {
+    return { problem: `it failed the coaching voice gate (${(qa.violations[0] || 'hype, cliché, or judgmental wording').toLowerCase()})` };
   }
   const voiceProblem = checkSummaryVoiceGuidelines(text);
   if (voiceProblem) {

@@ -205,7 +205,7 @@ export function buildCompositionOverview(input: {
     if (lDelta >= 2.0 && bfDelta <= -2.0) {
       fallback =
         `BIA lean mass shifted ${signedPrecise(lDelta, formatPreciseWeight)} to ${leanNow} and body fat fell ${round1(Math.abs(bfDelta))} points (${bfNow}).\n` +
-        `Directional recomposition signal—confirm with fasted morning weight, anchor-lift strength, and waist tape.`;
+        `Directional recomposition signal—confirm with fasted morning weight, main-lift strength, and waist tape.`;
     } else if (lDelta >= 2.0 && bfDelta <= 0.8) {
       const bfPhrase =
         Math.abs(bfDelta) < 0.1
@@ -225,11 +225,11 @@ export function buildCompositionOverview(input: {
     } else if (lDelta <= -2.0 && wDelta <= -2.0) {
       fallback =
         `Weight dropped ${formatPreciseWeight(Math.abs(wDelta))} and BIA lean mass dipped ${formatPreciseWeight(Math.abs(lDelta))} to ${leanNow}.\n` +
-        `Confirm with anchor-lift strength and waist tape; BIA readings fluctuate with hydration.`;
+        `Confirm with main-lift strength and waist tape; BIA readings fluctuate with hydration.`;
     } else {
       fallback =
         `Weight (${weight.latest !== undefined ? formatPreciseWeight(weight.latest) : '—'}), BIA lean mass (${leanNow}), and body fat (${bfNow}) are within normal scale noise.\n` +
-        `Weigh in fasted mornings and evaluate BIA lean mass as a 12+ week directional overlay.`;
+        `Weigh in fasted mornings and evaluate BIA lean mass as a 12+ week directional trend.`;
     }
   } else if (weight.count >= 2 && weight.delta !== undefined) {
     sparse = bodyFat.count === 0;
@@ -285,8 +285,9 @@ export function checkCompositionInsight(
   if (/\b(as an ai|language model|the facts|facts provided|i am an?|i'm an?)\b/i.test(text)) {
     return { problem: 'it referred to itself or the facts' };
   }
-  if (!runReadAloudQaGate(text).passed) {
-    return { problem: 'it used hype, clichés or judgmental wording' };
+  const qa = runReadAloudQaGate(text);
+  if (!qa.passed) {
+    return { problem: `it failed the coaching voice gate (${(qa.violations[0] || 'hype, clichés, or judgmental wording').toLowerCase()})` };
   }
   const voiceProblem = checkSummaryVoiceGuidelines(text);
   if (voiceProblem) {

@@ -579,12 +579,12 @@ export const EXERCISE_SCIENCE_KNOWLEDGE_BASE: ScientificPrinciple[] = [
     topic: 'Body Composition & Physical Metrics',
     title: 'Morning Weigh-Ins, Circumference Measurements & Body Recomposition',
     formula:
-      'Tier-1 Progress = 7-Day EMA Total Bodyweight + Multi-Week Anchor-Lift E1RM + Optional Waist Circumference; Secondary 12+ Week Overlay = Consumer BIA FFM (±2.0–4.9 kg individual 95% LoA)',
+      'Primary Progress = 7-Day EMA Total Bodyweight + Multi-Week Main-Lift Estimated Max + Optional Waist Circumference; Secondary 12+ Week Trend = Consumer BIA FFM (±2.0–4.9 kg individual 95% LoA)',
     scientificRationale:
-      'Muscle tissue is ~18% denser than adipose tissue (~1.06 g/mL vs ~0.90 g/mL), so total scale weight alone can mask recomposition. However, Siedler et al. (2023) showed consumer foot-to-foot BIA scales have 7.2% cross-sectional Total Error and 3.4–5.2% longitudinal body-fat 95% limits of agreement (±2.0–4.9 kg for 60–95 kg lifters), and 50 kHz foot-to-foot impedance cannot validly estimate bone or protein mass. Therefore Tier-1 goal progress relies on 7-day EMA bodyweight, multi-week anchor-lift E1RM, and optional tape circumference (waist + limb sites), while consumer BIA fat-free mass is demoted to a secondary 12+ week directional overlay.',
+      'Muscle tissue is ~18% denser than adipose tissue (~1.06 g/mL vs ~0.90 g/mL), so total scale weight alone can mask recomposition. However, Siedler et al. (2023) showed consumer foot-to-foot BIA scales have 7.2% cross-sectional Total Error and 3.4–5.2% longitudinal body-fat 95% limits of agreement (±2.0–4.9 kg for 60–95 kg lifters), and 50 kHz foot-to-foot impedance cannot validly estimate bone or protein mass. Therefore goal progress relies on 7-day EMA bodyweight, multi-week main-lift estimated max, and optional tape circumference (waist + limb sites), while consumer BIA fat-free mass is demoted to a secondary 12+ week directional trend.',
     academicCitation: 'Siedler et al. (2023); Barakat et al. (2020); Longland et al. (2016); Morton et al. (2018)',
     practicalApplication:
-      'Weigh yourself fasted first thing in the morning after using the bathroom on the same scale, track anchor-lift E1RM across weeks, and optionally tape your waist and limbs every 2+ weeks. Treat smart-scale fat-free mass only as a 12+ week directional overlay alongside those primary signals.',
+      'Weigh yourself fasted first thing in the morning after using the bathroom on the same scale, track main-lift estimated max across weeks, and optionally tape your waist and limbs every 2+ weeks. Treat smart-scale fat-free mass only as a 12+ week directional trend alongside those primary signals.',
     keywords: [
       'weigh yourself',
       'morning weigh-in',
@@ -2194,7 +2194,7 @@ export function buildBodyCompositionKnowledgeGraph(
 
   let recompositionStatus: BodyCompositionKnowledgeProfile['recompositionStatus'] = 'insufficient_data';
   let recompositionSummary =
-    'Log fasted morning weigh-ins and optional waist tape to track body composition alongside anchor-lift strength.';
+    'Log fasted morning weigh-ins and optional waist tape to track body composition alongside main-lift strength.';
 
   const ffmDelta = ffmTrend?.delta;
   const bfDelta = bfTrend?.delta;
@@ -2236,7 +2236,7 @@ export function buildBodyCompositionKnowledgeGraph(
     recompositionSummary = `Fat-loss trend: ${lost.join(', ')}.`;
   } else if (weightTrend && weightTrend.sampleCount >= 1) {
     recompositionStatus = 'holding';
-    recompositionSummary = `Latest weight ${fmt.weight(weightTrend.latest ?? 0)}${weightTrend.ema7d && Math.abs(weightTrend.ema7d - (weightTrend.latest ?? 0)) >= 0.05 ? ` (7-day average ${fmt.weight(weightTrend.ema7d)})` : ''}. Track 7-day EMA weight, anchor-lift strength, and optional waist tape; consumer BIA needs 12+ weeks of fasted morning readings.`;
+    recompositionSummary = `Latest weight ${fmt.weight(weightTrend.latest ?? 0)}${weightTrend.ema7d && Math.abs(weightTrend.ema7d - (weightTrend.latest ?? 0)) >= 0.05 ? ` (7-day average ${fmt.weight(weightTrend.ema7d)})` : ''}. Track 7-day EMA weight, main-lift strength, and optional waist tape; consumer BIA needs 12+ weeks of fasted morning readings.`;
   }
 
   const populatedScaleCount = scaleTrends.filter((t) => t.sampleCount > 0).length;

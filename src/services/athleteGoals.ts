@@ -619,11 +619,11 @@ function chosenGoal(input: AthleteGoalsInput): AthleteGoal {
   const signsMet = signs.filter((s) => s.met === true).length;
   const evidenceLabel =
     evidence === 'tape'
-      ? 'Tracked by 7-day average bodyweight, anchor-lift E1RM, and tape circumference.'
+      ? 'Tracked by 7-day average bodyweight, main-lift estimated max, and tape measurements.'
       : evidence === 'weight-and-strength'
-      ? 'Tracked by 7-day average bodyweight and anchor-lift E1RM (optional waist tape adds a direct size check).'
+      ? 'Tracked by 7-day average bodyweight and main-lift estimated max (optional waist tape adds a direct size check).'
       : evidence === 'strength-only'
-      ? 'Tracked by anchor-lift E1RM so far. Add morning weigh-ins to track bodyweight pace.'
+      ? 'Tracked by main-lift estimated max so far. Add morning weigh-ins to track bodyweight pace.'
       : 'Nothing to judge this on yet.';
   const nextStep =
     evidence === 'tape'
@@ -632,14 +632,14 @@ function chosenGoal(input: AthleteGoalsInput): AthleteGoal {
       ? hasWeighIn
         ? 'Keep weighing in fasted each morning; a week of weigh-ins shows your 7-day average pace.'
         : 'Log your weight fasted each morning; a week of weigh-ins shows your 7-day average pace.'
-      : 'Optionally tape your waist every 2 weeks to pair with weight and anchor-lift strength.';
+      : 'Optionally tape your waist every 2 weeks to pair with weight and main-lift strength.';
 
   return {
     id: CHOSEN_GOAL_ID,
     kind: 'outcome',
     title: GOAL_DISPLAY_NAME[phase],
     detail: signsMeasured > 0 ? `${signsMet} of ${signsMeasured} measured signs are showing` : 'Nothing measured yet',
-    method: `Tier-1 progress uses 7-day average bodyweight, multi-week anchor-lift E1RM, and optional waist circumference. Consumer smart-scale fat-free mass is shown only as a secondary 12+ week directional overlay due to scale measurement error. ${evidenceLabel}`,
+    method: `Goal progress uses 7-day average bodyweight, multi-week main-lift estimated max, and optional waist circumference. Consumer smart-scale fat-free mass is shown only as a secondary 12+ week directional trend due to scale measurement error. ${evidenceLabel}`,
     measure: {
       type: 'body',
       phase,

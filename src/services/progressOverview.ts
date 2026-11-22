@@ -529,7 +529,7 @@ export function buildSingleGoalSummary(
       : unmeasured
       ? `Log ${unmeasured.label.toLowerCase()} to track all three signs.`
       : m.evidence === 'tape'
-      ? 'Tracked with 7-day average weight, anchor-lift strength, and tape measurements.'
+      ? 'Tracked with 7-day average weight, main-lift strength, and tape measurements.'
       : 'Keep repeating workouts and logging morning weight and optional waist tape to verify progress.';
     fallback = `${lead} ${step}`;
   }
@@ -678,7 +678,10 @@ export function checkGoalsSummary(answer: string | null, summary: Pick<GoalsSumm
   if (text.length > 250) return { problem: 'it was too long; write two concise sentences under 250 characters' };
   if ((text.match(/[.!?](\s|$)/g) || []).length > 3) return { problem: 'it had too many sentences; write two' };
   if (/\b(as an ai|language model|the facts|facts provided|i am an?|i'm an?)\b/i.test(text)) return { problem: 'it talked about itself or "the facts"' };
-  if (!runReadAloudQaGate(text).passed) return { problem: 'it used hype, a cliché or judgmental wording' };
+  const qa = runReadAloudQaGate(text);
+  if (!qa.passed) {
+    return { problem: `it failed the coaching voice gate (${(qa.violations[0] || 'hype, cliché, or judgmental wording').toLowerCase()})` };
+  }
   const voiceProblem = checkSummaryVoiceGuidelines(text);
   if (voiceProblem) return { problem: voiceProblem };
   if (/\b(felt|feel|feeling|enjoy(ed)?|loved)\b/i.test(text)) return { problem: 'it said how the athlete felt, which is not known' };

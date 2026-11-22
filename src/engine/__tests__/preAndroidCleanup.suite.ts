@@ -235,7 +235,7 @@ export async function runPreAndroidCleanupSuite(assert: AssertFn): Promise<void>
   assert(
     envWithOverlay.working_state.today_workout.active_environment_overlay?.max_dumbbell_kg === 30 &&
       envWithOverlay.working_state.today_workout.exercises[0]?.anchor_exercise_name === 'Barbell Bench Press' &&
-      serializedEnv.includes('Active environment overlay') &&
+      serializedEnv.includes('Active training setup') &&
       serializedEnv.includes('Barbell Bench Press'),
     'Coach ContextEnvelope and prompt serializer expose active EnvironmentOverlay and swapped slot anchor metadata'
   );
@@ -486,7 +486,7 @@ export async function runPreAndroidCleanupSuite(assert: AssertFn): Promise<void>
   });
   assert(
     briefingWithSwap.message.text.includes("Why today's swaps work") &&
-      briefingWithSwap.message.text.includes('covering Barbell Bench Press'),
+      briefingWithSwap.message.text.includes('replaces Barbell Bench Press'),
     'AI Coach session briefing explains active swaps ("Why today\'s swaps work") cleanly'
   );
 

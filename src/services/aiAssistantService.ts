@@ -687,8 +687,8 @@ export function buildCoachSystemPrompt(input: AssistantProcessInput): string {
       ? `, readiness Z ${activeWorkout.readinessZScore >= 0 ? '+' : ''}${activeWorkout.readinessZScore.toFixed(2)}`
       : '';
   const activeOverlay = resolveActiveOverlay(profile.activeEnvironmentOverlay).active;
-  const overlayClause = activeOverlay ? ` (temporary overlay: ${activeOverlay.label})` : '';
-  return `You are ${VOICE_TONE_MATRIX.steadyVoice.replace(/^The /, 'the ').replace(/\.$/, '')}, speaking directly to ${athleteName || 'the athlete'} using "I" and "you". ${voicePersonaContract} ${personalizationContract} Front-load one direct sentence answering the question with the key figure or outcome first (no greeting, and never repeat visible set tables). Keep each paragraph to 1-2 short sentences, and use concise bold-lead bullets (- **Topic:** detail) for multi-part guidance unless the athlete asked for plain prose. For anything about their plan, weights, sets or progress, use only the facts below. Whenever the athlete asks or implies they want to take an action—logging/editing sets (log_workout_set), reordering exercises (reorder_workout_exercises), saving exercise notes (update_exercise_note), unlocking a recovering session with confirmation (override_recovery_gate), swapping/adding/removing exercises (for today OR permanently across their program via modify_program, including rep-range edits and removing single edits), rebalancing for imbalances/symmetry/stalls/contraindications (rebalance_program), adjusting sets/volume/load, switching location (gym, home, travel) or future week, updating home equipment, switching program, changing goal phase, setting targets/goals, toggling Progress cards, logging bodyweight/body fat/any tape measurement/steps/height/cardio, logging a rest day, resetting their plan, updating profile/units/display toggles (update_athlete_profile), or saving/forgetting athlete memories (save_athlete_memory / delete_athlete_memory)—invoke the matching function tool(s) immediately, even when phrased politely ("Can you...", "Could you..."). Ask clarifying questions only when an essential target cannot be inferred. Never claim a mutation happened unless a tool call succeeded. For general training questions (timing, motivation, habits, technique, recovery, sleep, food), give practical, widely accepted advice in your own words without inventing numbers (avoid ungrounded weights, reps, sets, percentages, minutes, seconds, or hours—say "a short rest" or "a focused session" instead). Never say the plan or the facts don't cover something. Never call a muscle's sets enough unless it is on target. High recovery means today's targets stand. Don't praise effort the facts don't show. Never guess or invent how individual sets or reps went in past workouts. The plan sets weights and raises them itself when every set reaches the top of the range; never tell them to change the weight. No hype, cheerleading or percentages; say why something works in one plain clause.
+  const overlayClause = activeOverlay ? ` (${activeOverlay.label})` : '';
+  return `You are ${VOICE_TONE_MATRIX.steadyVoice.replace(/^The /, 'the ').replace(/\.$/, '')}, speaking directly to ${athleteName || 'the athlete'} using "I" and "you". ${voicePersonaContract} ${personalizationContract} Front-load one direct sentence answering the question with the key figure or outcome first (no greeting, and never repeat visible set tables). Keep each paragraph to 1-2 short sentences, and use concise bold-lead bullets (- **Topic:** detail) for multi-part guidance unless the athlete asked for plain prose. For anything about their plan, weights, sets or progress, use only the facts below. Whenever the athlete asks or implies they want to take an action—logging/editing sets (log_workout_set), reordering exercises (reorder_workout_exercises), saving exercise notes (update_exercise_note), unlocking a recovering session with confirmation (override_recovery_gate), swapping/adding/removing exercises (for today OR permanently across their program via modify_program, including rep-range edits and removing single edits), rebalancing for imbalances/symmetry/stalls/contraindications (rebalance_program), adjusting sets/volume/load, switching location (Gym, Home, Bodyweight / No equipment) or future week, updating home equipment, switching program, changing goal phase, setting targets/goals, toggling Progress cards, logging bodyweight/body fat/any tape measurement/steps/height/cardio, logging a rest day, resetting their plan, updating profile/units/display toggles (update_athlete_profile), or saving/forgetting athlete memories (save_athlete_memory / delete_athlete_memory)—invoke the matching function tool(s) immediately, even when phrased politely ("Can you...", "Could you..."). Ask clarifying questions only when an essential target cannot be inferred. Never claim a mutation happened unless a tool call succeeded. For general training questions (timing, motivation, habits, technique, recovery, sleep, food), give practical, widely accepted advice in your own words without inventing numbers (avoid ungrounded weights, reps, sets, percentages, minutes, seconds, or hours—say "a short rest" or "a focused session" instead). Never say the plan or the facts don't cover something. Never call a muscle's sets enough unless it is on target. High recovery means today's targets stand. Don't praise effort the facts don't show. Never guess or invent how individual sets or reps went in past workouts. The plan sets weights and raises them itself when every set reaches the top of the range; never tell them to change the weight. When explaining a swapped or substituted lift, state plainly what it replaces, which muscle keeps growing, and that the original lift's progression stays intact—never use vague idioms like "standing in for" or "covering <exercise>". No hype, cheerleading or percentages; say why something works in one plain clause.
 Athlete: ${hasWeighIn ? `${formatWeight(bodyweightEmaKg, unit)}, ` : ''}${athleteAge ? `age ${athleteAge}, ` : ''}location ${profile.activeLocation === 'travel' ? 'Bodyweight / No equipment' : profile.activeLocation === 'home' ? 'Home' : 'Gym'}${overlayClause}, home gear: ${homeGearList}, goal ${goalLabel}, week ${planPos.week}/${planPos.totalWeeks}, recovery ${recovery}${kg.recoveryEfficiencyScore > 0 ? ` (${kg.recoveryEfficiencyScore}%)` : ''}${readinessZClause}${
     latestBio && latestBio.hrvRmssd > 0 ? `, slept ${latestBio.sleepHours} h` : ''
   }.${placeFacts.length ? `\nViewing: ${placeFacts.join(' ')}.` : ''}${kgFacts.length ? `\n${kgFacts.join('\n')}` : ''}
@@ -1192,14 +1192,15 @@ async function processAssistantMessageCore(
   const cardLines = (ex: ExerciseSession): [string, string] => {
     const precise = (kgValue: number) => formatPreciseWeight(kgValue, profile.weightUnit || 'kg');
     const def = exerciseCatalog.find((d) => d.id === ex.exerciseId);
+    const muscleLabel = def ? MUSCLE_FRIENDLY_NAMES[def.primaryMuscle] : undefined;
     return buildExerciseNoteFacts({
       exercise: ex,
-      insight: buildExerciseInsight(ex, workouts, readinessState, measuredBodyweightKg, 12, precise, biometrics),
+      insight: buildExerciseInsight(ex, workouts, readinessState, measuredBodyweightKg, 12, precise, biometrics, muscleLabel),
       workouts,
       readinessState,
       knowledgeGraph: kg,
       primaryMuscle: def?.primaryMuscle,
-      muscleLabel: def ? MUSCLE_FRIENDLY_NAMES[def.primaryMuscle] : undefined,
+      muscleLabel,
       formatWeight: precise,
     }).lines;
   };
@@ -3045,26 +3046,47 @@ async function processAssistantMessageCore(
             ],
           }));
           // Why an answer can't be shown, in words the model can act on.
-          const problemWith = (answer: string): string | null =>
-            !runReadAloudQaGate(answer).passed
-              ? 'it used hype, a cliché or judgmental wording; write like a pragmatic coach'
-              : !acceptCoachAnswer(answer, `${systemPrompt} ${questionWithFacts}`)
-              ? 'it used a number, weight or percentage that is not in the facts'
-              : contradictsMuscleTargets(answer, muscleClaims)
-              ? "it described a muscle's weekly sets differently from the status given"
-              : claimsInventedPastResults(answer)
-              ? 'it said how past sets or reps went, which is not known'
-              : misnamesEquipment(answer, workoutExercises)
-              ? 'it named the wrong equipment for an exercise'
-              : changesPlanWeight(answer)
-              ? 'it told the athlete to choose or change a weight, but the plan sets every weight'
-              : contradictsRecovery(answer, readinessState)
-              ? `it went against today's recovery, which is ${readinessState === 'Amber Shield' ? 'low' : readinessState === 'Primed' ? 'high' : 'normal'}`
-              : genericRepTarget(answer, workoutExercises)
-              ? 'it gave a rep target without naming the exercise it belongs to'
-              : contradictsPlanSchedule(answer)
-              ? 'it suggested training every day, but the plan is 4 sessions a week'
-              : null;
+          const problemWith = (answer: string): string | null => {
+            const qa = runReadAloudQaGate(answer);
+            if (!qa.passed) {
+              return `it failed the coaching voice gate (${(qa.violations[0] || 'hype, cliché, or judgmental wording').toLowerCase()}); write like a pragmatic coach`;
+            }
+            if (
+              /\b(?:i\s+noticed|i\s+see\s+(?:that\s+)?you|according\s+to\s+your\s+(?:profile|data|records|log)|based\s+on\s+your\s+(?:data|history|profile|records)|looking\s+at\s+your\s+(?:data|profile|history))\b/i.test(
+                answer
+              )
+            ) {
+              return 'it sounded like surveillance ("I noticed" / "based on your data"); state the coaching insight directly';
+            }
+            if (/\bTreise\s+(?:thinks|recommends|suggests|believes|wants|says|tailors)\b/i.test(answer)) {
+              return 'it referred to Treise in the third person; speak directly as "I" and "you"';
+            }
+            if (!acceptCoachAnswer(answer, `${systemPrompt} ${questionWithFacts}`)) {
+              return 'it used a number, weight or percentage that is not in the facts';
+            }
+            if (contradictsMuscleTargets(answer, muscleClaims)) {
+              return "it described a muscle's weekly sets differently from the status given";
+            }
+            if (claimsInventedPastResults(answer)) {
+              return 'it said how past sets or reps went, which is not known';
+            }
+            if (misnamesEquipment(answer, workoutExercises)) {
+              return 'it named the wrong equipment for an exercise';
+            }
+            if (changesPlanWeight(answer)) {
+              return 'it told the athlete to choose or change a weight, but the plan sets every weight';
+            }
+            if (contradictsRecovery(answer, readinessState)) {
+              return `it went against today's recovery, which is ${readinessState === 'Amber Shield' ? 'low' : readinessState === 'Primed' ? 'high' : 'normal'}`;
+            }
+            if (genericRepTarget(answer, workoutExercises)) {
+              return 'it gave a rep target without naming the exercise it belongs to';
+            }
+            if (contradictsPlanSchedule(answer)) {
+              return 'it suggested training every day, but the plan is 4 sessions a week';
+            }
+            return null;
+          };
           // The answer is shown as it is written, but only while it still passes the checks: the
           // moment it stops passing, the stream is withdrawn (an empty partial) and "Thinking…" shows
           // until the checked answer, or the data-based one, is ready.
@@ -3514,11 +3536,11 @@ async function processAssistantMessageCore(
                       isTimedExercise(e) || (def && isTimedExercise(def))
                         ? `${working[0]?.targetDurationSeconds ?? def?.defaultDurationSeconds ?? 45}s hold`
                         : `${e.minReps === e.maxReps ? e.minReps : `${e.minReps}–${e.maxReps}`} reps`;
-                    const coveringTag =
+                    const replacementTag =
                       e.anchorExerciseId && e.anchorExerciseId !== e.exerciseId && e.anchorExerciseName
-                        ? ` (covering ${e.anchorExerciseName})`
+                        ? ` (replaces ${e.anchorExerciseName})`
                         : '';
-                    return `${idx + 1}. **${e.name}**${coveringTag} — ${working.length} sets × ${targetText} @ ${load}`;
+                    return `${idx + 1}. **${e.name}**${replacementTag} — ${working.length} sets × ${targetText} @ ${load}`;
                   })
                   .join('\n')
               : '  No movements scheduled.';

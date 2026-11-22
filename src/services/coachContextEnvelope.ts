@@ -965,13 +965,13 @@ export function serializeContextEnvelopeForPrompt(
   const modePrefix = mode && scope ? `Mode: ${mode} | Scope: ${scope} | ` : '';
   const overlayObj = ws.today_workout.active_environment_overlay;
   const overlayLine = overlayObj
-    ? `Active environment overlay: ${overlayObj.label} (${overlayObj.profile_type}, ${overlayObj.scope}${overlayObj.max_dumbbell_kg ? `, max DB ${formatWeight(overlayObj.max_dumbbell_kg, unit)}` : ''}${overlayObj.max_session_minutes ? `, max ${overlayObj.max_session_minutes} min` : ''}${overlayObj.expires_at_iso ? `, reverts after ${overlayObj.expires_at_iso}` : ''}).`
+    ? `Active training setup: ${overlayObj.label} (${overlayObj.profile_type}, ${overlayObj.scope}${overlayObj.max_dumbbell_kg ? `, max DB ${formatWeight(overlayObj.max_dumbbell_kg, unit)}` : ''}${overlayObj.max_session_minutes ? `, max ${overlayObj.max_session_minutes} min` : ''}${overlayObj.expires_at_iso ? `, reverts after ${overlayObj.expires_at_iso}` : ''}).`
     : '';
   const swappedSlots = ws.today_workout.exercises
     .filter((e) => e.anchor_exercise_name || e.swap_why_it_works)
     .map(
       (e) =>
-        `${e.name}${e.anchor_exercise_name ? ` (covering ${e.anchor_exercise_name})` : ''}${
+        `${e.name}${e.anchor_exercise_name ? ` (replaces ${e.anchor_exercise_name})` : ''}${
           e.swap_why_it_works ? `: ${e.swap_why_it_works}` : ''
         }`
     )
