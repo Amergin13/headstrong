@@ -291,6 +291,7 @@ export async function runSwapRecommendationAndBestSetTrendSuite(
       swapModalSrc.includes('showAllOptions') &&
       swapModalSrc.includes('Hide other options') &&
       trainTabSrc.includes('athleteMemories={profile.athleteMemories}') &&
+      !trainTabSrc.includes('Add exercise') &&
       coachToolsSrc.includes('rankSwapRecommendations'),
     'ExerciseSwapModal highlights the recommended swap with Why this swap logic, collapses other options by default, and shares rankSwapRecommendations with AI Coach'
   );

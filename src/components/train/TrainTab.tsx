@@ -58,7 +58,6 @@ import { startingWeightForNewExercise } from '../../services/sessionPreparation'
 import { useUnits } from '../../utils/unitsContext';
 import {
   prescribeDoubleProgression,
-  findLastCompletedExerciseSession,
   getMovementFamilyLabel,
   getMovementVectorId,
   getSessionProgressNarrative,
@@ -92,7 +91,6 @@ import { getActiveModelTier } from '../../services/onDeviceModel';
 import '../../services/deviceModels';
 import {
   calculateWarmupPrescription,
-  ensureWarmupSetsOnExercise,
   generateWarmupSets,
   isFirstCompoundForPillar,
 } from '../../engine/warmup';
@@ -103,7 +101,6 @@ import {
 import {
   CheckCircle2,
   Check,
-  Plus,
   ChevronDown,
   ChevronUp,
   TrendingUp,
@@ -237,7 +234,6 @@ export const TrainTab: React.FC<TrainTabProps> = ({
   const [plateCalcWeight, setPlateCalcWeight] = useState<number | null>(null);
   const [showSummaryModal, setShowSummaryModal] = useState(false);
   const [previewPastWorkout, setPreviewPastWorkout] = useState<WorkoutSession | null>(null);
-  const [showAddExerciseModal, setShowAddExerciseModal] = useState(false);
   const [showWorkoutDisplayModal, setShowWorkoutDisplayModal] = useState(false);
   const pendingRecalRef = useRef<{
     exerciseSessionId: string;
@@ -622,56 +618,6 @@ export const TrainTab: React.FC<TrainTabProps> = ({
         unit: units.unit,
       }) ?? undefined
     );
-  };
-
-  const handleAddExerciseToSession = (def: ExerciseDefinition) => {
-    triggerHaptic('medium');
-    const isPureBw = def.equipment === 'bodyweight' && !def.isWeightedCalisthenic;
-    const timed = isTimedExercise(def);
-    const seedEx = buildBaseExerciseSession(def);
-
-    const prescription = prescribeDoubleProgression(
-      seedEx,
-      readiness.state,
-      workouts,
-      bodyweightEmaKg,
-      profile.goalPhase,
-      units.unit
-    );
-    // Never done before: its own default scaled to the athlete, not a number from a similar movement.
-    const ownHistory = findLastCompletedExerciseSession(def.id, workouts);
-    const startingWeight = ownHistory
-      ? null
-      : resolveNewExerciseFallbackWeight(def);
-    const nextWeight = isPureBw ? 0 : startingWeight ?? prescription.nextWeightKg;
-    const timedHoldSecs = def.defaultDurationSeconds || 45;
-    const baseHydratedEx: ExerciseSession = {
-      ...seedEx,
-      sets: seedEx.sets.map((s, idx) => ({
-        ...s,
-        targetWeightKg: nextWeight,
-        actualWeightKg: nextWeight,
-        targetReps: timed ? 1 : (prescription.nextTargetReps[idx] ?? def.defaultRepRange[0]),
-        actualReps: timed ? 1 : (prescription.nextTargetReps[idx] ?? def.defaultRepRange[0]),
-        ...(timed
-          ? { targetDurationSeconds: timedHoldSecs, actualDurationSeconds: timedHoldSecs }
-          : {}),
-      })),
-    };
-
-    const isFirstCompound = isFirstCompoundForPillar(
-      baseHydratedEx,
-      activeWorkout.exercises.length,
-      [...activeWorkout.exercises, baseHydratedEx]
-    );
-
-    const hydratedEx = timed ? baseHydratedEx : ensureWarmupSetsOnExercise(baseHydratedEx, isFirstCompound);
-
-    onUpdateWorkout({
-      ...activeWorkout,
-      exercises: [...activeWorkout.exercises, hydratedEx],
-    });
-    setShowAddExerciseModal(false);
   };
 
   const handleConfirmSwap = (
@@ -2083,19 +2029,6 @@ export const TrainTab: React.FC<TrainTabProps> = ({
         })}
       </div>
 
-      {/* Add an exercise (secondary action) */}
-      <button
-        type="button"
-        onClick={() => {
-          triggerHaptic('light');
-          setShowAddExerciseModal(true);
-        }}
-        className="wk-btn-secondary w-full flex items-center justify-center gap-2 transition-transform active:scale-[0.98]"
-      >
-        <Plus className="w-4 h-4" strokeWidth={2.5} aria-hidden="true" />
-        <span>Add exercise</span>
-      </button>
-
       {/* Finish (primary action CTA) */}
       <button
         type="button"
@@ -2118,81 +2051,6 @@ export const TrainTab: React.FC<TrainTabProps> = ({
       </button>
       </>)}
       </div>
-
-      {/* Add Exercise Picker Modal */}
-      {showAddExerciseModal && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-label="Add exercise"
-          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 backdrop-blur-md"
-          style={{ background: 'var(--color-bg-scrim)' }}
-        >
-          <div className="wk-card w-full max-w-md shadow-2xl space-y-4 max-h-[80vh] flex flex-col">
-            <div className="flex items-center justify-between pb-1">
-              <div>
-                <h3 className="wk-h1">
-                  Add exercise
-                </h3>
-                <p className="wk-caption mt-1">
-                  Target weights and reps are pre-filled from your workout history
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowAddExerciseModal(false)}
-                aria-label="Close add exercise modal"
-                className="w-11 h-11 min-h-[44px] min-w-[44px] rounded-full border flex items-center justify-center text-xs font-medium transition-colors shrink-0"
-                style={{
-                  background: 'var(--color-action-secondary-bg)',
-                  borderColor: 'var(--color-border-strong)',
-                  color: 'var(--color-text-secondary)',
-                }}
-              >
-                ✕
-              </button>
-            </div>
-
-            <div className="space-y-2 overflow-y-auto no-scrollbar pr-1">
-              {exerciseCatalog.map((def) => {
-                const equipLabel =
-                  def.equipment === 'barbell'
-                    ? 'Barbell'
-                    : def.equipment === 'dumbbell'
-                    ? 'Dumbbell'
-                    : def.equipment === 'cable'
-                    ? 'Cable'
-                    : def.equipment === 'machine'
-                    ? 'Machine'
-                    : def.equipment === 'weighted_bodyweight'
-                    ? 'Weighted Bodyweight'
-                    : 'Bodyweight';
-                const targetSummary = def.isTimed
-                  ? `${def.defaultDurationSeconds ?? 45}s hold`
-                  : `${def.defaultRepRange[0]}–${def.defaultRepRange[1]} reps`;
-                return (
-                  <button
-                    key={def.id}
-                    type="button"
-                    onClick={() => handleAddExerciseToSession(def)}
-                    className="wk-raised w-full flex items-center justify-between text-left transition-all active:scale-[0.99]"
-                  >
-                    <div>
-                      <div className="wk-subhead">
-                        {def.name}
-                      </div>
-                      <div className="wk-caption mt-1">
-                        {def.primaryMuscle} • {equipLabel} • {targetSummary}
-                      </div>
-                    </div>
-                    <Plus className="w-4 h-4 shrink-0 stroke-[2]" style={{ color: 'var(--color-text-secondary)' }} />
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Customize Workout Page Defaults Modal */}
       {showWorkoutDisplayModal && (
