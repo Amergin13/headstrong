@@ -61,6 +61,8 @@ export interface MovementLevel {
   tested: boolean;
   /** The exercise the best came from, e.g. "DB Romanian Deadlift". */
   bestFrom?: string;
+  /** Catalog exercise id of the lift the best came from (for canonical ExerciseDetailModal drill-in). */
+  bestFromExerciseId?: string;
   tier?: StrengthTier;
   subDivision?: SubDivision;
   step?: number;
@@ -140,6 +142,7 @@ export function buildMovementStandards(input: {
       e1rmKg: b.e1rmKg,
       tested: isTestedBest(pillar, b),
       bestFrom: b.exerciseName,
+      bestFromExerciseId: b.exerciseId,
     };
     if (!base.logged || source === 'none') return base;
     const std = evaluateStrengthStandard(pillar, b.e1rmKg, bodyweightKg, gender, age);

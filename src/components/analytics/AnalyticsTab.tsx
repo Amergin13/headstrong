@@ -759,6 +759,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
             weeklyVolume={weeklyVolume}
             knowledgeGraph={knowledgeGraph}
             focusExerciseId={focusedInsightExerciseId}
+            onSelectExercise={(id) => setInspectedExerciseId(id)}
           />
         )}
 
@@ -769,6 +770,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
                 <StrengthLevelsCard
                   report={movementStandards}
                   latestBiometrics={latestBiometrics}
+                  onSelectExercise={(id) => setInspectedExerciseId(id)}
                   onAskCoach={
                     onOpenCoach
                       ? () => onOpenCoach({ detail: 'standards' })
@@ -782,6 +784,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
                   adaptationDismissed={balanceAdaptationDismissed}
                   onAcceptIntervention={onAcceptIntervention}
                   onDismissIntervention={onDismissIntervention}
+                  onSelectExercise={(id) => setInspectedExerciseId(id)}
                   onFixImbalanceWithCoach={
                     onOpenCoachIntervention
                       ? (prompt) => onOpenCoachIntervention({ prompt, detail: 'standards' })
@@ -1334,6 +1337,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
             <StrengthLevelsCard
               report={movementStandards}
               latestBiometrics={latestBiometrics}
+              onSelectExercise={(id) => setInspectedExerciseId(id)}
               onAskCoach={
                 onOpenCoach
                   ? () => onOpenCoach({ detail: 'standards' })
@@ -1352,6 +1356,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
             adaptationDismissed={balanceAdaptationDismissed}
             onAcceptIntervention={onAcceptIntervention}
             onDismissIntervention={onDismissIntervention}
+            onSelectExercise={(id) => setInspectedExerciseId(id)}
             onFixImbalanceWithCoach={
               onOpenCoachIntervention
                 ? (prompt) => onOpenCoachIntervention({ prompt, detail: 'standards' })

@@ -79,6 +79,7 @@ import { CurrentSessionCard, ProgramProgressCard, StickySessionHeader } from './
 import { RecoveryScoreCard } from './RecoveryScoreCard';
 import { buildWeekStrip } from '../../services/sessionSchedule';
 import { buildExerciseInsight, getPreviousWorkingSets } from '../../services/exerciseInsight';
+import { buildInspectExerciseSession } from '../../services/exerciseDetails';
 import {
   acceptExerciseNote,
   buildExerciseNoteFacts,
@@ -1458,7 +1459,11 @@ export const TrainTab: React.FC<TrainTabProps> = ({
               />
             )}
             {todayFinished.exercises.map((ex) => (
-              <CompletedExerciseCard key={ex.id} summary={ex} />
+              <CompletedExerciseCard
+                key={ex.id}
+                summary={ex}
+                onOpenDetail={() => setDetailExerciseId(ex.exerciseId)}
+              />
             ))}
           </>
         );
@@ -1615,15 +1620,28 @@ export const TrainTab: React.FC<TrainTabProps> = ({
               {inspectedDay.plannedSession.exercises.map((ex, i) => (
                 <li
                   key={`${ex.exerciseId}-${i}`}
-                  className="pt-2 border-t flex items-center justify-between gap-3"
+                  className="pt-2 border-t"
                   style={{ borderColor: 'var(--color-border-subtle)' }}
                 >
-                  <span className="wk-subhead min-w-0 truncate">
-                    {formatSentenceCase(ex.name)}
-                  </span>
-                  <span className="wk-caption tabular-nums shrink-0">
-                    {ex.setsCount} × {ex.targetLabel}
-                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      triggerHaptic('light');
+                      setDetailExerciseId(ex.exerciseId);
+                    }}
+                    aria-label={`Open details for ${formatSentenceCase(ex.name)}`}
+                    className="w-full min-h-[44px] flex items-center justify-between gap-3 text-left"
+                  >
+                    <span className="wk-subhead min-w-0 truncate">
+                      {formatSentenceCase(ex.name)}
+                    </span>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="wk-caption tabular-nums">
+                        {ex.setsCount} × {ex.targetLabel}
+                      </span>
+                      <ChevronRight className="wk-chevron" strokeWidth={2} aria-hidden="true" />
+                    </div>
+                  </button>
                 </li>
               ))}
             </ul>
@@ -1882,7 +1900,11 @@ export const TrainTab: React.FC<TrainTabProps> = ({
               biometrics,
               formatWeight: (kg) => units.formatPrecise(kg),
             }).map((ex) => (
-              <CompletedExerciseCard key={ex.id} summary={ex} />
+              <CompletedExerciseCard
+                key={ex.id}
+                summary={ex}
+                onOpenDetail={() => setDetailExerciseId(ex.exerciseId)}
+              />
             ))}
           </>
         );
@@ -2192,56 +2214,100 @@ export const TrainTab: React.FC<TrainTabProps> = ({
         </div>
       )}
 
-      {/* Exercise Drill-In Detail Modal */}
+      {/* Exercise Drill-In Detail Modal (canonical single view for active, finished, past & upcoming exercises) */}
       {(() => {
-        const entry = detailExerciseId
-          ? exercisePrescriptions.find(({ ex }) => ex.id === detailExerciseId)
-          : undefined;
-        if (!entry) return null;
-        const detailEx = entry.ex;
-        const detailDef = exMap.get(detailEx.exerciseId);
-        const detailWorkingSets = detailEx.sets.filter((s) => !s.isWarmup && s.setType !== 'warmup');
-        const detailBlockDone = detailWorkingSets.length > 0 && detailWorkingSets.every((s) => s.completed);
-        const detailInsightWorkouts = detailBlockDone
-          ? [
-              ...workouts.filter((w) => w.id !== activeWorkout.id),
-              {
-                ...activeWorkout,
-                completed: true,
-                completedAt: new Date().toISOString(),
-                exercises: [detailEx],
-              },
-            ]
-          : workouts;
+        if (!detailExerciseId) return null;
+        const entry = exercisePrescriptions.find(
+          ({ ex }) => ex.id === detailExerciseId || ex.exerciseId === detailExerciseId
+        );
+        if (entry) {
+          const detailEx = entry.ex;
+          const detailDef = exMap.get(detailEx.exerciseId);
+          const detailWorkingSets = detailEx.sets.filter((s) => !s.isWarmup && s.setType !== 'warmup');
+          const detailBlockDone = detailWorkingSets.length > 0 && detailWorkingSets.every((s) => s.completed);
+          const detailInsightWorkouts = detailBlockDone
+            ? [
+                ...workouts.filter((w) => w.id !== activeWorkout.id),
+                {
+                  ...activeWorkout,
+                  completed: true,
+                  completedAt: new Date().toISOString(),
+                  exercises: [detailEx],
+                },
+              ]
+            : workouts;
+          return (
+            <ExerciseDetailModal
+              exercise={detailEx}
+              exerciseDef={detailDef}
+              exerciseCatalog={exerciseCatalog}
+              workouts={detailInsightWorkouts}
+              activeWorkout={activeWorkout}
+              biometrics={biometrics}
+              insight={buildExerciseInsight(
+                detailEx,
+                detailInsightWorkouts,
+                readiness.state,
+                measuredBodyweightKg,
+                12,
+                (kg) => units.formatPrecise(kg),
+                biometrics,
+                detailDef ? MUSCLE_FRIENDLY_NAMES[detailDef.primaryMuscle] : undefined,
+                profile.goalPhase
+              )}
+              bodyweightKg={measuredBodyweightKg}
+              muscleLabel={detailDef ? MUSCLE_FRIENDLY_NAMES[detailDef.primaryMuscle] : undefined}
+              goalPhase={profile.goalPhase}
+              prescription={entry.prescription}
+              readinessState={readiness.state}
+              onAddSet={(isWarmup) => handleAddSet(detailEx.id, isWarmup)}
+              onOpenSwap={() => setSwappingExercise(detailEx)}
+              onOpenPlateCalc={(kg) => setPlateCalcWeight(kg)}
+              onOpenNotesHistory={onOpenInsights ? () => onOpenInsights(detailEx.exerciseId) : undefined}
+              intervention={programInterventions.find((i) => i.exerciseId === detailEx.exerciseId)}
+              onAcceptIntervention={onAcceptIntervention}
+              onDismissIntervention={onDismissIntervention}
+              onAskCoachToAdapt={
+                onOpenCoachIntervention
+                  ? (prompt, exerciseId) =>
+                      onOpenCoachIntervention({
+                        prompt,
+                        exerciseId: exerciseId ?? detailEx.exerciseId,
+                      })
+                  : undefined
+              }
+              onAskCoach={
+                onOpenCoach
+                  ? (exerciseId) => onOpenCoach({ exerciseId })
+                  : undefined
+              }
+              onClose={() => setDetailExerciseId(null)}
+            />
+          );
+        }
+
+        const inspected = buildInspectExerciseSession({
+          exerciseId: detailExerciseId,
+          exerciseCatalog,
+          workouts,
+        });
+        if (!inspected) return null;
         return (
           <ExerciseDetailModal
-            exercise={detailEx}
-            exerciseDef={detailDef}
+            exercise={inspected.exercise}
+            exerciseDef={inspected.exerciseDef}
             exerciseCatalog={exerciseCatalog}
-            workouts={detailInsightWorkouts}
-            activeWorkout={activeWorkout}
+            workouts={workouts}
             biometrics={biometrics}
-            insight={buildExerciseInsight(
-              detailEx,
-              detailInsightWorkouts,
-              readiness.state,
-              measuredBodyweightKg,
-              12,
-              (kg) => units.formatPrecise(kg),
-              biometrics,
-              detailDef ? MUSCLE_FRIENDLY_NAMES[detailDef.primaryMuscle] : undefined,
-              profile.goalPhase
-            )}
             bodyweightKg={measuredBodyweightKg}
-            muscleLabel={detailDef ? MUSCLE_FRIENDLY_NAMES[detailDef.primaryMuscle] : undefined}
+            muscleLabel={
+              inspected.exerciseDef ? MUSCLE_FRIENDLY_NAMES[inspected.exerciseDef.primaryMuscle] : undefined
+            }
             goalPhase={profile.goalPhase}
-            prescription={entry.prescription}
             readinessState={readiness.state}
-            onAddSet={(isWarmup) => handleAddSet(detailEx.id, isWarmup)}
-            onOpenSwap={() => setSwappingExercise(detailEx)}
             onOpenPlateCalc={(kg) => setPlateCalcWeight(kg)}
-            onOpenNotesHistory={onOpenInsights ? () => onOpenInsights(detailEx.exerciseId) : undefined}
-            intervention={programInterventions.find((i) => i.exerciseId === detailEx.exerciseId)}
+            onOpenNotesHistory={onOpenInsights ? () => onOpenInsights(inspected.exercise.exerciseId) : undefined}
+            intervention={programInterventions.find((i) => i.exerciseId === inspected.exercise.exerciseId)}
             onAcceptIntervention={onAcceptIntervention}
             onDismissIntervention={onDismissIntervention}
             onAskCoachToAdapt={
@@ -2249,7 +2315,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
                 ? (prompt, exerciseId) =>
                     onOpenCoachIntervention({
                       prompt,
-                      exerciseId: exerciseId ?? detailEx.exerciseId,
+                      exerciseId: exerciseId ?? inspected.exercise.exerciseId,
                     })
                 : undefined
             }
@@ -2324,6 +2390,10 @@ export const TrainTab: React.FC<TrainTabProps> = ({
           workoutNumber={previewPastWorkout.programWorkoutNumber}
           title={previewPastWorkout.name}
           session={workouts.find((w) => w.id === previewPastWorkout.id) ?? previewPastWorkout}
+          onSelectExercise={(ex) => {
+            setPreviewPastWorkout(null);
+            setDetailExerciseId(ex.exerciseId);
+          }}
           onSaveWorkout={onUpdatePastWorkout}
           onDeleteWorkout={onDeletePastWorkout}
           onClose={() => setPreviewPastWorkout(null)}

@@ -402,12 +402,20 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
                 key={ex.id}
                 className="wk-raised flex items-center justify-between gap-2"
               >
-                <div className="min-w-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    triggerHaptic('light');
+                    setInspectedExerciseId(ex.id);
+                  }}
+                  aria-label={`Open details for ${formatSentenceCase(ex.name)}`}
+                  className="min-w-0 flex-1 min-h-[44px] text-left"
+                >
                   <div className="wk-subhead truncate">{formatSentenceCase(ex.name)}</div>
                   <div className="wk-caption mt-1">
                     {ex.primaryMuscle} • {ex.equipment.replace('_', ' ')} • {ex.defaultRepRange[0]}–{ex.defaultRepRange[1]} reps
                   </div>
-                </div>
+                </button>
                 <button
                   type="button"
                   onClick={() => {

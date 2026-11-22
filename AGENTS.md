@@ -23,6 +23,33 @@ These rules exist because earlier sessions broke them. Any change that violates 
    - Switching kg/lb snaps an unstarted session's weights to real sizes in the new unit.
 10. **Never lose saved data.** Every change is saved straight away (`usePersistedState`), a change in another tab reloads the data (but can never replace a change this tab hasn't saved yet), and older saves are upgraded on launch (`runStorageMigrations`, legacy `headstrong_*` keys still load). Saves go through `persist` in `storage.ts`: if storage is full it clears rebuildable caches and retries, and if that fails the athlete is warned (`SAVE_FAILED_EVENT`) instead of losing data silently. Once there's history, the app asks the browser to keep its storage (`requestPersistentStorage`). A form never re-saves a pre-filled value the athlete didn't enter (e.g. logging only a waist measurement doesn't copy an earlier weight onto today). Engine suite 36f covers this.
 11. **Run `npm run test:engine`, `npm run test:api` and `npx tsc --noEmit -p .` before finishing.** Update tests when behaviour intentionally changes; never weaken a test to hide a regression.
+12. **Additive-first; never duplicate engines, context, guidelines, or cards.** All work must extend existing canonical modules rather than creating parallel ones (registry in `src/engine/governance.ts` `CANONICAL_ARCHITECTURE_REGISTRY`, enforced by engine suite 80):
+    - **One engine per domain:** Never create a second engine or calculation module for a domain that already has one; extend the existing canonical engine instead.
+    - **One AI guideline & context layer:** Never create parallel or replacement AI content guidelines, voice contracts, prompt helpers, or context envelopes. Always build additively on `src/engine/contentStrategy.ts` (voice, read-aloud QA, `EXERCISE_BRIEF_BLUEPRINT`), `src/services/coachPersonalization.ts` (prompt rules & voice validation), `src/services/coachContextEnvelope.ts` (coach context assembly), and `src/services/onDeviceModel.ts` + `src/services/deviceModels.ts` (model transport).
+    - **One canonical card / drill-in per domain object:** Never build duplicate cards, modals, or detail views for the same domain object. Every related entry point across tabs MUST open the exact same canonical view:
+      - Exercise drill-in: `src/components/train/ExerciseDetailModal.tsx` (with `buildInspectExerciseSession` / `buildExerciseDetailModel` in `src/services/exerciseDetails.ts`) from every entry point across Workout (`ExerciseCard`, `CompletedExerciseCard`, upcoming planned day), Program (`PastWorkoutModal`, `SplitEditor`), Progress (Trophy Case, pinned Exercise chart, `StrengthLevelsCard`, `BalanceCard`, `KnowledgeGraphCard`), and Coach.
+      - Exercise swap: `src/components/train/ExerciseSwapModal.tsx` backed by `recommendExerciseSwaps` in `src/engine/progression.ts`.
+      - Exercise 2-line summary: shared `buildGoalDrivenLine1`, `buildGoalDrivenLine2`, and `buildSwappedExerciseCopy` in `src/services/exerciseInsight.ts`, reused by `src/services/exerciseCoachNote.ts` and `src/services/workoutFinish.ts`.
+      - Exercise trend charts & coach prose: `src/components/common/TrendChart.tsx` (with `buildExerciseTrendSpec`) and `src/components/common/CoachSummaryText.tsx`.
+    - **Before creating any new file** in `src/engine/`, `src/services/`, or `src/components/`, check the Canonical Architecture Registry below. A new engine, context layer, guideline module, or shared card is only permitted when no canonical owner covers the domain, and must be registered in `CANONICAL_ARCHITECTURE_REGISTRY`.
+
+### Canonical Architecture Registry (Single Owner Per Domain)
+
+| Domain | Kind | Canonical Module(s) | Additive Rule |
+| :--- | :--- | :--- | :--- |
+| E1RM & load multipliers | Engine | `src/engine/e1rm.ts` | Extend here; never re-implement Epley/DB/RDL/calisthenic math elsewhere. |
+| Double progression & load carry-over | Engine | `src/engine/progressionRules.ts`, `src/engine/progression.ts`, `src/engine/loadPersonalization.ts` | Extend shared rules, load personalization & `recommendExerciseSwaps`; never fork progression or swap ranking. |
+| Cross-environment continuity | Engine | `src/engine/continuityEngine.ts` | Extend anchor bridging, travel/home conversion & gym reentry here. |
+| Hypertrophy volume landmarks | Engine | `src/engine/hypertrophyVolume.ts`, `src/services/storage.ts` | Use `calculateWeeklyMuscleVolume` / `calculateWeeklyMuscleVolumeBreakdown`; never recount sets inline. |
+| Local muscle recovery & readiness | Engine | `src/engine/recovery.ts`, `src/engine/readiness.ts` | Extend unified recovery + Amber Shield logic here. |
+| Strength standards & symmetry | Engine | `src/engine/kilgoreStandards.ts`, `src/engine/strengthStandards.ts`, `src/services/movementStandards.ts` | Authoritative tables & balance checks live only here. |
+| Personal knowledge graph | Engine | `src/engine/knowledgeGraph.ts` | Extend athlete graph & science KB entries here. |
+| AI content guidelines & voice | AI Guideline | `src/engine/contentStrategy.ts`, `src/services/coachPersonalization.ts` | Build additively on `EXERCISE_BRIEF_BLUEPRINT`, `runReadAloudQaGate`, and `buildSummaryVoiceGuidelines`; never replace with parallel guidelines. |
+| AI context & model transport | AI Context | `src/services/coachContext.ts`, `src/services/coachContextEnvelope.ts`, `src/services/onDeviceModel.ts`, `src/services/deviceModels.ts` | Add screen hooks to `coachContext.ts`, athlete signals to `coachContextEnvelope.ts`, and inference to `onDeviceModel.ts`; never create parallel coach contexts or LLM clients. |
+| 2-line exercise summary | Engine / AI | `src/services/exerciseInsight.ts`, `src/services/exerciseCoachNote.ts` | Share `buildGoalDrivenLine1`, `buildGoalDrivenLine2`, `buildSwappedExerciseCopy`; never duplicate Line 1/Line 2/swap prose. |
+| Exercise drill-in modal & model | UI Surface | `src/components/train/ExerciseDetailModal.tsx`, `src/services/exerciseDetails.ts` | Single exercise drill-in across Workout, Program, Progress & Coach via `buildInspectExerciseSession`. |
+| Exercise swap modal | UI Surface | `src/components/train/ExerciseSwapModal.tsx` | Single swap UI backed by `recommendExerciseSwaps`. |
+| Exercise card & trend chart | UI Surface | `src/components/train/ExerciseCard.tsx`, `src/components/common/TrendChart.tsx`, `src/components/common/CoachSummaryText.tsx` | Reuse canonical cards/charts/prose across surfaces; never clone variants. |
 
 ---
 

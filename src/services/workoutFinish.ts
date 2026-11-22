@@ -376,6 +376,8 @@ export function cacheWorkoutSummary(finish: Pick<WorkoutFinish, 'facts'>, summar
 export interface CompletedExerciseSummary {
   /** The exercise's id within the session (unique on the page). */
   id: string;
+  /** Catalog exercise id (for canonical ExerciseDetailModal drill-in). */
+  exerciseId: string;
   exerciseName: string;
   /** Order chip, e.g. "A1". */
   chip?: string;
@@ -492,6 +494,7 @@ export function buildCompletedExerciseSummaries(input: {
     }
     summaries.push({
       id: ex.id,
+      exerciseId: ex.exerciseId,
       exerciseName: ex.name,
       chip: ex.orderCode || String(index + 1),
       isPersonalBest,

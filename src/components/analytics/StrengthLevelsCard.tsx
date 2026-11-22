@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ChevronDown, Sparkles } from 'lucide-react';
+import { ChevronDown, ChevronRight, Sparkles } from 'lucide-react';
 import { PolarAngleAxis, PolarGrid, PolarRadiusAxis, Radar, RadarChart, ResponsiveContainer } from 'recharts';
 import { BiometricLog } from '../../engine/types';
 import { calculateEngineVitalityScore } from '../../engine/vitality';
@@ -18,6 +18,7 @@ const SHORT_NAME: Record<string, string> = {
 interface StrengthLevelsCardProps {
   report: MovementStandardsReport;
   latestBiometrics: BiometricLog;
+  onSelectExercise?: (exerciseId: string) => void;
   onAskCoach?: () => void;
 }
 
@@ -27,7 +28,12 @@ interface StrengthLevelsCardProps {
  * pulling. Rows have no published standard, so no level. A movement never logged shows
  * "Not logged yet", never a level. Built by buildMovementStandards (services/movementStandards.ts).
  */
-export const StrengthLevelsCard: React.FC<StrengthLevelsCardProps> = ({ report, latestBiometrics, onAskCoach }) => {
+export const StrengthLevelsCard: React.FC<StrengthLevelsCardProps> = ({
+  report,
+  latestBiometrics,
+  onSelectExercise,
+  onAskCoach,
+}) => {
   const [showMethodology, setShowMethodology] = useState(false);
   const rated = report.levels.filter((l) => l.source !== 'none');
   const loggedRated = rated.filter((l) => l.logged && l.step !== undefined);
@@ -126,86 +132,113 @@ export const StrengthLevelsCard: React.FC<StrengthLevelsCardProps> = ({ report, 
 
       {/* Structured Movement Level Tiles */}
       <ul className="flex flex-col gap-2" aria-label="Level for each movement">
-        {rated.map((l) => (
-          <li
-            key={l.pillar}
-            className="wk-raised border"
-            style={{ borderColor: 'var(--color-border-subtle)' }}
-          >
-            <div className="flex items-baseline justify-between gap-2">
-              <span
-                className="wk-subhead leading-tight"
-                style={{ color: l.logged ? 'var(--color-text-primary)' : 'var(--wk-muted)' }}
-              >
-                {formatSentenceCase(l.name)}
-              </span>
-              <span
-                className="text-base shrink-0 tabular-nums leading-tight"
-                style={{
-                  fontWeight: l.logged ? 500 : 400,
-                  color: l.logged ? 'var(--color-text-primary)' : 'var(--wk-muted)',
-                  fontSize: l.logged ? 16 : 12,
-                }}
-              >
-                {l.logged ? `${l.tier} ${l.subDivision}` : 'Not logged yet'}
-              </span>
-            </div>
-
-            {l.logged && (
-              <>
-                <div
-                  className="wk-bar mt-2"
-                  role="progressbar"
-                  aria-valuemin={0}
-                  aria-valuemax={100}
-                  aria-valuenow={l.progress ?? 0}
-                  aria-label={l.next ? `${l.name}: ${l.progress}% of the way to ${l.next}` : `${l.name}: top level`}
+        {rated.map((l) => {
+          const canDrillIn = Boolean(l.logged && l.bestFromExerciseId && onSelectExercise);
+          const content = (
+            <>
+              <div className="flex items-baseline justify-between gap-2">
+                <span
+                  className="wk-subhead leading-tight"
+                  style={{ color: l.logged ? 'var(--color-text-primary)' : 'var(--wk-muted)' }}
                 >
-                  <div style={{ width: `${l.next ? l.progress ?? 0 : 100}%` }} />
-                </div>
-
-                <div className="flex items-center justify-between flex-wrap gap-2 mt-2">
+                  {formatSentenceCase(l.name)}
+                </span>
+                <div className="flex items-center gap-2 shrink-0">
                   <span
-                    className="wk-caption"
-                    style={{ color: l.next ? 'var(--color-text-secondary)' : 'var(--color-status-positive)' }}
+                    className="text-base shrink-0 tabular-nums leading-tight"
+                    style={{
+                      fontWeight: l.logged ? 500 : 400,
+                      color: l.logged ? 'var(--color-text-primary)' : 'var(--wk-muted)',
+                      fontSize: l.logged ? 16 : 12,
+                    }}
                   >
-                    {l.next ? `Next: ${l.next}` : 'Top level'}
-                    {l.firstLevel && l.firstLoggedOn
-                      ? ` · Started ${l.firstLevel}`
-                      : ''}
+                    {l.logged ? `${l.tier} ${l.subDivision}` : 'Not logged yet'}
                   </span>
-                  <div className="flex items-center gap-2 shrink-0">
-                    {l.allometricScore && (
-                      <span className="wk-caption tabular-nums">
-                        Index {l.allometricScore.toFixed(1)}
-                      </span>
-                    )}
-                    <span
-                      className="wk-pill"
-                      style={
-                        l.tested
-                          ? {
-                              background: 'var(--color-status-positive-soft)',
-                              color: 'var(--color-status-positive)',
-                              borderColor: 'var(--color-border-accent)',
-                            }
-                          : undefined
-                      }
-                    >
-                      {l.tested ? 'Tested' : 'Estimated'}
-                    </span>
-                  </div>
+                  {canDrillIn && (
+                    <ChevronRight className="wk-chevron" strokeWidth={2} aria-hidden="true" />
+                  )}
                 </div>
+              </div>
 
-                {l.caveat && (
-                  <p className="wk-caption mt-2" style={{ color: 'var(--wk-muted)' }}>
-                    {l.caveat}
-                  </p>
-                )}
-              </>
-            )}
-          </li>
-        ))}
+              {l.logged && (
+                <>
+                  <div
+                    className="wk-bar mt-2"
+                    role="progressbar"
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={l.progress ?? 0}
+                    aria-label={l.next ? `${l.name}: ${l.progress}% of the way to ${l.next}` : `${l.name}: top level`}
+                  >
+                    <div style={{ width: `${l.next ? l.progress ?? 0 : 100}%` }} />
+                  </div>
+
+                  <div className="flex items-center justify-between flex-wrap gap-2 mt-2">
+                    <span
+                      className="wk-caption"
+                      style={{ color: l.next ? 'var(--color-text-secondary)' : 'var(--color-status-positive)' }}
+                    >
+                      {l.next ? `Next: ${l.next}` : 'Top level'}
+                      {l.firstLevel && l.firstLoggedOn
+                        ? ` · Started ${l.firstLevel}`
+                        : ''}
+                    </span>
+                    <div className="flex items-center gap-2 shrink-0">
+                      {l.allometricScore && (
+                        <span className="wk-caption tabular-nums">
+                          Index {l.allometricScore.toFixed(1)}
+                        </span>
+                      )}
+                      <span
+                        className="wk-pill"
+                        style={
+                          l.tested
+                            ? {
+                                background: 'var(--color-status-positive-soft)',
+                                color: 'var(--color-status-positive)',
+                                borderColor: 'var(--color-border-accent)',
+                              }
+                            : undefined
+                        }
+                      >
+                        {l.tested ? 'Tested' : 'Estimated'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {l.caveat && (
+                    <p className="wk-caption mt-2" style={{ color: 'var(--wk-muted)' }}>
+                      {l.caveat}
+                    </p>
+                  )}
+                </>
+              )}
+            </>
+          );
+          return (
+            <li
+              key={l.pillar}
+              className="wk-raised border"
+              style={{ borderColor: 'var(--color-border-subtle)' }}
+            >
+              {canDrillIn ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    triggerHaptic('light');
+                    onSelectExercise?.(l.bestFromExerciseId!);
+                  }}
+                  aria-label={`Open details for ${formatSentenceCase(l.bestFrom ?? l.name)}`}
+                  className="w-full min-h-[44px] text-left block"
+                >
+                  {content}
+                </button>
+              ) : (
+                content
+              )}
+            </li>
+          );
+        })}
       </ul>
 
       {/* Dedicated Engine / Cardio & Recovery Telemetry Tile */}

@@ -346,6 +346,178 @@ export const INITIAL_GOVERNANCE_ITEMS: GovernanceChangeItem[] = [
       'src/components/train/SetRow.tsx',
     ],
   },
+  {
+    id: 'gov-single-engine-additive-architecture',
+    title: 'Additive-First Architecture: Single Canonical Engine, AI Context/Guidelines & Shared UI Surfaces',
+    category: 'UX & Information Architecture',
+    status: 'locked',
+    versionIntroduced: 'v2.1',
+    rationale:
+      'Prevents architectural drift, contradictory numbers, inconsistent AI tone, and diverging UI cards by requiring every change to extend the one canonical engine, AI guideline/context layer, or shared UI surface for its domain instead of creating parallel copies.',
+    whatWorkedWell:
+      'Consolidating Line 1/Line 2/swap exercise briefs onto shared builders in exerciseInsight.ts, extending existing contentStrategy.ts + coachPersonalization.ts rather than writing competing guideline files, and routing every exercise entry point across Workout, Program, and Progress into the one canonical ExerciseDetailModal.',
+    critiqueAndRisks:
+      'Without an explicit canonical registry and CI test gate, incremental features tend to spawn shadow engines, parallel AI prompt contracts, or duplicate exercise detail modals that silently diverge.',
+    lockedInvariant:
+      'Never duplicate an engine, AI guideline/context layer, or UI card/drill-in when a canonical owner exists in CANONICAL_ARCHITECTURE_REGISTRY. All enhancements must be additive to the registered canonical modules (enforced by AGENTS.md Rule #12 and engine suite 80).',
+    files: [
+      'AGENTS.md',
+      'src/engine/governance.ts',
+      'src/engine/contentStrategy.ts',
+      'src/services/coachPersonalization.ts',
+      'src/services/coachContextEnvelope.ts',
+      'src/services/exerciseInsight.ts',
+      'src/services/exerciseCoachNote.ts',
+      'src/services/exerciseDetails.ts',
+      'src/components/train/ExerciseDetailModal.tsx',
+      'src/components/train/ExerciseSwapModal.tsx',
+    ],
+  },
+];
+
+export type CanonicalArchitectureKind = 'engine' | 'ai_guideline_context' | 'ui_surface';
+
+export interface CanonicalArchitectureEntry {
+  id: string;
+  domain: string;
+  kind: CanonicalArchitectureKind;
+  /** Repo-relative paths of the sole canonical owners for this domain. */
+  canonicalFiles: string[];
+  /** Shared UI entry points that must route into this canonical surface (for ui_surface entries). */
+  requiredEntryPoints?: string[];
+  /** Explicit additive-only rule enforced when changing this domain. */
+  additiveRule: string;
+}
+
+/**
+ * Single authoritative registry of canonical engines, AI guideline/context layers, and shared UI cards/modals.
+ * Before creating any new engine, context builder, guideline module, or shared card, check this registry and
+ * extend the existing canonical module instead (AGENTS.md Rule #12; verified by engine suite 80).
+ */
+export const CANONICAL_ARCHITECTURE_REGISTRY: CanonicalArchitectureEntry[] = [
+  {
+    id: 'canon-e1rm',
+    domain: 'E1RM, Equipment Multipliers & Calisthenic Load Scaling',
+    kind: 'engine',
+    canonicalFiles: ['src/engine/e1rm.ts'],
+    additiveRule: 'Extend calculateE1RM and equipment helpers in src/engine/e1rm.ts; never re-implement E1RM or dumbbell/RDL/assisted math elsewhere.',
+  },
+  {
+    id: 'canon-progression-and-swaps',
+    domain: 'Double Progression, Load Carry-Over & Swap Recommendations',
+    kind: 'engine',
+    canonicalFiles: [
+      'src/engine/progressionRules.ts',
+      'src/engine/progression.ts',
+      'src/engine/loadPersonalization.ts',
+    ],
+    additiveRule: 'Extend PROGRESSION_RULES, evaluateRepRangeDoubleProgression, personalizeSessionLoads, and recommendExerciseSwaps here; never create a second progression or swap-ranking engine.',
+  },
+  {
+    id: 'canon-continuity',
+    domain: 'Cross-Environment Continuity (Gym / Home / Travel) & Anchor Bridging',
+    kind: 'engine',
+    canonicalFiles: ['src/engine/continuityEngine.ts'],
+    additiveRule: 'Extend cross-environment bridging, leverage progressions, and gym re-entry detection in src/engine/continuityEngine.ts.',
+  },
+  {
+    id: 'canon-hypertrophy-volume',
+    domain: 'Weekly Hypertrophy Volume Landmarks & Fractional Set Accounting',
+    kind: 'engine',
+    canonicalFiles: ['src/engine/hypertrophyVolume.ts', 'src/services/storage.ts'],
+    additiveRule: 'Compute weekly hard sets exclusively through calculateWeeklyMuscleVolume / calculateWeeklyMuscleVolumeBreakdown and HYPERTROPHY_VOLUME_LANDMARKS.',
+  },
+  {
+    id: 'canon-recovery-readiness',
+    domain: 'Unified Local Muscle Recovery & Systemic Readiness (Amber Shield)',
+    kind: 'engine',
+    canonicalFiles: ['src/engine/recovery.ts', 'src/engine/readiness.ts'],
+    additiveRule: 'Extend local recovery windows and readiness scoring in recovery.ts / readiness.ts; never compute separate recovery scores per tab.',
+  },
+  {
+    id: 'canon-strength-standards',
+    domain: 'Published Strength Standards (Kilgore / Poliquin) & Unilateral Symmetry',
+    kind: 'engine',
+    canonicalFiles: [
+      'src/engine/kilgoreStandards.ts',
+      'src/engine/strengthStandards.ts',
+      'src/services/movementStandards.ts',
+    ],
+    additiveRule: 'Extend authoritative standards and balance analysis here; never invent parallel strength tables.',
+  },
+  {
+    id: 'canon-knowledge-graph',
+    domain: 'Personal Knowledge Graph & Exercise Science Knowledge Base',
+    kind: 'engine',
+    canonicalFiles: ['src/engine/knowledgeGraph.ts'],
+    additiveRule: 'Add science principles, joint load signals, and athlete insight nodes to knowledgeGraph.ts rather than creating a second graph.',
+  },
+  {
+    id: 'canon-ai-guidelines',
+    domain: 'AI Content Strategy, Voice Matrix, Exercise Brief Blueprint & QA Gates',
+    kind: 'ai_guideline_context',
+    canonicalFiles: ['src/engine/contentStrategy.ts', 'src/services/coachPersonalization.ts'],
+    additiveRule: 'Extend EXERCISE_BRIEF_BLUEPRINT, runReadAloudQaGate, buildSummaryVoiceGuidelines, and checkSummaryVoiceGuidelines additively; never create parallel or replacement AI guideline modules.',
+  },
+  {
+    id: 'canon-ai-context-and-runtime',
+    domain: 'AI Coach Context Envelope & On-Device / Stateless Model Runtime',
+    kind: 'ai_guideline_context',
+    canonicalFiles: [
+      'src/services/coachContext.ts',
+      'src/services/coachContextEnvelope.ts',
+      'src/services/onDeviceModel.ts',
+      'src/services/deviceModels.ts',
+      'src/services/aiAssistantService.ts',
+    ],
+    additiveRule: 'Add screen-entry hooks to coachContext.ts, add athlete/screen signals to coachContextEnvelope.ts, and route all inference through promptOnDeviceModel; never create a parallel context builder or LLM client.',
+  },
+  {
+    id: 'canon-exercise-2line-brief',
+    domain: 'Exercise 2-Line Brief (Line 1 Progress, Line 2 Action, One-Off Swap Copy)',
+    kind: 'ai_guideline_context',
+    canonicalFiles: ['src/services/exerciseInsight.ts', 'src/services/exerciseCoachNote.ts'],
+    additiveRule: 'All exercise Line 1, Line 2, and swap brief builders live once in exerciseInsight.ts (buildGoalDrivenLine1, buildGoalDrivenLine2, buildSwappedExerciseCopy) and are reused by exerciseCoachNote.ts and workoutFinish.ts.',
+  },
+  {
+    id: 'canon-exercise-detail-modal',
+    domain: 'Canonical Exercise Drill-In Detail View',
+    kind: 'ui_surface',
+    canonicalFiles: ['src/components/train/ExerciseDetailModal.tsx', 'src/services/exerciseDetails.ts'],
+    requiredEntryPoints: [
+      'src/components/train/TrainTab.tsx',
+      'src/components/train/ExerciseCard.tsx',
+      'src/components/train/FinishedWorkoutCards.tsx',
+      'src/components/program/ProgramPlanView.tsx',
+      'src/components/program/ProgramTab.tsx',
+      'src/components/program/PastWorkoutModal.tsx',
+      'src/components/program/SplitEditor.tsx',
+      'src/components/analytics/AnalyticsTab.tsx',
+      'src/components/analytics/StrengthLevelsCard.tsx',
+      'src/components/analytics/BalanceCard.tsx',
+      'src/components/analytics/KnowledgeGraphCard.tsx',
+    ],
+    additiveRule: 'Every exercise drill-in across Workout, Program, Progress, and Coach must open the single canonical ExerciseDetailModal via buildInspectExerciseSession / buildExerciseDetailModel; never build a second exercise detail modal or card.',
+  },
+  {
+    id: 'canon-exercise-swap-modal',
+    domain: 'Canonical Exercise Swap Sheet',
+    kind: 'ui_surface',
+    canonicalFiles: ['src/components/train/ExerciseSwapModal.tsx'],
+    requiredEntryPoints: ['src/components/train/TrainTab.tsx', 'src/components/train/ExerciseDetailModal.tsx'],
+    additiveRule: 'Every exercise swap flow must open ExerciseSwapModal backed by recommendExerciseSwaps; never duplicate swap lists or modals.',
+  },
+  {
+    id: 'canon-shared-charts-and-prose',
+    domain: 'Canonical Trend Chart & Coach Prose Surface',
+    kind: 'ui_surface',
+    canonicalFiles: [
+      'src/components/common/TrendChart.tsx',
+      'src/components/common/CoachSummaryText.tsx',
+      'src/components/train/ExerciseCard.tsx',
+    ],
+    additiveRule: 'Reuse TrendChart (+ buildExerciseTrendSpec), CoachSummaryText, and ExerciseCard across tabs rather than building lookalike card or chart clones.',
+  },
 ];
 
 export interface DesignHeuristicRule {

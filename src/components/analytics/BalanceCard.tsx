@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Check, Sparkles } from 'lucide-react';
+import { Check, ChevronRight, Sparkles } from 'lucide-react';
 import type { CoachIntervention } from '../../services/coachInterventions';
 import { MovementStandardsReport, SYMMETRY_FLAG_PCT } from '../../services/movementStandards';
 import { formatSentenceCase } from '../../utils/typography';
@@ -14,6 +14,7 @@ export interface BalanceCardProps {
   onAcceptIntervention?: (intervention: CoachIntervention) => void;
   onDismissIntervention?: (intervention: CoachIntervention) => void;
   onFixImbalanceWithCoach?: (suggestedPrompt: string) => void;
+  onSelectExercise?: (exerciseId: string) => void;
 }
 
 /**
@@ -30,6 +31,7 @@ export const BalanceCard: React.FC<BalanceCardProps> = ({
   onAcceptIntervention,
   onDismissIntervention,
   onFixImbalanceWithCoach,
+  onSelectExercise,
 }) => {
   const { imbalances, sideDifferences, levels } = report;
   const loggedCount = levels.filter((l) => l.logged && l.source !== 'none').length;
@@ -123,13 +125,38 @@ export const BalanceCard: React.FC<BalanceCardProps> = ({
           ))}
           {sideDifferences.map((d) => (
             <li key={d.exerciseId}>
-              <p className="wk-body max-w-prose" style={{ color: 'var(--color-text-primary)' }}>
-                {d.exerciseName}: your {d.weakerSide} side is doing {d.symmetryPct}% of your {d.weakerSide === 'left' ? 'right' : 'left'} (last{' '}
-                {d.sessions === 1 ? 'session' : `${d.sessions} sessions`}).
-              </p>
-              <p className="wk-caption mt-1 max-w-prose">
-                Start each set with your {d.weakerSide} side and match its reps on the other side until they even out.
-              </p>
+              {onSelectExercise ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    triggerHaptic('light');
+                    onSelectExercise(d.exerciseId);
+                  }}
+                  aria-label={`Open details for ${formatSentenceCase(d.exerciseName)}`}
+                  className="w-full min-h-[44px] flex items-start justify-between gap-2 text-left"
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="wk-body max-w-prose" style={{ color: 'var(--color-text-primary)' }}>
+                      {d.exerciseName}: your {d.weakerSide} side is doing {d.symmetryPct}% of your {d.weakerSide === 'left' ? 'right' : 'left'} (last{' '}
+                      {d.sessions === 1 ? 'session' : `${d.sessions} sessions`}).
+                    </p>
+                    <p className="wk-caption mt-1 max-w-prose">
+                      Start each set with your {d.weakerSide} side and match its reps on the other side until they even out.
+                    </p>
+                  </div>
+                  <ChevronRight className="wk-chevron shrink-0 mt-1" strokeWidth={2} aria-hidden="true" />
+                </button>
+              ) : (
+                <>
+                  <p className="wk-body max-w-prose" style={{ color: 'var(--color-text-primary)' }}>
+                    {d.exerciseName}: your {d.weakerSide} side is doing {d.symmetryPct}% of your {d.weakerSide === 'left' ? 'right' : 'left'} (last{' '}
+                    {d.sessions === 1 ? 'session' : `${d.sessions} sessions`}).
+                  </p>
+                  <p className="wk-caption mt-1 max-w-prose">
+                    Start each set with your {d.weakerSide} side and match its reps on the other side until they even out.
+                  </p>
+                </>
+              )}
             </li>
           ))}
         </ul>

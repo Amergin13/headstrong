@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { ChevronRight } from 'lucide-react';
 import {
   BiometricLog,
   ExerciseDefinition,
@@ -12,6 +13,7 @@ import {
   searchExerciseScienceKnowledgeBase,
 } from '../../engine/knowledgeGraph';
 import { triggerHaptic } from '../../utils/haptics';
+import { formatSentenceCase } from '../../utils/typography';
 
 // Internal engineering and design-governance entries are not shown in the athlete's science browser.
 const INTERNAL_PRINCIPLE_IDS = [
@@ -31,6 +33,7 @@ interface KnowledgeGraphCardProps {
   /** Pre-computed knowledge graph passed from parent to avoid duplicate rebuilds. */
   knowledgeGraph?: AthleteKnowledgeGraph;
   focusExerciseId?: string;
+  onSelectExercise?: (exerciseId: string) => void;
 }
 
 type InsightTabMode = 'overview' | 'joints' | 'science';
@@ -43,6 +46,7 @@ export const KnowledgeGraphCard: React.FC<KnowledgeGraphCardProps> = ({
   weeklyVolume,
   knowledgeGraph,
   focusExerciseId,
+  onSelectExercise,
 }) => {
   const pkg = useMemo(
     () =>
@@ -184,17 +188,46 @@ export const KnowledgeGraphCard: React.FC<KnowledgeGraphCardProps> = ({
                           borderColor: isFocused ? 'var(--color-accent-primary)' : 'var(--color-border-subtle)',
                         }}
                       >
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="wk-subhead truncate">
-                            {entry.exerciseName}
-                          </span>
-                          <span className="wk-caption tabular-nums shrink-0">
-                            {entry.date}
-                          </span>
-                        </div>
-                        <p className="wk-body mt-1 max-w-prose">
-                          {entry.note}
-                        </p>
+                        {onSelectExercise ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              triggerHaptic('light');
+                              onSelectExercise(entry.exerciseId);
+                            }}
+                            aria-label={`Open details for ${formatSentenceCase(entry.exerciseName)}`}
+                            className="w-full min-h-[44px] text-left block"
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="wk-subhead truncate">
+                                {entry.exerciseName}
+                              </span>
+                              <div className="flex items-center gap-2 shrink-0">
+                                <span className="wk-caption tabular-nums">
+                                  {entry.date}
+                                </span>
+                                <ChevronRight className="wk-chevron" strokeWidth={2} aria-hidden="true" />
+                              </div>
+                            </div>
+                            <p className="wk-body mt-1 max-w-prose">
+                              {entry.note}
+                            </p>
+                          </button>
+                        ) : (
+                          <>
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="wk-subhead truncate">
+                                {entry.exerciseName}
+                              </span>
+                              <span className="wk-caption tabular-nums shrink-0">
+                                {entry.date}
+                              </span>
+                            </div>
+                            <p className="wk-body mt-1 max-w-prose">
+                              {entry.note}
+                            </p>
+                          </>
+                        )}
                       </li>
                     );
                   });

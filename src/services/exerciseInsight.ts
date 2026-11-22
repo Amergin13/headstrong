@@ -220,6 +220,167 @@ export function buildSwappedExerciseCopy(params: {
 }
 
 /**
+ * Single source of truth for non-swapped Line 1 (Overall Progress Against Goals),
+ * shared identically by `buildExerciseInsight` and `buildExerciseNoteFacts`.
+ * Also returns the matching empirical `factLine1` string for the on-device AI note prompt.
+ */
+export function buildGoalDrivenLine1(params: {
+  exerciseName: string;
+  metric: 'time' | 'reps' | 'added_kg' | 'e1rm';
+  sessionCount: number;
+  firstValue?: number;
+  latestValue?: number;
+  swappedFirstSessionLine1?: string;
+  isAssisted?: boolean;
+  isTwoDb?: boolean;
+  isPureBodyweight?: boolean;
+  includesBodyweight?: boolean;
+  bwQualifier?: string;
+  formatLoad?: (kg: number) => string;
+}): { line1: string; factLine1: string } {
+  const {
+    exerciseName,
+    metric,
+    sessionCount,
+    firstValue,
+    latestValue,
+    swappedFirstSessionLine1,
+    isAssisted = false,
+    isTwoDb = false,
+    isPureBodyweight = false,
+    includesBodyweight = false,
+    bwQualifier = '',
+    formatLoad = (kg) => `${round1(kg)} kg`,
+  } = params;
+
+  if (metric === 'time') {
+    if (sessionCount === 0) {
+      return {
+        factLine1: 'This is the first time you have logged this exercise.',
+        line1: swappedFirstSessionLine1 ?? `First time on ${exerciseName}—sets your starting hold baseline.`,
+      };
+    }
+    if (sessionCount === 1) {
+      const startSec = firstValue && firstValue > 0 ? firstValue : undefined;
+      return {
+        factLine1: `Logged 1 completed session on ${exerciseName}, establishing your baseline endurance${startSec ? ` (${startSec}s)` : ''}.`,
+        line1: startSec
+          ? `Your starting hold baseline is set at ${startSec}s from session 1.`
+          : 'Your starting hold endurance is set from session 1.',
+      };
+    }
+    const topSec = latestValue && latestValue > 0 ? latestValue : undefined;
+    return {
+      factLine1: `Logged ${sessionCount} completed sessions on ${exerciseName}, building endurance capacity${topSec ? ` (${topSec}s)` : ''}.`,
+      line1: topSec
+        ? `Your hold endurance sits at ${topSec}s across ${sessionCount} sessions.`
+        : `Your hold endurance is building across ${sessionCount} sessions.`,
+    };
+  }
+
+  if (sessionCount === 0) {
+    const line1 = swappedFirstSessionLine1
+      ? swappedFirstSessionLine1
+      : isAssisted
+      ? `First time on ${exerciseName}—sets your starting baseline (less assistance is harder).`
+      : isTwoDb
+      ? `First time on ${exerciseName}—sets your starting baseline (log weight per dumbbell).`
+      : isPureBodyweight && includesBodyweight
+      ? `First time on ${exerciseName}—sets your starting baseline using your bodyweight.`
+      : `First time on ${exerciseName}—sets your starting strength baseline.`;
+    return {
+      factLine1: 'This is the first time you have logged this exercise.',
+      line1,
+    };
+  }
+
+  if (metric === 'reps') {
+    const first = firstValue ?? 0;
+    if (sessionCount === 1) {
+      return {
+        factLine1: `Baseline bodyweight best set established at ${first} per set from your first session.`,
+        line1: `Your starting baseline is set at ${first} per set from session 1.`,
+      };
+    }
+    const last = latestValue ?? first;
+    const delta = last - first;
+    if (delta > 0) {
+      return {
+        factLine1: `Best set on this bodyweight exercise has risen by +${delta} across ${sessionCount} sessions (from ${first} to ${last} per set).`,
+        line1: `Your bodyweight strength is rising—best set is up +${delta} over ${sessionCount} sessions to ${last}.`,
+      };
+    }
+    if (delta < 0) {
+      return {
+        factLine1: `Best set on this bodyweight exercise shifted -${Math.abs(delta)} across ${sessionCount} sessions (from ${first} to ${last} per set).`,
+        line1: `Your best set sits at ${last} (-${Math.abs(delta)} over ${sessionCount} sessions) as you rebuild capacity.`,
+      };
+    }
+    return {
+      factLine1: `Best set on this bodyweight exercise has held steady at ${last} per set across ${sessionCount} sessions.`,
+      line1: `Your bodyweight strength is holding steady at ${last} per set across ${sessionCount} sessions.`,
+    };
+  }
+
+  if (metric === 'added_kg') {
+    const first = round1(firstValue ?? 0);
+    if (sessionCount === 1) {
+      const startAdded = formatLoad(first);
+      return {
+        factLine1: `Baseline added weight established at ${startAdded} from your first session.`,
+        line1: `Your starting added weight is set at ${startAdded} from session 1.`,
+      };
+    }
+    const last = round1(latestValue ?? first);
+    const delta = round1(last - first);
+    if (delta > 0) {
+      return {
+        factLine1: `Added weight on this exercise has risen by +${formatLoad(delta)} across ${sessionCount} sessions (from ${formatLoad(first)} to ${formatLoad(last)}).`,
+        line1: `Your added-weight strength is rising—up +${formatLoad(delta)} over ${sessionCount} sessions to ${formatLoad(last)}.`,
+      };
+    }
+    if (delta < 0) {
+      return {
+        factLine1: `Added weight on this exercise shifted -${formatLoad(Math.abs(delta))} across ${sessionCount} sessions (from ${formatLoad(first)} to ${formatLoad(last)}).`,
+        line1: `Your added weight sits at ${formatLoad(last)} (-${formatLoad(Math.abs(delta))} over ${sessionCount} sessions) as you rebuild momentum.`,
+      };
+    }
+    return {
+      factLine1: `Added weight on this exercise has held steady at ${formatLoad(last)} across ${sessionCount} sessions.`,
+      line1: `Your added weight is holding steady at ${formatLoad(last)} across ${sessionCount} sessions.`,
+    };
+  }
+
+  // Default: metric === 'e1rm'
+  const first = round1(firstValue ?? 0);
+  if (sessionCount === 1) {
+    const startE1rm = formatLoad(first);
+    return {
+      factLine1: `Baseline estimated 1RM${bwQualifier} established at ${startE1rm} from your first session.`,
+      line1: `Your starting strength is set—estimated max${bwQualifier} is ${startE1rm} from session 1.`,
+    };
+  }
+  const last = round1(latestValue ?? first);
+  const delta = round1(last - first);
+  if (delta > 0) {
+    return {
+      factLine1: `Estimated 1RM${bwQualifier} on this exercise has risen by +${formatLoad(delta)} across ${sessionCount} sessions (from ${formatLoad(first)} to ${formatLoad(last)}).`,
+      line1: `Your strength is rising—estimated max${bwQualifier} is up +${formatLoad(delta)} over ${sessionCount} sessions to ${formatLoad(last)}.`,
+    };
+  }
+  if (delta < 0) {
+    return {
+      factLine1: `Estimated 1RM${bwQualifier} on this exercise has shifted by -${formatLoad(Math.abs(delta))} across ${sessionCount} sessions (from ${formatLoad(first)} to ${formatLoad(last)}).`,
+      line1: `Your estimated max${bwQualifier} sits at ${formatLoad(last)} (-${formatLoad(Math.abs(delta))} over ${sessionCount} sessions) as you rebuild momentum.`,
+    };
+  }
+  return {
+    factLine1: `Estimated 1RM${bwQualifier} on this exercise has held steady at ${formatLoad(last)} across ${sessionCount} sessions.`,
+    line1: `Your strength is holding steady—estimated max${bwQualifier} is ${formatLoad(last)} across ${sessionCount} sessions.`,
+  };
+}
+
+/**
  * Single source of truth for non-swapped Line 2 (Today's Session Action -> Goal Outcome),
  * shared identically by `buildExerciseInsight` and `buildExerciseNoteFacts`.
  */
@@ -622,14 +783,14 @@ export function buildExerciseInsight(
         })
       : null;
 
-    const line1 =
-      history.length === 0
-        ? swappedTimed
-          ? swappedTimed.firstSessionLine1
-          : `First time on ${exercise.name}—sets your starting hold baseline.`
-        : history.length === 1
-        ? `Your starting hold baseline is set at ${history[0].value}s from session 1.`
-        : `Your hold endurance sits at ${history[history.length - 1].value}s across ${history.length} sessions.`;
+    const { line1 } = buildGoalDrivenLine1({
+      exerciseName: exercise.name,
+      metric: 'time',
+      sessionCount: history.length,
+      firstValue: history[0]?.value,
+      latestValue: history[history.length - 1]?.value,
+      swappedFirstSessionLine1: swappedTimed?.firstSessionLine1,
+    });
     const line2 = swappedTimed
       ? swappedTimed.line2
       : buildGoalDrivenLine2({
@@ -687,9 +848,12 @@ export function buildExerciseInsight(
       : null;
 
     if (!hasHistory) {
-      const line1 = swappedBw
-        ? swappedBw.firstSessionLine1
-        : `First time on ${exercise.name}—sets your starting strength baseline.`;
+      const { line1 } = buildGoalDrivenLine1({
+        exerciseName: exercise.name,
+        metric: 'reps',
+        sessionCount: 0,
+        swappedFirstSessionLine1: swappedBw?.firstSessionLine1,
+      });
       const line2 = swappedBw
         ? swappedBw.line2
         : buildGoalDrivenLine2({
@@ -717,22 +881,13 @@ export function buildExerciseInsight(
       };
     }
 
-    let line1: string;
-    if (history.length === 1) {
-      line1 = `Your starting baseline is set at ${history[0].value} per set from session 1.`;
-    } else {
-      const first = history[0].value;
-      const last = history[history.length - 1].value;
-      const delta = last - first;
-      const n = history.length;
-      if (delta > 0) {
-        line1 = `Your bodyweight strength is rising—best set is up +${delta} over ${n} sessions to ${last}.`;
-      } else if (delta < 0) {
-        line1 = `Your best set sits at ${last} (-${Math.abs(delta)} over ${n} sessions) as you rebuild capacity.`;
-      } else {
-        line1 = `Your bodyweight strength is holding steady at ${last} per set across ${n} sessions.`;
-      }
-    }
+    const { line1 } = buildGoalDrivenLine1({
+      exerciseName: exercise.name,
+      metric: 'reps',
+      sessionCount: history.length,
+      firstValue: history[0].value,
+      latestValue: history[history.length - 1].value,
+    });
 
     const lastEx = past[past.length - 1].ex;
     const prevReps = lastEx.sets.filter(done).reduce((m, s) => Math.max(m, s.actualReps ?? 0), 0);
@@ -791,9 +946,13 @@ export function buildExerciseInsight(
         })
       : null;
     if (!hasHistory) {
-      const line1 = swappedAdded
-        ? swappedAdded.firstSessionLine1
-        : `First time on ${exercise.name}—sets your starting strength baseline.`;
+      const { line1 } = buildGoalDrivenLine1({
+        exerciseName: exercise.name,
+        metric: 'added_kg',
+        sessionCount: 0,
+        swappedFirstSessionLine1: swappedAdded?.firstSessionLine1,
+        formatLoad: load,
+      });
       const line2 = swappedAdded
         ? swappedAdded.line2
         : buildGoalDrivenLine2({
@@ -820,18 +979,14 @@ export function buildExerciseInsight(
         summary: `${line1}\n${line2}`,
       };
     }
-    const first = history[0].value;
-    const last = history[history.length - 1].value;
-    const delta = round1(last - first);
-    const n = history.length;
-    const line1 =
-      n === 1
-        ? `Your starting added weight is set at ${load(first)} from session 1.`
-        : delta > 0
-        ? `Your added-weight strength is rising—up +${load(delta)} over ${n} sessions to ${load(last)}.`
-        : delta < 0
-        ? `Your added weight sits at ${load(last)} (-${load(Math.abs(delta))} over ${n} sessions) as you rebuild momentum.`
-        : `Your added weight is holding steady at ${load(last)} across ${n} sessions.`;
+    const { line1 } = buildGoalDrivenLine1({
+      exerciseName: exercise.name,
+      metric: 'added_kg',
+      sessionCount: history.length,
+      firstValue: history[0].value,
+      latestValue: history[history.length - 1].value,
+      formatLoad: load,
+    });
     const lastEx = past[past.length - 1].ex;
     const lastSets = lastEx.sets.filter(done);
     const prevTop = lastSets.reduce((m, s) => Math.max(m, weightOf(s)), 0);
@@ -890,16 +1045,21 @@ export function buildExerciseInsight(
       })
     : null;
 
+  const isPureBodyweight =
+    isCalisthenic && !isAssisted && exercise.equipment === 'bodyweight' && !exercise.isWeightedCalisthenic && !hasAddedLoad;
+
   if (!hasHistory) {
-    const line1 = swappedMain
-      ? swappedMain.firstSessionLine1
-      : isAssisted
-      ? `First time on ${exercise.name}—sets your starting baseline (less assistance is harder).`
-      : isTwoDb
-      ? `First time on ${exercise.name}—sets your starting baseline (log weight per dumbbell).`
-      : isCalisthenic && exercise.equipment === 'bodyweight' && !exercise.isWeightedCalisthenic && !hasAddedLoad
-      ? `First time on ${exercise.name}—sets your starting baseline using your bodyweight.`
-      : `First time on ${exercise.name}—sets your starting strength baseline.`;
+    const { line1 } = buildGoalDrivenLine1({
+      exerciseName: exercise.name,
+      metric: 'e1rm',
+      sessionCount: 0,
+      swappedFirstSessionLine1: swappedMain?.firstSessionLine1,
+      isAssisted,
+      isTwoDb,
+      isPureBodyweight,
+      includesBodyweight: isCalisthenic,
+      formatLoad: load,
+    });
     const line2 = swappedMain
       ? swappedMain.line2
       : buildGoalDrivenLine2({
@@ -930,8 +1090,6 @@ export function buildExerciseInsight(
     };
   }
 
-  const isPureBodyweight =
-    isCalisthenic && !isAssisted && exercise.equipment === 'bodyweight' && !exercise.isWeightedCalisthenic && !hasAddedLoad;
   const bwQualifier = isAssisted
     ? ''
     : isPureBodyweight
@@ -939,22 +1097,15 @@ export function buildExerciseInsight(
     : isCalisthenic
     ? ' (bodyweight + added weight)'
     : '';
-  let line1: string;
-  if (history.length === 1) {
-    line1 = `Your starting strength is set—estimated max${bwQualifier} is ${load(history[0].e1rmKg)} from session 1.`;
-  } else {
-    const first = round1(history[0].e1rmKg);
-    const last = round1(history[history.length - 1].e1rmKg);
-    const delta = round1(last - first);
-    const n = history.length;
-    if (delta > 0) {
-      line1 = `Your strength is rising—estimated max${bwQualifier} is up +${load(delta)} over ${n} sessions to ${load(last)}.`;
-    } else if (delta < 0) {
-      line1 = `Your estimated max${bwQualifier} sits at ${load(last)} (-${load(Math.abs(delta))} over ${n} sessions) as you rebuild momentum.`;
-    } else {
-      line1 = `Your strength is holding steady—estimated max${bwQualifier} is ${load(last)} across ${n} sessions.`;
-    }
-  }
+  const { line1 } = buildGoalDrivenLine1({
+    exerciseName: exercise.name,
+    metric: 'e1rm',
+    sessionCount: history.length,
+    firstValue: history[0].e1rmKg,
+    latestValue: history[history.length - 1].e1rmKg,
+    bwQualifier,
+    formatLoad: load,
+  });
 
   const lastEx = past[past.length - 1].ex;
   const lastSets = lastEx.sets.filter(done);

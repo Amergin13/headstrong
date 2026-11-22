@@ -1,7 +1,9 @@
 import React from 'react';
+import { ChevronRight } from 'lucide-react';
 import { CompletedExerciseSummary, WorkoutFinish } from '../../services/workoutFinish';
 import { localDateString } from '../../utils/date';
 import { formatSentenceCase } from '../../utils/typography';
+import { triggerHaptic } from '../../utils/haptics';
 import { useUnits } from '../../utils/unitsContext';
 import { TrendChart } from '../common/TrendChart';
 import { CoachSummaryText } from '../common/CoachSummaryText';
@@ -151,20 +153,41 @@ export const WhoopStrainCard: React.FC<WhoopStrainCardProps> = ({
 };
 
 /** One exercise from today's finished workout: what it did, and its progress over time. */
-export const CompletedExerciseCard: React.FC<{ summary: CompletedExerciseSummary }> = ({ summary }) => {
+export const CompletedExerciseCard: React.FC<{
+  summary: CompletedExerciseSummary;
+  onOpenDetail?: () => void;
+}> = ({ summary, onOpenDetail }) => {
   const units = useUnits();
   const { history } = summary;
   return (
     <section aria-label={`${summary.exerciseName}${summary.isPersonalBest ? ', personal best' : ''}`} className="wk-card">
       <div className="flex items-start justify-between gap-3">
-        <h3 className="wk-h1 min-w-0">{formatSentenceCase(summary.exerciseName)}</h3>
-        {summary.isPersonalBest && (
-          <span
-            className="wk-pill shrink-0"
-            style={{ background: 'var(--color-status-positive-soft)', color: 'var(--wk-accent)' }}
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center flex-wrap gap-2">
+            <h3 className="wk-h1 min-w-0">{formatSentenceCase(summary.exerciseName)}</h3>
+            {summary.isPersonalBest && (
+              <span
+                className="wk-pill shrink-0"
+                style={{ background: 'var(--color-status-positive-soft)', color: 'var(--wk-accent)' }}
+              >
+                Personal best
+              </span>
+            )}
+          </div>
+        </div>
+        {onOpenDetail && (
+          <button
+            type="button"
+            onClick={() => {
+              triggerHaptic('light');
+              onOpenDetail();
+            }}
+            aria-label={`Open details for ${formatSentenceCase(summary.exerciseName)}`}
+            className="min-w-[44px] min-h-[44px] -mt-2 -mr-2 inline-flex items-center justify-center rounded-xl shrink-0"
+            style={{ color: 'var(--color-text-secondary)' }}
           >
-            Personal best
-          </span>
+            <ChevronRight className="wk-chevron" strokeWidth={2} aria-hidden="true" />
+          </button>
         )}
       </div>
       {summary.chip && (
