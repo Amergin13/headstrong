@@ -234,7 +234,7 @@ export function buildExerciseNoteFacts(input: ExerciseNoteInput): ExerciseNoteFa
     const startE1rm = load(insight.history[0].e1rmKg);
     const bwShort = bwFactsQualifier;
     facts.push(`Baseline estimated 1RM${bwFactsQualifier} established at ${startE1rm} from your first session.`);
-    line1 = `Your starting strength is set at a ${startE1rm} estimated max${bwShort} from session 1.`;
+    line1 = `Your starting strength is set—estimated max${bwShort} is ${startE1rm} from session 1.`;
   } else {
     const first = round1(insight.history[0].e1rmKg);
     const last = round1(insight.history[insight.history.length - 1].e1rmKg);
@@ -253,7 +253,7 @@ export function buildExerciseNoteFacts(input: ExerciseNoteInput): ExerciseNoteFa
       line1 = `Your estimated max${bwShort} sits at ${load(last)} (-${load(Math.abs(delta))} over ${n} sessions) as you rebuild momentum.`;
     } else {
       facts.push(`Estimated 1RM${bwFactsQualifier} on this exercise has held steady at ${load(last)} across ${n} sessions.`);
-      line1 = `Your strength is holding steady at a ${load(last)} estimated max${bwShort} across ${n} sessions.`;
+      line1 = `Your strength is holding steady—estimated max${bwShort} is ${load(last)} across ${n} sessions.`;
     }
   }
 

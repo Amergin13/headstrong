@@ -160,7 +160,7 @@ export function buildSwappedExerciseCopy(params: {
     factLine1 = `Anchor lift ${anchorName} estimated max sits at ${latest}; today's lift replaces ${anchorName}${setupCue ? ` using ${setupCue}` : ''} to keep ${pattern} strength moving.`;
   } else if (!hasOwnHistory && !isTimed && anchorProgress && anchorProgress.sessions === 1) {
     const latest = formatLoad(anchorProgress.latestE1rmKg);
-    firstSessionLine1 = `Your ${pattern} baseline on ${anchorName} sits at a ${latest} estimated max.`;
+    firstSessionLine1 = `Your ${pattern} baseline on ${anchorName} sits at ${latest} estimated max.`;
     factLine1 = `Anchor lift ${anchorName} baseline estimated max is ${latest}; today's lift replaces ${anchorName}${setupCue ? ` using ${setupCue}` : ''}.`;
   } else if (isTimed) {
     firstSessionLine1 = `Replaces ${anchorName} today and sets your starting hold baseline.`;
@@ -941,7 +941,7 @@ export function buildExerciseInsight(
     : '';
   let line1: string;
   if (history.length === 1) {
-    line1 = `Your starting strength is set at a ${load(history[0].e1rmKg)} estimated max${bwQualifier} from session 1.`;
+    line1 = `Your starting strength is set—estimated max${bwQualifier} is ${load(history[0].e1rmKg)} from session 1.`;
   } else {
     const first = round1(history[0].e1rmKg);
     const last = round1(history[history.length - 1].e1rmKg);
@@ -952,7 +952,7 @@ export function buildExerciseInsight(
     } else if (delta < 0) {
       line1 = `Your estimated max${bwQualifier} sits at ${load(last)} (-${load(Math.abs(delta))} over ${n} sessions) as you rebuild momentum.`;
     } else {
-      line1 = `Your strength is holding steady at a ${load(last)} estimated max${bwQualifier} across ${n} sessions.`;
+      line1 = `Your strength is holding steady—estimated max${bwQualifier} is ${load(last)} across ${n} sessions.`;
     }
   }
 

@@ -235,7 +235,7 @@ export const EXERCISE_BRIEF_BLUEPRINT: ExerciseBriefBlueprint = {
     examples: [
       'Your strength is rising—estimated max is up +19 kg over 6 sessions to 114 kg.',
       'Your push strength is rising—Barbell Bench Press estimated max is up +12.5 kg to 105 kg.',
-      'Your strength is holding steady at a 95 kg estimated max across 3 sessions.',
+      'Your strength is holding steady—estimated max is 95 kg across 3 sessions.',
       'First time on Barbell Back Squat—sets your starting strength baseline.',
     ],
   },
