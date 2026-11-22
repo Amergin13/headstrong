@@ -520,6 +520,333 @@ export const CANONICAL_ARCHITECTURE_REGISTRY: CanonicalArchitectureEntry[] = [
   },
 ];
 
+/**
+ * Authoritative Design System source context that MUST be referenced at the starting point of any UI work.
+ * All styling and layout work must use semantic tokens from `tokens.css` / `semanticTokens.ts`,
+ * `.wk-*` primitives and the 4-Size (12/16/20/32px) × 4-Weight (400/500/600/700) × 3-Ink typography scale
+ * from `src/index.css`, and component specs from `TREISE_DESIGN_SYSTEM` (`src/engine/knowledgeGraph.ts`)
+ * rendered in `src/designSystem/DesignSystemApp.tsx` (`design-system.html`).
+ */
+export const DESIGN_SYSTEM_SOURCE_CONTEXT = {
+  tokenFiles: ['src/styles/tokens.css', 'src/styles/semanticTokens.ts'],
+  primitiveCssFile: 'src/index.css',
+  specificationModule: 'src/engine/knowledgeGraph.ts',
+  specificationExport: 'TREISE_DESIGN_SYSTEM',
+  showcaseFiles: [
+    'src/designSystem/DesignSystemApp.tsx',
+    'src/designSystem/showcaseFixtures.ts',
+    'src/designSystem/tokenParser.ts',
+    'design-system.html',
+  ],
+  syncCommand: 'npm run design-system:sync',
+} as const;
+
+/**
+ * Locked inventory of approved component files in `src/components/`.
+ * Rule (AGENTS.md #13): Never introduce a new component file in `src/components/` without explicit
+ * user permission. All UI changes must compose or extend these existing design-system components.
+ * Enforced by Engine Suite 80.
+ */
+export const APPROVED_COMPONENT_FILES: readonly string[] = [
+  'src/components/activity/ActivityConnectionsModal.tsx',
+  'src/components/activity/LogActivityModal.tsx',
+  'src/components/analytics/AnalyticsTab.tsx',
+  'src/components/analytics/BalanceCard.tsx',
+  'src/components/analytics/CompositionCard.tsx',
+  'src/components/analytics/GoalDetailScreen.tsx',
+  'src/components/analytics/GoalSettingsScreen.tsx',
+  'src/components/analytics/KnowledgeGraphCard.tsx',
+  'src/components/analytics/MuscleProgressCard.tsx',
+  'src/components/analytics/ProgressChartCard.tsx',
+  'src/components/analytics/ProgressOverviewCards.tsx',
+  'src/components/analytics/ProgressWidgetsScreen.tsx',
+  'src/components/analytics/StrengthLevelsCard.tsx',
+  'src/components/analytics/TimelineToggle.tsx',
+  'src/components/analytics/WeightLogModal.tsx',
+  'src/components/assistant/AICoachChatModal.tsx',
+  'src/components/auth/GoogleAuthModal.tsx',
+  'src/components/auth/ProfileSettingsSections.tsx',
+  'src/components/common/BiometricCircularGauge.tsx',
+  'src/components/common/CoachSummaryText.tsx',
+  'src/components/common/ErrorBoundary.tsx',
+  'src/components/common/Header.tsx',
+  'src/components/common/NavigationBar.tsx',
+  'src/components/common/PageTopGradient.tsx',
+  'src/components/common/RestTimerModal.tsx',
+  'src/components/common/Toast.tsx',
+  'src/components/common/TrendChart.tsx',
+  'src/components/onboarding/OnboardingIllustrations.tsx',
+  'src/components/onboarding/OnboardingModal.tsx',
+  'src/components/program/CustomExerciseModal.tsx',
+  'src/components/program/GoalPhaseSwitcher.tsx',
+  'src/components/program/ImportProgramModal.tsx',
+  'src/components/program/MesocycleManager.tsx',
+  'src/components/program/PastWorkoutModal.tsx',
+  'src/components/program/ProgramAdaptationCarousel.tsx',
+  'src/components/program/ProgramHeaderMenu.tsx',
+  'src/components/program/ProgramPickerModal.tsx',
+  'src/components/program/ProgramPlanView.tsx',
+  'src/components/program/ProgramTab.tsx',
+  'src/components/program/SplitEditor.tsx',
+  'src/components/program/WatchSyncModal.tsx',
+  'src/components/program/WeeklyVolumeCard.tsx',
+  'src/components/train/ActiveDayCard.tsx',
+  'src/components/train/ExerciseCard.tsx',
+  'src/components/train/ExerciseDetailModal.tsx',
+  'src/components/train/ExerciseFormClipPlayer.tsx',
+  'src/components/train/ExerciseSwapModal.tsx',
+  'src/components/train/FinishedWorkoutCards.tsx',
+  'src/components/train/PlateCalculatorModal.tsx',
+  'src/components/train/ProgramProgressCard.tsx',
+  'src/components/train/ReadinessBanner.tsx',
+  'src/components/train/RecoveryScoreCard.tsx',
+  'src/components/train/SetRow.tsx',
+  'src/components/train/TempoPacer.tsx',
+  'src/components/train/TrainTab.tsx',
+  'src/components/train/WorkoutFinishScreen.tsx',
+  'src/components/train/WorkoutPageHeader.tsx',
+  'src/components/train/useWorkoutSummaryText.ts',
+] as const;
+
+/**
+ * Authoritative AI guidelines, context builders, fact-checkers, and governed surfaces that MUST be
+ * referenced by all AI features and functionality (AGENTS.md #14; enforced by Engine Suites 79 & 80).
+ */
+export const AI_GUIDELINES_SOURCE_CONTEXT = {
+  guidelineModules: [
+    'src/engine/contentStrategy.ts',
+    'src/services/coachPersonalization.ts',
+    'src/services/factChecks.ts',
+  ],
+  contextModules: [
+    'src/services/coachContext.ts',
+    'src/services/coachContextEnvelope.ts',
+  ],
+  sharedBriefModule: 'src/services/exerciseInsight.ts',
+  transportModules: [
+    'src/services/onDeviceModel.ts',
+    'src/services/deviceModels.ts',
+    'src/services/geminiFlashLite.ts',
+    'api/coach/generate.ts',
+  ],
+  deterministicToolModules: [
+    'src/services/coachTools.ts',
+    'src/services/coachAnswers.ts',
+    'src/services/coachInterventions.ts',
+  ],
+  governedAiSurfaces: [
+    'src/services/exerciseCoachNote.ts',
+    'src/services/identityMessage.ts',
+    'src/services/workoutFinish.ts',
+    'src/services/progressOverview.ts',
+    'src/services/compositionOverview.ts',
+    'src/services/aiAssistantService.ts',
+  ],
+} as const;
+
+export interface SystemSwotEntry {
+  id: string;
+  title: string;
+  summary: string;
+  sourceFiles: string[];
+  actionOrMitigation: string;
+}
+
+export interface SystemSwotEvaluation {
+  strengths: SystemSwotEntry[];
+  weaknesses: SystemSwotEntry[];
+  opportunities: SystemSwotEntry[];
+  risks: SystemSwotEntry[];
+}
+
+/**
+ * Codified SWOT (Strengths, Weaknesses, Opportunities, Risks) evaluation of the current Treise system,
+ * grounded in live engine, AI, design-system, and platform modules.
+ */
+export const SYSTEM_SWOT_EVALUATION: SystemSwotEvaluation = {
+  strengths: [
+    {
+      id: 'swot-s1-deterministic-exercise-science',
+      title: 'Single-Source Deterministic Exercise Science & Load Continuity',
+      summary:
+        'All physiological and progression math—RIR-adjusted Epley E1RM with >12-rep halving and 1.18x DB / 1.20x RDL / calisthenic multipliers, rep-range Double Progression, Cross-Environment Continuity bridging, Israetel/Schoenfeld volume landmarks (with 0.5x synergist credit), unified local muscle recovery + Amber Shield readiness, and published Kilgore/Poliquin/Grindem standards—lives in single canonical modules pinned by 80 engine suites.',
+      sourceFiles: [
+        'src/engine/e1rm.ts',
+        'src/engine/progressionRules.ts',
+        'src/engine/progression.ts',
+        'src/engine/continuityEngine.ts',
+        'src/engine/hypertrophyVolume.ts',
+        'src/engine/recovery.ts',
+        'src/engine/readiness.ts',
+        'src/engine/kilgoreStandards.ts',
+      ],
+      actionOrMitigation: 'Keep all formula updates strictly additive inside their canonical engine owner.',
+    },
+    {
+      id: 'swot-s2-zero-hallucination-hybrid-ai',
+      title: 'Zero-Hallucination Hybrid AI with Fact-Based Fallbacks & QA Gates',
+      summary:
+        'All 6 AI surfaces pair on-device Gemini Nano / stateless gemini-3.5-flash-lite inference with deterministic fact builders (buildGoalDrivenLine1/Line2, buildSwappedExerciseCopy), numeric/unit factChecks, runReadAloudQaGate, and checkSummaryVoiceGuidelines, while all 21 state mutations run deterministically through coachTools.ts with diff receipts, HITL confirmations, and 1-tap Undo.',
+      sourceFiles: [
+        'src/engine/contentStrategy.ts',
+        'src/services/coachPersonalization.ts',
+        'src/services/factChecks.ts',
+        'src/services/exerciseInsight.ts',
+        'src/services/exerciseCoachNote.ts',
+        'src/services/aiAssistantService.ts',
+        'src/services/coachTools.ts',
+      ],
+      actionOrMitigation: 'Require every new AI prompt or surface to import contentStrategy + coachPersonalization and provide a verified deterministic fallback.',
+    },
+    {
+      id: 'swot-s3-shift-nudge-design-system-and-canonical-ui',
+      title: 'Shift Nudge × Apple HIG Design System & Unified Canonical Drill-Ins',
+      summary:
+        'A locked 4-Size (12/16/20/32px) × 4-Weight (400/500/600/700-at-32px) × 3-Ink (1.00/0.78/0.60) typography scale, semantic CSS tokens, >=44px touch targets, invariant logging table headers (SET | PREV | WEIGHT | REPS | RIR | DONE), and single canonical ExerciseDetailModal / ExerciseSwapModal / TrendChart components prevent visual fragmentation.',
+      sourceFiles: [
+        'src/styles/tokens.css',
+        'src/index.css',
+        'src/engine/knowledgeGraph.ts',
+        'src/designSystem/DesignSystemApp.tsx',
+        'src/components/train/ExerciseDetailModal.tsx',
+        'src/components/train/ExerciseSwapModal.tsx',
+      ],
+      actionOrMitigation: 'Enforce APPROVED_COMPONENT_FILES freeze and design-system:sync on every UI change.',
+    },
+    {
+      id: 'swot-s4-local-first-resilience-and-privacy',
+      title: 'Zero-Latency Local-First Persistence & Privacy-Preserving Architecture',
+      summary:
+        'Immediate usePersistedState saves, cross-tab storage synchronization, quota-overflow cache eviction + SAVE_FAILED_EVENT alerts, automatic v10 schema migrations, spreadsheet import, and stateless wearable/LLM proxies keep workout and biometric history exclusively on the athlete device.',
+      sourceFiles: [
+        'src/services/storage.ts',
+        'src/hooks/usePersistedState.ts',
+        'public/privacy.html',
+      ],
+      actionOrMitigation: 'Maintain Suite 36f persistence checks and bundle secret scans on every build.',
+    },
+  ],
+  weaknesses: [
+    {
+      id: 'swot-w1-starting-context-truncation-and-doc-drift',
+      title: 'Historical Starting-Point Rule Truncation & Legacy Doc Drift (Remediated)',
+      summary:
+        'AGENTS.md had grown to 99.3 KB, exceeding the ~23.8 KB agent rule injection window and truncating the bottom 76% of the file (where Design System and AI details sat), while secondary docs (CONTINUOUS_GOVERNANCE_GUIDE.md) retained outdated pre-Shift-Nudge and Bubblewrap references.',
+      sourceFiles: [
+        'AGENTS.md',
+        'CONTINUOUS_GOVERNANCE_GUIDE.md',
+        'PRODUCT_GOVERNANCE.md',
+      ],
+      actionOrMitigation: 'Keep AGENTS.md under the 23.5 KB untruncated ceiling with all starting-point rules in Section 0, enforced by Suite 80.',
+    },
+    {
+      id: 'swot-w2-monolithic-orchestrator-files',
+      title: 'High Line Counts in Core Orchestrator & Test Files',
+      summary:
+        'Core orchestrators (src/App.tsx, src/components/train/TrainTab.tsx, src/services/aiAssistantService.ts, src/engine/knowledgeGraph.ts, and src/engine/__tests__/verifyEngine.ts) have large line counts that increase context overhead when editing.',
+      sourceFiles: [
+        'src/App.tsx',
+        'src/components/train/TrainTab.tsx',
+        'src/services/aiAssistantService.ts',
+        'src/engine/__tests__/verifyEngine.ts',
+      ],
+      actionOrMitigation: 'Use modular test suites (*.suite.ts) and pure service builders (exerciseDetails.ts, exerciseInsight.ts) rather than adding inline component logic.',
+    },
+    {
+      id: 'swot-w3-single-device-localstorage-bound',
+      title: 'Single-Device Browser Storage Without Automatic Off-Device Backup',
+      summary:
+        'Storing data solely in on-device localStorage protects privacy and works offline, but clearing site data or losing a phone without exporting a JSON backup loses history.',
+      sourceFiles: ['src/services/storage.ts'],
+      actionOrMitigation: 'Request persistent browser storage (navigator.storage.persist) after workouts and surface 1-tap JSON backup export in Settings.',
+    },
+    {
+      id: 'swot-w4-uncalibrated-cable-and-machine-stacks',
+      title: 'Cross-Gym Pulley & Lever Ratio Variance on First Machine Swap',
+      summary:
+        'Because commercial cable stacks and lever machines vary in pulley mechanical advantage (1:1 vs 2:1), first-time machine swaps use EFFORT_ONLY opening-set calibration rather than an exact kilogram conversion.',
+      sourceFiles: ['src/engine/continuityEngine.ts', 'src/services/exerciseInsight.ts'],
+      actionOrMitigation: 'State opening-set machine calibration clearly in Line 1/Line 2 and auto-recalibrate remaining sets after Set 1 RIR is logged.',
+    },
+  ],
+  opportunities: [
+    {
+      id: 'swot-o1-encrypted-opt-in-backup',
+      title: 'Zero-Knowledge Client-Side Encrypted Backup & Restore',
+      summary:
+        'Extend storage.ts export/import with optional client-side encrypted backup (e.g., passkey/passphrase-encrypted snapshot or Android Auto Backup) without storing plaintext health data on servers.',
+      sourceFiles: ['src/services/storage.ts', 'src/components/auth/ProfileSettingsSections.tsx'],
+      actionOrMitigation: 'Build additively on existing exportAllData / importAllData JSON schema.',
+    },
+    {
+      id: 'swot-o2-google-health-web-oauth',
+      title: 'Google Health API OAuth Proxy for Web-Only Fitbit/Pixel Users',
+      summary:
+        'Complement the native Android TWA HealthConnectBridge.kt by wiring the Google Health Web API proxy in api/ once Google Cloud credentials are provisioned, restoring direct web browser sync after the Nov 2026 legacy Fitbit Web API sunset.',
+      sourceFiles: ['src/services/healthConnectBridge.ts', 'src/services/fitbitService.ts'],
+      actionOrMitigation: 'Add server-side token exchange in api/ while keeping secrets strictly in Vercel environment variables.',
+    },
+    {
+      id: 'swot-o3-block-over-block-mesocycle-comparison',
+      title: 'Longitudinal 6-Week Cycle-Over-Cycle Progress Comparison',
+      summary:
+        'Leverage existing planStartWorkouts, buildExerciseInsight, and calculateWeeklyMuscleVolumeBreakdown to compare Cycle 1 vs Cycle 2 strength and volume gains inside existing ProgressChartCard and ExerciseDetailModal views.',
+      sourceFiles: ['src/services/progressSeries.ts', 'src/services/exerciseDetails.ts'],
+      actionOrMitigation: 'Reuse TrendChart and ProgressChartCard without introducing new chart components.',
+    },
+    {
+      id: 'swot-o4-modular-suite-extraction',
+      title: 'Continued Modularization of verifyEngine.ts & Service Hooks',
+      summary:
+        'Continue extracting domain test suites (*.suite.ts) and pure view-model helpers so verification remains fast, readable, and easy to audit.',
+      sourceFiles: ['src/engine/__tests__/verifyEngine.ts'],
+      actionOrMitigation: 'Keep all new regression checks in focused *.suite.ts modules imported by verifyEngine.ts.',
+    },
+  ],
+  risks: [
+    {
+      id: 'swot-r1-llm-model-drift',
+      title: 'Upstream Model Behavioral Drift (Gemini Flash-Lite & Chrome Gemini Nano)',
+      summary:
+        'Silent provider updates to gemini-3.5-flash-lite or Chrome Prompt API can shift tone, echo prompts, or invent numbers.',
+      sourceFiles: [
+        'src/services/onDeviceModel.ts',
+        'src/services/geminiFlashLite.ts',
+        'src/engine/contentStrategy.ts',
+        'src/services/coachPersonalization.ts',
+      ],
+      actionOrMitigation: 'Strict pre-render gates (factChecks.ts, runReadAloudQaGate, checkSummaryVoiceGuidelines) reject non-compliant text and fall back to deterministic copy.',
+    },
+    {
+      id: 'swot-r2-ui-and-engine-sprawl',
+      title: 'Unapproved Component Creation or Shadow Engine Duplication',
+      summary:
+        'Without automated gates, future feature work risks creating duplicate drill-in modals, off-scale typography, or parallel progression/summary calculators.',
+      sourceFiles: [
+        'src/engine/governance.ts',
+        'src/engine/__tests__/singleEngineAndCanonicalUi.suite.ts',
+      ],
+      actionOrMitigation: 'Enforce CANONICAL_ARCHITECTURE_REGISTRY, APPROVED_COMPONENT_FILES freeze, and Suites 47, 79, and 80 in CI.',
+    },
+    {
+      id: 'swot-r3-android-twa-bridge-overwrite',
+      title: 'Accidental Bubblewrap Regeneration Wiping Native Kotlin Bridges',
+      summary:
+        'Running bubblewrap update/build regenerates the Android wrapper and deletes custom HealthConnectBridge.kt and ScaleBridge.kt native code; ML Kit GenAI also blocks background webview inference.',
+      sourceFiles: ['app/build.gradle', 'scripts/verifyPlayStoreReady.mjs'],
+      actionOrMitigation: 'Build Android releases exclusively via ./gradlew bundleRelease and verify native bridge integrity with npm run verify:playstore.',
+    },
+    {
+      id: 'swot-r4-wearable-api-outages',
+      title: 'Third-Party Wearable OAuth / Rate-Limit Failures (Whoop / Google Health)',
+      summary:
+        'External wearable APIs can rate-limit, expire refresh tokens, or return partial telemetry on training days.',
+      sourceFiles: ['api/whoop/biometrics.ts', 'src/services/whoopService.ts', 'src/engine/recovery.ts', 'src/engine/readiness.ts'],
+      actionOrMitigation: 'Gracefully degrade to local muscle recovery windows (recovery.ts) and advisory readiness indicators so wearable outages never block a workout.',
+    },
+  ],
+};
+
 export interface DesignHeuristicRule {
   id: string;
   pillar: 'Visual Design' | 'Content Design' | 'Interaction Design';

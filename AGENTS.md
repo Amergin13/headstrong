@@ -1,589 +1,143 @@
 # Treise Architecture & Exercise Science Formulas
 
-## 0. Non-Negotiables (read first, override everything below)
+## 0. Non-Negotiables & Starting Point for All New Work (read first, override everything below)
 
 These rules exist because earlier sessions broke them. Any change that violates one is wrong, even if another section seems to allow it.
 
-1. **Never fabricate data or claims.** No fake users, leaderboard entries, heart rates, sleep, HRV, durations, "simulated" syncs, demo sign-ins, latency numbers or hardware badges in the real app. Missing data is stored as `0`/`undefined` and shown as "—" or an empty state. Sample data only appears after the athlete explicitly loads the demo. The one exception: a chart with no data at all (an exercise never logged) shows a dimmed shape labelled "Example" (no numbers). One session shows the real starting point; two or more show the real line.
-2. **Never put secrets in client code.** OAuth client secrets and API keys live only in Vercel environment variables (`WHOOP_CLIENT_SECRET`, `FITBIT_CLIENT_SECRET`, `GEMINI_API_KEY`) and are used only in `api/`. CI fails if `client_secret` appears in the built bundle.
-3. **Never claim what isn't built.** No "cloud sync", "community", "Bluetooth scale" or hardware claims unless the feature exists end to end. The privacy policy (`public/privacy.html`) must match what the code actually does.
+1. **Never fabricate data or claims.** No fake users, leaderboard entries, heart rates, sleep, HRV, durations, "simulated" syncs, demo sign-ins, latency numbers or hardware badges in the real app. Missing data is stored as `0`/`undefined` and shown as "—" or an empty state. Sample data appears only after the athlete loads the demo. One exception: a chart for an exercise never logged shows a dimmed shape labelled "Example" (no numbers). One session shows the starting point; `>= 2` show the trend line.
+2. **Never put secrets in client code.** OAuth client secrets and API keys live only in Vercel env vars (`WHOOP_CLIENT_SECRET`, `FITBIT_CLIENT_SECRET`, `GEMINI_API_KEY`) and are used only in `api/`. CI fails if `client_secret` appears in `dist/assets`.
+3. **Never claim what isn't built.** No "cloud sync", "community", "Bluetooth scale" or hardware claims unless built end to end. `public/privacy.html` must match what the code does.
 4. **Safety beats engagement.** Pain, injury or warning-symptom messages always get the fixed reply from `buildSafetyResponse` (stop the movement, swap it, see a professional). The model never answers these.
-5. **Respect recovery (advisory, never blocking).** Local muscle recovery (`src/engine/recovery.ts`) and systemic Amber Shield readiness (`src/engine/readiness.ts`) are unified: while Amber Shield is active, local recovery windows scale by `1.2x` so local and systemic statuses never contradict. The Workout tab shows today's queued session directly with a calm recovery status indicator and 1-tap opt-in modulation buttons (trim 1 set per lift or shift to 2–3 RIR) rather than hiding the workout behind a blocking rest card.
-6. **Weights come from the athlete.** Every generated session goes through `personalizeSessionLoads` (history carry-over, learned strength ratios, onboarding calibration). Never show template weights to a new athlete unscaled.
+5. **Respect recovery (advisory, never blocking).** Local muscle recovery (`src/engine/recovery.ts`) and systemic Amber Shield readiness (`src/engine/readiness.ts`) are unified: while Amber Shield is active, local recovery windows scale by `1.2x` so statuses never contradict. The Workout tab shows today's queued session directly with a calm recovery indicator and 1-tap opt-in modulation buttons (trim 1 set/lift or shift to 2–3 RIR), never a blocking rest card.
+6. **Weights come from the athlete.** Every generated session goes through `personalizeSessionLoads` (history carry-over, learned strength ratios, onboarding calibration). Never show template weights unscaled.
 7. **Store kg, display the athlete's unit.** Use `useUnits()` for every weight shown or typed.
 8. **Use local dates** (`localDateString`), never `toISOString().split('T')[0]`.
-9. **One source per number.** Every number shown on more than one page comes from the same function with the same inputs (engine suite 36e checks this):
-   - Weekly hard sets: `calculateWeeklyMuscleVolume` over saved workouts only (cards, Program, Progress muscle cards, knowledge graph).
-   - Estimated max per movement: `calculateE1RM` with the exercise id and movement type (strength levels and Progress charts).
-   - Plan position and workout names: `getNextProgramWorkoutNumber` / `buildPlanOverview` with the athlete's plan (`resolveActivePlan`); each plan keeps its own position (`planId` on the session; older plan saves are the muscle plan). Plan sessions are named with `planWorkoutLabel` (e.g. "Shoulders and Arms"), and older saves are renamed on load and import. An unstarted session that isn't the plan's next workout is replaced.
-   - Streak: `computeTrainingStreak` from saved workouts (rest gaps up to 4 days keep it).
-   - Workout time: measured, first logged set to finish (or the watch's time), saved with the session and reused by the summary and session card. Nothing is added for warm-ups.
-   - Bodyweight: shown only after the athlete logs one; the 80 kg fallback only seeds starting loads. Weekly weight pace needs a week of weigh-ins.
-   - Goal names: `GOAL_DISPLAY_NAME` (Build Muscle, Lose Fat, Stay Lean); internal phase names never appear in the UI.
-   - Switching kg/lb snaps an unstarted session's weights to real sizes in the new unit.
-10. **Never lose saved data.** Every change is saved straight away (`usePersistedState`), a change in another tab reloads the data (but can never replace a change this tab hasn't saved yet), and older saves are upgraded on launch (`runStorageMigrations`, legacy `headstrong_*` keys still load). Saves go through `persist` in `storage.ts`: if storage is full it clears rebuildable caches and retries, and if that fails the athlete is warned (`SAVE_FAILED_EVENT`) instead of losing data silently. Once there's history, the app asks the browser to keep its storage (`requestPersistentStorage`). A form never re-saves a pre-filled value the athlete didn't enter (e.g. logging only a waist measurement doesn't copy an earlier weight onto today). Engine suite 36f covers this.
+9. **One source per number (suite 36e):**
+   - Weekly hard sets: `calculateWeeklyMuscleVolume` / `calculateWeeklyMuscleVolumeBreakdown` over saved workouts only.
+   - Estimated max: `calculateE1RM` with exercise id and movement type.
+   - Plan position & names: `getNextProgramWorkoutNumber` / `buildPlanOverview` with `resolveActivePlan` (`planId` per plan; `planWorkoutLabel`). Unstarted sessions not matching the plan's next workout are replaced.
+   - Streak: `computeTrainingStreak` from saved workouts (rest gaps `<= 4d` keep it).
+   - Workout time: measured from first logged set to finish (or watch time); nothing added for warm-ups.
+   - Bodyweight: shown only after a weigh-in (`80 kg` fallback only seeds starting loads; weekly pace needs 7d of weigh-ins).
+   - Goal names: `GOAL_DISPLAY_NAME` (Build Muscle, Lose Fat, Stay Lean); internal phase names never appear in UI.
+   - Switching kg/lb snaps unstarted session weights to real plate/DB sizes.
+10. **Never lose saved data (suite 36f).** Immediate `usePersistedState` saves, cross-tab sync, `runStorageMigrations` (incl. legacy `headstrong_*` keys), quota cache eviction + `SAVE_FAILED_EVENT` in `storage.ts`, and `requestPersistentStorage`. Forms never re-save pre-filled values the athlete didn't enter.
 11. **Run `npm run test:engine`, `npm run test:api` and `npx tsc --noEmit -p .` before finishing.** Update tests when behaviour intentionally changes; never weaken a test to hide a regression.
-12. **Additive-first; never duplicate engines, context, guidelines, or cards.** All work must extend existing canonical modules rather than creating parallel ones (registry in `src/engine/governance.ts` `CANONICAL_ARCHITECTURE_REGISTRY`, enforced by engine suite 80):
-    - **One engine per domain:** Never create a second engine or calculation module for a domain that already has one; extend the existing canonical engine instead.
-    - **One AI guideline & context layer:** Never create parallel or replacement AI content guidelines, voice contracts, prompt helpers, or context envelopes. Always build additively on `src/engine/contentStrategy.ts` (voice, read-aloud QA, `EXERCISE_BRIEF_BLUEPRINT`), `src/services/coachPersonalization.ts` (prompt rules & voice validation), `src/services/coachContextEnvelope.ts` (coach context assembly), and `src/services/onDeviceModel.ts` + `src/services/deviceModels.ts` (model transport).
-    - **One canonical card / drill-in per domain object:** Never build duplicate cards, modals, or detail views for the same domain object. Every related entry point across tabs MUST open the exact same canonical view:
-      - Exercise drill-in: `src/components/train/ExerciseDetailModal.tsx` (with `buildInspectExerciseSession` / `buildExerciseDetailModel` in `src/services/exerciseDetails.ts`) from every entry point across Workout (`ExerciseCard`, `CompletedExerciseCard`, upcoming planned day), Program (`PastWorkoutModal`, `SplitEditor`), Progress (Trophy Case, pinned Exercise chart, `StrengthLevelsCard`, `BalanceCard`, `KnowledgeGraphCard`), and Coach.
-      - Exercise swap: `src/components/train/ExerciseSwapModal.tsx` backed by `recommendExerciseSwaps` in `src/engine/progression.ts`.
-      - Exercise 2-line summary: shared `buildGoalDrivenLine1`, `buildGoalDrivenLine2`, and `buildSwappedExerciseCopy` in `src/services/exerciseInsight.ts`, reused by `src/services/exerciseCoachNote.ts` and `src/services/workoutFinish.ts`.
-      - Exercise trend charts & coach prose: `src/components/common/TrendChart.tsx` (with `buildExerciseTrendSpec`) and `src/components/common/CoachSummaryText.tsx`.
-    - **Before creating any new file** in `src/engine/`, `src/services/`, or `src/components/`, check the Canonical Architecture Registry below. A new engine, context layer, guideline module, or shared card is only permitted when no canonical owner covers the domain, and must be registered in `CANONICAL_ARCHITECTURE_REGISTRY`.
+12. **Additive-first; never duplicate engines, context, guidelines, or cards (`CANONICAL_ARCHITECTURE_REGISTRY` in `src/engine/governance.ts`, suite 80):**
+    - **One engine per domain:** Extend the canonical owner in the registry below; never create a second engine or calculation module for an existing domain.
+    - **One AI guideline & context layer:** Extend `src/engine/contentStrategy.ts`, `src/services/coachPersonalization.ts`, `src/services/coachContext.ts` + `src/services/coachContextEnvelope.ts`, and `src/services/onDeviceModel.ts` + `src/services/deviceModels.ts`; never create parallel AI guidelines or context builders.
+    - **One canonical card / drill-in per domain object:** Every related entry point across tabs MUST open the exact same canonical view:
+      - Exercise drill-in: `src/components/train/ExerciseDetailModal.tsx` (`buildInspectExerciseSession` / `buildExerciseDetailModel` in `src/services/exerciseDetails.ts`) across Workout (`ExerciseCard`, `CompletedExerciseCard`, upcoming planned day, `PastWorkoutModal`), Program (`PastWorkoutModal`, `SplitEditor`, custom exercises), Progress (Trophy Case, pinned Exercise chart, `StrengthLevelsCard`, `BalanceCard`, `KnowledgeGraphCard`), and Coach.
+      - Exercise swap: `src/components/train/ExerciseSwapModal.tsx` (`recommendExerciseSwaps` in `src/engine/progression.ts`).
+      - Exercise 2-line summary: `buildGoalDrivenLine1`, `buildGoalDrivenLine2`, `buildSwappedExerciseCopy` (`src/services/exerciseInsight.ts`), reused by `exerciseCoachNote.ts` & `workoutFinish.ts`.
+      - Charts & coach prose: `src/components/common/TrendChart.tsx` (`buildExerciseTrendSpec`) and `src/components/common/CoachSummaryText.tsx`.
+13. **Use existing Design System components; never introduce a new component without explicit user permission (`DESIGN_SYSTEM_SOURCE_CONTEXT` & `APPROVED_COMPONENT_FILES` in `src/engine/governance.ts`, suite 80):**
+    - **Design System source context:** Tokens in `src/styles/tokens.css` & `src/styles/semanticTokens.ts` (zero raw `#hex`/`rgba(...)` in `src/components/`); `.wk-*` primitives & 4-Size (`12/16/20/32px`) × 4-Weight (`400/500/600/700-at-32px`) × 3-Ink (`1.00/0.78/0.60`) typography in `src/index.css`; specs in `TREISE_DESIGN_SYSTEM` (`src/engine/knowledgeGraph.ts`) & `src/designSystem/DesignSystemApp.tsx` (`npm run design-system:sync` → `design-system.html`).
+    - **Strict component freeze:** Never create a new file under `src/components/` (or a new `.wk-*` class) without explicit user permission. Compose or extend the 58 approved files in `APPROVED_COMPONENT_FILES` (suite 80 fails CI on any unapproved file).
+14. **Every AI feature and functionality must reference and validate against the canonical AI guidelines (`AI_GUIDELINES_SOURCE_CONTEXT` in `src/engine/governance.ts`, suites 79 & 80):**
+    - **Canonical AI source context:** `src/engine/contentStrategy.ts` (`VOICE_TONE_MATRIX`, `EXERCISE_BRIEF_BLUEPRINT`, `buildExerciseBriefContractPrompt`, `runReadAloudQaGate`, `runRotContentAudit`), `src/services/coachPersonalization.ts` (`buildSummaryVoiceGuidelines`, `checkSummaryVoiceGuidelines`, `normalizeSummaryVoice`), `src/services/factChecks.ts`, `src/services/coachContext.ts` + `src/services/coachContextEnvelope.ts`, `src/services/onDeviceModel.ts` + `src/services/deviceModels.ts` + `src/services/geminiFlashLite.ts`, and `src/services/coachTools.ts`.
+    - All 6 AI surfaces (`exerciseCoachNote.ts`, `identityMessage.ts`, `workoutFinish.ts`, `progressOverview.ts`, `compositionOverview.ts`, `aiAssistantService.ts`) and any new AI functionality must import these guidelines, render a deterministic fact fallback first, and pass `runReadAloudQaGate` + `checkSummaryVoiceGuidelines`.
+
+### Starting Point for All New Work (Mandatory Pre-Flight Protocol)
+
+1. **Locate canonical owner (Rule #12):** Check `CANONICAL_ARCHITECTURE_REGISTRY` below before editing; extend the registered module rather than creating a new file.
+2. **Check Design System & component freeze (Rule #13):** For UI changes, use tokens/classes from `tokens.css` + `index.css` and existing components in `APPROVED_COMPONENT_FILES`; never create a new component without user permission, and run `npm run design-system:sync`.
+3. **Check AI guidelines & gates (Rule #14):** For AI/copy work, wire `contentStrategy.ts` + `coachPersonalization.ts` + `factChecks.ts` with a deterministic fact fallback.
+4. **Verify before finishing (Rule #11):** Run `npm run design-system:sync`, `npx tsc --noEmit -p .`, `npm run test:engine` (all 80 suites), and `npm run test:api`. Keep `AGENTS.md <= 23,750` bytes so `<user_rules>` never truncates it.
 
 ### Canonical Architecture Registry (Single Owner Per Domain)
 
 | Domain | Kind | Canonical Module(s) | Additive Rule |
 | :--- | :--- | :--- | :--- |
-| E1RM & load multipliers | Engine | `src/engine/e1rm.ts` | Extend here; never re-implement Epley/DB/RDL/calisthenic math elsewhere. |
-| Double progression & load carry-over | Engine | `src/engine/progressionRules.ts`, `src/engine/progression.ts`, `src/engine/loadPersonalization.ts` | Extend shared rules, load personalization & `recommendExerciseSwaps`; never fork progression or swap ranking. |
+| E1RM & load multipliers | Engine | `src/engine/e1rm.ts` | Extend here; never re-implement Epley/DB/RDL/calisthenic math. |
+| Double progression & load carry-over | Engine | `src/engine/progressionRules.ts`, `src/engine/progression.ts`, `src/engine/loadPersonalization.ts` | Extend shared rules, load personalization & `recommendExerciseSwaps`. |
 | Cross-environment continuity | Engine | `src/engine/continuityEngine.ts` | Extend anchor bridging, travel/home conversion & gym reentry here. |
-| Hypertrophy volume landmarks | Engine | `src/engine/hypertrophyVolume.ts`, `src/services/storage.ts` | Use `calculateWeeklyMuscleVolume` / `calculateWeeklyMuscleVolumeBreakdown`; never recount sets inline. |
+| Hypertrophy volume landmarks | Engine | `src/engine/hypertrophyVolume.ts`, `src/services/storage.ts` | Use `calculateWeeklyMuscleVolume` / `calculateWeeklyMuscleVolumeBreakdown`. |
 | Local muscle recovery & readiness | Engine | `src/engine/recovery.ts`, `src/engine/readiness.ts` | Extend unified recovery + Amber Shield logic here. |
 | Strength standards & symmetry | Engine | `src/engine/kilgoreStandards.ts`, `src/engine/strengthStandards.ts`, `src/services/movementStandards.ts` | Authoritative tables & balance checks live only here. |
-| Personal knowledge graph | Engine | `src/engine/knowledgeGraph.ts` | Extend athlete graph & science KB entries here. |
-| AI content guidelines & voice | AI Guideline | `src/engine/contentStrategy.ts`, `src/services/coachPersonalization.ts` | Build additively on `EXERCISE_BRIEF_BLUEPRINT`, `runReadAloudQaGate`, and `buildSummaryVoiceGuidelines`; never replace with parallel guidelines. |
-| AI context & model transport | AI Context | `src/services/coachContext.ts`, `src/services/coachContextEnvelope.ts`, `src/services/onDeviceModel.ts`, `src/services/deviceModels.ts` | Add screen hooks to `coachContext.ts`, athlete signals to `coachContextEnvelope.ts`, and inference to `onDeviceModel.ts`; never create parallel coach contexts or LLM clients. |
-| 2-line exercise summary | Engine / AI | `src/services/exerciseInsight.ts`, `src/services/exerciseCoachNote.ts` | Share `buildGoalDrivenLine1`, `buildGoalDrivenLine2`, `buildSwappedExerciseCopy`; never duplicate Line 1/Line 2/swap prose. |
+| Personal knowledge graph | Engine | `src/engine/knowledgeGraph.ts` | Extend athlete graph, `TREISE_DESIGN_SYSTEM` & science KB here. |
+| AI content guidelines & voice | AI Guideline | `src/engine/contentStrategy.ts`, `src/services/coachPersonalization.ts`, `src/services/factChecks.ts` | Build additively on `EXERCISE_BRIEF_BLUEPRINT`, `runReadAloudQaGate` & `buildSummaryVoiceGuidelines`. |
+| AI context & model transport | AI Context | `src/services/coachContext.ts`, `src/services/coachContextEnvelope.ts`, `src/services/onDeviceModel.ts`, `src/services/deviceModels.ts` | Add screen hooks to `coachContext.ts`, signals to `coachContextEnvelope.ts`, inference to `onDeviceModel.ts`. |
+| 2-line exercise summary | Engine / AI | `src/services/exerciseInsight.ts`, `src/services/exerciseCoachNote.ts` | Share `buildGoalDrivenLine1`, `buildGoalDrivenLine2`, `buildSwappedExerciseCopy`. |
 | Exercise drill-in modal & model | UI Surface | `src/components/train/ExerciseDetailModal.tsx`, `src/services/exerciseDetails.ts` | Single exercise drill-in across Workout, Program, Progress & Coach via `buildInspectExerciseSession`. |
 | Exercise swap modal | UI Surface | `src/components/train/ExerciseSwapModal.tsx` | Single swap UI backed by `recommendExerciseSwaps`. |
 | Exercise card & trend chart | UI Surface | `src/components/train/ExerciseCard.tsx`, `src/components/common/TrendChart.tsx`, `src/components/common/CoachSummaryText.tsx` | Reuse canonical cards/charts/prose across surfaces; never clone variants. |
 
 ---
 
-This document outlines the core mathematical models, exercise science principles, and biometric integration formulas implemented in **Treise**, a mobile-first Progressive Web App (PWA) designed for gamified hypertrophy workout tracking, international strength standards, and Google Pixel Watch / Fitbit and Whoop telemetry.
-
----
-
 ## 1. Core Exercise Science Formulas
 
-### 1.1 RIR-Adjusted Estimated 1-Rep Max (E1RM)
-Based on an augmented Epley/Lombardi progression model accounting for Repetitions in Reserve (RIR), restricted to sets logged at `<= 3 RIR` (returns `0` above 3 RIR) with RIR credit halved above 12 reps to prevent high-rep E1RM inflation (Halperin et al., 2022):
+### 1.1 RIR-Adjusted Estimated 1-Rep Max (`src/engine/e1rm.ts`)
+Restricted to sets logged at `<= 3 RIR` (`0` above 3 RIR) with RIR credit halved above 12 reps (Halperin et al., 2022):
 $$\text{E1RM} = \text{Effective Weight} \times \left(1 + \frac{\min(\text{Reps} + \text{EffectiveRIR},\, 15)}{30}\right)$$
-Isolation and small exercises (lateral raises, tricep pushdowns, curls, calves, etc.) show a Best Set / reps-at-weight progression view on `ExerciseCard.tsx` rather than an E1RM sparkline.
+- **Calisthenics:** Weighted/BW: $\text{Effective Weight} = \text{EMA}_{7\text{d BW}} + \text{External Load}$ (`1.00` BW ratio for pull-ups/chin-ups/dips; `0.64` push-ups). Assisted (`isAssisted`): $\max(5, \text{EMA}_{7\text{d BW}} - \text{Assistance Load})$.
+- **Dumbbell (`1.18x`) & RDL (`1.20x`):** Paired 2-DB lifts (`usesTwoDumbbells`) log/display weight **per dumbbell** (`24 kg`), while tonnage, WCI, and E1RM use `2 × 24 = 48 kg` (`× 1.18`). Single-DB (`usesOneDumbbell`) uses `1 ×` DB weight. RDLs multiply by `1.20`.
 
-#### Weight Adjustments & Equipment Stabilization Multipliers
-- **Weighted & Assisted Calisthenics (Pull-Ups, Chin-Ups, Dips):**
-  - Weighted / bodyweight: $\text{Effective Weight} = \text{EMA}_{7\text{-day Bodyweight}} + \text{External Load}$ *(external load = 0 kg for bodyweight-only sets)*.
-  - Counterweight-assisted (`isAssisted`, e.g. `ex-assisted-chinup`): $\text{Effective Weight} = \max(5, \text{EMA}_{7\text{-day Bodyweight}} - \text{Assistance Load})$; progression reduces counterweight assistance down toward 0 kg.
-- **Dumbbell Exercise Multiplier:**
-  $$\text{Effective Barbell-Equivalent Weight} = \text{Combined Dumbbell Weight} \times 1.18$$
-  *(Reflects stabilizer muscle fatigue and bilateral deficit. Exercises using two dumbbells (`usesTwoDumbbells`, e.g., Incline Dumbbell Press) log and display weight **per dumbbell**—for example `24 kg`—while session volume/tonnage, WCI, and E1RM calculate against `2 × 24 = 48 kg` combined weight. Single-dumbbell exercises (`usesOneDumbbell`: Goblet Squat, Pullover, Single-Arm Row/Carry, Overhead Tricep Extension, Lying DB Leg Curl, DB Hip Thrust, Step Calf Raise, Weighted Gym Ball Crunch) use `1 ×` the dumbbell weight.)*
-- **Romanian Deadlift (RDL) Multiplier:**
-  $$\text{Effective Deadlift-Equivalent Weight} = \text{RDL Weight} \times 1.20$$
-  *(Normalizes posterior chain loading against conventional deadlift standard).*
+### 1.2 7-Day Bodyweight EMA (`src/engine/ema.ts`) & 1.3 DOTS (`src/engine/dots.ts`)
+$$\text{EMA}_{\text{today}} = 0.25 \cdot W_{\text{today}} + 0.75 \cdot \text{EMA}_{\text{yesterday}}, \quad \text{DOTS} = \text{E1RM}_{\text{kg}} \cdot \frac{500}{A w^4 + B w^3 + C w^2 + D w + E}$$
+Male: $A=-1.093\times 10^{-6}, B=7.391293\times 10^{-4}, C=-0.1918759221, D=24.0900756, E=-307.75076$. Female: $A=-1.0706\times 10^{-6}, B=5.158568\times 10^{-4}, C=-0.1126655495, D=13.6175032, E=-57.96288$.
 
----
-
-### 1.2 7-Day Bodyweight Exponential Moving Average (EMA)
-Mitigates daily water retention and glycogen fluctuations:
-$$\text{EMA}_{\text{today}} = (\text{Weight}_{\text{today}} \times 0.25) + (\text{EMA}_{\text{yesterday}} \times 0.75)$$
+### 1.4 Strength Standards, Balance & Symmetry (`kilgoreStandards.ts`, `strengthStandards.ts`, `movementStandards.ts`)
+- **Squat, Hinge, Horizontal Push, Vertical Push:** Kilgore (ExRx.net) tables by sex, BW class, and age group (`18–39`, `40–49`, `50–59`, `60–69` when `ageEntered`). **Vertical Pull (Chin-Up):** Poliquin (1999) `81%` of bench for men; `~105%` caveated guideline for women. **Horizontal Pull (Rows):** no published standard.
+- **4 Sub-Divisions (`I–IV`):** $\Delta = (\text{Threshold}_{T+1} - \text{Threshold}_{T})/4$. **Tested** = `STANDARD_TEST_EXERCISE` at `<= 5` reps; else **Estimated**.
+- **Imbalances:** Chin-up `< 90%` of Poliquin ratio → pull behind push; `>= 4` sub-levels between Kilgore lifts → level gap; unilateral L/R `< 90%` over last 3 sessions → flagged (Grindem et al., 2016).
 
 ---
 
-### 1.3 Official International DOTS Polynomial
-The DOTS formula normalizes strength across different body masses for fair relative strength scoring:
-$$\text{DOTS} = \text{E1RM}_{\text{kg}} \times \left(\frac{500}{A \cdot w^4 + B \cdot w^3 + C \cdot w^2 + D \cdot w + E}\right)$$
-where $w$ is the 7-day EMA bodyweight in kg.
+## 2. Biometric Integration, Progression & AI Coach
 
-#### Polynomial Coefficients:
-- **Male:**
-  - $A = -0.0000010930$
-  - $B = 0.0007391293$
-  - $C = -0.1918759221$
-  - $D = 24.0900756$
-  - $E = -307.75076$
-- **Female:**
-  - $A = -0.0000010706$
-  - $B = 0.0005158568$
-  - $C = -0.1126655495$
-  - $D = 13.6175032$
-  - $E = -57.96288$
-
----
-
-### 1.4 Strength Standards, Balance and Symmetry (authoritative sources only)
-Levels come only from published, authoritative standards (never a made-up table, and never a gym's own chart). Code: `src/engine/kilgoreStandards.ts`, `src/engine/strengthStandards.ts`, `src/services/movementStandards.ts`; knowledge graph `sp-6-pillars`.
-
-| Movement | Source | How |
-| :--- | :--- | :--- |
-| **Squat** (back squat, below parallel) | Kilgore, ExRx.net | 1RM tables by sex, bodyweight class and age group |
-| **Hinge** (deadlift) | Kilgore, ExRx.net | same |
-| **Horizontal Push** (bench press) | Kilgore, ExRx.net | same |
-| **Vertical Push** (standing press) | Kilgore, ExRx.net | same |
-| **Vertical Pull** (chin-up, total mass = bodyweight + load, or bodyweight − assistance) | Poliquin, *Achieving Structural Balance* (1999) | 81% of bench for men; sex-adjusted ~105% caveated guideline for women (Poliquin 1999 sampled male athletes); applied to Kilgore's bench levels |
-| **Horizontal Pull** (rows) | none published | no level; never celebrated |
-
-- **Kilgore tables:** copied as published (ExRx, read Nov 2026) for 18–39, 40–49, 50–59 and 60–69, men and women. Classes are upper limits (76 kg uses the 82 kg class); heavier than the last class uses the open class. One source typo (women 40–49 deadlift, 60 kg, Untrained 60.0) is kept but clamped so levels never go backwards. The age group uses only an age the athlete entered (`ageEntered`, Settings → Age); otherwise 18–39. Sex comes from Settings → Strength Standard Category.
-- **Levels:** each runs from its own threshold up to the next, in 4 sub-levels; below Untrained is Untrained I; a lift exactly on a boundary reaches it. **Tested** = best set on the standard lift (`STANDARD_TEST_EXERCISE`) for 5 reps or fewer; anything else is **Estimated** from the estimated max (multipliers in §1.1) and says which exercise it came from.
-- **Over time:** each movement's level when first logged (at that week's bodyweight) is kept and shown when it has changed.
-- **Imbalances:** chin-up under 90% of Poliquin's 81% of bench → "pull behind push"; a full level (4 sub-levels) between two Kilgore lifts → flagged, with "this is an estimate" advice when the weaker lift wasn't tested.
-- **Left/right:** single-arm and single-leg exercises (`isUnilateralExercise`) offer "Log each side"; the set's reps become the weaker side's. Over the last 3 sessions, a side under 90% of the other is flagged (90% symmetry: Grindem et al., Br J Sports Med 2016).
-- **Shown in:** Progress → Strength standards (Strength levels card, Balance card) and the coach (`buildStandardsAnswer`, deterministic, never the model). Engine suites 4 and 41 pin all of this.
-- **Not covered (no authoritative standard found):** rows, lunges/split squats (except as estimates for squat symmetry), core and conditioning tests. Don't invent levels for them.
-
-#### Sub-Division Calculation:
-Each major tier is segmented into 4 granular sub-divisions: `I, II, III, IV`:
-$$\Delta = \frac{\text{Threshold}_{T+1} - \text{Threshold}_{T}}{4}$$
-$$\text{Next Sub-Tier Target (kg)} = \text{Target Ratio} \times \text{EMA}_{BW}$$
-Exact reps required at current working weight $W$:
-$$\text{Reps Needed} = \left\lceil 30 \times \left(\frac{\text{Target E1RM}}{W} - 1\right) - \text{Target RIR}\right\rceil$$
-
----
-
-## 2. Biometric Integration & Auto-Regulation
-
-### 2.1 Daily Readiness Z-Score (Pixel Watch Telemetry)
-Calculated against a 14-day rolling baseline:
-$$Z_{\text{HRV}} = \frac{\text{HRV}_{\text{today}} - \mu_{\text{HRV}, 14d}}{\sigma_{\text{HRV}, 14d}}$$
-$$Z_{\text{RHR}} = \frac{\text{RHR}_{\text{today}} - \mu_{\text{RHR}, 14d}}{\sigma_{\text{RHR}, 14d}}$$
+### 2.1 Daily Readiness Z-Score (`src/engine/readiness.ts`)
 $$\text{Readiness Score} = 0.50 \cdot Z_{\text{HRV}} - 0.30 \cdot Z_{\text{RHR}} + 0.20 \cdot \left(\frac{\text{Sleep}_{\text{hours}} - 7.5}{1.5}\right)$$
+- **Primed ($Z \ge +0.8$)** | **Normal ($-0.8 < Z < +0.8$)** | **Amber Shield ($Z \le -0.8$, HRV down $>15\%$, RHR $\ge +4\text{ bpm}$, or Sleep $< 6\text{h}$):** Advisory buffer; scales local recovery windows by `1.2x`, holds load, shifts target RIR to `2–3`, protects streak.
 
-#### Readiness Classification:
-- **Primed ($Z \ge +0.8$):** High parasympathetic tone. A good day to push for records. Green status.
-- **Normal ($-0.8 < Z < +0.8$):** Standard baseline progression.
-- **Amber Shield ($Z \le -0.8$, or HRV down $>15\%$, RHR $\ge +4\text{ bpm}$, Sleep $< 6\text{h}$):** Auto-regulation buffer triggered. Prescribes conservative RIR (2–3), holds external load, and protects the streak.
+### 2.2 Double Progression (`src/engine/progressionRules.ts`, `src/engine/progression.ts`)
+1. **Top of rep range hit on all working sets at quality RIR (`>= 1`, or `0` on failure sets):** Barbell/cable/machine `+2.5 kg` (`+5 lb`); dumbbell `+1.0 kg/DB` (`+2 kg` pair; `+5 lb`); reset reps to `minReps` (jump capped at `+10% + 1 step`).
+2. **Within rep range (all sets `>= minReps`):** Hold load; `+1 rep` on up to two sets short of `maxReps`.
+3. **Below rep range (any set `< minReps`):** Reduce load by `>= 1` step (Epley capacity) and reset reps to `minReps`.
+4. **Amber Shield active:** Hold load and reps static; shift target RIR to `2–3`.
 
----
+### 2.3 Work Capacity Index (`src/engine/wci.ts`) & 2.4 Engine Vitality (`src/engine/vitality.ts`)
+$$\text{WCI} = \frac{\sum (\text{Weight} \times \text{Reps})}{\text{Duration (min)} \times (1 + \max(0.35,\; \text{Avg Session HRR}\%))}, \quad \text{Vitality} = 0.40 \cdot S_{\text{VO2Max}} + 0.30 \cdot S_{\text{RHR}} + 0.30 \cdot S_{\text{Steps}}$$
 
-### 2.2 Double Progression Auto-Regulation Logic
-For any target rep range (e.g., 6–8 or 8–12 reps):
-1. **Top of Rep Range Achieved:** If all prescribed sets reach max reps (e.g., 8/8/8 or 12/12/12) at $1\text{–}2$ RIR:
-   - Barbell, cable, and machine exercises: Increment load by $+2.5\text{ kg}$ ($+5\text{ lb}$).
-   - Dumbbell exercises: Increment load by $+1.0\text{ kg}$ per dumbbell ($+2\text{ kg}$ combined pair load on paired lifts; $+5\text{ lb}$ in lb).
-   - Reset working target reps to lower boundary (e.g., 6 or 8 reps across every set).
-2. **Within Rep Range:** If all working sets hit at least the bottom of the rep range (e.g., 6/6/6 on 6–8) without yet hitting the top on all sets:
-   - Hold weight constant.
-   - Prescribe $+1$ rep on up to two working sets still short of max reps with quality RIR, until every set reaches max reps cleanly.
-3. **Below Rep Range:** If any prescribed working set falls below the bottom of the rep range (e.g., can't hit 6 on every set in a 6–8 range):
-   - Auto-regulate weight downward by at least one loadable step (scaled by Epley E1RM capacity), and reset working target reps to the lower boundary (e.g., 6 reps across every set) so all sets stay in the target zone.
-4. **Amber Shield State Active:**
-   - Override progression: Hold load and reps static.
-   - Shift target RIR to $2\text{–}3$ to prevent central nervous system and joint burnout.
+### 2.5 AI Coach & 6 Governed AI Content Surfaces
+- **Transport:** On-device Gemini Nano (`LanguageModel`) when `available`, plus stateless fallback (`src/services/geminiFlashLite.ts` → `/api/coach/generate` `gemini-3.5-flash-lite`), falling back to deterministic `coachAnswers.ts` offline.
+- **21 Deterministic OOUX Tools (`src/services/coachTools.ts`):** All plan/workout/profile/goal/logging mutations execute deterministically with `CoachStateDiff` receipts, HITL confirmations for destructive actions, and 1-tap Undo.
+- **6 Governed AI Surfaces:** (1) Exercise 2-line brief (`exerciseCoachNote.ts` + `exerciseInsight.ts`, `EXERCISE_BRIEF_BLUEPRINT`: Line 1 = Overall Progress Against Goals in concrete kg/lb; Line 2 = Today's Action → Goal Outcome; zero table/tempo/rest/weekly-set duplication), (2) Program identity message (`identityMessage.ts`), (3) Workout finish summary (`workoutFinish.ts`), (4) Progress goals overview (`progressOverview.ts`), (5) Body composition insight (`compositionOverview.ts`), (6) AI Coach chat (`aiAssistantService.ts`). Every surface enforces `runReadAloudQaGate`, `checkSummaryVoiceGuidelines`, and `factChecks.ts`.
 
 ---
 
-Implementation: the shared logic lives in one place, `PROGRESSION_RULES` and `evaluateRepRangeDoubleProgression` (`src/engine/progressionRules.ts`); the knowledge graph's `sp-double-progression` text is written from them, and both the split/prescription path (`prescribeDoubleProgression`) and the 6-week plan's carry-over (`personalizeSessionLoads`) apply them. Quality reps = at least 1 rep in reserve (or the plan's 0 RIR on failure sets); more reserve still counts. Incomplete sets, ground-out sets or low recovery never raise the weight. An exercise's own last session sets its next weight (`findLastCompletedExerciseSession` only falls back to a similar movement when the exercise has never been done). Jumps are capped at +10% plus one step, after rounding to real plate/dumbbell sizes. Engine suite 36b simulates all 24 plan workouts with a realistic athlete and checks every prescription, PREV value, chart, Progress/Athlete card and the knowledge graph.
+## 3–11. Volume Landmarks, 6-Week Plans, IA & Shift Nudge Design System
 
-Rep ranges on a plan (e.g., "5-8", "6-8", "6-10"; `progressThroughRepRange` & `prescribeDoubleProgression`): targets start at the bottom of the range. If any working set falls below the bottom of the range, load reduces to match capacity (at least one loadable step) and reps reset to the bottom across all sets. While every set meets the bottom, the weight holds and up to two sets still below the top aim for +1 rep per session until every prescribed set reaches the top with quality reps; then weight increases by one load step and reps reset back to the bottom. A new goal's range moves the weight to match and starts at its bottom. Fixed-rep plans (the muscle plan) use `carryOverWeight`, where the target is the top of the range. Engine suites 39b and 63 cover this.
-
-### 2.3 Work Capacity Index (WCI)
-Measures mechanical work density normalized by bounded cardiovascular effort:
-$$\text{WCI} = \frac{\text{Effective Tonnage}}{\text{Duration (min)} \times (1 + \max(0.35,\; \text{Avg Session HRR}\%))}$$
-where:
-- $\text{Effective Tonnage} = \sum (\text{Weight} \times \text{Reps})$ (no redundant `CompletedSets` multiplier in the numerator)
-- $\text{Avg Session HRR}\% = \frac{\text{HR}_{\text{session}} - \text{HR}_{\text{rest}}}{\text{HR}_{\text{max}} - \text{HR}_{\text{rest}}}$ (floored at 0.35 inside `1 + HRR%` so longer rests or low-effort heart rates never inflate WCI)
-
----
-
-### 2.4 The 7th Pillar: Engine / Vitality
-Combines cardiovascular fitness and metabolic output with strength:
-$$\text{Vitality Score} = 0.40 \cdot \text{Score}_{\text{VO2Max}} + 0.30 \cdot \text{Score}_{\text{RHR}} + 0.30 \cdot \text{Score}_{\text{Steps}}$$
-A high vitality score expands the lifter's 7-Pillar Radar profile.
+- **Goal Phases:** Build Muscle (`Lean Bulk`: `MEV → MAV → MRV → Deload`), Lose Fat (`Cut / Recomp`: `~85%` volume cap `2–3` sets, heavy tension, **Retention Shield**), Stay Lean (`Maingain`: steady MAV).
+- **Volume Landmarks (`src/engine/hypertrophyVolume.ts`, sets/wk [MV/MEV/MAV/MRV, recovery]):** Lateral Delts `6/8/16–26/30+ (24h)`, Calves `6/8/16–24/28+ (24h)`, Rear Delts `6/8/14–22/26+ (36h)`, Back `8/10/14–22/25+ (48h)`, Chest `4/8/12–18/20 (60h)`, Quads `4/6/12–18/20 (60h)`, Hamstrings `4/6/10–16/18 (72h)`, Triceps `4/6/10–16/18 (48h)`, Biceps `4/6/12–18/22 (36h)`, Glutes `2/4/10–16/20 (48h)`, Front Delts `0/0/4–8/12 (48h)`, Core `0/4/8–16/20 (36h)`. Direct = `1.0`, synergist = `0.5`, warmups excluded.
+- **6-Week Plans (`trainingPlans.ts`, `starterPlan.ts`):** 24 sessions (4/wk × 6 wks; Kaushal & Rhodes, 2015). `starter_6wk` (3 full-body + 1 active day/wk), `starter_4day` (4 Upper/Lower/wk), owner-only `muscle_building_6wk` (`canUseMusclePlan`). Active days (`20+ min` deliberate exercise in `treise_activities_v1`; steps never count as workouts) fill active slots without altering lifting volume/E1RM.
+- **Android TWA Bridges:** `HealthConnectBridge.kt` (`READ_EXERCISE`) & `ScaleBridge.kt` (ES-CS20M `0x55AA` BLE in `renphoBluetooth.ts`). Build Android releases exclusively via `./gradlew bundleRelease` (never `bubblewrap build/update`).
+- **4-Page IA & Clean Slate:** Bottom nav: **Workout** (`TrainTab.tsx` — invariant `SET | PREV | WEIGHT | REPS | RIR | DONE` table, 2-line brief, `TrendChart`, advisory recovery, `WorkoutFinishScreen.tsx`), **Program** (`ProgramTab.tsx` / `ProgramPlanView.tsx` — 3D `IdentityForm` sphere, phases 1–3, `PastWorkoutModal`, Settings), **AI Coach** (`AICoachChatModal.tsx` fly-up sheet + `"Ask Treise"` triggers), **Progress** (`AnalyticsTab.tsx` — `GoalsHero` rings, Trophy Case, totals, Weight & 12-site tape, `StrengthLevelsCard`, `BalanceCard`, `KnowledgeGraphCard`). Zero dummy data (`NEW_USER_PROFILE`); no Athlete tab, XP, levels, or leaderboards.
+- **Apple HIG × Shift Nudge Design System (`src/styles/tokens.css`, `src/index.css`, `TREISE_DESIGN_SYSTEM`):**
+  - **4 Sizes × 4 Weights × 3 Inks (`Inter` `tabular-nums`):** `12px` (`text-xs`: `.wk-label`, `.wk-meta-title`, `.wk-pill`, `.wk-segment`, `.wk-caption`), `16px` (`text-base`: `.wk-button`, `.wk-subhead`, `.wk-btn-secondary`, `.wk-field`, `.wk-body`), `20px` (`text-xl`: `.wk-title`, `.wk-h1`, `.wk-nav-title`, `.wk-number`, `.wk-input`), `32px` (`text-3xl`: `.wk-page-title`, `.wk-display`). Weights: `400/500/600/700` (700 only at 32px; 800/900 banned). Inks: `--color-text-primary` (`1.00`), `--color-text-secondary` (`0.78`), `--color-text-muted` (`0.60`, all `>= 4.5:1` AA).
+  - **Case & Controls:** Sentence case (`formatSentenceCase`) default; uppercase (`.wk-label`) only for 1–3 word eyebrows/headers. `.wk-pill` is strictly for non-interactive badges (never on `<button>`); buttons use `.wk-button` (`#FFFFFF` on `#13181C`) or `.wk-btn-secondary` (`#44494C`). Mint (`#00F19F`) = positive progress/completed sets; Telemetry Blue (`#8FD3FF`) = informational biometrics.
 
 ---
 
-### 2.5 AI Coach (Gemini Nano on-device + Stateless Gemini Flash-Lite Fallback)
-Implementation: `src/services/onDeviceModel.ts` + `src/services/geminiFlashLite.ts` + `src/services/deviceModels.ts` + `api/coach/generate.ts` + `src/services/aiAssistantService.ts`.
-- Free-form questions are answered by Chrome's built-in Prompt API (`LanguageModel`) **when the model is already `available`** on the device. On Pixel phones where exposed or desktop Chrome, it runs locally.
-- On Pixel phones with status `downloadable`, `prepareOnDeviceModel()` starts the one-time model download in the background from a user gesture. Other devices never auto-download.
-- **Chrome on Android does not expose Gemini Nano to web apps** (verified on a Pixel 11 Pro XL, Chrome 155). Instead of requiring a 1 GB WebGPU model download, the coach registers a zero-download stateless fallback (`src/services/geminiFlashLite.ts` via `src/services/deviceModels.ts` and `registerFallbackOnDeviceModel`) backed by `/api/coach/generate` (`gemini-3.5-flash-lite` with 404 fallback using `GEMINI_API_KEY` on the server). It sends only anonymized training facts and the current prompt, stores nothing server-side, and falls back to the deterministic rule-based coach when offline or unconfigured.
-- Plan changes (equipment, travel, split, rest day, goals) are always deterministic intents, never model output.
-- The system prompt is compact (`buildCoachSystemPrompt`, ~180 tokens) and grounded in the athlete's workout, recovery and one matching knowledge-base fact.
-- Open questions go to the model when it is available; explicit "why / how does / formula" questions get the knowledge-base card. Answers are rejected (and the rule-based coach answers) if they echo the prompt, which is what Chromium builds without Gemini Nano do.
-- The model is warmed up when the coach opens; a question asked meanwhile waits for that load instead of starting a second one.
-- **Exercise overviews (Workout tab):** each exercise card's note is written by the model from facts in `buildExerciseNoteFacts` (history and estimated-max trend, last session, today's plan and tempo, recovery, the knowledge graph's weekly sets vs personal target for the muscle, joint load, program phase). `acceptExerciseNote` rejects any answer with a number not in the facts, a target claim the knowledge graph doesn't support, or AI talk; one retry, then the fact-based fallback (`fallback`, also personalised from the knowledge graph). Notes are generated one at a time and cached on the device by their facts.
-- **Program page identity message:** written the same way from `buildIdentityFacts` (`src/services/identityMessage.ts`): workouts done in the plan, phase and week, last workout, personal bests, strength trend on repeated lifts, workouts in the last 14 days, what the next workout trains and, from the knowledge graph, whether those muscles are below this week's set target, plus recovery. `acceptIdentityMessage` rejects invented numbers, claims about how the athlete felt, and targets or personal bests the facts don't show; one retry, then the fact-based `fallback`. Cached on the device by its facts.
-- **Without a model** both the exercise notes and the identity message show their fallback, built from the same facts (the athlete's numbers, not stock text); when a model's answer arrives it fades in over it.
-- The model only handles open coaching questions. Plan facts (briefing, targets, warm-ups, swaps), progress (`buildProgressSummary`), nutrition timing, equipment/travel changes and pain/safety are answered from the athlete's data or fixed text, because a small model misreads and invents numbers.
-- **The coach tells the same story as the pages** (`src/services/coachAnswers.ts`, engine suite 39f): plan week, sessions done and left, and what's next come from `buildPlanOverview` (never `mesocycleWeek`); streak from `computeTrainingStreak`; "should I train" from `evaluateSessionRecovery`; rest times from `planRestAfterSet` (the rest timer); weekly sets as "7 of 13–19 hard sets" from the knowledge graph's muscle profiles, like the exercise cards; "why did the weight change" from the logged sets and the double progression rule. Volume questions go to weekly sets, never to joint strain. The recovery score is `displayRecoveryScore` everywhere (card, knowledge graph, coach).
-- **Checked against the real model** (Gemini Nano in Chrome 153; the Chromium in the app's browser pane only echoes, which is rejected). The model is told today's planned reps (not done yet) and each trained muscle's weekly sets with its status. A chat answer is also rejected if it calls a muscle's sets enough (or too much) against its status (`contradictsMuscleTargets`), claims how past sessions went (`claimsPastResults`), names the wrong kit (`misnamesEquipment`), tells the athlete to change a weight (`changesPlanWeight`, the plan decides), gives advice against today's recovery (`contradictsRecovery`), uses any "pick a weight" wording, gives rep targets not tied to an exercise (`genericRepTarget`) or says "train every day" (`contradictsPlanSchedule`). Exercise notes can't pin the muscle's weekly sets on the exercise or use another number for them, and can't praise consistency; Program messages can't say "most" unless more than half the repeated lifts are up, or "significantly"/"huge". Engine suite 39f pins these. The model is given the named exercise's own cue from the library. When an answer is rejected, the coach answers the same topic from data (that exercise's targets and cue, the recovery check, or streak and plan), never the general briefing. Exercises are matched by their fullest name first (`findExerciseNamed`), then by their usual short names (`exerciseNamedIn`).
-- **The content strategy is the authority for wording** (`src/engine/contentStrategy.ts`, engine suite 43; decided by the owner, Nov 2026). Its training vocabulary (mechanical tension, volume accumulation, hypertrophy, session stimulus) is product language, not banned jargon; what stays banned is engineering language (knowledge graph, on-device engine, hardware, SFR, OOUX). Exercise cards show a strict 2-line summary: line 1 where the lift has been (concrete kg/lb, never percentages), line 2 what today's session is for; no set/rep/weight/RIR, tempo, rest or weekly-set figures in it (`buildExerciseInsight`, `buildExerciseNoteFacts`, `acceptExerciseNote`). This replaces the older description of exercise overviews below wherever they differ. The coach follows it too: its answer about an exercise carries the card's own two lines, every chat answer (rule-based or model) and the Program message must pass `runReadAloudQaGate` (no hype, clichés, judgmental wording or error leaks), and the model's instructions use the strategy's voice (`VOICE_TONE_MATRIX.steadyVoice`).
-- **Gemini Nano from the Android app is not built, on purpose.** ML Kit's GenAI Prompt API (beta, `com.google.mlkit:genai-prompt`) only runs inference when the calling app is the top foreground app; anything else returns `BACKGROUND_USE_BLOCKED` (Google's docs, read Nov 2026). Treise's Android app shows the site inside Chrome (a Trusted Web Activity), so Chrome is in front and a bridge like Health Connect's would be refused. It would need the coach on a native screen or the site in the app's own WebView; don't add the bridge without proving it on a real Pixel first.
-- **Everyday questions are answered from the plan and the log** (`answerEverydayQuestion`, `answerSwap` in `src/services/coachAnswers.ts`), before the science cards and the model: how hard to push (reps to spare from today's plan), a second session, short on time, how long a workout takes (measured times only), missed sessions and restarting, soreness, a bad night, cardio and active days, an easier week, how to do an exercise and what it trains (the exercise library, any exercise), disliking an exercise, the last workout, workouts done, "how am I doing", bodyweight and its trend (logged weigh-ins only; a week is needed for a trend), calories (no figure is ever given), creatine, and growing a named muscle (its weekly sets against target). A figure that hasn't been logged is said to be missing: protein in grams needs a weigh-in. Swaps name only today's exercises and never the kit the athlete says is missing; at the gym "I don't have dumbbells" is about today's workout and never deletes home equipment ("I sold my dumbbells" does). A question ("should I skip today?") never logs a rest day. A named exercise is matched by its fullest name first (`findExerciseNamed`). A question that matches nothing gets "I don't have a good answer to that one" and what the coach can help with; the full briefing is only for questions about today. Engine suite 39f pins each of these.
-- **How the model is asked** (`onDeviceModel.ts`, engine suite 39f): chat questions continue one conversation (up to 4 exchanges, same instructions), so follow-ups are understood; each question runs on a copy of the conversation, and a rejected answer is dropped (`forgetOnDeviceExchange`) so later answers never build on it. A rejected chat answer gets one more try that says what was wrong, only if the first came back within 6 s; the Program message's second try also carries the reason (`checkIdentityMessage`). The instructions tell the model to use only the facts for the athlete's plan and numbers, and to give practical general advice (no numbers) for general training questions, never "the plan doesn't cover that". They include a bodyweight only after a weigh-in.
-- **AI-native OOUX tool suite & contextual triggers (engine suites 51, 61, 62, 65):** 21 deterministic, undo-safe tools live in `src/services/coachTools.ts` (`api/coach/generate.ts` forwards up to 32): `reset_program` (persists `planStartWorkouts`, HITL confirms when completed workouts exist), `modify_program` (`swap_exercise`, `add_exercise`, `remove_exercise`, `adjust_sets`, `adjust_rep_range`, `prioritize_first`, `remove_override`, `clear_overrides`), `rebalance_program`, `swap_exercise`, `adjust_workout_volume`, `modify_workout_exercises`, `log_workout_set` (incl. paired 2-DB per-hand and unilateral L/R), `reorder_workout_exercises`, `update_exercise_note`, `override_recovery_gate` (HITL confirm + warning), `switch_location`, `update_home_equipment`, `switch_program`, `switch_goal_phase`, `log_rest_day`, `update_goals`, `update_progress_widgets`, `log_entry` (all 12 tape sites, weight, body fat, steps, height, active days), `save_athlete_memory`, `delete_athlete_memory`, and `update_athlete_profile` (units with unstarted-session snap, age, sex, experience, workout display cards). Non-urgent pain messages requesting explicit protective actions (swap/remove/memory) run deterministically with fixed `buildSafetyResponse` caution and zero LLM calls; urgent red-flag symptoms always stop immediately. `AICoachChatModal` lifts chat persistence & undo state into `App.tsx`, displays a live Context Pill (`describeCoachPlace`), offers a `"New chat"` reset, accepts natural-language `"yes"`/`"cancel"` for pending HITL confirmations, deep-links into Progress sub-views (`navigateDetail`), and opens contextually from inline `"Ask Treise"` triggers across Workout, Program, and Progress screens.
-- **Every AI-written text has a fact-based fallback, and every model failure lands on it** (engine suite 39f simulates each one). The five texts: coach chat (rule-based coach), exercise notes, the Program message, the workout summary and the Progress goals summary (each has a `fallback` built from the same facts, shown first and kept unless a checked model answer replaces it).
-  - *Failures handled in `onDeviceModel.ts`:* a model that doesn't report its status within 2.5 s is not ready (and isn't asked again for 30 s); a prompt has a time limit; a model that throws, breaks mid-stream, echoes, or returns nothing gives `null`. Two failures in a row pause the model for 5 minutes (`isOnDeviceModelPaused`), so the fallback shows at once instead of after another wait; one good answer clears it. A rejected answer is not a failure.
-  - *Chat streaming:* text is shown as it is written only while it still passes the checks; the moment it fails, the stream is withdrawn and "Thinking…" shows until the checked or data-based answer is ready. An unchecked figure is never shown.
-  - *`generate*` functions never throw,* and the screens that call them catch anyway. Saved texts (`treise_*_summary_v1`, notes, Program message) are read defensively: a damaged or foreign value is ignored, never shown, never a crash.
-  - *With nothing logged the model is not asked:* the goals summary when `sparse`, the Program message before the first finished session. The real model filled that gap with "Training is behind schedule".
-  - *The workout summary is checked strictly before replacing the fallback* (`WORKOUT_SUMMARY_USES_MODEL = true`, gated by `checkWorkoutSummary`).
-  - *Checks written from the real model's errors (Nov 2026):* goals and workout summaries can't praise or judge ("consistently", "good work", "on schedule", "behind schedule") or say something "cannot be assessed"; a gain across sessions can't become today's gain or a gain "since the previous session"; a goal can't be called met unless the facts say reached; an estimated max must be called an estimate, never a weight lifted (also in exercise notes); the Program message can't say sets or volume went up. Shared checks in `src/services/factChecks.ts`: a figure counted in the wrong thing ("21 repetitions" for 21 lifts, `mislabelledFigure`) and a number written as a word that isn't in the facts ("four personal bests", `spelledNumberNotInFacts`, also in chat). The Program message is not given weekly set counts (the model read them as the next workout's sets), can't state a number of sets to do, can't call the plan total a phase total, and can't say how far through a phase the athlete is beyond the facts. Each fact-based text must still pass its own check (tested).
-- **The coach is a fly-up sheet, not a full-screen takeover** (`AICoachChatModal.tsx`): it rises over the page the athlete is on (the page stays visible behind it; tapping it closes the sheet), with a grab bar, "AI Coach", an **expand** button for a full-screen conversation (and shrink back) and close. Before anything is asked it is as tall as its content: the opening line set large, a row of suggestions, the message box. Once a conversation starts it grows to about 72% of the screen. The bottom-nav AI Coach tab is still the only way in.
-- **The opening line and suggestions depend on where the coach was opened** (`buildCoachOpening`, `src/services/coachContext.ts`; the app passes `CoachPlace`, and the Progress page reports the goal or screen that is open). Workout: in a session, the exercise in hand with its next set, and "Swap this exercise", "<Kit> taken", "Short on time", "How do I do it?", "Rest times"; ready, recovering and finished-today each have their own. Program: week and sessions done, with phase, travel, missed week and goal change. Progress: the goals' standing. A goal's detail: where that goal stands, and suggestions for it (weekly: a different number, what counts; strength: how to do the lift, set my own target, follow this lift; chosen goal: weight trend, protein, calories; an own goal: change the target, remove it). Every figure comes from the functions the pages use. A suggestion either sends a message the coach answers from data (tested for each place) or, when it needs finishing ("Set a goal of …"), is put in the message box.
-- **Goals can be changed by talking to the coach** (`detectGoalChange`, `src/services/coachGoals.ts`; deterministic, never the model; a question changes nothing): sessions a week ("change my goal to 3 times a week", 2 to 7), the lift to follow ("follow my bench press strength level"), back to the plan's ("use my plan's goals"), and **the athlete's own goals**: "my goal is 12 chin-ups" (reps in one set) or "set a goal of 100 kg on bench press" (heaviest logged set; lb is converted and stored in kg). An own goal (`CustomGoal` in `goalSettings.customGoals`, `TargetMeasure`) is counted from logged sets with `bestOnExercise` (a weight goal counts the heaviest set at any rep count), has its own ring ("97.5/140"), detail screen and finish-screen card, and is listed and removable in Change goals. **An athlete has 3 to 5 goals** (`activeGoals`): the plan's three (sessions a week, one strength level, the chosen goal) plus up to two of their own (`MAX_CUSTOM_GOALS`); a third own goal is refused, naming the two that can be removed, and changing a target replaces the goal. One can be set in onboarding (page 3, optional: chin-ups, push-ups, bench press, squat or deadlift, `OWN_GOAL_LIFTS`, checked by `makeCustomGoal`). A target already passed, out of range, without an exercise, or a weight on a move with nothing to load is refused with the reason. Damaged saved goals are ignored.
-- **Chat answers are checked too** (`acceptCoachAnswer`): a weight, percentage or number over 3 that the model wasn't given, or talk about being an AI, is rejected and the rule-based coach answers. "My bench 1RM" comes from `calculateE1RM` and "my DOTS score" from the strength levels, never the model.
-- No hardware names, latency figures or "accelerated" badges in the UI. The only user-facing statement is "No chat history saved on any server".
+## 12. System Evaluation: Strengths, Weaknesses, Opportunities & Risks (SWOT)
 
-The section below describes the original hardware-detection design; detection code remains in `src/engine/tensorAI.ts` but nothing in the UI depends on it.
+Codified in `SYSTEM_SWOT_EVALUATION` (`src/engine/governance.ts`) and detailed in `CONTINUOUS_GOVERNANCE_GUIDE.md`:
 
-1. **Hardware Detection & Identification:**
-   - Detects device model via Client Hints (`Sec-CH-UA-Model`), User-Agent, and WebGL GPU vendor strings (`Mali-G720` for Tensor G4, `Mali-G715` for Tensor G3, `Mali-G710` for Tensor G2, `Mali-G78` for Tensor G1).
-2. **Layered Acceleration Backends:**
-   - **Tensor TPU (Chrome Built-in AI / Gemini Nano):** Probes `window.ai.languageModel` connecting via Android AICore directly to the Google Tensor TPU.
-   - **Tensor NPU (WebNN):** Probes `navigator.ml` with NPU preference for neural recovery projections.
-   - **Tensor GPU (WebGPU):** Probes `navigator.gpu` for Mali GPU compute shader acceleration.
-   - **WASM SIMD Engine:** Zero-dependency, on-device local fallback ensuring 100% reliability across all devices.
-3. **Core AI Capabilities Accelerated by Tensor:**
-   - **On-Device Tensor AI Coach:** Contextual physiological analysis synthesizing Pixel Watch HRV, RHR, Sleep, and active mesocycle week into tactical rep tempo and mechanical tension cues.
-   - **On-Device Conversational AI Assistant & Knowledge Graph Mutations:** Natural language assistant enabling athletes to adapt upcoming mesocycle schedules (e.g. work travel in week 5), register new equipment (e.g. pull-up bar), switch splits, and query joint strain and autonomic recovery telemetry. Directly mutates the Personal Knowledge Graph with zero cloud API costs.
-   - **Tensor Biomechanical Neural Matcher:** Evaluates exercise substitution compatibility, joint torque, and stimulus-to-fatigue ratios.
-   - **Privacy Invariant:** 100% on-device processing. Zero user biometric or health data ever leaves the phone.
-   - **User Interface Invariant (Zero Technical Concept Leaks):** Local execution and acceleration must remain completely invisible to the user. The UI must never display "Knowledge Graph Grounding", "On-Device Local Engine", hardware chip names, or millisecond latency telemetry. All actions taken by the AI (such as registering equipment) must surface clear user outcomes with direct action buttons (e.g. "View All Equipment").
-   - **AI Coach Single Entry Point Invariant (Mandatory Governance Rule):** The ONLY entry point to the AI Coach is the dedicated "AI Coach" tab in the primary bottom navigation bar. There are to be strictly **NO dedicated AI Coach cards** on the workout/training tab or any other screen, and strictly **NO AI Coach buttons, pills, sparkles, or icons in the application header**. All AI interactions are initiated solely via the bottom navigation bar.
-
----
-
-## 3. Gamification & Goal Phase Adjustments
-
-- **Lean Bulk:**
-  - Volume Target: Progressive overload wave from MEV up to upper MAV across the mesocycle.
-  - Personal bests are celebrated as they happen.
-- **Cut / Recomp:**
-  - Activates **Retention Shield**: Holding strength steady at lower bodyweight counts as success; higher DOTS score rewarded as weight drops.
-  - Volume Target: Scaled to ~85% of standard volume to account for reduced caloric recovery capacity.
-- **Maingain:**
-  - Density and WCI progression emphasized.
-
----
-
-## 4. Authoritative Hypertrophy Volume Landmarks (Israetel & Schoenfeld Models)
-
-A flat or blanket "10–20 sets per bodypart" contradicts exercise physiology. Different muscle groups exhibit radically divergent volume capacities and recovery kinetics based on:
-1. **Fiber Type Composition:** High slow-twitch muscles (e.g., Soleus ~80–90% Type I) recover rapidly and withstand high volume/frequency, whereas fast-twitch dominant muscles (Hamstrings ~65–70% Type II) incur severe microtrauma and fatigue.
-2. **Stretch-Mediated Microtrauma & Muscle Damage:** Exercises loaded under heavy eccentric stretch at long muscle lengths (Hamstrings in RDLs, Chest in deep flyes/presses) trigger extensive sarcomere disruption (Z-disc streaming). Excessive volume here produces counterproductive soreness and blunts protein synthesis.
-3. **Axial & Central Nervous System (CNS) Fatigue:** Heavy compound movements (Back Squats, Deadlifts) tax spinal erectors and systemic recovery; performing 20+ weekly sets of these destroys systemic work capacity. In contrast, Lateral Delts and Calves generate near-zero axial or systemic strain.
-4. **Compound Crossover (Direct vs. Indirect):** Anterior Deltoids and Triceps receive massive secondary stimulation from horizontal and vertical pressing, requiring minimal direct isolation. Conversely, Lateral Deltoids receive negligible chest press stimulus and demand high direct frequency (3–5x/wk) and volume.
-
-### 4.1 Volume Landmark Definitions
-- **Maintenance Volume (MV):** The minimum sets/week required to preserve existing muscular cross-sectional area.
-- **Minimum Effective Volume (MEV):** The threshold sets/week required to initiate measurable muscular hypertrophy.
-- **Maximum Adaptive Volume (MAV):** The optimal hypertrophy sweet spot where the highest rate of muscle growth occurs with manageable fatigue.
-- **Maximum Recoverable Volume (MRV):** The upper boundary of volume from which the athlete can recover. Exceeding MRV results in functional overreaching, diminishing returns, and injury risk.
-
-### 4.2 Comprehensive Muscle Volume Landmarks Table
-
-| Muscle Group | MV (sets/wk) | MEV (sets/wk) | MAV Sweet Spot (sets/wk) | MRV (sets/wk) | Optimal Freq | Recovery Window | Primary Physiological Driver |
-| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
-| **Lateral Delts** | 6 | 8 | **16–26** | 30+ | 3–5x/wk | 24h | Zero axial load; mixed fatigue-resistant fibers; no compound crossover. |
-| **Calves (Gastroc/Soleus)** | 6 | 8 | **16–24** | 28+ | 3–5x/wk | 24h | Chronic ambulatory conditioning; Soleus ~80-90% Type I; needs paused stretch. |
-| **Rear Delts** | 6 | 8 | **14–22** | 26+ | 3–4x/wk | 36h | Rapid recovery; minimal spinal strain; requires direct abduction/rotation. |
-| **Back / Lats / Traps** | 8 | 10 | **14–22** | 25+ | 2–4x/wk | 48h | Massive musculature; high work capacity across vertical & horizontal planes. |
-| **Chest (Pectorals)** | 4 | 8 | **12–18** | 20 | 1.5–3x/wk | 60h | High eccentric stretch damage; fast-twitch dominant; >18 sets causes joint/tendon strain. |
-| **Quadriceps** | 4 | 6 | **12–18** | 20 | 1.5–3x/wk | 60h | Severe systemic & axial fatigue from squats; requires balance with leg extensions. |
-| **Hamstrings** | 4 | 6 | **10–16** | 18 | 1.5–2.5x/wk | 72h | Extreme stretch damage in hip hinges; fast-twitch dominant; low volume tolerance. |
-| **Triceps Brachii** | 4 | 6 | **10–16** | 18 | 2–3x/wk | 48h | Heavy compound crossover from pressing; high isolation volume risks tendonitis. |
-| **Biceps / Brachialis** | 4 | 6 | **12–18** | 22 | 2–4x/wk | 36h | Fast recovery; small muscle group; benefits from varied shoulder abduction angles. |
-| **Glutes** | 2 | 4 | **10–16** | 20 | 2–3x/wk | 48h | High crossover from deep squats/deadlifts; targeted thrusts/abductions recover fast. |
-| **Front Delts** | 0 | 0 | **4–8** | 12 | 1–2x/wk | 48h | Massive compound pressing crossover; direct isolation rarely needed. |
-| **Core / Abs** | 0 | 4 | **8–16** | 20 | 2–4x/wk | 36h | High endurance stabilizer; direct spinal flexion required for rectus hypertrophy. |
-
-### 4.3 Mesocycle Volume Periodization Wave
-Volume scales progressively across a 6-week training block to maximize progressive overload and prevent accommodation:
-- **Week 1 (Base Intro):** Minimum Effective Volume (MEV) @ 2–3 RIR.
-- **Week 2 (Accumulation I):** Early MAV @ 2 RIR (+2.5kg load / +1 rep).
-- **Week 3 (Hypertrophy Core):** Mid MAV @ 1–2 RIR (Peak effective reps).
-- **Week 4 (Volume Accretion):** Upper MAV @ 1 RIR (High localized mechanical tension).
-- **Week 5 (Peak Strain):** Near MRV @ 0–1 RIR (Functional overreaching).
-- **Week 6 (Planned Deload):** Maintenance Volume (MV) @ 3–4 RIR (Dissipate systemic fatigue & reset CNS sensitivity).
-
-### 4.4 Caloric Deficit Muscle Retention & Volume Scaling (Helms et al., 2014; Murphy & Koehler, 2022)
-- **Physiological Reality:** In a caloric deficit, muscle protein synthesis (MPS) is reduced, glycogen stores deplete faster, and systemic recovery capacity decreases by 15–20%.
-- **Retention vs. Accretion Stimulus:** Preserving lean tissue during a cut does NOT require high volume (MRV), which causes excess cortisol elevation, muscle protein breakdown, and joint strain. Instead, it requires **high mechanical tension** (heavy loads, 1–2 RIR) to signal the body that muscle mass is vital for survival.
-- **Volume Scaling Invariant:** Volume is capped at ~85% of standard training volume (2–3 working sets per exercise instead of 4–5).
-- **Retention Shield in Double Progression:** When holding load and reps in `Cut / Recomp`, Treise displays explicit **Retention Shield** feedback celebrating lean tissue preservation. As body mass drops, holding absolute strength increases relative strength and official DOTS score.
-
-### 4.5 One Plan per Athlete (and the legacy splits)
-**Everyone is on a 6-week plan; there is no list of programs.** (`src/engine/trainingPlans.ts`)
-- **6-Week Starter Plan (`src/engine/starterPlan.ts`, knowledge graph `sp-starter-plan`):** the plan for everyone. **24 sessions, 4 a week**, because exercising at least 4 times a week for 6 weeks is the minimum linked to forming an exercise habit (Kaushal & Rhodes, 2015; any exercise counted). Two layouts, chosen in onboarding and in Settings → Change plan:
-  - `starter_6wk` (default, "3 workouts + 1 active day"): each week is 3 full-body workouts (A B A, then B A B) and 1 active day (slot 4, 8, …: `kind: 'active'`).
-  - `starter_4day` ("4 workouts"): Upper A, Lower A, Upper B, Lower B, with the same weekly sets per muscle (Schoenfeld 2019: volume-equated frequency), shorter sessions.
-  Three 2-week phases: 2 sets at 3 RIR, then 3 sets at 2 RIR, then 3 sets at 1 RIR. The goal shapes it: Build Muscle adds a set on isolation/small muscles in phase 3; Lose Fat keeps the big lifts heavier (5–8, compounds 6–10) with no extra sets; Stay Lean ends at 2 RIR. Reps are ranges (double progression); weights come from `personalizeSessionLoads` like every plan. Evidence: ACSM 2009 (2–3 full-body days for novices), Schoenfeld 2016/2017 (2x/week, sets dose-response, 6–20 reps near failure), Helms 2014 / Murphy & Koehler 2022 (deficit). Engine suite 39 checks it.
-- **6-Week Muscle Building Plan (`muscle_building_6wk`):** 24 workouts, 4 a week. **Shown only on the owner's signed-in account** (`canUseMusclePlan`, email compared by hash; never put the address in code). Any other profile with it saved, or the owner signed out, sees the starter plan; signing in brings it back. Only that account sees it in "Change plan" (Settings) and in onboarding's plan choice; everyone else chooses between the two starter layouts.
-- Changing the goal re-writes an unstarted starter workout; a started one is kept. Each layout keeps its own plan position (`planId` `starter_6wk` / `starter_4day`).
-- **Active days (`src/engine/activeDays.ts`):** a deliberate session of 20+ minutes (ride, run, walk, swim, row, class, sport). Steps never count. Stored apart from workouts (`treise_activities_v1`), so they can never change weekly sets or strength numbers. `buildPlanOverview` fills active slots in date order, one per week, up to the current week (a missed week can be caught up). The queue (`getNextProgramWorkoutNumber`) skips active slots. They keep the streak and tick the week strip. **Every workout done outside Treise is captured, strength included**; one recorded during a session logged in Treise is that session (`overlapsLifting`). Captured workouts stay apart from logged ones, so a strength session from a watch never changes weekly sets or strength numbers. Two recordings are one workout only if they start within 5 minutes or at least half of the shorter is inside the longer, and the longest is kept.
-- **One recovery tracker, many workout sources:** `wearableSource` picks the one tracker that feeds recovery, because scores and 14-day baselines from different devices can't be mixed. Choosing it never disconnects anything (`setActiveTracker`): every connected source keeps adding workouts. Health Connect only supplies workouts, so it can't be chosen from its workouts switch. Sources look back 29 days (`LOOKBACK_DAYS`).
-- **Where active days come from (`useActivitySync`, on launch and when the app returns to the foreground):** manual "Log a session"; Fitbit / Pixel Watch exercise log and Whoop workouts (the existing proxies with `mode: 'sessions'`); Health Connect (Android app only, below). **Strava is switched off** (`STRAVA_ENABLED = false` in `src/services/activitySources.ts`; its API needs a paid plan): it is never offered, connected or read, and the privacy policy doesn't mention it. The dormant server code (`api/strava/`, secret only in `STRAVA_CLIENT_SECRET`) stays; turning it on means flipping the flag and adding Strava back to the privacy policy and Play answers. Every found activity names its source, merges without duplicates (`mergeDetectedActivities`) and can be removed for good (dismissed ids).
-- **Health Connect bridge (native, `app/src/main/java/com/headstrong/app/HealthConnectBridge.kt`):** the TWA passes `ExerciseSessionRecord`s (READ_EXERCISE only, last 30 days, after the athlete allows it) to the page over Chrome's TWA postMessage channel (Chrome 115+, `delegate_permission/common.use_as_origin` in `public/.well-known/assetlinks.json`, `PostMessageService` in the manifest). The page side is `src/services/healthConnectBridge.ts`; outside the app no channel opens and Health Connect is not offered. Chrome hands the page the channel in a window message with empty data from `android-app://<site>`, and the app's hello arrives on the channel (`receiveAppChannel`; captured on a real Pixel, engine suite 38). **Android blocks the app from opening its own screens while Chrome is in front**, so from bridge version 3 the page opens the permission screens from a tap with an `intent://…;scheme=treise` link (`openAppScreen`): `health`, `nearby`, `app-settings`. Google's Fitbit Web API was turned off in November 2026, so Fitbit needs a Google Cloud client for the Google Health API in Vercel (`GOOGLE_HEALTH_CLIENT_ID`, `GOOGLE_HEALTH_CLIENT_SECRET`); until then Fitbit and Pixel Watch workouts come through Health Connect. Google Health readings only count for the requested day, and sleep is time asleep, never time in bed. The launcher keeps android-browser-helper's own `LauncherActivity`; the bridge reads its session by reflection (fields kept in `app/proguard-rules.pro`). **Build the Android app with `./gradlew bundleRelease`, never `bubblewrap build`/`update`, which regenerate the project and delete this code.** minSdk is 26 (Health Connect).
-- Profiles saved on the old splits load as the starter plan (`normalizeProgramType`); their history is kept. The coach never switches to a split.
-
-The split engine below is kept for old data only and is no longer offered:
-1. **Push / Pull / Legs + Upper (`ppl_upper` - 4-Day):** Optimal balance of hypertrophy frequency and volume. Day rotation: `Push` → `Pull` → `Legs` → `Upper`.
-2. **Push / Pull / Legs (`ppl` - 3-Day Classic):** High-efficiency classic split. Day rotation: `Push` → `Pull` → `Legs`.
-3. **Upper / Lower (`upper_lower` - 4-Day Power & Mass):** Heavy compound focus. Day rotation: `Upper` → `Legs`.
-4. **Full Body (`full_body` - 3-Day High Frequency):** High systemic stimulus distributed across the week. Day rotation: `Push` → `Pull` → `Legs` movement emphasis.
-- **Asynchronous Queue Invariant:** `getNextSplitDay` dynamically advances to the next valid session based on `profile.programType`. If a lifter skips a day, the next queued session simply waits with full glycogen and CNS recovery.
-
----
-
-## 5. Codified Product Design Heuristics Framework (Mandatory Governance Gate)
-
-Every UI component, layout, copy change, and new flow MUST be designed and evaluated against these 19 heuristics before shipping:
-
-### 5.1 Visual Design Heuristics (6 Principles)
-1. **Hierarchy:**
-   - **Layout:** Focus each screen on **one element or primary section as the focal point** while clearly de-emphasizing any secondary elements or sections. Never show competing session tabs (`1. Push`, `2. Pull`, `3. Legs`, `4. Upper`) as primary navigation inside an active workout.
-   - **Type:** Use typography styles in accordance with standards while emphasizing the most significant text. Strict `text-xs` (`12px`) minimum floor — never sub-12px micro-text.
-   - **Color:** Use color tokens (`brand-primary`, emerald, amber, neutral slate) for text, tags, buttons, and statuses to differentiate elements, primary/secondary actions, add emphasis, and organize information.
-   - **Visual Assets:** Use icons, pictograms, or illustrations only to focus users on the most important content with uniform optical stroke weight (`stroke-[2]`).
-2. **Alignment:**
-   - **Layout:** Use a strict responsive grid and create relationships between elements to align with each other in a balanced way.
-   - **Type:** Align text accurately and consistently.
-   - **Color:** Create consistent alignment and balance across surfaces.
-   - **Visual Assets:** All icons, pictograms, and illustrations use the same optical stroke weight (`stroke-[2]`).
-3. **Consistency:**
-   - **Layout:** Place elements in a predictable and repeatable way across all screens.
-   - **Type:** Use typography styles consistently for all types of content (such as headlines and subtitles).
-   - **Color:** Consistently use color tokens for differentiation across the experience.
-   - **Visual Assets:** Consistently scale and place icons in relation to the content they represent.
-4. **Contrast:**
-   - **Layout:** Create a dynamic layout using differentiation to lead users to complete their tasks with clarity and visual interest.
-   - **Type:** Typography styles create emphasis and differentiation to guide users to the most important content and actions.
-   - **Color:** Clearly differentiate between what's active/actionable versus what's inactive/passive.
-   - **Visual Assets:** Icons and illustrations create distinction that helps users understand content.
-5. **Simplicity:**
-   - **Layout:** Preserve negative space to create an open/clean experience instead of clutter or mess.
-   - **Type:** Use type in **no more than 2–3 styles, weights, and sizes per card**, only making shifts to emphasize hierarchy.
-   - **Color:** Use color consistently and only when needed to emphasize action, status, or reporting.
-   - **Visual Assets:** Use icons only to enhance information or create necessary connections with other content.
-6. **Delight:**
-   - **Layout:** Placement and organization make the experience effortless to understand and use.
-   - **Type:** Typography brings joy, satisfaction, or a sense of completion.
-   - **Color:** Joyful, motivating, and helpful color interactions (e.g. emerald checkmarks on set completion).
-   - **Visual Assets:** Visual assets enhance content to bring joy, positive surprise, or satisfaction when stakes are low.
-
-### 5.2 Content Design Heuristics (6 Principles)
-1. **Clarity (Be Clear Instead of Clever & Zero Technical Concepts in UI):**
-   - Give customers all the information they need to make good decisions quickly and with confidence.
-   - **MANDATORY RULE — NEVER MENTION TECHNICAL CONCEPTS IN THE UI:** The user does not need to know about knowledge graphs, on-device local engines, inference latency, hardware chips (TPU/NPU), canonical vectors, or other engineering details. Machine learning, on-device computation, and knowledge graph grounding must operate completely invisibly in the background. The user interface must speak exclusively to athlete goals, workout progression, and physical recovery.
-   - **Actionable User Outcomes Instead of Technical Badges:** When an action occurs (such as adding new equipment like a pull-up bar via the AI Coach or settings), never display technical citation chips (e.g. "Knowledge Graph Grounding") or latency stamps ("5ms • Local Engine"). Instead, provide an immediate, clear Call-to-Action (CTA) button in the "Plan Updated" banner (e.g. `"View All Equipment"`) so the athlete can directly review and manage their equipment setup in 1 tap.
-   - Use plain, simple language without complex words, jargon, slang, metaphors, or cultural references. NEVER expose internal UX, engineering, or academic method names (`OOUX`, `PKG`, `Knowledge Graph Grounding`, `On-Device Local Engine`, `Canonical Vector`, `SFR`, `MAV/MEV/MRV`) in user-facing UI.
-   - Refer to new features or concepts without introducing confusing new names.
-   - Write headings so the meaning of each screen can be quickly understood just by scanning.
-   - Make the primary call-to-action compelling for the immediate task and show it on the first screen.
-   - Make help resources available with progressive disclosure.
-2. **Consistency:**
-   - Use terms that align across the entire product (`Workout`, `Program`, `Progress`, `Athlete`).
-   - Use shared, standardized terminology for all product concepts.
-   - Align memory, terms, and voice across app surfaces, settings, and documentation.
-   - Use clear, reusable snippets for recurring UI patterns.
-3. **Structure:**
-   - Thoughtful information architecture makes the complex clear.
-   - Prioritize the most important content so it appears at the top of all screens and the beginning of sentences: immediately answer *(1) What am I training next?* and *(2) What do I need to do to make progress?*
-   - Make the path to task completion easy and fast, even when customers aren't on the happy path (skipping a day, training at home with dumbbells/TRX/pull-up bar, or travelling with bodyweight).
-   - Navigation, tabs, panels, and headings tell a meaningful story with a clear sequence.
-   - Clearly label and link next steps, help resources, and ways to cancel or exit.
-4. **Product Voice (Clear, Helpful, Human, Kind):**
-   - **Clear:** Helps customers complete tasks quickly and well.
-   - **Helpful:** Gives customers the right level of information at the right time, guiding them to the best possible outcome.
-   - **Human:** Customer-focused, warm, natural, and conversational without being loud or overbearing.
-   - **Kind:** Makes all customers feel welcome, respected, and appreciated.
-5. **Product Tones:**
-   - **Friendly:** Onboarding, welcome messages, sign up, support, and conversational introductions.
-   - **Direct:** Standardized create, edit, and management flows, tooltips, forms, settings, and error messages.
-   - **Motivating:** Coaching, tips, tour completions, set/goal completions, and sharing progress milestones.
-   - **Opinionated:** Recommending the single best next workout or program split rather than forcing the user to pick from a confusing list.
-   - **Urgent:** Highlighting joint strain alerts, critical notifications, and auto-regulation recovery buffers.
-6. **Accessibility & Inclusivity:**
-   - **Perceivable:** Text alternatives for all non-text content (icons, charts, illustrations).
-   - **Operable:** All interactive content controllable via touch, keyboard, and assistive technology.
-   - **Understandable:** Content written so a secondary school student can understand it.
-   - **Robust:** Compatible with screen readers and assistive tech in the intended order.
-   - **Inclusive:** Welcoming for all audiences, culturally unbiased, and fully WCAG AA compliant.
-
-### 5.3 Interaction Design Heuristics (7 Principles)
-1. **Predictable & Efficient:**
-   - Simple structure with a clear conceptual model and no unnecessary hierarchy levels.
-   - Navigation options relevant in the moment; clear wayfinding.
-   - High confidence in what will happen next upon user selection.
-   - Users quickly find what they need to make progress in 1 tap.
-   - Smart defaults in place to streamline user actions.
-   - Purposeful motion instead of purely decorative animations.
-2. **Communicative:**
-   - Immediate visual and haptic feedback for every user interaction.
-   - Unambiguous feedback from interface elements.
-   - Communicates progress for multi-step tasks (e.g. `Step 1 of 4` progress bars).
-   - State changes visually referential to prevent confusion (saved, unsaved, offline).
-   - Clear empty states, focus states, and disabled states.
-3. **Performant:**
-   - Fast load times and zero-latency local-first interactions.
-   - Interface reacts promptly without calculation lag.
-4. **Guided:**
-   - Guardrails proactively prevent mistakes (e.g. 1-tap Undo for set deletion, automatic weight conversion when switching equipment).
-   - Obvious where to click first on every screen.
-   - Clear error identification and fast inline resolution without leaving the flow of work.
-5. **Approachable, Accessible & Inclusive:**
-   - Users get started effortlessly without needing external instructions.
-   - Progressive disclosure keeps secondary controls tucked behind clean drawers so newcomers are never overwhelmed.
-   - Minimum `>=44px` touch targets, high contrast, and full WCAG AA compliance.
-6. **Cohesive:**
-   - Free of conflicts in design patterns and behaviors across user journeys.
-   - Components, buttons, links, and toggles behave identically in similar contexts across all tabs.
-   - Exactly 1 canonical entry point per user job (1 method for switching equipment, 1 for changing an exercise).
-7. **Delightful:**
-   - **Behavioral Joy:** First-time-to-value: immediately upon completing onboarding or opening the app, the user sees their tailored workout ready to log.
-   - **Natural Joy:** Content and recommendations feel specifically created for the athlete and their recovery state.
-   - **Visceral Joy:** Aesthetic athletic interface with purposeful dark-mode contrast.
-   - **Moment of Joy:** Celebrates PR breakthroughs and workout completions appropriately without patronizing.
-   - **Reflective Joy:** A clean moment of accomplishment and streak milestone after completing a workout.
-
----
-
-## 6. Asynchronous Hypertrophy Queue (Recovery-Driven, Not Calendar-Bound)
-
-- **No Rigid Calendar Days:** Muscle tissue responds to mechanical tension and local recovery windows (`24h–72h`), not days of the week.
-- **Skipping a Day Has Zero Penalty:** The 4-session rotation (`Push` → `Pull` → `Legs` → `Upper`) operates as an **Asynchronous Hypertrophy Queue**. If a user skips a day (due to work, travel, or sleep), the next queued session simply waits for them with full glycogen and CNS recovery—never show confusing "missed calendar day" states or competing day tabs.
-- **Recovery gate (implemented in `src/engine/recovery.ts`):** each completed session stimulates its exercises' primary muscles fully and secondary muscles at half weight; windows come from §4.2 and scale with hard sets. The queued session is ready when every target muscle reaches 90% of its window, and never before 6 AM the day after a workout. Until then the Workout tab shows a rest card with per-muscle ready times.
-- **Single Opinionated Recommendation:** The Workout screen presents **one clear "Up Next" session** with its muscle recovery status (e.g., *"Chest, Shoulders & Triceps • 100% Recovered"*), while keeping manual split/location overrides tucked neatly inside a progressive-disclosure menu (`Switch Location or Split ▾`).
-
----
-
-## 7. Onboarding & First-Time-to-Value Specification (Mandatory Flow)
-
-Onboarding sells one idea: Treise helps you become someone who trains. It is three full-screen pages (`OnboardingModal.tsx`), each with one idea, one animated illustration (`OnboardingIllustrations.tsx`, motion in `src/index.css` `ob-*`, final frame with reduced motion), a 1-of-3 progress indicator, Back, Skip (to page 3) and swipe:
-1. **Identity:** people who stay active for life build an identity, not willpower. Illustration: the identity sphere's rings forming (same motif and phase colours as the Program page).
-2. **24 sessions**: "Research with new gym members found that exercising at least 4 times a week for 6 weeks was what it took to build the habit" (Kaushal & Rhodes, 2015; observational, so stated as a finding), then what each week holds for the chosen layout. Illustration: 6 weeks × 4 dots filling in by phase.
-3. **Your superpower is restarting:** missing a workout doesn't ruin progress; workouts match recovery and place, with a home swap in one tap. Illustration: a progress line that dips and climbs back. Then the only decisions: **goal** (Build Muscle, Lose Fat, Stay Lean: it shapes the starter plan), **how to fit in 4 sessions a week** ("3 workouts + 1 active day", Recommended, or "4 workouts"; the owner's account also sees the muscle plan) and **where** (Gym, Home, Bodyweight; Home shows the home-gear chips, nothing pre-ticked).
-- Primary CTA: "Continue", then "Start my first workout", which lands on the Workout tab with workout 1 ready. "See a demo with sample data" sits under page 1's CTA.
-- One optional extra: "A goal of your own" (a lift and a number: reps for chin-ups and push-ups, a weight for bench press, squat and deadlift), which becomes a fourth goal on Progress. Nothing else is asked. Goal stays Build Muscle (changeable in Settings), units default from the phone's language, and new athletes start at the "new" experience level (lighter weights; the first logged sets teach the app their strength). Bodyweight is never assumed: it is logged later in Progress → Body weight.
-- A plan workout away from the gym is swapped with `adaptWorkoutSessionToLocation` before `personalizeSessionLoads`. A move the athlete hasn't done starts from its own default scaled to them, at the bottom of its own rep range (never 0 kg, a floor weight or a number converted from another lift), with no warm-up sets added. Changing place rebuilds an unstarted plan workout from the plan, so going back to the gym restores it; anything already logged stays on the exercise that was done, and the same goes for swapping an exercise mid-way (`handleConfirmSwap`: logged sets stay, the sets still to do move to the new exercise). If low recovery starts or ends after the workout was prepared, an unstarted plan workout is prepared again; exercises changed by hand are kept. Engine suite 39d covers this.
-- Settings → Edit Equipment reopens page 3 alone as "Where you train" (place and gear only; the goal has its own control in Settings) with Close and "Save changes".
-
----
-
-## 8. Authoritative Information Architecture & Interaction Design Master Template (Locked Invariant)
-
-All future sessions, developers, and AI agents must strictly adhere to the structure defined in `PRODUCT_REQUIREMENTS_SPEC.md` and `INTERACTION_DESIGN_MASTER_TEMPLATE.md`. **Do not iterate on, rearrange, or redesign what has been agreed as complete and final.**
-
-**Secondary screens use the design system too** (the coach sheet, the weight and measurement log, the Progress detail screens, exercise swap, plate calculator, custom exercise, rest timer, toast, onboarding, sign-in and the connection screens): colours are the `--wk-*` tokens, text sizes are `max(12px, calc(<figma px> * var(--f)))`, corner radii and spacing are `calc(<figma px> * var(--f))`, and cards, pills, buttons and fields are `wk-card`, `wk-raised`, `wk-pill`, `wk-button`, `wk-field`. No hand-written hex colours, Tailwind text sizes (`text-xs`…), `rounded-xl`/`2xl` or `p-4`-style spacing in them. Every `--wk-*` token and `wk-*` class used must exist in `src/index.css` (engine suite 39e checks this; `--wk-surface`, `--wk-line` and `wk-h2` never did and are gone).
-
-Accessibility holds on every screen (engine suite 39e): text goes through `max(12px, …)`; small controls keep their look and get an invisible 44 px touch area (`.wk-tap`, `.wk-hit`); every modal has `role="dialog"`, and `useDialogKeyboard` moves focus in and back, keeps Tab inside and closes on Escape. Measured and calculated weights (weigh-ins, estimated maxes) show to 0.1 with `formatPrecise`; `format` is only for loads rounded to real plates. Whoop's return link is accepted only with the `state` saved on this device (`isExpectedOAuthState`).
-
-### 8.1 4-Page Information Architecture & Canonical Focal Points
-1. **Workout Tab (`TrainTab.tsx`):** built from the Figma design (1344 px frame; every size is `calc(<figma px> * var(--f))`, see `.wk` in `src/index.css`; font sizes are written `max(12px, calc(<figma px> * var(--f)))` so no text is ever under the 12 px floor; --f is 0.45 on a 448 px phone, tuned side by side against Whoop: ~12 px body, 33 px inputs). Inter font, page gradient #283339 → #13181C, cards #2C3034 with radius 30 / padding 38, accent #00F19F.
-   - *Header:* program name, "⋯" menu (location, log rest day, last workout), and a 7-day strip (3 days back, today in the middle, 3 ahead): tick = trained, ring = today (pops in with two soft halos when the page opens), filled = next sessions expected from recovery (`buildWeekStrip`).
-   - *Program card:* phase (or mesocycle week), plain-English phase name, "Today/Next: <session>", "n/18" (or n/24) and progress bar; opens the Program tab.
-   - *Recovery card:* wearable score ring, provider tag, what today's plan does; opens watch sync.
-   - *Exercise cards:* name + swap button, order chip (A1), progress summary + best-set estimated max per session chart (`buildExerciseInsight`; "Example" only before the first session, then the real starting point, then the line), this week's hard sets for the main muscle against its target (from the knowledge graph), SET/PREV/WEIGHT/REPS/RIR/✓ table (ticking a set: the button pops, a ring ripples out, the check draws itself and the row flashes green; charts draw left to right the first time they scroll into view and the latest point pops in; all motion is in `src/index.css` and is skipped with reduced motion); tempo, warm-ups, plates and add/remove set behind the chevron.
-   - *Finishing a workout (`WorkoutFinishScreen.tsx`, data from `src/services/workoutFinish.ts`):* a full-screen "Workout finished" page: the medal illustration (`public/illustrations/workout-medal.png`) pops in with a confetti burst (CSS only, `wk-confetti` in `src/index.css`, nothing with reduced motion), then "Workout finished: <name>" with n/24 and the plan bar, a summary card (headline, 2–3 sentence summary, volume and sets), one "Personal best" card per exercise, one "Goal progressed" / "Goal reached" card per goal the workout moved, and Done (which saves the workout). Personal bests are the sets celebrated while logging (`celebratedSetIds`), so the screen and the in-workout messages can't disagree. The summary is fact-based (`fallback`); the on-device model may rewrite it from the same facts (`checkWorkoutSummary`: numbers from the facts only, read-aloud gate, no percentages, no volume or set counts because they sit beside it; one retry with the reason). Watch strain and workout time stay on the session card.
-   - *Goals (`src/services/athleteGoals.ts`, in the knowledge graph as `goals`; engine suite 39f):* two kinds, each measured the way it is measured in practice, and **never as a percentage**.
-     - **Process goals** are things the athlete does and have no finish line. "Train 4 times a week" has two loops: the small loop is this week's sessions out of 4, the long loop is the weeks in a row at 4 (`streakWeeks`, plus `weeksHit` and up to 12 `weeks`). Weeks are calendar weeks, Monday to Sunday, because that is what "4 times a week" means and how the habit research counts it (Kaushal & Rhodes, 2015: 4+ times a week for 6 weeks). A session is a day with a finished workout or a qualifying active day; two workouts on one day are one session. A missed week ends the run; the week still running neither adds to it nor breaks it until it reaches 4.
-     - **Outcome goals** are results. Each standard movement's next strength level (§1.4) is **counted in reps**: the fewest reps at the weight of the athlete's best set (chin-ups: at bodyweight) whose estimated max reaches the level, against the reps they did (`RepsMeasure`, e.g. "8 of 10 reps at 80 kg"). Over 20 reps away (`MAX_REP_TARGET`) it is tracked by the estimated max in kg instead (`LoadMeasure`). These need a logged bodyweight.
-     - **The chosen goal** (Build Muscle, Lose Fat, Stay Lean) has no single number, so it is judged on three signs (`BodyMeasure`): strength (Build Muscle: at least half of repeated lifts stronger; Lose Fat / Stay Lean: at least 4 in 5 held or stronger), bodyweight at the goal's pace (`weightPace`, needs a week of weigh-ins) and size from the best evidence logged. Evidence, best first: fat-free mass from body-fat readings (the standard field measure), then tape (muscle sites up with the waist not outpacing them; waist down for fat loss), readings at least 14 days apart and beyond measuring error (0.3 kg, 0.5 cm). With neither, the size sign is "not measured" and the goal is labelled **an estimate from weight and strength** (or from strength alone), with what to log next. Weight gained as fat never counts as muscle.
-     - `goalsProgressedBy` compares goals before and after a workout (built at the same moment); a movement's first log is a starting point, not progress, and the chosen goal is not a per-workout card. `describeGoalStanding` words a goal as a count against its target in the athlete's unit.
-   - *After today's session (same day, `FinishedWorkoutCards.tsx`):* the Program card ("Next: <workout>", n/24), then "Today's workout finished" (the finish screen's summary, volume and sets; no personal-best figure, the exercise cards carry those), then one card per exercise done: name, order chip, a "Personal best" tag when one of its sets was celebrated, two lines (line 1 the card's trajectory sentence including today; line 2 what today did against the last session, in concrete load: a new best, a move up in weight, more estimated max, matched, or under) and the estimated-max chart ending today (`buildCompletedExerciseSummaries`). Last, "Next: <workout>" with when it is ready, the muscles still recovering and the secondary "Train anyway". The summary text is saved by its facts (`treise_workout_summary_v1`) so this card and the finish screen show the same words. Charts draw a level line too (the line's gradient is in chart units).
-2. **Program Tab (`ProgramTab.tsx`):**
-   - *6-Week plan (`ProgramPlanView.tsx`, from the Figma design):* on the athlete's first run of the 24 workouts the header is the "identity forming" animation (`IdentityForm`: a turning 3D sphere of light built from the athlete's own plan: each finished workout adds one ring of latitude, from the equator out towards the poles, shaped by what it trained, bolder with more sets logged and coloured by phase (violet, pink, orange); the sphere grows with progress, the near side is brighter, a faint glass body and rim show the whole sphere from the start, the next workout is a faint dotted ring, and soft ambient light drifts behind it; seeded by when the athlete started, so each one is unique; still frame with reduced motion; pauses off-screen) with copy built only from logged facts; then "Next: <workout>" and n/24; then Phase 1–3 cards (`planSummary`). The active phase is expanded: done workouts are green and open the logged session (`PastWorkoutModal`), the next one says "Up next" and opens it. Status comes from `buildPlanOverview`. The title and phases come from the athlete's plan. A Settings row below the phases opens a separate Settings screen (equipment, goal, "Change plan" on the owner's account only, account, profile, wearable, data) with a back button; the mesocycle slider and split editor are only shown for the other splits.
-   - *Focal Point (other splits):* Training Locations & Equipment Summary Card with single `[Edit Equipment]` trigger.
-   - *Goal Phase Switcher:* Build Muscle, Lose Fat, Stay Lean.
-   - *6-Week Mesocycle:* Week 1 to 6 periodization with 1-tap Deload trigger.
-   - *Split Editor:* Routine preview, `[+ Custom Exercise]`, and `[Start This Workout]` triggers.
-   - *Profile & Data Drawers:* Collapsible accordions for Athlete Profile and Data Backup (export/restore/erase).
-3. **Progress Tab (`AnalyticsTab.tsx`):** same `.wk` card style as the Workout tab. It opens on an **overview**; each card opens a detail screen with a back button (`ProgressOverviewCards.tsx`, data from `src/services/progressOverview.ts`, engine suite 39f).
-   - *Snapshot, goals as rings (`GoalsHero`):* one ring for each of the athlete's 3 to 5 goals (three to a row, a fourth and fifth centred beneath), each a ring of segments counting whole things, with the count in the centre ("3/4", "8/10", "2/3") and what it counts beneath. The weekly goal has this week's sessions outside and an inner ring of the last six weeks (the long loop; weeks before the athlete started are thin). The strength ring is the closest level (`closestStrengthGoal`, reps goals first): reps done against reps needed. The chosen goal's ring is its three signs, a thin segment for one not measured yet. No percentages. A goal with nothing logged shows "—". Below, "Goals" and a short summary (`buildGoalsSummary`; the on-device model may rewrite it under `checkGoalsSummary`, saved by its facts).
-   - *Changing goals (`GoalSettingsScreen.tsx`, opened from "Change" beside the Goals heading and from every goal's detail):* the plan's goals are the defaults, and a change saves at once with the profile (`goalSettings`). Three choices: the main goal (Build Muscle, Lose Fat, Stay Lean; the same change as Settings, `handleUpdateGoalPhase`, which also reshapes an unstarted workout); sessions a week, 2 to 7, default the plan's (`sessionsPerWeekTarget`; an own figure is counted against every week, and the goal's method says "You set 3 a week; your plan is built on 4"); and the strength level to follow, default "Closest to the next level", or one movement (`strengthFocus`; a movement not logged yet falls back to the closest until it is). Only differences from the plan are stored, so a plan change is followed, and "Use my plan's goals" clears them. Invalid saved values are ignored.
-   - *Goal detail (`GoalDetailScreen.tsx`):* tapping a ring opens its goal, labelled process or outcome. Weekly goal: this week as dots, then in a row / weeks at 4 / weeks training, sessions per week as bars against the target line, and where the run stands against the six weeks of the habit research. Strength goal: reps as dots at the stated weight, the level it reaches, the estimated max behind it, and the other strength levels (each opens). Chosen goal: the three signs with their figures, how sure the judgment is and what to log next, and **weight against strength** on one chart (both start at 100; `strengthIndexSeries` compares each lift only with itself week to week), then fat-free mass and waist charts when logged. Every goal ends with "How it's measured".
-   - *Trophy case:* three personal bests (the standard bench, squat and deadlift when logged, then the heaviest other lifts; never a combined total) → every lift's best: its heaviest logged set, or most reps where there is no weight, with date and estimated max (`buildPersonalBests`).
-   - *Lifetime stats:* volume, reps and workouts over every saved workout (`buildTrainingTotals`, the same volume sum as each workout) → the estimated one-rep max, weekly hard sets and work capacity charts.
-   - *Recent stats:* the same totals for the last 30 days (`RECENT_DAYS`) → one card per trained muscle (`buildMuscleProgress`, knowledge-graph principle `sp-muscle-progress`: 8 weeks of hard sets against the target band, strength index, tape measurement, exercises).
-   - *Body weight:* the weight chart's own summary, the latest weigh-in, a chip ("You're gaining weight" / "losing" / "steady", from `weightPace`, the same pace the chart states; green when on pace for the goal) and a small 7-day-average line → the weight screen below.
-   - *Measurements:* lean view, waist first (the measurement that says most about fitness), then chest and arm, each with its change since the first reading → the measurements screen below, waist charts first.
-   - *Strength standards:* a radar of each standard lift's level (§1.4) → `StrengthLevelsCard`, `BalanceCard` and the knowledge-graph card (joint load, recovery, Science & Logic). Before a weigh-in, a prompt to log weight.
-   - *Weight and measurements screens:* **one log button that logs what the screen shows** ("Log weight" or "Log measurements"; the log form has no switch of its own).
-   - *Weigh-in form and scale:* The weight form is the manual fields first, then one inline scale alert (`WeightLogModal`), hidden where the browser has no Web Bluetooth: offer + Pair → "Scale connected" → "Listening for your scale" each time it opens → Measuring → Saved (auto-saved; "Done" doesn't re-save a rounded copy, and step-off readings are ignored). **Pair once needs the Android app:** Web Bluetooth's `getDevices()` is behind a flag on stable Chrome (chromestatus: developer trial), so in a browser, after a restart, the page can't reach the scale without a tap: the alert says "Reconnect your scale" and the device list shows only that scale. In the Play app the app reaches the scale itself (`ScaleBridge.kt`, `BlePermissionActivity.kt`, wrapped as a Web Bluetooth device by `src/services/nativeScale.ts`, on the same message channel as Health Connect): it pairs once from an inline list, then listens by address with no prompt. All decoding and weigh-in logic stays in `renphoBluetooth.ts` for both paths. The paired scale lives in the page's saved devices. Permissions: `BLUETOOTH_SCAN` (`neverForLocation`), `BLUETOOTH_CONNECT`, and for Android 11 and lower `ACCESS_FINE_LOCATION` (`maxSdkVersion 30`, required by Android for a scan, never read). The smart tape still uses Web Bluetooth. **Scale protocols:** the same model name ships with different protocols, so decode by frame, never by name. A real ES-CS20M speaks 0x55AA on service 0x1A10 (`decode55AaFrame`): checksummed frames, 0x14 measurement, 0x11 device status (never a weight), no QN writes. Before a weigh-in the app writes the clock (0x97), a guest profile (0x96, slot 9, never stored on the scale; height, age and sex come only from what the athlete entered) and the display unit (0x90), in that order. The weight saves once steady for 2.5 s, then the screen says to stay on until the final frame (0x18). Its resistance gives body fat and the other estimates (`estimateBodyComposition`, checked against the scale's own body fat); a final with no resistance says the scale couldn't read body composition, and a low settled reading says to step on with both feet and saves nothing. Unsettled readings never go in the form, so Done can't save one. One connection can hold several finals (a foot waking the scale), so only exact repeats are ignored (`scaleFinalKey`). Visceral fat, subcutaneous fat and metabolic age have no published formula and stay blank. Never derive body composition from a placeholder height, age or sex (engine suite 38 pins this, with frames captured from the real scale). The form warns anyone pregnant or with a pacemaker or other implant not to use it. `assetlinks.json` must include the Play signing key (`85:EC:5C…`), or the app runs as a browser tab with no message channel. Never claim to be listening unless the scale is really reachable. Weight: weigh-in (optional body fat and other scale readings; height asked once and stored as `measuredHeightCm`), the body composition summary, then bodyweight (7-day average over daily weigh-ins, weekly pace vs the goal), body fat, lean mass and FFMI. Measurements: tape sites, left/right symmetry, waist, waist-to-height, chest, arms and the rest. FFMI and waist-to-height only use a height the athlete entered, never the placeholder `heightCm`.
-4. **No Athlete tab.** It was folded into Progress (bottom nav: Workout, Program, AI Coach, Progress; old `?tab=character` links open Progress). Strength levels are behind the Strength standards card on Progress. Removed on purpose, don't bring back: the combined Big 3 total and strength-to-weight (DOTS) score (the plans don't train the competition lifts, so it stayed empty or mixed in other lifts), the consistency/steps card (the streak is in the header, active days on the Workout tab, n/24 on Program), and the weekly-sets gauges (weekly sets are a training input: shown on each exercise card and the plan; Progress keeps the 8-week per-muscle cards).
-
----
-
-## 9. Google Pixel Tensor Hardware Acceleration & On-Device AI Architecture
-
-When running on Google Pixel hardware (Pixel 6, 7, 8, 9, Fold), Treise routes AI inference through on-device Google Tensor silicon:
-1. **Model Identification:** Client Hints (`Sec-CH-UA-Model`), User-Agent, and WebGL GPU string (`Mali-G720` -> Tensor G4; `Mali-G715` -> Tensor G3; `Mali-G710` -> Tensor G2; `Mali-G78` -> Tensor G1).
-2. **Acceleration Backends:**
-   - **Tensor TPU (Gemini Nano):** Connects via `window.ai.languageModel` for tactical coaching cues and tempo adaptations.
-   - **Tensor NPU (WebNN):** Probes `navigator.ml` for neural fatigue projections.
-   - **Tensor GPU (WebGPU):** Probes `navigator.gpu` for Mali compute shaders.
-   - **WASM SIMD Fallback:** High-performance local engine on non-Pixel devices.
-3. **Invariants:**
-   - AI Coach prompts and answers stay on the device.
-   - Wearable data is fetched through Treise's Vercel functions (`api/`), which do not store it. Workout history is stored only on the device.
-
----
-
-## 10. Clean Slate for New Users & No Points System
-
-### 10.1 Zero Dummy Data Exposure Invariant
-- **First-Time Visitors:** Fresh installs start with `NEW_USER_PROFILE`: 0 streak, 'Athlete', fresh starter workout, and clean empty arrays `[]` for biometrics and completed workouts.
-- **Preview & Demo Mode:** Sample 6-week demonstration data (`SAMPLE_DEMO_PROFILE`, 42 days biometrics, 24 workouts for Alex Vance) is available strictly on explicit opt-in via "Load Sample Data" or onboarding's "See a demo with sample data" link. The sample athlete is on `starter_4day`: their latest 10 workouts are the plan's first 10, logged as prescribed, so they're on workout 11 of 24 in week 3.
-
-### 10.2 No XP, Levels or Leaderboards
-- XP, levels, XP divisions and the leaderboard were removed and must not return. Progress is shown by real training: personal bests, strength levels, the plan's n/18 (n/24) and the identity sphere.
-- Real moments are still celebrated with a short message (`src/engine/milestones.ts`, shown by `Toast`), never with points:
-  - **Personal bests on a set:** more weight, more reps at the same or higher weight, or the top of the rep range for the first time. Compared with past workouts and earlier sets today; each set is celebrated at most once (`celebratedSetIds`). A lift's first-ever log is a starting point.
-  - **Strength level ups:** moving up a strength standard sub-division or tier.
-  - **Finished weeks:** each finished training week, and the whole 6-week block.
-- `loadProfile` drops the old `currentXp`, `level` and leaderboard fields from saved profiles.
-
----
-
-## 11. Authoritative Exercise Science Knowledge Base & Zero-Hallucination AI Grounding
-
-To eliminate all model hallucinations, ungrounded approximations, and conflicting advice across sessions, Treise codifies all mathematical models and physiological rationale directly within the On-Device Knowledge Graph (`src/engine/knowledgeGraph.ts`):
-
-### 11.1 The 21 Authoritative Scientific Principles
-1. **E1RM Formula & RIR Adjustment (`sp-e1rm-epley-rir`):** Augmented Epley/Lombardi model with Reps in Reserve.
-2. **Dumbbell Bilateral Stabilization Multiplier (`sp-db-multiplier`):** $1.18\times$ combined DB load multiplier for stabilizer fatigue and bilateral deficit (Saeterbakken et al., 2011; approximation).
-3. **Romanian Deadlift Conventional Normalization (`sp-rdl-multiplier`):** $1.20\times$ RDL load normalization to conventional deadlift standard.
-4. **Weighted Calisthenics Total Gravitational Mass (`sp-weighted-calisthenics-total-load`):** Total Mass = $\text{EMA}_{BW} + \text{External Load}$.
-5. **7-Day Exponential Moving Average Bodyweight (`sp-ema-bodyweight`):** Smoothing daily glycogen/water shifts ($0.25 \times \text{Today} + 0.75 \times \text{Yesterday}$).
-6. **Official IPF DOTS Strength Polynomial (`sp-dots-polynomial`):** 4th-degree polynomial normalizing relative strength across bodyweights.
-7. **Strength Levels, Balance and Left/Right Symmetry (`sp-6-pillars`):** Kilgore (ExRx) levels by sex, bodyweight and age; Poliquin's chin-up ratio; 90% limb symmetry (Grindem 2016).
-8. **Autonomic Readiness Z-Score Auto-Regulation (`sp-autonomic-readiness`):** 14-day rolling baseline HRV, RHR, and sleep score driving Amber Shield / Primed states.
-9. **Double Progression Auto-Regulation Logic (`sp-double-progression`):** Top-of-rep-range load step (+2.5kg BB, +2.0kg DB) vs. within-range rep accretion.
-10. **Israetel & Schoenfeld Muscle-Specific Hypertrophy Volume Landmarks (`sp-volume-landmarks`):** Divergent MV/MEV/MAV/MRV based on fiber type and eccentric stretch.
-11. **Caloric Deficit Muscle Retention & Volume Scaling (`sp-retention-shield-deficit`):** High mechanical tension with volume capped at ~85% (2–3 sets) and Retention Shield.
-12. **Pure Bodyweight & Travel Hypertrophy Overload (`sp-travel-bodyweight-hypertrophy`):** Strictly 0kg external load progressed via tempo, paused eccentrics, and reps.
-13. **Inter-Set Rest Intervals for Hypertrophy & Tonnage (`sp-rest-intervals`):** 2–3+ minute rest intervals for compound lifts vs 60–90s for low-axial isolations.
-14. **Stretch-Mediated Hypertrophy & Sarcomerogenesis (`sp-stretch-mediated-hypertrophy`):** Mechanical tension at long muscle lengths driving passive titin stiffness.
-15. **6-Week Mesocycle Volume Periodization Wave (`sp-mesocycle-periodization`):** MEV $\to$ MAV $\to$ MRV progression wave terminating in deload.
-16. **Asynchronous Hypertrophy Queue & Glycogen Preservation (`sp-asynchronous-queue`):** Dynamic session advancement waiting with full recovery on skipped days.
-17. **Work Capacity Index (WCI) & Cardiovascular Efficiency (`sp-work-capacity-index`):** Effective tonnage per unit of heart rate reserve over session duration.
-18. **Google Pixel Tensor On-Device AI Acceleration (`sp-tensor-ai-acceleration`):** Local TPU/NPU/GPU inference preserving zero-latency privacy.
-19. **Automated Progressive Overload vs. Traditional Paper Training Diary (`sp-progress-tracking-diary`):** Automated tracking of weights, sets, reps, tempo, and rest; calculates weekly double progression (+1 rep or +2.5kg load) so lifters never have to guess or keep manual notebooks; they just show up and lift.
-20. **Morning Weigh-Ins, Circumference Measurements & Body Recomposition (`sp-scale-weight-measurements`):** Muscle tissue density (~1.06 g/mL vs ~0.90 g/mL) explains scale neutrality during concurrent fat loss and muscle gain; paired with waist/chest/arm measurements and 7-day EMA smoothing ("look radically different with shirt off").
-21. **Friction-Free Telemetry & Smart Device Integration (`sp-smart-device-integration`):** Automated ingestion from Bluetooth smart scales, digital measuring tapes, and wearable APIs (Google Pixel Watch, Fitbit, Whoop, Android Health Connect) to eliminate data-entry cognitive friction and tracking abandonment.
-
-### 11.2 Invariants for AI Chat and App UI
-- **Zero Hallucination Invariant:** All scientific inquiries in the on-device AI Coach are resolved via `queryExerciseScienceKnowledgeBase`, returning exact mathematical formulas, physiological rationale, and academic citations.
-- **Searchable UI:** The Progress tab provides an interactive "Science & Logic" browser in `KnowledgeGraphCard.tsx` with a search bar and expandable cards.
-- **Visual Compliance:** Strictly adheres to the $\ge 12\text{px}$ typography floor and $\ge 44\text{px}$ touch targets.
-
-### 11.3 Design System, Typography & Badge/Button Governance (`src/styles/tokens.css`, `src/index.css`, `TREISE_DESIGN_SYSTEM`)
-- **Informational Badge (`.wk-pill`) vs. Action Button (`.wk-btn-secondary` / `.wk-button`):**
-  - `.wk-pill` (`--wk-pill: var(--color-bg-surface-control)` `#474D50`, `border-radius: calc(8 * var(--f))`, `padding: calc(6 * var(--f)) calc(22 * var(--f))`, `font-size: max(12px, calc(24 * var(--f)))`, `font-weight: 600`, `text-transform: uppercase`, `letter-spacing: 0.04em`, `color: var(--color-status-neutral)` `#C9CDD0`, no border) is **reserved strictly for non-interactive informational badges** (such as wearable source `WHOOP`, `NO WATCH`, superset order `A1`, equipment tags) and **must never be used on `<button>` elements**.
-  - Compact interactive secondary buttons must use `.wk-btn-secondary` (`background: var(--color-action-secondary-bg)` `#44494C`, `color: var(--color-action-secondary-fg)` `#FFFFFF`, `border-radius: calc(20 * var(--f))`, `font-weight: 600`, normal case), while full-width buttons use `.wk-button` (`font-weight: 600`, normal case).
-- **Semantic Colour Roles:**
-  - **Primary Action CTAs:** `--color-action-primary-bg` (`#FFFFFF`) with `--color-action-primary-fg` (`#13181C`).
-  - **Secondary Actions:** `--color-action-secondary-bg` (`#44494C`) with `--color-action-secondary-fg` (`#FFFFFF`).
-  - **Positive Progress & Achievements (Mint `#00F19F`):** `--color-accent-primary` / `--color-status-positive` is reserved for completed sets, positive weight/strength trends, and achievement indicators—never used for system action buttons.
-  - **Informational Telemetry Charts (Telemetry Blue `#8FD3FF`):** `--color-data-telemetry` (`--wk-telemetry`) is used for informational charts where direction isn't inherently positive progress (e.g., resting heart rate, sleep duration, bodyweight without goal pace).
-- **4-Role Inter Typography System (`src/index.css`, `src/utils/typography.ts`):**
-  - **Single Font Family (`Inter`):** Only `Inter` (`wght@400;500;600`) is loaded in `index.html` and configured in `tailwind.config.js`. `JetBrains Mono` is deleted; all numbers use Inter's tabular figures (`font-variant-numeric: tabular-nums; font-feature-settings: 'tnum' on, 'cv05' on, 'cv08' on`).
-  - **Two Primary Weights (`400` and `600`, plus `500` for Workout Tab Captions):** Body and descriptions use `400`; titles, labels, and numbers use `600`; `700`, `800`, and `900` are dropped entirely across CSS and components.
-  - **Role 1 — Label (`.wk-label`, `.wk-pill`, `.wk-workout-caption`):**
-    - `.wk-label` and `.wk-pill`: `font-size: max(12px, calc(24 * var(--f)))`, `font-weight: 600`, `text-transform: uppercase`, `letter-spacing: 0.04em`. Reserved strictly for tiny column headers and status tags (`SET`, `PREV`, `NO WATCH`, `WHOOP`, `A1`).
-    - `.wk-workout-caption` (Workout tab caption floor): `font-size: max(13px, calc(28 * var(--f)))`, `font-weight: 500`, `letter-spacing: 0.04em`, `color: var(--wk-muted)` (`5.85:1` contrast on card surface `#2C3034`), used for `SET`, `PREV`, `WEIGHT`, `REPS`, `RIR`, and `DONE`.
-  - **Role 2 — Body (`.wk-body`, `.wk-caption`):**
-    - `.wk-body` (`max(14px, calc(30 * var(--f)))`, `line-height: 1.45`, `font-weight: 400`) and `.wk-caption` (`max(12px, calc(24 * var(--f)))`, `line-height: 1.35`, `font-weight: 400`) in normal case.
-  - **Role 3 — Title (`.wk-title`, `.wk-h1`, `.wk-page-title`):**
-    - `font-size: max(16px, calc(36 * var(--f)))`, `line-height: 1.25`, `font-weight: 600`, `text-transform: none`, `letter-spacing: -0.01em`. Exercise names (“Barbell back squat”) and session titles (“Today: Full body A”) use sentence case (`formatSentenceCase`).
-  - **Role 4 — Number (`.wk-number`, `.wk-input`):**
-    - `font-size: max(20px, calc(44 * var(--f)))`, `font-weight: 600`, `font-variant-numeric: tabular-nums`. Used for weight, reps, RIR inputs in `SetRow` and session counts (`1/24`, `0/16`) so the number is the clearest anchor in every row.
-
-
-
-
-
+| Dimension | Finding | Active Mitigation / Next Step |
+| :--- | :--- | :--- |
+| **Strength 1** | **Deterministic Exercise Science:** E1RM (`1.18x` DB, `1.20x` RDL), Double Progression, Continuity, Volume Landmarks (`0.5x` synergist), Recovery + Amber Shield, and Kilgore/Poliquin standards are single-source (80 suites). | Keep formula updates additive inside their canonical engine owner. |
+| **Strength 2** | **Zero-Hallucination Hybrid AI:** All 6 AI surfaces pair Gemini Nano / `gemini-3.5-flash-lite` with fact fallbacks (`buildGoalDrivenLine1/Line2`), `factChecks.ts`, `runReadAloudQaGate`, and 21 undo-safe tools (`coachTools.ts`). | Require every AI feature to import `contentStrategy.ts` + `coachPersonalization.ts`. |
+| **Strength 3** | **Locked Shift Nudge Design System & Canonical UI:** 4-Size × 4-Weight × 3-Ink typography, semantic tokens, invariant table headers, and canonical `ExerciseDetailModal` / `ExerciseSwapModal` / `TrendChart` prevent UI drift. | Enforce `APPROVED_COMPONENT_FILES` freeze and `npm run design-system:sync`. |
+| **Strength 4** | **Local-First Resilience & Privacy:** Immediate `usePersistedState` writes, cross-tab sync, quota eviction + `SAVE_FAILED_EVENT`, v10 migrations, and zero server storage of health data. | Maintain Suite 36f storage resilience tests and bundle secret scans. |
+| **Weakness 1** | **Historical Rule Truncation & Doc Drift (Resolved):** `AGENTS.md` was 99.3 KB (truncating 76% in `<user_rules>`), and legacy docs had pre-Shift-Nudge/Bubblewrap references. | Enforce `AGENTS.md <= 23,750` bytes in Suite 80 so 100% of rules load untruncated. |
+| **Weakness 2** | **Large Orchestrator Files:** `App.tsx`, `TrainTab.tsx`, `aiAssistantService.ts`, `knowledgeGraph.ts`, and `verifyEngine.ts` have high line counts. | Extract pure service view-models (`exerciseDetails.ts`) and modular `*.suite.ts` files. |
+| **Weakness 3** | **Single-Device LocalStorage Boundary:** Clearing browser site data without a JSON backup export loses local history. | Call `requestPersistentStorage` and surface 1-tap JSON backup export in Settings. |
+| **Weakness 4** | **Cross-Gym Machine Pulley Variance:** Uncalibrated cable/machine stacks vary (`1:1` vs `2:1`), preventing exact kg transfer on first swap. | Use `EFFORT_ONLY` opening-set calibration copy and auto-recalibrate after Set 1 RIR. |
+| **Opportunity 1** | **Zero-Knowledge Encrypted Backup:** Optional client-side encrypted backup/restore on top of `storage.ts` JSON serialization. | Extend `exportAllData` / `importAllData` additively without server plaintext. |
+| **Opportunity 2** | **Google Health Web OAuth Proxy:** Restore direct web Fitbit/Pixel sync in `api/` alongside native Android `HealthConnectBridge.kt`. | Add stateless OAuth exchange in `api/` with secrets solely in Vercel env vars. |
+| **Opportunity 3** | **Cycle-Over-Cycle Block Analytics:** Compare 6-week Cycle 1 vs Cycle 2 strength/volume inside `ProgressChartCard` & `ExerciseDetailModal`. | Reuse canonical `TrendChart` and `buildExerciseInsight` without new chart components. |
+| **Opportunity 4** | **Continued Test Suite Modularization:** Extract remaining inline suites from `verifyEngine.ts` into focused `*.suite.ts` files. | Follow the Suite 76–80 modular import pattern. |
+| **Risk 1** | **Upstream LLM Drift (`gemini-3.5-flash-lite` / Nano):** Model updates can shift phrasing, echo prompts, or invent figures. | Pre-render gates (`factChecks.ts`, `runReadAloudQaGate`, `checkSummaryVoiceGuidelines`) reject bad outputs. |
+| **Risk 2** | **Component & Engine Sprawl:** Unchecked feature work could spawn duplicate modals, off-scale classes, or parallel calculators. | Enforce `CANONICAL_ARCHITECTURE_REGISTRY`, `APPROVED_COMPONENT_FILES`, and Suites 47, 79, 80. |
+| **Risk 3** | **Android TWA Bridge Overwrite:** Running `bubblewrap update/build` deletes native `HealthConnectBridge.kt` and `ScaleBridge.kt`. | Build exclusively with `./gradlew bundleRelease` and gate on `npm run verify:playstore`. |
+| **Risk 4** | **Wearable API Outages / Rate Limits:** Upstream Whoop/Google Health failures could interrupt readiness sync. | Degrade gracefully to local muscle recovery (`recovery.ts`) and advisory readiness. |

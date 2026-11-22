@@ -1,6 +1,13 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { CANONICAL_ARCHITECTURE_REGISTRY, INITIAL_GOVERNANCE_ITEMS } from '../governance';
+import {
+  AI_GUIDELINES_SOURCE_CONTEXT,
+  APPROVED_COMPONENT_FILES,
+  CANONICAL_ARCHITECTURE_REGISTRY,
+  DESIGN_SYSTEM_SOURCE_CONTEXT,
+  INITIAL_GOVERNANCE_ITEMS,
+  SYSTEM_SWOT_EVALUATION,
+} from '../governance';
 import { buildAthleteKnowledgeGraph } from '../knowledgeGraph';
 import { BiometricLog, ExerciseSession, UserProfile, WorkoutSession } from '../types';
 import { NEW_USER_PROFILE, SEED_EXERCISES } from '../../services/seedData';
@@ -35,10 +42,31 @@ export async function runSingleEngineAndCanonicalUiSuite(assert: AssertFn): Prom
   // 1. Permanent architectural rules in AGENTS.md & locked governance registry
   // -------------------------------------------------------------------------
   const agentsMd = read('AGENTS.md');
+  const agentsByteLength = Buffer.byteLength(agentsMd, 'utf8');
   assert(
-    agentsMd.includes('12. **Additive-first; never duplicate engines, context, guidelines, or cards.**') &&
-      agentsMd.includes('### Canonical Architecture Registry'),
-    'AGENTS.md codifies Non-Negotiable #12 (additive-first / zero duplication) and the Canonical Architecture Registry'
+    agentsByteLength <= 23750,
+    `AGENTS.md stays within the <=23,750-byte zero-truncation window for <user_rules> (actual: ${agentsByteLength} bytes)`
+  );
+  assert(
+    agentsMd.includes('12. **Additive-first; never duplicate engines, context, guidelines, or cards') &&
+      agentsMd.includes('13. **Use existing Design System components; never introduce a new component without explicit user permission') &&
+      agentsMd.includes('14. **Every AI feature and functionality must reference and validate against the canonical AI guidelines') &&
+      agentsMd.includes('### Starting Point for All New Work (Mandatory Pre-Flight Protocol)') &&
+      agentsMd.includes('### Canonical Architecture Registry') &&
+      agentsMd.includes('## 12. System Evaluation: Strengths, Weaknesses, Opportunities & Risks (SWOT)'),
+    'AGENTS.md codifies Rules #12–#14 (additive-first, Design System component freeze, AI guidelines contract), Pre-Flight Protocol, Canonical Architecture Registry, and SWOT evaluation'
+  );
+
+  const continuousGovMd = read('CONTINUOUS_GOVERNANCE_GUIDE.md');
+  assert(
+    continuousGovMd.includes('DESIGN_SYSTEM_SOURCE_CONTEXT') &&
+      continuousGovMd.includes('APPROVED_COMPONENT_FILES') &&
+      continuousGovMd.includes('AI_GUIDELINES_SOURCE_CONTEXT') &&
+      continuousGovMd.includes('SYSTEM_SWOT_EVALUATION') &&
+      continuousGovMd.includes('./gradlew bundleRelease') &&
+      !continuousGovMd.includes('npx @bubblewrap/cli build') &&
+      !continuousGovMd.includes('#060709'),
+    'CONTINUOUS_GOVERNANCE_GUIDE.md aligns starting-point protocol, Design System freeze, AI guidelines, SWOT evaluation, and native Gradle build'
   );
 
   const govItem = INITIAL_GOVERNANCE_ITEMS.find((g) => g.id === 'gov-single-engine-additive-architecture');
@@ -67,11 +95,68 @@ export async function runSingleEngineAndCanonicalUiSuite(assert: AssertFn): Prom
     `Every path in CANONICAL_ARCHITECTURE_REGISTRY exists on disk (missing: ${missingCanonicalPaths.join(', ') || 'none'})`
   );
 
+  // Design System source context files exist
+  const dsPaths = [
+    ...DESIGN_SYSTEM_SOURCE_CONTEXT.tokenFiles,
+    DESIGN_SYSTEM_SOURCE_CONTEXT.primitiveCssFile,
+    DESIGN_SYSTEM_SOURCE_CONTEXT.specificationModule,
+    ...DESIGN_SYSTEM_SOURCE_CONTEXT.showcaseFiles,
+  ];
+  const missingDsPaths = dsPaths.filter((rel) => !fs.existsSync(path.join(root, rel)));
+  assert(
+    missingDsPaths.length === 0 &&
+      read(DESIGN_SYSTEM_SOURCE_CONTEXT.specificationModule).includes(
+        `export const ${DESIGN_SYSTEM_SOURCE_CONTEXT.specificationExport}`
+      ),
+    `All DESIGN_SYSTEM_SOURCE_CONTEXT files and ${DESIGN_SYSTEM_SOURCE_CONTEXT.specificationExport} exist on disk (missing: ${missingDsPaths.join(', ') || 'none'})`
+  );
+
+  // AI Guidelines source context files exist
+  const aiPaths = [
+    ...AI_GUIDELINES_SOURCE_CONTEXT.guidelineModules,
+    ...AI_GUIDELINES_SOURCE_CONTEXT.contextModules,
+    AI_GUIDELINES_SOURCE_CONTEXT.sharedBriefModule,
+    ...AI_GUIDELINES_SOURCE_CONTEXT.transportModules,
+    ...AI_GUIDELINES_SOURCE_CONTEXT.deterministicToolModules,
+    ...AI_GUIDELINES_SOURCE_CONTEXT.governedAiSurfaces,
+  ];
+  const missingAiPaths = aiPaths.filter((rel) => !fs.existsSync(path.join(root, rel)));
+  assert(
+    missingAiPaths.length === 0,
+    `All AI_GUIDELINES_SOURCE_CONTEXT files exist on disk (missing: ${missingAiPaths.join(', ') || 'none'})`
+  );
+
+  // System SWOT evaluation completeness & file verification
+  const swotEntries = [
+    ...SYSTEM_SWOT_EVALUATION.strengths,
+    ...SYSTEM_SWOT_EVALUATION.weaknesses,
+    ...SYSTEM_SWOT_EVALUATION.opportunities,
+    ...SYSTEM_SWOT_EVALUATION.risks,
+  ];
+  const missingSwotFiles = swotEntries.flatMap((entry) =>
+    entry.sourceFiles.filter((rel) => !fs.existsSync(path.join(root, rel))).map((rel) => `${entry.id}:${rel}`)
+  );
+  assert(
+    SYSTEM_SWOT_EVALUATION.strengths.length >= 4 &&
+      SYSTEM_SWOT_EVALUATION.weaknesses.length >= 4 &&
+      SYSTEM_SWOT_EVALUATION.opportunities.length >= 4 &&
+      SYSTEM_SWOT_EVALUATION.risks.length >= 4 &&
+      missingSwotFiles.length === 0,
+    `SYSTEM_SWOT_EVALUATION codifies >=4 strengths, weaknesses, opportunities, and risks with verified source files (missing: ${missingSwotFiles.join(', ') || 'none'})`
+  );
+
   // -------------------------------------------------------------------------
-  // 2. Zero duplicate UI modals, cards, or drill-in components
+  // 2. Strict Component Freeze (No New Components Without Permission) & Zero Duplicate UI Modals
   // -------------------------------------------------------------------------
-  const componentFiles = walkFiles(path.join(root, 'src/components')).map((f) =>
-    path.relative(root, f).replace(/\\/g, '/')
+  const componentFiles = walkFiles(path.join(root, 'src/components'))
+    .map((f) => path.relative(root, f).replace(/\\/g, '/'))
+    .sort();
+  const approvedSorted = [...APPROVED_COMPONENT_FILES].sort();
+  const unapprovedComponents = componentFiles.filter((f) => !approvedSorted.includes(f));
+  const missingApprovedComponents = approvedSorted.filter((f) => !componentFiles.includes(f));
+  assert(
+    unapprovedComponents.length === 0 && missingApprovedComponents.length === 0,
+    `Strict component freeze holds: src/components/ matches APPROVED_COMPONENT_FILES with zero unapproved component files (unapproved: ${unapprovedComponents.join(', ') || 'none'}; missing: ${missingApprovedComponents.join(', ') || 'none'})`
   );
 
   const exerciseDetailComponents = componentFiles.filter((f) =>
