@@ -184,22 +184,9 @@ export const SetRow: React.FC<SetRowProps> = ({
         }`}
       >
         {(() => {
-          const effectiveSetup = set.setupLabel ?? setupLabelOverride ?? null;
           const showEffortPrompt = isEffortOnly && displayWeight === 0 && !set.completed;
-          const showBwSetup = isBodyweight && displayWeight === 0 && Boolean(effectiveSetup);
           const showBwToken = (isBodyweight || isTimed) && displayWeight === 0;
           const showEstimatedTilde = Boolean(set.isWeightEstimated && !set.completed && displayWeight > 0 && !isBodyweight);
-          if (showBwSetup && effectiveSetup) {
-            return (
-              <span
-                className="wk-caption text-center truncate px-1"
-                style={{ color: set.completed ? 'var(--color-text-primary)' : 'var(--color-text-secondary)' }}
-                title={effectiveSetup}
-              >
-                {effectiveSetup.replace(' (~', ' · ~').replace(')', '')}
-              </span>
-            );
-          }
           if (showEffortPrompt) {
             return (
               <input

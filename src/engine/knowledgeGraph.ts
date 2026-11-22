@@ -1449,9 +1449,9 @@ export const TREISE_DESIGN_SYSTEM: DesignSystemComponent[] = [
         'ExerciseCard keeps strictly 1 sequence .wk-pill badge; live weekly muscle volume lives in ExerciseDetailModal, Program WeeklyVolumeCard, MuscleProgressCard, and WorkoutFinishScreen.',
       ],
       variants: {
-        swappedCard: 'Tier-1 1-sentence rationale + collapsed Why this works drawer + ~ estimated load prefix + REF / Adapts on S1',
-        bodyweightCard: 'SETUP column with ~% BW load estimate (never 0 kg), tightened 0–1 RIR for light loads, and >18-rep leverage step-up chip in RestTimerModal',
-        reentryCard: 'LAST AT GYM column referencing pre-travel load/reps and Travel Bridge bands on Progress strength charts',
+        swappedCard: 'Invariant SET/PREV/WEIGHT/REPS/RIR/DONE headers; swap rationale, calibration, and leverage setup live cleanly inside the 2-line exercise summary + ~ estimated load prefix',
+        bodyweightCard: 'Invariant WEIGHT header with clean BW input, leverage setup explained in the 2-line exercise summary, tightened 0–1 RIR for light loads, and >18-rep leverage step-up chip in RestTimerModal',
+        reentryCard: 'Invariant PREV header referencing last gym working sets, gym re-entry context in the 2-line exercise summary, and Travel Bridge bands on Progress strength charts',
       },
       accessibility: 'role="dialog" aria-modal="true", role="radiogroup"/role="radio" presets, native details/summary Tier-2 science drawer, aria-live="polite" rest-bar recalibration toast',
     },

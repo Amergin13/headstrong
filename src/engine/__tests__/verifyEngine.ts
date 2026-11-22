@@ -17510,9 +17510,14 @@ Exercise,,Date,Workout,Sets,Reps,Tempo,Rest,Notes,Set 1,Set 2,Set 3,Set 4
         !parserSrc75.includes('fetch(') &&
         !exCardSrc75.includes('Why this works') &&
         !exCardSrc75.includes('Bridged from') &&
-        exCardSrc75.includes('LAST AT GYM') &&
-        exCardSrc75.includes('Adapts on S1') &&
-        exCardSrc75.includes('SETUP') &&
+        !exCardSrc75.includes('LAST AT GYM') &&
+        !exCardSrc75.includes('Adapts on S1') &&
+        !exCardSrc75.includes("'SETUP'") &&
+        !exCardSrc75.includes("'REF'") &&
+        !exCardSrc75.includes("'PER DB'") &&
+        !exCardSrc75.includes("'ASSIST'") &&
+        exCardSrc75.includes('>PREV<') &&
+        exCardSrc75.includes('WEIGHT') &&
         setRowSrc75.includes('Pick moderate') &&
         setRowSrc75.includes('showEstimatedTilde') &&
         restModalSrc75.includes('recalibrationStatus') &&

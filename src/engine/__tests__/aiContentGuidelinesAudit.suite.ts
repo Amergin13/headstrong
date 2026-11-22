@@ -165,9 +165,23 @@ export async function runAiContentGuidelinesAuditSuite(assert: AssertFn): Promis
     anchorExerciseId: 'ex-bench-press',
     anchorExerciseName: 'Barbell Bench Press',
     continuityRationaleKind: 'BODYWEIGHT',
+    setupLabel: 'Feet elevated (~74% BW)',
     minReps: 12,
     maxReps: 20,
     sets: [{ id: 'pu1', setNumber: 1, targetWeightKg: 0, targetReps: 15, targetRir: 1, isWarmup: false, completed: false }],
+  };
+  const swappedEffortOnlyFirst: ExerciseSession = {
+    id: 'ex79-machine-sub',
+    exerciseId: 'ex-machine-chest-press',
+    name: 'Machine Chest Press',
+    pillar: 'Horizontal Push',
+    equipment: 'machine',
+    anchorExerciseId: 'ex-bench-press',
+    anchorExerciseName: 'Barbell Bench Press',
+    continuityRationaleKind: 'EFFORT_ONLY',
+    minReps: 8,
+    maxReps: 12,
+    sets: [{ id: 'mc1', setNumber: 1, targetWeightKg: 0, targetReps: 10, targetRir: 2, calibrationSource: 'EFFORT_ONLY', isWarmup: false, completed: false }],
   };
   const swappedTimedFirst: ExerciseSession = {
     id: 'ex79-timed-sub',
@@ -200,9 +214,11 @@ export async function runAiContentGuidelinesAuditSuite(assert: AssertFn): Promis
     { ex: swappedFacePullFirst, muscle: 'Rear shoulders', readiness: 'Amber Shield', label: 'Swapped Face Pull first-ever (Amber Shield)' },
     { ex: swappedBenchExperienced, muscle: 'Chest', readiness: 'Normal', label: 'Swapped Bench w/ history (Normal)' },
     { ex: swappedBenchExperienced, muscle: 'Chest', readiness: 'Amber Shield', label: 'Swapped Bench w/ history (Amber Shield)' },
-    { ex: swappedBwFirst, muscle: 'Chest', readiness: 'Normal', label: 'Swapped Bodyweight first-ever (Normal)' },
+    { ex: swappedBwFirst, muscle: 'Chest', readiness: 'Normal', label: 'Swapped Bodyweight w/ setup first-ever (Normal)' },
+    { ex: swappedEffortOnlyFirst, muscle: 'Chest', readiness: 'Normal', label: 'Swapped Effort-Only Machine first-ever (Normal)' },
     { ex: swappedTimedFirst, muscle: 'Core', readiness: 'Normal', label: 'Swapped Timed hold first-ever (Normal)' },
     { ex: reentryBench, muscle: 'Chest', readiness: 'Normal', label: 'Gym re-entry after away block (Normal)' },
+    { ex: reentryBench, muscle: 'Chest', readiness: 'Amber Shield', label: 'Gym re-entry after away block (Amber Shield)' },
   ];
 
   const rotPayloads: { exerciseName: string; summary: string }[] = [];
@@ -232,18 +248,26 @@ export async function runAiContentGuidelinesAuditSuite(assert: AssertFn): Promis
     rotPayloads.push({ exerciseName: c.ex.name, summary: noteFacts.fallback });
   }
 
-  // Explicitly verify user's two concrete examples explain progress & progression protection
+  // Explicitly verify user's concrete examples & changing session contexts live inside the 2-line summary
   const facePullInsight = buildExerciseInsight(swappedFacePullFirst, workouts, 'Normal', 81.4, 12, fmtKg, biometrics, 'Rear shoulders');
   const benchSubInsight = buildExerciseInsight(swappedBenchExperienced, workouts, 'Normal', 81.4, 12, fmtKg, biometrics, 'Chest');
+  const bwSetupInsight = buildExerciseInsight(swappedBwFirst, workouts, 'Normal', 81.4, 12, fmtKg, biometrics, 'Chest');
+  const effortOnlyInsight = buildExerciseInsight(swappedEffortOnlyFirst, workouts, 'Normal', 81.4, 12, fmtKg, biometrics, 'Chest');
+  const reentryInsight = buildExerciseInsight(reentryBench, workouts, 'Normal', 81.4, 12, fmtKg, biometrics, 'Chest');
   assert(
     facePullInsight.lines[0].includes('Replaces Cable Face Pull') &&
+      facePullInsight.lines[0].includes('estimated starting weight') &&
       facePullInsight.lines[1].includes('rear shoulders') &&
       facePullInsight.lines[1].includes('saved progression') &&
       benchSubInsight.lines[0].startsWith('Estimated max:') &&
       benchSubInsight.lines[1].includes('Replaces Barbell Bench Press') &&
       benchSubInsight.lines[1].includes('chest') &&
-      benchSubInsight.lines[1].includes('saved progression'),
-    'Swapped exercise briefs name the replaced lift, target muscle growth, and protected progression clearly'
+      benchSubInsight.lines[1].includes('saved progression') &&
+      bwSetupInsight.lines[0].includes('feet elevated') &&
+      !bwSetupInsight.summary.includes('%') &&
+      effortOnlyInsight.lines[0].includes('moderate opening weight') &&
+      reentryInsight.lines[1].includes('last gym load'),
+    'Swapped exercise, leverage setup, calibration, and gym re-entry contexts live cleanly inside the 2-line summary rather than varying table headers'
   );
 
   const rotAudit = runRotContentAudit(rotPayloads);

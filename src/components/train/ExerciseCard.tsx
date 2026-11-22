@@ -230,32 +230,18 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
           }}
         >
           <span role="columnheader">SET</span>
-          <span role="columnheader">
-            {exercise.isBridgeReentry
-              ? 'LAST AT GYM'
-              : exercise.anchorReferenceLabel && previousSets.length === 0
-              ? 'REF'
-              : 'PREV'}
-          </span>
+          <span role="columnheader">PREV</span>
           <span
             role="columnheader"
             title={
-              isBodyweightOnly && exercise.setupLabel
-                ? 'Bodyweight leverage setup and estimated load'
-                : isAssisted
+              isAssisted
                 ? 'Counterweight assistance (lower = harder)'
-                : exercise.equipment === 'dumbbell' && !usesOneDumbbell(exercise)
+                : isTwoDb
                 ? 'Weight per dumbbell'
                 : undefined
             }
           >
-            {isBodyweightOnly && exercise.setupLabel
-              ? 'SETUP'
-              : isAssisted
-              ? 'ASSIST'
-              : exercise.equipment === 'dumbbell' && !usesOneDumbbell(exercise)
-              ? 'PER DB'
-              : 'WEIGHT'}
+            WEIGHT
           </span>
           <span role="columnheader">{isTimed ? 'TIME' : 'REPS'}</span>
           {showRir && <span role="columnheader" title="Reps in reserve">RIR</span>}
@@ -285,20 +271,8 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
                 displayBadge = `${workingIndex}`;
                 displayLabel = `Set ${workingIndex}`;
               }
-              // PREV is the matching set from the last time this exact exercise was completed.
+              // PREV is strictly the matching set from the last time this exact exercise was completed.
               const previous = isWarm ? undefined : previousSets[workingIndex - 1];
-              const prevOverride =
-                !isWarm && !previous
-                  ? exercise.isBridgeReentry && exercise.reentryFromLabel && workingIndex === 1
-                    ? exercise.reentryFromLabel
-                    : exercise.anchorReferenceLabel
-                    ? workingIndex === 1
-                      ? exercise.anchorReferenceLabel
-                      : s.calibrationSource === 'SET_1_RECALIBRATED'
-                      ? undefined
-                      : 'Adapts on S1'
-                    : undefined
-                  : undefined;
               return (
                 <SetRow
                   key={s.id}
@@ -306,12 +280,10 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
                   displayBadge={displayBadge}
                   displayLabel={displayLabel}
                   previous={previous}
-                  prevOverride={prevOverride}
-                  setupLabelOverride={s.setupLabel ?? exercise.setupLabel}
                   isEffortOnly={s.calibrationSource === 'EFFORT_ONLY' && !s.completed}
                   isBodyweight={isBodyweightOnly}
                   isDumbbell={exercise.equipment === 'dumbbell'}
-                  isTwoDumbbell={exercise.equipment === 'dumbbell' && !usesOneDumbbell(exercise)}
+                  isTwoDumbbell={isTwoDb}
                   isTimed={isTimed}
                   showRir={showRir}
                   perSide={unilateral && perSide && !isWarm}
