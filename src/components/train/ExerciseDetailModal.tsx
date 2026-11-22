@@ -11,9 +11,9 @@ import {
   ReadinessState,
   WorkoutSession,
 } from '../../engine/types';
-import { isTimedExercise } from '../../engine/e1rm';
+import { isTimedExercise, usesOneDumbbell } from '../../engine/e1rm';
 import { buildExerciseBridgeBands } from '../../engine/continuityEngine';
-import { buildExerciseInsight, ExerciseInsight } from '../../services/exerciseInsight';
+import { buildExerciseInsight, ExerciseInsight, isIsolationOrSmallExercise } from '../../services/exerciseInsight';
 import {
   buildExerciseDetailModel,
   buildExerciseTrendSpec,
@@ -225,9 +225,22 @@ export const ExerciseDetailModal: React.FC<ExerciseDetailModalProps> = ({
     ]
   );
 
+  const isIsolationView = !isTimed && isIsolationOrSmallExercise(exercise, exerciseDef);
+  const isTwoDb = exercise.equipment === 'dumbbell' && !usesOneDumbbell(exercise);
   const trendSpec = useMemo(
-    () => buildExerciseTrendSpec(resolvedInsight, isTimed, (kg) => units.formatPrecise(kg), localDateString),
-    [resolvedInsight, isTimed, units]
+    () =>
+      buildExerciseTrendSpec(
+        resolvedInsight,
+        isTimed,
+        (kg) => units.formatPrecise(kg),
+        localDateString,
+        {
+          isIsolation: isIsolationView,
+          isTwoDumbbell: isTwoDb,
+          formatWeight: (kg) => units.format(kg),
+        }
+      ),
+    [resolvedInsight, isTimed, units, isIsolationView, isTwoDb]
   );
 
   const formClip = useMemo(
@@ -858,6 +871,7 @@ export const ExerciseDetailModal: React.FC<ExerciseDetailModalProps> = ({
               <TrendChart
                 points={trendSpec.points}
                 format={trendSpec.format}
+                positiveProgress={trendSpec.positiveProgress}
                 bridgeBands={
                   !isTimed
                     ? buildExerciseBridgeBands(exercise.exerciseId, workouts, exerciseCatalog ?? [])

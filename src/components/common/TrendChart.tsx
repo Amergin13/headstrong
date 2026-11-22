@@ -6,6 +6,10 @@ import type { ChartTone, ChartTypicalRange } from '../../services/progressSeries
 export interface TrendPoint {
   date: string; // YYYY-MM-DD
   value: number;
+  /** Optional compact label shown directly above a sparse dot (e.g. "12×15"). */
+  pointLabel?: string;
+  /** Optional full human-readable label for single-point callout & footer latest readout (e.g. "12 kg/DB × 15"). */
+  detailLabel?: string;
 }
 
 interface TrendChartProps {
@@ -265,10 +269,13 @@ export const TrendChart: React.FC<TrendChartProps> = ({
   // Decide which node labels render without horizontal overlap on sparse series.
   const visibleNodeLabels = new Set<number>();
   if (showNodes) {
+    const hasWideLabel = points.some((p) => (p.pointLabel?.length ?? 0) >= 4);
+    const minLabelGap = hasWideLabel ? W * 0.13 : W * 0.085;
+    const minLastGap = hasWideLabel ? W * 0.11 : W * 0.065;
     let prevLabelX = -Infinity;
     main.forEach((pt, idx) => {
-      if (pt.x - prevLabelX >= W * 0.085 || idx === main.length - 1) {
-        if (idx === main.length - 1 && idx > 0 && pt.x - prevLabelX < W * 0.065) {
+      if (pt.x - prevLabelX >= minLabelGap || idx === main.length - 1) {
+        if (idx === main.length - 1 && idx > 0 && pt.x - prevLabelX < minLastGap) {
           visibleNodeLabels.delete(idx - 1);
         }
         visibleNodeLabels.add(idx);
@@ -527,7 +534,7 @@ export const TrendChart: React.FC<TrendChartProps> = ({
                     }}
                     aria-hidden="true"
                   >
-                    {stripTrailingUnit(format(points[idx].value))}
+                    {points[idx].pointLabel ?? stripTrailingUnit(format(points[idx].value))}
                   </span>
                 )}
               </React.Fragment>
@@ -561,7 +568,7 @@ export const TrendChart: React.FC<TrendChartProps> = ({
               }}
               aria-hidden="true"
             >
-              {format(points[0].value)}
+              {points[0].detailLabel ?? format(points[0].value)}
             </span>
           )}
         </div>
@@ -610,7 +617,7 @@ export const TrendChart: React.FC<TrendChartProps> = ({
           <div className="wk-chart-fade flex justify-between" style={{ ...mutedStyle, marginTop: 8 }} aria-hidden="true">
             <span>{dayMonth(points[0].date)}</span>
             <span>
-              {dayMonth(points[points.length - 1].date)} · {format(points[points.length - 1].value)}
+              {dayMonth(points[points.length - 1].date)} · {points[points.length - 1].detailLabel ?? format(points[points.length - 1].value)}
             </span>
           </div>
         )}

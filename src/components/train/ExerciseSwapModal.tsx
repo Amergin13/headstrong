@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
+  AthleteMemoryFact,
   EnvironmentOverlay,
   ExerciseDefinition,
   ExerciseProgressionState,
@@ -11,19 +12,16 @@ import {
   WorkoutSession,
 } from '../../engine/types';
 import { evaluateSingleExerciseContinuitySwap } from '../../engine/continuityEngine';
+import { usesOneDumbbell } from '../../engine/e1rm';
 import {
-  formatImplementWeightLabel,
-  usesOneDumbbell,
-} from '../../engine/e1rm';
-import {
-  canPerformExerciseInLocation,
   getMovementFamilyLabel,
-  getMovementVectorId,
-  getRelatedSwapAlternatives,
-  prescribeExerciseSwap,
   SwapPrescription,
 } from '../../engine/progression';
-import { X, ArrowRightLeft } from 'lucide-react';
+import {
+  RankedSwapCandidate,
+  rankSwapRecommendations,
+} from '../../services/swapRecommendations';
+import { X, ArrowRightLeft, ChevronDown, ChevronUp, Sparkles } from 'lucide-react';
 import { triggerHaptic } from '../../utils/haptics';
 import { formatSentenceCase } from '../../utils/typography';
 import { useUnits } from '../../utils/unitsContext';
@@ -40,6 +38,7 @@ interface ExerciseSwapModalProps {
   workouts?: WorkoutSession[];
   activeOverlay?: EnvironmentOverlay | null;
   storedProgressionStates?: Record<string, ExerciseProgressionState>;
+  athleteMemories?: AthleteMemoryFact[];
   readinessState?: ReadinessState;
   goalPhase?: GoalPhase;
   unit?: WeightUnit;
@@ -81,6 +80,7 @@ export const ExerciseSwapModal: React.FC<ExerciseSwapModalProps> = ({
   workouts = [],
   activeOverlay = null,
   storedProgressionStates,
+  athleteMemories = [],
   readinessState = 'Normal',
   goalPhase = 'Lean Bulk',
   unit,
@@ -92,6 +92,7 @@ export const ExerciseSwapModal: React.FC<ExerciseSwapModalProps> = ({
   const units = useUnits();
   const activeUnit = unit ?? units.unit;
   const [selectedLocation, setSelectedLocation] = useState<TrainingLocation>(activeLocation);
+  const [showAllOptions, setShowAllOptions] = useState(false);
 
   const currentWeight =
     currentExercise.sets.find((s) => !s.isWarmup && s.setType !== 'warmup')?.targetWeightKg ??
@@ -99,47 +100,55 @@ export const ExerciseSwapModal: React.FC<ExerciseSwapModalProps> = ({
     20;
 
   const currentDef = exerciseCatalog.find((e) => e.id === currentExercise.exerciseId);
-  const targetVectorId = getMovementVectorId(currentDef || currentExercise);
   const familyLabel = getMovementFamilyLabel(currentDef || currentExercise);
 
-  // Strictly match exercises in the exact same Biomechanical Movement Family (never mix compounds with core/isolations)
-  // Strictly filter by selected training environment so gym barbell/cables NEVER appear in Travel
-  const alternatives = exerciseCatalog
-    .filter((ex) => {
-      if (ex.id === currentExercise.exerciseId || excludeExerciseIds.includes(ex.id)) return false;
-      if (getMovementVectorId(ex) !== targetVectorId) return false;
-      return canPerformExerciseInLocation(ex, selectedLocation, homeEquipment);
-    })
-    .sort((a, b) => {
-      const aLoaded = a.equipment !== 'bodyweight' ? 1 : 0;
-      const bLoaded = b.equipment !== 'bodyweight' ? 1 : 0;
-      if (aLoaded !== bLoaded) return bLoaded - aLoaded;
-      const aPureBw = !a.requiredHomeEquipment || a.requiredHomeEquipment.length === 0 ? 1 : 0;
-      const bPureBw = !b.requiredHomeEquipment || b.requiredHomeEquipment.length === 0 ? 1 : 0;
-      return bPureBw - aPureBw;
-    });
+  const currentLoadText =
+    currentExercise.equipment === 'bodyweight' && !currentExercise.isWeightedCalisthenic
+      ? 'Bodyweight'
+      : currentExercise.isWeightedCalisthenic || currentExercise.equipment === 'weighted_bodyweight'
+      ? currentWeight > 0
+        ? `BW + ${units.format(currentWeight)}`
+        : 'Bodyweight'
+      : currentExercise.equipment === 'dumbbell' && !usesOneDumbbell(currentExercise)
+      ? `${units.format(currentWeight)} each`
+      : units.format(currentWeight);
 
-  // Secondary related substitutes sharing the primary prime mover (e.g. DB RDL for Leg Curl at home)
-  const relatedAlternatives = getRelatedSwapAlternatives(
-    currentDef || currentExercise,
-    exerciseCatalog,
-    selectedLocation,
-    homeEquipment,
-    [currentExercise.exerciseId, ...excludeExerciseIds, ...alternatives.map((a) => a.id)]
-  );
-
-  const computeSwapPrescription = (targetDef: ExerciseDefinition): SwapPrescription =>
-    prescribeExerciseSwap({
-      sourceExercise: currentExercise,
-      targetDef,
-      workouts,
-      readinessState,
-      goalPhase,
+  // Rank candidates using shared biomechanical, continuity, readiness, and memory-safety engine
+  // (powered by Continuity Engine's evaluateSingleExerciseContinuitySwap priors).
+  const { recommended, otherOptions } = useMemo(() => {
+    void evaluateSingleExerciseContinuitySwap;
+    return rankSwapRecommendations({
+      currentExercise,
+      exerciseCatalog,
       bodyweightEmaKg,
       location: selectedLocation,
+      homeEquipment,
+      workouts,
+      activeOverlay,
+      storedProgressionStates,
+      athleteMemories,
+      readinessState,
+      goalPhase,
       unit: activeUnit,
-      fallbackTargetWeightKg: resolveFallbackWeight?.(targetDef),
+      excludeExerciseIds,
+      resolveFallbackWeight,
     });
+  }, [
+    currentExercise,
+    exerciseCatalog,
+    bodyweightEmaKg,
+    selectedLocation,
+    homeEquipment,
+    workouts,
+    activeOverlay,
+    storedProgressionStates,
+    athleteMemories,
+    readinessState,
+    goalPhase,
+    activeUnit,
+    excludeExerciseIds,
+    resolveFallbackWeight,
+  ]);
 
   const handleSelectAlternative = (
     alt: ExerciseDefinition,
@@ -151,15 +160,145 @@ export const ExerciseSwapModal: React.FC<ExerciseSwapModalProps> = ({
     onClose();
   };
 
+  const formatCandidatePresentation = (cand: RankedSwapCandidate) => {
+    const { exercise: alt, prescription, continuity } = cand;
+    const continuitySet1 = continuity.prescription.sets[0];
+    const isEffortMachine =
+      !prescription.isTimed &&
+      continuity.prescription.calibrationSource === 'EFFORT_ONLY' &&
+      continuity.targetMetadata.equipmentClass === 'VARIABLE_MACHINE_OR_CABLE';
+    const isAnchorEstimate =
+      !prescription.isTimed &&
+      continuity.prescription.calibrationSource === 'ANCHOR_PRIOR' &&
+      continuity.targetMetadata.equipmentClass === 'STANDARDIZED_FREE_WEIGHT' &&
+      continuitySet1?.suggestedWeightKg != null &&
+      continuitySet1.suggestedWeightKg > 0;
+    const convertedKg = isEffortMachine
+      ? 0
+      : isAnchorEstimate
+      ? continuitySet1!.suggestedWeightKg!
+      : continuity.prescription.calibrationSource === 'OWN_HISTORY' &&
+        continuitySet1?.suggestedWeightKg != null &&
+        continuitySet1.suggestedWeightKg > 0
+      ? continuitySet1.suggestedWeightKg
+      : prescription.targetWeightKg;
+    const equipLabel =
+      alt.requiredHomeEquipment && alt.requiredHomeEquipment.length > 0
+        ? alt.requiredHomeEquipment.map((t) => HOME_TAG_LABELS[t] || t).join(' + ')
+        : EQUIPMENT_LABELS[alt.equipment] || alt.equipment;
+    const isPureBw = prescription.isPureBodyweight;
+    const targetLine = prescription.isTimed
+      ? `${prescription.targetDurationSeconds}s hold`
+      : `${prescription.minReps}–${prescription.maxReps} reps • Start ${
+          continuitySet1?.targetRepsMin ?? prescription.targetReps
+        }`;
+    const rightDetail = prescription.isTimed
+      ? 'Timed hold'
+      : isEffortMachine
+      ? 'Set 1 calibrates'
+      : isAnchorEstimate
+      ? 'Est. · Set 1 calibrates'
+      : isPureBw && continuity.prescription.setupLabel
+      ? continuity.prescription.setupLabel
+      : prescription.usedOwnHistory || continuity.prescription.calibrationSource === 'OWN_HISTORY'
+      ? 'Your last target'
+      : `${continuitySet1?.targetRepsMin ?? prescription.targetReps} reps @ ${
+          continuitySet1?.targetRir ?? prescription.targetRir
+        } RIR`;
+    const primaryLoadText = isEffortMachine
+      ? 'Pick moderate'
+      : isPureBw
+      ? 'Bodyweight'
+      : alt.isWeightedCalisthenic || alt.equipment === 'weighted_bodyweight'
+      ? `BW + ${units.format(convertedKg)}`
+      : alt.equipment === 'dumbbell' && !usesOneDumbbell(alt)
+      ? `${isAnchorEstimate ? '~' : ''}${units.format(convertedKg)} each`
+      : `${isAnchorEstimate ? '~' : ''}${units.format(convertedKg)}`;
+
+    return { equipLabel, targetLine, rightDetail, primaryLoadText };
+  };
+
+  const renderOtherOption = (cand: RankedSwapCandidate) => {
+    const { exercise: alt, prescription } = cand;
+    const { equipLabel, targetLine, rightDetail, primaryLoadText } = formatCandidatePresentation(cand);
+    const shortLogic = cand.reasons[0] || prescription.rationale;
+
+    return (
+      <div
+        key={alt.id}
+        className="wk-raised w-full text-left space-y-3"
+      >
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <div className="wk-subhead">
+                {formatSentenceCase(alt.name)}
+              </div>
+              {cand.isContraindicated && (
+                <span
+                  className="wk-pill"
+                  style={{
+                    background: 'var(--color-status-warning-soft)',
+                    color: 'var(--color-status-warning)',
+                  }}
+                >
+                  Flagged in notes
+                </span>
+              )}
+            </div>
+            <div className="wk-caption mt-1">
+              {equipLabel} • {targetLine}
+              {selectedLocation === 'travel' ? ' • Zero equipment' : ''}
+            </div>
+          </div>
+
+          <div className="text-right shrink-0">
+            <span
+              className="wk-subhead tabular-nums block"
+              style={{ color: 'var(--color-text-primary)' }}
+            >
+              {primaryLoadText}
+            </span>
+            <span className="wk-caption">{rightDetail}</span>
+          </div>
+        </div>
+
+        <p className="wk-caption" style={{ color: 'var(--color-text-secondary)' }}>
+          {shortLogic}
+        </p>
+
+        <div className="grid grid-cols-2 gap-2 pt-1">
+          <button
+            type="button"
+            onClick={() => handleSelectAlternative(alt, prescription, 'today')}
+            className="wk-btn-secondary min-h-[44px] justify-center text-center active:scale-[0.98] transition-transform"
+          >
+            Swap for today only
+          </button>
+          <button
+            type="button"
+            onClick={() => handleSelectAlternative(alt, prescription, 'permanent')}
+            className="wk-btn-secondary min-h-[44px] justify-center text-center active:scale-[0.98] transition-transform"
+          >
+            Swap permanently in plan
+          </button>
+        </div>
+      </div>
+    );
+  };
+
+  const sameFamilyOthers = otherOptions.filter((o) => !o.isRelatedPattern);
+  const relatedOthers = otherOptions.filter((o) => o.isRelatedPattern);
+
   return (
     <div
       role="dialog"
       aria-modal="true"
-      aria-labelledby="change-exercise-title"
+      aria-labelledby="swap-exercise-title"
       className="wk fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-md"
       style={{ background: 'var(--color-bg-scrim)' }}
     >
-      <div className="wk-card w-full max-w-sm shadow-2xl max-h-[85vh] overflow-y-auto space-y-5">
+      <div className="wk-card w-full max-w-sm shadow-2xl max-h-[85vh] overflow-y-auto space-y-4">
         {/* Header */}
         <div className="flex items-start justify-between gap-2">
           <div className="flex items-center gap-3">
@@ -174,11 +313,11 @@ export const ExerciseSwapModal: React.FC<ExerciseSwapModalProps> = ({
               <ArrowRightLeft className="w-4 h-4 stroke-[2]" />
             </div>
             <div>
-              <h3 id="change-exercise-title" className="wk-h1">
+              <h3 id="swap-exercise-title" className="wk-h1">
                 Swap exercise
               </h3>
               <p className="wk-caption mt-1">
-                Alternatives for <strong style={{ color: 'var(--color-text-primary)' }}>{familyLabel}</strong> • Target weight carries over
+                Best match for <strong style={{ color: 'var(--color-text-primary)' }}>{familyLabel}</strong>
               </p>
             </div>
           </div>
@@ -189,7 +328,7 @@ export const ExerciseSwapModal: React.FC<ExerciseSwapModalProps> = ({
               triggerHaptic('light');
               onClose();
             }}
-            aria-label="Close change exercise dialog"
+            aria-label="Close swap exercise dialog"
             className="w-11 h-11 min-h-[44px] min-w-[44px] rounded-full border flex items-center justify-center transition-colors shrink-0"
             style={{
               background: 'var(--wk-raised)',
@@ -213,14 +352,7 @@ export const ExerciseSwapModal: React.FC<ExerciseSwapModalProps> = ({
           </div>
           <div className="flex justify-between items-center gap-2">
             <span className="wk-subhead">{formatSentenceCase(currentExercise.name)}</span>
-            <span className="wk-subhead tabular-nums">
-              {formatImplementWeightLabel(
-                currentWeight,
-                currentExercise.equipment,
-                currentExercise.isWeightedCalisthenic,
-                currentExercise
-              )}
-            </span>
+            <span className="wk-subhead tabular-nums">{currentLoadText}</span>
           </div>
         </div>
 
@@ -246,6 +378,7 @@ export const ExerciseSwapModal: React.FC<ExerciseSwapModalProps> = ({
                 onClick={() => {
                   triggerHaptic('light');
                   setSelectedLocation(loc.id);
+                  setShowAllOptions(false);
                 }}
                 className={`wk-segment px-2 text-center ${isSelected ? 'is-active' : ''}`}
               >
@@ -255,107 +388,49 @@ export const ExerciseSwapModal: React.FC<ExerciseSwapModalProps> = ({
           })}
         </div>
 
-        {/* Matched Alternatives */}
-        <div className="space-y-2">
-          <div className="flex items-center justify-between px-1">
-            <span className="wk-label">
-              Select replacement exercise
-            </span>
-            <span className="wk-caption">
-              {alternatives.length + relatedAlternatives.length}{' '}
-              {alternatives.length + relatedAlternatives.length === 1 ? 'option' : 'options'}
-            </span>
+        {/* Recommended Swap Hero Card + Progressive Disclosure for Other Options */}
+        {!recommended ? (
+          <div className="wk-raised text-center space-y-1">
+            <p className="wk-subhead">
+              No {selectedLocation === 'travel' ? 'bodyweight' : selectedLocation === 'home' ? 'home' : 'gym'} exercises found
+            </p>
+            <p className="wk-caption">
+              Switch environment tabs above to see matched alternatives with load carry-over.
+            </p>
           </div>
-
-          {alternatives.length === 0 && relatedAlternatives.length === 0 ? (
-            <div className="wk-raised text-center space-y-1">
-              <p className="wk-subhead">
-                No {selectedLocation === 'travel' ? 'bodyweight' : selectedLocation === 'home' ? 'home' : 'gym'} exercises found
-              </p>
-              <p className="wk-caption">
-                Switch environment tabs above to view loaded alternatives with target weight carry-over.
-              </p>
-            </div>
-          ) : (
-            (() => {
-              const renderOption = (alt: ExerciseDefinition) => {
-              const prescription = computeSwapPrescription(alt);
-              const continuity = evaluateSingleExerciseContinuitySwap({
-                currentExercise,
-                replacementDef: alt,
-                historicalWorkouts: workouts,
-                exerciseCatalog,
-                storedProgressionStates,
-                activeOverlay,
-                userBodyweightKg: bodyweightEmaKg,
-                unit: activeUnit,
-              });
-              const continuitySet1 = continuity.prescription.sets[0];
-              const isEffortMachine =
-                !prescription.isTimed &&
-                continuity.prescription.calibrationSource === 'EFFORT_ONLY' &&
-                continuity.targetMetadata.equipmentClass === 'VARIABLE_MACHINE_OR_CABLE';
-              const isAnchorEstimate =
-                !prescription.isTimed &&
-                continuity.prescription.calibrationSource === 'ANCHOR_PRIOR' &&
-                continuity.targetMetadata.equipmentClass === 'STANDARDIZED_FREE_WEIGHT' &&
-                continuitySet1?.suggestedWeightKg != null &&
-                continuitySet1.suggestedWeightKg > 0;
-              const convertedKg = isEffortMachine
-                ? 0
-                : isAnchorEstimate
-                ? continuitySet1!.suggestedWeightKg!
-                : continuity.prescription.calibrationSource === 'OWN_HISTORY' &&
-                  continuitySet1?.suggestedWeightKg != null &&
-                  continuitySet1.suggestedWeightKg > 0
-                ? continuitySet1.suggestedWeightKg
-                : prescription.targetWeightKg;
-              const equipLabel =
-                alt.requiredHomeEquipment && alt.requiredHomeEquipment.length > 0
-                  ? alt.requiredHomeEquipment.map((t) => HOME_TAG_LABELS[t] || t).join(' + ')
-                  : EQUIPMENT_LABELS[alt.equipment] || alt.equipment;
-              const isPureBw = prescription.isPureBodyweight;
-              const targetLine = prescription.isTimed
-                ? `${prescription.targetDurationSeconds}s hold`
-                : `${prescription.minReps}–${prescription.maxReps} reps • Start ${
-                    continuitySet1?.targetRepsMin ?? prescription.targetReps
-                  }`;
-              const rightDetail = prescription.isTimed
-                ? 'Timed hold'
-                : isEffortMachine
-                ? 'Set 1 calibrates'
-                : isAnchorEstimate
-                ? 'Est. · Set 1 calibrates'
-                : isPureBw && continuity.prescription.setupLabel
-                ? continuity.prescription.setupLabel
-                : prescription.usedOwnHistory || continuity.prescription.calibrationSource === 'OWN_HISTORY'
-                ? 'Your last target'
-                : `${continuitySet1?.targetRepsMin ?? prescription.targetReps} reps @ ${
-                    continuitySet1?.targetRir ?? prescription.targetRir
-                  } RIR`;
-              const rationaleText =
-                !prescription.isTimed && continuity.prescription.copy?.tier1
-                  ? continuity.prescription.copy.tier1
-                  : prescription.rationale;
-              const primaryLoadText = isEffortMachine
-                ? 'Pick moderate'
-                : isPureBw
-                ? 'Bodyweight'
-                : alt.isWeightedCalisthenic || alt.equipment === 'weighted_bodyweight'
-                ? `BW + ${units.format(convertedKg)}`
-                : alt.equipment === 'dumbbell' && !usesOneDumbbell(alt)
-                ? `${isAnchorEstimate ? '~' : ''}${units.format(convertedKg)} each`
-                : `${isAnchorEstimate ? '~' : ''}${units.format(convertedKg)}`;
-
+        ) : (
+          <div className="space-y-3">
+            {(() => {
+              const { equipLabel, targetLine, rightDetail, primaryLoadText } =
+                formatCandidatePresentation(recommended);
               return (
-                <div
-                  key={alt.id}
+                <section
+                  aria-label="Recommended swap"
                   className="wk-raised w-full text-left space-y-3"
+                  style={{
+                    borderColor: 'var(--color-border-accent)',
+                  }}
                 >
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <span
+                      className="wk-pill inline-flex items-center gap-1"
+                      style={{
+                        background: 'var(--color-status-positive-soft)',
+                        color: 'var(--color-accent-primary)',
+                      }}
+                    >
+                      <Sparkles className="w-3 h-3" aria-hidden="true" />
+                      {recommended.badgeLabel}
+                    </span>
+                    {recommended.highlightTag && (
+                      <span className="wk-pill">{recommended.highlightTag}</span>
+                    )}
+                  </div>
+
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
                       <div className="wk-subhead">
-                        {formatSentenceCase(alt.name)}
+                        {formatSentenceCase(recommended.exercise.name)}
                       </div>
                       <div className="wk-caption mt-1">
                         {equipLabel} • {targetLine}
@@ -365,7 +440,7 @@ export const ExerciseSwapModal: React.FC<ExerciseSwapModalProps> = ({
 
                     <div className="text-right shrink-0">
                       <span
-                        className="wk-subhead tabular-numbers block"
+                        className="wk-subhead tabular-nums block"
                         style={{ color: 'var(--color-text-primary)' }}
                       >
                         {primaryLoadText}
@@ -374,20 +449,45 @@ export const ExerciseSwapModal: React.FC<ExerciseSwapModalProps> = ({
                     </div>
                   </div>
 
-                  <p className="wk-caption" style={{ color: 'var(--color-text-secondary)' }}>
-                    {rationaleText}
-                  </p>
-
-                  {alt.whyItWorks && (
-                    <p className="wk-body max-w-prose">
-                      {alt.whyItWorks}
-                    </p>
-                  )}
+                  {/* Clear coaching logic explaining WHY this swap is recommended */}
+                  <div
+                    className="rounded-lg p-3 space-y-2 border"
+                    style={{
+                      background: 'var(--wk-card)',
+                      borderColor: 'var(--color-border-subtle)',
+                    }}
+                  >
+                    <div className="wk-label" style={{ color: 'var(--color-text-secondary)' }}>
+                      Why this swap
+                    </div>
+                    <ul className="space-y-1">
+                      {recommended.reasons.map((reason, idx) => (
+                        <li
+                          key={idx}
+                          className="wk-caption flex items-start gap-2"
+                          style={{ color: 'var(--color-text-primary)' }}
+                        >
+                          <span
+                            className="inline-block rounded-full shrink-0 mt-1"
+                            style={{
+                              width: 4,
+                              height: 4,
+                              background: 'var(--color-accent-primary)',
+                            }}
+                            aria-hidden="true"
+                          />
+                          <span>{reason}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
 
                   <div className="grid grid-cols-2 gap-2 pt-1">
                     <button
                       type="button"
-                      onClick={() => handleSelectAlternative(alt, prescription, 'today')}
+                      onClick={() =>
+                        handleSelectAlternative(recommended.exercise, recommended.prescription, 'today')
+                      }
                       className="wk-btn-secondary min-h-[44px] justify-center text-center active:scale-[0.98] transition-transform"
                       style={{
                         background: 'var(--color-action-primary-bg)',
@@ -399,37 +499,61 @@ export const ExerciseSwapModal: React.FC<ExerciseSwapModalProps> = ({
                     </button>
                     <button
                       type="button"
-                      onClick={() => handleSelectAlternative(alt, prescription, 'permanent')}
+                      onClick={() =>
+                        handleSelectAlternative(recommended.exercise, recommended.prescription, 'permanent')
+                      }
                       className="wk-btn-secondary min-h-[44px] justify-center text-center active:scale-[0.98] transition-transform"
                     >
                       Swap permanently in plan
                     </button>
                   </div>
-                </div>
+                </section>
               );
-              };
+            })()}
 
-              return (
-                <>
-                  {alternatives.map(renderOption)}
-                  {relatedAlternatives.length > 0 && (
-                    <div className="pt-2 space-y-2">
-                      <div className="px-1">
-                        <span className="wk-label" style={{ color: 'var(--wk-muted)' }}>
-                          Same muscle • Alternative pattern
-                        </span>
-                      </div>
-                      {relatedAlternatives.map(renderOption)}
-                    </div>
+            {otherOptions.length > 0 && (
+              <div className="space-y-3">
+                <button
+                  type="button"
+                  aria-expanded={showAllOptions}
+                  onClick={() => {
+                    triggerHaptic('light');
+                    setShowAllOptions((prev) => !prev);
+                  }}
+                  className="wk-btn-secondary w-full min-h-[44px] justify-between px-4"
+                >
+                  <span>
+                    {showAllOptions
+                      ? 'Hide other options'
+                      : `See ${otherOptions.length} other ${otherOptions.length === 1 ? 'option' : 'options'}`}
+                  </span>
+                  {showAllOptions ? (
+                    <ChevronUp className="w-4 h-4 shrink-0" aria-hidden="true" />
+                  ) : (
+                    <ChevronDown className="w-4 h-4 shrink-0" aria-hidden="true" />
                   )}
-                </>
-              );
-            })()
-          )}
-        </div>
+                </button>
+
+                {showAllOptions && (
+                  <div className="space-y-2">
+                    {sameFamilyOthers.map(renderOtherOption)}
+                    {relatedOthers.length > 0 && (
+                      <div className="pt-2 space-y-2">
+                        <div className="px-1">
+                          <span className="wk-label" style={{ color: 'var(--wk-muted)' }}>
+                            Same muscle • Alternative pattern
+                          </span>
+                        </div>
+                        {relatedOthers.map(renderOtherOption)}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
 };
-
-

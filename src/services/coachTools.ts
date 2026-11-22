@@ -88,6 +88,7 @@ import { detectProgressWidgetChange } from './progressWidgets';
 import { BODY_MEASUREMENT_SITES, BodySiteDefinition } from './renphoBluetooth';
 import { prepareSessionForAthlete, startingWeightForNewExercise } from './sessionPreparation';
 import { loadAuthUser, saveActiveWorkout, saveActivities, saveBiometrics, saveProfile } from './storage';
+import { rankSwapRecommendations } from './swapRecommendations';
 import { adaptWorkoutSessionToLocation, generateSmartWorkoutSession, getFirstSplitDayForProgram } from './workoutGenerator';
 
 // ============================================================================
@@ -1381,8 +1382,28 @@ function findBestReplacementExercise(
     if (bySubstring) return bySubstring;
   }
 
-  const currentDef = catalog.find((d) => d.id === currentEx.exerciseId);
   const existingIds = new Set(todayWorkout.exercises.map((e) => e.exerciseId));
+  // Share the exact same biomechanical + readiness + safety recommendation engine as ExerciseSwapModal
+  const ranked = rankSwapRecommendations({
+    currentExercise: currentEx,
+    exerciseCatalog: catalog,
+    bodyweightEmaKg: context.bodyweightEmaKg,
+    location: where,
+    homeEquipment: homeEquip,
+    workouts: context.workouts,
+    activeOverlay: context.profile.activeEnvironmentOverlay,
+    storedProgressionStates: context.profile.exerciseProgressionStates,
+    athleteMemories: context.profile.athleteMemories,
+    readinessState: context.readinessState,
+    goalPhase: context.profile.goalPhase,
+    unit: context.profile.weightUnit || 'kg',
+    excludeExerciseIds: [...existingIds],
+  });
+  if (ranked.recommended && !ranked.recommended.isContraindicated) {
+    return ranked.recommended.exercise;
+  }
+
+  const currentDef = catalog.find((d) => d.id === currentEx.exerciseId);
   return (
     catalog.find(
       (d) =>

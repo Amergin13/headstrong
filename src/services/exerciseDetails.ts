@@ -297,19 +297,122 @@ export interface ExerciseDetailModel {
 }
 
 export interface ExerciseTrendSpec {
-  points: { date: string; value: number }[];
+  points: { date: string; value: number; pointLabel?: string; detailLabel?: string }[];
   format: (v: number) => string;
   label: string;
+  /** Optional calm single-line micro-header above the chart (used by Best set isolation trend graphs). */
+  caption?: string;
+  /** Optional right-aligned latest set summary paired with `caption`. */
+  latestDisplay?: string;
+  /** Optional explicit positive-progress override (e.g. same weight with more reps on a best-set graph). */
+  positiveProgress?: boolean;
+  /** 'best_set_reps' | 'best_set_load' when built from bestSetHistory for isolation lifts. */
+  mode?: 'e1rm' | 'reps' | 'added_kg' | 'time' | 'best_set_reps' | 'best_set_load';
   emptyTitle: string;
   emptyMessage: string;
+}
+
+export interface ExerciseTrendSpecOptions {
+  isIsolation?: boolean;
+  isTwoDumbbell?: boolean;
+  /** Formats load in the athlete's display unit (e.g. "12 kg" or "25 lb"); falls back to formatPreciseWeight. */
+  formatWeight?: (kg: number) => string;
 }
 
 export function buildExerciseTrendSpec(
   insight: ExerciseInsight | undefined,
   isTimed: boolean,
   formatPreciseWeight: (kg: number) => string,
-  toLocalDate: (d: Date) => string
+  toLocalDate: (d: Date) => string,
+  options?: ExerciseTrendSpecOptions
 ): ExerciseTrendSpec {
+  const isIsolation = !isTimed && Boolean(options?.isIsolation ?? insight?.isIsolation);
+
+  // Isolation / small-muscle lifts plot a single calm Best Set trend graph (never a noisy E1RM
+  // and never a cluttered multi-tile table):
+  // - Constant working weight (or bodyweight) -> clean rising Reps trend line at that weight.
+  // - Changing working weights -> clean working-load trend line with compact "12×15" point labels
+  //   so stepping up in weight never looks like a sawtooth regression.
+  if (isIsolation) {
+    const bestSets = (insight?.bestSetHistory ?? []).slice(-10);
+    const fmtWt = options?.formatWeight ?? formatPreciseWeight;
+    const dbSuffix = options?.isTwoDumbbell ? '/DB' : '';
+    const stripUnit = (s: string) => s.replace(/\s+(kg|lb|lbs)$/i, '');
+    const fmtFullSet = (w: number, r: number) =>
+      w > 0 ? `${fmtWt(w)}${dbSuffix} × ${r}` : `${r} reps`;
+
+    if (bestSets.length === 0) {
+      return {
+        points: [],
+        format: (v) => `${Math.round(v)} reps`,
+        label: 'No sessions logged yet. Your best set trend appears here after your first session.',
+        caption: 'Best set',
+        mode: 'best_set_reps',
+        emptyTitle: 'No history yet',
+        emptyMessage: 'Complete working sets to record your starting best set.',
+      };
+    }
+
+    const uniqueWeights = new Set(bestSets.map((pt) => Math.round(pt.weightKg * 10) / 10));
+    const allBodyweight = bestSets.every((pt) => pt.weightKg <= 0);
+    const constantWeight = uniqueWeights.size === 1 && !allBodyweight;
+    const first = bestSets[0];
+    const last = bestSets[bestSets.length - 1];
+    const latestDisplay = fmtFullSet(last.weightKg, last.reps);
+
+    if (allBodyweight || constantWeight) {
+      const wtLabel = constantWeight ? `${fmtWt(first.weightKg)}${dbSuffix}` : null;
+      const caption = wtLabel ? `Best set · reps at ${wtLabel}` : 'Best set · reps';
+      const positiveProgress = bestSets.length >= 2 && last.reps > first.reps;
+      const label =
+        bestSets.length >= 2
+          ? `Best set over your last ${bestSets.length} sessions${wtLabel ? ` at ${wtLabel}` : ''}: ${first.reps} reps to ${last.reps} reps`
+          : `Starting best set: ${latestDisplay}. The trend line starts after your next session.`;
+      return {
+        points: bestSets.map((pt) => ({
+          date: pt.date,
+          value: pt.reps,
+          pointLabel: String(pt.reps),
+          detailLabel: fmtFullSet(pt.weightKg, pt.reps),
+        })),
+        format: (v) => `${Math.round(v)} reps`,
+        label,
+        caption,
+        latestDisplay,
+        positiveProgress,
+        mode: 'best_set_reps',
+        emptyTitle: 'No history yet',
+        emptyMessage: 'Complete working sets to record your starting best set.',
+      };
+    }
+
+    const positiveProgress =
+      bestSets.length >= 2 &&
+      (last.weightKg > first.weightKg + 0.05 ||
+        (Math.abs(last.weightKg - first.weightKg) <= 0.05 && last.reps > first.reps));
+    const label =
+      bestSets.length >= 2
+        ? `Best set over your last ${bestSets.length} sessions: ${fmtFullSet(first.weightKg, first.reps)} to ${latestDisplay}`
+        : `Starting best set: ${latestDisplay}. The trend line starts after your next session.`;
+
+    return {
+      points: bestSets.map((pt) => ({
+        date: pt.date,
+        value: pt.weightKg,
+        pointLabel: `${stripUnit(fmtWt(pt.weightKg))}×${pt.reps}`,
+        detailLabel: fmtFullSet(pt.weightKg, pt.reps),
+      })),
+      format: (v) => `${fmtWt(v)}${dbSuffix}`,
+      label,
+      caption: 'Best set · load & reps',
+      latestDisplay,
+      positiveProgress,
+      mode: 'best_set_load',
+      emptyTitle: 'No history yet',
+      emptyMessage: 'Complete working sets to record your starting best set.',
+    };
+  }
+
   const history = insight?.history ?? [];
   const fmtVal = (v: number) =>
     insight?.metric === 'time'
@@ -348,6 +451,7 @@ export function buildExerciseTrendSpec(
     })),
     format: fmtVal,
     label,
+    mode: insight?.metric ?? 'e1rm',
     emptyTitle: 'No history yet',
     emptyMessage: isTimed
       ? 'Complete all hold sets to establish your starting hold time.'

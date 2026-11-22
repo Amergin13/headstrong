@@ -19,7 +19,7 @@ import { buildExerciseTrendSpec } from '../../services/exerciseDetails';
 import { isAssistedExercise, isTimedExercise, usesOneDumbbell } from '../../engine/e1rm';
 import { buildExerciseBridgeBands } from '../../engine/continuityEngine';
 import { TrendChart } from '../common/TrendChart';
-import { localDateString, parseLocalDate } from '../../utils/date';
+import { localDateString } from '../../utils/date';
 import { formatSentenceCase } from '../../utils/typography';
 import { isUnilateralExercise } from '../../services/movementStandards';
 
@@ -104,10 +104,23 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
   const isBodyweightOnly =
     exercise.equipment === 'bodyweight' && (!exercise.isWeightedCalisthenic || plannedWeightKg === 0);
   const warmupCount = exercise.sets.filter((s) => s.isWarmup || s.setType === 'warmup').length;
+  const isTwoDb = exercise.equipment === 'dumbbell' && !usesOneDumbbell(exercise);
   const chip = exercise.orderCode || (exerciseIndex !== undefined ? String(exerciseIndex) : null);
+  const hasBestSetHistory = Boolean(insight?.bestSetHistory && insight.bestSetHistory.length > 0);
   const trendSpec = useMemo(
-    () => buildExerciseTrendSpec(insight, isTimed, (kg) => units.formatPrecise(kg), localDateString),
-    [insight, isTimed, units]
+    () =>
+      buildExerciseTrendSpec(
+        insight,
+        isTimed,
+        (kg) => units.formatPrecise(kg),
+        localDateString,
+        {
+          isIsolation: isIsolationView,
+          isTwoDumbbell: isTwoDb,
+          formatWeight: (kg) => units.format(kg),
+        }
+      ),
+    [insight, isTimed, units, isIsolationView, isTwoDb]
   );
 
   const secondaryButton =
@@ -173,101 +186,35 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
               splitBy="lines"
             />
           )}
-          {showChart && isIsolationView ? (
-            (() => {
-              const sessions = (insight.bestSetHistory ?? []).slice(-6);
-              const latest = sessions[sessions.length - 1];
-              const targetMaxReps = Math.max(1, exercise.maxReps || 15);
-              const repPct = latest ? Math.min(100, Math.round((latest.reps / targetMaxReps) * 100)) : 0;
-              const shortDate = (date: string) => {
-                const d = parseLocalDate(date);
-                return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
-              };
-              const isTwoDb = exercise.equipment === 'dumbbell' && !usesOneDumbbell(exercise);
-              const fmtSet = (w: number, r: number) =>
-                w > 0 ? `${units.formatPrecise(w)}${isTwoDb ? '/DB' : ''} × ${r}` : `${r} reps`;
-              return (
-                <div
-                  role="region"
-                  aria-label={`${exercise.name} best set progression`}
-                  className="rounded-xl p-3 border flex flex-col gap-3"
-                  style={{ background: 'var(--wk-raised)', borderColor: 'var(--color-border-subtle)' }}
-                >
-                  <div className="flex items-baseline justify-between gap-2">
-                    <span className="wk-label">Best set · reps at weight</span>
-                    {latest && (
-                      <span className="wk-subhead tabular-nums" style={{ color: 'var(--color-text-primary)' }}>
-                        {fmtSet(latest.weightKg, latest.reps)}
-                      </span>
-                    )}
-                  </div>
-                  {sessions.length === 0 ? (
-                    <p className="wk-caption">
-                      No history yet. Complete working sets to record your starting best set.
-                    </p>
-                  ) : (
-                    <>
-                      {latest && (
-                        <div>
-                          <div className="flex items-center justify-between wk-caption mb-1 tabular-nums">
-                            <span>
-                              {latest.weightKg > 0 ? `At ${units.formatPrecise(latest.weightKg)}${isTwoDb ? '/DB' : ''}` : 'Bodyweight'}
-                            </span>
-                            <span>
-                              {latest.reps} / {targetMaxReps} reps
-                            </span>
-                          </div>
-                          <div
-                            className="wk-bar"
-                            role="progressbar"
-                            aria-valuemin={0}
-                            aria-valuemax={targetMaxReps}
-                            aria-valuenow={latest.reps}
-                            aria-label={`${latest.reps} of ${targetMaxReps} target reps`}
-                          >
-                            <div style={{ width: `${repPct}%` }} />
-                          </div>
-                        </div>
-                      )}
-                      <ol className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                        {sessions.map((pt, i) => {
-                          const isLatest = i === sessions.length - 1;
-                          return (
-                            <li
-                              key={`${pt.date}-${i}`}
-                              className="rounded-lg px-3 py-2 border flex flex-col gap-1"
-                              style={{
-                                background: isLatest ? 'var(--color-status-positive-soft)' : 'var(--wk-card)',
-                                borderColor: isLatest ? 'var(--wk-accent)' : 'var(--color-border-subtle)',
-                              }}
-                            >
-                              <span className="wk-caption tabular-nums">{shortDate(pt.date)}</span>
-                              <span
-                                className="text-xs font-semibold tabular-nums"
-                                style={{ color: isLatest ? 'var(--wk-accent)' : 'var(--color-text-primary)' }}
-                              >
-                                {fmtSet(pt.weightKg, pt.reps)}
-                              </span>
-                            </li>
-                          );
-                        })}
-                      </ol>
-                    </>
+          {showChart && (
+            <div className="flex flex-col gap-2">
+              {isIsolationView && (
+                <div className="flex items-baseline justify-between gap-2">
+                  <span className="wk-caption" style={{ color: 'var(--color-text-muted)' }}>
+                    {trendSpec.caption ?? 'Best set'}
+                  </span>
+                  {hasBestSetHistory && trendSpec.latestDisplay && (
+                    <span
+                      className="wk-caption font-medium tabular-nums"
+                      style={{ color: 'var(--color-text-secondary)' }}
+                    >
+                      {trendSpec.latestDisplay}
+                    </span>
                   )}
                 </div>
-              );
-            })()
-          ) : showChart ? (
-            <TrendChart
-              points={trendSpec.points}
-              format={trendSpec.format}
-              bridgeBands={bridgeBands.length > 0 ? bridgeBands : undefined}
-              height={240}
-              label={trendSpec.label}
-              emptyTitle={trendSpec.emptyTitle}
-              emptyMessage={trendSpec.emptyMessage}
-            />
-          ) : null}
+              )}
+              <TrendChart
+                points={trendSpec.points}
+                format={trendSpec.format}
+                positiveProgress={trendSpec.positiveProgress}
+                bridgeBands={bridgeBands.length > 0 ? bridgeBands : undefined}
+                height={240}
+                label={trendSpec.label}
+                emptyTitle={trendSpec.emptyTitle}
+                emptyMessage={trendSpec.emptyMessage}
+              />
+            </div>
+          )}
         </div>
       )}
 

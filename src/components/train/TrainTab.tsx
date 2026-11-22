@@ -2412,6 +2412,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
           workouts={workouts}
           activeOverlay={profile.activeEnvironmentOverlay}
           storedProgressionStates={profile.exerciseProgressionStates}
+          athleteMemories={profile.athleteMemories}
           readinessState={readiness.state}
           goalPhase={profile.goalPhase}
           unit={units.unit}
