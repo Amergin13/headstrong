@@ -35,7 +35,7 @@ Every screen, card, modal, and control in Treise is governed by three non-negoti
 
 ```
 ┌───────────────────────────────────────────────────────────────────────────┐
-│ [TR] TREISE      Lv.4 [━━━━━━━░░░░] 250/500 XP    🔥 14d   [⌚ Watch 🟢]  │ <- Top Header
+│ [TR] TREISE                           🔥 14d             [⌚ Watch 🟢]    │ <- Top Header
 ├───────────────────────────────────────────────────────────────────────────┤
 │                                                                           │
 │                            ACTIVE TAB CONTENT                             │
@@ -50,10 +50,9 @@ Every screen, card, modal, and control in Treise is governed by three non-negoti
 ### 2.1 Sticky Top Header (`Header.tsx`)
 - **Visual Hierarchy:** Sticky top `z-30`, surface-glass backdrop blur (`bg-surface-bg/90`), height $52\text{px}$.
 - **Section Order (Left-to-Right):**
-  1. *Brand Monogram:* `w-8 h-8 rounded-xl` Obsidian container with white `"TR"` mark.
-  2. *Athlete Identity & Level:* Headline `TREISE`, badge `Lv.{level}`, and miniature XP progress bar ($500\text{ XP}$ per level).
-  3. *Streak Protection Badge:* Flame icon with `{streakDays}d` counter in amber pill.
-  4. *Single Canonical Watch Sync Trigger:* `w-auto px-2.5 py-1` pill with watch icon, status text, and live pulsating readiness dot (Emerald = Primed, Amber = Recovery Shield, Cyan = Normal).
+  1. *Brand Monogram & Title:* `w-8 h-8 rounded-xl` Obsidian container with white `"TR"` mark and `TREISE` title (no XP or levels).
+  2. *Streak Protection Badge:* Flame icon with `{streakDays}d` counter pill.
+  3. *Single Canonical Watch Sync Trigger:* Pill with watch icon, status text, and live readiness dot (Mint = Primed, Amber = Recovery Shield, Telemetry Blue = Normal).
 - **Forbidden Iterations:**
   - ❌ NEVER add data reset, settings cog, or navigation links to the header.
   - ❌ NEVER display multiple wearable badges or raw HRV milliseconds in the header.

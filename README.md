@@ -9,37 +9,36 @@
 
 ### 1. Exercise Science Engine (`src/engine/`)
 - **RIR-Adjusted Estimated 1RM (E1RM):**
-  $$E1RM = \text{Effective Weight} \times \left(1 + \frac{\text{Reps} + \text{RIR}}{30}\right)$$
-  - **Weighted Calisthenics:** Includes 7-day EMA bodyweight plus external load.
+  $$\text{E1RM} = \text{Effective Weight} \times \left(1 + \frac{\min(\text{Reps} + \text{EffectiveRIR},\, 15)}{30}\right)$$
+  - **Weighted & Assisted Calisthenics:** Includes 7-day EMA bodyweight plus external load (or minus counterweight assistance).
   - **Equipment Stabilization Multipliers:**
-    - Dumbbell compound presses = `1.18x` combined weight.
+    - Dumbbell compound presses = `1.18x` combined weight (logged per dumbbell on paired 2-DB lifts).
     - Romanian Deadlifts (RDL) = `1.20x` vs. Conventional Deadlift standard.
 - **7-Day Bodyweight Exponential Moving Average (EMA):**
-  $$EMA_{today} = (Weight_{today} \times 0.25) + (EMA_{yesterday} \times 0.75)$$
+  $$\text{EMA}_{\text{today}} = (\text{Weight}_{\text{today}} \times 0.25) + (\text{EMA}_{\text{yesterday}} \times 0.75)$$
 - **Official International DOTS Polynomial:**
-  $$DOTS = E1RM_{kg} \times \left(\frac{500}{A \cdot w^4 + B \cdot w^3 + C \cdot w^2 + D \cdot w + E}\right)$$
+  $$\text{DOTS} = \text{E1RM}_{\text{kg}} \times \left(\frac{500}{A \cdot w^4 + B \cdot w^3 + C \cdot w^2 + D \cdot w + E}\right)$$
   - Full male and female international powerlifting polynomial coefficients.
-- **6-Pillar Strength Standards with 4 Sub-Divisions:**
+- **Published Strength Standards (Kilgore / Poliquin) with 4 Sub-Divisions:**
   - Tiers: `Untrained`, `Novice`, `Intermediate`, `Advanced`, `Elite` each segmented into `I, II, III, IV`.
-  - Live "Sub-Tier Quest" calculating exact kg or reps needed to level up.
+  - Live rep/load targets calculating exact reps or kg needed to reach the next sub-division.
 - **Double Progression Auto-Regulation & Amber Shield:**
-  - Prescribes `+2.5kg` (barbell) or `+2.0kg` (dumbbell) when top of rep range is hit across sets at 1–2 RIR.
-  - Daily Readiness Z-Score computed from Pixel Watch HRV (RMSSD), Resting Heart Rate, and Sleep vs. 14-day baseline.
-  - **Amber Shield:** Detects high systemic fatigue (HRV down >15%, RHR +4 bpm, or sleep <6h), holds working load static, shifts target effort to 2–3 RIR, and guarantees streak and XP protection.
+  - Prescribes `+2.5kg` (barbell/cable/machine) or `+1.0kg/DB` (`+2.0kg` pair) when top of rep range is hit across sets at quality RIR.
+  - Daily Readiness Z-Score computed from wearable HRV (RMSSD), Resting Heart Rate, and Sleep vs. 14-day baseline.
+  - **Amber Shield:** Detects high systemic fatigue (HRV down >15%, RHR +4 bpm, or sleep <6h), scales local muscle recovery windows by `1.2x`, holds working load static, shifts target effort to 2–3 RIR, and protects the training streak.
 - **Work Capacity Index (WCI):**
-  $$WCI = \frac{\text{Effective Tonnage} \times \text{Completed Sets}}{\text{Avg Session HRR}\% \times \text{Duration (min)}}$$
+  $$\text{WCI} = \frac{\sum (\text{Weight} \times \text{Reps})}{\text{Duration (min)} \times (1 + \max(0.35,\; \text{Avg Session HRR}\%))}$$
 - **7th Pillar (Engine / Vitality):**
-  - Synthesizes Pixel Watch VO2 Max, Resting HR, and Daily Steps alongside the 6 movement pillars.
+  - Synthesizes VO2 Max, Resting HR, and Daily Steps alongside the 6 movement pillars.
 
 ---
 
-## 📱 Mobile-First Tabs
+## 📱 Mobile-First 4-Tab Architecture
 
-1. **Workout:** the next queued session with weights carried over from your history, exact previous sets (PREV), optional haptic tempo guide, a rest timer labelled with the exercise and next set, and a recovery screen that holds the next session until your muscles are ready (with per-muscle ready times, a recovered alternative, and "Train anyway").
-2. **Program:** goal, 6-week block, splits (including the 24-workout 6-Week Muscle Building Plan), equipment, units (kg/lb), wearables, and data backup. Has a "Back to workout" link; the Workout tab's week pill opens it.
-3. **AI Coach:** answers with on-device Gemini Nano when Chrome has it available (Pixel phones via AICore), otherwise with the rule-based coach. Pain or warning symptoms always get a fixed safety reply.
-4. **Progress:** estimated 1-rep max vs bodyweight per movement, workout volume (or stamina when Whoop provides workout heart rate), recovery insights from real watch data only.
-5. **Athlete:** strength-to-weight score and Big 3 from logged lifts only, weekly sets per muscle against this week's target, strength balance, and your XP division.
+1. **Workout:** Today's queued session with personalized loads, invariant `SET | PREV | WEIGHT | REPS | RIR | DONE` logging table, 2-line goal-driven exercise summary (`EXERCISE_BRIEF_BLUEPRINT`), unified best-set / E1RM `TrendChart`, canonical `ExerciseDetailModal` drill-in, smart `ExerciseSwapModal`, and calm advisory recovery with 1-tap opt-in modulation (`Trim 1 set / lift` or `Shift to 2–3 RIR`).
+2. **Program:** 6-Week plan overview with the 3D `IdentityForm` sphere, phases 1–3, `PastWorkoutModal`, and Settings (location & equipment, goal phase, units `kg/lb`, wearables, and encrypted/JSON data backup).
+3. **AI Coach:** Fly-up sheet powered by on-device Gemini Nano (`LanguageModel`) + stateless `/api/coach/generate` (`gemini-3.5-flash-lite`) fallback and 21 undo-safe deterministic tools. Pain or warning symptoms always receive a fixed safety reply (`buildSafetyResponse`).
+4. **Progress:** Segmented count rings (`GoalsHero`), Trophy Case personal bests, Lifetime & Recent 30-day totals, 8-week per-muscle cards, Bodyweight & 12-site tape measurements, Kilgore/Poliquin `StrengthLevelsCard` & `BalanceCard`, and `KnowledgeGraphCard` insights (every exercise entry point opens the canonical `ExerciseDetailModal`).
 
 ## 🔐 Configuration
 

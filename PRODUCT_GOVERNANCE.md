@@ -19,7 +19,7 @@ This document is the authoritative **Product Governance Ledger** for **Treise**.
 | **3. 1-Tap Location Adaptation** (*Full Gym ↔ Home [DB, Bench, TRX, Bar] ↔ Travel*) | **Progressing** 🔄 | **✓ Leader** — 1-tap location bar converts today's entire session to matched Home or Travel gear while carrying over targets. | **✕ None** — Requires manually building a separate mesocycle template for home or travel. | **✓ Leader** — Supports multiple gym profiles, though swaps can alter split structure. | **✕ None** — Requires manually swapping every exercise one by one. | **✕ None** — N/A. |
 | **4. Biomechanical Movement Swap Guardrails** (*Never mix Chest Press with Crunches*) | **Locked** 🔒 | **✓ Leader** — 13 movement families with plain-English *"Why It Works"* rationale and location filters. | **✓ Leader** — Curated muscle-group exercise slots per mesocycle. | **◐ Partial** — Can suggest mismatched accessory movements when filtering by broad muscle group. | **◐ Partial** — Filters by broad muscle group (e.g., "Chest" mixes compound presses and flyes). | **✕ None** — N/A. |
 | **5. Muscle-Specific Hypertrophy Volume Landmarks** (*Side Delts/Calves vs. Hamstrings*) | **Locked** 🔒 | **✓ Leader** — Israetel/Schoenfeld MV/MEV/MAV/MRV landmarks across 12 muscles (`16–26` Side Delts vs `10–16` Hams) + `0.5x` synergist credit. | **✓ Leader** — Pioneered MEV-to-MRV volume progression across mesocycle weeks. | **✕ None** — Uses opaque muscle recovery percentages rather than weekly set landmarks. | **◐ Partial** — Counts weekly sets per muscle, but uses flat targets without recovery physiology. | **✕ None** — No hypertrophy set volume tracking. |
-| **6. Wearable Sleep/HRV Auto-Regulation & Streak Protection** | **Progressing** 🔄 | **✓ Leader** — 14-day HRV/RHR/Sleep Z-score triggers Recovery Shield (holds load, 2–3 RIR, streak safe) or `+15%` Primed XP. | **◐ Partial** — Relies on manual subjective soreness questions rather than wearable sync. | **◐ Partial** — Syncs workouts/calories, but does not auto-regulate RIR or protect streaks from HRV. | **✕ None** — No biometric readiness or auto-regulation. | **✓ Leader** — Best-in-class HRV/Sleep recovery scoring, but disconnected from lifting prescriptions. |
+| **6. Wearable Sleep/HRV Auto-Regulation & Streak Protection** | **Progressing** 🔄 | **✓ Leader** — 14-day HRV/RHR/Sleep Z-score triggers Amber Shield (holds load, 2–3 RIR, streak safe) or Primed recovery readiness. | **◐ Partial** — Relies on manual subjective soreness questions rather than wearable sync. | **◐ Partial** — Syncs workouts/calories, but does not auto-regulate RIR or protect streaks from HRV. | **✕ None** — No biometric readiness or auto-regulation. | **✓ Leader** — Best-in-class HRV/Sleep recovery scoring, but disconnected from lifting prescriptions. |
 | **7. Relative Strength Standards (DOTS & 7-Day Bodyweight EMA)** | **Locked** 🔒 | **✓ Leader** — Official DOTS polynomial + 7-day EMA bodyweight smoothing + exact reps needed at current weight to rank up. | **✕ None** — Focuses strictly on hypertrophy blocks; no relative strength standards. | **◐ Partial** — Proprietary muscle scores rather than official bodyweight ratios. | **◐ Partial** — Basic 1RM estimates without DOTS or 7-day bodyweight EMA smoothing. | **◐ Partial** — Tracks VO2Max and RHR only. |
 
 ---
@@ -55,7 +55,7 @@ This document is the authoritative **Product Governance Ledger** for **Treise**.
 
 7. **`gov-ia-master-template-and-prs` — Information Architecture Master Template & Product Requirements Spec**
    - **Rationale:** Customer needs dictate zero-guesswork progression and cross-environment continuity. The Interaction Design Master Template (`INTERACTION_DESIGN_MASTER_TEMPLATE.md`) and Product Requirements Spec (`PRODUCT_REQUIREMENTS_SPEC.md`) codify the exact page layouts, focal points, and section hierarchies.
-   - **Why It's Locked:** Prevents future sessions from regressing or reorganizing completed and agreed structures. All 4 main tabs (`Workout`, `Program`, `Progress`, `Athlete`) and all critical modals follow locked templates.
+   - **Why It's Locked:** Prevents future sessions from regressing or reorganizing completed and agreed structures. All 4 main tabs (`Workout`, `Program`, `AI Coach`, `Progress`) and all critical modals follow locked templates.
    - **CI Invariant:** All pages, section hierarchies, and canonical entry points must adhere to `INTERACTION_DESIGN_MASTER_TEMPLATE.md`. No session may re-introduce calendar-bound day tabs, duplicate controls, or micro-text.
 
 8. **`gov-authoritative-hypertrophy-and-retention-science` — Authoritative Exercise Science for Hypertrophy, Muscle Retention & Split Rotations**
@@ -140,7 +140,7 @@ Every screen, modal, copy string, and feature in **Treise** is continuously desi
    - Primary call-to-action must be compelling for the immediate task and shown on the first screen.
    - Content and help resources available with progressive disclosure.
 2. **Consistency:**
-   - Terms align across the entire product (`Workout`, `Program`, `Progress`, `Athlete`).
+   - Terms align across the entire product (`Workout`, `Program`, `AI Coach`, `Progress`).
    - Shared, standardized vocabulary for all product features and concepts.
    - Consistent voice across all product surfaces and settings.
 3. **Structure:**

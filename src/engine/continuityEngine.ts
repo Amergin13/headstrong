@@ -808,12 +808,15 @@ export function prescribeSet1WithAnchorPrior(params: {
 
   // -------------------------------------------------------------------------
   // Branch A — Existing Exercise History within 90 days (or same-exercise history
-  // when the lift was not swapped, so older own history never suffers a 0.74x penalty)
+  // when the lift was not swapped, or any prior calibrated machine/cable stack load so
+  // repeat machine swaps never discard a learned pulley calibration)
   // -------------------------------------------------------------------------
   const hasOwnHistory = Boolean(
     targetState &&
       targetState.lastLoggedAt != null &&
-      (nowMs - targetState.lastLoggedAt <= OWN_HISTORY_WINDOW_MS || isSameAsAnchor) &&
+      (nowMs - targetState.lastLoggedAt <= OWN_HISTORY_WINDOW_MS ||
+        isSameAsAnchor ||
+        meta.equipmentClass === 'VARIABLE_MACHINE_OR_CABLE') &&
       (meta.equipmentClass === 'BODYWEIGHT' ||
         (targetState.lastWorkingWeightKg != null && targetState.lastWorkingWeightKg > 0))
   );
@@ -2669,7 +2672,8 @@ export function applyEnvironmentOverlayToSession(params: {
  */
 export function rebuildIsolatedProgressionStates(
   workouts: WorkoutSession[],
-  defaultBodyweightKg: number = 80
+  defaultBodyweightKg: number = 80,
+  existingStates?: Record<string, ExerciseProgressionState>
 ): Record<string, ExerciseProgressionState> {
   const completedAsc = workouts
     .filter((w) => w.completed)
@@ -2735,6 +2739,21 @@ export function rebuildIsolatedProgressionStates(
           storeWeightAsNull: isBodyweight,
         }
       );
+    }
+  }
+
+  // Preserve any Set-1 calibrated machine/exercise states not yet present in completed workouts
+  if (existingStates) {
+    for (const [exerciseId, stored] of Object.entries(existingStates)) {
+      if (!stored) continue;
+      const fromHistory = states[exerciseId];
+      if (
+        !fromHistory ||
+        ((stored.lastLoggedAt ?? 0) > (fromHistory.lastLoggedAt ?? 0) &&
+          (stored.lastWorkingWeightKg ?? 0) > 0)
+      ) {
+        states[exerciseId] = stored;
+      }
     }
   }
 

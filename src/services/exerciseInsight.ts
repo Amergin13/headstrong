@@ -99,6 +99,13 @@ export function goalGrowthNoun(goalPhase: GoalPhase | undefined): string {
   return 'muscle growth';
 }
 
+export type SwapCalibrationMode =
+  | 'ANCHOR_PRIOR'
+  | 'EFFORT_ONLY'
+  | 'SET_1_RECALIBRATED'
+  | 'MACHINE_CALIBRATED'
+  | 'BODYWEIGHT';
+
 /**
  * Single source of truth for swapped/replaced exercise 2-line briefs and AI note facts.
  * - Line 1 anchors to the replaced lift's empirical movement-pattern strength progress when logged,
@@ -114,7 +121,7 @@ export function buildSwappedExerciseCopy(params: {
   readinessState: ReadinessState;
   hasOwnHistory: boolean;
   isTimed?: boolean;
-  calibrationMode?: 'ANCHOR_PRIOR' | 'EFFORT_ONLY' | 'BODYWEIGHT';
+  calibrationMode?: SwapCalibrationMode;
   setupLabel?: string | null;
   goalPhase?: GoalPhase;
   anchorProgress?: AnchorLiftProgress | null;
@@ -165,6 +172,12 @@ export function buildSwappedExerciseCopy(params: {
   } else if (isTimed) {
     firstSessionLine1 = `Replaces ${anchorName} today and sets your starting hold baseline.`;
     factLine1 = `Replaces ${anchorName} today so stability work stays moving while your saved progression stays intact.`;
+  } else if (calibrationMode === 'SET_1_RECALIBRATED') {
+    firstSessionLine1 = `Replaces ${anchorName} today—your opening set dialed in the working load on this machine.`;
+    factLine1 = `Replaces ${anchorName} today; your opening set dialed in the working load on this machine while ${muscleTarget} keep growing and your saved ${anchorName} progression stays intact.`;
+  } else if (calibrationMode === 'MACHINE_CALIBRATED') {
+    firstSessionLine1 = `Replaces ${anchorName} today using your calibrated working load on this machine.`;
+    factLine1 = `Replaces ${anchorName} today using your calibrated working load on this machine while ${muscleTarget} keep growing and your saved ${anchorName} progression stays intact.`;
   } else if (calibrationMode === 'EFFORT_ONLY') {
     firstSessionLine1 = `Replaces ${anchorName} today—pick a moderate opening weight to dial in this machine.`;
     factLine1 = `Replaces ${anchorName} today on an uncalibrated machine—pick a moderate opening weight to dial in this machine while ${muscleTarget} keep growing and your saved ${anchorName} progression stays intact.`;
@@ -198,7 +211,13 @@ export function buildSwappedExerciseCopy(params: {
       : 'Holding steady today builds isometric stability and endurance while your saved progression stays intact.';
     factLine2 = `Today replaces ${anchorName} to build isometric stability and endurance while your saved ${anchorName} progression stays intact.`;
   } else if (!hasOwnHistory) {
-    if (calibrationMode === 'EFFORT_ONLY') {
+    if (calibrationMode === 'SET_1_RECALIBRATED') {
+      line2 = `Working at your dialed-in load${forRange} ${hypertrophyOutcome} based on your ${pattern} progression.`;
+      factLine2 = `Today's session action: your opening set dialed in this lift, so working at the calibrated load${forRange} ${hypertrophyOutcome} based on your ${pattern} progression while your saved ${anchorName} progression stays intact.`;
+    } else if (calibrationMode === 'MACHINE_CALIBRATED') {
+      line2 = `Working at your calibrated machine load${forRange} ${hypertrophyOutcome} based on your ${pattern} progression.`;
+      factLine2 = `Today's session action: working at your calibrated machine load${forRange} ${hypertrophyOutcome} based on your ${pattern} progression while your saved ${anchorName} progression stays intact.`;
+    } else if (calibrationMode === 'EFFORT_ONLY') {
       line2 = `Picking a moderate opening weight${forRange} dials in this machine and ${hypertrophyOutcome}.`;
       factLine2 = `Today's session action: pick a moderate opening weight${forRange} to dial in this machine so it ${hypertrophyOutcome} while your ${pattern} progression stays intact.`;
     } else if (setupCue) {
@@ -212,8 +231,13 @@ export function buildSwappedExerciseCopy(params: {
       factLine2 = `Today's session action: working${forRange} in place of ${anchorName} ${hypertrophyOutcome} while your saved ${pattern} progression stays intact.`;
     }
   } else {
-    line2 = `Replacing ${anchorName}${setupCue ? ` using ${setupCue}` : ''}${forRange} keeps ${growthNoun}${inMuscle} moving while your ${pattern} progression holds.`;
-    factLine2 = `Today replaces ${anchorName}${setupCue ? ` using ${setupCue}` : ''}${forRange} to keep ${growthNoun}${inMuscle} moving while your ${pattern} progression holds.`;
+    if (calibrationMode === 'SET_1_RECALIBRATED') {
+      line2 = `Working at your dialed-in load${forRange} keeps ${growthNoun}${inMuscle} moving while your ${pattern} progression holds.`;
+      factLine2 = `Today's session action: your opening set dialed in this lift, so working at the calibrated load${forRange} keeps ${growthNoun}${inMuscle} moving while your ${pattern} progression holds.`;
+    } else {
+      line2 = `Replacing ${anchorName}${setupCue ? ` using ${setupCue}` : ''}${forRange} keeps ${growthNoun}${inMuscle} moving while your ${pattern} progression holds.`;
+      factLine2 = `Today replaces ${anchorName}${setupCue ? ` using ${setupCue}` : ''}${forRange} to keep ${growthNoun}${inMuscle} moving while your ${pattern} progression holds.`;
+    }
   }
 
   return { firstSessionLine1, line2, factLine1, factLine2 };
@@ -539,14 +563,35 @@ export function buildGoalDrivenLine2(params: {
   };
 }
 
-/** Resolves any active first-session calibration mode for a substituted lift. */
+/** Resolves any active first-session or Set-1 recalibrated mode for a substituted lift. */
 export function resolveSwapCalibrationMode(
-  exercise: Pick<ExerciseSession, 'continuityRationaleKind' | 'sets' | 'setupLabel'>
-): 'ANCHOR_PRIOR' | 'EFFORT_ONLY' | 'BODYWEIGHT' | undefined {
+  exercise: Pick<
+    ExerciseSession,
+    'continuityRationaleKind' | 'sets' | 'setupLabel' | 'equipment' | 'anchorExerciseId' | 'exerciseId'
+  >
+): SwapCalibrationMode | undefined {
   const working = exercise.sets.filter((s) => !s.isWarmup && s.setType !== 'warmup');
+  const set1 = working[0];
+  const wasEffortOrPrior =
+    exercise.continuityRationaleKind === 'EFFORT_ONLY' ||
+    exercise.continuityRationaleKind === 'ANCHOR_PRIOR' ||
+    working.some(
+      (s) =>
+        s.calibrationSource === 'EFFORT_ONLY' ||
+        s.calibrationSource === 'ANCHOR_PRIOR' ||
+        s.calibrationSource === 'SET_1_RECALIBRATED'
+    );
+  if (
+    working.some((s) => s.calibrationSource === 'SET_1_RECALIBRATED') ||
+    (wasEffortOrPrior &&
+      Boolean(set1?.completed) &&
+      ((set1?.actualWeightKg ?? set1?.targetWeightKg ?? 0) > 0))
+  ) {
+    return 'SET_1_RECALIBRATED';
+  }
   if (
     exercise.continuityRationaleKind === 'EFFORT_ONLY' ||
-    working.some((s) => s.calibrationSource === 'EFFORT_ONLY')
+    working.some((s) => !s.completed && s.calibrationSource === 'EFFORT_ONLY')
   ) {
     return 'EFFORT_ONLY';
   }
@@ -555,9 +600,18 @@ export function resolveSwapCalibrationMode(
   }
   if (
     exercise.continuityRationaleKind === 'ANCHOR_PRIOR' ||
-    working.some((s) => s.calibrationSource === 'ANCHOR_PRIOR' || s.isWeightEstimated)
+    working.some((s) => !s.completed && (s.calibrationSource === 'ANCHOR_PRIOR' || s.isWeightEstimated))
   ) {
     return 'ANCHOR_PRIOR';
+  }
+  const isSwappedMachineOrCable =
+    (exercise.equipment === 'machine' || exercise.equipment === 'cable') &&
+    Boolean(exercise.anchorExerciseId && exercise.anchorExerciseId !== exercise.exerciseId);
+  if (
+    isSwappedMachineOrCable &&
+    working.some((s) => (s.targetWeightKg ?? 0) > 0 && s.calibrationSource === 'OWN_HISTORY')
+  ) {
+    return 'MACHINE_CALIBRATED';
   }
   return undefined;
 }

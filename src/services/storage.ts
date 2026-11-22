@@ -590,6 +590,217 @@ const BACKUP_TRIGGER_KEYS = new Set<string>([
   KEYS.EXERCISES,
   KEYS.ACTIVITIES,
 ]);
+const MIRRORED_STORAGE_KEYS = new Set<string>([
+  KEYS.PROFILE,
+  KEYS.BIOMETRICS,
+  KEYS.WORKOUTS,
+  KEYS.ACTIVE_WORKOUT,
+  KEYS.EXERCISES,
+  KEYS.ACTIVITIES,
+  KEYS.DISMISSED_ACTIVITIES,
+]);
+const IDB_MIRROR_DB_NAME = 'treise_idb_mirror_v1';
+const IDB_MIRROR_STORE_NAME = 'kv';
+const memoryIdbMirror = new Map<string, string>();
+
+function openMirrorIndexedDb(): Promise<IDBDatabase | null> {
+  if (typeof indexedDB === 'undefined' || !indexedDB || typeof indexedDB.open !== 'function') {
+    return Promise.resolve(null);
+  }
+  return new Promise((resolve) => {
+    try {
+      const req = indexedDB.open(IDB_MIRROR_DB_NAME, 1);
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains(IDB_MIRROR_STORE_NAME)) {
+          db.createObjectStore(IDB_MIRROR_STORE_NAME);
+        }
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => resolve(null);
+    } catch {
+      resolve(null);
+    }
+  });
+}
+
+/**
+ * Mirrors core localStorage writes asynchronously into an on-device IndexedDB backup store
+ * (plus in-memory fallback for non-IDB environments) so accidental localStorage eviction
+ * can be transparently recovered without external server storage.
+ */
+export async function mirrorKeyToIndexedDb(key: string, value: string): Promise<void> {
+  if (!MIRRORED_STORAGE_KEYS.has(key)) return;
+  memoryIdbMirror.set(key, value);
+  const db = await openMirrorIndexedDb();
+  if (!db) return;
+  await new Promise<void>((resolve) => {
+    try {
+      const tx = db.transaction(IDB_MIRROR_STORE_NAME, 'readwrite');
+      tx.objectStore(IDB_MIRROR_STORE_NAME).put(value, key);
+      tx.oncomplete = () => {
+        db.close();
+        resolve();
+      };
+      tx.onerror = () => {
+        db.close();
+        resolve();
+      };
+    } catch {
+      try {
+        db.close();
+      } catch {
+        // Ignore close errors
+      }
+      resolve();
+    }
+  });
+}
+
+async function readAllMirroredIndexedDbKeys(): Promise<Record<string, string>> {
+  const result: Record<string, string> = {};
+  for (const [k, v] of memoryIdbMirror.entries()) {
+    result[k] = v;
+  }
+  const db = await openMirrorIndexedDb();
+  if (!db) return result;
+  return new Promise((resolve) => {
+    try {
+      const tx = db.transaction(IDB_MIRROR_STORE_NAME, 'readonly');
+      const store = tx.objectStore(IDB_MIRROR_STORE_NAME);
+      const keysToRead = Array.from(MIRRORED_STORAGE_KEYS);
+      let remaining = keysToRead.length;
+      if (remaining === 0) {
+        db.close();
+        resolve(result);
+        return;
+      }
+      for (const k of keysToRead) {
+        const req = store.get(k);
+        req.onsuccess = () => {
+          if (typeof req.result === 'string' && req.result.length > 0) {
+            result[k] = req.result;
+          }
+          remaining--;
+          if (remaining === 0) {
+            db.close();
+            resolve(result);
+          }
+        };
+        req.onerror = () => {
+          remaining--;
+          if (remaining === 0) {
+            db.close();
+            resolve(result);
+          }
+        };
+      }
+    } catch {
+      try {
+        db.close();
+      } catch {
+        // Ignore
+      }
+      resolve(result);
+    }
+  });
+}
+
+export async function clearIndexedDbMirror(): Promise<void> {
+  memoryIdbMirror.clear();
+  const db = await openMirrorIndexedDb();
+  if (!db) return;
+  await new Promise<void>((resolve) => {
+    try {
+      const tx = db.transaction(IDB_MIRROR_STORE_NAME, 'readwrite');
+      tx.objectStore(IDB_MIRROR_STORE_NAME).clear();
+      tx.oncomplete = () => {
+        db.close();
+        resolve();
+      };
+      tx.onerror = () => {
+        db.close();
+        resolve();
+      };
+    } catch {
+      try {
+        db.close();
+      } catch {
+        // Ignore
+      }
+      resolve();
+    }
+  });
+}
+
+/**
+ * Self-heals `localStorage` from the on-device IndexedDB mirror when `localStorage` is empty
+ * or missing saved workout/profile history (e.g. after browser cache pressure).
+ * Never overwrites non-empty active `localStorage` data.
+ */
+export async function recoverFromIndexedDbMirror(): Promise<{ recovered: boolean; keys: string[] }> {
+  if (typeof localStorage === 'undefined') return { recovered: false, keys: [] };
+  const currentWorkoutsRaw = localStorage.getItem(KEYS.WORKOUTS);
+  const hasCurrentWorkouts = (() => {
+    if (!currentWorkoutsRaw) return false;
+    try {
+      const parsed = JSON.parse(currentWorkoutsRaw);
+      return Array.isArray(parsed) && parsed.length > 0;
+    } catch {
+      return false;
+    }
+  })();
+  if (hasCurrentWorkouts) {
+    return { recovered: false, keys: [] };
+  }
+
+  const mirrored = await readAllMirroredIndexedDbKeys();
+  const mirroredWorkoutsRaw = mirrored[KEYS.WORKOUTS];
+  const hasMirroredWorkouts = (() => {
+    if (!mirroredWorkoutsRaw) return false;
+    try {
+      const parsed = JSON.parse(mirroredWorkoutsRaw);
+      return Array.isArray(parsed) && parsed.length > 0;
+    } catch {
+      return false;
+    }
+  })();
+  const hasMirroredOnboardedProfile = (() => {
+    const raw = mirrored[KEYS.PROFILE];
+    if (!raw) return false;
+    try {
+      const parsed = JSON.parse(raw);
+      return Boolean(parsed && parsed.onboardingCompleted === true);
+    } catch {
+      return false;
+    }
+  })();
+
+  if (!hasMirroredWorkouts && !hasMirroredOnboardedProfile) {
+    return { recovered: false, keys: [] };
+  }
+
+  const restoredKeys: string[] = [];
+  for (const key of MIRRORED_STORAGE_KEYS) {
+    const val = mirrored[key];
+    if (typeof val === 'string' && val.length > 0) {
+      try {
+        localStorage.setItem(key, val);
+        restoredKeys.push(key);
+        if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+          try {
+            window.dispatchEvent(new StorageEvent('storage', { key, newValue: val }));
+          } catch {
+            // Some environments disallow constructing StorageEvent without init dict
+          }
+        }
+      } catch {
+        // Ignore quota failure during recovery
+      }
+    }
+  }
+  return { recovered: restoredKeys.length > 0, keys: restoredKeys };
+}
 /** Caches that can be rebuilt (written AI notes); cleared first when storage is full. */
 const REBUILDABLE_CACHE_KEYS = [
   'treise_exercise_notes_v1',
@@ -621,12 +832,14 @@ function persist(key: string, value: string): boolean {
   };
   try {
     localStorage.setItem(key, value);
+    void mirrorKeyToIndexedDb(key, value);
     emitChanged();
     return true;
   } catch {
     try {
       REBUILDABLE_CACHE_KEYS.forEach((k) => localStorage.removeItem(k));
       localStorage.setItem(key, value);
+      void mirrorKeyToIndexedDb(key, value);
       emitChanged();
       return true;
     } catch (e) {
@@ -1345,6 +1558,7 @@ export function permanentlyEraseAllUserData() {
     Object.values(LEGACY_KEYS).forEach((k) => localStorage.removeItem(k));
     localStorage.removeItem('treise_renpho_devices_v1');
     clearDriveSessionCredentials();
+    void clearIndexedDbMirror();
     if (typeof sessionStorage !== 'undefined') {
       sessionStorage.removeItem('fitbit_code_verifier');
       sessionStorage.removeItem('fitbit_oauth_state');

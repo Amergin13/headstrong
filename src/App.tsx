@@ -68,6 +68,7 @@ import {
   saveBiometrics,
   DATA_CHANGED_EVENT,
   SAVE_FAILED_EVENT,
+  recoverFromIndexedDbMirror,
   requestPersistentStorage,
   saveExercises,
   saveActivities,
@@ -437,6 +438,25 @@ export const App: React.FC = () => {
       });
     window.addEventListener(SAVE_FAILED_EVENT, onSaveFailed);
     return () => window.removeEventListener(SAVE_FAILED_EVENT, onSaveFailed);
+  }, []);
+
+  // Self-heal from the on-device IndexedDB mirror if localStorage was ever cleared by browser cache pressure.
+  useEffect(() => {
+    if (workouts.length > 0 || profile.onboardingCompleted) return;
+    let cancelled = false;
+    void recoverFromIndexedDbMirror().then((res) => {
+      if (cancelled || !res.recovered) return;
+      setProfile(loadProfile());
+      setWorkouts(loadWorkouts());
+      setBiometrics(loadBiometrics());
+      setActiveWorkout(loadActiveWorkout());
+      setExercises(loadExercises());
+      setActivities(loadActivities());
+    });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Once there's history worth keeping, ask the browser not to clear it when space is low or the
@@ -1077,7 +1097,8 @@ export const App: React.FC = () => {
         ...nextProfile,
         exerciseProgressionStates: rebuildIsolatedProgressionStates(
           nextWorkouts,
-          startingBodyweight ?? bodyweightEmaKg
+          startingBodyweight ?? bodyweightEmaKg,
+          nextProfile.exerciseProgressionStates
         ),
       };
     }
@@ -1202,7 +1223,11 @@ export const App: React.FC = () => {
         importHistory: opts.importHistory,
       }
     );
-    const rebuiltStates = rebuildIsolatedProgressionStates(merged.workouts, bodyweightEmaKg);
+    const rebuiltStates = rebuildIsolatedProgressionStates(
+      merged.workouts,
+      bodyweightEmaKg,
+      merged.profile.exerciseProgressionStates
+    );
     const nextProfile: UserProfile = {
       ...merged.profile,
       exerciseProgressionStates: rebuiltStates,
@@ -1502,7 +1527,11 @@ export const App: React.FC = () => {
   // Handler: 1-Click Competitor CSV Import (Hevy, Strong, FitNotes)
   const handleImportCompetitorHistory = (parsed: CompetitorCsvImportResult) => {
     const { merged, addedCount } = mergeImportedWorkouts(workouts, parsed.workouts);
-    const rebuiltStates = rebuildIsolatedProgressionStates(merged, bodyweightEmaKg);
+    const rebuiltStates = rebuildIsolatedProgressionStates(
+      merged,
+      bodyweightEmaKg,
+      profile.exerciseProgressionStates
+    );
     setWorkouts(merged);
     setProfile((prev) => ({
       ...prev,

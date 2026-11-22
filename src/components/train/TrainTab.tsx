@@ -54,7 +54,7 @@ import { localDateOffset, localDateString, parseLocalDate } from '../../utils/da
 import { formatSentenceCase } from '../../utils/typography';
 import { stepsOnDate } from '../../services/athleteGoals';
 import { ActiveDayCard } from './ActiveDayCard';
-import { startingWeightForNewExercise } from '../../services/sessionPreparation';
+import { buildSwappedSessionExercises, startingWeightForNewExercise } from '../../services/sessionPreparation';
 import { useUnits } from '../../utils/unitsContext';
 import {
   prescribeDoubleProgression,
@@ -405,6 +405,19 @@ export const TrainTab: React.FC<TrainTabProps> = ({
                 leverageUpgradeNudge: recal.leverageUpgradeNudge,
               };
 
+              const firstWorkingIdx = workingIndices[0];
+              if (firstWorkingIdx !== undefined && updatedSets[firstWorkingIdx]) {
+                updatedSets[firstWorkingIdx] = {
+                  ...updatedSets[firstWorkingIdx],
+                  isWeightEstimated: false,
+                  setupLabel:
+                    ex.equipment === 'bodyweight' && !ex.isWeightedCalisthenic
+                      ? updatedSets[firstWorkingIdx].setupLabel
+                      : null,
+                  calibrationSource: 'SET_1_RECALIBRATED',
+                };
+              }
+
               for (let k = 1; k < workingIndices.length; k++) {
                 const wIdx = workingIndices[k];
                 const presc = recal.prescriptions[k];
@@ -430,8 +443,13 @@ export const TrainTab: React.FC<TrainTabProps> = ({
                 anchorMinReps: recal.coarseJump?.expanded ? (ex.anchorMinReps ?? ex.minReps) : ex.anchorMinReps,
                 anchorMaxReps: recal.coarseJump?.expanded ? (ex.anchorMaxReps ?? ex.maxReps) : ex.anchorMaxReps,
                 maxReps: recal.coarseJump?.expanded ? recal.coarseJump.expandedRepMax : ex.maxReps,
+                setupLabel:
+                  ex.equipment === 'bodyweight' && !ex.isWeightedCalisthenic ? ex.setupLabel : undefined,
+                calibrationSource: 'SET_1_RECALIBRATED' as const,
                 continuityRationaleKind: recal.coarseJump?.expanded
                   ? 'COARSE_JUMP_EXPANDED'
+                  : ex.continuityRationaleKind === 'EFFORT_ONLY'
+                  ? undefined
                   : ex.continuityRationaleKind,
                 coarseJumpPct: recal.coarseJump?.expanded ? recal.coarseJump.jumpPct : ex.coarseJumpPct,
                 sets: updatedSets,
@@ -628,7 +646,6 @@ export const TrainTab: React.FC<TrainTabProps> = ({
     scope: ExerciseSwapScope = 'today'
   ) => {
     if (!swappingExercise) return;
-    const meta = getExerciseBiomechanicalMeta(newDef);
     const rx =
       explicitPrescription ??
       prescribeExerciseSwap({
@@ -656,167 +673,15 @@ export const TrainTab: React.FC<TrainTabProps> = ({
       splitDay: activeWorkout.splitDay,
     });
 
-    const isPureBw = rx.isPureBodyweight;
-    const timed = rx.isTimed;
-    const isEffortMachine =
-      !timed &&
-      continuity.prescription.calibrationSource === 'EFFORT_ONLY' &&
-      continuity.targetMetadata.equipmentClass === 'VARIABLE_MACHINE_OR_CABLE';
-    const continuitySet1Weight = continuity.prescription.sets[0]?.suggestedWeightKg ?? null;
-    const rawTargetWeight = isPureBw || isEffortMachine
-      ? 0
-      : continuitySet1Weight != null && continuitySet1Weight > 0
-      ? continuitySet1Weight
-      : rx.targetWeightKg;
-    const effectiveTargetWeight =
-      rawTargetWeight > 0
-        ? snapWeightToInventory(rawTargetWeight, newDef.equipment, units.unit, activeInventory)
-        : 0;
-    const defaultTargetReps = rx.targetReps;
-
-    const customNotes = timed
-      ? rx.rationale
-      : continuity.prescription.copy?.tier1
-      ? continuity.prescription.copy.tier1
-      : rx.tempoCue
-      ? `${rx.tempoCue}. ${rx.rationale}.`
-      : meta.resistanceProfile === 'lengthened'
-      ? `${rx.rationale}. Focus on a controlled stretch at the bottom of each rep.`
-      : `${rx.rationale}. Keep a steady, controlled pace on every rep.`;
-
-    const nextExercises = activeWorkout.exercises.flatMap((ex, exIdx) => {
-      if (ex.id !== swappingExercise.id) return [ex];
-
-      // Logged sets stay on the exercise that was done; only the sets still to do move to the new one.
-      const loggedSets = ex.sets.filter((s) => s.completed);
-      const setsToDo = ex.sets.filter((s) => !s.completed);
-      const workingSetsOnly = setsToDo.filter((s) => !s.isWarmup && s.setType !== 'warmup');
-      if (workingSetsOnly.length === 0) return [ex];
-
-      const calibratedWorkingSets: WorkoutSet[] = workingSetsOnly.map((s, sIdx) => {
-        const contSet = continuity.prescription.sets[sIdx] ?? continuity.prescription.sets[continuity.prescription.sets.length - 1];
-        const setWeight =
-          isPureBw || isEffortMachine
-            ? 0
-            : contSet?.suggestedWeightKg != null && contSet.suggestedWeightKg > 0
-            ? snapWeightToInventory(contSet.suggestedWeightKg, newDef.equipment, units.unit, activeInventory)
-            : effectiveTargetWeight;
-        const setReps = timed ? 1 : (contSet?.targetRepsMin ?? defaultTargetReps);
-        const setRir = timed ? rx.targetRir : (contSet?.targetRir ?? rx.targetRir);
-        return {
-          ...s,
-          setNumber: sIdx + 1,
-          targetWeightKg: setWeight,
-          actualWeightKg: setWeight,
-          targetReps: setReps,
-          actualReps: setReps,
-          targetRir: setRir,
-          actualRir: setRir,
-          isWeightEstimated: !timed && Boolean(contSet?.isWeightEstimated) && setWeight > 0,
-          setupLabel: timed ? null : (contSet?.setupLabel ?? null),
-          calibrationSource: timed ? undefined : (contSet?.calibrationSource ?? continuity.prescription.calibrationSource),
-          ...(timed
-            ? {
-                targetDurationSeconds: rx.targetDurationSeconds || 45,
-                actualDurationSeconds: rx.targetDurationSeconds || 45,
-              }
-            : {
-                targetDurationSeconds: undefined,
-                actualDurationSeconds: undefined,
-              }),
-          isWarmup: false,
-          setType: 'working' as const,
-        };
-      });
-
-      // Keep the same structure as before the swap: only re-create warm-ups if the original
-      // exercise had them, and never add more than it had.
-      const originalWarmupCount = setsToDo.filter((st) => st.isWarmup || st.setType === 'warmup').length;
-      let calibratedSets: WorkoutSet[] = calibratedWorkingSets;
-      if (originalWarmupCount > 0 && !isPureBw && !isEffortMachine && effectiveTargetWeight > 0 && !meta.isIsolation && !timed) {
-        const isFirstCompound = isFirstCompoundForPillar(
-          {
-            pillar: newDef.pillar,
-            isIsolation: meta.isIsolation,
-            equipment: newDef.equipment,
-            isWeightedCalisthenic: newDef.isWeightedCalisthenic,
-            name: newDef.name,
-            exerciseId: newDef.id,
-          },
-          exIdx,
-          activeWorkout.exercises
-        );
-        const warmupPrescription = calculateWarmupPrescription(
-          {
-            pillar: newDef.pillar,
-            equipment: newDef.equipment,
-            isIsolation: meta.isIsolation,
-            isWeightedCalisthenic: newDef.isWeightedCalisthenic,
-            name: newDef.name,
-            exerciseId: newDef.id,
-          },
-          effectiveTargetWeight,
-          isFirstCompound
-        );
-        const warmupSets = generateWarmupSets(newDef.id, warmupPrescription).slice(-originalWarmupCount);
-        calibratedSets = [...warmupSets, ...calibratedWorkingSets].map((st, i) => ({ ...st, setNumber: i + 1 }));
-      }
-
-      const isNewLoadedCompound =
-        !timed && !isPureBw && !meta.isIsolation && newDef.equipment !== 'bodyweight' && newDef.equipment !== 'weighted_bodyweight';
-      const rawMaxAcrossSets = timed
-        ? rx.maxReps
-        : Math.max(rx.maxReps, ...continuity.prescription.sets.map((p) => p.targetRepsMax));
-      const maxRepAcrossSets =
-        isNewLoadedCompound &&
-        continuity.prescription.rationaleKind !== 'COARSE_JUMP_EXPANDED' &&
-        rawMaxAcrossSets > 15 &&
-        newDef.defaultRepRange[1] <= 15
-          ? Math.max(rx.minReps, newDef.defaultRepRange[1])
-          : rawMaxAcrossSets;
-      const keepAnchorMeta = scope === 'today' && continuity.anchorDef && continuity.anchorDef.id !== newDef.id;
-      const preservedAnchorMin = keepAnchorMeta ? (ex.anchorMinReps ?? continuity.anchorDef?.defaultRepRange[0] ?? ex.minReps) : undefined;
-      const preservedAnchorMax = keepAnchorMeta ? (ex.anchorMaxReps ?? continuity.anchorDef?.defaultRepRange[1] ?? ex.maxReps) : undefined;
-
-      const replacement: ExerciseSession = {
-        ...ex,
-        exerciseId: newDef.id,
-        name: newDef.name,
-        pillar: newDef.pillar,
-        equipment: isPureBw ? 'bodyweight' : newDef.equipment,
-        isRdl: newDef.isRdl,
-        isWeightedCalisthenic: isPureBw ? false : newDef.isWeightedCalisthenic,
-        isAssisted: newDef.isAssisted,
-        isIsolation: meta.isIsolation,
-        movementFamily: getMovementVectorId(newDef),
-        movementFamilyLabel: getMovementFamilyLabel(newDef),
-        resistanceProfile: meta.resistanceProfile,
-        sfrScore: meta.sfrScore,
-        minReps: rx.minReps,
-        maxReps: maxRepAcrossSets,
-        repTargetType: timed ? 'duration' : 'reps',
-        durationSeconds: timed ? rx.targetDurationSeconds : undefined,
-        tempo: timed && rx.targetDurationSeconds ? `${rx.targetDurationSeconds}sec` : undefined,
-        notes: customNotes,
-        athleteNotes: ex.athleteNotes,
-        slotId: ex.slotId ?? ex.orderCode ?? ex.id,
-        anchorExerciseId: keepAnchorMeta ? continuity.anchorDef!.id : undefined,
-        anchorExerciseName: keepAnchorMeta ? continuity.anchorDef!.name : undefined,
-        anchorMinReps: preservedAnchorMin,
-        anchorMaxReps: preservedAnchorMax,
-        anchorReferenceLabel: keepAnchorMeta ? continuity.anchorReferenceLabel : undefined,
-        calibrationSource: timed ? undefined : continuity.prescription.calibrationSource,
-        continuityRationaleKind: timed ? undefined : continuity.prescription.rationaleKind,
-        coarseJumpPct: timed ? undefined : continuity.prescription.coarseJumpPct,
-        setupLabel: timed ? undefined : continuity.prescription.setupLabel,
-        bodyweightLoadPct: timed ? undefined : continuity.prescription.bodyweightLoadPct,
-        leverageTier: timed ? undefined : continuity.targetMetadata.leverageTier,
-        isBridgeReentry: false,
-        reentryFromLabel: undefined,
-        sets: calibratedSets,
-      };
-      if (loggedSets.length === 0) return [replacement];
-      return [{ ...ex, sets: loggedSets }, { ...replacement, id: `${ex.id}-swap-${Date.now()}` }];
+    const nextExercises = buildSwappedSessionExercises({
+      exercises: activeWorkout.exercises,
+      swappingExerciseId: swappingExercise.id,
+      newDef,
+      rx,
+      continuity,
+      scope,
+      unit: units.unit,
+      activeInventory,
     });
 
     onUpdateWorkout({ ...activeWorkout, exercises: nextExercises });
@@ -834,7 +699,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
         replacementPillar: newDef.pillar,
         replacementEquipment: newDef.equipment,
         replacementRepRange: [rx.minReps, rx.maxReps],
-        ...(timed ? { replacementIsTimed: true, replacementDurationSeconds: rx.targetDurationSeconds || 45 } : {}),
+        ...(rx.isTimed ? { replacementIsTimed: true, replacementDurationSeconds: rx.targetDurationSeconds || 45 } : {}),
         reason: 'permanent gym-floor swap',
         createdAt: new Date().toISOString(),
       };

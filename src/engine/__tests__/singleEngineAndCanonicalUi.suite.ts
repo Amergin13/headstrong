@@ -9,13 +9,28 @@ import {
   SYSTEM_SWOT_EVALUATION,
 } from '../governance';
 import { buildAthleteKnowledgeGraph } from '../knowledgeGraph';
+import { runReadAloudQaGate } from '../contentStrategy';
+import {
+  evaluateSingleExerciseContinuitySwap,
+  recalibrateSetsAfterSet1,
+  rebuildIsolatedProgressionStates,
+} from '../continuityEngine';
+import { getActiveEquipmentInventory } from '../equipmentInventory';
+import { prescribeExerciseSwap } from '../progression';
 import { BiometricLog, ExerciseSession, UserProfile, WorkoutSession } from '../types';
 import { NEW_USER_PROFILE, SEED_EXERCISES } from '../../services/seedData';
-import { calculateWeeklyMuscleVolume } from '../../services/storage';
-import { buildExerciseInsight } from '../../services/exerciseInsight';
+import {
+  calculateWeeklyMuscleVolume,
+  clearIndexedDbMirror,
+  mirrorKeyToIndexedDb,
+  recoverFromIndexedDbMirror,
+} from '../../services/storage';
+import { buildExerciseInsight, resolveSwapCalibrationMode } from '../../services/exerciseInsight';
 import { buildExerciseNoteFacts } from '../../services/exerciseCoachNote';
+import { checkSummaryVoiceGuidelines } from '../../services/coachPersonalization';
 import { buildInspectExerciseSession } from '../../services/exerciseDetails';
 import { buildMovementStandards } from '../../services/movementStandards';
+import { buildSwappedSessionExercises } from '../../services/sessionPreparation';
 import { buildCompletedExerciseSummaries } from '../../services/workoutFinish';
 
 type AssertFn = (condition: boolean, message: string) => void;
@@ -639,4 +654,292 @@ export async function runSingleEngineAndCanonicalUiSuite(assert: AssertFn): Prom
       `Single-source Line 1 & Line 2 parity (${tc.label}): insight === note`
     );
   }
+
+  // -------------------------------------------------------------------------
+  // 6. Weakness Remediation Verification (Doc Drift, Service Modularization,
+  //    IndexedDB Self-Healing Mirror & Machine Calibration Summary Integration)
+  // -------------------------------------------------------------------------
+  // A. Weakness 1: Secondary docs contain zero stale XP/5th-Athlete-tab contradictions
+  const readmeMd = read('README.md');
+  const iaTemplateMd = read('INTERACTION_DESIGN_MASTER_TEMPLATE.md');
+  const prodGovMd = read('PRODUCT_GOVERNANCE.md');
+  assert(
+    !readmeMd.includes('5. **Athlete:**') &&
+      !readmeMd.includes('XP protection') &&
+      !iaTemplateMd.includes('250/500 XP') &&
+      !iaTemplateMd.includes('Lv.{level}') &&
+      !prodGovMd.includes('Primed XP') &&
+      !prodGovMd.includes('(`Workout`, `Program`, `Progress`, `Athlete`)'),
+    'Secondary docs (README.md, INTERACTION_DESIGN_MASTER_TEMPLATE.md, PRODUCT_GOVERNANCE.md) have zero stale XP or 5th-tab references'
+  );
+
+  // B. Weakness 2: Pure swap session builder lives in canonical sessionPreparation.ts & Suite 75 is modularized
+  const sessionPrepSrc = read('src/services/sessionPreparation.ts');
+  assert(
+    sessionPrepSrc.includes('export function buildSwappedSessionExercises(') &&
+      trainTabSrc.includes('buildSwappedSessionExercises(') &&
+      fs.existsSync(path.join(root, 'src/engine/__tests__/continuitySwapping.suite.ts')),
+    'Pure exercise swap session construction lives in canonical sessionPreparation.ts and Suite 75 is modularized into continuitySwapping.suite.ts'
+  );
+
+  // C. Weakness 3: On-device IndexedDB mirror self-heals localStorage when cleared
+  if (typeof localStorage !== 'undefined') {
+    const prevWorkoutsRaw = localStorage.getItem('treise_workouts_v3');
+    const prevProfileRaw = localStorage.getItem('treise_profile_v3');
+    try {
+      await clearIndexedDbMirror();
+      const sampleWorkoutsJson = JSON.stringify(historyWorkouts);
+      const sampleProfileJson = JSON.stringify({ ...profile, onboardingCompleted: true });
+      await mirrorKeyToIndexedDb('treise_workouts_v3', sampleWorkoutsJson);
+      await mirrorKeyToIndexedDb('treise_profile_v3', sampleProfileJson);
+
+      // Simulate localStorage eviction
+      localStorage.removeItem('treise_workouts_v3');
+      localStorage.removeItem('treise_profile_v3');
+      const healed = await recoverFromIndexedDbMirror();
+      assert(
+        healed.recovered &&
+          healed.keys.includes('treise_workouts_v3') &&
+          localStorage.getItem('treise_workouts_v3') === sampleWorkoutsJson,
+        'recoverFromIndexedDbMirror transparently self-heals evicted localStorage workout & profile history'
+      );
+
+      // Verify it never overwrites active non-empty localStorage workout history
+      const noOpWhenPresent = await recoverFromIndexedDbMirror();
+      assert(
+        noOpWhenPresent.recovered === false,
+        'recoverFromIndexedDbMirror never overwrites non-empty active localStorage workouts'
+      );
+      await clearIndexedDbMirror();
+    } finally {
+      if (prevWorkoutsRaw !== null) localStorage.setItem('treise_workouts_v3', prevWorkoutsRaw);
+      else localStorage.removeItem('treise_workouts_v3');
+      if (prevProfileRaw !== null) localStorage.setItem('treise_profile_v3', prevProfileRaw);
+      else localStorage.removeItem('treise_profile_v3');
+    }
+  }
+
+  // D. Weakness 4: Machine Set-1 calibration + repeat swap persistence + 2-line exercise summary integration
+  const machineChestDef = SEED_EXERCISES.find((e) => e.id === 'ex-machine-chest-press')!;
+  const benchSourceEx: ExerciseSession = {
+    id: 'active-bench-slot',
+    exerciseId: 'ex-bench-press',
+    name: 'Barbell Bench Press',
+    pillar: 'Horizontal Push',
+    equipment: 'barbell',
+    minReps: 8,
+    maxReps: 10,
+    sets: [
+      { id: 'bs-1', setNumber: 1, targetWeightKg: 85, targetReps: 8, targetRir: 2, completed: false },
+      { id: 'bs-2', setNumber: 2, targetWeightKg: 85, targetReps: 8, targetRir: 2, completed: false },
+      { id: 'bs-3', setNumber: 3, targetWeightKg: 85, targetReps: 8, targetRir: 1, completed: false },
+    ],
+  };
+
+  // Step 1: First-time swap to uncalibrated machine -> EFFORT_ONLY
+  const firstMachineContinuity = evaluateSingleExerciseContinuitySwap({
+    currentExercise: benchSourceEx,
+    replacementDef: machineChestDef,
+    historicalWorkouts: historyWorkouts,
+    exerciseCatalog: SEED_EXERCISES,
+    storedProgressionStates: {},
+    userBodyweightKg: 82,
+    unit: 'kg',
+  });
+  const firstMachineRx = prescribeExerciseSwap({
+    sourceExercise: benchSourceEx,
+    targetDef: machineChestDef,
+    workouts: historyWorkouts,
+    readinessState: 'Normal',
+    goalPhase: profile.goalPhase,
+    bodyweightEmaKg: 82,
+    location: 'gym',
+    unit: 'kg',
+  });
+  const activeInventory = getActiveEquipmentInventory(profile, 'gym');
+  const [swappedMachineInitial] = buildSwappedSessionExercises({
+    exercises: [benchSourceEx],
+    swappingExerciseId: benchSourceEx.id,
+    newDef: machineChestDef,
+    rx: firstMachineRx,
+    continuity: firstMachineContinuity,
+    scope: 'today',
+    unit: 'kg',
+    activeInventory,
+  });
+  assert(
+    resolveSwapCalibrationMode(swappedMachineInitial) === 'EFFORT_ONLY',
+    'Uncalibrated machine swap starts in EFFORT_ONLY calibration mode'
+  );
+  const initialMachineInsight = buildExerciseInsight(
+    swappedMachineInitial,
+    historyWorkouts,
+    'Normal',
+    82,
+    12,
+    fmt,
+    biometrics,
+    'Chest',
+    profile.goalPhase
+  );
+  assert(
+    initialMachineInsight.lines[1].includes('Picking a moderate opening weight'),
+    `Uncalibrated machine Line 2 explains opening-set calibration ("${initialMachineInsight.lines[1]}")`
+  );
+
+  // Step 2: Athlete logs Set 1 at 55 kg x 10 @ 2 RIR -> recalibrates Sets 2–3 and transitions summary to SET_1_RECALIBRATED
+  const recalAfterSet1 = recalibrateSetsAfterSet1({
+    slot: {
+      slotId: 'A1',
+      programId: 'starter_4day',
+      workoutDayId: 'Upper',
+      movementPattern: 'HORIZONTAL_PRESS',
+      anchorExerciseId: 'ex-bench-press',
+      targetSets: 3,
+      targetRepMin: swappedMachineInitial.minReps,
+      targetRepMax: swappedMachineInitial.maxReps,
+      targetRirInitial: 2,
+      restSeconds: 120,
+    },
+    targetDef: machineChestDef,
+    currentPrescriptions: firstMachineContinuity.prescription.sets,
+    loggedSet1: { weightKg: 55, reps: 10, rir: 2 },
+    previousTargetState: null,
+    unit: 'kg',
+  });
+  const machineAfterSet1: ExerciseSession = {
+    ...swappedMachineInitial,
+    setupLabel: undefined,
+    calibrationSource: 'SET_1_RECALIBRATED',
+    continuityRationaleKind: undefined,
+    sets: swappedMachineInitial.sets.map((s, idx) =>
+      idx === 0
+        ? {
+            ...s,
+            targetWeightKg: 55,
+            actualWeightKg: 55,
+            targetReps: 10,
+            actualReps: 10,
+            targetRir: 2,
+            actualRir: 2,
+            completed: true,
+            setupLabel: null,
+            isWeightEstimated: false,
+            calibrationSource: 'SET_1_RECALIBRATED',
+          }
+        : {
+            ...s,
+            targetWeightKg: recalAfterSet1.prescriptions[idx]?.suggestedWeightKg ?? 55,
+            actualWeightKg: recalAfterSet1.prescriptions[idx]?.suggestedWeightKg ?? 55,
+            targetReps: recalAfterSet1.prescriptions[idx]?.targetRepsMin ?? 9,
+            actualReps: recalAfterSet1.prescriptions[idx]?.targetRepsMin ?? 9,
+            targetRir: recalAfterSet1.prescriptions[idx]?.targetRir ?? 2,
+            actualRir: recalAfterSet1.prescriptions[idx]?.targetRir ?? 2,
+            setupLabel: null,
+            isWeightEstimated: false,
+            calibrationSource: 'SET_1_RECALIBRATED',
+          }
+    ),
+  };
+  assert(
+    resolveSwapCalibrationMode(machineAfterSet1) === 'SET_1_RECALIBRATED',
+    'After Set 1 is logged on an EFFORT_ONLY machine, resolveSwapCalibrationMode transitions to SET_1_RECALIBRATED'
+  );
+  const dialedMachineInsight = buildExerciseInsight(
+    machineAfterSet1,
+    historyWorkouts,
+    'Normal',
+    82,
+    12,
+    fmt,
+    biometrics,
+    'Chest',
+    profile.goalPhase
+  );
+  const dialedMachineNote = buildExerciseNoteFacts({
+    exercise: machineAfterSet1,
+    insight: dialedMachineInsight,
+    workouts: historyWorkouts,
+    readinessState: 'Normal',
+    knowledgeGraph: kg,
+    muscleLabel: 'Chest',
+    goalPhase: profile.goalPhase,
+    formatWeight: fmt,
+  });
+  const dialedQa = runReadAloudQaGate(dialedMachineInsight.summary);
+  const dialedVoiceErr = checkSummaryVoiceGuidelines(dialedMachineInsight.summary);
+  assert(
+    dialedMachineInsight.lines[1].includes('Working at your dialed-in load') &&
+      dialedMachineInsight.lines[0] === dialedMachineNote.lines[0] &&
+      dialedMachineInsight.lines[1] === dialedMachineNote.lines[1] &&
+      dialedQa.passed &&
+      dialedVoiceErr === null,
+    `Dialed-in machine 2-line summary explains calibrated load in Line 2, matches note facts, and passes QA + voice gates ("${dialedMachineInsight.lines[1]}")`
+  );
+
+  // Step 3: Persisted machine calibration survives rebuildIsolatedProgressionStates and pre-fills repeat machine swaps
+  const preservedStates = rebuildIsolatedProgressionStates(historyWorkouts, 82, {
+    [machineChestDef.id]: recalAfterSet1.updatedProgressionState,
+  });
+  assert(
+    preservedStates[machineChestDef.id]?.lastWorkingWeightKg === 55,
+    'rebuildIsolatedProgressionStates preserves Set-1 calibrated machine state across rebuilds'
+  );
+
+  const repeatMachineContinuity = evaluateSingleExerciseContinuitySwap({
+    currentExercise: benchSourceEx,
+    replacementDef: machineChestDef,
+    historicalWorkouts: historyWorkouts,
+    exerciseCatalog: SEED_EXERCISES,
+    storedProgressionStates: preservedStates,
+    userBodyweightKg: 82,
+    unit: 'kg',
+  });
+  const [repeatSwappedMachine] = buildSwappedSessionExercises({
+    exercises: [benchSourceEx],
+    swappingExerciseId: benchSourceEx.id,
+    newDef: machineChestDef,
+    rx: firstMachineRx,
+    continuity: repeatMachineContinuity,
+    scope: 'today',
+    unit: 'kg',
+    activeInventory,
+  });
+  assert(
+    repeatSwappedMachine.sets[0].targetWeightKg === 55 &&
+      repeatSwappedMachine.sets[0].calibrationSource === 'OWN_HISTORY' &&
+      resolveSwapCalibrationMode(repeatSwappedMachine) === 'MACHINE_CALIBRATED',
+    `Repeat swap to a calibrated machine pre-fills 55 kg (OWN_HISTORY / MACHINE_CALIBRATED) instead of EFFORT_ONLY (got ${repeatSwappedMachine.sets[0].targetWeightKg} kg)`
+  );
+  const repeatMachineInsight = buildExerciseInsight(
+    repeatSwappedMachine,
+    historyWorkouts,
+    'Normal',
+    82,
+    12,
+    fmt,
+    biometrics,
+    'Chest',
+    profile.goalPhase
+  );
+  const repeatMachineNote = buildExerciseNoteFacts({
+    exercise: repeatSwappedMachine,
+    insight: repeatMachineInsight,
+    workouts: historyWorkouts,
+    readinessState: 'Normal',
+    knowledgeGraph: kg,
+    muscleLabel: 'Chest',
+    goalPhase: profile.goalPhase,
+    formatWeight: fmt,
+  });
+  const repeatQa = runReadAloudQaGate(repeatMachineInsight.summary);
+  const repeatVoiceErr = checkSummaryVoiceGuidelines(repeatMachineInsight.summary);
+  assert(
+    repeatMachineInsight.lines[1].includes('Working at your calibrated machine load') &&
+      repeatMachineInsight.lines[0] === repeatMachineNote.lines[0] &&
+      repeatMachineInsight.lines[1] === repeatMachineNote.lines[1] &&
+      repeatQa.passed &&
+      repeatVoiceErr === null,
+    `Repeat calibrated machine 2-line summary explains calibrated machine load in Line 2, matches note facts, and passes QA + voice gates ("${repeatMachineInsight.lines[1]}")`
+  );
 }
