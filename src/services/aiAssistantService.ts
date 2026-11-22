@@ -2475,6 +2475,35 @@ async function processAssistantMessageCore(
         ? `\n\nIf you meant your home equipment permanently, say "remove the ${detectedEquipmentChange.equipment.name.toLowerCase()} from my home equipment".`
         : ''
     }`;
+    const namedForSwap = findExerciseNamed(lowerMsg, activeWorkout, exerciseCatalog)?.session;
+    if (namedForSwap && swapOpts.options.length > 0) {
+      modelSuggestedActions = [
+        ...swapOpts.options.slice(0, 3).map((opt) => ({
+          label: `Swap → ${opt.name.split(' ').slice(0, 3).join(' ')}`,
+          prompt: `Swap ${namedForSwap.name} for ${opt.name}`,
+        })),
+        { label: 'Switch today to Bodyweight', prompt: 'Switch today to bodyweight' },
+        { label: 'Today workout brief', prompt: 'What am I lifting today?' },
+      ];
+    } else if (swapOpts.options.length > 0) {
+      const pairChips: CoachSuggestedAction[] = [];
+      for (const opt of swapOpts.options.slice(0, 3)) {
+        const matchEx = activeWorkout.exercises.find((e) => e.pillar === opt.pillar && e.exerciseId !== opt.id);
+        if (matchEx) {
+          pairChips.push({
+            label: `Swap ${matchEx.name.split(' ').slice(0, 2).join(' ')} → ${opt.name.split(' ').slice(0, 2).join(' ')}`,
+            prompt: `Swap ${matchEx.name} for ${opt.name}`,
+          });
+        }
+      }
+      if (pairChips.length > 0) {
+        modelSuggestedActions = [
+          ...pairChips,
+          { label: 'Switch today to Bodyweight', prompt: 'Switch today to bodyweight' },
+          { label: 'Today workout brief', prompt: 'What am I lifting today?' },
+        ];
+      }
+    }
   } else if (everydayAnswer && !isExplicitActionIntent) {
     answerText = everydayAnswer;
   } else if (
@@ -2493,7 +2522,10 @@ async function processAssistantMessageCore(
   } else if (
     !isExplicitActionIntent &&
     /\bwhy\b.*\b(weights?|heavier|lighter|reps?|load)\b/.test(lowerMsg) &&
-    /\b(go|goes|went|gone|change[ds]?|up|down|drop(ped)?|increase[ds]?|same|heavier|lighter|more|less|higher|lower)\b/.test(lowerMsg)
+    (/\b(go|goes|went|gone|change[ds]?|up|down|drop(ped)?|increase[ds]?|same|heavier|lighter|more|less|higher|lower|set\s+to|prescribed|chosen|picked)\b/.test(
+      lowerMsg
+    ) ||
+      Boolean(findExerciseNamed(lowerMsg, activeWorkout, exerciseCatalog)))
   ) {
     answerText = answerWeightChange(
       lowerMsg,
@@ -2717,7 +2749,7 @@ async function processAssistantMessageCore(
       } else if (!isExplicitActionIntent && asksForOwnMax) {
         answerText = buildEstimatedMaxAnswer(lowerMsg, workouts, measuredBodyweightKg, profile.weightUnit || 'kg', biometrics, activeWorkout, exerciseCatalog);
       } else if (!isExplicitActionIntent && asksForOwnScore) {
-        answerText = `Treise compares each lift with published strength standards instead of giving one score.\n\n${strengthLevelsAnswer()}`;
+        answerText = `I compare each lift with published strength standards instead of giving one score.\n\n${strengthLevelsAnswer()}`;
       } else if (!isExplicitActionIntent && isStandardsQuestion && !isExplicitScienceQuestion && !isTacticalWorkoutQuery) {
         answerText = strengthLevelsAnswer();
       } else if (!isExplicitActionIntent && scientificPrinciple) {
@@ -2934,7 +2966,7 @@ async function processAssistantMessageCore(
           `When you are resistance training, **scale weight tells only part of the story** — how you look with your shirt off and how your lifts move tell far more.\n\n` +
           `Muscle tissue is ~18% denser than fat (~1.06 g/mL vs ~0.90 g/mL). If you are building lean muscle while losing body fat (body recomposition), total scale weight can stay flat even while your body composition visibly improves.\n\n` +
           `**How to track progress accurately:**\n` +
-          `1. **Morning Weigh-Ins:** Weigh yourself first thing in the morning on the same scale under consistent conditions (after using the bathroom, before food or water). Treise tracks a 7-day rolling average to filter out normal water and glycogen swings.\n` +
+          `1. **Morning Weigh-Ins:** Weigh yourself first thing in the morning on the same scale under consistent conditions (after using the bathroom, before food or water). I track a 7-day rolling average to filter out normal water and glycogen swings.\n` +
           `2. **Circumference Measurements:** Take tape measurements (waist, chest, arms). A narrowing waist alongside steady or growing arms confirms real muscle gain and visceral fat reduction.\n` +
           `3. **Progressive Overload in the App:** If your workout weights and reps are advancing from week to week, you are building new contractile muscle tissue.`;
       } else if (
@@ -2955,7 +2987,7 @@ async function processAssistantMessageCore(
         }
         const stepLabel = formatWeight(PROGRESSION_RULES.barbellIncrementKg, profile.weightUnit || 'kg');
         answerText =
-          `Treise replaces the traditional paper training diary — you just need to show up and lift while the app handles the planning from week to week:\n\n` +
+          `Your plan replaces the traditional paper training diary — you just need to show up and lift while I handle the planning from week to week:\n\n` +
           `• **Automated Tracking:** Logs your weights, sets, reps, tempo, and rest intervals.\n` +
           `• **Double Progression:** Advances reps inside your range or steps up weight (${stepLabel} on barbells) once all working sets hit the target.\n` +
           `• **Life-Proof Queue:** Missed sessions wait without losing progress and adapt cleanly across Gym, Home, or Bodyweight workouts.`;
@@ -2976,7 +3008,7 @@ async function processAssistantMessageCore(
           });
         }
         answerText =
-          `Treise makes body tracking friction-free with direct smart-device capture or quick manual logging:\n\n` +
+          `You can track body metrics friction-free with direct smart-device capture or quick manual logging:\n\n` +
           `• **RENPHO Smart Scale (Bluetooth):** Connect your RENPHO scale in **Progress → Body weight → Log weight** via Web Bluetooth (or Android native BLE) to capture weight, body fat %, and lean mass directly, or say "Log weight 80 kg" right here.\n` +
           `• **RENPHO Smart Body Tape Measure:** Capture all 12 circumference sites (Neck, Shoulder, Chest, Waist, Abdomen, Hip, Biceps, Thighs, Calves) in **Progress → Measurements**, or log any site in chat (e.g. "Log waist 82 cm").\n` +
           `• **Wearable Telemetry:** Syncs with Fitbit, Whoop, Strava, and Android Health Connect to feed daily recovery readiness, sleep, steps, and active days into your plan.`;
@@ -2987,8 +3019,9 @@ async function processAssistantMessageCore(
       ) {
         // Conversational Welcome & Capabilities Intent
         const workoutNameForGreeting = (activeWorkout?.exercises[0]?.name ?? 'a squat').toLowerCase();
+        const greetPos = planPosition(profile, workouts, input.activities ?? []);
         // Per Personalisation & Memory Guidelines §4 (Name Use): never repeat the athlete's name at the start of a chat.
-        answerText = `I'm Treise — I have your plan, logged workouts, body composition, and recovery ready, and I can update them directly.\n\nThings you can ask or tell me to do:\n• "What am I lifting today?" or "Log 24 kg × 10 @ 2 RIR on ${workoutNameForGreeting}"\n• "Swap ${workoutNameForGreeting} across my whole program" or "Rebalance my program"\n• "Shorten today's workout" or "Switch to bodyweight today"\n• "Set a 100 kg bench press goal" or "Log waist 82 cm"\n• "Why did my weight change?" or "What does tempo 3010 mean?"\n\nWhat would you like to check or update?`;
+        answerText = `Hey — I'm Treise, your strength coach. You're in Week ${greetPos.week} of ${greetPos.totalWeeks} on ${greetPos.plan.name}${activeWorkout?.name ? ` with **${activeWorkout.name}** queued` : ''}, and I can answer questions or update your workout, plan, goals, and logs directly.\n\nHere are a few things we can do right now:\n• "What am I lifting today?" or "Log 24 kg × 10 @ 2 RIR on ${workoutNameForGreeting}"\n• "Swap ${workoutNameForGreeting} across my whole program" or "Rebalance my program"\n• "Shorten today's workout" or "Switch to bodyweight today"\n• "Set a 100 kg bench press goal" or "Log waist 82 cm"\n• "Why did my weight change?" or "What does tempo 3010 mean?"\n\nWhat would you like to tackle first?`;
       } else {
         // ============================================================================
         // 8. ATHLETIC COACHING & TACTICAL GUIDANCE
@@ -3365,10 +3398,16 @@ async function processAssistantMessageCore(
             answerText = swap.text;
             const targetExForChips = matchedWorkoutEx ?? findExerciseNamed(lowerMsg, activeWorkout, exerciseCatalog)?.session;
             if (targetExForChips && swap.options.length > 0) {
-              modelSuggestedActions = swap.options.slice(0, 3).map((opt) => ({
-                label: `Swap → ${opt.name.split(' ').slice(0, 3).join(' ')}`,
-                prompt: `Swap ${targetExForChips.name} for ${opt.name}`,
-              }));
+              modelSuggestedActions = [
+                ...swap.options.slice(0, 3).map((opt) => ({
+                  label: `Swap → ${opt.name.split(' ').slice(0, 3).join(' ')}`,
+                  prompt: `Swap ${targetExForChips.name} for ${opt.name}`,
+                })),
+                {
+                  label: 'Swap across program',
+                  prompt: `Swap ${targetExForChips.name} for ${swap.options[0].name} across my whole program`,
+                },
+              ];
             } else if (!targetExForChips && workoutExercises.length > 0) {
               modelSuggestedActions = workoutExercises.slice(0, 3).map((ex) => ({
                 label: `Swap ${ex.name.split(' ').slice(0, 3).join(' ')}`,
@@ -3634,6 +3673,7 @@ async function processAssistantMessageCore(
     custom: modelSuggestedActions,
     lastSwap,
     lastUserMessage: userMessage,
+    answerText: finalAnswerText,
   });
 
   const message: AssistantChatMessage = {

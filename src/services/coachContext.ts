@@ -109,7 +109,13 @@ export interface CoachHook {
 export interface CoachOpening {
   /** Which situation this is, e.g. 'workout-active', 'goal-weekly'. */
   id: string;
+  /** Warm, human coach greeting opening the conversation. */
+  greeting?: string;
+  /** Proactive coaching question inviting the highest-likelihood next action. */
+  nextActionPrompt?: string;
+  /** Complete opening message shown by the coach when the chat opens. */
   line: string;
+  /** High-likelihood contextual next-action hooks surfaced in the chat. */
   hooks: CoachHook[];
 }
 
@@ -129,6 +135,23 @@ export interface CoachOpeningInput {
 const isWorking = (s: WorkoutSet) => !s.isWarmup && s.setType !== 'warmup';
 const KIT_WORD: Record<string, string> = { barbell: 'barbell is', dumbbell: 'dumbbells are', cable: 'cables are', machine: 'machine is' };
 const KIT_LABEL: Record<string, string> = { barbell: 'Barbell taken', dumbbell: 'Dumbbells taken', cable: 'Cables taken', machine: 'Machine taken' };
+
+function composeCoachOpening(params: {
+  id: string;
+  greeting: string;
+  context: string;
+  nextActionPrompt: string;
+  hooks: CoachHook[];
+}): CoachOpening {
+  const { id, greeting, context, nextActionPrompt, hooks } = params;
+  return {
+    id,
+    greeting,
+    nextActionPrompt,
+    line: [greeting.trim(), context.trim(), nextActionPrompt.trim()].filter(Boolean).join(' '),
+    hooks: hooks.slice(0, 5),
+  };
+}
 
 function workoutOpening(input: CoachOpeningInput, unit: WeightUnit): CoachOpening {
   const { activeWorkout, workouts, exerciseCatalog, place, readinessState } = input;
@@ -152,15 +175,20 @@ function workoutOpening(input: CoachOpeningInput, unit: WeightUnit): CoachOpenin
     if (target) {
       const workingEx = target.sets.filter(isWorking);
       const firstWorking = workingEx[0];
+      const nextUnfinished = workingEx.find((s) => !s.completed) ?? firstWorking;
       const targetLine = firstWorking
         ? `${workingEx.length} sets × ${formatSetTarget(target, firstWorking)}`
         : `${target.sets.length} sets`;
+      const prefilledSetLog =
+        nextUnfinished && !isTimedExercise(target) && nextUnfinished.targetWeightKg > 0
+          ? `Log ${formatWeight(nextUnfinished.targetWeightKg, unit)} x ${nextUnfinished.targetReps} @ ${nextUnfinished.targetRir ?? 2} RIR on ${target.name}`
+          : `Log `;
       const hooks: CoachHook[] = [
         { label: 'How do I do it?', text: `How do I do the ${target.name.toLowerCase()}?` },
         { label: 'Why this weight?', text: `Why is my ${target.name.toLowerCase()} weight set to this?` },
         { label: 'Swap today only', text: `I want to swap ${target.name}` },
         { label: 'Swap in program', text: `Swap ${target.name} across my whole program` },
-        { label: 'Log a set', text: `Log `, fill: true },
+        { label: 'Log a set', text: prefilledSetLog, fill: true },
       ];
       const interventions = detectCoachInterventions({
         profile: input.profile,
@@ -176,11 +204,13 @@ function workoutOpening(input: CoachOpeningInput, unit: WeightUnit): CoachOpenin
       if (matching) {
         hooks.unshift({ label: matching.ctaLabel, text: matching.coachPrompt });
       }
-      return {
+      return composeCoachOpening({
         id: 'workout-exercise',
-        line: `${target.name} (${targetLine}). Ask for form cues, why the weight moved, log a set, or swap it today or across your program.`,
-        hooks: hooks.slice(0, 5),
-      };
+        greeting: `Hey — let's dial in ${target.name}.`,
+        context: `Today's prescription is ${targetLine}.`,
+        nextActionPrompt: 'Want form cues, why the weight moved, to log a set, or to swap it today or across your program?',
+        hooks,
+      });
     }
   }
 
@@ -191,70 +221,88 @@ function workoutOpening(input: CoachOpeningInput, unit: WeightUnit): CoachOpenin
     // In a session: the exercise the athlete is on.
     const current = activeWorkout.exercises.find((ex) => ex.sets.some((s) => isWorking(s) && !s.completed));
     if (!current) {
-      return {
+      return composeCoachOpening({
         id: 'workout-all-sets-done',
-        line: `Every set of ${activeWorkout.name} is ticked. Finish the workout when you're ready.`,
+        greeting: 'Nice work finishing every set —',
+        context: `every set of ${activeWorkout.name} is ticked.`,
+        nextActionPrompt: "Finish the workout when you're ready, or want to check how your strength moved today and what's queued next?",
         hooks: [
           { label: 'Am I getting stronger?', text: 'Am I getting stronger?' },
           { label: "What's next?", text: "What's next?" },
+          { label: 'Last session tonnage', text: 'What was my tonnage last workout?' },
+          { label: "Log today's weight", text: 'Log weight ', fill: true },
         ],
-      };
+      });
     }
     const nextSet = current.sets.find((s) => isWorking(s) && !s.completed)!;
+    const prefilledActiveSet =
+      !isTimedExercise(current) && nextSet.targetWeightKg > 0
+        ? `Log ${formatWeight(nextSet.targetWeightKg, unit)} x ${nextSet.targetReps} @ ${nextSet.targetRir ?? 2} RIR on ${current.name}`
+        : `Log `;
     const hooks: CoachHook[] = [{ label: 'Swap this exercise', text: `I want to swap ${current.name}` }];
     if (KIT_WORD[current.equipment]) hooks.push({ label: KIT_LABEL[current.equipment], text: `The ${KIT_WORD[current.equipment]} taken` });
     hooks.push(
+      { label: 'Log this set', text: prefilledActiveSet, fill: true },
       { label: 'Short on time', text: "I'm short on time today" },
       { label: 'How do I do it?', text: `How do I do the ${current.name.toLowerCase()}?` },
       { label: 'Rest times', text: 'How long should I rest?' }
     );
-    return {
+    return composeCoachOpening({
       id: 'workout-active',
-      line: `You're ${done} of ${working.length} sets into ${activeWorkout.name}. Next is ${current.name}: ${formatSetTarget(current, nextSet)}.`,
-      hooks: hooks.slice(0, 5),
-    };
+      greeting: 'Hey — strong pace so far.',
+      context: `You're ${done} of ${working.length} sets into ${activeWorkout.name}. Next is ${current.name}: ${formatSetTarget(current, nextSet)}.`,
+      nextActionPrompt: 'Want to log this set, swap if equipment is busy, check form cues, or trim the remaining sets if you are short on time?',
+      hooks,
+    });
   }
 
   // Rest day explicitly logged (queued workout moved to tomorrow or later)
   if (activeWorkout.date && activeWorkout.date > todayStr && !activeWorkout.completed) {
-    return {
+    return composeCoachOpening({
       id: 'workout-rest-day',
-      line: `Rest day logged for today. ${activeWorkout.name} is queued for ${activeWorkout.date} and your streak is protected.`,
+      greeting: 'Hey — enjoy the recovery day.',
+      context: `Rest day logged for today. ${activeWorkout.name} is queued for ${activeWorkout.date} and your streak is protected.`,
+      nextActionPrompt: `Want to log an active day walk or cardio session, preview ${activeWorkout.name}, or check your progress?`,
       hooks: [
         { label: 'Can I do cardio?', text: 'Should I do cardio today?' },
         { label: 'Log an active day', text: 'Log 30 min ', fill: true },
         { label: "What's next?", text: "What's next?" },
         { label: 'How am I doing?', text: 'How am I doing?' },
       ],
-    };
+    });
   }
 
   const gate = evaluateSessionRecovery(activeWorkout, workouts, exerciseCatalog, now, readinessState);
   const when = gate.readyAt ? formatReadyTime(gate.readyAt, now) : 'soon';
   if (gate.trainedToday) {
     const last = workouts.filter((w) => w.completed).sort((a, b) => getWorkoutCompletedAt(a) - getWorkoutCompletedAt(b)).pop();
-    return {
+    return composeCoachOpening({
       id: 'workout-finished',
-      line: `${last?.name ?? "Today's workout"} is logged for today. ${activeWorkout.name} will be ready ${when}.`,
+      greeting: "Great work getting today's session done —",
+      context: `${last?.name ?? "Today's workout"} is logged for today. ${activeWorkout.name} will be ready ${when}.`,
+      nextActionPrompt: "Want a recap of today's tonnage and top sets, or to check what's coming up next?",
       hooks: [
         { label: 'How did today go?', text: 'What did I do last workout?' },
         { label: 'Last session tonnage', text: 'What was my tonnage last workout?' },
         { label: 'Am I getting stronger?', text: 'Am I getting stronger?' },
         { label: "What's next?", text: "What's next?" },
+        { label: "Log today's weight", text: 'Log weight ', fill: true },
       ],
-    };
+    });
   }
   if (!gate.isReady && !activeWorkout.recoveryOverride) {
-    return {
+    return composeCoachOpening({
       id: 'workout-resting',
-      line: `${activeWorkout.name} is still recovering and will be ready ${when}.`,
+      greeting: 'Hey — checking in on your muscle recovery.',
+      context: `${activeWorkout.name} is still recovering and will be ready ${when}.`,
+      nextActionPrompt: 'Want to check if you should train lighter today, log an active day, or unlock the session anyway?',
       hooks: [
         { label: 'Should I train today?', text: 'Should I train today?' },
         { label: 'Can I do cardio?', text: 'Should I do cardio today?' },
         { label: 'Log an active day', text: 'Log 30 min ', fill: true },
         { label: 'Train anyway', text: 'Train anyway today' },
       ],
-    };
+    });
   }
   const first = activeWorkout.exercises[0];
   const kit = activeWorkout.exercises.map((ex) => ex.equipment).find((e) => KIT_WORD[e]);
@@ -291,13 +339,17 @@ function workoutOpening(input: CoachOpeningInput, unit: WeightUnit): CoachOpenin
     { label: 'Short on time', text: "I'm short on time today" },
     { label: 'Swap an exercise', text: 'I want to swap an exercise' }
   );
-  return {
+  return composeCoachOpening({
     id: 'workout-ready',
-    line: isAmber
+    greeting: isAmber ? "Hey — I'm right here with you for today's session." : "Hey — ready to get after today's workout?",
+    context: isAmber
       ? `${activeWorkout.name} is ready, but recovery is low today — weights hold steady with 2–3 reps in reserve.`
       : `${activeWorkout.name} is ready: ${activeWorkout.exercises.length} exercises${first ? `, starting with ${first.name}` : ''}.`,
-    hooks: hooks.slice(0, 5),
-  };
+    nextActionPrompt: isAmber
+      ? 'Want to check why recovery is low, trim a set per lift for a lighter session, or move today to a rest day?'
+      : `Want a quick briefing on today's targets, a warm-up ramp${first ? ` for ${first.name}` : ''}, or to swap any busy equipment before Set 1?`,
+    hooks,
+  });
 }
 
 function goalOpening(goal: AthleteGoal, input: CoachOpeningInput, unit: WeightUnit): CoachOpening {
@@ -312,11 +364,13 @@ function goalOpening(goal: AthleteGoal, input: CoachOpeningInput, unit: WeightUn
       { label: 'I missed a week', text: 'I missed a week, what now?' },
     ];
     if (!goal.fromPlan) hooks.push({ label: "Use my plan's goals", text: "Use my plan's goals" });
-    return {
+    return composeCoachOpening({
       id: 'goal-weekly',
-      line: `${goal.title}: ${standing}${m.streakWeeks > 0 ? `, and ${m.streakWeeks} ${m.streakWeeks === 1 ? 'week' : 'weeks'} in a row` : ''}. Tell me if you want a different number.`,
+      greeting: "Hey — here's where your weekly consistency stands.",
+      context: `${goal.title}: ${standing}${m.streakWeeks > 0 ? `, and ${m.streakWeeks} ${m.streakWeeks === 1 ? 'week' : 'weeks'} in a row` : ''}.`,
+      nextActionPrompt: 'Want to adjust your weekly session target, check what counts toward a session, or plan around a busy week?',
       hooks,
-    };
+    });
   }
   if (m.type === 'body') {
     const direction =
@@ -325,42 +379,49 @@ function goalOpening(goal: AthleteGoal, input: CoachOpeningInput, unit: WeightUn
         : m.phase === 'Maingain'
           ? 'How is my body composition trending?'
           : 'Am I gaining weight?';
-    return {
+    return composeCoachOpening({
       id: 'goal-chosen',
-      line: `${goal.title}: ${m.signsMeasured > 0 ? `${m.signsMet} of ${m.signsMeasured} measured signs are showing` : 'nothing is measured yet'}. ${m.nextStep || m.evidenceLabel}`,
+      greeting: `Hey — let's check your pace toward ${goal.title}.`,
+      context: `${goal.title}: ${m.signsMeasured > 0 ? `${m.signsMet} of ${m.signsMeasured} measured signs are showing` : 'nothing is measured yet'}. ${m.nextStep || m.evidenceLabel}`,
+      nextActionPrompt: "Want to check your weight trend, dial in your daily protein target, or log today's weight?",
       hooks: [
         { label: direction, text: direction },
         { label: 'How much protein?', text: 'How much protein do I need?' },
         { label: 'How many calories?', text: 'How many calories should I eat?' },
+        { label: "Log today's weight", text: 'Log weight ', fill: true },
         { label: 'Change my goal', text: 'Change my goal to ', fill: true },
       ],
-    };
+    });
   }
   if (m.type === 'target') {
     if (m.metric === 'steps') {
       const stepsInfo = buildStepsCoachingSummary(input.biometrics, input.profile, input.now);
-      return {
+      return composeCoachOpening({
         id: 'goal-steps',
-        line: `${goal.title}: ${stepsInfo.progressText}`,
+        greeting: "Hey — let's check your daily step pace.",
+        context: `${goal.title}: ${stepsInfo.progressText}`,
+        nextActionPrompt: "Want simple ways to raise your daily average without hurting leg recovery, or to log today's steps?",
         hooks: [
           { label: 'How can I improve my steps?', text: 'How can I increase my daily steps?' },
           { label: 'How are my steps trending?', text: 'How have my steps progressed over time?' },
           { label: 'Log steps today', text: 'Log ', fill: true },
           { label: 'Change step target', text: 'Set a goal of ', fill: true },
           { label: 'Remove step goal', text: 'Remove my steps goal' },
-        ].slice(0, 5),
-      };
+        ],
+      });
     }
     const name = m.exerciseName.toLowerCase();
-    return {
+    return composeCoachOpening({
       id: 'goal-custom',
-      line: `Your goal on ${m.exerciseName}: ${standing}. Tell me a new target to change it.`,
+      greeting: `Hey — checking in on your ${m.exerciseName} target.`,
+      context: `Your goal on ${m.exerciseName}: ${standing}.`,
+      nextActionPrompt: 'Want to update this target, check form cues to keep progressing, or remove this goal?',
       hooks: [
         { label: 'Change the target', text: `My goal on ${name} is `, fill: true },
         { label: 'How do I do it?', text: `How do I do the ${name}?` },
         { label: 'Remove this goal', text: `Remove my ${name} goal` },
       ],
-    };
+    });
   }
   const name = m.exerciseName.toLowerCase();
   const hooks: CoachHook[] = [
@@ -369,7 +430,13 @@ function goalOpening(goal: AthleteGoal, input: CoachOpeningInput, unit: WeightUn
     { label: "What's my weakest lift?", text: "What's my weakest lift?" },
   ];
   if (!goal.featured && goal.pillar) hooks.push({ label: 'Follow this lift', text: `Follow my ${goal.title.split(': ')[0].toLowerCase().split(' & ')[0]} strength level` });
-  return { id: 'goal-strength', line: `${goal.title}: ${standing} on ${m.exerciseName}.`, hooks };
+  return composeCoachOpening({
+    id: 'goal-strength',
+    greeting: `Hey — let's look at your ${m.exerciseName} strength tier.`,
+    context: `${goal.title}: ${standing} on ${m.exerciseName}.`,
+    nextActionPrompt: `Want form cues for ${name}, to set a custom target, or to check your weakest lift?`,
+    hooks,
+  });
 }
 
 /** The coach's first line and suggestions for where it was opened. */
@@ -407,11 +474,15 @@ export function buildCoachOpening(input: CoachOpeningInput): CoachOpening {
             { label: 'Change my goal', text: 'Change my goal to ', fill: true },
           ]),
     ];
-    return {
+    return composeCoachOpening({
       id: 'program',
-      line: `You're in week ${p.week} of ${p.totalWeeks} of your ${p.plan.name}: ${p.overview.completedCount} of ${p.total} sessions done${p.nextLabel ? `, next is ${p.nextLabel}` : ''}${activeEditCount > 0 ? ` (${activeEditCount} custom adaptation${activeEditCount === 1 ? '' : 's'})` : ''}.`,
-      hooks: baseHooks.slice(0, 5),
-    };
+      greeting: "Hey — let's look at your training plan.",
+      context: `You're in week ${p.week} of ${p.totalWeeks} of your ${p.plan.name}: ${p.overview.completedCount} of ${p.total} sessions done${p.nextLabel ? `, next is ${p.nextLabel}` : ''}${activeEditCount > 0 ? ` (${activeEditCount} custom adaptation${activeEditCount === 1 ? '' : 's'})` : ''}.`,
+      nextActionPrompt: topIntervention
+        ? `Want to review ${topIntervention.title.toLowerCase()}, check this phase's focus, or schedule an away week?`
+        : "Want to check this phase's focus, swap an exercise across your program, or schedule an away week?",
+      hooks: baseHooks,
+    });
   }
 
   const hasWeighIn = biometrics.some((b) => (b.bodyweightKg || 0) > 0);
@@ -439,24 +510,28 @@ export function buildCoachOpening(input: CoachOpeningInput): CoachOpening {
       hooks.push({ label: 'Add Whoop widget', text: 'Add whoop metrics to progress' });
     }
     hooks.push({ label: 'Reset to default', text: 'Reset my progress widgets' });
-    return {
+    return composeCoachOpening({
       id: 'progress-widgets',
-      line: `You have ${activeCount} of ${totalAvailable} overview widgets on Progress. Tell me what to add or remove, like "add composition to progress" or "remove measurements widget".`,
-      hooks: hooks.slice(0, 5),
-    };
+      greeting: "Hey — let's tailor your Progress dashboard.",
+      context: `You have ${activeCount} of ${totalAvailable} overview widgets on Progress.`,
+      nextActionPrompt: 'Want me to add Body Composition, Strength Balance, or Measurements, or reset your layout to default?',
+      hooks,
+    });
   }
   if (place.detail === 'steps') {
     const stepsInfo = buildStepsCoachingSummary(biometrics, profile, input.now);
-    return {
+    return composeCoachOpening({
       id: 'progress-steps',
-      line: stepsInfo.progressText,
+      greeting: "Hey — here's your step activity check-in.",
+      context: stepsInfo.progressText,
+      nextActionPrompt: "Want simple ways to add 1,000 steps a day without adding leg fatigue, or to log today's steps?",
       hooks: [
         { label: 'How can I improve my steps?', text: 'How can I increase my daily steps?' },
         { label: 'Log steps today', text: 'Log ', fill: true },
         { label: 'Do steps count as workouts?', text: 'Do steps count toward workouts?' },
         ...(stepsInfo.goalTarget ? [] : [{ label: 'Set a step goal', text: 'Set a goal of 8000 daily steps' }]),
-      ].slice(0, 5),
-    };
+      ],
+    });
   }
   if (place.detail === 'whoop') {
     const visibleWidgets = resolveVisibleProgressWidgets(profile.progressWidgets, profile);
@@ -468,11 +543,13 @@ export function buildCoachOpening(input: CoachOpeningInput): CoachOpening {
     if (!visibleWidgets.includes('whoop-summary')) {
       hooks.push({ label: 'Add Whoop widget', text: 'Add whoop metrics to progress' });
     }
-    return {
+    return composeCoachOpening({
       id: 'progress-whoop',
-      line: buildWhoopCoachingSummary(biometrics, workouts, profile),
-      hooks: hooks.slice(0, 5),
-    };
+      greeting: "Hey — here's how your recovery telemetry looks.",
+      context: buildWhoopCoachingSummary(biometrics, workouts, profile),
+      nextActionPrompt: 'Want to check if you should push or hold today, or how readiness adjusts your working sets?',
+      hooks,
+    });
   }
   if (place.detail === 'goals') {
     const customised = Boolean(profile.goalSettings);
@@ -489,11 +566,13 @@ export function buildCoachOpening(input: CoachOpeningInput): CoachOpening {
       { label: 'What are my goals?', text: 'What are my goals?' },
     ];
     if (customised) hooks.push({ label: "Use my plan's goals", text: "Use my plan's goals" });
-    return {
+    return composeCoachOpening({
       id: 'goals-settings',
-      line: `Tell me a goal and I'll set it, like "12 chin-ups" or "100 kg bench press". Your plan's goals are the defaults${customised ? ', and you can go back to them any time' : ''}.`,
-      hooks: hooks.slice(0, 5),
-    };
+      greeting: "Hey — let's set up targets that keep you moving.",
+      context: `Tell me a goal and I'll set it right here, like "12 chin-ups" or "100 kg bench press". Your plan's goals are the defaults${customised ? ', and you can go back to them any time' : ''}.`,
+      nextActionPrompt: 'Which target would you like to set or adjust first?',
+      hooks,
+    });
   }
   if (place.detail === 'composition') {
     const sortedBio = [...biometrics].sort((a, b) => a.date.localeCompare(b.date));
@@ -503,16 +582,18 @@ export function buildCoachOpening(input: CoachOpeningInput): CoachOpening {
       : hasWeighIn
         ? `Your 7-day average weight is ${precise(input.bodyweightEmaKg)}. Log a body fat % reading to track lean body mass alongside weight.`
         : 'Log your weight and body fat % to track weight, body fat, and lean body mass together.';
-    return {
+    return composeCoachOpening({
       id: 'progress-composition',
-      line: compLine,
+      greeting: "Hey — let's review your body composition.",
+      context: compLine,
+      nextActionPrompt: 'Want to check your lean mass trend, log a new weight or body fat reading, or see why scale weight can hold flat during recomposition?',
       hooks: [
         { label: 'Composition trend', text: 'How is my body composition trending?' },
         { label: 'Log weight', text: `Log weight `, fill: true },
         { label: 'Log body fat %', text: 'Log body fat ', fill: true },
         { label: 'How does recomp work?', text: 'Why is scale weight flat during body recomposition?' },
       ],
-    };
+    });
   }
   if (place.detail === 'measurements') {
     const sortedBio = [...biometrics].sort((a, b) => a.date.localeCompare(b.date));
@@ -521,19 +602,21 @@ export function buildCoachOpening(input: CoachOpeningInput): CoachOpening {
     );
     const latestWaist = [...sortedBio].reverse().find((b) => typeof b.waistCm === 'number' && b.waistCm > 0)?.waistCm;
     const fmtLen = (cm: number) => (unit === 'lb' ? `${Math.round((cm / 2.54) * 10) / 10} in` : `${cm} cm`);
-    return {
+    return composeCoachOpening({
       id: 'progress-measurements',
-      line:
+      greeting: "Hey — let's check your tape measurements.",
+      context:
         loggedSites.length > 0
-          ? `You've tracked ${loggedSites.length} of 12 body tape sites${latestWaist ? ` (latest waist ${fmtLen(latestWaist)})` : ''}. Say any site and value to log it directly.`
-          : 'Log any of the 12 tape measurement sites (waist, chest, neck, arms, thighs, calves) right here or in the form.',
+          ? `You've tracked ${loggedSites.length} of 12 body tape sites${latestWaist ? ` (latest waist ${fmtLen(latestWaist)})` : ''}.`
+          : 'You can track any of the 12 tape measurement sites (waist, chest, neck, arms, thighs, calves) right here or in the form.',
+      nextActionPrompt: 'Want to log a new waist or arm measurement right here, or review your latest site trends?',
       hooks: [
         { label: 'Show my measurements', text: 'What are my latest body measurements?' },
         { label: 'Log waist', text: 'Log waist ', fill: true },
         { label: 'Log a tape site', text: 'Log left bicep ', fill: true },
         { label: 'Why measure waist?', text: 'Why is scale weight flat during body recomposition?' },
       ],
-    };
+    });
   }
   if (place.detail === 'weight') {
     const direction =
@@ -542,30 +625,38 @@ export function buildCoachOpening(input: CoachOpeningInput): CoachOpening {
         : profile.goalPhase === 'Maingain'
           ? 'How is my body composition trending?'
           : 'Am I gaining weight?';
-    return {
+    return composeCoachOpening({
       id: 'progress-weight',
-      line: hasWeighIn
+      greeting: "Hey — let's check your bodyweight trend.",
+      context: hasWeighIn
         ? `Your 7-day average is ${precise(input.bodyweightEmaKg)}. For ${GOAL_DISPLAY_NAME[profile.goalPhase || 'Lean Bulk']}, I can tell you which way it's moving.`
-        : 'Log your weight here and I can tell you which way it is moving against your goal.',
+        : "You haven't logged a weigh-in yet, so log your weight here and I can track how it moves against your goal.",
+      nextActionPrompt: "Want to check your weekly rate of change, log today's morning weight, or dial in your daily protein target?",
       hooks: [
         { label: direction, text: direction },
         { label: 'Log weight', text: 'Log weight ', fill: true },
         { label: 'How much protein?', text: 'How much protein do I need?' },
         { label: 'How does 7-day EMA work?', text: 'How is my 7-day bodyweight average calculated?' },
       ],
-    };
+    });
   }
   if (place.detail === 'insights') {
-    return {
+    const completedCount = workouts.filter((w) => w.completed).length;
+    return composeCoachOpening({
       id: 'progress-insights',
-      line: 'Your weekly muscle sets, joint load, recovery insights, and exercise notes are pulled together here.',
+      greeting: "Hey — here's your training and recovery check-in.",
+      context:
+        completedCount > 0
+          ? `I'm tracking your weekly muscle sets, joint load, recovery readiness, and session notes across ${completedCount} finished workout${completedCount === 1 ? '' : 's'}.`
+          : 'I track your weekly muscle sets, joint load, recovery readiness, and session notes as you log workouts.',
+      nextActionPrompt: 'Want to see which muscles need more sets this week, check your joint strain, or review your recovery status?',
       hooks: [
-        { label: 'How am I recovering?', text: 'How am I recovering?' },
         { label: 'Which muscles need sets?', text: 'Which muscles need more sets this week?' },
+        { label: 'How am I recovering?', text: 'How am I recovering?' },
         { label: 'Joint strain check', text: 'How is my joint strain?' },
         ownGoal,
       ],
-    };
+    });
   }
   if (place.detail === 'standards') {
     const balInterventions = detectCoachInterventions({
@@ -579,20 +670,24 @@ export function buildCoachOpening(input: CoachOpeningInput): CoachOpening {
       activities: input.activities,
     }).filter((it) => it.kind === 'pull_push_imbalance' || it.kind === 'unilateral_asymmetry' || it.kind === 'strength_level_gap');
     const topBal = balInterventions[0];
-    return {
+    return composeCoachOpening({
       id: 'progress-standards',
-      line: topBal
+      greeting: "Hey — let's check your strength standards and balance.",
+      context: topBal
         ? `${topBal.title}: ${topBal.rationale}`
         : strength
         ? `Your closest strength level is ${strength.title}: ${describeGoalStanding(strength, precise)}.`
-        : 'Strength levels compare your lifts with your bodyweight. Log your weight to see them.',
+        : 'Strength levels compare your lifts with your bodyweight — log your weight to see where each lift stands.',
+      nextActionPrompt: topBal
+        ? 'Want me to rebalance your program for this, or check your weakest lift?'
+        : 'Want to check your weakest lift, see how strength tiers are worked out, or set a personal lift goal?',
       hooks: [
         ...(topBal ? [{ label: topBal.ctaLabel, text: topBal.coachPrompt }] : []),
         { label: "What's my weakest lift?", text: "What's my weakest lift?" },
         { label: 'How are levels worked out?', text: 'How are strength levels worked out?' },
         ownGoal,
-      ].slice(0, 5),
-    };
+      ],
+    });
   }
   if (place.detail === 'recent') {
     const completed = workouts
@@ -600,53 +695,66 @@ export function buildCoachOpening(input: CoachOpeningInput): CoachOpening {
       .sort((a, b) => getWorkoutCompletedAt(a) - getWorkoutCompletedAt(b));
     const last = completed[completed.length - 1];
     const lastTonnage = last ? calculateSessionTonnage(last, hasWeighIn ? input.bodyweightEmaKg : 0).tonnageKg : 0;
-    return {
+    return composeCoachOpening({
       id: 'progress-recent',
-      line: last
-        ? `Your last session was ${last.name} (${last.date}${lastTonnage > 0 ? `, ${formatWeight(lastTonnage, unit)} tonnage` : ''}). Ask about any lift or tonnage trend.`
+      greeting: "Hey — let's review your recent sessions.",
+      context: last
+        ? `Your last session was ${last.name} (${last.date}${lastTonnage > 0 ? `, ${formatWeight(lastTonnage, unit)} tonnage` : ''}).`
         : 'Once you finish your first workout, your recent sessions and set history will appear here.',
+      nextActionPrompt: 'Want a full recap of your last workout, your tonnage trend, or how your lifts are progressing?',
       hooks: [
         { label: 'Last workout recap', text: 'What did I do last workout?' },
         { label: 'Last session tonnage', text: 'What was my tonnage last workout?' },
         { label: 'Am I getting stronger?', text: 'Am I getting stronger?' },
       ],
-    };
+    });
   }
   if (place.detail === 'bests') {
     const completedCount = workouts.filter((w) => w.completed).length;
-    return {
+    return composeCoachOpening({
       id: 'progress-bests',
-      line:
+      greeting: "Hey — let's look at your personal bests.",
+      context:
         completedCount > 0
-          ? `Your Trophy Cabinet tracks personal bests across ${completedCount} finished workout${completedCount === 1 ? '' : 's'}. Ask for any estimated 1RM or strength tier.`
+          ? `Your Trophy Cabinet tracks personal bests across ${completedCount} finished workout${completedCount === 1 ? '' : 's'}.`
           : 'Complete your first workout to start logging personal bests and estimated maxes.',
+      nextActionPrompt: 'Want to check your strength levels, see how estimated 1RM is calculated, or review which lifts have climbed the most?',
       hooks: [
         { label: 'My strength levels', text: 'What are my strength standards?' },
         { label: 'How is E1RM calculated?', text: 'How is estimated 1RM calculated?' },
         { label: 'Am I getting stronger?', text: 'Am I getting stronger?' },
+        ownGoal,
       ],
-    };
+    });
   }
   if (place.detail === 'lifetime') {
     const completedCount = workouts.filter((w) => w.completed).length;
-    return {
+    return composeCoachOpening({
       id: 'progress-lifetime',
-      line: `You've logged ${completedCount} finished workout${completedCount === 1 ? '' : 's'} in total. Ask about your streak, long-term strength trend, or weekly volume.`,
+      greeting: "Hey — here's your big-picture training progress.",
+      context: `You've logged ${completedCount} finished workout${completedCount === 1 ? '' : 's'} in total.`,
+      nextActionPrompt: 'Want to check your training streak, review your overall strength gains, or see where your weekly volume stands?',
       hooks: [
         { label: 'My training streak', text: 'What is my training streak?' },
         { label: 'How am I doing?', text: 'How am I doing?' },
         { label: 'Am I getting stronger?', text: 'Am I getting stronger?' },
       ],
-    };
+    });
   }
-  return {
+  const standingSummary =
+    `${weekly ? `${describeGoalStanding(weekly, precise)}. ` : ''}${chosen && chosen.measure.type === 'body' && chosen.measure.signsMeasured > 0 ? `${chosen.title}: ${chosen.measure.signsMet} of ${chosen.measure.signsMeasured} measured signs showing.` : ''}`.trim() ||
+    'Your goals fill in as you train.';
+  return composeCoachOpening({
     id: 'progress',
-    line: `${weekly ? `${describeGoalStanding(weekly, precise)}. ` : ''}${chosen && chosen.measure.type === 'body' && chosen.measure.signsMeasured > 0 ? `${chosen.title}: ${chosen.measure.signsMet} of ${chosen.measure.signsMeasured} measured signs showing.` : ''}`.trim() || 'Your goals fill in as you train.',
+    greeting: "Hey — let's check how your training is progressing.",
+    context: standingSummary,
+    nextActionPrompt: "Want a check-in on your strength gains, your weakest lift, or to log today's weight or a new goal?",
     hooks: [
       { label: 'How am I doing?', text: 'How am I doing?' },
       { label: 'Am I getting stronger?', text: 'Am I getting stronger?' },
       { label: "What's my weakest lift?", text: "What's my weakest lift?" },
       ownGoal,
+      { label: "Log today's weight", text: 'Log weight ', fill: true },
     ],
-  };
+  });
 }

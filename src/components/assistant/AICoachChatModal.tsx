@@ -744,19 +744,22 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
   }, [initialPrompt, initialMessages]);
 
   // When opened from an explicit object trigger (ExerciseDetailModal, CompositionCard,
-  // StrengthLevelsCard, GoalDetailScreen, etc.) while a prior conversation exists, append a
-  // fresh contextual opening + chips for that object so prior history/Undo stay scrollable above
-  // and the new object's context greets the athlete immediately.
+  // StrengthLevelsCard, GoalDetailScreen, etc.) or after switching tabs (Workout <-> Program <-> Progress)
+  // while a prior conversation exists, append a fresh contextual coach greeting + high-likelihood next
+  // action chips so prior history/Undo stay scrollable above and the new surface greets the athlete.
   useEffect(() => {
     if (embedded || initialMessages || initialPrompt) return;
     const isSpecificObjectTrigger = Boolean(place?.exerciseId || place?.detail || place?.goalId);
-    if (!isSpecificObjectTrigger) return;
     const ctxKey = `${place?.tab || ''}:${place?.exerciseId || ''}:${place?.detail || ''}:${place?.goalId || ''}:${opening.id}`;
     if (contextNoticeRef.current === ctxKey) return;
     contextNoticeRef.current = ctxKey;
     if (messages.length <= 1 && messages[0]?.id === 'msg-welcome') return;
     const last = messages[messages.length - 1];
     if (last?.sender === 'assistant' && last.text === opening.line) return;
+    const lastCtxMsg = [...messages]
+      .reverse()
+      .find((m) => m.id === 'msg-welcome' || m.id.startsWith('msg-ctx-'));
+    if (!isSpecificObjectTrigger && lastCtxMsg?.text === opening.line) return;
     setMessages((prev) => [
       ...prev,
       {
@@ -764,7 +767,7 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
         sender: 'assistant',
         text: opening.line,
         timestamp: liveClockTime(),
-        suggestedActions: opening.hooks.slice(0, 3).map((h) => ({
+        suggestedActions: opening.hooks.slice(0, 4).map((h) => ({
           label: h.label,
           prompt: h.text,
           ...(h.fill ? { fill: true } : {}),
@@ -822,7 +825,7 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
   const latestSuggestedActions = useMemo(() => {
     const last = messages[messages.length - 1];
     if (last && last.sender === 'assistant' && last.suggestedActions?.length) {
-      return last.suggestedActions.slice(0, 3);
+      return last.suggestedActions.slice(0, 4);
     }
     return null;
   }, [messages]);
@@ -1113,15 +1116,52 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
               const isBeingRevealed = revealing?.messageId === msg.id;
               const displayText = isBeingRevealed ? revealing.visibleText : msg.text;
 
-              // Before anything is asked, the opening line stands on its own, large, like a headline.
+              // Before anything is asked, show the coach's warm greeting, live context, and high-likelihood next actions right in the thread.
               if (msg.id === 'msg-welcome' && !conversationStarted) {
                 return (
-                  <p
-                    key={msg.id}
-                    className="wk-h1 py-1"
-                  >
-                    {renderBold(displayText)}
-                  </p>
+                  <div key={msg.id} className="flex flex-col gap-3 py-1">
+                    <div
+                      data-coach-greeting="true"
+                      className="wk-card wk-body flex flex-col gap-2"
+                      style={{ padding: '12px 16px' }}
+                    >
+                      <span
+                        className="wk-label"
+                        style={{ color: 'var(--color-coach-accent)' }}
+                      >
+                        Coach greeting
+                      </span>
+                      <p className="wk-body font-medium" style={{ color: 'var(--color-text-primary)' }}>
+                        {renderBold(displayText)}
+                      </p>
+                    </div>
+                    {quickPrompts.length > 0 && (
+                      <div
+                        data-coach-opening-hooks="true"
+                        className="flex flex-col gap-2"
+                      >
+                        <span className="wk-label">Suggested next actions</span>
+                        <div className="flex flex-wrap gap-2">
+                          {quickPrompts.map((q) => (
+                            <button
+                              key={`welcome-hook-${q.label}`}
+                              type="button"
+                              onClick={() => useHook(q)}
+                              disabled={isProcessing}
+                              className="min-h-[44px] rounded-full px-4 text-xs font-medium transition-all active:scale-95 disabled:opacity-50"
+                              style={{
+                                background: 'var(--wk-card)',
+                                color: 'var(--color-text-primary)',
+                                border: '1px solid var(--color-border-strong)',
+                              }}
+                            >
+                              {q.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 );
               }
 

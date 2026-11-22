@@ -74,7 +74,7 @@ import { localDateString } from '../utils/date';
 import { GOAL_DISPLAY_NAME } from '../utils/goalNames';
 import { formatPreciseWeight, formatWeight, snapLoadKg, unitToKg } from '../utils/units';
 import { parseEnvironmentConstraintText } from './environmentOverlayParser';
-import { findExerciseNamed } from './coachAnswers';
+import { exerciseNamedIn, findExerciseNamed } from './coachAnswers';
 import { CoachPlace } from './coachContext';
 import { ContextEnvelope, createMemoryFact, deriveContraindicationEdges } from './coachContextEnvelope';
 import {
@@ -4499,7 +4499,7 @@ export async function executeDeleteAthleteMemory(
         args: { clear_all: true, confirmation_required: false },
         title: `Clear all ${existing.length} saved coaching notes?`,
         summary: `${existing.length} saved note${existing.length === 1 ? '' : 's'} → None`,
-        warning: 'Injuries, contraindications, and preferences saved in chat will be forgotten until you tell Treise again.',
+        warning: 'Injuries, contraindications, and preferences saved in chat will be forgotten until you tell me again.',
         confirm_label: 'Clear all notes',
         cancel_label: 'Keep notes',
         preview_diff: clearDiff,
@@ -4932,7 +4932,8 @@ export function enforceMutationTruthfulness(
 
 function dedupeAgainstUserMessage(
   chips: CoachSuggestedAction[],
-  lastUserMessage?: string
+  lastUserMessage?: string,
+  maxCount = 4
 ): CoachSuggestedAction[] {
   const normUser = (lastUserMessage || '').toLowerCase().replace(/[^a-z0-9\s]/g, '').trim();
   const seen = new Set<string>();
@@ -4944,7 +4945,7 @@ function dedupeAgainstUserMessage(
     if (seen.has(normPrompt)) continue;
     seen.add(normPrompt);
     filtered.push(chip);
-    if (filtered.length >= 3) break;
+    if (filtered.length >= maxCount) break;
   }
   return filtered;
 }
@@ -4957,14 +4958,37 @@ export function buildSuggestedActions(params: {
   custom?: CoachSuggestedAction[];
   lastSwap?: { from: string; to: string };
   lastUserMessage?: string;
+  answerText?: string;
   isSafetyResponse?: boolean;
 }): CoachSuggestedAction[] {
   if (params.custom && params.custom.length > 0) {
     return dedupeAgainstUserMessage(params.custom, params.lastUserMessage);
   }
 
-  const { toolName, mutationStatus, envelope, place, lastSwap, lastUserMessage, isSafetyResponse } = params;
-  const todayFirstEx = envelope.working_state.today_workout?.exercises[0]?.name;
+  const { toolName, mutationStatus, envelope, place, lastSwap, lastUserMessage, answerText, isSafetyResponse } = params;
+  const todayExercises = envelope.working_state.today_workout?.exercises ?? [];
+  const todayFirstEx = todayExercises[0]?.name;
+  const nextActiveEx =
+    todayExercises.find((e) => e.completed_sets < e.total_sets) ?? todayExercises[0];
+  const unit = envelope.working_state.athlete?.weight_unit || 'kg';
+  const lowerUser = (lastUserMessage || '').toLowerCase();
+  const lowerReply = (answerText || '').toLowerCase();
+
+  const buildLogSetHookFor = (ex: (typeof todayExercises)[number] | undefined): CoachSuggestedAction | null => {
+    if (!ex || ex.is_timed || ex.completed_sets >= ex.total_sets) return null;
+    const shortName = ex.name.split(' ').slice(0, 2).join(' ');
+    const wtDisplay =
+      ex.target_weight_kg > 0
+        ? formatWeight(ex.target_weight_kg, unit)
+        : 'bodyweight';
+    return {
+      label: `Log Set ${ex.completed_sets + 1} (${shortName})`,
+      prompt:
+        ex.target_weight_kg > 0
+          ? `Log ${wtDisplay} x ${ex.target_reps} @ ${ex.target_rir} RIR on ${ex.name}`
+          : `Log ${ex.target_reps} reps @ ${ex.target_rir} RIR on ${ex.name}`,
+    };
+  };
 
   if (isSafetyResponse) {
     return dedupeAgainstUserMessage(
@@ -5027,6 +5051,10 @@ export function buildSuggestedActions(params: {
   }
 
   if (toolName === 'swap_exercise' && mutationStatus === 'success') {
+    const swappedInEx = lastSwap
+      ? todayExercises.find((e) => e.name.toLowerCase() === lastSwap.to.toLowerCase())
+      : nextActiveEx;
+    const logSwappedHook = buildLogSetHookFor(swappedInEx);
     return dedupeAgainstUserMessage(
       [
         ...(lastSwap
@@ -5037,6 +5065,7 @@ export function buildSuggestedActions(params: {
               },
             ]
           : []),
+        ...(logSwappedHook ? [logSwappedHook] : []),
         { label: 'Review updated workout', prompt: 'What am I lifting today?' },
         { label: 'Check weekly volume', prompt: 'Am I doing enough sets this week?' },
       ],
@@ -5052,8 +5081,10 @@ export function buildSuggestedActions(params: {
       toolName === 'override_recovery_gate') &&
     mutationStatus === 'success'
   ) {
+    const logNext = buildLogSetHookFor(nextActiveEx);
     return dedupeAgainstUserMessage(
       [
+        ...(logNext ? [logNext] : []),
         { label: 'Review updated workout', prompt: 'What am I lifting today?' },
         { label: 'Check weekly volume', prompt: 'Am I doing enough sets this week?' },
         { label: 'Trim today to 25m', prompt: "Shorten today's workout" },
@@ -5063,10 +5094,11 @@ export function buildSuggestedActions(params: {
   }
 
   if (toolName === 'log_workout_set' && mutationStatus === 'success') {
+    const logNext = buildLogSetHookFor(nextActiveEx);
     return dedupeAgainstUserMessage(
       [
+        ...(logNext ? [logNext] : [{ label: 'Log another set', prompt: 'Log set ', fill: true }]),
         { label: 'Rest between sets', prompt: 'How long should I rest between sets?' },
-        { label: 'Log another set', prompt: 'Log set ', fill: true },
         { label: 'How hard to push', prompt: 'How hard should I push today?' },
       ],
       lastUserMessage
@@ -5074,8 +5106,10 @@ export function buildSuggestedActions(params: {
   }
 
   if (toolName === 'adjust_workout_volume' && mutationStatus === 'success') {
+    const logNext = buildLogSetHookFor(nextActiveEx);
     return dedupeAgainstUserMessage(
       [
+        ...(logNext ? [logNext] : []),
         { label: 'Updated workout brief', prompt: 'What am I lifting today?' },
         { label: 'Rest between sets', prompt: 'How long should I rest between sets?' },
       ],
@@ -5095,6 +5129,7 @@ export function buildSuggestedActions(params: {
               },
             ]
           : [{ label: 'Today workout brief', prompt: 'What am I lifting today?' }]),
+        { label: 'Rebalance my program', prompt: 'Rebalance my program for any imbalances' },
       ],
       lastUserMessage
     );
@@ -5129,13 +5164,179 @@ export function buildSuggestedActions(params: {
     );
   }
 
+  // -------------------------------------------------------------------------
+  // Topic-aware & state-aware contextual next-action hooks for conversational turns
+  // -------------------------------------------------------------------------
+  // 1. Short on time / workout duration
+  if (/\b(short\s+on\s+time|in\s+a\s+(?:rush|hurry)|quick|shorter|how\s+long.*(?:take|workout|session)|25\s*min|30\s*min)\b/.test(lowerUser)) {
+    const logNext = buildLogSetHookFor(nextActiveEx);
+    return dedupeAgainstUserMessage(
+      [
+        { label: 'Trim 1 set per lift', prompt: "Trim 1 working set per exercise in today's workout" },
+        { label: '25-min express workout', prompt: "Shorten today's workout" },
+        ...(logNext ? [logNext] : []),
+        { label: 'Today workout brief', prompt: 'What am I lifting today?' },
+      ],
+      lastUserMessage
+    );
+  }
+
+  // 2. Focused exercise discussion (why weight moved, form cues, tempo, warm-up, rest, history, joints)
+  const isBodyCompOrScaleQuery =
+    /\b(scale\s*weight|body\s*weight|bodyweight|body\s*comp\w*|recomp\w*|body\s*fat|waist|tape|measure\w*)\b/.test(
+      lowerUser
+    );
+  const mentionedTodayEx = !isBodyCompOrScaleQuery
+    ? todayExercises.find(
+        (e) =>
+          (place?.exerciseId && (e.exercise_id === place.exerciseId || e.id === place.exerciseId)) ||
+          lowerUser.includes(e.name.toLowerCase()) ||
+          exerciseNamedIn(lowerUser, e.name)
+      ) ?? null
+    : null;
+
+  if (
+    mentionedTodayEx &&
+    /\b(why|weight|load|how\s+do\s+i|how\s+to|form|technique|tempo|warm[\s-]?up|rest|targets?|sets?|reps?|joints?|history|last\s+time)\b/.test(
+      lowerUser
+    )
+  ) {
+    const shortName = mentionedTodayEx.name.split(' ').slice(0, 2).join(' ');
+    const logExHook = buildLogSetHookFor(mentionedTodayEx);
+    return dedupeAgainstUserMessage(
+      [
+        ...(logExHook ? [logExHook] : []),
+        { label: `How to do ${shortName}`, prompt: `How do I do the ${mentionedTodayEx.name.toLowerCase()}?` },
+        { label: 'Why this weight?', prompt: `Why is my ${mentionedTodayEx.name.toLowerCase()} weight set to this?` },
+        { label: `Swap ${shortName}`, prompt: `Swap ${mentionedTodayEx.name}` },
+        { label: 'Warm-up ramp', prompt: `How should I warm up for ${mentionedTodayEx.name}?` },
+      ],
+      lastUserMessage
+    );
+  }
+
+  // 3. Recovery, readiness, soreness, sleep, or "Should I train today?"
+  if (
+    /\b(should\s+i\s+(?:train|skip|lift)|ready|recover\w*|readiness|whoop|hrv|sore\w*|doms|slept|sleep|amber|tired|fatigu\w*)\b/.test(
+      lowerUser
+    )
+  ) {
+    const isLowOrRecovering =
+      envelope.working_state.today_workout?.readiness_state === 'Amber Shield' ||
+      /\b(still\s+recovering|recovery\s+is\s+low|lighter\s+effort)\b/.test(lowerReply);
+    if (isLowOrRecovering) {
+      return dedupeAgainstUserMessage(
+        [
+          { label: 'Trim 1 set per lift', prompt: "Trim 1 working set per exercise in today's workout" },
+          { label: 'Take a rest day', prompt: 'Take a rest day today' },
+          { label: 'Log 20m active day', prompt: 'Log 20 min walk' },
+          { label: 'Today workout brief', prompt: 'What am I lifting today?' },
+        ],
+        lastUserMessage
+      );
+    }
+    const logNext = buildLogSetHookFor(nextActiveEx);
+    return dedupeAgainstUserMessage(
+      [
+        ...(logNext ? [logNext] : []),
+        { label: 'Today workout brief', prompt: 'What am I lifting today?' },
+        ...(todayFirstEx
+          ? [{ label: 'Warm-up ramp', prompt: `How should I warm up for ${todayFirstEx}?` }]
+          : []),
+        { label: 'How hard to push (RIR)', prompt: 'How hard should I push today?' },
+      ],
+      lastUserMessage
+    );
+  }
+
+  // 4. Weekly muscle sets, hypertrophy volume, or growing a muscle
+  if (/\b(weekly\s+(?:sets|volume)|enough\s+sets|sets\s+this\s+week|which\s+muscles|hard\s+sets|bigger|grow\w*|lagging)\b/.test(lowerUser)) {
+    return dedupeAgainstUserMessage(
+      [
+        { label: 'Rebalance my program', prompt: 'Rebalance my program for any imbalances' },
+        { label: 'Today workout brief', prompt: 'What am I lifting today?' },
+        { label: "What's my weakest lift?", prompt: "What's my weakest lift?" },
+      ],
+      lastUserMessage
+    );
+  }
+
+  // 5. Strength standards, weakest lift, imbalances, PRs, or "Am I getting stronger?"
+  if (
+    /\b(weakest|strongest|standard|level|tier|kilgore|poliquin|imbalanc\w*|symmetr\w*|getting\s+stronger|progress\w*|e1rm|1rm|tonnage|last\s+workout)\b/.test(
+      lowerUser
+    )
+  ) {
+    return dedupeAgainstUserMessage(
+      [
+        { label: 'Rebalance my program', prompt: 'Rebalance my program for any imbalances' },
+        { label: "What's my weakest lift?", prompt: "What's my weakest lift?" },
+        { label: 'Set a lift goal', prompt: 'Set a goal of ', fill: true },
+        { label: 'Which muscles need sets?', prompt: 'Which muscles need more sets this week?' },
+      ],
+      lastUserMessage
+    );
+  }
+
+  // 6. Body weight, body fat %, composition, recomp, or tape measurements
+  if (/\b(weight|weigh|body\s*fat|composition|recomp\w*|waist|tape|measure\w*|bicep|thigh|chest|hip|neck|scale)\b/.test(lowerUser)) {
+    return dedupeAgainstUserMessage(
+      [
+        { label: "Log today's weight", prompt: 'Log weight ', fill: true },
+        { label: 'Log waist measurement', prompt: 'Log waist ', fill: true },
+        { label: 'Composition trend', prompt: 'How is my body composition trending?' },
+        { label: 'How much protein?', prompt: 'How much protein do I need?' },
+      ],
+      lastUserMessage
+    );
+  }
+
+  // 7. Nutrition, protein, calories, or supplements
+  if (/\b(protein|calorie|macros?|eat\w*|meal|food|diet|creatine|supplement)\b/.test(lowerUser)) {
+    return dedupeAgainstUserMessage(
+      [
+        { label: 'Check weight trend', prompt: 'Am I gaining weight?' },
+        { label: "Log today's weight", prompt: 'Log weight ', fill: true },
+        { label: 'How many calories?', prompt: 'How many calories should I eat?' },
+        { label: 'Change my goal', prompt: 'Change my goal to ', fill: true },
+      ],
+      lastUserMessage
+    );
+  }
+
+  // 8. Daily steps, walking, or cardio / active days
+  if (/\b(steps?|walk\w*|cardio|run\w*|active\s+days?|ride|swim\w*)\b/.test(lowerUser)) {
+    return dedupeAgainstUserMessage(
+      [
+        { label: 'Log 30m walk', prompt: 'Log 30 min walk' },
+        { label: 'Log steps today', prompt: 'Log ', fill: true },
+        { label: 'How can I improve steps?', prompt: 'How can I increase my daily steps?' },
+        { label: 'Set 10k step goal', prompt: 'Set a goal of 10000 daily steps' },
+      ],
+      lastUserMessage
+    );
+  }
+
+  // 9. Missed workouts, schedule, away/travel week, or plan position
+  if (/\b(missed|skip\w*|away|travel\w*|week\s+\d|phase|where\s+am\s+i|what'?s\s+next|schedule)\b/.test(lowerUser)) {
+    return dedupeAgainstUserMessage(
+      [
+        { label: 'Today workout brief', prompt: 'What am I lifting today?' },
+        { label: 'Trim 1 set per lift', prompt: "Trim 1 working set per exercise in today's workout" },
+        { label: "I'm away next week", prompt: "I'll be away travelling next week" },
+        { label: 'Weekly schedule', prompt: 'How does the weekly schedule work?' },
+      ],
+      lastUserMessage
+    );
+  }
+
   if (place?.tab === 'program') {
     return dedupeAgainstUserMessage(
       [
         { label: 'Next workout plan', prompt: 'Where am I in my program?' },
         { label: 'Rebalance my program', prompt: 'Rebalance my program for any imbalances' },
+        { label: "I'm away next week", prompt: "I'll be away travelling next week" },
         { label: 'Weekly muscle sets', prompt: 'Am I doing enough sets this week?' },
-        { label: 'How the schedule works', prompt: 'How does the weekly schedule work?' },
       ],
       lastUserMessage
     );
@@ -5146,15 +5347,17 @@ export function buildSuggestedActions(params: {
       [
         { label: 'Strength balance', prompt: 'What are my strength standards?' },
         { label: 'Body composition', prompt: 'How is my body composition trending?' },
-        { label: 'Check weekly sets', prompt: 'Am I doing enough sets this week?' },
+        { label: "Log today's weight", prompt: 'Log weight ', fill: true },
         { label: 'What are my goals?', prompt: 'What are my goals?' },
       ],
       lastUserMessage
     );
   }
 
+  const logFirstHook = buildLogSetHookFor(nextActiveEx);
   const defaults: CoachSuggestedAction[] = [
     { label: 'Today workout brief', prompt: 'What am I lifting today?' },
+    ...(logFirstHook ? [logFirstHook] : []),
     { label: 'Should I push or hold?', prompt: 'Should I train today?' },
   ];
   if (todayFirstEx) {
@@ -5163,6 +5366,6 @@ export function buildSuggestedActions(params: {
       prompt: `What can I swap ${todayFirstEx} for?`,
     });
   }
-  defaults.push({ label: 'Weekly muscle sets', prompt: 'Am I doing enough sets this week?' });
+  defaults.push({ label: 'Trim 1 set per lift', prompt: "Trim 1 working set per exercise in today's workout" });
   return dedupeAgainstUserMessage(defaults, lastUserMessage);
 }

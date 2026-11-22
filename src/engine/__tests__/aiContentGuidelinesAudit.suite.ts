@@ -51,8 +51,9 @@ import { buildCompositionOverview, checkCompositionInsight } from '../../service
 import { checkSummaryVoiceGuidelines } from '../../services/coachPersonalization';
 import { buildCoachSystemPrompt, processAssistantMessage } from '../../services/aiAssistantService';
 import { buildContextEnvelope, serializeContextEnvelopeForPrompt } from '../../services/coachContextEnvelope';
+import { buildCoachOpening, CoachPlace } from '../../services/coachContext';
 import { answerWeeklySchedule } from '../../services/coachAnswers';
-import { buildAthleteGoals } from '../../services/athleteGoals';
+import { buildAthleteGoals, CHOSEN_GOAL_ID, WEEKLY_GOAL_ID } from '../../services/athleteGoals';
 
 type AssertFn = (condition: boolean, message: string) => void;
 
@@ -669,5 +670,178 @@ export async function runAiContentGuidelinesAuditSuite(assert: AssertFn): Promis
       briefingReply.message.text.includes('replaces Barbell Bench Press') &&
       !briefingReply.message.text.includes('covering Barbell Bench Press'),
     'AI Coach schedule answer and swapped session briefing pass Read-Aloud QA gate cleanly'
+  );
+
+  // -------------------------------------------------------------------------
+  // 6. AI Coach Chat Conversational Experience Audit:
+  //    Warm Coach Greeting on Open, Contextual Next-Action Hooks & First-Person Coach Voice
+  // -------------------------------------------------------------------------
+  const fs79 = require('fs');
+  const path79 = require('path');
+  const allOpeningPlaces: Array<{ label: string; place: CoachPlace; readiness?: 'Normal' | 'Amber Shield'; workout?: WorkoutSession }> = [
+    { label: 'Workout ready (Normal)', place: { tab: 'train' }, workout: { ...activeWithSwaps, recoveryOverride: true } },
+    { label: 'Workout ready (Amber Shield)', place: { tab: 'train' }, readiness: 'Amber Shield', workout: { ...activeWithSwaps, recoveryOverride: true } },
+    {
+      label: 'Workout active (in-progress)',
+      place: { tab: 'train' },
+      workout: {
+        ...activeWithSwaps,
+        exercises: activeWithSwaps.exercises.map((ex, idx) =>
+          idx === 0
+            ? { ...ex, sets: ex.sets.map((s) => ({ ...s, completed: true, actualWeightKg: s.targetWeightKg, actualReps: s.targetReps })) }
+            : ex
+        ),
+      },
+    },
+    { label: 'Workout exercise drill-in', place: { tab: 'train', exerciseId: 'ex-flat-db-press' }, workout: activeWithSwaps },
+    { label: 'Program tab', place: { tab: 'program' } },
+    { label: 'Progress overview', place: { tab: 'analytics' } },
+    { label: 'Progress -> Insights', place: { tab: 'analytics', detail: 'insights' } },
+    { label: 'Progress -> Standards', place: { tab: 'analytics', detail: 'standards' } },
+    { label: 'Progress -> Composition', place: { tab: 'analytics', detail: 'composition' } },
+    { label: 'Progress -> Measurements', place: { tab: 'analytics', detail: 'measurements' } },
+    { label: 'Progress -> Weight', place: { tab: 'analytics', detail: 'weight' } },
+    { label: 'Progress -> Steps', place: { tab: 'analytics', detail: 'steps' } },
+    { label: 'Progress -> Whoop', place: { tab: 'analytics', detail: 'whoop' } },
+    { label: 'Progress -> Recent', place: { tab: 'analytics', detail: 'recent' } },
+    { label: 'Progress -> Bests', place: { tab: 'analytics', detail: 'bests' } },
+    { label: 'Progress -> Lifetime', place: { tab: 'analytics', detail: 'lifetime' } },
+    { label: 'Progress -> Widgets', place: { tab: 'analytics', detail: 'widgets' } },
+    { label: 'Progress -> Goals settings', place: { tab: 'analytics', detail: 'goals' } },
+    { label: 'Goal -> Weekly frequency', place: { tab: 'analytics', goalId: WEEKLY_GOAL_ID } },
+    { label: 'Goal -> Chosen goal', place: { tab: 'analytics', goalId: CHOSEN_GOAL_ID } },
+  ];
+
+  for (const item of allOpeningPlaces) {
+    const opening = buildCoachOpening({
+      place: item.place,
+      profile,
+      activeWorkout: item.workout ?? activeWithSwaps,
+      workouts,
+      biometrics,
+      exerciseCatalog: SEED_EXERCISES,
+      readinessState: item.readiness ?? 'Normal',
+      bodyweightEmaKg: 81.4,
+      now,
+    });
+    const qa = runReadAloudQaGate(opening.line);
+    const hasWarmGreeting = Boolean(opening.greeting && /^(Hey|Nice work|Great work)\b/.test(opening.greeting));
+    const hasNextActionQuestion = Boolean(opening.nextActionPrompt && /\?$/.test(opening.nextActionPrompt.trim()));
+    const noThirdPersonOrSurveillance =
+      !/\bTreise\s+(?:thinks|recommends|suggests|uses|tracks|compares|replaces|makes)\b/i.test(opening.line) &&
+      !/\b(?:i\s+noticed|based\s+on\s+your\s+data|according\s+to\s+your\s+profile)\b/i.test(opening.line);
+    assert(
+      qa.passed &&
+        hasWarmGreeting &&
+        hasNextActionQuestion &&
+        noThirdPersonOrSurveillance &&
+        opening.hooks.length >= 2 &&
+        opening.hooks.length <= 5,
+      `Coach opening (${item.label}) greets the athlete warmly, invites a next action, and surfaces ${opening.hooks.length} contextual hooks ("${opening.line}")`
+    );
+  }
+
+  // Multi-turn conversational next-action hooks & first-person coach voice checks
+  const chatTurnScenarios: Array<{
+    label: string;
+    userMessage: string;
+    place?: CoachPlace;
+    readiness?: 'Normal' | 'Amber Shield';
+    expectReplyRegex: RegExp;
+    expectHookRegex: RegExp;
+  }> = [
+    {
+      label: 'Short on time in workout',
+      userMessage: "I'm short on time today",
+      place: { tab: 'train' },
+      expectReplyRegex: /trim 1 working set/i,
+      expectHookRegex: /trim 1 set|25-min express/i,
+    },
+    {
+      label: 'Exercise weight / form question',
+      userMessage: 'Why is my Flat Dumbbell Press weight set to this?',
+      place: { tab: 'train', exerciseId: 'ex-flat-db-press' },
+      expectReplyRegex: /Flat Dumbbell Press/i,
+      expectHookRegex: /Log Set 1|How to do|Swap|Warm-up/i,
+    },
+    {
+      label: 'Busy equipment / missing kit today',
+      userMessage: "I don't have dumbbells today",
+      place: { tab: 'train' },
+      expectReplyRegex: /need a swap/i,
+      expectHookRegex: /Swap /i,
+    },
+    {
+      label: 'Should I train today on Amber Shield',
+      userMessage: 'Should I train today?',
+      place: { tab: 'train' },
+      readiness: 'Amber Shield',
+      expectReplyRegex: /lighter effort|2–3 RIR/i,
+      expectHookRegex: /Trim 1 set|Take a rest day|Log 20m active day/i,
+    },
+    {
+      label: 'Weekly muscle volume check',
+      userMessage: 'Which muscles need more sets this week?',
+      place: { tab: 'analytics', detail: 'insights' },
+      expectReplyRegex: /hard sets this week/i,
+      expectHookRegex: /Rebalance my program|weakest lift/i,
+    },
+    {
+      label: 'Body composition & recomp check',
+      userMessage: 'Why is scale weight flat during body recomposition?',
+      place: { tab: 'analytics', detail: 'composition' },
+      expectReplyRegex: /I track a 7-day rolling average/i,
+      expectHookRegex: /Log today's weight|Log waist|How much protein/i,
+    },
+    {
+      label: 'Greeting / capabilities turn',
+      userMessage: 'Hey',
+      place: { tab: 'train' },
+      expectReplyRegex: /Hey — I'm Treise, your strength coach/i,
+      expectHookRegex: /Today workout brief|Log Set 1|Should I push or hold/i,
+    },
+  ];
+
+  for (const sc of chatTurnScenarios) {
+    const res = await processAssistantMessage({
+      userMessage: sc.userMessage,
+      profile,
+      activeWorkout: activeWithSwaps,
+      workouts,
+      biometrics,
+      exerciseCatalog: SEED_EXERCISES,
+      bodyweightEmaKg: 81.4,
+      readinessState: sc.readiness ?? 'Normal',
+      place: sc.place ?? { tab: 'train' },
+    });
+    const text = res.message.text;
+    const hooks = res.message.suggestedActions ?? [];
+    const hooksJoined = hooks.map((h) => `${h.label} (${h.prompt})`).join(' | ');
+    const qa = runReadAloudQaGate(text);
+    const noThirdPerson =
+      !/\bTreise\s+(?:thinks|recommends|suggests|uses|tracks|compares|replaces|makes)\b/i.test(text);
+    const noSurveillance =
+      !/\b(?:i\s+noticed|based\s+on\s+your\s+data|according\s+to\s+your\s+profile)\b/i.test(text);
+    assert(
+      qa.passed &&
+        noThirdPerson &&
+        noSurveillance &&
+        sc.expectReplyRegex.test(text) &&
+        hooks.length >= 2 &&
+        sc.expectHookRegex.test(hooksJoined),
+      `Chat turn (${sc.label}) speaks in first-person coach voice and surfaces contextual next-action hooks [${hooks.map((h) => h.label).join(', ')}]`
+    );
+  }
+
+  const chatModalSrc79 = fs79.readFileSync(
+    path79.resolve(process.cwd(), 'src/components/assistant/AICoachChatModal.tsx'),
+    'utf8'
+  );
+  assert(
+    chatModalSrc79.includes('data-coach-greeting="true"') &&
+      chatModalSrc79.includes('data-coach-opening-hooks="true"') &&
+      chatModalSrc79.includes('Suggested next actions') &&
+      chatModalSrc79.includes('lastCtxMsg'),
+    'AICoachChatModal renders the Coach greeting card, in-thread Suggested next actions hooks on open, and cross-tab greeting refresh'
   );
 }

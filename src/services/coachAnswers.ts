@@ -396,7 +396,8 @@ function buildSwapAnswer(lowerMsg: string, activeWorkout: WorkoutSession, exerci
     if (picked) suggested.push(picked);
     return picked;
   };
-  const how = 'Tap the swap button on the exercise in your workout to see every option; sets you have logged stay as they are.';
+  const how =
+    'Tell me to make the swap right here (or tap a suggested option below, or use the swap button on the exercise card); sets you have logged stay as they are.';
   const named = findExerciseNamed(lowerMsg, activeWorkout, exerciseCatalog);
 
   if (named?.session) {
@@ -544,7 +545,7 @@ export function buildStepsCoachingSummary(
   } else if (avg7d !== null) {
     improveText = `To nudge your average up without burning out your legs for squats or deadlifts, aim for +1,000 steps/day for two weeks (a single 10-minute brisk walk after dinner adds roughly 1,000 steps) and park or take calls on foot.`;
   } else {
-    improveText = `Start by syncing Health Connect or your watch so Treise tracks your baseline, then anchor a 10-minute walk (~1,000 steps) after one meal each day.`;
+    improveText = `Start by syncing Health Connect or your watch so I can track your baseline, then anchor a 10-minute walk (~1,000 steps) after one meal each day.`;
   }
 
   return {
@@ -581,7 +582,7 @@ export function buildWhoopCoachingSummary(
     return 'Whoop is set up, but no synced recovery, strain or sleep readings are saved yet. Run a sync or import your Whoop CSV in Watch & telemetry.';
   }
   const suffix = snap.latestDate ? ` (latest ${snap.latestDate})` : '';
-  return `Your latest Whoop telemetry${suffix}: ${parts.join(' · ')}. Treise uses your recovery, HRV, resting HR and sleep to judge whether to push weights or keep 2–3 reps in reserve.`;
+  return `Your latest Whoop telemetry${suffix}: ${parts.join(' · ')}. I use your recovery, HRV, resting HR and sleep to judge whether to push weights or keep 2–3 reps in reserve.`;
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -642,7 +643,7 @@ export function answerEverydayQuestion(ctx: EverydayContext): string | null {
   if (/\b(short on time|in a (rush|hurry)|not much time|pressed for time|running late|limited time|quick (workout|session)|shorter (workout|session))\b/.test(msg) || (/\b\d+ ?(min|mins|minutes)\b/.test(msg) && /\b(only|just|have|got)\b/.test(msg) && !/\brest\b/.test(msg))) {
     const first = today.slice(0, 3).map((e) => e.name);
     if (!first.length) return "There's nothing planned in today's workout to shorten.";
-    return `Short on time: do today's exercises in order and stop when your time is up. The ones to keep are the first in the list: ${listAnd(first)}. Keep the planned rest on those so the weight and reps hold. Every set you log counts, and your plan carries on from what you logged.`;
+    return `Short on time: do today's exercises in order and stop when your time is up. The ones to keep are the first in the list: ${listAnd(first)}. Keep the planned rest on those so the weight and reps hold. Every set you log counts, and your plan carries on from what you logged. Want me to trim 1 working set per exercise right now for a faster express session?`;
   }
 
   // How long the workout takes: only from measured times.
