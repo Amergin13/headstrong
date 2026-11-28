@@ -181,7 +181,7 @@ export const TrendChart: React.FC<TrendChartProps> = ({
           background: 'rgb(var(--color-bg-raised-rgb, 28 32 38) / 0.35)',
         }}
       >
-        <p className="wk-caption font-medium m-0" style={{ color: 'var(--color-text-secondary)' }}>
+        <p className="wk-meta-title m-0" style={{ color: 'var(--color-text-secondary)' }}>
           {emptyTitle}
         </p>
         <p className="wk-caption m-0 mt-1" style={{ color: 'var(--color-text-muted)' }}>
@@ -269,12 +269,6 @@ export const TrendChart: React.FC<TrendChartProps> = ({
     : tone === 'biometric'
     ? 'var(--color-data-telemetry)'
     : 'var(--color-text-primary)';
-  const mutedStyle: React.CSSProperties = {
-    fontSize: 12,
-    color: 'var(--color-text-muted)',
-    lineHeight: 1.15,
-    fontVariantNumeric: 'tabular-nums',
-  };
 
   // Decide which node labels render without horizontal overlap on sparse series.
   const visibleNodeLabels = new Set<number>();
@@ -340,7 +334,7 @@ export const TrendChart: React.FC<TrendChartProps> = ({
                   borderColor: 'rgb(var(--color-accent-primary-rgb) / 0.45)',
                 }}
               />
-              <span className="wk-caption" style={{ lineHeight: 1 }}>
+              <span className="wk-caption">
                 Travel Bridge
               </span>
             </div>
@@ -351,7 +345,7 @@ export const TrendChart: React.FC<TrendChartProps> = ({
                 className="inline-block rounded-[2px]"
                 style={{ width: 10, height: 10, background: 'var(--color-border-strong)' }}
               />
-              <span className="wk-caption" style={{ lineHeight: 1 }}>
+              <span className="wk-caption">
                 {typicalRange.label}
               </span>
             </div>
@@ -377,9 +371,9 @@ export const TrendChart: React.FC<TrendChartProps> = ({
               return (
                 <span
                   key={tick}
-                  className="block text-right"
+                  className="wk-caption tabular-nums block text-right"
                   style={{
-                    ...mutedStyle,
+                    color: 'var(--color-text-muted)',
                     position: 'absolute',
                     right: 0,
                     top: `${(tickY / H) * 100}%`,
@@ -536,17 +530,14 @@ export const TrendChart: React.FC<TrendChartProps> = ({
                 )}
                 {visibleNodeLabels.has(idx) && (
                   <span
-                    className={`wk-chart-fade absolute pointer-events-none select-none whitespace-nowrap ${
-                      idx === main.length - 1 ? 'font-medium' : 'font-normal'
+                    className={`wk-chart-fade absolute pointer-events-none select-none whitespace-nowrap tabular-numbers ${
+                      idx === main.length - 1 ? 'wk-meta-title' : 'wk-caption'
                     }`}
                     style={{
                       left: `${(pt.x / W) * 100}%`,
                       top: `${(pt.y / H) * 100}%`,
                       transform: 'translate(-50%, calc(-100% - 8px))',
                       color: idx === main.length - 1 ? 'var(--color-text-primary)' : 'var(--color-text-secondary)',
-                      fontSize: 12,
-                      lineHeight: 1,
-                      fontVariantNumeric: 'tabular-nums',
                     }}
                     aria-hidden="true"
                   >
@@ -574,11 +565,9 @@ export const TrendChart: React.FC<TrendChartProps> = ({
 
           {!isMinimal && single && (
             <span
-              className="wk-chart-fade absolute font-medium tabular-nums"
+              className="wk-chart-fade wk-subhead tabular-nums absolute"
               style={{
                 color: 'var(--color-text-primary)',
-                fontSize: 16,
-                lineHeight: 1,
                 left: `calc(${(last.x / W) * 100}% + 12px)`,
                 top: `calc(${(last.y / H) * 100}% - 20px)`,
               }}
@@ -593,7 +582,7 @@ export const TrendChart: React.FC<TrendChartProps> = ({
         {!isMinimal && <div aria-hidden="true" />}
 
         {!isMinimal && single && (
-          <div className="wk-chart-fade flex justify-between" style={{ ...mutedStyle, marginTop: 8 }} aria-hidden="true">
+          <div className="wk-chart-fade wk-caption tabular-nums flex justify-between mt-2" aria-hidden="true">
             <span>Starting point</span>
             <span>{dayMonth(points[0].date)}</span>
           </div>
@@ -610,17 +599,16 @@ export const TrendChart: React.FC<TrendChartProps> = ({
               return (
                 <div
                   key={day.date}
-                  className="absolute text-center whitespace-nowrap"
+                  className="wk-caption tabular-nums absolute text-center whitespace-nowrap"
                   style={{
                     left: `${(x / W) * 100}%`,
                     transform: 'translateX(-50%)',
-                    ...mutedStyle,
                   }}
                 >
-                  <div className="font-normal" style={{ color: 'var(--color-text-muted)' }}>
+                  <div style={{ color: 'var(--color-text-muted)' }}>
                     {day.weekday}
                   </div>
-                  <div className="font-medium" style={{ color: 'var(--color-text-secondary)', marginTop: '2px' }}>
+                  <div className="wk-meta-title" style={{ color: 'var(--color-text-secondary)', marginTop: '2px' }}>
                     {day.day}
                   </div>
                 </div>
@@ -630,7 +618,7 @@ export const TrendChart: React.FC<TrendChartProps> = ({
         )}
 
         {!isMinimal && !single && calendarDays.length <= 1 && (
-          <div className="wk-chart-fade flex justify-between" style={{ ...mutedStyle, marginTop: 8 }} aria-hidden="true">
+          <div className="wk-chart-fade wk-caption tabular-nums flex justify-between mt-2" aria-hidden="true">
             <span>{dayMonth(points[0].date)}</span>
             <span>
               {dayMonth(points[points.length - 1].date)} · {points[points.length - 1].detailLabel ?? format(points[points.length - 1].value)}

@@ -439,7 +439,10 @@ export function buildSafetyResponse(message: string, activeWorkout?: WorkoutSess
  * The on-device coach's instructions. Short on purpose (phone GPUs read ~30 tokens/s) and stable
  * for a whole chat, so follow-up questions can reuse it. Question-specific facts go in the question.
  */
-export function buildCoachSystemPrompt(input: AssistantProcessInput): string {
+export function buildCoachSystemPrompt(
+  input: AssistantProcessInput,
+  options?: { anonymizeForCloud?: boolean }
+): string {
   const { profile, activeWorkout, workouts, biometrics, exerciseCatalog, bodyweightEmaKg, readinessState, weeklyVolume = {} } = input;
   const kg = buildAthleteKnowledgeGraph(workouts, biometrics, exerciseCatalog, profile, weeklyVolume, input.activities ?? []);
   const latestBio = biometrics[biometrics.length - 1];
@@ -484,7 +487,10 @@ export function buildCoachSystemPrompt(input: AssistantProcessInput): string {
   const musclesDesc = selectedMuscles
     .map((m) => `${m.displayName} ${m.weeklySets} of ${m.personalizedMav[0]}-${m.personalizedMav[1]} (${muscleTargetStatus(m)})`)
     .join(', ');
-  const athleteName = profile.name && profile.name !== 'Athlete' ? profile.name.split(' ')[0] : '';
+  const athleteName =
+    !options?.anonymizeForCloud && profile.name && profile.name !== 'Athlete'
+      ? profile.name.split(' ')[0]
+      : '';
   const goalLabel =
     profile.goalPhase === 'Cut / Recomp' ? 'lose fat, keep muscle' : profile.goalPhase === 'Maingain' ? 'stay lean' : 'build muscle';
   const recovery = readinessState === 'Amber Shield' ? 'low' : readinessState === 'Primed' ? 'high' : 'normal';
@@ -3136,6 +3142,7 @@ async function processAssistantMessageCore(
           };
           const runStructuredFlashLite = async (): Promise<void> => {
             const startedAt = Date.now();
+            const cloudSystemPrompt = buildCoachSystemPrompt(input, { anonymizeForCloud: true });
             const executeStructuredTools = async (
               res: NonNullable<Awaited<ReturnType<typeof promptFlashLiteStructured>>>
             ): Promise<boolean> => {
@@ -3162,7 +3169,7 @@ async function processAssistantMessageCore(
             };
 
             let structured = await promptFlashLiteStructured(questionWithFacts, {
-              systemPrompt,
+              systemPrompt: cloudSystemPrompt,
               tools: COACH_TOOL_DECLARATIONS,
             });
             if (structured && (await executeStructuredTools(structured))) {
@@ -3177,7 +3184,7 @@ async function processAssistantMessageCore(
                 structured = await promptFlashLiteStructured(
                   `${questionWithFacts}\n(Your last answer could not be used because ${problem}. Answer again in 2-4 short sentences, using only the facts given.)`,
                   {
-                    systemPrompt,
+                    systemPrompt: cloudSystemPrompt,
                     tools: COACH_TOOL_DECLARATIONS,
                   }
                 );

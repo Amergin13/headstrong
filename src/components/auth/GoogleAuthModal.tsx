@@ -1,5 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { AuthUser, BiometricLog, UserProfile } from '../../engine/types';
+import {
+  AuthUser,
+  BiometricLog,
+  ExerciseDefinition,
+  UserProfile,
+  WorkoutSession,
+} from '../../engine/types';
 import {
   initializeGoogleSignIn,
   isGoogleClientConfigured,
@@ -19,6 +25,9 @@ interface GoogleAuthModalProps {
   currentUser: AuthUser | null;
   profile: UserProfile;
   latestBiometrics?: BiometricLog;
+  workouts?: WorkoutSession[];
+  exerciseCatalog?: ExerciseDefinition[];
+  bodyweightKg?: number;
   canInstallPwa?: boolean;
   onTriggerInstallPwa?: () => void;
   isOpen: boolean;
@@ -32,6 +41,7 @@ interface GoogleAuthModalProps {
   onExportData?: () => void;
   onImportData?: (rawJson: string) => void;
   onOpenCompetitorImport?: () => void;
+  onViewPersonalBests?: () => void;
   onEnableDriveBackup?: (passphrase: string) => Promise<void>;
   onRunDriveBackupNow?: (passphrase?: string) => Promise<void>;
   onRestoreDriveBackup?: (passphrase: string) => Promise<void>;
@@ -44,6 +54,9 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({
   currentUser,
   profile,
   latestBiometrics,
+  workouts,
+  exerciseCatalog,
+  bodyweightKg,
   canInstallPwa = false,
   onTriggerInstallPwa,
   isOpen,
@@ -57,6 +70,7 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({
   onExportData,
   onImportData,
   onOpenCompetitorImport,
+  onViewPersonalBests,
   onEnableDriveBackup,
   onRunDriveBackupNow,
   onRestoreDriveBackup,
@@ -181,7 +195,7 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({
                   )}
                 </div>
                 <div>
-                  <h2 className="wk-h1 leading-tight">
+                  <h2 className="wk-h1">
                     {currentUser ? 'Your athlete account' : 'Sign in to Treise'}
                   </h2>
                   <p className="wk-body mt-1">
@@ -296,6 +310,9 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({
             <ProfileSettingsSections
               profile={profile}
               latestBiometrics={latestBiometrics}
+              workouts={workouts}
+              exerciseCatalog={exerciseCatalog}
+              bodyweightKg={bodyweightKg}
               canInstallPwa={canInstallPwa}
               onTriggerInstallPwa={onTriggerInstallPwa}
               onUpdateProfile={onUpdateProfile}
@@ -305,6 +322,7 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({
               onExportData={onExportData}
               onImportData={onImportData}
               onOpenCompetitorImport={onOpenCompetitorImport}
+              onViewPersonalBests={onViewPersonalBests}
               onEnableDriveBackup={onEnableDriveBackup}
               onRunDriveBackupNow={onRunDriveBackupNow}
               onRestoreDriveBackup={onRestoreDriveBackup}

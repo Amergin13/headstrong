@@ -8,38 +8,39 @@
     <style>
       body {
         background: #13181C;
-        color: #f8fafc;
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        color: #FFFFFF;
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         line-height: 1.6;
         max-width: 680px;
         margin: 0 auto;
         padding: 24px 18px 64px;
       }
       h1, h2, h3 {
-        color: #ffffff;
+        color: #FFFFFF;
         letter-spacing: -0.02em;
       }
-      h1 { font-size: 1.6rem; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 12px; }
-      h2 { font-size: 1.15rem; margin-top: 28px; color: #00f59b; }
-      p, li { color: #cbd5e1; font-size: 0.95rem; }
+      h1 { font-size: 1.6rem; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 12px; }
+      h2 { font-size: 1.15rem; margin-top: 28px; color: #00F19F; }
+      p, li { color: rgba(255,255,255,0.78); font-size: 0.95rem; }
+      strong { color: #FFFFFF; }
       .card {
-        background: #141720;
-        border: 1px solid rgba(255,255,255,0.1);
+        background: #2C3034;
+        border: 1px solid rgba(255,255,255,0.08);
         border-radius: 16px;
         padding: 16px;
         margin: 16px 0;
       }
-      a { color: #06b6d4; text-decoration: none; font-weight: 600; }
+      a { color: #8FD3FF; text-decoration: none; font-weight: 600; }
       a:hover { text-decoration: underline; }
     </style>
   </head>
   <body>
     <a href="/">&larr; Back to Treise App</a>
     <h1>Privacy Policy &amp; Google Play Health Data Safety</h1>
-    <p><strong>Effective Date:</strong> October 23, 2026 &bull; <strong>Package ID:</strong> <code>com.headstrong.app</code></p>
+    <p><strong>Effective Date:</strong> November 27, 2026 &bull; <strong>Package ID:</strong> <code>com.headstrong.app</code></p>
 
     <div class="card">
-      <strong>Google Play Data Safety Summary:</strong>
+      <strong>Google Play Data Safety &amp; Apple Health Summary:</strong>
       <ul>
         <li><strong>Stored on Your Device:</strong> Your workout logs, active-day sessions, body weight history, recovery metrics and AI Coach conversations are stored on your device. There is no Treise account database or cloud copy.</li>
         <li><strong>No Selling or Advertising Use:</strong> Treise never sells, rents, or shares your health or fitness data with advertisers or data brokers.</li>
@@ -48,25 +49,27 @@
     </div>
 
     <h2>1. Health &amp; Biometric Data We Process</h2>
-    <p>When you log workouts, or optionally connect Whoop, Strava, or Android Health Connect, Treise processes:</p>
+    <p>When you log workouts, or optionally connect Whoop, Strava, Apple Health (iOS), or Android Health Connect, Treise processes:</p>
     <ul>
       <li><strong>Workout &amp; Strength Logs:</strong> Exercises, sets, repetitions, weights lifted, and Repetitions in Reserve (RIR).</li>
-      <li><strong>Body Composition &amp; Circumference Metrics:</strong> Manual or Bluetooth scale entries (weight, BMI, body fat %, fat-free mass, body water, skeletal muscle mass, muscle mass, basal metabolic rate — bone mass and protein mass are never regression-estimated from 50 kHz impedance) and 12-site body tape measurements (neck, shoulder, chest, waist, abdomen, hip, bicep left, bicep right, thigh left, thigh right, calf left, calf right) used to compute your 7-day Exponential Moving Average (EMA), DOTS strength score, and body composition trends.</li>
-      <li><strong>Optional Wearable Telemetry:</strong> Heart Rate Variability (RMSSD), Resting Heart Rate (RHR), Sleep duration, Daily Steps, VO2 Max, and Active Zone Minutes (AZM) to compute your Daily Readiness Score.</li>
-      <li><strong>Active days:</strong> Sessions you log yourself (type and minutes), and, if you connect them, workouts recorded by Whoop, Strava, or Health Connect (covering Fitbit, Google Pixel Watch, Samsung Health and Garmin): the workout&rsquo;s type, name, start time, length and, where the source has them, distance and average heart rate. They are used only to count your plan&rsquo;s weekly active day and are never used to change your lifting numbers.</li>
+      <li><strong>Body Composition &amp; Circumference Metrics:</strong> Manual or Bluetooth scale entries (weight, BMI, body fat %, fat-free mass, body water, skeletal muscle mass, muscle mass, basal metabolic rate &mdash; bone mass and protein mass are never regression-estimated from 50 kHz impedance) and 12-site body tape measurements (neck, shoulder, chest, waist, abdomen, hip, bicep left, bicep right, thigh left, thigh right, calf left, calf right) used to compute your 7-day Exponential Moving Average (EMA), DOTS strength score, and body composition trends.</li>
+      <li><strong>Optional Wearable Telemetry:</strong> Heart Rate Variability (RMSSD / SDNN), Resting Heart Rate (RHR), Sleep duration, Daily Steps, VO2 Max, and Active Zone Minutes (AZM) to compute your Daily Readiness Score.</li>
+      <li><strong>Active days:</strong> Sessions you log yourself (type and minutes), and, if you connect them, workouts recorded by Whoop, Strava, Apple Health (covering Apple Watch, iPhone, Oura and Garmin), or Health Connect (covering Fitbit, Google Pixel Watch, Samsung Health and Garmin): the workout&rsquo;s type, name, start time, length and, where the source has them, distance and average heart rate. They are used only to count your plan&rsquo;s weekly active day and are never used to change your lifting numbers.</li>
     </ul>
 
     <h2>2. How Your Data Is Stored &amp; Protected</h2>
     <p>All workout sessions, custom exercises, biometric logs and AI Coach conversation history are stored locally on your device. Where Chrome exposes its built-in Gemini Nano model, the AI Coach runs entirely on your device.</p>
-    <p><strong>Stateless AI Coach fallback:</strong> On browsers where Chrome does not expose Gemini Nano (such as Chrome on Android), open coaching questions and brief training summaries use a stateless serverless proxy hosted on Vercel (powered by Google Gemini Flash-Lite) so you never have to download a large model onto your phone. Requests send only anonymized training facts (exercise names, sets, reps, weights, and readiness state) and the current prompt over HTTPS; they never include your name, email address, or account identifiers, and neither Treise nor its serverless functions store your prompts or responses. When offline, the on-device rule-based coach answers locally.</p>
+    <p><strong>Stateless AI Coach fallback:</strong> On devices where an on-device model is unavailable, open coaching questions and brief training summaries use a stateless serverless proxy hosted on Vercel (powered by Google Gemini Flash-Lite) so you never have to download a large model onto your phone. Requests send only anonymized training facts (exercise names, sets, reps, weights, and readiness state) and the current prompt over HTTPS; they never include your name, email address, or account identifiers, and neither Treise nor its serverless functions store your prompts or responses. When offline, the on-device rule-based coach answers locally.</p>
     <p><strong>Bluetooth scales &amp; smart tape measures:</strong> If you pair a RENPHO Bluetooth scale or smart tape measure, weight and body circumference readings are transmitted directly from the hardware device to your phone over Bluetooth and saved only in your local on-device storage. To read body composition, Treise also sends the height, age and sex you entered, and your last weight, to your scale over Bluetooth, as a temporary guest profile. It goes only to your scale. In the Treise app from Google Play, the app connects to your scale itself and asks for Android&rsquo;s Nearby devices permission (on Android 11 and lower, Android requires the location permission for any Bluetooth scan). Treise uses these permissions only to find and connect to your scale; it does not collect, use or store your location, and it does not use Bluetooth to work out where you are.</p>
     <p><strong>Wearable &amp; activity connections (Whoop &amp; Strava):</strong> If you connect Whoop or Strava, your device sends your OAuth authorization code or access token over HTTPS to Treise&rsquo;s stateless serverless functions hosted on Vercel, which fetch your recovery, sleep, and workout/activity summaries (read-only) and return them to your device. These functions do not store your data or tokens; standard request logs kept by our hosting provider may include technical metadata such as IP addresses. OAuth tokens remain only in your local on-device storage and can be disconnected at any time under <em>Profile &rarr; Settings &rarr; Activity apps</em>. Whoop and Strava handle your data under their own privacy policies. On Android, Google Pixel Watch and Fitbit telemetry syncs on-device through Android Health Connect without any cloud OAuth credentials (legacy Fitbit Web API endpoints were decommissioned following Google&rsquo;s November 2, 2026 shutdown).</p>
+    <p><strong>Apple Health / HealthKit (iOS app):</strong> In the Treise iOS app (or when you import an Apple Health <code>export.xml</code> file), you can let Treise read your workouts, daily steps, asleep-stage sleep duration, heart rate, resting heart rate, HRV, VO2 max, bodyweight, height, body fat percentage, lean body mass, biological sex, and date of birth from Apple HealthKit (strictly read-only; zero write permissions). HealthKit records are read directly on your iPhone and stored only in Treise&rsquo;s local on-device storage; they are never sent to Treise&rsquo;s servers, never sold or shared with third parties, never used for advertising or marketing, and never used to train AI models, in strict compliance with Apple&rsquo;s HealthKit guidelines. You can turn this off at any time in <em>Profile &rarr; Settings &rarr; Activity apps</em> or revoke access in iPhone <em>Settings &rarr; Health &rarr; Data Access &amp; Devices &rarr; Treise</em>.</p>
     <p><strong>Health Connect (Android app):</strong> In the Treise app from Google Play you can let Treise read your exercise sessions, daily steps, sleep, heart rate, resting heart rate, HRV (RMSSD), bodyweight, height, and body fat percentage from Android Health Connect (strictly read-only; zero write permissions). Treise reads only the categories you explicitly grant in Health Connect from the last 30 days. They are read on your phone and passed to the Treise app on the same phone; they are not sent to Treise&rsquo;s servers. You can turn this off in Profile &rarr; Settings &rarr; Activity apps, or remove any permission in Health Connect. Treise&rsquo;s use of information received from Health Connect adheres to the Health Connect Permissions policy, including the Limited Use requirements: it is used only to provide your recovery status, active days, daily step tracking, body-composition trends, and goals, is not used for advertising, is not sold or transferred, and is not used to train AI models.</p>
     <p><strong>Google sign-in:</strong> If you sign in with Google, Treise receives your name, email address and profile picture to personalize the app. These are stored on your device only.</p>
+    <p><strong>Anonymous product metrics:</strong> To measure product reliability and feature completion (such as counts of workouts started, workouts completed, program switches, 6-week block graduations, and sync outcomes), Treise records anonymous aggregate counters and sends bounded low-cardinality metrics to Vercel Custom Metrics via a stateless endpoint (<code>/api/telemetry/ingest</code>). Telemetry payloads are strictly validated against an allowlist and never include your name, email address, account IDs, body metrics, heart rate/HRV readings, lift weights, notes, or AI Coach messages. You can turn off anonymous product metrics at any time under <em>Profile &rarr; Settings &rarr; Data Backup &amp; Privacy &rarr; Anonymous product metrics</em>.</p>
     <p><strong>Optional encrypted Google Drive backup:</strong> By default your workout history stays strictly on your device. If you explicitly opt in under <em>Profile &rarr; Settings &rarr; Data Backup &amp; Privacy</em>, Treise encrypts your backup on your device using AES-256-GCM (PBKDF2-SHA256) with your chosen passphrase before uploading it directly over HTTPS to your own private Google Drive <code>appDataFolder</code> (using the narrow <code>drive.appdata</code> scope, which cannot view any other files in your Drive). Neither Treise nor Google can read the encrypted backup without your passphrase, and you can turn off or delete this backup at any time.</p>
 
     <h2 id="account-deletion">3. Account &amp; Data Deletion (Google Play Account Deletion Policy)</h2>
-    <p>In compliance with Google Play&rsquo;s Account and User Data Deletion Policy for <strong>Treise</strong> (<code>com.headstrong.app</code>), you can delete your connected Google OAuth account and all associated app data at any time:</p>
+    <p>In compliance with Google Play&rsquo;s Account and User Data Deletion Policy and Apple App Store Account Deletion Guidelines for <strong>Treise</strong> (<code>com.headstrong.app</code>), you can delete your connected Google OAuth account and all associated app data at any time:</p>
     <ul>
       <li><strong>Steps to Delete Account &amp; All Data in Treise:</strong> Open the <strong>Treise</strong> app and navigate to <em>Profile &rarr; Settings &rarr; Data Backup &amp; Privacy &rarr; Delete All Data</em> (or tap <em>Sign Out</em> to disconnect your Google account while keeping local workouts). You may also request deletion assistance by emailing <code>privacy@treise.app</code>.</li>
       <li><strong>Types of Data Deleted:</strong> Your connected Google profile details (name, email, profile photo), workout and set logs, active-day sessions, bodyweight and RENPHO scale body-composition history, 12-site body tape measurements, AI Coach conversation history, and Whoop and Strava OAuth tokens are permanently erased.</li>

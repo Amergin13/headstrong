@@ -511,20 +511,20 @@ export function resolveFormClipPattern(
   const id = ('exerciseId' in ex ? ex.exerciseId : ex.id) || '';
   const s = `${id} ${ex.name || ''}`.toLowerCase();
 
-  if (/(plank|crunch|ab wheel|leg raise|core|dead bug|pallof|suitcase carry)/.test(s)) return 'core_plank';
-  if (/(calf|calves)/.test(s)) return 'calf_raise';
-  if (/(leg curl|leg extension|hamstring curl|quad ext)/.test(s)) return 'leg_curl_extension';
-  if (/(lateral raise|side delt|upright row)/.test(s)) return 'lateral_raise';
-  if (/(bicep|curl|hammer curl|preacher)/.test(s) && !/leg curl/.test(s)) return 'bicep_curl';
-  if (/(tricep|pushdown|skullcrusher|skull crusher|overhead.*ext|kickback|dip)/.test(s)) return 'tricep_extension';
-  if (/(split squat|bulgarian|lunge|step[- ]?up)/.test(s)) return 'lunge_split';
-  if (/(incline.*press|incline.*bench|incline.*fly)/.test(s)) return 'incline_press';
-  if (/(deadlift|rdl|romanian|hip thrust|good morning|glute bridge|hinge|back extension)/.test(s)) return 'hinge';
-  if (/(squat|leg press|hack squat)/.test(s)) return 'squat';
-  if (/(pull[- ]?up|chin[- ]?up|pulldown|lat pull)/.test(s)) return 'vertical_pull';
-  if (/(row|face pull|rear delt|reverse fly|pull[- ]?apart)/.test(s)) return 'horizontal_row';
-  if (/(overhead press|shoulder press|ohp|military|arnold|pike|handstand)/.test(s)) return 'vertical_press';
-  if (/(bench|chest press|push[- ]?up|fly|pec deck|crossover)/.test(s)) return 'horizontal_press';
+  if (/(plank|crunch|ab wheel|leg raise|toes[- ]to[- ]bar|l[- ]sit|hollow[- ]body|core|dead bug|bird[- ]dog|pallof|woodchop|russian twist|carry|farmers walk|turkish)/.test(s)) return 'core_plank';
+  if (/(calf|calves|tibialis|ankle.*mobilization)/.test(s)) return 'calf_raise';
+  if (/(leg curl|leg extension|hamstring curl|quad ext|sissy squat|reverse nordic|nordic)/.test(s)) return 'leg_curl_extension';
+  if (/(lateral raise|side delt|upright row|lu raise|y[- ]raise|wall slide|dislocates)/.test(s)) return 'lateral_raise';
+  if (/(bicep|curl|hammer curl|preacher|zottman)/.test(s) && !/leg curl|hamstring|nordic/.test(s)) return 'bicep_curl';
+  if (/(tricep|pushdown|skullcrusher|skull crusher|jm press|tate press|overhead.*ext|kickback|dip)/.test(s)) return 'tricep_extension';
+  if (/(split squat|bulgarian|lunge|step[- ]?(up|down)|cossack|couch stretch|worlds greatest)/.test(s)) return 'lunge_split';
+  if (/(incline.*press|incline.*bench|incline.*fly|low[- ]to[- ]high|landmine.*press)/.test(s)) return 'incline_press';
+  if (/(deadlift|rdl|romanian|hip thrust|good morning|glute bridge|frog pump|pull[- ]through|glute kickback|reverse hyper|ghd|power clean|hang.*clean|snatch|high pull|kettlebell swing|kb swing|broad jump|hinge|back extension|90\/90)/.test(s)) return 'hinge';
+  if (/(squat|leg press|hack squat|pendulum|belt squat|box jump|depth.*jump|hurdle hop|sled|airbike|wall sit)/.test(s)) return 'squat';
+  if (/(pull[- ]?up|chin[- ]?up|pulldown|lat pull|lat prayer|pullover|skierg|med.*slam|dead hang)/.test(s)) return 'vertical_pull';
+  if (/(row|shrug|face pull|rear delt|reverse fly|pec deck.*rear|reverse pec|pull[- ]?apart|external rotation|open book|thread[- ]the[- ]needle)/.test(s)) return 'horizontal_row';
+  if (/(overhead press|shoulder press|ohp|push press|clean & jerk|clean and jerk|z[- ]press|bottoms[- ]up|halo|military|arnold|pike|handstand)/.test(s)) return 'vertical_press';
+  if (/(bench|chest press|larsen|spoto|floor press|push[- ]?up|fly|pec deck|crossover|rotational.*toss)/.test(s)) return 'horizontal_press';
 
   if (ex.pillar === 'Squat') return 'squat';
   if (ex.pillar === 'Hinge') return 'hinge';

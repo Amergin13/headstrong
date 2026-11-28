@@ -18,13 +18,13 @@
     "test:api": "tsc tests/apiProxies.test.ts --rootDir . --outDir .dist-api-test --module commonjs --target es2020 --moduleResolution node --skipLibCheck --esModuleInterop && echo '{\"type\":\"commonjs\"}' > .dist-api-test/package.json && node .dist-api-test/tests/apiProxies.test.js; status=$?; rm -rf .dist-api-test; exit $status"
   },
   "dependencies": {
+    "@vercel/functions": "^3.12.0",
     "lucide-react": "^1.16.0",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "recharts": "^2.13.0"
+    "react-dom": "^18.3.1"
   },
   "devDependencies": {
-    "@bubblewrap/cli": "^1.27.0",
+    "@types/node": "^26.6.11",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.3",

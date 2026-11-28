@@ -60,6 +60,7 @@ import { BalanceCard } from '../components/analytics/BalanceCard';
 import { MuscleProgressCard } from '../components/analytics/MuscleProgressCard';
 import { KnowledgeGraphCard } from '../components/analytics/KnowledgeGraphCard';
 import { ChartTimeline } from '../services/progressSeries';
+import { EndToEndFlowsBoard } from './EndToEndFlowsBoard';
 import { buildShowcaseFixtures } from './showcaseFixtures';
 import { parseDesignTokens, parseWkCssSpecs } from './tokenParser';
 
@@ -325,6 +326,7 @@ export const DesignSystemContent: React.FC<{
   unit: WeightUnit;
   onChangeUnit: (u: WeightUnit) => void;
 }> = ({ unit, onChangeUnit }) => {
+  const [activeDsPage, setActiveDsPage] = useState<'catalog' | 'flows'>('catalog');
   const [previewWidth, setPreviewWidth] = useState<'448' | '375'>('448');
   const [activeNavTab, setActiveNavTab] = useState<TabId>('train');
   const [timeline, setTimeline] = useState<ChartTimeline>('1M');
@@ -507,6 +509,17 @@ export const DesignSystemContent: React.FC<{
   useEffect(() => {
     if (typeof window === 'undefined') return;
     setRuntimeMode(window.location.protocol === 'file:' ? 'file' : 'http');
+    const checkHashOrQuery = () => {
+      const h = window.location.hash.toLowerCase();
+      const q = new URLSearchParams(window.location.search).get('page');
+      if (h === '#flows' || q === 'flows') {
+        setActiveDsPage('flows');
+      } else if (h === '#catalog' || q === 'catalog') {
+        setActiveDsPage('catalog');
+      }
+    };
+    checkHashOrQuery();
+    window.addEventListener('hashchange', checkHashOrQuery);
     const style = getComputedStyle(document.documentElement);
     const computed: Record<string, string> = {};
     for (const grp of parsedTokens.semanticGroups) {
@@ -520,6 +533,7 @@ export const DesignSystemContent: React.FC<{
       if (val) computed[p.name] = rgbToHex(val);
     }
     setLiveComputedVars(computed);
+    return () => window.removeEventListener('hashchange', checkHashOrQuery);
   }, [parsedTokens]);
 
   const balancedWithFindingsReport = useMemo(
@@ -617,7 +631,7 @@ export const DesignSystemContent: React.FC<{
       style={{
         background: 'var(--color-bg-canvas)',
         color: 'var(--color-text-primary)',
-        paddingBottom: '96px',
+        paddingBottom: activeDsPage === 'flows' ? '0px' : '96px',
       }}
     >
       {/* Top Sticky Control & Jump Bar */}
@@ -643,7 +657,47 @@ export const DesignSystemContent: React.FC<{
               >
                 Treise<span style={{ color: 'var(--color-coach-accent)' }}>.</span>
               </span>
-              <span className="wk-title">Design system catalog</span>
+              <span className="wk-title">Design system</span>
+
+              {/* Primary Design System Page Switcher: Catalog vs End-to-End Flows Board */}
+              <div
+                className="wk-segments inline-grid grid-cols-2"
+                role="tablist"
+                aria-label="Design system pages"
+                style={{ background: 'var(--color-bg-surface)' }}
+              >
+                {(
+                  [
+                    { id: 'catalog', label: 'Component catalog' },
+                    { id: 'flows', label: 'End-to-end flows' },
+                  ] as const
+                ).map((pg) => {
+                  const selected = activeDsPage === pg.id;
+                  return (
+                    <button
+                      key={pg.id}
+                      type="button"
+                      role="tab"
+                      aria-selected={selected}
+                      data-ds-page={pg.id}
+                      onClick={() => {
+                        setActiveDsPage(pg.id);
+                        if (typeof window !== 'undefined') {
+                          window.history.replaceState(null, '', pg.id === 'flows' ? '#flows' : '#catalog');
+                        }
+                      }}
+                      className={`wk-segment px-3 ${selected ? 'is-active' : ''}`}
+                      style={{
+                        background: selected ? 'var(--color-action-secondary-bg)' : 'transparent',
+                        color: selected ? 'var(--color-text-primary)' : 'var(--color-text-muted)',
+                      }}
+                    >
+                      {pg.label}
+                    </button>
+                  );
+                })}
+              </div>
+
               <span
                 className="wk-pill"
                 id="ds-sync-pill"
@@ -653,7 +707,11 @@ export const DesignSystemContent: React.FC<{
               </span>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2">
+            <div
+              data-ds-catalog-controls="true"
+              className="flex flex-wrap items-center gap-2"
+              style={{ display: activeDsPage === 'flows' ? 'none' : 'flex' }}
+            >
               {/* Unit switcher */}
               <div
                 className="wk-segments inline-grid grid-cols-2"
@@ -710,12 +768,17 @@ export const DesignSystemContent: React.FC<{
             </div>
           </div>
 
-          <div className="flex flex-col gap-2 min-w-0">
+          <div
+            data-ds-catalog-nav="true"
+            className="flex flex-col gap-2 min-w-0"
+            style={{ display: activeDsPage === 'flows' ? 'none' : 'flex' }}
+          >
             <nav aria-label="Design system sections" className="w-full min-w-0 flex items-center gap-2 overflow-x-auto no-scrollbar py-1">
               {SECTIONS.map((s) => (
                 <a
                   key={s.id}
                   href={`#${s.id}`}
+                  onClick={() => setActiveDsPage('catalog')}
                   className="shrink-0 wk-btn-secondary"
                   style={{ textDecoration: 'none' }}
                 >
@@ -732,6 +795,19 @@ export const DesignSystemContent: React.FC<{
         </div>
       </header>
 
+      {/* Page 2: End-to-End Product Flows Figma Board (kept mounted in SSR DOM, toggled cleanly) */}
+      <div
+        data-ds-page-panel="flows"
+        style={{ display: activeDsPage === 'flows' ? 'block' : 'none' }}
+      >
+        <EndToEndFlowsBoard />
+      </div>
+
+      {/* Page 1: Component & Token Catalog */}
+      <div
+        data-ds-page-panel="catalog"
+        style={{ display: activeDsPage === 'catalog' ? 'block' : 'none' }}
+      >
       <main
         className="max-w-7xl mx-auto px-4 sm:px-6 pt-8 space-y-12 overflow-x-clip"
         data-ds-scale-root="true"
@@ -1509,21 +1585,14 @@ export const DesignSystemContent: React.FC<{
                   days={fixtures.weekStripDays}
                   selectedDate={fixtures.today}
                   onSelectDay={() => undefined}
-                  renderMenu={(close) => (
-                    <div
-                      role="menu"
-                      className="w-56 rounded-2xl bg-surface-card border border-white/[0.08] shadow-2xl p-2 space-y-1 text-left"
-                    >
-                      <button
-                        type="button"
-                        onClick={close}
-                        className="w-full text-left px-3 py-2 rounded-xl wk-caption font-semibold text-white hover:bg-white/[0.06] flex items-center gap-2 min-h-[44px]"
-                      >
-                        <SlidersHorizontal className="w-4 h-4" aria-hidden="true" />
-                        <span>Show / hide workout widgets</span>
-                      </button>
-                    </div>
-                  )}
+                  menuItems={[
+                    {
+                      id: 'widgets',
+                      label: 'Show / hide workout widgets',
+                      icon: <SlidersHorizontal className="w-4 h-4" aria-hidden="true" />,
+                      onSelect: () => undefined,
+                    },
+                  ]}
                 />
               </div>
             </PhoneStage>
@@ -3183,6 +3252,7 @@ export const DesignSystemContent: React.FC<{
           </div>
         </section>
       </main>
+      </div>
 
       {/* Live Toast Preview Overlay */}
       {showToast && (

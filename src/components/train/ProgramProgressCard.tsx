@@ -1,7 +1,7 @@
 import React from 'react';
-import { ChevronRight } from 'lucide-react';
 import { triggerHaptic } from '../../utils/haptics';
 import { formatSentenceCase } from '../../utils/typography';
+import { CardDrillInButton } from '../common/Header';
 
 interface SessionCountProps {
   /** e.g. "Chest and Back" or "Next: Legs". */
@@ -37,10 +37,10 @@ const SessionCountBar: React.FC<SessionCountProps & { topMargin: string; barMarg
   return (
     <>
       <div className="flex items-end justify-between gap-3" style={{ marginTop: topMargin }}>
-        <span className="wk-subhead truncate leading-tight">
+        <span className="wk-subhead truncate">
           {formatSentenceCase(sessionLabel)}
         </span>
-        <span className="wk-number shrink-0 tabular-nums leading-none">
+        <span className="wk-number shrink-0">
           {current}/{total}{' '}
           <span className="wk-caption">
             sets
@@ -74,30 +74,17 @@ export const ProgramProgressCard: React.FC<ProgramProgressCardProps> = ({
       className="wk-card"
     >
       <div className="flex items-start justify-between gap-3">
-        <h2 className="wk-h1 leading-tight pt-1">
+        <h2 className="wk-h1 pt-1">
           {formattedTitle}
         </h2>
         {onOpen && (
-          <button
-            type="button"
-            onClick={() => {
-              triggerHaptic('light');
-              onOpen();
-            }}
-            aria-label={`Open program (${formattedTitle})`}
-            className="w-11 h-11 min-w-[44px] min-h-[44px] rounded-xl border border-[var(--color-border-strong)] flex items-center justify-center shrink-0 transition-colors"
-            style={{ background: 'var(--color-action-secondary-bg)', color: 'var(--color-action-secondary-fg)' }}
-          >
-            <ChevronRight
-              className="wk-chevron"
-              style={{ color: 'var(--color-action-secondary-fg)' }}
-              strokeWidth={2}
-              aria-hidden="true"
-            />
-          </button>
+          <CardDrillInButton
+            onClick={onOpen}
+            label={`Open program (${formattedTitle})`}
+          />
         )}
       </div>
-      <p className="wk-body mt-2 max-w-prose">{description}</p>
+      <p className="wk-body mt-2">{description}</p>
     </section>
   );
 };

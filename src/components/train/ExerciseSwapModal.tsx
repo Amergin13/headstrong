@@ -21,7 +21,7 @@ import {
   RankedSwapCandidate,
   rankSwapRecommendations,
 } from '../../services/swapRecommendations';
-import { X, ArrowRightLeft, ChevronDown, ChevronUp, Sparkles } from 'lucide-react';
+import { X, ArrowRightLeft, ChevronDown, ChevronUp, Sparkles, Search } from 'lucide-react';
 import { triggerHaptic } from '../../utils/haptics';
 import { formatSentenceCase } from '../../utils/typography';
 import { useUnits } from '../../utils/unitsContext';
@@ -93,6 +93,7 @@ export const ExerciseSwapModal: React.FC<ExerciseSwapModalProps> = ({
   const activeUnit = unit ?? units.unit;
   const [selectedLocation, setSelectedLocation] = useState<TrainingLocation>(activeLocation);
   const [showAllOptions, setShowAllOptions] = useState(false);
+  const [swapSearchQuery, setSwapSearchQuery] = useState('');
 
   const currentWeight =
     currentExercise.sets.find((s) => !s.isWarmup && s.setType !== 'warmup')?.targetWeightKg ??
@@ -183,9 +184,10 @@ export const ExerciseSwapModal: React.FC<ExerciseSwapModalProps> = ({
       ? continuitySet1.suggestedWeightKg
       : prescription.targetWeightKg;
     const equipLabel =
-      alt.requiredHomeEquipment && alt.requiredHomeEquipment.length > 0
+      alt.implementLabel ||
+      (alt.requiredHomeEquipment && alt.requiredHomeEquipment.length > 0
         ? alt.requiredHomeEquipment.map((t) => HOME_TAG_LABELS[t] || t).join(' + ')
-        : EQUIPMENT_LABELS[alt.equipment] || alt.equipment;
+        : EQUIPMENT_LABELS[alt.equipment] || alt.equipment);
     const isPureBw = prescription.isPureBodyweight;
     const targetLine = prescription.isTimed
       ? `${prescription.targetDurationSeconds}s hold`
@@ -287,8 +289,20 @@ export const ExerciseSwapModal: React.FC<ExerciseSwapModalProps> = ({
     );
   };
 
-  const sameFamilyOthers = otherOptions.filter((o) => !o.isRelatedPattern);
-  const relatedOthers = otherOptions.filter((o) => o.isRelatedPattern);
+  const normalizedSwapQuery = swapSearchQuery.trim().toLowerCase();
+  const matchesSwapSearch = (cand: RankedSwapCandidate) => {
+    if (!normalizedSwapQuery) return true;
+    const alt = cand.exercise;
+    return (
+      alt.name.toLowerCase().includes(normalizedSwapQuery) ||
+      alt.equipment.toLowerCase().includes(normalizedSwapQuery) ||
+      (alt.implementLabel?.toLowerCase().includes(normalizedSwapQuery) ?? false) ||
+      (alt.category?.toLowerCase().includes(normalizedSwapQuery) ?? false) ||
+      (alt.aliases?.some((a) => a.toLowerCase().includes(normalizedSwapQuery)) ?? false)
+    );
+  };
+  const sameFamilyOthers = otherOptions.filter((o) => !o.isRelatedPattern && matchesSwapSearch(o));
+  const relatedOthers = otherOptions.filter((o) => o.isRelatedPattern && matchesSwapSearch(o));
 
   return (
     <div
@@ -346,7 +360,7 @@ export const ExerciseSwapModal: React.FC<ExerciseSwapModalProps> = ({
             <span className="wk-label" style={{ color: 'var(--wk-muted)' }}>
               Replacing
             </span>
-            <span className="wk-caption font-semibold" style={{ color: 'var(--color-text-primary)' }}>
+            <span className="wk-meta-title" style={{ color: 'var(--color-text-primary)' }}>
               {familyLabel}
             </span>
           </div>
@@ -536,6 +550,23 @@ export const ExerciseSwapModal: React.FC<ExerciseSwapModalProps> = ({
 
                 {showAllOptions && (
                   <div className="space-y-2">
+                    {otherOptions.length > 5 && (
+                      <div className="relative">
+                        <Search
+                          className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"
+                          style={{ color: 'var(--color-text-muted)' }}
+                          aria-hidden="true"
+                        />
+                        <input
+                          type="search"
+                          value={swapSearchQuery}
+                          onChange={(e) => setSwapSearchQuery(e.target.value)}
+                          placeholder="Filter by implement or name…"
+                          aria-label="Filter other swap options"
+                          className="wk-field w-full pl-10"
+                        />
+                      </div>
+                    )}
                     {sameFamilyOthers.map(renderOtherOption)}
                     {relatedOthers.length > 0 && (
                       <div className="pt-2 space-y-2">
@@ -546,6 +577,11 @@ export const ExerciseSwapModal: React.FC<ExerciseSwapModalProps> = ({
                         </div>
                         {relatedOthers.map(renderOtherOption)}
                       </div>
+                    )}
+                    {sameFamilyOthers.length === 0 && relatedOthers.length === 0 && (
+                      <p className="wk-caption text-center py-4" style={{ color: 'var(--color-text-secondary)' }}>
+                        No options match that filter.
+                      </p>
                     )}
                   </div>
                 )}

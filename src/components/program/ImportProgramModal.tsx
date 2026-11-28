@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { FileSpreadsheet, Upload, X } from 'lucide-react';
 import { ExerciseDefinition } from '../../engine/types';
@@ -11,6 +11,7 @@ import {
   CompetitorCsvImportResult,
   detectCompetitorCsvFormat,
   parseCompetitorCsv,
+  parseTrainingImportArchiveOrText,
 } from '../../services/competitorCsvImport';
 import { triggerHaptic } from '../../utils/haptics';
 import { useUnits } from '../../utils/unitsContext';
@@ -19,6 +20,7 @@ export type ImportModalMode = 'history' | 'spreadsheet';
 
 interface ImportProgramModalProps {
   exerciseCatalog: ExerciseDefinition[];
+  bodyweightKg?: number;
   initialMode?: ImportModalMode;
   onImport?: (parsed: ParsedProgramImport, opts: { activateProgram: boolean; importHistory: boolean }) => void;
   onImportHistory?: (parsed: CompetitorCsvImportResult) => void;
@@ -26,14 +28,25 @@ interface ImportProgramModalProps {
 }
 
 const COMPETITOR_SOURCES: ReadonlyArray<{ id: CompetitorAppFormat; label: string; hint: string }> = [
+  {
+    id: 'trainheroic',
+    label: 'TrainHeroic',
+    hint: 'Upload .zip from account.trainheroic.com/data-export, CSV/JSON, or paste Lift History',
+  },
   { id: 'hevy', label: 'Hevy CSV', hint: 'Export from Hevy → Settings → Export Data' },
   { id: 'strong', label: 'Strong CSV', hint: 'Export from Strong → Settings → Export Strong Data' },
   { id: 'fitnotes', label: 'FitNotes CSV', hint: 'Export from FitNotes → Settings → Spreadsheet Export' },
+  {
+    id: 'maxes_sheet',
+    label: '1RM / Maxes',
+    hint: 'Any CSV, TSV, or pasted table with Exercise and Best 1RM or Weight × Reps',
+  },
 ];
 
-/** Modal allowing athletes to 1-click import workout history from Hevy, Strong, or FitNotes CSV, or import a spreadsheet program. */
+/** Modal allowing athletes to import training history & lift maxes from TrainHeroic (.zip/CSV/JSON), Hevy, Strong, FitNotes, or a 1RM sheet, or import a spreadsheet program. */
 export const ImportProgramModal: React.FC<ImportProgramModalProps> = ({
   exerciseCatalog,
+  bodyweightKg,
   initialMode,
   onImport,
   onImportHistory,
@@ -49,6 +62,9 @@ export const ImportProgramModal: React.FC<ImportProgramModalProps> = ({
   );
   const [selectedSource, setSelectedSource] = useState<CompetitorAppFormat | 'auto'>('auto');
   const [historyCsvText, setHistoryCsvText] = useState('');
+  const [zipArchive, setZipArchive] = useState<{ bytes: Uint8Array; fileName: string } | null>(null);
+  const [zipParseResult, setZipParseResult] = useState<{ parsed?: CompetitorCsvImportResult; error?: string }>({});
+  const [showAllMaxes, setShowAllMaxes] = useState(false);
   const [historyUnit, setHistoryUnit] = useState<'kg' | 'lb'>(units.unit);
   const [programName, setProgramName] = useState('Phase 1 BT');
   const [sheetText, setSheetText] = useState('');
@@ -59,21 +75,60 @@ export const ImportProgramModal: React.FC<ImportProgramModalProps> = ({
   const [historicalStartDate, setHistoricalStartDate] = useState('2017-01-09');
   const [fileError, setFileError] = useState<string | null>(null);
 
-  const historyParseResult = useMemo<{ parsed?: CompetitorCsvImportResult; error?: string }>(() => {
-    if (!historyCsvText.trim()) return {};
+  useEffect(() => {
+    if (!zipArchive) {
+      setZipParseResult({});
+      return;
+    }
+    let cancelled = false;
+    parseTrainingImportArchiveOrText(zipArchive.bytes, zipArchive.fileName, {
+      format: selectedSource === 'auto' ? undefined : selectedSource,
+      exerciseCatalog,
+      bodyweightKg,
+      defaultWeightUnit: historyUnit,
+      halveCombinedTwoHandDumbbells,
+    })
+      .then((parsed) => {
+        if (!cancelled) setZipParseResult({ parsed });
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setZipParseResult({
+            error: err instanceof Error ? err.message : 'Unable to unpack training archive.',
+          });
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [zipArchive, selectedSource, exerciseCatalog, bodyweightKg, historyUnit, halveCombinedTwoHandDumbbells]);
+
+  const textHistoryParseResult = useMemo<{ parsed?: CompetitorCsvImportResult; error?: string }>(() => {
+    if (zipArchive || !historyCsvText.trim()) return {};
     try {
       const detected = detectCompetitorCsvFormat(historyCsvText);
       const parsed = parseCompetitorCsv(historyCsvText, {
         format: detected ?? (selectedSource === 'auto' ? undefined : selectedSource),
         exerciseCatalog,
+        bodyweightKg,
         defaultWeightUnit: historyUnit,
         halveCombinedTwoHandDumbbells,
       });
       return { parsed };
     } catch (err) {
-      return { error: err instanceof Error ? err.message : 'Unable to parse workout CSV.' };
+      return { error: err instanceof Error ? err.message : 'Unable to parse training export.' };
     }
-  }, [historyCsvText, selectedSource, exerciseCatalog, historyUnit, halveCombinedTwoHandDumbbells]);
+  }, [
+    zipArchive,
+    historyCsvText,
+    selectedSource,
+    exerciseCatalog,
+    bodyweightKg,
+    historyUnit,
+    halveCombinedTwoHandDumbbells,
+  ]);
+
+  const historyParseResult = zipArchive ? zipParseResult : textHistoryParseResult;
 
   const parseResult = useMemo<{ parsed?: ParsedProgramImport; error?: string }>(() => {
     if (!sheetText.trim()) return {};
@@ -105,11 +160,19 @@ export const ImportProgramModal: React.FC<ImportProgramModalProps> = ({
     if (!file) return;
     setFileError(null);
     try {
+      if (file.name.toLowerCase().endsWith('.zip') && canHistory) {
+        const buf = await file.arrayBuffer();
+        setHistoryCsvText('');
+        setZipArchive({ bytes: new Uint8Array(buf), fileName: file.name });
+        setMode('history');
+        return;
+      }
       const content = await file.text();
-      // Auto-route Hevy, Strong, and FitNotes exports straight into the history importer when available.
+      // Auto-route TrainHeroic, Hevy, Strong, and FitNotes exports straight into the history importer when available.
       const detectedCompetitor = detectCompetitorCsvFormat(content);
-      if (detectedCompetitor && canHistory) {
+      if (detectedCompetitor && canHistory && detectedCompetitor !== 'maxes_sheet') {
         setSelectedSource(detectedCompetitor);
+        setZipArchive(null);
         setHistoryCsvText(content);
         setMode('history');
         return;
@@ -128,13 +191,22 @@ export const ImportProgramModal: React.FC<ImportProgramModalProps> = ({
     const file = e.target.files?.[0];
     if (!file) return;
     setFileError(null);
+    setShowAllMaxes(false);
     try {
+      const lower = file.name.toLowerCase();
+      if (lower.endsWith('.zip')) {
+        const buf = await file.arrayBuffer();
+        setHistoryCsvText('');
+        setZipArchive({ bytes: new Uint8Array(buf), fileName: file.name });
+        return;
+      }
       const content = await file.text();
+      setZipArchive(null);
       setHistoryCsvText(content);
       const detected = detectCompetitorCsvFormat(content);
       if (detected) setSelectedSource(detected);
     } catch {
-      setFileError('Could not read the selected CSV file.');
+      setFileError('Could not read the selected training file.');
     } finally {
       e.target.value = '';
     }
@@ -145,6 +217,15 @@ export const ImportProgramModal: React.FC<ImportProgramModalProps> = ({
     setFileError(null);
     setSelectedSource(source);
     historyFileInputRef.current?.click();
+  };
+
+  const handleInsertMaxesHeader = () => {
+    triggerHaptic('light');
+    setZipArchive(null);
+    setSelectedSource('maxes_sheet');
+    if (!historyCsvText.trim()) {
+      setHistoryCsvText('Date,Exercise,Best 1RM,Weight,Reps\n');
+    }
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -162,28 +243,11 @@ export const ImportProgramModal: React.FC<ImportProgramModalProps> = ({
     onClose();
   };
 
-  const labelStyle: React.CSSProperties = {
-    fontSize: 12,
-    color: 'var(--color-text-secondary)',
-    fontWeight: 600,
-    lineHeight: '16px',
-  };
-
-  const inputStyle: React.CSSProperties = {
-    background: 'var(--color-bg-canvas)',
-    border: '1px solid var(--color-border-strong)',
-    color: 'var(--color-text-primary)',
-    borderRadius: 8,
-    padding: '8px 12px',
-    fontSize: 16,
-    width: '100%',
-  };
-
   return createPortal(
     <div
       role="dialog"
       aria-modal="true"
-      aria-label="Import program from spreadsheet"
+      aria-label={mode === 'history' ? 'Import training data and lift maxes' : 'Import program from spreadsheet'}
       className="wk fixed inset-0 z-[60] flex items-center justify-center p-4 backdrop-blur-sm"
       style={{ background: 'var(--color-bg-scrim)' }}
     >
@@ -204,12 +268,12 @@ export const ImportProgramModal: React.FC<ImportProgramModalProps> = ({
               <FileSpreadsheet className="w-5 h-5" aria-hidden="true" />
             </div>
             <div>
-              <h3 className="wk-h1 leading-tight">
-                {mode === 'history' ? 'Import workout history' : 'Import spreadsheet program'}
+              <h3 className="wk-h1">
+                {mode === 'history' ? 'Import training data & maxes' : 'Import spreadsheet program'}
               </h3>
               <p className="wk-body mt-1">
                 {mode === 'history'
-                  ? 'Bring your history from Hevy, Strong, or FitNotes on Day 1. Treise converts weights to kg and matches exercises automatically.'
+                  ? 'Upload your TrainHeroic data-export .zip, CSV or JSON from Hevy, Strong, or FitNotes, or paste lift maxes. Treise normalizes units and documents your best 1RM and heaviest sets per lift.'
                   : 'Upload a CSV / TSV export or paste your sheet. Treise builds your workout schedule and imports logged sets into your lifetime stats.'}
               </p>
             </div>
@@ -245,7 +309,7 @@ export const ImportProgramModal: React.FC<ImportProgramModalProps> = ({
               }}
               className={`wk-segment ${mode === 'history' ? 'is-active' : ''}`}
             >
-              Hevy / Strong / FitNotes
+              History &amp; maxes
             </button>
             <button
               type="button"
@@ -268,14 +332,14 @@ export const ImportProgramModal: React.FC<ImportProgramModalProps> = ({
             <input
               ref={historyFileInputRef}
               type="file"
-              accept=".csv,.txt,text/csv,text/plain"
+              accept=".zip,.csv,.tsv,.txt,.json,application/zip,text/csv,text/tab-separated-values,application/json,text/plain"
               onChange={handleHistoryFileChange}
               className="hidden"
-              aria-label="Choose Hevy, Strong, or FitNotes CSV file"
+              aria-label="Choose TrainHeroic .zip, CSV, TSV, or JSON training export"
             />
             <div className="flex flex-col gap-2">
-              <span style={labelStyle}>1-click CSV import</span>
-              <div className="grid grid-cols-3 gap-2">
+              <span className="wk-meta-title">Select source to upload (.zip, CSV, TSV, or JSON)</span>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                 {COMPETITOR_SOURCES.map((src) => (
                   <button
                     key={src.id}
@@ -295,17 +359,84 @@ export const ImportProgramModal: React.FC<ImportProgramModalProps> = ({
               </div>
             </div>
 
-            <textarea
-              aria-label="Paste Hevy, Strong, or FitNotes CSV data"
-              value={historyCsvText}
-              onChange={(e) => setHistoryCsvText(e.target.value)}
-              rows={5}
-              placeholder={'Date,Workout Name,Duration,Exercise Name,Set Order,Weight,Reps,...\nor choose a Hevy, Strong, or FitNotes CSV above'}
-              style={{ ...inputStyle, fontFamily: 'ui-monospace, SFMono-Regular, monospace' }}
-            />
+            {(selectedSource === 'trainheroic' || selectedSource === 'auto') && (
+              <div
+                className="wk-raised wk-caption"
+                style={{
+                  background: 'var(--wk-raised)',
+                  border: '1px solid var(--color-border-subtle)',
+                  color: 'var(--color-text-secondary)',
+                }}
+              >
+                <strong style={{ color: 'var(--color-text-primary)' }}>TrainHeroic exports:</strong> Upload the{' '}
+                <code>.zip</code> archive from <code>account.trainheroic.com/data-export</code> directly (unpacked privately on this device), or paste your{' '}
+                <em>Analytics → Lift History</em> working maxes below.
+              </div>
+            )}
+
+            {zipArchive ? (
+              <div
+                className="wk-raised flex items-center justify-between gap-2"
+                style={{
+                  background: 'var(--wk-raised)',
+                  border: '1px solid var(--color-border-subtle)',
+                }}
+              >
+                <div className="min-w-0">
+                  <div className="wk-meta-title truncate">{zipArchive.fileName}</div>
+                  {historyParseResult.parsed?.summary.sourceFilesParsed &&
+                    historyParseResult.parsed.summary.sourceFilesParsed.length > 0 && (
+                      <div className="wk-caption truncate" style={{ color: 'var(--wk-muted)' }}>
+                        Unpacked: {historyParseResult.parsed.summary.sourceFilesParsed.join(', ')}
+                      </div>
+                    )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    triggerHaptic('light');
+                    setZipArchive(null);
+                  }}
+                  className="wk-btn-secondary shrink-0 px-3"
+                >
+                  Clear file
+                </button>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="wk-meta-title">Or paste CSV, TSV, JSON, or lift maxes</span>
+                  {!historyCsvText.trim() && (
+                    <button
+                      type="button"
+                      onClick={handleInsertMaxesHeader}
+                      className="wk-caption hover:underline"
+                      style={{ color: 'var(--color-text-secondary)' }}
+                    >
+                      Insert 1RM columns
+                    </button>
+                  )}
+                </div>
+                <textarea
+                  aria-label="Paste TrainHeroic, Hevy, Strong, FitNotes, or lift maxes data"
+                  value={historyCsvText}
+                  onChange={(e) => {
+                    setZipArchive(null);
+                    setShowAllMaxes(false);
+                    setHistoryCsvText(e.target.value);
+                  }}
+                  rows={5}
+                  placeholder={
+                    'Date,Exercise,Best 1RM,Weight,Reps\n— or upload your TrainHeroic .zip / Hevy / Strong / FitNotes CSV above'
+                  }
+                  className="wk-textarea"
+                  style={{ fontFamily: 'ui-monospace, SFMono-Regular, monospace' }}
+                />
+              </div>
+            )}
 
             <div className="flex items-center justify-between gap-2">
-              <span style={labelStyle}>Default weight unit (if CSV omits kg/lb)</span>
+              <span className="wk-meta-title">Default weight unit (if file omits kg/lb)</span>
               <div className="wk-segments grid grid-cols-2 shrink-0" role="group" aria-label="CSV default weight unit">
                 {(['kg', 'lb'] as const).map((u) => (
                   <button
@@ -328,12 +459,12 @@ export const ImportProgramModal: React.FC<ImportProgramModalProps> = ({
                 onChange={(e) => setHalveCombinedTwoHandDumbbells(e.target.checked)}
                 className="w-5 h-5 accent-[var(--color-accent-primary)]"
               />
-              <span style={labelStyle}>Halve two-hand dumbbell loads (CSV logs combined pair total)</span>
+              <span className="wk-meta-title">Halve two-hand dumbbell loads (file logs combined pair total)</span>
             </label>
 
             {(fileError || historyParseResult.error) && (
               <div
-                className="rounded-lg p-3 text-xs"
+                className="wk-raised wk-caption"
                 style={{
                   background: 'var(--color-status-danger-soft)',
                   color: 'var(--color-status-danger)',
@@ -345,7 +476,7 @@ export const ImportProgramModal: React.FC<ImportProgramModalProps> = ({
 
             {historyParseResult.parsed?.summary.combinedDumbbellWarning && !halveCombinedTwoHandDumbbells && (
               <div
-                className="rounded-xl p-3 flex flex-col gap-2 text-xs"
+                className="wk-raised wk-caption flex flex-col gap-2"
                 style={{
                   background: 'var(--color-status-warning-soft)',
                   border: '1px solid var(--color-status-warning)',
@@ -362,7 +493,7 @@ export const ImportProgramModal: React.FC<ImportProgramModalProps> = ({
                     triggerHaptic('light');
                     setHalveCombinedTwoHandDumbbells(true);
                   }}
-                  className="wk-btn-secondary self-start text-xs px-3 py-2"
+                  className="wk-btn-secondary wk-meta-title self-start px-3 py-2"
                 >
                   Divide two-hand dumbbell loads by 2
                 </button>
@@ -371,37 +502,106 @@ export const ImportProgramModal: React.FC<ImportProgramModalProps> = ({
 
             {historyParseResult.parsed && (
               <div
-                className="rounded-xl p-3"
+                className="wk-raised flex flex-col gap-3"
                 style={{
                   background: 'var(--color-bg-canvas)',
                   border: '1px solid var(--color-border-subtle)',
                 }}
               >
-                <div className="wk-label mb-2" style={{ color: 'var(--color-accent-primary)' }}>
-                  {historyParseResult.parsed.summary.formatLabel} export detected ({historyParseResult.parsed.summary.detectedUnit})
-                </div>
-                <ul className="flex flex-col gap-1 text-xs" style={{ color: 'var(--color-text-primary)' }}>
-                  <li>
-                    <strong>{historyParseResult.parsed.summary.workoutsCount}</strong> workouts ·{' '}
-                    <strong>{historyParseResult.parsed.summary.totalSetsCount}</strong> working sets ·{' '}
-                    <strong>{units.format(historyParseResult.parsed.summary.totalVolumeKg)}</strong> volume
-                  </li>
-                  {historyParseResult.parsed.summary.dateRange && (
+                <div>
+                  <div className="wk-label mb-2" style={{ color: 'var(--color-accent-primary)' }}>
+                    {historyParseResult.parsed.summary.formatLabel} export detected ({historyParseResult.parsed.summary.detectedUnit})
+                  </div>
+                  <ul className="wk-caption flex flex-col gap-1" style={{ color: 'var(--color-text-primary)' }}>
                     <li>
-                      Dates: {historyParseResult.parsed.summary.dateRange[0]} to{' '}
-                      {historyParseResult.parsed.summary.dateRange[1]}
+                      <strong>{historyParseResult.parsed.summary.workoutsCount}</strong> workouts ·{' '}
+                      <strong>{historyParseResult.parsed.summary.totalSetsCount}</strong> working sets ·{' '}
+                      <strong>{historyParseResult.parsed.summary.documentedMaxesCount}</strong> lift maxes
+                      {historyParseResult.parsed.summary.testedOneRepMaxCount > 0
+                        ? ` (${historyParseResult.parsed.summary.testedOneRepMaxCount} best 1RMs)`
+                        : ''}
                     </li>
-                  )}
-                  {historyParseResult.parsed.summary.heaviestLiftLabel && (
-                    <li>Top logged set: {historyParseResult.parsed.summary.heaviestLiftLabel}</li>
-                  )}
-                  <li style={{ color: 'var(--wk-muted)' }}>
-                    {historyParseResult.parsed.summary.matchedExercisesCount} matched to Treise catalog
-                    {historyParseResult.parsed.summary.addedExerciseCount > 0
-                      ? ` · +${historyParseResult.parsed.summary.addedExerciseCount} added to library`
-                      : ''}
-                  </li>
-                </ul>
+                    {historyParseResult.parsed.summary.dateRange && (
+                      <li>
+                        Dates: {historyParseResult.parsed.summary.dateRange[0]} to{' '}
+                        {historyParseResult.parsed.summary.dateRange[1]}
+                      </li>
+                    )}
+                    <li style={{ color: 'var(--wk-muted)' }}>
+                      {historyParseResult.parsed.summary.matchedExercisesCount} matched to Treise catalog
+                      {historyParseResult.parsed.summary.addedExerciseCount > 0
+                        ? ` · +${historyParseResult.parsed.summary.addedExerciseCount} added to library`
+                        : ''}
+                    </li>
+                  </ul>
+                </div>
+
+                {historyParseResult.parsed.exerciseMaxes.length > 0 && (
+                  <div
+                    className="pt-3 flex flex-col gap-2"
+                    style={{ borderTop: '1px solid var(--color-border-subtle)' }}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="wk-label">Documented exercise maxes</span>
+                      {historyParseResult.parsed.exerciseMaxes.length > 6 && (
+                        <button
+                          type="button"
+                          onClick={() => setShowAllMaxes((v) => !v)}
+                          className="wk-caption hover:underline"
+                          style={{ color: 'var(--color-text-secondary)' }}
+                        >
+                          {showAllMaxes
+                            ? 'Show top 6'
+                            : `Show all ${historyParseResult.parsed.exerciseMaxes.length}`}
+                        </button>
+                      )}
+                    </div>
+                    <div className="flex flex-col gap-1 max-h-48 overflow-y-auto pr-1">
+                      {(showAllMaxes
+                        ? historyParseResult.parsed.exerciseMaxes
+                        : historyParseResult.parsed.exerciseMaxes.slice(0, 6)
+                      ).map((mx) => (
+                        <div
+                          key={mx.exerciseId}
+                          className="flex items-baseline justify-between gap-2 py-1"
+                          style={{ borderBottom: '1px solid var(--color-border-subtle)' }}
+                        >
+                          <div className="wk-caption truncate" style={{ color: 'var(--color-text-primary)' }}>
+                            {mx.exerciseName}
+                            {mx.isTwoDumbbell ? ' (per DB)' : ''}
+                          </div>
+                          <div className="wk-caption tabular-nums shrink-0 text-right">
+                            {mx.bestOneRepMaxKg !== null && mx.bestOneRepMaxKg > 0 ? (
+                              <span style={{ color: 'var(--color-accent-primary)' }}>
+                                1RM {units.formatPrecise(mx.bestOneRepMaxKg)}
+                              </span>
+                            ) : (
+                              <span style={{ color: 'var(--color-text-primary)' }}>
+                                {units.formatPrecise(mx.heaviestSetWeightKg)} × {mx.heaviestSetReps}
+                              </span>
+                            )}
+                            {mx.bestOneRepMaxKg !== null &&
+                              mx.heaviestSetReps > 1 &&
+                              mx.heaviestSetWeightKg > 0 && (
+                                <span style={{ color: 'var(--wk-muted)' }}>
+                                  {' · '}
+                                  {units.formatPrecise(mx.heaviestSetWeightKg)} × {mx.heaviestSetReps}
+                                </span>
+                              )}
+                            {mx.bestEstimated1rmKg > 0 &&
+                              (mx.bestOneRepMaxKg === null ||
+                                Math.round(mx.bestEstimated1rmKg) > Math.round(mx.bestOneRepMaxKg)) && (
+                                <span style={{ color: 'var(--wk-muted)' }}>
+                                  {' · est '}
+                                  {units.format(mx.bestEstimated1rmKg)}
+                                </span>
+                              )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -432,7 +632,7 @@ export const ImportProgramModal: React.FC<ImportProgramModalProps> = ({
                     : '1px solid var(--color-border-subtle)',
                 }}
               >
-                Import history
+                Import history &amp; maxes
               </button>
             </div>
           </>
@@ -442,8 +642,7 @@ export const ImportProgramModal: React.FC<ImportProgramModalProps> = ({
         <div>
           <label
             htmlFor="import-program-name"
-            className="block mb-1"
-            style={labelStyle}
+            className="wk-meta-title block mb-1"
           >
             Program name
           </label>
@@ -453,12 +652,12 @@ export const ImportProgramModal: React.FC<ImportProgramModalProps> = ({
             value={programName}
             onChange={(e) => setProgramName(e.target.value)}
             placeholder="e.g. Phase 1 BT"
-            style={inputStyle}
+            className="wk-field"
           />
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <span style={labelStyle}>Spreadsheet CSV / TSV</span>
+          <span className="wk-meta-title">Spreadsheet CSV / TSV</span>
           <input
             ref={fileInputRef}
             type="file"
@@ -485,7 +684,8 @@ export const ImportProgramModal: React.FC<ImportProgramModalProps> = ({
           onChange={(e) => setSheetText(e.target.value)}
           rows={5}
           placeholder={'WORKOUT 1: LOWER BODY\nExercise,,Date,Workout,Sets,Reps,Tempo,Rest,Notes,Set 1,...'}
-          style={{ ...inputStyle, fontFamily: 'ui-monospace, SFMono-Regular, monospace' }}
+          className="wk-textarea"
+          style={{ fontFamily: 'ui-monospace, SFMono-Regular, monospace' }}
         />
 
         <div className="flex flex-col gap-2">
@@ -496,7 +696,7 @@ export const ImportProgramModal: React.FC<ImportProgramModalProps> = ({
               onChange={(e) => setImportHistory(e.target.checked)}
               className="w-5 h-5 accent-[var(--color-accent-primary)]"
             />
-            <span style={labelStyle}>Also import logged sets as historical workouts</span>
+            <span className="wk-meta-title">Also import logged sets as historical workouts</span>
           </label>
 
           {importHistory && (
@@ -508,12 +708,12 @@ export const ImportProgramModal: React.FC<ImportProgramModalProps> = ({
                   onChange={(e) => setPreferHistoricalStartDate(e.target.checked)}
                   className="w-5 h-5 accent-[var(--color-accent-primary)]"
                 />
-                <span style={{ ...labelStyle, color: 'var(--wk-muted)' }}>
+                <span className="wk-meta-title" style={{ color: 'var(--wk-muted)' }}>
                   Anchor schedule chronologically from start date
                 </span>
               </label>
               <div className="flex items-center justify-between gap-2">
-                <label htmlFor="import-start-date" style={{ ...labelStyle, color: 'var(--wk-muted)' }}>
+                <label htmlFor="import-start-date" className="wk-meta-title" style={{ color: 'var(--wk-muted)' }}>
                   Historical start date
                 </label>
                 <input
@@ -521,7 +721,7 @@ export const ImportProgramModal: React.FC<ImportProgramModalProps> = ({
                   type="date"
                   value={historicalStartDate}
                   onChange={(e) => setHistoricalStartDate(e.target.value)}
-                  style={{ ...inputStyle, width: 'auto' }}
+                  className="wk-field w-auto"
                 />
               </div>
             </div>
@@ -534,7 +734,7 @@ export const ImportProgramModal: React.FC<ImportProgramModalProps> = ({
               onChange={(e) => setHalveCombinedTwoHandDumbbells(e.target.checked)}
               className="w-5 h-5 accent-[var(--color-accent-primary)]"
             />
-            <span style={labelStyle}>Halve two-hand dumbbell loads (sheet logs combined pair total)</span>
+            <span className="wk-meta-title">Halve two-hand dumbbell loads (sheet logs combined pair total)</span>
           </label>
 
           <label className="flex items-center min-h-[44px] gap-2 cursor-pointer">
@@ -544,13 +744,13 @@ export const ImportProgramModal: React.FC<ImportProgramModalProps> = ({
               onChange={(e) => setActivateProgram(e.target.checked)}
               className="w-5 h-5 accent-[var(--color-accent-primary)]"
             />
-            <span style={labelStyle}>Switch to this program after saving</span>
+            <span className="wk-meta-title">Switch to this program after saving</span>
           </label>
         </div>
 
         {(fileError || parseResult.error) && (
           <div
-            className="rounded-lg p-3 text-xs"
+            className="wk-raised wk-caption"
             style={{
               background: 'var(--color-status-danger-soft)',
               color: 'var(--color-status-danger)',
@@ -562,7 +762,7 @@ export const ImportProgramModal: React.FC<ImportProgramModalProps> = ({
 
         {parseResult.parsed?.summary.combinedDumbbellWarning && !halveCombinedTwoHandDumbbells && (
           <div
-            className="rounded-xl p-3 flex flex-col gap-2 text-xs"
+            className="wk-raised wk-caption flex flex-col gap-2"
             style={{
               background: 'var(--color-status-warning-soft)',
               border: '1px solid var(--color-status-warning)',
@@ -579,7 +779,7 @@ export const ImportProgramModal: React.FC<ImportProgramModalProps> = ({
                 triggerHaptic('light');
                 setHalveCombinedTwoHandDumbbells(true);
               }}
-              className="wk-btn-secondary self-start text-xs px-3 py-2"
+              className="wk-btn-secondary wk-meta-title self-start px-3 py-2"
             >
               Divide two-hand dumbbell loads by 2
             </button>
@@ -588,7 +788,7 @@ export const ImportProgramModal: React.FC<ImportProgramModalProps> = ({
 
         {parseResult.parsed && (
           <div
-            className="rounded-xl p-3"
+            className="wk-raised"
             style={{
               background: 'var(--color-bg-canvas)',
               border: '1px solid var(--color-border-subtle)',
@@ -601,7 +801,7 @@ export const ImportProgramModal: React.FC<ImportProgramModalProps> = ({
               Ready to import
             </div>
             <ul
-              className="flex flex-col gap-1 text-xs"
+              className="wk-caption flex flex-col gap-1"
               style={{ color: 'var(--color-text-primary)' }}
             >
               <li>

@@ -76,7 +76,7 @@ export const NavigationBar: React.FC<NavigationBarProps> = ({
           style={{
             background: 'linear-gradient(180deg, rgb(var(--color-bg-surface-rgb) / 0.92) 0%, rgb(var(--color-bg-canvas-rgb) / 0.96) 100%)',
             border: '1px solid var(--color-border-strong)',
-            boxShadow: 'inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 12px 32px rgba(0, 0, 0, 0.58)',
+            boxShadow: 'inset 0 1px 0 var(--color-glass-rim), var(--shadow-floating-bar)',
           }}
         >
           {tabs.map((tab) => {
@@ -98,7 +98,7 @@ export const NavigationBar: React.FC<NavigationBarProps> = ({
                   isActive
                     ? {
                         background:
-                          'radial-gradient(ellipse 78% 64% at 50% 104%, rgba(255, 255, 255, 0.17) 0%, rgba(255, 255, 255, 0.04) 55%, transparent 78%)',
+                          'radial-gradient(ellipse 78% 64% at 50% 104%, var(--color-glass-glow-strong) 0%, var(--color-glass-glow-soft) 55%, transparent 78%)',
                       }
                     : undefined
                 }
@@ -112,9 +112,7 @@ export const NavigationBar: React.FC<NavigationBarProps> = ({
                   }}
                 />
                 <span
-                  className={`text-xs mt-1 tracking-tight transition-colors ${
-                    isActive ? 'font-medium' : 'font-normal'
-                  }`}
+                  className={`${isActive ? 'wk-meta-title' : 'wk-caption'} mt-1 transition-colors`}
                   style={{
                     color: isActive ? 'var(--color-text-primary)' : 'var(--color-text-secondary)',
                   }}
@@ -143,15 +141,13 @@ export const NavigationBar: React.FC<NavigationBarProps> = ({
               ? '1px solid var(--color-coach-accent)'
               : '1px solid var(--color-border-strong)',
             boxShadow: isChatOpen
-              ? 'inset 0 1px 0 rgb(var(--color-coach-surface-rgb) / 0.24), 0 0 24px rgb(var(--color-coach-accent-rgb) / 0.30), 0 12px 32px rgba(0, 0, 0, 0.58)'
-              : 'inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 12px 32px rgba(0, 0, 0, 0.58)',
+              ? 'inset 0 1px 0 rgb(var(--color-coach-surface-rgb) / 0.24), 0 0 24px rgb(var(--color-coach-accent-rgb) / 0.30), var(--shadow-floating-bar)'
+              : 'inset 0 1px 0 var(--color-glass-rim), var(--shadow-floating-bar)',
           }}
         >
           <TreiseCoachMark active={isChatOpen} />
           <span
-            className={`text-xs mt-1 tracking-tight whitespace-nowrap transition-colors ${
-              isChatOpen ? 'font-medium' : 'font-normal'
-            }`}
+            className={`${isChatOpen ? 'wk-meta-title' : 'wk-caption'} mt-1 whitespace-nowrap transition-colors`}
             style={{
               color: isChatOpen ? 'var(--color-text-primary)' : 'var(--color-coach-accent)',
             }}

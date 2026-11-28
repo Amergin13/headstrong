@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Check, Sparkles } from 'lucide-react';
+import { Sparkles } from 'lucide-react';
 import type { CoachIntervention } from '../../services/coachInterventions';
 import { formatSentenceCase } from '../../utils/typography';
 import { triggerHaptic } from '../../utils/haptics';
+import { InterventionActionBar } from '../common/Header';
 
 type ResolvingPhase = 'accepted' | 'exiting' | 'dismissing';
 
@@ -269,43 +270,15 @@ export const ProgramAdaptationCarousel: React.FC<ProgramAdaptationCarouselProps>
                 </ul>
               )}
 
-              {isAccepted ? (
-                <div
-                  aria-live="polite"
-                  className="min-h-[44px] rounded-xl px-4 py-2 flex items-center justify-center gap-2"
-                  style={{
-                    background: 'var(--color-status-positive-soft)',
-                    color: 'var(--wk-accent)',
-                  }}
-                >
-                  <Check className="w-4 h-4 shrink-0" strokeWidth={2.5} aria-hidden="true" />
-                  <span className="text-base font-semibold">Applied to your plan</span>
-                </div>
-              ) : (
-                <div className="flex items-center gap-2 pt-1">
-                  <button
-                    type="button"
-                    disabled={Boolean(phase)}
-                    onClick={() => handleAccept(item, idx)}
-                    className="flex-1 min-h-[44px] rounded-xl px-4 py-2 text-base font-semibold inline-flex items-center justify-center gap-2 transition-transform active:scale-[0.98]"
-                    style={{
-                      background: 'var(--color-action-primary-bg)',
-                      color: 'var(--color-action-primary-fg)',
-                    }}
-                  >
-                    <Check className="w-4 h-4 shrink-0" strokeWidth={2.4} aria-hidden="true" />
-                    <span>Accept</span>
-                  </button>
-                  <button
-                    type="button"
-                    disabled={Boolean(phase)}
-                    onClick={() => handleDismiss(item, idx)}
-                    className="wk-btn-secondary min-h-[44px] px-4 inline-flex items-center justify-center"
-                  >
-                    Dismiss
-                  </button>
-                </div>
-              )}
+              <InterventionActionBar
+                applied={isAccepted}
+                onAccept={() => handleAccept(item, idx)}
+                onDismiss={() => handleDismiss(item, idx)}
+                disabled={Boolean(phase)}
+                acceptLabel="Accept"
+                dismissLabel="Dismiss"
+                appliedLabel="Applied to your plan"
+              />
             </article>
           );
         })}

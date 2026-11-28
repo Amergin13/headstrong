@@ -232,8 +232,25 @@ export async function runSingleEngineAndCanonicalUiSuite(assert: AssertFn): Prom
 
   assert(
     finishedCardsSrc.includes('onOpenDetail?: () => void') &&
-      finishedCardsSrc.includes('min-w-[44px] min-h-[44px]'),
-    'CompletedExerciseCard exposes an accessible >=44px drill-in trigger to canonical ExerciseDetailModal'
+      finishedCardsSrc.includes('<CardDrillInButton') &&
+      read('src/components/common/Header.tsx').includes('min-w-[44px] min-h-[44px]'),
+    'CompletedExerciseCard exposes an accessible >=44px bordered CardDrillInButton trigger to canonical ExerciseDetailModal'
+  );
+
+  // Explicit card primitives, single radar, single ring & 48px intervention bar consolidation
+  assert(
+    read('src/components/train/ProgramProgressCard.tsx').includes('<CardDrillInButton') &&
+      read('src/components/train/RecoveryScoreCard.tsx').includes('<CardDrillInButton') &&
+      read('src/components/train/RecoveryScoreCard.tsx').includes('<CircularRing') &&
+      read('src/components/analytics/CompositionCard.tsx').includes('<CardDrillInButton') &&
+      read('src/components/analytics/ProgressChartCard.tsx').includes('<CardDrillInButton') &&
+      read('src/components/analytics/ProgressOverviewCards.tsx').includes('<CardDrillInButton') &&
+      read('src/components/analytics/StrengthLevelsCard.tsx').includes('<StandardsRadar') &&
+      !strengthLevelsSrc.includes('RadarChart') &&
+      read('src/components/program/ProgramAdaptationCarousel.tsx').includes('<InterventionActionBar') &&
+      balanceCardSrc.includes('<InterventionActionBar') &&
+      read('src/components/train/ExerciseDetailModal.tsx').includes('<InterventionActionBar'),
+    'All drill-in cards share explicit 44px CardDrillInButton, gauges/radars consolidate to CircularRing + StandardsRadar, and interventions share 48px InterventionActionBar'
   );
 
   assert(
@@ -941,5 +958,237 @@ export async function runSingleEngineAndCanonicalUiSuite(assert: AssertFn): Prom
       repeatQa.passed &&
       repeatVoiceErr === null,
     `Repeat calibrated machine 2-line summary explains calibrated machine load in Line 2, matches note facts, and passes QA + voice gates ("${repeatMachineInsight.lines[1]}")`
+  );
+
+  // -------------------------------------------------------------------------
+  // 9. P0 Fixes, 1-Tap OverflowMenu Controls & iOS Apple Health (HealthKit) Parity
+  // -------------------------------------------------------------------------
+  // P0.5: calculateWeeklyMuscleVolume deduplicates activeWorkout.id when already saved in workouts
+  const completedDupWorkout: WorkoutSession = {
+    id: 'w-dup-check-1',
+    name: 'Upper A',
+    splitDay: 'Upper',
+    date: new Date().toISOString().slice(0, 10),
+    completed: true,
+    completedAt: new Date().toISOString(),
+    readinessState: 'Normal',
+    readinessZScore: 0,
+    exercises: [
+      {
+        ...benchSourceEx,
+        sets: benchSourceEx.sets.map((s) => ({ ...s, completed: true, actualReps: 8, actualWeightKg: 80 })),
+      },
+    ],
+  };
+  const volSingle = calculateWeeklyMuscleVolume([completedDupWorkout], SEED_EXERCISES);
+  const volWithSameActive = calculateWeeklyMuscleVolume(
+    [completedDupWorkout],
+    SEED_EXERCISES,
+    completedDupWorkout
+  );
+  assert(
+    volWithSameActive.Chest === volSingle.Chest && volSingle.Chest > 0,
+    `calculateWeeklyMuscleVolume deduplicates activeWorkout.id against saved workouts (got ${volWithSameActive.Chest} vs ${volSingle.Chest})`
+  );
+
+  // P0.3: Cloud AI prompt anonymization never sends athlete name over HTTPS
+  const { buildCoachSystemPrompt } = await import('../../services/aiAssistantService');
+  const namedProfile: UserProfile = { ...profile, name: 'JordanUniqueTestName' };
+  const localPrompt = buildCoachSystemPrompt({
+    userMessage: 'How is my bench?',
+    profile: namedProfile,
+    activeWorkout: historyWorkouts[0],
+    workouts: historyWorkouts,
+    biometrics,
+    exerciseCatalog: SEED_EXERCISES,
+    bodyweightEmaKg: 82,
+    readinessState: 'Normal',
+  });
+  const cloudPrompt = buildCoachSystemPrompt(
+    {
+      userMessage: 'How is my bench?',
+      profile: namedProfile,
+      activeWorkout: historyWorkouts[0],
+      workouts: historyWorkouts,
+      biometrics,
+      exerciseCatalog: SEED_EXERCISES,
+      bodyweightEmaKg: 82,
+      readinessState: 'Normal',
+    },
+    { anonymizeForCloud: true }
+  );
+  assert(
+    localPrompt.includes('JordanUniqueTestName') && !cloudPrompt.includes('JordanUniqueTestName'),
+    'buildCoachSystemPrompt strips athlete name when anonymizeForCloud is true while keeping it for on-device inference'
+  );
+
+  // P0.1, P0.2, P0.4, P0.5 & Workstream B (1-tap OverflowMenu controls, zero extra card buttons)
+  const settingsSrc = read('src/components/auth/ProfileSettingsSections.tsx');
+  const exCardSrc = read('src/components/train/ExerciseCard.tsx');
+  const appRootSrc = read('src/App.tsx');
+  const pkgJsonSrc = read('package.json');
+  const viteConfigSrc = read('vite.config.ts');
+  const indexCssSrc = read('src/index.css');
+  const splitEditorSrc = read('src/components/program/SplitEditor.tsx');
+  assert(
+    settingsSrc.includes('ageDraft') &&
+      settingsSrc.includes('setAgeDraft') &&
+      trainTabSrc.includes('workouts={liveInsightWorkouts}') &&
+      trainTabSrc.includes("id: 'add-exercise'") &&
+      trainTabSrc.includes('handleRemoveSet') &&
+      trainTabSrc.includes('handleMoveExerciseDown') &&
+      trainTabSrc.includes('handleSkipExerciseToday') &&
+      exCardSrc.includes("id: 'add-set'") &&
+      exCardSrc.includes("id: 'add-warmup-set'") &&
+      exCardSrc.includes("id: 'remove-last-set'") &&
+      exCardSrc.includes("id: 'move-down'") &&
+      exCardSrc.includes("id: 'skip-today'") &&
+      appRootSrc.includes("import('./services/coachTools')") &&
+      appRootSrc.includes('Data backup & privacy') &&
+      !pkgJsonSrc.includes('"recharts"') &&
+      !pkgJsonSrc.includes('"@bubblewrap/cli"') &&
+      !viteConfigSrc.includes('vendor-charts') &&
+      indexCssSrc.includes('textarea:focus-visible') &&
+      indexCssSrc.includes('a:focus-visible') &&
+      !programTabSrc.includes('<div style={{ width: \'100%\' }} />') &&
+      !splitEditorSrc.includes('<div style={{ width: \'100%\' }} />'),
+    'Settings ageDraft, ExerciseCard live bridgeBands, 1-tap OverflowMenu set/order controls, dynamic coachTools import, focus rings, and dead-bar removal are all wired cleanly'
+  );
+
+  // Workstream C: iOS Apple Health (HealthKit) native WKWebView bridge + export.xml parser + Swift bridge
+  const {
+    attachIosHealthHandler,
+    getHealthConnectStatus,
+    receiveNativeBridgeMessage,
+  } = await import('../../services/healthConnectBridge');
+  const {
+    importFromAppleHealthXml,
+    importFromHealthConnectBridge,
+  } = await import('../../services/onboardingHealthImport');
+
+  const sampleAppleXml = `<?xml version="1.0" encoding="UTF-8"?>
+<HealthData locale="en_US">
+  <Me HKCharacteristicTypeIdentifierDateOfBirth="1992-05-14" HKCharacteristicTypeIdentifierBiologicalSex="HKBiologicalSexFemale" />
+  <Record type="HKQuantityTypeIdentifierBodyMass" sourceName="RENPHO" unit="lb" startDate="2026-11-25 07:30:00 +0000" endDate="2026-11-25 07:30:00 +0000" value="143.3" />
+  <Record type="HKQuantityTypeIdentifierHeight" sourceName="Health" unit="ft" startDate="2026-11-01 09:00:00 +0000" endDate="2026-11-01 09:00:00 +0000" value="5.5" />
+  <Record type="HKQuantityTypeIdentifierBodyFatPercentage" sourceName="RENPHO" unit="%" startDate="2026-11-25 07:30:00 +0000" endDate="2026-11-25 07:30:00 +0000" value="0.215" />
+  <Record type="HKQuantityTypeIdentifierRestingHeartRate" sourceName="Apple Watch" unit="count/min" startDate="2026-11-25 06:00:00 +0000" endDate="2026-11-25 06:00:00 +0000" value="54" />
+  <Record type="HKQuantityTypeIdentifierHeartRateVariabilitySDNN" sourceName="Apple Watch" unit="ms" startDate="2026-11-25 05:30:00 +0000" endDate="2026-11-25 05:30:00 +0000" value="68" />
+  <Record type="HKQuantityTypeIdentifierStepCount" sourceName="Apple Watch" unit="count" startDate="2026-11-25 10:00:00 +0000" endDate="2026-11-25 10:30:00 +0000" value="3200" />
+  <Record type="HKQuantityTypeIdentifierStepCount" sourceName="iPhone" unit="count" startDate="2026-11-25 10:05:00 +0000" endDate="2026-11-25 10:25:00 +0000" value="2900" />
+  <Record type="HKCategoryTypeIdentifierSleepAnalysis" sourceName="Apple Watch" startDate="2026-11-24 23:00:00 +0000" endDate="2026-11-25 07:00:00 +0000" value="HKCategoryValueSleepAnalysisInBed" />
+  <Record type="HKCategoryTypeIdentifierSleepAnalysis" sourceName="Apple Watch" startDate="2026-11-24 23:30:00 +0000" endDate="2026-11-25 06:45:00 +0000" value="HKCategoryValueSleepAnalysisAsleepCore" />
+  <Workout workoutActivityType="HKWorkoutActivityTypeRunning" duration="32" durationUnit="min" totalDistance="5.2" totalDistanceUnit="km" sourceName="Apple Watch" startDate="2026-11-25 17:00:00 +0000" endDate="2026-11-25 17:32:00 +0000" />
+</HealthData>`;
+
+  const xmlImport = importFromAppleHealthXml(sampleAppleXml, new Date('2026-11-27T12:00:00Z'));
+  const xmlDay = xmlImport.biometrics.find((b) => b.date === '2026-11-25');
+  assert(
+    xmlImport.source === 'apple_health_export' &&
+      xmlImport.gender === 'female' &&
+      typeof xmlImport.age === 'number' &&
+      xmlImport.age >= 33 &&
+      xmlImport.latestHeightCm !== undefined &&
+      Math.abs(xmlImport.latestHeightCm - 167.6) < 0.5 &&
+      xmlImport.latestBodyweightKg !== undefined &&
+      Math.abs(xmlImport.latestBodyweightKg - 65.0) < 0.2 &&
+      Boolean(xmlDay) &&
+      xmlDay!.bodyFatPct === 21.5 &&
+      xmlDay!.restingHr === 54 &&
+      xmlDay!.hrvRmssd === 68 &&
+      xmlDay!.steps === 3200 &&
+      xmlDay!.sleepHours === 7.3 &&
+      xmlImport.activities.length === 1 &&
+      xmlImport.activities[0].type === 'run' &&
+      xmlImport.activities[0].minutes === 32,
+    `parseAppleHealthXmlExport parses <Me>, lb->kg weight, ft->cm height, fraction bodyFat, RHR, HRV, deduplicated steps, asleep-only sleep (7.3h excluding InBed), and Running workouts`
+  );
+
+  attachIosHealthHandler(
+    {
+      postMessage: (raw: string) => {
+        const msg = JSON.parse(raw);
+        if (msg.type === 'status') {
+          receiveNativeBridgeMessage({
+            type: 'status',
+            provider: 'apple_health',
+            available: true,
+            granted: true,
+            stepsGranted: true,
+            biometricsGranted: true,
+            heightGranted: true,
+          });
+        } else if (msg.type === 'read-biometrics') {
+          receiveNativeBridgeMessage({
+            type: 'biometrics',
+            requestId: msg.requestId,
+            profile: { heightCm: 175, gender: 'female', birthDate: '1994-03-10' },
+            days: [
+              {
+                date: '2026-11-26',
+                sleepHours: 7.8,
+                restingHr: 52,
+                hrvRmssd: 74,
+                bodyweightKg: 64.5,
+                steps: 9400,
+              },
+            ],
+          });
+        } else if (msg.type === 'read-sessions') {
+          receiveNativeBridgeMessage({
+            type: 'sessions',
+            requestId: msg.requestId,
+            sessions: [
+              {
+                id: 'hk-w-1',
+                type: 'cycling',
+                name: 'Outdoor Cycle',
+                startTime: '2026-11-26T08:00:00Z',
+                minutes: 45,
+              },
+            ],
+          });
+        } else if (msg.type === 'read-steps') {
+          receiveNativeBridgeMessage({
+            type: 'steps',
+            requestId: msg.requestId,
+            days: [{ date: '2026-11-26', steps: 9400 }],
+          });
+        }
+      },
+    },
+    1
+  );
+
+  const iosStatus = getHealthConnectStatus();
+  const iosBridgeImport = await importFromHealthConnectBridge(29);
+  assert(
+    iosStatus.bridge &&
+      iosStatus.provider === 'apple_health' &&
+      iosBridgeImport.source === 'apple_health_bridge' &&
+      iosBridgeImport.latestHeightCm === 175 &&
+      iosBridgeImport.latestBodyweightKg === 64.5 &&
+      iosBridgeImport.gender === 'female' &&
+      iosBridgeImport.activities.length === 1 &&
+      iosBridgeImport.activities[0].minutes === 45,
+    'iOS WKWebView HealthKit bridge (attachIosHealthHandler) syncs Apple Health workouts, steps, biometrics, and profile demographics end-to-end'
+  );
+
+  const swiftBridgeSrc = read('ios/Treise/HealthKitBridge.swift');
+  const watchModalSrc = read('src/components/program/WatchSyncModal.tsx');
+  const activityModalSrc = read('src/components/activity/ActivityConnectionsModal.tsx');
+  const privacySrc = read('public/privacy.html');
+  const termsSrc = read('public/terms.html');
+  const termsMirrorSrc = read('public/terms/index.html');
+  assert(
+    swiftBridgeSrc.includes('static let handlerName = "treiseHealth"') &&
+      swiftBridgeSrc.includes('toShare: nil') &&
+      watchModalSrc.includes('importFromAppleHealthXml') &&
+      watchModalSrc.includes('Apple Health') &&
+      activityModalSrc.includes('Apple Health') &&
+      privacySrc.includes('Apple Health / HealthKit (iOS app)') &&
+      termsSrc === termsMirrorSrc &&
+      !termsSrc.includes('from the Program tab'),
+    'Native Swift HealthKitBridge (read-only), WatchSyncModal, ActivityConnectionsModal, privacy.html, and terms.html all support iOS Apple Health cleanly'
   );
 }

@@ -18,6 +18,24 @@ export type EquipmentType =
   | 'bodyweight'
   | 'weighted_bodyweight';
 
+/** TrainHeroic-aligned coaching library taxonomy for organizing and filtering exercises. */
+export type TrainHeroicCategory =
+  | 'Strength'
+  | 'Olympic Weightlifting'
+  | 'Gymnastics & Bodyweight'
+  | 'Plyometrics & Power'
+  | 'Conditioning & Carries'
+  | 'Mobility & Prehab'
+  | 'Core & Stability';
+
+/** Joint-angle / pressing-pulling plane for regional hypertrophy matching (clavicular vs sternal vs costal). */
+export type MovementPlaneAngle =
+  | 'incline'
+  | 'flat'
+  | 'decline'
+  | 'overhead'
+  | 'neutral';
+
 export type MuscleGroup =
   | 'Chest'
   | 'Back'
@@ -377,6 +395,14 @@ export interface ExerciseDefinition {
   defaultDurationSeconds?: number;
   movementFamily?: string; // Canonical movement vector ID in the Knowledge Graph
   movementFamilyLabel?: string; // Plain-English movement family name (e.g. "Horizontal Chest Press")
+  /** TrainHeroic coaching category (Strength, Olympic Weightlifting, Plyometrics & Power, etc.). */
+  category?: TrainHeroicCategory;
+  /** Specific real-world implement label when finer than EquipmentType (e.g. "Trap Bar", "Kettlebell", "Landmine", "Rings"). */
+  implementLabel?: string;
+  /** Regional joint plane/angle for plane-preserving substitutions (e.g. incline clavicular vs flat sternal). */
+  planeAngle?: MovementPlaneAngle;
+  /** Coaching shorthand & competitor app aliases (e.g. ["RDL", "BB RDL"], ["SSB Squat"]) for search and CSV import. */
+  aliases?: string[];
   environments?: TrainingLocation[]; // Where this exercise can be performed ('gym', 'home', 'travel')
   requiredHomeEquipment?: HomeEquipmentTag[]; // Equipment needed when training at home
   whyItWorks?: string; // Plain-English biomechanical rationale for why this alternative works
@@ -796,6 +822,8 @@ export interface UserProfile {
   progressWidgets?: ProgressWidgetId[];
   /** Personal layout defaults for the Workout screen, configured from the Workout 3-dots menu. */
   workoutDisplay?: WorkoutDisplaySettings;
+  /** When true, disables anonymous product usage telemetry collection and transmission. */
+  telemetryOptOut?: boolean;
   name: string;
   gender: Gender;
   /** True once the athlete chose it (Settings or the weight form); until then gender is a default. */

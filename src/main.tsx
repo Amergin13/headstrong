@@ -8,12 +8,26 @@ import { runStorageMigrations } from './services/storage';
 // Upgrade saved data from older versions before the app reads it.
 runStorageMigrations();
 
-// Register PWA service worker with immediate auto-update (skipped in local test copy).
+// Register PWA service worker with immediate auto-update on launch & foreground resume (skipped in local test copy).
 if (import.meta.env.VITE_LOCAL_TEST_COPY !== 'true') {
   const updateSW = registerSW({
     immediate: true,
+    onRegisteredSW(_swUrl, registration) {
+      if (!registration) return;
+      const checkForUpdate = () => {
+        if (navigator.onLine) {
+          void registration.update().catch(() => {});
+        }
+      };
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') {
+          checkForUpdate();
+        }
+      });
+      window.addEventListener('online', checkForUpdate);
+    },
     onNeedRefresh() {
-      updateSW(true);
+      void updateSW(true);
     },
     onOfflineReady() {
       console.log('Treise is ready to work offline.');

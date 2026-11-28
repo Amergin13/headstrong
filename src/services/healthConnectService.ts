@@ -1,5 +1,12 @@
 import { BiometricLog, ReadinessState, WearableSyncProgress } from '../engine/types';
 import { localDateString } from '../utils/date';
+import type { RawSourceSession } from './activitySources';
+import {
+  computeAgeFromBirthDate,
+  HealthConnectDemographics,
+  parseHeightCmValue,
+  parseSexValue,
+} from './healthConnectProfile';
 
 export const HEALTH_CONNECT_CONFIG = {
   PACKAGE_NAME: 'com.google.android.apps.healthdata',
@@ -29,6 +36,32 @@ export function isAndroidPlatform(): boolean {
   if (typeof navigator === 'undefined') return false;
   const ua = navigator.userAgent || '';
   return /Android/i.test(ua);
+}
+
+/**
+ * Checks whether the current device is running on iOS / iPadOS (supporting Apple HealthKit).
+ */
+export function isIosPlatform(userAgentOverride?: string, maxTouchPointsOverride?: number): boolean {
+  const ua =
+    userAgentOverride !== undefined
+      ? userAgentOverride
+      : typeof navigator !== 'undefined'
+      ? navigator.userAgent || ''
+      : '';
+  const touchPoints =
+    maxTouchPointsOverride !== undefined
+      ? maxTouchPointsOverride
+      : typeof navigator !== 'undefined'
+      ? navigator.maxTouchPoints || 0
+      : 0;
+  if (/iPhone|iPad|iPod/i.test(ua)) return true;
+  if (/Macintosh/i.test(ua) && touchPoints > 1) return true;
+  return false;
+}
+
+/** Returns the native OS health hub name for the current device ('Apple Health' on iOS, 'Health Connect' on Android). */
+export function resolveNativeHealthHubName(isIos = isIosPlatform()): 'Apple Health' | 'Health Connect' {
+  return isIos ? 'Apple Health' : 'Health Connect';
 }
 
 /**
@@ -212,6 +245,291 @@ export function parseHealthConnectExport(rawInput: string | Record<string, any>)
 
   parsedLogs.sort((a, b) => a.date.localeCompare(b.date));
   return parsedLogs;
+}
+
+export interface AppleHealthXmlExportParsed {
+  biometrics: BiometricLog[];
+  sessions: RawSourceSession[];
+  demographics: HealthConnectDemographics;
+}
+
+function readXmlAttr(tag: string, name: string): string | undefined {
+  const re = new RegExp(`\\b${name}="([^"]*)"`, 'i');
+  const m = re.exec(tag);
+  return m ? m[1] : undefined;
+}
+
+function parseAppleHealthDateTime(raw: string | undefined): { date: string; ms: number; iso: string } | null {
+  if (!raw) return null;
+  const trimmed = raw.trim();
+  const datePart = trimmed.slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(datePart)) return null;
+  // Apple Health timestamps look like "2026-11-20 07:32:10 +0000" — normalize first space + tz offset for Date.parse
+  const isoCandidate = trimmed.replace(
+    /^(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2}:\d{2})\s*([+-]\d{2})(\d{2})$/,
+    '$1T$2$3:$4'
+  );
+  const parsed = new Date(isoCandidate);
+  const ms = Number.isNaN(parsed.getTime()) ? new Date(`${datePart}T12:00:00Z`).getTime() : parsed.getTime();
+  return { date: datePart, ms, iso: new Date(ms).toISOString() };
+}
+
+/**
+ * Parses a real Apple Health (`export.xml`) export into normalized BiometricLog entries,
+ * recent workout sessions, and optional profile demographics (`<Me .../>` + `Height`).
+ * Strictly truthful: missing fields stay 0 / undefined (never fabricated).
+ */
+export function parseAppleHealthXmlExport(
+  rawXml: string,
+  referenceDate: Date = new Date()
+): AppleHealthXmlExportParsed {
+  if (typeof rawXml !== 'string' || !/<HealthData\b|<Record\b|<Workout\b|<Me\b/i.test(rawXml)) {
+    throw new Error('Invalid Apple Health XML export.');
+  }
+
+  const logsByDate = new Map<string, Partial<BiometricLog>>();
+  const getOrCreate = (dateStr: string): Partial<BiometricLog> => {
+    let entry = logsByDate.get(dateStr);
+    if (!entry) {
+      entry = {
+        date: dateStr,
+        bodyweightKg: 0,
+        hrvRmssd: 0,
+        restingHr: 0,
+        sleepHours: 0,
+        steps: 0,
+        activeZoneMinutes: 0,
+        vo2Max: 0,
+        source: 'health_connect',
+      };
+      logsByDate.set(dateStr, entry);
+    }
+    return entry;
+  };
+
+  let gender: 'male' | 'female' | undefined;
+  let age: number | undefined;
+  let latestHeightCm: number | undefined;
+
+  const meMatch = /<Me\b[^>]*>/i.exec(rawXml);
+  if (meMatch) {
+    const meTag = meMatch[0];
+    const rawSex = readXmlAttr(meTag, 'HKCharacteristicTypeIdentifierBiologicalSex');
+    if (rawSex) {
+      const cleanedSex = rawSex.replace(/^HKBiologicalSex/i, '');
+      gender = parseSexValue(cleanedSex);
+    }
+    const rawDob = readXmlAttr(meTag, 'HKCharacteristicTypeIdentifierDateOfBirth');
+    if (rawDob) {
+      age = computeAgeFromBirthDate(rawDob, referenceDate);
+    }
+  }
+
+  // Track sleep intervals per wakeup date to avoid double-counting overlapping Watch/iPhone stages
+  const sleepIntervalsByDate = new Map<string, Array<[number, number]>>();
+  // Track step intervals per date to avoid double-counting simultaneous iPhone + Apple Watch pedometer samples
+  const stepIntervalsByDate = new Map<string, Array<{ start: number; end: number; steps: number }>>();
+
+  const recordRegex = /<Record\b[^>]*>/gi;
+  let match: RegExpExecArray | null;
+  while ((match = recordRegex.exec(rawXml)) !== null) {
+    const tag = match[0];
+    const type = readXmlAttr(tag, 'type');
+    if (!type) continue;
+    const rawVal = readXmlAttr(tag, 'value');
+    const unit = (readXmlAttr(tag, 'unit') || '').toLowerCase();
+    const startInfo = parseAppleHealthDateTime(readXmlAttr(tag, 'startDate'));
+    const endInfo = parseAppleHealthDateTime(readXmlAttr(tag, 'endDate')) ?? startInfo;
+    if (!startInfo || !endInfo) continue;
+
+    if (type === 'HKCategoryTypeIdentifierSleepAnalysis') {
+      // Count only actual asleep stages (exclude InBed and Awake so time in bed is never inflated into sleep)
+      if (rawVal && /Asleep/i.test(rawVal) && endInfo.ms > startInfo.ms) {
+        const list = sleepIntervalsByDate.get(endInfo.date) ?? [];
+        list.push([startInfo.ms, endInfo.ms]);
+        sleepIntervalsByDate.set(endInfo.date, list);
+      }
+      continue;
+    }
+
+    const num = rawVal !== undefined ? Number(rawVal) : NaN;
+    if (!Number.isFinite(num)) continue;
+
+    if (type === 'HKQuantityTypeIdentifierHeight') {
+      const cm =
+        unit === 'in'
+          ? num * 2.54
+          : unit === 'ft'
+          ? num * 30.48
+          : unit === 'm'
+          ? num * 100
+          : parseHeightCmValue(num);
+      if (cm && cm >= 100 && cm <= 250) {
+        latestHeightCm = Math.round(cm);
+      }
+      continue;
+    }
+
+    const entry = getOrCreate(startInfo.date);
+
+    switch (type) {
+      case 'HKQuantityTypeIdentifierBodyMass': {
+        const kg = unit.startsWith('lb') ? num / 2.2046226218 : unit === 'g' ? num / 1000 : num;
+        if (kg >= 25 && kg <= 300) entry.bodyweightKg = Math.round(kg * 10) / 10;
+        break;
+      }
+      case 'HKQuantityTypeIdentifierBodyFatPercentage': {
+        const pct = num > 0 && num <= 1 ? num * 100 : num;
+        if (pct > 1 && pct < 75) entry.bodyFatPct = Math.round(pct * 10) / 10;
+        break;
+      }
+      case 'HKQuantityTypeIdentifierLeanBodyMass': {
+        const kg = unit.startsWith('lb') ? num / 2.2046226218 : num;
+        if (kg > 10 && kg < 200) entry.fatFreeMassKg = Math.round(kg * 10) / 10;
+        break;
+      }
+      case 'HKQuantityTypeIdentifierRestingHeartRate': {
+        if (num >= 30 && num <= 140) entry.restingHr = Math.round(num);
+        break;
+      }
+      case 'HKQuantityTypeIdentifierHeartRateVariabilitySDNN': {
+        const msVal = unit === 's' ? num * 1000 : num;
+        if (msVal > 0 && msVal < 400) entry.hrvRmssd = Math.round(msVal);
+        break;
+      }
+      case 'HKQuantityTypeIdentifierStepCount': {
+        if (num > 0) {
+          const list = stepIntervalsByDate.get(startInfo.date) ?? [];
+          list.push({ start: startInfo.ms, end: Math.max(startInfo.ms, endInfo.ms), steps: Math.round(num) });
+          stepIntervalsByDate.set(startInfo.date, list);
+        }
+        break;
+      }
+      case 'HKQuantityTypeIdentifierAppleExerciseTime': {
+        if (num > 0) entry.activeZoneMinutes = Math.round((entry.activeZoneMinutes || 0) + num);
+        break;
+      }
+      case 'HKQuantityTypeIdentifierVO2Max': {
+        if (num >= 10 && num <= 95) entry.vo2Max = Math.round(num * 10) / 10;
+        break;
+      }
+      default:
+        break;
+    }
+  }
+
+  // Merge non-overlapping asleep intervals per date
+  for (const [dateStr, intervals] of sleepIntervalsByDate.entries()) {
+    const sorted = [...intervals].sort((a, b) => a[0] - b[0]);
+    let totalMs = 0;
+    let [curStart, curEnd] = sorted[0];
+    for (let i = 1; i < sorted.length; i++) {
+      const [s, e] = sorted[i];
+      if (s <= curEnd) curEnd = Math.max(curEnd, e);
+      else {
+        totalMs += curEnd - curStart;
+        curStart = s;
+        curEnd = e;
+      }
+    }
+    totalMs += curEnd - curStart;
+    if (totalMs > 0) {
+      const entry = getOrCreate(dateStr);
+      entry.sleepHours = Math.round((totalMs / 3_600_000) * 10) / 10;
+    }
+  }
+
+  // Merge step intervals per date without double-counting overlapping Watch + iPhone samples
+  for (const [dateStr, items] of stepIntervalsByDate.entries()) {
+    const sorted = [...items].sort((a, b) => a.start - b.start || b.steps - a.steps);
+    let totalSteps = 0;
+    let latestEnd = -1;
+    for (const it of sorted) {
+      if (it.start >= latestEnd) {
+        totalSteps += it.steps;
+        latestEnd = it.end;
+      } else if (it.end > latestEnd) {
+        const span = Math.max(1, it.end - it.start);
+        const nonOverlapRatio = (it.end - latestEnd) / span;
+        totalSteps += Math.round(it.steps * nonOverlapRatio);
+        latestEnd = it.end;
+      }
+    }
+    if (totalSteps > 0) {
+      const entry = getOrCreate(dateStr);
+      entry.steps = totalSteps;
+    }
+  }
+
+  const lookbackCutoffMs = referenceDate.getTime() - 29 * 86_400_000;
+  const sessions: RawSourceSession[] = [];
+  const workoutRegex = /<Workout\b[^>]*>/gi;
+  let wIdx = 0;
+  while ((match = workoutRegex.exec(rawXml)) !== null) {
+    const tag = match[0];
+    const hkType = readXmlAttr(tag, 'workoutActivityType') || '';
+    const startInfo = parseAppleHealthDateTime(readXmlAttr(tag, 'startDate'));
+    if (!startInfo || startInfo.ms < lookbackCutoffMs) continue;
+    const endInfo = parseAppleHealthDateTime(readXmlAttr(tag, 'endDate'));
+    const rawDuration = Number(readXmlAttr(tag, 'duration') || '0');
+    const durationUnit = (readXmlAttr(tag, 'durationUnit') || 'min').toLowerCase();
+    const minutes =
+      rawDuration > 0
+        ? durationUnit.startsWith('s')
+          ? rawDuration / 60
+          : durationUnit.startsWith('h')
+          ? rawDuration * 60
+          : rawDuration
+        : endInfo && endInfo.ms > startInfo.ms
+        ? (endInfo.ms - startInfo.ms) / 60_000
+        : 0;
+    if (!(minutes > 0)) continue;
+    const sportName = hkType.replace(/^HKWorkoutActivityType/i, '').replace(/([a-z])([A-Z])/g, '$1 $2').trim();
+    const rawDist = Number(readXmlAttr(tag, 'totalDistance') || '0');
+    const distUnit = (readXmlAttr(tag, 'totalDistanceUnit') || 'km').toLowerCase();
+    const distanceKm =
+      rawDist > 0
+        ? distUnit.startsWith('mi')
+          ? Math.round(rawDist * 1.60934 * 100) / 100
+          : distUnit === 'm'
+          ? Math.round((rawDist / 1000) * 100) / 100
+          : Math.round(rawDist * 100) / 100
+        : undefined;
+    wIdx += 1;
+    sessions.push({
+      externalId: `hk-xml-${startInfo.ms}-${wIdx}`,
+      sportType: sportName || 'Workout',
+      name: sportName || 'Workout',
+      startedAt: startInfo.iso,
+      minutes: Math.round(minutes),
+      ...(distanceKm ? { distanceKm } : {}),
+    });
+  }
+
+  const biometrics: BiometricLog[] = Array.from(logsByDate.values())
+    .map((p) => ({
+      ...p,
+      date: p.date || localDateString(referenceDate),
+      bodyweightKg: p.bodyweightKg || 0,
+      hrvRmssd: p.hrvRmssd || 0,
+      restingHr: p.restingHr || 0,
+      sleepHours: p.sleepHours || 0,
+      steps: p.steps || 0,
+      activeZoneMinutes: p.activeZoneMinutes || 0,
+      vo2Max: p.vo2Max || 0,
+      source: 'health_connect' as const,
+    }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+
+  return {
+    biometrics,
+    sessions,
+    demographics: {
+      ...(latestHeightCm !== undefined ? { latestHeightCm } : {}),
+      ...(gender !== undefined ? { gender } : {}),
+      ...(age !== undefined ? { age } : {}),
+    },
+  };
 }
 
 /**

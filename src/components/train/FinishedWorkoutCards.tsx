@@ -1,10 +1,9 @@
 import React from 'react';
-import { ChevronRight } from 'lucide-react';
 import { CompletedExerciseSummary, WorkoutFinish } from '../../services/workoutFinish';
 import { localDateString } from '../../utils/date';
 import { formatSentenceCase } from '../../utils/typography';
-import { triggerHaptic } from '../../utils/haptics';
 import { useUnits } from '../../utils/unitsContext';
+import { CardDrillInButton } from '../common/Header';
 import { TrendChart } from '../common/TrendChart';
 import { CoachSummaryText } from '../common/CoachSummaryText';
 import { useWorkoutSummaryText } from './useWorkoutSummaryText';
@@ -14,7 +13,7 @@ const Stat: React.FC<{ label: string; value: string }> = ({ label, value }) => (
     <dt className="wk-label" style={{ color: 'var(--wk-muted)' }}>
       {label}
     </dt>
-    <dd className="wk-display leading-none mt-1">
+    <dd className="wk-display mt-1">
       {value}
     </dd>
   </div>
@@ -116,7 +115,7 @@ export const WhoopStrainCard: React.FC<WhoopStrainCardProps> = ({
           <dt className="wk-label" style={{ color: 'var(--wk-muted)' }}>
             Workout strain
           </dt>
-          <dd className="wk-display leading-none mt-1">
+          <dd className="wk-display mt-1">
             {hasWorkoutStrain ? workoutStrain.toFixed(1) : '—'}
             {hasWorkoutStrain && (
               <span className="wk-caption ml-2" style={{ color: 'var(--wk-muted)' }}>
@@ -163,7 +162,8 @@ export const CompletedExerciseCard: React.FC<{
     <section aria-label={`${summary.exerciseName}${summary.isPersonalBest ? ', personal best' : ''}`} className="wk-card">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
-          <div className="flex items-center flex-wrap gap-2">
+          <div className="flex items-center flex-wrap gap-2 pt-1">
+            {summary.chip && <span className="wk-pill shrink-0">{summary.chip}</span>}
             <h3 className="wk-h1 min-w-0">{formatSentenceCase(summary.exerciseName)}</h3>
             {summary.isPersonalBest && (
               <span
@@ -176,26 +176,13 @@ export const CompletedExerciseCard: React.FC<{
           </div>
         </div>
         {onOpenDetail && (
-          <button
-            type="button"
-            onClick={() => {
-              triggerHaptic('light');
-              onOpenDetail();
-            }}
-            aria-label={`Open details for ${formatSentenceCase(summary.exerciseName)}`}
-            className="min-w-[44px] min-h-[44px] -mt-2 -mr-2 inline-flex items-center justify-center rounded-xl shrink-0"
-            style={{ color: 'var(--color-text-secondary)' }}
-          >
-            <ChevronRight className="wk-chevron" strokeWidth={2} aria-hidden="true" />
-          </button>
+          <CardDrillInButton
+            onClick={onOpenDetail}
+            label={`Open details for ${formatSentenceCase(summary.exerciseName)}`}
+          />
         )}
       </div>
-      {summary.chip && (
-        <div className="mt-2">
-          <span className="wk-pill">{summary.chip}</span>
-        </div>
-      )}
-      <div className="wk-body flex flex-col gap-1 mt-4 max-w-prose">
+      <div className="wk-body flex flex-col gap-1 mt-4">
         {summary.lines.map((line, i) => (
           <p key={i} className="m-0">
             {line}

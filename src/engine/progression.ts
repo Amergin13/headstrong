@@ -32,6 +32,9 @@ const MOVEMENT_FAMILY_LABELS: Record<string, string> = {
   'vector-pillar-vertical-pull': 'Vertical Lats Pull',
   'vector-pillar-squat': 'Squat & Knee Flexion',
   'vector-pillar-hinge': 'Deadlift & Hip Hinge',
+  'vector-iso-chest': 'Chest Fly & Adduction',
+  'vector-iso-lats': 'Lat Pullover & Straight-Arm Pulldown',
+  'vector-iso-glutes': 'Glute & Hip Isolation',
   'vector-iso-sidedelts': 'Side Shoulder Isolation',
   'vector-iso-reardelts': 'Rear Shoulder Isolation',
   'vector-iso-triceps': 'Triceps Extension',
@@ -40,19 +43,30 @@ const MOVEMENT_FAMILY_LABELS: Record<string, string> = {
   'vector-iso-quads': 'Quad Knee Extension',
   'vector-iso-calves': 'Calf Raise',
   'vector-iso-core': 'Core & Abs',
+  'vector-power-olympic': 'Olympic & Explosive Power',
+  'vector-carry-conditioning': 'Loaded Carries & Conditioning',
+  'vector-mobility-prehab': 'Mobility & Joint Prehab',
 };
 
 /**
  * Related biomechanical movement vectors sharing primary prime movers
- * (e.g., Hamstring Knee Flexion <-> Hip Hinge when home equipment lacks a leg-curl machine).
+ * (e.g., Hamstring Knee Flexion <-> Hip Hinge when home equipment lacks a leg-curl machine,
+ * or Chest Adduction Fly <-> Horizontal Chest Press when cables/fly stations are busy).
  */
 export const RELATED_MOVEMENT_FAMILIES: Record<string, string[]> = {
+  'vector-iso-chest': ['vector-pillar-horizontal-push'],
+  'vector-pillar-horizontal-push': ['vector-iso-chest'],
+  'vector-iso-lats': ['vector-pillar-vertical-pull'],
+  'vector-pillar-vertical-pull': ['vector-iso-lats'],
+  'vector-iso-glutes': ['vector-pillar-hinge'],
   'vector-iso-hamstrings': ['vector-pillar-hinge'],
-  'vector-pillar-hinge': ['vector-iso-hamstrings'],
+  'vector-pillar-hinge': ['vector-iso-hamstrings', 'vector-iso-glutes'],
   'vector-iso-quads': ['vector-pillar-squat'],
   'vector-pillar-squat': ['vector-iso-quads'],
   'vector-iso-triceps': ['vector-pillar-horizontal-push'],
   'vector-iso-biceps': ['vector-pillar-vertical-pull', 'vector-pillar-horizontal-pull'],
+  'vector-power-olympic': ['vector-pillar-hinge', 'vector-pillar-squat'],
+  'vector-carry-conditioning': ['vector-iso-core', 'vector-pillar-hinge'],
 };
 
 /**
@@ -77,19 +91,76 @@ export function getMovementVectorId(ex: {
   const rawId = (ex.exerciseId || ex.id || '').toLowerCase();
 
   if (
+    rawId.includes('farmers-walk') ||
+    rawId.includes('carry') ||
+    rawId.includes('sled') ||
+    rawId.includes('rowerg') ||
+    rawId.includes('skierg') ||
+    rawId.includes('airbike') ||
+    rawId.includes('hiit-sprints')
+  ) {
+    return 'vector-carry-conditioning';
+  }
+  if (
+    rawId.includes('power-clean') ||
+    rawId.includes('squat-clean') ||
+    rawId.includes('clean-and-jerk') ||
+    rawId.includes('snatch') ||
+    rawId.includes('high-pull') ||
+    rawId.includes('kettlebell-swing') ||
+    rawId.includes('kb-swing') ||
+    rawId.includes('box-jump') ||
+    rawId.includes('broad-jump') ||
+    rawId.includes('depth-jump') ||
+    rawId.includes('hurdle-hop') ||
+    rawId.includes('med-ball')
+  ) {
+    return 'vector-power-olympic';
+  }
+  if (
+    rawId.includes('worlds-greatest') ||
+    rawId.includes('90-90') ||
+    rawId.includes('couch-stretch') ||
+    rawId.includes('open-book') ||
+    rawId.includes('thread-needle') ||
+    rawId.includes('wall-mobilization') ||
+    rawId.includes('wall-slide') ||
+    rawId.includes('dislocates') ||
+    rawId.includes('external-rotation')
+  ) {
+    return 'vector-mobility-prehab';
+  }
+  if (
+    (rawId.includes('fly') && !rawId.includes('rear-delt') && !rawId.includes('y-fly')) ||
+    rawId.includes('pec-deck') ||
+    rawId.includes('crossover')
+  ) {
+    return 'vector-iso-chest';
+  }
+  if (
+    rawId.includes('pullover') ||
+    rawId.includes('straight-arm-pulldown') ||
+    rawId.includes('lat-prayer')
+  ) {
+    return 'vector-iso-lats';
+  }
+  if (
     rawId.includes('lateral') ||
     rawId.includes('y-fly') ||
+    rawId.includes('y-raise') ||
+    rawId.includes('lu-raise') ||
     rawId.includes('side-plank-abduction') ||
     ex.primaryMuscle === 'Side Delts'
   ) {
     return 'vector-iso-sidedelts';
   }
-  if (rawId.includes('calf') || ex.primaryMuscle === 'Calves') {
+  if (rawId.includes('calf') || rawId.includes('tibialis') || ex.primaryMuscle === 'Calves') {
     return 'vector-iso-calves';
   }
   if (
     rawId.includes('face-pull') ||
     rawId.includes('rear-delt') ||
+    rawId.includes('reverse-pec-deck') ||
     rawId.includes('w-raise') ||
     ex.primaryMuscle === 'Rear Delts'
   ) {
@@ -99,6 +170,11 @@ export function getMovementVectorId(ex: {
     rawId.includes('bicep') ||
     rawId.includes('incline-curl') ||
     rawId.includes('cable-curl') ||
+    rawId.includes('bayesian') ||
+    rawId.includes('preacher') ||
+    rawId.includes('spider-curl') ||
+    rawId.includes('concentration-curl') ||
+    rawId.includes('zottman') ||
     ex.primaryMuscle === 'Biceps'
   ) {
     return 'vector-iso-biceps';
@@ -106,6 +182,9 @@ export function getMovementVectorId(ex: {
   if (
     rawId.includes('tricep') ||
     rawId.includes('pushdown') ||
+    rawId.includes('skullcrusher') ||
+    rawId.includes('jm-press') ||
+    rawId.includes('tate-press') ||
     rawId.includes('overhead-db-extension') ||
     rawId.includes('diamond-pushup') ||
     ex.primaryMuscle === 'Triceps'
@@ -116,8 +195,19 @@ export function getMovementVectorId(ex: {
     return 'vector-iso-hamstrings';
   }
   if (
+    rawId.includes('glute-kickback') ||
+    rawId.includes('hip-abduction') ||
+    rawId.includes('hip-adduction')
+  ) {
+    return 'vector-iso-glutes';
+  }
+  if (
     rawId.includes('crunch') ||
     rawId.includes('hanging-leg-raise') ||
+    rawId.includes('toes-to-bar') ||
+    rawId.includes('ab-wheel') ||
+    rawId.includes('pallof') ||
+    rawId.includes('woodchop') ||
     rawId.includes('trx-pike') ||
     rawId.includes('hollow-body') ||
     ex.primaryMuscle === 'Core'
@@ -537,11 +627,15 @@ export function prescribeExerciseSwap(params: {
   const targetIdLower = targetDef.id.toLowerCase();
   const derivedProfile =
     targetDef.resistanceProfile ||
-    (/(rdl|incline|cable-lateral|calf|leg-curl|nordic|leg-extension|pullup|squat|lunge|step-up|skullcrusher|fly)/.test(
+    (/(seated-calf|lying-leg-curl|prone-leg-curl|db-leg-curl|sliding-leg-curl|stability-ball-leg-curl|jm-press|tate-press)/.test(
       targetIdLower
     )
+      ? 'mid'
+      : /(rdl|good-morning|45-back-extension|incline|bayesian|preacher|spider-curl|cable-lateral|behind-back-lateral|side-lying-lateral|lu-raise|y-raise|standing-calf|leg-press-calf|donkey-calf|single-leg-calf|db-calf|slow-calf|leg-curl|nordic|sissy-squat|leg-press|leg-extension|pullup|pullover|lat-prayer|straight-arm|squat|lunge|step-up|step-down|overhead-tricep|overhead-db-extension|skullcrusher|pec-deck|deficit-pushup|fly)/.test(
+          targetIdLower
+        )
       ? 'lengthened'
-      : /(pushdown|face-pull|pull-apart|hip-thrust|glute-bridge|db-lateral|cable-row)/.test(
+      : /(pushdown|kickback|concentration-curl|high-cable-curl|face-pull|pull-apart|hip-thrust|glute-bridge|frog-pump|glute-kickback|reverse-hyper|db-lateral|seated-lateral|machine-lateral|cable-row|seal-row|chest-supported)/.test(
           targetIdLower
         )
       ? 'shortened'
@@ -554,13 +648,16 @@ export function prescribeExerciseSwap(params: {
       : 'Balanced mid-range resistance curve';
   const derivedStability =
     targetDef.stability ||
-    (/(split-squat|bulgarian|lunge|pistol|single-leg|trx|ring|gymball|handstand)/.test(targetIdLower)
+    (/(split-squat|bulgarian|lunge|pistol|single-leg|cossack|sissy|step-down|trx|ring|gymball|stability-ball|handstand|bottoms-up|turkish|waiter|windmill)/.test(
+      targetIdLower
+    )
       ? 'low'
       : targetDef.equipment === 'machine' ||
         targetDef.equipment === 'cable' ||
-        /(leg-press|hack|chest-supported|preacher|seated-calf|leg-curl|leg-extension|pulldown)/.test(
+        /(leg-press|hack|pendulum|belt-squat|smith|chest-supported|seal-row|helms-row|preacher|spider-curl|seated-calf|leg-extension|pulldown|pec-deck)/.test(
           targetIdLower
-        )
+        ) ||
+        (targetIdLower.includes('leg-curl') && !targetIdLower.includes('db-leg-curl') && !targetIdLower.includes('sliding'))
       ? 'high'
       : 'moderate');
   const stabilityNote =

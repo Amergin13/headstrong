@@ -1,9 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Check, ChevronRight, Sparkles } from 'lucide-react';
+import { ChevronRight, Sparkles } from 'lucide-react';
 import type { CoachIntervention } from '../../services/coachInterventions';
 import { MovementStandardsReport, SYMMETRY_FLAG_PCT } from '../../services/movementStandards';
 import { formatSentenceCase } from '../../utils/typography';
 import { triggerHaptic } from '../../utils/haptics';
+import { InterventionActionBar } from '../common/Header';
 
 export interface BalanceCardProps {
   report: MovementStandardsReport;
@@ -80,7 +81,7 @@ export const BalanceCard: React.FC<BalanceCardProps> = ({
   return (
     <section aria-labelledby="balance-title" className="wk-card w-full text-left block">
       <div className="flex items-start justify-between gap-3">
-        <h2 id="balance-title" className="wk-h1 leading-tight">
+        <h2 id="balance-title" className="wk-h1">
           Balance
         </h2>
         {loggedCount >= 2 && (
@@ -205,43 +206,15 @@ export const BalanceCard: React.FC<BalanceCardProps> = ({
               )}
             </div>
           </div>
-          {isAccepted ? (
-            <div
-              aria-live="polite"
-              className="min-h-[44px] rounded-xl px-4 py-2 flex items-center justify-center gap-2"
-              style={{
-                background: 'var(--color-status-positive-soft)',
-                color: 'var(--wk-accent)',
-              }}
-            >
-              <Check className="w-4 h-4 shrink-0" strokeWidth={2.5} aria-hidden="true" />
-              <span className="text-base font-semibold">Applied to your plan</span>
-            </div>
-          ) : (
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                disabled={Boolean(resolving)}
-                onClick={() => handleAccept(displayIntervention)}
-                className="flex-1 min-h-[44px] rounded-xl px-4 py-2 text-base font-semibold inline-flex items-center justify-center gap-2 transition-transform active:scale-[0.98]"
-                style={{
-                  background: 'var(--color-action-primary-bg)',
-                  color: 'var(--color-action-primary-fg)',
-                }}
-              >
-                <Check className="w-4 h-4 shrink-0" strokeWidth={2.4} aria-hidden="true" />
-                <span>Accept</span>
-              </button>
-              <button
-                type="button"
-                disabled={Boolean(resolving)}
-                onClick={() => handleDismiss(displayIntervention)}
-                className="wk-btn-secondary min-h-[44px] px-4 inline-flex items-center justify-center"
-              >
-                Dismiss
-              </button>
-            </div>
-          )}
+          <InterventionActionBar
+            applied={isAccepted}
+            onAccept={() => handleAccept(displayIntervention)}
+            onDismiss={() => handleDismiss(displayIntervention)}
+            disabled={Boolean(resolving)}
+            acceptLabel="Accept"
+            dismissLabel="Dismiss"
+            appliedLabel="Applied to your plan"
+          />
         </div>
       )}
 
@@ -263,7 +236,7 @@ export const BalanceCard: React.FC<BalanceCardProps> = ({
               <button
                 type="button"
                 onClick={() => onFixImbalanceWithCoach(prompt)}
-                className="wk-btn-secondary w-full min-h-[44px] inline-flex items-center justify-center gap-2 font-medium"
+                className="wk-btn-secondary w-full min-h-[44px] inline-flex items-center justify-center gap-2"
                 style={{
                   borderColor: 'rgb(var(--color-coach-accent-rgb) / 0.35)',
                   color: 'var(--color-text-primary)',

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Check, ChevronLeft, ChevronRight, Minus } from 'lucide-react';
+import { Check, ChevronLeft, Minus } from 'lucide-react';
 import { MovementStandardsReport } from '../../services/movementStandards';
 import {
   GoalRing,
@@ -14,6 +14,7 @@ import {
 import { AthleteGoal } from '../../services/athleteGoals';
 import { ProgressPoint } from '../../services/progressSeries';
 import { CoachSummaryText } from '../common/CoachSummaryText';
+import { CardDrillInButton } from '../common/Header';
 import { triggerHaptic } from '../../utils/haptics';
 import { isOnDeviceModelReady } from '../../services/onDeviceModel';
 
@@ -61,7 +62,6 @@ const SegmentRing: React.FC<{ segments: RingSegment[]; radius: number; width: nu
 const Ring: React.FC<{ ring: GoalRing; colour: string; size?: number }> = ({ ring, colour, size = 192 }) => {
   const threeRing = Boolean(ring.innermost?.length);
   const compactValue = ring.value.length > 5;
-  const fontSize = compactValue ? 20 : 32;
   return (
     <div className="relative shrink-0" style={{ width: size, height: size }}>
       <svg viewBox="0 0 100 100" className="w-full h-full" style={{ transform: 'rotate(-90deg)' }} aria-hidden="true">
@@ -92,11 +92,8 @@ const Ring: React.FC<{ ring: GoalRing; colour: string; size?: number }> = ({ rin
         )}
       </svg>
       <span
-        className="absolute inset-0 flex items-center justify-center tabular-numbers px-6 text-center font-semibold"
+        className={`absolute inset-0 flex items-center justify-center px-6 text-center ${compactValue ? 'wk-number' : 'wk-display'}`}
         style={{
-          fontSize,
-          lineHeight: 1.05,
-          letterSpacing: '-0.02em',
           color: ring.empty ? 'var(--wk-muted)' : 'var(--color-text-primary)',
         }}
       >
@@ -151,25 +148,20 @@ const GoalSlideCard: React.FC<{
       aria-label={`Goal ${index + 1} of ${total}: ${ring.title}`}
       className="shrink-0 w-full snap-center flex flex-col justify-between py-2"
     >
-      <button
-        type="button"
-        onClick={() => {
-          triggerHaptic('light');
-          onOpenGoal(ring.id);
-        }}
-        aria-label={`${ring.title}: ${ring.empty ? ring.detail : `${ring.value.replace('/', ' of ')} ${ring.caption}`}. Open this goal`}
-        className="w-full text-left flex flex-col items-center focus:outline-none"
-      >
-        <div className="flex items-start justify-between gap-3 w-full min-h-[44px]">
+      <div className="w-full flex flex-col items-center">
+        <div className="flex items-start justify-between gap-3 w-full">
           <div className="min-w-0">
             <span className="wk-label block" style={{ color: 'var(--wk-muted)' }}>
               {cardSummary.categoryLabel}
             </span>
-            <span className="wk-title block mt-1">
+            <h3 className="wk-title mt-1">
               {ring.title}
-            </span>
+            </h3>
           </div>
-          <ChevronRight className="wk-chevron shrink-0 mt-1" strokeWidth={2} aria-hidden="true" />
+          <CardDrillInButton
+            onClick={() => onOpenGoal(ring.id)}
+            label={`${ring.title}: ${ring.empty ? ring.detail : `${ring.value.replace('/', ' of ')} ${ring.caption}`}. Open this goal`}
+          />
         </div>
 
         <div className="pt-4 pb-2 flex flex-col items-center w-full">
@@ -238,7 +230,7 @@ const GoalSlideCard: React.FC<{
             </span>
           )}
         </div>
-      </button>
+      </div>
 
       <div className="mt-5 pt-4 border-t text-left" style={{ borderColor: 'var(--color-border-subtle)' }}>
         <span className="wk-label block mb-2" style={{ color: 'var(--wk-muted)' }}>
@@ -387,23 +379,18 @@ export const OverviewCard: React.FC<{
   onOpen: () => void;
   children?: React.ReactNode;
 }> = ({ title, opens, onOpen, children }) => (
-  <button
-    type="button"
-    onClick={() => {
-      triggerHaptic('light');
-      onOpen();
-    }}
-    aria-label={`${title}. Open ${opens}`}
-    className="wk-card w-full text-left block"
-  >
-    <div className="flex items-start justify-between gap-2">
-      <h2 className="wk-title">
+  <section aria-label={title} className="wk-card w-full text-left">
+    <div className="flex items-start justify-between gap-3">
+      <h2 className="wk-title pt-1">
         {title}
       </h2>
-      <ChevronRight className="wk-chevron" strokeWidth={2} aria-hidden="true" />
+      <CardDrillInButton
+        onClick={onOpen}
+        label={`${title}. Open ${opens}`}
+      />
     </div>
     {children}
-  </button>
+  </section>
 );
 
 export const StatRow: React.FC<{
@@ -416,7 +403,7 @@ export const StatRow: React.FC<{
         <dt className={sentenceLabels ? 'wk-meta-title' : 'wk-label'} style={{ overflowWrap: 'anywhere' }}>
           {s.label}
         </dt>
-        <dd className="wk-number mt-1" style={s.value.length > 6 ? { fontSize: 16, lineHeight: '24px' } : undefined}>
+        <dd className={`${s.value.length > 6 ? 'wk-subhead tabular-numbers' : 'wk-number'} mt-1`}>
           {s.value}
           {s.unit && (
             <span className="wk-caption ml-1">
@@ -479,12 +466,15 @@ const RADAR_SHORT_NAME: Record<string, string> = {
   'Vertical Pull': 'Chin-up',
 };
 
-export const StandardsRadar: React.FC<{ report: MovementStandardsReport }> = ({ report }) => {
+export const StandardsRadar: React.FC<{
+  report: MovementStandardsReport;
+  variant?: 'overview' | 'detail';
+}> = ({ report, variant = 'overview' }) => {
   const rated = report.levels.filter((l) => l.source !== 'none');
   if (rated.length < 3) return null;
-  const size = 320;
+  const size = variant === 'detail' ? 340 : 320;
   const centre = size / 2;
-  const radius = 96;
+  const radius = variant === 'detail' ? 104 : 96;
   const score = (l: (typeof rated)[number]) => (l.logged && l.step !== undefined ? Math.min(100, l.step * 5 + ((l.progress ?? 0) / 100) * 5) : 0);
   const point = (i: number, r: number) => {
     const angle = -Math.PI / 2 + (i / rated.length) * Math.PI * 2;
@@ -495,22 +485,48 @@ export const StandardsRadar: React.FC<{ report: MovementStandardsReport }> = ({ 
     .map((l) => `${RADAR_SHORT_NAME[l.pillar] ?? l.name}: ${l.logged && l.tier ? `${l.tier} ${l.subDivision}` : 'not logged yet'}`)
     .join('. ');
   return (
-    <svg viewBox={`0 16 ${size} ${size - 40}`} role="img" aria-label={`Strength levels. ${described}`} style={{ width: 248, height: 220, maxWidth: '100%' }} className="shrink-0">
+    <svg
+      viewBox={`0 16 ${size} ${size - 40}`}
+      role="img"
+      aria-label={`Strength levels. ${described}`}
+      style={{ width: variant === 'detail' ? 280 : 248, height: variant === 'detail' ? 240 : 220, maxWidth: '100%' }}
+      className="shrink-0 mx-auto"
+    >
       {[0.25, 0.5, 0.75, 1].map((f) => (
-        <polygon key={f} points={polygon(() => radius * f)} fill="none" stroke="var(--color-border-track)" strokeWidth={1} />
+        <polygon
+          key={f}
+          points={polygon(() => radius * f)}
+          fill="none"
+          stroke={variant === 'detail' ? 'var(--color-border-strong)' : 'var(--color-border-track)'}
+          strokeDasharray={variant === 'detail' ? '2 3' : undefined}
+          strokeWidth={1}
+        />
       ))}
       {rated.map((_, i) => {
         const [px, py] = point(i, radius);
         return <line key={i} x1={centre} y1={centre} x2={px} y2={py} stroke="var(--color-border-subtle)" strokeWidth={1} />;
       })}
-      <polygon points={polygon((i) => (score(rated[i]) / 100) * radius)} fill="rgb(var(--color-accent-primary-rgb) / 0.2)" stroke="var(--color-accent-primary)" strokeWidth={2} strokeLinejoin="round" />
+      <polygon
+        points={polygon((i) => (score(rated[i]) / 100) * radius)}
+        fill="rgb(var(--color-accent-primary-rgb) / 0.2)"
+        stroke="var(--color-accent-primary)"
+        strokeWidth={2}
+        strokeLinejoin="round"
+      />
       {rated.map((l, i) => {
         const [px, py] = point(i, (score(l) / 100) * radius);
         const [lx, ly] = point(i, radius + 30);
         return (
           <g key={l.pillar}>
             {l.logged && <circle cx={px} cy={py} r={3.5} fill="var(--color-accent-primary)" />}
-            <text x={lx} y={ly} textAnchor="middle" dominantBaseline="middle" fill="var(--color-text-secondary)" style={{ fontSize: 12, fontWeight: 500 }}>
+            <text
+              x={lx}
+              y={ly}
+              textAnchor="middle"
+              dominantBaseline="middle"
+              fill="var(--color-text-secondary)"
+              className="wk-meta-title"
+            >
               {RADAR_SHORT_NAME[l.pillar] ?? l.name}
             </text>
           </g>
@@ -529,10 +545,14 @@ export const DetailHeader: React.FC<{ title: string; onBack: () => void }> = ({ 
         onBack();
       }}
       aria-label="Back to Progress"
-      className="absolute left-0 flex items-center justify-center w-11 h-11 min-w-[44px] min-h-[44px] -ml-2"
-      style={{ color: 'var(--color-text-primary)' }}
+      className="absolute left-0 w-11 h-11 min-w-[44px] min-h-[44px] rounded-xl border border-[var(--color-border-strong)] inline-flex items-center justify-center transition-colors active:scale-95"
+      style={{
+        background: 'var(--color-action-secondary-bg)',
+        color: 'var(--color-action-secondary-fg)',
+        boxShadow: 'inset 0 1px 0 var(--color-rim-highlight)',
+      }}
     >
-      <ChevronLeft className="w-5 h-5" strokeWidth={2} aria-hidden="true" />
+      <ChevronLeft className="wk-chevron" style={{ color: 'var(--color-action-secondary-fg)' }} strokeWidth={2} aria-hidden="true" />
     </button>
     <h1 className="wk-nav-title">{title}</h1>
   </header>

@@ -14,6 +14,8 @@ import {
   WHOOP_CONFIG,
 } from '../services/whoopService';
 import { onWearableTokensRefreshed } from '../services/wearableTokens';
+import { getHealthConnectStatus } from '../services/healthConnectBridge';
+import { trackMetric } from '../services/telemetry';
 
 type Notify = (message: string, tag: string) => void;
 
@@ -41,6 +43,14 @@ export function useWearableSync({ profile, setProfile, workouts, setWorkouts, se
       setBiometrics((prev) => mergeWearableLog(prev, newLog, provider));
       if (provider) {
         setProfile((prev) => ({ ...prev, ...setActiveTracker(provider, prev) }));
+        const resolvedProvider =
+          provider === 'health_connect' && getHealthConnectStatus().provider === 'apple_health'
+            ? 'apple_health'
+            : provider;
+        trackMetric('wearable.synced', 1, {
+          provider: resolvedProvider,
+          outcome: 'success',
+        });
       }
     },
     [setBiometrics, setProfile]

@@ -159,9 +159,7 @@ export const GoalSettingsScreen: React.FC<GoalSettingsScreenProps> = ({ profile,
                 triggerHaptic('light');
                 save({ ...settings, sessionsPerWeek: n });
               }}
-              className={`flex flex-col items-center justify-center tabular-numbers min-h-[48px] h-12 rounded-xl text-base ${
-                perWeek === n ? 'font-semibold' : 'font-medium'
-              }`}
+              className={`wk-subhead flex flex-col items-center justify-center tabular-numbers min-h-[48px] h-12 rounded-xl`}
               style={{
                 background: perWeek === n ? 'var(--color-action-primary-bg)' : 'var(--wk-raised)',
                 color: perWeek === n ? 'var(--color-action-primary-fg)' : 'var(--color-text-primary)',

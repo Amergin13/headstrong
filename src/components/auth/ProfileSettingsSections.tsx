@@ -1,10 +1,12 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { ChevronRight } from 'lucide-react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Check, ChevronRight } from 'lucide-react';
 import {
   BiometricLog,
   EquipmentInventory,
+  ExerciseDefinition,
   HomeEquipmentTag,
   UserProfile,
+  WorkoutSession,
   getActiveWearableProvider,
   isWearableConnected,
   resolveRirTrackingEnabled,
@@ -13,8 +15,11 @@ import {
   STANDARD_PLATES_BY_UNIT,
   createDefaultEquipmentInventory,
 } from '../../engine/equipmentInventory';
-import { WEARABLE_PROVIDERS } from '../../services/wearableSyncService';
+import { getWearableProviderMeta, WEARABLE_PROVIDERS } from '../../services/wearableSyncService';
+import { isIosPlatform } from '../../services/healthConnectService';
 import { MIN_BACKUP_PASSPHRASE_LENGTH } from '../../services/encryptedBackup';
+import { buildPersonalBests } from '../../services/progressOverview';
+import { exportTelemetryReportJSON, getTelemetryGoalsSummary } from '../../services/telemetry';
 import {
   cmToFeetInches,
   feetInchesToCm,
@@ -23,6 +28,7 @@ import {
   LB_PER_KG,
   resolveHeightUnit,
 } from '../../utils/units';
+import { useUnits } from '../../utils/unitsContext';
 import { triggerHaptic } from '../../utils/haptics';
 
 
@@ -33,6 +39,9 @@ const PLACEHOLDER_RESTING_HR = 60;
 export interface ProfileSettingsSectionsProps {
   profile: UserProfile;
   latestBiometrics?: BiometricLog;
+  workouts?: WorkoutSession[];
+  exerciseCatalog?: ExerciseDefinition[];
+  bodyweightKg?: number;
   canInstallPwa?: boolean;
   onTriggerInstallPwa?: () => void;
   onUpdateProfile: (updated: Partial<UserProfile>) => void;
@@ -42,6 +51,7 @@ export interface ProfileSettingsSectionsProps {
   onExportData?: () => void;
   onImportData?: (rawJson: string) => void;
   onOpenCompetitorImport?: () => void;
+  onViewPersonalBests?: () => void;
   onEnableDriveBackup?: (passphrase: string) => Promise<void>;
   onRunDriveBackupNow?: (passphrase?: string) => Promise<void>;
   onRestoreDriveBackup?: (passphrase: string) => Promise<void>;
@@ -51,12 +61,15 @@ export interface ProfileSettingsSectionsProps {
 
 /**
  * Athlete Settings accessed from User Profile (Profile, Wearable & Recovery,
- * Activity apps, and Data Backup & Privacy). Plan switching, training locations/equipment,
- * and training goal live elsewhere in the app and are intentionally excluded from Settings.
+ * Activity apps, Training Data & Lift Maxes, and Data Backup & Privacy). Plan switching,
+ * training locations/equipment, and training goal live elsewhere in the app and are intentionally excluded from Settings.
  */
 export const ProfileSettingsSections: React.FC<ProfileSettingsSectionsProps> = ({
   profile,
   latestBiometrics,
+  workouts,
+  exerciseCatalog,
+  bodyweightKg,
   canInstallPwa = false,
   onTriggerInstallPwa,
   onUpdateProfile,
@@ -66,13 +79,17 @@ export const ProfileSettingsSections: React.FC<ProfileSettingsSectionsProps> = (
   onExportData,
   onImportData,
   onOpenCompetitorImport,
+  onViewPersonalBests,
   onEnableDriveBackup,
   onRunDriveBackupNow,
   onRestoreDriveBackup,
   onDisableDriveBackup,
   onDeleteAllData,
 }) => {
-  const [openSection, setOpenSection] = useState<'profile' | 'inventory' | 'wearable' | 'data' | null>(null);
+  const units = useUnits();
+  const [openSection, setOpenSection] = useState<
+    'profile' | 'inventory' | 'wearable' | 'imports' | 'data' | null
+  >(null);
   const [inventoryLoc, setInventoryLoc] = useState<'gym' | 'home'>(
     profile.activeLocation === 'home' ? 'home' : 'gym'
   );
@@ -85,6 +102,9 @@ export const ProfileSettingsSections: React.FC<ProfileSettingsSectionsProps> = (
 
   const unit = profile.weightUnit || 'kg';
   const heightUnit: HeightUnit = resolveHeightUnit(profile);
+  const [ageDraft, setAgeDraft] = useState<string>(() =>
+    profile.ageEntered && profile.age ? String(profile.age) : ''
+  );
   const [heightCmDraft, setHeightCmDraft] = useState<string>(() =>
     profile.measuredHeightCm ? String(profile.measuredHeightCm) : ''
   );
@@ -94,6 +114,10 @@ export const ProfileSettingsSections: React.FC<ProfileSettingsSectionsProps> = (
   const [heightInchesDraft, setHeightInchesDraft] = useState<string>(() =>
     profile.measuredHeightCm ? String(cmToFeetInches(profile.measuredHeightCm).inches) : ''
   );
+
+  useEffect(() => {
+    setAgeDraft(profile.ageEntered && profile.age ? String(profile.age) : '');
+  }, [profile.age, profile.ageEntered]);
 
   useEffect(() => {
     if (profile.measuredHeightCm && profile.measuredHeightCm > 0) {
@@ -145,11 +169,26 @@ export const ProfileSettingsSections: React.FC<ProfileSettingsSectionsProps> = (
   const maxHrKnown = profile.maxHrEntered ?? profile.maxHr !== PLACEHOLDER_MAX_HR;
   const restingHrKnown = profile.restingHrEntered ?? profile.restingHrBaseline !== PLACEHOLDER_RESTING_HR;
 
+  const isIos = isIosPlatform();
   const activeWearableKey = getActiveWearableProvider(profile);
-  const activeWearableMeta = activeWearableKey ? WEARABLE_PROVIDERS[activeWearableKey] : null;
+  const activeWearableMeta = activeWearableKey
+    ? getWearableProviderMeta(activeWearableKey, isIos) ?? WEARABLE_PROVIDERS[activeWearableKey]
+    : null;
   const isWatchConnected = isWearableConnected(profile);
 
-  const toggleSection = (sec: 'profile' | 'inventory' | 'wearable' | 'data') => {
+  const personalBests = useMemo(
+    () =>
+      workouts && workouts.length > 0
+        ? buildPersonalBests(workouts, bodyweightKg ?? latestBiometrics?.bodyweightKg ?? 80)
+        : [],
+    [workouts, bodyweightKg, latestBiometrics?.bodyweightKg]
+  );
+  const testedOneRmCount = useMemo(
+    () => personalBests.filter((pb) => (pb.bestOneRepMaxKg ?? 0) > 0).length,
+    [personalBests]
+  );
+
+  const toggleSection = (sec: 'profile' | 'inventory' | 'wearable' | 'imports' | 'data') => {
     triggerHaptic('light');
     setOpenSection(openSection === sec ? null : sec);
   };
@@ -172,7 +211,7 @@ export const ProfileSettingsSections: React.FC<ProfileSettingsSectionsProps> = (
       aria-label="Settings"
       className="flex flex-col mt-6 gap-3"
     >
-      <h2 className="wk-h1 leading-tight">
+      <h2 className="wk-h1">
         Settings
       </h2>
 
@@ -185,7 +224,7 @@ export const ProfileSettingsSections: React.FC<ProfileSettingsSectionsProps> = (
           className="w-full text-left block"
         >
           <div className="flex items-start justify-between gap-3">
-            <h3 className="wk-subhead leading-tight">
+            <h3 className="wk-subhead">
               Athlete profile &amp; heart rate
             </h3>
             <div className="flex items-center shrink-0 gap-2">
@@ -226,7 +265,7 @@ export const ProfileSettingsSections: React.FC<ProfileSettingsSectionsProps> = (
                 type="text"
                 value={profile.name}
                 onChange={(e) => onUpdateProfile({ name: e.target.value })}
-                className="wk-field text-base w-40"
+                className="wk-field w-40"
               />
             </div>
 
@@ -241,9 +280,9 @@ export const ProfileSettingsSections: React.FC<ProfileSettingsSectionsProps> = (
                       type="button"
                       aria-pressed={isSelected}
                       onClick={() => onUpdateProfile({ gender: g, sexEntered: true })}
-                      className={`wk-segment px-3 capitalize ${isSelected ? 'is-active' : ''}`}
+                      className={`wk-segment px-3 ${isSelected ? 'is-active' : ''}`}
                     >
-                      {g}
+                      {g === 'male' ? 'Male' : 'Female'}
                     </button>
                   );
                 })}
@@ -260,15 +299,30 @@ export const ProfileSettingsSections: React.FC<ProfileSettingsSectionsProps> = (
                 inputMode="numeric"
                 min={16}
                 max={99}
-                value={profile.ageEntered ? profile.age : ''}
+                value={ageDraft}
                 placeholder="—"
                 aria-describedby="athlete-age-help"
                 onChange={(e) => {
-                  const v = Math.round(Number(e.target.value));
-                  if (!e.target.value) onUpdateProfile({ ageEntered: false });
-                  else if (v >= 16 && v <= 99) onUpdateProfile({ age: v, ageEntered: true });
+                  const raw = e.target.value;
+                  setAgeDraft(raw);
+                  if (!raw.trim()) {
+                    onUpdateProfile({ ageEntered: false });
+                    return;
+                  }
+                  const v = Math.round(Number(raw));
+                  if (Number.isFinite(v) && v >= 16 && v <= 99) {
+                    onUpdateProfile({ age: v, ageEntered: true });
+                  }
                 }}
-                className="wk-field text-base tabular-nums w-20"
+                onBlur={() => {
+                  const trimmed = ageDraft.trim();
+                  if (!trimmed) return;
+                  const v = Math.round(Number(trimmed));
+                  if (!Number.isFinite(v) || v < 16 || v > 99) {
+                    setAgeDraft(profile.ageEntered && profile.age ? String(profile.age) : '');
+                  }
+                }}
+                className="wk-field w-20"
               />
             </div>
             <p id="athlete-age-help" className="wk-body -mt-2 max-w-prose">
@@ -300,7 +354,7 @@ export const ProfileSettingsSections: React.FC<ProfileSettingsSectionsProps> = (
                       onUpdateProfile({ measuredHeightCm: v, heightCm: v });
                     }
                   }}
-                  className="wk-field text-base tabular-nums w-24"
+                  className="wk-field w-24"
                 />
               ) : (
                 <div className="flex items-center gap-2 shrink-0">
@@ -315,7 +369,7 @@ export const ProfileSettingsSections: React.FC<ProfileSettingsSectionsProps> = (
                       placeholder="—"
                       aria-label="Height in feet"
                       onChange={(e) => commitFeetInches(e.target.value, heightInchesDraft)}
-                      className="wk-field text-base tabular-nums w-20 pr-7"
+                      className="wk-field w-20 pr-7"
                     />
                     <span
                       className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 wk-caption"
@@ -335,7 +389,7 @@ export const ProfileSettingsSections: React.FC<ProfileSettingsSectionsProps> = (
                       placeholder="—"
                       aria-label="Height in inches"
                       onChange={(e) => commitFeetInches(heightFeetDraft, e.target.value)}
-                      className="wk-field text-base tabular-nums w-20 pr-7"
+                      className="wk-field w-20 pr-7"
                     />
                     <span
                       className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 wk-caption"
@@ -478,7 +532,7 @@ export const ProfileSettingsSections: React.FC<ProfileSettingsSectionsProps> = (
                       : { maxHr: PLACEHOLDER_MAX_HR, maxHrEntered: false }
                   );
                 }}
-                className="wk-field text-base tabular-nums w-24"
+                className="wk-field w-24"
               />
             </div>
 
@@ -499,7 +553,7 @@ export const ProfileSettingsSections: React.FC<ProfileSettingsSectionsProps> = (
                       : { restingHrBaseline: PLACEHOLDER_RESTING_HR, restingHrEntered: false }
                   );
                 }}
-                className="wk-field text-base tabular-nums w-24"
+                className="wk-field w-24"
               />
             </div>
           </div>
@@ -515,7 +569,7 @@ export const ProfileSettingsSections: React.FC<ProfileSettingsSectionsProps> = (
           className="w-full text-left block"
         >
           <div className="flex items-start justify-between gap-3">
-            <h3 className="wk-subhead leading-tight">
+            <h3 className="wk-subhead">
               Home equipment &amp; plate increments
             </h3>
             <div className="flex items-center shrink-0 gap-2">
@@ -668,7 +722,7 @@ export const ProfileSettingsSections: React.FC<ProfileSettingsSectionsProps> = (
                         });
                       }
                     }}
-                    className="wk-field text-base tabular-nums"
+                    className="wk-field"
                   />
                 </label>
                 <label className="flex flex-col gap-1">
@@ -688,7 +742,7 @@ export const ProfileSettingsSections: React.FC<ProfileSettingsSectionsProps> = (
                         });
                       }
                     }}
-                    className="wk-field text-base tabular-nums"
+                    className="wk-field"
                   />
                 </label>
               </div>
@@ -706,7 +760,7 @@ export const ProfileSettingsSections: React.FC<ProfileSettingsSectionsProps> = (
           className="w-full text-left block"
         >
           <div className="flex items-start justify-between gap-3">
-            <h3 className="wk-subhead leading-tight">
+            <h3 className="wk-subhead">
               Wearable &amp; recovery
             </h3>
             <div className="flex items-center shrink-0 gap-2">
@@ -728,8 +782,8 @@ export const ProfileSettingsSections: React.FC<ProfileSettingsSectionsProps> = (
             {activeWearableMeta
               ? `${activeWearableMeta.name} • Connected`
               : profile.healthConnectActivities
-              ? 'Android Health Connect • Workouts on'
-              : 'Connect Whoop or Health Connect'}
+              ? `${isIos ? 'Apple Health' : 'Android Health Connect'} • Workouts on`
+              : `Connect Whoop or ${isIos ? 'Apple Health' : 'Health Connect'}`}
           </p>
         </button>
 
@@ -778,7 +832,143 @@ export const ProfileSettingsSections: React.FC<ProfileSettingsSectionsProps> = (
         </button>
       )}
 
-      {/* 4. Data Backup & Privacy Card */}
+      {/* 4. Training Data & Lift Maxes Card */}
+      {(onOpenCompetitorImport || personalBests.length > 0) && (
+        <div className="wk-card w-full text-left block">
+          <button
+            type="button"
+            onClick={() => toggleSection('imports')}
+            aria-expanded={openSection === 'imports'}
+            className="w-full text-left block"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <h3 className="wk-subhead">
+                Training data &amp; lift maxes
+              </h3>
+              <div className="flex items-center shrink-0 gap-2">
+                <span className="wk-pill">
+                  {personalBests.length > 0 ? `${personalBests.length} lifts` : 'Import'}
+                </span>
+                <ChevronRight
+                  className="wk-chevron transition-transform"
+                  style={{
+                    transform: openSection === 'imports' ? 'rotate(90deg)' : undefined,
+                  }}
+                  strokeWidth={2}
+                  aria-hidden="true"
+                />
+              </div>
+            </div>
+
+            <p className="wk-caption mt-2">
+              {personalBests.length > 0
+                ? `${workouts?.length ?? 0} workouts logged • ${personalBests.length} documented lift maxes${
+                    testedOneRmCount > 0 ? ` (${testedOneRmCount} best 1RMs)` : ''
+                  }`
+                : 'Import from TrainHeroic (.zip, CSV, JSON), Hevy, Strong, FitNotes, or a 1RM sheet'}
+            </p>
+          </button>
+
+          {openSection === 'imports' && (
+            <div
+              className="flex flex-col mt-4 pt-4 gap-3"
+              style={{ borderTop: '1px solid var(--color-border-subtle)' }}
+            >
+              <p className="wk-caption" style={{ color: 'var(--wk-muted)' }}>
+                Upload your TrainHeroic <code>data-export</code> archive (<code>.zip</code>), workout CSV/JSON, or{' '}
+                <em>Lift History</em> working maxes—alongside Hevy, Strong, FitNotes, or any 1RM sheet. Treise normalizes units and documents your best 1-rep max, heaviest set, and estimated max per exercise.
+              </p>
+
+              {onOpenCompetitorImport && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    triggerHaptic('medium');
+                    onOpenCompetitorImport();
+                  }}
+                  className="wk-button w-full"
+                  style={{
+                    background: 'var(--color-action-primary-bg)',
+                    color: 'var(--color-action-primary-fg)',
+                  }}
+                >
+                  Import training history or maxes
+                </button>
+              )}
+
+              {personalBests.length > 0 && (
+                <div
+                  className="rounded-xl p-3 flex flex-col gap-2 border"
+                  style={{
+                    background: 'var(--wk-raised)',
+                    borderColor: 'var(--color-border-subtle)',
+                  }}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="wk-label">Documented lift maxes</span>
+                    {onViewPersonalBests && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          triggerHaptic('light');
+                          onViewPersonalBests();
+                        }}
+                        className="wk-caption hover:underline"
+                        style={{ color: 'var(--color-text-secondary)' }}
+                      >
+                        View all in Progress
+                      </button>
+                    )}
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    {personalBests.slice(0, 5).map((pb) => (
+                      <div
+                        key={pb.exerciseId}
+                        className="flex items-baseline justify-between gap-2 py-1"
+                        style={{ borderBottom: '1px solid var(--color-border-subtle)' }}
+                      >
+                        <span className="wk-caption truncate" style={{ color: 'var(--color-text-primary)' }}>
+                          {pb.exerciseName}
+                        </span>
+                        <span className="wk-caption tabular-nums shrink-0 text-right">
+                          {pb.bestOneRepMaxKg && pb.bestOneRepMaxKg > 0 ? (
+                            <span style={{ color: 'var(--color-accent-primary)' }}>
+                              1RM {units.formatPrecise(pb.bestOneRepMaxKg)}
+                            </span>
+                          ) : (
+                            <span style={{ color: 'var(--color-text-primary)' }}>
+                              {units.formatPrecise(pb.weightKg)} × {pb.reps}
+                            </span>
+                          )}
+                          {pb.bestOneRepMaxKg &&
+                            pb.bestOneRepMaxKg > 0 &&
+                            pb.reps > 1 &&
+                            pb.weightKg > 0 && (
+                              <span style={{ color: 'var(--wk-muted)' }}>
+                                {' · '}
+                                {units.formatPrecise(pb.weightKg)} × {pb.reps}
+                              </span>
+                            )}
+                          {(!pb.bestOneRepMaxKg ||
+                            Math.round(pb.e1rmKg) > Math.round(pb.bestOneRepMaxKg)) &&
+                            pb.e1rmKg > 0 && (
+                              <span style={{ color: 'var(--wk-muted)' }}>
+                                {' · est '}
+                                {units.format(pb.e1rmKg)}
+                              </span>
+                            )}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 5. Data Backup & Privacy Card */}
       <div className="wk-card w-full text-left block">
         <button
           type="button"
@@ -787,7 +977,7 @@ export const ProfileSettingsSections: React.FC<ProfileSettingsSectionsProps> = (
           className="w-full text-left block"
         >
           <div className="flex items-start justify-between gap-3">
-            <h3 className="wk-subhead leading-tight">
+            <h3 className="wk-subhead">
               Data backup &amp; privacy
             </h3>
             <div className="flex items-center shrink-0 gap-2">
@@ -879,7 +1069,7 @@ export const ProfileSettingsSections: React.FC<ProfileSettingsSectionsProps> = (
                 }}
                 className="wk-btn-secondary w-full"
               >
-                Import Hevy, Strong, or FitNotes CSV
+                Import TrainHeroic, Hevy, Strong, or FitNotes (.zip / CSV)
               </button>
             )}
 
@@ -920,7 +1110,7 @@ export const ProfileSettingsSections: React.FC<ProfileSettingsSectionsProps> = (
                       if (backupError) setBackupError(null);
                     }}
                     placeholder="Enter passphrase to encrypt or restore"
-                    className="wk-field w-full text-base"
+                    className="wk-field w-full"
                   />
                 </div>
 
@@ -1058,6 +1248,91 @@ export const ProfileSettingsSections: React.FC<ProfileSettingsSectionsProps> = (
               </div>
             )}
 
+            <div className="pt-3 space-y-3" style={{ borderTop: '1px solid var(--color-border-subtle)' }}>
+              {(() => {
+                const telemetryEnabled = !profile.telemetryOptOut;
+                const summary = getTelemetryGoalsSummary();
+                const hasRecordedSignals =
+                  summary.workoutExecution.workoutsStarted > 0 ||
+                  summary.workoutExecution.workoutsCompleted > 0 ||
+                  summary.programAdherence.programsChanged > 0 ||
+                  summary.programAdherence.programsCompleted > 0;
+                return (
+                  <>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={telemetryEnabled}
+                      aria-label="Anonymous product metrics"
+                      onClick={() => {
+                        triggerHaptic('light');
+                        onUpdateProfile({ telemetryOptOut: telemetryEnabled });
+                      }}
+                      className="w-full text-left flex items-center justify-between gap-3 py-1 min-h-[44px]"
+                    >
+                      <span className="min-w-0">
+                        <span className="wk-subhead block">Anonymous product metrics</span>
+                        <span className="wk-caption block mt-1">
+                          Counts workouts started/completed, program progress, and feature reliability. Never includes your name, email, body metrics, or lift weights.
+                        </span>
+                      </span>
+                      <span
+                        className="rounded-full flex items-center justify-center shrink-0 w-6 h-6"
+                        style={{
+                          background: telemetryEnabled ? 'var(--wk-accent)' : 'transparent',
+                          border: telemetryEnabled ? 'none' : '1.5px solid var(--color-border-strong)',
+                        }}
+                        aria-hidden="true"
+                      >
+                        {telemetryEnabled && (
+                          <Check
+                            className="w-4 h-4"
+                            style={{ color: 'var(--color-text-on-accent)' }}
+                            strokeWidth={3}
+                          />
+                        )}
+                      </span>
+                    </button>
+
+                    {hasRecordedSignals && (
+                      <div className="wk-raised space-y-2">
+                        <div className="flex items-center justify-between gap-2 flex-wrap">
+                          <span className="wk-meta-title">On-device usage signals</span>
+                          {summary.workoutExecution.workoutCompletionRatePct !== null && (
+                            <span className="wk-pill tabular-nums">
+                              {summary.workoutExecution.workoutCompletionRatePct}% finished
+                            </span>
+                          )}
+                        </div>
+                        <p className="wk-caption tabular-nums">
+                          {summary.workoutExecution.workoutsStarted} started · {summary.workoutExecution.workoutsCompleted} completed · {summary.programAdherence.programsChanged} plan switches · {summary.programAdherence.programsCompleted} blocks graduated
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            triggerHaptic('light');
+                            const reportJson = exportTelemetryReportJSON();
+                            const blob = new Blob([reportJson], { type: 'application/json' });
+                            const url = URL.createObjectURL(blob);
+                            const a = document.createElement('a');
+                            a.href = url;
+                            a.download = `treise-telemetry-${new Date().toISOString().slice(0, 10)}.json`;
+                            document.body.appendChild(a);
+                            a.click();
+                            document.body.removeChild(a);
+                            URL.revokeObjectURL(url);
+                          }}
+                          className="wk-btn-secondary w-full"
+                        >
+                          Export usage metrics (.json)
+                        </button>
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
+            </div>
+
             <div className="grid grid-cols-2 gap-2">
               {onResetData && (
                 <button
@@ -1149,7 +1424,7 @@ export const ProfileSettingsSections: React.FC<ProfileSettingsSectionsProps> = (
                     <strong style={{ color: 'var(--color-text-primary)' }}>Fitness disclaimer:</strong> Recovery scores and target weights are for informational fitness tracking only and are not medical advice.
                   </p>
                   <div
-                    className="flex flex-wrap items-center font-medium gap-4 pt-1"
+                    className="wk-subhead flex flex-wrap items-center gap-4 pt-1"
                     style={{ color: 'var(--color-text-primary)' }}
                   >
                     <a href="/privacy.html" target="_blank" rel="noreferrer" className="min-h-[44px] inline-flex items-center hover:underline">

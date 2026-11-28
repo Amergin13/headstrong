@@ -8,7 +8,7 @@
  * fact-based text immediately.
  */
 import { CoachSuggestedAction, CoachToolName } from '../engine/types';
-import { COACH_TOOL_DECLARATIONS, GeminiFunctionDeclaration } from './coachTools';
+import type { GeminiFunctionDeclaration } from './coachTools';
 import { withoutLastExchange } from './onDeviceModel';
 
 export interface FlashLiteFunctionCall {
@@ -209,8 +209,6 @@ export interface FlashLiteStructuredOptions {
   responseSchema?: Record<string, unknown>;
 }
 
-const VALID_TOOLS = new Set<string>(COACH_TOOL_DECLARATIONS.map((t) => t.name));
-
 /**
  * Structured Gemini Flash-Lite request with optional tool declarations and JSON reply parsing.
  */
@@ -262,8 +260,11 @@ export async function promptFlashLiteStructured(
       : data?.functionCall
       ? [data.functionCall]
       : [];
+    const allowedTools = options.tools?.length
+      ? new Set<string>(options.tools.map((t) => t.name))
+      : null;
     const toolCalls: FlashLiteFunctionCall[] = rawToolCalls
-      .filter((fc: any) => Boolean(fc && typeof fc.name === 'string' && VALID_TOOLS.has(fc.name)))
+      .filter((fc: any) => Boolean(fc && typeof fc.name === 'string' && allowedTools?.has(fc.name)))
       .map((fc: any) => ({
         name: fc.name as CoachToolName,
         args: fc.args && typeof fc.args === 'object' ? fc.args : {},

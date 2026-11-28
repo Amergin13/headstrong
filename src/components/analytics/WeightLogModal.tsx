@@ -893,7 +893,7 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
           className="wk-field w-full min-h-[48px] py-3 px-3 pr-10 tabular-nums focus:outline-none"
           style={ok ? undefined : { borderColor: 'var(--color-status-danger)' }}
         />
-        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[color:var(--wk-muted)] text-xs font-normal">
+        <span className="wk-caption absolute right-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--wk-muted)' }}>
           {unit}
         </span>
       </div>
@@ -1009,13 +1009,13 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
         )}
         <div className="flex-1 min-w-0">
           {alertTitle && <span className="block wk-subhead">{alertTitle}</span>}
-          <span className="block wk-caption leading-relaxed max-w-prose" style={{ color: 'var(--color-text-secondary)' }}>{alertBody}</span>
+          <span className="block wk-caption max-w-prose" style={{ color: 'var(--color-text-secondary)' }}>{alertBody}</span>
         </div>
         {alertAction && (
           <button
             type="button"
             onClick={handleAlertAction}
-            className="shrink-0 px-4 rounded-xl text-base font-semibold min-h-[44px] active:scale-[0.98] transition-transform"
+            className="wk-button w-auto shrink-0 px-4 active:scale-[0.98] transition-transform"
             style={{ background: 'var(--color-action-primary-bg)', color: 'var(--color-action-primary-fg)' }}
           >
             {alertAction}
@@ -1029,7 +1029,7 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
               <button
                 type="button"
                 onClick={() => handleChooseNativeScale(scale)}
-                className="w-full px-3 rounded-xl text-base font-semibold text-left min-h-[44px]"
+                className="wk-button px-3 justify-start text-left"
                 style={{ background: 'var(--color-action-primary-bg)', color: 'var(--color-action-primary-fg)' }}
               >
                 Pair {scale.name}
@@ -1039,17 +1039,17 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
         </ul>
       )}
       {capturePhase === 'complete' && !canCaptureMetrics && (
-        <p className="text-xs text-[color:var(--wk-body)] leading-relaxed max-w-prose">Add your height, age and sex here and your next weigh-in includes body metrics.</p>
+        <p className="wk-caption max-w-prose" style={{ color: 'var(--wk-body)' }}>Add your height, age and sex here and your next weigh-in includes body metrics.</p>
       )}
-      <p className="wk-caption leading-relaxed max-w-prose" style={{ color: 'var(--color-text-secondary)' }}>
+      <p className="wk-caption max-w-prose" style={{ color: 'var(--color-text-secondary)' }}>
         Your scale measures body composition with a small electrical current. Don't use a scale like this if you're pregnant or have a pacemaker or other implant.
       </p>
-      {bleError && <p className="text-xs font-medium" style={{ color: 'var(--color-status-danger)' }}>{bleError}</p>}
+      {bleError && <p className="wk-meta-title" style={{ color: 'var(--color-status-danger)' }}>{bleError}</p>}
       {offerAllDevices && !scaleBusy && !nativeScanning && !scaleConnected && (
         <button
           type="button"
           onClick={() => (nativeScale ? startNativePairing(true) : handleConnectScale(true, false, true))}
-          className="text-xs underline min-h-[44px]"
+          className="wk-caption underline min-h-[44px]"
           style={{ color: 'var(--color-text-secondary)' }}
         >
           Can't find your scale? Show all devices
@@ -1059,7 +1059,7 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
         <button
           type="button"
           onClick={() => handleForgetDevice('scale')}
-          className="text-xs underline min-h-[44px]"
+          className="wk-caption underline min-h-[44px]"
           style={{ color: 'var(--color-text-muted)' }}
         >
           Forget this scale
@@ -1127,7 +1127,7 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
             }}
           >
             <Check className="w-5 h-5 text-[color:var(--wk-accent)] shrink-0 stroke-[2]" />
-            <span className="text-base font-semibold" style={{ color: 'var(--color-text-primary)' }}>{autoSavedBanner}</span>
+            <span className="wk-subhead" style={{ color: 'var(--color-text-primary)' }}>{autoSavedBanner}</span>
           </div>
         )}
 
@@ -1159,7 +1159,7 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
                           aria-label="Height in feet"
                           value={heightFeet}
                           onChange={(e) => setHeightFeet(e.target.value)}
-                          className="wk-field text-base tabular-nums w-full pr-9"
+                          className="wk-field w-full pr-9"
                         />
                         <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 wk-caption" style={{ color: 'var(--wk-muted)' }}>
                           ft
@@ -1175,7 +1175,7 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
                           aria-label="Height in inches"
                           value={heightInches}
                           onChange={(e) => setHeightInches(e.target.value)}
-                          className="wk-field text-base tabular-nums w-full pr-9"
+                          className="wk-field w-full pr-9"
                         />
                         <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 wk-caption" style={{ color: 'var(--wk-muted)' }}>
                           in
@@ -1198,9 +1198,9 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
                         type="button"
                         aria-pressed={sexInput === option}
                         onClick={() => setSexInput(option)}
-                        className={`wk-segment capitalize text-center ${sexInput === option ? 'is-active' : ''}`}
+                        className={`wk-segment text-center ${sexInput === option ? 'is-active' : ''}`}
                       >
-                        {option}
+                        {option === 'male' ? 'Male' : 'Female'}
                       </button>
                     ))}
                   </div>
@@ -1445,9 +1445,10 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
                         </span>
                       </div>
                       <button
+                        key="save"
                         type="button"
                         onClick={() => applyTapeReadingToSite(liveTapeReading.lengthCm, activeSite, true, true)}
-                        className="px-3 rounded-xl text-xs font-medium min-h-[44px]"
+                        className="wk-btn-secondary wk-meta-title px-3 min-h-[44px]"
                         style={{ background: 'var(--color-action-primary-bg)', color: 'var(--color-action-primary-fg)' }}
                       >
                         Save to {activeSiteDef.shortLabel} &amp; next &rarr;
@@ -1466,13 +1467,13 @@ export const WeightLogModal: React.FC<WeightLogModalProps> = ({
 
                   {showTapeHelp && (
                     <div
-                      className="rounded-lg p-3 space-y-2 border"
+                      className="wk-raised space-y-2 border"
                       style={{ background: 'var(--color-bg-canvas)', borderColor: 'var(--color-border-subtle)' }}
                     >
                       <span className="wk-meta-title block" style={{ color: 'var(--color-text-primary)' }}>
                         How tape measurements are pulled into the app:
                       </span>
-                      <ol className="text-xs text-[color:var(--wk-body)] space-y-2 list-decimal list-inside max-w-prose">
+                      <ol className="wk-caption space-y-2 list-decimal list-inside max-w-prose" style={{ color: 'var(--wk-body)' }}>
                         <li>Focus the body site box you want to measure (currently {activeSiteDef.label}).</li>
                         <li>Wrap the RENPHO tape around that site to stream the live measurement.</li>
                         <li>Press confirm on the tape (or tap Save) to record it and advance to the next site.</li>

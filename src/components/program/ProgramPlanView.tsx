@@ -562,7 +562,6 @@ export const ProgramPlanView: React.FC<ProgramPlanViewProps> = ({
     borderRadius: 12,
     paddingLeft: 16,
     paddingRight: 16,
-    fontSize: 16,
     gap: 12,
   };
 
@@ -600,7 +599,7 @@ export const ProgramPlanView: React.FC<ProgramPlanViewProps> = ({
           <span className="wk-title">
             Next: {formatSentenceCase(next.label)}
           </span>
-          <span className="wk-number shrink-0 tabular-numbers" style={{ lineHeight: 1 }}>
+          <span className="wk-number shrink-0">
             {plan.nextWorkoutNumber}/{TOTAL}
           </span>
         </div>
@@ -676,7 +675,7 @@ export const ProgramPlanView: React.FC<ProgramPlanViewProps> = ({
                     onOpenCoachIntervention?.('Clear my program customizations');
                   }
                 }}
-                className="wk-caption font-medium min-h-[44px] px-2 -my-2 inline-flex items-center shrink-0"
+                className="wk-meta-title min-h-[44px] px-2 -my-2 inline-flex items-center shrink-0"
                 style={{ color: 'var(--color-text-secondary)' }}
               >
                 Reset adaptations

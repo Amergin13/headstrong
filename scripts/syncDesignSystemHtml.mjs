@@ -96,6 +96,137 @@ function buildHtmlDocument({ compiledCss, renderedRootMarkup }) {
             });
           });
         });
+
+        // Standalone file:// interactivity for Design System Page Switcher & Figma End-to-End Flows Board
+        var pageBtns = Array.prototype.slice.call(document.querySelectorAll('[data-ds-page]'));
+        var catalogPanel = document.querySelector('[data-ds-page-panel="catalog"]');
+        var flowsPanel = document.querySelector('[data-ds-page-panel="flows"]');
+        var catalogControls = document.querySelector('[data-ds-catalog-controls="true"]');
+        var catalogNav = document.querySelector('[data-ds-catalog-nav="true"]');
+        function setStandalonePage(pageId) {
+          var isFlows = pageId === 'flows';
+          if (catalogPanel) catalogPanel.style.display = isFlows ? 'none' : 'block';
+          if (flowsPanel) flowsPanel.style.display = isFlows ? 'block' : 'none';
+          if (catalogControls) catalogControls.style.display = isFlows ? 'none' : 'flex';
+          if (catalogNav) catalogNav.style.display = isFlows ? 'none' : 'flex';
+          pageBtns.forEach(function (b) {
+            var active = b.getAttribute('data-ds-page') === pageId;
+            b.setAttribute('aria-selected', active ? 'true' : 'false');
+            b.style.background = active ? 'var(--color-action-secondary-bg)' : 'transparent';
+            b.style.color = active ? 'var(--color-text-primary)' : 'var(--color-text-muted)';
+          });
+        }
+        pageBtns.forEach(function (btn) {
+          btn.addEventListener('click', function () {
+            var pg = btn.getAttribute('data-ds-page') || 'catalog';
+            setStandalonePage(pg);
+            try { history.replaceState(null, '', pg === 'flows' ? '#flows' : '#catalog'); } catch (_e) {}
+          });
+        });
+        if (window.location.hash === '#flows') setStandalonePage('flows');
+
+        var flowVp = document.querySelector('[data-flow-viewport="true"]');
+        var flowStage = document.querySelector('[data-flow-stage="true"]');
+        var zoomLabel = document.querySelector('[data-flow-zoom-label="true"]');
+        if (flowVp && flowStage) {
+          var fZoom = 0.52, fPanX = 32, fPanY = 24, dragging = false, moved = false, sx = 0, sy = 0, ox = 0, oy = 0;
+          function clampZ(z) { return Math.max(0.28, Math.min(1.6, Math.round(z * 100) / 100)); }
+          function renderTransform() {
+            flowStage.style.transform = 'translate3d(' + fPanX + 'px,' + fPanY + 'px,0) scale(' + fZoom + ')';
+            var gs = Math.max(12, Math.round(24 * fZoom));
+            flowVp.style.backgroundSize = gs + 'px ' + gs + 'px';
+            flowVp.style.backgroundPosition = (fPanX % gs) + 'px ' + (fPanY % gs) + 'px';
+            if (zoomLabel) zoomLabel.textContent = Math.round(fZoom * 100) + '%';
+          }
+          flowVp.addEventListener('wheel', function (e) {
+            e.preventDefault();
+            var r = flowVp.getBoundingClientRect();
+            var cx = e.clientX - r.left, cy = e.clientY - r.top;
+            var factor = (e.ctrlKey || e.metaKey) ? -e.deltaY * 0.008 : -e.deltaY * 0.0016;
+            var nz = clampZ(fZoom * (1 + Math.max(-0.28, Math.min(0.28, factor))));
+            if (nz === fZoom) return;
+            var ratio = nz / fZoom;
+            fPanX = Math.round(cx - (cx - fPanX) * ratio);
+            fPanY = Math.round(cy - (cy - fPanY) * ratio);
+            fZoom = nz;
+            renderTransform();
+          }, { passive: false });
+          flowVp.addEventListener('pointerdown', function (e) {
+            if (e.target.closest('[data-flow-ui-overlay="true"]')) return;
+            dragging = true; moved = false; sx = e.clientX; sy = e.clientY; ox = fPanX; oy = fPanY;
+            flowVp.style.cursor = 'grabbing';
+            if (flowVp.setPointerCapture) flowVp.setPointerCapture(e.pointerId);
+          });
+          flowVp.addEventListener('pointermove', function (e) {
+            if (!dragging) return;
+            var dx = e.clientX - sx, dy = e.clientY - sy;
+            if (Math.abs(dx) > 4 || Math.abs(dy) > 4) moved = true;
+            fPanX = Math.round(ox + dx); fPanY = Math.round(oy + dy);
+            renderTransform();
+          });
+          flowVp.addEventListener('pointerup', function (e) {
+            if (!dragging) return;
+            dragging = false; flowVp.style.cursor = 'grab';
+            if (flowVp.releasePointerCapture) flowVp.releasePointerCapture(e.pointerId);
+            if (!moved) {
+              var card = e.target.closest('[data-flow-node-id]');
+              var insp = document.querySelector('[data-flow-inspector="true"]');
+              if (card && insp) {
+                insp.style.display = 'block';
+                var st = insp.querySelector('[data-inspector-step]');
+                var sf = insp.querySelector('[data-inspector-surface]');
+                var tt = insp.querySelector('[data-inspector-title]');
+                var sm = insp.querySelector('[data-inspector-summary]');
+                var md = insp.querySelector('[data-inspector-module]');
+                var rl = insp.querySelector('[data-inspector-rule]');
+                if (st) st.textContent = 'Step ' + (card.getAttribute('data-flow-node-step') || '');
+                if (sf) sf.textContent = card.getAttribute('data-flow-node-surface') || '';
+                if (tt) tt.textContent = card.getAttribute('data-flow-node-title') || '';
+                if (sm) sm.textContent = card.getAttribute('data-flow-node-summary') || '';
+                if (md) md.textContent = card.getAttribute('data-flow-node-module') || '';
+                if (rl) rl.textContent = card.getAttribute('data-flow-node-rule') || '';
+              }
+            }
+          });
+          var zIn = document.querySelector('[data-flow-zoom-in="true"]');
+          var zOut = document.querySelector('[data-flow-zoom-out="true"]');
+          var zReset = document.querySelector('[data-flow-zoom-reset="true"]');
+          var zFit = document.querySelector('[data-flow-zoom-fit="true"]');
+          if (zIn) zIn.addEventListener('click', function () { fZoom = clampZ(fZoom + 0.12); renderTransform(); });
+          if (zOut) zOut.addEventListener('click', function () { fZoom = clampZ(fZoom - 0.12); renderTransform(); });
+          if (zReset) zReset.addEventListener('click', function () { fZoom = 1; renderTransform(); });
+          if (zFit) zFit.addEventListener('click', function () {
+            var r = flowVp.getBoundingClientRect();
+            fZoom = clampZ(Math.min((r.width - 64) / 2640, (r.height - 120) / 3320));
+            fPanX = 32; fPanY = 56; renderTransform();
+          });
+          document.querySelectorAll('[data-flow-jump]').forEach(function (jb) {
+            jb.addEventListener('click', function () {
+              var lane = jb.getAttribute('data-flow-jump');
+              var sySec = Number(jb.getAttribute('data-sec-y') || '80');
+              fZoom = 0.65; fPanX = 24; fPanY = Math.round(72 - sySec * fZoom);
+              renderTransform();
+              document.querySelectorAll('[data-flow-section]').forEach(function (el) {
+                el.style.opacity = el.getAttribute('data-flow-section') === lane ? '1' : '0.32';
+              });
+              document.querySelectorAll('[data-flow-node-lane]').forEach(function (el) {
+                el.style.opacity = el.getAttribute('data-flow-node-lane') === lane ? '1' : '0.32';
+              });
+            });
+          });
+          var allFilter = document.querySelector('[data-flow-filter="all"]');
+          if (allFilter) allFilter.addEventListener('click', function () {
+            document.querySelectorAll('[data-flow-section], [data-flow-node-lane]').forEach(function (el) {
+              el.style.opacity = '1';
+            });
+            if (zFit) zFit.click();
+          });
+          var inspClose = document.querySelector('[data-inspector-close="true"]');
+          if (inspClose) inspClose.addEventListener('click', function () {
+            var insp = document.querySelector('[data-flow-inspector="true"]');
+            if (insp) insp.style.display = 'none';
+          });
+        }
       });
     </script>`;
 

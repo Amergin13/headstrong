@@ -34,6 +34,7 @@ import { ParsedProgramImport } from '../../services/spreadsheetProgramImport';
 import { CompetitorCsvImportResult } from '../../services/competitorCsvImport';
 import { ImportModalMode, ImportProgramModal } from '../program/ImportProgramModal';
 import { triggerHaptic } from '../../utils/haptics';
+import { trackMetric } from '../../services/telemetry';
 import { canUseMusclePlan, resolveActivePlan } from '../../engine/trainingPlans';
 import {
   getHealthConnectStatus,
@@ -44,9 +45,12 @@ import {
 } from '../../services/healthConnectBridge';
 import {
   formatOnboardingHealthSummary,
+  importFromAppleHealthXml,
   importFromHealthConnectBridge,
   importFromHealthConnectJson,
+  isIosPlatform,
   OnboardingHealthImportResult,
+  resolveNativeHealthHubName,
 } from '../../services/onboardingHealthImport';
 import {
   BaselineStatsIllustration,
@@ -122,7 +126,7 @@ interface ScreenCopy {
   Illustration: React.FC<{ weeks?: number; perWeek?: number }>;
 }
 
-const buildScreens = (total: number, perWeek: number): ScreenCopy[] => [
+const buildScreens = (total: number, perWeek: number, isIos = false): ScreenCopy[] => [
   {
     title: 'Identity',
     body: [
@@ -144,13 +148,21 @@ const buildScreens = (total: number, perWeek: number): ScreenCopy[] => [
     ],
     Illustration: SessionsIllustration,
   },
-  {
-    title: 'Connect Health Connect',
-    body: [
-      'Pull in your weight, height, sleep, recovery, steps, and recent workouts automatically—strictly read-only on your device.',
-    ],
-    Illustration: HealthConnectIllustration,
-  },
+  isIos
+    ? {
+        title: 'Connect Apple Health',
+        body: [
+          'Pull in your weight, height, sleep, recovery, steps, and recent workouts automatically—strictly read-only on your iPhone.',
+        ],
+        Illustration: HealthConnectIllustration,
+      }
+    : {
+        title: 'Connect Health Connect',
+        body: [
+          'Pull in your weight, height, sleep, recovery, steps, and recent workouts automatically—strictly read-only on your device.',
+        ],
+        Illustration: HealthConnectIllustration,
+      },
   {
     title: 'Your baseline stats',
     body: [
@@ -226,28 +238,6 @@ const defaultUnit = (): WeightUnit => {
   return /^en-(US|LR)$|^my\b/i.test(navigator.language || '') ? 'lb' : 'kg';
 };
 
-const titleStyle: React.CSSProperties = {
-  fontSize: 20,
-  lineHeight: '24px',
-  fontWeight: 600,
-  color: 'var(--color-text-primary)',
-  letterSpacing: '-0.02em',
-};
-const bodyStyle: React.CSSProperties = {
-  fontSize: 16,
-  lineHeight: '24px',
-  color: 'var(--wk-body)',
-  maxWidth: '65ch',
-};
-const sectionLabel: React.CSSProperties = {
-  fontSize: 12,
-  lineHeight: '16px',
-  fontWeight: 500,
-  color: 'var(--color-text-muted)',
-  marginBottom: 8,
-};
-const optionText: React.CSSProperties = { fontSize: 16, fontWeight: 500, color: 'var(--color-text-primary)', lineHeight: '20px' };
-const optionDetail: React.CSSProperties = { fontSize: 12, color: 'var(--wk-muted)', lineHeight: '16px', marginTop: 4 };
 const focusRingClass =
   'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-text-primary)]';
 
@@ -269,7 +259,6 @@ const disclosureButtonStyle: React.CSSProperties = {
 };
 
 const leanFieldStyle: React.CSSProperties = {
-  fontSize: 16,
   minHeight: 44,
   padding: '0 12px',
   color: 'var(--color-text-primary)',
@@ -303,7 +292,10 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
   );
   const [goal, setGoal] = useState<GoalPhase>(profile.goalPhase || 'Lean Bulk');
   const plan = resolveActivePlan({ programType: program, goalPhase: goal, email: profile.email });
-  const SCREENS = buildScreens(plan.templates.length, plan.workoutsPerWeek);
+  const [hcStatus, setHcStatus] = useState<HealthConnectStatus>(() => getHealthConnectStatus());
+  const isIosHealth = hcStatus.provider === 'apple_health' || isIosPlatform();
+  const healthHubName = resolveNativeHealthHubName(isIosHealth);
+  const SCREENS = buildScreens(plan.templates.length, plan.workoutsPerWeek, isIosHealth);
   const [location, setLocation] = useState<TrainingLocation>(profile.activeLocation || 'gym');
   // Nothing ticked for new athletes: we never assume gear they may not own.
   const [homeEquipment, setHomeEquipment] = useState<HomeEquipmentTag[]>(returning ? profile.homeEquipment || [] : []);
@@ -337,12 +329,11 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
   } | null>(null);
   const [importedCompetitorHistory, setImportedCompetitorHistory] = useState<CompetitorCsvImportResult | null>(null);
 
-  // Step 4 (Health Connect) + Step 5 (Lean skippable baseline stats) state
+  // Step 4 (Health Connect / Apple Health) + Step 5 (Lean skippable baseline stats) state
   const [weightUnit, setWeightUnit] = useState<WeightUnit>(() => (returning ? profile.weightUnit || 'kg' : defaultUnit()));
   const [heightUnit, setHeightUnit] = useState<HeightUnit>(() =>
     returning ? resolveHeightUnit(profile) : defaultUnit() === 'lb' ? 'ft_in' : 'cm'
   );
-  const [hcStatus, setHcStatus] = useState<HealthConnectStatus>(() => getHealthConnectStatus());
   const [hcSyncing, setHcSyncing] = useState(false);
   const [hcError, setHcError] = useState<string | null>(null);
   const [healthImport, setHealthImport] = useState<OnboardingHealthImportResult | null>(null);
@@ -386,6 +377,22 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
 
   // Opened from Settings to change gear: just where you train, no introduction (the goal has its own control in Settings).
   const editing = returning && initialStep === ONBOARDING_LOCATION_STEP;
+  const startedAtRef = useRef<number>(Date.now());
+
+  useEffect(() => {
+    if (inline) return;
+    startedAtRef.current = Date.now();
+    trackMetric('onboarding.started', 1, { mode: editing ? 'edit' : 'initial' });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inline]);
+
+  useEffect(() => {
+    if (inline) return;
+    trackMetric('onboarding.step_viewed', 1, {
+      step: String(step),
+      mode: editing ? 'edit' : 'initial',
+    });
+  }, [inline, step, editing]);
 
   // Listen for live Android Health Connect bridge status updates (no-op on web browsers).
   useEffect(() => {
@@ -429,13 +436,13 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
       applyImportedHintsToLeanForm(imported);
       triggerHaptic('success');
     } catch {
-      setHcError("Couldn't read Health Connect right now. You can enter stats manually or skip.");
+      setHcError(`Couldn't read ${healthHubName} right now. You can enter stats manually or skip.`);
     } finally {
       setHcSyncing(false);
     }
   };
 
-  // When returning from the Android Health Connect permission screen with permissions granted, pull real history automatically.
+  // When returning from the OS health permission sheet with permissions granted, pull real history automatically.
   const hcHasAnyPermission = Boolean(hcStatus.granted || hcStatus.stepsGranted || hcStatus.biometricsGranted);
   useEffect(() => {
     if (inline || editing || step !== 4) return;
@@ -452,11 +459,18 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
     reader.onload = () => {
       try {
         const text = String(reader.result || '');
-        const imported = importFromHealthConnectJson(text);
+        const trimmed = text.trim();
+        const imported = trimmed.startsWith('<')
+          ? importFromAppleHealthXml(trimmed)
+          : importFromHealthConnectJson(trimmed);
         applyImportedHintsToLeanForm(imported);
         triggerHaptic('success');
       } catch {
-        setHcError("That file wasn't a valid Health Connect JSON export. You can enter stats manually or skip.");
+        setHcError(
+          `That file wasn't a valid ${
+            isIosHealth ? 'Apple Health XML or JSON' : 'Health Connect JSON or Apple Health XML'
+          } export. You can enter stats manually or skip.`
+        );
       }
     };
     reader.onerror = () => {
@@ -585,6 +599,13 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
       return;
     }
     triggerHaptic('success');
+    if (!inline && !editing) {
+      const elapsedSec = Math.max(1, Math.round((Date.now() - startedAtRef.current) / 1000));
+      trackMetric('onboarding.duration_sec', elapsedSec, {
+        mode: 'initial',
+        health_connected: String(Boolean(hcConnectedFlag || healthImport)),
+      });
+    }
     const known: TrainingLocation[] = profile.availableLocations?.length ? profile.availableLocations : ['gym', 'home', 'travel'];
     const availableLocations = known.includes(location) ? known : [...known, location];
     const trimmedCue = habitCue.trim();
@@ -689,7 +710,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
     importedHistoryWorkoutCount > 0
       ? `${importedHistoryWorkoutCount} past ${importedHistoryWorkoutCount === 1 ? 'workout' : 'workouts'}`
       : null,
-    hcConnectedFlag || healthImport ? 'Health Connect' : null,
+    hcConnectedFlag || healthImport ? healthHubName : null,
     !statsSkipped && selectedSex ? (selectedSex === 'male' ? 'Male' : 'Female') : null,
     !statsSkipped && parsedAge ? `${parsedAge} yrs` : null,
     !statsSkipped && parsedWeightKg ? formatWeight(parsedWeightKg, weightUnit) : null,
@@ -750,9 +771,9 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
       : 'Start with a Treise plan'
     : step === 4
     ? isHealthBridgeReady && !hcHasAnyPermission && !healthImport
-      ? 'Connect Health Connect'
+      ? `Connect ${healthHubName}`
       : hcSyncing
-      ? 'Syncing Health Connect…'
+      ? `Syncing ${healthHubName}…`
       : healthImport
       ? 'Continue'
       : 'Enter stats manually'
@@ -831,8 +852,8 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                   if (step === 5) handleStep5Skip();
                   else goTo(ONBOARDING_LOCATION_STEP);
                 }}
-                className={`h-11 min-h-[44px] px-2 -mr-2 rounded-xl font-medium transition-colors hover:text-[var(--color-text-primary)] ${focusRingClass}`}
-                style={{ fontSize: 16, color: 'var(--color-text-secondary)' }}
+                className={`wk-subhead h-11 min-h-[44px] px-2 -mr-2 rounded-xl transition-colors hover:text-[var(--color-text-primary)] ${focusRingClass}`}
+                style={{ color: 'var(--color-text-secondary)' }}
               >
                 Skip
               </button>
@@ -852,14 +873,13 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
           id={titleId}
           ref={headingRef}
           tabIndex={inline ? undefined : -1}
-          className={isLast ? 'outline-none' : 'wk-page-title outline-none'}
-          style={{ ...(isLast ? titleStyle : {}), marginTop: 12 }}
+          className={`${isLast ? 'wk-h1' : 'wk-page-title'} outline-none mt-3`}
         >
           {editing ? 'Where you train' : screen.title}
         </HeadingTag>
         {!editing &&
           screen.body.map((p) => (
-            <p key={p} style={{ ...bodyStyle, marginTop: 8 }}>
+            <p key={p} className="wk-body mt-2">
               {p}
             </p>
           ))}
@@ -867,7 +887,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
         {/* STEP 1: Goal (1 essential decision paired with Identity framing) */}
         {step === 1 && !editing && (
           <fieldset style={{ marginTop: 20 }}>
-            <legend style={sectionLabel}>What's your goal?</legend>
+            <legend className="wk-meta-title mb-2" style={{ color: 'var(--color-text-muted)' }}>What's your goal?</legend>
             <div className="flex flex-col" style={{ gap: 8 }}>
               {GOALS.map((g) => (
                 <button
@@ -882,10 +902,10 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                   style={{ ...choiceStyle(goal === g.id), padding: '12px 16px', gap: 12 }}
                 >
                   <span className="flex-1">
-                    <span className="block" style={optionText}>
+                    <span className="wk-subhead block">
                       {g.label}
                     </span>
-                    <span className="block" style={optionDetail}>
+                    <span className="wk-caption block mt-1">
                       {g.detail}
                     </span>
                   </span>
@@ -893,7 +913,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                 </button>
               ))}
             </div>
-            <p style={{ ...optionDetail, marginTop: 8 }}>Your sets, reps, and targets adapt automatically for this goal.</p>
+            <p className="wk-caption mt-2">Your sets, reps, and targets adapt automatically for this goal.</p>
           </fieldset>
         )}
 
@@ -938,10 +958,10 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                       aria-hidden="true"
                     />
                     <span className="min-w-0">
-                      <span className="block" style={optionText}>
+                      <span className="wk-subhead block">
                         Import existing program
                       </span>
-                      <span className="block" style={optionDetail}>
+                      <span className="wk-caption block mt-1">
                         Spreadsheet CSV / TSV — schedule &amp; past sets
                       </span>
                     </span>
@@ -964,10 +984,10 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                       aria-hidden="true"
                     />
                     <span className="min-w-0">
-                      <span className="block" style={optionText}>
+                      <span className="wk-subhead block">
                         Import workout history
                       </span>
-                      <span className="block" style={optionDetail}>
+                      <span className="wk-caption block mt-1">
                         Hevy, Strong, or FitNotes CSV — sets &amp; PRs
                       </span>
                     </span>
@@ -1057,7 +1077,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
         {step === 3 && !editing && (
           <div style={{ marginTop: 20 }}>
             <fieldset>
-              <legend style={sectionLabel}>How do you want to fit in 4 sessions a week?</legend>
+              <legend className="wk-meta-title mb-2" style={{ color: 'var(--color-text-muted)' }}>How do you want to fit in 4 sessions a week?</legend>
               <div className="flex flex-col" style={{ gap: 8 }}>
                 {PLAN_CHOICES.filter((opt) => canUseMuscle || !opt.ownerOnly).map((opt) => (
                   <button
@@ -1076,23 +1096,20 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                   >
                     <span className="flex-1 min-w-0">
                       <span className="flex items-center flex-wrap" style={{ gap: 8 }}>
-                        <span style={optionText}>{opt.label}</span>
+                        <span className="wk-subhead">{opt.label}</span>
                         {opt.recommended && (
                           <span
-                            className="font-medium rounded-lg px-2 py-1"
+                            className="wk-pill"
                             style={{
-                              fontSize: 12,
-                              lineHeight: '16px',
                               color: 'var(--wk-accent)',
-                              background: 'var(--color-bg-surface-control)',
-                              border: '1px solid var(--color-border-accent)',
+                              borderColor: 'var(--color-border-accent)',
                             }}
                           >
                             Recommended
                           </span>
                         )}
                       </span>
-                      <span className="block" style={optionDetail}>
+                      <span className="wk-caption block mt-1">
                         {opt.detail}
                       </span>
                     </span>
@@ -1115,10 +1132,10 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                 style={disclosureButtonStyle}
               >
                 <span className="min-w-0">
-                  <span className="block" style={optionText}>
+                  <span className="wk-subhead block">
                     Optional habit anchor
                   </span>
-                  <span className="block" style={optionDetail}>
+                  <span className="wk-caption block mt-1">
                     {habitAnchorSummary || 'Pick preferred days or a time cue (skip anytime)'}
                   </span>
                 </span>
@@ -1138,7 +1155,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                   style={{ background: 'var(--wk-card)', borderColor: 'var(--color-border-subtle)' }}
                 >
                   <legend className="sr-only">Optional habit anchor (skip anytime)</legend>
-                  <p style={{ ...optionDetail, marginTop: 0, marginBottom: 12 }}>
+                  <p className="wk-caption mb-3">
                     Miss a preferred day? Your next session rolls forward automatically—never miss twice.
                   </p>
                   <div className="flex flex-wrap" style={{ gap: 8 }}>
@@ -1153,13 +1170,12 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                             triggerHaptic('light');
                             setPreferredDays((prev) => (on ? prev.filter((d) => d !== day) : [...prev, day]));
                           }}
-                          className={`flex items-center justify-center font-medium ${focusRingClass}`}
+                          className={`wk-meta-title flex items-center justify-center ${focusRingClass}`}
                           style={{
                             ...choiceStyle(on),
                             borderRadius: 999,
                             padding: '0 12px',
                             minWidth: 48,
-                            fontSize: 12,
                             color: on ? 'var(--color-text-primary)' : 'var(--color-text-secondary)',
                           }}
                         >
@@ -1180,11 +1196,10 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                             triggerHaptic('light');
                             setPreferredTime(tw.id);
                           }}
-                          className={`flex items-center justify-center font-medium ${focusRingClass}`}
+                          className={`wk-meta-title flex items-center justify-center ${focusRingClass}`}
                           style={{
                             ...choiceStyle(on),
                             padding: '8px 12px',
-                            fontSize: 12,
                             color: on ? 'var(--color-text-primary)' : 'var(--color-text-secondary)',
                           }}
                         >
@@ -1211,11 +1226,11 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
           </div>
         )}
 
-        {/* STEP 4: Dedicated Health Connect screen (real Android bridge or JSON export; honest fallback to lean form) */}
+        {/* STEP 4: Dedicated OS health hub screen (Apple HealthKit on iOS, Health Connect on Android, or real XML/JSON export) */}
         {step === 4 && !editing && (
           <div className="flex flex-col gap-3" style={{ marginTop: 20 }}>
             <section
-              aria-label="What Health Connect brings in"
+              aria-label={`What ${healthHubName} brings in`}
               className="wk-card flex flex-col gap-3"
             >
               <div className="flex items-center justify-between gap-2">
@@ -1226,7 +1241,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                     strokeWidth={2}
                     aria-hidden="true"
                   />
-                  <span className="wk-subhead">Health Connect</span>
+                  <span className="wk-subhead">{healthHubName}</span>
                 </div>
                 <span
                   className="wk-pill shrink-0"
@@ -1245,6 +1260,8 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                     ? hcHasAnyPermission
                       ? 'Connected'
                       : 'Ready on this phone'
+                    : isIosHealth
+                    ? 'iOS app'
                     : 'Android app'}
                 </span>
               </div>
@@ -1262,7 +1279,9 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
               </ul>
 
               <p className="wk-caption">
-                Read-only and kept on your device. Android Health Connect provides weight and height natively; sex and age import automatically if present in your export, or you can add or skip them next.
+                {isIosHealth
+                  ? 'Read-only and kept on your iPhone. Apple Health provides weight, height, sex, age, Apple Watch sleep, HRV, and workouts natively—or you can add or skip anything next.'
+                  : 'Read-only and kept on your device. Android Health Connect provides weight and height natively; sex and age import automatically if present in your export, or you can add or skip them next.'}
               </p>
 
               {!isHealthBridgeReady && !healthImport && (
@@ -1270,14 +1289,16 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                   className="wk-raised flex flex-col gap-2"
                 >
                   <p className="wk-caption" style={{ color: 'var(--color-text-secondary)' }}>
-                    Direct Health Connect sync runs inside the Treise Android app. In this browser you can import a Health Connect JSON export or enter quick stats on the next screen.
+                    {isIosHealth
+                      ? 'Direct HealthKit sync runs inside the Treise iOS app. Here you can import an Apple Health export (export.xml) or enter quick stats on the next screen.'
+                      : 'Direct Health Connect sync runs inside the Treise Android app. Here you can import a Health Connect JSON export or enter quick stats on the next screen.'}
                   </p>
                   <input
                     ref={hcFileInputRef}
                     type="file"
-                    accept=".json,application/json"
+                    accept=".xml,.json,text/xml,application/xml,application/json"
                     className="sr-only"
-                    aria-label="Import Health Connect JSON export"
+                    aria-label={isIosHealth ? 'Import Apple Health export' : 'Import Health Connect JSON export'}
                     onChange={(e) => {
                       const file = e.target.files?.[0];
                       if (file) handleImportJsonFile(file);
@@ -1293,7 +1314,11 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                     className={`wk-btn-secondary w-full ${focusRingClass}`}
                   >
                     <Upload className="w-4 h-4 shrink-0" aria-hidden="true" />
-                    <span>Import Health Connect export (.json)</span>
+                    <span>
+                      {isIosHealth
+                        ? 'Import Apple Health export (.xml)'
+                        : 'Import Health Connect export (.json)'}
+                    </span>
                   </button>
                 </div>
               )}
@@ -1343,7 +1368,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                   aria-hidden="true"
                 />
                 <div className="min-w-0">
-                  <span className="wk-label block">Synced from Health Connect</span>
+                  <span className="wk-label block">Synced from {healthHubName}</span>
                   <p className="wk-caption mt-1" style={{ color: 'var(--color-text-primary)' }}>
                     {importedSummaryText}
                   </p>
@@ -1353,7 +1378,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
 
             {/* Sex (optional, for strength standards — never pre-selected for new athletes) */}
             <fieldset>
-              <legend style={sectionLabel}>Sex (optional · for strength standards)</legend>
+              <legend className="wk-meta-title mb-2" style={{ color: 'var(--color-text-muted)' }}>Sex (optional · for strength standards)</legend>
               <div className="grid grid-cols-2" style={{ gap: 8 }}>
                 {SEX_CHOICES.map((opt) => {
                   const selected = selectedSex === opt.id;
@@ -1369,7 +1394,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                       className={`w-full flex items-center justify-between px-4 ${focusRingClass}`}
                       style={choiceStyle(selected)}
                     >
-                      <span style={optionText}>{opt.label}</span>
+                      <span className="wk-subhead">{opt.label}</span>
                       <RadioDot selected={selected} />
                     </button>
                   );
@@ -1380,7 +1405,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
             {/* Weight (full width with kg/lb unit toggle) */}
             <div className="flex flex-col gap-2">
               <div className="flex items-center justify-between gap-2">
-                <label htmlFor={weightInputId} style={{ ...sectionLabel, marginBottom: 0 }}>
+                <label htmlFor={weightInputId} className="wk-meta-title" style={{ color: 'var(--color-text-muted)' }}>
                   Weight ({weightUnit})
                 </label>
                 <div className="flex items-center gap-1" role="group" aria-label="Weight unit">
@@ -1390,10 +1415,9 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                       type="button"
                       aria-pressed={weightUnit === u}
                       onClick={() => switchUnit(u)}
-                      className={`px-3 rounded-lg font-medium ${focusRingClass}`}
+                      className={`wk-meta-title wk-tap px-3 rounded-lg ${focusRingClass}`}
                       style={{
                         minHeight: 32,
-                        fontSize: 12,
                         background: weightUnit === u ? 'var(--color-action-secondary-bg)' : 'transparent',
                         color: weightUnit === u ? 'var(--color-text-primary)' : 'var(--wk-muted)',
                         border: `1px solid ${weightUnit === u ? 'var(--color-border-strong)' : 'var(--color-border-subtle)'}`,
@@ -1431,7 +1455,8 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
               <div className="flex items-center justify-between gap-2">
                 <label
                   htmlFor={heightUnit === 'cm' ? heightInputId : heightFeetInputId}
-                  style={{ ...sectionLabel, marginBottom: 0 }}
+                  className="wk-meta-title"
+                  style={{ color: 'var(--color-text-muted)' }}
                 >
                   Height ({heightUnit === 'ft_in' ? 'ft / in' : 'cm'})
                 </label>
@@ -1445,10 +1470,9 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                       type="button"
                       aria-pressed={heightUnit === opt.id}
                       onClick={() => switchHeightUnit(opt.id)}
-                      className={`px-3 rounded-lg font-medium ${focusRingClass}`}
+                      className={`wk-meta-title wk-tap px-3 rounded-lg ${focusRingClass}`}
                       style={{
                         minHeight: 32,
-                        fontSize: 12,
                         background: heightUnit === opt.id ? 'var(--color-action-secondary-bg)' : 'transparent',
                         color: heightUnit === opt.id ? 'var(--color-text-primary)' : 'var(--wk-muted)',
                         border: `1px solid ${heightUnit === opt.id ? 'var(--color-border-strong)' : 'var(--color-border-subtle)'}`,
@@ -1539,7 +1563,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
 
             {/* Age */}
             <div className="flex flex-col gap-2">
-              <label htmlFor={ageInputId} style={{ ...sectionLabel, marginBottom: 0 }}>
+              <label htmlFor={ageInputId} className="wk-meta-title" style={{ color: 'var(--color-text-muted)' }}>
                 Age
               </label>
               <input
@@ -1563,7 +1587,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
               )}
             </div>
 
-            <p style={{ ...optionDetail, marginTop: 0 }}>
+            <p className="wk-caption">
               Every field is optional and stored only on your device. You can add or update these anytime in Profile or Progress.
             </p>
           </div>
@@ -1573,7 +1597,10 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
         {isLast && (
           <div style={{ marginTop: editing ? 16 : 20 }}>
             <fieldset>
-              <legend className={editing ? 'sr-only' : undefined} style={editing ? undefined : sectionLabel}>
+              <legend
+                className={editing ? 'sr-only' : 'wk-meta-title mb-2'}
+                style={editing ? undefined : { color: 'var(--color-text-muted)' }}
+              >
                 Where will you train?
               </legend>
               <div className="flex flex-col" style={{ gap: 8 }}>
@@ -1590,10 +1617,10 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                     style={{ ...choiceStyle(location === loc.id), padding: '12px 16px', gap: 12 }}
                   >
                     <span className="flex-1 min-w-0">
-                      <span className="block" style={optionText}>
+                      <span className="wk-subhead block">
                         {loc.label}
                       </span>
-                      <span className="block" style={optionDetail}>
+                      <span className="wk-caption block mt-1">
                         {loc.detail}
                       </span>
                     </span>
@@ -1601,7 +1628,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                   </button>
                 ))}
               </div>
-              <p style={{ ...optionDetail, marginTop: 8 }}>You can switch place before any workout.</p>
+              <p className="wk-caption mt-2">You can switch place before any workout.</p>
             </fieldset>
 
             {editing && location !== 'home' && !showHomeGearFallback && (
@@ -1612,8 +1639,8 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                     triggerHaptic('light');
                     setShowHomeGearFallback(true);
                   }}
-                  className={`min-h-[44px] font-medium underline underline-offset-4 ${focusRingClass}`}
-                  style={{ fontSize: 16, color: 'var(--color-text-secondary)' }}
+                  className={`wk-subhead min-h-[44px] underline underline-offset-4 ${focusRingClass}`}
+                  style={{ color: 'var(--color-text-secondary)' }}
                 >
                   Edit home fallback gear{homeEquipment.length > 0 ? ` (${homeEquipment.length})` : ''}
                 </button>
@@ -1623,7 +1650,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
             {/* Home equipment is ONLY revealed when the athlete explicitly selects Home (or fallback gear in Settings editor) */}
             {(location === 'home' || (editing && showHomeGearFallback)) && (
               <fieldset style={{ marginTop: 16 }}>
-                <legend style={sectionLabel}>
+                <legend className="wk-meta-title mb-2" style={{ color: 'var(--color-text-muted)' }}>
                   {location === 'home' ? 'What do you have at home?' : 'What do you have at home? (fallback gear)'}
                 </legend>
                 <div className="flex flex-wrap" style={{ gap: 8 }}>
@@ -1638,14 +1665,13 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                           triggerHaptic('light');
                           setHomeEquipment((prev) => (on ? prev.filter((t) => t !== eq.id) : [...prev, eq.id]));
                         }}
-                        className={`flex items-center font-medium ${focusRingClass}`}
+                        className={`wk-subhead flex items-center ${focusRingClass}`}
                         style={{
                           ...choiceStyle(on),
                           borderRadius: 999,
                           padding: '0 16px',
                           gap: 8,
                           color: on ? 'var(--color-text-primary)' : 'var(--color-text-secondary)',
-                          fontSize: 16,
                         }}
                       >
                         {on && <Check className="w-4 h-4 stroke-[2]" style={{ color: 'var(--wk-accent)' }} aria-hidden="true" />}
@@ -1654,13 +1680,13 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                     );
                   })}
                 </div>
-                <p style={{ ...optionDetail, marginTop: 8 }}>Nothing at home? Bodyweight workouts still work.</p>
+                <p className="wk-caption mt-2">Nothing at home? Bodyweight workouts still work.</p>
               </fieldset>
             )}
 
             {!editing && (
               <fieldset style={{ marginTop: 20 }}>
-                <legend style={sectionLabel}>Lifting experience</legend>
+                <legend className="wk-meta-title mb-2" style={{ color: 'var(--color-text-muted)' }}>Lifting experience</legend>
                 <div className="flex flex-col" style={{ gap: 8 }}>
                   {EXPERIENCE_CHOICES.map((opt) => (
                     <button
@@ -1676,8 +1702,8 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                       style={{ ...choiceStyle(experienceLevel === opt.id), padding: '12px 16px', gap: 12 }}
                     >
                       <span className="flex-1 min-w-0">
-                        <span className="block" style={optionText}>{opt.label}</span>
-                        <span className="block" style={optionDetail}>{opt.detail}</span>
+                        <span className="wk-subhead block">{opt.label}</span>
+                        <span className="wk-caption block mt-1">{opt.detail}</span>
                       </span>
                       <RadioDot selected={experienceLevel === opt.id} />
                     </button>
@@ -1700,10 +1726,10 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                   style={disclosureButtonStyle}
                 >
                   <span className="min-w-0">
-                    <span className="block" style={optionText}>
+                    <span className="wk-subhead block">
                       Fine-tune setup (optional)
                     </span>
-                    <span className="block" style={optionDetail}>
+                    <span className="wk-caption block mt-1">
                       Add a target goal or adjust RIR logging · {fineTuneSummary}
                     </span>
                   </span>
@@ -1723,7 +1749,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                     style={{ background: 'var(--wk-card)', borderColor: 'var(--color-border-subtle)' }}
                   >
                     <fieldset>
-                      <legend style={sectionLabel}>A goal of your own (optional)</legend>
+                      <legend className="wk-meta-title mb-2" style={{ color: 'var(--color-text-muted)' }}>A goal of your own (optional)</legend>
                       <div className="flex flex-wrap" style={{ gap: 8 }}>
                         {OWN_GOAL_OPTIONS.map((lift) => {
                           const on = ownLift === lift.exerciseId;
@@ -1737,14 +1763,13 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                                 setOwnLift(on ? null : lift.exerciseId);
                                 setOwnTarget(on ? '' : lift.metric === 'steps' ? '10000' : '');
                               }}
-                              className={`flex items-center font-medium ${focusRingClass}`}
+                              className={`wk-subhead flex items-center ${focusRingClass}`}
                               style={{
                                 ...choiceStyle(on),
                                 borderRadius: 999,
                                 padding: '0 16px',
                                 gap: 8,
                                 minHeight: 44,
-                                fontSize: 16,
                                 color: on ? 'var(--color-text-primary)' : 'var(--color-text-secondary)',
                               }}
                             >
@@ -1756,7 +1781,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                       </div>
                       {ownChoice && (
                         <div className="flex items-center flex-wrap" style={{ gap: 8, marginTop: 12 }}>
-                          <label htmlFor={targetInputId} style={{ ...optionText, flexShrink: 0 }}>
+                          <label htmlFor={targetInputId} className="wk-subhead shrink-0">
                             {ownChoice.metric === 'weight' ? 'Lift' : ownChoice.metric === 'steps' ? 'Reach' : 'Do'}
                           </label>
                           <input
@@ -1775,12 +1800,11 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                               width: 96,
                               minHeight: 44,
                               padding: '0 12px',
-                              fontSize: 16,
                               color: 'var(--color-text-primary)',
                               border: `1px solid ${ownInvalid ? 'var(--color-status-danger-fill)' : 'var(--color-border-subtle)'}`,
                             }}
                           />
-                          <span style={optionText}>
+                          <span className="wk-subhead">
                             {ownChoice.metric === 'weight' ? weightUnit : ownChoice.metric === 'steps' ? 'steps a day' : 'reps in one set'}
                           </span>
                           {ownInvalid && (
@@ -1791,8 +1815,8 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                                 setOwnTarget('');
                                 ownInputRef.current?.focus();
                               }}
-                              className={`px-3 min-h-[44px] rounded-xl font-medium ${focusRingClass}`}
-                              style={{ fontSize: 12, color: 'var(--color-text-secondary)', border: '1px solid var(--color-border-strong)' }}
+                              className={`wk-meta-title px-3 min-h-[44px] rounded-xl ${focusRingClass}`}
+                              style={{ color: 'var(--color-text-secondary)', border: '1px solid var(--color-border-strong)' }}
                             >
                               Clear
                             </button>
@@ -1802,12 +1826,8 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                       <p
                         id={targetHelpId}
                         role={ownInvalid ? 'alert' : undefined}
-                        style={{
-                          ...optionDetail,
-                          marginTop: 8,
-                          maxWidth: '65ch',
-                          color: ownInvalid ? 'var(--color-status-danger)' : optionDetail.color,
-                        }}
+                        className="wk-caption mt-2 max-w-prose"
+                        style={ownInvalid ? { color: 'var(--color-status-danger)' } : undefined}
                       >
                         {ownInvalid
                           ? `Enter ${
@@ -1839,8 +1859,8 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                       style={{ ...choiceStyle(showRirTracking), padding: '12px 16px', gap: 12 }}
                     >
                       <span className="min-w-0">
-                        <span className="block" style={optionText}>Track RIR (reps in reserve) on sets</span>
-                        <span className="block" style={optionDetail}>
+                        <span className="wk-subhead block">Track RIR (reps in reserve) on sets</span>
+                        <span className="wk-caption block mt-1">
                           {showRirTracking
                             ? 'RIR column shown on every set.'
                             : 'Hidden by default so you can focus cleanly on weight and reps.'}
@@ -1870,8 +1890,8 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                 <button
                   type="button"
                   onClick={() => goTo(1)}
-                  className={`px-3 min-h-[44px] rounded-xl font-medium shrink-0 ${focusRingClass}`}
-                  style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}
+                  className={`wk-meta-title px-3 min-h-[44px] rounded-xl shrink-0 ${focusRingClass}`}
+                  style={{ color: 'var(--color-text-secondary)' }}
                 >
                   Edit
                 </button>
@@ -1900,11 +1920,10 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
             type="button"
             disabled={step === 4 && hcSyncing}
             onClick={primaryAction}
-            className={`wk-button w-full font-semibold active:scale-[0.98] transition-transform disabled:opacity-60 ${focusRingClass}`}
+            className={`wk-button w-full active:scale-[0.98] transition-transform disabled:opacity-60 ${focusRingClass}`}
             style={{
               background: 'var(--color-action-primary-bg)',
               color: 'var(--color-action-primary-fg)',
-              fontSize: 16,
             }}
           >
             {ctaLabel}
@@ -1917,8 +1936,8 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                 triggerHaptic('light');
                 onExploreDemo();
               }}
-              className={`w-full font-medium transition-colors rounded-xl ${focusRingClass}`}
-              style={{ minHeight: 44, marginTop: 4, fontSize: 16, color: 'var(--color-text-muted)' }}
+              className={`wk-subhead w-full transition-colors rounded-xl ${focusRingClass}`}
+              style={{ minHeight: 44, marginTop: 4, color: 'var(--color-text-muted)' }}
             >
               See a demo with sample data
             </button>
@@ -1932,8 +1951,8 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                 }
                 goTo(3);
               }}
-              className={`w-full font-medium transition-colors rounded-xl ${focusRingClass}`}
-              style={{ minHeight: 44, marginTop: 4, fontSize: 16, color: 'var(--color-text-muted)' }}
+              className={`wk-subhead w-full transition-colors rounded-xl ${focusRingClass}`}
+              style={{ minHeight: 44, marginTop: 4, color: 'var(--color-text-muted)' }}
             >
               Choose a Treise plan instead
             </button>
@@ -1947,8 +1966,8 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                   goTo(6);
                 }
               }}
-              className={`w-full font-medium transition-colors rounded-xl ${focusRingClass}`}
-              style={{ minHeight: 44, marginTop: 4, fontSize: 16, color: 'var(--color-text-muted)' }}
+              className={`wk-subhead w-full transition-colors rounded-xl ${focusRingClass}`}
+              style={{ minHeight: 44, marginTop: 4, color: 'var(--color-text-muted)' }}
             >
               {isHealthBridgeReady && !hcHasAnyPermission && !healthImport
                 ? 'Enter stats manually instead'
@@ -1960,8 +1979,8 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
             <button
               type="button"
               onClick={handleStep5Skip}
-              className={`w-full font-medium transition-colors rounded-xl ${focusRingClass}`}
-              style={{ minHeight: 44, marginTop: 4, fontSize: 16, color: 'var(--color-text-muted)' }}
+              className={`wk-subhead w-full transition-colors rounded-xl ${focusRingClass}`}
+              style={{ minHeight: 44, marginTop: 4, color: 'var(--color-text-muted)' }}
             >
               Skip for now
             </button>

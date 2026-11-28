@@ -129,7 +129,7 @@ export const PlateCalculatorModal: React.FC<PlateCalculatorModalProps> = ({
                   step="0.5"
                   value={targetWeight}
                   onChange={(e) => setTargetWeight(parseFloat(e.target.value) || barWeight)}
-                  className="w-24 bg-transparent tabular-numbers font-semibold text-xl focus:outline-none"
+                  className="wk-number w-24 bg-transparent focus:outline-none"
                   style={{ color: 'var(--color-text-primary)' }}
                 />
                 <span className="wk-caption">{unit}</span>
@@ -187,7 +187,7 @@ export const PlateCalculatorModal: React.FC<PlateCalculatorModalProps> = ({
                     className="w-7 rounded flex items-center justify-center shadow-lg transition-transform border"
                     style={{ height: conf.height, background: conf.bg, borderColor: conf.border, color: conf.text }}
                   >
-                    <span className="text-xs tabular-numbers font-semibold rotate-90">
+                    <span className="wk-meta-title tabular-numbers rotate-90">
                       {weight}
                     </span>
                   </div>
@@ -230,7 +230,7 @@ export const PlateCalculatorModal: React.FC<PlateCalculatorModalProps> = ({
           </div>
 
           {!editingInventory ? (
-            <div className="grid grid-cols-4 gap-2 text-xs">
+            <div className="grid grid-cols-4 gap-2">
               {availablePlates.map((plate) => {
                 const count = platesPerSide.filter((p) => p === plate).length;
                 if (count === 0) return null;

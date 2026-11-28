@@ -22,6 +22,8 @@ import {
 } from '../../services/coachPersonalization';
 import { formatStateDiffText } from '../../services/coachTools';
 import { resetFlashLiteConversation } from '../../services/geminiFlashLite';
+import { getActiveModelTier } from '../../services/onDeviceModel';
+import { trackMetric } from '../../services/telemetry';
 import {
   prepareOnDeviceModel,
   resetOnDeviceConversation,
@@ -109,7 +111,7 @@ function liveClockTime(): string {
 function renderBold(text: string): React.ReactNode[] {
   return text.split(/(\*\*[^*]+\*\*)/g).map((part, i) =>
     part.startsWith('**') && part.endsWith('**') ? (
-      <strong key={i} className="font-semibold" style={{ color: 'var(--color-text-primary)' }}>
+      <strong key={i} className="wk-subhead">
         {part.slice(2, -2)}
       </strong>
     ) : (
@@ -594,6 +596,22 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
       setIsProcessing(false);
       setMessages((prev) => [...prev, result.message]);
 
+      if (!embedded) {
+        const tier = await getActiveModelTier();
+        const transport =
+          tier === 'local'
+            ? 'on_device'
+            : tier === 'cloud'
+            ? 'cloud_flash_lite'
+            : 'deterministic';
+        const toolName = result.actionTaken?.type || result.message.pendingConfirmation?.tool_name;
+        trackMetric('coach.message_processed', 1, {
+          transport,
+          has_action: String(Boolean(result.actionTaken)),
+          ...(toolName ? { tool_name: toolName } : {}),
+        });
+      }
+
       if (
         result.updatedProfile ||
         result.updatedWorkout ||
@@ -601,6 +619,11 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
         result.updatedActivities
       ) {
         triggerHaptic('success');
+        if (!embedded) {
+          trackMetric('coach.action_applied', 1, {
+            tool_name: result.actionTaken?.type || 'mutation',
+          });
+        }
         onApplyAction(
           result.updatedProfile,
           result.updatedWorkout,
@@ -675,6 +698,11 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
         result.updatedActivities
       ) {
         triggerHaptic('success');
+        if (!embedded) {
+          trackMetric('coach.action_applied', 1, {
+            tool_name: result.actionTaken?.type || 'confirmed_mutation',
+          });
+        }
         onApplyAction(
           result.updatedProfile,
           result.updatedWorkout,
@@ -780,6 +808,11 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
   const handleUndoMutation = (messageId: string, snapshot: CoachUndoSnapshot) => {
     if (revertedMessageIds[messageId] || !onUndoAction) return;
     triggerHaptic('medium');
+    if (!embedded) {
+      trackMetric('coach.action_undone', 1, {
+        tool_name: snapshot.label || 'mutation',
+      });
+    }
     onUndoAction(snapshot);
     setRevertedMessageIds((prev) => ({ ...prev, [messageId]: true }));
     setMessages((prev) => [
@@ -956,7 +989,7 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
         borderTopLeftRadius: embedded ? 24 : expanded ? 0 : 24,
         borderTopRightRadius: embedded ? 24 : expanded ? 0 : 24,
         ...(embedded ? { borderBottomLeftRadius: 24, borderBottomRightRadius: 24 } : {}),
-        boxShadow: 'inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 -12px 40px rgba(0, 0, 0, 0.58)',
+        boxShadow: 'inset 0 1px 0 var(--color-glass-rim), var(--shadow-sheet)',
         ...(embedded && embeddedHeight
           ? { height: embeddedHeight, maxHeight: embeddedHeight }
           : embedded
@@ -978,19 +1011,13 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
               top: expanded ? 'calc(8px + env(safe-area-inset-top, 0px))' : '8px',
               width: 36,
               height: 4,
-              background: 'rgba(255, 255, 255, 0.22)',
+              background: 'var(--color-handle-bar)',
             }}
           />
           <div className="min-w-0 flex-1 pr-2">
             <h3
               id={embedded ? undefined : 'ai-coach-title'}
               className="wk-h1 flex items-center gap-2"
-              style={{
-                color: 'var(--color-text-primary)',
-                textTransform: 'none',
-                fontWeight: 600,
-                letterSpacing: '-0.02em',
-              }}
             >
               <span>
                 Treise<span style={{ color: 'var(--color-coach-accent)' }}>.</span>
@@ -1120,7 +1147,7 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
                       >
                         Treise
                       </span>
-                      <p className="wk-body font-medium" style={{ color: 'var(--color-text-primary)' }}>
+                      <p className="wk-subhead" style={{ color: 'var(--color-text-primary)' }}>
                         {renderBold(displayText)}
                       </p>
                     </div>
@@ -1137,7 +1164,7 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
                               type="button"
                               onClick={() => useHook(q)}
                               disabled={isProcessing}
-                              className="min-h-[44px] rounded-full px-4 text-xs font-medium transition-all active:scale-95 disabled:opacity-50"
+                              className="wk-meta-title min-h-[44px] rounded-full px-4 transition-all active:scale-95 disabled:opacity-50"
                               style={{
                                 background: 'var(--wk-card)',
                                 color: 'var(--color-text-primary)',
@@ -1170,7 +1197,7 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
                         : undefined
                     }
                     title={isBeingRevealed ? 'Tap to show full reply' : undefined}
-                    className={`${isUser ? 'wk-body font-medium' : 'wk-card wk-body flex flex-col'} ${
+                    className={`${isUser ? 'wk-subhead' : 'wk-card wk-body flex flex-col'} ${
                       isBeingRevealed ? 'cursor-pointer' : ''
                     }`}
                     style={
@@ -1192,7 +1219,7 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
                     {/* Saved to Athlete Memory pill */}
                     {!isUser && msg.memorySaved && (
                       <div
-                        className="inline-flex items-center self-start font-medium rounded-full gap-2 px-3 py-1 text-xs"
+                        className="wk-meta-title inline-flex items-center self-start rounded-full gap-2 px-3 py-1"
                         style={{
                           background: 'var(--color-status-positive-soft)',
                           border: '1px solid var(--color-border-accent)',
@@ -1220,7 +1247,7 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
                           void handleSendMessage(retryText);
                         }}
                         disabled={isProcessing}
-                        className="wk-btn-secondary self-start min-h-[44px] px-4 gap-2 text-xs font-medium disabled:opacity-50"
+                        className="wk-btn-secondary wk-meta-title self-start min-h-[44px] px-4 gap-2 disabled:opacity-50"
                       >
                         <RefreshCw className="w-3.5 h-3.5 stroke-[2]" />
                         <span>Retry</span>
@@ -1265,7 +1292,7 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
                               {msg.pendingConfirmation.warning}
                             </p>
                             {msg.stateDiff && (
-                              <div className="wk-body font-medium mt-1" style={{ color: 'var(--color-text-primary)' }}>
+                              <div className="wk-subhead mt-1" style={{ color: 'var(--color-text-primary)' }}>
                                 {formatStateDiffText(msg.stateDiff)}
                               </div>
                             )}
@@ -1286,7 +1313,7 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
                               type="button"
                               onClick={() => handleConfirmPendingAction(msg.id, msg.pendingConfirmation!)}
                               disabled={isProcessing}
-                              className="wk-button min-h-[44px] w-full flex-1 font-semibold leading-snug py-2 px-3 text-center disabled:opacity-50"
+                              className="wk-button w-full flex-1 px-3 text-center disabled:opacity-50"
                               style={{
                                 background: 'var(--color-action-primary-bg)',
                                 color: 'var(--color-action-primary-fg)',
@@ -1334,7 +1361,7 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
                               {msg.stateDiff?.label || actionCardLabel(msg.actionApplied.type)}
                             </div>
                             <div
-                              className="wk-body font-medium mt-1"
+                              className="wk-subhead mt-1"
                               style={{ color: 'var(--color-text-primary)' }}
                             >
                               {msg.stateDiff
@@ -1353,7 +1380,7 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
                                   triggerHaptic('light');
                                   onNavigateTab(msg.navigateTarget!, msg.navigateDetail);
                                 }}
-                                className="wk-button min-h-[44px] flex-1 gap-2 px-3 whitespace-nowrap font-semibold"
+                                className="wk-button flex-1 gap-2 px-3 whitespace-nowrap"
                                 style={{
                                   background: 'var(--color-action-primary-bg)',
                                   color: 'var(--color-action-primary-fg)',
@@ -1435,7 +1462,7 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
                               </div>
                               {sp.formula && (
                                 <div
-                                  className="tabular-numbers overflow-x-auto no-scrollbar text-xs"
+                                  className="wk-caption tabular-numbers overflow-x-auto no-scrollbar"
                                   style={{ color: 'var(--wk-accent)' }}
                                 >
                                   {sp.formula}
@@ -1473,7 +1500,7 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
                               type="button"
                               onClick={() => useSuggestedChip(chip)}
                               disabled={isProcessing}
-                              className="min-h-[44px] rounded-full px-4 text-xs font-medium transition-all active:scale-95 disabled:opacity-50"
+                              className="wk-meta-title min-h-[44px] rounded-full px-4 transition-all active:scale-95 disabled:opacity-50"
                               style={{
                                 background: 'var(--wk-card)',
                                 color: 'var(--color-text-primary)',
@@ -1527,7 +1554,7 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
                         style={{ background: 'var(--wk-accent)', animationDelay: '320ms' }}
                       />
                     </div>
-                    <span className="wk-caption font-medium">{pendingStatus}</span>
+                    <span className="wk-meta-title">{pendingStatus}</span>
                   </div>
                 )}
               </div>
@@ -1544,7 +1571,7 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
                 scrollThreadToBottom('smooth');
               }}
               aria-label="Scroll to new message"
-              className="absolute right-4 bottom-2 min-h-[44px] flex items-center rounded-full px-3 gap-1 text-xs font-medium shadow-lg transition-transform active:scale-95"
+              className="wk-meta-title absolute right-4 bottom-2 min-h-[44px] flex items-center rounded-full px-3 gap-1 shadow-lg transition-transform active:scale-95"
               style={{
                 background: 'var(--wk-raised)',
                 color: 'var(--color-text-primary)',
@@ -1575,7 +1602,7 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
             style={{
               background: 'var(--wk-card)',
               border: '1px solid var(--color-border-strong)',
-              boxShadow: 'inset 0 1px 0 rgba(255, 255, 255, 0.06)',
+              boxShadow: 'inset 0 1px 0 var(--color-rim-highlight)',
             }}
           >
             <textarea
@@ -1598,10 +1625,9 @@ export const AICoachChatModal: React.FC<AICoachChatModalProps> = ({
               readOnly={isProcessing}
               autoComplete="off"
               autoCorrect="off"
-              className="flex-1 bg-transparent outline-none font-normal text-[color:var(--color-text-primary)] placeholder:text-[color:var(--color-text-muted)] min-h-[44px] py-3 resize-none overflow-y-auto no-scrollbar text-base"
+              className="wk-body flex-1 bg-transparent outline-none text-[color:var(--color-text-primary)] placeholder:text-[color:var(--color-text-muted)] min-h-[44px] py-3 resize-none overflow-y-auto no-scrollbar"
               style={{
-                fontSize: '16px',
-                lineHeight: '24px',
+                maxWidth: 'none',
                 maxHeight: `${COMPOSER_MAX_HEIGHT_PX}px`,
               }}
             />

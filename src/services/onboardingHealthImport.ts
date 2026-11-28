@@ -15,7 +15,12 @@ import {
   extractHealthConnectDemographics,
   HealthConnectDemographics,
 } from './healthConnectProfile';
-import { parseHealthConnectExport } from './healthConnectService';
+import {
+  isIosPlatform,
+  parseAppleHealthXmlExport,
+  parseHealthConnectExport,
+  resolveNativeHealthHubName,
+} from './healthConnectService';
 import { mergeDailySteps, mergeHealthConnectBiometrics } from './wearableSyncService';
 
 export {
@@ -25,10 +30,11 @@ export {
   parseHeightCmValue,
   parseSexValue,
 } from './healthConnectProfile';
+export { isIosPlatform, resolveNativeHealthHubName } from './healthConnectService';
 export type { HealthConnectDemographics } from './healthConnectProfile';
 
 export interface OnboardingHealthImportResult extends HealthConnectDemographics {
-  source: 'health_connect_bridge' | 'health_connect_export';
+  source: 'health_connect_bridge' | 'health_connect_export' | 'apple_health_bridge' | 'apple_health_export';
   /** Normalized daily biometric/recovery/body/step logs ready to merge into app biometrics. */
   biometrics: BiometricLog[];
   /** Detected recent non-lifting/exercise sessions from Health Connect ready to merge into activities. */
@@ -130,7 +136,7 @@ export async function importFromHealthConnectBridge(
   const activities = rawSessions.length > 0 ? toDetectedActivities('health_connect', rawSessions) : [];
 
   return {
-    source: 'health_connect_bridge',
+    source: status.provider === 'apple_health' ? 'apple_health_bridge' : 'health_connect_bridge',
     ...summarizeExtractedMetrics(mergedBiometrics, activities, demographics),
   };
 }
@@ -153,7 +159,37 @@ export function importFromHealthConnectJson(
   };
 }
 
-/** Concise, truthful 1-line summary of what Health Connect actually imported. */
+/**
+ * Parses a real Apple Health (`export.xml`) file into onboarding baseline stats,
+ * biometric history, and recent workout sessions. Never invents missing values.
+ */
+export function importFromAppleHealthXml(
+  rawXml: string,
+  referenceDate: Date = new Date()
+): OnboardingHealthImportResult {
+  const parsed = parseAppleHealthXmlExport(rawXml, referenceDate);
+  const activities = parsed.sessions.length > 0 ? toDetectedActivities('health_connect', parsed.sessions) : [];
+  return {
+    source: 'apple_health_export',
+    ...summarizeExtractedMetrics(parsed.biometrics, activities, parsed.demographics),
+  };
+}
+
+/**
+ * Auto-detects and parses either an Apple Health XML export (`export.xml`) or a Health Connect JSON export.
+ */
+export function importFromHealthExportFile(
+  rawText: string,
+  referenceDate: Date = new Date()
+): OnboardingHealthImportResult {
+  const trimmed = rawText.trim();
+  if (trimmed.startsWith('<')) {
+    return importFromAppleHealthXml(trimmed, referenceDate);
+  }
+  return importFromHealthConnectJson(trimmed, referenceDate);
+}
+
+/** Concise, truthful 1-line summary of what Health Connect or Apple Health actually imported. */
 export function formatOnboardingHealthSummary(
   result: OnboardingHealthImportResult,
   weightUnit: WeightUnit,
@@ -179,7 +215,8 @@ export function formatOnboardingHealthSummary(
     parts.push(`${result.sessionsCount} recent ${result.sessionsCount === 1 ? 'workout' : 'workouts'}`);
   }
   if (parts.length === 0) {
-    return 'Connected — no recent Health Connect records found yet.';
+    const hub = result.source.startsWith('apple_health') ? 'Apple Health' : resolveNativeHealthHubName(isIosPlatform());
+    return `Connected — no recent ${hub} records found yet.`;
   }
   return parts.join(' · ');
 }

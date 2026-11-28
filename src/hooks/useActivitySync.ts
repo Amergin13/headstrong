@@ -36,6 +36,7 @@ import {
 } from '../services/healthConnectProfile';
 import { mergeDailySteps, mergeHealthConnectBiometrics } from '../services/wearableSyncService';
 import { loadDismissedActivityIds, saveDismissedActivityIds } from '../services/storage';
+import { trackMetric } from '../services/telemetry';
 
 const RESYNC_MS = 10 * 60 * 1000;
 const LOOKBACK_MS = LOOKBACK_DAYS * 24 * 60 * 60 * 1000;
@@ -190,9 +191,14 @@ export function useActivitySync({ profile, setProfile, activities, setActivities
   const logManualActivity = useCallback(
     (type: ActivityType, minutes: number) => {
       const log = createManualActivity(type, minutes);
+      const qualifies = qualifiesAsActiveDay(log);
+      trackMetric('activity.logged', 1, {
+        source: 'manual',
+        qualifies_active_day: String(qualifies),
+      });
       setActivities((prev) => [...prev, log].sort((a, b) => a.startedAt.localeCompare(b.startedAt)));
       notify(
-        qualifiesAsActiveDay(log) ? `${describeActivity(log)} logged. It counts as an active day.` : `${describeActivity(log)} logged.`,
+        qualifies ? `${describeActivity(log)} logged. It counts as an active day.` : `${describeActivity(log)} logged.`,
         'Active day'
       );
     },

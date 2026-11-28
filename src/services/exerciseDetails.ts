@@ -294,6 +294,10 @@ export interface ExerciseDetailModel {
   latestDisplay: string;
   bestDisplay: string;
   metricTitle: string;
+  /** Heaviest logged working set across history (e.g. "135 kg × 3"), when external load > 0. */
+  heaviestSetDisplay?: string;
+  /** Best tested / logged single-rep set (1RM) on this exercise (e.g. "150 kg"), when a 1-rep set exists. */
+  bestOneRepMaxDisplay?: string;
 }
 
 export interface ExerciseTrendSpec {
@@ -711,6 +715,30 @@ export function buildExerciseDetailModel(params: {
   const latestVal = metricValues.length > 0 ? metricValues[metricValues.length - 1] : 0;
   const bestVal = metricValues.length > 0 ? Math.max(...metricValues) : 0;
 
+  let heaviestWeightKg = 0;
+  let heaviestReps = 0;
+  let bestSingleRepKg = 0;
+  if (!timed) {
+    for (const sess of loggedSessions) {
+      for (const st of sess.sets) {
+        if (st.weightKg > heaviestWeightKg || (st.weightKg === heaviestWeightKg && st.reps > heaviestReps)) {
+          heaviestWeightKg = st.weightKg;
+          heaviestReps = st.reps;
+        }
+        if (st.reps === 1 && st.weightKg > bestSingleRepKg) {
+          bestSingleRepKg = st.weightKg;
+        }
+      }
+    }
+  }
+  const perHandSuffix = isTwoDb ? ' each' : '';
+  const heaviestSetDisplay =
+    heaviestWeightKg > 0 && heaviestReps > 0
+      ? `${formatPreciseWeight(heaviestWeightKg)}${perHandSuffix} × ${heaviestReps}`
+      : undefined;
+  const bestOneRepMaxDisplay =
+    bestSingleRepKg > 0 ? `${formatPreciseWeight(bestSingleRepKg)}${perHandSuffix}` : undefined;
+
   return {
     title: exercise.name,
     primaryMuscle,
@@ -737,6 +765,8 @@ export function buildExerciseDetailModel(params: {
     latestDisplay: latestVal > 0 ? fmtMetric(latestVal) : '—',
     bestDisplay: bestVal > 0 ? fmtMetric(bestVal) : '—',
     metricTitle,
+    ...(heaviestSetDisplay ? { heaviestSetDisplay } : {}),
+    ...(bestOneRepMaxDisplay ? { bestOneRepMaxDisplay } : {}),
   };
 }
 

@@ -518,6 +518,17 @@ export const CANONICAL_ARCHITECTURE_REGISTRY: CanonicalArchitectureEntry[] = [
     ],
     additiveRule: 'Reuse TrendChart (+ buildExerciseTrendSpec), CoachSummaryText, and ExerciseCard across tabs rather than building lookalike card or chart clones.',
   },
+  {
+    id: 'canon-product-telemetry',
+    domain: 'Product Usage Telemetry & Goals-Signals-Metrics (GSM) Pipeline',
+    kind: 'engine',
+    canonicalFiles: [
+      'src/engine/telemetrySchema.ts',
+      'src/services/telemetry.ts',
+      'api/telemetry/ingest.ts',
+    ],
+    additiveRule: 'Define all product goals, signals, metric names, and PII-scrubbed tag allowlists once in telemetrySchema.ts, emit client events through telemetry.ts, and ingest server metrics through api/telemetry/ingest.ts (@vercel/functions metric()).',
+  },
 ];
 
 /**
@@ -534,6 +545,8 @@ export const DESIGN_SYSTEM_SOURCE_CONTEXT = {
   specificationExport: 'TREISE_DESIGN_SYSTEM',
   showcaseFiles: [
     'src/designSystem/DesignSystemApp.tsx',
+    'src/designSystem/EndToEndFlowsBoard.tsx',
+    'src/designSystem/endToEndFlowsModel.ts',
     'src/designSystem/showcaseFixtures.ts',
     'src/designSystem/tokenParser.ts',
     'design-system.html',

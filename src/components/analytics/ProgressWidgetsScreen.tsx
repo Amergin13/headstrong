@@ -44,7 +44,7 @@ const WidgetRow: React.FC<{
     >
       <span className="min-w-0">
         <span className="flex items-center flex-wrap gap-2">
-          <span className="wk-subhead leading-tight">
+          <span className="wk-subhead">
             {title}
           </span>
           {tag && <span className="wk-pill">{tag}</span>}
@@ -108,7 +108,10 @@ export const ProgressWidgetsScreen: React.FC<ProgressWidgetsScreenProps> = ({
         return (
           ex.name.toLowerCase().includes(q) ||
           ex.primaryMuscle.toLowerCase().includes(q) ||
-          ex.pillar.toLowerCase().includes(q)
+          ex.pillar.toLowerCase().includes(q) ||
+          (ex.implementLabel?.toLowerCase().includes(q) ?? false) ||
+          (ex.category?.toLowerCase().includes(q) ?? false) ||
+          (ex.aliases?.some((a) => a.toLowerCase().includes(q)) ?? false)
         );
       })
       .sort((a, b) => {
@@ -260,7 +263,7 @@ export const ProgressWidgetsScreen: React.FC<ProgressWidgetsScreenProps> = ({
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search exercises (e.g. bench, curl, squat)"
             aria-label="Search exercises to add"
-            className="wk-field mt-3 text-left text-base"
+            className="wk-field mt-3 text-left"
           />
           <ul className="flex flex-col mt-2">
             {sortedExercises.length > 0 ? (

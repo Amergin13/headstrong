@@ -43,6 +43,10 @@ export interface PersonalBest {
   date: string;
   /** Best estimated one-rep max on this exercise; 0 for bodyweight-only work without a logged weight. */
   e1rmKg: number;
+  /** Heaviest completed single-rep (1RM) working set logged on this exercise, when tested/imported. */
+  bestOneRepMaxKg?: number;
+  /** Date when `bestOneRepMaxKg` was logged (YYYY-MM-DD). */
+  bestOneRepMaxDate?: string;
   /** True when `e1rmKg` includes bodyweight (weighted calisthenics). */
   includesBodyweight?: boolean;
   sessions: number;
@@ -85,10 +89,15 @@ export function buildPersonalBests(
       for (const s of sets) {
         const kg = weightOf(s);
         const reps = s.actualReps ?? 0;
+        const setDate = w.completedAt ? localDateString(new Date(w.completedAt)) : w.date;
         if (kg > entry.weightKg || (kg === entry.weightKg && reps > entry.reps)) {
           entry.weightKg = kg;
           entry.reps = reps;
-          entry.date = w.completedAt ? localDateString(new Date(w.completedAt)) : w.date;
+          entry.date = setDate;
+        }
+        if (reps === 1 && kg > 0 && kg > (entry.bestOneRepMaxKg ?? 0)) {
+          entry.bestOneRepMaxKg = kg;
+          entry.bestOneRepMaxDate = setDate;
         }
         const bwRatio = isCalisthenic ? getBodyweightLoadRatio(ex.exerciseId, ex.pillar) : 0;
         // Count bodyweight for calisthenics whenever real bodyweight is logged and the movement loads bodyweight.

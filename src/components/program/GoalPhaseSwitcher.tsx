@@ -42,12 +42,12 @@ export const GoalPhaseSwitcher: React.FC<GoalPhaseSwitcherProps> = ({
   return (
     <section aria-label="Training goal" className="wk-card w-full text-left block">
       <div className="flex items-start justify-between gap-3">
-        <h2 className="wk-h1 leading-tight">
+        <h2 className="wk-h1">
           Training goal
         </h2>
         <span className="wk-pill shrink-0">{activePhase.label}</span>
       </div>
-      <p className="wk-body mt-2 leading-tight">
+      <p className="wk-body mt-2">
         {activePhase.subtitle}
       </p>
 

@@ -1,11 +1,12 @@
 import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
-import { ChevronRight, Sparkles } from 'lucide-react';
+import { Sparkles } from 'lucide-react';
 import { BiometricLog, GoalPhase } from '../../engine/types';
 import { parseLocalDate } from '../../utils/date';
 import { triggerHaptic } from '../../utils/haptics';
 import { useUnits } from '../../utils/unitsContext';
 import { kgToUnit } from '../../utils/units';
 import { CoachSummaryText } from '../common/CoachSummaryText';
+import { CardDrillInButton } from '../common/Header';
 import { TimelineToggle } from './TimelineToggle';
 import {
   buildCompositionOverview,
@@ -285,20 +286,12 @@ export const CompositionCard: React.FC<CompositionCardProps> = ({
   return (
     <section aria-label="Body composition over time" className="wk-card">
       <div className="flex items-center justify-between gap-2">
-        <h2 className="wk-h1 normal-case tracking-tight min-w-0">Composition</h2>
+        <h2 className="wk-h1 min-w-0">Composition</h2>
         {onOpenLog && (
-          <button
-            type="button"
-            onClick={() => {
-              triggerHaptic('light');
-              onOpenLog();
-            }}
-            aria-label="Log weight and body composition"
-            className="flex items-center justify-center shrink-0"
-            style={{ minWidth: 44, minHeight: 44, marginRight: -8 }}
-          >
-            <ChevronRight className="wk-chevron" strokeWidth={2} aria-hidden="true" />
-          </button>
+          <CardDrillInButton
+            onClick={onOpenLog}
+            label="Log weight and body composition"
+          />
         )}
       </div>
 
@@ -322,7 +315,7 @@ export const CompositionCard: React.FC<CompositionCardProps> = ({
               <span className="truncate">{item.label}</span>
             </dt>
             <dd
-              className="wk-title tabular-nums whitespace-nowrap mt-1"
+              className="wk-number whitespace-nowrap mt-1"
               style={{ color: 'var(--color-text-primary)' }}
             >
               {item.value}
@@ -340,8 +333,8 @@ export const CompositionCard: React.FC<CompositionCardProps> = ({
       <div className="mt-4">
         {points.length === 0 ? (
           <div
-            className="rounded-xl p-4 text-center space-y-2 border border-dashed"
-            style={{ borderColor: 'var(--color-border-strong)', background: 'var(--wk-raised)' }}
+            className="wk-raised p-4 text-center space-y-2 border border-dashed"
+            style={{ borderColor: 'var(--color-border-strong)' }}
           >
             <p className="wk-subhead">
               {overview.hasAllTimeData ? 'No readings in this window' : 'No composition logs yet'}
@@ -614,7 +607,7 @@ export const CompositionCard: React.FC<CompositionCardProps> = ({
                 triggerHaptic('light');
                 onAskCoach();
               }}
-              className="inline-flex items-center gap-2 text-xs font-medium min-h-[44px] px-2 -my-2 -mr-2 rounded-lg active:opacity-75 transition-opacity"
+              className="inline-flex items-center gap-2 wk-meta-title min-h-[44px] px-2 -my-2 -mr-2 rounded-lg active:opacity-75 transition-opacity"
               style={{ color: 'var(--color-coach-accent)' }}
               aria-label="Ask Treise about your body composition"
             >

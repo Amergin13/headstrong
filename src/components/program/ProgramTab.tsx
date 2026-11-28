@@ -315,7 +315,7 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
             {/* 5. Training Locations & Equipment Summary Card */}
             <div className="wk-card w-full text-left block">
               <div className="flex items-start justify-between gap-3">
-                <h2 className="wk-h1 leading-tight">
+                <h2 className="wk-h1">
                   Training locations &amp; equipment
                 </h2>
                 {onOpenOnboarding && (
@@ -332,22 +332,20 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
                 )}
               </div>
 
-              <p className="wk-body mt-2 leading-tight">
+              <p className="wk-body mt-2">
                 Exercises adapt automatically when you switch location on the Workout tab
               </p>
 
               <div className="flex items-end justify-between gap-2 mt-6">
-                <span className="wk-meta-title leading-tight">
+                <span className="wk-meta-title">
                   Home setup · {homeEquipItems.length} items
                 </span>
-                <span className="wk-subhead shrink-0 leading-none">
+                <span className="wk-subhead shrink-0">
                   3 locations
                 </span>
               </div>
 
-              <div className="wk-bar mt-3">
-                <div style={{ width: '100%' }} />
-              </div>
+              <div className="mt-3 border-t" style={{ borderColor: 'var(--color-border-subtle)' }} />
 
               <div
                 className="flex flex-col mt-4 pt-3 gap-2"
@@ -378,7 +376,7 @@ export const ProgramTab: React.FC<ProgramTabProps> = ({
         >
           <div className="flex items-center justify-between gap-2">
             <div>
-              <h2 className="wk-h1 leading-tight">Custom exercises</h2>
+              <h2 className="wk-h1">Custom exercises</h2>
               <p className="wk-caption mt-1">
                 {customExercises.length} {customExercises.length === 1 ? 'exercise' : 'exercises'} added by you
               </p>

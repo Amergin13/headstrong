@@ -65,6 +65,15 @@
   --color-border-accent: rgba(26, 227, 160, 0.38);
   --color-border-focus: var(--palette-white);
   --color-border-track: rgba(224, 234, 242, 0.14);
+  --color-rim-highlight: rgba(224, 234, 242, 0.12);
+
+  /* Floating bar & sheet chrome tokens */
+  --color-glass-rim: rgba(255, 255, 255, 0.08);
+  --color-glass-glow-strong: rgba(255, 255, 255, 0.17);
+  --color-glass-glow-soft: rgba(255, 255, 255, 0.04);
+  --color-handle-bar: rgba(255, 255, 255, 0.22);
+  --shadow-floating-bar: 0 12px 32px rgba(0, 0, 0, 0.58);
+  --shadow-sheet: 0 -12px 40px rgba(0, 0, 0, 0.58);
 
   /* ------------------------------------------------------------------------
      Tier 2: Semantic Tokens — Actions

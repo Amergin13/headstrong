@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { CardDrillInButton } from '../common/Header';
 import { TrendChart } from '../common/TrendChart';
 import {
   ChartTimeline,
@@ -70,22 +71,14 @@ export const ProgressChartCard: React.FC<{
   return (
     <section aria-label={chart.title} className="wk-card">
       <div className="flex items-center justify-between gap-2">
-        <h2 className="wk-h1 normal-case tracking-tight min-w-0">
+        <h2 className="wk-h1 min-w-0">
           {chart.title}
         </h2>
         {onOpen && (
-          <button
-            type="button"
-            onClick={() => {
-              triggerHaptic('light');
-              onOpen();
-            }}
-            aria-label={openLabel ?? `Update ${chart.title.toLowerCase()}`}
-            className="flex items-center justify-center shrink-0"
-            style={{ minWidth: 44, minHeight: 44, marginRight: -8 }}
-          >
-            <ChevronRight className="wk-chevron" strokeWidth={2} aria-hidden="true" />
-          </button>
+          <CardDrillInButton
+            onClick={onOpen}
+            label={openLabel ?? `Update ${chart.title.toLowerCase()}`}
+          />
         )}
       </div>
 
@@ -108,12 +101,7 @@ export const ProgressChartCard: React.FC<{
               {visibleChart.headline.valueText}
             </span>
             {visibleChart.headline.unitText && (
-              <span
-                className="wk-caption"
-                style={{
-                  lineHeight: 1,
-                }}
-              >
+              <span className="wk-caption">
                 {visibleChart.headline.unitText}
               </span>
             )}
@@ -129,11 +117,8 @@ export const ProgressChartCard: React.FC<{
         <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 mt-2">
           {delta ? (
             <span
-              className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium tabular-nums"
-              style={{
-                ...deltaBadgeStyle(delta.polarity),
-                lineHeight: 1.15,
-              }}
+              className="wk-pill gap-1 tabular-numbers"
+              style={deltaBadgeStyle(delta.polarity)}
             >
               <span aria-hidden="true">{deltaGlyph}</span>
               <span>{delta.text}</span>

@@ -92,7 +92,7 @@ const CardSubject: React.FC<{ children: React.ReactNode }> = ({ children }) => (
 );
 
 const BigNumber: React.FC<{ value: string; unit?: string }> = ({ value, unit }) => (
-  <p className="wk-display leading-none mt-2" style={{ color: 'var(--color-text-primary)' }}>
+  <p className="wk-display mt-2" style={{ color: 'var(--color-text-primary)' }}>
     {value}
     {unit && (
       <span className="wk-caption ml-1">
@@ -168,7 +168,7 @@ export const WorkoutFinishScreen: React.FC<WorkoutFinishScreenProps> = ({
             Workout finished: {formatSentenceCase(report.session.name)}
           </h2>
           {plan && (
-            <span className="wk-number shrink-0 tabular-numbers" style={{ lineHeight: 1 }}>
+            <span className="wk-number shrink-0">
               {plan.workoutNumber}/{plan.totalWorkouts}
             </span>
           )}

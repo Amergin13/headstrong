@@ -4144,7 +4144,7 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
       // Things the Workout tab builds for this session must not throw.
       try {
         buildWeekStrip({ workouts: history6, nextSession: session, programType: 'muscle_building_6wk', exerciseCatalog: SEED_EXERCISES, now: t });
-        const kgSim = buildAthleteKnowledgeGraph(history6, [], SEED_EXERCISES, profile6, calculateWeeklyMuscleVolume(history6, SEED_EXERCISES));
+        const kgSim = buildAthleteKnowledgeGraph(history6, [], SEED_EXERCISES, profile6, calculateWeeklyMuscleVolume(history6, SEED_EXERCISES, undefined, new Date(t)));
         for (const ex of session.exercises) {
           const def = SEED_EXERCISES.find((d) => d.id === ex.exerciseId);
           if (!def) issues.push(`workout ${n}: ${ex.name} (${ex.exerciseId}) missing from the exercise catalog`);
@@ -4197,7 +4197,7 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
         if (top > 0) topWeightByExercise.set(ex.exerciseId, top);
       }
       try {
-        const kgDone = buildAthleteKnowledgeGraph(history6, [], SEED_EXERCISES, profile6, calculateWeeklyMuscleVolume(history6, SEED_EXERCISES));
+        const kgDone = buildAthleteKnowledgeGraph(history6, [], SEED_EXERCISES, profile6, calculateWeeklyMuscleVolume(history6, SEED_EXERCISES, undefined, new Date(t)));
         const rep = buildSessionProgressReport({ workouts: history6, exerciseCatalog: SEED_EXERCISES, knowledgeGraph: kgDone, bodyweightKg: 80, now: t });
         if (!rep || rep.program.kind !== 'plan' || (rep.program.kind === 'plan' && rep.program.workoutNumber !== n)) issues.push(`workout ${n}: session report has the wrong plan position`);
       } catch (err) {
@@ -4356,7 +4356,7 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
       }
 
       // What the Progress tab shows after each workout.
-      const kgNow = buildAthleteKnowledgeGraph(hist, [], SEED_EXERCISES, prof, calculateWeeklyMuscleVolume(hist, SEED_EXERCISES));
+      const kgNow = buildAthleteKnowledgeGraph(hist, [], SEED_EXERCISES, prof, calculateWeeklyMuscleVolume(hist, SEED_EXERCISES, undefined, new Date(t)));
       const report = buildSessionProgressReport({ workouts: hist, exerciseCatalog: SEED_EXERCISES, knowledgeGraph: kgNow, bodyweightKg: 80, now: t });
       if (!report) issues.push(`workout ${n}: no session report`);
     }
@@ -4374,14 +4374,14 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
     );
     const pressCard = realCards.find((c) => c.points.length >= 3);
     assert(Boolean(pressCard) && pressCard!.points[pressCard!.points.length - 1].value > pressCard!.points[0].value, `Estimated strength rises across the plan on the Progress tab (${pressCard?.title})`);
-    const kgEnd = buildAthleteKnowledgeGraph(hist, [], SEED_EXERCISES, prof, calculateWeeklyMuscleVolume(hist, SEED_EXERCISES));
+    const kgEnd = buildAthleteKnowledgeGraph(hist, [], SEED_EXERCISES, prof, calculateWeeklyMuscleVolume(hist, SEED_EXERCISES, undefined, new Date(t)));
     assert(
       kgEnd.muscleProfiles.some((m) => m.weeklySets > 0) && kgEnd.muscleProfiles.some((m) => m.e1rmVelocityPct > 0),
       'The knowledge graph records weekly sets per muscle and a rising strength trend from the same workouts'
     );
     const pillarsEnd = calculateBestPillarE1rms(hist, 80);
     assert((pillarsEnd['Horizontal Push'] ?? 0) > 0 && (pillarsEnd['Horizontal Pull'] ?? 0) > 0, 'Strength levels fill from the logged workouts');
-    const volumeEnd = calculateWeeklyMuscleVolume(hist, SEED_EXERCISES);
+    const volumeEnd = calculateWeeklyMuscleVolume(hist, SEED_EXERCISES, undefined, new Date(t));
     assert(Object.values(volumeEnd).some((v) => v > 0), 'Weekly sets fill from the logged workouts');
   }
 
@@ -7189,11 +7189,13 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
         const overviewCardsSrc = fsW.readFileSync(pathW.resolve(process.cwd(), 'src/components/analytics/ProgressOverviewCards.tsx'), 'utf-8');
         const trainTabSrc = fsW.readFileSync(pathW.resolve(process.cwd(), 'src/components/train/TrainTab.tsx'), 'utf-8');
         const goalSettingsSrc = fsW.readFileSync(pathW.resolve(process.cwd(), 'src/components/analytics/GoalSettingsScreen.tsx'), 'utf-8');
+        const commonHeaderSrc = fsW.readFileSync(pathW.resolve(process.cwd(), 'src/components/common/Header.tsx'), 'utf-8');
         assert(
-          analyticsSrc.includes('aria-label="Progress options"') &&
+          analyticsSrc.includes('menuAriaLabel="Progress options"') &&
             analyticsSrc.includes('Change goals') &&
             analyticsSrc.includes('Customize widgets') &&
-            analyticsSrc.includes('MoreHorizontal') &&
+            analyticsSrc.includes('<OverflowMenu') &&
+            commonHeaderSrc.includes('MoreHorizontal') &&
             !overviewCardsSrc.includes('>Change<') &&
             !overviewCardsSrc.includes('aria-label="Change goals"'),
           'Progress header exposes the 3-dots quick menu with Change goals & Customize widgets and removes the Change flag from GoalsHero'
@@ -8913,7 +8915,8 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
         trainTabSrc.includes('<ActiveDayCard') &&
         progCardSrc.includes('export const ProgramProgressCard') &&
         progCardSrc.includes('export const CurrentSessionCard') &&
-        progCardSrc.includes('aria-label={`Open program (${formattedTitle})`}') &&
+        progCardSrc.includes('<CardDrillInButton') &&
+        progCardSrc.includes('label={`Open program (${formattedTitle})`}') &&
         progCardSrc.includes('Workout sets completed'),
       'Workout page separates ProgramProgressCard (phase + description + arrow link to Program) and CurrentSessionCard (workout title + sets bar), gates both in Workout options, gates RecoveryScoreCard on wearable connection, and hides workout cards on non-training days'
     );
@@ -9250,6 +9253,32 @@ console.log('\n[19. Google Pixel Tensor Hardware Acceleration & On-Device AI Sub
       `All components use semantic surface/ink tokens, 4px grid spacing, and >= 44px touch targets (violations: ${componentHygieneViolations.join(', ')})`
     );
 
+    const typographyVariancePattern =
+      /\b(?:leading-(?:none|tight|snug|normal|relaxed|loose|\[\d)|tracking-(?:tighter|tight|normal|wide|wider|widest)|capitalize|text-(?:xs|base|xl|3xl)|font-(?:normal|medium|semibold))\b|\b(?:fontSize|fontWeight|lineHeight|letterSpacing|textTransform)\s*:/;
+    const componentTypographyViolations: string[] = [];
+    const roleMenuOwners: string[] = [];
+    const rawRgbaOwners: string[] = [];
+    for (const file of componentFiles) {
+      const src = fsMod.readFileSync(file, 'utf8') as string;
+      const rel = pathMod.relative(repoRoot, file).replace(/\\/g, '/');
+      if (typographyVariancePattern.test(src)) {
+        componentTypographyViolations.push(rel);
+      }
+      if (/role="menu"/.test(src)) {
+        roleMenuOwners.push(rel);
+      }
+      if (/rgba\(/.test(src) && rel !== 'src/components/program/ProgramPlanView.tsx') {
+        rawRgbaOwners.push(rel);
+      }
+    }
+    assert(
+      componentTypographyViolations.length === 0 &&
+        roleMenuOwners.length === 1 &&
+        roleMenuOwners[0] === 'src/components/common/Header.tsx' &&
+        rawRgbaOwners.length === 0,
+      `Stage 3 typography & primitive purity enforced: 0 Tailwind/inline typography overrides in components (${componentTypographyViolations.join(', ') || 'none'}), single OverflowMenu role="menu" owner (${roleMenuOwners.join(', ')}), and 0 raw CSS rgba literals outside Canvas 2D (${rawRgbaOwners.join(', ') || 'none'})`
+    );
+
     const opaqueOverlayFiles = [
       'src/components/onboarding/OnboardingModal.tsx',
       'src/components/auth/GoogleAuthModal.tsx',
@@ -9436,14 +9465,16 @@ Exercise,,Date,Workout,Sets,Reps,Tempo,Rest,Notes,Set 1,Set 2,Set 3,Set 4
     const programTabSrc = fsMod.readFileSync(pathMod.join(repoRoot, 'src/components/program/ProgramTab.tsx'), 'utf8');
     const programPlanViewSrc = fsMod.readFileSync(pathMod.join(repoRoot, 'src/components/program/ProgramPlanView.tsx'), 'utf8');
     const menuSrc = fsMod.readFileSync(pathMod.join(repoRoot, 'src/components/program/ProgramHeaderMenu.tsx'), 'utf8');
+    const commonHeaderSrc48 = fsMod.readFileSync(pathMod.join(repoRoot, 'src/components/common/Header.tsx'), 'utf8');
     const importModalSrc = fsMod.readFileSync(pathMod.join(repoRoot, 'src/components/program/ImportProgramModal.tsx'), 'utf8');
     assert(
       programTabSrc.includes('ProgramHeaderMenu') &&
         programTabSrc.includes('ImportProgramModal') &&
         programTabSrc.includes('ProgramPickerModal') &&
         programPlanViewSrc.includes('headerAction') &&
-        menuSrc.includes('MoreHorizontal') &&
-        menuSrc.includes('w-60 rounded-2xl bg-surface-card') &&
+        menuSrc.includes('<OverflowMenu') &&
+        commonHeaderSrc48.includes('MoreHorizontal') &&
+        commonHeaderSrc48.includes('w-60 rounded-2xl bg-surface-card') &&
         menuSrc.includes('Import from spreadsheet') &&
         menuSrc.includes('Change program') &&
         importModalSrc.includes('parseProgramSpreadsheet'),
@@ -9718,7 +9749,7 @@ Exercise,,Date,Workout,Sets,Reps,Tempo,Rest,Notes,Set 1,Set 2,Set 3,Set 4
         modalSrc.includes('env(safe-area-inset-top, 0px)') &&
         modalSrc.includes('env(safe-area-inset-bottom, 0px)') &&
         modalSrc.includes('enterKeyHint="send"') &&
-        (modalSrc.includes("fontSize: '16px'") || modalSrc.includes('text-base')) &&
+        (modalSrc.includes('wk-body') || modalSrc.includes("fontSize: '16px'") || modalSrc.includes('text-base')) &&
         modalSrc.includes("maxWidth: '82%'") &&
         modalSrc.includes('wk-typing-dot') &&
         modalSrc.includes('showNewMsgPill') &&
@@ -11597,7 +11628,7 @@ Exercise,,Date,Workout,Sets,Reps,Tempo,Rest,Notes,Set 1,Set 2,Set 3,Set 4
 
     assert(
       coachTextSrc.includes("maxWidth: '58ch'") &&
-        coachTextSrc.includes('font-medium') &&
+        coachTextSrc.includes('wk-subhead') &&
         coachTextSrc.includes('--color-text-secondary') &&
         coachTextSrc.includes('text-left') &&
         coachTextSrc.includes('gap-1') &&
@@ -11886,13 +11917,15 @@ Exercise,,Date,Workout,Sets,Reps,Tempo,Rest,Notes,Set 1,Set 2,Set 3,Set 4
     const { buildExerciseInsight } = await import('../../services/exerciseInsight');
     const storage58 = await import('../../services/storage');
 
+    const commonHeaderSrc58 = fs58.readFileSync(path58.join(repo58, 'src/components/common/Header.tsx'), 'utf8');
     assert(
       !exCardSrc58.includes('showDetails') &&
         !exCardSrc58.includes('setShowDetails') &&
         !exCardSrc58.includes('aria-expanded') &&
         !exCardSrc58.includes('rotate(90deg)') &&
-        exCardSrc58.includes('<MoreHorizontal') &&
-        exCardSrc58.includes('role="menu"') &&
+        exCardSrc58.includes('<OverflowMenu') &&
+        commonHeaderSrc58.includes('<MoreHorizontal') &&
+        commonHeaderSrc58.includes('role="menu"') &&
         exCardSrc58.includes('onOpenDetail') &&
         exCardSrc58.includes('<ExerciseDetailModal') &&
         exCardSrc58.includes('Open exercise details, form and history') &&
@@ -13343,6 +13376,26 @@ Exercise,,Date,Workout,Sets,Reps,Tempo,Rest,Notes,Set 1,Set 2,Set 3,Set 4
       'ex-db-skullcrusher',
       'ex-db-hammer-curl',
       'ex-farmers-walk',
+      'ex-kb-floor-press',
+      'ex-incline-db-fly',
+      'ex-standing-db-ohp',
+      'ex-double-kb-clean-press',
+      'ex-helms-db-row',
+      'ex-gorilla-kb-row',
+      'ex-db-shrug',
+      'ex-kelso-db-shrug',
+      'ex-deficit-reverse-lunge',
+      'ex-double-kb-front-squat',
+      'ex-kb-rdl',
+      'ex-kickstand-db-rdl',
+      'ex-lu-raise',
+      'ex-chest-supported-rear-delt-row',
+      'ex-spider-db-curl',
+      'ex-zottman-curl',
+      'ex-db-wrist-curl',
+      'ex-tate-press',
+      'ex-db-tricep-kickback',
+      'ex-front-rack-kb-carry',
     ];
     const oneDbIds = [
       'ex-goblet-squat',
@@ -13354,6 +13407,23 @@ Exercise,,Date,Workout,Sets,Reps,Tempo,Rest,Notes,Set 1,Set 2,Set 3,Set 4
       'ex-db-hip-thrust',
       'ex-single-arm-db-row',
       'ex-suitcase-carry',
+      'ex-single-arm-db-bench',
+      'ex-single-arm-kb-press',
+      'ex-kb-bottoms-up-press',
+      'ex-kroc-row',
+      'ex-kb-goblet-squat',
+      'ex-sumo-dumbbell-squat',
+      'ex-single-leg-hip-thrust',
+      'ex-side-lying-lateral-raise',
+      'ex-concentration-curl',
+      'ex-db-snatch',
+      'ex-single-arm-kb-clean',
+      'ex-kb-swing',
+      'ex-single-arm-kb-swing',
+      'ex-turkish-get-up',
+      'ex-waiter-carry',
+      'ex-sleeper-external-rotation',
+      'ex-kb-halo',
     ];
     const dbDefs = SEED_EXERCISES.filter((d) => d.equipment === 'dumbbell');
     assert(
@@ -16318,6 +16388,8 @@ Exercise,,Date,Workout,Sets,Reps,Tempo,Rest,Notes,Set 1,Set 2,Set 3,Set 4
     const pillMatches72 = exCardSrc72.match(/wk-pill/g) || [];
     assert(
       pillMatches72.length === 1 &&
+        exCardSrc72.indexOf('{chip && <span className="wk-pill shrink-0">{chip}</span>}') <
+          exCardSrc72.indexOf('<h3 className="wk-h1">{formatSentenceCase(exercise.name)}</h3>') &&
         !exCardSrc72.includes('bodyweight counted') &&
         !exCardSrc72.includes('weeklyMuscleVolume') &&
         !exCardSrc72.includes('this week') &&
@@ -16922,6 +16994,40 @@ Exercise,,Date,Workout,Sets,Reps,Tempo,Rest,Notes,Set 1,Set 2,Set 3,Set 4
   {
     const { runSingleEngineAndCanonicalUiSuite } = await import('./singleEngineAndCanonicalUi.suite');
     await runSingleEngineAndCanonicalUiSuite(assert);
+  }
+
+  // =========================================================================
+  // 81. Product Usage Telemetry & Goals-Signals-Metrics (GSM) Pipeline
+  // =========================================================================
+  {
+    const { runProductTelemetrySuite } = await import('./productTelemetry.suite');
+    await runProductTelemetrySuite(assert);
+  }
+
+  // =========================================================================
+  // 82. TrainHeroic Catalog Parity & Biomechanical Swap Science
+  // =========================================================================
+  {
+    const { runTrainHeroicCatalogAndSwapScienceSuite } = await import('./trainHeroicCatalogAndSwapScience.suite');
+    await runTrainHeroicCatalogAndSwapScienceSuite(assert);
+  }
+
+  // =========================================================================
+  // 83. Design System End-to-End Flows Figma Board
+  // =========================================================================
+  {
+    const { runDesignSystemFlowsBoardSuite } = await import('./designSystemFlowsBoard.suite');
+    await runDesignSystemFlowsBoardSuite(assert);
+  }
+
+  // =========================================================================
+  // 84. Settings Multi-Source Training Data & Lift Maxes Import
+  // =========================================================================
+  {
+    const { runSettingsTrainingImportAndMaxesSuite } = await import(
+      './settingsTrainingImportAndMaxes.suite'
+    );
+    await runSettingsTrainingImportAndMaxesSuite(assert);
   }
 
   console.log('\nALL 80 ENGINE, GOVERNANCE, DESIGN SYSTEM, TYPOGRAPHY, WEARABLES, WHOOP STRAIN, GOOGLE AUTH, ONBOARDING CONTEXT, 6-WEEK PROGRAM, SPREADSHEET IMPORT, AI COACH ACTIONS, GEMINI FLASH + KG, OOUX, AGENTIC COACH, PRODUCT UPGRADES, INFO EXPERIENCE, CONTENT DESIGN, GOAL CAROUSEL, SHIFT NUDGE COLOR POLISH, EXERCISE DRILL-IN MODAL, COMPOSITION WIDGET, MEASUREMENT UX, AI-NATIVE ACTIONS, PERMANENT PROGRAM ADAPTATION, HITL INTERVENTION, REP-RANGE DOUBLE PROGRESSION, TWO-DUMBBELL PER-HAND LOGGING, AI-NATIVE CONVERSATIONAL DESIGN, P0 CLOSED-BETA READINESS, P1 GYM-FLOOR ACTIVATION, MACROFACTOR EXERCISE SCIENCE, AI PERSONALISATION/MEMORY, LEAN PROGRESSIVE ONBOARDING, CROSS-SURFACE AI ECONOMY, EXERCISE CARD DECLUTTERING, ADAPTATION CAROUSEL, HEALTH CONNECT ONBOARDING, SEAMLESS CROSS-ENVIRONMENT SWAPPING, PRE-ANDROID COMPLETENESS, DUMBBELL INTEGRITY, SMART SWAP / BEST-SET TREND, CROSS-SURFACE AI CONTENT GUIDELINES & ADDITIVE-FIRST SINGLE-ENGINE / CANONICAL UI SUITES PASSED SUCCESSFULLY! 🎯');

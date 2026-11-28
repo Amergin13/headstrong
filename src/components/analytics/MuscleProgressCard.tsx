@@ -112,7 +112,7 @@ const WeeklySetsBars: React.FC<{ progress: MuscleProgress }> = ({ progress }) =>
         {target && (
           <span
             className="wk-caption tabular-nums absolute right-2"
-            style={{ top: `calc(${pct(target[1])} + 4px)`, lineHeight: 1 }}
+            style={{ top: `calc(${pct(target[1])} + 4px)` }}
             aria-hidden="true"
           >
             Target {target[0]}–{target[1]}

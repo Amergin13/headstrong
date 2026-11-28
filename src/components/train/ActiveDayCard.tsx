@@ -52,7 +52,7 @@ export const ActiveDayCard: React.FC<ActiveDayCardProps> = ({ thisWeek, recent, 
                       href={`https://www.strava.com/activities/${a.externalId}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="font-medium underline"
+                      className="underline"
                       style={{ color: 'var(--color-text-primary)' }}
                     >
                       View on Strava

@@ -5,6 +5,7 @@ export interface Milestone {
   title: string;
   description: string;
   tag?: string;
+  pillar?: StrengthPillar;
 }
 
 /** Finished training week, or the whole 6-week block. */
@@ -84,11 +85,12 @@ export function evaluateStrengthStandardAdvance(
   if (newTotal <= oldTotal) return null;
 
   if (TIER_ORDER[newTier] > TIER_ORDER[oldTier]) {
-    return { title: `${newTier} ${pillar}`, description: `You moved up to ${newTier} in ${pillar}!`, tag: `${newTier}` };
+    return { title: `${newTier} ${pillar}`, description: `You moved up to ${newTier} in ${pillar}!`, tag: `${newTier}`, pillar };
   }
   return {
     title: 'Strength level up',
     description: `You moved up to ${pillar} ${newTier} ${newSubDiv}!`,
     tag: `${newTier} ${newSubDiv}`,
+    pillar,
   };
 }

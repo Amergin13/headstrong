@@ -1684,10 +1684,18 @@ export function getExerciseBiomechanicalMeta(ex: ExerciseDefinition): {
       id.includes('lunge') ||
       id.includes('pistol') ||
       id.includes('single-leg') ||
+      id.includes('cossack') ||
+      id.includes('sissy') ||
+      id.includes('step-down') ||
       id.includes('trx') ||
       id.includes('ring') ||
       id.includes('gymball') ||
-      id.includes('handstand')
+      id.includes('stability-ball') ||
+      id.includes('handstand') ||
+      id.includes('bottoms-up') ||
+      id.includes('turkish') ||
+      id.includes('waiter') ||
+      id.includes('windmill')
     ) {
       return 'low';
     }
@@ -1696,12 +1704,19 @@ export function getExerciseBiomechanicalMeta(ex: ExerciseDefinition): {
       ex.equipment === 'cable' ||
       id.includes('leg-press') ||
       id.includes('hack') ||
+      id.includes('pendulum') ||
+      id.includes('belt-squat') ||
+      id.includes('smith') ||
       id.includes('chest-supported') ||
+      id.includes('seal-row') ||
+      id.includes('helms-row') ||
       id.includes('preacher') ||
+      id.includes('spider-curl') ||
       id.includes('seated-calf') ||
-      id.includes('leg-curl') ||
+      (id.includes('leg-curl') && !id.includes('db-leg-curl') && !id.includes('sliding')) ||
       id.includes('leg-extension') ||
-      id.includes('pulldown')
+      id.includes('pulldown') ||
+      id.includes('pec-deck')
     ) {
       return 'high';
     }
@@ -1736,89 +1751,193 @@ export function getExerciseBiomechanicalMeta(ex: ExerciseDefinition): {
     };
   }
 
-  // Calves, Lateral Raises, Face Pulls, Curls, Pushdowns, Leg Curls, Leg Extensions, Core = Isolation
+  const isCarryOrPower =
+    ex.movementFamily === 'vector-carry-conditioning' ||
+    ex.movementFamily === 'vector-power-olympic';
+
+  // Calves, Lateral Raises, Face Pulls, Curls, Pushdowns, Leg Curls, Leg Extensions, Flyes, Pullovers, Core = Isolation
   const isIsolation =
     ex.isIsolation ??
-    (id.includes('lateral') ||
-      id.includes('calf') ||
-      id.includes('curl') ||
+    (!isCarryOrPower &&
+      (id.includes('lateral') ||
+        id.includes('calf') ||
+        id.includes('tibialis') ||
+        id.includes('curl') ||
+        id.includes('leg-extension') ||
+        id.includes('pushdown') ||
+        id.includes('skullcrusher') ||
+        id.includes('kickback') ||
+        id.includes('pullover') ||
+        id.includes('straight-arm') ||
+        id.includes('lat-prayer') ||
+        id.includes('face-pull') ||
+        id.includes('pull-apart') ||
+        id.includes('pec-deck') ||
+        id.includes('abduction') ||
+        id.includes('adduction') ||
+        id.includes('shrug') ||
+        id.includes('external-rotation') ||
+        id.includes('crunch') ||
+        id.includes('plank') ||
+        id.includes('pallof') ||
+        id.includes('woodchop') ||
+        id.includes('fly') ||
+        id.includes('reverse-nordic') ||
+        ex.primaryMuscle === 'Side Delts' ||
+        ex.primaryMuscle === 'Rear Delts' ||
+        ex.primaryMuscle === 'Calves' ||
+        ex.primaryMuscle === 'Biceps' ||
+        ex.primaryMuscle === 'Triceps' ||
+        ex.primaryMuscle === 'Core'));
+
+  // Biarticular muscle-length & external torque profile classification
+  // (Maeo et al., 2021, 2022, 2023; Pedrosa et al., 2022, 2023; Kassiano et al., 2023; Kinoshita et al., 2023)
+  let resistanceProfile: ResistanceProfile = ex.resistanceProfile || 'mid';
+  if (!ex.resistanceProfile) {
+    if (
+      id.includes('seated-calf') ||
+      id.includes('lying-leg-curl') ||
+      id.includes('prone-leg-curl') ||
+      id.includes('db-leg-curl') ||
+      id.includes('sliding-leg-curl') ||
+      id.includes('stability-ball-leg-curl') ||
+      id.includes('jm-press') ||
+      id.includes('tate-press')
+    ) {
+      // Bent-knee calf raises slacken biarticular gastrocnemius (Kinoshita et al., 2023);
+      // prone/lying leg curls extend the hip, slackening proximal hamstrings (Maeo et al., 2021).
+      resistanceProfile = 'mid';
+    } else if (
+      id.includes('rdl') ||
+      id.includes('good-morning') ||
+      id.includes('45-back-extension') ||
+      id.includes('incline') ||
+      id.includes('bayesian') ||
+      id.includes('preacher') ||
+      id.includes('spider-curl') ||
+      id.includes('cable-lateral') ||
+      id.includes('behind-back-lateral') ||
+      id.includes('side-lying-lateral') ||
+      id.includes('lu-raise') ||
+      id.includes('y-raise') ||
+      id.includes('standing-calf') ||
+      id.includes('leg-press-calf') ||
+      id.includes('donkey-calf') ||
+      id.includes('single-leg-calf') ||
+      id.includes('db-calf') ||
+      id.includes('slow-calf') ||
+      id.includes('leg-curl') ||
+      id.includes('nordic') ||
+      id.includes('sissy-squat') ||
+      id.includes('leg-press') ||
       id.includes('leg-extension') ||
-      id.includes('pushdown') ||
+      id.includes('pullup') ||
+      id.includes('pullover') ||
+      id.includes('lat-prayer') ||
+      id.includes('straight-arm') ||
+      id.includes('squat') ||
+      id.includes('lunge') ||
+      id.includes('step-up') ||
+      id.includes('step-down') ||
+      id.includes('overhead-tricep') ||
+      id.includes('overhead-db-extension') ||
+      id.includes('overhead-cable-tricep') ||
       id.includes('skullcrusher') ||
+      id.includes('pec-deck') ||
+      id.includes('deficit-pushup') ||
+      id.includes('fly')
+    ) {
+      resistanceProfile = 'lengthened';
+    } else if (
+      id.includes('pushdown') ||
+      id.includes('kickback') ||
+      id.includes('concentration-curl') ||
+      id.includes('high-cable-curl') ||
       id.includes('face-pull') ||
       id.includes('pull-apart') ||
-      id.includes('crunch') ||
-      id.includes('plank') ||
-      id.includes('fly') ||
-      id.includes('reverse-nordic') ||
-      ex.primaryMuscle === 'Side Delts' ||
-      ex.primaryMuscle === 'Rear Delts' ||
-      ex.primaryMuscle === 'Calves' ||
-      ex.primaryMuscle === 'Biceps' ||
-      ex.primaryMuscle === 'Triceps' ||
-      ex.primaryMuscle === 'Core');
-
-  // Resistance profile classification (Lengthened stretch vs Mid vs Shortened peak)
-  let resistanceProfile: ResistanceProfile = ex.resistanceProfile || 'mid';
-  if (
-    id.includes('rdl') ||
-    id.includes('incline') ||
-    id.includes('cable-lateral') ||
-    id.includes('standing-calf') ||
-    id.includes('seated-calf') ||
-    id.includes('leg-curl') ||
-    id.includes('nordic') ||
-    id.includes('leg-extension') ||
-    id.includes('pullup') ||
-    id.includes('squat') ||
-    id.includes('lunge') ||
-    id.includes('step-up') ||
-    id.includes('skullcrusher') ||
-    id.includes('fly')
-  ) {
-    resistanceProfile = 'lengthened';
-  } else if (
-    id.includes('pushdown') ||
-    id.includes('face-pull') ||
-    id.includes('pull-apart') ||
-    id.includes('hip-thrust') ||
-    id.includes('glute-bridge') ||
-    id.includes('db-lateral') ||
-    id.includes('cable-row')
-  ) {
-    resistanceProfile = 'shortened';
+      id.includes('hip-thrust') ||
+      id.includes('glute-bridge') ||
+      id.includes('frog-pump') ||
+      id.includes('glute-kickback') ||
+      id.includes('reverse-hyper') ||
+      id.includes('db-lateral') ||
+      id.includes('seated-lateral') ||
+      id.includes('machine-lateral') ||
+      id.includes('cable-row') ||
+      id.includes('seal-row') ||
+      id.includes('chest-supported')
+    ) {
+      resistanceProfile = 'shortened';
+    }
   }
 
   // Axial / Spinal CNS load per set (0.0 to 1.0)
   let axialLoadIndex = ex.axialLoadIndex ?? 0.2;
-  if (ex.equipment === 'bodyweight' && !ex.isWeightedCalisthenic) {
-    axialLoadIndex = isIsolation ? 0.04 : 0.10;
-  } else if (id.includes('deadlift') && !id.includes('rdl')) axialLoadIndex = 0.95;
-  else if (id.includes('squat')) axialLoadIndex = 0.85;
-  else if (id.includes('rdl')) axialLoadIndex = 0.75;
-  else if (id.includes('barbell-row')) axialLoadIndex = 0.65;
-  else if (id.includes('ohp') || id.includes('farmers-walk') || id.includes('suitcase-carry')) axialLoadIndex = 0.50;
-  else if (id.includes('hip-thrust')) axialLoadIndex = 0.30;
-  else if (id.includes('bench') || id.includes('pullup') || id.includes('dip') || id.includes('leg-press')) axialLoadIndex = 0.35;
-  else if (isIsolation) axialLoadIndex = 0.08;
+  if (ex.axialLoadIndex === undefined) {
+    if (ex.equipment === 'bodyweight' && !ex.isWeightedCalisthenic) {
+      axialLoadIndex = isIsolation ? 0.04 : 0.10;
+    } else if (id.includes('trap-bar-deadlift') || id.includes('hex-bar-deadlift')) {
+      axialLoadIndex = 0.80;
+    } else if (id.includes('deadlift') && !id.includes('rdl')) {
+      axialLoadIndex = 0.95;
+    } else if (id.includes('power-clean') || id.includes('snatch') || id.includes('clean-and-jerk') || id.includes('squat-clean') || id.includes('high-pull')) {
+      axialLoadIndex = 0.82;
+    } else if (id.includes('belt-squat')) {
+      axialLoadIndex = 0.15;
+    } else if (id.includes('hack-squat') || id.includes('pendulum-squat') || id.includes('smith-squat')) {
+      axialLoadIndex = 0.35;
+    } else if (id.includes('ssb-squat') || id.includes('safety-squat')) {
+      axialLoadIndex = 0.72;
+    } else if (id.includes('squat')) {
+      axialLoadIndex = 0.85;
+    } else if (id.includes('rdl') || id.includes('good-morning')) {
+      axialLoadIndex = 0.75;
+    } else if (id.includes('chest-supported') || id.includes('seal-row') || id.includes('helms-row')) {
+      axialLoadIndex = 0.12;
+    } else if (id.includes('barbell-row') || id.includes('pendlay-row') || id.includes('t-bar-row')) {
+      axialLoadIndex = 0.65;
+    } else if (id.includes('ohp') || id.includes('push-press') || id.includes('carry') || id.includes('farmers-walk')) {
+      axialLoadIndex = 0.50;
+    } else if (id.includes('sled') || id.includes('erg') || id.includes('airbike')) {
+      axialLoadIndex = 0.20;
+    } else if (id.includes('hip-thrust')) {
+      axialLoadIndex = 0.30;
+    } else if (id.includes('bench') || id.includes('pullup') || id.includes('dip') || id.includes('leg-press')) {
+      axialLoadIndex = 0.35;
+    } else if (isIsolation) {
+      axialLoadIndex = 0.08;
+    }
+  }
 
   // Stimulus-to-Fatigue Ratio (1.0 - 10.0)
   let sfrScore = ex.sfrScore ?? 8.0;
-  if (ex.equipment === 'bodyweight' && !ex.isWeightedCalisthenic) {
-    sfrScore = 9.0;
-  } else if (
-    id.includes('cable') ||
-    id.includes('incline') ||
-    id.includes('calf') ||
-    id.includes('leg-curl') ||
-    id.includes('leg-extension') ||
-    id.includes('hip-thrust')
-  ) {
-    sfrScore = 9.2;
-  } else if (id.includes('deadlift') && !id.includes('rdl')) {
-    sfrScore = 6.2;
-  } else if (id.includes('squat') || id.includes('bench')) {
-    sfrScore = 7.8;
+  if (ex.sfrScore === undefined) {
+    if (ex.equipment === 'bodyweight' && !ex.isWeightedCalisthenic) {
+      sfrScore = 9.0;
+    } else if (
+      id.includes('cable') ||
+      id.includes('pendulum') ||
+      id.includes('hack-squat') ||
+      id.includes('belt-squat') ||
+      id.includes('chest-supported') ||
+      id.includes('seal-row') ||
+      id.includes('helms-row') ||
+      id.includes('bayesian') ||
+      id.includes('preacher') ||
+      id.includes('incline') ||
+      id.includes('calf') ||
+      id.includes('leg-curl') ||
+      id.includes('leg-extension') ||
+      id.includes('hip-thrust')
+    ) {
+      sfrScore = 9.2;
+    } else if (id.includes('deadlift') && !id.includes('rdl') && !id.includes('trap-bar')) {
+      sfrScore = 6.2;
+    } else if (id.includes('trap-bar-deadlift')) {
+      sfrScore = 7.4;
+    } else if (id.includes('squat') || id.includes('bench')) {
+      sfrScore = 7.8;
+    }
   }
 
   // Articular Joint mapping

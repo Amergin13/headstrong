@@ -1,4 +1,5 @@
 import { applyCors } from '../_lib/cors.js';
+import { emitServerMetric } from '../_lib/metrics.js';
 const WHOOP_CLIENT_ID = '8bcb0a0d-b6ff-42e0-82b7-c3508e18c9f8';
 // Must be configured as a Vercel environment variable. Never hardcode it.
 // Read per request so a newly set variable takes effect without a code change.
@@ -445,6 +446,11 @@ export default async function handler(req: any, res: any) {
 
     const hasCoreMetrics = typeof biometrics.hrvRmssd === 'number' && typeof biometrics.restingHr === 'number';
 
+    emitServerMetric('wearable.api.request', 1, {
+      provider: 'whoop',
+      endpoint: 'biometrics',
+      outcome: 'success',
+    });
     return res.status(200).json({
       success: true,
       hasCoreMetrics,
@@ -460,6 +466,11 @@ export default async function handler(req: any, res: any) {
     });
   } catch (error: any) {
     console.error('Whoop biometrics aggregation proxy error:', error);
+    emitServerMetric('wearable.api.request', 1, {
+      provider: 'whoop',
+      endpoint: 'biometrics',
+      outcome: 'error',
+    });
     return res.status(500).json({
       success: false,
       error: error?.message || 'Whoop biometrics proxy internal error',

@@ -810,6 +810,7 @@ const REBUILDABLE_CACHE_KEYS = [
   'treise_goals_summary_v1',
   'treise_composition_insight_v1',
   'treise_ai_rejected_v1',
+  'treise_telemetry_v1',
 ];
 
 /**
@@ -1390,7 +1391,9 @@ export function calculateWeeklyMuscleVolume(
 ): Record<string, number> {
   const weekStart = new Date(now.getTime());
   weekStart.setDate(weekStart.getDate() - 7);
-  const sessionsToScan = activeWorkout ? [activeWorkout, ...workouts] : workouts;
+  const sessionsToScan = activeWorkout
+    ? [activeWorkout, ...workouts.filter((w) => w.id !== activeWorkout.id)]
+    : workouts;
   return muscleSetsBetween(sessionsToScan, exerciseCatalog, localDateString(weekStart));
 }
 
@@ -1557,6 +1560,7 @@ export function permanentlyEraseAllUserData() {
     Object.values(KEYS).forEach((k) => localStorage.removeItem(k));
     Object.values(LEGACY_KEYS).forEach((k) => localStorage.removeItem(k));
     localStorage.removeItem('treise_renpho_devices_v1');
+    localStorage.removeItem('treise_telemetry_v1');
     clearDriveSessionCredentials();
     void clearIndexedDbMirror();
     if (typeof sessionStorage !== 'undefined') {

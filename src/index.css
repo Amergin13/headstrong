@@ -104,7 +104,9 @@ input[type='number'] {
 /* WCAG AA Keyboard Focus Ring */
 button:focus-visible,
 input:focus-visible,
-select:focus-visible {
+select:focus-visible,
+textarea:focus-visible,
+a:focus-visible {
   outline: 2px solid var(--color-border-focus);
   outline-offset: 2px;
 }
@@ -327,6 +329,11 @@ select:focus-visible {
   color: var(--color-text-primary);
   text-align: center;
   width: 100%;
+}
+.wk-input input {
+  font: inherit;
+  font-variant-numeric: inherit;
+  font-feature-settings: inherit;
 }
 .wk-input:focus-within,
 .wk-input:focus {

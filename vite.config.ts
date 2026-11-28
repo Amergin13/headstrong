@@ -130,17 +130,11 @@ export default defineConfig({
         manualChunks(id) {
           if (id.includes('node_modules')) {
             if (/node_modules\/(react|react-dom|scheduler)\//.test(id)) return 'vendor-react';
-            if (/node_modules\/(recharts|d3-[^/]+|victory-vendor|internmap|decimal\.js-light|lodash|react-smooth|recharts-scale|eventemitter3|tiny-invariant|clsx)\//.test(id)) {
-              return 'vendor-charts';
-            }
             if (id.includes('node_modules/lucide-react')) return 'vendor-icons';
             return undefined;
           }
           if (/\/src\/(services\/seedData|services\/exerciseFormClips|engine\/knowledgeGraph|engine\/muscleBuildingProgram|engine\/kilgoreStandards|engine\/trainingPlans)\.ts$/.test(id)) {
             return 'data-catalog';
-          }
-          if (/\/src\/services\/(aiAssistantService|coachTools|coachAnswers|coachContextEnvelope|coachPersonalization|coachInterventions|coachContext)\.ts$/.test(id)) {
-            return 'coach-engine';
           }
           return undefined;
         },

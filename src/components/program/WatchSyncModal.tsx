@@ -9,6 +9,7 @@ import {
 } from '../../engine/types';
 import {
   WEARABLE_PROVIDERS,
+  getWearableProviderMeta,
   syncWearableBiometrics,
   disconnectWearable,
   setActiveTracker,
@@ -22,10 +23,12 @@ import {
   parseWhoopCsvExport,
 } from '../../services/whoopService';
 import {
+  importFromAppleHealthXml,
   importFromHealthConnectJson,
   mergeHealthConnectProfile,
 } from '../../services/onboardingHealthImport';
 import { HealthConnectStatus } from '../../services/healthConnectBridge';
+import { isIosPlatform } from '../../services/healthConnectService';
 import { formatHeight, resolveHeightUnit } from '../../utils/units';
 import { X } from 'lucide-react';
 import { triggerHaptic } from '../../utils/haptics';
@@ -71,7 +74,9 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const providerMeta = WEARABLE_PROVIDERS[selectedProvider];
+  const isIosHealth = hcStatus?.provider === 'apple_health' || isIosPlatform();
+  const nativeHubLabel = isIosHealth ? 'Apple Health' : 'Health Connect';
+  const providerMeta = selectedProvider === 'whoop' ? WEARABLE_PROVIDERS.whoop : getWearableProviderMeta(selectedProvider, isIosHealth);
   const hcBridgeAvailable = Boolean(hcStatus?.bridge && hcStatus?.available);
   const hcWorkoutsOn = Boolean(profile.healthConnectActivities && hcStatus?.granted);
 
@@ -97,14 +102,24 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
     if (!onSetHealthConnect) return;
     if (hcWorkoutsOn) {
       onSetHealthConnect(false);
-      setImportStatus('Health Connect workout sync turned off.');
+      setImportStatus(`${nativeHubLabel} workout sync turned off.`);
     } else {
-      // Health Connect only adds workouts here, so the recovery tracker (and its connection) stays as it is.
+      // Native health hub only adds workouts here, so the recovery tracker (and its connection) stays as it is.
       onSetHealthConnect(true);
       if (!hcStatus?.granted && onRequestHealthConnectPermission) {
-        if (onRequestHealthConnectPermission() === false) setImportStatus(UPDATE_APP_FOR_PERMISSION);
+        if (onRequestHealthConnectPermission() === false) {
+          setImportStatus(
+            isIosHealth
+              ? 'Open iPhone Settings, then Health, then Data Access & Devices, and allow Treise.'
+              : UPDATE_APP_FOR_PERMISSION
+          );
+        }
       } else {
-        setImportStatus('Health Connect is on. Pixel Watch, Fitbit and other watch workouts and daily steps will sync automatically.');
+        setImportStatus(
+          isIosHealth
+            ? 'Apple Health is on. Apple Watch, iPhone, Oura and Garmin workouts and daily steps will sync automatically.'
+            : 'Health Connect is on. Pixel Watch, Fitbit and other watch workouts and daily steps will sync automatically.'
+        );
       }
     }
   };
@@ -242,6 +257,43 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
         }
 
         const trimmedText = text.trim();
+        if (trimmedText.startsWith('<') || lowerName.endsWith('.xml')) {
+          const ahImport = importFromAppleHealthXml(trimmedText);
+          const hasAhDemographics = Boolean(
+            ahImport.latestHeightCm !== undefined ||
+              ahImport.gender !== undefined ||
+              ahImport.age !== undefined
+          );
+          if (ahImport.biometrics.length > 0 || hasAhDemographics) {
+            const profilePatch = mergeHealthConnectProfile(profile, ahImport, { overwriteExplicit: true });
+            const latest =
+              ahImport.biometrics.length > 0
+                ? { ...ahImport.biometrics[ahImport.biometrics.length - 1], source: 'health_connect' as const }
+                : null;
+            if (latest) {
+              onSyncCompleted(latest, 'health_connect');
+            }
+            if (onUpdateProfile) {
+              onUpdateProfile({
+                ...setActiveTracker('health_connect', profile),
+                healthConnectConnected: true,
+                healthConnectLastSync: new Date().toISOString(),
+                ...profilePatch,
+              });
+            }
+            const summaryBits: string[] = [];
+            if (ahImport.gender) summaryBits.push(ahImport.gender === 'male' ? 'Male' : 'Female');
+            if (ahImport.age) summaryBits.push(`${ahImport.age} yrs`);
+            if (ahImport.latestHeightCm) {
+              summaryBits.push(formatHeight(ahImport.latestHeightCm, resolveHeightUnit(profile)));
+            }
+            if (latest) summaryBits.push(`latest day ${latest.date}`);
+            setImportStatus(`Imported from Apple Health (${summaryBits.join(' · ')}).`);
+            triggerHaptic('success');
+            return;
+          }
+        }
+
         if (trimmedText.startsWith('{') || trimmedText.startsWith('[')) {
           const hcImport = importFromHealthConnectJson(trimmedText);
           const hasHcDemographics = Boolean(
@@ -296,7 +348,11 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
           setImportStatus('No biometric records found in file.');
         }
       } catch {
-        setImportStatus('Failed to read file. Please ensure it is a valid Whoop CSV or Health Connect JSON export.');
+        setImportStatus(
+          isIosHealth
+            ? 'Failed to read file. Please ensure it is a valid Apple Health export.xml, Whoop CSV, or JSON export.'
+            : 'Failed to read file. Please ensure it is a valid Whoop CSV or Health Connect JSON export.'
+        );
       }
     };
     reader.readAsText(file);
@@ -307,10 +363,10 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
       {/* Header & Close */}
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <h3 className="wk-h1 leading-tight">
+          <h3 className="wk-h1">
             Wearable &amp; recovery sync
           </h3>
-          <p className="wk-body mt-2 max-w-prose">
+          <p className="wk-body mt-2">
             Auto-regulate daily training loads with biometric telemetry
           </p>
         </div>
@@ -338,7 +394,7 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
           const isSelected = selectedProvider === prov;
           const shortLabels: Record<'whoop' | 'health_connect', string> = {
             whoop: 'Whoop',
-            health_connect: 'Health Connect',
+            health_connect: nativeHubLabel,
           };
 
           return (
@@ -361,7 +417,7 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
 
       {/* Selected Provider Summary */}
       <div className="mt-5 flex items-end justify-between gap-2">
-        <span className="wk-subhead leading-tight">
+        <span className="wk-subhead">
           {providerMeta.name}
         </span>
         {isCurrentActive ? (
@@ -423,7 +479,11 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
             'Sync your overnight recovery score, HRV, resting heart rate, and sleep duration automatically to calibrate your daily training volume and RIR targets.'}
           {selectedProvider === 'health_connect' &&
             (hcBridgeAvailable
-              ? 'Allow Health Connect below so sleep, heart rate, HRV, weight, height, body fat, workouts, and daily steps from Google Pixel Watch, Fitbit, Samsung Health, Garmin and Wear OS sync automatically.'
+              ? isIosHealth
+                ? 'Allow Apple Health below so sleep, heart rate, HRV, weight, height, body fat, workouts, and daily steps from Apple Watch, iPhone, Oura and Garmin sync automatically.'
+                : 'Allow Health Connect below so sleep, heart rate, HRV, weight, height, body fat, workouts, and daily steps from Google Pixel Watch, Fitbit, Samsung Health, Garmin and Wear OS sync automatically.'
+              : isIosHealth
+              ? 'In the Treise iOS app, Apple Health syncs sleep, heart rate, HRV, weight, height, body fat, workouts, and daily steps from Apple Watch, iPhone, Oura and Garmin automatically. You can also import an Apple Health export.xml file below.'
               : "In the Treise app from Google Play, Android Health Connect syncs sleep, heart rate, HRV, weight, height, body fat, workouts, and daily steps from Pixel Watch, Fitbit, Samsung Health and Garmin automatically. You can also import a Health Connect JSON export below (including sex, age, and height when present).")}
         </p>
       )}
@@ -446,7 +506,7 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
         <input
           ref={fileInputRef}
           type="file"
-          accept=".json,.csv,application/json,text/csv"
+          accept=".json,.xml,.csv,application/json,application/xml,text/xml,text/csv"
           onChange={handleFileImport}
           className="hidden"
           aria-label="Upload biometric data export"
@@ -468,10 +528,10 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
                 }
               >
                 {hcWorkoutsOn
-                  ? 'Turn off Health Connect workouts'
+                  ? `Turn off ${nativeHubLabel} workouts`
                   : hcStatus?.granted
-                  ? 'Turn on Health Connect workouts'
-                  : 'Allow access in Health Connect'}
+                  ? `Turn on ${nativeHubLabel} workouts`
+                  : `Allow access in ${nativeHubLabel}`}
               </button>
             )}
             <button
@@ -484,7 +544,9 @@ export const WatchSyncModal: React.FC<WatchSyncModalProps> = ({
                   : { background: 'var(--color-action-primary-bg)', color: 'var(--color-action-primary-fg)' }
               }
             >
-              Import health data file (.json / .csv)
+              {isIosHealth
+                ? 'Import health data file (.xml / .json / .csv)'
+                : 'Import health data file (.json / .csv)'}
             </button>
             {isProviderConnected && (
               <button

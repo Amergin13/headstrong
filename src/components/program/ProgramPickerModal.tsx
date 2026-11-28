@@ -83,7 +83,7 @@ export const ProgramPickerModal: React.FC<ProgramPickerModalProps> = ({
       <div className="wk-card w-full max-w-lg max-h-[90vh] overflow-y-auto shadow-2xl flex flex-col gap-3">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <h3 className="wk-h1 leading-tight">
+            <h3 className="wk-h1">
               Change program
             </h3>
             <p className="wk-body mt-2">
@@ -119,7 +119,7 @@ export const ProgramPickerModal: React.FC<ProgramPickerModalProps> = ({
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
-                    <div className="wk-subhead leading-tight">
+                    <div className="wk-subhead">
                       {formatSentenceCase(opt.title)}
                     </div>
                     <p className="wk-caption mt-1">

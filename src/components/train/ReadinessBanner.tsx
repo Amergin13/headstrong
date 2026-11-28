@@ -78,7 +78,7 @@ export const ReadinessBanner: React.FC<ReadinessBannerProps> = ({
   const bodyText = hasPrefix ? summary.slice(colonIndex + 1) : summary;
 
   return (
-    <div className="wk-card space-y-3 border" style={{ borderColor: 'var(--color-border-subtle)' }}>
+    <div className="wk-card space-y-3">
       {/* 1. Recovery Telemetry Row (Image 1) */}
       {hasWatchData ? (
         <div className="flex items-center gap-4">
@@ -105,8 +105,8 @@ export const ReadinessBanner: React.FC<ReadinessBannerProps> = ({
 
           {/* Description Text matching Image 1 */}
           <div className="flex-1 min-w-0">
-            <p className="text-base text-[color:var(--color-text-secondary)] leading-relaxed font-medium max-w-prose">
-              {prefix && <strong className="text-[color:var(--color-text-primary)] font-semibold">{prefix} </strong>}
+            <p className="wk-body">
+              {prefix && <span className="wk-subhead">{prefix} </span>}
               {bodyText}
             </p>
             {((latestBiometrics?.restingHr || 0) > 0 || (latestBiometrics?.hrvRmssd || 0) > 0) && (

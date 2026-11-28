@@ -23,6 +23,14 @@ export const SEMANTIC_COLOR = {
   borderAccent: 'var(--color-border-accent)',
   borderTrack: 'var(--color-border-track)',
   borderFocus: 'var(--color-border-focus)',
+  rimHighlight: 'var(--color-rim-highlight)',
+
+  glassRim: 'var(--color-glass-rim)',
+  glassGlowStrong: 'var(--color-glass-glow-strong)',
+  glassGlowSoft: 'var(--color-glass-glow-soft)',
+  handleBar: 'var(--color-handle-bar)',
+  shadowFloatingBar: 'var(--shadow-floating-bar)',
+  shadowSheet: 'var(--shadow-sheet)',
 
   accentPrimary: 'var(--color-accent-primary)',
 

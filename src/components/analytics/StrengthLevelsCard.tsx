@@ -1,19 +1,11 @@
 import React, { useState } from 'react';
 import { ChevronDown, ChevronRight, Sparkles } from 'lucide-react';
-import { PolarAngleAxis, PolarGrid, PolarRadiusAxis, Radar, RadarChart, ResponsiveContainer } from 'recharts';
 import { BiometricLog } from '../../engine/types';
 import { calculateEngineVitalityScore } from '../../engine/vitality';
 import { MovementStandardsReport, levelLabel } from '../../services/movementStandards';
 import { formatSentenceCase } from '../../utils/typography';
 import { triggerHaptic } from '../../utils/haptics';
-
-const SHORT_NAME: Record<string, string> = {
-  Squat: 'Squat',
-  Hinge: 'Deadlift',
-  'Horizontal Push': 'Bench',
-  'Vertical Push': 'Press',
-  'Vertical Pull': 'Chin-up',
-};
+import { StandardsRadar } from './ProgressOverviewCards';
 
 interface StrengthLevelsCardProps {
   report: MovementStandardsReport;
@@ -41,10 +33,10 @@ export const StrengthLevelsCard: React.FC<StrengthLevelsCardProps> = ({
   if (!report.levels.some((l) => l.logged)) {
     return (
       <section aria-label="Strength levels" className="wk-card w-full text-left block">
-        <h2 className="wk-h1 leading-tight">
+        <h2 className="wk-h1">
           Strength levels
         </h2>
-        <p className="wk-body mt-2 max-w-prose">
+        <p className="wk-body mt-2">
           Finish a workout to see your level on each movement, compared with lifters of your sex, bodyweight and age.
         </p>
       </section>
@@ -54,11 +46,6 @@ export const StrengthLevelsCard: React.FC<StrengthLevelsCardProps> = ({
   const overall = loggedRated.length
     ? levelLabel(loggedRated.reduce((t, l) => t + (l.step ?? 0), 0) / loggedRated.length)
     : null;
-  // Equal steps: each level is 20 points, each sub-level 5. Unlogged movements sit at 0.
-  const radarData = rated.map((l) => ({
-    axis: SHORT_NAME[l.pillar] ?? l.name,
-    score: l.logged && l.step !== undefined ? Math.round(l.step * 5 + ((l.progress ?? 0) / 100) * 5) : 0,
-  }));
   const cardio = calculateEngineVitalityScore(latestBiometrics);
   const rows = report.levels.find((l) => l.pillar === 'Horizontal Pull');
 
@@ -67,7 +54,7 @@ export const StrengthLevelsCard: React.FC<StrengthLevelsCardProps> = ({
       {/* Header + Overall Standing Focal Anchor */}
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <h2 className="wk-h1 leading-tight">
+          <h2 className="wk-h1">
             Strength levels
           </h2>
           <p className="wk-caption mt-1" style={{ color: 'var(--color-text-secondary)' }}>
@@ -88,13 +75,12 @@ export const StrengthLevelsCard: React.FC<StrengthLevelsCardProps> = ({
         )}
       </div>
 
-      {/* Elevated Inset Radar Telemetry Stage */}
+      {/* Elevated Inset Radar Telemetry Stage (single canonical StandardsRadar SVG) */}
       <div
-        className="rounded-2xl p-3 border"
+        className="wk-raised"
         style={{
           background:
             'radial-gradient(circle at 50% 54%, rgb(var(--color-accent-primary-rgb) / 0.08) 0%, transparent 62%), var(--wk-raised)',
-          borderColor: 'var(--color-border-subtle)',
         }}
       >
         <div className="flex items-center justify-between gap-2 px-1">
@@ -103,30 +89,8 @@ export const StrengthLevelsCard: React.FC<StrengthLevelsCardProps> = ({
             {loggedRated.length} of {rated.length} rated
           </span>
         </div>
-        <div className="w-full h-56 mt-1" aria-hidden="true">
-          <ResponsiveContainer width="100%" height="100%" initialDimension={{ width: 340, height: 224 }}>
-            <RadarChart cx="50%" cy="50%" outerRadius="74%" data={radarData}>
-              <PolarGrid stroke="var(--color-border-strong)" strokeDasharray="2 3" />
-              <PolarAngleAxis
-                dataKey="axis"
-                tick={{ fill: 'var(--color-text-secondary)', fontSize: 12, fontWeight: 500 }}
-              />
-              <PolarRadiusAxis angle={90} domain={[0, 100]} tick={false} axisLine={false} />
-              <Radar
-                dataKey="score"
-                stroke="var(--color-accent-primary)"
-                strokeWidth={2}
-                fill="var(--color-accent-primary)"
-                fillOpacity={0.22}
-                dot={{
-                  r: 3.5,
-                  fill: 'var(--color-accent-primary)',
-                  stroke: 'var(--color-bg-surface-raised)',
-                  strokeWidth: 2,
-                }}
-              />
-            </RadarChart>
-          </ResponsiveContainer>
+        <div className="flex justify-center mt-2">
+          <StandardsRadar report={report} variant="detail" />
         </div>
       </div>
 
@@ -138,18 +102,16 @@ export const StrengthLevelsCard: React.FC<StrengthLevelsCardProps> = ({
             <>
               <div className="flex items-baseline justify-between gap-2">
                 <span
-                  className="wk-subhead leading-tight"
+                  className="wk-subhead"
                   style={{ color: l.logged ? 'var(--color-text-primary)' : 'var(--wk-muted)' }}
                 >
                   {formatSentenceCase(l.name)}
                 </span>
                 <div className="flex items-center gap-2 shrink-0">
                   <span
-                    className="text-base shrink-0 tabular-nums leading-tight"
+                    className={l.logged ? 'wk-subhead tabular-nums shrink-0' : 'wk-caption shrink-0'}
                     style={{
-                      fontWeight: l.logged ? 500 : 400,
                       color: l.logged ? 'var(--color-text-primary)' : 'var(--wk-muted)',
-                      fontSize: l.logged ? 16 : 12,
                     }}
                   >
                     {l.logged ? `${l.tier} ${l.subDivision}` : 'Not logged yet'}
@@ -216,11 +178,7 @@ export const StrengthLevelsCard: React.FC<StrengthLevelsCardProps> = ({
             </>
           );
           return (
-            <li
-              key={l.pillar}
-              className="wk-raised border"
-              style={{ borderColor: 'var(--color-border-subtle)' }}
-            >
+            <li key={l.pillar} className="wk-raised">
               {canDrillIn ? (
                 <button
                   type="button"
@@ -242,10 +200,7 @@ export const StrengthLevelsCard: React.FC<StrengthLevelsCardProps> = ({
       </ul>
 
       {/* Dedicated Engine / Cardio & Recovery Telemetry Tile */}
-      <div
-        className="wk-raised border flex flex-col gap-2"
-        style={{ borderColor: 'var(--color-border-subtle)' }}
-      >
+      <div className="wk-raised flex flex-col gap-2">
         <span className="wk-label">Engine · Cardio &amp; recovery</span>
         <div className="flex items-baseline justify-between gap-3">
           <span className="wk-caption" style={{ color: 'var(--color-text-secondary)' }}>
@@ -253,7 +208,7 @@ export const StrengthLevelsCard: React.FC<StrengthLevelsCardProps> = ({
               ? `${latestBiometrics.restingHr} bpm resting heart rate`
               : 'Connect a wearable to score engine vitality'}
           </span>
-          <span className="wk-number shrink-0 leading-none">
+          <span className="wk-number shrink-0">
             {cardio > 0 ? `${cardio}/100` : '—'}
           </span>
         </div>
@@ -280,7 +235,7 @@ export const StrengthLevelsCard: React.FC<StrengthLevelsCardProps> = ({
           }}
           className="w-full min-h-[44px] flex items-center justify-between gap-2 text-left"
         >
-          <span className="wk-caption font-medium" style={{ color: 'var(--color-text-secondary)' }}>
+          <span className="wk-meta-title" style={{ color: 'var(--color-text-secondary)' }}>
             How standards &amp; allometric scaling work
           </span>
           <ChevronDown

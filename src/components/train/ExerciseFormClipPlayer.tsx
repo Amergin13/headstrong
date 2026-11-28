@@ -298,10 +298,9 @@ export const ExerciseFormClipPlayer: React.FC<ExerciseFormClipPlayerProps> = ({ 
               }}
             >
               <span
-                className="wk-caption block truncate"
+                className={`${active ? 'wk-meta-title' : 'wk-caption'} block truncate`}
                 style={{
                   color: active ? 'var(--wk-accent)' : 'var(--color-text-secondary)',
-                  fontWeight: active ? 600 : 500,
                 }}
               >
                 {label}

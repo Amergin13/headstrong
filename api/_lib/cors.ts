@@ -14,6 +14,13 @@ function isLocalDevOrigin(origin: string): boolean {
   return /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(origin);
 }
 
+/** True when no cross-origin `Origin` header is present (same-origin / native app) or `Origin` is allowlisted. */
+export function isTrustedOriginOrSameSite(req: any): boolean {
+  const origin = String(req?.headers?.origin || '').trim();
+  if (!origin) return true;
+  return getAllowedOrigins().includes(origin) || isLocalDevOrigin(origin);
+}
+
 /**
  * Applies CORS headers. Returns true when the request was a preflight that has been answered.
  */

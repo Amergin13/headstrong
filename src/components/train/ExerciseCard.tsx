@@ -11,7 +11,8 @@ import {
 import { SetRow, PreviousSet, SET_TABLE_COLUMNS, SET_TABLE_COLUMNS_NO_RIR, SET_TABLE_GAP } from './SetRow';
 import { ExerciseDetailModal } from './ExerciseDetailModal';
 import { useUnits } from '../../utils/unitsContext';
-import { ArrowRightLeft, FileText, Info, MoreHorizontal } from 'lucide-react';
+import { ArrowDown, ArrowRightLeft, FileText, Flame, Info, Minus, Plus, X } from 'lucide-react';
+import { OverflowMenu, OverflowMenuItem } from '../common/Header';
 import { triggerHaptic } from '../../utils/haptics';
 import { CoachSummaryText } from '../common/CoachSummaryText';
 import { ExerciseInsight, isIsolationOrSmallExercise } from '../../services/exerciseInsight';
@@ -40,6 +41,9 @@ interface ExerciseCardProps {
   onUpdateSet: (setId: string, updated: Partial<WorkoutSet>) => void;
   onCompleteSet: (setId: string) => void;
   onAddSet: (isWarmup?: boolean) => void;
+  onRemoveSet?: () => void;
+  onMoveExerciseDown?: () => void;
+  onSkipExerciseToday?: () => void;
   onOpenDetail?: () => void;
   onOpenSwap?: () => void;
   onOpenPlateCalc?: (weightKg: number) => void;
@@ -74,6 +78,9 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
   onUpdateSet,
   onCompleteSet,
   onAddSet,
+  onRemoveSet,
+  onMoveExerciseDown,
+  onSkipExerciseToday,
   onOpenDetail,
   onOpenSwap,
   onOpenPlateCalc,
@@ -87,7 +94,6 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
 }) => {
   const units = useUnits();
   const [detailOpen, setDetailOpen] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
   const [notesOpen, setNotesOpen] = useState(() => Boolean(exercise.athleteNotes?.trim()));
   const notesTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const isTimed = isTimedExercise(exercise);
@@ -96,15 +102,6 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
   const unilateral = !isTimed && isUnilateralExercise(exercise);
   const [perSide, setPerSide] = useState(() => exercise.sets.some((s) => s.actualRepsLeft !== undefined));
   const notesId = useId();
-
-  useEffect(() => {
-    if (!menuOpen) return;
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setMenuOpen(false);
-    };
-    document.addEventListener('keydown', onKeyDown);
-    return () => document.removeEventListener('keydown', onKeyDown);
-  }, [menuOpen]);
 
   const bridgeBands = useMemo(
     () => (isTimed ? [] : buildExerciseBridgeBands(exercise.exerciseId, workouts, exerciseCatalog)),
@@ -142,101 +139,123 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
   const secondaryButton =
     'wk-btn-secondary justify-center normal-case min-h-[44px] active:scale-95 transition-transform';
 
+  const exerciseMenuItems: OverflowMenuItem[] = [
+    {
+      id: 'details',
+      label: 'Exercise details',
+      ariaLabel: `Open exercise details, form and history for ${exercise.name}`,
+      icon: <Info className="w-4 h-4 stroke-[2]" aria-hidden="true" />,
+      onSelect: () => {
+        triggerHaptic('light');
+        if (onOpenDetail) onOpenDetail();
+        else setDetailOpen(true);
+      },
+    },
+    ...(onOpenSwap
+      ? [
+          {
+            id: 'swap',
+            label: 'Swap exercise',
+            title: `Swap ${formatSentenceCase(exercise.name)}`,
+            icon: <ArrowRightLeft className="w-4 h-4 stroke-[2]" aria-hidden="true" />,
+            onSelect: () => {
+              triggerHaptic('light');
+              onOpenSwap();
+            },
+          },
+        ]
+      : []),
+    {
+      id: 'note',
+      label: hasSavedNote ? 'Edit note' : 'Add note',
+      icon: <FileText className="w-4 h-4 stroke-[2]" aria-hidden="true" />,
+      onSelect: () => {
+        triggerHaptic('light');
+        setNotesOpen(true);
+        setTimeout(() => notesTextareaRef.current?.focus(), 0);
+      },
+    },
+    {
+      id: 'add-set',
+      label: 'Add set',
+      sectionBorderTop: true,
+      icon: <Plus className="w-4 h-4 stroke-[2]" aria-hidden="true" />,
+      onSelect: () => {
+        triggerHaptic('light');
+        onAddSet(false);
+      },
+    },
+    ...(!isTimed
+      ? [
+          {
+            id: 'add-warmup-set',
+            label: 'Add warm-up set',
+            icon: <Flame className="w-4 h-4 stroke-[2]" aria-hidden="true" />,
+            onSelect: () => {
+              triggerHaptic('light');
+              onAddSet(true);
+            },
+          },
+        ]
+      : []),
+    ...(onRemoveSet && exercise.sets.length > 1 && exercise.sets.some((s) => !s.completed)
+      ? [
+          {
+            id: 'remove-last-set',
+            label: 'Remove last set',
+            icon: <Minus className="w-4 h-4 stroke-[2]" aria-hidden="true" />,
+            onSelect: () => {
+              triggerHaptic('light');
+              onRemoveSet();
+            },
+          },
+        ]
+      : []),
+    ...(onMoveExerciseDown
+      ? [
+          {
+            id: 'move-down',
+            label: 'Move down',
+            sectionBorderTop: true,
+            icon: <ArrowDown className="w-4 h-4 stroke-[2]" aria-hidden="true" />,
+            onSelect: () => {
+              triggerHaptic('light');
+              onMoveExerciseDown();
+            },
+          },
+        ]
+      : []),
+    ...(onSkipExerciseToday
+      ? [
+          {
+            id: 'skip-today',
+            label: 'Skip today',
+            sectionBorderTop: !onMoveExerciseDown,
+            icon: <X className="w-4 h-4 stroke-[2]" aria-hidden="true" />,
+            onSelect: () => {
+              triggerHaptic('light');
+              onSkipExerciseToday();
+            },
+          },
+        ]
+      : []),
+  ];
+
   return (
     <section aria-label={exercise.name} className="wk-card">
       {/* Title & 3-dot exercise options menu (details, swap, notes) */}
       <div className="flex items-start justify-between gap-2">
-        <div className="flex items-center min-w-0 flex-wrap gap-2">
+        <div className="flex items-center min-w-0 flex-wrap gap-2 pt-1">
+          {chip && <span className="wk-pill shrink-0">{chip}</span>}
           <h3 className="wk-h1">{formatSentenceCase(exercise.name)}</h3>
         </div>
-        <div className="relative flex items-center gap-2 shrink-0">
-          <button
-            type="button"
-            onClick={() => {
-              triggerHaptic('light');
-              setMenuOpen((o) => !o);
-            }}
-            aria-label={`More options for ${exercise.name}`}
-            aria-haspopup="menu"
-            title={`Options for ${formatSentenceCase(exercise.name)}`}
-            className="w-11 h-11 min-w-[44px] min-h-[44px] rounded-xl border border-[var(--color-border-strong)] flex items-center justify-center shrink-0 transition-colors"
-            style={{ background: 'var(--color-action-secondary-bg)', color: 'var(--color-action-secondary-fg)' }}
-          >
-            <MoreHorizontal className="w-5 h-5" strokeWidth={2} aria-hidden="true" />
-          </button>
-
-          {menuOpen && (
-            <>
-              <div className="fixed inset-0 z-20" onClick={() => setMenuOpen(false)} aria-hidden="true" />
-              <div className="absolute right-0 top-full mt-2 z-30">
-                <div
-                  role="menu"
-                  aria-label={`${formatSentenceCase(exercise.name)} options`}
-                  className="w-60 rounded-2xl bg-surface-card border shadow-2xl p-2 space-y-1 text-left"
-                  style={{ borderColor: 'var(--color-border-subtle)' }}
-                >
-                  <button
-                    type="button"
-                    role="menuitem"
-                    onClick={() => {
-                      triggerHaptic('light');
-                      setMenuOpen(false);
-                      if (onOpenDetail) onOpenDetail();
-                      else setDetailOpen(true);
-                    }}
-                    aria-label={`Open exercise details, form and history for ${exercise.name}`}
-                    className="w-full text-left px-3 py-2 rounded-xl text-base font-medium hover:bg-[var(--wk-raised)] flex items-center gap-2 min-h-[44px]"
-                    style={{ color: 'var(--color-text-primary)' }}
-                  >
-                    <Info className="w-4 h-4 stroke-[2] shrink-0" aria-hidden="true" />
-                    <span>Exercise details</span>
-                  </button>
-
-                  {onOpenSwap && (
-                    <button
-                      type="button"
-                      role="menuitem"
-                      onClick={() => {
-                        triggerHaptic('light');
-                        setMenuOpen(false);
-                        onOpenSwap();
-                      }}
-                      title={`Swap ${formatSentenceCase(exercise.name)}`}
-                      className="w-full text-left px-3 py-2 rounded-xl text-base font-medium hover:bg-[var(--wk-raised)] flex items-center gap-2 min-h-[44px]"
-                      style={{ color: 'var(--color-text-primary)' }}
-                    >
-                      <ArrowRightLeft className="w-4 h-4 stroke-[2] shrink-0" aria-hidden="true" />
-                      <span>Swap exercise</span>
-                    </button>
-                  )}
-
-                  <button
-                    type="button"
-                    role="menuitem"
-                    onClick={() => {
-                      triggerHaptic('light');
-                      setMenuOpen(false);
-                      setNotesOpen(true);
-                      setTimeout(() => notesTextareaRef.current?.focus(), 0);
-                    }}
-                    className="w-full text-left px-3 py-2 rounded-xl text-base font-medium hover:bg-[var(--wk-raised)] flex items-center gap-2 min-h-[44px]"
-                    style={{ color: 'var(--color-text-primary)' }}
-                  >
-                    <FileText className="w-4 h-4 stroke-[2] shrink-0" aria-hidden="true" />
-                    <span>{hasSavedNote ? 'Edit note' : 'Add note'}</span>
-                  </button>
-                </div>
-              </div>
-            </>
-          )}
-        </div>
+        <OverflowMenu
+          triggerAriaLabel={`More options for ${exercise.name}`}
+          triggerTitle={`Options for ${formatSentenceCase(exercise.name)}`}
+          menuAriaLabel={`${formatSentenceCase(exercise.name)} options`}
+          items={exerciseMenuItems}
+        />
       </div>
-
-      {chip && (
-        <div className="flex items-center gap-2 mt-2">
-          <span className="wk-pill">{chip}</span>
-        </div>
-      )}
 
       {/* 2-line dynamic summary (Line 1: Historical Trajectory Anchor, Line 2: Session Stimulus Directive) and minimal trend-line chart */}
       {insight && (showSummary || showChart) && (
@@ -368,7 +387,7 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
                   triggerHaptic('light');
                   setNotesOpen(false);
                 }}
-                className="wk-caption font-medium min-h-[44px] px-2 -my-2 flex items-center"
+                className="wk-meta-title min-h-[44px] px-2 -my-2 flex items-center"
                 style={{ color: 'var(--color-text-secondary)' }}
               >
                 Hide

@@ -6,7 +6,6 @@ import {
   dismissCoachIntervention,
   removeProgramOverride,
 } from './services/coachInterventions';
-import { applyCoachInterventionToState } from './services/coachTools';
 import React, { useState, useEffect, useRef, Suspense, lazy } from 'react';
 import {
   AssistantChatMessage,
@@ -49,7 +48,6 @@ import { getLatestBodyweightEma } from './engine/ema';
 import { snapLoadKg } from './utils/units';
 import { computeTrainingStreak, evaluateSessionRecovery } from './engine/recovery';
 import {
-  calculateBestPillarE1rms,
   calculateWeeklyMuscleVolume,
   clearAuthUser,
   exportAllUserDataJSON,
@@ -85,6 +83,14 @@ import {
   restoreEncryptedDriveBackup,
   runEncryptedDriveBackup,
 } from './services/encryptedBackup';
+import {
+  clearTelemetryData,
+  markWorkoutStartedIfFirstSet,
+  seedAlreadyStartedWorkout,
+  setTelemetryOptOut,
+  trackMetric,
+  trackWorkoutCompletedMetrics,
+} from './services/telemetry';
 import {
   CompetitorCsvImportResult,
   mergeImportedWorkouts,
@@ -197,6 +203,10 @@ export const App: React.FC = () => {
     resetFlashLiteConversation();
   };
   const openCoach = (place?: CoachPlace, prompt?: string) => {
+    trackMetric('coach.opened', 1, {
+      tab: place?.tab ?? activeTab,
+      has_prefill: prompt ? 'true' : 'false',
+    });
     setCoachLaunchRequest({ prompt, place, nonce: Date.now() });
     setAiCoachOpen(true);
   };
@@ -325,7 +335,6 @@ export const App: React.FC = () => {
   const activePlan = resolveActivePlan(profile);
   useDialogKeyboard();
 
-  const pillarBestE1rm = calculateBestPillarE1rms(workouts, bodyweightEmaKg);
   // Saved workouts only, so every page (cards, Program, Progress, Athlete, knowledge graph) shows the same count.
   const weeklyVolume = calculateWeeklyMuscleVolume(workouts, exercises);
 
@@ -428,12 +437,28 @@ export const App: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile.weightUnit]);
 
+  // Sync athlete's telemetry opt-out preference, seed already-started workouts on mount, and track tab views.
+  useEffect(() => {
+    setTelemetryOptOut(Boolean(profile.telemetryOptOut));
+  }, [profile.telemetryOptOut]);
+
+  useEffect(() => {
+    if (activeWorkout.exercises.some((ex) => ex.sets.some((s) => s.completed))) {
+      seedAlreadyStartedWorkout(activeWorkout.id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    trackMetric('navigation.tab_viewed', 1, { tab: activeTab });
+  }, [activeTab]);
+
   // If the phone's storage is full, say so instead of losing data silently.
   useEffect(() => {
     const onSaveFailed = () =>
       setToast({
         title: "Couldn't save",
-        message: "This phone's storage is full. Export a backup in Profile → Settings, then free up some space.",
+        message: "This phone's storage is full. Tap your profile icon (top right) → Data backup & privacy to export a backup, then free up some space.",
         tag: 'Storage full',
       });
     window.addEventListener(SAVE_FAILED_EVENT, onSaveFailed);
@@ -603,6 +628,26 @@ export const App: React.FC = () => {
   ) => {
     if (!exercise || !completedSet) return;
 
+    const currentLoc = activeWorkout.location || profile.activeLocation || 'gym';
+    const isFirstEver = workouts.filter((w) => w.completed).length === 0;
+    markWorkoutStartedIfFirstSet({
+      workoutId: activeWorkout.id,
+      programType: profile.programType,
+      goalPhase: profile.goalPhase,
+      location: currentLoc,
+      readiness: readiness.state,
+      isFirstEverWorkout: isFirstEver,
+    });
+    trackMetric('workout.set_completed', 1, {
+      program_type: profile.programType,
+      goal_phase: profile.goalPhase,
+      location: currentLoc,
+      set_type:
+        completedSet.isWarmup || completedSet.setType === 'warmup'
+          ? 'warmup'
+          : completedSet.setType ?? 'working',
+    });
+
     const rest = planRestAfterSet(activeWorkout, exercise, completedSet.id);
     if (rest.seconds === 0) {
       setRestTimerOpen(false);
@@ -618,6 +663,12 @@ export const App: React.FC = () => {
 
     const best = evaluateSetPersonalBest(activeWorkout, workouts, exercise, completedSet);
     if (best) {
+      trackMetric('workout.personal_best', 1, {
+        program_type: profile.programType,
+        goal_phase: profile.goalPhase,
+        location: currentLoc,
+        pillar: exercise.pillar,
+      });
       setActiveWorkout((prev) => ({
         ...prev,
         celebratedSetIds: [...(prev.celebratedSetIds || []), completedSet.id],
@@ -711,29 +762,41 @@ export const App: React.FC = () => {
 
   // Product-wide handler: Accept a suggested program adaptation immediately (persists overrides + syncs active workout)
   const handleAcceptIntervention = (intervention: CoachIntervention): void => {
-    const result = applyCoachInterventionToState({
-      intervention,
-      profile,
-      activeWorkout,
-      workouts,
-      biometrics,
-      exerciseCatalog: exercises,
-      bodyweightEmaKg,
-      readinessState: readiness.state,
-      trainingPlan: activePlan,
+    trackMetric('program.adaptation_responded', 1, {
+      program_type: profile.programType,
+      decision: 'accepted',
+      kind: intervention.kind,
     });
-    const nextProfile: UserProfile = { ...profile, ...result.updatedProfilePatch };
-    saveProfile(nextProfile);
-    setProfile(nextProfile);
-    if (result.updatedActiveWorkout) {
-      const synced = fillWeightless(result.updatedActiveWorkout);
-      saveActiveWorkout(synced);
-      setActiveWorkout(synced);
-    }
+    void import('./services/coachTools').then(({ applyCoachInterventionToState }) => {
+      const result = applyCoachInterventionToState({
+        intervention,
+        profile,
+        activeWorkout,
+        workouts,
+        biometrics,
+        exerciseCatalog: exercises,
+        bodyweightEmaKg,
+        readinessState: readiness.state,
+        trainingPlan: activePlan,
+      });
+      const nextProfile: UserProfile = { ...profile, ...result.updatedProfilePatch };
+      saveProfile(nextProfile);
+      setProfile(nextProfile);
+      if (result.updatedActiveWorkout) {
+        const synced = fillWeightless(result.updatedActiveWorkout);
+        saveActiveWorkout(synced);
+        setActiveWorkout(synced);
+      }
+    });
   };
 
   // Product-wide handler: Dismiss a suggested program adaptation permanently across all surfaces
   const handleDismissIntervention = (intervention: CoachIntervention): void => {
+    trackMetric('program.adaptation_responded', 1, {
+      program_type: profile.programType,
+      decision: 'dismissed',
+      kind: intervention.kind,
+    });
     const planId = activePlan.id;
     const patch = dismissCoachIntervention(profile, intervention.id, planId);
     const nextProfile: UserProfile = { ...profile, ...patch };
@@ -762,6 +825,10 @@ export const App: React.FC = () => {
   };
 
   const handleRemoveProgramOverride = (overrideId: string) => {
+    trackMetric('program.override_changed', 1, {
+      program_type: profile.programType,
+      action: 'removed',
+    });
     const patch = removeProgramOverride(profile, overrideId);
     const nextProfile: UserProfile = { ...profile, ...patch };
     saveProfile(nextProfile);
@@ -770,6 +837,10 @@ export const App: React.FC = () => {
   };
 
   const handleClearProgramOverrides = (planId: string) => {
+    trackMetric('program.override_changed', 1, {
+      program_type: profile.programType,
+      action: 'cleared',
+    });
     const patch = clearPlanProgramOverrides(profile, planId);
     const nextProfile: UserProfile = { ...profile, ...patch };
     saveProfile(nextProfile);
@@ -831,6 +902,14 @@ export const App: React.FC = () => {
   // Handler: Switch Training Location ('gym' | 'home' | 'travel') in 1 tap from the 3-dots menu.
   // Persistent until changed back — Home uses equipment configured in onboarding or settings.
   const handleSwitchTrainingLocation = (location: TrainingLocation) => {
+    const prevLoc = profile.activeLocation || 'gym';
+    if (location !== prevLoc) {
+      trackMetric('workout.location_switched', 1, {
+        program_type: profile.programType,
+        from_location: prevLoc,
+        to_location: location,
+      });
+    }
     const homeInv = profile.equipmentInventories?.home;
     const overlay = createOverlayForTrainingLocation(
       location,
@@ -848,6 +927,12 @@ export const App: React.FC = () => {
 
   // Handler: Update athlete profile (and sync Home overlay if home gear/inventory changes while in Home mode)
   const handleUpdateProfile = (up: Partial<UserProfile>) => {
+    if (up.telemetryOptOut !== undefined) {
+      setTelemetryOptOut(Boolean(up.telemetryOptOut));
+    }
+    if (up.goalSettings !== undefined) {
+      trackMetric('goal.custom_updated', 1, { action: 'updated', metric: 'custom' });
+    }
     const nextHomeEquipment = up.homeEquipment ?? profile.homeEquipment;
     const nextHomeInv = up.equipmentInventories?.home ?? profile.equipmentInventories?.home;
     const updatedHomeSetup =
@@ -877,6 +962,7 @@ export const App: React.FC = () => {
 
   // Handler: Save inline edits to a completed past workout & keep streak + isolated progression states in sync
   const handleUpdatePastWorkout = (updated: WorkoutSession) => {
+    trackMetric('workout.past_edited', 1, { program_type: profile.programType });
     const result = updatePastWorkoutInHistory({
       workouts,
       updatedWorkout: updated,
@@ -900,6 +986,7 @@ export const App: React.FC = () => {
 
   // Handler: Delete a completed past workout & recalculate streak + isolated progression states
   const handleDeletePastWorkout = (workoutId: string) => {
+    trackMetric('workout.past_deleted', 1, { program_type: profile.programType });
     const result = deletePastWorkoutFromHistory({
       workouts,
       workoutId,
@@ -1117,6 +1204,28 @@ export const App: React.FC = () => {
     const hasProgress = activeWorkout.exercises.some((ex) => ex.sets.some((st) => st.completed));
     // Editing from Settings stays in Settings; only finishing first-time setup goes to the workout.
     const isEditingSetup = Boolean(profile.onboardingCompleted);
+    trackMetric('onboarding.completed', 1, {
+      mode: isEditingSetup ? 'edit' : 'initial',
+      program_type: nextProfile.programType || setup.programType,
+      goal_phase: setup.goalPhase,
+      location: setup.activeLocation,
+      health_connected: Boolean(
+        setup.healthConnectConnected || (setup.importedBiometrics && setup.importedBiometrics.length > 0)
+      ),
+      experience: athlete?.experienceLevel || profile.experienceLevel || 'intermediate',
+    });
+    if (setup.importedSpreadsheet) {
+      trackMetric('onboarding.import_used', 1, { source: 'spreadsheet', surface: 'onboarding' });
+    }
+    if (setup.importedCompetitorHistory) {
+      trackMetric('onboarding.import_used', 1, { source: 'competitor_csv', surface: 'onboarding' });
+    }
+    if (setup.importedBiometrics && setup.importedBiometrics.length > 0) {
+      trackMetric('onboarding.import_used', 1, {
+        source: activitySync.hcStatus.provider === 'apple_health' ? 'apple_health' : 'health_connect',
+        surface: 'onboarding',
+      });
+    }
     if (isEditingSetup) setToast({ message: 'Where you train is saved.', tag: 'Saved' });
     if (isEditingSetup && hasProgress) return;
 
@@ -1185,6 +1294,14 @@ export const App: React.FC = () => {
 
   // Handler: Switch Program Type (Standard Splits or 6-Week Muscle Building Plan)
   const handleUpdateProgram = (newProgramType: ProgramSplitType) => {
+    if (newProgramType !== profile.programType) {
+      trackMetric('program.changed', 1, {
+        from_program: profile.programType || 'starter_6wk',
+        to_program: newProgramType,
+        goal_phase: profile.goalPhase || 'Lean Bulk',
+        source: 'picker',
+      });
+    }
     setProfile((prev) => ({ ...prev, programType: newProgramType }));
     if (isPlanProgram(newProgramType)) {
       // A started session is kept; the plan switch applies from the next workout.
@@ -1254,6 +1371,10 @@ export const App: React.FC = () => {
     }
 
     const addedWorkouts = merged.workouts.length - workouts.length;
+    trackMetric('program.imported', 1, {
+      activated: String(Boolean(opts.activateProgram)),
+      with_history: String(addedWorkouts > 0),
+    });
     setToast({
       tag: 'Program imported',
       message:
@@ -1267,6 +1388,14 @@ export const App: React.FC = () => {
   const handleDeleteCustomPlan = (planId: CustomPlanId) => {
     const fallbackType: ProgramSplitType =
       profile.programType === planId ? 'starter_6wk' : profile.programType || 'starter_6wk';
+    if (profile.programType === planId) {
+      trackMetric('program.changed', 1, {
+        from_program: planId,
+        to_program: fallbackType,
+        goal_phase: profile.goalPhase || 'Lean Bulk',
+        source: 'delete_custom',
+      });
+    }
     const nextProfile: UserProfile = {
       ...profile,
       customPlans: (profile.customPlans ?? []).filter((p) => p.id !== planId),
@@ -1434,6 +1563,31 @@ export const App: React.FC = () => {
     if (typeof window !== 'undefined') window.scrollTo({ top: 0 });
 
     const { strengthMilestone, weekMilestone } = result;
+    const completedSetsCount = completedSession.exercises.reduce(
+      (acc, ex) => acc + ex.sets.filter((s) => s.completed).length,
+      0
+    );
+    const completedExercisesCount = completedSession.exercises.filter((ex) =>
+      ex.sets.some((s) => s.completed && !s.isWarmup && s.setType !== 'warmup')
+    ).length;
+    const isBlockCompleted = Boolean(weekMilestone && /block complete/i.test(weekMilestone.title));
+    const weekMatch = weekMilestone?.title.match(/week\s+(\d+)/i);
+    const completedWeek = weekMatch ? Number(weekMatch[1]) : undefined;
+    trackWorkoutCompletedMetrics({
+      workoutId: activeWorkout.id,
+      programType: profile.programType,
+      goalPhase: profile.goalPhase,
+      location: completedSession.location || profile.activeLocation || 'gym',
+      readiness: readiness.state,
+      isFirstEverWorkout: workouts.filter((w) => w.completed).length === 0,
+      completedSetsCount,
+      completedExercisesCount,
+      durationMinutes: completedSession.durationMinutes,
+      strengthMilestone,
+      weekMilestone,
+      completedWeek,
+      isBlockCompleted,
+    });
     if (strengthMilestone) celebrate(strengthMilestone);
     if (weekMilestone) setTimeout(() => celebrate(weekMilestone), strengthMilestone ? 2600 : 0);
   };
@@ -1449,6 +1603,11 @@ export const App: React.FC = () => {
     if (sex) setProfile((prev) => ({ ...prev, gender: sex, sexEntered: true }));
     const values = Object.fromEntries(Object.entries(logFields).filter(([, v]) => typeof v === 'number' && v > 0));
     if (Object.keys(values).length === 0) return;
+    trackMetric('biometrics.logged', 1, {
+      source: 'manual',
+      has_tape: String(Object.keys(values).some((k) => k.endsWith('Cm'))),
+      has_body_fat: String(typeof values.bodyFatPct === 'number' && values.bodyFatPct > 0),
+    });
     const todayStr = localDateString();
     setBiometrics((prev) => {
       const existingIndex = prev.findIndex((b) => b.date === todayStr);
@@ -1491,6 +1650,7 @@ export const App: React.FC = () => {
 
   // Handler: Export JSON Backup (Google Play Data Portability)
   const handleExportData = () => {
+    trackMetric('backup.executed', 1, { kind: 'json_export', outcome: 'success' });
     const json = exportAllUserDataJSON();
     const blob = new Blob([json], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -1514,18 +1674,24 @@ export const App: React.FC = () => {
       setActiveWorkout(restored.activeWorkout);
       setExercises(restored.exercises);
       setActivities(restored.activities || []);
+      trackMetric('backup.executed', 1, { kind: 'json_import', outcome: 'success' });
       setToast({ message: 'Workout and biometric backup restored successfully!',
         tag: 'Restored',
       });
     } catch (e) {
+      trackMetric('backup.executed', 1, { kind: 'json_import', outcome: 'error' });
       setToast({ message: 'Could not restore backup: invalid JSON file.',
         tag: 'Import Error',
       });
     }
   };
 
-  // Handler: 1-Click Competitor CSV Import (Hevy, Strong, FitNotes)
+  // Handler: 1-Click Training Data & Maxes Import (TrainHeroic .zip/CSV/JSON, Hevy, Strong, FitNotes, 1RM Sheet)
   const handleImportCompetitorHistory = (parsed: CompetitorCsvImportResult) => {
+    trackMetric('onboarding.import_used', 1, {
+      source: parsed.format,
+      surface: 'settings',
+    });
     const { merged, addedCount } = mergeImportedWorkouts(workouts, parsed.workouts);
     const rebuiltStates = rebuildIsolatedProgressionStates(
       merged,
@@ -1556,12 +1722,22 @@ export const App: React.FC = () => {
         setActiveWorkout({ ...refreshed, date: activeWorkout.date });
       }
     }
+    const maxesPhrase =
+      parsed.summary.documentedMaxesCount > 0
+        ? ` • Documented maxes across ${parsed.summary.documentedMaxesCount} lift${
+            parsed.summary.documentedMaxesCount === 1 ? '' : 's'
+          }${
+            parsed.summary.testedOneRepMaxCount > 0
+              ? ` (${parsed.summary.testedOneRepMaxCount} best 1RMs)`
+              : ''
+          }.`
+        : '.';
     setToast({
       title: `${parsed.summary.formatLabel} import complete`,
       message:
         addedCount > 0
-          ? `Imported ${addedCount} workout${addedCount === 1 ? '' : 's'} (${parsed.summary.totalSetsCount} sets) into your training history.`
-          : 'All workouts from this CSV were already in your history.',
+          ? `Imported ${addedCount} workout${addedCount === 1 ? '' : 's'} (${parsed.summary.totalSetsCount} sets)${maxesPhrase}`
+          : 'All workouts and lift maxes from this file were already in your history.',
       tag: 'History Imported',
     });
   };
@@ -1586,6 +1762,7 @@ export const App: React.FC = () => {
         lastRestoredAt: prev.cloudBackup?.lastRestoredAt,
       },
     }));
+    trackMetric('backup.executed', 1, { kind: 'drive_enable', outcome: 'success' });
     setToast({
       title: 'Encrypted backup enabled',
       message: 'Your AES-256-GCM encrypted backup is saved in your private Google Drive app-data folder.',
@@ -1621,6 +1798,7 @@ export const App: React.FC = () => {
         lastRestoredAt: prev.cloudBackup?.lastRestoredAt,
       },
     }));
+    trackMetric('backup.executed', 1, { kind: 'drive_sync', outcome: 'success' });
     setToast({
       message: 'Encrypted backup updated in your private Google Drive app-data folder.',
       tag: 'Backup Synced',
@@ -1658,6 +1836,7 @@ export const App: React.FC = () => {
     setActiveWorkout(restored.activeWorkout);
     setExercises(restored.exercises);
     setActivities(restored.activities || []);
+    trackMetric('backup.executed', 1, { kind: 'drive_restore', outcome: 'success' });
     setToast({
       title: 'Encrypted backup restored',
       message: `Restored ${restored.workouts.length} workouts and your body metrics from Google Drive.`,
@@ -1683,6 +1862,7 @@ export const App: React.FC = () => {
 
   // Handler: Permanently Delete All User Data (Google Play User Data Policy Compliance)
   const handleDeleteAllData = () => {
+    clearTelemetryData(false);
     const wiped = permanentlyEraseAllUserData();
     setProfile(wiped.profile);
     setBiometrics(wiped.biometrics);
@@ -1711,6 +1891,12 @@ export const App: React.FC = () => {
 
   // Handler: Shift Workout Date
   const handleShiftWorkout = () => {
+    trackMetric('workout.rest_day_logged', 1, {
+      program_type: profile.programType,
+      goal_phase: profile.goalPhase,
+      location: activeWorkout.location || profile.activeLocation || 'gym',
+      readiness: readiness.state,
+    });
     const today = new Date();
     const tomorrow = new Date(today);
     tomorrow.setDate(today.getDate() + 1);
@@ -1728,6 +1914,13 @@ export const App: React.FC = () => {
 
   // Changing the goal (Settings or the Progress page) re-writes an unstarted workout to match it.
   const handleUpdateGoalPhase = (phase: GoalPhase) => {
+              if (phase !== profile.goalPhase) {
+                trackMetric('program.goal_changed', 1, {
+                  from_goal: profile.goalPhase || 'Lean Bulk',
+                  to_goal: phase,
+                  program_type: profile.programType,
+                });
+              }
               setProfile((p) => ({ ...p, goalPhase: phase }));
               // A session already under way keeps what's been logged.
               if (activeWorkout.exercises.some((ex) => ex.sets.some((s) => s.completed))) return;
@@ -2048,6 +2241,9 @@ export const App: React.FC = () => {
             currentUser={authUser}
             profile={profile}
             latestBiometrics={latestBiometrics}
+            workouts={workouts}
+            exerciseCatalog={exercises}
+            bodyweightKg={bodyweightEmaKg}
             canInstallPwa={Boolean(deferredInstallPrompt)}
             onTriggerInstallPwa={handleTriggerInstallPwa}
             isOpen={authModalOpen && !onboardingOpen}
@@ -2064,6 +2260,11 @@ export const App: React.FC = () => {
               setAuthModalOpen(false);
               setCompetitorImportOpen(true);
             }}
+            onViewPersonalBests={() => {
+              setAuthModalOpen(false);
+              setActiveTab('analytics');
+              setProgressDetailRequest({ detail: 'bests', nonce: Date.now() });
+            }}
             onEnableDriveBackup={handleEnableDriveBackup}
             onRunDriveBackupNow={handleRunDriveBackupNow}
             onRestoreDriveBackup={handleRestoreDriveBackup}
@@ -2077,6 +2278,7 @@ export const App: React.FC = () => {
         <Suspense fallback={null}>
           <ImportProgramModal
             exerciseCatalog={exercises}
+            bodyweightKg={bodyweightEmaKg}
             initialMode="history"
             onImport={handleImportSpreadsheetProgram}
             onImportHistory={handleImportCompetitorHistory}
@@ -2119,7 +2321,12 @@ export const App: React.FC = () => {
         onTabChange={(tab) => {
           if (tab === 'chat') {
             setCoachLaunchRequest(null);
-            setAiCoachOpen((prev) => !prev);
+            setAiCoachOpen((prev) => {
+              if (!prev) {
+                trackMetric('coach.opened', 1, { tab: activeTab, has_prefill: 'false' });
+              }
+              return !prev;
+            });
           } else {
             setActiveTab(tab);
             setAiCoachOpen(false);

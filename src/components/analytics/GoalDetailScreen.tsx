@@ -24,7 +24,7 @@ const dayMonth = (date: string) => {
 };
 
 const Big: React.FC<{ value: string; unit: string }> = ({ value, unit }) => (
-  <p className="wk-display leading-none mt-3">
+  <p className="wk-display mt-3">
     {value}
     <span className="wk-caption ml-2">
       {unit}

@@ -54,7 +54,11 @@ import { localDateOffset, localDateString, parseLocalDate } from '../../utils/da
 import { formatSentenceCase } from '../../utils/typography';
 import { stepsOnDate } from '../../services/athleteGoals';
 import { ActiveDayCard } from './ActiveDayCard';
-import { buildSwappedSessionExercises, startingWeightForNewExercise } from '../../services/sessionPreparation';
+import {
+  buildSwappedSessionExercises,
+  prepareSessionForAthlete,
+  startingWeightForNewExercise,
+} from '../../services/sessionPreparation';
 import { useUnits } from '../../utils/unitsContext';
 import {
   prescribeDoubleProgression,
@@ -75,6 +79,7 @@ import { calculateWeeklyMuscleVolume } from '../../services/storage';
 import { calculateSessionTonnage } from '../../engine/wci';
 import { CompletedExerciseCard, FinishedWorkoutSummaryCard, WhoopStrainCard } from './FinishedWorkoutCards';
 import { WorkoutPageHeader } from './WorkoutPageHeader';
+import { OverflowMenuItem } from '../common/Header';
 import { CurrentSessionCard, ProgramProgressCard, StickySessionHeader } from './ProgramProgressCard';
 import { RecoveryScoreCard } from './RecoveryScoreCard';
 import { buildWeekStrip } from '../../services/sessionSchedule';
@@ -89,6 +94,7 @@ import {
 } from '../../services/exerciseCoachNote';
 import { CoachIntervention, detectCoachInterventions } from '../../services/coachInterventions';
 import { getActiveModelTier } from '../../services/onDeviceModel';
+import { trackMetric } from '../../services/telemetry';
 import '../../services/deviceModels';
 import {
   calculateWarmupPrescription,
@@ -113,6 +119,9 @@ import {
   BedDouble,
   SlidersHorizontal,
   Sparkles,
+  Plus,
+  Search,
+  X,
 } from 'lucide-react';
 import { triggerHaptic } from '../../utils/haptics';
 
@@ -236,6 +245,8 @@ export const TrainTab: React.FC<TrainTabProps> = ({
   const [showSummaryModal, setShowSummaryModal] = useState(false);
   const [previewPastWorkout, setPreviewPastWorkout] = useState<WorkoutSession | null>(null);
   const [showWorkoutDisplayModal, setShowWorkoutDisplayModal] = useState(false);
+  const [showAddExerciseModal, setShowAddExerciseModal] = useState(false);
+  const [addExerciseQuery, setAddExerciseQuery] = useState('');
   const pendingRecalRef = useRef<{
     exerciseSessionId: string;
     recalibrationStatus?: string;
@@ -276,9 +287,14 @@ export const TrainTab: React.FC<TrainTabProps> = ({
 
   const handleToggleWorkoutDisplay = (key: keyof WorkoutDisplaySettings) => {
     const currentValue = key === 'showRirTracking' ? showRir : Boolean(workoutDisplay[key]);
+    const nextValue = !currentValue;
+    trackMetric('workout.display_customized', 1, {
+      toggle_key: key,
+      enabled: String(nextValue),
+    });
     const next: WorkoutDisplaySettings = {
       ...workoutDisplay,
-      [key]: !currentValue,
+      [key]: nextValue,
     };
     onUpdateProfile?.({ workoutDisplay: next });
   };
@@ -567,6 +583,60 @@ export const TrainTab: React.FC<TrainTabProps> = ({
       };
     });
     onUpdateWorkout({ ...activeWorkout, exercises: nextExercises });
+    trackMetric('workout.set_added', 1, {
+      program_type: profile.programType,
+      set_kind: isWarmup ? 'warmup' : 'working',
+    });
+  };
+
+  const handleRemoveSet = (exerciseId: string) => {
+    let didRemove = false;
+    const nextExercises = activeWorkout.exercises.map((ex) => {
+      if (ex.id !== exerciseId || ex.sets.length <= 1) return ex;
+      let removeIndex = -1;
+      for (let i = ex.sets.length - 1; i >= 0; i--) {
+        if (!ex.sets[i].completed) {
+          removeIndex = i;
+          break;
+        }
+      }
+      if (removeIndex === -1) return ex;
+      didRemove = true;
+      const remaining = ex.sets
+        .filter((_, idx) => idx !== removeIndex)
+        .map((s, idx) => ({ ...s, setNumber: idx + 1 }));
+      return { ...ex, sets: remaining };
+    });
+    onUpdateWorkout({ ...activeWorkout, exercises: nextExercises });
+    if (didRemove) {
+      trackMetric('workout.set_removed', 1, { program_type: profile.programType });
+    }
+  };
+
+  const reindexPlainOrderCodes = (list: ExerciseSession[]): ExerciseSession[] =>
+    list.map((item, idx) =>
+      item.orderCode && /^\d+$/.test(item.orderCode)
+        ? { ...item, orderCode: String(idx + 1) }
+        : item
+    );
+
+  const handleMoveExerciseDown = (exerciseId: string) => {
+    const idx = activeWorkout.exercises.findIndex((ex) => ex.id === exerciseId);
+    if (idx < 0 || idx >= activeWorkout.exercises.length - 1) return;
+    const copy = [...activeWorkout.exercises];
+    const [moved] = copy.splice(idx, 1);
+    copy.splice(idx + 1, 0, moved);
+    onUpdateWorkout({ ...activeWorkout, exercises: reindexPlainOrderCodes(copy) });
+    trackMetric('workout.exercise_reordered', 1, { program_type: profile.programType });
+  };
+
+  const handleSkipExerciseToday = (exerciseId: string) => {
+    if (activeWorkout.exercises.length <= 1) return;
+    const target = activeWorkout.exercises.find((ex) => ex.id === exerciseId);
+    if (!target || target.sets.some((s) => s.completed)) return;
+    const remaining = activeWorkout.exercises.filter((ex) => ex.id !== exerciseId);
+    onUpdateWorkout({ ...activeWorkout, exercises: reindexPlainOrderCodes(remaining) });
+    trackMetric('workout.exercise_skipped', 1, { program_type: profile.programType });
   };
 
   const buildBaseExerciseSession = (def: ExerciseDefinition): ExerciseSession => {
@@ -639,6 +709,34 @@ export const TrainTab: React.FC<TrainTabProps> = ({
     );
   };
 
+  const handleAddExerciseToSession = (def: ExerciseDefinition) => {
+    const baseEx = buildBaseExerciseSession(def);
+    const unloaded: ExerciseSession = {
+      ...baseEx,
+      sets: baseEx.sets.map((s) => ({ ...s, targetWeightKg: 0, actualWeightKg: 0 })),
+    };
+    const prepared = prepareSessionForAthlete(
+      { ...activeWorkout, exercises: [unloaded] },
+      {
+        history: workouts,
+        bodyweightKg: bodyweightEmaKg,
+        readinessState: readiness.state,
+        gender: profile.gender,
+        experienceLevel: profile.experienceLevel,
+        unit: units.unit,
+        isProgramPlan: Boolean(trainingPlan),
+      }
+    ).exercises[0];
+    const nextExercises = reindexPlainOrderCodes([...activeWorkout.exercises, prepared]);
+    onUpdateWorkout({ ...activeWorkout, exercises: nextExercises });
+    trackMetric('workout.exercise_added', 1, {
+      program_type: profile.programType,
+      equipment: def.equipment,
+    });
+    setShowAddExerciseModal(false);
+    setAddExerciseQuery('');
+  };
+
   const handleConfirmSwap = (
     newDef: ExerciseDefinition,
     convertedWeightKg: number,
@@ -685,6 +783,14 @@ export const TrainTab: React.FC<TrainTabProps> = ({
     });
 
     onUpdateWorkout({ ...activeWorkout, exercises: nextExercises });
+    trackMetric('workout.exercise_swapped', 1, {
+      program_type: profile.programType,
+      goal_phase: profile.goalPhase,
+      location: activeWorkout.location || profile.activeLocation || 'gym',
+      scope,
+      calibration: continuity.prescription.calibrationSource || 'STANDARD',
+      source: 'swap_modal',
+    });
 
     if (scope === 'permanent' && onUpdateProfile) {
       const targetPlanId = trainingPlan?.id ?? getSessionPlanId(activeWorkout) ?? 'starter_6wk';
@@ -825,9 +931,17 @@ export const TrainTab: React.FC<TrainTabProps> = ({
   const hasRecoveryAdvisory =
     !recoveryGate.trainedToday && (!recoveryGate.isReady || readiness.state === 'Amber Shield');
   const handleModulateSession = (mode: 'trim_sets' | 'conservative_rir' | 'both') => {
+    trackMetric('recovery.modulation_applied', 1, {
+      action: mode,
+      readiness: readiness.state,
+    });
     onUpdateWorkout(applyRecoveryModulation(activeWorkout, mode));
   };
   const handleRestoreModulation = () => {
+    trackMetric('recovery.modulation_applied', 1, {
+      action: 'restore',
+      readiness: readiness.state,
+    });
     onUpdateWorkout(clearRecoveryModulation(activeWorkout));
   };
   const recoveredAlternative: SplitDayType | null = (() => {
@@ -1099,95 +1213,69 @@ export const TrainTab: React.FC<TrainTabProps> = ({
     };
   }, [todayFinished, workoutDisplay.showProgramCard, workoutDisplay.showSessionCard]);
 
-  const renderOptionsMenu = (close: () => void) => (
-    <div
-      role="menu"
-      aria-label="Workout options"
-      className="w-60 rounded-2xl shadow-2xl p-2 space-y-1 text-left border"
-      style={{ background: 'var(--wk-card)', borderColor: 'var(--color-border-subtle)' }}
-    >
-      <div className="px-3 py-2 wk-label">Location</div>
-      {LOCATION_CONFIG.map((loc) => {
-        const isSelected = currentLoc === loc.id;
-        return (
-          <button
-            key={loc.id}
-            type="button"
-            role="menuitemradio"
-            aria-checked={isSelected}
-            onClick={() => {
-              if (onSwitchLocation && loc.id !== currentLoc) {
-                triggerHaptic('medium');
-                onSwitchLocation(loc.id);
-              }
-              close();
-            }}
-            className="w-full text-left px-3 py-2 rounded-xl min-h-[44px] flex items-center justify-between transition-colors"
-            style={{
-              background: isSelected ? 'var(--wk-raised)' : 'transparent',
-              color: isSelected ? 'var(--color-text-primary)' : 'var(--color-text-secondary)',
-            }}
-          >
-            <div>
-              <span className="text-base font-medium block">{loc.label}</span>
-              <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>{loc.detail}</span>
-            </div>
-            {isSelected && <Check className="w-4 h-4 stroke-[2.5] shrink-0 ml-2" style={{ color: 'var(--color-text-primary)' }} />}
-          </button>
-        );
-      })}
-      <div className="pt-2 space-y-1" style={{ borderTop: '1px solid var(--color-border-subtle)' }}>
-        <button
-          type="button"
-          role="menuitem"
-          onClick={() => {
-            triggerHaptic('light');
-            setShowWorkoutDisplayModal(true);
-            close();
-          }}
-          className="w-full text-left px-3 py-2 rounded-xl text-base font-medium hover:bg-[var(--wk-raised)] flex items-center justify-between gap-2 min-h-[44px]"
-          style={{ color: 'var(--color-text-primary)' }}
-        >
-          <span className="flex items-center gap-2">
-            <SlidersHorizontal className="w-4 h-4 stroke-[2] shrink-0" />
-            <span>Customize workout page</span>
-          </span>
-          <span className="text-xs font-normal tabular-numbers" style={{ color: 'var(--color-text-muted)' }}>
-            {activeDisplayCount}/7
-          </span>
-        </button>
-        <button
-          type="button"
-          role="menuitem"
-          onClick={() => {
-            triggerHaptic('medium');
-            onShiftWorkout();
-            close();
-          }}
-          className="w-full text-left px-3 py-2 rounded-xl text-base font-medium hover:bg-[var(--wk-raised)] flex items-center gap-2 min-h-[44px]"
-          style={{ color: 'var(--color-text-secondary)' }}
-        >
-          <Calendar className="w-4 h-4 stroke-[2]" />
-          <span>Log rest day</span>
-        </button>
-        {recentCompletedWorkouts.length > 0 && (
-          <button
-            type="button"
-            role="menuitem"
-            onClick={() => {
+  const workoutMenuItems: OverflowMenuItem[] = [
+    ...LOCATION_CONFIG.map((loc, idx) => ({
+      id: `loc-${loc.id}`,
+      label: loc.label,
+      detail: loc.detail,
+      role: 'menuitemradio' as const,
+      checked: currentLoc === loc.id,
+      sectionLabel: idx === 0 ? 'Location' : undefined,
+      onSelect: () => {
+        if (onSwitchLocation && loc.id !== currentLoc) {
+          triggerHaptic('medium');
+          onSwitchLocation(loc.id);
+        }
+      },
+    })),
+    ...(!todayFinished
+      ? [
+          {
+            id: 'add-exercise',
+            label: 'Add exercise',
+            icon: <Plus className="w-4 h-4 stroke-[2]" aria-hidden="true" />,
+            sectionBorderTop: true,
+            onSelect: () => {
+              triggerHaptic('light');
+              setAddExerciseQuery('');
+              setShowAddExerciseModal(true);
+            },
+          },
+        ]
+      : []),
+    {
+      id: 'customize-workout',
+      label: 'Customize workout page',
+      trailing: `${activeDisplayCount}/7`,
+      icon: <SlidersHorizontal className="w-4 h-4 stroke-[2]" aria-hidden="true" />,
+      sectionBorderTop: Boolean(todayFinished),
+      onSelect: () => {
+        triggerHaptic('light');
+        setShowWorkoutDisplayModal(true);
+      },
+    },
+    {
+      id: 'log-rest-day',
+      label: 'Log rest day',
+      icon: <Calendar className="w-4 h-4 stroke-[2]" aria-hidden="true" />,
+      onSelect: () => {
+        triggerHaptic('medium');
+        onShiftWorkout();
+      },
+    },
+    ...(recentCompletedWorkouts.length > 0
+      ? [
+          {
+            id: 'last-workout',
+            label: 'Last workout',
+            icon: <History className="w-4 h-4 stroke-[2]" aria-hidden="true" />,
+            onSelect: () => {
               setPreviewPastWorkout(recentCompletedWorkouts[0]);
-              close();
-            }}
-            className="w-full text-left px-3 py-2 rounded-xl text-base font-medium hover:bg-[var(--wk-raised)] flex items-center gap-2 min-h-[44px]"
-            style={{ color: 'var(--color-text-secondary)' }}
-          >
-            <History className="w-4 h-4 stroke-[2]" />
-            <span>Last workout</span>
-          </button>
-        )}
-      </div>
-    </div>
-  );
+            },
+          },
+        ]
+      : []),
+  ];
 
   const todayDateStr = localDateString();
   const todayStripDay = stripDays.find((d) => d.isToday);
@@ -1285,7 +1373,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
           }
           setSelectedStripDate((prev) => (prev === day.date ? null : day.date));
         }}
-        renderMenu={renderOptionsMenu}
+        menuItems={workoutMenuItems}
       />
 
       <div ref={cardsTopRef} className="flex flex-col gap-3 mt-6">
@@ -1397,7 +1485,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
               </button>
             )}
           </div>
-          <p className="wk-display leading-none mt-3">
+          <p className="wk-display mt-3">
             {overviewSteps > 0 ? overviewSteps.toLocaleString() : '—'}
             {overviewSteps > 0 && (
               <span
@@ -1864,6 +1952,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
               exercise={ex}
               exerciseDef={def}
               exerciseCatalog={exerciseCatalog}
+              workouts={liveInsightWorkouts}
               prescription={prescription}
               quest={quest}
               readinessState={readiness.state}
@@ -1896,6 +1985,21 @@ export const TrainTab: React.FC<TrainTabProps> = ({
                 );
               }}
               onAddSet={(isWarmup) => handleAddSet(ex.id, isWarmup)}
+              onRemoveSet={
+                ex.sets.length > 1 && ex.sets.some((s) => !s.completed)
+                  ? () => handleRemoveSet(ex.id)
+                  : undefined
+              }
+              onMoveExerciseDown={
+                !isBlockCompleted && index < activeWorkout.exercises.length - 1
+                  ? () => handleMoveExerciseDown(ex.id)
+                  : undefined
+              }
+              onSkipExerciseToday={
+                activeWorkout.exercises.length > 1 && !ex.sets.some((s) => s.completed)
+                  ? () => handleSkipExerciseToday(ex.id)
+                  : undefined
+              }
               onOpenDetail={() => setDetailExerciseId(ex.id)}
               onOpenSwap={() => setSwappingExercise(ex)}
               onOpenPlateCalc={(kg) => setPlateCalcWeight(kg)}
@@ -1932,7 +2036,7 @@ export const TrainTab: React.FC<TrainTabProps> = ({
       >
         Finish workout
         {completedSets > 0 && (
-          <span className="block normal-case font-normal text-xs tabular-nums" style={{ opacity: 0.75 }}>
+          <span className="wk-caption block tabular-nums" style={{ opacity: 0.75 }}>
             {completedSets} of {totalSets} sets logged
             {liveTonnageKg > 0 ? ` • ${Math.round(units.toDisplay(liveTonnageKg)).toLocaleString()} ${units.unit}` : ''}
           </span>
@@ -2247,6 +2351,117 @@ export const TrainTab: React.FC<TrainTabProps> = ({
               : undefined
           }
         />
+      )}
+
+      {/* Add Exercise to Today's Session Modal */}
+      {showAddExerciseModal && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Add exercise to workout"
+          className="wk fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 backdrop-blur-md"
+          style={{ background: 'var(--color-bg-scrim)' }}
+          onClick={() => setShowAddExerciseModal(false)}
+        >
+          <div
+            className="wk-card w-full sm:max-w-md rounded-b-none sm:rounded-2xl max-h-[85vh] flex flex-col gap-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <h3 className="wk-h1">Add exercise</h3>
+                <p className="wk-caption mt-1">
+                  Adds to today&apos;s session with your personalized starting weight
+                </p>
+              </div>
+              <button
+                type="button"
+                aria-label="Close add exercise modal"
+                onClick={() => setShowAddExerciseModal(false)}
+                className="w-11 h-11 min-w-[44px] min-h-[44px] rounded-full border flex items-center justify-center shrink-0"
+                style={{
+                  background: 'var(--wk-raised)',
+                  borderColor: 'var(--color-border-strong)',
+                  color: 'var(--color-text-secondary)',
+                }}
+              >
+                <X className="w-4 h-4 stroke-[2]" />
+              </button>
+            </div>
+
+            <div className="relative">
+              <Search
+                className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"
+                style={{ color: 'var(--color-text-muted)' }}
+                aria-hidden="true"
+              />
+              <input
+                type="search"
+                value={addExerciseQuery}
+                onChange={(e) => setAddExerciseQuery(e.target.value)}
+                placeholder="Search exercise, muscle, implement, or category…"
+                aria-label="Search exercises"
+                className="wk-field w-full pl-10"
+              />
+            </div>
+
+            <div className="overflow-y-auto space-y-2 pr-1">
+              {(() => {
+                const existingIds = new Set(activeWorkout.exercises.map((e) => e.exerciseId));
+                const q = addExerciseQuery.trim().toLowerCase();
+                const candidates = exerciseCatalog
+                  .filter((def) => !existingIds.has(def.id))
+                  .filter((def) => {
+                    if (!q) return true;
+                    const friendlyMuscle = MUSCLE_FRIENDLY_NAMES[def.primaryMuscle] ?? def.primaryMuscle;
+                    return (
+                      def.name.toLowerCase().includes(q) ||
+                      friendlyMuscle.toLowerCase().includes(q) ||
+                      def.equipment.toLowerCase().includes(q) ||
+                      (def.implementLabel?.toLowerCase().includes(q) ?? false) ||
+                      (def.category?.toLowerCase().includes(q) ?? false) ||
+                      (def.movementFamilyLabel?.toLowerCase().includes(q) ?? false) ||
+                      (def.aliases?.some((a) => a.toLowerCase().includes(q)) ?? false)
+                    );
+                  })
+                  .slice(0, 50);
+
+                if (candidates.length === 0) {
+                  return (
+                    <p className="wk-body text-center py-6" style={{ color: 'var(--color-text-secondary)' }}>
+                      No matching exercises available to add.
+                    </p>
+                  );
+                }
+
+                return candidates.map((def) => {
+                  const friendlyMuscle = MUSCLE_FRIENDLY_NAMES[def.primaryMuscle] ?? def.primaryMuscle;
+                  const implementDisplay = def.implementLabel || formatSentenceCase(def.equipment);
+                  return (
+                    <button
+                      key={def.id}
+                      type="button"
+                      onClick={() => {
+                        triggerHaptic('success');
+                        handleAddExerciseToSession(def);
+                      }}
+                      className="wk-raised w-full text-left flex items-center justify-between gap-3 min-h-[48px] active:scale-[0.99] transition-transform"
+                    >
+                      <span className="min-w-0">
+                        <span className="wk-subhead block truncate">{formatSentenceCase(def.name)}</span>
+                        <span className="wk-caption block mt-1">
+                          {friendlyMuscle} • {implementDisplay}
+                          {def.category && def.category !== 'Strength' ? ` • ${def.category}` : ''}
+                        </span>
+                      </span>
+                      <Plus className="w-4 h-4 shrink-0" style={{ color: 'var(--color-text-secondary)' }} aria-hidden="true" />
+                    </button>
+                  );
+                });
+              })()}
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Past Workout Preview / Edit / Delete Modal */}

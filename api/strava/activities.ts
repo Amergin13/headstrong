@@ -1,4 +1,5 @@
 import { applyCors } from '../_lib/cors.js';
+import { emitServerMetric } from '../_lib/metrics.js';
 
 /**
  * Vercel Serverless Function: the athlete's recent Strava activities, for counting active days.
@@ -52,12 +53,18 @@ export default async function handler(req: any, res: any) {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
 
+  const startedAt = Date.now();
   try {
     // Access tokens last six hours; refresh first when it has expired (or will within a minute).
     if (!accessToken || (expiresAt && expiresAt * 1000 < Date.now() + 60 * 1000)) await refresh();
     let r = await list();
     if (r.status === 401 && !refreshedTokens && (await refresh())) r = await list();
     if (!r.ok) {
+      emitServerMetric('wearable.api.request', 1, {
+        provider: 'strava',
+        endpoint: 'activities',
+        outcome: 'error',
+      });
       return res.status(r.status).json({ success: false, error: 'Could not read Strava activities', refreshedTokens });
     }
     const raw: any[] = (await r.json().catch(() => [])) || [];
@@ -72,8 +79,23 @@ export default async function handler(req: any, res: any) {
         distanceKm: typeof a.distance === 'number' && a.distance > 0 ? Math.round(a.distance / 100) / 10 : undefined,
         avgHeartRate: typeof a.average_heartrate === 'number' ? Math.round(a.average_heartrate) : undefined,
       }));
+    emitServerMetric('wearable.api.request', 1, {
+      provider: 'strava',
+      endpoint: 'activities',
+      outcome: 'success',
+    });
     return res.status(200).json({ success: true, sessions, refreshedTokens, provider: 'strava' });
   } catch (error: any) {
+    emitServerMetric('wearable.api.request', 1, {
+      provider: 'strava',
+      endpoint: 'activities',
+      outcome: 'error',
+    });
     return res.status(500).json({ success: false, error: error?.message || 'Strava activities proxy error' });
+  } finally {
+    emitServerMetric('wearable.api.duration_ms', Math.max(1, Date.now() - startedAt), {
+      provider: 'strava',
+      endpoint: 'activities',
+    });
   }
 }

@@ -24,8 +24,6 @@ export const LogActivityModal: React.FC<LogActivityModalProps> = ({ onLog, onClo
     minHeight: 44,
     padding: '0 16px',
     borderRadius: 9999,
-    fontWeight: 500,
-    fontSize: 16,
     background: selected ? 'var(--color-action-primary-bg)' : 'var(--wk-raised)',
     border: `1px solid ${selected ? 'var(--color-action-primary-bg)' : 'var(--color-border-strong)'}`,
     color: selected ? 'var(--color-action-primary-fg)' : 'var(--color-text-primary)',
@@ -42,7 +40,7 @@ export const LogActivityModal: React.FC<LogActivityModalProps> = ({ onLog, onClo
       <div className="wk-card w-full max-w-lg max-h-[90vh] overflow-y-auto shadow-2xl">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <h3 id="log-activity-title" className="wk-h1 leading-tight">
+            <h3 id="log-activity-title" className="wk-h1">
               Log active session
             </h3>
             <p className="wk-body mt-2">
@@ -78,6 +76,7 @@ export const LogActivityModal: React.FC<LogActivityModalProps> = ({ onLog, onClo
                   triggerHaptic('light');
                   setType(t);
                 }}
+                className="wk-subhead"
                 style={chip(type === t)}
               >
                 {ACTIVITY_LABELS[t]}
@@ -101,6 +100,7 @@ export const LogActivityModal: React.FC<LogActivityModalProps> = ({ onLog, onClo
                   setCustom('');
                   setMinutes(m);
                 }}
+                className="wk-subhead"
                 style={chip(!custom && minutes === m)}
               >
                 {m} min
@@ -116,15 +116,15 @@ export const LogActivityModal: React.FC<LogActivityModalProps> = ({ onLog, onClo
                 placeholder="Other"
                 value={custom}
                 onChange={(e) => setCustom(e.target.value.replace(/\D/g, '').slice(0, 3))}
-                className="text-center outline-none tabular-nums"
+                className="wk-field text-center outline-none"
                 style={{
                   width: 88,
                   minHeight: 44,
+                  height: 44,
                   borderRadius: 9999,
                   background: 'var(--wk-raised)',
                   border: `1px solid ${custom ? 'var(--color-text-primary)' : 'var(--color-border-strong)'}`,
                   color: 'var(--color-text-primary)',
-                  fontSize: 16,
                 }}
               />
               <span className="wk-body">min</span>

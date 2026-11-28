@@ -77,7 +77,7 @@ export const MesocycleManager: React.FC<MesocycleManagerProps> = ({
   return (
     <div className="wk-card w-full text-left block">
       <div className="flex items-start justify-between gap-3">
-        <h2 className="wk-h1 leading-tight">
+        <h2 className="wk-h1">
           {currentStage.title}
         </h2>
         <span className="wk-pill shrink-0">
@@ -85,15 +85,15 @@ export const MesocycleManager: React.FC<MesocycleManagerProps> = ({
         </span>
       </div>
 
-      <p className="wk-body mt-2 max-w-prose">
+      <p className="wk-body mt-2">
         {currentStage.desc}
       </p>
 
       <div className="flex items-end justify-between gap-3 mt-5">
-        <span className="wk-label leading-tight">
+        <span className="wk-label">
           6-week training plan
         </span>
-        <span className="wk-number shrink-0 leading-none">
+        <span className="wk-number shrink-0">
           {currentWeek}/{totalWeeks}
         </span>
       </div>

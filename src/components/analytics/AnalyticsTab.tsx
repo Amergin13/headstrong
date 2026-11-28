@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Scale, Ruler, ChevronRight, MoreHorizontal, SlidersHorizontal, Sparkles, Target } from 'lucide-react';
+import { Scale, Ruler, ChevronRight, Search, SlidersHorizontal, Sparkles, Target } from 'lucide-react';
+import { OverflowMenu, OverflowMenuItem } from '../common/Header';
 import { PageTopGradient } from '../common/PageTopGradient';
 import { CoachPlace } from '../../services/coachContext';
 import { BiometricLog, BodyMeasurementSite, ExerciseDefinition, GoalPhase, ProgressWidgetId, ReadinessState, UserProfile, WorkoutSession, isWhoopConfigured } from '../../engine/types';
@@ -173,7 +174,6 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
   const [detailTimeline, setDetailTimeline] = useState<ChartTimeline>(DEFAULT_CHART_TIMELINE);
   /** The goal whose detail is open (a ring was tapped). */
   const [openGoalId, setOpenGoalId] = useState<string | null>(null);
-  const [menuOpen, setMenuOpen] = useState(false);
   const compositionView: CompositionView = detail === 'measurements' ? 'measurements' : 'weight';
   const [showLogModal, setShowLogModal] = useState(false);
   const [logModalMode, setLogModalMode] = useState<LogModalMode>('weight');
@@ -189,15 +189,6 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
     [profile.progressWidgets, profile.whoopConnected, profile.wearableSource]
   );
   const hasWidget = (id: ProgressWidgetId) => activeWidgets.includes(id);
-
-  useEffect(() => {
-    if (!menuOpen) return;
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setMenuOpen(false);
-    };
-    document.addEventListener('keydown', onKeyDown);
-    return () => document.removeEventListener('keydown', onKeyDown);
-  }, [menuOpen]);
 
   const fmt: ProgressFormatters = useMemo(
     () => ({
@@ -442,6 +433,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
   );
 
   const [inspectedExerciseId, setInspectedExerciseId] = useState<string | null>(null);
+  const [bestsSearchQuery, setBestsSearchQuery] = useState('');
   const cardsTopRef = useRef<HTMLDivElement>(null);
 
   const inspectedExercise = useMemo(() => {
@@ -460,49 +452,78 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
         {detail === 'bests' &&
           (personalBests.length > 0 ? (
             <section className="wk-card" aria-label="All personal bests">
-              <p className="wk-body max-w-prose">Your heaviest logged set on each lift, or your most reps where there is no weight to add.</p>
+              <p className="wk-body max-w-prose">
+                Your heaviest logged set, best 1-rep max, and estimated max on each lift.
+              </p>
+              {personalBests.length > 6 && (
+                <div className="relative mt-3">
+                  <Search
+                    className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"
+                    style={{ color: 'var(--color-text-muted)' }}
+                    aria-hidden="true"
+                  />
+                  <input
+                    type="search"
+                    value={bestsSearchQuery}
+                    onChange={(e) => setBestsSearchQuery(e.target.value)}
+                    placeholder="Search exercises…"
+                    aria-label="Search personal bests by exercise"
+                    className="wk-field w-full pl-10"
+                  />
+                </div>
+              )}
               <ul className="flex flex-col mt-3">
-                {personalBests.map((b) => {
-                  const shown = bestValue(b);
-                  return (
-                    <li
-                      key={b.exerciseId}
-                      className="border-t"
-                      style={{ borderColor: 'var(--color-border-subtle)' }}
-                    >
-                      <button
-                        type="button"
-                        onClick={() => {
-                          triggerHaptic('light');
-                          setInspectedExerciseId(b.exerciseId);
-                        }}
-                        aria-label={`Open details for ${formatSentenceCase(b.exerciseName)}`}
-                        className="w-full text-left flex items-center justify-between gap-3 py-3 min-h-[44px]"
+                {personalBests
+                  .filter((b) => {
+                    const q = bestsSearchQuery.trim().toLowerCase();
+                    if (!q) return true;
+                    return b.exerciseName.toLowerCase().includes(q);
+                  })
+                  .map((b) => {
+                    const shown = bestValue(b);
+                    const hasTested1Rm = b.bestOneRepMaxKg !== undefined && b.bestOneRepMaxKg > 0;
+                    const showSeparateEst =
+                      b.e1rmKg > 0 && (!hasTested1Rm || b.e1rmKg > (b.bestOneRepMaxKg ?? 0) + 0.2);
+                    return (
+                      <li
+                        key={b.exerciseId}
+                        className="border-t"
+                        style={{ borderColor: 'var(--color-border-subtle)' }}
                       >
-                        <div className="min-w-0">
-                          <p className="wk-subhead leading-tight">
-                            {formatSentenceCase(b.exerciseName)}
-                          </p>
-                          <p className="wk-caption mt-1">
-                            {shortDate(b.date)}
-                            {b.e1rmKg > 0
-                              ? ` • estimated max ${units.formatPrecise(b.e1rmKg)}${b.includesBodyweight ? ' (bodyweight + added weight)' : ''}`
-                              : ''}
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-2 shrink-0">
-                          <p className="text-base font-medium tabular-nums text-right leading-none" style={{ color: 'var(--color-text-primary)' }}>
-                            {shown.value}
-                            <span className="wk-caption ml-1">
-                              {shown.unit}
-                            </span>
-                          </p>
-                          <ChevronRight className="wk-chevron" strokeWidth={2} aria-hidden="true" />
-                        </div>
-                      </button>
-                    </li>
-                  );
-                })}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            triggerHaptic('light');
+                            setInspectedExerciseId(b.exerciseId);
+                          }}
+                          aria-label={`Open details for ${formatSentenceCase(b.exerciseName)}`}
+                          className="w-full text-left flex items-center justify-between gap-3 py-3 min-h-[44px]"
+                        >
+                          <div className="min-w-0">
+                            <p className="wk-subhead">
+                              {formatSentenceCase(b.exerciseName)}
+                            </p>
+                            <p className="wk-caption mt-1">
+                              {shortDate(b.date)}
+                              {hasTested1Rm ? ` • best 1RM ${units.formatPrecise(b.bestOneRepMaxKg!)}` : ''}
+                              {showSeparateEst
+                                ? ` • estimated max ${units.formatPrecise(b.e1rmKg)}${b.includesBodyweight ? ' (bodyweight + added weight)' : ''}`
+                                : ''}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <p className="wk-subhead tabular-nums text-right" style={{ color: 'var(--color-text-primary)' }}>
+                              {shown.value}
+                              <span className="wk-caption ml-1">
+                                {shown.unit}
+                              </span>
+                            </p>
+                            <ChevronRight className="wk-chevron" strokeWidth={2} aria-hidden="true" />
+                          </div>
+                        </button>
+                      </li>
+                    );
+                  })}
               </ul>
             </section>
           ) : (
@@ -621,7 +642,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
                       style={{ borderColor: 'var(--color-border-subtle)' }}
                     >
                       <span className="wk-body">{shortDate(pt.date)}</span>
-                      <span className="text-base font-medium tabular-nums" style={{ color: 'var(--color-text-primary)' }}>
+                      <span className="wk-subhead tabular-nums" style={{ color: 'var(--color-text-primary)' }}>
                         {Math.round(pt.value).toLocaleString()}
                       </span>
                     </li>
@@ -874,7 +895,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
                         .map((c) => (
                           <div key={c.id} className="min-w-0">
                             <dt className="wk-caption">{c.title}</dt>
-                            <dd className="text-base font-medium tabular-nums" style={{ color: 'var(--color-text-primary)' }}>
+                            <dd className="wk-subhead tabular-nums" style={{ color: 'var(--color-text-primary)' }}>
                               {c.format(c.points[c.points.length - 1].value)}
                             </dd>
                           </div>
@@ -889,17 +910,13 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
                   <h2 className="wk-title">Symmetry</h2>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1">
                     {measuredSymmetryPairs.map((pair) => (
-                      <div
-                        key={pair.id}
-                        className="rounded-xl p-3 border"
-                        style={{ background: 'var(--wk-raised)', borderColor: 'var(--color-border-subtle)' }}
-                      >
+                      <div key={pair.id} className="wk-raised">
                         <span className="block wk-meta-title">{pair.label}</span>
-                        <span className="block text-base font-medium tabular-nums mt-1" style={{ color: 'var(--color-text-primary)' }}>
+                        <span className="block wk-subhead tabular-nums mt-1" style={{ color: 'var(--color-text-primary)' }}>
                           L {fmt.length(pair.leftCm!)} · R {fmt.length(pair.rightCm!)}
                         </span>
                         <span
-                          className="block text-xs font-medium mt-1 tabular-nums"
+                          className="block wk-meta-title mt-1 tabular-nums"
                           style={{ color: pair.status === 'balanced' ? 'var(--wk-accent)' : 'var(--color-status-warning)' }}
                         >
                           {pair.status === 'balanced'
@@ -1041,74 +1058,38 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
     </>
   );
 
-  const renderProgressMenu = (close: () => void) => (
-    <div
-      role="menu"
-      aria-label="Progress options"
-      className="w-60 rounded-2xl bg-surface-card border shadow-2xl p-2 space-y-1 text-left"
-      style={{ borderColor: 'var(--color-border-subtle)' }}
-    >
-      <button
-        type="button"
-        role="menuitem"
-        onClick={() => {
-          triggerHaptic('light');
-          close();
-          setDetail('goals');
-        }}
-        className="w-full text-left px-3 py-2 rounded-xl text-base font-medium hover:bg-[var(--wk-raised)] flex items-center gap-2 min-h-[44px]"
-        style={{ color: 'var(--color-text-primary)' }}
-      >
-        <Target className="w-4 h-4 stroke-[2] shrink-0" />
-        <span>Change goals</span>
-      </button>
-      <button
-        type="button"
-        role="menuitem"
-        onClick={() => {
-          triggerHaptic('light');
-          close();
-          setDetail('widgets');
-        }}
-        className="w-full text-left px-3 py-2 rounded-xl text-base font-medium hover:bg-[var(--wk-raised)] flex items-center justify-between gap-2 min-h-[44px]"
-        style={{ color: 'var(--color-text-primary)' }}
-      >
-        <span className="flex items-center gap-2">
-          <SlidersHorizontal className="w-4 h-4 stroke-[2] shrink-0" />
-          <span>Customize widgets</span>
-        </span>
-        <span className="text-xs font-normal tabular-numbers" style={{ color: 'var(--color-text-muted)' }}>
-          {activeWidgets.length} active
-        </span>
-      </button>
-    </div>
-  );
+  const progressMenuItems: OverflowMenuItem[] = [
+    {
+      id: 'goals',
+      label: 'Change goals',
+      icon: <Target className="w-4 h-4 stroke-[2]" aria-hidden="true" />,
+      onSelect: () => {
+        triggerHaptic('light');
+        setDetail('goals');
+      },
+    },
+    {
+      id: 'widgets',
+      label: 'Customize widgets',
+      trailing: `${activeWidgets.length} active`,
+      icon: <SlidersHorizontal className="w-4 h-4 stroke-[2]" aria-hidden="true" />,
+      onSelect: () => {
+        triggerHaptic('light');
+        setDetail('widgets');
+      },
+    },
+  ];
 
   const overview = (
     <>
       <header className="relative pt-2">
-        <div className="relative flex items-center justify-start pr-12">
+        <div className="flex items-center justify-between gap-3">
           <h1 className="wk-page-title">Progress</h1>
-          <button
-            type="button"
-            onClick={() => {
-              triggerHaptic('light');
-              setMenuOpen((o) => !o);
-            }}
-            aria-expanded={menuOpen}
-            aria-haspopup="menu"
-            aria-label="Progress options: change goals and customize widgets"
-            className="absolute right-0 top-1/2 -translate-y-1/2 flex items-center justify-center rounded-full"
-            style={{ width: 44, height: 44, color: 'var(--wk-muted)' }}
-          >
-            <MoreHorizontal className="w-5 h-5" strokeWidth={2} aria-hidden="true" />
-          </button>
-          {menuOpen && (
-            <>
-              <div className="fixed inset-0 z-20" onClick={() => setMenuOpen(false)} aria-hidden="true" />
-              <div className="absolute right-0 top-full mt-2 z-30">{renderProgressMenu(() => setMenuOpen(false))}</div>
-            </>
-          )}
+          <OverflowMenu
+            triggerAriaLabel="Progress options: change goals and customize widgets"
+            menuAriaLabel="Progress options"
+            items={progressMenuItems}
+          />
         </div>
       </header>
 
@@ -1253,7 +1234,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
                   <p className="wk-caption">
                     {todaySteps > 0 ? 'Today' : `Latest (${shortDate(latestStepsEntry!.date)})`}
                   </p>
-                  <p className="wk-display leading-none mt-1">
+                  <p className="wk-display mt-1">
                     {Math.round(todaySteps > 0 ? todaySteps : latestStepsEntry!.value).toLocaleString()}
                   </p>
                   {avgSteps7d !== null && (
@@ -1303,7 +1284,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
             {latestWeighIn && (
               <div className="flex items-end justify-between gap-3 mt-4">
                 <div className="min-w-0">
-                  <p className="wk-display leading-none">
+                  <p className="wk-display">
                     {units.formatPrecise(latestWeighIn.bodyweightKg)}
                   </p>
                   {pace && (

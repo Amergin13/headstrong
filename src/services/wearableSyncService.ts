@@ -15,6 +15,8 @@ import {
   simulateWhoopSync,
 } from './whoopService';
 import {
+  isIosPlatform,
+  resolveNativeHealthHubName,
   simulateHealthConnectSync,
 } from './healthConnectService';
 import {
@@ -65,9 +67,27 @@ export const WEARABLE_PROVIDERS: Record<WearableProvider, WearableProviderMeta> 
   },
 };
 
+export function getWearableProviderMeta(
+  provider: WearableProvider,
+  isIos: boolean = isIosPlatform()
+): WearableProviderMeta {
+  if (provider === 'health_connect' && isIos) {
+    return {
+      id: 'health_connect',
+      name: 'Apple Health',
+      tagline: 'iOS HealthKit Hub (Apple Watch, iPhone, Oura & Garmin)',
+      description:
+        'On-device HealthKit hub syncing sleep, heart rate, resting HR, HRV, weight, height, body fat, steps, and workouts automatically.',
+      hardwareFocus: 'Apple Watch, iPhone, Oura & Garmin (via Apple Health)',
+      accentColor: SEMANTIC_COLOR.statusInfo,
+    };
+  }
+  return WEARABLE_PROVIDERS[provider];
+}
+
 /**
  * Universal Wearable Biometrics Synchronizer:
- * Seamlessly drives Treise recovery feature from either Fitbit, Whoop, or Android Health Connect.
+ * Seamlessly drives Treise recovery feature from either Fitbit, Whoop, Android Health Connect, or iOS Apple Health.
  */
 export async function syncWearableBiometrics(
   provider: WearableProvider,
@@ -136,8 +156,10 @@ export async function syncWearableBiometrics(
 
     case 'health_connect': {
       const hc = getHealthConnectStatus();
+      const isApple = hc.provider === 'apple_health' || isIosPlatform();
+      const hubName = resolveNativeHealthHubName(isApple);
       if (hc.bridge && (hc.biometricsGranted || hc.heightGranted)) {
-        onProg({ stage: 'connecting', percent: 25, message: 'Reading Health Connect biometrics...', provider: 'health_connect' });
+        onProg({ stage: 'connecting', percent: 25, message: `Reading ${hubName} biometrics...`, provider: 'health_connect' });
         const { days, profile: hcProfile } = await readHealthConnectBiometricsWithProfile(
           new Date(Date.now() - 29 * 86400000)
         );
@@ -150,10 +172,10 @@ export async function syncWearableBiometrics(
           options.onProfileExtracted(demographics);
         }
         if (!days.length && !hasDemographics) {
-          throw new Error('Health Connect is connected, but no recent sleep, heart rate, HRV, weight, or height records were found yet.');
+          throw new Error(`${hubName} is connected, but no recent sleep, heart rate, HRV, weight, or height records were found yet.`);
         }
         const latest = days.length > 0 ? days[days.length - 1] : undefined;
-        onProg({ stage: 'complete', percent: 100, message: 'Health Connect synced', provider: 'health_connect' });
+        onProg({ stage: 'complete', percent: 100, message: `${hubName} synced`, provider: 'health_connect' });
         return {
           date: latest?.date || localDateString(),
           bodyweightKg: latest?.bodyweightKg || 0,
@@ -166,7 +188,11 @@ export async function syncWearableBiometrics(
           source: 'health_connect',
         };
       }
-      throw new Error('Open Treise on Android to sync Health Connect automatically, or import an export file below.');
+      throw new Error(
+        isApple
+          ? 'Open Treise on iOS to sync Apple Health automatically, or import an Apple Health export file below.'
+          : 'Open Treise on Android to sync Health Connect automatically, or import an export file below.'
+      );
     }
 
     case 'fitbit':

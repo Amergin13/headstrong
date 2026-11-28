@@ -166,15 +166,14 @@ export const RestTimerModal: React.FC<RestTimerModalProps> = ({
 
             <div className="min-w-0">
               <div
-                className="text-xl font-semibold tracking-tight tabular-nums leading-none"
-                style={{ color: 'var(--color-text-primary)' }}
+                className="wk-number"
                 aria-live="off"
               >
                 {formatTime(secondsRemaining)}
               </div>
               <div className="wk-caption mt-1 truncate" aria-live="polite">
                 {isDone ? (
-                  <span className="font-medium" style={{ color: 'var(--wk-accent)' }}>
+                  <span className="wk-meta-title" style={{ color: 'var(--wk-accent)' }}>
                     Ready{context ? ` for ${context.nextLabel}` : ''}
                   </span>
                 ) : (
@@ -256,7 +255,7 @@ export const RestTimerModal: React.FC<RestTimerModalProps> = ({
                     context.onApplyLeverageUpgrade?.();
                     setLeverageApplied(true);
                   }}
-                  className="wk-btn-secondary min-h-[44px] px-3 wk-caption font-medium"
+                  className="wk-btn-secondary min-h-[44px] px-3 wk-meta-title"
                   style={{
                     background: 'var(--color-status-positive-soft)',
                     borderColor: 'var(--wk-accent)',

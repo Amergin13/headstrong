@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { UserProfile } from "../../engine/types";
 import { HealthConnectStatus } from "../../services/healthConnectBridge";
+import { isIosPlatform } from "../../services/healthConnectService";
 import {
   STRAVA_ENABLED,
   getStravaConfig,
@@ -48,6 +49,8 @@ export const ActivityConnectionsModal: React.FC<
 
   const watchName = profile.whoopConnected ? "Whoop" : null;
   const hcOn = Boolean(profile.healthConnectActivities && hcStatus.granted);
+  const isIosHealth = hcStatus.provider === "apple_health" || isIosPlatform();
+  const nativeHubLabel = isIosHealth ? "Apple Health" : "Health Connect";
 
   const row: React.CSSProperties = {
     paddingTop: 16,
@@ -151,28 +154,32 @@ export const ActivityConnectionsModal: React.FC<
           </section>
         )}
 
-        {/* Health Connect: only inside the Android app */}
+        {/* Native Health Hub: Apple Health on iOS, Health Connect on Android */}
         <section style={row} aria-labelledby="hc-row">
           <div className="flex items-center justify-between gap-3">
             <h4 id="hc-row" className="wk-subhead">
-              Health Connect
+              {nativeHubLabel}
             </h4>
             <span className="wk-pill">{hcOn ? "On" : "Off"}</span>
           </div>
           {!hcStatus.bridge ? (
             <p className="wk-body mt-2 max-w-prose">
-              Available in the Treise app from Google Play on Android. It reads
-              workouts, daily steps, sleep, heart rate, HRV, weight, height, and body fat from Google Pixel Watch, Fitbit, Samsung Health and Garmin automatically.
+              {isIosHealth
+                ? "Available in the Treise iOS app. It reads workouts, daily steps, sleep, heart rate, HRV, weight, height, and body fat from Apple Watch, iPhone, Oura and Garmin automatically."
+                : "Available in the Treise app from Google Play on Android. It reads workouts, daily steps, sleep, heart rate, HRV, weight, height, and body fat from Google Pixel Watch, Fitbit, Samsung Health and Garmin automatically."}
             </p>
           ) : !hcStatus.available ? (
             <p className="wk-body mt-2 max-w-prose">
-              Health Connect isn't set up on this phone. Install it from Google
-              Play, then come back here.
+              {isIosHealth
+                ? "Apple Health isn't available on this device."
+                : "Health Connect isn't set up on this phone. Install it from Google Play, then come back here."}
             </p>
           ) : (
             <>
               <p className="wk-body mt-2 max-w-prose">
-                Treise reads only the health categories you allow (exercise sessions, daily steps, sleep, heart rate, resting HR, HRV, weight, height, and body fat) from Health Connect — including Fitbit, Pixel Watch, Samsung Health and Garmin. Strictly read-only.
+                {isIosHealth
+                  ? "Treise reads only the health categories you allow (workouts, daily steps, sleep, heart rate, resting HR, HRV, weight, height, and body fat) from Apple Health — including Apple Watch, iPhone, Oura and Garmin. Strictly read-only."
+                  : "Treise reads only the health categories you allow (exercise sessions, daily steps, sleep, heart rate, resting HR, HRV, weight, height, and body fat) from Health Connect — including Fitbit, Pixel Watch, Samsung Health and Garmin. Strictly read-only."}
               </p>
               <button
                 type="button"
@@ -193,10 +200,10 @@ export const ActivityConnectionsModal: React.FC<
                 }}
               >
                 {hcOn
-                  ? "Turn off Health Connect"
+                  ? `Turn off ${nativeHubLabel}`
                   : hcStatus.granted && hcStatus.stepsGranted && hcStatus.biometricsGranted
-                    ? "Turn on Health Connect"
-                    : "Allow access in Health Connect"}
+                    ? `Turn on ${nativeHubLabel}`
+                    : `Allow access in ${nativeHubLabel}`}
               </button>
               {hcOn && !hcStatus.stepsGranted && (
                 <button
@@ -211,12 +218,14 @@ export const ActivityConnectionsModal: React.FC<
                     color: "var(--color-action-primary-fg)",
                   }}
                 >
-                  Allow daily steps in Health Connect
+                  Allow daily steps in {nativeHubLabel}
                 </button>
               )}
               {needsAppUpdate && (
                 <p className="wk-body mt-3 max-w-prose">
-                  Update Treise from Google Play to allow this here. Or open Android Settings, then Health Connect, then App permissions, and allow Treise.
+                  {isIosHealth
+                    ? "Open iPhone Settings, then Health, then Data Access & Devices, and allow Treise."
+                    : "Update Treise from Google Play to allow this here. Or open Android Settings, then Health Connect, then App permissions, and allow Treise."}
                 </p>
               )}
             </>

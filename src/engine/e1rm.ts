@@ -62,22 +62,29 @@ export const UNILATERAL_LOAD_FRACTION = 0.5;
 /** Single-arm or single-leg exercises, where each side works on its own. */
 export function isUnilateralExercise(ex: { exerciseId?: string; name?: string }): boolean {
   const s = `${ex.exerciseId || ''} ${ex.name || ''}`.toLowerCase();
-  return /(single[- ]?(arm|leg)|one[- ]arm|1[- ]arm|\bsa[- ]|split[- ]squat|bulgarian|lunge|pistol|step[- ]?up|unilateral|copenhagen|suitcase)/.test(s);
+  return /(single[- ]?(arm|leg)|one[- ]?(arm|leg)|1[- ]?(arm|leg)|\bsa[- ]|split[- ]squat|bulgarian|lunge|pistol|step[- ]?(up|down)|unilateral|copenhagen|suitcase|waiter|bottoms[- ]up|turkish|get[- ]up|\btgu\b|windmill|meadows|kroc|concentration|kickstand|b[- ]stance|cossack|archer)/.test(s);
 }
 
-/** Moves done holding one dumbbell, so the weight logged on the dumbbell IS the total external load moved. */
+/** Moves done holding one dumbbell or single kettlebell, so the weight logged IS the total external load moved. */
 export function usesOneDumbbell(ex: { exerciseId?: string; id?: string; name?: string }): boolean {
   const id = (ex.exerciseId || ex.id || '').toLowerCase();
   const s = `${id} ${(ex.name || '').toLowerCase()}`;
-  if (/(two[- ]?(arm|hand|dumbbell)|bilateral|paired)/.test(s)) return false;
-  return (
+  if (
     id === 'ex-db-hip-thrust' ||
     id === 'ex-gymball-crunch' ||
     id === 'ex-db-calf-raise' ||
-    id === 'ex-overhead-db-extension' ||
-    /(goblet|pullover|single[- ]?arm|one[- ]?arm|1[- ]arm|suitcase|db[- ]leg[- ]curl|lying leg curl|hip thrust|gym ?ball crunch|step calf raise|overhead.*tricep)/.test(
-      s
-    )
+    id === 'ex-overhead-db-extension'
+  ) {
+    return true;
+  }
+  if (/(two[- ]?(hand|dumbbell|kettlebell)|double[- ]?(kettlebell|kb|db|dumbbell)|bilateral|paired)/.test(s)) {
+    return false;
+  }
+  if (/\btwo[- ]arm\b/.test(s) && !/(1[- ]db|single[- ](db|dumbbell|kettlebell|kb)|kettlebell[- ]swing|kb[- ]swing|goblet|pullover|overhead.*tricep)/.test(s)) {
+    return false;
+  }
+  return /(goblet|pullover|single[- ]?arm|one[- ]?arm|1[- ]?arm|suitcase|waiter|turkish|get[- ]up|\btgu\b|windmill|halo|kettlebell[- ]swing|kb[- ]swing|russian[- ]swing|american[- ]swing|db[- ]snatch|dumbbell[- ]snatch|kettlebell[- ]snatch|kb[- ]snatch|single[- ]arm.*clean|kroc|concentration|sumo[- ]dumbbell[- ]squat|db[- ]leg[- ]curl|lying leg curl|hip thrust|gym ?ball crunch|step calf raise|overhead.*tricep)/.test(
+    s
   );
 }
 
@@ -118,7 +125,7 @@ function isLeverageLimitedSingleDumbbell(ex: { exerciseId?: string; id?: string;
   if (!usesOneDumbbell(ex) || isUnilateralExercise(ex)) return false;
   const id = (ex.exerciseId || ex.id || '').toLowerCase();
   const s = `${id} ${(ex.name || '').toLowerCase()}`;
-  return /(goblet|pullover|hip thrust|db[- ]leg[- ]curl|lying leg curl|gym ?ball crunch)/.test(s);
+  return /(goblet|pullover|hip thrust|sumo[- ]dumbbell[- ]squat|kettlebell[- ]swing|kb[- ]swing|halo|db[- ]leg[- ]curl|lying leg curl|gym ?ball crunch)/.test(s);
 }
 
 /** True when an exercise is tracked by time (seconds/minutes held) rather than repetition count. */
@@ -139,11 +146,24 @@ export function isTimedExercise(ex: {
       id === 'ex-decline-gymball-plank' ||
       id === 'ex-forearm-plank' ||
       id === 'ex-side-plank' ||
+      id === 'ex-rkc-plank' ||
+      id === 'ex-copenhagen-plank' ||
+      id === 'ex-hollow-body-hold' ||
+      id === 'ex-l-sit' ||
       id === 'ex-dead-hang' ||
       id === 'ex-wall-sit' ||
       id === 'ex-farmers-walk' ||
       id === 'ex-suitcase-carry' ||
-      id === 'ex-hiit-sprints'
+      id === 'ex-trap-bar-carry' ||
+      id === 'ex-front-rack-kb-carry' ||
+      id === 'ex-waiter-carry' ||
+      id === 'ex-sled-push' ||
+      id === 'ex-backward-sled-drag' ||
+      id === 'ex-rowerg-intervals' ||
+      id === 'ex-skierg-intervals' ||
+      id === 'ex-airbike-intervals' ||
+      id === 'ex-hiit-sprints' ||
+      id === 'ex-couch-stretch'
   );
 }
 
@@ -171,6 +191,10 @@ export const BODYWEIGHT_LOAD_RATIOS: Record<string, number> = {
   'ex-diamond-pushup': 0.68,
   'ex-trx-pushup': 0.60,
   'ex-ring-pressup': 0.68,
+  'ex-archer-pushup': 0.70,
+  'ex-plyo-pushup': 0.64,
+  'ex-ring-fly': 0.55,
+  'ex-ring-dip': 1.00,
   'ex-triceps-dip': 1.00,
   'ex-dip': 1.00,
   'ex-weighted-dip': 1.00,
@@ -181,6 +205,8 @@ export const BODYWEIGHT_LOAD_RATIOS: Record<string, number> = {
   'ex-dolphin-pushup': 0.68,
   'ex-elevated-pike-pushup': 0.75,
   'ex-handstand-pushup': 0.85,
+  'ex-wall-handstand-pushup': 0.85,
+  'ex-pike-walkout': 0.62,
   // Rows / Horizontal Pull
   'ex-inverted-row': 0.60,
   'ex-bodyweight-inverted-row': 0.60,
@@ -188,8 +214,12 @@ export const BODYWEIGHT_LOAD_RATIOS: Record<string, number> = {
   'ex-doorframe-row': 0.45,
   'ex-trx-row': 0.55,
   'ex-trx-inverted-row': 0.55,
+  'ex-ring-row': 0.62,
   // Vertical Pull
   'ex-pullup': 1.00,
+  'ex-pronated-pullup': 1.00,
+  'ex-neutral-grip-pullup': 1.00,
+  'ex-ring-pullup': 1.00,
   'ex-chinup': 1.00,
   'ex-hammer-chinup': 1.00,
   'ex-weighted-pullup': 1.00,
@@ -200,6 +230,10 @@ export const BODYWEIGHT_LOAD_RATIOS: Record<string, number> = {
   'ex-bw-squat': 0.65,
   'ex-bulgarian-split-squat': 0.85,
   'ex-bw-split-squat': 0.85,
+  'ex-cossack-squat': 0.75,
+  'ex-sissy-squat': 0.70,
+  'ex-spanish-squat': 0.68,
+  'ex-poliquin-step-down': 0.75,
   'ex-pistol-squat': 0.90,
   'ex-trx-single-leg-squat': 0.75,
   'ex-trx-pistol-squat': 0.75,
@@ -210,28 +244,64 @@ export const BODYWEIGHT_LOAD_RATIOS: Record<string, number> = {
   'ex-single-leg-rdl': 0.80,
   'ex-bw-good-morning': 0.45,
   'ex-glute-bridge-bw': 0.45,
+  'ex-frog-pump': 0.45,
+  'ex-45-back-extension': 0.55,
+  'ex-ghr': 0.70,
   'ex-single-leg-glute-bridge': 0.75,
   'ex-sliding-hamstring-curl': 0.50,
   'ex-sliding-leg-curl': 0.50,
+  'ex-stability-ball-leg-curl': 0.52,
   'ex-trx-hamstring-curl': 0.55,
   'ex-hamstring-walkout': 0.55,
   'ex-nordic-curl': 0.65,
-  // Arms / Core / Calves
+  // Arms / Core / Calves / Plyo / Mobility
   'ex-trx-bicep-curl': 0.50,
   'ex-underhand-bar-curl': 0.70,
   'ex-single-leg-calf-raise': 1.00,
   'ex-bw-single-leg-calf': 1.00,
   'ex-slow-calf-raise': 1.00,
+  'ex-tibialis-raise': 0.35,
   'ex-dead-hang': 1.00,
   'ex-wall-sit': 0.55,
   'ex-decline-gymball-plank': 0,
   'ex-forearm-plank': 0,
   'ex-side-plank': 0,
+  'ex-rkc-plank': 0,
+  'ex-copenhagen-plank': 0,
+  'ex-hollow-body-hold': 0,
+  'ex-l-sit': 0,
+  'ex-ab-wheel-rollout': 0.55,
+  'ex-toes-to-bar': 0.55,
+  'ex-captains-chair-leg-raise': 0.45,
+  'ex-bird-dog': 0,
+  'ex-russian-twist': 0,
   'ex-hiit-sprints': 0,
+  'ex-rowerg-intervals': 0,
+  'ex-skierg-intervals': 0,
+  'ex-airbike-intervals': 0,
+  'ex-box-jump': 1.00,
+  'ex-depth-jump': 1.00,
+  'ex-broad-jump': 1.00,
+  'ex-hurdle-hop': 1.00,
   'ex-band-leg-curl': 0,
   'ex-band-lat-pulldown': 0,
   'ex-band-seated-row': 0,
   'ex-band-pull-apart': 0,
+  'ex-band-chest-press': 0,
+  'ex-band-chest-fly': 0,
+  'ex-band-straight-arm-pulldown': 0,
+  'ex-band-tricep-pushdown': 0,
+  'ex-band-pallof-press': 0,
+  'ex-band-dislocates': 0,
+  'ex-band-external-rotation': 0,
+  'ex-worlds-greatest-stretch': 0,
+  'ex-90-90-hip-switch': 0,
+  'ex-couch-stretch': 0,
+  'ex-thoracic-open-book': 0,
+  'ex-cat-cow-thread-needle': 0,
+  'ex-ankle-wall-mobilization': 0,
+  'ex-scapular-wall-slide': 0,
+  'ex-sleeper-external-rotation': 0,
 };
 
 export function getBodyweightLoadRatio(exerciseId?: string, pillar?: string): number {
@@ -593,10 +663,12 @@ export function calculateE1RM(
 
   // Dampen RIR credit above 12 reps where RIR prediction error rises sharply (Halperin et al., 2022),
   // and cap total reps-from-failure at MAX_E1RM_REPS_FROM_FAILURE so Epley never drifts high.
+  // Boundary condition (Epley, 1985): a true 1-rep max (1 rep @ 0 RIR) equals 1.00x effectiveWeight.
   const clampedRir = Math.max(0, rir);
   const effectiveRir = reps > HIGH_REP_RIR_DAMPEN_THRESHOLD ? clampedRir * 0.5 : clampedRir;
   const repsFromFailure = Math.min(reps + effectiveRir, MAX_E1RM_REPS_FROM_FAILURE);
-  const e1rm = effectiveWeight * (1 + repsFromFailure / 30);
+  const e1rm =
+    repsFromFailure <= 1 ? effectiveWeight : effectiveWeight * (1 + repsFromFailure / 30);
   return Math.round(e1rm * 10) / 10;
 }
 

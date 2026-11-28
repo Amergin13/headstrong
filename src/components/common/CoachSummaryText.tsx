@@ -52,8 +52,8 @@ export const CoachSummaryText: React.FC<CoachSummaryTextProps> = ({
       aria-live="polite"
     >
       <p
-        className="wk-body font-medium m-0"
-        style={{ color: 'var(--color-text-primary)', fontWeight: 500 }}
+        className="wk-subhead m-0"
+        style={{ color: 'var(--color-text-primary)' }}
       >
         {parts[0]}
       </p>

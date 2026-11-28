@@ -124,7 +124,7 @@ export const SplitEditor: React.FC<SplitEditorProps> = ({
           {/* Program Header Card */}
           <div className="wk-card w-full text-left block">
             <div className="flex items-start justify-between gap-3">
-              <h2 className="wk-h1 leading-tight">
+              <h2 className="wk-h1">
                 {MUSCLE_BUILDING_PROGRAM_META.name}
               </h2>
               {onChangeProgram && (
@@ -141,15 +141,15 @@ export const SplitEditor: React.FC<SplitEditorProps> = ({
               )}
             </div>
 
-            <p className="wk-body mt-2 max-w-prose">
+            <p className="wk-body mt-2">
               {activePhaseData.description}
             </p>
 
             <div className="mt-5 flex items-end justify-between gap-2">
-              <span className="wk-label leading-tight">
+              <span className="wk-label">
                 {activePhaseData.name}
               </span>
-              <span className="wk-subhead tabular-nums shrink-0 leading-none">
+              <span className="wk-subhead tabular-nums shrink-0">
                 Phase {selectedPhase}/3
               </span>
             </div>
@@ -197,7 +197,7 @@ export const SplitEditor: React.FC<SplitEditorProps> = ({
                   className="w-full text-left block"
                 >
                   <div className="flex items-start justify-between gap-3">
-                    <h3 className="wk-h1 leading-tight">
+                    <h3 className="wk-h1">
                       {workout.title}
                     </h3>
                     <ChevronRight
@@ -215,10 +215,10 @@ export const SplitEditor: React.FC<SplitEditorProps> = ({
                   </p>
 
                   <div className="mt-5 flex items-end justify-between gap-2">
-                    <span className="wk-meta-title leading-tight tabular-nums">
+                    <span className="wk-meta-title tabular-nums">
                       Workout #{workout.workoutNumber} · {workout.exercises.length} exercises
                     </span>
-                    <span className="wk-number shrink-0 leading-none">
+                    <span className="wk-number shrink-0">
                       {workout.workoutNumber}/24
                     </span>
                   </div>
@@ -282,7 +282,7 @@ export const SplitEditor: React.FC<SplitEditorProps> = ({
     <>
       <div className="wk-card w-full text-left block">
         <div className="flex items-start justify-between gap-3">
-          <h2 className="wk-h1 leading-tight">
+          <h2 className="wk-h1">
             Workout splits &amp; exercises
           </h2>
           {onChangeProgram && (
@@ -304,17 +304,15 @@ export const SplitEditor: React.FC<SplitEditorProps> = ({
         </p>
 
         <div className="mt-5 flex items-end justify-between gap-2">
-          <span className="wk-meta-title leading-tight">
+          <span className="wk-meta-title">
             {activeDay} workout routine
           </span>
-          <span className="wk-subhead tabular-numbers shrink-0 leading-none">
+          <span className="wk-subhead tabular-numbers shrink-0">
             {routineExercises.length} exercises
           </span>
         </div>
 
-        <div className="wk-bar mt-3">
-          <div style={{ width: '100%' }} />
-        </div>
+        <div className="mt-3 border-t" style={{ borderColor: 'var(--color-border-subtle)' }} />
 
         {/* Segmented Control */}
         <div

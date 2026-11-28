@@ -109,7 +109,7 @@ export const WeeklyVolumeCard: React.FC<WeeklyVolumeCardProps> = ({
                         {item.muscleName}
                       </span>
                       <span
-                        className="wk-caption font-medium tabular-nums"
+                        className="wk-meta-title tabular-nums"
                         style={{
                           color: inTarget ? 'var(--color-status-positive)' : 'var(--color-text-primary)',
                         }}

@@ -7,6 +7,8 @@ import whoopBiometrics from '../api/whoop/biometrics';
 import stravaToken from '../api/strava/token';
 import stravaActivities from '../api/strava/activities';
 import coachGenerate from '../api/coach/generate';
+import telemetryIngest from '../api/telemetry/ingest';
+import { EmittedMetricRecord, setMetricSinkForTests } from '../api/_lib/metrics';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -452,6 +454,114 @@ const iso = (msAgo: number) => new Date(Date.now() - msAgo).toISOString();
   );
 
   delete process.env.GEMINI_API_KEY;
+
+  // ---------------------------------------------------------------- Product telemetry ingest & Vercel Custom Metrics
+  console.log('\n[Product telemetry ingest & Vercel Custom Metrics]');
+  const emitted: EmittedMetricRecord[] = [];
+  setMetricSinkForTests((name, value, tags) => {
+    emitted.push({ name, value, tags });
+  });
+
+  res = mockRes();
+  await telemetryIngest({ method: 'GET', headers: {} }, res);
+  assert(
+    res.statusCode === 200 && res.body?.status === 'ok' && res.body?.maxBatchSize === 25 && res.body?.metricsCount >= 30,
+    'GET /api/telemetry/ingest reports maxBatchSize=25 and registered metric count'
+  );
+
+  // Reject cross-origin requests from untrusted domains
+  emitted.length = 0;
+  res = mockRes();
+  await telemetryIngest(
+    {
+      method: 'POST',
+      headers: { origin: 'https://evil-spammer.example' },
+      body: { events: [{ name: 'workout.started', value: 1 }] },
+    },
+    res
+  );
+  assert(
+    res.statusCode === 403 &&
+      emitted.some((m) => m.name === 'telemetry.batch_ingested' && m.tags?.outcome === 'forbidden_origin'),
+    'POST /api/telemetry/ingest rejects untrusted Origin headers with 403'
+  );
+
+  // Accept valid batch, scrub PII, reject unknown/vercel.* metrics, and collapse duplicate counters
+  emitted.length = 0;
+  res = mockRes();
+  await telemetryIngest(
+    {
+      method: 'POST',
+      headers: { origin: 'https://treise.vercel.app' },
+      body: JSON.stringify({
+        events: [
+          {
+            name: 'workout.started',
+            value: 1,
+            tags: {
+              platform: 'ios_app',
+              program_type: 'starter_6wk',
+              goal_phase: 'Lean Bulk',
+              email: 'secret@example.com',
+              name: 'Hidden Name',
+            },
+          },
+          { name: 'workout.set_completed', value: 1, tags: { platform: 'ios_app', program_type: 'starter_6wk', set_type: 'working' } },
+          { name: 'workout.set_completed', value: 1, tags: { platform: 'ios_app', program_type: 'starter_6wk', set_type: 'working' } },
+          { name: 'workout.set_completed', value: 1, tags: { platform: 'ios_app', program_type: 'starter_6wk', set_type: 'working' } },
+          { name: 'workout.completed', value: 1, tags: { platform: 'ios_app', program_type: 'starter_6wk', milestone: 'block' } },
+          { name: 'workout.duration_min', value: 48, tags: { platform: 'ios_app', program_type: 'starter_6wk' } },
+          { name: 'program.completed', value: 1, tags: { platform: 'ios_app', program_type: 'starter_6wk' } },
+          { name: 'vercel.reserved_metric', value: 1 },
+          { name: 'unknown.fake_metric', value: 1 },
+        ],
+      }),
+    },
+    res
+  );
+  const startedMetric = emitted.find((m) => m.name === 'workout.started');
+  const setsMetric = emitted.find((m) => m.name === 'workout.set_completed');
+  const durationMetric = emitted.find((m) => m.name === 'workout.duration_min');
+  const progCompletedMetric = emitted.find((m) => m.name === 'program.completed');
+  assert(
+    res.statusCode === 202 &&
+      res.body?.accepted === 5 &&
+      res.body?.rawAccepted === 7 &&
+      res.body?.rejected === 2 &&
+      Boolean(startedMetric) &&
+      !('email' in (startedMetric?.tags ?? {})) &&
+      !('name' in (startedMetric?.tags ?? {})) &&
+      setsMetric?.value === 3 &&
+      durationMetric?.value === 48 &&
+      progCompletedMetric?.value === 1 &&
+      !emitted.some((m) => m.name.startsWith('vercel.')),
+    'POST /api/telemetry/ingest emits aggregated Vercel Custom Metrics, strips PII tags, and rejects unknown/reserved metrics'
+  );
+
+  // Verify coach/generate also emits server-side outcome & duration metrics via @vercel/functions metric()
+  process.env.GEMINI_API_KEY = 'test-key';
+  emitted.length = 0;
+  installFetch(() => ({
+    status: 200,
+    body: { candidates: [{ content: { parts: [{ text: 'Keep 2 RIR.' }] } }] },
+  }));
+  res = mockRes();
+  await coachGenerate(
+    {
+      method: 'POST',
+      headers: { origin: 'https://treise.vercel.app' },
+      body: { userPrompt: 'How hard today?' },
+    },
+    res
+  );
+  assert(
+    res.statusCode === 200 &&
+      emitted.some((m) => m.name === 'coach.api.request' && m.tags?.outcome === 'success') &&
+      emitted.some((m) => m.name === 'coach.api.duration_ms' && m.value >= 1),
+    'POST /api/coach/generate emits coach.api.request and coach.api.duration_ms Custom Metrics'
+  );
+  delete process.env.GEMINI_API_KEY;
+  setMetricSinkForTests(null);
 
   // ---------------------------------------------------------------- Deployability
   // package.json is "type": "module", so Vercel runs api/ as ES modules, which need explicit

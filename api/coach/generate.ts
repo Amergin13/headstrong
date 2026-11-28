@@ -1,4 +1,5 @@
 import { applyCors } from '../_lib/cors.js';
+import { emitServerMetric } from '../_lib/metrics.js';
 
 /**
  * Stateless serverless proxy for the AI Coach (Gemini Flash-Lite).
@@ -144,6 +145,8 @@ export default async function handler(req: any, res: any) {
 
   const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
   const timeout = controller ? setTimeout(() => controller.abort(), 14_000) : null;
+  const startedAt = Date.now();
+  const modeTag = hasTools ? 'tools' : responseSchema ? 'schema' : 'summary';
 
   try {
     const candidateModels = getCandidateModels(true);
@@ -186,6 +189,7 @@ export default async function handler(req: any, res: any) {
     }
 
     if (!upstream || !upstream.ok) {
+      emitServerMetric('coach.api.request', 1, { outcome: 'upstream_error', mode: modeTag });
       return res.status(502).json({ error: `Upstream model returned ${upstream ? upstream.status : 'error'}` });
     }
 
@@ -212,18 +216,26 @@ export default async function handler(req: any, res: any) {
     const functionCall = toolCalls[0];
 
     if (!text && !functionCall) {
+      emitServerMetric('coach.api.request', 1, { outcome: 'empty_reply', mode: modeTag });
       return res.status(502).json({ error: 'Model returned an empty answer.' });
     }
 
     cachedWorkingModel = activeModel;
+    emitServerMetric('coach.api.request', 1, {
+      outcome: 'success',
+      mode: modeTag,
+      has_tool_call: functionCall ? 'true' : 'false',
+    });
     return res.status(200).json({
       text,
       model: activeModel,
       ...(functionCall ? { functionCall, toolCalls } : {}),
     });
   } catch {
+    emitServerMetric('coach.api.request', 1, { outcome: 'network_error', mode: modeTag });
     return res.status(502).json({ error: 'Failed to reach the coach model.' });
   } finally {
+    emitServerMetric('coach.api.duration_ms', Math.max(1, Date.now() - startedAt), { mode: modeTag });
     if (timeout) clearTimeout(timeout);
   }
 }

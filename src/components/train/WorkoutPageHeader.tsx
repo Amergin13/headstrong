@@ -1,8 +1,9 @@
-import React, { useEffect, useState } from 'react';
-import { Check, MoreHorizontal } from 'lucide-react';
+import React from 'react';
+import { Check } from 'lucide-react';
 import { StripDay } from '../../services/sessionSchedule';
 import { triggerHaptic } from '../../utils/haptics';
 import { formatSentenceCase } from '../../utils/typography';
+import { OverflowMenu, OverflowMenuItem } from '../common/Header';
 
 interface WorkoutPageHeaderProps {
   title: string;
@@ -10,8 +11,8 @@ interface WorkoutPageHeaderProps {
   /** Selected date in the week strip, when inspecting a day's overview. */
   selectedDate?: string | null;
   onSelectDay?: (day: StripDay) => void;
-  /** Secondary actions (location, rest day, last workout), shown from the "more" button. */
-  renderMenu?: (close: () => void) => React.ReactNode;
+  /** Unified overflow menu items rendered from the canonical 44x44 header menu. */
+  menuItems?: OverflowMenuItem[];
 }
 
 const STATUS_TEXT: Record<StripDay['status'], string> = {
@@ -60,44 +61,17 @@ const DayCircle: React.FC<{ day: StripDay }> = ({ day }) => {
   return <span className="rounded-full" style={{ width: size, height: size, border: '1.5px solid var(--color-border-strong)' }} />;
 };
 
-export const WorkoutPageHeader: React.FC<WorkoutPageHeaderProps> = ({ title, days, selectedDate, onSelectDay, renderMenu }) => {
-  const [menuOpen, setMenuOpen] = useState(false);
-  const close = () => setMenuOpen(false);
-
-  useEffect(() => {
-    if (!menuOpen) return;
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setMenuOpen(false);
-    };
-    document.addEventListener('keydown', onKeyDown);
-    return () => document.removeEventListener('keydown', onKeyDown);
-  }, [menuOpen]);
-
+export const WorkoutPageHeader: React.FC<WorkoutPageHeaderProps> = ({ title, days, selectedDate, onSelectDay, menuItems }) => {
   return (
     <header className="relative pt-2">
-      <div className="relative flex items-center justify-start pr-12">
+      <div className="flex items-center justify-between gap-3">
         <h1 className="wk-page-title">{formatSentenceCase(title)}</h1>
-        {renderMenu && (
-          <button
-            type="button"
-            onClick={() => {
-              triggerHaptic('light');
-              setMenuOpen((o) => !o);
-            }}
-            aria-expanded={menuOpen}
-            aria-haspopup="menu"
-            aria-label="Workout options: location, customize workout page, rest day and last workout"
-            className="absolute right-0 top-1/2 -translate-y-1/2 flex items-center justify-center rounded-full"
-            style={{ width: 44, height: 44, color: 'var(--wk-muted)' }}
-          >
-            <MoreHorizontal className="w-6 h-6" strokeWidth={2} aria-hidden="true" />
-          </button>
-        )}
-        {menuOpen && renderMenu && (
-          <>
-            <div className="fixed inset-0 z-20" onClick={close} aria-hidden="true" />
-            <div className="absolute right-0 top-full mt-2 z-30">{renderMenu(close)}</div>
-          </>
+        {menuItems && menuItems.length > 0 && (
+          <OverflowMenu
+            triggerAriaLabel="Workout options: location, customize workout page, rest day and last workout"
+            menuAriaLabel="Workout options"
+            items={menuItems}
+          />
         )}
       </div>
 
@@ -140,7 +114,7 @@ export const WorkoutPageHeader: React.FC<WorkoutPageHeaderProps> = ({ title, day
                 >
                   <span
                     aria-hidden="true"
-                    className="text-xs font-medium"
+                    className="wk-meta-title"
                     style={{
                       color: selected || day.isToday ? 'var(--color-text-primary)' : 'var(--wk-muted)',
                     }}
@@ -160,7 +134,7 @@ export const WorkoutPageHeader: React.FC<WorkoutPageHeaderProps> = ({ title, day
                 >
                   <span
                     aria-hidden="true"
-                    className="text-xs font-medium"
+                    className="wk-meta-title"
                     style={{
                       color: day.isToday ? 'var(--color-text-primary)' : 'var(--wk-muted)',
                     }}

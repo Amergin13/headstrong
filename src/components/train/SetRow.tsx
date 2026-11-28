@@ -110,13 +110,6 @@ export const SetRow: React.FC<SetRowProps> = ({
     : prevOverride || '—';
   const badge =
     displayBadge || (currentSetType === 'warmup' ? 'W' : currentSetType === 'drop' ? 'D' : currentSetType === 'myo' ? '+' : `${set.setNumber}`);
-  const greyText: React.CSSProperties = {
-    fontSize: 12,
-    lineHeight: '16px',
-    fontWeight: 500,
-    fontVariantNumeric: 'tabular-nums',
-    color: 'var(--wk-muted)',
-  };
 
   // Per side: the set's reps are what both sides managed (the weaker side).
   const updateSide = (side: 'left' | 'right', reps: number) => {
@@ -126,7 +119,9 @@ export const SetRow: React.FC<SetRowProps> = ({
   };
   const sideInput = (side: 'left' | 'right') => (
     <label className="flex items-center gap-2">
-      <span style={greyText}>{side === 'left' ? 'Left' : 'Right'}</span>
+      <span className="wk-meta-title tabular-numbers" style={{ color: 'var(--wk-muted)' }}>
+        {side === 'left' ? 'Left' : 'Right'}
+      </span>
       <input
         type="number"
         inputMode={set.completed ? 'none' : 'numeric'}
@@ -160,8 +155,8 @@ export const SetRow: React.FC<SetRowProps> = ({
         <span key={`flash-${celebration}`} className="wk-row-flash" aria-hidden="true" />
       )}
       <span
-        className="text-center tabular-numbers"
-        style={{ ...greyText, color: currentSetType === 'warmup' ? 'var(--color-set-warmup)' : greyText.color }}
+        className="wk-meta-title text-center tabular-numbers"
+        style={{ color: currentSetType === 'warmup' ? 'var(--color-set-warmup)' : 'var(--wk-muted)' }}
         title={label}
       >
         {badge}
@@ -172,8 +167,8 @@ export const SetRow: React.FC<SetRowProps> = ({
         onClick={handleCopyPrevious}
         disabled={!previous || set.completed}
         aria-label={previous ? `Last time ${prevDisplay}. Tap to copy` : 'No previous set for this exercise'}
-        className="wk-tap text-center truncate tabular-numbers disabled:pointer-events-none"
-        style={greyText}
+        className="wk-tap wk-meta-title text-center truncate tabular-numbers disabled:pointer-events-none"
+        style={{ color: 'var(--wk-muted)' }}
       >
         {prevDisplay}
       </button>
@@ -202,8 +197,8 @@ export const SetRow: React.FC<SetRowProps> = ({
                     isWeightEstimated: false,
                   });
                 }}
-                className="bg-transparent font-semibold tabular-numbers outline-none p-0 text-center w-full"
-                style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}
+                className="wk-meta-title bg-transparent outline-none p-0 text-center w-full"
+                style={{ color: 'var(--color-text-secondary)' }}
               />
             );
           }
@@ -213,7 +208,8 @@ export const SetRow: React.FC<SetRowProps> = ({
                 <span
                   aria-hidden="true"
                   title="Estimated from anchor lift"
-                  style={{ fontSize: 12, fontWeight: 500, marginRight: '0.1em', color: 'var(--wk-muted)' }}
+                  className="wk-meta-title"
+                  style={{ marginRight: '0.1em', color: 'var(--wk-muted)' }}
                 >
                   ~
                 </span>
@@ -234,17 +230,16 @@ export const SetRow: React.FC<SetRowProps> = ({
                 onChange={(e) => {
                   if (!set.completed) onUpdate({ actualWeightKg: units.fromDisplay(parseFloat(e.target.value) || 0), isWeightEstimated: false });
                 }}
-                className={`bg-transparent font-semibold tabular-numbers outline-none p-0 ${showBwToken ? 'text-center' : 'text-right'} ${
+                className={`bg-transparent outline-none p-0 ${showBwToken ? 'text-center' : 'text-right'} ${
                   set.completed ? 'pointer-events-none' : ''
                 }`}
                 style={{
                   width: `${Math.max(showBwToken ? 3 : 1, String(showBwToken ? 'BW' : displayWeight).length)}ch`,
-                  fontSize: 'inherit',
                   color: set.completed ? 'var(--color-text-primary)' : 'var(--color-text-secondary)',
                 }}
               />
               {displayWeight > 0 && (
-                <span aria-hidden="true" style={{ fontSize: 12, fontWeight: 500, marginLeft: '0.12em', color: 'var(--wk-muted)' }}>
+                <span aria-hidden="true" className="wk-meta-title" style={{ marginLeft: '0.12em', color: 'var(--wk-muted)' }}>
                   {units.unit}
                 </span>
               )}
@@ -273,18 +268,18 @@ export const SetRow: React.FC<SetRowProps> = ({
             onChange={(e) => {
               if (!set.completed) onUpdate({ actualDurationSeconds: Math.max(0, parseInt(e.target.value, 10) || 0) });
             }}
-            className={`bg-transparent text-right font-semibold tabular-numbers outline-none p-0 ${
+            className={`bg-transparent text-right outline-none p-0 ${
               set.completed ? 'pointer-events-none' : ''
             }`}
             style={{
               width: `${Math.max(1, String(currentSeconds).length)}ch`,
-              fontSize: 'inherit',
               color: set.completed ? 'var(--color-text-primary)' : 'var(--color-text-secondary)',
             }}
           />
           <span
             aria-hidden="true"
-            style={{ fontSize: 12, fontWeight: 500, marginLeft: '0.12em', color: 'var(--wk-muted)' }}
+            className="wk-meta-title"
+            style={{ marginLeft: '0.12em', color: 'var(--wk-muted)' }}
           >
             s
           </span>
@@ -312,8 +307,8 @@ export const SetRow: React.FC<SetRowProps> = ({
           />
           {(set.isFormFailure || set.repDisplay === 'F*') && (
             <span
-              className="absolute rounded pointer-events-none font-medium"
-              style={{ top: -4, right: -4, fontSize: 12, padding: '0 4px', background: 'var(--color-set-failure-bg)', color: 'var(--color-set-failure-fg)' }}
+              className="wk-meta-title absolute rounded pointer-events-none"
+              style={{ top: -4, right: -4, padding: '0 4px', background: 'var(--color-set-failure-bg)', color: 'var(--color-set-failure-fg)' }}
               title="Do as many reps as you can with good form"
             >
               F*
@@ -348,17 +343,16 @@ export const SetRow: React.FC<SetRowProps> = ({
                 });
               }
             }}
-            className={`bg-transparent text-center font-semibold tabular-numbers outline-none p-0 ${
+            className={`bg-transparent text-center outline-none p-0 ${
               set.completed ? 'pointer-events-none' : ''
             }`}
             style={{
               width: `${Math.max(1, String(Math.min(MAX_LOGGABLE_RIR, Math.max(0, currentRir))).length)}ch`,
-              fontSize: 'inherit',
               color: set.completed ? 'var(--color-text-primary)' : 'var(--color-text-secondary)',
             }}
           />
           {currentRir >= MAX_LOGGABLE_RIR && (
-            <span aria-hidden="true" style={{ fontSize: 12, fontWeight: 500, color: 'var(--wk-muted)' }}>
+            <span aria-hidden="true" className="wk-meta-title" style={{ color: 'var(--wk-muted)' }}>
               +
             </span>
           )}
@@ -408,8 +402,7 @@ export const SetRow: React.FC<SetRowProps> = ({
       <div
         role="status"
         aria-live="polite"
-        className="wk-raised flex items-center justify-between flex-wrap gap-2"
-        style={{ fontSize: 12 }}
+        className="wk-raised wk-caption flex items-center justify-between flex-wrap gap-2"
       >
         <span style={{ color: 'var(--color-text-primary)' }}>{pokaYoke.message}</span>
         <div className="flex items-center gap-2">

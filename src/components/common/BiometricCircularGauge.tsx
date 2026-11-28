@@ -77,10 +77,83 @@ const VARIANT_CONFIG: Record<
 
 /** Strictly on the 4px implicit grid (`112px` minimum diameter prevents long labels crossing the ring). */
 const SIZE_CONFIG = {
-  sm: { container: 112, strokeWidth: 8, textSize: 'text-base font-medium', labelSize: 'text-xs' },
-  md: { container: 128, strokeWidth: 8, textSize: 'text-xl font-semibold', labelSize: 'text-xs' },
-  lg: { container: 160, strokeWidth: 12, textSize: 'text-xl font-semibold', labelSize: 'text-xs' },
-  xl: { container: 192, strokeWidth: 12, textSize: 'text-xl font-semibold', labelSize: 'text-xs' },
+  sm: { container: 112, strokeWidth: 8, textClass: 'wk-number' },
+  md: { container: 128, strokeWidth: 8, textClass: 'wk-number' },
+  lg: { container: 160, strokeWidth: 12, textClass: 'wk-display' },
+  xl: { container: 192, strokeWidth: 12, textClass: 'wk-display' },
+};
+
+export interface CircularRingProps {
+  /** Single fill value (0-100) or null when no data has been recorded yet. */
+  value: number | null;
+  size?: number;
+  strokeWidth?: number;
+  strokeColor?: string;
+  emptyText?: string;
+  unitText?: string;
+  valueText?: string;
+  compactValue?: boolean;
+  empty?: boolean;
+}
+
+/** Shared circular ring renderer for smooth score gauges (Recovery, Readiness). */
+export const CircularRing: React.FC<CircularRingProps> = ({
+  value,
+  size = 96,
+  strokeWidth = 14,
+  strokeColor = SEMANTIC_COLOR.statusPositive,
+  emptyText = '—',
+  unitText = '%',
+  valueText,
+  compactValue = false,
+  empty = false,
+}) => {
+  const r = 93;
+  const c = 2 * Math.PI * r;
+  const pct = value === null ? 0 : Math.max(0, Math.min(100, value)) / 100;
+  return (
+    <div className="relative shrink-0" style={{ width: size, height: size }}>
+      <svg viewBox="0 0 200 200" className="w-full h-full -rotate-90" aria-hidden="true">
+        <circle cx="100" cy="100" r={r} fill="none" stroke="var(--color-border-track)" strokeWidth={strokeWidth} />
+        {value !== null && (
+          <circle
+            cx="100"
+            cy="100"
+            r={r}
+            fill="none"
+            stroke={strokeColor}
+            strokeWidth={strokeWidth}
+            strokeLinecap="round"
+            strokeDasharray={`${c * pct} ${c}`}
+          />
+        )}
+      </svg>
+      <span
+        className="absolute inset-0 flex items-center justify-center px-3 text-center"
+        style={{ color: empty || value === null ? 'var(--color-text-muted)' : 'var(--color-text-primary)' }}
+      >
+        {value === null && !valueText ? (
+          <span className="wk-number" style={{ color: 'var(--color-text-muted)' }}>
+            {emptyText}
+          </span>
+        ) : (
+          <span className="flex items-baseline gap-1">
+            <span
+              className={compactValue ? 'wk-number' : 'wk-display'}
+              style={{ color: empty ? 'var(--color-text-muted)' : 'var(--color-text-primary)' }}
+            >
+              {valueText ?? Math.round(value ?? 0)}
+            </span>
+            {unitText && (
+              <span className="wk-caption" style={{ color: 'var(--color-text-secondary)' }}>
+                {unitText}
+              </span>
+            )}
+          </span>
+        )}
+      </span>
+    </div>
+  );
 };
 
 export const BiometricCircularGauge: React.FC<BiometricCircularGaugeProps> = ({
@@ -134,23 +207,21 @@ export const BiometricCircularGauge: React.FC<BiometricCircularGaugeProps> = ({
         </svg>
 
         <div className="absolute inset-0 flex flex-col items-center justify-center px-3 text-center">
-          <div className="flex items-baseline justify-center gap-1 tabular-nums" style={{ color: cfg.valueColor }}>
-            <span className={dims.textSize}>
+          <div className="flex items-baseline justify-center gap-1 tabular-numbers">
+            <span className={dims.textClass} style={{ color: cfg.valueColor }}>
               {typeof value === 'number' && !Number.isInteger(value) ? value.toFixed(1) : Math.round(value)}
             </span>
             {unit && (
-              <span className="text-xs font-normal" style={{ color: 'var(--color-text-muted)' }}>
+              <span className="wk-caption" style={{ color: 'var(--color-text-muted)' }}>
                 {unit}
               </span>
             )}
           </div>
-          <span
-            className="wk-meta-title mt-1 max-w-full truncate"
-          >
+          <span className="wk-meta-title mt-1 max-w-full truncate">
             {label}
           </span>
           {subtitle && (
-            <span className="text-xs leading-tight" style={{ color: 'var(--color-text-muted)' }}>
+            <span className="wk-caption" style={{ color: 'var(--color-text-muted)' }}>
               {subtitle}
             </span>
           )}

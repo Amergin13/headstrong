@@ -1,4 +1,5 @@
 import { applyCors } from '../_lib/cors.js';
+import { emitServerMetric } from '../_lib/metrics.js';
 
 /**
  * Vercel Serverless Function: Strava OAuth.
@@ -42,6 +43,7 @@ export default async function handler(req: any, res: any) {
     params.set('code', String(body.code));
   }
 
+  const startedAt = Date.now();
   try {
     const response = await fetch('https://www.strava.com/oauth/token', {
       method: 'POST',
@@ -50,8 +52,18 @@ export default async function handler(req: any, res: any) {
     });
     const data: any = await response.json().catch(() => ({}));
     if (!response.ok) {
+      emitServerMetric('wearable.api.request', 1, {
+        provider: 'strava',
+        endpoint: 'token',
+        outcome: 'error',
+      });
       return res.status(response.status).json({ error: data?.message || 'Strava token exchange failed' });
     }
+    emitServerMetric('wearable.api.request', 1, {
+      provider: 'strava',
+      endpoint: 'token',
+      outcome: 'success',
+    });
     // Only what the app needs: tokens, expiry, granted scope and the athlete's first name.
     return res.status(200).json({
       accessToken: data.access_token,
@@ -61,6 +73,16 @@ export default async function handler(req: any, res: any) {
       athleteFirstName: data.athlete?.firstname,
     });
   } catch (error: any) {
+    emitServerMetric('wearable.api.request', 1, {
+      provider: 'strava',
+      endpoint: 'token',
+      outcome: 'error',
+    });
     return res.status(500).json({ error: error?.message || 'Strava token proxy error' });
+  } finally {
+    emitServerMetric('wearable.api.duration_ms', Math.max(1, Date.now() - startedAt), {
+      provider: 'strava',
+      endpoint: 'token',
+    });
   }
 }

@@ -1,9 +1,11 @@
 import React from 'react';
-import { ChevronRight, Sparkles } from 'lucide-react';
+import { Sparkles } from 'lucide-react';
 import { ReadinessEvaluation, Set1RirConfirmation, displayRecoveryScore } from '../../engine/readiness';
 import { formatReadyTime, MUSCLE_FRIENDLY_NAMES, SessionRecoveryGate } from '../../engine/recovery';
 import { BiometricLog, WorkoutSession } from '../../engine/types';
 import { triggerHaptic } from '../../utils/haptics';
+import { CardDrillInButton } from '../common/Header';
+import { CircularRing } from '../common/BiometricCircularGauge';
 
 interface RecoveryScoreCardProps {
   readiness: ReadinessEvaluation;
@@ -32,44 +34,6 @@ function ringColor(score: number): string {
   if (score >= 34) return 'var(--color-status-warning)';
   return 'var(--color-status-danger-fill)';
 }
-
-const Ring: React.FC<{ value: number | null }> = ({ value }) => {
-  const r = 93;
-  const c = 2 * Math.PI * r;
-  const pct = value === null ? 0 : Math.max(0, Math.min(100, value)) / 100;
-  return (
-    <div className="relative shrink-0" style={{ width: 96, height: 96 }}>
-      <svg viewBox="0 0 200 200" className="w-full h-full -rotate-90" aria-hidden="true">
-        <circle cx="100" cy="100" r={r} fill="none" stroke="var(--color-border-track)" strokeWidth="14" />
-        {value !== null && (
-          <circle
-            cx="100"
-            cy="100"
-            r={r}
-            fill="none"
-            stroke={ringColor(value)}
-            strokeWidth="14"
-            strokeLinecap="round"
-            strokeDasharray={`${c * pct} ${c}`}
-          />
-        )}
-      </svg>
-      <span
-        className="absolute inset-0 flex items-center justify-center tabular-numbers"
-        style={{ color: 'var(--color-text-primary)' }}
-      >
-        {value === null ? (
-          <span className="text-xl" style={{ color: 'var(--wk-muted)' }}>—</span>
-        ) : (
-          <span className="flex items-baseline gap-1">
-            <span className="wk-display leading-none">{Math.round(value)}</span>
-            <span className="wk-caption" style={{ color: 'var(--color-text-secondary)' }}>%</span>
-          </span>
-        )}
-      </span>
-    </div>
-  );
-};
 
 export const RecoveryScoreCard: React.FC<RecoveryScoreCardProps> = ({
   readiness,
@@ -136,31 +100,30 @@ export const RecoveryScoreCard: React.FC<RecoveryScoreCardProps> = ({
   const showCoachTrigger = hasData && readiness.state === 'Amber Shield' && Boolean(onAskCoach);
 
   return (
-    <div className="wk-card flex flex-col gap-3">
-      <button
-        type="button"
-        disabled={!onOpen}
-        onClick={() => {
-          triggerHaptic('light');
-          onOpen?.();
-        }}
-        aria-label={`${tag}${score !== null ? ` recovery ${Math.round(score)}%` : ''}. ${heading}. ${body}`}
-        className="w-full text-left flex items-center gap-6"
-      >
-        <Ring value={score} />
+    <section
+      aria-label={`${tag}${score !== null ? ` recovery ${Math.round(score)}%` : ''}. ${heading}. ${body}`}
+      className="wk-card flex flex-col gap-3"
+    >
+      <div className="w-full flex items-center gap-4">
+        <CircularRing value={score} strokeColor={ringColor(score ?? 0)} />
         <div className="flex-1 min-w-0">
           <div className="flex items-start justify-between gap-2">
             <span className="wk-pill">{tag}</span>
-            {onOpen && <ChevronRight className="wk-chevron" strokeWidth={2} aria-hidden="true" />}
+            {onOpen && (
+              <CardDrillInButton
+                onClick={onOpen}
+                label={`${tag}${score !== null ? ` recovery ${Math.round(score)}%` : ''}. Open recovery details`}
+              />
+            )}
           </div>
           <h2 className="wk-title mt-3">
             {heading}
           </h2>
-          <p className="wk-body mt-1 max-w-prose">
+          <p className="wk-body mt-1">
             {body}
           </p>
         </div>
-      </button>
+      </div>
 
       {isRecoveringLocally && recoveryGate && recoveryGate.limitingMuscles.length > 0 && (
         <ul className="flex flex-col gap-2 pt-3 border-t" style={{ borderColor: 'var(--color-border-subtle)' }} aria-label="Local muscle recovery">
@@ -177,7 +140,7 @@ export const RecoveryScoreCard: React.FC<RecoveryScoreCardProps> = ({
 
       {readiness.state === 'Amber Shield' && set1Confirmation && set1Confirmation.status !== 'pending' && set1Confirmation.message && (
         <div
-          className="rounded-xl px-3 py-2 border flex items-center justify-between gap-2"
+          className="wk-raised border flex items-center justify-between gap-2"
           style={{
             background:
               set1Confirmation.status === 'fatigue_confirmed'
@@ -260,13 +223,13 @@ export const RecoveryScoreCard: React.FC<RecoveryScoreCardProps> = ({
             triggerHaptic('light');
             onAskCoach?.();
           }}
-          className="wk-btn-secondary w-full min-h-[44px] justify-center gap-2 font-medium"
+          className="wk-btn-secondary w-full min-h-[44px] justify-center gap-2"
           style={{ borderColor: 'rgb(var(--color-coach-accent-rgb) / 0.35)' }}
         >
           <Sparkles className="w-4 h-4 shrink-0" style={{ color: 'var(--color-coach-accent)' }} strokeWidth={2.2} aria-hidden="true" />
           <span>Ask Treise about today’s recovery</span>
         </button>
       )}
-    </div>
+    </section>
   );
 };

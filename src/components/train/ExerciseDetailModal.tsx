@@ -1,6 +1,7 @@
 import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowRightLeft, Check, Disc, Plus, Sparkles, X } from 'lucide-react';
+import { ArrowRightLeft, Disc, Plus, Sparkles, X } from 'lucide-react';
+import { InterventionActionBar } from '../common/Header';
 import type { CoachIntervention } from '../../services/coachInterventions';
 import {
   BiometricLog,
@@ -304,13 +305,13 @@ export const ExerciseDetailModal: React.FC<ExerciseDetailModalProps> = ({
         >
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
-              <div className="flex items-center flex-wrap gap-2">
-                {exercise.orderCode && <span className="wk-pill">{exercise.orderCode}</span>}
-                <span className="wk-caption" style={{ color: 'var(--color-text-secondary)' }}>
-                  {detail.equipmentLabel} · {detail.primaryMuscle}
-                </span>
+              <span className="wk-caption block" style={{ color: 'var(--color-text-secondary)' }}>
+                {detail.equipmentLabel} · {detail.primaryMuscle}
+              </span>
+              <div className="flex items-center flex-wrap gap-2 mt-1">
+                {exercise.orderCode && <span className="wk-pill shrink-0">{exercise.orderCode}</span>}
+                <h2 className="wk-h1">{formatSentenceCase(detail.title)}</h2>
               </div>
-              <h2 className="wk-h1 mt-1">{formatSentenceCase(detail.title)}</h2>
             </div>
             <button
               type="button"
@@ -409,43 +410,15 @@ export const ExerciseDetailModal: React.FC<ExerciseDetailModalProps> = ({
                     </div>
                   </div>
                   {onAcceptIntervention && onDismissIntervention ? (
-                    isInterventionAccepted ? (
-                      <div
-                        aria-live="polite"
-                        className="min-h-[44px] rounded-xl px-4 py-2 flex items-center justify-center gap-2"
-                        style={{
-                          background: 'var(--color-status-positive-soft)',
-                          color: 'var(--wk-accent)',
-                        }}
-                      >
-                        <Check className="w-4 h-4 shrink-0" strokeWidth={2.5} aria-hidden="true" />
-                        <span className="text-base font-semibold">Applied to your plan</span>
-                      </div>
-                    ) : (
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          disabled={Boolean(resolvingIntervention)}
-                          className="flex-1 min-h-[44px] rounded-xl px-4 py-2 text-base font-semibold inline-flex items-center justify-center gap-2 transition-transform active:scale-[0.98]"
-                          style={{
-                            background: 'var(--color-action-primary-bg)',
-                            color: 'var(--color-action-primary-fg)',
-                          }}
-                          onClick={() => handleAcceptDetailIntervention(displayIntervention)}
-                        >
-                          <Check className="w-4 h-4 shrink-0" strokeWidth={2.4} aria-hidden="true" />
-                          <span>Accept</span>
-                        </button>
-                        <button
-                          type="button"
-                          disabled={Boolean(resolvingIntervention)}
-                          className={`${secondaryButton} px-4`}
-                          onClick={() => handleDismissDetailIntervention(displayIntervention)}
-                        >
-                          Dismiss
-                        </button>
-                      </div>
-                    )
+                    <InterventionActionBar
+                      applied={isInterventionAccepted}
+                      onAccept={() => handleAcceptDetailIntervention(displayIntervention)}
+                      onDismiss={() => handleDismissDetailIntervention(displayIntervention)}
+                      disabled={Boolean(resolvingIntervention)}
+                      acceptLabel="Accept"
+                      dismissLabel="Dismiss"
+                      appliedLabel="Applied to your plan"
+                    />
                   ) : (
                     onAskCoachToAdapt && (
                       <button
@@ -530,7 +503,7 @@ export const ExerciseDetailModal: React.FC<ExerciseDetailModalProps> = ({
                       color: 'var(--color-text-secondary)',
                     }}
                   >
-                    <span className="font-medium" style={{ color: 'var(--color-text-primary)' }}>
+                    <span className="wk-meta-title" style={{ color: 'var(--color-text-primary)' }}>
                       {detail.intensityProtocol.name}:
                     </span>{' '}
                     {detail.intensityProtocol.instruction}
@@ -869,6 +842,26 @@ export const ExerciseDetailModal: React.FC<ExerciseDetailModalProps> = ({
                   </dd>
                 </div>
               </dl>
+
+              {(detail.bestOneRepMaxDisplay || detail.heaviestSetDisplay) && (
+                <div
+                  className="wk-raised flex flex-wrap items-center justify-between gap-2"
+                  aria-label="Documented lift maxes"
+                >
+                  {detail.bestOneRepMaxDisplay && (
+                    <span className="wk-caption tabular-nums" style={{ color: 'var(--color-text-primary)' }}>
+                      <span style={{ color: 'var(--color-text-secondary)' }}>Best 1RM: </span>
+                      <strong>{detail.bestOneRepMaxDisplay}</strong>
+                    </span>
+                  )}
+                  {detail.heaviestSetDisplay && (
+                    <span className="wk-caption tabular-nums" style={{ color: 'var(--color-text-primary)' }}>
+                      <span style={{ color: 'var(--color-text-secondary)' }}>Heaviest set: </span>
+                      <strong>{detail.heaviestSetDisplay}</strong>
+                    </span>
+                  )}
+                </div>
+              )}
 
               <TrendChart
                 points={trendSpec.points}

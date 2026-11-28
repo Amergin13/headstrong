@@ -1,4 +1,5 @@
 import { applyCors } from '../_lib/cors.js';
+import { emitServerMetric } from '../_lib/metrics.js';
 const WHOOP_CLIENT_ID = '8bcb0a0d-b6ff-42e0-82b7-c3508e18c9f8';
 // Must be configured as a Vercel environment variable. Never hardcode it.
 // Read per request so a newly set variable takes effect without a code change.
@@ -26,6 +27,7 @@ export default async function handler(req: any, res: any) {
     return res.status(503).json({ error: 'server_not_configured', error_description: 'Whoop connection is not configured on the server.' });
   }
 
+  const startedAt = Date.now();
   try {
     const rawBody = req.body;
     let params: URLSearchParams;
@@ -46,7 +48,8 @@ export default async function handler(req: any, res: any) {
     // Ensure configured credentials and registered redirect URI are always strictly enforced
     params.set('client_id', WHOOP_CLIENT_ID);
     params.set('client_secret', getWhoopClientSecret());
-    if (params.get('grant_type') === 'refresh_token') {
+    const grantType = params.get('grant_type') === 'refresh_token' ? 'refresh_token' : 'authorization_code';
+    if (grantType === 'refresh_token') {
       // Whoop rejects renewals that carry a redirect_uri; they need scope=offline instead.
       params.delete('redirect_uri');
       params.set('scope', 'offline');
@@ -66,9 +69,24 @@ export default async function handler(req: any, res: any) {
     if (!response.ok) {
       console.warn('WHOOP token exchange rejected by Whoop API:', response.status, data);
     }
+    emitServerMetric('wearable.api.request', 1, {
+      provider: 'whoop',
+      endpoint: 'token',
+      outcome: response.ok ? 'success' : 'error',
+    });
     return res.status(response.status).json(data);
   } catch (error: any) {
     console.error('WHOOP token proxy error:', error);
+    emitServerMetric('wearable.api.request', 1, {
+      provider: 'whoop',
+      endpoint: 'token',
+      outcome: 'error',
+    });
     return res.status(500).json({ error: error?.message || 'Whoop token exchange proxy error' });
+  } finally {
+    emitServerMetric('wearable.api.duration_ms', Math.max(1, Date.now() - startedAt), {
+      provider: 'whoop',
+      endpoint: 'token',
+    });
   }
 }

@@ -69,7 +69,7 @@ export const KnowledgeGraphCard: React.FC<KnowledgeGraphCardProps> = ({
       {/* Top Summary Card */}
       <div className="wk-card w-full text-left block">
         <div className="flex items-start justify-between gap-3">
-          <h2 className="wk-h1 leading-tight">
+          <h2 className="wk-h1">
             Recovery &amp; body insights
           </h2>
           <span className="wk-pill shrink-0">
@@ -77,15 +77,15 @@ export const KnowledgeGraphCard: React.FC<KnowledgeGraphCardProps> = ({
           </span>
         </div>
 
-        <p className="wk-body mt-2 max-w-prose">
+        <p className="wk-body mt-2">
           How your sleep, joints, and weekly workouts work together
         </p>
 
         <div className="flex items-end justify-between gap-2 mt-6">
-          <span className="wk-meta-title leading-tight">
+          <span className="wk-meta-title">
             Full-stretch sets
           </span>
-          <span className="wk-number shrink-0 leading-none">
+          <span className="wk-number shrink-0">
             {pkg.lengthenedStimulusRatio}%
           </span>
         </div>
@@ -95,10 +95,10 @@ export const KnowledgeGraphCard: React.FC<KnowledgeGraphCardProps> = ({
         </div>
 
         <div className="flex items-end justify-between gap-2 mt-5">
-          <span className="wk-meta-title leading-tight">
+          <span className="wk-meta-title">
             Lower back load
           </span>
-          <span className="wk-number shrink-0 leading-none">
+          <span className="wk-number shrink-0">
             {pkg.systemicAxialLoadScore}%
           </span>
         </div>
@@ -141,7 +141,7 @@ export const KnowledgeGraphCard: React.FC<KnowledgeGraphCardProps> = ({
           {pkg.insights.map((ins) => (
             <div key={ins.id} className="wk-card w-full text-left block">
               <div className="flex items-start justify-between gap-3">
-                <h3 className="wk-h1 leading-tight">
+                <h3 className="wk-h1">
                   {ins.title}
                 </h3>
                 <span className="wk-pill shrink-0">
@@ -149,11 +149,11 @@ export const KnowledgeGraphCard: React.FC<KnowledgeGraphCardProps> = ({
                 </span>
               </div>
 
-              <p className="wk-body mt-2 max-w-prose">
+              <p className="wk-body mt-2">
                 {ins.narrative}
               </p>
 
-              <p className="wk-body mt-3 max-w-prose" style={{ color: 'var(--color-text-primary)' }}>
+              <p className="wk-body mt-3" style={{ color: 'var(--color-text-primary)' }}>
                 {ins.actionableStep}
               </p>
             </div>
@@ -162,7 +162,7 @@ export const KnowledgeGraphCard: React.FC<KnowledgeGraphCardProps> = ({
           {pkg.exerciseNotesHistory.length > 0 && (
             <div className="wk-card w-full text-left block">
               <div className="flex items-start justify-between gap-3">
-                <h3 className="wk-h1 leading-tight">
+                <h3 className="wk-h1">
                   Exercise notes timeline
                 </h3>
                 <span className="wk-pill shrink-0 tabular-nums">
@@ -243,7 +243,7 @@ export const KnowledgeGraphCard: React.FC<KnowledgeGraphCardProps> = ({
         pkg.joints.map((j) => (
           <div key={j.joint} className="wk-card w-full text-left block">
             <div className="flex items-start justify-between gap-3">
-              <h3 className="wk-h1 leading-tight">
+              <h3 className="wk-h1">
                 {j.joint}
               </h3>
               <span className="wk-pill shrink-0">
@@ -251,15 +251,15 @@ export const KnowledgeGraphCard: React.FC<KnowledgeGraphCardProps> = ({
               </span>
             </div>
 
-            <p className="wk-body mt-2 max-w-prose">
+            <p className="wk-body mt-2">
               {j.biomechanicalAdvice}
             </p>
 
             <div className="flex items-end justify-between gap-2 mt-6">
-              <span className="wk-meta-title leading-tight">
+              <span className="wk-meta-title">
                 Main exercises: {j.topContributors.join(', ') || 'Balanced'}
               </span>
-              <span className="wk-number shrink-0 leading-none">
+              <span className="wk-number shrink-0">
                 {j.strainScore}%
               </span>
             </div>
@@ -275,12 +275,12 @@ export const KnowledgeGraphCard: React.FC<KnowledgeGraphCardProps> = ({
         <>
           <div className="wk-card w-full text-left block">
             <div className="flex items-start justify-between gap-3">
-              <h3 className="wk-h1 leading-tight">
+              <h3 className="wk-h1">
                 Science &amp; logic
               </h3>
               <span className="wk-pill shrink-0">Formulas</span>
             </div>
-            <p className="wk-body mt-2 max-w-prose">
+            <p className="wk-body mt-2">
               Authoritative formulas, volume landmarks, and recovery rules driving Treise
             </p>
             <input
@@ -300,7 +300,7 @@ export const KnowledgeGraphCard: React.FC<KnowledgeGraphCardProps> = ({
             .map((p) => (
               <div key={p.id} className="wk-card w-full text-left block">
                 <div className="flex items-start justify-between gap-3">
-                  <h3 className="wk-h1 leading-tight">
+                  <h3 className="wk-h1">
                     {p.title}
                   </h3>
                   <span className="wk-pill shrink-0">
